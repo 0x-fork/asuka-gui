@@ -117,8 +117,7 @@ the Android SDK and NDK) and a C compiler (the system's, or Zig).
   and the tags that open the app.
 - [Bluetooth](bluetooth.md): Bluetooth LE devices, scanned for or
   chosen, connected to, read, written and followed; the app as a
-  peripheral, advertising and serving; in the background; on each
-  platform.
+  peripheral, advertising and serving; on each platform.
 - [iCloud](icloud.md): the key-value store that follows the user to each
   of their devices, and the app's documents in iCloud Drive: listed,
   read and written, downloaded and evicted, their conflicts resolved, on
@@ -133,6 +132,9 @@ the Android SDK and NDK) and a C compiler (the system's, or Zig).
   for each platform, shipped with the app; SQLite is one.
 - [The standard library](stdlib.md): the `asuka/...` packages, and what
   each one does on each platform.
+- [C from Asuka](c.md): calling C (the app's own, a library's, the
+  system's) with `extern` declarations, `asuka.toml`'s `[c]`, and
+  callbacks.
 - [Native code](native.md): native packages, typed modules and views
   declared in Asuka and implemented in each platform's own project:
   Swift on iOS and macOS, Kotlin on Android, JavaScript on the web, Go

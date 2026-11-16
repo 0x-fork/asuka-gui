@@ -256,8 +256,8 @@ void wh_load_msftedit(void);
 int wh_twips(float size, float k);
 void wh_open_link(node *n, const char *url, size_t len);
 
-// A module method's answer as a callback (wh_call_module's, web.c's;
-// modules.h's wh_reply is the modules' own): once, on the main
+// A web method's answer as a callback (web.c's; modules.h's wh_reply is
+// the modules' own): once, on the main
 // thread; err NULL, else a message ("unsupported: ..." for what isn't).
 typedef void (*wh_answer)(void *ctx, const uint8_t *b, size_t n, const char *err);
 

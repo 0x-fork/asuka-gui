@@ -261,6 +261,7 @@ const (
 	EMIT
 	ENUM
 	EVENT
+	EXTERN
 	FALSE
 	FN
 	FOR
@@ -378,6 +379,7 @@ var tokens = [...]string{
 	EMIT:      "emit",
 	ENUM:      "enum",
 	EVENT:     "event",
+	EXTERN:    "extern",
 	FALSE:     "false",
 	FN:        "fn",
 	FOR:       "for",

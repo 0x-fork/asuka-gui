@@ -13,27 +13,21 @@ import (
 	"github.com/egoist/asuka/platform/windows"
 )
 
-// The C hosts' sources (RFC 0008): the repository's, or the CLI's
-// embedded copies.
-var (
-	windowsTree = srcdir.Tree{Env: "ASUKA_WINDOWS_HOST", Sub: filepath.Join("platform", "windows"), Valid: func(d string) bool {
-		_, err := os.Stat(filepath.Join(d, "src", "host.h"))
-		return err == nil
-	}, Files: windows.Sources, Cache: "windows-src"}
-	desktopTree = srcdir.Tree{Env: "ASUKA_DESKTOP_C", Sub: filepath.Join("platform", "desktop"), Valid: func(d string) bool {
-		_, err := os.Stat(filepath.Join(d, "include", "desktop.h"))
-		return err == nil
-	}, Files: desktop.Sources, Cache: "desktop-src"}
-)
+// The Windows host's sources (RFC 0008): the repository's, or the CLI's
+// embedded copy (platform/desktop's are desktop.Dir's).
+var windowsTree = srcdir.Tree{Env: "ASUKA_WINDOWS_HOST", Sub: filepath.Join("platform", "windows"), Valid: func(d string) bool {
+	_, err := os.Stat(filepath.Join(d, "src", "host.h"))
+	return err == nil
+}, Files: windows.Sources, Cache: "windows-src"}
 
 // WindowsOptions say how a Windows executable is built.
 type WindowsOptions struct {
 	// App are an app's C sources (lang/cgen's app.c, its packages' glue):
 	// none for asuka dev's player, which loads the app's bytecode.
 	App []string
-	// Natives are native packages' Windows C (a package's windows/*.c),
-	// compiled with the host's headers.
-	Natives []string
+	// Native is the native packages' C (DesktopNatives: the registry's
+	// and the packages'), their include directories and libraries.
+	Native *DesktopC
 	// Resources is a COFF object with the executable's resources (its
 	// icon, manifest and version).
 	Resources string
@@ -69,7 +63,7 @@ func WindowsHost(t cbuild.Target, o WindowsOptions, out string) error {
 	if err != nil {
 		return err
 	}
-	dsk, err := desktopTree.Dir()
+	dsk, err := desktop.Dir()
 	if err != nil {
 		return err
 	}
@@ -88,9 +82,25 @@ func WindowsHost(t cbuild.Target, o WindowsOptions, out string) error {
 		}
 		host = append(kept, o.Tests...)
 	}
-	host = append(host, o.Natives...)
-	sort.Strings(host)
 	flags := []string{"-I" + filepath.Join(win, "src"), "-I" + filepath.Join(dsk, "include"), "-DUNICODE", "-D_UNICODE"}
+	var libs []string
+	if o.Native != nil {
+		// Its .c files the host's set hasn't (platform/desktop's are in it);
+		// its headers only name the cache's inputs.
+		have := map[string]bool{}
+		for _, s := range host {
+			have[filepath.Clean(s)] = true
+		}
+		for _, s := range o.Native.Sources {
+			if strings.HasSuffix(s, ".c") && !have[filepath.Clean(s)] {
+				host = append(host, s)
+				have[filepath.Clean(s)] = true
+			}
+		}
+		flags = append(flags, o.Native.Flags...)
+		libs = o.Native.Libs
+	}
+	sort.Strings(host)
 	if len(o.Tests) > 0 {
 		flags = append(flags, "-I"+filepath.Join(win, "test"), "-DWH_TEST=1")
 	}
@@ -111,6 +121,7 @@ func WindowsHost(t cbuild.Target, o WindowsOptions, out string) error {
 		p.Link = append(p.Link, "-Wl,/subsystem:windows", "-Wl,/entry:wWinMainCRTStartup")
 	}
 	p.Link = append(p.Link, WindowsLibs...)
+	p.Link = append(p.Link, libs...)
 	return tc.Program(core, p, out)
 }
 

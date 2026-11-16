@@ -25,8 +25,8 @@ func hostAddress(t *testing.T, w *windows) string {
 	return strings.TrimSpace(string(out))
 }
 
-// The host's modules (testdata/modules.asuka): asuka/platform's call and
-// asuka/host's (the Modules class the host serves), a module the host
+// The host's modules (testdata/modules.asuka): asuka/platform's call, a
+// module the host
 // hasn't, asuka/apps' ranking, a tray icon, and the updater: info, a
 // download over HTTP with its progress, and an install that swaps the
 // app's own folder while it runs.
@@ -116,7 +116,7 @@ func TestModules(t *testing.T) {
 	}
 }
 
-// More of the modules (testdata/services.asuka), through asuka/host and
+// More of the modules (testdata/services.asuka), through asuka/platform and
 // asuka/platform: a toast shown, listed by the notification center's
 // history and removed by its thread; a global hot key; recent documents;
 // start at login (the user's Run key, set and taken away); the taskbar's

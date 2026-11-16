@@ -229,20 +229,11 @@ void wh_read_saved_locale(void);
 void wh_set_locale(const uint8_t *args, size_t len);
 void wh_save_locale(const char *tag, size_t len);
 
-// native.c: the core's native_* callbacks, the registry's but for
-// asuka/host's Modules (the host's own modules: wh_call_module)
+// native.c: the core's native_* callbacks, the registry's
 void wh_native_host_callbacks(asuka_host_callbacks *cb);
 
 // modules.c: the host's own modules
 void wh_call(node *root, const uint8_t *args, size_t len);
-// wh_call_module runs a module's method with args (asuka/host's Modules,
-// platform.call); reply gets its answer once, on the main thread (err
-// NULL, else a message; "unsupported: ..." for a module or method it
-// doesn't have), perhaps before wh_call_module returns.
-void wh_call_module(const char *module, size_t module_len, const char *method, size_t method_len, const uint8_t *args, size_t len,
-	wh_answer reply, void *ctx);
-// wh_module_call_gone: the call whose answer goes to ctx was cancelled.
-void wh_module_call_gone(void *ctx);
 
 // notify.c
 void wh_wait_for_toast(void);

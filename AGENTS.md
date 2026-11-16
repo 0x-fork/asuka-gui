@@ -96,7 +96,7 @@ go run ./cmd/asuka dev --platform ios examples/counter       # iOS simulator (Xc
 go run ./cmd/asuka dev --platform android examples/counter   # Android emulator (SDK + NDK), likewise
 go run ./cmd/asuka dev --platform ios --once examples/counter # build the player, launch it once with the app, without watching
 go run ./cmd/asuka run file.asuka                # one file: its test blocks, then what its app shows (fake host)
-go test ./internal/appbuild ./cmd/asuka          # the builds for every target, the dev loop end to end (mac, Chrome, simulator, emulator)
+go test -timeout 30m ./internal/appbuild ./cmd/asuka  # the builds for every target, the dev loop end to end (mac, Chrome, simulator, emulator)
 go test -tags e2e ./e2e -run IOS                 # GUI tests: the examples on the simulator (Android: -run Android, an emulator running)
 go run ./cmd/asuka build --platform ios --simulator examples/counter    # a release build (--platform ios alone: a signed .ipa)
 go run ./cmd/asuka build --platform android examples/counter           # an .aab (ASUKA_KEYSTORE, ASUKA_KEY_ALIAS, ASUKA_KEYSTORE_PASSWORD)

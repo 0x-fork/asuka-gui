@@ -1,9 +1,8 @@
 // The host's modules, called as the standard library's packages call
-// them (modules_test.go): asuka/platform's call, asuka/host's Modules,
+// them (modules_test.go): asuka/platform's call,
 // a tray icon, asuka/apps' ranking, and the updater's download and
 // install into the app's own folder (the test's job).
 import asuka/apps
-import asuka/host
 import asuka/json
 import asuka/platform
 import asuka/tray
@@ -75,13 +74,13 @@ component Modules(url: string) {
 
   task {
     do {
-      let _ = try await host.call("push", "register", bytes())
+      let _ = try await platform.call("push", "register", bytes())
       viaHost = "registered"
     } catch e {
       viaHost = e.message
     }
     do {
-      let _ = try await host.call("nope", "x", bytes())
+      let _ = try await platform.call("nope", "x", bytes())
       missing = "answered"
     } catch e {
       missing = e.message

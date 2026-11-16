@@ -28,14 +28,14 @@ type Config struct {
 	KeepRunning       bool   `json:"keepRunning,omitempty"`
 	MultipleInstances bool   `json:"multipleInstances,omitempty"`
 	// The updates' feed, the public key their signatures are checked
-	// with, and the build's target (asuka/sdk/update).
+	// with, and the build's target (asuka/update).
 	UpdateFeed   string `json:"updateFeed,omitempty"`
 	UpdateKey    string `json:"updateKey,omitempty"`
 	UpdateTarget string `json:"updateTarget,omitempty"`
 }
 
 // UpdateFeed, UpdateKey and UpdateTarget are asuka.toml's updates for a
-// desktop build (ConfigFile's): asuka/sdk/update's feed, the key that
+// desktop build (ConfigFile's): asuka/update's feed, the key that
 // signs its updates and the build's target.
 var UpdateFeed, UpdateKey, UpdateTarget string
 

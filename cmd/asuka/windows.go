@@ -166,33 +166,14 @@ func windowsRelease(app *asukaApp, t cbuild.Target, res []byte, exe string, verb
 	if err := os.WriteFile(obj, res, 0o644); err != nil {
 		return err
 	}
-	natives, err := windowsNatives(app)
+	natives, err := appbuild.DesktopNatives(t, desktopNativeDirs(app))
 	if err != nil {
 		return err
 	}
 	if verbose {
 		fmt.Printf("asuka: building the Windows host for %s/%s\n", t.OS, t.Arch)
 	}
-	return appbuild.WindowsHost(t, appbuild.WindowsOptions{App: []string{c}, Natives: natives, Resources: obj}, exe)
-}
-
-// windowsNatives are the C files of the app's own native packages for
-// Windows (a package's windows/*.c), built into its host; the standard
-// library's are in every host.
-func windowsNatives(app *asukaApp) ([]string, error) {
-	ps, err := appNatives(app)
-	if err != nil {
-		return nil, err
-	}
-	var out []string
-	for _, p := range ps {
-		if strings.HasPrefix(p.path, "asuka/") {
-			continue
-		}
-		files, _ := filepath.Glob(filepath.Join(p.dir, "windows", "*.c"))
-		out = append(out, files...)
-	}
-	return out, nil
+	return appbuild.WindowsHost(t, appbuild.WindowsOptions{App: []string{c}, Native: natives, Resources: obj}, exe)
 }
 
 // defaultTimestamps are the RFC 3161 timestamp servers a signature is

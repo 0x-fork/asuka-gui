@@ -31,7 +31,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/egoist/asuka/sdk/push/webpush"
+	"github.com/egoist/asuka/webpush"
 )
 
 // The test app's VAPID keys (e2e/testdata/webpush/asuka.toml has the
@@ -45,7 +45,7 @@ var testVAPID = webpush.Keys{
 // the browser's own push service (Chrome's is Google's, which a test
 // can't stand in for): the page's PushManager is stubbed to subscribe
 // with a key pair the test holds, at a fake push service; push.Register
-// gives the app that subscription; the server's side (asuka/sdk/push/webpush)
+// gives the app that subscription; the server's side (asuka/webpush)
 // encrypts and signs a push to it; the fake service checks the VAPID
 // token, decrypts the push as a browser would and delivers it to the
 // app's service worker (DevTools' ServiceWorker.deliverPushMessage), which

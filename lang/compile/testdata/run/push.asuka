@@ -17,6 +17,6 @@ test "push" {
 }
 
 // Output:
-// unsupported: push has no host here
+// unsupported: no host to call (no app is shown)
 // Hi Ana c
 // ok push

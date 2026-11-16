@@ -31,7 +31,7 @@ test "without a host" {
   let app = mount(Remind())
   app.tap("Remind")
   await app.idle()
-  app.expect("unsupported: notify has no host here")
+  app.expect("no module \"notify\"")
   notify.setBadge(3)
   notify.removeThread("x")
   notify.present(n => if n.thread == "climbing" { .hide } else { .banner })

@@ -160,6 +160,7 @@ struct ak_fake {
 	bool popping;  // a Location event is being sent: the browser went there already
 	int32_t pop_from;
 	struct ak_fake_desk *desk;  // desktop.c's
+	struct ak_fake_update *update;  // update.c's
 };
 
 ak_fake *ak_fake_new(void);
@@ -324,6 +325,9 @@ void ak_fake_desk_command(ak_fake *f, ak_fake_view *v, ak_cmd c, ak_span args);
 void ak_fake_desk_listen(ak_fake *f, ak_fake_view *v, ak_event_kind ev);
 void ak_fake_desk_destroyed(ak_fake *f, ak_id id);
 bool ak_fake_desk_call(ak_fake *f, ak_id root, uint32_t call, ak_span module, ak_span method, ak_span args);
+// The "update" module (update.c): none until a test sets it up.
+void ak_fake_update_free(ak_fake *f);
+bool ak_fake_update_call(ak_fake *f, ak_id root, uint32_t call, ak_span module, ak_span method, ak_span args);
 ak_fake_view *ak_fake_window_titled(ak_fake *f, ak_span title);
 ak_window_state ak_fake_window_state(ak_fake *f, ak_fake_view *v);
 // ak_fake_set_window_state changes v's window's state as the user does

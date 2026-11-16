@@ -1,0 +1,28 @@
+// C from Asuka: extern fns, types and structs.
+
+/// A database handle C owns: Asuka frees it with db_close as its last
+/// reference goes.
+pub extern type Db with release db_close
+extern type Handle
+
+pub extern fn db_open(path: CString) -> Db?
+extern fn db_close(db: Db) -> Int32
+extern fn db_each(db: Db, sql: CString, row: fn(CString?, Int64) -> Int32) -> Int32
+extern fn compress(data: bytes, level: Int32 = 6) -> Pointer
+extern fn notify(done: (fn())?)
+
+extern struct Point {
+  x: Int32
+  y: Float32 = 1
+}
+
+pub extern struct Rect {
+  origin: Point
+  size: Point
+}
+
+// extern is a name elsewhere.
+fn uses(extern: int) -> int {
+  let extern2 = extern + 1
+  return extern2
+}

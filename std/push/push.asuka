@@ -8,9 +8,9 @@
 //   try await api.saveToken(r.token, r.service)
 //   for await m in push.opened() { navigate(m.data["link"] ?? "/") }
 //
-// Each platform's host does it as its apps do, through asuka/host.
+// Each platform's host does it as its apps do, through asuka/platform.
 
-import asuka/host
+import asuka/platform
 import asuka/json
 import asuka/notify
 
@@ -54,7 +54,7 @@ pub struct Message {
 /// notifications they show (the first time), and answers where the
 /// app's server sends to.
 pub async fn register() throws -> Registration {
-  let b = try await host.call("push", "register", bytes())
+  let b = try await platform.call("push", "register", bytes())
   return try json.decode(b.string())
 }
 
@@ -67,7 +67,7 @@ pub fn opened() -> Stream<Message> = messages("nextOpened")
 pub fn received() -> Stream<Message> = messages("nextReceived")
 
 fn messages(method: string) -> Stream<Message> = Stream(give => {
-  for await b in host.next("push", method) {
+  for await b in platform.next("push", method) {
     let m: Message? = try? json.decode(b.string())
     if let x = m {
       give(x)

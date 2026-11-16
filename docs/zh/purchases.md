@@ -1,6 +1,6 @@
 # 应用内购买
 
-`asuka/sdk/purchase` 通过各平台自己的应用商店，在应用里售卖商品：消耗型商品（金币、提示）、非消耗型商品（一个关卡、永久的“Pro”）、自动续期的订阅，以及不自动续期的订阅。它覆盖了 react-native-iap、expo-iap 和 RevenueCat 的 SDK 在设备端提供的能力，用的都是各商店当前的 API：
+`asuka/purchase` 通过各平台自己的应用商店，在应用里售卖商品：消耗型商品（金币、提示）、非消耗型商品（一个关卡、永久的“Pro”）、自动续期的订阅，以及不自动续期的订阅。它覆盖了 react-native-iap、expo-iap 和 RevenueCat 的 SDK 在设备端提供的能力，用的都是各商店当前的 API：
 
 | 平台 | 应用商店 | API |
 | --- | --- | --- |
@@ -10,120 +10,117 @@
 | Web | Google Play | Trusted Web Activity 中的 Digital Goods API 和 Payment Request |
 | Linux | 无 | |
 
-在没有应用商店的地方（Linux、不支持 Digital Goods API 的浏览器、不是从商店安装的 Windows 应用、`asuka dev` 的热重载模式），`purchase.Available()` 为 false，其余调用都以 `purchase.ErrNotAvailable` 失败。
+在没有应用商店的地方（Linux、不支持 Digital Goods API 的浏览器、不是从商店安装的 Windows 应用），`purchase.available()` 为 false，其余调用都会抛出 `PurchaseError.notAvailable`。
 
 ## 商品
 
-`Item` 是应用售卖的一件商品：它在商店里的 ID 和它的类型。Play 分不清消耗型和非消耗型商品，所以要由应用说明。
+`Item` 是应用售卖的一件商品：它在商店里的 ID 和它的类型（`.consumable`、`.nonConsumable`、`.autoRenewable`、`.nonRenewing`）。Play 分不清消耗型和非消耗型商品，所以要由应用说明。
 
-```go
-var (
-	coins = purchase.Item{ID: "coins_100", Kind: purchase.Consumable}
-	pro   = purchase.Item{ID: "pro", Kind: purchase.NonConsumable}
-	plus  = purchase.Item{ID: "plus_monthly", Kind: purchase.AutoRenewable}
-)
+```asuka
+import asuka/purchase
 
-products, err := purchase.Products(coins, pro, plus)
+let coins = purchase.Item(id: "coins_100", kind: .consumable)
+let pro = purchase.Item(id: "pro", kind: .nonConsumable)
+let plus = purchase.Item(id: "plus_monthly", kind: .autoRenewable)
 ```
 
-这些调用会等待商店的回复，所以不要在主线程上调用（放在 goroutine 里，用 `ui.Post` 写回它们改变的状态）。`Products` 返回商店在售的那些商品，使用用户所在国家和语言；商店不卖的会被略去。每个 `Product` 有 `Title`、`Description`，用于显示的 `Price`（“$4.99”“4,99 €”），以及用于计算的 `PriceMicros` 和 `Currency`。订阅的 `Subscription` 包含它的订阅群组、在群组中的级别、周期和优惠：Apple 的推介优惠、促销优惠和赢回优惠，Play 的基础方案和其上的优惠（每个都带有若干阶段：免费试用、若干周期的优惠价、常规价格）。`IntroEligible` 表示用户是否还能享受推介优惠。
+`purchase.declare(items)` 声明应用售卖哪些商品，但不会去询问商店。请在应用启动时调用它，这样最先到来的消耗型商品交易（上次没有完成的那笔）在完成时就会被消耗掉。`purchase.products(items)` 向商店查询这些商品，使用用户所在的国家和语言；商店不卖的会被略去。每个 `Product` 有 `title`、`description`、用于显示的 `price`（“$4.99”）、`priceMicros` 和 `currency`、`item()`（购买时用它），订阅还有 `subscription`：它的 `group`、`level`、`period`（`unit`、`count`）、`offers`（每个优惠是一组 `phases`：免费试用、一段时间内的优惠价），以及用户是否还能享受推介优惠（`introEligible`）。
 
-这些 ID 就是 App Store Connect 和 Play 管理中心里的产品 ID；在 Windows 上，是每个附加产品在合作伙伴中心里的产品 ID（它的 `InAppOfferToken`）或它的 Store ID。
+```asuka
+component Shop {
+  state products: [purchase.Product] = []
 
-## 购买
+  task {
+    purchase.declare([coins, pro, plus])
+    products = (try? await purchase.products([coins, pro, plus])) ?? []
+  }
 
-```go
-r, err := purchase.Buy(coins, purchase.Options{AccountToken: userUUID})
-switch {
-case err != nil:
-	// purchase.ErrNotAllowed、ErrUnknownProduct、ErrAlreadyOwned……
-case r.Status == purchase.Bought:
-	deliver(r.Transaction)
-	r.Transaction.Finish()
-case r.Status == purchase.PendingApproval:
-	// “询问购买”、Play 正在等待的付款：之后由 Observe 送达
-case r.Status == purchase.Cancelled:
+  Column {
+    for p in products key p.id {
+      Text("{p.title} {p.price}")
+    }
+  }
 }
 ```
 
-`Buy` 弹出商店的购买界面，等到用户完成购买、取消，或者购买进入等待批准状态时返回。`Options` 包括：
+## 购买
 
-- `Quantity`：消耗型商品的数量（Apple 的；在 Play 上，如果在 Play 管理中心里开启了多件购买，由用户自己选择）。
-- `AccountToken`：把这次购买和应用里的用户关联起来。请使用 UUID：Apple 的 `appAccountToken` 必须是 UUID，Play 则把它当作 `obfuscatedAccountId`。它会出现在交易和商店的服务器通知里。不要用邮箱或姓名。`ProfileToken` 是 Play 的 `obfuscatedProfileId`。
-- `Offer`：商品的某个优惠。Play 购买订阅时必须指定一个；不指定时，`Buy` 使用第一个基础方案。Apple 的促销优惠还需要 `Signature`，由应用的服务器用它的 App 内购买项目密钥签名（密钥 ID、一个 nonce、签名和签名时间；iOS 18.4 起也可以用一个 JWS）。
-- `Replace`：这次购买要替换的 Play 订阅（升级或降级），以及替换方式（`WithTimeProration`、`ChargeProratedPrice`、`ChargeFullPrice`、`WithoutProration`、`Deferred`）。Apple 会自己处理同一订阅群组内的切换。
-- `Personalized`：Play 的个性化价格标记，欧盟要求应用向用户说明。
+`purchase.buy(item, options)` 弹出商店的购买界面，等到用户完成购买、取消，或者购买进入等待批准状态时返回。返回的 `Result` 有一个 `status`：`.bought`（附带它的 `transaction`）、`.pendingApproval`（“询问购买”，或 Play 正在等待的付款：交易稍后通过 `events()` 送达）或 `.cancelled`。
+
+```asuka
+async fn buyCoins() throws {
+  let r = try await purchase.buy(coins)
+  if r.status == .bought {
+    if let t = r.transaction { await deliver(t) }
+  }
+}
+```
+
+`Options` 包括：消耗型商品的 `quantity`；把这次购买和应用里的用户关联起来的 `accountToken`（一个 UUID：Apple 要求必须是 UUID）；Play 的 `profileToken`；购买订阅时使用的 `offer`（Play 必须指定一个，不指定时使用第一个基础方案）；Apple 促销优惠的 `signature`（由应用的服务器生成）；Play 的 `replace`（这次购买要替换的订阅，以及替换方式）和 `personalized`。它可能抛出 `notAllowed`（付款被关闭）、`unknownProduct`、`alreadyOwned`。
 
 ## 交易
 
-`Transaction` 是一次购买：它的 `ID`、`ProductID`、`Kind`、`State`（`Purchased`、`Pending`、`Revoked`）、`Quantity`、`Date`、订阅的 `Expires`，以及被撤销时的 `Revoked` 和撤销原因。
+`purchase.events()` 送来商店在购买之外告诉应用的一切：已付款的待处理购买、在应用外完成的购买（在另一台设备上购买、在商店里兑换优惠码）、订阅续期、退款（`.revoked`）、之前没有完成的交易，以及店面的变化。从应用启动起、在有人读取之前就到达的内容，会保留给第一个读取者，所以请在应用启动时读取它。
 
-先交付交易售出的内容，再调用 `Finish`。在完成之前，商店每次启动都会再次送来这笔交易：StoreKit 会一直把它当作未完成，Play 则会给三天内没有确认的购买退款。对 `Consumable`，`Finish` 会消耗掉它（Play 的 `consumeAsync`、Microsoft Store 的履行），用户才能再次购买；对其他类型，它对应 StoreKit 的 `finish` 和 Play 的确认。`Pending` 的交易不能完成。
+先交付交易售出的内容，再调用 `finish()`。在完成之前，商店会（在每次启动时）再次送来这笔交易：StoreKit 会一直把它当作未完成，Play 则会给三天内没有完成的购买退款。完成一笔消耗型商品的交易会消耗掉它，用户才能再次购买；`.pending` 的交易不会被完成。
 
-`Buy` 之外发生的一切都由 `Observe` 送达：
+```asuka
+state balance = 0
 
-```go
-stop := purchase.Observe(func(e purchase.Event) {
-	switch e.Type {
-	case purchase.TransactionUpdated:
-		t := e.Transaction
-		switch t.State {
-		case purchase.Purchased:
-			deliver(t)
-			go t.Finish()
-		case purchase.Revoked:
-			takeBack(t)
-		}
-	case purchase.StorefrontChanged:
-		// 价格换成了另一个国家的：重新获取商品
-	}
-})
+async fn deliver(t: purchase.Transaction) {
+  if t.state == .pending {
+    return
+  }
+  if t.state == .purchased && t.productId == coins.id {
+    balance += 100 * t.quantity
+  }
+  try? await t.finish()
+}
+
+async fn followStore() throws {
+  for await e in purchase.events() {
+    if let t = e.transaction { await deliver(t) }
+  }
+}
 ```
 
-包括：被批准或已付款的待处理购买、在应用外完成的购买（在商店里兑换的优惠码、在另一台设备上的购买）、订阅续期、退款或撤销，以及上次没有完成的交易。宿主从应用启动时就开始监听（StoreKit 的 `Transaction.updates`、Play 的 `PurchasesUpdatedListener`，以及应用启动和回到前台时找到的未确认购买），并把第一个观察者出现之前收到的内容保留给它，所以不会丢失任何一笔。请在应用启动时、在根组件里调用 `Observe`。
-
-在开始观察之前调用 `purchase.Declare(coins, pro, plus)`，这样上次没有完成的消耗型商品在你完成它时会被消耗掉：Play 不会告诉你它是哪种类型。`Products` 和 `Buy` 也会登记它们的商品。
-
-各商店告诉设备的内容并不相同：
-
-- Apple 什么都会说：续期是交易，退款是设置了 `Revoked` 的交易。
-- Play 的客户端看不到续期（订阅一直使用同一个购买令牌）、退款和过期：这些会在发生时反映在 `CurrentEntitlements` 里，你的服务器则通过 Play 的实时开发者通知得知。
-- Microsoft Store 会在用户的许可证变化时通知：新的许可证是一笔交易，消失了的耐用品许可证视为撤销。
+`Transaction` 有它的 `id`、`originalId`（同一订阅的各次续期共用它）、`productId`、`kind`、`state`、`quantity`、`date` 和 `expires`（自 1970 年起的纳秒数）、`revoked` 和 `revocationReason`、`autoRenews`、`familyShared`、购买时的 `accountToken`、Apple 的 `environment`、购买时所在的店面 `storefront`、它的 `offerId` 和 `offerType`，以及它的 `verification`。
 
 ## 已购权益与恢复购买
 
-`CurrentEntitlements()` 是用户当前拥有的东西：非消耗型商品、处于订阅周期或宽限期内的订阅，以及已完成的 Apple 非续期订阅（它们的有效期由应用决定）。`Entitlements.Has(id)` 检查其中某一项。
+`purchase.owned()` 是用户当前拥有的东西（非消耗型商品、处于订阅周期内的订阅、非续期订阅），并且会被追踪：在绑定里读取它时，第一次读取会去查询，之后只要还有地方在读，每次购买、完成、恢复以及每笔交易之后都会重新查询。`owned.has(productId)` 判断其中是否有某个商品。
 
-在组件里，`purchase.Use()` 以 signal 的形式提供已购权益。组件挂载时获取一次，之后每次 `Buy`、`Finish`、`Restore`，以及应用的 `Observe` 收到交易时，都会重新获取：
+```asuka
+component Unlock {
+  let owned = purchase.owned()
 
-```go
-owned := purchase.Use()
-ui.Show(signal.Func(func() bool { return owned.Get().Has(pro.ID) }), proFeatures)
+  Column {
+    if owned.has(pro.id) {
+      Text("Pro: every level")
+    } else {
+      Button("Restore Purchases") { on press { let _ = try? await purchase.restore() } }
+    }
+  }
+}
 ```
 
-`Restore()` 重新向商店查询，并返回已购权益。在 iOS 上它是 `AppStore.sync`，会要求用户登录，所以只能从“恢复购买”按钮调用。售卖非消耗型商品或订阅的应用，App 审核会要求有这样一个按钮。
+`purchase.restore()` 重新向商店查询用户的购买（在 iOS 上是 `AppStore.sync`，会要求用户登录，所以只能从按钮调用），并返回用户拥有的东西。`purchase.entitlements()` 返回同样的内容，但不会去询问商店。
 
 ## 订阅
 
-`SubscriptionStatuses(group)` 返回一个群组里每个订阅的状态（Apple 的订阅群组 ID；在 Play 上是产品 ID）：`Subscribed`、`Expired`、`BillingRetry`（扣款失败，商店正在重试；即 Play 的账号保留状态）、`GracePeriod`（重试期间仍然享有权益）或 `SubscriptionRevoked`。它还说明是否会续期（`WillRenew`）、以什么商品续期（`RenewsTo`，升级或降级之后）、何时续期，以及过期的原因。`RenewalJWS` 是 Apple 签名的续期信息。
-
-`ManageSubscriptions(productID)` 打开商店里用户的订阅管理页面，用户可以在那里取消或更改订阅：iOS 上是系统的面板，Play 上是订阅中心（定位到该商品），桌面端则是 App Store 或 Microsoft 的账户页面。`RedeemCode()` 打开 Apple 的优惠码兑换面板（iOS 16、macOS 15），或打开 Play 的兑换页面；兑换到的东西由 `Observe` 送达。`RequestRefund(t)` 打开 Apple 的退款申请面板。Play 没有这样的界面：退款由开发者在 Play 管理中心或自己的服务器上处理。
-
-`CurrentStorefront()` 是商店所在的国家或地区，价格和在售商品都随它而定。
+`purchase.statuses(group)` 返回一个群组里各个订阅的状态（Apple 的订阅群组；在 Play 上是订阅的产品）：它的 `state`（`.subscribed`、`.expired`、`.billingRetry`、`.gracePeriod`、`.revoked`），是否会续期（`willRenew`）以及续期成什么（`renewsTo`），它的 `renewal`、`graceExpires`、`expirationReason`，以及 Apple 签名的 `renewalJWS`。`purchase.manageSubscriptions(productId)` 打开商店里用户的订阅页面（iOS 上是系统面板，Play 上是订阅中心，或者 App Store、Microsoft Store 的账户页面）。`purchase.redeemCode()` 打开优惠码兑换面板（Apple 的）或 Play 的兑换页面；兑换到的东西通过 `events()` 送达。`purchase.requestRefund(t)` 打开 Apple 的退款面板（只有 Apple 有）。`purchase.storefront()` 是商店所在的国家或地区。
 
 ## 在服务器上验证
 
-服务器在授予所售内容之前，应该先向商店核实这笔购买。`Transaction.Verification` 里有各商店 API 需要的内容：
+服务器在授予所售内容之前，要先向商店核实这笔购买。交易的 `verification` 里有各商店 API 需要的内容：
 
-- Apple：`JWS`，由 App Store 签名的交易。用 App Store Server Library（它的 `SignedDataVerifier`）验证，或者自己检查它的证书链是否一直通到 Apple 的根证书。`Verified` 表示 StoreKit 是否已经在设备上验证过它。
-- Google Play：`Token`，即购买令牌，连同 `PackageName`，交给 Google Play Developer API（`purchases.productsv2`、`purchases.subscriptionsv2`）。`OriginalJSON` 和 `Signature` 是用应用的许可密钥签名的购买信息。
-- Windows：`Token`，即附加产品的 Store ID，交给 Microsoft Store 的收藏 API。
-
-有了负责授予购买的服务器，应用可以按服务器的结果交付内容，并在服务器确认之后再完成交易。
+- Apple：`jws`，由 App Store 签名的交易。用 App Store Server Library（它的 `SignedDataVerifier`）验证。`verified` 表示 StoreKit 是否已经在设备上验证过它。
+- Google Play：`token`，即购买令牌，连同 `packageName`，交给 Google Play Developer API（`purchases.productsv2`、`purchases.subscriptionsv2`）。`originalJSON` 和 `signature` 是用应用的许可密钥签名的购买信息。
+- Windows：`token`，即附加产品的 Store ID，交给 Microsoft Store 的收藏 API。
 
 ## 测试购买
 
-商店只向它认识的应用售卖商品。在 iOS 上，导入了 `asuka/sdk/purchase` 的应用在 `asuka dev` 下不走热重载模式，而是构建成应用本身运行，所以每次保存都会重新安装。在 Android 上，Play 只向从它的某个测试轨道安装的构建售卖商品，所以 `asuka dev` 下无法测试应用内购买，运行时也会提示这一点。
+商店只向它认识的应用售卖商品。在 iOS 上，`asuka dev` 的开发 App 会构建成应用本身，带着应用的 bundle ID，所以商店认识它，保存后也会像平常一样重新加载。在 Android 上，Play 只向从它的某个测试轨道安装的构建售卖商品。
 
 **iOS 模拟器。** 在 Xcode 里创建一个 StoreKit 配置文件（File › New › File › StoreKit Configuration File，也可以从 App Store Connect 同步），填好商品，然后在 `asuka.toml` 里指定它：
 
@@ -132,50 +129,33 @@ ui.Show(signal.Func(func() bool { return owned.Get().Has(pro.ID) }), proFeatures
 storekit = "Products.storekit"
 ```
 
-`asuka dev` 为模拟器生成的构建会带上这个文件；由 `asuka dev` 启动时，它会像在 Xcode 的 scheme 里设置了这个文件的应用那样，从文件里售卖商品。价格、“询问购买”、交易失败和加速续期都由这个文件控制：
+`asuka dev` 为模拟器生成的构建会带上这个文件；由 `asuka dev` 启动时，它会像在 Xcode 的 scheme 里设置了这个文件的应用那样，从文件里售卖商品：价格、“询问购买”、交易失败和加速续期都由这个文件控制。其他构建从 App Store 的沙盒购买：用沙盒账户登录，或者安装 TestFlight 构建。
 
-```sh
-asuka dev --platform ios examples/store            # 构建出的应用，保存后重新构建
-asuka dev --platform ios --once examples/store     # 构建并启动一次
+**Android。** 把一个构建上传到内部测试轨道（`asuka publish --platform android --track internal`），在 Play 管理中心添加商品，把你的 Google 账号加入许可测试人员，然后通过测试轨道的链接安装这个构建。许可测试人员不会被真正扣款。
+
+**Windows。** 在合作伙伴中心把应用与商店关联，并从商店安装（可以用软件包外部测试版来测试）。
+
+**在测试里。** `purchase.fake(products)` 给这个包换上一个 `FakeStore`，它售卖 `FakeProduct`，并且像 StoreKit 那样保存交易：在应用完成之前一直是未完成状态，在那之前还会被再次送达（`relaunch()`）。
+
+```asuka
+test "Ask to Buy, then approved" {
+  let store = purchase.fake([
+    purchase.FakeProduct(id: "coins_100", kind: .consumable, title: "100 Coins", price: "$0.99", priceMicros: 990_000),
+    purchase.FakeProduct(id: "plus_monthly", kind: .autoRenewable, title: "Plus", price: "$4.99",
+      period: purchase.Period(unit: .month), trial: purchase.Period(unit: .week)),
+  ])
+  store.outcome = .pending
+  let r = try await purchase.buy(coins)
+  expect(r.status == .pendingApproval)
+  let _ = store.approve("coins_100")   // 家长批准：events() 送来这笔交易
+}
 ```
 
-如果用别的方式启动（比如从主屏幕点开），应用自己加载不了这个文件（它的会话需要 Xcode 的 XCTest，`asuka dev` 会像测试运行那样提供给它）；StoreKit 会继续使用 `asuka dev` 上一次为这个应用设置的配置。其他构建永远不会带这个文件：它们都从 App Store 的沙盒购买。在设备上用沙盒账户登录（“设置” › “开发者”，或者在购买时登录），或者安装 TestFlight 构建。
-
-**Android。** Play 只向它拥有的构建售卖商品。把一个构建上传到内部测试轨道（`asuka publish --platform android --track internal`），在 Play 管理中心添加商品，把你的 Google 账号加入许可测试人员（Play 管理中心 › 设置 › 许可测试），然后通过测试轨道的链接安装。许可测试人员不会被真正扣款，续期也会加快。
-
-**Mac。** 和 iOS 一样，使用沙盒账户；`asuka build` 生成的 Mac 构建会在它的 Swift 库里带上 StoreKit 2。
-
-**Windows。** Microsoft Store 只向它安装的应用售卖：在合作伙伴中心把应用与商店关联，并从商店安装（可以用软件包外部测试版来测试）。用 `asuka dev` 运行的应用没有应用商店。
-
-**在 `go test` 里。** `host/fake` 的 `Store` 售卖测试给它的商品，并且像 StoreKit 那样保存交易：在应用完成之前一直是未完成状态，并会被再次送达。
-
-```go
-var store *fake.Store
-a := uitest.Mount(t, Store, uitest.Setup(func(h *fake.Host) {
-	store = h.Store()
-	store.Products = []fake.StoreProduct{
-		{ID: "coins_100", Kind: "consumable", Title: "100 Coins", Price: "$0.99", PriceMicros: 990000},
-		{ID: "plus_monthly", Kind: "autoRenewable", Title: "Plus", Price: "$4.99", Period: "P1M", Trial: "P1W"},
-	}
-}))
-a.Tap("$0.99")
-a.WaitFor("100 coins")
-
-store.Outcome = fake.PurchasePending // “询问购买”
-a.Tap("$0.99")
-store.Approve("coins_100")           // 家长批准：Observe 收到它
-store.Renew("plus_monthly")          // 一次续期
-store.Refund(id)                     // 一次退款
-store.Deliver("pro")                 // 在另一台设备上购买
-```
-
-`Outcome` 还可以是 `PurchaseCancelled` 和 `PurchaseFailed`；`Unavailable` 和 `NotAllowed` 分别模拟没有商店和关闭了付款；`Unfinished` 列出应用还没有完成的交易。
+`outcome` 可以是 `.bought`、`.pending`、`.cancelled` 或 `.failed`；`unavailable` 和 `notAllowed` 分别模拟没有商店和关闭了付款；`approve(id)` 和 `decline(id)` 是家长对“询问购买”的答复，`deliver(id)` 模拟在另一台设备上的购买，`renew(id)` 一次续期，`expire(id)` 一个到期的订阅，`refund(id)` 一次退款，`setCountry(c)` 一次店面变化；`unfinished()` 列出应用还没有完成的交易，`transactions` 是所有交易，`restores`、`manages`、`redeems` 和 `refunds` 记录了应用发起的调用。
 
 ## 配置应用
 
-- **iOS 和 macOS。** 每个 App ID 都默认开启了 App 内购买项目能力，它不需要任何 entitlement：无需添加什么。在 App Store Connect 里同意付费 App 协议，并在那里添加商品。
-- **Android。** 导入了 `asuka/sdk/purchase` 的应用，构建时会带上 Play Billing 和 `com.android.vending.BILLING` 权限；没有导入的应用不会。
+- **iOS 和 macOS。** 每个 App ID 都默认开启了 App 内购买项目能力，它不需要任何 entitlement。在 App Store Connect 里同意付费 App 协议，并在那里添加商品。Mac 上的 StoreKit 2 需要 macOS 12：更早的版本上 `available()` 为 false。
+- **Android。** 导入了 `asuka/purchase` 的应用，构建时会带上 Play Billing 和 `com.android.vending.BILLING` 权限；没有导入的应用不会。
 - **Windows。** 在合作伙伴中心为已打包（MSIX）并与商店关联的应用添加附加产品。
-- **Web。** 把网站打包成启用了 Play Billing 的 Trusted Web Activity（Bubblewrap 的 `playBilling`），并在 Play 管理中心添加商品。Digital Goods API 不会为非消耗型商品做确认：请在三天内用 Play Developer API 从你的服务器确认它。
-
-[examples/store](../../examples/store) 售卖 100 金币、Pro 和一个带一周免费试用的月度订阅，附带 StoreKit 配置文件，以及基于 `fake.Store` 的测试。
+- **Web。** 把网站打包成启用了 Play Billing 的 Trusted Web Activity（Bubblewrap 的 `playBilling`），并在 Play 管理中心添加商品。请在三天内用 Play Developer API 从你的服务器确认非消耗型商品。

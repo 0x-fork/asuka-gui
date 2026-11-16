@@ -51,7 +51,7 @@ func buildIOSFramework(app *asukaApp, o *buildOptions) error {
 			return err
 		}
 		fmt.Printf("asuka: building %s %s as a framework for %s\n", cfg.Name, cfg.Version, map[bool]string{true: "devices", false: "the simulator"}[sdk == "iphoneos"])
-		lib, err := tc.buildCore(work, m)
+		lib, err := tc.buildCore(work, m, nil)
 		if err != nil {
 			return err
 		}
@@ -175,6 +175,7 @@ func (t *iosToolchain) buildEmbedded(work string, app *asukaApp, lib string, fea
 	for _, f := range features {
 		args = append(args, "-D", f)
 	}
+	args = append(args, t.cLink...)
 	fmt.Println("asuka: compiling the iOS host as a framework")
 	if err := t.run(work, nil, "xcrun", append(args, swift...)...); err != nil {
 		return "", err

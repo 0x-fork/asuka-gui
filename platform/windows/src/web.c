@@ -13,6 +13,8 @@
 // registry keys locate as WebView2Loader.dll does: no loader ships.
 #include "nav.h"
 
+#include "asuka_windows.h"
+
 #define ASSETS_HOST L"asuka.assets"
 #define BRIDGE_JS L"window.asuka = { postMessage: function (m) { window.chrome.webview.postMessage(String(m)); } };"
 
@@ -186,123 +188,28 @@ static inline HRESULT hr_of(uintptr_t a) { return (HRESULT)(int32_t)(uint32_t)a;
 
 // ---- The environment ----
 
-typedef struct env_wait {
-	void (*fn)(void *ctx, com env);
+typedef struct {
+	void (*fn)(void *ctx, void *env);
 	void *ctx;
 } env_wait;
 
-static struct {
-	com env;
-	bool started, failed;
-	env_wait *waits;
-	uint32_t nwaits, cap;
-} E;
+static com shared_env;  // the process's, once it's made (not ours to release)
 
-// runtime_dll finds the Microsoft Edge WebView2 Runtime's client library
-// as WebView2Loader.dll does: EdgeUpdate records where each channel's
-// runtime is, per machine and per user (in the registry's 32-bit view).
-static bool runtime_dll(wchar_t *out, size_t cap) {
-#if defined(_M_ARM64) || defined(__aarch64__)
-	const wchar_t *arch = L"arm64";
-#else
-	const wchar_t *arch = L"x64";
-#endif
-	wchar_t dir[MAX_PATH * 2];
-	DWORD n = GetEnvironmentVariableW(L"WEBVIEW2_BROWSER_EXECUTABLE_FOLDER", dir, (DWORD)WH_LEN(dir));
-	if (n > 0 && n < WH_LEN(dir)) {
-		_snwprintf(out, cap, L"%ls\\EBWebView\\%ls\\EmbeddedBrowserWebView.dll", dir, arch);
-		return true;
-	}
-	static const wchar_t *channels[] = {
-		L"{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",  // Stable
-		L"{2CD8A007-E189-409D-A2C8-9AF4EF3C72AA}",  // Beta
-		L"{0D50BFEC-CD6A-4F9A-964C-C7416E3ACB10}",  // Dev
-		L"{65C35B14-6C1D-4122-AC46-7148CC9D6497}",  // Canary
-	};
-	HKEY roots[] = {HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER};
-	for (size_t c = 0; c < WH_LEN(channels); c++) {
-		for (size_t r = 0; r < WH_LEN(roots); r++) {
-			wchar_t key[160];
-			_snwprintf(key, WH_LEN(key), L"SOFTWARE\\Microsoft\\EdgeUpdate\\ClientState\\%ls", channels[c]);
-			DWORD size = sizeof dir;
-			if (RegGetValueW(roots[r], key, L"EBWebView", RRF_RT_REG_SZ | RRF_SUBKEY_WOW6432KEY, NULL, dir, &size) != ERROR_SUCCESS) continue;
-			_snwprintf(out, cap, L"%ls\\EBWebView\\%ls\\EmbeddedBrowserWebView.dll", dir, arch);
-			if (GetFileAttributesW(out) != INVALID_FILE_ATTRIBUTES) return true;
-		}
-	}
-	return false;
+static void env_made(void *ctx, void *env, HRESULT hr) {
+	env_wait *w = ctx;
+	if (env) shared_env = env;
+	if (!env) wh_log("no WebView2 environment (HRESULT 0x%08lx): is the Microsoft Edge WebView2 Runtime installed? (https://go.microsoft.com/fwlink/p/?LinkId=2124703)", (unsigned long)hr);
+	w->fn(w->ctx, env);
+	free(w);
 }
-
-static void env_ready(com env) {
-	E.env = env;
-	E.failed = env == NULL;
-	env_wait *ws = E.waits;
-	uint32_t n = E.nwaits;
-	E.waits = NULL, E.nwaits = E.cap = 0;
-	for (uint32_t i = 0; i < n; i++) ws[i].fn(ws[i].ctx, env);
-	free(ws);
-}
-
-static void env_created(wh_web *w, uintptr_t a, void *b) {
-	(void)w;
-	if (FAILED(hr_of(a)) || !b) {
-		wh_log("creating the WebView2 environment failed (HRESULT 0x%08lx)", (unsigned long)hr_of(a));
-		env_ready(NULL);
-		return;
-	}
-	((IUnknown *)b)->lpVtbl->AddRef((IUnknown *)b);
-	env_ready(b);
-}
-
-typedef HRESULT(STDAPICALLTYPE *create_env_fn)(BOOL check_running, int runtime_type, const wchar_t *user_data, void *options, void *handler);
 
 // wh_web_environment calls fn with the app's WebView2 environment (NULL if
-// there's none: no runtime), made the first time it's asked for: the
-// process's, which web views and hidden pages share. Main thread.
+// there's none: no runtime): the process's (asuka_win_webview2), which web
+// views, hidden pages and packages' C share. Main thread.
 void wh_web_environment(void (*fn)(void *ctx, void *env), void *ctx) {
-	if (E.env || E.failed) {
-		fn(ctx, E.env);
-		return;
-	}
-	if (E.nwaits == E.cap) {
-		E.cap = E.cap ? E.cap * 2 : 4;
-		E.waits = wh_realloc(E.waits, E.cap * sizeof *E.waits);
-	}
-	E.waits[E.nwaits++] = (env_wait){fn, ctx};
-	if (E.started) return;
-	E.started = true;
-	// Videos play without a click, as a WebView's autoPlay asks.
-	SetEnvironmentVariableW(L"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", L"--autoplay-policy=no-user-gesture-required");
-	wchar_t dll[MAX_PATH * 2];
-	if (!runtime_dll(dll, WH_LEN(dll))) {
-		wh_log("the Microsoft Edge WebView2 Runtime isn't installed (https://go.microsoft.com/fwlink/p/?LinkId=2124703)");
-		env_ready(NULL);
-		return;
-	}
-	HMODULE m = LoadLibraryExW(dll, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
-	create_env_fn create = m ? (create_env_fn)(void *)GetProcAddress(m, "CreateWebViewEnvironmentWithOptionsInternal") : NULL;
-	if (!create) {
-		char *d = wh_utf8(dll, -1, NULL);
-		wh_log("an unsupported WebView2 Runtime at %s", d);
-		free(d);
-		env_ready(NULL);
-		return;
-	}
-	// The user data: Local AppData\<app>\WebView2.
-	wchar_t local[MAX_PATH * 2], data[MAX_PATH * 3];
-	DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", local, (DWORD)WH_LEN(local));
-	if (n == 0 || n >= WH_LEN(local)) local[0] = 0;
-	_snwprintf(data, WH_LEN(data), L"%ls\\%ls\\WebView2", local, H.app_namew ? H.app_namew : L"Asuka");
-	char *d8 = wh_utf8(data, -1, NULL);
-	dsk_mkdirs(d8);
-	free(d8);
-	handler *h = new_handler(NULL, env_created);
-	HRESULT hr = create(TRUE, 0, data, NULL, h);
-	h_release(h);
-	if (FAILED(hr)) {
-		wh_log("creating the WebView2 environment failed (HRESULT 0x%08lx)", (unsigned long)hr);
-		if (!E.env && !E.failed) env_ready(NULL);
-	}
+	env_wait *w = wh_alloc(sizeof *w);
+	w->fn = fn, w->ctx = ctx;
+	asuka_win_webview2(env_made, w);
 }
 
 // ---- A view's WebView2 ----
@@ -557,9 +464,9 @@ static void on_request(wh_web *w, uintptr_t a, void *args) {
 	size_t len;
 	char *u = take(p, &len);
 	if (w->requests) wh_emit_str(w->n, AK_EVENT_REQUEST, u, len);
-	if (blocked(u, w->block, w->nblock) && E.env) {
+	if (blocked(u, w->block, w->nblock) && shared_env) {
 		com resp = NULL;
-		((f_response)slot(E.env, ENV_CREATE_WEB_RESOURCE_RESPONSE))(E.env, NULL, 403, L"Blocked", L"", &resp);
+		((f_response)slot(shared_env, ENV_CREATE_WEB_RESOURCE_RESPONSE))(shared_env, NULL, 403, L"Blocked", L"", &resp);
 		if (resp) {
 			CALL_P(args, RES_REQ_PUT_RESPONSE, resp);
 			release(resp);

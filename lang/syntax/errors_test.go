@@ -31,6 +31,16 @@ component B {
 			decls: 2,
 		},
 		{
+			name: "extern without fn, type or struct",
+			src: `extern component A {}
+
+extern type T with free
+extern fn f() -> int
+`,
+			errs:  []string{"1:8: expected 'fn', 'type' or 'struct' after 'extern'", "3:20: expected 'release' and the function that frees it"},
+			decls: 3,
+		},
+		{
 			name: "unclosed block at the end",
 			src: `component A {
   if ready {

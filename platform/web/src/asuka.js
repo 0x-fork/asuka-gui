@@ -63,6 +63,7 @@ export async function start(options = {}) {
   nativeApp.assets = host.assets;
   nativeApp.version = options.version || "";
   nativeApp.build = String(options.build || "");
+  nativeApp.dev = !!options.dev;
   // The host's own native views (camera.View), then the app's, which may replace them.
   for (const [k, f] of Object.entries(builtinNatives)) host.natives.set(k, f);
   for (const [k, f] of natives) host.natives.set(k, f);

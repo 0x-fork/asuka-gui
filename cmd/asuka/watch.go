@@ -52,10 +52,11 @@ func sourceFile(name string) bool { return strings.HasSuffix(name, ".asuka") }
 // projectFile reports whether a change to the file at path named name
 // needs the player built again: native packages' code and projects
 // (Swift, Kotlin, their Gradle files, manifests, Info.plist and
-// entitlements, JavaScript), the app's assets, its asuka.toml and
-// asuka.lock, and the language catalogs.
+// entitlements, JavaScript), C ([c]'s sources and headers), the app's
+// assets, its asuka.toml and asuka.lock, and the language catalogs.
 func projectFile(path, name string) bool {
 	code := strings.HasSuffix(name, ".swift") || strings.HasSuffix(name, ".kt") || strings.HasSuffix(name, ".kts") ||
+		strings.HasSuffix(name, ".c") || strings.HasSuffix(name, ".h") || strings.HasSuffix(name, ".inc") ||
 		name == "AndroidManifest.xml" || name == "Info.plist" || strings.HasSuffix(name, ".entitlements") || strings.HasSuffix(name, ".js")
 	asset := strings.Contains(filepath.ToSlash(path), "/assets/")
 	return code || asset || name == configFile || name == "asuka.lock" || strings.HasSuffix(name, ".json")

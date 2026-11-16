@@ -1,8 +1,9 @@
-// Package update holds what package update (asuka/sdk/update, the updater of
-// desktop apps) and the Asuka CLI (asuka build and publish) share: the
-// update manifest, keys and signatures, versions and channels, the formats
-// of archives and delta updates, the feeds of GitHub releases, and how an
-// installed app is laid out and replaced (Locate, Swap, StageBundle).
+// Package update is what the Asuka CLI (asuka build and publish) makes a
+// desktop app's updates with: the update manifest, keys and signatures,
+// versions and channels, archives and delta updates (bsdiff patches), the
+// feeds of GitHub releases, and how an installed app is laid out. The app
+// reads them with asuka/update (std/update) and the C core's update.c,
+// whose tests read what this package writes (TestCoreTestdata).
 package update
 
 import (
@@ -60,16 +61,6 @@ type Archive struct {
 	Signature string `json:"signature"`
 }
 
-// Delta returns the delta update of version from, or nil.
-func (m *Manifest) Delta(from string) *Delta {
-	for i, d := range m.Deltas {
-		if d.From == from {
-			return &m.Deltas[i]
-		}
-	}
-	return nil
-}
-
 // ManifestName is the file name of the manifest of target on channel:
 // update-<target>.json for releases, update-<target>-<channel>.json for
 // the newest prerelease of a channel ("beta").
@@ -98,14 +89,6 @@ func Channel(version string) string {
 		return "pre"
 	}
 	return strings.ToLower(pre[:end])
-}
-
-// OnChannel reports whether an app following channel takes version: a
-// release always, a prerelease when it's of that channel; "*" takes every
-// prerelease.
-func OnChannel(version, channel string) bool {
-	c := Channel(version)
-	return c == "" || channel == "*" || c == channel
 }
 
 // ValidVersion reports whether v is a version Compare orders: numbers
@@ -140,11 +123,9 @@ func validIdents(s string) bool {
 	return true
 }
 
-// Limits of what an app downloads.
-const (
-	MaxManifestSize = 1 << 20
-	MaxArchiveSize  = 1 << 30
-)
+// MaxManifestSize limits the manifests the CLI reads (asuka/update's
+// limit too).
+const MaxManifestSize = 1 << 20
 
 // Keys are stored in base64: the 32-byte public key and the 64-byte
 // private key of Ed25519.

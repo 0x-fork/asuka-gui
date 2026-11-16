@@ -2,7 +2,6 @@
 // shown and found in the notification center, a global hot key, recent
 // documents, start at login, the taskbar's progress and badge, and what
 // Windows hasn't (contacts' access, widgets).
-import asuka/host
 import asuka/json
 import asuka/platform
 
@@ -42,13 +41,13 @@ component Services(file: string) {
 
   task {
     do {
-      let ok = try await host.call("notify", "request", bytes())
-      let _ = try await host.call("notify", "schedule", json.encode(Spec(id: "t1", title: "Hello", body: "From the test", thread: "th")).bytes())
-      let s = try await host.call("notify", "showing", bytes())
+      let ok = try await platform.call("notify", "request", bytes())
+      let _ = try await platform.call("notify", "schedule", json.encode(Spec(id: "t1", title: "Hello", body: "From the test", thread: "th")).bytes())
+      let s = try await platform.call("notify", "showing", bytes())
       let list: [Shown] = try json.decode(s.string())
       let mine = list.filter(x => x.id == "t1")
-      let _ = try await host.call("notify", "removeThread", "th".bytes())
-      let after: [Shown] = try json.decode((try await host.call("notify", "showing", bytes())).string())
+      let _ = try await platform.call("notify", "removeThread", "th".bytes())
+      let after: [Shown] = try json.decode((try await platform.call("notify", "showing", bytes())).string())
       toast = "enabled:{platform.readU8(ok, 0)} shown:{mine.count()} {mine.map(x => x.title).joined(",")} after:{after.filter(x => x.id == "t1").count()}"
     } catch e {
       toast = "error {e.message}"
@@ -94,7 +93,7 @@ component Services(file: string) {
   task {
     do {
       platform.send("dock", "progress", platform.u8(1).concat(platform.f64(0.5)))
-      let _ = try await host.call("notify", "badge", platform.u32(3))
+      let _ = try await platform.call("notify", "badge", platform.u32(3))
       let a = try await platform.call("dock", "attention", platform.u8(0))
       dock = "attention {a.count()}"
     } catch e {
@@ -104,14 +103,14 @@ component Services(file: string) {
 
   task {
     do {
-      let b = try await host.call("contacts", "request", bytes())
+      let b = try await platform.call("contacts", "request", bytes())
       contacts = "{platform.readU8(b, 0)}"
-      let _ = try await host.call("contacts", "list", bytes())
+      let _ = try await platform.call("contacts", "list", bytes())
     } catch e {
       contacts = "{contacts} {e.message}"
     }
     do {
-      let _ = try await host.call("widget", "set", bytes())
+      let _ = try await platform.call("widget", "set", bytes())
     } catch e {
       widget = e.message
     }

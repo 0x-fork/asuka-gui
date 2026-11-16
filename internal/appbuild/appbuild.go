@@ -67,7 +67,6 @@ func compileDir(dir string, deps map[string]string, main bool) (*bytecode.Module
 	return res.Module, nil, nil
 }
 
-
 // Project is an app or a package: its directory and its dependencies'.
 type Project struct {
 	Dir string
@@ -154,6 +153,12 @@ func (p *Project) Compile() (*bytecode.Module, []string, error) {
 		m, diags, err := Compile(tmp, p.Deps, true)
 		for i, d := range diags {
 			diags[i] = strings.ReplaceAll(d, filepath.Join(tmp, filepath.Base(p.File)), p.File)
+		}
+		if m != nil && m.C != nil && len(m.C.Dirs) > 0 {
+			// Its C is the [c] of the asuka.toml beside it.
+			c := *m.C
+			c.Dirs = append([]string{p.Dir}, c.Dirs[1:]...)
+			m.C = &c
 		}
 		return m, diags, err
 	}

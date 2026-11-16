@@ -243,6 +243,9 @@ int wh_main(int argc, wchar_t **argv) {
 	if (!wh_take_instance(argc, argv)) return 0;
 	wh_update_clean();  // what an update left
 	wh_crash_start();
+	// The process's WebView2 environment, whoever makes it first: videos
+	// play without a click, as a WebView's autoPlay asks.
+	SetEnvironmentVariableW(L"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", L"--autoplay-policy=no-user-gesture-required");
 	if (!automated()) {
 		char *p = dsk_join(H.dirs.data, "asuka-window.json");
 		H.states = dsk_winstate_open(p);

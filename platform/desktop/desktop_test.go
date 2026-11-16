@@ -24,7 +24,15 @@ func TestC(t *testing.T) {
 	if err != nil {
 		t.Skip(err)
 	}
-	srcs, _ := filepath.Glob("src/*.c")
+	// desktop.h's sources (the registry's and packages' shared C are
+	// asuka_desktop.h's, tested by TestNative and TestStd).
+	all, _ := filepath.Glob("src/*.c")
+	var srcs []string
+	for _, f := range all {
+		if b, _ := os.ReadFile(f); bytes.Contains(b, []byte(`#include "desktop.h"`)) || bytes.Contains(b, []byte(`#include "words.h"`)) {
+			srcs = append(srcs, f)
+		}
+	}
 	srcs = append(srcs, "test/desktop_test.c")
 	exe := filepath.Join(t.TempDir(), "desktop_test")
 	args := append(append([]string{}, cc.Args...), cbuild.Flags...)

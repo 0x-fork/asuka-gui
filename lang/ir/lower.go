@@ -33,6 +33,7 @@ type Lowerer struct {
 	consts         map[string]int // a hoisted literal (and its type) → its global
 	pendingConsts  []pendingConst
 	pendingNative  []pendingNative
+	pendingExtern  []pendingExtern
 	stringsFn      *fb
 	catalog        int // the app's catalog's global, or -1
 }
@@ -127,6 +128,7 @@ func (l *Lowerer) lower() {
 		}
 		break
 	}
+	l.finishExternTemplates()
 	l.finishStrings()
 }
 
@@ -163,7 +165,7 @@ func (l *Lowerer) kind(t check.Type) bc.Kind {
 	switch x := t.(type) {
 	case *check.Basic:
 		switch x {
-		case check.Int, check.Duration, check.Color, check.Length:
+		case check.Int, check.Duration, check.Color, check.Length, check.Pointer:
 			return bc.KInt
 		case check.Float:
 			return bc.KFloat
@@ -323,7 +325,7 @@ func (l *Lowerer) desc(t check.Type) string {
 	switch x := t.(type) {
 	case *check.Basic:
 		switch x {
-		case check.Int, check.Duration, check.Color, check.Length:
+		case check.Int, check.Duration, check.Color, check.Length, check.Pointer:
 			return "i"
 		case check.Float:
 			return "f"
@@ -563,6 +565,26 @@ func (l *Lowerer) initBody(b *fb) {
 	b.emit(op("CALL"), bc.None, l.stringsFn.idx, 0, 0)
 	done := map[*check.Global]bool{}
 	var visit func(g *check.Global)
+	// In a spawn's worker (the web's: an instance of the core that runs
+	// spawn's work and nothing else), only the file's values a spawn can
+	// use are made: not state, memos, or what isn't a value (a database, a
+	// native object), which the checker keeps out of spawn, nor what's
+	// made from them. A file's database isn't opened again in each worker.
+	mainOnly := map[*check.Global]bool{}
+	var isMainOnly func(g *check.Global) bool
+	isMainOnly = func(g *check.Global) bool {
+		if v, ok := mainOnly[g]; ok {
+			return v
+		}
+		mainOnly[g] = false // a cycle is the checker's error
+		v := g.Kind != check.ConstGlobal || !check.Sendable(g.Type)
+		for _, d := range g.Deps() {
+			v = v || isMainOnly(d)
+		}
+		mainOnly[g] = v
+		return v
+	}
+	worker := -1
 	visit = func(g *check.Global) {
 		if done[g] {
 			return
@@ -571,7 +593,18 @@ func (l *Lowerer) initBody(b *fb) {
 		for _, d := range g.Deps() {
 			visit(d)
 		}
+		if g.Value == nil || !isMainOnly(g) {
+			l.initGlobal(b, g)
+			return
+		}
+		if worker < 0 {
+			worker = b.local(bc.KBool)
+			b.callBTo("async.in_worker", worker)
+		}
+		skip := b.f.NewLabel()
+		b.emitJump(op("JT"), worker, skip)
 		l.initGlobal(b, g)
+		b.f.Place(skip)
 	}
 	// An app sets its accent first, always (0 when it has none), so a
 	// player that ran another app drops that one's.

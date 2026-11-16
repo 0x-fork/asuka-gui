@@ -17,8 +17,8 @@ func cmdNative(args []string) error {
 	const use = `usage:
   asuka native generate [dir]          write the generated code of the module's native packages
   asuka native check [dir]             fail if a native package's generated code is stale (CI)
-  asuka native new [flags] <dir>       make a native package: its Go, and its native code
-  asuka native add <project> [dir]     add a project to a native package: swift, android, web, go`
+  asuka native new [flags] <dir>       make a native package: its declarations, and its native code
+  asuka native add <project> [dir]     add a project to a native package: swift, android, web, desktop`
 	if len(args) == 0 {
 		return errors.New(use)
 	}
@@ -60,7 +60,7 @@ func nativeGenerateCmd(args []string, check bool) error {
 	if check {
 		fs.about = "Checks that the native package in dir, or else the native packages of dir's\nmodule (default: the working directory's), have their generated code current:\nfor CI."
 	} else {
-		fs.about = "Writes the generated code of the native package in dir, or else of the native\npackages of dir's module (default: the working directory's): their\n<package>_native.go and their projects' (the Swift's, the Kotlin's, the\nJavaScript's). asuka dev and asuka build do it too; commit it."
+		fs.about = "Writes the generated code of the native package in dir, or else of the native\npackages of dir's module (default: the working directory's): their\nprojects' (the Swift's, the Kotlin's, the JavaScript's, the desktop's C). asuka dev and asuka build do it too; commit it."
 	}
 	if err := fs.parse(args); err != nil {
 		return err
@@ -114,15 +114,16 @@ func nativeGenerateCmd(args []string, check bool) error {
 }
 
 // nativeProjects are what asuka native new and add make.
-var nativeProjects = []string{"swift", "android", "web", "go"}
+var nativeProjects = []string{"swift", "android", "web", "desktop"}
 
 func nativeNewCmd(args []string) error {
 	fs := newFlagSet("native new", "<dir>")
-	fs.about = `Makes a native package in dir: Go that declares a native module (//asuka:native),
-and its native code, a project of each platform's own: a Swift package for iOS
-and macOS (Package.swift, swift/), a Gradle module for Android (android/),
-JavaScript for the web (web/), and Go for Windows and Linux. Each implements
-the module; asuka native generate connects them (asuka dev and build do it too).`
+	fs.about = `Makes a native package in dir: Asuka that declares a native module (a native
+interface), and its native code, a project of each platform's own: a Swift
+package for iOS and macOS (Package.swift, swift/), a Gradle module for Android
+(android/), JavaScript for the web (web/), and C for Windows and Linux
+(desktop/). Each implements the module; asuka native generate connects them
+(asuka dev and build do it too).`
 	only := ""
 	fs.String(&only, "projects", 0, strings.Join(nativeProjects, ","), "the projects to make")
 	if err := fs.parse(args); err != nil {
@@ -130,7 +131,7 @@ the module; asuka native generate connects them (asuka dev and build do it too).
 	}
 	dir := fs.Arg(0)
 	if dir == "" {
-		return errors.New("usage: asuka native new [--projects swift,android,web,go] <dir>")
+		return errors.New("usage: asuka native new [--projects swift,android,web,desktop] <dir>")
 	}
 	if exists(dir) {
 		if es, _ := os.ReadDir(dir); len(es) > 0 {
@@ -148,19 +149,20 @@ the module; asuka native generate connects them (asuka dev and build do it too).
 		return err
 	}
 	t := upperCamelName(name)
-	src := fmt.Sprintf(`// Package %[1]s is a native module: %[2]s, which each platform's native
+	toml := fmt.Sprintf("name = %q\nversion = \"0.1.0\"\n", name)
+	if err := os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte(toml), 0o644); err != nil {
+		return err
+	}
+	src := fmt.Sprintf(`// The %[1]s package: a native module, %[2]s, which each platform's native
 // code implements (asuka native).
-package %[1]s
 
-// %[2]s greets in each platform's own code.
-//
-//asuka:native
-type %[2]s interface {
-	// Hello greets name.
-	Hello(name string) (string, error)
+/// Greets in each platform's own code.
+pub native interface %[2]s {
+  /// Greets name.
+  fn hello(name: string) -> string
 }
 `, name, t)
-	if err := os.WriteFile(filepath.Join(dir, name+".go"), []byte(src), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, name+".asuka"), []byte(src), 0o644); err != nil {
 		return err
 	}
 	for _, p := range projects {
@@ -191,15 +193,18 @@ func nativeAddCmd(args []string) error {
 }
 
 // addNativeProject writes a project's files for the native package in
-// dir, implementing its first interface's Hello (asuka native new's).
+// dir, implementing its first interface's hello (asuka native new's).
 func addNativeProject(dir, project string) error {
 	abs := mustAbs(dir)
-	out, err := exec.Command("go", "-C", abs, "list", "-f", "{{.ImportPath}}\t{{.Name}}", ".").Output()
+	p, err := nativegen.LoadAsuka(abs)
 	if err != nil {
-		return fmt.Errorf("%s: not a Go package: %v", dir, err)
+		return err
 	}
-	path, name, _ := strings.Cut(strings.TrimSpace(string(out)), "\t")
-	t := upperCamelName(name)
+	if p == nil || len(p.Interfaces) == 0 {
+		return fmt.Errorf("%s: no native interface (an Asuka package's native interface)", dir)
+	}
+	path, name := p.Path, p.Name
+	t := p.Interfaces[0].Name
 	write := func(rel, content string) error {
 		p := filepath.Join(abs, rel)
 		if exists(p) {
@@ -230,11 +235,11 @@ let package = Package(
         .target(name: "%[2]sNative", dependencies: [.product(name: "Asuka", package: "asuka")], path: "swift"),
     ]
 )
-`, name, t)); err != nil {
+`, name, upperCamelName(name))); err != nil {
 			return err
 		}
-		return write(filepath.Join("swift", t+".swift"), fmt.Sprintf(`// The %[1]s package's Swift: what its Go declares, implemented on iOS
-// and macOS (%[2]s.asuka.swift, beside it, is what asuka native generates).
+		return write(filepath.Join("swift", t+".swift"), fmt.Sprintf(`// The %[1]s package's Swift: what it declares, implemented on iOS and
+// macOS (%[3]s.asuka.swift, beside it, is what asuka native generates).
 import Asuka
 import Foundation
 
@@ -243,7 +248,7 @@ final class Swift%[2]s: %[2]s {
 }
 
 func make%[2]s() throws -> any %[2]s { Swift%[2]s() }
-`, name, t))
+`, name, t, upperCamelName(name)))
 	case "android":
 		pkg := nativegen.KotlinPackage(path)
 		if err := write(filepath.Join("android", "build.gradle.kts"), fmt.Sprintf(`// The %[1]s package's Kotlin for Android: a library module the Asuka CLI
@@ -264,8 +269,8 @@ dependencies {
 `, name, pkg)); err != nil {
 			return err
 		}
-		return write(filepath.Join("android", "src", "main", "kotlin", filepath.Join(strings.Split(pkg, ".")...), t+".kt"), fmt.Sprintf(`// The %[1]s package's Kotlin: what its Go declares, implemented on
-// Android (%[3]s.asuka.kt, beside it, is what asuka native generates).
+		return write(filepath.Join("android", "src", "main", "kotlin", filepath.Join(strings.Split(pkg, ".")...), t+".kt"), fmt.Sprintf(`// The %[1]s package's Kotlin: what it declares, implemented on Android
+// (%[4]s.asuka.kt, beside it, is what asuka native generates).
 package %[2]s
 
 private class Kotlin%[3]s : %[3]s {
@@ -273,10 +278,10 @@ private class Kotlin%[3]s : %[3]s {
 }
 
 fun make%[3]s(): %[3]s = Kotlin%[3]s()
-`, name, pkg, t))
+`, name, pkg, t, upperCamelName(name)))
 	case "web":
-		return write(filepath.Join("web", name+".js"), fmt.Sprintf(`// The %[1]s package's JavaScript: what its Go declares, implemented on
-// the web (%[1]s.asuka.js, beside it, is what asuka native generates).
+		return write(filepath.Join("web", name+".js"), fmt.Sprintf(`// The %[1]s package's JavaScript: what it declares, implemented on the
+// web (%[1]s.asuka.js, beside it, is what asuka native generates).
 
 export function make%[2]s() {
   return {
@@ -284,20 +289,31 @@ export function make%[2]s() {
   };
 }
 `, name, t))
-	case "go":
-		return write(name+"_desktop.go", fmt.Sprintf(`//go:build windows || (linux && !android)
+	case "desktop":
+		return write(filepath.Join(nativegen.DesktopDir, name+".c"), fmt.Sprintf(`// The %[1]s package's C: what it declares, implemented on Windows and
+// Linux (%[1]s.asuka.h and .c, beside it, are what asuka native
+// generates). A file named _windows.c or _linux.c is built for that
+// platform only; #ifdef _WIN32 where one file differs.
+#include "%[1]s.asuka.h"
 
-package %[1]s
+#include <stdlib.h>
 
-// On Windows and Linux the package's native code is Go: New%[2]s returns
-// this.
-func init() {
-	implement%[2]s(func() (%[2]s, error) { return goHello{}, nil })
+static char *hello(%[1]s_%[2]s *self, const char *name, asuka_error *err) {
+#ifdef _WIN32
+	return asuka_sprintf("Hello, %%s, from Windows", name);
+#else
+	return asuka_sprintf("Hello, %%s, from Linux", name);
+#endif
 }
 
-type goHello struct{}
+// No release: the object is freed as the app lets it go.
+static const %[1]s_%[2]s_vtable vt = {.hello = hello};
 
-func (goHello) Hello(name string) (string, error) { return "Hello, " + name + ", from Go", nil }
+%[1]s_%[2]s *%[1]s_make_%[2]s(asuka_error *err) {
+	%[1]s_%[2]s *it = malloc(sizeof *it);
+	it->vt = &vt;
+	return it;
+}
 `, name, t))
 	}
 	return nil

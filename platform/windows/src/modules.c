@@ -1,13 +1,7 @@
 // modules.c: the host's own modules (host/windows' modules.go,
-// callmodule.go, more.go): found by name and answered once, whether
-// asuka/platform's call reached them (the Call command on the root,
-// answered with the Result event) or asuka/host's Modules did (a native
-// class, "asuka/host", the host serves itself: its call is started and
-// answered with asuka_native_done, its send called).
-//
-// The native packages' registry (platform/desktop/src/native.c, G1's)
-// isn't in this build yet: a class but asuka/host's answers unsupported
-// until it is, and then the host's provider registers with it.
+// callmodule.go, more.go), what asuka/platform's call and send reach (the
+// Call command on the root, answered with the Result event): found by
+// name and answered once.
 #include "modules.h"
 
 #include <shlwapi.h>
@@ -23,26 +17,10 @@ static const wh_module_def *modules[] = {
 
 // ---- Replies ----
 
-enum { REPLY_RESULT, REPLY_FN, REPLY_NONE };
-
 struct wh_reply {
-	int kind;
-	uint32_t root, call;   // REPLY_RESULT: the root and the Call's id
-	wh_answer fn;          // REPLY_FN: who's answered (asuka/host's Modules, native.c)
-	void *ctx;
-	bool answered, gone;   // gone: its task cancelled (its answer goes nowhere)
-	struct wh_reply *next; // the REPLY_FN replies not answered yet
+	uint32_t root, call;  // the root and the Call's id
+	bool answered, gone;  // gone: its task cancelled (its answer goes nowhere)
 };
-
-static wh_reply *live;  // REPLY_FN replies, for cancelling
-
-static void unlink_live(wh_reply *r) {
-	for (wh_reply **p = &live; *p; p = &(*p)->next)
-		if (*p == r) {
-			*p = r->next;
-			return;
-		}
-}
 
 static void answer(wh_reply *r, bool ok, const void *p, size_t n) {
 	if (!r) return;
@@ -51,35 +29,15 @@ static void answer(wh_reply *r, bool ok, const void *p, size_t n) {
 		return;
 	}
 	r->answered = true;
-	switch (r->kind) {
-	case REPLY_RESULT: {
-		node *root = wh_node(r->root);
-		if (root) {
-			ak_buf b = {0};
-			ak_buf_u32(&b, r->call);
-			ak_buf_u8(&b, ok ? 1 : 0);
-			ak_buf_put(&b, p, n);
-			ak_event e = {.id = root->id, .kind = AK_EVENT_RESULT, .s = ak_strn(b.data, b.len)};
-			wh_dispatch(&e);
-			ak_buf_free(&b);
-		}
-		break;
-	}
-	case REPLY_FN: {
-		unlink_live(r);
-		// The answer's bytes, or its message as a string.
-		char *err = NULL;
-		if (!ok) {
-			err = wh_alloc(n + 1);
-			memcpy(err, p, n);
-		}
-		r->fn(r->ctx, ok ? p : NULL, ok ? n : 0, err);
-		free(err);
-		break;
-	}
-	case REPLY_NONE:
-		if (!ok) wh_log("%.*s", (int)n, (const char *)p);
-		break;
+	node *root = wh_node(r->root);
+	if (root) {
+		ak_buf b = {0};
+		ak_buf_u32(&b, r->call);
+		ak_buf_u8(&b, ok ? 1 : 0);
+		ak_buf_put(&b, p, n);
+		ak_event e = {.id = root->id, .kind = AK_EVENT_RESULT, .s = ak_strn(b.data, b.len)};
+		wh_dispatch(&e);
+		ak_buf_free(&b);
 	}
 	free(r);
 }
@@ -227,48 +185,8 @@ void wh_call(node *root, const uint8_t *args, size_t len) {
 	ak_span method = {(const char *)args + at + 4, nl};
 	at += 4 + nl;
 	wh_reply *r = wh_alloc(sizeof *r);
-	r->kind = REPLY_RESULT, r->root = root->id, r->call = id;
+	r->root = root->id, r->call = id;
 	run(r, module, method, args + at, len - at);
-}
-
-// ---- asuka/host's Modules (native.c serves the class) ----
-
-typedef struct {
-	wh_answer fn;
-	void *ctx;
-	size_t module_len, method_len, len;
-	uint8_t data[];  // module, method, args
-} module_job;
-
-static void module_job_run(void *p) {
-	module_job *j = p;
-	wh_reply *r = wh_alloc(sizeof *r);
-	r->kind = REPLY_FN, r->fn = j->fn, r->ctx = j->ctx;
-	r->next = live, live = r;
-	ak_span module = {(const char *)j->data, j->module_len}, method = {(const char *)j->data + j->module_len, j->method_len};
-	run(r, module, method, j->data + j->module_len + j->method_len, j->len);
-	free(j);
-}
-
-// wh_call_module runs a module's method for asuka/host's Modules: on the
-// main thread, once the core has returned (the methods are the main
-// thread's).
-void wh_call_module(const char *module, size_t module_len, const char *method, size_t method_len, const uint8_t *args, size_t len,
-	wh_answer fn, void *ctx) {
-	module_job *j = wh_alloc(sizeof *j + module_len + method_len + len + 1);
-	j->fn = fn, j->ctx = ctx, j->module_len = module_len, j->method_len = method_len, j->len = len;
-	memcpy(j->data, module, module_len);
-	memcpy(j->data + module_len, method, method_len);
-	if (len) memcpy(j->data + module_len + method_len, args, len);
-	if (asuka_desktop_on_main()) wh_after_core(module_job_run, j);
-	else wh_post(module_job_run, j);
-}
-
-// wh_module_call_gone says a call's task went (native.c answered it
-// cancelled): a long poll's reply for it takes nothing.
-void wh_module_call_gone(void *ctx) {
-	for (wh_reply *r = live; r; r = r->next)
-		if (r->ctx == ctx) r->gone = true;
 }
 
 // ---- Work off the main thread ----

@@ -13,7 +13,7 @@
 // account isn't available, the lists are empty, a Value keeps its
 // default, and the calls throw "icloud: not available".
 
-import asuka/host
+import asuka/platform
 import asuka/json
 
 /// The user's iCloud account, as the app sees it.
@@ -120,7 +120,7 @@ struct Seen {
 
 fn wireError(e: Error) -> Error {
   let m = e.message
-  if m.hasPrefix("not available") || m.hasPrefix("unsupported") || m.hasPrefix("no module") {
+  if platform.unsupported(e) {
     return Error("icloud: not available")
   }
   if m.hasPrefix("icloud:") {
@@ -131,7 +131,7 @@ fn wireError(e: Error) -> Error {
 
 async fn call(method: string, args: bytes) throws -> bytes {
   do {
-    return try await host.call("icloud", method, args)
+    return try await platform.call("icloud", method, args)
   } catch e {
     throw wireError(e)
   }
@@ -142,8 +142,8 @@ async fn call(method: string, args: bytes) throws -> bytes {
 fn follow() -> Stream<Seen> = Stream(give => {
   var seen = Seen()
   defer {
-    host.send("icloud", "unwatch", json.encode(["scope": "documents"]).bytes())
-    host.send("icloud", "unwatch", json.encode(["scope": "data"]).bytes())
+    platform.send("icloud", "unwatch", json.encode(["scope": "documents"]).bytes())
+    platform.send("icloud", "unwatch", json.encode(["scope": "data"]).bytes())
   }
   let ab = (try? await call("account", bytes())) ?? bytes()
   let first: Account? = try? json.decode(ab.string())
@@ -151,9 +151,9 @@ fn follow() -> Stream<Seen> = Stream(give => {
     seen.account = a
     give(seen)
   }
-  host.send("icloud", "watch", json.encode(["scope": "documents"]).bytes())
-  host.send("icloud", "watch", json.encode(["scope": "data"]).bytes())
-  for await b in host.next("icloud", "next") {
+  platform.send("icloud", "watch", json.encode(["scope": "documents"]).bytes())
+  platform.send("icloud", "watch", json.encode(["scope": "data"]).bytes())
+  for await b in platform.next("icloud", "next") {
     let got: Event? = try? json.decode(b.string())
     if let e = got {
       match e.type {
@@ -230,7 +230,7 @@ pub store Value<T>(key: string, def: T) {
   effect {
     let text = json.encode(value)
     if loaded {
-      host.send("icloud", "kvSet", "\{\"key\":{json.encode(key)},\"value\":{text}}".bytes())
+      platform.send("icloud", "kvSet", "\{\"key\":{json.encode(key)},\"value\":{text}}".bytes())
     }
   }
 }
@@ -284,7 +284,7 @@ pub async fn readFile(path: string) throws -> bytes = try await call("read", pat
 /// Writes data to path (made with its directories), as iCloud
 /// coordinates it; iCloud uploads it.
 pub async fn writeFile(path: string, data: bytes) throws {
-  let _ = try await call("write", host.str(path).concat(data))
+  let _ = try await call("write", platform.str(path).concat(data))
 }
 
 /// Deletes path, here and in iCloud.

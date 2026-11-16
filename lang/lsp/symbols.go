@@ -114,7 +114,11 @@ func (sb *symbolBuilder) decl(d syntax.Node) (DocumentSymbol, bool) {
 		s.Children = sb.block(d.Body)
 		return s, true
 	case *syntax.StructDecl:
-		s := sb.sym(d.Name.Name, symStruct, "struct", d, d.Name)
+		kw := "struct"
+		if d.Extern.IsValid() {
+			kw = "extern struct"
+		}
+		s := sb.sym(d.Name.Name, symStruct, kw, d, d.Name)
 		for _, m := range d.Members {
 			if c, ok := sb.member(m); ok {
 				s.Children = append(s.Children, c)
@@ -148,6 +152,8 @@ func (sb *symbolBuilder) decl(d syntax.Node) (DocumentSymbol, bool) {
 		return sb.sym(d.Name.Name, symFunction, funcHeader(d), d, d.Name), true
 	case *syntax.TypeAliasDecl:
 		return sb.sym(d.Name.Name, symClass, "type", d, d.Name), true
+	case *syntax.ExternTypeDecl:
+		return sb.sym(d.Name.Name, symClass, "extern type", d, d.Name), true
 	case *syntax.StyleDecl:
 		return sb.sym(d.Name.Name, symProperty, "style", d, d.Name), true
 	case *syntax.StateDecl:
