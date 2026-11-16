@@ -294,9 +294,9 @@ static int64_t char_to_byte(const ak_str *s, int64_t c) {
 }
 
 static ak_val str_slice(ak_val *args, uint32_t n) {
-	AK_UNUSED(n);
 	ak_str *s = STR(0);
-	RET_P(ak_str_slice(s, char_to_byte(s, A(1).i), char_to_byte(s, A(2).i)));
+	// slice(from): to its end.
+	RET_P(ak_str_slice(s, char_to_byte(s, A(1).i), n > 2 ? char_to_byte(s, A(2).i) : (int64_t)(s ? s->len : 0)));
 }
 
 static ak_val str_to_int(ak_val *args, uint32_t n) {
@@ -599,7 +599,7 @@ static ak_val arr_reversed(ak_val *args, uint32_t n) {
 	RET_P(out);
 }
 
-static ak_val arr_slice(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_arr_slice(ARR(0), A(1).i, A(2).i)); }
+static ak_val arr_slice(ak_val *args, uint32_t n) { RET_P(ak_arr_slice(ARR(0), A(1).i, n > 2 ? A(2).i : (ARR(0) ? ARR(0)->len : 0))); }
 static ak_val arr_prefix(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_arr_slice(ARR(0), 0, A(1).i < 0 ? 0 : A(1).i)); }
 static ak_val arr_suffix(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);

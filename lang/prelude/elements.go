@@ -372,7 +372,7 @@ var Elements = []Element{
 		{Name: "error", Params: []Param{{"message", "string"}}},
 	}, Doc: "a video in the platform's player; sized as an Image is. Drive it with play(), pause(), seek(seconds)"},
 	{Name: "WebView", Keys: []Key{
-		{Name: "url", Type: "string", Doc: "the page: an http(s) URL, or an asset"},
+		{Name: "url", Type: "string", Positional: true, Default: "\"\"", Doc: "the page: an http(s) URL, or an asset (\"\": html's)"},
 		{Name: "html", Type: "string", Doc: "markup to show instead"},
 		{Name: "preload", Type: "string", Doc: "a script run before each page's own, in every frame (set when it's made)"},
 		{Name: "userAgent", Type: "string"},

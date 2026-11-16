@@ -24,7 +24,7 @@ screen RichTextDemo {
         plain(", "),
         Span(text: "colored", color: .purple),
         plain(" or "),
-        Span(text: "highlighted across a line break, which a label can't draw", highlight: #ffd60a6e),
+        Span(text: "highlighted across a line break, which a label can't draw", background: #ffd60a6e),
         plain(". Inline "),
         code("code"),
         plain(" and "),
@@ -50,16 +50,16 @@ screen RichTextDemo {
 }
 
 fn openLink(url: string) {
-  alert("Open link?", message: url, buttons: [
-    AlertButton(title: "Cancel", role: .cancel),
-    AlertButton(title: "Open", run: () => openURL(url)),
+  alert("Open link?", message: url, actions: [
+    .button(title: "Cancel", role: .cancel),
+    .button(title: "Open", run: () => openURL(url)),
   ])
 }
 
 fn plain(text: string) -> Span = Span(text: text)
 fn strong(text: string) -> Span = Span(text: text, font: Font(weight: .bold))
 fn em(text: string) -> Span = Span(text: text, italic: true)
-fn code(text: string) -> Span = Span(text: text, code: true)
+fn code(text: string) -> Span = Span(text: text, mono: true)
 fn link(text: string, url: string) -> Span = Span(text: text, link: url)
 
 let reply = """

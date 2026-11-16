@@ -2,7 +2,7 @@
 // in time linear in the text (no backtracking, so no pattern can take
 // forever).
 //
-//   let digits = try regex.compile(r"\d+")
+//   let digits = try regex.compile(r"\d+")    // regex.must(…) for a constant
 //   digits.find("order 66, table 7")     // "66"
 //   digits.findAll("order 66, table 7")  // ["66", "7"]
 //   let date = try regex.compile(r"(?P<y>\d{4})-(\d\d)")
@@ -113,6 +113,18 @@ pub struct Regex {
 
 /// Compiles pattern; a bad one throws, saying what's wrong.
 pub fn compile(pattern: string) throws -> Regex = Regex(pattern: pattern, program: try program(pattern))
+
+/// The pattern compiled, for one known to be right (a constant's): one
+/// that isn't panics, so the mistake shows as the app starts.
+///
+///   let digits = regex.must(r"\d+")
+pub fn must(pattern: string) -> Regex {
+  do {
+    return try compile(pattern)
+  } catch e {
+    panic("regex.must({pattern}): {e.message}")
+  }
+}
 
 /// text with the pattern syntax's characters escaped: a pattern that
 /// matches text as it is.

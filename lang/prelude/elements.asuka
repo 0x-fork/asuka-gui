@@ -564,9 +564,7 @@ native component Video(source: string) {
 }
 
 /// a web page, in the platform's web view; with no height and no grow, it grows
-native component WebView() {
-  /// the page: an http(s) URL, or an asset
-  prop url: string
+native component WebView(url: string = "") {
   /// markup to show instead
   prop html: string
   /// a script run before each page's own, in every frame (set when it's made)
