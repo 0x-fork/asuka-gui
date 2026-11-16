@@ -60,7 +60,7 @@ github = "you/notes"
 | `icon` | 路径 | 无，使用平台的通用图标 | 一张 1024×1024 的正方形 PNG，用于 iOS 时不能有透明区域。每个平台的构建会自动生成该平台需要的各种尺寸。上架 App Store 必须提供。 |
 | `accent` | 颜色 | 平台默认 | `"#rrggbb"` 或 `"#rrggbbaa"`。在 iOS 上是 tint 色；在 Android 上是 Material 3 配色方案的种子色；在 Mac 上是 `Accent`、填充按钮和链接的颜色（AppKit 自带的控件仍然使用用户选择的颜色）；在 Windows 上是控件的强调色，在 Linux 上是 libadwaita 的强调色；在 Web 上是页面的强调色以及 manifest 的 `theme_color`。 |
 | `orientations` | 字符串数组 | 两者都支持 | `"portrait"`、`"landscape"`：应用在手机上支持的方向。iPad 上总是支持全部四个方向，因为分屏浏览和台前调度要求如此；Android 16 在平板和折叠屏设备上也会忽略这项设置。 |
-| `scheme` | 字符串 | 无 | 应用的 URL scheme：`notes://` 开头的 URL 会打开应用，并由 `ui.OnOpenURL` 接收，支持 iOS、Android、Mac、Windows 和 Linux。只能包含字母、数字、`+`、`-` 和 `.`，并以字母开头。见[深度链接](navigation.md#深度链接)。 |
+| `scheme` | 字符串 | 无 | 应用的 URL scheme：`notes://` 开头的 URL 会打开应用，并由应用的 `on openURL(url)` 接收，支持 iOS、Android、Mac、Windows 和 Linux。只能包含字母、数字、`+`、`-` 和 `.`，并以字母开头。见[深度链接](navigation.md#深度链接)。 |
 | `links` | 字符串数组 | 无 | 域名，如 `example.com`，指向这些域名的 https 链接会打开应用：即 iOS 的 universal links 和 Android 的 App Links。域名需要提供关联文件。见[深度链接](navigation.md#深度链接)。 |
 | `fileTypes` | 表数组 | 无 | 应用能打开的文件类型。见 [fileTypes](#filetypes)。 |
 | `shareTarget` | `true` 或表 | 关闭 | 让应用出现在其他应用的分享面板里，仅限 iOS 和 Android。见 [shareTarget](#sharetarget)。 |
@@ -68,8 +68,8 @@ github = "you/notes"
 | `widgets` | 表数组 | 无 | 主屏幕小组件，仅限 iOS 和 Android。见 [widgets](#widgets)。 |
 | `shortcuts` | 表数组 | 无 | 提供给 Siri、聚焦搜索和启动器的快捷操作，仅限 iOS 和 Android。见 [shortcuts](#shortcuts)。 |
 | `nfc` | 表 | 无 | `asuka/sdk/nfc` 读写标签所需的配置：iOS 的 AID 和 FeliCa 系统代码，以及在 Android 上能打开应用的标签。见 [nfc](#nfc)。 |
-| `background` | 布尔值 | `false` | 在桌面端让应用常驻托盘，效果和 `app.RunInBackground` 一样：启动时不打开窗口，没有窗口时也继续运行；在 Mac 上从启动起就不显示程序坞（Dock）图标（`LSUIElement`）。见[后台应用](desktop.md#后台应用)。 |
-| `singleInstance` | 布尔值 | `true` | 在 Windows 和 Linux 上，再次启动时，新进程会把参数交给正在运行的应用（由 `app.OnSecondInstance` 接收，其中的文件交给 `ui.OnOpenFiles`），然后自行退出。设为 `false` 则每启动一次就运行一个新实例。Mac 上无论如何都只运行一个实例。见[单实例](desktop.md#单实例)。 |
+| `background` | 布尔值 | `false` | 在桌面端让应用常驻托盘：启动时不打开窗口，没有窗口时也继续运行；在 Mac 上从启动起就不显示程序坞（Dock）图标（`LSUIElement`）。见[后台应用](desktop.md#后台应用)。 |
+| `singleInstance` | 布尔值 | `true` | 在 Windows 和 Linux 上，再次启动时，新进程会把文件交给正在运行的应用（由它的 `on openFiles(paths)` 接收），然后自行退出。设为 `false` 则每启动一次就运行一个新实例。Mac 上无论如何都只运行一个实例。见[单实例](desktop.md#单实例)。 |
 | `i18n` | 表 | 存在时为 `locales` | 应用的目录文件放在哪里。见 [i18n](#i18n)。 |
 | `updates` | 表 | 无 | 桌面应用的签名更新。见 [updates](#updates)。 |
 | `ios` | 表 | | iOS 构建的配置，部分也用于 Mac。见 [ios](#ios)。 |
@@ -85,7 +85,7 @@ Windows 构建只需要上面这些键；它的签名证书通过环境变量提
 
 ## fileTypes
 
-应用能打开的文件类型，无论是从文件管理器、邮件附件还是“打开方式”打开的，都由 `ui.OnOpenFiles` 接收。每一项是一张表，写成 `[[fileTypes]]`：
+应用能打开的文件类型，无论是从文件管理器、邮件附件还是“打开方式”打开的，都由应用的 `on openFiles(paths)` 接收。每一项是一张表，写成 `[[fileTypes]]`：
 
 ```toml
 [[fileTypes]]
@@ -113,7 +113,7 @@ icon = "note.png"
 
 ## shareTarget
 
-让应用出现在其他应用的分享面板里，仅限 iOS 和 Android；分享过来的内容由 `ui.OnShare` 接收。设为 `true` 可以接收文本和网页链接；设为表则可以指定还接收什么：
+让应用出现在其他应用的分享面板里，仅限 iOS 和 Android；分享过来的内容由应用的 `on share(items)` 接收。设为 `true` 可以接收文本和网页链接；设为表则可以指定还接收什么：
 
 ```toml
 [shareTarget]
@@ -151,7 +151,7 @@ darkBackground = "#1B2440"
 
 ## widgets
 
-应用的主屏幕小组件，仅限 iOS 和 Android；由应用的 Go 代码调用 `widget.Set` 填充内容。
+应用的主屏幕小组件，仅限 iOS 和 Android；由应用调用 `widget.set` 填充内容。
 
 ```toml
 [[widgets]]
@@ -172,7 +172,7 @@ sizes = ["small", "medium", "rectangular"]
 
 ## shortcuts
 
-系统为应用提供的快捷操作，最多十个：在 iOS 上是 App Shortcuts（Siri、聚焦搜索、快捷指令 App 和操作按钮），在 Android 上是启动器快捷方式。每个快捷操作都会用它的 URL 打开应用，由 `ui.OnOpenURL` 接收。
+系统为应用提供的快捷操作，最多十个：在 iOS 上是 App Shortcuts（Siri、聚焦搜索、快捷指令 App 和操作按钮），在 Android 上是启动器快捷方式。每个快捷操作都会用它的 URL 打开应用，由应用的 `on openURL(url)` 接收。
 
 ```toml
 [[shortcuts]]
@@ -188,7 +188,7 @@ phrases = ["New note in ${app}"]
 | `id` | 字符串 | 必填 | 只能包含字母、数字和 `_`，以字母开头，且不能重复。 |
 | `title` | 字符串 | 必填 | 系统显示的标题。 |
 | `url` | 字符串 | 必填 | 打开应用时使用的 URL：属于应用 `scheme` 的 URL，或者 `links` 中某个域名的链接。 |
-| `symbol` | 字符串 | 无 | SF Symbol 的名称，与 `ui.Symbol` 接受的一样。 |
+| `symbol` | 字符串 | 无 | SF Symbol 的名称，与 `Symbol` 接受的一样。 |
 | `phrases` | 字符串数组 | `"<title> in ${app}"` | Siri 能识别的说法，每句都要包含代表应用名称的 `${app}`。仅限 iOS。 |
 
 见[快捷方式](device.md#快捷方式siri聚焦搜索与启动器)。
@@ -213,7 +213,7 @@ tech = [["IsoDep"], ["NfcA", "MifareUltralight"]]
 |---|---|---|---|
 | `iso7816` | 字符串数组 | 无 | iOS 发现卡片时依次选择的 ISO 7816 应用（AID：5 到 16 字节，十六进制），写入 Info.plist 的 `com.apple.developer.nfc.readersession.iso7816.select-identifiers`。设置了 `Poll` 的会话只会发现带有其中某个应用的卡片。 |
 | `felica` | 字符串数组 | 无 | iOS 轮询的 FeliCa 系统代码（4 位十六进制数，不能是 `FFFF`），写入 `com.apple.developer.nfc.readersession.felica.systemcodes`。没有它，轮询 FeliCa 的会话会失败。 |
-| `ndef` | 表数组 | 无 | 在 Android 上按消息的第一条记录打开应用的标签（NDEF_DISCOVERED）。每项是 `uri`（scheme、主机和路径前缀；URI 交给 `ui.OnOpenURL`）、`mime`（MIME 类型；文本记录是 `text/plain`）或 `external`（`domain:type`）三者之一；后两种标签交给 `nfc.OnOpen`。 |
+| `ndef` | 表数组 | 无 | 在 Android 上按消息的第一条记录打开应用的标签（NDEF_DISCOVERED）。每项是 `uri`（scheme、主机和路径前缀；URI 交给应用的 `on openURL(url)`）、`mime`（MIME 类型；文本记录是 `text/plain`）或 `external`（`domain:type`）三者之一；后两种标签交给 `nfc.opened()`。 |
 | `tech` | 字符串数组的数组 | 无 | 在 Android 上按技术类型打开应用的标签（TECH_DISCOVERED）：每个列表里是标签必须全部具备的 `android.nfc.tech` 类（`IsoDep`、`NfcA`、`MifareUltralight` ……）。 |
 | `required` | 布尔值 | `false` | 让应用只面向带 NFC 的手机：Google Play 不会向其他设备提供它。 |
 

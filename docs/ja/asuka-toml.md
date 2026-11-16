@@ -62,15 +62,15 @@ github = "you/notes"
 | `icon` | パス | なし（プラットフォームの汎用アイコン） | 1024×1024 の正方形の PNG です。iOS 向けには透明部分を含めないでください。ビルドごとに、そのプラットフォームが必要とするサイズが作られます。App Store に出すには必須です。 |
 | `accent` | 色 | プラットフォームの色 | `"#rrggbb"` または `"#rrggbbaa"`。iOS では tint、Android では Material 3 のカラースキームのシード、Mac では `Accent`、塗りつぶしのボタン、リンクの色（AppKit 自身のコントロールはユーザーの設定した色のまま）、Windows ではコントロールのアクセントカラー、Linux では libadwaita のアクセントカラー、Web ではページとマニフェストの `theme_color` になります。 |
 | `orientations` | 文字列の配列 | 両方 | `"portrait"`、`"landscape"`。スマートフォンでアプリが対応する画面の向きです。iPad では Split View とステージマネージャに必要なので、四つの向きすべてに対応します。Android 16 では、タブレットと折りたたみ端末でこの指定は無視されます。 |
-| `scheme` | 文字列 | なし | アプリの URL スキームです。iOS、Android、Mac、Windows、Linux で、`notes://` の URL がアプリを開き、`ui.OnOpenURL` がその URL を受け取ります。英字、数字、`+`、`-`、`.` を使い、先頭は英字にします。[ディープリンク](navigation.md#ディープリンク)を参照してください。 |
+| `scheme` | 文字列 | なし | アプリの URL スキームです。iOS、Android、Mac、Windows、Linux で、`notes://` の URL がアプリを開き、アプリの `on openURL(url)` がその URL を受け取ります。英字、数字、`+`、`-`、`.` を使い、先頭は英字にします。[ディープリンク](navigation.md#ディープリンク)を参照してください。 |
 | `links` | 文字列の配列 | なし | `example.com` のようなドメインで、その https のリンクがアプリを開きます。iOS のユニバーサルリンクと Android の App Links です。ドメイン側で関連付けのファイルを配信します。[ディープリンク](navigation.md#ディープリンク)を参照してください。 |
 | `fileTypes` | テーブルの配列 | なし | アプリが開くファイルの種類です。[fileTypes](#filetypes) を参照してください。 |
 | `shareTarget` | `true` またはテーブル | オフ | iOS と Android で、ほかのアプリの共有シートにアプリを表示します。[shareTarget](#sharetarget) を参照してください。 |
 | `splash` | テーブル | なし | iOS と Android の起動画面です。[splash](#splash) を参照してください。 |
 | `widgets` | テーブルの配列 | なし | iOS と Android のホーム画面ウィジェットです。[widgets](#widgets) を参照してください。 |
 | `shortcuts` | テーブルの配列 | なし | iOS と Android で、Siri、Spotlight、ランチャーに出すアクションです。[shortcuts](#shortcuts) を参照してください。 |
-| `background` | 真偽値 | `false` | デスクトップで、`app.RunInBackground` と同じように、トレイに常駐するアプリにします。起動時にウィンドウを開かず、ウィンドウがなくても動き続け、Mac では起動時から Dock にアイコンを出しません（`LSUIElement`）。[バックグラウンドのアプリ](desktop.md#バックグラウンドで動くアプリ)を参照してください。 |
-| `singleInstance` | 真偽値 | `true` | Windows と Linux で、二回目の起動は引数を実行中のアプリに渡して（`app.OnSecondInstance` に、ファイルは `ui.OnOpenFiles` に）終了します。`false` にすると、起動した回数だけアプリが実行されます。Mac ではどちらの場合もアプリは一つしか実行されません。[単一インスタンス](desktop.md#単一インスタンス)を参照してください。 |
+| `background` | 真偽値 | `false` | デスクトップで、トレイに常駐するアプリにします。起動時にウィンドウを開かず、ウィンドウがなくても動き続け、Mac では起動時から Dock にアイコンを出しません（`LSUIElement`）。[バックグラウンドのアプリ](desktop.md#バックグラウンドで動くアプリ)を参照してください。 |
+| `singleInstance` | 真偽値 | `true` | Windows と Linux で、二回目の起動はファイルを実行中のアプリに渡して（その `on openFiles(paths)` に）終了します。`false` にすると、起動した回数だけアプリが実行されます。Mac ではどちらの場合もアプリは一つしか実行されません。[単一インスタンス](desktop.md#単一インスタンス)を参照してください。 |
 | `i18n` | テーブル | `locales`（あれば） | アプリのカタログの場所です。[i18n](#i18n) を参照してください。 |
 | `updates` | テーブル | なし | デスクトップアプリの署名付きアップデートです。[updates](#updates) を参照してください。 |
 | `ios` | テーブル | | iOS のビルドの設定と、Mac のビルドの設定の一部です。[ios](#ios) を参照してください。 |
@@ -84,7 +84,7 @@ Windows のビルドに必要なのはこれだけです。署名の証明書は
 
 ## fileTypes
 
-アプリが開くファイルの種類です。ファイルマネージャー、メールの添付ファイル、「このアプリケーションで開く」から開かれたファイルは、`ui.OnOpenFiles` が受け取ります。種類ごとに `[[fileTypes]]` のテーブルを一つ書きます。
+アプリが開くファイルの種類です。ファイルマネージャー、メールの添付ファイル、「このアプリケーションで開く」から開かれたファイルは、アプリの `on openFiles(paths)` が受け取ります。種類ごとに `[[fileTypes]]` のテーブルを一つ書きます。
 
 ```toml
 [[fileTypes]]
@@ -112,7 +112,7 @@ icon = "note.png"
 
 ## shareTarget
 
-iOS と Android で、ほかのアプリの共有シートにアプリを表示します。共有されたものは `ui.OnShare` が受け取ります。`shareTarget = true` とするとテキストと Web のリンクを受け取ります。ほかのものも受け取るときはテーブルで指定します。
+iOS と Android で、ほかのアプリの共有シートにアプリを表示します。共有されたものはアプリの `on share(items)` が受け取ります。`shareTarget = true` とするとテキストと Web のリンクを受け取ります。ほかのものも受け取るときはテーブルで指定します。
 
 ```toml
 [shareTarget]
@@ -150,7 +150,7 @@ darkBackground = "#1B2440"
 
 ## widgets
 
-iOS と Android でのアプリのホーム画面ウィジェットです。中身はアプリの Go のコードから `widget.Set` で埋めます。
+iOS と Android でのアプリのホーム画面ウィジェットです。中身はアプリから `widget.set` で埋めます。
 
 ```toml
 [[widgets]]
@@ -171,7 +171,7 @@ iOS では、ウィジェットは独自の bundle ID（アプリの ID に `.wi
 
 ## shortcuts
 
-システムがアプリのために表示するアクションで、最大 10 個です。iOS の App Shortcuts（Siri、Spotlight、ショートカットアプリ、アクションボタン）と、Android のランチャーのショートカットになります。どれも、`ui.OnOpenURL` に渡される URL でアプリを開きます。
+システムがアプリのために表示するアクションで、最大 10 個です。iOS の App Shortcuts（Siri、Spotlight、ショートカットアプリ、アクションボタン）と、Android のランチャーのショートカットになります。どれも、アプリの `on openURL(url)` に渡される URL でアプリを開きます。
 
 ```toml
 [[shortcuts]]
@@ -187,7 +187,7 @@ phrases = ["New note in ${app}"]
 | `id` | 文字列 | 必須 | 英字、数字、`_` を使い、先頭は英字にします。ショートカットごとに異なる ID にします。 |
 | `title` | 文字列 | 必須 | システムが表示する名前です。 |
 | `url` | 文字列 | 必須 | アプリを開く URL です。`scheme` の URL か、`links` のどれかの URL にします。 |
-| `symbol` | 文字列 | なし | `ui.Symbol` が受け取るのと同じ、SF Symbol の名前です。 |
+| `symbol` | 文字列 | なし | `Symbol` が受け取るのと同じ、SF Symbol の名前です。 |
 | `phrases` | 文字列の配列 | `"<title> in ${app}"` | Siri が聞き取るフレーズで、どれにもアプリの名前を表す `${app}` を含めます。iOS だけで使われます。 |
 
 [ショートカット](device.md#ショートカット-sirispotlightランチャー)を参照してください。

@@ -76,7 +76,7 @@ These apply on every platform the key means something on.
 | `icon` | path | none: the platform's generic icon | A square PNG, 1024×1024, without transparency for iOS. Each build makes the sizes its platform wants. The App Store needs one. |
 | `accent` | color | the platform's | `"#rrggbb"` or `"#rrggbbaa"`: the tint on iOS, the seed of the Material 3 color scheme on Android, the color of `Accent`, filled buttons and links on the Mac (AppKit's own controls keep the user's), the controls' accent on Windows and libadwaita's on Linux, the page's and the manifest's `theme_color` on the web. |
 | `orientations` | strings | both | `"portrait"`, `"landscape"`: the orientations the app takes on a phone. iPads take all four, as Split View and Stage Manager need, and Android 16 ignores it on tablets and foldables. |
-| `scheme` | string | none | The app's URL scheme: `notes://` URLs open it, and `ui.OnOpenURL` gets them, on iOS, Android, the Mac, Windows and Linux. Letters, digits, `+`, `-` and `.`, a letter first. See [Deep links](navigation.md#deep-links). |
+| `scheme` | string | none | The app's URL scheme: `notes://` URLs open it, and the app's `on openURL(url)` gets them, on iOS, Android, the Mac, Windows and Linux. Letters, digits, `+`, `-` and `.`, a letter first. See [Deep links](navigation.md#deep-links). |
 | `links` | strings | none | Domains, as `example.com`, whose https links open the app: iOS's universal links and Android's App Links. The domain serves the association file. See [Deep links](navigation.md#deep-links). |
 | `fileTypes` | array of tables | none | The kinds of files the app opens. See [fileTypes](#filetypes). |
 | `shareTarget` | `true` or table | off | The app in other apps' share sheets, on iOS and Android. See [shareTarget](#sharetarget). |
@@ -84,8 +84,8 @@ These apply on every platform the key means something on.
 | `widgets` | array of tables | none | Home screen widgets, on iOS and Android. See [widgets](#widgets). |
 | `shortcuts` | array of tables | none | Actions for Siri, Spotlight and the launcher, on iOS and Android. See [shortcuts](#shortcuts). |
 | `nfc` | table | none | What `asuka/sdk/nfc`'s tags need: iOS's AIDs and FeliCa system codes, the tags that open the app on Android. See [nfc](#nfc). |
-| `background` | boolean | `false` | On the desktop, an app that lives in the tray, as `app.RunInBackground` makes it: no window at launch, kept running with none, and on the Mac no Dock icon from launch (`LSUIElement`). See [Apps in the background](desktop.md#apps-in-the-background). |
-| `singleInstance` | boolean | `true` | On Windows and Linux, a second launch hands its arguments to the running app (`app.OnSecondInstance`, its files to `ui.OnOpenFiles`) and quits. `false` runs the app as often as it's started. The Mac runs an app once either way. See [One instance](desktop.md#one-instance). |
+| `background` | boolean | `false` | On the desktop, an app that lives in the tray: no window at launch, kept running with none, and on the Mac no Dock icon from launch (`LSUIElement`). See [Apps in the background](desktop.md#apps-in-the-background). |
+| `singleInstance` | boolean | `true` | On Windows and Linux, a second launch hands its files to the running app (its `on openFiles(paths)`) and quits. `false` runs the app as often as it's started. The Mac runs an app once either way. See [One instance](desktop.md#one-instance). |
 | `i18n` | table | `locales`, when there | Where the app's catalogs are. See [i18n](#i18n). |
 | `updates` | table | none | A desktop app's signed updates. See [updates](#updates). |
 | `ios` | table | | The iOS build's, and some of the Mac's. See [ios](#ios). |
@@ -103,7 +103,7 @@ given in the environment (see [Shipping](shipping.md#windows)).
 ## fileTypes
 
 The kinds of files the app opens, from the file manager, a mail's
-attachment or "Open With"; `ui.OnOpenFiles` gets them. Each is a
+attachment or "Open With"; the app's `on openFiles(paths)` gets them. Each is a
 `[[fileTypes]]` table:
 
 ```toml
@@ -137,7 +137,7 @@ the web. See [Shipping](shipping.md#asukatoml) and
 
 ## shareTarget
 
-The app in other apps' share sheets, on iOS and Android; `ui.OnShare`
+The app in other apps' share sheets, on iOS and Android; the app's `on share(items)`
 gets what's shared. `shareTarget = true` takes texts and web links; a
 table says what else:
 
@@ -183,8 +183,8 @@ See [The launch screen](device.md#the-launch-screen-asukasdksplash).
 
 ## widgets
 
-The app's home screen widgets, on iOS and Android; `widget.Set` fills
-them from the app's Go code.
+The app's home screen widgets, on iOS and Android; `widget.set` fills
+them from the app.
 
 ```toml
 [[widgets]]
@@ -209,8 +209,8 @@ plus `.widgets`), which a release signs with `ios.widgetProfile`. See
 
 Actions the system offers for the app, at most ten: iOS's App Shortcuts
 (Siri, Spotlight, the Shortcuts app, the Action button) and Android's
-launcher shortcuts. Each opens the app with its URL, for
-`ui.OnOpenURL`.
+launcher shortcuts. Each opens the app with its URL, for its
+`on openURL(url)`.
 
 ```toml
 [[shortcuts]]
@@ -226,7 +226,7 @@ phrases = ["New note in ${app}"]
 | `id` | string | required | Letters, digits and `_`, a letter first, each shortcut's its own. |
 | `title` | string | required | What the system shows. |
 | `url` | string | required | What the app is opened with: a URL of its `scheme`, or one of its `links`. |
-| `symbol` | string | none | An SF Symbol's name, as `ui.Symbol` takes it. |
+| `symbol` | string | none | An SF Symbol's name, as `Symbol` takes it. |
 | `phrases` | strings | `"<title> in ${app}"` | What Siri hears, each with `${app}`, the app's name. iOS only. |
 
 See [Shortcuts](device.md#shortcuts-siri-spotlight-the-launcher).
@@ -252,7 +252,7 @@ tech = [["IsoDep"], ["NfcA", "MifareUltralight"]]
 |---|---|---|---|
 | `iso7816` | strings | none | The ISO 7816 applications (AIDs: 5 to 16 bytes, in hex) iOS selects as it finds a card, in order: Info.plist's `com.apple.developer.nfc.readersession.iso7816.select-identifiers`. A session with `Poll` finds only the cards with one of them. |
 | `felica` | strings | none | The FeliCa system codes (4 hex digits, not `FFFF`) iOS polls for: `com.apple.developer.nfc.readersession.felica.systemcodes`, without which a session that polls FeliCa fails. |
-| `ndef` | tables | none | The tags that open the app on Android by their message's first record (NDEF_DISCOVERED), each one of `uri` (its scheme, host and path prefix; the URI comes to `ui.OnOpenURL`), `mime` (a MIME type; text records are `text/plain`) and `external` (`domain:type`); the tag comes to `nfc.OnOpen`. |
+| `ndef` | tables | none | The tags that open the app on Android by their message's first record (NDEF_DISCOVERED), each one of `uri` (its scheme, host and path prefix; the URI comes to the app's `on openURL(url)`), `mime` (a MIME type; text records are `text/plain`) and `external` (`domain:type`); the tag comes to `nfc.opened()`. |
 | `tech` | arrays of strings | none | The tags that open the app on Android by their technologies (TECH_DISCOVERED): each list, the `android.nfc.tech` classes a tag must all have (`IsoDep`, `NfcA`, `MifareUltralight`...). |
 | `required` | boolean | `false` | Makes the app one for phones with NFC alone: Google Play doesn't offer it to others. |
 
