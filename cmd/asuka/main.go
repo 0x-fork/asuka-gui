@@ -13,6 +13,7 @@
 //	asuka fmt [-w] [-l] [paths]              format Asuka source (.asuka files)
 //	asuka check [dir]                        report an Asuka package's problems
 //	asuka lsp                                the language server, for editors
+//	asuka cache stats|clean                  the build cache's size and hits; empty it
 package main
 
 import (
@@ -22,6 +23,8 @@ import (
 	"os/signal"
 	"slices"
 	"syscall"
+
+	"github.com/egoist/asuka/internal/ccache"
 )
 
 // version is the CLI's release (-ldflags -X main.version=…; scripts/npm
@@ -55,6 +58,7 @@ func usage() {
   asuka remove <package>                    remove dependencies
   asuka install [-update] [dir]             fetch what asuka.lock names (resolving again with -update)
   asuka pkg pack|publish [dir]              pack, or publish to the npm registry, a package
+  asuka cache stats|clean                   the build cache's size and hits; empty it
   asuka version                             print the CLI's version
   asuka check [dir]                         report an Asuka package's problems (file:line:col: message)
   asuka lsp                                 run the language server, for editors (LSP on stdio)
@@ -107,6 +111,8 @@ func main() {
 		return
 	case "check":
 		err = cmdCheck(os.Args[2:])
+	case "cache":
+		err = cmdCache(os.Args[2:])
 	case "lsp":
 		err = cmdLSP(os.Args[2:])
 	case "-h", "--help", "help":
@@ -116,6 +122,7 @@ func main() {
 		usage()
 		os.Exit(2)
 	}
+	ccache.Flush() // the build cache's counts; it's trimmed to its cap
 	if errors.Is(err, errHelp) {
 		return
 	}

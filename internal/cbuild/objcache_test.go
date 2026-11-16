@@ -23,9 +23,12 @@ func writeFile(t *testing.T, p, s string) {
 // freshCache points the build cache at a new directory, its counts
 // zero.
 func freshCache(t *testing.T) string {
-	ccache.Flush() // what an earlier test counted goes to its cache
 	d := t.TempDir()
 	t.Setenv("ASUKA_CACHE", d)
+	// What an earlier test counted, left out: never flushed into (and
+	// trimming) the user's own cache.
+	ccache.Flush()
+	ccache.ResetCounts()
 	return d
 }
 

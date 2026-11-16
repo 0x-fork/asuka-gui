@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/egoist/asuka/internal/ccache"
@@ -88,15 +89,15 @@ func (tc *Toolchain) variant() string {
 // kind is the compiler's family, as prebuilt libraries name what they
 // were built with: zig, apple (Xcode's clang), ndk, or another's.
 func (c Compiler) kind() string {
+	p := filepath.ToSlash(c.Path)
 	switch {
 	case c.IsZig():
 		return "zig"
-	case strings.Contains(c.Path, "Xcode") || strings.Contains(c.Path, "CommandLineTools") || strings.HasPrefix(c.Path, "/usr/bin/"):
-		if strings.Contains(c.Path, "Toolchains/XcodeDefault") || strings.HasPrefix(c.Path, "/usr/bin/") || strings.Contains(c.Path, "CommandLineTools") {
-			return "apple"
-		}
-	case strings.Contains(filepath.ToSlash(c.Path), "/ndk/"):
+	case strings.Contains(p, "/ndk/"):
 		return "ndk"
+	case runtime.GOOS == "darwin" && (strings.Contains(p, ".app/Contents/Developer/") || strings.HasPrefix(p, "/Library/Developer/CommandLineTools/") ||
+		p == "/usr/bin/cc" || p == "/usr/bin/clang"):
+		return "apple"
 	}
 	return "other"
 }
