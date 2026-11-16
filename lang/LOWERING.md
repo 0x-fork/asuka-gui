@@ -111,8 +111,11 @@ calls a closure) runs in a handler that moves the receiver back first.
 ## Functions
 
 - A function is a FuncDef; its parameters are its first registers.
-  Methods take `self` first. Closures capture by value; a `var` a
-  closure captures and changes is a box (VBOX, VGET, VSET).
+  Methods take `self` first. A closure captures a value as it is when
+  the closure is made; a `var` it captures that anything changes (the
+  closure, or the code around it) is a box (VBOX, VGET, VSET), so they
+  share one variable. A `spawn` copies a box's value instead (VGET as
+  it's made: values only).
 - Default arguments are filled in at the call site (a default may use
   only package-level names; a generic function's is lowered with the
   call's type arguments). An enum case's labeled payload left out takes
@@ -176,6 +179,17 @@ calls a closure) runs in a handler that moves the receiver back first.
   matching THROWs it on.
 - `try?` is a handler that turns any error but the cancellation into
   none.
+- `x catch … { … }` is a `do`'s handler range over x, lowered into the
+  expression's register; each clause's block puts its value there (its
+  last expression), or leaves. A void one (`try save() catch { … }`)
+  is a statement's. Clauses that don't take every error leave THROW
+  for the rest, as a `do`'s.
+- `throw`, `return`, `break` and `continue` as values (`x ?? throw E`)
+  lower as their statements; what they give is never read.
+- `let p = v else { … }` tests v as `if let` does (JNONE for a name, the
+  pattern's tests otherwise), jumping to the else block, which leaves;
+  the names are bound after it. A condition chain (`if let a = x, a >
+  0`) is its clauses' tests in order, each jumping to the else.
 - `defer { }` protects the rest of its block: its code is emitted at the
   block's end, before each return, break or continue that leaves it,
   and in a handler that runs it and THROWs the error on.
@@ -347,6 +361,7 @@ a bit per style key its caller set; the component's own sets of that key
 |---|---|
 | `if c { A } else { B }` | `ui.show(thunk{c}, builder{A}, builder{B})` |
 | `if let u = user { A }` | `ui.show(thunk{user != none}, builder{ let u = memo(user!); A })` |
+| `if let a = x, let b = f(a), b > 0 { A }`, `if let .ready(n) = s { A }` | `let m = memo{ the chain's tests; (a, b) or none }; ui.show(thunk{m != none}, builder{ let a = memo(m!.0); let b = memo(m!.1); A })`; a chain without names: `ui.show(thunk{its tests}, builder{A})` |
 | `for x in xs key k { R }` | `ui.for(thunk{xs}, closure(x){k}, closure(xAcc, iAcc){R})`; `x` in R is AGET xAcc |
 | the same, directly in a `List` | `ui.lazy_for(list, …)` with the same arguments |
 | `match s { .a => A; .b(p) => B }` | `ui.switch(thunk{the index of the arm s matches, -1 for none}, closure(arm){ switch on it: A, or { let p = memo(payload of s); B } })` |
