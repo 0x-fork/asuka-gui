@@ -88,7 +88,7 @@ web host's JavaScript beside it.
 
 ## Addresses and history
 
-With a [`ui.Router`](navigation.md#routes), the page's address is the
+With a [`Router`](navigation.md#routes), the page's address is the
 screen shown: real paths under the site's base, with `pushState` and
 `replaceState`, not a `#` fragment. Each step of the router's navigation
 is an entry of the page's history, keeping the router's whole state
@@ -96,7 +96,7 @@ is an entry of the page's history, keeping the router's whole state
 
 - the browser's back and forward go back and forward through the
   stacks, the tabs and the sheets, to the screens each entry stood for;
-  the browser's back asks a screen's or a sheet's `ui.OnBack` first, and
+  the browser's back asks a screen's or a sheet's `onBack` first, and
   when it takes it, the page stays where it was;
 - a reload comes back to the same screens, the ones under the top
   included; a link pasted, or opened from elsewhere, builds the screens
@@ -107,16 +107,15 @@ The history moves as react-navigation's linking moves it: a navigation
 that goes deeper (a push, a sheet, another tab than the first) pushes an
 entry; one that goes back goes back to the latest entry with its
 address (or, when the history never had it, a deep link's screens popped
-one by one, replaces the entry); the rest replace it (a `Replace`, a
-redirect, a guard sending the user elsewhere, between tabs other than
-the first, `SetQuery`). The in-app back button, Escape and Alt+Left pop
-the stack and go back in the history with it. An Alert, a `Sheet` of the
+one by one, replaces the entry); the rest replace it (`replace(href)`, a redirect, a guard sending the user elsewhere, between tabs other than
+the first, `router.setQuery`). The in-app back button, Escape and Alt+Left pop
+the stack and go back in the history with it. An `Alert`, a `Sheet` of the
 app's own and a stack the router doesn't route keep their own entry for
 the browser's back, as without a router.
 
 An app in an element of a page ([Embedding](#embedding)) leaves the
 page's address alone: its router's address stays its own. A router in a
-`Window` panel keeps its address with the panel's `StateKey`, in
+`Window` panel keeps its address with the panel's `stateKey`, in
 `localStorage`. A notification's URL of the app's own site opens its
 screen.
 
@@ -140,33 +139,33 @@ site:
 
 ## What the page reports
 
-The environment a web app sees (`ui.UseEnvironment`) is the browser's:
+The environment a web app sees (`environment()`) is the browser's:
 
-- `Platform` is `ui.PlatformWeb`.
+- `platform` is `.web`.
 - The size is the page's (or the element's the app is in), and changes
   as the window does; the size classes are Material's, from the width.
 - The safe area is the page's (`env(safe-area-inset-*)`: a phone's notch
   and home indicator, with the page's `viewport-fit=cover`), and the
   keyboard is how much of the page a phone's keyboard covers.
-- Dark mode is `prefers-color-scheme` (or the app's `ui.SetColorScheme`),
-  Reduce Motion `prefers-reduced-motion`, the text size the browser's
-  default font size (`FontScale`, which text follows), the scale the
-  display's pixel ratio.
-- The locale, languages, time zone, first weekday and hour cycle are the
-  browser's (`navigator.languages`, `Intl`).
+- `dark` is `prefers-color-scheme` (or the app's `setColorScheme`),
+  `reduceMotion` `prefers-reduced-motion`, `fontScale` the browser's
+  default font size (which text follows), `scale` the display's pixel
+  ratio.
+- `locale`, `languages` and `timeZone`, and the first weekday and the
+  hour cycle, are the browser's (`navigator.languages`, `Intl`).
 
 ## How views map
 
 - Text is the browser's text in the system's font (`system-ui`: San
   Francisco on Apple's systems, Segoe UI on Windows, Roboto on Android),
   on a type ramp of the web's (body 16). The app's fonts in
-  `assets/fonts` load as the app names them (`Font.Family`).
+  `assets/fonts` load as the app names them (a font's `family`).
 - A `Stack` shows its top screen under a header bar of its own: a back
   button, the screen's title, its bar buttons, its search field. Pushes
   and pops slide. Going back is the browser's too: its back button (and
   a phone's back gesture) goes back in the app while there's somewhere to
   go back to, as do Escape, Alt+Left (⌘[ on a Mac), and a swipe from the
-  leading edge on a touch screen. `ui.OnBack` takes them as on the other
+  leading edge on a touch screen. `onBack` takes them as on the other
   platforms. With a router, the address bar shows the screen and the
   history is its navigation's ([Addresses and history](#addresses-and-history)).
 - `Tabs` are a tab bar at the bottom; a `Split` a sidebar beside its
@@ -176,7 +175,7 @@ The environment a web app sees (`ui.UseEnvironment`) is the browser's:
   centered card on a wide one. Escape, a click outside or a swipe down
   dismisses it. An `Alert` is a modal `<dialog>`, an action sheet's
   buttons a list. A `Popover` and a menu are popovers next to what they
-  point at. A `ui.Window` is a panel in the page the user can move and
+  point at. A `Window` is a panel in the page the user can move and
   resize.
 - A `List` is virtualized by the host, as on the Mac, Windows and
   Linux: only the rows
@@ -189,9 +188,9 @@ The environment a web app sees (`ui.UseEnvironment`) is the browser's:
   canvas, `Shape` an SVG path, `Shader` WebGL 2 (the Kage program
   translated to GLSL ES 3.00), `Symbol` the Material Symbol the Android
   host draws for the SF Symbol name.
-- `ui.Animate` animates frames and visual props with the Web Animations
+- `animate` animates frames and visual props with the Web Animations
   API (springs as CSS `linear()` curves); enter and exit transitions and
-  matched views (`Style.Match`) work as on iOS.
+  shared elements (`shared`) work as on iOS.
 - Presses, long presses (and right-clicks), hover, pressed states, pans,
   swipes, pinches (two fingers, or a trackpad's pinch) and rotations work
   with a mouse, a pen or touch; drag and drop is the browser's, files
@@ -279,28 +278,32 @@ worker's script is the host's (`sqlite-worker.js`, beside `asuka.js`).
 
 ## Native modules
 
-Asuka's packages call the host's native modules (`ui.Call`). In a browser:
+The standard library's packages reach the browser through the web
+host: each package's `web/` JavaScript, or the host's own modules
+(`platform/web/src/modules`) for what every app has. In a browser:
 
 - `asuka/secure`: the values are encrypted (AES-GCM) with a key the
   browser keeps and won't let out (a non-extractable WebCrypto key), in
   IndexedDB. It isn't a keychain: script running in the app's origin
   can't read the key, but it can ask it to decrypt. It needs `https`
   (or `localhost`).
-- `device`: `GetInfo` from the user agent (Chromium's client hints give
-  the system's version and an Android phone's model); `Clipboard`, its
-  images (PNG, saved to the caches) and `OnClipboardChange` (the app's
-  own copies, and other apps' where the user lets the page read the
-  clipboard); `KeepAwake` (the Screen Wake Lock, taken again when the
-  page shows); `Browse` (a new tab); `PickPhotos` and `PickFiles` (the
-  browser's file picker; the files copied to the caches).
-- `ShareFiles`: the share sheet with the files (`navigator.share`),
+- `asuka/device`: `info()` from the user agent (Chromium's client hints
+  give the system's version and an Android phone's model); the
+  clipboard, its images (PNG, saved to the caches) and
+  `clipboardChanges()` (the app's own copies, and other apps' where the
+  user lets the page read the clipboard); `keepAwake` (the Screen Wake
+  Lock, taken again when the page shows); `browse` (a new tab);
+  `pickPhotos` and `pickFiles` (the browser's file picker; the files
+  copied to the caches).
+- `shareFiles`: the share sheet with the files (`navigator.share`),
   else each file downloaded. `asuka/preview`: the file opened in a new
   tab (images, video, audio, text, PDF, HTML); another type is
-  `ErrNoViewer`.
+  `PreviewError.noViewer`.
 - `asuka/print`: HTML, files (PDFs in the browser's viewer) and the app's
-  own web views, with the browser's print dialog; the result is always
-  `Unknown` (a browser doesn't say). `PDF` isn't on the web: a browser
-  makes PDFs only through its print dialog (Save as PDF).
+  own web views, with the browser's print dialog; the outcome is always
+  `.unknown` (a browser doesn't say). `print.pdf` isn't on the web
+  (`PrintError.unsupported`): a browser makes PDFs only through its print
+  dialog (Save as PDF).
 - `asuka/compose`: `mailto:` and `sms:` links; with attachments, the share
   sheet.
 - `asuka/notify` and `asuka/push`: the Notification API and Web Push,
@@ -309,8 +312,9 @@ Asuka's packages call the host's native modules (`ui.Call`). In a browser:
 - `asuka/network`: online from `navigator.onLine`; Wi-Fi, cellular or
   Ethernet where the browser says (Chrome on Android), metered for
   cellular, constrained for Data Saver.
-- `asuka/location`: the Geolocation API; `PlaceName` isn't on the web (a
-  browser has no geocoder).
+- `asuka/location`: the Geolocation API; `placeName` isn't on the web (a
+  browser has no geocoder). Regions and background updates are computed
+  from the positions, only while the page is open.
 - `asuka/sensors`: the Generic Sensor API (Chrome) or device motion and
   orientation events (Safari asks on a tap), in Android's axes and
   units; no barometer or pedometer.
@@ -318,59 +322,62 @@ Asuka's packages call the host's native modules (`ui.Call`). In a browser:
 - `asuka/audio`: an audio element per player (the browser's autoplay
   rules apply: play from a tap). `asuka/record`: `MediaRecorder`,
   AAC in MPEG-4 where the browser records it, else Opus in WebM.
-- `asuka/camera`: `Take` opens a phone's camera, or a dialog with the live
-  camera and a shutter; `camera.View` is the camera in a `<video>`
-  (`Capture`, `record`, and scanning codes where the browser has
+  `asuka/nowplaying`: the Media Session API.
+- `asuka/camera`: `take()` opens a phone's camera, or a dialog with the
+  live camera and a shutter; `camera.View` is the camera in a `<video>`
+  (`capture()`, `record`, and scanning codes where the browser has
   `BarcodeDetector`). `asuka/scan` and `asuka/vision`'s codes use
   `BarcodeDetector`, faces and text only where the browser has them.
 - `asuka/imageedit`: a canvas (JPEG or PNG; a remote image needs CORS).
 - `asuka/maps`: a map the host draws of OpenStreetMap's tiles, as on
-  Windows: pins, their callouts, a drag, the wheel, a pinch, a double
+  Windows: markers, their callouts, a drag, the wheel, a pinch, a double
   click and the keyboard to move it, and the attribution OpenStreetMap
-  asks for. Satellite and Hybrid show the streets (no free imagery);
-  `ShowsUser` shows the user's location once the page has the location
-  permission (`asuka/location` asks; the map never does). The tiles come
-  from `tile.openstreetmap.org` as its usage policy asks of a web page
-  (only what's on screen, the browser's cache, its Referer); for heavy
-  use, pass `mapTiles` (another server's URL, with `{z}`, `{x}` and
-  `{y}`) to `start` ([Embedding](#embedding)).
-- `asuka/crash`: Go's runtime can't write its crash output to a file in a
-  browser, so the host keeps what it prints and, as the program ends
-  with a panic or a fatal error, writes it to the run's record in the
-  app's files: the next launch reports it. An uncaught JavaScript error
-  (the host's, or your `web/*.js`) is an `Exception` report at once, not
-  fatal (the page goes on). A page marks its run alive in `localStorage`,
-  so other open pages of the app leave it alone.
+  asks for. The satellite and hybrid types show the streets (no free
+  imagery); `showsUser` shows the user's location once the page has the
+  location permission (`asuka/location` asks; the map never does). The
+  tiles come from `tile.openstreetmap.org` as its usage policy asks of a
+  web page (only what's on screen, the browser's cache, its Referer);
+  for heavy use, pass `mapTiles` (another server's URL, with `{z}`,
+  `{x}` and `{y}`) to `start` ([Embedding](#embedding)).
+- `asuka/crash`: the core's record of the run is kept in the app's
+  files, as on a phone. The core's own fatal error writes it and stops
+  the page's app; the next launch reports it. An uncaught JavaScript
+  error (the host's, or a package's `web/` script) is an `"exception"`
+  report at once, not fatal (the page goes on). A page marks its run
+  alive in `localStorage`, so other open pages of the app leave it
+  alone.
 - `asuka/biometric`: the platform's authenticator through WebAuthn (Touch
   ID, Face ID, Windows Hello, Android's screen lock), user verification
-  required: the first `Authenticate` makes a passkey for the site, named
-  after the app. The prompt is the browser's, so the reason and cancel
-  texts don't show.
+  required: the first `authenticate` makes a passkey for the site, named
+  after the app. The prompt is the browser's, so `reason` and `cancel`
+  don't show.
 - `asuka/webauth`: a popup, done when it comes back to a page of the
   app's own origin (a custom scheme can't open a page).
-- `asuka/screen`: `Lock` (only full screen, or an installed app); hiding
+- `asuka/screen`: `lock` (only full screen, or an installed app); hiding
   the bars is full screen.
-- `asuka/library`: `Save` downloads the file. `asuka/contacts`: `Pick`
-  where the browser has the Contact Picker (Chrome on Android); `Add`
-  downloads a vCard, and `asuka/calendar`'s `Add` an `.ics` file.
+- `asuka/library`: `save` downloads the file. `asuka/contacts`: `pick`
+  where the browser has the Contact Picker (Chrome on Android); `add`
+  downloads a vCard, and `asuka/calendar`'s `add` an `.ics` file.
 - `asuka/nfc`: Web NFC's `NDEFReader`, in Chrome on Android over a
   secure context: reading and writing NDEF messages, making tags
   read-only, the tag's serial number; no raw commands or capacity, and no
-  tag opens the page. Other browsers have no Web NFC: `ErrNotAvailable`
-  ([NFC tags](nfc.md)).
-- `asuka/tracking` answers Denied when the browser sends Global Privacy
-  Control or Do Not Track, else Allowed, without a prompt.
+  tag opens the page. Other browsers have no Web NFC:
+  `NfcError.notAvailable` ([NFC tags](nfc.md)).
+- `asuka/tracking` answers `.denied` when the browser sends Global
+  Privacy Control or Do Not Track, else `.allowed`, without a prompt.
 - `asuka/pay`: Apple Pay where the browser has it (Safari), through the
   Payment Request API, the merchant validated by the app's server
-  (`OnValidateMerchant`) for a domain registered with Apple; Google Pay
+  (`onValidateMerchant`) for a domain registered with Apple; Google Pay
   elsewhere, through Google's web API (`pay.js`, loaded from
   pay.google.com); each one's own button. A sheet shows only from a tap.
+- `haptic` is `navigator.vibrate`, where the browser has it (Chrome on
+  Android).
 - Not on the web, with an error that says so (or the package's own
-  "not available"): `asuka/review`, `asuka/integrity`, `asuka/agerange`,
-  `asuka/appleauth`, `asuka/icloud`, `asuka/periodic`, `asuka/widget`, `asuka/liveactivity`, `asuka/photos` (Denied:
-  `device.PickPhotos` picks photos), reading contacts and calendars,
-  `asuka/transcribe`'s files, `asuka/screen`'s `PreventCapture` and
-  `OnScreenshot`.
+  `notAvailable`): `asuka/review`, `asuka/integrity`, `asuka/agerange`,
+  `asuka/appleauth`, `asuka/icloud`, `asuka/periodic`, `asuka/widget`,
+  `asuka/liveactivity`, `asuka/photos` (`.denied`: `device.pickPhotos`
+  picks photos), reading contacts and calendars, `asuka/transcribe`'s
+  `file`, `asuka/screen`'s `preventCapture` and `screenshots()`.
 
 ## Notifications and Web Push
 
@@ -384,36 +391,38 @@ or from `localhost` (`asuka dev`'s, but not `--lan`'s addresses).
 
 ### asuka/notify
 
-- `Request` asks with the browser's prompt; browsers ask only from a tap
-  or a click, so call it from one.
-- `Show` shows it through the worker, so it keeps its buttons and its
-  click works after the page closes. (A page without the worker, an
-  embedding page that doesn't register it, shows the page's own
+- `notify.request()` asks with the browser's prompt; browsers ask only
+  from a tap or a click, so call it from one.
+- `notify.show(n)` shows it through the worker, so it keeps its buttons
+  and its click works after the page closes. (A page without the worker,
+  an embedding page that doesn't register it, shows the page's own
   notifications, without buttons; their clicks reach only that page.)
-- A notification's ID is its tag: one with the same ID replaces it, and
-  alerts again unless `Silent`. `Subtitle` is the body's first line,
-  `Image` the picture (an `https` URL or an asset), a message's sender's
-  picture (`From`) the icon. `Badge` and `SetBadge` set the installed
-  app's badge (`navigator.setAppBadge`).
-- A category's actions (`SetCategories`) are the notification's buttons
-  (Chrome and Edge show two; Firefox and Safari none), a `Reply` action a
-  text field where the browser has inline replies (Chrome on Android and
-  desktop: `Response.Reply` has the text; elsewhere it's a button). The
-  categories are kept for the worker, so a push that names one has them
-  too.
-- A tap focuses the app's page, goes to its `URL` (`ui.OnOpenURL`) and
-  reaches `OnAction` (`Action ""`); a button reaches `OnAction` with its
-  ID, in the page in front, else any page of the app. With no page open,
-  the worker opens one (a browser runs the app's code only in a page),
-  and the app gets the response as it starts, as an app launched by a tap
-  does: set `OnAction` in the root component. An action without `Open`
-  doesn't bring a page that's open to the front, but with none open it
-  opens one, in front. `Response.Defer` has nothing to hold: the page
-  runs on.
-- `Present` asks the app how to show one that comes while the page is in
-  front, a push's too: `Banner`, `Quiet` (no sound), `Hide`.
-- `Showing`, `Remove`, `RemoveThread`, `RemoveAll` and `Cancel` reach the
-  worker's notifications, the ones from earlier pages and pushes too.
+- A notification's `id` is its tag: one with the same `id` replaces it,
+  and alerts again unless `silent`. `subtitle` is the body's first line,
+  `image` the picture (an `https` URL or an asset), a message's sender's
+  picture (`sender`'s `image`) the icon. `badge` and `notify.setBadge`
+  set the installed app's badge (`navigator.setAppBadge`).
+- A category's actions (`notify.setCategories`) are the notification's
+  buttons (Chrome and Edge show two; Firefox and Safari none), an action
+  with a `reply` a text field where the browser has inline replies
+  (Chrome on Android and desktop: the response's `reply` has the text;
+  elsewhere it's a button). The categories are kept for the worker, so a
+  push that names one has them too.
+- A tap focuses the app's page, goes to its `url` (`onOpenURL`) and
+  comes in `notify.responses()` (`action` `""`); a button comes with its
+  `id`, in the page in front, else any page of the app. With no page
+  open, the worker opens one (a browser runs the app's code only in a
+  page), and the app gets the response as it starts, as an app launched
+  by a tap does: read `notify.responses()` from the root component. An
+  action without `open` doesn't bring a page that's open to the front,
+  but with none open it opens one, in front. A response's `defer()` has
+  nothing to hold: the page runs on.
+- `notify.present(decide)` asks the app how to show one that comes while
+  the page is in front, a push's too: `.banner`, `.quiet` (no sound),
+  `.hide`.
+- `notify.showing()`, `remove`, `removeThread`, `removeAll` and `cancel`
+  reach the worker's notifications, the ones from earlier pages and
+  pushes too.
 - Android's channels don't exist here: accepted and ignored, as on iOS.
 
 #### Scheduled notifications
@@ -421,7 +430,7 @@ or from `localhost` (`asuka dev`'s, but not `--lan`'s addresses).
 A browser can't show a notification at a time while no page of the app
 is open: there's no API for it (Chrome's Notification Triggers, which
 did, were abandoned in 2021), and a service worker runs only when an
-event wakes it, not on a timer. So `Schedule` does what a browser can:
+event wakes it, not on a timer. So `notify.schedule` does what a browser can:
 
 - What's scheduled is kept in the app's store (Cache Storage, which the
   app's pages and its worker share), not in the page.
@@ -447,9 +456,9 @@ a push from your server at that time.
 
 ### asuka/push: Web Push
 
-Web Push needs a VAPID key pair: the app's server signs its pushes with
-the private key, and the browser subscribes with the public one, which
-goes in `asuka.toml`:
+Web Push needs a VAPID key pair (RFC 8292): the app's server signs its
+pushes with the private key, and the browser subscribes with the public
+one, which goes in `asuka.toml`:
 
 ```toml
 [web]
@@ -457,21 +466,22 @@ vapidPublicKey = "BKpYsAT0ADj2pHQQ..."
 ```
 
 Make the pair once, and keep the private key on the server; a new pair
-needs new subscriptions. `webpush.GenerateKeys` (below) makes one, as
-does `npx web-push generate-vapid-keys`.
+needs new subscriptions. Any Web Push library makes one: `npx web-push
+generate-vapid-keys`, say.
 
-`push.Register()` asks to allow notifications (from a tap: browsers ask
+`push.register()` asks to allow notifications (from a tap: browsers ask
 only then), subscribes the app's worker with the key (a subscription
-made with another key is replaced) and answers with:
+made with another key is replaced) and answers with a
+`push.Registration`:
 
-- `Token`: the subscription's JSON, as `PushSubscription.toJSON()` has
+- `token`: the subscription's JSON, as `PushSubscription.toJSON()` has
   it: `{"endpoint": "https://...", "expirationTime": null, "keys":
   {"p256dh": "...", "auth": "..."}}`. Send it to your server as it is:
   Web Push libraries take it as it is. The browser may change it
   (`pushsubscriptionchange`): register at each start, as on the other
   platforms, and send it when it's not the one the server has.
-- `Service`: `"webpush"`.
-- `Allowed`: true. Without permission, `Register` fails: a browser
+- `service`: `"webpush"`.
+- `allowed`: true. Without permission, `register` fails: a browser
   subscribes only a site that shows its pushes (`userVisibleOnly`).
 
 It fails, saying why, without `web.vapidPublicKey`, without the worker
@@ -480,12 +490,13 @@ and iPadOS has it only for an app added to the Home Screen (16.4 and
 later).
 
 A push shows as a notification, whether or not a page is open. A page
-of the app that is open gets it first (`push.OnReceive`; every open
-page), may rewrite it (`push.Rewrite`, which runs in the page in front,
+of the app that is open gets it first (`push.received()`; every open
+page), may rewrite it (`push.rewrite`, which runs in the page in front,
 within about ten seconds; with no page open, a push shows as it came)
-and says how it shows (`notify.Present`). Its tap reaches
-`push.OnOpen`, `notify.OnAction` (`Remote` set) and, with a `"url"` in
-its data, `ui.OnOpenURL`, as a local notification's does.
+and says how it shows (`notify.present`). Its tap comes in
+`push.opened()` and `notify.responses()` (its notification's `remote`
+set) and, with a `"url"` in its data, `onOpenURL`, as a local
+notification's does.
 
 #### What the server sends
 
@@ -494,13 +505,13 @@ The payload is JSON, encrypted for the subscription (RFC 8291's
 library does. The worker reads these keys, the same a `push.Message`
 has on the other platforms:
 
-| Key | | 
+| Key | |
 | --- | --- |
 | `title`, `body`, `subtitle` | what shows (the subtitle is the body's first line) |
-| `data` | the app's own keys, `push.Message`'s `Data` (a value that isn't a string comes as its JSON); `"url"` is what a tap opens the app with (`ui.OnOpenURL`) |
+| `data` | the app's own keys, `push.Message`'s `data` (a value that isn't a string comes as its JSON); `"url"` is what a tap opens the app with (`onOpenURL`) |
 | `id` | the notification's tag: a push with the same `id` replaces it |
-| `category` | one of `notify.SetCategories`' categories: its actions are the notification's buttons |
-| `thread`, `summary` | `push.Message`'s, for `notify.RemoveThread` and the app |
+| `category` | one of `notify.setCategories`' categories: its actions are the notification's buttons |
+| `thread`, `summary` | `push.Message`'s, for `notify.removeThread` and the app |
 | `image` | a picture: an `https` URL, or one of the app's assets |
 | `badge` | the installed app's badge |
 | `silent` | shown without a sound |
@@ -517,15 +528,31 @@ has on the other platforms:
 ```
 
 A push without a `title` or `body` is a data message: the open pages get
-it (`OnReceive`), nothing shows. Send those only while the app is open:
-a browser expects each push to show a notification, and when none
+it (`push.received()`), nothing shows. Send those only while the app is
+open: a browser expects each push to show a notification, and when none
 shows with no page in front, Chrome shows one of its own ("This site has
 been updated in the background") and Safari ends the subscription after
 a few. A payload that isn't JSON shows as the body. A payload is at most
 3993 bytes.
 
-From Go, `github.com/egoist/asuka/webpush` encrypts, signs and sends,
-with the standard library only:
+Any Web Push library encrypts, signs and sends it. From Node, with the
+[`web-push`](https://github.com/web-push-libs/web-push) library:
+
+```js
+import webpush from "web-push";
+
+webpush.setVapidDetails("mailto:ops@example.com", process.env.VAPID_PUBLIC_KEY, process.env.VAPID_PRIVATE_KEY);
+
+// token: the app's push.register() token
+await webpush.sendNotification(JSON.parse(token), JSON.stringify({
+  title: "Ada", body: "Lunch?", category: "message", data: { url: "myapp://chat/7" },
+}), { urgency: "high" });
+// A 404 or 410 (err.statusCode): the subscription ended; forget it.
+```
+
+A server in Go can use Asuka's own sender, the repository's
+[`webpush`](../webpush/webpush.go) package, with the standard library
+only:
 
 ```go
 import "github.com/egoist/asuka/webpush"
@@ -536,7 +563,7 @@ var sender = &webpush.Sender{
 }
 
 func notifyChat(ctx context.Context, token string) error {
-	sub, err := webpush.ParseSubscription(token) // the app's push.Register Token
+	sub, err := webpush.ParseSubscription(token) // the app's push.register() token
 	if err != nil {
 		return err
 	}
@@ -551,62 +578,50 @@ func notifyChat(ctx context.Context, token string) error {
 }
 ```
 
-`Options` set the push's `TTL` (how long the push service keeps it for
-a browser that's offline; four weeks by default), `Urgency` and `Topic`
-(a later push with the same topic replaces one still waiting).
-`webpush.Keys.Authorization` and `webpush.Encrypt` are the two halves,
-for a server that sends its own requests.
-
-From Node, with the [`web-push`](https://github.com/web-push-libs/web-push)
-library:
-
-```js
-import webpush from "web-push";
-
-webpush.setVapidDetails("mailto:ops@example.com", process.env.VAPID_PUBLIC_KEY, process.env.VAPID_PRIVATE_KEY);
-
-// token: the app's push.Register Token
-await webpush.sendNotification(JSON.parse(token), JSON.stringify({
-  title: "Ada", body: "Lunch?", category: "message", data: { url: "myapp://chat/7" },
-}), { urgency: "high" });
-// A 404 or 410 (err.statusCode): the subscription ended; forget it.
-```
+Its `Options` set the push's `TTL` (how long the push service keeps it
+for a browser that's offline; four weeks by default), `Urgency` and
+`Topic` (a later push with the same topic replaces one still waiting);
+`webpush.GenerateKeys` makes a key pair. Other languages have their own
+libraries (pywebpush, web-push-php, the `web-push` crate…): they send
+the same JSON.
 
 ## Web views
 
 A `WebView` is an `<iframe>`, made anew for each page it loads, so it
 keeps its own history and adds nothing to the tab's.
 
-A page of the app's own site (its assets, HTML, a file it wrote, any URL
-of the page's origin) gets everything: the host loads it into the frame
-with its real URL, `window.asuka.postMessage` and `Preload` there before
-the page's scripts; `EvalJS` and `EvalJSResult` (a promise awaited); its
-load, failure and state events (URL, title, `pushState`, progress, back
-and forward); back, forward, reload and stop; its links, forms and
-`location` changes load through the view; `Block` (its markup, `fetch`,
+A page of the app's own site (its assets, `html`, a file it wrote, any
+URL of the page's origin) gets everything: the host loads it into the
+frame with its real URL, `window.asuka.postMessage` and `preload` there
+before the page's scripts; a `Ref`'s `run(script)` and `eval(script)`
+(a promise awaited); `on loaded`, `on error` and `on state` (URL,
+title, `pushState`, progress, back and forward); the `Ref`'s `goBack()`,
+`goForward()`, `reload()` and `stopLoading()`; its links, forms and
+`location` changes load through the view; `block` (its markup, `fetch`,
 XHR, `sendBeacon`, WebSocket, EventSource, elements' `src` and `href`;
 a request already under way when it's caught may still go out);
-`OnRequest` (Resource Timing); `OnNewWindow` (`window.open`,
-`target=_blank`); `OnDownload` (an attachment, a type a frame can't
-show, `<a download>`); `WebCookies` (`document.cookie`: not `HttpOnly`
-ones). HTML's relative links resolve against the app's assets.
+`on request` (Resource Timing); `on newWindow` (`window.open`,
+`target=_blank`); `on download` (an attachment, a type a frame can't
+show, `<a download>`); `webCookies(url)` (`document.cookie`: not
+`HttpOnly` ones). `html`'s relative links resolve against the app's
+assets.
 
 Another site's page only loads, because browsers keep sites apart:
-`Navigated` once it has loaded, `Failed` when the site can't be reached.
-The view can't tell when a site refuses to be framed
+`on loaded` once it has loaded, `on error` when the site can't be
+reached. The view can't tell when a site refuses to be framed
 (`X-Frame-Options`, `frame-ancestors`): the browser shows its own error
 page. It can't follow where the page's links lead or read its title, and
-can't run script there, `Block` or `Preload` it, report its requests,
-read its cookies or set the user agent (script and cookies answer with an
-error, the others warn once). The frame is sandboxed without top-level
-navigation, so the page can't take the app away.
+can't run script there, `block` or `preload` it, report its requests,
+read its cookies or set its `userAgent` (script and cookies answer with
+an error, the others warn once). The frame is sandboxed without
+top-level navigation, so the page can't take the app away.
 
 A page of another site that cooperates talks with the view through
 `postMessage` (the view accepts messages only from its own frame, and
 sends script only to the origin that said it's ready):
 
 ```js
-// In the page: messages to the app (OnMessage), its URL and title, and EvalJS.
+// In the page: messages to the app (on message), its URL and title, and the app's eval.
 const app = (m) => parent.postMessage({ asuka: m.asuka ?? true, ...m }, "*");
 addEventListener("message", async (e) => {
   if (e.source !== parent || !e.data?.asuka) return;
@@ -617,7 +632,7 @@ addEventListener("message", async (e) => {
   }
 });
 app({ asuka: "ready", url: location.href, title: document.title });
-app({ text: "Hello from the page" }); // OnMessage
+app({ text: "Hello from the page" }); // on message
 ```
 
 `asuka/js` runs its script in a hidden sandboxed frame of an origin of its
@@ -625,9 +640,22 @@ own, so it can't reach the app's page or storage.
 
 ## Native code
 
-A [native package](native.md)'s JavaScript is its `web/` directory: the
-generated `<package>.asuka.js` and the package's own `<package>.js`, which
-exports the functions that make its modules and views:
+A [native package](native.md) declares its modules and views in Asuka
+(`native interface`, `native component`); on the web, each is
+implemented in its `web/` directory's JavaScript. `asuka native
+generate` writes `<package>.asuka.js` (and `<package>.decl.asuka.js`,
+its enums and errors), which imports the package's own `<package>.js`:
+an ES module exporting a `make<Name>` function per module and view. For
+`examples/media/segmented`'s view,
+
+```asuka
+pub native component Segmented(items: [string]) {
+  prop selected: int = 0
+  event changed(index: int)
+}
+```
+
+the web's is:
 
 ```js
 // segmented/web/segmented.js
@@ -650,9 +678,6 @@ package's other files (its helpers, its assets) ship beside it, so it
 can import them or fetch them relative to `import.meta.url`. `asuka dev`
 reloads the page when one changes.
 
-`examples/media/segmented` has a native view, its JavaScript in
-`examples/media/segmented/web/segmented.js`.
-
 ## Embedding
 
 The page `asuka build --platform web` makes runs the app full page. To run it in an
@@ -664,7 +689,7 @@ in it; it then follows the element's size:
 <div id="app" style="width: 390px; height: 700px"></div>
 <script type="module">
   import { start } from "./asuka/<digest>/asuka.js";
-  start({ container: document.getElementById("app"), wasm: "app.<digest>.wasm", name: "com.example.app", serviceWorker: "sw.<digest>.js" });
+  start({ container: document.getElementById("app"), core: "asuka.<digest>.wasm", name: "com.example.app", serviceWorker: "sw.<digest>.js" });
 </script>
 ```
 
