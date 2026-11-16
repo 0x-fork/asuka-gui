@@ -177,7 +177,7 @@ platform's side can always fail), so calls are `try`.
 | an enum of the package (cases without payloads) | a `RawRepresentable` struct with a static per case | a value class with a constant per case | a frozen object of the cases | an `int64_t`, a constant per case (`<pkg>_Level_low`) |
 | a `native interface` (a parameter or result) | `any T` | `T` | an object | `<pkg>_T *` |
 | `fn(...)` (a parameter) | a closure | a function | a function | `<pkg>_fn_…`, called with its `_call` |
-| `Ref` (a parameter) | `AsukaViewRef`: its `view` (main actor) is the `UIView` or `NSView` the host shows (a WebView's `WKWebView`), `nil` for none | `AsukaViewRef`: its `view` (main thread) is the `View` (a WebView's `WebView`), `null` for none | the element, or `null` | `uint32_t`, the view's id: `asuka_desktop_view(v)` is its `HWND` or `GtkWidget *`, `asuka_desktop_webview(v)` a WebView's `ICoreWebView2 *` or `WebKitWebView *` |
+| `Ref` (a parameter) | `AsukaViewRef`: its `view` (main actor) is the `UIView` or `NSView` Asuka shows (a WebView's `WKWebView`), `nil` for none | `AsukaViewRef`: its `view` (main thread) is the `View` (a WebView's `WebView`), `null` for none | the element, or `null` | `uint32_t`, the view's id: `asuka_desktop_view(v)` is its `HWND` or `GtkWidget *`, `asuka_desktop_webview(v)` a WebView's `ICoreWebView2 *` or `WebKitWebView *` |
 
 A struct's fields cross in their order; its constants and methods stay
 on Asuka's side. Objects (native interfaces) pass only as a parameter
@@ -185,7 +185,7 @@ or a result, not inside an array, a map or a struct. A `Ref` passes
 only as a parameter: what crosses is the view it holds at the call
 (platform/print's `webView(view: Ref, …)` prints the page of the WebView
 put in it with `ref:`), which the platform's code looks up on the main
-thread; it's `nil` when the Ref holds none, or a view the host doesn't
+thread; it's `nil` when the Ref holds none, or a view Asuka doesn't
 show (yet). `asuka native
 generate` reports anything else at its position, with what to use
 instead.
@@ -284,7 +284,7 @@ setter per prop, and an events object it gets as it's made:
 
 Props come in no set order, so a view that depends on two of them (a
 selection among items) keeps what it got and applies them once both are
-there. The host sizes the view as it does its own:
+there. Asuka sizes the view as it does its own:
 
 - in Swift, `sizeThatFits` (iOS), or `fittingSize` (macOS), or
   `AsukaSizing`'s `sizeThatFits` if the view conforms;

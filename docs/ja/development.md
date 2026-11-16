@@ -138,7 +138,7 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # 先に操�
 - **Android の初回ビルドが遅い**：初回だけ、Gradle が自分自身と Android のライブラリをダウンロードするためです。
 - **実機にリリースビルドが入っている**：`asuka build` でインストールしたアプリ（署名鍵が異なります）は、開発用アプリをインストールするために、データごとアンインストールされます。
 - **`asuka dev --platform windows runs the app on this computer`**：`asuka dev` で Windows のアプリを実行できるのは、Windows 上だけです。ほかのシステムでは `asuka build --platform windows` でビルドし、できたフォルダーを PC にコピーしてください。
-- **Linux での `... isn't installed`**：ホストには GTK 4.14 以降と libadwaita 1.5 以降が必要です。また、パッケージによっては独自のライブラリが必要です。`WebView` には WebKitGTK 6.0、動画とオーディオには GStreamer、セキュアストレージには libsecret が必要です。足りないライブラリはエラーメッセージに示されるので、ディストリビューションのパッケージマネージャーでインストールしてください。
+- **Linux での `... isn't installed`**：アプリには GTK 4.14 以降と libadwaita 1.5 以降が必要です。また、パッケージによっては独自のライブラリが必要です。`WebView` には WebKitGTK 6.0、動画とオーディオには GStreamer、セキュアストレージには libsecret が必要です。足りないライブラリはエラーメッセージに示されるので、ディストリビューションのパッケージマネージャーでインストールしてください。
 - **Linux のアプリが開かない**：アプリにはディスプレイが必要です。SSH 経由や CI では Xvfb（`xvfb-run -a`）の下で実行し、D-Bus を使う機能のためにセッションバス（`dbus-run-session`）も用意してください。
 - **最初からやり直す**：Asuka のビルド、キャッシュ、アプリの開発用データは、Asuka のキャッシュディレクトリにあります。場所は Mac では `~/Library/Caches/asuka`、Linux では `~/.cache/asuka`、Windows では `%LocalAppData%\asuka` です。このディレクトリを削除すると、データのない状態から、すべてをビルドし直せます。
 

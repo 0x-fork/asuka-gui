@@ -1156,7 +1156,8 @@ component Main {
   window's state is reported only once something reads it. A minimized
   window, or one behind others, is still visible.
 
-The actions act on the window at the flush, as state writes do. On a
+The actions act on the window when the screen next updates, as state
+writes do. On a
 phone they do nothing, and the state reads as nothing shown.
 
 ### Asking before a window closes

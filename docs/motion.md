@@ -12,7 +12,7 @@ mouse and trackpad, haptics and Reduce Motion.
 
 ## Animate a change
 
-Wrap the write in `animate`. Whatever the next flush changes then
+Wrap the write in `animate`. Whatever the write changes on screen then
 animates: frames that layout moves, and the visual props listed below.
 
 ```asuka

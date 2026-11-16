@@ -300,7 +300,7 @@ component SignIn {
 async fn signIn() throws { throw Error("The password is wrong") }
 ```
 
-它会随下一次刷新发出，那时视图已经存在并有了 frame：在 iOS 上是带着该视图的 `UIAccessibility` 屏幕变化通知，在 Android 上是 `ACTION_ACCESSIBILITY_FOCUS`，在 macOS 上是指明该视图的布局变化通知，在 Windows 上是焦点事件。如果目标是一个自身没有原生视图的容器，焦点会落到它的第一个视图上。在这四个平台上，没有屏幕阅读器时它什么也不做，而且永远不会移动键盘焦点（那是 `Ref` 的 `focus()` 的事）。
+它会在屏幕下一次更新时发出，那时视图已经存在并有了 frame：在 iOS 上是带着该视图的 `UIAccessibility` 屏幕变化通知，在 Android 上是 `ACTION_ACCESSIBILITY_FOCUS`，在 macOS 上是指明该视图的布局变化通知，在 Windows 上是焦点事件。如果目标是一个自身没有原生视图的容器，焦点会落到它的第一个视图上。在这四个平台上，没有屏幕阅读器时它什么也不做，而且永远不会移动键盘焦点（那是 `Ref` 的 `focus()` 的事）。
 
 在 Linux 和 Web 上，它会把键盘焦点移到该视图，屏幕阅读器随之跟过去：GTK 和网页没有别的办法让屏幕阅读器指向某个视图。
 

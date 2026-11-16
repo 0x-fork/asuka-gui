@@ -300,7 +300,7 @@ component SignIn {
 async fn signIn() throws { throw Error("The password is wrong") }
 ```
 
-フォーカスの移動は、ビューが作られてフレームが決まったあと、次のフラッシュで送られます。iOS ではビューを指定した `UIAccessibility` の画面変更通知（screen-changed notification）、Android では `ACTION_ACCESSIBILITY_FOCUS`、macOS ではビューを指定したレイアウト変更の通知、Windows ではフォーカスイベントになります。自分のビューを持たないコンテナーでは、その中の最初のビューにフォーカスが移ります。この四つのプラットフォームでは、スクリーンリーダーがオフなら何もせず、キーボードのフォーカスを動かすこともありません（それは `Ref` の `focus()` の役目です）。
+フォーカスの移動は、ビューが作られてフレームが決まったあと、次に画面が更新されるときに送られます。iOS ではビューを指定した `UIAccessibility` の画面変更通知（screen-changed notification）、Android では `ACTION_ACCESSIBILITY_FOCUS`、macOS ではビューを指定したレイアウト変更の通知、Windows ではフォーカスイベントになります。自分のビューを持たないコンテナーでは、その中の最初のビューにフォーカスが移ります。この四つのプラットフォームでは、スクリーンリーダーがオフなら何もせず、キーボードのフォーカスを動かすこともありません（それは `Ref` の `focus()` の役目です）。
 
 Linux と Web では、キーボードのフォーカスをビューに移し、スクリーンリーダーはそれを追いかけます。GTK とページには、スクリーンリーダーにビューを指し示すほかの方法がないためです。
 

@@ -311,7 +311,7 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # steps firs
 - **`asuka dev --platform windows runs the app on this computer`**:
   `asuka dev` runs a Windows app on Windows only. Build it elsewhere
   with `asuka build --platform windows`, and copy the folder to a PC.
-- **`... isn't installed` on Linux**: the host needs GTK 4.14 and
+- **`... isn't installed` on Linux**: an app needs GTK 4.14 and
   libadwaita 1.5 or later, and some packages a library of their own:
   WebKitGTK 6.0 for `WebView`, GStreamer for video and audio, libsecret
   for secure storage. The error names it; install it with your

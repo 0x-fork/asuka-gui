@@ -392,7 +392,8 @@ component SignIn {
 async fn signIn() throws { throw Error("The password is wrong") }
 ```
 
-It's sent with the next flush, once the view exists and has its frame:
+It's sent when the screen next updates, once the view exists and has
+its frame:
 `UIAccessibility`'s screen-changed notification with the view on iOS,
 `ACTION_ACCESSIBILITY_FOCUS` on Android, a layout change naming the view
 on macOS and the focus event on Windows. A container with no view of
