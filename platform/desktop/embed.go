@@ -5,4 +5,3 @@
 package desktop
 
 //go:generate go run gen_words.go
-

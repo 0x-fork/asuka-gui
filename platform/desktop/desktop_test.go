@@ -11,12 +11,13 @@ import (
 	"image/gif"
 	"os"
 	"os/exec"
-	"strings"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/egoist/asuka/internal/animimage"
 	"github.com/egoist/asuka/internal/cbuild"
+	"github.com/egoist/asuka/platform/desktop"
 )
 
 func TestC(t *testing.T) {
@@ -24,7 +25,14 @@ func TestC(t *testing.T) {
 	if err != nil {
 		t.Skip(err)
 	}
-	srcs, _ := filepath.Glob("src/*.c")
+	// The hosts' own shared C (HostShared); the registry's and the
+	// packages' (Shared) need the core and are native_test's.
+	var srcs []string
+	for _, f := range desktop.HostShared(".") {
+		if strings.HasSuffix(f, ".c") {
+			srcs = append(srcs, f)
+		}
+	}
 	srcs = append(srcs, "test/desktop_test.c")
 	exe := filepath.Join(t.TempDir(), "desktop_test")
 	args := append(append([]string{}, cc.Args...), cbuild.Flags...)
