@@ -4,6 +4,8 @@
 // tests (desktop_test.go).
 package desktop
 
+//go:generate go run gen_words.go
+
 import "embed"
 
 // Sources holds include and src.
