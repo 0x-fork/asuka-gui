@@ -35,7 +35,7 @@ func makeBattery() throws -> any Battery { IOSBattery() }
 
 Asuka 的组件、标准库（`std/...`）和平台 SDK（`platform/...`）已经覆盖了大多数应用需要显示和使用的功能，[与 SwiftUI 和 Expo 的对比](parity.md) 中列出了它们。如果你需要某个还没有被封装的平台 API、某个厂商的 SDK，或者 Asuka 没有提供的视图（地图、图表、只有某个平台才有的控件），就可以写一个原生包。
 
-原生包只需要为应用实际运行的平台提供代码。在没有代码的平台上，创建模块时会抛出一个 `unsupported` 错误，视图则什么都不显示（宿主会在日志中提示缺少这个视图）。
+原生包只需要为应用实际运行的平台提供代码。在没有代码的平台上，创建模块时会抛出一个 `unsupported` 错误，视图则什么都不显示（日志中会提示缺少这个视图）。
 
 如果要用的库提供的是 C API，或者这段代码你本来就会用 C 来写，那就直接调用 C：一个 `extern fn` 只是一条声明，同一份 C 代码在所有平台上运行（Web 也一样，编译进 WebAssembly 模块），而且一次调用只做参数类型需要的转换，不经过任何编码。原生包适用于只有平台自己的语言才能访问的东西（UIKit、Android 的 API、DOM、厂商的 Swift 或 Kotlin SDK），以及视图。详见[在 Asuka 中调用 C](c.md)。
 
@@ -137,7 +137,7 @@ pub native interface Oven {
 | `[T]` | `[T]` | `List<T>` | `Array` | `<pkg>_list_T`（`data`、`len`） |
 | `[string: T]` | `[String: T]` | `Map<String, T>` | `object` | `<pkg>_map_T`（`keys`、`values`、`len`） |
 | `T?` | `T?` | `T?` | `T` 或 `null` | `T *`（`NULL` 表示没有值；`string?` 是 `char *`） |
-| `Color` | `Int`，即核心的编码：`AsukaColors.color(_:)` 把它变成 `UIColor` 或 `NSColor`（语义色会跟随浅色和深色模式） | `Long`：`AsukaModules.color(v, fallback)` 把它变成 ARGB 的 `Int` | `bigint`：`native.color(v)` 把它变成 CSS 颜色（语义色是一个 CSS 变量） | `uint64_t`：`asuka_desktop_color(v)` 按当前的外观把它变成 RGBA |
+| `Color` | `Int`，即 Asuka 的编码：`AsukaColors.color(_:)` 把它变成 `UIColor` 或 `NSColor`（语义色会跟随浅色和深色模式） | `Long`：`AsukaModules.color(v, fallback)` 把它变成 ARGB 的 `Int` | `bigint`：`native.color(v)` 把它变成 CSS 颜色（语义色是一个 CSS 变量） | `uint64_t`：`asuka_desktop_color(v)` 按当前的外观把它变成 RGBA |
 | 包中定义的结构体 | 结构体（包含自身时为 final class） | data class | 对象 | 结构体 `<pkg>_Name` |
 | 包中定义的枚举（成员不带值） | `RawRepresentable` 结构体，每个成员对应一个静态成员 | value class，每个成员对应一个常量 | 由这些成员组成的冻结对象 | `int64_t`，每个成员对应一个常量（`<pkg>_Level_low`） |
 | `native interface`（作为参数或返回值） | `any T` | `T` | 对象 | `<pkg>_T *` |
@@ -162,10 +162,6 @@ pub native interface Oven {
 - **线程。** 方法在平台端同步运行，所在线程就是发起调用的主线程：中间没有线程切换，也没有队列。这让调用的开销很小，但耗时的调用会占住主线程，所以要把这样的方法声明为 `async`。
   - 在方法或接口的 `///` 文档里写上 `@mainThread`，就能确保它在平台的主线程上运行，UIKit、AppKit 和 Android 的视图都要求这样做。这时 Swift 中的协议会标注为 `@MainActor`。
   - JavaScript 是单线程的，所以这些在 Web 上不适用；Windows 和 Linux 上的 C 代码所有调用都在主线程上运行。
-
-### 调用的开销
-
-一次调用会把参数编码到一个缓冲区中，然后只跨越一次边界：iOS 上经过 C，Android 上经过 JNI，Mac 上通过函数指针进入 Swift 库，Web 上经过 JavaScript 宿主，Windows 和 Linux 上是包的 provider 的函数指针。返回结果也以同样的方式解码。整个过程中没有任何反射。
 
 ## 声明视图
 
@@ -219,7 +215,7 @@ segmented.Segmented(["Day", "Week", "Month"]) {
 
 `examples/media/segmented` 是一个在所有平台上都完整实现的视图示例。
 
-在应用的测试里（运行在假宿主上，没有平台代码），原生视图显示为它的组件名，`app.tap("Segmented")` 会给它发送一个 `press` 事件，就像平台上的按钮被按下一样。
+在应用的测试里（`asuka test`，没有平台代码），原生视图显示为它的组件名，`app.tap("Segmented")` 会给它发送一个 `press` 事件，就像平台上的按钮被按下一样。
 
 ## 应用需要什么
 
@@ -277,7 +273,7 @@ let package = Package(
 )
 ```
 
-这个包完全由你掌控：它的依赖、target、资源、C target 和二进制 target 都是标准的 SwiftPM 写法，和任何 Swift 包一样。CLI 会用 `xcodebuild` 把它和应用的其他原生包以及 Asuka 的宿主一起构建，把结果链接进应用，并把生成的动态框架和资源包嵌入应用。`asuka`（产品名为 `Asuka`）是生成的代码所依赖的 Asuka 宿主；CLI 会把它指向 CLI 自带的那份副本，所以它总是与应用的 Asuka 代码版本一致。包中声明的 `platforms` 会真正起作用：如果应用的目标 iOS 或 macOS 版本更低，构建会失败并说明这个包的要求；只列出其中一个平台的包（`platforms: [.iOS("16.0")]`）只会为那个平台构建。
+这个包完全由你掌控：它的依赖、target、资源、C target 和二进制 target 都是标准的 SwiftPM 写法，和任何 Swift 包一样。Asuka 会把它和应用以及应用的其他原生包一起构建，链接进应用，并把生成的动态框架和资源包嵌入应用。`asuka`（产品名为 `Asuka`）是生成的代码所依赖的库；构建时使用的是你的 `asuka` 自带的那份，所以它总是与应用的 Asuka 版本一致。包中声明的 `platforms` 会真正起作用：如果应用的目标 iOS 或 macOS 版本更低，构建会失败并说明这个包的要求；只列出其中一个平台的包（`platforms: [.iOS("16.0")]`）只会为那个平台构建。
 
 要在 Xcode 中编辑它，打开 `Package.swift` 即可。Xcode 会从 URL 解析 `asuka`，所以生成的代码和你的代码在 Xcode 里的类型检查结果和构建时一致。
 
@@ -322,7 +318,7 @@ dependencies {
 Kotlin 源码放在 `src/main/kotlin/` 下，包名与生成文件中的一致：也就是包的名称（asuka.toml 的 `name`），各段转为小写，主机名倒过来放在最前面（`@acme/battery` 对应 `_acme.battery`，`github.com/you/battery` 对应 `com.github.you.battery`）。CLI 会把这个模块加入应用的 Gradle 构建，并统一设置以下内容，所以模块里只需要写命名空间和依赖：
 
 - SDK 版本、Java 17 和 Kotlin 工具链；
-- 对 Asuka 宿主库（`dev.asuka`）的依赖，它会带入 AndroidX、Material Components 和协程。
+- 对 Asuka 的 Android 库（`dev.asuka`）的依赖，它会带入 AndroidX、Material Components 和协程。
 
 模块的 `src/main/AndroidManifest.xml`（权限、服务、广播接收器、内容提供者）会合并到应用的清单中，和任何库一样。
 
@@ -360,7 +356,7 @@ export function makeSegmented(events) {
 
 ## Windows 和 Linux：C
 
-包在 Windows 和 Linux 上的代码是 C，放在它的 `desktop/` 目录里，和 C 宿主、核心以及应用一起编译进应用的可执行文件（Zig 可以在任何系统上交叉编译）。文件名以 `_windows.c` 或 `_linux.c` 结尾的文件只在对应的平台上构建，其他文件两个平台都构建，有差别的地方用 `#ifdef _WIN32` 区分；某个平台上没有包自己的任何文件时，包在那里就没有代码，创建它的模块会抛出 `unsupported`。`asuka native generate` 会生成你的代码要包含的 `<package>.asuka.h`：包的类型、每个接口一个 vtable，以及你要写的函数，每个接口和每个视图各一个：
+包在 Windows 和 Linux 上的代码是 C，放在它的 `desktop/` 目录里，编译进应用的可执行文件（在其他系统上构建时用 Zig）。文件名以 `_windows.c` 或 `_linux.c` 结尾的文件只在对应的平台上构建，其他文件两个平台都构建，有差别的地方用 `#ifdef _WIN32` 区分；某个平台上没有包自己的任何文件时，包在那里就没有代码，创建它的模块会抛出 `unsupported`。`asuka native generate` 会生成你的代码要包含的 `<package>.asuka.h`：包的类型、每个接口一个 vtable，以及你要写的函数，每个接口和每个视图各一个：
 
 ```c
 // desktop/battery.c
@@ -439,8 +435,8 @@ battery_Battery *battery_make_Battery(asuka_error *err) {
 - **调用**在主线程上运行，平台的界面也在那里：同步方法直接返回结果，不能阻塞；失败的方法设置 `err` 并返回零值。`async` 方法接收一个 `asuka_call` 并立即返回：之后在任意线程上用生成的 `_done`（`battery_Battery_watch_done`）或 `asuka_call_fail` 应答一次。`asuka_call_cancelled` 和 `asuka_call_on_cancel` 告诉你发起调用的 task 什么时候离开了。会阻塞的工作用 `asuka_desktop_spawn` 放到单独的线程上。
 - **内存**：所有跨边界的值都用 `malloc` 分配。方法的参数归生成的代码所有，同步调用期间有效，异步调用在应答之前有效（要保留得更久就复制一份）；方法返回（或应答）的值交给生成的代码，由它释放（字面量要先 `asuka_strdup`）。回调的参数仍归你；问题型回调返回的值由你释放（`<pkg>_<Type>_free`）。vtable 的 `release` 为 `NULL` 时，Asuka 不再持有对象时会直接释放它。
 - **回调**：用 `<pkg>_fn_…_call` 调用。通知型回调可以在任意线程上调用（会被投递到主线程）；问题型回调在主线程上立即运行，在其他线程上调用时会等待它的结果。
-- **视图**：`<pkg>_make_<View>(events)` 创建视图的对象和它的 `widget`，即一个 `HWND`（`events.parent` 的子窗口）或一个 `GtkWidget *`，宿主负责显示它，并在视图离开时销毁它。每个属性在 vtable 里有一个 setter（`set_selected`）；控件自己给不出尺寸时，由 `measure` 决定尺寸；事件是生成的函数（`segmented_Segmented_selectedChange(events, i)`），可以在任意线程上调用。
-- **宿主**：`asuka_desktop.h`（platform/desktop）是包的 C 代码可以使用的 C 宿主的功能：投递到主线程、视图所在的窗口、应用的名称、ID、版本和目录、资源目录、按当前外观解析的颜色、HTTP（`asuka_fetch`；要逐段接收响应、把下载直接写进文件时用 `asuka_fetch_stream`，要从任意线程中止请求时用 `asuka_abort`），以及应用指定的文件（`asuka_desktop_local_file`）。`asuka_windows.h` 提供 COM 和 WinRT 的辅助函数（UTF-16、vtable 的槽位、HSTRING、激活工厂、委托、等待异步操作、WIC 的图片、系统窗口收到的广播），Windows 宿主用的也是这一套；`asuka_barcode.h` 从图像的灰度中读取二维码和条形码，所有桌面平台都能用；`asuka_linux.h` 声明了包要用的 GLib、GIO、GTK 和 libadwaita 函数，像 Linux 宿主一样在运行时解析（调用方式是 `G(g_variant_new)(…)`），所以构建时不需要 GTK 的头文件。
+- **视图**：`<pkg>_make_<View>(events)` 创建视图的对象和它的 `widget`，即一个 `HWND`（`events.parent` 的子窗口）或一个 `GtkWidget *`，Asuka 负责显示它，并在视图离开时销毁它。每个属性在 vtable 里有一个 setter（`set_selected`）；控件自己给不出尺寸时，由 `measure` 决定尺寸；事件是生成的函数（`segmented_Segmented_selectedChange(events, i)`），可以在任意线程上调用。
+- **Asuka 的 C API**：`asuka_desktop.h` 是包的 C 代码在桌面端可以使用的 Asuka 功能：投递到主线程、视图所在的窗口、应用的名称、ID、版本和目录、资源目录、按当前外观解析的颜色、HTTP（`asuka_fetch`；要逐段接收响应、把下载直接写进文件时用 `asuka_fetch_stream`，要从任意线程中止请求时用 `asuka_abort`），以及应用指定的文件（`asuka_desktop_local_file`）。`asuka_windows.h` 提供 COM 和 WinRT 的辅助函数（UTF-16、vtable 的槽位、HSTRING、激活工厂、委托、等待异步操作、WIC 的图片、系统窗口收到的广播）；`asuka_barcode.h` 从图像的灰度中读取二维码和条形码，所有桌面平台都能用；`asuka_linux.h` 声明了包要用的 GLib、GIO、GTK 和 libadwaita 函数，在运行时解析（调用方式是 `G(g_variant_new)(…)`），所以构建时不需要 GTK 的头文件。
 - **库**：包的 C 代码在各平台上要链接的库写在它的 `asuka.toml` 里：
 
   ```toml
@@ -450,7 +446,6 @@ battery_Battery *battery_make_Battery(asuka_error *err) {
   libraries = []
   ```
 - **自带的库**：包构建时用到的 C 库（解析器、解码器）放在 `desktop/third_party/<名字>/` 里，不做修改，附上它的许可证和版本；由包自己的某个文件引入它的源码（`#include "third_party/<名字>/<名字>.c"`），这样它和包的 C 代码一起编译，改动它也会让应用重新构建。
-- **测试**：`desktop/*_test.c` 是一个独立的程序（有自己的 `main`），和包里两个平台共用的 C 代码一起构建（不含生成的胶水代码），由 platform/desktop 的测试在任何系统上运行，用来测试 C 代码中不依赖平台的部分：解析、解码、编码。`desktop/*_linux_test.c` 则在 Linux 上借助 GTK 测试一个视图，`desktop/*_windows_test.c` 在 Windows 上测试（由 platform/windows 的 TestStdViews 运行；在其他系统上则跑在 Windows 虚拟机里）：它们和胶水代码一起构建，直接引入视图的 C 代码，创建视图并像宿主那样驱动它（std/markdown 的测试给它一段流式写入的回复，并统计它替换了多少内容）。
 
 在 macOS 上运行的是包的 Swift 代码（它的 `Package.swift`），不运行它的 C 代码。
 
@@ -458,7 +453,7 @@ battery_Battery *battery_make_Battery(asuka_error *err) {
 
 - **iOS 和 Android**：`asuka dev` 会构建包含原生包的应用外壳并安装，原生代码变化时重新构建，Swift、Kotlin、`Package.swift`、`build.gradle.kts`、`Info.plist` 和清单文件的修改都包括在内；应用的 Asuka 代码在保存时直接重新加载，不需要重新构建。没有原生包的应用则以热重载模式运行在开发 App 里，开发 App 只包含 Asuka 自己的原生代码。参见 [开发](development.md#开发-app)。
 - **macOS**：原生包的 Swift 代码会构建进应用的 Swift 库，同样只在有变化时才重新构建，然后应用重新运行，状态会保留下来。
-- **Windows 和 Linux**：原生包的 C 代码会和核心、C 宿主一起构建进应用的可执行文件，同样只在有变化时才重新构建。
+- **Windows 和 Linux**：原生包的 C 代码会构建进应用的可执行文件，同样只在有变化时才重新构建。
 - **Web**：包的 JavaScript 变化时，页面会重新加载。
 
 一个包在 iOS 或 macOS 上第一次构建时会解析它的 Swift 依赖，之后的构建会复用它们。

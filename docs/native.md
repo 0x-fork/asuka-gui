@@ -53,7 +53,7 @@ control only one platform has).
 
 A package needs code only for the platforms its apps run on. Where it
 has none, making its module throws an `unsupported` error, and its view
-shows nothing (the host logs that the view is missing).
+shows nothing (the log says the view is missing).
 
 For a library with a C API, or code you'd write in C anyway, call C
 directly instead: an `extern fn` is one declaration, the same C runs on
@@ -172,7 +172,7 @@ platform's side can always fail), so calls are `try`.
 | `[T]` | `[T]` | `List<T>` | `Array` | `<pkg>_list_T` (`data`, `len`) |
 | `[string: T]` | `[String: T]` | `Map<String, T>` | `object` | `<pkg>_map_T` (`keys`, `values`, `len`) |
 | `T?` | `T?` | `T?` | `T` or `null` | `T *` (`NULL`: none; a `string?` is a `char *`) |
-| `Color` | `Int`, the core's encoding: `AsukaColors.color(_:)` makes it a `UIColor` or `NSColor` (a semantic one follows light and dark) | `Long`: `AsukaModules.color(v, fallback)` makes it an ARGB `Int` | `bigint`: `native.color(v)` makes it a CSS color (a semantic one a variable) | `uint64_t`: `asuka_desktop_color(v)` makes it RGBA for the appearance shown |
+| `Color` | `Int`, Asuka's encoding: `AsukaColors.color(_:)` makes it a `UIColor` or `NSColor` (a semantic one follows light and dark) | `Long`: `AsukaModules.color(v, fallback)` makes it an ARGB `Int` | `bigint`: `native.color(v)` makes it a CSS color (a semantic one a variable) | `uint64_t`: `asuka_desktop_color(v)` makes it RGBA for the appearance shown |
 | a struct of the package | a struct (a final class when it holds itself) | a data class | an object | a struct, `<pkg>_Name` |
 | an enum of the package (cases without payloads) | a `RawRepresentable` struct with a static per case | a value class with a constant per case | a frozen object of the cases | an `int64_t`, a constant per case (`<pkg>_Level_low`) |
 | a `native interface` (a parameter or result) | `any T` | `T` | an object | `<pkg>_T *` |
@@ -236,14 +236,6 @@ instead.
   - JavaScript is single-threaded, so this doesn't apply on the web; C
     on Windows and Linux runs every call on the main thread.
 
-### What a call costs
-
-A call encodes its arguments into a buffer and crosses once: C on iOS,
-JNI on Android, a function pointer into the Mac's Swift library, the
-JavaScript host on the web, a function pointer of the package's provider
-on Windows and Linux. The answer is decoded the same way. Nothing
-on the way reflects.
-
 ## Declaring a view
 
 A `native component` is a view:
@@ -306,7 +298,7 @@ holds something to free conforms to `AsukaDestroying`, or has a
 
 `examples/media/segmented` is a complete view on every platform.
 
-In an app's tests (on the fake host, with no platform code) a native
+In an app's tests (`asuka test`, with no platform code) a native
 view shows as its component's name, and `app.tap("Segmented")` sends it
 a `press` event, as a platform's button would.
 
@@ -382,12 +374,12 @@ let package = Package(
 ```
 
 It's yours: its dependencies, targets, resources, C targets and
-binary targets are SwiftPM's, as in any package. The CLI builds it with
-`xcodebuild` together with the app's other native packages and Asuka's
-host. It links the result into the app, and embeds the dynamic
-frameworks and resource bundles it makes. `asuka` (the product `Asuka`)
-is the Asuka host the generated code builds on; the CLI points it at
-the CLI's own copy, so it always matches the app's Asuka. The `platforms`
+binary targets are SwiftPM's, as in any package. Asuka builds it with
+the app and its other native packages, links it into the app, and
+embeds the dynamic frameworks and resource bundles it makes. `asuka`
+(the product `Asuka`) is the library the generated code builds on; a
+build uses the copy that comes with your `asuka`, so it always matches
+the app's Asuka. The `platforms`
 the package declares count: an app built for an older iOS or macOS
 fails with what the package needs, and a package that lists only one of
 them (`platforms: [.iOS("16.0")]`) is built only for that one.
@@ -450,7 +442,7 @@ CLI includes the module in the app's Gradle build, which sets the
 following, so the module needs only its namespace and dependencies:
 
 - the SDK levels, Java 17 and the Kotlin toolchain;
-- the dependency on Asuka's host library (`dev.asuka`), which brings
+- the dependency on Asuka's Android library (`dev.asuka`), which brings
   AndroidX, Material Components and coroutines.
 
 Its `src/main/AndroidManifest.xml` (permissions, services, receivers,
@@ -508,8 +500,8 @@ web` reloads the page as one changes. See [the web](web.md#native-code).
 ## Windows and Linux: C
 
 The package's code for Windows and Linux is C, in its `desktop/`
-directory, compiled into the app's executable with the C host, the core
-and the app (Zig cross-compiles it from any system). A file whose name
+directory, compiled into the app's executable (with Zig when you build
+from another system). A file whose name
 ends in `_windows.c` or `_linux.c` is built for that platform only, and
 the others for both, with `#ifdef _WIN32` where they differ; a platform
 with no file of the package's has none of its code, and making its
@@ -613,13 +605,13 @@ battery_Battery *battery_make_Battery(asuka_error *err) {
   once on the main thread, and from another thread waits for it.
 - **Views**: `<pkg>_make_<View>(events)` makes the view's object and its
   `widget`, an `HWND` (a child of `events.parent`) or a `GtkWidget *`,
-  which the host shows and destroys as the view goes. Each prop has a
+  which Asuka shows and destroys as the view goes. Each prop has a
   setter in the vtable (`set_selected`), `measure` sizes it when the
   widget has no size of its own to give, and the events are generated
   functions (`segmented_Segmented_selectedChange(events, i)`), from any
   thread.
-- **The host**: `asuka_desktop.h` (platform/desktop) is what a
-  package's C may use of the C hosts: posting to the main thread, the
+- **Asuka's C API**: `asuka_desktop.h` is what a package's C may use
+  of Asuka on the desktop: posting to the main thread, the
   window a view is in, the app's name, ID, version and directories, its
   assets, a color resolved for the appearance shown, HTTP
   (`asuka_fetch`; `asuka_fetch_stream` for a response a piece at a
@@ -627,12 +619,12 @@ battery_Battery *battery_make_Battery(asuka_error *err) {
   thread) and a file an app names (`asuka_desktop_local_file`).
   `asuka_windows.h` has COM and WinRT's helpers (UTF-16, a vtable's
   slot, HSTRINGs, activation factories, delegates, waiting for an async
-  operation, WIC's images, the system window's broadcasts), the same
-  ones the Windows host uses; `asuka_barcode.h` reads QR codes and
+  operation, WIC's images, the system window's broadcasts);
+  `asuka_barcode.h` reads QR codes and
   barcodes from an image's gray levels, on every desktop;
   `asuka_linux.h` declares the GLib, GIO, GTK and libadwaita functions
-  packages use, resolved at run time as the Linux host's are (called as
-  `G(g_variant_new)(…)`), so nothing needs GTK's headers to build.
+  packages use, resolved at run time (called as
+  `G(g_variant_new)(…)`), so building needs no GTK headers.
 - **Libraries**: what the package's C links on each platform is in its
   `asuka.toml`:
 
@@ -647,16 +639,6 @@ battery_Battery *battery_make_Battery(asuka_error *err) {
   with its license and the version it is; a file of the package's
   includes its sources (`#include "third_party/<name>/<name>.c"`), so it's
   compiled with the package's C, and a change to it rebuilds the app.
-- **Tests**: a `desktop/*_test.c` is a program of its own (its `main`),
-  built with the package's C for both platforms (not the generated glue)
-  and run on any system by platform/desktop's tests, for what the C
-  works out without a platform: parsing, decoding, encoding. A
-  `desktop/*_linux_test.c` tests a view on Linux, with GTK, and a
-  `desktop/*_windows_test.c` on Windows (platform/windows' TestStdViews,
-  in the Windows VM from another system): built with the glue, it
-  includes the view's C, makes the view and drives it as the host would
-  (std/markdown's give it a reply streamed in and count what it
-  replaces).
 
 On macOS a package's Swift runs (its `Package.swift`); its C doesn't.
 
@@ -673,7 +655,7 @@ On macOS a package's Swift runs (its `Package.swift`); its C doesn't.
   again only when it changes, and the app runs again with its state
   kept.
 - **Windows and Linux**: the packages' C builds into the app's
-  executable with the core and the C host, again only when it changes.
+  executable, again only when it changes.
 - **Web**: the page reloads as a package's JavaScript changes.
 
 The first iOS or macOS build of a package resolves its Swift
