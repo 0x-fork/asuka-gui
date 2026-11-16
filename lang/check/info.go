@@ -48,6 +48,8 @@ type Info struct {
 	RoutedScreens  map[syntax.Item]*TypeName
 	ScreenRoutes   map[*TypeName][]*ScreenRoute
 	Hrefs          map[*syntax.CallExpr]*Href
+	// Operators: the binary operators a struct's method does (t + 1h).
+	Operators map[*syntax.BinaryExpr]*Operator
 	// Assets: the files assets.text(…) and assets.bytes(…) read.
 	Assets map[*syntax.CallExpr]string
 	// Shaders: shader("""…""")'s programs, compiled.
@@ -92,6 +94,7 @@ func newInfo() *Info {
 		ScreenRoutes:   map[*TypeName][]*ScreenRoute{},
 		Hrefs:          map[*syntax.CallExpr]*Href{},
 		Assets:         map[*syntax.CallExpr]string{},
+		Operators:      map[*syntax.BinaryExpr]*Operator{},
 		Imports:        map[*syntax.ImportDecl]*Package{},
 		Expected:       map[syntax.Expr]Type{},
 	}

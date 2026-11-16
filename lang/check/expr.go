@@ -1247,6 +1247,9 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 		}
 		return Invalid
 	}
+	if t, ok := c.operatorMethod(e, xt, yt); ok {
+		return t
+	}
 	switch e.Op {
 	case syntax.EQL, syntax.NEQ:
 		if xt == NoneType && IsOptional(yt) || yt == NoneType && IsOptional(xt) {
@@ -1305,6 +1308,60 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 	}
 	c.errorf(e, "unexpected operator %s", e.Op)
 	return Invalid
+}
+
+// An Operator is a binary operator a struct's method does: + its
+// add(y), - its sub(y) or minus(y) (the one whose parameter takes y), <,
+// <=, > and >= its compare(y) -> int against 0.
+type Operator struct {
+	Func    *Function
+	Recv    Type
+	Compare bool
+}
+
+// operatorMethod finds the method of x's struct an operator calls
+// (asuka/time's Time: t + 1h, b - a, a < b), and its result.
+func (c *Checker) operatorMethod(e *syntax.BinaryExpr, xt, yt Type) (Type, bool) {
+	n, ok := xt.(*Named)
+	if !ok || n.Obj.Kind != StructType {
+		return nil, false
+	}
+	var names []string
+	compare := false
+	switch e.Op {
+	case syntax.ADD:
+		names = []string{"add"}
+	case syntax.SUB:
+		names = []string{"sub", "minus"}
+	case syntax.LSS, syntax.LEQ, syntax.GTR, syntax.GEQ:
+		names, compare = []string{"compare"}, true
+	default:
+		return nil, false
+	}
+	for _, name := range names {
+		f := n.Obj.Methods[name]
+		if f == nil {
+			continue
+		}
+		c.funcSig(f)
+		if f.Sig == nil || len(f.Sig.Params) != 1 || f.Sig.Async || f.Sig.Throws {
+			continue
+		}
+		s := n.Subst()
+		pt, res := s.Apply(f.Sig.Params[0].Type), s.Apply(f.Sig.Result)
+		if !Identical(pt, yt) {
+			continue
+		}
+		if compare {
+			if res != Int {
+				continue
+			}
+			res = Bool
+		}
+		c.info.Operators[e] = &Operator{Func: f, Recv: xt, Compare: compare}
+		return res, true
+	}
+	return nil, false
 }
 
 // MakeOptionalOrNil is t? (nil stays nil).

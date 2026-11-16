@@ -50,17 +50,20 @@ pub struct Time {
   /// Nanoseconds since 1970-01-01T00:00:00Z.
   fn unixNano() -> int = instant
 
-  /// The time d later (earlier when d is negative).
+  /// The time d later (earlier when d is negative): t + 1h.
   fn add(d: Duration) -> Time = at(instant + d.nanoseconds(), zone)
-  /// How long after t this is (negative when it's before).
+  /// How long after t this is (negative when it's before): b - a.
   fn sub(t: Time) -> Duration = 1ns * (instant - t.instant)
+  /// The time d earlier: t - 1h.
+  fn minus(d: Duration) -> Time = add(-d)
   /// The date years, months and days on, at the same time of day: the
   /// fields overflow into the next (October 32 is November 1).
   fn addDate(years: int = 0, months: int = 0, days: int = 0) -> Time = date(year + years, month + months, day + days, hour: hour, minute: minute, second: second, nanosecond: nanosecond, zone: zone)
 
   fn isBefore(t: Time) -> bool = instant < t.instant
   fn isAfter(t: Time) -> bool = instant > t.instant
-  /// -1, 0 or 1 as this is before, at or after t (whatever their zones).
+  /// -1, 0 or 1 as this is before, at or after t (whatever their zones):
+  /// what a < b, <=, > and >= compare.
   fn compare(t: Time) -> int = if instant < t.instant { -1 } else if instant > t.instant { 1 } else { 0 }
 
   /// The same instant on zone's clock.

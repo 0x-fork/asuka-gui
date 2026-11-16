@@ -1,0 +1,32 @@
+// Operators a struct's methods do: + its add, - its sub or minus (the
+// one whose parameter takes the right side), <, <=, > and >= its
+// compare.
+
+import asuka/time
+
+struct Money {
+  cents: int
+
+  fn add(m: Money) -> Money = Money(cents: cents + m.cents)
+  fn sub(m: Money) -> Money = Money(cents: cents - m.cents)
+  fn compare(m: Money) -> int = if cents < m.cents { -1 } else if cents > m.cents { 1 } else { 0 }
+}
+
+test "a struct's operators" {
+  let a = Money(cents: 150)
+  let b = Money(cents: 99)
+  print("{(a + b).cents} {(a - b).cents} {a > b} {a <= b} {b < a} {a >= a}")
+}
+
+test "time's" {
+  let a = time.unix(0, zone: .utc)
+  let b = a + 90min
+  let c = b - 30min
+  print("{b - a} {c.format("HH:mm")} {a < b} {c > b} {a <= a}")
+}
+
+// Output:
+// 249 51 true false true true
+// ok a struct's operators
+// 5400000ms 01:00 true false true
+// ok time's

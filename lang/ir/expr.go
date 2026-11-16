@@ -277,6 +277,34 @@ func (b *fb) newStruct(shape int, types []check.Type, vals []int, dst int) int {
 	return r
 }
 
+// operator is a binary operator a struct's method does: the method's
+// call, its compare's result against 0.
+func (b *fb) operator(e *syntax.BinaryExpr, o *check.Operator, dst int) int {
+	rt := b.typ(o.Recv)
+	x := b.value(e.X, -1)
+	y := b.value(e.Y, -1)
+	idx := b.l.funcIndex(o.Func, nil, rt)
+	s := b.calleeSubst(o.Func, nil, rt)
+	k := b.l.kind(s.Apply(o.Func.Sig.Result))
+	if !o.Compare {
+		return b.invoke(idx, []int{x, y}, k, dst, false)
+	}
+	c := b.invoke(idx, []int{x, y}, bc.KInt, -1, false)
+	zero := b.konst(0)
+	r := b.out(dst, bc.KBool)
+	switch e.Op {
+	case syntax.LSS:
+		b.emit(op("LTI"), r, c, zero)
+	case syntax.LEQ:
+		b.emit(op("LEI"), r, c, zero)
+	case syntax.GTR:
+		b.emit(op("LTI"), r, zero, c)
+	default:
+		b.emit(op("LEI"), r, zero, c)
+	}
+	return r
+}
+
 // unwrap is the value of the optional x (t is the value's type); none
 // throws.
 func (b *fb) unwrap(x int, t check.Type, dst int, n syntax.Node) int {
@@ -772,6 +800,9 @@ func (b *fb) unary(e *syntax.UnaryExpr, dst int) int {
 }
 
 func (b *fb) binary(e *syntax.BinaryExpr, dst int) int {
+	if o := b.l.info.Operators[e]; o != nil {
+		return b.operator(e, o, dst)
+	}
 	switch e.Op {
 	case syntax.LAND, syntax.LOR:
 		r := b.out(dst, bc.KBool)
