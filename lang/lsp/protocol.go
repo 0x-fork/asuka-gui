@@ -94,6 +94,7 @@ type ServerCapabilities struct {
 	WorkspaceSymbolProvider    bool                     `json:"workspaceSymbolProvider"`
 	DocumentFormattingProvider bool                     `json:"documentFormattingProvider"`
 	RenameProvider             *RenameOptions           `json:"renameProvider,omitempty"`
+	CodeActionProvider         *CodeActionOptions       `json:"codeActionProvider,omitempty"`
 	SemanticTokensProvider     *SemanticTokensOptions   `json:"semanticTokensProvider,omitempty"`
 	Workspace                  *WorkspaceServerCapabity `json:"workspace,omitempty"`
 }
@@ -332,6 +333,29 @@ type PrepareRenameResult struct {
 type DocumentHighlight struct {
 	Range Range `json:"range"`
 	Kind  int   `json:"kind"` // 1 text, 2 read, 3 write
+}
+
+// Code actions.
+
+type CodeActionParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Range        Range                  `json:"range"`
+	Context      struct {
+		Diagnostics []Diagnostic `json:"diagnostics"`
+		Only        []string     `json:"only,omitempty"`
+	} `json:"context"`
+}
+
+type CodeAction struct {
+	Title       string         `json:"title"`
+	Kind        string         `json:"kind,omitempty"`
+	Diagnostics []Diagnostic   `json:"diagnostics,omitempty"`
+	IsPreferred bool           `json:"isPreferred,omitempty"`
+	Edit        *WorkspaceEdit `json:"edit,omitempty"`
+}
+
+type CodeActionOptions struct {
+	CodeActionKinds []string `json:"codeActionKinds,omitempty"`
 }
 
 // Formatting.

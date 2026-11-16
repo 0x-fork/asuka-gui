@@ -83,6 +83,7 @@ var (
 	bindLine   = regexp.MustCompile(`(^|[;{])\s*bind\s+$`)
 	styleLine  = regexp.MustCompile(`(^|[;{])\s*style\s+$`)
 	emitLine   = regexp.MustCompile(`(^|[;{])\s*emit\s+$`)
+	propLine   = regexp.MustCompile(`(^|[;{])\s*([A-Za-z_]\w*)\s*:\s*$`)
 )
 
 func (c *completer) run() {
@@ -498,6 +499,23 @@ func (c *completer) expectedMembers(t check.Type) {
 	}
 }
 
+// dotted adds .name for a value of type t, where the . isn't typed yet.
+func (c *completer) dotted(t check.Type) {
+	n := len(c.list.Items)
+	c.expectedMembers(t)
+	for i := n; i < len(c.list.Items); i++ {
+		it := &c.list.Items[i]
+		ins := it.InsertText
+		if ins == "" {
+			ins = it.Label
+		}
+		it.FilterText = it.Label
+		it.Label = "." + it.Label
+		it.InsertText = "." + ins
+		it.SortText = fmt.Sprintf("%d_%s", prioMember, it.Label)
+	}
+}
+
 // ---------------------------------------------------------------------
 // In a block: props, events, slots, and names
 
@@ -583,6 +601,14 @@ func (c *completer) general(path []syntax.Node, pos syntax.Pos, before string) {
 	// An argument's label: f(name: …).
 	if call, ok := c.argStart(path, before); ok {
 		c.labels(call)
+	}
+	// A prop's value, before its . is typed: variant: .filled.
+	if kind == elementBlock && el != nil {
+		if m := propLine.FindStringSubmatch(before); m != nil {
+			if mem := c.fc.componentMember(el, m[2]); mem != nil && mem.Kind == check.PropMember {
+				c.dotted(mem.Type)
+			}
+		}
 	}
 	views := false
 	switch kind {

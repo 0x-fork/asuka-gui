@@ -1,7 +1,7 @@
 // Package lsp is the Asuka language server: diagnostics, hover,
 // completion, go to definition, references, rename, formatting,
-// symbols, signature help and semantic tokens for .asuka files, over
-// LSP 3.17 (JSON-RPC 2.0 on stdio: asuka lsp).
+// symbols, signature help, semantic tokens and quick fixes for .asuka
+// files, over LSP 3.17 (JSON-RPC 2.0 on stdio: asuka lsp).
 //
 // A package is a directory of .asuka files; the server checks one with
 // lang/compile (CheckOnly), giving it the editor's open documents as an
@@ -243,6 +243,8 @@ func (s *server) request(method string, raw json.RawMessage) (any, error) {
 		return withParams(raw, s.rename)
 	case "textDocument/formatting":
 		return withParams(raw, s.formatting)
+	case "textDocument/codeAction":
+		return withParams(raw, s.codeAction)
 	case "textDocument/documentSymbol":
 		return withParams(raw, s.documentSymbol)
 	case "workspace/symbol":
@@ -361,6 +363,7 @@ func (s *server) initialize(p *InitializeParams) *InitializeResult {
 		WorkspaceSymbolProvider:    true,
 		DocumentFormattingProvider: true,
 		RenameProvider:             &RenameOptions{PrepareProvider: true},
+		CodeActionProvider:         &CodeActionOptions{CodeActionKinds: []string{"quickfix"}},
 		SemanticTokensProvider: &SemanticTokensOptions{
 			Legend: SemanticTokensLegend{TokenTypes: tokenTypes, TokenModifiers: tokenModifiers},
 			Full:   true,
