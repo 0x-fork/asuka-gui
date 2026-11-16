@@ -1,5 +1,5 @@
 // Kept identical in platform/ios (the iOS host) and platform/macos (the
-// Mac's Swift library, which host/darwin calls through purego).
+// Mac's host, whose "icloud" module answers with it).
 #if ASUKA_ICLOUD // an app that calls asuka/sdk/icloud (see the CLI's iosFeatures; on the Mac, its featurePermissions)
 import CryptoKit
 import Foundation

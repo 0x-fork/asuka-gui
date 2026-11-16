@@ -1,6 +1,6 @@
 // The kitchen package's Swift: what its Go declares, implemented, on iOS
-// and macOS (host/darwin's test calls each; so does the GUI tests' plugin
-// app).
+// and macOS (built into a Mac app by cmd/asuka's TestMacSwift; the GUI
+// tests' plugin app calls each).
 import Asuka
 import Foundation
 #if canImport(UIKit)

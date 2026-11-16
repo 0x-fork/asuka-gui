@@ -43,7 +43,8 @@ asuka: reloaded in 2.2 ms, 4 states kept
 
 各プラットフォームの開発用アプリは次のとおりです。
 
-- **macOS、Windows、Linux**：デスクトップのホスト（`cmd/asuka-host`。AppKit、Win32、GTK を使い、C の ABI を通じてコアを動かします）と、その隣に置いたコア（`libasuka.dylib`、`asuka.dll`、`libasuka.so`）です。Asuka のキャッシュ内のアプリのディレクトリに置かれます。Mac ではリリースと同じ形の `.app` です。環境変数に `ASUKA_DEV=host:port` を付けて起動されます。
+- **macOS**：コア（とアプリのネイティブパッケージの Swift）をリンクした Swift のホストで、リリースと同じ形の `.app` です。Asuka のキャッシュ内のアプリのディレクトリに置かれ、環境変数に `ASUKA_DEV=host:port` を付けて起動されます。
+- **Windows、Linux**：デスクトップのホスト（`cmd/asuka-host`。Win32 や GTK を使い、C の ABI を通じてコアを動かします）と、その隣に置いたコア（`asuka.dll`、`libasuka.so`）です。Asuka のキャッシュ内のアプリのディレクトリに置かれ、環境変数に `ASUKA_DEV=host:port` を付けて起動されます。
 - **iOS**：Swift のホストをコア（`libasuka.a`）とリンクして、アプリの `.app` にしたものです。独自のフレームワーク（WebKit、AVKit など）をリンクするホストの部分もすべて含むので、編集中のアプリはそのどれでも使えます。シミュレーターでは `xcrun simctl` で、環境変数に `ASUKA_DEV` を付けてインストール・起動します。iPhone では開発用に署名し、`xcrun devicectl` でインストールします。
 - **Android**：デバッグ版の外側のアプリ（Gradle が一度ビルドし、マニフェスト、Kotlin、リソースが変わったときにビルドし直します）です。コアはそのプライベートファイル（`files/asuka/libasuka.so`）にプッシュされ、デバッグ版のアプリはそこからコアを読み込みます。`files/asuka/dev` には `asuka dev` の場所が書かれ、`adb reverse` によってそれがデバイス自身のループバックになります。
 - **Web**：ページが開発サーバーから WebAssembly のコア（`asuka.wasm`）とアプリのモジュールを読み込み、新しいモジュールがビルドされるたびにそれを読み込みます。
@@ -161,16 +162,17 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # 先に操�
 ```sh
 go test ./core                                     # コアの C のテスト（ASan、UBSan）と VM のテスト
 go test ./internal/appbuild ./cmd/asuka            # ビルドと開発ループ。このコンピューターで使えるすべてのプラットフォームで
-go test ./host/darwin                              # macOS：実際の AppKit のビュー
+go test ./platform/macos/mactest                   # macOS：Mac のプレイヤーでアプリを動かし、実際の AppKit のビューを確かめる
 go test ./host/windows                             # Windows：実際のウィンドウ
 xvfb-run -a dbus-run-session go test ./host/linux  # Linux：実際の GTK ウィジェット
 swift test --package-path platform/ios             # Swift ホストのデコーダー
+swift test --package-path platform/macos           # Mac のホストの Swift とそのデコーダー
 node --test platform/web                           # Web ホストのデコーダー
 ```
 
 `go test ./cmd/asuka` は、できる範囲で開発ループをエンドツーエンドで実行します。この Mac 上（開発用アプリ、モジュール、タップ、カウントを保った次のモジュール）、ヘッドレス Chrome、起動中の iOS シミュレーター、実行中の Android エミュレーターで動かし、さらに各プラットフォーム向けにアプリをビルドします。このコンピューターでビルドや実行ができないものはスキップします。
 
-`go test ./host/darwin -run Conformance` と `go test ./host/windows -run Conformance` は、あるスタイルに対してホストが描画するもの（辺、角、枠線、影、グラデーション）を、ウィンドウのキャプチャー上で計測して確かめます。e2e テストは、シミュレーター、エミュレーター、ヘッドレス Chrome で同じことを行います（`go test -tags e2e ./e2e -run Conformance`）。
+`go test ./platform/macos/mactest -run Conformance` と `go test ./host/windows -run Conformance` は、あるスタイルに対してホストが描画するもの（辺、角、枠線、影、グラデーション）を、ウィンドウのキャプチャー上で計測して確かめます。e2e テストは、シミュレーター、エミュレーター、ヘッドレス Chrome で同じことを行います（`go test -tags e2e ./e2e -run Conformance`）。
 
 ## ベンチマーク
 

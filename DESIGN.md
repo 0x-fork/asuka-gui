@@ -36,7 +36,8 @@ large audience before 1.0.
 | Layout | Our own engine (core/src/layout): CSS block, flexbox and grid, checked against Chrome, measured by the host | One layout for every platform, with the semantics web and React Native developers know. |
 | iOS host | Swift + UIKit, the core linked as a static library | UIKit subclasses and delegates are trivial in Swift. Not SwiftUI: it is a second reconciler. |
 | Android host | Kotlin + Android Views (Material Components 3), the core a shared library through JNI | Views are imperative targets for mount ops. Not Compose (a second reconciler, measuring only in its own pass). |
-| Desktop hosts | Go, in process (AppKit through purego, Win32, GTK 4), driving the core through its C ABI (host/bridge) | They are hosts behind the ops wire like the others; their cost is the platforms' calls. No cgo. |
+| macOS host | Swift + AppKit (platform/macos), the core linked in, as iOS's | AppKit subclasses and delegates are Swift's to write; no Go at run time (RFC 0008). Not SwiftUI. |
+| Windows and Linux hosts | Go, in process (Win32, GTK 4), driving the core through its C ABI (host/bridge); being rewritten in C (RFC 0008) | They are hosts behind the ops wire like the others; their cost is the platforms' calls. No cgo. |
 | Web | The DOM, from a JavaScript host (platform/web), the core as WebAssembly | Batches decoded in place out of the WebAssembly memory; the browser's own elements. |
 | C compiler | The platform's own (Xcode's clang, the NDK's, the system's); Zig's opted into (`ASUKA_CC=zig`) and to cross-compile | What the platforms' SDKs are tested with; Zig for what they can't do. |
 | Packages | The npm registry, with the asuka CLI as the client (`asuka add`, `asuka.lock`) | A registry with scopes, auth and private mirrors for free; one version of each package per app. |
@@ -62,7 +63,7 @@ ops/                    mount operations, binary encoding
 abi/                    asuka.h: what hosts call
 ─────────────────────────────────────────────────────────────  asuka.h
 platform/ios (Swift)   platform/android (Kotlin)   platform/web (JavaScript)
-host/darwin, host/windows, host/linux (Go, through host/bridge)
+platform/macos (Swift)   host/windows, host/linux (Go, through host/bridge)
 core/host/fake          tests: records ops, measures text at 8 points a character
 ```
 
@@ -1100,9 +1101,8 @@ In-app purchases (`asuka/sdk/purchase`) are one module, `purchase`,
 whose JSON (`internal/purchasespec`) every host speaks: StoreKit 2 on
 iOS (`ASUKA_PURCHASE`) and on the Mac, where it's Swift the Objective-C
 runtime can't reach, so the same file (`Purchase.swift`, kept identical
-in platform/ios and platform/macos) is built into the app's Swift
-library for an app that imports the package (`featureMacSwift`), and
-`host/darwin` calls it through purego; Play Billing in the optional
+in platform/ios and platform/macos) is built into the Mac's host, which
+answers the module with it; Play Billing in the optional
 `asuka-purchase` module; the Microsoft Store from Go (`internal/windows`'
 StoreContext); the Digital Goods API on the web; none on Linux;
 `fake.Store` in tests. Each host follows the store's transactions from
@@ -1466,15 +1466,18 @@ asuka/
                      layout's conformance)
   i18n/              languages, catalogs, ICU messages, CLDR's formats
                      (compiled into what the core says)
-  host/              the desktop hosts, Go: darwin (AppKit through
-                     purego), windows (Win32), linux (GTK 4 and
-                     libadwaita); bridge (the core's ABI through purego);
+  host/              the Windows and Linux hosts, Go: windows (Win32),
+                     linux (GTK 4 and libadwaita); bridge (the core's
+                     ABI through purego);
                      apphost (cmd/asuka-host); hosttest (their tests on
                      the core); the Host interface
   native/            native packages' Go runtime (Go apps' packages)
   internal/nativegen/ asuka native's generator (Swift, Kotlin,
                      JavaScript, C; Go for Go apps' packages)
   platform/ios/      the Swift host and decoder
+  platform/macos/    the Mac's Swift host (AppKit; the decoder iOS's),
+                     its tests (mactest: apps on the Mac player, driven
+                     through its automation)
   platform/android/  the Kotlin host and decoder (Gradle)
   platform/web/      the JavaScript host and decoder; the core runs in the
                      page as WebAssembly
@@ -1514,11 +1517,18 @@ asuka/
   drive them by what the screen shows (`tap`, `type`, `expect`), as a
   user would; the clock moves only when nothing else can run, so a
   `sleep(5s)` takes no time and nothing waits on wall-clock time.
-- The desktop hosts (`go test ./host/darwin`, `./host/windows`,
-  `./host/linux` under Xvfb): host/hosttest compiles an Asuka app, runs
-  it on the core in the test's process, and the test drives and checks
-  the host's own views (a click through the button's action, the text
-  set again, frames, list binding, disposal).
+- The macOS host (`go test ./platform/macos/mactest`): each test's
+  Asuka app runs on the Mac player (the Swift host and the core, built
+  once by the CLI), sent as asuka dev sends it; the test drives it
+  through the host's automation (a click through the button's action,
+  typing, keys, menus) and checks the host's own views, windows, menu
+  bar and tray in the JSON tree it writes (frames, texts, controls'
+  states, layers, list binding, disposal). Its Swift's unit tests:
+  `swift test --package-path platform/macos`.
+- The Windows and Linux hosts (`go test ./host/windows`, `./host/linux`
+  under Xvfb): host/hosttest compiles an Asuka app, runs it on the core
+  in the test's process, and the test drives and checks the host's own
+  views.
 - `ops`: the C encoder and the generated Swift, Kotlin and JavaScript
   decoders round-trip the same golden batches (`swift test --package-path
   platform/ios`; `./gradlew :asuka:testDebugUnitTest` in `platform/android`;
@@ -1539,7 +1549,7 @@ asuka/
   the cases measure the pixels: where an edge is to the device pixel, a
   shadow's Gaussian σ, a color's mix, with tolerances, not against a
   reference, so one set holds for every host at any scale. Runners:
-  `host/darwin` (Core Animation's own renderer into a Metal texture),
+  `platform/macos/mactest` (the window server's image of the window),
   `host/windows` (`PrintWindow`), and `e2e` on the simulator, the
   emulator and headless Chrome at 1×, 1.5× and 2×.
 - Tests never pass or fail on wall-clock time: wait for the condition,
@@ -1778,19 +1788,27 @@ On the same core, `ops` and app code as the phones:
 
 | Platform | Host | Notes |
 |---|---|---|
-| macOS | Go, AppKit through purego (`host/darwin`) | No cgo. `internal/darwin` is MyGo's Objective-C runtime layer (classes made at runtime, blocks, `WithPool`, a main run loop source for `Post`). |
+| macOS | Swift, AppKit (`platform/macos`) | The core linked in (asuka.h), as on iOS; the ops decoder is iOS's (`go generate ./ops` writes both copies). |
 | Windows | Go, Win32 with common controls v6 through `syscall` (`host/windows`) | No cgo; `internal/windows` is the Win32, GDI, GDI+, uxtheme, DWM and WebView2 layer. Not WinUI 3: it needs the Windows App SDK beside the app, and XAML is a second reconciler. `List` is core-virtualized: no Win32 list hosts arbitrary rows. |
 | Linux | Go, GTK 4 and libadwaita through purego (`host/linux`) | No cgo; `internal/gtk` binds GTK 4.14, libadwaita 1.5 and the GLib stack (Ubuntu 24.04, Debian 13, Fedora 40 and later). libadwaita, which every GNOME app links, gives navigation, dialogs and the header bar, and the look an app that sets no style should have. |
 
-Desktop hosts run in the app's process: one executable for every app
+The Mac's executable is the Swift host linked with the core (the app
+compiled in to C for a release; under `asuka dev` the player, the core
+without an app, which connects with `asuka_dev_connect`) and the app's
+native packages' Swift: one universal binary (arm64 and x86_64) in the
+.app, which `asuka build` signs. The host calls `asuka.h` directly: its
+callbacks are Swift functions, a batch is decoded in place
+(`asukaDecode`), events go in with `asuka_event`. The Windows and Linux
+hosts run in the app's process as one executable for every app
 (cmd/asuka-host, with the app's native packages' Go linked in when it
-has any) locks the main OS thread and runs the platform's event loop
+has any): it locks the main OS thread and runs the platform's event loop
 there, opens the core (`libasuka`, the app compiled in for a release)
 through purego (host/bridge), and decodes each batch with `ops`' Go
 decoder, in place. The core's callbacks are made once and routed by
 user data, never per view.
 
-How the macOS host maps Asuka (`host/darwin`):
+How the macOS host maps Asuka (`platform/macos`, Swift; its parts each
+a file of their own, `Sources/AsukaHost`):
 
 - One window holds the root, its content a flipped view; the
   environment is the content's size, the display's scale, dark mode,
@@ -1824,34 +1842,29 @@ How the macOS host maps Asuka (`host/darwin`):
   through `NSAccessibilityPostNotificationWithUserInfo`).
 - `List` is core-virtualized, as on Windows: a scroll view whose rows
   the host places, binds through `ListBind` and recycles as it
-  scrolls, heights from the cells' frames (estimated until bound).
-  `NSTableView` would want row heights from a callback returning a
-  float, which purego can't make.
+  scrolls, heights from the cells' frames (estimated until bound): the
+  rows are the core's views, laid out by the core, as every host's.
 - `WebView` is a `WKWebView`, as on iOS: `Block` a content rule list
   (the page loads once it's compiled, so its first requests are blocked
   too), a response it can't show a `Download`, its state observed (KVO)
   and reported once a turn; the `web` module runs script for its value
-  (`callAsyncJavaScript`) and reads the cookies, the `js` module runs
-  `asuka/js`'s scripts in a web view that's never shown.
+  (`callAsyncJavaScript`) and reads the cookies (asuka/js has its own
+  Swift).
 - `RichText` is a non-editable `NSTextView` (TextKit lays it out and
   draws it, links, selection and accessibility come with it); outside
   a `Selectable` it takes clicks only on links. Inline components are
   attachments of their size, their views placed at the attachment.
-- Messages with float or struct arguments go through purego's typed
-  functions (`internal/darwin`'s `Msg*`), which use reflection: setting a
-  frame allocates. The rest go through `SyscallN`.
 - Pull to refresh: a trackpad's (or Magic Mouse's) scroll pulled past
   a Scroll's or List's top, as its elastic overscroll lets it, and let
   go of beyond 60 points; a spinner above the content (the scroll view's
   top content inset) while it refreshes. Matched views move the old view
   into its window's content view and the frames carry the motion.
-- Native packages: their Swift is built into the app's Swift library
-  (`host/darwin/swift.go` loads it through purego and calls its
-  `@_cdecl` entry points with `SyscallN`). A package's Go view
-  (`implementT`) registers with package `native`: an `NSView` made
-  through purego's objc package, put in the node's view and filling
-  it; on Windows a child window made in the context's `Parent`, its
-  controls' notifications given to it.
+- Native packages: their Swift is built with the host's (the module
+  Asuka they import: NativeModules.swift, the iOS host's) into the app's
+  executable, as on iOS; a package's view is an `AsukaNativeView` holding
+  an `NSView`, put in the node's view and filling it. On Windows a
+  package's Go view is a child window made in the context's `Parent`,
+  its controls' notifications given to it.
 - Visual props are the views' layers'. The layers under the window's
   flipped content view have y down: gradients' points, shadows' offsets
   and transforms are given so. AppKit owns a layer-backed view's
@@ -1863,23 +1876,23 @@ How the macOS host maps Asuka (`host/darwin`):
   view's shape (`shadowPath`), as on iOS; a view that clips and casts
   one clips its children in a view of their own that fills it, as on
   iOS: a layer that masks to its bounds masks its own shadow too.
-- The packages' modules are iOS's, the same methods and replies, through
-  the Mac's frameworks (each file of `host/darwin` registers its own):
-  AVFoundation for the camera (the view's layer is the capture session's
-  preview; photo, movie and metadata outputs) and `AVAudioRecorder`,
-  with no audio session; Contacts, EventKit and PhotoKit; Vision,
-  NaturalLanguage and Speech, off the main thread; MapKit;
-  AuthenticationServices; UserNotifications and the application
-  delegate for APNs. What iOS shows that AppKit hasn't, the host shows
-  itself: `camera.Take` is a sheet with a live preview, and
-  `contacts.Add` and `calendar.Add` ask in an alert over the window, then
+- The host's modules are those the standard library calls through
+  asuka/platform, iOS's methods and replies through the Mac's
+  frameworks: notifications (UserNotifications; APNs through the
+  application delegate), contacts, calendars and the photo library
+  (Contacts, EventKit and PhotoKit), iCloud and purchases (the iOS host's
+  Swift), and the desktop's (the tray, the Dock, hot keys, apps, recent
+  documents, login, the updater's). The packages with Swift of their own
+  (the camera, Bluetooth, location, Vision, speech, maps...) run it on
+  the Mac too. What iOS shows that AppKit hasn't, the host shows itself:
+  `contacts.add` and `calendar.add` ask in an alert over the window, then
   save. A Mac has no back camera ("back" is the built-in one), no motion
   sensors, no widget extension; a task in the background holds an
   activity (App Nap off: a Mac app runs out of sight), periodic ones run
   while the app does; `PreventCapture` keeps its windows out of
   screenshots and recordings (`NSWindowSharingNone`) and `OnScreenshot`
   sees the files Spotlight finds (`kMDItemIsScreenCapture`).
-- Windows' options are `NSWindow`'s, set as it opens (`winctl.go`):
+- Windows' options are `NSWindow`'s, set as it opens (Windows.swift):
   its style mask (no resize, close or minimize button), the zoom button
   turned off, the content's least and most size, the floating level for
   always on top, out of the Window menu for skipping the taskbar (a Mac
@@ -1906,9 +1919,15 @@ How the macOS host maps Asuka (`host/darwin`):
   (`windowShouldClose:`) leaves it open and sends `CloseRequest`;
   `WindowAction` Close closes the main window past that question, and
   the app quits once its last window has.
-- Debug automation: `ASUKA_SNAPSHOT=file.png` renders the window to a PNG
-  once it has shown, without taking focus (`ASUKA_DUMP=1` writes the view
-  tree beside it), then quits.
+- Debug automation (Automation.swift): `ASUKA_SCRIPT` runs steps (tap,
+  type, key, menu, back, scroll, resize, wait, until...);
+  `ASUKA_SNAPSHOT=file.png` writes the window as the window server
+  composites it, once it has shown, without taking focus (`ASUKA_DUMP=1`
+  writes the view tree beside it), then quits; `ASUKA_COMMANDS=dir` runs
+  the steps written to `dir/asuka-commands.txt` while the app runs and
+  writes what it shows (`dump`), its view tree, windows, menu bar and
+  tray as JSON (`json`), which the host's tests read
+  (platform/macos/mactest).
 
 How the Windows host maps Asuka (`host/windows`):
 
@@ -3189,7 +3208,7 @@ app is in front (a launcher's panel, start and stop a recording).
   `unregister`, and a long poll, `next`, answered with the ids pressed
   since; one runs while any shortcut is active, `stop` ends it. Phones and
   the web have no module, which the package reports as `ErrNotAvailable`.
-- macOS: Carbon's `RegisterEventHotKey` through purego, as every Mac
+- macOS: Carbon's `RegisterEventHotKey` (the Swift host's Hotkey.swift), as every Mac
   app's global shortcut (no Accessibility permission), registered
   exclusively; the system's own shortcuts (`CopySymbolicHotKeys`) are
   taken. A character is the key that types it on the keyboard's layout
@@ -3317,7 +3336,7 @@ too. MyGo's `WatchFiles`, ported.
   left out, not an error; `Ignore` (`watch.Patterns`, gitignore-like)
   leaves out entries, and a directory it ignores is never opened.
   `MaxEntries` (65536 on macOS, 8192 elsewhere) bounds a tree.
-- macOS: FSEvents through purego, a stream per directory target with
+- macOS: FSEvents (std/watch's Swift), a stream per directory target with
   `kFSEventStreamCreateFlagFileEvents` and `WatchRoot`, on one serial
   dispatch queue, one callback for the process; a stream covers its
   tree, so directories below need none. Dropped events
@@ -3379,8 +3398,8 @@ their commands back.
   Mac its handler decodes the bytes it holds, so the image goes with the
   artwork). iOS puts the audio session in the playback category; the CLI
   adds the `audio` background mode for an app whose archive has
-  `nowplaying.Show` (iosFeatures, `ASUKA_NOWPLAYING`). The Mac's through
-  purego (host/darwin), which also routes the keyboard's media keys.
+  `nowplaying.Show` (iosFeatures, `ASUKA_NOWPLAYING`). The Mac's is the
+  package's Swift, which also routes the keyboard's media keys.
 - Android: a platform `MediaSession` (its `PlaybackState` actions the
   commands; the skips also custom actions, which fill the previous and
   next slots of Android 13's media controls), with a `MediaStyle`
@@ -3428,7 +3447,7 @@ subscriptions) and as a peripheral (advertising, a GATT server).
   package (`ASUKA_BLUETOOTH`, through its `call` and `send`); state
   restoration when the app has the background modes (asuka.toml's
   `bluetooth.background`), the managers made at launch for a relaunch.
-  macOS: the same through purego. Android: one merged scan, one GATT
+  macOS: the same, the package's Swift. Android: one merged scan, one GATT
   operation at a time per connection, the companion device chooser, a
   `PendingIntent` background scan whose results wait in a file for
   `restore`. Windows: WinRT's Bluetooth, GATT and advertisement APIs, the

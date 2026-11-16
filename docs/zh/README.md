@@ -38,7 +38,7 @@ test "counts taps" {
 | --- | --- | --- |
 | iOS | Swift，核心嵌入其中 | UIKit |
 | Android | Kotlin，核心嵌入其中 | Android Views 和 Material 3 |
-| macOS | Go，与应用在同一进程中（通过 purego 调用 AppKit） | AppKit |
+| macOS | Swift，内置核心 | AppKit |
 | Windows | Go，与应用在同一进程中（通过 `syscall` 调用 Win32） | Win32 和通用控件，绘制成 Windows 11 的样式 |
 | Linux | Go，与应用在同一进程中（通过 purego 调用 GTK） | GTK 4 和 libadwaita |
 | Web | JavaScript，核心编译为 WebAssembly | 页面的 DOM 和浏览器自带的控件 |

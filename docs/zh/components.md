@@ -949,4 +949,4 @@ ui.Scroll(ui.ScrollProps{Style: ui.Style{Grow: 1}, ContentStyle: ui.Style{Paddin
 
 ## 自定义视图
 
-如果某个平台有 Asuka 没有提供的控件，你可以自己实现，再用 `ui.Native` 显示出来：iOS 上用 Swift，Android 上用 Kotlin，macOS、Windows 和 Linux 上用 Go（通过 `native` 包调用 AppKit、Win32 和 GTK），Web 上用 JavaScript。参见[原生代码](native.md)。
+如果某个平台有 Asuka 没有提供的控件，你可以自己实现，再用 `ui.Native` 显示出来：iOS 和 macOS 上用 Swift，Android 上用 Kotlin，Windows 和 Linux 上用 C，Web 上用 JavaScript。参见[原生代码](native.md)。

@@ -924,4 +924,4 @@ ui.Scroll(ui.ScrollProps{Style: ui.Style{Grow: 1}, ContentStyle: ui.Style{Paddin
 
 ## 独自のビュー
 
-Asuka が対応していないウィジェットがプラットフォームにある場合は、自分で書いて `ui.Native` で表示できます。iOS では Swift、Android では Kotlin、macOS、Windows、Linux では Go（パッケージ `native` を通じて AppKit、Win32、GTK を使います）、Web では JavaScript で書きます。詳しくは[ネイティブコード](native.md)を参照してください。
+Asuka が対応していないウィジェットがプラットフォームにある場合は、自分で書いて `ui.Native` で表示できます。iOS と macOS では Swift、Android では Kotlin、Windows と Linux では C、Web では JavaScript で書きます。詳しくは[ネイティブコード](native.md)を参照してください。

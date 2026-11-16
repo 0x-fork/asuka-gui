@@ -303,9 +303,12 @@ Each ends with its tests green.
         purchase, record, scan and vision (a barcode decoder in C),
         shader, speech, svg; then package `native`'s servers, which only
         those packages' Go still uses.
-- [ ] **H1** The macOS host in Swift: every view, navigation, windows, menus, the
+- [x] **H1** The macOS host in Swift: every view, navigation, windows, menus, the
       tray, the host's modules; `asuka dev` and `asuka build` for the Mac
-      without Go.
+      without Go. platform/macos (its tests: platform/macos/mactest and
+      `swift test --package-path platform/macos`); host/darwin and
+      internal/darwin removed, with the Mac's parts of host/bridge,
+      host/apphost and internal/appbuild; asuka/watch's Swift for the Mac.
 - [ ] **H2** The Windows host in C, likewise.
 - [ ] **H3** The Linux host in C, likewise.
 - [ ] **G2** The updater, crash records and the state files in the hosts;

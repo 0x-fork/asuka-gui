@@ -77,10 +77,13 @@ launches it.
 
 What each platform's player is:
 
-- **macOS, Windows, Linux**: the desktop host (`cmd/asuka-host`: AppKit,
-  Win32 or GTK, driving the core through its C ABI) and the core beside
-  it (`libasuka.dylib`, `asuka.dll`, `libasuka.so`), in the app's
-  directory in Asuka's cache; on a Mac it's an `.app` like a release's.
+- **macOS**: the Swift host linked with the core (and the app's native
+  packages' Swift), in an `.app` like a release's, in the app's
+  directory in Asuka's cache; launched with `ASUKA_DEV=host:port` in its
+  environment.
+- **Windows, Linux**: the desktop host (`cmd/asuka-host`: Win32 or GTK,
+  driving the core through its C ABI) and the core beside it
+  (`asuka.dll`, `libasuka.so`), in the app's directory in Asuka's cache.
   It's launched with `ASUKA_DEV=host:port` in its environment.
 - **iOS**: the Swift host linked with the core (`libasuka.a`) into the
   app's `.app`, with every part of the host that links a framework of
@@ -374,10 +377,11 @@ core, the CLI and each host through the platform's real views.
 ```sh
 go test ./core                                     # the core's C tests (ASan, UBSan) and the VM's
 go test ./internal/appbuild ./cmd/asuka            # the builds and the dev loop, on every platform this computer has
-go test ./host/darwin                              # macOS: real AppKit views
+go test ./platform/macos/mactest                   # macOS: apps on the Mac player, its real AppKit views
 go test ./host/windows                             # Windows: real windows
 xvfb-run -a dbus-run-session go test ./host/linux  # Linux: real GTK widgets
 swift test --package-path platform/ios             # the Swift host's decoder
+swift test --package-path platform/macos           # the Mac host's Swift and its decoder
 node --test platform/web                           # the web host's decoder
 ```
 
@@ -387,8 +391,8 @@ in headless Chrome, on the booted iOS simulator and on a running Android
 emulator, and builds the app for each platform; it skips what this
 computer can't build or run.
 
-`go test ./host/darwin -run Conformance` and `go test ./host/windows
--run Conformance` check what the host draws for a style (edges, corners,
+`go test ./platform/macos/mactest -run Conformance` and `go test
+./host/windows -run Conformance` check what the host draws for a style (edges, corners,
 borders, shadows, gradients), measured in a capture of the window; the
 e2e tests do the same on the simulator, the emulator and headless
 Chrome (`go test -tags e2e ./e2e -run Conformance`).
