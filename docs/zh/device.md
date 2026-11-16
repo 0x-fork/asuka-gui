@@ -42,7 +42,7 @@ Asuka 提供了一系列包，让应用用上视图之外的设备能力：相�
 | `asuka/calendar` | `READ_CALENDAR`、`WRITE_CALENDAR`（用于 `calendars`、`events`） | `NSCalendarsFullAccessUsageDescription`、`NSCalendarsWriteOnlyAccessUsageDescription`、`NSCalendarsUsageDescription` |
 | `asuka/compose` | 处理 `mailto:` 和 `smsto:` 的应用的可见性声明（`<queries>`） | `LSApplicationQueriesSchemes` 中的 `mailto` |
 | `asuka/nfc` | `NFC`；`uses-feature android.hardware.nfc`（非必需）；`asuka.toml` 中 `nfc` 的过滤器（见 [NFC 标签](nfc.md)） | `NFCReaderUsageDescription`；Core NFC 的 entitlement；`asuka.toml` 中 `nfc` 的 AID 和 FeliCa 系统代码 |
-| `asuka/bluetooth` | `BLUETOOTH_SCAN`（`neverForLocation`）、`BLUETOOTH_CONNECT`、`BLUETOOTH_ADVERTISE`；声明了 `asuka.toml` 的 `bluetooth.background` 时还有扫描接收器（见[蓝牙](bluetooth.md#构建时添加的内容)） | `NSBluetoothAlwaysUsageDescription`；声明了 `bluetooth.background` 时还有 `bluetooth-central`、`bluetooth-peripheral` |
+| `asuka/bluetooth` | `BLUETOOTH_SCAN`（`neverForLocation`）、`BLUETOOTH_CONNECT`、`BLUETOOTH_ADVERTISE`；调用了 `backgroundScan` 时还有后台扫描的接收器（见[蓝牙](bluetooth.md#构建时添加的内容)） | `NSBluetoothAlwaysUsageDescription`；声明了 `bluetooth.background` 时还有 `bluetooth-central`、`bluetooth-peripheral`（调用了 `backgroundScan` 时有 `bluetooth-central`），以及创建 iOS 要恢复的管理器的启动类 |
 
 `asuka/device`、`asuka/audio`、`asuka/splash`、`asuka/imageedit`、`asuka/widget`、`asuka/js`、`asuka/secure`、`asuka/preview` 和 `asuka/print` 不需要任何权限。
 

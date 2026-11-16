@@ -42,7 +42,7 @@ Asuka のパッケージを使うと、ビューの外にあるデバイスの�
 | `asuka/calendar` | `READ_CALENDAR`、`WRITE_CALENDAR`（`calendars`、`events` 用） | `NSCalendarsFullAccessUsageDescription`、`NSCalendarsWriteOnlyAccessUsageDescription`、`NSCalendarsUsageDescription` |
 | `asuka/compose` | `mailto:` と `smsto:` を扱うアプリの可視性（`<queries>`） | `LSApplicationQueriesSchemes` に `mailto` |
 | `asuka/nfc` | `NFC`。`uses-feature android.hardware.nfc`（必須ではない）。asuka.toml の `nfc` のフィルター（[NFC タグ](nfc.md)） | `NFCReaderUsageDescription`。Core NFC のエンタイトルメント。asuka.toml の `nfc` の AID と FeliCa のシステムコード |
-| `asuka/bluetooth` | `BLUETOOTH_SCAN`（`neverForLocation`）、`BLUETOOTH_CONNECT`、`BLUETOOTH_ADVERTISE`。`asuka.toml` の `bluetooth.background` のためのスキャンのレシーバー（[Bluetooth](bluetooth.md#ビルドが加えるもの) を参照） | `NSBluetoothAlwaysUsageDescription`。`bluetooth.background` のための `bluetooth-central`、`bluetooth-peripheral` |
+| `asuka/bluetooth` | `BLUETOOTH_SCAN`（`neverForLocation`）、`BLUETOOTH_CONNECT`、`BLUETOOTH_ADVERTISE`。`backgroundScan` のためのバックグラウンドスキャンのレシーバー（[Bluetooth](bluetooth.md#ビルドが加えるもの) を参照） | `NSBluetoothAlwaysUsageDescription`。`bluetooth.background` のための `bluetooth-central`、`bluetooth-peripheral`（`backgroundScan` には `bluetooth-central`）と、iOS が復元するマネージャーを作る起動クラス |
 
 `asuka/device`、`asuka/audio`、`asuka/splash`、`asuka/imageedit`、`asuka/widget`、`asuka/js`、`asuka/secure`、`asuka/preview`、`asuka/print` は何も必要としません。
 

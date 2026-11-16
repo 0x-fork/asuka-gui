@@ -387,7 +387,7 @@ location = false
 
 | キー | 型 | デフォルト | 説明 |
 |---|---|---|---|
-| `background` | 文字列の配列 | なし | アプリがバックグラウンドで続ける役割です。`"central"`：iOS の `bluetooth-central` モードと、Android のバックグラウンドスキャンの受け取り。`asuka/bluetooth` には、状態の復元も、見えないところで続く独自のスキャンもまだありません。`"peripheral"`：iOS の `bluetooth-peripheral` モード。 |
+| `background` | 文字列の配列 | なし | アプリがバックグラウンドで続ける役割で、iOS の状態の復元（`bluetooth.restored()`）も有効になります。`"central"`：iOS の `bluetooth-central` モード（`backgroundScan` を呼ぶアプリには指定しなくても付きます）。`"peripheral"`：iOS の `bluetooth-peripheral` モード。Android ではどちらも不要です。`backgroundScan` を呼ぶアプリには、スキャンのレシーバーが与えられます。 |
 | `location` | 真偽値 | `false` | アプリがスキャン（ビーコン）からユーザーの居場所を割り出す場合に指定します。Android の `BLUETOOTH_SCAN` に `neverForLocation` を付けず、`bluetooth.request()` は位置情報の権限も求めるようになります（iOS：`NSLocationWhenInUseUsageDescription`）。 |
 
 [Bluetooth](bluetooth.md#ビルドが加えるもの)を参照してください。
