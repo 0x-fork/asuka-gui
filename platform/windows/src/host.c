@@ -333,6 +333,7 @@ void wh_release(node *n) {
 	if (n->list) wh_list_release(n);
 	if (n->image) wh_image_close(n);
 	if (n->shader) wh_shader_release(n);
+	if (n->shape) wh_shape_free(n);
 	if (n->rich) wh_rich_release(n);
 	if (n->pane_node) wh_split_release(n);
 	if (n->clip_rgn) {

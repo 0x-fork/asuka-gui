@@ -222,6 +222,7 @@ void wh_image_tint_changed(node *n);
 // ---- shape.c, canvas.c, shader.c ----
 void wh_shape_new(node *n);
 void wh_shape_set_prop(node *n, uint16_t p, const ak_value *v);
+void wh_shape_free(node *n);
 void wh_paint_shape(node *n, gfx g);
 void wh_paint_canvas(node *n, gfx g);
 void wh_shader_new(node *n);

@@ -312,6 +312,7 @@ static const wchar_t *face(const font_spec *s, wchar_t *buf, size_t cap) {
 	return L"Segoe UI Variable Display";
 }
 
+// wh_face is the font family a spec draws in (buf: room for one of the app's).
 const wchar_t *wh_face(const font_spec *s, wchar_t *buf, size_t cap) { return face(s, buf, cap); }
 
 typedef struct {
