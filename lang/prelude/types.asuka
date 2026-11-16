@@ -171,7 +171,7 @@ enum GridLine {
 /// An item of a menu, a swipe, a context menu or an alert. A field left
 /// out is its zero: .button(title: "Cancel", role: .cancel) runs nothing.
 enum Action {
-  button(title: string, icon: string, role: ActionRole, disabled: bool, checked: bool, run: fn()?)
+  button(title: string, icon: string, role: ActionRole, disabled: bool, checked: bool, run: (async fn())?)
   submenu(title: string, icon: string, items: [Action])
   section(title: string, items: [Action])
 }

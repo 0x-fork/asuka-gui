@@ -196,18 +196,10 @@ fn find(es: [Entry], n: int) -> Action? {
   return none
 }
 
-// press runs a chosen item: a button's run, unless it's disabled.
+// press runs a chosen item: a button's run, unless it's disabled (an
+// async one as a task of the tray's).
 fn press(a: Action?) {
-  if let x = a {
-    match x {
-      .button(_, _, _, disabled, _, run) => {
-        if !disabled {
-          if let r = run { r() }
-        }
-      }
-      _ => {}
-    }
-  }
+  if let x = a { runAction(x) }
 }
 
 /// An icon in the tray while it's shown (a component that shows nothing

@@ -176,7 +176,7 @@ component Actions {
 
 ### メニュー
 
-`menu` を指定したボタンは、タップされると `on press` を実行する代わりにアクションの一覧を表示します（iOS では `UIMenu`、Android では `PopupMenu`、macOS では `NSMenu`、Windows ではポップアップメニュー、Linux では `GtkPopoverMenu`、ブラウザーではポップオーバー）。それぞれは `Action` で、`.button(title:, icon:, role:, disabled:, checked:, run:)` のように書き、タイトル以外は省略できます。`role: .destructive` を指定すると赤で表示されます。
+`menu` を指定したボタンは、タップされると `on press` を実行する代わりにアクションの一覧を表示します（iOS では `UIMenu`、Android では `PopupMenu`、macOS では `NSMenu`、Windows ではポップアップメニュー、Linux では `GtkPopoverMenu`、ブラウザーではポップオーバー）。それぞれは `Action` で、`.button(title:, icon:, role:, disabled:, checked:, run:)` のように書き、タイトル以外は省略できます。`role: .destructive` を指定すると赤で表示されます。`run` の中では await できます（`run: () => { await save() }`）。ハンドラーと同じく、アクションを作ったコードのタスクとして実行され、メニューはその終わりを待ちません。そのコードのスタック、シート、ルーターがそのまま使えるので、`push` や `navigate` も呼べます。`runAction(a)` は、自前のメニューのために、同じようにアクションを実行します。
 
 ```asuka
 component More {

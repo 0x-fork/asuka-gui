@@ -177,7 +177,7 @@ component Actions {
 
 ### 菜单
 
-设置了 `menu` 的按钮被点击时会弹出其中的操作，而不是运行 `on press`（iOS 上是 `UIMenu`，Android 上是 `PopupMenu`，macOS 上是 `NSMenu`，Windows 上是弹出菜单，Linux 上是 `GtkPopoverMenu`，浏览器里是一个 popover）。每一项都是一个 `Action`：`.button(title:, icon:, role:, disabled:, checked:, run:)`，除标题外的字段都可省略。`role: .destructive` 会让它显示为红色。
+设置了 `menu` 的按钮被点击时会弹出其中的操作，而不是运行 `on press`（iOS 上是 `UIMenu`，Android 上是 `PopupMenu`，macOS 上是 `NSMenu`，Windows 上是弹出菜单，Linux 上是 `GtkPopoverMenu`，浏览器里是一个 popover）。每一项都是一个 `Action`：`.button(title:, icon:, role:, disabled:, checked:, run:)`，除标题外的字段都可省略。`role: .destructive` 会让它显示为红色。`run` 里可以 await（`run: () => { await save() }`）：它作为创建这个操作的代码的 task 运行，菜单不会等它，和事件处理函数一样；那段代码所在的栈、弹出面板和路由器就是它的，所以在里面可以用 `push` 和 `navigate`。`runAction(a)` 以同样的方式运行一个操作，供你自己做的菜单使用。
 
 ```asuka
 component More {
