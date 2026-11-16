@@ -8,6 +8,7 @@ import { sidebarOf } from "@/components/docs/docs-layout"
 import { DocsNav } from "@/components/docs/docs-nav"
 import { NotFound } from "@/components/not-found"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { getDoc, type Doc, type Navs } from "@/lib/docs"
 import { episodeKanji, episodeNumber } from "@/lib/episode"
@@ -120,7 +121,8 @@ export function DocPage({ doc }: { doc: Doc }) {
                 ))}
               </>
             ) : null}
-            <CopyMarkdown slug={doc.slug} />
+            {/* After the links, at the row's end; alone, where the row starts. */}
+            <CopyMarkdown slug={doc.slug} className={doc.references?.length ? "ml-auto" : undefined} />
           </div>
           <div className="hazard mt-6 h-2" />
         </header>
@@ -173,7 +175,7 @@ export function DocPage({ doc }: { doc: Doc }) {
  * Copies the page as Markdown (its download, /docs/<slug>.md: the source,
  * links made absolute), for pasting into a chat with a model or a note.
  */
-function CopyMarkdown({ slug }: { slug: string }) {
+function CopyMarkdown({ slug, className }: { slug: string; className?: string }) {
   const locale = useLocale()
   const t = useMessages().docs
   const [copied, setCopied] = React.useState(false)
@@ -198,7 +200,7 @@ function CopyMarkdown({ slug }: { slug: string }) {
     setCopied(true)
   }
   return (
-    <Button variant="outline" size="sm" className="ml-auto gap-1.5" onClick={() => void copy().catch(() => setCopied(false))}>
+    <Button variant="outline" size="sm" className={cn("gap-1.5", className)} onClick={() => void copy().catch(() => setCopied(false))}>
       {copied ? <CheckIcon /> : <CopyIcon />}
       {copied ? t.copied : t.copyMarkdown}
     </Button>
