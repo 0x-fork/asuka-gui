@@ -35,6 +35,12 @@ class AsukaExoVideo(context: Context, private val events: AsukaVideoEvents) : Fr
     }
     override val view: View get() = this
     override var autoPlay = false
+        // The props go in the order the app wrote them, so Source may be
+        // applied before AutoPlay: what's loaded plays when it comes.
+        set(v) {
+            if (v && !field && player.mediaItemCount > 0) player.playWhenReady = true
+            field = v
+        }
     override var loop = false
         set(v) { field = v; player.repeatMode = if (v) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF }
     override var muted = false
