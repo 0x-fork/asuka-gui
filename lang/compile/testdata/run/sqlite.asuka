@@ -64,6 +64,53 @@ test "live queries" {
   print(live.rows.count())
 }
 
+async fn closeNow(db: sqlite.DB) -> int {
+  db.close()
+  return 0
+}
+
+async fn insert(db: sqlite.DB, sql: string) throws -> int {
+  try await db.exec(sql, [])
+  return 1
+}
+
+async fn count(db: sqlite.DB, sql: string) throws -> [int] {
+  return try await db.query(sql, [])
+}
+
+test "closed connections" {
+  let db = try openDB()
+  // Closed while its statements wait their turn: they run first.
+  let slow = "with recursive c(x) as (select 1 union all select x + 1 from c where x < 300000) select count(*) from c"
+  let (counts, inserted, _) = try await all(count(db, slow), insert(db, "insert into notes (text) values ('Last')"), closeNow(db))
+  print("{counts} {inserted}")
+  db.close()
+  do {
+    try await db.exec("insert into notes (text) values ('Late')", [])
+  } catch e {
+    print(e.message)
+  }
+  do {
+    let _: [int] = try await sqlite.DB(12345, "").query("select 1", [])
+  } catch e {
+    print(e.message)
+  }
+}
+
+async fn migrateNow(db: sqlite.DB) throws -> int {
+  try db.migrate(["create table notes (id integer primary key, text text not null, done bool not null default 0)", "create table tagged (id integer)", "insert into notes (text) values ('Second')"])
+  return 0
+}
+
+test "statements in order" {
+  let db = try openDB()
+  defer { db.close() }
+  // A statement on the main thread waits for those sent before it.
+  let slow = "with recursive c(x) as (select 1 union all select x + 1 from c where x < 300000) insert into notes (text) select 'First' from c where x = 300000"
+  let _ = try await all(insert(db, slow), migrateNow(db))
+  let texts: [string] = try await db.query("select text from notes order by id", [])
+  print(texts)
+}
 // Output:
 // [{"id":1,"text":"Milk","done":false},{"id":2,"text":"Eggs","done":true}]
 // [1]
@@ -76,3 +123,9 @@ test "live queries" {
 // ["One"]
 // 1
 // ok live queries
+// [300000] 1
+// sqlite: the database is closed
+// sqlite: the database is closed
+// ok closed connections
+// ["First","Second"]
+// ok statements in order
