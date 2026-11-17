@@ -1,7 +1,8 @@
 // Workers (rt/worker.c): a thread each, its calls run in order on its
 // state, its owner's disposal cancelling what's queued, and everything it
-// held let go of: its state on its thread, the closures (which hold the
-// VM's module) on the main thread. core_test.go runs this file under
+// held let go of: its state and the copies of the closures (which share
+// what they carry with it) on its thread, the closures they were copied
+// from (which hold the VM's module) on the main thread, last. core_test.go runs this file under
 // ASan and UBSan, and again under ThreadSanitizer (TestCThreads).
 #include "t.h"
 #include "rt/rt.h"
@@ -24,12 +25,17 @@ static void find_lib(void) {
 }
 
 // What ran where: the threads the closures ran and were let go of on.
-static _Atomic uint64_t main_id, init_ran_on, call_ran_on;
+// The closures and their copies share this drop: the copies run (and
+// are let go of) on the worker's thread, those they were copied from,
+// which the worker holds as the VM's module's holders, go last, on the
+// main thread.
+static _Atomic uint64_t main_id, init_ran_on, call_ran_on, last_drop_on;
 static atomic_int drops, drops_off_main;
 
 static void dropped(ak_closure *c) {
 	AK_UNUSED(c);
 	atomic_fetch_add(&drops, 1);
+	atomic_store(&last_drop_on, ak_thread_id());
 	if (ak_thread_id() != atomic_load(&main_id)) atomic_fetch_add(&drops_off_main, 1);
 }
 
@@ -102,7 +108,6 @@ static ak_val new_worker(void) {
 	init->drop = dropped;
 	ak_val args[1] = {{.p = init}};
 	ak_val w = worker_new(args, 1);
-	init->drop = NULL;  // the caller's own: only the worker's copy counts
 	ak_release(init);
 	return w;
 }
@@ -113,7 +118,6 @@ static ak_future *call(ak_val w, int64_t x) {
 	c->drop = dropped;
 	ak_val args[3] = {w, {.p = c}, {.i = AK_K_INT}};
 	ak_future *f = worker_call(args, 3).p;
-	c->drop = NULL;
 	ak_release(c);
 	return f;
 }
@@ -140,6 +144,7 @@ static void setup(void) {
 	atomic_store(&main_id, ak_thread_id());
 	atomic_store(&drops, 0);
 	atomic_store(&drops_off_main, 0);
+	atomic_store(&last_drop_on, 0);
 	atomic_store(&init_throws, 0);
 	ak_cond_init(&gate_cond);
 	gate_reset();
@@ -168,8 +173,9 @@ TEST(calls_run_in_order_on_its_thread) {
 	ak_release(w.p);
 	pump_until_idle();
 	CHECK_EQ_INT(ak_obj_live, live);
-	CHECK_EQ_INT(atomic_load(&drops), 6);  // the init's copy and each call's
-	CHECK_EQ_INT(atomic_load(&drops_off_main), 0);
+	CHECK_EQ_INT(atomic_load(&drops), 12);  // the init and each call, and their copies
+	CHECK_EQ_INT(atomic_load(&drops_off_main), 6);  // the copies
+	CHECK(atomic_load(&last_drop_on) == atomic_load(&main_id));
 }
 
 TEST(an_error_crosses_back) {
@@ -234,8 +240,12 @@ TEST(disposing_its_owner_cancels_the_queued_calls) {
 	for (int i = 0; i < 3; i++) ak_release(queued[i]);
 	pump_until_idle();
 	CHECK_EQ_INT(ak_obj_live, live);
-	CHECK_EQ_INT(atomic_load(&drops), 5);  // the init's, the running call's, the 3 queued's (the one after never ran)
-	CHECK_EQ_INT(atomic_load(&drops_off_main), 0);
+	// The init and its copy, the running call and its copy, the 3 queued
+	// and their copies (let go of on the main thread: they never ran),
+	// the one after (never copied).
+	CHECK_EQ_INT(atomic_load(&drops), 11);
+	CHECK_EQ_INT(atomic_load(&drops_off_main), 2);
+	CHECK(atomic_load(&last_drop_on) == atomic_load(&main_id));
 }
 
 // Let go of with no owner (a test's, a program's), it stops once the
@@ -260,7 +270,7 @@ TEST(its_last_reference_lets_the_queue_run) {
 	for (int i = 0; i < 3; i++) ak_release(f[i]);
 	pump_until_idle();
 	CHECK_EQ_INT(ak_obj_live, live);
-	CHECK_EQ_INT(atomic_load(&drops_off_main), 0);
+	CHECK(atomic_load(&last_drop_on) == atomic_load(&main_id));
 }
 
 // Disposed after it was let go of (the owner outlives the handle), and
@@ -279,7 +289,55 @@ TEST(stopping_twice) {
 	if (f->state == AK_FUT_FAILED) CHECK(ak_is_cancel(f->error));
 	ak_release(f);
 	CHECK_EQ_INT(ak_obj_live, live);
-	CHECK_EQ_INT(atomic_load(&drops_off_main), 0);
+	CHECK(atomic_load(&last_drop_on) == atomic_load(&main_id));
+}
+
+// keep(s): the string, an argument, kept in the state; the state's
+// count returned. Its copy and the state share it.
+static ak_val keep_body(ak_closure *c, ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_box *b = args[0].p;
+	if (!b->v.p) b->v.p = ak_arr_new(AK_K_REF, NULL, 0);
+	ak_arr **a = (ak_arr **)&b->v.p;
+	ak_arr_push(a, (ak_val){.p = ak_retain(c->caps[0].p)});
+	return (ak_val){.i = (*a)->len};
+}
+
+static ak_val strings_init(ak_closure *c, ak_val *args, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(args), AK_UNUSED(n);
+	return (ak_val){.p = ak_box_new(AK_K_REF, (ak_val){0})};
+}
+
+static const uint8_t ref_cap[] = {AK_K_REF};
+
+// What a call carries and the state keeps is the thread's alone: the
+// copy of the call's closure is let go of there, not on the main thread
+// while the thread changes the state (ThreadSanitizer's race, and a
+// count lost).
+TEST(an_argument_kept_in_the_state) {
+	setup();
+	int64_t live = ak_obj_live;
+	ak_closure *init = ak_closure_new(strings_init, NULL, 0, NULL);
+	ak_val w = worker_new((ak_val[]){{.p = init}}, 1);
+	ak_release(init);
+	enum { N = 200 };
+	ak_future *f[N];
+	for (int i = 0; i < N; i++) {
+		ak_closure *c = ak_closure_new(keep_body, NULL, 1, ref_cap);
+		char text[16];
+		snprintf(text, sizeof text, "s%d", i);
+		c->caps[0].p = ak_str_c(text);
+		f[i] = worker_call((ak_val[]){w, {.p = c}, {.i = AK_K_INT}}, 3).p;
+		ak_release(c);
+	}
+	for (int i = 0; i < N; i++) {
+		pump_until_settled(f[i]);
+		CHECK_EQ_INT(f[i]->result.i, i + 1);
+		ak_release(f[i]);
+	}
+	ak_release(w.p);
+	pump_until_idle();
+	CHECK_EQ_INT(ak_obj_live, live);
 }
 
 T_MAIN()

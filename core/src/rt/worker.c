@@ -21,12 +21,17 @@
 // thread lets go of its state and ends; the scheduler is held until it
 // has (ak_sched_hold), so a test's loop sees everything freed.
 //
-// The module. The closures hold the module (the VM's code: ak_closure_
-// copied): the init's copy until the thread has ended, each call's until
-// its result is delivered (the result may hold the module's constants),
-// and both are let go of on the main thread, so a dev reload never frees
-// a module a worker still runs, and frees it where the views and state
-// that read its constants live.
+// What's whose. A closure's copy, its captures deep-copied, is the
+// thread's: what it runs stores them in the state (an argument kept in a
+// var), so it's let go of on the thread, as the state is, and the
+// reference counts the two share are only ever the thread's. The closure
+// it was copied from is the main thread's, and holds the module (the
+// VM's code; its copy does too: ak_closure_copied): the worker keeps it
+// until the work is done, the init's until the thread has ended and each
+// call's until its result is delivered (the result may hold the module's
+// constants), and lets it go on the main thread, so a dev reload never
+// frees a module a worker still runs, and frees it where the views and
+// state that read its constants live.
 //
 // Where the core has no threads (the web), a host may run workers
 // elsewhere (ak_worker_elsewhere: a Web Worker each, abi/web.c); without
@@ -41,8 +46,9 @@
 #include <stdatomic.h>
 
 typedef struct wcall {
-	ak_closure *c;   // the copy the thread runs; let go of on the main thread
-	ak_future *fut;  // retained; touched on the main thread only
+	ak_closure *c;     // the copy the thread runs, and lets go of
+	ak_closure *orig;  // what it was copied from: the main thread's, retained
+	ak_future *fut;    // retained; touched on the main thread only
 	ak_kind kind;
 	ak_val result;
 	void *err;
@@ -58,7 +64,8 @@ typedef struct wstate {
 	wcall *head, *tail;  // under mu
 	bool stop;           // under mu: no more calls; the thread ends once head is
 	bool stopping;       // main thread: a stop was asked for (and the scheduler held)
-	ak_closure *init;    // the thread's (or, in place, let go of once run)
+	ak_closure *init;    // the copy the thread makes the state with (and lets go of)
+	ak_closure *orig;    // what it was copied from: the main thread's, retained
 	// In place: its state, on the main thread, or the error its init
 	// threw.
 	bool inplace;
@@ -98,17 +105,17 @@ static void deliver(void *p) {
 	if (c->err) ak_future_reject(c->fut, c->err);
 	else ak_future_resolve(c->fut, c->result);
 	ak_release(c->fut);
-	ak_release(c->c);
+	ak_release(c->orig);
 	ak_free(c);
 	ak_sched_unhold();
 }
 
-// stopped: the thread has let go of the state (main thread). The init's
-// copy goes here, last: it holds the module the state was made with.
+// stopped: the thread has let go of the state (main thread). The init
+// goes here, last: it holds the module the state was made with.
 static void stopped(void *p) {
 	wstate *s = p;
-	ak_release(s->init);
-	s->init = NULL;
+	ak_release(s->orig);
+	s->orig = NULL;
 	state_release(s);
 	ak_sched_unhold();
 }
@@ -144,10 +151,14 @@ static void run(void *p) {
 				ak_release_val(v, c->kind);
 			}
 		}
+		ak_release(c->c);
+		c->c = NULL;
 		ak_post(deliver, c);
 	}
 	ak_release(env.p);
 	ak_release(err);
+	ak_release(s->init);
+	s->init = NULL;
 	ak_post(stopped, s);
 }
 
@@ -187,7 +198,8 @@ static void stop(wstate *s, bool cancel) {
 		ak_throw_cancel();
 		ak_future_reject(c->fut, ak_error_take());
 		ak_release(c->fut);
-		ak_release(c->c);
+		ak_release(c->c);  // never the thread's: it's the main thread's to let go of
+		ak_release(c->orig);
 		ak_free(c);
 		ak_sched_unhold();
 	}
@@ -228,13 +240,15 @@ static ak_val new_fn(ak_val *args, uint32_t nargs) {
 		ak_mutex_init(&s->mu);
 		ak_cond_init(&s->cond);
 		s->init = ak_closure_deep_copy(init);
+		s->orig = ak_retain(init);
 		atomic_fetch_add(&s->rc, 1);  // the thread's
 		if (!ak_thread_start(run, s)) {
 			// No threads: in place, on the main thread.
 			atomic_fetch_sub(&s->rc, 1);
 			s->inplace = true;
 			ak_release(s->init);
-			s->init = NULL;
+			ak_release(s->orig);
+			s->init = s->orig = NULL;
 			s->env = ak_call(init, NULL, 0);
 			if (ak_error_pending()) s->err = ak_error_take();
 		}
@@ -276,7 +290,9 @@ static ak_val call_fn(ak_val *args, uint32_t nargs) {
 	wcall *wc = ak_alloc(sizeof *wc);
 	memset(wc, 0, sizeof *wc);
 	wc->c = ak_closure_deep_copy(c);
+	wc->orig = ak_retain(c);
 	wc->fut = ak_retain(f);
+	f->held = 1;  // the call's reference, until it's delivered
 	wc->kind = k;
 	ak_sched_hold();  // until deliver runs, or the call is cancelled
 	ak_mutex_lock(&s->mu);
