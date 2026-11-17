@@ -102,9 +102,12 @@ Generic functions and types take type parameters. A parameter's
 constraints are the program's interfaces and `Equatable` (what `==`
 compares: the built-in values, and structs, enums, tuples, arrays, maps
 and optionals whose parts are), `Comparable` (what `<` orders: ints,
-floats, strings and durations) and `Hashable` (what a map's key can
-be: see [Values and types](types.md#values-and-types)), several joined
-by `&`. What a type argument must have, its values in
+floats, strings, durations, enums without payloads by the order of
+their cases, and structs and enums with `fn compare(other: T) -> int`;
+a struct isn't ordered field by field) and `Hashable` (what a map's key
+can be: the built-in values but floats, and the structs, enums, tuples
+and optionals made of them; see [Values and
+types](types.md#values-and-types)), several joined by `&`. What a type argument must have, its values in
 the generic code have: the interfaces' methods and fields, called
 directly on each type it's compiled for.
 
@@ -132,5 +135,8 @@ compiler says where; a type that holds itself takes the same arguments
 
 A type argument has an interface when it has its methods and fields: a
 struct or an enum (an enum without payloads too), an interface asking
-for them, or another type parameter constrained so. `T: Error` reads an
+for them, or another type parameter constrained so. A method is the
+interface's when it takes the same parameters: one that takes more,
+even with defaults (`greet(loud: bool, times: int = 1)` for `greet(loud:
+bool)`), isn't, since a call through the interface passes only its own. `T: Error` reads an
 error's `message`.

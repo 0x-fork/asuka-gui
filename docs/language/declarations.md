@@ -71,10 +71,14 @@ match line {
 }
 ```
 
-A struct takes operators from its methods: `fn add(o: T) -> R` is `a +
-b`, `fn sub(o: T) -> R` (or `minus`) is `a - b`, and `fn compare(o: T)
--> int` (negative, zero or positive) is `<`, `<=`, `>` and `>=`. That's
-how `std/time`'s `Time` adds a `Duration` and subtracts another `Time`:
+A struct or an enum takes operators from its methods: `fn add(o: T) ->
+R` is `a + b`, `fn sub(o: T) -> R` (or `minus`) is `a - b`, and `fn
+compare(o: T) -> int` (negative, zero or positive) is `<`, `<=`, `>`
+and `>=`, `sorted()`, and `T: Comparable`
+([Functions](functions.md#interfaces-and-generics)). `a += b` is `a = a +
+b` with them, when `add` gives `a`'s type back, on a var, state, a field
+or an element (state changes once). That's how `std/time`'s `Time` adds a
+`Duration` and subtracts another `Time`:
 
 ```asuka
 struct Money {
@@ -86,7 +90,16 @@ struct Money {
 
 let total = Money(cents: 250) + Money(cents: 99)
 let over = total > Money(cents: 300)
+
+fn withTip(bill: Money) -> Money {
+  var paid = bill
+  paid += Money(cents: 100)
+  return paid
+}
 ```
+
+A struct isn't ordered field by field: what its order means is its
+`compare`'s to say.
 
 ## Enums
 

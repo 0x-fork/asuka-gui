@@ -11,7 +11,7 @@ let icon = match (online, unread) {
 }
 ```
 
-元组模式（`(true, 0)`）用各自的模式分别匹配元组的每个元素。
+元组模式（`(true, 0)`）用各自的模式分别匹配元组的每个元素。匹配可选的元组时，它和成员模式一样，在有值时匹配其中的元组（`none` 要单独写一个分支）：`if let (name, age) = found { … }`、`let (x, y) = cursor else { return }`。
 
 `for` 可以遍历数组、集合、map 的 `(key, value)` 对，或者一个区间：`a..<b` 是从 `a` 到 `b` 但不包括 `b` 的整数，`a..b` 则包括 `b`（`0..<3` 就是 `[0, 1, 2]`；`for` 遍历区间时不会真的创建数组）。`while cond { … }` 在 cond 成立时一直循环；`break` 跳出循环，`continue` 直接进入下一轮。
 

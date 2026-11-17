@@ -13,7 +13,9 @@ let icon = match (online, unread) {
 ```
 
 A tuple pattern (`(true, 0)`) matches each element with a pattern of
-its own.
+its own. Matching an optional tuple, it matches the tuple when there's
+one, as a case pattern does (`none` is an arm of its own): `if let
+(name, age) = found { … }`, `let (x, y) = cursor else { return }`.
 
 `for` goes over an array, a set, a map's `(key, value)` pairs, or a
 range:

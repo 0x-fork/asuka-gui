@@ -60,7 +60,7 @@ match line {
 }
 ```
 
-结构体可以从它的方法获得运算符：`fn add(o: T) -> R` 就是 `a + b`，`fn sub(o: T) -> R`（或 `minus`）就是 `a - b`，`fn compare(o: T) -> int`（负数、零或正数）就是 `<`、`<=`、`>` 和 `>=`。`std/time` 的 `Time` 就是这样加上一个 `Duration`、减去另一个 `Time` 的：
+结构体和枚举可以从它们的方法获得运算符：`fn add(o: T) -> R` 就是 `a + b`，`fn sub(o: T) -> R`（或 `minus`）就是 `a - b`，`fn compare(o: T) -> int`（负数、零或正数）就是 `<`、`<=`、`>` 和 `>=`，也让 `sorted()` 和 `T: Comparable` 可用（见[函数](functions.md#接口与泛型)）。只要 `add` 返回的还是 `a` 的类型，`a += b` 就是借助这些方法的 `a = a + b`，可以用在 var、状态、字段和元素上（状态只改变一次）。`std/time` 的 `Time` 就是这样加上一个 `Duration`、减去另一个 `Time` 的：
 
 ```asuka
 struct Money {
@@ -72,7 +72,15 @@ struct Money {
 
 let total = Money(cents: 250) + Money(cents: 99)
 let over = total > Money(cents: 300)
+
+fn withTip(bill: Money) -> Money {
+  var paid = bill
+  paid += Money(cents: 100)
+  return paid
+}
 ```
+
+结构体不会逐个字段地排序：它的顺序是什么意思，由它的 `compare` 来决定。
 
 ## 枚举
 
