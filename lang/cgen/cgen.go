@@ -242,6 +242,9 @@ func (g *gen) fn(i int) error {
 		return err
 	}
 	g.async = g.body[i] == asyncBody
+	if g.async && f.Flags&bc.FMut != 0 {
+		return fmt.Errorf("a mut fn that may suspend")
+	}
 	n := len(f.Kinds)
 	g.p("// %s (%s)\n", f.Name, f.File)
 	g.p("static const uint8_t K%d[%d] = {", i, max(n, 1))
@@ -283,6 +286,16 @@ func (g *gen) fn(i int) error {
 		// C stack.
 		g.p("\tif (AK_UNLIKELY(++depth > 10000 || ak_stack_low())) { depth--; ak_throw_msg(\"stack overflow in %%s\", %s); return (ak_val){0}; }\n", cbytes(f.Name))
 		for p := 0; p < int(f.NParams); p++ {
+			if p == 0 && f.Flags&bc.FMut != 0 {
+				// A mut fn's receiver moves in, and back into A[0] as the
+				// function ends (inout, below).
+				if f.Kinds[0] == bc.KRef {
+					g.p("\tR[0] = A[0]; A[0].p = NULL;\n")
+				} else {
+					g.p("\tR[0] = A[0];\n")
+				}
+				continue
+			}
 			if f.Kinds[p] == bc.KRef {
 				g.p("\tR[%d].p = ak_retain(A[%d].p);\n", p, p)
 			} else {
@@ -316,6 +329,7 @@ func (g *gen) fn(i int) error {
 		}
 	}
 	g.p("unwind:\n\tif (ak_frame_hook) ak_frame_hook(%s, %s, at_);\n", cbytes(f.Name), cbytes(f.File))
+	g.p("%s", g.inout(f, -1))
 	if g.async {
 		g.p("\tak_op_exit(R, K, N, -1);\n\tdepth--;\n\treturn AK_RUN_THROW;\n")
 	} else {
@@ -323,6 +337,22 @@ func (g *gen) fn(i int) error {
 	}
 	g.p("#undef K\n#undef N\n}\n\n")
 	return nil
+}
+
+// inout is C that moves a mut fn's receiver back into A[0] as it ends
+// (ret: the register it returns, which keeps its own reference): "" for
+// another function.
+func (g *gen) inout(f *bc.FuncDef, ret int) string {
+	if f.Flags&bc.FMut == 0 || f.NParams == 0 {
+		return ""
+	}
+	if f.Kinds[0] != bc.KRef {
+		return "\tA[0] = R[0];\n"
+	}
+	if ret == 0 {
+		return "\tA[0] = R[0]; ak_retain(R[0].p);\n"
+	}
+	return "\tA[0] = R[0]; R[0].p = NULL;\n"
 }
 
 // handlerAt is the label an error thrown at pc goes to: its innermost
@@ -557,7 +587,7 @@ func (g *gen) insn(f *bc.FuncDef, in insn, h string) error {
 		w("if (R[%d].p) goto L%d;", a[0], a[1])
 	case "CALL":
 		callee := &g.m.Funcs[a[1]]
-		if g.async && g.body[a[1]] != syncBody {
+		if g.async && g.body[a[1]] != syncBody && callee.Flags&bc.FMut == 0 {
 			// An async function (or one that may suspend) runs on this
 			// coroutine, as the interpreter's CALL runs it.
 			g.acall(f, in, h, fmt.Sprintf("&M->funcs[%d]", a[1]), "NULL")
@@ -586,13 +616,15 @@ func (g *gen) insn(f *bc.FuncDef, in insn, h string) error {
 		if g.async {
 			// A method compiled to a C function is called from C; another
 			// runs on this coroutine.
-			w("{ const ak_func *g_ = ak_vm_method(R[%d].p, M->strings[%d]); if (!g_) ak_panic(\"no method %%s\", M->strings[%d]->data); if (g_->native) { ak_val v_ = g_->native(&R[%d], NULL); %s %s goto T%d; } }",
-				a[2], a[1], a[1], a[2], thrown, discard(f, a[0], "v_", "g_->ret"), in.pc+in.op.Width())
+			// A mut fn is called from C too (it never suspends): its
+			// receiver goes back into this function's register.
+			w("{ const ak_func *g_ = ak_vm_method(R[%d].p, M->strings[%d]); if (!g_) ak_panic(\"no method %%s\", M->strings[%d]->data); if (g_->native || (g_->flags & AK_F_MUT)) { ak_val v_ = g_->native ? g_->native(&R[%d], NULL) : ak_vm_call(g_, &R[%d], %d); %s %s goto T%d; } }",
+				a[2], a[1], a[1], a[2], a[2], a[3], thrown, discard(f, a[0], "v_", "g_->ret"), in.pc+in.op.Width())
 			g.acall(f, in, h, fmt.Sprintf("ak_vm_method(R[%d].p, M->strings[%d])", a[2], a[1]), "NULL")
 			break
 		}
 		w("{ const ak_func *g_ = ak_vm_method(R[%d].p, M->strings[%d]); if (!g_) ak_panic(\"no method %%s\", M->strings[%d]->data); ak_val v_ = g_->native ? g_->native(&R[%d], NULL) : ak_vm_call(g_, &R[%d], %d); %s %s }",
-			a[2], a[1], a[1], a[2], a[2], a[3], thrown, store(f, a[0], "v_", bc.KRef))
+			a[2], a[1], a[1], a[2], a[2], a[3], thrown, discard(f, a[0], "v_", "g_->ret"))
 	case "RET":
 		keep := -1
 		if f.Kinds[a[0]] == bc.KRef {
@@ -602,12 +634,14 @@ func (g *gen) insn(f *bc.FuncDef, in insn, h string) error {
 			w("{ ak_val v_ = R[%d]; ak_op_exit(R, K, N, %d); depth--; *out = v_; return AK_RUN_RET; }", a[0], keep)
 			break
 		}
+		g.p("%s", g.inout(f, a[0]))
 		w("{ ak_val v_ = R[%d]; ak_op_exit(R, K, N, %d); depth--; return v_; }", a[0], keep)
 	case "RET0":
 		if g.async {
 			w("ak_op_exit(R, K, N, -1); depth--; *out = (ak_val){0}; return AK_RUN_RET;")
 			break
 		}
+		g.p("%s", g.inout(f, -1))
 		w("ak_op_exit(R, K, N, -1); depth--; return (ak_val){0};")
 	case "THROW":
 		w("{ void *e_ = R[%d].p; R[%d].p = NULL; ak_throw(e_); at_ = %d; goto %s; }", a[0], a[0], at, h)

@@ -36,7 +36,26 @@ bool ak_vm_push(ak_co *co, const ak_func *f, ak_closure *clos, ak_val *args, uin
 	}
 	ak_val *R = co->regs + base;
 	if (f->nregs) memset(R, 0, sizeof(ak_val) * f->nregs);
-	for (uint32_t i = 0; i < nargs; i++) {
+	uint8_t inout = 0;
+	uint32_t at = 0;
+	ak_val *argp = NULL;
+	uint32_t i = 0;
+	if ((f->flags & AK_F_MUT) && nargs) {
+		// A mut fn's receiver moves in, and back where it came from as
+		// the frame ends: a register of the coroutine's (by its index,
+		// which stays as the registers grow), or C's.
+		R[0] = args[0];
+		if (f->kinds[0] == AK_K_REF) args[0].p = NULL;
+		if (co->regs && args >= co->regs && args < co->regs + co->cap) {
+			inout = AK_INOUT_REG;
+			at = (uint32_t)(args - co->regs);
+		} else {
+			inout = AK_INOUT_PTR;
+			argp = args;
+		}
+		i = 1;
+	}
+	for (; i < nargs; i++) {
 		R[i] = args[i];
 		ak_retain_val(R[i], (ak_kind)f->kinds[i]);
 	}
@@ -46,15 +65,39 @@ bool ak_vm_push(ak_co *co, const ak_func *f, ak_closure *clos, ak_val *args, uin
 		co->frames = ak_realloc(co->frames, sizeof(ak_frame) * co->fcap);
 	}
 	if (clos) ak_retain(clos);
-	co->frames[co->nframes++] = (ak_frame){.fn = f, .clos = clos, .pc = 0, .callpc = callpc, .base = base, .dst = dst, .boundary = boundary};
+	co->frames[co->nframes++] = (ak_frame){.fn = f, .clos = clos, .pc = 0, .callpc = callpc, .base = base, .dst = dst, .boundary = boundary, .inout = inout, .at = at, .argp = argp};
 	return true;
+}
+
+// call_native_mut calls a compiled mut fn (AK_F_MUT) with the argument
+// block at the coroutine's register at: it's given a copy of the block,
+// so that the receiver it puts back as it ends lands in that register
+// wherever the call moved the registers to.
+static ak_val call_native_mut(ak_co *co, const ak_func *g, uint32_t at, uint32_t n) {
+	ak_val buf[16];
+	ak_val *A = n <= 16 ? buf : ak_alloc(sizeof(ak_val) * n);
+	memcpy(A, co->regs + at, sizeof(ak_val) * n);
+	if (g->kinds[0] == AK_K_REF) co->regs[at].p = NULL;
+	ak_val v = g->native(A, NULL);
+	co->regs[at] = A[0];
+	if (A != buf) ak_free(A);
+	return v;
 }
 
 void ak_vm_pop(ak_co *co, int keep) {
 	ak_frame *fr = &co->frames[co->nframes - 1];
 	ak_val *R = co->regs + fr->base;
 	const ak_func *f = fr->fn;
-	for (uint32_t i = 0; i < f->nregs; i++)
+	uint32_t i = 0;
+	if (fr->inout) {
+		// A mut fn's receiver goes back to its caller's register (and
+		// stays the result's too when it's returned).
+		ak_val *to = fr->inout == AK_INOUT_REG ? co->regs + fr->at : fr->argp;
+		*to = R[0];
+		if (keep == 0) ak_retain_val(R[0], (ak_kind)f->kinds[0]);
+		i = 1;
+	}
+	for (; i < f->nregs; i++)
 		if (f->kinds[i] == AK_K_REF && (int)i != keep) ak_release(R[i].p);
 	co->top = fr->base;
 	ak_closure *c = fr->clos;
@@ -243,7 +286,7 @@ int ak_vm_interp(ak_co *co, ak_val *out) {
 			const ak_func *g = &M->funcs[off32(a + 1)];
 			fr->pc = pc;
 			if (g->native) {
-				ak_val v = g->native(R + a[3], NULL);
+				ak_val v = g->flags & AK_F_MUT ? call_native_mut(co, g, (uint32_t)(R + a[3] - co->regs), a[4]) : g->native(R + a[3], NULL);
 				RELOAD();
 				CHECK_ERR();
 				if (a[0] == 0xFFFF) ak_release_val(v, (ak_kind)g->ret);
@@ -290,7 +333,7 @@ int ak_vm_interp(ak_co *co, ak_val *out) {
 			if (!g) ak_panic("vm: no method %s", name->data);
 			fr->pc = pc;
 			if (g->native) {
-				ak_val v = g->native(R + a[3], NULL);
+				ak_val v = g->flags & AK_F_MUT ? call_native_mut(co, g, (uint32_t)(R + a[3] - co->regs), a[4]) : g->native(R + a[3], NULL);
 				RELOAD();
 				CHECK_ERR();
 				if (a[0] == 0xFFFF) ak_release_val(v, (ak_kind)g->ret);

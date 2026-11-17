@@ -418,6 +418,88 @@ func TestVMErrorsAndHandlers(t *testing.T) {
 	expect(t, got, "caught: boom", "ok catch", "FAIL range: index 3 out of range (length 0)")
 }
 
+// A mut fn (bc.FMut) takes its receiver moved in and moves it back as
+// it ends: changed in place when the caller's was its only reference
+// (an alias the caller didn't retain sees the change, and would be
+// freed under the sanitizers were it copied), returned as its result
+// too, and put back when it throws.
+func TestVMMutFn(t *testing.T) {
+	m := module()
+	addInit(m)
+	m.Shapes = []bc.ShapeDef{{Name: "Box", Fields: []bc.Field{{Name: "n", Kind: bc.KInt, Shape: -1}}}}
+	// bump(self) { self.n += 1 }
+	bump := newFn(m, "Box.bump", bc.KRef)
+	n := bump.reg(bc.KInt)
+	bump.op("GETF", n, 0, 0)
+	bump.op("ADDIK", n, n, 1)
+	bump.op("SETF", 0, 0, n)
+	bump.op("RET0")
+	bumpIdx := bump.done(bc.KVoid, bc.FMut)
+	// me(self) -> Box { bump(); return self }
+	me := newFn(m, "Box.me", bc.KRef)
+	blk, none := me.reg(bc.KRef), me.reg(bc.KRef)
+	me.op("MOV", blk, 0)
+	me.op("MOV", 0, none)
+	me.op("CALL", bc.None, bumpIdx, blk, 1)
+	me.op("MOV", 0, blk)
+	me.op("MOV", blk, none)
+	me.op("RET", 0)
+	meIdx := me.done(bc.KRef, bc.FMut)
+	// fail(self) throws { self.n += 10; throw error("fail") }
+	fail := newFn(m, "Box.fail", bc.KRef)
+	fn, msg, e := fail.reg(bc.KInt), fail.reg(bc.KRef), fail.reg(bc.KRef)
+	fail.op("GETF", fn, 0, 0)
+	fail.op("ADDIK", fn, fn, 10)
+	fail.op("SETF", 0, 0, fn)
+	fail.op("KSTR", msg, fail.str("fail"))
+	fail.op("CALLB", e, fail.b("error"), msg, 1)
+	fail.op("THROW", e)
+	failIdx := fail.done(bc.KVoid, bc.FThrows|bc.FMut)
+
+	f := newFn(m, "t")
+	box, alias, one, x, arg := f.reg(bc.KRef), f.reg(bc.KRef), f.reg(bc.KInt), f.reg(bc.KInt), f.reg(bc.KRef)
+	null, res, err := f.reg(bc.KRef), f.reg(bc.KRef), f.reg(bc.KRef)
+	f.op("KSMALL", one, 1)
+	f.op("NEWS", box, 0, one)
+	f.op("MOV", alias, box) // not retained: box's only reference stays box's
+	call := func(idx, dst int) {
+		f.op("MOV", arg, box)
+		f.op("MOV", box, null)
+		f.op("CALL", dst, idx, arg, 1)
+		f.op("MOV", box, arg)
+		f.op("MOV", arg, null)
+	}
+	call(bumpIdx, bc.None)
+	f.op("GETF", x, alias, 0)
+	f.print(x, bc.KInt)
+	call(meIdx, res)
+	f.op("GETF", x, res, 0)
+	f.print(x, bc.KInt)
+	f.op("GETF", x, alias, 0) // res is a second reference now: the next change copies
+	f.print(x, bc.KInt)
+	f.op("MOV", alias, null)
+	start := f.pc()
+	call(failIdx, bc.None)
+	end := f.pc()
+	f.op("RET0")
+	handler := f.pc()
+	f.op("CATCH", err)
+	f.op("MOV", box, arg)
+	f.op("MOV", arg, null)
+	f.op("GETF", x, box, 0)
+	f.print(x, bc.KInt)
+	f.op("GETF", x, res, 0)
+	f.print(x, bc.KInt)
+	f.op("RET0")
+	f.def.Handlers = []bc.Handler{{Start: uint32(start), End: uint32(end), Target: uint32(handler)}}
+	test(m, "mut", f.done(bc.KVoid, bc.FThrows))
+	got, runErr := runMixed(t, m, "-test", "-leaks")
+	if runErr != nil {
+		t.Fatalf("%v\n%s", runErr, got)
+	}
+	expect(t, got, "2", "3", "3", "13", "3", "ok mut")
+}
+
 func TestVMStateAndEffects(t *testing.T) {
 	m := module()
 	addInit(m)

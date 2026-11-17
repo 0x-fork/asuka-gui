@@ -10,7 +10,7 @@ import (
 // Magic starts every module; Version changes with the format.
 const (
 	Magic   = "AKBC"
-	Version = 3
+	Version = 4
 )
 
 // Kind is how a value is stored (core/src/rt/rt.h's ak_kind).
@@ -76,6 +76,10 @@ type Line struct {
 const (
 	FAsync  = 1 << iota // may suspend
 	FThrows             // may throw
+	// FMut: a mut fn, whose first parameter is inout: a call moves it in
+	// (not retained) from the caller's argument register, and the frame
+	// moves it back there as it ends, returned or thrown (RFC 0011).
+	FMut
 )
 
 // FuncDef is a function: its code and what the VM needs to run it.
