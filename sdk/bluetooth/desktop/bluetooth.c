@@ -495,7 +495,7 @@ static void connect_(bluetooth_Adapter *self, const bluetooth_Device *d, const b
 	asuka_call_on_cancel(call, connect_cancel, c);
 	if (o->timeout > 0 && !o->autoConnect) {
 		int64_t ms = o->timeout / 1000000;
-		c->timer = bt_after((unsigned)(ms > 0 ? ms : 1), connect_timeout, (void *)(uintptr_t)c->id);
+		c->timer = bt_after((unsigned)(ms > 0 ? ms : 1), connect_timeout, (void *)(uintptr_t)c->id, NULL);
 	}
 	bt_engine_connect(c->id, d->id, o->autoConnect, connected, (void *)(uintptr_t)c->id);
 }

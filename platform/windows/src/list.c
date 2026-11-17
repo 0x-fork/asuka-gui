@@ -704,8 +704,23 @@ bool wh_row_menu(node *n) {
 
 // wh_list_release forgets the host's rows and cells: the list's window
 // takes their windows with it.
+// forget_host_node lets go of a row's or cell's node: out of the nodes,
+// what's bound in it left without a parent (the core destroys it), freed
+// once the message being handled returns. Its window goes with the
+// list's.
+static void forget_host_node(node *x) {
+	for (uint32_t i = 0; i < x->nkids; i++)
+		if (x->kids[i]->parent == x) x->kids[i]->parent = NULL;
+	x->nkids = 0;
+	x->cell = NULL;
+	x->row = NULL;
+	wh_map_del(&H.nodes, x->id);
+	wh_free_node(x);
+}
+
 void wh_list_release(node *n) {
 	wh_list *l = n->list;
+	if (!l) return;
 	uint32_t i = 0;
 	void *v;
 	wh_rowview **all = wh_alloc((l->shown.len + l->nfree + 1) * sizeof *all);
@@ -715,21 +730,29 @@ void wh_list_release(node *n) {
 	for (uint32_t j = 0; j < na; j++) {
 		wh_rowview *rv = all[j];
 		for (uint32_t c = 0; c < rv->ncells; c++) {
-			wh_map_del(&H.nodes, rv->cells[c]->n->id);
+			forget_host_node(rv->cells[c]->n);
 			actions_free(&rv->cells[c]->swipe);
 			actions_free(&rv->cells[c]->leading);
 			free(rv->cells[c]);
 		}
 		free(rv->cells);
-		wh_map_del(&H.nodes, rv->n->id);
+		forget_host_node(rv->n);
 		free(rv);
 	}
 	free(all);
 	free(l->shown.keys);
 	free(l->shown.vals);
-	memset(&l->shown, 0, sizeof l->shown);
 	free(l->free_rows);
-	l->free_rows = NULL, l->nfree = 0;
+	free(l->ids);
+	free(l->heights.keys);
+	free(l->heights.vals);
+	free(l->rows);
+	free(l->sections);
+	free(l->tops);
+	free(l->pending);
+	free(l->pending_s);
+	free(l);
+	n->list = NULL;
 }
 
 // For the dump: the rows shown and what's in them.

@@ -205,6 +205,11 @@ struct node {
 	node **kids;
 	uint32_t nkids, capkids;
 	node *parent;
+	// Destroyed: no longer the core's, its events go nowhere. Its memory
+	// goes once the message the main loop dispatched has returned
+	// (wh_free_dead): the handler that emitted the event that destroyed
+	// it may still name it.
+	bool dead;
 	uint64_t listens[2];  // bits by event kind
 	uint8_t dir;          // AK_LAYOUT_DIRECTION_*
 	float frame[4];       // x, y, width, height in points, in its native parent
@@ -380,6 +385,8 @@ typedef struct {
 	size_t pending_at;  // where the next to send starts
 	wh_jobs later;      // work to do once the core has returned
 	ak_buf evbuf;       // an event being encoded
+	node **dead;        // nodes destroyed, freed by wh_free_dead
+	uint32_t ndead, capdead;
 
 	SRWLOCK post_mu;
 	wh_jobs posted;
@@ -461,6 +468,7 @@ void wh_insert(node *p, node *c, uint32_t index);
 void wh_remove(node *p, node *c);
 void wh_destroy(uint32_t id);
 void wh_release(node *n);
+void wh_free_dead(void);
 void wh_forget_tree(HWND hwnd);
 void wh_set_root(node *n);
 void wh_set_frame(node *n, const float f[4]);

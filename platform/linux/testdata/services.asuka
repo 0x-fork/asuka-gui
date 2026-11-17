@@ -11,6 +11,7 @@ struct Spec {
   title: string
   body: string
   thread: string
+  seconds: float = 0
 }
 
 struct Shown {
@@ -30,7 +31,8 @@ component Services(file: string) {
   state contacts = "?"
   state widget = "?"
   Column {
-    gap: 4; padding: 8
+    gap: 4
+    padding: 8
     Text("toast: {toast}")
     Text("hotkey: {hotkey}")
     Text("recent: {recent}")
@@ -49,6 +51,12 @@ component Services(file: string) {
       let mine = list.filter(x => x.id == "t1")
       let _ = try await host.call("notify", "removeThread", "th".bytes())
       let after: [Shown] = try json.decode((try await host.call("notify", "showing", bytes())).string())
+      // One due later, replaced, then cancelled: its timers go, and what
+      // they held.
+      let later = Spec(id: "t2", title: "Later", body: "Not yet", thread: "", seconds: 60)
+      let _ = try await host.call("notify", "schedule", json.encode(later).bytes())
+      let _ = try await host.call("notify", "schedule", json.encode(later).bytes())
+      let _ = try await host.call("notify", "cancel", "t2".bytes())
       toast = "enabled:{host.readU8(ok, 0)} shown:{mine.count()} {mine.map(x => x.title).joined(",")} after:{after.filter(x => x.id == "t1").count()}"
     } catch e {
       toast = "error {e.message}"

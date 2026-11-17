@@ -229,7 +229,8 @@ bool wh_destroy_nav(node *n) {
 	case AK_KIND_ALERT:
 		n->dying = true;
 		wh_close_alert_dialog(n);
-		if (!n->nav->dialog) wh_free_node(n);  // a task dialog open frees it as it returns
+		if (!n->nav->tasking) wh_free_node(n);
+		else if (n->nav->dialog) SendMessageW(n->nav->dialog, TDM_CLICK_BUTTON, (WPARAM)n->nav->task_button, 0);  // show_alert frees it as it returns
 		return true;
 	case AK_KIND_SNACKBAR:
 		n->dying = true;
@@ -237,6 +238,35 @@ bool wh_destroy_nav(node *n) {
 		return true;
 	}
 	return false;
+}
+
+// forget_host_node lets go of a node the host made for another (a
+// stack's header, its search field, a tabs' bar), whose windows went with
+// the other's.
+static void forget_host_node(node *b) {
+	if (!b) return;
+	wh_unbind(b->hwnd);
+	wh_unbind(b->ctl);
+	wh_map_del(&H.nodes, b->id);
+	wh_free_node(b);
+}
+
+// wh_nav_free frees a node's navigation state as the node is freed: a
+// stack's header (and its search field) and a tabs' bar with it.
+void wh_nav_free(node *n) {
+	wh_nav *v = n->nav;
+	if (!v) return;
+	n->nav = NULL;
+	if (n->kind == AK_KIND_STACK || n->kind == AK_KIND_TABS) forget_host_node(v->bar);
+	if (n->kind == KIND_HEADER) forget_host_node(v->field);
+	wstr_free(&v->search);
+	wstr_free(&v->search_text);
+	free(v->buttons);
+	actions_free(&v->toolbar);
+	actions_free(&v->primary);
+	free(v->fields);
+	free(v->cfg);
+	free(v);
 }
 
 node *wh_top_screen(node *stack) {
@@ -1187,21 +1217,23 @@ typedef struct {
 	uint32_t id;
 } alert_job;
 
+// task_callback is an alert's task dialog's (data: its node, which
+// lives as long as the dialog: destroyed meanwhile, show_alert frees it).
 static HRESULT CALLBACK task_callback(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, LONG_PTR data) {
 	(void)wp, (void)lp;
+	node *n = (node *)data;
 	if (msg == TDN_CREATED || msg == TDN_DIALOG_CONSTRUCTED) {
-		node *n = wh_node((uint32_t)data);
-		if (n) n->nav->dialog = hwnd;
-		if (n)
-			for (uint32_t i = 0; i < n->acts.n; i++)
-				if (n->acts.v[i].flags & AK_MENU_DISABLED)
-					SendMessageW(hwnd, TDM_ENABLE_BUTTON, n->acts.v[i].role == AK_ALERT_BUTTON_ROLE_CANCEL ? IDCANCEL : 100 + (int)i, FALSE);
+		n->nav->dialog = hwnd;
+		if (n->dying) {
+			SendMessageW(hwnd, TDM_CLICK_BUTTON, (WPARAM)n->nav->task_button, 0);
+			return S_OK;
+		}
+		for (uint32_t i = 0; i < n->acts.n; i++)
+			if (n->acts.v[i].flags & AK_MENU_DISABLED)
+				SendMessageW(hwnd, TDM_ENABLE_BUTTON, n->acts.v[i].role == AK_ALERT_BUTTON_ROLE_CANCEL ? IDCANCEL : 100 + (int)i, FALSE);
 		wh_set_dark_title_bar(hwnd, H.dark);
 	}
-	if (msg == TDN_DESTROYED) {
-		node *n = wh_node((uint32_t)data);
-		if (n) n->nav->dialog = NULL;
-	}
+	if (msg == TDN_DESTROYED) n->nav->dialog = NULL;
 	return S_OK;
 }
 
@@ -1242,18 +1274,20 @@ static void show_alert(void *ctx) {
 	c.pButtons = buttons;
 	c.nDefaultButton = buttons[0].nButtonID;
 	c.pfCallback = task_callback;
-	c.lpCallbackData = id;
+	c.lpCallbackData = (LONG_PTR)n;
 	int got = 0;
+	n->nav->tasking = true;
+	n->nav->task_button = c.nDefaultButton;
 	H.modal++;
 	HRESULT hr = wh_task_dialog(&c, &got);
 	H.modal--;
 	free(buttons);
 	free(title);
 	free(content);
-	n = wh_node(id);
-	if (!n) return;  // destroyed meanwhile: freed as it returned
+	n->nav->tasking = false;
+	n->nav->dialog = NULL;
 	if (n->dying) {
-		n->nav->dialog = NULL;
+		wh_free_node(n);  // destroyed meanwhile, its dialog closed
 		return;
 	}
 	if (FAILED(hr)) got = 0;

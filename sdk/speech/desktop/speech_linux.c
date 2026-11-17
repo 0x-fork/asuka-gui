@@ -674,6 +674,11 @@ static void y_speak(speech_Synthesizer *self, const char *text, const speech_Opt
 	}
 	free(lang);
 	if (o->voice && *o->voice) j->settings[j->nsettings++] = asuka_sprintf("SET self SYNTHESIS_VOICE %s", o->voice);
+	// A command is a line: a line break in a value would send what follows
+	// it as a command of its own, whose reply the next command would take.
+	for (size_t i = 0; i < j->nsettings; i++)
+		for (char *q = j->settings[i]; *q; q++)
+			if (*q == '\r' || *q == '\n') *q = ' ';
 	asuka_call_on_cancel(call, on_cancel, j);
 	connect_for(j);
 }

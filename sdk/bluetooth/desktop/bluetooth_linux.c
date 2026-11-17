@@ -930,6 +930,7 @@ void bt_engine_choose(const bluetooth_list_Filter *filters, bt_strings optional,
 typedef struct {
 	void (*fn)(void *);
 	void *ctx;
+	void (*free_ctx)(void *);
 } timer_ctx;
 
 static gboolean fire(gpointer p) {
@@ -939,10 +940,18 @@ static gboolean fire(gpointer p) {
 	return false;
 }
 
-uintptr_t bt_after(unsigned ms, void (*fn)(void *ctx), void *ctx) {
+// timer_free is a timer's source's destroy notify: it ran, or it was
+// removed before it could.
+static void timer_free(gpointer p) {
+	timer_ctx *t = p;
+	if (t->free_ctx) t->free_ctx(t->ctx);
+	free(t);
+}
+
+uintptr_t bt_after(unsigned ms, void (*fn)(void *ctx), void *ctx, void (*free_ctx)(void *ctx)) {
 	timer_ctx *t = malloc(sizeof *t);
-	*t = (timer_ctx){fn, ctx};
-	return G(g_timeout_add_full)(G_PRIORITY_DEFAULT, ms, fire, t, free);
+	*t = (timer_ctx){fn, ctx, free_ctx};
+	return G(g_timeout_add_full)(G_PRIORITY_DEFAULT, ms, fire, t, timer_free);
 }
 
 void bt_after_stop(uintptr_t id) {

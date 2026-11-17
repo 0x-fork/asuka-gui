@@ -67,6 +67,10 @@ static void node_free(node *n) {
 	wh_free_strings(n->a11y_actions, n->na11y_actions);
 	if (n->clip_rgn) DeleteObject(n->clip_rgn);
 	wh_field_free(n);
+	wh_nav_free(n);
+	// A node named after it's freed reads this, not what it held: its
+	// window handles and pointers are nothing anyone has.
+	memset(n, 0xDD, sizeof *n);
 	free(n);
 }
 
@@ -170,15 +174,16 @@ void wh_dispatch(const ak_event *e) {
 }
 
 void wh_emit(node *n, ak_event *e) {
-	if (n && n->search_of) {
+	if (!n || n->dead) return;
+	if (n->search_of) {
 		wh_search_event(n, e);  // a header's search field: its screen's
 		return;
 	}
-	if (n && n->alert_of) {
+	if (n->alert_of) {
 		wh_alert_field_event(n, e);  // an alert's field: the alert's
 		return;
 	}
-	if (!n || !node_listening(n, e->kind)) return;
+	if (!node_listening(n, e->kind)) return;
 	e->id = n->id;
 	wh_dispatch(e);
 }
@@ -297,6 +302,7 @@ void wh_destroy(uint32_t id) {
 	node *n = wh_node(id);
 	if (!n) return;
 	wh_map_del(&H.nodes, id);
+	n->dead = true;
 	wh_destroy_native(n);
 	wh_forget_interaction(n);
 	wh_focus_forget(n);
@@ -324,11 +330,29 @@ void wh_destroy(uint32_t id) {
 	if (n->parent) wh_remove(n->parent, n);
 	for (uint32_t i = 0; i < n->nkids; i++) n->kids[i]->parent = NULL;
 	wh_release(n);
-	node_free(n);
+	wh_free_node(n);
 }
 
-// wh_free_node frees what's left of a node whose windows are gone.
-void wh_free_node(node *n) { node_free(n); }
+// wh_free_node frees what's left of a node whose windows are gone, once
+// the message being handled has returned: the handler may still name it
+// (an event it emitted ran the core, whose flush destroyed it).
+void wh_free_node(node *n) {
+	n->dead = true;
+	if (H.ndead == H.capdead) {
+		H.capdead = H.capdead ? H.capdead * 2 : 16;
+		H.dead = wh_realloc(H.dead, H.capdead * sizeof *H.dead);
+	}
+	H.dead[H.ndead++] = n;
+}
+
+// wh_free_dead frees the nodes destroyed so far. The main loop calls it
+// between messages, where no handler is running to name one.
+void wh_free_dead(void) {
+	while (H.ndead) {
+		node *n = H.dead[--H.ndead];
+		node_free(n);
+	}
+}
 
 // wh_release lets go of n's windows: DestroyWindow takes its native
 // descendants with it, so they're forgotten first (a window handle is

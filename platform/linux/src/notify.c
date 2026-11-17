@@ -633,11 +633,19 @@ static gboolean later_fire(gpointer data) {
 	later_t2 *l = data;
 	for (uint32_t i = 0; i < N.timers.len; i++)
 		if (!strcmp(N.timers.data[i].id, l->spec->id)) N.timers.data[i].source = 0;
-	char *img = l->image;
-	deliver(l->spec, img);
-	free(img);
-	free(l);
+	spec_t *s = l->spec;
+	l->spec = NULL;
+	deliver(s, l->image);
 	return 0;
+}
+
+// later_free is a later notification's timer's destroy notify: it fired,
+// or it was removed before (replaced, cancelled), its spec still its own.
+static void later_free(gpointer data) {
+	later_t2 *l = data;
+	if (l->spec) spec_free(l->spec);
+	free(l->image);
+	free(l);
 }
 
 // notify_later shows a notification once its seconds pass, while the app
@@ -651,7 +659,7 @@ static void notify_later(spec_t *s, const char *image) {
 	double sec = s->seconds < 1 ? 1 : s->seconds;
 	ak_vec_reserve(&N.timers, 1);
 	N.timers.data[N.timers.len].id = dupstr(s->id);
-	N.timers.data[N.timers.len].source = g_timeout_add((guint)(sec * 1000), later_fire, l);
+	N.timers.data[N.timers.len].source = g_timeout_add_full(G_PRIORITY_DEFAULT, (guint)(sec * 1000), later_fire, l, later_free);
 	N.timers.len++;
 }
 
