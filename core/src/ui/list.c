@@ -798,8 +798,20 @@ static void bind_header(list_t *st, int64_t s, ak_id cell) {
 	}
 }
 
+// cell_id_ok reports whether cell can name a cell of the list: an ID the
+// host made (AK_HOST_ID_BIT: never 0, never one of the core's) that no
+// view has, but one of the list's own cells, which a bind recycles. A
+// host that binds any other is wrong, and the bind is dropped: two views under one
+// ID would leave the ID table naming a view already freed.
+static bool cell_id_ok(list_t *st, ak_id cell) {
+	if (!(cell & AK_HOST_ID_BIT)) return false;
+	ak_view *v = ak_view_of(cell);
+	return !v || find_cell(st, cell) >= 0;
+}
+
 void ak_list_bind(ak_view *e, int64_t i, ak_id cell) {
 	list_t *st = e->impl;
+	if (!cell_id_ok(st, cell)) return;
 	if (i < 0) {
 		bind_header(st, -1 - i, cell);
 		return;
