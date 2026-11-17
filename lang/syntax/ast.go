@@ -89,19 +89,13 @@ func (t *Trivia) trivia() *Trivia { return t }
 // HasComments reports whether t holds a comment.
 func (t *Trivia) HasComments() bool { return len(t.Leading) > 0 || t.Trailing != nil }
 
-// Doc is the text of the /// comments right above the node (no blank
-// line between), without their slashes and one space after them; "" if
-// there are none.
+// Doc is the text of the /// comments right above the node (in the
+// group of comments with no blank line between it and the node; a plain
+// // comment among them is a note, not part of it), without their
+// slashes and one space after them; "" if there are none.
 func (t *Trivia) Doc() string {
-	if len(t.Leading) == 0 || t.BlankBefore {
-		return ""
-	}
-	g := t.Leading[len(t.Leading)-1]
 	var b strings.Builder
-	for i, c := range g.List {
-		if !c.IsDoc() {
-			return ""
-		}
+	for i, c := range t.DocComments() {
 		if i > 0 {
 			b.WriteByte('\n')
 		}
@@ -110,6 +104,20 @@ func (t *Trivia) Doc() string {
 		b.WriteString(line)
 	}
 	return b.String()
+}
+
+// DocComments are the /// comments Doc reads, in order.
+func (t *Trivia) DocComments() []*Comment {
+	if len(t.Leading) == 0 || t.BlankBefore {
+		return nil
+	}
+	var out []*Comment
+	for _, c := range t.Leading[len(t.Leading)-1].List {
+		if c.IsDoc() {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 type hasTrivia interface{ trivia() *Trivia }

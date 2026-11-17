@@ -244,10 +244,11 @@ func print(n syntax.Node) string {
 // docOnly is t with only its /// comments, which the printer then
 // prints with the node.
 func docOnly(t syntax.Trivia) syntax.Trivia {
-	if t.Doc() == "" {
+	docs := t.DocComments()
+	if len(docs) == 0 {
 		return syntax.Trivia{}
 	}
-	return syntax.Trivia{Leading: t.Leading[len(t.Leading)-1:]}
+	return syntax.Trivia{Leading: []*syntax.CommentGroup{{List: docs}}}
 }
 
 // funcCode is f's signature: async fn name<T>(params) throws -> Result.

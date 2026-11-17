@@ -160,3 +160,32 @@ fn pages() -> Page<int> = Page(items: wrap(1))
 		})
 	}
 }
+
+// Hover's doc is a declaration's /// comments: a plain // one among
+// them is a note, and doesn't take it away.
+func TestHoverDocWithNotes(t *testing.T) {
+	root := t.TempDir()
+	a := `// TODO: overflow
+/// Adds.
+fn add(a: int, b: int) -> int = a + b
+
+struct Total {
+  // In cents.
+  /// The amount.
+  amount: int
+}
+
+fn use(t: Total) -> int = add(t.amount, 1)
+`
+	if err := os.WriteFile(filepath.Join(root, "a.asuka"), []byte(a), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := newClient(t, root)
+	uri := c.openText(filepath.Join(root, "a.asuka"), a)
+	c.waitDiags(uri, noDiags)
+	for at, want := range map[string]string{"= ad|d(t.amount": "Adds.", "t.amo|unt, 1": "The amount."} {
+		if got := hoverAt(t, c, uri, a, at); !strings.Contains(got, want) || strings.Contains(got, "TODO") || strings.Contains(got, "cents") {
+			t.Errorf("hover at %s:\n%s", at, got)
+		}
+	}
+}
