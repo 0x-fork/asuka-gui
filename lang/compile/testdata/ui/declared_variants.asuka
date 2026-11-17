@@ -29,6 +29,20 @@ pub component Check(title: string) {
   }
 }
 
+/// A switch of views around its caller's.
+component Lamp {
+  prop lit = false
+  event litChange(lit: bool)
+  prop children: View
+  variant lit = lit
+
+  View {
+    label: "lamp"
+    on press { lit = !lit }
+    children
+  }
+}
+
 style framed {
   border: 1
   checked { border: 3 }
@@ -67,6 +81,8 @@ component Page {
     // Read through a ref.
     Check("read") as box
     Text(if box.checked { "read is on" } else { "read is off" })
+    // Read through its ref in its own block.
+    Lamp as lamp { Text(if lamp.lit { "lamp is on" } else { "lamp is off" }) }
     // A style's variant on an element that doesn't declare it: nothing.
     Text("plain") {
       style: framed
@@ -176,4 +192,13 @@ test "a ref reads the variant" {
   app.expect("read is on")
   app.tap("read")
   app.expect("read is off")
+}
+
+test "a ref reads the variant in its own block" {
+  let app = mount(Page())
+  app.expect("lamp is off")
+  app.tap("lamp")
+  app.expect("lamp is on")
+  app.tap("lamp")
+  app.expect("lamp is off")
 }
