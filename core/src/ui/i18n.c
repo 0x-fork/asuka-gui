@@ -1020,15 +1020,11 @@ static void run_plural(fmt_ctx *f, ak_reader *r, bool ordinal, int depth) {
 
 static void run_select(fmt_ctx *f, ak_reader *r, const decimal *pound, int depth) {
 	arg_val a = arg_of(f, ak_read_u8(r));
-	char buf[64];
 	ak_span key = AK_STR("");
 	decimal d;
 	if (a.kind == AK_K_REF) key = ak_span_str(a.v.p);
 	else if (a.kind == AK_K_BOOL) key = a.v.i ? AK_STR("true") : AK_STR("false");
-	else if (arg_number(a, &d)) {
-		snprintf(buf, sizeof buf, "%s", d.s);
-		key = ak_cstr(buf);
-	}
+	else if (arg_number(a, &d)) key = ak_cstr(d.s);
 	uint32_t n = ak_read_u32(r);
 	size_t start = r->off;
 	int pick = -1, other = -1;
