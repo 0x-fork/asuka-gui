@@ -410,6 +410,20 @@ func (fc *fileCtx) resolve(path []syntax.Node) *ref {
 					return r
 				}
 			}
+			// A built-in method of a call the checker gave up on, as
+			// one being typed is (xs.map() with no argument yet): its
+			// receiver's.
+			if call, ok := gp.(*syntax.CallExpr); ok && call.Fun == p {
+				if t := info.Types[p.X]; t != nil && !check.IsInvalid(t) {
+					n := -1
+					if call.Args != nil {
+						n = len(call.Args.List)
+					}
+					if m := builtinMethod(t, id.Name, n); m != nil {
+						return methodRef(m, t)
+					}
+				}
+			}
 		}
 	case *syntax.ImplicitMember:
 		if call, ok := gp.(*syntax.CallExpr); ok && call.Fun == p {

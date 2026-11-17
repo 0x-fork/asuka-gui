@@ -94,17 +94,7 @@ func funcSig(f *check.Function) string {
 		b.WriteString(f.Recv.Name() + ".")
 	}
 	b.WriteString(f.Name())
-	if len(f.TypeParams) > 0 {
-		var tps []string
-		for _, tp := range f.TypeParams {
-			s := tp.Name
-			if tp.Constraint() != "" {
-				s += ": " + tp.Constraint()
-			}
-			tps = append(tps, s)
-		}
-		b.WriteString("<" + strings.Join(tps, ", ") + ">")
-	}
+	b.WriteString(typeParamsString(f.TypeParams))
 	if f.Sig != nil {
 		b.WriteString(paramsString(f.Sig.Params))
 		b.WriteString(resultString(f.Sig.Result, f.Sig.Async, f.Sig.Throws))
@@ -112,6 +102,22 @@ func funcSig(f *check.Function) string {
 		b.WriteString("(…)")
 	}
 	return b.String()
+}
+
+// typeParamsString is <T: Shape, U>, "" for none.
+func typeParamsString(tps []*check.TypeParam) string {
+	if len(tps) == 0 {
+		return ""
+	}
+	var out []string
+	for _, tp := range tps {
+		s := tp.Name
+		if tp.Constraint() != "" {
+			s += ": " + tp.Constraint()
+		}
+		out = append(out, s)
+	}
+	return "<" + strings.Join(out, ", ") + ">"
 }
 
 // localFnSig is a fn declared in a block's signature.
@@ -312,7 +318,7 @@ func compHeader(tn *check.TypeName) string {
 	case comp.Native:
 		kw = "native component"
 	}
-	s := kw + " " + tn.Name()
+	s := kw + " " + tn.Name() + typeParamsString(tn.TypeParams)
 	if pubDecl(tn.Decl) {
 		s = "pub " + s
 	}
@@ -369,6 +375,19 @@ func compMembers(tn *check.TypeName) string {
 		b.WriteString("Takes every element's style props too (`padding`, `background`, `font`, …).\n\n")
 	}
 	return strings.TrimSpace(b.String())
+}
+
+// styleSig is a style's declaration: style chip(tint: Color, size:
+// float = 13).
+func (fc *fileCtx) styleSig(r *ref) string {
+	s := "style " + r.name
+	if sd, ok := fc.info.Defs[r.style.Name].(*check.StyleDef); ok && r.style.Params != nil {
+		s += paramsString(sd.Params)
+	}
+	if r.style.Pub.IsValid() {
+		s = "pub " + s
+	}
+	return s
 }
 
 func eventSig(m *check.Member) string {
@@ -541,7 +560,7 @@ var mathDocs = map[string]string{
 func (fc *fileCtx) describe(r *ref) (code, doc string) {
 	switch {
 	case r.style != nil:
-		return "style " + r.name, docOf(r.style)
+		return fc.styleSig(r), docOf(r.style)
 	case r.special != "":
 		switch r.special {
 		case "message":

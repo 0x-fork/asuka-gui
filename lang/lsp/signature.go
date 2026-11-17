@@ -15,11 +15,27 @@ func (s *server) signatureHelp(p *TextDocumentPositionParams) (*SignatureHelp, e
 	pos := fc.pos(p.Position)
 	path := pathTo(fc.file, pos)
 	for i := len(path) - 1; i >= 0; i-- {
-		call, ok := path[i].(*syntax.CallExpr)
-		if !ok || call.Args == nil || !fc.insideParens(call.Args, pos) {
+		var args *syntax.ArgList
+		var sig, doc string
+		switch n := path[i].(type) {
+		case *syntax.CallExpr:
+			if n.Args == nil || !fc.insideParens(n.Args, pos) {
+				continue
+			}
+			args = n.Args
+			sig, doc = fc.callSignature(n)
+		case *syntax.EmitStmt:
+			// emit archive(id: …): the event's parameters.
+			if n.Args == nil || !fc.insideParens(n.Args, pos) {
+				continue
+			}
+			args = n.Args
+			if m := fc.info.Emits[n]; m != nil {
+				sig, doc = "event "+eventSig(m), docOf(m.Decl)
+			}
+		default:
 			continue
 		}
-		sig, doc := fc.callSignature(call)
 		if sig == "" {
 			return nil, nil
 		}
@@ -27,7 +43,7 @@ func (s *server) signatureHelp(p *TextDocumentPositionParams) (*SignatureHelp, e
 		if doc != "" {
 			info.Documentation = &MarkupContent{Kind: "markdown", Value: doc}
 		}
-		active := activeArg(call, pos, names)
+		active := fc.activeArg(args, pos, names)
 		return &SignatureHelp{Signatures: []SignatureInformation{info}, ActiveParameter: active}, nil
 	}
 	return nil, nil
@@ -47,24 +63,33 @@ func (fc *fileCtx) insideParens(args *syntax.ArgList, pos syntax.Pos) bool {
 	return pos == args.End && (end <= 0 || end > len(fc.m.src) || fc.m.src[end-1] != ')')
 }
 
-// activeArg is the parameter the argument at pos goes to.
-func activeArg(call *syntax.CallExpr, pos syntax.Pos, names []string) int {
-	i := 0
-	for j, a := range call.Args.List {
-		if pos <= a.End || j == len(call.Args.List)-1 && pos <= a.End {
-			i = j
-			if a.Label != nil {
-				for k, n := range names {
-					if n == a.Label.Name {
-						return k
-					}
+// activeArg is the parameter the argument at pos goes to: an argument
+// goes on up to the comma after it, so f(1 |) is still the first and
+// f(x: |), with its value not typed yet, x.
+func (fc *fileCtx) activeArg(args *syntax.ArgList, pos syntax.Pos, names []string) int {
+	for j, a := range args.List {
+		if pos > a.End && fc.commaBetween(a.End, pos) {
+			continue
+		}
+		if a.Label != nil {
+			for k, n := range names {
+				if n == a.Label.Name {
+					return k
 				}
 			}
-			return i
 		}
-		i = j + 1
+		return j
 	}
-	return i
+	return len(args.List)
+}
+
+// commaBetween reports whether the text from a to b has a comma.
+func (fc *fileCtx) commaBetween(a, b syntax.Pos) bool {
+	i, j := fc.offset(a), fc.offset(b)
+	if i < 0 || j > len(fc.m.src) || i > j {
+		return true
+	}
+	return strings.IndexByte(string(fc.m.src[i:j]), ',') >= 0
 }
 
 // callSignature is the signature of what a call calls, and its doc.
@@ -85,7 +110,7 @@ func (fc *fileCtx) callSignature(call *syntax.CallExpr) (string, string) {
 			}
 		case check.CallComponent, check.CallStore:
 			if c.Type != nil {
-				return compHeader(c.Type.Obj) + "()", docOf(c.Type.Obj.Decl)
+				return withParens(compHeader(c.Type.Obj)), docOf(c.Type.Obj.Decl)
 			}
 		case check.CallStruct:
 			if c.Type != nil {
@@ -134,7 +159,7 @@ func (fc *fileCtx) callSignature(call *syntax.CallExpr) (string, string) {
 	case *check.TypeName:
 		switch {
 		case o.Comp != nil:
-			return compHeader(o) + "()", docOf(o.Decl)
+			return withParens(compHeader(o)), docOf(o.Decl)
 		case o.Kind == check.StructType:
 			return structCtor(o), docOf(o.Decl)
 		}
@@ -147,6 +172,15 @@ func (fc *fileCtx) callSignature(call *syntax.CallExpr) (string, string) {
 		return "", ""
 	}
 	return code, doc
+}
+
+// withParens is a header that takes no parameters with an empty list
+// (View()), for the call's signature; one with them as it is.
+func withParens(header string) string {
+	if strings.Contains(header, "(") {
+		return header
+	}
+	return header + "()"
 }
 
 func calleeName(call *syntax.CallExpr) string {
@@ -176,15 +210,14 @@ func structCtor(tn *check.TypeName) string {
 
 // splitSignature finds a signature's parameters: the label's ranges of
 // what's between its first parentheses, split at their top-level commas.
-// A header without parentheses ends with "()" from the caller.
+// A header without parentheses ends with "()" from the caller
+// (withParens).
 func splitSignature(sig string, utf8 bool) (SignatureInformation, []string) {
 	info := SignatureInformation{Label: sig, Parameters: []ParameterInformation{}}
 	open := strings.IndexByte(sig, '(')
 	if open < 0 {
 		return info, nil
 	}
-	// The header's parameters: "component Text(text: string)()" has its
-	// list first.
 	depth := 0
 	start := open + 1
 	var names []string
