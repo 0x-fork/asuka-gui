@@ -40,3 +40,19 @@ fn noValue() -> int {
 }
 
 fn uses2() -> Node = Node(kids: [], next: none, byName: [:], make: uses2)
+
+// A type that holds itself compares when its other parts do (the
+// checker once recursed forever deciding).
+enum Expr {
+  num(int)
+  add(Expr, Expr)
+}
+
+struct Link {
+  next: Link?
+  run: fn() -> int
+}
+
+fn sameExpr(a: Expr, b: Expr) -> bool = a == b
+fn sameLinks(a: [Link], b: Link) -> bool = a.contains(b) // ERROR "Link can't be compared: its field run is a fn\(\) -> int, and functions can't be"
+fn sameLink(a: Link, b: Link) -> bool = a == b // ERROR "Link can't be compared with ==: its field run"

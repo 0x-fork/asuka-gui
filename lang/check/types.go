@@ -467,41 +467,50 @@ func IsErrorType(t Type) bool {
 	return false
 }
 
-// IsEquatable reports whether values of t can be compared with ==.
 // whyNotEquatable says why values of t, which isn't Equatable, can't be
 // compared: the part of it that can't.
 func whyNotEquatable(t Type) string {
+	return whyNotEquatable1(t, map[*TypeName]bool{})
+}
+
+func whyNotEquatable1(t Type, seen map[*TypeName]bool) string {
 	switch x := t.(type) {
 	case *FuncType:
 		return "functions can't be"
 	case *Array:
-		return "its elements are " + typeString(x.Elem) + ", and " + whyNotEquatable(x.Elem)
+		return "its elements are " + typeString(x.Elem) + ", and " + whyNotEquatable1(x.Elem, seen)
 	case *Map:
-		return "its values are " + typeString(x.Elem) + ", and " + whyNotEquatable(x.Elem)
+		return "its values are " + typeString(x.Elem) + ", and " + whyNotEquatable1(x.Elem, seen)
 	case *Optional:
-		return whyNotEquatable(x.Elem)
+		return whyNotEquatable1(x.Elem, seen)
 	case *Tuple:
 		for _, e := range x.Elems {
 			if !IsEquatable(e) {
-				return "it holds " + aType(e) + ", and " + whyNotEquatable(e)
+				return "it holds " + aType(e) + ", and " + whyNotEquatable1(e, seen)
 			}
 		}
 	case *TypeParam:
 		return "constrain it, <" + x.Name + ": Equatable>"
 	case *Named:
+		if seen[x.Obj] {
+			return "it holds itself" // the reason is the other part's, said on its way
+		}
+		seen[x.Obj] = true
 		s := x.Subst()
 		switch x.Obj.Kind {
 		case StructType:
+			// A field that holds the type itself isn't why: the other
+			// fields are.
 			for _, f := range x.Obj.Fields {
-				if ft := s.Apply(f.Type); !IsEquatable(ft) {
-					return "its field " + f.Name + " is " + aType(ft) + ", and " + whyNotEquatable(ft)
+				if ft := s.Apply(f.Type); !IsEquatable(ft) && !mentions(ft, x.Obj) {
+					return "its field " + f.Name + " is " + aType(ft) + ", and " + whyNotEquatable1(ft, seen)
 				}
 			}
 		case EnumType:
 			for _, c := range x.Obj.Cases {
 				for _, p := range c.Params {
-					if pt := s.Apply(p); !IsEquatable(pt) {
-						return "its case " + c.Name + " holds " + aType(pt) + ", and " + whyNotEquatable(pt)
+					if pt := s.Apply(p); !IsEquatable(pt) && !mentions(pt, x.Obj) {
+						return "its case " + c.Name + " holds " + aType(pt) + ", and " + whyNotEquatable1(pt, seen)
 					}
 				}
 			}
@@ -514,21 +523,59 @@ func whyNotEquatable(t Type) string {
 	return "its values aren't"
 }
 
+// mentions reports whether t names the type o (in an optional, an
+// array, a map, a tuple or a type argument).
+func mentions(t Type, o *TypeName) bool {
+	switch x := t.(type) {
+	case *Optional:
+		return mentions(x.Elem, o)
+	case *Array:
+		return mentions(x.Elem, o)
+	case *Map:
+		return mentions(x.Key, o) || mentions(x.Elem, o)
+	case *Set:
+		return mentions(x.Elem, o)
+	case *Tuple:
+		for _, e := range x.Elems {
+			if mentions(e, o) {
+				return true
+			}
+		}
+	case *Named:
+		if x.Obj == o {
+			return true
+		}
+		for _, a := range x.Args {
+			if mentions(a, o) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// IsEquatable reports whether values of t can be compared with ==. A
+// struct or an enum that holds itself (a list, a tree) is when its
+// other parts are.
 func IsEquatable(t Type) bool {
+	return isEquatable(t, map[*TypeName]bool{})
+}
+
+func isEquatable(t Type, seen map[*TypeName]bool) bool {
 	switch x := t.(type) {
 	case *Basic:
 		return x != Void && x != View && x != TestApp && x != Never && x != Graphics && x != Path && x != Ref
 	case *Array:
-		return IsEquatable(x.Elem)
+		return isEquatable(x.Elem, seen)
 	case *Map:
-		return IsEquatable(x.Elem)
+		return isEquatable(x.Elem, seen)
 	case *Set:
 		return true // its elements are Hashable
 	case *Optional:
-		return IsEquatable(x.Elem)
+		return isEquatable(x.Elem, seen)
 	case *Tuple:
 		for _, e := range x.Elems {
-			if !IsEquatable(e) {
+			if !isEquatable(e, seen) {
 				return false
 			}
 		}
@@ -536,22 +583,29 @@ func IsEquatable(t Type) bool {
 	case *TypeParam:
 		return len(x.Builtins) > 0
 	case *Named:
+		if seen[x.Obj] {
+			return true // as it is, if the rest is (checked on the way here)
+		}
 		switch x.Obj.Kind {
 		case ExternType:
 			return true // the same pointer
 		case StructType:
+			seen[x.Obj] = true
+			defer delete(seen, x.Obj)
 			s := x.Subst()
 			for _, f := range x.Obj.Fields {
-				if !IsEquatable(s.Apply(f.Type)) {
+				if !isEquatable(s.Apply(f.Type), seen) {
 					return false
 				}
 			}
 			return true
 		case EnumType:
+			seen[x.Obj] = true
+			defer delete(seen, x.Obj)
 			s := x.Subst()
 			for _, c := range x.Obj.Cases {
 				for _, p := range c.Params {
-					if !IsEquatable(s.Apply(p)) {
+					if !isEquatable(s.Apply(p), seen) {
 						return false
 					}
 				}

@@ -80,6 +80,27 @@ test "tuples" {
   }
 }
 
+enum Tree {
+  leaf(int)
+  node(Tree, Tree)
+}
+
+struct Link {
+  v: int
+  next: Link?
+}
+
+test "values that hold themselves compare" {
+  let a: Tree = .node(.leaf(1), .node(.leaf(2), .leaf(3)))
+  let b: Tree = .node(.leaf(1), .node(.leaf(2), .leaf(3)))
+  let c: Tree = .node(.leaf(1), .node(.leaf(2), .leaf(4)))
+  print("{a == b} {a == c} {a != c}")
+  let l = Link(v: 1, next: Link(v: 2, next: none))
+  let m = Link(v: 1, next: Link(v: 2, next: none))
+  let n = Link(v: 1, next: none)
+  print("{l == m} {l == n} {[l, n].contains(m)}")
+}
+
 // Output:
 // green
 // red
@@ -98,3 +119,6 @@ test "tuples" {
 // 1 one
 // 7
 // ok tuples
+// true false true
+// true false true
+// ok values that hold themselves compare
