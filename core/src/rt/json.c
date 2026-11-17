@@ -263,6 +263,8 @@ static bool skip_nested(parser *ps, char c) {
 
 static ak_val value(parser *ps, const char *d);
 
+// number reads a number, whole; with iv (an int's), an integral one is
+// read as an integer too, which must be in int's range.
 static bool number(parser *ps, double *out, bool *integral, int64_t *iv) {
 	ws(ps);
 	const char *st = ps->s;
@@ -282,7 +284,7 @@ static bool number(parser *ps, double *out, bool *integral, int64_t *iv) {
 	*integral = !strpbrk(buf, ".eE");
 	char *e;
 	bool ok = true;
-	if (*integral) {
+	if (*integral && iv) {
 		errno = 0;
 		*iv = strtoll(buf, &e, 10);
 		if (e != buf + n) ok = false, fail(ps, "a bad number%s", "");
@@ -417,8 +419,7 @@ static ak_val value_of(parser *ps, const char *d) {
 	case 'f': {
 		double f;
 		bool integral;
-		int64_t iv;
-		if (!number(ps, &f, &integral, &iv)) return (ak_val){0};
+		if (!number(ps, &f, &integral, NULL)) return (ak_val){0};
 		return (ak_val){.f = f};
 	}
 	case 'b':

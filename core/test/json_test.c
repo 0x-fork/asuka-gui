@@ -238,6 +238,10 @@ TEST(integer_range) {
 	v = ak_json_decode(longf, strlen(longf), "f", &types);
 	CHECK(!ak_error_pending());
 	CHECK_EQ_F(v.f, 1);
+	v = ak_json_decode("99999999999999999999", 20, "f", &types);  // past int's, a float's
+	CHECK(!ak_error_pending());
+	CHECK_EQ_F(v.f, 1e20);
+	decode_fails("1e999", 5, "f", "out of range");
 	decode_fails("1-2", 3, "f", "a bad number");
 	decode_fails("--1", 3, "i", "a bad number");
 }

@@ -259,9 +259,30 @@ type jsonErr struct {
 func (e *jsonErr) Error() string { return fmt.Sprintf("%d:%d: %s", e.line, e.col, e.msg) }
 
 type jsonCheck struct {
-	s   string
-	i   int
-	err *jsonErr
+	s     string
+	i     int
+	depth int // arrays and objects open, as json.c counts them
+	err   *jsonErr
+}
+
+// jsonMaxDepth is json.c's AK_JSON_MAX_DEPTH: arrays and objects nested
+// deeper are an error.
+const jsonMaxDepth = 512
+
+// enter opens an array or an object, one level deeper; false, failing,
+// past jsonMaxDepth.
+func (p *jsonCheck) enter() bool {
+	if p.depth >= jsonMaxDepth {
+		p.fail("nested too deeply")
+		return false
+	}
+	p.depth++
+	return true
+}
+
+// opens reports whether an array or an object starts here.
+func (p *jsonCheck) opens() bool {
+	return p.i < len(p.s) && (p.s[p.i] == '[' || p.s[p.i] == '{')
 }
 
 func checkJSON(text string, t Type) error {
@@ -373,8 +394,9 @@ func (p *jsonCheck) str() string {
 }
 
 // number reads a number as the runtime does: the run of characters a
-// number may have, read as strtod reads its longest prefix that is one.
-func (p *jsonCheck) number() (f float64, integral bool, ok bool) {
+// number may have, read whole; with asInt, an integral one is read as an
+// integer too, which must be in int's range.
+func (p *jsonCheck) number(asInt bool) (f float64, integral bool, ok bool) {
 	p.ws()
 	st := p.i
 	if p.i < len(p.s) && p.s[p.i] == '-' {
@@ -389,12 +411,26 @@ func (p *jsonCheck) number() (f float64, integral bool, ok bool) {
 	}
 	run := p.s[st:p.i]
 	integral = !strings.ContainsAny(run, ".eE")
-	for n := len(run); n > 0; n-- {
-		if v, err := strconv.ParseFloat(run[:n], 64); err == nil || errorsIsRange(err) {
-			return v, integral, true
+	if integral && asInt {
+		if _, err := strconv.ParseInt(run, 10, 64); err != nil {
+			if errorsIsRange(err) {
+				p.fail("an integer out of range")
+			} else {
+				p.fail("a bad number")
+			}
+			return 0, integral, false
 		}
 	}
-	return 0, integral, true
+	v, err := strconv.ParseFloat(run, 64)
+	if err != nil && !errorsIsRange(err) {
+		p.fail("a bad number")
+		return 0, integral, false
+	}
+	if math.IsInf(v, 0) {
+		p.fail("a number out of range")
+		return 0, integral, false
+	}
+	return v, integral, true
 }
 
 func errorsIsRange(err error) bool {
@@ -414,6 +450,30 @@ func (p *jsonCheck) skip() bool {
 		return !p.failed()
 	}
 	if c == '{' || c == '[' {
+		if !p.enter() {
+			return false
+		}
+		ok := p.skipNested(c)
+		p.depth--
+		return ok
+	}
+	if p.lit("true") || p.lit("false") || p.lit("null") {
+		return true
+	}
+	st := p.i
+	for p.i < len(p.s) && strings.IndexByte("+-0123456789.eE", p.s[p.i]) >= 0 {
+		p.i++
+	}
+	if p.i == st {
+		p.fail("unexpected '%c'", p.s[st])
+		return false
+	}
+	return true
+}
+
+// skipNested skips an array's or an object's items, at its bracket c.
+func (p *jsonCheck) skipNested(c byte) bool {
+	{
 		closing := byte(']')
 		if c == '{' {
 			closing = '}'
@@ -449,18 +509,6 @@ func (p *jsonCheck) skip() bool {
 			return false
 		}
 	}
-	if p.lit("true") || p.lit("false") || p.lit("null") {
-		return true
-	}
-	st := p.i
-	for p.i < len(p.s) && strings.IndexByte("+-0123456789.eE", p.s[p.i]) >= 0 {
-		p.i++
-	}
-	if p.i == st {
-		p.fail("unexpected '%c'", p.s[st])
-		return false
-	}
-	return true
 }
 
 // emptyOK reports whether a struct's field of type t may be missing (the
@@ -477,12 +525,26 @@ func emptyOK(t Type) bool {
 	return false
 }
 
+// value reads a value of type t; an array or an object is a level
+// deeper (an option's value, read by its own call, is at its own).
 func (p *jsonCheck) value(t Type) {
 	p.ws()
 	if p.i >= len(p.s) {
 		p.fail("expected a value")
 		return
 	}
+	if _, opt := t.(*Optional); opt || !p.opens() {
+		p.valueOf(t)
+		return
+	}
+	if !p.enter() {
+		return
+	}
+	p.valueOf(t)
+	p.depth--
+}
+
+func (p *jsonCheck) valueOf(t Type) {
 	switch x := t.(type) {
 	case *Optional:
 		if p.lit("null") {
@@ -493,12 +555,16 @@ func (p *jsonCheck) value(t Type) {
 	case *Basic:
 		switch x {
 		case Int, Duration, Color, Length, Pointer:
-			f, integral, ok := p.number()
-			if ok && !integral && f != math.Floor(f) {
-				p.fail("expected an integer")
+			f, integral, ok := p.number(true)
+			if ok && !integral {
+				if f != math.Floor(f) {
+					p.fail("expected an integer")
+				} else if !(f >= -(1<<63) && f < 1<<63) {
+					p.fail("an integer out of range")
+				}
 			}
 		case Float:
-			p.number()
+			p.number(false)
 		case Bool:
 			if !p.lit("true") && !p.lit("false") {
 				p.fail("expected true or false")
@@ -693,6 +759,11 @@ func (p *jsonCheck) payloadEnum(x *Named, s Subst) {
 		return
 	}
 	p.ws()
+	// Its payload's bracket is a level deeper, as value's are.
+	nested := p.opens()
+	if nested && !p.enter() {
+		return
+	}
 	switch {
 	case p.lit("["):
 		for i, pt := range k.Params {
@@ -700,6 +771,7 @@ func (p *jsonCheck) payloadEnum(x *Named, s Subst) {
 				p.ws()
 				if !p.lit(",") {
 					p.fail("expected ','")
+					return
 				}
 			}
 			p.value(s.Apply(pt))
@@ -713,33 +785,57 @@ func (p *jsonCheck) payloadEnum(x *Named, s Subst) {
 			return
 		}
 	case p.lit("{"):
-		for {
-			p.ws()
-			if p.lit("}") {
-				break
-			}
-			key := p.str()
-			p.ws()
-			if p.failed() || !p.lit(":") {
-				p.fail("expected ':'")
-				return
-			}
-			fi := -1
-			for i, l := range k.Labels {
-				if l != "" && l == key {
-					fi = i
+		// Its fields as a struct's: missing ones start empty or are
+		// required, commas between them.
+		set := map[int]bool{}
+		p.ws()
+		if !p.lit("}") {
+			for {
+				p.ws()
+				key := p.str()
+				if p.failed() {
+					return
 				}
-			}
-			if fi < 0 {
-				p.skip()
-			} else {
-				p.value(s.Apply(k.Params[fi]))
-			}
-			if p.failed() {
+				p.ws()
+				if !p.lit(":") {
+					p.fail("expected ':'")
+					return
+				}
+				fi := -1
+				for i, l := range k.Labels {
+					if l != "" && l == key {
+						fi = i
+					}
+				}
+				if fi < 0 {
+					p.skip()
+				} else {
+					p.value(s.Apply(k.Params[fi]))
+					set[fi] = true
+				}
+				if p.failed() {
+					return
+				}
+				p.ws()
+				if p.lit(",") {
+					continue
+				}
+				if p.lit("}") {
+					break
+				}
+				p.fail("expected ',' or '}'")
 				return
 			}
-			p.ws()
-			p.lit(",")
+		}
+		for i, pt := range k.Params {
+			if !set[i] && !emptyOK(s.Apply(pt)) {
+				label := ""
+				if i < len(k.Labels) {
+					label = k.Labels[i]
+				}
+				p.fail("a missing field %s", label)
+				return
+			}
 		}
 	case len(k.Params) == 1:
 		p.value(s.Apply(k.Params[0]))
@@ -749,6 +845,9 @@ func (p *jsonCheck) payloadEnum(x *Named, s Subst) {
 	default:
 		p.fail("expected the case's payload")
 		return
+	}
+	if nested {
+		p.depth--
 	}
 	p.ws()
 	if !p.lit("}") {

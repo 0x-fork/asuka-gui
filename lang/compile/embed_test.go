@@ -162,6 +162,17 @@ struct B { data: bytes }
 		{"string", `"aé\n"`},
 		{"string", `"bad \x"`},
 		{"Set<int>", `[1, 1]`},
+		{"int", `9223372036854775807`},
+		{"int", `9223372036854775808`},
+		{"int", `-9.3e18`},
+		{"float", `99999999999999999999`},
+		{"float", `1e999`},
+		{"float", `1-2`},
+		{"P", `{"name": "a", "x": ` + strings.Repeat("[", 512) + strings.Repeat("]", 512) + `}`},
+		{"P", `{"name": "a", "x": ` + strings.Repeat("[", 511) + strings.Repeat("]", 511) + `}`},
+		{"Shape", `{"rect": {"w": 1}}`},
+		{"Shape", `{"rect": {"w": 1 "h": 2}}`},
+		{"Shape", `{"rect": {"w": 1, "h": 2,}}`},
 	}
 	files := map[string]string{}
 	var main strings.Builder
