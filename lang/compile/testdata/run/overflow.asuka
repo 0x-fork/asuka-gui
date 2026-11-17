@@ -1,0 +1,141 @@
+// Integer overflow: +, -, *, -x (and / -1) of ints throw past int's
+// range, as dividing by zero does, on the VM and compiled to C; &+, &-
+// and &* wrap; the checked methods give none.
+
+let mx = 9223372036854775807
+let mn = -9223372036854775807 - 1
+
+fn overflows(what: string, f: fn() -> int) {
+  let v = try f() catch e {
+    print("{what}: {e.message}")
+    return
+  }
+  print("{what}: {v}")
+}
+
+test "checked operators throw" {
+  overflows("max + 1", () => mx + 1)
+  overflows("min - 1", () => mn - 1)
+  overflows("max * 2", () => mx * 2)
+  overflows("min * -1", () => mn * -1)
+  overflows("-min", () => -mn)
+  overflows("min / -1", () => mn / -1)
+  overflows("min % -1", () => mn % -1)
+  overflows("abs(min)", () => abs(mn))
+  overflows("min.abs()", () => mn.abs())
+  overflows("sum", () => [mx, 1].sum())
+  overflows("max - 1 + 1", () => mx - 1 + 1)
+  overflows("in range", () => 3_037_000_499 * 3_037_000_499)
+}
+
+test "compound assignment throws, and leaves the var" {
+  var n = mx - 2
+  do {
+    n += 1
+    n += 1
+    n += 1
+  } catch e {
+    print("{e.message} at {n}")
+  }
+  var m = mn
+  do { m *= 2 } catch { print("m is {m}") }
+}
+
+test "durations overflow too" {
+  let d = 9223372036854775807ns
+  let late = try d + 1ns catch e { print(e.message); 0ns }
+  print(late)
+}
+
+test "wrapping operators" {
+  print(mx &+ 1)
+  print(mn &- 1)
+  print(mx &* 2)
+  print(mn &* -1)
+  // FNV-1a of "ab".
+  var h = 0xcbf2_9ce4_8422_2325
+  let bs = "ab".bytes()
+  for i in 0..<bs.count() {
+    h ^= bs[i]
+    h &*= 0x100_0000_01b3
+  }
+  print(h)
+  var w = mx
+  w &+= 2
+  w &-= 1
+  print(w)
+  // &+ binds as +, &* as *.
+  print(1 &+ 2 &* 3)
+}
+
+test "checked methods" {
+  print(mx.addingChecked(1) == none)
+  print(mx.addingChecked(-1) ?? 0)
+  print(mn.subtractingChecked(1) == none)
+  print(5.subtractingChecked(7) ?? 0)
+  print(mx.multipliedChecked(2) == none)
+  print((-3).multipliedChecked(4) ?? 0)
+}
+
+test "ranges reach the largest int" {
+  for i in mx - 2..mx {
+    print(i)
+  }
+  print((mx - 1..mx).count())
+  print((mn..<mn + 2).count())
+  var turns = 0
+  for _ in mx..mx {
+    turns += 1
+  }
+  print(turns)
+}
+
+test "an uncaught overflow fails" {
+  var n = mx
+  n += 1
+  print(n)
+}
+
+// Output:
+// max + 1: integer overflow
+// min - 1: integer overflow
+// max * 2: integer overflow
+// min * -1: integer overflow
+// -min: integer overflow
+// min / -1: integer overflow
+// min % -1: 0
+// abs(min): integer overflow
+// min.abs(): integer overflow
+// sum: integer overflow
+// max - 1 + 1: 9223372036854775807
+// in range: 9223372030926249001
+// ok checked operators throw
+// integer overflow at 9223372036854775807
+// m is -9223372036854775808
+// ok compound assignment throws, and leaves the var
+// integer overflow
+// 0ms
+// ok durations overflow too
+// -9223372036854775808
+// 9223372036854775807
+// -2
+// -9223372036854775808
+// 620445648566982762
+// -9223372036854775808
+// 7
+// ok wrapping operators
+// true
+// 9223372036854775806
+// true
+// -2
+// true
+// -12
+// ok checked methods
+// 9223372036854775805
+// 9223372036854775806
+// 9223372036854775807
+// 2
+// 2
+// 1
+// ok ranges reach the largest int
+// FAIL an uncaught overflow fails: integer overflow

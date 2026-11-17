@@ -166,8 +166,11 @@ var Methods = []*Method{
 
 	// Numbers.
 	{Recv: "int", Name: "float", Sig: "() -> float", Special: "i2f", Doc: "the int as a float, as float(n)"},
-	{Recv: "int", Name: "abs", Sig: "() -> int", Builtin: "math.absi"},
+	{Recv: "int", Name: "abs", Sig: "() -> int", Builtin: "math.absi", Fails: true, Doc: "the int without its sign; the smallest int's would overflow, which throws"},
 	{Recv: "int", Name: "padded", Sig: "(width: int) -> string", Builtin: "int.padded", Doc: "in decimal, zeros before it up to width digits: 7.padded(2) is 07"},
+	{Recv: "int", Name: "addingChecked", Sig: "(o: int) -> int?", Builtin: "int.add_checked", Doc: "the sum, or none when it overflows: as +, which throws then"},
+	{Recv: "int", Name: "subtractingChecked", Sig: "(o: int) -> int?", Builtin: "int.sub_checked", Doc: "the difference, or none when it overflows: as -, which throws then"},
+	{Recv: "int", Name: "multipliedChecked", Sig: "(o: int) -> int?", Builtin: "int.mul_checked", Doc: "the product, or none when it overflows: as *, which throws then"},
 	{Recv: "float", Name: "int", Sig: "() -> int", Special: "f2i", Doc: "toward zero, as int(x): x.rounded().int() is the nearest"},
 	{Recv: "float", Name: "abs", Sig: "() -> float", Builtin: "math.absf"},
 	{Recv: "float", Name: "fixed", Sig: "(digits: int) -> string", Builtin: "str.fixed", Doc: "with that many digits after the point: 3.14159.fixed(2) is 3.14"},

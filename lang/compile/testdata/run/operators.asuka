@@ -1,39 +1,100 @@
-// Operators a struct's methods do: + its add, - its sub or minus (the
-// one whose parameter takes the right side), <, <=, > and >= its
-// compare.
+// A struct's or an enum's operators from its methods: * from mul (or
+// times), / from div (or quo), % from rem, -x from neg, beside + from
+// add, - from sub (or minus); the operand's type may differ from the
+// value's, and x *= y, /=, %= use them as += uses add.
 
-import std/time
+struct Vec {
+  x: int
+  y: int
 
-struct Money {
-  cents: int
-
-  fn add(m: Money) -> Money = Money(cents: cents + m.cents)
-  fn sub(m: Money) -> Money = Money(cents: cents - m.cents)
-  fn compare(m: Money) -> int = if cents < m.cents { -1 } else if cents > m.cents { 1 } else { 0 }
+  fn add(o: Vec) -> Vec = Vec(x: x + o.x, y: y + o.y)
+  // The dot product; a Vec scaled by an int.
+  fn mul(o: Vec) -> int = x * o.x + y * o.y
+  fn times(k: int) -> Vec = Vec(x: x * k, y: y * k)
+  fn div(k: int) -> Vec = Vec(x: x / k, y: y / k)
+  fn rem(k: int) -> Vec = Vec(x: x % k, y: y % k)
+  fn neg() -> Vec = Vec(x: -x, y: -y)
 }
 
-test "a struct's operators" {
-  let a = Money(cents: 150)
-  let b = Money(cents: 99)
-  print("{(a + b).cents} {(a - b).cents} {a > b} {a <= b} {b < a} {a >= a}")
+enum Sign {
+  plus
+  minus
+
+  fn neg() -> Sign = match self {
+    .plus => .minus
+    .minus => .plus
+  }
+  fn mul(o: Sign) -> Sign = if self == o { .plus } else { .minus }
 }
 
-test "time's" {
-  let a = time.unix(0, zone: .utc)
-  let b = a + 90min
-  let c = b - 30min
-  print("{b - a} {c.format("HH:mm")} {a < b} {c > b} {a <= a}")
+struct Ratio {
+  n: int
+  d: int
+
+  fn div(o: Ratio) -> Ratio = Ratio(n: n * o.d, d: d * o.n)
+  fn quo(k: int) -> Ratio = Ratio(n: n, d: d * k)
 }
 
-test "durations and floats" {
-  let d = 90s
-  print("{d * 0.5} {2.0 * d} {d / 30s} {d / 4.0}")
+struct Grid {
+  at: Vec
+  path: [Vec]
+}
+
+state pos = Vec(x: 6, y: 9)
+
+test "binary and unary" {
+  let a = Vec(x: 3, y: 4)
+  print(a * a)
+  print(a * 2)
+  print(a / 2)
+  print(a % 2)
+  print(-a)
+  print(-(a + a) * 3)
+  print(-Sign.plus)
+  print(Sign.minus * Sign.minus)
+  print(Sign.minus * -Sign.minus)
+  let r = Ratio(n: 1, d: 2) / Ratio(n: 3, d: 4)
+  print("{r.n}/{r.d}")
+  let h = r / 2
+  print("{h.n}/{h.d}")
+}
+
+test "compound assignment" {
+  var v = Vec(x: 5, y: 7)
+  v *= 10
+  print(v)
+  v /= 3
+  print(v)
+  v %= 4
+  print(v)
+  var g = Grid(at: Vec(x: 1, y: 2), path: [Vec(x: 1, y: 1), Vec(x: 2, y: 3)])
+  g.at *= 3
+  g.path[1] /= 2
+  print(g)
+  pos %= 4
+  print(pos)
+  var r = Ratio(n: 1, d: 2)
+  r /= 5
+  print("{r.n}/{r.d}")
 }
 
 // Output:
-// 249 51 true false true true
-// ok a struct's operators
-// 5400000ms 01:00 true false true
-// ok time's
-// 45000ms 180000ms 3 22500ms
-// ok durations and floats
+// 25
+// {"x":6,"y":8}
+// {"x":1,"y":2}
+// {"x":1,"y":0}
+// {"x":-3,"y":-4}
+// {"x":-18,"y":-24}
+// minus
+// plus
+// minus
+// 4/6
+// 4/12
+// ok binary and unary
+// {"x":50,"y":70}
+// {"x":16,"y":23}
+// {"x":0,"y":3}
+// {"at":{"x":3,"y":6},"path":[{"x":1,"y":1},{"x":1,"y":1}]}
+// {"x":2,"y":1}
+// 1/10
+// ok compound assignment

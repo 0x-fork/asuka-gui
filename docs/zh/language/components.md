@@ -126,7 +126,7 @@ on press {
 
 一个处理函数里的多次写入，会在它结束时（或者执行到 `await` 时）一起显示出来。
 
-语句有：`let`、`var`、`let … else`、赋值（`=`、`+= -= *= /= %=`、`&= |= ^= <<= >>=`、`??=`）、`if` 和 `if let`、`for x in xs`（数组或集合）、`for (k, v) in m`、`for (i, x) in xs.enumerated()`、`while` 和 `while let`、`match`、`return`、`break`、`continue`、`throw`、`do { } catch { }`、`defer { }`、`emit`（见[控制流](control-flow.md#控制流)），以及 `fn` 声明（见[函数与闭包](functions.md#函数与闭包)）。
+语句有：`let`、`var`、`let … else`、赋值（`=`、`+= -= *= /= %=`、`&= |= ^= <<= >>=`、`&+= &-= &*=`、`??=`）、`if` 和 `if let`、`for x in xs`（数组或集合）、`for (k, v) in m`、`for (i, x) in xs.enumerated()`、`while` 和 `while let`、`match`、`return`、`break`、`continue`、`throw`、`do { } catch { }`、`defer { }`、`emit`（见[控制流](control-flow.md#控制流)），以及 `fn` 声明（见[函数与闭包](functions.md#函数与闭包)）。
 
 ## 双向绑定
 

@@ -171,7 +171,7 @@ Writes in a handler show together when it ends (or when it reaches an
 `await`).
 
 Statements: `let`, `var`, `let … else`, assignments (`=`, `+= -= *= /=
-%=`, `&= |= ^= <<= >>=`, `??=`), `if` and `if let`, `for x in xs` (an
+%=`, `&= |= ^= <<= >>=`, `&+= &-= &*=`, `??=`), `if` and `if let`, `for x in xs` (an
 array, a set), `for (k, v) in m`, `for (i, x) in xs.enumerated()`,
 `while` and `while let`, `match`, `return`, `break`, `continue`,
 `throw`, `do { } catch { }`, `defer { }`, `emit`

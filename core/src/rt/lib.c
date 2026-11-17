@@ -581,10 +581,15 @@ static ak_val arr_sum(ak_val *args, uint32_t n) {
 		for (uint32_t i = 0; i < a->len; i++) s += a->data[i].f;
 		RET_F(s);
 	}
-	// Wrapping, as + does.
-	uint64_t s = 0;
-	for (uint32_t i = 0; i < a->len; i++) s += (uint64_t)a->data[i].i;
-	RET_I((int64_t)s);
+	// Checked, as + is: a sum past int's range throws.
+	int64_t s = 0;
+	for (uint32_t i = 0; i < a->len; i++) {
+		if (__builtin_add_overflow(s, a->data[i].i, &s)) {
+			ak_throw_msg("integer overflow");
+			RET_VOID;
+		}
+	}
+	RET_I(s);
 }
 
 static ak_val arr_reversed(ak_val *args, uint32_t n) {
@@ -688,10 +693,19 @@ static ak_val arr_sort(ak_val *args, uint32_t n) {
 
 // arr.range(from, to): [from, to). One longer than an array holds (its
 // length is a u32) throws.
+// arr.range(from, to) is from..<to; arr.range(from, to, 1) is from..to,
+// which takes to itself (Int.max too: to + 1 isn't computed).
 static ak_val arr_range(ak_val *args, uint32_t n) {
-	AK_UNUSED(n);
 	int64_t from = A(0).i, to = A(1).i;
+	bool through = n > 2 && A(2).i;
 	uint64_t span = to > from ? (uint64_t)to - (uint64_t)from : 0;
+	if (through && to >= from) {
+		if (span >= UINT32_MAX) {
+			ak_throw_msg("a range of %llu numbers, more than an array holds", (unsigned long long)span + 1);
+			return (ak_val){0};
+		}
+		span++;
+	}
 	if (span > UINT32_MAX) {
 		ak_throw_msg("a range of %llu numbers, more than an array holds", (unsigned long long)span);
 		return (ak_val){0};
@@ -814,8 +828,38 @@ static ak_val len_scale(ak_val *args, uint32_t n) {
 
 static ak_val m_hypot(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(hypot(A(0).f, A(1).f)); }
 static ak_val m_absf(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(fabs(A(0).f)); }
-// abs(int) wraps as the int operators do: abs(Int.min) is Int.min.
-static ak_val m_absi(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(A(0).i < 0 ? (int64_t)(0 - (uint64_t)A(0).i) : A(0).i); }
+// abs(int) is checked, as -x is: the smallest int has no positive.
+static ak_val m_absi(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	if (A(0).i == INT64_MIN) {
+		ak_throw_msg("integer overflow");
+		RET_VOID;
+	}
+	RET_I(A(0).i < 0 ? -A(0).i : A(0).i);
+}
+
+// int.addingChecked(o), subtractingChecked(o), multipliedChecked(o): the
+// result, or none when it overflows.
+static ak_val int_add_checked(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	int64_t r;
+	if (__builtin_add_overflow(A(0).i, A(1).i, &r)) RET_P(NULL);
+	RET_P(ak_box_new(AK_K_INT, (ak_val){.i = r}));
+}
+
+static ak_val int_sub_checked(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	int64_t r;
+	if (__builtin_sub_overflow(A(0).i, A(1).i, &r)) RET_P(NULL);
+	RET_P(ak_box_new(AK_K_INT, (ak_val){.i = r}));
+}
+
+static ak_val int_mul_checked(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	int64_t r;
+	if (__builtin_mul_overflow(A(0).i, A(1).i, &r)) RET_P(NULL);
+	RET_P(ak_box_new(AK_K_INT, (ak_val){.i = r}));
+}
 static ak_val m_mini(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(A(0).i < A(1).i ? A(0).i : A(1).i); }
 static ak_val m_maxi(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(A(0).i > A(1).i ? A(0).i : A(1).i); }
 static ak_val m_minf(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(fmin(A(0).f, A(1).f)); }
@@ -1261,6 +1305,9 @@ const ak_lib_entry ak_lib[] = {
 	{"arr.prefix", arr_prefix},
 	{"arr.suffix", arr_suffix},
 	{"int.padded", int_padded},
+	{"int.add_checked", int_add_checked},
+	{"int.sub_checked", int_sub_checked},
+	{"int.mul_checked", int_mul_checked},
 
 	{"dur.ns", dur_ns},
 	{"dur.ms", dur_ms},

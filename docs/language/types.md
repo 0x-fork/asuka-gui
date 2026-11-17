@@ -65,8 +65,8 @@ and go left to right (`??` right to left):
 |---|---|
 | `!x`, `-x`, `~x` | not, negation, an int's bits flipped |
 | `<<`, `>>` | an int's bits shifted left, and right (keeping its sign) |
-| `*`, `/`, `%`, `&` | multiplication, division, remainder, bitwise and |
-| `+`, `-`, <code>&#124;</code>, `^` | addition (and strings, arrays joined), subtraction, bitwise or, exclusive or |
+| `*`, `/`, `%`, `&`, `&*` | multiplication, division, remainder, bitwise and, wrapping multiplication |
+| `+`, `-`, <code>&#124;</code>, `^`, `&+`, `&-` | addition (and strings, arrays joined), subtraction, bitwise or, exclusive or, wrapping addition and subtraction |
 | `..`, `..<` | ranges: `1..3`, `0..<n` |
 | `==`, `!=`, `<`, `<=`, `>`, `>=` | comparisons (they don't chain) |
 | `&&` | and |
@@ -75,7 +75,9 @@ and go left to right (`??` right to left):
 
 `<`, `<=`, `>` and `>=` order ints, floats, strings, durations, enums
 without payloads (by the order their cases are declared) and types
-with a `compare` method ([Declarations](declarations.md#structs)).
+with a `compare` method; a struct or an enum takes the arithmetic
+operators from its methods too, `add`, `sub`, `mul`, `div`, `rem` and
+`neg` ([Declarations](declarations.md#structs)).
 
 The bitwise operators take ints. A shift by 64 or more shifts every bit
 out (`>>` of a negative gives -1); a shift by a negative count is an
@@ -88,12 +90,40 @@ let celsius = if raw & 0x8000 != 0 { raw - 0x10000 } else { raw }
 let out = bytes([flags, value & 0xff, value >> 8])
 ```
 
-`int` arithmetic wraps: past the largest `int` (2⁶³ − 1), `+`, `-` and
-`*` go on from the smallest, as 64-bit two's complement does
-(`9223372036854775807 + 1` is `-9223372036854775808`). That's what
-hashes, checksums and binary protocols want, and it costs no check on
-every operation. Dividing by zero (`/`, `%`) throws; `int(x)` of a float
-past the range gives the nearest `int` (`0` for NaN).
+An `int` holds −2⁶³ to 2⁶³ − 1. `+`, `-` and `*` whose result is past
+that range throw an error, "integer overflow", as dividing by zero (`/`,
+`%`) does: a `catch` takes it, and when nothing does it goes to the
+nearest `Boundary` ([Errors](errors.md#errors)). So do `-x` and `abs(x)`
+of the smallest `int`, its `/ -1`, and an array's `sum()` past the
+range. A count, a size or a price that overflows is a bug shown where it
+happens, not a wrong number saved.
+
+```asuka
+let big = 9223372036854775807
+let n = try big + 1 catch { 0 }               // 0: it threw
+let next = big.addingChecked(1) ?? big          // none on overflow: big
+```
+
+`&+`, `&-` and `&*` wrap instead: past the largest `int` they go on from
+the smallest, as 64-bit two's complement does (`9223372036854775807 &+
+1` is `-9223372036854775808`). That's what hashes, checksums and binary
+protocols want; `&+=`, `&-=` and `&*=` assign them:
+
+```asuka
+fn fnv1a(data: bytes) -> int {
+  var h = 0xcbf2_9ce4_8422_2325
+  for i in 0..<data.count() {
+    h ^= data[i]
+    h &*= 0x100_0000_01b3
+  }
+  return h
+}
+```
+
+`a.addingChecked(b)`, `subtractingChecked` and `multipliedChecked` give
+an `int?`, none on overflow, for code that handles it as a value. The
+shifts and the bitwise operators never throw for a result; `int(x)` of
+a float past the range gives the nearest `int` (`0` for NaN).
 
 ## Built-in methods
 
@@ -108,7 +138,7 @@ that change their value (`push`, `insert`, `removeAt`, `removeWhere`,
 | `[K: V]` | `m[k]` (a `V?`), `m[k] = v`, `count()`, `isEmpty()`, `has(k)`, `get(k)`, `remove(k)`, `keys()`, `values()` (in insertion order) |
 | `string` | `count()` (characters), `byteCount()`, `isEmpty()`, `upper()`, `lower()`, `trim()`, `trimStart()`, `trimEnd()`, `trimPrefix(s)`, `trimSuffix(s)`, `contains(s)`, `hasPrefix(s)`, `hasSuffix(s)`, `replace(old, new, count:)` (every one unless count says), `split(sep, count:)`, `fields()` (the words), `lines()`, `find(s)`, `findLast(s)`, `findAny(chars)` (byte offsets, or none), `slice(from, to)` (characters), `byteSlice(from, to)` (bytes: the offsets find gives), `padStart(width, with:)`, `padEnd(width, with:)`, `toInt()`, `toFloat()`, `repeat(n)`, `chars()`, `bytes()`, `+` |
 | `bytes` | `b[i]` (an `int`, 0 to 255; out of range is an error), `count()`, `isEmpty()`, `get(i)` (an `int?`), `slice(from, to)`, `concat(b)`, `string()` (UTF-8; what isn't becomes U+FFFD), `hex()` and `hex(separator)` (`"04 a1"`); `bytes()` is none, `bytes([0x04, 0xa1])` those, `s.bytes()` a string's UTF-8 |
-| `int` | `float()`, `abs()`, `padded(width)` (`7.padded(2)` is `"07"`) |
+| `int` | `float()`, `abs()`, `padded(width)` (`7.padded(2)` is `"07"`), `addingChecked(o)`, `subtractingChecked(o)`, `multipliedChecked(o)` (an `int?`: none on overflow) |
 | `float` | `fixed(digits)`, `rounded()`, `floor()`, `ceil()`, `int()` (toward zero), `abs()` |
 | `Color` | `opacity(a)`: drawn at a times its opacity (a semantic color stays semantic); `hex()` (`"#0a84ff"`; a semantic color, its name: `".accent"`) |
 | `Duration` | `nanoseconds()`, `milliseconds()` (ints), `seconds()`, `minutes()`, `hours()` (floats), `rounded(to:)`, `truncated(to:)`, `+`, `-`, `* n` (an int or a float: `1.5 * 1h`), `/ n`, `/ d` (another Duration: how many times it goes in, a float) |

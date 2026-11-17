@@ -500,12 +500,15 @@ func (g *gen) insn(f *bc.FuncDef, in insn, h string) error {
 			w("M->globals[%d] = R[%d];", a[0], a[1])
 		}
 	case "ADDI", "SUBI", "MULI":
-		op := map[string]string{"ADDI": "+", "SUBI": "-", "MULI": "*"}[name]
+		fn := map[string]string{"ADDI": "ak_op_addi", "SUBI": "ak_op_subi", "MULI": "ak_op_muli"}[name]
+		w("if (!%s(R, %d, %d, %d)) goto %s;", fn, a[0], a[1], a[2], h)
+	case "WADDI", "WSUBI", "WMULI":
+		op := map[string]string{"WADDI": "+", "WSUBI": "-", "WMULI": "*"}[name]
 		w("R[%d].i = (int64_t)((uint64_t)R[%d].i %s (uint64_t)R[%d].i);", a[0], a[1], op, a[2])
 	case "DIVI", "MODI":
 		w("if (!ak_op_divi(R, %d, %d, %d, %v)) goto %s;", a[0], a[1], a[2], name == "MODI", h)
 	case "NEGI":
-		w("R[%d].i = (int64_t)(0 - (uint64_t)R[%d].i);", a[0], a[1])
+		w("if (!ak_op_negi(R, %d, %d)) goto %s;", a[0], a[1], h)
 	case "ADDIK":
 		w("R[%d].i = (int64_t)((uint64_t)R[%d].i + (uint64_t)(int64_t)%d);", a[0], a[1], int16(a[2]))
 	case "EQI", "NEI", "LTI", "LEI", "BAND", "BOR", "BXOR":

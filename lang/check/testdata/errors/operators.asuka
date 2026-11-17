@@ -1,0 +1,33 @@
+// *, /, % and -x through a type's mul (or times), div (or quo), rem
+// and neg: one parameter (neg: none), neither async nor throwing.
+
+struct Money {
+  cents: int
+
+  fn times(n: int) -> Money = Money(cents: cents * n)
+  fn div(n: int) -> int = cents / n
+  fn neg() -> Money = Money(cents: -cents)
+}
+
+struct Loud {
+  v: int
+
+  fn mul(o: Loud) throws -> Loud = Loud(v: v * o.v)
+  fn neg(by: int) -> Loud = Loud(v: -v * by)
+}
+
+fn money(m: Money) {
+  let a: Money = m * 3
+  let b: int = m / 2
+  let c: Money = -m
+  let d = m * m // ERROR "\* doesn't take a Money and a Money"
+  let e = m % 2 // ERROR "% doesn't take a Money and an int"
+  var f = m
+  f *= 2
+  f /= 2 // ERROR "/= is x = x / y, and Money's div gives an int, not a Money"
+}
+
+fn loud(l: Loud) {
+  let a = l * l // ERROR "\* doesn't take a Loud and a Loud"
+  let b = -l // ERROR "- negates numbers, not a Loud"
+}

@@ -922,6 +922,13 @@ func (b *fb) unary(e *syntax.UnaryExpr, dst int) int {
 		b.emit(op("BNOT"), r, x)
 		return r
 	case syntax.SUB:
+		if o := b.l.info.Negations[e]; o != nil {
+			// -x is x.neg().
+			rt := b.typ(o.Recv)
+			x := b.value(e.X, -1)
+			s := b.calleeSubst(o.Func, nil, rt)
+			return b.invoke(b.l.funcIndex(o.Func, nil, rt), []int{x}, b.l.kind(s.Apply(o.Func.Sig.Result)), dst, false)
+		}
 		if lit, ok := e.X.(*syntax.BasicLit); ok && lit.Kind == syntax.INT && b.rawType(e) == check.Int {
 			v, _ := check.ParseInt(lit.Value)
 			r := b.out(dst, bc.KInt)
@@ -1051,9 +1058,8 @@ func (b *fb) binary(e *syntax.BinaryExpr, dst int) int {
 		from := b.value(e.X, -1)
 		to := b.value(e.Y, -1)
 		if e.Op == syntax.RANGE {
-			t := b.temp(bc.KInt)
-			b.emit(op("ADDIK"), t, to, 1)
-			to = t
+			// a..b takes b, Int.max too: no b + 1.
+			return b.copyTo(b.callB("arr.range", bc.KRef, from, to, b.konst(1)), dst)
 		}
 		return b.copyTo(b.callB("arr.range", bc.KRef, from, to), dst)
 	}
@@ -1067,6 +1073,7 @@ func (b *fb) binary(e *syntax.BinaryExpr, dst int) int {
 var intOps = map[syntax.Token]string{
 	syntax.ADD: "ADDI", syntax.SUB: "SUBI", syntax.MUL: "MULI", syntax.QUO: "DIVI", syntax.REM: "MODI",
 	syntax.AMP: "BAND", syntax.PIPE: "BOR", syntax.CARET: "BXOR", syntax.SHL: "SHL", syntax.SHR: "SHR",
+	syntax.WADD: "WADDI", syntax.WSUB: "WSUBI", syntax.WMUL: "WMULI",
 }
 
 // binop applies a binary operator to registers x and y.

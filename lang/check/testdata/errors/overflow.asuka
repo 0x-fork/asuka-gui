@@ -1,0 +1,24 @@
+// The wrapping operators take ints, as the bitwise ones do; the
+// smallest int's literal can't be negated.
+
+fn floats(x: float) -> float = x &+ 1.0 // ERROR "&\+ takes ints, not a float"
+
+fn durations(d: Duration) -> Duration = d &* 2 // ERROR "&\* takes ints, not a Duration"
+
+fn strings(s: string) -> int = 1 &- s // ERROR "&- takes ints, not a string"
+
+fn compound(x: float) {
+  var y = x
+  y &+= 1 // ERROR "&\+= takes ints, not a float"
+}
+
+fn ok(a: int, b: int) -> int {
+  var h = a &* 31 &+ b
+  h &-= 7
+  h &*= 0x100_0000_01b3
+  return h
+}
+
+fn checked(a: int) -> int = a.addingChecked(1) // ERROR "the result of checked is an int\?, not an int"
+
+fn smallest() -> int = -0x8000_0000_0000_0000 // ERROR "-0x8000_0000_0000_0000 overflows: 0x8000_0000_0000_0000 is the smallest int, which has no positive"

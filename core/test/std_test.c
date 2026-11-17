@@ -571,13 +571,67 @@ TEST(ranges) {
 	r = call("arr.range", (ak_val[]){I(3), I(-3)}, 2, 0);
 	CHECK_EQ_INT(((ak_arr *)r.p)->len, 0);
 	ak_release(r.p);
+	// a..b takes b, the largest int too; b < a is none; a span past an
+	// array's by one is an error.
+	r = call("arr.range", (ak_val[]){I(INT64_MAX - 1), I(INT64_MAX), I(1)}, 3, 0);
+	REQUIRE(!ak_error_pending());
+	a = r.p;
+	REQUIRE(a->len == 2);
+	CHECK(a->data[1].i == INT64_MAX);
+	ak_release(a);
+	r = call("arr.range", (ak_val[]){I(3), I(2), I(1)}, 3, 0);
+	CHECK_EQ_INT(((ak_arr *)r.p)->len, 0);
+	ak_release(r.p);
+	r = call("arr.range", (ak_val[]){I(0), I(UINT32_MAX), I(1)}, 3, 0);
+	e = ak_error_take();
+	CHECK(e != NULL && r.p == NULL);
+	ak_release(e);
+	r = call("arr.range", (ak_val[]){I(INT64_MIN), I(INT64_MAX), I(1)}, 3, 0);
+	e = ak_error_take();
+	CHECK(e != NULL && r.p == NULL);
+	ak_release(e);
 }
 
-// Integers wrap, as the language's arithmetic does: abs(Int.min) is
-// Int.min. random_int's span is the whole range's.
+// overflowed is whether the call before threw "integer overflow".
+static bool overflowed(void) {
+	void *e = ak_error_take();
+	bool ok = e != NULL && strcmp(ak_error_message(e)->data, "integer overflow") == 0;
+	ak_release(e);
+	return ok;
+}
+
+// The checked int's value, or INT64_MIN for none.
+static int64_t checked(const char *name, int64_t a, int64_t b) {
+	ak_box *r = call(name, (ak_val[]){I(a), I(b)}, 2, 0).p;
+	if (!r) return INT64_MIN;
+	int64_t v = r->v.i;
+	ak_release(r);
+	return v;
+}
+
+// Integers past their range throw, as the language's arithmetic does:
+// abs(Int.min), a sum past Int.max; the checked methods give none.
+// random_int's span is the whole range's.
 TEST(int_extremes) {
-	CHECK(call("math.absi", (ak_val[]){I(INT64_MIN)}, 1, 0).i == INT64_MIN);
+	call("math.absi", (ak_val[]){I(INT64_MIN)}, 1, 0);
+	CHECK(overflowed());
 	CHECK_EQ_INT(call("math.absi", (ak_val[]){I(-5)}, 1, 0).i, 5);
+	CHECK(call("math.absi", (ak_val[]){I(-INT64_MAX)}, 1, 0).i == INT64_MAX);
+	ak_arr *xs = ak_arr_new(AK_K_INT, NULL, 3);
+	xs->data[0].i = INT64_MAX - 1, xs->data[1].i = -5, xs->data[2].i = 6;
+	xs->len = 3;
+	CHECK(call("arr.sum", (ak_val[]){{.p = xs}}, 1, 0).i == INT64_MAX);
+	xs->data[1].i = 5;
+	call("arr.sum", (ak_val[]){{.p = xs}}, 1, 0);
+	CHECK(overflowed());
+	ak_release(xs);
+	CHECK(checked("int.add_checked", INT64_MAX, 1) == INT64_MIN);
+	CHECK(checked("int.add_checked", INT64_MAX, -1) == INT64_MAX - 1);
+	CHECK(checked("int.sub_checked", -2, INT64_MAX) == INT64_MIN);
+	CHECK(checked("int.sub_checked", 3, 5) == -2);
+	CHECK(checked("int.mul_checked", INT64_MIN, -1) == INT64_MIN);
+	CHECK(checked("int.mul_checked", -4, 5) == -20);
+	REQUIRE(!ak_error_pending());
 	for (int i = 0; i < 100; i++) {
 		int64_t v = call("math.random_int", (ak_val[]){I(INT64_MIN), I(INT64_MAX)}, 2, 0).i;
 		CHECK(v < INT64_MAX);

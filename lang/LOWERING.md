@@ -292,14 +292,40 @@ interpreter's frames.
 ## Operators
 
 The int operators are instructions: `+ - * / %` ADDI, SUBI, MULI, DIVI,
-MODI (the last two throw on a zero divisor), `& | ^` BAND, BOR, BXOR,
-`~x` BNOT, `<< >>` SHL and SHR (ops.h's `ak_op_shift`: a count of 64 or
-more shifts every bit out, `>>` keeping the sign; a negative count
-throws, as Go panics). A compound assignment (`x <<= 1`, `xs[i] |= m`)
+MODI (the last two throw on a zero divisor), `-x` NEGI, `& | ^` BAND,
+BOR, BXOR, `~x` BNOT, `<< >>` SHL and SHR (ops.h's `ak_op_shift`: a
+count of 64 or more shifts every bit out, `>>` keeping the sign; a
+negative count throws, as Go panics).
+
+ADDI, SUBI, MULI and NEGI are checked: ops.h's `ak_op_addi` and its kin
+compute with `__builtin_add_overflow` (sub, mul: one branch on the CPU's
+overflow flag, predicted not taken) and on overflow throw "integer
+overflow" through `ak_op_overflow` (out of line, cold), returning false:
+the VM goes to `unwind`, cgen's C to the handler, as for `ak_op_divi`'s
+zero, which also throws for the smallest int `/ -1` (its `% -1` is 0).
+The destination isn't written on overflow. `&+ &- &*` are WADDI, WSUBI,
+WMULI: `uint64_t` arithmetic, which wraps. The compiler's own counters
+stay ADDIK, which wraps and can't overflow: a loop's index is below a
+length, and `for i in a..b` tests `i == b` before its ADDIK (the loop
+ends at b, Int.max too) instead of `i <= b` after it. `a..b` as a value
+is `arr.range(a, b, 1)`, which takes b without computing b + 1.
+`abs(x)` and an array's `sum()` (lib.c's `math.absi`, `arr.sum`) throw
+as the operators do; `addingChecked`, `subtractingChecked` and
+`multipliedChecked` are `int.add_checked` and its kin: the result boxed,
+or none. Nothing folds int arithmetic at compile time but a negated
+literal (`-5` is KSMALL -5); `-0x8000_0000_0000_0000`, the one that
+would overflow, is a checker error, as an out-of-range literal is.
+
+A compound assignment (`x <<= 1`, `xs[i] |= m`, `h &*= p`)
 is its operator on the place's value, written back as `=` is; one a
 struct's or an enum's method does (`t += 1h`, check.Info.AssignOps)
 is that method's call (the place read, not taken out, for the method may
-read it: a state's cell is CPEEKed and CPUT once). `<` and its kin
+read it: a state's cell is CPEEKed and CPUT once). The operators a
+struct's or an enum's methods do (check.Info.Operators) are calls of
+them: `+` add, `-` sub or minus, `*` mul or times, `/` div or quo, `%`
+rem, the one whose parameter's type is the right operand's
+(check.findOperator), and `-x` neg (check.Info.Negations); `x *= y` uses
+the one that gives x's type back. `<` and its kin
 on a struct or an enum call its `compare` and test the int against 0,
 in a generic's body too (check.CompareMethod of T's type); an enum
 without payloads compares its cases (an int, or ECASE of a reference

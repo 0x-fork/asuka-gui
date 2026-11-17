@@ -1337,9 +1337,19 @@ func (c *Checker) unary(e *syntax.UnaryExpr, want Type) Type {
 		return Bool
 	case syntax.SUB:
 		t := c.expr(e.X, want)
+		if o, res := c.negation(t); o != nil {
+			c.info.Negations[e] = o
+			return res
+		}
 		if !IsInvalid(t) && !IsNumeric(t) && t != Duration {
 			c.errorf(e, "- negates numbers, not %s", aType(t))
 			return Invalid
+		}
+		if lit, ok := unparen(e.X).(*syntax.BasicLit); ok && lit.Kind == syntax.INT && t == Int {
+			// -0x8000_0000_0000_0000: the smallest int's bits, negated.
+			if v, err := ParseInt(lit.Value); err == nil && v == math.MinInt64 {
+				c.errorf(e, "-%s overflows: %s is the smallest int, which has no positive", lit.Value, lit.Value)
+			}
 		}
 		return t
 	case syntax.AWAIT:
@@ -1500,7 +1510,7 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 		c.assign(e.X, Int, "a range's start")
 		c.assign(e.Y, Int, "a range's end")
 		return &Array{Int}
-	case syntax.AMP, syntax.PIPE, syntax.CARET, syntax.SHL, syntax.SHR:
+	case syntax.AMP, syntax.PIPE, syntax.CARET, syntax.SHL, syntax.SHR, syntax.WADD, syntax.WSUB, syntax.WMUL:
 		// Not an int when an operand isn't one: what it's used as
 		// isn't asked again.
 		okX := c.intOperand(e.X, e.Op)
@@ -1609,9 +1619,10 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 	return Invalid
 }
 
-// An Operator is a binary operator a struct's method does: + its
-// add(y), - its sub(y) or minus(y) (the one whose parameter takes y), <,
-// <=, > and >= its compare(y) -> int against 0.
+// An Operator is an operator a struct's or an enum's method does: + its
+// add(y), - its sub(y) or minus(y) (the one whose parameter takes y), *
+// its mul(y) or times(y), / its div(y) or quo(y), % its rem(y), <, <=, >
+// and >= its compare(y) -> int against 0, and -x its neg().
 type Operator struct {
 	Func    *Function
 	Recv    Type
@@ -1630,17 +1641,43 @@ func (c *Checker) operatorMethod(e *syntax.BinaryExpr, xt, yt Type) (Type, bool)
 }
 
 // operatorNames are the methods an operator may call, and whether it
-// compares.
+// compares. An operator with two names takes two kinds of operand, one
+// each (Time - Time and Time - Duration: sub and minus; Decimal *
+// Decimal and Decimal * int: mul and times).
 func operatorNames(op syntax.Token) (names []string, compare bool) {
 	switch op {
 	case syntax.ADD:
 		return []string{"add"}, false
 	case syntax.SUB:
 		return []string{"sub", "minus"}, false
+	case syntax.MUL:
+		return []string{"mul", "times"}, false
+	case syntax.QUO:
+		return []string{"div", "quo"}, false
+	case syntax.REM:
+		return []string{"rem"}, false
 	case syntax.LSS, syntax.LEQ, syntax.GTR, syntax.GEQ:
 		return []string{"compare"}, true
 	}
 	return nil, false
+}
+
+// negation is the neg() of t's struct or enum that -x calls, and its
+// result: a method without parameters, neither async nor throwing.
+func (c *Checker) negation(t Type) (*Operator, Type) {
+	n, ok := t.(*Named)
+	if !ok || n.Obj.Kind != StructType && n.Obj.Kind != EnumType {
+		return nil, nil
+	}
+	f := n.Obj.Methods["neg"]
+	if f == nil {
+		return nil, nil
+	}
+	c.funcSig(f)
+	if f.Sig == nil || len(f.Sig.Params) != 0 || f.Sig.Async || f.Sig.Throws || f.Sig.Result == nil || f.Sig.Result == Void {
+		return nil, nil
+	}
+	return &Operator{Func: f, Recv: t}, n.Subst().Apply(f.Sig.Result)
 }
 
 // operatorCandidates are the methods of xt's struct or enum that op may

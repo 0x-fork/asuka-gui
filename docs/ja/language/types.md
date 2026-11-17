@@ -41,15 +41,15 @@ let seen: Set<(int, int)> = [(0, 0), (1, 2)]
 |---|---|
 | `!x`、`-x`、`~x` | 否定、符号反転、整数のビット反転 |
 | `<<`、`>>` | 整数のビットを左へ、右へシフト（右シフトは符号を保つ） |
-| `*`、`/`、`%`、`&` | 乗算、除算、剰余、ビット AND |
-| `+`、`-`、<code>&#124;</code>、`^` | 加算（文字列や配列の連結にも使う）、減算、ビット OR、ビット XOR |
+| `*`、`/`、`%`、`&`、`&*` | 乗算、除算、剰余、ビット AND、ラップアラウンドする乗算 |
+| `+`、`-`、<code>&#124;</code>、`^`、`&+`、`&-` | 加算（文字列や配列の連結にも使う）、減算、ビット OR、ビット XOR、ラップアラウンドする加算と減算 |
 | `..`、`..<` | 範囲：`1..3`、`0..<n` |
 | `==`、`!=`、`<`、`<=`、`>`、`>=` | 比較（連ねて書くことはできません） |
 | `&&` | かつ |
 | <code>&#124;&#124;</code> | または |
 | `??` | オプショナルの中の値。`none` ならデフォルト値 |
 
-`<`、`<=`、`>`、`>=` で順序づけられるのは、整数、浮動小数点数、文字列、`Duration`、値を持たないケースだけの列挙型（ケースを宣言した順）、それに `compare` メソッドを持つ型です（[宣言](declarations.md#構造体)を参照）。
+`<`、`<=`、`>`、`>=` で順序づけられるのは、整数、浮動小数点数、文字列、`Duration`、値を持たないケースだけの列挙型（ケースを宣言した順）、それに `compare` メソッドを持つ型です。構造体と列挙型は、算術演算子もメソッド `add`、`sub`、`mul`、`div`、`rem`、`neg` から得られます（[宣言](declarations.md#構造体)を参照）。
 
 ビット演算子が取るのは整数だけです。64 ビット以上シフトするとすべてのビットが押し出されます（負の数の `>>` は -1 になります）。負の数でシフトするとエラーになります。これらの演算子と `b[i]`（バイトを整数として読む）を使えば、Bluetooth のキャラクタリスティックや NFC のレコードといったバイナリデータを読み書きできます。
 
@@ -59,7 +59,28 @@ let celsius = if raw & 0x8000 != 0 { raw - 0x10000 } else { raw }
 let out = bytes([flags, value & 0xff, value >> 8])
 ```
 
-`int` の演算はラップアラウンドします。`+`、`-`、`*` の結果が最大の `int`（2⁶³ − 1）を超えると、64 ビットの 2 の補数どおりに最小値の側から続きます（`9223372036854775807 + 1` は `-9223372036854775808`）。ハッシュ、チェックサム、バイナリプロトコルが求めるのはまさにこの動作で、しかも演算のたびにオーバーフローを検査するコストがかかりません。ゼロ除算（`/`、`%`）はエラーを投げます。範囲外の浮動小数点数に `int(x)` を使うと、いちばん近い `int` になります（NaN は `0`）。
+`int` が表せるのは −2⁶³ から 2⁶³ − 1 までです。`+`、`-`、`*` の結果がこの範囲を超えると、ゼロ除算（`/`、`%`）と同じようにエラー “integer overflow” が投げられます。`catch` で受け取れ、どこでも受け取られなければいちばん近い `Boundary` に届きます（[エラー](errors.md#エラー)を参照）。最小の `int` の `-x` と `abs(x)`、`/ -1`、範囲を超える配列の `sum()` も同じです。個数やサイズ、金額がオーバーフローしたら、それは起きたその場で見つかるバグであって、黙って保存される間違った数ではありません。
+
+```asuka
+let big = 9223372036854775807
+let n = try big + 1 catch { 0 }               // 0：エラーが投げられた
+let next = big.addingChecked(1) ?? big          // オーバーフローなら none：big になる
+```
+
+`&+`、`&-`、`&*` は代わりにラップアラウンドします。最大の `int` を超えると、64 ビットの 2 の補数どおりに最小値の側から続きます（`9223372036854775807 &+ 1` は `-9223372036854775808`）。ハッシュ、チェックサム、バイナリプロトコルが求めるのはこの動作です。代入には `&+=`、`&-=`、`&*=` を使います。
+
+```asuka
+fn fnv1a(data: bytes) -> int {
+  var h = 0xcbf2_9ce4_8422_2325
+  for i in 0..<data.count() {
+    h ^= data[i]
+    h &*= 0x100_0000_01b3
+  }
+  return h
+}
+```
+
+オーバーフローを値として扱いたいときは、`a.addingChecked(b)`、`subtractingChecked`、`multipliedChecked` を使います。結果は `int?` で、オーバーフローすると none です。シフトとビット演算子が結果のせいでエラーを投げることはありません。範囲外の浮動小数点数に `int(x)` を使うと、いちばん近い `int` になります（NaN は `0`）。
 
 ## 組み込みメソッド
 
@@ -72,7 +93,7 @@ let out = bytes([flags, value & 0xff, value >> 8])
 | `[K: V]` | `m[k]`（`V?` を返す）、`m[k] = v`、`count()`、`isEmpty()`、`has(k)`、`get(k)`、`remove(k)`、`keys()`、`values()`（挿入した順） |
 | `string` | `count()`（文字数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s)`、`hasPrefix(s)`、`hasSuffix(s)`、`replace(old, new, count:)`（count を指定しなければすべて置き換え）、`split(sep, count:)`、`fields()`（空白で区切った単語）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（バイト単位の位置。見つからなければ none）、`slice(from, to)`（文字単位）、`byteSlice(from, to)`（バイト単位：find が返す位置）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toFloat()`、`repeat(n)`、`chars()`、`bytes()`、`+` |
 | `bytes` | `b[i]`（0 から 255 の `int`。範囲外はエラー）、`count()`、`isEmpty()`、`get(i)`（`int?` を返す）、`slice(from, to)`、`concat(b)`、`string()`（UTF-8 として読み、不正な部分は U+FFFD になる）、`hex()` と `hex(separator)`（`"04 a1"`）。`bytes()` は空のバイト列、`bytes([0x04, 0xa1])` はそのバイト列、`s.bytes()` は文字列の UTF-8 |
-| `int` | `float()`、`abs()`、`padded(width)`（`7.padded(2)` は `"07"`） |
+| `int` | `float()`、`abs()`、`padded(width)`（`7.padded(2)` は `"07"`）、`addingChecked(o)`、`subtractingChecked(o)`、`multipliedChecked(o)`（`int?`：オーバーフローなら none） |
 | `float` | `fixed(digits)`、`rounded()`、`floor()`、`ceil()`、`int()`（0 の方向へ切り捨て）、`abs()` |
 | `Color` | `opacity(a)`：元の不透明度の a 倍で描く（セマンティックカラーはセマンティックカラーのまま）。`hex()`（`"#0a84ff"`。セマンティックカラーはその名前：`".accent"`） |
 | `Duration` | `nanoseconds()`、`milliseconds()`（整数）、`seconds()`、`minutes()`、`hours()`（浮動小数点数）、`rounded(to:)`、`truncated(to:)`、`+`、`-`、`* n`（整数でも浮動小数点数でも：`1.5 * 1h`）、`/ n`、`/ d`（別の Duration：何個分か。浮動小数点数） |

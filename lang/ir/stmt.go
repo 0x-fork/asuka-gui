@@ -298,18 +298,26 @@ func (b *fb) forStmt(s *syntax.ForStmt) {
 		b.emit(op("LEN"), limit, seq)
 		b.loadInt(i, 0)
 	}
+	// a..b is tested once before the first turn, and ends after the turn
+	// of b: its counter never goes past b, so b may be Int.max.
+	through := fi.Kind == check.ForRange && fi.Incl
+	if through {
+		b.emit(op("LEI"), cond, i, limit)
+		b.emitJump(op("JF"), cond, end)
+	}
 	b.f.Place(top)
 	switch {
+	case through:
 	case fi.Kind == check.ForSet:
 		b.callBTo("set.next", i, seq, i)
 		zero := b.konst(0)
 		b.emit(op("LEI"), cond, zero, i)
-	case fi.Kind == check.ForRange && fi.Incl:
-		b.emit(op("LEI"), cond, i, limit)
 	default:
 		b.emit(op("LTI"), cond, i, limit)
 	}
-	b.emitJump(op("JF"), cond, end)
+	if !through {
+		b.emitJump(op("JF"), cond, end)
+	}
 	b.openScope()
 	switch fi.Kind {
 	case check.ForRange:
@@ -345,6 +353,10 @@ func (b *fb) forStmt(s *syntax.ForStmt) {
 	b.loops = b.loops[:len(b.loops)-1]
 	b.closeScope()
 	b.f.Place(cont)
+	if through {
+		b.emit(op("EQI"), cond, i, limit)
+		b.emitJump(op("JT"), cond, end)
+	}
 	b.emit(op("ADDIK"), i, i, 1)
 	b.jmp(top)
 	b.f.Place(end)

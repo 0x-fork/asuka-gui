@@ -41,15 +41,15 @@ let seen: Set<(int, int)> = [(0, 0), (1, 2)]
 |---|---|
 | `!x`、`-x`、`~x` | 取反、取负、把整数的每一位取反 |
 | `<<`、`>>` | 把整数的位左移、右移（右移保留符号） |
-| `*`、`/`、`%`、`&` | 乘、除、取余、按位与 |
-| `+`、`-`、<code>&#124;</code>、`^` | 加（也用于拼接字符串和数组）、减、按位或、按位异或 |
+| `*`、`/`、`%`、`&`、`&*` | 乘、除、取余、按位与、回绕乘法 |
+| `+`、`-`、<code>&#124;</code>、`^`、`&+`、`&-` | 加（也用于拼接字符串和数组）、减、按位或、按位异或、回绕加法和减法 |
 | `..`、`..<` | 范围：`1..3`、`0..<n` |
 | `==`、`!=`、`<`、`<=`、`>`、`>=` | 比较（不能连写） |
 | `&&` | 与 |
 | <code>&#124;&#124;</code> | 或 |
 | `??` | 可选值里的值，为 none 时取默认值 |
 
-`<`、`<=`、`>` 和 `>=` 可以比较整数、浮点数、字符串、时长、成员不携带值的枚举（按成员声明的顺序），以及带有 `compare` 方法的类型（见[声明](declarations.md#结构体)）。
+`<`、`<=`、`>` 和 `>=` 可以比较整数、浮点数、字符串、时长、成员不携带值的枚举（按成员声明的顺序），以及带有 `compare` 方法的类型；结构体和枚举也能从自己的方法 `add`、`sub`、`mul`、`div`、`rem` 和 `neg` 获得算术运算符（见[声明](declarations.md#结构体)）。
 
 按位运算符只接受整数。移位 64 位或更多时，所有位都会被移出（负数右移得到 -1）；移位数为负数则是一个错误。有了这些运算符和 `b[i]`（以整数形式读出一个字节），程序就能读写二进制数据，比如蓝牙特征值或 NFC 记录：
 
@@ -59,7 +59,28 @@ let celsius = if raw & 0x8000 != 0 { raw - 0x10000 } else { raw }
 let out = bytes([flags, value & 0xff, value >> 8])
 ```
 
-`int` 的运算会回绕：`+`、`-`、`*` 的结果超过最大的 `int`（2⁶³ − 1）时，会按 64 位二进制补码的规则从最小值接着算下去（`9223372036854775807 + 1` 等于 `-9223372036854775808`）。哈希、校验和以及二进制协议需要的正是这种行为，而且这样每次运算都不必额外检查溢出。除以零（`/`、`%`）会抛出错误；对超出范围的浮点数调用 `int(x)`，得到离它最近的 `int`（NaN 得到 `0`）。
+`int` 的取值范围是 −2⁶³ 到 2⁶³ − 1。`+`、`-`、`*` 的结果超出这个范围时，会像除以零（`/`、`%`）一样抛出错误 “integer overflow”：`catch` 可以捕获它；没有地方捕获时，它会交给最近的 `Boundary`（见[错误](errors.md#错误)）。对最小的 `int` 取负（`-x`）、取绝对值（`abs(x)`）、除以 `-1`，以及数组的 `sum()` 超出范围，也都一样。计数、大小或价格一旦溢出，就是一个在出错的地方暴露出来的 bug，而不是一个被悄悄存下来的错误数字。
+
+```asuka
+let big = 9223372036854775807
+let n = try big + 1 catch { 0 }               // 0：抛出了错误
+let next = big.addingChecked(1) ?? big          // 溢出时为 none：得到 big
+```
+
+`&+`、`&-` 和 `&*` 则会回绕：结果超过最大的 `int` 时，按 64 位二进制补码的规则从最小值接着算下去（`9223372036854775807 &+ 1` 等于 `-9223372036854775808`）。哈希、校验和以及二进制协议需要的正是这种行为；`&+=`、`&-=` 和 `&*=` 是对应的赋值写法：
+
+```asuka
+fn fnv1a(data: bytes) -> int {
+  var h = 0xcbf2_9ce4_8422_2325
+  for i in 0..<data.count() {
+    h ^= data[i]
+    h &*= 0x100_0000_01b3
+  }
+  return h
+}
+```
+
+想把溢出当作一个值来处理时，用 `a.addingChecked(b)`、`subtractingChecked` 和 `multipliedChecked`：它们返回 `int?`，溢出时为 none。移位和按位运算符不会因为结果而抛出错误；对超出范围的浮点数调用 `int(x)`，得到离它最近的 `int`（NaN 得到 `0`）。
 
 ## 内置方法
 
@@ -72,7 +93,7 @@ let out = bytes([flags, value & 0xff, value >> 8])
 | `[K: V]` | `m[k]`（返回 `V?`）、`m[k] = v`、`count()`、`isEmpty()`、`has(k)`、`get(k)`、`remove(k)`、`keys()`、`values()`（按插入顺序） |
 | `string` | `count()`（字符数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s)`、`hasPrefix(s)`、`hasSuffix(s)`、`replace(old, new, count:)`（默认替换全部，count 指定次数）、`split(sep, count:)`、`fields()`（按空白分出的词）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（字节偏移，找不到时为 none）、`slice(from, to)`（按字符）、`byteSlice(from, to)`（按字节：即 find 给出的偏移）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toFloat()`、`repeat(n)`、`chars()`、`bytes()`、`+` |
 | `bytes` | `b[i]`（返回 `int`，取值 0 到 255；越界是一个错误）、`count()`、`isEmpty()`、`get(i)`（返回 `int?`）、`slice(from, to)`、`concat(b)`、`string()`（按 UTF-8 解码，无效的部分变成 U+FFFD）、`hex()` 和 `hex(separator)`（`"04 a1"`）；`bytes()` 是空的字节序列，`bytes([0x04, 0xa1])` 是这些字节，`s.bytes()` 是字符串的 UTF-8 字节 |
-| `int` | `float()`、`abs()`、`padded(width)`（`7.padded(2)` 是 `"07"`） |
+| `int` | `float()`、`abs()`、`padded(width)`（`7.padded(2)` 是 `"07"`）、`addingChecked(o)`、`subtractingChecked(o)`、`multipliedChecked(o)`（返回 `int?`：溢出时为 none） |
 | `float` | `fixed(digits)`、`rounded()`、`floor()`、`ceil()`、`int()`（向零取整）、`abs()` |
 | `Color` | `opacity(a)`：以原本不透明度的 a 倍绘制（语义颜色仍然是语义颜色）；`hex()`（`"#0a84ff"`；语义颜色则是它的名字：`".accent"`） |
 | `Duration` | `nanoseconds()`、`milliseconds()`（整数）、`seconds()`、`minutes()`、`hours()`（浮点数）、`rounded(to:)`、`truncated(to:)`、`+`、`-`、`* n`（整数或浮点数：`1.5 * 1h`）、`/ n`、`/ d`（另一个 Duration：它能容纳几个，一个浮点数） |
