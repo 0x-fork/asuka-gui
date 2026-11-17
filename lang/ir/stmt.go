@@ -80,7 +80,7 @@ func (b *fb) stmt(it syntax.Item) {
 		subj := b.value(s.Subject, -1)
 		st := b.rawType(s.Subject)
 		end := b.f.NewLabel()
-		for _, a := range b.l.platformArms(s.Subject, s.Arms) {
+		for _, a := range b.matchArms(s.Subject, s.Arms) {
 			next := b.f.NewLabel()
 			b.openScope()
 			b.testPattern(a.Pattern, subj, st, next)
@@ -175,6 +175,9 @@ func (b *fb) condJump(c syntax.Expr, els Label) {
 	if l, ok := c.(*syntax.CondList); ok {
 		for _, x := range l.List {
 			b.condJump(x, els)
+			if b.letNever(x) {
+				break // the clauses after it are never reached
+			}
 		}
 		return
 	}
@@ -219,7 +222,137 @@ func (b *fb) condJump(c syntax.Expr, els Label) {
 	b.bindPattern(lc.Pattern, v, t)
 }
 
+// letNever reports a condition that's never true as this instantiation
+// is compiled: a let clause whose type test never passes (a type
+// parameter's value that's another type here), or a chain with one.
+func (b *fb) letNever(c syntax.Expr) bool {
+	switch x := c.(type) {
+	case *syntax.CondList:
+		for _, y := range x.List {
+			if b.letNever(y) {
+				return true
+			}
+		}
+	case *syntax.LetCond:
+		return b.patternNever(x.Pattern)
+	}
+	return false
+}
+
+// patternNever reports a pattern that never matches as this
+// instantiation is compiled: a type test, in it, of a type parameter's
+// value that's another type here.
+func (b *fb) patternNever(p syntax.Pattern) bool {
+	switch p := p.(type) {
+	case *syntax.TypedPat:
+		if tt := b.l.info.TypeTests[p]; tt != nil {
+			never, _ := b.testedStatically(tt)
+			return never
+		}
+	case *syntax.CasePat:
+		if tt := b.l.info.TypeTests[p]; tt != nil {
+			if never, _ := b.testedStatically(tt); never {
+				return true
+			}
+		}
+		for _, a := range p.Args {
+			if b.patternNever(a) {
+				return true
+			}
+		}
+	case *syntax.TuplePat:
+		for _, e := range p.Elems {
+			if b.patternNever(e) {
+				return true
+			}
+		}
+	case *syntax.OrPat:
+		for _, a := range p.Alts {
+			if !b.patternNever(a) {
+				return false
+			}
+		}
+		return len(p.Alts) > 0
+	}
+	return false
+}
+
+// patternAlways reports a type test's pattern that always matches as
+// this instantiation is compiled: of a type parameter's value that's
+// that type here, its parts matching anything.
+func (b *fb) patternAlways(p syntax.Pattern) bool {
+	var tt *check.TypeTest
+	var args []syntax.Pattern
+	switch p := p.(type) {
+	case *syntax.TypedPat:
+		tt = b.l.info.TypeTests[p]
+	case *syntax.CasePat:
+		if _, ok := b.l.info.FieldPats[p]; ok {
+			tt, args = b.l.info.TypeTests[p], p.Args
+		}
+	}
+	if tt == nil {
+		return false
+	}
+	if _, always := b.testedStatically(tt); !always {
+		return false
+	}
+	for _, a := range args {
+		switch a.(type) {
+		case *syntax.BindPat, *syntax.WildcardPat:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// matchArms are the arms of a match that may run as this instantiation
+// is compiled: @platform's (platformArms), without those whose type test
+// never passes, up to the first whose always does (without a guard).
+func (b *fb) matchArms(subject syntax.Expr, arms []*syntax.MatchArm) []*syntax.MatchArm {
+	arms = b.l.platformArms(subject, arms)
+	var out []*syntax.MatchArm
+	for i, a := range arms {
+		if b.patternNever(a.Pattern) {
+			if out == nil {
+				out = append([]*syntax.MatchArm{}, arms[:i]...)
+			}
+			continue
+		}
+		if out != nil {
+			out = append(out, a)
+		}
+		if a.Guard == nil && b.patternAlways(a.Pattern) {
+			if out == nil {
+				return arms[:i+1]
+			}
+			return out
+		}
+	}
+	if out == nil {
+		return arms
+	}
+	return out
+}
+
 func (b *fb) ifStmt(s *syntax.IfStmt) {
+	if b.letNever(s.Cond) {
+		// A type test this instantiation never passes: the else, after
+		// what the condition still runs.
+		els := b.f.NewLabel()
+		b.openScope()
+		b.condJump(s.Cond, els)
+		b.closeScope()
+		b.f.Place(els)
+		switch el := s.Else.(type) {
+		case *syntax.IfStmt:
+			b.ifStmt(el)
+		case *syntax.Block:
+			b.block(el)
+		}
+		return
+	}
 	if f := b.l.foldCond(s.Cond); f.known {
 		// Only the branch @platform takes.
 		b.effects(f)
@@ -414,6 +547,15 @@ func (b *fb) testPattern(p syntax.Pattern, v int, t check.Type, fail Label) {
 			b.f.Place(next)
 		}
 		b.f.Place(ok)
+	case *syntax.TypedPat:
+		x := v
+		if check.IsOptional(t) {
+			b.emitJump(op("JNONE"), v, fail)
+			x = b.unbox(v, check.Unopt(t), -1)
+		}
+		if tt := b.l.info.TypeTests[p]; tt != nil {
+			b.testType(x, tt, fail)
+		}
 	case *syntax.CasePat:
 		if fields, ok := b.l.info.FieldPats[p]; ok {
 			// A struct's: each field it names.
@@ -422,6 +564,12 @@ func (b *fb) testPattern(p syntax.Pattern, v int, t check.Type, fail Label) {
 			if check.IsOptional(t) {
 				b.emitJump(op("JNONE"), v, fail)
 				x = b.unbox(v, et, -1)
+			}
+			if tt := b.l.info.TypeTests[p]; tt != nil {
+				// Of an interface's value: of this struct first.
+				var typ *check.Named
+				x, typ = b.testType(x, tt, fail)
+				et = typ
 			}
 			n, _ := et.(*check.Named)
 			for i, a := range p.Args {
@@ -447,11 +595,12 @@ func (b *fb) testPattern(p syntax.Pattern, v int, t check.Type, fail Label) {
 			b.emitJump(op("JNONE"), v, fail)
 			x = b.unbox(v, et, -1)
 		}
-		if tn := b.l.info.ErrorCases[p]; tn != nil {
-			// An Error matched by an error enum's case: of that enum
-			// first (as catch T.case tests it).
-			b.errorOf(x, tn, fail)
-			et = tn.Type
+		if tt := b.l.info.TypeTests[p]; tt != nil {
+			// Of an interface's value (an Error's: as catch T.case
+			// tests it): of this enum first.
+			var typ *check.Named
+			x, typ = b.testType(x, tt, fail)
+			et = typ
 		}
 		n, _ := et.(*check.Named)
 		c := b.caseOf(x, n)
@@ -470,9 +619,75 @@ func (b *fb) testPattern(p syntax.Pattern, v int, t check.Type, fail Label) {
 	}
 }
 
+// testType jumps to fail unless x, which type test tt is of (a value of
+// an interface, or of a type parameter), is of tt's type, and returns x
+// as one, and that type: an Error's by its __etype, another interface's
+// by its shape (ISSHAPE); a type parameter's is known in this
+// instantiation, so it always is (nothing to test) or never (a jump).
+func (b *fb) testType(x int, tt *check.TypeTest, fail Label) (int, *check.Named) {
+	typ, _ := b.typ(tt.Type).(*check.Named)
+	of := b.typ(tt.Of)
+	if n, ok := check.Unopt(of).(*check.Named); ok && n.Obj.Kind == check.InterfaceType {
+		if check.IsErrorType(n) {
+			if check.IsOptional(of) {
+				b.emitJump(op("JNONE"), x, fail)
+			}
+			b.errorOf(x, typ, fail)
+			return x, typ
+		}
+		// An optional interface's none is NULL, which no shape is.
+		r := b.temp(bc.KBool)
+		b.emit(op("ISSHAPE"), r, x, b.l.shape(typ))
+		b.emitJump(op("JF"), r, fail)
+		return x, typ
+	}
+	if check.Identical(check.Unopt(of), typ) {
+		if check.IsOptional(of) {
+			b.emitJump(op("JNONE"), x, fail)
+		}
+		return b.asTested(x, tt), typ
+	}
+	b.jmp(fail)
+	return b.asTested(x, tt), typ
+}
+
+// asTested is x, which matched type test tt, as a value of its type: a
+// type parameter's optional unwrapped, an interface's value as it is (a
+// struct's or an enum's reference).
+func (b *fb) asTested(x int, tt *check.TypeTest) int {
+	of := b.typ(tt.Of)
+	if n, ok := check.Unopt(of).(*check.Named); ok && n.Obj.Kind == check.InterfaceType {
+		return x
+	}
+	if never, _ := b.testedStatically(tt); never {
+		// Never reached: what's after the test (its names, its parts)
+		// is compiled with a register of the tested type's kind.
+		return b.valueReg(-1, b.kind(tt.Type))
+	}
+	if !check.IsOptional(of) {
+		return x
+	}
+	return b.unbox(x, b.typ(tt.Type), -1)
+}
+
+// testedStatically says what type test tt comes to in this
+// instantiation, when it's known as the program compiles (of a type
+// parameter's value, which is a concrete type here): never matches, or
+// always does (an optional's none aside).
+func (b *fb) testedStatically(tt *check.TypeTest) (never, always bool) {
+	of := check.Unopt(b.typ(tt.Of))
+	if n, ok := of.(*check.Named); ok && n.Obj.Kind == check.InterfaceType {
+		return false, false
+	}
+	if check.Identical(of, b.typ(tt.Type)) {
+		return false, !check.IsOptional(b.typ(tt.Of))
+	}
+	return true, false
+}
+
 // errorOf jumps to fail unless error e is a tn: a value of the app's
 // (ECASE), whose type is tn (its __etype).
-func (b *fb) errorOf(e int, tn *check.TypeName, fail Label) {
+func (b *fb) errorOf(e int, t *check.Named, fail Label) {
 	c := b.temp(bc.KInt)
 	b.emit(op("ECASE"), c, e)
 	user := b.temp(bc.KBool)
@@ -483,7 +698,7 @@ func (b *fb) errorOf(e int, tn *check.TypeName, fail Label) {
 	b.move(blk, e)
 	b.emit(op("CALLI"), et, b.l.str("__etype"), blk, 1)
 	b.releaseRegs(blk, []bc.Kind{bc.KRef})
-	id := b.konst(int64(b.l.errIDs[b.l.shape(tn.Type)]))
+	id := b.konst(int64(b.l.errIDs[b.l.shape(t)]))
 	eq := b.temp(bc.KBool)
 	b.emit(op("EQI"), eq, et, id)
 	b.emitJump(op("JF"), eq, fail)
@@ -552,6 +767,18 @@ func (b *fb) bindPattern(p syntax.Pattern, v int, t check.Type) {
 	case *syntax.BindPat:
 		vr, _ := b.l.info.Defs[p.Name].(*check.Var)
 		b.declare(vr, v)
+	case *syntax.TypedPat:
+		if !hasBinding(p) {
+			return
+		}
+		x := v
+		if check.IsOptional(t) {
+			x = b.unbox(v, check.Unopt(t), -1)
+		}
+		if tt := b.l.info.TypeTests[p]; tt != nil {
+			x = b.asTested(x, tt)
+		}
+		b.bindPattern(p.Pat, x, nil)
 	case *syntax.TuplePat:
 		tt, ok := check.Unopt(t).(*check.Tuple)
 		if !ok {
@@ -573,8 +800,9 @@ func (b *fb) bindPattern(p syntax.Pattern, v int, t check.Type) {
 		if check.IsOptional(t) && hasBinding(p) {
 			x = b.unbox(v, et, -1)
 		}
-		if tn := b.l.info.ErrorCases[p]; tn != nil {
-			et = tn.Type
+		if tt := b.l.info.TypeTests[p]; tt != nil {
+			x = b.asTested(x, tt)
+			et = b.typ(tt.Type)
 		}
 		n, _ := et.(*check.Named)
 		if fields, ok := b.l.info.FieldPats[p]; ok {
@@ -1144,7 +1372,17 @@ func memberTypeIn(recv check.Type, m *check.Member) check.Type {
 // leaves) when the pattern doesn't match, or a name's optional is none.
 func (b *fb) letElse(s *syntax.LetDecl, v int, t check.Type) {
 	els, ok := b.f.NewLabel(), b.f.NewLabel()
-	if bp, name := s.Pattern.(*syntax.BindPat); name {
+	if tt := b.l.info.TypeTests[s]; tt != nil {
+		// let c: Circle = shape else { … }: a type test.
+		x := v
+		if check.IsOptional(t) {
+			b.emitJump(op("JNONE"), v, els)
+			x = b.unbox(v, check.Unopt(t), -1)
+		}
+		x, _ = b.testType(x, tt, els)
+		vr, _ := b.l.info.Defs[s.Pattern.(*syntax.BindPat).Name].(*check.Var)
+		b.declare(vr, x)
+	} else if bp, name := s.Pattern.(*syntax.BindPat); name {
 		b.emitJump(op("JNONE"), v, els)
 		in := b.unbox(v, check.Unopt(t), -1)
 		vr, _ := b.l.info.Defs[bp.Name].(*check.Var)

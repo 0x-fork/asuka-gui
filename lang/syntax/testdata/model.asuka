@@ -41,15 +41,14 @@ interface Named {
   fn describe() -> string
 }
 
-fn describe(n: Named) -> string {
-  if let m: Message = n, m.read {
-    return "read"
+fn reason(e: Error) -> string {
+  if let m: MailError = e, m.message() != "" {
+    return m.message()
   }
-  return match n {
-    m: Message => m.subject
-    Message(subject: "") | _: Contact => "?"
+  return match e {
     MailError.server(status, _) => "{status}"
-    _ => n.describe()
+    MailError.offline | _: MailError => "?"
+    _ => e.message
   }
 }
 

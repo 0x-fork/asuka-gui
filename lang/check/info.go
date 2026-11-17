@@ -20,13 +20,15 @@ type Info struct {
 	// FieldPats: a struct pattern's (P(x: 0, y)) fields, per argument
 	// (nil where one names none).
 	FieldPats map[*syntax.CasePat][]*Field
-	// ErrorCases are the case patterns that match an Error by an error
-	// enum's case (match e { MailError.offline => … }): that enum.
-	ErrorCases map[*syntax.CasePat]*TypeName
-	Catches    map[*syntax.CatchClause]*CatchInfo
-	Fors       map[*syntax.ForStmt]*ForInfo
-	Elements   map[*syntax.CallExpr]*ElementCall
-	Matches    map[syntax.Node]*MatchInfo // MatchStmt and MatchExpr
+	// TypeTests are the type tests (RFC 0011): a pattern's (a struct's
+	// P(x), an enum's case T.case(p), a typed name c: T) or a let …
+	// else's (let c: T = v else) of a value of an interface or a type
+	// parameter, by that pattern or LetDecl.
+	TypeTests map[syntax.Node]*TypeTest
+	Catches   map[*syntax.CatchClause]*CatchInfo
+	Fors      map[*syntax.ForStmt]*ForInfo
+	Elements  map[*syntax.CallExpr]*ElementCall
+	Matches   map[syntax.Node]*MatchInfo // MatchStmt and MatchExpr
 	// ValueItems: the if (with an else) or match that ends a block whose
 	// value is its last expression (an if's, a match arm's, a catch's):
 	// a value, each branch's the value of its own block.
@@ -104,7 +106,7 @@ func newInfo() *Info {
 		Ctxs:           map[syntax.Node]*FuncCtx{},
 		Cases:          map[*syntax.CasePat]*Case{},
 		FieldPats:      map[*syntax.CasePat][]*Field{},
-		ErrorCases:     map[*syntax.CasePat]*TypeName{},
+		TypeTests:      map[syntax.Node]*TypeTest{},
 		Catches:        map[*syntax.CatchClause]*CatchInfo{},
 		Fors:           map[*syntax.ForStmt]*ForInfo{},
 		Elements:       map[*syntax.CallExpr]*ElementCall{},
@@ -221,6 +223,16 @@ type Selection struct {
 	Optional   bool    // x?.name
 	MemberType Type    // x?.name's: name's own type (an optional one isn't boxed again)
 	Method     *Method // SelBuiltinField's
+}
+
+// A TypeTest tests whether a value of an interface or of a type
+// parameter (Of, unwrapped: an optional's none fails first) is of Type,
+// a struct or an enum; the pattern's parts, and the name it binds, are
+// then Type's. An Error's is its __etype; another interface's, its
+// shape; a type parameter's is known as each instantiation is compiled.
+type TypeTest struct {
+	Type *Named
+	Of   Type
 }
 
 // CatchInfo is what a catch clause catches.

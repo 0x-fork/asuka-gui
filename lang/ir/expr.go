@@ -1292,6 +1292,16 @@ func (b *fb) ifValue(cond syntax.Expr, then *syntax.Block, els syntax.Node, r in
 			b.valueBlock(el, r)
 		}
 	}
+	if b.letNever(cond) {
+		// A type test this instantiation never passes: the else.
+		els0 := b.f.NewLabel()
+		b.openScope()
+		b.condJump(cond, els0)
+		b.closeScope()
+		b.f.Place(els0)
+		elseValue()
+		return
+	}
 	if f := b.l.foldCond(cond); f.known {
 		// Only the branch @platform takes.
 		b.effects(f)
@@ -1328,7 +1338,7 @@ func (b *fb) matchValue(n syntax.Node, subject syntax.Expr, arms []*syntax.Match
 	subj := b.value(subject, -1)
 	st := b.rawType(subject)
 	end := b.f.NewLabel()
-	for _, a := range b.l.platformArms(subject, arms) {
+	for _, a := range b.matchArms(subject, arms) {
 		next := b.f.NewLabel()
 		b.openScope()
 		b.testPattern(a.Pattern, subj, st, next)

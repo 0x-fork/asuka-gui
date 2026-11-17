@@ -1,0 +1,126 @@
+// Type tests on interface values (RFC 0011): patterns of the types that
+// have the interface, in match, if let and let … else.
+
+interface Shape {
+  fn area() -> float
+}
+
+struct Circle {
+  radius: float
+  fn area() -> float = 3.0 * radius * radius
+}
+
+struct Square {
+  side: float
+  fn area() -> float = side * side
+}
+
+struct Point {
+  x: int
+}
+
+enum Unit: Shape {
+  small
+  big(float)
+  fn area() -> float = 1.0
+}
+
+enum Light { red, green }
+
+enum Size {
+  one
+  fn area() -> float = 1.0
+}
+
+struct Box<T> {
+  value: T
+  fn area() -> float = 0.0
+}
+
+struct ParseError: Error {
+  line: int
+}
+
+fn describe(s: Shape) -> string = match s {
+  Circle(radius: 0) => "a point"
+  Circle(radius) => "a circle of {radius}"
+  sq: Square => "a square of {sq.side}"
+  Unit.big(n) => "a big unit of {n}"
+  Unit.small => "a small unit"
+  _ => "a shape of {s.area()}"
+}
+
+fn noRest(s: Shape) -> string = match s { // ERROR "match doesn't cover every value: end it with _ =>"
+  c: Circle => "circle"
+  Square(side) => "square"
+}
+
+fn lacks(s: Shape) -> int = match s {
+  Point(x) => x // ERROR "a Shape can't be a Point: it has no area\(\)"
+  p: Point => p.x // ERROR "a Shape can't be a Point: it has no area\(\)"
+  _ => 0
+}
+
+fn intEnum(s: Shape) -> int = match s {
+  Size.one => 1 // ERROR "a Shape can't be a Size: an enum without payloads is stored as an int"
+  Light.red => 2 // ERROR "a Shape can't be a Light: it has no area\(\)"
+  _ => 0
+}
+
+fn always(c: Circle) -> float {
+  if let x: Circle = c { // ERROR "c is always a Circle"
+    return x.radius
+  }
+  return 0
+}
+
+fn never(c: Circle) -> float = match c {
+  s: Square => s.side // ERROR "a Circle can't be a Square"
+  _ => 0
+}
+
+fn generic(s: Shape) -> int = match s {
+  Box(value) => 1 // ERROR "Box is generic: test for one of its types with a typed name"
+  b: Box<int> => b.value
+  _ => 0
+}
+
+fn notConcrete(s: Shape) -> int = match s {
+  x: Shape => 1 // ERROR "a type test is for a struct's or an enum's type, and Shape isn't one"
+  _ => 0
+}
+
+fn lets(s: Shape) -> float {
+  let c: Circle = s // ERROR "a Shape isn't always a Circle: if let c: Circle = s, or let … else"
+  let sq: Square = s else { return 0 }
+  let p: Point = s else { return 0 } // ERROR "a Shape can't be a Point: it has no area\(\)"
+  if let u: Unit = s, let Unit.big(n) = u {
+    return n + sq.side + c.radius
+  }
+  return sq.side
+}
+
+fn optional(s: Shape?) -> float {
+  if let c: Circle = s {
+    return c.radius
+  }
+  return 0
+}
+
+fn errors(e: Error) -> int = match e {
+  p: ParseError => p.line
+  ParseError(line) => line
+  c: Circle => 0 // ERROR "an Error can't be a Circle: it isn't an error \(declare it one: struct Circle: Error\)"
+  _ => 0
+}
+
+fn param<T: Shape>(x: T) -> float = match x {
+  c: Circle => c.radius
+  p: Point => 0 // ERROR "a T can't be a Point: T is Shape, and Point isn't \(it has no area\(\)\)"
+  _ => x.area()
+}
+
+fn implicit(s: Shape) -> int = match s {
+  .small => 1 // ERROR "small: a Shape isn't an enum"
+  _ => 0
+}

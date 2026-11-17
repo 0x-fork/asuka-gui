@@ -45,11 +45,16 @@ type Checker struct {
 	localGroups []*LocalGroup
 	localUses   []localUse
 	loops       int
-	curGlobal   *Global
-	resolving   map[any]bool
-	view        bool      // checking view items
-	styleValue  int       // checking a style: value, where the parser lets an if go without an else
-	defaultOf   *TypeName // checking a default of this type's field (or its case's payload)
+	// The pattern being checked at the top of a match's arm, an if let's
+	// or a let … else's, and the value it's matched with: a type test's
+	// error names it (s is always a Circle).
+	patTop     syntax.Pattern
+	patSubject syntax.Expr
+	curGlobal  *Global
+	resolving  map[any]bool
+	view       bool      // checking view items
+	styleValue int       // checking a style: value, where the parser lets an if go without an else
+	defaultOf  *TypeName // checking a default of this type's field (or its case's payload)
 
 	chained map[syntax.Expr]bool // the members and calls of a ?. chain
 	// The Routes around the views checked: the Router, the path the
