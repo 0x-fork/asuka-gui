@@ -599,6 +599,10 @@ func (c *Checker) returnStmt(s *syntax.ReturnStmt) { c.returnValue(s, s.Value) }
 func (c *Checker) returnValue(s syntax.Node, value syntax.Expr) {
 	if c.inDefer > 0 {
 		c.errorf(s, "return in a defer: a defer runs as its block ends, and can't change how")
+		if value != nil {
+			c.expr(value, nil) // checked, but not as the result: there's none
+		}
+		return
 	}
 	ctx := c.ctx
 	if ctx == nil {

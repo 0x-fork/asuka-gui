@@ -111,3 +111,13 @@ component Shown {
   let bad = try fetch(80) catch MailError.offline { 1 } // ERROR "the catch here takes MailError.offline only, and this can't throw here"
   Text("{port} {bad}")
 }
+
+fn returnInDefer() -> int {
+  defer {
+    return // ERROR "return in a defer: a defer runs as its block ends"
+  }
+  defer {
+    if true { return 2 } // ERROR "return in a defer"
+  }
+  return 0
+}
