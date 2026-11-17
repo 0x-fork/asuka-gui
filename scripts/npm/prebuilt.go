@@ -111,6 +111,10 @@ type tarball struct {
 // tarball and its integrity: what npm publish uploads, so what the
 // registry will serve.
 func pack(src, dir string) (tgz, integrity string, err error) {
+	// npm pack runs in src: a relative destination would be src's.
+	if dir, err = filepath.Abs(dir); err != nil {
+		return "", "", err
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", "", err
 	}
