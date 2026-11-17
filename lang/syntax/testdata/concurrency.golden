@@ -1,4 +1,4 @@
-SourceFile 1:1-61:3
+SourceFile 1:1-81:3
   Imports: [2]
     ImportDecl 1:1-1:16
       Path: [2]
@@ -10,7 +10,7 @@ SourceFile 1:1-61:3
         Ident "sensors" 2:17-2:24
       Names: [1]
         Ident "Accelerometer" 2:26-2:39
-  Decls: [4]
+  Decls: [6]
     ScreenDecl 4:1-42:2 blank
       Name: Ident "Weather" 4:8-4:15
       Params: ParamList 4:15-4:29
@@ -393,3 +393,163 @@ SourceFile 1:1-61:3
                           X: Ident "s" 60:20-60:21
                           Name: Ident "count" 60:22-60:27
                         Args: ArgList 60:27-60:29
+    WorkerDecl 63:1-74:2 blank
+      Name: Ident "SearchIndex" 63:8-63:19
+      Params: ParamList 63:19-63:44
+        List: [1]
+          Param 63:20-63:43
+            Name: Ident "language" 63:20-63:28
+            Type: NamedType 63:30-63:36
+              Path: [1]
+                Ident "string" 63:30-63:36
+            Default: StringLit 63:39-63:43 Segments=["en"]
+      Body: Block 63:45-74:2
+        Items: [5]
+          LetDecl 64:3-64:35 Keyword=var
+            Pattern: BindPat 64:7-64:12
+              Name: Ident "words" 64:7-64:12
+            Type: MapType 64:14-64:29
+              Key: NamedType 64:15-64:21
+                Path: [1]
+                  Ident "string" 64:15-64:21
+              Value: ArrayType 64:23-64:28
+                Elem: NamedType 64:24-64:27
+                  Path: [1]
+                    Ident "int" 64:24-64:27
+            Value: MapExpr 64:32-64:35
+          LetDecl 65:3-65:31 Keyword=let
+            Pattern: BindPat 65:7-65:11
+              Name: Ident "stop" 65:7-65:11
+            Value: ArrayExpr 65:14-65:31
+              Elems: [2]
+                StringLit 65:15-65:20 Segments=["the"]
+                Ident "language" 65:22-65:30
+          FuncDecl 67:3-71:4 blank pub
+            Name: Ident "add" 67:10-67:13
+            Params: ParamList 67:13-67:36
+              List: [2]
+                Param 67:14-67:21
+                  Name: Ident "id" 67:14-67:16
+                  Type: NamedType 67:18-67:21
+                    Path: [1]
+                      Ident "int" 67:18-67:21
+                Param 67:23-67:35
+                  Name: Ident "text" 67:23-67:27
+                  Type: NamedType 67:29-67:35
+                    Path: [1]
+                      Ident "string" 67:29-67:35
+            Body: Block 67:37-71:4
+              Items: [1]
+                ForStmt 68:5-70:6
+                  Pattern: BindPat 68:9-68:10
+                    Name: Ident "w" 68:9-68:10
+                  Seq: CallExpr 68:14-68:27
+                    Fun: MemberExpr 68:14-68:25
+                      X: Ident "text" 68:14-68:18
+                      Name: Ident "fields" 68:19-68:25
+                    Args: ArgList 68:25-68:27
+                  Body: Block 68:28-70:6
+                    Items: [1]
+                      IfStmt 69:7-69:82
+                        Cond: UnaryExpr 69:10-69:27 Op=!
+                          X: CallExpr 69:11-69:27
+                            Fun: MemberExpr 69:11-69:24
+                              X: Ident "stop" 69:11-69:15
+                              Name: Ident "contains" 69:16-69:24
+                            Args: ArgList 69:24-69:27
+                              List: [1]
+                                Arg 69:25-69:26
+                                  Value: Ident "w" 69:25-69:26
+                        Then: Block 69:28-69:82
+                          Items: [1]
+                            AssignStmt 69:30-69:80 Op==
+                              Target: IndexExpr 69:30-69:46
+                                X: Ident "words" 69:30-69:35
+                                Index: CallExpr 69:36-69:45
+                                  Fun: MemberExpr 69:36-69:43
+                                    X: Ident "w" 69:36-69:37
+                                    Name: Ident "lower" 69:38-69:43
+                                  Args: ArgList 69:43-69:45
+                              Value: BinaryExpr 69:49-69:80 Op=+
+                                X: ParenExpr 69:49-69:73
+                                  X: BinaryExpr 69:50-69:72 Op=??
+                                    X: IndexExpr 69:50-69:66
+                                      X: Ident "words" 69:50-69:55
+                                      Index: CallExpr 69:56-69:65
+                                        Fun: MemberExpr 69:56-69:63
+                                          X: Ident "w" 69:56-69:57
+                                          Name: Ident "lower" 69:58-69:63
+                                        Args: ArgList 69:63-69:65
+                                    Y: ArrayExpr 69:70-69:72
+                                Y: ArrayExpr 69:76-69:80
+                                  Elems: [1]
+                                    Ident "id" 69:77-69:79
+          FuncDecl 72:3-72:59 pub
+            Name: Ident "find" 72:10-72:14
+            Params: ParamList 72:14-72:25
+              List: [1]
+                Param 72:15-72:24
+                  Name: Ident "q" 72:15-72:16
+                  Type: NamedType 72:18-72:24
+                    Path: [1]
+                      Ident "string" 72:18-72:24
+            Result: ArrayType 72:29-72:34
+              Elem: NamedType 72:30-72:33
+                Path: [1]
+                  Ident "int" 72:30-72:33
+            Value: BinaryExpr 72:37-72:59 Op=??
+              X: IndexExpr 72:37-72:53
+                X: Ident "words" 72:37-72:42
+                Index: CallExpr 72:43-72:52
+                  Fun: MemberExpr 72:43-72:50
+                    X: Ident "q" 72:43-72:44
+                    Name: Ident "lower" 72:45-72:50
+                  Args: ArgList 72:50-72:52
+              Y: ArrayExpr 72:57-72:59
+          FuncDecl 73:3-73:29
+            Name: Ident "clear" 73:6-73:11
+            Params: ParamList 73:11-73:13
+            Body: Block 73:14-73:29
+              Items: [1]
+                AssignStmt 73:16-73:27 Op==
+                  Target: Ident "words" 73:16-73:21
+                  Value: MapExpr 73:24-73:27
+    StoreDecl 76:1-81:2 blank
+      Name: Ident "Notes" 76:7-76:12
+      Body: Block 76:13-81:2
+        Items: [3]
+          LetDecl 77:3-77:28 Keyword=let
+            Pattern: BindPat 77:7-77:12
+              Name: Ident "index" 77:7-77:12
+            Value: CallExpr 77:15-77:28
+              Fun: Ident "SearchIndex" 77:15-77:26
+              Args: ArgList 77:26-77:28
+          StateDecl 78:3-78:28
+            Name: Ident "results" 78:9-78:16
+            Type: ArrayType 78:18-78:23
+              Elem: NamedType 78:19-78:22
+                Path: [1]
+                  Ident "int" 78:19-78:22
+            Value: ArrayExpr 78:26-78:28
+          FuncDecl 80:3-80:67 blank pub async
+            Name: Ident "search" 80:16-80:22
+            Params: ParamList 80:22-80:33
+              List: [1]
+                Param 80:23-80:32
+                  Name: Ident "q" 80:23-80:24
+                  Type: NamedType 80:26-80:32
+                    Path: [1]
+                      Ident "string" 80:26-80:32
+            Body: Block 80:34-80:67
+              Items: [1]
+                AssignStmt 80:36-80:65 Op==
+                  Target: Ident "results" 80:36-80:43
+                  Value: UnaryExpr 80:46-80:65 Op=await
+                    X: CallExpr 80:52-80:65
+                      Fun: MemberExpr 80:52-80:62
+                        X: Ident "index" 80:52-80:57
+                        Name: Ident "find" 80:58-80:62
+                      Args: ArgList 80:62-80:65
+                        List: [1]
+                          Arg 80:63-80:64
+                            Value: Ident "q" 80:63-80:64

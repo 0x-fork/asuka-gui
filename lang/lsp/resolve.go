@@ -286,9 +286,9 @@ func (fc *fileCtx) callRef(call *syntax.CallExpr, name string) *ref {
 		return nil
 	}
 	switch c.Kind {
-	case check.CallFunc, check.CallMethod:
+	case check.CallFunc, check.CallMethod, check.CallWorker:
 		if c.Func != nil {
-			// A store's or a component's fn: its member.
+			// A store's, a worker's or a component's fn: its member.
 			if c.Func.Recv != nil && c.Func.Recv.Comp != nil {
 				if m := c.Func.Recv.Comp.Members[c.Func.Name()]; m != nil && m.Fn == c.Func {
 					return fc.objRef(m)
@@ -310,7 +310,7 @@ func (fc *fileCtx) callRef(call *syntax.CallExpr, name string) *ref {
 		if c.Builtin != nil {
 			return fc.objRef(c.Builtin)
 		}
-	case check.CallStruct, check.CallStore, check.CallComponent, check.CallNativeNew:
+	case check.CallStruct, check.CallStore, check.CallComponent, check.CallNativeNew, check.CallWorkerNew:
 		if c.Type != nil {
 			return fc.objRef(c.Type.Obj)
 		}
@@ -342,7 +342,7 @@ func (fc *fileCtx) enclosingElement(path []syntax.Node) (tn *check.TypeName, sty
 			return nil, false
 		case *syntax.StyleDecl:
 			return fc.styleType(), true
-		case *syntax.LambdaExpr, *syntax.FuncDecl, *syntax.ComponentDecl, *syntax.ScreenDecl, *syntax.StoreDecl, *syntax.AppDecl, *syntax.TestDecl:
+		case *syntax.LambdaExpr, *syntax.FuncDecl, *syntax.ComponentDecl, *syntax.ScreenDecl, *syntax.StoreDecl, *syntax.WorkerDecl, *syntax.AppDecl, *syntax.TestDecl:
 			return nil, false
 		}
 	}
@@ -594,6 +594,8 @@ func (fc *fileCtx) declType(n syntax.Node) *check.TypeName {
 		name = d.Name
 	case *syntax.StoreDecl:
 		name = d.Name
+	case *syntax.WorkerDecl:
+		name = d.Name
 	}
 	if name == nil {
 		return nil
@@ -648,7 +650,7 @@ func (fc *fileCtx) labelRef(path []syntax.Node, name string) *ref {
 		return nil
 	}
 	switch c.Kind {
-	case check.CallComponent, check.CallStore:
+	case check.CallComponent, check.CallStore, check.CallWorkerNew:
 		if c.Type != nil {
 			return fc.objRef(memberObj(fc.componentMember(c.Type.Obj, name)))
 		}
@@ -658,7 +660,7 @@ func (fc *fileCtx) labelRef(path []syntax.Node, name string) *ref {
 				return fieldRef(fl, c.Type.Obj)
 			}
 		}
-	case check.CallFunc, check.CallMethod:
+	case check.CallFunc, check.CallMethod, check.CallWorker:
 		if f := c.Func; f != nil && f.Decl != nil && f.Decl.Params != nil {
 			for _, p := range f.Decl.Params.List {
 				if p.Name.Name == name {

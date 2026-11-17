@@ -10,6 +10,9 @@
 void ak_mutex_lock(ak_mutex *m) { AcquireSRWLockExclusive(m); }
 void ak_mutex_unlock(ak_mutex *m) { ReleaseSRWLockExclusive(m); }
 void ak_cond_init(ak_cond *c) { InitializeConditionVariable(c); }
+void ak_mutex_init(ak_mutex *m) { InitializeSRWLock(m); }
+void ak_mutex_destroy(ak_mutex *m) { AK_UNUSED(m); }
+void ak_cond_destroy(ak_cond *c) { AK_UNUSED(c); }
 void ak_cond_wait(ak_cond *c, ak_mutex *m) { SleepConditionVariableSRW(c, m, INFINITE, 0); }
 bool ak_cond_wait_ns(ak_cond *c, ak_mutex *m, int64_t ns) {
 	// Milliseconds, rounded up; more than a DWORD counts is INFINITE (a
@@ -59,6 +62,9 @@ uint64_t ak_thread_id(void) { return GetCurrentThreadId(); }
 void ak_mutex_lock(ak_mutex *m) { AK_UNUSED(m); }
 void ak_mutex_unlock(ak_mutex *m) { AK_UNUSED(m); }
 void ak_cond_init(ak_cond *c) { AK_UNUSED(c); }
+void ak_mutex_init(ak_mutex *m) { *m = 0; }
+void ak_mutex_destroy(ak_mutex *m) { AK_UNUSED(m); }
+void ak_cond_destroy(ak_cond *c) { AK_UNUSED(c); }
 void ak_cond_wait(ak_cond *c, ak_mutex *m) { AK_UNUSED(c); AK_UNUSED(m); }
 bool ak_cond_wait_ns(ak_cond *c, ak_mutex *m, int64_t ns) { AK_UNUSED(c); AK_UNUSED(m); AK_UNUSED(ns); return false; }
 void ak_cond_signal(ak_cond *c) { AK_UNUSED(c); }
@@ -81,6 +87,9 @@ uint64_t ak_thread_id(void) { return 1; }
 void ak_mutex_lock(ak_mutex *m) { pthread_mutex_lock(m); }
 void ak_mutex_unlock(ak_mutex *m) { pthread_mutex_unlock(m); }
 void ak_cond_init(ak_cond *c) { pthread_cond_init(c, NULL); }
+void ak_mutex_init(ak_mutex *m) { pthread_mutex_init(m, NULL); }
+void ak_mutex_destroy(ak_mutex *m) { pthread_mutex_destroy(m); }
+void ak_cond_destroy(ak_cond *c) { pthread_cond_destroy(c); }
 void ak_cond_wait(ak_cond *c, ak_mutex *m) { pthread_cond_wait(c, m); }
 bool ak_cond_wait_ns(ak_cond *c, ak_mutex *m, int64_t ns) {
 	if (ns < 0) ns = 0;

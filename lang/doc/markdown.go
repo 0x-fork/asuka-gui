@@ -14,6 +14,7 @@ var sections = []struct {
 	{"Functions", []Kind{Func}},
 	{"Components", []Kind{Component, Screen, Shader}},
 	{"Stores", []Kind{Store}},
+	{"Workers", []Kind{Worker}},
 	{"Types", []Kind{Struct, Enum, Interface, TypeAlias, ExternType}},
 	{"Constants", []Kind{Const}},
 	{"State", []Kind{State}},

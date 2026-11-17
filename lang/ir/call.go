@@ -63,6 +63,10 @@ func (b *fb) call1(e *syntax.CallExpr, dst int, discard bool) int {
 		return b.storeCall(e, call, dst)
 	case check.CallTr:
 		return b.trCall(e, call, dst)
+	case check.CallWorkerNew:
+		return b.workerNew(call, dst)
+	case check.CallWorker:
+		return b.workerCall(e, call, nil, dst)
 	}
 	b.l.errorf(e, "internal: unknown call")
 	return -1
@@ -87,6 +91,8 @@ func (b *fb) optionalCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 		v = b.ifaceCall(e, call, &in, -1)
 	case check.CallNative:
 		v = b.nativeMethodCall(e, call, &in, -1)
+	case check.CallWorker:
+		v = b.workerCall(e, call, &in, -1)
 	default:
 		v = b.funcCallRecv(e, call, in, -1, false)
 	}
@@ -196,7 +202,7 @@ func (b *fb) funcCall(e *syntax.CallExpr, call *check.Call, dst int, discard boo
 	// A method: its receiver first.
 	var recv int
 	switch {
-	case call.SelfCall && (f.Recv.Kind == check.StoreType || f.Recv.Kind == check.ComponentType):
+	case call.SelfCall && (f.Recv.Kind == check.StoreType || f.Recv.Kind == check.ComponentType || f.Recv.Kind == check.WorkerType):
 		recv = b.env(e)
 	case call.SelfCall:
 		recv = b.readVar(b.ctx.Self, e)
@@ -931,7 +937,7 @@ func (b *fb) taskOf(a syntax.Expr, f int, t check.Type, boxed bool) int {
 		pre = []int{f}
 	} else if call != nil {
 		ci = b.l.info.Calls[call]
-		if ci != nil && (ci.Kind == check.CallMethod && !ci.SelfCall || ci.Kind == check.CallClosure || ci.Kind == check.CallIface) {
+		if ci != nil && (ci.Kind == check.CallMethod && !ci.SelfCall || ci.Kind == check.CallClosure || ci.Kind == check.CallIface || ci.Kind == check.CallWorker) {
 			pre = append(pre, b.value(ci.Recv, -1))
 		} else if ci != nil && ci.Kind == check.CallMethod && ci.SelfCall {
 			if ci.Func.Recv.Kind == check.StoreType || ci.Func.Recv.Kind == check.ComponentType {
@@ -996,6 +1002,8 @@ func (b *fb) taskOf(a syntax.Expr, f int, t check.Type, boxed bool) int {
 // callPrepared makes a call whose receiver and arguments are in regs.
 func (b *fb) callPrepared(ci *check.Call, regs []int, k bc.Kind) int {
 	switch ci.Kind {
+	case check.CallWorker:
+		return b.workerCallRegs(ci, regs[0], regs[1:], -1)
 	case check.CallFunc:
 		var targs []check.Type
 		for _, t := range ci.TypeArgs {

@@ -271,7 +271,19 @@ func (p *parser) error(pos Pos, msg string) {
 }
 
 func (p *parser) errorExpected(what string) {
-	p.error(p.pos, "expected "+what+", found "+p.describe())
+	msg := "expected " + what + ", found " + p.describe()
+	if v := keywordSince[p.tok]; v != "" {
+		// A keyword newer than code that names something so.
+		msg += " (rename it: " + p.tok.String() + " is a keyword since " + v + ")"
+	}
+	p.error(p.pos, msg)
+}
+
+// keywordSince is the release each keyword newer than the language's
+// first became one in: a name spelled so in older code is an error that
+// says to rename it.
+var keywordSince = map[Token]string{
+	WORKER: "0.2.7",
 }
 
 // describe names the current token for a message.
@@ -577,7 +589,7 @@ func (p *parser) declAhead() bool {
 		tok, next = next, p.peek(2)
 	}
 	switch tok {
-	case COMPONENT, SCREEN, STORE, STRUCT, ENUM, INTERFACE:
+	case COMPONENT, SCREEN, STORE, STRUCT, ENUM, INTERFACE, WORKER:
 		return isIdentTok(next)
 	case NATIVE:
 		return next == INTERFACE || next == COMPONENT || next == FN || next == ASYNC
@@ -655,6 +667,8 @@ func describeNode(n Node) string {
 		return "screen"
 	case *StoreDecl:
 		return "store"
+	case *WorkerDecl:
+		return "worker"
 	case *StructDecl:
 		return "struct"
 	case *EnumDecl:
@@ -836,6 +850,8 @@ func (p *parser) parseDecl() Decl {
 		d = p.parseScreen(start)
 	case STORE:
 		d = p.parseStore(start)
+	case WORKER:
+		d = p.parseWorker(start)
 	case STRUCT:
 		d = p.parseStruct(start)
 	case ENUM:
@@ -936,6 +952,8 @@ func setPub(n Node, pub Pos) bool {
 		n.Pub = pub
 	case *StoreDecl:
 		n.Pub = pub
+	case *WorkerDecl:
+		n.Pub = pub
 	case *StructDecl:
 		n.Pub = pub
 	case *EnumDecl:
@@ -981,6 +999,8 @@ func setSpan(n Node, s Span) {
 	case *ScreenDecl:
 		n.Span = s
 	case *StoreDecl:
+		n.Span = s
+	case *WorkerDecl:
 		n.Span = s
 	case *StructDecl:
 		n.Span = s
@@ -1154,6 +1174,17 @@ func (p *parser) parseStore(start Pos) *StoreDecl {
 	d := &StoreDecl{}
 	d.Name = p.ident()
 	d.TypeParams, d.TypeAngles = p.parseTypeParams()
+	d.Params = p.optParams()
+	d.Body = p.parseBlock()
+	d.Span = p.span(start)
+	return d
+}
+
+// parseWorker parses worker Name(params) { members }.
+func (p *parser) parseWorker(start Pos) *WorkerDecl {
+	p.expect(WORKER)
+	d := &WorkerDecl{}
+	d.Name = p.ident()
 	d.Params = p.optParams()
 	d.Body = p.parseBlock()
 	d.Span = p.span(start)
@@ -1721,7 +1752,7 @@ func (p *parser) itemAfterPub(start Pos) Item {
 		}
 		d.Span = p.span(start)
 		return d
-	case COMPONENT, SCREEN, STORE, STRUCT, ENUM, INTERFACE, NATIVE, EXTERN, APP, TEST, IMPORT:
+	case COMPONENT, SCREEN, STORE, STRUCT, ENUM, INTERFACE, NATIVE, EXTERN, APP, TEST, IMPORT, WORKER:
 		// Only where a declaration follows: elsewhere these are names
 		// (decision 10), as in let app = mount(…); app.tap("Add").
 		switch {

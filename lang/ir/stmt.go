@@ -618,8 +618,8 @@ func hasBinding(p syntax.Pattern) bool {
 // An lvalue's path, its indexes and stores computed first.
 type lvalue struct {
 	x     syntax.Expr
-	kind  int // what the root is
-	v     *check.Var
+	kind  int        // what the root is
+	v     *check.Var // lvBoxed: nil for a worker's var (m), its box in cell
 	m     *check.Member
 	mtype check.Type // m's type where it's reached (a generic store's, instantiated)
 	g     *check.Global
@@ -654,6 +654,10 @@ func (b *fb) prepare(x syntax.Expr) *lvalue {
 			}
 			return &lvalue{x: x, kind: lvVar, v: o}
 		case *check.Member:
+			if o.Kind == check.VarMember {
+				// A worker's var: its box, in the env.
+				return &lvalue{x: x, kind: lvBoxed, cell: b.memberRef(o, x), m: o}
+			}
 			if o.Kind == check.PropMember {
 				// A prop its component assigns: its model.
 				return &lvalue{x: x, kind: lvModel, cell: b.memberRef(o, x), m: o}
@@ -708,10 +712,24 @@ func (b *fb) updateWith(lv *lvalue, reads bool, fn func(cur int)) {
 		}
 		fn(r)
 	case lvBoxed:
-		box := b.vars[lv.v]
-		cur := b.temp(b.kind(lv.v.Type))
-		b.emit(op("VGET"), cur, box)
-		fn(cur)
+		var box int
+		var t check.Type
+		if lv.v != nil {
+			box, t = b.vars[lv.v], lv.v.Type
+		} else {
+			box, t = lv.cell, lv.m.Type // a worker's var
+		}
+		cur := b.temp(b.kind(t))
+		if reads || b.f.Kinds[cur] != bc.KRef {
+			b.emit(op("VGET"), cur, box)
+			fn(cur)
+			b.emit(op("VSET"), box, cur)
+			return
+		}
+		// Taken out, so that it's unique and changed in place, not
+		// copied (as a cell's CTAKE); put back if the change throws.
+		b.emit(op("VTAKE"), cur, box)
+		b.protect(func() { fn(cur) }, func(int) { b.emit(op("VSET"), box, cur) })
 		b.emit(op("VSET"), box, cur)
 	case lvCell:
 		k := b.cellKind(lv)
@@ -775,6 +793,10 @@ func (b *fb) cellKind(lv *lvalue) bc.Kind {
 func (b *fb) set(lv *lvalue, val int) {
 	switch lv.kind {
 	case lvVar, lvBoxed:
+		if lv.v == nil {
+			b.emit(op("VSET"), lv.cell, val)
+			return
+		}
 		b.writeVar(lv.v, val, lv.x)
 	case lvCell:
 		b.emit(op("CSET"), lv.cell, val)

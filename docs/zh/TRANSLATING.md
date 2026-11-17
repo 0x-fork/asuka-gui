@@ -37,6 +37,7 @@
 | effect | effect | 保留英文，如“一个 effect” |
 | store (Asuka language) | store | Asuka 语言里的 `store`，保留英文；应用商店的 store 见下文 |
 | task (Asuka language) | task | Asuka 语言里的 `task`，保留英文 |
+| worker (Asuka language) | worker | Asuka 语言里的 `worker`，保留英文；Web Worker 照常写作 Web Worker |
 | state | 状态 | |
 | handler | 处理函数 / 事件处理函数 | |
 | binding | 绑定 | two-way binding → 双向绑定 |

@@ -300,6 +300,10 @@ func (c *Checker) useGlobal(g *Global, at syntax.Node) Type {
 
 // spawnState reports a read of state inside spawn.
 func (c *Checker) spawnState(at syntax.Node, name string) {
+	if w := c.workerOf(); w != nil {
+		c.errorf(at, "worker %s can't use %s: it's state, and the worker runs on a thread of its own (read it on the main thread and pass its value to a pub fn)", w.name, name)
+		return
+	}
 	for cc := c.ctx; cc != nil; cc = cc.Parent {
 		if cc.Kind == CtxSpawn {
 			c.errorf(at, "spawn can't use %s: it's state, and spawn runs on another thread (read it into a let first)", name)
@@ -312,6 +316,10 @@ func (c *Checker) spawnState(at syntax.Node, name string) {
 // value (a database, a native object, a C pointer): it's the main
 // thread's, and on the web a spawn's worker has none of it.
 func (c *Checker) spawnNotValue(at syntax.Node, name string, t Type) {
+	if w := c.workerOf(); w != nil {
+		c.errorf(at, "worker %s can't use %s (%s): it isn't a value, and the worker runs on a thread of its own; make what it needs in the worker (var x = …)", w.name, name, aType(t))
+		return
+	}
 	for cc := c.ctx; cc != nil; cc = cc.Parent {
 		if cc.Kind == CtxSpawn {
 			c.errorf(at, "spawn can't use %s (%s): it isn't a value, and spawn runs on another thread; use it outside spawn, with what spawn returns", name, aType(t))
@@ -332,7 +340,8 @@ func (c *Checker) useMember(m *Member, at syntax.Node) Type {
 		c.errorf(at, "%s is a fn: call it, %s()", m.name, m.name)
 		return Invalid
 	case StateMember, LetMember, ParamMember, PropMember:
-		if c.ctx != nil {
+		if c.ctx != nil && !m.Owner.Comp.Worker {
+			// (A worker's are its own, on its thread: not state.)
 			c.ctx.readsState = true
 		}
 	}
@@ -346,7 +355,11 @@ func (c *Checker) envUse(owner *TypeName, at syntax.Node, name string) {
 		if (cc.Kind == CtxComponent || cc.Kind == CtxStore) && cc.Comp == owner {
 			return
 		}
-		if cc.Kind == CtxMethod && cc.Comp == owner {
+		if (cc.Kind == CtxMethod || cc.Kind == CtxWorker) && cc.Comp == owner {
+			return
+		}
+		if (cc.Kind == CtxMethod || cc.Kind == CtxWorker) && cc.Comp != nil && cc.Comp.Kind == WorkerType {
+			c.errorf(at, "worker %s can't use %s: it belongs to %s, and the worker runs on a thread of its own (pass its value to a pub fn)", cc.Comp.name, name, owner.name)
 			return
 		}
 		if cc.Kind == CtxSpawn {
@@ -362,6 +375,10 @@ func (c *Checker) envUse(owner *TypeName, at syntax.Node, name string) {
 func (c *Checker) noteCall(f *Function) {
 	if c.ctx != nil && !contains(c.ctx.calls, f) {
 		c.ctx.calls = append(c.ctx.calls, f)
+	}
+	if r := c.workerRoot(); r != nil && r != c.ctx && !contains(r.calls, f) {
+		// A closure's in a worker's fn: the worker calls it too.
+		r.calls = append(r.calls, f)
 	}
 }
 
@@ -1091,6 +1108,15 @@ func (c *Checker) valueMember(e *syntax.MemberExpr, t Type, name string) Type {
 				c.info.Selections[e] = &Selection{Kind: SelErrorMessage, Recv: t}
 				return String
 			}
+		case WorkerType:
+			if m := u.Obj.Comp.Members[name]; m != nil {
+				if m.Kind == FnMember {
+					c.errorf(e.Name, "%s is a fn of %s: call it, %s()", name, u.Obj.name, name)
+				} else {
+					c.errorf(e.Name, "%s is worker %s's own: it's read on its thread, by its fns (return it from a pub fn)", name, u.Obj.name)
+				}
+				return Invalid
+			}
 		case StoreType:
 			if m := u.Obj.Comp.Members[name]; m != nil {
 				if u.Obj.Pkg != c.pkg && !m.Pub {
@@ -1476,6 +1502,9 @@ func (c *Checker) asyncHint() string {
 		return "a value here is computed at once"
 	case CtxSpawn:
 		return "spawn's block runs on another thread, synchronously"
+	}
+	if w := c.workerOf(); w != nil {
+		return "worker " + w.name + "'s fns run on its thread, one call at a time, and don't wait"
 	}
 	return "in an async fn, a handler, a task or a test"
 }

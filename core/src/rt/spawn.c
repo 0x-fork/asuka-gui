@@ -66,7 +66,7 @@ static void worker(void *arg) {
 	}
 }
 
-static ak_closure *copy_closure(ak_closure *c) {
+ak_closure *ak_closure_deep_copy(ak_closure *c) {
 	ak_closure *n = ak_closure_new(c->invoke, c->fn, c->ncap, c->capkinds);
 	for (uint16_t i = 0; i < c->ncap; i++) n->caps[i] = ak_deep_copy(c->caps[i], c->capkinds ? (ak_kind)c->capkinds[i] : AK_K_INT);
 	n->drop = c->drop;
@@ -86,7 +86,7 @@ static ak_val spawn_fn(ak_val *args, uint32_t nargs) {
 	ak_future *f = ak_future_new(k);
 	if (ak_spawn_elsewhere && ak_spawn_elsewhere(c, k, f)) return (ak_val){.p = f};
 	job *j = ak_alloc(sizeof *j);
-	j->c = copy_closure(c);
+	j->c = ak_closure_deep_copy(c);
 	j->fut = ak_retain(f);
 	j->kind = k;
 	ak_mutex_lock(&mu);

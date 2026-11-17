@@ -807,6 +807,12 @@ func (c *Checker) funcCall(e *syntax.CallExpr, f *Function, recv syntax.Expr, re
 }
 
 func (c *Checker) funcCallInfo(e *syntax.CallExpr, f *Function, recv syntax.Expr, recvType Type, want Type) *Call {
+	return c.funcCallAs(e, f, recv, recvType, want, false)
+}
+
+// funcCallAs is funcCallInfo; async says the call is async whatever f is
+// (a worker's pub fn, called from outside).
+func (c *Checker) funcCallAs(e *syntax.CallExpr, f *Function, recv syntax.Expr, recvType Type, want Type, async bool) *Call {
 	c.funcSig(f)
 	c.noteCall(f)
 	what := f.name
@@ -854,7 +860,7 @@ func (c *Checker) funcCallInfo(e *syntax.CallExpr, f *Function, recv syntax.Expr
 	}
 	call.Result = s.Apply(f.Sig.Result)
 	c.info.Calls[e] = call
-	c.callEffects(e, what, f.Sig.Async, f.Sig.Throws)
+	c.callEffects(e, what, f.Sig.Async || async, f.Sig.Throws)
 	if len(f.TypeParams) > 0 {
 		c.genericCalls = append(c.genericCalls, genericCall{e: e, f: f, args: call.TypeArgs, encl: c.enclosingFunc(), own: c.enclosingParams()})
 		c.noteInstance(e, what, f.TypeParams, call.TypeArgs)
@@ -1296,6 +1302,10 @@ func (c *Checker) methodCall1(e *syntax.CallExpr, fn *syntax.MemberExpr, xt Type
 				c.record(fn, t)
 				return c.closureCall(e, fn, t)
 			}
+		case WorkerType:
+			if t, ok := c.workerMethodCall(e, fn, n, name, want); ok {
+				return t
+			}
 		case InterfaceType:
 			if m, i := ifaceMethod(n, name); m != nil {
 				kind := CallIface
@@ -1462,6 +1472,8 @@ func (c *Checker) typeCall(e *syntax.CallExpr, tn *TypeName, want Type) Type {
 		return c.structCall(e, tn, want)
 	case StoreType:
 		return c.storeCall(e, tn, want)
+	case WorkerType:
+		return c.workerNew(e, tn)
 	case ComponentType:
 		return c.componentCall(e, tn)
 	case InterfaceType:
@@ -1475,6 +1487,9 @@ func (c *Checker) typeCall(e *syntax.CallExpr, tn *TypeName, want Type) Type {
 			return c.errT.Type
 		}
 		if tn.Native {
+			if w := c.workerOf(); w != nil {
+				c.errorf(e.Fun, "worker %s can't make %s: a native interface's object is the platform's, on the main thread", w.name, tn.name)
+			}
 			if argCount(e) > 0 || e.Block != nil {
 				c.errorf(e, "%s() takes nothing: its platforms' code makes it", tn.name)
 			}
@@ -1778,6 +1793,9 @@ func (c *Checker) spawn(e *syntax.SpawnExpr) Type {
 	saved := c.ctx
 	savedTry, savedAwait, savedHandled, savedLoops, savedView := c.inTry, c.inAwait, c.handled, c.loops, c.view
 	c.inTry, c.inAwait, c.handled, c.loops, c.view = 0, 0, 0, 0, false
+	if w := c.workerOf(); w != nil {
+		c.errorf(e, "worker %s's fns already run on its own thread: do the work here, without spawn", w.name)
+	}
 	ctx := c.enter(CtxSpawn, e, "spawn")
 	ctx.Throws = true
 	ctx.inferRes = true

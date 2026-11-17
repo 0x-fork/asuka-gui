@@ -40,6 +40,7 @@
 | effect | エフェクト | |
 | store (Asuka language) | ストア | Asuka 言語の `store`。App Store などのストアとは文脈で区別する |
 | task (Asuka language) | タスク | Asuka 言語の `task` |
+| worker (Asuka language) | ワーカー | Asuka 言語の `worker`。Web Worker はそのまま Web Worker |
 | state | 状態 | |
 | binding | バインディング | two-way binding →双方向バインディング |
 | slot | スロット | |

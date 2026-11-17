@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -277,5 +278,34 @@ await start({ core: "/asuka.wasm", module: "/app.akb", name: "webtest", sqlite: 
 				t.Fatal("the page never reported")
 			}
 		})
+	}
+}
+
+// Workers on the web: each a Web Worker of its own with the same core and
+// app, its state made and kept there, its calls in order (values and
+// errors there and back, files on both sides), and its owner's going
+// stopping it with calls queued.
+func TestWebWorkers(t *testing.T) {
+	got := runWebNode(t, "workers.asuka", nil)
+	// The home library's 9 calls, and as many of the busy one's as ran
+	// before it went: all on Web Workers.
+	jobs := regexp.MustCompile(`\((\d+) jobs on workers\)`)
+	if m := jobs.FindStringSubmatch(got); m == nil || atoi(m[1]) < 9 {
+		t.Errorf("the calls didn't run on Web Workers: %s", got)
+	}
+	got = jobs.ReplaceAllString(got, "(jobs on workers)")
+	want := `1
+2
+55 5050
+["a","b"]
+missing 9
+home library: 2 entries
+home library 6
+6
+(jobs on workers)
+done
+`
+	if strings.TrimSpace(got) != strings.TrimSpace(want) {
+		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
 	}
 }

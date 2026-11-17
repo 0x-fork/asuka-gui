@@ -111,7 +111,7 @@ func TestScanKeywords(t *testing.T) {
   defer do effect else emit enum event extern false fn for if import in
   interface key let load match native none on prop provide pub return
   screen self spawn state store struct style task test throw throws
-  true try type use var while`
+  true try type use var while worker`
 	n := 0
 	for _, w := range strings.Fields(rfc) {
 		n++

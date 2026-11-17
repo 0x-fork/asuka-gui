@@ -153,6 +153,8 @@ const (
 	CallComponent                         // a component, a screen, an element: a View
 	CallStore                             // making a store
 	CallTr                                // tr.key(…): a message of the app's catalogs (TrKey)
+	CallWorkerNew                         // making a worker (Type): its thread started
+	CallWorker                            // a worker's pub fn, from outside: async, run on its thread
 )
 
 // A Call is what a call expression calls, with its arguments matched to
@@ -348,6 +350,7 @@ const (
 	CtxApp                          // app { }
 	CtxLocalFn                      // a fn declared in a block (LocalFn)
 	CtxStyle                        // a style's body: its parameters' and uses' (applied where it's used, never a function)
+	CtxWorker                       // a worker's body: its constructor, run on its thread
 )
 
 // A FuncCtx is a function body being checked: a declared function, or a
@@ -403,7 +406,7 @@ func (c *FuncCtx) awaited(pos syntax.Pos) {
 // IsClosure reports whether the lowering makes the body a closure.
 func (c *FuncCtx) IsClosure() bool {
 	switch c.Kind {
-	case CtxFunc, CtxMethod, CtxComponent, CtxStore, CtxGlobal, CtxTest, CtxApp, CtxStyle:
+	case CtxFunc, CtxMethod, CtxComponent, CtxStore, CtxGlobal, CtxTest, CtxApp, CtxStyle, CtxWorker:
 		return false
 	}
 	return true

@@ -9,6 +9,7 @@
 
 import { wasi } from "./wasi.js";
 import { Pool } from "./spawn.js";
+import { Workers } from "./workers.js";
 import { stackRoom } from "./stack.js";
 
 /**
@@ -21,7 +22,7 @@ import { stackRoom } from "./stack.js";
  * log (where the core's output goes).
  */
 export async function startCore(host, options = {}) {
-  let instance, pool = null;
+  let instance, pool = null, workers = null;
   // std/sqlite: the page's SQLite worker (sqlite.js), when the app imports std/sqlite.
   let sqlite = null;
   if (options.sqlite) {
@@ -61,6 +62,10 @@ export async function startCore(host, options = {}) {
       // spawn's jobs (core/src/abi/web.c): its bytes copied out, for a worker.
       spawn: (id, p, n) => pool.run(id, new Uint8Array(memory().buffer, p, n).slice()),
       spawn_cancel: (id) => pool?.cancel(id),
+      // Workers (workers.js), a Web Worker each: their init's job, their calls, their end.
+      worker_start: (id, p, n) => workers.start(id, new Uint8Array(memory().buffer, p, n).slice()),
+      worker_call: (id, job, p, n) => workers.call(id, job, new Uint8Array(memory().buffer, p, n).slice()),
+      worker_stop: (id, cancel) => workers?.stop(id, cancel !== 0),
       // Typed native modules (native.js, through the host): an answer's
       // length, then its bytes copied where the core wants them.
       native_new: (p, n, iface) => answerLength(host.nativeNew(new TextDecoder().decode(new Uint8Array(memory().buffer, p, n)), iface)),
@@ -118,6 +123,7 @@ export async function startCore(host, options = {}) {
       try {
         ok(devLoad(bytes, false));
         pool?.reload(bytes);
+        workers?.reload(bytes);
       } catch (err) { fail(err); }
     })),
     /** restart loads asuka dev's module keeping none of the app's state: { kept: 0, micros }. */
@@ -125,6 +131,7 @@ export async function startCore(host, options = {}) {
       try {
         ok(devLoad(bytes, true));
         pool?.reload(bytes);
+        workers?.reload(bytes);
       } catch (err) { fail(err); }
     })),
     event: (bytes) => withBytes(bytes, (p, n) => e.asuka_event(p, n)),
@@ -172,7 +179,7 @@ export async function startCore(host, options = {}) {
     bytes = new Uint8Array(await res.arrayBuffer());
   }
   if (options.workers !== false && (options.makeWorker || typeof Worker !== "undefined")) {
-    pool = new Pool({
+    const shared = {
       wasm: wasmModule,
       module: bytes,
       appDir: options.appDir,
@@ -183,7 +190,9 @@ export async function startCore(host, options = {}) {
       ...(options.makeWorker ? { makeWorker: options.makeWorker } : {}),
       // A job's answer: into the core, once it isn't running.
       done: (id, status, answer) => host.call(() => withBytes(answer, (p, n) => e.asuka_spawn_done(id, status, p, n))),
-    });
+    };
+    pool = new Pool(shared);
+    workers = new Workers(shared);
     e.asuka_web_workers(1);
   }
   if (bytes) {

@@ -190,6 +190,8 @@ func (c *Checker) typeMembers(t *TypeName) {
 		c.componentMembers(t, d.Params, d.Body)
 	case *syntax.StoreDecl:
 		c.componentMembers(t, d.Params, d.Body)
+	case *syntax.WorkerDecl:
+		c.componentMembers(t, d.Params, d.Body)
 	}
 }
 
@@ -529,7 +531,7 @@ func (c *Checker) funcBody(f *Function) {
 		case StructType, EnumType:
 			self := &Var{object: object{"self", d.Name.Start}, Type: f.Recv.Type, Kind: SelfVar, Ctx: ctx}
 			ctx.Self = self
-		case StoreType, ComponentType:
+		case StoreType, ComponentType, WorkerType:
 			ctx.Comp = f.Recv
 		}
 	}

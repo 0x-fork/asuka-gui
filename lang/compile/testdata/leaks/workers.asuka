@@ -1,0 +1,102 @@
+// Workers: what a worker holds is made and freed on its thread, what its
+// calls carry is copied over and back, and its owner's disposal stops it,
+// queued calls and all: nothing outlives the test.
+
+struct Entry {
+  id: int
+  tags: [string]
+}
+
+enum Change {
+  added(Entry)
+  removed(id: int)
+}
+
+enum Missing: Error {
+  entry(id: int)
+}
+
+worker Library(name: string) {
+  var entries: [int: Entry] = [:]
+  var log: [Change] = []
+  let prefix = "{name}: "
+
+  pub fn add(e: Entry) -> int {
+    entries[e.id] = e
+    log.push(.added(e))
+    return entries.count()
+  }
+  pub fn remove(id: int) throws -> Entry {
+    guardFound(id)
+    let e = entries[id] ?? Entry(id: id, tags: [])
+    entries.remove(id)
+    log.push(.removed(id: id))
+    if e.tags.isEmpty() { throw Missing.entry(id: id) }
+    return e
+  }
+  fn guardFound(id: int) {
+    if entries[id] == none { log.push(.removed(id: -id)) }
+  }
+  pub fn describe() -> string = "{prefix}{entries.count()} entries, {log.count()} changes"
+}
+
+test "calls carry values over and back" {
+  let lib = Library(name: "home")
+  print(await lib.add(Entry(id: 1, tags: ["a", "b"])))
+  print(await lib.add(Entry(id: 2, tags: [])))
+  print((try await lib.remove(1)).tags)
+  do {
+    let e = try await lib.remove(2)
+    print(e.id)
+  } catch Missing.entry(id) {
+    print("missing {id}")
+  }
+  print(await lib.describe())
+}
+
+store Shelf(lib: Library) {
+  state count = 0
+
+  task {
+    var i = 0
+    while true {
+      i += 1
+      count = await lib.add(Entry(id: i, tags: ["t{i}"]))
+    }
+  }
+  task {
+    while true { let d = await lib.describe() }
+  }
+}
+
+test "its owner goes with calls queued" {
+  let lib = Library(name: "shelf")
+  let shelves = [Shelf(lib: lib), Shelf(lib: lib), Shelf(lib: lib)]
+  // (The test's clock waits while anything runs: the shelves' tasks
+  // always do, so it waits for its own calls instead.)
+  for _ in 1..10 { let d = await lib.describe() }
+  print("done")
+}
+
+test "a call whose caller stops waiting" {
+  let lib = Library(name: "race")
+  let first = await race(lib.describe(), slowly())
+  print(first)
+}
+
+async fn slowly() -> string {
+  await sleep(1s)
+  return "slow"
+}
+
+// Output:
+// 1
+// 2
+// ["a","b"]
+// missing 2
+// home: 0 entries, 4 changes
+// ok calls carry values over and back
+// done
+// ok its owner goes with calls queued
+// race: 0 entries, 0 changes
+// ok a call whose caller stops waiting

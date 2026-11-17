@@ -1,0 +1,99 @@
+// Workers on the web, run by web_node_test.go under Node: each a Web
+// Worker of its own (Node's worker threads here) with the same core and
+// app; its state made there, its calls in order with values there and
+// back, errors, files on both sides, and its owner's going stopping it
+// with calls queued.
+import std/fs
+
+struct Entry {
+  id: int
+  tags: [string]
+}
+
+enum Missing: Error {
+  entry(id: int)
+}
+
+worker Library(name: string) {
+  var entries: [int: Entry] = [:]
+  var calls = 0
+  let label = "{name} library"
+
+  pub fn add(e: Entry) -> int {
+    calls += 1
+    entries[e.id] = e
+    return entries.count()
+  }
+  pub fn get(id: int) throws -> Entry {
+    calls += 1
+    if let e = entries[id] { return e }
+    throw Missing.entry(id: id)
+  }
+  pub fn heavy(n: int) -> int {
+    calls += 1
+    var sum = 0
+    for i in 1..n { sum += i }
+    return sum
+  }
+  pub fn save(path: string) throws {
+    try fs.writeText(path, text: "{label}: {entries.count()} entries")
+  }
+  pub fn stats() -> (string, int) = (label, calls)
+}
+
+store Holder {
+  let lib = Library(name: "held")
+  state last = 0
+
+  task {
+    var i = 0
+    while true {
+      i += 1
+      last = await lib.heavy(1000)
+    }
+  }
+}
+
+component Busy {
+  let holder = Holder()
+  Text("busy")
+}
+
+component Main {
+  state showBusy = true
+  task {
+    do {
+      let lib = Library(name: "home")
+      print(await lib.add(Entry(id: 1, tags: ["a", "b"])))
+      print(await lib.add(Entry(id: 2, tags: [])))
+      let (x, y) = await all(lib.heavy(10), lib.heavy(100))
+      print("{x} {y}")
+      print((try await lib.get(1)).tags)
+      do {
+        print((try await lib.get(9)).id)
+      } catch Missing.entry(id) {
+        print("missing {id}")
+      }
+      let dir = fs.join([fs.appDir(), "workers"])
+      try fs.mkdirAll(dir)
+      let path = fs.join([dir, "library.txt"])
+      try await lib.save(path)
+      print(try fs.readText(path))
+      let (label, calls) = await lib.stats()
+      print("{label} {calls}")
+      // Its owner goes with calls queued: they're cancelled, and what's
+      // after still runs.
+      await sleep(10ms)
+      showBusy = false
+      await sleep(10ms)
+      print(await lib.heavy(3))
+    } catch e {
+      print("failed: {e.message}")
+    }
+    print("done")
+  }
+  if showBusy { Busy() }
+  Text("workers")
+}
+
+app { Main() }

@@ -72,45 +72,46 @@ enum {
 	AK_OP_VBOX = 63, // reg reg kind: a = a mutable box holding b: a var that closures capture and change
 	AK_OP_VGET = 64, // reg reg: a = the box b's value (retained when a reference)
 	AK_OP_VSET = 65, // reg reg: the box a = b (retained; the old one released)
-	AK_OP_CALLI = 66, // reg const reg imm: a = the method Strings[k] of the object in register c (an interface value), called with it and n-1 more arguments from c
-	AK_OP_NEWS = 67, // reg shape reg: a = a struct of shape s from its fields' registers from b
-	AK_OP_GETF = 68, // reg reg imm: a = b.fields[i] (retained when a reference)
-	AK_OP_SETF = 69, // reg imm reg: a.fields[i] = c, a copied first if shared
-	AK_OP_NEWE = 70, // reg shape imm reg: a = case c of enum s with its payload from registers from b
-	AK_OP_ECASE = 71, // reg reg: a = the case of enum value b
-	AK_OP_GETP = 72, // reg reg imm: a = b's payload field i
-	AK_OP_BOX = 73, // reg reg kind: a = b boxed (an optional scalar that isn't none)
-	AK_OP_UNBOX = 74, // reg reg: a = the scalar in box b
-	AK_OP_NEWA = 75, // reg kind shape reg imm: a = an array of kind k (elements of shape s, 0xFFFFFFFF none) from n registers from b
-	AK_OP_IDX = 76, // reg reg reg: a = b[c]; throws out of range
-	AK_OP_SETIDX = 77, // reg reg reg: a[b] = c, a copied first if shared; throws out of range
-	AK_OP_LEN = 78, // reg reg: a = the length of b (an array, a map, a string's bytes)
-	AK_OP_NEWM = 79, // reg kind kind reg imm: a = a map (key kind, value kind) from n key/value register pairs from b
-	AK_OP_MGET = 80, // reg reg reg: a = m[k] as an optional (none when missing; scalars boxed)
-	AK_OP_MSET = 81, // reg reg reg: a[b] = c, a copied first if shared
-	AK_OP_MGETJ = 82, // reg reg reg off: a = m[k] (b[c]) as the map's value kind, nothing boxed; jumps when b has no c
-	AK_OP_CELL = 83, // reg reg kind: a = a new state cell holding b, owned by the current owner
-	AK_OP_CELLK = 84, // reg reg kind const: a = the state cell kept under Strings[k] across reloads, or a new one holding b
-	AK_OP_CGET = 85, // reg reg: a = the cell b's value, tracked (retained when a reference)
-	AK_OP_CPEEK = 86, // reg reg: a = the cell b's value, untracked
-	AK_OP_CSET = 87, // reg reg: the cell a = b; notifies when it changed
-	AK_OP_CTAKE = 88, // reg reg: a = the cell b's value moved out (for a mutation in place); CPUT puts it back
-	AK_OP_CPUT = 89, // reg reg: the cell a = b (moved), notifying
-	AK_OP_MEMO = 90, // reg reg kind: a = a memo computing the closure b
-	AK_OP_MREAD = 91, // reg reg: a = the memo b's value, tracked
-	AK_OP_ACCV = 92, // reg reg kind: a = an accessor of a constant value b
-	AK_OP_ACCF = 93, // reg reg kind: a = an accessor computing the closure b
-	AK_OP_ACCC = 94, // reg reg: a = an accessor reading the cell or memo b
-	AK_OP_AGET = 95, // reg reg: a = what accessor b reads, tracked
-	AK_OP_UNTRACK = 96, // reg reg reg imm: a = the closure b called untracked with n arguments from c
-	AK_OP_EFFECT = 97, // reg: runs the closure a as an effect of the current owner
-	AK_OP_RENDER = 98, // reg: runs the closure a as a render effect
-	AK_OP_CLEANUP = 99, // reg: runs the closure a when the current owner is disposed or its effect re-runs
-	AK_OP_BATCH = 100, // imm: 1 begins a batch, 0 ends it (flushing)
-	AK_OP_TASK = 101, // reg reg: a = a task running the async closure b (no arguments), owned by the current owner
-	AK_OP_AWAIT = 102, // reg reg: a = the result of task or future b, suspending until it has one; throws its error
-	AK_OP_YIELD = 103, // : suspends until the next turn of the main loop
-	AK_OP__COUNT = 104,
+	AK_OP_VTAKE = 66, // reg reg: a = the box b's reference moved out, none left (for a change in place); VSET puts it back
+	AK_OP_CALLI = 67, // reg const reg imm: a = the method Strings[k] of the object in register c (an interface value), called with it and n-1 more arguments from c
+	AK_OP_NEWS = 68, // reg shape reg: a = a struct of shape s from its fields' registers from b
+	AK_OP_GETF = 69, // reg reg imm: a = b.fields[i] (retained when a reference)
+	AK_OP_SETF = 70, // reg imm reg: a.fields[i] = c, a copied first if shared
+	AK_OP_NEWE = 71, // reg shape imm reg: a = case c of enum s with its payload from registers from b
+	AK_OP_ECASE = 72, // reg reg: a = the case of enum value b
+	AK_OP_GETP = 73, // reg reg imm: a = b's payload field i
+	AK_OP_BOX = 74, // reg reg kind: a = b boxed (an optional scalar that isn't none)
+	AK_OP_UNBOX = 75, // reg reg: a = the scalar in box b
+	AK_OP_NEWA = 76, // reg kind shape reg imm: a = an array of kind k (elements of shape s, 0xFFFFFFFF none) from n registers from b
+	AK_OP_IDX = 77, // reg reg reg: a = b[c]; throws out of range
+	AK_OP_SETIDX = 78, // reg reg reg: a[b] = c, a copied first if shared; throws out of range
+	AK_OP_LEN = 79, // reg reg: a = the length of b (an array, a map, a string's bytes)
+	AK_OP_NEWM = 80, // reg kind kind reg imm: a = a map (key kind, value kind) from n key/value register pairs from b
+	AK_OP_MGET = 81, // reg reg reg: a = m[k] as an optional (none when missing; scalars boxed)
+	AK_OP_MSET = 82, // reg reg reg: a[b] = c, a copied first if shared
+	AK_OP_MGETJ = 83, // reg reg reg off: a = m[k] (b[c]) as the map's value kind, nothing boxed; jumps when b has no c
+	AK_OP_CELL = 84, // reg reg kind: a = a new state cell holding b, owned by the current owner
+	AK_OP_CELLK = 85, // reg reg kind const: a = the state cell kept under Strings[k] across reloads, or a new one holding b
+	AK_OP_CGET = 86, // reg reg: a = the cell b's value, tracked (retained when a reference)
+	AK_OP_CPEEK = 87, // reg reg: a = the cell b's value, untracked
+	AK_OP_CSET = 88, // reg reg: the cell a = b; notifies when it changed
+	AK_OP_CTAKE = 89, // reg reg: a = the cell b's value moved out (for a mutation in place); CPUT puts it back
+	AK_OP_CPUT = 90, // reg reg: the cell a = b (moved), notifying
+	AK_OP_MEMO = 91, // reg reg kind: a = a memo computing the closure b
+	AK_OP_MREAD = 92, // reg reg: a = the memo b's value, tracked
+	AK_OP_ACCV = 93, // reg reg kind: a = an accessor of a constant value b
+	AK_OP_ACCF = 94, // reg reg kind: a = an accessor computing the closure b
+	AK_OP_ACCC = 95, // reg reg: a = an accessor reading the cell or memo b
+	AK_OP_AGET = 96, // reg reg: a = what accessor b reads, tracked
+	AK_OP_UNTRACK = 97, // reg reg reg imm: a = the closure b called untracked with n arguments from c
+	AK_OP_EFFECT = 98, // reg: runs the closure a as an effect of the current owner
+	AK_OP_RENDER = 99, // reg: runs the closure a as a render effect
+	AK_OP_CLEANUP = 100, // reg: runs the closure a when the current owner is disposed or its effect re-runs
+	AK_OP_BATCH = 101, // imm: 1 begins a batch, 0 ends it (flushing)
+	AK_OP_TASK = 102, // reg reg: a = a task running the async closure b (no arguments), owned by the current owner
+	AK_OP_AWAIT = 103, // reg reg: a = the result of task or future b, suspending until it has one; throws its error
+	AK_OP_YIELD = 104, // : suspends until the next turn of the main loop
+	AK_OP__COUNT = 105,
 };
 
 // Instruction widths in words.
@@ -119,9 +120,9 @@ static const uint8_t ak_op_width[] = {
 	3, 4, 4, 4, 4, 4, 4, 4, 4, 3, 4, 4, 4, 4, 4, 4,
 	4, 3, 4, 4, 4, 4, 3, 3, 3, 5, 5, 3, 4, 4, 6, 4,
 	3, 4, 4, 4, 4, 6, 5, 5, 2, 1, 2, 2, 2, 6, 3, 4,
-	3, 3, 6, 5, 4, 4, 6, 3, 4, 4, 3, 7, 4, 4, 3, 6,
-	4, 4, 6, 4, 6, 3, 3, 3, 3, 3, 4, 3, 4, 4, 3, 3,
-	5, 2, 2, 2, 2, 3, 3, 1,
+	3, 3, 3, 6, 5, 4, 4, 6, 3, 4, 4, 3, 7, 4, 4, 3,
+	6, 4, 4, 6, 4, 6, 3, 3, 3, 3, 3, 4, 3, 4, 4, 3,
+	3, 5, 2, 2, 2, 2, 3, 3, 1,
 };
 
 static const char *const ak_op_names[] = {
@@ -133,11 +134,12 @@ static const char *const ak_op_names[] = {
 	"NOT", "EQ", "NE", "ISNONE", "CONCAT", "TOSTR", "INTERP", "LTS",
 	"JMP", "JT", "JF", "JNONE", "JSOME", "CALL", "CALLC", "CALLB",
 	"RET", "RET0", "THROW", "CATCH", "RETHROW", "CLOS", "CAP", "VBOX",
-	"VGET", "VSET", "CALLI", "NEWS", "GETF", "SETF", "NEWE", "ECASE",
-	"GETP", "BOX", "UNBOX", "NEWA", "IDX", "SETIDX", "LEN", "NEWM",
-	"MGET", "MSET", "MGETJ", "CELL", "CELLK", "CGET", "CPEEK", "CSET",
-	"CTAKE", "CPUT", "MEMO", "MREAD", "ACCV", "ACCF", "ACCC", "AGET",
-	"UNTRACK", "EFFECT", "RENDER", "CLEANUP", "BATCH", "TASK", "AWAIT", "YIELD",
+	"VGET", "VSET", "VTAKE", "CALLI", "NEWS", "GETF", "SETF", "NEWE",
+	"ECASE", "GETP", "BOX", "UNBOX", "NEWA", "IDX", "SETIDX", "LEN",
+	"NEWM", "MGET", "MSET", "MGETJ", "CELL", "CELLK", "CGET", "CPEEK",
+	"CSET", "CTAKE", "CPUT", "MEMO", "MREAD", "ACCV", "ACCF", "ACCC",
+	"AGET", "UNTRACK", "EFFECT", "RENDER", "CLEANUP", "BATCH", "TASK", "AWAIT",
+	"YIELD",
 };
 
 #endif

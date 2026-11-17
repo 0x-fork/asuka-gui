@@ -483,6 +483,8 @@ func (c *Checker) isAsyncCall(call *Call) bool {
 		return ok && ft.Async
 	case CallIface:
 		return false
+	case CallWorker:
+		return true
 	case CallBuiltinMethod:
 		return call.Method.Async
 	case CallBuiltin:

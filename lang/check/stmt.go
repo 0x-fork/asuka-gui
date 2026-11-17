@@ -356,8 +356,17 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 					o.Assigned = true
 				}
 			case ParamMember:
+				if o.Owner.Comp.Worker {
+					c.errorf(x, "can't %s %s: it's a parameter; keep a var of the worker's own (var x = %s)", what, x.Name, x.Name)
+					break
+				}
 				c.errorf(x, "can't %s %s: it's the caller's (a parameter); keep state of your own, or emit an event", what, x.Name)
+			case VarMember:
 			case LetMember:
+				if o.Owner.Comp.Worker {
+					c.errorf(x, "can't %s %s: it's a let; a value the worker changes is a var (var %s = …)", what, x.Name, x.Name)
+					break
+				}
 				c.errorf(x, "can't %s %s: it's derived (a let); change what it reads", what, x.Name)
 			default:
 				c.errorf(x, "can't %s %s", what, x.Name)
@@ -1636,7 +1645,7 @@ func (c *Checker) finishLocalFns() {
 				// function, or its method.
 				owner := g.Encl.Comp
 				for cc := u.ctx; cc != nil; cc = cc.Parent {
-					if (cc.Kind == CtxComponent || cc.Kind == CtxStore || cc.Kind == CtxMethod) && cc.Comp == owner {
+					if (cc.Kind == CtxComponent || cc.Kind == CtxStore || cc.Kind == CtxMethod || cc.Kind == CtxWorker) && cc.Comp == owner {
 						break
 					}
 					if !cc.UsesEnv {

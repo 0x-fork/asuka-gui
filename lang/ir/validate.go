@@ -22,7 +22,7 @@ var operandKinds = map[string][]bc.Kind{
 	"ISNONE": {bc.KBool, bc.KRef}, "CONCAT": {bc.KRef, bc.KRef, bc.KRef}, "TOSTR": {bc.KRef, 0},
 	"INTERP": {bc.KRef, 0}, "LTS": {bc.KBool, bc.KRef, bc.KRef}, "JNONE": {bc.KRef}, "JSOME": {bc.KRef},
 	"CALLC": {0, bc.KRef}, "THROW": {bc.KRef}, "CATCH": {bc.KRef}, "RETHROW": {bc.KRef},
-	"CLOS": {bc.KRef}, "VBOX": {bc.KRef}, "VGET": {0, bc.KRef}, "VSET": {bc.KRef},
+	"CLOS": {bc.KRef}, "VBOX": {bc.KRef}, "VGET": {0, bc.KRef}, "VSET": {bc.KRef}, "VTAKE": {bc.KRef, bc.KRef},
 	"NEWS": {bc.KRef}, "GETF": {0, bc.KRef}, "SETF": {bc.KRef}, "NEWE": {bc.KRef}, "ECASE": {bc.KInt, bc.KRef},
 	"GETP": {0, bc.KRef}, "BOX": {bc.KRef}, "UNBOX": {0, bc.KRef}, "NEWA": {bc.KRef}, "IDX": {0, bc.KRef, bc.KInt},
 	"SETIDX": {bc.KRef, bc.KInt}, "LEN": {bc.KInt, bc.KRef}, "NEWM": {bc.KRef}, "MGET": {bc.KRef, bc.KRef}, "MGETJ": {0, bc.KRef},

@@ -28,6 +28,10 @@ extern const ak_lib_entry ak_stream_lib[];
 // false: it can't (spawn then runs c as it would without it).
 typedef struct ak_future ak_future;
 extern bool (*ak_spawn_elsewhere)(ak_closure *c, ak_kind k, ak_future *f);
+// ak_closure_deep_copy copies a closure whose captures are values for
+// another thread: its captures deep-copied (ak_deep_copy), what it holds
+// (the VM's module) held by the copy too. Main thread.
+ak_closure *ak_closure_deep_copy(ak_closure *c);
 
 // Where print writes (tests capture it); NULL: stdout.
 extern void (*ak_lib_print_hook)(const char *s, size_t n);

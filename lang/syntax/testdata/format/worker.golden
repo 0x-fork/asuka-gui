@@ -1,0 +1,6 @@
+// A worker, formatted.
+pub worker Index(lang: string = "en") {
+  var n = 0 // how many
+  pub fn add(id: int) { n += 1 }
+  pub fn count() -> int = n
+}

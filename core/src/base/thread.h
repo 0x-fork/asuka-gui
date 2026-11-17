@@ -27,6 +27,11 @@ typedef pthread_t ak_thread;
 void ak_mutex_lock(ak_mutex *m);
 void ak_mutex_unlock(ak_mutex *m);
 void ak_cond_init(ak_cond *c);
+// A mutex or a condition variable made at run time (not AK_MUTEX_INIT),
+// and let go of once nothing waits on it.
+void ak_mutex_init(ak_mutex *m);
+void ak_mutex_destroy(ak_mutex *m);
+void ak_cond_destroy(ak_cond *c);
 void ak_cond_wait(ak_cond *c, ak_mutex *m);
 // ak_cond_wait_ns waits at most ns nanoseconds; false on a timeout.
 bool ak_cond_wait_ns(ak_cond *c, ak_mutex *m, int64_t ns);

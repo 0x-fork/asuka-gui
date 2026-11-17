@@ -459,6 +459,8 @@ func pubOf(n syntax.Node) bool {
 		return d.Pub.IsValid()
 	case *syntax.StoreDecl:
 		return d.Pub.IsValid()
+	case *syntax.WorkerDecl:
+		return d.Pub.IsValid()
 	case *syntax.TypeAliasDecl:
 		return d.Pub.IsValid()
 	case *syntax.ExternTypeDecl:
@@ -520,6 +522,11 @@ func (c *Checker) collect(p *Package, d syntax.Decl) {
 	case *syntax.StoreDecl:
 		t := &TypeName{object: object{d.Name.Name, d.Name.Start}, Pkg: p, Kind: StoreType, Decl: d}
 		t.Comp = &Component{Store: true, Body: d.Body}
+		p.Types = append(p.Types, t)
+		declare(d.Name, t)
+	case *syntax.WorkerDecl:
+		t := &TypeName{object: object{d.Name.Name, d.Name.Start}, Pkg: p, Kind: WorkerType, Decl: d}
+		t.Comp = &Component{Worker: true, Body: d.Body}
 		p.Types = append(p.Types, t)
 		declare(d.Name, t)
 	case *syntax.FuncDecl:

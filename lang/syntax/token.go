@@ -307,6 +307,7 @@ const (
 	USE
 	VAR
 	WHILE
+	WORKER
 	keywordEnd
 )
 
@@ -435,6 +436,7 @@ var tokens = [...]string{
 	USE:       "use",
 	VAR:       "var",
 	WHILE:     "while",
+	WORKER:    "worker",
 }
 
 // String is the token's spelling for operators and keywords, its kind's
