@@ -15,6 +15,7 @@ enum {
 	AK_F_QUEUED = 1u << 5,   // an effect in the queue
 	AK_F_DISPOSED = 1u << 6, // disposed (or dropped); never runs again
 	AK_F_FRESH = 1u << 7,    // a signal made inside a memo (ak_signal_born)
+	AK_F_FOLLOW = 1u << 8,   // a memo whose value may also be set (ak_follow)
 };
 
 // ak_link is an edge from dep to sub. It sits in two doubly linked

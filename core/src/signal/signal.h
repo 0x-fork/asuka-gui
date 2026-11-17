@@ -89,6 +89,41 @@ ak_owner *ak_memo_owner(ak_memo *m);
 // caller's pointer, held until m's next update or its drop.
 void *ak_memo_error(const ak_memo *m);
 
+// Follows.
+//
+// A follow is a state that follows what its initializer reads (rfcs/0012):
+// a memo whose value its owner may also set. Its value is the update's
+// until it's set, and the update's again when what the update read
+// changes; a set replaces whatever is there. As a memo's, a read pulls,
+// so a reader never sees it behind its inputs. Unlike a memo's, its
+// sources stay linked when its last reader goes, so a set value stands
+// until they change, whoever reads it then.
+typedef ak_comp ak_follow;
+
+// ak_follow_new makes a follow owned by the current owner (by the caller
+// when there is none: ak_owner_dispose(ak_follow_owner(f))). It is lazy:
+// update first runs on the first read (or refresh), and reports whether
+// the caller's value changed, as a memo's does.
+ak_follow *ak_follow_new(bool (*update)(void *ctx), void *ctx, const ak_comp_info *info);
+// ak_follow_read brings f up to date and subscribes the running
+// computation, as ak_memo_read does (false: its update raised an error,
+// raised again in the reader).
+static inline bool ak_follow_read(ak_follow *f) { return ak_memo_read(f); }
+// ak_follow_refresh brings f up to date without subscribing anything or
+// raising its error: what a set does first, so that a write after an
+// input changed replaces the current value, and stands.
+void ak_follow_refresh(ak_follow *f);
+// ak_follow_set tells the graph the caller replaced f's value, after
+// ak_follow_refresh: f is up to date with it (an error its update raised
+// is gone), and its readers are notified as a signal write's are.
+void ak_follow_set(ak_follow *f);
+// ak_follow_settled reports whether f's update has run and read nothing
+// (a parameter whose caller passed a constant): nothing can make it run
+// again, so it's a plain state from then on and its caller may let go
+// of what the update needs.
+bool ak_follow_settled(const ak_follow *f);
+static inline ak_owner *ak_follow_owner(ak_follow *f) { return ak_memo_owner(f); }
+
 enum {
 	AK_EFFECT_USER = 0,
 	// A render effect (the UI runtime's, for props) runs at once, and

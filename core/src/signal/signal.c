@@ -25,7 +25,7 @@ void ak_signal_set_panic_hook(void (*fn)(void *ctx, const char *msg), void *ctx)
 }
 
 const char *ak_sig_describe(const ak_comp *c, char *buf, size_t n) {
-	const char *kind = (c->node.flags & AK_F_MEMO) ? "memo" : "effect";
+	const char *kind = (c->node.flags & AK_F_FOLLOW) ? "state" : (c->node.flags & AK_F_MEMO) ? "memo" : "effect";
 	if (c->info && c->info->label) snprintf(buf, n, "%s %s", kind, c->info->label);
 	else snprintf(buf, n, "an unnamed %s", kind);
 	return buf;
@@ -157,6 +157,42 @@ void ak_sig_memo_unwatched(ak_comp *m) {
 	ak_sig_unlink_all_deps(m);
 	m->node.flags |= AK_F_DIRTY;
 	if (m->info && m->info->unwatched) m->info->unwatched(m->ctx);
+}
+
+// Follows.
+
+ak_follow *ak_follow_new(bool (*update)(void *ctx), void *ctx, const ak_comp_info *info) {
+	ak_comp *f = comp_new(AK_F_MEMO | AK_F_FOLLOW | AK_F_DIRTY, ctx, info);
+	f->fn.update = update;
+	return f;
+}
+
+void ak_follow_refresh(ak_follow *f) {
+	ak_node *n = &f->node;
+	if ((n->flags & AK_F_DISPOSED) || !(n->flags & (AK_F_DIRTY | AK_F_PENDING))) return;
+	ak_owner_retain(&f->owner);
+	ak_comp *prev = g->active;
+	g->active = NULL;
+	if ((n->flags & AK_F_DIRTY) || ak_sig_check_dirty(f)) {
+		if (ak_sig_memo_update(f) && n->subs) ak_sig_shallow_propagate(n->subs);
+	} else {
+		n->flags &= ~(uint32_t)AK_F_PENDING;
+	}
+	g->active = prev;
+	ak_owner_release(&f->owner);
+}
+
+void ak_follow_set(ak_follow *f) {
+	ak_node *n = &f->node;
+	if (n->flags & AK_F_DISPOSED) return;
+	n->flags &= ~(uint32_t)(AK_F_DIRTY | AK_F_PENDING);
+	ak_sig_err_release(f->err);
+	f->err = NULL;
+	ak_signal_write(n);
+}
+
+bool ak_follow_settled(const ak_follow *f) {
+	return !f->deps && !(f->node.flags & (AK_F_DIRTY | AK_F_PENDING)) && f->run > 0;
 }
 
 // Effects.
