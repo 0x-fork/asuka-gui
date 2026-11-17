@@ -129,3 +129,40 @@ func TestStandardLibrary(t *testing.T) {
 		t.Errorf("math.: %v", got)
 	}
 }
+
+// The names in an import's braces complete with what the package
+// exports, without the ones the braces name already.
+func TestCompletionImportNames(t *testing.T) {
+	root := t.TempDir()
+	c := newClient(t, root)
+	uri := c.openText(filepath.Join(root, "a.asuka"), "")
+	version := 1
+	for _, tc := range []struct {
+		text      string
+		want, not []string
+	}{
+		{"import std/time.{|}\n", []string{"Time", "now", "Zone"}, []string{"fn", "component"}},
+		{"import std/time.{now, |}\n", []string{"Time"}, []string{"now"}},
+		{"import std/time.{Ti|, now}\n", []string{"Time"}, []string{"now"}},
+	} {
+		i := strings.Index(tc.text, "|")
+		text := tc.text[:i] + tc.text[i+1:]
+		items := complete(t, c, uri, &version, text, text[:i]+"|")
+		got := labels(items)
+		for _, w := range tc.want {
+			if !contains(got, w) {
+				t.Errorf("%q: no %s in %v", tc.text, w, got)
+			}
+		}
+		for _, n := range tc.not {
+			if contains(got, n) {
+				t.Errorf("%q: %s in %v", tc.text, n, got)
+			}
+		}
+		for _, it := range items {
+			if it.InsertTextFormat == 2 {
+				t.Errorf("%q: %s inserts a snippet %q: the braces list names", tc.text, it.Label, it.InsertText)
+			}
+		}
+	}
+}
