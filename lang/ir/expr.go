@@ -203,36 +203,48 @@ func (b *fb) expr(e syntax.Expr, dst int) int {
 		if r, ok := b.hoist(e, dst); ok {
 			return r
 		}
+		elems, rest := e.Elems, []syntax.Expr(nil)
+		if len(elems) > literalChunk {
+			elems, rest = elems[:literalChunk], elems[literalChunk:]
+		}
 		if st, ok := b.rawType(e).(*check.Set); ok {
 			// A set literal: set.of(kind, its elements...).
 			args := []int{b.konst(int64(b.l.kind(st.Elem)))}
-			for _, x := range e.Elems {
+			mark := b.mark()
+			for _, x := range elems {
 				args = append(args, b.value(x, -1))
 			}
-			return b.copyTo(b.callB("set.of", bc.KRef, args...), dst)
+			r := b.literalOut(dst, len(rest) > 0)
+			b.copyTo(b.callB("set.of", bc.KRef, args...), r)
+			b.release(mark)
+			b.appendEach(r, rest, "set.insert")
+			return b.literalDone(r, dst)
 		}
 		at, _ := b.rawType(e).(*check.Array)
 		if at == nil {
 			return b.valueReg(-1, bc.KRef)
 		}
 		k := b.l.kind(at.Elem)
-		ks := repeatKind(k, len(e.Elems))
+		ks := repeatKind(k, len(elems))
+		r := b.literalOut(dst, len(rest) > 0)
+		mark := b.mark()
 		var vals []int
-		for _, x := range e.Elems {
+		for _, x := range elems {
 			vals = append(vals, b.value(x, -1))
 		}
 		blk := b.regs(ks)
 		for i, v := range vals {
 			b.move(blk+i, v)
 		}
-		r := b.out(dst, bc.KRef)
 		sh := b.l.shape(check.Unopt(at.Elem))
 		if sh < 0 {
 			sh = bc.NoShape
 		}
 		b.emit(op("NEWA"), r, int(k), sh, blk, len(vals))
 		b.releaseRegs(blk, ks)
-		return r
+		b.release(mark)
+		b.appendEach(r, rest, "arr.push")
+		return b.literalDone(r, dst)
 	case *syntax.MapExpr:
 		if r, ok := b.hoist(e, dst); ok {
 			return r
@@ -242,9 +254,15 @@ func (b *fb) expr(e syntax.Expr, dst int) int {
 			return b.valueReg(-1, bc.KRef)
 		}
 		kk, vk := b.l.kind(mt.Key), b.l.kind(mt.Elem)
+		entries, rest := e.Entries, []*syntax.MapEntry(nil)
+		if len(entries) > literalChunk {
+			entries, rest = entries[:literalChunk], entries[literalChunk:]
+		}
+		r := b.literalOut(dst, len(rest) > 0)
+		mark := b.mark()
 		var ks []bc.Kind
 		var vals []int
-		for _, en := range e.Entries {
+		for _, en := range entries {
 			ks = append(ks, kk, vk)
 			vals = append(vals, b.value(en.Key, -1), b.value(en.Value, -1))
 		}
@@ -252,10 +270,17 @@ func (b *fb) expr(e syntax.Expr, dst int) int {
 		for i, v := range vals {
 			b.move(blk+i, v)
 		}
-		r := b.out(dst, bc.KRef)
-		b.emit(op("NEWM"), r, int(kk), int(vk), blk, len(e.Entries))
+		b.emit(op("NEWM"), r, int(kk), int(vk), blk, len(entries))
 		b.releaseRegs(blk, ks)
-		return r
+		b.release(mark)
+		for _, en := range rest {
+			mark := b.mark()
+			k := b.value(en.Key, -1)
+			v := b.value(en.Value, -1)
+			b.emit(op("MSET"), r, k, v)
+			b.release(mark)
+		}
+		return b.literalDone(r, dst)
 	case *syntax.IfExpr:
 		return b.ifExpr(e, dst)
 	case *syntax.MatchExpr:
@@ -1051,6 +1076,53 @@ func (b *fb) binop(o syntax.Token, x, y int, xt, yt, res check.Type, dst int) in
 	r := b.out(dst, bc.KInt)
 	b.emit(op(intOps[o]), r, x, y)
 	return r
+}
+
+// literalChunk is how many of a literal's elements (an array's, a
+// set's, a map's entries) are built from a block of registers at once;
+// the rest are added one by one, so that a literal of any length takes
+// as many registers as one of this.
+const literalChunk = 256
+
+// literalOut is the register a literal is built in: dst, or a temp of
+// its own when elements are added after it's made (they may read dst).
+func (b *fb) literalOut(dst int, adds bool) int {
+	if adds {
+		return b.temp(bc.KRef)
+	}
+	return b.out(dst, bc.KRef)
+}
+
+// literalDone puts the literal built in r in dst, if that's another
+// register, letting r go: the value stays unique.
+func (b *fb) literalDone(r, dst int) int {
+	if dst < 0 || r == dst {
+		return r
+	}
+	b.move(dst, r)
+	b.emit(op("CLR"), r)
+	return dst
+}
+
+// appendEach adds each of xs to the array or set in r, in place, with
+// the inout builtin add (arr.push, set.insert): r is moved into its
+// arguments' block and back, so the value stays unique.
+func (b *fb) appendEach(r int, xs []syntax.Expr, add string) {
+	for _, x := range xs {
+		mark := b.mark()
+		v := b.value(x, -1)
+		ks := []bc.Kind{bc.KRef, b.f.Kinds[v]}
+		blk := b.regs(ks)
+		null := b.null()
+		b.move(blk+1, v)
+		b.emit(op("MOV"), blk, r)
+		b.emit(op("MOV"), r, null)
+		b.emit(op("CALLB"), bc.None, b.l.builtin(add), blk, 2)
+		b.emit(op("MOV"), r, blk)
+		b.emit(op("MOV"), blk, null)
+		b.releaseRegs(blk, ks)
+		b.release(mark)
+	}
 }
 
 // ---------------------------------------------------------------------

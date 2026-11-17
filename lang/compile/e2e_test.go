@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -151,4 +152,30 @@ func TestRun(t *testing.T) {
 func fileExists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
+}
+
+// A literal of any length compiles, in as many registers as a short
+// one: the rest of its elements are added one by one.
+func TestBigLiteral(t *testing.T) {
+	var src strings.Builder
+	src.WriteString("let table = [")
+	for i := range 70000 {
+		if i > 0 {
+			src.WriteString(", ")
+		}
+		src.WriteString(strconv.Itoa(i))
+	}
+	src.WriteString("]\nfn sum() -> int = table[0] + table[69999]\n")
+	res := Files(map[string][]byte{"big.asuka": []byte(src.String())}, nil)
+	if err := res.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if err := res.IR.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range res.Module.Funcs {
+		if len(f.Kinds) > 1000 {
+			t.Errorf("%s has %d registers", f.Name, len(f.Kinds))
+		}
+	}
 }
