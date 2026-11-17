@@ -20,6 +20,9 @@ const FAILED = 2; // web.c's ANSWER_FAILED: a message, not a result
 
 let lastWorker = 0;
 
+/** workerId names a Web Worker the page starts (spawn's, and workers.js's): whose changes to the files are whose (fs.js). */
+export const workerId = () => ++lastWorker;
+
 /** size is how many workers a page may have: the cores the browser says it has, but the page's own, up to 4. */
 export const poolSize = () => Math.max(1, Math.min(4, (globalThis.navigator?.hardwareConcurrency || 2) - 1));
 
@@ -93,7 +96,7 @@ export class Pool {
   }
 
   start() {
-    const w = { id: ++lastWorker, w: null, module: undefined, ready: false, job: null, synced: 0 };
+    const w = { id: workerId(), w: null, module: undefined, ready: false, job: null, synced: 0 };
     try {
       w.w = this.makeWorker(new URL("./spawn-worker.js", import.meta.url));
     } catch (e) {

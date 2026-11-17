@@ -13,12 +13,20 @@
 // module's init without a UI first) and answers its result or error in
 // the same encoding, and the page settles the spawn's future.
 //
+// A worker (rt/worker.c) is a Web Worker of its own (platform/web/src/
+// workers.js), the same core with the same app: its init's closure
+// (worker_start) makes its state there, kept for the calls that follow
+// (worker_call: a job as spawn's, whose function takes the state), each
+// answered as spawn's are (asuka_spawn_done), a call that's cancelled
+// before it ran with ANSWER_CANCELLED.
+//
 // Only compiled into wasm builds.
 #ifdef __wasm__
 
 #include "asuka.h"
 #include "rt/sched.h"
 #include "rt/lib.h"
+#include "rt/worker.h"
 #include "base/thread.h"
 #include "vm/vm_int.h"
 #include "vm/keep.h"
@@ -39,6 +47,9 @@ IMPORT("timer_clear") void js_timer_clear(double id);
 IMPORT("zone_offset") double js_zone_offset(double unix_seconds);
 IMPORT("spawn") void js_spawn(double id, const uint8_t *job, uint32_t len);
 IMPORT("spawn_cancel") void js_spawn_cancel(double id);
+IMPORT("worker_start") void js_worker_start(double id, const uint8_t *job, uint32_t len);
+IMPORT("worker_call") void js_worker_call(double id, double job, const uint8_t *bytes, uint32_t len);
+IMPORT("worker_stop") void js_worker_stop(double id, int cancel);
 // Typed native modules (native packages' JavaScript, platform/web's
 // native.js): a call's answer is its length, then native_answer copies it
 // to where the core puts it.
@@ -135,7 +146,7 @@ EXPORT("asuka_timer_fire") void asuka_timer_fire(double id) { ak_timer_fire((uin
 // none), the error (a reference), or, when the worker couldn't run it,
 // a message.
 
-enum { ANSWER_OK, ANSWER_THREW, ANSWER_FAILED };
+enum { ANSWER_OK, ANSWER_THREW, ANSWER_FAILED, ANSWER_CANCELLED };
 
 int ak_abi_init_only(ak_module *m, char **err);
 ak_module *ak_abi_module(void);
@@ -192,39 +203,83 @@ static void cancel_remote(ak_future *f) {
 	drop_remote(j);
 }
 
-static bool spawn_on_worker(ak_closure *c, ak_kind k, ak_future *f) {
-	if (!workers || c->invoke != ak_vm_closure_invoke) return false;
+// encode_job is c as a job of kind k into b: false when it can't go (not
+// the VM's, or what it captures isn't a value, which the checker keeps
+// out).
+static bool encode_job(ak_buf *b, ak_closure *c, ak_kind k) {
+	if (c->invoke != ak_vm_closure_invoke) return false;
 	const ak_func *fn = c->fn;
-	ak_buf b = {0};
-	ak_buf_u32(&b, fn->index);
-	ak_buf_u8(&b, (uint8_t)k);
-	ak_buf_u32(&b, c->ncap);
+	ak_buf_u32(b, fn->index);
+	ak_buf_u8(b, (uint8_t)k);
+	ak_buf_u32(b, c->ncap);
 	for (uint16_t i = 0; i < c->ncap; i++) {
-		if (!ak_keep_encode(&b, c->caps[i], c->capkinds ? (ak_kind)c->capkinds[i] : AK_K_INT)) {
-			ak_buf_free(&b);
-			return false;  // not a value (the checker keeps those out): run here
+		if (!ak_keep_encode(b, c->caps[i], c->capkinds ? (ak_kind)c->capkinds[i] : AK_K_INT)) {
+			ak_buf_free(b);
+			return false;
 		}
 	}
+	return true;
+}
+
+// remote_new is a job out, settling f with its answer.
+static remote *remote_new(ak_future *f, ak_module *mod) {
 	remote *j = ak_alloc(sizeof *j);
 	j->id = ++last_job;
 	j->fut = ak_retain(f);
-	j->mod = fn->mod;
+	j->mod = mod;
 	ak_module_retain(j->mod);
 	j->next = remotes;
 	remotes = j;
+	ak_sched_hold();  // until it's answered or cancelled
+	return j;
+}
+
+static bool spawn_on_worker(ak_closure *c, ak_kind k, ak_future *f) {
+	ak_buf b = {0};
+	if (!workers || !encode_job(&b, c, k)) return false;  // run here
+	remote *j = remote_new(f, ((const ak_func *)c->fn)->mod);
 	f->ctx = j;
 	f->cancel = cancel_remote;
-	ak_sched_hold();  // until it's answered or cancelled
 	js_spawn((double)j->id, b.data, (uint32_t)b.len);
 	ak_buf_free(&b);
 	return true;
 }
 
-// asuka_web_workers says the page has workers for spawn (0: it runs in
-// place, on the page's thread).
+// ---- workers, each on a Web Worker of its own ----
+
+static uint64_t last_worker;
+
+static bool worker_start(ak_closure *init, uint64_t *id) {
+	ak_buf b = {0};
+	if (!encode_job(&b, init, AK_K_REF)) return false;  // in place
+	*id = ++last_worker;
+	js_worker_start((double)*id, b.data, (uint32_t)b.len);
+	ak_buf_free(&b);
+	return true;
+}
+
+static void worker_call(uint64_t id, ak_closure *c, ak_kind k, ak_future *f) {
+	ak_buf b = {0};
+	if (!encode_job(&b, c, k)) {
+		ak_throw_msg("worker: a call that can't cross to its Web Worker");
+		ak_future_reject(f, ak_error_take());
+		return;
+	}
+	remote *j = remote_new(f, ((const ak_func *)c->fn)->mod);
+	js_worker_call((double)id, (double)j->id, b.data, (uint32_t)b.len);
+	ak_buf_free(&b);
+}
+
+static void worker_stop(uint64_t id, bool cancel) { js_worker_stop((double)id, cancel); }
+
+static const ak_worker_host web_workers = {worker_start, worker_call, worker_stop};
+
+// asuka_web_workers says the page has workers for spawn and workers (0:
+// spawn runs in place, on the page's thread, and so do workers).
 EXPORT("asuka_web_workers") void asuka_web_workers(int on) {
 	workers = on != 0;
 	ak_spawn_elsewhere = workers ? spawn_on_worker : NULL;
+	ak_worker_elsewhere = workers ? &web_workers : NULL;
 }
 
 // asuka_spawn_done settles job id with a worker's answer (status: an
@@ -241,6 +296,10 @@ EXPORT("asuka_spawn_done") void asuka_spawn_done(double id, int status, const ui
 		ak_future_resolve(f, k == AK_K_VOID ? (ak_val){0} : v);
 	} else if (status == ANSWER_THREW && ak_keep_decode(&r, AK_K_REF, find_shape, j->mod, &v) && v.p) {
 		ak_future_reject(f, v.p);
+	} else if (status == ANSWER_CANCELLED) {
+		// A worker's call, queued as its owner went.
+		ak_throw_cancel();
+		ak_future_reject(f, ak_error_take());
 	} else {
 		if (status == ANSWER_FAILED) ak_throw_msg("spawn: %.*s", (int)(n < 400 ? n : 400), (const char *)p);
 		else ak_throw_msg("spawn: the worker's answer doesn't fit the app");
@@ -313,14 +372,18 @@ EXPORT("asuka_worker_start") int asuka_worker_start(const uint8_t *module, size_
 
 // asuka_worker_call runs a job: its answer is in io (address, length)
 // until the next call; the result an ANSWER_*.
-EXPORT("asuka_worker_call") int asuka_worker_call(const uint8_t *p, size_t n) {
-	answer.len = 0;
+// decode_job is the closure a job runs (and its result's kind), or NULL
+// with why in *why.
+static ak_closure *decode_job(const uint8_t *p, size_t n, ak_kind *k, const char **why) {
 	ak_module *m = ak_abi_module();
 	ak_reader r = {p, n, 0, false};
 	uint32_t fi = ak_read_u32(&r);
-	ak_kind k = (ak_kind)ak_read_u8(&r);
+	*k = (ak_kind)ak_read_u8(&r);
 	uint32_t ncap = ak_read_u32(&r);
-	if (r.err || !m || fi >= m->nfuncs || m->funcs[fi].ncap != ncap) return worker_failed("the job isn't one of this app's (a module of another version?)");
+	if (r.err || !m || fi >= m->nfuncs || m->funcs[fi].ncap != ncap) {
+		*why = "the job isn't one of this app's (a module of another version?)";
+		return NULL;
+	}
 	const ak_func *fn = &m->funcs[fi];
 	ak_closure *c = ak_closure_new(ak_vm_closure_invoke, fn, fn->ncap, fn->capkinds);
 	ak_module_retain(fn->mod);
@@ -328,23 +391,70 @@ EXPORT("asuka_worker_call") int asuka_worker_call(const uint8_t *p, size_t n) {
 	for (uint32_t i = 0; i < ncap; i++) {
 		if (!ak_keep_decode(&r, (ak_kind)fn->capkinds[i], find_shape, m, &c->caps[i])) {
 			ak_release(c);
-			return worker_failed("its captures don't fit the app (a module of another version?)");
+			*why = "its captures don't fit the app (a module of another version?)";
+			return NULL;
 		}
 	}
-	ak_val v = ak_call(c, NULL, 0);
+	return c;
+}
+
+// threw is the answer of a job that threw e (taken).
+static int threw(void *e) {
+	answer.len = 0;
+	if (!ak_keep_encode(&answer, (ak_val){.p = e}, AK_K_REF)) {
+		// An error that isn't a value: its message, as an Error.
+		answer.len = 0;
+		ak_throw_msg("%s", ak_error_message(e)->data);
+		void *plain = ak_error_take();
+		ak_keep_encode(&answer, (ak_val){.p = plain}, AK_K_REF);
+		ak_release(plain);
+	}
+	ak_release(e);
+	return ANSWER_THREW;
+}
+
+// A worker's instance (asuka_worker_new): its state, which each job
+// takes, or the error its init threw, which each job answers.
+static bool is_worker;
+static ak_val worker_env;
+static void *worker_err;
+
+// asuka_worker_new makes this instance a worker's: its init's job, run
+// now, makes the state the jobs from now on take. ANSWER_OK, or what
+// asuka_worker_call would answer for its error.
+EXPORT("asuka_worker_new") int asuka_worker_new(const uint8_t *p, size_t n) {
+	answer.len = 0;
+	is_worker = true;
+	ak_kind k;
+	const char *why = NULL;
+	ak_closure *c = decode_job(p, n, &k, &why);
+	if (!c) {
+		ak_throw_msg("worker: %s", why);
+		worker_err = ak_error_take();
+		return ANSWER_FAILED;
+	}
+	worker_env = ak_call(c, NULL, 0);
+	if (ak_error_pending()) worker_err = ak_error_take();
+	ak_release(c);
+	ak_ui_run_posted();
+	return worker_err ? ANSWER_THREW : ANSWER_OK;
+}
+
+EXPORT("asuka_worker_call") int asuka_worker_call(const uint8_t *p, size_t n) {
+	answer.len = 0;
+	ak_kind k;
+	const char *why = NULL;
+	ak_closure *c = decode_job(p, n, &k, &why);
+	if (!c) return worker_failed(why);
+	if (is_worker && worker_err) {
+		// Its init threw: each call fails with that.
+		ak_release(c);
+		return answered(threw(ak_retain(worker_err)));
+	}
+	ak_val v = is_worker ? ak_call(c, &worker_env, 1) : ak_call(c, NULL, 0);
 	int status = ANSWER_OK;
 	if (ak_error_pending()) {
-		void *e = ak_error_take();
-		status = ANSWER_THREW;
-		if (!ak_keep_encode(&answer, (ak_val){.p = e}, AK_K_REF)) {
-			// An error that isn't a value: its message, as an Error.
-			answer.len = 0;
-			ak_throw_msg("%s", ak_error_message(e)->data);
-			void *plain = ak_error_take();
-			ak_keep_encode(&answer, (ak_val){.p = plain}, AK_K_REF);
-			ak_release(plain);
-		}
-		ak_release(e);
+		status = threw(ak_error_take());
 	} else {
 		if (k != AK_K_VOID && !ak_keep_encode(&answer, v, k)) {
 			ak_release_val(v, k);

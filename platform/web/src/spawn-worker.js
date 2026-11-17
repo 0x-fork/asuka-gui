@@ -1,11 +1,14 @@
 // A spawn worker (spawn.js): the core again, with the page's app, which
-// runs the closures the page's core hands out.
+// runs the closures the page's core hands out. A worker's Web Worker
+// (workers.js) is one too, whose start made its state, which its jobs
+// (the worker's calls) take.
 //
 // Messages in: { init: { wasm, module, appDir, sqlite, crash, files } } (a fresh
 // instance of the core, wasm a WebAssembly.Module, with the app's
 // bytecode, module, or the app compiled in; the app's init run without a
 // UI), { job: { id, bytes, files } }. Out: { ready, error } once init
-// ran, { done: { id, status, bytes, files, dead } } for each job (dead:
+// ran, { start: { bytes } } (a worker's: the job that makes its state, run
+// at once), { done: { id, status, bytes, files, dead } } for each job (dead:
 // the core broke on it, and the worker should go), { log } for what the
 // core prints. files are the file system's changes (fs.js): the page's
 // in, the job's out.
@@ -60,6 +63,10 @@ export function serve(port) {
         stack_room: stackRoom(),
         spawn() { throw new Error("asuka: spawn in a worker"); }, // web.c runs a worker's in place
         spawn_cancel() {},
+        // A worker is made on the page (the compiler keeps it so).
+        worker_start() { throw new Error("asuka: a worker made in a worker"); },
+        worker_call() { throw new Error("asuka: a worker called from a worker"); },
+        worker_stop() {},
         // Native modules are the page's: a worker's core has none (web.c
         // gives it no native calls), so these are never reached.
         native_new: () => 0,
@@ -140,10 +147,27 @@ export function serve(port) {
     say({ done: { id, status, bytes: out.buffer, files: changes, dead } }, transfer);
   }
 
+  // start: this instance becomes a worker's, its state made by the job's
+  // closure. Its error, if it threw, is each call's answer.
+  let starting = null;
+  function start({ bytes }) {
+    if (!core) return;
+    try {
+      core.withBytes(new Uint8Array(bytes), (p, n) => core.e.asuka_worker_new(p, n));
+    } catch (err) {
+      log(2, `a worker's init: ${err?.message ?? err}`);
+      core = null;
+    }
+  }
+
   port.onmessage = (ev) => {
     const m = ev.data;
-    if (m.init) init(m.init);
-    else if (m.job) job(m.job);
+    if (m.init) starting = init(m.init);
+    else if (m.start) starting = starting.then(() => start(m.start));
+    else if (m.job) {
+      if (starting) starting.then(() => job(m.job));
+      else job(m.job);
+    }
   };
 }
 
