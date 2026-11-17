@@ -936,7 +936,11 @@ func (c *Checker) closureCall(e *syntax.CallExpr, fun syntax.Expr, t Type) Type 
 				c.errorf(a.Label, "a function value's arguments have no names")
 			}
 			if i < len(ft.Params) {
-				c.assign(a.Value, ft.Params[i], "argument "+itoa(i+1))
+				what := "argument " + itoa(i+1)
+				if n := exprName(fun); n != "this" {
+					what += " of " + n
+				}
+				c.assign(a.Value, ft.Params[i], what)
 			} else {
 				c.expr(a.Value, nil)
 			}

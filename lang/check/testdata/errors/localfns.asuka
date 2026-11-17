@@ -85,3 +85,8 @@ fn genericOnce(n: int) -> int {
   }
   return n
 }
+
+fn closureArgs() {
+  let shout = (s: string) => s.upper()
+  let x = shout(1) // ERROR "argument 1 of shout is an int, not a string"
+}
