@@ -284,7 +284,9 @@ uint64_t ak_after(int64_t ns, ak_cb cb, void *ctx) {
 	if (ns < 0) ns = 0;
 	ak_mutex_lock(&timer_mu);
 	uint64_t id = ++next_timer_id;
-	timer t = {id, ak_sched_now() + ns, cb, ctx};
+	// Due at now + ns, or (a sleep past int's range) never.
+	int64_t now = ak_sched_now();
+	timer t = {id, ns > INT64_MAX - now ? INT64_MAX : now + ns, cb, ctx};
 	heap_push(t);
 	bool thread = !manual && !host_schedule;
 	if (thread && !timer_thread_started) {

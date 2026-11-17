@@ -399,4 +399,84 @@ TEST(markdown_heal) {
 	for (size_t i = 0; i < AK_LEN(cases); i++) CHECK_STR(call("markdown.heal", (ak_val[]){S(cases[i][0])}, 1, 1), cases[i][1]);
 }
 
+// The language's own (rt/lib.c), at the ends of their ranges.
+
+// float.fixed(digits) writes every digit, however many the number has.
+TEST(fixed_large) {
+	ak_val r = call("str.fixed", (ak_val[]){{.f = 1e300}, I(2)}, 2, 0);
+	ak_str *s = r.p;
+	CHECK_EQ_INT(s->len, 304);
+	CHECK(s->data[0] == '1' && strcmp(s->data + 301, ".00") == 0);
+	ak_release(s);
+	r = call("str.fixed", (ak_val[]){{.f = -1.5}, I(20)}, 2, 0);
+	CHECK_STR(r, "-1.50000000000000000000");
+}
+
+// A range longer than an array holds is an error, not one cut to its
+// low 32 bits; the ends of int's range don't overflow.
+TEST(ranges) {
+	ak_val r = call("arr.range", (ak_val[]){I(0), I((INT64_C(1) << 32) + 1)}, 2, 0);
+	void *e = ak_error_take();
+	CHECK(e != NULL && r.p == NULL);
+	ak_release(e);
+	r = call("arr.range", (ak_val[]){I(-2), I(INT64_MAX)}, 2, 0);
+	e = ak_error_take();
+	CHECK(e != NULL && r.p == NULL);
+	ak_release(e);
+	r = call("arr.range", (ak_val[]){I(INT64_MAX - 2), I(INT64_MAX)}, 2, 0);
+	REQUIRE(!ak_error_pending());
+	ak_arr *a = r.p;
+	REQUIRE(a->len == 2);
+	CHECK(a->data[1].i == INT64_MAX - 1);
+	ak_release(a);
+	r = call("arr.range", (ak_val[]){I(3), I(-3)}, 2, 0);
+	CHECK_EQ_INT(((ak_arr *)r.p)->len, 0);
+	ak_release(r.p);
+}
+
+// Integers wrap, as the language's arithmetic does: abs(Int.min) is
+// Int.min. random_int's span is the whole range's.
+TEST(int_extremes) {
+	CHECK(call("math.absi", (ak_val[]){I(INT64_MIN)}, 1, 0).i == INT64_MIN);
+	CHECK_EQ_INT(call("math.absi", (ak_val[]){I(-5)}, 1, 0).i, 5);
+	for (int i = 0; i < 100; i++) {
+		int64_t v = call("math.random_int", (ak_val[]){I(INT64_MIN), I(INT64_MAX)}, 2, 0).i;
+		CHECK(v < INT64_MAX);
+		v = call("math.random_int", (ak_val[]){I(-1), I(INT64_MAX)}, 2, 0).i;
+		CHECK(v >= -1 && v < INT64_MAX);
+	}
+}
+
+// race of no tasks has none to finish first: it waits, as never()
+// does, until it's cancelled; nothing is left behind.
+TEST(race_of_none) {
+	int64_t live = ak_obj_live;
+	ak_arr *none = ak_arr_new(AK_K_REF, NULL, 0);
+	ak_future *f = call("async.race", (ak_val[]){{.p = none}}, 1, 1).p;
+	CHECK(f->state == AK_FUT_PENDING);
+	ak_future_cancel(f);
+	CHECK(f->state == AK_FUT_FAILED);
+	ak_release(f);
+	CHECK_EQ_INT(ak_obj_live, live);
+}
+
+// A timer far in the future (a sleep of years) is due then, not at once
+// from a wrapped sum.
+static int fired;
+static void fire(void *ctx) {
+	AK_UNUSED(ctx);
+	fired++;
+}
+
+TEST(far_timers) {
+	ak_sched_manual_clock(true);
+	ak_sched_advance(1000000000);
+	uint64_t id = ak_after(INT64_MAX, fire, NULL);
+	ak_sched_advance(1000000000);
+	ak_sched_run_posted();
+	CHECK_EQ_INT(fired, 0);
+	ak_timer_cancel(id);
+	ak_sched_manual_clock(false);
+}
+
 T_MAIN()
