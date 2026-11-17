@@ -488,7 +488,9 @@ var (
 func (s *androidScreen) foreground() {
 	var focus string
 	until(s.t, func() bool {
-		out, _ := s.adb("shell", "dumpsys", "window", "windows")
+		// The whole dump: "windows" alone has no focus line on Android 17,
+		// and a display with none says mCurrentFocus=null.
+		out, _ := s.adb("shell", "dumpsys", "window")
 		focus = ""
 		if m := focusRE.FindStringSubmatch(out); m != nil {
 			focus = m[1]
