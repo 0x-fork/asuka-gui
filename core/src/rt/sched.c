@@ -352,6 +352,7 @@ struct ak_waiter {
 
 static void future_drop(ak_opaque *o) {
 	ak_future *f = (ak_future *)o;
+	if (f->unseen) f->unseen(f->unseen_ctx, f->state == AK_FUT_FAILED && !f->seen ? ak_retain(f->error) : NULL);
 	ak_release_val(f->result, (ak_kind)f->kind);
 	ak_release(f->error);
 	for (ak_waiter *w = f->waiters; w;) {
@@ -407,6 +408,7 @@ void ak_future_reject(ak_future *f, void *err) {
 }
 
 void ak_future_wait(ak_future *f, ak_cb cb, void *ctx) {
+	f->seen = true;
 	if (f->state != AK_FUT_PENDING) {
 		ak_ready(cb, ctx);
 		return;
@@ -452,6 +454,7 @@ void ak_future_cancel(ak_future *f) {
 }
 
 ak_val ak_future_take(ak_future *f) {
+	f->seen = true;
 	if (f->state == AK_FUT_FAILED) {
 		ak_throw(ak_retain(f->error));
 		return (ak_val){0};

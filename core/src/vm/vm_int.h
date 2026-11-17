@@ -224,5 +224,9 @@ bool ak_vm_task_run(ak_task *t, ak_val *out);  // ak_vm_run, under the task's ow
 // error nobody can see through the task's future, raised to the owner's
 // catcher.
 void ak_vm_task_done(ak_task *t, void *err);
+// ak_vm_task_report_unseen: the task failed, and f, its future, is held
+// by someone who hasn't looked for its outcome: if they drop it without
+// looking, its error goes to the catcher of the task's owner then.
+void ak_vm_task_report_unseen(ak_task *t, ak_future *f);
 
 #endif

@@ -14,11 +14,15 @@ static void finish(ak_task *t, ak_val out, bool failed) {
 	f->cancel = NULL;
 	f->ctx = NULL;
 	void *err = failed ? ak_error_take() : NULL;
-	// An error nobody can see (no one else holds the future, so no one
-	// can await it) goes to the catcher of the task's owner, unless the
-	// task was cancelled: its owner went, and what it threw unwinding (a
-	// defer's) is no one's to report.
-	void *unseen = err && !ak_is_cancel(err) && !t->cancelled && f->h.h.rc == 1 && !f->waiters ? ak_retain(err) : NULL;
+	// An error nobody has looked for goes to the catcher of the task's
+	// owner, unless the task was cancelled: its owner went, and what it
+	// threw unwinding (a defer's) is no one's to report. With no one else
+	// holding the future, now; else once it's dropped, if no one looked
+	// for it meanwhile (a handler that threw before its first await: who
+	// started it may await it, or let it go).
+	bool report = err && !ak_is_cancel(err) && !t->cancelled && !f->seen;
+	void *unseen = report && f->h.h.rc == 1 ? ak_retain(err) : NULL;
+	if (report && !unseen) ak_vm_task_report_unseen(t, f);
 	AK_ASSERT(t->co.nframes == 0);
 	// Settle the future before the owner goes: disposing it cancels what
 	// is still pending.

@@ -93,6 +93,13 @@ typedef struct ak_future {
 	// call's table), not a waiter's: a task cancelled while it waits
 	// cancels the future when nobody else holds it.
 	uint8_t held;
+	// seen: whether anything has looked for its outcome (waited for it,
+	// or taken it). A failed future dropped unseen gives its error to
+	// unseen(unseen_ctx, err), as JavaScript reports a rejection nobody
+	// handled; dropped otherwise, unseen(unseen_ctx, NULL) lets ctx go.
+	bool seen;
+	void (*unseen)(void *ctx, void *err);
+	void *unseen_ctx;
 } ak_future;
 
 ak_future *ak_future_new(ak_kind k);

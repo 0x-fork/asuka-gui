@@ -437,6 +437,23 @@ bool ak_vm_task_run(ak_task *t, ak_val *out) {
 
 static void raise_ctx(void *err) { ak_raise(err); }
 
+// The owner, kept past its disposal for its catcher (its parents are
+// held as long as it is), reached when the future is dropped unseen.
+static void raise_unseen(void *ctx, void *err) {
+	ak_owner *o = ctx;
+	if (err) {
+		if (o) ak_with_owner(o, raise_ctx, err);
+		else ak_raise(err);
+	}
+	if (o) ak_owner_release(o);
+}
+
+void ak_vm_task_report_unseen(ak_task *t, ak_future *f) {
+	if (t->owner) ak_owner_retain(t->owner);
+	f->unseen = raise_unseen;
+	f->unseen_ctx = t->owner;
+}
+
 void ak_vm_task_done(ak_task *t, void *err) {
 	ak_owner *o = t->owner;
 	t->owner = NULL;

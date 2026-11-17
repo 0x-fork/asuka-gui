@@ -4,6 +4,28 @@
 enum SaveError: Error { boom }
 
 state started = false
+state handled = ""
+
+component Forward(title: string) {
+  event press
+  Button(title) { on press { emit press } }
+}
+
+// Emits from an async handler, which waits for the handler and takes
+// its error: the error is the emitter's, which handles it.
+component Catching {
+  event press
+  Button("Caught") {
+    on press {
+      await sleep(0ms)
+      do {
+        emit press
+      } catch {
+        handled = "the emitter's"
+      }
+    }
+  }
+}
 
 component Saver {
   task {
@@ -21,6 +43,28 @@ component Saver {
         throw SaveError.boom
       }
     }
+    // Async handlers that throw before their first await: whoever
+    // started them (the host, an emit from a sync handler) lets their
+    // futures go without looking.
+    Button("Early") {
+      on press {
+        if !started { throw SaveError.boom }
+        await sleep(1ms)
+      }
+    }
+    Forward("Emitted") {
+      on press {
+        if !started { throw SaveError.boom }
+        await sleep(1ms)
+      }
+    }
+    Catching {
+      on press {
+        if !started { throw SaveError.boom }
+        await sleep(1ms)
+      }
+    }
+    Text("handled: {handled}")
   }
 }
 
@@ -54,4 +98,30 @@ test "a task's error after an await" {
   let app = mount(Guarded())
   await sleep(10ms)
   app.expect("caught: SaveError.boom")
+}
+
+test "an async handler's error before its first await" {
+  started = false
+  let app = mount(Guarded())
+  app.tap("Early")
+  await app.idle()
+  app.expect("caught: SaveError.boom")
+}
+
+test "an emitted async handler's error before its first await" {
+  started = false
+  let app = mount(Guarded())
+  app.tap("Emitted")
+  await app.idle()
+  app.expect("caught: SaveError.boom")
+}
+
+test "an error the emitter waits for is the emitter's, not reported again" {
+  started = false
+  handled = ""
+  let app = mount(Guarded())
+  app.tap("Caught")
+  await app.waitFor("handled: the emitter's")
+  await app.idle()
+  expect(!app.has("caught: SaveError.boom"))
 }
