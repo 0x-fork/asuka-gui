@@ -1807,7 +1807,7 @@ TEST(builtins_are_registered) {
 	static const char *const names[] = {"ui.new", "ui.set", "ui.bind", "ui.set_outer", "ui.bind_outer", "ui.on", "ui.add", "ui.slot", "ui.ref", "ui.show", "ui.for", "ui.switch",
 	                                    "ui.dynamic", "ui.lazy_for", "ui.fragment", "ui.use", "ui.provide", "ui.task", "ui.focus", "ui.blur",
 	                                    "ui.scroll_to", "ui.environment", "ui.enter", "ui.leave", "ui.native", "ui.native_set",
-	                                    "ui.native_bind", "ui.native_on"};
+	                                    "ui.native_bind", "ui.native_on", "ui.load", "load.state", "load.loading", "load.value", "load.error", "load.reload"};
 	for (size_t i = 0; i < AK_LEN(names); i++)
 		if (!ak_builtin_find(names[i])) T_FAIL("no builtin %s", names[i]);
 }

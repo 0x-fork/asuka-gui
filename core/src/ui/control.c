@@ -560,18 +560,27 @@ void ak_ui_task(ak_closure *c) {
 // it first runs once the component is built (the thunk reads the
 // component's values, set after the load is made). The thunk starts
 // the call as a task under the effect's owner; the next run disposes that
-// owner first, which cancels the last task. The loader's state is a
-// signal, so what reads it (a match, .value) follows it.
+// owner first, which cancels the last task.
+//
+// The loader holds what it shows (RFC 0014): it's pending only before
+// its first answer; a run after that keeps the case it's in (ready with
+// the last value, or failed) until it answers, and an answer equal to
+// the last changes nothing. Two signals: node (the state, value and
+// error: what a match and .value follow), written only when an answer
+// changes them, and busy (running: whether a run is in flight, what
+// .loading follows), written as a run starts and ends.
 
 typedef struct ak_loader {
 	ak_opaque h;
 	ak_node node;    // state, value and error
+	ak_node busy;    // running
 	ak_node again;   // written by reload, read by each run
 	uint8_t state;   // AK_LOAD_*
 	uint8_t kind;    // the value's kind, once one came
-	ak_val value;    // the latest value (kept while it reloads)
+	bool running;    // a run is in flight: fut is its task
+	ak_val value;    // the latest value (kept while it runs again, and once it fails)
 	void *error;     // when failed
-	ak_future *fut;  // the run's task, while it's pending
+	ak_future *fut;  // the run's task, while it's in flight
 	ak_effect *eff;  // borrowed: NULL once disposed
 	ak_closure *thunk;
 } ak_loader;
@@ -586,15 +595,42 @@ typedef struct {
 static void loader_drop(ak_opaque *o) {
 	ak_loader *l = (ak_loader *)o;
 	ak_signal_drop(&l->node);
+	ak_signal_drop(&l->busy);
 	ak_signal_drop(&l->again);
 	ak_release_val(l->value, (ak_kind)l->kind);
 	if (l->error) ak_release(l->error);
 	if (l->fut) ak_release(l->fut);
-	ak_release(l->thunk);
+	if (l->thunk) ak_release(l->thunk);
 }
 
-static void loader_set(ak_loader *l, uint8_t state) {
-	l->state = state;
+static void loader_running(ak_loader *l, bool on) {
+	if (l->running == on) return;
+	l->running = on;
+	ak_signal_write(&l->busy);
+}
+
+// loader_answer takes the run's value (borrowed): node is written only
+// when the state or the value changes.
+static void loader_answer(ak_loader *l, ak_val v, ak_kind k) {
+	if (l->state == AK_LOAD_READY && l->kind == k && ak_val_eq(l->value, v, k)) return;
+	ak_retain_val(v, k);
+	ak_release_val(l->value, (ak_kind)l->kind);
+	l->kind = (uint8_t)k;
+	l->value = v;
+	if (l->error) ak_release(l->error), l->error = NULL;
+	l->state = AK_LOAD_READY;
+	ak_signal_write(&l->node);
+}
+
+// loader_fail takes err: the error is news, unless it's the one shown.
+static void loader_fail(ak_loader *l, void *err) {
+	if (l->state == AK_LOAD_FAILED && l->error && ak_val_eq((ak_val){.p = l->error}, (ak_val){.p = err}, AK_K_REF)) {
+		ak_release(err);
+		return;
+	}
+	if (l->error) ak_release(l->error);
+	l->error = err;
+	l->state = AK_LOAD_FAILED;
 	ak_signal_write(&l->node);
 }
 
@@ -605,28 +641,13 @@ static void loader_done(void *ctx) {
 	if (l->fut == f) {  // else a later run replaced it, or it went
 		ak_release(l->fut);
 		l->fut = NULL;
-		if (f->state == AK_FUT_DONE) {
-			ak_release_val(l->value, (ak_kind)l->kind);
-			l->kind = f->kind;
-			l->value = f->result;
-			ak_retain_val(l->value, (ak_kind)l->kind);
-			if (l->error) ak_release(l->error), l->error = NULL;
-			loader_set(l, AK_LOAD_READY);
-		} else if (!ak_is_cancel(f->error)) {
-			if (l->error) ak_release(l->error);
-			l->error = ak_retain(f->error);
-			loader_set(l, AK_LOAD_FAILED);
-		}
+		loader_running(l, false);
+		if (f->state == AK_FUT_DONE) loader_answer(l, f->result, (ak_kind)f->kind);
+		else if (!ak_is_cancel(f->error)) loader_fail(l, ak_retain(f->error));
 	}
 	ak_release(f);
 	ak_release(l);
 	ak_free(t);
-}
-
-static void loader_fail(ak_loader *l, void *err) {
-	if (l->error) ak_release(l->error);
-	l->error = err;
-	loader_set(l, AK_LOAD_FAILED);
 }
 
 static void loader_run_fn(void *ctx) {
@@ -636,13 +657,14 @@ static void loader_run_fn(void *ctx) {
 	ak_val v = ak_call(l->thunk, NULL, 0);
 	if (ak_error_pending()) {
 		void *err = ak_error_take();
+		loader_running(l, false);
 		if (ak_is_cancel(err)) ak_release(err);
 		else loader_fail(l, err);
 		return;
 	}
 	ak_future *f = v.p;
 	l->fut = ak_retain(f);
-	if (l->state != AK_LOAD_PENDING) loader_set(l, AK_LOAD_PENDING);
+	loader_running(l, true);
 	loader_ticket *t = ak_alloc(sizeof *t);
 	t->l = ak_retain(l);
 	t->f = f;  // the call's reference
@@ -653,6 +675,8 @@ static void loader_effect_drop(void *ctx) {
 	ak_loader *l = ctx;
 	l->eff = NULL;
 	if (l->fut) ak_release(l->fut), l->fut = NULL;
+	// No run is in flight once its owner went: none will answer.
+	loader_running(l, false);
 	// It never runs again: its thunk goes now, not with the loader, which
 	// what the thunk holds may hold.
 	ak_release(l->thunk);
@@ -680,6 +704,14 @@ int64_t ak_ui_load_state(ak_val v) {
 	ak_loader *l = loader_arg(v, "load.state");
 	ak_signal_read(&l->node);
 	return l->state;
+}
+
+// Whether a run is in flight: busy alone, so what reads it doesn't
+// follow the value, nor a match it.
+bool ak_ui_load_loading(ak_val v) {
+	ak_loader *l = loader_arg(v, "load.loading");
+	ak_signal_read(&l->busy);
+	return l->running;
 }
 
 // The latest value, boxed when a scalar; none before the first.

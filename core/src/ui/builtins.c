@@ -33,6 +33,7 @@
 //	ui.task        body: async fn()                                   -
 //	ui.load        thunk: fn() -> Task<T>                             Loader
 //	load.state     l: Loader                    int (0 pending, 1 ready, 2 failed)
+//	load.loading   l: Loader                    bool (a run is in flight)
 //	load.value     l: Loader                    T? (boxed when a scalar)
 //	load.error     l: Loader                                          Error?
 //	load.reload    l: Loader                                          -
@@ -204,6 +205,11 @@ static ak_val b_load(ak_val *a, uint32_t n) {
 static ak_val b_load_state(ak_val *a, uint32_t n) {
 	AK_UNUSED(n);
 	return (ak_val){.i = ak_ui_load_state(a[0])};
+}
+
+static ak_val b_load_loading(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	return (ak_val){.i = ak_ui_load_loading(a[0])};
 }
 
 static ak_val b_load_value(ak_val *a, uint32_t n) {
@@ -467,6 +473,7 @@ void ak_ui_builtins_init(void) {
 		{"ui.task", b_task},
 		{"ui.load", b_load},
 		{"load.state", b_load_state},
+		{"load.loading", b_load_loading},
 		{"load.value", b_load_value},
 		{"load.error", b_load_error},
 		{"load.reload", b_load_reload},

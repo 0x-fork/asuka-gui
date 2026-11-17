@@ -206,9 +206,14 @@ void ak_ui_task(ak_closure *c);
 // the call as a task and returns its future; it runs again, cancelling
 // the last task, when what it read changes or on ak_ui_load_reload. The
 // state (0 pending, 1 ready, 2 failed), the latest value (boxed when a
-// scalar; none before the first) and the error are tracked reads.
+// scalar; none before the first) and the error are tracked reads. It's
+// pending only before the first answer: a run after that keeps the state
+// until it answers, and an answer equal to the last changes nothing.
+// ak_ui_load_loading reports a run in flight, tracked apart from the
+// state.
 ak_val ak_ui_load(ak_closure *thunk);  // owned
 int64_t ak_ui_load_state(ak_val loader);
+bool ak_ui_load_loading(ak_val loader);
 ak_val ak_ui_load_value(ak_val loader);  // owned
 ak_val ak_ui_load_error(ak_val loader);  // owned
 void ak_ui_load_reload(ak_val loader);
