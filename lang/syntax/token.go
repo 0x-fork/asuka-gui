@@ -207,6 +207,9 @@ const (
 	TILDE // ~: bitwise not
 	SHL   // <<
 	SHR   // >>: the parser's, of two adjacent >s (the scanner never makes one, so a type's Box<Box<T>> closes twice)
+	WADD  // &+: an int's sum, wrapping
+	WSUB  // &-: an int's difference, wrapping
+	WMUL  // &*: an int's product, wrapping
 
 	ASSIGN          // =
 	ADD_ASSIGN      // +=
@@ -219,6 +222,9 @@ const (
 	XOR_ASSIGN      // ^=
 	SHL_ASSIGN      // <<=
 	SHR_ASSIGN      // >>=: the parser's, of > and an adjacent >=
+	WADD_ASSIGN     // &+=
+	WSUB_ASSIGN     // &-=
+	WMUL_ASSIGN     // &*=
 	COALESCE_ASSIGN // ??=
 
 	EQL // ==
@@ -337,6 +343,9 @@ var tokens = [...]string{
 	TILDE: "~",
 	SHL:   "<<",
 	SHR:   ">>",
+	WADD:  "&+",
+	WSUB:  "&-",
+	WMUL:  "&*",
 
 	ASSIGN:          "=",
 	ADD_ASSIGN:      "+=",
@@ -349,6 +358,9 @@ var tokens = [...]string{
 	XOR_ASSIGN:      "^=",
 	SHL_ASSIGN:      "<<=",
 	SHR_ASSIGN:      ">>=",
+	WADD_ASSIGN:     "&+=",
+	WSUB_ASSIGN:     "&-=",
+	WMUL_ASSIGN:     "&*=",
 	COALESCE_ASSIGN: "??=",
 
 	EQL: "==",
@@ -482,14 +494,21 @@ func (t Token) AssignOp() Token {
 		return SHL
 	case SHR_ASSIGN:
 		return SHR
+	case WADD_ASSIGN:
+		return WADD
+	case WSUB_ASSIGN:
+		return WSUB
+	case WMUL_ASSIGN:
+		return WMUL
 	}
 	return ILLEGAL
 }
 
-// IsBitwise reports the operators that take ints only: & | ^ << >>.
+// IsBitwise reports the operators that take ints only: & | ^ << >>,
+// and the wrapping &+ &- &*.
 func (t Token) IsBitwise() bool {
 	switch t {
-	case AMP, PIPE, CARET, SHL, SHR:
+	case AMP, PIPE, CARET, SHL, SHR, WADD, WSUB, WMUL:
 		return true
 	}
 	return false
@@ -515,8 +534,8 @@ func Lookup(ident string) Token {
 // Precedence is a binary operator's precedence, from 1 (loosest: ??) to
 // 8 (<< >>); 0 for a token that isn't a binary operator. The unary and
 // postfix operators bind tighter than any of them. As Swift's: the
-// shifts bind tighter than multiplication, & as tightly as *, | and ^
-// as tightly as +.
+// shifts bind tighter than multiplication, & and &* as tightly as *, |,
+// ^, &+ and &- as tightly as +.
 func (t Token) Precedence() int {
 	switch t {
 	case COALESCE:
@@ -529,9 +548,9 @@ func (t Token) Precedence() int {
 		return 4
 	case RANGE, RANGELT:
 		return 5
-	case ADD, SUB, PIPE, CARET:
+	case ADD, SUB, PIPE, CARET, WADD, WSUB:
 		return 6
-	case MUL, QUO, REM, AMP:
+	case MUL, QUO, REM, AMP, WMUL:
 		return 7
 	case SHL, SHR:
 		return 8

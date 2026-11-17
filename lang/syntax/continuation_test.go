@@ -21,6 +21,7 @@ func TestLineContinuation(t *testing.T) {
 		{"a\n  >> b", "(>> a b)"},
 		{"a\n  << b", "(<< a b)"},
 		{"a\n  & b\n  | c\n  ^ d", "(^ (| (& a b) c) d)"},
+		{"a\n  &* b\n  &+ c\n  &- d", "(&- (&+ (&* a b) c) d)"},
 		{"0\n  ..< n", "(..< 0 n)"},
 		{"0\n  .. n", "(.. 0 n)"},
 		{"a\n  ?.b", "(?. a b)"},
