@@ -12,8 +12,10 @@ void ak_mutex_unlock(ak_mutex *m) { ReleaseSRWLockExclusive(m); }
 void ak_cond_init(ak_cond *c) { InitializeConditionVariable(c); }
 void ak_cond_wait(ak_cond *c, ak_mutex *m) { SleepConditionVariableSRW(c, m, INFINITE, 0); }
 bool ak_cond_wait_ns(ak_cond *c, ak_mutex *m, int64_t ns) {
-	DWORD ms = ns <= 0 ? 0 : (DWORD)((ns + 999999) / 1000000);
-	return SleepConditionVariableSRW(c, m, ms, 0) != 0;
+	// Milliseconds, rounded up; more than a DWORD counts is INFINITE (a
+	// wait that long is a wait for the signal).
+	int64_t ms = ns <= 0 ? 0 : ns / 1000000 + (ns % 1000000 != 0);
+	return SleepConditionVariableSRW(c, m, ms >= INFINITE ? INFINITE : (DWORD)ms, 0) != 0;
 }
 void ak_cond_signal(ak_cond *c) { WakeConditionVariable(c); }
 void ak_cond_broadcast(ak_cond *c) { WakeAllConditionVariable(c); }
@@ -81,11 +83,17 @@ void ak_mutex_unlock(ak_mutex *m) { pthread_mutex_unlock(m); }
 void ak_cond_init(ak_cond *c) { pthread_cond_init(c, NULL); }
 void ak_cond_wait(ak_cond *c, ak_mutex *m) { pthread_cond_wait(c, m); }
 bool ak_cond_wait_ns(ak_cond *c, ak_mutex *m, int64_t ns) {
+	if (ns < 0) ns = 0;
 	struct timespec ts;
 	clock_gettime(CLOCK_REALTIME, &ts);
-	int64_t t = (int64_t)ts.tv_sec * 1000000000 + ts.tv_nsec + (ns > 0 ? ns : 0);
-	ts.tv_sec = (time_t)(t / 1000000000);
-	ts.tv_nsec = (long)(t % 1000000000);
+	// The deadline in seconds and nanoseconds, as far as a time_t
+	// reaches: a wait past it is a wait for the signal.
+	int64_t sec = ns / 1000000000;
+	long nsec = ts.tv_nsec + (long)(ns % 1000000000);
+	if (nsec >= 1000000000) sec++, nsec -= 1000000000;
+	const int64_t max = sizeof(time_t) >= 8 ? INT64_MAX : INT32_MAX;
+	ts.tv_sec = (int64_t)ts.tv_sec > max - sec ? (time_t)max : (time_t)((int64_t)ts.tv_sec + sec);
+	ts.tv_nsec = nsec;
 	return pthread_cond_timedwait(c, m, &ts) == 0;
 }
 void ak_cond_signal(ak_cond *c) { pthread_cond_signal(c); }

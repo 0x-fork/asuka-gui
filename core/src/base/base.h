@@ -61,12 +61,12 @@ extern void (*ak_panic_hook)(const char *msg);
 // A growable array: `AK_VEC(T) v = {0};` then ak_vec_push(&v, x).
 #define AK_VEC(T) struct { T *data; uint32_t len, cap; }
 #define ak_vec_reserve(v, n) do { \
-	if ((v)->len + (n) > (v)->cap) { \
-		uint32_t nc_ = (v)->cap ? (v)->cap * 2 : 8; \
-		while (nc_ < (v)->len + (n)) nc_ *= 2; \
-		(v)->data = ak_realloc((v)->data, (size_t)nc_ * sizeof(*(v)->data)); \
-		(v)->cap = nc_; \
-	} } while (0)
+	if ((uint64_t)(v)->len + (n) > (v)->cap) (v)->data = ak_vec_grow((v)->data, &(v)->cap, (v)->len, (n), sizeof(*(v)->data)); \
+	} while (0)
+// ak_vec_grow reallocates a vector's data for len + n elements of size
+// elem, doubling its capacity; past what a u32 counts, or a size_t's
+// bytes, is out of memory.
+void *ak_vec_grow(void *data, uint32_t *cap, uint32_t len, uint64_t n, size_t elem);
 #define ak_vec_push(v, x) do { ak_vec_reserve(v, 1); (v)->data[(v)->len++] = (x); } while (0)
 #define ak_vec_pop(v) ((v)->data[--(v)->len])
 #define ak_vec_free(v) do { ak_free((v)->data); (v)->data = NULL; (v)->len = (v)->cap = 0; } while (0)
