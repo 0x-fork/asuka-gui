@@ -148,7 +148,12 @@ func (c *Checker) typeTest(p syntax.Node, t Type, tt *Named) *Named {
 		}
 	case *TypeParam:
 		if failed, why := c.satisfies(tt, x); failed != "" {
-			c.errorf(p, "%s can't be %s: %s is %s, and %s isn't (%s)", aType(et), aType(tt), x.Name, failed, typeString(tt), why)
+			if isSelf(x) {
+				// A provided method's self: the interface.
+				c.errorf(p, "%s can't be %s: %s", aType(et), aType(tt), why)
+			} else {
+				c.errorf(p, "%s can't be %s: %s is %s, and %s isn't (%s)", aType(et), aType(tt), x.Name, failed, typeString(tt), why)
+			}
 			return nil
 		}
 	}
@@ -180,6 +185,12 @@ func (c *Checker) mayBe(t Type, tt *Named) bool {
 		return failed == ""
 	}
 	return false
+}
+
+// isSelf reports an interface's self, the type parameter a provided
+// method's body is checked with.
+func isSelf(p *TypeParam) bool {
+	return len(p.Ifaces) == 1 && p.Ifaces[0].Obj.Iface != nil && p.Ifaces[0].Obj.Iface.Self == p
 }
 
 // kindWord is how t's declaration starts: struct, enum.

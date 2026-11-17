@@ -9,6 +9,11 @@ interface Shape {
   fn twice() -> float = self.area() * 2.0
   fn loud() -> string = describe().upper()
   fn me() -> Shape = self
+  // A type test of self: decided for each type the body is compiled for.
+  fn round() -> bool = match self {
+    _: Circle => true
+    _ => false
+  }
 }
 
 struct Square {
@@ -76,6 +81,7 @@ test "on interface values" {
     print(s.me().name)
   }
   print(Label().describe(loud: true))
+  print(shapes.map(s => s.round()))
 }
 
 test "on type parameters" {
@@ -122,6 +128,7 @@ test "generic interfaces" {
 // 10
 // blob
 // a label
+// [false,true,false,false,false]
 // ok on interface values
 // a square of 9
 // a circle of 2

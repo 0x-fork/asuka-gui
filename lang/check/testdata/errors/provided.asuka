@@ -8,6 +8,11 @@ interface Shape {
   fn twice() -> float = self.area() * 2.0
   fn loud() -> string = describe().upper()
   fn me() -> Shape = self
+  fn kind() -> string = match self {
+    sq: Square => "square {sq.side}"
+    p: Plain => p.name // ERROR "a Shape can't be a Plain: it has no area\(\)"
+    _ => "other"
+  }
   fn broken() -> int = area() // ERROR "the result of broken is a float, not an int"
   fn unknown() -> int = perimeter() // ERROR "unknown name perimeter"
   fn generic<T>(x: T) -> T = x // ERROR "an interface's methods aren't generic"
