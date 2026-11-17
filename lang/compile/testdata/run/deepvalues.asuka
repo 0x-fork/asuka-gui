@@ -1,0 +1,135 @@
+// A value an app builds may nest itself to any depth (a list as an enum,
+// a chain of structs, arrays in arrays), and what the runtime does with
+// one walks it without recursing on the C stack: releasing it, comparing
+// it, copying it to a spawn's thread and back, freezing it as a constant,
+// and printing it.
+
+enum List {
+  empty
+  cons(int, List)
+}
+
+struct Link {
+  v: int
+  next: Link?
+}
+
+enum Nest {
+  leaf(int)
+  arr([Nest])
+}
+
+let depth = 1000000
+
+fn list(n: int, last: int) -> List {
+  var l: List = .cons(last, .empty)
+  var i = 1
+  while i < n {
+    l = .cons(i, l)
+    i += 1
+  }
+  return l
+}
+
+fn length(l: List) -> int {
+  var n = 0
+  var at = l
+  while let .cons(_, rest) = at {
+    n += 1
+    at = rest
+  }
+  return n
+}
+
+fn chain(n: int) -> Link {
+  var l = Link(v: 0, next: none)
+  var i = 1
+  while i < n {
+    l = Link(v: i, next: l)
+    i += 1
+  }
+  return l
+}
+
+fn nest(n: int, last: int) -> Nest {
+  var x: Nest = .leaf(last)
+  var i = 1
+  while i < n {
+    x = .arr([.leaf(i), x])
+    i += 1
+  }
+  return x
+}
+
+// Made once, frozen as a constant: every link immortal.
+let frozen = list(depth, 0)
+
+test "released" {
+  var l = list(depth, 0)
+  print(length(l))
+  l = .empty
+  print(length(l))
+  let c = chain(depth)
+  print(c.v)
+  let n = nest(depth, 0)
+  print(n == n)
+}
+
+test "compared" {
+  let a = list(depth, 0)
+  let b = list(depth, 0)
+  let c = list(depth, 1)
+  print("{a == b} {a == c} {a != c}")
+  print("{chain(depth) == chain(depth)} {chain(depth) == chain(depth - 1)}")
+  print("{nest(depth, 0) == nest(depth, 0)} {nest(depth, 0) == nest(depth, 1)}")
+  print([a, c].contains(b))
+}
+
+test "copied to a spawn's thread and back" {
+  let l = list(depth, 0)
+  let back = await spawn {
+    let n = length(l)
+    let m = list(n, 0)
+    m
+  }
+  print(length(back))
+  print(back == l)
+  let n = nest(depth, 0)
+  print(await spawn { n == nest(depth, 0) })
+}
+
+test "frozen" {
+  print(length(frozen))
+  print(frozen == list(depth, 0))
+}
+
+test "printed" {
+  let s = "{list(depth, 0)}"
+  // 12 characters a link, its numbers' digits, and "empty".
+  print(s.count())
+  print(s.hasPrefix("\{\"cons\":[999999,\{\"cons\":[999998,"))
+  print(s.hasSuffix("\{\"cons\":[1,\{\"cons\":[0,\"empty\"]}]}" + "]}".repeat(depth - 2)))
+}
+
+// Output:
+// 1000000
+// 0
+// 999999
+// true
+// ok released
+// true false true
+// true false
+// true false
+// true
+// ok compared
+// 1000000
+// true
+// true
+// ok copied to a spawn's thread and back
+// 1000000
+// true
+// ok frozen
+// 17888897
+// true
+// true
+// ok printed

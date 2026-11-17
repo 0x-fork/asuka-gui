@@ -24,11 +24,15 @@ static inline float ak_maxf(float a, float b) { return a > b ? a : b; }
 #define AK_LIKELY(x) __builtin_expect(!!(x), 1)
 #define AK_UNLIKELY(x) __builtin_expect(!!(x), 0)
 #define AK_NORETURN __attribute__((noreturn))
+#define AK_NOINLINE __attribute__((noinline))
+#define AK_ALWAYS_INLINE inline __attribute__((always_inline))
 #define AK_PRINTF(f, a) __attribute__((format(printf, f, a)))
 #else
 #define AK_LIKELY(x) (x)
 #define AK_UNLIKELY(x) (x)
 #define AK_NORETURN
+#define AK_NOINLINE
+#define AK_ALWAYS_INLINE inline
 #define AK_PRINTF(f, a)
 #endif
 

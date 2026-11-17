@@ -8,14 +8,15 @@ import (
 	"testing"
 )
 
-// testdata/leaks/*.asuka, and the conformance programs that recurse
-// through local fns, run with the runner's -leaks on the VM and compiled
+// testdata/leaks/*.asuka, the conformance programs that recurse through
+// local fns, and the one whose values nest a million deep, run with the
+// runner's -leaks on the VM and compiled
 // to C: a test fails when objects it made outlive it. Each says what it
 // prints after "// Output:", the failures it expects included (a
 // reference cycle the checker warns of).
 func TestLeaks(t *testing.T) {
 	files, _ := filepath.Glob("testdata/leaks/*.asuka")
-	files = append(files, "testdata/run/localfns.asuka", "testdata/run/closures.asuka", "testdata/run/exits.asuka")
+	files = append(files, "testdata/run/localfns.asuka", "testdata/run/closures.asuka", "testdata/run/exits.asuka", "testdata/run/deepvalues.asuka")
 	runner := testRunner(t)
 	for _, path := range files {
 		path := path

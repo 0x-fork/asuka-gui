@@ -391,4 +391,219 @@ TEST(run_posted_nested) {
 	CHECK(strchr(ran_posted, 'a') && strchr(ran_posted, 'b') && strchr(ran_posted, 'c') && strchr(ran_posted, 'd'));
 }
 
+// ---- Deep values ----
+//
+// A value nests as deep as an app makes it: releasing, comparing,
+// hashing, copying (to a spawn's thread and back) and freezing one walk
+// it without recursing, so a chain a million long fits a spawn's 512 KB
+// stack, and a shallow one walks without allocating.
+
+static const uint8_t list_cons_kinds[] = {AK_K_INT, AK_K_REF};
+static const ak_case list_cases[] = {{.name = "empty"}, {.name = "cons", .nfields = 2, .kinds = list_cons_kinds}};
+static ak_shape list_shape = {.name = "List", .ncases = 2, .cases = list_cases};
+
+static const uint8_t tree_leaf_kinds[] = {AK_K_INT};
+static const uint8_t tree_node_kinds[] = {AK_K_REF, AK_K_REF};
+static const ak_case tree_cases[] = {{.name = "leaf", .nfields = 1, .kinds = tree_leaf_kinds}, {.name = "node", .nfields = 2, .kinds = tree_node_kinds}};
+static ak_shape tree_shape = {.name = "Tree", .ncases = 2, .cases = tree_cases};
+
+static const uint8_t link_kinds[] = {AK_K_INT, AK_K_REF};
+static const ak_shape link_shape = {.name = "Link", .nfields = 2, .kinds = link_kinds};
+
+// A list: each link's tail is its last field.
+static ak_obj *deep_list(int depth, int bottom) {
+	ak_enum *l = ak_enum_new(&list_shape, 1);
+	l->f[0].i = bottom;
+	l->f[1].p = ak_enum_new(&list_shape, 0);
+	for (int i = 1; i < depth; i++) {
+		ak_enum *c = ak_enum_new(&list_shape, 1);
+		c->f[0].i = i;
+		c->f[1].p = l;
+		l = c;
+	}
+	return &l->h;
+}
+
+// A tree deep on its left: each node's deep side isn't its last field,
+// so a walk keeps a frame for every level.
+static ak_obj *deep_tree(int depth, int bottom) {
+	ak_enum *t = ak_enum_new(&tree_shape, 0);
+	t->f[0].i = bottom;
+	for (int i = 1; i < depth; i++) {
+		ak_enum *leaf = ak_enum_new(&tree_shape, 0), *n = ak_enum_new(&tree_shape, 1);
+		leaf->f[0].i = i;
+		n->f[0].p = t;
+		n->f[1].p = leaf;
+		t = n;
+	}
+	return &t->h;
+}
+
+static ak_obj *deep_links(int depth, int bottom) {
+	ak_struct *l = ak_struct_new(&link_shape);
+	l->f[0].i = bottom;
+	for (int i = 1; i < depth; i++) {
+		ak_struct *c = ak_struct_new(&link_shape);
+		c->f[0].i = i;
+		c->f[1].p = l;
+		l = c;
+	}
+	return &l->h;
+}
+
+// Arrays in arrays, each with a string before the one it holds.
+static ak_obj *deep_arrays(int depth, int bottom) {
+	ak_arr *a = ak_arr_new(AK_K_INT, NULL, 1);
+	ak_arr_push(&a, (ak_val){.i = bottom});
+	for (int i = 1; i < depth; i++) {
+		ak_arr *c = ak_arr_new(AK_K_REF, NULL, 2);
+		ak_arr_push(&c, (ak_val){.p = ak_str_c("x")});
+		ak_arr_push(&c, (ak_val){.p = a});
+		a = c;
+	}
+	return &a->h;
+}
+
+// Maps in maps, a deleted entry in each.
+static ak_obj *deep_maps(int depth, int bottom) {
+	ak_map *m = ak_map_new(AK_K_REF, true, AK_K_REF, NULL);
+	ak_map_set(&m, (ak_val){.p = ak_str_c("v")}, (ak_val){.p = ak_str_from_int(bottom)});
+	for (int i = 1; i < depth; i++) {
+		ak_map *c = ak_map_new(AK_K_REF, true, AK_K_REF, NULL);
+		ak_str *gone = ak_str_c("gone");
+		ak_map_set(&c, (ak_val){.p = ak_retain(gone)}, (ak_val){.p = NULL});
+		ak_map_set(&c, (ak_val){.p = ak_str_c("in")}, (ak_val){.p = m});
+		ak_map_set(&c, (ak_val){.p = ak_str_c("none")}, (ak_val){.p = NULL});
+		ak_map_delete(&c, (ak_val){.p = gone});
+		ak_release(gone);
+		m = c;
+	}
+	return &m->h;
+}
+
+static ak_obj *deep_boxes(int depth, int bottom) {
+	ak_box *b = ak_box_new(AK_K_INT, (ak_val){.i = bottom});
+	for (int i = 1; i < depth; i++) b = ak_box_new(AK_K_REF, (ak_val){.p = b});
+	return &b->h;
+}
+
+typedef struct {
+	ak_obj *v;
+	bool copied, equal, same_hash;
+} deep_job;
+
+// What a spawn's worker does with a value: its copy in, compared and
+// hashed there, and a copy of that back out.
+static void *deep_worker(void *arg) {
+	deep_job *j = arg;
+	ak_val in = ak_deep_copy((ak_val){.p = j->v}, AK_K_REF);
+	j->copied = in.p != j->v;
+	j->equal = ak_obj_eq(in.p, j->v);
+	j->same_hash = ak_val_hash(in, AK_K_REF) == ak_val_hash((ak_val){.p = j->v}, AK_K_REF);
+	ak_val out = ak_deep_copy(in, AK_K_REF);
+	ak_release(in.p);
+	j->v = out.p;
+	return NULL;
+}
+
+static void check_deep(const char *what, ak_obj *(*build)(int, int), int depth) {
+	int64_t live = __atomic_load_n(&ak_obj_live, __ATOMIC_RELAXED);
+	ak_obj *a = build(depth, 0), *b = build(depth, 0), *c = build(depth, 1);
+	if (!ak_obj_eq(a, b) || ak_obj_eq(a, c)) T_FAIL("%s: compared wrong", what);
+	if (ak_val_hash((ak_val){.p = a}, AK_K_REF) != ak_val_hash((ak_val){.p = b}, AK_K_REF)) T_FAIL("%s: equal values hash apart", what);
+	// On a thread with a spawn worker's stack.
+	pthread_attr_t attr;
+	pthread_attr_init(&attr);
+	pthread_attr_setstacksize(&attr, 512 * 1024);
+	deep_job j = {.v = a};
+	pthread_t th;
+	if (pthread_create(&th, &attr, deep_worker, &j) != 0) {
+		T_FAIL("%s: no thread", what);
+		return;
+	}
+	pthread_join(th, NULL);
+	pthread_attr_destroy(&attr);
+	if (!j.copied || !j.equal || !j.same_hash || j.v == a || !ak_obj_eq(j.v, a)) T_FAIL("%s: copied across threads wrong", what);
+	// Frozen as a module's constant, then freed as its module unloads.
+	ak_frozen made = {0};
+	ak_freeze((ak_val){.p = b}, AK_K_REF, &made);
+	if (made.len < (uint32_t)depth || b->rc != AK_RC_IMMORTAL || !ak_obj_eq(a, b)) T_FAIL("%s: frozen wrong", what);
+	ak_frozen_free(&made);
+	ak_release(a);
+	ak_release(c);
+	ak_release(j.v);
+	int64_t left = __atomic_load_n(&ak_obj_live, __ATOMIC_RELAXED) - live;
+	if (left != 0) T_FAIL("%s: %lld objects left", what, (long long)left);
+}
+
+static void free_singletons(ak_shape *s) {
+	ak_enum **tab = s->singletons;
+	if (!tab) return;
+	for (uint16_t i = 0; i < s->ncases; i++) ak_free(tab[i]);
+	ak_free(tab);
+	s->singletons = NULL;
+}
+
+TEST(deep_values) {
+	enum { DEPTH = 1000000 };
+	check_deep("list", deep_list, DEPTH);
+	check_deep("tree", deep_tree, DEPTH);
+	check_deep("links", deep_links, DEPTH);
+	check_deep("arrays", deep_arrays, DEPTH);
+	check_deep("maps", deep_maps, DEPTH / 10);
+	check_deep("boxes", deep_boxes, DEPTH);
+	free_singletons(&list_shape);
+	free_singletons(&tree_shape);
+}
+
+// A value nested less deep than a walk's frames on the C stack compares
+// and hashes without allocating; releasing one never allocates.
+TEST(shallow_values_walk_without_allocating) {
+	ak_obj *a = deep_tree(16, 0), *b = deep_tree(16, 0);  // a frame a level: 15
+	ak_arr *xs = ak_arr_new(AK_K_REF, &pt_shape, 0), *ys = ak_arr_new(AK_K_REF, &pt_shape, 0);
+	for (int i = 0; i < 100; i++) {
+		ak_struct *p = ak_struct_new(&pt_shape), *q = ak_struct_new(&pt_shape);
+		p->f[0].i = q->f[0].i = i;
+		p->f[1].p = S("p");
+		q->f[1].p = S("p");
+		ak_arr_push(&xs, (ak_val){.p = p});
+		ak_arr_push(&ys, (ak_val){.p = q});
+	}
+	ak_obj *l = deep_list(1000, 0), *m = deep_list(1000, 0);
+	uint64_t n = ak_alloc_count;
+	CHECK(ak_obj_eq(a, b));
+	CHECK(ak_obj_eq(&xs->h, &ys->h));
+	CHECK(ak_obj_eq(l, m));  // a chain: one frame
+	CHECK(ak_val_hash((ak_val){.p = a}, AK_K_REF) == ak_val_hash((ak_val){.p = b}, AK_K_REF));
+	CHECK(ak_val_hash((ak_val){.p = xs}, AK_K_REF) == ak_val_hash((ak_val){.p = ys}, AK_K_REF));
+	CHECK(ak_val_hash((ak_val){.p = l}, AK_K_REF) == ak_val_hash((ak_val){.p = m}, AK_K_REF));
+	ak_release(a);
+	ak_release(b);
+	ak_release(xs);
+	ak_release(ys);
+	ak_release(l);
+	ak_release(m);
+	CHECK_EQ_INT(ak_alloc_count - n, 0);
+	free_singletons(&list_shape);
+}
+
+// A value with what it holds in other places hashes as it compares:
+// arrays and bytes by what they hold, maps by their keys in any order.
+TEST(hash_follows_equality) {
+	ak_arr *a = ak_arr_new(AK_K_REF, NULL, 0), *b = ak_arr_new(AK_K_REF, NULL, 0);
+	ak_arr_push(&a, (ak_val){.p = ak_bytes_new("xy", 2)});
+	ak_arr_push(&b, (ak_val){.p = ak_bytes_new("xy", 2)});
+	ak_map *m = ak_map_new(AK_K_REF, true, AK_K_INT, NULL), *n = ak_map_new(AK_K_REF, true, AK_K_INT, NULL);
+	ak_map_set(&m, (ak_val){.p = S("a")}, (ak_val){.i = 1});
+	ak_map_set(&m, (ak_val){.p = S("b")}, (ak_val){.i = 2});
+	ak_map_set(&n, (ak_val){.p = S("b")}, (ak_val){.i = 2});
+	ak_map_set(&n, (ak_val){.p = S("a")}, (ak_val){.i = 1});
+	ak_arr_push(&a, (ak_val){.p = m});
+	ak_arr_push(&b, (ak_val){.p = n});
+	CHECK(ak_obj_eq(&a->h, &b->h));
+	CHECK(ak_val_hash((ak_val){.p = a}, AK_K_REF) == ak_val_hash((ak_val){.p = b}, AK_K_REF));
+	ak_release(a);
+	ak_release(b);
+}
+
 T_MAIN()
