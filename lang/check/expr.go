@@ -71,6 +71,10 @@ func (c *Checker) expr1(e syntax.Expr, want Type) Type {
 					return cc.Comp.Type
 				}
 			}
+			if st := c.enclosingStatic(); st != nil {
+				c.errorf(e, "a static fn has no self: it's %s's, not a value's; take one as a parameter, or make it a method", st.name)
+				return Invalid
+			}
 			c.errorf(e, "self is only in a struct's, an enum's or a store's methods")
 			return Invalid
 		}
@@ -180,13 +184,7 @@ func (c *Checker) ident(e *syntax.Ident) Type {
 		return Invalid
 	}
 	if o == nil {
-		if d := c.defaultOf; d != nil && d.fieldIndex != nil {
-			if _, ok := d.fieldIndex[e.Name]; ok {
-				c.errorf(e, "a default can't read the struct's fields (%s): it's computed before there's a struct; a value made of others is a method, fn name() -> T = …", e.Name)
-				return Invalid
-			}
-		}
-		c.errorf(e, "unknown name %s%s", e.Name, c.suggest(e.Name))
+		c.unknownName(e)
 		return Invalid
 	}
 	c.info.Uses[e] = o
@@ -244,6 +242,32 @@ func typeValueHint(t *TypeName) string {
 		return " (a case is " + t.name + ".name)"
 	}
 	return ""
+}
+
+// unknownName reports a name that isn't in scope, saying why when it's
+// a field's or a method's where there's no self to have it.
+func (c *Checker) unknownName(e *syntax.Ident) {
+	if st := c.enclosingStatic(); st != nil && (st.Field(e.Name) != nil || st.Methods[e.Name] != nil) {
+		c.errorf(e, "%s is %s's, and a static fn has no self: take %s as a parameter, or make it a method", e.Name, st.name, aType(st.Type))
+		return
+	}
+	if d := c.defaultOf; d != nil && d.fieldIndex != nil {
+		if _, ok := d.fieldIndex[e.Name]; ok {
+			c.errorf(e, "a default can't read the struct's fields (%s): it's computed before there's a struct; a value made of others is a method, fn name() -> T = …", e.Name)
+			return
+		}
+	}
+	c.errorf(e, "unknown name %s%s", e.Name, c.suggest(e.Name))
+}
+
+// enclosingStatic is the type whose static fn is being checked, or nil.
+func (c *Checker) enclosingStatic() *TypeName {
+	for cc := c.ctx; cc != nil; cc = cc.Parent {
+		if cc.Func != nil {
+			return cc.Func.Static
+		}
+	}
+	return nil
 }
 
 // useVar notes a use of a local: from a closure, it's a capture.

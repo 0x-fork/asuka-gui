@@ -23,7 +23,7 @@ func (c *Checker) call(e *syntax.CallExpr, want Type) Type {
 			return Invalid
 		}
 		if o == nil {
-			c.errorf(fn, "unknown name %s%s", fn.Name, c.suggest(fn.Name))
+			c.unknownName(fn)
 			c.checkArgsLoosely(e)
 			return Invalid
 		}
