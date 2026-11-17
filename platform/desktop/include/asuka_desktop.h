@@ -263,7 +263,8 @@ typedef struct asuka_call asuka_call;
 bool asuka_call_cancelled(asuka_call *c);
 // asuka_call_on_cancel has fn(ctx) run on the main thread when the task
 // goes (at once if it has), unless the call has answered by then. ctx
-// must stay valid until the call answers.
+// must stay valid until the call answers: an answer from another thread
+// while fn runs returns once fn has, so ctx may go as soon as it returns.
 void asuka_call_on_cancel(asuka_call *c, void (*fn)(void *ctx), void *ctx);
 // asuka_call_fail answers the call with an error (taking e's strings).
 // Once, any thread; the call is gone after.

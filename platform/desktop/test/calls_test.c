@@ -1,8 +1,10 @@
 // calls_test.c: the registry's started calls (src/native.c) under
 // ThreadSanitizer (platform/desktop's TestCallsRace): a call's cancel
 // registered on a worker (as asuka_fetch registers its own) while the
-// task goes on the main thread, the call answered from the worker. The
-// core's half is stood in for here; posts run on a thread of their own.
+// task goes on the main thread, the call answered from the worker, which
+// frees the cancel's context as soon as it has (as asuka_desktop.h lets
+// it). The core's half is stood in for here; posts run on a thread of
+// their own.
 #if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)
 #define _POSIX_C_SOURCE 200809L
 #endif
@@ -65,14 +67,27 @@ typedef struct {
 	atomic_int *cancels;
 } job;
 
-static void cancelled(void *p) { atomic_fetch_add((atomic_int *)p, 1); }
+// The cancel reads its context, which the worker frees once it answered.
+static void cancelled(void *p) {
+	job *j = p;
+	atomic_int *cancels = j->cancels;
+	for (volatile int k = 0; k < 20000; k++) {  // long enough for the worker to answer meanwhile
+	}
+	atomic_fetch_add(cancels, 1);
+	atomic_fetch_add(j->cancels, 0);  // still j's, after
+}
+
+// registered: the worker's cancel is set, the task may go (odd runs wait
+// for it, so that the cancel and the answer meet).
+static atomic_int registered;
 
 static void *work(void *p) {
 	job *j = p;
-	asuka_call_on_cancel(j->call, cancelled, j->cancels);
+	asuka_call_on_cancel(j->call, cancelled, j);
+	atomic_store(&registered, 1);
 	asuka_writer w = asuka_call_begin();
 	asuka_call_done(j->call, &w);
-	free(j);
+	free(j);  // answered: the context may go
 	return NULL;
 }
 
@@ -99,10 +114,14 @@ int main(void) {
 	cb.native_new((const uint8_t *)"test/calls", 10, 0, out, sizeof out, &big);
 	uint64_t handle;
 	memcpy(&handle, out + 1, 8);
-	enum { runs = 200 };
+	enum { runs = 2000 };
 	for (uint64_t id = 1; id <= runs; id++) {
+		atomic_store(&registered, 0);
 		cb.native_start(handle, 0, NULL, 0, id);
-		cb.native_cancel(id);  // the task goes as the worker registers its cancel
+		if (id & 1)
+			while (!atomic_load(&registered)) {
+			}
+		cb.native_cancel(id);  // the task goes as the worker registers its cancel, or answers
 		pthread_join(worker, NULL);
 		run_posts();
 	}
