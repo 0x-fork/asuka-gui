@@ -126,7 +126,8 @@ static void module_hold(void *ctx, bool keep) {
 static test_module *module_new(const char *ret) {
 	test_module *m = calloc(1, sizeof *m);
 	m->rc = 1;
-	m->ret = strdup(ret);
+	m->ret = malloc(strlen(ret) + 1);
+	strcpy(m->ret, ret);
 	m->types = (ak_json_types){NULL, NULL, m, module_hold};
 	return m;
 }

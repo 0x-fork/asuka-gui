@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L  // nanosleep, fork and pipe under -std=c17
 #include "t.h"
 #include "base/base.h"
 #include "base/thread.h"
