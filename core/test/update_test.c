@@ -376,7 +376,7 @@ static uint64_t inflate_all(ak_inflate *z) {
 }
 
 TEST(archives_random) {
-	char *dir = keep(ak_fs_temp_dir());
+	char *dir = ak_fs_temp_dir();
 	size_t n;
 	uint8_t *gz = slurp(D "new.tar.gz", &n);
 	REQUIRE(gz && n > 18);
@@ -468,6 +468,7 @@ TEST(archives_random) {
 	}
 	free(mut), free(tar), free(buf), free(gz);
 	ak_fs_remove_tree(dir);
+	ak_free(dir);
 }
 
 // A field of an entry of the delta's index (JSON as Go writes it: no

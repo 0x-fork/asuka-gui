@@ -300,8 +300,14 @@ typedef struct ak_opaque {
 void *ak_opaque_new(ak_tag tag, size_t size, void (*drop)(ak_opaque *));
 
 // ---- Generic operations, by kind ----
+//
+// Each walks a value however deep it nests (a list as an enum, a million
+// links long) in bounded C stack: a spawn's thread has 512 KB. One
+// nested less deep than a walk's frames on the C stack takes no
+// allocation (obj.c); releasing never allocates.
 
 bool ak_val_eq(ak_val a, ak_val b, ak_kind k);
+// ak_val_hash hashes as ak_val_eq compares: equal values hash the same.
 uint64_t ak_val_hash(ak_val v, ak_kind k);
 bool ak_obj_eq(const ak_obj *a, const ak_obj *b);
 // ak_deep_copy copies a value for another thread: every object it holds
