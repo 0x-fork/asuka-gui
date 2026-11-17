@@ -24,12 +24,13 @@ component Methods {
   let open = mark("filter", todos.filter(t => !t.done))
   let titles = mark("map", todos.map(t => t.title))
   let byTitle = mark("sorted", todos.sorted(by: (a, b) => a.title < b.title))
+  let whole = mark("whole", todos.count(t => t != Todo(id: 0, title: "")))
 
   Column {
     Text("{doneCount} {anyDone} {allDone} {firstDone?.title ?? "-"} {firstDoneAt ?? -1}")
     Text("open {open.count()}: {open.map(t => t.title).joined(",")}")
     Text("titles {titles.joined(",")}")
-    Text("sorted {byTitle.map(t => t.title).joined(",")}")
+    Text("sorted {byTitle.map(t => t.title).joined(",")} {whole}")
     Button("retitle") { on press { todos[2].title = "z" } }
     Button("toggle") { on press { todos[1].done = true } }
     Button("push") { on press { todos.push(Todo(id: 4, title: "d")) } }
@@ -38,13 +39,13 @@ component Methods {
 
 test "a method follows what its closure reads" {
   let app = mount(Methods())
-  app.expect("0 false false - -1", "open 3: c,b,a", "titles c,b,a", "sorted a,b,c")
+  app.expect("0 false false - -1", "open 3: c,b,a", "titles c,b,a", "sorted a,b,c 3")
   print("-- retitle")
   app.tap("retitle")
-  app.expect("open 3: c,b,z", "titles c,b,z", "sorted b,c,z")
+  app.expect("open 3: c,b,z", "titles c,b,z", "sorted b,c,z 3")
   print("-- toggle")
   app.tap("toggle")
-  app.expect("1 true false b 1", "open 2: c,z", "sorted b,c,z")
+  app.expect("1 true false b 1", "open 2: c,z", "sorted b,c,z 3")
   print("-- push")
   app.tap("push")
   app.expect("open 3: c,z,d", "titles c,b,z,d")
@@ -59,10 +60,12 @@ test "a method follows what its closure reads" {
 // filter
 // map
 // sorted
+// whole
 // -- retitle
 // filter
 // map
 // sorted
+// whole
 // -- toggle
 // count
 // any
@@ -70,6 +73,7 @@ test "a method follows what its closure reads" {
 // index
 // filter
 // sorted
+// whole
 // -- push
 // count
 // any
@@ -79,4 +83,5 @@ test "a method follows what its closure reads" {
 // filter
 // map
 // sorted
+// whole
 // ok a method follows what its closure reads

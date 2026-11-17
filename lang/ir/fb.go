@@ -402,6 +402,10 @@ func (b *fb) declare(v *check.Var, init int) int {
 
 // readVar is v's value: its register (borrowed), or a temp.
 func (b *fb) readVar(v *check.Var, n syntax.Node) int {
+	if pv := b.pathVars[v]; pv != nil {
+		// A loop's element (pathloops.go): read whole, by its path.
+		return b.pathVarRead(pv, b.kind(v.Type), -1)
+	}
 	r, ok := b.vars[v]
 	if !ok {
 		b.l.errorf(n, "internal: %s has no register in %s", v.Name(), b.f.Name)
@@ -412,8 +416,6 @@ func (b *fb) readVar(v *check.Var, n syntax.Node) int {
 		t := b.temp(b.kind(v.Type))
 		b.emit(op("VGET"), t, r)
 		return t
-	case b.pathVars[v] != nil:
-		return b.pathVarRead(b.pathVars[v], b.kind(v.Type), -1)
 	case v.Kind == check.RowItem, b.l.prog.AccessorVar(v):
 		t := b.temp(b.kind(v.Type))
 		b.emit(op("AGET"), t, r)
