@@ -96,7 +96,40 @@ void ak_post(ak_cb cb, void *ctx) {
 	if (first && w) w();
 }
 
+// run_nested runs what's posted when a posted callback had the host run
+// them again (a modal dialog's loop, which handles the host's wake): the
+// outer run is going through running, so these are taken whole into a
+// vector of their own.
+static void run_nested(void) {
+	for (;;) {
+		ak_mutex_lock(&post_mu);
+		AK_VEC(item) t = {posted.data, posted.len, posted.cap};
+		posted.data = NULL;
+		posted.len = posted.cap = 0;
+		ak_mutex_unlock(&post_mu);
+		for (uint32_t i = 0; i < t.len; i++) t.data[i].cb(t.data[i].ctx);
+		bool done = t.len == 0;
+		ak_mutex_lock(&post_mu);
+		if (!posted.data) {  // its buffer back, for the next posts
+			posted.data = t.data;
+			posted.cap = t.cap;
+			t.data = NULL;
+		}
+		ak_mutex_unlock(&post_mu);
+		ak_vec_free(&t);
+		if (done) return;
+	}
+}
+
+static int running_posted;  // main thread
+
 void ak_sched_run_posted(void) {
+	if (running_posted) {
+		run_nested();
+		ak_sched_run();
+		return;
+	}
+	running_posted++;
 	for (;;) {
 		ak_mutex_lock(&post_mu);
 		// Swap the queues so callbacks can post again without deadlock.
@@ -112,6 +145,7 @@ void ak_sched_run_posted(void) {
 		for (uint32_t i = 0; i < running.len; i++) running.data[i].cb(running.data[i].ctx);
 		running.len = 0;
 	}
+	running_posted--;
 	ak_sched_run();
 }
 

@@ -1,5 +1,6 @@
 #include "t.h"
 #include "rt/rt.h"
+#include "rt/sched.h"
 
 #include <pthread.h>
 #include <stdatomic.h>
@@ -237,6 +238,31 @@ TEST(constants_made_once_across_threads) {
 		CHECK(race_strs[i][1] != NULL && race_strs[i][1] == ak_str_from_bool(true));
 		CHECK(race_strs[i][2] != NULL && race_strs[i][2] == ak_str_from_bool(false));
 	}
+}
+
+// Posted callbacks run when one of them has the host run them again (a
+// modal dialog's loop, which handles the host's wake): each once, none
+// lost.
+static char ran_posted[16];
+static size_t nran_posted;
+
+static void note(void *ctx) { ran_posted[nran_posted++] = (char)(intptr_t)ctx; }
+
+static void nests(void *ctx) {
+	note(ctx);
+	ak_post(note, (void *)(intptr_t)'d');
+	ak_sched_run_posted();
+}
+
+TEST(run_posted_nested) {
+	ak_post(nests, (void *)(intptr_t)'a');
+	ak_post(note, (void *)(intptr_t)'b');
+	ak_post(note, (void *)(intptr_t)'c');
+	ak_sched_run_posted();
+	ak_sched_run_posted();
+	ran_posted[nran_posted] = 0;
+	CHECK_EQ_INT(nran_posted, 4);
+	CHECK(strchr(ran_posted, 'a') && strchr(ran_posted, 'b') && strchr(ran_posted, 'c') && strchr(ran_posted, 'd'));
 }
 
 T_MAIN()
