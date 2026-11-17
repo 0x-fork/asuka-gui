@@ -238,6 +238,7 @@ int ak_vm_interp(ak_co *co, ak_val *out) {
 		case AK_OP_JF: if (!R[a[0]].i) pc += off32(a + 1); break;
 		case AK_OP_JNONE: if (!R[a[0]].p) pc += off32(a + 1); break;
 		case AK_OP_JSOME: if (R[a[0]].p) pc += off32(a + 1); break;
+		case AK_OP_ISSHAPE: R[a[0]].i = ak_op_isshape(R[a[1]].p, &M->shapes[off32(a + 2)].s); break;
 
 		case AK_OP_CALL: {
 			const ak_func *g = &M->funcs[off32(a + 1)];

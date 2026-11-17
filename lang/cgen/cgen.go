@@ -555,6 +555,8 @@ func (g *gen) insn(f *bc.FuncDef, in insn, h string) error {
 		w("if (!R[%d].p) goto L%d;", a[0], a[1])
 	case "JSOME":
 		w("if (R[%d].p) goto L%d;", a[0], a[1])
+	case "ISSHAPE":
+		w("R[%d].i = ak_op_isshape(R[%d].p, &M->shapes[%d].s);", a[0], a[1], a[2])
 	case "CALL":
 		callee := &g.m.Funcs[a[1]]
 		if g.async && g.body[a[1]] != syncBody {

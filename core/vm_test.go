@@ -372,6 +372,60 @@ func TestVMClosuresStructsArrays(t *testing.T) {
 	expect(t, got, "1", "2", "milk!, eggs!, bread!", "4", "3", "ok values")
 }
 
+// ISSHAPE tests an interface's value's type: a struct's or an enum's
+// shape, and nothing else (none, a string, another shape).
+func TestVMTypeTests(t *testing.T) {
+	m := module()
+	addInit(m)
+	m.Shapes = []bc.ShapeDef{
+		{Name: "Circle", Fields: []bc.Field{{Name: "r", Kind: bc.KFloat, Shape: -1}}},
+		{Name: "Square", Fields: []bc.Field{{Name: "side", Kind: bc.KFloat, Shape: -1}}},
+		{Name: "Unit", Cases: []bc.Case{{Name: "small"}, {Name: "big", Fields: []bc.Field{{Name: "n", Kind: bc.KInt, Shape: -1}}}}},
+	}
+	f := newFn(m, "t")
+	x, r, i := f.reg(bc.KFloat), f.reg(bc.KRef), f.reg(bc.KInt)
+	vals := []int{f.reg(bc.KRef), f.reg(bc.KRef), f.reg(bc.KRef), f.reg(bc.KRef), f.reg(bc.KRef), f.reg(bc.KRef)}
+	m.Floats = append(m.Floats, 2)
+	f.op("KFLOAT", x, len(m.Floats)-1)
+	f.op("NEWS", vals[0], 0, x)
+	f.op("NEWS", vals[1], 1, x)
+	f.op("NEWE", vals[2], 2, 0, r) // a payloadless case: a shared immortal
+	f.op("KSMALL", i, 7)
+	f.op("NEWE", vals[3], 2, 1, i)
+	f.op("KNONE", vals[4])
+	f.op("KSTR", vals[5], f.str("Circle"))
+	is := f.reg(bc.KBool)
+	for _, v := range vals {
+		for s := range m.Shapes {
+			f.op("ISSHAPE", is, v, s)
+			f.print(is, bc.KBool)
+		}
+	}
+	// A jump on it, as a pattern's test is.
+	f.op("ISSHAPE", is, vals[1], 1)
+	j := f.op("JF", is, 0)
+	f.print(x, bc.KFloat)
+	f.a.PatchJump(j, f.pc())
+	f.op("ISSHAPE", is, vals[0], 1)
+	j = f.op("JF", is, 0)
+	f.print(x, bc.KFloat)
+	f.a.PatchJump(j, f.pc())
+	f.op("RET0")
+	test(m, "types", f.done(bc.KVoid, 0))
+	got, err := run(t, m, "-test")
+	if err != nil {
+		t.Fatalf("%v\n%s", err, got)
+	}
+	expect(t, got,
+		"true", "false", "false",
+		"false", "true", "false",
+		"false", "false", "true",
+		"false", "false", "true",
+		"false", "false", "false",
+		"false", "false", "false",
+		"2", "ok types")
+}
+
 func TestVMErrorsAndHandlers(t *testing.T) {
 	m := module()
 	addInit(m)

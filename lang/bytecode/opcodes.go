@@ -119,6 +119,7 @@ var Ops = []OpDef{
 	{"JF", []Operand{Reg, Off}, "jumps when a is false"},
 	{"JNONE", []Operand{Reg, Off}, "jumps when a (a reference) is none"},
 	{"JSOME", []Operand{Reg, Off}, "jumps when a (a reference) isn't none"},
+	{"ISSHAPE", []Operand{Reg, Reg, Shape}, "a = b (a reference: an interface's value) is a struct or an enum of shape s (false for none)"},
 	{"CALL", []Operand{Reg, Func, Reg, Imm}, "a = f(n arguments from register b); a throwing f unwinds to the nearest handler"},
 	{"CALLC", []Operand{Reg, Reg, Reg, Imm}, "a = the closure b called with n arguments from register c"},
 	{"CALLB", []Operand{Reg, Built, Reg, Imm}, "a = the builtin called with n arguments from register b"},
