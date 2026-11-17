@@ -371,6 +371,12 @@ func newWebDev(app *asukaApp, work string) (*devServer, *devLoop, error) {
 		s.mu.Unlock()
 		s.send("module", stamp)
 	})
+	loop.restarts = append(loop.restarts, func() {
+		s.mu.Lock()
+		stamp := s.moduleStamp
+		s.mu.Unlock()
+		s.send("restart", stamp)
+	})
 	loop.failed = append(loop.failed, func(msg string) { s.send("failed", msg) })
 	loop.fixed = append(loop.fixed, func() { s.send("fixed", "") })
 	loop.mu.Unlock()
@@ -482,12 +488,12 @@ func (s *devServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Write(m)
 	case p == "/__asuka/reloaded" && r.Method == http.MethodPost:
 		var rep struct {
-			First  bool
-			Kept   uint32
-			Micros uint32
+			First, Restarted bool
+			Kept             uint32
+			Micros           uint32
 		}
 		if json.NewDecoder(r.Body).Decode(&rep) == nil {
-			s.loop.report(nil, rep.First, rep.Kept, rep.Micros)
+			s.loop.report(nil, rep.First, rep.Restarted, rep.Kept, rep.Micros)
 		}
 	case p == "/sw.js":
 		b, err := webWorker(s.src, map[string]any{"name": s.app.cfg.ID, "title": s.app.displayName(), "assets": "assets"})
