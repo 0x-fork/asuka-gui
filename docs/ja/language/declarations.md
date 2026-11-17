@@ -4,6 +4,7 @@
 let pi = 3.14159             // 定数
 var total = 0                // 変数（関数とハンドラーの中で）
 state count = 0              // 状態：UI が追従する値
+state shown = count          // 書き込まれるまで count に追従する状態
 ```
 
 型は推論されます。書いたほうがわかりやすいところでは明示します（`let ids: [int] = []`）。

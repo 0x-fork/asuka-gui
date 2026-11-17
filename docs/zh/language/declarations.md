@@ -4,6 +4,7 @@
 let pi = 3.14159             // 常量
 var total = 0                // 变量（在函数和处理函数中）
 state count = 0              // 状态：界面会跟随变化的值
+state shown = count          // 在被写入之前跟随 count：跟随的状态
 ```
 
 类型会自动推断；在有助于阅读的地方可以写出来：`let ids: [int] = []`。

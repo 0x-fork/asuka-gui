@@ -116,7 +116,9 @@ app { Greeting("Ana") { excited: true } }
 
 A component's header takes its parameters; its block holds its props,
 its state and its views. What reads state is updated when it changes,
-and only that: no diffing. `bind` makes a two-way binding, `on press`
+and only that: no diffing. A state made from what changes
+(`state draft = name`) follows it until it's written; `peek(name)`
+reads it once. `bind` makes a two-way binding, `on press`
 handles an event, and `if` and `for` decide which views there are.
 [Components](language/components.md), [Stores](language/stores.md) for
 state several components share.

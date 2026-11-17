@@ -139,7 +139,8 @@ Checkbox {
 A component's body is **not** code that runs once and is forgotten.
 Each line declares something that stays true:
 
-- `state x = …` is state the component owns.
+- `state x = …` is state the component owns. When its value reads what
+  changes, it follows that ([State that follows](#state-that-follows)).
 - `let y = …` is derived from what it reads, and kept up to date
   (computed only when read, and only again when what it read changed).
 - Every prop value of every element is kept up to date the same way:
@@ -151,6 +152,50 @@ Each line declares something that stays true:
 When `count` changes, the only thing that runs again is what read it:
 that `Text`'s text, and the `if`. No component runs again, and the
 platform's views are touched only where something changed.
+
+## State that follows
+
+A state's value says what it starts as. When that value reads what
+changes (a parameter, a prop, other state, a `let`), the state follows
+it: it's that value until it's written, and that value again when what
+it read changes.
+
+```asuka
+component Edit(title: string) {
+  state draft = title          // title until it's typed in; title again when it changes
+  state first = peek(title)    // title once: a seed
+
+  TextField { bind text: draft }
+}
+```
+
+`state x(a, b) = e` follows `a` and `b` only: `e` again when one of them
+changes, whatever else `e` reads.
+
+```asuka
+let results = items.filter(i => i.name.contains(query))
+state highlighted(results) = 0                  // back to the top when the results change
+```
+
+In its own value, a state's name is its current value, as an optional
+(`none` the first time). That keeps a value while it still holds, and
+replaces it when it doesn't; the state's type is written:
+
+```asuka
+// The selection stays while it's in the results, and moves to the
+// first one when it isn't.
+state selected: string? = if let s = selected, results.any(r => r.id == s) { s } else { results.first()?.id }
+```
+
+In one handler, a write and a change of what the state follows: the
+later one wins. Read right after what it follows changed, it's already
+the new value.
+
+`peek(e)` is `e`, read without following it, wherever a value is
+followed: `Text("{count} (from {peek(count)})")` updates when `count`
+changes, and its second read stays as it was. Handlers, tasks, an
+`effect(…)`'s body and tests follow nothing, so `peek` there is an
+error.
 
 ## Handlers and statements
 
@@ -261,17 +306,43 @@ row that moved is moved, not rebuilt. Directly under a `List`, rows exist
 only while they're on screen, so a list of 100,000 costs what's
 visible.
 
+A `for` over items that change says what identifies one, with `key`:
+without it, a row's state would stay where it is while the items under
+it move. Some need none:
+
+```asuka
+for i in 0..<count { Dot(i) }                      // a range: the number is the key
+for tag in tags { Chip(tag) }                      // a set: the element is
+for day in ["Mon", "Tue", "Wed"] { Text(day) }     // constant: nothing moves
+for (i, x) in xs.enumerated() key i { Slot(i, x) } // the position, on purpose
+```
+
 ## Effects and tasks
 
 ```asuka
 effect { storage.set("draft", draft) }        // now, and when draft changes
+effect(selected) { log(selected, user.plan) } // now, and when selected changes: only
 task { try? await mailbox.refresh() }         // once, while the component is shown
 task(query) { results = await search(query) } // and again when query changes
+task(user.id) { profile = try await load(user.id) } // when the id changes, not the name
 ```
 
-An effect runs at once and again whenever what it read changes. A task
-is async ([Async](async.md#async)): it starts when the component appears, restarts
+An effect runs at once and again whenever what it read changes, through
+the functions it calls. `effect(a, b)` runs again when `a` or `b`
+changes, and its body follows nothing it reads. A task is async
+([Async](async.md#async)): it starts when the component appears, restarts
 when what's in its parentheses changes (cancelling the last run), and
-is cancelled when the component goes. The `app` block takes them too:
-the app's own, for as long as it runs (a refresh loop, a setting that
-follows the app's state: `effect { setColorScheme(scheme) }`).
+is cancelled when the component goes. What's in the parentheses of an
+effect or a task is compared: a change that leaves it equal does
+nothing, so `task(user.id)` goes on when the user's name changes. The
+`app` block takes them too: the app's own, for as long as it runs (a
+refresh loop, a setting that follows the app's state: `effect {
+setColorScheme(scheme) }`).
+
+An effect may write state, but not state it follows: `effect { if n > 3
+{ n = 3 } }` would run again after its own write, a pass late, after a
+handler already saw `n` at 4. The compiler says so, and what says it
+instead: a state that follows (`state n: int = min(n ?? 0, 3)`,
+`state selected(results) = 0`), an `effect(…)` that follows something
+else, or the handler that changes what it reads. A task may write what
+it follows: it restarts by cancelling, and ends.

@@ -86,6 +86,12 @@ Writing it (`count += 1`, `todos.push(t)`, `todos[0].done = true`)
 updates what reads it, and only that. A write of the value it already
 has does nothing.
 
+A state whose value reads what changes follows it: `state draft = title`
+is `title` until it's written, and `title` again when `title` changes.
+`state draft = peek(title)` takes `title` once, and `state page(query) =
+1` goes back to 1 whenever `query` changes ([State that
+follows](language/components.md#state-that-follows)).
+
 State in a component is the component's: each instance has its own, and
 it goes with the instance. `state` at the top of a file is the app's: one
 for the whole app. A **store** groups state with the functions that
@@ -142,16 +148,22 @@ Writes in a handler show together when it ends (or when it reaches an
 
 ## Effects and tasks
 
-An `effect` runs code now, and again when what it read changes:
+An `effect` runs code now, and again when what it read changes; with
+values in parentheses, when they change, and only then:
 
 ```asuka
 effect { storage.set("draft", draft) }
+effect(selected) { analytics.log("selected", selected) }
 ```
+
+An effect can't write state it follows (it would run again after its
+own write): the compiler says so, and what says it instead.
 
 A `task` is async work a component does while it's shown: it starts when
 the component appears, and is cancelled when it goes. With values in
 parentheses, it starts again when they change, cancelling the run
-before:
+before. What's in the parentheses is compared: `task(user.id)` starts
+again when the id changes, not when the user's name does.
 
 ```asuka
 task { messages = try await api.inbox() }
@@ -189,7 +201,9 @@ for todo in todos key todo.id {
 
 A `for` keeps a row per key: a row whose item changed updates its
 bindings, a new item makes a row, a removed one disposes its row, and a
-row that moved is moved, not made again.
+row that moved is moved, not made again. A `for` over items that change
+needs its `key`; a range, a set and a constant list key their rows by
+what they are.
 
 ### When something fails
 
