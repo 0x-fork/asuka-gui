@@ -665,6 +665,11 @@ func (c *Checker) typeExpr(t syntax.Type) Type {
 			c.errorf(t, "void? isn't a type: use bool")
 			return Invalid
 		}
+		if _, ok := unparenType(t.Elem).(*syntax.OptionalType); ok && IsOptional(e) {
+			// Optionals don't nest (a generic T? of an optional T is that
+			// T); written twice, it says what it isn't.
+			c.errorf(t, "%s? is the same as %s: one ? is enough", typeString(e), typeString(e))
+		}
 		return MakeOptional(e)
 	case *syntax.TupleType:
 		if len(t.Elems) == 0 {
@@ -933,4 +938,15 @@ func (c *Checker) constraints(p *TypeParam, list []syntax.Type) {
 		written = append(written, typeString(n))
 	}
 	p.written = strings.Join(written, " & ")
+}
+
+// unparenType is t without the parentheses around it: (T) is T.
+func unparenType(t syntax.Type) syntax.Type {
+	for {
+		tt, ok := t.(*syntax.TupleType)
+		if !ok || len(tt.Elems) != 1 {
+			return t
+		}
+		t = tt.Elems[0]
+	}
 }
