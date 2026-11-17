@@ -807,4 +807,137 @@ TEST(window_state_action_flyout) {
 	ak_buf_free(&b);
 }
 
+// Every decoder of bytes from a host (a batch, an event, the payloads)
+// on bytes cut short, mutated and random: they read only what's there
+// (each gets a copy exactly its size, so ASan sees a byte past it) and
+// say what they couldn't read, never more.
+static uint64_t fuzz_state = 88172645463325252u;
+static uint32_t fuzz_rand(void) {
+	fuzz_state ^= fuzz_state << 13;
+	fuzz_state ^= fuzz_state >> 7;
+	fuzz_state ^= fuzz_state << 17;
+	return (uint32_t)fuzz_state;
+}
+
+static void fuzz_decode(const uint8_t *b, size_t n) {
+	ak_buf out = {0};
+	ak_batch_reader br;
+	ak_op op;
+	ak_batch_reader_init(&br, b, n);
+	while (ak_batch_next(&br, &op)) {
+		ak_op_format(&out, &op);
+		ak_op_dump(&out, &op);
+		ak_op_format_kind(&out, &op, (ak_view_kind)(fuzz_rand() % 64));
+	}
+	ak_event e;
+	ak_event_decode(b, n, &e);
+	ak_action_vec av = {0};
+	ak_decode_actions(b, n, &av);
+	ak_vec_free(&av);
+	ak_menu_entry_vec mv = {0};
+	ak_decode_menu(b, n, &mv);
+	ak_vec_free(&mv);
+	ak_menu_title_vec mt = {0};
+	ak_decode_menu_bar(b, n, &mt, &mv);
+	ak_vec_free(&mt);
+	ak_vec_free(&mv);
+	ak_alert_field_vec af = {0};
+	ak_decode_alert_fields(b, n, &af);
+	ak_vec_free(&af);
+	uint32_t index;
+	ak_span sp, sp2;
+	ak_decode_field_changed(b, n, &index, &sp);
+	ak_key_vec kv = {0};
+	ak_decode_keys(b, n, &kv);
+	for (uint32_t i = 0; i < kv.len; i++) {
+		char t[4];
+		ak_key_name(kv.data[i].name, t);
+	}
+	ak_vec_free(&kv);
+	ak_item_vec iv = {0};
+	ak_decode_items(b, n, &iv);
+	for (uint32_t i = 0; i < iv.len; i++) ak_match_mime(&iv.data[i].text, 1, iv.data[i].mime);
+	ak_vec_free(&iv);
+	ak_decode_drag_items(b, n, &iv);
+	ak_vec_free(&iv);
+	ak_drop d;
+	ak_decode_drop(b, n, &d, &iv);
+	ak_vec_free(&iv);
+	ak_str_vec sv = {0};
+	ak_decode_strings(b, n, &sv);
+	for (uint32_t i = 0; i < sv.len; i++) ak_fmt_quote(&out, sv.data[i]);
+	ak_vec_free(&sv);
+	ak_rich_run_vec rv = {0};
+	ak_decode_rich(b, n, &rv);
+	ak_vec_free(&rv);
+	ak_sidebar_heading_vec sh = {0};
+	ak_sidebar_item_vec si = {0};
+	ak_decode_sidebar(b, n, &sh, &si);
+	ak_vec_free(&sh);
+	ak_vec_free(&si);
+	ak_window_config wc = ak_decode_window_config(b, n);
+	ak_fmt_quote(&out, wc.title);
+	ak_fmt_quote(&out, wc.state_key);
+	ak_decode_window_state(b, n);
+	uint8_t a;
+	float x, y;
+	ak_decode_window_action(b, n, &a, &x, &y);
+	ak_flyout f;
+	ak_decode_flyout(b, n, &f);
+	ak_location l;
+	ak_decode_location(b, n, &l);
+	ak_decode_location_event(b, n, &sp, &sp2);
+	ak_buf_free(&out);
+}
+
+// fuzz_one decodes a copy of b exactly n bytes long.
+static void fuzz_one(const uint8_t *b, size_t n) {
+	uint8_t *c = malloc(n ? n : 1);
+	if (n) memcpy(c, b, n);
+	fuzz_decode(c, n);
+	free(c);
+}
+
+TEST(fuzz_decoders) {
+	// Seeds: what the encoders write (the golden files), cut short at
+	// every length, then mutated.
+	static const char *const seeds[] = {"golden.bin", "events.bin", "actions.bin", "alertfields.bin", "fieldchanged.bin", "sidebar.bin"};
+	for (size_t s = 0; s < AK_LEN(seeds); s++) {
+		ak_buf b = {0};
+		if (!golden(seeds[s], &b)) continue;
+		for (size_t n = 0; n <= b.len; n++) fuzz_one(b.data, n);
+		for (int it = 0; it < 3000; it++) {
+			uint8_t *m = malloc(b.len ? b.len : 1);
+			memcpy(m, b.data, b.len);
+			for (uint32_t k = 1 + fuzz_rand() % 4; b.len && k > 0; k--) {
+				size_t at = fuzz_rand() % b.len;
+				switch (fuzz_rand() % 3) {
+				case 0: m[at] = (uint8_t)fuzz_rand(); break;
+				case 1: m[at] ^= (uint8_t)(1u << (fuzz_rand() % 8)); break;
+				default: m[at] = (uint8_t)(fuzz_rand() % 3 == 0 ? 0xff : fuzz_rand() % 4); break;
+				}
+			}
+			fuzz_one(m, b.len ? fuzz_rand() % (b.len + 1) : 0);
+			free(m);
+		}
+		ak_buf_free(&b);
+	}
+	// Random bytes, small numbers more often, so lengths and counts often
+	// fit; a batch's header often a plausible count and op.
+	uint8_t r[96];
+	for (int it = 0; it < 30000; it++) {
+		size_t n = fuzz_rand() % sizeof r;
+		for (size_t i = 0; i < n; i++) {
+			uint32_t k = fuzz_rand() % 8;
+			r[i] = k < 4 ? (uint8_t)(fuzz_rand() % 4) : k < 6 ? (uint8_t)(fuzz_rand() % 16) : (uint8_t)fuzz_rand();
+		}
+		if (n >= 5 && (fuzz_rand() & 1)) {
+			r[0] = (uint8_t)(fuzz_rand() % 4);
+			r[1] = r[2] = r[3] = 0;
+			r[4] = (uint8_t)(1 + fuzz_rand() % 10);
+		}
+		fuzz_one(r, n);
+	}
+}
+
 T_MAIN()

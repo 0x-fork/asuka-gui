@@ -230,4 +230,51 @@ TEST(callback_short_arguments) {
 	ak_release(obj);
 }
 
+// Answers from the native side, random: decoded, then released as their
+// descriptor's kind, error or not (as ak_native_invoke does), nothing is
+// read past the answer, freed wrongly or leaked.
+static uint64_t fuzz_state = 0x9e3779b97f4a7c15u;
+static uint32_t fuzz_rand(void) {
+	fuzz_state ^= fuzz_state << 13;
+	fuzz_state ^= fuzz_state >> 7;
+	fuzz_state ^= fuzz_state << 17;
+	return (uint32_t)fuzz_state;
+}
+
+static ak_kind desc_kind(const char *d) {
+	switch (*d) {
+	case 'i': return AK_K_INT;
+	case 'f': return AK_K_FLOAT;
+	case 'b': return AK_K_BOOL;
+	case 'v': return AK_K_VOID;
+	default: return AK_K_REF;
+	}
+}
+
+TEST(fuzz_answers) {
+	static const char *const descs[] = {"i", "f", "b", "s", "y", "o", "?i", "?f", "?b", "?s", "?o", "[i", "[s", "[?i", "[[s", "{s", "{?i", "{[s", "?[s", "?{i", "[{?s"};
+	int64_t live = ak_obj_live;
+	uint8_t r[48];
+	for (int it = 0; it < 40000; it++) {
+		size_t n = fuzz_rand() % sizeof r;
+		for (size_t i = 0; i < n; i++) {
+			uint32_t k = fuzz_rand() % 8;
+			r[i] = k < 5 ? (uint8_t)(fuzz_rand() % 3) : (uint8_t)fuzz_rand();
+		}
+		uint8_t *c = malloc(n ? n : 1);
+		if (n) memcpy(c, r, n);
+		const char *d = descs[fuzz_rand() % AK_LEN(descs)];
+		ak_reader rd = {c, n, 0, false};
+		ak_val v = ak_native_decode(&rd, d, NULL);
+		void *e = ak_error_take();
+		if (e) {
+			if (v.p != NULL && desc_kind(d) == AK_K_REF) T_FAIL("%s: a value and an error", d);
+			ak_release(e);
+		}
+		ak_release_val(v, desc_kind(d));
+		free(c);
+	}
+	CHECK_EQ_INT(ak_obj_live, live);
+}
+
 T_MAIN()
