@@ -566,10 +566,8 @@ func Dedent(s string) string {
 
 // setOf is Set<elem>, its elements Hashable (at says where it's
 // written).
-func (c *Checker) setOf(elem Type, at syntax.Node) Type {
-	if !IsInvalid(elem) && !IsHashable(elem) {
-		c.errorf(at, "a Set's elements are ints, strings, bools or enums without payloads, not %s%s", typeString(elem), hashableHint(elem))
-	}
+func (c *Checker) setOf(elem Type, at syntax.Node, written bool) Type {
+	c.checkHashable(elem, at, "a Set's element", written)
 	return &Set{elem}
 }
 
@@ -669,9 +667,7 @@ func (c *Checker) mapLit(e *syntax.MapExpr, want Type) Type {
 	if key == nil {
 		key = c.valueType(c.expr(e.Entries[0].Key, nil), e.Entries[0].Key)
 		val = c.valueType(c.expr(e.Entries[0].Value, nil), e.Entries[0].Value)
-		if !IsInvalid(key) && !IsHashable(key) {
-			c.errorf(e.Entries[0].Key, "a map's keys are ints, strings, bools or enums without payloads, not %s%s", typeString(key), hashableHint(key))
-		}
+		c.checkHashable(key, e.Entries[0].Key, "a map's key", false)
 	}
 	for _, en := range e.Entries {
 		c.assign(en.Key, key, "a key of "+typeString(&Map{key, val}))
@@ -1560,12 +1556,8 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 			c.errorf(e, "can't compare %s with %s", aType(xt), aType(yt))
 			return Bool
 		}
-		if !IsComparable(xt) {
-			if p, ok := xt.(*TypeParam); ok {
-				c.errorf(e, "%s can't be ordered with %s: constrain it, <%s: Comparable>", p.Name, e.Op, p.Name)
-			} else {
-				c.errorf(e, "%s can't be ordered with %s: ints, floats, strings and durations can, and a struct with fn compare(o: T) -> int", typeString(xt), e.Op)
-			}
+		if why := c.whyNotComparable(xt); why != "" {
+			c.errorf(e, "%s can't be ordered with %s: %s", typeString(xt), e.Op, why)
 		}
 		return Bool
 	case syntax.ADD:

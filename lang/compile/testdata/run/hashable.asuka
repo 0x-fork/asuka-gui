@@ -1,0 +1,107 @@
+// Hashable structs, enums, tuples and optionals: map keys and set
+// elements, hashed as == compares them.
+
+struct Point {
+  x: int
+  y: int
+}
+
+enum Key {
+  name(string)
+  at(Point)
+  nowhere
+}
+
+enum Pet: Error {
+  cat
+  dog
+  fn message() -> string = "a pet"
+}
+
+// One that holds itself: hashed through its chain.
+struct Path {
+  step: string
+  rest: Path?
+}
+
+fn count<T: Hashable>(xs: [T]) -> [T: int] {
+  var m: [T: int] = [:]
+  for x in xs {
+    m[x] = (m[x] ?? 0) + 1
+  }
+  return m
+}
+
+test "struct keys" {
+  var seen: [Point: string] = [:]
+  seen[Point(x: 1, y: 2)] = "a"
+  seen[Point(x: 3, y: 4)] = "b"
+  seen[Point(x: 1, y: 2)] = "c"
+  print(seen.count())
+  print(seen[Point(x: 1, y: 2)] ?? "none")
+  print(seen.has(Point(x: 3, y: 4)))
+  print(seen.has(Point(x: 4, y: 3)))
+  seen.remove(Point(x: 3, y: 4))
+  print(seen)
+}
+
+test "enum keys and sets" {
+  let ks: Set<Key> = [.name("a"), .at(Point(x: 0, y: 0)), .nowhere, .name("a"), .at(Point(x: 0, y: 0))]
+  print(ks.count())
+  print(ks.contains(.name("a")))
+  print(ks.contains(.name("b")))
+  print(ks.contains(.nowhere))
+  let pets: Set<Pet> = [.cat, .dog, .cat]
+  print(pets.count())
+}
+
+test "tuples and optionals" {
+  var grid: [(int, int): string] = [(0, 0): "origin"]
+  grid[(1, 2)] = "p"
+  print(grid[(1, 2)] ?? "none")
+  print(grid.count())
+  let maybe: Set<int?> = [1, none, 1, none]
+  print(maybe.count())
+  print(grid)
+}
+
+test "recursive types" {
+  let a = Path(step: "a", rest: Path(step: "b", rest: none))
+  let b = Path(step: "a", rest: Path(step: "b", rest: none))
+  let c = Path(step: "a", rest: Path(step: "c", rest: none))
+  let s: Set<Path> = [a, b, c]
+  print(s.count())
+  print(s.contains(Path(step: "a", rest: Path(step: "c", rest: none))))
+}
+
+test "a generic Hashable" {
+  print(count([Point(x: 1, y: 1), Point(x: 2, y: 2), Point(x: 1, y: 1)]))
+  print(count([Key.nowhere, .name("x"), .nowhere]))
+  print(count(["a", "b", "a"]))
+}
+
+// Output:
+// 2
+// c
+// true
+// false
+// {{"x":1,"y":2}:"c"}
+// ok struct keys
+// 3
+// true
+// false
+// true
+// 2
+// ok enum keys and sets
+// p
+// 2
+// 2
+// {(0,0):"origin",(1,2):"p"}
+// ok tuples and optionals
+// 2
+// true
+// ok recursive types
+// {{"x":1,"y":1}:2,{"x":2,"y":2}:1}
+// {"nowhere":2,{"name":["x"]}:1}
+// {"a":2,"b":1}
+// ok a generic Hashable

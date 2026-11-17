@@ -9,6 +9,6 @@ fn uses() -> string {
   return "{first([])}" // ERROR "can't tell first's type T from its arguments"
 }
 
-fn keys<K, V>(m: [K: V]) -> int = m.count() // ERROR "not K: constrain it, <K: Hashable>"
-fn members<T>(s: Set<T>) -> int = s.count() // ERROR "not T: constrain it, <T: Hashable>"
+fn keys<K, V>(m: [K: V]) -> int = m.count() // ERROR "a map's key must be Hashable, and K isn't: constrain it, <K: Hashable>"
+fn members<T>(s: Set<T>) -> int = s.count() // ERROR "a Set's element must be Hashable, and T isn't: constrain it, <T: Hashable>"
 fn fine<K: Hashable, V>(m: [K: V]) -> int = m.count()

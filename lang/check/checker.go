@@ -657,9 +657,7 @@ func (c *Checker) typeExpr(t syntax.Type) Type {
 		return &Array{c.typeExpr(t.Elem)}
 	case *syntax.MapType:
 		k := c.typeExpr(t.Key)
-		if !IsInvalid(k) && !IsHashable(k) {
-			c.errorf(t.Key, "a map's keys are ints, strings, bools or enums without payloads, not %s%s", typeString(k), hashableHint(k))
-		}
+		c.checkHashable(k, t.Key, "a map's key", true)
 		return &Map{k, c.typeExpr(t.Value)}
 	case *syntax.OptionalType:
 		e := c.typeExpr(t.Elem)
@@ -714,7 +712,7 @@ func (c *Checker) namedType(t *syntax.NamedType) Type {
 					c.errorf(t, "Set takes one type: Set<T>")
 					return Invalid
 				}
-				return c.setOf(c.typeExpr(t.Args[0]), t.Args[0])
+				return c.setOf(c.typeExpr(t.Args[0]), t.Args[0], true)
 			}
 		case "never":
 			// What a function that never returns gives (os.exit): the

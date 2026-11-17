@@ -1109,6 +1109,20 @@ func (b *fb) binop(o syntax.Token, x, y int, xt, yt, res check.Type, dst int) in
 				o = syntax.LEQ
 			}
 		}
+		if n, ok := xt.(*check.Named); ok {
+			if f := check.CompareMethod(n); f != nil {
+				// A generic T's: its compare's result against 0.
+				c := b.invoke(b.l.funcIndex(f, nil, n), []int{x, y}, bc.KInt, -1, false)
+				x, y = c, b.konst(0)
+			} else if n.Obj.RefEnum() {
+				// An enum without payloads stored as a reference: by its
+				// cases' order.
+				cx, cy := b.temp(bc.KInt), b.temp(bc.KInt)
+				b.emit(op("ECASE"), cx, x)
+				b.emit(op("ECASE"), cy, y)
+				x, y = cx, cy
+			}
+		}
 		switch b.f.Kinds[x] {
 		case bc.KFloat:
 			b.emit(op(map[bool]string{true: "LTF", false: "LEF"}[o == syntax.LSS]), r, x, y)

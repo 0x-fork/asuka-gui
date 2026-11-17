@@ -219,6 +219,42 @@ TEST(enum_payloads) {
 	ak_free(res_shape.singletons);
 }
 
+// A map keyed by structs and enums (Hashable, made of what is): a key
+// equal to one in it, though another object, finds it.
+TEST(map_struct_enum_keys) {
+	ak_map *m = ak_map_new(AK_K_REF, false, AK_K_INT, NULL);
+	for (int i = 0; i < 40; i++) {
+		ak_struct *p = ak_struct_new(&pt_shape);
+		p->f[0].i = i;
+		p->f[1].p = S(i % 2 ? "odd" : "even");
+		ak_map_set(&m, (ak_val){.p = p}, (ak_val){.i = i});
+	}
+	ak_struct *k = ak_struct_new(&pt_shape);
+	k->f[0].i = 17;
+	k->f[1].p = S("odd");
+	ak_val v;
+	REQUIRE(ak_map_get(m, (ak_val){.p = k}, &v));
+	CHECK_EQ_INT(v.i, 17);
+	ak_struct_mut(&k)->f[1].p = (ak_release(k->f[1].p), S("even"));
+	CHECK(!ak_map_get(m, (ak_val){.p = k}, &v));
+	ak_release(k);
+
+	ak_map *e = ak_map_new(AK_K_REF, false, AK_K_INT, NULL);
+	ak_enum *r = ak_enum_new(&res_shape, 1), *s = ak_enum_new(&res_shape, 1);
+	r->f[0].i = 5;
+	s->f[0].i = 5;
+	ak_map_set(&e, (ak_val){.p = r}, (ak_val){.i = 1});
+	ak_enum *t = ak_enum_new(&res_shape, 1);
+	t->f[0].i = 6;
+	ak_map_set(&e, (ak_val){.p = t}, (ak_val){.i = 2});
+	REQUIRE(ak_map_get(e, (ak_val){.p = s}, &v));
+	CHECK_EQ_INT(v.i, 1);
+	ak_map_set(&e, (ak_val){.p = s}, (ak_val){.i = 3});  // the same key: replaced
+	CHECK_EQ_INT(e->live, 2);
+	ak_release(m);
+	ak_release(e);
+}
+
 TEST(errors) {
 	CHECK(!ak_error_pending());
 	ak_throw_msg("bad %d", 3);

@@ -542,8 +542,8 @@ func (m *Method) requires(s Subst) string {
 			return "compares elements, and " + typeString(t) + " can't be compared: " + whyNotEquatable(t)
 		}
 	case "Comparable":
-		if t != Int && t != Float && t != String && t != Duration {
-			return "() orders ints, floats and strings; order " + typeString(t) + "s with a less-than: " + m.Name + "((a, b) => …)"
+		if why := whyNotComparable(t); why != "" {
+			return "() orders what's Comparable, and " + typeString(t) + " isn't: " + why + "; or order them with a less-than: " + m.Name + "((a, b) => …)"
 		}
 	case "number":
 		if t != Int && t != Float {

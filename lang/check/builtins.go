@@ -347,7 +347,7 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 			elem = Invalid
 		}
 		call.Args = args
-		call.Result = c.setOf(elem, e)
+		call.Result = c.setOf(elem, e, false)
 	case BStream:
 		args := positional(1, "what sends its values: Stream<T>(send => { … })")
 		var elem Type

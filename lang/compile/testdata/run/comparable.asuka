@@ -1,0 +1,100 @@
+// Comparable: a type with fn compare(other) -> int, and an enum without
+// payloads (by its cases' order); <, sorted() and T: Comparable.
+
+enum Size { small, medium, large }
+
+// Stored as a reference (an error), still ordered by its cases.
+enum Level: Error {
+  low
+  high
+  fn message() -> string = "level"
+}
+
+struct Version {
+  major: int
+  minor: int
+
+  fn compare(other: Version) -> int = if major != other.major { major - other.major } else { minor - other.minor }
+}
+
+enum Card {
+  num(int)
+  face(string)
+
+  fn compare(other: Card) -> int = match (self, other) {
+    (.num(a), .num(b)) => a - b
+    (.num(_), .face(_)) => -1
+    (.face(_), .num(_)) => 1
+    (.face(a), .face(b)) => if a < b { -1 } else if a > b { 1 } else { 0 }
+  }
+}
+
+fn largest<T: Comparable>(xs: [T]) -> T {
+  var m = xs[0]
+  for x in xs {
+    if x > m {
+      m = x
+    }
+  }
+  return m
+}
+
+fn order<T: Comparable>(xs: [T]) -> [T] = xs.sorted()
+
+fn between<T: Comparable>(x: T, lo: T, hi: T) -> bool = lo <= x && x <= hi
+
+state versions = [Version(major: 2, minor: 0), Version(major: 1, minor: 5)]
+
+test "enums without payloads" {
+  print(Size.small < Size.large)
+  print(Size.large <= Size.medium)
+  print(largest([Size.medium, Size.small, Size.large]))
+  print(order([Size.large, Size.small, Size.medium]))
+  print([Size.large, Size.small].sorted())
+  print(Level.low < Level.high)
+  print(order([Level.high, Level.low, Level.high]))
+}
+
+test "compare methods" {
+  let vs = [Version(major: 2, minor: 0), Version(major: 1, minor: 5), Version(major: 1, minor: 2)]
+  print(largest(vs))
+  print(order(vs))
+  var ws = vs
+  ws.sort()
+  print(ws[0])
+  print(vs[0] >= vs[1])
+  print(between(Version(major: 1, minor: 3), vs[2], vs[1]))
+  print(order([Card.face("k"), .num(3), .face("a"), .num(1)]))
+  print(Card.num(2) < .face("a"))
+  versions.sort()
+  print(versions[0].minor)
+}
+
+test "the built-in ones" {
+  print(largest([3, 9, 2]))
+  print(order(["b", "a"]))
+  print(between(1.5, 1.0, 2.0))
+}
+
+// Output:
+// true
+// false
+// large
+// ["small","medium","large"]
+// ["small","large"]
+// true
+// ["low","high","high"]
+// ok enums without payloads
+// {"major":2,"minor":0}
+// [{"major":1,"minor":2},{"major":1,"minor":5},{"major":2,"minor":0}]
+// {"major":1,"minor":2}
+// true
+// true
+// [{"num":[1]},{"num":[3]},{"face":["a"]},{"face":["k"]}]
+// true
+// 5
+// ok compare methods
+// 9
+// ["a","b"]
+// true
+// ok the built-in ones

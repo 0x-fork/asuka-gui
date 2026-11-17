@@ -515,9 +515,7 @@ func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
 		kc.Result = nil
 		c.forBindings(fi, s.Pattern, LocalVar, kc)
 		kt := c.expr(s.Key, nil)
-		if !IsInvalid(kt) && !IsHashable(kt) {
-			c.errorf(s.Key, "a key is an int, a string or an enum without payloads, not %s", aType(kt))
-		}
+		c.checkHashable(kt, s.Key, "a row's key", false)
 		kc.Result = kt
 		c.leave(saved)
 	}

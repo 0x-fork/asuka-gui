@@ -389,6 +389,21 @@ func (b *fb) builtinMethod(e *syntax.CallExpr, call *check.Call, recv *int, dst 
 		}
 		vals = ord
 	}
+	inoutGuard := m.Throws || m.Fails || hasClosureArg(m)
+	if m.Needs == "Comparable" && len(vals) == 0 {
+		// sorted(), sort() of a type with a compare method: it, as a
+		// closure, and that it's a comparison rather than a less-than.
+		if a, ok := b.typ(b.l.info.Types[call.Recv]).(*check.Array); ok {
+			if n, ok := a.Elem.(*check.Named); ok {
+				if f := check.CompareMethod(n); f != nil {
+					cl := b.temp(bc.KRef)
+					b.emit(op("CLOS"), cl, b.l.funcIndex(f, nil, n), 0, 0)
+					vals = append(vals, cl, b.konst(1))
+					inoutGuard = true
+				}
+			}
+		}
+	}
 	switch m.Extra {
 	case "kindU":
 		u := b.typ(call.Bound["U"])
@@ -413,8 +428,8 @@ func (b *fb) builtinMethod(e *syntax.CallExpr, call *check.Call, recv *int, dst 
 	}
 	if m.Inout && recv == nil {
 		lv := b.prepare(call.Recv)
-		b.updateWith(lv, hasClosureArg(m), func(cur int) {
-			b.callInout(m, cur, vals, r)
+		b.updateWith(lv, hasClosureArg(m) || inoutGuard, func(cur int) {
+			b.callInout(m, cur, vals, r, inoutGuard)
 		})
 	} else {
 		x := b.recvValue(call, recv)
@@ -444,7 +459,7 @@ func (b *fb) recvValue(call *check.Call, recv *int) int {
 
 // callInout calls an inout builtin on cur, the receiver's own register:
 // it's moved into the arguments' block, changed there, and moved back.
-func (b *fb) callInout(m *check.Method, cur int, vals []int, r int) {
+func (b *fb) callInout(m *check.Method, cur int, vals []int, r int, guard bool) {
 	ks := []bc.Kind{bc.KRef}
 	for _, v := range vals {
 		ks = append(ks, b.f.Kinds[v])
@@ -460,7 +475,7 @@ func (b *fb) callInout(m *check.Method, cur int, vals []int, r int) {
 		b.emit(op("MOV"), cur, blk)
 		b.emit(op("MOV"), blk, null)
 	}
-	if m.Throws || m.Fails || hasClosureArg(m) {
+	if guard {
 		b.protect(func() {
 			b.emit(op("CALLB"), r, b.l.builtin(m.Builtin), blk, len(ks))
 		}, func(int) { back() })
@@ -498,7 +513,7 @@ func (b *fb) enumerated(call *check.Call, recv *int, dst int) int {
 	b.emit(op("IDX"), el, x, i)
 	t := b.newStruct(shape, tup.Elems, []int{i, el}, -1)
 	m := b.l.methodPush()
-	b.callInout(m, out, []int{t}, bc.None)
+	b.callInout(m, out, []int{t}, bc.None, m.Throws || m.Fails || hasClosureArg(m))
 	b.emit(op("ADDIK"), i, i, 1)
 	b.jmp(top)
 	b.f.Place(end)
