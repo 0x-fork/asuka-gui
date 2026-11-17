@@ -107,3 +107,56 @@ func TestRenameLabelledParams(t *testing.T) {
 		}
 	}
 }
+
+// A type parameter is declared where it's written (<T>), not at its
+// type's or function's name: renaming it renames it and its uses only,
+// and its uses' definition is it.
+func TestTypeParams(t *testing.T) {
+	root := t.TempDir()
+	a := `struct Page<T> {
+  items: [T]
+
+  fn first() -> T? = items.first()
+}
+
+enum Box<E> { full(E), empty }
+
+fn wrap<U>(x: U) -> [U] = [x]
+
+fn pages() -> Page<int> = Page(items: wrap(1))
+`
+	if err := os.WriteFile(filepath.Join(root, "a.asuka"), []byte(a), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := newClient(t, root)
+	uri := c.openText(filepath.Join(root, "a.asuka"), a)
+	c.waitDiags(uri, noDiags)
+	for _, tc := range []struct{ at, decl, renamed string }{
+		{"items: [|T]", "struct Page<|T>", "struct Page<Item> {\n  items: [Item]\n\n  fn first() -> Item? = items.first()\n}\n\nenum Box<E>"},
+		{"fn first() -> |T?", "struct Page<|T>", "struct Page<Item> {\n  items: [Item]\n\n  fn first() -> Item? = items.first()\n}\n\nenum Box<E>"},
+		{"struct Page<|T>", "struct Page<|T>", "struct Page<Item> {\n  items: [Item]\n\n  fn first() -> Item? = items.first()\n}\n\nenum Box<E>"},
+		{"full(|E)", "enum Box<|E>", "enum Box<Item> { full(Item), empty }"},
+		{"fn wrap<U>(x: |U)", "fn wrap<|U>", "fn wrap<Item>(x: Item) -> [Item] = [x]"},
+		{"-> [|U]", "fn wrap<|U>", "fn wrap<Item>(x: Item) -> [Item] = [x]"},
+	} {
+		t.Run(tc.at, func(t *testing.T) {
+			var locs []Location
+			p := tdp(uri, posAt(t, a, tc.at))
+			if err := c.call("textDocument/definition", &p, &locs); err != nil {
+				t.Fatal(err)
+			}
+			if want := posAt(t, a, tc.decl); len(locs) != 1 || locs[0].Range.Start != want {
+				t.Errorf("definition: %+v, want %+v", locs, want)
+			}
+			var edit WorkspaceEdit
+			rp := RenameParams{TextDocumentPositionParams: p, NewName: "Item"}
+			if err := c.call("textDocument/rename", &rp, &edit); err != nil {
+				t.Fatal(err)
+			}
+			got := applyEdits(a, edit.Changes[uri])
+			if !strings.Contains(got, tc.renamed) || !strings.Contains(got, "fn pages() -> Page<int> = Page(items: wrap(1))") {
+				t.Errorf("renamed:\n%s", got)
+			}
+		})
+	}
+}
