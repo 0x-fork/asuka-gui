@@ -44,9 +44,13 @@ type fb struct {
 	nullReg   int              // a reference register that's always none
 
 	hoisting bool // making a hoisted literal: don\'t hoist again
-	loops    []loop
-	defers   []*syntax.Block // the defers in effect, innermost last
-	inDefer  int
+	// peeks: the peeks open where code is being emitted; untracks: the
+	// UNTRACKs emitted so far, which tell a handler's target whether its
+	// range began any (it then says how many are still open, RETRACK).
+	peeks, untracks int
+	loops           []loop
+	defers          []*syntax.Block // the defers in effect, innermost last
+	inDefer         int
 
 	// The component's or store's env: envReg holds the struct (in
 	// methods, closures, and the component's function once it's made);
@@ -75,7 +79,7 @@ func (b *fb) emitKind(o bc.Op, args ...int) { b.f.Emit(b.line, o, b.fits(o, args
 // immWhat names what an instruction's 16-bit immediate counts or
 // indexes, for the error when there are more.
 var immWhat = map[string]string{
-	"CALL": "arguments", "CALLC": "arguments", "CALLB": "arguments", "CALLI": "arguments", "UNTRACK": "arguments",
+	"CALL": "arguments", "CALLC": "arguments", "CALLB": "arguments", "CALLI": "arguments", "CALLU": "arguments",
 	"CLOS": "captured values", "CAP": "captured values", "INTERP": "parts of a string",
 	"GETF": "fields", "SETF": "fields", "GETP": "payload values", "NEWE": "enum cases",
 	"NEWA": "elements", "NEWM": "entries",

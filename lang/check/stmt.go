@@ -235,6 +235,12 @@ func notTuple(t Type, n int) string {
 
 func (c *Checker) assignStmt(s *syntax.AssignStmt) {
 	lt := c.placeType(s.Target, c.lvalue(s.Target, "assign to"))
+	if s.Op != syntax.ASSIGN {
+		// x += y reads x, then writes it.
+		if obj, at := c.writeRoot(s.Target); obj != nil {
+			c.noteRead(obj, at)
+		}
+	}
 	if ix, ok := unparen(s.Target).(*syntax.IndexExpr); ok && ix.Default == nil {
 		if _, isMap := c.info.Types[ix.X].(*Map); isMap {
 			// m[k] reads a V?, and stores a V.
@@ -326,6 +332,7 @@ func (c *Checker) placeType(x syntax.Expr, t Type) Type {
 // returns its type.
 func (c *Checker) lvalue(x syntax.Expr, what string) Type {
 	t := c.expr(x, nil)
+	c.noteWrite(x)
 	if c.ctx != nil {
 		switch c.ctx.Kind {
 		case CtxBinding, CtxGlobal, CtxBuilder, CtxComponent, CtxStore, CtxApp:
@@ -357,7 +364,9 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 					hint = "it's a pattern's name, a copy of what it matched (a for's element, an if let's value): copy it into a var, or change what it came from"
 					short = x.Name + " is a copy of what it matched"
 				}
-				if o.Kind == RowItem {
+				if o.Kind == StateSelf {
+					hint = "in its own initializer, a state's name is its current value: the initializer's value is what it becomes"
+				} else if o.Kind == RowItem {
 					hint, short = "it's a row's item: change the state it comes from", x.Name+" is a row's item"
 				} else if o.Kind == SelfVar {
 					hint = "self is a value"
@@ -611,6 +620,12 @@ func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
 	}
 	if view {
 		c.leave(saved)
+		if s.Key == nil && (fi.Kind == ForSet || isRange(seq)) {
+			fi.KeyItem = true
+		}
+		if s.Key == nil && !fi.KeyItem {
+			c.viewFors = append(c.viewFors, s)
+		}
 	}
 	// The key, in a view: a function of the item.
 	if s.Key != nil {

@@ -181,7 +181,7 @@ pub store Live<T>(db: DB, sql: string, args: bytes, bad: string) {
   let key = "{db.conn}|{sql}"
 
   /// The latest rows.
-  pub state rows: [T] = cachedRows("{db.conn}|{sql}")
+  pub state rows: [T] = peek(cachedRows("{db.conn}|{sql}"))
   /// Nothing fetched yet.
   pub state loading = true
   /// The last fetch's error, none after one that worked.

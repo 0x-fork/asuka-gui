@@ -853,7 +853,7 @@ func (c *Checker) funcCallInfo(e *syntax.CallExpr, f *Function, recv syntax.Expr
 // (a worker's pub fn, called from outside).
 func (c *Checker) funcCallAs(e *syntax.CallExpr, f *Function, recv syntax.Expr, recvType Type, want Type, async bool) *Call {
 	c.funcSig(f)
-	c.noteCall(f)
+	c.noteCall(f, e)
 	what := f.name
 	params := f.Sig.Params
 	args := c.matchArgs(e, params, what)

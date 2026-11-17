@@ -113,7 +113,7 @@ component UpdateContent(icon: string) {
     }
   }
 
-  effect {
+  effect(updater.phase) {
     let p = updater.phase
     if p == shown { return }
     shown = p
@@ -238,7 +238,7 @@ component ProgressView(title: string, fraction: float?, cancel: bool, icon: stri
 // Install Update, and the choice to install the next ones without
 // asking.
 component ReleaseView(icon: string) {
-  state automatic = automaticDownloads()
+  state automatic = peek(automaticDownloads())
   let notes = updater.release?.notes ?? ""
 
   Column {

@@ -46,6 +46,16 @@ worker W {}
 			decls: 2,
 		},
 		{
+			name: "a state that follows nothing",
+			src: `component A {
+  state x() = 1
+  Text("{x}")
+}
+`,
+			errs:  []string{"2:10: state x() follows nothing: a value read once is peek(…), state x = peek(…)"},
+			decls: 1,
+		},
+		{
 			name: "extern without fn, type or struct",
 			src: `extern component A {}
 

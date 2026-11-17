@@ -566,6 +566,7 @@ Reads, by what's read:
 | Read of | In a reactive context (a binding, a memo, an effect) | In a handler or function |
 |---|---|---|
 | a cell (`state`) | CGET: tracked | CGET (the runtime runs handlers untracked) |
+| a follow (a `state` that follows) | CGET: the cell is a follow's, which it brings up to date (a memo's pull), tracked | CGET, brought up to date |
 | a memo (`let` in a component, a store, a file) | MREAD | MREAD |
 | a parameter or prop of a component | AGET of its accessor | AGET |
 | a `for` row's item, a `match` arm's payload | AGET | AGET |
@@ -583,6 +584,30 @@ the runtime, which runs it as a render effect, or as a memo for `let`.
 An expression that reads nothing reactive (a literal, a constant, a
 local of the enclosing function, arithmetic on those) is evaluated once
 and passed as a value instead (`ak_ui_set` rather than `ak_ui_bind`).
+
+`peek(e)` (rfcs/0012) is `UNTRACK`, `e`, `RETRACK n`: the VM keeps the
+token `ak_untrack_begin` returned on the coroutine's stack, and RETRACK
+ends those its frame made past the first n (n: the peeks still open
+there, 0 at a peek's end). A frame records the stack's depth as it's
+pushed, and an error unwinding it ends what it began; a handler's
+target whose range made an UNTRACK starts with `RETRACK n`, n the peeks
+open at the target. cgen keeps them in the function's locals (`U_`),
+ended on its unwind path, or, in a function that may suspend, on the
+coroutine as the VM does. A peek of what reads nothing reactive is `e`,
+and `await` can't be inside one (the checker's). The checker doesn't
+count what's under a peek as read: a binding of it alone is a value, a
+fn that reads state only under one doesn't make its caller's binding
+reactive (spawn still can't call it).
+
+A **follow** (rfcs/0012) is a state whose initializer reads what
+changes: a cell (`FOLLOWK`) whose value a memo of the initializer
+(core/src/signal's `ak_follow`) computes on its first read, and again
+when what it read changed, unless equal. A write (`CSET`, `CTAKE` then
+`CPUT`) first brings it up to date (`ak_follow_refresh`), so a write
+after an input changed stands, then replaces the value and notifies its
+readers (`ak_follow_set`). Its sources stay linked when its last reader
+goes; a follow whose initializer ran and read nothing (a caller's
+constant) lets go of it, a plain state from then on.
 
 ## Components
 
@@ -627,6 +652,14 @@ The function's body, in order:
 
 1. `state x = e`: CELLK with the key `Component.x#hash` (the runtime
    adds the instance's path: its place in the tree, the row's key).
+   When `e` reads what changes (check's `Member.Follows`): FOLLOWK with
+   the same key and a thunk of `e`, which takes the state's current
+   value (an optional, none the first time) when `e` reads the state's
+   own name (`Member.Self`; a state that doesn't follow binds it to
+   none). `state x(a, b) = e`: the dependencies' memos (below), and a
+   thunk that reads them, then `e` between UNTRACK and RETRACK. A kept
+   value (hot reload) is a write: it stands until what `e` reads
+   changes. A file's state is the same, in init.
 2. `let y = e`: MEMO of a thunk (or a constant when it reads nothing).
 3. `use x: T`: CALLB `ui.use(key)`, the key being T's type name.
    `provide e`: CALLB `ui.provide(key, value)`, on the component's owner,
@@ -636,6 +669,14 @@ The function's body, in order:
    starts the closure as a task when the component mounts.
    `task(a, b) { }` is an effect that reads `a` and `b` and starts the
    task in its own owner, so a re-run cancels the run before.
+   `effect(a, b) { B }` is an effect that reads `a` and `b`, then calls
+   a closure of `B` untracked (CALLU). Their dependencies, and a
+   state's (`state x(a, b)`), are each a memo made with the component
+   (MEMO of its thunk; ir's `deps`), which the follower reads (MREAD),
+   so it runs again only when the dependency's value changes: a state
+   or a let read alone is read directly (CGET, MREAD). The effect's
+   closure is named `Component/effect`, which the run-time guard's
+   panic says as "Component's effect at file:line".
 6. The view items: one element is the component's view; several make a
    fragment (CALLB `ui.fragment`, then `ui.add` each).
 
@@ -670,7 +711,7 @@ when not; a routed screen's are none).
 | Source | Lowered |
 |---|---|
 | `open = x` (or an element's `bind` of `open`) | `ui.model_bound(m)`; bound: `openChange(x)`'s handler called (the caller's bind writes its state, which the model reads); not: `ui.model_set(m, x)`, then the handler, if any |
-| reading `open` | AGET of the model: bound, the caller's accessor; not, its own value (tracked), which a render effect sets each time the caller's accessor changes (none when it's a constant) |
+| reading `open` | AGET of the model: bound, the caller's accessor; not, a follow of the caller's accessor (as a state that follows is): the caller's value until assigned, the caller's again when it changes |
 
 Assigning one allocates nothing beyond a state's write.
 
@@ -785,8 +826,11 @@ disposes when the branch or row goes.
 
 The selector of a match returns the arm (not the case), so literal,
 tuple, struct and `|` patterns work as in statements; a match in a view takes
-no guards. A `for` without `key` passes none, and the runtime keys rows
-by their index. Several view items (a component's body, a branch, a
+no guards. A `for` without `key` over a set or a range passes a key
+function of the item (the element, the number: check's
+`ForInfo.KeyItem`); over an array, which is then a constant one (one
+that reads what changes needs its key: the checker's error), none, and
+the runtime keys rows by their index. Several view items (a component's body, a branch, a
 row) make a fragment (`ui.fragment`, `ui.add` each); a `View?` (an
 optional slot) is added only when it isn't none.
 ## Interaction states and variants

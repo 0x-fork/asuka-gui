@@ -750,10 +750,8 @@ func (l *Lowerer) initGlobal(b *fb, g *check.Global) {
 	mark := b.mark()
 	switch g.Kind {
 	case check.StateGlobal:
-		v := b.value(g.Value, -1)
-		k := l.kind(g.Type)
 		cell := b.temp(bc.KRef)
-		b.emitKind(op("CELLK"), cell, b.valueReg(v, k), int(k), l.str(l.stateKey(g)))
+		b.state(cell, g.Decl, g.Value, g.Ctx, g.Type, g.Follows, g.Self, l.str(l.stateKey(g)))
 		b.emit(op("GSET"), slot, cell, int(bc.KRef))
 	case check.MemoGlobal:
 		clos := b.thunk(g.Ctx, g.Value, g.Type)

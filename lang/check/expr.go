@@ -225,7 +225,7 @@ func (c *Checker) ident(e *syntax.Ident) Type {
 			c.errorf(e, "%s is generic: call it, or pass it where its types are known", e.Name)
 			return Invalid
 		}
-		c.noteCall(o)
+		c.noteCall(o, e)
 		return o.Sig.Type()
 	case *TypeName:
 		c.errorf(e, "%s is a type, not a value%s", e.Name, typeValueHint(o))
@@ -303,6 +303,7 @@ func (c *Checker) useGlobal(g *Global, at syntax.Node) Type {
 			c.spawnNotValue(at, g.name, t)
 		}
 		c.ctx.globals = append(c.ctx.globals, g)
+		c.noteRead(g, at)
 	}
 	return t
 }
@@ -353,6 +354,7 @@ func (c *Checker) useMember(m *Member, at syntax.Node) Type {
 			// (A worker's are its own, on its thread: not state.)
 			c.ctx.readsState = true
 		}
+		c.noteRead(m, at)
 	}
 	return c.memberType(m)
 }
@@ -381,13 +383,20 @@ func (c *Checker) envUse(owner *TypeName, at syntax.Node, name string) {
 
 // noteCall records that the current function calls f (for the reactive
 // analysis and spawn).
-func (c *Checker) noteCall(f *Function) {
+func (c *Checker) noteCall(f *Function, at syntax.Node) {
 	if c.ctx != nil && !contains(c.ctx.calls, f) {
 		c.ctx.calls = append(c.ctx.calls, f)
 	}
 	if r := c.workerRoot(); r != nil && r != c.ctx && !contains(r.calls, f) {
 		// A closure's in a worker's fn: the worker calls it too.
 		r.calls = append(r.calls, f)
+	}
+	if c.ctx != nil {
+		u := callUse{f, at}
+		if c.ctx.peeks == 0 {
+			c.ctx.readCalls = append(c.ctx.readCalls, u)
+		}
+		c.ctx.writeCalls = append(c.ctx.writeCalls, u)
 	}
 }
 
@@ -975,7 +984,7 @@ func (c *Checker) member(e *syntax.MemberExpr, want Type) Type {
 				return c.useGlobal(o, e)
 			case *Function:
 				c.funcSig(o)
-				c.noteCall(o)
+				c.noteCall(o, e)
 				return o.Sig.Type()
 			case *TypeName:
 				c.errorf(e, "%s is a type, not a value%s", name, typeValueHint(o))
@@ -1066,7 +1075,7 @@ func (c *Checker) staticMember(e syntax.Expr, tn *TypeName, name string, want Ty
 			c.info.Uses[m.Name] = f
 		}
 		c.funcSig(f)
-		c.noteCall(f)
+		c.noteCall(f, e)
 		return f.Sig.Type()
 	}
 	if tn.Type == Color {
@@ -1167,6 +1176,7 @@ func (c *Checker) valueMember(e *syntax.MemberExpr, t Type, name string) Type {
 				if c.ctx != nil {
 					c.ctx.readsState = true
 				}
+				c.noteRead(m, e)
 				c.spawnState(e, name)
 				return s.Apply(c.memberType(m))
 			}
@@ -1452,6 +1462,8 @@ func (c *Checker) unary(e *syntax.UnaryExpr, want Type) Type {
 	case syntax.AWAIT:
 		if c.ctx == nil || !c.ctx.Async {
 			c.errorf(e, "await only where code may wait: %s", c.asyncHint())
+		} else if c.ctx.peeks > 0 {
+			c.errorf(e, "peek reads at once, and can't wait: await first, into a let, and peek that")
 		} else {
 			c.ctx.awaited(e.Start)
 		}

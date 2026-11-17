@@ -74,6 +74,13 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		c.errorf(e.Block, "%s takes no block", b.name)
 	}
 	switch b.ID {
+	case BPeek:
+		args := positional(1, "one value: peek(count)")
+		call.Args = args
+		call.Result = Invalid
+		if len(args) == 1 {
+			call.Result = c.peek(e, args[0], want)
+		}
 	case BPrint:
 		args := positional(1, "one value: print(\"…\")")
 		for _, a := range args {

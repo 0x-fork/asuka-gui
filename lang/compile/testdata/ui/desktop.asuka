@@ -55,7 +55,8 @@ component Notes {
         role: .destructive
         on press { added = [] }
       }
-      for n in added {
+      // A log: added to at its end, its items never move.
+      for (i, n) in added.enumerated() key i {
         MenuItem(n)
       }
     }
@@ -73,7 +74,7 @@ component Notes {
     }
     Text("{added.count()} notes")
     Text(if quitting { "quit canceled" } else { "" })
-    for l in launches { Text(l) }
+    for (i, l) in launches.enumerated() key i { Text(l) }
     if confirm { Text("Save first?") }
     Window as w {
       bind open: stats

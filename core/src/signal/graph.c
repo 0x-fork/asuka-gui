@@ -66,7 +66,8 @@ static ak_link *unlink(ak_link *l) {
 	if (l->prev_sub) l->prev_sub->next_sub = l->next_sub;
 	else dep->subs = l->next_sub;
 	free_link(l);
-	if (!dep->subs && (dep->flags & AK_F_MEMO)) ak_sig_memo_unwatched((ak_comp *)dep);
+	// A follow keeps its sources: a value set stands until they change.
+	if (!dep->subs && (dep->flags & (AK_F_MEMO | AK_F_FOLLOW)) == AK_F_MEMO) ak_sig_memo_unwatched((ak_comp *)dep);
 	return next;
 }
 

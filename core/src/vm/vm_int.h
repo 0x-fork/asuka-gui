@@ -119,6 +119,7 @@ typedef struct {
 	uint32_t pc;       // where to resume (in words)
 	uint32_t callpc;   // the caller's call instruction, for its handlers
 	uint32_t base;     // r0's index in the coroutine's registers
+	uint32_t udepth;   // the coroutine's untracks when it was pushed
 	uint16_t dst;      // the caller's register for the result
 	uint8_t boundary;  // returning from it returns to C
 	// A mut fn's (AK_F_MUT): where its first argument goes back as it
@@ -136,8 +137,21 @@ typedef struct ak_co {
 	uint32_t top, cap;
 	ak_frame *frames;
 	uint32_t nframes, fcap;
+	// What UNTRACK saved (ak_untrack_begin's tokens), for RETRACK, and for
+	// an error unwinding a frame inside a peek: it ends what the frame
+	// began (ak_vm_retrack).
+	void **untracks;
+	uint32_t nuntracks, ucap;
 	struct ak_task *task;  // NULL for the main coroutine
 } ak_co;
+
+// ak_vm_untrack_begin stops tracking reads (UNTRACK), saving the running
+// computation on co's stack; ak_vm_retrack tracks again what the stack
+// held at depth (RETRACK; a frame's udepth as an error unwinds it).
+void ak_vm_untrack_begin(ak_co *co);
+static inline void ak_vm_retrack(ak_co *co, uint32_t depth) {
+	while (co->nuntracks > depth) ak_untrack_end(co->untracks[--co->nuntracks]);
+}
 
 // A task: an async function running on its own coroutine, and the
 // future of its result.
@@ -208,6 +222,11 @@ void ak_vm_task_resume(void *task);
 
 // The reactive glue (react.c): cells, memos, accessors, effects, owners.
 ak_val ak_vm_cell_new(ak_val v, ak_kind k, ak_str *keep_key);
+// ak_vm_follow_new makes a follow (rfcs/0012): a cell whose value the
+// closure update computes, following what it reads (FOLLOWK); self: it
+// takes the state's current value, an optional. Read and written as a
+// cell is.
+ak_val ak_vm_follow_new(ak_closure *update, ak_kind k, ak_str *keep_key, bool self);
 ak_val ak_vm_cell_get(void *cell, bool track);
 void ak_vm_cell_set(void *cell, ak_val v);         // takes v
 ak_val ak_vm_cell_take(void *cell);
@@ -221,7 +240,7 @@ ak_val ak_vm_model_new(void *inner, bool bound);
 bool ak_vm_model_bound(void *model);
 void ak_vm_model_set(void *model, ak_val v);
 ak_val ak_vm_acc_get(void *acc);
-ak_val ak_vm_untrack(ak_closure *c, ak_val *args, uint32_t nargs);
+ak_val ak_vm_call_untracked(ak_closure *c, ak_val *args, uint32_t nargs);
 void ak_vm_effect(ak_closure *c, bool render);
 void ak_vm_cleanup(ak_closure *c);
 void ak_vm_batch(bool begin);

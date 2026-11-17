@@ -1,0 +1,117 @@
+// What a task, an effect and a state follow (rfcs/0012).
+
+component Deps {
+  state n = 0
+  state f: fn() -> int = () => 1
+
+  effect() { print("never") } // ERROR "effect\(\) follows nothing"
+  effect(f) { print("f") } // a closure: compared by which it is
+  effect(n) { print("{n}") }
+
+  Text("{n}")
+}
+
+// peek reads without following: where nothing is followed, it's an error.
+async fn later() -> int = 1
+async fn waits() -> int = peek(await later()) // ERROR "peek reads at once, and can't wait"
+
+component Peeks {
+  state count = 0
+  let label = "{count} {peek(count)}"
+
+  effect { print("{peek(count)}") }
+  effect(count) { print("{peek(count)}") } // ERROR "an effect\(…\)'s body's reads aren't followed: read count"
+  task { print("{peek(count)}") } // ERROR "a task's reads aren't followed: read count"
+
+  fn twice() -> int = peek(count) * 2
+
+  Button(label) {
+    on press { count = peek(count + 1) } // ERROR "a handler's reads aren't followed: read count \+ 1"
+  }
+}
+
+fn peek() {} // ERROR "peek is built in"
+
+test "peek in a test" {
+  let x = peek(1) // ERROR "a test's reads aren't followed: read 1"
+  expect(x == 1)
+}
+
+// State read under peek is state all the same: spawn can't reach it.
+state shared = 1
+fn peeksShared() -> int = peek(shared)
+
+async fn spawns() -> int {
+  let t = spawn { peeksShared() } // ERROR "spawn calls peeksShared, which reads state"
+  return await t
+}
+
+// A state's own name in its initializer is its current value.
+component Selves(items: [string]) {
+  state picked: string? = if let p = picked, items.contains(p) { p } else { items.first() }
+  state count: int = (count ?? 0) + items.count()
+  state untyped = untyped // ERROR "untyped reads itself \(its current value, none the first time\), so its type must be written: state untyped: T = …"
+  state top(items): int = 0
+
+  Text("{picked ?? "-"} {count} {top}")
+}
+
+// An effect that writes a state it follows.
+struct U {
+  id: int
+  name: string
+}
+
+component Writes {
+  state n = 0
+  state runs = 0
+  state other = 0
+  state u = U(id: 1, name: "a")
+  state labels: [string: string] = [:]
+  let doubled = n * 2
+
+  fn bump() { n = n + 1 }
+
+  effect { if n > 3 { n = 3 } } // ERROR "this effect writes n \(at \d+\), which it reads at \d+: it would run again after its own write, a pass late; to keep it in range: state n: T = …"
+  effect { // ERROR "this effect writes runs .*which it reads.*to run it when u changes, compared: effect\(u\) \{ … \}; to reset runs when they change: state runs\(u\) = …"
+    let _ = u.id
+    runs += 1
+  }
+  effect { bump() } // ERROR "this effect writes n"
+  effect { if doubled > 10 { n = 0 } } // ERROR "this effect writes n"
+  effect(n) { n = 3 } // ERROR "this effect writes n \(at \d+\), which its dependencies read"
+  effect(other) { n = n + 1 } // its body follows nothing
+  effect { labels["a"] = "{other}" } // a write into part of a state reads nothing
+  effect {
+    let _ = peek(n)
+    n = 1
+  }
+  task(n) { n = 0 } // a task restarts by cancelling: it may
+
+  Text("{n} {runs}")
+}
+
+// A for in a view over what changes says what identifies a row.
+struct Msg {
+  id: string
+  text: string
+}
+
+component Rows(msgs: [Msg]) {
+  state names = ["a", "b"]
+  state tags: Set<string> = []
+  state count = 3
+  state blobs: [fn() -> int] = []
+
+  Column {
+    for m in msgs { Text(m.text) } // ERROR "rows are kept by position here, so a row's state stays where it is when msgs move: say what identifies a Msg, key m.id"
+    for n in names { Text(n) } // ERROR "say what identifies a string, key n$"
+    for (i, n) in names.enumerated() { Text("{i} {n}") } // ERROR "key n \(or key i, for the position on purpose\)"
+    for b in blobs { Text("{b()}") } // ERROR "key b.<what identifies it>"
+    for m in msgs key m.id { Text(m.text) }
+    for (i, n) in names.enumerated() key i { Text("{i} {n}") }
+    for t in tags { Text(t) } // a set's element is its key
+    for i in 0..<count { Text("{i}") } // a range's number is
+    for d in ["Mon", "Tue"] { Text(d) } // constant: nothing moves
+  }
+}

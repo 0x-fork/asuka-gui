@@ -31,6 +31,9 @@ func (c *Checker) componentMembers(t *TypeName, params *syntax.ParamList, body *
 		m.object = object{id.Name, id.Start}
 		m.Owner = t
 		c.info.Defs[id] = m
+		if c.builtinForm(id) {
+			return
+		}
 		if old := comp.Members[id.Name]; old != nil {
 			c.errorf(id, "%s is declared twice in %s", id.Name, t.name)
 			return
@@ -162,7 +165,11 @@ func (c *Checker) memberType(m *Member) Type {
 		return m.Type
 	}
 	if c.resolving[m] {
-		c.errorf(m.Decl, "%s's value is defined in terms of itself", m.name)
+		if m.Kind == StateMember {
+			c.errorf(m.Decl, "%s reads itself (its current value, none the first time), so its type must be written: state %s: T = …", m.name, m.name)
+		} else {
+			c.errorf(m.Decl, "%s's value is defined in terms of itself", m.name)
+		}
 		m.Type = Invalid
 		return m.Type
 	}
@@ -198,9 +205,20 @@ func (c *Checker) memberValue(m *Member) {
 		c.loadOK = true
 	case m.Kind == PropMember, m.Kind == ParamMember:
 		kind = CtxBinding
+	case m.Kind == StateMember:
+		// A state follows what its initializer reads (rfcs/0012): the
+		// initializer is a binding, run again when that changes.
+		kind = CtxBinding
+		if d, ok := m.Decl.(*syntax.StateDecl); ok {
+			c.deps(d.Deps)
+		}
 	}
 	if kind == CtxBinding {
 		c.enter(kind, m.Default, m.name)
+	}
+	var self *Var
+	if m.Kind == StateMember {
+		self = c.stateSelf(m.name, m.pos, m.Type)
 	}
 	var t Type
 	if m.Type != nil {
@@ -209,6 +227,7 @@ func (c *Checker) memberValue(m *Member) {
 	} else {
 		t = c.valueType(c.expr(m.Default, nil), m.Default)
 	}
+	m.Self = c.selfUsed(self, m.Default)
 	if kind == CtxBinding {
 		c.leave(comp.Ctx)
 	}
@@ -278,11 +297,7 @@ func (c *Checker) componentBody(t *TypeName) {
 		case *syntax.TaskDecl:
 			c.taskDecl(d)
 		case *syntax.EffectDecl:
-			saved := c.ctx
-			ctx := c.enter(CtxEffect, d, t.name+".effect")
-			ctx.Throws = true
-			c.block(d.Body)
-			c.leave(saved)
+			c.effectDecl(d, t.name+".effect")
 		}
 	}
 	if comp.Store {
@@ -334,17 +349,50 @@ func (c *Checker) screenRoot(t *TypeName, items []syntax.Item) {
 
 func (c *Checker) taskDecl(d *syntax.TaskDecl) {
 	saved := c.ctx
-	if len(d.Deps) > 0 {
-		c.enter(CtxBinding, d, "task deps")
-		for _, x := range d.Deps {
-			c.expr(x, nil)
-		}
-		c.leave(saved)
-	}
+	c.deps(d.Deps)
 	ctx := c.enter(CtxTask, d.Body, "task")
 	ctx.Async, ctx.Throws = true, true
 	c.block(d.Body)
 	c.leave(saved)
+}
+
+// effectDecl checks effect { … }, whose body's reads are what it follows
+// (its context keyed by d), and effect(a, b) { … }, which follows a and b
+// and whose body follows nothing (its context keyed by d.Body).
+func (c *Checker) effectDecl(d *syntax.EffectDecl, name string) {
+	saved := c.ctx
+	var ctx *FuncCtx
+	ec := effectCheck{decl: d}
+	if d.Lparen.IsValid() {
+		c.deps(d.Deps)
+		for _, x := range d.Deps {
+			ec.deps = append(ec.deps, c.info.Ctxs[x])
+		}
+		if len(d.Deps) == 0 {
+			c.errorf(d, "effect() follows nothing: an effect that runs once is effect { … } reading nothing, or a task { }")
+		}
+		ctx = c.enter(CtxEffect, d.Body, name)
+		ctx.Untracked = true
+	} else {
+		ctx = c.enter(CtxEffect, d, name)
+	}
+	ctx.Throws = true
+	c.block(d.Body)
+	c.leave(saved)
+	ec.body = ctx
+	c.effects = append(c.effects, ec)
+}
+
+// deps checks the dependencies of a task, an effect or a state: each a
+// binding of its own, compared when it changes as a memo is (a value by
+// what it holds; a store, a closure or a native object by which it is).
+func (c *Checker) deps(deps []syntax.Expr) {
+	saved := c.ctx
+	for _, x := range deps {
+		c.enter(CtxBinding, x, "dependency")
+		c.valueType(c.expr(x, nil), x)
+		c.leave(saved)
+	}
 }
 
 // viewBlock checks the view items of a component's body or app: what it

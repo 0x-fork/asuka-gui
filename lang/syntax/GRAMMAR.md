@@ -212,7 +212,8 @@ TypeParam   = Ident [ ":" Type { "&" Type } ] .
 
 TypeAlias   = "type" Ident [ TypeParams ] "=" Type .
 StyleDecl   = "style" Ident [ Params ] Block .
-StateDecl   = "state" Ident [ ":" Type ] "=" Expr .
+StateDecl   = "state" Ident [ Deps ] [ ":" Type ] "=" Expr .
+Deps        = "(" Expr { "," Expr } [ "," ] ")" .  (* what it follows; () is an error: peek(…) *)
 LetDecl     = ( "let" | "var" ) Pattern [ ":" Type ] "=" Expr [ "else" Block ] .
 Constant    = "let" Pattern [ ":" Type ] "=" Expr .   (* a type's: Font.title *)
 ```
@@ -251,7 +252,7 @@ Member      = "prop" Ident [ ":" Type ] [ "=" Expr ]
             | "provide" Expr
             | Func
             | "task" [ "(" [ Expr { "," Expr } [ "," ] ] ")" ] Block
-            | "effect" Block
+            | "effect" [ "(" [ Expr { "," Expr } [ "," ] ] ")" ] Block
             | "variant" Ident "=" Expr             (* variant is a name elsewhere *)
             | "style" Ident [ Params ] Block .     (* a style of the block's own *)
 
@@ -375,6 +376,8 @@ What the parser decides where the productions are ambiguous:
   follows the `>`; otherwise `<` is a comparison.
 - **if as a value** (decision 12) needs an `else`, but in a `style:`
   prop's value, where an entry may be an `if` without one.
+- **peek** isn't syntax: `peek(e)` is a call of a builtin, a name no
+  declaration may take (the checker's), as `load` is a form.
 - **load** (decision 27): `load` and `(` is a call of a function named
   `load` (`load()`, `load(id)`), unless the parentheses hold one call,
   which is the `load` operator's operand: `load (api.user(id))`.

@@ -295,6 +295,12 @@ type ForInfo struct {
 	// and of the iterator, and the calls of iter() and next() on them.
 	SeqVar, IterVar *Var
 	IterCall, Next  *syntax.CallExpr
+
+	// KeyItem: in a view without a key, its rows are keyed by the item
+	// itself, which is what identifies it: a set's element, a range's
+	// number (rfcs/0012). An array without a key is a constant one, its
+	// rows kept by position.
+	KeyItem bool
 }
 
 // MatchInfo is a match's subject type and arms' bindings.
@@ -403,6 +409,8 @@ type FuncCtx struct {
 	Awaits bool // does
 	Throws bool // may let errors out
 	Result Type
+	// Untracked: an effect(a, b)'s body, which follows nothing it reads.
+	Untracked bool
 
 	Captures []*Var // outer locals it uses, in order
 	capIndex map[*Var]bool
@@ -417,8 +425,21 @@ type FuncCtx struct {
 	// does (for the reactive analysis and spawn).
 	readsState bool
 	calls      []*Function
-	inferRes   bool // a lambda whose result is inferred from its body
-	threw      bool // lets an error out
+	// What it reads under peek (rfcs/0012): state, read without following
+	// it. Not reactive, but state all the same (spawn's check).
+	peeksState  bool
+	peekCalls   []*Function
+	peekGlobals []*Global
+	peeks       int // the peeks open where it's being checked
+
+	// What it reads and writes of state, for the check of an effect's
+	// writes (effects.go): states, lets and props, as declarations. Reads
+	// under peek aren't kept; a closure's reads are its maker's, and a
+	// local fn's writes; calls are kept to follow them through.
+	stateReads, stateWrites []stateUse
+	readCalls, writeCalls   []callUse
+	inferRes                bool // a lambda whose result is inferred from its body
+	threw                   bool // lets an error out
 	// The first await (or for await) and the first thing that lets an
 	// error out (a try, a throw, an untried call): what made an inferred
 	// closure async or throwing, for the errors at its calls.

@@ -402,7 +402,7 @@ screen Chat {
   }
 
   Column {
-    for l in lines { Text(l) }
+    for (i, l) in lines.enumerated() key i { Text(l) }
     Button("Wave") {
       on press {
         if let s = ws { try? await s.send("👋") }
@@ -436,7 +436,7 @@ component Folder(dir: string) {
 
   Column {
     if !problem.isEmpty() { Text(problem) }
-    for c in changes { Text(c) }
+    for (i, c) in changes.enumerated() key i { Text(c) }
   }
 }
 ```

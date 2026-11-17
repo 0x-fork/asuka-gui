@@ -100,8 +100,8 @@ pub component Hotkey(shortcut: Shortcut) {
     await never()
   }
 
-  effect {
-    let _ = poll()
+  // Each press the poll brings in, once.
+  effect(poll(), id, presses[id] ?? 0) {
     let n = presses[id] ?? 0
     if id != 0 && n > seen {
       seen = n

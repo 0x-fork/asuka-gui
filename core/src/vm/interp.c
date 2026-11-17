@@ -65,7 +65,7 @@ bool ak_vm_push(ak_co *co, const ak_func *f, ak_closure *clos, ak_val *args, uin
 		co->frames = ak_realloc(co->frames, sizeof(ak_frame) * co->fcap);
 	}
 	if (clos) ak_retain(clos);
-	co->frames[co->nframes++] = (ak_frame){.fn = f, .clos = clos, .pc = 0, .callpc = callpc, .base = base, .dst = dst, .boundary = boundary, .inout = inout, .at = at, .argp = argp};
+	co->frames[co->nframes++] = (ak_frame){.fn = f, .clos = clos, .pc = 0, .callpc = callpc, .base = base, .udepth = co->nuntracks, .dst = dst, .boundary = boundary, .inout = inout, .at = at, .argp = argp};
 	return true;
 }
 
@@ -440,11 +440,20 @@ int ak_vm_interp(ak_co *co, ak_val *out) {
 			setref(R, a[0], c.p);
 			break;
 		}
+		case AK_OP_FOLLOWK: {
+			fr->pc = pc;
+			ak_val c = ak_vm_follow_new(R[a[1]].p, (ak_kind)a[2], M->strings[off32(a + 3)], a[5] != 0);
+			RELOAD();
+			CHECK_ERR();
+			setref(R, a[0], c.p);
+			break;
+		}
 		case AK_OP_CGET:
 		case AK_OP_CPEEK: {
 			fr->pc = pc;
 			ak_val v = ak_vm_cell_get(R[a[1]].p, op == AK_OP_CGET);
 			RELOAD();
+			CHECK_ERR();  // a follow's initializer's error
 			store(F, R, a[0], v);
 			break;
 		}
@@ -504,14 +513,16 @@ int ak_vm_interp(ak_co *co, ak_val *out) {
 			store(F, R, a[0], v);
 			break;
 		}
-		case AK_OP_UNTRACK: {
+		case AK_OP_CALLU: {
 			fr->pc = pc;
-			ak_val v = ak_vm_untrack(R[a[1]].p, R + a[2], a[3]);
+			ak_val v = ak_vm_call_untracked(R[a[1]].p, R + a[2], a[3]);
 			RELOAD();
 			CHECK_ERR();
 			store(F, R, a[0], v);
 			break;
 		}
+		case AK_OP_UNTRACK: ak_vm_untrack_begin(co); break;
+		case AK_OP_RETRACK: ak_vm_retrack(co, fr->udepth + a[0]); break;
 		case AK_OP_EFFECT:
 		case AK_OP_RENDER:
 			fr->pc = pc;
@@ -575,6 +586,8 @@ int ak_vm_interp(ak_co *co, ak_val *out) {
 		for (;;) {
 			bool boundary = fr->boundary;
 			uint32_t callpc = fr->callpc;
+			// Out of a peek the error left: what it untracked tracks again.
+			ak_vm_retrack(co, fr->udepth);
 			ak_vm_pop(co, -1);
 			if (boundary || co->nframes == 0) {
 				*out = (ak_val){0};

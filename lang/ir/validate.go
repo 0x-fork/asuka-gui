@@ -27,7 +27,7 @@ var operandKinds = map[string][]bc.Kind{
 	"NEWS": {bc.KRef}, "GETF": {0, bc.KRef}, "SETF": {bc.KRef}, "NEWE": {bc.KRef}, "ECASE": {bc.KInt, bc.KRef},
 	"GETP": {0, bc.KRef}, "BOX": {bc.KRef}, "UNBOX": {0, bc.KRef}, "NEWA": {bc.KRef}, "IDX": {0, bc.KRef, bc.KInt},
 	"SETIDX": {bc.KRef, bc.KInt}, "LEN": {bc.KInt, bc.KRef}, "NEWM": {bc.KRef}, "MGET": {bc.KRef, bc.KRef}, "MGETJ": {0, bc.KRef},
-	"MSET": {bc.KRef}, "CELL": {bc.KRef}, "CELLK": {bc.KRef}, "CGET": {0, bc.KRef}, "CPEEK": {0, bc.KRef},
+	"MSET": {bc.KRef}, "CELL": {bc.KRef}, "CELLK": {bc.KRef}, "FOLLOWK": {bc.KRef, bc.KRef}, "CGET": {0, bc.KRef}, "CPEEK": {0, bc.KRef},
 	"CSET": {bc.KRef}, "CTAKE": {0, bc.KRef}, "CPUT": {bc.KRef}, "MEMO": {bc.KRef, bc.KRef}, "MREAD": {0, bc.KRef},
 	"ACCV": {bc.KRef}, "ACCF": {bc.KRef, bc.KRef}, "ACCC": {bc.KRef, bc.KRef}, "AGET": {0, bc.KRef},
 	"EFFECT": {bc.KRef}, "RENDER": {bc.KRef}, "CLEANUP": {bc.KRef}, "TASK": {bc.KRef, bc.KRef},
@@ -38,7 +38,7 @@ var operandKinds = map[string][]bc.Kind{
 // the value is let go of. No other operand names none.
 var discards = map[string]bool{
 	"CALL": true, "CALLC": true, "CALLB": true, "CALLI": true, "CGET": true, "CPEEK": true,
-	"CTAKE": true, "MREAD": true, "AGET": true, "UNTRACK": true, "AWAIT": true,
+	"CTAKE": true, "MREAD": true, "AGET": true, "CALLU": true, "AWAIT": true,
 }
 
 // Validate checks what the lowering promises of its functions: each

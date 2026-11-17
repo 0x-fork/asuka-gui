@@ -4,6 +4,7 @@
 let pi = 3.14159             // a constant
 var total = 0                // a variable (in functions and handlers)
 state count = 0              // state: a value the UI follows
+state shown = count          // count, until it's written: state that follows
 ```
 
 Types are inferred; write one where it helps: `let ids: [int] = []`.

@@ -172,6 +172,9 @@ func Walk(v Visitor, n Node) {
 		walk(n.Body)
 	case *StateDecl:
 		walk(n.Name)
+		for _, d := range n.Deps {
+			walk(d)
+		}
 		if n.Type != nil {
 			walk(n.Type)
 		}
@@ -228,6 +231,9 @@ func Walk(v Visitor, n Node) {
 		}
 		walk(n.Body)
 	case *EffectDecl:
+		for _, d := range n.Deps {
+			walk(d)
+		}
 		walk(n.Body)
 	case *PropSet:
 		walk(n.Name)

@@ -463,7 +463,10 @@ TEST(effect_write_schedules_another_pass) {
 
 static isig loop_a;
 static const ak_comp_info loop_info = {.label = "loop (signal_test.c)"};
-static void loop_effect(void *ctx) { set(&loop_a, get(&loop_a) + 1); }
+static void loop_effect(void *ctx) {
+	ak_signal_note_write("loop_a", 6);
+	set(&loop_a, get(&loop_a) + 1);
+}
 static void loop_build(void *ctx, ak_owner *root) { ak_effect_new(loop_effect, NULL, AK_EFFECT_USER, &loop_info); }
 
 TEST(infinite_loop_panics) {
@@ -471,7 +474,7 @@ TEST(infinite_loop_panics) {
 	ak_owner *r = ak_root(loop_build, NULL);
 	CHECK_EQ_INT(panics.n, 1);
 	CHECK(strstr(panics.msg, "100 passes") != NULL);
-	CHECK(strstr(panics.msg, "effect loop (signal_test.c)") != NULL);
+	CHECK(strstr(panics.msg, "effect loop (signal_test.c) is still writing loop_a after 100 passes") != NULL);
 	CHECK(!ak_signal_flushing());
 	stop_catching_panics();
 	ak_owner_dispose(r);
@@ -1429,6 +1432,195 @@ TEST(made_under_a_disposed_owner) {
 	CHECK_EQ_INT(mud.child_runs, 0);
 	CHECK(!mud.a.n.subs && !mud.b.n.subs);
 	CHECK_EQ_INT(mud.dropped, 4);  // the effect and the three it made: none kept
+}
+
+// ---- Follows (rfcs/0012): a state that follows what its update reads,
+// and that may also be set. ifollow keeps an int, as imemo does.
+
+typedef struct {
+	ak_follow *f;
+	int v, runs;
+	bool ready;
+	int (*fn)(void *ctx);
+	void *ctx;
+} ifollow;
+
+static bool ifollow_update(void *p) {
+	ifollow *f = p;
+	f->runs++;
+	int v = f->fn(f->ctx);
+	bool changed = !f->ready || v != f->v;
+	f->v = v;
+	f->ready = true;
+	return changed;
+}
+
+static void ifollow_init(ifollow *f, int (*fn)(void *ctx), void *ctx) {
+	*f = (ifollow){.fn = fn, .ctx = ctx};
+	f->f = ak_follow_new(ifollow_update, f, NULL);
+}
+
+static int fget(ifollow *f) {
+	ak_follow_read(f->f);
+	return f->v;
+}
+
+static bool *fset_written;
+
+// fset is a write: the follow brought up to date first, then replaced.
+static void fset(ifollow *f, int v) {
+	ak_follow_refresh(f->f);
+	if (fset_written) *fset_written = true;
+	if (f->ready && f->v == v) return;  // equal: skipped
+	f->v = v;
+	f->ready = true;
+	ak_follow_set(f->f);
+}
+
+static struct {
+	isig s;
+	ifollow f;
+	int runs, seen, glitches;
+	bool written;  // set since s last changed
+	ak_owner *readers;
+} fol;
+
+static int fol_fn(void *ctx) {
+	fset_written = &fol.written;
+	fol.written = false;
+	return get(&fol.s) * 10;
+}
+static void fol_effect(void *ctx) {
+	fol.runs++;
+	int s = get(&fol.s);
+	fol.seen = fget(&fol.f);
+	// Not set since s changed, it's s's: it's never behind what it reads.
+	if (!fol.written && fol.seen != s * 10) fol.glitches++;
+}
+static void fol_readers(void *ctx) { EFFECT(fol_effect, NULL); }
+static void fol_build(void *ctx, ak_owner *root) {
+	ifollow_init(&fol.f, fol_fn, NULL);
+	fol.readers = ak_owner_new();
+	ak_with_owner(fol.readers, fol_readers, NULL);
+}
+
+static void fol_set_then_input(void *ctx) {
+	fset(&fol.f, 99);
+	set(&fol.s, 6);
+}
+static void fol_input_then_set(void *ctx) {
+	set(&fol.s, 5);
+	fset(&fol.f, 99);
+}
+static void fol_input_then_read(void *ctx) {
+	set(&fol.s, 8);
+	*(int *)ctx = fget(&fol.f);  // the update runs now, in the batch
+}
+
+TEST(follow_follows_until_set) {
+	memset(&fol, 0, sizeof fol);
+	fol.s.v = 1;
+	ak_owner *r = ak_root(fol_build, NULL);
+	CHECK_EQ_INT(fol.seen, 10);
+	set(&fol.s, 2);
+	CHECK_EQ_INT(fol.seen, 20);
+	fset(&fol.f, 7);
+	CHECK_EQ_INT(fol.seen, 7);
+	CHECK_EQ_INT(fol.f.runs, 2);  // the set computed nothing
+	fset(&fol.f, 7);  // equal: nothing runs
+	CHECK_EQ_INT(fol.runs, 3);
+	set(&fol.s, 3);
+	CHECK_EQ_INT(fol.seen, 30);  // s again
+	CHECK_EQ_INT(fol.runs, 4);
+	CHECK_EQ_INT(fol.glitches, 0);
+	ak_owner_dispose(r);
+	CHECK(!fol.s.n.subs);
+}
+
+TEST(follow_write_and_input_in_one_batch) {
+	memset(&fol, 0, sizeof fol);
+	fol.s.v = 1;
+	ak_owner *r = ak_root(fol_build, NULL);
+	// A write after the input changed stands.
+	ak_signal_batch(fol_input_then_set, NULL);
+	CHECK_EQ_INT(fol.seen, 99);
+	CHECK_EQ_INT(fol.runs, 2);
+	// A write before it is replaced, when it changes.
+	ak_signal_batch(fol_set_then_input, NULL);
+	CHECK_EQ_INT(fol.seen, 60);
+	CHECK_EQ_INT(fol.runs, 3);
+	// Read right after the input changed, it's the input's.
+	int got = 0;
+	ak_signal_batch(fol_input_then_read, &got);
+	CHECK_EQ_INT(got, 80);
+	CHECK_EQ_INT(fol.glitches, 0);
+	ak_owner_dispose(r);
+}
+
+TEST(follow_pulls_without_a_glitch) {
+	memset(&fol, 0, sizeof fol);
+	fol.s.v = 1;
+	ak_owner *r = ak_root(fol_build, NULL);
+	for (int i = 2; i < 20; i++) set(&fol.s, i);
+	CHECK_EQ_INT(fol.glitches, 0);
+	CHECK_EQ_INT(fol.runs, 19);  // once per write: no pass to catch up
+	CHECK_EQ_INT(fol.f.runs, 19);
+	ak_owner_dispose(r);
+}
+
+TEST(follow_keeps_its_sources_unwatched) {
+	memset(&fol, 0, sizeof fol);
+	fol.s.v = 1;
+	ak_owner *r = ak_root(fol_build, NULL);
+	fset(&fol.f, 5);
+	ak_owner_dispose(fol.readers);  // its last reader goes
+	CHECK(fol.s.n.subs != NULL);    // it still follows s
+	CHECK_EQ_INT(fget(&fol.f), 5);  // the set value stands
+	CHECK_EQ_INT(fol.f.runs, 1);
+	set(&fol.s, 4);
+	CHECK_EQ_INT(fol.f.runs, 1);     // lazy
+	CHECK_EQ_INT(fget(&fol.f), 40);  // s's, once it changed
+	// Held past its owner's disposal (as the VM holds it), it follows
+	// nothing, and a set notifies nothing.
+	ak_owner_retain(ak_follow_owner(fol.f.f));
+	ak_owner_dispose(r);
+	CHECK(!fol.s.n.subs);
+	fset(&fol.f, 3);
+	CHECK_EQ_INT(fget(&fol.f), 3);
+	CHECK_EQ_INT(fol.f.runs, 2);
+	ak_owner_release(ak_follow_owner(fol.f.f));
+}
+
+static int fixed_fn(void *ctx) { return 42; }
+
+TEST(follow_reading_nothing_is_settled) {
+	memset(&fol, 0, sizeof fol);
+	fol.s.v = 1;
+	ak_owner *r = ak_root(fol_build, NULL);
+	ifollow k;
+	ifollow_init(&k, fixed_fn, NULL);
+	CHECK(!ak_follow_settled(k.f));  // not run yet
+	CHECK_EQ_INT(fget(&k), 42);
+	CHECK(ak_follow_settled(k.f));
+	CHECK(!ak_follow_settled(fol.f.f));
+	ak_owner_dispose(ak_follow_owner(k.f));
+	ak_owner_dispose(r);
+}
+
+TEST(follow_steady_state_allocates_nothing) {
+	memset(&fol, 0, sizeof fol);
+	fol.s.v = 1;
+	ak_owner *r = ak_root(fol_build, NULL);
+	set(&fol.s, 2);  // warm up
+	fset(&fol.f, 1);
+	uint64_t before = ak_alloc_count;
+	for (int i = 3; i < 1003; i++) {
+		set(&fol.s, i);
+		fset(&fol.f, -i);
+	}
+	CHECK_EQ_INT(ak_alloc_count - before, 0);
+	CHECK_EQ_INT(fol.glitches, 0);
+	ak_owner_dispose(r);
 }
 
 T_MAIN()

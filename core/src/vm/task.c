@@ -32,6 +32,7 @@ static void finish(ak_task *t, ak_val out, bool failed) {
 	ak_module_release(t->mod);
 	ak_free(t->co.regs);
 	ak_free(t->co.frames);
+	ak_free(t->co.untracks);
 	ak_free(t);
 	ak_release(f);  // the task's reference
 }

@@ -16,7 +16,7 @@ app {
     on closeRequest { shown = false }
     Column {
       Text("Search apps")
-      for r in results { Text(r) { height: 40 } }
+      for r in results key r { Text(r) { height: 40 } }
     }
   }
 }

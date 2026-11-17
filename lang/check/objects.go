@@ -148,6 +148,9 @@ const (
 	// StyleLocal is a style's parameter or use: each application of the
 	// style gives it a register, or a memo (lang/ir/style.go).
 	StyleLocal
+	// StateSelf is a state's own name in its initializer (rfcs/0012):
+	// its current value, an optional, none the first time.
+	StateSelf
 )
 
 // A Var is a local: a parameter, let, var, or a pattern's binding.
@@ -472,6 +475,13 @@ type Member struct {
 	// emits it; unbound, the value is the component's own until the
 	// caller's changes.
 	Assigned bool
+	// For a state (rfcs/0012): Follows, its initializer reads what
+	// changes, or it says what it follows (state x(a) = …), so it's a
+	// follow: the initializer's value until written, and again when
+	// what it follows changes. Self is its own name in its initializer,
+	// its current value (nil when the initializer doesn't read it).
+	Follows bool
+	Self    *Var
 }
 
 // ChangeEvent is the event a prop's assignments emit: <name>Change, with
@@ -515,6 +525,10 @@ type Global struct {
 	Ctx   *FuncCtx   // its initializer's
 	deps  []*Global
 	Pub   bool
+	// A state's, as Member's (rfcs/0012): it follows what its
+	// initializer reads; its own name in the initializer.
+	Follows bool
+	Self    *Var
 }
 
 // Deps are the globals g's initializer reads.
@@ -570,6 +584,7 @@ const (
 	BEmbedFiles  // embed.files(…): likewise, [path: bytes]
 	BNavigate    // navigate(href), navigate(X(…)): the Router's
 	BReplace     // replace(href): the Router's, replacing where it is
+	BPeek        // peek(e): e, read without following it (rfcs/0012)
 )
 
 // A Builtin is a function the compiler provides (the prelude's print,

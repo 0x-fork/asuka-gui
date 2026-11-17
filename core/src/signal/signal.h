@@ -52,6 +52,11 @@ void ak_signal_read(ak_node *n);
 // panics, but to a signal the memo made in this run (ak_signal_born) that
 // nothing but the memo reads.
 void ak_signal_write(ak_node *n);
+// ak_signal_note_write names the write the caller is about to make (a
+// state's name, len bytes of what), for the effect running, if any: the
+// panic of an effect still dirty after AK_MAX_PASSES says the state it
+// wrote last. what must outlive the effect's run.
+void ak_signal_note_write(const char *what, size_t len);
 // ak_signal_drop unsubscribes everything that read n, before the caller
 // frees it. Reads of a dropped signal track nothing.
 void ak_signal_drop(ak_node *n);
@@ -70,6 +75,9 @@ typedef struct ak_comp_info {
 	// read.
 	void (*unwatched)(void *ctx);
 	const char *label; // names it in panics, e.g. "Counter.total (app.ak:12)"
+	// describe, when set, names it in panics instead of label, into buf
+	// ("Picker's effect at picker.asuka:12"): made only when it's said.
+	void (*describe)(void *ctx, char *buf, size_t n);
 } ak_comp_info;
 
 // ak_memo_new makes a memo owned by the current owner (by the caller
@@ -88,6 +96,41 @@ ak_owner *ak_memo_owner(ak_memo *m);
 // ak_memo_error is the error m's last update raised, or NULL. It is the
 // caller's pointer, held until m's next update or its drop.
 void *ak_memo_error(const ak_memo *m);
+
+// Follows.
+//
+// A follow is a state that follows what its initializer reads (rfcs/0012):
+// a memo whose value its owner may also set. Its value is the update's
+// until it's set, and the update's again when what the update read
+// changes; a set replaces whatever is there. As a memo's, a read pulls,
+// so a reader never sees it behind its inputs. Unlike a memo's, its
+// sources stay linked when its last reader goes, so a set value stands
+// until they change, whoever reads it then.
+typedef ak_comp ak_follow;
+
+// ak_follow_new makes a follow owned by the current owner (by the caller
+// when there is none: ak_owner_dispose(ak_follow_owner(f))). It is lazy:
+// update first runs on the first read (or refresh), and reports whether
+// the caller's value changed, as a memo's does.
+ak_follow *ak_follow_new(bool (*update)(void *ctx), void *ctx, const ak_comp_info *info);
+// ak_follow_read brings f up to date and subscribes the running
+// computation, as ak_memo_read does (false: its update raised an error,
+// raised again in the reader).
+static inline bool ak_follow_read(ak_follow *f) { return ak_memo_read(f); }
+// ak_follow_refresh brings f up to date without subscribing anything or
+// raising its error: what a set does first, so that a write after an
+// input changed replaces the current value, and stands.
+void ak_follow_refresh(ak_follow *f);
+// ak_follow_set tells the graph the caller replaced f's value, after
+// ak_follow_refresh: f is up to date with it (an error its update raised
+// is gone), and its readers are notified as a signal write's are.
+void ak_follow_set(ak_follow *f);
+// ak_follow_settled reports whether f's update has run and read nothing
+// (a parameter whose caller passed a constant): nothing can make it run
+// again, so it's a plain state from then on and its caller may let go
+// of what the update needs.
+bool ak_follow_settled(const ak_follow *f);
+static inline ak_owner *ak_follow_owner(ak_follow *f) { return ak_memo_owner(f); }
 
 enum {
 	AK_EFFECT_USER = 0,

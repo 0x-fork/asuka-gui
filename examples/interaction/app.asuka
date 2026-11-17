@@ -139,17 +139,12 @@ let fruits = ["Apple", "Apricot", "Banana", "Blueberry", "Cherry", "Grape", "Lem
 /// it puts the focus in the field from anywhere.
 component Keys {
   state query = ""
-  state selected = 0
   state picked = ""
   state focused = false
 
   let results = fruits.filter(f => f.lower().contains(query.lower()))
-
   // The first result is highlighted as the results change.
-  effect {
-    let _ = results
-    selected = 0
-  }
+  state selected(results) = 0
 
   fn move(by: int) {
     let n = results.count()

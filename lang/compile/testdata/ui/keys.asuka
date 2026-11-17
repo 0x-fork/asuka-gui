@@ -1,0 +1,47 @@
+// A for in a view over what changes keys its rows (rfcs/0012): a row's
+// state follows its item as the items move. A set's rows are keyed by
+// their elements and a range's by their numbers, without a key.
+component Row(name: string) {
+  state open = false
+
+  Button("{name} {if open { "open" } else { "shut" }}") { on press { open = !open } }
+}
+
+component Rows {
+  state names = ["b"]
+  state tags: Set<string> = ["x", "y"]
+  state start = 1
+
+  Column {
+    for n in names key n { Row(n) }
+    for t in tags { Row("tag {t}") }
+    for i in start..<3 { Row("num {i}") }
+    Button("add") { on press { names.insert("a", at: 0) } }
+    Button("untag") { on press { tags.remove("x") } }
+    Button("from 0") { on press { start = 0 } }
+  }
+}
+
+app { Rows() }
+
+test "a row's state follows its item" {
+  let app = mount(Rows())
+  app.tap("b shut")
+  app.expect("b open")
+  app.tap("add")
+  app.expect("a shut")
+  app.expect("b open")
+}
+
+test "a set's rows are keyed by their elements, a range's by their numbers" {
+  let app = mount(Rows())
+  app.tap("tag y shut")
+  app.tap("untag")
+  app.expectNo("tag x")
+  app.expect("tag y open")
+  app.tap("num 1 shut")
+  app.tap("from 0")
+  app.expect("num 0 shut")
+  app.expect("num 1 open")
+  app.expect("num 2 shut")
+}

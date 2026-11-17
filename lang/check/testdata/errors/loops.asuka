@@ -39,9 +39,8 @@ fn iterate() {
 }
 
 component Rows {
-  state xs = [1]
   Column {
-    for x in xs as rows { // ERROR "a for among views makes rows, and isn't a loop to break: drop as rows"
+    for x in [1, 2] as rows { // ERROR "a for among views makes rows, and isn't a loop to break: drop as rows"
       Text("{x}")
     }
   }
