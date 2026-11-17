@@ -618,8 +618,8 @@ func hasBinding(p syntax.Pattern) bool {
 // An lvalue's path, its indexes and stores computed first.
 type lvalue struct {
 	x     syntax.Expr
-	kind  int // what the root is
-	v     *check.Var    // lvBoxed: nil for a worker's var (m), its box in cell
+	kind  int        // what the root is
+	v     *check.Var // lvBoxed: nil for a worker's var (m), its box in cell
 	m     *check.Member
 	mtype check.Type // m's type where it's reached (a generic store's, instantiated)
 	g     *check.Global

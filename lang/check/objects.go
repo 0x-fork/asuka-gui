@@ -382,7 +382,7 @@ type IfaceMethod struct {
 // interface and members.
 type Component struct {
 	Store, Screen, Native bool
-	Worker                bool // a worker's: its vars, lets and fns, on its thread
+	Worker                bool             // a worker's: its vars, lets and fns, on its thread
 	Element               *prelude.Element // a built-in element
 	Style                 bool             // the prelude's Style pseudo-component
 	Params                []*Member        // the header's
