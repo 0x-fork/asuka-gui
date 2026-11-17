@@ -513,6 +513,9 @@ component Probe {
         step = "cancelled {speech.speaking()}"
         await sleep(1ms)
       }
+      try await speech.speak("Hi", options: speech.Options(language: "de\nQUIT", voice: "kal\r\nQUIT"))
+      step = "one line {speech.speaking()}"
+      await sleep(1ms)
       step = "done"
     } catch e {
       step = "fail {e.message}"
@@ -521,15 +524,20 @@ component Probe {
 }
 
 app { Probe() }
-`, []string{"host: voices 2 kal en-US de", "host: spoke false", "host: stopped true false", "host: cancelled false", "host: done"}, func(t *testing.T, pid int, line string) {
+`, []string{"host: voices 2 kal en-US de", "host: spoke false", "host: stopped true false", "host: cancelled false", "host: one line false", "host: done"}, func(t *testing.T, pid int, line string) {
 			if line != "host: done" {
 				return
 			}
 			got := ssip.log()
-			for _, w := range []string{"SET self NOTIFICATION ALL on", "SET self RATE 100", "SET self VOLUME 0", "SET self PITCH 0", "SET self LANGUAGE en-us", "Hello", "..dot", "CANCEL self"} {
+			for _, w := range []string{"SET self NOTIFICATION ALL on", "SET self RATE 100", "SET self VOLUME 0", "SET self PITCH 0", "SET self LANGUAGE en-us", "Hello", "..dot", "CANCEL self",
+				"SET self SYNTHESIS_VOICE kal  QUIT", "SET self LANGUAGE de quit"} {
 				if !strings.Contains(got, "\n"+w+"\n") {
 					t.Errorf("Speech Dispatcher heard no %q:\n%s", w, got)
 				}
+			}
+			// A setting's line breaks are spaces: no command of their own.
+			if strings.Contains(got, "\nQUIT\n") || strings.Contains(got, "\nquit\n") {
+				t.Errorf("a setting's line break sent a command:\n%s", got)
 			}
 		}},
 		{"nowplaying", `import platform/nowplaying
