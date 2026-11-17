@@ -1,0 +1,37 @@
+// Writes through ?., a map's entry with a default, if var.
+
+struct Todo {
+  done: bool = false
+  mut fn toggle() { done = !done }
+}
+
+fn writes(todos: [Todo], p: Todo?) {
+  todos.first()?.done = true // ERROR "can't assign to todos.first\(\)\?.done: the \?. chain starts at a value, not a place"
+  todos.first()?.toggle() // ERROR "toggle changes its value: call it on a var or state \(todos.first\(\) gives a value, not a place\)"
+  p?.done = true // ERROR "can't assign to p: parameters are values"
+  var q = p
+  q?.done = true
+  q?.done = 1 // ERROR "the value is an int, not a bool"
+  var m: [string: int] = [:]
+  m["a"] += 1 // ERROR "m\[k\] may be none"
+  m["a", default: 0] += 1
+  m["a", default: "zero"] += 1 // ERROR "the default is a string, not an int"
+  let n: int = m["b", default: 0]
+  var xs = [1]
+  xs[0, default: 1] = 2 // ERROR "default: is a map's, for a key it may not have: a \[int\] has no such entries"
+  let pair: (int, int)? = none
+  if var (a, b) = pair { // ERROR "if var binds a name, a copy that may change: if var x = optional"
+  }
+  if var t = p {
+    t.toggle()
+  }
+  if var t = n { // ERROR "int isn't optional: if var unwraps an optional \(use var\)"
+  }
+}
+
+component Rows {
+  state t: Todo? = none
+  if var x = t { // ERROR "a view's if binds what it shows, which changes with what it reads: if let, not if var"
+    Text("{x.done}")
+  }
+}

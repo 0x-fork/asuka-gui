@@ -629,6 +629,8 @@ type lvalue struct {
 	field *check.Field
 	named *check.Named
 	isMap bool
+	def   syntax.Expr // m[k, default: v]'s v
+	vt    check.Type  // lvSome's: the optional's value type
 }
 
 const (
@@ -638,6 +640,7 @@ const (
 	lvField
 	lvIndex
 	lvModel // a prop its component assigns: set whole only (the checker's)
+	lvSome  // inner's value when it isn't none: x?.f's x (places.go)
 )
 
 // prepare computes an lvalue's indexes and store values, before any
@@ -684,16 +687,16 @@ func (b *fb) prepare(x syntax.Expr) *lvalue {
 		}
 		if sel != nil && sel.Kind == check.SelField {
 			n, _ := b.typ(sel.Recv).(*check.Named)
-			return &lvalue{x: x, kind: lvField, inner: b.prepare(x.X), field: sel.Field, named: n}
+			return &lvalue{x: x, kind: lvField, inner: b.prepareRecv(x), field: sel.Field, named: n}
 		}
 		if sel != nil && sel.Kind == check.SelTupleElem {
 			// A tuple's element: its field, by place (named nil).
-			return &lvalue{x: x, kind: lvField, inner: b.prepare(x.X), field: sel.Field}
+			return &lvalue{x: x, kind: lvField, inner: b.prepareRecv(x), field: sel.Field}
 		}
 	case *syntax.IndexExpr:
 		inner := b.prepare(x.X)
-		_, isMap := b.rawType(x.X).(*check.Map)
-		return &lvalue{x: x, kind: lvIndex, inner: inner, idx: b.value(x.Index, -1), isMap: isMap}
+		_, isMap := check.Unopt(b.rawType(x.X)).(*check.Map)
+		return &lvalue{x: x, kind: lvIndex, inner: inner, idx: b.value(x.Index, -1), isMap: isMap, def: x.Default}
 	}
 	b.l.errorf(x, "can't change this")
 	return &lvalue{x: x, kind: lvVar}
@@ -742,11 +745,17 @@ func (b *fb) updateWith(lv *lvalue, reads bool, fn func(cur int)) {
 			b.changePart(t, fn, func(v int) { b.emit(op("SETF"), rx, lv.field.Index, v) })
 		})
 	case lvIndex:
+		if lv.isMap {
+			b.updateWith(lv.inner, reads, func(rx int) { b.updateEntry(lv, rx, fn) })
+			return
+		}
 		b.updateWith(lv.inner, reads, func(rx int) {
-			t := b.temp(b.kind(b.l.info.Types[lv.x]))
+			t := b.temp(b.kind(b.placeType(lv.x)))
 			b.emit(op("IDX"), t, rx, lv.idx)
 			b.changePart(t, fn, func(v int) { b.emit(op("SETIDX"), rx, lv.idx, v) })
 		})
+	case lvSome:
+		b.updateWith(lv.inner, reads, func(cur int) { b.updateSome(lv, cur, fn) })
 	}
 }
 
@@ -822,26 +831,62 @@ func (b *fb) get(lv *lvalue) int {
 }
 
 func (b *fb) assignStmt(s *syntax.AssignStmt) {
-	lt := b.rawType(s.Target)
+	if optionalPath(s.Target) {
+		// A ?. chain: the place reached first, its value only when it's
+		// there (places.go).
+		lv := b.prepare(s.Target)
+		b.optionalChange(lv, func() { b.assign(s, lv, b.value(s.Value, -1)) })
+		return
+	}
 	switch s.Op {
 	case syntax.ASSIGN:
 		v := b.value(s.Value, -1)
 		b.set(b.prepare(s.Target), v)
 	case syntax.COALESCE_ASSIGN:
-		lv := b.prepare(s.Target)
+		b.assign(s, b.prepare(s.Target), -1)
+	default:
+		v := b.value(s.Value, -1)
+		b.assign(s, b.prepare(s.Target), v)
+	}
+}
+
+// optionalPath reports a ?. in the path of the place x.
+func optionalPath(x syntax.Expr) bool {
+	for {
+		switch e := x.(type) {
+		case *syntax.ParenExpr:
+			x = e.X
+		case *syntax.MemberExpr:
+			if e.Optional {
+				return true
+			}
+			x = e.X
+		case *syntax.IndexExpr:
+			x = e.X
+		default:
+			return false
+		}
+	}
+}
+
+// assign makes s's change of the place lv with v, its value computed
+// (-1 for ??=, whose value is computed only when the place is none).
+func (b *fb) assign(s *syntax.AssignStmt, lv *lvalue, v int) {
+	lt := b.placeType(s.Target)
+	switch s.Op {
+	case syntax.ASSIGN:
+		b.set(lv, v)
+	case syntax.COALESCE_ASSIGN:
 		cur := b.get(lv)
 		end := b.f.NewLabel()
 		b.emitJump(op("JSOME"), cur, end)
-		v := b.value(s.Value, -1)
-		b.set(lv, v)
+		b.set(lv, b.value(s.Value, -1))
 		b.f.Place(end)
 	default:
-		v := b.value(s.Value, -1)
 		o := s.Op.AssignOp()
-		lv := b.prepare(s.Target)
 		vt := b.typeOf(s.Value)
 		apply := func(cur, dst int) int { return b.binop(o, cur, v, lt, vt, lt, dst) }
-		reads := false
+		reads := b.placeReads(lv)
 		if m := b.l.info.AssignOps[s]; m != nil {
 			// x += y is x = x.add(y): the method of x's type, which may
 			// read the place (a state's value), so it's read, not taken.
@@ -849,6 +894,11 @@ func (b *fb) assignStmt(s *syntax.AssignStmt) {
 			idx := b.l.funcIndex(m.Func, nil, rt)
 			apply = func(cur, dst int) int { return b.invoke(idx, []int{cur, v}, b.kind(lt), dst, false) }
 			reads = true
+		}
+		if lv.kind == lvIndex && lv.isMap {
+			// m[k, default: v] += y: the entry changed where it is.
+			b.updateWith(lv, reads, func(cur int) { b.move(cur, apply(cur, cur)) })
+			return
 		}
 		if lv.kind == lvField || lv.kind == lvIndex && !lv.isMap {
 			// Read and write the element where it is.

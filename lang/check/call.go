@@ -156,7 +156,17 @@ func exprName(e syntax.Expr) string {
 	case *syntax.Ident:
 		return e.Name
 	case *syntax.MemberExpr:
+		if e.Optional {
+			return exprName(e.X) + "?." + e.Name.Name
+		}
 		return exprName(e.X) + "." + e.Name.Name
+	case *syntax.CallExpr:
+		if e.Args == nil || len(e.Args.List) == 0 {
+			return exprName(e.Fun) + "()"
+		}
+		return exprName(e.Fun) + "(…)"
+	case *syntax.ParenExpr:
+		return exprName(e.X)
 	}
 	return "this"
 }

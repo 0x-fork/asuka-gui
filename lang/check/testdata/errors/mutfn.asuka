@@ -36,7 +36,7 @@ fn calls(p: Counter) {
   let c = Counter()
   c.bump() // ERROR "bump changes its value: call it on a var or state \(c is a let\)"
   p.bump() // ERROR "bump changes its value: call it on a var or state \(p is a parameter\)"
-  make().bump() // ERROR "bump changes its value: call it on a var or state \(make\(…\) gives a value, not a place\)"
+  make().bump() // ERROR "bump changes its value: call it on a var or state \(make\(\) gives a value, not a place\)"
   for x in [Counter()] {
     x.bump() // ERROR "bump changes its value: call it on a var or state \(x is a copy of what it matched\)"
   }

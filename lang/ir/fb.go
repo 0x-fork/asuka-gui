@@ -22,6 +22,11 @@ type fb struct {
 	// (registers, an operand), once.
 	tooBig bool
 
+	// inout: the place an inout builtin's call changes, when it's x?.f's
+	// (places.go), and what's done with its result there.
+	inout      *lvalue
+	inoutAfter func(r int)
+
 	vars map[*check.Var]int // a local's register (its box, accessor or memo)
 	// unboxed: boxed vars this function holds the values of (a spawn's
 	// copies), in their registers.

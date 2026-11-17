@@ -26,6 +26,9 @@ func (b *fb) call1(e *syntax.CallExpr, dst int, discard bool) int {
 		b.l.errorf(e, "internal: no call info")
 		return -1
 	}
+	if call.Optional && (call.Mut || call.Kind == check.CallBuiltinMethod && call.Method.Inout) {
+		return b.optionalMutCall(e, call, dst, discard)
+	}
 	if call.Optional {
 		return b.optionalCall(e, call, dst)
 	}
@@ -430,9 +433,16 @@ func (b *fb) builtinMethod(e *syntax.CallExpr, call *check.Call, recv *int, dst 
 		r = b.out(dst, k)
 	}
 	if m.Inout && recv == nil {
-		lv := b.prepare(call.Recv)
-		b.updateWith(lv, hasClosureArg(m) || inoutGuard, func(cur int) {
+		lv, after := b.inout, b.inoutAfter
+		b.inout, b.inoutAfter = nil, nil
+		if lv == nil {
+			lv = b.prepare(call.Recv)
+		}
+		b.updateWith(lv, hasClosureArg(m) || inoutGuard || b.placeReads(lv), func(cur int) {
 			b.callInout(m, cur, vals, r, inoutGuard)
+			if after != nil {
+				after(r)
+			}
 		})
 	} else {
 		x := b.recvValue(call, recv)

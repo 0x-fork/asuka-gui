@@ -84,6 +84,24 @@ test "an interface's value" {
   print("bumped")
 }
 
+test "places through ?. and defaults" {
+  var byName: [string: Cart] = [:]
+  for k in 0..<6 {
+    byName["c{k % 3}", default: Cart()].add(Item(name: "i{k % 2}"))
+  }
+  byName["c0"]?.items[0].rename(to: "renamed {1}")
+  byName["none"]?.add(Item(name: "no"))
+  var groups: [int: [string]] = [:]
+  for k in 0..<5 { groups[k % 2, default: []].push("w{k}") }
+  var maybe: Cart? = Cart()
+  maybe?.add(Item(name: "m{1}"))
+  maybe?.items[0].bump()
+  if var c = maybe {
+    c.add(Item(name: "v{2}"))
+    print("{c.items.count()} {byName.count()} {groups[0]?.count() ?? 0}")
+  }
+}
+
 // Output:
 // 4 3 3 2
 // ok a var
@@ -93,3 +111,5 @@ test "an interface's value" {
 // ok a store's state
 // bumped
 // ok an interface's value
+// 2 3 3
+// ok places through ?. and defaults

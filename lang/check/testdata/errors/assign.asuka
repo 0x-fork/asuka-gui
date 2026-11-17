@@ -20,7 +20,7 @@ fn f(ps: [P], o: P?, s: Shape) {
     .dot => { }
   }
   var m: [string: P] = [:]
-  m["k"]?.x = 4 // ERROR "can't assign through \?\.: unwrap it first"
+  m["k"]?.x = 4
   let b = o else { return }
   b.x = 3 // ERROR "can't assign to b: it's a let: make it a var"
   var d = o else { return }

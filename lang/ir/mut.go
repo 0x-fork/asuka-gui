@@ -22,13 +22,46 @@ func (b *fb) mutCall(e *syntax.CallExpr, call *check.Call, dst int, discard bool
 	} else {
 		lv = b.prepare(call.Recv)
 	}
-	return b.mutCallOn(lv, e, call, dst, discard)
+	return b.mutCallOn(lv, e, call, dst, discard, nil)
+}
+
+// optionalMutCall is x?.f(…) of a mut fn or an inout builtin: nothing
+// when x is none (its arguments aren't evaluated), and the call's
+// result made optional.
+func (b *fb) optionalMutCall(e *syntax.CallExpr, call *check.Call, dst int, discard bool) int {
+	lv := &lvalue{x: call.Recv, kind: lvSome, inner: b.prepare(call.Recv), vt: b.placeType(call.Recv)}
+	res := b.rawType(e)
+	r := -1
+	var after func(v int)
+	if res != check.Void && !discard {
+		r = b.out(dst, bc.KRef)
+		b.emit(op("KNONE"), r)
+		from := check.Unopt(res)
+		if call.Result != nil {
+			from = b.subst.Apply(call.Result)
+		}
+		after = func(v int) {
+			if v >= 0 {
+				b.toOptional(v, from, res, r)
+			}
+		}
+	}
+	b.optionalChange(lv, func() {
+		if call.Mut {
+			b.mutCallOn(lv, e, call, -1, r < 0, after)
+			return
+		}
+		b.inout, b.inoutAfter = lv, after
+		b.builtinMethod(e, call, nil, -1)
+	})
+	return r
 }
 
 // mutCallOn calls mut fn call on the place lv: its arguments first,
 // then the place reached (a cell taken out), the call, and the place put
-// back.
-func (b *fb) mutCallOn(lv *lvalue, e *syntax.CallExpr, call *check.Call, dst int, discard bool) int {
+// back; after, when given, is run with the result where the call is
+// made (a ?. may skip it).
+func (b *fb) mutCallOn(lv *lvalue, e *syntax.CallExpr, call *check.Call, dst int, discard bool, after func(int)) int {
 	target, k, reads := b.mutTarget(call)
 	var vals []int
 	if call.Kind == check.CallIface {
@@ -40,7 +73,7 @@ func (b *fb) mutCallOn(lv *lvalue, e *syntax.CallExpr, call *check.Call, dst int
 	if k != bc.KVoid && !discard {
 		r = b.out(dst, k)
 	}
-	b.updateWith(lv, reads, func(cur int) {
+	b.updateWith(lv, reads || b.placeReads(lv), func(cur int) {
 		b.callMut(cur, vals, func(blk, n int) {
 			if target.idx >= 0 {
 				b.emit(op("CALL"), r, target.idx, blk, n)
@@ -48,6 +81,9 @@ func (b *fb) mutCallOn(lv *lvalue, e *syntax.CallExpr, call *check.Call, dst int
 				b.emit(op("CALLI"), r, b.l.str(call.Name), blk, n)
 			}
 		})
+		if after != nil {
+			after(r)
+		}
 	})
 	if r == bc.None {
 		return -1

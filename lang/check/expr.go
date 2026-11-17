@@ -1290,12 +1290,32 @@ func (c *Checker) implicitMember(e *syntax.ImplicitMember, want Type) Type {
 
 func (c *Checker) index(e *syntax.IndexExpr) Type {
 	xt := c.expr(e.X, nil)
+	if IsOptional(xt) && c.chained[unparen(e.X)] {
+		// a?.items[0], in a ?. chain: none when what's before is.
+		c.chained[e] = true
+		return MakeOptional(c.index1(e, Unopt(xt)))
+	}
+	return c.index1(e, xt)
+}
+
+func (c *Checker) index1(e *syntax.IndexExpr, xt Type) Type {
+	if _, isMap := xt.(*Map); !isMap && e.Default != nil {
+		c.expr(e.Default, nil)
+		if !IsInvalid(xt) {
+			c.errorf(e.Default, "default: is a map's, for a key it may not have: %s has no such entries", aType(xt))
+		}
+	}
 	switch t := xt.(type) {
 	case *Array:
 		c.assign(e.Index, Int, "an index")
 		return t.Elem
 	case *Map:
 		c.assign(e.Index, t.Key, "a key")
+		if e.Default != nil {
+			// m[k, default: v]: the entry, or v when there's none.
+			c.assign(e.Default, t.Elem, "the default")
+			return t.Elem
+		}
 		return MakeOptional(t.Elem)
 	}
 	if xt == Bytes {

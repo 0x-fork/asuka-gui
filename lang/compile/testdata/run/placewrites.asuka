@@ -1,0 +1,68 @@
+// What a change of state tells its readers, counted by what they
+// print as they run: a mut fn's call on an element updates that row; a
+// write through ?. that meets none, nothing; a map's entry with a
+// default, the readers of the map.
+
+struct Todo {
+  id: int
+  done: bool = false
+
+  mut fn toggle() { done = !done }
+}
+
+struct Message {
+  read: bool = false
+}
+
+fn row(t: Todo) -> string {
+  print("row {t.id}")
+  return "{t.id} {t.done}"
+}
+
+fn summary(inbox: [string: Message], counts: [string: int]) -> string {
+  print("summary")
+  return "{inbox["a"]?.read ?? false} {counts["w"] ?? 0}"
+}
+
+component Page {
+  state todos = [Todo(id: 1), Todo(id: 2)]
+  state inbox: [string: Message] = ["a": Message()]
+  state counts: [string: int] = [:]
+
+  Column {
+    for t in todos key t.id {
+      Text(row(t))
+    }
+    Text(summary(inbox, counts))
+    Button("Toggle") { on press { todos[1].toggle() } }
+    Button("Missing") { on press { inbox["z"]?.read = true } }
+    Button("Read") { on press { inbox["a"]?.read = true } }
+    Button("Count") { on press { counts["w", default: 0] += 1 } }
+  }
+}
+
+test "readers" {
+  let app = mount(Page())
+  print("toggle")
+  app.tap("Toggle")
+  print("missing")
+  app.tap("Missing")
+  print("read")
+  app.tap("Read")
+  print("count")
+  app.tap("Count")
+  app.expect("2 true", "true 1")
+}
+
+// Output:
+// row 1
+// row 2
+// summary
+// toggle
+// row 2
+// missing
+// read
+// summary
+// count
+// summary
+// ok readers

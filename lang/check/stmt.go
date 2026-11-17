@@ -221,8 +221,8 @@ func notTuple(t Type, n int) string {
 }
 
 func (c *Checker) assignStmt(s *syntax.AssignStmt) {
-	lt := c.lvalue(s.Target, "assign to")
-	if ix, ok := unparen(s.Target).(*syntax.IndexExpr); ok {
+	lt := c.placeType(s.Target, c.lvalue(s.Target, "assign to"))
+	if ix, ok := unparen(s.Target).(*syntax.IndexExpr); ok && ix.Default == nil {
 		if _, isMap := c.info.Types[ix.X].(*Map); isMap {
 			// m[k] reads a V?, and stores a V.
 			switch s.Op {
@@ -283,6 +283,30 @@ func (c *Checker) assignStmt(s *syntax.AssignStmt) {
 			c.errorf(s, "%s= doesn't take %s and %s", op, aType(lt), aType(vt))
 		}
 	}
+}
+
+// placeType is the type of the place x (of type t as an expression):
+// a ?. chain's member is its own type, not the chain's optional.
+func (c *Checker) placeType(x syntax.Expr, t Type) Type {
+	switch x := unparen(x).(type) {
+	case *syntax.MemberExpr:
+		if sel := c.info.Selections[x]; sel != nil && sel.Optional && sel.MemberType != nil {
+			return sel.MemberType
+		}
+	case *syntax.IndexExpr:
+		if c.chained[x] {
+			switch xt := Unopt(c.info.Types[x.X]).(type) {
+			case *Array:
+				return xt.Elem
+			case *Map:
+				if x.Default != nil {
+					return xt.Elem
+				}
+				return MakeOptional(xt.Elem)
+			}
+		}
+	}
+	return t
 }
 
 // lvalue checks x as something assigned to (or changed in place) and
@@ -378,9 +402,15 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 		if sel == nil {
 			return
 		}
-		if sel.Optional {
-			c.errorf(x, "can't %s through ?.: unwrap it first (if let)", strings.TrimSuffix(what, " to"))
-			return
+		if x.Optional {
+			// A ?. chain is a place when it starts at one: it changes
+			// nothing when it meets none.
+			switch unparen(x.X).(type) {
+			case *syntax.Ident, *syntax.MemberExpr, *syntax.IndexExpr, *syntax.SelfExpr:
+			default:
+				c.notPlace(x, exprName(x.X)+" gives a value, not a place", "can't %s %s: the ?. chain starts at a value, not a place; a chain that's changed starts at a var or state", what, exprName(x))
+				return
+			}
 		}
 		switch sel.Kind {
 		case SelField, SelTupleElem:
@@ -406,8 +436,8 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 		c.selfWrite(x, what, "self")
 	default:
 		short := "this isn't a var"
-		if call, ok := unparen(x).(*syntax.CallExpr); ok {
-			short = exprName(call.Fun) + "(…) gives a value, not a place"
+		if _, ok := unparen(x).(*syntax.CallExpr); ok {
+			short = exprName(x) + " gives a value, not a place"
 		}
 		c.notPlace(x, short, "can't %s this: only vars, state, and their fields and elements", what)
 	}
@@ -473,14 +503,24 @@ func (c *Checker) cond(e syntax.Expr) {
 }
 
 func (c *Checker) letCondPattern(lc *syntax.LetCond, t Type, kind VarKind) {
+	if lc.Var && kind != LocalVar {
+		c.errorf(lc, "a view's if binds what it shows, which changes with what it reads: if let, not if var")
+	}
 	if bp, ok := lc.Pattern.(*syntax.BindPat); ok {
 		if !IsOptional(t) && !IsInvalid(t) {
-			c.errorf(lc.Value, "%s isn't optional: if let unwraps an optional (use let)", typeString(t))
+			kw := "let"
+			if lc.Var {
+				kw = "var"
+			}
+			c.errorf(lc.Value, "%s isn't optional: if %s unwraps an optional (use %s)", typeString(t), kw, kw)
 		}
-		v := c.declareVar(bp.Name, Unopt(t), false)
+		v := c.declareVar(bp.Name, Unopt(t), lc.Var && kind == LocalVar)
 		v.Kind = kind
 		v.Bound = true
 		return
+	}
+	if lc.Var {
+		c.errorf(lc.Pattern, "if var binds a name, a copy that may change: if var x = optional")
 	}
 	c.pattern(lc.Pattern, t, kind)
 }
