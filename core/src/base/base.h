@@ -40,6 +40,17 @@ static inline float ak_maxf(float a, float b) { return a > b ? a : b; }
 #define AK_TLS _Thread_local
 #endif
 
+// ak_stack_low reports whether this thread's C stack is nearly used up:
+// code that recurses (Asuka compiled to C, a call from C into the VM)
+// throws a stack overflow then, rather than overflowing it.
+extern AK_TLS uintptr_t ak_stack_lim;
+uintptr_t ak_stack_init(void);
+static inline bool ak_stack_low(void) {
+	uintptr_t lim = ak_stack_lim;
+	if (AK_UNLIKELY(!lim)) lim = ak_stack_init();
+	return (uintptr_t)__builtin_frame_address(0) < lim;
+}
+
 // Allocation. Never returns NULL: running out of memory aborts.
 void *ak_alloc(size_t n);  // zeroed
 void *ak_realloc(void *p, size_t n);

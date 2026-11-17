@@ -277,7 +277,9 @@ func (g *gen) fn(i int) error {
 		g.p("static ak_val f%d(ak_val *A, ak_closure *C) {\n", i)
 		g.p("\tAK_UNUSED(A); AK_UNUSED(C);\n")
 		g.p("\tak_val R[%d];\n\tmemset(R, 0, sizeof R);\n", max(n, 1))
-		g.p("\tif (AK_UNLIKELY(++depth > 10000)) { depth--; ak_throw_msg(\"stack overflow in %s\"); return (ak_val){0}; }\n", cstr(f.Name))
+		// As deep as the VM's frames go, and no deeper than the thread's
+		// C stack.
+		g.p("\tif (AK_UNLIKELY(++depth > 10000 || ak_stack_low())) { depth--; ak_throw_msg(\"stack overflow in %s\"); return (ak_val){0}; }\n", cstr(f.Name))
 		for p := 0; p < int(f.NParams); p++ {
 			if f.Kinds[p] == bc.KRef {
 				g.p("\tR[%d].p = ak_retain(A[%d].p);\n", p, p)

@@ -553,6 +553,11 @@ void ak_vm_closure_drop(ak_closure *c) { ak_module_release(((const ak_func *)c->
 
 static ak_val call_sync(const ak_func *f, ak_closure *clos, ak_val *args, uint32_t nargs) {
 	ak_co *co = cur_co();
+	// Each call from C nests the run loop on the C stack.
+	if (AK_UNLIKELY(ak_stack_low())) {
+		ak_throw_msg("stack overflow in %s", f->name->data);
+		return (ak_val){0};
+	}
 	if (!ak_vm_push(co, f, clos, args, nargs, 0xFFFF, true, 0)) return (ak_val){0};
 	ak_val out;
 	bool suspended = ak_vm_run(co, &out);
