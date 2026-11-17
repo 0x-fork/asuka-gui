@@ -409,9 +409,9 @@ static void task_owner_cleanup(void *ctx) {
 
 static void register_cancel(void *ctx) { ak_on_cleanup(task_owner_cleanup, ctx); }
 
-void ak_vm_task_own(ak_task *t) {
-	if (!ak_current_owner()) return;
-	t->owner = ak_owner_new();
+void ak_vm_task_own(ak_task *t, ak_owner *holder) {
+	if (!holder && !ak_current_owner()) return;
+	t->owner = holder ? ak_owner_new_in(holder) : ak_owner_new();
 	ak_owner_retain(t->owner);
 	ak_with_owner(t->owner, register_cancel, t);
 }
@@ -450,9 +450,91 @@ void ak_vm_task_done(ak_task *t, void *err) {
 	}
 }
 
+// ---- Components' event handlers ----
+//
+// An async handler of a component's event (lang/LOWERING.md's
+// "Components") is a task of the component that declares it, the
+// receiver: whoever emits the event (a sync handler, a fn running on a
+// task, an async function that waits for it), the handler runs until it
+// finishes or the receiver goes. ui.owner, at the receiver's start, is
+// the owner it was made under, which goes when it goes; ui.handler wraps
+// the handler as it's passed: calling it starts the task held by that
+// owner, its contexts and catcher those of where the handler is declared
+// (the owner current then: a sheet's, a stack's screen's).
+
+typedef struct {
+	ak_opaque h;
+	ak_owner *o;
+} owner_ref;
+
+static void owner_ref_drop(ak_opaque *p) { ak_owner_release(((owner_ref *)p)->o); }
+
+static ak_val b_owner(ak_val *a, uint32_t n) {
+	AK_UNUSED(a);
+	AK_UNUSED(n);
+	ak_owner *o = ak_current_owner();
+	if (!o) return (ak_val){0};
+	owner_ref *r = ak_opaque_new(AK_TAG_OPAQUE, sizeof *r, owner_ref_drop);
+	ak_owner_retain(o);
+	r->o = o;
+	return (ak_val){.p = r};
+}
+
+// A handler's captures: the async closure, where it's declared and what
+// holds its tasks (owners, retained: released by handler_drop).
+static const uint8_t handler_caps[3] = {AK_K_REF, AK_K_INT, AK_K_INT};
+
+static void handler_drop(ak_closure *c) {
+	if (c->caps[1].p) ak_owner_release(c->caps[1].p);
+	if (c->caps[2].p) ak_owner_release(c->caps[2].p);
+}
+
+typedef struct {
+	ak_closure *c;
+	ak_val *args;
+	uint32_t nargs;
+	ak_owner *holder;
+	ak_val out;
+} handler_call;
+
+static void handler_start(void *ctx) {
+	handler_call *h = ctx;
+	h->out = (ak_val){.p = ak_vm_task_start_in(h->c->fn, h->c, h->args, h->nargs, h->holder)};
+}
+
+static ak_val handler_invoke(ak_closure *c, ak_val *args, uint32_t nargs) {
+	ak_owner *where = c->caps[1].p, *holder = c->caps[2].p;
+	// Its component is gone, and the handler with it.
+	if (holder && ak_owner_disposed(holder)) return (ak_val){0};
+	handler_call h = {c->caps[0].p, args, nargs, holder, {0}};
+	if (where) ak_with_owner(where, handler_start, &h);
+	else handler_start(&h);
+	return h.out;
+}
+
+static ak_val b_handler(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	ak_closure *f = a[0].p;
+	owner_ref *r = a[1].p;
+	if (!f || !ak_closure_async(f)) return (ak_val){.p = ak_retain(f)};
+	ak_owner *where = ak_current_owner(), *holder = r ? r->o : where;
+	ak_closure *c = ak_closure_new(handler_invoke, NULL, 3, handler_caps);
+	c->caps[0].p = ak_retain(f);
+	if (where) ak_owner_retain(where);
+	c->caps[1].p = where;
+	if (holder) ak_owner_retain(holder);
+	c->caps[2].p = holder;
+	c->drop = handler_drop;
+	return (ak_val){.p = c};
+}
+
 // ---- Setup ----
 
 static void err_retain(void *e) { ak_retain(e); }
 static void err_release(void *e) { ak_release(e); }
 
-void ak_vm_react_init(void) { ak_signal_set_error_refs(err_retain, err_release); }
+void ak_vm_react_init(void) {
+	ak_signal_set_error_refs(err_retain, err_release);
+	ak_builtin_register("ui.owner", b_owner);
+	ak_builtin_register("ui.handler", b_handler);
+}

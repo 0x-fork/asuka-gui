@@ -352,8 +352,8 @@ the indentation of its closing quotes' line from every line.
   in the string table): a struct literal with constant fields, an array
   of constants, a struct's `let` (Font.title), are built once in init
   into a global and frozen (`rt.freeze`, which makes them and what they
-  hold immortal, so spawn's threads may share them). Today the lowering
-  does it for top-level lets and types' lets; literals in functions are
+  hold immortal, so spawn's threads may share them): top-level lets and
+  types' lets; literals in functions are
   built where they are (hoisting them is an optimization still to do).
 - Init makes each package's globals, the packages in dependency order
   and each package's globals by what their initializers read (a cycle
@@ -400,11 +400,23 @@ events' handlers, in declaration order:
   closure that builds the view when called, so it's built in the
   callee's owner, where the callee places it, only when it's shown.
 - An event's handler is a closure, or none (emit then does nothing).
+  An async one (its block awaits) is a task of the component that
+  declares it, the receiver, whoever emits it: CALLB `ui.handler(closure,
+  owner)` wraps it in a closure that starts it as a task held by owner
+  (disposing the owner cancels it) and run under the owner current where
+  it's made (its contexts and catcher). owner is what the receiver's env
+  keeps (below); outside a component (the app block, a test, a plain
+  fn) it's none, and the owner where it's made holds it too.
 
 Its members live in its **env**, a struct of the component's shape:
 a field per parameter, prop and event (their accessors, builders and
 handlers), per state (its cell), per let (its memo, its loader, or its
-value when it reads nothing reactive) and per use. The closures the
+value when it reads nothing reactive) and per use. A component that
+declares an async handler of another component's event (check's
+`Component.HoldsHandlers`) has one more, after its members: the owner
+it was made under (CALLB `ui.owner`, first thing in its function), which
+holds those handlers' tasks; the closures between it and such a handler
+capture the env to reach it. The closures the
 component makes reach its members through the env: those made before
 the env is whole (its lets' memos) capture a box (VBOX) the env is put
 in (VSET) once it's made, the rest the env itself. Its `fn` members are
@@ -433,9 +445,14 @@ screen's prop sets and slots go to that element, its view items are the
 element's children.
 
 `emit e(args)` calls the handler argument with args when it isn't none
-(CALLC; its result register is a reference, so the future of an async
-handler started from C is released). An event's name read as a value is
-whether the caller handles it: ISNONE of the handler, NOT.
+(CALLC; its result register is a reference: a sync handler's none, an
+async one's future, which `ui.handler`'s closure returns). In an async
+function the emit waits for it (JNONE past, then AWAIT the future), so
+its error is the emitter's; elsewhere the future is released and the
+task goes on alone, an error it lets out going to its owner's catcher.
+Either way the task is the receiver's: cancelling the emitter stops its
+wait, not the handler. An event's name read as a value is whether the
+caller handles it: ISNONE of the handler, NOT.
 
 A store's constructor is the same function without the views: it
 returns its env. Its `task { }` is TASK (a store has no mount), owned by

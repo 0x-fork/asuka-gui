@@ -163,7 +163,7 @@ func (l *Lowerer) newFunc(name, file string, nparams int, ret bc.Kind) *fb {
 	f := &Func{Name: name, File: file, NParams: nparams, Ret: ret}
 	l.out.Funcs = append(l.out.Funcs, f)
 	return &fb{l: l, f: f, idx: len(l.out.Funcs) - 1, vars: map[*check.Var]int{}, unboxed: map[*check.Var]bool{}, free: map[bc.Kind][]int{},
-		blockFree: map[string][]int{}, memberRegs: map[*check.Member]int{}, envReg: -1, nullReg: -1}
+		blockFree: map[string][]int{}, memberRegs: map[*check.Member]int{}, envReg: -1, ownerReg: -1, nullReg: -1}
 }
 
 // ---------------------------------------------------------------------

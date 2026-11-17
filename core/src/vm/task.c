@@ -41,6 +41,10 @@ static void step(ak_task *t) {
 }
 
 ak_future *ak_vm_task_start(const ak_func *f, ak_closure *clos, ak_val *args, uint32_t nargs) {
+	return ak_vm_task_start_in(f, clos, args, nargs, NULL);
+}
+
+ak_future *ak_vm_task_start_in(const ak_func *f, ak_closure *clos, ak_val *args, uint32_t nargs, ak_owner *holder) {
 	ak_future *fut = ak_future_new((ak_kind)f->ret);
 	ak_task *t = ak_alloc(sizeof *t);
 	t->fut = ak_retain(fut);
@@ -49,7 +53,7 @@ ak_future *ak_vm_task_start(const ak_func *f, ak_closure *clos, ak_val *args, ui
 	ak_module_retain(f->mod);  // its code runs on until it finishes
 	fut->cancel = task_cancel;
 	fut->ctx = t;
-	ak_vm_task_own(t);
+	ak_vm_task_own(t, holder);
 	if (!ak_vm_push(&t->co, f, clos, args, nargs, 0xFFFF, true, 0)) finish(t, (ak_val){0}, true);
 	else step(t);
 	return fut;

@@ -109,6 +109,10 @@ func (b *fb) publishEnv(t *check.TypeName, whole bool) int {
 			regs = append(regs, b.zero(k))
 		}
 	}
+	if t.Comp.HoldsHandlers {
+		ks = append(ks, bc.KRef)
+		regs = append(regs, b.ownerReg)
+	}
 	blk := b.regs(ks)
 	for i, r := range regs {
 		b.move(blk+i, r)
@@ -182,6 +186,12 @@ func (b *fb) lowerComponent(t *check.TypeName) {
 		bound[m] = b.newReg(bc.KRef)
 	}
 	b.openScope()
+	if comp.HoldsHandlers {
+		// The owner it's made under: what holds the tasks of the async
+		// handlers it declares.
+		b.ownerReg = b.local(bc.KRef)
+		b.callBTo(uiOwner, b.ownerReg)
+	}
 	// The env's box: closures made before the env is whole capture it.
 	none := b.temp(bc.KRef)
 	b.emit(op("KNONE"), none)
@@ -1258,7 +1268,12 @@ func (b *fb) componentCall(ec *check.ElementCall) int {
 		}
 		switch {
 		case h != nil:
-			vals = append(vals, b.handler(h.Handler, m))
+			clos := b.handler(h.Handler, m)
+			if ctx := b.l.info.Ctxs[h.Handler]; ctx != nil && ctx.Awaits {
+				// An async one is a task of the component that declares it.
+				clos = b.heldHandler(clos)
+			}
+			vals = append(vals, clos)
 		case bd != nil:
 			// bind p: target: its pChange writes the target.
 			vals = append(vals, b.bindWriter(bd))

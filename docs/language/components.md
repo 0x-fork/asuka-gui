@@ -56,6 +56,17 @@ handles it. An event nobody handles does nothing; its name read as a
 value is whether the caller handles it (`if click { … }`: a tray icon
 whose click opens its menu unless the caller takes it).
 
+A handler that awaits belongs to the component that declares it, the
+one that receives the event. It runs until it finishes or that
+component goes, whoever emitted the event and whatever becomes of the
+emitter: a sheet's `on done { shown = false; try await save(draft) }`
+closes the sheet and goes on saving. It runs where it's declared (a
+`push` reaches that place's stack, and an error it lets out goes to the
+`Boundary` around it there). An `emit` in an async function waits for
+the handler to finish and gets its error; elsewhere (a handler that
+doesn't await, a plain `fn`), `emit` starts it and goes on. Cancelling
+the code that's waiting stops the wait, not the handler.
+
 A component that shows one element (its body's views are that one
 element, or another component that does) takes the style props too:
 what its caller gives goes on that element, over what the component

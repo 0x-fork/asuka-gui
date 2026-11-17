@@ -56,9 +56,11 @@ async fn loadThread(id: string) throws -> Thread {
   let level = live(1.0, levels)
   pub fn batteryLevel() -> float = level()
   ```
-- **Cancellation.** A task belongs to what started it. When that goes (the
-  user leaves the screen), the task is cancelled: the `await` it's at
-  ends it, its `defer`s run, and no error is reported.
+- **Cancellation.** A task belongs to what started it (a handler of a
+  component's event, to the component that declares it:
+  [Components](components.md)). When that goes (the user leaves the
+  screen), the task is cancelled: the `await` it's at ends it, its
+  `defer`s run, and no error is reported.
 
 ## Data that loads
 

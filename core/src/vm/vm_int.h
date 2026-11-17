@@ -188,6 +188,10 @@ extern AK_TLS uint32_t ak_vm_adepth;
 #define AK_VM_ADEPTH_MAX 64
 // ak_vm_task_start starts f as a task and returns its future (owned).
 ak_future *ak_vm_task_start(const ak_func *f, ak_closure *clos, ak_val *args, uint32_t nargs);
+// ak_vm_task_start_in is ak_vm_task_start with the task held by holder
+// (disposing it cancels the task), its contexts and catcher the current
+// owner's (ak_owner_new_in).
+ak_future *ak_vm_task_start_in(const ak_func *f, ak_closure *clos, ak_val *args, uint32_t nargs, ak_owner *holder);
 void ak_vm_task_resume(void *task);
 
 // The reactive glue (react.c): cells, memos, accessors, effects, owners.
@@ -214,7 +218,7 @@ void ak_vm_batch(bool begin);
 const ak_func *ak_vm_method(void *obj, ak_str *name);
 void ak_vm_react_init(void);
 void ak_vm_json_init(void);
-void ak_vm_task_own(ak_task *t);  // ties a task to the current owner
+void ak_vm_task_own(ak_task *t, ak_owner *holder);  // ties a task to holder (NULL: the current owner)
 bool ak_vm_task_run(ak_task *t, ak_val *out);  // ak_vm_run, under the task's owner
 // ak_vm_task_done lets the task's owner go; err (owned, or NULL) is an
 // error nobody can see through the task's future, raised to the owner's
