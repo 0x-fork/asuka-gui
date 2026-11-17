@@ -413,7 +413,7 @@ func (b *fb) builtinMethod(e *syntax.CallExpr, call *check.Call, recv *int, dst 
 	}
 	if m.Inout && recv == nil {
 		lv := b.prepare(call.Recv)
-		b.update(lv, func(cur int) {
+		b.updateWith(lv, hasClosureArg(m), func(cur int) {
 			b.callInout(m, cur, vals, r)
 		})
 	} else {

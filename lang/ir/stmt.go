@@ -652,7 +652,13 @@ func (b *fb) prepare(x syntax.Expr) *lvalue {
 
 // update runs fn on a register holding lv's value, which fn may change
 // in place, and stores it back.
-func (b *fb) update(lv *lvalue, fn func(cur int)) {
+func (b *fb) update(lv *lvalue, fn func(cur int)) { b.updateWith(lv, false, fn) }
+
+// updateWith is update; reads says that fn runs code that may read the
+// place (a closure a builtin calls): state is then read, not taken out,
+// so that code sees its value as it was (the change copies it) rather
+// than none.
+func (b *fb) updateWith(lv *lvalue, reads bool, fn func(cur int)) {
 	switch lv.kind {
 	case lvVar:
 		r, ok := b.vars[lv.v]
@@ -670,19 +676,25 @@ func (b *fb) update(lv *lvalue, fn func(cur int)) {
 	case lvCell:
 		k := b.cellKind(lv)
 		cur := b.temp(k)
+		if reads {
+			b.emit(op("CPEEK"), cur, lv.cell)
+			fn(cur)
+			b.emit(op("CPUT"), lv.cell, cur)
+			return
+		}
 		b.emit(op("CTAKE"), cur, lv.cell)
 		b.protect(func() { fn(cur) }, func(e int) {
 			b.emit(op("CPUT"), lv.cell, cur)
 		})
 		b.emit(op("CPUT"), lv.cell, cur)
 	case lvField:
-		b.update(lv.inner, func(rx int) {
+		b.updateWith(lv.inner, reads, func(rx int) {
 			t := b.getField(rx, lv.named, lv.field, -1)
 			fn(t)
 			b.emit(op("SETF"), rx, lv.field.Index, t)
 		})
 	case lvIndex:
-		b.update(lv.inner, func(rx int) {
+		b.updateWith(lv.inner, reads, func(rx int) {
 			t := b.temp(b.kind(b.l.info.Types[lv.x]))
 			b.emit(op("IDX"), t, rx, lv.idx)
 			fn(t)

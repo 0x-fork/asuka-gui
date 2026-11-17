@@ -64,6 +64,25 @@ test "a store's state from its memo" {
   print(d.count)
 }
 
+state nums: [int] = [5, 1, 4, 2, 3]
+
+struct Shelf {
+  items: [int]
+}
+state shelf = Shelf(items: [3, 1, 2])
+
+test "a closure reads state the builtin it's passed to changes" {
+  // It sees the value as it was: the change is put back after.
+  nums.removeWhere(x => x > nums.count() - 2)
+  print(nums)
+  nums.removeWhere(x => x == nums[0])
+  print(nums)
+  shelf.items.removeWhere(i => i == shelf.items[0])
+  print(shelf.items)
+  nums.sort(by: (a, b) => nums.count() > 1 && a > b)
+  print(nums)
+}
+
 // Output:
 // 0
 // 10
@@ -84,3 +103,8 @@ test "a store's state from its memo" {
 // 7 6
 // 8
 // ok a store's state from its memo
+// [1,2,3]
+// [2,3]
+// [1,2]
+// [3,2]
+// ok a closure reads state the builtin it's passed to changes
