@@ -121,3 +121,8 @@ fn returnInDefer() -> int {
   }
   return 0
 }
+
+fn optionalTuple(t: (int, int)?) -> int {
+  let (a, b) = t else { return 0 } // ERROR "a \(int, int\)\? may be none, and a tuple pattern takes a tuple: unwrap it first"
+  return a + b
+}
