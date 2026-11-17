@@ -434,8 +434,9 @@ element's children.
 
 `emit e(args)` calls the handler argument with args when it isn't none
 (CALLC; its result register is a reference, so the future of an async
-handler started from C is released). An event's name read as a value is
-whether the caller handles it: ISNONE of the handler, NOT.
+handler started as a task is released: it is one wherever the emitting
+function can't suspend, on the VM as compiled). An event's name read as
+a value is whether the caller handles it: ISNONE of the handler, NOT.
 
 A store's constructor is the same function without the views: it
 returns its env. Its `task { }` is TASK (a store has no mount), owned by
