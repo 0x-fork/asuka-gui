@@ -76,6 +76,14 @@ test "an empty literal takes its type from the other arguments" {
   print("{p.items.count()} {p.top}")
 }
 
+// A generic calling itself with a closure of its T.
+fn applied<T>(x: T, f: fn(T) -> T, n: int) -> T = if n == 0 { x } else { applied(f(x), y => f(y), n - 1) }
+
+test "a generic calls itself with a closure of its type" {
+  print(applied(1, x => x + 1, 3))
+  print(applied("a", x => x + "b", 2))
+}
+
 // Output:
 // 4
 // x
@@ -94,3 +102,6 @@ test "an empty literal takes its type from the other arguments" {
 // 1
 // 0 x
 // ok an empty literal takes its type from the other arguments
+// 4
+// abb
+// ok a generic calls itself with a closure of its type

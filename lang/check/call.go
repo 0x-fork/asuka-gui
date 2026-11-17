@@ -3,6 +3,7 @@ package check
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/egoist/asuka/lang/syntax"
@@ -449,6 +450,35 @@ func (c *Checker) enterArg(a syntax.Expr) func() {
 }
 
 func (c *Checker) inferArgs(args []syntax.Expr, params []*Param, s Subst, free map[*TypeParam]bool, want, result Type, what string) {
+	if ren := c.callersOwn(free); ren != nil {
+		// The callee's type parameters that are the caller's too (a
+		// generic calling itself, a generic type's method making one of
+		// it) are variables of their own here: the caller's T, in its
+		// arguments' types, is a type like any other.
+		fresh := map[*TypeParam]bool{}
+		for tp := range free {
+			if r, ok := ren[tp]; ok {
+				fresh[r.(*TypeParam)] = true
+			} else {
+				fresh[tp] = true
+			}
+		}
+		ps := make([]*Param, len(params))
+		for i, p := range params {
+			q := *p
+			q.Type = ren.Apply(p.Type)
+			ps[i] = &q
+		}
+		defer func() {
+			for tp, r := range ren {
+				if t := s[r.(*TypeParam)]; t != nil {
+					s[tp] = t
+				}
+				delete(s, r.(*TypeParam))
+			}
+		}()
+		params, free, result = ps, fresh, ren.Apply(result)
+	}
 	savedFree := c.free
 	c.free = free
 	defer func() { c.free = savedFree }()
@@ -525,6 +555,30 @@ func (c *Checker) inferArgs(args []syntax.Expr, params []*Param, s Subst, free m
 			c.errorf(a, "%s of %s is %s, not %s", argDesc(params[i]), what, aType(types[i]), aType(pt))
 		}
 	}
+}
+
+// callersOwn renames the type parameters of free that are in scope where
+// the call is (the caller's own) to fresh ones, in the order they were
+// declared; nil when there are none.
+func (c *Checker) callersOwn(free map[*TypeParam]bool) Subst {
+	var own []*TypeParam
+	for tp := range free {
+		if tn := c.scope.LookupType(tp.Name); tn != nil && tn.Type == tp {
+			own = append(own, tp)
+		}
+	}
+	if len(own) == 0 {
+		return nil
+	}
+	slices.SortFunc(own, func(a, b *TypeParam) int { return a.id - b.id })
+	ren := Subst{}
+	for _, tp := range own {
+		r := *tp
+		r.id, r.obj = c.nextTP, nil
+		c.nextTP++
+		ren[tp] = &r
+	}
+	return ren
 }
 
 // payloadIndex is the place (from 1) of an enum case's payload without
