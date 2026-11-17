@@ -52,3 +52,12 @@ async fn spawns(cb: fn() -> int) -> int {
   let v = spawn { cb() } // ERROR "spawn can't use cb"
   return await t
 }
+
+// A call that misses its try, in a function that can't throw: one error
+// says both.
+fn missesTry() -> int {
+  let n = mightFail() // ERROR "mightFail can throw: call it with try \(try mightFail\(…\)\), or try\? for none on an error; and missesTry doesn't throw: mark it throws"
+  return n
+}
+
+fn mightFail() throws -> int = 1

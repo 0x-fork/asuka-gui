@@ -823,8 +823,13 @@ func (c *Checker) callEffectsWhy(at syntax.Node, what string, async, throws bool
 		if fx != nil && fx.threwAt != nil {
 			why = fmt.Sprintf("; it can throw because of %s at %s", throwCause(fx.threwAt), c.where(fx.threwAt.Range().Start))
 		}
-		c.errorf(at, "%s can throw: call it with try (try %s(…)), or try? for none on an error%s", what, what, why)
-		c.mayThrow(at)
+		// One error for the call: the try it misses, and what a try
+		// would then need of what's around it.
+		also := ""
+		if msg := c.throwHere(at); msg != "" {
+			also = "; and " + msg
+		}
+		c.errorf(at, "%s can throw: call it with try (try %s(…)), or try? for none on an error%s%s", what, what, why, also)
 	}
 }
 

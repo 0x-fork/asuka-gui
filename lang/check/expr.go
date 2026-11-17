@@ -1,6 +1,7 @@
 package check
 
 import (
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -1288,35 +1289,42 @@ func (c *Checker) unary(e *syntax.UnaryExpr, want Type) Type {
 
 // mayThrow reports a throw (or try) where nothing catches it.
 func (c *Checker) mayThrow(at syntax.Node) {
+	if msg := c.throwHere(at); msg != "" {
+		c.errorf(at, "%s", msg)
+	}
+}
+
+// throwHere notes that an error may leave at at, and says why it can't
+// ("" when it can).
+func (c *Checker) throwHere(at syntax.Node) string {
 	if c.handled > 0 || c.ctx == nil {
-		return
+		return ""
 	}
 	if !c.ctx.threw {
 		c.ctx.threwAt = at
 	}
 	c.ctx.threw = true
 	if c.ctx.Throws {
-		return
+		return ""
 	}
 	if c.partial != nil && c.partial.ctx == c.ctx {
 		// Inside a do or a catch whose clauses don't take every error.
-		c.errorf(at, "the catch%s here take%s %s only, and %s: add a catch e { … } for the rest%s",
+		return fmt.Sprintf("the catch%s here take%s %s only, and %s: add a catch e { … } for the rest%s",
 			map[bool]string{true: "es", false: ""}[c.partial.n > 1], map[bool]string{true: "", false: "s"}[c.partial.n > 1],
 			c.partial.what, c.cantThrow(), c.throwsHint())
-		return
 	}
 	switch c.ctx.Kind {
 	case CtxFunc, CtxMethod, CtxLocalFn:
-		c.errorf(at, "%s doesn't throw: mark it throws, or catch the error (try … catch { }, do { } catch { }, try?)", c.ctx.Name)
+		return c.ctx.Name + " doesn't throw: mark it throws, or catch the error (try … catch { }, do { } catch { }, try?)"
 	case CtxLambda:
-		c.errorf(at, "this closure doesn't throw where it's passed: catch the error (try … catch { }, do { } catch { }, try?)")
+		return "this closure doesn't throw where it's passed: catch the error (try … catch { }, do { } catch { }, try?)"
 	case CtxGlobal:
-		c.errorf(at, "a value here can't throw: catch the error (try … catch { fallback }, try?)")
+		return "a value here can't throw: catch the error (try … catch { fallback }, try?)"
 	case CtxSpawn:
 		// spawn's error is its task's.
-	default:
-		c.errorf(at, "this can't throw here: catch the error (try … catch { }, do { } catch { }, try?)")
+		return ""
 	}
+	return "this can't throw here: catch the error (try … catch { }, do { } catch { }, try?)"
 }
 
 func (c *Checker) asyncHint() string {
