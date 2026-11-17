@@ -1721,6 +1721,10 @@ func (p *printer) pattern(pt Pattern) {
 		p.write("_")
 	case *BindPat:
 		p.write(pt.Name.Name)
+	case *TypedPat:
+		p.pattern(pt.Pat)
+		p.write(": ")
+		p.typ(pt.Type)
 	case *LitPat:
 		p.expr(pt.Value)
 	case *CasePat:

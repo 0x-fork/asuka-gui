@@ -31,7 +31,7 @@ fn notCalled<T: Shape>(x: T) -> float = x.area // ERROR "area is a method: call 
 
 fn calls() {
   let a = total([Square(side: 1)])
-  let b = total([Point(x: 1)]) // ERROR "total's T must be Shape, and Point isn't: it has no method area"
+  let b = total([Point(x: 1)]) // ERROR "total's T must be Shape, and Point isn't: it has no area\\(\\)"
   let c = total([Wrong()]) // ERROR "total's T must be Shape, and Wrong isn't: its area is fn\(\) -> int, not fn\(\) -> float"
 }
 
@@ -46,7 +46,7 @@ fn notAnInterface<T: Square>(x: T) {} // ERROR "a type parameter's constraint is
 // One generic passing its T on: its constraints must cover the callee's.
 fn passOn<T: Shape>(xs: [T]) -> float = total(xs)
 
-fn passOnWithout<T: Named>(xs: [T]) -> float = total(xs) // ERROR "total's T must be Shape, and T isn't: it has no method area"
+fn passOnWithout<T: Named>(xs: [T]) -> float = total(xs) // ERROR "total's T must be Shape, and T isn't: it has no area\\(\\)"
 
 struct Box<T: Shape> {
   item: T

@@ -17,6 +17,14 @@ its own. Matching an optional tuple, it matches the tuple when there's
 one, as a case pattern does (`none` is an arm of its own): `if let
 (name, age) = found { … }`, `let (x, y) = cursor else { return }`.
 
+A name with a type (`c: Circle`) tests what a value of an interface
+is: it matches when the value is of that type, and binds it as one, as
+a struct's pattern (`Circle(radius)`) and an enum's case written with
+its type (`Unit.big(n)`) do: `if let c: Circle = shape { … }`,
+`let sq: Square = shape else { return }`. A `match` over an interface
+ends with `_`; see [Interfaces and
+generics](functions.md#interfaces-and-generics).
+
 `for` goes over an array, a set, a map's `(key, value)` pairs, or a
 range:
 `a..<b` is the ints from `a` up to `b`, without it, and `a..b` with it

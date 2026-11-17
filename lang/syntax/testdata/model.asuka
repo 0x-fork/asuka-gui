@@ -41,6 +41,17 @@ interface Named {
   fn describe() -> string
 }
 
+fn reason(e: Error) -> string {
+  if let m: MailError = e, m.message() != "" {
+    return m.message()
+  }
+  return match e {
+    MailError.server(status, _) => "{status}"
+    MailError.offline | _: MailError => "?"
+    _ => e.message
+  }
+}
+
 fn label(p: Priority) -> string {
   match p {
     .low | .normal => return "normal"

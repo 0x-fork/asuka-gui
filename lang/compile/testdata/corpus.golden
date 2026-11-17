@@ -34,9 +34,9 @@ mailbox.asuka:30:26: [Message] has no method firstIndex
 mailbox.asuka:35:67: count is a method of [Message]: call it, count()
 mailbox.asuka:39:69: Message has no box
 model.asuka:11:36: - doesn't take a Date and a Date
-model.asuka:76:26: first is a method of [int]: call it, first()
-model.asuka:78:21: isEmpty is a method of [int]: call it, isEmpty()
-model.asuka:83:27: count is a method of [int]: call it, count()
+model.asuka:87:26: first is a method of [int]: call it, first()
+model.asuka:89:21: isEmpty is a method of [int]: call it, isEmpty()
+model.asuka:94:27: count is a method of [int]: call it, count()
 == concurrency
 concurrency.asuka:9:40: Accelerometer has no case updates
 concurrency.asuka:10:16: [float] has no method append

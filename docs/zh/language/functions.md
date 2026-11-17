@@ -79,6 +79,48 @@ let areas = shapes.map(s => s.area())
 
 泛型函数和泛型类型可以接收类型参数。类型参数的约束可以是程序自己的接口，也可以是 `Equatable`（能用 `==` 比较的类型：内置的值，以及各部分都能比较的结构体、枚举、元组、数组、map 和可选值）、`Comparable`（能用 `<` 排序的类型：整数、浮点数、字符串、时长、按成员顺序排序的不携带值的枚举，以及带有 `fn compare(other: T) -> int` 的结构体和枚举；结构体不会逐个字段地排序）和 `Hashable`（能做 map 键的类型：除浮点数以外的内置值，以及由它们组成的结构体、枚举、元组、可选值、数组、map 和集合，见[值与类型](types.md#值与类型)），多个约束用 `&` 连接。类型实参必须具备的东西，泛型代码里它的值也都能用：接口的方法和字段会针对每一个编译出的具体类型直接调用。
 
+接口的方法也可以带方法体，这样的方法由接口提供。一个类型只要具备那些没有方法体的方法，就实现了这个接口；对于接口提供的方法，如果类型自己声明了签名相同的方法，就用它自己的，否则用接口的。在接口提供的方法里，`self` 就是这个接口的值，接口的方法和字段可以直接用名字访问：
+
+```asuka check
+interface Shape {
+  fn area() -> float
+  fn describe() -> string = "a shape of {area()}"
+}
+
+struct Square {
+  side: float
+  fn area() -> float = side * side
+}
+
+struct Circle {
+  radius: float
+  fn area() -> float = 3.14159 * radius * radius
+  fn describe() -> string = "a circle of {radius}"
+}
+
+fn describeAll(shapes: [Shape]) -> [string] = shapes.map(s => s.describe())
+```
+
+接口提供的方法可以在接口类型的值上调用，也可以在以这个接口为约束的类型参数（如下文的 `T: Shape`）上调用；没有被当作 `Shape` 使用的 `Square` 并没有 `describe()`。如果两个接口各自提供了同名的方法，而某个类型自己没有这个方法，它就不能同时作为这两个接口使用：编译器会指出这一点，这时给这个类型声明自己的方法即可。
+
+要判断一个接口值究竟是什么类型，可以用实现了该接口的类型的模式去匹配它：结构体的模式（`Circle(radius)`）、带类型的名字（`c: Circle`），或者写明类型的枚举成员（`Unit.big(n)`）。因为任何类型都可能实现某个接口，对接口值的 `match` 必须以 `_` 结尾：
+
+```asuka
+fn label(s: Shape) -> string = match s {
+  Circle(radius: 0) => "a point"
+  c: Circle => "a circle of {c.radius}"
+  Square(side) => "a square of {side}"
+  _ => s.describe()
+}
+
+if let c: Circle = shape { … }
+let sq: Square = shape else { return }
+```
+
+模式里的类型必须实现了这个接口（没有 `area()` 的 `Point` 不可能是 `Shape`），而不携带值的枚举只有在声明了这个接口时（`enum Unit: Shape`）才算实现了它。具体类型的值不需要判断：拿 `c: Circle` 去匹配一个 `Circle` 会报错。对类型参数的值做这种判断时，结果在函数针对每个类型编译时就确定了，不可能匹配的分支不会出现在程序里。`catch e: ParseError` 也是同样的判断，只不过判断的是 `Error`（见[错误](errors.md)）。
+
+泛型函数和泛型类型可以接收类型参数。类型参数的约束可以是程序自己的接口，也可以是 `Equatable`（能用 `==` 比较的类型：内置的值，以及各部分都能比较的结构体、枚举、元组、数组、map 和可选值）、`Comparable`（能用 `<` 排序的类型：整数、浮点数、字符串、时长、按成员顺序排序的不携带值的枚举，以及带有 `fn compare(other: T) -> int` 的结构体和枚举；结构体不会逐个字段地排序）和 `Hashable`（能做 map 键的类型：除浮点数以外的内置值，以及由它们组成的结构体、枚举、元组和可选值，见[值与类型](types.md#值与类型)），多个约束用 `&` 连接。类型实参必须具备的东西，泛型代码里它的值也都能用：接口的方法和字段会针对每一个编译出的具体类型直接调用。
+
 ```asuka
 fn sortByArea<T: Shape>(xs: [T]) -> [T] = xs.sorted((a, b) => a.area() < b.area())
 

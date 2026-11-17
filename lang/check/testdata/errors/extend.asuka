@@ -44,7 +44,7 @@ interface Shape {
 extend Shape {} // ERROR "can't extend Shape: an interface's methods are its body's"
 extend Money? {} // ERROR "can't extend Money\?: extend the type, and call its methods with \?."
 
-extend Money: Shape {} // ERROR "Money declares Shape but it has no method area"
+extend Money: Shape {} // ERROR "Money declares Shape but it has no area\(\)"
 
 pub extend Money {} // ERROR "pub goes on an extension's members, each"
 

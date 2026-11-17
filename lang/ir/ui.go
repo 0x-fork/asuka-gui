@@ -25,7 +25,8 @@ func (b *fb) lowerFunc(f *check.Function, recv check.Type) {
 	b.at(f.Decl)
 	if f.Recv != nil {
 		switch f.Recv.Kind {
-		case check.StructType, check.EnumType:
+		case check.StructType, check.EnumType, check.InterfaceType:
+			// An interface's: a provided method, compiled for recv.
 			r := b.newReg(b.l.kind(recv))
 			if ctx.Self != nil {
 				b.vars[ctx.Self] = r
@@ -806,7 +807,7 @@ func (b *fb) forParts(s *syntax.ForStmt) (items, key, row int, keyKind bc.Kind) 
 func (b *fb) matchView(s *syntax.MatchStmt) int {
 	subjCtx := b.l.info.Ctxs[s.Subject]
 	st := b.rawType(s.Subject)
-	arms := b.l.platformArms(s.Subject, s.Arms)
+	arms := b.matchArms(s.Subject, s.Arms)
 	if check.IsPlatformConst(s.Subject) && len(arms) <= 1 && (len(arms) == 0 || len(patternVars(arms[0].Pattern, b.l.info)) == 0) {
 		// A match of @platform: the views of the arm it takes, once.
 		if len(arms) == 0 {
@@ -911,12 +912,25 @@ func (b *fb) extract(p syntax.Pattern, target *check.Var, v int, t check.Type) i
 			}
 			return b.extract(e, target, b.tupleElem(v, i, tt.Elems[i]), tt.Elems[i])
 		}
+	case *syntax.TypedPat:
+		x := v
+		if check.IsOptional(t) {
+			x = b.unbox(v, check.Unopt(t), -1)
+		}
+		if tt := b.l.info.TypeTests[p]; tt != nil {
+			x = b.asTested(x, tt)
+		}
+		return b.extract(p.Pat, target, x, nil)
 	case *syntax.CasePat:
 		k := b.l.info.Cases[p]
 		et := check.Unopt(t)
 		x := v
 		if check.IsOptional(t) {
 			x = b.unbox(v, et, -1)
+		}
+		if tt := b.l.info.TypeTests[p]; tt != nil {
+			x = b.asTested(x, tt)
+			et = b.typ(tt.Type)
 		}
 		n, _ := et.(*check.Named)
 		if fields, ok := b.l.info.FieldPats[p]; ok {

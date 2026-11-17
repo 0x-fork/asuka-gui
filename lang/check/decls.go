@@ -159,6 +159,10 @@ func (c *Checker) typeMembers(t *TypeName) {
 		}
 	case *syntax.InterfaceDecl:
 		t.Iface = &Iface{}
+		if self, ok := t.Type.(*Named); ok {
+			t.Iface.Self = &TypeParam{Name: t.name, Ifaces: []*Named{self}, written: t.name, id: c.nextTP}
+			c.nextTP++
+		}
 		if t.Native && len(d.TypeParams) > 0 {
 			c.errorf(d.Name, "a native interface isn't generic: its platforms' code can't be")
 		}
@@ -170,18 +174,41 @@ func (c *Checker) typeMembers(t *TypeName) {
 				}
 				t.Iface.Fields = append(t.Iface.Fields, &Field{Name: m.Name.Name, Type: c.typeExpr(m.Type), Pos: m.Name.Start})
 			case *syntax.FuncDecl:
-				if m.Body != nil || m.Value != nil {
-					c.errorf(m.Name, "an interface's methods have no bodies: the types that have the interface implement them")
+				if c.ifaceMethodDeclared(t, m.Name) {
+					continue
+				}
+				// A method called through the interface can't say its
+				// types: its type parameters are declared only so that
+				// what names them isn't unknown too.
+				var tps []*TypeParam
+				saved := c.scope
+				if len(m.TypeParams) > 0 {
+					c.errorf(m.Name, "an interface's methods aren't generic: a call through the interface can't say their types")
+					c.scope = NewScope(c.scope)
+					tps = c.typeParams(m.TypeParams)
+					for _, p := range tps {
+						c.scope.Insert(p.object())
+					}
 				}
 				sig := c.signature(m, nil)
+				c.scope = saved
+				im := &IfaceMethod{Name: m.Name.Name, Sig: sig}
+				switch {
+				case t.Native && (m.Body != nil || m.Value != nil):
+					c.errorf(m.Name, "a native interface's methods have no bodies: its platforms' code implements them")
+				case m.Body != nil || m.Value != nil:
+					// Provided: a method of the interface's own, checked
+					// with self as the interface.
+					f := &Function{object: object{m.Name.Name, m.Name.Start}, Pkg: t.Pkg, Decl: m, Recv: t, Sig: sig, TypeParams: tps}
+					c.info.Defs[m.Name] = f
+					t.Methods[f.name] = f
+					im.Provided = f
+				}
 				if t.Native {
-					if len(m.TypeParams) > 0 {
-						c.errorf(m.Name, "a native interface's methods aren't generic")
-					}
 					// The platform's side may always fail.
 					sig.Throws = true
 				}
-				t.Iface.Methods = append(t.Iface.Methods, &IfaceMethod{Name: m.Name.Name, Sig: sig})
+				t.Iface.Methods = append(t.Iface.Methods, im)
 			}
 		}
 	case *syntax.ComponentDecl:
@@ -193,6 +220,24 @@ func (c *Checker) typeMembers(t *TypeName) {
 	case *syntax.WorkerDecl:
 		c.componentMembers(t, d.Params, d.Body)
 	}
+}
+
+// ifaceMethodDeclared reports (and says) a method or a field of
+// interface t already named name.
+func (c *Checker) ifaceMethodDeclared(t *TypeName, name *syntax.Ident) bool {
+	for _, m := range t.Iface.Methods {
+		if m.Name == name.Name {
+			c.errorf(name, "method %s is declared twice in %s", name.Name, t.name)
+			return true
+		}
+	}
+	for _, f := range t.Iface.Fields {
+		if f.Name == name.Name {
+			c.errorf(name, "%s is %s's field and a method", name.Name, t.name)
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Checker) conforms(t *TypeName, list []syntax.Type) {
@@ -530,6 +575,18 @@ func (c *Checker) funcBody(f *Function) {
 			for _, m := range f.Recv.Methods {
 				c.scope.Insert(&selfMember{object: object{m.name, m.pos}, method: m, owner: f.Recv})
 			}
+			if it := f.Recv.Iface; it != nil {
+				// A provided method's: the interface's fields and the
+				// methods it asks for.
+				for _, fl := range it.Fields {
+					c.scope.Insert(&selfMember{object: object{fl.Name, fl.Pos}, field: fl, owner: f.Recv})
+				}
+				for _, m := range it.Methods {
+					if m.Provided == nil {
+						c.scope.Insert(&selfMember{object: object{m.Name, f.Recv.pos}, owner: f.Recv})
+					}
+				}
+			}
 		}
 	} else if f.IsExtMethod() {
 		// self's fields by their bare names, as the type's own methods
@@ -573,6 +630,10 @@ func (c *Checker) funcBody(f *Function) {
 		case StructType, EnumType:
 			self := &Var{object: object{"self", d.Name.Start}, Type: f.Recv.Type, Kind: SelfVar, Ctx: ctx}
 			ctx.Self = self
+		case InterfaceType:
+			// A provided method's self: a value of each type that has
+			// the interface, as the body is compiled for it.
+			ctx.Self = &Var{object: object{"self", d.Name.Start}, Type: f.Recv.Iface.Self, Kind: SelfVar, Ctx: ctx}
 		case StoreType, ComponentType, WorkerType:
 			ctx.Comp = f.Recv
 		}
@@ -737,12 +798,22 @@ func (c *Checker) implementsMembers(t Type, iface *Named) string {
 	}
 	s, is := n.Subst(), iface.Subst()
 	for _, m := range it.Iface.Methods {
+		if m.Provided != nil {
+			// The type's own of its signature, an extension's, or the
+			// interface's.
+			if n.Obj.Methods[m.Name] == nil {
+				if hit, _ := c.extLookup(t, m.Name, "method", nil); hit.f != nil {
+					c.extImpl(n, m.Name, hit.f)
+				}
+			}
+			continue
+		}
 		f, fs := n.Obj.Methods[m.Name], s
 		if f == nil {
 			// An extension's, where the package sees it.
 			hit, _ := c.extLookup(t, m.Name, "method", nil)
 			if hit.f == nil {
-				return "it has no method " + m.Name
+				return "it has no " + m.Name + "()"
 			}
 			f, fs = hit.f, hit.s
 			c.extImpl(n, m.Name, f)

@@ -1,0 +1,144 @@
+// Provided methods: an interface's method with a body, which a type's
+// own of the same signature replaces; called on the interface's values
+// and on type parameters constrained by it.
+
+interface Shape {
+  name: string
+  fn area() -> float
+  fn describe() -> string = "a {name} of {area()}"
+  fn twice() -> float = self.area() * 2.0
+  fn loud() -> string = describe().upper()
+  fn me() -> Shape = self
+  // A type test of self: decided for each type the body is compiled for.
+  fn round() -> bool = match self {
+    _: Circle => true
+    _ => false
+  }
+}
+
+struct Square {
+  name: string = "square"
+  side: float
+  fn area() -> float = side * side
+}
+
+struct Circle {
+  name: string = "circle"
+  radius: float
+  fn area() -> float = 3.0 * radius * radius
+  fn describe() -> string = "a circle of {radius}"
+}
+
+struct Label {
+  name: string = "label"
+  fn area() -> float = 0.0
+  // Not Shape's describe (another signature): Shape's is used.
+  fn describe(loud: bool) -> string = "a label"
+}
+
+enum Blob: Shape {
+  small
+  big(float)
+  fn area() -> float = match self {
+    .small => 1.0
+    .big(n) => n
+  }
+  fn name() -> string = "blob"
+}
+
+interface Area {
+  name: string
+  fn area() -> float
+}
+
+interface Stack<T> {
+  fn items() -> [T]
+  fn top() -> T? = items().last()
+  fn count() -> int = items().count()
+}
+
+struct Ints {
+  xs: [int]
+  fn items() -> [int] = xs
+}
+
+struct Names {
+  xs: [string]
+  fn items() -> [string] = xs
+  fn count() -> int = 99
+}
+
+fn describeOf<T: Shape>(x: T) -> string = x.describe()
+fn loudOf<T: Shape>(x: T) -> string = x.loud()
+fn topOf<S: Stack<int>>(s: S) -> int? = s.top()
+
+test "on interface values" {
+  let shapes: [Shape] = [Square(side: 2), Circle(radius: 1), Label(), Blob.small, Blob.big(5)]
+  for s in shapes {
+    print(s.describe())
+    print(s.loud())
+    print(s.twice())
+    print(s.me().name)
+  }
+  print(Label().describe(loud: true))
+  print(shapes.map(s => s.round()))
+}
+
+test "on type parameters" {
+  print(describeOf(Square(side: 3)))
+  print(describeOf(Circle(radius: 2)))
+  print(loudOf(Blob.big(2)))
+  let s: Shape = Square(side: 4)
+  print(describeOf(s))
+  // A value of another interface, seen as a Shape: its types get
+  // Shape's describe.
+  let a: Area = Circle(radius: 3)
+  let b: Area = Square(side: 5)
+  print(a.area())
+  print(describeOf(b))
+}
+
+test "generic interfaces" {
+  let stacks: [Stack<int>] = [Ints(xs: [1, 2, 3]), Ints(xs: [])]
+  for s in stacks { print("{s.top()} {s.count()}") }
+  let names: Stack<string> = Names(xs: ["a", "b"])
+  print("{names.top()} {names.count()}")
+  print(topOf(Ints(xs: [7, 8])))
+}
+
+// Output:
+// a square of 4
+// A SQUARE OF 4
+// 8
+// square
+// a circle of 1
+// A CIRCLE OF 1
+// 6
+// circle
+// a label of 0
+// A LABEL OF 0
+// 0
+// label
+// a blob of 1
+// A BLOB OF 1
+// 2
+// blob
+// a blob of 5
+// A BLOB OF 5
+// 10
+// blob
+// a label
+// [false,true,false,false,false]
+// ok on interface values
+// a square of 9
+// a circle of 2
+// A BLOB OF 2
+// a square of 16
+// 27
+// a square of 25
+// ok on type parameters
+// 3 3
+// none 0
+// b 99
+// 8
+// ok generic interfaces

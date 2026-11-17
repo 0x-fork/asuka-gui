@@ -42,13 +42,19 @@ func (c *Checker) patternStruct(p *syntax.CasePat) *TypeName {
 func (c *Checker) structPattern(p *syntax.CasePat, tn *TypeName, t Type) {
 	n, ok := Unopt(t).(*Named)
 	if !ok || n.Obj != tn {
-		if !IsInvalid(t) {
+		// Of an interface's value, or a type parameter's: a type test.
+		if testable(t) {
+			n = c.typeTest(p, t, c.testedType(p, tn))
+		} else if !IsInvalid(t) {
 			c.errorf(p, "%s can't be a %s", aType(t), tn.name)
+			n = nil
 		}
-		for _, a := range p.Args {
-			c.pattern(a, Invalid, LocalVar)
+		if n == nil {
+			for _, a := range p.Args {
+				c.pattern(a, Invalid, LocalVar)
+			}
+			return
 		}
-		return
 	}
 	kind := LocalVar
 	if c.view {
@@ -88,6 +94,163 @@ func (c *Checker) structPattern(p *syntax.CasePat, tn *TypeName, t Type) {
 		c.pattern(a, s.Apply(f.Type), kind)
 	}
 	c.info.FieldPats[p] = fields
+}
+
+// ---------------------------------------------------------------------
+// Type tests: of a value of an interface or a type parameter, whether
+// it's of a struct's or an enum's type (RFC 0011).
+
+// testable reports a type whose values a type test may ask about: an
+// interface (Error too), or a type parameter (decided as each
+// instantiation is compiled); an optional of one, once it isn't none.
+func testable(t Type) bool {
+	switch x := Unopt(t).(type) {
+	case *Named:
+		return x.Obj.Kind == InterfaceType
+	case *TypeParam:
+		return true
+	}
+	return false
+}
+
+// testedType is the type a struct pattern or a case pattern names, at p,
+// for a type test: tn's, nil when it's generic (a test is of one of its
+// types, which a typed name says: b: Box<int>).
+func (c *Checker) testedType(p syntax.Node, tn *TypeName) *Named {
+	if len(tn.TypeParams) > 0 {
+		c.errorf(p, "%s is generic: test for one of its types with a typed name (x: %s<…>)", tn.name, tn.name)
+		return nil
+	}
+	n, _ := tn.Type.(*Named)
+	return n
+}
+
+// typeTest checks a type test at p of a value of type t (testable) for
+// tt, and records it: tt must have what t's values have (the
+// interface, the type parameter's constraints), or no value could be
+// one. It returns the type the pattern's parts are then of (tt), nil
+// when there's none (an error said why).
+func (c *Checker) typeTest(p syntax.Node, t Type, tt *Named) *Named {
+	if tt == nil {
+		return nil
+	}
+	et := Unopt(t)
+	switch x := et.(type) {
+	case *Named:
+		if x.Obj.isErrorIface {
+			if !tt.Obj.IsError {
+				c.errorf(p, "%s can't be %s: it isn't an error (declare it one: %s %s: Error)", aType(t), aType(tt), kindWord(tt.Obj), tt.Obj.name)
+				return nil
+			}
+		} else if why := c.implements(tt, x); why != "" {
+			c.errorf(p, "%s can't be %s: %s", aType(et), aType(tt), why)
+			return nil
+		}
+	case *TypeParam:
+		if failed, why := c.satisfies(tt, x); failed != "" {
+			if isSelf(x) {
+				// A provided method's self: the interface.
+				c.errorf(p, "%s can't be %s: %s", aType(et), aType(tt), why)
+			} else {
+				c.errorf(p, "%s can't be %s: %s is %s, and %s isn't (%s)", aType(et), aType(tt), x.Name, failed, typeString(tt), why)
+			}
+			return nil
+		}
+	}
+	c.info.TypeTests[p] = &TypeTest{Type: tt, Of: et}
+	return tt
+}
+
+// testedLet is the type a let's type names when a type test may be for
+// it (let c: Circle = shape else { … }): a struct's or an enum's, nil
+// otherwise.
+func testedLet(t Type) *Named {
+	if n, ok := t.(*Named); ok && (n.Obj.Kind == StructType || n.Obj.Kind == EnumType) {
+		return n
+	}
+	return nil
+}
+
+// mayBe reports whether a value of t (testable) may be a tt, as a type
+// test asks, without saying why not.
+func (c *Checker) mayBe(t Type, tt *Named) bool {
+	switch x := Unopt(t).(type) {
+	case *Named:
+		if x.Obj.isErrorIface {
+			return tt.Obj.IsError
+		}
+		return c.implements(tt, x) == ""
+	case *TypeParam:
+		failed, _ := c.satisfies(tt, x)
+		return failed == ""
+	}
+	return false
+}
+
+// isSelf reports an interface's self, the type parameter a provided
+// method's body is checked with.
+func isSelf(p *TypeParam) bool {
+	return len(p.Ifaces) == 1 && p.Ifaces[0].Obj.Iface != nil && p.Ifaces[0].Obj.Iface.Self == p
+}
+
+// kindWord is how t's declaration starts: struct, enum.
+func kindWord(t *TypeName) string {
+	if t.Kind == EnumType {
+		return "enum"
+	}
+	return "struct"
+}
+
+// typedPat checks name: T (a TypedPat) against values of type t: a type
+// test of a value of an interface or a type parameter; of an optional of
+// T, the value's unwrapped (an if let's name, typed). Its name is a T.
+func (c *Checker) typedPat(p *syntax.TypedPat, t Type, kind VarKind) {
+	tt := c.typeExpr(p.Type)
+	bound := tt
+	switch {
+	case IsInvalid(t) || IsInvalid(tt):
+	case testable(t):
+		n, ok := tt.(*Named)
+		if !ok || n.Obj.Kind != StructType && n.Obj.Kind != EnumType {
+			c.errorf(p.Type, "a type test is for a struct's or an enum's type, and %s isn't one", typeString(tt))
+			bound = Invalid
+			break
+		}
+		if c.typeTest(p, t, n) == nil {
+			bound = Invalid
+		}
+	case Identical(Unopt(t), tt):
+		if !IsOptional(t) {
+			c.errorf(p, "%s is always %s: drop the type, or test a value of an interface", c.subjectName(p), aType(tt))
+		}
+	default:
+		c.errorf(p, "%s can't be %s", aType(t), aType(tt))
+		bound = Invalid
+	}
+	if bp, ok := p.Pat.(*syntax.BindPat); ok {
+		v := c.declareVar(bp.Name, bound, false)
+		v.Kind = kind
+		v.Bound = true
+	}
+}
+
+// subjectName is what a type test's error calls the value p is matched
+// with: the match's subject, the if let's value, when p is the whole
+// pattern.
+func (c *Checker) subjectName(p syntax.Pattern) string {
+	if p == c.patTop && c.patSubject != nil {
+		return exprName(c.patSubject)
+	}
+	return "this"
+}
+
+// topPattern checks p, the whole pattern a value (subject) is matched
+// with: a match's arm's, an if let's.
+func (c *Checker) topPattern(p syntax.Pattern, subject syntax.Expr, t Type, kind VarKind) {
+	savedTop, savedSubject := c.patTop, c.patSubject
+	c.patTop, c.patSubject = p, subject
+	c.pattern(p, t, kind)
+	c.patTop, c.patSubject = savedTop, savedSubject
 }
 
 // fieldSuggest is ": did you mean x?" for a field name close to one of
@@ -207,7 +370,16 @@ func (c *Checker) space(p syntax.Pattern, t Type) *space {
 			s.alts = append(s.alts, c.space(a, t))
 		}
 		return s
+	case *syntax.TypedPat:
+		if tt := c.info.TypeTests[p]; tt != nil {
+			// One type of the many an interface's values may be.
+			return &space{ctor: "is " + typeString(tt.Type)}
+		}
+		return anything
 	case *syntax.CasePat:
+		if tt := c.info.TypeTests[p]; tt != nil {
+			return &space{ctor: "is " + typeString(tt.Type)}
+		}
 		n, _ := t.(*Named)
 		if n == nil {
 			return anything

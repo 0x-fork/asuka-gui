@@ -427,10 +427,60 @@ value matches), then bound (bindPattern: declares its names), so an
 | `(a, b)` | each element (GETF; of an optional: JNONE first, then its value) | each element's names |
 | `.case(p, q)`, `T.case(label: p)` | ECASE (an int enum: the value), each payload (GETP) | each payload's names |
 | `P(x: 0, y)` (a struct's, check.Info.FieldPats: each argument's field) | each named field's (GETF) | each named field's names |
+| `c: Circle` (a TypedPat) | the type test (below); of an optional `T?` of `T`, JNONE | `c` is the value |
 | `a \| b` | each in turn | (none) |
 
 In a view's match, each name an arm binds is a memo reading its part of
 the subject (extract), so the arm follows it.
+
+## Interfaces: type tests and provided methods
+
+An interface's value is the struct's or the enum's own reference, and
+its ak_shape is its dynamic type. A type test (check.Info.TypeTests: a
+struct's pattern, a typed name or an enum's case written with its type,
+matched with a value of an interface or a type parameter, or a `let c:
+Circle = v else`) is a shape comparison: ISSHAPE r, x, s (the tested
+type's shape; false for none), JF to the arm's end, then the pattern's
+parts read as of that type (GETF, ECASE and GETP) and its name bound to
+the same register. An `Error`'s is its `__etype` (ECASE first, as `catch
+e: T` tests it): errors keep it, since their ids also cross the FFI and
+the web's encoding.
+
+Against a type parameter, it's decided as the instantiation is lowered
+(testType's static case): the type it's instantiated with is the tested
+one (no test; an optional's none still JNONEs) or never is (a JMP, and
+what's after the test is lowered with a register of the tested type's
+kind). A match's arms that never match aren't lowered, nor those after
+one that always does without a guard (matchArms, after platformArms);
+an `if let` that never matches lowers its condition's clauses up to it,
+for what they do, then only the else (letNever). An interface
+instantiation (`T` = `Shape`) tests with ISSHAPE.
+
+An interface's method with a body is provided (check.IfaceMethod's
+Provided, a Function whose Recv is the interface). Its body is checked
+with `self` a type parameter of the interface (Iface.Self) and lowered
+per type it's called for, as a generic is: funcIndex with the type as
+the receiver and the interface's type arguments as targs, `self`'s
+register of the type's kind. methodFor picks what a type answers a
+method with: its own, unless the method is provided and the type's own
+isn't of its signature (or there's none), then the interface's for it.
+
+- `implement`, at a conversion to an interface, fills the shape's
+  method table by name, as for any method: CALLI (ak_vm_method) is
+  unchanged. A shape has one table, so two interfaces that give a type
+  different methods of one name (both provided, or a provided one and
+  the type's own of another signature) are an error when the program
+  is compiled, naming both (methodFrom says whose a provided one is).
+- A call on a type parameter (CallIface) is a CALL of methodFor's
+  function for the instantiation's type; on an interface's value, CALLI.
+- A type parameter's value converts to an interface it's constrained
+  by (a provided method passing `self` on): implement of the
+  instantiation's type, an error for an enum without payloads that
+  doesn't declare it (an int). When the type argument is itself an
+  interface `J` and the call is of a provided method `J` hasn't, `J`
+  flows into the method's interface (flow): every type converted to
+  `J`, before and after, is implemented for it too, so CALLI finds the
+  method on `J`'s values.
 
 The checker says whether a match covers every value as Maranget's
 "Warnings for pattern matching" does (lang/check/patterns.go): the arms

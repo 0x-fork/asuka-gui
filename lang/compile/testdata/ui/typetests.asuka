@@ -1,0 +1,50 @@
+// Type tests in a view: a match of an interface's value shows the arm of
+// the value's type, and follows it as it changes; an if let tests it too.
+
+interface Shape {
+  fn area() -> float
+  fn describe() -> string = "a shape of {area()}"
+}
+
+struct Circle {
+  radius: float
+  fn area() -> float = 3.0 * radius * radius
+}
+
+struct Square {
+  side: float
+  fn area() -> float = side * side
+}
+
+component Card {
+  state shape: Shape = Circle(radius: 1)
+
+  Column {
+    match shape {
+      c: Circle => Text("circle {c.radius}")
+      Square(side) => Text("square {side}")
+      _ => Text("other")
+    }
+    if let sq: Square = shape {
+      Text("a square of side {sq.side}")
+    }
+    Text(shape.describe())
+    Button("square") { on press { shape = Square(side: 2) } }
+    Button("bigger") { on press { shape = Square(side: 5) } }
+  }
+}
+
+app { Card() }
+
+test "the arm follows the value's type" {
+  let app = mount(Card())
+  app.expect("circle 1")
+  app.expect("a shape of 3")
+  app.tap("square")
+  app.expect("square 2")
+  app.expect("a square of side 2")
+  app.expect("a shape of 4")
+  app.tap("bigger")
+  app.expect("square 5")
+  app.expect("a square of side 5")
+}

@@ -377,12 +377,18 @@ type Case struct {
 type Iface struct {
 	Methods []*IfaceMethod
 	Fields  []*Field
+	// Self is self's type in its provided methods' bodies: a type
+	// parameter of the interface, which each type that has it (a
+	// struct, an enum) is as the body is compiled for it.
+	Self *TypeParam
 }
 
-// IfaceMethod is a method an interface asks for.
+// IfaceMethod is a method an interface asks for, or provides (with a
+// body: a type that has its own of the same signature uses its own).
 type IfaceMethod struct {
-	Name string
-	Sig  *Signature
+	Name     string
+	Sig      *Signature
+	Provided *Function // the interface's own body, nil when it asks for one
 }
 
 // A Component is a component's, a screen's, a store's or an element's

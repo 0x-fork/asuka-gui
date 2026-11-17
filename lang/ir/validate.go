@@ -20,7 +20,7 @@ var operandKinds = map[string][]bc.Kind{
 	"I2F": {bc.KFloat, bc.KInt}, "F2I": {bc.KInt, bc.KFloat}, "KFLOAT": {bc.KFloat},
 	"KSTR": {bc.KRef}, "KNONE": {bc.KRef}, "MOVR": {bc.KRef, bc.KRef}, "CLR": {bc.KRef},
 	"ISNONE": {bc.KBool, bc.KRef}, "CONCAT": {bc.KRef, bc.KRef, bc.KRef}, "TOSTR": {bc.KRef, 0},
-	"INTERP": {bc.KRef, 0}, "LTS": {bc.KBool, bc.KRef, bc.KRef}, "JNONE": {bc.KRef}, "JSOME": {bc.KRef},
+	"INTERP": {bc.KRef, 0}, "LTS": {bc.KBool, bc.KRef, bc.KRef}, "JNONE": {bc.KRef}, "JSOME": {bc.KRef}, "ISSHAPE": {bc.KBool, bc.KRef},
 	"CALLC": {0, bc.KRef}, "THROW": {bc.KRef}, "CATCH": {bc.KRef}, "RETHROW": {bc.KRef},
 	"CLOS": {bc.KRef}, "VBOX": {bc.KRef}, "VGET": {0, bc.KRef}, "VSET": {bc.KRef}, "VTAKE": {bc.KRef, bc.KRef},
 	"NEWS": {bc.KRef}, "GETF": {0, bc.KRef}, "SETF": {bc.KRef}, "NEWE": {bc.KRef}, "ECASE": {bc.KInt, bc.KRef},

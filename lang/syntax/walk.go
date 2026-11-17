@@ -459,6 +459,9 @@ func Walk(v Visitor, n Node) {
 			}
 			walk(a)
 		}
+	case *TypedPat:
+		walk(n.Pat)
+		walk(n.Type)
 	case *TuplePat:
 		for _, e := range n.Elems {
 			walk(e)

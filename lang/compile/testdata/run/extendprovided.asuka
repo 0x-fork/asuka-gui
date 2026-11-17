@@ -1,0 +1,52 @@
+// Extensions and provided methods together: a type that has an
+// interface through an extension gets its provided methods, and an
+// extension's method of the same signature is the type's own.
+
+interface Shape {
+  fn area() -> float
+  fn describe() -> string = "a shape of {area()}"
+}
+
+struct Square {
+  side: float
+}
+
+struct Circle {
+  radius: float
+}
+
+extend Square: Shape {
+  fn area() -> float = side * side
+}
+
+extend Circle: Shape {
+  fn area() -> float = 3.0 * radius * radius
+  fn describe() -> string = "a circle of {radius}"
+}
+
+fn describeAll(shapes: [Shape]) -> [string] = shapes.map(s => s.describe())
+
+fn generic<T: Shape>(s: T) -> string = s.describe()
+
+fn kind(s: Shape) -> string = match s {
+  Square(side) => "square {side}"
+  c: Circle => "circle {c.radius}"
+  _ => "other"
+}
+
+test "extensions with provided methods" {
+  for d in describeAll([Square(side: 2), Circle(radius: 1)]) { print(d) }
+  print(generic(Square(side: 3)))
+  print(generic(Circle(radius: 2)))
+  print(kind(Square(side: 1)))
+  print(kind(Circle(radius: 5)))
+}
+
+// Output:
+// a shape of 4
+// a circle of 1
+// a shape of 9
+// a circle of 2
+// square 1
+// circle 5
+// ok extensions with provided methods

@@ -133,6 +133,16 @@ static inline ak_struct *ak_op_news(const ak_shape *s, const ak_val *f) {
 	return o;
 }
 
+// ak_op_isshape is ISSHAPE: whether obj (an interface's value, or none)
+// is a struct or an enum of shape s, its type: a type test.
+static inline bool ak_op_isshape(const void *obj, const ak_shape *s) {
+	const ak_obj *o = obj;
+	if (!o) return false;
+	if (o->tag == AK_TAG_STRUCT) return ((const ak_struct *)o)->shape == s;
+	if (o->tag == AK_TAG_ENUM) return ((const ak_enum *)o)->shape == s;
+	return false;
+}
+
 static inline void ak_op_getf(ak_val *R, uint16_t a, const ak_struct *o, uint16_t i) {
 	ak_val v = o->f[i];
 	if (o->shape->kinds[i] == AK_K_REF) ak_op_setref(R, a, ak_retain(v.p));

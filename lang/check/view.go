@@ -411,7 +411,7 @@ func (c *Checker) viewItem(it syntax.Item, el *ElementCall) {
 		c.info.Matches[s] = mi
 		for _, a := range s.Arms {
 			c.enter(CtxBuilder, a, "arm")
-			c.pattern(a.Pattern, t, ViewMemo)
+			c.topPattern(a.Pattern, s.Subject, t, ViewMemo)
 			if a.Guard != nil {
 				c.errorf(a.Guard, "a match in a view takes no guards: put an if in the arm")
 			}

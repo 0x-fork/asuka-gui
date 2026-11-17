@@ -171,7 +171,22 @@ func (c *Checker) letStmt(d *syntax.LetDecl) {
 	}
 	if d.Type != nil {
 		want := c.typeExpr(d.Type)
-		t = c.assign(d.Value, want, "the value")
+		if tt := testedLet(want); tt != nil {
+			// let c: Circle = shape: a Shape that may not be one.
+			got := c.expr(d.Value, want)
+			if bp, ok := d.Pattern.(*syntax.BindPat); ok && testable(got) && !c.convert(d.Value, got, want) && c.mayBe(got, tt) {
+				name := exprName(d.Value)
+				if name == "this" {
+					name = "…"
+				}
+				c.errorf(d.Value, "%s isn't always %s: if let %s: %s = %s, or let … else", aType(Unopt(got)), aType(want), bp.Name.Name, typeString(want), name)
+				t = want
+			} else {
+				t = c.assigned(d.Value, got, want, "the value")
+			}
+		} else {
+			t = c.assign(d.Value, want, "the value")
+		}
 	} else {
 		t = c.valueType(c.expr(d.Value, nil), d.Value)
 	}
@@ -529,7 +544,7 @@ func (c *Checker) letCondPattern(lc *syntax.LetCond, t Type, kind VarKind) {
 	if lc.Var {
 		c.errorf(lc.Pattern, "if var binds a name, a copy that may change: if var x = optional")
 	}
-	c.pattern(lc.Pattern, t, kind)
+	c.topPattern(lc.Pattern, lc.Value, t, kind)
 }
 
 func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
@@ -919,6 +934,8 @@ func (c *Checker) pattern(p syntax.Pattern, t Type, kind VarKind) {
 		v := c.declareVar(p.Name, t, false)
 		v.Kind = kind
 		v.Bound = true
+	case *syntax.TypedPat:
+		c.typedPat(p, t, kind)
 	case *syntax.LitPat:
 		// A literal is compared with an optional's value, once it isn't
 		// none: it's of the value's type (not converted to the optional).
@@ -995,17 +1012,22 @@ func (c *Checker) pattern(p syntax.Pattern, t Type, kind VarKind) {
 			if tn == nil {
 				return
 			}
-			if n, ok := et.(*Named); ok && n.Obj == c.errT && tn.IsError {
-				// An Error, matched by an error enum's case.
+			if n, ok := et.(*Named); (!ok || n.Obj != tn) && testable(et) && tn.Kind == EnumType {
+				// A value of an interface (an Error too) or of a type
+				// parameter, matched by an enum's case: a type test,
+				// then the case.
 				name := p.Path[len(p.Path)-1].Name
 				k := tn.Case(name)
 				if k == nil {
 					c.errorf(p, "%s has no case %s", tn.name, name)
 					return
 				}
+				tt := c.typeTest(p, t, c.testedType(p, tn))
+				if tt == nil {
+					return
+				}
 				c.info.Cases[p] = k
-				c.info.ErrorCases[p] = tn
-				c.caseArgs(p, k, tn.Type)
+				c.caseArgs(p, k, tt)
 				return
 			}
 			if n, ok := et.(*Named); !ok || n.Obj != tn {
@@ -1104,7 +1126,7 @@ func (c *Checker) matchStmt(s *syntax.MatchStmt) {
 	c.info.Matches[s] = mi
 	for _, a := range s.Arms {
 		c.openScope()
-		c.pattern(a.Pattern, t, LocalVar)
+		c.topPattern(a.Pattern, s.Subject, t, LocalVar)
 		if a.Guard != nil {
 			c.assign(a.Guard, Bool, "the guard")
 		}
@@ -1137,7 +1159,7 @@ func (c *Checker) matchValue(n syntax.Node, subject syntax.Expr, arms []*syntax.
 	var res Type
 	for _, a := range arms {
 		c.openScope()
-		c.pattern(a.Pattern, t, LocalVar)
+		c.topPattern(a.Pattern, subject, t, LocalVar)
 		if a.Guard != nil {
 			c.assign(a.Guard, Bool, "the guard")
 		}
@@ -1322,13 +1344,27 @@ func (c *Checker) letElse(d *syntax.LetDecl) {
 	what := d.Keyword.String() + " … else"
 	bp, name := d.Pattern.(*syntax.BindPat)
 	var t Type
+	var tested *Named
 	if d.Type != nil {
 		want := c.typeExpr(d.Type)
-		if name {
+		switch {
+		case name && testedLet(want) != nil:
+			// let c: Circle = shape else { … }: a type test of an
+			// interface's value; otherwise an optional's, unwrapped.
+			got := c.expr(d.Value, MakeOptional(want))
+			if testable(got) {
+				t = got
+				if tested = c.typeTest(d, got, testedLet(want)); tested == nil {
+					tested = &Named{Obj: c.errT} // said why; the name's Invalid
+				}
+				break
+			}
+			t = c.assigned(d.Value, got, MakeOptional(want), "the value")
+		case name:
 			// let user: User = cache[id] else { … }: the type is the
 			// unwrapped value's.
 			t = c.assign(d.Value, MakeOptional(want), "the value")
-		} else {
+		default:
 			t = c.assign(d.Value, want, "the value")
 		}
 	} else {
@@ -1339,6 +1375,14 @@ func (c *Checker) letElse(d *syntax.LetDecl) {
 	c.block(d.Else)
 	if !c.terminates(d.Else.Items) {
 		c.errorPos(d.Else.Rbrace, "the else of a %s goes on with nothing to bind: end it with return, throw, break or continue (or panic)", what)
+	}
+	if name && tested != nil {
+		bound := Type(tested)
+		if tested.Obj == c.errT {
+			bound = Invalid
+		}
+		c.declareVar(bp.Name, bound, d.Keyword == syntax.VAR)
+		return
 	}
 	if name {
 		if !IsOptional(t) && !IsInvalid(t) {

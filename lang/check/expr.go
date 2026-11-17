@@ -726,7 +726,12 @@ func (c *Checker) assign(e syntax.Expr, want Type, what string) Type {
 			return want
 		}
 	}
-	got := c.expr(e, want)
+	return c.assigned(e, c.expr(e, want), want, what)
+}
+
+// assigned is assign once e is checked (its type got): got converted to
+// want, or an error.
+func (c *Checker) assigned(e syntax.Expr, got, want Type, what string) Type {
 	if c.convert(e, got, want) {
 		return want
 	}
@@ -809,6 +814,13 @@ func (c *Checker) convert(e syntax.Expr, got, want Type) bool {
 	switch w := want.(type) {
 	case *Named:
 		if w.Obj.Kind == InterfaceType {
+			if p, ok := got.(*TypeParam); ok && c.hasIface(p, w) == "" {
+				// A type parameter's value, constrained to the
+				// interface (a provided method's self): the type it's
+				// instantiated with converts.
+				c.info.Convs[e] = want
+				return true
+			}
 			if why := c.implements(got, w); why == "" {
 				c.info.Convs[e] = want
 				return true

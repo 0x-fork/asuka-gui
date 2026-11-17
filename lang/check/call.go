@@ -52,6 +52,10 @@ func (c *Checker) call(e *syntax.CallExpr, want Type) Type {
 			t := c.useMember(o, fn)
 			return c.closureCall(e, fn, t)
 		case *selfMember:
+			if o.owner.Kind == InterfaceType && o.field == nil {
+				// In a provided method: another of the interface's.
+				return c.selfIfaceCall(e, fn, want)
+			}
 			if o.method == nil {
 				return c.closureCall(e, fn, c.ident(fn))
 			}
@@ -1011,9 +1015,12 @@ func (c *Checker) hasIface(t Type, iface *Named) string {
 func (c *Checker) ifaceCovers(method func(string) *IfaceMethod, field func(string) *Field, iface *Named) string {
 	s := iface.Subst()
 	for _, m := range iface.Obj.Iface.Methods {
+		if m.Provided != nil {
+			continue
+		}
 		got := method(m.Name)
 		if got == nil {
-			return "it has no method " + m.Name
+			return "it has no " + m.Name + "()"
 		}
 		if want := s.Apply(m.Sig.Type()); !Identical(got.Sig.Type(), want) {
 			return "its " + m.Name + " is " + typeString(got.Sig.Type()) + ", not " + typeString(want)
@@ -1043,7 +1050,7 @@ func ifaceMethod(n *Named, name string) (*IfaceMethod, int) {
 	for i, m := range n.Obj.Iface.Methods {
 		if m.Name == name {
 			if s := n.Subst(); s != nil {
-				return &IfaceMethod{Name: m.Name, Sig: s.applySig(m.Sig)}, i + 1
+				return &IfaceMethod{Name: m.Name, Sig: s.applySig(m.Sig), Provided: m.Provided}, i + 1
 			}
 			return m, i + 1
 		}
@@ -1068,6 +1075,20 @@ func ifaceField(n *Named, name string) (*Field, int) {
 		}
 	}
 	return nil, 0
+}
+
+// ParamMethod is a method a type parameter's interfaces ask for (or
+// provide), and the interface.
+func ParamMethod(p *TypeParam, name string) (*IfaceMethod, *Named) { return paramMethod(p, name) }
+
+// IfaceMethodOf is interface n's method name, its signature read with
+// n's type arguments; nil when it has none (or n isn't an interface).
+func IfaceMethodOf(n *Named, name string) *IfaceMethod {
+	if n.Obj.Kind != InterfaceType {
+		return nil
+	}
+	m, _ := ifaceMethod(n, name)
+	return m
 }
 
 // paramMethod is a method a type parameter's interfaces ask for, and the
@@ -1307,6 +1328,40 @@ func (c *Checker) ifaceMethodCall(e *syntax.CallExpr, fn *syntax.MemberExpr, xt 
 	}
 	c.info.Selections[fn] = &Selection{Kind: SelMethod, Name: name, Recv: xt}
 	c.callEffects(e, name, m.Sig.Async, m.Sig.Throws)
+	if c.ctx != nil {
+		c.ctx.readsState = true
+	}
+	return m.Sig.Result
+}
+
+// selfIfaceCall is name(…) in an interface's provided method: a method
+// of the interface, called on self (a CallIface of self's type
+// parameter, resolved per type the body is compiled for).
+func (c *Checker) selfIfaceCall(e *syntax.CallExpr, fn *syntax.Ident, want Type) Type {
+	if c.ctx == nil || c.ctx.Self == nil {
+		c.errorf(fn, "%s is an interface's method: call it on a value", fn.Name)
+		c.checkArgsLoosely(e)
+		return Invalid
+	}
+	self, _ := c.ctx.Self.Type.(*TypeParam)
+	var m *IfaceMethod
+	if self != nil {
+		m, _ = paramMethod(self, fn.Name)
+	}
+	if m == nil {
+		c.errorf(fn, "%s is an interface's method: call it on a value", fn.Name)
+		c.checkArgsLoosely(e)
+		return Invalid
+	}
+	c.useVar(c.ctx.Self, fn)
+	args := c.matchArgs(e, m.Sig.Params, m.Name)
+	for i, a := range args {
+		if a != nil {
+			c.assign(a, m.Sig.Params[i].Type, "argument "+m.Sig.Params[i].Name+" of "+m.Name)
+		}
+	}
+	c.info.Calls[e] = &Call{Kind: CallIface, RecvType: self, Args: args, Params: m.Sig.Params, Result: m.Sig.Result, Bound: map[string]Type{"name": nil}, Name: m.Name, SelfCall: true}
+	c.callEffects(e, m.Name, m.Sig.Async, m.Sig.Throws)
 	if c.ctx != nil {
 		c.ctx.readsState = true
 	}

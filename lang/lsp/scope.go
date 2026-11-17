@@ -13,7 +13,8 @@ import (
 type scoped struct {
 	name  string
 	obj   check.Object
-	field *check.Field // a struct's field, by its bare name in a method
+	field *check.Field       // a struct's field, by its bare name in a method
+	imeth *check.IfaceMethod // an interface's method, by its bare name in a provided one
 	owner *check.TypeName
 	depth int // 0: a local; 1: a member; 2: the package's; 3: the prelude's; 4: the universe's
 	self  bool
@@ -183,6 +184,29 @@ func (fc *fileCtx) namesAt(path []syntax.Node, pos syntax.Pos) []scoped {
 				for _, tp := range d.TypeParams {
 					addIdent(tp.Name, 1)
 				}
+			}
+		case *syntax.InterfaceDecl:
+			// In a provided method: the interface's fields and methods
+			// by their bare names, and self.
+			if i+1 >= len(path) {
+				break
+			}
+			if _, ok := path[i+1].(*syntax.FuncDecl); !ok {
+				break
+			}
+			tn := fc.declType(n)
+			if tn == nil || tn.Iface == nil {
+				break
+			}
+			add(scoped{name: "self", owner: tn, depth: 1, self: true})
+			for _, f := range tn.Iface.Fields {
+				add(scoped{name: f.Name, field: f, owner: tn, depth: 1})
+			}
+			for _, m := range tn.Iface.Methods {
+				add(scoped{name: m.Name, imeth: m, owner: tn, depth: 1})
+			}
+			for _, tp := range n.TypeParams {
+				addIdent(tp.Name, 1)
 			}
 		}
 	}
