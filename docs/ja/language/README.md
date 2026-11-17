@@ -62,3 +62,5 @@ match native none on prop provide pub return screen self spawn state
 store struct style task test throw throws true try type use var while`
 
 `shader`（[シェーダー](../components.md#シェーダー)の宣言）、`at`（ルート付きの画面のパターン）、`static`（型の関数：`static fn`）、`variant`（コンポーネントのバリアント）は、その位置でだけキーワードで、ほかの場所では普通の名前です。
+
+`load` のあとに呼び出しが続くときは [load](async.md#読み込むデータ) キーワードです（`load api.user(id)`、または `load (api.user(id))`）。括弧の中がそれ以外のとき（`load()`、`load(id)`）は、`load` という名前の関数の呼び出しです。

@@ -62,3 +62,5 @@ match native none on prop provide pub return screen self spawn state
 store struct style task test throw throws true try type use var while`
 
 `shader`（[着色器](../components.md#着色器)的声明）、`at`（带路由的屏幕的模式）、`static`（类型的函数：`static fn`）和 `variant`（组件的变体）只在那个位置是关键字，在别处都是普通的名字。
+
+`load` 后面跟一个调用时，它是 [load](async.md#需要加载的数据) 关键字（`load api.user(id)`，或 `load (api.user(id))`）；后面跟的括号里是别的内容时（`load()`、`load(id)`），它调用的是名为 `load` 的函数。

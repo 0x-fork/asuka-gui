@@ -143,6 +143,9 @@ package syntax
 //      value: if c { log() ⏎ .red }. A chain of two .name lines or more
 //      continues there too (.a() alone would be no value). The scanner
 //      continues a line that starts with a binary operator.
+//  27. load and (. load(…) is a call of a function named load, unless
+//      the parentheses hold one call: load (api.user(id)) is the load
+//      operator's (load f(…) is how it's written).
 //
 // The scanner documents how newlines end items (Scanner) and how a %
 // after a number reads (50% is a length, 10%3 a remainder).
@@ -2294,6 +2297,9 @@ func (p *parser) parseUnary() Expr {
 		u.Span = p.span(start)
 		return u
 	case LOAD:
+		if p.peek(1) == LPAREN {
+			return p.loadParen()
+		}
 		p.next()
 		x := p.parsePostfix()
 		return &UnaryExpr{Op: LOAD, X: x, Span: p.span(start)}
@@ -2342,6 +2348,38 @@ func isElement(x Expr) bool {
 		return isUpper(x.Name.Name)
 	}
 	return false
+}
+
+// loadParen parses load followed by a ( (decision 27): a call of a
+// function named load, load(…), unless the parentheses hold one call,
+// the load operator's operand: load (api.user(id)).
+func (p *parser) loadParen() Expr {
+	start := p.pos
+	id := &Ident{Span: Span{start, start + Pos(len(p.lit))}, Name: p.lit}
+	p.next()
+	args := p.parseArgs()
+	if l := args.List; len(l) == 1 && l[0].Label == nil && isCall(l[0].Value) {
+		x := p.postfixFrom(args.Start, &ParenExpr{X: l[0].Value, Span: args.Span})
+		return &UnaryExpr{Op: LOAD, X: x, Span: p.span(start)}
+	}
+	c := &CallExpr{Fun: id, Args: args}
+	p.trailingBlock(c)
+	c.Span = p.span(start)
+	return p.postfixFrom(start, c)
+}
+
+// isCall reports whether x is a call, maybe in parentheses.
+func isCall(x Expr) bool {
+	for {
+		switch e := x.(type) {
+		case *ParenExpr:
+			x = e.X
+		case *CallExpr:
+			return true
+		default:
+			return false
+		}
+	}
 }
 
 func (p *parser) parsePostfix() Expr {

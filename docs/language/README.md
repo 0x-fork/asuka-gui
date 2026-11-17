@@ -73,3 +73,8 @@ store struct style task test throw throws true try type use var while`
 routed screen's pattern), `static` (a type's function: `static fn`) and
 `variant` (a component's variant) are keywords only there: elsewhere
 they're names.
+
+`load` followed by a call is the [load](async.md#data-that-loads)
+keyword's (`load api.user(id)`, or `load (api.user(id))`); followed by
+parentheses that hold anything else (`load()`, `load(id)`), it calls a
+function named `load`.
