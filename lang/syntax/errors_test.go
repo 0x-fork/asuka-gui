@@ -123,6 +123,30 @@ pub 3
 			decls: 2,
 		},
 		{
+			name: "C's operators",
+			src: `fn f() {
+  x++
+  y--
+  ++z
+  w = a--b
+  v = a ? b : c
+}
+`,
+			errs: []string{
+				"2:4: there's no ++ operator: write x += 1",
+				"3:4: there's no -- operator: write x -= 1",
+				"4:3: there's no ++ operator: write x += 1",
+				"6:9: there's no ?: operator: write if a { b } else { c }",
+			},
+			decls: 1,
+		},
+		{
+			name:  "a number without its 0",
+			src:   "let a = .5\nlet b = x * .25\nlet c = .5s\n",
+			errs:  []string{"1:9: a number starts with a digit: 0.5", "2:13: a number starts with a digit: 0.25", "3:9: a number starts with a digit: 0.5s"},
+			decls: 3,
+		},
+		{
 			name:  "if value without else",
 			src:   "let x = if a { 1 }\n",
 			errs:  []string{"1:19: an if used as a value needs an else"},
@@ -152,6 +176,37 @@ let d = 1
 			name:  "unclosed interpolation",
 			src:   "let s = \"a {b c\"\nlet t = 1\n",
 			errs:  []string{"1:9: string not terminated", "1:16: string not terminated"},
+			decls: 2,
+		},
+		{
+			// A block comment's newline ends the line, as a newline does.
+			name:  "interpolation spanning lines in a comment",
+			src:   "let s = \"a {b /* x\n*/ } c\"\nlet t = 1\n",
+			errs:  []string{"1:9: string not terminated", "2:7: string not terminated"},
+			decls: 3, // the rest of line 2 is a bad one
+		},
+		{
+			name: "a brace on a line of its own",
+			src: `fn f()
+{
+  if a
+  {
+    b()
+  }
+  Row
+  { }
+}
+struct S
+{
+  x: int
+}
+`,
+			errs: []string{
+				"2:1: a '{' goes at the end of the line before, not on a line of its own",
+				"4:3: a '{' goes at the end of the line before, not on a line of its own",
+				"8:3: a block on a line of its own isn't one: its '{' goes at the end of the line before (Row {)",
+				"11:1: a '{' goes at the end of the line before, not on a line of its own",
+			},
 			decls: 2,
 		},
 		{
@@ -234,12 +289,23 @@ func check(t *testing.T, name string, src []byte) {
 		}
 	}()
 	f, errs := ParseFile(NewFileSet(), name, src)
+	var stack []Node
 	Inspect(f, func(n Node) bool {
-		if n != nil {
-			if r := n.Range(); r.End < r.Start {
-				t.Fatalf("%s: %T's span ends before it starts in %q", name, n, src)
+		if n == nil {
+			stack = stack[:len(stack)-1]
+			return false
+		}
+		r := n.Range()
+		if r.End < r.Start {
+			t.Fatalf("%s: %T's span ends before it starts in %q", name, n, src)
+		}
+		// Without errors, a node is inside its parent.
+		if k := len(stack); k > 0 && len(errs) == 0 {
+			if pr := stack[k-1].Range(); r.Start < pr.Start || r.End > pr.End {
+				t.Fatalf("%s: %T's span is outside its parent %T's in %q", name, n, stack[k-1], src)
 			}
 		}
+		stack = append(stack, n)
 		return true
 	})
 	out, err := Format(name, src)
@@ -247,14 +313,16 @@ func check(t *testing.T, name string, src []byte) {
 		t.Fatalf("%s: Format's error %v with %d parse errors", name, err, len(errs))
 	}
 	if err == nil {
-		if again, _ := Format(name, out); string(again) != string(out) {
-			t.Fatalf("%s: not idempotent on %q:\n%s\n---\n%s", name, src, out, again)
+		if msg := roundTrip(name, src, out); msg != "" {
+			t.Fatal(msg)
 		}
 	}
 }
 
+// FuzzParse checks what check does on any input; its seeds are every
+// .asuka file in the repository.
 func FuzzParse(f *testing.F) {
-	for _, name := range corpus(f) {
+	for _, name := range repoFiles(f) {
 		src, _ := os.ReadFile(name)
 		f.Add(src)
 	}

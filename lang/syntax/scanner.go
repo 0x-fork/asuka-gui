@@ -168,6 +168,15 @@ func (s *Scanner) newlineCounts() bool {
 	return true
 }
 
+// endLineInterp ends, at a line's end, the interpolation of a one-line
+// string it's in: the string wasn't terminated.
+func (s *Scanner) endLineInterp() {
+	if n := len(s.frames); n > 0 && s.frames[n-1].kind == interp && !s.frames[n-1].multiline {
+		s.error(s.frames[n-1].start, "string not terminated")
+		s.frames = s.frames[:n-1]
+	}
+}
+
 func (s *Scanner) push(k frameKind) { s.frames = append(s.frames, frame{kind: k}) }
 
 // pop closes the innermost bracket of kind k, if that's what's open.
@@ -194,12 +203,7 @@ redo:
 			s.next()
 			continue
 		case '\n':
-			if n := len(s.frames); n > 0 && s.frames[n-1].kind == interp && !s.frames[n-1].multiline {
-				// An interpolation of a one-line string ends with its
-				// line: the string wasn't terminated.
-				s.error(s.frames[n-1].start, "string not terminated")
-				s.frames = s.frames[:n-1]
-			}
+			s.endLineInterp()
 			if s.newlineCounts() {
 				off := s.offset
 				s.next()
@@ -209,9 +213,12 @@ redo:
 			continue
 		case '/':
 			if c := s.peek(); c == '/' || c == '*' {
-				if nl := s.comment(); nl >= 0 && s.newlineCounts() {
+				if nl := s.comment(); nl >= 0 {
 					// A block comment spanning lines ends a line.
-					return s.file.Pos(nl), NEWLINE, "\n"
+					s.endLineInterp()
+					if s.newlineCounts() {
+						return s.file.Pos(nl), NEWLINE, "\n"
+					}
 				}
 				continue
 			}

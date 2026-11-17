@@ -3,6 +3,7 @@ package syntax
 import (
 	"bytes"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,32 +55,91 @@ func TestFormatGolden(t *testing.T) {
 		} else if !bytes.Equal(out, want) {
 			t.Errorf("%s: the output differs from %s; first difference:\n%s", name, golden, firstDiff(string(out), string(want)))
 		}
-		again, err := Format(name, out)
-		if err != nil {
-			t.Fatalf("%s: the output doesn't parse: %v\n%s", name, err, out)
-		}
-		if !bytes.Equal(again, out) {
-			t.Errorf("%s: not idempotent; first difference:\n%s", name, firstDiff(string(again), string(out)))
-		}
-		f, _ := ParseFile(NewFileSet(), name, src)
-		for _, c := range f.Comments {
-			if !bytes.Contains(out, []byte(strings.TrimRight(c.Text, " \t"))) {
-				t.Errorf("%s: comment %q lost", name, c.Text)
-			}
-		}
-		// The trees match, comments aside (and the form style: replaced
-		// rewritten, as the printer does).
-		Inspect(f, func(n Node) bool {
-			if b, ok := n.(*Block); ok {
-				b.Items = styleUses(b.Items)
-			}
-			return n != nil
-		})
-		g, _ := ParseFile(NewFileSet(), name, out)
-		if a, b := shape(f), shape(g); a != b {
-			t.Errorf("%s: formatting changed the tree:\n%s", name, firstDiff(b, a))
+		if msg := roundTrip(name, src, out); msg != "" {
+			t.Error(msg)
 		}
 	}
+}
+
+// TestFormatRepo formats every .asuka file in the repository that
+// parses (the checker's error cases have syntax errors of their own):
+// formatting keeps its meaning and its comments, and is stable.
+func TestFormatRepo(t *testing.T) {
+	n := 0
+	for _, path := range repoFiles(t) {
+		src, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := Format(path, src)
+		if err != nil {
+			continue
+		}
+		n++
+		if msg := roundTrip(path, src, out); msg != "" {
+			t.Error(msg)
+		}
+	}
+	if n == 0 {
+		t.Fatal("no .asuka files")
+	}
+}
+
+// repoFiles are the repository's .asuka files.
+func repoFiles(t testing.TB) []string {
+	root := filepath.Join("..", "..")
+	var files []string
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if path != root && (strings.HasPrefix(d.Name(), ".") || d.Name() == "node_modules" || d.Name() == "dist") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.HasSuffix(path, ".asuka") {
+			files = append(files, path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
+}
+
+// roundTrip checks out, src formatted: it formats to itself again, has
+// every comment of src, and parses to src's tree (comments aside, and
+// the form style: replaced rewritten, as the printer does). It returns
+// what's wrong, or "".
+func roundTrip(name string, src, out []byte) string {
+	again, err := Format(name, out)
+	if err != nil {
+		return fmt.Sprintf("%s: the output doesn't parse: %v\n%s", name, err, out)
+	}
+	if !bytes.Equal(again, out) {
+		return fmt.Sprintf("%s: not idempotent on %q; first difference:\n%s", name, src, firstDiff(string(again), string(out)))
+	}
+	f, _ := ParseFile(NewFileSet(), name, src)
+	for _, c := range f.Comments {
+		text := strings.ReplaceAll(strings.TrimRight(c.Text, " \t\r"), "\r\n", "\n")
+		if !bytes.Contains(out, []byte(text)) {
+			return fmt.Sprintf("%s: comment %q lost from %q", name, c.Text, src)
+		}
+	}
+	Inspect(f, func(n Node) bool {
+		if b, ok := n.(*Block); ok {
+			b.Items = styleUses(b.Items)
+		}
+		return n != nil
+	})
+	g, _ := ParseFile(NewFileSet(), name, out)
+	if a, b := shape(f), shape(g); a != b {
+		return fmt.Sprintf("%s: formatting %q changed the tree:\n%s", name, src, firstDiff(b, a))
+	}
+	return ""
 }
 
 // shape is a tree's kinds and names, without positions or comments.
@@ -119,6 +179,8 @@ func TestFormatCases(t *testing.T) {
 		{"let x=a+b*c", "let x = a + b * c\n"},
 		{"let r=0 ..< n", "let r = 0..<n\n"},
 		{"let r = a .. b", "let r = a..b\n"},
+		{"let r = a .. .b.c(1) + 1", "let r = a .. .b.c(1) + 1\n"},
+		{"let r = a..<.b", "let r = a ..< .b\n"},
 		{"let o = a ?? b", "let o = a ?? b\n"},
 		{"let f = ( a , b ) => a", "let f = (a, b) => a\n"},
 		{"let f = async  ( a , b ) => a", "let f = async (a, b) => a\n"},
@@ -126,6 +188,9 @@ func TestFormatCases(t *testing.T) {
 		{"let f = async()=>{ await g() }", "let f = async () => { await g() }\n"},
 		{"let t = try  await f()", "let t = try await f()\n"},
 		{"let n = ! a", "let n = !a\n"},
+		{"let n = - -a + -(-b) - - c", "let n = - -a + -(-b) - -c\n"},
+		// A % length before (, [ or . keeps its space: 0%() is 0 % ().
+		{"let n = 0% () + 5% [1] + 5% .a + 5%?.a + 5%!", "let n = 0% () + 5% [1] + 5% .a + 5%?.a + 5%!\n"},
 		{"let d = @platform==.linux||( @platform != .web )", "let d = @platform == .linux || (@platform != .web)\n"},
 		{"fn f() { match p { Point( x :0 ,y )=>1 } }", "fn f() { match p { Point(x: 0, y) => 1 } }\n"},
 		{"fn f<T:Shape&Hashable,U : ui.View>(x: T) {}", "fn f<T: Shape & Hashable, U: ui.View>(x: T) {}\n"},
@@ -150,10 +215,22 @@ func TestFormatCases(t *testing.T) {
 		{"component C {\n\n\n  state a = 1\n\n\n\n  state b = 2\n\n}", "component C {\n  state a = 1\n\n  state b = 2\n}\n"},
 		{"fn f() {\n  if a { b() }\n  else { c() }\n}", "fn f() {\n  if a { b() } else { c() }\n}\n"},
 		{"fn f() {\n  do { a() }\n  catch { b() }\n}", "fn f() {\n  do { a() } catch { b() }\n}\n"},
+		// A one-line block whose item spans lines breaks too.
+		{"component C { Button(\"x\") { on press { a(); b() } } }", "component C {\n  Button(\"x\") {\n    on press {\n      a()\n      b()\n    }\n  }\n}\n"},
+		{"let x = match v { .a => () => { a(); b() } }", "let x = match v {\n  .a => () => {\n    a()\n    b()\n  }\n}\n"},
 		// Lists.
 		{"let a = f(1,\n  2)", "let a = f(1, 2)\n"},
 		{"let a = f(\n  1, 2)", "let a = f(\n  1,\n  2,\n)\n"},
 		{"let a = [\n1]", "let a = [\n  1,\n]\n"},
+		{"let a = [\n  1,\n\n\n  2]", "let a = [\n  1,\n\n  2,\n]\n"},
+		{"fn f(\n  a: int,\n\n  b: int) {}", "fn f(\n  a: int,\n\n  b: int,\n) {}\n"},
+		{"let t = (\n  1, 2)", "let t = (\n  1,\n  2,\n)\n"},
+		{"let t = (1, // one\n  2)", "let t = (\n  1, // one\n  2,\n)\n"},
+		{"let t = (\n  1,\n)", "let t = (\n  1,\n)\n"},
+		{"let t = ( 1 , )", "let t = (1,)\n"},
+		{"import ./a.{\n  b, // first\n  c}", "import ./a.{\n  b, // first\n  c,\n}\n"},
+		{"import ./a.{b,\n  c} as x", "import ./a.{b, c} as x\n"},
+		{"import ./a.{ /* none */ }", "import ./a.{\n  /* none */\n}\n"},
 		{"enum E {\n  a, b\n}", "enum E {\n  a\n  b\n}\n"},
 		{"enum E { a, b }", "enum E { a, b }\n"},
 		{"let x = match v {\n  .a => 1, .b => 2\n}", "let x = match v {\n  .a => 1\n  .b => 2\n}\n"},
@@ -166,7 +243,21 @@ func TestFormatCases(t *testing.T) {
 		{"fn f() {\n  let x = 1\n  // last\n}", "fn f() {\n  let x = 1\n  // last\n}\n"},
 		{"fn f() { // why\n  let x = 1\n}", "fn f() { // why\n  let x = 1\n}\n"},
 		{"/// Doc.\nfn f() {}  ", "/// Doc.\nfn f() {}\n"},
+		// A ; on a line of its own is a blank line: the comment above
+		// stays above what follows.
+		{"// a\n;\nlet x = 1", "// a\n\nlet x = 1\n"},
+		{"//\n;", "//\n"},
+		// A comment after a node that ends on a later line is no blank
+		// line before the next.
+		{"let a = 1 /* multi\nline */\nlet b = 2", "let a = 1 /* multi\nline */\nlet b = 2\n"},
+		{"fn f() {\n  a() /* x\n  */\n\n  b()\n}", "fn f() {\n  a() /* x\n  */\n\n  b()\n}\n"},
+		// An empty map's comments go above its line.
+		{"let m = [/* e */ :]", "/* e */\nlet m = [:]\n"},
+		{"fn f() {\n  g([ // none\n  :])\n}", "fn f() {\n  // none\n  g([:])\n}\n"},
 		{"fn f() {\n  let x = [1, // one\n    2]\n}", "fn f() {\n  let x = [\n    1, // one\n    2,\n  ]\n}\n"},
+		// A file with Windows's line endings prints with \n, in its
+		// block comments and """ strings too.
+		{"fn f() {\r\n  /* a\r\n  b */\r\n  let s = \"\"\"\r\n    x {y}\r\n    \"\"\" // t\r\n}\r\n", "fn f() {\n  /* a\n  b */\n  let s = \"\"\"\n    x {y}\n    \"\"\" // t\n}\n"},
 		// Strings print as written.
 		{"let s = \"a\\n{b}\\{c\"", "let s = \"a\\n{b}\\{c\"\n"},
 		{"let s = r\"\\d+\"", "let s = r\"\\d+\"\n"},
@@ -187,6 +278,22 @@ func TestFormatCases(t *testing.T) {
 		if again, _ := Format("t.asuka", out); !bytes.Equal(again, out) {
 			t.Errorf("%q: not idempotent: %q", tt.src, again)
 		}
+	}
+}
+
+// TestFormatNestedOneLine formats blocks written on one line, nested
+// 100 deep, the innermost too long for one: each is tried on one line
+// once, so it ends (trying each again when the one around it breaks
+// was 2^100 tries).
+func TestFormatNestedOneLine(t *testing.T) {
+	const depth = 100
+	src := "component C { " + strings.Repeat("Row { ", depth) + "a(); b()" + strings.Repeat(" }", depth) + " }"
+	out, err := Format("t.asuka", []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(string(out), "\n"); n != 2*depth+4 {
+		t.Errorf("%d lines, want %d:\n%s", n, 2*depth+4, out)
 	}
 }
 

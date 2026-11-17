@@ -161,7 +161,7 @@ type parser struct {
 	pos  Pos
 	lit  string
 
-	prevEnd Pos // the end of the last token consumed, newlines aside
+	prevEnd Pos // the end of the last token consumed, newlines and ;s aside
 	exprLev int // < 0: in a control clause's head, where { starts the body
 	// styleValue > 0: in a style: prop's value, where an if may have no
 	// else (an entry that adds nothing when it's false).
@@ -169,6 +169,8 @@ type parser struct {
 
 	comments []*Comment
 	ci       int // the next comment not yet attached
+
+	angles map[int]int // each <'s matching >, by token index (angleEnd)
 
 	depth int
 	bail  bool // nesting too deep: give up on the rest of the file
@@ -280,7 +282,9 @@ func (p *parser) at(pos Pos) string {
 // Tokens
 
 func (p *parser) next() {
-	if p.tok != NEWLINE {
+	// A ; ends items as a newline does: a comment above a stray one is
+	// the next item's, not inside the last.
+	if p.tok != NEWLINE && p.tok != SEMICOLON {
 		p.prevEnd = p.pos + Pos(len(p.lit))
 	}
 	if p.i < len(p.toks)-1 {
@@ -444,6 +448,13 @@ func (p *parser) leading(start Pos) Trivia {
 	if p.prevEnd.IsValid() {
 		last = p.line(p.prevEnd - 1)
 	}
+	if p.ci > 0 {
+		// The comment the node above took after it, which may end on a
+		// later line (/* … ⏎ … */).
+		if c := p.comments[p.ci-1]; c.Pos >= p.prevEnd && c.End() <= start {
+			last = max(last, p.line(c.End()-1))
+		}
+	}
 	var g *CommentGroup
 	for p.ci < len(p.comments) && p.comments[p.ci].Pos < start {
 		c := p.comments[p.ci]
@@ -558,6 +569,16 @@ func (p *parser) declAhead() bool {
 		return isIdentTok(next)
 	}
 	return false
+}
+
+// braceOnNextLine reports a { written on the line after what it opens
+// (if a ⏎ {) and moves to it, so the block parses as if it were on the
+// line: one error, not one for the head and more for the block's items.
+func (p *parser) braceOnNextLine() {
+	if p.tok == NEWLINE && p.peek(1) == LBRACE {
+		p.next()
+		p.error(p.pos, "a '{' goes at the end of the line before, not on a line of its own")
+	}
 }
 
 // ---------------------------------------------------------------------
@@ -721,7 +742,7 @@ func (p *parser) parseImport() *ImportDecl {
 		p.next()
 	}
 	if p.tok == DOTBRACE {
-		open := p.pos
+		d.Lbrace = p.pos
 		p.next()
 		d.Names = []*Ident{}
 		for p.tok != RBRACE && p.tok != EOF {
@@ -730,7 +751,7 @@ func (p *parser) parseImport() *ImportDecl {
 				break
 			}
 		}
-		p.expectClose(RBRACE, open, "import list")
+		d.Rbrace = p.expectClose(RBRACE, d.Lbrace, "import list")
 	}
 	if p.got(AS) {
 		d.Alias = p.ident()
@@ -1120,6 +1141,7 @@ func (p *parser) parseConforms() []Type {
 // parseBody parses the members of a struct's, an enum's or an
 // interface's { … }, one per line, each by member.
 func (p *parser) parseBody(what string, member func() Node) (lbrace Pos, members []Node, dangling []*CommentGroup, rbrace Pos) {
+	p.braceOnNextLine()
 	lbrace = p.pos
 	if p.tok != LBRACE {
 		p.errorExpected("'{' to start the " + what + "'s body")
@@ -1217,6 +1239,7 @@ func (p *parser) parseEnum(start Pos) *EnumDecl {
 	d.Name = p.ident()
 	d.TypeParams = p.parseTypeParams()
 	d.Conforms = p.parseConforms()
+	p.braceOnNextLine()
 	d.Lbrace = p.pos
 	if !p.got(LBRACE) {
 		p.errorExpected("'{' to start the enum's body")
@@ -1351,6 +1374,7 @@ func (p *parser) parseFunc(start Pos) *FuncDecl {
 	if p.got(ARROW) {
 		d.Result = p.parseType()
 	}
+	p.braceOnNextLine() // a signature has no body: { can't start the next line
 	switch p.tok {
 	case LBRACE:
 		d.Body = p.parseBlock()
@@ -1442,6 +1466,7 @@ func (p *parser) parseLet(start Pos) *LetDecl {
 // Blocks and items
 
 func (p *parser) parseBlock() *Block {
+	p.braceOnNextLine()
 	b := &Block{Lbrace: p.pos}
 	if p.tok != LBRACE {
 		p.errorExpected("'{'")
@@ -1600,6 +1625,12 @@ func (p *parser) itemAfterPub(start Pos) Item {
 			d.Span = p.span(start)
 			return d
 		}
+	case LBRACE:
+		// A block on a line of its own isn't one (decision 4): Row ⏎ {
+		// meant Row {.
+		p.error(p.pos, "a block on a line of its own isn't one: its '{' goes at the end of the line before (Row {)")
+		p.sync()
+		return &BadItem{Span: p.span(start)}
 	case IF:
 		return p.parseIfStmt()
 	case FOR:
@@ -1952,6 +1983,7 @@ func (p *parser) parseMatchExpr() *MatchExpr {
 
 // parseArms parses a match's { arms }; expr says the match is a value.
 func (p *parser) parseArms(expr bool) (lbrace Pos, arms []*MatchArm, rbrace Pos) {
+	p.braceOnNextLine()
 	lbrace = p.pos
 	if !p.got(LBRACE) {
 		p.errorExpected("'{' to start the match's arms")
@@ -2131,6 +2163,17 @@ func (p *parser) parseBinary(minPrec int) Expr {
 	x := p.parseUnary()
 	for {
 		op, opPos := p.binaryOp(), p.pos
+		if p.incDec() {
+			// x++, x--: C's, not ours.
+			p.error(opPos, "there's no "+op.String()+op.String()+" operator: write x "+op.String()+"= 1")
+			p.next()
+			p.next()
+			return x
+		}
+		if op == QUESTION {
+			p.error(opPos, "there's no ?: operator: write if a { b } else { c }")
+			return x
+		}
 		prec := op.Precedence()
 		if prec == 0 || prec < minPrec {
 			return x
@@ -2153,6 +2196,28 @@ func (p *parser) parseBinary(minPrec int) Expr {
 				p.error(p.pos, "ranges don't chain")
 			}
 		}
+	}
+}
+
+// incDec reports ++ or -- here: two + or two - side by side, the second
+// the end of the expression or its line (a--b is a - -b).
+func (p *parser) incDec() bool {
+	if p.tok != ADD && p.tok != SUB || p.i+2 >= len(p.toks) {
+		return false
+	}
+	n := p.toks[p.i+1]
+	if n.tok != p.tok || n.pos != p.pos+1 {
+		return false
+	}
+	if p.tok == ADD {
+		return true // there's no unary +
+	}
+	switch t := p.toks[p.i+2]; t.tok {
+	case NEWLINE, SEMICOLON, RBRACE, RPAREN, RBRACK, COMMA, EOF:
+		return true
+	default:
+		// A newline after an operator doesn't end the line: y-- ⏎ z.
+		return p.line(t.pos) > p.line(p.pos)
 	}
 }
 
@@ -2312,27 +2377,10 @@ func (p *parser) tryTypeArgs(x Expr) ([]Type, bool) {
 		return nil, false
 	}
 	// Types are what's between: names, brackets, ?, commas, colons, fn,
-	// arrows. A quick scan rejects most comparisons without parsing.
-	depth := 0
-	j := 1
-	for ; ; j++ {
-		switch t := p.peek(j); t {
-		case IDENT, PERIOD, COMMA, COLON, LBRACK, RBRACK, QUESTION, LPAREN, RPAREN, FN, ARROW, ASYNC, THROWS:
-		case LSS:
-			depth++
-		case GTR:
-			if depth == 0 {
-				if p.peek(j+1) != LPAREN {
-					return nil, false
-				}
-				goto parse
-			}
-			depth--
-		default:
-			return nil, false
-		}
+	// arrows. A quick look rejects most comparisons without parsing.
+	if end := p.angleEnd(); end < 0 || end+1 >= len(p.toks) || p.toks[end+1].tok != LPAREN {
+		return nil, false
 	}
-parse:
 	saved, savedEnd := p.i, p.prevEnd
 	nerr := len(p.errors)
 	p.next() // <
@@ -2353,6 +2401,35 @@ parse:
 	}
 	p.next() // >
 	return ts, true
+}
+
+// angleEnd is the index of the > that closes the < here, with only
+// what a type has between them (names, brackets, ?, commas, colons, fn,
+// arrows, nested <…>), or -1. The file's < are matched once, in one pass,
+// so a list of comparisons (a < b, c < d, …) costs no rescan for each.
+func (p *parser) angleEnd() int {
+	if p.angles == nil {
+		p.angles = make(map[int]int)
+		var open []int
+		for j, t := range p.toks {
+			switch t.tok {
+			case IDENT, PERIOD, COMMA, COLON, LBRACK, RBRACK, QUESTION, LPAREN, RPAREN, FN, ARROW, ASYNC, THROWS:
+			case LSS:
+				open = append(open, j)
+			case GTR:
+				if n := len(open); n > 0 {
+					p.angles[open[n-1]] = j
+					open = open[:n-1]
+				}
+			default:
+				open = open[:0] // a < still open here closes nowhere
+			}
+		}
+	}
+	if end, ok := p.angles[p.i]; ok {
+		return end
+	}
+	return -1
 }
 
 // elementName parses an element's as name, when it has one.
@@ -2447,6 +2524,9 @@ func (p *parser) parsePrimary() Expr {
 		return &AtExpr{Name: name, Span: p.span(start)}
 	case PERIOD:
 		p.next()
+		if (p.tok == INT || p.tok == FLOAT || p.tok == DURATION || p.tok == LENGTH) && p.pos == p.prevEnd {
+			p.error(start, "a number starts with a digit: 0"+p.toks[p.i-1].lit+p.lit)
+		}
 		return &ImplicitMember{Name: p.ident(), Span: p.span(start)}
 	case LPAREN:
 		return p.parseParenOrTuple()
@@ -2459,6 +2539,9 @@ func (p *parser) parsePrimary() Expr {
 	}
 	if softKeyword(p.tok) {
 		return p.name()
+	}
+	if p.tok == ADD && p.peek(1) == ADD && p.toks[p.i+1].pos == p.pos+1 {
+		p.error(p.pos, "there's no ++ operator: write x += 1")
 	}
 	p.errorExpected("an expression")
 	switch p.tok {
@@ -2567,6 +2650,7 @@ func (p *parser) parseString() *StringLit {
 		s.Segments = []string{body}
 		p.next()
 		s.Span = p.span(start)
+		lineBreaks(s)
 		return s
 	}
 	// STRING_HEAD: "…{
@@ -2612,7 +2696,21 @@ func (p *parser) parseString() *StringLit {
 		break
 	}
 	s.Span = p.span(start)
+	lineBreaks(s)
 	return s
+}
+
+// lineBreaks makes a """ string's line breaks \n: one written in a file
+// with Windows's line endings (\r\n) means what it does in any other.
+func lineBreaks(s *StringLit) {
+	if !s.Multiline {
+		return
+	}
+	for i, seg := range s.Segments {
+		if strings.Contains(seg, "\r\n") {
+			s.Segments[i] = strings.ReplaceAll(seg, "\r\n", "\n")
+		}
+	}
 }
 
 // splitString splits a string token into its kind and its text.

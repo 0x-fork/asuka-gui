@@ -11,10 +11,11 @@ package syntax
 //     enum: only cases; a match: arms separated by commas) and no
 //     comment: on tap { count += 1 }. Otherwise each item goes on a line
 //     of its own, and an empty block is {}.
-//   - Arguments, parameters, arrays and maps go one per line, each with
-//     a trailing comma, when the first was written on the line after
-//     the opening bracket or a comment sits between them; otherwise on
-//     one line. A binary expression broken after its operator stays
+//   - Arguments, parameters, arrays, maps, tuples and an import's names
+//     go one per line, each with a trailing comma, when the first was
+//     written on the line after the opening bracket or a comment sits
+//     between them; otherwise on one line. A blank line between two of
+//     them is kept. A binary expression broken after its operator stays
 //     broken there, its next lines indented once more.
 //   - } else and } catch go on the }'s line. Imports' .{…} follow the
 //     path directly: import ./components.{Row, Card}.
@@ -75,6 +76,7 @@ type printer struct {
 	file     *File
 	comments []*Comment // the file's, in source order
 	printed  map[*Comment]bool
+	broken   map[Pos]bool // bodies, by their {, written on one line that don't fit on one
 	indent   int
 	bol      bool // at the start of a line, its indentation not written yet
 }
@@ -101,6 +103,8 @@ func (p *printer) comment(c *Comment) {
 	text := c.Text
 	if strings.HasPrefix(text, "//") {
 		text = strings.TrimRight(text, " \t\r")
+	} else if strings.Contains(text, "\r\n") {
+		text = strings.ReplaceAll(text, "\r\n", "\n") // as every line printed
 	}
 	p.write(text)
 	p.printed[c] = true
@@ -257,7 +261,7 @@ func (p *printer) lines(inside bool, open Pos, nodes []Node, dangling []*Comment
 		if i > 0 || inside {
 			p.newline()
 		}
-		if i > 0 && blankBefore(t) {
+		if i > 0 && (blankBefore(t) || t == nil && p.blankBetween(prev, n.Range().Start)) {
 			p.newline()
 		}
 		if prev.IsValid() {
@@ -300,6 +304,16 @@ func (p *printer) lines(inside bool, open Pos, nodes []Node, dangling []*Comment
 			p.comment(c)
 		}
 	}
+}
+
+// blankBetween reports whether a blank line separates end and start,
+// nothing between them, for a node without Trivia (an array's element).
+func (p *printer) blankBetween(end, start Pos) bool {
+	if !end.IsValid() || p.commentsIn(end, start) {
+		return false
+	}
+	l := p.line(end - 1)
+	return l > 0 && p.line(start) > l+1
 }
 
 // multiline reports whether a bracketed list goes one element per line:
@@ -357,7 +371,7 @@ func (p *printer) body(lbrace Pos, comment *Comment, nodes []Node, dangling []*C
 		p.write("{}")
 		return
 	}
-	if oneLine && len(nodes) > 0 && comment == nil && len(dangling) == 0 &&
+	if oneLine && len(nodes) > 0 && comment == nil && len(dangling) == 0 && !p.broken[lbrace] &&
 		p.sameLine(lbrace, rbrace) && !p.commentsIn(lbrace, rbrace+1) {
 		ok := true
 		for _, n := range nodes {
@@ -366,6 +380,10 @@ func (p *printer) body(lbrace Pos, comment *Comment, nodes []Node, dangling []*C
 			}
 		}
 		if ok {
+			// What spans lines inside (a nested block of two items)
+			// breaks this one too: { on press {⏎…⏎} } would print
+			// differently the next time.
+			mark, bol := len(p.out), p.bol
 			p.write("{ ")
 			for i, n := range nodes {
 				if i > 0 {
@@ -373,8 +391,17 @@ func (p *printer) body(lbrace Pos, comment *Comment, nodes []Node, dangling []*C
 				}
 				p.node(n)
 			}
-			p.write(" }")
-			return
+			if bytes.IndexByte(p.out[mark:], '\n') < 0 {
+				p.write(" }")
+				return
+			}
+			// Printed again below, and maybe again as part of an
+			// enclosing body that breaks too: don't try once more.
+			p.out, p.bol = p.out[:mark], bol
+			if p.broken == nil {
+				p.broken = map[Pos]bool{}
+			}
+			p.broken[lbrace] = true
 		}
 	}
 	p.write("{")
@@ -586,14 +613,11 @@ func (p *printer) node(n Node) {
 			p.write(s.Name)
 		}
 		if n.Names != nil {
-			p.write(".{")
+			nodes := make([]Node, len(n.Names))
 			for i, id := range n.Names {
-				if i > 0 {
-					p.write(", ")
-				}
-				p.write(id.Name)
+				nodes[i] = id
 			}
-			p.write("}")
+			p.list(".{", "}", n.Lbrace, n.Rbrace, nodes)
 		}
 		if n.Alias != nil {
 			p.write(" as " + n.Alias.Name)
@@ -1060,7 +1084,7 @@ func (p *printer) expr1(x Expr) {
 	case *ImplicitMember:
 		p.write("." + x.Name.Name)
 	case *MemberExpr:
-		p.exprPrec(x.X, precPostfix)
+		p.postfixOperand(x.X, !x.Optional)
 		if x.Optional {
 			p.write("?.")
 		} else {
@@ -1068,7 +1092,7 @@ func (p *printer) expr1(x Expr) {
 		}
 		p.write(x.Name.Name)
 	case *CallExpr:
-		p.exprPrec(x.Fun, precPostfix)
+		p.postfixOperand(x.Fun, len(x.TypeArgs) == 0 && x.Args != nil)
 		if len(x.TypeArgs) > 0 {
 			p.write("<")
 			for i, t := range x.TypeArgs {
@@ -1094,7 +1118,7 @@ func (p *printer) expr1(x Expr) {
 			p.onHandler(h)
 		}
 	case *IndexExpr:
-		p.exprPrec(x.X, precPostfix)
+		p.postfixOperand(x.X, true)
 		p.write("[")
 		p.expr(x.Index)
 		p.write("]")
@@ -1105,6 +1129,9 @@ func (p *printer) expr1(x Expr) {
 		switch x.Op {
 		case NOT, SUB, TILDE:
 			p.write(x.Op.String())
+			if u, ok := x.X.(*UnaryExpr); ok && x.Op == SUB && u.Op == SUB {
+				p.write(" ") // - -a, not --a
+			}
 		case TRY:
 			if x.Optional {
 				p.write("try? ")
@@ -1156,6 +1183,10 @@ func (p *printer) expr1(x Expr) {
 		p.expr(x.X)
 		p.write(")")
 	case *TupleExpr:
+		if len(x.Elems) > 0 && p.multiline(x.Start, x.End-1, exprNodes(x.Elems)) {
+			p.list("(", ")", x.Start, x.End-1, exprNodes(x.Elems))
+			return
+		}
 		p.write("(")
 		for i, e := range x.Elems {
 			if i > 0 {
@@ -1170,7 +1201,9 @@ func (p *printer) expr1(x Expr) {
 	case *ArrayExpr:
 		p.list("[", "]", x.Start, x.End-1, exprNodes(x.Elems))
 	case *MapExpr:
-		if len(x.Entries) == 0 && !p.commentsIn(x.Start, x.End) {
+		if len(x.Entries) == 0 {
+			// A comment inside goes above the line: [ // … :] can't
+			// hold one on lines of its own as an array can.
 			p.write("[:]")
 			return
 		}
@@ -1217,6 +1250,41 @@ func (p *printer) expr1(x Expr) {
 	}
 }
 
+// startsWithDot reports whether x is printed starting with a . (an
+// implicit member, .end, or what applies to one).
+func startsWithDot(x Expr) bool {
+	for {
+		switch e := x.(type) {
+		case *ImplicitMember:
+			return true
+		case *MemberExpr:
+			x = e.X
+		case *CallExpr:
+			x = e.Fun
+		case *IndexExpr:
+			x = e.X
+		case *UnwrapExpr:
+			x = e.X
+		case *BinaryExpr:
+			x = e.X
+		case *CatchExpr:
+			x = e.X
+		default:
+			return false
+		}
+	}
+}
+
+// postfixOperand prints what a postfix operator applies to. A % length
+// before (, [ or . (open says one follows) keeps a space: 50%(…) would
+// be a remainder.
+func (p *printer) postfixOperand(x Expr, open bool) {
+	p.exprPrec(x, precPostfix)
+	if l, ok := x.(*BasicLit); ok && open && l.Kind == LENGTH && strings.HasSuffix(l.Value, "%") {
+		p.write(" ")
+	}
+}
+
 // binary prints x op y, keeping a line break after op where the source
 // had one; cont says the chain's next lines are indented already.
 func (p *printer) binary(b *BinaryExpr, cont *bool) {
@@ -1230,8 +1298,8 @@ func (p *printer) binary(b *BinaryExpr, cont *bool) {
 	}
 	p.operand(b.X, lp, cont)
 	sp := " "
-	if b.Op == RANGE || b.Op == RANGELT {
-		sp = ""
+	if (b.Op == RANGE || b.Op == RANGELT) && !startsWithDot(b.Y) {
+		sp = "" // but a .. .end: a...end isn't a range
 	}
 	p.write(sp + b.Op.String())
 	if l := p.endLine(b.X); l > 0 && l < p.line(b.Y.Range().Start) {

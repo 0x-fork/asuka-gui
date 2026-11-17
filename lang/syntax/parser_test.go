@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 )
@@ -256,6 +257,11 @@ func TestParseExpr(t *testing.T) {
 		{"none", "none"},
 		{`"a{b + 1}c{d}"`, `(str "a" (+ b 1) "c" d "")`},
 		{`"{f("x")}"`, `(str "" (call f (str "x")) "")`},
+		// A """ string's \r\n line breaks are \n; a one-line string's
+		// \r stays.
+		{"\"\"\"\r\n  a{b}\r\n  c\r\n  \"\"\"", `(str "\n  a" b "\n  c\n  ")`},
+		{"r\"\"\"\r\n  a\r\n  \"\"\"", `(str "\n  a\n  ")`},
+		{"\"a\rb\"", `(str "a\rb")`},
 		{`r"\{x}"`, `(str "\\{x}")`},
 		{"\"\"\"\nhi\n\"\"\"", `(str "\nhi\n")`},
 		// Lambdas.
@@ -555,7 +561,7 @@ func TestParseDecisions(t *testing.T) {
 	if c := f.Decls[0].(*ComponentDecl).Body.Items[0].(*ExprStmt).X.(*CallExpr); c.Block != nil {
 		t.Errorf("a block on the next line bound to the call")
 	}
-	if len(errs) == 0 || !strings.Contains(errs[0].Msg, "expected an expression, found '{'") {
+	if len(errs) == 0 || !strings.Contains(errs[0].Msg, "a block on a line of its own isn't one") {
 		t.Errorf("a block on a line of its own: %v", errs)
 	}
 	// 4: not in an if's, a for's or a match's head; again inside parentheses.
@@ -626,11 +632,19 @@ func TestParseDecisions(t *testing.T) {
 	}
 }
 
-// TestSpans checks every node of the corpus has a span inside its
-// parent's, in order, and that Walk reaches every kind it should.
+// TestSpans checks every node of each .asuka file in the repository
+// that parses has a span inside its parent's, and every name spans its
+// text.
 func TestSpans(t *testing.T) {
-	for _, name := range corpus(t) {
-		f, src := parseFile(t, name)
+	for _, name := range repoFiles(t) {
+		src, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f, errs := ParseFile(NewFileSet(), name, src)
+		if len(errs) > 0 {
+			continue
+		}
 		var stack []Node
 		Inspect(f, func(n Node) bool {
 			if n == nil {
@@ -674,6 +688,11 @@ func TestTypeArguments(t *testing.T) {
 		{"let x = f(a < b, c > d)", "f(a < b, c > d)"},
 		// As C#: <...> right before ( is type arguments.
 		{"let x = f(a < b, c > (d))", "f(a<b, c>(d))"},
+		// Nested, and among comparisons: each < finds its own >.
+		{"let x = [a < b, f<Box<int>>(x), c < d, g<[int]>()]", "[a < b, f<Box<int>>(x), c < d, g<[int]>()]"},
+		{"let x = a < b.c(f<int>(x))", "a < b.c(f<int>(x))"},
+		{"let x = [a < b, c<d>(e), f < g]", "[a < b, c<d>(e), f < g]"},
+		{"let x = f(a < g<int>(b))", "f(a < g<int>(b))"},
 	} {
 		f := parseOK(t, c.src)
 		got := printed(f.Decls[0].(*LetDecl).Value)
