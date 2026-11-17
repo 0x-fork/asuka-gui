@@ -45,7 +45,7 @@ static char *reports(void) {
 }
 
 static void put(const char *dir, const char *name, const void *p, size_t n) {
-	char path[1024];
+	char path[2048];
 	snprintf(path, sizeof path, "%s/%s", dir, name);
 	FILE *f = fopen(path, "wb");
 	if (!f) {
@@ -59,14 +59,14 @@ static void put(const char *dir, const char *name, const void *p, size_t n) {
 static void puts_(const char *dir, const char *name, const char *text) { put(dir, name, text, strlen(text)); }
 
 static bool there(const char *dir, const char *name) {
-	char path[1024];
+	char path[2048];
 	snprintf(path, sizeof path, "%s/%s", dir, name);
 	struct stat st;
 	return stat(path, &st) == 0;
 }
 
 static char *slurp(const char *dir, const char *name) {
-	char path[1024];
+	char path[2048];
 	snprintf(path, sizeof path, "%s/%s", dir, name);
 	FILE *f = fopen(path, "rb");
 	if (!f) return strdup("");
@@ -139,7 +139,7 @@ TEST(crash_record_and_reports) {
 	puts_(runs, "1000-42.crash", "panic: index out of range\n\npay (cart.asuka:12)\nmain (app.asuka:3)\n");
 	{
 		// It crashed at 1.2s: the file's last write.
-		char p[1100];
+		char p[1200];
 		snprintf(p, sizeof p, "%s/1000-42.crash", runs);
 		struct timespec ts[2] = {{1, 200000000}, {1, 200000000}};
 		utimensat(AT_FDCWD, p, ts, 0);

@@ -308,9 +308,14 @@ bool ak_obj_eq(const ak_obj *a, const ak_obj *b);
 // is new, with no references shared. Closures, cells and other runtime
 // objects can't be copied (the checker keeps them out of spawn).
 ak_val ak_deep_copy(ak_val v, ak_kind k);
-// ak_freeze makes v and everything it holds immortal: a constant, never
-// freed, shared by every thread without reference counting.
-void ak_freeze(ak_val v, ak_kind k);
+// ak_freeze makes v and everything it holds immortal: a constant, shared
+// by every thread without reference counting. Each object it makes
+// immortal goes into made (when not NULL), whose owner (the module whose
+// init froze it) frees them with ak_frozen_free once nothing can reach
+// them; without one, they're never freed.
+typedef AK_VEC(ak_obj *) ak_frozen;
+void ak_freeze(ak_val v, ak_kind k, ak_frozen *made);
+void ak_frozen_free(ak_frozen *made);
 
 // ---- Errors ----
 //

@@ -92,8 +92,12 @@ TEST(set_eq_copy_freeze) {
 	CHECK(ak_val_eq(c, (ak_val){.p = a}, AK_K_REF));
 	ak_release(c.p);
 	ak_release(b);
-	ak_freeze((ak_val){.p = a}, AK_K_REF);
+	ak_frozen made = {0};
+	ak_freeze((ak_val){.p = a}, AK_K_REF, &made);
 	CHECK_EQ_INT(a->h.rc, AK_RC_IMMORTAL);
+	CHECK_EQ_INT(made.len, 3);  // the set, then what it holds
+	CHECK(made.data[made.len - 1] == &a->h);
+	ak_frozen_free(&made);
 }
 
 TEST(set_from_arr) {

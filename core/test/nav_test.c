@@ -23,6 +23,7 @@ static void set(ak_view *v, uint16_t key, ak_val x) {
 	ak_release_val(x, (ak_kind)ak_key_kinds[key]);
 }
 static void set_str(ak_view *v, uint16_t key, const char *s) { set(v, key, (ak_val){.p = ak_str_c(s)}); }
+static bool str_is(const ak_str *a, const char *s) { return a->len == strlen(s) && memcmp(a->data, s, a->len) == 0; }
 static void set_i(ak_view *v, uint16_t key, int64_t i) { ak_ui_set(v, key, (ak_val){.i = i}); }
 
 static void add(ak_view *p, ak_view *c) {
@@ -816,7 +817,7 @@ TEST(alert) {
 	if (fs.len) CHECK(span_is(fs.data[0].text, "draft") && span_is(fs.data[0].placeholder, "Name"));
 	ak_vec_free(&fs);
 	ak_fake_type_in_alert(f, al, 0, "draft 2");
-	CHECK(typed && ak_str_eq(typed, ak_str_c("draft 2")));
+	CHECK(typed && str_is(typed, "draft 2"));
 	ak_fake_choose(f, al, 1);
 	CHECK_EQ_INT(deleted, 1);
 	CHECK_EQ_INT(count_kind(a, AK_KIND_ALERT), 0);
@@ -1629,7 +1630,7 @@ TEST(router_navigate_push_back_replace) {
 	CHECK(!ak_ui_can_go_back());
 	CHECK(!ak_ui_router_back());
 	ak_str *h = ak_ui_router_href();
-	CHECK(h && ak_str_eq(h, ak_str_c("/")));
+	CHECK(h && str_is(h, "/"));
 	ak_release(h);
 
 	// A Button's href goes there in the Router it's in.
@@ -1770,7 +1771,7 @@ static ak_val tabs_router(ak_closure *c, ak_val *a, uint32_t n) {
 	ak_view *tabs = route("/", NULL, NULL);
 	set_i(tabs, AK_KEY_ROUTE_LAYOUT, 2);  // .tabs
 	ak_view *chats = chats_routes();
-	ak_ui_set(chats, AK_KEY_ROUTE_PATH, (ak_val){.p = ak_str_c("/chats")});
+	set_str(chats, AK_KEY_ROUTE_PATH, "/chats");
 	set_str(chats, AK_KEY_ROUTE_TITLE, "Chats");
 	set_str(chats, AK_KEY_ROUTE_ICON, "message");
 	add(tabs, chats);
@@ -1814,12 +1815,12 @@ TEST(router_tabs_sheets_and_redirects) {
 	CHECK(ak_fake_bool(sheet, AK_PROP_SHEET_ROUTED));
 	check_text(sheet, "compose page");
 	ak_str *h = ak_ui_router_href();
-	CHECK(ak_str_eq(h, ak_str_c("/compose")));
+	CHECK(str_is(h, "/compose"));
 	ak_release(h);
 	ak_fake_dismiss(f, sheet);
 	CHECK_EQ_INT(count_kind(a, AK_KIND_SHEET), 0);
 	h = ak_ui_router_href();
-	CHECK(ak_str_eq(h, ak_str_c("/chats/chat/4")));
+	CHECK(str_is(h, "/chats/chat/4"));
 	ak_release(h);
 	// dismiss on the router, likewise.
 	go("/compose", 0);
@@ -1878,7 +1879,7 @@ TEST(router_guards_redirects_not_found) {
 	go("/people", 0);  // redirects, and the guard lets them in
 	check_text(root(a), "users page");
 	ak_str *h = ak_ui_router_href();
-	CHECK(ak_str_eq(h, ak_str_c("/admin/users")));
+	CHECK(str_is(h, "/admin/users"));
 	ak_release(h);
 	// No route takes it: the not found screen, with a way home.
 	go("/nope/x", 0);
@@ -1894,7 +1895,7 @@ TEST(href_of) {
 	ak_arr_push(&v, (ak_val){.p = ak_str_c("a b")});
 	ak_arr_push(&v, (ak_val){.p = ak_str_c("docs/a.md")});
 	ak_str *h = ak_ui_href_of(p, v);
-	CHECK(h && ak_str_eq(h, ak_str_c("/chat/a%20b/files/docs/a.md")));
+	CHECK(h && str_is(h, "/chat/a%20b/files/docs/a.md"));
 	ak_release(h);
 	ak_arr *one = ak_arr_new(AK_K_REF, NULL, 1);
 	ak_arr_push(&one, (ak_val){.p = ak_str_c("7")});

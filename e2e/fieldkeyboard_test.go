@@ -19,8 +19,8 @@ import (
 func TestFieldAboveKeyboardAndroid(t *testing.T) {
 	s := androidApp(t, "e2e/testdata/field-keyboard", "dev.asuka.fieldkeyboard")
 	waitFor(t, s, []string{"ready"})
-	_, top, _, bottom := s.fieldBounds()
-	if _, err := s.adb("shell", "input", "tap", "540", strconv.Itoa((top+bottom)/2)); err != nil {
+	left, top, right, bottom := s.fieldBounds()
+	if _, err := s.adb("shell", "input", "tap", strconv.Itoa((left+right)/2), strconv.Itoa((top+bottom)/2)); err != nil {
 		t.Fatal(err)
 	}
 	var state string

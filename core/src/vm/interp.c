@@ -25,7 +25,7 @@ bool ak_vm_push(ak_co *co, const ak_func *f, ak_closure *clos, ak_val *args, uin
 	}
 	if (nargs != f->nparams) ak_panic("vm: %s takes %u arguments, called with %u", f->name->data, f->nparams, nargs);
 	uint32_t base = co->top;
-	if (base + f->nregs > co->cap) {
+	if (!co->regs || base + f->nregs > co->cap) {  // registers from its first call, even one with none
 		uint32_t c = co->cap ? co->cap * 2 : 1024;
 		while (c < base + f->nregs) c *= 2;
 		// args may point into the registers being moved.
@@ -35,7 +35,7 @@ bool ak_vm_push(ak_co *co, const ak_func *f, ak_closure *clos, ak_val *args, uin
 		if (off >= 0) args = co->regs + off;
 	}
 	ak_val *R = co->regs + base;
-	if (f->nregs) memset(R, 0, sizeof(ak_val) * f->nregs);  // a coroutine's first call may have no registers yet
+	if (f->nregs) memset(R, 0, sizeof(ak_val) * f->nregs);
 	for (uint32_t i = 0; i < nargs; i++) {
 		R[i] = args[i];
 		ak_retain_val(R[i], (ak_kind)f->kinds[i]);

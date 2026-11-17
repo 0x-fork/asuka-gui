@@ -66,7 +66,7 @@ jobs:
       - name: the Linux host, driving real GTK widgets
         run: xvfb-run -a dbus-run-session go test ./platform/linux
       - name: GUI tests, the examples on GTK
-        run: xvfb-run -a -s '-screen 0 1400x1000x24' dbus-run-session go test -tags e2e ./e2e -run Linux -v
+        run: xvfb-run -a -s '-screen 0 1400x1000x24' dbus-run-session go test -tags e2e -timeout 60m ./e2e -run Linux -v
       - name: a release builds
         run: go run ./cmd/asuka build --platform linux examples/counter && tar -tzf examples/counter/dist/linux/counter-*.tar.gz
   # GUI tests: the examples on a simulator and an emulator, driven
@@ -77,7 +77,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with: { go-version: stable }
-      - run: go test -tags e2e ./e2e -run IOS -v
+      - run: go test -tags e2e -timeout 60m ./e2e -run IOS -v # the first builds the player on a fresh runner (minutes)
   e2e-android:
     runs-on: ubuntu-latest
     steps:
@@ -100,4 +100,5 @@ jobs:
           api-level: 34
           arch: x86_64
           target: google_apis
-          script: go test -tags e2e ./e2e -run Android -v
+          profile: pixel_6 # a phone's screen (the default's is 320×640, where a page's fields start below it)
+          script: go test -tags e2e -timeout 60m ./e2e -run Android -v

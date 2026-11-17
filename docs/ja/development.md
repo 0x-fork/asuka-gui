@@ -142,7 +142,7 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # 先に操�
 - **`no Android SDK: install Android Studio or set ANDROID_HOME`**：Asuka は `ANDROID_HOME`、`ANDROID_SDK_ROOT` の順に探し、次に Mac なら `~/Library/Android/sdk`、Windows なら `%LOCALAPPDATA%\Android\Sdk`、Linux なら `~/Android/Sdk` を探します。
 - **`no Android NDK`**：Android Studio の SDK Manager（SDK Tools、NDK）から NDK をインストールします。Asuka は、このコンピューター向けのビルドがあるもののうち最新のものを使います（Windows の PC では、Arm でも `windows-x86_64`）。
 - **`no Android device or emulator`**：Android Studio の Device Manager で AVD を作るか、実機を接続します。Asuka が起動したエミュレーターについては、起動が完了するまで最大 4 分待ちます（`the emulator didn't boot`）。
-- **Java**：Gradle には JDK が必要です。`JAVA_HOME` が使われ、なければ Android Studio に同梱の JDK が使われます。Android Studio はインストーラーか JetBrains Toolbox が置いた場所から探します（Windows では Program Files か `%LOCALAPPDATA%\Programs`）。
+- **Java**：Gradle にはバージョン 17〜24 の JDK が必要です。`JAVA_HOME` がその範囲ならそれが使われ、そうでなければ Android Studio に同梱の JDK が使われます。Android Studio はインストーラーか JetBrains Toolbox が置いた場所から探します（Windows では Program Files か `%LOCALAPPDATA%\Programs`）。それもなければ、インストール済みの JDK のうち範囲内で最も新しいものが使われます。どれもないときはビルドがそう伝えるので、`JAVA_HOME` をその範囲の JDK に設定してください。
 - **Android の初回ビルドが遅い**：初回だけ、Gradle が自分自身と Android のライブラリをダウンロードするためです。
 - **実機にリリースビルドが入っている**：`asuka build` でインストールしたアプリ（署名鍵が異なります）は、開発用アプリをインストールするために、データごとアンインストールされます。
 - **`asuka dev --platform windows runs the app on this computer`**：`asuka dev` で Windows のアプリを実行できるのは、Windows 上だけです。ほかのシステムでは `asuka build --platform windows` でビルドし、できたフォルダーを PC にコピーしてください。

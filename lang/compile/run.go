@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/egoist/asuka/internal/cbuild"
@@ -81,6 +82,7 @@ func Run(runner string, m *bytecode.Module, test bool, pattern string, flags ...
 	}
 	args = append(args, p)
 	cmd := exec.Command(runner, args...)
+	cmd.Env = runnerEnv(flags)
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	err = cmd.Run()
@@ -164,10 +166,25 @@ func RunCWith(m *bytecode.Module, f *cbuild.Foreign, sanitize, test bool, patter
 	}
 	args = append(args, "-aot")
 	cmd := exec.Command(exe, args...)
+	cmd.Env = runnerEnv(flags)
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	err = cmd.Run()
 	return out.String(), err
+}
+
+// runnerEnv is a runner's environment for flags: with -leaks, which
+// counts what each test leaves itself (and runs programs that leak on
+// purpose, to see it said), without LeakSanitizer's check at exit.
+func runnerEnv(flags []string) []string {
+	if !slices.Contains(flags, "-leaks") {
+		return nil
+	}
+	opts := "detect_leaks=0"
+	if v := os.Getenv("ASAN_OPTIONS"); v != "" {
+		opts = v + ":" + opts
+	}
+	return append(os.Environ(), "ASAN_OPTIONS="+opts)
 }
 
 // MainRun is how a program ran (RunMain, RunMainC): what it wrote and its

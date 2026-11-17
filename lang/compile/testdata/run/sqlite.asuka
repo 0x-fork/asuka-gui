@@ -29,6 +29,7 @@ fn openDB() throws -> sqlite.DB {
 
 test "queries" {
   let db = try openDB()
+  defer { db.close() }
   try db.migrate(["create table notes (id integer)", "create table tagged (id integer)"])
   try await db.exec("insert into notes (text) values (?)", ["Milk"])
   try await db.exec("insert into notes (text, done) values (?1, ?2)", ("Eggs", true))
@@ -50,6 +51,7 @@ test "queries" {
 
 test "live queries" {
   let db = try openDB()
+  defer { db.close() }
   let live: sqlite.Live<Note> = db.watch("select * from notes order by id", [])
   print(live.loading)
   await sleep(1ms)

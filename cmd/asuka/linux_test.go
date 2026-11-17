@@ -238,6 +238,10 @@ func TestBuildLinux(t *testing.T) {
 	app := sqliteTestApp(t)
 	machines := map[string]elf.Machine{"amd64": elf.EM_X86_64, "arm64": elf.EM_AARCH64}
 	for _, arch := range []string{"amd64", "arm64"} {
+		if _, err := cbuild.ForTarget(cbuild.Target{OS: "linux", Arch: arch}); err != nil {
+			t.Logf("not %s: %v", arch, err) // another architecture's needs Zig
+			continue
+		}
 		out := t.TempDir()
 		if err := buildLinux(app, &buildOptions{out: out, arch: arch}); err != nil {
 			t.Fatal(err)

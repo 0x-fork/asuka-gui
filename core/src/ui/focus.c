@@ -254,6 +254,7 @@ static ak_id rel_id(const ak_val *v) {
 	if (!v || !v->p) return 0;
 	ak_val held = ak_vm_cell_get(v->p, false);
 	const ak_view *t = held.p;
+	ak_release(held.p);  // the Ref holds it: borrowed here
 	if (!t || ((const ak_obj *)t)->tag != AK_TAG_VIEW || t->dead) return 0;
 	// A view that makes none of its own is labelled by the first that does.
 	while (t && !t->real && t->kids.len) t = t->kids.data[0];

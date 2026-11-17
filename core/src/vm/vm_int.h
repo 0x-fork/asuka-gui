@@ -99,6 +99,7 @@ struct ak_module {
 	// How native calls find the module's types (native_lib.c): kept as
 	// long as the module, for callbacks that outlive their call.
 	ak_json_types native_types;
+	ak_frozen frozen;  // the constants its init froze (rt.freeze), freed with it
 };
 
 void ak_module_retain(ak_module *m);

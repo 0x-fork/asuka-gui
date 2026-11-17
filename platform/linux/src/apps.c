@@ -284,7 +284,7 @@ size_t lx_app_rank(const char *const *names, size_t n, const char *query, size_t
 		prepared_free(&p);
 		if (r >= 0) hits[k++] = (hit){r, fold(names[i]), names[i], i};
 	}
-	qsort(hits, k, sizeof *hits, by_hit);
+	if (k > 1) qsort(hits, k, sizeof *hits, by_hit);
 	for (size_t i = 0; i < k; i++) {
 		out[i] = hits[i].i;
 		ak_vec_free(&hits[i].key);
@@ -582,7 +582,7 @@ static char *list_apps(void *ctx, char **err) {
 	g_hash_table_unref(done);
 	g_hash_table_unref(w.seen);
 	g_strfreev(w.desktops);
-	qsort(w.apps.data, w.apps.len, sizeof *w.apps.data, by_name);
+	if (w.apps.len > 1) qsort(w.apps.data, w.apps.len, sizeof *w.apps.data, by_name);
 	dsk_jw j = {0};
 	dsk_jw_arr(&j);
 	for (uint32_t i = 0; i < w.apps.len; i++) {

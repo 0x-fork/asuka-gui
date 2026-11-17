@@ -164,7 +164,7 @@ void ak_anim_flushed(ak_ui_root *r) {
 
 static void frame_fn_drop(ak_opaque *o) {
 	ak_frame_fn *fn = (ak_frame_fn *)o;
-	ak_release(fn->f);
+	ak_release(fn->f);  // NULL once stopped
 	if (fn->owner) ak_owner_release(fn->owner);
 }
 
@@ -182,6 +182,14 @@ static void set_frames(ak_ui_root *r) {
 static void frame_stop(ak_frame_fn *fn) {
 	if (fn->stopped) return;
 	fn->stopped = true;  // the frame loop drops it
+	// It never runs again: its callback and owner go now, not with it,
+	// which they may hold (a component's state holding the stop closure).
+	ak_closure *f = fn->f;
+	ak_owner *o = fn->owner;
+	fn->f = NULL;
+	fn->owner = NULL;
+	ak_release(f);
+	if (o) ak_owner_release(o);
 	if (fn->r) set_frames(fn->r);
 }
 
@@ -269,9 +277,15 @@ void ak_anim_frame(ak_id id, double seconds) {
 	for (uint32_t i = 0; i < n && i < x->frames.len; i++) {
 		ak_frame_fn *fn = x->frames.data[i];
 		if (fn->stopped) continue;
+		// The call's own references: it may stop itself.
+		ak_closure *f = ak_retain(fn->f);
+		ak_owner *o = fn->owner;
+		if (o) ak_owner_retain(o);
 		ak_retain(fn);
-		ak_call_closure(fn->f, fn->owner, &t, 1);
+		ak_call_closure(f, o, &t, 1);
 		ak_release(fn);
+		ak_release(f);
+		if (o) ak_owner_release(o);
 	}
 	uint32_t live = 0;
 	for (uint32_t i = 0; i < x->frames.len; i++) {

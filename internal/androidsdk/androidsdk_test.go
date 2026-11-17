@@ -3,6 +3,7 @@ package androidsdk
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -161,6 +162,46 @@ func TestLinux(t *testing.T) {
 	}
 	if got := s.Java(); got != filepath.Join(home, "android-studio", "jbr") {
 		t.Errorf("Java: %q", got)
+	}
+}
+
+// Gradle runs on Java 17 to 24: a newer JAVA_HOME (a runner's default,
+// a package manager's latest) gives way to the newest installed JDK that
+// fits, and when none does, the build says why.
+func TestJavaGradleRunsOn(t *testing.T) {
+	root, home := t.TempDir(), t.TempDir()
+	jdk := func(dir, version string) string {
+		touch(t, dir, "bin/java")
+		os.WriteFile(filepath.Join(dir, "release"), []byte("IMPLEMENTOR=\"Eclipse Adoptium\"\nJAVA_VERSION=\""+version+"\"\n"), 0o644)
+		return dir
+	}
+	newest := jdk(filepath.Join(root, "opt", "jdk-25"), "25.0.5")
+	s := System{GOOS: "linux", Home: home, Root: root, Getenv: envOf(map[string]string{"JAVA_HOME": newest})}
+	if got := s.Java(); got != newest {
+		t.Errorf("Java: %q, want JAVA_HOME's, the only one", got)
+	}
+	if p := JavaProblem(newest); !strings.Contains(p, "Java 25") || !strings.Contains(p, "17 to 24") {
+		t.Errorf("JavaProblem: %q", p)
+	}
+	jdk(filepath.Join(root, "usr", "lib", "jvm", "temurin-17-jdk-amd64"), "17.0.13")
+	want := jdk(filepath.Join(root, "usr", "lib", "jvm", "temurin-21-jdk-amd64"), "21.0.5")
+	jdk(filepath.Join(root, "usr", "lib", "jvm", "java-8-openjdk-amd64"), "1.8.0_432")
+	if got := s.Java(); got != want {
+		t.Errorf("Java: %q, want %q (the newest that runs Gradle)", got, want)
+	}
+	if JavaProblem(want) != "" {
+		t.Errorf("JavaProblem(%s): %q", want, JavaProblem(want))
+	}
+	for v, want := range map[string]int{"17.0.13": 17, "1.8.0_432": 8, "27.0.1.0.3": 27, "21": 21} {
+		jdk(filepath.Join(root, "v"), v)
+		if got := JavaVersion(filepath.Join(root, "v")); got != want {
+			t.Errorf("JavaVersion(%s) = %d, want %d", v, got, want)
+		}
+	}
+	// Android Studio's own comes before another installed.
+	studio := jdk(filepath.Join(home, "android-studio", "jbr"), "21.0.8")
+	if got := s.Java(); got != studio {
+		t.Errorf("Java: %q, want Android Studio's", got)
 	}
 }
 

@@ -1807,7 +1807,7 @@ static ak_val counter_app2(ak_closure *c, ak_val *a, uint32_t n) {
 	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
 	ak_view *col = ak_ui_new(AK_EL_COLUMN);
 	set_f(col, AK_KEY_GAP, 8);
-	ak_ui_set(col, AK_KEY_PADDING, edges4(16, 16, 16, 16));
+	set(col, AK_KEY_PADDING, edges4(16, 16, 16, 16));
 	add(col, text("Count: 0"));
 	ak_view *b = ak_ui_new(AK_EL_BUTTON);
 	set_str(b, AK_KEY_BUTTON_TITLE, "Add");

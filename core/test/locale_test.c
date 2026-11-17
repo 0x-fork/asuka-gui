@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L  // strtok_r
 // The language the app shows and its catalogs (locale.c, i18n.c,
 // i18n_tags.c), what screen readers are told in it, and every case of core/test/testdata/catalog_cases.txt (what package i18n's
 // Format says), said by the core from the compiled catalog.

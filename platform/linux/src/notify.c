@@ -1194,7 +1194,7 @@ static void m_showing(ak_span args, reply *r) {
 	shown_t *list = malloc((N.showing.len ? N.showing.len : 1) * sizeof *list);
 	if (!list) abort();
 	memcpy(list, N.showing.data, N.showing.len * sizeof *list);
-	qsort(list, N.showing.len, sizeof *list, newest_first);
+	if (N.showing.len > 1) qsort(list, N.showing.len, sizeof *list, newest_first);
 	ak_buf b = {0};
 	ak_buf_u8(&b, '[');
 	for (uint32_t i = 0; i < N.showing.len; i++) {

@@ -586,7 +586,7 @@ static int by_id(const void *a, const void *b) {
 static void write_texts(const char *path) {
 	texts_ctx c = {0};
 	lx_each_node(screen_text, &c);
-	qsort(c.shown.data, c.shown.len, sizeof *c.shown.data, by_id);
+	if (c.shown.len > 1) qsort(c.shown.data, c.shown.len, sizeof *c.shown.data, by_id);
 	ak_buf b = {0};
 	for (uint32_t i = 0; i < c.shown.len; i++) {
 		node *n = c.shown.data[i];

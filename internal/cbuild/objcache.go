@@ -115,13 +115,20 @@ func RepoRoot() string {
 	return r
 }
 
-// keyPath writes paths in s relative to the roots.
+// keyPath writes paths in s (a path, or a flag with one: -I/x,
+// --sysroot=/x) relative to the roots.
 func keyPath(s string) string {
 	for _, r := range pathRoots() {
 		if s == r.dir {
 			return r.label
 		}
-		s = strings.ReplaceAll(s, r.dir+string(filepath.Separator), r.label+"/")
+		// A root only where the path starts: not a directory of the same
+		// name further down it (a checkout at /src has /src/core/src).
+		i := strings.Index(s, r.dir+string(filepath.Separator))
+		if i < 0 || i > 0 && (s[0] != '-' || strings.ContainsAny(s[:i], `/\`)) {
+			continue
+		}
+		s = s[:i] + r.label + "/" + s[i+len(r.dir)+1:]
 	}
 	return filepath.ToSlash(s)
 }
@@ -441,8 +448,55 @@ func (tc *Toolchain) ArchiveCached(objs []Object) (string, error) {
 	return p, ccache.Commit(tmp, p)
 }
 
-// archive runs the archiver: out made of members (objects or archives:
-// libtool takes both; ar only objects).
+// archivesArchives reports whether the archiver takes archives as
+// members, adding their objects (Xcode's libtool); ar takes only
+// objects (extract).
+func (tc *Toolchain) archivesArchives() bool {
+	return strings.Contains(strings.Join(tc.AR, " "), "libtool")
+}
+
+// extract is the objects of the archives, extracted under dir (each
+// archive's into a directory of its own), for an archiver that takes
+// only objects.
+func (tc *Toolchain) extract(archives []string, dir string) ([]string, error) {
+	tool := tc.AR[:len(tc.AR)-1] // ar, without its "rcs"
+	var objs []string
+	for i, a := range archives {
+		abs, err := filepath.Abs(a)
+		if err != nil {
+			return nil, err
+		}
+		list := exec.Command(tool[0], append(append([]string{}, tool[1:]...), "t", abs)...)
+		b, err := list.Output()
+		if err != nil {
+			return nil, fmt.Errorf("%s t %s: %v", strings.Join(tool, " "), a, err)
+		}
+		names := strings.Fields(string(b))
+		seen := map[string]bool{}
+		for _, n := range names {
+			if seen[n] {
+				return nil, fmt.Errorf("cbuild: %s has two members named %s, which extracting it would make one", a, n)
+			}
+			seen[n] = true
+		}
+		sub := filepath.Join(dir, fmt.Sprint(i))
+		if err := os.MkdirAll(sub, 0o755); err != nil {
+			return nil, err
+		}
+		x := exec.Command(tool[0], append(append([]string{}, tool[1:]...), "x", abs)...)
+		x.Dir = sub
+		if out, err := x.CombinedOutput(); err != nil {
+			return nil, fmt.Errorf("%s x %s: %v\n%s", strings.Join(tool, " "), a, err, out)
+		}
+		for _, n := range names {
+			objs = append(objs, filepath.Join(sub, n))
+		}
+	}
+	return objs, nil
+}
+
+// archive runs the archiver: out made of members (objects, or archives
+// when archivesArchives).
 func (tc *Toolchain) archive(out string, members []string) error {
 	os.Remove(out)
 	args := append(append([]string{}, tc.AR[1:]...), out)

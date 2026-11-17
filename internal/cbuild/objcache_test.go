@@ -206,4 +206,14 @@ func TestKeyPaths(t *testing.T) {
 	if k := keyPath(filepath.Join("/", "w", "repo2", "a.h")); strings.Contains(k, "$REPO") {
 		t.Errorf("another directory that starts the same is the repository's: %s", k)
 	}
+	// A checkout at /src has /src/core/src: the root is where the path
+	// starts, not every directory of its name.
+	roots = []pathRoot{{filepath.Join("/", "src"), "$REPO"}, {root, "$CACHE"}}
+	p = filepath.Join("/", "src", "core", "src", "base", "base.h")
+	if k := keyPath(p); k != "$REPO/core/src/base/base.h" || realPath(k) != p {
+		t.Errorf("keyPath(%s) = %s, back %s", p, k, realPath(k))
+	}
+	if k := keyPath("-I" + filepath.Join("/", "src", "core", "src")); k != "-I$REPO/core/src" {
+		t.Errorf("keyPath = %q", k)
+	}
 }

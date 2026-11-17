@@ -19,6 +19,18 @@ void ak_builtin_register(const char *name, ak_builtin_fn fn) {
 	ak_vec_push(&builtins, ((builtin_entry){name, fn}));
 }
 
+// rt.freeze(value, kind): the value, made a constant (rt.h's ak_freeze)
+// that the running module owns: it's freed with the module. Only init
+// freezes, on the thread that loaded the module.
+static ak_val rt_freeze(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_module *m = ak_vm_running_module();
+	ak_freeze(args[0], (ak_kind)args[1].i, m ? &m->frozen : NULL);
+	return args[0];
+}
+
+void ak_vm_freeze_init(void) { ak_builtin_register("rt.freeze", rt_freeze); }
+
 ak_builtin_fn ak_builtin_find(const char *name) {
 	for (uint32_t i = 0; i < builtins.len; i++)
 		if (strcmp(builtins.data[i].name, name) == 0) return builtins.data[i].fn;
@@ -267,6 +279,7 @@ void ak_module_release(ak_module *m) {
 	if (atomic_fetch_sub(&m->rc, 1) != 1) return;
 	for (uint32_t i = 0; i < m->nglobals; i++) ak_release_val(m->globals[i], (ak_kind)m->gkinds[i]);
 	ak_free(m->globals);
+	ak_frozen_free(&m->frozen);
 	ak_free(m->gkinds);
 	for (uint32_t i = 0; i < m->nfuncs; i++) {
 		ak_func *f = &m->funcs[i];

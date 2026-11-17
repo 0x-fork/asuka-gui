@@ -284,7 +284,7 @@ static int64_t spawn(proc *p, const ak_str *prog, const ak_arr *argv, const ak_s
 		ak_free(wv);
 		ak_vec_push(&vars, kv);
 	}
-	qsort(vars.data, vars.len, sizeof *vars.data, env_cmp);
+	if (vars.len > 1) qsort(vars.data, vars.len, sizeof *vars.data, env_cmp);
 	wbuf block = {0};
 	for (uint32_t i = 0; i < vars.len; i++) {
 		wput(&block, vars.data[i], wcslen(vars.data[i]) + 1);

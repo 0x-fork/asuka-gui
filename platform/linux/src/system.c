@@ -701,14 +701,14 @@ typedef struct {
 	char *to, *err;
 } save_job;
 
-// copy_file copies src to a new file to (0644).
+// copy_file copies src into to, a file the caller has made (0644).
 static bool copy_file(const char *src, const char *to) {
 	int in = open(src, O_RDONLY);
 	if (in < 0) return false;
 	int out = open(to, O_WRONLY | O_TRUNC);
 	bool ok = out >= 0;
 	char buf[1 << 16];
-	ssize_t n;
+	ssize_t n = 0;
 	while (ok && (n = read(in, buf, sizeof buf)) > 0) ok = write(out, buf, (size_t)n) == n;
 	if (n < 0) ok = false;
 	close(in);

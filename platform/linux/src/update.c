@@ -428,7 +428,7 @@ static int by_str(const void *a, const void *b) { return strcmp(*(char *const *)
 // write_list writes a FileList naming paths (sorted, each once; what
 // valid_list_path refuses left out), whole, then renamed into place.
 static bool write_list(const char *file, strs *paths) {
-	qsort(paths->data, paths->len, sizeof *paths->data, by_str);
+	if (paths->len > 1) qsort(paths->data, paths->len, sizeof *paths->data, by_str);
 	ak_buf b = {0};
 	for (uint32_t i = 0; i < paths->len; i++) {
 		if (!valid_list_path(paths->data[i]) || (i && !strcmp(paths->data[i], paths->data[i - 1]))) continue;

@@ -333,43 +333,56 @@ ak_val ak_deep_copy(ak_val v, ak_kind k) {
 
 // ---- Constants ----
 
-void ak_freeze(ak_val v, ak_kind k) {
+void ak_freeze(ak_val v, ak_kind k, ak_frozen *made) {
 	if (k != AK_K_REF || !v.p) return;
 	ak_obj *o = v.p;
 	if (o->rc == AK_RC_IMMORTAL) return;
 	switch ((ak_tag)o->tag) {
 	case AK_TAG_ARR: {
 		ak_arr *a = (ak_arr *)o;
-		for (uint32_t i = 0; i < a->len; i++) ak_freeze(a->data[i], ak_arr_kind(a));
+		for (uint32_t i = 0; i < a->len; i++) ak_freeze(a->data[i], ak_arr_kind(a), made);
 		break;
 	}
 	case AK_TAG_MAP: {
 		ak_map *m = (ak_map *)o;
 		for (uint32_t i = 0; i < m->len; i++) {
 			if (m->dead[i]) continue;
-			ak_freeze(m->keys[i], (ak_kind)(m->h.aux & 0xf));
-			ak_freeze(m->vals[i], (ak_kind)(m->h.aux >> 4));
+			ak_freeze(m->keys[i], (ak_kind)(m->h.aux & 0xf), made);
+			ak_freeze(m->vals[i], (ak_kind)(m->h.aux >> 4), made);
 		}
 		break;
 	}
 	case AK_TAG_STRUCT: {
 		ak_struct *s = (ak_struct *)o;
-		for (uint16_t i = 0; i < s->shape->nfields; i++) ak_freeze(s->f[i], (ak_kind)s->shape->kinds[i]);
+		for (uint16_t i = 0; i < s->shape->nfields; i++) ak_freeze(s->f[i], (ak_kind)s->shape->kinds[i], made);
 		break;
 	}
 	case AK_TAG_ENUM: {
 		ak_enum *e = (ak_enum *)o;
 		const ak_case *c = &e->shape->cases[e->h.aux];
-		for (uint16_t i = 0; i < c->nfields; i++) ak_freeze(e->f[i], (ak_kind)c->kinds[i]);
+		for (uint16_t i = 0; i < c->nfields; i++) ak_freeze(e->f[i], (ak_kind)c->kinds[i], made);
 		break;
 	}
 	case AK_TAG_BOX:
-		ak_freeze(((ak_box *)o)->v, (ak_kind)o->aux);
+		ak_freeze(((ak_box *)o)->v, (ak_kind)o->aux, made);
 		break;
 	default:
 		break;
 	}
 	ak_make_immortal(o);
+	if (made) ak_vec_push(made, o);
+}
+
+void ak_frozen_free(ak_frozen *made) {
+	// Each one's references are to other immortals, which destroying it
+	// doesn't release but reads (their counts): last made first, since an
+	// object holds only ones made before it. Each is freed in its turn.
+	for (uint32_t i = made->len; i-- > 0;) {
+		ak_obj *o = made->data[i];
+		__atomic_add_fetch(&ak_obj_live, 1, __ATOMIC_RELAXED);  // ak_destroy counts it out
+		ak_destroy(o);
+	}
+	ak_vec_free(made);
 }
 
 // ---- Errors ----

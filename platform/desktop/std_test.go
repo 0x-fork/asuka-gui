@@ -23,6 +23,16 @@ import (
 	"github.com/egoist/asuka/std"
 )
 
+// needSession skips a test of the Linux C without a display and a
+// session bus, what it shows and asks the desktop's services through
+// (the asuka-linux-test image, under xvfb-run and dbus-run-session).
+func needSession(t *testing.T) {
+	t.Helper()
+	if os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == "" || os.Getenv("DBUS_SESSION_BUS_ADDRESS") == "" {
+		t.Skip("no display and session bus (run under xvfb-run and dbus-run-session)")
+	}
+}
+
 // The std and platform packages' C on this computer's desktop, run with
 // no Go: each case is an Asuka program that uses a package through its API on
 // the test host (test/host.c), every std package's C linked in as in a
@@ -33,6 +43,7 @@ func TestStdLinux(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("the standard library's Linux C (run in the asuka-linux-test image)")
 	}
+	needSession(t)
 	exe := stdHost(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

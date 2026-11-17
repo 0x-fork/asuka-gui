@@ -1,0 +1,27 @@
+// A store's memos and effects hold closures that hold the store: the
+// test's owner, disposed, lets them go, and the store with them.
+
+store Cart {
+  state items: [string] = []
+  let left = items.count()
+
+  effect {
+    print("cart has {items.count()}")
+  }
+
+  fn add(name: string) {
+    items.push(name)
+  }
+}
+
+test "a store goes with its owner" {
+  let cart = Cart()
+  cart.add("milk")
+  print(cart.left)
+}
+
+// Output:
+// cart has 0
+// cart has 1
+// 1
+// ok a store goes with its owner

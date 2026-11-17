@@ -264,7 +264,7 @@ static GVariant *shortcuts(void) {
 	hk_reg **sorted = malloc((HK.regs.len ? HK.regs.len : 1) * sizeof *sorted);
 	if (!sorted) abort();
 	memcpy(sorted, HK.regs.data, HK.regs.len * sizeof *sorted);
-	qsort(sorted, HK.regs.len, sizeof *sorted, by_id);
+	if (HK.regs.len > 1) qsort(sorted, HK.regs.len, sizeof *sorted, by_id);
 	GVariantBuilder b;
 	g_variant_builder_init(&b, G_VARIANT_TYPE("a(sa{sv})"));
 	for (uint32_t i = 0; i < HK.regs.len; i++) {

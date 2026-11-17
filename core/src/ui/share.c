@@ -221,7 +221,7 @@ static void call_handlers(handler_vec *v, ak_val arg) {
 	// A copy: a handler may add or remove others.
 	uint32_t n = v->len;
 	handler **hs = ak_alloc((n ? n : 1) * sizeof(handler *));
-	memcpy(hs, v->data, n * sizeof(handler *));
+	if (n) memcpy(hs, v->data, n * sizeof(handler *));
 	for (uint32_t i = 0; i < n; i++) {
 		bool live = false;
 		for (uint32_t j = 0; j < v->len; j++) live |= v->data[j] == hs[i];
@@ -335,7 +335,7 @@ void ak_ui_on_background(ak_closure *f) { add_handler(&back_handlers, f); }
 static void call_handlers0(handler_vec *v) {
 	uint32_t n = v->len;
 	handler **hs = ak_alloc((n ? n : 1) * sizeof(handler *));
-	memcpy(hs, v->data, n * sizeof(handler *));
+	if (n) memcpy(hs, v->data, n * sizeof(handler *));
 	for (uint32_t i = 0; i < n; i++) {
 		bool live = false;
 		for (uint32_t j = 0; j < v->len; j++) live |= v->data[j] == hs[i];

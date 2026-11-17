@@ -16,7 +16,9 @@ TEST(str_basics) {
 	CHECK_EQ_STR(e->data, "world");
 	ak_str *u = ak_str_upper(e);
 	CHECK_EQ_STR(u->data, "WORLD");
-	CHECK_EQ_INT(ak_str_count(S("héllo")), 5);
+	ak_str *h = S("héllo");
+	CHECK_EQ_INT(ak_str_count(h), 5);
+	ak_release(h);
 	ak_release(a); ak_release(b); ak_release(c); ak_release(d); ak_release(e); ak_release(u);
 }
 
@@ -151,6 +153,7 @@ TEST(enum_payloads) {
 	CHECK(ak_obj_eq(&r->h, &s->h));
 	CHECK(!ak_obj_eq(&r->h, &a->h));
 	ak_release(r); ak_release(s); ak_release(a); ak_release(b);
+	ak_free(((ak_enum **)res_shape.singletons)[0]);  // the immortal singleton
 	ak_free(res_shape.singletons);
 }
 

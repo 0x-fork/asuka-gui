@@ -253,6 +253,7 @@ static inline void ak_op_exit(ak_val *R, const uint8_t *kinds, uint16_t n, int k
 // ak_op_enter moves frame fi's registers into R, the body's, leaving the
 // frame's empty: nothing else releases them while the body runs.
 static inline void ak_op_enter(ak_co *co, uint32_t fi, ak_val *R, uint16_t n) {
+	if (!n) return;  // R is NULL then
 	ak_val *S = co->regs + co->frames[fi].base;
 	memcpy(R, S, sizeof(ak_val) * n);
 	memset(S, 0, sizeof(ak_val) * n);
@@ -260,7 +261,7 @@ static inline void ak_op_enter(ak_co *co, uint32_t fi, ak_val *R, uint16_t n) {
 
 // ak_op_leave moves R back into frame fi, which resumes at pc.
 static inline void ak_op_leave(ak_co *co, uint32_t fi, const ak_val *R, uint16_t n, uint32_t pc) {
-	memcpy(co->regs + co->frames[fi].base, R, sizeof(ak_val) * n);
+	if (n) memcpy(co->regs + co->frames[fi].base, R, sizeof(ak_val) * n);
 	co->frames[fi].pc = pc;
 }
 

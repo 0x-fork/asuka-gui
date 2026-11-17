@@ -147,7 +147,7 @@ static void run(void *p) {
 			else off += (size_t)n;
 		}
 		if (fd >= 0 && close(fd) != 0 && !code) code = errno;
-		if (!code) fchmodat(AT_FDCWD, tmp, mode, 0);
+		if (!code && fchmodat(AT_FDCWD, tmp, mode, 0) != 0) code = errno;
 		if (!code && rename(tmp, j->path) != 0) code = errno;
 		if (code) {
 			if (fd >= 0) unlink(tmp);

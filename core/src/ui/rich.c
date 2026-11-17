@@ -94,7 +94,9 @@ static ak_arr *decode_spans(ak_span b) {
 		if (nl && out->len) {
 			ak_struct *last = out->data[out->len - 1].p;
 			if (!last->f[SP_INLINE].p) {
-				ak_str *t = ak_str_concat(last->f[SP_TEXT].p, ak_str_c("\n"));
+				ak_str *nl_str = ak_str_c("\n");
+				ak_str *t = ak_str_concat(last->f[SP_TEXT].p, nl_str);
+				ak_release(nl_str);
 				ak_release(last->f[SP_TEXT].p);
 				last->f[SP_TEXT].p = t;
 				continue;

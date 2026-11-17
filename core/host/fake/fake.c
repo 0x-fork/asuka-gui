@@ -130,7 +130,7 @@ static void collect(const ak_fake *f, bool (*pred)(const ak_fake_view *, const v
 		ak_fake_view *v = f->slots[i];
 		if (v && pred(v, arg)) ak_vec_push(out, v);
 	}
-	qsort(out->data + start, out->len - start, sizeof(ak_fake_view *), by_id);
+	if (out->len > start + 1) qsort(out->data + start, out->len - start, sizeof(ak_fake_view *), by_id);
 }
 
 // Props.
@@ -1061,7 +1061,7 @@ static int by_present(const void *a, const void *b) {
 void ak_fake_presented(const ak_fake *f, ak_fake_view_vec *out) {
 	uint32_t start = out->len;
 	collect(f, presented_pred, NULL, out);
-	qsort(out->data + start, out->len - start, sizeof(ak_fake_view *), by_present);
+	if (out->len > start + 1) qsort(out->data + start, out->len - start, sizeof(ak_fake_view *), by_present);
 }
 
 ak_fake_view *ak_fake_snackbar(const ak_fake *f) {

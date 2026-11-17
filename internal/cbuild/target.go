@@ -134,8 +134,8 @@ func ForTarget(t Target) (*Toolchain, error) {
 		}, nil
 	}
 	// Desktops: this computer's own compiler for its own system and
-	// architectures it runs; Zig to cross-compile.
-	if t.OS == runtime.GOOS && !forceZig {
+	// architecture (a Mac's for both of its); Zig to cross-compile.
+	if t.OS == runtime.GOOS && (t.Arch == runtime.GOARCH || t.OS == "darwin") && !forceZig {
 		cc, err := Find()
 		if err != nil {
 			return nil, err
@@ -156,9 +156,6 @@ func ForTarget(t Target) (*Toolchain, error) {
 		}
 		if tc.CC.IsGCC() {
 			tc.Flags = append(tc.Flags, GCCFlags...)
-		}
-		if t.Arch != runtime.GOARCH && t.OS != "darwin" {
-			return nil, fmt.Errorf("cbuild: %s from %s/%s needs Zig (ASUKA_CC=zig)", t, runtime.GOOS, runtime.GOARCH)
 		}
 		return tc, nil
 	}
@@ -276,12 +273,19 @@ func (tc *Toolchain) LibWith(core string, kind LibKind, o LibOptions, out string
 		return err
 	}
 	if kind == Static {
-		if !strings.Contains(strings.Join(tc.AR, " "), "libtool") {
-			return fmt.Errorf("cbuild: a static library for %s is made with libtool (Xcode's)", tc.Target)
-		}
 		members := []string{coreLib}
 		for _, l := range libs {
 			members = append(members, l.path)
+		}
+		if !tc.archivesArchives() {
+			dir, err := os.MkdirTemp(filepath.Dir(out), ".asuka-ar")
+			if err != nil {
+				return err
+			}
+			defer os.RemoveAll(dir)
+			if members, err = tc.extract(members, dir); err != nil {
+				return err
+			}
 		}
 		tmp := ccache.TmpName(out)
 		if err := tc.archive(tmp, append(members, objs...)); err != nil {

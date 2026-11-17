@@ -163,7 +163,7 @@ static void recent_list(ak_span args, reply *r) {
 	}
 	g_strfreev(uris);
 	g_bookmark_file_free(b);
-	qsort(items.data, items.len, sizeof *items.data, newest);
+	if (items.len > 1) qsort(items.data, items.len, sizeof *items.data, newest);
 	dsk_jw w = {0};
 	dsk_jw_arr(&w);
 	for (uint32_t i = 0; i < items.len; i++) {

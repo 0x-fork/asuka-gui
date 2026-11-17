@@ -1308,7 +1308,7 @@ static void list_dump(node *n, int depth, ak_buf *b) {
 	row_view **rows = malloc((l->shown.len ? l->shown.len : 1) * sizeof *rows);
 	if (!rows) abort();
 	memcpy(rows, l->shown.data, l->shown.len * sizeof *rows);
-	qsort(rows, l->shown.len, sizeof *rows, by_row);
+	if (l->shown.len > 1) qsort(rows, l->shown.len, sizeof *rows, by_row);
 	for (uint32_t i = 0; i < l->shown.len; i++) {
 		row_view *rv = rows[i];
 		float *f = rv->n->frame;

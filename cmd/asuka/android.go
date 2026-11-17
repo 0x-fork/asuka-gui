@@ -238,6 +238,9 @@ func (t *androidToolchain) gradle(src string, args ...string) error {
 }
 
 func (t *androidToolchain) gradleEnv(src string, extra []string, args ...string) error {
+	if p := androidsdk.JavaProblem(t.javaHome); p != "" {
+		return fmt.Errorf("asuka: %s", p)
+	}
 	name, args, env := t.gradleCommand(src, extra, args)
 	return t.run(src, env, name, args...)
 }

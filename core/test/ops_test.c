@@ -500,7 +500,7 @@ static const ak_alert_field golden_fields[] = {
 	{.placeholder = AK_STR("Name"), .text = AK_STR("Untitled"), .content_type = AK_STR("name")},
 	{.placeholder = AK_STR("Passwort"), .flags = AK_ALERT_FIELD_SECURE, .content_type = AK_STR("password")},
 	{.placeholder = AK_STR("Email"), .text = AK_STR("a@b.c"), .keyboard = AK_KEYBOARD_EMAIL},
-	{0},
+	{.flags = 0},
 };
 
 TEST(alert_fields_bin) {

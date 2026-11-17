@@ -142,7 +142,7 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # 先执行�
 - **`no Android SDK: install Android Studio or set ANDROID_HOME`**：Asuka 会依次在 `ANDROID_HOME`、`ANDROID_SDK_ROOT` 中查找，然后是 Mac 上的 `~/Library/Android/sdk`、Windows 上的 `%LOCALAPPDATA%\Android\Sdk` 和 Linux 上的 `~/Android/Sdk`。
 - **`no Android NDK`**：在 Android Studio 的 SDK Manager 中安装一个（SDK Tools 下的 NDK）。Asuka 会选用最新的、带有你这台电脑可用版本的 NDK（任何 Windows 电脑上都是 `windows-x86_64`，Arm 电脑也一样）。
 - **`no Android device or emulator`**：在 Android Studio 的 Device Manager 中创建一个 AVD，或者连接一部手机。对于 Asuka 自己启动的模拟器，它最多会等四分钟让模拟器完成启动（超时会报 `the emulator didn't boot`）。
-- **Java**：Gradle 需要 JDK：优先使用 `JAVA_HOME`，否则使用 Android Studio 自带的 JDK，无论 Android Studio 是用安装程序还是 JetBrains Toolbox 装的（在 Windows 上，位于 Program Files 或 `%LOCALAPPDATA%\Programs` 下）。
+- **Java**：Gradle 需要 17 到 24 版的 JDK：`JAVA_HOME` 是其中之一时优先用它，否则使用 Android Studio 自带的 JDK，无论 Android Studio 是用安装程序还是 JetBrains Toolbox 装的（在 Windows 上，位于 Program Files 或 `%LOCALAPPDATA%\Programs` 下），再不然就用电脑上装的其他 JDK 中符合版本的最新一个。一个都没有时，构建会直接说明：把 `JAVA_HOME` 设成其中一个即可。
 - **第一次 Android 构建很慢**：Gradle 要下载它自己和 Android 的库，这只发生一次。
 - **手机上装有发布构建**：为了安装开发 App，由 `asuka build` 安装的应用（签名密钥不同）会被卸载，其数据也会一起删除。
 - **`asuka dev --platform windows runs the app on this computer`**：`asuka dev` 只能在 Windows 上运行 Windows 应用。在其他系统上可以用 `asuka build --platform windows` 构建，再把生成的文件夹复制到 PC 上。

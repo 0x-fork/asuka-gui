@@ -396,6 +396,7 @@ TEST(rich_field) {
 	CHECK_EQ_INT(cmds.len, 1);
 	ak_vec_free(&cmds);
 	ak_release(field_ref);
+	ak_vec_free(&runs);
 	done(a);
 	ak_release(rich_cell), ak_release(plain_cell);
 }

@@ -653,6 +653,10 @@ static void loader_effect_drop(void *ctx) {
 	ak_loader *l = ctx;
 	l->eff = NULL;
 	if (l->fut) ak_release(l->fut), l->fut = NULL;
+	// It never runs again: its thunk goes now, not with the loader, which
+	// what the thunk holds may hold.
+	ak_release(l->thunk);
+	l->thunk = NULL;
 	ak_release(l);
 }
 

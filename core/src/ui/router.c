@@ -1272,7 +1272,7 @@ static void reconcile_stack(router_t *rt, inst *in, const edescs *want) {
 	for (uint32_t i = 0; i < k; i++) update(rt, in->entries.data[i], want->data[i]);
 	uint32_t nold = in->entries.len - k;
 	entry **old = ak_alloc((nold ? nold : 1) * sizeof *old);
-	memcpy(old, in->entries.data + k, nold * sizeof *old);
+	if (nold) memcpy(old, in->entries.data + k, nold * sizeof *old);
 	in->entries.len = k;
 	for (uint32_t i = k; i < want->len; i++) {
 		const edesc *d = want->data[i];

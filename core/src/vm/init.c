@@ -14,6 +14,8 @@ void ak_vm_builtins_init(void) {
 		for (const ak_lib_entry *e = *t; e->name; e++) ak_builtin_register(e->name, e->fn);
 	ak_builtin_register(ak_lib_spawn.name, ak_lib_spawn.fn);
 	ak_builtin_register(ak_live_lib.name, ak_live_lib.fn);
+	extern void ak_vm_freeze_init(void);
+	ak_vm_freeze_init();
 	// The glue lang/cffi generates for the app's extern declarations (RFC
 	// 0008), when the build has one (core/link: ak_link_ffi).
 	if (ak_link_ffi) ak_link_ffi();

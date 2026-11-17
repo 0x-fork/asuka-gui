@@ -310,7 +310,7 @@ static int32_t parse_class(parser *p, const flags *f) {
 					return -1;
 				}
 				if (not) {
-					qsort(pr.data, pr.len, sizeof(range), cmp_range);
+					if (pr.len > 1) qsort(pr.data, pr.len, sizeof(range), cmp_range);
 					uint32_t next = 0;
 					for (uint32_t k = 0; k < pr.len; k++) {
 						if (pr.data[k].lo > next) add_range(&r, next, pr.data[k].lo - 1);

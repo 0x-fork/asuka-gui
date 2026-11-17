@@ -36,7 +36,7 @@ func TestStdAndroidViews(t *testing.T) {
 	}
 	sort.Strings(tests)
 	if len(tests) == 0 {
-		t.Fatal("no instrumented tests")
+		t.Skip("no std or sdk package has instrumented tests (android/src/androidTest)")
 	}
 	tc, err := newAndroidToolchain(false)
 	if err != nil {

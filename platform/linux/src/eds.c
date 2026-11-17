@@ -455,7 +455,7 @@ static bool all_contacts(const char *name, contacts *out, char **err) {
 		return false;
 	}
 	g_free(first);
-	qsort(out->data, out->len, sizeof *out->data, by_name);
+	if (out->len > 1) qsort(out->data, out->len, sizeof *out->data, by_name);
 	return true;
 }
 
@@ -975,7 +975,7 @@ static void events_work(job *j) {
 		return;
 	}
 	g_free(first);
-	qsort(events.data, events.len, sizeof *events.data, by_start);
+	if (events.len > 1) qsort(events.data, events.len, sizeof *events.data, by_start);
 	ak_buf_u8(&j->out, '[');
 	for (uint32_t i = 0; i < events.len; i++) {
 		if (i) ak_buf_u8(&j->out, ',');

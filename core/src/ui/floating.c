@@ -137,6 +137,7 @@ static ak_view *anchor_view(const ov *o) {
 	const ak_val *a = key_of(o->e, AK_KEY_OVERLAY_ANCHOR);
 	if (!a || !a->p) return NULL;
 	ak_view *t = ak_vm_cell_get(a->p, false).p;
+	ak_release(t);  // the Ref holds it: borrowed here
 	if (!t || ((const ak_obj *)t)->tag != AK_TAG_VIEW || t->dead) return NULL;
 	while (t && !t->real && t->kids.len) t = t->kids.data[0];
 	return t && t->real && !t->dead ? t : NULL;
@@ -355,6 +356,18 @@ static void send_anchor(ov *o) {
 	if (id) ak_style_set(o->layer, AK_KEY_HIDDEN, (ak_val){.i = 1});  // until the host says where it is
 }
 
+typedef struct {
+	ov *o;
+	ak_view *window;  // the keys' window: the one the overlay is built in
+} escape_reg;
+
+static void register_escape(void *ctx) {
+	escape_reg *er = ctx;
+	ak_arr *keys = escape_keys(er->o->e);
+	ak_keys_register(er->window, keys, &er->o->keys);
+	ak_release(keys);
+}
+
 static void ov_open(ov *o) {
 	ak_view *e = o->e;
 	if (o->open || !o->build || e->dead || !e->finalized) return;
@@ -424,9 +437,10 @@ static void ov_open(ov *o) {
 	ak_view_append(l, c);
 	o->content = c;
 	if (dismisses_on(o, AK_DISMISS_REASON_ESCAPE)) {
-		ak_arr *keys = escape_keys(e);
-		ak_keys_register(ak_keys_window(), keys, &o->keys);
-		ak_release(keys);
+		// Its content's owner's, which closing disposes: the window's
+		// Escape goes with it.
+		escape_reg er = {o, ak_keys_window()};
+		ak_with_owner(o->owner, register_escape, &er);
 	}
 	ak_batch_command(r->batch, l->id, AK_CMD_PRESENT, NULL, 0);
 }

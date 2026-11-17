@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L  // setenv, unsetenv
 // What the app asks of the system and hears from it outside its views
 // (share.c): share, haptics, the clipboard, URLs, announcements, native
 // modules' calls and their results, the URLs and files the app is opened

@@ -319,9 +319,11 @@ with an older Xcode, they're compiled once on your computer instead.
 - **`no Android device or emulator`**: make an AVD in Android Studio's
   Device Manager, or plug in a phone. Asuka waits up to four minutes for
   an emulator it starts to boot (`the emulator didn't boot`).
-- **Java**: Gradle needs a JDK: `JAVA_HOME`, else Android Studio's own,
-  where its installer or JetBrains Toolbox put it (on Windows, in
-  Program Files or `%LOCALAPPDATA%\Programs`).
+- **Java**: Gradle needs a JDK from 17 to 24: `JAVA_HOME` when it's one
+  of those, else Android Studio's own, where its installer or JetBrains
+  Toolbox put it (on Windows, in Program Files or
+  `%LOCALAPPDATA%\Programs`), else the newest other JDK installed that
+  is. With none, the build says so: set `JAVA_HOME` to one.
 - **The first Android build is slow**: Gradle downloads itself and
   Android's libraries, once.
 - **A release build on the phone**: an app installed by `asuka build`

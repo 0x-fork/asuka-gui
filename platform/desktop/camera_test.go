@@ -23,6 +23,7 @@ func TestStdLinuxCamera(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("the standard library's Linux C (run in the asuka-linux-test image)")
 	}
+	needSession(t)
 	exe := stdHost(t)
 	run := func(t *testing.T, src string, env ...string) string {
 		dir := t.TempDir()

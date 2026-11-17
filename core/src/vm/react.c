@@ -132,6 +132,12 @@ static bool memo_update(void *ctx) {
 static void memo_comp_drop(void *ctx) {
 	memo *m = ctx;
 	m->m = NULL;
+	// It never runs again: its closure goes now, not with the memo, which
+	// what the closure holds may hold (a store's memo, whose closure
+	// holds the store).
+	ak_closure *c = m->c;
+	m->c = NULL;
+	ak_release(c);
 	ak_release(m);  // the graph's reference
 }
 

@@ -26,6 +26,7 @@ func TestStdLinuxPlaces(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("the standard library's Linux C (run in the asuka-linux-test image)")
 	}
+	needSession(t)
 	exe := stdHost(t)
 	portal := placesPortal(t)
 	_, geocoder := placesLib("libgeocode-glib-2.so.0")

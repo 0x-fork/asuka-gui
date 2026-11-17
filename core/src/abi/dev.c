@@ -43,6 +43,7 @@ bool ak_dev_connected(void) { return false; }
 typedef SOCKET sock_t;
 #define BAD_SOCK INVALID_SOCKET
 #define close_sock closesocket
+#define SHUT_BOTH SD_BOTH
 #else
 #include <netdb.h>
 #include <sys/socket.h>
@@ -52,6 +53,7 @@ typedef SOCKET sock_t;
 typedef int sock_t;
 #define BAD_SOCK (-1)
 #define close_sock close
+#define SHUT_BOTH SHUT_RDWR
 #endif
 
 #if !defined(_WIN32)
@@ -161,7 +163,10 @@ static void session(sock_t s) {
 	sock = s;
 	uint32_t mine = ++gen;
 	ak_mutex_unlock(&mu);
-	if (old != BAD_SOCK) close_sock(old);  // its reader ends
+	// The old one's reader ends, and closes it: shut down, not closed
+	// here, since closing a socket another thread reads from neither
+	// wakes it (Linux) nor keeps its number from being reused.
+	if (old != BAD_SOCK) shutdown(old, SHUT_BOTH);
 	if (hello_json) send_on(s, AK_DEV_HELLO, hello_json, strlen(hello_json));
 	for (;;) {
 		uint8_t h[5];
@@ -189,10 +194,8 @@ static void session(sock_t s) {
 		ak_cond_broadcast(&ended);
 	}
 	ak_mutex_unlock(&mu);
-	if (current) {
-		close_sock(s);
-		fprintf(stderr, "asuka: the dev connection closed; the app keeps running, and comes back when asuka dev does\n");
-	}
+	close_sock(s);
+	if (current) fprintf(stderr, "asuka: the dev connection closed; the app keeps running, and comes back when asuka dev does\n");
 }
 
 // dial_one connects to host:port, waiting at most two seconds (a

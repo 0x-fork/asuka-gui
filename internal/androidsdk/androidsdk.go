@@ -2,7 +2,8 @@
 // system puts them and by the names it gives them: the SDK, its newest
 // NDK with a build for this computer and that NDK's clang, adb, the
 // emulator, the scripts (gradlew.bat, sdkmanager.bat on Windows) and the
-// Java that runs Gradle (JAVA_HOME, else Android Studio's own).
+// Java that runs Gradle (one of the versions it runs on: JAVA_HOME's,
+// else Android Studio's own, else another installed).
 //
 // Everything it looks at comes from a System, so tests give it another
 // computer's: its GOOS, its environment and its home directory, over a
@@ -191,20 +192,101 @@ func quote(s string) string {
 	return "'" + s + "'"
 }
 
-// Java is the JDK that runs Gradle: JAVA_HOME, else Android Studio's
-// own (its jbr, in each place it installs: its installer's, JetBrains
-// Toolbox's, a preview's); "" if there's none (then Gradle's script
-// looks for java on the PATH).
+// Gradle 8.14, the hosts' wrapper's, runs on Java 17 to 24: the Kotlin
+// that compiles its build scripts can't read a later one's version.
+const (
+	JavaMin = 17
+	JavaMax = 24
+)
+
+// Java is the JDK that runs Gradle, one of JavaMin to JavaMax: JAVA_HOME
+// when it is, else Android Studio's own (its jbr, in each place it
+// installs: its installer's, JetBrains Toolbox's, a preview's), else the
+// newest other JDK installed. When none is, JAVA_HOME (JavaProblem says
+// what's wrong with it), or "" (then Gradle's script looks for java on
+// the PATH).
 func (s System) Java() string {
-	if v := s.env("JAVA_HOME"); v != "" {
-		return v
+	home := s.env("JAVA_HOME")
+	if home != "" && javaFits(home) {
+		return home
 	}
-	for _, home := range s.studioJavas() {
-		if isFile(filepath.Join(home, "bin", s.Exe("java"))) {
-			return home
+	for _, h := range append(s.studioJavas(), s.installedJavas()...) {
+		if isFile(filepath.Join(h, "bin", s.Exe("java"))) && javaFits(h) {
+			return h
 		}
 	}
-	return ""
+	return home
+}
+
+// JavaProblem is why the JDK at home can't run Gradle ("" when it can,
+// or when its version can't be told).
+func JavaProblem(home string) string {
+	if home == "" || javaFits(home) {
+		return ""
+	}
+	return fmt.Sprintf("Gradle runs on Java %d to %d, and %s is Java %d: set JAVA_HOME to one of those (Android Studio's own is one)", JavaMin, JavaMax, home, JavaVersion(home))
+}
+
+// javaFits reports whether the JDK at home runs Gradle: a version from
+// JavaMin to JavaMax, or one that can't be told (it may).
+func javaFits(home string) bool {
+	v := JavaVersion(home)
+	return v == 0 || v >= JavaMin && v <= JavaMax
+}
+
+// JavaVersion is the JDK at home's feature version (17 of "17.0.19", 8 of
+// "1.8.0_402"), from its release file; 0 when it can't be told.
+func JavaVersion(home string) int {
+	b, err := os.ReadFile(filepath.Join(home, "release"))
+	if err != nil {
+		return 0
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		v, ok := strings.CutPrefix(strings.TrimSpace(line), "JAVA_VERSION=")
+		if !ok {
+			continue
+		}
+		v = strings.TrimPrefix(strings.Trim(v, `"`), "1.") // 1.8.0: Java 8
+		if i := strings.IndexFunc(v, func(r rune) bool { return r < '0' || r > '9' }); i >= 0 {
+			v = v[:i]
+		}
+		n, _ := strconv.Atoi(v)
+		return n
+	}
+	return 0
+}
+
+// installedJavas are the JDKs installed where each system's packages
+// put them, newest first.
+func (s System) installedJavas() []string {
+	var out []string
+	dirs := func(parent, sub string) {
+		for _, d := range subdirs(parent, "") {
+			out = append(out, filepath.Join(d, sub))
+		}
+	}
+	switch s.GOOS {
+	case "darwin":
+		dirs(filepath.Join(s.Root, "/Library/Java/JavaVirtualMachines"), filepath.Join("Contents", "Home"))
+		dirs(filepath.Join(s.Home, "Library", "Java", "JavaVirtualMachines"), filepath.Join("Contents", "Home"))
+		for _, brew := range []string{filepath.Join(s.Root, "/opt/homebrew/opt"), filepath.Join(s.Root, "/usr/local/opt")} {
+			for _, d := range subdirs(brew, "openjdk") {
+				out = append(out, filepath.Join(d, "libexec", "openjdk.jdk", "Contents", "Home"))
+			}
+		}
+	case "windows":
+		for _, pf := range s.programFiles() {
+			for _, vendor := range []string{"Java", "Eclipse Adoptium", "Microsoft", "Zulu", "BellSoft", "Amazon Corretto"} {
+				dirs(filepath.Join(pf, vendor), "")
+			}
+		}
+	default:
+		dirs(filepath.Join(s.Root, "/usr/lib/jvm"), "")
+		dirs(filepath.Join(s.Home, ".sdkman", "candidates", "java"), "")
+	}
+	dirs(filepath.Join(s.Home, ".jdks"), "") // IntelliJ's downloads
+	slices.SortStableFunc(out, func(a, b string) int { return JavaVersion(b) - JavaVersion(a) })
+	return out
 }
 
 // studioJavas are where Android Studio's JDK may be, most likely first.
