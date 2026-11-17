@@ -625,6 +625,8 @@ func (g *gen) insn(f *bc.FuncDef, in insn, h string) error {
 		w("ak_op_vget(R, %d, R[%d].p);", a[0], a[1])
 	case "VSET":
 		w("ak_op_vset(R[%d].p, R[%d]);", a[0], a[1])
+	case "VTAKE":
+		w("ak_op_vtake(R, %d, R[%d].p);", a[0], a[1])
 	case "NEWS":
 		w("ak_op_setref(R, %d, ak_op_news(&M->shapes[%d].s, &R[%d]));", a[0], a[1], a[2])
 	case "GETF":

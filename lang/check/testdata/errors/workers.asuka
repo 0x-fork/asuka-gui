@@ -1,0 +1,70 @@
+// Workers: values only across, nothing of the main thread's inside, no
+// state, and their pub fns async from outside.
+
+state count = 0
+let names = ["a"]
+extern type Handle with release freeHandle
+extern fn freeHandle(h: Handle)
+extern fn openHandle(path: CString) -> Handle
+
+fn readsCount() -> int = count
+fn pure(x: int) -> int = x + names.count()
+
+store Shelf {
+  state books: [string] = []
+}
+
+worker Ok(path: string) {
+  var handle = openHandle(path) // its own C handle, never leaving it
+  var n = 0
+  let first = names[0] // a file's value: copied
+
+  pub fn add(x: int) -> int {
+    n += pure(x)
+    return n
+  }
+  pub fn label() -> string = first
+  fn private() -> int = n
+}
+
+worker Bad(v: View) { // ERROR "^worker Bad takes values only: v is a View, which can't cross to its thread$"
+  state s = 0 // ERROR "^a worker has no state: views don't read it, and its values are its own: var s = …$"
+  prop p = 1 // ERROR "^a worker has no props"
+  let shelf = Shelf() // (a store made off the main thread: below)
+  var h: Handle? = none
+
+  pub fn handle() -> Handle? = h // ERROR "^Bad.handle is pub, so it returns values only: a Handle\\? can't cross back from the worker's thread$"
+  pub fn take(f: fn() -> int) {} // ERROR "^Bad.take is pub, so it takes values only: f is a fn\\(\\) -> int, which can't cross to the worker's thread$"
+  async fn wait() {} // ERROR "^a worker's fns don't await: each runs on its thread, one call at a time; drop async"
+  pub fn reads() -> int = count // ERROR "^worker Bad can't use count: it's state, and the worker runs on a thread of its own"
+  pub fn calls() -> int = readsCount() // ERROR "^worker Bad calls readsCount, which reads state: the worker runs on a thread of its own; read the state on the main thread and pass its value to a pub fn$"
+  pub fn spawns() -> int {
+    let t = spawn { 1 } // ERROR "^worker Bad's fns already run on its own thread: do the work here, without spawn$"
+    return 1
+  }
+  pub fn makes() {
+    let o = Ok("x") // ERROR "^worker Bad can't make worker Ok: a worker is made on the main thread"
+  }
+  pub fn sets() {
+    first = 1 // ERROR "^unknown name first"
+    shelf = Shelf() // ERROR "^can't assign to shelf: it's a let; a value the worker changes is a var \\(var shelf = …\\)$"
+  }
+  Text("hi") // ERROR "^a worker has no views or statements: it's vars, lets and fns$"
+}
+
+worker Calls {
+  pub fn calls() -> int = readsCount() // ERROR "^worker Calls calls readsCount, which reads state"
+}
+
+async fn use() {
+  let w = Ok("db")
+  print(await w.add(1))
+  w.add(2) // ERROR "^add is async: await it"
+  print(await w.private()) // ERROR "^private isn't pub in worker Ok: only its pub fns are called from outside it$"
+  print(w.n) // ERROR "^n is worker Ok's own: it's read on its thread, by its fns \\(return it from a pub fn\\)$"
+  let t = spawn { w } // ERROR "can't use w \\(an Ok\\)|^spawn's result is an Ok"
+}
+
+fn notAsync(w: Ok) {
+  w.add(1) // ERROR "^add is async, and this can't wait"
+}

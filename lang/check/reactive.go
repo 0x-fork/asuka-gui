@@ -66,7 +66,8 @@ func (c *Checker) finalize() {
 			}
 		}
 		for _, t := range p.Types {
-			if t.Comp == nil {
+			if t.Comp == nil || t.Comp.Worker {
+				// (A worker's lets are values its thread makes.)
 				continue
 			}
 			for _, m := range t.Comp.Order {
@@ -78,6 +79,7 @@ func (c *Checker) finalize() {
 			}
 		}
 	}
+	c.workerCalls()
 	for _, s := range c.spawns {
 		for _, f := range s.calls {
 			if f.Ctx != nil && f.Ctx.readsState {

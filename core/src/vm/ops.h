@@ -117,6 +117,13 @@ static inline void ak_op_vset(ak_box *b, ak_val v) {
 	}
 }
 
+// VTAKE: a box's reference moved out, none left in it, so a change of it
+// in place copies nothing; VSET puts it back.
+static inline void ak_op_vtake(ak_val *R, uint16_t a, ak_box *b) {
+	ak_op_setref(R, a, b->v.p);
+	b->v.p = NULL;
+}
+
 static inline ak_struct *ak_op_news(const ak_shape *s, const ak_val *f) {
 	ak_struct *o = ak_struct_new(s);
 	for (uint16_t i = 0; i < s->nfields; i++) {

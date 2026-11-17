@@ -134,6 +134,7 @@ var Ops = []OpDef{
 	{"VBOX", []Operand{Reg, Reg, KindOp}, "a = a mutable box holding b: a var that closures capture and change"},
 	{"VGET", []Operand{Reg, Reg}, "a = the box b's value (retained when a reference)"},
 	{"VSET", []Operand{Reg, Reg}, "the box a = b (retained; the old one released)"},
+	{"VTAKE", []Operand{Reg, Reg}, "a = the box b's reference moved out, none left (for a change in place); VSET puts it back"},
 	{"CALLI", []Operand{Reg, Const, Reg, Imm}, "a = the method Strings[k] of the object in register c (an interface value), called with it and n-1 more arguments from c"},
 
 	// Structs and tuples.

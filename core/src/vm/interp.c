@@ -347,6 +347,7 @@ int ak_vm_interp(ak_co *co, ak_val *out) {
 		case AK_OP_VBOX: ak_op_vbox(R, a[0], R[a[1]], a[2]); break;
 		case AK_OP_VGET: ak_op_vget(R, a[0], R[a[1]].p); break;
 		case AK_OP_VSET: ak_op_vset(R[a[0]].p, R[a[1]]); break;
+		case AK_OP_VTAKE: ak_op_vtake(R, a[0], R[a[1]].p); break;
 		case AK_OP_NEWS: setref(R, a[0], ak_op_news(&M->shapes[off32(a + 1)].s, R + a[3])); break;
 		case AK_OP_GETF: ak_op_getf(R, a[0], R[a[1]].p, a[2]); break;
 		case AK_OP_SETF: ak_op_setf(R, a[0], a[1], R[a[2]]); break;

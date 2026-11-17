@@ -501,6 +501,9 @@ func (b *fb) suspends() bool {
 
 // memberKind is how m is stored in the env.
 func (l *Lowerer) memberKind(m *check.Member) bc.Kind {
+	if m.Owner.Comp.Worker && m.Kind != check.VarMember {
+		return l.kind(m.Type) // a worker's parameters and lets: values
+	}
 	if m.Kind == check.LetMember && !m.Memo && !isLoad(m.Default) {
 		return l.kind(m.Type)
 	}
@@ -554,6 +557,9 @@ func (b *fb) memberRef(m *check.Member, n syntax.Node) int {
 
 // readMember is m's value.
 func (b *fb) readMember(m *check.Member, n syntax.Node) int {
+	if m.Owner.Comp.Worker {
+		return b.workerMember(m, n)
+	}
 	ref := b.memberRef(m, n)
 	k := b.kind(m.Type)
 	switch m.Kind {

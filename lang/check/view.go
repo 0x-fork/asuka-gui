@@ -11,6 +11,10 @@ import (
 // element's header parameters and members.
 func (c *Checker) componentMembers(t *TypeName, params *syntax.ParamList, body *syntax.Block) {
 	comp := t.Comp
+	if comp.Worker {
+		c.workerMembers(t, params, body)
+		return
+	}
 	comp.Members = map[string]*Member{}
 	kind := CtxComponent
 	if comp.Store {
@@ -185,11 +189,14 @@ func (c *Checker) memberValue(m *Member) {
 	c.scope = comp.Ctx.scope
 	c.ctx = comp.Ctx
 	kind := CtxComponent
-	switch m.Kind {
-	case LetMember:
+	switch {
+	case comp.Worker:
+		// Made on the worker's thread as it starts: plain values.
+		kind = CtxWorker
+	case m.Kind == LetMember:
 		kind = CtxBinding
 		c.loadOK = true
-	case PropMember, ParamMember:
+	case m.Kind == PropMember, m.Kind == ParamMember:
 		kind = CtxBinding
 	}
 	if kind == CtxBinding {
@@ -237,6 +244,10 @@ func (c *Checker) variantDecls(t *TypeName) {
 // its members' values, then its effects, tasks and views.
 func (c *Checker) componentBody(t *TypeName) {
 	comp := t.Comp
+	if comp.Worker {
+		c.workerBody(t)
+		return
+	}
 	if comp.Screen && prelude.FindElement("Screen") == nil {
 		c.errorf(t.Decl, "screen %s needs the Screen element, which the runtime doesn't have yet: make it a component", t.name)
 	}

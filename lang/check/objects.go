@@ -271,10 +271,11 @@ const (
 	AliasType
 	ParamType  // a type parameter
 	ExternType // extern type T: a pointer C gives (RFC 0008)
+	WorkerType // worker W { … }: its instances each run on a thread of their own
 )
 
 // A TypeName is a declared type: a struct, an enum, an interface, a
-// store, a component (or element), an alias, or a built-in one.
+// store, a worker, a component (or element), an alias, or a built-in one.
 type TypeName struct {
 	object
 	Pkg        *Package
@@ -306,7 +307,7 @@ type TypeName struct {
 	Extern bool
 	// Release: an extern type's with release, nil for none.
 	Release *Function
-	// Stores and components.
+	// Stores, workers and components.
 	Comp *Component
 
 	resolved bool
@@ -381,6 +382,7 @@ type IfaceMethod struct {
 // interface and members.
 type Component struct {
 	Store, Screen, Native bool
+	Worker                bool // a worker's: its vars, lets and fns, on its thread
 	Element               *prelude.Element // a built-in element
 	Style                 bool             // the prelude's Style pseudo-component
 	Params                []*Member        // the header's
@@ -434,6 +436,7 @@ const (
 	LetMember                     // a memo, or a constant
 	UseMember                     // a provided value
 	FnMember                      // a method taking the component's env
+	VarMember                     // a worker's var: its own, changed by its fns
 )
 
 // A Member is a component's or a store's member.
