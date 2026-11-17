@@ -196,6 +196,61 @@ TEST(regex_programs) {
 	ak_release(ak_error_take());
 }
 
+// handmade makes a program by hand: its instructions ({op, x, y}) and
+// its capture count, no ranges or names.
+static ak_bytes *handmade(const uint32_t (*in)[3], uint32_t ninst, uint32_t ncap) {
+	ak_bytes *b = ak_bytes_new(NULL, 20 + 12 * ninst);
+	uint32_t head[4] = {ninst, 0, ncap, 0};
+	memcpy(b->data, "AKRE", 4);
+	for (int k = 0; k < 4; k++)
+		for (int j = 0; j < 4; j++) b->data[4 + 4 * k + j] = (uint8_t)(head[k] >> 8 * j);
+	for (uint32_t k = 0; k < ninst; k++)
+		for (int f = 0; f < 3; f++)
+			for (int j = 0; j < 4; j++) b->data[20 + 12 * k + 4 * f + j] = f == 0 ? (j == 0 ? (uint8_t)in[k][0] : 0) : (uint8_t)(in[k][f] >> 8 * j);
+	return b;
+}
+
+TEST(regex_handmade_captures) {
+	// Programs whose SAVEs put a match's captures where no pattern would:
+	// a match with no start, a group with a start and no end, a match that
+	// ends before it starts. Each throws instead of reading outside the
+	// text or matching forever.
+	enum { CHAR = 1, SAVE = 7, MATCH = 9 };
+	const uint32_t no_start[][3] = {{SAVE, 1, 0}, {MATCH, 0, 0}};
+	const uint32_t no_end[][3] = {{SAVE, 0, 0}, {SAVE, 2, 0}, {SAVE, 1, 0}, {MATCH, 0, 0}};
+	const uint32_t backwards[][3] = {{SAVE, 1, 0}, {CHAR, 'a', 0}, {SAVE, 0, 0}, {MATCH, 0, 0}};
+	struct {
+		const uint32_t (*in)[3];
+		uint32_t n, ncap;
+	} progs[] = {{no_start, 2, 1}, {no_end, 4, 2}, {backwards, 4, 1}};
+	for (size_t k = 0; k < AK_LEN(progs); k++) {
+		ak_bytes *b = handmade(progs[k].in, progs[k].n, progs[k].ncap);
+		ak_val r = call("regex.substitute", (ak_val[]){{.p = b}, S("abc"), S("[$1]"), I(-1)}, 4, 0x6);
+		if (!ak_error_pending()) T_FAIL("program %zu substituted", k);
+		ak_release(ak_error_take());
+		ak_release(r.p);
+		r = call("regex.search", (ak_val[]){{.p = b}, S("abc"), I(-1)}, 3, 0x2);
+		if (!ak_error_pending()) T_FAIL("program %zu searched", k);
+		ak_release(ak_error_take());
+		ak_release(r.p);
+		ak_release(b);
+	}
+}
+
+TEST(regex_empty_repeats) {
+	// A repeat of nothing compiles to nothing, however many times: not a
+	// thousand to the fourth compiles of it.
+	ak_val prog = call("regex.program", (ak_val[]){S("(?:(?:(?:(?:){1000}){1000}){1000}){1000}x")}, 1, 1);
+	REQUIRE(prog.p);
+	ak_val r = call("regex.test", (ak_val[]){prog, S("ax")}, 2, 1);
+	CHECK(r.i);
+	// A group in it still counts: a thousand saves of it, a thousand times
+	// over, is too large.
+	call("regex.program", (ak_val[]){S("(?:(?:()){1000}){1000}")}, 1, 1);
+	CHECK(ak_error_pending());
+	ak_release(ak_error_take());
+}
+
 static ak_val search(const char *pattern, const char *text) {
 	ak_val prog = call("regex.program", (ak_val[]){S(pattern)}, 1, 1);
 	if (!prog.p) return prog;
