@@ -25,3 +25,7 @@ node_modules/
 # Claude Code worktrees
 .claude/worktrees/
 
+
+# Objects from compiling C by hand (zig cc -c without -o)
+*.o
+*.obj
