@@ -164,7 +164,7 @@ func (c *Checker) letStmt(d *syntax.LetDecl) {
 		if d.Type != nil {
 			t = c.typeExpr(d.Type)
 		}
-		c.bindIrrefutable(d.Pattern, t, d.Keyword == syntax.VAR)
+		c.bindIrrefutable(d.Pattern, t, d.Keyword == syntax.VAR, true)
 		return
 	}
 	if d.Else != nil {
@@ -178,7 +178,7 @@ func (c *Checker) letStmt(d *syntax.LetDecl) {
 		t = c.valueType(c.expr(d.Value, nil), d.Value)
 	}
 	c.info.Lets[d] = t
-	c.bindIrrefutable(d.Pattern, t, d.Keyword == syntax.VAR)
+	c.bindIrrefutable(d.Pattern, t, d.Keyword == syntax.VAR, true)
 	if fx := c.inferredFx[t]; fx != nil && fx.letName == "" {
 		if bp, ok := d.Pattern.(*syntax.BindPat); ok && unparen(d.Value) == syntax.Expr(fx.lambda) {
 			fx.letName = d.Keyword.String() + " " + bp.Name.Name
@@ -186,12 +186,12 @@ func (c *Checker) letStmt(d *syntax.LetDecl) {
 	}
 }
 
-// bindIrrefutable binds a let's or a for's pattern: names, _ and
+// bindIrrefutable binds a let's (let) or a for's pattern: names, _ and
 // tuples of them.
-func (c *Checker) bindIrrefutable(p syntax.Pattern, t Type, mutable bool) {
+func (c *Checker) bindIrrefutable(p syntax.Pattern, t Type, mutable, let bool) {
 	switch p := p.(type) {
 	case *syntax.BindPat:
-		c.declareVar(p.Name, t, mutable)
+		c.declareVar(p.Name, t, mutable).Bound = !let
 	case *syntax.WildcardPat:
 	case *syntax.TuplePat:
 		tt, ok := t.(*Tuple)
@@ -200,12 +200,12 @@ func (c *Checker) bindIrrefutable(p syntax.Pattern, t Type, mutable bool) {
 				c.errorf(p, "a %s isn't a tuple of %d", typeString(t), len(p.Elems))
 			}
 			for _, e := range p.Elems {
-				c.bindIrrefutable(e, Invalid, mutable)
+				c.bindIrrefutable(e, Invalid, mutable, let)
 			}
 			return
 		}
 		for i, e := range p.Elems {
-			c.bindIrrefutable(e, tt.Elems[i], mutable)
+			c.bindIrrefutable(e, tt.Elems[i], mutable, let)
 		}
 	default:
 		c.errorf(p, "a let binds names (let x = …, let (a, b) = …); to match, use if let or match")
@@ -297,6 +297,9 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 		case *Var:
 			if o.Kind != LocalVar || !o.Mutable {
 				hint := "it's a let: make it a var"
+				if o.Bound && o.Kind == LocalVar {
+					hint = "it's a pattern's name, a copy of what it matched (a for's element, an if let's value): copy it into a var, or change what it came from"
+				}
 				if o.Kind == RowItem {
 					hint = "it's a row's item: change the state it comes from"
 				} else if o.Kind == SelfVar {
@@ -356,7 +359,7 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 			return
 		}
 		if sel.Optional {
-			c.errorf(x, "can't %s through ?.: unwrap it first (if let)", what)
+			c.errorf(x, "can't %s through ?.: unwrap it first (if let)", strings.TrimSuffix(what, " to"))
 			return
 		}
 		switch sel.Kind {
@@ -419,6 +422,7 @@ func (c *Checker) letCondPattern(lc *syntax.LetCond, t Type, kind VarKind) {
 		}
 		v := c.declareVar(bp.Name, Unopt(t), false)
 		v.Kind = kind
+		v.Bound = true
 		return
 	}
 	c.pattern(lc.Pattern, t, kind)
@@ -522,6 +526,7 @@ func (c *Checker) forBindings(fi *ForInfo, p syntax.Pattern, kind VarKind, ctx *
 		case *syntax.BindPat:
 			v := c.declareVar(p.Name, t, false)
 			v.Kind = kind
+			v.Bound = true
 			if ctx != nil {
 				ctx.Params = append(ctx.Params, v)
 			}
@@ -538,7 +543,7 @@ func (c *Checker) forBindings(fi *ForInfo, p syntax.Pattern, kind VarKind, ctx *
 				return nil
 			}
 			v := &Var{object: object{"_", p.Start}, Type: t, Ctx: c.ctx}
-			c.bindIrrefutable(p, t, false)
+			c.bindIrrefutable(p, t, false, false)
 			return v
 		}
 		c.errorf(p, "for binds a name, _ or a tuple of names")
@@ -792,6 +797,7 @@ func (c *Checker) pattern(p syntax.Pattern, t Type, kind VarKind) {
 	case *syntax.BindPat:
 		v := c.declareVar(p.Name, t, false)
 		v.Kind = kind
+		v.Bound = true
 	case *syntax.LitPat:
 		// A literal is compared with an optional's value, once it isn't
 		// none: it's of the value's type (not converted to the optional).

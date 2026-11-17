@@ -155,6 +155,7 @@ type Var struct {
 	Type    Type
 	Kind    VarKind
 	Mutable bool
+	Bound   bool     // a pattern's or a for's name: a copy of what it matched
 	Ctx     *FuncCtx // the function it belongs to
 
 	// Captured: a closure uses it. Assigned: it's written after its
