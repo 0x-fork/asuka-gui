@@ -456,6 +456,9 @@ struct asuka_call {
 	atomic_int refs;
 	atomic_bool cancelled;
 	atomic_bool answered;
+	// What the task's going runs: set on any thread (asuka_fetch's
+	// worker sets its own), so read and written under calls_mu, both
+	// together.
 	void (*on_cancel)(void *);
 	void *cancel_ctx;
 	void *args;
@@ -505,18 +508,22 @@ static void n_start(uint64_t handle, uint32_t method, const uint8_t *in, size_t 
 
 static void n_cancel(uint64_t id) {
 	asuka_call *c = NULL;
+	void (*fn)(void *) = NULL;
+	void *ctx = NULL;
+	// Cancelled and the cancel read under the lock asuka_call_on_cancel
+	// sets it under: either this sees its cancel, or it sees cancelled.
 	lock(&calls_mu);
 	for (asuka_call *p = calls; p; p = p->next)
 		if (p->id == id) {
 			c = p;
 			atomic_fetch_add(&c->refs, 1);
+			atomic_store(&c->cancelled, true);
+			fn = c->on_cancel, ctx = c->cancel_ctx;
 			break;
 		}
 	unlock(&calls_mu);
 	if (!c) return;
-	atomic_store(&c->cancelled, true);
-	void (*fn)(void *) = c->on_cancel;
-	if (fn && !atomic_load(&c->answered)) fn(c->cancel_ctx);
+	if (fn && !atomic_load(&c->answered)) fn(ctx);
 	call_unref(c);
 }
 
@@ -536,9 +543,12 @@ static void run_cancel(void *p) {
 }
 
 void asuka_call_on_cancel(asuka_call *c, void (*fn)(void *ctx), void *ctx) {
+	lock(&calls_mu);
 	c->cancel_ctx = ctx;
 	c->on_cancel = fn;
-	if (atomic_load(&c->cancelled) && fn) {
+	bool now = atomic_load(&c->cancelled);
+	unlock(&calls_mu);
+	if (now && fn) {
 		cancel_later *l = malloc(sizeof *l);
 		*l = (cancel_later){fn, ctx, c};
 		atomic_fetch_add(&c->refs, 1);

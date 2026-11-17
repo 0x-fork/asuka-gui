@@ -289,3 +289,37 @@ func TestJSONHelpers(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestCallsRace runs test/calls_test.c under ThreadSanitizer: the
+// registry's started calls (src/native.c), a cancel registered on a
+// worker while the task goes on the main thread.
+func TestCallsRace(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX threads")
+	}
+	cc, err := cbuild.Find()
+	if err != nil {
+		t.Skip(err)
+	}
+	core, err := cbuild.CoreDir()
+	if err != nil {
+		t.Skip(err)
+	}
+	exe := filepath.Join(t.TempDir(), "calls_test")
+	args := append(append([]string{}, cc.Args...), cbuild.Flags...)
+	args = append(args, "-Iinclude", "-I"+filepath.Join(core, "include"), "-D_GNU_SOURCE", "-g", "-O1", "-fsanitize=thread",
+		"src/native.c", "test/calls_test.c", "-o", exe, "-lpthread")
+	if out, err := exec.Command(cc.Path, args...).CombinedOutput(); err != nil {
+		if strings.Contains(string(out), "thread") && strings.Contains(string(out), "unsupported") {
+			t.Skipf("no ThreadSanitizer here: %s", out)
+		}
+		t.Fatalf("%v\n%s", err, out)
+	}
+	cmd := exec.Command(exe)
+	cmd.Env = append(os.Environ(), "TSAN_OPTIONS=halt_on_error=1 exitcode=66")
+	out, err := cmd.CombinedOutput()
+	t.Logf("%s", out)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
