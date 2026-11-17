@@ -39,40 +39,59 @@ ak_str *ak_str_from_int(int64_t v) {
 }
 
 // fmt_float writes the shortest form of v that reads back as v, as
-// JavaScript prints numbers: integers without a fraction, exponents only
-// for very large or small magnitudes.
+// JavaScript prints numbers (ECMAScript's Number::toString): the fewest
+// significant digits that round-trip, then plain digits for magnitudes
+// from 1e-6 to below 1e21 (an integer without a fraction), an exponent
+// otherwise.
 static int fmt_float(char *buf, size_t cap, double v) {
 	if (v != v) return snprintf(buf, cap, "NaN");
 	if (v == INFINITY) return snprintf(buf, cap, "Infinity");
 	if (v == -INFINITY) return snprintf(buf, cap, "-Infinity");
 	if (v == 0) return snprintf(buf, cap, "0");
-	double a = fabs(v);
-	if (a < 1e21 && a == floor(a)) return snprintf(buf, cap, "%.0f", v);
-	char tmp[48];
-	// %.*f with a fixed precision: find the shortest that round-trips.
-	if (a >= 1e-6 && a < 1e21) {
-		for (int p = 1; p <= 20; p++) {
-			snprintf(tmp, sizeof tmp, "%.*f", p, v);
-			if (strtod(tmp, NULL) == v) break;
-		}
-		// Trim trailing zeros.
-		size_t n = strlen(tmp);
-		while (n > 0 && tmp[n - 1] == '0') n--;
-		if (n > 0 && tmp[n - 1] == '.') n--;
-		tmp[n] = 0;
-	} else {
-		for (int p = 1; p <= 17; p++) {
-			snprintf(tmp, sizeof tmp, "%.*e", p - 1, v);
-			if (strtod(tmp, NULL) == v) break;
-		}
-		// C writes at least two exponent digits (1e-07); JavaScript, one.
-		char *e = strchr(tmp, 'e');
-		if (e && (e[1] == '-' || e[1] == '+')) {
-			char *d = e + 2;
-			while (d[0] == '0' && d[1]) memmove(d, d + 1, strlen(d));
-		}
+	// The shortest digits: d.ddde±x with as few as read back as v.
+	char e[40];
+	for (int p = 0; p < 17; p++) {
+		snprintf(e, sizeof e, "%.*e", p, fabs(v));
+		if (strtod(e, NULL) == fabs(v)) break;
 	}
-	return snprintf(buf, cap, "%s", tmp);
+	char digits[24];
+	int k = 0;
+	const char *c = e;
+	for (; *c && *c != 'e'; c++)
+		if (*c >= '0' && *c <= '9') digits[k++] = *c;
+	while (k > 1 && digits[k - 1] == '0') k--;
+	// v is 0.d1..dk × 10^n.
+	int n = atoi(c + 1) + 1;
+	char out[48];
+	size_t o = 0;
+	if (v < 0) out[o++] = '-';
+	if (k <= n && n <= 21) {
+		memcpy(out + o, digits, (size_t)k);
+		o += (size_t)k;
+		for (int i = k; i < n; i++) out[o++] = '0';
+	} else if (0 < n && n <= 21) {
+		memcpy(out + o, digits, (size_t)n);
+		o += (size_t)n;
+		out[o++] = '.';
+		memcpy(out + o, digits + n, (size_t)(k - n));
+		o += (size_t)(k - n);
+	} else if (-6 < n && n <= 0) {
+		out[o++] = '0';
+		out[o++] = '.';
+		for (int i = n; i < 0; i++) out[o++] = '0';
+		memcpy(out + o, digits, (size_t)k);
+		o += (size_t)k;
+	} else {
+		out[o++] = digits[0];
+		if (k > 1) {
+			out[o++] = '.';
+			memcpy(out + o, digits + 1, (size_t)(k - 1));
+			o += (size_t)(k - 1);
+		}
+		o += (size_t)snprintf(out + o, sizeof out - o, "e%c%d", n - 1 < 0 ? '-' : '+', abs(n - 1));
+	}
+	out[o] = 0;
+	return snprintf(buf, cap, "%s", out);
 }
 
 ak_str *ak_str_from_float(double v) {
