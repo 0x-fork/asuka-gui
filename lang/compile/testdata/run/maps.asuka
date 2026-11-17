@@ -51,6 +51,27 @@ test "a read with a default" {
   print("{counts["a"] ?? fallback(1)} {counts["z"] ?? fallback(2)} {defaults}")
 }
 
+test "if let of a read" {
+  let m = ["a": 1, "b": 2]
+  if let v = m["a"] { print("a {v}") }
+  if let v = m["z"] { print("z {v}") } else { print("no z") }
+  let s = [1: "x"]
+  if let v = s[1], v == "x" { print("x!") }
+  var total = 0
+  var keys = ["a", "b", "q", "a"]
+  while let k = keys.pop() {
+    if let v = m[k] {
+      let f = () => v * 10
+      total += v + f()
+    }
+  }
+  var box = ["k": [1, 2]]
+  if let xs = box["k"] {
+    box["k"] = []
+    print("{total} {xs} {box}")
+  }
+}
+
 // Output:
 // 3
 // 31
@@ -67,3 +88,8 @@ test "a read with a default" {
 // 9 2 9
 // 2 2 1
 // ok a read with a default
+// a 1
+// no z
+// x!
+// 44 [1,2] {"k":[]}
+// ok if let of a read

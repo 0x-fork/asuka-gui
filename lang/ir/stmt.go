@@ -181,6 +181,16 @@ func (b *fb) condJump(c syntax.Expr, els Label) {
 		b.emitJump(op("JF"), r, els)
 		return
 	}
+	if bp, ok := lc.Pattern.(*syntax.BindPat); ok {
+		if m, key, ok := b.mapRead(lc.Value); ok {
+			// if let v = m[k]: the value read as it is, no optional made.
+			in := b.temp(b.kind(check.Unopt(b.rawType(lc.Value))))
+			b.emit(op("MGETJ"), in, m, key, int(els))
+			vr, _ := b.l.info.Defs[bp.Name].(*check.Var)
+			b.declare(vr, in)
+			return
+		}
+	}
 	v := b.value(lc.Value, -1)
 	t := b.rawType(lc.Value)
 	if bp, ok := lc.Pattern.(*syntax.BindPat); ok {
