@@ -444,11 +444,31 @@ static HWND last_window(void) {
 	return w;
 }
 
+// A scripted hover, run as a mouse move is: once the core has returned,
+// its reports each a call into the core of its own (whose flush may
+// destroy the views being reported).
+typedef struct {
+	HWND top;
+	POINT p;
+} hover_job;
+
+static void hover_now(void *ctx) {
+	hover_job *j = ctx;
+	wh_hover_at(j->top, j->p);
+	free(j);
+}
+
+static void hover_later(HWND top, POINT p) {
+	hover_job *j = wh_alloc(sizeof *j);
+	j->top = top, j->p = p;
+	wh_after_core(hover_now, j);
+}
+
 static void step(const char *verb, const char *arg) {
 	wchar_t *warg = wh_wide(arg, (int)strlen(arg));
 	if (!strcmp(verb, "hover")) {
 		if (!*arg) {
-			wh_hover_at(NULL, (POINT){0, 0});
+			hover_later(NULL, (POINT){0, 0});
 		} else {
 			node *n = showing(warg);
 			if (!n) wh_log("automation: nothing shows \"%s\"", arg);
@@ -457,7 +477,7 @@ static void step(const char *verb, const char *arg) {
 				GetClientRect(n->hwnd, &c);
 				POINT p = {c.right / 2, c.bottom / 2};
 				ClientToScreen(n->hwnd, &p);
-				wh_hover_at(GetAncestor(n->hwnd, GA_ROOT), p);
+				hover_later(GetAncestor(n->hwnd, GA_ROOT), p);
 			}
 		}
 	} else if (!strcmp(verb, "press")) {

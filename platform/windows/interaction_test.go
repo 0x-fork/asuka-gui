@@ -45,6 +45,7 @@ func TestInteraction(t *testing.T) {
 		"hover:Inner", "snap:hover1",
 		"hover:Outer", "snap:hover2",
 		"hover:", "snap:hover3",
+		"hover:Leave me", "hover:", "snap:gone",
 		"tap:Search",
 		"key:up", "key:enter", "key:ctrl+d", "key:ctrl+e", "key:alt+g", "key:shift+f5",
 		"key:shift+up", "key:ctrl+shift+d", "key:down",
@@ -59,6 +60,7 @@ func TestInteraction(t *testing.T) {
 	shows(t, d["hover1"], "over the inner view", []string{"Hover:  outer+ inner+"})
 	shows(t, d["hover2"], "over the outer view", []string{"Hover:  outer+ inner+ inner-"})
 	shows(t, d["hover3"], "off the window", []string{"Hover:  outer+ inner+ inner- outer-"})
+	shows(t, d["gone"], "a view gone as the pointer left the one in it", []string{"Gone: true", "Hover:  outer+ inner+ inner- outer- box+"})
 	shows(t, d["keys"], "keys", []string{"Log: field-up col-enter col-ctrl-d col-control-e col-alt-g col-shift-f5"})
 	shows(t, d["pinch"], "a wheel's pinch", []string{"Pinch: 4 121"})
 	shows(t, d["drop1"], "a photo and a text dropped on the photo's target", []string{"Dropped:  photo:1:false:photo.png:image/png:1234:image"})
