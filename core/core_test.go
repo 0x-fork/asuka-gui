@@ -77,3 +77,56 @@ func TestC(t *testing.T) {
 		})
 	}
 }
+
+// threadTests are the C tests that run threads of their own (workers),
+// which TestCThreads runs again under ThreadSanitizer.
+var threadTests = []string{"worker"}
+
+// TestCThreads builds the core and each of threadTests under
+// ThreadSanitizer (which ASan excludes) and runs them: the workers'
+// threads and the main thread share nothing but what they hand over.
+func TestCThreads(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("ThreadSanitizer: not with this toolchain on Windows")
+	}
+	cc, err := cbuild.Find()
+	if err != nil {
+		t.Skip(err)
+	}
+	root, _ := filepath.Abs(".")
+	srcs, err := cbuild.Sources(root, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	flags := append(cbuild.Includes(root), "-g", "-O1", "-fno-omit-frame-pointer", "-DAK_TEST=1", "-fsanitize=thread")
+	tmp := t.TempDir()
+	objs, err := cc.Compile(srcs, filepath.Join(tmp, "core"), flags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range threadTests {
+		t.Run(strings.ToUpper(name[:1])+name[1:], func(t *testing.T) {
+			obj, err := cc.Compile([]string{filepath.Join(root, "test", name+"_test.c")}, filepath.Join(tmp, name), flags)
+			if err != nil {
+				t.Fatal(err)
+			}
+			exe := filepath.Join(tmp, name+"_test")
+			if err := cc.Link(append(obj, objs...), exe, []string{"-lm", "-fsanitize=thread"}); err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.Command(exe)
+			cmd.Dir = filepath.Join(root, "test")
+			cmd.Env = append(os.Environ(), "ASUKA_ROOT="+filepath.Dir(root), "TSAN_OPTIONS=halt_on_error=1 second_deadlock_stack=1")
+			if testing.Verbose() {
+				cmd.Env = append(cmd.Env, "T_VERBOSE=1")
+			}
+			out, err := cmd.CombinedOutput()
+			if err != nil || testing.Verbose() {
+				t.Logf("%s", out)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
