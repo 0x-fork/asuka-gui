@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -67,6 +68,30 @@ func TestFmt(t *testing.T) {
 	}
 	if out.Len() != 0 {
 		t.Errorf("-w printed %q", out.String())
+	}
+
+	// -w writes through a symlink, to the file it names, and leaves no
+	// backup behind.
+	if err := os.WriteFile(filepath.Join(dir, "real.asuka"), []byte(messy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("real.asuka", filepath.Join(dir, "link.asuka")); err != nil {
+		t.Fatal(err)
+	}
+	if err := runFmt([]string{filepath.Join(dir, "link.asuka")}, true, false, nil, &out, &errOut); err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Lstat(filepath.Join(dir, "link.asuka")); err != nil || fi.Mode()&fs.ModeSymlink == 0 {
+		t.Errorf("-w replaced the symlink: %v", err)
+	}
+	if read("real.asuka") != clean {
+		t.Errorf("-w didn't write the file the symlink names")
+	}
+	if fi, err := os.Stat(filepath.Join(dir, "real.asuka")); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Errorf("-w changed the mode: %v", fi.Mode())
+	}
+	if baks, _ := filepath.Glob(filepath.Join(dir, "*.bak")); len(baks) != 0 {
+		t.Errorf("-w left %v", baks)
 	}
 
 	// Standard input.

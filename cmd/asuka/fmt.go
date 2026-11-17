@@ -112,8 +112,55 @@ func formatFile(path string, mode fs.FileMode, write, list bool, stdout io.Write
 		return err
 	}
 	return formatSource(path, src, func(out []byte) error {
-		return os.WriteFile(path, out, mode.Perm())
+		return writeKeeping(path, src, out, mode.Perm())
 	}, write, list, stdout)
+}
+
+// writeKeeping writes out over path, whose contents were src, as gofmt
+// -w does: in place, so a symlink, a hard link, the file's owner and
+// mode stay what they were, with src first copied beside it, put back
+// if the write fails, removed once it's done. A write that fails
+// halfway (a full disk) leaves the file as it was, or its backup.
+func writeKeeping(path string, src, out []byte, perm fs.FileMode) error {
+	bak, err := backup(path, src, perm)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, out, perm); err != nil {
+		if rerr := os.WriteFile(path, src, perm); rerr != nil {
+			return fmt.Errorf("%w (the file as it was is in %s)", err, bak)
+		}
+		os.Remove(bak)
+		return err
+	}
+	return os.Remove(bak)
+}
+
+// backup writes src to a new file beside path, named after it.
+func backup(path string, src []byte, perm fs.FileMode) (string, error) {
+	// The directory of the file a symlink names, so the backup is where
+	// the write goes.
+	dir := filepath.Dir(path)
+	if real, err := filepath.EvalSymlinks(path); err == nil {
+		dir = filepath.Dir(real)
+	}
+	f, err := os.CreateTemp(dir, filepath.Base(path)+".*.bak")
+	if err != nil {
+		return "", err
+	}
+	name := f.Name()
+	_, err = f.Write(src)
+	if err == nil {
+		err = f.Chmod(perm)
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		os.Remove(name)
+		return "", err
+	}
+	return name, nil
 }
 
 // formatSource formats one file's source: lists its name if it changes
