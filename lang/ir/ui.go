@@ -2,6 +2,7 @@ package ir
 
 import (
 	"fmt"
+	"sort"
 
 	bc "github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/lang/check"
@@ -153,7 +154,7 @@ func (l *Lowerer) compFunc(t *check.TypeName, typ check.Type) int {
 		return i
 	}
 	c := t.Comp
-	np := len(c.Params) + len(c.Props) + len(c.Events)
+	np := len(c.Params) + len(c.Props) + len(c.Events) + len(assignedProps(c))
 	b := l.newFunc(name, l.fileOf(t.Decl), np, bc.KRef)
 	if len(t.TypeParams) > 0 && n != nil {
 		b.subst = n.Subst()
@@ -174,6 +175,12 @@ func (b *fb) lowerComponent(t *check.TypeName) {
 			b.memberRegs[m] = b.newReg(bc.KRef)
 		}
 	}
+	// After the events: per prop it assigns, whether its caller binds it
+	// (none: not).
+	bound := map[*check.Member]int{}
+	for _, m := range assignedProps(comp) {
+		bound[m] = b.newReg(bc.KRef)
+	}
 	b.openScope()
 	// The env's box: closures made before the env is whole capture it.
 	none := b.temp(bc.KRef)
@@ -191,6 +198,11 @@ func (b *fb) lowerComponent(t *check.TypeName) {
 		switch m.Kind {
 		case check.ParamMember, check.PropMember:
 			if m.Default == nil {
+				break
+			}
+			if _, none := unparen(m.Default).(*syntax.NoneLit); none && m.IsSlot() {
+				// A slot that defaults to none stays none (if let sees it),
+				// not a builder of nothing.
 				break
 			}
 			r := b.memberRegs[m]
@@ -230,8 +242,15 @@ func (b *fb) lowerComponent(t *check.TypeName) {
 			}
 		case check.UseMember:
 			r := b.local(bc.KRef)
-			key := b.kstr(b.l.typeKey(b.typ(m.Type)))
+			key := b.kstr(b.l.typeKey(check.Unopt(b.typ(m.Type))))
 			b.callBTo(uiUse, r, key)
+			b.memberRegs[m] = r
+		}
+		if m.Kind == check.PropMember && m.Assigned {
+			// A prop it assigns: read through a model of the caller's
+			// accessor (react.c's "Models").
+			r := b.local(bc.KRef)
+			b.callBTo(uiModel, r, b.memberRegs[m], bound[m])
 			b.memberRegs[m] = r
 		}
 		b.release(mark)
@@ -268,7 +287,7 @@ func (b *fb) lowerComponent(t *check.TypeName) {
 	for _, it := range comp.Body.Items {
 		switch it.(type) {
 		case *syntax.PropDecl, *syntax.EventDecl, *syntax.StateDecl, *syntax.LetDecl, *syntax.UseDecl,
-			*syntax.FuncDecl, *syntax.ProvideDecl, *syntax.TaskDecl, *syntax.EffectDecl, *syntax.BadItem:
+			*syntax.FuncDecl, *syntax.VariantDecl, *syntax.ProvideDecl, *syntax.TaskDecl, *syntax.EffectDecl, *syntax.BadItem:
 		default:
 			views = append(views, it)
 		}
@@ -280,10 +299,31 @@ func (b *fb) lowerComponent(t *check.TypeName) {
 	} else {
 		v = b.viewsOf(views)
 	}
+	// Its variants, on the view it shows: its callers' blocks of them
+	// follow their conditions.
+	for _, d := range comp.Variants {
+		mark := b.mark()
+		b.at(d.Decl)
+		cond := b.thunk(b.l.info.Ctxs[d.Value], d.Value, check.Bool)
+		b.callBTo(uiVariantDeclare, bc.None, v, b.konst(b.l.variantID(d)), cond)
+		b.release(mark)
+	}
 	r := b.newReg(bc.KRef)
 	b.move(r, v)
 	b.emit(op("RET"), r)
 	b.closeScopeNoClear()
+}
+
+// assignedProps are the props a component assigns (check's Assigned):
+// its function takes, after its events, whether its caller binds each.
+func assignedProps(comp *check.Component) []*check.Member {
+	var out []*check.Member
+	for _, m := range comp.Props {
+		if m.Assigned {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // closeScopeNoClear ends a scope whose code returned already.
@@ -493,9 +533,18 @@ func (b *fb) lowerApp(d *syntax.AppDecl) {
 // viewsOf builds view items: one view, or a fragment of them.
 func (b *fb) viewsOf(items []syntax.Item) int {
 	if len(items) == 1 {
-		if v, opt := b.viewItem(items[0]); !opt {
+		v, opt := b.viewItem(items[0])
+		if !opt || v < 0 {
 			return v
 		}
+		// A view that may be none (an optional slot): in a fragment, built
+		// once.
+		frag := b.callB(uiFragment, bc.KRef)
+		skip := b.f.NewLabel()
+		b.emitJump(op("JNONE"), v, skip)
+		b.callBTo(uiAdd, bc.None, frag, v)
+		b.f.Place(skip)
+		return frag
 	}
 	frag := b.callB(uiFragment, bc.KRef)
 	for _, it := range items {
@@ -554,6 +603,20 @@ func (b *fb) viewExpr(x syntax.Expr) (int, bool) {
 		}
 	}
 	return b.value(x, -1), check.IsOptional(t)
+}
+
+// lazySlot reports whether an element's slot is built when it shows
+// (lang/prelude's Slot.Lazy): passed as a builder, not views.
+func lazySlot(el *prelude.Element, name string) bool {
+	if el == nil {
+		return false
+	}
+	for _, s := range el.Slots {
+		if s.Name == name {
+			return s.Lazy
+		}
+	}
+	return false
 }
 
 // builder is a closure building the view x, where it's placed.
@@ -936,6 +999,13 @@ func (b *fb) builtinElement(ec *check.ElementCall) int {
 	}
 	for _, s := range ec.Slots {
 		key := prelude.KeyID(name, s.Prop.Name())
+		if lazySlot(el0, s.Prop.Name()) {
+			// Built when it shows (a Popover's content, an Overlay's
+			// backdrop), under the owner the element gives it.
+			build := b.builderItems(b.l.info.Ctxs[s.Block], s.Block.Items)
+			b.callBTo(uiSlot, bc.None, v, b.konst(int64(key)), build)
+			continue
+		}
 		view := b.viewsOf(s.Block.Items)
 		b.callBTo(uiSlot, bc.None, v, b.konst(int64(key)), view)
 	}
@@ -1196,8 +1266,37 @@ func (b *fb) componentCall(ec *check.ElementCall) int {
 			vals = append(vals, none())
 		}
 	}
+	// Whether it binds each prop the component assigns (anything but none:
+	// it does).
+	for _, m := range assignedProps(comp) {
+		bound := false
+		for _, x := range ec.Binds {
+			if x.Prop == m {
+				bound = true
+			}
+		}
+		if bound {
+			vals = append(vals, b.kstr("bound"))
+		} else {
+			vals = append(vals, none())
+		}
+	}
+	// A component that provides builds under an owner of its own, so what
+	// it provides is its views', not its later siblings' (which share the
+	// caller's owner).
+	scope := -1
+	if len(comp.Provides) > 0 {
+		scope = b.callB(uiScopeBegin, bc.KInt)
+	}
 	v := b.invoke(idx, vals, bc.KRef, -1, false)
+	if scope >= 0 {
+		b.callBTo(uiScopeEnd, bc.None, scope)
+	}
 	b.outerStyle(v, ec)
+	if ec.As != nil {
+		// Component as name: the view of the one element it shows.
+		b.elementRef(ec, v)
+	}
 	return v
 }
 
@@ -1213,7 +1312,43 @@ func (b *fb) outerStyle(v int, ec *check.ElementCall) {
 			props = append(props, p)
 		}
 	}
-	b.applyStyle(ec.Style, styleTarget{v: v, outer: true, variants: b.l.prog.StyleTakesVariants(ec.Comp), block: blockKeys("", props, true)})
+	var declared [][]stylePiece
+	t := styleTarget{v: v, outer: true, variants: b.l.prog.StyleTakesVariants(ec.Comp), block: blockKeys("", props, true), comp: ec.Comp, declared: &declared}
+	b.applyStyle(ec.Style, t)
+	// The block's variants: an interaction state's (laid on after the
+	// component's own of the state, so over them), and the component's
+	// declared ones, each its style: then its props.
+	for _, va := range ec.Variants {
+		var pieces []stylePiece
+		state := ""
+		if va.Decl == nil {
+			state = va.State
+		}
+		b.styleFlatten(va.Style, nil, nil, state, va.Decl, flatCtx{}, &pieces)
+		for _, p := range va.Props {
+			pieces = append(pieces, stylePiece{member: p.Member, key: prelude.KeyID("", p.Member.Name()), value: p.Value, state: state, decl: va.Decl})
+		}
+		b.applyPieces(pieces, t)
+	}
+	// The declared variants' layers, in their components' order: an inner
+	// component's first, then each's in declaration order (a style's
+	// before the block's of the same variant).
+	depth := map[*check.TypeName]int{}
+	for i, c := 0, ec.Comp; c != nil && i < 64; i++ {
+		depth[c] = i
+		c = b.l.prog.RootComponent(c)
+	}
+	sort.SliceStable(declared, func(i, j int) bool {
+		di, dj := declared[i][0].decl, declared[j][0].decl
+		if depth[di.Owner] != depth[dj.Owner] {
+			return depth[di.Owner] > depth[dj.Owner]
+		}
+		return di.Index < dj.Index
+	})
+	t.declared = nil
+	for _, run := range declared {
+		b.styleLayer(t, run)
+	}
 	last := map[*check.Member]int{}
 	for i, p := range ec.Props {
 		if p.Member.Owner != ec.Comp {

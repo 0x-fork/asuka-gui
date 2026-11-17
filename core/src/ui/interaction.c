@@ -79,7 +79,10 @@ ak_event_kind ak_ix_ev_ops(uint16_t ev) {
 	case AK_EV_VIEW_ROTATE: return AK_EVENT_ROTATE;
 	case AK_EV_VIEW_SWIPE: return AK_EVENT_SWIPE;
 	case AK_EV_VIEW_ADJUST: return AK_EVENT_ADJUST;
-	// A drag's and a drop's come with dragItems and dropTypes.
+	case AK_EV_VIEW_KEY_TEXT: return AK_EVENT_KEY_TEXT;
+	case AK_EV_VIEW_PRESS_START: return AK_EVENT_PRESS_POINT;
+	// A drag's and a drop's come with dragItems and dropTypes; FocusChange
+	// comes without asking.
 	}
 	switch (ev) {
 	case AK_EV_TEXT_FIELD_RICH_CHANGE: return AK_EVENT_RICH_CHANGED;
@@ -144,12 +147,15 @@ void ak_ix_free(ak_view *e) {
 	ak_ix *ix = e->ix;
 	if (!ix) return;
 	ak_rootkeys_free(ix->wkeys);
+	ak_release(ix->restore);
 	for (int i = 0; i < AK_STATE__COUNT; i++) ak_signal_drop(&ix->sig[i]);
 	for (uint32_t i = 0; i < ix->lents.len; i++) ak_release_val(ix->lents.data[i].v, (ak_kind)ak_key_kinds[ix->lents.data[i].key]);
 	ak_vec_free(&ix->lents);
 	ak_vec_free(&ix->layers);
 	for (uint32_t i = 0; i < ix->base.len; i++) ak_release_val(ix->base.data[i].v, (ak_kind)ak_key_kinds[ix->base.data[i].key]);
 	ak_vec_free(&ix->base);
+	for (uint32_t i = 0; i < ix->vdecls.len; i++) ak_release(ix->vdecls.data[i].cond);
+	ak_vec_free(&ix->vdecls);
 	ak_free(ix->key_order);
 	ak_buf_free(&ix->drag_sent);
 	ak_buf_free(&ix->actions_sent);
@@ -256,6 +262,13 @@ bool ak_ix_set_base(ak_view *v, uint16_t key, ak_val value) {
 static void listen_state(ak_view *e, uint8_t bit) {
 	ak_ix *ix = ak_ix_of(e);
 	if (e->dead || (ix->listens & bit)) return;
+	if (bit == AK_STATE_FOCUSED || bit == AK_STATE_FOCUS_VISIBLE) {
+		// The core follows the focus (focus.c): no event to ask for; start
+		// from where it is.
+		ix->listens |= bit;
+		if (ak_focus_state_now(e, bit)) ix->state |= bit;
+		return;
+	}
 	if (!e->real && (e->cls->flags & AK_ELF_FLATTEN)) ak_view_make_real(e);
 	if (!e->real) return;
 	if (bit == AK_STATE_PRESSED) ak_view_listen(e, AK_EVENT_PRESSED);
@@ -276,6 +289,8 @@ static void leave(void *ctx) {
 		if (ix->state & AK_STATE_HOVERED) set_state(e, AK_STATE_HOVERED, false, ak_ext_ev(e, AK_EV_VIEW_HOVER_CHANGE));
 		if (ix->state & AK_STATE_DRAG_OVER) set_state(e, AK_STATE_DRAG_OVER, false, ak_ext_ev(e, AK_EV_VIEW_DROP_OVER));
 		if (ix->state & AK_STATE_DRAGGING) set_state(e, AK_STATE_DRAGGING, false, 0);  // dragPhase hears only the platform's end
+		if (ix->state & AK_STATE_FOCUSED) set_state(e, AK_STATE_FOCUSED, false, 0);
+		if (ix->state & AK_STATE_FOCUS_VISIBLE) set_state(e, AK_STATE_FOCUS_VISIBLE, false, 0);
 	}
 	ak_release(e);
 }
@@ -308,6 +323,22 @@ static void set_state(ak_view *e, uint8_t bit, bool on, uint16_t handler) {
 	}
 }
 
+void ak_ix_set_state(ak_view *e, uint8_t bit, bool on) {
+	if (!e->ix || !(e->ix->listens & bit)) {
+		// Nothing asked for it: a later ask starts from the focus (listen_state).
+		if (e->ix && ((e->ix->state & bit) != 0) != on) e->ix->state ^= bit;
+		return;
+	}
+	set_state(e, bit, on, 0);
+}
+
+bool ak_ix_styles_state(const ak_view *e, uint8_t bit) {
+	const ak_ix *ix = e->ix;
+	for (uint32_t i = 0; ix && i < ix->layers.len; i++)
+		if (ix->layers.data[i].state == bit) return true;
+	return false;
+}
+
 // ---- Layers, variants and states, to compiled code ----
 
 static void check_state(uint8_t state) {
@@ -325,7 +356,7 @@ static ak_layer *layer_of(ak_view *v, uint16_t layer) {
 }
 
 static uint16_t new_layer(ak_view *v, uint8_t tier, uint8_t state, bool block) {
-	if (tier > AK_LAYER_STATE) ak_panic("ui: no layer tier %u", tier);
+	if (tier > AK_LAYER_VARIANT) ak_panic("ui: no layer tier %u", tier);
 	if (v->frag) ak_panic("ui: a fragment takes no style");
 	if ((tier == AK_LAYER_STATE) != (state != 0)) ak_panic("ui: a state's layer, and only one, has a state");
 	if (state) {
@@ -339,6 +370,7 @@ static uint16_t new_layer(ak_view *v, uint8_t tier, uint8_t state, bool block) {
 		if (!v->real && (v->cls->flags & AK_ELF_FLATTEN)) ak_view_make_real(v);  // to report the state
 		listen_state(v, state);
 		hook(v);
+		if (state == AK_STATE_FOCUS_VISIBLE) ak_focus_ring_styled(v);  // the app draws its ring
 	}
 	return (uint16_t)(ix->layers.len - 1);
 }
@@ -450,6 +482,45 @@ void ak_ui_variant(ak_view *v, uint8_t state, uint16_t key, ak_val value) {
 void ak_ui_variant_bind(ak_view *v, uint8_t state, uint16_t key, ak_closure *thunk) {
 	check_style_key(key);
 	layer_binding(v, block_layer(v, state), key, thunk);
+}
+
+// ---- Declared variants ----
+
+static ak_vdecl *find_vdecl(ak_view *v, int64_t id) {
+	ak_ix *ix = v->ix;
+	for (uint32_t i = 0; ix && i < ix->vdecls.len; i++)
+		if (ix->vdecls.data[i].id == id) return &ix->vdecls.data[i];
+	return NULL;
+}
+
+void ak_ui_variant_declare(ak_view *v, int64_t id, ak_closure *cond) {
+	if (!cond) ak_panic("ui.variant_declare: variant %lld has no condition", (long long)id);
+	if (v->frag) ak_panic("ui: a fragment takes no style, nor variants");
+	ak_vdecl *d = find_vdecl(v, id);
+	if (d) {
+		// The same component's again (its view reused): the last wins.
+		ak_closure *old = d->cond;
+		d->cond = ak_retain(cond);
+		ak_release(old);
+		return;
+	}
+	ak_vec_push(&ak_ix_of(v)->vdecls, ((ak_vdecl){id, ak_retain(cond)}));
+}
+
+void ak_ui_layer_variant(ak_view *v, uint16_t layer, int64_t id) {
+	ak_vdecl *d = find_vdecl(v, id);
+	if (!d) ak_panic("ui: %s declares no variant %lld: its component declares it on the view it shows, before its caller's layers", v->el ? ak_el_names[v->el] : v->cls->name, (long long)id);
+	if (layer_of(v, layer)->tier != AK_LAYER_VARIANT) ak_panic("ui: a declared variant's layer is of the variant tier");
+	ak_ui_layer_when(v, layer, d->cond);
+}
+
+bool ak_ui_variant_read(ak_view *v, int64_t id) {
+	ak_vdecl *d = find_vdecl(v, id);
+	if (!d) return false;
+	ak_closure *cond = ak_retain(d->cond);
+	ak_val r = ak_call(cond, NULL, 0);
+	ak_release(cond);
+	return !ak_error_pending() && r.i != 0;
 }
 
 bool ak_ui_view_state(ak_view *v, uint8_t state) {
@@ -659,7 +730,7 @@ static void set_drop_types(ak_view *e, const ak_arr *a) {
 }
 
 void ak_ix_container_set(ak_view *e, uint16_t key, ak_val v, const ak_val *prev) {
-	AK_UNUSED(prev);
+	if (ak_focus_container_set(e, key, v, prev)) return;
 	if (key == ak_ext_key(e, AK_KEY_VIEW_DRAG_ITEMS)) set_drag_items(e, v.p);
 	else if (key == ak_ext_key(e, AK_KEY_VIEW_DROP_TYPES)) set_drop_types(e, v.p);
 	else if (key == ak_ext_key(e, AK_KEY_VIEW_SWIPE_ACTIONS) || key == ak_ext_key(e, AK_KEY_VIEW_LEADING_SWIPE_ACTIONS) || key == ak_ext_key(e, AK_KEY_VIEW_SELECTED))
@@ -832,6 +903,21 @@ bool ak_ix_event(ak_view *e, const ak_event *ev) {
 		return true;
 	}
 	case AK_EVENT_A11Y_ACTION: run_action(e, ev->i); return true;
+	case AK_EVENT_FOCUS_CHANGE: ak_focus_report(e, (int)ev->i); return true;
+	case AK_EVENT_KEY_TEXT: {
+		uint16_t h = ak_ext_ev(e, AK_EV_VIEW_KEY_TEXT);
+		if (!h || !ak_view_handler(e, h)) return true;
+		ak_str *s = ak_str_new(ev->s.p, ev->s.len);
+		ak_val arg = {.p = s};
+		ak_view_call(e, h, &arg, 1);
+		ak_release(s);
+		return true;
+	}
+	case AK_EVENT_PRESS_POINT: {
+		ak_val args[2] = {{.f = ev->x}, {.f = ev->y}};
+		ak_view_call(e, ak_ext_ev(e, AK_EV_VIEW_PRESS_START), args, 2);
+		return true;
+	}
 	case AK_EVENT_KEY: return ak_keys_event(e, ev->i);
 	case AK_EVENT_DRAG_OVER: {
 		if (!container_arr(e, AK_KEY_VIEW_DROP_TYPES)) return true;
