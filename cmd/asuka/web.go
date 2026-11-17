@@ -896,7 +896,7 @@ func buildWeb(app *asukaApp, o *buildOptions) error {
 		return err
 	}
 	fmt.Printf("asuka: %s (%s of WebAssembly, %s gzipped)\n", out, size(len(wasm)), size(gzipSize(wasm)))
-	fmt.Printf("asuka: a static site for %s: serve the folder there from any web server or CDN, index.html and manifest.webmanifest with no-cache, the rest for good (_headers says so for Cloudflare and Netlify), and index.html for the paths that have no file (a Router's routes: _redirects does it on Netlify; docs/web.md for others)\n", base)
+	fmt.Printf("asuka: a static site for %s: serve the folder there from any web server or CDN, index.html and manifest.webmanifest with no-cache, the rest for good (_headers says so for Cloudflare and Netlify), and index.html for the paths that have no file (a Router's routes: _redirects does it on Netlify; https://asuka.egoist.dev/docs/web for others)\n", base)
 	return nil
 }
 
