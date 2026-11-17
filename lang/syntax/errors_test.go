@@ -284,8 +284,10 @@ func check(t *testing.T, name string, src []byte) {
 	}
 }
 
+// FuzzParse checks what check does on any input; its seeds are every
+// .asuka file in the repository.
 func FuzzParse(f *testing.F) {
-	for _, name := range corpus(f) {
+	for _, name := range repoFiles(f) {
 		src, _ := os.ReadFile(name)
 		f.Add(src)
 	}

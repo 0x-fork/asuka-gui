@@ -65,8 +65,30 @@ func TestFormatGolden(t *testing.T) {
 // parses (the checker's error cases have syntax errors of their own):
 // formatting keeps its meaning and its comments, and is stable.
 func TestFormatRepo(t *testing.T) {
-	root := filepath.Join("..", "..")
 	n := 0
+	for _, path := range repoFiles(t) {
+		src, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := Format(path, src)
+		if err != nil {
+			continue
+		}
+		n++
+		if msg := roundTrip(path, src, out); msg != "" {
+			t.Error(msg)
+		}
+	}
+	if n == 0 {
+		t.Fatal("no .asuka files")
+	}
+}
+
+// repoFiles are the repository's .asuka files.
+func repoFiles(t testing.TB) []string {
+	root := filepath.Join("..", "..")
+	var files []string
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -77,29 +99,15 @@ func TestFormatRepo(t *testing.T) {
 			}
 			return nil
 		}
-		if !strings.HasSuffix(path, ".asuka") {
-			return nil
-		}
-		src, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		out, err := Format(path, src)
-		if err != nil {
-			return nil
-		}
-		n++
-		if msg := roundTrip(path, src, out); msg != "" {
-			t.Error(msg)
+		if strings.HasSuffix(path, ".asuka") {
+			files = append(files, path)
 		}
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n == 0 {
-		t.Fatal("no .asuka files")
-	}
+	return files
 }
 
 // roundTrip checks out, src formatted: it formats to itself again, has
