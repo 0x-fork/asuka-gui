@@ -82,6 +82,29 @@ test "a chain" {
   }
 }
 
+fn yes(n: int) -> bool {
+  print("yes {n}")
+  return true
+}
+
+fn no(n: int) -> bool {
+  print("no {n}")
+  return false
+}
+
+test "a folded side still short-circuits" {
+  // The whole is false, but yes(2) runs only when no(1) is true.
+  if no(1) && (yes(2) && @platform == .linux) {
+    print("never")
+  }
+  if yes(3) || (no(4) || @platform == .iOS) {
+    print("always")
+  }
+  if yes(5) && (no(6) && @platform == .linux) {
+    print("never")
+  }
+}
+
 // Output:
 // iOS
 // true
@@ -103,3 +126,9 @@ test "a chain" {
 // ok a match's arms
 // chain 4
 // ok a chain
+// no 1
+// yes 3
+// always
+// yes 5
+// no 6
+// ok a folded side still short-circuits

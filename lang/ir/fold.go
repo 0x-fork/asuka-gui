@@ -18,7 +18,16 @@ import (
 // what's still evaluated first, for what it does (f() in f() && false).
 type folded struct {
 	known, val bool
-	effects    []syntax.Expr
+	effects    []effect
+}
+
+// effect is an expression evaluated for what it does. With then, it's a
+// bool that short-circuits as the && or || it came from: then runs only
+// when x is when (f() && (g() && false): g() runs when f() is true).
+type effect struct {
+	x    syntax.Expr
+	when bool
+	then []effect
 }
 
 // platform is the case of the prelude's Platform @platform is.
@@ -86,14 +95,15 @@ func (l *Lowerer) fold(e syntax.Expr) folded {
 					return fx
 				}
 				if fy := l.fold(x.Y); fy.known {
-					fy.effects = append(append([]syntax.Expr{}, fx.effects...), fy.effects...)
+					fy.effects = append(append([]effect{}, fx.effects...), fy.effects...)
 					return fy
 				}
 				return folded{}
 			}
 			if fy := l.fold(x.Y); fy.known && fy.val == decides {
-				// f() && false: f() runs, and the whole is false.
-				return folded{known: true, val: decides, effects: append([]syntax.Expr{x.X}, fy.effects...)}
+				// f() && false: f() runs, and the whole is false; what
+				// the right side still runs, only when f() doesn't decide.
+				return folded{known: true, val: decides, effects: []effect{{x: x.X, when: !decides, then: fy.effects}}}
 			}
 		}
 	}
@@ -130,9 +140,23 @@ func (l *Lowerer) foldCond(c syntax.Expr) folded {
 }
 
 // effects evaluates what a folded condition still runs.
-func (b *fb) effects(f folded) {
-	for _, x := range f.effects {
-		b.value(x, -1)
+func (b *fb) effects(f folded) { b.runEffects(f.effects) }
+
+func (b *fb) runEffects(es []effect) {
+	for _, e := range es {
+		if len(e.then) == 0 {
+			b.value(e.x, -1)
+			continue
+		}
+		c := b.value(e.x, -1)
+		skip := b.f.NewLabel()
+		if e.when {
+			b.emitJump(op("JF"), c, skip)
+		} else {
+			b.emitJump(op("JT"), c, skip)
+		}
+		b.runEffects(e.then)
+		b.f.Place(skip)
 	}
 }
 
