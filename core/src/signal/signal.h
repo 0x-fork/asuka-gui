@@ -138,6 +138,10 @@ void ak_signal_set_after_flush(void (*fn)(void *ctx), void *ctx);
 // disposes what it owns (last made first), runs its cleanups (last
 // registered first) and unsubscribes its computations. Disposal is
 // explicit: nothing is ever disposed because nothing points to it.
+// What code still running under a disposed owner goes on to make is
+// disposed with it: its memos and effects never run, a cleanup it
+// registers runs at once, and the owner lets go of it all as the code
+// returns.
 //
 // Memory: an owner attached to a parent is held by the parent until
 // disposed; one with no parent (a root, or made with no current owner) by
@@ -177,8 +181,8 @@ void ak_with_owner_tracked(ak_owner *o, void (*fn)(void *ctx), void *ctx);
 ak_owner *ak_owner_enter(void);
 void ak_owner_leave(ak_owner *prev);
 // ak_on_cleanup registers fn to run when the current owner is disposed,
-// or before the current computation re-runs. With no owner it does
-// nothing.
+// or before the current computation re-runs; at once if it was disposed
+// already. With no owner it does nothing.
 void ak_on_cleanup(void (*fn)(void *ctx), void *ctx);
 
 // Contexts pass values down the owner tree, keyed by an address.

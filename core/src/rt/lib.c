@@ -336,7 +336,14 @@ static ak_val str_from_float_digits(ak_val *args, uint32_t n) {
 	if (d < 0) d = 0;
 	if (d > 20) d = 20;
 	int w = snprintf(buf, sizeof buf, "%.*f", (int)d, A(0).f);
-	RET_P(ak_str_new(buf, (size_t)w));
+	if (w < 0) RET_P(ak_str_empty());
+	if ((size_t)w < sizeof buf) RET_P(ak_str_new(buf, (size_t)w));
+	// A large number's digits (1e300's 301): written again, all of them.
+	char *big = ak_alloc((size_t)w + 1);
+	snprintf(big, (size_t)w + 1, "%.*f", (int)d, A(0).f);
+	ak_str *s = ak_str_new(big, (size_t)w);
+	ak_free(big);
+	RET_P(s);
 }
 
 // ---- Arrays ----
@@ -673,13 +680,19 @@ static ak_val arr_sort(ak_val *args, uint32_t n) {
 	RET_VOID;
 }
 
-// arr.range(from, to): [from, to)
+// arr.range(from, to): [from, to). One longer than an array holds (its
+// length is a u32) throws.
 static ak_val arr_range(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	int64_t from = A(0).i, to = A(1).i;
-	uint32_t len = to > from ? (uint32_t)(to - from) : 0;
+	uint64_t span = to > from ? (uint64_t)to - (uint64_t)from : 0;
+	if (span > UINT32_MAX) {
+		ak_throw_msg("a range of %llu numbers, more than an array holds", (unsigned long long)span);
+		return (ak_val){0};
+	}
+	uint32_t len = (uint32_t)span;
 	ak_arr *a = ak_arr_new(AK_K_INT, NULL, len);
-	for (uint32_t i = 0; i < len; i++) a->data[i].i = from + i;
+	for (uint32_t i = 0; i < len; i++) a->data[i].i = from + (int64_t)i;
 	a->len = len;
 	RET_P(a);
 }
@@ -823,7 +836,9 @@ static ak_val m_random_int(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	int64_t lo = A(0).i, hi = A(1).i;
 	if (hi <= lo) RET_I(lo);
-	RET_I(lo + (int64_t)(rng_next() % (uint64_t)(hi - lo)));
+	// The span and the sum in u64: hi - lo may be past int's range, the
+	// result never is.
+	RET_I((int64_t)((uint64_t)lo + rng_next() % ((uint64_t)hi - (uint64_t)lo)));
 }
 
 static ak_val m_seed(ak_val *args, uint32_t n) {
@@ -955,7 +970,10 @@ static ak_val group(ak_arr *fs, bool race) {
 	out->drop_ctx = group_drop;
 	out->cancel = group_cancel;
 	if (fs->len == 0) {
-		group_settle(c);
+		// all of none is no results; race of none has none to finish
+		// first, so it waits, as never() does, until it's cancelled.
+		if (race) out->cancel = NULL;
+		else group_settle(c);
 		return (ak_val){.p = out};
 	}
 	for (uint32_t i = 0; i < fs->len; i++) {

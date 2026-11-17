@@ -272,7 +272,10 @@ void ak_anim_frame(ak_id id, double seconds) {
 	ak_ui_root *r = ak_ui.root;
 	if (!r || !r->ext || !r->el || (id && r->el->id != id)) return;
 	ak_rext *x = r->ext;
-	ak_val t = {.i = (int64_t)(seconds * 1e9)};
+	// In nanoseconds: a host's time that isn't one (NaN) is 0, one beyond
+	// an int64's the largest (C leaves converting it undefined).
+	double ns = seconds * 1e9;
+	ak_val t = {.i = ns != ns ? 0 : ns >= 0x1p63 ? INT64_MAX : ns <= -0x1p63 ? INT64_MIN : (int64_t)ns};
 	uint32_t n = x->frames.len;
 	for (uint32_t i = 0; i < n && i < x->frames.len; i++) {
 		ak_frame_fn *fn = x->frames.data[i];

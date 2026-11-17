@@ -261,11 +261,64 @@ static bool run_query(asq_fn f, uint64_t conn, const ak_buf *in, ak_buf *tmp, ak
 	return ok;
 }
 
+// ---- Connections ----
+//
+// The program holds a connection as a number (DB's conn), never asq's
+// pointer: one it closed, closed twice or made up is no connection, and
+// a statement on it throws. A connection's statements run in order:
+// those sent off the main thread first, in the order sent; one run on
+// the main thread (execNow, migrateConn) waits for those sent before
+// it; and a close waits for them too: the connection closes on the
+// statements' thread after the last.
+
+typedef struct dbconn {
+	int64_t id;
+	uintptr_t asq;    // asq's connection
+	uint32_t queued;  // statements sent and not yet run (q_mu)
+	bool closing;     // closed with statements queued: the last closes it (q_mu)
+} dbconn;
+
+static AK_VEC(dbconn *) conns;  // the open ones; main thread only
+static int64_t last_conn;
+
+static ak_mutex q_mu = AK_MUTEX_INIT;
+static ak_cond q_cond;  // a statement queued
+static ak_cond q_idle;  // a connection's statements all run
+static bool q_inited, q_started;
+
+static void q_init(void) {
+	if (q_inited) return;
+	ak_cond_init(&q_cond);
+	ak_cond_init(&q_idle);
+	q_inited = true;
+}
+
+// conn_of is the open connection id names, or NULL with an error thrown.
+static dbconn *conn_of(int64_t id) {
+	for (uint32_t i = 0; i < conns.len; i++)
+		if (conns.data[i]->id == id) return conns.data[i];
+	ak_throw_msg("sqlite: the database is closed");
+	return NULL;
+}
+
+// conn_wait waits for the statements sent on c before (main thread).
+static void conn_wait(dbconn *c) {
+	ak_mutex_lock(&q_mu);
+	while (c->queued) ak_cond_wait(&q_idle, &q_mu);
+	ak_mutex_unlock(&q_mu);
+}
+
+static void conn_close(asq_fn f, dbconn *c) {
+	uint8_t out[64];
+	if (f) f(ASQ_CLOSE, c->asq, 0, NULL, 0, out, sizeof out);
+	ak_free(c);
+}
+
 // ---- The statements' thread ----
 
 typedef struct job {
 	bool query;
-	uint64_t conn;
+	dbconn *conn;  // until it has run
 	ak_buf in, out;
 	char msg[512];
 	bool ok;
@@ -274,10 +327,7 @@ typedef struct job {
 	struct job *next;
 } job;
 
-static ak_mutex q_mu = AK_MUTEX_INIT;
-static ak_cond q_cond;
 static job *q_head, *q_tail;
-static bool q_started;
 
 static void job_free(job *j) {
 	ak_buf_free(&j->in);
@@ -319,17 +369,23 @@ static void worker(void *arg) {
 		bool skip = j->cancelled;
 		j->running = !skip;
 		ak_mutex_unlock(&q_mu);
+		dbconn *c = j->conn;
 		if (skip) {
 			j->ok = false;
 			snprintf(j->msg, sizeof j->msg, "sqlite: cancelled");
 		} else if (j->query) {
-			j->ok = run_query(f, j->conn, &j->in, &tmp, &j->out, j->msg, sizeof j->msg);
+			j->ok = run_query(f, c->asq, &j->in, &tmp, &j->out, j->msg, sizeof j->msg);
 		} else {
-			j->ok = run_exec(f, j->conn, &j->in, &tmp, &j->out, j->msg, sizeof j->msg);
+			j->ok = run_exec(f, c->asq, &j->in, &tmp, &j->out, j->msg, sizeof j->msg);
 		}
 		ak_mutex_lock(&q_mu);
 		j->running = false;
+		j->conn = NULL;
+		bool last = --c->queued == 0;
+		bool close = last && c->closing;
+		if (last) ak_cond_broadcast(&q_idle);
 		ak_mutex_unlock(&q_mu);
+		if (close) conn_close(f, c);
 		if (tmp.cap > (1u << 22)) ak_buf_free(&tmp);
 		ak_post(deliver, j);
 	}
@@ -344,12 +400,12 @@ static void job_cancel(ak_future *fut) {
 	j->cancelled = true;
 	if (j->running) {
 		asq_fn f = lib(false);
-		if (f) f(ASQ_INTERRUPT, j->conn, 0, NULL, 0, NULL, 0);
+		if (f) f(ASQ_INTERRUPT, j->conn->asq, 0, NULL, 0, NULL, 0);
 	}
 	ak_mutex_unlock(&q_mu);
 }
 
-static ak_future *submit(bool query, uint64_t conn, ak_buf in) {
+static ak_future *submit(bool query, dbconn *conn, ak_buf in) {
 	ak_future *fut = ak_future_new(AK_K_REF);
 	job *j = ak_alloc(sizeof *j);
 	memset(j, 0, sizeof *j);
@@ -360,22 +416,22 @@ static ak_future *submit(bool query, uint64_t conn, ak_buf in) {
 	fut->ctx = j;
 	fut->cancel = job_cancel;
 	ak_mutex_lock(&q_mu);
-	if (!q_started) {
-		ak_cond_init(&q_cond);
-		q_started = ak_thread_start(worker, NULL);
-	}
+	q_init();
+	if (!q_started) q_started = ak_thread_start(worker, NULL);
 	if (!q_started) {
 		ak_mutex_unlock(&q_mu);
 		// No threads: run it here.
 		asq_fn f = lib(false);
 		ak_buf tmp = {0};
-		j->ok = query ? run_query(f, conn, &j->in, &tmp, &j->out, j->msg, sizeof j->msg) : run_exec(f, conn, &j->in, &tmp, &j->out, j->msg, sizeof j->msg);
+		j->ok = query ? run_query(f, conn->asq, &j->in, &tmp, &j->out, j->msg, sizeof j->msg) : run_exec(f, conn->asq, &j->in, &tmp, &j->out, j->msg, sizeof j->msg);
+		j->conn = NULL;
 		ak_buf_free(&tmp);
 		ak_sched_hold();
 		deliver(j);
 		return fut;
 	}
 	ak_sched_hold();  // until deliver runs
+	conn->queued++;
 	if (q_tail) q_tail->next = j;
 	else q_head = j;
 	q_tail = j;
@@ -399,25 +455,39 @@ static ak_val b_open(ak_val *a, uint32_t n) {
 	ak_buf in = {0}, out = {0};
 	ak_buf_u32(&in, (uint32_t)(n > 1 ? a[1].i : 5000));
 	ak_buf_str(&in, path->data, path->len);
-	int64_t conn = 0;
+	int64_t id = 0;
 	if (call(f, ASQ_OPEN, 0, 0, &in, &out) < 0) ak_throw_msg("sqlite: out of memory");
 	else {
 		answer an;
 		if (!parse(&out, &an)) ak_throw_msg("%s", an.msg);
-		else conn = (int64_t)ak_read_u64(&an.body);
+		else {
+			dbconn *c = ak_alloc(sizeof *c);
+			c->id = id = ++last_conn;
+			c->asq = (uintptr_t)ak_read_u64(&an.body);
+			ak_vec_push(&conns, c);
+		}
 	}
 	ak_buf_free(&in);
 	ak_buf_free(&out);
-	return (ak_val){.i = conn};
+	return (ak_val){.i = id};
 }
 
+// sqlite.closeConn: closing one that's closed (or no connection) does
+// nothing.
 static ak_val b_close(ak_val *a, uint32_t n) {
 	AK_UNUSED(n);
-	asq_fn f = lib(false);
-	if (f && a[0].i) {
-		uint8_t out[64];
-		f(ASQ_CLOSE, (uintptr_t)a[0].i, 0, NULL, 0, out, sizeof out);
+	dbconn *c = NULL;
+	for (uint32_t i = 0; i < conns.len && !c; i++) {
+		if (conns.data[i]->id != a[0].i) continue;
+		c = conns.data[i];
+		conns.data[i] = conns.data[--conns.len];
 	}
+	if (!c) return (ak_val){0};
+	ak_mutex_lock(&q_mu);
+	bool now = c->queued == 0;
+	c->closing = !now;
+	ak_mutex_unlock(&q_mu);
+	if (now) conn_close(lib(false), c);
 	return (ak_val){0};
 }
 
@@ -425,11 +495,14 @@ static ak_val b_exec(ak_val *a, uint32_t n) {
 	AK_UNUSED(n);
 	asq_fn f = lib(true);
 	if (!f) return (ak_val){0};
+	dbconn *c = conn_of(a[0].i);
+	if (!c) return (ak_val){0};
+	conn_wait(c);
 	ak_buf in = {0}, tmp = {0}, out = {0};
 	stmt_in(&in, 0, a[1].p, a[2].p);
 	char msg[512];
 	ak_arr *res = NULL;
-	if (run_exec(f, (uint64_t)a[0].i, &in, &tmp, &out, msg, sizeof msg)) {
+	if (run_exec(f, c->asq, &in, &tmp, &out, msg, sizeof msg)) {
 		ak_reader r = {.p = out.data, .len = out.len};
 		res = names_of(&r);
 	} else {
@@ -465,7 +538,10 @@ static ak_val b_migrate(ak_val *a, uint32_t n) {
 	AK_UNUSED(n);
 	asq_fn f = lib(true);
 	if (!f) return (ak_val){0};
-	uint64_t conn = (uint64_t)a[0].i;
+	dbconn *c = conn_of(a[0].i);
+	if (!c) return (ak_val){0};
+	conn_wait(c);
+	uint64_t conn = c->asq;
 	ak_arr *steps = a[1].p;
 	ak_buf in = {0}, tmp = {0}, out = {0}, names = {0};
 	uint32_t count = 0;
@@ -535,17 +611,21 @@ static ak_val b_migrate(ak_val *a, uint32_t n) {
 static ak_val b_run(ak_val *a, uint32_t n) {
 	AK_UNUSED(n);
 	if (!lib(true)) return (ak_val){0};
+	dbconn *c = conn_of(a[0].i);
+	if (!c) return (ak_val){0};
 	ak_buf in = {0};
 	stmt_in(&in, 0, a[1].p, a[2].p);
-	return (ak_val){.p = submit(false, (uint64_t)a[0].i, in)};
+	return (ak_val){.p = submit(false, c, in)};
 }
 
 static ak_val b_query(ak_val *a, uint32_t n) {
 	AK_UNUSED(n);
 	if (!lib(true)) return (ak_val){0};
+	dbconn *c = conn_of(a[0].i);
+	if (!c) return (ak_val){0};
 	ak_buf in = {0};
 	stmt_in(&in, ASQ_READS, a[1].p, a[2].p);
-	return (ak_val){.p = submit(true, (uint64_t)a[0].i, in)};
+	return (ak_val){.p = submit(true, c, in)};
 }
 
 #endif  // !__wasm__

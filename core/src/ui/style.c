@@ -169,7 +169,11 @@ static ak_lgrid_track *tracks(const ak_arr *a, ak_lgrid_track *dst, ak_ltrack_si
 		if (c == 7 || c == 8 || c == 9) {
 			const ak_arr *list = c == 7 ? t->f[1].p : t->f[0].p;
 			fill_size_list(list, sizes);
-			int32_t count = c == 7 ? (int32_t)t->f[0].i : c == 8 ? AK_LREPEAT_AUTO_FILL : AK_LREPEAT_AUTO_FIT;
+			// repeat's count, at least one and within int32 (layout makes
+			// no more tracks than a grid's lines): not its low 32 bits,
+			// and never a negative one, which is an auto-repeat's.
+			int64_t times = t->f[0].i;
+			int32_t count = c == 7 ? (times < 1 ? 1 : times > INT32_MAX ? INT32_MAX : (int32_t)times) : c == 8 ? AK_LREPEAT_AUTO_FILL : AK_LREPEAT_AUTO_FIT;
 			dst[(*n)++] = ak_lrepeat(count, start, (uint32_t)(*sizes - start));
 		} else {
 			*(*sizes)++ = track_size(t);

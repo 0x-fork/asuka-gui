@@ -92,7 +92,10 @@ static size_t answerOf(JNIEnv *e, jbyteArray a, uint8_t *out, size_t cap, uint8_
 	if ((*e)->ExceptionCheck(e) || a == NULL) {
 		(*e)->ExceptionDescribe(e);
 		(*e)->ExceptionClear(e);
-		static const char msg[] = "\x03\x13\x00\x00\x00asuka: Kotlin threw";
+		// Unsupported (3), then the message, u32-length: the escapes end
+		// where the text begins, or \x00a would read as one byte.
+		static const char msg[] = "\x03\x13\x00\x00\x00" "asuka: Kotlin threw";
+		_Static_assert(sizeof msg - 1 == 5 + 0x13, "the message's length is its prefix's");
 		size_t n = sizeof msg - 1;
 		if (n <= cap) {
 			memcpy(out, msg, n);

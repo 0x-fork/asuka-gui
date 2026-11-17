@@ -33,6 +33,7 @@
 #endif
 #include "std/std.h"
 
+#include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -41,7 +42,6 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #else
-#include <errno.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -390,7 +390,7 @@ static bool pax(const uint8_t *p, size_t n, ak_buf *path, ak_buf *link, int64_t 
 	size_t i = 0;
 	while (i < n) {
 		size_t len = 0, j = i;
-		while (j < n && p[j] >= '0' && p[j] <= '9') len = len * 10 + (size_t)(p[j++] - '0');
+		while (j < n && p[j] >= '0' && p[j] <= '9' && len <= n) len = len * 10 + (size_t)(p[j++] - '0');
 		if (j >= n || p[j] != ' ' || len <= j - i || i + len > n || p[i + len - 1] != '\n') return false;
 		const uint8_t *kv = p + j + 1, *end = p + i + len - 1;
 		const uint8_t *eq = memchr(kv, '=', (size_t)(end - kv));
@@ -408,8 +408,9 @@ static bool pax(const uint8_t *p, size_t n, ak_buf *path, ak_buf *link, int64_t 
 			memcpy(num, eq + 1, vn);
 			num[vn] = 0;
 			char *stop;
+			errno = 0;
 			long long v = strtoll(num, &stop, 10);
-			if (*stop || v < 0) return false;
+			if (*stop || v < 0 || errno == ERANGE) return false;
 			*size = v;
 		}
 		i += len;
@@ -513,6 +514,11 @@ static bool extract(const char *archive, const char *dir) {
 			continue;
 		}
 		if (ext_size >= 0) size = ext_size;
+		if (size > INT64_MAX - 511) {
+			// Padded to its 512 bytes, past int64: no archive holds it.
+			failf("the update's archive is damaged (a size)");
+			goto done;
+		}
 		if (have_name) {
 			name.len = 0;
 			ak_buf_put(&name, longname.data, longname.len);

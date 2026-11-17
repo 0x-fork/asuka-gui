@@ -83,7 +83,10 @@ static bool ended_inited;
 static sock_t sock = BAD_SOCK;
 static uint32_t gen;
 static char *hello_json;
-static ak_mutex send_mu = AK_MUTEX_INIT;  // writes to sock
+// Writes to sock, and closing it: a sender holds it from reading sock to
+// its last byte, so the socket it writes to is never closed (its number
+// reused by another file) under it. Taken before mu.
+static ak_mutex send_mu = AK_MUTEX_INIT;
 
 void ak_dev_set_reload(void (*reload)(const uint8_t *, size_t, bool)) { reload_fn = reload; }
 
@@ -122,20 +125,28 @@ static bool read_all(sock_t s, uint8_t *p, size_t n) {
 	return true;
 }
 
+// send_on writes a frame to s, send_mu held.
 static void send_on(sock_t s, uint8_t kind, const void *p, size_t len) {
 	uint8_t h[5] = {(uint8_t)(len + 1), (uint8_t)((len + 1) >> 8), (uint8_t)((len + 1) >> 16), (uint8_t)((len + 1) >> 24), kind};
-	ak_mutex_lock(&send_mu);
 	if (!write_all(s, h, 5) || !write_all(s, p, len)) {
 		// The CLI went away: its reader ends the session.
 	}
-	ak_mutex_unlock(&send_mu);
 }
 
+#if defined(AK_TEST)
+void (*ak_dev_test_sending)(int sock);
+#endif
+
 void ak_dev_send(uint8_t kind, const void *p, size_t len) {
+	ak_mutex_lock(&send_mu);
 	ak_mutex_lock(&mu);
 	sock_t s = sock;
 	ak_mutex_unlock(&mu);
+#if defined(AK_TEST)
+	if (ak_dev_test_sending && s != BAD_SOCK) ak_dev_test_sending((int)s);
+#endif
 	if (s != BAD_SOCK) send_on(s, kind, p, len);
+	ak_mutex_unlock(&send_mu);
 }
 
 typedef struct {
@@ -163,12 +174,18 @@ static void session(sock_t s) {
 	sock_t old = sock;
 	sock = s;
 	uint32_t mine = ++gen;
-	ak_mutex_unlock(&mu);
 	// The old one's reader ends, and closes it: shut down, not closed
 	// here, since closing a socket another thread reads from neither
-	// wakes it (Linux) nor keeps its number from being reused.
+	// wakes it (Linux) nor keeps its number from being reused. Under mu,
+	// with the generation that tells its reader it was replaced: the
+	// reader closes it only after reading that, so not before this.
 	if (old != BAD_SOCK) shutdown(old, SHUT_BOTH);
-	if (hello_json) send_on(s, AK_DEV_HELLO, hello_json, strlen(hello_json));
+	ak_mutex_unlock(&mu);
+	if (hello_json) {
+		ak_mutex_lock(&send_mu);
+		send_on(s, AK_DEV_HELLO, hello_json, strlen(hello_json));
+		ak_mutex_unlock(&send_mu);
+	}
 	for (;;) {
 		uint8_t h[5];
 		if (!read_all(s, h, 5)) break;
@@ -196,7 +213,9 @@ static void session(sock_t s) {
 		ak_cond_broadcast(&ended);
 	}
 	ak_mutex_unlock(&mu);
+	ak_mutex_lock(&send_mu);  // not under a sender
 	close_sock(s);
+	ak_mutex_unlock(&send_mu);
 	if (current) fprintf(stderr, "asuka: the dev connection closed; the app keeps running, and comes back when asuka dev does\n");
 }
 

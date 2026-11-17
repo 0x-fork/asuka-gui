@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-uint64_t ak_alloc_count;
+AK_TLS uint64_t ak_alloc_count;
 
 void *ak_alloc(size_t n) {
 	ak_alloc_count++;
@@ -35,10 +35,24 @@ void ak_panic(const char *fmt, ...) {
 	abort();
 }
 
+void *ak_vec_grow(void *data, uint32_t *cap, uint32_t len, uint64_t n, size_t elem) {
+	uint64_t need = (uint64_t)len + n;
+	if (need > UINT32_MAX) ak_panic("out of memory (a vector of %llu elements)", (unsigned long long)need);
+	uint64_t c = *cap ? (uint64_t)*cap * 2 : 8;
+	while (c < need) c *= 2;  // u64: no wrap, need <= 2^32
+	if (c > UINT32_MAX) c = UINT32_MAX;
+	if (c > SIZE_MAX / elem) ak_panic("out of memory (a vector of %llu elements)", (unsigned long long)c);
+	data = ak_realloc(data, (size_t)c * elem);
+	*cap = (uint32_t)c;
+	return data;
+}
+
 void ak_buf_reserve(ak_buf *b, size_t n) {
-	if (b->len + n <= b->cap) return;
-	size_t c = b->cap ? b->cap * 2 : 256;
-	while (c < b->len + n) c *= 2;
+	if (n <= b->cap - b->len) return;  // len <= cap: no wrap
+	if (n > SIZE_MAX - b->len) ak_panic("out of memory (a buffer of %zu + %zu bytes)", b->len, n);
+	size_t need = b->len + n;
+	size_t c = b->cap ? (b->cap > SIZE_MAX / 2 ? need : b->cap * 2) : 256;
+	while (c < need) c = c > SIZE_MAX / 2 ? need : c * 2;
 	b->data = ak_realloc(b->data, c);
 	b->cap = c;
 }

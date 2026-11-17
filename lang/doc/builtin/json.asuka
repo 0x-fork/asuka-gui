@@ -17,7 +17,8 @@
 // where it's called.
 
 /// The value of type T that text says. It throws when text isn't JSON or
-/// doesn't fit T (a value of the wrong type, a missing struct), its
+/// doesn't fit T (a value of the wrong type, a missing struct, a number
+/// past int's range), or nests arrays and objects more than 512 deep, its
 /// message saying what. T comes from what's expected of the call (let
 /// notes: [Note] = try json.decode(text)) or is given: json.decode<[Note]>(text).
 pub native fn decode<T>(text: string) throws -> T

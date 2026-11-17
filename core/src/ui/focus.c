@@ -82,7 +82,11 @@ void ak_focus_report(ak_view *e, int how) {
 	bool vis = how == 2 || e->el == AK_EL_TEXT_FIELD;
 	ak_view *old = focus_of(x);
 	if (old == e && x->focus_visible == vis) return;
+	// Both held to the end: an overlay the focus left is dismissed in
+	// between, and the app's dismissal may take either away with it (a
+	// pop, a sheet's close), there and then.
 	ak_retain(e);
+	if (old) ak_retain(old);
 	x->focus = e->id;
 	x->focus_visible = vis;
 	if (old && old != e) chain(old, false, false, e);
@@ -92,6 +96,7 @@ void ak_focus_report(ak_view *e, int how) {
 		if (old) call_change(old, false);
 		call_change(e, true);
 	}
+	if (old) ak_release(old);
 	ak_release(e);
 }
 

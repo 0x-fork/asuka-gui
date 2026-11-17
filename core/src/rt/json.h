@@ -32,7 +32,12 @@ typedef struct {
 
 // ak_json_decode parses text into a value of the descriptor's type. On
 // failure it throws an error saying where (line:column) and why, and
-// returns a zero value.
+// returns a zero value. Arrays and objects nested deeper than
+// AK_JSON_MAX_DEPTH are an error ("nested too deeply"): the parser
+// recurses, on whichever thread decodes (a spawn's worker's stack is
+// 512 KB), and 512 levels, PHP's json_decode's default, is far beyond
+// what real documents nest yet a small part of such a stack.
+#define AK_JSON_MAX_DEPTH 512
 ak_val ak_json_decode(const char *text, size_t len, const char *desc, const ak_json_types *t);
 // ak_json_encode writes v (of the descriptor's type) as JSON; indent > 0
 // pretty-prints with that many spaces.

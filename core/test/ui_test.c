@@ -5,6 +5,7 @@
 #include "t.h"
 #include "fake/uitest.h"
 #include "ui/ui_int.h"
+#include "fuzz.h"
 
 #include <stdio.h>
 
@@ -1848,6 +1849,125 @@ TEST(remeasures_once_the_root_has_a_size) {
 	CHECK_EQ_F(t->frame[2], 800);
 	CHECK_EQ_F(t->frame[3], 20);
 	done(a);
+}
+
+// ---- A Grid's repeat() counts, whatever the app passes ----
+
+static const uint8_t track_f[] = {AK_K_FLOAT}, track_rep[] = {AK_K_INT, AK_K_REF}, track_list[] = {AK_K_REF}, track_mm[] = {AK_K_REF, AK_K_REF};
+static const ak_case track_cases[] = {
+	{"auto", 0, NULL, NULL, NULL}, {"points", 1, track_f, NULL, NULL}, {"percent", 1, track_f, NULL, NULL}, {"fr", 1, track_f, NULL, NULL},
+	{"minContent", 0, NULL, NULL, NULL}, {"maxContent", 0, NULL, NULL, NULL}, {"minmax", 2, track_mm, NULL, NULL},
+	{"repeat", 2, track_rep, NULL, NULL}, {"autoFill", 1, track_list, NULL, NULL}, {"autoFit", 1, track_list, NULL, NULL},
+};
+static const ak_shape track_shape = {"Track", 0, NULL, NULL, NULL, 10, track_cases, false, NULL};
+static const uint8_t grid_kinds[] = {AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_BOOL, AK_K_BOOL};
+static const ak_shape grid_shape = {"Grid", 6, grid_kinds, NULL, NULL, 0, NULL, false, NULL};
+
+static int64_t repeat_count;
+
+// A Grid of repeat(repeat_count, [points(10)]) columns, two texts in it.
+static ak_val repeat_grid_app(ak_closure *c, ak_val *a, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
+	ak_enum *pt = ak_enum_new(&track_shape, 1);
+	pt->f[0].f = 10;
+	ak_arr *sizes = ak_arr_new(AK_K_REF, NULL, 1);
+	ak_arr_push(&sizes, (ak_val){.p = pt});
+	ak_enum *rep = ak_enum_new(&track_shape, 7);
+	rep->f[0].i = repeat_count;
+	rep->f[1].p = sizes;
+	ak_arr *cols = ak_arr_new(AK_K_REF, NULL, 1);
+	ak_arr_push(&cols, (ak_val){.p = rep});
+	ak_struct *g = ak_struct_new(&grid_shape);
+	g->f[0].p = cols;
+	g->f[1].p = ak_arr_new(AK_K_REF, NULL, 0);
+	g->f[2].p = ak_arr_new(AK_K_REF, NULL, 0);
+	g->f[3].p = ak_arr_new(AK_K_REF, NULL, 0);
+	ak_view *v = ak_ui_new(AK_EL_COLUMN);
+	set(v, AK_KEY_GRID, (ak_val){.p = g});
+	add(v, text("a"));
+	add(v, text("b"));
+	return (ak_val){.p = v};
+}
+
+// A count beyond 32 bits isn't cut to its low bits (2^32 + 1 was one
+// column), a negative one isn't auto-fill's: more than a grid's lines
+// are as many as it has, fewer than one are one.
+TEST(grid_repeat_counts) {
+	static const struct {
+		int64_t count;
+		float second_x;  // the second text's: beside the first, or below
+	} cases[] = {{(INT64_C(1) << 32) + 1, 10}, {-1, 0}, {0, 0}, {2, 10}, {INT64_MAX, 10}};
+	for (size_t i = 0; i < AK_LEN(cases); i++) {
+		repeat_count = cases[i].count;
+		ak_uitest *a = mount(repeat_grid_app, NULL);
+		ak_fake_view *b = one(a, AK_KIND_TEXT, "b");
+		REQUIRE(b);
+		if (b->frame[0] != cases[i].second_x) T_FAIL("repeat(%lld): x %g, want %g", (long long)cases[i].count, b->frame[0], cases[i].second_x);
+		done(a);
+	}
+}
+
+// The host.read* builtins: at any offset past the end, 0 (an offset near
+// the int's largest overflowed when the read's length was added).
+TEST(host_reads_past_the_end) {
+	ak_bytes *b = ak_bytes_new((const uint8_t *)"\x01\x02\x03\x04\x05\x06\x07\x08\x09", 9);
+	static const char *const readers[] = {"host.readU8", "host.readU32", "host.readU64", "host.readF64"};
+	const int64_t offsets[] = {INT64_MAX, INT64_MAX - 3, INT64_MAX - 7, 9, -1};
+	for (size_t i = 0; i < AK_LEN(readers); i++) {
+		ak_builtin_fn f = ak_builtin_find(readers[i]);
+		REQUIRE(f);
+		for (size_t k = 0; k < AK_LEN(offsets); k++) {
+			ak_val args[2] = {{.p = b}, {.i = offsets[k]}};
+			ak_val v = f(args, 2);
+			if (v.i != 0) T_FAIL("%s at %lld: %lld", readers[i], (long long)offsets[k], (long long)v.i);
+		}
+		ak_val args[2] = {{.p = b}, {.i = 1}};
+		CHECK(f(args, 2).i != 0);
+	}
+	ak_builtin_fn str = ak_builtin_find("host.readStr");
+	REQUIRE(str);
+	ak_val args[2] = {{.p = b}, {.i = INT64_MAX - 3}};
+	ak_str *s = str(args, 2).p;
+	CHECK_EQ_INT(s->len, 0);
+	ak_release(s);
+	ak_release(b);
+}
+
+// A frame's time from a host that isn't one, or is beyond an int64's
+// nanoseconds, is a time all the same.
+void ak_anim_frame(ak_id id, double seconds);
+
+TEST(frame_times_out_of_range) {
+	ak_uitest *a = mount(scroll_app, NULL);
+	double times[] = {NAN, INFINITY, -INFINITY, 1e300, -1e300, 1.5};
+	for (size_t i = 0; i < AK_LEN(times); i++) ak_anim_frame(0, times[i]);
+	done(a);
+}
+
+// ---- Events from a host that sends anything (fuzz.h) ----
+
+TEST(events_from_a_host_that_sends_anything) {
+	ak_invoke_fn apps[] = {show_app, switch_app, field_app, selection_app, toggle_app, controls_app, list_app, shown_list_app, scroll_app};
+	int per_app = fuzz_seed(0x2545f4914f6cdd1d, 3000);
+	for (size_t i = 0; i < AK_LEN(apps); i++) {
+		on_cell = ak_vm_cell_new((ak_val){.i = 1}, AK_K_BOOL, NULL).p;
+		ticks = cell_int(0);
+		which = cell_int(1);
+		field_text = cell_ref(ak_str_c("héllo 👋 world"));
+		submitted = cell_ref(ak_str_c(""));
+		sel_cell = cell_ref(range(0, 0).p);
+		toggled = ak_vm_cell_new((ak_val){.i = 0}, AK_K_BOOL, NULL).p;
+		seg_sel = cell_int(1);
+		picked = cell_int(-1);
+		slid = ak_vm_cell_new((ak_val){.f = 0.25}, AK_K_FLOAT, NULL).p;
+		items = cell_ref(todos(50));
+		list_shown = ak_vm_cell_new((ak_val){.i = 1}, AK_K_BOOL, NULL).p;
+		ak_uitest *a = mount(apps[i], NULL);
+		fuzz_events(a, per_app);
+		done(a);
+		void *cells[] = {on_cell, ticks, which, field_text, submitted, sel_cell, toggled, seg_sel, picked, slid, items, list_shown};
+		for (size_t k = 0; k < AK_LEN(cells); k++) ak_release(cells[k]);
+	}
 }
 
 T_MAIN()

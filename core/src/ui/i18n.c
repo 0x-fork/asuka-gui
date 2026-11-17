@@ -54,7 +54,8 @@ ak_operands ak_operands_dec(const char *s, size_t n) {
 	}
 	int exp = 0;
 	if (i < n && (s[i] == 'c' || s[i] == 'C' || s[i] == 'e' || s[i] == 'E')) {
-		for (i++; i < n && s[i] >= '0' && s[i] <= '9'; i++) exp = exp * 10 + (s[i] - '0');
+		for (i++; i < n && s[i] >= '0' && s[i] <= '9'; i++)
+			if (exp <= 100) exp = exp * 10 + (s[i] - '0');  // past 100 it's 100
 		if (exp > 100) exp = 100;
 	}
 	// The exponent moves the point to the right.
@@ -225,15 +226,19 @@ ak_catalog *ak_i18n_catalog(ak_bytes *blob) {
 	c->blob = ak_retain(blob);
 	ak_reader r = {blob->data, blob->len, 4, false};
 	c->source = ak_read_str(&r);
+	// Counts are checked against the bytes (a key takes 4 at least, a
+	// language more) before anything is allocated for them; one that's
+	// too big is a malformed catalog, and counts 0, so what's freed with
+	// it is what was allocated.
 	c->nkeys = ak_read_u32(&r);
-	if (c->nkeys > blob->len) r.err = true;
+	if (r.err || c->nkeys > (r.len - r.off) / 4) r.err = true, c->nkeys = 0;
 	c->keys = ak_alloc((c->nkeys ? c->nkeys : 1) * sizeof(ak_span));
 	for (uint32_t i = 0; i < c->nkeys && !r.err; i++) c->keys[i] = ak_read_str(&r);
 	c->nskels = ak_read_u32(&r);
-	if (c->nskels > blob->len) r.err = true;
+	if (r.err || c->nskels > blob->len) r.err = true, c->nskels = 0;
 	c->nlangs = ak_read_u32(&r);
-	if (c->nlangs > blob->len) r.err = true;
-	c->langs = ak_alloc((c->nlangs && !r.err ? c->nlangs : 1) * sizeof(cat_lang));
+	if (r.err || c->nlangs > (r.len - r.off) / 4) r.err = true, c->nlangs = 0;
+	c->langs = ak_alloc((c->nlangs ? c->nlangs : 1) * sizeof(cat_lang));
 	for (uint32_t i = 0; i < c->nlangs && !r.err; i++) {
 		cat_lang *l = &c->langs[i];
 		l->tag = ak_read_str(&r);
@@ -382,20 +387,30 @@ static const num_pattern latin_pct = {{"", 0}, {"%", 1}, {"-", 1}, {"%", 1}, 3, 
 
 // format_number writes the decimal number in for language l's patterns
 // and symbols (latin ones, English's, for none).
+// FRAC_MAX is the most fraction digits a number is written with, as
+// Intl.NumberFormat's maximumFractionDigits (ICU's) takes.
+#define FRAC_MAX 100
+// IN_MAX is the most digits of each part read of a number: a decimal's.
+#define IN_MAX (sizeof(((decimal *)0)->s))
+
 static void format_number(sbuf *out, const cat_lang *l, const char *in, num_opts o) {
 	const num_pattern *p = o.percent ? (l ? &l->pct : &latin_pct) : (l ? &l->dec : &latin_dec);
 	int min = o.min_frac < 0 ? 0 : o.min_frac, max = o.max_frac;
+	if (min > FRAC_MAX) min = FRAC_MAX;
+	if (max > FRAC_MAX) max = FRAC_MAX;
 	if (o.integer) min = max = 0;
 	else if (max <= 0 && min == 0) max = p->max_frac;
 	if (max < min) max = min;
 	// split: sign, integer digits (no leading zeros, "0" for none), fraction.
+	// The integer part grows by a percentage's two digits, a carry and
+	// the pattern's minimum integer digits (a u8); the fraction to min.
 	bool neg = in[0] == '-';
 	const char *s = in + (neg || in[0] == '+');
 	const char *dot = strchr(s, '.');
-	char ip[96], fp[96];
+	char ip[IN_MAX + 3 + UINT8_MAX + 1], fp[(IN_MAX > FRAC_MAX ? IN_MAX : FRAC_MAX) + 1];
 	size_t il = dot ? (size_t)(dot - s) : strlen(s), fl = dot ? strlen(dot + 1) : 0;
-	if (il > 80) il = 80;
-	if (fl > 80) fl = 80;
+	if (il > IN_MAX) il = IN_MAX;
+	if (fl > IN_MAX) fl = IN_MAX;
 	memcpy(ip, s, il), ip[il] = 0;
 	memcpy(fp, dot ? dot + 1 : "", fl), fp[fl] = 0;
 	size_t z = 0;
@@ -430,7 +445,7 @@ static void format_number(sbuf *out, const cat_lang *l, const char *in, num_opts
 		fl = (size_t)max;
 		fp[fl] = 0;
 		if (up) {
-			char all[192];
+			char all[sizeof ip + sizeof fp];
 			size_t n = il + fl;
 			memcpy(all, ip, il), memcpy(all + il, fp, fl), all[n] = 0;
 			long i = (long)n - 1;
@@ -879,13 +894,17 @@ static void put_value(fmt_ctx *f, arg_val a) {
 // minus is n less offset, with as many fraction digits as it has.
 static void minus(decimal *d, int64_t offset) {
 	if (!offset) return;
-	if (!strchr(d->s, '.')) {
-		long long v = strtoll(d->s, NULL, 10);
-		snprintf(d->s, sizeof d->s, "%lld", v - (long long)offset);
-		return;
-	}
 	const char *dot = strchr(d->s, '.');
-	int frac = (int)strlen(dot + 1);
+	if (!dot) {
+		// An integer's difference, unless it overflows: then the float's,
+		// as Go's.
+		long long v = strtoll(d->s, NULL, 10), diff;
+		if (!__builtin_sub_overflow(v, (long long)offset, &diff)) {
+			snprintf(d->s, sizeof d->s, "%lld", diff);
+			return;
+		}
+	}
+	int frac = dot ? (int)strlen(dot + 1) : 0;
 	double v = strtod(d->s, NULL) - (double)offset;
 	snprintf(d->s, sizeof d->s, "%.*f", frac, v);
 }

@@ -104,9 +104,11 @@ static int expand_count(const ak_lgrid_track *tpl, uint32_t ntpl, float inner, f
 			autot = t;
 			continue;
 		}
+		// No more tracks than a grid has lines, however many repeat()
+		// asks for (browsers clamp it too).
 		int c = l_imax(t->count, 1);
-		for (int k = 0; k < c; k++) {
-			for (uint32_t j = 0; j < t->nsizes; j++) {
+		for (int k = 0; k < c && n < MAX_LINES; k++) {
+			for (uint32_t j = 0; j < t->nsizes && n < MAX_LINES; j++) {
 				fixed += fixed_breadth(t->sizes[j], inner);
 				n++;
 			}
@@ -142,7 +144,8 @@ static int expand_count(const ak_lgrid_track *tpl, uint32_t ntpl, float inner, f
 		}
 	}
 	*reps = r;
-	return n + r * (int)autot->nsizes;
+	int64_t total = (int64_t)n + (int64_t)r * autot->nsizes;
+	return total < MAX_LINES ? (int)total : MAX_LINES;
 }
 
 static int clamp_line(int v) { return l_imin(l_imax(v, -MAX_LINES), MAX_LINES); }
@@ -449,16 +452,16 @@ static l_output grid(ak_lnode *n, const l_input *in, ak_lpass *p) {
 		track *ts = L_SCRATCH(p, track, counts[a]);
 		memset(ts, 0, sizeof(track) * (size_t)counts[a]);
 		int nts = counts[a];
-		// Explicit tracks.
-		int k = before;
-		for (uint32_t ti = 0; ti < ntemplates[a]; ti++) {
+		// Explicit tracks: as many as expand_count counted.
+		int k = before, end = before + explicit[a];
+		for (uint32_t ti = 0; ti < ntemplates[a] && k < end; ti++) {
 			const ak_lgrid_track *t = &templates[a][ti];
 			int c = t->count;
 			bool auto_fit = c == AK_LREPEAT_AUTO_FIT;
 			if (c < 0) c = reps[a];
 			c = l_imax(c, 1);
-			for (int rep = 0; rep < c; rep++) {
-				for (uint32_t j = 0; j < t->nsizes; j++) {
+			for (int rep = 0; rep < c && k < end; rep++) {
+				for (uint32_t j = 0; j < t->nsizes && k < end; j++) {
 					if (k < nts) {
 						ts[k].min_b = t->sizes[j].min;
 						ts[k].max_b = t->sizes[j].max;

@@ -1,5 +1,9 @@
 #include "t.h"
 #include "rt/rt.h"
+#include "rt/sched.h"
+
+#include <pthread.h>
+#include <stdatomic.h>
 
 static ak_str *S(const char *s) { return ak_str_c(s); }
 
@@ -189,6 +193,83 @@ TEST(closure) {
 	ak_val arg = {.i = 2};
 	CHECK_EQ_INT(ak_call(c, &arg, 1).i, 42);
 	ak_release(c);
+}
+
+// The constants made on first use (a payloadless case's shared value, the
+// empty string, true and false) are made once when threads (spawn's
+// workers) ask for them at the same time: each gets the one value, whole.
+enum { RACERS = 4 };
+static const ak_case race_cases[] = {{.name = "a"}, {.name = "b", .nfields = 1, .kinds = (const uint8_t[]){AK_K_INT}}};
+static ak_shape race_shape;
+static atomic_int race_ready, race_round;
+static ak_enum *race_got[RACERS];
+static ak_str *race_strs[RACERS][3];
+
+static void *racer(void *arg) {
+	int me = (int)(intptr_t)arg;
+	for (int round = 1; round <= 200; round++) {
+		while (atomic_load(&race_round) != round) {}
+		atomic_fetch_add(&race_ready, 1);
+		while (atomic_load(&race_ready) < RACERS) {}
+		race_got[me] = ak_enum_new(&race_shape, 0);
+		if (round == 1) {
+			race_strs[me][0] = ak_str_empty();
+			race_strs[me][1] = ak_str_from_bool(true);
+			race_strs[me][2] = ak_str_from_bool(false);
+		}
+		atomic_fetch_add(&race_ready, 1);
+	}
+	return NULL;
+}
+
+TEST(constants_made_once_across_threads) {
+	pthread_t th[RACERS];
+	for (int i = 0; i < RACERS; i++) REQUIRE(pthread_create(&th[i], NULL, racer, (void *)(intptr_t)i) == 0);
+	int same = 0;
+	for (int round = 1; round <= 200; round++) {
+		race_shape = (ak_shape){.name = "Race", .ncases = 2, .cases = race_cases};
+		atomic_store(&race_ready, 0);
+		atomic_store(&race_round, round);
+		while (atomic_load(&race_ready) < 2 * RACERS) {}
+		bool ok = true;
+		for (int i = 0; i < RACERS; i++) ok &= race_got[i] != NULL && race_got[i] == ((ak_enum **)race_shape.singletons)[0];
+		same += ok;
+		// As a module's unload: its singletons, immortal, then their table.
+		ak_free(((ak_enum **)race_shape.singletons)[0]);
+		ak_free(race_shape.singletons);
+	}
+	for (int i = 0; i < RACERS; i++) pthread_join(th[i], NULL);
+	CHECK_EQ_INT(same, 200);
+	for (int i = 0; i < RACERS; i++) {
+		CHECK(race_strs[i][0] == ak_str_empty());
+		CHECK(race_strs[i][1] != NULL && race_strs[i][1] == ak_str_from_bool(true));
+		CHECK(race_strs[i][2] != NULL && race_strs[i][2] == ak_str_from_bool(false));
+	}
+}
+
+// Posted callbacks run when one of them has the host run them again (a
+// modal dialog's loop, which handles the host's wake): each once, none
+// lost.
+static char ran_posted[16];
+static size_t nran_posted;
+
+static void note(void *ctx) { ran_posted[nran_posted++] = (char)(intptr_t)ctx; }
+
+static void nests(void *ctx) {
+	note(ctx);
+	ak_post(note, (void *)(intptr_t)'d');
+	ak_sched_run_posted();
+}
+
+TEST(run_posted_nested) {
+	ak_post(nests, (void *)(intptr_t)'a');
+	ak_post(note, (void *)(intptr_t)'b');
+	ak_post(note, (void *)(intptr_t)'c');
+	ak_sched_run_posted();
+	ak_sched_run_posted();
+	ran_posted[nran_posted] = 0;
+	CHECK_EQ_INT(nran_posted, 4);
+	CHECK(strchr(ran_posted, 'a') && strchr(ran_posted, 'b') && strchr(ran_posted, 'c') && strchr(ran_posted, 'd'));
 }
 
 T_MAIN()

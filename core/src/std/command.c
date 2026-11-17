@@ -530,6 +530,26 @@ typedef struct {
 	int64_t code;
 } job;
 
+#if !defined(_WIN32)
+// reap takes an exited child's status, on the main thread: the wait's
+// thread only waits for the exit (WNOWAIT), so that the pid stays the
+// child's, a zombie, until kill_proc can't send it a signal any more
+// (it runs here too, and stops once waited is set). Reaped on the
+// thread, the pid could be another process's by the time the app kills
+// it.
+static int64_t reap(int64_t pid) {
+	int st = 0;
+	pid_t r;
+	do {
+		r = waitpid((pid_t)pid, &st, WNOHANG);
+	} while (r < 0 && errno == EINTR);
+	if (r <= 0) return -1;
+	if (WIFEXITED(st)) return WEXITSTATUS(st);
+	if (WIFSIGNALED(st)) return 128 + WTERMSIG(st);
+	return -1;
+}
+#endif
+
 static void job_done(void *ctx) {
 	job *j = ctx;
 	ak_sched_unhold();
@@ -551,6 +571,9 @@ static void job_done(void *ctx) {
 		if (j->fut->state == AK_FUT_PENDING) ak_future_resolve(j->fut, (ak_val){.i = j->ok});
 		break;
 	case CJ_WAIT:
+#if !defined(_WIN32)
+		j->code = reap(j->pid);
+#endif
 		if (p) {
 			p->waiting = false;
 			p->waited = true;
@@ -636,15 +659,12 @@ static void run_job(void *ctx) {
 		GetExitCodeProcess(j->process, &code);
 		j->code = code;
 #else
-		int st = 0;
-		pid_t r;
+		// Its exit, not reaped: job_done reaps it (reap).
+		siginfo_t si;
+		int r;
 		do {
-			r = waitpid((pid_t)j->pid, &st, 0);
+			r = waitid(P_PID, (id_t)j->pid, &si, WEXITED | WNOWAIT);
 		} while (r < 0 && errno == EINTR);
-		if (r < 0) j->code = -1;
-		else if (WIFEXITED(st)) j->code = WEXITSTATUS(st);
-		else if (WIFSIGNALED(st)) j->code = 128 + WTERMSIG(st);
-		else j->code = -1;
 #endif
 		break;
 	}

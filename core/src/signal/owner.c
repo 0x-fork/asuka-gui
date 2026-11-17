@@ -35,6 +35,7 @@ void ak_sig_owner_attach(ak_owner *o, ak_owner *parent) {
 	if (!parent) return;
 	ak_owner_retain(parent);
 	o->catcher = parent->catcher;
+	o->doomed = parent->disposed || parent->doomed;
 	o->attached = true;
 	o->prev = parent->last;
 	if (parent->last) parent->last->next = o;
@@ -74,6 +75,13 @@ void ak_sig_owner_clean(ak_owner *o) {
 		cl.fn(cl.ctx);
 	}
 	g->active = prev_sub;
+}
+
+// ak_sig_owner_settle: code that ran under o returned. If o was disposed
+// meanwhile, what the code made under it after that (doomed) is disposed
+// now, and o lets go of it.
+void ak_sig_owner_settle(ak_owner *o) {
+	if (o->disposed && o->first) ak_sig_owner_clean(o);
 }
 
 static void owner_dispose(ak_owner *o) {
@@ -118,11 +126,14 @@ ak_owner *ak_root(void (*fn)(void *ctx, ak_owner *root), void *ctx) {
 	ak_comp *prev_sub = g->active;
 	g->owner = o;
 	g->active = NULL;
+	ak_owner_retain(o);  // fn may dispose it
 	ak_batch_begin();
 	fn(ctx, o);
 	ak_batch_end();
 	g->owner = prev_owner;
 	g->active = prev_sub;
+	ak_sig_owner_settle(o);
+	ak_owner_release(o);
 	return o;
 }
 
@@ -131,18 +142,28 @@ ak_owner *ak_current_owner(void) { return g->owner; }
 void ak_with_owner(ak_owner *o, void (*fn)(void *ctx), void *ctx) {
 	ak_owner *prev_owner = g->owner;
 	ak_comp *prev_sub = g->active;
+	if (o) ak_owner_retain(o);  // fn may dispose it
 	g->owner = o;
 	g->active = NULL;
 	fn(ctx);
 	g->owner = prev_owner;
 	g->active = prev_sub;
+	if (o) {
+		ak_sig_owner_settle(o);
+		ak_owner_release(o);
+	}
 }
 
 void ak_with_owner_tracked(ak_owner *o, void (*fn)(void *ctx), void *ctx) {
 	ak_owner *prev_owner = g->owner;
+	if (o) ak_owner_retain(o);
 	g->owner = o;
 	fn(ctx);
 	g->owner = prev_owner;
+	if (o) {
+		ak_sig_owner_settle(o);
+		ak_owner_release(o);
+	}
 }
 
 ak_owner *ak_owner_enter(void) {
@@ -154,7 +175,17 @@ ak_owner *ak_owner_enter(void) {
 void ak_owner_leave(ak_owner *prev) { g->owner = prev; }
 
 void ak_on_cleanup(void (*fn)(void *ctx), void *ctx) {
-	if (g->owner) ak_vec_push(&g->owner->cleanups, ((ak_cleanup){fn, ctx}));
+	ak_owner *o = g->owner;
+	if (!o) return;
+	if (o->disposed || o->doomed) {
+		// Disposed already: it runs now, as it would have then.
+		ak_comp *prev_sub = g->active;
+		g->active = NULL;
+		fn(ctx);
+		g->active = prev_sub;
+		return;
+	}
+	ak_vec_push(&o->cleanups, ((ak_cleanup){fn, ctx}));
 }
 
 // Contexts.
@@ -177,9 +208,12 @@ ak_owner *ak_provide(const void *key, void *value, void (*fn)(void *ctx), void *
 	ak_owner *o = ak_owner_new();
 	ak_owner_set_context(o, key, value);
 	ak_owner *prev_owner = g->owner;
+	ak_owner_retain(o);  // fn may dispose it
 	g->owner = o;
 	fn(ctx);
 	g->owner = prev_owner;
+	ak_sig_owner_settle(o);
+	ak_owner_release(o);
 	return o;
 }
 
@@ -223,6 +257,7 @@ ak_owner *ak_catch(void (*fn)(void *ctx), void *ctx, ak_error_fn on_error, void 
 	g->active = prev_sub;
 	g->frame = f.prev;
 	if (f.failed) ak_sig_handle_error(o, f.err);
+	ak_sig_owner_settle(o);
 	ak_owner_release(o);
 	return o;
 }

@@ -1246,4 +1246,135 @@ TEST(bench_unstable) {
 	CHECK(!bench_head.n.subs);
 }
 
+// ---- A memo disposed while it updates: by its own update (it disposes
+// its owner), or its update disposes the effect that reads it. The graph
+// keeps what it walks alive and doesn't follow links the disposal freed.
+// The test holds the memo, as the VM does what it still reads.
+
+static struct {
+	isig s1, s2;
+	imemo m;
+	ak_owner *reader;
+	int dispose;  // 1: the memo itself, 2: its reader
+	int runs;
+} mdo;
+
+static int mdo_memo(void *ctx) {
+	int v = get(&mdo.s1);
+	if (v == 1 && mdo.dispose == 1) ak_owner_dispose(ak_memo_owner(mdo.m.m));
+	if (v == 1 && mdo.dispose == 2) ak_owner_dispose(mdo.reader);
+	return v;
+}
+static void mdo_effect(void *ctx) {
+	mget(&mdo.m);
+	get(&mdo.s2);
+	mdo.runs++;
+}
+static void mdo_build(void *ctx, ak_owner *root) {
+	imemo_init(&mdo.m, mdo_memo, NULL);
+	ak_owner_retain(ak_memo_owner(mdo.m.m));
+	mdo.reader = ak_effect_owner(EFFECT(mdo_effect, NULL));
+}
+
+TEST(memo_disposes_itself_while_checked) {
+	memset(&mdo, 0, sizeof mdo);
+	mdo.dispose = 1;
+	ak_owner *r = ak_root(mdo_build, NULL);
+	CHECK_EQ_INT(mdo.runs, 1);
+	set(&mdo.s1, 1);  // the effect checks the memo, which disposes itself
+	CHECK_EQ_INT(mdo.m.v, 1);
+	CHECK(!mdo.s1.n.subs);
+	set(&mdo.s2, 1);  // the effect still runs on what it reads
+	CHECK(mdo.runs >= 2);
+	int runs = mdo.runs;
+	ak_owner_dispose(r);
+	set(&mdo.s2, 2);
+	CHECK_EQ_INT(mdo.runs, runs);
+	CHECK(!mdo.s1.n.subs && !mdo.s2.n.subs);
+	ak_owner_release(ak_memo_owner(mdo.m.m));
+}
+
+TEST(memo_disposes_its_reader_while_checked) {
+	memset(&mdo, 0, sizeof mdo);
+	mdo.dispose = 2;
+	ak_owner *r = ak_root(mdo_build, NULL);
+	CHECK_EQ_INT(mdo.runs, 1);
+	set(&mdo.s1, 1);  // the effect checks the memo, which disposes the effect
+	CHECK_EQ_INT(mdo.runs, 1);
+	set(&mdo.s2, 1);
+	CHECK_EQ_INT(mdo.runs, 1);
+	CHECK(!mdo.s2.n.subs);
+	ak_owner_dispose(r);
+	CHECK(!mdo.s1.n.subs);
+	ak_owner_release(ak_memo_owner(mdo.m.m));
+}
+
+// Read untracked, the memo that disposes itself as it updates: nothing
+// else holds it, so the read does until it's done.
+static void mdo_build_alone(void *ctx, ak_owner *root) { imemo_init(&mdo.m, mdo_memo, NULL); }
+
+TEST(memo_disposes_itself_while_read) {
+	memset(&mdo, 0, sizeof mdo);
+	mdo.dispose = 1;
+	mdo.s1.v = 1;
+	ak_owner *r = ak_root(mdo_build_alone, NULL);
+	CHECK_EQ_INT(mget(&mdo.m), 1);
+	CHECK_EQ_INT(mdo.m.runs, 1);
+	CHECK(!mdo.s1.n.subs);
+	ak_owner_dispose(r);
+}
+
+// ---- Made under a disposed owner: an effect that disposes its own root
+// (and so itself) and goes on to register a cleanup and make effects, a
+// memo and an owner. The cleanup runs at once; what it made never runs
+// and is let go of as the effect returns, the effect then freed.
+
+static struct {
+	isig a, b;
+	ak_owner *root;
+	imemo m;
+	int cleanups, child_runs, dropped, made;
+} mud;
+
+static void mud_drop(void *ctx) { mud.dropped++; }
+static const ak_comp_info mud_info = {.drop = mud_drop};
+static void mud_cleanup(void *ctx) { mud.cleanups++; }
+static void mud_child(void *ctx) {
+	get(&mud.b);
+	mud.child_runs++;
+}
+static int mud_memo(void *ctx) { return get(&mud.b); }
+static void mud_under(void *ctx) { ak_effect_new(mud_child, NULL, AK_EFFECT_USER, &mud_info); }
+static void mud_effect(void *ctx) {
+	if (get(&mud.a) != 1) return;
+	ak_owner_dispose(mud.root);
+	ak_on_cleanup(mud_cleanup, NULL);
+	CHECK_EQ_INT(mud.cleanups, 1);
+	ak_effect_new(mud_child, NULL, AK_EFFECT_USER, &mud_info);
+	ak_effect_new(mud_child, NULL, AK_EFFECT_RENDER, &mud_info);
+	imemo_init(&mud.m, mud_memo, NULL);
+	mget(&mud.m);  // disposed as it's made: never computes
+	ak_with_owner(ak_owner_new(), mud_under, NULL);
+	mud.made++;
+}
+static void mud_build(void *ctx, ak_owner *root) {
+	mud.root = root;
+	ak_effect_new(mud_effect, NULL, AK_EFFECT_USER, &mud_info);
+}
+
+TEST(made_under_a_disposed_owner) {
+	memset(&mud, 0, sizeof mud);
+	ak_root(mud_build, NULL);
+	set(&mud.a, 1);
+	CHECK_EQ_INT(mud.made, 1);
+	CHECK_EQ_INT(mud.cleanups, 1);
+	CHECK_EQ_INT(mud.m.runs, 0);
+	CHECK_EQ_INT(mud.child_runs, 0);
+	set(&mud.b, 1);
+	set(&mud.b, 2);
+	CHECK_EQ_INT(mud.child_runs, 0);
+	CHECK(!mud.a.n.subs && !mud.b.n.subs);
+	CHECK_EQ_INT(mud.dropped, 4);  // the effect and the three it made: none kept
+}
+
 T_MAIN()

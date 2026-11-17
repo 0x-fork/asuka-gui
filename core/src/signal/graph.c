@@ -119,21 +119,35 @@ void ak_sig_shallow_propagate(ak_link *l) {
 
 // ak_sig_check_dirty reports whether a pending computation really must
 // recompute: whether a memo it depends on changed value. It brings those
-// memos up to date on the way.
+// memos up to date on the way. c is kept alive by the caller.
+//
+// A memo's update is code that may dispose things: the memo itself, c,
+// or what holds c (another of c's memos letting go of its sources). Each
+// memo is held across its update, and the walk goes on from l only if l
+// still links c to it; else it starts again from c's deps (those it
+// brought up to date are no longer dirty), or stops if c was disposed.
 bool ak_sig_check_dirty(ak_comp *c) {
-	for (ak_link *l = c->deps; l; l = l->next_dep) {
+	for (ak_link *l = c->deps; l;) {
 		ak_node *dep = l->dep;
 		uint32_t f = dep->flags;
-		if (!(f & AK_F_MEMO) || (f & AK_F_DISPOSED)) continue;
-		ak_comp *m = (ak_comp *)dep;
-		if ((f & AK_F_DIRTY) || ((f & AK_F_PENDING) && ak_sig_check_dirty(m))) {
-			if (ak_sig_memo_update(m)) {
-				if (m->node.subs) ak_sig_shallow_propagate(m->node.subs);
-				if (c->node.flags & AK_F_DIRTY) return true;
-			}
-		} else if (f & AK_F_PENDING) {
-			dep->flags &= ~(uint32_t)AK_F_PENDING;
+		if (!(f & AK_F_MEMO) || (f & AK_F_DISPOSED) || !(f & (AK_F_DIRTY | AK_F_PENDING))) {
+			l = l->next_dep;
+			continue;
 		}
+		ak_comp *m = (ak_comp *)dep;
+		ak_owner_retain(&m->owner);
+		if ((f & AK_F_DIRTY) || ak_sig_check_dirty(m)) {
+			if (ak_sig_memo_update(m) && m->node.subs) ak_sig_shallow_propagate(m->node.subs);
+		} else {
+			m->node.flags &= ~(uint32_t)AK_F_PENDING;
+		}
+		// Links are pooled, never freed: one unlinked reads as another's
+		// (or none's), never as c's to m but in c's own run.
+		bool kept = l->dep == dep && l->sub == c;
+		ak_owner_release(&m->owner);
+		if (c->node.flags & AK_F_DISPOSED) return false;
+		if (c->node.flags & AK_F_DIRTY) return true;
+		l = kept ? l->next_dep : c->deps;
 	}
 	return (c->node.flags & AK_F_DIRTY) != 0;
 }

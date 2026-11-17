@@ -1062,4 +1062,31 @@ TEST(css_fixtures) {
 	free(data);
 }
 
+// A repeat() of more tracks than a grid has lines makes as many as it
+// has (browsers' limit), however many it asks for, at once.
+TEST(grid_repeat_beyond_its_lines) {
+	static const ak_ltrack_size px10 = {{AK_LBREADTH_POINT, 10}, {AK_LBREADTH_POINT, 10}};
+	static const ak_ltrack_size three[3] = {px10, px10, px10};
+	const ak_lgrid_track tpls[2][2] = {
+		{{800000000, three, 3}},
+		{{INT32_MAX, three, 3}, {INT32_MAX, three, 3}},
+	};
+	const uint32_t ntpls[2] = {1, 2};
+	for (int i = 0; i < 2; i++) {
+		ak_lnode *grid = ak_lnode_new();
+		ak_lnode_style(grid)->display = AK_LDISPLAY_GRID;
+		ak_lnode_style(grid)->grid_template_columns = tpls[i];
+		ak_lnode_style(grid)->ngrid_template_columns = ntpls[i];
+		ak_lnode *last = sized(5, 5);
+		ak_lnode_style(last)->grid_column = (ak_lplacement){ak_lline(-2), ak_lline(-1)};
+		ak_lnode_append_child(grid, last);
+		ak_lnode *root = col(grid);
+		ak_lpass p = {0};
+		screen(root, 320, 480, &p);
+		CHECK_EQ_F(ak_lnode_frame(last).x, 99990);  // the 10000th track's
+		ak_lnode_free_tree(root);
+		ak_lpass_free(&p);
+	}
+}
+
 T_MAIN()

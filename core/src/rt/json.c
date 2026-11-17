@@ -1,5 +1,6 @@
 #include "rt/json.h"
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -29,6 +30,7 @@ static size_t name_len(const char *p) {
 typedef struct {
 	const char *s, *end;
 	const ak_json_types *t;
+	int depth;  // arrays and objects open, up to AK_JSON_MAX_DEPTH
 	bool failed;
 	char msg[200];
 } parser;
@@ -155,10 +157,18 @@ static ak_str *str(parser *ps) {
 		case 't': ak_strb_cstr(&b, "\t", 1); break;
 		case 'u': {
 			uint32_t u = hex4(ps);
-			if (u >= 0xd800 && u < 0xdc00 && ps->end - ps->s >= 6 && ps->s[0] == '\\' && ps->s[1] == 'u') {
-				ps->s += 2;
-				uint32_t lo = hex4(ps);
-				if (lo >= 0xdc00 && lo < 0xe000) u = 0x10000 + ((u - 0xd800) << 10) + (lo - 0xdc00);
+			if (u >= 0xd800 && u < 0xe000) {
+				// A surrogate: a high one and the low one escaped after
+				// it are one character; one without its pair is U+FFFD,
+				// as JavaScript's TextDecoder and Go read it (UTF-8
+				// can't hold it), and the escape after it is its own.
+				uint32_t lo = 0;
+				if (u < 0xdc00 && ps->end - ps->s >= 6 && ps->s[0] == '\\' && ps->s[1] == 'u') {
+					ps->s += 2;
+					lo = hex4(ps);
+					if (!ps->failed && (lo < 0xdc00 || lo >= 0xe000)) ps->s -= 6;  // not its pair: read again
+				}
+				u = lo >= 0xdc00 && lo < 0xe000 ? 0x10000 + ((u - 0xd800) << 10) + (lo - 0xdc00) : 0xfffd;
 			}
 			put_utf8(&b, u);
 			break;
@@ -169,10 +179,27 @@ static ak_str *str(parser *ps) {
 	}
 	if (ps->s >= ps->end) fail(ps, "a string that doesn't end%s", "");
 	else ps->s++;
+	if (ps->failed) {
+		ak_buf_free(&b.b);
+		return NULL;
+	}
 	return ak_strb_finish(&b);
 }
 
+// enter opens an array or an object, one level deeper; false, failing,
+// past AK_JSON_MAX_DEPTH (the parser recurses: a stack's worth of
+// nesting would overflow it).
+static bool enter(parser *ps) {
+	if (ps->depth >= AK_JSON_MAX_DEPTH) {
+		fail(ps, "nested too deeply%s", "");
+		return false;
+	}
+	ps->depth++;
+	return true;
+}
+
 static bool skip_value(parser *ps);
+static bool skip_nested(parser *ps, char c);
 
 static bool skip_value(parser *ps) {
 	ws(ps);
@@ -187,38 +214,14 @@ static bool skip_value(parser *ps) {
 		return !ps->failed;
 	}
 	if (c == '{' || c == '[') {
-		char close = c == '{' ? '}' : ']';
-		ps->s++;
-		ws(ps);
-		if (ps->s < ps->end && *ps->s == close) {
-			ps->s++;
-			return true;
-		}
-		for (;;) {
-			if (c == '{') {
-				ws(ps);
-				ak_str *k = str(ps);
-				ak_release(k);
-				ws(ps);
-				if (!lit(ps, ":")) {
-					fail(ps, "expected ':'%s", "");
-					return false;
-				}
-			}
-			if (!skip_value(ps)) return false;
-			ws(ps);
-			if (lit(ps, ",")) continue;
-			if (ps->s < ps->end && *ps->s == close) {
-				ps->s++;
-				return true;
-			}
-			fail(ps, "expected ',' or a closing bracket%s", "");
-			return false;
-		}
+		if (!enter(ps)) return false;
+		bool ok = skip_nested(ps, c);
+		ps->depth--;
+		return ok;
 	}
 	if (lit(ps, "true") || lit(ps, "false") || lit(ps, "null")) return true;
 	const char *st = ps->s;
-	while (ps->s < ps->end && strchr("+-0123456789.eE", *ps->s)) ps->s++;
+	while (ps->s < ps->end && *ps->s && strchr("+-0123456789.eE", *ps->s)) ps->s++;
 	if (ps->s == st) {
 		fail(ps, "unexpected '%.1s'", st);
 		return false;
@@ -226,8 +229,42 @@ static bool skip_value(parser *ps) {
 	return true;
 }
 
+// skip_nested skips an array's or an object's items, at its bracket c.
+static bool skip_nested(parser *ps, char c) {
+	char close = c == '{' ? '}' : ']';
+	ps->s++;
+	ws(ps);
+	if (ps->s < ps->end && *ps->s == close) {
+		ps->s++;
+		return true;
+	}
+	for (;;) {
+		if (c == '{') {
+			ws(ps);
+			ak_str *k = str(ps);
+			ak_release(k);
+			ws(ps);
+			if (!lit(ps, ":")) {
+				fail(ps, "expected ':'%s", "");
+				return false;
+			}
+		}
+		if (!skip_value(ps)) return false;
+		ws(ps);
+		if (lit(ps, ",")) continue;
+		if (ps->s < ps->end && *ps->s == close) {
+			ps->s++;
+			return true;
+		}
+		fail(ps, "expected ',' or a closing bracket%s", "");
+		return false;
+	}
+}
+
 static ak_val value(parser *ps, const char *d);
 
+// number reads a number, whole; with iv (an int's), an integral one is
+// read as an integer too, which must be in int's range.
 static bool number(parser *ps, double *out, bool *integral, int64_t *iv) {
 	ws(ps);
 	const char *st = ps->s;
@@ -237,14 +274,39 @@ static bool number(parser *ps, double *out, bool *integral, int64_t *iv) {
 		fail(ps, "expected a number%s", "");
 		return false;
 	}
-	char buf[64];
+	// The whole number, NUL-terminated for strtod: on the stack, or (one
+	// longer than any a program writes) on the heap.
+	char small[64];
 	size_t n = (size_t)(ps->s - st);
-	if (n >= sizeof buf) n = sizeof buf - 1;
+	char *buf = n < sizeof small ? small : ak_alloc(n + 1);
 	memcpy(buf, st, n);
 	buf[n] = 0;
 	*integral = !strpbrk(buf, ".eE");
-	if (*integral) *iv = strtoll(buf, NULL, 10);
-	*out = strtod(buf, NULL);
+	char *e;
+	bool ok = true;
+	if (*integral && iv) {
+		errno = 0;
+		*iv = strtoll(buf, &e, 10);
+		if (e != buf + n) ok = false, fail(ps, "a bad number%s", "");
+		else if (errno == ERANGE) ok = false, fail(ps, "an integer out of range%s", "");
+	}
+	*out = strtod(buf, &e);
+	if (ok && e != buf + n) ok = false, fail(ps, "a bad number%s", "");
+	else if (ok && isinf(*out)) ok = false, fail(ps, "a number out of range%s", "");
+	if (buf != small) ak_free(buf);
+	return ok;
+}
+
+// zero_field starts a field the JSON leaves out, of descriptor fd: none,
+// a scalar's zero, an empty string or collection; false for one it can't
+// leave out (a struct, an enum, bytes).
+static bool zero_field(const char *fd, ak_val *out) {
+	if (fd[0] == '?' || desc_kind(fd) != AK_K_REF) return true;  // none, or a zero scalar
+	if (fd[0] == 's') out->p = ak_str_empty();
+	else if (fd[0] == '[') out->p = ak_arr_new(desc_kind(fd + 1), NULL, 0);
+	else if (fd[0] == '{') out->p = ak_map_new(AK_K_REF, true, desc_kind(fd + 1), NULL);
+	else if (fd[0] == '<') out->p = ak_set_new(desc_kind(fd + 1), fd[1] == 's');
+	else return false;
 	return true;
 }
 
@@ -300,14 +362,7 @@ check:
 	for (uint16_t i = 0; i < s->nfields; i++) {
 		if (set[i]) continue;
 		extern const char *ak_json_field_desc(const ak_shape *s, int i);
-		const char *fd = ak_json_field_desc(s, i);
-		if (fd[0] == '?' || desc_kind(fd) != AK_K_REF) continue;  // none, or a zero scalar
-		// A string or a collection starts empty; a struct is required.
-		if (fd[0] == 's') o->f[i].p = ak_str_empty();
-		else if (fd[0] == '[') o->f[i].p = ak_arr_new(desc_kind(fd + 1), NULL, 0);
-		else if (fd[0] == '{') o->f[i].p = ak_map_new(AK_K_REF, true, desc_kind(fd + 1), NULL);
-		else if (fd[0] == '<') o->f[i].p = ak_set_new(desc_kind(fd + 1), fd[1] == 's');
-		else {
+		if (!zero_field(ak_json_field_desc(s, i), &o->f[i])) {
 			fail(ps, "a missing field %s", s->names[i]);
 			goto done;
 		}
@@ -321,12 +376,24 @@ done:
 	return (ak_val){.p = o};
 }
 
+static ak_val value_of(parser *ps, const char *d);
+
+// value reads a value of descriptor d's type; an array or an object is a
+// level deeper (an option's value, read by its own call, is at its own).
 static ak_val value(parser *ps, const char *d) {
 	ws(ps);
 	if (ps->s >= ps->end) {
 		fail(ps, "expected a value%s", "");
 		return (ak_val){0};
 	}
+	if (*d == '?' || (*ps->s != '[' && *ps->s != '{')) return value_of(ps, d);
+	if (!enter(ps)) return (ak_val){0};
+	ak_val v = value_of(ps, d);
+	ps->depth--;
+	return v;
+}
+
+static ak_val value_of(parser *ps, const char *d) {
 	switch (*d) {
 	case '?':
 		if (lit(ps, "null")) return (ak_val){0};
@@ -342,16 +409,17 @@ static ak_val value(parser *ps, const char *d) {
 		int64_t iv = 0;
 		if (!number(ps, &f, &integral, &iv)) return (ak_val){0};
 		if (!integral) {
+			// 2^63 is a double; int's range is [-2^63, 2^63).
 			if (f != floor(f)) fail(ps, "expected an integer%s", "");
-			iv = (int64_t)f;
+			else if (!(f >= -0x1p63 && f < 0x1p63)) fail(ps, "an integer out of range%s", "");
+			else iv = (int64_t)f;
 		}
 		return (ak_val){.i = iv};
 	}
 	case 'f': {
 		double f;
 		bool integral;
-		int64_t iv;
-		if (!number(ps, &f, &integral, &iv)) return (ak_val){0};
+		if (!number(ps, &f, &integral, NULL)) return (ak_val){0};
 		return (ak_val){.f = f};
 	}
 	case 'b':
@@ -525,6 +593,7 @@ static ak_val value(parser *ps, const char *d) {
 		}
 		if (ps->s < ps->end && *ps->s == '"') {
 			ak_str *cn = str(ps);
+			if (!cn) return (ak_val){0};
 			for (uint16_t c = 0; c < s->ncases; c++) {
 				if (strcmp(s->cases[c].name, cn->data) == 0 && s->cases[c].nfields == 0) {
 					ak_release(cn);
@@ -560,11 +629,22 @@ static ak_val value(parser *ps, const char *d) {
 		ak_enum *e = ak_enum_new(s, (uint16_t)ci);
 		extern const char *ak_json_case_desc(const ak_shape *s, int c, int i);
 		ws(ps);
+		// Its payload: an array of its fields, an object of them (as a
+		// struct's), or its one field's value. The bracket is a level
+		// deeper, as value's are.
+		bool nested = ps->s < ps->end && (*ps->s == '[' || *ps->s == '{');
+		if (nested && !enter(ps)) {
+			if (cs->nfields) ak_release(e);
+			return (ak_val){0};
+		}
 		if (lit(ps, "[")) {
 			for (uint16_t i = 0; i < cs->nfields; i++) {
 				if (i) {
 					ws(ps);
-					if (!lit(ps, ",")) fail(ps, "expected ','%s", "");
+					if (!lit(ps, ",")) {
+						fail(ps, "expected ','%s", "");
+						break;
+					}
 				}
 				e->f[i] = value(ps, ak_json_case_desc(s, ci, i));
 				if (ps->failed) break;
@@ -572,31 +652,48 @@ static ak_val value(parser *ps, const char *d) {
 			ws(ps);
 			if (!ps->failed && !lit(ps, "]")) fail(ps, "expected ']'%s", "");
 		} else if (lit(ps, "{")) {
-			for (;;) {
-				ws(ps);
-				if (lit(ps, "}")) break;
-				ak_str *k = str(ps);
-				ws(ps);
-				if (ps->failed || !lit(ps, ":")) {
+			bool *set = cs->nfields ? ak_alloc(cs->nfields) : NULL;
+			ws(ps);
+			if (!lit(ps, "}")) {
+				for (;;) {
+					ws(ps);
+					ak_str *k = str(ps);
+					if (!k) break;
+					ws(ps);
+					if (!lit(ps, ":")) {
+						ak_release(k);
+						fail(ps, "expected ':'%s", "");
+						break;
+					}
+					int fi = -1;
+					for (uint16_t i = 0; i < cs->nfields; i++)
+						if (cs->names && cs->names[i] && strcmp(cs->names[i], k->data) == 0) fi = i;
 					ak_release(k);
-					fail(ps, "expected ':'%s", "");
+					if (fi < 0) {
+						if (!skip_value(ps)) break;  // a field it doesn't have
+					} else {
+						ak_val v = value(ps, ak_json_case_desc(s, ci, fi));
+						if (ps->failed) break;
+						ak_release_val(e->f[fi], (ak_kind)cs->kinds[fi]);  // written twice: the last
+						e->f[fi] = v;
+						set[fi] = true;
+					}
+					ws(ps);
+					if (lit(ps, ",")) continue;
+					if (lit(ps, "}")) break;
+					fail(ps, "expected ',' or '}'%s", "");
 					break;
 				}
-				int fi = -1;
-				for (uint16_t i = 0; i < cs->nfields; i++)
-					if (cs->names && cs->names[i] && strcmp(cs->names[i], k->data) == 0) fi = i;
-				ak_release(k);
-				if (fi < 0) skip_value(ps);
-				else e->f[fi] = value(ps, ak_json_case_desc(s, ci, fi));
-				if (ps->failed) break;
-				ws(ps);
-				lit(ps, ",");
 			}
+			for (uint16_t i = 0; i < cs->nfields && !ps->failed; i++)
+				if (!set[i] && !zero_field(ak_json_case_desc(s, ci, i), &e->f[i])) fail(ps, "a missing field %s", cs->names ? cs->names[i] : "");
+			ak_free(set);
 		} else if (cs->nfields == 1) {
 			e->f[0] = value(ps, ak_json_case_desc(s, ci, 0));
 		} else {
 			fail(ps, "expected the case's payload%s", "");
 		}
+		if (nested) ps->depth--;
 		ws(ps);
 		if (!ps->failed && !lit(ps, "}")) fail(ps, "expected '}'%s", "");
 		if (ps->failed) {

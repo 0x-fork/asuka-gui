@@ -7,6 +7,7 @@
 #include "t.h"
 #include "fake/uitest.h"
 #include "ui/ui_int.h"
+#include "fuzz.h"
 
 #include <stdio.h>
 
@@ -1903,6 +1904,91 @@ TEST(href_of) {
 	CHECK(ak_error_pending());
 	ak_release(ak_error_take());
 	ak_release(p), ak_release(v), ak_release(one);
+}
+
+// ---- Focus out of an overlay whose dismissal pops its screen ----
+
+static ak_val ov_field(ak_closure *c, ak_val *a, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
+	ak_view *f = ak_ui_new(AK_EL_TEXT_FIELD);
+	set_str(f, AK_KEY_TEXT_FIELD_PLACEHOLDER, "inside");
+	return (ak_val){.p = f};
+}
+
+static ak_val ov_screen(ak_closure *c, ak_val *a, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
+	ak_view *s = ak_ui_new(AK_EL_SCREEN);
+	set_str(s, AK_KEY_SCREEN_TITLE, "Pick");
+	ak_view *outside = ak_ui_new(AK_EL_TEXT_FIELD);
+	set_str(outside, AK_KEY_TEXT_FIELD_PLACEHOLDER, "outside");
+	add(s, outside);
+	ak_view *ov = ak_ui_new(AK_EL_OVERLAY);
+	set_i(ov, AK_KEY_OVERLAY_OPEN, 1);
+	on(ov, AK_EV_OVERLAY_DISMISS, do_pop, NULL);
+	lazy(ov, ov_field, NULL);
+	add(s, ov);
+	return (ak_val){.p = s};
+}
+
+static ak_val ov_home(ak_closure *c, ak_val *a, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
+	ak_view *s = ak_ui_new(AK_EL_SCREEN);
+	set_str(s, AK_KEY_SCREEN_TITLE, "Home");
+	add(s, button("Open", do_push, (const void *)ov_screen));
+	return (ak_val){.p = s};
+}
+
+static ak_val ov_stack_app(ak_closure *c, ak_val *a, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
+	ak_view *st = ak_ui_new(AK_EL_STACK);
+	lazy(st, ov_home, NULL);
+	return (ak_val){.p = st};
+}
+
+// The focus moves from a field in an overlay to one outside it; the
+// overlay's dismissal pops its screen there and then, the field that had
+// the focus with it: it's told it lost the focus all the same, not
+// freed under the telling.
+TEST(focus_out_of_an_overlay_that_pops_its_screen) {
+	ak_uitest *a = mount(ov_stack_app, NULL);
+	tap(a, "Open");
+	REQUIRE(count_kind(a, AK_KIND_TEXT_FIELD) == 2);
+	ak_fake_view *outside = NULL, *inside = NULL;
+	for (uint32_t i = 0; i < 2; i++) {
+		ak_fake_view *v = nth(a, AK_KIND_TEXT_FIELD, i);
+		if (span_is(ak_fake_string(v, AK_PROP_TEXT_FIELD_PLACEHOLDER), "inside")) inside = v;
+		else outside = v;
+	}
+	REQUIRE(inside && outside);
+	ak_fake *f = ak_uitest_host(a);
+	ak_fake_dispatch(f, &(ak_event){.id = inside->id, .kind = AK_EVENT_FOCUS});
+	ak_fake_dispatch(f, &(ak_event){.id = outside->id, .kind = AK_EVENT_FOCUS});
+	CHECK_EQ_INT(count_kind(a, AK_KIND_SCREEN), 1);
+	CHECK_EQ_INT(count_kind(a, AK_KIND_TEXT_FIELD), 0);
+	done(a);
+}
+
+// ---- Events from a host that sends anything (fuzz.h) ----
+
+TEST(events_from_a_host_that_sends_anything) {
+	ak_invoke_fn apps[] = {stack_app, tabs_app, sheet_app, popover_app, alert_app, menu_app, snack_app, ov_stack_app, sections_app};
+	int per_app = fuzz_seed(0x9e3779b97f4a7c15, 3000);
+	for (size_t i = 0; i < AK_LEN(apps); i++) {
+		ticks = cell_int(0);
+		sel_cell = cell_int(0);
+		badge = ak_vm_cell_new((ak_val){.p = ak_str_c("3")}, AK_K_REF, NULL).p;
+		open_cell = ak_vm_cell_new((ak_val){.i = 0}, AK_K_BOOL, NULL).p;
+		sel_mask = cell_int(1 << 2);
+		typed = NULL;
+		dismiss_snack = NULL;
+		ak_uitest *a = mount(apps[i], NULL);
+		fuzz_events(a, per_app);
+		ak_release(dismiss_snack);  // a snackbar's dismissal holds its view
+		dismiss_snack = NULL;
+		done(a);
+		ak_release(ticks), ak_release(sel_cell), ak_release(badge), ak_release(open_cell), ak_release(sel_mask);
+		ak_release(typed);
+	}
 }
 
 T_MAIN()

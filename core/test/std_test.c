@@ -92,6 +92,22 @@ TEST(time_format) {
 	CHECK_STR(fmt("é-ç", 2026, 1, 1, 0, 0, 0, 0, 4, 0), "é-ç");
 }
 
+TEST(time_format_any_fields) {
+	// A Time made by hand has whatever fields it was given: they format
+	// (months and weekdays around the year and the week), never read
+	// outside the names or overflow.
+	CHECK_STR(fmt("MMMM MMM", 2026, 0, 1, 0, 0, 0, 0, 4, 0), "December Dec");
+	CHECK_STR(fmt("MMMM", 2026, -40, 1, 0, 0, 0, 0, 4, 0), "August");
+	CHECK_STR(fmt("MMMM", 2026, 13, 1, 0, 0, 0, 0, 4, 0), "January");
+	CHECK_STR(fmt("EEEE e", 2026, 1, 1, 0, 0, 0, 0, -1, 0), "Saturday 7");
+	CHECK_STR(fmt("EEE e", 2026, 1, 1, 0, 0, 0, 0, INT64_MAX, 0), "Sun 1");
+	CHECK_STR(fmt("y", INT64_MIN, 1, 1, 0, 0, 0, 0, 4, 0), "-9223372036854775808");
+	CHECK_STR(fmt("xxx", 2026, 1, 1, 0, 0, 0, 0, 4, INT64_MIN), "-2562047788015215:30");
+	CHECK_STR(fmt("D", INT64_MAX, 3, 1, 0, 0, 0, 0, 4, 0), "60");
+	CHECK_STR(fmt("D", INT64_MIN, 12, 31, 0, 0, 0, 0, 4, 0), "366");
+	CHECK_STR(fmt("D", 2026, 1, INT64_MAX, 0, 0, 0, 0, 4, 0), "9223372036854775807");
+}
+
 TEST(time_parse) {
 	const char *good[] = {"2024-02-29T00:00:00Z", "1678-01-01T00:00:00Z", "2262-04-11T23:47:16.854775807Z"};
 	for (size_t i = 0; i < AK_LEN(good); i++) {
@@ -194,6 +210,129 @@ TEST(regex_programs) {
 	call("regex.program", (ak_val[]){S(deep)}, 1, 1);
 	CHECK(ak_error_pending());
 	ak_release(ak_error_take());
+}
+
+// handmade makes a program by hand: its instructions ({op, x, y}) and
+// its capture count, no ranges or names.
+static ak_bytes *handmade(const uint32_t (*in)[3], uint32_t ninst, uint32_t ncap) {
+	ak_bytes *b = ak_bytes_new(NULL, 20 + 12 * ninst);
+	uint32_t head[4] = {ninst, 0, ncap, 0};
+	memcpy(b->data, "AKRE", 4);
+	for (int k = 0; k < 4; k++)
+		for (int j = 0; j < 4; j++) b->data[4 + 4 * k + j] = (uint8_t)(head[k] >> 8 * j);
+	for (uint32_t k = 0; k < ninst; k++)
+		for (int f = 0; f < 3; f++)
+			for (int j = 0; j < 4; j++) b->data[20 + 12 * k + 4 * f + j] = f == 0 ? (j == 0 ? (uint8_t)in[k][0] : 0) : (uint8_t)(in[k][f] >> 8 * j);
+	return b;
+}
+
+TEST(regex_handmade_captures) {
+	// Programs whose SAVEs put a match's captures where no pattern would:
+	// a match with no start, a group with a start and no end, a match that
+	// ends before it starts. Each throws instead of reading outside the
+	// text or matching forever.
+	enum { CHAR = 1, SAVE = 7, MATCH = 9 };
+	const uint32_t no_start[][3] = {{SAVE, 1, 0}, {MATCH, 0, 0}};
+	const uint32_t no_end[][3] = {{SAVE, 0, 0}, {SAVE, 2, 0}, {SAVE, 1, 0}, {MATCH, 0, 0}};
+	const uint32_t backwards[][3] = {{SAVE, 1, 0}, {CHAR, 'a', 0}, {SAVE, 0, 0}, {MATCH, 0, 0}};
+	struct {
+		const uint32_t (*in)[3];
+		uint32_t n, ncap;
+	} progs[] = {{no_start, 2, 1}, {no_end, 4, 2}, {backwards, 4, 1}};
+	for (size_t k = 0; k < AK_LEN(progs); k++) {
+		ak_bytes *b = handmade(progs[k].in, progs[k].n, progs[k].ncap);
+		ak_val r = call("regex.substitute", (ak_val[]){{.p = b}, S("abc"), S("[$1]"), I(-1)}, 4, 0x6);
+		if (!ak_error_pending()) T_FAIL("program %zu substituted", k);
+		ak_release(ak_error_take());
+		ak_release(r.p);
+		r = call("regex.search", (ak_val[]){{.p = b}, S("abc"), I(-1)}, 3, 0x2);
+		if (!ak_error_pending()) T_FAIL("program %zu searched", k);
+		ak_release(ak_error_take());
+		ak_release(r.p);
+		ak_release(b);
+	}
+}
+
+TEST(regex_empty_repeats) {
+	// A repeat of nothing compiles to nothing, however many times: not a
+	// thousand to the fourth compiles of it.
+	ak_val prog = call("regex.program", (ak_val[]){S("(?:(?:(?:(?:){1000}){1000}){1000}){1000}x")}, 1, 1);
+	REQUIRE(prog.p);
+	ak_val r = call("regex.test", (ak_val[]){prog, S("ax")}, 2, 1);
+	CHECK(r.i);
+	// A group in it still counts: a thousand saves of it, a thousand times
+	// over, is too large.
+	call("regex.program", (ak_val[]){S("(?:(?:()){1000}){1000}")}, 1, 1);
+	CHECK(ak_error_pending());
+	ak_release(ak_error_take());
+}
+
+// xorshift64: the randomized tests' numbers, the same every run.
+static uint64_t rng = 0x9e3779b97f4a7c15;
+static uint64_t next_rand(void) {
+	rng ^= rng << 13;
+	rng ^= rng >> 7;
+	rng ^= rng << 17;
+	return rng;
+}
+
+TEST(regex_random) {
+	// Patterns made of the syntax's pieces compile or throw; compiled
+	// programs with bytes changed load or throw; whatever loads searches
+	// and substitutes within the text, through every template form.
+	static const char *const pieces[] = {"a", "b", ".", "\\w", "\\d", "\\b", "^", "$", "(", ")", "(?:", "(?P<n>", "|", "*", "+", "?", "*?", "{2}", "{0,3}", "{1,}", "[a-c]", "[^b]", "(?i)", "(?m)", "(?s)", "\\", "é", "\xff", "", "{1000}"};
+	static const char *const texts[] = {"", "a", "abcab", "aaaa bbbb", "x\nay\n", ("é\xff" "a1_b2")};
+	static const char *const tmpls[] = {"", "$0", "[$1]", "${n}", "$$", "${", "$x$1y", "${0}${1}${2}"};
+	for (int it = 0; it < 4000; it++) {
+		char pat[96];
+		size_t pl = 0;
+		int np = (int)(next_rand() % 10);
+		for (int k = 0; k < np; k++) {
+			const char *q = pieces[next_rand() % AK_LEN(pieces)];
+			size_t ql = strlen(q);
+			if (pl + ql >= sizeof pat) break;
+			memcpy(pat + pl, q, ql);
+			pl += ql;
+		}
+		pat[pl] = 0;
+		ak_val prog = call("regex.program", (ak_val[]){S(pat)}, 1, 1);
+		if (!prog.p) {
+			REQUIRE(ak_error_pending());
+			ak_release(ak_error_take());
+			continue;
+		}
+		ak_bytes *b = prog.p;
+		// Half the time, a few of its bytes changed.
+		if (next_rand() & 1) {
+			int flips = 1 + (int)(next_rand() % 4);
+			for (int k = 0; k < flips; k++) b->data[next_rand() % b->len] ^= (uint8_t)(1u << (next_rand() % 8));
+		}
+		const char *text = texts[next_rand() % AK_LEN(texts)];
+		ak_val r = call("regex.test", (ak_val[]){prog, S(text)}, 2, 2);
+		if (ak_error_pending()) {
+			ak_release(ak_error_take());
+			ak_release(b);
+			continue;
+		}
+		r = call("regex.search", (ak_val[]){prog, S(text), I((int64_t)(next_rand() % 4) - 1)}, 3, 2);
+		if (ak_error_pending()) ak_release(ak_error_take());
+		ak_arr *ms = r.p;
+		for (uint32_t m = 0; ms && m < ms->len; m++) {
+			ak_arr *caps = ms->data[m].p;
+			for (uint32_t c = 0; c + 1 < caps->len; c += 2) {
+				int64_t lo = caps->data[c].i, hi = caps->data[c + 1].i;
+				if (lo == -1 && hi == -1) continue;
+				if (!(lo >= 0 && lo <= hi && (size_t)hi <= strlen(text))) T_FAIL("%s on %s: a capture at %lld..%lld", pat, text, (long long)lo, (long long)hi);
+			}
+		}
+		ak_release(ms);
+		r = call("regex.substitute", (ak_val[]){prog, S(text), S(tmpls[next_rand() % AK_LEN(tmpls)]), I(-1)}, 4, 6);
+		if (ak_error_pending()) ak_release(ak_error_take());
+		ak_release(r.p);
+		r = call("regex.names", (ak_val[]){prog}, 1, 0);
+		ak_release(r.p);
+		ak_release(b);
+	}
 }
 
 static ak_val search(const char *pattern, const char *text) {
@@ -398,5 +537,132 @@ TEST(markdown_heal) {
 	};
 	for (size_t i = 0; i < AK_LEN(cases); i++) CHECK_STR(call("markdown.heal", (ak_val[]){S(cases[i][0])}, 1, 1), cases[i][1]);
 }
+
+// The language's own (rt/lib.c), at the ends of their ranges.
+
+// float.fixed(digits) writes every digit, however many the number has.
+TEST(fixed_large) {
+	ak_val r = call("str.fixed", (ak_val[]){{.f = 1e300}, I(2)}, 2, 0);
+	ak_str *s = r.p;
+	CHECK_EQ_INT(s->len, 304);
+	CHECK(s->data[0] == '1' && strcmp(s->data + 301, ".00") == 0);
+	ak_release(s);
+	r = call("str.fixed", (ak_val[]){{.f = -1.5}, I(20)}, 2, 0);
+	CHECK_STR(r, "-1.50000000000000000000");
+}
+
+// A range longer than an array holds is an error, not one cut to its
+// low 32 bits; the ends of int's range don't overflow.
+TEST(ranges) {
+	ak_val r = call("arr.range", (ak_val[]){I(0), I((INT64_C(1) << 32) + 1)}, 2, 0);
+	void *e = ak_error_take();
+	CHECK(e != NULL && r.p == NULL);
+	ak_release(e);
+	r = call("arr.range", (ak_val[]){I(-2), I(INT64_MAX)}, 2, 0);
+	e = ak_error_take();
+	CHECK(e != NULL && r.p == NULL);
+	ak_release(e);
+	r = call("arr.range", (ak_val[]){I(INT64_MAX - 2), I(INT64_MAX)}, 2, 0);
+	REQUIRE(!ak_error_pending());
+	ak_arr *a = r.p;
+	REQUIRE(a->len == 2);
+	CHECK(a->data[1].i == INT64_MAX - 1);
+	ak_release(a);
+	r = call("arr.range", (ak_val[]){I(3), I(-3)}, 2, 0);
+	CHECK_EQ_INT(((ak_arr *)r.p)->len, 0);
+	ak_release(r.p);
+}
+
+// Integers wrap, as the language's arithmetic does: abs(Int.min) is
+// Int.min. random_int's span is the whole range's.
+TEST(int_extremes) {
+	CHECK(call("math.absi", (ak_val[]){I(INT64_MIN)}, 1, 0).i == INT64_MIN);
+	CHECK_EQ_INT(call("math.absi", (ak_val[]){I(-5)}, 1, 0).i, 5);
+	for (int i = 0; i < 100; i++) {
+		int64_t v = call("math.random_int", (ak_val[]){I(INT64_MIN), I(INT64_MAX)}, 2, 0).i;
+		CHECK(v < INT64_MAX);
+		v = call("math.random_int", (ak_val[]){I(-1), I(INT64_MAX)}, 2, 0).i;
+		CHECK(v >= -1 && v < INT64_MAX);
+	}
+}
+
+// race of no tasks has none to finish first: it waits, as never()
+// does, until it's cancelled; nothing is left behind.
+TEST(race_of_none) {
+	int64_t live = ak_obj_live;
+	ak_arr *none = ak_arr_new(AK_K_REF, NULL, 0);
+	ak_future *f = call("async.race", (ak_val[]){{.p = none}}, 1, 1).p;
+	CHECK(f->state == AK_FUT_PENDING);
+	ak_future_cancel(f);
+	CHECK(f->state == AK_FUT_FAILED);
+	ak_release(f);
+	CHECK_EQ_INT(ak_obj_live, live);
+}
+
+// A timer far in the future (a sleep of years) is due then, not at once
+// from a wrapped sum.
+static int fired;
+static void fire(void *ctx) {
+	AK_UNUSED(ctx);
+	fired++;
+}
+
+TEST(far_timers) {
+	ak_sched_manual_clock(true);
+	ak_sched_advance(1000000000);
+	uint64_t id = ak_after(INT64_MAX, fire, NULL);
+	ak_sched_advance(1000000000);
+	ak_sched_run_posted();
+	CHECK_EQ_INT(fired, 0);
+	ak_timer_cancel(id);
+	ak_sched_manual_clock(false);
+}
+
+#if !defined(_WIN32)
+#include <sys/wait.h>
+
+// A child's exit is reaped on the main thread, as its wait's answer is
+// delivered: until then its pid stays its own (a zombie), so a kill the
+// app sends meanwhile can't reach another process that reused it.
+TEST(command_wait_reaps_on_the_main_thread) {
+	ak_arr *argv = ak_str_arr(2);
+	ak_str_arr_push(&argv, "-c", 2);
+	ak_str_arr_push(&argv, "exit 3", 6);
+	ak_arr *env = ak_str_arr(0);
+	ak_val h = call("command.procSpawn", (ak_val[]){S("sh"), {.p = argv}, S(""), {.p = env}, I(0), I(2), I(2), I(2)}, 8, 0xf);
+	REQUIRE(h.i > 0);
+	pid_t pid = (pid_t)call("command.procPid", (ak_val[]){h}, 1, 0).i;
+	ak_future *f = call("command.procWait", (ak_val[]){h}, 1, 0).p;
+	ak_sched_wait_posted();  // it exited: its answer is posted, not delivered
+	siginfo_t si;
+	memset(&si, 0, sizeof si);
+	CHECK(waitid(P_PID, (id_t)pid, &si, WEXITED | WNOWAIT | WNOHANG) == 0 && si.si_pid == pid);
+	call("command.procKill", (ak_val[]){h, I(9)}, 2, 0);
+	ak_sched_run_posted();
+	REQUIRE(f->state == AK_FUT_DONE);
+	CHECK_EQ_INT(f->result.i, 3);
+	CHECK(waitid(P_PID, (id_t)pid, &si, WEXITED | WNOWAIT | WNOHANG) == -1);  // reaped
+	ak_release(f);
+	call("command.procRelease", (ak_val[]){h}, 1, 0);
+}
+
+// A child ended by a signal: 128 + it.
+TEST(command_wait_signalled) {
+	ak_arr *argv = ak_str_arr(2);
+	ak_str_arr_push(&argv, "-c", 2);
+	ak_str_arr_push(&argv, "kill -9 $$", 10);
+	ak_arr *env = ak_str_arr(0);
+	ak_val h = call("command.procSpawn", (ak_val[]){S("sh"), {.p = argv}, S(""), {.p = env}, I(0), I(2), I(2), I(2)}, 8, 0xf);
+	REQUIRE(h.i > 0);
+	ak_future *f = call("command.procWait", (ak_val[]){h}, 1, 0).p;
+	while (f->state == AK_FUT_PENDING) {
+		ak_sched_wait_posted();
+		ak_sched_run_posted();
+	}
+	CHECK_EQ_INT(f->result.i, 128 + 9);
+	ak_release(f);
+	call("command.procRelease", (ak_val[]){h}, 1, 0);
+}
+#endif
 
 T_MAIN()

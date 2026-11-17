@@ -160,7 +160,8 @@ pub store DB(conn: int, path: string) {
     all += 1
   }
 
-  /// Closes the connection.
+  /// Closes the connection, once the statements sent before have run. A
+  /// statement after it throws; closing it again does nothing.
   pub fn close() {
     closeConn(conn)
   }

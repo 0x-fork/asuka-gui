@@ -711,8 +711,14 @@ static bool compile(compiler *c, int32_t id) {
 		return true;
 	case N_REPEAT: {
 		bool greedy = n.flag;
-		for (uint32_t k = 0; k < n.a; k++)
+		for (uint32_t k = 0; k < n.a; k++) {
+			uint32_t before = c->code.len;
 			if (!compile(c, n.first)) return false;
+			// A body that compiles to nothing does each time: its
+			// copies, nested repeats of them, would cost compiles but
+			// no instructions, which MAX_INST bounds.
+			if (c->code.len == before) break;
+		}
 		if (n.b == UINT32_MAX) {
 			// L: SPLIT body, out; body: e; JMP L; out:
 			uint32_t split = emit(c, I_SPLIT, 0, 0);
@@ -1073,9 +1079,21 @@ static ak_val test_fn(ak_val *args, uint32_t n) {
 	return (ak_val){.i = ok};
 }
 
+// placed is whether a match's captures are where a compiled pattern
+// puts them: the match from pos on, each group's start and end in order
+// in the text, or both unset. A program made by hand can SAVE anywhere.
+static bool placed(const int32_t *caps, uint32_t ns, size_t pos, size_t len) {
+	if (caps[0] < 0 || (size_t)caps[0] < pos || caps[1] < caps[0] || (size_t)caps[1] > len) return false;
+	for (uint32_t k = 2; k + 1 < ns; k += 2) {
+		if (caps[k] < 0 && caps[k + 1] < 0) continue;
+		if (caps[k] < 0 || caps[k + 1] < caps[k] || (size_t)caps[k + 1] > len) return false;
+	}
+	return true;
+}
+
 // each runs f on each match of p in s (up to limit, all when < 0):
 // successive matches that don't overlap, an empty one right after the
-// last skipped (as Go and RE2 do).
+// last skipped (as Go and RE2 do). A match no pattern makes throws.
 static void each(prog *p, const ak_str *s, int64_t limit, void (*f)(void *ctx, const int32_t *caps, uint32_t ns), void *ctx) {
 	vm m;
 	vm_init(&m, p);
@@ -1083,6 +1101,10 @@ static void each(prog *p, const ak_str *s, int64_t limit, void (*f)(void *ctx, c
 	int64_t last = -1, count = 0;
 	while ((limit < 0 || count < limit) && pos <= s->len) {
 		if (!exec(&m, s->data, s->len, pos)) break;
+		if (!placed(m.match, m.nslot, pos, s->len)) {
+			ak_throw_msg("regex: not a compiled pattern (make a Regex with regex.compile)");
+			break;
+		}
 		int32_t a = m.match[0], b = m.match[1];
 		if (a == b && a == last) {
 			// Empty, right after the last: try one character on.
@@ -1122,6 +1144,10 @@ static ak_val search_fn(ak_val *args, uint32_t n) {
 	ak_arr *out = ak_arr_new(AK_K_REF, NULL, 0);
 	each(&p, STR(1), args[2].i, collect, &out);
 	ak_free(p.code);
+	if (ak_error_pending()) {
+		ak_release(out);
+		return (ak_val){0};
+	}
 	return (ak_val){.p = out};
 }
 
@@ -1197,6 +1223,11 @@ static ak_val replace_fn(ak_val *args, uint32_t n) {
 	if (!load(BYTES(0), &p)) return (ak_val){0};
 	repl r = {&p, STR(1), STR(2), {0}, 0};
 	each(&p, STR(1), args[3].i, replace_one, &r);
+	if (ak_error_pending()) {
+		ak_buf_free(&r.out);
+		ak_free(p.code);
+		return (ak_val){0};
+	}
 	ak_buf_put(&r.out, r.s->data + r.pos, r.s->len - r.pos);
 	ak_str *s = ak_str_new((const char *)r.out.data, r.out.len);
 	ak_buf_free(&r.out);

@@ -600,4 +600,111 @@ TEST(plural_samples) {
 	CHECK(ak_plural(AK_STR("en-u-nu-latn"), &one5, false) == AK_PLURAL_OTHER);
 }
 
+// ---- Catalogs and numbers that ask too much ----
+
+// A catalog's counts beyond its bytes are an error, not memory read or
+// freed past what was allocated.
+TEST(catalog_counts_beyond_its_bytes) {
+	static const uint8_t langs[] = {'A', 'K', 'C', '2', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 0xff, 0xff};
+	static const uint8_t keys[] = {'A', 'K', 'C', '2', 0, 0, 0, 0, 0xff, 0xff, 0xff, 0x0f, 0, 0, 0, 0, 0, 0, 0, 0};
+	const uint8_t *cases[] = {langs, keys};
+	for (int i = 0; i < 2; i++) {
+		ak_bytes *b = ak_bytes_new(cases[i], sizeof langs);
+		CHECK(ak_i18n_catalog(b) == NULL);
+		void *e = ak_error_take();
+		CHECK(e != NULL);
+		ak_release(e);
+		ak_release(b);
+	}
+}
+
+static void put_str(ak_buf *b, const char *s) { ak_buf_str(b, s, strlen(s)); }
+
+// A catalog of one language, "zz", whose patterns have min_int integer
+// digits at least.
+static ak_bytes *catalog_min_int(uint8_t min_int) {
+	ak_buf b = {0};
+	ak_buf_put(&b, "AKC2", 4);
+	put_str(&b, "zz");
+	ak_buf_u32(&b, 0);  // keys
+	ak_buf_u32(&b, 0);  // skeletons
+	ak_buf_u32(&b, 1);  // languages
+	put_str(&b, "zz");
+	ak_buf_u8(&b, 0);
+	put_str(&b, "Zz");
+	for (int d = 0; d < 10; d++) ak_buf_str(&b, &"0123456789"[d], 1);
+	put_str(&b, ".");
+	put_str(&b, ",");
+	ak_buf_u8(&b, 1);
+	for (int pat = 0; pat < 2; pat++) {
+		put_str(&b, ""), put_str(&b, ""), put_str(&b, "-"), put_str(&b, "");
+		ak_buf_u8(&b, 3), ak_buf_u8(&b, 3), ak_buf_u8(&b, min_int), ak_buf_u8(&b, 3);
+	}
+	ak_buf_u8(&b, 0);   // no dates
+	ak_buf_u32(&b, 0);  // messages
+	ak_bytes *out = ak_bytes_new(b.data, b.len);
+	ak_buf_free(&b);
+	return out;
+}
+
+// Fraction digits: at most 100, as Intl.NumberFormat takes; integer
+// digits: as many as the catalog's pattern asks (a u8).
+TEST(number_digits_asked_for) {
+	ak_locale_reset();
+	ak_i18n_reset();
+	ak_str *s = ak_i18n_format_number(1.5, 0, 200, 300);
+	CHECK_EQ_INT(s->len, 2 + 100);
+	CHECK(strncmp(s->data, "1.5000", 6) == 0 && s->data[s->len - 1] == '0');
+	ak_release(s);
+	s = ak_i18n_format_number(0.5, 1, 150, 150);  // a percentage's
+	CHECK_EQ_INT(s->len, 3 + 100 + 1);
+	ak_release(s);
+	s = ak_i18n_format_number(99.99999, 0, 0, 2);
+	CHECK_EQ_STR(s->data, "100");
+	ak_release(s);
+	ak_bytes *blob = catalog_min_int(255);
+	ak_catalog *c = ak_i18n_catalog(blob);
+	REQUIRE(c != NULL);
+	ak_str *zz = ak_str_c("zz");
+	ak_ui_set_locale(zz);
+	s = ak_i18n_format_number(12345678901234567890.0, 4, 100, 100);
+	CHECK_EQ_INT(s->len, 255 + 1 + 100);
+	CHECK(s->data[0] == '0' && s->data[255] == '.');
+	ak_release(s);
+	s = ak_i18n_format_int(INT64_MIN, 4);
+	CHECK_EQ_INT(s->len, 1 + 255);
+	ak_release(s);
+	ak_release(zz);
+	ak_release(c);
+	ak_release(blob);
+	ak_i18n_reset();
+	ak_locale_reset();
+}
+
+// A plural's offset taken from the smallest integer: the float's
+// difference, as Go's Format says it, not an overflow.
+TEST(plural_offset_of_the_smallest) {
+	load();
+	ak_shape shape = {"Args", 2, (const uint8_t[]){AK_K_INT, AK_K_REF}, NULL, NULL, 0, NULL, false, NULL};
+	ak_struct *tuple = ak_struct_new(&shape);
+	tuple->f[0].i = INT64_MIN;
+	tuple->f[1].p = ak_str_c("Ada");
+	ak_str *en = ak_str_c("en");
+	ak_str *got = ak_i18n_say(catalog, key_index("guests"), (ak_val){.p = tuple}, en);
+	CHECK(strstr(got->data, "Ada") != NULL);
+	ak_release(got);
+	ak_release(en);
+	ak_release(tuple);
+	unload();
+}
+
+// An exponent of any length: the operands of compact notation clamp it.
+TEST(operands_long_exponent) {
+	ak_operands o = ak_operands_dec("1e99999999999999999999", 22);
+	CHECK_EQ_INT(o.c, 100);
+	o = ak_operands_dec("1.5c3", 5);
+	CHECK_EQ_INT(o.i, 1500);
+	CHECK_EQ_INT(o.c, 3);
+}
+
 T_MAIN()

@@ -274,6 +274,202 @@ TEST(extract_refuses) {
 	ak_free(dir);
 }
 
+// gzip writes data as a gzip file of stored blocks, its CRC-32 and size
+// right: what the tar inside says is what's read.
+static void gzip(const char *path, const uint8_t *data, size_t n) {
+	FILE *f = fopen(path, "wb");
+	if (!f) {
+		T_FAIL("can't write %s", path);
+		return;
+	}
+	static const uint8_t head[10] = {0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff};
+	fwrite(head, 1, sizeof head, f);
+	size_t at = 0;
+	do {
+		size_t k = n - at < 65535 ? n - at : 65535;
+		uint8_t b[5] = {at + k == n, (uint8_t)k, (uint8_t)(k >> 8), (uint8_t)~k, (uint8_t)(~k >> 8)};
+		fwrite(b, 1, 5, f);
+		if (k) fwrite(data + at, 1, k, f);
+		at += k;
+	} while (at < n);
+	uint32_t crc = 0xffffffff;
+	for (size_t i = 0; i < n; i++) {
+		crc ^= data[i];
+		for (int j = 0; j < 8; j++) crc = crc >> 1 ^ (0xedb88320 & -(crc & 1));
+	}
+	crc = ~crc;
+	uint8_t tail[8] = {(uint8_t)crc, (uint8_t)(crc >> 8), (uint8_t)(crc >> 16), (uint8_t)(crc >> 24), (uint8_t)n, (uint8_t)(n >> 8), (uint8_t)(n >> 16), (uint8_t)(n >> 24)};
+	fwrite(tail, 1, 8, f);
+	fclose(f);
+}
+
+// tar_entry fills a ustar header: name, type, its size field as given
+// (12 bytes: octal, or GNU's base 256), its checksum.
+static void tar_entry(uint8_t h[512], const char *name, char type, const uint8_t size[12]) {
+	memset(h, 0, 512);
+	snprintf((char *)h, 100, "%s", name);
+	memcpy(h + 100, "0000644", 8);
+	memcpy(h + 124, size, 12);
+	h[156] = (uint8_t)type;
+	memcpy(h + 257, "ustar\0" "00", 8);
+	unsigned sum = 0;
+	for (int i = 0; i < 512; i++) sum += i >= 148 && i < 156 ? ' ' : h[i];
+	snprintf((char *)h + 148, 8, "%06o", sum);
+}
+
+TEST(extract_huge_sizes) {
+	// An entry's size at int64's end (GNU's base 256, or a PAX header's):
+	// damaged, not padded past it.
+	char *dir = ak_fs_temp_dir();
+	char *archive = path_in(dir, "huge.tar.gz");
+	static const uint8_t max256[12] = {0x80, 0, 0, 0, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+	static const uint8_t zero[12] = "00000000000";
+	uint8_t tar[512 * 6] = {0};
+	const char types[] = {'5', '0', '2'};
+	for (size_t t = 0; t < AK_LEN(types); t++) {
+		tar_entry(tar, "d", types[t], max256);
+		gzip(archive, tar, 512 * 3);
+		char sub[16];
+		snprintf(sub, sizeof sub, "b%zu", t);
+		if (extract(archive, path_in(dir, sub))) T_FAIL("type %c unpacked", types[t]);
+		else if (!strstr(failure(), "damaged")) T_FAIL("type %c: %s", types[t], failure());
+	}
+	// A PAX size at int64's end, and one beyond it.
+	static const char *records[] = {"28 size=9223372036854775807\n", "38 size=99999999999999999999999999999\n"};
+	for (size_t r = 0; r < AK_LEN(records); r++) {
+		uint8_t size[12];
+		snprintf((char *)size, sizeof size, "%011o", (unsigned)strlen(records[r]));
+		memset(tar, 0, sizeof tar);
+		tar_entry(tar, "pax", 'x', size);
+		memcpy(tar + 512, records[r], strlen(records[r]));
+		tar_entry(tar + 1024, "f", '0', zero);
+		gzip(archive, tar, sizeof tar);
+		char sub[16];
+		snprintf(sub, sizeof sub, "pax%zu", r);
+		if (extract(archive, path_in(dir, sub))) T_FAIL("%s unpacked", records[r]);
+		else if (!strstr(failure(), "damaged")) T_FAIL("%s: %s", records[r], failure());
+	}
+	ak_fs_remove_tree(dir);
+	ak_free(dir);
+}
+
+// xorshift64: the randomized tests' numbers, the same every run.
+static uint64_t rng = 0x9e3779b97f4a7c15;
+static uint64_t next_rand(void) {
+	rng ^= rng << 13;
+	rng ^= rng >> 7;
+	rng ^= rng << 17;
+	return rng;
+}
+
+// inflate_all reads what z decompresses to, to its end or its failure:
+// how much.
+static uint64_t inflate_all(ak_inflate *z) {
+	uint8_t buf[4096];
+	uint64_t total = 0;
+	size_t k;
+	while ((k = ak_inflate_read(z, buf, 1 + next_rand() % sizeof buf)) > 0) total += k;
+	CHECK(total == ak_inflate_total(z));
+	CHECK(!(ak_inflate_done(z) && ak_inflate_error(z)));
+	ak_inflate_close(z);
+	return total;
+}
+
+TEST(archives_random) {
+	char *dir = keep(ak_fs_temp_dir());
+	size_t n;
+	uint8_t *gz = slurp(D "new.tar.gz", &n);
+	REQUIRE(gz && n > 18);
+	uint8_t *buf = malloc(n);
+	char *file = keep(path_in(dir, "x.gz"));
+	// gzip and DEFLATE, a few bits changed or cut short: each reads to
+	// its end or fails, within what it holds.
+	for (int it = 0; it < 300; it++) {
+		memcpy(buf, gz, n);
+		size_t len = n;
+		int flips = 1 + (int)(next_rand() % 8);
+		for (int k = 0; k < flips; k++) buf[next_rand() % n] ^= (uint8_t)(1u << (next_rand() % 8));
+		if (next_rand() % 4 == 0) len = (size_t)(next_rand() % n);
+		spit(file, buf, len);
+		inflate_all(ak_gunzip_open(file));
+		// The DEFLATE stream alone: after gzip's 10-byte header.
+		if (len > 10) inflate_all(ak_inflate_open(file, 10, (int64_t)(next_rand() % (len - 10))));
+	}
+	// Its tar, its headers' bytes changed, in a gzip that's whole: each
+	// unpacks or fails.
+	ak_inflate *z = ak_gunzip_open(D "new.tar.gz");
+	size_t tn = 0, tcap = 1 << 18;
+	uint8_t *tar = malloc(tcap);
+	for (size_t k; (k = ak_inflate_read(z, tar + tn, tcap - tn)) > 0;) {
+		tn += k;
+		if (tn == tcap) tar = realloc(tar, tcap *= 2);
+	}
+	REQUIRE(ak_inflate_done(z));
+	ak_inflate_close(z);
+	size_t heads[64];
+	int nheads = 0;
+	for (size_t at = 0; at + 512 <= tn && tar[at] && nheads < 64;) {
+		heads[nheads++] = at;
+		uint64_t size = 0;
+		for (int k = 124; k < 135 && tar[at + k] >= '0' && tar[at + k] <= '7'; k++) size = size * 8 + (uint64_t)(tar[at + k] - '0');
+		at += 512 + (size + 511) / 512 * 512;
+	}
+	REQUIRE(nheads > 4);
+	uint8_t *mut = malloc(tn);
+	for (int it = 0; it < 150; it++) {
+		memcpy(mut, tar, tn);
+		int edits = 1 + (int)(next_rand() % 4);
+		for (int k = 0; k < edits; k++) {
+			size_t at = heads[next_rand() % (size_t)nheads] + next_rand() % 512;
+			mut[at] = next_rand() % 3 ? (uint8_t)next_rand() : (uint8_t)"0257xgLK/.\x80\xff "[next_rand() % 13];
+		}
+		gzip(file, mut, next_rand() % 8 ? tn : (size_t)(next_rand() % tn));
+		char sub[32];
+		snprintf(sub, sizeof sub, "t%d", it);
+		extract(file, path_in(dir, sub));
+	}
+	// Archives made of random entries: names in and out of the tree,
+	// PAX and GNU headers with records good and bad, links, sizes.
+	static const char *const names[] = {"a", "a/b", "./c", "../d", "/e", "a/../f", "g/", "", "h\\i", "assets/current"};
+	static const char *const records[] = {"12 path=pp\n", "17 linkpath=a/b\n", "14 size=00001\n", "9 size=\n", "99 path=x\n", "13 path=a/b\n\n", "0 x\n", "11 xyz=123\n"};
+	static const char types[] = {'0', '5', '2', 'x', 'g', 'L', 'K', '1', '3', 0};
+	uint8_t arch[512 * 16];
+	for (int it = 0; it < 300; it++) {
+		memset(arch, 0, sizeof arch);
+		size_t at = 0;
+		int entries = 1 + (int)(next_rand() % 5);
+		for (int e = 0; e < entries && at + 1024 <= sizeof arch; e++) {
+			char type = types[next_rand() % AK_LEN(types)];
+			char body[400];
+			size_t bl = 0;
+			if (type == 'x' || type == 'g') {
+				int nr = 1 + (int)(next_rand() % 3);
+				for (int r = 0; r < nr; r++) {
+					const char *rec = records[next_rand() % AK_LEN(records)];
+					memcpy(body + bl, rec, strlen(rec));
+					bl += strlen(rec);
+				}
+			} else if (type == 'L' || type == 'K' || type == '0') {
+				const char *nm = names[next_rand() % AK_LEN(names)];
+				bl = strlen(nm);
+				memcpy(body, nm, bl);
+			}
+			uint8_t size[12];
+			snprintf((char *)size, sizeof size, "%011o", (unsigned)(next_rand() % 8 ? bl : next_rand() % 2000));
+			tar_entry(arch + at, names[next_rand() % AK_LEN(names)], type, size);
+			if (type == '2') snprintf((char *)arch + at + 157, 100, "%s", names[next_rand() % AK_LEN(names)]);
+			memcpy(arch + at + 512, body, bl);
+			at += 512 + (bl + 511) / 512 * 512;
+		}
+		gzip(file, arch, at + 1024);
+		char sub[32];
+		snprintf(sub, sizeof sub, "r%d", it);
+		extract(file, path_in(dir, sub));
+	}
+	free(mut), free(tar), free(buf), free(gz);
+	ak_fs_remove_tree(dir);
+}
+
 // A field of an entry of the delta's index (JSON as Go writes it: no
 // spaces, no escapes in these names): its string, or its number.
 static bool field_str(const char *obj, const char *end, const char *key, char *out, size_t cap) {
