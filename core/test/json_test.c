@@ -350,3 +350,46 @@ TEST(core_shapes) {
 }
 
 T_MAIN()
+
+// What print shows of values JSON can't hold: a tuple, its elements in
+// parentheses; a map from other than strings, each key as it's written
+// (a struct's, however deep, before its value).
+TEST(encode_printed_only) {
+	// (int, Todo?, string)
+	static const uint8_t pair_kinds[] = {AK_K_INT, AK_K_REF, AK_K_REF};
+	static const char *const pair_names[] = {"0\0i", "1\0?STodo;", "2\0s"};
+	static const ak_shape pair = {.name = "(int,Todo?,string)", .nfields = 3, .kinds = pair_kinds, .names = pair_names};
+	ak_struct *t = ak_struct_new(&pair);
+	t->f[0].i = 7;
+	t->f[2].p = ak_str_new("a\"b", 3);
+	ak_str *s = ak_json_encode((ak_val){.p = t}, "(", &types, 0);
+	CHECK_EQ_STR(s->data, "(7,null,\"a\\\"b\")");
+	ak_release(s);
+
+	// [int: [(int,Todo?,string)]] and [Todo: eFilter;]
+	ak_map *m = ak_map_new(AK_K_INT, false, AK_K_REF, NULL);
+	ak_arr *a = ak_arr_new(AK_K_REF, &pair, 1);
+	a->data[a->len++].p = t;
+	ak_map_set(&m, (ak_val){.i = -2}, (ak_val){.p = a});
+	ak_map_set(&m, (ak_val){.i = 5}, (ak_val){.p = ak_arr_new(AK_K_REF, &pair, 0)});
+	s = ak_json_encode((ak_val){.p = m}, "mi[(", &types, 0);
+	CHECK_EQ_STR(s->data, "{-2:[(7,null,\"a\\\"b\")],5:[]}");
+	ak_release(s);
+	s = ak_json_encode((ak_val){.p = m}, "mi[(", &types, 2);
+	CHECK_EQ_STR(s->data, "{\n  -2: [\n    (\n      7,\n      null,\n      \"a\\\"b\"\n    )\n  ],\n  5: []\n}");
+	ak_release(s);
+	ak_release(m);
+
+	const char *src = "{\"title\": \"t\", \"done\": true}";
+	ak_val todo_key = ak_json_decode(src, strlen(src), "STodo;", &types);
+	REQUIRE(!ak_error_pending());
+	ak_map *k = ak_map_new(AK_K_REF, false, AK_K_INT, NULL);
+	ak_map_set(&k, todo_key, (ak_val){.i = 2});
+	s = ak_json_encode((ak_val){.p = k}, "mSTodo;eFilter;", &types, 0);
+	CHECK_EQ_STR(s->data, "{{\"title\":\"t\",\"done\":true,\"tags\":[],\"due\":null}:\"flagged\"}");
+	ak_release(s);
+	ak_release(k);
+	s = ak_json_encode((ak_val){.p = NULL}, "mii", &types, 0);
+	CHECK_EQ_STR(s->data, "{}");
+	ak_release(s);
+}

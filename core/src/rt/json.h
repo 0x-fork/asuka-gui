@@ -13,6 +13,13 @@
 //            field labels
 //   e<name>; a payloadless enum stored as an int: its case's name
 //
+// Two more are written, never read: what print and interpolation show
+// of values JSON can't hold.
+//
+//   (        a tuple: (a,b), its elements by its shape's field descriptors
+//   m<K><V>  a map from K, not a string: {1:"a"}, each key as its value is
+//            written
+//
 // Shapes are found by name through a lookup the caller gives (the
 // running module's).
 #ifndef AK_JSON_H

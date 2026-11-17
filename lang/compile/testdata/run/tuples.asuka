@@ -1,0 +1,31 @@
+// Tuples printed as their elements, and maps from other than strings.
+
+enum Light { red, green }
+
+struct Hold {
+  pair: (int, string)
+}
+
+test "printed" {
+  let t = (1, "a", Light.red)
+  print(t)
+  print("t is {t}")
+  print([(1, "x"), (2, "y")])
+  print(((1, 2), [true]))
+  let o: (int, string)? = (1, "z")
+  print(o)
+  print(Hold(pair: (1, "one")))
+  print([1: "a", 2: "b"])
+  print([Light.green: [1, 2]])
+}
+
+// Output:
+// (1,"a","red")
+// t is (1,"a","red")
+// [(1,"x"),(2,"y")]
+// ((1,2),[true])
+// (1,"z")
+// {"pair":(1,"one")}
+// {1:"a",2:"b"}
+// {"green":[1,2]}
+// ok printed
