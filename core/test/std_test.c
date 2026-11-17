@@ -550,4 +550,51 @@ TEST(far_timers) {
 	ak_sched_manual_clock(false);
 }
 
+#if !defined(_WIN32)
+#include <sys/wait.h>
+
+// A child's exit is reaped on the main thread, as its wait's answer is
+// delivered: until then its pid stays its own (a zombie), so a kill the
+// app sends meanwhile can't reach another process that reused it.
+TEST(command_wait_reaps_on_the_main_thread) {
+	ak_arr *argv = ak_str_arr(2);
+	ak_str_arr_push(&argv, "-c", 2);
+	ak_str_arr_push(&argv, "exit 3", 6);
+	ak_arr *env = ak_str_arr(0);
+	ak_val h = call("command.procSpawn", (ak_val[]){S("sh"), {.p = argv}, S(""), {.p = env}, I(0), I(2), I(2), I(2)}, 8, 0xf);
+	REQUIRE(h.i > 0);
+	pid_t pid = (pid_t)call("command.procPid", (ak_val[]){h}, 1, 0).i;
+	ak_future *f = call("command.procWait", (ak_val[]){h}, 1, 0).p;
+	ak_sched_wait_posted();  // it exited: its answer is posted, not delivered
+	siginfo_t si;
+	memset(&si, 0, sizeof si);
+	CHECK(waitid(P_PID, (id_t)pid, &si, WEXITED | WNOWAIT | WNOHANG) == 0 && si.si_pid == pid);
+	call("command.procKill", (ak_val[]){h, I(9)}, 2, 0);
+	ak_sched_run_posted();
+	REQUIRE(f->state == AK_FUT_DONE);
+	CHECK_EQ_INT(f->result.i, 3);
+	CHECK(waitid(P_PID, (id_t)pid, &si, WEXITED | WNOWAIT | WNOHANG) == -1);  // reaped
+	ak_release(f);
+	call("command.procRelease", (ak_val[]){h}, 1, 0);
+}
+
+// A child ended by a signal: 128 + it.
+TEST(command_wait_signalled) {
+	ak_arr *argv = ak_str_arr(2);
+	ak_str_arr_push(&argv, "-c", 2);
+	ak_str_arr_push(&argv, "kill -9 $$", 10);
+	ak_arr *env = ak_str_arr(0);
+	ak_val h = call("command.procSpawn", (ak_val[]){S("sh"), {.p = argv}, S(""), {.p = env}, I(0), I(2), I(2), I(2)}, 8, 0xf);
+	REQUIRE(h.i > 0);
+	ak_future *f = call("command.procWait", (ak_val[]){h}, 1, 0).p;
+	while (f->state == AK_FUT_PENDING) {
+		ak_sched_wait_posted();
+		ak_sched_run_posted();
+	}
+	CHECK_EQ_INT(f->result.i, 128 + 9);
+	ak_release(f);
+	call("command.procRelease", (ak_val[]){h}, 1, 0);
+}
+#endif
+
 T_MAIN()
