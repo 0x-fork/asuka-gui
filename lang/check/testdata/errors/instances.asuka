@@ -45,3 +45,20 @@ store Kept<T>(initial: T) {
   pub state value: T = initial
   pub fn copy() -> Kept<T> = Kept(value)
 }
+
+// A call that grows its type is said once: its other arguments of the
+// caller's T are T's, not the callee's.
+fn both<T>(x: T, y: T, n: int) -> int = if n == 0 { 0 } else { both([x], [y], n - 1) } // ERROR "both's T is \[T\] here"
+fn nested<T>(x: [T], y: [T], n: int) -> int = if n == 0 { 0 } else { nested([[x]], [[y]], n - 1) } // ERROR "nested's T is \[\[T\]\] here"
+
+// What doesn't fit is still said: y would have to be a [[T]].
+fn wrong<T>(x: T, y: [T], n: int) -> int = if n == 0 { 0 } else { wrong([x], y, n - 1) } // ERROR "wrong's T is \[T\] here|argument y of wrong is a \[T\], not a \[\[T\]\]"
+
+// A closure argument of the caller's T, in a call of itself.
+fn apply<T>(x: T, f: fn(T) -> T, n: int) -> T = if n == 0 { x } else { apply(f(x), y => f(y), n - 1) }
+
+struct Mapped<T> {
+  v: T
+
+  fn again(f: fn(T) -> T, n: int) -> T = if n == 0 { v } else { Mapped(v: f(v)).again(y => f(y), n - 1) }
+}

@@ -27,6 +27,10 @@ type Info struct {
 	Fors       map[*syntax.ForStmt]*ForInfo
 	Elements   map[*syntax.CallExpr]*ElementCall
 	Matches    map[syntax.Node]*MatchInfo // MatchStmt and MatchExpr
+	// ValueItems: the if (with an else) or match that ends a block whose
+	// value is its last expression (an if's, a match arm's, a catch's):
+	// a value, each branch's the value of its own block.
+	ValueItems map[syntax.Item]bool
 	// ViewConds: a view's if whose condition is a chain (ViewCondChain).
 	ViewConds map[*syntax.IfStmt]*ViewCond
 	Lets      map[*syntax.LetDecl]Type // a local let's or var's type
@@ -102,6 +106,7 @@ func newInfo() *Info {
 		Fors:           map[*syntax.ForStmt]*ForInfo{},
 		Elements:       map[*syntax.CallExpr]*ElementCall{},
 		Matches:        map[syntax.Node]*MatchInfo{},
+		ValueItems:     map[syntax.Item]bool{},
 		ViewConds:      map[*syntax.IfStmt]*ViewCond{},
 		Lets:           map[*syntax.LetDecl]Type{},
 		Emits:          map[*syntax.EmitStmt]*Member{},

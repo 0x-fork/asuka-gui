@@ -198,6 +198,9 @@ type TypeParam struct {
 	written string // the constraints as written: Shape & Hashable
 	Index   int
 	id      int // unique, for inference
+	// obj is the name it's declared as, at its own position: the one
+	// object its uses resolve to, in its declaration's scopes.
+	obj *TypeName
 }
 
 func (t *TypeParam) String() string { return t.Name }

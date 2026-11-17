@@ -11,10 +11,12 @@ package syntax
 //     enum: only cases; a match: arms separated by commas) and no
 //     comment: on tap { count += 1 }. Otherwise each item goes on a line
 //     of its own, and an empty block is {}.
-//   - Arguments, parameters, arrays, maps, tuples and an import's names
-//     go one per line, each with a trailing comma, when the first was
-//     written on the line after the opening bracket or a comment sits
-//     between them; otherwise on one line. A blank line between two of
+//   - Arguments, parameters (a closure's and a handler's too), type
+//     parameters and arguments, arrays, maps, tuples (and tuple and
+//     function types, tuple and case patterns), a task's dependencies
+//     and an import's names go one per line, each with a trailing comma,
+//     when the first was written on the line after the opening bracket
+//     or a comment sits between them; otherwise on one line. A blank line between two of
 //     them is kept. A binary expression broken after its operator stays
 //     broken there, its next lines indented once more.
 //   - } else and } catch go on the }'s line. Imports' .{…} follow the
@@ -481,6 +483,31 @@ func exprNodes(xs []Expr) []Node {
 	return nodes
 }
 
+func typeNodes(ts []Type) []Node {
+	nodes := make([]Node, len(ts))
+	for i, t := range ts {
+		nodes[i] = t
+	}
+	return nodes
+}
+
+func patternNodes(ps []Pattern) []Node {
+	nodes := make([]Node, len(ps))
+	for i, pt := range ps {
+		nodes[i] = pt
+	}
+	return nodes
+}
+
+// An elem is a list's element that's no node of its own (a case
+// pattern's labeled argument): its span, and how it prints.
+type elem struct {
+	span  Span
+	print func()
+}
+
+func (e *elem) Range() Span { return e.span }
+
 // ---------------------------------------------------------------------
 // Files and declarations
 
@@ -511,26 +538,27 @@ func (p *printer) pub(pos Pos) {
 	}
 }
 
-func (p *printer) typeParams(list []*TypeParam) {
+func (p *printer) typeParams(list []*TypeParam, a Angles) {
 	if len(list) == 0 {
 		return
 	}
-	p.write("<")
+	nodes := make([]Node, len(list))
 	for i, tp := range list {
-		if i > 0 {
-			p.write(", ")
-		}
-		p.write(tp.Name.Name)
-		for j, t := range tp.Constraints {
-			if j == 0 {
-				p.write(": ")
-			} else {
-				p.write(" & ")
-			}
-			p.typ(t)
-		}
+		nodes[i] = tp
 	}
-	p.write(">")
+	p.list("<", ">", a.Lt, a.Gt, nodes)
+}
+
+func (p *printer) typeParam(tp *TypeParam) {
+	p.write(tp.Name.Name)
+	for j, t := range tp.Constraints {
+		if j == 0 {
+			p.write(": ")
+		} else {
+			p.write(" & ")
+		}
+		p.typ(t)
+	}
 }
 
 func (p *printer) params(l *ParamList) {
@@ -570,7 +598,7 @@ func (p *printer) funcDecl(d *FuncDecl) {
 		p.write("async ")
 	}
 	p.write("fn " + d.Name.Name)
-	p.typeParams(d.TypeParams)
+	p.typeParams(d.TypeParams, d.TypeAngles)
 	if d.Params != nil {
 		p.params(d.Params)
 	} else {
@@ -630,7 +658,7 @@ func (p *printer) node(n Node) {
 			p.write("native ")
 		}
 		p.write("component " + n.Name.Name)
-		p.typeParams(n.TypeParams)
+		p.typeParams(n.TypeParams, n.TypeAngles)
 		p.params(n.Params)
 		p.write(" ")
 		p.block(n.Body)
@@ -653,7 +681,7 @@ func (p *printer) node(n Node) {
 	case *StoreDecl:
 		p.pub(n.Pub)
 		p.write("store " + n.Name.Name)
-		p.typeParams(n.TypeParams)
+		p.typeParams(n.TypeParams, n.TypeAngles)
 		p.params(n.Params)
 		p.write(" ")
 		p.block(n.Body)
@@ -663,7 +691,7 @@ func (p *printer) node(n Node) {
 			p.write("extern ")
 		}
 		p.write("struct " + n.Name.Name)
-		p.typeParams(n.TypeParams)
+		p.typeParams(n.TypeParams, n.TypeAngles)
 		p.conforms(n.Conforms)
 		p.write(" ")
 		p.body(n.Lbrace, nil, n.Members, n.Dangling, n.Rbrace, len(n.Members) == 1, "")
@@ -678,7 +706,7 @@ func (p *printer) node(n Node) {
 	case *EnumDecl:
 		p.pub(n.Pub)
 		p.write("enum " + n.Name.Name)
-		p.typeParams(n.TypeParams)
+		p.typeParams(n.TypeParams, n.TypeAngles)
 		p.conforms(n.Conforms)
 		p.write(" ")
 		var nodes []Node
@@ -707,7 +735,7 @@ func (p *printer) node(n Node) {
 			p.write("native ")
 		}
 		p.write("interface " + n.Name.Name)
-		p.typeParams(n.TypeParams)
+		p.typeParams(n.TypeParams, n.TypeAngles)
 		p.write(" ")
 		p.body(n.Lbrace, nil, n.Members, n.Dangling, n.Rbrace, len(n.Members) == 1, "")
 	case *FuncDecl:
@@ -721,7 +749,7 @@ func (p *printer) node(n Node) {
 	case *TypeAliasDecl:
 		p.pub(n.Pub)
 		p.write("type " + n.Name.Name)
-		p.typeParams(n.TypeParams)
+		p.typeParams(n.TypeParams, n.TypeAngles)
 		p.write(" = ")
 		p.typ(n.Type)
 	case *StyleDecl:
@@ -769,7 +797,7 @@ func (p *printer) node(n Node) {
 		p.write(" ")
 		p.block(n.Body)
 	case *TypeParam:
-		p.typeParams([]*TypeParam{n})
+		p.typeParam(n)
 	case *Param:
 		p.write(n.Name.Name)
 		if n.Type != nil {
@@ -814,14 +842,7 @@ func (p *printer) node(n Node) {
 	case *TaskDecl:
 		p.write("task")
 		if n.Lparen.IsValid() || len(n.Deps) > 0 {
-			p.write("(")
-			for i, d := range n.Deps {
-				if i > 0 {
-					p.write(", ")
-				}
-				p.expr(d)
-			}
-			p.write(")")
+			p.list("(", ")", n.Lparen, n.Rparen, exprNodes(n.Deps))
 		}
 		p.write(" ")
 		p.block(n.Body)
@@ -951,6 +972,8 @@ func (p *printer) node(n Node) {
 		}
 		p.list("(", ")", n.Start, n.End-1, nodes)
 
+	case *elem:
+		n.print()
 	case Expr:
 		p.expr(n)
 	case Type:
@@ -963,14 +986,11 @@ func (p *printer) node(n Node) {
 func (p *printer) onHandler(n *OnHandler) {
 	p.write("on " + n.Name.Name)
 	if n.Lparen.IsValid() || n.Params != nil {
-		p.write("(")
+		nodes := make([]Node, len(n.Params))
 		for i, id := range n.Params {
-			if i > 0 {
-				p.write(", ")
-			}
-			p.write(id.Name)
+			nodes[i] = id
 		}
-		p.write(")")
+		p.list("(", ")", n.Lparen, n.Rparen, nodes)
 	}
 	p.write(" ")
 	p.block(n.Body)
@@ -1094,14 +1114,7 @@ func (p *printer) expr1(x Expr) {
 	case *CallExpr:
 		p.postfixOperand(x.Fun, len(x.TypeArgs) == 0 && x.Args != nil)
 		if len(x.TypeArgs) > 0 {
-			p.write("<")
-			for i, t := range x.TypeArgs {
-				if i > 0 {
-					p.write(", ")
-				}
-				p.typ(t)
-			}
-			p.write(">")
+			p.list("<", ">", x.Angles.Lt, x.Angles.Gt, typeNodes(x.TypeArgs))
 		}
 		if x.Args != nil {
 			p.args(x.Args)
@@ -1162,14 +1175,11 @@ func (p *printer) expr1(x Expr) {
 		if !x.Parens && len(x.Params) == 1 && x.Params[0].Type == nil && x.Params[0].Default == nil {
 			p.write(x.Params[0].Name.Name)
 		} else {
-			p.write("(")
+			nodes := make([]Node, len(x.Params))
 			for i, prm := range x.Params {
-				if i > 0 {
-					p.write(", ")
-				}
-				p.node(prm)
+				nodes[i] = prm
 			}
-			p.write(")")
+			p.list("(", ")", x.Lparen, x.Rparen, nodes)
 		}
 		p.write(" => ")
 		switch b := x.Body.(type) {
@@ -1356,14 +1366,7 @@ func (p *printer) typ(t Type) {
 			p.write(id.Name)
 		}
 		if len(t.Args) > 0 {
-			p.write("<")
-			for i, a := range t.Args {
-				if i > 0 {
-					p.write(", ")
-				}
-				p.typ(a)
-			}
-			p.write(">")
+			p.list("<", ">", t.Angles.Lt, t.Angles.Gt, typeNodes(t.Args))
 		}
 	case *ArrayType:
 		p.write("[")
@@ -1376,6 +1379,10 @@ func (p *printer) typ(t Type) {
 		p.typ(t.Value)
 		p.write("]")
 	case *TupleType:
+		if len(t.Elems) > 0 && p.multiline(t.Start, t.End-1, typeNodes(t.Elems)) {
+			p.list("(", ")", t.Start, t.End-1, typeNodes(t.Elems))
+			return
+		}
 		p.write("(")
 		for i, e := range t.Elems {
 			if i > 0 {
@@ -1391,14 +1398,8 @@ func (p *printer) typ(t Type) {
 		if t.Async.IsValid() {
 			p.write("async ")
 		}
-		p.write("fn(")
-		for i, e := range t.Params {
-			if i > 0 {
-				p.write(", ")
-			}
-			p.typ(e)
-		}
-		p.write(")")
+		p.write("fn")
+		p.list("(", ")", t.Lparen, t.Rparen, typeNodes(t.Params))
 		if t.Throws.IsValid() {
 			p.write(" throws")
 		}
@@ -1439,19 +1440,23 @@ func (p *printer) pattern(pt Pattern) {
 			p.write(id.Name)
 		}
 		if pt.Lparen.IsValid() || pt.Args != nil {
-			p.write("(")
+			nodes := make([]Node, len(pt.Args))
 			for i, a := range pt.Args {
-				if i > 0 {
-					p.write(", ")
-				}
+				nodes[i] = a
 				if l := pt.Label(i); l != nil {
-					p.write(l.Name + ": ")
+					nodes[i] = &elem{span: Span{l.Start, a.Range().End}, print: func() {
+						p.write(l.Name + ": ")
+						p.pattern(a)
+					}}
 				}
-				p.pattern(a)
 			}
-			p.write(")")
+			p.list("(", ")", pt.Lparen, pt.Rparen, nodes)
 		}
 	case *TuplePat:
+		if len(pt.Elems) > 0 && p.multiline(pt.Start, pt.End-1, patternNodes(pt.Elems)) {
+			p.list("(", ")", pt.Start, pt.End-1, patternNodes(pt.Elems))
+			return
+		}
 		p.write("(")
 		for i, e := range pt.Elems {
 			if i > 0 {

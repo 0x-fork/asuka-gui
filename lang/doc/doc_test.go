@@ -167,3 +167,44 @@ func TestPlatformFiles(t *testing.T) {
 		t.Errorf("everywhere:\n%s", got)
 	}
 }
+
+// A plain // comment among the /// ones above a declaration is a note:
+// the doc is the /// comments, around it, and a member's code shows
+// them only.
+func TestPlainCommentsInDoc(t *testing.T) {
+	p, err := FromSources("std/sum", map[string][]byte{"sum.asuka": []byte(`// Package std/sum adds.
+
+// TODO: overflow
+/// Adds.
+pub fn add(a: int, b: int) -> int = a + b
+
+/// Subtracts.
+// It may go below zero.
+/// b from a.
+pub fn sub(a: int, b: int) -> int = a - b
+
+// Not a doc.
+
+/// Not right above.
+
+pub fn neg(a: int) -> int = -a
+
+/// A total.
+pub struct Total {
+  // In cents.
+  /// The amount.
+  amount: int
+}
+`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]string{"add": "Adds.", "sub": "Subtracts.\nb from a.", "neg": "", "Total": "A total."} {
+		if d := p.Lookup(name); d == nil || d.Doc != want {
+			t.Errorf("Lookup(%s): %+v, want doc %q", name, d, want)
+		}
+	}
+	if d := p.Lookup("Total"); d == nil || d.Code != "struct Total {\n  /// The amount.\n  amount: int\n}" {
+		t.Errorf("Total's code: %+v", d)
+	}
+}

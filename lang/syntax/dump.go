@@ -50,6 +50,7 @@ func (d *dumper) span(s Span) string { return d.pos(s.Start) + "-" + d.pos(s.End
 
 var (
 	posType      = reflect.TypeFor[Pos]()
+	anglesType   = reflect.TypeFor[Angles]()
 	spanType     = reflect.TypeFor[Span]()
 	triviaType   = reflect.TypeFor[Trivia]()
 	tokenType    = reflect.TypeFor[Token]()
@@ -87,7 +88,7 @@ func (d *dumper) node(n Node, depth int, label string) {
 	for i := range t.NumField() {
 		f, fv := t.Field(i), e.Field(i)
 		switch {
-		case f.Type == spanType:
+		case f.Type == spanType, f.Type == anglesType:
 		case f.Type == fileType, f.Type == commentsType:
 			// The file, and every comment (the nodes' Trivia show them).
 		case f.Type == triviaType:

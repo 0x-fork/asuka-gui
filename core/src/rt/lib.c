@@ -928,13 +928,22 @@ static void group_settle(group_ctx *c) {
 		}
 		return;
 	}
-	// all: every result, in order.
-	ak_kind k = c->fs->len ? (ak_kind)((ak_future *)c->fs->data[0].p)->kind : AK_K_VOID;
+	// all: every result, in order. The futures' results are of one kind
+	// (an array of tasks of one type; all(…)'s, its scalars boxed, are
+	// references) but for the void ones', whose places hold nothing (none
+	// in an array of references): the array's kind is the others'.
+	ak_kind k = AK_K_VOID;
+	for (uint32_t i = 0; i < c->fs->len && k == AK_K_VOID; i++)
+		k = (ak_kind)((ak_future *)c->fs->data[i].p)->kind;
 	ak_arr *res = ak_arr_new(k == AK_K_VOID ? AK_K_INT : k, NULL, c->fs->len);
 	for (uint32_t i = 0; i < c->fs->len; i++) {
 		ak_future *f = c->fs->data[i].p;
-		ak_retain_val(f->result, k);
-		res->data[res->len++] = f->result;
+		ak_val v = {0};
+		if (f->kind != AK_K_VOID) {
+			v = f->result;
+			ak_retain_val(v, k);
+		}
+		res->data[res->len++] = v;
 	}
 	ak_future_resolve(out, (ak_val){.p = res});
 }

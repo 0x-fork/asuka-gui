@@ -891,6 +891,7 @@ func (c *Checker) typeParams(list []*syntax.TypeParam) []*TypeParam {
 		p := &TypeParam{Name: tp.Name.Name, Index: i, id: c.nextTP}
 		c.nextTP++
 		tn := &TypeName{object: object{p.Name, tp.Name.Start}, Kind: ParamType, Type: p, resolved: true}
+		p.obj = tn
 		c.info.Defs[tp.Name] = tn
 		c.scope.Insert(tn)
 		out = append(out, p)

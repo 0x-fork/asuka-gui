@@ -891,9 +891,7 @@ func (b *fb) extract(p syntax.Pattern, target *check.Var, v int, t check.Type) i
 			if tt == nil || !containsVar(e, target, b.l.info) {
 				continue
 			}
-			r := b.temp(b.l.kind(tt.Elems[i]))
-			b.emit(op("GETF"), r, v, i)
-			return b.extract(e, target, r, tt.Elems[i])
+			return b.extract(e, target, b.tupleElem(v, i, tt.Elems[i]), tt.Elems[i])
 		}
 	case *syntax.CasePat:
 		k := b.l.info.Cases[p]
@@ -1191,6 +1189,15 @@ func (b *fb) bindAccessor(bd *check.BindArg) int {
 func (b *fb) componentCall(ec *check.ElementCall) int {
 	comp := ec.Comp.Comp
 	idx := b.l.compFunc(ec.Comp, ec.Comp.Type)
+	// Component as name: the Ref is made before its arguments, which read
+	// it (its children's block, its handlers), and holds the view once
+	// there is one.
+	asCell := -1
+	if ec.As != nil {
+		asCell = b.local(bc.KRef)
+		b.refNew(asCell)
+		b.vars[ec.As] = asCell
+	}
 	var vals []int
 	none := func() int {
 		r := b.temp(bc.KRef)
@@ -1293,9 +1300,9 @@ func (b *fb) componentCall(ec *check.ElementCall) int {
 		b.callBTo(uiScopeEnd, bc.None, scope)
 	}
 	b.outerStyle(v, ec)
-	if ec.As != nil {
-		// Component as name: the view of the one element it shows.
-		b.elementRef(ec, v)
+	if asCell >= 0 {
+		// The view of the one element it shows.
+		b.setRef(asCell, v)
 	}
 	return v
 }

@@ -17,6 +17,10 @@ type fb struct {
 	ctx   *check.FuncCtx
 	subst check.Subst
 	line  int32
+	node  syntax.Node // what's being lowered (at's), for an error found as it's emitted
+	// tooBig: the function was said to need more than the bytecode holds
+	// (registers, an operand), once.
+	tooBig bool
 
 	vars map[*check.Var]int // a local's register (its box, accessor or memo)
 	// unboxed: boxed vars this function holds the values of (a spawn's
@@ -55,8 +59,50 @@ type loop struct {
 	defers    int // len(defers) where the loop starts
 }
 
-func (b *fb) emit(o bc.Op, args ...int)     { b.f.Emit(b.line, o, args...) }
-func (b *fb) emitKind(o bc.Op, args ...int) { b.f.Emit(b.line, o, args...) }
+func (b *fb) emit(o bc.Op, args ...int)     { b.f.Emit(b.line, o, b.fits(o, args)...) }
+func (b *fb) emitKind(o bc.Op, args ...int) { b.f.Emit(b.line, o, b.fits(o, args)...) }
+
+// immWhat names what an instruction's 16-bit immediate counts or
+// indexes, for the error when there are more.
+var immWhat = map[string]string{
+	"CALL": "arguments", "CALLC": "arguments", "CALLB": "arguments", "CALLI": "arguments", "UNTRACK": "arguments",
+	"CLOS": "captured values", "CAP": "captured values", "INTERP": "parts of a string",
+	"GETF": "fields", "SETF": "fields", "GETP": "payload values", "NEWE": "enum cases",
+	"NEWA": "elements", "NEWM": "entries",
+}
+
+// fits checks args' immediates: one past 16 bits (a call of 70000
+// arguments, the 70000th case of an enum with payloads) is an error
+// where it's lowered, not a module the assembler can't write.
+func (b *fb) fits(o bc.Op, args []int) []int {
+	def := bc.Ops[o]
+	for i, kind := range def.Operands {
+		if kind != bc.Imm || i >= len(args) || args[i] >= -0x8000 && args[i] <= 0xFFFF {
+			continue
+		}
+		what := immWhat[def.Name]
+		if what == "" {
+			what = "of what " + def.Name + " counts"
+		}
+		b.overflow("this needs more than 65535 %s in one instruction, the most the bytecode holds", what)
+		args[i] = 0
+	}
+	return args
+}
+
+// overflow reports, once per function, that it needs more than the
+// bytecode holds, where it's being lowered.
+func (b *fb) overflow(format string, args ...any) {
+	if b.tooBig {
+		return
+	}
+	b.tooBig = true
+	where := b.node
+	if where == nil {
+		where = b.l.lastNode
+	}
+	b.l.errorf(where, format, args...)
+}
 
 // emitJump emits a jump to l: JMP, or a conditional one on reg.
 func (b *fb) emitJump(o bc.Op, reg int, l Label) {
@@ -71,6 +117,7 @@ func (b *fb) jmp(l Label) { b.f.Emit(b.line, op("JMP"), int(l)) }
 
 func (b *fb) at(n syntax.Node) {
 	if n != nil {
+		b.node, b.l.lastNode = n, n
 		if line := b.l.line(n); line > 0 {
 			b.line = line
 		}
@@ -80,7 +127,13 @@ func (b *fb) at(n syntax.Node) {
 // ---------------------------------------------------------------------
 // Registers
 
-func (b *fb) newReg(k bc.Kind) int { return b.f.Reg(k) }
+func (b *fb) newReg(k bc.Kind) int {
+	if len(b.f.Kinds) >= bc.None-1 {
+		// An instruction names a register in 16 bits (bc.None is none).
+		b.overflow("this needs more than %d registers (values held at once) in one function, the most the bytecode holds: split it up", bc.None-1)
+	}
+	return b.f.Reg(k)
+}
 
 // temp is a register that lives until the statement's end.
 func (b *fb) temp(k bc.Kind) int {
@@ -191,7 +244,7 @@ func (b *fb) null() int {
 
 // move copies src into dst: retained when a reference.
 func (b *fb) move(dst, src int) {
-	if dst == src || src < 0 || dst == bc.None {
+	if dst == src || src < 0 || src == bc.None || dst == bc.None {
 		return
 	}
 	if b.f.Kinds[dst] == bc.KRef {

@@ -27,6 +27,15 @@ func (b *fb) value(e syntax.Expr, dst int) int {
 	}
 	to := b.typ(conv)
 	from := b.rawType(e)
+	if from == check.Never {
+		// It leaves: the code after it isn't reached, but is compiled
+		// with a register of the type expected (an argument's, …).
+		b.expr(e, -1)
+		if dst >= 0 {
+			return dst
+		}
+		return b.valueReg(-1, b.l.kind(to))
+	}
 	inner := check.Unopt(to)
 	if n, ok := inner.(*check.Named); ok && n.Obj.Kind == check.InterfaceType {
 		b.l.implement(check.Unopt(from), n)
@@ -390,6 +399,10 @@ func (b *fb) unbox(x int, t check.Type, dst int) int {
 	if k == bc.KRef {
 		return b.copyTo(x, dst)
 	}
+	if k == bc.KVoid {
+		// Nothing (a void task's place in all's results).
+		return -1
+	}
 	r := b.out(dst, k)
 	b.emit(op("UNBOX"), r, x)
 	return r
@@ -561,33 +574,68 @@ func (b *fb) stringLit(e *syntax.StringLit, dst int) int {
 		return r
 	}
 	// INTERP over a block: text, value, text, ...
-	var ks []bc.Kind
-	var vals []int
+	type part struct {
+		text string
+		x    syntax.Expr // nil for text
+	}
+	var parts []part
 	for i, x := range e.Interps {
 		if s := literalText(segs[i], e.Raw, e.Multiline); s != "" {
-			ks = append(ks, bc.KRef)
-			vals = append(vals, b.kstr(s))
+			parts = append(parts, part{text: s})
 		}
-		v, k := b.stringPart(x)
-		ks = append(ks, k)
-		vals = append(vals, v)
+		parts = append(parts, part{x: x})
 	}
 	if s := literalText(segs[len(segs)-1], e.Raw, e.Multiline); s != "" {
-		ks = append(ks, bc.KRef)
-		vals = append(vals, b.kstr(s))
+		parts = append(parts, part{text: s})
 	}
-	blk := b.regs(ks)
-	for i, v := range vals {
-		b.move(blk+i, v)
+	interp := func(parts []part, r int) {
+		var ks []bc.Kind
+		var vals []int
+		for _, p := range parts {
+			if p.x == nil {
+				ks = append(ks, bc.KRef)
+				vals = append(vals, b.kstr(p.text))
+				continue
+			}
+			v, k := b.stringPart(p.x)
+			ks = append(ks, k)
+			vals = append(vals, v)
+		}
+		blk := b.regs(ks)
+		for i, v := range vals {
+			b.move(blk+i, v)
+		}
+		kinds := make([]byte, len(ks))
+		for i, k := range ks {
+			kinds[i] = byte(k)
+		}
+		b.emit(op("INTERP"), r, blk, len(ks), b.l.str(string(kinds)))
+		b.releaseRegs(blk, ks)
 	}
-	kinds := make([]byte, len(ks))
-	for i, k := range ks {
-		kinds[i] = byte(k)
+	if len(parts) <= literalChunk {
+		r := b.out(dst, bc.KRef)
+		interp(parts, r)
+		return r
 	}
-	r := b.out(dst, bc.KRef)
-	b.emit(op("INTERP"), r, blk, len(ks), b.l.str(string(kinds)))
-	b.releaseRegs(blk, ks)
-	return r
+	// A string of more parts: literalChunk of them at a time, each
+	// chunk's text concatenated to the ones before, so that it takes as
+	// many registers as one of literalChunk.
+	acc := -1
+	for len(parts) > 0 {
+		n := min(len(parts), literalChunk)
+		r := b.temp(bc.KRef)
+		mark := b.mark()
+		interp(parts[:n], r)
+		b.release(mark)
+		parts = parts[n:]
+		if acc >= 0 {
+			t := b.temp(bc.KRef)
+			b.emit(op("CONCAT"), t, acc, r)
+			r = t
+		}
+		acc = r
+	}
+	return b.copyTo(acc, dst)
 }
 
 // stringPart is an interpolated value: a scalar INTERP prints itself, or
@@ -1118,19 +1166,24 @@ func (b *fb) literalDone(r, dst int) int {
 func (b *fb) appendEach(r int, xs []syntax.Expr, add string) {
 	for _, x := range xs {
 		mark := b.mark()
-		v := b.value(x, -1)
-		ks := []bc.Kind{bc.KRef, b.f.Kinds[v]}
-		blk := b.regs(ks)
-		null := b.null()
-		b.move(blk+1, v)
-		b.emit(op("MOV"), blk, r)
-		b.emit(op("MOV"), r, null)
-		b.emit(op("CALLB"), bc.None, b.l.builtin(add), blk, 2)
-		b.emit(op("MOV"), r, blk)
-		b.emit(op("MOV"), blk, null)
-		b.releaseRegs(blk, ks)
+		b.appendReg(r, b.value(x, -1), add)
 		b.release(mark)
 	}
+}
+
+// appendReg adds the value in v to the array or set in r, as appendEach
+// does.
+func (b *fb) appendReg(r, v int, add string) {
+	ks := []bc.Kind{bc.KRef, b.f.Kinds[v]}
+	blk := b.regs(ks)
+	null := b.null()
+	b.move(blk+1, v)
+	b.emit(op("MOV"), blk, r)
+	b.emit(op("MOV"), r, null)
+	b.emit(op("CALLB"), bc.None, b.l.builtin(add), blk, 2)
+	b.emit(op("MOV"), r, blk)
+	b.emit(op("MOV"), blk, null)
+	b.releaseRegs(blk, ks)
 }
 
 // mapRead is a map's index (m[k]) of a value that isn't optional, its
@@ -1156,60 +1209,93 @@ func (b *fb) valueBlock(bl *syntax.Block, dst int) {
 	b.openScope()
 	n := len(bl.Items)
 	if n > 0 {
-		if es, ok := bl.Items[n-1].(*syntax.ExprStmt); ok {
+		last := bl.Items[n-1]
+		switch {
+		case b.l.info.ValueItems[last]:
+			// An if or a match: the block's value is its.
+			b.stmtsThen(bl.Items[:n-1], func() {
+				b.at(last)
+				switch s := last.(type) {
+				case *syntax.IfStmt:
+					b.ifValue(s.Cond, s.Then, s.Else, dst)
+				case *syntax.MatchStmt:
+					b.matchValue(s, s.Subject, s.Arms, dst)
+				}
+			})
+		case isExprStmt(last):
+			es := last.(*syntax.ExprStmt)
 			b.stmtsThen(bl.Items[:n-1], func() {
 				b.at(es)
 				b.value(es.X, dst)
 			})
-		} else {
+		default:
 			b.stmts(bl.Items)
 		}
 	}
 	b.closeScope()
 }
 
+func isExprStmt(it syntax.Item) bool {
+	_, ok := it.(*syntax.ExprStmt)
+	return ok
+}
+
 func (b *fb) ifExpr(e *syntax.IfExpr, dst int) int {
 	r := b.out(dst, b.kind(b.l.info.Types[e]))
-	if f := b.l.foldCond(e.Cond); f.known {
+	b.ifValue(e.Cond, e.Then, e.Else, r)
+	return r
+}
+
+// ifValue lowers an if as a value into r: an IfExpr, or an IfStmt that's
+// its block's value (els an *IfExpr, an *IfStmt or a *Block).
+func (b *fb) ifValue(cond syntax.Expr, then *syntax.Block, els syntax.Node, r int) {
+	elseValue := func() {
+		switch el := els.(type) {
+		case *syntax.IfExpr:
+			b.value(el, r)
+		case *syntax.IfStmt:
+			b.ifValue(el.Cond, el.Then, el.Else, r)
+		case *syntax.Block:
+			b.valueBlock(el, r)
+		}
+	}
+	if f := b.l.foldCond(cond); f.known {
 		// Only the branch @platform takes.
 		b.effects(f)
 		if f.val {
 			b.openScope()
-			b.valueBlock(e.Then, r)
+			b.valueBlock(then, r)
 			b.closeScope()
-			return r
+			return
 		}
-		switch el := e.Else.(type) {
-		case *syntax.IfExpr:
-			b.value(el, r)
-		case *syntax.Block:
-			b.valueBlock(el, r)
-		}
-		return r
+		elseValue()
+		return
 	}
 	b.openScope()
-	els, end := b.f.NewLabel(), b.f.NewLabel()
-	b.condJump(e.Cond, els)
-	b.valueBlock(e.Then, r)
+	els0, end := b.f.NewLabel(), b.f.NewLabel()
+	b.condJump(cond, els0)
+	b.valueBlock(then, r)
 	b.closeScope()
 	b.jmp(end)
-	b.f.Place(els)
-	switch el := e.Else.(type) {
-	case *syntax.IfExpr:
-		b.value(el, r)
-	case *syntax.Block:
-		b.valueBlock(el, r)
-	}
+	b.f.Place(els0)
+	elseValue()
 	b.f.Place(end)
-	return r
 }
 
 func (b *fb) matchExpr(e *syntax.MatchExpr, dst int) int {
 	r := b.out(dst, b.kind(b.l.info.Types[e]))
-	subj := b.value(e.Subject, -1)
-	st := b.rawType(e.Subject)
+	b.matchValue(e, e.Subject, e.Arms, r)
+	return r
+}
+
+// matchValue lowers a match as a value into r: a MatchExpr, or a
+// MatchStmt that's its block's value (an arm's body may then be a
+// statement that leaves).
+func (b *fb) matchValue(n syntax.Node, subject syntax.Expr, arms []*syntax.MatchArm, r int) {
+	subj := b.value(subject, -1)
+	st := b.rawType(subject)
 	end := b.f.NewLabel()
-	for _, a := range b.l.platformArms(e.Subject, e.Arms) {
+	for _, a := range b.l.platformArms(subject, arms) {
 		next := b.f.NewLabel()
 		b.openScope()
 		b.testPattern(a.Pattern, subj, st, next)
@@ -1221,14 +1307,18 @@ func (b *fb) matchExpr(e *syntax.MatchExpr, dst int) int {
 		switch body := a.Body.(type) {
 		case *syntax.Block:
 			b.valueBlock(body, r)
+		case *syntax.ExprStmt:
+			b.at(body)
+			b.value(body.X, r)
 		case syntax.Expr:
 			b.value(body, r)
+		case syntax.Item:
+			b.stmt(body)
 		}
 		b.closeScope()
 		b.jmp(end)
 		b.f.Place(next)
 	}
-	b.throwMsg("no arm of the match matched (" + b.where(e) + ")")
+	b.throwMsg("no arm of the match matched (" + b.where(n) + ")")
 	b.f.Place(end)
-	return r
 }

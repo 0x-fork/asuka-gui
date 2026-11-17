@@ -11,9 +11,18 @@ import (
 func (c *Checker) typeScope(t *TypeName) *Scope {
 	s := NewScope(c.declScope(t.Decl))
 	for _, p := range t.TypeParams {
-		s.Insert(&TypeName{object: object{p.Name, t.pos}, Kind: ParamType, Type: p, resolved: true})
+		s.Insert(p.object())
 	}
 	return s
+}
+
+// object is the type name p is declared as: its declaration's (a
+// built-in one's made here, without a position).
+func (p *TypeParam) object() *TypeName {
+	if p.obj == nil {
+		p.obj = &TypeName{object: object{p.Name, syntax.NoPos}, Kind: ParamType, Type: p, resolved: true}
+	}
+	return p.obj
 }
 
 // resolveType sets a declared type's parameters and, for an alias, what
@@ -497,7 +506,7 @@ func (c *Checker) funcBody(f *Function) {
 	}
 	for _, p := range f.TypeParams {
 		c.scope = NewScope(c.scope)
-		c.scope.Insert(&TypeName{object: object{p.Name, f.pos}, Kind: ParamType, Type: p, resolved: true})
+		c.scope.Insert(p.object())
 	}
 	c.ctx = nil
 	kind := CtxFunc

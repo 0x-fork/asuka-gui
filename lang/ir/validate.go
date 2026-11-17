@@ -33,6 +33,13 @@ var operandKinds = map[string][]bc.Kind{
 	"AWAIT": {0, bc.KRef}, "NOT": {bc.KBool, bc.KBool},
 }
 
+// discards are the opcodes whose result register may be none (bc.None):
+// the value is let go of. No other operand names none.
+var discards = map[string]bool{
+	"CALL": true, "CALLC": true, "CALLB": true, "CALLI": true, "CGET": true, "CPEEK": true,
+	"CTAKE": true, "MREAD": true, "AGET": true, "UNTRACK": true, "AWAIT": true,
+}
+
 // Validate checks what the lowering promises of its functions: each
 // register an instruction names exists (and, where the opcode says,
 // has its kind), each label is placed, handler ranges nest innermost
@@ -79,6 +86,9 @@ func (f *Func) validate(p *Program) error {
 				continue
 			}
 			r := int(in.Args[j])
+			if r == bc.None && (j != 0 || !discards[def.Name]) {
+				return fmt.Errorf("instruction %d (%s): operand %d names no register", pc, def.Name, j)
+			}
 			if r == bc.None || emptyBlock(def.Name, j, in.Args) {
 				ri++
 				continue
