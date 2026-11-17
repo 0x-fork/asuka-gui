@@ -503,8 +503,10 @@ void ak_ext_mounted(ak_ui_root *r) {
 
 void ak_ext_environment(ak_ui_root *r) { ak_locale_environment(r); }
 
-// ak_ext_unmount fails the calls the root's host will never answer, and
-// lets the process's caches go.
+// ak_ext_unmount ends the calls the root's host will never answer, and
+// lets the process's caches go: what awaits one is cancelled (the host
+// it waited for went, as a task's owner goes: it unwinds, and nothing is
+// reported); a callback hears that the root went.
 void ak_ext_unmount(ak_ui_root *r) {
 	for (uint32_t i = 0; i < calls.len;) {
 		if (calls.data[i].r != r) {
@@ -513,6 +515,11 @@ void ak_ext_unmount(ak_ui_root *r) {
 		}
 		pending_call c = calls.data[i];
 		calls.data[i] = calls.data[--calls.len];
+		if (c.fut) {
+			ak_future_cancel(c.fut);
+			ak_release(c.fut);
+			c.fut = NULL;
+		}
 		answer(&c, false, AK_STR("the root went before the call was answered"));
 	}
 	if (!calls.len) ak_vec_free(&calls);

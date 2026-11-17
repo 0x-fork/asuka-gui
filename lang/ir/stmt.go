@@ -1047,6 +1047,12 @@ func (b *fb) callEvent(m *check.Member, n syntax.Node, args func() []int) {
 	res := b.temp(bc.KRef)
 	b.emit(op("CALLC"), res, h, blk, len(vals))
 	b.releaseRegs(blk, ks)
+	if b.suspends() {
+		// An async function waits for an async handler: its result is
+		// the task's future (none: a sync handler's).
+		b.emitJump(op("JNONE"), res, skip)
+		b.emit(op("AWAIT"), b.temp(bc.KRef), res)
+	}
 	b.f.Place(skip)
 }
 

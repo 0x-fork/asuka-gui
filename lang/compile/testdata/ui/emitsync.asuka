@@ -1,9 +1,14 @@
-// An async handler a sync fn emits to starts as a task of its own,
-// which the fn doesn't wait for (it can't: only an async function
-// suspends), even when the fn runs on a task; a task it belongs to, so
-// it ends with that one. An async handler that emits waits for it.
+// An event's async handler is a task of the component that declares it
+// (the receiver): it runs until it finishes or that component goes,
+// whoever emitted the event and whatever became of the emitter. A sync
+// fn that emits can't wait for it (only an async function suspends); an
+// async one that emits waits for it, and its being cancelled stops the
+// wait, not the handler.
 
 state log: [string] = []
+state shown = true       // Root shows Parent
+state childShown = true  // Parent shows Child
+state closeOnSave = false
 
 component Child {
   event saved()
@@ -28,33 +33,159 @@ component Child {
         log.push("press end")
       }
     }
-  }
-}
-
-component Parent {
-  Child {
-    on saved {
-      defer { log.push("handler done") }
-      log.push("handler start")
-      await sleep(5ms)
-      log.push("handler end")
+    Button("Plain") {
+      on press {
+        emit saved()
+        log.push("press end")
+      }
+    }
+    Button("Timeout") {
+      on press {
+        do {
+          try await withTimeout(2ms) {
+            await sleep(0ms)
+            emit saved()
+          }
+        } catch {
+          log.push("timed out")
+        }
+        log.push("press end")
+      }
     }
   }
 }
 
-app { Parent() }
+component Parent {
+  if childShown {
+    Child {
+      on saved {
+        defer { log.push("handler done") }
+        log.push("handler start")
+        if closeOnSave { childShown = false }
+        await sleep(5ms)
+        log.push("handler end")
+      }
+    }
+  }
+}
 
-test "a sync fn's emit doesn't wait" {
-  let app = mount(Parent())
+component Root {
+  if shown { Parent() }
+}
+
+// An error the handler lets out goes to the Boundary around where it's
+// declared (the receiver's), not to the emitter's.
+
+enum SaveError: Error { boom }
+
+component Inner {
+  event failed()
+
+  fn fire() { emit failed() }
+
+  Boundary {
+    Button("Fail") {
+      on press {
+        await sleep(1ms)
+        fire()
+      }
+    }
+    on error(e, reset) { Text("inner caught") }
+  }
+}
+
+component Outer {
+  Boundary {
+    Inner {
+      on failed {
+        await sleep(2ms)
+        throw SaveError.boom
+      }
+    }
+    on error(e, reset) { Text("outer caught") }
+  }
+}
+
+app { Root() }
+
+fn reset() {
+  log = []
+  shown = true
+  childShown = true
+  closeOnSave = false
+}
+
+test "a sync fn's emit on a task doesn't wait, and the task's end doesn't cancel the handler" {
+  reset()
+  let app = mount(Root())
   app.tap("Sync")
   await sleep(30ms)
-  expect(log == ["handler start", "after emit", "press end", "handler done"])
+  expect(log == ["handler start", "after emit", "press end", "handler end", "handler done"])
+}
+
+test "a sync handler's emit doesn't wait" {
+  reset()
+  let app = mount(Root())
+  app.tap("Plain")
+  await sleep(30ms)
+  expect(log == ["handler start", "press end", "handler end", "handler done"])
 }
 
 test "an async handler's emit waits" {
-  log = []
-  let app = mount(Parent())
+  reset()
+  let app = mount(Root())
   app.tap("Async")
   await sleep(30ms)
   expect(log == ["handler start", "handler end", "handler done", "press end"])
+}
+
+test "cancelling the emitter's wait leaves the handler running" {
+  reset()
+  let app = mount(Root())
+  app.tap("Timeout")
+  await sleep(30ms)
+  expect(log == ["handler start", "timed out", "press end", "handler end", "handler done"])
+}
+
+test "the emitter going doesn't cancel the handler" {
+  reset()
+  closeOnSave = true
+  let app = mount(Root())
+  app.tap("Sync")
+  await sleep(30ms)
+  expect(!childShown)
+  expect(!app.has("Sync"))
+  expect(log == ["handler start", "after emit", "press end", "handler end", "handler done"])
+}
+
+test "the receiver going cancels the handler, and its defers run" {
+  reset()
+  let app = mount(Root())
+  app.tap("Async")
+  await sleep(3ms)
+  expect(log == ["handler start"])
+  shown = false
+  await sleep(30ms)
+  expect(!app.has("Async"))
+  expect(log == ["handler start", "handler done"])
+}
+
+test "the receiver going cancels a handler a sync fn started" {
+  reset()
+  let app = mount(Root())
+  app.tap("Sync")
+  await sleep(3ms)
+  expect(log == ["handler start", "after emit", "press end"])
+  shown = false
+  await sleep(30ms)
+  expect(!app.has("Sync"))
+  expect(log == ["handler start", "after emit", "press end", "handler done"])
+}
+
+test "the handler's error goes to the receiver's Boundary" {
+  let app = mount(Outer())
+  app.tap("Fail")
+  await sleep(30ms)
+  app.expect("outer caught")
+  expect(!app.has("inner caught"))
 }

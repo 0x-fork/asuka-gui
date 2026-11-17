@@ -1,0 +1,91 @@
+// Constant literals are built once and shared (frozen): an array, a set,
+// a map (empty ones too), a tuple, a struct (of its defaults too), a
+// case. Values all the same: changing one copies it, and the literal
+// gives what it says the next time.
+
+struct Style {
+  size: int = 12
+  tags: [string] = []
+}
+
+enum Shape {
+  circle(r: int)
+  rect(w: int, h: int)
+}
+
+fn names() -> [string] = ["a", "b"]
+fn empty() -> [int] = []
+fn grid() -> [[int]] = [[1], [], [2, 3]]
+fn table() -> [string: int] = ["x": 1]
+fn noTable() -> [string: [int]] = [:]
+fn primes() -> Set<int> = [2, 3, 5]
+fn noSet() -> Set<string> = []
+fn plain() -> Style = Style()
+fn shape() -> Shape = .rect(w: 2, h: 3)
+fn pair() -> (int, [string]) = (1, [])
+
+test "changing a copy leaves the literal as it says" {
+  var a = names()
+  a.push("c")
+  a[0] = "z"
+  print("{a} {names()}")
+  var e = empty()
+  e.push(1)
+  print("{e} {empty()}")
+  var g = grid()
+  g[1].push(9)
+  g[0][0] = 7
+  print("{g} {grid()}")
+  var m = table()
+  m["y"] = 2
+  print("{m.count()} {table().count()}")
+  var n = noTable()
+  n["k"] = []
+  print("{n.count()} {noTable().count()}")
+  var p = primes()
+  p.insert(7)
+  print("{p.count()} {primes().count()}")
+  var s = noSet()
+  s.insert("x")
+  print("{s.count()} {noSet().count()}")
+  var st = plain()
+  st.tags.push("t")
+  st.size = 1
+  print("{st.size} {st.tags} {plain().size} {plain().tags}")
+  var (i, xs) = pair()
+  xs.push("q")
+  i += 1
+  let (_, again) = pair()
+  print("{i} {xs} {again}")
+}
+
+test "the same value each time" {
+  expect(names() == names())
+  expect(grid() == [[1], [], [2, 3]])
+  expect(plain() == Style(size: 12, tags: []))
+  match shape() {
+    .rect(w, h) => print("{w}x{h}")
+    .circle(r) => print("{r}")
+  }
+}
+
+test "shared with spawn" {
+  let n = await spawn { names().count() + grid()[2].count() + plain().size }
+  print(n)
+}
+
+// Output:
+// ["z","b","c"] ["a","b"]
+// [1] []
+// [[7],[9],[2,3]] [[1],[],[2,3]]
+// 2 1
+// 1 0
+// 4 3
+// 1 0
+// 1 ["t"] 12 []
+// 2 ["q"] []
+// ok changing a copy leaves the literal as it says
+// 2x3
+// ok the same value each time
+// 16
+// ok shared with spawn

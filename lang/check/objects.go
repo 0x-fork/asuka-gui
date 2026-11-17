@@ -391,6 +391,10 @@ type Component struct {
 	Body                  *syntax.Block
 	Ctx                   *FuncCtx // the body's
 	Provides              []*syntax.ProvideDecl
+	// HoldsHandlers: it declares an async handler of another component's
+	// event, which is its task (lang/LOWERING.md's "Components"): its env
+	// keeps the owner it was made under.
+	HoldsHandlers bool
 	// Variants are its variant declarations, in order: states its caller
 	// styles (name { … }). Their names are a namespace of their own.
 	Variants []*VariantDef

@@ -17,14 +17,48 @@ import (
 // work. Async calls that don't wait (calls), work in an async function
 // (compute), a stream read with for await (stream), and tasks (tasks).
 func BenchmarkAsync(b *testing.B) {
+	benchProgram(b, "testdata/bench/async.asuka", []benchWork{
+		{"startup", "calls", 0},
+		{"calls", "", 2_000_000},
+		{"compute", "", 5_000_000},
+		{"stream", "", 200_000},
+		{"tasks", "", 200_000},
+	})
+}
+
+// BenchmarkLiterals times testdata/bench/literals.asuka: functions that
+// make constant literals (hoisted: built once, shared), in a loop.
+// Arrays, maps, sets, structs and cases of constants (constants), ones
+// with empty literals in them and a struct of its defaults (empties),
+// and a constant one changed after (changed: each change copies it).
+func BenchmarkLiterals(b *testing.B) {
+	benchProgram(b, "testdata/bench/literals.asuka", []benchWork{
+		{"startup", "constants", 0},
+		{"constants", "", 2_000_000},
+		{"empties", "", 2_000_000},
+		{"changed", "", 2_000_000},
+	})
+}
+
+// A benchWork is a workload of a bench program: its name, the argument
+// that picks it (its name when ""), and its size.
+type benchWork struct {
+	name, which string
+	n           int
+}
+
+// benchProgram times path's workloads, each run a process: the program
+// on the VM and compiled to C as a release build compiles it (no
+// sanitizers).
+func benchProgram(b *testing.B, path string, works []benchWork) {
 	if _, err := cbuild.Find(); err != nil {
 		b.Skip(err)
 	}
-	src, err := os.ReadFile("testdata/bench/async.asuka")
+	src, err := os.ReadFile(path)
 	if err != nil {
 		b.Fatal(err)
 	}
-	res := Files(map[string][]byte{"async.asuka": src}, nil)
+	res := Files(map[string][]byte{filepath.Base(path): src}, nil)
 	if err := res.Err(); err != nil {
 		b.Fatal(err)
 	}
@@ -60,19 +94,10 @@ func BenchmarkAsync(b *testing.B) {
 		{"vm", []string{vm, "-main", "-program", "bench", akb, "--"}},
 		{"c", []string{c, "-main", "-program", "bench", "-aot", "--"}},
 	}
-	for _, w := range []struct {
-		name string
-		n    int
-	}{
-		{"startup", 0},
-		{"calls", 2_000_000},
-		{"compute", 5_000_000},
-		{"stream", 200_000},
-		{"tasks", 200_000},
-	} {
-		which := w.name
-		if which == "startup" {
-			which = "calls"
+	for _, w := range works {
+		which := w.which
+		if which == "" {
+			which = w.name
 		}
 		for _, be := range backends {
 			b.Run(w.name+"/"+be.name, func(b *testing.B) {

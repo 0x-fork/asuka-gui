@@ -27,7 +27,7 @@ async fn loadThread(id: string) throws -> Thread {
   let level = live(1.0, levels)
   pub fn batteryLevel() -> float = level()
   ```
-- **取消。** task 属于启动它的那个东西。当那个东西消失时（比如用户离开了页面），task 就会被取消：它正在等待的那个 `await` 会结束它，它的 `defer` 会运行，并且不会报告任何错误。
+- **取消。** task 属于启动它的那个东西（组件事件的处理函数则属于声明它的组件，见[组件](components.md)）。当那个东西消失时（比如用户离开了页面），task 就会被取消：它正在等待的那个 `await` 会结束它，它的 `defer` 会运行，并且不会报告任何错误。
 
 ## 需要加载的数据
 

@@ -46,9 +46,13 @@ type fb struct {
 	// The component's or store's env: envReg holds the struct (in
 	// methods, closures, and the component's function once it's made);
 	// envBox the box its closures made before that capture.
-	comp       *check.TypeName
-	envReg     int
-	envBox     int
+	comp   *check.TypeName
+	envReg int
+	envBox int
+	// ownerReg: in the function of a component that holds handlers
+	// (check's Component.HoldsHandlers), the owner it was made under
+	// (ui.owner), which its env keeps after its members.
+	ownerReg   int
 	memberRegs map[*check.Member]int // in the component's function
 
 	mainWindow *check.ElementCall // the app's: the app block's first Window
@@ -455,6 +459,46 @@ func (l *Lowerer) memberIndex(m *check.Member) int {
 	return l.memberIdx[m]
 }
 
+// ownerIndex is the field of t's env that holds the owner it was made
+// under, after its members (t.Comp.HoldsHandlers).
+func (l *Lowerer) ownerIndex(t *check.TypeName) int {
+	n := 0
+	for _, m := range t.Comp.Order {
+		if m.Kind != check.FnMember {
+			n++
+		}
+	}
+	return n
+}
+
+// heldHandler wraps clos, an async handler of a component's event, as
+// what the component that declares it holds (ui.handler): its tasks are
+// that component's, held by the owner its env keeps; outside a
+// component, by the owner where it's declared.
+func (b *fb) heldHandler(clos int) int {
+	holder := -1
+	if b.comp != nil && b.comp.Comp != nil && b.comp.Comp.HoldsHandlers {
+		switch {
+		case b.ownerReg >= 0:
+			holder = b.ownerReg
+		case b.envReg >= 0:
+			holder = b.temp(bc.KRef)
+			b.emit(op("GETF"), holder, b.envReg, b.l.ownerIndex(b.comp))
+		}
+	}
+	if holder < 0 {
+		holder = b.temp(bc.KRef)
+		b.emit(op("KNONE"), holder)
+	}
+	return b.callB(uiHandler, bc.KRef, clos, holder)
+}
+
+// suspends reports whether the function being lowered is async: it may
+// await (bc.FAsync).
+func (b *fb) suspends() bool {
+	return b.f.Flags&bc.FAsync != 0 || b.ctx != nil && b.ctx.Awaits
+}
+
 // memberKind is how m is stored in the env.
 func (l *Lowerer) memberKind(m *check.Member) bc.Kind {
 	if m.Kind == check.LetMember && !m.Memo && !isLoad(m.Default) {
@@ -488,6 +532,10 @@ func (l *Lowerer) envShapeOf(t *check.TypeName, typ check.Type) int {
 		}
 		l.memberIndex(m)
 		fs = append(fs, bc.Field{Name: m.Name(), Kind: l.memberKind(m), Shape: -1})
+	}
+	if t.Comp.HoldsHandlers {
+		// After the members: the owner it was made under (ownerIndex).
+		fs = append(fs, bc.Field{Name: "$owner", Kind: bc.KRef, Shape: -1})
 	}
 	l.mod.Shapes[i].Fields = fs
 	return i
@@ -682,10 +730,10 @@ func (b *fb) makeClosure(s closure) int {
 	if s.throws {
 		c.f.Flags |= bc.FThrows
 	}
-	s.body(c)
 	if s.async {
-		c.f.Flags |= bc.FAsync
+		c.f.Flags |= bc.FAsync // before the body, which asks (suspends)
 	}
+	s.body(c)
 	// Here: the closure.
 	ks := make([]bc.Kind, len(caps))
 	for i, r := range caps {

@@ -6,7 +6,7 @@
 void ak_owner_retain(ak_owner *o) { o->refs++; }
 
 static void owner_free(ak_owner *o) {
-	ak_owner *parent = o->parent;
+	ak_owner *parent = o->parent, *holder = o->holder;
 	for (ak_ctx_entry *e = o->ctx; e;) {
 		ak_ctx_entry *next = e->next;
 		ak_free(e);
@@ -22,11 +22,22 @@ static void owner_free(ak_owner *o) {
 		ak_free(o);
 	}
 	if (parent) ak_owner_release(parent);
+	if (holder) ak_owner_release(holder);
 }
 
 void ak_owner_release(ak_owner *o) {
 	AK_ASSERT(o->refs > 0);
 	if (--o->refs == 0) owner_free(o);
+}
+
+// hold puts o in holder's children, which disposes it with itself.
+static void hold(ak_owner *o, ak_owner *holder) {
+	o->doomed = holder->disposed || holder->doomed;
+	o->attached = true;
+	o->prev = holder->last;
+	if (holder->last) holder->last->next = o;
+	else holder->first = o;
+	holder->last = o;
 }
 
 // ak_sig_owner_attach puts o under parent, which then holds it.
@@ -35,17 +46,12 @@ void ak_sig_owner_attach(ak_owner *o, ak_owner *parent) {
 	if (!parent) return;
 	ak_owner_retain(parent);
 	o->catcher = parent->catcher;
-	o->doomed = parent->disposed || parent->doomed;
-	o->attached = true;
-	o->prev = parent->last;
-	if (parent->last) parent->last->next = o;
-	else parent->first = o;
-	parent->last = o;
+	hold(o, parent);
 }
 
 static void detach(ak_owner *o) {
 	if (!o->attached) return;
-	ak_owner *p = o->parent;
+	ak_owner *p = o->holder ? o->holder : o->parent;
 	if (o->prev) o->prev->next = o->next;
 	else p->first = o->next;
 	if (o->next) o->next->prev = o->prev;
@@ -116,6 +122,17 @@ ak_owner *ak_root_new(void) {
 	if (p) {
 		ak_owner_retain(p);
 		o->catcher = p->catcher;
+	}
+	return o;
+}
+
+ak_owner *ak_owner_new_in(ak_owner *holder) {
+	if (holder == g->owner) return ak_owner_new();
+	ak_owner *o = ak_root_new();
+	if (holder) {
+		ak_owner_retain(holder);
+		o->holder = holder;
+		hold(o, holder);
 	}
 	return o;
 }

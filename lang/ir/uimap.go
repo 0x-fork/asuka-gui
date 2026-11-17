@@ -33,6 +33,8 @@ const (
 	uiModelSet   = "ui.model_set"   // (model, value) -> void: an unbound one's own value
 
 	uiTask       = "ui.task"        // (closure) -> void: starts it as a task when the component mounts; cancelled when it goes
+	uiOwner      = "ui.owner"       // () -> owner?: the current owner, which a component that holds handlers keeps in its env
+	uiHandler    = "ui.handler"     // (async closure, owner?) -> closure: a handler of a component's event, its tasks held by the owner (none: the current one) and run where it's made
 	uiUse        = "ui.use"         // (key string) -> the value provided under key (a store), or an error
 	uiScopeBegin = "ui.scope_begin" // () -> int: an owner of its own for a component that provides, the one it replaced
 	uiScopeEnd   = "ui.scope_end"   // (int) -> void: back to the owner scope_begin replaced

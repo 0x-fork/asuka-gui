@@ -924,6 +924,29 @@ func (c *Checker) propSuggest(comp *Component, name string) string {
 	return ""
 }
 
+// holdsHandler notes an async handler of a component's event declared
+// in ctx: it's a task of the component around it, whose owner its env
+// keeps, and the closures between reach that env.
+func (c *Checker) holdsHandler(ctx *FuncCtx) {
+	var comp *FuncCtx
+	for cc := ctx; cc != nil && comp == nil; cc = cc.Parent {
+		switch cc.Kind {
+		case CtxComponent, CtxMethod:
+			comp = cc
+		case CtxFunc, CtxStore, CtxGlobal, CtxTest, CtxApp, CtxSpawn, CtxStyle:
+			// No component's: it's held where it's declared.
+			return
+		}
+	}
+	if comp == nil || comp.Comp == nil || comp.Comp.Comp == nil || comp.Comp.Comp.Store {
+		return
+	}
+	comp.Comp.Comp.HoldsHandlers = true
+	for cc := ctx; cc != comp; cc = cc.Parent {
+		cc.UsesEnv = true
+	}
+}
+
 func (c *Checker) onHandler(h *syntax.OnHandler, ec *ElementCall) {
 	comp := ec.Comp.Comp
 	m := comp.Members[h.Name.Name]
@@ -968,6 +991,9 @@ func (c *Checker) onHandler(h *syntax.OnHandler, ec *ElementCall) {
 	}
 	c.view, c.loops, c.inTry, c.inAwait, c.handled = savedView, savedLoops, savedTry, savedAwait, savedHandled
 	c.leave(saved)
+	if !builds && ctx.Awaits && !comp.Native {
+		c.holdsHandler(saved)
+	}
 }
 
 // EventBuilds reports an element's event whose handler's block is views

@@ -343,15 +343,20 @@ store Presenter {
     if !on {
       return
     }
-    for await b in host.next("notify", "nextPresent") {
-      let got: Present? = try? json.decode(b.string())
-      if let p = got {
-        var how = 0
-        if let f = decide {
-          how = presentation(f(deliveredOf(p.notification)))
+    // A host with no notify module: nothing comes.
+    do {
+      for await b in host.next("notify", "nextPresent") {
+        let got: Present? = try? json.decode(b.string())
+        if let p = got {
+          var how = 0
+          if let f = decide {
+            how = presentation(f(deliveredOf(p.notification)))
+          }
+          host.send("notify", "presented", host.u8(how).concat(p.token.bytes()))
         }
-        host.send("notify", "presented", host.u8(how).concat(p.token.bytes()))
       }
+    } catch e {
+      if !host.unsupported(e) { throw e }
     }
   }
 }

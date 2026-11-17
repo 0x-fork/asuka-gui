@@ -164,7 +164,7 @@ func (l *Lowerer) newFunc(name, file string, nparams int, ret bc.Kind) *fb {
 	f := &Func{Name: name, File: file, NParams: nparams, Ret: ret}
 	l.out.Funcs = append(l.out.Funcs, f)
 	return &fb{l: l, f: f, idx: len(l.out.Funcs) - 1, vars: map[*check.Var]int{}, unboxed: map[*check.Var]bool{}, free: map[bc.Kind][]int{},
-		blockFree: map[string][]int{}, memberRegs: map[*check.Member]int{}, envReg: -1, nullReg: -1}
+		blockFree: map[string][]int{}, memberRegs: map[*check.Member]int{}, envReg: -1, ownerReg: -1, nullReg: -1}
 }
 
 // ---------------------------------------------------------------------
@@ -858,7 +858,7 @@ func (b *fb) hoist(e syntax.Expr, dst int) (int, bool) {
 		return 0, false
 	}
 	t := b.rawType(e)
-	if check.HasTypeParams(t) {
+	if t == nil || check.HasTypeParams(t) {
 		return 0, false
 	}
 	key := fmt.Sprintf("%p|%s", e, l.typeKey(t))
@@ -878,7 +878,8 @@ func (b *fb) hoist(e syntax.Expr, dst int) (int, bool) {
 }
 
 // constLiteral reports a value made of literals only (top: a container
-// of them, which is worth hoisting).
+// of them, which is worth hoisting): an array, a set or a map of them
+// (empty too), a tuple, a struct (of its defaults too) or a case.
 func (l *Lowerer) constLiteral(e syntax.Expr, top bool) bool {
 	switch x := e.(type) {
 	case *syntax.ParenExpr:
@@ -896,9 +897,6 @@ func (l *Lowerer) constLiteral(e syntax.Expr, top bool) bool {
 		sel := l.info.Selections[e]
 		return sel != nil && (sel.Kind == check.SelCase || sel.Kind == check.SelColor || sel.Kind == check.SelLengthAuto)
 	case *syntax.ArrayExpr:
-		if len(x.Elems) == 0 {
-			return false
-		}
 		for _, el := range x.Elems {
 			if !l.constLiteral(el, false) {
 				return false
@@ -906,9 +904,6 @@ func (l *Lowerer) constLiteral(e syntax.Expr, top bool) bool {
 		}
 		return true
 	case *syntax.MapExpr:
-		if len(x.Entries) == 0 {
-			return false
-		}
 		for _, en := range x.Entries {
 			if !l.constLiteral(en.Key, false) || !l.constLiteral(en.Value, false) {
 				return false
@@ -941,7 +936,7 @@ func (l *Lowerer) constLiteral(e syntax.Expr, top bool) bool {
 				return false
 			}
 		}
-		return len(call.Args) > 0
+		return call.Kind == check.CallStruct || len(call.Args) > 0
 	}
 	return false
 }

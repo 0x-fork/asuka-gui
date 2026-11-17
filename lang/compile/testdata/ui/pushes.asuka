@@ -81,3 +81,46 @@ test "a swipe action" {
   app.swipe("A row", action: "Show it")
   app.expect("the second")
 }
+
+// A component's event: its async handler is a task of the component that
+// declares it (Pusher, outside the Stack), and runs where it's declared
+// (in the Stack's screen), whoever emits it.
+
+component Saver {
+  event saved()
+
+  fn fire() { emit saved() }
+
+  Button("Save") {
+    on press {
+      await sleep(1ms)
+      fire()
+    }
+  }
+}
+
+screen Third {
+  prop children: View
+  title: "Third"
+  children
+}
+
+component Pusher {
+  Stack {
+    Third {
+      Saver {
+        on saved {
+          await sleep(5ms)
+          push(Second())
+        }
+      }
+    }
+  }
+}
+
+test "an emitted event's async handler, after an await" {
+  let app = mount(Pusher())
+  app.tap("Save")
+  await sleep(30ms)
+  app.expect("the second")
+}
