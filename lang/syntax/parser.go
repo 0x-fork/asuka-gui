@@ -446,6 +446,13 @@ func (p *parser) leading(start Pos) Trivia {
 	if p.prevEnd.IsValid() {
 		last = p.line(p.prevEnd - 1)
 	}
+	if p.ci > 0 {
+		// The comment the node above took after it, which may end on a
+		// later line (/* … ⏎ … */).
+		if c := p.comments[p.ci-1]; c.Pos >= p.prevEnd && c.End() <= start {
+			last = max(last, p.line(c.End()-1))
+		}
+	}
 	var g *CommentGroup
 	for p.ci < len(p.comments) && p.comments[p.ci].Pos < start {
 		c := p.comments[p.ci]

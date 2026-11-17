@@ -224,6 +224,10 @@ func TestFormatCases(t *testing.T) {
 		// stays above what follows.
 		{"// a\n;\nlet x = 1", "// a\n\nlet x = 1\n"},
 		{"//\n;", "//\n"},
+		// A comment after a node that ends on a later line is no blank
+		// line before the next.
+		{"let a = 1 /* multi\nline */\nlet b = 2", "let a = 1 /* multi\nline */\nlet b = 2\n"},
+		{"fn f() {\n  a() /* x\n  */\n\n  b()\n}", "fn f() {\n  a() /* x\n  */\n\n  b()\n}\n"},
 		// An empty map's comments go above its line.
 		{"let m = [/* e */ :]", "/* e */\nlet m = [:]\n"},
 		{"fn f() {\n  g([ // none\n  :])\n}", "fn f() {\n  // none\n  g([:])\n}\n"},
