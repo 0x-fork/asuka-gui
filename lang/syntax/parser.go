@@ -161,7 +161,7 @@ type parser struct {
 	pos  Pos
 	lit  string
 
-	prevEnd Pos // the end of the last token consumed, newlines aside
+	prevEnd Pos // the end of the last token consumed, newlines and ;s aside
 	exprLev int // < 0: in a control clause's head, where { starts the body
 	// styleValue > 0: in a style: prop's value, where an if may have no
 	// else (an entry that adds nothing when it's false).
@@ -280,7 +280,9 @@ func (p *parser) at(pos Pos) string {
 // Tokens
 
 func (p *parser) next() {
-	if p.tok != NEWLINE {
+	// A ; ends items as a newline does: a comment above a stray one is
+	// the next item's, not inside the last.
+	if p.tok != NEWLINE && p.tok != SEMICOLON {
 		p.prevEnd = p.pos + Pos(len(p.lit))
 	}
 	if p.i < len(p.toks)-1 {

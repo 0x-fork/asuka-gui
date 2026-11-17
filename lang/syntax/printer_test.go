@@ -220,6 +220,10 @@ func TestFormatCases(t *testing.T) {
 		{"fn f() {\n  let x = 1\n  // last\n}", "fn f() {\n  let x = 1\n  // last\n}\n"},
 		{"fn f() { // why\n  let x = 1\n}", "fn f() { // why\n  let x = 1\n}\n"},
 		{"/// Doc.\nfn f() {}  ", "/// Doc.\nfn f() {}\n"},
+		// A ; on a line of its own is a blank line: the comment above
+		// stays above what follows.
+		{"// a\n;\nlet x = 1", "// a\n\nlet x = 1\n"},
+		{"//\n;", "//\n"},
 		{"fn f() {\n  let x = [1, // one\n    2]\n}", "fn f() {\n  let x = [\n    1, // one\n    2,\n  ]\n}\n"},
 		// Strings print as written.
 		{"let s = \"a\\n{b}\\{c\"", "let s = \"a\\n{b}\\{c\"\n"},
