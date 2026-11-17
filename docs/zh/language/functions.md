@@ -75,12 +75,12 @@ let shapes: [Shape] = [Circle(radius: 1), Square(side: 2)]
 let areas = shapes.map(s => s.area())
 ```
 
-泛型函数和泛型类型可以接收类型参数。类型参数的约束可以是程序自己的接口，也可以是 `Equatable`、`Comparable` 和 `Hashable`（当结构体和枚举的字段都满足后三者之一时，它们自身也就满足），多个约束用 `&` 连接。类型实参必须具备的东西，泛型代码里它的值也都能用：接口的方法和字段会针对每一个编译出的具体类型直接调用。
+泛型函数和泛型类型可以接收类型参数。类型参数的约束可以是程序自己的接口，也可以是 `Equatable`（能用 `==` 比较的类型：内置的值，以及各部分都能比较的结构体、枚举、元组、数组、map 和可选值）、`Comparable`（能用 `<` 排序的类型：整数、浮点数、字符串和时长）和 `Hashable`（能做 map 键的类型，见[值与类型](types.md#值与类型)），多个约束用 `&` 连接。类型实参必须具备的东西，泛型代码里它的值也都能用：接口的方法和字段会针对每一个编译出的具体类型直接调用。
 
 ```asuka
 fn sortByArea<T: Shape>(xs: [T]) -> [T] = xs.sorted((a, b) => a.area() < b.area())
 
-fn largestOnce<T: Shape & Hashable>(xs: [T]) -> [T] { … }
+fn largestOnce<T: Shape & Equatable>(xs: [T]) -> [T] { … }
 
 struct Labeled<T: Shape> {
   item: T

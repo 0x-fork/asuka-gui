@@ -79,11 +79,13 @@ func plainSnippet(s string) string {
 
 var (
 	importLine = regexp.MustCompile(`^\s*import\s+([\w@./-]*)$`)
-	onLine     = regexp.MustCompile(`(^|[;{])\s*on\s+$`)
-	bindLine   = regexp.MustCompile(`(^|[;{])\s*bind\s+$`)
-	styleLine  = regexp.MustCompile(`(^|[;{])\s*style\s*:\s*(\[([^\]]*,)?\s*)?$`) // style: …, style: [a, …
-	emitLine   = regexp.MustCompile(`(^|[;{])\s*emit\s+$`)
-	propLine   = regexp.MustCompile(`(^|[;{])\s*([A-Za-z_]\w*)\s*:\s*$`)
+	// import std/time.{Time, |: the names imported unqualified.
+	importNamesLine = regexp.MustCompile(`^\s*import\s+[\w@./-]+\.\{[\w\s,]*$`)
+	onLine          = regexp.MustCompile(`(^|[;{])\s*on\s+$`)
+	bindLine        = regexp.MustCompile(`(^|[;{])\s*bind\s+$`)
+	styleLine       = regexp.MustCompile(`(^|[;{])\s*style\s*:\s*(\[([^\]]*,)?\s*)?$`) // style: …, style: [a, …
+	emitLine        = regexp.MustCompile(`(^|[;{])\s*emit\s+$`)
+	propLine        = regexp.MustCompile(`(^|[;{])\s*([A-Za-z_]\w*)\s*:\s*$`)
 )
 
 func (c *completer) run() {
@@ -106,6 +108,10 @@ func (c *completer) run() {
 	line := string(src[lineStart:c.off])
 	if m := importLine.FindStringSubmatch(line); m != nil {
 		c.imports(m[1])
+		return
+	}
+	if importNamesLine.MatchString(line) {
+		c.importNames(syntax.Pos(fc.file.File.Base() + c.off))
 		return
 	}
 	before := string(src[lineStart:c.start])
@@ -340,16 +346,23 @@ func (c *completer) valueMembers(t check.Type, optional bool, dot int) {
 		if c.seen[m.Name] {
 			continue
 		}
-		ps, _ := m.Instantiate(inner)
-		it := c.callItem(m.Name, kindMethod, methodSig(m, inner), methodDoc(m), len(ps) > 0)
-		addItem(it)
+		addItem(c.methodItem(m, inner))
 	}
 }
 
 // method adds a built-in method.
 func (c *completer) method(m *check.Method, recv check.Type) {
+	c.add(c.methodItem(m, recv), prioMember)
+}
+
+// methodItem is a built-in method's item: a call, or for one read as a
+// property (g.width, card.hovered) its name.
+func (c *completer) methodItem(m *check.Method, recv check.Type) CompletionItem {
+	if m.Field {
+		return CompletionItem{Label: m.Name, Kind: kindProperty, Detail: methodSig(m, recv), Documentation: c.doc(methodDoc(m))}
+	}
 	ps, _ := m.Instantiate(recv)
-	c.add(c.callItem(m.Name, kindMethod, methodSig(m, recv), methodDoc(m), len(ps) > 0), prioMember)
+	return c.callItem(m.Name, kindMethod, methodSig(m, recv), methodDoc(m), len(ps) > 0)
 }
 
 // typeMethods adds a struct's or an enum's methods, sorted.
@@ -1076,6 +1089,41 @@ func (c *completer) imports(typed string) {
 				add(name, "dependency", kindModule)
 			}
 		}
+	}
+}
+
+// importNames completes the names in an import's braces (import
+// std/time.{Time, now}): what the package exports that the braces don't
+// name yet.
+func (c *completer) importNames(pos syntax.Pos) {
+	fc := c.fc
+	for _, d := range fc.file.Imports {
+		if pos < d.Start || pos > d.End {
+			continue
+		}
+		p := fc.info.Imports[d]
+		if p == nil {
+			return
+		}
+		have := map[string]bool{}
+		for _, n := range d.Names {
+			if n.End != pos {
+				have[n.Name] = true
+			}
+		}
+		names := p.Scope.Names()
+		sort.Strings(names)
+		for _, n := range names {
+			o := p.Scope.LookupLocal(n)
+			if have[n] || !check.Exported(p, o) {
+				continue
+			}
+			it := c.objectItem(o, "")
+			// A name, not a call: the braces list names.
+			it.InsertText, it.InsertTextFormat = "", 0
+			c.add(it, prioMember)
+		}
+		return
 	}
 }
 

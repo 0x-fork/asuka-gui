@@ -69,5 +69,7 @@ else emit enum event extern false fn for if import in interface key let load
 match native none on prop provide pub return screen self spawn state
 store struct style task test throw throws true try type use var while`
 
-`shader` (a [shader](../components.md#shaders)'s declaration) and `at` (a
-routed screen's pattern) are keywords only there: elsewhere they're names.
+`shader` (a [shader](../components.md#shaders)'s declaration), `at` (a
+routed screen's pattern), `static` (a type's function: `static fn`) and
+`variant` (a component's variant) are keywords only there: elsewhere
+they're names.

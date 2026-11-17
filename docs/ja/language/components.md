@@ -9,18 +9,19 @@ component MessageRow(message: Message) {
   event archive                   // コンポーネントが知らせるイベント
   state expanded = false          // コンポーネント自身の状態
 
-  Row {
-    gap: 12; padding: [12, 16]
-    Avatar(message.from)
-    Column {
-      grow: 1
-      Text(message.subject) { font: .headline; lines: 1 }
-      if !compact { Text(message.preview()) { color: .secondaryLabel } }
+  Menu {
+    longPress: true               // コンテキストメニュー：長押しか副ボタンのクリック
+    actions: [.button(title: "Archive", role: .destructive, run: () => { emit archive })]
+    Row {
+      gap: 12; padding: [12, 16]
+      Avatar(message.from)
+      Column {
+        grow: 1
+        Text(message.subject) { font: .headline; lines: 1 }
+        if !compact { Text(message.preview()) { color: .secondaryLabel } }
+      }
+      accessory
     }
-    accessory
-  }
-  contextMenu {
-    Button("Archive") { role: .destructive; on press { emit archive } }
   }
 }
 ```
@@ -200,4 +201,4 @@ task { try? await mailbox.refresh() }         // コンポーネントが表示�
 task(query) { results = await search(query) } // query が変わるたびにもう一度
 ```
 
-エフェクトはすぐに実行され、読んだものが変わるたびに再び実行されます。タスクは非同期です（後述）。コンポーネントが現れると始まり、丸括弧の中身が変わると前回の実行をキャンセルしてやり直し、コンポーネントがなくなるとキャンセルされます。`app` ブロックにも書けます。アプリ自身のもので、アプリが動いている間ずっと有効です（更新のループや、アプリの状態に追従する設定：`effect { setColorScheme(scheme) }`）。
+エフェクトはすぐに実行され、読んだものが変わるたびに再び実行されます。タスクは非同期です（[非同期処理](async.md#非同期処理)を参照）。コンポーネントが現れると始まり、丸括弧の中身が変わると前回の実行をキャンセルしてやり直し、コンポーネントがなくなるとキャンセルされます。`app` ブロックにも書けます。アプリ自身のもので、アプリが動いている間ずっと有効です（更新のループや、アプリの状態に追従する設定：`effect { setColorScheme(scheme) }`）。

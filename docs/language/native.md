@@ -18,7 +18,7 @@ Making a module and calling it may fail (its platform may have no code
 for it), so both take `try`: `let h = try Haptics()`, `try
 h.impact(.light)`. `asuka native generate` writes the Swift, Kotlin,
 JavaScript and C each platform implements. See [Native
-packages](native.md).
+packages](../native.md).
 
 C is called directly. `extern` declarations say what a C function
 takes and gives back, in C's types, and Asuka sees each as one of its

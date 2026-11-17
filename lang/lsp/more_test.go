@@ -129,3 +129,105 @@ func TestStandardLibrary(t *testing.T) {
 		t.Errorf("math.: %v", got)
 	}
 }
+
+// The names in an import's braces complete with what the package
+// exports, without the ones the braces name already.
+func TestCompletionImportNames(t *testing.T) {
+	root := t.TempDir()
+	c := newClient(t, root)
+	uri := c.openText(filepath.Join(root, "a.asuka"), "")
+	version := 1
+	for _, tc := range []struct {
+		text      string
+		want, not []string
+	}{
+		{"import std/time.{|}\n", []string{"Time", "now", "Zone"}, []string{"fn", "component"}},
+		{"import std/time.{now, |}\n", []string{"Time"}, []string{"now"}},
+		{"import std/time.{Ti|, now}\n", []string{"Time"}, []string{"now"}},
+	} {
+		i := strings.Index(tc.text, "|")
+		text := tc.text[:i] + tc.text[i+1:]
+		items := complete(t, c, uri, &version, text, text[:i]+"|")
+		got := labels(items)
+		for _, w := range tc.want {
+			if !contains(got, w) {
+				t.Errorf("%q: no %s in %v", tc.text, w, got)
+			}
+		}
+		for _, n := range tc.not {
+			if contains(got, n) {
+				t.Errorf("%q: %s in %v", tc.text, n, got)
+			}
+		}
+		for _, it := range items {
+			if it.InsertTextFormat == 2 {
+				t.Errorf("%q: %s inserts a snippet %q: the braces list names", tc.text, it.Label, it.InsertText)
+			}
+		}
+	}
+}
+
+// A built-in property (g.width, card.hovered) completes as a name, not a
+// call, and hovers as a property; a component's variant read through
+// its name (box.checked) goes to its declaration.
+func TestBuiltinProperties(t *testing.T) {
+	root := t.TempDir()
+	c := newClient(t, root)
+	text := `component Check {
+  prop checked = false
+  prop children: View
+  variant checked = checked
+  View { children }
+}
+
+component Main {
+  Column {
+    View as card { Text("x") }
+    Check as box { Text("y") }
+    Text("{card.hovered} {box.checked}")
+    Canvas(g => {
+      let w = g.width
+    })
+  }
+}
+`
+	uri := c.openText(filepath.Join(root, "a.asuka"), text)
+	c.waitDiags(uri, noDiags)
+	for _, tc := range []struct{ at, want string }{
+		{"card.hove|red", "Ref.hovered: bool"},
+		{"g.wid|th", "Graphics.width: float"},
+		{"box.chec|ked", "variant checked = checked"},
+	} {
+		if got := hoverAt(t, c, uri, text, tc.at); !strings.Contains(got, tc.want) {
+			t.Errorf("hover at %s: %q lacks %q", tc.at, got, tc.want)
+		}
+	}
+	var locs []Location
+	p := tdp(uri, posAt(t, text, "box.chec|ked"))
+	if err := c.call("textDocument/definition", &p, &locs); err != nil {
+		t.Fatal(err)
+	}
+	if want := posAt(t, text, "variant |checked"); len(locs) != 1 || locs[0].Range.Start != want {
+		t.Errorf("definition of box.checked: %+v, want %+v", locs, want)
+	}
+	version := 1
+	for _, marked := range []string{"let w = g.wi|", `Text("{card.ho|`} {
+		i := strings.Index(marked, "|")
+		j := strings.Index(text, marked[:i])
+		items := complete(t, c, uri, &version, text, text[:j+i]+"|")
+		name := map[bool]string{true: "width", false: "hovered"}[strings.Contains(marked, "g.")]
+		found := false
+		for _, it := range items {
+			if it.Label != name {
+				continue
+			}
+			found = true
+			if it.InsertTextFormat == 2 || strings.Contains(it.InsertText, "(") {
+				t.Errorf("%s inserts %q: it's read without parentheses", name, it.InsertText)
+			}
+		}
+		if !found {
+			t.Errorf("no %s in %v", name, labels(items))
+		}
+	}
+}

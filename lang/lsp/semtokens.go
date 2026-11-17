@@ -100,6 +100,9 @@ func classify(r *ref) (int, int) {
 	case r.special != "":
 		return tokenType("property"), modDefaultLibrary
 	case r.method != nil:
+		if r.method.Field {
+			return tokenType("property"), modDefaultLibrary
+		}
 		return tokenType("method"), modDefaultLibrary
 	case r.imeth != nil:
 		return tokenType("method"), 0
@@ -107,6 +110,8 @@ func classify(r *ref) (int, int) {
 		return tokenType("property"), 0
 	case r.ecase != nil:
 		return tokenType("enumMember"), 0
+	case r.param != nil:
+		return tokenType("parameter"), 0
 	}
 	switch o := r.obj.(type) {
 	case *check.PkgName:

@@ -9,18 +9,19 @@ component MessageRow(message: Message) {
   event archive                   // 它对外报告的事件
   state expanded = false          // 它自己的状态
 
-  Row {
-    gap: 12; padding: [12, 16]
-    Avatar(message.from)
-    Column {
-      grow: 1
-      Text(message.subject) { font: .headline; lines: 1 }
-      if !compact { Text(message.preview()) { color: .secondaryLabel } }
+  Menu {
+    longPress: true               // 上下文菜单：长按或右键点击
+    actions: [.button(title: "Archive", role: .destructive, run: () => { emit archive })]
+    Row {
+      gap: 12; padding: [12, 16]
+      Avatar(message.from)
+      Column {
+        grow: 1
+        Text(message.subject) { font: .headline; lines: 1 }
+        if !compact { Text(message.preview()) { color: .secondaryLabel } }
+      }
+      accessory
     }
-    accessory
-  }
-  contextMenu {
-    Button("Archive") { role: .destructive; on press { emit archive } }
   }
 }
 ```
@@ -200,4 +201,4 @@ task { try? await mailbox.refresh() }         // 组件显示期间运行一次
 task(query) { results = await search(query) } // query 变化时再运行一次
 ```
 
-effect 会立即运行，之后每当它读取过的内容变化时再次运行。task 是异步的（见下文）：组件出现时启动；圆括号里的内容变化时重新启动（并取消上一次运行）；组件消失时被取消。`app` 代码块里也可以写它们：它们属于应用本身，在应用运行期间一直有效（比如一个刷新循环，或者一个跟随应用状态的设置：`effect { setColorScheme(scheme) }`）。
+effect 会立即运行，之后每当它读取过的内容变化时再次运行。task 是异步的（见[异步](async.md#异步)）：组件出现时启动；圆括号里的内容变化时重新启动（并取消上一次运行）；组件消失时被取消。`app` 代码块里也可以写它们：它们属于应用本身，在应用运行期间一直有效（比如一个刷新循环，或者一个跟随应用状态的设置：`effect { setColorScheme(scheme) }`）。

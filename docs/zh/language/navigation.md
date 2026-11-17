@@ -16,7 +16,7 @@ screen Inbox {
     }
   }
   toolbar {
-    Button(icon: "square.and.pencil") { on press { present(Compose()) } }
+    Button("Compose") { icon: "square.and.pencil"; on press { present(Compose()) } }
   }
 }
 ```

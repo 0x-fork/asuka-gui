@@ -100,7 +100,11 @@ type ref struct {
 	pkg     *check.Package
 	special string // a member the compiler knows: "message", "value", "color", "auto"
 	style   *syntax.StyleDecl
-	decl    syntax.Pos // where its name is declared; NoPos for what's built in
+	// An event's parameter (event archive(id: string)): what an emit's
+	// label names; event is the event.
+	param *check.Param
+	event *check.Member
+	decl  syntax.Pos // where its name is declared; NoPos for what's built in
 }
 
 func (fc *fileCtx) objRef(o check.Object) *ref {
@@ -228,6 +232,12 @@ func (fc *fileCtx) selRef(sel *check.Selection, name string) *ref {
 		return &ref{name: name, special: "color", recv: check.Color}
 	case check.SelLengthAuto:
 		return &ref{name: "auto", special: "auto", recv: check.Length}
+	case check.SelBuiltinField:
+		if sel.Method != nil {
+			return methodRef(sel.Method, sel.Recv)
+		}
+	case check.SelVariant:
+		return fc.objRef(sel.Obj)
 	}
 	return nil
 }
@@ -406,6 +416,20 @@ func (fc *fileCtx) resolve(path []syntax.Node) *ref {
 					return r
 				}
 			}
+			// A built-in method of a call the checker gave up on, as
+			// one being typed is (xs.map() with no argument yet): its
+			// receiver's.
+			if call, ok := gp.(*syntax.CallExpr); ok && call.Fun == p {
+				if t := info.Types[p.X]; t != nil && !check.IsInvalid(t) {
+					n := -1
+					if call.Args != nil {
+						n = len(call.Args.List)
+					}
+					if m := builtinMethod(t, id.Name, n); m != nil {
+						return methodRef(m, t)
+					}
+				}
+			}
 		}
 	case *syntax.ImplicitMember:
 		if call, ok := gp.(*syntax.CallExpr); ok && call.Fun == p {
@@ -447,6 +471,16 @@ func (fc *fileCtx) resolve(path []syntax.Node) *ref {
 	case *syntax.Arg:
 		if p.Label == id {
 			return fc.labelRef(path, id.Name)
+		}
+	case *syntax.Param:
+		// An event's parameter, in its declaration.
+		if p.Name == id {
+			if ev, ok := at(path, 4).(*syntax.EventDecl); ok {
+				if m, ok := info.Defs[ev.Name].(*check.Member); ok {
+					return fc.eventParamRef(m, id.Name)
+				}
+				return nil
+			}
 		}
 	case *syntax.Field:
 		if p.Name == id {
@@ -580,22 +614,32 @@ func (fc *fileCtx) styleDecl(name string) *syntax.StyleDecl {
 }
 
 // labelRef is what an argument's label names: a parameter, a struct's
-// field, a component's parameter.
+// field, a component's parameter, a style's, an event's. path ends with
+// the label, in its Arg, in the argument list of what it's passed to.
 func (fc *fileCtx) labelRef(path []syntax.Node, name string) *ref {
 	var call *syntax.CallExpr
-	for i := len(path) - 1; i >= 0; i-- {
-		if c, ok := path[i].(*syntax.CallExpr); ok {
-			call = c
-			break
+	switch o := at(path, 4).(type) {
+	case *syntax.CallExpr:
+		call = o
+	case *syntax.EmitStmt:
+		if m := fc.info.Emits[o]; m != nil {
+			return fc.eventParamRef(m, name)
 		}
-	}
-	if call == nil {
+		return nil
+	default:
 		return nil
 	}
 	c := fc.info.Calls[call]
 	if c == nil {
 		if tn := fc.calleeComponent(call); tn != nil {
 			return fc.objRef(memberObj(fc.componentMember(tn, name)))
+		}
+		if sd := fc.calleeStyle(call); sd != nil {
+			for _, p := range sd.Params {
+				if p.Name == name && p.Var != nil {
+					return fc.objRef(p.Var)
+				}
+			}
 		}
 		return nil
 	}
@@ -625,6 +669,39 @@ func (fc *fileCtx) labelRef(path []syntax.Node, name string) *ref {
 		if c.Case != nil {
 			return caseRef(c.Case)
 		}
+	}
+	return nil
+}
+
+// calleeStyle is the style a call applies (style: chip(.green)), if
+// it's one.
+func (fc *fileCtx) calleeStyle(call *syntax.CallExpr) *check.StyleDef {
+	var id *syntax.Ident
+	switch f := call.Fun.(type) {
+	case *syntax.Ident:
+		id = f
+	case *syntax.MemberExpr:
+		id = f.Name
+	}
+	if id == nil {
+		return nil
+	}
+	sd, _ := fc.info.Uses[id].(*check.StyleDef)
+	return sd
+}
+
+// eventParamRef is an event's parameter named name, declared where the
+// event's declaration names it.
+func (fc *fileCtx) eventParamRef(m *check.Member, name string) *ref {
+	for i, p := range m.Params {
+		if p.Name != name {
+			continue
+		}
+		r := &ref{name: name, param: p, event: m}
+		if ev, ok := m.Decl.(*syntax.EventDecl); ok && ev.Params != nil && i < len(ev.Params.List) {
+			r.decl = ev.Params.List[i].Name.Start
+		}
+		return r
 	}
 	return nil
 }
