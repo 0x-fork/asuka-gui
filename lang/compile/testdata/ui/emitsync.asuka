@@ -1,0 +1,60 @@
+// An async handler a sync fn emits to starts as a task of its own,
+// which the fn doesn't wait for (it can't: only an async function
+// suspends), even when the fn runs on a task; a task it belongs to, so
+// it ends with that one. An async handler that emits waits for it.
+
+state log: [string] = []
+
+component Child {
+  event saved()
+
+  fn fire() {
+    emit saved()
+    log.push("after emit")
+  }
+
+  Column {
+    Button("Sync") {
+      on press {
+        await sleep(1ms)
+        fire()
+        log.push("press end")
+      }
+    }
+    Button("Async") {
+      on press {
+        await sleep(1ms)
+        emit saved()
+        log.push("press end")
+      }
+    }
+  }
+}
+
+component Parent {
+  Child {
+    on saved {
+      defer { log.push("handler done") }
+      log.push("handler start")
+      await sleep(5ms)
+      log.push("handler end")
+    }
+  }
+}
+
+app { Parent() }
+
+test "a sync fn's emit doesn't wait" {
+  let app = mount(Parent())
+  app.tap("Sync")
+  await sleep(30ms)
+  expect(log == ["handler start", "after emit", "press end", "handler done"])
+}
+
+test "an async handler's emit waits" {
+  log = []
+  let app = mount(Parent())
+  app.tap("Async")
+  await sleep(30ms)
+  expect(log == ["handler start", "handler end", "handler done", "press end"])
+}

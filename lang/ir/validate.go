@@ -124,6 +124,11 @@ func (f *Func) validate(p *Program) error {
 				}
 			}
 		}
+		if (def.Name == "AWAIT" || def.Name == "YIELD") && f.Flags&bc.FAsync == 0 {
+			// The backends run a function that suspends as one: resumable
+			// in C, and what it calls pushed on its task.
+			return fmt.Errorf("instruction %d: %s in a function that isn't async", pc, def.Name)
+		}
 		if def.Name == "RET" && f.Kinds[in.Args[0]] != f.Ret {
 			return fmt.Errorf("instruction %d: returns a %s, the function a %s", pc, f.Kinds[in.Args[0]], f.Ret)
 		}

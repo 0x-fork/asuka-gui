@@ -265,9 +265,9 @@ static inline void ak_op_leave(ak_co *co, uint32_t fi, const ak_val *R, uint16_t
 	co->frames[fi].pc = pc;
 }
 
-// ak_op_pushes reports whether calling closure c from a compiled async
-// function pushes a frame on its coroutine (as the interpreter's CALLC
-// does) rather than calling it from C.
+// ak_op_pushes reports whether calling closure c from a function that
+// may suspend pushes a frame on its coroutine (the interpreter's CALLC,
+// a compiled async function's) rather than calling it from C.
 static inline bool ak_op_pushes(const ak_co *co, const ak_closure *c) {
 	if (c->invoke != ak_vm_closure_invoke) return false;
 	const ak_func *g = c->fn;

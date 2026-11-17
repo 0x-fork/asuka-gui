@@ -255,8 +255,11 @@ int ak_vm_interp(ak_co *co, ak_val *out) {
 			ak_closure *c = R[a[1]].p;
 			if (!c) ak_panic("vm: calling none");
 			fr->pc = pc;
-			if (c->invoke == ak_vm_closure_invoke && !((const ak_func *)c->fn)->native && !(((const ak_func *)c->fn)->flags & AK_F_ASYNC && co->task == NULL)) {
-				// A VM closure: call it in this loop.
+			if (ak_op_pushes(co, c) && (F->flags & AK_F_ASYNC || !(((const ak_func *)c->fn)->flags & AK_F_ASYNC))) {
+				// A VM closure: call it in this loop. An async one runs on
+				// this task only when the caller may suspend too: a
+				// function that can't (compiled to C, a plain C function)
+				// starts it as a task of its own.
 				if (!ak_vm_push(co, c->fn, c, R + a[2], a[3], a[0], false, ipc)) goto unwind;
 				LOAD();
 				if (F->resume) return AK_RUN_PUSHED;
