@@ -550,17 +550,19 @@ void *asuka_win_handler(void (*fn)(void *ctx, void *a, void *b), void *ctx, void
 // ---- Waiting ----
 
 static void signal_done(void *ev, void *a, void *b) { SetEvent((HANDLE)ev); }
+static void close_event(void *ev) { CloseHandle((HANDLE)ev); }
 
 HRESULT asuka_winrt_wait(void *op, const GUID *handler_iid, asuka_call *cancel) {
 	HANDLE ev = CreateEventW(NULL, TRUE, FALSE, NULL);
 	if (!ev) return HRESULT_FROM_WIN32(GetLastError());
-	void *h = asuka_winrt_delegate(handler_iid, signal_done, ev, NULL);
+	// The event is the delegate's, closed as its last reference goes: the
+	// operation may call it after this returns (it hasn't completed when
+	// its IAsyncInfo can't be had), and this holds it while it waits.
+	void *h = asuka_winrt_delegate(handler_iid, signal_done, ev, close_event);
 	HRESULT hr = ASUKA_SLOT(op, 6, HRESULT(STDMETHODCALLTYPE *)(void *, void *))(op, h);  // put_Completed
-	asuka_com_release(h);
-	void *info = asuka_com_query(op, &asuka_IID_IAsyncInfo);
+	void *info = SUCCEEDED(hr) ? asuka_com_query(op, &asuka_IID_IAsyncInfo) : NULL;
 	if (FAILED(hr) || !info) {
-		CloseHandle(ev);
-		asuka_com_release(info);
+		asuka_com_release(h);
 		return FAILED(hr) ? hr : E_NOINTERFACE;
 	}
 	bool cancelled = false;
@@ -583,7 +585,7 @@ HRESULT asuka_winrt_wait(void *op, const GUID *handler_iid, asuka_call *cancel) 
 		hr = S_OK;
 	}
 	asuka_com_release(info);
-	CloseHandle(ev);  // signaled: Completed is called once
+	asuka_com_release(h);
 	return hr;
 }
 #endif
