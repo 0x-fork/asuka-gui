@@ -98,6 +98,13 @@ let shapes: [Shape] = [Circle(radius: 1), Square(side: 2)]
 let areas = shapes.map(s => s.area())
 ```
 
+An interface may ask for a `mut fn` (`mut fn next() -> T?`, as the
+prelude's `Iterator<T>` does): a type's `mut fn` has it, and so does a
+`fn` of the same signature. A `mut fn` isn't an interface's plain `fn`,
+which is called on any value. A type has an interface through what
+[extensions](declarations.md#extensions) give it, too, where they're
+visible.
+
 Generic functions and types take type parameters. A parameter's
 constraints are the program's interfaces and `Equatable` (what `==`
 compares: the built-in values, and structs, enums, tuples, arrays, maps

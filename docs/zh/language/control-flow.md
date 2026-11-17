@@ -15,6 +15,46 @@ let icon = match (online, unread) {
 
 `for` 可以遍历数组、集合、map 的 `(key, value)` 对，或者一个区间：`a..<b` 是从 `a` 到 `b` 但不包括 `b` 的整数，`a..b` 则包括 `b`（`0..<3` 就是 `[0, 1, 2]`；`for` 遍历区间时不会真的创建数组）。`while cond { … }` 在 cond 成立时一直循环；`break` 跳出循环，`continue` 直接进入下一轮。
 
+`for` 也可以遍历你自己定义的类型的值：一种是迭代器，它的类型有 `mut fn next() -> T?`（`for` 在它的一份副本上反复调用，直到得到 `none`）；另一种是序列，它的 `fn iter()` 返回一个迭代器（`for` 只调用一次）。prelude 里的 `Iterator<T>` 就表示这样的类型，可以用作约束：`fn sum<I: Iterator<int>>(xs: I) -> int`。
+
+```asuka check
+struct Node {
+  name: string
+  children: [Node] = []
+}
+
+struct Walk {
+  stack: [Node]
+
+  mut fn next() -> Node? {
+    let n = stack.pop() else { return none }
+    stack = stack + n.children.reversed()
+    return n
+  }
+}
+
+extend Node {
+  fn walk() -> Walk = Walk(stack: [self])
+}
+
+fn count(root: Node) -> int {
+  var n = 0
+  for node in root.walk() { if node.name.hasSuffix(".asuka") { n += 1 } }
+  return n
+}
+```
+
+在 `for` 或 `while` 的头部后面写 `as name` 可以给循环起名字：在它里面的任何一层循环中，`break name` 都会跳出这个循环，`continue name` 都会直接进入它的下一轮（被跳出的每一层循环的 `defer` 都会执行）。不能在闭包里这样用；声明了却没用到的名字，以及用到了却没声明的名字，都会报错。
+
+```asuka
+for row in grid as rows {
+  for cell in row {
+    if cell == target { found = true; break rows }
+    if cell.isEmpty() { continue rows }
+  }
+}
+```
+
 `if let` 和 `while let` 取出可选值里的值，或者匹配一个模式，只有取得到时才执行代码块：`if let u = user { … }`、`while let job = queue.pop() { … }`、`if let .ready(v) = state { … }`。它们的条件可以是一串用逗号分隔的子句，`let` 和布尔条件可以任意交替。每个子句都能用到前面子句绑定的名字；所有子句都成立时才执行代码块（子句按顺序求值，遇到第一个不成立的就停下）：
 
 ```asuka
@@ -24,6 +64,8 @@ if let user = session.user, user.isAdmin, let team = teams[user.teamId] {
   Text("Not an admin")
 }
 ```
+
+`if var` 和 `if let` 一样，只是绑定的名字是一份可以修改的副本，适合修改多个字段再写回去的代码：`if var m = draft { m.read = true; m.tags.push("seen"); draft = m }`。
 
 `let … else` 要么绑定一个值，要么离开。可选值为 none（或者模式不匹配）时执行 `else` 代码块，而这个代码块必须离开：`return`、`throw`、`break`、`continue` 或 `panic(…)`（如果它可能继续往下执行，编译器会报错）。在它之后，这个名字就是其中的值，而不再是可选值：
 
@@ -46,6 +88,30 @@ for line in lines {
 ```
 
 它们同样可以用作 `if` 的分支、`match` 的分支，或者闭包的主体：`x => x ?? throw Error("empty")`。
+
+## 修改可能不存在的东西
+
+从 `var` 或状态开始、经过字段、下标和 `?.` 的 `?.` 链可以被赋值（`=`、`+=` 等），也可以调用它的 `mut fn`。链上遇到 `none` 时什么也不会发生：不会写入任何东西（右边的值甚至不会被计算），状态的读取者也不会收到通知。
+
+```asuka
+inbox[id]?.read = true          // 没有这条消息时什么也不做
+session.user?.name = draft
+todos.first()?.toggle()          // 错误：first() 给出的是一个值，而不是一个位置
+```
+
+`m[k, default: v]` 表示映射里的条目，没有这个条目时就是 `v`。读取时它的类型是 `V`（而不是 `V?`）；写入时（`=`、`+=`、`mut fn`、`push`）它写的是 `m[k]`，而且只有条目不存在时才会计算 `v`。计数和分组都只需要一行：
+
+```asuka check
+fn tally(words: [string]) -> ([string: int], [int: [string]]) {
+  var counts: [string: int] = [:]
+  var byLength: [int: [string]] = [:]
+  for w in words {
+    counts[w, default: 0] += 1
+    byLength[w.count(), default: []].push(w)
+  }
+  return (counts, byLength)
+}
+```
 
 ## 特定平台的代码
 

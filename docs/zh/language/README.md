@@ -57,9 +57,12 @@ app { Counter() }
 ## 关键字
 
 `app as async await bind break catch component continue defer do effect
-else emit enum event extern false fn for if import in interface key let load
-match native none on prop provide pub return screen self spawn state
-store struct style task test throw throws true try type use var while`
+else emit enum event extend extern false fn for if import in interface key
+let load match mut native none on prop provide pub return screen self
+spawn state store struct style task test throw throws true try type use
+var while`
+
+`mut` 和 `extend` 从 0.2.7 起是关键字：以前用它们作名字的地方会报错，并提示你改名。
 
 `shader`（[着色器](../components.md#着色器)的声明）、`at`（带路由的屏幕的模式）、`static`（类型的函数：`static fn`）和 `variant`（组件的变体）只在那个位置是关键字，在别处都是普通的名字。
 

@@ -57,9 +57,12 @@ app { Counter() }
 ## キーワード
 
 `app as async await bind break catch component continue defer do effect
-else emit enum event extern false fn for if import in interface key let load
-match native none on prop provide pub return screen self spawn state
-store struct style task test throw throws true try type use var while`
+else emit enum event extend extern false fn for if import in interface key
+let load match mut native none on prop provide pub return screen self
+spawn state store struct style task test throw throws true try type use
+var while`
+
+`mut` と `extend` は 0.2.7 からキーワードです。これらを名前に使っていた箇所はエラーになり、名前を変えるよう示されます。
 
 `shader`（[シェーダー](../components.md#シェーダー)の宣言）、`at`（ルート付きの画面のパターン）、`static`（型の関数：`static fn`）、`variant`（コンポーネントのバリアント）は、その位置でだけキーワードで、ほかの場所では普通の名前です。
 

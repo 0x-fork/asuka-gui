@@ -24,6 +24,54 @@ range:
 `while cond { … }` loops while cond holds; `break` and `continue` leave
 the loop, or go on to its next turn.
 
+`for` also goes over a value of your own types: an iterator, whose type
+has `mut fn next() -> T?` (`for` calls it on a copy, until it gives
+`none`), or a sequence, whose `fn iter()` gives one (`for` calls it
+once). The prelude's `Iterator<T>` names such a type, for constraints:
+`fn sum<I: Iterator<int>>(xs: I) -> int`.
+
+```asuka check
+struct Node {
+  name: string
+  children: [Node] = []
+}
+
+struct Walk {
+  stack: [Node]
+
+  mut fn next() -> Node? {
+    let n = stack.pop() else { return none }
+    stack = stack + n.children.reversed()
+    return n
+  }
+}
+
+extend Node {
+  fn walk() -> Walk = Walk(stack: [self])
+}
+
+fn count(root: Node) -> int {
+  var n = 0
+  for node in root.walk() { if node.name.hasSuffix(".asuka") { n += 1 } }
+  return n
+}
+```
+
+`as name` after a `for`'s or a `while`'s head names the loop: `break
+name` and `continue name` leave it, or go on to its next turn, from any
+loop inside it (the `defer`s of every loop they leave run). Not from a
+closure; and a name that's declared and never used, or used and not
+declared, is an error.
+
+```asuka
+for row in grid as rows {
+  for cell in row {
+    if cell == target { found = true; break rows }
+    if cell.isEmpty() { continue rows }
+  }
+}
+```
+
 `if let` and `while let` take an optional's value, or match a pattern,
 and run their block when there's one: `if let u = user { … }`, `while
 let job = queue.pop() { … }`, `if let .ready(v) = state { … }`. Their
@@ -39,6 +87,10 @@ if let user = session.user, user.isAdmin, let team = teams[user.teamId] {
   Text("Not an admin")
 }
 ```
+
+`if var` is `if let` whose name is a copy that may change, for code that
+changes several fields and writes them back: `if var m = draft { m.read
+= true; m.tags.push("seen"); draft = m }`.
 
 `let … else` binds a value or leaves. Its `else` block runs when the
 optional is none (or the pattern doesn't match), and must leave:
@@ -68,6 +120,36 @@ for line in lines {
 
 They go likewise in an `if`'s or a `match` arm's branch, and as a
 closure's body: `x => x ?? throw Error("empty")`.
+
+## Changing what may not be there
+
+A `?.` chain that starts at a `var` or state, through fields,
+subscripts and `?.`, may be assigned (`=`, `+=`, …) and `mut`-called.
+When it meets `none`, nothing happens: nothing is written (the value on
+the right isn't even computed), and state's readers aren't told.
+
+```asuka
+inbox[id]?.read = true          // nothing when there's no such message
+session.user?.name = draft
+todos.first()?.toggle()          // an error: first() gives a value, not a place
+```
+
+`m[k, default: v]` is a map's entry, or `v` when it has none. Read, it's
+a `V` (not a `V?`); written (`=`, `+=`, a `mut fn`, `push`), it writes
+`m[k]`, and `v` is computed only when the entry is missing. Counting and
+grouping are one line each:
+
+```asuka check
+fn tally(words: [string]) -> ([string: int], [int: [string]]) {
+  var counts: [string: int] = [:]
+  var byLength: [int: [string]] = [:]
+  for w in words {
+    counts[w, default: 0] += 1
+    byLength[w.count(), default: []].push(w)
+  }
+  return (counts, byLength)
+}
+```
 
 ## Code for one platform
 

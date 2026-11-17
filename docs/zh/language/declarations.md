@@ -25,7 +25,39 @@ let m = Message(id: "1", subject: "Hello")
 let n = Message(id: m.id, subject: m.subject, read: true)
 ```
 
-创建结构体的方式是调用它，按名字或按顺序传入各个字段；有默认值的字段可以省略。结构体的方法直接用名字访问它的字段，但不能修改结构体（它是一个值）：需要修改时，就返回一个新的结构体。结构体主体里的 `let` 是这个类型的常量（`Font.title`），在任何需要 `Font` 的地方都可以简写成 `.title`。
+创建结构体的方式是调用它，按名字或按顺序传入各个字段；有默认值的字段可以省略。结构体的方法直接用名字访问它的字段。`fn` 只读取这个值；`mut fn` 则可以修改它：给字段（以及字段的各个部分）赋值、调用它的其他 `mut fn`，或者给 `self` 赋一个新值。
+
+```asuka check
+struct Item {
+  id: int
+  qty: int = 1
+}
+
+struct Cart {
+  items: [Item] = []
+
+  mut fn add(i: Item) {
+    if let n = items.index(x => x.id == i.id) { items[n].qty += 1 } else { items.push(i) }
+  }
+  mut fn clear() { self = Cart() }
+  fn total() -> int {
+    var sum = 0
+    for i in items { sum += i.qty }
+    return sum
+  }
+}
+
+fn twoApples() -> int {
+  var cart = Cart()
+  cart.add(Item(id: 1))
+  cart.add(Item(id: 1))
+  return cart.total()
+}
+```
+
+`mut fn` 只能在可以改变的东西上调用：`var`、状态（组件的、store 的、应用的），或者它们的字段、元素、映射的条目（`carts[0].add(i)`、`order.cart.clear()`）。不能在 `let`、参数、prop 或调用的返回值上调用，编译器会指出来。在状态上调用时，不管改了多少个字段，这次调用都只算对该状态的一次修改：只有读取 `todos[i]` 的地方会更新，而不是每一行都更新。`mut fn` 不能是 `async` 的（如果一个值在 `await` 前后只改了一半，等待期间运行的每个处理函数都会看到它；异步的修改应该写成 store 的 `fn`）。它可以抛出错误：抛出之前做的修改会保留。在 `mut fn` 里创建的闭包拿到的是 `self` 当时的值，并且不能修改它。
+
+结构体主体里的 `let` 是这个类型的常量（`Font.title`），在任何需要 `Font` 的地方都可以简写成 `.title`。
 
 结构体或枚举主体里的 `static fn` 是这个类型自己的函数，没有 `self`：在类型上调用，和普通函数一样可以用具名参数和默认值（`Money.of(dollars: 2)`），在任何需要这个类型的地方也可以写成 `.of(…)`。
 
@@ -82,6 +114,36 @@ fn withTip(bill: Money) -> Money {
 
 结构体不会逐个字段地排序：它的顺序是什么意思，由它的 `compare` 来决定。
 
+## 扩展
+
+`extend` 可以给一个类型添加方法、`mut fn`、`static fn` 和常量。这个类型可以是内置类型（`string`、`int`、`[T]`、`[K: V]`、`Set<T>`、`Color`、`Duration`），也可以是本包或其他包里的类型。
+
+```asuka check
+extend string {
+  fn slug() -> string = lower().fields().joined(separator: "-")
+}
+
+extend Color {
+  let brand = #7c3aed
+  let brandSoft = #7c3aed.opacity(0.15)
+}
+
+extend<T: Comparable> [T] {
+  fn median() -> T? = if isEmpty() { none } else { sorted()[count() / 2] }
+}
+
+component Title {
+  prop text: string
+  Text(text.slug()) { color: .brand }
+}
+```
+
+扩展的方法看待这个值的方式和类型自己的方法一样：可以访问它的字段，也可以直接用名字调用它的方法（`lower()` 就是 `self.lower()`）。扩展里定义的、属于该类型的常量，在任何需要这个类型的地方都可以写成 `.name`，和类型自己的常量一样，也可以写成 `Color.brand`；`static fn` 也是如此。扩展不能添加字段，也不能添加状态；它添加的名字也不能和类型自己的成员重名：类型的布局和成员始终由它的声明决定。泛型扩展把类型参数写在 `extend` 后面（`extend<K: Hashable, V> [K: V]`）。
+
+扩展添加的东西只在它所在的包里可见，其中 `pub` 的成员在导入这个包的包里也可见，除此之外都不可见：依赖不会改变你代码里 `x.trim()` 的含义。如果你能看到的两个扩展给同一个类型添加了同名的成员，使用它的地方就会报错，并指出这两个包。
+
+类型也可以通过扩展获得接口，前提是这些扩展在当前位置可见：`extend Money { fn area() -> float … }` 让 `Money` 成为一个 `Shape`。写成 `extend Money: Shape { … }` 就是明确声明这一点，编译器会像检查 `struct Money: Shape` 一样检查它；其他包里没有携带值的枚举，也是通过这种方式获得接口的。一个类型在整个程序里同名的方法只能有一个：如果两个包的扩展给同一个类型添加了同一个方法，而且都让它成为某个接口的实现，就会报错。
+
 ## 枚举
 
 ```asuka
@@ -98,6 +160,24 @@ enum Filter {
 }
 
 let f: Filter = .unread
+```
+
+枚举的 `mut fn` 同样可以修改这个值，通常是给 `self` 赋值：
+
+```asuka check
+enum Light {
+  red
+  green
+  yellow
+
+  mut fn next() {
+    self = match self {
+      .red => .green
+      .green => .yellow
+      .yellow => .red
+    }
+  }
+}
 ```
 
 在类型已知的地方，枚举的成员写作 `.name`。`match` 必须覆盖所有成员（或者以 `_ =>` 结尾）；模式可以绑定成员携带的值（`.from(p)`，也可以按标签绑定：`.server(code: c)`），可以匹配字面量（`0`、`"x"`），可以同时匹配多个成员（`.a | .b`），可以嵌套（`.from(Person(vip: true))`），还可以带守卫条件（`.from(p) if p.vip =>`）。编译器检查 `match` 是否覆盖了所有情况时会深入嵌套的模式，并把缺少的情况写成模式告诉你：`match doesn't cover .key(_, false)`。成员带标签的值如果有零值（`false`、`0`、`""`、空数组或空映射、`none`、枚举的第一个成员），构造时可以省略：`.button(title: "Copy", run: copy)` 就省略了 `Action.button` 的 `icon`、`role`、`disabled` 和 `checked`。

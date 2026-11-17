@@ -15,6 +15,46 @@ let icon = match (online, unread) {
 
 `for` で回せるのは、配列、セット、マップの `(key, value)` の組、範囲です。`a..<b` は `a` から `b` の手前までの整数、`a..b` は `b` を含む整数です（`0..<3` は `[0, 1, 2]`。範囲を `for` で回しても配列は作られません）。`while cond { … }` は cond が成り立つあいだ繰り返します。`break` はループを抜け、`continue` は次の周回に進みます。
 
+`for` では、自分で定義した型の値も回せます。一つはイテレーターで、型に `mut fn next() -> T?` があるものです（`for` はそのコピーに対して `none` が返るまで呼び出します）。もう一つはシーケンスで、`fn iter()` がイテレーターを返すものです（`for` は一度だけ呼び出します）。prelude の `Iterator<T>` はそのような型を表し、制約に使えます（`fn sum<I: Iterator<int>>(xs: I) -> int`）。
+
+```asuka check
+struct Node {
+  name: string
+  children: [Node] = []
+}
+
+struct Walk {
+  stack: [Node]
+
+  mut fn next() -> Node? {
+    let n = stack.pop() else { return none }
+    stack = stack + n.children.reversed()
+    return n
+  }
+}
+
+extend Node {
+  fn walk() -> Walk = Walk(stack: [self])
+}
+
+fn count(root: Node) -> int {
+  var n = 0
+  for node in root.walk() { if node.name.hasSuffix(".asuka") { n += 1 } }
+  return n
+}
+```
+
+`for` や `while` の先頭の後に `as name` と書くと、ループに名前を付けられます。その内側のどのループからでも、`break name` でそのループを抜け、`continue name` でその次の周回に進めます（抜けるすべてのループの `defer` が実行されます）。クロージャーの中からは使えません。宣言して使わない名前や、宣言せずに使う名前はエラーになります。
+
+```asuka
+for row in grid as rows {
+  for cell in row {
+    if cell == target { found = true; break rows }
+    if cell.isEmpty() { continue rows }
+  }
+}
+```
+
 `if let` と `while let` は、オプショナルの中の値を取り出すか、パターンにマッチさせ、取り出せたときだけブロックを実行します（`if let u = user { … }`、`while let job = queue.pop() { … }`、`if let .ready(v) = state { … }`）。条件は、カンマで区切った節の並びにもできます。`let` とブール値の条件は、どんな順番で並べてもかまいません。各節では、それより前の節で束縛した名前を使えます。ブロックが実行されるのはすべての節が成り立ったときです（節は順に評価され、成り立たない節が出たところで止まります）。
 
 ```asuka
@@ -24,6 +64,8 @@ if let user = session.user, user.isAdmin, let team = teams[user.teamId] {
   Text("Not an admin")
 }
 ```
+
+`if var` は `if let` と同じですが、束縛する名前が変更できるコピーになります。いくつかのフィールドを変更して書き戻すコードに向いています（`if var m = draft { m.read = true; m.tags.push("seen"); draft = m }`）。
 
 `let … else` は、値を束縛するか、その場を離れます。オプショナルが none のとき（またはパターンにマッチしないとき）は `else` のブロックが実行され、このブロックは必ず離れなければなりません。離れ方は `return`、`throw`、`break`、`continue`、`panic(…)` のいずれかです（先へ進めてしまう場合はコンパイラーがエラーにします）。この文より後では、名前はオプショナルではなく中の値を指します。
 
@@ -46,6 +88,30 @@ for line in lines {
 ```
 
 `if` の分岐、`match` のアーム、クロージャの本体にも同じように書けます（`x => x ?? throw Error("empty")`）。
+
+## ないかもしれないものの変更
+
+`var` や状態から始まり、フィールド、添字、`?.` をたどる `?.` チェーンには、代入（`=`、`+=` など）や `mut fn` の呼び出しができます。チェーンが `none` に当たると何も起きません。何も書き込まれず（右辺の値も計算されません）、状態を読む側にも通知されません。
+
+```asuka
+inbox[id]?.read = true          // そのメッセージがなければ何もしない
+session.user?.name = draft
+todos.first()?.toggle()          // エラー：first() が返すのは値で、場所ではない
+```
+
+`m[k, default: v]` はマップのエントリーで、エントリーがなければ `v` です。読むときの型は `V`（`V?` ではありません）で、書き込むとき（`=`、`+=`、`mut fn`、`push`）は `m[k]` に書き込みます。`v` が計算されるのはエントリーがないときだけです。数え上げやグループ分けが一行ずつで書けます。
+
+```asuka check
+fn tally(words: [string]) -> ([string: int], [int: [string]]) {
+  var counts: [string: int] = [:]
+  var byLength: [int: [string]] = [:]
+  for w in words {
+    counts[w, default: 0] += 1
+    byLength[w.count(), default: []].push(w)
+  }
+  return (counts, byLength)
+}
+```
 
 ## 特定のプラットフォーム向けのコード
 
