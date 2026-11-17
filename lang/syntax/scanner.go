@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"strconv"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 )
@@ -237,9 +238,14 @@ redo:
 		}
 		return pos, EOF, ""
 	case isLetter(ch):
-		if ch == 'r' && s.peek() == '"' {
-			s.next()
-			return s.string(start, true)
+		if ch == 'r' {
+			if n, ok := s.rawHashes(); ok {
+				s.next() // past r
+				for range n {
+					s.next()
+				}
+				return s.string(start, true, n)
+			}
 		}
 		s.ident()
 		lit := s.src[start:s.offset]
@@ -254,7 +260,7 @@ redo:
 		tok := s.number()
 		return pos, tok, s.src[start:s.offset]
 	case ch == '"':
-		return s.string(start, false)
+		return s.string(start, false, 0)
 	}
 
 	s.next() // past ch
@@ -282,7 +288,7 @@ redo:
 			// The end of an interpolation: the string goes on.
 			multiline, open := s.frames[n-1].multiline, s.frames[n-1].start
 			s.frames = s.frames[:n-1]
-			return s.stringRest(start, open, false, multiline, true)
+			return s.stringRest(start, open, false, multiline, true, 0)
 		}
 		// A } closes its { and any ( or [ left open inside it, so an
 		// unclosed bracket doesn't swallow the newlines of the rest of
@@ -590,11 +596,22 @@ func (s *Scanner) color(start int) Token {
 	return COLOR
 }
 
+// rawHashes reports, at the r of r"…", r#"…"#, r##"…"## (s.ch == 'r'),
+// that a raw string starts there, and how many #s it has.
+func (s *Scanner) rawHashes() (int, bool) {
+	i := s.rdOffset
+	for i < len(s.src) && s.src[i] == '#' {
+		i++
+	}
+	return i - s.rdOffset, i < len(s.src) && s.src[i] == '"'
+}
+
 // string scans a string starting at its opening quote (s.ch == '"';
-// start is the r of a raw string). A string with interpolations comes
-// out as STRING_HEAD, the interpolation's tokens, then STRING_MID or
-// STRING_TAIL from the } that ends it.
-func (s *Scanner) string(start int, raw bool) (Pos, Token, string) {
+// start is the r of a raw string, hashes the #s between its r and its
+// quote). A string with interpolations comes out as STRING_HEAD, the
+// interpolation's tokens, then STRING_MID or STRING_TAIL from the } that
+// ends it.
+func (s *Scanner) string(start int, raw bool, hashes int) (Pos, Token, string) {
 	multiline := false
 	if s.peek() == '"' && s.peek2() == '"' {
 		multiline = true
@@ -602,13 +619,28 @@ func (s *Scanner) string(start int, raw bool) (Pos, Token, string) {
 		s.next()
 	}
 	s.next() // past the (last) opening quote
-	return s.stringRest(start, start, raw, multiline, false)
+	return s.stringRest(start, start, raw, multiline, false, hashes)
+}
+
+// closes reports whether n #s follow the closing quote at s.ch, which
+// close a raw string opened with them, and moves past them.
+func (s *Scanner) closes(quotes, n int) bool {
+	at := s.offset + quotes
+	if at+n > len(s.src) || strings.Count(s.src[at:at+n], "#") != n {
+		return false
+	}
+	for range quotes + n {
+		s.next()
+	}
+	return true
 }
 
 // stringRest scans a string's text from s.ch to its closing quote or
 // its next interpolation; resumed says the text follows an
 // interpolation's }. start is the token's first byte, open the string's.
-func (s *Scanner) stringRest(start, open int, raw, multiline, resumed bool) (Pos, Token, string) {
+// A raw string with hashes ends only at its quote followed by as many
+// #s: r#"say "hi""#.
+func (s *Scanner) stringRest(start, open int, raw, multiline, resumed bool, hashes int) (Pos, Token, string) {
 	pos := s.file.Pos(start)
 	done := func(t Token) (Pos, Token, string) { return pos, t, s.src[start:s.offset] }
 	for {
@@ -623,13 +655,10 @@ func (s *Scanner) stringRest(start, open int, raw, multiline, resumed bool) (Pos
 			}
 		case '"':
 			if !multiline {
-				s.next()
-				return done(tailOr(resumed))
-			}
-			if s.peek() == '"' && s.peek2() == '"' {
-				s.next()
-				s.next()
-				s.next()
+				if s.closes(1, hashes) {
+					return done(tailOr(resumed))
+				}
+			} else if s.peek() == '"' && s.peek2() == '"' && s.closes(3, hashes) {
 				return done(tailOr(resumed))
 			}
 		case '\\':

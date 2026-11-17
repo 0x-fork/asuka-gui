@@ -1338,8 +1338,10 @@ func (p *printer) stringLit(s *StringLit) {
 	if s.Multiline {
 		q = `"""`
 	}
+	hashes := ""
 	if s.Raw {
-		p.write("r")
+		hashes = strings.Repeat("#", s.Hashes)
+		p.write("r" + hashes)
 	}
 	p.write(q)
 	for i, seg := range s.Segments {
@@ -1350,7 +1352,7 @@ func (p *printer) stringLit(s *StringLit) {
 		}
 		p.out = append(p.out, seg...)
 	}
-	p.write(q)
+	p.write(q + hashes)
 }
 
 // ---------------------------------------------------------------------

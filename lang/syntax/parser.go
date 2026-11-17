@@ -2658,7 +2658,7 @@ func (p *parser) parseString() *StringLit {
 	lit := p.lit
 	if p.tok == STRING {
 		var body string
-		s.Raw, s.Multiline, body = splitString(lit)
+		s.Raw, s.Hashes, s.Multiline, body = splitString(lit)
 		s.Segments = []string{body}
 		p.next()
 		s.Span = p.span(start)
@@ -2691,7 +2691,7 @@ func (p *parser) parseString() *StringLit {
 			p.next()
 			continue
 		case STRING_TAIL:
-			s.Segments = append(s.Segments, stripClose(p.lit[1:], s.Multiline))
+			s.Segments = append(s.Segments, stripClose(p.lit[1:], s.Multiline, 0))
 			p.next()
 		default:
 			p.errorExpected("'}' to end the interpolation")
@@ -2699,7 +2699,7 @@ func (p *parser) parseString() *StringLit {
 				p.next()
 			}
 			if p.tok == STRING_TAIL {
-				s.Segments = append(s.Segments, stripClose(p.lit[1:], s.Multiline))
+				s.Segments = append(s.Segments, stripClose(p.lit[1:], s.Multiline, 0))
 				p.next()
 			} else {
 				s.Segments = append(s.Segments, "")
@@ -2726,24 +2726,29 @@ func lineBreaks(s *StringLit) {
 }
 
 // splitString splits a string token into its kind and its text.
-func splitString(lit string) (raw, multiline bool, body string) {
+func splitString(lit string) (raw bool, hashes int, multiline bool, body string) {
 	if strings.HasPrefix(lit, "r") {
 		raw = true
 		lit = lit[1:]
+		for strings.HasPrefix(lit, "#") {
+			hashes++
+			lit = lit[1:]
+		}
 	}
 	if strings.HasPrefix(lit, `"""`) {
-		return raw, true, stripClose(lit[3:], true)
+		return raw, hashes, true, stripClose(lit[3:], true, hashes)
 	}
-	return raw, false, stripClose(lit[1:], false)
+	return raw, hashes, false, stripClose(lit[1:], false, hashes)
 }
 
-// stripClose takes a string's closing quotes off its text, if it has
-// them (it hasn't when it's not terminated).
-func stripClose(s string, multiline bool) string {
+// stripClose takes a string's closing quotes (and a raw string's #s)
+// off its text, if it has them (it hasn't when it's not terminated).
+func stripClose(s string, multiline bool, hashes int) string {
 	q := `"`
 	if multiline {
 		q = `"""`
 	}
+	q += strings.Repeat("#", hashes)
 	if strings.HasSuffix(s, q) {
 		return s[:len(s)-len(q)]
 	}

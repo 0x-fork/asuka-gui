@@ -773,6 +773,7 @@ type BasicLit struct {
 type StringLit struct {
 	Span
 	Raw       bool // r"…": no escapes, no interpolation
+	Hashes    int  // r#"…"#: the #s each side of a raw string's quotes
 	Multiline bool // """…"""
 	Segments  []string
 	Interps   []Expr
