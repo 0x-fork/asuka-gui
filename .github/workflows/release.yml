@@ -15,12 +15,28 @@ jobs:
   # targets): the core's, the desktop hosts' and the std and sdk packages'
   # C as static libraries, the Swift hosts and packages as modules with
   # library evolution, the Android host's and packages' AARs.
+  # Apple's targets on macOS with Xcode; the rest on Linux, their C
+  # Zig's as on any system (ASUKA_CC=zig: Linux's too, against the glibc
+  # the libraries target, not the runner's), Android's the NDK's.
   prebuilt:
     strategy:
       fail-fast: true
       matrix:
-        target: [ios-arm64, ios-sim-arm64, ios-sim-x64, darwin-universal, android-arm64-v8a, android-armeabi-v7a, android-x86_64, android-aar, wasm32, linux-x64, linux-arm64, windows-x64, windows-arm64]
-    runs-on: macos-15
+        include:
+          - { target: ios-arm64, os: macos-15 }
+          - { target: ios-sim-arm64, os: macos-15 }
+          - { target: ios-sim-x64, os: macos-15 }
+          - { target: darwin-universal, os: macos-15 }
+          - { target: android-arm64-v8a, os: ubuntu-latest }
+          - { target: android-armeabi-v7a, os: ubuntu-latest }
+          - { target: android-x86_64, os: ubuntu-latest }
+          - { target: android-aar, os: ubuntu-latest }
+          - { target: wasm32, os: ubuntu-latest }
+          - { target: linux-x64, os: ubuntu-latest }
+          - { target: linux-arm64, os: ubuntu-latest }
+          - { target: windows-x64, os: ubuntu-latest }
+          - { target: windows-arm64, os: ubuntu-latest }
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -31,6 +47,7 @@ jobs:
       # prebuilt Swift serves every supported Xcode. Raise it only with
       # the minimum.
       - name: Xcode 26.0
+        if: runner.os == 'macOS'
         run: sudo xcode-select -s /Applications/Xcode_26.0.app && xcrun swiftc --version
       - uses: mlugg/setup-zig@v2
       - uses: actions/setup-java@v4
@@ -41,6 +58,7 @@ jobs:
         run: go run ./cmd/asuka prebuilt build --target ${{ matrix.target }} --version "${GITHUB_REF_NAME#v}" --out "dist/prebuilt/${{ matrix.target }}"
         env:
           ASUKA_CACHE: ${{ runner.temp }}/asuka-cache
+          ASUKA_CC: ${{ runner.os == 'macOS' && '' || 'zig' }}
       - uses: actions/upload-artifact@v4
         with:
           name: prebuilt-${{ matrix.target }}
