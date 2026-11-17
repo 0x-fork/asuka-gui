@@ -742,7 +742,7 @@ func (p *parser) parseImport() *ImportDecl {
 		p.next()
 	}
 	if p.tok == DOTBRACE {
-		open := p.pos
+		d.Lbrace = p.pos
 		p.next()
 		d.Names = []*Ident{}
 		for p.tok != RBRACE && p.tok != EOF {
@@ -751,7 +751,7 @@ func (p *parser) parseImport() *ImportDecl {
 				break
 			}
 		}
-		p.expectClose(RBRACE, open, "import list")
+		d.Rbrace = p.expectClose(RBRACE, d.Lbrace, "import list")
 	}
 	if p.got(AS) {
 		d.Alias = p.ident()

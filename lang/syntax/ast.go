@@ -145,6 +145,8 @@ type ImportDecl struct {
 	Up       int      // ../path: as many directories up first (Relative too)
 	Path     []*Ident // the path's segments
 	Names    []*Ident // .{A, B}: names imported unqualified; nil for none
+	Lbrace   Pos      // the .{ before Names
+	Rbrace   Pos      // the } after them
 	Alias    *Ident   // as name; nil for none
 }
 

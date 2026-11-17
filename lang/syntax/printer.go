@@ -11,12 +11,12 @@ package syntax
 //     enum: only cases; a match: arms separated by commas) and no
 //     comment: on tap { count += 1 }. Otherwise each item goes on a line
 //     of its own, and an empty block is {}.
-//   - Arguments, parameters, arrays, maps and tuples go one per line,
-//     each with a trailing comma, when the first was written on the line
-//     after the opening bracket or a comment sits between them;
-//     otherwise on one line. A blank line between two of them is kept.
-//     A binary expression broken after its operator stays broken there,
-//     its next lines indented once more.
+//   - Arguments, parameters, arrays, maps, tuples and an import's names
+//     go one per line, each with a trailing comma, when the first was
+//     written on the line after the opening bracket or a comment sits
+//     between them; otherwise on one line. A blank line between two of
+//     them is kept. A binary expression broken after its operator stays
+//     broken there, its next lines indented once more.
 //   - } else and } catch go on the }'s line. Imports' .{…} follow the
 //     path directly: import ./components.{Row, Card}.
 //   - Comments are kept: above the node that follows them, after the
@@ -610,14 +610,11 @@ func (p *printer) node(n Node) {
 			p.write(s.Name)
 		}
 		if n.Names != nil {
-			p.write(".{")
+			nodes := make([]Node, len(n.Names))
 			for i, id := range n.Names {
-				if i > 0 {
-					p.write(", ")
-				}
-				p.write(id.Name)
+				nodes[i] = id
 			}
-			p.write("}")
+			p.list(".{", "}", n.Lbrace, n.Rbrace, nodes)
 		}
 		if n.Alias != nil {
 			p.write(" as " + n.Alias.Name)
