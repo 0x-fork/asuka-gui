@@ -11,11 +11,12 @@ package syntax
 //     enum: only cases; a match: arms separated by commas) and no
 //     comment: on tap { count += 1 }. Otherwise each item goes on a line
 //     of its own, and an empty block is {}.
-//   - Arguments, parameters, arrays and maps go one per line, each with
-//     a trailing comma, when the first was written on the line after
-//     the opening bracket or a comment sits between them; otherwise on
-//     one line. A binary expression broken after its operator stays
-//     broken there, its next lines indented once more.
+//   - Arguments, parameters, arrays, maps and tuples go one per line,
+//     each with a trailing comma, when the first was written on the line
+//     after the opening bracket or a comment sits between them;
+//     otherwise on one line. A blank line between two of them is kept.
+//     A binary expression broken after its operator stays broken there,
+//     its next lines indented once more.
 //   - } else and } catch go on the }'s line. Imports' .{…} follow the
 //     path directly: import ./components.{Row, Card}.
 //   - Comments are kept: above the node that follows them, after the
@@ -257,7 +258,7 @@ func (p *printer) lines(inside bool, open Pos, nodes []Node, dangling []*Comment
 		if i > 0 || inside {
 			p.newline()
 		}
-		if i > 0 && blankBefore(t) {
+		if i > 0 && (blankBefore(t) || t == nil && p.blankBetween(prev, n.Range().Start)) {
 			p.newline()
 		}
 		if prev.IsValid() {
@@ -300,6 +301,16 @@ func (p *printer) lines(inside bool, open Pos, nodes []Node, dangling []*Comment
 			p.comment(c)
 		}
 	}
+}
+
+// blankBetween reports whether a blank line separates end and start,
+// nothing between them, for a node without Trivia (an array's element).
+func (p *printer) blankBetween(end, start Pos) bool {
+	if !end.IsValid() || p.commentsIn(end, start) {
+		return false
+	}
+	l := p.line(end - 1)
+	return l > 0 && p.line(start) > l+1
 }
 
 // multiline reports whether a bracketed list goes one element per line:
@@ -1163,6 +1174,10 @@ func (p *printer) expr1(x Expr) {
 		p.expr(x.X)
 		p.write(")")
 	case *TupleExpr:
+		if len(x.Elems) > 0 && p.multiline(x.Start, x.End-1, exprNodes(x.Elems)) {
+			p.list("(", ")", x.Start, x.End-1, exprNodes(x.Elems))
+			return
+		}
 		p.write("(")
 		for i, e := range x.Elems {
 			if i > 0 {
