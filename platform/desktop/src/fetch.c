@@ -139,16 +139,17 @@ static bool stopped(const asuka_request *rq) {
 
 #ifdef _WIN32
 
+// A request's cancel (the call's, on the main thread, or an abort's, on
+// the thread that aborts) closes its handle, which ends what waits on it.
 typedef struct {
 	HINTERNET request;
-	SRWLOCK mu;
-	bool done;
+	SRWLOCK mu;  // the call's cancel and the abort's may run at once
 } cancel_ctx;
 
 static void on_cancel(void *p) {
 	cancel_ctx *c = p;
 	AcquireSRWLockExclusive(&c->mu);
-	if (!c->done && c->request) WinHttpCloseHandle(c->request), c->request = NULL;
+	if (c->request) WinHttpCloseHandle(c->request), c->request = NULL;
 	ReleaseSRWLockExclusive(&c->mu);
 }
 
@@ -253,15 +254,13 @@ fail:;
 	else if (code == ERROR_WINHTTP_TIMEOUT) asuka_error_failed(err, "http", 0, "%s: timed out", url);
 	else asuka_win_fail(err, HRESULT_FROM_WIN32(code), url);
 done:
+	// Neither the abort nor the call's cancel runs after these return:
+	// cc is this request's alone.
 	unhook(rq->abort);
+	if (rq->cancel) asuka_call_off_cancel(rq->cancel);
 	if (cc) {
-		AcquireSRWLockExclusive(&cc->mu);
-		cc->done = true;
 		req = cc->request;  // NULL if a cancel closed it
-		ReleaseSRWLockExclusive(&cc->mu);
-		// A call's cancel's ctx must outlive the call, which answers after
-		// this returns: then cc stays (small; one per request).
-		if (!rq->cancel) free(cc);
+		free(cc);
 	}
 	if (req) WinHttpCloseHandle(req);
 	if (conn) WinHttpCloseHandle(conn);
@@ -323,10 +322,7 @@ bool asuka_fetch_stream(const asuka_request *rq, asuka_response *out, asuka_erro
 	GInputStream *in = NULL;
 	char *buf = NULL;
 	GCancellable *c = G(g_cancellable_new)();
-	if (rq->cancel) {
-		G(g_object_ref)(c);  // the cancel's, which may come after this returns
-		asuka_call_on_cancel(rq->cancel, cancel_soup, c);
-	}
+	if (rq->cancel) asuka_call_on_cancel(rq->cancel, cancel_soup, c);
 	if (!hook(rq->abort, cancel_soup, c)) {
 		asuka_error_cancelled(err);
 		goto done;
@@ -365,13 +361,15 @@ fail:
 	}
 	e = NULL;
 done:
+	// Neither the abort nor the call's cancel runs after these return.
 	unhook(rq->abort);
+	if (rq->cancel) asuka_call_off_cancel(rq->cancel);
 	if (in) {
 		G(g_input_stream_close)(in, NULL, NULL);
 		G(g_object_unref)(in);
 	}
 	free(buf);
-	G(g_object_unref)(c);  // a call's cancel's reference stays until the process ends: one per request
+	G(g_object_unref)(c);
 	G(g_object_unref)(msg);
 	G(g_object_unref)(s);
 	if (out && ok) *out = head;

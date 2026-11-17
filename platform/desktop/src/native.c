@@ -511,16 +511,35 @@ static void n_start(uint64_t handle, uint32_t method, const uint8_t *in, size_t 
 	e.p->start(e.obj, e.iface, method, &r, c);
 }
 
-// cancel_now runs a call's cancel unless it has answered (main thread).
-// Cancelling is set before answered is read, and an answer sets
-// answered before it reads cancelling: either the cancel doesn't run,
-// or the answer waits for it to end.
+// take_cancel is c's cancel, counted as running (cancelling) under the
+// lock it's set and taken off under: once asuka_call_off_cancel has
+// taken it off, none is taken, and one taken before is waited for. NULL:
+// none. calls_mu is held.
+static void (*take_cancel(asuka_call *c, void **ctx))(void *) {
+	void (*fn)(void *) = c->on_cancel;
+	*ctx = c->cancel_ctx;
+	if (fn) atomic_fetch_add(&c->cancelling, 1);
+	return fn;
+}
+
+// cancel_now runs a call's cancel, taken (take_cancel), unless it has
+// answered (main thread). Cancelling is set before answered is read, and
+// an answer sets answered before it reads cancelling: either the cancel
+// doesn't run, or the answer waits for it to end.
 static void cancel_now(asuka_call *c, void (*fn)(void *), void *ctx) {
-	atomic_fetch_add(&c->cancelling, 1);
 	if (!atomic_load(&c->answered)) fn(ctx);
 	lock(&cancel_mu);
 	atomic_fetch_sub(&c->cancelling, 1);
 	cond_broadcast(&cancel_cv);
+	unlock(&cancel_mu);
+}
+
+// wait_cancels returns once no cancel of c runs (off the main thread,
+// where one can run meanwhile).
+static void wait_cancels(asuka_call *c) {
+	if (!atomic_load(&c->cancelling) || asuka_desktop_on_main()) return;
+	lock(&cancel_mu);
+	while (atomic_load(&c->cancelling)) cond_wait(&cancel_cv, &cancel_mu);
 	unlock(&cancel_mu);
 }
 
@@ -536,7 +555,7 @@ static void n_cancel(uint64_t id) {
 			c = p;
 			atomic_fetch_add(&c->refs, 1);
 			atomic_store(&c->cancelled, true);
-			fn = c->on_cancel, ctx = c->cancel_ctx;
+			fn = take_cancel(c, &ctx);
 			break;
 		}
 	unlock(&calls_mu);
@@ -547,17 +566,16 @@ static void n_cancel(uint64_t id) {
 
 bool asuka_call_cancelled(asuka_call *c) { return atomic_load(&c->cancelled); }
 
-typedef struct {
-	void (*fn)(void *);
-	void *ctx;
-	asuka_call *c;
-} cancel_later;
-
+// run_cancel runs the cancel a call has as it runs: the one set after it
+// was posted, or none if it was taken off meanwhile.
 static void run_cancel(void *p) {
-	cancel_later *l = p;
-	cancel_now(l->c, l->fn, l->ctx);
-	call_unref(l->c);
-	free(l);
+	asuka_call *c = p;
+	void *ctx;
+	lock(&calls_mu);
+	void (*fn)(void *) = take_cancel(c, &ctx);
+	unlock(&calls_mu);
+	if (fn) cancel_now(c, fn, ctx);
+	call_unref(c);
 }
 
 void asuka_call_on_cancel(asuka_call *c, void (*fn)(void *ctx), void *ctx) {
@@ -567,11 +585,17 @@ void asuka_call_on_cancel(asuka_call *c, void (*fn)(void *ctx), void *ctx) {
 	bool now = atomic_load(&c->cancelled);
 	unlock(&calls_mu);
 	if (now && fn) {
-		cancel_later *l = malloc(sizeof *l);
-		*l = (cancel_later){fn, ctx, c};
 		atomic_fetch_add(&c->refs, 1);
-		asuka_desktop_post(run_cancel, l);
+		asuka_desktop_post(run_cancel, c);
 	}
+}
+
+void asuka_call_off_cancel(asuka_call *c) {
+	lock(&calls_mu);
+	c->on_cancel = NULL;
+	c->cancel_ctx = NULL;
+	unlock(&calls_mu);
+	wait_cancels(c);
 }
 
 void asuka_call_set_args(asuka_call *c, void *args, void (*free_args)(void *args)) {
@@ -595,11 +619,7 @@ void asuka_call_done(asuka_call *c, asuka_writer *out) {
 	// cancel: not before it ends, so the package may let the cancel's
 	// context go once this returns. (On the main thread, the cancel has
 	// ended, or is what answers.)
-	if (atomic_load(&c->cancelling) && !asuka_desktop_on_main()) {
-		lock(&cancel_mu);
-		while (atomic_load(&c->cancelling)) cond_wait(&cancel_cv, &cancel_mu);
-		unlock(&cancel_mu);
-	}
+	wait_cancels(c);
 	asuka_native_done(c->id, out->data, out->len);
 	asuka_writer_free(out);
 	if (c->free_args) c->free_args(c->args);

@@ -3,8 +3,10 @@
 // registered on a worker (as asuka_fetch registers its own) while the
 // task goes on the main thread, the call answered from the worker, which
 // frees the cancel's context as soon as it has (as asuka_desktop.h lets
-// it). The core's half is stood in for here; posts run on a thread of
-// their own.
+// it). Every other pair of runs, the worker takes its cancel off and
+// frees the cancel's context before it answers (as asuka_fetch does,
+// which returns before its caller answers). The core's half is stood in
+// for here; posts run on a thread of their own.
 #if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)
 #define _POSIX_C_SOURCE 200809L
 #endif
@@ -65,6 +67,7 @@ bool asuka_desktop_on_main(void) { return false; }
 typedef struct {
 	asuka_call *call;
 	atomic_int *cancels;
+	bool off;  // the cancel taken off, its context freed, before the answer
 } job;
 
 // The cancel reads its context, which the worker frees once it answered.
@@ -83,13 +86,24 @@ static atomic_int registered;
 
 static void *work(void *p) {
 	job *j = p;
-	asuka_call_on_cancel(j->call, cancelled, j);
-	atomic_store(&registered, 1);
+	if (j->off) {
+		job *ctx = malloc(sizeof *ctx);
+		*ctx = *j;
+		asuka_call_on_cancel(j->call, cancelled, ctx);
+		atomic_store(&registered, 1);
+		asuka_call_off_cancel(j->call);
+		free(ctx);  // taken off: the context may go before the answer
+	} else {
+		asuka_call_on_cancel(j->call, cancelled, j);
+		atomic_store(&registered, 1);
+	}
 	asuka_writer w = asuka_call_begin();
 	asuka_call_done(j->call, &w);
 	free(j);  // answered: the context may go
 	return NULL;
 }
+
+static uint64_t run_id;
 
 static atomic_int cancels;
 static pthread_t worker;
@@ -98,7 +112,7 @@ static void *make(uint32_t iface, asuka_error *err) { return &cancels; }
 static void call(void *obj, uint32_t iface, uint32_t method, asuka_reader *in, asuka_writer *out, asuka_error *err) {}
 static void start(void *obj, uint32_t iface, uint32_t method, asuka_reader *in, asuka_call *c) {
 	job *j = malloc(sizeof *j);
-	*j = (job){c, obj};
+	*j = (job){c, obj, (run_id & 2) != 0};
 	pthread_create(&worker, NULL, work, j);
 }
 static void release(void *obj, uint32_t iface) {}
@@ -117,6 +131,7 @@ int main(void) {
 	enum { runs = 2000 };
 	for (uint64_t id = 1; id <= runs; id++) {
 		atomic_store(&registered, 0);
+		run_id = id;
 		cb.native_start(handle, 0, NULL, 0, id);
 		if (id & 1)
 			while (!atomic_load(&registered)) {
