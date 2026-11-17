@@ -40,6 +40,7 @@ cd hello
 
 - `app.asuka`：应用本身，包括一个组件、显示它的 `app` 块，以及一个测试。
 - `asuka.toml`：应用的名称、ID（同时用作 bundle ID、application ID 和桌面应用 ID）和版本号，以及[各应用商店和各平台](shipping.md)需要的其他信息。
+- `AGENTS.md`：写给编程智能体，说明如何检查、测试和查询错误代码，并要求先读 `asuka guide`，它会把所装版本的语言写在一页里打印出来。
 - `.gitignore`。
 
 `asuka new` 能创建三种项目：应用（就是这个），加上 `--lib` 是给其他应用导入的库，加上 `--bin` 是没有窗口的命令行工具，也就是[程序](programs.md)。

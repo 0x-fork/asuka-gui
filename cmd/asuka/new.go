@@ -12,6 +12,7 @@ import (
 	"text/template"
 
 	"github.com/egoist/asuka/internal/toml"
+	"github.com/egoist/asuka/internal/guide"
 	tpl "github.com/egoist/asuka/template"
 )
 
@@ -99,6 +100,9 @@ too) connects them.`
 	if err != nil {
 		return err
 	}
+	if err := os.WriteFile(filepath.Join(abs, "AGENTS.md"), []byte(guide.AgentsMD(guide.App)), 0o644); err != nil {
+		return err
+	}
 	fmt.Printf("asuka: made %s\n\n  cd %s\n  asuka dev --platform ios    # or android, web; on macOS, Windows or Linux, asuka dev runs it on this computer\n  asuka test                  # its test blocks\n", dir, dir)
 	return nil
 }
@@ -113,6 +117,7 @@ func newBin(dir string) error {
 	files := map[string]string{
 		"asuka.toml": fmt.Sprintf("name = %s\nversion = \"0.1.0\"\n", toml.Quote(name)),
 		".gitignore": "dist/\n",
+		"AGENTS.md":  guide.AgentsMD(guide.Program),
 		"main.asuka": `// A program: asuka run runs it (asuka run -- Ada), asuka build makes it
 // an executable in dist/.
 import std/os

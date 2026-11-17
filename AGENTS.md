@@ -58,8 +58,13 @@ Work milestone by milestone, in order.
   Test it whenever you add a construct that makes owners.
 - **One source, generated outputs:** the wire (`ops/schema.go`), the
   bytecode (`lang/bytecode/opcodes.go`), the elements
-  (`lang/prelude/elements.go`). Edit those, run go generate, commit the
-  outputs.
+  (`lang/prelude/elements.go`), the diagnostics' codes (`lang/diag`:
+  docs/errors, and asuka guide's pages). Edit those, run go generate,
+  commit the outputs.
+- **Every diagnostic has a code** (rfcs/0015): a new error or warning
+  takes one of `lang/diag`'s (one per rule, not per message), or a new
+  one with its summary, why, fix, a wrong and a right program, and its
+  zh and ja text.
 
 ## Commands
 
@@ -72,6 +77,10 @@ go run ./cmd/asuka check [dir]      # a package checked for every platform's fil
 go run ./cmd/asuka doc std/time     # a package's documentation, as Markdown (lang/doc); --all -o dir: the website's reference pages, /docs/std and /docs/platform
 go test ./lang/doc                  # every std and platform package's pub declarations have their /// comment
 go generate ./lang/bytecode ./lang/prelude  # the VM's opcodes header; the prelude and the UI's element constants
+go test ./lang/diag                 # every diagnostic code's wrong and right program, for every platform (the run time's on the fake host)
+go generate ./lang/diag             # the codes' pages: docs/errors/<code>.md, and docs/zh/errors, docs/ja/errors
+go generate ./cmd/asuka             # asuka guide's pages (cmd/asuka/guide), from docs/language-tour.md, docs/language and lang/diag
+go run ./cmd/asuka explain write-in-binding  # a code's page (--lang zh); asuka check --json, asuka test --json: diagnostics as JSON lines
 go test ./internal/cbuild           # the core built for this computer, iOS, Android and the web (ASUKA_CC=zig for Zig)
 go build ./... && go vet ./...      # CGO_ENABLED=0: everything
 go test ./...                       # everything Go runs: the core's C tests, the compiler, ops, the CLI, the generators

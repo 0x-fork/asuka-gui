@@ -64,6 +64,9 @@ cd hello
 - `asuka.toml`, its name, its ID (the bundle ID, application ID and
   desktop app ID) and version, and what [the stores and each
   platform](shipping.md) need.
+- `AGENTS.md`, for coding agents: how to check, test and look up an
+  error's code, and to read `asuka guide` first, which prints the
+  language on one page for the version installed.
 - `.gitignore`.
 
 `asuka new` makes one of three kinds of project: an app (this one),

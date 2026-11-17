@@ -14,6 +14,7 @@
 //	asuka doc [package] [name]               a package's documentation, as Markdown
 //	asuka check [--json] [dir]               report an Asuka package's problems, each with its code
 //	asuka explain [code]                     a diagnostic code's page: why, how to fix, examples
+//	asuka guide                              the language on one page, for coding agents
 //	asuka lsp                                the language server, for editors
 //	asuka cache stats|clean                  the build cache's size and hits; empty it
 package main
@@ -65,6 +66,7 @@ func usage() {
   asuka version                             print the CLI's version
   asuka check [--json] [dir]                report an Asuka package's problems (file:line:col: error[code]: message)
   asuka explain [code]                      print a diagnostic code's page: why, how to fix, a wrong and a right program
+  asuka guide                               print the language on one page, the workflow and every code, for coding agents
   asuka lsp                                 run the language server, for editors (LSP on stdio)
 
 asuka <command> --help lists its flags.
@@ -121,6 +123,8 @@ func main() {
 		err = cmdCheck(os.Args[2:])
 	case "explain":
 		err = cmdExplain(os.Args[2:])
+	case "guide":
+		err = cmdGuide(os.Args[2:])
 	case "cache":
 		err = cmdCache(os.Args[2:])
 	case "prebuilt":

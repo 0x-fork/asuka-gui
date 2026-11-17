@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/egoist/asuka/internal/guide"
 	"github.com/egoist/asuka/internal/nativegen"
 )
 
@@ -135,6 +136,9 @@ func newLib(dir string, native bool, projects []string) error {
 	}
 	toml := fmt.Sprintf("name = %q\nversion = \"0.1.0\"\n", name)
 	if err := os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte(toml), 0o644); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte(guide.AgentsMD(guide.Library)), 0o644); err != nil {
 		return err
 	}
 	if !native {
