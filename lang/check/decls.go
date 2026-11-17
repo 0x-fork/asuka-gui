@@ -1,6 +1,8 @@
 package check
 
 import (
+	"strings"
+
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -18,6 +20,11 @@ func (c *Checker) typeScope(t *TypeName) *Scope {
 // it stands for.
 func (c *Checker) resolveType(t *TypeName) {
 	if t.resolved {
+		if c.resolving[t] {
+			// An alias that names itself on the way to what it stands
+			// for (type L = [L]): its definition says so (below).
+			c.resolving[aliasCycle{t}] = true
+		}
 		return
 	}
 	t.resolved = true
@@ -50,16 +57,24 @@ func (c *Checker) resolveType(t *TypeName) {
 	}
 	t.Type = n
 	if a, ok := t.Decl.(*syntax.TypeAliasDecl); ok {
-		if c.resolving[t] {
-			c.errorf(a, "type %s is defined in terms of itself", t.name)
-			t.Type = Invalid
+		// An alias is another name for a type, so it can't be one of
+		// the types it stands for: a name met on the way is invalid.
+		t.Type = Invalid
+		c.resolving[t] = true
+		at := c.typeExpr(a.Type)
+		delete(c.resolving, t)
+		if c.resolving[aliasCycle{t}] {
+			delete(c.resolving, aliasCycle{t})
+			c.errorf(a.Name, "type %s is defined in terms of itself: an alias can't hold itself; a struct or an enum can (struct Node { next: Node? })", t.name)
 			return
 		}
-		c.resolving[t] = true
-		t.Type = c.typeExpr(a.Type)
-		delete(c.resolving, t)
+		t.Type = at
 	}
 }
+
+// aliasCycle marks, in Checker.resolving, an alias met while its own
+// definition is read.
+type aliasCycle struct{ t *TypeName }
 
 // typeMembers declares a type's fields, cases, methods, constants and,
 // for components and stores, members.
@@ -749,4 +764,67 @@ func hasSet(t Type, seen map[*TypeName]bool) bool {
 		}
 	}
 	return false
+}
+
+// structCycles reports the package's structs that hold themselves, in a
+// field or a field's field, by value (struct A { b: B }; struct B { a:
+// A }): such a value is never whole, so none can be made. An optional,
+// an array, a map or an enum between them is a way out (struct Node {
+// next: Node? }).
+func (c *Checker) structCycles(p *Package) {
+	reported := map[*TypeName]bool{}
+	for _, t := range p.Types {
+		if t.Kind != StructType || t.Extern || reported[t] {
+			continue
+		}
+		var path []string
+		onPath := map[*TypeName]bool{}
+		var holds func(n *TypeName, s Subst) bool
+		var inType func(ft Type) bool
+		inType = func(ft Type) bool {
+			switch ft := ft.(type) {
+			case *Named:
+				if ft.Obj.Kind != StructType || ft.Obj.Extern {
+					return false
+				}
+				if ft.Obj == t {
+					return true
+				}
+				if onPath[ft.Obj] {
+					return false // another struct's cycle: reported for it
+				}
+				return holds(ft.Obj, ft.Subst())
+			case *Tuple:
+				for _, e := range ft.Elems {
+					if inType(e) {
+						return true
+					}
+				}
+			}
+			return false
+		}
+		holds = func(n *TypeName, s Subst) bool {
+			onPath[n] = true
+			defer delete(onPath, n)
+			for _, f := range n.Fields {
+				path = append(path, n.name+"."+f.Name)
+				if inType(s.Apply(f.Type)) {
+					return true
+				}
+				path = path[:len(path)-1]
+			}
+			return false
+		}
+		if holds(t, nil) {
+			for _, o := range p.Types {
+				for _, step := range path {
+					if strings.HasPrefix(step, o.name+".") {
+						reported[o] = true
+					}
+				}
+			}
+			f := t.Fields[t.fieldIndex[strings.TrimPrefix(path[0], t.name+".")]]
+			c.errorPos(f.Pos, "struct %s holds itself (%s): a value can't hold a whole copy of itself, so none can be made; make a field on the way optional (%s: %s?), or an array", t.name, strings.Join(path, " → "), f.Name, typeString(f.Type))
+		}
+	}
 }

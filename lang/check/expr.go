@@ -558,7 +558,9 @@ func (c *Checker) arrayLit(e *syntax.ArrayExpr, want Type) Type {
 	}
 	if len(e.Elems) == 0 {
 		if elem == nil {
-			c.errorf(e, "[] says nothing of its elements' type: write it, let xs: [T] = []")
+			if want != Invalid { // an invalid type said why already
+				c.errorf(e, "[] says nothing of its elements' type: write it, let xs: [T] = []")
+			}
 			return Invalid
 		}
 		return &Array{elem}
@@ -624,7 +626,9 @@ func (c *Checker) mapLit(e *syntax.MapExpr, want Type) Type {
 	}
 	if len(e.Entries) == 0 {
 		if key == nil {
-			c.errorf(e, "[:] says nothing of its keys' and values' types: write them, let m: [K: V] = [:]")
+			if want != Invalid { // an invalid type said why already
+				c.errorf(e, "[:] says nothing of its keys' and values' types: write them, let m: [K: V] = [:]")
+			}
 			return Invalid
 		}
 		return &Map{key, val}
@@ -653,7 +657,9 @@ func (c *Checker) assign(e syntax.Expr, want Type, what string) Type {
 		return c.expr(e, nil)
 	}
 	if IsInvalid(want) {
-		c.expr(e, nil)
+		// What's expected is invalid (and said why): the value is
+		// checked, but what it'd need from the type isn't asked again.
+		c.expr(e, Invalid)
 		return Invalid
 	}
 	// Edges from a number or [v, h] / [t, r, b, l].

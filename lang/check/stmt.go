@@ -158,7 +158,13 @@ func notStatementHint(it syntax.Item) string {
 func (c *Checker) letStmt(d *syntax.LetDecl) {
 	var t Type
 	if d.Value == nil {
-		c.errorf(d, "a let needs a value")
+		// The parser said so (expected '=' and a value); the names are
+		// still declared, so their uses don't say they're unknown.
+		t = Invalid
+		if d.Type != nil {
+			t = c.typeExpr(d.Type)
+		}
+		c.bindIrrefutable(d.Pattern, t, d.Keyword == syntax.VAR)
 		return
 	}
 	if d.Else != nil {

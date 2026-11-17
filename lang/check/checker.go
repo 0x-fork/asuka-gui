@@ -66,7 +66,7 @@ type Checker struct {
 	// Generic calls, for the type parameters read or written as JSON
 	// (checked once every body has said which: jsonGenerics).
 	genericCalls []genericCall
-	laterChecks  []func() // checks for when the package's declarations are whole
+	laterChecks  []func()    // checks for when the package's declarations are whole
 	lvalueWhole  syntax.Expr // the target of the = (or bind) lvalue checks: a prop assigned whole
 	// The built-in methods' and functions' signatures that name the
 	// prelude's types, read with this checker's prelude.
@@ -322,6 +322,7 @@ func (c *Checker) checkFiles(p *Package, files []*syntax.SourceFile, imports map
 	for _, t := range p.Types {
 		c.typeMembers(t)
 	}
+	c.structCycles(p)
 	for _, f := range p.Funcs {
 		c.funcSig(f)
 	}
