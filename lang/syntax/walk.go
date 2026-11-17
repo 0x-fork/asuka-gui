@@ -121,6 +121,15 @@ func Walk(v Visitor, n Node) {
 			walk(n.Label)
 		}
 		walk(n.Type)
+	case *ExtendDecl:
+		walkTypeParams(v, n.TypeParams)
+		walk(n.Type)
+		for _, t := range n.Conforms {
+			walk(t)
+		}
+		for _, m := range n.Members {
+			walk(m)
+		}
 	case *InterfaceDecl:
 		walk(n.Name)
 		walkTypeParams(v, n.TypeParams)
@@ -241,9 +250,15 @@ func Walk(v Visitor, n Node) {
 		if n.Key != nil {
 			walk(n.Key)
 		}
+		if n.Label != nil {
+			walk(n.Label)
+		}
 		walk(n.Body)
 	case *WhileStmt:
 		walk(n.Cond)
+		if n.Label != nil {
+			walk(n.Label)
+		}
 		walk(n.Body)
 	case *MatchStmt:
 		walk(n.Subject)
@@ -276,6 +291,9 @@ func Walk(v Visitor, n Node) {
 	case *ThrowStmt:
 		walk(n.Value)
 	case *BranchStmt:
+		if n.Label != nil {
+			walk(n.Label)
+		}
 	case *DeferStmt:
 		walk(n.Body)
 	case *EmitStmt:

@@ -344,6 +344,23 @@ type InterfaceDecl struct {
 	Rbrace     Pos
 }
 
+// An ExtendDecl is extend<T> Type: Interface { members }: fns, mut fns,
+// static fns and constants added to a type (RFC 0011), its own or
+// another package's, built in or declared.
+type ExtendDecl struct {
+	Span
+	Trivia
+	Pub        Pos // an error: pub goes on an extension's members
+	TypeParams []*TypeParam
+	TypeAngles Angles // the <…> around TypeParams
+	Type       Type
+	Conforms   []Type
+	Lbrace     Pos
+	Members    []Node // *FuncDecl and *LetDecl (and, an error, *Field), in source order
+	Dangling   []*CommentGroup
+	Rbrace     Pos
+}
+
 // A FuncDecl is [async] fn name<T>(params) [throws] [-> Result], with a
 // Body, = Value, or (in an interface) neither. It's a declaration and,
 // in a block, a member.
@@ -465,6 +482,7 @@ func (*StructDecl) declNode()     {}
 func (*ShaderDecl) declNode()     {}
 func (*EnumDecl) declNode()       {}
 func (*InterfaceDecl) declNode()  {}
+func (*ExtendDecl) declNode()     {}
 func (*FuncDecl) declNode()       {}
 func (*TypeAliasDecl) declNode()  {}
 func (*ExternTypeDecl) declNode() {}
@@ -614,7 +632,8 @@ type ForStmt struct {
 	Await   Pos // NoPos without await
 	Pattern Pattern
 	Seq     Expr
-	Key     Expr // nil without a key
+	Key     Expr   // nil without a key
+	Label   *Ident // for … as name: the loop's name, nil without one
 	Body    *Block
 }
 
@@ -622,8 +641,9 @@ type ForStmt struct {
 type WhileStmt struct {
 	Span
 	Trivia
-	Cond Expr // an Expr, a *LetCond, or a *CondList of them
-	Body *Block
+	Cond  Expr   // an Expr, a *LetCond, or a *CondList of them
+	Label *Ident // while … as name: the loop's name, nil without one
+	Body  *Block
 }
 
 // A MatchStmt is match subject { arms }, in a view or in statements.
@@ -681,7 +701,8 @@ type ThrowStmt struct {
 type BranchStmt struct {
 	Span
 	Trivia
-	Tok Token // BREAK or CONTINUE
+	Tok   Token  // BREAK or CONTINUE
+	Label *Ident // break name: the loop it leaves, nil for the innermost
 }
 
 // A DeferStmt is defer { … }.

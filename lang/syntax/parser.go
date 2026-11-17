@@ -613,6 +613,8 @@ func (p *parser) declAhead() bool {
 	switch tok {
 	case COMPONENT, SCREEN, STORE, STRUCT, ENUM, INTERFACE:
 		return isIdentTok(next)
+	case EXTEND:
+		return true
 	case NATIVE:
 		return next == INTERFACE || next == COMPONENT || next == FN || next == ASYNC
 	case EXTERN:
@@ -695,6 +697,8 @@ func describeNode(n Node) string {
 		return "enum"
 	case *InterfaceDecl:
 		return "interface"
+	case *ExtendDecl:
+		return "extension"
 	case *FuncDecl:
 		return "function"
 	case *TypeAliasDecl:
@@ -876,6 +880,8 @@ func (p *parser) parseDecl() Decl {
 		d = p.parseEnum(start)
 	case INTERFACE:
 		d = p.parseInterface(start, NoPos)
+	case EXTEND:
+		d = p.parseExtend(start)
 	case FN, ASYNC, MUT:
 		d = p.parseFunc(start)
 	case TYPE:
@@ -976,6 +982,8 @@ func setPub(n Node, pub Pos) bool {
 		n.Pub = pub
 	case *InterfaceDecl:
 		n.Pub = pub
+	case *ExtendDecl:
+		n.Pub = pub
 	case *FuncDecl:
 		n.Pub = pub
 	case *TypeAliasDecl:
@@ -1021,6 +1029,8 @@ func setSpan(n Node, s Span) {
 	case *EnumDecl:
 		n.Span = s
 	case *InterfaceDecl:
+		n.Span = s
+	case *ExtendDecl:
 		n.Span = s
 	case *FuncDecl:
 		n.Span = s
@@ -1278,7 +1288,7 @@ func (p *parser) parseFieldOrMethod(what string, constants bool) Node {
 		f := p.parseFunc(start)
 		f.Native = native
 		n = f
-	case p.tok == LET && constants:
+	case (p.tok == LET || p.tok == VAR) && constants:
 		// A constant of the type (Font.title), in a struct's or an
 		// enum's body.
 		n = p.parseLet(start)
@@ -1397,6 +1407,20 @@ func (p *parser) parseEnumCase() *EnumCase {
 	}
 	c.Span = p.span(start)
 	return c
+}
+
+// parseExtend parses extend<T> Type: Interface { members }.
+func (p *parser) parseExtend(start Pos) *ExtendDecl {
+	p.expect(EXTEND)
+	d := &ExtendDecl{}
+	d.TypeParams, d.TypeAngles = p.parseTypeParams()
+	d.Type = p.parseType()
+	d.Conforms = p.parseConforms()
+	d.Lbrace, d.Members, d.Dangling, d.Rbrace = p.parseBody("extension", func() Node {
+		return p.parseFieldOrMethod("a method (fn), a static fn or a constant (let)", true)
+	})
+	d.Span = p.span(start)
+	return d
 }
 
 func (p *parser) parseInterface(start, native Pos) *InterfaceDecl {
@@ -1721,6 +1745,7 @@ func (p *parser) itemAfterPub(start Pos) Item {
 	case WHILE:
 		p.next()
 		d := &WhileStmt{Cond: p.parseCond()}
+		d.Label = p.loopLabel()
 		d.Body = p.parseBlock()
 		d.Span = p.span(start)
 		return d
@@ -1744,6 +1769,7 @@ func (p *parser) itemAfterPub(start Pos) Item {
 	case BREAK, CONTINUE:
 		d := &BranchStmt{Tok: p.tok}
 		p.next()
+		d.Label = p.branchLabel()
 		d.Span = p.span(start)
 		return d
 	case DEFER:
@@ -1759,6 +1785,10 @@ func (p *parser) itemAfterPub(start Pos) Item {
 		}
 		d.Span = p.span(start)
 		return d
+	case EXTEND:
+		p.error(p.pos, "an extension is declared at the top level of a file, not in a block")
+		p.parseDecl()
+		return &BadItem{Span: p.span(start)}
 	case COMPONENT, SCREEN, STORE, STRUCT, ENUM, INTERFACE, NATIVE, EXTERN, APP, TEST, IMPORT:
 		// Only where a declaration follows: elsewhere these are names
 		// (decision 10), as in let app = mount(…); app.tap("Add").
@@ -1989,9 +2019,29 @@ func (p *parser) parseFor() *ForStmt {
 	if p.got(KEY) {
 		d.Key = p.headExpr()
 	}
+	d.Label = p.loopLabel()
 	d.Body = p.parseBlock()
 	d.Span = p.span(start)
 	return d
+}
+
+// loopLabel parses a loop's as name, after its head (RFC 0011): nil
+// without one.
+func (p *parser) loopLabel() *Ident {
+	if p.tok != AS {
+		return nil
+	}
+	p.next()
+	return p.ident()
+}
+
+// branchLabel parses break's or continue's loop name, on its line: nil
+// without one.
+func (p *parser) branchLabel() *Ident {
+	if isIdentTok(p.tok) && p.line(p.pos) == p.line(p.prevEnd-1) {
+		return p.ident()
+	}
+	return nil
 }
 
 func (p *parser) parseDo() *DoStmt {
@@ -2454,7 +2504,7 @@ func (p *parser) postfixFrom(start Pos, x Expr) Expr {
 			x = c
 		case AS:
 			// View as card { … }: an element named.
-			if !isElement(x) || p.peek(1) != IDENT {
+			if !isElement(x) || p.peek(1) != IDENT || p.exprLev < 0 {
 				return x
 			}
 			c := &CallExpr{Fun: x}
@@ -2628,7 +2678,9 @@ func (p *parser) angleEnd() int {
 
 // elementName parses an element's as name, when it has one.
 func (p *parser) elementName(c *CallExpr) {
-	if p.tok == AS && p.peek(1) == IDENT {
+	// In a control clause's head, as names the loop (for x in xs as
+	// rows {): no element is named there.
+	if p.tok == AS && p.peek(1) == IDENT && p.exprLev >= 0 {
 		p.next()
 		c.As = p.ident()
 	}

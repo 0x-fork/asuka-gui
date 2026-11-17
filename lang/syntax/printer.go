@@ -894,6 +894,15 @@ func (p *printer) node(n Node) {
 			p.write(n.Label.Name + ": ")
 		}
 		p.typ(n.Type)
+	case *ExtendDecl:
+		p.pub(n.Pub)
+		p.write("extend")
+		p.typeParams(n.TypeParams, n.TypeAngles)
+		p.write(" ")
+		p.typ(n.Type)
+		p.conforms(n.Conforms)
+		p.write(" ")
+		p.body(n.Lbrace, nil, n.Members, n.Dangling, n.Rbrace, true, "; ")
 	case *InterfaceDecl:
 		p.pub(n.Pub)
 		if n.Native.IsValid() {
@@ -1052,11 +1061,17 @@ func (p *printer) node(n Node) {
 			p.write(" key ")
 			p.expr(n.Key)
 		}
+		if n.Label != nil {
+			p.write(" as " + n.Label.Name)
+		}
 		p.write(" ")
 		p.block(n.Body)
 	case *WhileStmt:
 		p.write("while ")
 		p.cond(n.Cond)
+		if n.Label != nil {
+			p.write(" as " + n.Label.Name)
+		}
 		p.write(" ")
 		p.block(n.Body)
 	case *MatchStmt:
@@ -1109,6 +1124,9 @@ func (p *printer) node(n Node) {
 		p.expr(n.Value)
 	case *BranchStmt:
 		p.write(n.Tok.String())
+		if n.Label != nil {
+			p.write(" " + n.Label.Name)
+		}
 	case *DeferStmt:
 		p.write("defer ")
 		p.block(n.Body)
