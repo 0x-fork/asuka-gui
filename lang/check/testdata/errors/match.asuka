@@ -16,7 +16,7 @@ fn ok(l: Light) -> int = match l {
   _ => 2
 }
 
-fn numbers(n: int) -> int = match n { // ERROR "match doesn't cover the rest"
+fn numbers(n: int) -> int = match n { // ERROR "match doesn't cover every value: end it with _ =>"
   0 => 1
 }
 
@@ -28,4 +28,33 @@ fn wrongCase(l: Light) -> int = match l {
 fn bareCase(l: Light) -> int = match l {
   red(x) => 1 // ERROR "red\(…\) isn't a case: write .red\(…\), or Type.red\(…\)"
   _ => 0
+}
+
+fn one(l: Light) -> int = match l { // ERROR "match doesn't cover .green: add an arm for it, or _ =>$"
+  .red | .yellow => 1
+}
+
+fn two(l: Light) -> int = match l { // ERROR "match doesn't cover .yellow, .green: add arms for them"
+  .red => 1
+}
+
+fn guard(l: Light, n: int) -> int = match l { // ERROR "cover .red: .*an arm with an if guard covers nothing"
+  .red if n > 0 => 1
+  .yellow | .green => 2
+}
+
+fn statement(l: Light) {
+  match l { // ERROR "match doesn't cover .green: add an arm for it, or _ => \{ \}"
+    .red => print("r")
+    .yellow => print("y")
+  }
+}
+
+enum Shape { circle(int), square(int), dot }
+
+// A | pattern that binds is said once, and the first alternative's
+// names are still known in its arm.
+fn orBinds(s: Shape) -> int = match s {
+  .circle(r) | .square(r) => r // ERROR "a \| pattern can't bind names"
+  .dot => 0
 }

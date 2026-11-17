@@ -818,12 +818,25 @@ func (c *Checker) pattern(p syntax.Pattern, t Type, kind VarKind) {
 			c.pattern(e, tt.Elems[i], kind)
 		}
 	case *syntax.OrPat:
-		for _, a := range p.Alts {
-			before := len(c.scope.names)
+		// Each alternative's names in a scope of its own: said once, and
+		// the first's kept, so the arm's uses of them aren't unknown.
+		saved := c.scope
+		binds := false
+		for i, a := range p.Alts {
+			c.scope = NewScope(saved)
 			c.pattern(a, t, kind)
-			if len(c.scope.names) != before {
-				c.errorf(a, "a | pattern can't bind names: match the cases in arms of their own")
+			if len(c.scope.names) > 0 {
+				binds = true
+				if i == 0 {
+					for _, o := range c.scope.names {
+						saved.Insert(o)
+					}
+				}
 			}
+		}
+		c.scope = saved
+		if binds {
+			c.errorf(p, "a | pattern can't bind names: match the cases in arms of their own")
 		}
 	case *syntax.CasePat:
 		if st := c.patternStruct(p); st != nil {
@@ -936,6 +949,26 @@ func irrefutable(p syntax.Pattern) bool {
 	return false
 }
 
+// notCovered says what a match misses (exhaustive's witnesses), and
+// how to cover it.
+func notCovered(missing []string, arms []*syntax.MatchArm, rest string) string {
+	var msg string
+	switch {
+	case len(missing) == 1 && missing[0] == "the rest":
+		msg = "match doesn't cover every value: end it with " + rest
+	case len(missing) == 1:
+		msg = "match doesn't cover " + missing[0] + ": add an arm for it, or " + rest
+	default:
+		msg = "match doesn't cover " + strings.Join(missing, ", ") + ": add arms for them, or " + rest
+	}
+	for _, a := range arms {
+		if a.Guard != nil {
+			return msg + " (an arm with an if guard covers nothing: its guard may not hold)"
+		}
+	}
+	return msg
+}
+
 func (c *Checker) matchStmt(s *syntax.MatchStmt) {
 	t := c.expr(s.Subject, nil)
 	mi := &MatchInfo{Subject: t}
@@ -957,7 +990,7 @@ func (c *Checker) matchStmt(s *syntax.MatchStmt) {
 	ok, missing := c.exhaustive(s.Subject, t, s.Arms)
 	mi.Exhaustive = ok
 	if !ok {
-		c.errorf(s, "match doesn't cover %s: add arms for them, or _ => { }", strings.Join(missing, ", "))
+		c.errorf(s, "%s", notCovered(missing, s.Arms, "_ => { }"))
 	}
 }
 
@@ -995,7 +1028,7 @@ func (c *Checker) matchExpr(e *syntax.MatchExpr, want Type) Type {
 	ok, missing := c.exhaustive(e.Subject, t, e.Arms)
 	mi.Exhaustive = ok
 	if !ok {
-		c.errorf(e, "match doesn't cover %s: add arms for them, or _ =>", strings.Join(missing, ", "))
+		c.errorf(e, "%s", notCovered(missing, e.Arms, "_ =>"))
 	}
 	if want != nil {
 		return want

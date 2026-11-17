@@ -67,7 +67,7 @@ fn boolsBoth(f: Flag) -> int = match f {
   Flag(on: false, label) => 2
 }
 
-fn ints(p: Point) -> int = match p { // ERROR "match doesn't cover the rest"
+fn ints(p: Point) -> int = match p { // ERROR "match doesn't cover every value: end it with _ =>"
   Point(x: 0) => 1
 }
 
