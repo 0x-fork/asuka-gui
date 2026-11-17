@@ -7,11 +7,15 @@ import (
 )
 
 // stmts lowers statements; a defer protects the rest of its block.
-func (b *fb) stmts(items []syntax.Item) {
+func (b *fb) stmts(items []syntax.Item) { b.stmtsThen(items, nil) }
+
+// stmtsThen lowers statements, then what then lowers (a block's value,
+// its last expression), under the defers among them: those run after it.
+func (b *fb) stmtsThen(items []syntax.Item, then func()) {
 	for i := 0; i < len(items); i++ {
 		it := items[i]
 		if d, ok := it.(*syntax.DeferStmt); ok {
-			b.withDefer(d, items[i+1:])
+			b.withDefer(d, items[i+1:], then)
 			return
 		}
 		if _, ok := it.(*syntax.FuncDecl); ok {
@@ -28,6 +32,9 @@ func (b *fb) stmts(items []syntax.Item) {
 			continue
 		}
 		b.stmt(it)
+	}
+	if then != nil {
+		then()
 	}
 }
 
@@ -113,7 +120,7 @@ func (b *fb) stmt(it syntax.Item) {
 		}
 		b.l.errorf(it, "can't lower this statement")
 	case *syntax.DeferStmt:
-		b.withDefer(s, nil)
+		b.withDefer(s, nil, nil)
 	default:
 		b.l.errorf(it, "can't lower this statement")
 	}
@@ -929,13 +936,13 @@ func (b *fb) tryOptional(e *syntax.UnaryExpr, dst int) int {
 	return r
 }
 
-// withDefer lowers the rest of a block with a defer: its body runs when
-// the block ends, by any way.
-func (b *fb) withDefer(d *syntax.DeferStmt, rest []syntax.Item) {
+// withDefer lowers the rest of a block with a defer (and then, the
+// block's value): its body runs when the block ends, by any way.
+func (b *fb) withDefer(d *syntax.DeferStmt, rest []syntax.Item, then func()) {
 	b.defers = append(b.defers, d.Body)
 	n := len(b.defers)
 	b.protect(func() {
-		b.stmts(rest)
+		b.stmtsThen(rest, then)
 	}, func(e int) {
 		b.runDefer(d.Body)
 	})
@@ -1084,9 +1091,10 @@ func (b *fb) returnValue(value syntax.Expr) {
 	k := b.f.Ret
 	if value != nil {
 		r = b.value(value, -1)
-		if len(b.defers) > 0 && k == bc.KRef {
-			// The defers run after the value is computed: keep it.
-			t := b.temp(bc.KRef)
+		if len(b.defers) > 0 && r >= 0 && k != bc.KVoid {
+			// The defers run after the value is computed: keep it, as
+			// a defer may change the local it's in.
+			t := b.temp(k)
 			b.move(t, r)
 			r = t
 		}

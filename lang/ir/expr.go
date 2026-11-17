@@ -1056,15 +1056,19 @@ func (b *fb) binop(o syntax.Token, x, y int, xt, yt, res check.Type, dst int) in
 // ---------------------------------------------------------------------
 // if and match as values
 
+// valueBlock lowers a block whose value, its last expression, goes in
+// dst: computed before the block's defers run.
 func (b *fb) valueBlock(bl *syntax.Block, dst int) {
 	b.openScope()
 	n := len(bl.Items)
 	if n > 0 {
-		b.stmts(bl.Items[:n-1])
 		if es, ok := bl.Items[n-1].(*syntax.ExprStmt); ok {
-			b.value(es.X, dst)
+			b.stmtsThen(bl.Items[:n-1], func() {
+				b.at(es)
+				b.value(es.X, dst)
+			})
 		} else {
-			b.stmt(bl.Items[n-1])
+			b.stmts(bl.Items)
 		}
 	}
 	b.closeScope()

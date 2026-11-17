@@ -1125,8 +1125,20 @@ func (b *fb) spawn(e *syntax.SpawnExpr, dst int) int {
 		n := len(items)
 		if n > 0 {
 			if es, ok := items[n-1].(*syntax.ExprStmt); ok && b.l.info.Ctxs[es] == ctx {
-				c.stmts(items[:n-1])
-				c.ret(c.value(es.X, -1), ret)
+				// Its value, computed before its defers run.
+				r := bc.None
+				if ret != bc.KVoid {
+					r = c.temp(ret)
+				}
+				c.stmtsThen(items[:n-1], func() {
+					c.at(es)
+					if r == bc.None {
+						c.exprStmt(es.X)
+					} else {
+						c.value(es.X, r)
+					}
+				})
+				c.ret(r, ret)
 				return
 			}
 		}

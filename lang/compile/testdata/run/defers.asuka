@@ -1,0 +1,133 @@
+// A defer runs when its block ends, after the block's value is
+// computed: a return's, a block's last expression's (an if's, a
+// match's, a catch's, a spawn's), which a defer changing the local it
+// came from doesn't change.
+
+fn counted(n: int) -> int {
+  var out = 0
+  for i in 0..<n {
+    defer { out += 100 }
+    if i == 2 { return out }
+    out += 1
+  }
+  return out
+}
+
+fn text() -> string {
+  var s = "a"
+  defer { s = "b" }
+  return s
+}
+
+fn ratio() -> float {
+  var x = 1.5
+  defer { x = 2.5 }
+  return x
+}
+
+fn flag() -> bool {
+  var on = true
+  defer { on = false }
+  return on
+}
+
+fn items() -> [int] {
+  var xs = [1]
+  defer { xs.push(2) }
+  return xs
+}
+
+fn branch(c: bool) -> int {
+  var n = 1
+  let v = if c {
+    defer { n += 10 }
+    n
+  } else { 0 }
+  return v + n * 100
+}
+
+fn arm(k: int) -> int {
+  var n = k
+  let v = match k {
+    1 => {
+      defer { n = 99 }
+      n
+    }
+    _ => n
+  }
+  return v
+}
+
+fn noisy(s: string) -> string {
+  print(s)
+  return s
+}
+
+fn fails() throws -> int { throw Error("no") }
+
+test "a return's value" {
+  print(counted(5))
+  print(counted(1))
+  print(text())
+  print(ratio())
+  print(flag())
+  print(items())
+}
+
+test "a block's value" {
+  print(branch(true))
+  print(branch(false))
+  print(arm(1))
+  print(arm(2))
+  var n = 1
+  n = if n > 0 {
+    defer { n += 100 }
+    5
+  } else { 0 }
+  print(n)
+}
+
+test "in order" {
+  let v = if true {
+    defer { print("defer") }
+    noisy("value")
+  } else { "" }
+  print(v)
+  var k = 1
+  let w = try fails() catch {
+    defer { k = 2 }
+    k
+  }
+  print(w)
+}
+
+test "a spawn's value" {
+  let s = await spawn {
+    var k = 1
+    defer { k = 2 }
+    k
+  }
+  print(s)
+}
+
+// Output:
+// 202
+// 101
+// a
+// 1.5
+// true
+// [1]
+// ok a return's value
+// 1101
+// 100
+// 1
+// 2
+// 5
+// ok a block's value
+// value
+// defer
+// value
+// 1
+// ok in order
+// 1
+// ok a spawn's value
