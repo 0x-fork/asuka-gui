@@ -5,6 +5,7 @@
 #include "t.h"
 #include "fake/uitest.h"
 #include "ui/ui_int.h"
+#include "fuzz.h"
 
 #include <stdio.h>
 
@@ -1930,6 +1931,43 @@ TEST(host_reads_past_the_end) {
 	CHECK_EQ_INT(s->len, 0);
 	ak_release(s);
 	ak_release(b);
+}
+
+// A frame's time from a host that isn't one, or is beyond an int64's
+// nanoseconds, is a time all the same.
+void ak_anim_frame(ak_id id, double seconds);
+
+TEST(frame_times_out_of_range) {
+	ak_uitest *a = mount(scroll_app, NULL);
+	double times[] = {NAN, INFINITY, -INFINITY, 1e300, -1e300, 1.5};
+	for (size_t i = 0; i < AK_LEN(times); i++) ak_anim_frame(0, times[i]);
+	done(a);
+}
+
+// ---- Events from a host that sends anything (fuzz.h) ----
+
+TEST(events_from_a_host_that_sends_anything) {
+	ak_invoke_fn apps[] = {show_app, switch_app, field_app, selection_app, toggle_app, controls_app, list_app, shown_list_app, scroll_app};
+	int per_app = fuzz_seed(0x2545f4914f6cdd1d, 3000);
+	for (size_t i = 0; i < AK_LEN(apps); i++) {
+		on_cell = ak_vm_cell_new((ak_val){.i = 1}, AK_K_BOOL, NULL).p;
+		ticks = cell_int(0);
+		which = cell_int(1);
+		field_text = cell_ref(ak_str_c("héllo 👋 world"));
+		submitted = cell_ref(ak_str_c(""));
+		sel_cell = cell_ref(range(0, 0).p);
+		toggled = ak_vm_cell_new((ak_val){.i = 0}, AK_K_BOOL, NULL).p;
+		seg_sel = cell_int(1);
+		picked = cell_int(-1);
+		slid = ak_vm_cell_new((ak_val){.f = 0.25}, AK_K_FLOAT, NULL).p;
+		items = cell_ref(todos(50));
+		list_shown = ak_vm_cell_new((ak_val){.i = 1}, AK_K_BOOL, NULL).p;
+		ak_uitest *a = mount(apps[i], NULL);
+		fuzz_events(a, per_app);
+		done(a);
+		void *cells[] = {on_cell, ticks, which, field_text, submitted, sel_cell, toggled, seg_sel, picked, slid, items, list_shown};
+		for (size_t k = 0; k < AK_LEN(cells); k++) ak_release(cells[k]);
+	}
 }
 
 T_MAIN()

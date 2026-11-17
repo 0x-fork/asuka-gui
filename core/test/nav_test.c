@@ -7,6 +7,7 @@
 #include "t.h"
 #include "fake/uitest.h"
 #include "ui/ui_int.h"
+#include "fuzz.h"
 
 #include <stdio.h>
 
@@ -1965,6 +1966,29 @@ TEST(focus_out_of_an_overlay_that_pops_its_screen) {
 	CHECK_EQ_INT(count_kind(a, AK_KIND_SCREEN), 1);
 	CHECK_EQ_INT(count_kind(a, AK_KIND_TEXT_FIELD), 0);
 	done(a);
+}
+
+// ---- Events from a host that sends anything (fuzz.h) ----
+
+TEST(events_from_a_host_that_sends_anything) {
+	ak_invoke_fn apps[] = {stack_app, tabs_app, sheet_app, popover_app, alert_app, menu_app, snack_app, ov_stack_app, sections_app};
+	int per_app = fuzz_seed(0x9e3779b97f4a7c15, 3000);
+	for (size_t i = 0; i < AK_LEN(apps); i++) {
+		ticks = cell_int(0);
+		sel_cell = cell_int(0);
+		badge = ak_vm_cell_new((ak_val){.p = ak_str_c("3")}, AK_K_REF, NULL).p;
+		open_cell = ak_vm_cell_new((ak_val){.i = 0}, AK_K_BOOL, NULL).p;
+		sel_mask = cell_int(1 << 2);
+		typed = NULL;
+		dismiss_snack = NULL;
+		ak_uitest *a = mount(apps[i], NULL);
+		fuzz_events(a, per_app);
+		ak_release(dismiss_snack);  // a snackbar's dismissal holds its view
+		dismiss_snack = NULL;
+		done(a);
+		ak_release(ticks), ak_release(sel_cell), ak_release(badge), ak_release(open_cell), ak_release(sel_mask);
+		ak_release(typed);
+	}
 }
 
 T_MAIN()
