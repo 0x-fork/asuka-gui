@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -70,5 +71,39 @@ app { Row("a") { on archive(id) { print(id) } } }
 	c.change(uri, version, broken)
 	if got := hoverAt(t, c, uri, broken, "emit archive(no|pe: title)"); got != "" {
 		t.Errorf("hover on a label that names nothing: %q", got)
+	}
+}
+
+// Renaming a parameter renames the labels that name it in the package's
+// other files: a function's, a style's.
+func TestRenameLabelledParams(t *testing.T) {
+	root := t.TempDir()
+	a := "fn area(width: float, height: float = 1) -> float = width * height\n\nstyle chip(tint: Color) { color: tint }\n"
+	b := "fn big() -> float = area(3, height: 4)\n\ncomponent Tag { Text(\"a\") { style: chip(tint: .red) } }\n"
+	if err := os.WriteFile(filepath.Join(root, "a.asuka"), []byte(a), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "b.asuka"), []byte(b), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := newClient(t, root)
+	uri := c.openText(filepath.Join(root, "a.asuka"), a)
+	c.waitDiags(uri, noDiags)
+	buri := pathToURI(filepath.Join(root, "b.asuka"))
+	for _, tc := range []struct{ at, wantA, wantB string }{
+		{"he|ight: float", "fn area(width: float, size: float = 1) -> float = width * size", "area(3, size: 4)"},
+		{"ti|nt: Color", "style chip(size: Color) { color: size }", "chip(size: .red)"},
+	} {
+		var edit WorkspaceEdit
+		rp := RenameParams{TextDocumentPositionParams: tdp(uri, posAt(t, a, tc.at)), NewName: "size"}
+		if err := c.call("textDocument/rename", &rp, &edit); err != nil {
+			t.Fatal(err)
+		}
+		if got := applyEdits(a, edit.Changes[uri]); !strings.Contains(got, tc.wantA) {
+			t.Errorf("rename at %s: a.asuka:\n%s", tc.at, got)
+		}
+		if got := applyEdits(b, edit.Changes[buri]); !strings.Contains(got, tc.wantB) {
+			t.Errorf("rename at %s: b.asuka:\n%s", tc.at, got)
+		}
 	}
 }

@@ -95,8 +95,10 @@ func (s *server) findOccurrences(fc *fileCtx, r *ref) []occurrence {
 		return nil
 	}
 	var out []occurrence
-	// A local: its file.
-	if v, ok := r.obj.(*check.Var); ok && v.Ctx != nil || r.obj != nil && isTypeParam(r.obj) {
+	// A local: its file. A parameter that labels name (a declared
+	// function's, a method's, a style's) is found where its function's
+	// calls are.
+	if v, ok := r.obj.(*check.Var); ok && v.Ctx != nil && !labelled(v) || r.obj != nil && isTypeParam(r.obj) {
 		fc.occurrences(key, &out)
 		return out
 	}
@@ -159,6 +161,21 @@ func (s *server) findOccurrences(fc *fileCtx, r *ref) []occurrence {
 	return uniq
 }
 
+// labelled reports whether v is a parameter calls name with a label:
+// a declared function's, a method's or a style's (area(3, height: 4),
+// chip(tint: .red)), not a closure's or a fn's in a block.
+func labelled(v *check.Var) bool {
+	switch v.Ctx.Kind {
+	case check.CtxFunc, check.CtxMethod, check.CtxStyle:
+		for _, p := range v.Ctx.Params {
+			if p == v {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func isTypeParam(o check.Object) bool {
 	tn, ok := o.(*check.TypeName)
 	return ok && tn.Kind == check.ParamType
@@ -175,6 +192,16 @@ func (s *server) private(r *ref) bool {
 		return o.Pkg != nil && o.Owner == nil && !check.Exported(o.Pkg, o)
 	case *check.PkgName:
 		return true // the file's import
+	case *check.Var:
+		// A labelled parameter: as private as its function or style.
+		if v := o; v.Ctx != nil && labelled(v) {
+			if f := v.Ctx.Func; f != nil {
+				return s.private(&ref{obj: f})
+			}
+			if d, ok := v.Ctx.Node.(*syntax.StyleDecl); ok {
+				return !d.Pub.IsValid()
+			}
+		}
 	}
 	return false
 }
