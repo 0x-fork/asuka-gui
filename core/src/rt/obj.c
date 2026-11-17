@@ -423,9 +423,18 @@ void ak_throw_msg(const char *fmt, ...) {
 	int n = vsnprintf(buf, sizeof buf, fmt, ap);
 	va_end(ap);
 	if (n < 0) n = 0;
-	if ((size_t)n >= sizeof buf) n = sizeof buf - 1;
+	ak_str *s;
+	if ((size_t)n < sizeof buf) {
+		s = ak_str_new(buf, (size_t)n);
+	} else {
+		// Longer (a UI test's screen): formatted again, whole.
+		s = ak_str_new(NULL, (size_t)n);
+		va_start(ap, fmt);
+		vsnprintf(s->data, (size_t)n + 1, fmt, ap);
+		va_end(ap);
+	}
 	ak_struct *e = ak_struct_new(&ak_shape_error);
-	e->f[0].p = ak_str_new(buf, (size_t)n);
+	e->f[0].p = s;
 	ak_throw(e);
 }
 

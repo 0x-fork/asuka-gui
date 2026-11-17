@@ -169,6 +169,16 @@ TEST(errors) {
 	ak_throw_cancel();
 	e = ak_error_take();
 	CHECK(ak_is_cancel(e));
+	// A long message (a UI test's screen) is kept whole.
+	char long_msg[2000];
+	memset(long_msg, 'x', sizeof long_msg - 1);
+	long_msg[sizeof long_msg - 2] = 'z';
+	long_msg[sizeof long_msg - 1] = 0;
+	ak_throw_msg("%s!", long_msg);
+	e = ak_error_take();
+	CHECK(ak_error_message(e)->len == sizeof long_msg);
+	if (ak_error_message(e)->len == sizeof long_msg) CHECK_EQ_STR(ak_error_message(e)->data + sizeof long_msg - 2, "z!");
+	ak_release(e);
 }
 
 static ak_val add_caps(ak_closure *c, ak_val *args, uint32_t n) {

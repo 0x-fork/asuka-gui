@@ -1,0 +1,21 @@
+// A failing expectation says the whole screen, however long it is.
+
+component Long {
+  Column {
+    for i in 0..<40 { Text("第{i}行") }
+  }
+}
+
+app { Long() }
+
+test "a failure shows the whole screen" {
+  let app = mount(Long())
+  var message = ""
+  do {
+    try app.expect("nothing")
+  } catch e {
+    message = e.message
+  }
+  expect(message.contains("第0行"))
+  expect(message.contains("第39行"))
+}
