@@ -35,6 +35,15 @@ test "bools and comparisons" {
   expect("abc" < "abd")
 }
 
+test "wrapping" {
+  let mn = -9223372036854775807 - 1
+  print(abs(-5))
+  print(abs(mn))
+  print(-mn)
+  print(mn / -1)
+  print(mn % -1)
+}
+
 test "division by zero throws" {
   let z = 0
   print(1 / z)
@@ -55,4 +64,10 @@ test "division by zero throws" {
 // true
 // true
 // ok bools and comparisons
+// 5
+// -9223372036854775808
+// -9223372036854775808
+// -9223372036854775808
+// 0
+// ok wrapping
 // FAIL division by zero throws: division by zero
