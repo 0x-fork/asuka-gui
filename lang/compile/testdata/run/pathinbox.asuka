@@ -1,0 +1,80 @@
+// RFC 0013's inbox: marking one message read runs unread and that row's
+// bindings that read read; picking one runs that row's if, not the
+// others'. Each binding and let prints as it runs.
+
+struct Message {
+  id: string
+  subject: string
+  read: bool = false
+}
+
+fn mark<T>(tag: string, v: T) -> T {
+  print(tag)
+  return v
+}
+
+store Inbox {
+  pub state messages: [Message] = [Message(id: "a", subject: "Hi"), Message(id: "b", subject: "Yo"), Message(id: "c", subject: "Ok")]
+  pub state picked: Set<string> = Set<string>()
+  pub let unread = mark("unread", messages.count(m => !m.read))
+
+  pub fn pick(id: string) {
+    if !picked.remove(id) {
+      picked.insert(id)
+    }
+  }
+}
+
+component MessageRow(m: Message) {
+  use inbox: Inbox
+  Row {
+    Text(mark("subject {m.id}", m.subject))
+    Text(mark("read {m.id}", if m.read { "read" } else { "new" }))
+    if mark("picked {m.id}", inbox.picked.contains(m.id)) {
+      Text("✓")
+    }
+    Button("Pick {m.id}") { on press { inbox.pick(m.id) } }
+    Button("Read {m.id}") { on press { inbox.messages[inbox.messages.index(x => x.id == m.id)!].read = true } }
+  }
+}
+
+screen Messages {
+  use inbox: Inbox
+  Column {
+    Text("{inbox.unread} unread")
+    for m in inbox.messages key m.id {
+      MessageRow(m)
+    }
+  }
+}
+
+test "the inbox's rows follow their own paths" {
+  let app = mount(Messages(), provide: Inbox())
+  print("-- pick b")
+  app.tap("Pick b")
+  print("-- read a")
+  app.tap("Read a")
+  print("-- pick b again")
+  app.tap("Pick b")
+  app.expect("2 unread", "read", "new")
+}
+
+// Output:
+// unread
+// subject a
+// read a
+// picked a
+// subject b
+// read b
+// picked b
+// subject c
+// read c
+// picked c
+// -- pick b
+// picked b
+// -- read a
+// unread
+// read a
+// -- pick b again
+// picked b
+// ok the inbox's rows follow their own paths

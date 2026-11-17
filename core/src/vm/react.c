@@ -3,6 +3,7 @@
 #include "vm/vm_int.h"
 #include "signal/signal.h"
 #include "vm/keep.h"
+#include "vm/path.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -15,6 +16,11 @@
 // ak_follow). Reads and writes of a cell check which it is (CELL_FOLLOW,
 // one branch); a follow's readers follow its ak_follow, not the cell's
 // node.
+//
+// A cell's readers follow paths below it (rfcs/0013, vm/path.h): its
+// own node is the root, read whole; paths, the nodes below it, made as
+// they're read. A follow's paths are read whole: its readers follow its
+// ak_follow, whose value its initializer replaces.
 
 typedef struct {
 	ak_opaque h;
@@ -25,6 +31,7 @@ typedef struct {
 	// writing it notes for the panic of a loop (ak_signal_note_write).
 	uint16_t name_off, name_len;
 	ak_str *key;  // retained; NULL for a cell made without one
+	ak_pnode *paths;  // the paths read below it (NULL: none)
 } cell;
 
 enum {
@@ -32,7 +39,8 @@ enum {
 	CELL_FOLLOW = 2,  // a follow: the cell is a follow's first field
 };
 
-typedef struct {
+typedef struct follow follow;
+struct follow {
 	cell c;
 	ak_follow *f;        // NULL once the graph let go of it
 	ak_closure *update;  // the initializer's thunk; NULL once settled or its owner went
@@ -40,7 +48,7 @@ typedef struct {
 	ak_box *selfbox;     // a scalar's current value as T?, reused while only it holds it
 	bool self;           // the thunk takes the state's current value (T?)
 	bool has;            // computed or set once
-} follow;
+};
 
 static void cell_drop(ak_opaque *o) {
 	cell *c = (cell *)o;
@@ -50,11 +58,14 @@ static void cell_drop(ak_opaque *o) {
 		ak_release(((follow *)c)->selfbox);
 	}
 	ak_release(c->key);
+	ak_path_free(&c->paths);
 	ak_signal_drop(&c->node);
 	ak_release_val(c->v, (ak_kind)c->kind);
 }
 
 static inline bool is_follow(const cell *c) { return (c->h.h.flags & CELL_FOLLOW) != 0; }
+
+static ak_val follow_get(follow *w, bool track);
 
 // cell_name keeps key as c's name: what's between its last . and its #.
 static void cell_name(cell *c, ak_str *key) {
@@ -241,9 +252,10 @@ void ak_vm_cell_set(void *p, ak_val v) {
 	}
 	ak_val old = c->v;
 	c->v = v;
-	ak_release_val(old, (ak_kind)c->kind);
 	cell_wrote(c);
-	ak_signal_write(&c->node);
+	if (c->paths) ak_path_set(&c->paths, &c->node, old, v, (ak_kind)c->kind);
+	else ak_signal_write(&c->node);
+	ak_release_val(old, (ak_kind)c->kind);
 }
 
 ak_val ak_vm_cell_take(void *p) {
@@ -273,8 +285,52 @@ void ak_vm_cell_put(void *p, ak_val v) {
 	ak_release_val(c->v, (ak_kind)c->kind);
 	c->v = v;
 	cell_wrote(c);
-	ak_signal_write(&c->node);
+	if (c->paths) {
+		static const uint8_t all[1] = {AK_PS_ALL};
+		ak_path_put(&c->paths, &c->node, v, (ak_kind)c->kind, all, 1, NULL);
+	} else {
+		ak_signal_write(&c->node);
+	}
 }
+
+ak_val ak_vm_cell_path(void *p, const uint8_t *path, uint32_t n, const ak_val *args, bool len) {
+	cell *c = p;
+	ak_val out = {0};
+	if (AK_UNLIKELY(is_follow(c))) {
+		// Read whole (its ak_follow), and the path in its value.
+		ak_val v = follow_get((follow *)c, true);
+		if (ak_error_pending()) return out;
+		ak_path_read(NULL, NULL, v, (ak_kind)c->kind, path, n, args, len, false, &out);
+		ak_release_val(v, (ak_kind)c->kind);
+		return out;
+	}
+	ak_path_read(&c->paths, &c->node, c->v, (ak_kind)c->kind, path, n, args, len, ak_tracking(), &out);
+	return out;
+}
+
+void ak_vm_cell_putp(void *p, ak_val v, const uint8_t *path, uint32_t n, const ak_val *args) {
+	cell *c = p;
+	if (AK_UNLIKELY(is_follow(c))) {
+		ak_vm_cell_put(p, v);
+		return;
+	}
+	ak_release_val(c->v, (ak_kind)c->kind);
+	c->v = v;
+	cell_wrote(c);
+	ak_path_put(&c->paths, &c->node, v, (ak_kind)c->kind, path, n, args);
+}
+
+void ak_vm_cell_keys(void *p, const uint8_t *path, uint32_t n, const ak_val *args, const uint16_t *fields, uint16_t nf) {
+	cell *c = p;
+	if (AK_UNLIKELY(is_follow(c))) {
+		ak_val v = follow_get((follow *)c, true);
+		ak_release_val(v, (ak_kind)c->kind);
+		return;
+	}
+	if (ak_tracking()) ak_path_keys(&c->paths, c->v, (ak_kind)c->kind, path, n, args, fields, nf);
+}
+
+uint32_t ak_vm_cell_nodes(void *p) { return ak_path_nodes(((cell *)p)->paths); }
 
 // ---- Errors between the VM and the graph ----
 //
@@ -391,17 +447,63 @@ ak_val ak_vm_memo_get(void *p) {
 
 // ---- Accessors ----
 
-enum { ACC_VALUE, ACC_FUNC, ACC_CELL, ACC_MEMO, ACC_MODEL };
+enum { ACC_VALUE, ACC_FUNC, ACC_CELL, ACC_MEMO, ACC_MODEL, ACC_PATH };
 
 typedef struct {
 	ak_opaque h;
 	uint8_t mode, kind;
-	ak_val v;  // the value, or the closure, cell or memo
+	ak_val v;  // the value, or the closure, cell, memo or path
 } acc;
+
+// An accessor of a path (rfcs/0013, ACCP): what's at the path below a
+// cell, or below what another accessor reads (one that isn't a path's:
+// read whole, then the path in its value). Its arguments are values,
+// but for those that are cells, read as it's read: a row's index, so a
+// row that moves reads its item at its new place.
+// A row of a for over a path: what its accessor needs to read its item
+// where the for put it. Between a write that moves or removes items and
+// the for's next run (the rest of a handler that wrote), a row's index
+// is the for's last; an untracked read then reads the element as the
+// for last placed it (as a row's item cell held it before rfcs/0013),
+// as one does once the row is gone. Tracked reads run after the for
+// (bindings are made after it), so they read the place.
+typedef struct {
+	ak_effect *eff;  // the for's, NULL once the row is gone (rows go before their for's effect)
+	ak_val last;     // the element, as the for last placed it
+	uint8_t ik;
+	void *parent;    // the row (its accessor) this row's for is in, if any: retained
+} rowinfo;
+
+typedef struct {
+	void *root;      // a cell, or an accessor: retained
+	uint8_t *steps;  // the path, spelled (vm/path.h)
+	uint32_t n, nargs;
+	ak_val *args;
+	uint8_t *kinds;  // each argument's kind; AK_K_VOID: a cell of an int
+	void *row;       // a row's item (its accessor: this one, or retained), or a path below one
+	uint32_t row_n, row_a;  // the steps and arguments up to the row's item
+	rowinfo ri;      // a row's item's own
+	bool own_row;    // row is this accessor: not retained
+} apath;
+
+// apath_free lets go of what ap holds (it's its accessor's: one
+// allocation, the accessor, then ap, its arguments, its kinds and its
+// steps).
+static void apath_free(apath *p) {
+	if (p->row && !p->own_row) ak_release(p->row);
+	ak_release_val(p->ri.last, (ak_kind)p->ri.ik);
+	ak_release(p->ri.parent);
+	ak_release(p->root);
+	for (uint32_t i = 0; i < p->nargs; i++) {
+		if (p->kinds[i] == AK_K_VOID) ak_release(p->args[i].p);
+		else ak_release_val(p->args[i], (ak_kind)p->kinds[i]);
+	}
+}
 
 static void acc_drop(ak_opaque *o) {
 	acc *a = (acc *)o;
 	if (a->mode == ACC_VALUE) ak_release_val(a->v, (ak_kind)a->kind);
+	else if (a->mode == ACC_PATH) apath_free(a->v.p);
 	else ak_release(a->v.p);
 }
 
@@ -424,10 +526,13 @@ ak_val ak_vm_acc_cell(void *p) {
 }
 
 static ak_val model_get(void *m);
+static ak_val apath_read(apath *ap, ak_kind k, const uint8_t *p, uint32_t n, const ak_val *args);
 
 ak_val ak_vm_acc_get(void *p) {
 	acc *a = p;
 	switch (a->mode) {
+	case ACC_PATH:
+		return apath_read(a->v.p, (ak_kind)a->kind, NULL, 0, NULL);
 	case ACC_VALUE:
 		ak_retain_val(a->v, (ak_kind)a->kind);
 		return a->v;
@@ -509,6 +614,268 @@ void ak_vm_model_set(void *p, ak_val v) {
 	if (m->bound) ak_panic("ui.model_set: a bound prop's value is its caller's");
 	ak_retain_val(v, (ak_kind)m->kind);
 	ak_vm_cell_set(m->own, v);
+}
+
+// ---- Accessors of paths (rfcs/0013) ----
+
+static acc *acc_of(void *p) {
+	ak_obj *o = p;
+	return o && o->tag == AK_TAG_ACC ? (acc *)p : NULL;
+}
+
+static rowinfo *row_info(void *row) { return &((apath *)((acc *)row)->v.p)->ri; }
+
+void ak_vm_acc_row_set(void *row, ak_val item, ak_kind ik) {
+	rowinfo *r = row_info(row);
+	ak_retain_val(item, ik);
+	ak_release_val(r->last, (ak_kind)r->ik);
+	r->last = item;
+	r->ik = (uint8_t)ik;
+}
+
+void ak_vm_acc_row_gone(void *row) { row_info(row)->eff = NULL; }  // what reads it after reads its last item
+
+// row_stale reports whether a row's place may not be its item's now: its
+// for (or one it's in) has yet to run since its items changed, or the
+// row is gone.
+static bool row_stale(void *row) {
+	for (; row; row = row_info(row)->parent) {
+		ak_effect *e = row_info(row)->eff;
+		if (!e || ak_effect_stale(e)) return true;
+	}
+	return false;
+}
+
+// step_arg is the kind of the argument path step s takes, or AK_K_VOID
+// for none; *w is the bytes it spans.
+static ak_kind step_arg(const uint8_t *p, uint32_t n, uint32_t j, uint32_t *w) {
+	switch (p[j]) {
+	case AK_PS_FIELD:
+	case AK_PS_OFIELD:
+		*w = 3;
+		return AK_K_VOID;
+	case AK_PS_INDEX:
+	case AK_PS_GET:
+	case AK_PS_EACH:
+		*w = 1;
+		return AK_K_INT;
+	case AK_PS_KEY:
+	case AK_PS_VALUE:
+	case AK_PS_HAS:
+	case AK_PS_MEMBER:
+		*w = 2;
+		return j + 1 < n ? (ak_kind)p[j + 1] : AK_K_INT;
+	}
+	*w = 1;
+	return AK_K_VOID;
+}
+
+// path_kinds fills kinds (when not NULL) with the kinds of the
+// arguments p's steps take, and counts them.
+static uint32_t path_kinds(const uint8_t *p, uint32_t n, uint8_t *kinds) {
+	uint32_t k = 0, w;
+	for (uint32_t j = 0; j < n; j += w) {
+		ak_kind a = step_arg(p, n, j, &w);
+		if (a != AK_K_VOID) {
+			if (kinds) kinds[k] = (uint8_t)a;
+			k++;
+		}
+	}
+	return k;
+}
+
+// acc_path_new makes an accessor (of kind k) of the path p (args its
+// arguments, index a cell of an int as its last argument when not NULL)
+// below base: a cell, or an accessor, whose path it continues when it's
+// a path's.
+static acc *acc_path_new(void *base, const uint8_t *p, uint32_t n, const ak_val *args, void *index, ak_kind k) {
+	acc *b = acc_of(base);
+	const apath *bp = b && b->mode == ACC_PATH ? b->v.p : NULL;
+	uint32_t bn = bp ? bp->n : 0, ba = bp ? bp->nargs : 0;
+	uint32_t na = path_kinds(p, n, NULL);
+	uint32_t tn = bn + n, ta = ba + na;
+	// One allocation: the accessor, its path, its arguments, their
+	// kinds, its steps.
+	size_t at = (sizeof(acc) + 7) & ~(size_t)7;
+	acc *a = ak_opaque_new(AK_TAG_ACC, at + sizeof(apath) + sizeof(ak_val) * ta + ta + tn, acc_drop);
+	a->mode = ACC_PATH;
+	a->kind = (uint8_t)k;
+	apath *ap = (apath *)((char *)a + at);
+	a->v.p = ap;
+	if (bp) ap->root = ak_retain(bp->root);
+	else if (b && b->mode == ACC_CELL) ap->root = ak_retain(b->v.p);
+	else ap->root = ak_retain(base);
+	if (bp && bp->row) {
+		ap->row = ak_retain(bp->row);  // (never this one: it's being made)
+		ap->row_n = bp->row_n;
+		ap->row_a = bp->row_a;
+	}
+	ap->n = tn;
+	ap->nargs = ta;
+	ap->args = (ak_val *)(ap + 1);
+	ap->kinds = (uint8_t *)(ap->args + ta);
+	ap->steps = ap->kinds + ta;
+	if (bn) memcpy(ap->steps, bp->steps, bn);
+	if (n) memcpy(ap->steps + bn, p, n);
+	for (uint32_t i = 0; i < ba; i++) {
+		ap->args[i] = bp->args[i];
+		ap->kinds[i] = bp->kinds[i];
+		if (ap->kinds[i] == AK_K_VOID) ak_retain(ap->args[i].p);
+		else ak_retain_val(ap->args[i], (ak_kind)ap->kinds[i]);
+	}
+	path_kinds(p, n, ap->kinds + ba);
+	for (uint32_t i = 0; i < na; i++) {
+		if (index && i == na - 1) {
+			ap->args[ba + i].p = ak_retain(index);
+			ap->kinds[ba + i] = AK_K_VOID;
+			continue;
+		}
+		ap->args[ba + i] = args[i];
+		ak_retain_val(args[i], (ak_kind)ap->kinds[ba + i]);
+	}
+	return a;
+}
+
+ak_val ak_vm_acc_path(void *base, const uint8_t *p, uint32_t n, const ak_val *args, ak_kind k) {
+	return (ak_val){.p = acc_path_new(base, p, n, args, NULL, k)};
+}
+
+ak_val ak_vm_acc_row(void *base, void *index, ak_kind k, ak_effect *eff) {
+	static const uint8_t step[1] = {AK_PS_INDEX};
+	acc *a = acc_path_new(base, step, 1, NULL, index, k);
+	apath *ap = a->v.p;
+	// Its row's: the row it's in is the base's.
+	void *parent = ap->row;
+	ap->row = a;
+	ap->own_row = true;
+	ap->row_n = ap->n;
+	ap->row_a = ap->nargs;
+	ap->ri.eff = eff;
+	ap->ri.parent = parent;  // the reference the base's row took
+	return (ak_val){.p = a};
+}
+
+// read_below reads the path p below what a (not a path's) reads: it,
+// whole, then the path in its value, untracked.
+static ak_val read_below(acc *a, const uint8_t *p, uint32_t n, const ak_val *args) {
+	ak_val v = ak_vm_acc_get(a);
+	if (ak_error_pending()) return (ak_val){0};
+	ak_val out = {0};
+	ak_path_read(NULL, NULL, v, (ak_kind)a->kind, p, n, args, false, false, &out);
+	ak_release_val(v, (ak_kind)a->kind);
+	return out;
+}
+
+enum { PATH_STEPS = 256, PATH_ARGS = 32 };
+
+// row_read reads ap's path past its row's item, then p, in the item as
+// its for last placed it: an untracked read while the row's place may
+// not be its item's (row_stale).
+static ak_val row_read(apath *ap, const uint8_t *p, uint32_t n, const ak_val *args) {
+	uint8_t sbuf[PATH_STEPS];
+	ak_val abuf[PATH_ARGS];
+	uint32_t na = p ? path_kinds(p, n, NULL) : 0;
+	uint32_t sn = ap->n - ap->row_n, sa = ap->nargs - ap->row_a;
+	uint32_t tn = sn + n, ta = sa + na;
+	uint8_t *steps = tn <= PATH_STEPS ? sbuf : ak_alloc(tn ? tn : 1);
+	ak_val *all = ta <= PATH_ARGS ? abuf : ak_alloc(sizeof(ak_val) * (ta ? ta : 1));
+	if (sn) memcpy(steps, ap->steps + ap->row_n, sn);
+	if (n) memcpy(steps + sn, p, n);
+	for (uint32_t i = 0; i < sa; i++) {
+		uint32_t j = ap->row_a + i;
+		all[i] = ap->kinds[j] == AK_K_VOID ? ak_vm_cell_get(ap->args[j].p, false) : ap->args[j];
+	}
+	for (uint32_t i = 0; i < na; i++) all[sa + i] = args[i];
+	ak_val out = {0};
+	rowinfo *ri = row_info(ap->row);
+	ak_path_read(NULL, NULL, ri->last, (ak_kind)ri->ik, steps, tn, all, false, false, &out);
+	if (steps != sbuf) ak_free(steps);
+	if (all != abuf) ak_free(all);
+	return out;
+}
+
+// apath_read reads ap's path, then p (args its arguments), below its
+// root: its cells' arguments read, tracked.
+static ak_val apath_read(apath *ap, ak_kind k, const uint8_t *p, uint32_t n, const ak_val *args) {
+	AK_UNUSED(k);
+	if (ap->row && !ak_tracking() && row_stale(ap->row)) return row_read(ap, p, n, args);
+	uint8_t sbuf[PATH_STEPS];
+	ak_val abuf[PATH_ARGS];
+	uint32_t na = p ? path_kinds(p, n, NULL) : 0;
+	uint32_t tn = ap->n + n, ta = ap->nargs + na;
+	uint8_t *steps = tn <= PATH_STEPS ? sbuf : ak_alloc(tn);
+	ak_val *all = ta <= PATH_ARGS ? abuf : ak_alloc(sizeof(ak_val) * ta);
+	memcpy(steps, ap->steps, ap->n);
+	if (n) memcpy(steps + ap->n, p, n);
+	for (uint32_t i = 0; i < ap->nargs; i++) {
+		if (ap->kinds[i] == AK_K_VOID) all[i] = ak_vm_cell_get(ap->args[i].p, true);  // an int: nothing to release
+		else all[i] = ap->args[i];
+	}
+	for (uint32_t i = 0; i < na; i++) all[ap->nargs + i] = args[i];
+	ak_val out;
+	acc *r = acc_of(ap->root);
+	if (r) out = read_below(r, steps, tn, all);
+	else out = ak_vm_cell_path(ap->root, steps, tn, all, false);
+	if (steps != sbuf) ak_free(steps);
+	if (all != abuf) ak_free(all);
+	return out;
+}
+
+ak_val ak_vm_acc_getp(void *p, const uint8_t *path, uint32_t n, const ak_val *args) {
+	acc *a = p;
+	switch (a->mode) {
+	case ACC_CELL:
+		return ak_vm_cell_path(a->v.p, path, n, args, false);
+	case ACC_PATH:
+		return apath_read(a->v.p, (ak_kind)a->kind, path, n, args);
+	case ACC_MODEL: {
+		model *m = a->v.p;
+		if (m->bound) return ak_vm_acc_getp(m->inner, path, n, args);
+		return ak_vm_cell_path(m->own, path, n, args, false);
+	}
+	}
+	return read_below(a, path, n, args);
+}
+
+// ak_vm_acc_keys follows, for a for keyed by a field path of its items
+// (fields, nf of them), the keys of the array acc reads: one signal for
+// them all when acc's is a path below a cell; else acc, whole.
+void ak_vm_acc_keys(void *p, const uint16_t *fields, uint16_t nf) {
+	acc *a = p;
+	switch (a->mode) {
+	case ACC_CELL:
+		ak_vm_cell_keys(a->v.p, NULL, 0, NULL, fields, nf);
+		return;
+	case ACC_MODEL: {
+		model *m = a->v.p;
+		if (m->bound) ak_vm_acc_keys(m->inner, fields, nf);
+		else ak_vm_cell_keys(m->own, NULL, 0, NULL, fields, nf);
+		return;
+	}
+	case ACC_PATH: {
+		apath *ap = a->v.p;
+		if (!acc_of(ap->root)) {
+			ak_val abuf[PATH_ARGS];
+			ak_val *all = ap->nargs <= PATH_ARGS ? abuf : ak_alloc(sizeof(ak_val) * ap->nargs);
+			for (uint32_t i = 0; i < ap->nargs; i++) all[i] = ap->kinds[i] == AK_K_VOID ? ak_vm_cell_get(ap->args[i].p, true) : ap->args[i];
+			ak_vm_cell_keys(ap->root, ap->steps, ap->n, all, fields, nf);
+			if (all != abuf) ak_free(all);
+			return;
+		}
+		break;
+	}
+	}
+	ak_val v = ak_vm_acc_get(a);  // not a path's: what it reads, whole
+	if (!ak_error_pending()) ak_release_val(v, (ak_kind)a->kind);
+}
+
+// ak_vm_acc_seek sets the index an accessor of an array's element reads
+// (its last argument, an int): a for's key's, made once and moved over
+// the items.
+void ak_vm_acc_seek(void *p, int64_t i) {
+	acc *a = p;
+	apath *ap = a->v.p;
+	ap->args[ap->nargs - 1].i = i;
 }
 
 // ---- Untracked calls, effects, cleanups, batches ----

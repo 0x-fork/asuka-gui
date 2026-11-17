@@ -1011,3 +1011,11 @@ ak_str *ak_error_message(const void *err) {
 	if (o && o->tag == AK_TAG_STR) return (ak_str *)o;
 	return ak_str_empty();
 }
+
+// ---- What a builtin changed in place ----
+
+AK_TLS ak_change ak_last_change;
+
+void ak_change_key(ak_val key, ak_kind kk, bool len) {
+	ak_last_change = (ak_change){.what = AK_CHANGE_KEY, .len = len, .hash = ak_val_hash(key, kk)};
+}

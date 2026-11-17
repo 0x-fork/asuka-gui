@@ -207,7 +207,7 @@ writing it updates what reads it:
 on press {
   count += 1
   todos.push(Todo(title: draft))
-  todos[0].done = true      // writes todos: only the rows that read todos[0] update
+  todos[0].done = true      // writes todos[0].done: only what reads it (or todos[0], or todos whole) updates
   draft = ""
 }
 ```
@@ -328,7 +328,9 @@ task(user.id) { profile = try await load(user.id) } // when the id changes, not 
 ```
 
 An effect runs at once and again whenever what it read changes, through
-the functions it calls. `effect(a, b)` runs again when `a` or `b`
+the functions it calls. What it read is as much as the code says:
+`effect { log(user.name) }` runs again when the name changes, not the
+avatar. `effect(a, b)` runs again when `a` or `b`
 changes, and its body follows nothing it reads. A task is async
 ([Async](async.md#async)): it starts when the component appears, restarts
 when what's in its parentheses changes (cancelling the last run), and

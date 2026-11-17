@@ -162,6 +162,40 @@ Rules:
 - Errors: a computation that fails raises its error, which goes to the
   nearest catcher of its owner (a `Boundary`), or the app's.
 
+### Paths
+
+A read of state follows its path, not the whole state (rfcs/0013,
+core/src/vm/path.c): `user.name` follows the user's name, `todos[i].done`
+that element's `done`, `todos.count()` the length, `cart[sku]` that key,
+`picked.contains(id)` that member. A cell keeps, beside its signal (the
+root: a read of the whole value), a tree of path nodes, one per path a
+computation follows: made on its first tracked read, freed when its last
+reader goes (an `ak_wsignal`, told when that happens). Values stay
+values: no proxies, no identity; the compiler sees the paths
+(check.StatePath) and reads the longest one at once (`CPATH`).
+
+A write notifies the path it wrote (when its value changed), the paths
+above it, and below it what changed: compared, where the old value is at
+hand (an assignment; a whole write, which skips subtrees that are the
+same object), everything below a mut fn's receiver, and what a builtin's
+change in place reached (push, insert, removeAt, sort, a map's or a
+set's key: `ak_change`). An equal write notifies no one; nothing else
+runs. A row's item, a prop and a `let` that are paths pass the path on
+(accessors of paths: `ACCP`), so `TodoRow(todo)`'s `todo.title` follows
+that title. A `for` over a path follows the length and its keys: one
+signal for all of them when the key is a field path of the item (`key
+t.id`), which keeps the keys as the `for` saw them, so a change it can't
+compare runs it only when they differ; a write inside an item doesn't
+run the `for`. `count(where)`, `filter` and the other collection methods
+with a closure literal, in a binding, are loops whose reads are paths:
+through the element, a column (that field of every element, one node),
+so following them costs what's read, not the array's length. A row's
+item, read untracked while its `for` has yet to run after a change of
+its items (the rest of the handler that changed them), is the item as
+the `for` placed it.
+A state that follows (rfcs/0012) is read whole: its initializer's memo
+replaces its value.
+
 ## ui
 
 core/src/ui is the node tree over native views and the flush. Compiled
@@ -200,8 +234,10 @@ effect. A style is a set of keys like any other.
   condition changes.
 - `for … key` (`ak_ui_for`): keyed; a row's owner lives as long as its
   key. A moved row moves its native view; a changed item updates that
-  row's bindings and nothing else. Directly in a `List`, rows are
-  virtualized (`ak_ui_lazy_for`).
+  row's bindings and nothing else. Over a path (`ak_ui_for_path`) it
+  follows the order of its items, not the items, and a row's item is
+  its element's path at its index (see "Paths"). Directly in a `List`,
+  rows are virtualized (`ak_ui_lazy_for`, `ak_ui_lazy_for_path`).
 - `match` (`ak_ui_switch`), and views rebuilt from what they read
   (`ak_ui_dynamic`).
 

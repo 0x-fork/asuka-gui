@@ -62,6 +62,19 @@ void ak_signal_note_write(const char *what, size_t len);
 void ak_signal_drop(ak_node *n);
 static inline bool ak_signal_watched(const ak_node *n) { return n->subs != NULL; }
 
+// ak_wsignal is a signal told when its last reader goes: what a reader
+// made on demand keeps (the VM's path nodes, rfcs/0013), freed when
+// nothing reads it. unwatched runs as the graph lets go of the last
+// link: it may free s; it mustn't read or write signals.
+typedef struct ak_wsignal {
+	ak_node node;  // first
+	void (*unwatched)(struct ak_wsignal *s);
+} ak_wsignal;
+
+// ak_wsignal_init makes s a signal with no readers that calls unwatched
+// when its last reader goes. ak_signal_drop drops it without calling it.
+void ak_wsignal_init(ak_wsignal *s, void (*unwatched)(ak_wsignal *s));
+
 // Memos and effects.
 
 // ak_comp_info describes a kind of memo or effect; it must outlive them
@@ -147,6 +160,12 @@ enum {
 // borrowed from the owner.
 ak_effect *ak_effect_new(void (*run)(void *ctx), void *ctx, uint32_t flags, const ak_comp_info *info);
 ak_owner *ak_effect_owner(ak_effect *e);
+// ak_effect_stale reports whether e has yet to run since what it read
+// changed (or it was disposed): what it keeps up to date isn't, for now.
+bool ak_effect_stale(const ak_effect *e);
+// ak_current_effect is the effect running now, tracking or not (NULL:
+// none).
+ak_effect *ak_current_effect(void);
 
 // Tracking and batching.
 
@@ -157,6 +176,9 @@ void *ak_untrack_begin(void);
 void ak_untrack_end(void *token);
 // ak_tracking reports whether a computation is tracking reads.
 bool ak_tracking(void);
+// ak_signal_in_memo reports whether a memo is computing: a write there
+// reaches no one but the memo itself (ak_signal_write).
+bool ak_signal_in_memo(void);
 
 // ak_signal_batch runs fn and the effects its writes dirtied once, after it.
 void ak_signal_batch(void (*fn)(void *ctx), void *ctx);

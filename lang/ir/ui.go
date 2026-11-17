@@ -244,6 +244,12 @@ func (b *fb) lowerComponent(t *check.TypeName) {
 				r := b.local(bc.KRef)
 				b.move(r, b.load(m))
 				b.memberRegs[m] = r
+			case m.Path:
+				// A path (rfcs/0013): an accessor of it; reads through it
+				// follow their paths.
+				r := b.local(bc.KRef)
+				b.move(r, b.pathAccessor(m.Default, m.Type))
+				b.memberRegs[m] = r
 			case m.Memo:
 				clos := b.thunk(b.l.info.Ctxs[m.Default], m.Default, m.Type)
 				r := b.local(bc.KRef)
@@ -524,7 +530,7 @@ func (b *fb) depDirect(x syntax.Expr) (reg int, memo, ok bool) {
 		switch {
 		case o.Kind == check.StateMember:
 			return b.memberRef(o, x), false, true
-		case o.Kind == check.LetMember && o.Memo && !isLoad(o.Default):
+		case o.Kind == check.LetMember && o.Memo && !o.Path && !isLoad(o.Default):
 			return b.memberRef(o, x), true, true
 		}
 	case *check.Global:
@@ -574,6 +580,11 @@ func (b *fb) accessor(e syntax.Expr, t check.Type) int {
 	if ref := b.readsAlone(e); ref >= 0 {
 		b.emit(op("ACCC"), r, ref)
 		return r
+	}
+	if acc := b.pathAccessor(e, t); acc >= 0 {
+		// A path: passed as one (rfcs/0013), so what the callee reads
+		// through it follows its paths.
+		return acc
 	}
 	ctx := b.l.info.Ctxs[e]
 	clos := b.thunk(ctx, e, t)
@@ -896,8 +907,75 @@ func (b *fb) showView(s *syntax.IfStmt) int {
 }
 
 func (b *fb) forView(s *syntax.ForStmt) int {
+	if acc, key, row, kk, ok := b.forPath(s); ok {
+		return b.callB(uiForPath, bc.KRef, acc, key, row, b.konst(int64(kk)))
+	}
 	items, key, row, kk := b.forParts(s)
 	return b.callB(uiFor, bc.KRef, items, key, row, b.konst(int64(kk)))
+}
+
+// forPath makes a for over a path's parts (rfcs/0013): the accessor of
+// the array, its key (the item's fields, spelled as a path, when it's a
+// field path of the item: one signal for all of them; else a function
+// of the item's accessor and its index), its row's builder. ok false
+// when its items aren't a path's: an array (not a set, a map, a range,
+// enumerated) that's a state, a parameter, a prop, a row's item or a
+// path below one, whose indexes read nothing that changes.
+func (b *fb) forPath(s *syntax.ForStmt) (acc, key, row int, keyKind bc.Kind, ok bool) {
+	fi := b.l.info.Fors[s]
+	if fi == nil || fi.Kind != check.ForArray || !fi.View || s.Key == nil {
+		return 0, 0, 0, 0, false
+	}
+	if _, conv := b.l.info.Convs[fi.Seq]; conv {
+		return 0, 0, 0, 0, false
+	}
+	if _, isArr := b.rawType(fi.Seq).(*check.Array); !isArr {
+		return 0, 0, 0, 0, false
+	}
+	kctx := b.l.info.Ctxs[s.Key]
+	if kctx == nil || len(kctx.Params) == 0 || kctx.Params[0] == nil || kctx.Params[0].Boxed() {
+		return 0, 0, 0, 0, false
+	}
+	item := kctx.Params[0]
+	// The items' accessor.
+	if p := b.l.prog.PathRootOf(fi.Seq); p != nil {
+		if !b.l.prog.StaticPath(p) {
+			return 0, 0, 0, 0, false
+		}
+		if p.Root == check.RootState {
+			acc = b.temp(bc.KRef)
+			b.emit(op("ACCC"), acc, b.pathCell(p))
+		} else {
+			acc, _ = b.pathBase(p)
+		}
+	} else if acc = b.pathAccessor(fi.Seq, b.rawType(fi.Seq)); acc < 0 {
+		return 0, 0, 0, 0, false
+	}
+	keyKind = b.kind(kctx.Result)
+	if fields := b.l.prog.FieldPathOf(s.Key, item); fields != nil {
+		var spelled []byte
+		for _, f := range fields {
+			spelled = append(spelled, psField, byte(f.Index), byte(f.Index>>8))
+		}
+		key = b.kstr(string(spelled))
+	} else {
+		// The key's function of (the item's accessor, its index): what it
+		// reads of the item follows its paths.
+		b.l.prog.SetAccessorVar(item)
+		key = b.makeClosure(closure{name: "key", ctxs: []*check.FuncCtx{kctx}, params: []*check.Var{item, nil}, pkinds: []bc.Kind{bc.KRef, bc.KInt}, ret: keyKind, throws: true, body: func(c *fb) {
+			c.ctx = kctx
+			c.ret(c.value(s.Key, -1), keyKind)
+		}})
+	}
+	rctx := b.l.info.Ctxs[s.Body]
+	params := make([]*check.Var, 2)
+	copy(params, rctx.Params)
+	row = b.makeClosure(closure{name: "row", ctxs: []*check.FuncCtx{rctx}, params: params, ret: bc.KRef, throws: true, body: func(c *fb) {
+		c.ctx = rctx
+		v := c.viewsOf(s.Body.Items)
+		c.emit(op("RET"), v)
+	}})
+	return acc, key, row, keyKind, true
 }
 
 // forParts makes a for's closures in a view: its items' thunk, its
@@ -1218,8 +1296,12 @@ func (b *fb) builtinElement(ec *check.ElementCall) int {
 		}
 		if f, ok := ch.(*syntax.ForStmt); ok && b.l.info.Fors[f] != nil && b.l.info.Fors[f].Lazy {
 			// Rows the element builds only while they're on screen.
-			items, key, row, kk := b.forParts(f)
-			b.callBTo(uiLazyFor, bc.None, v, items, key, row, b.konst(int64(kk)))
+			if acc, key, row, kk, ok := b.forPath(f); ok {
+				b.callBTo(uiLazyForPath, bc.None, v, acc, key, row, b.konst(int64(kk)))
+			} else {
+				items, key, row, kk := b.forParts(f)
+				b.callBTo(uiLazyFor, bc.None, v, items, key, row, b.konst(int64(kk)))
+			}
 			b.release(mark)
 			continue
 		}
@@ -1366,6 +1448,9 @@ func (b *fb) bindAccessor(bd *check.BindArg) int {
 	if ref := b.readsAlone(bd.Target); ref >= 0 {
 		b.emit(op("ACCC"), r, ref)
 		return r
+	}
+	if acc := b.pathAccessor(bd.Target, t); acc >= 0 {
+		return acc
 	}
 	clos := b.thunk(b.l.info.Ctxs[bd.Item], bd.Target, t)
 	b.emit(op("ACCF"), r, clos, int(b.kind(t)))

@@ -1623,4 +1623,47 @@ TEST(follow_steady_state_allocates_nothing) {
 	ak_owner_dispose(r);
 }
 
+// ---- A signal told when its last reader goes (ak_wsignal) ----
+
+static struct {
+	ak_wsignal s;
+	int unwatched, runs;
+	bool read;
+} ws;
+
+static void ws_gone(ak_wsignal *s) {
+	CHECK(s == &ws.s);
+	ws.unwatched++;
+}
+static void ws_effect(void *ctx) {
+	ws.runs++;
+	if (ws.read) ak_signal_read(&ws.s.node);
+}
+static void ws_build(void *ctx, ak_owner *root) {
+	RENDER(ws_effect, NULL);
+	RENDER(ws_effect, NULL);
+}
+
+TEST(wsignal_unwatched) {
+	ak_wsignal_init(&ws.s, ws_gone);
+	ws.read = true;
+	ak_owner *r = ak_root(ws_build, NULL);
+	CHECK_EQ_INT(ws.unwatched, 0);
+	ak_signal_write(&ws.s.node);
+	CHECK_EQ_INT(ws.runs, 4);
+	ws.read = false;  // they stop reading it: the last to go tells
+	ak_signal_write(&ws.s.node);
+	CHECK_EQ_INT(ws.unwatched, 1);
+	ws.read = true;
+	ak_owner_dispose(r);
+	CHECK_EQ_INT(ws.unwatched, 1);
+	r = ak_root(ws_build, NULL);
+	ak_owner_dispose(r);  // disposing its readers tells too
+	CHECK_EQ_INT(ws.unwatched, 2);
+	r = ak_root(ws_build, NULL);
+	ak_signal_drop(&ws.s.node);  // a drop doesn't
+	CHECK_EQ_INT(ws.unwatched, 2);
+	ak_owner_dispose(r);
+}
+
 T_MAIN()

@@ -478,6 +478,26 @@ int ak_vm_interp(ak_co *co, ak_val *out) {
 			CHECK_ERR();
 			break;
 		}
+		case AK_OP_CPATH:
+		case AK_OP_CLEN: {
+			const ak_str *path = M->strings[off32(a + 2)];
+			fr->pc = pc;
+			ak_val v = ak_vm_cell_path(R[a[1]].p, (const uint8_t *)path->data, path->len, R + a[4], op == AK_OP_CLEN);
+			RELOAD();
+			CHECK_ERR();
+			store(F, R, a[0], v);
+			break;
+		}
+		case AK_OP_CPUTP: {
+			ak_val v = R[a[1]];
+			if (F->kinds[a[1]] == AK_K_REF) R[a[1]].p = NULL;  // moved
+			const ak_str *path = M->strings[off32(a + 2)];
+			fr->pc = pc;
+			ak_vm_cell_putp(R[a[0]].p, v, (const uint8_t *)path->data, path->len, R + a[4]);
+			RELOAD();
+			CHECK_ERR();
+			break;
+		}
 		case AK_OP_MEMO: {
 			fr->pc = pc;
 			ak_val m = ak_vm_memo_new(R[a[1]].p, (ak_kind)a[2]);
@@ -508,6 +528,20 @@ int ak_vm_interp(ak_co *co, ak_val *out) {
 		case AK_OP_AGET: {
 			fr->pc = pc;
 			ak_val v = ak_vm_acc_get(R[a[1]].p);
+			RELOAD();
+			CHECK_ERR();
+			store(F, R, a[0], v);
+			break;
+		}
+		case AK_OP_ACCP: {
+			const ak_str *path = M->strings[off32(a + 2)];
+			setref(R, a[0], ak_vm_acc_path(R[a[1]].p, (const uint8_t *)path->data, path->len, R + a[4], (ak_kind)a[5]).p);
+			break;
+		}
+		case AK_OP_AGETP: {
+			const ak_str *path = M->strings[off32(a + 2)];
+			fr->pc = pc;
+			ak_val v = ak_vm_acc_getp(R[a[1]].p, (const uint8_t *)path->data, path->len, R + a[4]);
 			RELOAD();
 			CHECK_ERR();
 			store(F, R, a[0], v);

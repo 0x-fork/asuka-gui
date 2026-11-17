@@ -13,6 +13,8 @@ import (
 // order: the prelude when it's made, then each package with the
 // packages it imports already checked.
 type Checker struct {
+	// accVars: the vars the lowering reads as accessors (SetAccessorVar).
+	accVars map[*Var]bool
 	// shaderDecls are the shader declarations by their components'
 	// program calls (shaderlang.go).
 	shaderDecls map[*syntax.CallExpr]*syntax.ShaderDecl

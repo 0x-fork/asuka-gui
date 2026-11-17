@@ -354,6 +354,7 @@ static ak_kind ek(const ak_arr *a) { return ak_arr_kind(a); }
 static ak_val arr_push(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	ak_retain_val(A(1), ek(ARR(0)));
+	ak_change_range(ARR(0)->len, -1, true);
 	ak_arr_push((ak_arr **)&args[0].p, A(1));
 	RET_VOID;
 }
@@ -362,6 +363,7 @@ static ak_val arr_insert(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	ak_retain_val(A(2), ek(ARR(0)));
 	ak_arr_insert((ak_arr **)&args[0].p, A(1).i, A(2));
+	if (!ak_error_pending()) ak_change_range(A(1).i, -1, true);
 	RET_VOID;
 }
 
@@ -371,6 +373,7 @@ static ak_val arr_remove_at(ak_val *args, uint32_t n) {
 		ak_throw_msg("index %lld out of range (length %u)", (long long)A(1).i, ARR(0)->len);
 		RET_VOID;
 	}
+	ak_change_range(A(1).i, -1, true);
 	return ak_arr_remove_at((ak_arr **)&args[0].p, A(1).i);
 }
 
@@ -388,7 +391,11 @@ static ak_val arr_remove_where(ak_val *args, uint32_t n) {
 		if (ak_error_pending()) RET_VOID;
 		if (r.i) break;
 	}
-	if (i == a->len) RET_I(0);
+	if (i == a->len) {
+		ak_change_none();
+		RET_I(0);
+	}
+	int64_t first = i;
 	a = ak_arr_mut((ak_arr **)&args[0].p);
 	uint32_t j = i;
 	for (; i < a->len; i++) {
@@ -411,12 +418,15 @@ static ak_val arr_remove_where(ak_val *args, uint32_t n) {
 		}
 	}
 	a->len = j;
+	ak_change_range(first, -1, true);  // last: the predicate may have changed another
 	RET_I(removed);
 }
 
 static ak_val arr_clear(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	ak_arr *a = ARR(0);
+	if (a->len) ak_change_range(0, -1, true);
+	else ak_change_none();
 	ak_arr *e = ak_arr_new(ek(a), a->shape, 0);
 	e->h.flags = a->h.flags;
 	ak_release(a);
@@ -427,7 +437,11 @@ static ak_val arr_clear(ak_val *args, uint32_t n) {
 static ak_val arr_pop(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	ak_arr *a = ARR(0);
-	if (a->len == 0) RET_P(NULL);
+	if (a->len == 0) {
+		ak_change_none();
+		RET_P(NULL);
+	}
+	ak_change_range(a->len - 1, -1, true);
 	ak_val v = ak_arr_remove_at((ak_arr **)&args[0].p, a->len - 1);
 	if (ek(a) == AK_K_REF) RET_P(v.p);
 	RET_P(ak_box_new(ek(a), v));
@@ -688,6 +702,7 @@ static ak_val arr_sort(ak_val *args, uint32_t n) {
 	ak_val *tmp = ak_alloc(sizeof(ak_val) * (a->len ? a->len : 1));
 	msort(&c, a->data, tmp, a->len);
 	ak_free(tmp);
+	ak_change_range(0, a->len, false);
 	RET_VOID;
 }
 
@@ -727,7 +742,11 @@ static ak_val map_has(ak_val *args, uint32_t n) {
 
 static ak_val map_delete(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
-	RET_I(ak_map_delete((ak_map **)&args[0].p, A(1)));
+	ak_kind kk = (ak_kind)(MAP(0)->h.aux & 0xf);
+	bool had = ak_map_delete((ak_map **)&args[0].p, A(1));
+	if (had) ak_change_key(A(1), kk, true);
+	else ak_change_none();
+	RET_I(had);
 }
 
 static ak_val map_keys(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_map_keys(MAP(0))); }
@@ -757,11 +776,22 @@ static ak_val set_is_empty(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(SET(0
 
 static ak_val set_insert(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
-	ak_retain_val(A(1), set_kind(SET(0)));
-	RET_I(ak_set_insert((ak_map **)&args[0].p, A(1)));
+	ak_kind k = set_kind(SET(0));
+	ak_change_key(A(1), k, true);  // hashed now: insert takes A(1)
+	ak_retain_val(A(1), k);
+	bool added = ak_set_insert((ak_map **)&args[0].p, A(1));
+	if (!added) ak_change_none();
+	RET_I(added);
 }
 
-static ak_val set_remove(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(ak_set_remove((ak_map **)&args[0].p, A(1))); }
+static ak_val set_remove(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_kind k = set_kind(SET(0));
+	bool had = ak_set_remove((ak_map **)&args[0].p, A(1));
+	if (had) ak_change_key(A(1), k, true);
+	else ak_change_none();
+	RET_I(had);
+}
 static ak_val set_union(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_set_union(SET(0), SET(1))); }
 static ak_val set_intersection(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_set_intersection(SET(0), SET(1))); }
 static ak_val set_subtracting(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_set_subtracting(SET(0), SET(1))); }

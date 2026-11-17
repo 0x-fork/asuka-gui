@@ -11,8 +11,8 @@ import (
 // step: the value of the place before it, when it isn't none. A change
 // of a place with one first reads the place up to its last ?. without
 // taking anything out (probe), and jumps past the whole change when it
-// meets none: a cell's readers aren't told of a change that didn't
-// happen (CPUT always writes the signal). The change then takes the
+// meets none: a cell isn't even taken out for a change that doesn't
+// happen. The change then takes the
 // place out as any does, and tests again where it is (what ran in
 // between, the value assigned, may have changed it).
 

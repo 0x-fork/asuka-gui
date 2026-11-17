@@ -118,7 +118,10 @@ let left = todos.count(t => !t.done)
 ```
 
 It's computed when it's read, and again only when something it read
-changed; reading it twice costs once. A `let` can't write state.
+changed; reading it twice costs once. What it reads is what the code
+says: `todos.count(t => !t.done)` reads each item's `done` and how many
+items there are, so renaming an item doesn't compute `left` again. A
+`let` can't write state.
 
 ## What updates
 
@@ -142,6 +145,15 @@ Pressing *Point* sets `score`. The first `Text`'s binding runs again
 and sends its new text. The component doesn't run again, the second
 `Text` isn't touched, and there's no tree to compare: the change goes
 from the state to the one prop that reads it.
+
+A binding follows as much of a state as it reads, and no more.
+`Text(user.name)` follows the user's name: changing `user.avatar`
+doesn't run it. `todos[1].done = true` runs what reads that `done` (and
+what reads the whole list), not what reads another item or this item's
+title; `todos.count()` follows how many there are, `cart[sku]` that
+key, `picked.contains(id)` that member. A value read whole, passed to a
+function or compared, is followed whole. Replacing a whole value
+(`todos = fetched`) runs only what reads a part that's different.
 
 Writes in a handler show together when it ends (or when it reaches an
 `await`): three writes, one update.
@@ -206,6 +218,13 @@ bindings, a new item makes a row, a removed one disposes its row, and a
 row that moved is moved, not made again. A `for` over items that change
 needs its `key`; a range, a set and a constant list key their rows by
 what they are.
+
+A `for` over a state follows the order of its items, not the items:
+changing a field of one item runs neither the `for` nor the other rows,
+only that row's bindings that read the field. A row's item, passed on
+(`TodoRow(todo)`), stays that item's: `todo.title` in `TodoRow` follows
+that title. Keying by a field of the item (`key todo.id`) is the
+cheapest key: the `for` follows all of the keys as one.
 
 ### When something fails
 

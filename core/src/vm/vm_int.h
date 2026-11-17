@@ -231,6 +231,21 @@ ak_val ak_vm_cell_get(void *cell, bool track);
 void ak_vm_cell_set(void *cell, ak_val v);         // takes v
 ak_val ak_vm_cell_take(void *cell);
 void ak_vm_cell_put(void *cell, ak_val v);         // takes v
+// ak_vm_cell_path reads the value at path p (n bytes, args its
+// arguments: vm/path.h) below the cell's (CPATH), or with len its length
+// (CLEN): tracked while a computation is, following the path. It throws
+// as the read would (an index out of range).
+ak_val ak_vm_cell_path(void *cell, const uint8_t *p, uint32_t n, const ak_val *args, bool len);
+// ak_vm_cell_putp puts v (taken) back in the cell after a change in
+// place at the place path p says, and tells the readers of what changed
+// (CPUTP; vm/path.h's ak_path_put).
+void ak_vm_cell_putp(void *cell, ak_val v, const uint8_t *p, uint32_t n, const ak_val *args);
+// ak_vm_cell_keys subscribes the running computation to the keys at the
+// field path fields (nf of them) of the items of the array at path p
+// below the cell: a for's (vm/path.h's ak_path_keys).
+void ak_vm_cell_keys(void *cell, const uint8_t *p, uint32_t n, const ak_val *args, const uint16_t *fields, uint16_t nf);
+// ak_vm_cell_nodes counts the path nodes below a cell (tests).
+uint32_t ak_vm_cell_nodes(void *cell);
 ak_val ak_vm_memo_new(ak_closure *c, ak_kind k);
 ak_val ak_vm_memo_get(void *memo);
 ak_val ak_vm_acc_value(ak_val v, ak_kind k);
@@ -240,6 +255,29 @@ ak_val ak_vm_model_new(void *inner, bool bound);
 bool ak_vm_model_bound(void *model);
 void ak_vm_model_set(void *model, ak_val v);
 ak_val ak_vm_acc_get(void *acc);
+// ak_vm_acc_path makes an accessor of the path p (args its arguments)
+// below base: a cell, or an accessor, whose path it continues when it's
+// one's (ACCP). k is its value's kind.
+ak_val ak_vm_acc_path(void *base, const uint8_t *p, uint32_t n, const ak_val *args, ak_kind k);
+// ak_vm_acc_row is the accessor of a for's row's item: base's element
+// at the index the cell index holds (a row's, which changes as it moves),
+// made by eff (its for's effect). ak_vm_acc_row_set gives it its element
+// as the for places it: what an untracked read reads while its place may
+// not be its item's (its for, or one it's in, has yet to run since their
+// items changed), and once ak_vm_acc_row_gone says the row went.
+ak_val ak_vm_acc_row(void *base, void *index, ak_kind k, ak_effect *eff);
+void ak_vm_acc_row_set(void *row, ak_val item, ak_kind ik);
+void ak_vm_acc_row_gone(void *row);
+// ak_vm_acc_getp reads the path p below what accessor acc reads
+// (AGETP): following that path when acc's is one (a cell's, a path's),
+// else acc's value whole and the path in it.
+ak_val ak_vm_acc_getp(void *acc, const uint8_t *p, uint32_t n, const ak_val *args);
+// ak_vm_acc_keys follows the keys of the array acc reads, at the field
+// path fields of its items (a for's key t.id): one signal for them all.
+void ak_vm_acc_keys(void *acc, const uint16_t *fields, uint16_t nf);
+// ak_vm_acc_seek moves an accessor of an array's element (made by
+// ak_vm_acc_path with one index step last) to the element at i.
+void ak_vm_acc_seek(void *acc, int64_t i);
 ak_val ak_vm_call_untracked(ak_closure *c, ak_val *args, uint32_t nargs);
 void ak_vm_effect(ak_closure *c, bool render);
 void ak_vm_cleanup(ak_closure *c);

@@ -28,8 +28,8 @@ var operandKinds = map[string][]bc.Kind{
 	"GETP": {0, bc.KRef}, "BOX": {bc.KRef}, "UNBOX": {0, bc.KRef}, "NEWA": {bc.KRef}, "IDX": {0, bc.KRef, bc.KInt},
 	"SETIDX": {bc.KRef, bc.KInt}, "LEN": {bc.KInt, bc.KRef}, "NEWM": {bc.KRef}, "MGET": {bc.KRef, bc.KRef}, "MGETJ": {0, bc.KRef},
 	"MSET": {bc.KRef}, "CELL": {bc.KRef}, "CELLK": {bc.KRef}, "FOLLOWK": {bc.KRef, bc.KRef}, "CGET": {0, bc.KRef}, "CPEEK": {0, bc.KRef},
-	"CSET": {bc.KRef}, "CTAKE": {0, bc.KRef}, "CPUT": {bc.KRef}, "MEMO": {bc.KRef, bc.KRef}, "MREAD": {0, bc.KRef},
-	"ACCV": {bc.KRef}, "ACCF": {bc.KRef, bc.KRef}, "ACCC": {bc.KRef, bc.KRef}, "AGET": {0, bc.KRef},
+	"CSET": {bc.KRef}, "CTAKE": {0, bc.KRef}, "CPUT": {bc.KRef}, "CPATH": {0, bc.KRef}, "CLEN": {bc.KInt, bc.KRef}, "CPUTP": {bc.KRef}, "MEMO": {bc.KRef, bc.KRef}, "MREAD": {0, bc.KRef},
+	"ACCV": {bc.KRef}, "ACCF": {bc.KRef, bc.KRef}, "ACCC": {bc.KRef, bc.KRef}, "AGET": {0, bc.KRef}, "ACCP": {bc.KRef, bc.KRef}, "AGETP": {0, bc.KRef},
 	"EFFECT": {bc.KRef}, "RENDER": {bc.KRef}, "CLEANUP": {bc.KRef}, "TASK": {bc.KRef, bc.KRef},
 	"AWAIT": {0, bc.KRef}, "NOT": {bc.KBool, bc.KBool},
 }

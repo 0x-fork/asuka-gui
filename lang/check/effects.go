@@ -345,18 +345,44 @@ func (c *Checker) checkKeys() {
 	}
 }
 
-// keySuggestion is what a key of item, an elem, would be: its id field
-// when it has one, else the item itself when it's hashable.
+// keySuggestion is what a key of item, an elem, would be: a field of a
+// struct (its id, else a field named like one, else its first int or
+// string field), the item itself when it's hashable, else a placeholder.
+// A field, not the struct: a for keyed by a field path follows one
+// signal for all its items (rfcs/0013), and a key that reads the item
+// whole runs the for on any change inside an item.
 func keySuggestion(elem Type, item string) string {
 	if n, ok := elem.(*Named); ok && n.Obj.Kind == StructType {
-		for _, f := range n.Obj.Fields {
-			if f.Name == "id" {
-				return item + ".id"
-			}
+		if f := keyField(n.Obj.Fields); f != "" {
+			return item + "." + f
 		}
 	}
 	if IsHashable(elem) {
-		return item
+		if n, ok := elem.(*Named); !ok || n.Obj.Kind != StructType {
+			return item
+		}
 	}
 	return item + ".<what identifies it>"
+}
+
+// keyField is the field of a struct that likely identifies it, or "".
+func keyField(fields []*Field) string {
+	keyish := func(t Type) bool { return t == Int || t == String }
+	for _, f := range fields {
+		if f.Name == "id" && keyish(f.Type) {
+			return f.Name
+		}
+	}
+	for _, f := range fields {
+		low := strings.ToLower(f.Name)
+		if keyish(f.Type) && (strings.HasSuffix(f.Name, "Id") || strings.HasSuffix(f.Name, "ID") || low == "key" || low == "uuid" || low == "slug") {
+			return f.Name
+		}
+	}
+	for _, f := range fields {
+		if keyish(f.Type) {
+			return f.Name
+		}
+	}
+	return ""
 }

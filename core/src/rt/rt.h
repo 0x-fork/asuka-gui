@@ -330,6 +330,39 @@ void ak_frozen_free(ak_frozen *made);
 static inline void *ak_constant_get(void *const *slot) { return __atomic_load_n(slot, __ATOMIC_ACQUIRE); }
 void *ak_constant_put(void **slot, void *v);
 
+// ---- What a builtin changed in place ----
+//
+// The builtins that change an array, a map or a set in place (push,
+// insert, removeAt, removeWhere, pop, clear, sort, a map's set and
+// remove, a set's insert and remove) record what they changed, for the
+// write that puts it back in its state (vm/path.h's ak_path_put): it
+// notifies the readers of what changed, not of the rest. A key is
+// recorded as its hash (ak_val_hash): a reader of another key with the
+// same hash runs too, which is harmless. Each thread has its own; the
+// put that reads it clears it.
+
+enum {
+	AK_CHANGE_UNKNOWN = 0,  // nothing recorded: anything may have changed
+	AK_CHANGE_NONE,         // nothing changed
+	AK_CHANGE_RANGE,        // an array's elements from lo to hi (hi -1: to the end)
+	AK_CHANGE_KEY,          // a map's value at a key, or a set's member
+};
+
+typedef struct ak_change {
+	uint8_t what;
+	bool len;  // the length changed
+	int64_t lo, hi;
+	uint64_t hash;  // the key's
+} ak_change;
+
+extern AK_TLS ak_change ak_last_change;
+
+static inline void ak_change_none(void) { ak_last_change = (ak_change){.what = AK_CHANGE_NONE}; }
+static inline void ak_change_range(int64_t lo, int64_t hi, bool len) {
+	ak_last_change = (ak_change){.what = AK_CHANGE_RANGE, .len = len, .lo = lo, .hi = hi};
+}
+void ak_change_key(ak_val key, ak_kind kk, bool len);
+
 // ---- Errors ----
 //
 // Throwing sets the pending error and returns normally; every caller of

@@ -97,7 +97,17 @@ struct Msg {
   text: string
 }
 
-component Rows(msgs: [Msg]) {
+struct Song {
+  title: string
+  trackId: int
+}
+
+struct Point {
+  x: float
+  y: float
+}
+
+component Rows(msgs: [Msg], songs: [Song], points: [Point]) {
   state names = ["a", "b"]
   state tags: Set<string> = []
   state count = 3
@@ -108,6 +118,8 @@ component Rows(msgs: [Msg]) {
     for n in names { Text(n) } // ERROR "say what identifies a string, key n$"
     for (i, n) in names.enumerated() { Text("{i} {n}") } // ERROR "key n \(or key i, for the position on purpose\)"
     for b in blobs { Text("{b()}") } // ERROR "key b.<what identifies it>"
+    for s in songs { Text(s.title) } // ERROR "say what identifies a Song, key s.trackId$"
+    for p in points { Text("{p.x}") } // ERROR "key p.<what identifies it>"
     for m in msgs key m.id { Text(m.text) }
     for (i, n) in names.enumerated() key i { Text("{i} {n}") }
     for t in tags { Text(t) } // a set's element is its key

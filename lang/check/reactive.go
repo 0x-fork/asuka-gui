@@ -85,6 +85,9 @@ func (c *Checker) finalize() {
 					// A generic store's let of its type parameters is a
 					// memo: its env holds it as a reference whatever T is.
 					m.Memo = c.reactive(m.Default) || len(t.TypeParams) > 0 && HasTypeParams(m.Type)
+					// One whose value is a path is that path (rfcs/0013):
+					// an accessor of it, not a memo.
+					m.Path = m.Memo && len(t.TypeParams) == 0 && c.letPath(t, m)
 				}
 			}
 		}
@@ -141,6 +144,39 @@ func (c *Checker) follows(decl syntax.Node, init syntax.Expr) bool {
 		return true
 	}
 	return c.reactive(init)
+}
+
+// letPath reports whether the let m of t is a path, read through an
+// accessor of it rather than a memo: its value is a path (no
+// conversion), whose indexes and keys read nothing that changes (the
+// accessor keeps their values), from a state or a member declared
+// before it (made by then), or a parameter or prop.
+func (c *Checker) letPath(t *TypeName, m *Member) bool {
+	if _, conv := c.info.Convs[m.Default]; conv {
+		return false
+	}
+	p := c.path(m.Default)
+	if p == nil || !c.staticPath(p) {
+		return false
+	}
+	// What the root and the arguments read of t's must be made first.
+	before := map[*Member]bool{}
+	for _, o := range t.Comp.Order {
+		if o == m {
+			break
+		}
+		before[o] = true
+	}
+	ok := true
+	syntax.Inspect(m.Default, func(n syntax.Node) bool {
+		if id, isID := n.(*syntax.Ident); isID {
+			if o, isM := c.info.Uses[id].(*Member); isM && o.Owner == t && o.Kind != ParamMember && o.Kind != PropMember && !before[o] {
+				ok = false
+			}
+		}
+		return ok
+	})
+	return ok
 }
 
 // Reactive reports whether e reads anything reactive.

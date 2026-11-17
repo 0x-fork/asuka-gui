@@ -11,6 +11,10 @@ import (
 // fb builds a function: its registers, its code, and where each name it
 // uses lives.
 type fb struct {
+	// pathVars: a collection method's closure's parameter, inlined in a
+	// loop over a path (pathloops.go): the element's path.
+	pathVars map[*check.Var]*pathVar
+
 	l     *Lowerer
 	f     *Func
 	idx   int
@@ -398,6 +402,10 @@ func (b *fb) declare(v *check.Var, init int) int {
 
 // readVar is v's value: its register (borrowed), or a temp.
 func (b *fb) readVar(v *check.Var, n syntax.Node) int {
+	if pv := b.pathVars[v]; pv != nil {
+		// A loop's element (pathloops.go): read whole, by its path.
+		return b.pathVarRead(pv, b.kind(v.Type), -1, true)
+	}
 	r, ok := b.vars[v]
 	if !ok {
 		b.l.errorf(n, "internal: %s has no register in %s", v.Name(), b.f.Name)
@@ -408,7 +416,7 @@ func (b *fb) readVar(v *check.Var, n syntax.Node) int {
 		t := b.temp(b.kind(v.Type))
 		b.emit(op("VGET"), t, r)
 		return t
-	case v.Kind == check.RowItem:
+	case v.Kind == check.RowItem, b.l.prog.AccessorVar(v):
 		t := b.temp(b.kind(v.Type))
 		b.emit(op("AGET"), t, r)
 		return t
@@ -580,6 +588,12 @@ func (b *fb) readMember(m *check.Member, n syntax.Node) int {
 	case check.LetMember:
 		if isLoad(m.Default) {
 			return ref
+		}
+		if m.Path {
+			// A path: its accessor's (rfcs/0013).
+			r := b.temp(k)
+			b.emit(op("AGET"), r, ref)
+			return r
 		}
 		if m.Memo {
 			r := b.temp(k)

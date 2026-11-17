@@ -1,0 +1,244 @@
+// A read of state follows its path (rfcs/0013): each binding prints as
+// it runs, so what a write runs is what it prints. A write notifies the
+// readers of what it changed: not a sibling's, not anyone's when it's
+// equal.
+
+struct User {
+  name: string
+  avatar: string
+}
+
+struct Todo {
+  id: int
+  title: string
+  done: bool = false
+}
+
+fn show(tag: string, s: string) -> string {
+  print(tag)
+  return s
+}
+
+component Page {
+  state u = User(name: "a", avatar: "x")
+  state todos = [Todo(id: 1, title: "a"), Todo(id: 2, title: "b"), Todo(id: 3, title: "c")]
+  state cart: [string: int] = ["tea": 1]
+  state picked = Set<string>()
+
+  Column {
+    Text(show("name", u.name))
+    Text(show("avatar", u.avatar))
+    Text(show("first done", "{todos[0].done}"))
+    Text(show("second done", "{todos[1].done}"))
+    Text(show("second title", todos[1].title))
+    Text(show("count", "{todos.count()}"))
+    Text(show("empty", "{todos.isEmpty()}"))
+    Text(show("tea", "{cart["tea"] ?? 0}"))
+    Text(show("milk", "{cart.get("milk") ?? 0}"))
+    Text(show("has milk", "{cart.has("milk")}"))
+    Text(show("a picked", "{picked.contains("a")}"))
+    Text(show("b picked", "{picked.contains("b")}"))
+    Button("avatar") { on press { u.avatar = "y" } }
+    Button("toggle") { on press { todos[1].done = true } }
+    Button("push") { on press { todos.push(Todo(id: 4, title: "d")) } }
+    Button("rename") { on press { u = User(name: "b", avatar: "y") } }
+    Button("milk") { on press { cart["milk"] = 2 } }
+    Button("tea") { on press { cart["tea", default: 0] += 1 } }
+    Button("pick") { on press { picked.insert("a") } }
+    Button("retitle") { on press { todos[1].title += "!" } }
+    Button("pop") { on press { let _ = todos.removeAt(0) } }
+  }
+}
+
+test "a write runs the readers of what it changed" {
+  let app = mount(Page())
+  print("-- avatar")
+  app.tap("avatar")
+  print("-- avatar again: equal")
+  app.tap("avatar")
+  print("-- toggle")
+  app.tap("toggle")
+  print("-- toggle again: equal")
+  app.tap("toggle")
+  print("-- push")
+  app.tap("push")
+  print("-- rename: compared")
+  app.tap("rename")
+  print("-- milk")
+  app.tap("milk")
+  print("-- tea")
+  app.tap("tea")
+  print("-- pick")
+  app.tap("pick")
+  print("-- pick again: there already")
+  app.tap("pick")
+  print("-- retitle")
+  app.tap("retitle")
+  print("-- pop")
+  app.tap("pop")
+  app.expect("b", "y", "true", "c")
+}
+
+struct Message {
+  read: bool = false
+  subject: string = ""
+}
+
+struct Counter {
+  n: int = 0
+  label: string = "c"
+
+  mut fn bump() { n += 1 }
+}
+
+// A mut fn's call on an element is a write of that element: its readers
+// run, not another element's. A write through ?. writes the path it
+// reaches, or nothing. A state that follows a path follows that path.
+component More {
+  state counters = [Counter(), Counter()]
+  state inbox: [string: Message] = ["a": Message(subject: "hi")]
+  state u = User(name: "a", avatar: "x")
+  state draft = u.name
+
+  Column {
+    Text(show("first n", "{counters[0].n}"))
+    Text(show("second n", "{counters[1].n}"))
+    Text(show("second label", counters[1].label))
+    Text(show("a read", "{inbox["a"]?.read ?? false}"))
+    Text(show("a subject", inbox["a"]?.subject ?? ""))
+    Text(show("draft", draft))
+    Button("bump") { on press { counters[1].bump() } }
+    Button("read") { on press { inbox["a"]?.read = true } }
+    Button("missing") { on press { inbox["z"]?.read = true } }
+    Button("avatar") { on press { u.avatar = "y" } }
+    Button("name") { on press { u.name = "b" } }
+  }
+}
+
+test "mut fns, ?. and states that follow a path" {
+  let app = mount(More())
+  print("-- bump")
+  app.tap("bump")
+  print("-- read")
+  app.tap("read")
+  print("-- missing")
+  app.tap("missing")
+  print("-- avatar")
+  app.tap("avatar")
+  print("-- name")
+  app.tap("name")
+  app.expect("1", "true", "hi", "b")
+}
+
+// A component's argument that's a path is passed as one, and a let
+// that's a path is that path: what's read through them follows its
+// own path.
+component TodoRow(todo: Todo) {
+  Row {
+    Text(show("row title {todo.id}", todo.title))
+    Text(show("row done {todo.id}", "{todo.done}"))
+  }
+}
+
+component Rows {
+  state todos = [Todo(id: 1, title: "a"), Todo(id: 2, title: "b"), Todo(id: 3, title: "c")]
+  state form = User(name: "n", avatar: "a")
+  let draft = form.name
+  let second = todos[1]
+
+  Column {
+    TodoRow(todos[0])
+    TodoRow(second)
+    Text(show("draft", draft))
+    Text(show("second title", second.title))
+    Button("done") { on press { todos[1].done = true } }
+    Button("retitle") { on press { todos[0].title = "z" } }
+    Button("avatar") { on press { form.avatar = "b" } }
+    Button("name") { on press { form.name = "m" } }
+  }
+}
+
+test "props and lets that are paths" {
+  let app = mount(Rows())
+  print("-- done")
+  app.tap("done")
+  print("-- retitle")
+  app.tap("retitle")
+  print("-- avatar")
+  app.tap("avatar")
+  print("-- name")
+  app.tap("name")
+  app.expect("z", "true", "m", "b")
+}
+
+// Output:
+// name
+// avatar
+// first done
+// second done
+// second title
+// count
+// empty
+// tea
+// milk
+// has milk
+// a picked
+// b picked
+// -- avatar
+// avatar
+// -- avatar again: equal
+// -- toggle
+// second done
+// -- toggle again: equal
+// -- push
+// count
+// empty
+// -- rename: compared
+// name
+// -- milk
+// milk
+// has milk
+// -- tea
+// tea
+// -- pick
+// a picked
+// -- pick again: there already
+// -- retitle
+// second title
+// -- pop
+// first done
+// second done
+// second title
+// count
+// empty
+// ok a write runs the readers of what it changed
+// first n
+// second n
+// second label
+// a read
+// a subject
+// draft
+// -- bump
+// second n
+// second label
+// -- read
+// a read
+// -- missing
+// -- avatar
+// -- name
+// draft
+// ok mut fns, ?. and states that follow a path
+// row title 1
+// row done 1
+// row title 2
+// row done 2
+// draft
+// second title
+// -- done
+// row done 2
+// -- retitle
+// row title 1
+// -- avatar
+// -- name
+// draft
+// ok props and lets that are paths
