@@ -162,6 +162,30 @@ let d = 1
 			decls: 3, // the rest of line 2 is a bad one
 		},
 		{
+			name: "a brace on a line of its own",
+			src: `fn f()
+{
+  if a
+  {
+    b()
+  }
+  Row
+  { }
+}
+struct S
+{
+  x: int
+}
+`,
+			errs: []string{
+				"2:1: a '{' goes at the end of the line before, not on a line of its own",
+				"4:3: a '{' goes at the end of the line before, not on a line of its own",
+				"8:3: a block on a line of its own isn't one: its '{' goes at the end of the line before (Row {)",
+				"11:1: a '{' goes at the end of the line before, not on a line of its own",
+			},
+			decls: 2,
+		},
+		{
 			name:  "var at the top level",
 			src:   "var n = 0\n",
 			errs:  []string{"1:1: a file has no variables: its mutable values are state (state x = …)"},

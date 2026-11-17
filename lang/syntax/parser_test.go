@@ -555,7 +555,7 @@ func TestParseDecisions(t *testing.T) {
 	if c := f.Decls[0].(*ComponentDecl).Body.Items[0].(*ExprStmt).X.(*CallExpr); c.Block != nil {
 		t.Errorf("a block on the next line bound to the call")
 	}
-	if len(errs) == 0 || !strings.Contains(errs[0].Msg, "expected an expression, found '{'") {
+	if len(errs) == 0 || !strings.Contains(errs[0].Msg, "a block on a line of its own isn't one") {
 		t.Errorf("a block on a line of its own: %v", errs)
 	}
 	// 4: not in an if's, a for's or a match's head; again inside parentheses.

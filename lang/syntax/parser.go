@@ -569,6 +569,16 @@ func (p *parser) declAhead() bool {
 	return false
 }
 
+// braceOnNextLine reports a { written on the line after what it opens
+// (if a ⏎ {) and moves to it, so the block parses as if it were on the
+// line: one error, not one for the head and more for the block's items.
+func (p *parser) braceOnNextLine() {
+	if p.tok == NEWLINE && p.peek(1) == LBRACE {
+		p.next()
+		p.error(p.pos, "a '{' goes at the end of the line before, not on a line of its own")
+	}
+}
+
 // ---------------------------------------------------------------------
 // Files and declarations
 
@@ -1129,6 +1139,7 @@ func (p *parser) parseConforms() []Type {
 // parseBody parses the members of a struct's, an enum's or an
 // interface's { … }, one per line, each by member.
 func (p *parser) parseBody(what string, member func() Node) (lbrace Pos, members []Node, dangling []*CommentGroup, rbrace Pos) {
+	p.braceOnNextLine()
 	lbrace = p.pos
 	if p.tok != LBRACE {
 		p.errorExpected("'{' to start the " + what + "'s body")
@@ -1226,6 +1237,7 @@ func (p *parser) parseEnum(start Pos) *EnumDecl {
 	d.Name = p.ident()
 	d.TypeParams = p.parseTypeParams()
 	d.Conforms = p.parseConforms()
+	p.braceOnNextLine()
 	d.Lbrace = p.pos
 	if !p.got(LBRACE) {
 		p.errorExpected("'{' to start the enum's body")
@@ -1360,6 +1372,7 @@ func (p *parser) parseFunc(start Pos) *FuncDecl {
 	if p.got(ARROW) {
 		d.Result = p.parseType()
 	}
+	p.braceOnNextLine() // a signature has no body: { can't start the next line
 	switch p.tok {
 	case LBRACE:
 		d.Body = p.parseBlock()
@@ -1451,6 +1464,7 @@ func (p *parser) parseLet(start Pos) *LetDecl {
 // Blocks and items
 
 func (p *parser) parseBlock() *Block {
+	p.braceOnNextLine()
 	b := &Block{Lbrace: p.pos}
 	if p.tok != LBRACE {
 		p.errorExpected("'{'")
@@ -1609,6 +1623,12 @@ func (p *parser) itemAfterPub(start Pos) Item {
 			d.Span = p.span(start)
 			return d
 		}
+	case LBRACE:
+		// A block on a line of its own isn't one (decision 4): Row ⏎ {
+		// meant Row {.
+		p.error(p.pos, "a block on a line of its own isn't one: its '{' goes at the end of the line before (Row {)")
+		p.sync()
+		return &BadItem{Span: p.span(start)}
 	case IF:
 		return p.parseIfStmt()
 	case FOR:
@@ -1961,6 +1981,7 @@ func (p *parser) parseMatchExpr() *MatchExpr {
 
 // parseArms parses a match's { arms }; expr says the match is a value.
 func (p *parser) parseArms(expr bool) (lbrace Pos, arms []*MatchArm, rbrace Pos) {
+	p.braceOnNextLine()
 	lbrace = p.pos
 	if !p.got(LBRACE) {
 		p.errorExpected("'{' to start the match's arms")
