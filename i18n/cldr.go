@@ -3,6 +3,7 @@ package i18n
 import (
 	"compress/flate"
 	"io"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -30,6 +31,9 @@ type localeData struct {
 	numOnce sync.Once
 	num     [2]*numberSystem // the default numbering system, and latn
 
+	curOnce sync.Once
+	cur     []string // the currencies' symbols, by tables.currencies' index
+
 	datesOnce sync.Once
 
 	dtpgOnce sync.Once
@@ -42,7 +46,9 @@ var tables struct {
 	once                           sync.Once
 	locales, hourKeys, weekRegions []string
 	parents                        string
-	numbers                        pool
+	numbers, currencySymbols       pool
+	currencies                     []string       // ISO 4217 codes, sorted
+	currencyDigits                 map[string]int // those not of two fraction digits
 
 	datesOnce                           sync.Once
 	dates                               pool
@@ -86,10 +92,17 @@ func (p *pool) at(i uint32) string { return p.strings[p.starts[i]:p.starts[i+1]]
 // loadTables loads the locales, their numbers and the week and time data.
 func loadTables() {
 	tables.once.Do(func() {
-		t := unpack(fmtPackedNumbers, packedLocalesLen, packedParentsLen, packedNumberEntriesLen, packedNumberLensLen, packedNumberPoolLen)
+		t := unpack(fmtPackedNumbers, packedLocalesLen, packedParentsLen, packedNumberEntriesLen, packedNumberLensLen, packedNumberPoolLen,
+			packedCurrencyEntriesLen, packedCurrencyLensLen, packedCurrencyPoolLen)
 		tables.locales = append([]string{""}, strings.Fields(t[0])...)
 		tables.parents = t[1]
 		tables.numbers = newPool(t[2], t[3], t[4], fmtNumberStringCount)
+		tables.currencySymbols = newPool(t[5], t[6], t[7], fmtCurrencyStringCount)
+		tables.currencies = strings.Fields(fmtCurrencies)
+		tables.currencyDigits = map[string]int{}
+		for _, f := range strings.Fields(fmtCurrencyDigits) {
+			tables.currencyDigits[f[:3]] = int(f[3] - '0')
+		}
 		tables.hourKeys = strings.Fields(fmtHourKeys)
 		tables.weekRegions = strings.Fields(fmtWeekRegions)
 	})
@@ -142,20 +155,110 @@ func (d *localeData) withDates() *localeData {
 // fill sets the slots of a half of the data, p, whose entries of each
 // locale start at starts: the locale's entries, then its parents', the
 // root's last; the nearest wins.
-func (d *localeData) fill(p *pool, starts []uint16) {
-	var set [slotCount]bool
+func (d *localeData) fill(p *pool, starts []uint16) { d.fillSlots(p, starts, d.v[:]) }
+
+// fillSlots fills dst, the slots of the half p, as fill does.
+func (d *localeData) fillSlots(p *pool, starts []uint16, dst []string) {
+	set := make([]bool, len(dst))
 	for j := d.index; ; j = uint16At(tables.parents, j) {
 		for e := int(starts[j]); e < int(starts[j+1]); e++ {
 			v := uint32(p.entries[3*e])<<16 | uint32(p.entries[3*e+1])<<8 | uint32(p.entries[3*e+2])
 			if s := v >> 15; !set[s] {
 				set[s] = true
-				d.v[s] = p.at(v & (1<<15 - 1))
+				dst[s] = p.at(v & (1<<15 - 1))
 			}
 		}
 		if j == 0 {
 			break
 		}
 	}
+}
+
+// currencyData is how a locale writes amounts of a currency: its symbol
+// ("$", "€", "CA$"), and the pattern and separators of the currency's
+// own where the locale has them ("" where not).
+type currencyData struct {
+	symbol, pattern, decimal, group string
+}
+
+// currencyOf is how the locale writes the currency of an ISO 4217 code;
+// one CLDR hasn't is its code.
+func (d *localeData) currencyOf(code string) currencyData {
+	d.curOnce.Do(func() {
+		d.cur = make([]string, len(tables.currencies))
+		d.fillSlots(&tables.currencySymbols, fmtCurrencyStarts[:], d.cur)
+	})
+	i, ok := slices.BinarySearch(tables.currencies, code)
+	if !ok || d.cur[i] == "" {
+		return currencyData{symbol: code}
+	}
+	return parseCurrencyData(d.cur[i])
+}
+
+// A Currency is how a locale writes amounts of a currency, as
+// Currencies lists them.
+type Currency struct {
+	Code    string // ISO 4217
+	Symbol  string // "$", "€", "CA$"
+	Pattern string // its own pattern, "" for the locale's
+	// Its own separators, "" for the locale's.
+	Decimal, Group string
+}
+
+// flags are the core's flags of the currency (see the blob in
+// compile.go): 1 its symbol starts with a letter, 2 ends with one, 4 it
+// has its own pattern.
+func (c Currency) flags() byte {
+	var f byte
+	if letterNextTo(c.Symbol, true) {
+		f |= 1
+	}
+	if letterNextTo(c.Symbol, false) {
+		f |= 2
+	}
+	if c.Pattern != "" {
+		f |= 4
+	}
+	return f
+}
+
+// Currencies are the currencies a locale writes otherwise than by their
+// code in the locale's currency pattern: those of a symbol of their own
+// or a pattern of their own, sorted by code.
+func Currencies(locale string) []Currency {
+	k := keyOf(locale)
+	d := k.dat()
+	var out []Currency
+	for _, code := range tables.currencies {
+		c := d.currencyOf(code)
+		if c.symbol == code && c.pattern == "" && c.decimal == "" && c.group == "" {
+			continue
+		}
+		out = append(out, Currency{Code: code, Symbol: c.symbol, Pattern: c.pattern, Decimal: c.decimal, Group: c.group})
+	}
+	return out
+}
+
+// parseCurrencyData reads a currency's slot: its symbol, then, after
+// NULs, its pattern, decimal and group separators when it has them.
+func parseCurrencyData(v string) currencyData {
+	f := strings.Split(v, "\x00")
+	c := currencyData{symbol: f[0]}
+	if len(f) == 4 {
+		c.pattern, c.decimal, c.group = f[1], f[2], f[3]
+	}
+	return c
+}
+
+// CurrencyDigits is how many fraction digits an amount of the currency
+// of an ISO 4217 code has, as CLDR says: 2 for most, 0 for JPY, 3 for
+// KWD.
+func CurrencyDigits(code string) int {
+	loadTables()
+	if n, ok := tables.currencyDigits[strings.ToUpper(code)]; ok {
+		return n
+	}
+	return 2
 }
 
 // localeKey is how a locale formats: the locale of CLDR whose data it

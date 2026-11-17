@@ -128,6 +128,15 @@ typedef struct {
 	uint8_t primary, secondary, min_int, max_frac;
 } num_pattern;
 
+// A currency a language writes otherwise than by its code in its currency
+// pattern: its symbol, flags (1 its first rune a letter, 2 its last, 4
+// its own pattern), and its own separators ("" for the language's).
+typedef struct {
+	ak_span code, symbol, decimal, group;
+	uint8_t flags;
+	num_pattern own;
+} cat_currency;
+
 typedef struct {
 	ak_span tag;
 	bool rtl;
@@ -136,6 +145,13 @@ typedef struct {
 	ak_span decimal, group;
 	uint8_t min_grouping;
 	num_pattern dec, pct;
+	// Amounts: the currency pattern and that of a symbol of letters next
+	// to the number, the spacing between such a letter and a digit, the
+	// separators of amounts ("" for numbers'), and the currencies.
+	num_pattern cur, cur_alpha;
+	ak_span cur_spacing, cur_decimal, cur_group;
+	cat_currency *curs;
+	uint32_t ncurs;
 	ak_span autonym;
 	// Dates (when the catalog has them).
 	bool dates;
@@ -162,7 +178,7 @@ struct ak_catalog {
 
 static void catalog_drop(ak_opaque *o) {
 	ak_catalog *c = (ak_catalog *)o;
-	for (uint32_t i = 0; i < c->nlangs; i++) ak_free(c->langs[i].msgs), ak_free(c->langs[i].skels);
+	for (uint32_t i = 0; i < c->nlangs; i++) ak_free(c->langs[i].msgs), ak_free(c->langs[i].skels), ak_free(c->langs[i].curs);
 	ak_free(c->langs);
 	ak_free(c->keys);
 	ak_release(c->blob);
@@ -183,7 +199,13 @@ static bool skip_nodes(ak_reader *r, int depth) {
 		case 1: ak_read_u8(r); break;
 		case 4: ak_read_u8(r), ak_read_u8(r), ak_read_u8(r), ak_read_u32(r); break;
 		case 2: break;
-		case 3: ak_read_u8(r), ak_read_u8(r), ak_read_u8(r), ak_read_u8(r); break;
+		case 3: {
+			ak_read_u8(r);
+			uint8_t flags = ak_read_u8(r);
+			ak_read_u8(r), ak_read_u8(r);
+			if (flags & 32 && ak_read_str(r).len != 3) return false;
+			break;
+		}
 		case 5:
 		case 6: {
 			ak_read_u8(r);
@@ -218,7 +240,7 @@ static void read_pattern(ak_reader *r, num_pattern *p) {
 }
 
 ak_catalog *ak_i18n_catalog(ak_bytes *blob) {
-	if (!blob || blob->len < 4 || memcmp(blob->data, "AKC2", 4) != 0) {
+	if (!blob || blob->len < 4 || memcmp(blob->data, "AKC3", 4) != 0) {
 		ak_throw_msg("i18n.catalog: not a compiled catalog");
 		return NULL;
 	}
@@ -253,6 +275,20 @@ ak_catalog *ak_i18n_catalog(ak_bytes *blob) {
 		l->min_grouping = ak_read_u8(&r);
 		read_pattern(&r, &l->dec);
 		read_pattern(&r, &l->pct);
+		read_pattern(&r, &l->cur);
+		read_pattern(&r, &l->cur_alpha);
+		l->cur_spacing = ak_read_str(&r), l->cur_decimal = ak_read_str(&r), l->cur_group = ak_read_str(&r);
+		uint32_t ncurs = ak_read_u32(&r);
+		if (r.err || ncurs > (r.len - r.off) / 16) r.err = true, ncurs = 0;  // a currency takes 16 bytes at least
+		l->curs = ak_alloc((ncurs ? ncurs : 1) * sizeof(cat_currency));
+		for (uint32_t k = 0; k < ncurs && !r.err; k++, l->ncurs++) {
+			cat_currency *cc = &l->curs[k];
+			cc->code = ak_read_str(&r), cc->symbol = ak_read_str(&r);
+			cc->flags = ak_read_u8(&r);
+			if (cc->flags & 4) read_pattern(&r, &cc->own);
+			cc->decimal = ak_read_str(&r), cc->group = ak_read_str(&r);
+			if (cc->code.len != 3 || (k && memcmp(l->curs[k - 1].code.p, cc->code.p, 3) >= 0)) r.err = true;  // sorted
+		}
 		l->dates = ak_read_u8(&r) == 1;
 		if (l->dates && !r.err) {
 			l->hour_cycle = ak_read_u8(&r);
@@ -328,9 +364,20 @@ static cat_lang *lang_of(ak_catalog *c, ak_span tag) {
 
 // ---- Numbers (format.go's formatNumber, number.go's formatDecimal) ----
 
+// cur_fmt is how an amount of a currency is written: the pattern (with
+// ¤ where the symbol goes), the symbol and its flags (1 its first rune a
+// letter, 2 its last), the spacing between such a letter and a digit,
+// and the separators ("" for the language's numbers').
+typedef struct {
+	num_pattern pat;
+	ak_span symbol, spacing, decimal, group;
+	uint8_t flags;
+} cur_fmt;
+
 typedef struct {
 	bool percent, integer, no_grouping, half_even;
 	int min_frac, max_frac;  // max -1: the pattern's
+	const cur_fmt *cur;      // an amount of a currency
 } num_opts;
 
 typedef struct {
@@ -422,16 +469,40 @@ static const num_pattern latin_pct = {{"", 0}, {"%", 1}, {"-", 1}, {"%", 1}, 3, 
 // FRAC_MAX is the most fraction digits a number is written with, as
 // Intl.NumberFormat's maximumFractionDigits (ICU's) takes.
 #define FRAC_MAX 100
-// IN_MAX is the most digits of each part read of a number: a decimal's.
+// IN_MAX is the digits of each part of a number a frame holds: a
+// decimal's; a longer number (a Decimal's of a big exponent) is copied to
+// the heap.
 #define IN_MAX (sizeof(((decimal *)0)->s))
+
+// put_affix writes a pattern's prefix or suffix, with a currency's
+// symbol for its ¤: spaced from the number when the symbol's letter
+// would touch a digit ("CHF 12.00", where ¤ is next to the number).
+static void put_affix(sbuf *out, ak_span a, const cur_fmt *c, bool prefix) {
+	uint32_t at = 0;
+	while (c && at + 1 < a.len && !((uint8_t)a.p[at] == 0xC2 && (uint8_t)a.p[at + 1] == 0xA4)) at++;
+	if (!c || at + 1 >= a.len) {
+		sb_span(out, a);
+		return;
+	}
+	bool touches = prefix ? at + 2 == a.len : at == 0;
+	sb_put(out, a.p, at);
+	if (touches && !prefix && c->flags & 1) sb_span(out, c->spacing);
+	sb_span(out, c->symbol);
+	if (touches && prefix && c->flags & 2) sb_span(out, c->spacing);
+	sb_put(out, a.p + at + 2, a.len - at - 2);
+}
 
 static void format_number(sbuf *out, const cat_lang *l, const char *in, num_opts o) {
 	const num_pattern *p = o.percent ? (l ? &l->pct : &latin_pct) : (l ? &l->dec : &latin_dec);
+	if (o.cur) p = &o.cur->pat;
+	ak_span dec_sep = l ? l->decimal : AK_STR("."), group_sep = l ? l->group : AK_STR(",");
+	if (o.cur && o.cur->decimal.len) dec_sep = o.cur->decimal;
+	if (o.cur && o.cur->group.len) group_sep = o.cur->group;
 	int min = o.min_frac < 0 ? 0 : o.min_frac, max = o.max_frac;
 	if (min > FRAC_MAX) min = FRAC_MAX;
 	if (max > FRAC_MAX) max = FRAC_MAX;
 	if (o.integer) min = max = 0;
-	else if (max <= 0 && min == 0) max = p->max_frac;
+	else if (max <= 0 && min == 0 && !o.cur) max = p->max_frac;
 	if (max < min) max = min;
 	// split: sign, integer digits (no leading zeros, "0" for none), fraction.
 	// The integer part grows by a percentage's two digits, a carry and
@@ -439,10 +510,16 @@ static void format_number(sbuf *out, const cat_lang *l, const char *in, num_opts
 	bool neg = in[0] == '-';
 	const char *s = in + (neg || in[0] == '+');
 	const char *dot = strchr(s, '.');
-	char ip[IN_MAX + 3 + UINT8_MAX + 1], fp[(IN_MAX > FRAC_MAX ? IN_MAX : FRAC_MAX) + 1];
 	size_t il = dot ? (size_t)(dot - s) : strlen(s), fl = dot ? strlen(dot + 1) : 0;
-	if (il > IN_MAX) il = IN_MAX;
-	if (fl > IN_MAX) fl = IN_MAX;
+	// The integer part grows by a percent's two digits, a carry and a
+	// pattern's minimum integer digits; the fraction to FRAC_MAX; their
+	// rounding joins them.
+	size_t icap = (il > IN_MAX ? il : IN_MAX) + 3 + UINT8_MAX + 1, fcap = (fl > FRAC_MAX ? fl : FRAC_MAX) + 1;
+	char frame[2 * (IN_MAX + 3 + UINT8_MAX + 1 + (IN_MAX > FRAC_MAX ? IN_MAX : FRAC_MAX) + 1)];
+	char *heap = NULL, *ip, *fp, *all;
+	if (2 * (icap + fcap) <= sizeof frame) ip = frame;
+	else ip = heap = ak_alloc(2 * (icap + fcap));
+	fp = ip + icap, all = fp + fcap;
 	memcpy(ip, s, il), ip[il] = 0;
 	memcpy(fp, dot ? dot + 1 : "", fl), fp[fl] = 0;
 	size_t z = 0;
@@ -477,7 +554,6 @@ static void format_number(sbuf *out, const cat_lang *l, const char *in, num_opts
 		fl = (size_t)max;
 		fp[fl] = 0;
 		if (up) {
-			char all[sizeof ip + sizeof fp];
 			size_t n = il + fl;
 			memcpy(all, ip, il), memcpy(all + il, fp, fl), all[n] = 0;
 			long i = (long)n - 1;
@@ -501,7 +577,7 @@ static void format_number(sbuf *out, const cat_lang *l, const char *in, num_opts
 	}
 	while ((int)fl > min && fp[fl - 1] == '0') fp[--fl] = 0;
 	while ((int)fl < min) fp[fl++] = '0', fp[fl] = 0;
-	sb_span(out, neg ? p->neg_prefix : p->prefix);
+	put_affix(out, neg ? p->neg_prefix : p->prefix, o.cur, true);
 	// The integer, grouped as the pattern groups it.
 	while ((int)il < p->min_int) memmove(ip + 1, ip, il + 1), ip[0] = '0', il++;
 	uint8_t mg = l ? l->min_grouping : 1;
@@ -515,15 +591,74 @@ static void format_number(sbuf *out, const cat_lang *l, const char *in, num_opts
 		for (int size = first; pos < il;) {
 			write_digits(out, l, ip + pos, (size_t)size);
 			pos += (size_t)size;
-			if (pos < il) sb_span(out, l ? l->group : AK_STR(","));
+			if (pos < il) sb_span(out, group_sep);
 			size = il - pos == (size_t)p->primary ? p->primary : sec;
 		}
 	}
 	if (fl) {
-		sb_span(out, l ? l->decimal : AK_STR("."));
+		sb_span(out, dec_sep);
 		write_digits(out, l, fp, fl);
 	}
-	sb_span(out, neg ? p->neg_suffix : p->suffix);
+	put_affix(out, neg ? p->neg_suffix : p->suffix, o.cur, false);
+	ak_free(heap);
+}
+
+// currency_digits is how many fraction digits an amount of the currency
+// has: CLDR's, 2 for most.
+static int currency_digits(ak_span code) {
+	for (uint32_t i = 0; i < ak_i18n_ncurrency_digits; i++)
+		if (code.len == 3 && memcmp(ak_i18n_currency_digits[i], code.p, 3) == 0) return ak_i18n_currency_digits[i][3] - '0';
+	return 2;
+}
+
+static num_pattern pattern_of(const ak_i18n_pattern *g) {
+	return (num_pattern){ak_cstr(g->prefix), ak_cstr(g->suffix), ak_cstr(g->neg_prefix), ak_cstr(g->neg_suffix), g->primary, g->secondary, g->min_int, g->max_frac};
+}
+
+static bool ends_with_sign(ak_span a) { return a.len >= 2 && (uint8_t)a.p[a.len - 2] == 0xC2 && (uint8_t)a.p[a.len - 1] == 0xA4; }
+static bool starts_with_sign(ak_span a) { return a.len >= 2 && (uint8_t)a.p[0] == 0xC2 && (uint8_t)a.p[1] == 0xA4; }
+
+// currency_fmt is how language l (English's without one) writes amounts
+// of the currency of an ISO 4217 code (package i18n's
+// NumberFormatter.currency): the currency's own pattern, else the
+// language's, that of a symbol of letters where the symbol's letter
+// would touch the number; its symbol, the code for one it hasn't.
+static void currency_fmt(const cat_lang *l, ak_span code, cur_fmt *c) {
+	*c = (cur_fmt){.symbol = code, .flags = 3};
+	const num_pattern *own = NULL;
+	if (l) {
+		uint32_t lo = 0, hi = l->ncurs;
+		while (lo < hi) {
+			uint32_t mid = (lo + hi) / 2;
+			int cmp = code.len == 3 ? memcmp(l->curs[mid].code.p, code.p, 3) : -1;
+			if (cmp == 0) {
+				const cat_currency *cc = &l->curs[mid];
+				c->symbol = cc->symbol, c->flags = cc->flags & 3, c->decimal = cc->decimal, c->group = cc->group;
+				if (cc->flags & 4) own = &cc->own;
+				break;
+			}
+			if (cmp < 0) lo = mid + 1;
+			else hi = mid;
+		}
+		c->spacing = l->cur_spacing;
+		if (!c->decimal.len) c->decimal = l->cur_decimal;
+		if (!c->group.len) c->group = l->cur_group;
+	} else {
+		for (uint32_t i = 0; i < ak_i18n_nen_currencies; i++) {
+			if (code.len == 3 && memcmp(ak_i18n_en_currencies[i].code, code.p, 3) == 0) {
+				c->symbol = ak_cstr(ak_i18n_en_currencies[i].symbol), c->flags = ak_i18n_en_currencies[i].flags;
+				break;
+			}
+		}
+		c->spacing = ak_cstr(ak_i18n_en_currency_spacing);
+	}
+	if (own) {
+		c->pat = *own;
+		return;
+	}
+	c->pat = l ? l->cur : pattern_of(&ak_i18n_en_currency[0]);
+	if ((ends_with_sign(c->pat.prefix) && c->flags & 2) || (starts_with_sign(c->pat.suffix) && c->flags & 1))
+		c->pat = l ? l->cur_alpha : pattern_of(&ak_i18n_en_currency[1]);
 }
 
 // ---- Dates (date.go's DateFormatter.Format) ----
@@ -1077,6 +1212,13 @@ static void run_nodes(fmt_ctx *f, ak_reader *r, const decimal *pound, int depth)
 				break;
 			}
 			num_opts o = {.percent = flags & 1, .integer = flags & 2, .no_grouping = flags & 4, .half_even = flags & 8, .max_frac = -1};
+			cur_fmt cur;
+			if (flags & 32) {
+				ak_span code = ak_read_str(r);
+				currency_fmt(f->formats, code, &cur);
+				o.cur = &cur;
+				o.min_frac = o.max_frac = currency_digits(code);
+			}
 			if (flags & 16) o.min_frac = mn, o.max_frac = mx;
 			sbuf s = {0};
 			format_number(&s, f->formats, d.s, o);
@@ -1337,6 +1479,40 @@ ak_str *ak_i18n_format_number(double v, int flags, int min_frac, int max_frac) {
 	num_opts o = {.percent = flags & 1, .integer = flags & 2, .no_grouping = flags & 4, .half_even = flags & 8, .min_frac = min_frac, .max_frac = max_frac};
 	sbuf s = {0};
 	format_number(&s, shown_formats(), d.s, o);
+	return sb_str(&s);
+}
+
+ak_str *ak_i18n_format_decimal(const ak_str *digits, int flags, int min_frac, int max_frac, const ak_str *currency) {
+	// [-+]digits[.digits]: what's written, digit by digit, in the language's.
+	const char *d = digits->data + (digits->len && (digits->data[0] == '-' || digits->data[0] == '+'));
+	size_t k = 0, nd = 0, dots = 0;
+	for (; d[k]; k++) {
+		if (d[k] == '.' && !dots && nd) dots++;
+		else if (d[k] >= '0' && d[k] <= '9') nd++;
+		else break;
+	}
+	if (d[k] || !nd || d[k - 1] == '.') {
+		ak_throw_msg("i18n.formatDecimal: %s isn't a decimal number (digits, maybe a sign and a point)", digits->data);
+		return NULL;
+	}
+	// Fraction digits asked for, max -1: all of the number's.
+	if (flags & 16 && max_frac < 0) {
+		const char *dot = strchr(d, '.');
+		max_frac = dot ? (int)strlen(dot + 1) : 0;
+		if (max_frac < min_frac) max_frac = min_frac;
+	}
+	// None: an integer (format_number's 0 is the pattern's).
+	if (flags & 16 && max_frac == 0 && !(currency && currency->len)) flags |= 2;
+	num_opts o = {.percent = flags & 1, .integer = flags & 2, .no_grouping = flags & 4, .half_even = flags & 8, .min_frac = min_frac, .max_frac = max_frac};
+	const cat_lang *l = shown_formats();
+	cur_fmt cur;
+	if (currency && currency->len) {
+		currency_fmt(l, ak_span_str(currency), &cur);
+		o.cur = &cur;
+		if (!(flags & 16)) o.min_frac = o.max_frac = currency_digits(ak_span_str(currency));
+	}
+	sbuf s = {0};
+	format_number(&s, l, digits->data, o);
 	return sb_str(&s);
 }
 

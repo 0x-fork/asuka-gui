@@ -326,8 +326,9 @@ func valueString(locale string, v any) string {
 // (the default: up to three fraction digits, or those of an exact
 // number), "integer", "percent", or a skeleton of ICU's number
 // skeletons ("::percent .00"), of which it reads percent, integer,
-// precision-integer, the precision of fraction digits (.00, .0#, .##)
-// and group-off, and writes the rest as the default. Integers and
+// precision-integer, the precision of fraction digits (.00, .0#, .##),
+// group-off and currency/EUR (an amount of that currency: its symbol
+// and fraction digits), and writes the rest as the default. Integers and
 // percents round half to even, as ICU's MessageFormat does; the default,
 // half away from zero, as Intl.NumberFormat does.
 func formatNumber(locale string, n number, style string) string {
@@ -345,13 +346,15 @@ func formatNumber(locale string, n number, style string) string {
 			o.Percent, o.HalfEven = true, true
 		case stem == "group-off":
 			o.NoGrouping = true
+		case strings.HasPrefix(stem, "currency/") && len(stem) == len("currency/")+3:
+			o.Currency = strings.ToUpper(stem[len("currency/"):])
 		case strings.HasPrefix(stem, ".") && strings.Trim(stem[1:], "0#") == "" && len(stem) > 1:
 			o.MinFractionDigits = strings.Count(stem, "0")
 			o.MaxFractionDigits = len(stem) - 1
 			fraction = true
 		}
 	}
-	if n.exact && !fraction && !o.Integer && !o.Percent {
+	if n.exact && !fraction && !o.Integer && !o.Percent && o.Currency == "" {
 		_, frac, _ := strings.Cut(n.decimal, ".")
 		o.MinFractionDigits, o.MaxFractionDigits = min(len(frac), 100), min(len(frac), 100)
 	}

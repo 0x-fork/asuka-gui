@@ -182,8 +182,66 @@ func cTables(t *testing.T) []byte {
 		}
 		fmt.Fprintf(&b, "%q, %q,", c, parentLocales[i])
 	}
-	fmt.Fprintf(&b, "\n};\nconst uint32_t ak_i18n_nparents = %d;\n", len(parentChildren))
+	fmt.Fprintf(&b, "\n};\nconst uint32_t ak_i18n_nparents = %d;\n\n", len(parentChildren))
+
+	// Currencies: the fraction digits of those of other than two, and how
+	// English, the formats of an app without catalogs, writes amounts.
+	b.WriteString("const char *const ak_i18n_currency_digits[] = {")
+	digits := strings.Fields(fmtCurrencyDigits)
+	for i, d := range digits {
+		if i%10 == 0 {
+			b.WriteString("\n\t")
+		} else {
+			b.WriteString(" ")
+		}
+		fmt.Fprintf(&b, "%q,", d)
+	}
+	fmt.Fprintf(&b, "\n};\nconst uint32_t ak_i18n_ncurrency_digits = %d;\n\n", len(digits))
+	en := keyOf("en").dat().numbers(true)
+	b.WriteString("const ak_i18n_pattern ak_i18n_en_currency[2] = {\n")
+	for _, p := range []*numberPattern{&en.currency, &en.currencyAlpha} {
+		fmt.Fprintf(&b, "\t{%s, %s, %s, %s, %d, %d, %d, %d},\n", cQuote(p.prefix), cQuote(p.suffix), cQuote(p.negPrefix), cQuote(p.negSuffix), p.primary, p.secondary, p.minInt, p.maxFrac)
+	}
+	fmt.Fprintf(&b, "};\nconst char ak_i18n_en_currency_spacing[] = %s;\n", cQuote(en.currencySpacing))
+	if en.currencyDecimal != "" || en.currencyGroup != "" {
+		t.Fatal("English has separators of amounts of their own: the core's English has none")
+	}
+	b.WriteString("const ak_i18n_currency ak_i18n_en_currencies[] = {")
+	curs := Currencies("en")
+	for i, c := range curs {
+		if c.Pattern != "" || c.Decimal != "" || c.Group != "" {
+			t.Fatalf("English writes %s in a pattern of its own: the core's English has none", c.Code)
+		}
+		if i%4 == 0 {
+			b.WriteString("\n\t")
+		} else {
+			b.WriteString(" ")
+		}
+		fmt.Fprintf(&b, "{%q, %s, %d},", c.Code, cQuote(c.Symbol), c.flags())
+	}
+	fmt.Fprintf(&b, "\n};\nconst uint32_t ak_i18n_nen_currencies = %d;\n", len(curs))
 	return b.Bytes()
+}
+
+// cQuote is s as a C string literal: printable ASCII as it is, other
+// bytes in octal (which, unlike \x, ends after three digits).
+func cQuote(s string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == '"' || c == '\\':
+			b.WriteByte('\\')
+			b.WriteByte(c)
+		case c >= 0x20 && c < 0x7f:
+			b.WriteByte(c)
+		default:
+			fmt.Fprintf(&b, "\\%03o", c)
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
 }
 
 var cPlurals = map[string]string{

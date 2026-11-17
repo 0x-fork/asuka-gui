@@ -465,6 +465,11 @@ static ak_val b_format_number(ak_val *a, uint32_t n) {
 	return (ak_val){.p = ak_i18n_format_number(a[0].f, (int)a[1].i, (int)a[2].i, (int)a[3].i)};
 }
 
+static ak_val b_format_decimal(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	return (ak_val){.p = ak_i18n_format_decimal(a[0].p, (int)a[1].i, (int)a[2].i, (int)a[3].i, a[4].p)};
+}
+
 static ak_val b_format_int(ak_val *a, uint32_t n) {
 	AK_UNUSED(n);
 	return (ak_val){.p = ak_i18n_format_int(a[0].i, (int)a[1].i)};
@@ -523,7 +528,7 @@ void ak_ui_ext_builtins_init(void) {
 		{"i18n.locale", b_locale}, {"i18n.set_locale", b_set_locale}, {"i18n.set_languages", b_set_languages},
 		{"i18n.languages", b_languages}, {"i18n.preferred_languages", b_preferred}, {"i18n.is_rtl", b_is_rtl},
 		{"i18n.region", b_region}, {"i18n.format_locale", b_format_locale}, {"i18n.catalog", b_catalog}, {"i18n.say", b_say},
-		{"i18n.format_number", b_format_number}, {"i18n.format_int", b_format_int}, {"i18n.format_date", b_format_date},
+		{"i18n.format_number", b_format_number}, {"i18n.format_decimal", b_format_decimal}, {"i18n.format_int", b_format_int}, {"i18n.format_date", b_format_date},
 		{"i18n.autonym", b_autonym}, {"i18n.force", b_force},
 	};
 	for (size_t i = 0; i < AK_LEN(t); i++) ak_builtin_register(t[i].name, t[i].fn);

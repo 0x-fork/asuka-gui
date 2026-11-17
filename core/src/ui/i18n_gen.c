@@ -811,3 +811,28 @@ const char *const ak_i18n_parents[] = {
 	"yue-Hans", "", "zh-Hant", "", "zh-Hant-MO", "zh-Hant-HK",
 };
 const uint32_t ak_i18n_nparents = 199;
+
+const char *const ak_i18n_currency_digits[] = {
+	"ADP0", "AFN0", "ALL0", "BHD3", "BIF0", "BYR0", "CLF4", "CLP0", "COP0", "DJF0",
+	"ESP0", "GNF0", "HUF0", "IDR0", "IQD0", "IRR0", "ISK0", "ITL0", "JOD3", "JPY0",
+	"KMF0", "KPW0", "KRW0", "KWD3", "LAK0", "LBP0", "LUF0", "LYD3", "MGA0", "MGF0",
+	"MMK0", "MRO0", "OMR3", "PKR0", "PYG0", "RWF0", "SLL0", "SOS0", "STD0", "SYP0",
+	"TMM0", "TND3", "TRL0", "UGX0", "UYI0", "UYW4", "VND0", "VUV0", "XAF0", "XOF0",
+	"XPF0", "YER0", "ZMK0", "ZWD0",
+};
+const uint32_t ak_i18n_ncurrency_digits = 54;
+
+const ak_i18n_pattern ak_i18n_en_currency[2] = {
+	{"\302\244", "", "-\302\244", "", 3, 3, 1, 2},
+	{"\302\244\302\240", "", "-\302\244\302\240", "", 3, 3, 1, 2},
+};
+const char ak_i18n_en_currency_spacing[] = "\302\240";
+const ak_i18n_currency ak_i18n_en_currencies[] = {
+	{"AUD", "A$", 1}, {"BRL", "R$", 1}, {"CAD", "CA$", 1}, {"CNY", "CN\302\245", 1},
+	{"EUR", "\342\202\254", 0}, {"GBP", "\302\243", 0}, {"HKD", "HK$", 1}, {"ILS", "\342\202\252", 0},
+	{"INR", "\342\202\271", 0}, {"JPY", "\302\245", 0}, {"KRW", "\342\202\251", 0}, {"MXN", "MX$", 1},
+	{"NZD", "NZ$", 1}, {"PHP", "\342\202\261", 0}, {"TWD", "NT$", 1}, {"USD", "$", 0},
+	{"VND", "\342\202\253", 0}, {"XAF", "FCFA", 3}, {"XCD", "EC$", 1}, {"XCG", "Cg.", 3},
+	{"XOF", "F\342\200\257CFA", 3}, {"XPF", "CFPF", 3}, {"XXX", "\302\244", 0},
+};
+const uint32_t ak_i18n_nen_currencies = 23;
