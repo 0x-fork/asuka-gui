@@ -16,6 +16,7 @@ enum {
 	AK_F_DISPOSED = 1u << 6, // disposed (or dropped); never runs again
 	AK_F_FRESH = 1u << 7,    // a signal made inside a memo (ak_signal_born)
 	AK_F_FOLLOW = 1u << 8,   // a memo whose value may also be set (ak_follow)
+	AK_F_UNWATCH = 1u << 9,  // an ak_wsignal: told when its last reader goes
 };
 
 // ak_link is an edge from dep to sub. It sits in two doubly linked

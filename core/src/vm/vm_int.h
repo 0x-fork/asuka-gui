@@ -231,6 +231,20 @@ ak_val ak_vm_cell_get(void *cell, bool track);
 void ak_vm_cell_set(void *cell, ak_val v);         // takes v
 ak_val ak_vm_cell_take(void *cell);
 void ak_vm_cell_put(void *cell, ak_val v);         // takes v
+// ak_vm_cell_path reads the value at path p (n bytes, args its
+// arguments: vm/path.h) below the cell's, tracked or not (CPATH, CLEN);
+// it throws as the read would (an index out of range).
+ak_val ak_vm_cell_path(void *cell, const uint8_t *p, uint32_t n, const ak_val *args, bool track);
+// ak_vm_cell_putp puts v (taken) back in the cell after a change in
+// place at the place path p says, and tells the readers of what changed
+// (CPUTP; vm/path.h's ak_path_put).
+void ak_vm_cell_putp(void *cell, ak_val v, const uint8_t *p, uint32_t n, const ak_val *args);
+// ak_vm_cell_keys subscribes the running computation to the keys at the
+// field path fields (nf of them) of the items of the array at path p
+// below the cell: a for's (vm/path.h's ak_path_keys).
+void ak_vm_cell_keys(void *cell, const uint8_t *p, uint32_t n, const ak_val *args, const uint16_t *fields, uint16_t nf);
+// ak_vm_cell_nodes counts the path nodes below a cell (tests).
+uint32_t ak_vm_cell_nodes(void *cell);
 ak_val ak_vm_memo_new(ak_closure *c, ak_kind k);
 ak_val ak_vm_memo_get(void *memo);
 ak_val ak_vm_acc_value(ak_val v, ak_kind k);

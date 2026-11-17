@@ -74,8 +74,14 @@ void ak_signal_write(ak_node *n) {
 	}
 }
 
+void ak_wsignal_init(ak_wsignal *s, void (*unwatched)(ak_wsignal *s)) {
+	ak_signal_init(&s->node);
+	s->node.flags = AK_F_UNWATCH;
+	s->unwatched = unwatched;
+}
+
 void ak_signal_drop(ak_node *n) {
-	n->flags |= AK_F_DISPOSED;
+	n->flags = (n->flags | AK_F_DISPOSED) & ~(uint32_t)AK_F_UNWATCH;
 	ak_sig_unlink_all_subs(n);
 }
 
@@ -265,6 +271,8 @@ void ak_untrack(void (*fn)(void *ctx), void *ctx) {
 }
 
 bool ak_tracking(void) { return g->active != NULL; }
+
+bool ak_signal_in_memo(void) { return g->in_memo > 0; }
 
 void ak_batch_begin(void) { g->batch_depth++; }
 

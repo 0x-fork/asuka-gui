@@ -66,8 +66,11 @@ static ak_link *unlink(ak_link *l) {
 	if (l->prev_sub) l->prev_sub->next_sub = l->next_sub;
 	else dep->subs = l->next_sub;
 	free_link(l);
-	// A follow keeps its sources: a value set stands until they change.
-	if (!dep->subs && (dep->flags & (AK_F_MEMO | AK_F_FOLLOW)) == AK_F_MEMO) ak_sig_memo_unwatched((ak_comp *)dep);
+	if (!dep->subs) {
+		// A follow keeps its sources: a value set stands until they change.
+		if ((dep->flags & (AK_F_MEMO | AK_F_FOLLOW)) == AK_F_MEMO) ak_sig_memo_unwatched((ak_comp *)dep);
+		else if (dep->flags & AK_F_UNWATCH) ((ak_wsignal *)dep)->unwatched((ak_wsignal *)dep);
+	}
 	return next;
 }
 

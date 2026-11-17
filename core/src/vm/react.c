@@ -3,6 +3,7 @@
 #include "vm/vm_int.h"
 #include "signal/signal.h"
 #include "vm/keep.h"
+#include "vm/path.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -15,6 +16,11 @@
 // ak_follow). Reads and writes of a cell check which it is (CELL_FOLLOW,
 // one branch); a follow's readers follow its ak_follow, not the cell's
 // node.
+//
+// A cell's readers follow paths below it (rfcs/0013, vm/path.h): its
+// own node is the root, read whole; paths, the nodes below it, made as
+// they're read. A follow's paths are read whole: its readers follow its
+// ak_follow, whose value its initializer replaces.
 
 typedef struct {
 	ak_opaque h;
@@ -25,6 +31,7 @@ typedef struct {
 	// writing it notes for the panic of a loop (ak_signal_note_write).
 	uint16_t name_off, name_len;
 	ak_str *key;  // retained; NULL for a cell made without one
+	ak_pnode *paths;  // the paths read below it (NULL: none)
 } cell;
 
 enum {
@@ -32,7 +39,8 @@ enum {
 	CELL_FOLLOW = 2,  // a follow: the cell is a follow's first field
 };
 
-typedef struct {
+typedef struct follow follow;
+struct follow {
 	cell c;
 	ak_follow *f;        // NULL once the graph let go of it
 	ak_closure *update;  // the initializer's thunk; NULL once settled or its owner went
@@ -40,7 +48,7 @@ typedef struct {
 	ak_box *selfbox;     // a scalar's current value as T?, reused while only it holds it
 	bool self;           // the thunk takes the state's current value (T?)
 	bool has;            // computed or set once
-} follow;
+};
 
 static void cell_drop(ak_opaque *o) {
 	cell *c = (cell *)o;
@@ -50,11 +58,14 @@ static void cell_drop(ak_opaque *o) {
 		ak_release(((follow *)c)->selfbox);
 	}
 	ak_release(c->key);
+	ak_path_free(&c->paths);
 	ak_signal_drop(&c->node);
 	ak_release_val(c->v, (ak_kind)c->kind);
 }
 
 static inline bool is_follow(const cell *c) { return (c->h.h.flags & CELL_FOLLOW) != 0; }
+
+static ak_val follow_get(follow *w, bool track);
 
 // cell_name keeps key as c's name: what's between its last . and its #.
 static void cell_name(cell *c, ak_str *key) {
@@ -241,9 +252,10 @@ void ak_vm_cell_set(void *p, ak_val v) {
 	}
 	ak_val old = c->v;
 	c->v = v;
-	ak_release_val(old, (ak_kind)c->kind);
 	cell_wrote(c);
-	ak_signal_write(&c->node);
+	if (c->paths) ak_path_set(&c->paths, &c->node, old, v, (ak_kind)c->kind);
+	else ak_signal_write(&c->node);
+	ak_release_val(old, (ak_kind)c->kind);
 }
 
 ak_val ak_vm_cell_take(void *p) {
@@ -273,8 +285,52 @@ void ak_vm_cell_put(void *p, ak_val v) {
 	ak_release_val(c->v, (ak_kind)c->kind);
 	c->v = v;
 	cell_wrote(c);
-	ak_signal_write(&c->node);
+	if (c->paths) {
+		static const uint8_t all[1] = {AK_PS_ALL};
+		ak_path_put(&c->paths, &c->node, v, (ak_kind)c->kind, all, 1, NULL);
+	} else {
+		ak_signal_write(&c->node);
+	}
 }
+
+ak_val ak_vm_cell_path(void *p, const uint8_t *path, uint32_t n, const ak_val *args, bool track) {
+	cell *c = p;
+	ak_val out = {0};
+	if (AK_UNLIKELY(is_follow(c))) {
+		// Read whole (its ak_follow), and the path in its value.
+		ak_val v = follow_get((follow *)c, track);
+		if (ak_error_pending()) return out;
+		ak_path_read(NULL, NULL, v, (ak_kind)c->kind, path, n, args, false, &out);
+		ak_release_val(v, (ak_kind)c->kind);
+		return out;
+	}
+	ak_path_read(&c->paths, &c->node, c->v, (ak_kind)c->kind, path, n, args, track && ak_tracking(), &out);
+	return out;
+}
+
+void ak_vm_cell_putp(void *p, ak_val v, const uint8_t *path, uint32_t n, const ak_val *args) {
+	cell *c = p;
+	if (AK_UNLIKELY(is_follow(c))) {
+		ak_vm_cell_put(p, v);
+		return;
+	}
+	ak_release_val(c->v, (ak_kind)c->kind);
+	c->v = v;
+	cell_wrote(c);
+	ak_path_put(&c->paths, &c->node, v, (ak_kind)c->kind, path, n, args);
+}
+
+void ak_vm_cell_keys(void *p, const uint8_t *path, uint32_t n, const ak_val *args, const uint16_t *fields, uint16_t nf) {
+	cell *c = p;
+	if (AK_UNLIKELY(is_follow(c))) {
+		ak_val v = follow_get((follow *)c, true);
+		ak_release_val(v, (ak_kind)c->kind);
+		return;
+	}
+	if (ak_tracking()) ak_path_keys(&c->paths, path, n, args, fields, nf);
+}
+
+uint32_t ak_vm_cell_nodes(void *p) { return ak_path_nodes(((cell *)p)->paths); }
 
 // ---- Errors between the VM and the graph ----
 //
