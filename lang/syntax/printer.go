@@ -1177,7 +1177,9 @@ func (p *printer) expr1(x Expr) {
 	case *ArrayExpr:
 		p.list("[", "]", x.Start, x.End-1, exprNodes(x.Elems))
 	case *MapExpr:
-		if len(x.Entries) == 0 && !p.commentsIn(x.Start, x.End) {
+		if len(x.Entries) == 0 {
+			// A comment inside goes above the line: [ // … :] can't
+			// hold one on lines of its own as an array can.
 			p.write("[:]")
 			return
 		}

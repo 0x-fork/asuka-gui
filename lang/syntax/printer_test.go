@@ -224,6 +224,9 @@ func TestFormatCases(t *testing.T) {
 		// stays above what follows.
 		{"// a\n;\nlet x = 1", "// a\n\nlet x = 1\n"},
 		{"//\n;", "//\n"},
+		// An empty map's comments go above its line.
+		{"let m = [/* e */ :]", "/* e */\nlet m = [:]\n"},
+		{"fn f() {\n  g([ // none\n  :])\n}", "fn f() {\n  // none\n  g([:])\n}\n"},
 		{"fn f() {\n  let x = [1, // one\n    2]\n}", "fn f() {\n  let x = [\n    1, // one\n    2,\n  ]\n}\n"},
 		// Strings print as written.
 		{"let s = \"a\\n{b}\\{c\"", "let s = \"a\\n{b}\\{c\"\n"},
