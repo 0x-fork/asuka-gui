@@ -53,6 +53,10 @@ struct ak_owner {
 	AK_VEC(ak_cleanup) cleanups;
 	uint32_t refs;
 	bool attached, disposed;
+	// doomed: made under a disposed owner (or a doomed one), by code still
+	// running under it. Its computations never run; the code's owner lets
+	// go of it as the code returns (ak_sig_owner_settle).
+	bool doomed;
 };
 
 struct ak_comp {
@@ -134,6 +138,7 @@ void ak_sig_panic(const char *fmt, ...) AK_PRINTF(1, 2);
 // owner.c
 void ak_sig_owner_attach(ak_owner *o, ak_owner *parent);
 void ak_sig_owner_clean(ak_owner *o);
+void ak_sig_owner_settle(ak_owner *o);
 void ak_sig_handle_error(ak_owner *o, void *err);
 
 // thread.c

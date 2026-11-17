@@ -1324,4 +1324,57 @@ TEST(memo_disposes_itself_while_read) {
 	ak_owner_dispose(r);
 }
 
+// ---- Made under a disposed owner: an effect that disposes its own root
+// (and so itself) and goes on to register a cleanup and make effects, a
+// memo and an owner. The cleanup runs at once; what it made never runs
+// and is let go of as the effect returns, the effect then freed.
+
+static struct {
+	isig a, b;
+	ak_owner *root;
+	imemo m;
+	int cleanups, child_runs, dropped, made;
+} mud;
+
+static void mud_drop(void *ctx) { mud.dropped++; }
+static const ak_comp_info mud_info = {.drop = mud_drop};
+static void mud_cleanup(void *ctx) { mud.cleanups++; }
+static void mud_child(void *ctx) {
+	get(&mud.b);
+	mud.child_runs++;
+}
+static int mud_memo(void *ctx) { return get(&mud.b); }
+static void mud_under(void *ctx) { ak_effect_new(mud_child, NULL, AK_EFFECT_USER, &mud_info); }
+static void mud_effect(void *ctx) {
+	if (get(&mud.a) != 1) return;
+	ak_owner_dispose(mud.root);
+	ak_on_cleanup(mud_cleanup, NULL);
+	CHECK_EQ_INT(mud.cleanups, 1);
+	ak_effect_new(mud_child, NULL, AK_EFFECT_USER, &mud_info);
+	ak_effect_new(mud_child, NULL, AK_EFFECT_RENDER, &mud_info);
+	imemo_init(&mud.m, mud_memo, NULL);
+	mget(&mud.m);  // disposed as it's made: never computes
+	ak_with_owner(ak_owner_new(), mud_under, NULL);
+	mud.made++;
+}
+static void mud_build(void *ctx, ak_owner *root) {
+	mud.root = root;
+	ak_effect_new(mud_effect, NULL, AK_EFFECT_USER, &mud_info);
+}
+
+TEST(made_under_a_disposed_owner) {
+	memset(&mud, 0, sizeof mud);
+	ak_root(mud_build, NULL);
+	set(&mud.a, 1);
+	CHECK_EQ_INT(mud.made, 1);
+	CHECK_EQ_INT(mud.cleanups, 1);
+	CHECK_EQ_INT(mud.m.runs, 0);
+	CHECK_EQ_INT(mud.child_runs, 0);
+	set(&mud.b, 1);
+	set(&mud.b, 2);
+	CHECK_EQ_INT(mud.child_runs, 0);
+	CHECK(!mud.a.n.subs && !mud.b.n.subs);
+	CHECK_EQ_INT(mud.dropped, 4);  // the effect and the three it made: none kept
+}
+
 T_MAIN()

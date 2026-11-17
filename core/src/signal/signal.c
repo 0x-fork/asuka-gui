@@ -81,6 +81,7 @@ static ak_comp *comp_new(uint32_t flags, void *ctx, const ak_comp_info *info) {
 	c->owner.comp = c;
 	c->owner.refs = 1;
 	ak_sig_owner_attach(&c->owner, g->owner);
+	if (c->owner.doomed) c->node.flags |= AK_F_DISPOSED;  // never runs
 	return c;
 }
 
@@ -139,6 +140,7 @@ bool ak_sig_memo_update(ak_comp *m) {
 	g->owner = prev_owner;
 	if (m->node.flags & AK_F_DISPOSED) ak_sig_unlink_all_deps(m);
 	else ak_sig_end_tracking(m);
+	ak_sig_owner_settle(&m->owner);
 	g->frame = f.prev;
 	if (f.failed) {
 		m->err = f.err;
@@ -175,6 +177,7 @@ static void effect_update(ak_comp *e) {
 	// After an error too: it re-runs when what it read so far changes.
 	if (e->node.flags & AK_F_DISPOSED) ak_sig_unlink_all_deps(e);
 	else ak_sig_end_tracking(e);
+	ak_sig_owner_settle(&e->owner);
 	g->frame = f.prev;
 	if (f.failed) ak_sig_handle_error(&e->owner, f.err);
 	ak_owner_release(&e->owner);
@@ -185,7 +188,9 @@ ak_effect *ak_effect_new(void (*run)(void *ctx), void *ctx, uint32_t flags, cons
 	ak_comp *e = comp_new(AK_F_EFFECT | (render ? AK_F_RENDER : AK_F_DIRTY), ctx, info);
 	e->fn.run = run;
 	e->seq = ++g->seq;
-	if (render) {
+	if (e->node.flags & AK_F_DISPOSED) {
+		// Made under a disposed owner: never runs.
+	} else if (render) {
 		effect_update(e);
 	} else {
 		ak_sig_enqueue(e);
