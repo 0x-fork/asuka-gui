@@ -160,6 +160,12 @@ enum {
 // borrowed from the owner.
 ak_effect *ak_effect_new(void (*run)(void *ctx), void *ctx, uint32_t flags, const ak_comp_info *info);
 ak_owner *ak_effect_owner(ak_effect *e);
+// ak_effect_stale reports whether e has yet to run since what it read
+// changed (or it was disposed): what it keeps up to date isn't, for now.
+bool ak_effect_stale(const ak_effect *e);
+// ak_current_effect is the effect running now, tracking or not (NULL:
+// none).
+ak_effect *ak_current_effect(void);
 
 // Tracking and batching.
 

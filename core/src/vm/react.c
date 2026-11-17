@@ -460,18 +460,36 @@ typedef struct {
 // read whole, then the path in its value). Its arguments are values,
 // but for those that are cells, read as it's read: a row's index, so a
 // row that moves reads its item at its new place.
+// A row of a for over a path: what its accessor needs to read its item
+// where the for put it. Between a write that moves or removes items and
+// the for's next run (the rest of a handler that wrote), a row's index
+// is the for's last; an untracked read then reads the element as the
+// for last placed it (as a row's item cell held it before rfcs/0013),
+// as one does once the row is gone. Tracked reads run after the for
+// (bindings are made after it), so they read the place.
+typedef struct rowref {
+	ak_opaque h;
+	ak_effect *eff;        // the for's, NULL once the row is gone (rows go before their for's effect)
+	ak_val last;           // the element, as the for last placed it
+	uint8_t ik;
+	struct rowref *parent; // the row this row's for is in, if any: retained
+} rowref;
+
 typedef struct {
 	void *root;      // a cell, or an accessor: retained
 	uint8_t *steps;  // the path, spelled (vm/path.h)
 	uint32_t n, nargs;
 	ak_val *args;
 	uint8_t *kinds;  // each argument's kind; AK_K_VOID: a cell of an int
+	rowref *row;     // a row's item, or a path below one: retained
+	uint32_t row_n, row_a;  // the steps and arguments up to the row's item
 } apath;
 
 // apath_free lets go of what ap holds (it's its accessor's: one
 // allocation, the accessor, then ap, its arguments, its kinds and its
 // steps).
 static void apath_free(apath *p) {
+	ak_release(p->row);
 	ak_release(p->root);
 	for (uint32_t i = 0; i < p->nargs; i++) {
 		if (p->kinds[i] == AK_K_VOID) ak_release(p->args[i].p);
@@ -597,6 +615,47 @@ void ak_vm_model_set(void *p, ak_val v) {
 
 // ---- Accessors of paths (rfcs/0013) ----
 
+static acc *acc_of(void *p) {
+	ak_obj *o = p;
+	return o && o->tag == AK_TAG_ACC ? (acc *)p : NULL;
+}
+
+static void rowref_drop(ak_opaque *o) {
+	rowref *r = (rowref *)o;
+	ak_release_val(r->last, (ak_kind)r->ik);
+	ak_release(r->parent);
+}
+
+void *ak_vm_rowref_new(void *parent_acc, ak_effect *eff) {
+	rowref *r = ak_opaque_new(AK_TAG_OPAQUE, sizeof(rowref), rowref_drop);
+	r->eff = eff;
+	acc *pa = acc_of(parent_acc);
+	if (pa && pa->mode == ACC_PATH && ((apath *)pa->v.p)->row) r->parent = ak_retain(((apath *)pa->v.p)->row);
+	return r;
+}
+
+void ak_vm_rowref_set(void *p, ak_val item, ak_kind ik) {
+	rowref *r = p;
+	ak_retain_val(item, ik);
+	ak_release_val(r->last, (ak_kind)r->ik);
+	r->last = item;
+	r->ik = (uint8_t)ik;
+}
+
+void ak_vm_rowref_gone(void *p) {
+	rowref *r = p;
+	r->eff = NULL;  // an accessor that outlives the row reads its last item
+}
+
+// rowref_stale reports whether a row's place may not be its item's now:
+// its for (or one it's in) has yet to run since its items changed, or the
+// row is gone.
+static bool rowref_stale(const rowref *r) {
+	for (; r; r = r->parent)
+		if (!r->eff || ak_effect_stale(r->eff)) return true;
+	return false;
+}
+
 // step_arg is the kind of the argument path step s takes, or AK_K_VOID
 // for none; *w is the bytes it spans.
 static ak_kind step_arg(const uint8_t *p, uint32_t n, uint32_t j, uint32_t *w) {
@@ -634,11 +693,6 @@ static uint32_t path_kinds(const uint8_t *p, uint32_t n, uint8_t *kinds) {
 	return k;
 }
 
-static acc *acc_of(void *p) {
-	ak_obj *o = p;
-	return o && o->tag == AK_TAG_ACC ? (acc *)p : NULL;
-}
-
 // acc_path_new makes an accessor (of kind k) of the path p (args its
 // arguments, index a cell of an int as its last argument when not NULL)
 // below base: a cell, or an accessor, whose path it continues when it's
@@ -660,6 +714,11 @@ static acc *acc_path_new(void *base, const uint8_t *p, uint32_t n, const ak_val 
 	if (bp) ap->root = ak_retain(bp->root);
 	else if (b && b->mode == ACC_CELL) ap->root = ak_retain(b->v.p);
 	else ap->root = ak_retain(base);
+	if (bp && bp->row) {
+		ap->row = ak_retain(bp->row);
+		ap->row_n = bp->row_n;
+		ap->row_a = bp->row_a;
+	}
 	ap->n = tn;
 	ap->nargs = ta;
 	ap->args = (ak_val *)(ap + 1);
@@ -690,9 +749,17 @@ ak_val ak_vm_acc_path(void *base, const uint8_t *p, uint32_t n, const ak_val *ar
 	return (ak_val){.p = acc_path_new(base, p, n, args, NULL, k)};
 }
 
-ak_val ak_vm_acc_row(void *base, void *index, ak_kind k) {
+ak_val ak_vm_acc_row(void *base, void *index, ak_kind k, void *row) {
 	static const uint8_t step[1] = {AK_PS_INDEX};
-	return (ak_val){.p = acc_path_new(base, step, 1, NULL, index, k)};
+	acc *a = acc_path_new(base, step, 1, NULL, index, k);
+	if (row) {
+		apath *ap = a->v.p;
+		ak_release(ap->row);
+		ap->row = ak_retain(row);
+		ap->row_n = ap->n;
+		ap->row_a = ap->nargs;
+	}
+	return (ak_val){.p = a};
 }
 
 // read_below reads the path p below what a (not a path's) reads: it,
@@ -708,10 +775,36 @@ static ak_val read_below(acc *a, const uint8_t *p, uint32_t n, const ak_val *arg
 
 enum { PATH_STEPS = 256, PATH_ARGS = 32 };
 
+// row_read reads ap's path past its row's item, then p, in the item as
+// its for last placed it: an untracked read while the row's place may
+// not be its item's (rowref).
+static ak_val row_read(apath *ap, const uint8_t *p, uint32_t n, const ak_val *args) {
+	uint8_t sbuf[PATH_STEPS];
+	ak_val abuf[PATH_ARGS];
+	uint32_t na = p ? path_kinds(p, n, NULL) : 0;
+	uint32_t sn = ap->n - ap->row_n, sa = ap->nargs - ap->row_a;
+	uint32_t tn = sn + n, ta = sa + na;
+	uint8_t *steps = tn <= PATH_STEPS ? sbuf : ak_alloc(tn ? tn : 1);
+	ak_val *all = ta <= PATH_ARGS ? abuf : ak_alloc(sizeof(ak_val) * (ta ? ta : 1));
+	if (sn) memcpy(steps, ap->steps + ap->row_n, sn);
+	if (n) memcpy(steps + sn, p, n);
+	for (uint32_t i = 0; i < sa; i++) {
+		uint32_t j = ap->row_a + i;
+		all[i] = ap->kinds[j] == AK_K_VOID ? ak_vm_cell_get(ap->args[j].p, false) : ap->args[j];
+	}
+	for (uint32_t i = 0; i < na; i++) all[sa + i] = args[i];
+	ak_val out = {0};
+	ak_path_read(NULL, NULL, ap->row->last, (ak_kind)ap->row->ik, steps, tn, all, false, false, &out);
+	if (steps != sbuf) ak_free(steps);
+	if (all != abuf) ak_free(all);
+	return out;
+}
+
 // apath_read reads ap's path, then p (args its arguments), below its
 // root: its cells' arguments read, tracked.
 static ak_val apath_read(apath *ap, ak_kind k, const uint8_t *p, uint32_t n, const ak_val *args) {
 	AK_UNUSED(k);
+	if (ap->row && !ak_tracking() && rowref_stale(ap->row)) return row_read(ap, p, n, args);
 	uint8_t sbuf[PATH_STEPS];
 	ak_val abuf[PATH_ARGS];
 	uint32_t na = p ? path_kinds(p, n, NULL) : 0;

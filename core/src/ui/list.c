@@ -83,6 +83,7 @@ typedef struct list_t {
 	// effect runs (what a key's function reads followed).
 	bool over_path;
 	ak_fsrc src;
+	ak_effect *eff;  // its effect: what its rows' items follow (borrowed)
 	int64_t n;
 	ak_kind ik;
 	AK_VEC(ak_val) keys;
@@ -404,7 +405,7 @@ static void update(list_t *st, ak_arr *list) {
 		if (c->header) continue;  // a section's ID keeps its key; the host rebinds the rest
 		lid *x = find_id(st->ids, st->ids_cap, c->row.key, c->row.hash, st->key_kind);
 		if (!x->hash) continue;
-		if (st->over_path) ak_row_move(&c->row, x->index);
+		if (st->over_path) ak_row_move(&c->row, list->data[x->index], ik, x->index);
 		else ak_row_update(&c->row, list->data[x->index], ik, x->index);
 	}
 }
@@ -525,7 +526,7 @@ static void lazy_for(ak_view *v, ak_closure *items, ak_closure *key, void *acc, 
 	if (st->owner) ak_owner_retain(st->owner);
 	st->path = ak_path_capture();
 	st->info = (ak_comp_info){.drop = items_drop, .label = "List"};
-	ak_effect_new(items_run, st, AK_EFFECT_RENDER, &st->info);
+	st->eff = ak_effect_new(items_run, st, AK_EFFECT_RENDER, &st->info);
 }
 
 void ak_ui_lazy_for(ak_view *v, ak_closure *items, ak_closure *key, ak_closure *row, ak_kind key_kind) { lazy_for(v, items, key, NULL, (ak_val){0}, row, key_kind); }
@@ -603,7 +604,7 @@ typedef struct {
 static void make_row(void *ctx) {
 	make_ctx *m = ctx;
 	lcell *c = m->c;
-	if (m->st->over_path) ak_row_make_at(&c->row, m->st->e->r, m->st->row, m->st->path, m->st->owner, m->st->src.acc, m->ik, m->i, m->st->key_kind);
+	if (m->st->over_path) ak_row_make_at(&c->row, m->st->e->r, m->st->row, m->st->path, m->st->owner, m->st->src.acc, m->st->eff, m->item, m->ik, m->i, m->st->key_kind);
 	else ak_row_make(&c->row, m->st->e->r, m->st->row, m->st->path, m->st->owner, m->item, m->ik, m->i, m->st->key_kind);
 	if (c->row.el) {
 		ak_view_append(c->el, c->row.el);
@@ -900,6 +901,8 @@ static bool cell_id_ok(list_t *st, ak_id cell) {
 	return !v || find_cell(st, cell) >= 0;
 }
 
+static void list_bind(list_t *st, ak_view *e, int64_t i, ak_id cell, ak_arr *items);
+
 void ak_list_bind(ak_view *e, int64_t i, ak_id cell) {
 	list_t *st = e->impl;
 	if (!cell_id_ok(st, cell)) return;
@@ -908,8 +911,23 @@ void ak_list_bind(ak_view *e, int64_t i, ak_id cell) {
 		return;
 	}
 	if (i >= count(st)) return;
-	ak_val item = st->over_path ? (ak_val){0} : st->list->data[i];
-	ak_kind ik = st->over_path ? st->ik : ak_arr_kind(st->list);
+	if (!st->over_path) {
+		list_bind(st, e, i, cell, st->list);
+		return;
+	}
+	// Over a path: its items now, read for this.
+	ak_arr *items = ak_fsrc_items(&st->src);
+	if (ak_error_pending()) {
+		ak_ui_raise_pending(st->owner);
+	} else if (items && i < items->len) {
+		list_bind(st, e, i, cell, items);
+	}
+	ak_release(items);
+}
+
+static void list_bind(list_t *st, ak_view *e, int64_t i, ak_id cell, ak_arr *items) {
+	ak_val item = items->data[i];
+	ak_kind ik = ak_arr_kind(items);
 	reached(st, i);
 	reached_start(st, i);
 	int32_t ci = find_cell(st, cell);
@@ -922,7 +940,7 @@ void ak_list_bind(ak_view *e, int64_t i, ak_id cell) {
 		// A recycled cell: its row takes the item, which updates only the
 		// props that differ.
 		lcell *c = st->cells.data[ci];
-		ak_val k = st->over_path ? key_at(st, i) : key_of(st, item, i);
+		ak_val k = st->over_path ? ak_fsrc_key(&st->src, items, i, st->key_kind) : key_of(st, item, i);
 		if (ak_error_pending()) {
 			ak_ui_raise_pending(st->owner);
 			return;
@@ -930,11 +948,11 @@ void ak_list_bind(ak_view *e, int64_t i, ak_id cell) {
 		ak_release_val(c->row.key, st->key_kind);
 		c->row.key = k;
 		c->row.hash = hash_of(k, st->key_kind);
-		if (st->over_path) ak_row_move(&c->row, i);
+		if (st->over_path) ak_row_move(&c->row, item, ik, i);
 		else ak_row_update(&c->row, item, ik, i);
 		return;
 	}
-	ak_val k = st->over_path ? key_at(st, i) : key_of(st, item, i);
+	ak_val k = st->over_path ? ak_fsrc_key(&st->src, items, i, st->key_kind) : key_of(st, item, i);
 	if (ak_error_pending()) {
 		ak_ui_raise_pending(st->owner);
 		return;

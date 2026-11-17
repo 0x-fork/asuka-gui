@@ -273,15 +273,17 @@ void ak_row_make(ak_row *rw, ak_ui_root *r, ak_closure *row, ak_path *path, ak_o
 	rw->el = rb.out;
 }
 
-void ak_row_make_at(ak_row *rw, ak_ui_root *r, ak_closure *row, ak_path *path, ak_owner *parent, void *acc, ak_kind item_kind, int64_t i, ak_kind key_kind) {
+void ak_row_make_at(ak_row *rw, ak_ui_root *r, ak_closure *row, ak_path *path, ak_owner *parent, void *acc, ak_effect *eff, ak_val item, ak_kind item_kind, int64_t i, ak_kind key_kind) {
 	rw->cell_item = NULL;
 	rw->cell_index = ak_vm_cell_new((ak_val){.i = i}, AK_K_INT, NULL).p;
+	rw->rowref = ak_vm_rowref_new(acc, eff);
+	ak_vm_rowref_set(rw->rowref, item, item_kind);
 	rw->owner = ak_root_under(parent);
 	ak_buf seg = {0};
 	key_seg(&seg, rw->key, key_kind);
 	ak_path *prev = ak_path_push(path, (const char *)seg.data, seg.len);
 	ak_buf_free(&seg);
-	row_build rb = {r, row, {ak_vm_acc_row(acc, rw->cell_index, item_kind), ak_vm_acc_cell(rw->cell_index)}, NULL};
+	row_build rb = {r, row, {ak_vm_acc_row(acc, rw->cell_index, item_kind, rw->rowref), ak_vm_acc_cell(rw->cell_index)}, NULL};
 	ak_with_owner(rw->owner, build_row, &rb);
 	ak_release(rb.args[0].p);
 	ak_release(rb.args[1].p);
@@ -289,7 +291,10 @@ void ak_row_make_at(ak_row *rw, ak_ui_root *r, ak_closure *row, ak_path *path, a
 	rw->el = rb.out;
 }
 
-void ak_row_move(ak_row *rw, int64_t i) { ak_vm_cell_set(rw->cell_index, (ak_val){.i = i}); }
+void ak_row_move(ak_row *rw, ak_val item, ak_kind item_kind, int64_t i) {
+	ak_vm_rowref_set(rw->rowref, item, item_kind);
+	ak_vm_cell_set(rw->cell_index, (ak_val){.i = i});
+}
 
 // ---- A for over a path's items ----
 
@@ -364,6 +369,11 @@ void ak_row_free(ak_row *rw, ak_kind key_kind) {
 	rw->owner = NULL;
 	ak_release(rw->cell_item);
 	ak_release(rw->cell_index);
+	if (rw->rowref) {
+		ak_vm_rowref_gone(rw->rowref);
+		ak_release(rw->rowref);
+		rw->rowref = NULL;
+	}
 	ak_release_val(rw->key, key_kind);
 }
 
@@ -468,13 +478,13 @@ static void reconcile(for_t *s, ak_arr *list) {
 			s->taken.data[o] = 1;
 			ak_row rw = s->rows.data[o];
 			ak_release_val(k, s->key_kind);
-			if (s->over_path) ak_row_move(&rw, i);
+			if (s->over_path) ak_row_move(&rw, it, ik, i);
 			else ak_row_update(&rw, it, ik, i);
 			ak_vec_push(&s->next, rw);
 			continue;
 		}
 		ak_row rw = {.key = k, .hash = hash, .old = -1};
-		if (s->over_path) ak_row_make_at(&rw, r, s->row, s->path, s->owner, s->src.acc, ik, i, s->key_kind);
+		if (s->over_path) ak_row_make_at(&rw, r, s->row, s->path, s->owner, s->src.acc, ak_current_effect(), it, ik, i, s->key_kind);
 		else ak_row_make(&rw, r, s->row, s->path, s->owner, it, ik, i, s->key_kind);
 		ak_vec_push(&s->next, rw);
 	}

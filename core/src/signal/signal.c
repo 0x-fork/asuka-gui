@@ -254,6 +254,10 @@ ak_effect *ak_effect_new(void (*run)(void *ctx), void *ctx, uint32_t flags, cons
 
 ak_owner *ak_effect_owner(ak_effect *e) { return &e->owner; }
 
+bool ak_effect_stale(const ak_effect *e) { return (e->node.flags & (AK_F_DIRTY | AK_F_PENDING | AK_F_DISPOSED)) != 0; }
+
+ak_effect *ak_current_effect(void) { return g->effect; }
+
 // Tracking and batching.
 
 void *ak_untrack_begin(void) {

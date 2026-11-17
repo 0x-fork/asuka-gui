@@ -107,6 +107,38 @@ test "a List's for over a path" {
   app.expect("a", "b", "c")
 }
 
+// A row's handler that moves or removes items, then reads its own item,
+// reads it as the for placed it: its place is the for's last until the
+// for runs again, after the handler.
+component Removing {
+  state todos = [Todo(id: 1, title: "a"), Todo(id: 2, title: "b"), Todo(id: 3, title: "c")]
+
+  Column {
+    for t in todos key t.id {
+      Button("remove {t.title}") {
+        on press {
+          todos.removeWhere(x => x.id == t.id)
+          print("removed {t.id} {t.title}")
+        }
+      }
+      Button("first {t.title}") {
+        on press {
+          todos.insert(Todo(id: 9 + t.id, title: "new"), at: 0)
+          print("before {t.id} {t.title}")
+        }
+      }
+    }
+  }
+}
+
+test "a row's handler reads its own item after moving it" {
+  let app = mount(Removing())
+  app.tap("remove a")
+  app.tap("first c")
+  app.tap("remove b")
+  app.expect("remove new", "remove c")
+}
+
 // Output:
 // name
 // title 1
@@ -145,3 +177,7 @@ test "a List's for over a path" {
 // -- tap again
 // done 2
 // ok a List's for over a path
+// removed 1 a
+// before 3 c
+// removed 2 b
+// ok a row's handler reads its own item after moving it

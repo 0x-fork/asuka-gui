@@ -460,6 +460,7 @@ typedef struct {
 	uint32_t hash;
 	void *cell_item;   // the item's cell (vm), and its index's
 	void *cell_index;
+	void *rowref;      // a for over a path's: its item as the for placed it (vm)
 	ak_view *el;       // retained
 	ak_owner *owner;
 	int64_t old;
@@ -508,10 +509,13 @@ ak_arr *ak_fsrc_items(ak_fsrc *s);
 // an error pending).
 ak_val ak_fsrc_key(ak_fsrc *s, ak_arr *items, int64_t i, ak_kind kk);
 // ak_row_make_at builds a row of the element at index i of the array acc
-// reads: its item, that element's accessor (ak_row_make's otherwise).
-void ak_row_make_at(ak_row *rw, ak_ui_root *r, ak_closure *row, ak_path *path, ak_owner *parent, void *acc, ak_kind item_kind, int64_t i, ak_kind key_kind);
-// ak_row_move gives a kept row of a for over a path its new index.
-void ak_row_move(ak_row *rw, int64_t i);
+// reads (item, as it is now), made by eff (its for's effect): its item,
+// that element's accessor (ak_row_make's otherwise).
+void ak_row_make_at(ak_row *rw, ak_ui_root *r, ak_closure *row, ak_path *path, ak_owner *parent, void *acc, ak_effect *eff, ak_val item, ak_kind item_kind, int64_t i, ak_kind key_kind);
+// ak_row_move gives a kept row of a for over a path its new index, and
+// its item there (what an untracked read reads until the for runs again
+// after a change of its items).
+void ak_row_move(ak_row *rw, ak_val item, ak_kind item_kind, int64_t i);
 
 // ---- list.c ----
 
@@ -544,7 +548,10 @@ void ak_vm_cell_set(void *cell, ak_val v);  // takes v
 ak_val ak_vm_acc_cell(void *cell_or_memo);
 ak_val ak_vm_acc_get(void *acc);
 ak_val ak_vm_acc_path(void *base, const uint8_t *p, uint32_t n, const ak_val *args, ak_kind k);
-ak_val ak_vm_acc_row(void *base, void *index, ak_kind k);
+ak_val ak_vm_acc_row(void *base, void *index, ak_kind k, void *row);
+void *ak_vm_rowref_new(void *parent_acc, ak_effect *eff);
+void ak_vm_rowref_set(void *row, ak_val item, ak_kind ik);
+void ak_vm_rowref_gone(void *row);
 ak_val ak_vm_acc_getp(void *acc, const uint8_t *p, uint32_t n, const ak_val *args);
 void ak_vm_acc_keys(void *acc, const uint16_t *fields, uint16_t nf);
 void ak_vm_acc_seek(void *acc, int64_t i);
