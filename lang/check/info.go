@@ -67,6 +67,9 @@ type Info struct {
 	DurationFloats map[*syntax.BinaryExpr]bool
 	// Operators: the binary operators a struct's method does (t + 1h).
 	Operators map[*syntax.BinaryExpr]*Operator
+	// AssignOps: the compound assignments a struct's or an enum's
+	// method does (t += 1h is t = t.add(1h)).
+	AssignOps map[*syntax.AssignStmt]*Operator
 	// Embedded: the file embed.text(…), bytes(…) or json(…) reads.
 	Embedded map[*syntax.CallExpr]string
 	// EmbeddedFiles: the files embed.texts(…) or files(…) names, by their
@@ -125,6 +128,7 @@ func newInfo() *Info {
 		EmbeddedFiles:  map[*syntax.CallExpr][]EmbeddedFile{},
 		EmbedPaths:     map[EmbedPath]bool{},
 		Operators:      map[*syntax.BinaryExpr]*Operator{},
+		AssignOps:      map[*syntax.AssignStmt]*Operator{},
 		LengthScales:   map[*syntax.BinaryExpr]bool{},
 		DurationFloats: map[*syntax.BinaryExpr]bool{},
 		Imports:        map[*syntax.ImportDecl]*Package{},

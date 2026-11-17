@@ -1626,25 +1626,40 @@ type Operator struct {
 	Compare bool
 }
 
-// operatorMethod finds the method of x's struct an operator calls
-// (std/time's Time: t + 1h, b - a, a < b), and its result.
+// operatorMethod finds the method of x's struct or enum an operator
+// calls (std/time's Time: t + 1h, b - a, a < b), and its result.
 func (c *Checker) operatorMethod(e *syntax.BinaryExpr, xt, yt Type) (Type, bool) {
-	n, ok := xt.(*Named)
-	if !ok || n.Obj.Kind != StructType {
+	o, res := c.findOperator(e.Op, xt, yt, nil)
+	if o == nil {
 		return nil, false
 	}
-	var names []string
-	compare := false
-	switch e.Op {
+	c.info.Operators[e] = o
+	return res, true
+}
+
+// operatorNames are the methods an operator may call, and whether it
+// compares.
+func operatorNames(op syntax.Token) (names []string, compare bool) {
+	switch op {
 	case syntax.ADD:
-		names = []string{"add"}
+		return []string{"add"}, false
 	case syntax.SUB:
-		names = []string{"sub", "minus"}
+		return []string{"sub", "minus"}, false
 	case syntax.LSS, syntax.LEQ, syntax.GTR, syntax.GEQ:
-		names, compare = []string{"compare"}, true
-	default:
-		return nil, false
+		return []string{"compare"}, true
 	}
+	return nil, false
+}
+
+// operatorCandidates are the methods of xt's struct or enum that op may
+// call, their signatures read: one parameter, neither async nor
+// throwing.
+func (c *Checker) operatorCandidates(op syntax.Token, xt Type) (fs []*Function, n *Named, compare bool) {
+	n, ok := xt.(*Named)
+	if !ok || n.Obj.Kind != StructType && n.Obj.Kind != EnumType {
+		return nil, nil, false
+	}
+	names, compare := operatorNames(op)
 	for _, name := range names {
 		f := n.Obj.Methods[name]
 		if f == nil {
@@ -1654,6 +1669,17 @@ func (c *Checker) operatorMethod(e *syntax.BinaryExpr, xt, yt Type) (Type, bool)
 		if f.Sig == nil || len(f.Sig.Params) != 1 || f.Sig.Async || f.Sig.Throws {
 			continue
 		}
+		fs = append(fs, f)
+	}
+	return fs, n, compare
+}
+
+// findOperator is the method op calls on an xt and a yt, and its result
+// (a comparison's: a bool); want, when set, is what the result must be
+// (x += y's: x's type).
+func (c *Checker) findOperator(op syntax.Token, xt, yt, want Type) (*Operator, Type) {
+	fs, n, compare := c.operatorCandidates(op, xt)
+	for _, f := range fs {
 		s := n.Subst()
 		pt, res := s.Apply(f.Sig.Params[0].Type), s.Apply(f.Sig.Result)
 		if !Identical(pt, yt) {
@@ -1665,10 +1691,34 @@ func (c *Checker) operatorMethod(e *syntax.BinaryExpr, xt, yt Type) (Type, bool)
 			}
 			res = Bool
 		}
-		c.info.Operators[e] = &Operator{Func: f, Recv: xt, Compare: compare}
-		return res, true
+		if want != nil && !Identical(res, want) {
+			continue
+		}
+		return &Operator{Func: f, Recv: xt, Compare: compare}, res
 	}
-	return nil, false
+	return nil, nil
+}
+
+// operatorParam is what x op= y's y is expected to be: the parameter of
+// the one method op calls on an xt that gives an xt back (nil: none, or
+// more than one).
+func (c *Checker) operatorParam(op syntax.Token, xt Type) Type {
+	fs, n, compare := c.operatorCandidates(op, xt)
+	if compare {
+		return nil
+	}
+	var param Type
+	for _, f := range fs {
+		s := n.Subst()
+		if !Identical(s.Apply(f.Sig.Result), xt) {
+			continue
+		}
+		if param != nil {
+			return nil
+		}
+		param = s.Apply(f.Sig.Params[0].Type)
+	}
+	return param
 }
 
 // MakeOptionalOrNil is t? (nil stays nil).

@@ -811,9 +811,19 @@ func (b *fb) assignStmt(s *syntax.AssignStmt) {
 		o := s.Op.AssignOp()
 		lv := b.prepare(s.Target)
 		vt := b.typeOf(s.Value)
+		apply := func(cur, dst int) int { return b.binop(o, cur, v, lt, vt, lt, dst) }
+		reads := false
+		if m := b.l.info.AssignOps[s]; m != nil {
+			// x += y is x = x.add(y): the method of x's type, which may
+			// read the place (a state's value), so it's read, not taken.
+			rt := b.typ(m.Recv)
+			idx := b.l.funcIndex(m.Func, nil, rt)
+			apply = func(cur, dst int) int { return b.invoke(idx, []int{cur, v}, b.kind(lt), dst, false) }
+			reads = true
+		}
 		if lv.kind == lvField || lv.kind == lvIndex && !lv.isMap {
 			// Read and write the element where it is.
-			b.update(lv.inner, func(rx int) {
+			b.updateWith(lv.inner, reads, func(rx int) {
 				var cur int
 				if lv.kind == lvField {
 					cur = b.getField(rx, lv.named, lv.field, -1)
@@ -821,7 +831,7 @@ func (b *fb) assignStmt(s *syntax.AssignStmt) {
 					cur = b.temp(b.kind(lt))
 					b.emit(op("IDX"), cur, rx, lv.idx)
 				}
-				r := b.binop(o, cur, v, lt, vt, lt, cur)
+				r := apply(cur, cur)
 				if lv.kind == lvField {
 					b.emit(op("SETF"), rx, lv.field.Index, r)
 				} else {
@@ -831,7 +841,7 @@ func (b *fb) assignStmt(s *syntax.AssignStmt) {
 			return
 		}
 		cur := b.get(lv)
-		r := b.binop(o, cur, v, lt, vt, lt, -1)
+		r := apply(cur, -1)
 		b.set(lv, r)
 	}
 }

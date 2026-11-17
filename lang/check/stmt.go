@@ -248,12 +248,23 @@ func (c *Checker) assignStmt(s *syntax.AssignStmt) {
 		want := numOnly(lt)
 		if s.Op.AssignOp().IsBitwise() {
 			want = Int
+		} else if p := c.operatorParam(s.Op.AssignOp(), lt); p != nil {
+			want = p
 		}
 		vt := c.expr(s.Value, want)
 		if IsInvalid(lt) || IsInvalid(vt) {
 			return
 		}
+		if o, _ := c.findOperator(s.Op.AssignOp(), lt, vt, lt); o != nil {
+			// x += y is x = x.add(y): the method of x's type.
+			c.info.AssignOps[s] = o
+			return
+		}
 		op := strings.TrimSuffix(s.Op.String(), "=")
+		if o, res := c.findOperator(s.Op.AssignOp(), lt, vt, nil); o != nil && !o.Compare {
+			c.errorf(s, "%s= is x = x %s y, and %s's %s gives %s, not %s", op, op, typeString(lt), o.Func.name, aType(res), aType(lt))
+			return
+		}
 		switch {
 		case s.Op.AssignOp().IsBitwise():
 			if lt != Int {
