@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime"
 	"slices"
 	"syscall"
 
@@ -69,6 +70,10 @@ asuka <command> --help lists its flags.
 }
 
 func main() {
+	if runtime.GOOS == "darwin" && runtime.GOARCH == "amd64" {
+		fmt.Fprintln(os.Stderr, "asuka: Asuka develops on Macs with Apple silicon, not Intel Macs (the apps it builds run on both: asuka build --arch amd64)")
+		os.Exit(1)
+	}
 	if len(os.Args) < 2 {
 		usage()
 		os.Exit(2)

@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -53,10 +52,8 @@ func newIOSToolchain(verbose bool) (*iosToolchain, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Apple silicon's simulator: the Macs Asuka develops on.
 	arch, goarch := "arm64", "arm64"
-	if runtime.GOARCH == "amd64" {
-		arch, goarch = "x86_64", "amd64"
-	}
 	return &iosToolchain{sdk: sdk, sdkName: "iphonesimulator", clang: clang, target: arch + "-apple-ios" + iosMin + "-simulator", goarch: goarch, verbose: verbose}, nil
 }
 
@@ -494,7 +491,7 @@ func pickSimulator(want string) (*simDevice, error) {
 		case want != "" && (d.UDID == want || d.Name == want):
 			pick = d
 		case want == "" && (d.State == "Booted" || d.State == "Booting") && strings.HasPrefix(d.Name, "iPhone") && pick == nil:
-			pick = d  // one that's up, or coming up
+			pick = d // one that's up, or coming up
 		}
 	}
 	if pick == nil && want == "" {

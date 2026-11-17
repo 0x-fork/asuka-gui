@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -107,7 +108,7 @@ func TestShellUpdateInfo(t *testing.T) {
 	src := shellUpdateApp(`Button("Info") { on press { out = await call("info", "") } }`)
 	// The player has no feed or key (only asuka build's builds do).
 	i := read(Run(t, src))
-	if i.Installable || i.Reason != "notConfigured" || i.Message == "" || i.Target != "darwin-universal" {
+	if i.Installable || i.Reason != "notConfigured" || i.Message == "" || i.Target != "darwin-"+runtime.GOARCH {
 		t.Fatalf("the player: %+v", i)
 	}
 	if i.Kind != "bundle" || !strings.HasSuffix(i.Root, ".app") || !strings.HasPrefix(i.Exe, i.Root+"/Contents/MacOS/") || i.Work != filepath.Dir(i.Root) || i.Name == "" {
@@ -115,7 +116,7 @@ func TestShellUpdateInfo(t *testing.T) {
 	}
 	// Configured, in a folder of the test's: it can.
 	cfg := filepath.Join(t.TempDir(), "asuka-app.json")
-	os.WriteFile(cfg, []byte(`{"name":"Mac Test","version":"1.0.0","updateFeed":"https://example.com/u","updateKey":"a2V5","updateTarget":"darwin-universal"}`), 0o644)
+	os.WriteFile(cfg, []byte(`{"name":"Mac Test","version":"1.0.0","updateFeed":"https://example.com/u","updateKey":"a2V5","updateTarget":"darwin-arm64"}`), 0o644)
 	i = read(RunWith(t, src, Options{Env: []string{"ASUKA_APP_CONFIG=" + cfg}}))
 	if !i.Installable || i.Reason != "" || i.Feed != "https://example.com/u" || i.Key != "a2V5" {
 		t.Fatalf("configured: %+v", i)

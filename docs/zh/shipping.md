@@ -6,7 +6,7 @@
 |---|---|---|---|
 | `ios` | `<Name>.ipa`，已为 App Store 签名 | 装有 Xcode 的 Mac | TestFlight、App Store（`asuka publish`） |
 | `android` | `<Name>.aab`，用你的上传密钥签名 | 装有 JDK、Android SDK 和 NDK 的任意系统 | Google Play（`asuka publish`） |
-| `mac` | `<Name>.app`，通用二进制；或 `.pkg`（`--appstore`） | 装有 Xcode 命令行工具的 Mac | 签名并公证后供用户下载；Mac App Store |
+| `mac` | `<Name>.app`（Apple 芯片；`--arch amd64`：Intel）；或 `.pkg`（`--appstore`） | 装有 Xcode 命令行工具的 Mac | 签名并公证后供用户下载；Mac App Store |
 | `windows` | `<Name>/`，内含 `.exe` 及其资源 | 装有 clang 的 Windows，或装有 Zig 的任意系统 | zip 压缩包，或你自己制作的安装程序、MSIX |
 | `linux` | `linux/`：一个安装前缀目录、一个 `.tar.gz`、一份 Flatpak 清单 | 装有 C 编译器的 Linux，或装有 Zig 的任意系统 | `.tar.gz`、Flatpak |
 | `web` | `web/`，一个静态网站 | 装有 Zig 的任意系统 | 任意 Web 服务器或 CDN |
@@ -167,7 +167,7 @@ asuka publish --platform android --track production --rollout 0.1
 asuka build --platform mac
 ```
 
-这条命令在 Mac 上生成 `dist/<Name>.app`：一个通用应用（同时支持 Apple 芯片和 Intel），要求 macOS 11 及以上。可执行文件是通用二进制，此外还有应用的设置（`Contents/Resources/asuka-app.json`）、Info.plist、图标、语言和资源，采用临时签名（ad hoc），可以在你自己的 Mac 上运行。和 iOS 一样，应用导入的包会从 `ios.usage` 中带上它们的用途说明（定位的用途说明在 Mac 上是 `NSLocationUsageDescription`，取自 `NSLocationWhenInUseUsageDescription`），以及强化运行时（hardened runtime）所需的对应 entitlement（`com.apple.security.device.camera`、`...audio-input`、`...personal-information.location` 等）。缺少这些 entitlement，用 Developer ID 签名的应用就无法访问相机、麦克风或用户数据。应用的原生包的 Swift 会针对两种架构编译进可执行文件（见[原生代码](native.md)）。使用了 `std/sqlite` 的应用，SQLite 也会针对两种架构编译进可执行文件（见[库文件](data.md#库文件)）。
+这条命令在 Mac 上生成 `dist/<Name>.app`：一个面向 Apple 芯片 Mac 的应用，要求 macOS 11 及以上。加上 `--arch amd64` 则生成面向 Intel Mac 的版本，这是单独的一次构建（不会合成一个同时支持两者、体积翻倍的通用应用）；你要支持哪些 Mac，就分别发布对应的版本。应用里有它的可执行文件、应用的设置（`Contents/Resources/asuka-app.json`）、Info.plist、图标、语言和资源，采用临时签名（ad hoc），可以在你自己的 Mac 上运行。和 iOS 一样，应用导入的包会从 `ios.usage` 中带上它们的用途说明（定位的用途说明在 Mac 上是 `NSLocationUsageDescription`，取自 `NSLocationWhenInUseUsageDescription`），以及强化运行时（hardened runtime）所需的对应 entitlement（`com.apple.security.device.camera`、`...audio-input`、`...personal-information.location` 等）。缺少这些 entitlement，用 Developer ID 签名的应用就无法访问相机、麦克风或用户数据。应用的原生包的 Swift 会针对这次构建的架构编译进可执行文件（见[原生代码](native.md)）。使用了 `std/sqlite` 的应用，SQLite 也会编译进可执行文件（见[库文件](data.md#库文件)）。
 
 要在 Mac App Store 之外分发给别人，需要用你的 Developer ID 签名，再交给 Apple 公证，这样 Gatekeeper 才会放行：
 
@@ -371,7 +371,7 @@ component UpdateBanner {
 
 配置了 `updates` 并提供了私钥之后，`asuka build --platform mac`、`windows` 或 `linux` 会在构建产物旁边的 `dist/updates` 中写出：
 
-- `notes-1.2.0-<target>.tar.gz`：安装后形态的应用，已签名（对其 SHA-256 做 Ed25519 签名）。在 Mac 上是应用包（bundle），在 Windows 上是文件夹里的全部内容，在 Linux 上就是构建出的那个 `.tar.gz`。target 有 `darwin-universal`、`windows-amd64`、`windows-arm64`、`linux-amd64` 和 `linux-arm64` 几种。
+- `notes-1.2.0-<target>.tar.gz`：安装后形态的应用，已签名（对其 SHA-256 做 Ed25519 签名）。在 Mac 上是应用包（bundle），在 Windows 上是文件夹里的全部内容，在 Linux 上就是构建出的那个 `.tar.gz`。target 有 `darwin-arm64`、`darwin-amd64`、`windows-amd64`、`windows-arm64`、`linux-amd64` 和 `linux-arm64` 几种。
 - 从之前已发布的版本到当前版本的增量更新，命名为 `notes-1.1.0-to-1.2.0-<target>.delta`。构建时会按已发布清单中记录的位置下载旧版本（同时验证签名），然后写出差异：哪些文件可以直接从已安装的应用中移动或复制，改动过的文件的 bsdiff 补丁，以及其余文件的完整内容。应用只会下载针对自己当前版本的增量包；如果增量更新失败（比如应用在安装后被改动过），就改为下载完整的归档。第一个版本没有增量包。
 - `update-<target>.json`：清单，包含版本号、版本说明、日期，归档和各增量包的 URL、大小和签名，以及之前的各个版本（用于生成下一次的增量包）。预发布版本的清单是 `update-<target>-beta.json`，只有处在该渠道的应用才会读取。
 
@@ -381,6 +381,7 @@ component UpdateBanner {
 
 ```sh
 asuka publish --platform mac --sign "Developer ID Application: …" --notarize asuka
+asuka publish --platform mac --arch amd64 --sign "Developer ID Application: …" --notarize asuka
 asuka publish --platform windows --arch arm64
 asuka publish --platform linux --draft
 ```
@@ -407,11 +408,11 @@ feed = "https://api.example.com/updates?target={target}&version={version}&channe
   "version": "1.2.0",
   "notes": "- Faster sync.\n- Fixed the sidebar.",
   "date": "2026-11-13T09:00:00Z",
-  "url": "https://downloads.example.com/notes/notes-1.2.0-darwin-universal.tar.gz",
+  "url": "https://downloads.example.com/notes/notes-1.2.0-darwin-arm64.tar.gz",
   "size": 9123456,
   "signature": "…base64…",
   "deltas": [
-    {"from": "1.1.0", "url": "https://…/notes-1.1.0-to-1.2.0-darwin-universal.delta", "size": 21432, "signature": "…"}
+    {"from": "1.1.0", "url": "https://…/notes-1.1.0-to-1.2.0-darwin-arm64.delta", "size": 21432, "signature": "…"}
   ]
 }
 ```
@@ -604,7 +605,7 @@ CLI 用它自带的那个版本的 Asuka 构建应用，所以安装的 CLI 版�
 
 ### 桌面端
 
-把下面这些任务加到同一个工作流中，就能为该标签构建桌面应用，并附加到它的 Release 草稿上：Mac 版用你的 Developer ID 签名并公证；Windows 版构建 x64 和 Arm 两种架构并签名；Linux 版构建 amd64 和 arm64 两种架构。Windows 和 Linux 版都在 Linux 上构建，所以一个 Ubuntu runner 就能全部完成。（这里的应用名为 Notes，产物的文件名取自 `asuka.toml` 中的 `name`。）
+把下面这些任务加到同一个工作流中，就能为该标签构建桌面应用，并附加到它的 Release 草稿上：Mac 版分别为 Apple 芯片和 Intel 构建，用你的 Developer ID 签名并公证；Windows 版构建 x64 和 Arm 两种架构并签名；Linux 版构建 amd64 和 arm64 两种架构。Windows 和 Linux 版都在 Linux 上构建，所以一个 Ubuntu runner 就能全部完成。（这里的应用名为 Notes，产物的文件名取自 `asuka.toml` 中的 `name`。）
 
 ```yaml
   mac:
@@ -635,14 +636,17 @@ CLI 用它自带的那个版本的 Asuka 构建应用，所以安装的 CLI 版�
           ASUKA_APPLE_ID: ${{ secrets.APPLE_ID }}
           ASUKA_APPLE_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
           ASUKA_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: asuka build --platform mac --sign "Developer ID Application: Your Name (TEAMID)" --notarize env
+        run: |
+          asuka build --platform mac --sign "Developer ID Application: Your Name (TEAMID)" --notarize env -o dist/arm64
+          asuka build --platform mac --arch amd64 --sign "Developer ID Application: Your Name (TEAMID)" --notarize env -o dist/intel
       - name: attach to the tag's release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          ditto -c -k --keepParent dist/Notes.app dist/Notes-mac.zip
-          gh release upload "$GITHUB_REF_NAME" dist/Notes-mac.zip --clobber
+          ditto -c -k --keepParent dist/arm64/Notes.app dist/Notes-mac-arm64.zip
+          ditto -c -k --keepParent dist/intel/Notes.app dist/Notes-mac-intel.zip
+          gh release upload "$GITHUB_REF_NAME" dist/Notes-mac-arm64.zip dist/Notes-mac-intel.zip --clobber
 
   windows-linux:
     needs: release

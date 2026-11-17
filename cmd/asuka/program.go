@@ -218,7 +218,7 @@ func macProgram(app *asukaApp, m *bytecode.Module, natives []nativePackage, arch
 	defer os.RemoveAll(work)
 	b := &macBuild{app: app, work: work, release: true, program: true, run: macRunner(verbose)}
 	tmp := filepath.Join(work, "program")
-	if err := b.executable(tmp, []string{arch}, relativeFiles(appbuild.StripTests(m), projectRoot(app.proj))); err != nil {
+	if err := b.executable(tmp, arch, relativeFiles(appbuild.StripTests(m), projectRoot(app.proj))); err != nil {
 		return err
 	}
 	if b.packages != nil && b.packages.bundled() {
@@ -242,9 +242,9 @@ func relativeFiles(m *bytecode.Module, root string) *bytecode.Module {
 
 // bundlePrograms builds the project's [bin] programs into a desktop
 // app's build for t (docs/programs.md): each executable in dir (the
-// Mac's Contents/Helpers, Linux's bin, beside Windows' .exe). macOS's
-// are universal, as the app is. It returns the executables.
-func bundlePrograms(app *asukaApp, t cbuild.Target, archs []string, dir string, verbose bool) ([]string, error) {
+// Mac's Contents/Helpers, Linux's bin, beside Windows' .exe), for t's
+// architecture, as the app is. It returns the executables.
+func bundlePrograms(app *asukaApp, t cbuild.Target, dir string, verbose bool) ([]string, error) {
 	if app.proj == nil || len(app.proj.Bins) == 0 {
 		return nil, nil
 	}
@@ -258,45 +258,26 @@ func bundlePrograms(app *asukaApp, t cbuild.Target, archs []string, dir string, 
 			}
 		}
 		fmt.Printf("asuka: building %s, the app's program\n", b.Name)
-		if len(archs) == 0 {
-			archs = []string{t.Arch}
-		}
-		var parts []string
 		work, err := os.MkdirTemp("", "asuka-bin-")
 		if err != nil {
 			return nil, err
 		}
 		defer os.RemoveAll(work)
-		for _, arch := range archs {
-			at := cbuild.Target{OS: t.OS, Arch: arch}
-			d := filepath.Join(work, arch)
-			if err := os.MkdirAll(d, 0o755); err != nil {
-				return nil, err
-			}
-			var exe string
-			if b.Built() {
-				exe, err = builtProgram(b, app.proj.Dir, at, d, verbose)
-			} else {
-				exe, err = programExe(p, at, d, app.cfg.Version, verbose)
-			}
-			if err != nil {
-				return nil, fmt.Errorf("[bin.%s]: %w", b.Name, err)
-			}
-			parts = append(parts, exe)
+		var exe string
+		if b.Built() {
+			exe, err = builtProgram(b, app.proj.Dir, t, work, verbose)
+		} else {
+			exe, err = programExe(p, t, work, app.cfg.Version, verbose)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("[bin.%s]: %w", b.Name, err)
 		}
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return nil, err
 		}
 		dst := filepath.Join(dir, programExeName(b.Name, t))
-		if len(parts) == 1 {
-			if err := copyFile(parts[0], dst); err != nil {
-				return nil, err
-			}
-		} else {
-			os.Remove(dst)
-			if err := macRunner(verbose)(work, nil, "lipo", append([]string{"-create", "-output", dst}, parts...)...); err != nil {
-				return nil, err
-			}
+		if err := copyFile(exe, dst); err != nil {
+			return nil, err
 		}
 		out = append(out, dst)
 	}

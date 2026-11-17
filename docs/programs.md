@@ -359,7 +359,7 @@ A desktop app's build puts its programs in the app:
 
 | Build | Where | On the user's PATH |
 |---|---|---|
-| macOS | `Notes.app/Contents/Helpers/notes`, universal, signed with the app | a link the user makes, or the app offers to: `ln -s /Applications/Notes.app/Contents/Helpers/notes /usr/local/bin/notes` |
+| macOS | `Notes.app/Contents/Helpers/notes`, for the app's architecture, signed with the app | a link the user makes, or the app offers to: `ln -s /Applications/Notes.app/Contents/Helpers/notes /usr/local/bin/notes` |
 | Linux | the prefix's `bin/notes`, beside the app's, in the tarball and the Flatpak | installed in `~/.local/bin` or `/usr/bin` with the app; a Flatpak's as `flatpak run --command=notes <id>` |
 | Windows | `notes.exe` beside the app's `.exe` | the app's folder added to `PATH` by its installer |
 
@@ -371,9 +371,8 @@ app's notes.
 
 A program another toolchain builds goes in the app the same way: a
 server written in Go, a tool in Rust, which the app runs. Its `[bin]`
-names the command that builds it instead of a directory, run for each
-target the app is built for (both of a universal Mac app's, joined
-with `lipo`). Placeholders name the target in each toolchain's own
+names the command that builds it instead of a directory, run for the
+target the app is built for. Placeholders name the target in each toolchain's own
 words: `{goos}` and `{goarch}` for Go, `{target}`, the triple, for
 Rust; `{os}` and `{arch}` are Asuka's (`macos`, `x64`), for a script of
 your own. A build that can't write to `{out}`, as cargo can't, says

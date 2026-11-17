@@ -6,7 +6,7 @@
 |---|---|---|---|
 | `ios` | `<Name>.ipa`（App Store 向けに署名済み） | Xcode のある Mac | TestFlight、App Store（`asuka publish`） |
 | `android` | `<Name>.aab`（アップロード鍵で署名済み） | JDK、Android SDK、NDK があればどのシステムでも | Google Play（`asuka publish`） |
-| `mac` | ユニバーサルの `<Name>.app`、または `.pkg`（`--appstore`） | Xcode のコマンドラインツールのある Mac | 署名・公証済みのダウンロード、Mac App Store |
+| `mac` | `<Name>.app`（Apple シリコン向け。`--arch amd64` で Intel 向け）、または `.pkg`（`--appstore`） | Xcode のコマンドラインツールのある Mac | 署名・公証済みのダウンロード、Mac App Store |
 | `windows` | `<Name>/`（`.exe` とそのアセット） | clang のある Windows、または Zig のあるどのシステムでも | zip、または独自のインストーラーや MSIX |
 | `linux` | `linux/`：インストールプレフィックス、`.tar.gz`、Flatpak マニフェスト | C コンパイラーのある Linux、または Zig のあるどのシステムでも | `.tar.gz`、Flatpak |
 | `web` | `web/`（静的サイト） | Zig のあるどのシステムでも | 任意の Web サーバーや CDN |
@@ -167,7 +167,7 @@ asuka publish --platform android --track production --rollout 0.1
 asuka build --platform mac
 ```
 
-このコマンドは、Mac 上で `dist/<Name>.app` を作ります。Apple シリコンと Intel の両方で動くユニバーサルアプリで、macOS 11 以降に対応しています。実行ファイルはユニバーサルバイナリです。さらに、アプリの設定（`Contents/Resources/asuka-app.json`）、Info.plist、アイコン、言語、アセットを含み、アドホック署名されています。つまり、自分の Mac で動かせる状態です。アプリがインポートしたパッケージは、iOS と同じく `ios.usage` から利用目的の説明文を追加します（位置情報の説明文は、Mac では `NSLocationWhenInUseUsageDescription` から取った `NSLocationUsageDescription` になります）。あわせて、それに必要な hardened runtime のエンタイトルメント（`com.apple.security.device.camera`、`...audio-input`、`...personal-information.location` など）も追加します。これがないと、Developer ID で署名したアプリは、カメラ、マイク、ユーザーのデータへのアクセスを拒否されます。アプリのネイティブパッケージの Swift は、両方のアーキテクチャ向けに実行ファイルへコンパイルされます（[ネイティブコード](native.md)を参照）。`std/sqlite` を使うアプリでは、SQLite も両方のアーキテクチャ向けに実行ファイルに組み込まれます（[ライブラリ](data.md#ライブラリ)）。
+このコマンドは、Mac 上で `dist/<Name>.app` を作ります。Apple シリコン搭載の Mac 向けで、macOS 11 以降に対応しています。`--arch amd64` を付けると、代わりに Intel Mac 向けを別のビルドとして作ります（両方に対応してサイズが倍になるユニバーサルアプリにはしません）。対応したい Mac の分だけ、それぞれ公開してください。アプリには実行ファイルと、アプリの設定（`Contents/Resources/asuka-app.json`）、Info.plist、アイコン、言語、アセットを含み、アドホック署名されています。つまり、自分の Mac で動かせる状態です。アプリがインポートしたパッケージは、iOS と同じく `ios.usage` から利用目的の説明文を追加します（位置情報の説明文は、Mac では `NSLocationWhenInUseUsageDescription` から取った `NSLocationUsageDescription` になります）。あわせて、それに必要な hardened runtime のエンタイトルメント（`com.apple.security.device.camera`、`...audio-input`、`...personal-information.location` など）も追加します。これがないと、Developer ID で署名したアプリは、カメラ、マイク、ユーザーのデータへのアクセスを拒否されます。アプリのネイティブパッケージの Swift は、ビルドするアーキテクチャ向けに実行ファイルへコンパイルされます（[ネイティブコード](native.md)を参照）。`std/sqlite` を使うアプリでは、SQLite も実行ファイルに組み込まれます（[ライブラリ](data.md#ライブラリ)）。
 
 Mac App Store 以外でほかの人に配布するには、Developer ID で署名し、Apple に公証してもらいます。これで Gatekeeper がアプリを開けるようになります。
 
@@ -371,7 +371,7 @@ Web ではインストールするものはありません。`check()` はブラ
 
 `updates` と秘密鍵があれば、`asuka build --platform mac`、`windows`、`linux` は、ビルドの隣の `dist/updates` に次のものを書き出します。
 
-- `notes-1.2.0-<target>.tar.gz`：インストールされた状態のアプリをまとめて署名したもの（SHA-256 に対する Ed25519 署名）。中身は、Mac ではバンドル、Windows ではフォルダーの中身で、Linux ではビルドの `.tar.gz` そのものです。ターゲットは `darwin-universal`、`windows-amd64`、`windows-arm64`、`linux-amd64`、`linux-arm64` です。
+- `notes-1.2.0-<target>.tar.gz`：インストールされた状態のアプリをまとめて署名したもの（SHA-256 に対する Ed25519 署名）。中身は、Mac ではバンドル、Windows ではフォルダーの中身で、Linux ではビルドの `.tar.gz` そのものです。ターゲットは `darwin-arm64`、`darwin-amd64`、`windows-amd64`、`windows-arm64`、`linux-amd64`、`linux-arm64` です。
 - 以前に公開したバージョンからの差分アップデート（`notes-1.1.0-to-1.2.0-<target>.delta`）。ビルドは、公開済みのマニフェストが示す場所から以前のバージョンを（署名を確かめながら）ダウンロードし、変わった部分を書き出します。内容は、インストール済みのアプリから移動またはコピーするファイル、変更されたファイルの bsdiff パッチ、そして残りのファイルです。アプリは自分のバージョンからの差分だけをダウンロードし、それが失敗したとき（インストール後にアプリが変更されていた場合）はアーカイブ全体をダウンロードします。最初のバージョンには差分はありません。
 - `update-<target>.json`：マニフェスト。バージョン、リリースノート、日付、アーカイブと差分の URL・サイズ・署名、そして以前のバージョン（次の差分を作るため）を含みます。プレリリースのマニフェストは `update-<target>-beta.json` で、そのチャンネルのアプリだけが読みます。
 
@@ -381,6 +381,7 @@ Web ではインストールするものはありません。`check()` はブラ
 
 ```sh
 asuka publish --platform mac --sign "Developer ID Application: …" --notarize asuka
+asuka publish --platform mac --arch amd64 --sign "Developer ID Application: …" --notarize asuka
 asuka publish --platform windows --arch arm64
 asuka publish --platform linux --draft
 ```
@@ -407,11 +408,11 @@ feed = "https://api.example.com/updates?target={target}&version={version}&channe
   "version": "1.2.0",
   "notes": "- Faster sync.\n- Fixed the sidebar.",
   "date": "2026-11-13T09:00:00Z",
-  "url": "https://downloads.example.com/notes/notes-1.2.0-darwin-universal.tar.gz",
+  "url": "https://downloads.example.com/notes/notes-1.2.0-darwin-arm64.tar.gz",
   "size": 9123456,
   "signature": "…base64…",
   "deltas": [
-    {"from": "1.1.0", "url": "https://…/notes-1.1.0-to-1.2.0-darwin-universal.delta", "size": 21432, "signature": "…"}
+    {"from": "1.1.0", "url": "https://…/notes-1.1.0-to-1.2.0-darwin-arm64.delta", "size": 21432, "signature": "…"}
   ]
 }
 ```
@@ -604,7 +605,7 @@ CLI は自分のバージョンの Asuka でアプリをビルドするため、
 
 ### デスクトップ
 
-次のジョブを同じワークフローに加えると、タグに対してデスクトップアプリをビルドし、そのリリースの下書きに添付します。Mac 版は Developer ID で署名して公証し、Windows 版は x64 と Arm 向けにビルドして署名し、Linux 版は amd64 と arm64 向けにビルドします。Windows 版と Linux 版はどちらも Linux 上でビルドできるので、一つの Ubuntu ランナーで両方を作れます。（ここではアプリの名前を Notes としています。ファイル名は `asuka.toml` の `name` をもとに付けられます。）
+次のジョブを同じワークフローに加えると、タグに対してデスクトップアプリをビルドし、そのリリースの下書きに添付します。Mac 版は Apple シリコン向けと Intel 向けをそれぞれビルドし、Developer ID で署名して公証し、Windows 版は x64 と Arm 向けにビルドして署名し、Linux 版は amd64 と arm64 向けにビルドします。Windows 版と Linux 版はどちらも Linux 上でビルドできるので、一つの Ubuntu ランナーで両方を作れます。（ここではアプリの名前を Notes としています。ファイル名は `asuka.toml` の `name` をもとに付けられます。）
 
 ```yaml
   mac:
@@ -635,14 +636,17 @@ CLI は自分のバージョンの Asuka でアプリをビルドするため、
           ASUKA_APPLE_ID: ${{ secrets.APPLE_ID }}
           ASUKA_APPLE_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
           ASUKA_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: asuka build --platform mac --sign "Developer ID Application: Your Name (TEAMID)" --notarize env
+        run: |
+          asuka build --platform mac --sign "Developer ID Application: Your Name (TEAMID)" --notarize env -o dist/arm64
+          asuka build --platform mac --arch amd64 --sign "Developer ID Application: Your Name (TEAMID)" --notarize env -o dist/intel
       - name: attach to the tag's release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          ditto -c -k --keepParent dist/Notes.app dist/Notes-mac.zip
-          gh release upload "$GITHUB_REF_NAME" dist/Notes-mac.zip --clobber
+          ditto -c -k --keepParent dist/arm64/Notes.app dist/Notes-mac-arm64.zip
+          ditto -c -k --keepParent dist/intel/Notes.app dist/Notes-mac-intel.zip
+          gh release upload "$GITHUB_REF_NAME" dist/Notes-mac-arm64.zip dist/Notes-mac-intel.zip --clobber
 
   windows-linux:
     needs: release

@@ -178,7 +178,7 @@ func relDiag(dir, d string) string {
 
 // hostConfig is what the desktop host reads of the app as it starts
 // (internal/appconfig's File): asuka.toml's, and asuka dev's --lang and
-// --dir for its runs. target is a release's (darwin-universal,
+// --dir for its runs. target is a release's (darwin-arm64,
 // windows-amd64...; "": asuka dev's player), and updates says whether
 // it updates itself (asuka.toml's updates; not from the Mac App Store).
 func (a *asukaApp) hostConfig(platform, target string, updates bool) appconfig.Config {

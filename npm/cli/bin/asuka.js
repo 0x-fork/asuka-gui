@@ -12,6 +12,10 @@ let bin;
 try {
   bin = path.join(path.dirname(require.resolve(`${pkg}/package.json`)), "bin", exe);
 } catch {
+  if (process.platform === "darwin" && process.arch === "x64") {
+    console.error("asuka: Asuka develops on Macs with Apple silicon, not Intel Macs (the apps it builds run on both: asuka build --arch amd64).");
+    process.exit(1);
+  }
   console.error(`asuka: no build for ${process.platform}-${process.arch} (${pkg} isn't installed).
 Install with optional dependencies (npm i -g @egoist/asuka, without --no-optional), or get a build from https://github.com/egoist/asuka/releases.`);
   process.exit(1);

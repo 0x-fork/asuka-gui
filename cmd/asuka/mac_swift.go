@@ -20,9 +20,9 @@ import (
 // app's native packages' Swift (their Package.swift, built with the host's
 // as Swift packages: native_swift.go), linked with the C core (libasuka.a:
 // the app compiled into it for a release, none in asuka dev's player), for
-// each architecture, then one universal binary (lipo). Without native
-// packages the host's object is the same for every app, compiled once per
-// architecture and kept in the user's cache.
+// the build's architecture. Without native packages the host's object is
+// the same for every app, compiled once per architecture and kept in the
+// user's cache.
 
 // macHostDefines are the host's compilation conditions on the Mac
 // (macos.HostDefines).
@@ -45,77 +45,66 @@ type macBuild struct {
 	// program: the executable is a program's (docs/programs.md), its entry
 	// AsukaProgram's (no application, no window) in place of the app's.
 	program bool
-	// packages is what the app's Swift packages bring besides objects, as
-	// the first architecture's build made it (nil without any): their
-	// frameworks and resource bundles, which go in the bundle.
+	// packages is what the app's Swift packages bring besides objects
+	// (nil without any): their frameworks and resource bundles, which go
+	// in the bundle.
 	packages *swiftPackageOutput
 }
 
-// executable builds the app's executable at exe for archs (Go's names):
-// the host and the core (with m compiled in; nil, the player's) for each,
-// one universal binary of them.
-func (b *macBuild) executable(exe string, archs []string, m *bytecode.Module) error {
+// executable builds the app's executable at exe for arch (Go's name):
+// the host and the core (with m compiled in; nil, the player's).
+func (b *macBuild) executable(exe, arch string, m *bytecode.Module) error {
 	natives, err := nativeFor(b.app, "macos")
 	if err != nil {
 		return err
 	}
-	var parts []string
-	for _, arch := range archs {
-		dir := filepath.Join(b.work, "mac-"+arch)
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return err
-		}
-		// The core: a release's with the app compiled in, the player's
-		// without, both with the app's C (asuka.toml's [c], its externs').
-		lib := filepath.Join(dir, "libasuka.a")
-		target := cbuild.Target{OS: "darwin", Arch: arch}
-		if m != nil {
-			err = appbuild.Lib(target, cbuild.Static, m, lib)
-		} else {
-			err = appbuild.PlayerLib(target, cbuild.Static, b.app.c, lib)
-		}
-		if err != nil {
-			return err
-		}
-		objs, pkgs, err := b.host(arch, natives)
-		if err != nil {
-			return err
-		}
-		if b.packages == nil {
-			b.packages = pkgs // a Mac framework is universal
-		}
-		// The C the desktop hosts share that the host calls (CAsuka's
-		// desktop.h: the route state, flyouts' places, Asuka's words).
-		shared, err := appbuild.MacShared(arch, !b.release)
-		if err != nil {
-			return err
-		}
-		objs = append(objs, shared...)
-		out := filepath.Join(dir, "app")
-		args := []string{"swiftc", "-target", macSwiftArch(arch) + "-apple-macos" + macMin, "-sdk", macSDK()}
-		args = append(args, objs...)
-		args = append(args, lib, "-o", out, "-lresolv",
-			// The Swift runtime: the system's, else (macOS 11, for Swift
-			// concurrency) the copy in Frameworks; packages' frameworks there.
-			"-Xlinker", "-rpath", "-Xlinker", "/usr/lib/swift",
-			"-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks")
-		if b.release {
-			args = append(args, "-Xlinker", "-dead_strip")
-		}
-		args = append(args, pkgs.linkFlags()...)
-		if err := b.run(b.work, nil, "xcrun", args...); err != nil {
-			return err
-		}
-		parts = append(parts, out)
+	dir := filepath.Join(b.work, "mac-"+arch)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	// The core: a release's with the app compiled in, the player's
+	// without, both with the app's C (asuka.toml's [c], its externs').
+	lib := filepath.Join(dir, "libasuka.a")
+	target := cbuild.Target{OS: "darwin", Arch: arch}
+	if m != nil {
+		err = appbuild.Lib(target, cbuild.Static, m, lib)
+	} else {
+		err = appbuild.PlayerLib(target, cbuild.Static, b.app.c, lib)
+	}
+	if err != nil {
+		return err
+	}
+	objs, pkgs, err := b.host(arch, natives)
+	if err != nil {
+		return err
+	}
+	b.packages = pkgs
+	// The C the desktop hosts share that the host calls (CAsuka's
+	// desktop.h: the route state, flyouts' places, Asuka's words).
+	shared, err := appbuild.MacShared(arch, !b.release)
+	if err != nil {
+		return err
+	}
+	objs = append(objs, shared...)
+	out := filepath.Join(dir, "app")
+	args := []string{"swiftc", "-target", macSwiftArch(arch) + "-apple-macos" + macMin, "-sdk", macSDK()}
+	args = append(args, objs...)
+	args = append(args, lib, "-o", out, "-lresolv",
+		// The Swift runtime: the system's, else (macOS 11, for Swift
+		// concurrency) the copy in Frameworks; packages' frameworks there.
+		"-Xlinker", "-rpath", "-Xlinker", "/usr/lib/swift",
+		"-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks")
+	if b.release {
+		args = append(args, "-Xlinker", "-dead_strip")
+	}
+	args = append(args, pkgs.linkFlags()...)
+	if err := b.run(b.work, nil, "xcrun", args...); err != nil {
+		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(exe), 0o755); err != nil {
 		return err
 	}
-	if len(parts) == 1 {
-		return copyFile(parts[0], exe)
-	}
-	os.Remove(exe)
-	return b.run(b.work, nil, "lipo", append([]string{"-create", "-output", exe}, parts...)...)
+	return copyFile(out, exe)
 }
 
 // host builds the host's Swift for arch with the app's native packages'

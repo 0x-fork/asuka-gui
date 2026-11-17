@@ -149,7 +149,7 @@ func buildLinux(app *asukaApp, o *buildOptions) error {
 	}
 	// The project's programs in bin, beside the app's: on PATH where the
 	// prefix is installed (~/.local, the Flatpak's /app).
-	if _, err := bundlePrograms(app, t, nil, filepath.Join(out, "bin"), o.verbose); err != nil {
+	if _, err := bundlePrograms(app, t, filepath.Join(out, "bin"), o.verbose); err != nil {
 		return err
 	}
 	if err := writeLinuxShare(app, out, exe); err != nil {

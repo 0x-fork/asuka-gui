@@ -9,7 +9,6 @@
   "engines": { "node": ">=18" },
   "optionalDependencies": {
     "@egoist/asuka-darwin-arm64": "0.0.0",
-    "@egoist/asuka-darwin-x64": "0.0.0",
     "@egoist/asuka-linux-arm64": "0.0.0",
     "@egoist/asuka-linux-x64": "0.0.0",
     "@egoist/asuka-win32-arm64": "0.0.0",

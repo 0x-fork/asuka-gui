@@ -20,6 +20,10 @@ arm64 | aarch64) cpu=arm64 ;;
 x86_64 | amd64) cpu=x64 ;;
 *) echo "asuka: no build for $(uname -m)" >&2; exit 1 ;;
 esac
+if [ "$os" = darwin ] && [ "$cpu" = x64 ]; then
+	echo "asuka: Asuka develops on Macs with Apple silicon, not Intel Macs (the apps it builds run on both: asuka build --arch amd64)" >&2
+	exit 1
+fi
 
 if [ -n "${ASUKA_VERSION:-}" ]; then
 	base="https://github.com/$repo/releases/download/v${ASUKA_VERSION#v}"

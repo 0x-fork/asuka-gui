@@ -66,7 +66,11 @@ func publishDesktop(app *asukaApp, o *publishOptions) error {
 	var target string
 	switch b.platform {
 	case platformMac:
-		target = macTarget
+		arch, aerr := macArch(b.arch)
+		if aerr != nil {
+			return aerr
+		}
+		target = macTarget(arch)
 		err = buildMac(app, &b)
 	case platformWindows:
 		arch, aerr := windowsArch(b.arch)

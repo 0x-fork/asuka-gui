@@ -138,7 +138,7 @@ func devDesktop(dir string, o *devOptions, stop <-chan os.Signal, platform strin
 	launch := func() error {
 		start := time.Now()
 		if !binsBuilt {
-			if _, err := bundlePrograms(app, t, nil, bins, o.verbose); err != nil {
+			if _, err := bundlePrograms(app, t, bins, o.verbose); err != nil {
 				return err
 			}
 			binsBuilt = true
@@ -232,7 +232,7 @@ func buildDesktopPlayer(app *asukaApp, platform string, t cbuild.Target, work st
 		// The Swift host and the core without an app, which loads the
 		// bytecode asuka dev sends.
 		mb := &macBuild{app: app, work: work, run: run}
-		if err := mb.executable(exe, []string{t.Arch}, nil); err != nil {
+		if err := mb.executable(exe, t.Arch, nil); err != nil {
 			return "", err
 		}
 		if err := mb.embed(bundle, exe); err != nil {

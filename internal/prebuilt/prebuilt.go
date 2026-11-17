@@ -29,7 +29,7 @@ const Scope = "@egoist"
 type Manifest struct {
 	// Version is the CLI's, which its packages share.
 	Version string `json:"version,omitempty"`
-	// Packages by their short names (darwin-universal, android-aar).
+	// Packages by their short names (darwin-arm64, android-aar).
 	Packages map[string]Package `json:"packages"`
 	// Archives by target/config/unit (darwin-arm64/release/core).
 	Archives map[string]File `json:"archives"`
@@ -40,7 +40,7 @@ type Manifest struct {
 
 // Package is one npm package.
 type Package struct {
-	Name      string `json:"name"`      // @egoist/asuka-prebuilt-darwin-universal
+	Name      string `json:"name"`      // @egoist/asuka-prebuilt-darwin-arm64
 	Version   string `json:"version"`   // exact
 	Integrity string `json:"integrity"` // its tarball's (npm's dist.integrity: sha512-<base64>)
 	// Compiler is what built its C (zig, apple, ndk): a build links a

@@ -23,8 +23,7 @@ import (
 )
 
 var platforms = []struct{ goos, goarch, os, cpu string }{
-	{"darwin", "arm64", "darwin", "arm64"},
-	{"darwin", "amd64", "darwin", "x64"},
+	{"darwin", "arm64", "darwin", "arm64"}, // Apple silicon: an Intel Mac isn't one Asuka develops on
 	{"linux", "arm64", "linux", "arm64"},
 	{"linux", "amd64", "linux", "x64"},
 	{"windows", "arm64", "win32", "arm64"},

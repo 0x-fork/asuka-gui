@@ -99,7 +99,7 @@ func buildWindows(app *asukaApp, o *buildOptions) error {
 		return err
 	}
 	// The project's programs beside the .exe, signed as it is.
-	progs, err := bundlePrograms(app, t, nil, out, o.verbose)
+	progs, err := bundlePrograms(app, t, out, o.verbose)
 	if err != nil {
 		return err
 	}

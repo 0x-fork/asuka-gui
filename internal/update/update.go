@@ -23,7 +23,7 @@ import (
 )
 
 // Manifest describes the latest version of an app for one target
-// (darwin-universal, windows-amd64, linux-arm64...), published as
+// (darwin-arm64, windows-amd64, linux-arm64...), published as
 // update-<target>.json next to the archive (ManifestName); a custom update
 // server answers with one.
 type Manifest struct {

@@ -269,7 +269,7 @@ path = "cli"
 
 | 构建 | 位置 | 加到用户的 PATH |
 |---|---|---|
-| macOS | `Notes.app/Contents/Helpers/notes`，通用二进制，和应用一起签名 | 由用户自己（或应用提供选项）创建链接：`ln -s /Applications/Notes.app/Contents/Helpers/notes /usr/local/bin/notes` |
+| macOS | `Notes.app/Contents/Helpers/notes`，与应用的架构相同，和应用一起签名 | 由用户自己（或应用提供选项）创建链接：`ln -s /Applications/Notes.app/Contents/Helpers/notes /usr/local/bin/notes` |
 | Linux | 安装前缀的 `bin/notes`，和应用的可执行文件在一起，tar 包和 Flatpak 里都有 | 随应用安装到 `~/.local/bin` 或 `/usr/bin`；Flatpak 中用 `flatpak run --command=notes <id>` 运行 |
 | Windows | 应用 `.exe` 旁边的 `notes.exe` | 由安装程序把应用的文件夹加入 `PATH` |
 
@@ -277,7 +277,7 @@ path = "cli"
 
 ### 由其他工具链构建的程序
 
-由其他工具链构建的程序（用 Go 写的服务、用 Rust 写的工具，由应用启动）也以同样的方式放进应用。它的 `[bin]` 写的不是目录，而是构建它的命令，应用为哪些目标构建，这个命令就针对每个目标运行一次（通用 Mac 应用的两个架构会用 `lipo` 合并）。占位符用各个工具链自己的名字表示目标：Go 用 `{goos}` 和 `{goarch}`，Rust 用目标三元组 `{target}`；`{os}` 和 `{arch}` 是 Asuka 自己的名字（`macos`、`x64`），供你自己的脚本使用。不能写到 `{out}` 的构建（比如 cargo）用 `output` 说明程序留在哪里（完整列表见 [asuka.toml](asuka-toml.md#bin)）：
+由其他工具链构建的程序（用 Go 写的服务、用 Rust 写的工具，由应用启动）也以同样的方式放进应用。它的 `[bin]` 写的不是目录，而是构建它的命令，应用为哪个目标构建，这个命令就针对那个目标运行。占位符用各个工具链自己的名字表示目标：Go 用 `{goos}` 和 `{goarch}`，Rust 用目标三元组 `{target}`；`{os}` 和 `{arch}` 是 Asuka 自己的名字（`macos`、`x64`），供你自己的脚本使用。不能写到 `{out}` 的构建（比如 cargo）用 `output` 说明程序留在哪里（完整列表见 [asuka.toml](asuka-toml.md#bin)）：
 
 ```toml
 [bin.notes-server]

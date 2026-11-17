@@ -13,7 +13,7 @@ GitHub's releases or an S3 bucket (see [Updates](#updates)).
 |---|---|---|---|
 | `ios` | `<Name>.ipa`, signed for the App Store | a Mac with Xcode | TestFlight, the App Store (`asuka publish`) |
 | `android` | `<Name>.aab`, signed with your upload key | any system with a JDK, the Android SDK and the NDK | Google Play (`asuka publish`) |
-| `mac` | `<Name>.app`, universal; or a `.pkg` (`--appstore`) | a Mac with Xcode's command line tools | a download, signed and notarized; the Mac App Store |
+| `mac` | `<Name>.app` (Apple silicon; `--arch amd64`: Intel); or a `.pkg` (`--appstore`) | a Mac with Xcode's command line tools | a download, signed and notarized; the Mac App Store |
 | `windows` | `<Name>/`, the `.exe` and its assets | Windows with clang, or any system with Zig | a zip, or an installer or MSIX of yours |
 | `linux` | `linux/`: an install prefix, a `.tar.gz`, a Flatpak manifest | Linux with a C compiler, or any system with Zig | the `.tar.gz`, a Flatpak |
 | `web` | `web/`, a static site | any system with Zig | any web server or CDN |
@@ -356,8 +356,10 @@ instead of making one.
 asuka build --platform mac
 ```
 
-makes `dist/<Name>.app` on a Mac: a universal app (Apple silicon and
-Intel), for macOS 11 and later: its executable (universal), its settings (`Contents/Resources/asuka-app.json`), its
+makes `dist/<Name>.app` on a Mac: an app for Macs with Apple silicon,
+macOS 11 and later. `--arch amd64` makes Intel Macs' instead, a build of
+its own (not one universal app of both, twice the size); publish each
+for the Macs you ship to. The app has its executable, its settings (`Contents/Resources/asuka-app.json`), its
 Info.plist, icon, languages and assets, signed ad hoc: it runs on your
 Mac. The packages the app imports
 give it their purpose strings, as on iOS, from `ios.usage` (location's
@@ -367,9 +369,9 @@ entitlements for them (`com.apple.security.device.camera`,
 `...audio-input`, `...personal-information.location`...), without which
 an app signed with a Developer ID is refused the camera, the microphone
 or the user's data. An app's native packages' Swift is
-compiled for both architectures into its executable (see
+compiled into its executable, for the build's architecture (see
 [Native code](native.md)). An app that uses `std/sqlite` has SQLite
-compiled into its executable too, for both architectures
+compiled into its executable too
 ([The library](data.md#the-library)).
 
 To give it to others outside the Mac App Store, sign it with your
@@ -705,8 +707,8 @@ With `updates` and the secret key, `asuka build --platform mac`,
 
 - `notes-1.2.0-<target>.tar.gz`, the app as installed, signed (Ed25519
   over its SHA-256): the bundle; the Windows folder's entries; on Linux,
-  the build's `.tar.gz` itself. The targets are `darwin-universal`,
-  `windows-amd64`, `windows-arm64`, `linux-amd64` and `linux-arm64`.
+  the build's `.tar.gz` itself. The targets are `darwin-arm64`,
+  `darwin-amd64`, `windows-amd64`, `windows-arm64`, `linux-amd64` and `linux-arm64`.
 - delta updates from the versions published before, as
   `notes-1.1.0-to-1.2.0-<target>.delta`: it downloads them (checking
   their signatures) from where the published manifest says, and writes
@@ -730,6 +732,7 @@ reads a manifest whose files aren't there yet:
 
 ```sh
 asuka publish --platform mac --sign "Developer ID Application: …" --notarize asuka
+asuka publish --platform mac --arch amd64 --sign "Developer ID Application: …" --notarize asuka
 asuka publish --platform windows --arch arm64
 asuka publish --platform linux --draft
 ```
@@ -769,11 +772,11 @@ with a manifest, the JSON `asuka build` writes:
   "version": "1.2.0",
   "notes": "- Faster sync.\n- Fixed the sidebar.",
   "date": "2026-11-13T09:00:00Z",
-  "url": "https://downloads.example.com/notes/notes-1.2.0-darwin-universal.tar.gz",
+  "url": "https://downloads.example.com/notes/notes-1.2.0-darwin-arm64.tar.gz",
   "size": 9123456,
   "signature": "…base64…",
   "deltas": [
-    {"from": "1.1.0", "url": "https://…/notes-1.1.0-to-1.2.0-darwin-universal.delta", "size": 21432, "signature": "…"}
+    {"from": "1.1.0", "url": "https://…/notes-1.1.0-to-1.2.0-darwin-arm64.delta", "size": 21432, "signature": "…"}
   ]
 }
 ```
@@ -1056,8 +1059,9 @@ one with `sudo xcode-select -s /Applications/Xcode_<version>.app`.
 ### The desktop
 
 These jobs, added to the same workflow, build the desktop apps for the
-tag and attach them to its draft release: the Mac's signed with your
-Developer ID and notarized, Windows' for x64 and Arm, signed, and
+tag and attach them to its draft release: the Mac's for Apple silicon
+and Intel, signed with your Developer ID and notarized, Windows' for x64
+and Arm, signed, and
 Linux's for amd64 and arm64. Windows' and Linux's build on Linux, so
 one Ubuntu runner makes both. (The app is named Notes here: its files
 are named after `asuka.toml`'s `name`.)
@@ -1091,14 +1095,17 @@ are named after `asuka.toml`'s `name`.)
           ASUKA_APPLE_ID: ${{ secrets.APPLE_ID }}
           ASUKA_APPLE_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
           ASUKA_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: asuka build --platform mac --sign "Developer ID Application: Your Name (TEAMID)" --notarize env
+        run: |
+          asuka build --platform mac --sign "Developer ID Application: Your Name (TEAMID)" --notarize env -o dist/arm64
+          asuka build --platform mac --arch amd64 --sign "Developer ID Application: Your Name (TEAMID)" --notarize env -o dist/intel
       - name: attach to the tag's release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          ditto -c -k --keepParent dist/Notes.app dist/Notes-mac.zip
-          gh release upload "$GITHUB_REF_NAME" dist/Notes-mac.zip --clobber
+          ditto -c -k --keepParent dist/arm64/Notes.app dist/Notes-mac-arm64.zip
+          ditto -c -k --keepParent dist/intel/Notes.app dist/Notes-mac-intel.zip
+          gh release upload "$GITHUB_REF_NAME" dist/Notes-mac-arm64.zip dist/Notes-mac-intel.zip --clobber
 
   windows-linux:
     needs: release

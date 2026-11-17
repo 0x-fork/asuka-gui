@@ -6,9 +6,9 @@
 
 CLI と、実行したいプラットフォームそれぞれのビルドツールが必要です。
 
-- **iOS**：Xcode 26 以降をインストールした Mac と、その iOS シミュレーターか iPhone。
+- **iOS**：Apple シリコンを搭載し、Xcode 26 以降をインストールした Mac と、その iOS シミュレーターか iPhone。（Intel Mac での開発には対応していません。）
 - **Android**：Mac、Windows 10 または 11 の PC（x64 または Arm）、Linux のいずれかに Android Studio をインストールし、その SDK Manager から NDK（SDK Tools → NDK）を入れます。さらに、Device Manager で作成したエミュレーターか、USB デバッグを有効にした実機を用意します。Asuka は SDK を標準のインストール先か `ANDROID_HOME` から見つけ、Java は Android Studio に同梱のものを使います。ビルドには NDK と Gradle を使います。Arm の PC では、NDK とエミュレーターはエミュレーションで動きます（どちらも x64 向けのため）。エミュレーターには x86_64 のシステムイメージが必要です。
-- **macOS**：Xcode 26 以降か、そのコマンドラインツール（`xcode-select --install`）をインストールした Mac。作ったアプリは macOS 11 以降で動きます。
+- **macOS**：Apple シリコンを搭載し、Xcode 26 以降か、そのコマンドラインツール（`xcode-select --install`）をインストールした Mac。作ったアプリは macOS 11 以降の Apple シリコン搭載 Mac で動きます。`--arch amd64` でビルドすれば Intel Mac で動きます。
 - **Windows**：Windows 10 または 11 の PC（x64 または Arm）と、LLVM の clang（`winget install LLVM.LLVM`）。または [Zig](https://ziglang.org/download) を入れて `ASUKA_CC=zig` を指定します。`WebView` と `Video` は Microsoft Edge WebView2 Runtime を使います。これは Windows 11 には入っており、Windows 10 の PC にもたいてい入っています。
 - **Linux**：C コンパイラー（`build-essential`、`gcc`、`clang`）と、GTK 4.14 以降と libadwaita 1.5 以降（Ubuntu 24.04、Fedora 40、Debian 13 以降には含まれています）。Wayland と X11 のどちらでも動きます。
 

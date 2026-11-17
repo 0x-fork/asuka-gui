@@ -6,7 +6,7 @@
 
 ## 桌面应用是怎么构成的
 
-在 Mac 上，应用是 `Name.app` 里的一个通用二进制，和 iOS 应用一样，原生包的 Swift 也构建在里面。在 Windows 和 Linux 上，一个应用就是一个可执行文件；在 Windows 上，应用的图标、清单和版本信息也直接打包进去。在任何系统上都能构建 Windows 和 Linux 应用（借助 Zig），也不需要安装 GTK。每个桌面应用都带有来自 `asuka.toml` 的应用设置（`asuka-app.json`：名称、ID、版本、强调色、URL scheme、文件类型、更新）：
+在 Mac 上，应用是 `Name.app` 里的一个可执行文件，和 iOS 应用一样，原生包的 Swift 也构建在里面。它只针对一种架构：Apple 芯片，或者用 `--arch amd64` 构建的 Intel（不会把两者合成一个通用二进制，那样体积会翻倍）。在 Windows 和 Linux 上，一个应用就是一个可执行文件；在 Windows 上，应用的图标、清单和版本信息也直接打包进去。在任何系统上都能构建 Windows 和 Linux 应用（借助 Zig），也不需要安装 GTK。每个桌面应用都带有来自 `asuka.toml` 的应用设置（`asuka-app.json`：名称、ID、版本、强调色、URL scheme、文件类型、更新）：
 
 | | 应用 | 设置 |
 |---|---|---|

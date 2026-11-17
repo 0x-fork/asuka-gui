@@ -36,8 +36,8 @@ import (
 // prebuiltTarget is one npm package's contents.
 type prebuiltTarget struct {
 	name  string
-	c     []cbuild.Target // its C's targets (two: one universal library)
-	swift []swiftSlice    // its Swift's (two: one universal slice)
+	c     []cbuild.Target // its C's target
+	swift []swiftSlice    // its Swift's slice
 	aar   bool            // the Android AARs
 }
 
@@ -47,9 +47,8 @@ type swiftSlice struct{ sdkName, arch string }
 var prebuiltTargets = []prebuiltTarget{
 	{name: "ios-arm64", c: []cbuild.Target{{OS: "ios", Arch: "arm64"}}, swift: []swiftSlice{{"iphoneos", "arm64"}}},
 	{name: "ios-sim-arm64", c: []cbuild.Target{{OS: "ios-simulator", Arch: "arm64"}}, swift: []swiftSlice{{"iphonesimulator", "arm64"}}},
-	{name: "ios-sim-x64", c: []cbuild.Target{{OS: "ios-simulator", Arch: "amd64"}}, swift: []swiftSlice{{"iphonesimulator", "x86_64"}}},
-	{name: "darwin-universal", c: []cbuild.Target{{OS: "darwin", Arch: "arm64"}, {OS: "darwin", Arch: "amd64"}},
-		swift: []swiftSlice{{"macosx", "arm64"}, {"macosx", "x86_64"}}},
+	{name: "darwin-arm64", c: []cbuild.Target{{OS: "darwin", Arch: "arm64"}}, swift: []swiftSlice{{"macosx", "arm64"}}},
+	{name: "darwin-x64", c: []cbuild.Target{{OS: "darwin", Arch: "amd64"}}, swift: []swiftSlice{{"macosx", "x86_64"}}},
 	{name: "android-arm64-v8a", c: []cbuild.Target{{OS: "android", Arch: "arm64"}}},
 	{name: "android-armeabi-v7a", c: []cbuild.Target{{OS: "android", Arch: "arm"}}},
 	{name: "android-x86_64", c: []cbuild.Target{{OS: "android", Arch: "amd64"}}},
@@ -125,7 +124,7 @@ func cmdPrebuilt(args []string) error {
 }
 
 // buildC builds every unit for t's targets, both configurations, into
-// out/lib/<config>/<target>/lib<unit>.a (a universal one for the Mac's two).
+// out/lib/<config>/<target>/lib<unit>.a.
 func (t *prebuiltTarget) buildC(out string, c *prebuiltContents) error {
 	if len(t.c) == 0 {
 		return nil
@@ -159,21 +158,13 @@ func (t *prebuiltTarget) buildC(out string, c *prebuiltContents) error {
 				libs[u.Name] = append(libs[u.Name], p)
 			}
 		}
-		dirName := t.c[0].String()
-		if len(t.c) > 1 {
-			dirName = t.c[0].OS // darwin: universal
-		}
 		for _, unit := range order {
-			rel := filepath.ToSlash(filepath.Join("lib", config, dirName, "lib"+unit+".a"))
+			rel := filepath.ToSlash(filepath.Join("lib", config, t.c[0].String(), "lib"+unit+".a"))
 			dst := filepath.Join(out, filepath.FromSlash(rel))
 			if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 				return err
 			}
-			if len(libs[unit]) > 1 {
-				if err := run("", "lipo", append([]string{"-create", "-output", dst}, libs[unit]...)...); err != nil {
-					return err
-				}
-			} else if err := copyPlain(libs[unit][0], dst); err != nil {
+			if err := copyPlain(libs[unit][0], dst); err != nil {
 				return err
 			}
 			sum, err := fileSHA256(dst)
@@ -382,11 +373,7 @@ func writeXCFramework(out, config, name, platform string, slices []swiftSlice, l
 			return "", err
 		}
 	}
-	if len(ins) > 1 {
-		if err := run("", "lipo", append([]string{"-create", "-output", lib}, ins...)...); err != nil {
-			return "", err
-		}
-	} else if err := copyPlain(ins[0], lib); err != nil {
+	if err := copyPlain(ins[0], lib); err != nil {
 		return "", err
 	}
 	variantKey := ""

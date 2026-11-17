@@ -70,9 +70,6 @@ func lib(t cbuild.Target, kind cbuild.LibKind, m *bytecode.Module, c *bytecode.C
 	return tc.LibWith(core, kind, cbuild.LibOptions{Extra: extra, Foreign: ffi, Debug: m == nil}, out)
 }
 
-// MacArchs are a Mac app's architectures: a universal binary's.
-var MacArchs = []string{"arm64", "amd64"}
-
 // LinuxExe builds a Linux app's executable for t at out: the C host
 // (platform/linux, with platform/desktop's shared C), the native registry
 // and the C of the native packages in dirs (DesktopNatives), and the core,

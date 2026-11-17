@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/egoist/asuka/internal/appbuild"
 	"github.com/egoist/asuka/internal/appconfig"
 	"github.com/egoist/asuka/internal/cbuild"
 	iupdate "github.com/egoist/asuka/internal/update"
@@ -29,8 +28,9 @@ import (
 // .app like a release's (its Info.plist, icon and languages, signed ad
 // hoc, answering for its own privacy prompts), with the core without an
 // app, which loads the app's bytecode and each save's. asuka build
-// --platform mac makes an .app: a universal executable (arm64 and
-// x86_64) of the host and the core with the app compiled in, its
+// --platform mac makes an .app for one architecture (--arch: arm64, the
+// default, or amd64 for Intel Macs): an executable of the host and the
+// core with the app compiled in, its
 // Info.plist, icon and assets, signed (ad hoc unless --sign names an
 // identity), with its provisioning profile
 // (Contents/embedded.provisionprofile) and the entitlements the app's
@@ -39,8 +39,21 @@ import (
 
 const macMin = "11.0"
 
-// macTarget is a Mac build's, for its updates: universal.
-const macTarget = "darwin-universal"
+// macArch is a Mac build's architecture: --arch's, arm64 (Apple
+// silicon) unless amd64 (Intel) is asked for.
+func macArch(arch string) (string, error) {
+	switch arch {
+	case "":
+		return "arm64", nil
+	case "arm64", "amd64":
+		return arch, nil
+	}
+	return "", fmt.Errorf("--arch %q: arm64 or amd64", arch)
+}
+
+// macTarget is a Mac build's, for its updates: an architecture's own
+// (an Intel install never takes Apple silicon's).
+func macTarget(arch string) string { return "darwin-" + arch }
 
 // macRunner runs a tool for a Mac build, its output shown only when it
 // fails (or with -v).
@@ -228,6 +241,10 @@ func buildMac(app *asukaApp, o *buildOptions) error {
 	if o.appStore && o.notarize != "" {
 		return errors.New("asuka: --notarize is for an app distributed outside the Mac App Store, which reviews the app itself: leave it out with --appstore")
 	}
+	arch, err := macArch(o.arch)
+	if err != nil {
+		return err
+	}
 	work, err := workDir(app, "mac-release")
 	if err != nil {
 		return err
@@ -257,26 +274,26 @@ func buildMac(app *asukaApp, o *buildOptions) error {
 		return err
 	}
 
-	// The host and the core with the app compiled in: a universal
-	// executable. Updates are the Mac App Store's for its builds.
+	// The host and the core with the app compiled in, for its
+	// architecture. Updates are the Mac App Store's for its builds.
 	m, err := app.compile(target.MacOS)
 	if err != nil {
 		return err
 	}
 	exePath := filepath.Join(bundle, "Contents", "MacOS", exe)
 	mb := &macBuild{app: app, work: work, release: true, run: run}
-	if err := mb.executable(exePath, appbuild.MacArchs, m); err != nil {
+	if err := mb.executable(exePath, arch, m); err != nil {
 		return err
 	}
 	if err := mb.embed(bundle, exePath); err != nil {
 		return err
 	}
-	if err := writeHostConfig(app, platformMac, macTarget, !o.appStore, filepath.Join(bundle, "Contents", "Resources", appconfig.File)); err != nil {
+	if err := writeHostConfig(app, platformMac, macTarget(arch), !o.appStore, filepath.Join(bundle, "Contents", "Resources", appconfig.File)); err != nil {
 		return err
 	}
 	// The project's programs, in Helpers (a CLI the app ships, which a
 	// user links onto their PATH): signed with the app too.
-	if _, err := bundlePrograms(app, cbuild.Target{OS: "darwin"}, appbuild.MacArchs, filepath.Join(bundle, "Contents", "Helpers"), o.verbose); err != nil {
+	if _, err := bundlePrograms(app, cbuild.Target{OS: "darwin", Arch: arch}, filepath.Join(bundle, "Contents", "Helpers"), o.verbose); err != nil {
 		return err
 	}
 
@@ -307,7 +324,7 @@ func buildMac(app *asukaApp, o *buildOptions) error {
 	fmt.Printf("asuka: %s\n", bundle)
 	if !o.appStore {
 		// The update files, of the app as notarized and stapled.
-		b := updateBuild{target: macTarget, kind: iupdate.Bundle, dir: o.out, entries: []string{filepath.Base(bundle)}, root: bundle}
+		b := updateBuild{target: macTarget(arch), kind: iupdate.Bundle, dir: o.out, entries: []string{filepath.Base(bundle)}, root: bundle}
 		if _, err := writeUpdates(app, o.out, b, o.publishing); err != nil {
 			return err
 		}

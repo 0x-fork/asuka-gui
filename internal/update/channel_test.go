@@ -32,7 +32,7 @@ func TestChannel(t *testing.T) {
 			t.Errorf("Channel(%q) = %q, want %q", v, got, want)
 		}
 	}
-	if got := ManifestName("darwin-universal", ""); got != "update-darwin-universal.json" {
+	if got := ManifestName("darwin-arm64", ""); got != "update-darwin-arm64.json" {
 		t.Error(got)
 	}
 	if got := ManifestName("windows-arm64", "beta"); got != "update-windows-arm64-beta.json" {

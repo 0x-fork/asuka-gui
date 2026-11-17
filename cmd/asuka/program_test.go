@@ -228,7 +228,7 @@ func TestBinTargets(t *testing.T) {
 }
 
 // A desktop app's build bundles its [bin] programs: the Mac's
-// Contents/Helpers (universal, as the app is), Linux's bin, beside
+// Contents/Helpers (the app's architecture's), Linux's bin, beside
 // Windows' .exe.
 func TestBundlePrograms(t *testing.T) {
 	if _, err := cbuild.Zig(); err != nil {
@@ -244,19 +244,18 @@ func TestBundlePrograms(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, c := range []struct {
-		t     cbuild.Target
-		archs []string
-		file  string
+		t    cbuild.Target
+		file string
 	}{
-		{cbuild.Target{OS: "darwin"}, appbuild.MacArchs, "proj-cli"},
-		{cbuild.Target{OS: "linux", Arch: "amd64"}, nil, "proj-cli"},
-		{cbuild.Target{OS: "windows", Arch: "arm64"}, nil, "proj-cli.exe"},
+		{cbuild.Target{OS: "darwin", Arch: "arm64"}, "proj-cli"},
+		{cbuild.Target{OS: "linux", Arch: "amd64"}, "proj-cli"},
+		{cbuild.Target{OS: "windows", Arch: "arm64"}, "proj-cli.exe"},
 	} {
 		if c.t.OS == "darwin" && runtime.GOOS != "darwin" {
 			continue
 		}
 		out := filepath.Join(t.TempDir(), "bundle")
-		got, err := bundlePrograms(app, c.t, c.archs, out, false)
+		got, err := bundlePrograms(app, c.t, out, false)
 		if err != nil {
 			t.Fatalf("%s: %v", c.t.OS, err)
 		}
@@ -265,9 +264,10 @@ func TestBundlePrograms(t *testing.T) {
 		}
 		switch c.t.OS {
 		case "darwin":
-			f, err := macho.OpenFat(got[0])
-			if err != nil || len(f.Arches) != 2 {
-				t.Fatalf("not universal: %v", err)
+			// The app's architecture's, as the app is: not universal.
+			f, err := macho.Open(got[0])
+			if err != nil || f.Cpu != macho.CpuArm64 {
+				t.Fatalf("not an arm64 executable: %v", err)
 			}
 			f.Close()
 		case "linux":
@@ -341,7 +341,7 @@ printf '%s %s %s' "$how" "$ASUKA_TARGET" "$ASUKA_EXE" > "$ASUKA_OUT"
 		c.built = strings.ReplaceAll(c.built, "TARGET", triple)
 		c.ran = strings.ReplaceAll(c.ran, "TARGET", triple)
 		out := filepath.Join(t.TempDir(), "bundle")
-		got, err := bundlePrograms(app, c.t, nil, out, false)
+		got, err := bundlePrograms(app, c.t, out, false)
 		if err != nil {
 			t.Fatalf("%s: %v", c.t.OS, err)
 		}

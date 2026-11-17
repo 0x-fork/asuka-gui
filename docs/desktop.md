@@ -20,8 +20,10 @@ app can offer it only where it works.
 
 ## How a desktop app is made
 
-On the Mac, an app is one universal binary in `Name.app`, as an iOS
-app is, with its native packages' Swift built in. On Windows and Linux
+On the Mac, an app is one executable in `Name.app`, as an iOS app is,
+with its native packages' Swift built in, for one architecture: Apple
+silicon's, or Intel's with `--arch amd64` (not one universal binary of
+both, which would be twice the size). On Windows and Linux
 an app is one executable, on Windows with the app's icon, manifest and
 version built in; a Windows or Linux build comes from any system (with
 Zig), with no GTK installed to build against. Every desktop app carries

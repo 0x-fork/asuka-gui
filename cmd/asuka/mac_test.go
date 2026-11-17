@@ -70,15 +70,13 @@ func TestSignMacFrameworks(t *testing.T) {
 	}
 }
 
-// A Mac build is an .app: its executable the Swift host linked with the
-// core with the app compiled in (universal) and, as it imports
-// std/sqlite, SQLite, signed, the app's settings in its Resources. It
-// runs: the window shows the Counter, which counts a press.
+// A Mac build is an .app for one architecture (Apple silicon's, unless
+// --arch amd64: Intel's): its executable the Swift host linked with the
+// core with the app compiled in and, as it imports std/sqlite, SQLite,
+// signed, the app's settings in its Resources. It runs: the window shows
+// the Counter, which counts a press.
 func TestBuildMac(t *testing.T) {
 	needMacBuild(t)
-	if _, err := cbuild.ForTarget(cbuild.Target{OS: "darwin", Arch: "amd64"}); err != nil {
-		t.Skip(err)
-	}
 	useSQLiteCounter(t, "Count: ")
 	app := sqliteTestApp(t)
 	out := t.TempDir()
@@ -87,8 +85,17 @@ func TestBuildMac(t *testing.T) {
 	}
 	bundle := filepath.Join(out, app.displayName()+".app")
 	bin := filepath.Join(bundle, "Contents", "MacOS", sanitizeExe(app.displayName()))
-	if archs, err := exec.Command("lipo", "-archs", bin).Output(); err != nil || strings.TrimSpace(string(archs)) != "x86_64 arm64" {
-		t.Errorf("the executable: %q %v", archs, err)
+	if archs, err := exec.Command("lipo", "-archs", bin).Output(); err != nil || strings.TrimSpace(string(archs)) != "arm64" {
+		t.Errorf("the executable: %q %v, want arm64's alone", archs, err)
+	}
+	// Intel's: another build, its own updates.
+	intel := t.TempDir()
+	if err := buildMac(app, &buildOptions{out: intel, arch: "amd64"}); err != nil {
+		t.Fatal(err)
+	}
+	ibin := filepath.Join(intel, app.displayName()+".app", "Contents", "MacOS", sanitizeExe(app.displayName()))
+	if archs, err := exec.Command("lipo", "-archs", ibin).Output(); err != nil || strings.TrimSpace(string(archs)) != "x86_64" {
+		t.Errorf("--arch amd64's executable: %q %v", archs, err)
 	}
 	// No Go, no core beside it: the core is linked in.
 	if _, err := os.Stat(filepath.Join(bundle, "Contents", "Frameworks", "libasuka.dylib")); err == nil {

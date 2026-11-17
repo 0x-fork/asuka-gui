@@ -9,17 +9,18 @@ and another runs it, reloading as you save.
 
 The CLI, and for each platform you run on, the tools that build for it:
 
-- **iOS**: a Mac with Xcode 26 or later, and its iOS simulator or an
-  iPhone.
+- **iOS**: a Mac with Apple silicon and Xcode 26 or later, and its iOS
+  simulator or an iPhone. (An Intel Mac isn't one Asuka develops on.)
 - **Android**: a Mac, a Windows 10 or 11 PC (x64 or Arm) or Linux, with
   Android Studio and, from its SDK Manager, an NDK (SDK Tools → NDK),
   and an emulator from its Device Manager, or a phone with USB debugging
   on. Asuka finds the SDK in its usual place, or at `ANDROID_HOME`, and
   Android Studio's Java, and builds with the NDK and Gradle. On an Arm PC, the NDK and the emulator run emulated
   (they're x64), and the emulator needs an x86_64 system image.
-- **macOS**: a Mac with Xcode 26 or later, or its command line tools
-  (`xcode-select --install`). The apps you build run on macOS 11 or
-  later.
+- **macOS**: a Mac with Apple silicon and Xcode 26 or later, or its
+  command line tools (`xcode-select --install`). The apps you build run
+  on macOS 11 or later, on Apple silicon, or on Intel Macs built with
+  `--arch amd64`.
 - **Windows**: a PC with Windows 10 or 11, x64 or Arm, with LLVM's clang
   (`winget install LLVM.LLVM`), or [Zig](https://ziglang.org/download)
   with `ASUKA_CC=zig`. `WebView` and `Video` use the Microsoft Edge

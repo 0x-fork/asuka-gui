@@ -160,7 +160,7 @@ func TestUpdaterMac(t *testing.T) {
 		t.Errorf("the installed bundle is %s", v)
 	}
 	run(t, "codesign", "--verify", "--deep", "--strict", installed)
-	if got := f.downloaded(); !strings.Contains(got, "-1.0.0-to-1.0.1-darwin-universal.delta") || strings.Contains(got, "updater-1.0.1-darwin-universal.tar.gz") {
+	if got := f.downloaded(); !strings.Contains(got, "-1.0.0-to-1.0.1-darwin-arm64.delta") || strings.Contains(got, "updater-1.0.1-darwin-arm64.tar.gz") {
 		t.Errorf("downloaded %v, want the delta alone", got)
 	}
 	// Nothing left beside the app: the helper removed its work.

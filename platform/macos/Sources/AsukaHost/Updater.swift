@@ -123,10 +123,19 @@ enum AsukaUpdateError: LocalizedError {
               let perm = attrs[.posixPermissions] as? Int, perm & 0o200 != 0 else { throw AsukaUpdateError.notWritable }
     }
 
+    // The updates' target of a build for this Mac's architecture (a Mac
+    // build is one architecture's: an Intel install never takes Apple
+    // silicon's).
+    #if arch(arm64)
+    static let thisMac = "darwin-arm64"
+    #else
+    static let thisMac = "darwin-amd64"
+    #endif
+
     func info(_ reply: @escaping (Result<Data, Error>) -> Void) {
         let rt = AsukaRuntime.shared
         let cfg = rt.config
-        let target = cfg.updateTarget.isEmpty ? "darwin-universal" : cfg.updateTarget
+        let target = cfg.updateTarget.isEmpty ? Self.thisMac : cfg.updateTarget
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? cfg.version
         let (feed, key, name) = (cfg.updateFeed, cfg.updateKey, rt.appName)
         DispatchQueue.global(qos: .userInitiated).async {

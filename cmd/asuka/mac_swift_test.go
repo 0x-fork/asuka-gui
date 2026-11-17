@@ -44,7 +44,7 @@ func TestMacSwift(t *testing.T) {
 	bundle := filepath.Join(tmp, "App.app")
 	exe := filepath.Join(bundle, "Contents", "MacOS", "App")
 	b := &macBuild{app: app, work: filepath.Join(tmp, "work"), run: macRunner(false)}
-	if err := b.executable(exe, []string{runtime.GOARCH}, nil); err != nil {
+	if err := b.executable(exe, runtime.GOARCH, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := b.embed(bundle, exe); err != nil {

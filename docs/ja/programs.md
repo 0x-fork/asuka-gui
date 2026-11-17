@@ -269,7 +269,7 @@ path = "cli"
 
 | ビルド | 置き場所 | ユーザーの PATH への追加 |
 |---|---|---|
-| macOS | `Notes.app/Contents/Helpers/notes`。ユニバーサルで、アプリと一緒に署名される | ユーザーが（またはアプリが案内して）リンクを作る：`ln -s /Applications/Notes.app/Contents/Helpers/notes /usr/local/bin/notes` |
+| macOS | `Notes.app/Contents/Helpers/notes`。アプリと同じアーキテクチャで、アプリと一緒に署名される | ユーザーが（またはアプリが案内して）リンクを作る：`ln -s /Applications/Notes.app/Contents/Helpers/notes /usr/local/bin/notes` |
 | Linux | インストール先の `bin/notes`。アプリの実行ファイルの隣にあり、tarball と Flatpak にも入る | アプリと一緒に `~/.local/bin` や `/usr/bin` に入る。Flatpak では `flatpak run --command=notes <id>` |
 | Windows | アプリの `.exe` の隣の `notes.exe` | インストーラーがアプリのフォルダーを `PATH` に追加する |
 
@@ -277,7 +277,7 @@ path = "cli"
 
 ### ほかのツールチェーンがビルドするプログラム
 
-ほかのツールチェーンがビルドするプログラム（Go で書いたサーバー、Rust で書いたツールなど、アプリが起動するもの）も同じようにアプリに入ります。その `[bin]` にはディレクトリの代わりにビルドするコマンドを書き、アプリをビルドするターゲットごとに実行されます（ユニバーサルな Mac アプリの 2 つのアーキテクチャは `lipo` でまとめます）。プレースホルダーはツールチェーンごとの名前でターゲットを表します。Go には `{goos}` と `{goarch}`、Rust にはトリプルの `{target}`。`{os}` と `{arch}` は Asuka の名前（`macos`、`x64`）で、自分のスクリプト向けです。`{out}` に書き出せないビルド（cargo など）は、`output` でプログラムを置く場所を指定します（一覧は [asuka.toml](asuka-toml.md#bin) にあります）。
+ほかのツールチェーンがビルドするプログラム（Go で書いたサーバー、Rust で書いたツールなど、アプリが起動するもの）も同じようにアプリに入ります。その `[bin]` にはディレクトリの代わりにビルドするコマンドを書き、アプリをビルドするターゲットに対して実行されます。プレースホルダーはツールチェーンごとの名前でターゲットを表します。Go には `{goos}` と `{goarch}`、Rust にはトリプルの `{target}`。`{os}` と `{arch}` は Asuka の名前（`macos`、`x64`）で、自分のスクリプト向けです。`{out}` に書き出せないビルド（cargo など）は、`output` でプログラムを置く場所を指定します（一覧は [asuka.toml](asuka-toml.md#bin) にあります）。
 
 ```toml
 [bin.notes-server]

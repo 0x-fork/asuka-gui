@@ -1484,7 +1484,7 @@ asuka dev --platform ios|android <dir>       build, run, rebuild and restart on 
 asuka build --platform ios|android <dir>     a release build for the stores
 asuka publish --platform ios|android <dir>   the release build, uploaded: TestFlight, App Review; a Play track
 asuka dev --platform mac <dir>               build and run on this Mac, rerun on save
-asuka build --platform mac <dir>             a universal .app, signed (--sign; default ad hoc), its profile embedded (--profile); --appstore: a .pkg
+asuka build --platform mac <dir>             an .app for Apple silicon (--arch amd64: Intel), signed (--sign; default ad hoc), its profile embedded (--profile); --appstore: a .pkg
 asuka dev --platform windows <dir>           build and run on this PC, rerun on save
 asuka build --platform windows <dir>         a folder: the .exe (icon, manifest, version; signed with ASUKA_WINDOWS_CERT) and its assets (--arch arm64)
 asuka dev --platform web <dir>               serve it to the browser, rebuild and reload on save
@@ -1707,7 +1707,7 @@ links the core's whole, its exports its roots.
 (`asuka prebuilt build`, the release workflow; Zig, Xcode and the NDK as
 a local build would) and publishes them with the CLI as npm packages, one
 per target, versioned as the CLI: `@egoist/asuka-prebuilt-<target>`
-(ios-arm64, ios-sim-arm64, ios-sim-x64, darwin-universal,
+(ios-arm64, ios-sim-arm64, darwin-arm64, darwin-x64,
 android-arm64-v8a, android-armeabi-v7a, android-x86_64, wasm32,
 linux-x64, linux-arm64, windows-x64, windows-arm64) and
 `@egoist/asuka-prebuilt-android-aar` (Kotlin is the same for every ABI,
@@ -2142,8 +2142,9 @@ Desktop hosts run in the app's process, with no Go at run time (RFC
 0008). The Mac's executable is the Swift host linked with the core (the
 app compiled in to C for a release; under `asuka dev` the player, the
 core without an app, which connects with `asuka_dev_connect`) and the
-app's native packages' Swift: one universal binary (arm64 and x86_64)
-in the .app, which `asuka build` signs. The host calls `asuka.h`
+app's native packages' Swift: one architecture's binary (arm64, or
+x86_64 with --arch amd64: not universal, which is twice the size) in
+the .app, which `asuka build` signs. The host calls `asuka.h`
 directly: its callbacks are Swift functions, a batch is decoded in place
 (`asukaDecode`), events go in with `asuka_event`. On Windows and Linux
 the host is C: the host, the C core and the app compiled to C
@@ -3883,7 +3884,7 @@ The package is Asuka, written once; the core does what Asuka shouldn't
 over files, as its `native fn`s; the host does what only it can.
 
 - The format (`internal/update`, the CLI's): a manifest per target
-  (`darwin-universal`, `windows-amd64`, `linux-arm64`...),
+  (`darwin-arm64`, `windows-amd64`, `linux-arm64`...),
   `update-<target>.json`, or a prerelease's channel's
   `update-<target>-beta.json` (a version's channel is its prerelease's
   letters): the version, Markdown notes, the date, the archive's URL,
