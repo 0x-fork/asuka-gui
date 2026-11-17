@@ -282,6 +282,41 @@ TEST(spawn_lets_go_of_its_closure_on_the_main_thread) {
 	ak_release(f);
 }
 
+// math.random's generator is shared by the threads that draw from it
+// (spawn's workers): drawing at once, each draw is a value of its own,
+// none lost to a race or drawn twice.
+enum { DRAWERS = 4, DRAWS = 100000 };
+static int64_t drawn[DRAWERS * DRAWS];
+static atomic_int draw_go;
+static ak_lib_fn draw_fn;
+
+static void *drawer(void *arg) {
+	int me = (int)(intptr_t)arg;
+	while (!atomic_load(&draw_go)) {}
+	ak_val range[2] = {{.i = INT64_MIN}, {.i = INT64_MAX}};
+	for (int i = 0; i < DRAWS; i++) drawn[me * DRAWS + i] = draw_fn(range, 2).i;
+	return NULL;
+}
+
+static int cmp_i64(const void *a, const void *b) {
+	int64_t x = *(const int64_t *)a, y = *(const int64_t *)b;
+	return (x > y) - (x < y);
+}
+
+TEST(math_random_across_threads) {
+	for (const ak_lib_entry *e = ak_lib; e->name; e++)
+		if (strcmp(e->name, "math.random_int") == 0) draw_fn = e->fn;
+	REQUIRE(draw_fn != NULL);
+	pthread_t th[DRAWERS];
+	for (int i = 0; i < DRAWERS; i++) REQUIRE(pthread_create(&th[i], NULL, drawer, (void *)(intptr_t)i) == 0);
+	atomic_store(&draw_go, 1);
+	for (int i = 0; i < DRAWERS; i++) pthread_join(th[i], NULL);
+	qsort(drawn, AK_LEN(drawn), sizeof drawn[0], cmp_i64);
+	int twice = 0;
+	for (size_t i = 1; i < AK_LEN(drawn); i++) twice += drawn[i] == drawn[i - 1];
+	CHECK_EQ_INT(twice, 0);
+}
+
 // Posted callbacks run when one of them has the host run them again (a
 // modal dialog's loop, which handles the host's wake): each once, none
 // lost.
