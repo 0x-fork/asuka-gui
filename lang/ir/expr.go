@@ -170,10 +170,19 @@ func (b *fb) expr(e syntax.Expr, dst int) int {
 	case *syntax.ImplicitMember:
 		return b.selection(e, nil, dst)
 	case *syntax.MemberExpr:
+		if r, ok := b.pathRead(e, dst); ok {
+			return r
+		}
 		return b.selection(e, e.X, dst)
 	case *syntax.CallExpr:
+		if r, ok := b.pathRead(e, dst); ok {
+			return r
+		}
 		return b.call(e, dst)
 	case *syntax.IndexExpr:
+		if r, ok := b.pathRead(e, dst); ok {
+			return r
+		}
 		if xt := b.rawType(e.X); check.IsOptional(xt) {
 			// In a ?. chain (a?.items[0]): none when what's before is.
 			return b.chainedIndex(e, xt, dst)
@@ -1073,7 +1082,9 @@ func (b *fb) binary(e *syntax.BinaryExpr, dst int) int {
 		k := b.l.kind(res)
 		other, end := b.f.NewLabel(), b.f.NewLabel()
 		var r int
-		if m, key, ok := b.mapRead(e.X); ok {
+		if pr, ok := b.pathMapRead(e.X, k, dst, other); ok {
+			r = pr
+		} else if m, key, ok := b.mapRead(e.X); ok {
 			// m[k] ?? d: the value read as it is, no optional made.
 			r = b.out(dst, k)
 			b.emit(op("MGETJ"), r, m, key, int(other))

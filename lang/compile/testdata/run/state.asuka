@@ -13,6 +13,7 @@ store Cart {
   state total = 0
   let left = items.count(i => !i.done)
 
+  // It follows the length (rfcs/0013): finishing an item doesn't run it.
   effect {
     print("cart has {items.count()}")
   }
@@ -93,7 +94,6 @@ test "a closure reads state the builtin it's passed to changes" {
 // cart has 1
 // cart has 2
 // 2
-// cart has 2
 // 1
 // true
 // 2

@@ -467,8 +467,11 @@ type Member struct {
 	Fn      *Function
 	Params  []*Param // an event's
 	// For a let: whether it reads anything reactive (a memo) or not (a
-	// value computed once).
+	// value computed once). Path: its value is a path (rfcs/0013: let
+	// draft = form.draft), its own accessor of that path rather than a
+	// memo: reads through it are paths too.
 	Memo bool
+	Path bool
 	Pub  bool
 	// Assigned: a prop its component assigns (open = …). It has its
 	// change event (openChange): bound by the caller, an assignment

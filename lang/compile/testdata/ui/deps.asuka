@@ -18,8 +18,10 @@ component Deps {
   task(u.id) { starts += 1 }
   effect(u.id) { runs += 1 }
   effect(id, other) { both += 1 }
+  // A plain effect follows what it reads: u, whole, here (u.id alone
+  // would follow the id, rfcs/0013), so any change of u runs it.
   effect {
-    let _ = u.id
+    let _ = u
     plain.push(1)
   }
 

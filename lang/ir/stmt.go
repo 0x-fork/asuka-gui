@@ -195,6 +195,12 @@ func (b *fb) condJump(c syntax.Expr, els Label) {
 		return
 	}
 	if bp, ok := lc.Pattern.(*syntax.BindPat); ok {
+		if in, ok := b.pathMapRead(lc.Value, b.kind(check.Unopt(b.rawType(lc.Value))), -1, els); ok {
+			// if let v = m[k] of a state's map: its key followed.
+			vr, _ := b.l.info.Defs[bp.Name].(*check.Var)
+			b.declare(vr, in)
+			return
+		}
 		if m, key, ok := b.mapRead(lc.Value); ok {
 			// if let v = m[k]: the value read as it is, no optional made.
 			in := b.temp(b.kind(check.Unopt(b.rawType(lc.Value))))
@@ -959,6 +965,13 @@ func (b *fb) update(lv *lvalue, fn func(cur int)) { b.updateWith(lv, false, fn) 
 // so that code sees its value as it was (the change copies it) rather
 // than none.
 func (b *fb) updateWith(lv *lvalue, reads bool, fn func(cur int)) {
+	b.updatePut(lv, reads, fn, b.putFor(lv, psAll))
+}
+
+// updatePut is updateWith, with how the state lv is in is put back (p:
+// the place's path and what the change was, rfcs/0013; nil when lv
+// isn't in a state).
+func (b *fb) updatePut(lv *lvalue, reads bool, fn func(cur int), p *put) {
 	switch lv.kind {
 	case lvVar:
 		r, ok := b.vars[lv.v]
@@ -990,34 +1003,44 @@ func (b *fb) updateWith(lv *lvalue, reads bool, fn func(cur int)) {
 	case lvCell:
 		k := b.cellKind(lv)
 		cur := b.temp(k)
+		var ok, failed *putPath
+		if p != nil {
+			ok, failed = p.ok, p.err
+		}
 		if reads {
 			b.emit(op("CPEEK"), cur, lv.cell)
 			fn(cur)
-			b.emit(op("CPUT"), lv.cell, cur)
+			if ok != nil && ok.steps[len(ok.steps)-1] == psAll {
+				// What changed isn't known (a mut fn's call), but the old
+				// value is in the cell still: compared, path by path.
+				b.emit(op("CSET"), lv.cell, cur)
+				return
+			}
+			b.cputp(lv.cell, cur, ok)
 			return
 		}
 		b.emit(op("CTAKE"), cur, lv.cell)
 		b.protect(func() { fn(cur) }, func(e int) {
-			b.emit(op("CPUT"), lv.cell, cur)
+			b.cputp(lv.cell, cur, failed)
 		})
-		b.emit(op("CPUT"), lv.cell, cur)
+		b.cputp(lv.cell, cur, ok)
 	case lvField:
-		b.updateWith(lv.inner, reads, func(rx int) {
+		b.updatePut(lv.inner, reads, func(rx int) {
 			t := b.getField(rx, lv.named, lv.field, -1)
 			b.changePart(t, fn, func(v int) { b.emit(op("SETF"), rx, lv.field.Index, v) })
-		})
+		}, p)
 	case lvIndex:
 		if lv.isMap {
-			b.updateWith(lv.inner, reads, func(rx int) { b.updateEntry(lv, rx, fn) })
+			b.updatePut(lv.inner, reads, func(rx int) { b.updateEntry(lv, rx, fn) }, p)
 			return
 		}
-		b.updateWith(lv.inner, reads, func(rx int) {
+		b.updatePut(lv.inner, reads, func(rx int) {
 			t := b.temp(b.kind(b.placeType(lv.x)))
 			b.emit(op("IDX"), t, rx, lv.idx)
 			b.changePart(t, fn, func(v int) { b.emit(op("SETIDX"), rx, lv.idx, v) })
-		})
+		}, p)
 	case lvSome:
-		b.updateWith(lv.inner, reads, func(cur int) { b.updateSome(lv, cur, fn) })
+		b.updatePut(lv.inner, reads, func(cur int) { b.updateSome(lv, cur, fn) }, p)
 	}
 }
 
@@ -1081,14 +1104,59 @@ func (b *fb) set(lv *lvalue, val int) {
 			b.l.errorf(lv.x, "an error's fields can't be changed: make a new one")
 			return
 		}
-		b.update(lv.inner, func(rx int) { b.emit(op("SETF"), rx, lv.field.Index, val) })
+		// In a state: the old value kept, so that the write tells only
+		// the readers of what changed (none for an equal one).
+		old, p := b.oldFor(lv)
+		b.updatePut(lv.inner, false, func(rx int) {
+			if old >= 0 {
+				b.getField(rx, lv.named, lv.field, old)
+			}
+			b.emit(op("SETF"), rx, lv.field.Index, val)
+		}, p)
 	case lvIndex:
+		old, p := b.oldFor(lv)
 		if lv.isMap {
-			b.update(lv.inner, func(rx int) { b.emit(op("MSET"), rx, lv.idx, val) })
+			b.updatePut(lv.inner, false, func(rx int) {
+				if old >= 0 {
+					there := p.ok.args[len(p.ok.args)-1]
+					skip := b.f.NewLabel()
+					b.emit(op("KSMALL"), there, 0)
+					b.emit(op("MGETJ"), old, rx, lv.idx, int(skip))
+					b.emit(op("KSMALL"), there, 1)
+					b.f.Place(skip)
+				}
+				b.emit(op("MSET"), rx, lv.idx, val)
+			}, p)
 			return
 		}
-		b.update(lv.inner, func(rx int) { b.emit(op("SETIDX"), rx, lv.idx, val) })
+		b.updatePut(lv.inner, false, func(rx int) {
+			if old >= 0 {
+				b.emit(op("IDX"), old, rx, lv.idx)
+			}
+			b.emit(op("SETIDX"), rx, lv.idx, val)
+		}, p)
 	}
+}
+
+// oldFor is, for a write of the place lv (a field, an element, a map's
+// entry) in a state, the register its old value goes in and how the
+// state is put back: compared with it (and, after a map's key, whether
+// it was there). Not in a state: -1, nil.
+func (b *fb) oldFor(lv *lvalue) (int, *put) {
+	pp, ok := b.placePath(lv)
+	if !ok {
+		return -1, nil
+	}
+	if !pp.exact {
+		return -1, b.putFor(lv.inner, psAll)
+	}
+	old := b.temp(b.kind(b.placeType(lv.x)))
+	regs := []int{old}
+	if pp.keyed {
+		regs = append(regs, b.temp(bc.KInt))
+	}
+	okp, errp := pp.with(psOld, regs...), pp.with(psAll)
+	return old, &put{&okp, &errp}
 }
 
 // get reads lv's current value.
@@ -1167,22 +1235,33 @@ func (b *fb) assign(s *syntax.AssignStmt, lv *lvalue, v int) {
 			return
 		}
 		if lv.kind == lvField || lv.kind == lvIndex && !lv.isMap {
-			// Read and write the element where it is.
-			b.updateWith(lv.inner, reads, func(rx int) {
-				var cur int
+			// Read and write the element where it is; in a state, its
+			// old value kept for the write to compare.
+			old, p := b.oldFor(lv)
+			if p == nil {
+				p = b.putFor(lv.inner, psAll)
+			}
+			b.updatePut(lv.inner, reads, func(rx int) {
+				cur := old
 				if lv.kind == lvField {
-					cur = b.getField(rx, lv.named, lv.field, -1)
+					cur = b.getField(rx, lv.named, lv.field, old)
 				} else {
-					cur = b.temp(b.kind(lt))
+					if cur < 0 {
+						cur = b.temp(b.kind(lt))
+					}
 					b.emit(op("IDX"), cur, rx, lv.idx)
 				}
-				r := apply(cur, cur)
+				dst := cur
+				if old >= 0 {
+					dst = -1
+				}
+				r := apply(cur, dst)
 				if lv.kind == lvField {
 					b.emit(op("SETF"), rx, lv.field.Index, r)
 				} else {
 					b.emit(op("SETIDX"), rx, lv.idx, r)
 				}
-			})
+			}, p)
 			return
 		}
 		cur := b.get(lv)

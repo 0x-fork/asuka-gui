@@ -481,12 +481,14 @@ func (b *fb) builtinMethod(e *syntax.CallExpr, call *check.Call, recv *int, dst 
 		if lv == nil {
 			lv = b.prepare(call.Recv)
 		}
-		b.updateWith(lv, hasClosureArg(m) || inoutGuard || b.placeReads(lv), func(cur int) {
+		// What it changed, it records (rt.h's ak_change): the state's
+		// readers of the rest aren't told.
+		b.updatePut(lv, hasClosureArg(m) || inoutGuard || b.placeReads(lv), func(cur int) {
 			b.callInout(m, cur, vals, r, inoutGuard)
 			if after != nil {
 				after(r)
 			}
-		})
+		}, b.putFor(lv, psChanged))
 	} else {
 		x := b.recvValue(call, recv)
 		b.callBTo(m.Builtin, r, append([]int{x}, vals...)...)
