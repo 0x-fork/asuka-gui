@@ -12,7 +12,7 @@ import (
 
 func TestFmt(t *testing.T) {
 	dir := t.TempDir()
-	messy := "component C {gap:8;Text( \"a\" )}\n"
+	messy := "component C {gap:8\nText( \"a\" )}\n"
 	clean := "component C {\n  gap: 8\n  Text(\"a\")\n}\n"
 	bad := "component D {\n  Text(\"a\"\n}\n"
 	files := map[string]string{
