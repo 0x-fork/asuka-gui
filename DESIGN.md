@@ -1738,7 +1738,11 @@ is used only when its sources are the CLI's own (not a checkout's, not
 (`cbuild.LinuxGlibc`, 2.28), and they need nothing of Zig's runtime.
 (Windows' are MinGW's, which a compiler for MSVC's runtime can't link.)
 A CLI run from a checkout has an empty manifest and builds the same
-units into the cache.
+units into the cache. A release publishes `@egoist/asuka`, the
+launcher, last: after the prebuilt and platform packages, once the
+registry serves each of their tarballs, fetched and checked as the CLI
+fetches them (npm accepts a package before it serves it, a new
+package's tarball for minutes after).
 
 **Swift: modules with library evolution.** The host's Swift (the module
 `Asuka`, with its compilation conditions) and each native package's
