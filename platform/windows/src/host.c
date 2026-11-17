@@ -67,6 +67,7 @@ static void node_free(node *n) {
 	wh_free_strings(n->a11y_actions, n->na11y_actions);
 	if (n->clip_rgn) DeleteObject(n->clip_rgn);
 	wh_field_free(n);
+	wh_nav_free(n);
 	// A node named after it's freed reads this, not what it held: its
 	// window handles and pointers are nothing anyone has.
 	memset(n, 0xDD, sizeof *n);

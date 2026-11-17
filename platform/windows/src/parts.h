@@ -174,6 +174,7 @@ bool wh_row_menu(node *n);
 // search.c, split.c, popover.c, snackbar.c, alertdialog.c) ----
 bool wh_create_nav(node *n);
 bool wh_destroy_nav(node *n);
+void wh_nav_free(node *n);
 bool wh_insert_nav(node *p, node *c, uint32_t index);
 bool wh_remove_nav(node *p, node *c);
 void wh_set_nav_prop(node *n, uint16_t p, const ak_value *v);

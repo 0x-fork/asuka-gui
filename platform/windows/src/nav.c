@@ -239,6 +239,35 @@ bool wh_destroy_nav(node *n) {
 	return false;
 }
 
+// forget_host_node lets go of a node the host made for another (a
+// stack's header, its search field, a tabs' bar), whose windows went with
+// the other's.
+static void forget_host_node(node *b) {
+	if (!b) return;
+	wh_unbind(b->hwnd);
+	wh_unbind(b->ctl);
+	wh_map_del(&H.nodes, b->id);
+	wh_free_node(b);
+}
+
+// wh_nav_free frees a node's navigation state as the node is freed: a
+// stack's header (and its search field) and a tabs' bar with it.
+void wh_nav_free(node *n) {
+	wh_nav *v = n->nav;
+	if (!v) return;
+	n->nav = NULL;
+	if (n->kind == AK_KIND_STACK || n->kind == AK_KIND_TABS) forget_host_node(v->bar);
+	if (n->kind == KIND_HEADER) forget_host_node(v->field);
+	wstr_free(&v->search);
+	wstr_free(&v->search_text);
+	free(v->buttons);
+	actions_free(&v->toolbar);
+	actions_free(&v->primary);
+	free(v->fields);
+	free(v->cfg);
+	free(v);
+}
+
 node *wh_top_screen(node *stack) {
 	for (uint32_t i = stack->nkids; i-- > 0;)
 		if (!stack->kids[i]->dying) return stack->kids[i];
