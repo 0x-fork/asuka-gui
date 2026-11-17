@@ -1,0 +1,48 @@
+// Loops' names, and for over the program's types.
+
+fn names(grid: [[int]]) {
+  for row in grid as rows { // ERROR "rows names this loop, and no break or continue says it: drop as rows"
+    for c in row {
+      break cells // ERROR "no loop around this is named cells: name one, for … as cells"
+    }
+  }
+  for row in grid as rows {
+    for c in row as rows { // ERROR "rows names a loop around this one already"
+      break rows
+    }
+    let f = () => {
+      for c in row { continue rows } // ERROR "continue rows is in a closure: it can't leave the loop around the closure"
+    }
+    defer { break rows } // ERROR "break rows is in a defer, which runs to its end"
+  }
+  var i = 0
+  while i < 3 as again {
+    i += 1
+    if i == 2 { continue again }
+  }
+}
+
+struct Plain {}
+
+struct Bad {
+  fn next() -> int = 1
+}
+
+struct Seq {
+  fn iter() -> Plain = Plain()
+}
+
+fn iterate() {
+  for x in Plain() {} // ERROR "for goes over an array, a set, a map, a range or an iterator \(a type with mut fn next\(\) -> T\?, or fn iter\(\) that gives one\), not a Plain"
+  for x in Bad() {} // ERROR "not a Bad"
+  for x in Seq() {} // ERROR "not a Seq"
+}
+
+component Rows {
+  state xs = [1]
+  Column {
+    for x in xs as rows { // ERROR "a for among views makes rows, and isn't a loop to break: drop as rows"
+      Text("{x}")
+    }
+  }
+}

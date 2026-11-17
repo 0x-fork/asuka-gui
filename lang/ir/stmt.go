@@ -70,7 +70,7 @@ func (b *fb) stmt(it syntax.Item) {
 		top, end := b.f.Here(), b.f.NewLabel()
 		b.openScope()
 		b.condJump(s.Cond, end)
-		b.loops = append(b.loops, loop{brk: end, cont: top, defers: len(b.defers)})
+		b.loops = append(b.loops, loop{brk: end, cont: top, defers: len(b.defers), node: s})
 		b.block(s.Body)
 		b.loops = b.loops[:len(b.loops)-1]
 		b.closeScope()
@@ -107,7 +107,7 @@ func (b *fb) stmt(it syntax.Item) {
 	case *syntax.ThrowStmt:
 		b.throw(s.Value)
 	case *syntax.BranchStmt:
-		b.branch(s.Tok)
+		b.branch(s.Tok, s.Label)
 	case *syntax.EmitStmt:
 		b.emitStmt(s)
 	case *syntax.ExprStmt:
@@ -264,6 +264,10 @@ func (b *fb) forStmt(s *syntax.ForStmt) {
 		b.forAwait(s, fi)
 		return
 	}
+	if fi.Kind == check.ForIter {
+		b.forIter(s, fi)
+		return
+	}
 	b.openScope()
 	defer b.closeScope()
 	top, cont, end := b.f.NewLabel(), b.f.NewLabel(), b.f.NewLabel()
@@ -340,7 +344,7 @@ func (b *fb) forStmt(s *syntax.ForStmt) {
 			b.declare(fi.Item, x)
 		}
 	}
-	b.loops = append(b.loops, loop{brk: end, cont: cont, defers: len(b.defers)})
+	b.loops = append(b.loops, loop{brk: end, cont: cont, defers: len(b.defers), node: s})
 	b.block(s.Body)
 	b.loops = b.loops[:len(b.loops)-1]
 	b.closeScope()
@@ -1175,7 +1179,7 @@ func (b *fb) forAwait(s *syntax.ForStmt, fi *check.ForInfo) {
 		} else {
 			b.declare(fi.Item, x)
 		}
-		b.loops = append(b.loops, loop{brk: end, cont: top, defers: len(b.defers)})
+		b.loops = append(b.loops, loop{brk: end, cont: top, defers: len(b.defers), node: s})
 		b.block(s.Body)
 		b.loops = b.loops[:len(b.loops)-1]
 		b.closeScope()
@@ -1247,11 +1251,21 @@ func (b *fb) returnValue(value syntax.Expr) {
 
 // branch is break or continue: the defers of the loop's body, then the
 // jump.
-func (b *fb) branch(tok syntax.Token) {
+func (b *fb) branch(tok syntax.Token, label *syntax.Ident) {
 	if len(b.loops) == 0 {
 		return
 	}
 	lp := b.loops[len(b.loops)-1]
+	if label != nil {
+		// A loop around, by its name: the defers of every loop left run.
+		target := b.l.info.Labels[label]
+		for i := len(b.loops) - 1; i >= 0; i-- {
+			if b.loops[i].node == target {
+				lp = b.loops[i]
+				break
+			}
+		}
+	}
 	b.runDefers(lp.defers)
 	if tok == syntax.BREAK {
 		b.jmp(lp.brk)
@@ -1269,7 +1283,7 @@ func (b *fb) jumpExpr(e *syntax.JumpExpr, dst int) int {
 	case syntax.RETURN:
 		b.returnValue(e.Value)
 	default:
-		b.branch(e.Tok)
+		b.branch(e.Tok, e.Label)
 	}
 	return dst
 }

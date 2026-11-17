@@ -65,7 +65,8 @@ type fb struct {
 
 type loop struct {
 	brk, cont Label
-	defers    int // len(defers) where the loop starts
+	defers    int         // len(defers) where the loop starts
+	node      syntax.Node // the loop's statement, which a break name names
 }
 
 func (b *fb) emit(o bc.Op, args ...int)     { b.f.Emit(b.line, o, b.fits(o, args)...) }

@@ -57,9 +57,7 @@ func (c *Checker) stmt(it syntax.Item) {
 	case *syntax.WhileStmt:
 		c.openScope()
 		c.cond(s.Cond)
-		c.loops++
-		c.block(s.Body)
-		c.loops--
+		c.loopBody(s, s.Label, func() { c.block(s.Body) })
 		c.closeScope()
 	case *syntax.MatchStmt:
 		c.matchStmt(s)
@@ -70,7 +68,7 @@ func (c *Checker) stmt(it syntax.Item) {
 	case *syntax.ThrowStmt:
 		c.throwValue(s, s.Value)
 	case *syntax.BranchStmt:
-		c.branch(s, s.Tok)
+		c.branch(s, s.Tok, s.Label)
 	case *syntax.DeferStmt:
 		if c.inDefer > 0 {
 			c.errorf(s, "a defer inside a defer: put the code in the first one")
@@ -570,12 +568,19 @@ func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
 		case *Set:
 			fi.Kind, fi.Elem = ForSet, u.Elem
 		default:
+			if !view && !IsInvalid(t) {
+				c.openScope() // closed after the loop
+				if c.forIter(s, fi, t) {
+					break
+				}
+				c.closeScope()
+			}
 			if t == String {
 				c.errorf(s.Seq, "a string isn't a list: go over its characters, s.chars()")
 			} else if _, ok := t.(*Stream); ok {
 				c.errorf(s.Seq, "a stream's values come over time: for await x in it (in an async fn, a task or a handler)")
 			} else if !IsInvalid(t) {
-				c.errorf(s.Seq, "for goes over an array, a set, a map or a range, not %s", aType(t))
+				c.errorf(s.Seq, "for goes over an array, a set, a map, a range or an iterator (a type with mut fn next() -> T?, or fn iter() that gives one), not %s", aType(t))
 			}
 			fi.Kind, fi.Elem = ForArray, Invalid
 		}
@@ -598,6 +603,9 @@ func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
 		c.leave(saved)
 	}
 	if view {
+		if s.Label != nil {
+			c.errorf(s.Label, "a for among views makes rows, and isn't a loop to break: drop as %s", s.Label.Name)
+		}
 		saved := c.ctx
 		row := c.enter(CtxBuilder, s.Body, "row")
 		c.forBindings(fi, s.Pattern, RowItem, row)
@@ -610,10 +618,11 @@ func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
 	}
 	c.openScope()
 	c.forBindings(fi, s.Pattern, LocalVar, nil)
-	c.loops++
-	c.block(s.Body)
-	c.loops--
+	c.loopBody(s, s.Label, func() { c.block(s.Body) })
 	c.closeScope()
+	if fi.Kind == ForIter {
+		c.closeScope() // its hidden vars'
+	}
 }
 
 // forBindings declares a for's item (and index, or key and value).
@@ -1282,9 +1291,7 @@ func (c *Checker) forAwait(s *syntax.ForStmt, fi *ForInfo, view bool) {
 	}
 	c.openScope()
 	c.forBindings(fi, s.Pattern, LocalVar, nil)
-	c.loops++
-	c.block(s.Body)
-	c.loops--
+	c.loopBody(s, s.Label, func() { c.block(s.Body) })
 	c.closeScope()
 }
 
@@ -1367,7 +1374,11 @@ func (c *Checker) throwValue(s syntax.Node, value syntax.Expr) {
 }
 
 // branch checks a break or a continue.
-func (c *Checker) branch(s syntax.Node, tok syntax.Token) {
+func (c *Checker) branch(s syntax.Node, tok syntax.Token, label *syntax.Ident) {
+	if label != nil {
+		c.branchLabel(tok, label)
+		return
+	}
 	if c.loops == 0 {
 		c.errorf(s, "%s outside a loop", tok)
 	}
@@ -1382,7 +1393,7 @@ func (c *Checker) jumpExpr(e *syntax.JumpExpr) Type {
 	case syntax.RETURN:
 		c.returnValue(e, e.Value)
 	default:
-		c.branch(e, e.Tok)
+		c.branch(e, e.Tok, e.Label)
 	}
 	return Never
 }

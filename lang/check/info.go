@@ -89,6 +89,8 @@ type Info struct {
 	// ExtImpls: the extensions' methods that give types interfaces where
 	// they're converted to one, by ExtImplKey.
 	ExtImpls map[string]*Function
+	// Labels: the loop each break name and continue name says.
+	Labels map[*syntax.Ident]syntax.Node
 
 	// For editors (lang/lsp).
 	//
@@ -127,6 +129,7 @@ func newInfo() *Info {
 		SlotCalls:      map[*syntax.SlotItem]*syntax.CallExpr{},
 		ImplicitSelf:   map[syntax.Expr]syntax.Expr{},
 		ExtImpls:       map[string]*Function{},
+		Labels:         map[*syntax.Ident]syntax.Node{},
 		BodyCalls:      map[syntax.Item]bool{},
 		ScreenRoots:    map[*TypeName]*syntax.CallExpr{},
 		RouteBuilders:  map[*ElementCall]*RouteBuilder{},
@@ -254,6 +257,7 @@ const (
 	ForMap                // (key, value) in a map
 	ForEnumerated         // (i, x) in xs.enumerated()
 	ForStream             // for await x in a stream
+	ForIter               // a value of the program's type: an iterator (next) or a sequence (iter)
 	ForSet                // x in a set, in insertion order
 )
 
@@ -270,6 +274,10 @@ type ForInfo struct {
 	View  bool // in a view: Item and Index are accessors
 	Key   syntax.Expr
 	Lazy  bool // directly in an element that builds rows lazily (a List)
+	// ForIter's: the hidden vars of the sequence (when it's iter()'s)
+	// and of the iterator, and the calls of iter() and next() on them.
+	SeqVar, IterVar *Var
+	IterCall, Next  *syntax.CallExpr
 }
 
 // MatchInfo is a match's subject type and arms' bindings.

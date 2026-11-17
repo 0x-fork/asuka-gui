@@ -230,3 +230,35 @@ func (b *fb) chainedIndex(e *syntax.IndexExpr, xt check.Type, dst int) int {
 	b.f.Place(end)
 	return r
 }
+
+// forIter is for x in v over an iterator (check.ForIter): v (or its
+// iter()'s result) copied into a hidden var, and each turn its next()
+// called on it as a mut fn's call, until it gives none.
+func (b *fb) forIter(s *syntax.ForStmt, fi *check.ForInfo) {
+	b.openScope()
+	defer b.closeScope()
+	if fi.SeqVar != nil {
+		b.declare(fi.SeqVar, b.value(s.Seq, -1))
+		b.declare(fi.IterVar, b.value(fi.IterCall, -1))
+	} else {
+		b.declare(fi.IterVar, b.value(s.Seq, -1))
+	}
+	top, end := b.f.Here(), b.f.NewLabel()
+	mark := b.mark()
+	r := b.value(fi.Next, -1)
+	b.emitJump(op("JNONE"), r, end)
+	b.openScope()
+	x := b.unbox(r, b.typ(fi.Elem), -1)
+	if _, ok := fi.Pat.(*syntax.TuplePat); ok {
+		b.bindLet(fi.Pat, x, b.typ(fi.Elem))
+	} else {
+		b.declare(fi.Item, x)
+	}
+	b.loops = append(b.loops, loop{brk: end, cont: top, defers: len(b.defers), node: s})
+	b.block(s.Body)
+	b.loops = b.loops[:len(b.loops)-1]
+	b.closeScope()
+	b.release(mark)
+	b.jmp(top)
+	b.f.Place(end)
+}
