@@ -221,6 +221,8 @@ func TestParseExpr(t *testing.T) {
 		{"await all(a(), b())", "(await (call all (call a) (call b)))"},
 		// Postfix.
 		{"a.b.c", "(. (. a b) c)"},
+		{"t.0.1", "(. (. t 0) 1)"},
+		{"t?.1", "(?. t 1)"},
 		{"a?.b?.c", "(?. (?. a b) c)"},
 		{"a[0][i + 1]", "([] ([] a 0) (+ i 1))"},
 		{"a!.b", "(. (! a) b)"},

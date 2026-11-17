@@ -251,6 +251,13 @@ redo:
 		}
 		return pos, IDENT, lit
 	case isDigit(ch):
+		if (s.last == PERIOD || s.last == OPTDOT) && !unitAfterDigits(s.src[start:]) {
+			// A tuple's element, t.0: its index alone, so that t.0.1 is
+			// t . 0 . 1, not t . 0.1 (as Rust reads it). (.5s, a number
+			// without its 0, is scanned whole for the parser to say so.)
+			s.digits(isDigit)
+			return pos, INT, s.src[start:s.offset]
+		}
 		tok := s.number()
 		return pos, tok, s.src[start:s.offset]
 	case ch == '"':
@@ -490,6 +497,16 @@ func (s *Scanner) digits(ok func(rune) bool) {
 		}
 		s.next()
 	}
+}
+
+// unitAfterDigits reports a unit (a letter or %) right after src's
+// leading digits.
+func unitAfterDigits(src string) bool {
+	i := 0
+	for i < len(src) && src[i] >= '0' && src[i] <= '9' {
+		i++
+	}
+	return i < len(src) && (src[i] == '%' || isLetter(rune(src[i])))
 }
 
 // number scans an integer or a float and its unit: 300ms, 5s, 2min, 1h
