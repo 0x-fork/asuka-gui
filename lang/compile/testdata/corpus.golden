@@ -17,7 +17,6 @@ styles.asuka:4:15: secondarySystemBackground isn't a semantic color (they're lab
 styles.asuka:5:24: Shadow has no parameter blur
 styles.asuka:9:3: a style holds style props, and fontSize isn't one
 styles.asuka:10:3: a style holds style props, and weight isn't one (did you mean height?)
-styles.asuka:10:11: can't tell what .semibold is here: write its type, Type.semibold
 styles.asuka:22:10: unknown type Theme
 styles.asuka:33:22: unknown name selected
 styles.asuka:46:15: 1fr is a grid track's share: write it .fr(1)
@@ -41,8 +40,7 @@ model.asuka:83:27: count is a method of [int]: call it, count()
 == concurrency
 concurrency.asuka:9:40: Accelerometer has no case updates
 concurrency.asuka:10:16: [float] has no method append
-concurrency.asuka:21:13: post can throw: call it with try (try post(…)), or try? for none on an error
-concurrency.asuka:21:13: this closure doesn't throw where it's passed: catch the error (try … catch { }, do { } catch { }, try?)
+concurrency.asuka:21:13: post can throw: call it with try (try post(…)), or try? for none on an error; and this closure doesn't throw where it's passed: catch the error (try … catch { }, do { } catch { }, try?)
 concurrency.asuka:31:10: Button has no event tap (its events: press)
 concurrency.asuka:35:39: Text has no prop fontSize
 concurrency.asuka:40:5: a view here does nothing: views go in a component's body
