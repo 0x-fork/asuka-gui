@@ -385,15 +385,21 @@ func (b *fb) testPattern(p syntax.Pattern, v int, t check.Type, fail Label) {
 		r := b.binop(syntax.EQL, x, lit, et, et, check.Bool, -1)
 		b.emitJump(op("JF"), r, fail)
 	case *syntax.TuplePat:
-		tt, ok := t.(*check.Tuple)
+		// An optional's: its value, once it isn't none.
+		tt, ok := check.Unopt(t).(*check.Tuple)
 		if !ok {
 			return
 		}
+		x := v
+		if check.IsOptional(t) {
+			b.emitJump(op("JNONE"), v, fail)
+			x = b.unbox(v, tt, -1)
+		}
 		for i, e := range p.Elems {
-			if isIrrefutable(e) {
+			if isIrrefutable(e, tt.Elems[i]) {
 				continue
 			}
-			b.testPattern(e, b.tupleElem(v, i, tt.Elems[i]), tt.Elems[i], fail)
+			b.testPattern(e, b.tupleElem(x, i, tt.Elems[i]), tt.Elems[i], fail)
 		}
 	case *syntax.OrPat:
 		ok := b.f.NewLabel()
@@ -419,11 +425,15 @@ func (b *fb) testPattern(p syntax.Pattern, v int, t check.Type, fail Label) {
 			}
 			n, _ := et.(*check.Named)
 			for i, a := range p.Args {
-				if fields[i] == nil || n == nil || isIrrefutable(a) {
+				if fields[i] == nil || n == nil {
+					continue
+				}
+				ft := n.Subst().Apply(fields[i].Type)
+				if isIrrefutable(a, ft) {
 					continue
 				}
 				r := b.getField(x, n, fields[i], -1)
-				b.testPattern(a, r, n.Subst().Apply(fields[i].Type), fail)
+				b.testPattern(a, r, ft, fail)
 			}
 			return
 		}
@@ -450,10 +460,10 @@ func (b *fb) testPattern(p syntax.Pattern, v int, t check.Type, fail Label) {
 		b.emit(op("EQI"), eq, c, want)
 		b.emitJump(op("JF"), eq, fail)
 		for i, a := range p.Args {
-			if isIrrefutable(a) {
+			pt := b.payloadType(n, k, i)
+			if isIrrefutable(a, pt) {
 				continue
 			}
-			pt := b.payloadType(n, k, i)
 			r := b.payload(x, n, k, i)
 			b.testPattern(a, r, pt, fail)
 		}
@@ -515,13 +525,19 @@ func (b *fb) payload(x int, n *check.Named, k *check.Case, i int) int {
 	return r
 }
 
-func isIrrefutable(p syntax.Pattern) bool {
+// isIrrefutable reports a pattern that matches any value of type t (a
+// tuple pattern doesn't match an optional's none).
+func isIrrefutable(p syntax.Pattern, t check.Type) bool {
 	switch p := p.(type) {
 	case *syntax.WildcardPat, *syntax.BindPat:
 		return true
 	case *syntax.TuplePat:
-		for _, e := range p.Elems {
-			if !isIrrefutable(e) {
+		tt, ok := t.(*check.Tuple)
+		if !ok || len(tt.Elems) != len(p.Elems) {
+			return false
+		}
+		for i, e := range p.Elems {
+			if !isIrrefutable(e, tt.Elems[i]) {
 				return false
 			}
 		}
@@ -537,15 +553,19 @@ func (b *fb) bindPattern(p syntax.Pattern, v int, t check.Type) {
 		vr, _ := b.l.info.Defs[p.Name].(*check.Var)
 		b.declare(vr, v)
 	case *syntax.TuplePat:
-		tt, ok := t.(*check.Tuple)
+		tt, ok := check.Unopt(t).(*check.Tuple)
 		if !ok {
 			return
+		}
+		x := v
+		if check.IsOptional(t) && hasBinding(p) {
+			x = b.unbox(v, tt, -1)
 		}
 		for i, e := range p.Elems {
 			if !hasBinding(e) {
 				continue
 			}
-			b.bindPattern(e, b.tupleElem(v, i, tt.Elems[i]), tt.Elems[i])
+			b.bindPattern(e, b.tupleElem(x, i, tt.Elems[i]), tt.Elems[i])
 		}
 	case *syntax.CasePat:
 		x := v

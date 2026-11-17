@@ -215,7 +215,7 @@ func (c *Checker) bindIrrefutable(p syntax.Pattern, t Type, mutable, let bool) {
 // notTuple says why a tuple pattern of n doesn't fit t.
 func notTuple(t Type, n int) string {
 	if tt, ok := Unopt(t).(*Tuple); ok && IsOptional(t) && len(tt.Elems) == n {
-		return aType(t) + " may be none, and a tuple pattern takes a tuple: unwrap it first (let pair = x else { … }, then let (a, b) = pair)"
+		return aType(t) + " may be none: say what happens then, let (a, b) = x else { … }, or if let (a, b) = x { … }"
 	}
 	return aType(t) + " isn't a tuple of " + itoa(n)
 }
@@ -835,10 +835,12 @@ func (c *Checker) pattern(p syntax.Pattern, t Type, kind VarKind) {
 			c.errorf(p, "%s can't be %s", aType(t), aType(lt))
 		}
 	case *syntax.TuplePat:
-		tt, ok := t.(*Tuple)
+		// An optional's value, as a case's or a literal's (none doesn't
+		// match).
+		tt, ok := Unopt(t).(*Tuple)
 		if !ok || len(tt.Elems) != len(p.Elems) {
 			if !IsInvalid(t) {
-				c.errorf(p, "%s", notTuple(t, len(p.Elems)))
+				c.errorf(p, "%s isn't a tuple of %d", aType(t), len(p.Elems))
 			}
 			for _, e := range p.Elems {
 				c.pattern(e, Invalid, kind)

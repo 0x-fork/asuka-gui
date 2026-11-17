@@ -1,5 +1,5 @@
-// Tuples: their elements read and changed by place (t.0), and printed
-// as their elements.
+// Tuples: their elements read and changed by place (t.0), printed as
+// their elements, and matched through optionals.
 
 enum Light { red, green }
 
@@ -52,6 +52,38 @@ test "printed" {
   print([Light.green: [1, 2]])
 }
 
+test "patterns through optionals" {
+  let a: (int, string)? = (1, "x")
+  let b: (int, string)? = none
+  if let (n, s) = a {
+    print("a {n} {s}")
+  }
+  if let (n, s) = b {
+    print("b {n} {s}")
+  } else {
+    print("b is none")
+  }
+  for o in [a, b, (2, "y")] {
+    let r = match o {
+      (1, x) => "one {x}"
+      (n, _) => "other {n}"
+      none => "none"
+    }
+    print(r)
+  }
+  let nested: [(int, (string, bool)?)?] = [(1, ("a", true)), (2, none), (3, ("c", false)), none]
+  for o in nested {
+    match o {
+      (k, (s, true)) => print("{k} {s} yes")
+      (k, (_, false)) => print("{k} no")
+      (k, none) => print("{k} none")
+      none => print("none")
+    }
+  }
+  let (x, y) = a else { return }
+  print("{x}{y}")
+}
+
 // Output:
 // 1
 // a
@@ -76,3 +108,14 @@ test "printed" {
 // {1:"a",2:"b"}
 // {"green":[1,2]}
 // ok printed
+// a 1 x
+// b is none
+// one x
+// none
+// other 2
+// 1 a yes
+// 2 none
+// 3 no
+// none
+// 1x
+// ok patterns through optionals

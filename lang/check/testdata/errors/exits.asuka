@@ -122,7 +122,13 @@ fn returnInDefer() -> int {
   return 0
 }
 
+// A tuple pattern sees through an optional, as a case pattern does.
 fn optionalTuple(t: (int, int)?) -> int {
-  let (a, b) = t else { return 0 } // ERROR "a \(int, int\)\? may be none, and a tuple pattern takes a tuple: unwrap it first"
+  let (a, b) = t else { return 0 }
+  return a + b
+}
+
+fn optionalTupleLet(t: (int, int)?) -> int {
+  let (a, b) = t // ERROR "a \(int, int\)\? may be none: say what happens then, let \(a, b\) = x else \{ … \}, or if let \(a, b\) = x \{ … \}"
   return a + b
 }
