@@ -194,7 +194,8 @@ instead.
 A `Decimal` (`import std/decimal.{Decimal}`) crosses exactly, as its
 coefficient and exponent; one the platform's side gives back with more
 than 18 significant digits is rounded half to even, as Asuka can't hold
-more.
+more. Swift's `Decimal` holds exponents from -128 to 127 only: one past
+them is NaN there.
 
 ### Methods
 

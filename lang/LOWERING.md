@@ -1063,6 +1063,10 @@ object type (a reference: the runtime's ak_native_obj) and its methods:
   each platform's generated code turns the id into its view. An
   `async` method is `native.start` with the same arguments, then AWAIT;
   cancelling the task cancels the call on the platform's side.
+- std/decimal's `Decimal` is a struct of two ints to the compiler and the
+  codec (`S…;`: its coefficient, its exponent); internal/nativegen alone
+  knows it (Kind Decimal), and gives each platform its decimal type, the
+  runtimes' `decimal()` reading and writing it without trailing zeros.
 - Every method `throws` (the platform's side may fail); the checker
   requires `try` at calls.
 

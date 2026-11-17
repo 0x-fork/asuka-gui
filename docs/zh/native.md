@@ -147,7 +147,7 @@ pub native interface Oven {
 
 结构体的字段按声明顺序传递；它的常量和方法只留在 Asuka 这一端。对象（原生接口）只能作为参数或返回值传递，不能放在数组、map 或结构体里。`Ref` 只能作为参数传递：传过去的是调用时它所持有的视图（platform/print 的 `webView(view: Ref, …)` 打印的就是用 `ref:` 放进去的那个 WebView 的页面），平台代码在主线程上查找这个视图；如果 Ref 里没有视图，或者 Asuka（还）没有显示它，得到的就是 `nil`。其他不支持的用法，`asuka native generate` 都会在对应位置报错，并告诉你应该改用什么。
 
-`Decimal`（`import std/decimal.{Decimal}`）按系数和指数精确传递；平台一端传回的值如果超过 18 位有效数字，会按四舍六入五成双舍入，因为 Asuka 容纳不了更多位。
+`Decimal`（`import std/decimal.{Decimal}`）按系数和指数精确传递；平台一端传回的值如果超过 18 位有效数字，会按四舍六入五成双舍入，因为 Asuka 容纳不了更多位。Swift 的 `Decimal` 只能表示 -128 到 127 的指数，超出这个范围就成了 NaN。
 
 ### 方法
 
