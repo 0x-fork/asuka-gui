@@ -52,6 +52,8 @@ struct wh_nav {
 	// Alert: its task dialog's window while it shows; its text fields
 	// (their bytes), and with them the host's own dialog.
 	HWND dialog;
+	bool tasking;     // show_alert's task dialog runs: it frees the alert's node
+	int task_button;  // a button that ends it
 	uint8_t *fields;
 	uint32_t fields_len;
 	void *dlg;
