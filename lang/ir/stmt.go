@@ -135,6 +135,18 @@ func (b *fb) exprStmt(x syntax.Expr) {
 	b.value(x, -1)
 }
 
+// tupleElem is element i (a t) of the tuple v, in a temp; none (-1)
+// for a void one, which holds nothing.
+func (b *fb) tupleElem(v, i int, t check.Type) int {
+	k := b.l.kind(t)
+	if k == bc.KVoid {
+		return -1
+	}
+	r := b.temp(k)
+	b.emit(op("GETF"), r, v, i)
+	return r
+}
+
 // bindLet binds a let's pattern to v (a t).
 func (b *fb) bindLet(p syntax.Pattern, v int, t check.Type) {
 	switch p := p.(type) {
@@ -148,9 +160,7 @@ func (b *fb) bindLet(p syntax.Pattern, v int, t check.Type) {
 		}
 		for i, e := range p.Elems {
 			et := tt.Elems[i]
-			r := b.temp(b.l.kind(et))
-			b.emit(op("GETF"), r, v, i)
-			b.bindLet(e, r, et)
+			b.bindLet(e, b.tupleElem(v, i, et), et)
 		}
 	}
 }
@@ -383,9 +393,7 @@ func (b *fb) testPattern(p syntax.Pattern, v int, t check.Type, fail Label) {
 			if isIrrefutable(e) {
 				continue
 			}
-			r := b.temp(b.l.kind(tt.Elems[i]))
-			b.emit(op("GETF"), r, v, i)
-			b.testPattern(e, r, tt.Elems[i], fail)
+			b.testPattern(e, b.tupleElem(v, i, tt.Elems[i]), tt.Elems[i], fail)
 		}
 	case *syntax.OrPat:
 		ok := b.f.NewLabel()
@@ -537,9 +545,7 @@ func (b *fb) bindPattern(p syntax.Pattern, v int, t check.Type) {
 			if !hasBinding(e) {
 				continue
 			}
-			r := b.temp(b.l.kind(tt.Elems[i]))
-			b.emit(op("GETF"), r, v, i)
-			b.bindPattern(e, r, tt.Elems[i])
+			b.bindPattern(e, b.tupleElem(v, i, tt.Elems[i]), tt.Elems[i])
 		}
 	case *syntax.CasePat:
 		x := v

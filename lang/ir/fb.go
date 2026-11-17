@@ -191,7 +191,7 @@ func (b *fb) null() int {
 
 // move copies src into dst: retained when a reference.
 func (b *fb) move(dst, src int) {
-	if dst == src || src < 0 || dst == bc.None {
+	if dst == src || src < 0 || src == bc.None || dst == bc.None {
 		return
 	}
 	if b.f.Kinds[dst] == bc.KRef {

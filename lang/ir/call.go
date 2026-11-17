@@ -869,6 +869,11 @@ func (b *fb) allRace(e *syntax.CallExpr, call *check.Call, dst int) int {
 	}
 	var vals []int
 	for i, t := range types {
+		if b.l.kind(t) == bc.KVoid {
+			// A void task's place: nothing to read.
+			vals = append(vals, -1)
+			continue
+		}
 		idx := b.konst(int64(i))
 		v := b.temp(bc.KRef)
 		b.emit(op("IDX"), v, results, idx)

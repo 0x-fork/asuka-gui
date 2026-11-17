@@ -399,6 +399,10 @@ func (b *fb) unbox(x int, t check.Type, dst int) int {
 	if k == bc.KRef {
 		return b.copyTo(x, dst)
 	}
+	if k == bc.KVoid {
+		// Nothing (a void task's place in all's results).
+		return -1
+	}
 	r := b.out(dst, k)
 	b.emit(op("UNBOX"), r, x)
 	return r

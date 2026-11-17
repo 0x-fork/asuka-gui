@@ -1,0 +1,40 @@
+// all(…) of tasks some of which give nothing: their places in its tuple
+// are void.
+
+async fn num(n: int) -> int = n
+
+async fn nothing() {
+  print("nothing ran")
+}
+
+async fn fails() throws {
+  throw Error("failed")
+}
+
+test "a tuple with void elements" {
+  let (a, _, b) = await all(num(1), nothing(), num(2))
+  print(a + b)
+  do {
+    let (c, _) = try await all(num(3), fails())
+    print(c)
+  } catch e {
+    print(e.message)
+  }
+  match await all(num(4), nothing()) {
+    (4, _) => print("matched")
+    _ => print("missed")
+  }
+  let pair = await all(nothing(), num(5))
+  let (_, five) = pair
+  print(five)
+}
+
+// Output:
+// nothing ran
+// 3
+// failed
+// nothing ran
+// matched
+// nothing ran
+// 5
+// ok a tuple with void elements

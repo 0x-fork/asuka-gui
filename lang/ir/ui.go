@@ -891,9 +891,7 @@ func (b *fb) extract(p syntax.Pattern, target *check.Var, v int, t check.Type) i
 			if tt == nil || !containsVar(e, target, b.l.info) {
 				continue
 			}
-			r := b.temp(b.l.kind(tt.Elems[i]))
-			b.emit(op("GETF"), r, v, i)
-			return b.extract(e, target, r, tt.Elems[i])
+			return b.extract(e, target, b.tupleElem(v, i, tt.Elems[i]), tt.Elems[i])
 		}
 	case *syntax.CasePat:
 		k := b.l.info.Cases[p]
