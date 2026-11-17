@@ -643,6 +643,37 @@ func (c *Checker) implements(t Type, iface *Named) string {
 
 // implementsMembers reports why a struct or an enum t doesn't have
 // interface iface's methods and fields, "" when it does.
+// extraParams says why a method that takes what the interface's does
+// and more, the rest with defaults (greet(loud: bool, times: int = 1)
+// for greet(loud: bool)), isn't the interface's: a call through the
+// interface passes its own parameters, and nothing gives the rest. ""
+// when that isn't why.
+func extraParams(got, want *Signature, name string) string {
+	if len(got.Params) <= len(want.Params) || got.Async != want.Async || got.Throws != want.Throws || !Identical(got.Result, want.Result) {
+		return ""
+	}
+	for i, p := range want.Params {
+		if !Identical(got.Params[i].Type, p.Type) {
+			return ""
+		}
+	}
+	var extra []string
+	for _, p := range got.Params[len(want.Params):] {
+		if p.Default == nil {
+			return ""
+		}
+		extra = append(extra, p.Name)
+	}
+	takes := extra[0]
+	switch len(extra) {
+	case 1:
+		takes += ", which the interface's " + name + " doesn't"
+	default:
+		takes = strings.Join(extra[:len(extra)-1], ", ") + " and " + extra[len(extra)-1] + ", which the interface's " + name + " doesn't"
+	}
+	return name + " takes " + takes + ": an interface's method is called with its own parameters"
+}
+
 func (c *Checker) implementsMembers(t Type, iface *Named) string {
 	n, ok := t.(*Named)
 	if !ok || (n.Obj.Kind != StructType && n.Obj.Kind != EnumType) {
@@ -667,6 +698,9 @@ func (c *Checker) implementsMembers(t Type, iface *Named) string {
 		c.funcSig(f)
 		got, want := s.Apply(f.Sig.Type()), is.Apply(m.Sig.Type())
 		if !Identical(got, want) {
+			if why := extraParams(s.applySig(f.Sig), is.applySig(m.Sig), m.Name); why != "" {
+				return why
+			}
 			return "its " + m.Name + " is " + typeString(got) + ", not " + typeString(want)
 		}
 	}

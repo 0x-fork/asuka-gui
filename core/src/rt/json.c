@@ -20,6 +20,32 @@ static ak_kind desc_kind(const char *p) {
 	}
 }
 
+// desc_end is the end of the descriptor at p.
+static const char *desc_end(const char *p) {
+	for (;;) {
+		switch (*p) {
+		case '?':
+		case '[':
+		case '{':
+		case '<':
+			p++;
+			continue;
+		case 'S':
+		case 'E':
+		case 'e': {
+			const char *q = strchr(p, ';');
+			return q ? q + 1 : p + strlen(p);
+		}
+		case 'm':
+			return desc_end(desc_end(p + 1));
+		case '\0':
+			return p;
+		default:
+			return p + 1;
+		}
+	}
+}
+
 static size_t name_len(const char *p) {
 	const char *q = strchr(p + 1, ';');
 	return q ? (size_t)(q - p - 1) : strlen(p + 1);
@@ -785,10 +811,11 @@ static void nl(ak_strb *b, int indent, uint32_t depth) {
 // linked list of a recursive enum), and writing it takes no C stack per
 // level.
 typedef struct {
-	const char *d;  // the container's descriptor: [T, <T, {T, S, E (a case with fields)
+	const char *d;  // the container's descriptor: [T, <T, {T, S, E (a case with fields), (, mKV
 	void *o;        // the container
 	uint32_t i;     // its next item
 	bool any;       // an item written
+	bool val;       // mKV: item i's key is written, its value next
 } enc_open;
 
 typedef struct {
@@ -800,7 +827,7 @@ typedef struct {
 
 static void open_(encoder *e, const char *d, void *o, const char *text, size_t n) {
 	ak_strb_cstr(e->b, text, n);
-	ak_vec_push(&e->open, ((enc_open){d, o, 0, false}));
+	ak_vec_push(&e->open, ((enc_open){d, o, 0, false, false}));
 }
 
 // enc_value writes v whole if it's a scalar, else opens it: its items are
@@ -850,7 +877,11 @@ static void enc_value(encoder *e, ak_val v, const char *d) {
 		return;
 	case '{':
 	case 'S':
+	case 'm':
 		open_(e, d, v.p, "{", 1);
+		return;
+	case '(':
+		open_(e, d, v.p, "(", 1);
 		return;
 	case 'e': {
 		const ak_json_types *t = e->t;
@@ -908,17 +939,43 @@ static void enc_step(encoder *e) {
 		}
 		break;
 	}
-	case 'S': {
+	case 'S':
+	case '(': {
 		ak_struct *s = o->o;
 		if (!s || o->i >= s->shape->nfields) {
 			done = true;
 		} else {
-			key = s->shape->names ? s->shape->names[o->i] : "";
-			keylen = strlen(key);
+			if (*o->d == 'S') {
+				key = s->shape->names ? s->shape->names[o->i] : "";
+				keylen = strlen(key);
+			}
 			id = ak_json_field_desc(s->shape, (int)o->i);
 			item = s->f[o->i++];
 		}
 		break;
+	}
+	case 'm': {
+		// A key, then (once it's written, however deep) its value.
+		ak_map *m = o->o;
+		const char *kd = o->d + 1;
+		if (o->val) {
+			o->val = false;
+			ak_strb_cstr(b, e->indent > 0 ? ": " : ":", e->indent > 0 ? 2 : 1);
+			item = m->vals[o->i++];
+			enc_value(e, item, desc_end(kd));
+			return;
+		}
+		while (m && o->i < m->len && m->dead[o->i]) o->i++;
+		if (!m || o->i >= m->len) {
+			done = true;
+			break;
+		}
+		if (o->any) ak_strb_cstr(b, ",", 1);
+		o->any = true;
+		o->val = true;
+		nl(b, e->indent, depth + 1);
+		enc_value(e, m->keys[o->i], kd);  // last: it may open the key
+		return;
 	}
 	case 'E': {
 		ak_enum *en = o->o;
@@ -938,7 +995,7 @@ static void enc_step(encoder *e) {
 	}
 	if (done) {
 		if (o->any) nl(b, e->indent, depth);
-		ak_strb_cstr(b, *o->d == '[' || *o->d == '<' ? "]" : "}", 1);
+		ak_strb_cstr(b, *o->d == '[' || *o->d == '<' ? "]" : *o->d == '(' ? ")" : "}", 1);
 		e->open.len--;
 		return;
 	}

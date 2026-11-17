@@ -2316,7 +2316,15 @@ func (p *parser) parsePostfix() Expr {
 		case PERIOD, OPTDOT:
 			opt := p.tok == OPTDOT
 			p.next()
-			x = &MemberExpr{X: x, Optional: opt, Name: p.ident(), Span: Span{}}
+			var name *Ident
+			if p.tok == INT {
+				// A tuple's element: t.0, its index the member's name.
+				name = &Ident{Span: Span{p.pos, p.pos + Pos(len(p.lit))}, Name: p.lit}
+				p.next()
+			} else {
+				name = p.ident()
+			}
+			x = &MemberExpr{X: x, Optional: opt, Name: name, Span: Span{}}
 			x.(*MemberExpr).Span = p.span(start)
 		case LPAREN:
 			c := &CallExpr{Fun: x, Args: p.parseArgs()}

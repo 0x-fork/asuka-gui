@@ -1,0 +1,31 @@
+// Tuples' elements, by place; optionals written twice.
+
+fn elems(t: (int, string), n: int, o: (int, string)?) {
+  let a = t.2 // ERROR "\(int, string\) has no element 2: its elements are .0 and .1"
+  let b = n.0 // ERROR "int isn't a tuple: .0 reads a tuple's element"
+  let c = t.00 // ERROR "has no element 00"
+  let d = o.0 // ERROR "\(int, string\)\? may be none: use \?\. \(x\?\.0\), or unwrap it first"
+  let e: string = t.0 // ERROR "the value is an int, not a string"
+  t.0 = 1 // ERROR "can't assign to t: parameters are values"
+}
+
+fn place() {
+  let t = (1, 2)
+  t.1 = 3 // ERROR "can't assign to t: it's a let"
+  var u = (1, (2, "x"))
+  u.1.1 = "y"
+  u.1.0 += 1
+  var w: (int, int)? = (1, 2)
+  w?.0 = 3 // ERROR "can't assign through \?\.: unwrap it first"
+}
+
+fn twice(a: int??) {} // ERROR "int\?\? is the same as int\?: one \? is enough"
+
+fn twiceParens(a: (string?)?) {} // ERROR "string\?\? is the same as string\?: one \? is enough"
+
+fn twiceGeneric<T>(a: T??) {} // ERROR "T\?\? is the same as T\?: one \? is enough"
+
+// A generic T? of an optional T is that T, said nowhere.
+fn opt<T>(x: T) -> T? = x
+
+fn flattens(x: int?) -> int? = opt<int?>(x)

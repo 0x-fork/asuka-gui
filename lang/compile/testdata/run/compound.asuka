@@ -1,0 +1,109 @@
+// Compound assignment through a type's operator methods: x += y is
+// x = x.add(y), on a var, state, a field and an element.
+
+struct Vec {
+  x: int
+  y: int
+
+  fn add(o: Vec) -> Vec = Vec(x: x + o.x, y: y + o.y)
+  fn sub(o: Vec) -> Vec = Vec(x: x - o.x, y: y - o.y)
+}
+
+struct Money {
+  cents: int
+
+  fn add(n: int) -> Money = Money(cents: cents + n)
+  // - on two is how far apart they are; - with an int takes cents off.
+  fn sub(o: Money) -> int = cents - o.cents
+  fn minus(n: int) -> Money = Money(cents: cents - n)
+}
+
+enum Steps {
+  none
+  some(int)
+
+  fn add(n: int) -> Steps = match self {
+    .none => .some(n)
+    .some(k) => .some(k + n)
+  }
+}
+
+struct Body {
+  pos: Vec
+  trail: [Vec]
+}
+
+state total = Vec(x: 0, y: 0)
+
+// Its add reads the state it's added to: it sees the value, not none.
+struct Bump {
+  n: int
+  fn add(o: Bump) -> Bump = Bump(n: n + o.n + total.x)
+}
+
+state bump = Bump(n: 0)
+
+store Counter {
+  state at = Vec(x: 0, y: 0)
+
+  effect {
+    print("at {at.x},{at.y}")
+  }
+
+  fn step(by: Vec) {
+    at += by
+  }
+}
+
+test "a var" {
+  var v = Vec(x: 1, y: 2)
+  v += Vec(x: 10, y: 20)
+  print("{v.x} {v.y}")
+  v -= Vec(x: 1, y: 1)
+  print("{v.x} {v.y}")
+  var m = Money(cents: 100)
+  m += 50
+  m -= 30
+  print(m.cents)
+  var s = Steps.none
+  s += 2
+  s += 3
+  print(s)
+}
+
+test "a field and an element" {
+  var b = Body(pos: Vec(x: 0, y: 0), trail: [Vec(x: 1, y: 1), Vec(x: 2, y: 2)])
+  b.pos += Vec(x: 5, y: 6)
+  b.trail[1] += Vec(x: 10, y: 10)
+  var vs = [Vec(x: 1, y: 1)]
+  vs[0] -= Vec(x: 1, y: 2)
+  print(b)
+  print(vs)
+}
+
+test "state" {
+  total += Vec(x: 3, y: 4)
+  total += Vec(x: 3, y: 4)
+  print("{total.x} {total.y}")
+  bump += Bump(n: 1)
+  print(bump.n)
+  let c = Counter()
+  c.step(Vec(x: 1, y: 0))
+  c.step(Vec(x: 0, y: 2))
+}
+
+// Output:
+// 11 22
+// 10 21
+// 120
+// {"some":[5]}
+// ok a var
+// {"pos":{"x":5,"y":6},"trail":[{"x":1,"y":1},{"x":12,"y":12}]}
+// [{"x":0,"y":-1}]
+// ok a field and an element
+// 6 8
+// 7
+// at 0,0
+// at 1,0
+// at 1,2
+// ok state

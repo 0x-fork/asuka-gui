@@ -566,10 +566,8 @@ func Dedent(s string) string {
 
 // setOf is Set<elem>, its elements Hashable (at says where it's
 // written).
-func (c *Checker) setOf(elem Type, at syntax.Node) Type {
-	if !IsInvalid(elem) && !IsHashable(elem) {
-		c.errorf(at, "a Set's elements are ints, strings, bools or enums without payloads, not %s%s", typeString(elem), hashableHint(elem))
-	}
+func (c *Checker) setOf(elem Type, at syntax.Node, written bool) Type {
+	c.checkHashable(elem, at, "a Set's element", written)
 	return &Set{elem}
 }
 
@@ -669,9 +667,7 @@ func (c *Checker) mapLit(e *syntax.MapExpr, want Type) Type {
 	if key == nil {
 		key = c.valueType(c.expr(e.Entries[0].Key, nil), e.Entries[0].Key)
 		val = c.valueType(c.expr(e.Entries[0].Value, nil), e.Entries[0].Value)
-		if !IsInvalid(key) && !IsHashable(key) {
-			c.errorf(e.Entries[0].Key, "a map's keys are ints, strings, bools or enums without payloads, not %s%s", typeString(key), hashableHint(key))
-		}
+		c.checkHashable(key, e.Entries[0].Key, "a map's key", false)
 	}
 	for _, en := range e.Entries {
 		c.assign(en.Key, key, "a key of "+typeString(&Map{key, val}))
@@ -1041,6 +1037,9 @@ func (c *Checker) staticMember(e syntax.Expr, tn *TypeName, name string, want Ty
 
 // valueMember is x.name for a value x of type t.
 func (c *Checker) valueMember(e *syntax.MemberExpr, t Type, name string) Type {
+	if isIndexName(name) {
+		return c.tupleElem(e, t, name)
+	}
 	switch u := t.(type) {
 	case *TypeParam:
 		if f, i := paramField(u, name); f != nil {
@@ -1160,6 +1159,52 @@ func (c *Checker) valueMember(e *syntax.MemberExpr, t Type, name string) Type {
 	}
 	c.errorf(e.Name, "%s has no %s%s", typeString(t), name, c.memberSuggest(t, name))
 	return Invalid
+}
+
+// isIndexName reports a member named by digits: a tuple's element, t.0.
+func isIndexName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, r := range name {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// tupleElem is t.0, t.1: a tuple's element, by its place.
+func (c *Checker) tupleElem(e *syntax.MemberExpr, t Type, name string) Type {
+	tt, ok := t.(*Tuple)
+	if !ok {
+		c.errorf(e.Name, "%s isn't a tuple: .%s reads a tuple's element", typeString(t), name)
+		return Invalid
+	}
+	i, err := strconv.Atoi(name)
+	if err != nil || i >= len(tt.Elems) || len(name) > 1 && name[0] == '0' {
+		c.errorf(e.Name, "%s has no element %s: its elements are %s", typeString(t), name, tupleElemNames(len(tt.Elems)))
+		return Invalid
+	}
+	f := &Field{Name: name, Type: tt.Elems[i], Index: i}
+	c.info.Selections[e] = &Selection{Kind: SelTupleElem, Field: f, Recv: t}
+	return tt.Elems[i]
+}
+
+// tupleElemNames is how a tuple of n's elements are read: .0 and .1.
+func tupleElemNames(n int) string {
+	var b strings.Builder
+	for i := 0; i < n; i++ {
+		switch {
+		case i == 0:
+		case i == n-1:
+			b.WriteString(" and ")
+		default:
+			b.WriteString(", ")
+		}
+		b.WriteString("." + strconv.Itoa(i))
+	}
+	return b.String()
 }
 
 func (c *Checker) memberSuggest(t Type, name string) string {
@@ -1511,12 +1556,8 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 			c.errorf(e, "can't compare %s with %s", aType(xt), aType(yt))
 			return Bool
 		}
-		if !IsComparable(xt) {
-			if p, ok := xt.(*TypeParam); ok {
-				c.errorf(e, "%s can't be ordered with %s: constrain it, <%s: Comparable>", p.Name, e.Op, p.Name)
-			} else {
-				c.errorf(e, "%s can't be ordered with %s: ints, floats, strings and durations can, and a struct with fn compare(o: T) -> int", typeString(xt), e.Op)
-			}
+		if why := c.whyNotComparable(xt); why != "" {
+			c.errorf(e, "%s can't be ordered with %s: %s", typeString(xt), e.Op, why)
 		}
 		return Bool
 	case syntax.ADD:
@@ -1577,25 +1618,40 @@ type Operator struct {
 	Compare bool
 }
 
-// operatorMethod finds the method of x's struct an operator calls
-// (std/time's Time: t + 1h, b - a, a < b), and its result.
+// operatorMethod finds the method of x's struct or enum an operator
+// calls (std/time's Time: t + 1h, b - a, a < b), and its result.
 func (c *Checker) operatorMethod(e *syntax.BinaryExpr, xt, yt Type) (Type, bool) {
-	n, ok := xt.(*Named)
-	if !ok || n.Obj.Kind != StructType {
+	o, res := c.findOperator(e.Op, xt, yt, nil)
+	if o == nil {
 		return nil, false
 	}
-	var names []string
-	compare := false
-	switch e.Op {
+	c.info.Operators[e] = o
+	return res, true
+}
+
+// operatorNames are the methods an operator may call, and whether it
+// compares.
+func operatorNames(op syntax.Token) (names []string, compare bool) {
+	switch op {
 	case syntax.ADD:
-		names = []string{"add"}
+		return []string{"add"}, false
 	case syntax.SUB:
-		names = []string{"sub", "minus"}
+		return []string{"sub", "minus"}, false
 	case syntax.LSS, syntax.LEQ, syntax.GTR, syntax.GEQ:
-		names, compare = []string{"compare"}, true
-	default:
-		return nil, false
+		return []string{"compare"}, true
 	}
+	return nil, false
+}
+
+// operatorCandidates are the methods of xt's struct or enum that op may
+// call, their signatures read: one parameter, neither async nor
+// throwing.
+func (c *Checker) operatorCandidates(op syntax.Token, xt Type) (fs []*Function, n *Named, compare bool) {
+	n, ok := xt.(*Named)
+	if !ok || n.Obj.Kind != StructType && n.Obj.Kind != EnumType {
+		return nil, nil, false
+	}
+	names, compare := operatorNames(op)
 	for _, name := range names {
 		f := n.Obj.Methods[name]
 		if f == nil {
@@ -1605,6 +1661,17 @@ func (c *Checker) operatorMethod(e *syntax.BinaryExpr, xt, yt Type) (Type, bool)
 		if f.Sig == nil || len(f.Sig.Params) != 1 || f.Sig.Async || f.Sig.Throws {
 			continue
 		}
+		fs = append(fs, f)
+	}
+	return fs, n, compare
+}
+
+// findOperator is the method op calls on an xt and a yt, and its result
+// (a comparison's: a bool); want, when set, is what the result must be
+// (x += y's: x's type).
+func (c *Checker) findOperator(op syntax.Token, xt, yt, want Type) (*Operator, Type) {
+	fs, n, compare := c.operatorCandidates(op, xt)
+	for _, f := range fs {
 		s := n.Subst()
 		pt, res := s.Apply(f.Sig.Params[0].Type), s.Apply(f.Sig.Result)
 		if !Identical(pt, yt) {
@@ -1616,10 +1683,34 @@ func (c *Checker) operatorMethod(e *syntax.BinaryExpr, xt, yt Type) (Type, bool)
 			}
 			res = Bool
 		}
-		c.info.Operators[e] = &Operator{Func: f, Recv: xt, Compare: compare}
-		return res, true
+		if want != nil && !Identical(res, want) {
+			continue
+		}
+		return &Operator{Func: f, Recv: xt, Compare: compare}, res
 	}
-	return nil, false
+	return nil, nil
+}
+
+// operatorParam is what x op= y's y is expected to be: the parameter of
+// the one method op calls on an xt that gives an xt back (nil: none, or
+// more than one).
+func (c *Checker) operatorParam(op syntax.Token, xt Type) Type {
+	fs, n, compare := c.operatorCandidates(op, xt)
+	if compare {
+		return nil
+	}
+	var param Type
+	for _, f := range fs {
+		s := n.Subst()
+		if !Identical(s.Apply(f.Sig.Result), xt) {
+			continue
+		}
+		if param != nil {
+			return nil
+		}
+		param = s.Apply(f.Sig.Params[0].Type)
+	}
+	return param
 }
 
 // MakeOptionalOrNil is t? (nil stays nil).

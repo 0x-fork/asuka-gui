@@ -26,3 +26,23 @@ fn f(ps: [P], o: P?, s: Shape) {
   var d = o else { return }
   d.x = 3
 }
+
+// x op= y is x = x op y through the type's operator method: its result
+// must be x's type.
+struct Stamp {
+  at: int
+
+  fn add(n: int) -> Stamp = Stamp(at: at + n)
+  fn sub(o: Stamp) -> int = at - o.at
+  fn compare(o: Stamp) -> int = at - o.at
+}
+
+fn stamps() {
+  var s = Stamp(at: 0)
+  s += 5
+  s += "x" // ERROR "\+= doesn't take a Stamp and a string"
+  s -= Stamp(at: 1) // ERROR "-= is x = x - y, and Stamp's sub gives an int, not a Stamp"
+  s *= 2 // ERROR "\*= doesn't take a Stamp and an int"
+  let t = Stamp(at: 1)
+  t += 1 // ERROR "can't assign to t: it's a let"
+}

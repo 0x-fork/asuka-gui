@@ -24,15 +24,33 @@ that's blank, and without the indentation of its closing quotes' line).
 A value that isn't a number, a bool or a string shows as text: an enum's
 case by its name, an optional as `none` or its value, an error as its
 message, a color as it's written (`#0a84ff`, `.accent`), a duration in
-milliseconds (`1500ms`), the rest as JSON (and what JSON can't hold, a
-tuple or a function, as its type: `<(int, string)>`).
+milliseconds (`1500ms`), the rest as JSON. What JSON can't hold is
+written in the same way: a tuple as its elements in parentheses, each as
+an array's are (`(1,"a","red")`), and a map whose keys aren't strings
+with each key as it's written (`{1:"a"}`); a function, which has no
+text, as its type (`<fn(int) -> int>`).
 
-A tuple's elements are read by taking it apart: `let (count, label) =
-pair`, `for (i, x) in xs.enumerated()`, or a tuple pattern in a `match`
-([Control flow](control-flow.md#control-flow)).
+A tuple's elements are read by their place, `pair.0` and `pair.1`, and
+a `var`'s change in place (`pair.0 += 1`); a place the tuple doesn't
+have (`pair.2` of a pair) is a compile error. A tuple is also taken
+apart: `let (count, label) = pair`, `for (i, x) in xs.enumerated()`, or
+a tuple pattern in a `match` ([Control flow](control-flow.md#control-flow)).
 
-A map's keys, and a set's elements, are ints, strings, bools, durations,
-colors or enums without payloads (the type's `Hashable`).
+A map's keys, and a set's elements, are `Hashable`: ints, strings,
+bools, durations, colors, and the enums, structs, tuples and optionals
+made of them (a struct or an enum that holds itself is when its other
+parts are). Floats aren't, since NaN isn't equal to itself, nor are
+arrays, maps, sets and functions:
+
+```asuka
+struct Cell {
+  row: int
+  col: int
+}
+
+let marks: [Cell: string] = [Cell(row: 0, col: 2): "x"]
+let seen: Set<(int, int)> = [(0, 0), (1, 2)]
+```
 
 ## Operators
 
@@ -50,6 +68,10 @@ and go left to right (`??` right to left):
 | `&&` | and |
 | <code>&#124;&#124;</code> | or |
 | `??` | an optional's value, or the default |
+
+`<`, `<=`, `>` and `>=` order ints, floats, strings, durations, enums
+without payloads (by the order their cases are declared) and types
+with a `compare` method ([Declarations](declarations.md#structs)).
 
 The bitwise operators take ints. A shift by 64 or more shifts every bit
 out (`>>` of a negative gives -1); a shift by a negative count is an
@@ -126,3 +148,7 @@ let first = items.first()!        // a crash if it's none: say so only when it c
 
 After `?.`, the rest of the chain stops at none too: `user?.boss.name`
 is a `string?`.
+
+Optionals don't nest: a value is there or it isn't. `int??` is an error
+(one `?` is enough), and a generic `T?` whose `T` is already optional
+is that `T`.

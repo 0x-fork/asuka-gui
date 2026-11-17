@@ -201,6 +201,10 @@ func (fc *fileCtx) selRef(sel *check.Selection, name string) *ref {
 		if sel.Field != nil {
 			return fieldRef(sel.Field, memberOwner(sel.Recv, name))
 		}
+	case check.SelTupleElem:
+		if sel.Field != nil {
+			return &ref{name: name, special: "tuple", field: sel.Field, recv: sel.Recv}
+		}
 	case check.SelCase:
 		if sel.Case != nil {
 			return caseRef(sel.Case)

@@ -888,7 +888,9 @@ static ak_val b_args(ak_val *a, uint32_t n) {
 	} else if (o && o->tag == AK_TAG_MAP) {
 		ak_map *m = v.p;
 		ak_kind vk = (ak_kind)(m->h.aux >> 4);
-		if (!(m->h.flags & 1)) ok = false;
+		// From strings only: a map's keys may be other values (its
+		// descriptor says; the VM marks every reference key a string's).
+		if (desc ? d != '{' : !(m->h.flags & 1)) ok = false;
 		ak_buf_u32(&b, m->live);
 		for (uint32_t i = 0; ok && i < m->len; i++) {
 			if (m->dead && m->dead[i]) continue;

@@ -657,15 +657,18 @@ func (c *Checker) typeExpr(t syntax.Type) Type {
 		return &Array{c.typeExpr(t.Elem)}
 	case *syntax.MapType:
 		k := c.typeExpr(t.Key)
-		if !IsInvalid(k) && !IsHashable(k) {
-			c.errorf(t.Key, "a map's keys are ints, strings, bools or enums without payloads, not %s%s", typeString(k), hashableHint(k))
-		}
+		c.checkHashable(k, t.Key, "a map's key", true)
 		return &Map{k, c.typeExpr(t.Value)}
 	case *syntax.OptionalType:
 		e := c.typeExpr(t.Elem)
 		if e == Void {
 			c.errorf(t, "void? isn't a type: use bool")
 			return Invalid
+		}
+		if _, ok := unparenType(t.Elem).(*syntax.OptionalType); ok && IsOptional(e) {
+			// Optionals don't nest (a generic T? of an optional T is that
+			// T); written twice, it says what it isn't.
+			c.errorf(t, "%s? is the same as %s: one ? is enough", typeString(e), typeString(e))
 		}
 		return MakeOptional(e)
 	case *syntax.TupleType:
@@ -714,7 +717,7 @@ func (c *Checker) namedType(t *syntax.NamedType) Type {
 					c.errorf(t, "Set takes one type: Set<T>")
 					return Invalid
 				}
-				return c.setOf(c.typeExpr(t.Args[0]), t.Args[0])
+				return c.setOf(c.typeExpr(t.Args[0]), t.Args[0], true)
 			}
 		case "never":
 			// What a function that never returns gives (os.exit): the
@@ -935,4 +938,15 @@ func (c *Checker) constraints(p *TypeParam, list []syntax.Type) {
 		written = append(written, typeString(n))
 	}
 	p.written = strings.Join(written, " & ")
+}
+
+// unparenType is t without the parentheses around it: (T) is T.
+func unparenType(t syntax.Type) syntax.Type {
+	for {
+		tt, ok := t.(*syntax.TupleType)
+		if !ok || len(tt.Elems) != 1 {
+			return t
+		}
+		t = tt.Elems[0]
+	}
 }

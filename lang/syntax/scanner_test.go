@@ -45,6 +45,9 @@ func TestScanTokens(t *testing.T) {
 		{"3.14 1e-3 2.5E+10 1e3 0.5", "float:3.14 float:1e-3 float:2.5E+10 float:1e3 float:0.5"},
 		{"1.foo", "int:1 . ident:foo"},
 		{"x.0", "ident:x . int:0"},
+		// A tuple's elements: after a . an index alone, as Rust scans it.
+		{"t.0.1 t?.1 t.10.2", "ident:t . int:0 . int:1 ident:t ?. int:1 ident:t . int:10 . int:2"},
+		{"f().1.0", "ident:f ( ) . int:1 . int:0"},
 		// Durations and lengths.
 		{"300ms 5s 2min 1h 1.5s", "duration:300ms duration:5s duration:2min duration:1h duration:1.5s"},
 		{"50% 1fr 12.5% 100%", "length:50% length:1fr length:12.5% length:100%"},

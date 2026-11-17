@@ -100,8 +100,12 @@ its path (`./model.Todo`), an instantiation with its arguments
 (`Box<int>`), a tuple by its elements (`(int,string)`), a component's or
 a store's env by the component's name.
 
-A map's keys are what the runtime's maps hash: ints (and what's stored
-as one: bools, payloadless enums, durations, colors) and strings.
+A map's keys are what the runtime's maps hash (ak_val_hash, as
+ak_val_eq compares): ints (and what's stored as one: bools, payloadless
+enums, durations, colors), strings, and the structs, enums, tuples and
+optionals made of them (references: hashed by their parts). The VM
+makes every map of reference keys flagged AK_MAP_STRKEYS; what reads
+keys as strings (std/sqlite's arguments) goes by the type's descriptor.
 
 ## Registers
 
@@ -292,7 +296,17 @@ MODI (the last two throw on a zero divisor), `& | ^` BAND, BOR, BXOR,
 `~x` BNOT, `<< >>` SHL and SHR (ops.h's `ak_op_shift`: a count of 64 or
 more shifts every bit out, `>>` keeping the sign; a negative count
 throws, as Go panics). A compound assignment (`x <<= 1`, `xs[i] |= m`)
-is its operator on the place's value, written back as `=` is. `b[i]` of
+is its operator on the place's value, written back as `=` is; one a
+struct's or an enum's method does (`t += 1h`, check.Info.AssignOps)
+is that method's call (the place read, not taken out, for the method may
+read it: a state's cell is CPEEKed and CPUT once). `<` and its kin
+on a struct or an enum call its `compare` and test the int against 0,
+in a generic's body too (check.CompareMethod of T's type); an enum
+without payloads compares its cases (an int, or ECASE of a reference
+one). `sorted()` and `sort()` of such elements pass `compare` as a
+closure and 1 (a comparison, not a less-than) to `arr.sorted`. `t.0` is
+GETF of the tuple's field 0 (SelTupleElem), and a place as a field is.
+`b[i]` of
 bytes is CALLB `bytes.at` (an int; out of range throws, as IDX does).
 `>>` is two adjacent `>` tokens the parser joins, so types' `>>` close
 two generic argument lists.
@@ -313,7 +327,7 @@ value matches), then bound (bindPattern: declares its names), so an
 | `x`, `_` | nothing | `x` is the value |
 | `0`, `"a"`, `true` | EQ with the literal (of an optional: JNONE first, then its value) | |
 | `none` | JSOME fails | |
-| `(a, b)` | each element (GETF) | each element's names |
+| `(a, b)` | each element (GETF; of an optional: JNONE first, then its value) | each element's names |
 | `.case(p, q)`, `T.case(label: p)` | ECASE (an int enum: the value), each payload (GETP) | each payload's names |
 | `P(x: 0, y)` (a struct's, check.Info.FieldPats: each argument's field) | each named field's (GETF) | each named field's names |
 | `a \| b` | each in turn | (none) |
@@ -336,7 +350,10 @@ are (INTERP prints them), strings as they are, and the rest as text: a
 payloadless enum by its case's name (an array of the names, frozen in a
 global), a `Duration` in milliseconds (`300ms`), an optional as `none`
 or its value, an error as its message, anything else as its JSON
-(`json.encode` with its descriptor). `print(x)` prints the same text.
+(`json.encode` with its descriptor): a tuple's is `(` (its elements by
+its shape's field descriptors, `(1,"a")`) and a map's from other than
+strings `m` K V (each key as it's written, `{1:"a"}`), descriptors only
+print writes. `print(x)` prints the same text.
 
 A multi-line string's text drops its first line when that's blank, and
 the indentation of its closing quotes' line from every line.

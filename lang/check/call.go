@@ -884,17 +884,19 @@ func (c *Checker) checkConstraints(at syntax.Node, what string, p *TypeParam, t 
 // ("", "" when it meets them all).
 func (c *Checker) satisfies(t Type, p *TypeParam) (failed, why string) {
 	for _, b := range p.Builtins {
-		ok := true
+		why := ""
 		switch b {
 		case "Equatable":
-			ok = IsEquatable(t)
+			if !IsEquatable(t) {
+				why = whyNotEquatable(t)
+			}
 		case "Comparable":
-			ok = IsComparable(t)
+			why = c.whyNotComparable(t)
 		case "Hashable":
-			ok = IsHashable(t)
+			why = whyNotHashable(t)
 		}
-		if !ok {
-			return b, ""
+		if why != "" {
+			return b, why
 		}
 	}
 	for _, i := range p.Ifaces {
@@ -1371,8 +1373,14 @@ func (c *Checker) builtinMethodCall(e *syntax.CallExpr, fn *syntax.MemberExpr, x
 	free := map[*TypeParam]bool{tvU: true}
 	c.inferArgs(args, params, s, free, c.triedWant(e, want), result, m.Name)
 	c.typeDefaults(args, params)
+	if t := s[tvT]; m.Needs == "Comparable" && t != nil {
+		c.whyNotComparable(t) // its compare's signature read
+	}
 	if why := m.requires(s); why != "" {
-		c.errorf(fn.Name, "%s %s", m.Name, why)
+		if !strings.HasPrefix(why, "(") {
+			why = " " + why // sorted() orders …, contains compares …
+		}
+		c.errorf(fn.Name, "%s%s", m.Name, why)
 	}
 	bound := map[string]Type{}
 	for tp, t := range s {

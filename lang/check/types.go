@@ -14,6 +14,8 @@ package check
 import (
 	"strconv"
 	"strings"
+
+	"github.com/egoist/asuka/lang/syntax"
 )
 
 // A Type is an Asuka type.
@@ -619,41 +621,173 @@ func isEquatable(t Type, seen map[*TypeName]bool) bool {
 	return false
 }
 
-// IsComparable reports whether values of t can be ordered with <.
+// IsComparable reports whether values of t can be ordered with <: ints,
+// floats, strings, durations, an enum without payloads (by the order its
+// cases are declared, as Swift's), and a struct or an enum with a
+// compare method (whose methods' signatures are read).
 func IsComparable(t Type) bool {
-	switch t {
-	case Int, Float, String, Duration:
-		return true
-	}
-	if p, ok := t.(*TypeParam); ok {
-		return p.Has("Comparable")
-	}
-	return false
+	return whyNotComparable(t) == ""
 }
 
-// IsHashable reports whether t can be a map's key: the runtime's maps
-// take ints (and what's stored as one: bools, payloadless enums,
-// durations, colors) and strings.
+// whyNotComparable says why t can't be ordered ("" when it can).
+func whyNotComparable(t Type) string {
+	switch t {
+	case Int, Float, String, Duration, Invalid:
+		return ""
+	}
+	switch x := t.(type) {
+	case *TypeParam:
+		if x.Has("Comparable") {
+			return ""
+		}
+		return "constrain it, <" + x.Name + ": Comparable>"
+	case *Named:
+		if CompareMethod(x) != nil {
+			return ""
+		}
+		if x.Obj.Kind == EnumType && !x.Obj.HasPayloads() {
+			return ""
+		}
+		switch x.Obj.Kind {
+		case StructType:
+			return "give it fn compare(other: " + x.String() + ") -> int (negative: less, 0: the same, positive: greater)"
+		case EnumType:
+			return "its cases have payloads: give it fn compare(other: " + x.String() + ") -> int (negative: less, 0: the same, positive: greater)"
+		}
+	}
+	return "ints, floats, strings, durations, enums without payloads and types with fn compare can"
+}
+
+// whyNotComparable is whyNotComparable with the compare method's
+// signature read first, wherever it's declared.
+func (c *Checker) whyNotComparable(t Type) string {
+	if n, ok := t.(*Named); ok {
+		if f := n.Obj.Methods["compare"]; f != nil {
+			c.funcSig(f)
+		}
+	}
+	return whyNotComparable(t)
+}
+
+// CompareMethod is the compare method of x's struct or enum that its <,
+// <=, > and >= call: fn compare(other: X) -> int, neither async nor
+// throwing; nil when it has none (or its signature isn't read yet).
+func CompareMethod(x *Named) *Function {
+	if x.Obj.Kind != StructType && x.Obj.Kind != EnumType {
+		return nil
+	}
+	f := x.Obj.Methods["compare"]
+	if f == nil || f.Sig == nil || len(f.Sig.Params) != 1 || f.Sig.Async || f.Sig.Throws {
+		return nil
+	}
+	s := x.Subst()
+	if !Identical(s.Apply(f.Sig.Params[0].Type), x) || s.Apply(f.Sig.Result) != Int {
+		return nil
+	}
+	return f
+}
+
+// IsHashable reports whether t can be a map's key or a set's element:
+// ints, bools, strings, durations, colors, and the enums, structs,
+// tuples and optionals made of them (the runtime hashes a value as ==
+// compares it). A struct or an enum that holds itself (a list, a tree)
+// is when its other parts are.
 func IsHashable(t Type) bool {
-	switch t {
-	case Int, Bool, String, Duration, Color:
-		return true
-	}
-	if p, ok := t.(*TypeParam); ok {
-		return p.Has("Hashable")
-	}
-	if n := AsNamed(t, EnumType); n != nil {
-		return !n.Obj.RefEnum()
-	}
-	return false
+	return whyNotHashable1(t, map[*TypeName]bool{}) == ""
 }
 
-// hashableHint says how a type parameter that isn't Hashable can be.
-func hashableHint(t Type) string {
-	if p, ok := t.(*TypeParam); ok {
-		return ": constrain it, <" + p.Name + ": Hashable>"
+// whyNotHashable says why t isn't Hashable ("" when it is).
+func whyNotHashable(t Type) string {
+	return whyNotHashable1(t, map[*TypeName]bool{})
+}
+
+func whyNotHashable1(t Type, seen map[*TypeName]bool) string {
+	switch x := t.(type) {
+	case *Basic:
+		switch x {
+		case Int, Bool, String, Duration, Color, Invalid:
+			return ""
+		case Float:
+			return "floats aren't (NaN isn't equal to itself): key by an int or a string"
+		}
+		return aType(t) + " isn't"
+	case *TypeParam:
+		if x.Has("Hashable") {
+			return ""
+		}
+		return "constrain it, <" + x.Name + ": Hashable>"
+	case *Optional:
+		return whyNotHashable1(x.Elem, seen)
+	case *Tuple:
+		for _, e := range x.Elems {
+			if why := whyNotHashable1(e, seen); why != "" {
+				return "it holds " + aType(e) + ", and " + why
+			}
+		}
+		return ""
+	case *Array:
+		return "arrays aren't"
+	case *Map:
+		return "maps aren't"
+	case *Set:
+		return "sets aren't"
+	case *FuncType:
+		return "functions aren't"
+	case *Named:
+		if seen[x.Obj] {
+			return "" // as it is, if the rest is (checked on the way here)
+		}
+		s := x.Subst()
+		switch x.Obj.Kind {
+		case StructType:
+			seen[x.Obj] = true
+			defer delete(seen, x.Obj)
+			for _, f := range x.Obj.Fields {
+				ft := s.Apply(f.Type)
+				if why := whyNotHashable1(ft, seen); why != "" {
+					return "its field " + f.Name + " is " + aType(ft) + ", and " + why
+				}
+			}
+			return ""
+		case EnumType:
+			seen[x.Obj] = true
+			defer delete(seen, x.Obj)
+			for _, k := range x.Obj.Cases {
+				for _, p := range k.Params {
+					pt := s.Apply(p)
+					if why := whyNotHashable1(pt, seen); why != "" {
+						return "its case " + k.Name + " holds " + aType(pt) + ", and " + why
+					}
+				}
+			}
+			return ""
+		case StoreType:
+			return "a store is a reference, not a value: key by what it holds"
+		case InterfaceType:
+			return "an interface's values may be of any type"
+		}
 	}
-	return ""
+	return typeString(t) + " isn't"
+}
+
+// checkHashable says when t, written at at, can't be what a map's keys
+// or a set's elements are (what: "a map's key", "a Set's element"). A
+// written type is checked once the package's declarations are whole: a
+// struct's fields may not be read yet.
+func (c *Checker) checkHashable(t Type, at syntax.Node, what string, later bool) {
+	if IsInvalid(t) {
+		return
+	}
+	check := func() {
+		if why := whyNotHashable(t); why != "" {
+			c.errorf(at, "%s must be Hashable, and %s isn't: %s", what, typeString(t), why)
+		}
+	}
+	if later {
+		c.laterChecks = append(c.laterChecks, check)
+		return
+	}
+	check()
 }
 
 // typeString is t for messages: quoted the way the docs write types.

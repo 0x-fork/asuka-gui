@@ -354,9 +354,17 @@ func (l *Lowerer) desc(t check.Type) string {
 	case *check.Array:
 		return "[" + l.desc(x.Elem)
 	case *check.Map:
+		if x.Key != check.String {
+			// Printed only: JSON's objects are from strings.
+			return "m" + l.desc(x.Key) + l.desc(x.Elem)
+		}
 		return "{" + l.desc(x.Elem)
 	case *check.Set:
 		return "<" + l.desc(x.Elem)
+	case *check.Tuple:
+		// Printed only: (1,"a"), its elements by its shape's descriptors.
+		l.shape(t)
+		return "("
 	case *check.Named:
 		switch x.Obj.Kind {
 		case check.StructType:

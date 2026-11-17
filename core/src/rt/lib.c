@@ -608,11 +608,14 @@ static ak_val arr_suffix(ak_val *args, uint32_t n) {
 }
 static ak_val arr_concat(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_arr_concat(ARR(0), ARR(1))); }
 
-// Sorting: a stable merge sort, by a "less" closure or, without one, by
-// the elements' natural order (numbers, strings).
+// Sorting: a stable merge sort, by a "less" closure, a type's compare
+// method (a closure whose int is negative for less), or, without one, by
+// the elements' natural order (numbers, strings, an enum's cases in
+// their order).
 
 typedef struct {
 	ak_closure *less;
+	bool compare;  // less is a compare method: (a, b) -> int
 	ak_kind k;
 	bool failed;
 } sort_ctx;
@@ -626,11 +629,13 @@ static bool lt(sort_ctx *c, ak_val a, ak_val b) {
 			c->failed = true;
 			return false;
 		}
-		return r.i != 0;
+		return c->compare ? r.i < 0 : r.i != 0;
 	}
 	switch (c->k) {
 	case AK_K_FLOAT: return a.f < b.f;
-	case AK_K_REF: return ak_str_cmp(a.p, b.p) < 0;
+	case AK_K_REF:
+		if (a.p && ((ak_obj *)a.p)->tag == AK_TAG_ENUM) return ak_enum_case(a.p) < ak_enum_case(b.p);
+		return ak_str_cmp(a.p, b.p) < 0;
 	default: return a.i < b.i;
 	}
 }
@@ -661,7 +666,7 @@ static void msort(sort_ctx *c, ak_val *v, ak_val *tmp, uint32_t n) {
 
 static ak_val arr_sorted(ak_val *args, uint32_t n) {
 	ak_arr *a = ak_arr_copy(ARR(0));
-	sort_ctx c = {n > 1 ? CLOS(1) : NULL, ek(a), false};
+	sort_ctx c = {n > 1 ? CLOS(1) : NULL, n > 2 && A(2).i, ek(a), false};
 	ak_val *tmp = ak_alloc(sizeof(ak_val) * (a->len ? a->len : 1));
 	msort(&c, a->data, tmp, a->len);
 	ak_free(tmp);
@@ -674,7 +679,7 @@ static ak_val arr_sorted(ak_val *args, uint32_t n) {
 
 static ak_val arr_sort(ak_val *args, uint32_t n) {
 	ak_arr *a = ak_arr_mut((ak_arr **)&args[0].p);
-	sort_ctx c = {n > 1 ? CLOS(1) : NULL, ek(a), false};
+	sort_ctx c = {n > 1 ? CLOS(1) : NULL, n > 2 && A(2).i, ek(a), false};
 	ak_val *tmp = ak_alloc(sizeof(ak_val) * (a->len ? a->len : 1));
 	msort(&c, a->data, tmp, a->len);
 	ak_free(tmp);

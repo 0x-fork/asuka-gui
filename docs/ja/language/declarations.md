@@ -60,7 +60,7 @@ match line {
 }
 ```
 
-構造体は、メソッドから演算子を得ます。`fn add(o: T) -> R` は `a + b` に、`fn sub(o: T) -> R`（または `minus`）は `a - b` に、`fn compare(o: T) -> int`（負、ゼロ、正）は `<`、`<=`、`>`、`>=` になります。`std/time` の `Time` が `Duration` を足し、別の `Time` を引けるのはこのためです。
+構造体と列挙型は、メソッドから演算子を得ます。`fn add(o: T) -> R` は `a + b` に、`fn sub(o: T) -> R`（または `minus`）は `a - b` に、`fn compare(o: T) -> int`（負、ゼロ、正）は `<`、`<=`、`>`、`>=` になり、`sorted()` や `T: Comparable` にも使われます（[関数](functions.md#インターフェースとジェネリクス)を参照）。`add` が `a` と同じ型を返すなら、`a += b` はこれらのメソッドによる `a = a + b` で、変数、状態、フィールド、要素に使えます（状態の変更は一度だけです）。`std/time` の `Time` が `Duration` を足し、別の `Time` を引けるのはこのためです。
 
 ```asuka
 struct Money {
@@ -72,7 +72,15 @@ struct Money {
 
 let total = Money(cents: 250) + Money(cents: 99)
 let over = total > Money(cents: 300)
+
+fn withTip(bill: Money) -> Money {
+  var paid = bill
+  paid += Money(cents: 100)
+  return paid
+}
 ```
+
+構造体がフィールドごとに順序づけられることはありません。その順序が何を意味するかは、`compare` が決めます。
 
 ## 列挙型
 

@@ -465,11 +465,17 @@ func (b *fb) selfField(e *syntax.Ident) int {
 	return b.getField(self, n, f, -1)
 }
 
-// getField reads struct value x's field f.
+// getField reads struct value x's field f (t nil: a tuple's element,
+// f its place).
 func (b *fb) getField(x int, t *check.Named, f *check.Field, dst int) int {
-	k := b.l.kind(t.Subst().Apply(f.Type))
+	var k bc.Kind
+	if t == nil {
+		k = b.kind(f.Type)
+	} else {
+		k = b.l.kind(t.Subst().Apply(f.Type))
+	}
 	r := b.out(dst, k)
-	if t.Obj.IsError {
+	if t != nil && t.Obj.IsError {
 		b.emit(op("GETP"), r, x, f.Index)
 	} else {
 		b.emit(op("GETF"), r, x, f.Index)
@@ -830,6 +836,8 @@ func (b *fb) member(e syntax.Expr, sel *check.Selection, x int, recv check.Type,
 		return r
 	case check.SelField:
 		return b.getField(x, recv.(*check.Named), sel.Field, dst)
+	case check.SelTupleElem:
+		return b.getField(x, nil, sel.Field, dst)
 	case check.SelStoreMember:
 		ref := b.storeMemberRef(x, sel.Member)
 		m := sel.Member
@@ -1099,6 +1107,20 @@ func (b *fb) binop(o syntax.Token, x, y int, xt, yt, res check.Type, dst int) in
 				o = syntax.LSS
 			} else {
 				o = syntax.LEQ
+			}
+		}
+		if n, ok := xt.(*check.Named); ok {
+			if f := check.CompareMethod(n); f != nil {
+				// A generic T's: its compare's result against 0.
+				c := b.invoke(b.l.funcIndex(f, nil, n), []int{x, y}, bc.KInt, -1, false)
+				x, y = c, b.konst(0)
+			} else if n.Obj.RefEnum() {
+				// An enum without payloads stored as a reference: by its
+				// cases' order.
+				cx, cy := b.temp(bc.KInt), b.temp(bc.KInt)
+				b.emit(op("ECASE"), cx, x)
+				b.emit(op("ECASE"), cy, y)
+				x, y = cx, cy
 			}
 		}
 		switch b.f.Kinds[x] {

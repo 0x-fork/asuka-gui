@@ -215,7 +215,7 @@ func (c *Checker) bindIrrefutable(p syntax.Pattern, t Type, mutable, let bool) {
 // notTuple says why a tuple pattern of n doesn't fit t.
 func notTuple(t Type, n int) string {
 	if tt, ok := Unopt(t).(*Tuple); ok && IsOptional(t) && len(tt.Elems) == n {
-		return aType(t) + " may be none, and a tuple pattern takes a tuple: unwrap it first (let pair = x else { … }, then let (a, b) = pair)"
+		return aType(t) + " may be none: say what happens then, let (a, b) = x else { … }, or if let (a, b) = x { … }"
 	}
 	return aType(t) + " isn't a tuple of " + itoa(n)
 }
@@ -248,12 +248,23 @@ func (c *Checker) assignStmt(s *syntax.AssignStmt) {
 		want := numOnly(lt)
 		if s.Op.AssignOp().IsBitwise() {
 			want = Int
+		} else if p := c.operatorParam(s.Op.AssignOp(), lt); p != nil {
+			want = p
 		}
 		vt := c.expr(s.Value, want)
 		if IsInvalid(lt) || IsInvalid(vt) {
 			return
 		}
+		if o, _ := c.findOperator(s.Op.AssignOp(), lt, vt, lt); o != nil {
+			// x += y is x = x.add(y): the method of x's type.
+			c.info.AssignOps[s] = o
+			return
+		}
 		op := strings.TrimSuffix(s.Op.String(), "=")
+		if o, res := c.findOperator(s.Op.AssignOp(), lt, vt, nil); o != nil && !o.Compare {
+			c.errorf(s, "%s= is x = x %s y, and %s's %s gives %s, not %s", op, op, typeString(lt), o.Func.name, aType(res), aType(lt))
+			return
+		}
 		switch {
 		case s.Op.AssignOp().IsBitwise():
 			if lt != Int {
@@ -371,7 +382,7 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 			return
 		}
 		switch sel.Kind {
-		case SelField:
+		case SelField, SelTupleElem:
 			c.checkLvalue(x.X, what)
 		case SelStoreMember:
 			if sel.Member.Kind != StateMember {
@@ -504,9 +515,7 @@ func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
 		kc.Result = nil
 		c.forBindings(fi, s.Pattern, LocalVar, kc)
 		kt := c.expr(s.Key, nil)
-		if !IsInvalid(kt) && !IsHashable(kt) {
-			c.errorf(s.Key, "a key is an int, a string or an enum without payloads, not %s", aType(kt))
-		}
+		c.checkHashable(kt, s.Key, "a row's key", false)
 		kc.Result = kt
 		c.leave(saved)
 	}
@@ -826,10 +835,12 @@ func (c *Checker) pattern(p syntax.Pattern, t Type, kind VarKind) {
 			c.errorf(p, "%s can't be %s", aType(t), aType(lt))
 		}
 	case *syntax.TuplePat:
-		tt, ok := t.(*Tuple)
+		// An optional's value, as a case's or a literal's (none doesn't
+		// match).
+		tt, ok := Unopt(t).(*Tuple)
 		if !ok || len(tt.Elems) != len(p.Elems) {
 			if !IsInvalid(t) {
-				c.errorf(p, "%s", notTuple(t, len(p.Elems)))
+				c.errorf(p, "%s isn't a tuple of %d", aType(t), len(p.Elems))
 			}
 			for _, e := range p.Elems {
 				c.pattern(e, Invalid, kind)

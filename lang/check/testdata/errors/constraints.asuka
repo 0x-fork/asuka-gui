@@ -64,3 +64,61 @@ struct Holder<T> {
   fn same(o: T) -> bool = v == o // ERROR "T can't be compared with ==: constrain it, <T: Equatable>"
   fn less(o: T) -> bool = v < o // ERROR "T can't be ordered with <: constrain it, <T: Comparable>"
 }
+
+// Comparable: what < orders. A struct with fn compare(other) -> int, an
+// enum without payloads by its cases' order, an enum with compare.
+fn smallest<T: Comparable>(xs: [T]) -> T = xs.sorted()[0]
+
+struct Version {
+  major: int
+  fn compare(other: Version) -> int = major - other.major
+}
+
+struct Plain {
+  major: int
+}
+
+struct WrongCompare {
+  fn compare(other: WrongCompare) -> bool = true
+}
+
+enum Size { small, large }
+
+enum Coin {
+  heads(int)
+  tails
+}
+
+fn ordered(v: Version, p: Plain, s: Size, c: Coin) {
+  let a = smallest([v])
+  let b = smallest([s])
+  let d = smallest([p]) // ERROR "smallest's T must be Comparable, and Plain isn't: give it fn compare\(other: Plain\) -> int"
+  let e = smallest([c]) // ERROR "smallest's T must be Comparable, and Coin isn't: its cases have payloads: give it fn compare\(other: Coin\) -> int"
+  let f = smallest([WrongCompare()]) // ERROR "smallest's T must be Comparable, and WrongCompare isn't"
+  let g = p < p // ERROR "Plain can't be ordered with <: give it fn compare\(other: Plain\) -> int"
+  let h = s < .large
+  let i = [p].sorted() // ERROR "sorted\(\) orders what's Comparable, and Plain isn't: give it fn compare\(other: Plain\) -> int \(negative: less, 0: the same, positive: greater\); or order them with a less-than: sorted\(\(a, b\) => …\)"
+  let j = [v, v].sorted()
+  let k = [s].sorted()
+}
+
+// An interface's method is called with its own parameters: a method
+// with more, though they have defaults, isn't it.
+interface Greeter {
+  fn greet(loud: bool) -> string
+}
+
+struct En {
+  fn greet(loud: bool, times: int = 1) -> string = "hi"
+}
+
+struct Fr: Greeter { // ERROR "Fr declares Greeter but greet takes times and polite, which the interface's greet doesn't: an interface's method is called with its own parameters"
+  fn greet(loud: bool, times: int = 1, polite: bool = true) -> string = "salut"
+}
+
+fn hello<T: Greeter>(g: T) -> string = g.greet(true)
+
+fn greeters() {
+  let g: Greeter = En() // ERROR "En isn't a Greeter: greet takes times, which the interface's greet doesn't: an interface's method is called with its own parameters"
+  let h = hello(En()) // ERROR "hello's T must be Greeter, and En isn't: greet takes times, which the interface's greet doesn't"
+}

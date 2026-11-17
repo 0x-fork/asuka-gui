@@ -385,15 +385,21 @@ func (b *fb) testPattern(p syntax.Pattern, v int, t check.Type, fail Label) {
 		r := b.binop(syntax.EQL, x, lit, et, et, check.Bool, -1)
 		b.emitJump(op("JF"), r, fail)
 	case *syntax.TuplePat:
-		tt, ok := t.(*check.Tuple)
+		// An optional's: its value, once it isn't none.
+		tt, ok := check.Unopt(t).(*check.Tuple)
 		if !ok {
 			return
 		}
+		x := v
+		if check.IsOptional(t) {
+			b.emitJump(op("JNONE"), v, fail)
+			x = b.unbox(v, tt, -1)
+		}
 		for i, e := range p.Elems {
-			if isIrrefutable(e) {
+			if isIrrefutable(e, tt.Elems[i]) {
 				continue
 			}
-			b.testPattern(e, b.tupleElem(v, i, tt.Elems[i]), tt.Elems[i], fail)
+			b.testPattern(e, b.tupleElem(x, i, tt.Elems[i]), tt.Elems[i], fail)
 		}
 	case *syntax.OrPat:
 		ok := b.f.NewLabel()
@@ -419,11 +425,15 @@ func (b *fb) testPattern(p syntax.Pattern, v int, t check.Type, fail Label) {
 			}
 			n, _ := et.(*check.Named)
 			for i, a := range p.Args {
-				if fields[i] == nil || n == nil || isIrrefutable(a) {
+				if fields[i] == nil || n == nil {
+					continue
+				}
+				ft := n.Subst().Apply(fields[i].Type)
+				if isIrrefutable(a, ft) {
 					continue
 				}
 				r := b.getField(x, n, fields[i], -1)
-				b.testPattern(a, r, n.Subst().Apply(fields[i].Type), fail)
+				b.testPattern(a, r, ft, fail)
 			}
 			return
 		}
@@ -450,10 +460,10 @@ func (b *fb) testPattern(p syntax.Pattern, v int, t check.Type, fail Label) {
 		b.emit(op("EQI"), eq, c, want)
 		b.emitJump(op("JF"), eq, fail)
 		for i, a := range p.Args {
-			if isIrrefutable(a) {
+			pt := b.payloadType(n, k, i)
+			if isIrrefutable(a, pt) {
 				continue
 			}
-			pt := b.payloadType(n, k, i)
 			r := b.payload(x, n, k, i)
 			b.testPattern(a, r, pt, fail)
 		}
@@ -515,13 +525,19 @@ func (b *fb) payload(x int, n *check.Named, k *check.Case, i int) int {
 	return r
 }
 
-func isIrrefutable(p syntax.Pattern) bool {
+// isIrrefutable reports a pattern that matches any value of type t (a
+// tuple pattern doesn't match an optional's none).
+func isIrrefutable(p syntax.Pattern, t check.Type) bool {
 	switch p := p.(type) {
 	case *syntax.WildcardPat, *syntax.BindPat:
 		return true
 	case *syntax.TuplePat:
-		for _, e := range p.Elems {
-			if !isIrrefutable(e) {
+		tt, ok := t.(*check.Tuple)
+		if !ok || len(tt.Elems) != len(p.Elems) {
+			return false
+		}
+		for i, e := range p.Elems {
+			if !isIrrefutable(e, tt.Elems[i]) {
 				return false
 			}
 		}
@@ -537,15 +553,19 @@ func (b *fb) bindPattern(p syntax.Pattern, v int, t check.Type) {
 		vr, _ := b.l.info.Defs[p.Name].(*check.Var)
 		b.declare(vr, v)
 	case *syntax.TuplePat:
-		tt, ok := t.(*check.Tuple)
+		tt, ok := check.Unopt(t).(*check.Tuple)
 		if !ok {
 			return
+		}
+		x := v
+		if check.IsOptional(t) && hasBinding(p) {
+			x = b.unbox(v, tt, -1)
 		}
 		for i, e := range p.Elems {
 			if !hasBinding(e) {
 				continue
 			}
-			b.bindPattern(e, b.tupleElem(v, i, tt.Elems[i]), tt.Elems[i])
+			b.bindPattern(e, b.tupleElem(x, i, tt.Elems[i]), tt.Elems[i])
 		}
 	case *syntax.CasePat:
 		x := v
@@ -656,6 +676,10 @@ func (b *fb) prepare(x syntax.Expr) *lvalue {
 		if sel != nil && sel.Kind == check.SelField {
 			n, _ := b.typ(sel.Recv).(*check.Named)
 			return &lvalue{x: x, kind: lvField, inner: b.prepare(x.X), field: sel.Field, named: n}
+		}
+		if sel != nil && sel.Kind == check.SelTupleElem {
+			// A tuple's element: its field, by place (named nil).
+			return &lvalue{x: x, kind: lvField, inner: b.prepare(x.X), field: sel.Field}
 		}
 	case *syntax.IndexExpr:
 		inner := b.prepare(x.X)
@@ -807,9 +831,19 @@ func (b *fb) assignStmt(s *syntax.AssignStmt) {
 		o := s.Op.AssignOp()
 		lv := b.prepare(s.Target)
 		vt := b.typeOf(s.Value)
+		apply := func(cur, dst int) int { return b.binop(o, cur, v, lt, vt, lt, dst) }
+		reads := false
+		if m := b.l.info.AssignOps[s]; m != nil {
+			// x += y is x = x.add(y): the method of x's type, which may
+			// read the place (a state's value), so it's read, not taken.
+			rt := b.typ(m.Recv)
+			idx := b.l.funcIndex(m.Func, nil, rt)
+			apply = func(cur, dst int) int { return b.invoke(idx, []int{cur, v}, b.kind(lt), dst, false) }
+			reads = true
+		}
 		if lv.kind == lvField || lv.kind == lvIndex && !lv.isMap {
 			// Read and write the element where it is.
-			b.update(lv.inner, func(rx int) {
+			b.updateWith(lv.inner, reads, func(rx int) {
 				var cur int
 				if lv.kind == lvField {
 					cur = b.getField(rx, lv.named, lv.field, -1)
@@ -817,7 +851,7 @@ func (b *fb) assignStmt(s *syntax.AssignStmt) {
 					cur = b.temp(b.kind(lt))
 					b.emit(op("IDX"), cur, rx, lv.idx)
 				}
-				r := b.binop(o, cur, v, lt, vt, lt, cur)
+				r := apply(cur, cur)
 				if lv.kind == lvField {
 					b.emit(op("SETF"), rx, lv.field.Index, r)
 				} else {
@@ -827,7 +861,7 @@ func (b *fb) assignStmt(s *syntax.AssignStmt) {
 			return
 		}
 		cur := b.get(lv)
-		r := b.binop(o, cur, v, lt, vt, lt, -1)
+		r := apply(cur, -1)
 		b.set(lv, r)
 	}
 }

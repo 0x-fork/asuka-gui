@@ -9,11 +9,54 @@ enum Shape {
   none
 }
 
-fn points(s: Set<Point>) {} // ERROR "a Set's elements are ints, strings, bools or enums without payloads, not Point"
+// A struct, an enum and a tuple are when what they hold is.
+fn points(s: Set<Point>, t: Set<Shape>, u: Set<(int, Shape?)>) -> bool = s.contains(Point(x: 1)) && t.contains(.dot(Point(x: 1))) && u.contains((1, none))
 
-fn shapes(s: Set<Shape>) {} // ERROR "a Set's elements are ints, strings, bools or enums without payloads, not Shape"
+struct Spot {
+  x: float
+}
 
-fn arrays(s: Set<[int]>) {} // ERROR "a Set's elements are ints, strings, bools or enums without payloads, not \[int\]"
+enum Mark {
+  at(Spot)
+  none
+}
+
+fn spots(s: Set<Spot>) {} // ERROR "a Set's element must be Hashable, and Spot isn't: its field x is a float, and floats aren't \(NaN isn't equal to itself\)"
+
+fn marks(s: Set<Mark>) {} // ERROR "a Set's element must be Hashable, and Mark isn't: its case at holds a Spot, and its field x is a float"
+
+fn pairs(s: Set<(int, float)>) {} // ERROR "a Set's element must be Hashable, and \(int, float\) isn't: it holds a float"
+
+fn arrays(s: Set<[int]>) {} // ERROR "a Set's element must be Hashable, and \[int\] isn't: arrays aren't"
+
+// Its fields are read after the declarations that name it.
+fn later(m: [Late: int]) {} // ERROR "a map's key must be Hashable, and Late isn't: its field f is a fn\(\) -> int, and functions aren't"
+
+struct Late {
+  f: fn() -> int
+}
+
+// One that holds itself is when the rest is.
+struct Chain {
+  id: int
+  next: Chain?
+}
+
+fn chains(s: Set<Chain>, m: [Chain: string]) -> int = s.count() + m.count()
+
+struct BadChain {
+  next: BadChain?
+  w: float
+}
+
+fn badChains(s: Set<BadChain>) {} // ERROR "its field w is a float"
+
+fn generic<T: Hashable>(x: T) -> Set<T> = [x]
+
+fn usesGeneric() {
+  let a = generic(Point(x: 1))
+  let b = generic(Spot(x: 1)) // ERROR "generic's T must be Hashable, and Spot isn't: its field x is a float"
+}
 
 fn twoTypes() -> Set<int, string> = [] // ERROR "Set takes one type: Set<T>"
 
@@ -31,7 +74,7 @@ fn noIndex(s: Set<int>) -> int = s[0] // ERROR "a Set<int> can't be indexed"
 
 fn ordered(s: Set<int>) -> bool = s < s // ERROR "Set<int> can't be ordered with <: ints, floats"
 
-fn setOfSets(s: Set<Set<int>>) {} // ERROR "a Set's elements are ints, strings, bools or enums without payloads, not Set<int>"
+fn setOfSets(s: Set<Set<int>>) {} // ERROR "a Set's element must be Hashable, and Set<int> isn't: sets aren't"
 
 fn ok(s: Set<string>) -> Set<string> {
   var t = s

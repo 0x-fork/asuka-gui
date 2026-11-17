@@ -1,0 +1,121 @@
+// Tuples: their elements read and changed by place (t.0), printed as
+// their elements, and matched through optionals.
+
+enum Light { red, green }
+
+struct Hold {
+  pair: (int, string)
+}
+
+fn swap(p: (int, string)) -> (string, int) = (p.1, p.0)
+
+fn first<A, B>(p: (A, B)) -> A = p.0
+
+test "elements" {
+  var t = (1, ("a", 2.5), Light.red)
+  print(t.0)
+  print(t.1.0)
+  print(t.1.1 * 2.0)
+  print(t.2)
+  t.0 = 5
+  t.1.0 += "b"
+  t.1.1 = t.1.1 + 1.0
+  let u = t
+  t.0 += 1
+  print(t.0)
+  print(u.0)
+  print(t.1.0)
+  print(swap((7, "x")).0)
+  print(first(("y", 1)))
+  var h = Hold(pair: (1, "one"))
+  h.pair.0 = 2
+  print(h.pair.0)
+  var ps = [(1, "a"), (2, "b")]
+  ps[1].1 = "c"
+  print(ps[1].1)
+  let o: (int, string)? = (3, "z")
+  print(o?.1 ?? "none")
+  let n: (int, string)? = none
+  print(n?.0 ?? -1)
+}
+
+test "printed" {
+  let t = (1, "a", Light.red)
+  print(t)
+  print("t is {t}")
+  print([(1, "x"), (2, "y")])
+  print(((1, 2), [true]))
+  let o: (int, string)? = (1, "z")
+  print(o)
+  print(Hold(pair: (1, "one")))
+  print([1: "a", 2: "b"])
+  print([Light.green: [1, 2]])
+}
+
+test "patterns through optionals" {
+  let a: (int, string)? = (1, "x")
+  let b: (int, string)? = none
+  if let (n, s) = a {
+    print("a {n} {s}")
+  }
+  if let (n, s) = b {
+    print("b {n} {s}")
+  } else {
+    print("b is none")
+  }
+  for o in [a, b, (2, "y")] {
+    let r = match o {
+      (1, x) => "one {x}"
+      (n, _) => "other {n}"
+      none => "none"
+    }
+    print(r)
+  }
+  let nested: [(int, (string, bool)?)?] = [(1, ("a", true)), (2, none), (3, ("c", false)), none]
+  for o in nested {
+    match o {
+      (k, (s, true)) => print("{k} {s} yes")
+      (k, (_, false)) => print("{k} no")
+      (k, none) => print("{k} none")
+      none => print("none")
+    }
+  }
+  let (x, y) = a else { return }
+  print("{x}{y}")
+}
+
+// Output:
+// 1
+// a
+// 5
+// red
+// 6
+// 5
+// ab
+// x
+// y
+// 2
+// c
+// z
+// -1
+// ok elements
+// (1,"a","red")
+// t is (1,"a","red")
+// [(1,"x"),(2,"y")]
+// ((1,2),[true])
+// (1,"z")
+// {"pair":(1,"one")}
+// {1:"a",2:"b"}
+// {"green":[1,2]}
+// ok printed
+// a 1 x
+// b is none
+// one x
+// none
+// other 2
+// 1 a yes
+// 2 none
+// 3 no
+// none
+// 1x
+// ok patterns through optionals

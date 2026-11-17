@@ -61,6 +61,37 @@ fn label<T: Shape>(x: T) -> string = x.name
 	}
 }
 
+// A tuple's elements (t.0) hover with their types and complete after
+// its dot.
+func TestTupleElements(t *testing.T) {
+	root := t.TempDir()
+	c := newClient(t, root)
+	text := `fn f(p: (int, (string, bool))) -> bool {
+  let n = p.0
+  return p.1.1
+}
+`
+	uri := c.openText(filepath.Join(root, "a.asuka"), text)
+	c.waitDiags(uri, noDiags)
+	for _, tc := range []struct{ at, want string }{
+		{"p.|0", "(int, (string, bool)).0: int"},
+		{"p.1.|1", "(string, bool).1: bool"},
+		{"p.1.|1", "The tuple's element 1"},
+	} {
+		if got := hoverAt(t, c, uri, text, tc.at); !strings.Contains(got, tc.want) {
+			t.Errorf("hover at %s: %q lacks %q", tc.at, got, tc.want)
+		}
+	}
+	version := 1
+	edited := strings.Replace(text, "p.1.1\n", "p.1.\n", 1)
+	got := labels(complete(t, c, uri, &version, edited, edited[:strings.Index(edited, "p.1.\n")+4]+"|"))
+	for _, w := range []string{"0", "1"} {
+		if !contains(got, w) {
+			t.Errorf("no %q in %v", w, got)
+		}
+	}
+}
+
 // A Set's methods complete and hover, and Set itself has its doc.
 func TestSets(t *testing.T) {
 	root := t.TempDir()
