@@ -156,7 +156,19 @@ bool ak_native_encode(ak_buf *b, ak_val v, const char *d, const ak_json_types *t
 
 static void bad(const char *what) { ak_throw_msg("native: a bad answer (%s)", what); }
 
+static ak_val decode(ak_reader *r, const char *d, const ak_json_types *t);
+
+// ak_native_decode reads a value; an answer cut short or wrong throws and
+// returns the zero value, having released what it had built.
 ak_val ak_native_decode(ak_reader *r, const char *d, const ak_json_types *t) {
+	ak_val v = decode(r, d, t);
+	if (r->err && !ak_error_pending()) bad("short");
+	if (!ak_error_pending()) return v;
+	ak_release_val(v, kind_of(d));
+	return (ak_val){0};
+}
+
+static ak_val decode(ak_reader *r, const char *d, const ak_json_types *t) {
 	ak_val v = {0};
 	switch (*d) {
 	case 'i':
@@ -193,7 +205,8 @@ ak_val ak_native_decode(ak_reader *r, const char *d, const ak_json_types *t) {
 		break;
 	case '[': {
 		uint32_t n = ak_read_u32(r);
-		if (r->err || n > r->len) break;
+		if (n > r->len - r->off) r->err = true;  // more items than bytes left
+		if (r->err) break;
 		ak_kind k = kind_of(d + 1);
 		ak_arr *a = ak_arr_new(k, NULL, n);
 		if (d[1] == 's') a->h.flags = 1;
@@ -203,7 +216,8 @@ ak_val ak_native_decode(ak_reader *r, const char *d, const ak_json_types *t) {
 	}
 	case '{': {
 		uint32_t n = ak_read_u32(r);
-		if (r->err || n > r->len) break;
+		if (n > r->len - r->off) r->err = true;
+		if (r->err) break;
 		ak_map *m = ak_map_new(AK_K_REF, true, kind_of(d + 1), NULL);
 		for (uint32_t i = 0; i < n && !r->err && !ak_error_pending(); i++) {
 			uint32_t kn;
@@ -231,7 +245,6 @@ ak_val ak_native_decode(ak_reader *r, const char *d, const ak_json_types *t) {
 		bad(d);
 		return v;
 	}
-	if (r->err && !ak_error_pending()) bad("short");
 	return v;
 }
 
@@ -425,11 +438,13 @@ static void after_invoke(void *ctx) { AK_UNUSED(ctx); }
 // ak_native_invoke: the native side calls a callback, on the main thread.
 size_t ak_native_invoke(uint64_t id, const uint8_t *p, size_t len, uint8_t **out) {
 	*out = NULL;
-	callback *cb = NULL;
+	// A copy: the callback's body may register callbacks of its own,
+	// growing the table under it.
+	callback cb = {0};
 	for (uint32_t i = 0; i < callbacks.len; i++)
-		if (callbacks.data[i].id == id) cb = &callbacks.data[i];
-	if (!cb) return 0;
-	const char *d = cb->desc;  // F<n><params><ret>
+		if (callbacks.data[i].id == id) cb = callbacks.data[i];
+	if (!cb.c) return 0;
+	const char *d = cb.desc;  // F<n><params><ret>
 	int n = d[1] - '0';
 	const char *pd = d + 2;
 	ak_reader r = {p, len, 0, false};
@@ -438,18 +453,17 @@ size_t ak_native_invoke(uint64_t id, const uint8_t *p, size_t len, uint8_t **out
 	int got = 0;
 	for (int i = 0; i < n; i++) {
 		kinds[i] = kind_of(pd);
-		args[i] = ak_native_decode(&r, pd, cb->types);
+		args[i] = ak_native_decode(&r, pd, cb.types);
 		got++;
 		pd = desc_skip(pd);
 		if (ak_error_pending()) break;
 	}
 	size_t outlen = 0;
 	if (!ak_error_pending()) {
-		ak_closure *c = cb->c;
-		ak_val res = ak_call(c, args, (uint32_t)n);
+		ak_val res = ak_call(cb.c, args, (uint32_t)n);
 		if (!ak_error_pending() && *pd != 'v') {
 			ak_buf b = {0};
-			ak_native_encode(&b, res, pd, cb->types);
+			ak_native_encode(&b, res, pd, cb.types);
 			*out = b.data;
 			outlen = b.len;
 		}

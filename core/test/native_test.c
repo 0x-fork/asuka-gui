@@ -129,4 +129,105 @@ TEST(callbacks) {
 	ak_release(obj);
 }
 
+// A callback that registers callbacks of its own (passing closures to
+// native methods) grows the callbacks' table under the call: the result
+// is still encoded with the callback's own descriptor.
+static ak_val plain(ak_closure *c, ak_val *args, uint32_t n) {
+	AK_UNUSED(c);
+	AK_UNUSED(args);
+	AK_UNUSED(n);
+	return (ak_val){.i = 1};
+}
+
+static void pass(ak_native_obj *obj, ak_closure *c) {
+	ak_struct *args = ak_struct_new(&(ak_shape){.name = "(fn)", .nfields = 1, .kinds = (const uint8_t[]){AK_K_REF}});
+	args->f[0].p = ak_retain(c);
+	ak_native_call(obj, 4, (ak_val){.p = args}, "F0i", "v", NULL, NULL);
+	ak_release(args);
+}
+
+static ak_val registers(ak_closure *c, ak_val *args, uint32_t n) {
+	AK_UNUSED(args);
+	AK_UNUSED(n);
+	for (int i = 0; i < 64; i++) {
+		ak_closure *k = ak_closure_new(plain, NULL, 0, NULL);
+		pass((ak_native_obj *)c->fn, k);
+		ak_release(k);
+	}
+	return (ak_val){.i = 7};
+}
+
+TEST(callback_registers_callbacks) {
+	ak_native_set_host(&host);
+	ak_native_obj *obj = ak_native_wrap(9);
+	ak_closure *c = ak_closure_new(registers, obj, 0, NULL);
+	pass(obj, c);
+	uint64_t id = callback_id;
+	uint8_t *out;
+	size_t n = ak_native_invoke(id, NULL, 0, &out);
+	REQUIRE(n == 8);
+	CHECK_EQ_INT(out[0], 7);
+	ak_free(out);
+	ak_release(c);
+	ak_release(obj);
+}
+
+// An answer cut short, or wrong, throws and leaves nothing built behind:
+// no half-decoded value (a scalar read as an option's box), nothing
+// leaked.
+TEST(short_answers) {
+	static const struct {
+		const char *desc;
+		uint8_t bytes[16];
+		size_t n;
+	} cases[] = {
+		{"?i", {1, 0x41, 0x41, 0x41, 0x41}, 5},
+		{"?f", {1, 1, 2, 3}, 4},
+		{"?s", {1, 5, 0, 0, 0, 'a'}, 6},
+		{"[s", {2, 0, 0, 0, 1, 0, 0, 0, 'a'}, 9},
+		{"[?i", {2, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1}, 15},
+		{"{s", {1, 0, 0, 0, 1, 0, 0, 0, 'k', 3, 0, 0, 0}, 13},
+		{"[i", {0xff, 0xff, 0xff, 0x7f}, 4},
+		{"{i", {0xff, 0xff, 0xff, 0x7f}, 4},
+		{"?[?s", {1, 1, 0, 0, 0, 1, 2, 0, 0, 0, 'x'}, 11},
+	};
+	for (size_t i = 0; i < AK_LEN(cases); i++) {
+		ak_reader r = {cases[i].bytes, cases[i].n, 0, false};
+		ak_val v = ak_native_decode(&r, cases[i].desc, NULL);
+		void *e = ak_error_take();
+		if (!e) T_FAIL("%s: no error", cases[i].desc);
+		ak_release(e);
+		CHECK(v.p == NULL);
+		ak_release_val(v, AK_K_REF);  // every case is a reference
+	}
+}
+
+// A callback whose arguments are cut short isn't called and frees them.
+static int called;
+static ak_val counts(ak_closure *c, ak_val *args, uint32_t n) {
+	AK_UNUSED(c);
+	AK_UNUSED(args);
+	AK_UNUSED(n);
+	called++;
+	return (ak_val){0};
+}
+
+TEST(callback_short_arguments) {
+	ak_native_set_host(&host);
+	ak_native_obj *obj = ak_native_wrap(9);
+	ak_closure *c = ak_closure_new(counts, NULL, 0, NULL);
+	ak_struct *args = ak_struct_new(&(ak_shape){.name = "(fn)", .nfields = 1, .kinds = (const uint8_t[]){AK_K_REF}});
+	args->f[0].p = ak_retain(c);
+	ak_native_call(obj, 4, (ak_val){.p = args}, "F2?i[sv", "v", NULL, NULL);
+	uint8_t in[] = {1, 0x41, 0x41, 0x41, 0x41};
+	uint8_t *out;
+	CHECK_EQ_INT(ak_native_invoke(callback_id, in, sizeof in, &out), 0);
+	uint8_t in2[] = {0, 2, 0, 0, 0, 1, 0, 0, 0, 'a'};
+	CHECK_EQ_INT(ak_native_invoke(callback_id, in2, sizeof in2, &out), 0);
+	CHECK_EQ_INT(called, 0);
+	ak_release(args);
+	ak_release(c);
+	ak_release(obj);
+}
+
 T_MAIN()
