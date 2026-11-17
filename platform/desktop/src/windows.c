@@ -3,6 +3,7 @@
 #ifdef _WIN32
 #include "asuka_windows.h"
 #include <wincodec.h>
+#include <winhttp.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,6 +27,41 @@ char *asuka_narrow(const wchar_t *w, int n) {
 	s[m > 0 ? m : 0] = 0;
 	if (n < 0 && m > 0) s[m - 1] = 0;  // the NUL it counted
 	return s;
+}
+
+bool asuka_win_http_target(const char *url, wchar_t **host, wchar_t **object, unsigned short *port, bool *https) {
+	*host = *object = NULL;
+	wchar_t *w = asuka_wide(url);
+	// Lengths nonzero, pointers NULL: WinHttpCrackUrl points into w, so
+	// no part has a limit.
+	URL_COMPONENTS u;
+	memset(&u, 0, sizeof u);
+	u.dwStructSize = sizeof u;
+	u.dwHostNameLength = u.dwUrlPathLength = u.dwExtraInfoLength = (DWORD)-1;
+	if (!WinHttpCrackUrl(w, 0, 0, &u) || (u.nScheme != INTERNET_SCHEME_HTTP && u.nScheme != INTERNET_SCHEME_HTTPS) || !u.lpszHostName ||
+	    !u.dwHostNameLength) {
+		free(w);
+		return false;
+	}
+	wchar_t *h = malloc(((size_t)u.dwHostNameLength + 1) * sizeof *h);
+	memcpy(h, u.lpszHostName, (size_t)u.dwHostNameLength * sizeof *h);
+	h[u.dwHostNameLength] = 0;
+	// The path and the query follow each other in the URL; the fragment,
+	// the client's, ends the extra info.
+	const wchar_t *from = u.dwUrlPathLength ? u.lpszUrlPath : u.lpszExtraInfo;
+	size_t n = from ? (size_t)u.dwUrlPathLength + u.dwExtraInfoLength : 0;
+	for (size_t i = 0; i < n; i++)
+		if (from[i] == L'#') n = i;
+	bool slash = !u.dwUrlPathLength;
+	wchar_t *o = malloc((n + 2) * sizeof *o);
+	if (slash) o[0] = L'/';
+	if (n) memcpy(o + slash, from, n * sizeof *o);
+	o[slash + n] = 0;
+	*port = u.nPort;
+	*https = u.nScheme == INTERNET_SCHEME_HTTPS;
+	*host = h, *object = o;
+	free(w);
+	return true;
 }
 
 void asuka_win_fail(asuka_error *err, HRESULT hr, const char *what) {

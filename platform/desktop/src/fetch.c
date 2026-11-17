@@ -155,44 +155,25 @@ static void on_cancel(void *p) {
 bool asuka_fetch_stream(const asuka_request *rq, asuka_response *out, asuka_error *err) {
 	asuka_response head = {0};
 	const char *url = rq->url;
-	wchar_t *wurl = asuka_wide(url), *wmethod = asuka_wide(rq->method && *rq->method ? rq->method : "GET");
+	wchar_t *wmethod = asuka_wide(rq->method && *rq->method ? rq->method : "GET");
 	wchar_t *agent = asuka_wide(rq->agent && *rq->agent ? rq->agent : "Asuka");
-	// The URL's parts, as spans of wurl (lengths nonzero, pointers NULL:
-	// WinHttpCrackUrl points into it, so no part has a length limit).
-	URL_COMPONENTS u;
-	memset(&u, 0, sizeof u);
-	u.dwStructSize = sizeof u;
-	u.dwHostNameLength = u.dwUrlPathLength = u.dwExtraInfoLength = (DWORD)-1;
 	HINTERNET session = NULL, conn = NULL, req = NULL;
-	bool ok = false;
+	bool ok = false, https = false;
 	cancel_ctx *cc = NULL;
 	uint8_t *buf = NULL;
 	wchar_t *host = NULL, *object = NULL;
-	if (!WinHttpCrackUrl(wurl, 0, 0, &u) || (u.nScheme != INTERNET_SCHEME_HTTP && u.nScheme != INTERNET_SCHEME_HTTPS) || !u.dwHostNameLength) {
+	unsigned short port = 0;
+	if (!asuka_win_http_target(url, &host, &object, &port, &https)) {
 		asuka_error_failed(err, "http", 0, "%s isn't an http or https URL", url);
 		goto done;
 	}
-	host = malloc(((size_t)u.dwHostNameLength + 1) * sizeof(wchar_t));
-	memcpy(host, u.lpszHostName, (size_t)u.dwHostNameLength * sizeof(wchar_t));
-	host[u.dwHostNameLength] = 0;
-	// What's requested: the path and query, which follow each other in the
-	// URL ("/" for none), not the fragment, which is the client's.
-	const wchar_t *from = u.dwUrlPathLength ? u.lpszUrlPath : u.lpszExtraInfo;
-	size_t on = from ? (size_t)u.dwUrlPathLength + u.dwExtraInfoLength : 0;
-	for (size_t i = 0; i < on; i++)
-		if (from[i] == L'#') on = i;
-	bool slash = !u.dwUrlPathLength;
-	object = malloc((on + 2) * sizeof(wchar_t));
-	if (slash) object[0] = L'/';
-	if (on) memcpy(object + slash, from, on * sizeof(wchar_t));
-	object[slash + on] = 0;
 	session = WinHttpOpen(agent, WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
 	if (!session) session = WinHttpOpen(agent, WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
 	if (!session) goto fail;
 	if (rq->timeout_ms > 0) WinHttpSetTimeouts(session, rq->timeout_ms, rq->timeout_ms, rq->timeout_ms, rq->timeout_ms);
-	conn = WinHttpConnect(session, host, u.nPort, 0);
+	conn = WinHttpConnect(session, host, port, 0);
 	if (!conn) goto fail;
-	req = WinHttpOpenRequest(conn, wmethod, object, NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, u.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0);
+	req = WinHttpOpenRequest(conn, wmethod, object, NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, https ? WINHTTP_FLAG_SECURE : 0);
 	if (!req) goto fail;
 	DWORD decompress = WINHTTP_DECOMPRESSION_FLAG_ALL;
 	WinHttpSetOption(req, WINHTTP_OPTION_DECOMPRESSION, &decompress, sizeof decompress);
@@ -288,7 +269,6 @@ done:
 	free(buf);
 	free(host);
 	free(object);
-	free(wurl);
 	free(wmethod);
 	free(agent);
 	if (out && ok) *out = head;

@@ -30,6 +30,12 @@ wchar_t *asuka_wide(const char *s);
 // up to its NUL with n < 0.
 char *asuka_narrow(const wchar_t *w, int n);
 
+// asuka_win_http_target cracks an http: or https: URL for WinHTTP: its
+// host and the object a request names (its path and query, "/" for none;
+// not its fragment), both of malloc's and of any length, its port, and
+// whether it's https. false, nothing allocated, for another URL.
+bool asuka_win_http_target(const char *url, wchar_t **host, wchar_t **object, unsigned short *port, bool *https);
+
 // asuka_win_fail fails err with a Windows error (an HRESULT, or a Win32
 // error code as HRESULT_FROM_WIN32 makes it): the system's message for it.
 void asuka_win_fail(asuka_error *err, HRESULT hr, const char *what);

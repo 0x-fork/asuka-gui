@@ -49,6 +49,7 @@ func TestStreams(t *testing.T) {
 			"lines <one><two><three>",
 			"events message:first: price:1+2:2 message:last:2",
 			"posted 200 true true true",
+			"long true false",
 			"missing 404 false missing",
 			"stall timed out true",
 			"cancelled 200",
