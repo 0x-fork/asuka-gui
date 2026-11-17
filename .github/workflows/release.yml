@@ -60,9 +60,8 @@ jobs:
           pattern: prebuilt-*
           path: dist/prebuilt
       # The prebuilt packages packed, their manifest (each tarball's
-      # integrity) embedded in the CLI, which is built for each platform.
-      - name: the packages
-        run: go run ./scripts/npm -version "${GITHUB_REF_NAME#v}" -prebuilt dist/prebuilt -out dist/npm
+      # integrity) embedded in the CLI, which is built for each platform;
+      # then all of them published, once everything is built.
       - name: npm
         run: go run ./scripts/npm -version "${GITHUB_REF_NAME#v}" -prebuilt dist/prebuilt -out dist/npm -publish
         env:
