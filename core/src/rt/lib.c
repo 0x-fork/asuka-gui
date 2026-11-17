@@ -573,9 +573,10 @@ static ak_val arr_sum(ak_val *args, uint32_t n) {
 		for (uint32_t i = 0; i < a->len; i++) s += a->data[i].f;
 		RET_F(s);
 	}
-	int64_t s = 0;
-	for (uint32_t i = 0; i < a->len; i++) s += a->data[i].i;
-	RET_I(s);
+	// Wrapping, as + does.
+	uint64_t s = 0;
+	for (uint32_t i = 0; i < a->len; i++) s += (uint64_t)a->data[i].i;
+	RET_I((int64_t)s);
 }
 
 static ak_val arr_reversed(ak_val *args, uint32_t n) {

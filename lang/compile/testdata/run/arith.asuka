@@ -42,6 +42,7 @@ test "wrapping" {
   print(-mn)
   print(mn / -1)
   print(mn % -1)
+  print([9223372036854775807, 1].sum())
 }
 
 test "division by zero throws" {
@@ -69,5 +70,6 @@ test "division by zero throws" {
 // -9223372036854775808
 // -9223372036854775808
 // 0
+// -9223372036854775808
 // ok wrapping
 // FAIL division by zero throws: division by zero
