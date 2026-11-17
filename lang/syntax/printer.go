@@ -1084,7 +1084,7 @@ func (p *printer) expr1(x Expr) {
 	case *ImplicitMember:
 		p.write("." + x.Name.Name)
 	case *MemberExpr:
-		p.exprPrec(x.X, precPostfix)
+		p.postfixOperand(x.X, !x.Optional)
 		if x.Optional {
 			p.write("?.")
 		} else {
@@ -1092,7 +1092,7 @@ func (p *printer) expr1(x Expr) {
 		}
 		p.write(x.Name.Name)
 	case *CallExpr:
-		p.exprPrec(x.Fun, precPostfix)
+		p.postfixOperand(x.Fun, len(x.TypeArgs) == 0 && x.Args != nil)
 		if len(x.TypeArgs) > 0 {
 			p.write("<")
 			for i, t := range x.TypeArgs {
@@ -1118,7 +1118,7 @@ func (p *printer) expr1(x Expr) {
 			p.onHandler(h)
 		}
 	case *IndexExpr:
-		p.exprPrec(x.X, precPostfix)
+		p.postfixOperand(x.X, true)
 		p.write("[")
 		p.expr(x.Index)
 		p.write("]")
@@ -1247,6 +1247,16 @@ func (p *printer) expr1(x Expr) {
 		}
 	case *BadExpr:
 		p.write("/* bad syntax */")
+	}
+}
+
+// postfixOperand prints what a postfix operator applies to. A % length
+// before (, [ or . (open says one follows) keeps a space: 50%(…) would
+// be a remainder.
+func (p *printer) postfixOperand(x Expr, open bool) {
+	p.exprPrec(x, precPostfix)
+	if l, ok := x.(*BasicLit); ok && open && l.Kind == LENGTH && strings.HasSuffix(l.Value, "%") {
+		p.write(" ")
 	}
 }
 

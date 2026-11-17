@@ -187,6 +187,8 @@ func TestFormatCases(t *testing.T) {
 		{"let t = try  await f()", "let t = try await f()\n"},
 		{"let n = ! a", "let n = !a\n"},
 		{"let n = - -a + -(-b) - - c", "let n = - -a + -(-b) - -c\n"},
+		// A % length before (, [ or . keeps its space: 0%() is 0 % ().
+		{"let n = 0% () + 5% [1] + 5% .a + 5%?.a + 5%!", "let n = 0% () + 5% [1] + 5% .a + 5%?.a + 5%!\n"},
 		{"let d = @platform==.linux||( @platform != .web )", "let d = @platform == .linux || (@platform != .web)\n"},
 		{"fn f() { match p { Point( x :0 ,y )=>1 } }", "fn f() { match p { Point(x: 0, y) => 1 } }\n"},
 		{"fn f<T:Shape&Hashable,U : ui.View>(x: T) {}", "fn f<T: Shape & Hashable, U: ui.View>(x: T) {}\n"},
