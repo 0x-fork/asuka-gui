@@ -161,8 +161,10 @@ task(query) {
 }
 ```
 
-`load` keeps an async result as state, with its loading and its error
-(see [The Asuka language](language/async.md#data-that-loads)).
+`load` keeps an async result as state, with its error and whether it's
+loading. Once it has an answer, the answer stays on screen while the
+next one loads (see [The Asuka
+language](language/async.md#data-that-loads)).
 
 ## Showing and repeating
 

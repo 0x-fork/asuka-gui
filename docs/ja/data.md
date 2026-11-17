@@ -274,6 +274,26 @@ async fn latest() throws -> string {
 }
 ```
 
+コンポーネントでは `load` で結果を表示します。最初の結果が届くまでは `.pending` で、そのあとは読み込み直しているあいだも前の結果が画面に残り、`.loading` が実行中であることを示します（[読み込むデータ](language/async.md#読み込むデータ)を参照）。
+
+```asuka
+component LatestRelease {
+  let name = load latest()
+
+  Row {
+    match name {
+      .pending => ProgressRing()
+      .failed(e) => Text(e.message)
+      .ready(n) => Text(n)
+    }
+    Button("Refresh") {
+      disabled: name.loading
+      on press { name.reload() }
+    }
+  }
+}
+```
+
 ブラウザーでは、別のオリジンへのリクエストにはそのオリジンの CORS ヘッダーが必要です。
 
 大きなレスポンス（動画やアーカイブ）は、届くそばからファイルに書けます。`http.download(url, path, progress:)` は、パスの隣のファイルに書き、すべて届いたらパスへ名前を変えます。そのあいだ 1 秒に数回、届いたバイト数と全体のバイト数（サーバーが示さなければ -1）を渡して `progress` を呼びます。`timeout` は全体ではなく、次のデータを待つ最長の時間です。タスクをキャンセルするとダウンロードは止まり、ファイルは残りません。iOS と macOS では URLSession、Android では `HttpURLConnection`、Windows と Linux では WinHTTP と libsoup がそのままファイルへ書き、ブラウザーでは fetch のストリームから読んでアプリのファイルに書きます。

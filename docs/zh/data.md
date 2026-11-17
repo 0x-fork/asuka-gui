@@ -274,6 +274,26 @@ async fn latest() throws -> string {
 }
 ```
 
+组件用 `load` 显示请求的结果：第一次结果到来之前是 `.pending`，之后重新加载期间，上一次的结果会继续留在屏幕上，`.loading` 则表示有一次请求正在进行（见[需要加载的数据](language/async.md#需要加载的数据)）。
+
+```asuka
+component LatestRelease {
+  let name = load latest()
+
+  Row {
+    match name {
+      .pending => ProgressRing()
+      .failed(e) => Text(e.message)
+      .ready(n) => Text(n)
+    }
+    Button("Refresh") {
+      disabled: name.loading
+      on press { name.reload() }
+    }
+  }
+}
+```
+
 在浏览器里，向其他源发请求需要那个源返回 CORS 头。
 
 较大的响应（视频、压缩包）可以边收边写进文件：`http.download(url, path, progress:)` 先写到路径旁边的文件里，全部收完后再重命名到位，每秒几次以已收到的字节数和总字节数（服务器没说时为 -1）调用 `progress`。它的 `timeout` 是等待后续数据的最长时间，而不是整个下载的时间；取消它所在的 task 就会停止下载，不留下文件。iOS 和 macOS 上用 URLSession，Android 上用 `HttpURLConnection`，Windows 和 Linux 上用 WinHTTP 和 libsoup，都是直接流式写入文件；在浏览器里，则从 fetch 的流中读出，写进应用的文件。

@@ -384,6 +384,29 @@ async fn latest() throws -> string {
 }
 ```
 
+A component shows an answer with `load`: `.pending` until the first
+one comes, then that one stays on screen while a reload runs, and
+`.loading` says one is running
+([Data that loads](language/async.md#data-that-loads)).
+
+```asuka
+component LatestRelease {
+  let name = load latest()
+
+  Row {
+    match name {
+      .pending => ProgressRing()
+      .failed(e) => Text(e.message)
+      .ready(n) => Text(n)
+    }
+    Button("Refresh") {
+      disabled: name.loading
+      on press { name.reload() }
+    }
+  }
+}
+```
+
 In a browser, a request to another origin needs that origin's CORS
 headers.
 

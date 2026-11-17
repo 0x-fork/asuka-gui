@@ -68,8 +68,52 @@ async fn loadThread(id: string) throws -> Thread {
 
 ```asuka
 screen Profile(id: string) {
-  let user = load api.user(id)   // reloads when id changes
+  let user = load api.user(id)   // runs again when id changes
 
+  match user {
+    .pending => Spinner()
+    .failed(e) => ErrorView(e) { on retry { user.reload() } }
+    .ready(u) => ProfileCard(u) { opacity: if user.loading { 0.6 } else { 1 } }
+  }
+}
+```
+
+A `Loading<T>` is `.pending`, `.ready(value)` or `.failed(error)`, and
+it's `.pending` only before its first answer. When what its arguments
+read changes, or `.reload()` runs it again, it keeps the case it's in
+until the new answer comes: `ProfileCard` stays on screen with its state
+and its scroll position, and the run that's going stale is cancelled.
+An answer equal to the last changes nothing.
+
+- `.value` is the latest value, none before the first. A run that fails
+  keeps it, so `.failed` can show the old content beside the error.
+- `.loading` is true while a run is in flight, the first one included:
+  dim the content, or show a ring in a corner. Reading it doesn't follow
+  the value, and a `match` doesn't follow it.
+
+```asuka
+let results = load api.search(query)
+
+TextField { bind text: query; placeholder: "Search" }
+if results.loading { ProgressRing() }
+match results {
+  .pending => Spinner()
+  .failed(e) => Text(e.message)
+  .ready(items) => List { for r in items key r.id { ResultRow(r) } }
+}
+```
+
+As the user types, the list keeps the last results, its scroll position
+and its rows' state until the new ones land, and the ring says a search
+is running. What else reads `query` shows the new text at once.
+
+To start over instead (one person's profile shouldn't show the last
+one's while the next loads), read `.loading` in the `match`'s place:
+
+```asuka
+if user.loading {
+  Spinner()
+} else {
   match user {
     .pending => Spinner()
     .failed(e) => ErrorView(e) { on retry { user.reload() } }
@@ -78,7 +122,5 @@ screen Profile(id: string) {
 }
 ```
 
-A `Loading<T>` is `.pending`, `.ready(value)` or `.failed(error)`;
-`.value` is the latest value (kept while it reloads, so the screen
-doesn't flash), `.reload()` runs it again. When what its arguments read
-changes, it runs again and the run that's going stale is cancelled.
+More often the content is its own already: a screen pushed per id, a
+row per key, each with a `load` of its own.

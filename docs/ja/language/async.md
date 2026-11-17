@@ -35,8 +35,41 @@ async fn loadThread(id: string) throws -> Thread {
 
 ```asuka
 screen Profile(id: string) {
-  let user = load api.user(id)   // id が変わると読み込み直す
+  let user = load api.user(id)   // id が変わると実行し直す
 
+  match user {
+    .pending => Spinner()
+    .failed(e) => ErrorView(e) { on retry { user.reload() } }
+    .ready(u) => ProfileCard(u) { opacity: if user.loading { 0.6 } else { 1 } }
+  }
+}
+```
+
+`Loading<T>` は `.pending`、`.ready(value)`、`.failed(error)` のいずれかで、`.pending` になるのは最初の結果が届く前だけです。引数が読んでいるものが変わったときや、`.reload()` でもう一度実行したときは、新しい結果が届くまで今のケースのままです。`ProfileCard` は状態もスクロール位置もそのまま画面に残り、古くなりかけている実行はキャンセルされます。前回と等しい結果が届いても、何も変わりません。
+
+- `.value` は最新の値で、最初の結果が届くまでは none です。実行が失敗しても残るので、`.failed` ではエラーと並べて前の内容を表示できます。
+- `.loading` は実行中のあいだ true になります（最初の実行も含みます）。内容を薄く表示したり、隅にインジケーターを出したりするのに使います。これを読んでも値の変化には追従せず、`match` もこれには追従しません。
+
+```asuka
+let results = load api.search(query)
+
+TextField { bind text: query; placeholder: "Search" }
+if results.loading { ProgressRing() }
+match results {
+  .pending => Spinner()
+  .failed(e) => Text(e.message)
+  .ready(items) => List { for r in items key r.id { ResultRow(r) } }
+}
+```
+
+ユーザーが入力しているあいだ、リストは新しい結果が届くまで前の結果を表示し続け、スクロール位置も各行の状態も保たれます。インジケーターは検索が実行中であることを示します。`query` を読んでいるほかの部分には、新しいテキストがすぐに表示されます。
+
+最初からやり直したいとき（別の人のプロフィールを読み込んでいるあいだ、前の人のものを見せるべきではない場合など）は、`match` の代わりに `.loading` を読みます。
+
+```asuka
+if user.loading {
+  Spinner()
+} else {
   match user {
     .pending => Spinner()
     .failed(e) => ErrorView(e) { on retry { user.reload() } }
@@ -45,4 +78,4 @@ screen Profile(id: string) {
 }
 ```
 
-`Loading<T>` は `.pending`、`.ready(value)`、`.failed(error)` のいずれかです。`.value` は最新の値で（読み込み直している間も残るので、画面がちらつきません）、`.reload()` はもう一度実行します。引数が読んでいるものが変わると再び実行され、古くなりかけている実行はキャンセルされます。
+もっとも、多くの場合は内容がすでにそれぞれ独立しています。id ごとにプッシュされる画面や key ごとの行が、それぞれ自分の `load` を持つ形です。

@@ -35,8 +35,41 @@ async fn loadThread(id: string) throws -> Thread {
 
 ```asuka
 screen Profile(id: string) {
-  let user = load api.user(id)   // id 变化时重新加载
+  let user = load api.user(id)   // id 变化时重新运行
 
+  match user {
+    .pending => Spinner()
+    .failed(e) => ErrorView(e) { on retry { user.reload() } }
+    .ready(u) => ProfileCard(u) { opacity: if user.loading { 0.6 } else { 1 } }
+  }
+}
+```
+
+`Loading<T>` 的值是 `.pending`、`.ready(value)` 或 `.failed(error)` 之一，而且只有在第一次得到结果之前才是 `.pending`。当它的参数所读取的内容变化，或者 `.reload()` 让它再运行一次时，它会保持当前所处的情况，直到新的结果到来：`ProfileCard` 留在屏幕上，它的状态和滚动位置也都还在；那次即将过时的运行则会被取消。如果新结果和上一次相等，什么都不会变。
+
+- `.value` 是最近一次得到的值，第一次之前为 none。某次运行失败时它也会保留，所以 `.failed` 可以在错误旁边继续显示旧内容。
+- `.loading` 在有一次运行正在进行时为 true，第一次也算在内：可以用它把内容调暗，或者在角落里显示一个转圈。读取它不会跟随值的变化，`match` 也不会跟随它。
+
+```asuka
+let results = load api.search(query)
+
+TextField { bind text: query; placeholder: "Search" }
+if results.loading { ProgressRing() }
+match results {
+  .pending => Spinner()
+  .failed(e) => Text(e.message)
+  .ready(items) => List { for r in items key r.id { ResultRow(r) } }
+}
+```
+
+用户输入时，列表会一直保留上一次的结果、滚动位置和各行的状态，直到新结果到来；转圈则表示有一次搜索正在进行。其他读取 `query` 的地方会立刻显示新的文字。
+
+如果想从头来过（比如切换到另一个人时，不应该在加载期间还显示上一个人的资料），就在 `match` 的位置读取 `.loading`：
+
+```asuka
+if user.loading {
+  Spinner()
+} else {
   match user {
     .pending => Spinner()
     .failed(e) => ErrorView(e) { on retry { user.reload() } }
@@ -45,4 +78,4 @@ screen Profile(id: string) {
 }
 ```
 
-`Loading<T>` 的值是 `.pending`、`.ready(value)` 或 `.failed(error)` 之一；`.value` 是最近一次得到的值（重新加载期间也会保留，这样页面不会闪烁），`.reload()` 会再运行一次。当它的参数所读取的内容变化时，它会重新运行，并取消那次即将过时的运行。
+不过更常见的情况是，内容本来就各自独立：每个 id 推入一个页面，每个 key 一行，各自有自己的 `load`。
