@@ -1056,10 +1056,16 @@ static char *launch_attr(const char *xml) {
 		else if (l == 4 && !strncmp(e, "quot", 4)) o[k++] = '"';
 		else if (l == 4 && !strncmp(e, "apos", 4)) o[k++] = '\'';
 		else if (l > 1 && e[0] == '#') {
+			// No longer than the reference: one of 4 bytes is 9 characters
+			// at least (&#x10000;), one of 3, 7 (&#x800;).
 			unsigned long v = e[1] == 'x' ? strtoul(e + 2, NULL, 16) : strtoul(e + 1, NULL, 10);
+			if (v > 0x10FFFF || (v >= 0xD800 && v < 0xE000)) v = 0xFFFD;
 			if (v < 0x80) o[k++] = (char)v;
 			else if (v < 0x800) o[k++] = (char)(0xC0 | v >> 6), o[k++] = (char)(0x80 | (v & 0x3F));
-			else o[k++] = (char)(0xE0 | v >> 12), o[k++] = (char)(0x80 | ((v >> 6) & 0x3F)), o[k++] = (char)(0x80 | (v & 0x3F));
+			else if (v < 0x10000) o[k++] = (char)(0xE0 | v >> 12), o[k++] = (char)(0x80 | ((v >> 6) & 0x3F)), o[k++] = (char)(0x80 | (v & 0x3F));
+			else
+				o[k++] = (char)(0xF0 | v >> 18), o[k++] = (char)(0x80 | ((v >> 12) & 0x3F)), o[k++] = (char)(0x80 | ((v >> 6) & 0x3F)),
+				o[k++] = (char)(0x80 | (v & 0x3F));
 		} else {
 			memcpy(o + k, c, l + 2);
 			k += l + 2;
