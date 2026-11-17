@@ -581,6 +581,12 @@ func (b *fb) readMember(m *check.Member, n syntax.Node) int {
 		if isLoad(m.Default) {
 			return ref
 		}
+		if m.Path {
+			// A path: its accessor's (rfcs/0013).
+			r := b.temp(k)
+			b.emit(op("AGET"), r, ref)
+			return r
+		}
 		if m.Memo {
 			r := b.temp(k)
 			b.emit(op("MREAD"), r, ref)

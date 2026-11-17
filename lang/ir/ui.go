@@ -244,6 +244,12 @@ func (b *fb) lowerComponent(t *check.TypeName) {
 				r := b.local(bc.KRef)
 				b.move(r, b.load(m))
 				b.memberRegs[m] = r
+			case m.Path:
+				// A path (rfcs/0013): an accessor of it; reads through it
+				// follow their paths.
+				r := b.local(bc.KRef)
+				b.move(r, b.pathAccessor(m.Default, m.Type))
+				b.memberRegs[m] = r
 			case m.Memo:
 				clos := b.thunk(b.l.info.Ctxs[m.Default], m.Default, m.Type)
 				r := b.local(bc.KRef)
@@ -524,7 +530,7 @@ func (b *fb) depDirect(x syntax.Expr) (reg int, memo, ok bool) {
 		switch {
 		case o.Kind == check.StateMember:
 			return b.memberRef(o, x), false, true
-		case o.Kind == check.LetMember && o.Memo && !isLoad(o.Default):
+		case o.Kind == check.LetMember && o.Memo && !o.Path && !isLoad(o.Default):
 			return b.memberRef(o, x), true, true
 		}
 	case *check.Global:
@@ -574,6 +580,11 @@ func (b *fb) accessor(e syntax.Expr, t check.Type) int {
 	if ref := b.readsAlone(e); ref >= 0 {
 		b.emit(op("ACCC"), r, ref)
 		return r
+	}
+	if acc := b.pathAccessor(e, t); acc >= 0 {
+		// A path: passed as one (rfcs/0013), so what the callee reads
+		// through it follows its paths.
+		return acc
 	}
 	ctx := b.l.info.Ctxs[e]
 	clos := b.thunk(ctx, e, t)
@@ -1366,6 +1377,9 @@ func (b *fb) bindAccessor(bd *check.BindArg) int {
 	if ref := b.readsAlone(bd.Target); ref >= 0 {
 		b.emit(op("ACCC"), r, ref)
 		return r
+	}
+	if acc := b.pathAccessor(bd.Target, t); acc >= 0 {
+		return acc
 	}
 	clos := b.thunk(b.l.info.Ctxs[bd.Item], bd.Target, t)
 	b.emit(op("ACCF"), r, clos, int(b.kind(t)))

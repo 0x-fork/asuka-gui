@@ -28,17 +28,18 @@ const (
 	psKey      = 'k'
 	psHas      = 'h'
 	psValue    = 'v'
+	psLen      = 'n'
 	psMember   = 'm'
 	psChanged  = 'r'
 	psAll      = 'a'
 	psOld      = 'o'
 )
 
-// pathRead reads e when it's a path below a state, into dst; ok false
-// when it isn't one.
+// pathRead reads e when it's a path below a state, or below what an
+// accessor reads (AGETP), into dst; ok false when it isn't one.
 func (b *fb) pathRead(e syntax.Expr, dst int) (int, bool) {
 	p := b.l.prog.StatePathOf(e)
-	if p == nil || p.Root != check.RootState {
+	if p == nil {
 		return 0, false
 	}
 	steps := p.Steps
@@ -47,36 +48,104 @@ func (b *fb) pathRead(e syntax.Expr, dst int) (int, bool) {
 	if length {
 		steps = steps[:len(steps)-1]
 	}
-	cell := b.pathCell(p)
+	root, acc := b.pathBase(p)
 	spelled, args, kinds := b.pathSteps(steps)
-	blk := cell
-	if len(kinds) > 0 {
-		blk = b.regs(kinds)
-		for i, a := range args {
-			if a == nil {
-				b.loadInt(blk+i, 0) // first(): the element at 0
-				continue
+	blk := b.pathArgs(root, args, kinds)
+	var r int
+	k := bc.Kind(b.kind(b.rawType(e)))
+	if length {
+		k = bc.KInt
+	}
+	read := func(r int) {
+		switch {
+		case acc:
+			if length {
+				spelled = append(spelled, psLen)
 			}
-			b.value(a, blk+i)
+			b.emit(op("AGETP"), r, root, b.str(spelled), blk)
+		case length:
+			b.emit(op("CLEN"), r, root, b.str(spelled), blk)
+		default:
+			b.emit(op("CPATH"), r, root, b.str(spelled), blk)
 		}
 	}
-	k := b.str(spelled)
-	var r int
-	switch {
-	case length && last.Empty:
+	if length && last.Empty {
 		n := b.temp(bc.KInt)
-		b.emit(op("CLEN"), n, cell, k, blk)
+		read(n)
 		r = b.out(dst, bc.KBool)
 		b.emit(op("EQI"), r, n, b.konst(0))
-	case length:
-		r = b.out(dst, bc.KInt)
-		b.emit(op("CLEN"), r, cell, k, blk)
-	default:
-		r = b.out(dst, b.kind(b.rawType(e)))
-		b.emit(op("CPATH"), r, cell, k, blk)
+	} else {
+		r = b.out(dst, k)
+		read(r)
 	}
 	b.releaseRegs(blk, kinds)
 	return r, true
+}
+
+// pathBase is the register of what a path is below: a state's cell
+// (acc false), or an accessor.
+func (b *fb) pathBase(p *check.StatePath) (int, bool) {
+	if p.Root == check.RootState {
+		return b.pathCell(p), false
+	}
+	switch {
+	case p.Var != nil:
+		r, ok := b.vars[p.Var]
+		if !ok {
+			b.l.errorf(p.Expr, "internal: %s has no register", p.Var.Name())
+			return b.valueReg(-1, bc.KRef), true
+		}
+		return r, true
+	case p.Member != nil:
+		if x, ok := p.Expr.(*syntax.MemberExpr); ok {
+			return b.storeMemberRef(b.value(x.X, -1), p.Member), true
+		}
+		return b.memberRef(p.Member, p.Expr), true
+	}
+	b.l.errorf(p.Expr, "internal: a path's accessor")
+	return b.valueReg(-1, bc.KRef), true
+}
+
+// pathArgs computes a path's arguments into consecutive registers, the
+// first of which it returns (base when there are none: the operand
+// names a register, which the instruction doesn't read).
+func (b *fb) pathArgs(base int, args []syntax.Expr, kinds []bc.Kind) int {
+	if len(kinds) == 0 {
+		return base
+	}
+	blk := b.regs(kinds)
+	for i, a := range args {
+		if a == nil {
+			b.loadInt(blk+i, 0) // first(): the element at 0
+			continue
+		}
+		b.value(a, blk+i)
+	}
+	return blk
+}
+
+// pathAccessor passes e, a path whose indexes and keys read nothing that
+// changes, as an accessor of it (ACCP): -1 when it isn't one.
+func (b *fb) pathAccessor(e syntax.Expr, t check.Type) int {
+	if _, conv := b.l.info.Convs[e]; conv {
+		return -1
+	}
+	p := b.l.prog.StatePathOf(e)
+	if p == nil {
+		return -1
+	}
+	for _, s := range p.Steps {
+		if s.Arg != nil && b.l.prog.Reactive(s.Arg) || s.Kind == check.StepLen && s.Empty {
+			return -1
+		}
+	}
+	root, _ := b.pathBase(p)
+	spelled, args, kinds := b.pathSteps(p.Steps)
+	blk := b.pathArgs(root, args, kinds)
+	r := b.temp(bc.KRef)
+	b.emit(op("ACCP"), r, root, b.str(spelled), blk, int(b.kind(t)))
+	b.releaseRegs(blk, kinds)
+	return r
 }
 
 // pathMapRead reads m[k], a path below a state whose map's values
@@ -85,7 +154,7 @@ func (b *fb) pathRead(e syntax.Expr, dst int) (int, bool) {
 // follow k's node. ok false when x isn't such a path.
 func (b *fb) pathMapRead(x syntax.Expr, k bc.Kind, dst int, miss Label) (int, bool) {
 	p := b.l.prog.StatePathOf(x)
-	if p == nil || p.Root != check.RootState || p.Steps[len(p.Steps)-1].Kind != check.StepKey {
+	if p == nil || p.Steps[len(p.Steps)-1].Kind != check.StepKey {
 		return 0, false
 	}
 	m := p.Expr // what the key's step is of
@@ -95,15 +164,16 @@ func (b *fb) pathMapRead(x syntax.Expr, k bc.Kind, dst int, miss Label) (int, bo
 	if mt, ok := b.rawType(m).(*check.Map); !ok || check.IsOptional(b.typ(mt.Elem)) {
 		return 0, false
 	}
-	cell := b.pathCell(p)
-	spelled, args, kinds := b.pathSteps(p.Steps)
-	blk := b.regs(kinds)
-	for i, a := range args {
-		b.value(a, blk+i)
+	root, acc := b.pathBase(p)
+	read := op("CPATH")
+	if acc {
+		read = op("AGETP")
 	}
+	spelled, args, kinds := b.pathSteps(p.Steps)
+	blk := b.pathArgs(root, args, kinds)
 	has := b.temp(bc.KBool)
 	spelled[len(spelled)-2] = psHas
-	b.emit(op("CPATH"), has, cell, b.str(spelled), blk)
+	b.emit(read, has, root, b.str(spelled), blk)
 	r := b.out(dst, k)
 	skip := b.f.NewLabel()
 	b.emitJump(op("JT"), has, skip)
@@ -115,7 +185,7 @@ func (b *fb) pathMapRead(x syntax.Expr, k bc.Kind, dst int, miss Label) (int, bo
 	b.jmp(miss)
 	b.f.Place(skip)
 	spelled[len(spelled)-2] = psValue
-	b.emit(op("CPATH"), r, cell, b.str(spelled), blk)
+	b.emit(read, r, root, b.str(spelled), blk)
 	b.releaseRegs(blk, kinds)
 	return r, true
 }
@@ -149,6 +219,8 @@ func (b *fb) pathSteps(steps []check.PathStep) (spelled []byte, args []syntax.Ex
 				c = psOptField
 			}
 			spelled = append(spelled, c, byte(s.Field.Index), byte(s.Field.Index>>8))
+		case check.StepLen:
+			spelled = append(spelled, psLen)
 		case check.StepIndex:
 			spelled = append(spelled, psIndex)
 			args, kinds = append(args, s.Arg), append(kinds, bc.KInt)

@@ -882,6 +882,11 @@ func (b *fb) member(e syntax.Expr, sel *check.Selection, x int, recv check.Type,
 			b.emit(op("CGET"), r, ref)
 			return r
 		case check.LetMember:
+			if m.Path {
+				r := b.out(dst, k)
+				b.emit(op("AGET"), r, ref)
+				return r
+			}
 			if m.Memo && !isLoad(m.Default) {
 				r := b.out(dst, k)
 				b.emit(op("MREAD"), r, ref)
