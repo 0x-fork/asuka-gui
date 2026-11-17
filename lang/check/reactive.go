@@ -42,6 +42,13 @@ func (c *Checker) finalize() {
 		changed = false
 		for _, x := range ctxs {
 			if x.readsState {
+				// A closure's reads are its maker's (as leave says): those
+				// known only now, through what it calls, too.
+				if p := x.Parent; p != nil && !p.readsState {
+					p.readsState = true
+					addCtx(p)
+					changed = true
+				}
 				continue
 			}
 			for _, f := range x.calls {
