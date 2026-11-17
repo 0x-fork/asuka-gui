@@ -13,8 +13,13 @@ static const char *ws(const char *p) {
 	return p;
 }
 
-// skip is past the value at p (NULL: malformed).
-static const char *skip(const char *p) {
+// The deepest nesting skip follows: past it, the JSON is malformed (its
+// recursion bounded, as jsontree.c's reader is).
+enum { max_depth = 200 };
+
+// skip is past the value at p (NULL: malformed), depth levels in.
+static const char *skip_at(const char *p, int depth) {
+	if (depth > max_depth) return NULL;
 	p = ws(p);
 	if (*p == '"') {
 		for (p++; *p && *p != '"'; p++)
@@ -27,13 +32,13 @@ static const char *skip(const char *p) {
 		if (*p == close) return p + 1;
 		for (;;) {
 			if (close == '}') {
-				p = skip(p);  // the key
+				p = skip_at(p, depth + 1);  // the key
 				if (!p) return NULL;
 				p = ws(p);
 				if (*p != ':') return NULL;
 				p++;
 			}
-			p = skip(p);
+			p = skip_at(p, depth + 1);
 			if (!p) return NULL;
 			p = ws(p);
 			if (*p == ',') {
@@ -47,6 +52,8 @@ static const char *skip(const char *p) {
 	while (*p && !strchr(",}] \t\r\n", *p)) p++;
 	return p > s ? p : NULL;
 }
+
+static const char *skip(const char *p) { return skip_at(p, 0); }
 
 char *asuka_json_get(const char *json, const char *key) {
 	if (!json) return NULL;
@@ -81,6 +88,19 @@ static void utf8(asuka_writer *w, unsigned c) {
 	asuka_writer_put(w, b, n);
 }
 
+// hex4 is the four hex digits at p (-1: fewer), reading no further than a
+// digit that isn't one, so never past the string's end.
+static long hex4(const char *p) {
+	long v = 0;
+	for (int i = 0; i < 4; i++) {
+		char c = p[i];
+		int d = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+		if (d < 0) return -1;
+		v = v << 4 | d;
+	}
+	return v;
+}
+
 char *asuka_json_string(const char *raw) {
 	if (!raw) return NULL;
 	const char *p = ws(raw);
@@ -99,17 +119,21 @@ char *asuka_json_string(const char *raw) {
 		case 'b': asuka_writer_u8(&w, '\b'); break;
 		case 'f': asuka_writer_u8(&w, '\f'); break;
 		case 'u': {
-			unsigned c = 0;
-			if (sscanf(p + 1, "%4x", &c) != 1) break;
+			long c = hex4(p + 1);
+			if (c < 0) {  // not an escape: its letter, as any other
+				asuka_writer_u8(&w, 'u');
+				break;
+			}
 			p += 4;
 			if (c >= 0xD800 && c < 0xDC00 && p[1] == '\\' && p[2] == 'u') {
-				unsigned lo = 0;
-				if (sscanf(p + 3, "%4x", &lo) == 1 && lo >= 0xDC00 && lo < 0xE000) {
+				long lo = hex4(p + 3);
+				if (lo >= 0xDC00 && lo < 0xE000) {
 					c = 0x10000 + ((c - 0xD800) << 10) + (lo - 0xDC00);
 					p += 6;
 				}
 			}
-			utf8(&w, c);
+			if (c >= 0xD800 && c < 0xE000) c = 0xFFFD;  // a lone surrogate: not UTF-8's
+			utf8(&w, (unsigned)c);
 			break;
 		}
 		case 0: p--; break;

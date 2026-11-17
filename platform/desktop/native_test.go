@@ -261,3 +261,31 @@ func TestRegistryBuilds(t *testing.T) {
 		}
 	}
 }
+
+// TestJSONHelpers runs test/json_test.c: asuka_desktop.h's JSON helpers
+// (src/json.c) under ASan and UBSan, malformed input among them.
+func TestJSONHelpers(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("built with the POSIX test host's flags")
+	}
+	core, err := cbuild.CoreDir()
+	if err != nil {
+		t.Skip(err)
+	}
+	desk, _ := filepath.Abs(".")
+	srcs := []string{filepath.Join(desk, "test", "json_test.c"), filepath.Join(desk, "test", "unit.c"), filepath.Join(desk, "src", "native.c"),
+		filepath.Join(desk, "src", "json.c"), filepath.Join(desk, "src", "linux.c"), filepath.Join(desk, "src", "linux_syms.c")}
+	flags := append(append([]string{}, cbuild.Flags...), "-I"+filepath.Join(desk, "include"), "-D_GNU_SOURCE")
+	work := t.TempDir()
+	exe, err := cbuild.Exe(core, srcs, flags, nil, true, work, "json_test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(exe)
+	cmd.Env = append(os.Environ(), "ASUKA_DATA="+work, noLeaks)
+	out, err := cmd.CombinedOutput()
+	t.Logf("%s", out)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
