@@ -142,7 +142,7 @@ Toggle { bind on: notify; title: "Notifications" }
 
 コンポーネントのプロパティも、コンポーネントが `event <prop>Change` でそれを知らせるなら、同じようにバインドできます。`prop value` と `event valueChange(value: T)` を持つコンポーネントに `bind value: when` と書くと、状態を渡し、コンポーネントが変更を発行したときに書き戻します。
 
-```asuka
+```asuka check
 component Rating {
   prop value = 0
   event valueChange(value: int)

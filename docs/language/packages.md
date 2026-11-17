@@ -114,7 +114,7 @@ a program declares no components: it shows no views. Only the package
 an app or a program is made of has an entry; a `main` in a package it
 imports is a function like any other. See [Programs](../programs.md).
 
-```asuka
+```asuka check
 import std/os
 
 fn main() {

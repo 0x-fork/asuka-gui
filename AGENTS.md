@@ -177,6 +177,9 @@ go test ./platform/windows -run Updater           # likewise on Windows (a PC, o
   (`tr.title()`) follows the app's language; only what's shown once (an
   alert) takes a string. Frames are always physical: a host never mirrors
   what the core places.
+- A docs example that's a whole file, not a fragment, is fenced
+  ` ```asuka check `, in every language's page: `go test ./lang/compile
+  -run CheckedDoc` compiles each.
 - The docs have a Chinese translation in `docs/zh` and a Japanese one in
   `docs/ja`, the same pages with the same headings (each one's
   TRANSLATING.md: its style and terms). A change to a page of `docs`

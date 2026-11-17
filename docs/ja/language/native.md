@@ -17,7 +17,7 @@ pub native component MapView(region: Region) {
 
 C は直接呼び出せます。`extern` 宣言では、C の関数が何を受け取り何を返すかを C の型で書きます。Asuka からは、それぞれが Asuka 自身の型に見えます（`Int32` は `int`、`CString` は `string`）。
 
-```asuka
+```asuka check
 extern type Db with release db_close
 extern fn db_open(path: CString) -> Db?
 extern fn db_close(db: Db)

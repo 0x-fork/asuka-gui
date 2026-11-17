@@ -187,7 +187,7 @@ it with `event <prop>Change`: `bind value: when` on a component with
 `prop value` and `event valueChange(value: T)` passes the state in, and
 writes it as the component emits the change:
 
-```asuka
+```asuka check
 component Rating {
   prop value = 0
   event valueChange(value: int)

@@ -6,7 +6,7 @@ ahead of time for release builds, and reloads in place during
 development, so a save shows up in milliseconds, with every value and
 every native view kept.
 
-```asuka
+```asuka check
 component Counter {
   state count = 0
 

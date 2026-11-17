@@ -14,7 +14,7 @@ Types are inferred; write one where it helps: `let ids: [int] = []`.
 
 ## Structs
 
-```asuka
+```asuka check
 struct Message {
   id: string
   subject: string
@@ -37,7 +37,7 @@ the type's, with no `self`: called on the type with named arguments and
 defaults as any function (`Money.of(dollars: 2)`), or as `.of(…)`
 wherever the type is expected.
 
-```asuka
+```asuka check
 struct Money {
   cents: int
 
@@ -49,7 +49,7 @@ let price: Money = .of(dollars: 4, cents: 50)
 
 A struct may take type parameters, inferred where it's made:
 
-```asuka
+```asuka check
 struct Page<T> {
   items: [T]
   next: string? = none
@@ -76,7 +76,7 @@ b`, `fn sub(o: T) -> R` (or `minus`) is `a - b`, and `fn compare(o: T)
 -> int` (negative, zero or positive) is `<`, `<=`, `>` and `>=`. That's
 how `std/time`'s `Time` adds a `Duration` and subtracts another `Time`:
 
-```asuka
+```asuka check
 struct Money {
   cents: int
 
@@ -119,7 +119,7 @@ leaves `Action.button`'s `icon`, `role`, `disabled` and `checked` so.
 
 A case's payload may hold the enum itself, so an enum can be a tree:
 
-```asuka
+```asuka check
 enum Expr {
   num(int)
   add(Expr, Expr)

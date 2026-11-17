@@ -52,7 +52,7 @@ View {
 
 **主题。** 样式的值可以读取所在包的 `let` 和 `state`，所以一个设计令牌（token）就是其中之一（`pub let hairline = 2.0`）；如果是 `state`，改了它，所有读到它的地方都会跟着变。样式还可以 `use` 上层组件提供的 store，在应用样式的地方查找：应用里提供了自己那份的部分，就有自己的一套令牌。
 
-```asuka
+```asuka check
 pub store Theme(hairline: float = 2) {
   pub state border = hairline
 }
@@ -72,7 +72,7 @@ component Settings {
 
 **默认样式。** 以元素（或接收样式 prop 的组件）命名的样式，就是它的默认样式：本包里写的每个该类元素都会应用它，位于 `style:` 列表之下。别的包里的元素，以及别的包的组件内部的元素，保持它们自己的样子。
 
-```asuka
+```asuka check
 style Button { radius: 8 }
 style View { borderColor: .separator }
 ```
@@ -90,7 +90,7 @@ View {
 
 只有当某处用到了某个状态，视图才会上报它。因此没有写 `pressed` 变体的视图，仍然保留平台自己的按下效果。变体里也可以写 `style:`（`pressed { style: raised }`），它位于变体自己的 prop 之下；样式里也可以写变体，应用到容器上时生效（其他元素会忽略）：
 
-```asuka
+```asuka check
 style button {
   padding: [8, 16]; radius: 8; background: .accent
   pressed { opacity: 0.7 }
@@ -114,7 +114,7 @@ style option {
 
 有些事不是给视图设置一个值，而是要对视图做点什么：播放视频、在网页里运行脚本、往输入框里插入文本、滚动列表。`Ref` 就是视图的句柄：在任意元素上写 `ref: r`，它的视图就放进 `r`；写成 `Element as name`，则会为所在代码块的剩余部分声明一个这样的句柄（写在只显示一个元素的组件上时，指的是那个元素的视图）。
 
-```asuka
+```asuka check
 component Player {
   let video = Ref()
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -142,8 +143,9 @@ func TestUpdateDocExamples(t *testing.T) {
 }
 
 type example struct {
-	code string
-	line int
+	code  string
+	line  int
+	check bool // ```asuka check: a whole file, which compiles
 }
 
 // asukaBlocks are a Markdown page's ```asuka blocks.
@@ -151,7 +153,8 @@ func asukaBlocks(md string) []example {
 	var out []example
 	lines := strings.Split(md, "\n")
 	for i := 0; i < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) != "```asuka" {
+		info := strings.Fields(strings.TrimPrefix(strings.TrimSpace(lines[i]), "```"))
+		if !strings.HasPrefix(strings.TrimSpace(lines[i]), "```") || len(info) == 0 || info[0] != "asuka" {
 			continue
 		}
 		start := i + 1
@@ -159,8 +162,58 @@ func asukaBlocks(md string) []example {
 		for j < len(lines) && strings.TrimSpace(lines[j]) != "```" {
 			j++
 		}
-		out = append(out, example{code: strings.Join(lines[start:j], "\n") + "\n", line: start + 1})
+		out = append(out, example{code: strings.Join(lines[start:j], "\n") + "\n", line: start + 1, check: slices.Contains(info[1:], "check")})
 		i = j
 	}
 	return out
+}
+
+// The docs' examples marked ```asuka check are whole files, and each
+// compiles, in every language's docs. (Most examples are fragments of a
+// file: a component's body, a few statements.) A page's translations
+// mark the same examples.
+func TestCheckedDocExamples(t *testing.T) {
+	root := filepath.Join("..", "..", "docs")
+	var pages []string
+	for _, dir := range []string{".", "language"} {
+		names, _ := filepath.Glob(filepath.Join(root, dir, "*.md"))
+		for _, name := range names {
+			rel, _ := filepath.Rel(root, name)
+			pages = append(pages, rel)
+		}
+	}
+	n := 0
+	for _, page := range pages {
+		var marked []int // the examples marked, by index, in docs/
+		for _, lang := range []string{"", "zh", "ja"} {
+			path := filepath.Join(root, lang, page)
+			b, err := os.ReadFile(path)
+			if err != nil {
+				if lang == "" {
+					t.Fatal(err)
+				}
+				continue
+			}
+			var these []int
+			for i, ex := range asukaBlocks(string(b)) {
+				if !ex.check {
+					continue
+				}
+				these = append(these, i)
+				n++
+				res := Files(map[string][]byte{"example.asuka": []byte(ex.code)}, nil)
+				if err := res.Err(); err != nil {
+					t.Errorf("%s:%d: the example doesn't compile:\n%v", path, ex.line, err)
+				}
+			}
+			if lang == "" {
+				marked = these
+			} else if !slices.Equal(these, marked) {
+				t.Errorf("%s marks examples %v as whole files, docs/%s %v", path, these, page, marked)
+			}
+		}
+	}
+	if n == 0 {
+		t.Fatal("no ```asuka check examples")
+	}
 }

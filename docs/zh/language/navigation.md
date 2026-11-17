@@ -25,7 +25,7 @@ screen Inbox {
 
 有了 `Router`，每个页面都有一个地址。用模式声明的页面是可路由的，参数有类型；调用它就得到它的地址，并在编译时检查：
 
-```asuka
+```asuka check
 app {
   Router(initial: "/inbox") {
     Route("/inbox", layout: .stack, title: "Inbox") {

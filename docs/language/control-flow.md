@@ -77,7 +77,7 @@ included. A branch it decides that a platform doesn't take is no part
 of that platform's build: not its code, not its strings, not its
 views.
 
-```asuka
+```asuka check
 let saveKey = if @platform == .macOS { "⌘S" } else { "Ctrl+S" }
 
 component Toolbar {

@@ -6,7 +6,7 @@ ahead of time for release builds, and reloads in place as you save.
 This page shows the language in the order you meet it; the [language
 reference](language/README.md) has the whole of each part.
 
-```asuka
+```asuka check
 component Counter {
   state count = 0
 
@@ -25,7 +25,7 @@ is the app's root; the rest is in any order.
 
 ## Values
 
-```asuka
+```asuka check
 fn values() -> string {
   let name = "Asuka"               // a constant: its type is inferred
   var visits = 0                   // a variable
@@ -48,7 +48,7 @@ expect (`count()`, `contains`, `map`, `filter`, `sorted`, `split`...):
 
 ## Functions
 
-```asuka
+```asuka check
 fn area(width: float, height: float = 1) -> float {
   return width * height
 }
@@ -65,7 +65,7 @@ closures](language/functions.md)
 
 ## Structs and enums
 
-```asuka
+```asuka check
 struct Message {
   subject: string
   read: bool = false
@@ -96,7 +96,7 @@ A struct is fields and methods; an enum's cases can carry values, and
 
 ## Components and state
 
-```asuka
+```asuka check
 component Greeting(name: string) {
   prop excited = false                // a prop, with its default
   state draft = ""                    // the component's own state
@@ -123,7 +123,7 @@ state several components share.
 
 ## Async and errors
 
-```asuka
+```asuka check
 enum LoadError: Error {
   offline
   server(code: int)
@@ -161,7 +161,7 @@ goes. A function that can fail says `throws`, and its callers `try` it
 
 ## Packages
 
-```asuka
+```asuka check
 import std/time
 
 let today = time.now().format("EEE d MMM")
@@ -178,7 +178,7 @@ platform](language/control-flow.md#code-for-one-platform)
 
 ## Tests
 
-```asuka
+```asuka check
 component Counter {
   state count = 0
   Button("Add {count}") { on press { count += 1 } }

@@ -58,7 +58,7 @@ fn total(root: Node) -> int {
 
 接口是一组方法和字段；一个类型只要具备这些方法和字段，就实现了这个接口（不需要额外声明）。
 
-```asuka
+```asuka check
 interface Shape { fn area() -> float }
 
 fn total<T>(items: [T], size: fn(T) -> float) -> float {

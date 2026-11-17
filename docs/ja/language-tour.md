@@ -2,7 +2,7 @@
 
 Asuka のアプリは Asuka で書きます。各プラットフォーム自身のウィジェットを使うインターフェースのために作られた、小さな言語です。静的型付けで、リリースビルドでは事前にコンパイルされ、開発中は保存するとその場で再読み込みされます。このページでは、言語に出会う順に見ていきます。それぞれの全体は[言語リファレンス](language/README.md)にあります。
 
-```asuka
+```asuka check
 component Counter {
   state count = 0
 
@@ -20,7 +20,7 @@ app { Counter() }
 
 ## 値
 
-```asuka
+```asuka check
 fn values() -> string {
   let name = "Asuka"               // 定数：型は推論される
   var visits = 0                   // 変数
@@ -39,7 +39,7 @@ fn values() -> string {
 
 ## 関数
 
-```asuka
+```asuka check
 fn area(width: float, height: float = 1) -> float {
   return width * height
 }
@@ -54,7 +54,7 @@ let squares = [1, 2, 3].map(x => x * x)
 
 ## 構造体と列挙型
 
-```asuka
+```asuka check
 struct Message {
   subject: string
   read: bool = false
@@ -82,7 +82,7 @@ let n = label(.from(sender: "ana"))
 
 ## コンポーネントと状態
 
-```asuka
+```asuka check
 component Greeting(name: string) {
   prop excited = false                // prop と、その既定値
   state draft = ""                    // コンポーネント自身の状態
@@ -104,7 +104,7 @@ app { Greeting("Ana") { excited: true } }
 
 ## 非同期処理とエラー
 
-```asuka
+```asuka check
 enum LoadError: Error {
   offline
   server(code: int)
@@ -138,7 +138,7 @@ component Badge {
 
 ## パッケージ
 
-```asuka
+```asuka check
 import std/time
 
 let today = time.now().format("EEE d MMM")
@@ -148,7 +148,7 @@ let today = time.now().format("EEE d MMM")
 
 ## テスト
 
-```asuka
+```asuka check
 component Counter {
   state count = 0
   Button("Add {count}") { on press { count += 1 } }

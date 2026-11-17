@@ -72,7 +72,7 @@ changes everywhere it's read. A style may `use` a store a component
 above provides, found where the style is applied: a part of the app
 that provides its own has its own tokens.
 
-```asuka
+```asuka check
 pub store Theme(hairline: float = 2) {
   pub state border = hairline
 }
@@ -95,7 +95,7 @@ takes the style props) is its default: every one of that kind written in
 the package takes it, under its `style:` list. Another package's
 elements, and the ones inside its components, keep theirs.
 
-```asuka
+```asuka check
 style Button { radius: 8 }
 style View { borderColor: .separator }
 ```
@@ -123,7 +123,7 @@ take a `style:` too (`pressed { style: raised }`), under its own props,
 and a style may hold variants, which the containers it's applied to
 take (and the other elements leave):
 
-```asuka
+```asuka check
 style button {
   padding: [8, 16]; radius: 8; background: .accent
   pressed { opacity: 0.7 }
@@ -164,7 +164,7 @@ view's handle: `ref: r` on any element puts its view in `r`, and
 `Element as name` declares one for the rest of the block it's in (on a
 component that shows one element, that element's view).
 
-```asuka
+```asuka check
 component Player {
   let video = Ref()
 

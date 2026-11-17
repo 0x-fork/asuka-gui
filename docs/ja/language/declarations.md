@@ -12,7 +12,7 @@ state count = 0              // 状態：UI が追従する値
 
 ## 構造体
 
-```asuka
+```asuka check
 struct Message {
   id: string
   subject: string
@@ -29,7 +29,7 @@ let n = Message(id: m.id, subject: m.subject, read: true)
 
 構造体や列挙型の本体に書いた `static fn` は、`self` を持たない、その型の関数です。ほかの関数と同じく名前付き引数とデフォルト値を使って型に対して呼び出せ（`Money.of(dollars: 2)`）、その型が求められる場所では `.of(…)` とも書けます。
 
-```asuka
+```asuka check
 struct Money {
   cents: int
 
@@ -41,7 +41,7 @@ let price: Money = .of(dollars: 4, cents: 50)
 
 構造体は型パラメーターを取れます。型引数は、作るときに推論されます。
 
-```asuka
+```asuka check
 struct Page<T> {
   items: [T]
   next: string? = none
@@ -62,7 +62,7 @@ match line {
 
 構造体は、メソッドから演算子を得ます。`fn add(o: T) -> R` は `a + b` に、`fn sub(o: T) -> R`（または `minus`）は `a - b` に、`fn compare(o: T) -> int`（負、ゼロ、正）は `<`、`<=`、`>`、`>=` になります。`std/time` の `Time` が `Duration` を足し、別の `Time` を引けるのはこのためです。
 
-```asuka
+```asuka check
 struct Money {
   cents: int
 
@@ -96,7 +96,7 @@ let f: Filter = .unread
 
 ケースの値には、その列挙型自身も持たせられます。そのため、列挙型で木構造を表せます。
 
-```asuka
+```asuka check
 enum Expr {
   num(int)
   add(Expr, Expr)

@@ -35,7 +35,7 @@ screen Inbox {
 
 用可选类型 `use` 时，如果上面没有谁提供，取到的就是 none。这适合既能单独使用、也能放在一组里使用的组件，比如复选框，可以放在复选框组里，也可以不放。
 
-```asuka
+```asuka check
 store Group {
   pub state chosen: [string] = []
 }
@@ -51,7 +51,7 @@ component Choice(value: string) {
 
 store 和结构体一样可以带类型参数，由参数或期望的类型推断出来：
 
-```asuka
+```asuka check
 store Kept<T>(key: string, initial: T) {
   pub state value: T = initial
 }
