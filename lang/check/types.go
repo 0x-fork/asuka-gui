@@ -487,7 +487,7 @@ func whyNotEquatable(t Type) string {
 			}
 		}
 	case *TypeParam:
-		return "constrain it: <" + x.Name + ": Equatable>"
+		return "constrain it, <" + x.Name + ": Equatable>"
 	case *Named:
 		s := x.Subst()
 		switch x.Obj.Kind {

@@ -1476,7 +1476,11 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 			return Bool
 		}
 		if !IsComparable(xt) {
-			c.errorf(e, "%s can't be ordered with %s: ints, floats, strings and durations can, and a struct with fn compare(o: T) -> int", typeString(xt), e.Op)
+			if p, ok := xt.(*TypeParam); ok {
+				c.errorf(e, "%s can't be ordered with %s: constrain it, <%s: Comparable>", p.Name, e.Op, p.Name)
+			} else {
+				c.errorf(e, "%s can't be ordered with %s: ints, floats, strings and durations can, and a struct with fn compare(o: T) -> int", typeString(xt), e.Op)
+			}
 		}
 		return Bool
 	case syntax.ADD:
