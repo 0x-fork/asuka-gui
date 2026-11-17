@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 )
@@ -631,11 +632,19 @@ func TestParseDecisions(t *testing.T) {
 	}
 }
 
-// TestSpans checks every node of the corpus has a span inside its
-// parent's, in order, and that Walk reaches every kind it should.
+// TestSpans checks every node of each .asuka file in the repository
+// that parses has a span inside its parent's, and every name spans its
+// text.
 func TestSpans(t *testing.T) {
-	for _, name := range corpus(t) {
-		f, src := parseFile(t, name)
+	for _, name := range repoFiles(t) {
+		src, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f, errs := ParseFile(NewFileSet(), name, src)
+		if len(errs) > 0 {
+			continue
+		}
 		var stack []Node
 		Inspect(f, func(n Node) bool {
 			if n == nil {

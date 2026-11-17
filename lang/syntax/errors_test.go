@@ -283,12 +283,23 @@ func check(t *testing.T, name string, src []byte) {
 		}
 	}()
 	f, errs := ParseFile(NewFileSet(), name, src)
+	var stack []Node
 	Inspect(f, func(n Node) bool {
-		if n != nil {
-			if r := n.Range(); r.End < r.Start {
-				t.Fatalf("%s: %T's span ends before it starts in %q", name, n, src)
+		if n == nil {
+			stack = stack[:len(stack)-1]
+			return false
+		}
+		r := n.Range()
+		if r.End < r.Start {
+			t.Fatalf("%s: %T's span ends before it starts in %q", name, n, src)
+		}
+		// Without errors, a node is inside its parent.
+		if k := len(stack); k > 0 && len(errs) == 0 {
+			if pr := stack[k-1].Range(); r.Start < pr.Start || r.End > pr.End {
+				t.Fatalf("%s: %T's span is outside its parent %T's in %q", name, n, stack[k-1], src)
 			}
 		}
+		stack = append(stack, n)
 		return true
 	})
 	out, err := Format(name, src)
