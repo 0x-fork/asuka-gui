@@ -507,3 +507,27 @@ func TestRouteReopens(t *testing.T) {
 	shows(t, again["again"], "launched again", []string{"Showing message 7"}, "The home screen")
 	shows(t, again["back"], "back", []string{"The home screen"}, "Showing message 7")
 }
+
+// Numbers in a locale with a decimal comma (en_DK's, installed where
+// Ubuntu's English is): the app's still read and print "2.5", as
+// everywhere, while GTK speaks the user's language.
+func TestNumbersInLocale(t *testing.T) {
+	onLinux(t)
+	if out, err := exec.Command("locale", "-a").Output(); err != nil || !strings.Contains(string(out), "en_DK.utf8") {
+		t.Skip("no en_DK.utf8 locale (locale -a)")
+	}
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "app")
+	buildApp(t, `
+component Numbers {
+  Column {
+    Text("read {"2.5".toFloat() ?? -1}")
+    Text("fixed {2.5.fixed(2)}")
+    Text("sum {0.1 + 0.2}")
+  }
+}
+app { Numbers() }
+`, exe)
+	d := scriptEnv(t, dir, exe, []string{"LC_ALL=en_DK.utf8", "LANG=en_DK.utf8"})
+	shows(t, d["end"], "in en_DK", []string{"read 2.5", "fixed 2.50", "sum 0.30000000000000004"})
+}

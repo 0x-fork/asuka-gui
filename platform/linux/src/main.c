@@ -8,6 +8,7 @@
 // (asuka_dev_connect): this executable without an app is the player.
 #include "host.h"
 
+#include <locale.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -157,6 +158,13 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "%s\n", err);
 		return 1;
 	}
+	// The user's locale for GTK's own words and input methods, as gtk_init
+	// would set it, but numbers in C's: the core and packages read and
+	// write them with strtod and printf ("2.5", JSON, SQL), which a
+	// locale with a decimal comma would make "2,5". Qt does the same.
+	setlocale(LC_ALL, "");
+	setlocale(LC_NUMERIC, "C");
+	gtk_disable_setlocale();
 	lx_register_classes();
 	H.app_name = app_name(argv[0]);
 	H.app_id = app_id(H.app_name);
