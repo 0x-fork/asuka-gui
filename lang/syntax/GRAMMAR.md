@@ -83,8 +83,12 @@ app as async await bind break catch component continue defer do effect
 else emit enum event extern false fn for if import in interface key let
 load match native none on prop provide pub return screen self spawn
 state store struct style task test throw throws true try type use var
-while
+while worker
 ```
+
+A keyword newer than the language's first (`worker`, since 0.2.7) used
+as a name is an error that says so: "rename it: worker is a keyword
+since 0.2.7".
 
 After `.` or `?.`, a keyword is a member's name (`x.type`,
 `.default`). The soft keywords, which only start a declaration or an
@@ -165,7 +169,7 @@ Imports come before the declarations.
 ## Declarations
 
 ```ebnf
-Decl        = [ "pub" ] ( Component | Screen | Store | Struct | Enum | Interface
+Decl        = [ "pub" ] ( Component | Screen | Store | Worker | Struct | Enum | Interface
                         | Func | TypeAlias | StyleDecl | StateDecl | LetDecl
                         | Shader | Native | Extern | App )
             | Test .
@@ -173,6 +177,7 @@ Decl        = [ "pub" ] ( Component | Screen | Store | Struct | Enum | Interface
 Component   = "component" Ident [ TypeParams ] [ Params ] Block .
 Screen      = "screen" Ident [ Params ] [ "at" STRING ] Block .
 Store       = "store" Ident [ TypeParams ] [ Params ] Block .
+Worker      = "worker" Ident [ Params ] Block .     (* its vars, lets and fns: the checker's *)
 Shader      = "shader" Ident [ Params ] "{" { ( Func | Constant ) Term } "}" .
 App         = "app" Block .
 Test        = "test" STRING Block .
@@ -217,13 +222,13 @@ line of the let's value (decision 20), and only a statement's let may
 have one (the checker's).
 
 A declaration that can only be a file's (`component`, `screen`,
-`store`, `struct`, `enum`, `interface`, `type`, `native …`, `extern …`,
+`store`, `worker`, `struct`, `enum`, `interface`, `type`, `native …`, `extern …`,
 `import`, `app {`, `test "…"`) in column 1 inside a block ends the
 block: its `}` is missing.
 
 ## Blocks and items
 
-Every `{ … }` body (a component's, a store's, an element's, a
+Every `{ … }` body (a component's, a store's, a worker's, an element's, a
 function's, a handler's, a branch's) is parsed by one item grammar;
 which items a block may hold is the checker's to say (decision 1).
 

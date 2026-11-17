@@ -31,6 +31,21 @@ component B {
 			decls: 2,
 		},
 		{
+			name: "a keyword newer than the code",
+			src: `fn f() -> int {
+  let worker = 2
+  return worker
+}
+
+worker W {}
+`,
+			errs: []string{
+				"2:7: expected a pattern, found keyword 'worker' (rename it: worker is a keyword since 0.2.7)",
+				"3:10: expected an expression, found keyword 'worker' (rename it: worker is a keyword since 0.2.7)",
+			},
+			decls: 2,
+		},
+		{
 			name: "extern without fn, type or struct",
 			src: `extern component A {}
 

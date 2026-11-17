@@ -59,3 +59,23 @@ async fn refreshAll() {
   await refresh()
   later(async s => s.count())
 }
+
+worker SearchIndex(language: string = "en") {
+  var words: [string: [int]] = [:]
+  let stop = stopWords(language)
+
+  pub fn add(id: int, text: string) {
+    for w in text.fields() {
+      if !stop.contains(w) { words[w.lower()] = (words[w.lower()] ?? []) + [id] }
+    }
+  }
+  pub fn find(q: string) -> [int] = words[q.lower()] ?? []
+  fn clear() { words = [:] }
+}
+
+store Notes {
+  let index = SearchIndex()
+  state results: [int] = []
+
+  pub async fn search(q: string) { results = await index.find(q) }
+}

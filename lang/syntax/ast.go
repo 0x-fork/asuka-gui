@@ -245,6 +245,17 @@ type StoreDecl struct {
 	Body       *Block
 }
 
+// A WorkerDecl is worker Name(params) { members }: a type whose
+// instances each run on a thread of their own (its vars, lets and fns).
+type WorkerDecl struct {
+	Span
+	Trivia
+	Pub    Pos
+	Name   *Ident
+	Params *ParamList // nil without parentheses
+	Body   *Block
+}
+
 // A ShaderDecl is shader Name(params) { fn fragment(pos: vec2) -> vec4
 // { … } … }: a GPU program that colors each pixel of a view, its
 // parameters its uniforms, used as a view (Glow(tint: .accent) { … }).
@@ -458,6 +469,7 @@ type BadDecl struct {
 func (*ComponentDecl) declNode()  {}
 func (*ScreenDecl) declNode()     {}
 func (*StoreDecl) declNode()      {}
+func (*WorkerDecl) declNode()     {}
 func (*StructDecl) declNode()     {}
 func (*ShaderDecl) declNode()     {}
 func (*EnumDecl) declNode()       {}

@@ -101,9 +101,9 @@ async fn run() throws {
   let page = fs.join([dir, "page.txt"])
   try fs.writeText(page, text: "from the page")
   print(try await spawn { try fs.readText(page) })
-  let worker = fs.join([dir, "worker.txt"])
-  try await spawn { try fs.writeText(worker, text: "from a worker") }
-  print(try fs.readText(worker))
+  let fromWorker = fs.join([dir, "worker.txt"])
+  try await spawn { try fs.writeText(fromWorker, text: "from a worker") }
+  print(try fs.readText(fromWorker))
   try fs.writeText(page, text: "changed")
   print(try await spawn { try fs.readText(page) })
   try await spawn { try fs.remove(page) }

@@ -848,6 +848,12 @@ func (p *printer) node(n Node) {
 		p.params(n.Params)
 		p.write(" ")
 		p.block(n.Body)
+	case *WorkerDecl:
+		p.pub(n.Pub)
+		p.write("worker " + n.Name.Name)
+		p.params(n.Params)
+		p.write(" ")
+		p.block(n.Body)
 	case *StructDecl:
 		p.pub(n.Pub)
 		if n.Extern.IsValid() {
