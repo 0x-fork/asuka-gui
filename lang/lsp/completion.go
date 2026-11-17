@@ -713,6 +713,10 @@ func (c *completer) names(path []syntax.Node, pos syntax.Pos, view bool) {
 			c.add(CompletionItem{Label: sc.name, Kind: kindField, Detail: typeStr(sc.field.Type), Documentation: c.doc(c.fc.declDoc(sc.field.Pos))}, prio)
 			continue
 		}
+		if m := sc.imeth; m != nil {
+			c.add(c.callItem(m.Name, kindMethod, imethSig(m), "", m.Sig != nil && len(m.Sig.Params) > 0), prio)
+			continue
+		}
 		if m, ok := sc.obj.(*check.Member); ok && m.Kind == check.EventMember {
 			continue // not a value: emit it
 		}

@@ -126,6 +126,10 @@ func (fc *fileCtx) objRef(o check.Object) *ref {
 		if fl != nil {
 			return &ref{name: fl.Name, field: fl, owner: owner, decl: fl.Pos}
 		}
+		if owner.Kind == check.InterfaceType {
+			// In a provided method: the interface's own.
+			return fc.imethRef(owner, o.Name())
+		}
 		return fc.objRef(m)
 	}
 	return r
