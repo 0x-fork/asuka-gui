@@ -1250,6 +1250,31 @@ func (p *printer) expr1(x Expr) {
 	}
 }
 
+// startsWithDot reports whether x is printed starting with a . (an
+// implicit member, .end, or what applies to one).
+func startsWithDot(x Expr) bool {
+	for {
+		switch e := x.(type) {
+		case *ImplicitMember:
+			return true
+		case *MemberExpr:
+			x = e.X
+		case *CallExpr:
+			x = e.Fun
+		case *IndexExpr:
+			x = e.X
+		case *UnwrapExpr:
+			x = e.X
+		case *BinaryExpr:
+			x = e.X
+		case *CatchExpr:
+			x = e.X
+		default:
+			return false
+		}
+	}
+}
+
 // postfixOperand prints what a postfix operator applies to. A % length
 // before (, [ or . (open says one follows) keeps a space: 50%(…) would
 // be a remainder.
@@ -1273,8 +1298,8 @@ func (p *printer) binary(b *BinaryExpr, cont *bool) {
 	}
 	p.operand(b.X, lp, cont)
 	sp := " "
-	if b.Op == RANGE || b.Op == RANGELT {
-		sp = ""
+	if (b.Op == RANGE || b.Op == RANGELT) && !startsWithDot(b.Y) {
+		sp = "" // but a .. .end: a...end isn't a range
 	}
 	p.write(sp + b.Op.String())
 	if l := p.endLine(b.X); l > 0 && l < p.line(b.Y.Range().Start) {

@@ -179,6 +179,8 @@ func TestFormatCases(t *testing.T) {
 		{"let x=a+b*c", "let x = a + b * c\n"},
 		{"let r=0 ..< n", "let r = 0..<n\n"},
 		{"let r = a .. b", "let r = a..b\n"},
+		{"let r = a .. .b.c(1) + 1", "let r = a .. .b.c(1) + 1\n"},
+		{"let r = a..<.b", "let r = a ..< .b\n"},
 		{"let o = a ?? b", "let o = a ?? b\n"},
 		{"let f = ( a , b ) => a", "let f = (a, b) => a\n"},
 		{"let f = async  ( a , b ) => a", "let f = async (a, b) => a\n"},
