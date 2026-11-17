@@ -11,8 +11,13 @@ import (
 
 	"github.com/egoist/asuka/internal/appbuild"
 	"github.com/egoist/asuka/lang/bytecode"
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/target"
 )
+
+// jsonOut: asuka check's and asuka test's --json, the diagnostics (and
+// the tests' results) as JSON lines on stdout.
+var jsonOut bool
 
 // cmdTest is asuka test: an app's or a package's test blocks, compiled
 // and run on the fake host (asuka-run: the VM, the core and the fake
@@ -20,6 +25,7 @@ import (
 func cmdTest(args []string) error {
 	var pattern, platform string
 	fs := newFlagSet("test", "[dir]")
+	fs.Bool(&jsonOut, "json", 0, "write the diagnostics and each test's result as JSON, one object per line (a diagnostic: code, severity, file, range, message, help, url; a test: test, ok, message, pos)")
 	fs.about = "Runs the test blocks of the app or package in dir (default: the working directory) on the\n" +
 		"fake host: the app's views as a phone would show them, measured and laid out, driven by\n" +
 		"tap, type and expect; and those of its programs (asuka.toml's [bin.<name>])."
@@ -102,7 +108,7 @@ func runTests(m *bytecode.Module, p *appbuild.Project, pattern, platform string)
 		return nil
 	}
 	start := time.Now()
-	s, err := appbuild.RunTests(m, appbuild.TestOptions{Pattern: pattern, Platform: testPlatform(platform), Dir: cwdOr(p.Dir)}, os.Stdout)
+	s, err := appbuild.RunTests(m, appbuild.TestOptions{Pattern: pattern, Platform: testPlatform(platform), Dir: cwdOr(p.Dir), JSON: jsonOut}, os.Stdout)
 	if err != nil {
 		return err
 	}
@@ -111,7 +117,13 @@ func runTests(m *bytecode.Module, p *appbuild.Project, pattern, platform string)
 		return fmt.Errorf("no test's name contains %q", pattern)
 	}
 	if failed > 0 {
+		if jsonOut {
+			return errReported // each result says so
+		}
 		return fmt.Errorf("%d of %d %s failed", failed, n, plural(n, "test", "tests"))
+	}
+	if jsonOut {
+		return nil
 	}
 	fmt.Printf("ok   %d %s passed in %.2fs\n", n, plural(n, "test", "tests"), time.Since(start).Seconds())
 	return nil
@@ -136,7 +148,12 @@ func compileProject(p *appbuild.Project, platform target.Platform) (*bytecode.Mo
 	m, diags, err := p.Compile(platform)
 	base := cwdOr(p.Dir)
 	for _, d := range diags {
-		fmt.Fprintln(os.Stderr, relDiag(base, d))
+		d = relDiag(base, d)
+		if jsonOut {
+			fmt.Println(d.Record(diag.Error).JSON())
+		} else {
+			fmt.Fprintln(os.Stderr, d.Format(diag.Error, ""))
+		}
 	}
 	if err != nil {
 		return nil, err

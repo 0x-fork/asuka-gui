@@ -23,6 +23,7 @@ import (
 	"github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/lang/check"
 	"github.com/egoist/asuka/lang/compile"
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 	"github.com/egoist/asuka/lang/target"
 	"github.com/egoist/asuka/std"
@@ -46,7 +47,7 @@ var DevLang, DevDirection string
 // catalogs' missing translations), "file:line:col: warning: message".
 var Warnings io.Writer = os.Stderr
 
-func compileDir(dir string, deps map[string]string, platform target.Platform) (*bytecode.Module, *Uses, []string, error) {
+func compileDir(dir string, deps map[string]string, platform target.Platform) (*bytecode.Module, *Uses, []check.Diagnostic, error) {
 	// Imports resolve through the project's asuka.lock (compile.Dir's
 	// own), which Load made ready.
 	res, err := compile.Dir(dir, &compile.Options{Platform: platform, Lang: DevLang, Direction: DevDirection, Project: binRoot(dir)})
@@ -60,19 +61,14 @@ func compileDir(dir string, deps map[string]string, platform target.Platform) (*
 	}
 	if Warnings != nil {
 		for _, w := range res.Warnings {
-			pos := w.Pos
-			if r, err := filepath.Rel(dir, pos.Filename); err == nil && !strings.HasPrefix(r, "..") {
-				pos.Filename = r
+			if r, err := filepath.Rel(dir, w.Pos.Filename); err == nil && !strings.HasPrefix(r, "..") {
+				w.Pos.Filename = r
 			}
-			fmt.Fprintf(Warnings, "%s: warning: %s\n", pos, w.Msg)
+			fmt.Fprintln(Warnings, w.Format(diag.Warning, ""))
 		}
 	}
 	if len(res.Diags) > 0 {
-		diags := make([]string, len(res.Diags))
-		for i, d := range res.Diags {
-			diags[i] = d.String()
-		}
-		return nil, u, diags, nil
+		return nil, u, res.Diags, nil
 	}
 	return res.Module, u, nil, nil
 }
@@ -183,7 +179,7 @@ func Load(dir string) (*Project, error) {
 // project whose files haven't changed since its last compile for the
 // platform (stamp) isn't compiled again: loading an app and building it
 // is one compile.
-func (p *Project) Compile(platform target.Platform) (*bytecode.Module, []string, error) {
+func (p *Project) Compile(platform target.Platform) (*bytecode.Module, []check.Diagnostic, error) {
 	f := p.on(platform)
 	stamp := p.stamp()
 	if l := f.last; l != nil && l.stamp == stamp {
@@ -209,7 +205,7 @@ func (p *Project) Forget() {
 type compiled struct {
 	stamp string
 	m     *bytecode.Module
-	diags []string
+	diags []check.Diagnostic
 	err   error
 }
 
@@ -250,7 +246,7 @@ func (p *Project) stamp() string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func (p *Project) compile(platform target.Platform) (*bytecode.Module, *Uses, []string, error) {
+func (p *Project) compile(platform target.Platform) (*bytecode.Module, *Uses, []check.Diagnostic, error) {
 	if p.File != "" {
 		// One file: a directory of its own, so that what's beside it
 		// isn't compiled with it.
@@ -267,8 +263,12 @@ func (p *Project) compile(platform target.Platform) (*bytecode.Module, *Uses, []
 			return nil, nil, nil, err
 		}
 		m, u, diags, err := Compile(tmp, p.Deps, platform)
-		for i, d := range diags {
-			diags[i] = strings.ReplaceAll(d, filepath.Join(tmp, filepath.Base(p.File)), p.File)
+		for i := range diags {
+			for _, pos := range []*syntax.Position{&diags[i].Pos, &diags[i].End} {
+				if pos.Filename == filepath.Join(tmp, filepath.Base(p.File)) {
+					pos.Filename = p.File
+				}
+			}
 		}
 		if m != nil && m.C != nil && len(m.C.Dirs) > 0 {
 			// Its C is the [c] of the asuka.toml beside it.

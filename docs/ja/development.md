@@ -96,6 +96,20 @@ Asuka は、アプリのディレクトリとそのローカルの依存関係�
 
 開発用アプリは自身の出力とエラーを `asuka dev` に送り、`asuka dev` がそれをターミナルに表示します。どのプラットフォームでも、`print`、捕捉されなかったエラー、Asuka 自身の警告とエラーが表示されます。開発用アプリがモジュールを読み込めなかった場合は、その理由が表示されます（`asuka: the player: ...`）。ブラウザーでは、ページのエラーもターミナルに表示されます。
 
+## エラーとそのコード
+
+すべてのエラーと警告にはコードがあります。コードは、報告しているルールの名前です。ターミナルには、コードと一緒に、ヘルプ（あれば）とコードのページが表示されます。
+
+```
+app.asuka:14:9: error[write-in-binding]: can't assign to count here
+  = help: what the UI follows is computed, not changed; change state in a handler (on press { … }), a fn, a task or an effect
+  = see https://asuka.dev/docs/errors/write-in-binding
+```
+
+`asuka explain write-in-binding` を実行すると、そのページがターミナルに、あなたの言語（`LANG`）で、インストールしたバージョンのものが表示されます。ルールがある理由、破ったときの直し方、ルールを破るプログラムと破らないプログラムです。すべてのコードは[エラーコード](errors/README.md)にあります。
+
+`asuka check --json` と `asuka test --json` は、代わりに 1 行に 1 つの JSON オブジェクトを書き出します。ツールやコーディングエージェント向けで、`code`、`severity`、`file`、`range`（行と列は 1 から）、`message`、`help`、`url` を持ち、一部のプラットフォームだけのものには `platforms` も付きます。エディターにもコードが表示され、そのページにリンクされます。
+
 ## エディター
 
 `asuka lsp` は Asuka の言語サーバーです。`.asuka` ファイルに対して、入力中の診断、補完、`///` のドキュメントを表示するホバー、定義へのジャンプ、参照の検索、名前の変更、フォーマット（`asuka fmt` と同じもの）、シンボル、シグネチャヘルプ、セマンティックハイライトを提供します。保存していない変更も含めて、編集中のパッケージと、それをインポートするパッケージをチェックします。

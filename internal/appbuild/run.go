@@ -2,6 +2,7 @@ package appbuild
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -57,10 +58,19 @@ func RunnerFor(m *bytecode.Module, dir string) (string, error) {
 
 // TestResult is how a test block went.
 type TestResult struct {
-	Name    string
-	OK      bool
-	Message string // what failed
-	Pos     string // file:line of the test block
+	Name    string `json:"test"`
+	OK      bool   `json:"ok"`
+	Message string `json:"message,omitempty"` // what failed
+	Pos     string `json:"pos"`               // file:line of the test block
+}
+
+// writeJSON writes v to out as a line of JSON.
+func writeJSON(out io.Writer, v any) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Fprintf(out, "%s\n", b)
 }
 
 // TestSummary is a run of a module's tests.
@@ -88,6 +98,10 @@ type TestOptions struct {
 	Platform string
 	// Dir, when set, is what the files reported are relative to.
 	Dir string
+	// JSON writes each result to out as a JSON object on a line of its
+	// own ({"test", "ok", "message", "pos"}), and what the tests print as
+	// {"output"}.
+	JSON bool
 }
 
 // RunTests runs m's test blocks on the fake host, with asuka-run, writing
@@ -140,11 +154,19 @@ func RunTests(m *bytecode.Module, o TestOptions, out io.Writer) (*TestSummary, e
 		line := sc.Text()
 		r, ok := parseResult(line, names)
 		if !ok {
-			fmt.Fprintln(out, line)
+			if o.JSON {
+				writeJSON(out, map[string]string{"output": line})
+			} else {
+				fmt.Fprintln(out, line)
+			}
 			continue
 		}
 		r.Pos = testPos(m, r.Name, dir)
 		s.Results = append(s.Results, r)
+		if o.JSON {
+			writeJSON(out, r)
+			continue
+		}
 		if r.OK {
 			fmt.Fprintf(out, "ok   %s\n", r.Name)
 			continue
@@ -156,7 +178,13 @@ func RunTests(m *bytecode.Module, o TestOptions, out io.Writer) (*TestSummary, e
 	}
 	err = cmd.Wait()
 	if e := strings.TrimSpace(stderr.String()); e != "" {
-		fmt.Fprintln(out, e)
+		if o.JSON {
+			for _, l := range strings.Split(e, "\n") {
+				writeJSON(out, map[string]string{"output": l})
+			}
+		} else {
+			fmt.Fprintln(out, e)
+		}
 	}
 	var exit *exec.ExitError
 	if err != nil && !(errors.As(err, &exit) && exit.ExitCode() == 1 && s.Failed() > 0) {

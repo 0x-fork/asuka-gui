@@ -72,7 +72,7 @@ func TestCompile(t *testing.T) {
 		t.Fatal(err)
 	}
 	m, diags, err := p.Compile("")
-	if err != nil || m != nil || len(diags) != 1 || !strings.Contains(diags[0], "app.asuka:1:") {
+	if err != nil || m != nil || len(diags) != 1 || !strings.Contains(diags[0].String(), "app.asuka:1:") {
 		t.Fatalf("a mistake: %v %v %v", m, diags, err)
 	}
 	write("app.asuka", "component C { Text(\"hi\") }\napp { C() }\n")
@@ -80,7 +80,7 @@ func TestCompile(t *testing.T) {
 		t.Fatalf("an app: %v %v %v", m, diags, err)
 	}
 	write("app.asuka", "component C { Text(\"hi\") }\napp { C() }\nfn main() { print(\"main\") }\n")
-	if m, diags, err = p.Compile(""); m != nil || len(diags) != 1 || !strings.Contains(diags[0], "an app or a program") {
+	if m, diags, err = p.Compile(""); m != nil || len(diags) != 1 || !strings.Contains(diags[0].Msg, "an app or a program") {
 		t.Fatalf("an app with main: %v %v %v", m, diags, err)
 	}
 	write("app.asuka", "fn main() { print(\"main\") }\n")

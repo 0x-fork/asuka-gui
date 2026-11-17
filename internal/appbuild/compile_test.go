@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/egoist/asuka/lang/bytecode"
+	"github.com/egoist/asuka/lang/check"
 	"github.com/egoist/asuka/lang/target"
 )
 
@@ -23,7 +24,7 @@ func TestUsesFromCompile(t *testing.T) {
 	old := Compile
 	defer func() { Compile = old }()
 	compiles := 0
-	Compile = func(dir string, deps map[string]string, platform target.Platform) (*bytecode.Module, *Uses, []string, error) {
+	Compile = func(dir string, deps map[string]string, platform target.Platform) (*bytecode.Module, *Uses, []check.Diagnostic, error) {
 		compiles++
 		return old(dir, deps, platform)
 	}
@@ -42,7 +43,7 @@ func TestUsesFromCompile(t *testing.T) {
 		t.Fatalf("after a save: %v, %d compiles", u.Refs, compiles)
 	}
 	// A test's compile, which doesn't say: checked.
-	Compile = func(string, map[string]string, target.Platform) (*bytecode.Module, *Uses, []string, error) {
+	Compile = func(string, map[string]string, target.Platform) (*bytecode.Module, *Uses, []check.Diagnostic, error) {
 		return nil, nil, nil, nil
 	}
 	q := &Project{Dir: dir}

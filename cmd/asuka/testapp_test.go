@@ -11,6 +11,7 @@ import (
 	"github.com/egoist/asuka/internal/appbuild/apptest"
 	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/lang/bytecode"
+	"github.com/egoist/asuka/lang/check"
 	"github.com/egoist/asuka/lang/target"
 	"github.com/egoist/asuka/std"
 )
@@ -21,7 +22,7 @@ import (
 func useCounter(t *testing.T, label string) {
 	t.Helper()
 	old := appbuild.Compile
-	appbuild.Compile = func(dir string, deps map[string]string, _ target.Platform) (*bytecode.Module, *appbuild.Uses, []string, error) {
+	appbuild.Compile = func(dir string, deps map[string]string, _ target.Platform) (*bytecode.Module, *appbuild.Uses, []check.Diagnostic, error) {
 		return apptest.Counter(label), nil, nil, nil
 	}
 	t.Cleanup(func() { appbuild.Compile = old })
@@ -37,7 +38,7 @@ func useSQLiteCounter(t *testing.T, label string) {
 		t.Fatal("no std/sqlite")
 	}
 	old := appbuild.Compile
-	appbuild.Compile = func(string, map[string]string, target.Platform) (*bytecode.Module, *appbuild.Uses, []string, error) {
+	appbuild.Compile = func(string, map[string]string, target.Platform) (*bytecode.Module, *appbuild.Uses, []check.Diagnostic, error) {
 		m := apptest.Counter(label)
 		m.C = &bytecode.C{Std: []string{dir}}
 		return m, nil, nil, nil

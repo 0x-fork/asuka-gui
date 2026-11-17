@@ -174,7 +174,7 @@ func (d *devLoop) compile() bool {
 	}
 	shown := map[string]bool{}
 	for _, x := range diags {
-		shown[x] = true
+		shown[x.String()] = true
 	}
 	defer func() {
 		for _, p := range d.srv.Platforms() {

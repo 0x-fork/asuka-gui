@@ -96,6 +96,20 @@ Asuka 会监听应用所在的目录及其本地依赖（`asuka.toml` 中的 `fi
 
 开发 App 会把它的输出和错误发送给 `asuka dev`，由后者打印到终端：在每个平台上都包括 `print`、未捕获的错误，以及 Asuka 自己的警告和错误。开发 App 无法加载某个模块时，会说明原因（`asuka: the player: ...`）。在浏览器中，页面的错误也会打印到终端。
 
+## 错误及其代码
+
+每个错误和警告都有一个代码，也就是它所报告的那条规则的名称。终端会把代码连同帮助（如果有的话）和代码的页面一起显示：
+
+```
+app.asuka:14:9: error[write-in-binding]: can't assign to count here
+  = help: what the UI follows is computed, not changed; change state in a handler (on press { … }), a fn, a task or an effect
+  = see https://asuka.dev/docs/errors/write-in-binding
+```
+
+`asuka explain write-in-binding` 会在终端里用你的语言（`LANG`）显示这个页面，内容与所装的版本一致：这条规则为什么存在、违反时如何修正，以及一个违反它的程序和一个不违反它的程序。[错误代码](errors/README.md)列出了全部代码。
+
+`asuka check --json` 和 `asuka test --json` 则改为每行输出一个 JSON 对象，供工具和编程智能体使用：`code`、`severity`、`file`、`range`（行号和列号从 1 开始）、`message`、`help` 和 `url`；只在部分平台上出现的诊断还有 `platforms`。编辑器也会显示代码，并链接到它的页面。
+
 ## 编辑器
 
 `asuka lsp` 是 Asuka 的语言服务器，为 `.asuka` 文件提供：输入时的诊断、补全、带 `///` 文档的悬停提示、跳转到定义、查找引用、重命名、格式化（与 `asuka fmt` 相同）、符号、签名帮助和语义高亮。它会带着你尚未保存的修改检查正在编辑的包，以及导入它的包。

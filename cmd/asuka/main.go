@@ -12,7 +12,8 @@
 //	asuka run [--bin name] [dir] [-- args]   run a program on the VM; a file's tests, or show its app
 //	asuka fmt [-w] [-l] [paths]              format Asuka source (.asuka files)
 //	asuka doc [package] [name]               a package's documentation, as Markdown
-//	asuka check [dir]                        report an Asuka package's problems
+//	asuka check [--json] [dir]               report an Asuka package's problems, each with its code
+//	asuka explain [code]                     a diagnostic code's page: why, how to fix, examples
 //	asuka lsp                                the language server, for editors
 //	asuka cache stats|clean                  the build cache's size and hits; empty it
 package main
@@ -62,7 +63,8 @@ func usage() {
   asuka pkg pack|publish [dir]              pack, or publish to the npm registry, a package
   asuka cache stats|clean                   the build cache's size and hits; empty it
   asuka version                             print the CLI's version
-  asuka check [dir]                         report an Asuka package's problems (file:line:col: message)
+  asuka check [--json] [dir]                report an Asuka package's problems (file:line:col: error[code]: message)
+  asuka explain [code]                      print a diagnostic code's page: why, how to fix, a wrong and a right program
   asuka lsp                                 run the language server, for editors (LSP on stdio)
 
 asuka <command> --help lists its flags.
@@ -117,6 +119,8 @@ func main() {
 		return
 	case "check":
 		err = cmdCheck(os.Args[2:])
+	case "explain":
+		err = cmdExplain(os.Args[2:])
 	case "cache":
 		err = cmdCache(os.Args[2:])
 	case "prebuilt":

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"io"
 	"net"
 	"os"
@@ -15,6 +16,8 @@ import (
 	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/internal/devserver"
 	"github.com/egoist/asuka/lang/bytecode"
+	"github.com/egoist/asuka/lang/check"
+	"github.com/egoist/asuka/lang/compile"
 )
 
 // platformApp is an app whose label is its platform's file's: label_ios,
@@ -145,5 +148,61 @@ func TestCmdCheckPlatforms(t *testing.T) {
 	}
 	if err := cmdCheck([]string{"-p", "web", dir}); err != errReported {
 		t.Errorf("the web's: %v", err)
+	}
+}
+
+// asuka check prints each diagnostic with its code, help and page, and
+// --json writes one object per line, with the platforms it's for.
+func TestCmdCheckFormats(t *testing.T) {
+	dir := platformApp(t)
+	os.WriteFile(filepath.Join(dir, "label_web.asuka"), []byte("fn label() -> string = 1\n"), 0o644)
+	res, err := compile.DirPlatforms(dir, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	if !printPlatformDiags(&b, res, false) {
+		t.Fatal("no errors")
+	}
+	lines := strings.Split(strings.TrimSpace(b.String()), "\n")
+	if len(lines) != 2 || !strings.HasSuffix(lines[0], `label_web.asuka:1:24: error[type-mismatch]: the result of label is an int, not a string (put it in a string: "{x}") (for the web)`) ||
+		lines[1] != "  = see https://asuka.dev/docs/errors/type-mismatch" {
+		t.Errorf("got:\n%s", b.String())
+	}
+	b.Reset()
+	printPlatformDiags(&b, res, true)
+	var r check.Record
+	if err := json.Unmarshal([]byte(strings.TrimSpace(b.String())), &r); err != nil {
+		t.Fatalf("%v: %s", err, b.String())
+	}
+	if r.Code != "type-mismatch" || r.Severity != "error" || r.Range.Start != (check.Point{Line: 1, Column: 24}) ||
+		!slices.Equal(r.Platforms, []string{"web"}) || r.URL != "https://asuka.dev/docs/errors/type-mismatch" || !strings.HasSuffix(r.File, "label_web.asuka") {
+		t.Errorf("got %+v", r)
+	}
+}
+
+// asuka explain prints a code's page in the language asked for, and
+// suggests codes for one it doesn't know.
+func TestExplain(t *testing.T) {
+	var b strings.Builder
+	if err := explain(&b, "error[maybe-none]", "ja"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(b.String(), "# maybe-none\n") || !strings.Contains(b.String(), "## 直し方") {
+		t.Errorf("got:\n%s", b.String())
+	}
+	if err := explain(&b, "maybe-nil", "en"); err == nil || !strings.Contains(err.Error(), "did you mean maybe-none") {
+		t.Errorf("an unknown code: %v", err)
+	}
+	b.Reset()
+	explain(&b, "", "en")
+	if n := strings.Count(b.String(), "\n"); n < 100 || !strings.Contains(b.String(), "write-in-binding") {
+		t.Errorf("the list: %d lines", n)
+	}
+	t.Setenv("LC_ALL", "")
+	t.Setenv("LC_MESSAGES", "")
+	t.Setenv("LANG", "zh_CN.UTF-8")
+	if envLang() != "zh" {
+		t.Errorf("LANG=zh_CN: %s", envLang())
 	}
 }

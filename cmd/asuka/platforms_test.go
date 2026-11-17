@@ -21,6 +21,8 @@ import (
 	"github.com/egoist/asuka/internal/appbuild/apptest"
 	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/lang/bytecode"
+	"github.com/egoist/asuka/lang/check"
+	"github.com/egoist/asuka/lang/syntax"
 	"github.com/egoist/asuka/lang/target"
 )
 
@@ -29,7 +31,7 @@ import (
 func useModule(t *testing.T, m func() *bytecode.Module) {
 	t.Helper()
 	old := appbuild.Compile
-	appbuild.Compile = func(dir string, deps map[string]string, _ target.Platform) (*bytecode.Module, *appbuild.Uses, []string, error) {
+	appbuild.Compile = func(dir string, deps map[string]string, _ target.Platform) (*bytecode.Module, *appbuild.Uses, []check.Diagnostic, error) {
 		return m(), nil, nil, nil
 	}
 	t.Cleanup(func() { appbuild.Compile = old })
@@ -58,8 +60,9 @@ func TestCmdTest(t *testing.T) {
 		t.Errorf("-run nothing: %v", err)
 	}
 	old := appbuild.Compile
-	appbuild.Compile = func(dir string, deps map[string]string, _ target.Platform) (*bytecode.Module, *appbuild.Uses, []string, error) {
-		return nil, nil, []string{filepath.Join(dir, "app.asuka") + ":1:7: undefined: Txt"}, nil
+	appbuild.Compile = func(dir string, deps map[string]string, _ target.Platform) (*bytecode.Module, *appbuild.Uses, []check.Diagnostic, error) {
+		pos := syntax.Position{Filename: filepath.Join(dir, "app.asuka"), Line: 1, Column: 7}
+		return nil, nil, []check.Diagnostic{{Pos: pos, Code: "undefined-name", Msg: "unknown name Txt"}}, nil
 	}
 	defer func() { appbuild.Compile = old }()
 	if err := cmdTest([]string{dir}); err == nil || err.Error() != "1 error" {

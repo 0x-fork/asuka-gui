@@ -15,6 +15,9 @@ import (
 	"github.com/egoist/asuka/internal/appconfig"
 	"github.com/egoist/asuka/internal/filetype"
 	"github.com/egoist/asuka/lang/bytecode"
+	"github.com/egoist/asuka/lang/check"
+	"github.com/egoist/asuka/lang/diag"
+	"github.com/egoist/asuka/lang/syntax"
 	"github.com/egoist/asuka/lang/target"
 )
 
@@ -145,11 +148,11 @@ func (a *asukaApp) compile(platform target.Platform) (*bytecode.Module, error) {
 // compileShown is compile, printing only the diagnostics shown doesn't
 // have, and returning them all (asuka dev's for each player's platform:
 // what two platforms report alike is said once). It leaves a.c as it is.
-func (a *asukaApp) compileShown(platform target.Platform, shown map[string]bool) (*bytecode.Module, []string, error) {
+func (a *asukaApp) compileShown(platform target.Platform, shown map[string]bool) (*bytecode.Module, []check.Diagnostic, error) {
 	m, diags, err := a.proj.Compile(platform)
 	for _, d := range diags {
-		if !shown[d] {
-			fmt.Fprintln(os.Stderr, relDiag(a.dir, d))
+		if !shown[d.String()] {
+			fmt.Fprintln(os.Stderr, relDiag(a.dir, d).Format(diag.Error, ""))
 		}
 	}
 	if err != nil {
@@ -164,14 +167,15 @@ func (a *asukaApp) compileShown(platform target.Platform, shown map[string]bool)
 	return appbuild.StripTests(m), diags, nil
 }
 
-// relDiag makes a diagnostic's file relative to dir, when it's in it.
-func relDiag(dir, d string) string {
-	file, rest, ok := strings.Cut(d, ":")
-	if !ok || !filepath.IsAbs(file) {
-		return d
-	}
-	if r, err := filepath.Rel(dir, file); err == nil && !strings.HasPrefix(r, "..") {
-		return r + ":" + rest
+// relDiag is d with its files relative to dir, when they're in it.
+func relDiag(dir string, d check.Diagnostic) check.Diagnostic {
+	for _, pos := range []*syntax.Position{&d.Pos, &d.End} {
+		if !filepath.IsAbs(pos.Filename) {
+			continue
+		}
+		if r, err := filepath.Rel(dir, pos.Filename); err == nil && !strings.HasPrefix(r, "..") {
+			pos.Filename = r
+		}
 	}
 	return d
 }

@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/egoist/asuka/lang/compile"
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/target"
 )
 
@@ -25,9 +25,11 @@ func cmdCheck(args []string) error {
 	fs := newFlagSet("check", "[dir]")
 	fs.about = "Checks the Asuka package in dir (default .): its files, and what they import, for every\n" +
 		"platform (the files for some platforms only, tray_linux.asuka, with those of each). Prints\n" +
-		"each problem as file:line:col: message, and which platforms it's on when not every one."
+		"each problem as file:line:col: error[code]: message, then its help and its page (asuka\n" +
+		"explain code prints the page), and which platforms it's on when not every one."
 	platformFlag(fs, &platform, []string{platformIOS, platformAndroid, platformMac, platformWindows, platformLinux, platformWeb},
 		"check for this `platform` only: ios, android, mac, windows, linux or web (default: every one)")
+	fs.Bool(&jsonOut, "json", 0, "write each diagnostic as JSON, one object per line on stdout: code, severity, file, range, message, help, url (and platforms, when not every one's)")
 	if err := fs.parse(args); err != nil {
 		return err
 	}
@@ -43,30 +45,42 @@ func cmdCheck(args []string) error {
 	if err != nil {
 		return err
 	}
-	if printPlatformDiags(os.Stderr, res) {
+	w := io.Writer(os.Stderr)
+	if jsonOut {
+		w = os.Stdout
+	}
+	if printPlatformDiags(w, res, jsonOut) {
 		return errReported
 	}
 	return nil
 }
 
 // printPlatformDiags prints a check's diagnostics for several platforms,
-// paths relative to the working directory; it reports whether there were
-// any.
-func printPlatformDiags(w io.Writer, res *compile.Platforms) bool {
+// paths relative to the working directory, as the terminal says them or
+// as JSON lines; it reports whether there were errors.
+func printPlatformDiags(w io.Writer, res *compile.Platforms, asJSON bool) bool {
 	wd, _ := os.Getwd()
-	rel := func(d compile.PlatformDiagnostic) compile.PlatformDiagnostic {
-		if r, err := filepath.Rel(wd, d.Pos.Filename); err == nil && !strings.HasPrefix(r, "..") {
-			d.Pos.Filename = r
+	print := func(d compile.PlatformDiagnostic, sev diag.Severity) {
+		d.Diagnostic = relDiag(wd, d.Diagnostic)
+		if asJSON {
+			r := d.Record(sev)
+			for _, p := range d.Platforms {
+				r.Platforms = append(r.Platforms, string(p))
+			}
+			fmt.Fprintln(w, r.JSON())
+			return
 		}
-		return d
+		after := ""
+		if d.Platforms != nil {
+			after = "(for " + target.List(d.Platforms) + ")"
+		}
+		fmt.Fprintln(w, d.Format(sev, after))
 	}
 	for _, d := range res.Warnings {
-		d = rel(d)
-		d.Msg = "warning: " + d.Msg
-		fmt.Fprintln(w, d.String())
+		print(d, diag.Warning)
 	}
 	for _, d := range res.Diags {
-		fmt.Fprintln(w, rel(d).String())
+		print(d, d.Severity())
 	}
 	return len(res.Diags) > 0
 }

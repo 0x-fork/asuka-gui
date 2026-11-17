@@ -217,6 +217,29 @@ warnings and errors, on every platform. A module the player couldn't load
 says why (`asuka: the player: ...`). In the browser, the page's errors
 print there too.
 
+## Errors and their codes
+
+Every error and warning has a code, the name of the rule it reports a
+break of. The terminal says it with the help, when there is some, and
+the code's page:
+
+```
+app.asuka:14:9: error[write-in-binding]: can't assign to count here
+  = help: what the UI follows is computed, not changed; change state in a handler (on press { … }), a fn, a task or an effect
+  = see https://asuka.dev/docs/errors/write-in-binding
+```
+
+`asuka explain write-in-binding` prints that page in the terminal, in
+your language (`LANG`), for the version installed: why the rule is
+there, how to fix what breaks it, a program that breaks it and one that
+doesn't. [Error codes](errors/README.md) lists them all.
+
+`asuka check --json` and `asuka test --json` write one JSON object per
+line instead, for tools and coding agents: `code`, `severity`, `file`,
+`range` (lines and columns from 1), `message`, `help` and `url`, and
+`platforms` when it's some platforms' only. The editor shows the code
+too, linked to its page.
+
 ## Editors
 
 `asuka lsp` is Asuka's language server: diagnostics as you type,
