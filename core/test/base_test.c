@@ -1,5 +1,6 @@
 #include "t.h"
 #include "base/base.h"
+#include "base/thread.h"
 
 TEST(buf_roundtrip) {
 	ak_buf b = {0};
@@ -34,6 +35,41 @@ TEST(vec) {
 	CHECK_EQ_INT(v.data[99], 99);
 	CHECK_EQ_INT(ak_vec_pop(&v), 99);
 	ak_vec_free(&v);
+}
+
+// ak_alloc_count is each thread's own: what another thread allocates
+// (spawn's workers, the native side's) neither races with the main
+// thread's count nor changes what a test counts on it.
+static ak_mutex worker_mu = AK_MUTEX_INIT;
+static ak_cond worker_cond;
+static bool worker_go, worker_finished;
+static uint64_t worker_count;
+
+static void allocates(void *arg) {
+	AK_UNUSED(arg);
+	ak_mutex_lock(&worker_mu);
+	while (!worker_go) ak_cond_wait(&worker_cond, &worker_mu);
+	ak_mutex_unlock(&worker_mu);
+	uint64_t before = ak_alloc_count;
+	for (int i = 0; i < 100; i++) ak_free(ak_alloc(16));
+	ak_mutex_lock(&worker_mu);
+	worker_count = ak_alloc_count - before;
+	worker_finished = true;
+	ak_cond_broadcast(&worker_cond);
+	ak_mutex_unlock(&worker_mu);
+}
+
+TEST(alloc_count_per_thread) {
+	ak_cond_init(&worker_cond);
+	REQUIRE(ak_thread_start(allocates, NULL));
+	uint64_t before = ak_alloc_count;
+	ak_mutex_lock(&worker_mu);
+	worker_go = true;
+	ak_cond_broadcast(&worker_cond);
+	while (!worker_finished) ak_cond_wait(&worker_cond, &worker_mu);
+	ak_mutex_unlock(&worker_mu);
+	CHECK_EQ_INT(worker_count, 100);
+	CHECK_EQ_INT(ak_alloc_count - before, 0);
 }
 
 T_MAIN()

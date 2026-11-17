@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-uint64_t ak_alloc_count;
+AK_TLS uint64_t ak_alloc_count;
 
 void *ak_alloc(size_t n) {
 	ak_alloc_count++;
