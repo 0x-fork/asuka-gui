@@ -16,7 +16,7 @@ style bad {
   toolbar { } // ERROR "a style holds style props \(name: value\), style: …, use and variants"
   use n: int // ERROR "use takes a store's type"
   pressed {
-    use m: int // ERROR "use goes in the style's body, not in pressed"
+    use m: int // ERROR "use goes in the style's body, not in pressed|use takes a store's type"
     hovered { opacity: 0.5 } // ERROR "hovered \{ … \} in pressed \{ … \}"
     style: [if true { card }] // ERROR "the style: of pressed \{ … \} takes no conditions"
   }
@@ -52,7 +52,7 @@ component Probe {
     View { style: crd } // ERROR "unknown style crd \(did you mean card\?\)"
     View { style: chip } // ERROR "style chip takes arguments: chip\(…\)"
     View { style: card(1) } // ERROR "style card takes no arguments"
-    View { style: chip(1) } // ERROR "a int, not a Color|isn't a Color|Color"
+    View { style: chip(1) } // ERROR "an int, not a Color|isn't a Color|Color"
     View { style: chip(tint: .red, size: 2) } // ERROR "style chip has no parameter size"
     View { style: [card, on] } // ERROR "on isn't a style: a style list holds styles \(for one while on holds, if on \{ card \}\)"
     View { style: [card, k + 1] } // ERROR "a style list holds styles: a style's name"

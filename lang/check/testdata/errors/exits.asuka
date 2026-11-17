@@ -41,7 +41,7 @@ component Body(m: [string: int]) {
 fn chainSeesEarlier(a: int?, b: int?) -> int {
   if let x = a, let y = b, x > y { return x }
   if let x = a, y > 0 { return x } // ERROR "unknown name y"
-  if 1, let z = a { return z } // ERROR "the condition is a int, not a bool"
+  if 1, let z = a { return z } // ERROR "the condition is an int, not a bool"
   return 0
 }
 
@@ -56,7 +56,7 @@ fn noThrow(m: [string: int]) -> int {
 }
 
 fn wrongReturn(m: [string: int]) -> int {
-  let v = m["a"] ?? return "none" // ERROR "the result is a string, not a int"
+  let v = m["a"] ?? return "none" // ERROR "the result is a string, not an int"
   return v
 }
 
@@ -65,15 +65,15 @@ fn neverValue() throws -> int {
   return 0
 }
 
-fn closureReturns(xs: [int?]) -> [int] = xs.map(x => x ?? return) // ERROR "return needs a int"
+fn closureReturns(xs: [int?]) -> [int] = xs.map(x => x ?? return) // ERROR "return needs an int"
 
 fn inferred(a: int?) {
-  let f = () => a ?? return // ERROR "this closure's value is a int, and it returns a void"
+  let f = () => a ?? return // ERROR "this closure's value is an int, and it returns a void"
   print(f())
 }
 
 fn fallbackType(s: string) -> int {
-  let n = try fetch(1) catch { "zero" } // ERROR "the catch's value is a string, and the try's a int"
+  let n = try fetch(1) catch { "zero" } // ERROR "the catch's value is a string, and the try's an int"
   return n
 }
 
@@ -110,4 +110,19 @@ component Shown {
   let port = try fetch(80) catch { 8080 }
   let bad = try fetch(80) catch MailError.offline { 1 } // ERROR "the catch here takes MailError.offline only, and this can't throw here"
   Text("{port} {bad}")
+}
+
+fn returnInDefer() -> int {
+  defer {
+    return // ERROR "return in a defer: a defer runs as its block ends"
+  }
+  defer {
+    if true { return 2 } // ERROR "return in a defer"
+  }
+  return 0
+}
+
+fn optionalTuple(t: (int, int)?) -> int {
+  let (a, b) = t else { return 0 } // ERROR "a \(int, int\)\? may be none, and a tuple pattern takes a tuple: unwrap it first"
+  return a + b
 }

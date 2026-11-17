@@ -36,7 +36,7 @@ fn optional() -> int {
 }
 
 fn throwsWrong() throws {
-  throw 3 // ERROR "throw takes an error, and a int isn't one"
+  throw 3 // ERROR "throw takes an error, and an int isn't one"
 }
 
 struct State {
@@ -51,4 +51,29 @@ async fn spawns(cb: fn() -> int) -> int {
   let u = spawn { shared + 1 } // ERROR "spawn can't use shared: it's state"
   let v = spawn { cb() } // ERROR "spawn can't use cb"
   return await t
+}
+
+// A call that misses its try, in a function that can't throw: one error
+// says both.
+fn missesTry() -> int {
+  let n = mightFail() // ERROR "mightFail can throw: call it with try \(try mightFail\(…\)\), or try\? for none on an error; and missesTry doesn't throw: mark it throws"
+  return n
+}
+
+fn mightFail() throws -> int = 1
+
+fn ticks() -> Stream<int> = Stream(send => { send(1) })
+
+async fn readTicks() {
+  for await n in ticks() { print("{n}") } // ERROR "a stream fails with what its block throws, and readTicks doesn't throw: mark it throws"
+  for n in ticks() { } // ERROR "a stream's values come over time: for await x in it"
+  for await n in [1, 2] { } // ERROR "for await goes over a stream, not a \[int\]"
+}
+
+async fn readTicksCaught() {
+  do {
+    for await n in ticks() { print("{n}") }
+  } catch e {
+    print(e.message)
+  }
 }

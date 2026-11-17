@@ -1,0 +1,28 @@
+// What can be assigned, and what each error says to do instead.
+
+struct P {
+  x: int
+}
+
+enum Shape { circle(P), dot }
+
+fn f(ps: [P], o: P?, s: Shape) {
+  let a = P(x: 1)
+  a.x = 2 // ERROR "can't assign to a: it's a let: make it a var"
+  for p in ps {
+    p.x = 9 // ERROR "can't assign to p: it's a pattern's name, a copy of what it matched"
+  }
+  if let q = o {
+    q.x = 1 // ERROR "can't assign to q: it's a pattern's name"
+  }
+  match s {
+    .circle(c) => { c.x = 1 } // ERROR "can't assign to c: it's a pattern's name"
+    .dot => { }
+  }
+  var m: [string: P] = [:]
+  m["k"]?.x = 4 // ERROR "can't assign through \?\.: unwrap it first"
+  let b = o else { return }
+  b.x = 3 // ERROR "can't assign to b: it's a let: make it a var"
+  var d = o else { return }
+  d.x = 3
+}

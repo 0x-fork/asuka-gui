@@ -32,7 +32,7 @@ fn defaults(n: int) -> int {
 fn noReturn(n: int) -> int {
   fn half(k: int) -> int {
     if k > 0 { return k / 2 }
-  } // ERROR "fn half must return a int"
+  } // ERROR "fn half must return an int"
   return half(n)
 }
 
@@ -71,4 +71,22 @@ fn selfThroughVar(n: int) -> int {
   var other: fn(int) -> int = k => 0
   other = k => k + 1
   return walk(n) + other(n)
+}
+
+// A generic local fn is said once: its type parameter isn't then an
+// unknown type in its signature or its body.
+fn genericOnce(n: int) -> int {
+  fn pick<T>( // ERROR "a fn in a block isn't generic: declare pick at the top of the file"
+    a: T,
+    b: T
+  ) -> T {
+    let c: T = a
+    return c
+  }
+  return n
+}
+
+fn closureArgs() {
+  let shout = (s: string) => s.upper()
+  let x = shout(1) // ERROR "argument 1 of shout is an int, not a string"
 }

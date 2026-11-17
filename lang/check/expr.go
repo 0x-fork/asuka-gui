@@ -1,6 +1,8 @@
 package check
 
 import (
+	"errors"
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -68,6 +70,10 @@ func (c *Checker) expr1(e syntax.Expr, want Type) Type {
 					c.info.StoreSelf[e] = cc.Comp
 					return cc.Comp.Type
 				}
+			}
+			if st := c.enclosingStatic(); st != nil {
+				c.errorf(e, "a static fn has no self: it's %s's, not a value's; take one as a parameter, or make it a method", st.name)
+				return Invalid
 			}
 			c.errorf(e, "self is only in a struct's, an enum's or a store's methods")
 			return Invalid
@@ -153,13 +159,13 @@ func (c *Checker) interpolated(x syntax.Expr, t Type) {
 		case Void:
 			c.errorf(x, "this has no value to put in a string")
 		case View, TestApp:
-			c.errorf(x, "a %s can't be put in a string", typeString(u))
+			c.errorf(x, "%s can't be put in a string", aType(u))
 		}
 	case *FuncType, *Task, *Stream, *TypeParam:
-		c.errorf(x, "a %s can't be put in a string", typeString(t))
+		c.errorf(x, "%s can't be put in a string", aType(t))
 	case *Named:
 		if u.Obj.Kind == StoreType || u.Obj.Kind == ComponentType {
-			c.errorf(x, "a %s can't be put in a string", typeString(t))
+			c.errorf(x, "%s can't be put in a string", aType(t))
 		}
 	}
 }
@@ -178,7 +184,7 @@ func (c *Checker) ident(e *syntax.Ident) Type {
 		return Invalid
 	}
 	if o == nil {
-		c.errorf(e, "unknown name %s%s", e.Name, c.suggest(e.Name))
+		c.unknownName(e)
 		return Invalid
 	}
 	c.info.Uses[e] = o
@@ -238,13 +244,39 @@ func typeValueHint(t *TypeName) string {
 	return ""
 }
 
+// unknownName reports a name that isn't in scope, saying why when it's
+// a field's or a method's where there's no self to have it.
+func (c *Checker) unknownName(e *syntax.Ident) {
+	if st := c.enclosingStatic(); st != nil && (st.Field(e.Name) != nil || st.Methods[e.Name] != nil) {
+		c.errorf(e, "%s is %s's, and a static fn has no self: take %s as a parameter, or make it a method", e.Name, st.name, aType(st.Type))
+		return
+	}
+	if d := c.defaultOf; d != nil && d.fieldIndex != nil {
+		if _, ok := d.fieldIndex[e.Name]; ok {
+			c.errorf(e, "a default can't read the struct's fields (%s): it's computed before there's a struct; a value made of others is a method, fn name() -> T = …", e.Name)
+			return
+		}
+	}
+	c.errorf(e, "unknown name %s%s", e.Name, c.suggest(e.Name))
+}
+
+// enclosingStatic is the type whose static fn is being checked, or nil.
+func (c *Checker) enclosingStatic() *TypeName {
+	for cc := c.ctx; cc != nil; cc = cc.Parent {
+		if cc.Func != nil {
+			return cc.Func.Static
+		}
+	}
+	return nil
+}
+
 // useVar notes a use of a local: from a closure, it's a capture.
 func (c *Checker) useVar(v *Var, at syntax.Node) {
 	for cc := c.ctx; cc != nil && cc != v.Ctx; cc = cc.Parent {
 		v.Captured = true
 		cc.capture(v)
 		if cc.Kind == CtxSpawn && !sendable(v.Type) {
-			c.errorf(at, "spawn can't use %s (a %s): it runs on another thread and takes values only", v.name, typeString(v.Type))
+			c.errorf(at, "spawn can't use %s (%s): it runs on another thread and takes values only", v.name, aType(v.Type))
 		}
 	}
 }
@@ -282,7 +314,7 @@ func (c *Checker) spawnState(at syntax.Node, name string) {
 func (c *Checker) spawnNotValue(at syntax.Node, name string, t Type) {
 	for cc := c.ctx; cc != nil; cc = cc.Parent {
 		if cc.Kind == CtxSpawn {
-			c.errorf(at, "spawn can't use %s (a %s): it isn't a value, and spawn runs on another thread; use it outside spawn, with what spawn returns", name, typeString(t))
+			c.errorf(at, "spawn can't use %s (%s): it isn't a value, and spawn runs on another thread; use it outside spawn, with what spawn returns", name, aType(t))
 			return
 		}
 	}
@@ -339,7 +371,8 @@ func (c *Checker) noteCall(f *Function) {
 func (c *Checker) basicLit(e *syntax.BasicLit, want Type) Type {
 	switch e.Kind {
 	case syntax.INT:
-		if _, err := ParseInt(e.Value); err != nil {
+		if _, err := ParseInt(e.Value); errors.Is(err, strconv.ErrRange) {
+			// (One that isn't a number at all, the scanner said so.)
 			c.errorf(e, "%s doesn't fit in an int (64 bits)", e.Value)
 		}
 		if w := Unopt(want); w == Float || w == Length {
@@ -535,7 +568,7 @@ func Dedent(s string) string {
 // written).
 func (c *Checker) setOf(elem Type, at syntax.Node) Type {
 	if !IsInvalid(elem) && !IsHashable(elem) {
-		c.errorf(at, "a Set's elements are ints, strings, bools or enums without payloads, not %s", typeString(elem))
+		c.errorf(at, "a Set's elements are ints, strings, bools or enums without payloads, not %s%s", typeString(elem), hashableHint(elem))
 	}
 	return &Set{elem}
 }
@@ -558,7 +591,9 @@ func (c *Checker) arrayLit(e *syntax.ArrayExpr, want Type) Type {
 	}
 	if len(e.Elems) == 0 {
 		if elem == nil {
-			c.errorf(e, "[] says nothing of its elements' type: write it, let xs: [T] = []")
+			if want != Invalid { // an invalid type said why already
+				c.errorf(e, "[] says nothing of its elements' type: write it, let xs: [T] = []")
+			}
 			return Invalid
 		}
 		return &Array{elem}
@@ -624,7 +659,9 @@ func (c *Checker) mapLit(e *syntax.MapExpr, want Type) Type {
 	}
 	if len(e.Entries) == 0 {
 		if key == nil {
-			c.errorf(e, "[:] says nothing of its keys' and values' types: write them, let m: [K: V] = [:]")
+			if want != Invalid { // an invalid type said why already
+				c.errorf(e, "[:] says nothing of its keys' and values' types: write them, let m: [K: V] = [:]")
+			}
 			return Invalid
 		}
 		return &Map{key, val}
@@ -633,7 +670,7 @@ func (c *Checker) mapLit(e *syntax.MapExpr, want Type) Type {
 		key = c.valueType(c.expr(e.Entries[0].Key, nil), e.Entries[0].Key)
 		val = c.valueType(c.expr(e.Entries[0].Value, nil), e.Entries[0].Value)
 		if !IsInvalid(key) && !IsHashable(key) {
-			c.errorf(e.Entries[0].Key, "a map's keys are ints, strings, bools or enums without payloads, not %s", typeString(key))
+			c.errorf(e.Entries[0].Key, "a map's keys are ints, strings, bools or enums without payloads, not %s%s", typeString(key), hashableHint(key))
 		}
 	}
 	for _, en := range e.Entries {
@@ -653,7 +690,9 @@ func (c *Checker) assign(e syntax.Expr, want Type, what string) Type {
 		return c.expr(e, nil)
 	}
 	if IsInvalid(want) {
-		c.expr(e, nil)
+		// What's expected is invalid (and said why): the value is
+		// checked, but what it'd need from the type isn't asked again.
+		c.expr(e, Invalid)
 		return Invalid
 	}
 	// Edges from a number or [v, h] / [t, r, b, l].
@@ -671,7 +710,7 @@ func (c *Checker) assign(e syntax.Expr, want Type, what string) Type {
 	if c.convert(e, got, want) {
 		return want
 	}
-	c.errorf(e, "%s is a %s, not a %s%s", describe(what), typeString(got), typeString(want), c.convHint(got, want))
+	c.errorf(e, "%s is %s, not %s%s", describe(what), aType(got), aType(want), c.convHint(got, want))
 	return want
 }
 
@@ -741,7 +780,7 @@ func (c *Checker) convert(e syntax.Expr, got, want Type) bool {
 				c.info.Convs[e] = want
 				return true
 			} else if _, ok := got.(*Named); ok {
-				c.errorf(e, "%s isn't a %s: %s", typeString(got), typeString(want), why)
+				c.errorf(e, "%s isn't %s: %s", typeString(got), aType(want), why)
 				return true
 			}
 		}
@@ -1143,6 +1182,9 @@ func (c *Checker) memberSuggest(t Type, name string) string {
 func (c *Checker) implicitMember(e *syntax.ImplicitMember, want Type) Type {
 	name := e.Name.Name
 	c.info.Expected[e] = want
+	if want == Invalid {
+		return Invalid // what's expected is invalid, and said why
+	}
 	w := Unopt(want)
 	switch w {
 	case nil:
@@ -1181,7 +1223,7 @@ func (c *Checker) implicitMember(e *syntax.ImplicitMember, want Type) Type {
 		c.errorf(e, "%s has no case or constant %s", typeString(w), name)
 		return Invalid
 	}
-	c.errorf(e, ".%s: a %s has no implicit members (they're an enum's cases or a type's constants)", name, typeString(w))
+	c.errorf(e, ".%s: %s has no implicit members (they're an enum's cases or a type's constants)", name, aType(w))
 	return Invalid
 }
 
@@ -1204,27 +1246,33 @@ func (c *Checker) index(e *syntax.IndexExpr) Type {
 	}
 	c.expr(e.Index, nil)
 	if !IsInvalid(xt) {
-		c.errorf(e, "a %s can't be indexed: only arrays, maps and bytes can", typeString(xt))
+		c.errorf(e, "%s can't be indexed: only arrays, maps and bytes can", aType(xt))
 	}
 	return Invalid
 }
 
-// intOperand checks an operand of a bitwise operator, which takes ints.
-func (c *Checker) intOperand(x syntax.Expr, op syntax.Token) {
+// intOperand checks an operand of a bitwise operator, which takes ints:
+// whether it's one (an invalid one, said already, isn't).
+func (c *Checker) intOperand(x syntax.Expr, op syntax.Token) bool {
 	t := c.expr(x, Int)
 	switch {
-	case IsInvalid(t) || t == Int:
+	case t == Int:
+		return true
+	case IsInvalid(t):
 	case t == Bool && (op == syntax.AMP || op == syntax.PIPE):
 		c.errorf(x, "%s takes ints, not a bool: write %s%s for bools", op, op, op)
 	default:
-		c.errorf(x, "%s takes ints, not a %s", op, typeString(t))
+		c.errorf(x, "%s takes ints, not %s", op, aType(t))
 	}
+	return false
 }
 
 func (c *Checker) unary(e *syntax.UnaryExpr, want Type) Type {
 	switch e.Op {
 	case syntax.TILDE:
-		c.intOperand(e.X, e.Op)
+		if !c.intOperand(e.X, e.Op) {
+			return Invalid
+		}
 		return Int
 	case syntax.NOT:
 		c.assign(e.X, Bool, "the operand of !")
@@ -1232,7 +1280,7 @@ func (c *Checker) unary(e *syntax.UnaryExpr, want Type) Type {
 	case syntax.SUB:
 		t := c.expr(e.X, want)
 		if !IsInvalid(t) && !IsNumeric(t) && t != Duration {
-			c.errorf(e, "- negates numbers, not a %s", typeString(t))
+			c.errorf(e, "- negates numbers, not %s", aType(t))
 			return Invalid
 		}
 		return t
@@ -1282,35 +1330,44 @@ func (c *Checker) unary(e *syntax.UnaryExpr, want Type) Type {
 
 // mayThrow reports a throw (or try) where nothing catches it.
 func (c *Checker) mayThrow(at syntax.Node) {
+	if msg := c.throwHere(at); msg != "" {
+		c.errorf(at, "%s", msg)
+	}
+}
+
+// throwHere notes that an error may leave at at, and says why it can't
+// ("" when it can).
+func (c *Checker) throwHere(at syntax.Node) string {
 	if c.handled > 0 || c.ctx == nil {
-		return
+		return ""
 	}
 	if !c.ctx.threw {
 		c.ctx.threwAt = at
 	}
 	c.ctx.threw = true
 	if c.ctx.Throws {
-		return
+		return ""
 	}
 	if c.partial != nil && c.partial.ctx == c.ctx {
 		// Inside a do or a catch whose clauses don't take every error.
-		c.errorf(at, "the catch%s here take%s %s only, and %s: add a catch e { … } for the rest%s",
+		return fmt.Sprintf("the catch%s here take%s %s only, and %s: add a catch e { … } for the rest%s",
 			map[bool]string{true: "es", false: ""}[c.partial.n > 1], map[bool]string{true: "", false: "s"}[c.partial.n > 1],
 			c.partial.what, c.cantThrow(), c.throwsHint())
-		return
 	}
 	switch c.ctx.Kind {
 	case CtxFunc, CtxMethod, CtxLocalFn:
-		c.errorf(at, "%s doesn't throw: mark it throws, or catch the error (try … catch { }, do { } catch { }, try?)", c.ctx.Name)
+		return c.ctx.Name + " doesn't throw: mark it throws, or catch the error (try … catch { }, do { } catch { }, try?)"
 	case CtxLambda:
-		c.errorf(at, "this closure doesn't throw where it's passed: catch the error (try … catch { }, do { } catch { }, try?)")
+		return "this closure doesn't throw where it's passed: catch the error (try … catch { }, do { } catch { }, try?)"
 	case CtxGlobal:
-		c.errorf(at, "a value here can't throw: catch the error (try … catch { fallback }, try?)")
+		return "a value here can't throw: catch the error (try … catch { fallback }, try?)"
 	case CtxSpawn:
 		// spawn's error is its task's.
-	default:
-		c.errorf(at, "this can't throw here: catch the error (try … catch { }, do { } catch { }, try?)")
+		return ""
+	case CtxBinding, CtxComponent, CtxStore, CtxBuilder:
+		return "what a component's body declares can't throw: give a fallback (try … catch { fallback }), or none on an error (try?)"
 	}
+	return "this can't throw here: catch the error (try … catch { }, do { } catch { }, try?)"
 }
 
 func (c *Checker) asyncHint() string {
@@ -1355,7 +1412,7 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 			return xt
 		}
 		if !c.convert(e.Y, yt, el) {
-			c.errorf(e.Y, "the default is a %s, not a %s", typeString(yt), typeString(el))
+			c.errorf(e.Y, "the default is %s, not %s", aType(yt), aType(el))
 		}
 		return el
 	case syntax.RANGE, syntax.RANGELT:
@@ -1363,8 +1420,12 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 		c.assign(e.Y, Int, "a range's end")
 		return &Array{Int}
 	case syntax.AMP, syntax.PIPE, syntax.CARET, syntax.SHL, syntax.SHR:
-		c.intOperand(e.X, e.Op)
-		c.intOperand(e.Y, e.Op)
+		// Not an int when an operand isn't one: what it's used as
+		// isn't asked again.
+		okX := c.intOperand(e.X, e.Op)
+		if !c.intOperand(e.Y, e.Op) || !okX {
+			return Invalid
+		}
 		return Int
 	}
 	// Arithmetic and comparisons: an int literal on one side takes the
@@ -1398,7 +1459,7 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 			return Bool
 		}
 		if !Identical(xt, yt) && !c.convert(e.Y, yt, xt) && !c.convert(e.X, xt, yt) {
-			c.errorf(e, "can't compare a %s with a %s", typeString(xt), typeString(yt))
+			c.errorf(e, "can't compare %s with %s", aType(xt), aType(yt))
 			return Bool
 		}
 		t := xt
@@ -1406,16 +1467,20 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 			t = yt
 		}
 		if !IsEquatable(t) {
-			c.errorf(e, "%ss can't be compared with %s", typeString(t), e.Op)
+			c.errorf(e, "%s can't be compared with %s: %s", typeString(t), e.Op, whyNotEquatable(t))
 		}
 		return Bool
 	case syntax.LSS, syntax.LEQ, syntax.GTR, syntax.GEQ:
 		if !Identical(xt, yt) {
-			c.errorf(e, "can't compare a %s with a %s", typeString(xt), typeString(yt))
+			c.errorf(e, "can't compare %s with %s", aType(xt), aType(yt))
 			return Bool
 		}
 		if !IsComparable(xt) {
-			c.errorf(e, "%ss can't be ordered with %s (ints, floats, strings and durations can)", typeString(xt), e.Op)
+			if p, ok := xt.(*TypeParam); ok {
+				c.errorf(e, "%s can't be ordered with %s: constrain it, <%s: Comparable>", p.Name, e.Op, p.Name)
+			} else {
+				c.errorf(e, "%s can't be ordered with %s: ints, floats, strings and durations can, and a struct with fn compare(o: T) -> int", typeString(xt), e.Op)
+			}
 		}
 		return Bool
 	case syntax.ADD:
@@ -1460,7 +1525,7 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 			c.errorf(e, "%s on an int and a float: make them the same, float(x) or int(x)", e.Op)
 			return Invalid
 		}
-		c.errorf(e, "%s doesn't take a %s and a %s", e.Op, typeString(xt), typeString(yt))
+		c.errorf(e, "%s doesn't take %s and %s", e.Op, aType(xt), aType(yt))
 		return Invalid
 	}
 	c.errorf(e, "unexpected operator %s", e.Op)
@@ -1590,7 +1655,10 @@ func (c *Checker) ifExpr(e *syntax.IfExpr, want Type) Type {
 	case *syntax.Block:
 		b = c.valueBlock(el, want)
 	case nil:
-		c.errorf(e, "an if that's a value needs an else")
+		if c.styleValue > 0 {
+			// Elsewhere the parser said so.
+			c.errorf(e, "an if used as a value needs an else")
+		}
 		return Invalid
 	}
 	if want != nil {
@@ -1598,7 +1666,7 @@ func (c *Checker) ifExpr(e *syntax.IfExpr, want Type) Type {
 	}
 	t := c.join(a, b)
 	if t == nil {
-		c.errorf(e, "the branches are a %s and a %s: make them the same type", typeString(a), typeString(b))
+		c.errorf(e, "the branches are %s and %s: make them the same type", aType(a), aType(b))
 		return Invalid
 	}
 	return t

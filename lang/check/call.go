@@ -23,7 +23,7 @@ func (c *Checker) call(e *syntax.CallExpr, want Type) Type {
 			return Invalid
 		}
 		if o == nil {
-			c.errorf(fn, "unknown name %s%s", fn.Name, c.suggest(fn.Name))
+			c.unknownName(fn)
 			c.checkArgsLoosely(e)
 			return Invalid
 		}
@@ -142,7 +142,7 @@ func (c *Checker) call(e *syntax.CallExpr, want Type) Type {
 		} else if w == nil {
 			c.errorf(fn, "can't tell what .%s is here: write its type, Type.%s(…)", fn.Name.Name, fn.Name.Name)
 		} else if !IsInvalid(w) {
-			c.errorf(fn, ".%s(…) makes an enum's case, and a %s isn't an enum", fn.Name.Name, typeString(w))
+			c.errorf(fn, ".%s(…) makes an enum's case, and %s isn't an enum", fn.Name.Name, aType(w))
 		}
 		c.checkArgsLoosely(e)
 		return Invalid
@@ -248,7 +248,11 @@ func (c *Checker) matchArgList(e *syntax.CallExpr, list []*syntax.Arg, params []
 			if e.Args != nil {
 				at = e.Args
 			}
-			c.errorf(at, "%s needs %s: %s", what, p.Name, typeString(p.Type))
+			if n, ok := payloadIndex(p); ok {
+				c.errorf(at, "%s needs its payload %d: %s", what, n, aType(p.Type))
+			} else {
+				c.errorf(at, "%s needs %s: %s", what, p.Name, typeString(p.Type))
+			}
 		}
 	}
 	return out
@@ -465,13 +469,15 @@ func (c *Checker) inferArgs(args []syntax.Expr, params []*Param, s Subst, free m
 				continue
 			}
 			_, isLambda := a.(*syntax.LambdaExpr)
-			if isLambda && pass == 0 {
+			if (isLambda || isEmptyLit(a)) && pass == 0 {
+				// [] and [:] say nothing of their types: the other
+				// arguments say them first (f([], 1)).
 				continue
 			}
 			pt := params[i].Type
 			leave := c.enterArg(a)
 			if !mentionsFree(pt, free, s) {
-				c.assign(a, s.Apply(pt), "argument "+params[i].Name+" of "+what)
+				c.assign(a, s.Apply(pt), argDesc(params[i])+" of "+what)
 				leave()
 				checked[i] = true
 				continue
@@ -485,6 +491,14 @@ func (c *Checker) inferArgs(args []syntax.Expr, params []*Param, s Subst, free m
 					pw = s[tp]
 				}
 			}
+			if isEmptyLit(a) && mentionsFree(pw, free, s) {
+				// Nothing tells its type: the call says so (can't tell
+				// f's type T).
+				c.expr(a, Invalid)
+				leave()
+				checked[i] = true
+				continue
+			}
 			w := pw
 			if !isLambda && mentionsFree(w, free, s) {
 				// What isn't known yet doesn't steer the argument.
@@ -494,7 +508,7 @@ func (c *Checker) inferArgs(args []syntax.Expr, params []*Param, s Subst, free m
 			leave()
 			types[i] = got
 			if !c.unify(pw, got, s, free) {
-				c.errorf(a, "argument %s of %s is a %s, which doesn't fit %s", params[i].Name, what, typeString(got), typeString(s.Apply(pt)))
+				c.errorf(a, "%s of %s is %s, which doesn't fit %s", argDesc(params[i]), what, aType(got), typeString(s.Apply(pt)))
 			}
 			checked[i] = true
 		}
@@ -508,9 +522,45 @@ func (c *Checker) inferArgs(args []syntax.Expr, params []*Param, s Subst, free m
 			continue
 		}
 		if !c.convert(a, types[i], pt) {
-			c.errorf(a, "argument %s of %s is a %s, not a %s", params[i].Name, what, typeString(types[i]), typeString(pt))
+			c.errorf(a, "%s of %s is %s, not %s", argDesc(params[i]), what, aType(types[i]), aType(pt))
 		}
 	}
+}
+
+// payloadIndex is the place (from 1) of an enum case's payload without
+// a label, which its call's params name _0, _1, ….
+func payloadIndex(p *Param) (int, bool) {
+	if len(p.Name) < 2 || p.Name[0] != '_' {
+		return 0, false
+	}
+	n := 0
+	for _, r := range p.Name[1:] {
+		if r < '0' || r > '9' {
+			return 0, false
+		}
+		n = n*10 + int(r-'0')
+	}
+	return n + 1, true
+}
+
+// argDesc names a parameter's argument in a message: argument title, or
+// payload 2 (a case's without a label).
+func argDesc(p *Param) string {
+	if n, ok := payloadIndex(p); ok {
+		return "payload " + itoa(n)
+	}
+	return "argument " + p.Name
+}
+
+// isEmptyLit reports [] or [:], which say nothing of their types.
+func isEmptyLit(e syntax.Expr) bool {
+	switch e := unparen(e).(type) {
+	case *syntax.ArrayExpr:
+		return len(e.Elems) == 0
+	case *syntax.MapExpr:
+		return len(e.Entries) == 0
+	}
+	return false
 }
 
 // ---------------------------------------------------------------------
@@ -560,6 +610,7 @@ func (c *Checker) funcCallInfo(e *syntax.CallExpr, f *Function, recv syntax.Expr
 		if t == nil {
 			c.errorf(e, "can't tell %s's type %s from its arguments: pass them, or say what's expected (let x: T = %s(…))", what, tp.Name, what)
 			t = Invalid
+			s[tp] = Invalid
 		} else {
 			c.checkConstraints(e, what, tp, t)
 		}
@@ -570,6 +621,11 @@ func (c *Checker) funcCallInfo(e *syntax.CallExpr, f *Function, recv syntax.Expr
 	c.callEffects(e, what, f.Sig.Async, f.Sig.Throws)
 	if len(f.TypeParams) > 0 {
 		c.genericCalls = append(c.genericCalls, genericCall{e: e, f: f, args: call.TypeArgs, encl: c.enclosingFunc(), own: c.enclosingParams()})
+		c.noteInstance(e, what, f.TypeParams, call.TypeArgs)
+	}
+	if n, ok := recvType.(*Named); ok && f.Recv != nil && n.Obj == f.Recv {
+		// A generic type's method: compiled for its receiver's arguments.
+		c.noteInstance(e, f.Recv.name, f.Recv.TypeParams, n.Args)
 	}
 	return call
 }
@@ -783,26 +839,35 @@ type inferredFx struct {
 // callEffectsWhy is callEffects for a call of a closure whose effects
 // came from its body (fx, or nil): the errors say where.
 func (c *Checker) callEffectsWhy(at syntax.Node, what string, async, throws bool, fx *inferredFx) {
-	if async {
-		if c.inAwait == 0 {
-			why := ""
-			if fx != nil && fx.awaitAt.IsValid() {
-				why = fmt.Sprintf("; it's async because it awaits at %s (if it's meant to be, mark it: %s)", c.where(fx.awaitAt), fx.markedAsync())
-			}
-			if c.ctx != nil && c.ctx.Async {
-				c.errorf(at, "%s is async: await it (await %s(…)), or start it with spawn%s", what, what, why)
-			} else {
-				c.errorf(at, "%s is async, and this can't wait: %s%s", what, c.asyncHint(), why)
-			}
+	missAwait := async && c.inAwait == 0
+	missTry := throws && c.inTry == 0
+	awaitWhy, throwWhy := "", ""
+	if missAwait && fx != nil && fx.awaitAt.IsValid() {
+		awaitWhy = fmt.Sprintf("; it's async because it awaits at %s (if it's meant to be, mark it: %s)", c.where(fx.awaitAt), fx.markedAsync())
+	}
+	if missTry && fx != nil && fx.threwAt != nil {
+		throwWhy = fmt.Sprintf("; it can throw because of %s at %s", throwCause(fx.threwAt), c.where(fx.threwAt.Range().Start))
+	}
+	// One error for the call: what it misses, and what a try would then
+	// need of what's around it.
+	also := ""
+	if missTry {
+		if msg := c.throwHere(at); msg != "" {
+			also = "; and " + msg
 		}
 	}
-	if throws && c.inTry == 0 {
-		why := ""
-		if fx != nil && fx.threwAt != nil {
-			why = fmt.Sprintf("; it can throw because of %s at %s", throwCause(fx.threwAt), c.where(fx.threwAt.Range().Start))
-		}
-		c.errorf(at, "%s can throw: call it with try (try %s(…)), or try? for none on an error%s", what, what, why)
-		c.mayThrow(at)
+	canWait := c.ctx != nil && c.ctx.Async
+	switch {
+	case missAwait && missTry && canWait:
+		c.errorf(at, "%s is async and can throw: call it with try await (try await %s(…)), or try? await for none on an error%s%s%s", what, what, awaitWhy, throwWhy, also)
+	case missAwait && missTry:
+		c.errorf(at, "%s is async and can throw, and this can't wait: %s%s%s%s", what, c.asyncHint(), awaitWhy, throwWhy, also)
+	case missAwait && canWait:
+		c.errorf(at, "%s is async: await it (await %s(…)), or start it with spawn%s", what, what, awaitWhy)
+	case missAwait:
+		c.errorf(at, "%s is async, and this can't wait: %s%s", what, c.asyncHint(), awaitWhy)
+	case missTry:
+		c.errorf(at, "%s can throw: call it with try (try %s(…)), or try? for none on an error%s%s", what, what, throwWhy, also)
 	}
 }
 
@@ -865,7 +930,7 @@ func (c *Checker) closureCall(e *syntax.CallExpr, fun syntax.Expr, t Type) Type 
 	}
 	ft, ok := t.(*FuncType)
 	if !ok {
-		c.errorf(fun, "%s is a %s, not a function", exprName(fun), typeString(t))
+		c.errorf(fun, "%s is %s, not a function", exprName(fun), aType(t))
 		c.checkArgsLoosely(e)
 		return Invalid
 	}
@@ -876,7 +941,11 @@ func (c *Checker) closureCall(e *syntax.CallExpr, fun syntax.Expr, t Type) Type 
 				c.errorf(a.Label, "a function value's arguments have no names")
 			}
 			if i < len(ft.Params) {
-				c.assign(a.Value, ft.Params[i], "argument "+itoa(i+1))
+				what := "argument " + itoa(i+1)
+				if n := exprName(fun); n != "this" {
+					what += " of " + n
+				}
+				c.assign(a.Value, ft.Params[i], what)
 			} else {
 				c.expr(a.Value, nil)
 			}
@@ -1249,7 +1318,7 @@ func (c *Checker) caseCall(e *syntax.CallExpr, tn *TypeName, k *Case, want Type)
 	for i, p := range k.Params {
 		name := k.Labels[i]
 		if name == "" {
-			name = "_" + itoa(i)
+			name = "_" + itoa(i) // payloadIndex's
 		}
 		params[i] = &Param{Name: name, Type: p}
 		// A labeled payload with a zero value may be left out: it's
@@ -1296,7 +1365,7 @@ func (c *Checker) storeCall(e *syntax.CallExpr, tn *TypeName, want Type) Type {
 	if len(tn.TypeParams) == 0 {
 		for i, a := range args {
 			if a != nil {
-				c.bindingArg(a, params[i].Type, "argument "+params[i].Name+" of "+tn.name)
+				c.bindingArg(a, params[i].Type, argDesc(params[i])+" of "+tn.name)
 			}
 		}
 		c.info.Calls[e] = &Call{Kind: CallStore, Type: tn.Type.(*Named), Args: args, Params: params, Result: tn.Type}
@@ -1330,6 +1399,7 @@ func (c *Checker) storeCall(e *syntax.CallExpr, tn *TypeName, want Type) Type {
 	}
 	c.info.Calls[e] = &Call{Kind: CallStore, Type: n, Args: args, Params: inst, Result: n}
 	c.genericCalls = append(c.genericCalls, genericCall{e: e, store: tn, args: n.Args, encl: c.enclosingFunc(), own: c.enclosingParams()})
+	c.noteInstance(e, tn.name, tn.TypeParams, n.Args)
 	return n
 }
 
@@ -1373,7 +1443,7 @@ func (c *Checker) lambda(e *syntax.LambdaExpr, want Type) Type {
 	marked := e.Async.IsValid()
 	if wf != nil {
 		if marked && !wf.Async {
-			c.errorPos(e.Async, "this closure is async, where a %s is expected, which can't wait: remove async (and the awaits in it)", typeString(wf))
+			c.errorPos(e.Async, "this closure is async, where %s is expected, which can't wait: remove async (and the awaits in it)", aType(wf))
 		}
 		// Marked async where a sync function is expected: an error, and
 		// its body may still await (no second error for each await).
@@ -1401,7 +1471,7 @@ func (c *Checker) lambda(e *syntax.LambdaExpr, want Type) Type {
 				if j := c.join(ft.Result, r); j != nil {
 					ft.Result = j
 				} else {
-					c.errorf(body, "this closure's value is a %s, and it returns a %s: make them the same type", typeString(ft.Result), typeString(r))
+					c.errorf(body, "this closure's value is %s, and it returns %s: make them the same type", aType(ft.Result), aType(r))
 					break
 				}
 			}
@@ -1428,7 +1498,7 @@ func (c *Checker) lambda(e *syntax.LambdaExpr, want Type) Type {
 		} else {
 			ft.Result = ctx.Result
 			if ctx.Result != Void && !c.terminates(body.Items) {
-				c.errorPos(body.Rbrace, "this closure must return a %s: it can reach its end without a return", typeString(ctx.Result))
+				c.errorPos(body.Rbrace, "this closure must return %s: it can reach its end without a return", aType(ctx.Result))
 			}
 		}
 	}
@@ -1474,7 +1544,7 @@ func (c *Checker) spawn(e *syntax.SpawnExpr) Type {
 		}
 	}
 	if !sendable(res) {
-		c.errorf(e, "spawn's result is a %s, which can't cross threads: return values only", typeString(res))
+		c.errorf(e, "spawn's result is %s, which can't cross threads: return values only", aType(res))
 	}
 	ctx.Result = res
 	c.leave(saved)

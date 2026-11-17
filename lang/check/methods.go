@@ -539,7 +539,7 @@ func (m *Method) requires(s Subst) string {
 	switch m.Needs {
 	case "Equatable":
 		if !IsEquatable(t) {
-			return "compares elements, and " + typeString(t) + "s can't be compared"
+			return "compares elements, and " + typeString(t) + " can't be compared: " + whyNotEquatable(t)
 		}
 	case "Comparable":
 		if t != Int && t != Float && t != String && t != Duration {

@@ -126,7 +126,7 @@ func (c *Checker) screenAt(t *TypeName) {
 	}
 	for _, m := range comp.Params {
 		if !routable(c.memberType(m)) {
-			c.errorf(m.Decl, "%s is routed, and its parameter %s is a %s: an address says ints, floats, bools, strings and enums' cases", t.name, m.name, typeString(m.Type))
+			c.errorf(m.Decl, "%s is routed, and its parameter %s is %s: an address says ints, floats, bools, strings and enums' cases", t.name, m.name, aType(m.Type))
 		}
 	}
 }
@@ -207,7 +207,7 @@ func (c *Checker) routeBuilder(lam *syntax.LambdaExpr, it syntax.Item, ec *Eleme
 	for i, p := range lam.Params {
 		if p.Type != nil {
 			if t := c.typeExpr(p.Type); !IsInvalid(t) && !Identical(t, pt.Type) {
-				c.errorf(p.Type, "a Route's screen takes its Params, not a %s", typeString(t))
+				c.errorf(p.Type, "a Route's screen takes its Params, not %s", aType(t))
 			}
 		}
 		if i > 0 {
@@ -354,7 +354,7 @@ func (c *Checker) builderLambda(lam *syntax.LambdaExpr, ft *FuncType, what strin
 		}
 		if p.Type != nil {
 			if t := c.typeExpr(p.Type); !IsInvalid(t) && !Identical(t, ft.Params[i]) {
-				c.errorf(p.Type, "%s's parameter is a %s, not a %s", what, typeString(ft.Params[i]), typeString(t))
+				c.errorf(p.Type, "%s's parameter is %s, not %s", what, aType(ft.Params[i]), aType(t))
 			}
 		}
 		v := c.declareVar(p.Name, ft.Params[i], false)

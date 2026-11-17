@@ -90,7 +90,7 @@ func (c *Checker) embedCall(e *syntax.CallExpr, b *Builtin, call *Call, want Typ
 			c.errorf(e, "embed.json needs to know what it reads: embed.json<T>(path), or say what's expected, let config: Config = embed.json(path)")
 			result = Invalid
 		} else if why := c.jsonable(result); why != "" && !IsInvalid(result) {
-			c.errorf(e, "json can't read a %s: %s", typeString(result), why)
+			c.errorf(e, "json can't read %s: %s", aType(result), why)
 			return result
 		}
 	} else if len(e.TypeArgs) > 0 {
@@ -143,7 +143,7 @@ func (c *Checker) embedCall(e *syntax.CallExpr, b *Builtin, call *Call, want Typ
 	}
 	if b.ID == BEmbedJSON && !IsInvalid(result) {
 		if err := checkJSON(string(data), result); err != nil {
-			c.errorf(a, "%s doesn't fit a %s: %s:%v", name, typeString(result), slash, err)
+			c.errorf(a, "%s doesn't fit %s: %s:%v", name, aType(result), slash, err)
 		}
 	}
 	c.info.Embedded[e] = string(data)

@@ -57,3 +57,10 @@ fn boxes() {
 }
 
 fn written(b: Box<Point>) {} // ERROR "Box's T must be Shape, and Point isn't"
+
+struct Holder<T> {
+  v: T
+
+  fn same(o: T) -> bool = v == o // ERROR "T can't be compared with ==: constrain it, <T: Equatable>"
+  fn less(o: T) -> bool = v < o // ERROR "T can't be ordered with <: constrain it, <T: Comparable>"
+}

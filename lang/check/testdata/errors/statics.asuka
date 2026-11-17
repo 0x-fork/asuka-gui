@@ -1,0 +1,17 @@
+// A static fn is its type's, with no self.
+
+struct Money {
+  cents: int
+
+  fn doubled() -> Money = Money(cents: cents * 2)
+  static fn of(dollars: int) -> Money = Money(cents: dollars * 100)
+  static fn copy() -> Money = self // ERROR "a static fn has no self: it's Money's, not a value's"
+  static fn more() -> int = cents + 1 // ERROR "cents is Money's, and a static fn has no self: take a Money as a parameter"
+  static fn twice() -> Money = doubled() // ERROR "doubled is Money's, and a static fn has no self"
+  static fn fine(m: Money) -> Money = m.doubled()
+}
+
+fn notInAType() -> int {
+  let x = self // ERROR "self is only in a struct's, an enum's or a store's methods"
+  return 0
+}

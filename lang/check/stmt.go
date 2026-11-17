@@ -158,7 +158,13 @@ func notStatementHint(it syntax.Item) string {
 func (c *Checker) letStmt(d *syntax.LetDecl) {
 	var t Type
 	if d.Value == nil {
-		c.errorf(d, "a let needs a value")
+		// The parser said so (expected '=' and a value); the names are
+		// still declared, so their uses don't say they're unknown.
+		t = Invalid
+		if d.Type != nil {
+			t = c.typeExpr(d.Type)
+		}
+		c.bindIrrefutable(d.Pattern, t, d.Keyword == syntax.VAR, true)
 		return
 	}
 	if d.Else != nil {
@@ -172,7 +178,7 @@ func (c *Checker) letStmt(d *syntax.LetDecl) {
 		t = c.valueType(c.expr(d.Value, nil), d.Value)
 	}
 	c.info.Lets[d] = t
-	c.bindIrrefutable(d.Pattern, t, d.Keyword == syntax.VAR)
+	c.bindIrrefutable(d.Pattern, t, d.Keyword == syntax.VAR, true)
 	if fx := c.inferredFx[t]; fx != nil && fx.letName == "" {
 		if bp, ok := d.Pattern.(*syntax.BindPat); ok && unparen(d.Value) == syntax.Expr(fx.lambda) {
 			fx.letName = d.Keyword.String() + " " + bp.Name.Name
@@ -180,30 +186,38 @@ func (c *Checker) letStmt(d *syntax.LetDecl) {
 	}
 }
 
-// bindIrrefutable binds a let's or a for's pattern: names, _ and
+// bindIrrefutable binds a let's (let) or a for's pattern: names, _ and
 // tuples of them.
-func (c *Checker) bindIrrefutable(p syntax.Pattern, t Type, mutable bool) {
+func (c *Checker) bindIrrefutable(p syntax.Pattern, t Type, mutable, let bool) {
 	switch p := p.(type) {
 	case *syntax.BindPat:
-		c.declareVar(p.Name, t, mutable)
+		c.declareVar(p.Name, t, mutable).Bound = !let
 	case *syntax.WildcardPat:
 	case *syntax.TuplePat:
 		tt, ok := t.(*Tuple)
 		if !ok || len(tt.Elems) != len(p.Elems) {
 			if !IsInvalid(t) {
-				c.errorf(p, "a %s isn't a tuple of %d", typeString(t), len(p.Elems))
+				c.errorf(p, "%s", notTuple(t, len(p.Elems)))
 			}
 			for _, e := range p.Elems {
-				c.bindIrrefutable(e, Invalid, mutable)
+				c.bindIrrefutable(e, Invalid, mutable, let)
 			}
 			return
 		}
 		for i, e := range p.Elems {
-			c.bindIrrefutable(e, tt.Elems[i], mutable)
+			c.bindIrrefutable(e, tt.Elems[i], mutable, let)
 		}
 	default:
 		c.errorf(p, "a let binds names (let x = …, let (a, b) = …); to match, use if let or match")
 	}
+}
+
+// notTuple says why a tuple pattern of n doesn't fit t.
+func notTuple(t Type, n int) string {
+	if tt, ok := Unopt(t).(*Tuple); ok && IsOptional(t) && len(tt.Elems) == n {
+		return aType(t) + " may be none, and a tuple pattern takes a tuple: unwrap it first (let pair = x else { … }, then let (a, b) = pair)"
+	}
+	return aType(t) + " isn't a tuple of " + itoa(n)
 }
 
 func (c *Checker) assignStmt(s *syntax.AssignStmt) {
@@ -243,9 +257,9 @@ func (c *Checker) assignStmt(s *syntax.AssignStmt) {
 		switch {
 		case s.Op.AssignOp().IsBitwise():
 			if lt != Int {
-				c.errorf(s.Target, "%s= takes ints, not a %s", op, typeString(lt))
+				c.errorf(s.Target, "%s= takes ints, not %s", op, aType(lt))
 			} else if vt != Int {
-				c.errorf(s.Value, "%s= takes ints, not a %s", op, typeString(vt))
+				c.errorf(s.Value, "%s= takes ints, not %s", op, aType(vt))
 			}
 		case IsNumeric(lt) && Identical(lt, vt):
 		case lt == String && vt == String && s.Op == syntax.ADD_ASSIGN:
@@ -255,7 +269,7 @@ func (c *Checker) assignStmt(s *syntax.AssignStmt) {
 			if _, ok := lt.(*Array); ok && Identical(lt, vt) && s.Op == syntax.ADD_ASSIGN {
 				return
 			}
-			c.errorf(s, "%s= doesn't take a %s and a %s", op, typeString(lt), typeString(vt))
+			c.errorf(s, "%s= doesn't take %s and %s", op, aType(lt), aType(vt))
 		}
 	}
 }
@@ -291,6 +305,9 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 		case *Var:
 			if o.Kind != LocalVar || !o.Mutable {
 				hint := "it's a let: make it a var"
+				if o.Bound && o.Kind == LocalVar {
+					hint = "it's a pattern's name, a copy of what it matched (a for's element, an if let's value): copy it into a var, or change what it came from"
+				}
 				if o.Kind == RowItem {
 					hint = "it's a row's item: change the state it comes from"
 				} else if o.Kind == SelfVar {
@@ -350,7 +367,7 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 			return
 		}
 		if sel.Optional {
-			c.errorf(x, "can't %s through ?.: unwrap it first (if let)", what)
+			c.errorf(x, "can't %s through ?.: unwrap it first (if let)", strings.TrimSuffix(what, " to"))
 			return
 		}
 		switch sel.Kind {
@@ -413,6 +430,7 @@ func (c *Checker) letCondPattern(lc *syntax.LetCond, t Type, kind VarKind) {
 		}
 		v := c.declareVar(bp.Name, Unopt(t), false)
 		v.Kind = kind
+		v.Bound = true
 		return
 	}
 	c.pattern(lc.Pattern, t, kind)
@@ -465,8 +483,10 @@ func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
 		default:
 			if t == String {
 				c.errorf(s.Seq, "a string isn't a list: go over its characters, s.chars()")
+			} else if _, ok := t.(*Stream); ok {
+				c.errorf(s.Seq, "a stream's values come over time: for await x in it (in an async fn, a task or a handler)")
 			} else if !IsInvalid(t) {
-				c.errorf(s.Seq, "for goes over an array, a set, a map or a range, not a %s", typeString(t))
+				c.errorf(s.Seq, "for goes over an array, a set, a map or a range, not %s", aType(t))
 			}
 			fi.Kind, fi.Elem = ForArray, Invalid
 		}
@@ -485,7 +505,7 @@ func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
 		c.forBindings(fi, s.Pattern, LocalVar, kc)
 		kt := c.expr(s.Key, nil)
 		if !IsInvalid(kt) && !IsHashable(kt) {
-			c.errorf(s.Key, "a key is an int, a string or an enum without payloads, not a %s", typeString(kt))
+			c.errorf(s.Key, "a key is an int, a string or an enum without payloads, not %s", aType(kt))
 		}
 		kc.Result = kt
 		c.leave(saved)
@@ -516,6 +536,7 @@ func (c *Checker) forBindings(fi *ForInfo, p syntax.Pattern, kind VarKind, ctx *
 		case *syntax.BindPat:
 			v := c.declareVar(p.Name, t, false)
 			v.Kind = kind
+			v.Bound = true
 			if ctx != nil {
 				ctx.Params = append(ctx.Params, v)
 			}
@@ -532,7 +553,7 @@ func (c *Checker) forBindings(fi *ForInfo, p syntax.Pattern, kind VarKind, ctx *
 				return nil
 			}
 			v := &Var{object: object{"_", p.Start}, Type: t, Ctx: c.ctx}
-			c.bindIrrefutable(p, t, false)
+			c.bindIrrefutable(p, t, false, false)
 			return v
 		}
 		c.errorf(p, "for binds a name, _ or a tuple of names")
@@ -588,6 +609,10 @@ func (c *Checker) returnStmt(s *syntax.ReturnStmt) { c.returnValue(s, s.Value) }
 func (c *Checker) returnValue(s syntax.Node, value syntax.Expr) {
 	if c.inDefer > 0 {
 		c.errorf(s, "return in a defer: a defer runs as its block ends, and can't change how")
+		if value != nil {
+			c.expr(value, nil) // checked, but not as the result: there's none
+		}
+		return
 	}
 	ctx := c.ctx
 	if ctx == nil {
@@ -612,7 +637,7 @@ func (c *Checker) returnValue(s syntax.Node, value syntax.Expr) {
 	}
 	switch {
 	case value == nil && res != Void:
-		c.errorf(s, "return needs a %s", typeString(res))
+		c.errorf(s, "return needs %s", aType(res))
 	case value != nil && res == Void:
 		c.expr(value, nil)
 		c.errorf(value, "%s returns nothing: drop the value, or declare a result (-> T)", ctxLabel(ctx))
@@ -786,6 +811,7 @@ func (c *Checker) pattern(p syntax.Pattern, t Type, kind VarKind) {
 	case *syntax.BindPat:
 		v := c.declareVar(p.Name, t, false)
 		v.Kind = kind
+		v.Bound = true
 	case *syntax.LitPat:
 		// A literal is compared with an optional's value, once it isn't
 		// none: it's of the value's type (not converted to the optional).
@@ -795,13 +821,13 @@ func (c *Checker) pattern(p syntax.Pattern, t Type, kind VarKind) {
 		}
 		lt := c.expr(p.Value, et)
 		if !IsInvalid(lt) && !IsInvalid(t) && !c.convert(p.Value, lt, et) && !(lt == NoneType && IsOptional(t)) {
-			c.errorf(p, "a %s can't be a %s", typeString(t), typeString(lt))
+			c.errorf(p, "%s can't be %s", aType(t), aType(lt))
 		}
 	case *syntax.TuplePat:
 		tt, ok := t.(*Tuple)
 		if !ok || len(tt.Elems) != len(p.Elems) {
 			if !IsInvalid(t) {
-				c.errorf(p, "a %s isn't a tuple of %d", typeString(t), len(p.Elems))
+				c.errorf(p, "%s", notTuple(t, len(p.Elems)))
 			}
 			for _, e := range p.Elems {
 				c.pattern(e, Invalid, kind)
@@ -812,12 +838,25 @@ func (c *Checker) pattern(p syntax.Pattern, t Type, kind VarKind) {
 			c.pattern(e, tt.Elems[i], kind)
 		}
 	case *syntax.OrPat:
-		for _, a := range p.Alts {
-			before := len(c.scope.names)
+		// Each alternative's names in a scope of its own: said once, and
+		// the first's kept, so the arm's uses of them aren't unknown.
+		saved := c.scope
+		binds := false
+		for i, a := range p.Alts {
+			c.scope = NewScope(saved)
 			c.pattern(a, t, kind)
-			if len(c.scope.names) != before {
-				c.errorf(a, "a | pattern can't bind names: match the cases in arms of their own")
+			if len(c.scope.names) > 0 {
+				binds = true
+				if i == 0 {
+					for _, o := range c.scope.names {
+						saved.Insert(o)
+					}
+				}
 			}
+		}
+		c.scope = saved
+		if binds {
+			c.errorf(p, "a | pattern can't bind names: match the cases in arms of their own")
 		}
 	case *syntax.CasePat:
 		if st := c.patternStruct(p); st != nil {
@@ -830,7 +869,7 @@ func (c *Checker) pattern(p syntax.Pattern, t Type, kind VarKind) {
 			n, ok := et.(*Named)
 			if !ok || n.Obj.Kind != EnumType {
 				if !IsInvalid(t) {
-					c.errorf(p, ".%s: a %s isn't an enum", p.Path[0].Name, typeString(t))
+					c.errorf(p, ".%s: %s isn't an enum", p.Path[0].Name, aType(t))
 				}
 				return
 			}
@@ -862,7 +901,7 @@ func (c *Checker) pattern(p syntax.Pattern, t Type, kind VarKind) {
 			}
 			if n, ok := et.(*Named); !ok || n.Obj != tn {
 				if !IsInvalid(t) {
-					c.errorf(p, "a %s can't be a %s", typeString(t), tn.name)
+					c.errorf(p, "%s can't be a %s", aType(t), tn.name)
 				}
 				return
 			}
@@ -930,6 +969,26 @@ func irrefutable(p syntax.Pattern) bool {
 	return false
 }
 
+// notCovered says what a match misses (exhaustive's witnesses), and
+// how to cover it.
+func notCovered(missing []string, arms []*syntax.MatchArm, rest string) string {
+	var msg string
+	switch {
+	case len(missing) == 1 && missing[0] == "the rest":
+		msg = "match doesn't cover every value: end it with " + rest
+	case len(missing) == 1:
+		msg = "match doesn't cover " + missing[0] + ": add an arm for it, or " + rest
+	default:
+		msg = "match doesn't cover " + strings.Join(missing, ", ") + ": add arms for them, or " + rest
+	}
+	for _, a := range arms {
+		if a.Guard != nil {
+			return msg + " (an arm with an if guard covers nothing: its guard may not hold)"
+		}
+	}
+	return msg
+}
+
 func (c *Checker) matchStmt(s *syntax.MatchStmt) {
 	t := c.expr(s.Subject, nil)
 	mi := &MatchInfo{Subject: t}
@@ -951,7 +1010,7 @@ func (c *Checker) matchStmt(s *syntax.MatchStmt) {
 	ok, missing := c.exhaustive(s.Subject, t, s.Arms)
 	mi.Exhaustive = ok
 	if !ok {
-		c.errorf(s, "match doesn't cover %s: add arms for them, or _ => { }", strings.Join(missing, ", "))
+		c.errorf(s, "%s", notCovered(missing, s.Arms, "_ => { }"))
 	}
 }
 
@@ -983,13 +1042,13 @@ func (c *Checker) matchExpr(e *syntax.MatchExpr, want Type) Type {
 		} else if j := c.join(res, at); j != nil {
 			res = j
 		} else {
-			c.errorf(a, "this arm is a %s, the ones before a %s: make them the same type", typeString(at), typeString(res))
+			c.errorf(a, "this arm is %s, the ones before %s: make them the same type", aType(at), aType(res))
 		}
 	}
 	ok, missing := c.exhaustive(e.Subject, t, e.Arms)
 	mi.Exhaustive = ok
 	if !ok {
-		c.errorf(e, "match doesn't cover %s: add arms for them, or _ =>", strings.Join(missing, ", "))
+		c.errorf(e, "%s", notCovered(missing, e.Arms, "_ =>"))
 	}
 	if want != nil {
 		return want
@@ -1094,16 +1153,18 @@ func (c *Checker) forAwait(s *syntax.ForStmt, fi *ForInfo, view bool) {
 	t := c.expr(s.Seq, nil)
 	if st, ok := t.(*Stream); ok {
 		fi.Elem = st.Elem
+		if msg := c.throwHere(s.Seq); msg != "" {
+			c.errorf(s.Seq, "a stream fails with what its block throws, and %s", msg)
+		}
 	} else {
 		if !IsInvalid(t) {
-			c.errorf(s.Seq, "for await goes over a stream, not a %s (for goes over arrays)", typeString(t))
+			c.errorf(s.Seq, "for await goes over a stream, not %s (for goes over arrays)", aType(t))
 		}
 		fi.Elem = Invalid
 	}
 	if s.Key != nil {
 		c.errorf(s.Key, "key is for a for in a view")
 	}
-	c.mayThrow(s.Seq)
 	c.openScope()
 	c.forBindings(fi, s.Pattern, LocalVar, nil)
 	c.loops++
@@ -1156,7 +1217,7 @@ func (c *Checker) letElse(d *syntax.LetDecl) {
 		return
 	}
 	if isIrrefutablePattern(d.Pattern) && !IsOptional(t) && !IsInvalid(t) {
-		c.errorf(d.Pattern, "this pattern always matches a %s: drop the else", typeString(t))
+		c.errorf(d.Pattern, "this pattern always matches %s: drop the else", aType(t))
 	}
 	if d.Keyword == syntax.VAR {
 		c.errorf(d, "var … else binds a name: var x = optional else { … }; a pattern's names are lets")
@@ -1185,7 +1246,7 @@ func isIrrefutablePattern(p syntax.Pattern) bool {
 func (c *Checker) throwValue(s syntax.Node, value syntax.Expr) {
 	t := c.expr(value, c.errT.Type)
 	if !IsInvalid(t) && !IsErrorType(t) {
-		c.errorf(value, "throw takes an error, and a %s isn't one (declare it: struct %s: Error, or throw Error(\"…\"))", typeString(t), typeString(t))
+		c.errorf(value, "throw takes an error, and %s isn't one (declare it: struct %s: Error, or throw Error(\"…\"))", aType(t), typeString(t))
 	}
 	c.mayThrow(s)
 }
@@ -1344,7 +1405,7 @@ func (c *Checker) fallback(cl *syntax.CatchClause, t Type) {
 	b := cl.Body
 	n := len(b.Items)
 	if n == 0 {
-		c.errorPos(b.Lbrace, "this catch has no value: end it with a %s, or leave (return, throw)", typeString(t))
+		c.errorPos(b.Lbrace, "this catch has no value: end it with %s, or leave (return, throw)", aType(t))
 		return
 	}
 	c.openScope()
@@ -1354,17 +1415,17 @@ func (c *Checker) fallback(cl *syntax.CatchClause, t Type) {
 	if es, ok := last.(*syntax.ExprStmt); ok {
 		got := c.expr(es.X, t)
 		if got == Void && !IsInvalid(t) {
-			c.errorf(es.X, "this catch has no value (it's void): end it with a %s, or leave (return, throw)", typeString(t))
+			c.errorf(es.X, "this catch has no value (it's void): end it with %s, or leave (return, throw)", aType(t))
 			return
 		}
 		if !c.convert(es.X, got, t) {
-			c.errorf(es.X, "the catch's value is a %s, and the try's a %s: make them the same type%s", typeString(got), typeString(t), c.convHint(got, t))
+			c.errorf(es.X, "the catch's value is %s, and the try's %s: make them the same type%s", aType(got), aType(t), c.convHint(got, t))
 		}
 		return
 	}
 	c.stmt(last)
 	if !c.terminates(b.Items) {
-		c.errorf(last, "this catch has no value: end it with a %s, or leave (return, throw)", typeString(t))
+		c.errorf(last, "this catch has no value: end it with %s, or leave (return, throw)", aType(t))
 	}
 }
 
@@ -1415,7 +1476,10 @@ func (c *Checker) localFns(items []syntax.Item) {
 		case d.Body == nil && d.Value == nil:
 			c.errorf(d.Name, "fn %s has no body", d.Name.Name)
 		}
+		c.openScope()
+		c.invalidTypeParams(d.TypeParams)
 		sig := c.signature(d, nil)
+		c.closeScope()
 		for i, p := range sig.Params {
 			if p.Default != nil {
 				c.errorf(d.Params.List[i].Default, "a fn in a block takes its arguments in order, without defaults: declare %s at the top of the file for a default", d.Name.Name)
@@ -1447,6 +1511,7 @@ func (c *Checker) localFnBody(lf *LocalFn) {
 	c.partial = nil
 	ctx := c.enter(CtxLocalFn, d, d.Name.Name)
 	lf.Ctx = ctx
+	c.invalidTypeParams(d.TypeParams)
 	ctx.Async, ctx.Throws, ctx.Result = lf.Sig.Async, lf.Sig.Throws, lf.Sig.Result
 	for i, p := range lf.Sig.Params {
 		v := c.declareVar(d.Params.List[i].Name, p.Type, false)
@@ -1463,12 +1528,21 @@ func (c *Checker) localFnBody(lf *LocalFn) {
 	case d.Body != nil:
 		c.stmts(d.Body.Items)
 		if ctx.Result != Void && !c.terminates(d.Body.Items) {
-			c.errorPos(d.Body.Rbrace, "fn %s must return a %s: it can reach its end without a return", d.Name.Name, typeString(ctx.Result))
+			c.errorPos(d.Body.Rbrace, "fn %s must return %s: it can reach its end without a return", d.Name.Name, aType(ctx.Result))
 		}
 	}
 	c.leave(saved)
 	c.inTry, c.inAwait, c.handled, c.loops, c.view, c.inDefer = savedTry, savedAwait, savedHandled, savedLoops, savedView, savedInDefer
 	c.partial = savedPartial
+}
+
+// invalidTypeParams declares the type parameters a local fn can't have
+// (said already) as invalid types: its signature and body don't say
+// they're unknown.
+func (c *Checker) invalidTypeParams(tps []*syntax.TypeParam) {
+	for _, p := range tps {
+		c.scope.Insert(&TypeName{object: object{p.Name.Name, p.Name.Start}, Kind: ParamType, Type: Invalid, resolved: true})
+	}
 }
 
 // finishLocalFns works out what each group of local fns captures: what

@@ -1,0 +1,58 @@
+// Types that hold themselves: an alias never can, a struct only through
+// an optional, an array, a map, an enum or a function.
+
+type X = X // ERROR "type X is defined in terms of itself"
+type L = [L] // ERROR "type L is defined in terms of itself"
+type A = (int, B) // ERROR "type A is defined in terms of itself"
+type B = [A]
+type F = fn(int) -> F // ERROR "type F is defined in terms of itself"
+type Pair<T> = (T, T)
+type PP = Pair<PP> // ERROR "type PP is defined in terms of itself"
+type Ints = Pair<int>
+type Tree = Node
+
+struct Node {
+  kids: [Tree]
+  next: Node?
+  byName: [string: Node]
+  make: fn() -> Node
+}
+
+struct P { q: Q } // ERROR "struct P holds itself \(P.q → Q.p\)"
+struct Q { p: P }
+struct S { s: S } // ERROR "struct S holds itself \(S.s\).*\(s: S\?\)"
+struct T { pair: (int, T) } // ERROR "struct T holds itself"
+struct W<V> { v: V }
+struct U { w: W<U> } // ERROR "struct U holds itself \(U.w → W.v\)"
+struct G<V> { g: G<[V]> } // ERROR "struct G holds itself|G.s V is \\[V\\] here"
+struct Fine { w: W<int>; p: Pair<Node> }
+
+fn uses() {
+  let x: X = 1 // an invalid type: no more errors
+  let l: L = []
+  let n: Tree = Node(kids: [], next: none, byName: [:], make: uses2)
+  let i: Ints = (1, 2)
+}
+
+fn noValue() -> int {
+  let y: int // ERROR "expected '=' and a value"
+  return y // declared, so not unknown
+}
+
+fn uses2() -> Node = Node(kids: [], next: none, byName: [:], make: uses2)
+
+// A type that holds itself compares when its other parts do (the
+// checker once recursed forever deciding).
+enum Expr {
+  num(int)
+  add(Expr, Expr)
+}
+
+struct Link {
+  next: Link?
+  run: fn() -> int
+}
+
+fn sameExpr(a: Expr, b: Expr) -> bool = a == b
+fn sameLinks(a: [Link], b: Link) -> bool = a.contains(b) // ERROR "Link can't be compared: its field run is a fn\(\) -> int, and functions can't be"
+fn sameLink(a: Link, b: Link) -> bool = a == b // ERROR "Link can't be compared with ==: its field run"

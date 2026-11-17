@@ -52,7 +52,9 @@ func TestErrors(t *testing.T) {
 					}
 					if w.MatchString(d.Msg) {
 						met[d.Pos.Line] = true
-					} else if !met[d.Pos.Line] {
+					} else {
+						// A second diagnostic on a line is a cascade
+						// unless it's expected too.
 						t.Errorf("%s: want a %s matching %q", d, what, w)
 					}
 				}

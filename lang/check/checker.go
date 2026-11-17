@@ -47,7 +47,9 @@ type Checker struct {
 	loops       int
 	curGlobal   *Global
 	resolving   map[any]bool
-	view        bool // checking view items
+	view        bool      // checking view items
+	styleValue  int       // checking a style: value, where the parser lets an if go without an else
+	defaultOf   *TypeName // checking a default of this type's field (or its case's payload)
 
 	chained map[syntax.Expr]bool // the members and calls of a ?. chain
 	// The Routes around the views checked: the Router, the path the
@@ -66,7 +68,8 @@ type Checker struct {
 	// Generic calls, for the type parameters read or written as JSON
 	// (checked once every body has said which: jsonGenerics).
 	genericCalls []genericCall
-	laterChecks  []func() // checks for when the package's declarations are whole
+	instances    []instance  // where generics get their type arguments (instances.go)
+	laterChecks  []func()    // checks for when the package's declarations are whole
 	lvalueWhole  syntax.Expr // the target of the = (or bind) lvalue checks: a prop assigned whole
 	// The built-in methods' and functions' signatures that name the
 	// prelude's types, read with this checker's prelude.
@@ -141,6 +144,7 @@ func (c *Checker) Program(root *Package) *Program {
 	c.finishLocalFns()
 	c.finalize()
 	c.jsonGenerics()
+	c.instanceCycles()
 	c.routeHrefs()
 	main := c.entry(root)
 	pkgs := append([]*Package{c.prelude}, c.pkgs...)
@@ -322,6 +326,7 @@ func (c *Checker) checkFiles(p *Package, files []*syntax.SourceFile, imports map
 	for _, t := range p.Types {
 		c.typeMembers(t)
 	}
+	c.structCycles(p)
 	for _, f := range p.Funcs {
 		c.funcSig(f)
 	}
@@ -650,7 +655,7 @@ func (c *Checker) typeExpr(t syntax.Type) Type {
 	case *syntax.MapType:
 		k := c.typeExpr(t.Key)
 		if !IsInvalid(k) && !IsHashable(k) {
-			c.errorf(t.Key, "a map's keys are ints, strings, bools or enums without payloads, not %s", typeString(k))
+			c.errorf(t.Key, "a map's keys are ints, strings, bools or enums without payloads, not %s%s", typeString(k), hashableHint(k))
 		}
 		return &Map{k, c.typeExpr(t.Value)}
 	case *syntax.OptionalType:
