@@ -41,6 +41,7 @@ typedef struct ak_ctx_entry {
 
 struct ak_owner {
 	ak_owner *parent;       // for contexts and catchers; disposes us if attached
+	ak_owner *holder;       // what disposes us instead, when not parent (ak_owner_new_in)
 	ak_owner *first, *last; // attached children
 	ak_owner *prev, *next;  // siblings in the parent's list
 	// catcher is the nearest owner, this one or above, that catches

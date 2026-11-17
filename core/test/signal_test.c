@@ -882,6 +882,60 @@ TEST(with_owner) {
 	CHECK(!wo.a.n.subs);
 }
 
+// ak_owner_new_in: an owner held by one owner, its contexts and catcher
+// another's (an event's handler: the receiver's, where it's declared).
+
+static struct {
+	char key;
+	ak_owner *holder, *where, *made;
+	tlog got;
+	int cleanups;
+} oni;
+
+static void oni_cleanup(void *ctx) { oni.cleanups++; }
+static void oni_use(void *ctx) {
+	logf_(&oni.got, ak_use_context(&oni.key, "default"));
+	ak_on_cleanup(oni_cleanup, NULL);
+}
+static void oni_make(void *ctx) {
+	oni.made = ak_owner_new_in(oni.holder);
+	ak_with_owner(oni.made, oni_use, NULL);
+}
+static void oni_where(void *ctx) {
+	oni.where = ak_owner_new();
+	ak_owner_set_context(oni.where, &oni.key, "where");
+	ak_with_owner(oni.where, oni_make, NULL);
+}
+static void oni_build(void *ctx, ak_owner *root) {
+	oni.holder = ak_owner_new();
+	ak_with_owner(root, oni_where, NULL);
+}
+
+TEST(owner_new_in) {
+	memset(&oni, 0, sizeof oni);
+	ak_owner *r = ak_root(oni_build, NULL);
+	CHECK_EQ_STR(oni.got.s, "where");  // the current owner's contexts
+	ak_owner_retain(oni.made);
+	ak_owner_dispose(oni.where);       // not disposed with where it was made
+	CHECK(!ak_owner_disposed(oni.made));
+	CHECK_EQ_INT(oni.cleanups, 0);
+	ak_owner_dispose(oni.holder);      // but with its holder
+	CHECK(ak_owner_disposed(oni.made));
+	CHECK_EQ_INT(oni.cleanups, 1);
+	ak_owner_release(oni.made);
+	ak_owner_dispose(r);
+	// Made with the current owner as the holder: an ordinary child.
+	oni.got.s[0] = 0;
+	r = ak_root(oni_build, NULL);
+	oni.holder = oni.where;
+	ak_with_owner(oni.where, oni_make, NULL);
+	ak_owner_retain(oni.made);
+	ak_owner_dispose(oni.where);
+	CHECK(ak_owner_disposed(oni.made));
+	ak_owner_release(oni.made);
+	ak_owner_dispose(r);
+}
+
 // ---- Memos let go of their sources when unwatched.
 
 static struct {

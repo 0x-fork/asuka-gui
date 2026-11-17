@@ -154,6 +154,12 @@ ak_owner *ak_owner_new(void);
 // ak_root_new makes an owner not disposed with the current one, though
 // it sees its contexts and its catcher.
 ak_owner *ak_root_new(void);
+// ak_owner_new_in makes an owner disposed with holder (held by it), whose
+// contexts and catcher are the current owner's: work that belongs to
+// holder but runs where the current owner is (an event's handler, owned
+// by the component that declares it, in the part of its view it's
+// declared in). With no holder, it's a root (ak_root_new).
+ak_owner *ak_owner_new_in(ak_owner *holder);
 // ak_root runs fn with a new root as the current owner, untracked and in
 // a batch: effects fn makes run once it returns. It returns the root,
 // unless fn disposed it.
