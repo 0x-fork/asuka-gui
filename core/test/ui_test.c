@@ -1850,4 +1850,60 @@ TEST(remeasures_once_the_root_has_a_size) {
 	done(a);
 }
 
+// ---- A Grid's repeat() counts, whatever the app passes ----
+
+static const uint8_t track_f[] = {AK_K_FLOAT}, track_rep[] = {AK_K_INT, AK_K_REF}, track_list[] = {AK_K_REF}, track_mm[] = {AK_K_REF, AK_K_REF};
+static const ak_case track_cases[] = {
+	{"auto", 0, NULL, NULL, NULL}, {"points", 1, track_f, NULL, NULL}, {"percent", 1, track_f, NULL, NULL}, {"fr", 1, track_f, NULL, NULL},
+	{"minContent", 0, NULL, NULL, NULL}, {"maxContent", 0, NULL, NULL, NULL}, {"minmax", 2, track_mm, NULL, NULL},
+	{"repeat", 2, track_rep, NULL, NULL}, {"autoFill", 1, track_list, NULL, NULL}, {"autoFit", 1, track_list, NULL, NULL},
+};
+static const ak_shape track_shape = {"Track", 0, NULL, NULL, NULL, 10, track_cases, false, NULL};
+static const uint8_t grid_kinds[] = {AK_K_REF, AK_K_REF, AK_K_REF, AK_K_REF, AK_K_BOOL, AK_K_BOOL};
+static const ak_shape grid_shape = {"Grid", 6, grid_kinds, NULL, NULL, 0, NULL, false, NULL};
+
+static int64_t repeat_count;
+
+// A Grid of repeat(repeat_count, [points(10)]) columns, two texts in it.
+static ak_val repeat_grid_app(ak_closure *c, ak_val *a, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
+	ak_enum *pt = ak_enum_new(&track_shape, 1);
+	pt->f[0].f = 10;
+	ak_arr *sizes = ak_arr_new(AK_K_REF, NULL, 1);
+	ak_arr_push(&sizes, (ak_val){.p = pt});
+	ak_enum *rep = ak_enum_new(&track_shape, 7);
+	rep->f[0].i = repeat_count;
+	rep->f[1].p = sizes;
+	ak_arr *cols = ak_arr_new(AK_K_REF, NULL, 1);
+	ak_arr_push(&cols, (ak_val){.p = rep});
+	ak_struct *g = ak_struct_new(&grid_shape);
+	g->f[0].p = cols;
+	g->f[1].p = ak_arr_new(AK_K_REF, NULL, 0);
+	g->f[2].p = ak_arr_new(AK_K_REF, NULL, 0);
+	g->f[3].p = ak_arr_new(AK_K_REF, NULL, 0);
+	ak_view *v = ak_ui_new(AK_EL_COLUMN);
+	set(v, AK_KEY_GRID, (ak_val){.p = g});
+	add(v, text("a"));
+	add(v, text("b"));
+	return (ak_val){.p = v};
+}
+
+// A count beyond 32 bits isn't cut to its low bits (2^32 + 1 was one
+// column), a negative one isn't auto-fill's: more than a grid's lines
+// are as many as it has, fewer than one are one.
+TEST(grid_repeat_counts) {
+	static const struct {
+		int64_t count;
+		float second_x;  // the second text's: beside the first, or below
+	} cases[] = {{(INT64_C(1) << 32) + 1, 10}, {-1, 0}, {0, 0}, {2, 10}, {INT64_MAX, 10}};
+	for (size_t i = 0; i < AK_LEN(cases); i++) {
+		repeat_count = cases[i].count;
+		ak_uitest *a = mount(repeat_grid_app, NULL);
+		ak_fake_view *b = one(a, AK_KIND_TEXT, "b");
+		REQUIRE(b);
+		if (b->frame[0] != cases[i].second_x) T_FAIL("repeat(%lld): x %g, want %g", (long long)cases[i].count, b->frame[0], cases[i].second_x);
+		done(a);
+	}
+}
+
 T_MAIN()
