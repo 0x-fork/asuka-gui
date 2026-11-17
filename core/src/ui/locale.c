@@ -275,8 +275,16 @@ void ak_ui_set_languages(ak_arr *tags) {
 			return;
 		}
 	}
+	// Copies: the tags are the app's constants, freed with its module when
+	// asuka dev reloads it, and the languages stay.
+	ak_arr *own = ak_arr_new(AK_K_REF, NULL, tags ? tags->len : 0);
+	own->h.flags = 1;
+	for (uint32_t i = 0; tags && i < tags->len; i++) {
+		const ak_str *t = tags->data[i].p;
+		ak_arr_push(&own, (ak_val){.p = ak_str_new(t->data, t->len)});
+	}
 	ak_release(L.app_langs);
-	L.app_langs = ak_retain(tags);
+	L.app_langs = own;
 	update();
 }
 
