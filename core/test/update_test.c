@@ -274,6 +274,85 @@ TEST(extract_refuses) {
 	ak_free(dir);
 }
 
+// gzip writes data as a gzip file of stored blocks, its CRC-32 and size
+// right: what the tar inside says is what's read.
+static void gzip(const char *path, const uint8_t *data, size_t n) {
+	FILE *f = fopen(path, "wb");
+	if (!f) {
+		T_FAIL("can't write %s", path);
+		return;
+	}
+	static const uint8_t head[10] = {0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff};
+	fwrite(head, 1, sizeof head, f);
+	size_t at = 0;
+	do {
+		size_t k = n - at < 65535 ? n - at : 65535;
+		uint8_t b[5] = {at + k == n, (uint8_t)k, (uint8_t)(k >> 8), (uint8_t)~k, (uint8_t)(~k >> 8)};
+		fwrite(b, 1, 5, f);
+		if (k) fwrite(data + at, 1, k, f);
+		at += k;
+	} while (at < n);
+	uint32_t crc = 0xffffffff;
+	for (size_t i = 0; i < n; i++) {
+		crc ^= data[i];
+		for (int j = 0; j < 8; j++) crc = crc >> 1 ^ (0xedb88320 & -(crc & 1));
+	}
+	crc = ~crc;
+	uint8_t tail[8] = {(uint8_t)crc, (uint8_t)(crc >> 8), (uint8_t)(crc >> 16), (uint8_t)(crc >> 24), (uint8_t)n, (uint8_t)(n >> 8), (uint8_t)(n >> 16), (uint8_t)(n >> 24)};
+	fwrite(tail, 1, 8, f);
+	fclose(f);
+}
+
+// tar_entry fills a ustar header: name, type, its size field as given
+// (12 bytes: octal, or GNU's base 256), its checksum.
+static void tar_entry(uint8_t h[512], const char *name, char type, const uint8_t size[12]) {
+	memset(h, 0, 512);
+	snprintf((char *)h, 100, "%s", name);
+	memcpy(h + 100, "0000644", 8);
+	memcpy(h + 124, size, 12);
+	h[156] = (uint8_t)type;
+	memcpy(h + 257, "ustar\0" "00", 8);
+	unsigned sum = 0;
+	for (int i = 0; i < 512; i++) sum += i >= 148 && i < 156 ? ' ' : h[i];
+	snprintf((char *)h + 148, 8, "%06o", sum);
+}
+
+TEST(extract_huge_sizes) {
+	// An entry's size at int64's end (GNU's base 256, or a PAX header's):
+	// damaged, not padded past it.
+	char *dir = ak_fs_temp_dir();
+	char *archive = path_in(dir, "huge.tar.gz");
+	static const uint8_t max256[12] = {0x80, 0, 0, 0, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+	static const uint8_t zero[12] = "00000000000";
+	uint8_t tar[512 * 6] = {0};
+	const char types[] = {'5', '0', '2'};
+	for (size_t t = 0; t < AK_LEN(types); t++) {
+		tar_entry(tar, "d", types[t], max256);
+		gzip(archive, tar, 512 * 3);
+		char sub[16];
+		snprintf(sub, sizeof sub, "b%zu", t);
+		if (extract(archive, path_in(dir, sub))) T_FAIL("type %c unpacked", types[t]);
+		else if (!strstr(failure(), "damaged")) T_FAIL("type %c: %s", types[t], failure());
+	}
+	// A PAX size at int64's end, and one beyond it.
+	static const char *records[] = {"28 size=9223372036854775807\n", "38 size=99999999999999999999999999999\n"};
+	for (size_t r = 0; r < AK_LEN(records); r++) {
+		uint8_t size[12];
+		snprintf((char *)size, sizeof size, "%011o", (unsigned)strlen(records[r]));
+		memset(tar, 0, sizeof tar);
+		tar_entry(tar, "pax", 'x', size);
+		memcpy(tar + 512, records[r], strlen(records[r]));
+		tar_entry(tar + 1024, "f", '0', zero);
+		gzip(archive, tar, sizeof tar);
+		char sub[16];
+		snprintf(sub, sizeof sub, "pax%zu", r);
+		if (extract(archive, path_in(dir, sub))) T_FAIL("%s unpacked", records[r]);
+		else if (!strstr(failure(), "damaged")) T_FAIL("%s: %s", records[r], failure());
+	}
+	ak_fs_remove_tree(dir);
+	ak_free(dir);
+}
+
 // A field of an entry of the delta's index (JSON as Go writes it: no
 // spaces, no escapes in these names): its string, or its number.
 static bool field_str(const char *obj, const char *end, const char *key, char *out, size_t cap) {
