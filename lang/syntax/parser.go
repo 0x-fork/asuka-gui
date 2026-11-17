@@ -991,9 +991,9 @@ func setSpan(n Node, s Span) {
 	}
 }
 
-func (p *parser) parseTypeParams() []*TypeParam {
+func (p *parser) parseTypeParams() ([]*TypeParam, Angles) {
 	if p.tok != LSS {
-		return nil
+		return nil, Angles{}
 	}
 	open := p.pos
 	p.next()
@@ -1016,8 +1016,17 @@ func (p *parser) parseTypeParams() []*TypeParam {
 	if len(list) == 0 {
 		p.error(open, "expected a type parameter")
 	}
-	p.expectClose(GTR, open, "type parameters")
-	return list
+	p.lineBeforeAngle()
+	return list, Angles{open, p.expectClose(GTR, open, "type parameters")}
+}
+
+// lineBeforeAngle skips the end of a line before a list's closing >: a
+// < isn't a bracket to the scanner, so a line ending in the list's last
+// element, without a comma, counts.
+func (p *parser) lineBeforeAngle() {
+	if p.tok == NEWLINE && p.peek(1) == GTR {
+		p.next()
+	}
 }
 
 // parseParams parses (name: Type = default, …). In a lambda, types are
@@ -1065,7 +1074,7 @@ func (p *parser) parseComponent(start, native Pos) *ComponentDecl {
 	p.expect(COMPONENT)
 	d := &ComponentDecl{Native: native}
 	d.Name = p.ident()
-	d.TypeParams = p.parseTypeParams()
+	d.TypeParams, d.TypeAngles = p.parseTypeParams()
 	d.Params = p.optParams()
 	d.Body = p.parseBlock()
 	d.Span = p.span(start)
@@ -1120,7 +1129,7 @@ func (p *parser) parseStore(start Pos) *StoreDecl {
 	p.expect(STORE)
 	d := &StoreDecl{}
 	d.Name = p.ident()
-	d.TypeParams = p.parseTypeParams()
+	d.TypeParams, d.TypeAngles = p.parseTypeParams()
 	d.Params = p.optParams()
 	d.Body = p.parseBlock()
 	d.Span = p.span(start)
@@ -1177,7 +1186,7 @@ func (p *parser) parseStruct(start Pos) *StructDecl {
 	p.expect(STRUCT)
 	d := &StructDecl{}
 	d.Name = p.ident()
-	d.TypeParams = p.parseTypeParams()
+	d.TypeParams, d.TypeAngles = p.parseTypeParams()
 	d.Conforms = p.parseConforms()
 	d.Lbrace, d.Members, d.Dangling, d.Rbrace = p.parseBody("struct", func() Node {
 		return p.parseFieldOrMethod("a field (name: Type), a constant (let) or a method", true)
@@ -1237,7 +1246,7 @@ func (p *parser) parseEnum(start Pos) *EnumDecl {
 	p.expect(ENUM)
 	d := &EnumDecl{}
 	d.Name = p.ident()
-	d.TypeParams = p.parseTypeParams()
+	d.TypeParams, d.TypeAngles = p.parseTypeParams()
 	d.Conforms = p.parseConforms()
 	p.braceOnNextLine()
 	d.Lbrace = p.pos
@@ -1336,7 +1345,7 @@ func (p *parser) parseInterface(start, native Pos) *InterfaceDecl {
 	p.expect(INTERFACE)
 	d := &InterfaceDecl{Native: native}
 	d.Name = p.ident()
-	d.TypeParams = p.parseTypeParams()
+	d.TypeParams, d.TypeAngles = p.parseTypeParams()
 	d.Lbrace, d.Members, d.Dangling, d.Rbrace = p.parseBody("interface", func() Node {
 		return p.parseFieldOrMethod("a function's signature (fn name(…)) or a field (name: Type)", false)
 	})
@@ -1360,7 +1369,7 @@ func (p *parser) parseFunc(start Pos) *FuncDecl {
 	} else {
 		d.Name = p.ident()
 	}
-	d.TypeParams = p.parseTypeParams()
+	d.TypeParams, d.TypeAngles = p.parseTypeParams()
 	if p.tok == LPAREN {
 		d.Params = p.parseParams(false)
 	} else {
@@ -1390,7 +1399,7 @@ func (p *parser) parseTypeAlias(start Pos) *TypeAliasDecl {
 	p.expect(TYPE)
 	d := &TypeAliasDecl{}
 	d.Name = p.ident()
-	d.TypeParams = p.parseTypeParams()
+	d.TypeParams, d.TypeAngles = p.parseTypeParams()
 	p.expect(ASSIGN)
 	d.Type = p.parseType()
 	d.Span = p.span(start)
@@ -1795,7 +1804,7 @@ func (p *parser) parseTask(start Pos) *TaskDecl {
 			}
 		}
 		p.exprLev--
-		p.expectClose(RPAREN, d.Lparen, "task's dependencies")
+		d.Rparen = p.expectClose(RPAREN, d.Lparen, "task's dependencies")
 	}
 	d.Body = p.parseBlock()
 	d.Span = p.span(start)
@@ -1816,7 +1825,7 @@ func (p *parser) parseOn() *OnHandler {
 				break
 			}
 		}
-		p.expectClose(RPAREN, d.Lparen, "handler's parameters")
+		d.Rparen = p.expectClose(RPAREN, d.Lparen, "handler's parameters")
 	}
 	d.Body = p.parseBlock()
 	d.Span = p.span(start)
@@ -2106,7 +2115,8 @@ func (p *parser) parseLambda() *LambdaExpr {
 		l.Params = []*Param{{Span: id.Span, Name: id}}
 	} else {
 		l.Parens = true
-		l.Params = p.parseParams(true).List
+		pl := p.parseParams(true)
+		l.Params, l.Lparen, l.Rparen = pl.List, pl.Start, pl.End-1
 	}
 	p.expect(FATARROW)
 	if p.tok == LBRACE {
@@ -2329,11 +2339,11 @@ func (p *parser) parsePostfix() Expr {
 		case LSS:
 			// f<T>(…): explicit type arguments, when what follows the < is
 			// types up to a > right before a (; else it's a comparison.
-			targs, ok := p.tryTypeArgs(x)
+			targs, angles, ok := p.tryTypeArgs(x)
 			if !ok {
 				return x
 			}
-			c := &CallExpr{Fun: x, TypeArgs: targs, Args: p.parseArgs()}
+			c := &CallExpr{Fun: x, TypeArgs: targs, Angles: angles, Args: p.parseArgs()}
 			p.trailingBlock(c)
 			c.Span = p.span(start)
 			x = c
@@ -2370,24 +2380,25 @@ func (p *parser) parsePostfix() Expr {
 // tryTypeArgs parses <T, U> after a name, when it's followed at once by
 // a (: a call with explicit type arguments (json.decode<[Item]>(s)).
 // Anything else (a < b, a < b > c's error) it leaves untouched.
-func (p *parser) tryTypeArgs(x Expr) ([]Type, bool) {
+func (p *parser) tryTypeArgs(x Expr) ([]Type, Angles, bool) {
 	switch x.(type) {
 	case *Ident, *MemberExpr:
 	default:
-		return nil, false
+		return nil, Angles{}, false
 	}
 	// Types are what's between: names, brackets, ?, commas, colons, fn,
 	// arrows. A quick look rejects most comparisons without parsing.
 	if end := p.angleEnd(); end < 0 || end+1 >= len(p.toks) || p.toks[end+1].tok != LPAREN {
-		return nil, false
+		return nil, Angles{}, false
 	}
 	saved, savedEnd := p.i, p.prevEnd
 	nerr := len(p.errors)
+	lt := p.pos
 	p.next() // <
 	var ts []Type
 	for {
 		ts = append(ts, p.parseType())
-		if !p.got(COMMA) {
+		if !p.got(COMMA) || p.tok == GTR {
 			break
 		}
 	}
@@ -2397,10 +2408,11 @@ func (p *parser) tryTypeArgs(x Expr) ([]Type, bool) {
 		p.i, p.prevEnd = saved, savedEnd
 		t := p.toks[p.i]
 		p.tok, p.pos, p.lit = t.tok, t.pos, t.lit
-		return nil, false
+		return nil, Angles{}, false
 	}
+	gt := p.pos
 	p.next() // >
-	return ts, true
+	return ts, Angles{lt, gt}, true
 }
 
 // angleEnd is the index of the > that closes the < here, with only
@@ -2782,7 +2794,8 @@ func (p *parser) parseNonOptionalType() Type {
 					break
 				}
 			}
-			p.expectClose(GTR, open, "type arguments")
+			p.lineBeforeAngle()
+			t.Angles = Angles{open, p.expectClose(GTR, open, "type arguments")}
 		}
 		t.Span = p.span(start)
 		return t
@@ -2821,14 +2834,14 @@ func (p *parser) parseNonOptionalType() Type {
 			p.next()
 		}
 		p.expect(FN)
-		open := p.expect(LPAREN)
+		t.Lparen = p.expect(LPAREN)
 		for p.tok != RPAREN && p.tok != RBRACE && p.tok != EOF {
 			t.Params = append(t.Params, p.parseType())
 			if !p.got(COMMA) {
 				break
 			}
 		}
-		p.expectClose(RPAREN, open, "parameter types")
+		t.Rparen = p.expectClose(RPAREN, t.Lparen, "parameter types")
 		if p.tok == THROWS {
 			t.Throws = p.pos
 			p.next()
@@ -2950,5 +2963,5 @@ func (p *parser) caseArgs(c *CasePat) {
 			break
 		}
 	}
-	p.expectClose(RPAREN, c.Lparen, "case's pattern")
+	c.Rparen = p.expectClose(RPAREN, c.Lparen, "case's pattern")
 }

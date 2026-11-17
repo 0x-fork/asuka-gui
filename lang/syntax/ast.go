@@ -185,6 +185,10 @@ type TypeParam struct {
 	Constraints []Type // T: A & B; none for none
 }
 
+// Angles are the positions of the < and the > around a list of type
+// parameters or type arguments; NoPos without one.
+type Angles struct{ Lt, Gt Pos }
+
 // A Param is a parameter of a function, a component's header, an event
 // or a lambda: name: Type = default. A lambda's may have no Type.
 type Param struct {
@@ -209,6 +213,7 @@ type ComponentDecl struct {
 	Native     Pos // the native keyword; NoPos for an Asuka component
 	Name       *Ident
 	TypeParams []*TypeParam
+	TypeAngles Angles     // the <…> around TypeParams
 	Params     *ParamList // nil without parentheses
 	Body       *Block
 }
@@ -235,6 +240,7 @@ type StoreDecl struct {
 	Pub        Pos
 	Name       *Ident
 	TypeParams []*TypeParam
+	TypeAngles Angles     // the <…> around TypeParams
 	Params     *ParamList // nil without parentheses
 	Body       *Block
 }
@@ -267,6 +273,7 @@ type StructDecl struct {
 	Extern     Pos // the extern keyword; NoPos for an Asuka struct
 	Name       *Ident
 	TypeParams []*TypeParam
+	TypeAngles Angles // the <…> around TypeParams
 	Conforms   []Type // after the colon; nil for none
 	Lbrace     Pos
 	Members    []Node // *Field, *LetDecl (a constant of the type: Font.title) and *FuncDecl, in source order
@@ -291,6 +298,7 @@ type EnumDecl struct {
 	Pub        Pos
 	Name       *Ident
 	TypeParams []*TypeParam
+	TypeAngles Angles // the <…> around TypeParams
 	Conforms   []Type
 	Lbrace     Pos
 	Cases      []*EnumCase
@@ -329,6 +337,7 @@ type InterfaceDecl struct {
 	Native     Pos
 	Name       *Ident
 	TypeParams []*TypeParam
+	TypeAngles Angles // the <…> around TypeParams
 	Lbrace     Pos
 	Members    []Node // *FuncDecl (with neither Body nor Value) and *Field
 	Dangling   []*CommentGroup
@@ -345,6 +354,7 @@ type FuncDecl struct {
 	Async      Pos // NoPos if not async
 	Name       *Ident
 	TypeParams []*TypeParam
+	TypeAngles Angles // the <…> around TypeParams
 	Params     *ParamList
 	Throws     Pos  // NoPos if it doesn't throw
 	Result     Type // nil for none (void)
@@ -380,6 +390,7 @@ type TypeAliasDecl struct {
 	Pub        Pos
 	Name       *Ident
 	TypeParams []*TypeParam
+	TypeAngles Angles // the <…> around TypeParams
 	Type       Type
 }
 
@@ -530,6 +541,7 @@ type TaskDecl struct {
 	Trivia
 	Deps   []Expr
 	Lparen Pos // NoPos without parentheses
+	Rparen Pos
 	Body   *Block
 }
 
@@ -555,6 +567,7 @@ type OnHandler struct {
 	Name   *Ident
 	Params []*Ident
 	Lparen Pos // NoPos without parentheses
+	Rparen Pos
 	Body   *Block
 }
 
@@ -824,6 +837,7 @@ type CallExpr struct {
 	Span
 	Fun      Expr
 	TypeArgs []Type   // f<T>(…): explicit type arguments; nil for none
+	Angles   Angles   // the <…> around TypeArgs
 	Args     *ArgList // nil: no parentheses, Row { … }
 	As       *Ident   // View as card { … }: the element's name, a Ref; nil for none
 	Block    *Block   // the trailing block; nil for none
@@ -871,10 +885,11 @@ type BinaryExpr struct {
 // (async () => …); the body is an Expr or a *Block.
 type LambdaExpr struct {
 	Span
-	Async  Pos // NoPos if not marked async (its async-ness is then inferred)
-	Params []*Param
-	Parens bool // the parameters are in parentheses
-	Body   Node
+	Async          Pos // NoPos if not marked async (its async-ness is then inferred)
+	Params         []*Param
+	Parens         bool // the parameters are in parentheses
+	Lparen, Rparen Pos  // the parentheses; NoPos without
+	Body           Node
 }
 
 // A ParenExpr is (x).
@@ -1003,8 +1018,9 @@ func (*BadExpr) exprNode()        {}
 // A NamedType is a type by name: int, Message, http.Response, Task<T>.
 type NamedType struct {
 	Span
-	Path []*Ident // the qualified name's parts
-	Args []Type   // <…>; nil for none
+	Path   []*Ident // the qualified name's parts
+	Args   []Type   // <…>; nil for none
+	Angles Angles   // the <…> around Args
 }
 
 // An ArrayType is [Elem].
@@ -1028,10 +1044,11 @@ type TupleType struct {
 // A FuncType is [async] fn(Params) [throws] [-> Result].
 type FuncType struct {
 	Span
-	Async  Pos
-	Params []Type
-	Throws Pos
-	Result Type // nil for none
+	Async          Pos
+	Lparen, Rparen Pos // around Params
+	Params         []Type
+	Throws         Pos
+	Result         Type // nil for none
 }
 
 // An OptionalType is Elem?.
@@ -1084,6 +1101,7 @@ type CasePat struct {
 	// when none has one.
 	Labels []*Ident
 	Lparen Pos // NoPos without parentheses
+	Rparen Pos
 }
 
 // Label is the label of argument i, nil when it has none.
