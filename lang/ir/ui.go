@@ -128,7 +128,7 @@ func (b *fb) publishEnv(t *check.TypeName, whole bool) int {
 }
 
 // readsMemo reports whether x reads a memo of t's (a let that follows
-// what it reads), which runs its thunk at once.
+// what it reads, or a state that does), which runs its thunk at once.
 func (b *fb) readsMemo(x syntax.Expr, t *check.TypeName) bool {
 	if x == nil {
 		return false
@@ -136,7 +136,7 @@ func (b *fb) readsMemo(x syntax.Expr, t *check.TypeName) bool {
 	found := false
 	syntax.Inspect(x, func(n syntax.Node) bool {
 		if id, ok := n.(*syntax.Ident); ok {
-			if m, ok := b.l.info.Uses[id].(*check.Member); ok && m.Owner == t && m.Kind == check.LetMember && m.Memo {
+			if m, ok := b.l.info.Uses[id].(*check.Member); ok && m.Owner == t && (m.Kind == check.LetMember && m.Memo || m.Kind == check.StateMember && m.Follows) {
 				found = true
 			}
 		}
@@ -225,14 +225,9 @@ func (b *fb) lowerComponent(t *check.TypeName) {
 			}
 			b.f.Place(skip)
 		case check.StateMember:
-			k := b.kind(m.Type)
-			var init int
-			if m.Default != nil {
-				init = b.value(m.Default, -1)
-			}
-			init = b.valueReg(init, k)
+			key := b.l.str(t.Name() + "." + m.Name() + initKey(m.Default))
 			r := b.local(bc.KRef)
-			b.emit(op("CELLK"), r, init, int(k), b.l.str(t.Name()+"."+m.Name()+initKey(m.Default)))
+			b.state(r, m.Decl, m.Default, b.l.info.Ctxs[m.Default], m.Type, m.Follows, m.Self, key)
 			b.memberRegs[m] = r
 		case check.LetMember:
 			switch {
@@ -404,6 +399,56 @@ func (b *fb) effectDecl(d *syntax.EffectDecl) {
 	b.emit(op("EFFECT"), clos)
 }
 
+// state makes a state's cell in r: CELLK of its initializer's value; or,
+// when it follows (rfcs/0012), FOLLOWK of a thunk of the initializer
+// (ctx), which reads what it follows: what the initializer reads, or
+// its dependencies (state x(a, b) = e: then e untracked). self is the
+// state's own name in its initializer: the thunk's parameter (its
+// current value), or none for a state that doesn't follow.
+func (b *fb) state(r int, decl syntax.Node, init syntax.Expr, ctx *check.FuncCtx, t check.Type, follows bool, self *check.Var, key int) {
+	k := b.kind(t)
+	if !follows {
+		if self != nil {
+			n := b.temp(bc.KRef)
+			b.emit(op("KNONE"), n)
+			b.vars[self] = n
+		}
+		var v int
+		if init != nil {
+			v = b.value(init, -1)
+		}
+		b.emitKind(op("CELLK"), r, b.valueReg(v, k), int(k), key)
+		return
+	}
+	var deps []dep
+	if d, ok := decl.(*syntax.StateDecl); ok {
+		deps = b.deps(d.Deps)
+	}
+	var params []*check.Var
+	takesSelf := 0
+	if self != nil {
+		params = []*check.Var{self}
+		takesSelf = 1
+	}
+	thunk := b.makeClosure(closure{name: "state", ctxs: []*check.FuncCtx{ctx}, params: params, extra: depCaps(deps), ret: k, throws: true, body: func(c *fb) {
+		c.ctx = ctx
+		c.at(init)
+		if len(deps) == 0 {
+			c.ret(c.value(init, -1), k)
+			return
+		}
+		c.readDeps(deps)
+		c.emit(op("UNTRACK"))
+		c.peeks++
+		c.untracks++
+		v := c.value(init, -1)
+		c.peeks--
+		c.emit(op("RETRACK"), c.peeks)
+		c.ret(v, k)
+	}})
+	b.emit(op("FOLLOWK"), r, thunk, int(k), key, takesSelf)
+}
+
 // A dep is a dependency of an effect(…), a task(…) or a state(…), as
 // its follower captures it: the memo of it, or the cell or memo it reads
 // alone, which the follower reads (read: CGET or MREAD, into a register
@@ -485,15 +530,10 @@ func (b *fb) depDirect(x syntax.Expr) (reg int, memo, ok bool) {
 }
 
 // readDeps reads, tracked, what deps made: the follower's dependencies.
-// It returns the registers holding their values.
-func (b *fb) readDeps(deps []dep) []int {
-	var out []int
+func (b *fb) readDeps(deps []dep) {
 	for _, d := range deps {
-		r := b.temp(d.kind)
-		b.emit(op(d.read), r, b.vars[d.v])
-		out = append(out, r)
+		b.emit(op(d.read), bc.None, b.vars[d.v])
 	}
-	return out
 }
 
 // load makes a component's let x = load f(…): the runtime's loader of a

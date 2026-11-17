@@ -295,7 +295,9 @@ component ActionRow(icon: string, title: string, detail: string) {
 /// Names an account.
 component RenameSheet(id: string) {
   event done
-  state name = find(id)?.name ?? ""
+  // The account's name, again if it's shown for another account: not
+  // while it's typed in, as the accounts change.
+  state name(id) = find(id)?.name ?? ""
 
   let service = services[find(id)?.service ?? "claude"]?.name ?? "Claude"
 

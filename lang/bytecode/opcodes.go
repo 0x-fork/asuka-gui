@@ -165,7 +165,8 @@ var Ops = []OpDef{
 	// State: cells, memos, accessors.
 	{"CELL", []Operand{Reg, Reg, KindOp}, "a = a new state cell holding b, owned by the current owner"},
 	{"CELLK", []Operand{Reg, Reg, KindOp, Const}, "a = the state cell kept under Strings[k] across reloads, or a new one holding b"},
-	{"CGET", []Operand{Reg, Reg}, "a = the cell b's value, tracked (retained when a reference)"},
+	{"FOLLOWK", []Operand{Reg, Reg, KindOp, Const, Imm}, "a = a state following the closure b (rfcs/0012): b's value until it's written, b's again when what b read changes; kept under Strings[k] across reloads; n = 1: b takes the state's current value (none the first time)"},
+	{"CGET", []Operand{Reg, Reg}, "a = the cell b's value, tracked (retained when a reference); a follow's initializer's error is thrown"},
 	{"CPEEK", []Operand{Reg, Reg}, "a = the cell b's value, untracked"},
 	{"CSET", []Operand{Reg, Reg}, "the cell a = b; notifies when it changed"},
 	{"CTAKE", []Operand{Reg, Reg}, "a = the cell b's value moved out (for a mutation in place); CPUT puts it back"},

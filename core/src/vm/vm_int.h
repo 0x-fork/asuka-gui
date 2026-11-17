@@ -210,6 +210,11 @@ void ak_vm_task_resume(void *task);
 
 // The reactive glue (react.c): cells, memos, accessors, effects, owners.
 ak_val ak_vm_cell_new(ak_val v, ak_kind k, ak_str *keep_key);
+// ak_vm_follow_new makes a follow (rfcs/0012): a cell whose value the
+// closure update computes, following what it reads (FOLLOWK); self: it
+// takes the state's current value, an optional. Read and written as a
+// cell is.
+ak_val ak_vm_follow_new(ak_closure *update, ak_kind k, ak_str *keep_key, bool self);
 ak_val ak_vm_cell_get(void *cell, bool track);
 void ak_vm_cell_set(void *cell, ak_val v);         // takes v
 ak_val ak_vm_cell_take(void *cell);

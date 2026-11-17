@@ -68,12 +68,18 @@ func (c *Checker) finalize() {
 			if g.Kind == ConstGlobal && g.Owner == nil && g.Ctx != nil && g.Ctx.readsState {
 				g.Kind = MemoGlobal
 			}
+			if g.Kind == StateGlobal && g.Value != nil {
+				g.Follows = c.follows(g.Decl, g.Value)
+			}
 		}
 		for _, t := range p.Types {
 			if t.Comp == nil {
 				continue
 			}
 			for _, m := range t.Comp.Order {
+				if m.Kind == StateMember && m.Default != nil {
+					m.Follows = c.follows(m.Decl, m.Default)
+				}
 				if m.Kind == LetMember && m.Default != nil {
 					// A generic store's let of its type parameters is a
 					// memo: its env holds it as a reference whatever T is.
@@ -122,6 +128,15 @@ func (c *Checker) touchesState(ctxs []*FuncCtx) map[*FuncCtx]bool {
 		}
 	}
 	return t
+}
+
+// follows reports whether a state follows: it says what (state x(a) =
+// …), or its initializer reads what changes (state draft = title).
+func (c *Checker) follows(decl syntax.Node, init syntax.Expr) bool {
+	if d, ok := decl.(*syntax.StateDecl); ok && len(d.Deps) > 0 {
+		return true
+	}
+	return c.reactive(init)
 }
 
 // Reactive reports whether e reads anything reactive.
@@ -297,4 +312,40 @@ func (c *Checker) isPeek(n syntax.Node) bool {
 	}
 	call := c.info.Calls[ce]
 	return call != nil && call.Kind == CallBuiltin && call.Builtin.ID == BPeek
+}
+
+// stateSelf declares, in a state's initializer, the state's own name: its
+// current value, as an optional (none the first time; a state whose type
+// is optional already is that type), not followed. Without a written
+// type it isn't declared: the name is the state, which reads itself, an
+// error.
+func (c *Checker) stateSelf(name string, t Type) *Var {
+	if t == nil || c.scope == nil {
+		return nil
+	}
+	st := t
+	if _, ok := t.(*Optional); !ok && !IsInvalid(t) {
+		st = &Optional{Elem: t}
+	}
+	v := &Var{object: object{name, syntax.NoPos}, Type: st, Ctx: c.ctx}
+	c.scope.Insert(v)
+	return v
+}
+
+// selfUsed is self when init reads it, else nil.
+func (c *Checker) selfUsed(self *Var, init syntax.Expr) *Var {
+	if self == nil || init == nil {
+		return nil
+	}
+	used := false
+	syntax.Inspect(init, func(n syntax.Node) bool {
+		if id, ok := n.(*syntax.Ident); ok && c.info.Uses[id] == self {
+			used = true
+		}
+		return !used
+	})
+	if used {
+		return self
+	}
+	return nil
 }

@@ -161,7 +161,11 @@ func (c *Checker) memberType(m *Member) Type {
 		return m.Type
 	}
 	if c.resolving[m] {
-		c.errorf(m.Decl, "%s's value is defined in terms of itself", m.name)
+		if m.Kind == StateMember {
+			c.errorf(m.Decl, "%s reads itself (its current value, none the first time), so its type must be written: state %s: T = …", m.name, m.name)
+		} else {
+			c.errorf(m.Decl, "%s's value is defined in terms of itself", m.name)
+		}
 		m.Type = Invalid
 		return m.Type
 	}
@@ -194,9 +198,20 @@ func (c *Checker) memberValue(m *Member) {
 		c.loadOK = true
 	case PropMember, ParamMember:
 		kind = CtxBinding
+	case StateMember:
+		// A state follows what its initializer reads (rfcs/0012): the
+		// initializer is a binding, run again when that changes.
+		kind = CtxBinding
+		if d, ok := m.Decl.(*syntax.StateDecl); ok {
+			c.deps(d.Deps)
+		}
 	}
 	if kind == CtxBinding {
 		c.enter(kind, m.Default, m.name)
+	}
+	var self *Var
+	if m.Kind == StateMember {
+		self = c.stateSelf(m.name, m.Type)
 	}
 	var t Type
 	if m.Type != nil {
@@ -205,6 +220,7 @@ func (c *Checker) memberValue(m *Member) {
 	} else {
 		t = c.valueType(c.expr(m.Default, nil), m.Default)
 	}
+	m.Self = c.selfUsed(self, m.Default)
 	if kind == CtxBinding {
 		c.leave(comp.Ctx)
 	}

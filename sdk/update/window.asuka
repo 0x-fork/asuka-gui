@@ -238,7 +238,7 @@ component ProgressView(title: string, fraction: float?, cancel: bool, icon: stri
 // Install Update, and the choice to install the next ones without
 // asking.
 component ReleaseView(icon: string) {
-  state automatic = automaticDownloads()
+  state automatic = peek(automaticDownloads())
   let notes = updater.release?.notes ?? ""
 
   Column {

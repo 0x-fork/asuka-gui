@@ -324,7 +324,11 @@ func (c *Checker) globalType(g *Global) Type {
 		return g.Type
 	}
 	if c.resolving[g] {
-		c.errorf(g.Decl, "%s's value is defined in terms of itself", g.name)
+		if _, ok := g.Decl.(*syntax.StateDecl); ok {
+			c.errorf(g.Decl, "%s reads itself (its current value, none the first time), so its type must be written: state %s: T = …", g.name, g.name)
+		} else {
+			c.errorf(g.Decl, "%s's value is defined in terms of itself", g.name)
+		}
 		g.Type = Invalid
 		return g.Type
 	}
@@ -347,11 +351,14 @@ func (c *Checker) globalType(g *Global) Type {
 	ctx.Throws = false
 	g.Ctx = ctx
 	var want Type
+	var self *Var
 	switch d := g.Decl.(type) {
 	case *syntax.StateDecl:
+		c.deps(d.Deps)
 		if d.Type != nil {
 			want = c.typeExpr(d.Type)
 		}
+		self = c.stateSelf(g.name, want)
 	case *syntax.LetDecl:
 		if d.Type != nil {
 			want = c.typeExpr(d.Type)
@@ -367,6 +374,7 @@ func (c *Checker) globalType(g *Global) Type {
 	if g.Owner != nil && ctx.readsState {
 		c.errorf(g.Value, "a type's constant can't read state: compute it where it's used")
 	}
+	g.Self = c.selfUsed(self, g.Value)
 	c.leave(nil)
 	c.scope, c.ctx, c.curGlobal, c.pkg, c.defaultOf = savedScope, savedCtx, savedG, savedPkg, savedOf
 	c.inTry, c.inAwait, c.handled, c.view = savedTry, savedAwait, savedHandled, savedView

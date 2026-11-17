@@ -58,7 +58,7 @@ fn opened(source: string) -> Sound? {
 /// A player of one sound, ready to play as it's made. It stops and lets
 /// go of the sound when what made it goes, or at release().
 pub store Player(source: string) {
-  state sound: Sound? = opened(source)
+  state sound: Sound? = peek(opened(source))
 
   /// Plays it from where it is (from the start once it ended).
   pub fn play() {

@@ -1,0 +1,133 @@
+// A state whose initializer reads what changes follows it (rfcs/0012):
+// it's the initializer's value until it's written, and the initializer's
+// again when what it read changes. state x(a) = e follows a only; peek
+// makes a seed; the state's own name in its initializer is its current
+// value.
+struct Item {
+  id: string
+  name: string
+}
+
+state base = 1
+// A file's state follows too.
+state derived = base * 10
+
+store Kept(initial: int) {
+  pub state value: int = initial
+}
+
+component Edit(title: string) {
+  state draft = title
+  state seed = peek(title)
+
+  Column {
+    Text("draft {draft} seed {seed}")
+    Button("type") { on press { draft = draft + "!" } }
+  }
+}
+
+component Picker(items: [Item]) {
+  state query = ""
+  let results = items.filter(i => i.name.contains(query))
+  // Back to the top when the results change.
+  state highlighted(results) = 0
+  // The selection stays while it's in the results.
+  state selected: string? = if let s = selected, results.any(r => r.id == s) { s } else { results.first()?.id }
+
+  Column {
+    Text("hl {highlighted} sel {selected ?? "-"} of {results.count()}")
+    Button("down") { on press { highlighted += 1 } }
+    Button("pick b") { on press { selected = "b" } }
+    Button("search p") { on press { query = "p" } }
+    Button("search all") { on press { query = "" } }
+  }
+}
+
+component Page {
+  state title = "a"
+  state items = [Item(id: "a", name: "apple"), Item(id: "b", name: "banana")]
+  state t = "x"
+  state d = t
+  state read = ""
+  state count = 0
+  let kept = Kept(initial: count)
+
+  Column {
+    Edit(title)
+    Picker(items)
+    Text("d {d} read {read}")
+    Text("kept {kept.value} derived {derived}")
+    Button("rename") { on press { title = title + "b" } }
+    Button("input then write") {
+      on press {
+        t = "y"
+        d = "mine"
+      }
+    }
+    Button("write then input") {
+      on press {
+        d = "mine2"
+        t = "w"
+      }
+    }
+    Button("input then read") {
+      on press {
+        t = "q"
+        read = d
+      }
+    }
+    Button("count") { on press { count += 1 } }
+    Button("keep") { on press { kept.value = 100 } }
+    Button("base") { on press { base += 1 } }
+    Button("derive") { on press { derived = -1 } }
+  }
+}
+
+app { Page() }
+
+test "a state follows what its initializer reads, until it's written" {
+  let app = mount(Page())
+  app.expect("draft a seed a")
+  app.tap("type")
+  app.expect("draft a! seed a")
+  app.tap("rename")
+  app.expect("draft ab seed a")
+}
+
+test "a write and a change of what it follows, in one handler" {
+  let app = mount(Page())
+  app.expect("d x read ")
+  app.tap("input then write")
+  app.expect("d mine read ")
+  app.tap("write then input")
+  app.expect("d w read ")
+  app.tap("input then read")
+  app.expect("d q read q")
+}
+
+test "state x(a) follows a; its own name is its current value" {
+  let app = mount(Page())
+  app.expect("hl 0 sel a of 2")
+  app.tap("down")
+  app.tap("pick b")
+  app.expect("hl 1 sel b of 2")
+  app.tap("search p")
+  app.expect("hl 0 sel a of 1")
+  app.tap("down")
+  app.tap("search all")
+  app.expect("hl 0 sel a of 2")
+}
+
+test "a store's state and a file's follow too" {
+  base = 1
+  let app = mount(Page())
+  app.expect("kept 0 derived 10")
+  app.tap("keep")
+  app.expect("kept 100 derived 10")
+  app.tap("count")
+  app.expect("kept 1 derived 10")
+  app.tap("derive")
+  app.expect("kept 1 derived -1")
+  app.tap("base")
+  app.expect("kept 1 derived 20")
+}

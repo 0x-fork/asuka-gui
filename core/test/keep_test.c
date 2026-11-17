@@ -182,4 +182,61 @@ TEST(reload_drops_what_no_cell_took) {
 	ak_keep_stop();
 }
 
+// A follow (rfcs/0012) made with a key: a reload keeps its value as a
+// write, which stands until what it follows changes.
+static struct {
+	ak_node n;
+	int64_t v;
+	ak_str *key;
+	ak_val f;
+} kf;
+
+static ak_val kf_update(ak_closure *c, ak_val *args, uint32_t nargs) {
+	AK_UNUSED(c);
+	AK_UNUSED(args);
+	AK_UNUSED(nargs);
+	ak_signal_read(&kf.n);
+	return (ak_val){.i = kf.v * 10};
+}
+
+static void kf_make(void *ctx, ak_owner *root) {
+	AK_UNUSED(ctx);
+	AK_UNUSED(root);
+	ak_closure *u = ak_closure_new(kf_update, NULL, 0, NULL);
+	kf.f = ak_vm_follow_new(u, AK_K_INT, kf.key, false);
+	ak_release(u);
+}
+
+TEST(reload_keeps_a_follow_as_a_write) {
+	memset(&kf, 0, sizeof kf);
+	kf.v = 1;
+	kf.key = ak_str_c("Edit.draft");
+	ak_keep_start();
+	ak_keep_use(find, NULL);
+	ak_owner *r = ak_root(kf_make, NULL);
+	CHECK_EQ_INT(cell_int(kf.f), 10);
+	ak_vm_cell_set(kf.f.p, (ak_val){.i = 5});
+	CHECK_EQ_INT(cell_int(kf.f), 5);
+
+	// A reload: the new follow starts from what the old one held.
+	ak_keep_save();
+	CHECK_EQ_INT(ak_keep_saved(), 1);
+	ak_owner_dispose(r);
+	ak_release(kf.f.p);
+	ak_keep_use(find, NULL);
+	r = ak_root(kf_make, NULL);
+	CHECK_EQ_INT(cell_int(kf.f), 5);
+	CHECK_EQ_INT(ak_keep_restored(), 1);
+	// What it follows changes: the initializer's again.
+	kf.v = 2;
+	ak_signal_write(&kf.n);
+	CHECK_EQ_INT(cell_int(kf.f), 20);
+
+	ak_owner_dispose(r);
+	ak_release(kf.f.p);
+	ak_keep_discard();
+	ak_release(kf.key);
+	ak_keep_stop();
+}
+
 T_MAIN()

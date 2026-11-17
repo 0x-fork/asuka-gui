@@ -5,6 +5,13 @@
 #include "vm/keep.h"
 
 // ---- Cells ----
+//
+// A state's cell holds its value. A state whose initializer reads what
+// changes is a follow (rfcs/0012): a cell whose value a memo of its
+// initializer replaces when what it read changes (core/src/signal's
+// ak_follow). Reads and writes of a cell check which it is (CELL_FOLLOW,
+// one branch); a follow's readers follow its ak_follow, not the cell's
+// node.
 
 typedef struct {
 	ak_opaque h;
@@ -13,12 +20,29 @@ typedef struct {
 	uint8_t kind;
 } cell;
 
+enum {
+	CELL_KEPT = 1,    // kept across reloads (keep.c)
+	CELL_FOLLOW = 2,  // a follow: the cell is a follow's first field
+};
+
+typedef struct {
+	cell c;
+	ak_follow *f;        // NULL once the graph let go of it
+	ak_closure *update;  // the initializer's thunk; NULL once settled or its owner went
+	ak_comp_info info;
+	bool self;           // the thunk takes the state's current value (T?)
+	bool has;            // computed or set once
+} follow;
+
 static void cell_drop(ak_opaque *o) {
 	cell *c = (cell *)o;
-	if (o->h.flags & 1) ak_keep_forget(c);  // a keyed cell (keep.c)
+	if (o->h.flags & CELL_KEPT) ak_keep_forget(c);  // a keyed cell (keep.c)
+	if (o->h.flags & CELL_FOLLOW) ak_release(((follow *)c)->update);
 	ak_signal_drop(&c->node);
 	ak_release_val(c->v, (ak_kind)c->kind);
 }
+
+static inline bool is_follow(const cell *c) { return (c->h.h.flags & CELL_FOLLOW) != 0; }
 
 // A cell kept across reloads is looked up and stored through these
 // (dev.c sets them while the dev loop runs; NULL otherwise).
@@ -43,8 +67,120 @@ ak_val ak_vm_cell_new(ak_val v, ak_kind k, ak_str *keep_key) {
 
 ak_kind ak_vm_cell_kind(void *p) { return (ak_kind)((cell *)p)->kind; }
 
+// follow_update runs the initializer, given the state's current value
+// when it asks for it (none the first time), and takes what it returns
+// unless that's equal to the value now.
+static bool follow_update(void *ctx) {
+	follow *w = ctx;
+	if (!w->update) return false;  // its owner went (follow_gone)
+	ak_kind k = (ak_kind)w->c.kind;
+	ak_val arg = {0}, v;
+	if (w->self) {
+		// T?: a reference is its own optional; a scalar, boxed.
+		if (w->has) arg = k == AK_K_REF ? w->c.v : (ak_val){.p = ak_box_new(k, w->c.v)};
+		v = ak_call(w->update, &arg, 1);
+		if (w->has && k != AK_K_REF) ak_release(arg.p);
+	} else {
+		v = ak_call(w->update, NULL, 0);
+	}
+	if (ak_error_pending()) {
+		ak_raise(ak_error_take());  // the follow holds it, as a memo does
+		return true;
+	}
+	if (w->has && ak_val_eq(w->c.v, v, k)) {
+		ak_release_val(v, k);
+		return false;
+	}
+	ak_val old = w->c.v;
+	w->c.v = v;
+	w->has = true;
+	ak_release_val(old, k);
+	return true;
+}
+
+static void follow_comp_drop(void *ctx) {
+	follow *w = ctx;
+	w->f = NULL;
+	ak_release(w);  // the graph's reference
+}
+
+// follow_gone runs as the owner the follow was made under is disposed:
+// it never runs its initializer again, and lets go of it now (it may
+// hold the component's env, which holds the follow).
+static void follow_gone(void *ctx) {
+	follow *w = ctx;
+	ak_closure *c = w->update;
+	w->update = NULL;
+	ak_release(c);
+	ak_release(w);
+}
+
+// follow_settle: an initializer that ran and read nothing (a parameter
+// whose caller passed a constant) never runs again; the follow is a
+// plain state from then on, and lets go of it.
+static inline void follow_settle(follow *w) {
+	if (w->update && w->f && ak_follow_settled(w->f)) {
+		ak_closure *c = w->update;
+		w->update = NULL;
+		ak_release(c);
+	}
+}
+
+// follow_store takes v as the follow's value (a write): brought up to
+// date first, so that a write after what it follows changed stands.
+static void follow_store(follow *w, ak_val v, bool always) {
+	ak_kind k = (ak_kind)w->c.kind;
+	if (w->f) ak_follow_refresh(w->f);
+	follow_settle(w);
+	if (!always && w->has && ak_val_eq(w->c.v, v, k)) {
+		ak_release_val(v, k);
+		return;
+	}
+	ak_val old = w->c.v;
+	w->c.v = v;
+	w->has = true;
+	ak_release_val(old, k);
+	if (w->f) ak_follow_set(w->f);
+}
+
+ak_val ak_vm_follow_new(ak_closure *update, ak_kind k, ak_str *keep_key, bool self) {
+	follow *w = ak_opaque_new(AK_TAG_CELL, sizeof(follow), cell_drop);
+	w->c.h.h.flags |= CELL_FOLLOW;
+	w->c.kind = (uint8_t)k;
+	w->update = ak_retain(update);
+	w->self = self;
+	w->info = (ak_comp_info){.drop = follow_comp_drop, .label = update->invoke == ak_vm_closure_invoke ? ak_func_name(update->fn) : "a prop's caller's value"};
+	ak_retain(w);  // the graph's, until the computation is dropped
+	w->f = ak_follow_new(follow_update, w, &w->info);
+	if (ak_current_owner()) ak_on_cleanup(follow_gone, ak_retain(w));
+	if (keep_key && ak_vm_keep_find) {
+		// A value kept across a reload is a write: it stands until what
+		// the initializer reads changes.
+		ak_val kept;
+		if (ak_vm_keep_find(keep_key, k, &kept)) follow_store(w, kept, true);
+		ak_vm_keep_add(keep_key, w);
+	}
+	return (ak_val){.p = w};
+}
+
+// follow_get reads a follow, brought up to date: tracked (a binding
+// follows it) or not. Its initializer's error is thrown in the reader.
+static ak_val follow_get(follow *w, bool track) {
+	if (w->f) {
+		bool ok = track ? ak_follow_read(w->f) : (ak_follow_refresh(w->f), ak_memo_error(w->f) == NULL);
+		follow_settle(w);
+		if (!ok) {
+			ak_throw(ak_retain(ak_memo_error(w->f)));
+			return (ak_val){0};
+		}
+	}
+	ak_retain_val(w->c.v, (ak_kind)w->c.kind);
+	return w->c.v;
+}
+
 ak_val ak_vm_cell_get(void *p, bool track) {
 	cell *c = p;
+	if (AK_UNLIKELY(is_follow(c))) return follow_get((follow *)c, track);
 	if (track) ak_signal_read(&c->node);
 	ak_retain_val(c->v, (ak_kind)c->kind);
 	return c->v;
@@ -52,6 +188,10 @@ ak_val ak_vm_cell_get(void *p, bool track) {
 
 void ak_vm_cell_set(void *p, ak_val v) {
 	cell *c = p;
+	if (AK_UNLIKELY(is_follow(c))) {
+		follow_store((follow *)c, v, false);
+		return;
+	}
 	if (ak_val_eq(c->v, v, (ak_kind)c->kind)) {
 		ak_release_val(v, (ak_kind)c->kind);
 		return;
@@ -64,6 +204,11 @@ void ak_vm_cell_set(void *p, ak_val v) {
 
 ak_val ak_vm_cell_take(void *p) {
 	cell *c = p;
+	if (AK_UNLIKELY(is_follow(c)) && ((follow *)c)->f) {
+		// Changed in place: from its current value.
+		ak_follow_refresh(((follow *)c)->f);
+		follow_settle((follow *)c);
+	}
 	ak_val v = c->v;
 	if (c->kind == AK_K_REF) c->v.p = NULL;
 	return v;
@@ -71,6 +216,15 @@ ak_val ak_vm_cell_take(void *p) {
 
 void ak_vm_cell_put(void *p, ak_val v) {
 	cell *c = p;
+	if (AK_UNLIKELY(is_follow(c))) {
+		// What take moved out, back: the follow is up to date already.
+		follow *w = (follow *)c;
+		ak_release_val(c->v, (ak_kind)c->kind);
+		c->v = v;
+		w->has = true;
+		if (w->f) ak_follow_set(w->f);
+		return;
+	}
 	ak_release_val(c->v, (ak_kind)c->kind);
 	c->v = v;
 	ak_signal_write(&c->node);
@@ -248,80 +402,50 @@ ak_val ak_vm_acc_get(void *p) {
 // assigns is read through a model, an accessor of the component's: bound
 // by the caller (bind open: s), it reads the caller's accessor, and the
 // component's assignment emits openChange, whose bind writes s; unbound,
-// it reads a value of its own, which an assignment sets and which takes
-// the caller's value each time that changes (a render effect, when the
-// caller's isn't a constant).
+// it's a follow of the caller's accessor (rfcs/0012): the caller's value
+// until the component assigns it, and the caller's again when that
+// changes. A caller's constant settles it: a state of the component's.
 
 typedef struct {
 	ak_opaque h;
-	ak_node node;  // the own value's readers
-	ak_val v;      // the own value (unbound)
-	acc *inner;    // the caller's accessor
+	acc *inner;  // the caller's accessor
+	void *own;   // unbound: the follow of it
 	uint8_t kind;
 	bool bound;
 } model;
 
 static void model_drop(ak_opaque *o) {
 	model *m = (model *)o;
-	ak_signal_drop(&m->node);
-	ak_release_val(m->v, (ak_kind)m->kind);
+	ak_release(m->own);
 	ak_release(m->inner);
 }
 
 static ak_val model_get(void *p) {
 	model *m = p;
 	if (m->bound) return ak_vm_acc_get(m->inner);
-	ak_signal_read(&m->node);
-	ak_retain_val(m->v, (ak_kind)m->kind);
-	return m->v;
+	return ak_vm_cell_get(m->own, true);
 }
 
-// model_store takes v as the own value.
-static void model_store(model *m, ak_val v) {
-	if (ak_val_eq(m->v, v, (ak_kind)m->kind)) {
-		ak_release_val(v, (ak_kind)m->kind);
-		return;
-	}
-	ak_val old = m->v;
-	m->v = v;
-	ak_release_val(old, (ak_kind)m->kind);
-	ak_signal_write(&m->node);
+// The follow's initializer: the caller's accessor, read.
+static const uint8_t model_read_caps[1] = {AK_K_REF};
+static ak_val model_read(ak_closure *c, ak_val *args, uint32_t nargs) {
+	AK_UNUSED(args);
+	AK_UNUSED(nargs);
+	return ak_vm_acc_get(c->caps[0].p);
 }
-
-// The caller's value, each time it changes, replaces the own.
-static void model_follow(void *ctx) {
-	model *m = ctx;
-	ak_val v = ak_vm_acc_get(m->inner);
-	if (ak_error_pending()) {
-		raise_pending();
-		return;
-	}
-	model_store(m, v);
-}
-
-static void model_follow_drop(void *ctx) { ak_release(ctx); }
-
-static const ak_comp_info model_follow_info = {.drop = model_follow_drop, .label = "a prop's caller's value"};
 
 ak_val ak_vm_model_new(void *inner, bool bound) {
 	acc *in = inner;
 	if (!in || ((ak_obj *)in)->tag != AK_TAG_ACC) ak_panic("ui.model: a prop's accessor, not %p", inner);
 	model *m = ak_opaque_new(AK_TAG_OPAQUE, sizeof(model), model_drop);
-	ak_signal_born(&m->node);
 	m->kind = in->kind;
 	m->inner = ak_retain(in);
 	m->bound = bound;
 	if (!bound) {
-		// The caller's value now, untracked: what builds the component
-		// doesn't follow it.
-		void *tok = ak_untrack_begin();
-		m->v = ak_vm_acc_get(in);
-		ak_untrack_end(tok);
-		if (ak_error_pending()) {
-			ak_release(m);
-			return (ak_val){0};
-		}
-		if (in->mode != ACC_VALUE) ak_effect_new(model_follow, ak_retain(m), AK_EFFECT_RENDER, &model_follow_info);
+		ak_closure *read = ak_closure_new(model_read, NULL, 1, model_read_caps);
+		read->caps[0].p = ak_retain(in);
+		m->own = ak_vm_follow_new(read, (ak_kind)m->kind, NULL, false).p;
+		ak_release(read);
 	}
 	return (ak_val){.p = acc_new(ACC_MODEL, (ak_kind)m->kind, (ak_val){.p = m})};
 }
@@ -338,7 +462,7 @@ void ak_vm_model_set(void *p, ak_val v) {
 	model *m = model_of(p, "ui.model_set");
 	if (m->bound) ak_panic("ui.model_set: a bound prop's value is its caller's");
 	ak_retain_val(v, (ak_kind)m->kind);
-	model_store(m, v);
+	ak_vm_cell_set(m->own, v);
 }
 
 // ---- Untracked calls, effects, cleanups, batches ----

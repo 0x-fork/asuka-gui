@@ -384,11 +384,20 @@ int ak_vm_interp(ak_co *co, ak_val *out) {
 			setref(R, a[0], c.p);
 			break;
 		}
+		case AK_OP_FOLLOWK: {
+			fr->pc = pc;
+			ak_val c = ak_vm_follow_new(R[a[1]].p, (ak_kind)a[2], M->strings[off32(a + 3)], a[5] != 0);
+			RELOAD();
+			CHECK_ERR();
+			setref(R, a[0], c.p);
+			break;
+		}
 		case AK_OP_CGET:
 		case AK_OP_CPEEK: {
 			fr->pc = pc;
 			ak_val v = ak_vm_cell_get(R[a[1]].p, op == AK_OP_CGET);
 			RELOAD();
+			CHECK_ERR();  // a follow's initializer's error
 			store(F, R, a[0], v);
 			break;
 		}

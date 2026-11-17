@@ -132,10 +132,10 @@ pub store Document<T>(path: string, read: fn(bytes) throws -> T, write: fn(T) ->
   /// The file it's kept in: "" while it's untitled (its changes are in
   /// its recovery copy until the user saves it somewhere). Save As,
   /// rename and moveTo change it.
-  pub state file = path
+  pub state file = peek(path)
   /// What it's called: its file's name, or an untitled one's
   /// ("Untitled 2").
-  pub state name = if path.isEmpty() { say("untitled") } else { fs.base(path) }
+  pub state name = peek(if path.isEmpty() { say("untitled") } else { fs.base(path) })
   // When the file last changed as this document knows it, and its
   // edits, counted (what autosave follows).
   state known = 0

@@ -685,8 +685,10 @@ func (g *gen) insn(f *bc.FuncDef, in insn, h string) error {
 			key = fmt.Sprintf("M->strings[%d]", a[3])
 		}
 		w("{ ak_val v_ = R[%d]; ak_retain_val(v_, (ak_kind)%d); ak_val c_ = ak_vm_cell_new(v_, (ak_kind)%d, %s); ak_op_setref(R, %d, c_.p); }", a[1], a[2], a[2], key, a[0])
+	case "FOLLOWK":
+		w("{ ak_val c_ = ak_vm_follow_new(R[%d].p, (ak_kind)%d, M->strings[%d], %v); %s ak_op_setref(R, %d, c_.p); }", a[1], a[2], a[3], a[4] != 0, thrown, a[0])
 	case "CGET", "CPEEK":
-		w("{ ak_val v_ = ak_vm_cell_get(R[%d].p, %v); %s }", a[1], name == "CGET", store(f, a[0], "v_", bc.KVoid))
+		w("{ ak_val v_ = ak_vm_cell_get(R[%d].p, %v); %s %s }", a[1], name == "CGET", thrown, store(f, a[0], "v_", bc.KVoid))
 	case "CSET":
 		w("{ ak_val v_ = R[%d]; ak_retain_val(v_, (ak_kind)K[%d]); ak_vm_cell_set(R[%d].p, v_); %s }", a[1], a[1], a[0], thrown)
 	case "CTAKE":

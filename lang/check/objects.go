@@ -456,6 +456,13 @@ type Member struct {
 	// emits it; unbound, the value is the component's own until the
 	// caller's changes.
 	Assigned bool
+	// For a state (rfcs/0012): Follows, its initializer reads what
+	// changes, or it says what it follows (state x(a) = …), so it's a
+	// follow: the initializer's value until written, and again when
+	// what it follows changes. Self is its own name in its initializer,
+	// its current value (nil when the initializer doesn't read it).
+	Follows bool
+	Self    *Var
 }
 
 // ChangeEvent is the event a prop's assignments emit: <name>Change, with
@@ -498,6 +505,10 @@ type Global struct {
 	Ctx   *FuncCtx  // its initializer's
 	deps  []*Global
 	Pub   bool
+	// A state's, as Member's (rfcs/0012): it follows what its
+	// initializer reads; its own name in the initializer.
+	Follows bool
+	Self    *Var
 }
 
 // Deps are the globals g's initializer reads.

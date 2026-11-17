@@ -218,7 +218,7 @@ fn changes(key: string) -> int {
 pub store Value<T>(key: string, def: T) {
   /// The value: def, then iCloud's once read, then another device's as it
   /// changes it. Setting it writes it to iCloud.
-  pub state value: T = def
+  pub state value: T = peek(def)
   state loaded = false
 
   let version = changes(key)

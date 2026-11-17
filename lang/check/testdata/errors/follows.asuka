@@ -45,3 +45,13 @@ async fn spawns() -> int {
   let t = spawn { peeksShared() } // ERROR "spawn calls peeksShared, which reads state"
   return await t
 }
+
+// A state's own name in its initializer is its current value.
+component Selves(items: [string]) {
+  state picked: string? = if let p = picked, items.contains(p) { p } else { items.first() }
+  state count: int = (count ?? 0) + items.count()
+  state untyped = untyped // ERROR "untyped reads itself \(its current value, none the first time\), so its type must be written: state untyped: T = …"
+  state top(items): int = 0
+
+  Text("{picked ?? "-"} {count} {top}")
+}
