@@ -29,7 +29,7 @@ fn wrongElement(s: Set<string>) -> bool = s.contains(1) // ERROR "is an int, not
 
 fn noIndex(s: Set<int>) -> int = s[0] // ERROR "a Set<int> can't be indexed"
 
-fn ordered(s: Set<int>) -> bool = s < s // ERROR "Set<int>s can't be ordered"
+fn ordered(s: Set<int>) -> bool = s < s // ERROR "Set<int> can't be ordered with <: ints, floats"
 
 fn setOfSets(s: Set<Set<int>>) {} // ERROR "a Set's elements are ints, strings, bools or enums without payloads, not Set<int>"
 
@@ -45,3 +45,10 @@ fn ok(s: Set<string>) -> Set<string> {
 fn noUpdate(s: Set<int>) {
   s.insert(1) // ERROR "s"
 }
+
+struct Handler {
+  run: fn() -> int
+}
+
+fn sameHandler(a: Handler, b: Handler) -> bool = a == b // ERROR "Handler can't be compared with ==: its field run is a fn\(\) -> int, and functions can't be"
+fn knownHandler(hs: [Handler], h: Handler) -> bool = hs.contains(h) // ERROR "contains compares elements, and Handler can't be compared: its field run"

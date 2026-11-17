@@ -468,6 +468,52 @@ func IsErrorType(t Type) bool {
 }
 
 // IsEquatable reports whether values of t can be compared with ==.
+// whyNotEquatable says why values of t, which isn't Equatable, can't be
+// compared: the part of it that can't.
+func whyNotEquatable(t Type) string {
+	switch x := t.(type) {
+	case *FuncType:
+		return "functions can't be"
+	case *Array:
+		return "its elements are " + typeString(x.Elem) + ", and " + whyNotEquatable(x.Elem)
+	case *Map:
+		return "its values are " + typeString(x.Elem) + ", and " + whyNotEquatable(x.Elem)
+	case *Optional:
+		return whyNotEquatable(x.Elem)
+	case *Tuple:
+		for _, e := range x.Elems {
+			if !IsEquatable(e) {
+				return "it holds " + aType(e) + ", and " + whyNotEquatable(e)
+			}
+		}
+	case *TypeParam:
+		return "constrain it: <" + x.Name + ": Equatable>"
+	case *Named:
+		s := x.Subst()
+		switch x.Obj.Kind {
+		case StructType:
+			for _, f := range x.Obj.Fields {
+				if ft := s.Apply(f.Type); !IsEquatable(ft) {
+					return "its field " + f.Name + " is " + aType(ft) + ", and " + whyNotEquatable(ft)
+				}
+			}
+		case EnumType:
+			for _, c := range x.Obj.Cases {
+				for _, p := range c.Params {
+					if pt := s.Apply(p); !IsEquatable(pt) {
+						return "its case " + c.Name + " holds " + aType(pt) + ", and " + whyNotEquatable(pt)
+					}
+				}
+			}
+		case StoreType:
+			return "a store is a reference, not a value: compare what it holds"
+		case InterfaceType:
+			return "an interface's values may be of any type"
+		}
+	}
+	return "its values aren't"
+}
+
 func IsEquatable(t Type) bool {
 	switch x := t.(type) {
 	case *Basic:

@@ -1443,7 +1443,7 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 			t = yt
 		}
 		if !IsEquatable(t) {
-			c.errorf(e, "%ss can't be compared with %s", typeString(t), e.Op)
+			c.errorf(e, "%s can't be compared with %s: %s", typeString(t), e.Op, whyNotEquatable(t))
 		}
 		return Bool
 	case syntax.LSS, syntax.LEQ, syntax.GTR, syntax.GEQ:
@@ -1452,7 +1452,7 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 			return Bool
 		}
 		if !IsComparable(xt) {
-			c.errorf(e, "%ss can't be ordered with %s (ints, floats, strings and durations can)", typeString(xt), e.Op)
+			c.errorf(e, "%s can't be ordered with %s: ints, floats, strings and durations can, and a struct with fn compare(o: T) -> int", typeString(xt), e.Op)
 		}
 		return Bool
 	case syntax.ADD:
