@@ -10,7 +10,7 @@
 //	GET  /sse         three events (event:, id:, multi-line data), 50 ms apart
 //	GET  /stall       its head, then nothing: a client's timeout
 //	GET  /status/404  404, body "missing"
-//	ANY  /echo        200, JSON {"method", "body", "headers"} of the request
+//	ANY  /echo        200, JSON {"method", "uri", "body", "headers"} of the request
 //	GET  /ws          a WebSocket that echoes text and binary messages;
 //	                  it sends "header:<x-token>" first when the request
 //	                  had X-Token, chooses "chat" from the protocols
@@ -77,7 +77,7 @@ func Handler() http.Handler {
 			h[strings.ToLower(k)] = r.Header.Get(k)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"method": r.Method, "body": string(body), "headers": h})
+		json.NewEncoder(w).Encode(map[string]any{"method": r.Method, "uri": r.RequestURI, "body": string(body), "headers": h})
 	})
 	mux.HandleFunc("/ws", serveWebSocket)
 	return mux

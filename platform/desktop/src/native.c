@@ -456,8 +456,14 @@ struct asuka_call {
 	atomic_int refs;
 	atomic_bool cancelled;
 	atomic_bool answered;
+	// What the task's going runs: set on any thread (asuka_fetch's
+	// worker sets its own), so read and written under calls_mu, both
+	// together.
 	void (*on_cancel)(void *);
 	void *cancel_ctx;
+	// The main thread is running the cancel: an answer from another
+	// thread returns only once it has, since its context may go then.
+	atomic_int cancelling;
 	void *args;
 	void (*free_args)(void *);
 	asuka_call *next;  // in calls
@@ -465,6 +471,8 @@ struct asuka_call {
 
 static lock_t calls_mu = LOCK_INIT;
 static asuka_call *calls;
+static lock_t cancel_mu = LOCK_INIT;  // cancelling's ends, waited for on cancel_cv
+static cond_t cancel_cv = COND_INIT;
 
 static void call_unref(asuka_call *c) {
 	if (atomic_fetch_sub(&c->refs, 1) == 1) free(c);
@@ -503,20 +511,37 @@ static void n_start(uint64_t handle, uint32_t method, const uint8_t *in, size_t 
 	e.p->start(e.obj, e.iface, method, &r, c);
 }
 
+// cancel_now runs a call's cancel unless it has answered (main thread).
+// Cancelling is set before answered is read, and an answer sets
+// answered before it reads cancelling: either the cancel doesn't run,
+// or the answer waits for it to end.
+static void cancel_now(asuka_call *c, void (*fn)(void *), void *ctx) {
+	atomic_fetch_add(&c->cancelling, 1);
+	if (!atomic_load(&c->answered)) fn(ctx);
+	lock(&cancel_mu);
+	atomic_fetch_sub(&c->cancelling, 1);
+	cond_broadcast(&cancel_cv);
+	unlock(&cancel_mu);
+}
+
 static void n_cancel(uint64_t id) {
 	asuka_call *c = NULL;
+	void (*fn)(void *) = NULL;
+	void *ctx = NULL;
+	// Cancelled and the cancel read under the lock asuka_call_on_cancel
+	// sets it under: either this sees its cancel, or it sees cancelled.
 	lock(&calls_mu);
 	for (asuka_call *p = calls; p; p = p->next)
 		if (p->id == id) {
 			c = p;
 			atomic_fetch_add(&c->refs, 1);
+			atomic_store(&c->cancelled, true);
+			fn = c->on_cancel, ctx = c->cancel_ctx;
 			break;
 		}
 	unlock(&calls_mu);
 	if (!c) return;
-	atomic_store(&c->cancelled, true);
-	void (*fn)(void *) = c->on_cancel;
-	if (fn && !atomic_load(&c->answered)) fn(c->cancel_ctx);
+	if (fn) cancel_now(c, fn, ctx);
 	call_unref(c);
 }
 
@@ -530,15 +555,18 @@ typedef struct {
 
 static void run_cancel(void *p) {
 	cancel_later *l = p;
-	if (!atomic_load(&l->c->answered)) l->fn(l->ctx);
+	cancel_now(l->c, l->fn, l->ctx);
 	call_unref(l->c);
 	free(l);
 }
 
 void asuka_call_on_cancel(asuka_call *c, void (*fn)(void *ctx), void *ctx) {
+	lock(&calls_mu);
 	c->cancel_ctx = ctx;
 	c->on_cancel = fn;
-	if (atomic_load(&c->cancelled) && fn) {
+	bool now = atomic_load(&c->cancelled);
+	unlock(&calls_mu);
+	if (now && fn) {
 		cancel_later *l = malloc(sizeof *l);
 		*l = (cancel_later){fn, ctx, c};
 		atomic_fetch_add(&c->refs, 1);
@@ -562,6 +590,15 @@ void asuka_call_done(asuka_call *c, asuka_writer *out) {
 		fputs("asuka: a native call answered twice\n", stderr);
 		asuka_writer_free(out);
 		return;
+	}
+	// Answered from another thread while the main thread runs the call's
+	// cancel: not before it ends, so the package may let the cancel's
+	// context go once this returns. (On the main thread, the cancel has
+	// ended, or is what answers.)
+	if (atomic_load(&c->cancelling) && !asuka_desktop_on_main()) {
+		lock(&cancel_mu);
+		while (atomic_load(&c->cancelling)) cond_wait(&cancel_cv, &cancel_mu);
+		unlock(&cancel_mu);
 	}
 	asuka_native_done(c->id, out->data, out->len);
 	asuka_writer_free(out);

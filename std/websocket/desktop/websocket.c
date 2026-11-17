@@ -475,17 +475,11 @@ static void run_connect(void *p) {
 		connect_fail(c, &e);
 		return;
 	}
-	wchar_t *wurl = asuka_wide(url);
+	wchar_t *host = NULL, *object = NULL;
+	unsigned short port = 0;
+	bool https = false;
+	bool cracked = asuka_win_http_target(url, &host, &object, &port, &https);
 	free(url);
-	URL_COMPONENTS u;
-	memset(&u, 0, sizeof u);
-	u.dwStructSize = sizeof u;
-	wchar_t host[256], path[4096], extra[4096];
-	u.lpszHostName = host, u.dwHostNameLength = 256;
-	u.lpszUrlPath = path, u.dwUrlPathLength = 4096;
-	u.lpszExtraInfo = extra, u.dwExtraInfoLength = 4096;
-	bool cracked = WinHttpCrackUrl(wurl, 0, 0, &u);
-	free(wurl);
 	if (!cracked) {
 		asuka_error_failed(&e, "websocket", 0, "%s isn't a ws or wss URL", c->url);
 		connect_fail(c, &e);
@@ -496,15 +490,14 @@ static void run_connect(void *p) {
 	if (!s->session) s->session = WinHttpOpen(L"Asuka", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
 	if (!s->session) goto fail;
 	if (c->timeout_ms > 0) WinHttpSetTimeouts(s->session, c->timeout_ms, c->timeout_ms, c->timeout_ms, c->timeout_ms);
-	s->connection = WinHttpConnect(s->session, host, u.nPort, 0);
+	s->connection = WinHttpConnect(s->session, host, port, 0);
+	free(host);
+	host = NULL;
 	if (!s->connection) goto fail;
-	size_t pn = wcslen(path), en = wcslen(extra);
-	wchar_t *object = malloc((pn + en + 2) * sizeof(wchar_t));
-	wcscpy(object, pn ? path : L"/");
-	wcscat(object, extra);
 	HINTERNET req = WinHttpOpenRequest(s->connection, L"GET", object, NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
-	                                   u.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0);
+	                                   https ? WINHTTP_FLAG_SECURE : 0);
 	free(object);
+	object = NULL;
 	if (!req) goto fail;
 	mu_lock(&s->mu);
 	bool cancelled = s->cancelled;
@@ -590,6 +583,8 @@ static void run_connect(void *p) {
 	return;
 fail:
 	code = GetLastError();
+	free(host);
+	free(object);
 	fail_win(&e, code, c->url);
 	connect_fail(c, &e);
 }

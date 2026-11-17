@@ -183,6 +183,54 @@ static uint8_t *read_test_file(const char *dir, const char *name, size_t *n) {
 	return (uint8_t *)dsk_read_file(path, n);
 }
 
+static void put32(uint8_t *b, uint32_t v) { b[0] = (uint8_t)(v >> 24), b[1] = (uint8_t)(v >> 16), b[2] = (uint8_t)(v >> 8), b[3] = (uint8_t)v; }
+
+// chunk appends a PNG chunk (its CRC unchecked here) at b + *n.
+static void chunk(uint8_t *b, size_t *n, const char *type, const uint8_t *data, uint32_t len) {
+	put32(b + *n, len);
+	memcpy(b + *n + 4, type, 4);
+	if (len) memcpy(b + *n + 8, data, len);
+	memset(b + *n + 8 + len, 0, 4);
+	*n += 12 + len;
+}
+
+// An APNG's frame offsets are 32 bits unsigned: one past what an int holds,
+// or at its edge, is off the canvas, never an int overflow placing it.
+static void test_apng_offsets(void) {
+	static const uint32_t xs[] = {0x7FFFFFFFu, 0x80000000u, 0xFFFFFFF0u};
+	for (size_t i = 0; i < sizeof xs / sizeof *xs; i++) {
+		uint8_t b[512];
+		size_t n = 8;
+		memcpy(b, "\x89PNG\r\n\x1a\n", 8);
+		uint8_t ihdr[13] = {0, 0, 0, 4, 0, 0, 0, 4, 8, 6, 0, 0, 0};
+		chunk(b, &n, "IHDR", ihdr, 13);
+		uint8_t actl[8] = {0, 0, 0, 2, 0, 0, 0, 0};
+		chunk(b, &n, "acTL", actl, 8);
+		uint8_t fc[26] = {0};
+		put32(fc + 4, 4), put32(fc + 8, 4);
+		chunk(b, &n, "fcTL", fc, 26);
+		chunk(b, &n, "IDAT", (const uint8_t *)"x", 1);
+		put32(fc, 1), put32(fc + 4, 2), put32(fc + 8, 2);
+		put32(fc + 12, xs[i]), put32(fc + 16, xs[i]);
+		chunk(b, &n, "fcTL", fc, 26);
+		uint8_t fd[5] = {0, 0, 0, 2, 'y'};
+		chunk(b, &n, "fdAT", fd, 5);
+		chunk(b, &n, "IEND", NULL, 0);
+		fake_still f = {0};
+		dsk_anim *a = dsk_anim_decode(b, n, still, &f);
+		CHECK(a && a->n == 2);
+		if (!a) continue;
+		dsk_anim_player p;
+		CHECK(dsk_anim_player_init(&p, a));
+		dsk_anim_next(&p, NULL);
+		dsk_anim_next(&p, NULL);  // off the canvas: the first frame stays
+		CHECK(at(&p, 0, 0)[3] == 200 && at(&p, 3, 3)[3] == 200);
+		dsk_anim_next(&p, NULL);
+		dsk_anim_player_free(&p);
+		dsk_anim_free(a);
+	}
+}
+
 static void test_anim(const char *dir) {
 	size_t n;
 	uint8_t *d = read_test_file(dir, "anim.gif", &n);
@@ -249,6 +297,7 @@ static void test_anim(const char *dir) {
 		dsk_anim_free(a);
 	}
 	CHECK(!dsk_anim_is_animated((const uint8_t *)"GIF89a", 6));
+	test_apng_offsets();
 }
 
 int main(int argc, char **argv) {

@@ -1,6 +1,8 @@
 // std/http's streamed bodies against internal/testserver (BASE: its
 // URL), on the desktops' C: pieces as they come, lines, server-sent
-// events, a POST, a 404, a stalled body's timeout, and a read cancelled.
+// events, a POST, a URL longer than a path buffer (its fragment the
+// client's, not sent), a 404, a stalled body's timeout, and a read
+// cancelled.
 // Each step is a Text of its own ("#..."); DONE_FILE, if it isn't empty,
 // is written at the end (what a Windows test waits for).
 import std/fs
@@ -42,6 +44,9 @@ component Probe {
       let posted = try await http.stream("{base}/echo", method: "POST", headers: ["X-Who": "probe"], body: "ping".bytes())
       let echo = try await posted.text()
       log.push("posted {posted.status} {echo.contains("POST")} {echo.contains("ping")} {echo.contains("probe")}")
+      let query = "q".repeat(5000)
+      let long = try await (try await http.stream("{base}/echo?{query}#frag")).text()
+      log.push("long {long.contains("/echo?" + query)} {long.contains("frag")}")
       let missing = try await http.stream("{base}/status/404")
       log.push("missing {missing.status} {missing.ok()} {try await missing.text()}")
       do {

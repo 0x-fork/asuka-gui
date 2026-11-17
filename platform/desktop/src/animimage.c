@@ -7,6 +7,7 @@
 // canvas and the frames' own rectangles are kept.
 #include "desktop.h"
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -450,7 +451,9 @@ static dsk_anim *decode_apng(const uint8_t *d, size_t n, dsk_still_decoder still
 		if (!fl[i].has) continue;
 		const uint8_t *fc = fl[i].fctl;
 		uint32_t w = be32(fc + 4), h = be32(fc + 8);
-		int x = (int)be32(fc + 12), y = (int)be32(fc + 16);
+		// Offsets are 32 bits unsigned: past an int's, off any canvas.
+		uint32_t xo = be32(fc + 12), yo = be32(fc + 16);
+		int x = xo > INT_MAX ? INT_MAX : (int)xo, y = yo > INT_MAX ? INT_MAX : (int)yo;
 		int num = be16(fc + 20), den = be16(fc + 22);
 		if (!den) den = 100;
 		bytes o = {0};
@@ -577,11 +580,13 @@ void dsk_anim_player_free(dsk_anim_player *p) {
 	memset(p, 0, sizeof *p);
 }
 
-// The part of frame f on the canvas.
+// The part of frame f on the canvas (its edges summed in 64 bits: an
+// offset at an int's edge is off the canvas, not an overflow).
 static bool frame_rect(const dsk_anim *a, const dsk_anim_frame *f, int *x0, int *y0, int *x1, int *y1) {
+	int64_t r = (int64_t)f->x + f->w, b = (int64_t)f->y + f->h;
 	*x0 = f->x < 0 ? 0 : f->x, *y0 = f->y < 0 ? 0 : f->y;
-	*x1 = f->x + f->w > a->w ? a->w : f->x + f->w;
-	*y1 = f->y + f->h > a->h ? a->h : f->y + f->h;
+	*x1 = r > a->w ? a->w : (int)r;
+	*y1 = b > a->h ? a->h : (int)b;
 	return *x1 > *x0 && *y1 > *y0;
 }
 

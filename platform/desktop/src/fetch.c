@@ -155,21 +155,15 @@ static void on_cancel(void *p) {
 bool asuka_fetch_stream(const asuka_request *rq, asuka_response *out, asuka_error *err) {
 	asuka_response head = {0};
 	const char *url = rq->url;
-	wchar_t *wurl = asuka_wide(url), *wmethod = asuka_wide(rq->method && *rq->method ? rq->method : "GET");
+	wchar_t *wmethod = asuka_wide(rq->method && *rq->method ? rq->method : "GET");
 	wchar_t *agent = asuka_wide(rq->agent && *rq->agent ? rq->agent : "Asuka");
-	URL_COMPONENTS u;
-	memset(&u, 0, sizeof u);
-	u.dwStructSize = sizeof u;
-	wchar_t host[256], path[4096];
-	u.lpszHostName = host, u.dwHostNameLength = 256;
-	u.lpszUrlPath = path, u.dwUrlPathLength = 4096;
-	wchar_t extra[4096];
-	u.lpszExtraInfo = extra, u.dwExtraInfoLength = 4096;
 	HINTERNET session = NULL, conn = NULL, req = NULL;
-	bool ok = false;
+	bool ok = false, https = false;
 	cancel_ctx *cc = NULL;
 	uint8_t *buf = NULL;
-	if (!WinHttpCrackUrl(wurl, 0, 0, &u) || (u.nScheme != INTERNET_SCHEME_HTTP && u.nScheme != INTERNET_SCHEME_HTTPS)) {
+	wchar_t *host = NULL, *object = NULL;
+	unsigned short port = 0;
+	if (!asuka_win_http_target(url, &host, &object, &port, &https)) {
 		asuka_error_failed(err, "http", 0, "%s isn't an http or https URL", url);
 		goto done;
 	}
@@ -177,14 +171,9 @@ bool asuka_fetch_stream(const asuka_request *rq, asuka_response *out, asuka_erro
 	if (!session) session = WinHttpOpen(agent, WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
 	if (!session) goto fail;
 	if (rq->timeout_ms > 0) WinHttpSetTimeouts(session, rq->timeout_ms, rq->timeout_ms, rq->timeout_ms, rq->timeout_ms);
-	conn = WinHttpConnect(session, host, u.nPort, 0);
+	conn = WinHttpConnect(session, host, port, 0);
 	if (!conn) goto fail;
-	size_t pn = wcslen(path), en = wcslen(extra);
-	wchar_t *object = malloc((pn + en + 2) * sizeof(wchar_t));
-	wcscpy(object, pn ? path : L"/");
-	wcscat(object, extra);
-	req = WinHttpOpenRequest(conn, wmethod, object, NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, u.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0);
-	free(object);
+	req = WinHttpOpenRequest(conn, wmethod, object, NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, https ? WINHTTP_FLAG_SECURE : 0);
 	if (!req) goto fail;
 	DWORD decompress = WINHTTP_DECOMPRESSION_FLAG_ALL;
 	WinHttpSetOption(req, WINHTTP_OPTION_DECOMPRESSION, &decompress, sizeof decompress);
@@ -278,7 +267,8 @@ done:
 	if (conn) WinHttpCloseHandle(conn);
 	if (session) WinHttpCloseHandle(session);
 	free(buf);
-	free(wurl);
+	free(host);
+	free(object);
 	free(wmethod);
 	free(agent);
 	if (out && ok) *out = head;

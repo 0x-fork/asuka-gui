@@ -8,6 +8,7 @@
 #include <shellapi.h>
 #include "device.h"
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include <wchar.h>
@@ -200,7 +201,14 @@ static void p_text(device_Platform *self, asuka_call *call) {
 	if (IsClipboardFormatAvailable(CF_UNICODETEXT) && open_clipboard()) {
 		HANDLE h = GetClipboardData(CF_UNICODETEXT);
 		const wchar_t *w = h ? GlobalLock(h) : NULL;
-		if (w) s = asuka_narrow(w, -1), GlobalUnlock(h);
+		if (w) {
+			// Another app's text: up to its NUL, if it has one, but never
+			// past its memory.
+			size_t cap = GlobalSize(h) / sizeof(wchar_t), n = 0;
+			while (n < cap && w[n]) n++;
+			s = n ? asuka_narrow(w, n > INT_MAX ? INT_MAX : (int)n) : asuka_strdup("");
+			GlobalUnlock(h);
+		}
 		CloseClipboard();
 	}
 	device_Platform_clipboardText_done(call, s);
@@ -224,7 +232,7 @@ static uint8_t *dib_bgra(const uint8_t *b, size_t len, UINT *w, UINT *h) {
 	const BITMAPINFOHEADER *bi = (const BITMAPINFOHEADER *)b;
 	LONG width = bi->biWidth, height = bi->biHeight;
 	int bpp = bi->biBitCount;
-	if (width <= 0 || height == 0 || bi->biSize < 40 || bi->biSize > len || (bpp != 24 && bpp != 32)) return NULL;
+	if (width <= 0 || height == 0 || height < -LONG_MAX || bi->biSize < 40 || bi->biSize > len || (bpp != 24 && bpp != 32)) return NULL;
 	bool top_down = height < 0;
 	if (top_down) height = -height;
 	size_t off = bi->biSize + bi->biClrUsed * 4;

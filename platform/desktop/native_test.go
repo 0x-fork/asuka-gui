@@ -261,3 +261,71 @@ func TestRegistryBuilds(t *testing.T) {
 		}
 	}
 }
+
+// TestJSONHelpers runs test/json_test.c: asuka_desktop.h's JSON helpers
+// (src/json.c) under ASan and UBSan, malformed input among them.
+func TestJSONHelpers(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("built with the POSIX test host's flags")
+	}
+	core, err := cbuild.CoreDir()
+	if err != nil {
+		t.Skip(err)
+	}
+	desk, _ := filepath.Abs(".")
+	srcs := []string{filepath.Join(desk, "test", "json_test.c"), filepath.Join(desk, "test", "unit.c"), filepath.Join(desk, "src", "native.c"),
+		filepath.Join(desk, "src", "json.c"), filepath.Join(desk, "src", "linux.c"), filepath.Join(desk, "src", "linux_syms.c")}
+	flags := append(append([]string{}, cbuild.Flags...), "-I"+filepath.Join(desk, "include"), "-D_GNU_SOURCE")
+	work := t.TempDir()
+	exe, err := cbuild.Exe(core, srcs, flags, nil, true, work, "json_test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(exe)
+	cmd.Env = append(os.Environ(), "ASUKA_DATA="+work, noLeaks)
+	out, err := cmd.CombinedOutput()
+	t.Logf("%s", out)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestCallsRace runs test/calls_test.c under ThreadSanitizer, then
+// AddressSanitizer: the registry's started calls (src/native.c), a cancel
+// registered on a worker while the task goes on the main thread, and an
+// answer from the worker while the main thread runs the call's cancel
+// (whose context the worker frees once it has answered).
+func TestCallsRace(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX threads")
+	}
+	cc, err := cbuild.Find()
+	if err != nil {
+		t.Skip(err)
+	}
+	core, err := cbuild.CoreDir()
+	if err != nil {
+		t.Skip(err)
+	}
+	for _, san := range []string{"thread", "address"} {
+		t.Run(san, func(t *testing.T) {
+			exe := filepath.Join(t.TempDir(), "calls_test")
+			args := append(append([]string{}, cc.Args...), cbuild.Flags...)
+			args = append(args, "-Iinclude", "-I"+filepath.Join(core, "include"), "-D_GNU_SOURCE", "-g", "-O1", "-fsanitize="+san,
+				"src/native.c", "test/calls_test.c", "-o", exe, "-lpthread")
+			if out, err := exec.Command(cc.Path, args...).CombinedOutput(); err != nil {
+				if strings.Contains(string(out), san) && strings.Contains(string(out), "unsupported") {
+					t.Skipf("no %s sanitizer here: %s", san, out)
+				}
+				t.Fatalf("%v\n%s", err, out)
+			}
+			cmd := exec.Command(exe)
+			cmd.Env = append(os.Environ(), "TSAN_OPTIONS=halt_on_error=1 exitcode=66", noLeaks)
+			out, err := cmd.CombinedOutput()
+			t.Logf("%s", out)
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}

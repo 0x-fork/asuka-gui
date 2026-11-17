@@ -187,18 +187,24 @@ void webauth_show(signin *s) {
 		return;
 	}
 	// A profile of its own, in a new folder, thrown away after.
-	wchar_t local[MAX_PATH];
-	if (!GetEnvironmentVariableW(L"LOCALAPPDATA", local, MAX_PATH)) wcscpy(local, L".");
+	// %LOCALAPPDATA%\<app>\WebView2-signin\ephemeral-<pid>-<tick>, sized
+	// to the variable's and the name's lengths (either may pass MAX_PATH).
+	DWORD ln = GetEnvironmentVariableW(L"LOCALAPPDATA", NULL, 0);
+	wchar_t *local = ln ? malloc((size_t)ln * sizeof(wchar_t)) : NULL;
+	if (local && GetEnvironmentVariableW(L"LOCALAPPDATA", local, ln) != ln - 1) free(local), local = NULL;
+	const wchar_t *root = local ? local : L".";
 	wchar_t *app = asuka_wide(asuka_desktop_app_name());
-	w->dir = malloc(3 * MAX_PATH * sizeof(wchar_t));
-	swprintf(w->dir, 3 * MAX_PATH, L"%ls\\%ls", local, app);
+	size_t cap = wcslen(root) + 1 + wcslen(app) + sizeof "\\WebView2-signin\\ephemeral-4294967295-4294967295";
+	w->dir = malloc(cap * sizeof(wchar_t));
+	swprintf(w->dir, cap, L"%ls\\%ls", root, app);
 	CreateDirectoryW(w->dir, NULL);
 	wcscat(w->dir, L"\\WebView2-signin");
 	CreateDirectoryW(w->dir, NULL);
 	size_t n = wcslen(w->dir);
-	swprintf(w->dir + n, 3 * MAX_PATH - n, L"\\ephemeral-%lu-%lu", (unsigned long)GetCurrentProcessId(), (unsigned long)GetTickCount());
+	swprintf(w->dir + n, cap - n, L"\\ephemeral-%lu-%lu", (unsigned long)GetCurrentProcessId(), (unsigned long)GetTickCount());
 	CreateDirectoryW(w->dir, NULL);
 	free(app);
+	free(local);
 	asuka_win_webview2_at(w->dir, with_own_env, s);
 }
 
