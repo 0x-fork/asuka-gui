@@ -98,7 +98,7 @@ type ref struct {
 	method  *check.Method // a built-in method
 	recv    check.Type    // its receiver's type (or a special member's)
 	pkg     *check.Package
-	special string // a member the compiler knows: "message", "value", "color", "auto"
+	special string // a member the compiler knows: "message", "value", "loading", "color", "auto"
 	style   *syntax.StyleDecl
 	// An event's parameter (event archive(id: string)): what an emit's
 	// label names; event is the event.
@@ -231,7 +231,7 @@ func (fc *fileCtx) selRef(sel *check.Selection, name string) *ref {
 	case check.SelErrorMessage:
 		return &ref{name: "message", special: "message", recv: sel.Recv}
 	case check.SelLoading:
-		return &ref{name: name, special: "value", recv: sel.Recv}
+		return &ref{name: name, special: sel.Name, recv: sel.Recv} // "value", "loading"
 	case check.SelColor:
 		return &ref{name: name, special: "color", recv: check.Color}
 	case check.SelLengthAuto:

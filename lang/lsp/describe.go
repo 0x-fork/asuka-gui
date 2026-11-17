@@ -570,7 +570,9 @@ func (fc *fileCtx) describe(r *ref) (code, doc string) {
 		case "message":
 			return "message: string", "The error's message."
 		case "value":
-			return "value: " + typeStr(loadingValue(r.recv)), "The value once it's loaded, none until then."
+			return "value: " + typeStr(loadingValue(r.recv)), loadingValueDoc
+		case "loading":
+			return "loading: bool", loadingLoadingDoc
 		case "color":
 			return "Color." + r.name, "A semantic color: it follows the platform's light and dark appearance."
 		case "auto":
@@ -725,6 +727,12 @@ func (fc *fileCtx) varDecl(v *check.Var) string {
 	}
 	return kw + v.Name() + ": " + typeStr(v.Type)
 }
+
+// What hover and completion say of a Loading's properties.
+const (
+	loadingValueDoc   = "The latest value: none before the first answer, kept while it loads again and once it fails."
+	loadingLoadingDoc = "Whether a run is in flight: the first, or one after an argument changed or `reload()`. The case it's in stays meanwhile."
+)
 
 func loadingValue(t check.Type) check.Type {
 	if n, ok := t.(*check.Named); ok && len(n.Args) > 0 {

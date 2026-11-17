@@ -201,7 +201,7 @@ const (
 	SelBuiltinMethod                    // a built-in type's method, as a callee
 	SelColor                            // a semantic color: Value
 	SelLengthAuto                       // .auto, a Length
-	SelLoading                          // a Loading's value, pending, error
+	SelLoading                          // a Loading's value or loading (Name)
 	SelTupleElem                        // a tuple's element, t.0 (Field: its place and type)
 	SelBuiltinField                     // a built-in type's property: g.width, card.hovered (Method)
 	SelVariant                          // Component as c, then c.checked: its variant (Obj a *VariantDef)

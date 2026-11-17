@@ -880,6 +880,9 @@ func (b *fb) member(e syntax.Expr, sel *check.Selection, x int, recv check.Type,
 		n, _ := recv.(*check.Named)
 		return b.copyTo(b.errorMessage(x, n), dst)
 	case check.SelLoading:
+		if sel.Name == "loading" {
+			return b.copyTo(b.callB(uiLoadLoading, bc.KBool, x), dst)
+		}
 		return b.copyTo(b.callB(uiLoadValue, bc.KRef, x), dst)
 	}
 	b.l.errorf(e, "internal: can't lower member")

@@ -1077,10 +1077,13 @@ func (c *Checker) valueMember(e *syntax.MemberExpr, t Type, name string) Type {
 				c.errorf(e.Name, "%s is a method of %s: call it, %s()", name, u.Obj.name, name)
 				return Invalid
 			}
-			if u.Obj == loadingT && name == "value" {
+			if u.Obj == loadingT && (name == "value" || name == "loading") {
 				c.info.Selections[e] = &Selection{Kind: SelLoading, Name: name, Recv: t}
 				if c.ctx != nil {
 					c.ctx.readsState = true
+				}
+				if name == "loading" {
+					return Bool
 				}
 				return MakeOptional(u.Args[0])
 			}
@@ -1224,6 +1227,10 @@ func (c *Checker) memberSuggest(t Type, name string) string {
 	} else {
 		names = methodNames(t)
 	}
+	loading := IsLoading(t)
+	if loading {
+		names = append(names, "value", "loading", "reload")
+	}
 	best, bestD := "", 3
 	for _, n := range names {
 		if d := editDistance(name, n); d < bestD && d < len(name) {
@@ -1232,6 +1239,9 @@ func (c *Checker) memberSuggest(t Type, name string) string {
 	}
 	if best != "" {
 		return " (did you mean " + best + "?)"
+	}
+	if loading {
+		return ": it has value (the latest), loading (a run is in flight) and reload(); match it for its case"
 	}
 	return ""
 }

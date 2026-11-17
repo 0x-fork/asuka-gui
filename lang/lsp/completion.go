@@ -323,7 +323,8 @@ func (c *completer) valueMembers(t check.Type, optional bool, dot int) {
 		case check.EnumType:
 			c.typeMethods(tn, addItem)
 			if check.IsLoadingType(tn) && len(n.Args) > 0 {
-				addItem(CompletionItem{Label: "value", Kind: kindProperty, Detail: typeStr(check.MakeOptional(n.Args[0])), Documentation: c.doc("The value once it's loaded, none until then.")})
+				addItem(CompletionItem{Label: "value", Kind: kindProperty, Detail: typeStr(check.MakeOptional(n.Args[0])), Documentation: c.doc(loadingValueDoc)})
+				addItem(CompletionItem{Label: "loading", Kind: kindProperty, Detail: "bool", Documentation: c.doc(loadingLoadingDoc)})
 			}
 		case check.StoreType:
 			if tn.Comp != nil {

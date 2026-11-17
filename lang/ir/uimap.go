@@ -40,11 +40,12 @@ const (
 	uiScopeEnd   = "ui.scope_end"   // (int) -> void: back to the owner scope_begin replaced
 	uiProvide    = "ui.provide"     // (key string, value) -> void: on the current owner, for the components below
 
-	uiLoad       = "ui.load"    // (thunk -> future) -> loader: re-runs the thunk when what it read changes, cancelling the last task
-	uiLoadState  = "load.state" // (loader) -> int: 0 pending, 1 ready, 2 failed (tracked)
-	uiLoadValue  = "load.value" // (loader) -> T? (the latest value; boxed when a scalar)
-	uiLoadError  = "load.error" // (loader) -> Error
-	uiLoadReload = "load.reload"
+	uiLoad        = "ui.load"      // (thunk -> future) -> loader: re-runs the thunk when what it read changes, cancelling the last task
+	uiLoadState   = "load.state"   // (loader) -> int: 0 pending (before the first answer), 1 ready, 2 failed (tracked)
+	uiLoadLoading = "load.loading" // (loader) -> bool: a run is in flight (tracked, apart from the state)
+	uiLoadValue   = "load.value"   // (loader) -> T? (the latest value; boxed when a scalar)
+	uiLoadError   = "load.error"   // (loader) -> Error
+	uiLoadReload  = "load.reload"
 
 	uiPush    = "ui.push"    // (builder) -> void: on the nearest stack
 	uiPop     = "ui.pop"     // () -> void

@@ -1,0 +1,26 @@
+// A Loading's properties: value (the latest) and loading (a run in
+// flight), read-only.
+
+async fn name(id: int) -> string = "user {id}"
+
+component A {
+  state id = 1
+  let user = load name(id)
+  Column {
+    if user.loading { Text("…") }
+    Text(user.value ?? "")
+    Text(user.loading) // ERROR "^argument text of Text is a bool, not a string"
+    if user.lodaing { Text("…") } // ERROR "^Loading<string> has no lodaing \\(did you mean loading\\?\\)$"
+    if user.isPending { Text("…") } // ERROR "^Loading<string> has no isPending: it has value \\(the latest\\), loading \\(a run is in flight\\) and reload\\(\\); match it for its case$"
+    Button("x") { on press { user.loading = false } } // ERROR "^can't assign to user.loading$"
+  }
+}
+
+// Reading loading reads state: a view that calls a fn that does follows it.
+fn busy(l: Loading<string>) -> bool = l.loading
+
+component B {
+  state id = 1
+  let user = load name(id)
+  Text(if busy(user) { "busy" } else { "idle" })
+}

@@ -231,3 +231,29 @@ component Main {
 		}
 	}
 }
+
+// A Loading's properties: hover says what value and loading are, and
+// completion offers them beside reload.
+func TestLoadingProperties(t *testing.T) {
+	root := t.TempDir()
+	c := newClient(t, root)
+	text := "async fn name(id: int) -> string = \"user {id}\"\n\ncomponent A {\n  state id = 1\n  let user = load name(id)\n  Column {\n    Text(user.value ?? \"\")\n    if user.loading { Text(\"…\") }\n  }\n}\n"
+	uri := c.openText(filepath.Join(root, "a.asuka"), text)
+	c.waitDiags(uri, noDiags)
+	for at, want := range map[string]string{
+		"user.val|ue":   "value: string?",
+		"user.load|ing": "loading: bool",
+	} {
+		var h *Hover
+		p := tdp(uri, posAt(t, text, at))
+		if err := c.call("textDocument/hover", &p, &h); err != nil || h == nil || !strings.Contains(h.Contents.Value, want) {
+			t.Errorf("hover %s: %v %+v", at, err, h)
+		}
+	}
+	version := 1
+	text2 := strings.Replace(text, "if user.loading", "if user.", 1)
+	items := complete(t, c, uri, &version, text2, text2[:strings.Index(text2, "if user.")+len("if user.")]+"|")
+	if got := labels(items); !contains(got, "loading") || !contains(got, "value") || !contains(got, "reload") {
+		t.Errorf("user.: %v", got)
+	}
+}

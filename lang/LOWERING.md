@@ -850,9 +850,18 @@ time zone and the user's hour cycle.
 reads the arguments (tracked) and returns the future of the call (the
 async function started as a task). The runtime re-runs the thunk when
 what it read changes, cancelling the last task, and exposes a
-`Loading<T>` whose `.pending`, `.ready(v)`, `.failed(e)`, `.value` and
-`.reload()` the prelude declares as builtins (`load.state`, `load.value`,
-`load.reload`); its state is a cell, so reading it is tracked.
+`Loading<T>` whose `.pending`, `.ready(v)`, `.failed(e)`, `.value`,
+`.loading` and `.reload()` the prelude declares as builtins (`load.state`,
+`load.value`, `load.loading`, `load.reload`); a `match` reads its case
+with `load.state`, a case's payload with `load.value` or `load.error`.
+
+The loader holds what it shows (RFC 0014): `.pending` only before the
+first answer; a run after that keeps the case it's in until it answers,
+and an answer equal to the last (`ak_val_eq`) changes nothing. It has two
+signals: the state, value and error, which a `match` and `.value` read
+and only an answer that changes them writes; and `busy`, which
+`.loading` (`SelLoading`, as `.value` is) reads and a run writes as it
+starts and ends. Both are tracked reads; neither follows the other.
 
 ## Navigation and commands
 

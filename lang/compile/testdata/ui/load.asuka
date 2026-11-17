@@ -1,4 +1,4 @@
-enum LookupError: Error { missing }
+enum LookupError: Error { missing, offline }
 
 store Calls {
   state started = 0
@@ -24,6 +24,7 @@ component Lookup {
       .failed(e) => Text("Failed")
       .ready(v) => Text("Value {v}")
     }
+    if result.loading { Text("Busy") }
     Text("Latest {result.value ?? 0}")
     Text("Started {calls.started}, finished {calls.finished}")
     Button("Next") { on press { id += 1 } }
@@ -37,18 +38,18 @@ app {
   Lookup()
 }
 
-test "loads, and keeps the value while it reloads" {
+test "pending only before the first answer; a run keeps the value it shows" {
   let app = mount(Lookup(), provide: Calls())
-  app.expect("Loading…")
+  app.expect("Loading…", "Busy")
   await app.idle()
-  app.expect("Value 10")
-  app.expect("Latest 10")
+  app.expect("Value 10", "Latest 10")
+  app.expectNo("Busy")
   app.tap("Next")
-  app.expect("Loading…")
-  app.expect("Latest 10")
+  app.expect("Value 10", "Busy")
+  app.expectNo("Loading…")
   await app.idle()
-  app.expect("Value 20")
-  app.expect("Started 2, finished 2")
+  app.expect("Value 20", "Started 2, finished 2")
+  app.expectNo("Busy")
 }
 
 test "cancels the run that went stale" {
@@ -56,19 +57,131 @@ test "cancels the run that went stale" {
   await app.idle()
   app.tap("Next")
   app.tap("Next")
+  app.expect("Value 10", "Busy")
   await app.idle()
-  app.expect("Value 30")
-  app.expect("Started 3, finished 2")
+  app.expect("Value 30", "Started 3, finished 2")
 }
 
-test "fails, and reloads" {
+test "fails, keeps the value, and reloads" {
   let app = mount(Lookup(), provide: Calls())
   await app.idle()
   app.tap("Bad")
+  app.expect("Value 10", "Busy")
   await app.idle()
-  app.expect("Failed")
-  app.expect("Latest 10")
+  app.expect("Failed", "Latest 10")
   app.tap("Reload")
+  app.expect("Failed", "Busy")
   await app.idle()
-  app.expect("Started 3, finished 1")
+  app.expect("Failed", "Started 3, finished 1")
+  app.expectNo("Busy")
+}
+
+// The RFC's motivation: a card with state of its own in .ready stays,
+// open, while the next one loads, and shows the next one's name after.
+async fn fetchName(id: int) -> string {
+  await sleep(10ms)
+  return "user {id}"
+}
+
+component Card(n: string) {
+  state open = false
+  Column {
+    Text("{n} {if open { "open" } else { "shut" }}")
+    Button("Open") { on press { open = true } }
+  }
+}
+
+component Profile {
+  state id = 1
+  let user = load fetchName(id)
+  Column {
+    match user {
+      .pending => Text("spinner")
+      .failed(e) => Text("failed")
+      .ready(n) => Card(n) { opacity: if user.loading { 0.6 } else { 1 } }
+    }
+    Text(if user.loading { "loading" } else { "idle" })
+    Button("Next") { on press { id += 1 } }
+  }
+}
+
+test "the content and its state stay while it loads again" {
+  let app = mount(Profile())
+  app.expect("spinner", "loading")
+  await app.idle()
+  app.expect("user 1 shut", "idle")
+  app.tap("Open")
+  app.expect("user 1 open")
+  app.tap("Next")
+  app.expect("user 1 open", "loading")
+  app.expectNo("spinner")
+  await app.idle()
+  app.expect("user 2 open", "idle")
+}
+
+// To start over on purpose, read loading in the match's place.
+component Fresh {
+  state id = 1
+  let user = load fetchName(id)
+  Column {
+    if user.loading {
+      Text("spinner")
+    } else {
+      match user {
+        .pending => Text("spinner")
+        .failed(e) => Text("failed")
+        .ready(n) => Card(n)
+      }
+    }
+    Button("Next") { on press { id += 1 } }
+  }
+}
+
+test "starting over: the card goes while it loads" {
+  let app = mount(Fresh())
+  await app.idle()
+  app.tap("Open")
+  app.expect("user 1 open")
+  app.tap("Next")
+  app.expect("spinner")
+  await app.idle()
+  app.expect("user 2 shut")
+}
+
+// An answer equal to the last runs nothing that reads the value.
+store Counts {
+  state reads = 0
+}
+
+async fn same(id: int) -> string {
+  await sleep(10ms)
+  return "same"
+}
+
+component Same {
+  use counts: Counts
+  state id = 1
+  let s = load same(id)
+  Column {
+    match s {
+      .pending => Text("spinner")
+      .failed(e) => Text("failed")
+      .ready(v) => Text(v)
+    }
+    Text("reads {counts.reads}")
+    Button("Next") { on press { id += 1 } }
+  }
+  task(s.value) { counts.reads += 1 }
+}
+
+test "an equal answer notifies nothing" {
+  let app = mount(Same(), provide: Counts())
+  await app.idle()
+  app.expect("same", "reads 2")
+  app.tap("Next")
+  await app.idle()
+  app.expect("same", "reads 2")
+  app.tap("Next")
+  await app.idle()
+  app.expect("same", "reads 2")
 }
