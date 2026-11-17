@@ -14,11 +14,15 @@ import { messages } from "./messages.ts"
 
 /**
  * A part of the reference: the language (docs/language, written), the
- * standard library's packages or the platform SDK's (asuka doc's).
+ * error codes (docs/errors, go generate ./lang/diag's), the standard
+ * library's packages or the platform SDK's (asuka doc's).
  */
-export type ReferenceGroup = "language" | "std" | "platform"
+export type ReferenceGroup = "language" | "errors" | "std" | "platform"
 
-export const referenceGroups: ReferenceGroup[] = ["language", "std", "platform"]
+export const referenceGroups: ReferenceGroup[] = ["language", "errors", "std", "platform"]
+
+/** The parts written as pages of the docs, each with a README that lists its pages. */
+export const writtenGroups: ReferenceGroup[] = ["language", "errors"]
 
 /** The parts asuka doc writes, from the packages' source. */
 export const generatedGroups: ReferenceGroup[] = ["std", "platform"]
@@ -34,7 +38,7 @@ export interface ReferencePackage {
 
 /** The reference's set of a page, or undefined for a page of the docs. */
 export function referenceGroupOf(slug: string): ReferenceGroup | undefined {
-  const m = /^(language|std|platform)(?:\/[a-z0-9-]+)?$/.exec(slug)
+  const m = /^(language|errors|std|platform)(?:\/[a-z0-9-]+)?$/.exec(slug)
   return m ? (m[1] as ReferenceGroup) : undefined
 }
 

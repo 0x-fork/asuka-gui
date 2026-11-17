@@ -13,7 +13,7 @@ import type { Doc, Navs, NavItem, NavSection, SearchEntry } from "@/lib/docs"
 import { localeInfo, messages, type Locale } from "@/lib/i18n"
 import { renderMarkdown, slugOf, type RenderedMarkdown } from "@/lib/markdown.server"
 import { docsBase, isPublished } from "@/lib/markdown-source"
-import { generatedGroups, referenceGroupOf, referencePackages, referenceSource, referenceSourceDir } from "@/lib/reference"
+import { generatedGroups, referenceGroupOf, referencePackages, referenceSource, referenceSourceDir, writtenGroups } from "@/lib/reference"
 import { site } from "@/lib/site"
 
 // Vite runs in website/, next to the repository's docs.
@@ -114,16 +114,21 @@ export async function loadNav(locale: Locale): Promise<Navs> {
 async function referenceNav(locale: Locale): Promise<NavSection[]> {
   const words = messages[locale].reference
   const packages = referencePackages(repoDir)
-  // The language's: its README's list of pages, in order.
-  const readme = await fs.readFile(path.join(docsDirOf(locale), "language", "README.md"), "utf8")
-  const tree = unified().use(remarkParse).parse(readme) as Root
-  const pages = tree.children.flatMap((node) => (node.type === "list" ? navItems(node, "language") : []))
-  const language: NavSection = {
-    title: words.language,
-    group: "reference",
-    items: [{ slug: "language", title: messages[locale].docs.overview, description: words.languageAbout }, ...pages],
-  }
-  return [language, ...generatedGroups.map((group) => ({
+  // The written parts (the language, the error codes): each README's
+  // lists of pages, in order.
+  const written = await Promise.all(
+    writtenGroups.map(async (group): Promise<NavSection> => {
+      const readme = await fs.readFile(path.join(docsDirOf(locale), group, "README.md"), "utf8")
+      const tree = unified().use(remarkParse).parse(readme) as Root
+      const pages = tree.children.flatMap((node) => (node.type === "list" ? navItems(node, group) : []))
+      return {
+        title: words[group as "language" | "errors"],
+        group: "reference",
+        items: [{ slug: group, title: messages[locale].docs.overview, description: words[`${group as "language" | "errors"}About`] }, ...pages],
+      }
+    })
+  )
+  return [...written, ...generatedGroups.map((group) => ({
     title: words[group],
     group: "reference",
     items: [

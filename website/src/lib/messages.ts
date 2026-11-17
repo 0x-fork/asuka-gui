@@ -11,6 +11,8 @@ const en = {
   reference: {
     language: "Language",
     languageAbout: "The language apps are written in, a topic a page.",
+    errors: "Error codes",
+    errorsAbout: "Every error and warning's code: why the rule is there, and how to fix what breaks it.",
     std: "Standard library",
     platform: "Platform SDK",
     stdAbout: "The language's own packages, the same on every platform: import std/<name>.",
@@ -69,6 +71,8 @@ const zh: Messages = {
   reference: {
     language: "语言",
     languageAbout: "编写应用所用的语言，每页一个主题。",
+    errors: "错误代码",
+    errorsAbout: "每个错误和警告的代码：这条规则为什么存在，违反时如何修正。",
     std: "标准库",
     platform: "平台 SDK",
     stdAbout: "语言自带的包，在每个平台上都一样：import std/<name>。",
@@ -125,6 +129,8 @@ const ja: Messages = {
   reference: {
     language: "言語",
     languageAbout: "アプリを書く言語を、トピックごとのページで。",
+    errors: "エラーコード",
+    errorsAbout: "すべてのエラーと警告のコード。ルールがある理由と、破ったときの直し方。",
     std: "標準ライブラリ",
     platform: "プラットフォーム SDK",
     stdAbout: "言語に付属するパッケージで、どのプラットフォームでも同じです：import std/<name>。",
