@@ -1,5 +1,5 @@
-SourceFile 1:1-84:3
-  Decls: [9]
+SourceFile 1:1-96:3
+  Decls: [10]
     StructDecl 2:1-12:2 comments="/// A message in a mailbox." pub
       Name: Ident "Message" 2:12-2:19
       Conforms: [2]
@@ -208,249 +208,331 @@ SourceFile 1:1-84:3
           Result: NamedType 41:20-41:26
             Path: [1]
               Ident "string" 41:20-41:26
-    FuncDecl 44:1-49:2 blank
-      Name: Ident "label" 44:4-44:9
-      Params: ParamList 44:9-44:22
+    FuncDecl 44:1-54:2 blank
+      Name: Ident "describe" 44:4-44:12
+      Params: ParamList 44:12-44:22
         List: [1]
-          Param 44:10-44:21
-            Name: Ident "p" 44:10-44:11
-            Type: NamedType 44:13-44:21
+          Param 44:13-44:21
+            Name: Ident "n" 44:13-44:14
+            Type: NamedType 44:16-44:21
               Path: [1]
-                Ident "Priority" 44:13-44:21
+                Ident "Named" 44:16-44:21
       Result: NamedType 44:26-44:32
         Path: [1]
           Ident "string" 44:26-44:32
-      Body: Block 44:33-49:2
-        Items: [1]
-          MatchStmt 45:3-48:4
-            Subject: Ident "p" 45:9-45:10
-            Arms: [2]
-              MatchArm 46:5-46:38
-                Pattern: OrPat 46:5-46:19
-                  Alts: [2]
-                    CasePat 46:5-46:9 implicit
+      Body: Block 44:33-54:2
+        Items: [2]
+          IfStmt 45:3-47:4
+            Cond: CondList 45:6-45:32
+              List: [2]
+                LetCond 45:6-45:24
+                  Pattern: TypedPat 45:10-45:20
+                    Pat: BindPat 45:10-45:11
+                      Name: Ident "m" 45:10-45:11
+                    Type: NamedType 45:13-45:20
                       Path: [1]
-                        Ident "low" 46:6-46:9
-                    CasePat 46:12-46:19 implicit
-                      Path: [1]
-                        Ident "normal" 46:13-46:19
-                Body: ReturnStmt 46:23-46:38
-                  Value: StringLit 46:30-46:38 Segments=["normal"]
-              MatchArm 47:5-47:27
-                Pattern: CasePat 47:5-47:10 implicit
-                  Path: [1]
-                    Ident "high" 47:6-47:10
-                Body: ReturnStmt 47:14-47:27
-                  Value: StringLit 47:21-47:27 Segments=["high"]
-    FuncDecl 51:1-84:2 blank
-      Name: Ident "classify" 51:4-51:12
-      Params: ParamList 51:12-51:41
-        List: [2]
-          Param 51:13-51:19
-            Name: Ident "n" 51:13-51:14
-            Type: NamedType 51:16-51:19
-              Path: [1]
-                Ident "int" 51:16-51:19
-          Param 51:21-51:40
-            Name: Ident "pair" 51:21-51:25
-            Type: TupleType 51:27-51:40
-              Elems: [2]
-                NamedType 51:28-51:31
-                  Path: [1]
-                    Ident "int" 51:28-51:31
-                NamedType 51:33-51:39
-                  Path: [1]
-                    Ident "string" 51:33-51:39
-      Result: NamedType 51:45-51:51
-        Path: [1]
-          Ident "string" 51:45-51:51
-      Body: Block 51:52-84:2
-        Items: [14]
-          LetDecl 52:3-52:27 Keyword=let
-            Pattern: TuplePat 52:7-52:20
-              Elems: [2]
-                BindPat 52:8-52:13
-                  Name: Ident "count" 52:8-52:13
-                BindPat 52:15-52:19
-                  Name: Ident "name" 52:15-52:19
-            Value: Ident "pair" 52:23-52:27
-          LetDecl 53:3-58:4 Keyword=let
-            Pattern: BindPat 53:7-53:11
-              Name: Ident "size" 53:7-53:11
-            Value: MatchExpr 53:14-58:4
-              Subject: Ident "n" 53:20-53:21
+                        Ident "Message" 45:13-45:20
+                  Value: Ident "n" 45:23-45:24
+                MemberExpr 45:26-45:32
+                  X: Ident "m" 45:26-45:27
+                  Name: Ident "read" 45:28-45:32
+            Then: Block 45:33-47:4
+              Items: [1]
+                ReturnStmt 46:5-46:18
+                  Value: StringLit 46:12-46:18 Segments=["read"]
+          ReturnStmt 48:3-53:4
+            Value: MatchExpr 48:10-53:4
+              Subject: Ident "n" 48:16-48:17
               Arms: [4]
-                MatchArm 54:5-54:16
-                  Pattern: LitPat 54:5-54:6
-                    Value: BasicLit 54:5-54:6 Kind=integer Value="0"
-                  Body: StringLit 54:10-54:16 Segments=["none"]
-                MatchArm 55:5-55:15
-                  Pattern: LitPat 55:5-55:6
-                    Value: BasicLit 55:5-55:6 Kind=integer Value="1"
-                  Body: StringLit 55:10-55:15 Segments=["one"]
-                MatchArm 56:5-56:22
-                  Pattern: LitPat 56:5-56:7
-                    Value: UnaryExpr 56:5-56:7 Op=-
-                      X: BasicLit 56:6-56:7 Kind=integer Value="1"
-                  Body: StringLit 56:11-56:22 Segments=["minus one"]
-                MatchArm 57:5-57:16
-                  Pattern: WildcardPat 57:5-57:6
-                  Body: StringLit 57:10-57:16 Segments=["many"]
-          LetDecl 59:3-59:32 Keyword=var
-            Pattern: BindPat 59:7-59:11
-              Name: Ident "tags" 59:7-59:11
-            Type: MapType 59:13-59:26
-              Key: NamedType 59:14-59:20
+                MatchArm 49:5-49:28
+                  Pattern: TypedPat 49:5-49:15
+                    Pat: BindPat 49:5-49:6
+                      Name: Ident "m" 49:5-49:6
+                    Type: NamedType 49:8-49:15
+                      Path: [1]
+                        Ident "Message" 49:8-49:15
+                  Body: MemberExpr 49:19-49:28
+                    X: Ident "m" 49:19-49:20
+                    Name: Ident "subject" 49:21-49:28
+                MatchArm 50:5-50:45
+                  Pattern: OrPat 50:5-50:38
+                    Alts: [2]
+                      CasePat 50:5-50:25
+                        Path: [1]
+                          Ident "Message" 50:5-50:12
+                        Args: [1]
+                          LitPat 50:22-50:24
+                            Value: StringLit 50:22-50:24 Segments=[""]
+                        Labels: [1]
+                          Ident "subject" 50:13-50:20
+                      TypedPat 50:28-50:38
+                        Pat: WildcardPat 50:28-50:29
+                        Type: NamedType 50:31-50:38
+                          Path: [1]
+                            Ident "Contact" 50:31-50:38
+                  Body: StringLit 50:42-50:45 Segments=["?"]
+                MatchArm 51:5-51:46
+                  Pattern: CasePat 51:5-51:32
+                    Path: [2]
+                      Ident "MailError" 51:5-51:14
+                      Ident "server" 51:15-51:21
+                    Args: [2]
+                      BindPat 51:22-51:28
+                        Name: Ident "status" 51:22-51:28
+                      WildcardPat 51:30-51:31
+                  Body: StringLit 51:36-51:46 Segments=["" ""]
+                    Interps: [1]
+                      Ident "status" 51:38-51:44
+                MatchArm 52:5-52:22
+                  Pattern: WildcardPat 52:5-52:6
+                  Body: CallExpr 52:10-52:22
+                    Fun: MemberExpr 52:10-52:20
+                      X: Ident "n" 52:10-52:11
+                      Name: Ident "describe" 52:12-52:20
+                    Args: ArgList 52:20-52:22
+    FuncDecl 56:1-61:2 blank
+      Name: Ident "label" 56:4-56:9
+      Params: ParamList 56:9-56:22
+        List: [1]
+          Param 56:10-56:21
+            Name: Ident "p" 56:10-56:11
+            Type: NamedType 56:13-56:21
+              Path: [1]
+                Ident "Priority" 56:13-56:21
+      Result: NamedType 56:26-56:32
+        Path: [1]
+          Ident "string" 56:26-56:32
+      Body: Block 56:33-61:2
+        Items: [1]
+          MatchStmt 57:3-60:4
+            Subject: Ident "p" 57:9-57:10
+            Arms: [2]
+              MatchArm 58:5-58:38
+                Pattern: OrPat 58:5-58:19
+                  Alts: [2]
+                    CasePat 58:5-58:9 implicit
+                      Path: [1]
+                        Ident "low" 58:6-58:9
+                    CasePat 58:12-58:19 implicit
+                      Path: [1]
+                        Ident "normal" 58:13-58:19
+                Body: ReturnStmt 58:23-58:38
+                  Value: StringLit 58:30-58:38 Segments=["normal"]
+              MatchArm 59:5-59:27
+                Pattern: CasePat 59:5-59:10 implicit
+                  Path: [1]
+                    Ident "high" 59:6-59:10
+                Body: ReturnStmt 59:14-59:27
+                  Value: StringLit 59:21-59:27 Segments=["high"]
+    FuncDecl 63:1-96:2 blank
+      Name: Ident "classify" 63:4-63:12
+      Params: ParamList 63:12-63:41
+        List: [2]
+          Param 63:13-63:19
+            Name: Ident "n" 63:13-63:14
+            Type: NamedType 63:16-63:19
+              Path: [1]
+                Ident "int" 63:16-63:19
+          Param 63:21-63:40
+            Name: Ident "pair" 63:21-63:25
+            Type: TupleType 63:27-63:40
+              Elems: [2]
+                NamedType 63:28-63:31
+                  Path: [1]
+                    Ident "int" 63:28-63:31
+                NamedType 63:33-63:39
+                  Path: [1]
+                    Ident "string" 63:33-63:39
+      Result: NamedType 63:45-63:51
+        Path: [1]
+          Ident "string" 63:45-63:51
+      Body: Block 63:52-96:2
+        Items: [14]
+          LetDecl 64:3-64:27 Keyword=let
+            Pattern: TuplePat 64:7-64:20
+              Elems: [2]
+                BindPat 64:8-64:13
+                  Name: Ident "count" 64:8-64:13
+                BindPat 64:15-64:19
+                  Name: Ident "name" 64:15-64:19
+            Value: Ident "pair" 64:23-64:27
+          LetDecl 65:3-70:4 Keyword=let
+            Pattern: BindPat 65:7-65:11
+              Name: Ident "size" 65:7-65:11
+            Value: MatchExpr 65:14-70:4
+              Subject: Ident "n" 65:20-65:21
+              Arms: [4]
+                MatchArm 66:5-66:16
+                  Pattern: LitPat 66:5-66:6
+                    Value: BasicLit 66:5-66:6 Kind=integer Value="0"
+                  Body: StringLit 66:10-66:16 Segments=["none"]
+                MatchArm 67:5-67:15
+                  Pattern: LitPat 67:5-67:6
+                    Value: BasicLit 67:5-67:6 Kind=integer Value="1"
+                  Body: StringLit 67:10-67:15 Segments=["one"]
+                MatchArm 68:5-68:22
+                  Pattern: LitPat 68:5-68:7
+                    Value: UnaryExpr 68:5-68:7 Op=-
+                      X: BasicLit 68:6-68:7 Kind=integer Value="1"
+                  Body: StringLit 68:11-68:22 Segments=["minus one"]
+                MatchArm 69:5-69:16
+                  Pattern: WildcardPat 69:5-69:6
+                  Body: StringLit 69:10-69:16 Segments=["many"]
+          LetDecl 71:3-71:32 Keyword=var
+            Pattern: BindPat 71:7-71:11
+              Name: Ident "tags" 71:7-71:11
+            Type: MapType 71:13-71:26
+              Key: NamedType 71:14-71:20
                 Path: [1]
-                  Ident "string" 59:14-59:20
-              Value: NamedType 59:22-59:25
+                  Ident "string" 71:14-71:20
+              Value: NamedType 71:22-71:25
                 Path: [1]
-                  Ident "int" 59:22-59:25
-            Value: MapExpr 59:29-59:32
-          AssignStmt 60:3-60:25 Op==
-            Target: IndexExpr 60:3-60:17
-              X: Ident "tags" 60:3-60:7
-              Index: StringLit 60:8-60:16 Segments=["" ""]
+                  Ident "int" 71:22-71:25
+            Value: MapExpr 71:29-71:32
+          AssignStmt 72:3-72:25 Op==
+            Target: IndexExpr 72:3-72:17
+              X: Ident "tags" 72:3-72:7
+              Index: StringLit 72:8-72:16 Segments=["" ""]
                 Interps: [1]
-                  Ident "name" 60:10-60:14
-            Value: Ident "count" 60:20-60:25
-          AssignStmt 61:3-61:19 Op=??=
-            Target: IndexExpr 61:3-61:13
-              X: Ident "tags" 61:3-61:7
-              Index: Ident "name" 61:8-61:12
-            Value: BasicLit 61:18-61:19 Kind=integer Value="0"
-          ForStmt 62:3-67:4
-            Pattern: TuplePat 62:7-62:19
+                  Ident "name" 72:10-72:14
+            Value: Ident "count" 72:20-72:25
+          AssignStmt 73:3-73:19 Op=??=
+            Target: IndexExpr 73:3-73:13
+              X: Ident "tags" 73:3-73:7
+              Index: Ident "name" 73:8-73:12
+            Value: BasicLit 73:18-73:19 Kind=integer Value="0"
+          ForStmt 74:3-79:4
+            Pattern: TuplePat 74:7-74:19
               Elems: [2]
-                BindPat 62:8-62:11
-                  Name: Ident "key" 62:8-62:11
-                BindPat 62:13-62:18
-                  Name: Ident "value" 62:13-62:18
-            Seq: Ident "tags" 62:23-62:27
-            Body: Block 62:28-67:4
+                BindPat 74:8-74:11
+                  Name: Ident "key" 74:8-74:11
+                BindPat 74:13-74:18
+                  Name: Ident "value" 74:13-74:18
+            Seq: Ident "tags" 74:23-74:27
+            Body: Block 74:28-79:4
               Items: [2]
-                IfStmt 63:5-65:6
-                  Cond: BinaryExpr 63:8-63:45 Op=||
-                    X: BinaryExpr 63:8-63:31 Op=&&
-                      X: BinaryExpr 63:8-63:18 Op=>
-                        X: Ident "value" 63:8-63:13
-                        Y: BasicLit 63:16-63:18 Kind=integer Value="10"
-                      Y: BinaryExpr 63:22-63:31 Op=!=
-                        X: Ident "key" 63:22-63:25
-                        Y: StringLit 63:29-63:31 Segments=[""]
-                    Y: BinaryExpr 63:35-63:45 Op===
-                      X: BinaryExpr 63:35-63:40 Op=%
-                        X: Ident "n" 63:35-63:36
-                        Y: BasicLit 63:39-63:40 Kind=integer Value="2"
-                      Y: BasicLit 63:44-63:45 Kind=integer Value="0"
-                  Then: Block 63:46-65:6
+                IfStmt 75:5-77:6
+                  Cond: BinaryExpr 75:8-75:45 Op=||
+                    X: BinaryExpr 75:8-75:31 Op=&&
+                      X: BinaryExpr 75:8-75:18 Op=>
+                        X: Ident "value" 75:8-75:13
+                        Y: BasicLit 75:16-75:18 Kind=integer Value="10"
+                      Y: BinaryExpr 75:22-75:31 Op=!=
+                        X: Ident "key" 75:22-75:25
+                        Y: StringLit 75:29-75:31 Segments=[""]
+                    Y: BinaryExpr 75:35-75:45 Op===
+                      X: BinaryExpr 75:35-75:40 Op=%
+                        X: Ident "n" 75:35-75:36
+                        Y: BasicLit 75:39-75:40 Kind=integer Value="2"
+                      Y: BasicLit 75:44-75:45 Kind=integer Value="0"
+                  Then: Block 75:46-77:6
                     Items: [1]
-                      BranchStmt 64:7-64:12 Tok=break
-                BranchStmt 66:5-66:13 Tok=continue
-          ForStmt 68:3-70:4
-            Pattern: BindPat 68:7-68:8
-              Name: Ident "i" 68:7-68:8
-            Seq: BinaryExpr 68:12-68:17 Op=..<
-              X: BasicLit 68:12-68:13 Kind=integer Value="0"
-              Y: Ident "n" 68:16-68:17
-            Body: Block 68:18-70:4
+                      BranchStmt 76:7-76:12 Tok=break
+                BranchStmt 78:5-78:13 Tok=continue
+          ForStmt 80:3-82:4
+            Pattern: BindPat 80:7-80:8
+              Name: Ident "i" 80:7-80:8
+            Seq: BinaryExpr 80:12-80:17 Op=..<
+              X: BasicLit 80:12-80:13 Kind=integer Value="0"
+              Y: Ident "n" 80:16-80:17
+            Body: Block 80:18-82:4
               Items: [1]
-                ExprStmt 69:5-69:21
-                  X: CallExpr 69:5-69:21
-                    Fun: Ident "print" 69:5-69:10
-                    Args: ArgList 69:10-69:21
+                ExprStmt 81:5-81:21
+                  X: CallExpr 81:5-81:21
+                    Fun: Ident "print" 81:5-81:10
+                    Args: ArgList 81:10-81:21
                       List: [1]
-                        Arg 69:11-69:20
-                          Value: BinaryExpr 69:11-69:20 Op=+
-                            X: BinaryExpr 69:11-69:16 Op=*
-                              X: Ident "i" 69:11-69:12
-                              Y: BasicLit 69:15-69:16 Kind=integer Value="2"
-                            Y: BasicLit 69:19-69:20 Kind=integer Value="1"
-          LetDecl 71:3-71:20 Keyword=let
-            Pattern: BindPat 71:7-71:12
-              Name: Ident "range" 71:7-71:12
-            Value: BinaryExpr 71:15-71:20 Op=..
-              X: BasicLit 71:15-71:16 Kind=integer Value="1"
-              Y: BasicLit 71:18-71:20 Kind=integer Value="10"
-          LetDecl 72:3-72:24 Keyword=let
-            Pattern: BindPat 72:7-72:12
-              Name: Ident "empty" 72:7-72:12
-            Type: ArrayType 72:14-72:19
-              Elem: NamedType 72:15-72:18
+                        Arg 81:11-81:20
+                          Value: BinaryExpr 81:11-81:20 Op=+
+                            X: BinaryExpr 81:11-81:16 Op=*
+                              X: Ident "i" 81:11-81:12
+                              Y: BasicLit 81:15-81:16 Kind=integer Value="2"
+                            Y: BasicLit 81:19-81:20 Kind=integer Value="1"
+          LetDecl 83:3-83:20 Keyword=let
+            Pattern: BindPat 83:7-83:12
+              Name: Ident "range" 83:7-83:12
+            Value: BinaryExpr 83:15-83:20 Op=..
+              X: BasicLit 83:15-83:16 Kind=integer Value="1"
+              Y: BasicLit 83:18-83:20 Kind=integer Value="10"
+          LetDecl 84:3-84:24 Keyword=let
+            Pattern: BindPat 84:7-84:12
+              Name: Ident "empty" 84:7-84:12
+            Type: ArrayType 84:14-84:19
+              Elem: NamedType 84:15-84:18
                 Path: [1]
-                  Ident "int" 72:15-72:18
-            Value: ArrayExpr 72:22-72:24
-          LetDecl 73:3-73:26 Keyword=let
-            Pattern: BindPat 73:7-73:14
-              Name: Ident "numbers" 73:7-73:14
-            Value: ArrayExpr 73:17-73:26
+                  Ident "int" 84:15-84:18
+            Value: ArrayExpr 84:22-84:24
+          LetDecl 85:3-85:26 Keyword=let
+            Pattern: BindPat 85:7-85:14
+              Name: Ident "numbers" 85:7-85:14
+            Value: ArrayExpr 85:17-85:26
               Elems: [3]
-                BasicLit 73:18-73:19 Kind=integer Value="1"
-                BasicLit 73:21-73:22 Kind=integer Value="2"
-                BasicLit 73:24-73:25 Kind=integer Value="3"
-          LetDecl 74:3-74:42 Keyword=let
-            Pattern: BindPat 74:7-74:10
-              Name: Ident "hex" 74:7-74:10
-            Value: BinaryExpr 74:13-74:42 Op=+
-              X: BinaryExpr 74:13-74:35 Op=+
-                X: BinaryExpr 74:13-74:28 Op=+
-                  X: BasicLit 74:13-74:20 Kind=integer Value="0xff_ff"
-                  Y: BasicLit 74:23-74:28 Kind=integer Value="1_000"
-                Y: BasicLit 74:31-74:35 Kind=float Value="3.14"
-              Y: BasicLit 74:38-74:42 Kind=float Value="1e-3"
-          LetDecl 75:3-75:21 Keyword=let
-            Pattern: BindPat 75:7-75:8
-              Name: Ident "t" 75:7-75:8
-            Value: TupleExpr 75:11-75:21
+                BasicLit 85:18-85:19 Kind=integer Value="1"
+                BasicLit 85:21-85:22 Kind=integer Value="2"
+                BasicLit 85:24-85:25 Kind=integer Value="3"
+          LetDecl 86:3-86:42 Keyword=let
+            Pattern: BindPat 86:7-86:10
+              Name: Ident "hex" 86:7-86:10
+            Value: BinaryExpr 86:13-86:42 Op=+
+              X: BinaryExpr 86:13-86:35 Op=+
+                X: BinaryExpr 86:13-86:28 Op=+
+                  X: BasicLit 86:13-86:20 Kind=integer Value="0xff_ff"
+                  Y: BasicLit 86:23-86:28 Kind=integer Value="1_000"
+                Y: BasicLit 86:31-86:35 Kind=float Value="3.14"
+              Y: BasicLit 86:38-86:42 Kind=float Value="1e-3"
+          LetDecl 87:3-87:21 Keyword=let
+            Pattern: BindPat 87:7-87:8
+              Name: Ident "t" 87:7-87:8
+            Value: TupleExpr 87:11-87:21
               Elems: [2]
-                BasicLit 75:12-75:13 Kind=integer Value="1"
-                StringLit 75:15-75:20 Segments=["two"]
-          IfStmt 76:3-82:4
-            Cond: LetCond 76:6-76:31
-              Pattern: BindPat 76:10-76:15
-                Name: Ident "first" 76:10-76:15
-              Value: MemberExpr 76:18-76:31
-                X: Ident "numbers" 76:18-76:25
-                Name: Ident "first" 76:26-76:31
-            Then: Block 76:32-78:4
+                BasicLit 87:12-87:13 Kind=integer Value="1"
+                StringLit 87:15-87:20 Segments=["two"]
+          IfStmt 88:3-94:4
+            Cond: LetCond 88:6-88:31
+              Pattern: BindPat 88:10-88:15
+                Name: Ident "first" 88:10-88:15
+              Value: MemberExpr 88:18-88:31
+                X: Ident "numbers" 88:18-88:25
+                Name: Ident "first" 88:26-88:31
+            Then: Block 88:32-90:4
               Items: [1]
-                ExprStmt 77:5-77:17
-                  X: CallExpr 77:5-77:17
-                    Fun: Ident "print" 77:5-77:10
-                    Args: ArgList 77:10-77:17
+                ExprStmt 89:5-89:17
+                  X: CallExpr 89:5-89:17
+                    Fun: Ident "print" 89:5-89:10
+                    Args: ArgList 89:10-89:17
                       List: [1]
-                        Arg 77:11-77:16
-                          Value: Ident "first" 77:11-77:16
-            Else: IfStmt 78:10-82:4
-              Cond: MemberExpr 78:13-78:28
-                X: Ident "numbers" 78:13-78:20
-                Name: Ident "isEmpty" 78:21-78:28
-              Then: Block 78:29-80:4
+                        Arg 89:11-89:16
+                          Value: Ident "first" 89:11-89:16
+            Else: IfStmt 90:10-94:4
+              Cond: MemberExpr 90:13-90:28
+                X: Ident "numbers" 90:13-90:20
+                Name: Ident "isEmpty" 90:21-90:28
+              Then: Block 90:29-92:4
                 Items: [1]
-                  ExprStmt 79:5-79:19
-                    X: CallExpr 79:5-79:19
-                      Fun: Ident "print" 79:5-79:10
-                      Args: ArgList 79:10-79:19
+                  ExprStmt 91:5-91:19
+                    X: CallExpr 91:5-91:19
+                      Fun: Ident "print" 91:5-91:10
+                      Args: ArgList 91:10-91:19
                         List: [1]
-                          Arg 79:11-79:18
-                            Value: StringLit 79:11-79:18 Segments=["empty"]
-              Else: Block 80:10-82:4
+                          Arg 91:11-91:18
+                            Value: StringLit 91:11-91:18 Segments=["empty"]
+              Else: Block 92:10-94:4
                 Items: [1]
-                  ExprStmt 81:5-81:15
-                    X: CallExpr 81:5-81:15
-                      Fun: Ident "print" 81:5-81:10
-                      Args: ArgList 81:10-81:15
+                  ExprStmt 93:5-93:15
+                    X: CallExpr 93:5-93:15
+                      Fun: Ident "print" 93:5-93:10
+                      Args: ArgList 93:10-93:15
                         List: [1]
-                          Arg 81:11-81:14
-                            Value: StringLit 81:11-81:14 Segments=["?"]
-          ReturnStmt 83:3-83:60
-            Value: StringLit 83:10-83:60 Segments=["" " " " " " " " " " " ""]
+                          Arg 93:11-93:14
+                            Value: StringLit 93:11-93:14 Segments=["?"]
+          ReturnStmt 95:3-95:60
+            Value: StringLit 95:10-95:60 Segments=["" " " " " " " " " " " ""]
               Interps: [6]
-                Ident "size" 83:12-83:16
-                MemberExpr 83:19-83:32
-                  X: Ident "numbers" 83:19-83:26
-                  Name: Ident "count" 83:27-83:32
-                Ident "hex" 83:35-83:38
-                Ident "t" 83:41-83:42
-                Ident "range" 83:45-83:50
-                Ident "empty" 83:53-83:58
+                Ident "size" 95:12-95:16
+                MemberExpr 95:19-95:32
+                  X: Ident "numbers" 95:19-95:26
+                  Name: Ident "count" 95:27-95:32
+                Ident "hex" 95:35-95:38
+                Ident "t" 95:41-95:42
+                Ident "range" 95:45-95:50
+                Ident "empty" 95:53-95:58

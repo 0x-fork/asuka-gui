@@ -189,6 +189,9 @@ type parser struct {
 	// styleValue > 0: in a style: prop's value, where an if may have no
 	// else (an entry that adds nothing when it's false).
 	styleValue int
+	// letPat: parsing a let's pattern, whose name: is the let's type,
+	// not a type test's (TypedPat).
+	letPat bool
 
 	comments []*Comment
 	ci       int // the next comment not yet attached
@@ -1477,7 +1480,10 @@ func (p *parser) parseState(start Pos) *StateDecl {
 func (p *parser) parseLet(start Pos) *LetDecl {
 	d := &LetDecl{Keyword: p.tok}
 	p.next()
+	saved := p.letPat
+	p.letPat = true
 	d.Pattern = p.parsePattern()
+	p.letPat = saved
 	if p.got(COLON) {
 		d.Type = p.parseType()
 	}
@@ -3023,11 +3029,11 @@ func (p *parser) parsePrimaryPattern() Pattern {
 	case IDENT, APP, BIND, COMPONENT, EFFECT, ENUM, EVENT, EXTERN, INTERFACE, KEY, NATIVE, ON, PROP, PROVIDE, SCREEN, STATE, STORE, STRUCT, STYLE, TASK, TEST, TYPE, USE, THROWS:
 		if p.lit == "_" {
 			p.next()
-			return &WildcardPat{Span: p.span(start)}
+			return p.typedPat(&WildcardPat{Span: p.span(start)})
 		}
 		if p.peek(1) != PERIOD && p.peek(1) != LPAREN {
 			id := p.ident()
-			return &BindPat{Name: id, Span: id.Span}
+			return p.typedPat(&BindPat{Name: id, Span: id.Span})
 		}
 		c := &CasePat{Path: []*Ident{p.ident()}}
 		for p.got(PERIOD) {
@@ -3075,6 +3081,18 @@ func (p *parser) parsePrimaryPattern() Pattern {
 		p.next()
 	}
 	return &BadPat{Span: p.span(start)}
+}
+
+// typedPat parses name: Type after a name or _ (x), a type test; x
+// alone without the colon, or in a let's pattern.
+func (p *parser) typedPat(x Pattern) Pattern {
+	if p.tok != COLON || p.letPat {
+		return x
+	}
+	p.next()
+	t := &TypedPat{Pat: x, Type: p.parseType()}
+	t.Span = Span{x.Range().Start, t.Type.Range().End}
+	return t
 }
 
 func (p *parser) caseArgs(c *CasePat) {

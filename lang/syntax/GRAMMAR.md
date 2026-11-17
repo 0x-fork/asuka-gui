@@ -414,8 +414,7 @@ the printer's form for any, `(fn())?`).
 
 ```ebnf
 Pattern     = PrimaryPattern { "|" PrimaryPattern } .
-PrimaryPattern = "_"
-            | Ident                              (* binds *)
+PrimaryPattern = ( "_" | Ident ) [ ":" Type ]  (* _ or a name binds; with a type, a type test: c: Circle *)
             | Ident { "." Ident } [ CaseArgs ]   (* a case or a struct, when a . or a ( follows the name: Shape.circle(r), Point(x: 0, y) *)
             | "." Name [ CaseArgs ]              (* an implicit case: .ready(v) *)
             | Literal
@@ -424,3 +423,11 @@ PrimaryPattern = "_"
 CaseArgs    = "(" [ CaseArg { "," CaseArg } [ "," ] ] ")" .
 CaseArg     = [ Name ":" ] Pattern .            (* a payload's or a field's label (decision 25) *)
 ```
+
+A name or `_` with a type after it is a type test (RFC 0011): it
+matches a value of an interface, or of a type parameter, when the value
+is of that type (`match shape { c: Circle => … }`, `if let c: Circle =
+shape`). In a `let`'s pattern the `:` is the let's type instead
+(`let c: Circle = shape else { … }` is the type test, said by the
+type), and in a `CaseArgs` a `name:` is a label, so a typed name there
+takes the label first: `.added(shape: c: Circle)`.

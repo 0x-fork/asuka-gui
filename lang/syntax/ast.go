@@ -1113,6 +1113,16 @@ func (c *CasePat) Label(i int) *Ident {
 	return nil
 }
 
+// A TypedPat is name: Type, or _: Type: a type test, which matches a
+// value of an interface (or of a type parameter) when it's a Type, and
+// binds it as one (match shape { c: Circle => … }, if let c: Circle =
+// shape).
+type TypedPat struct {
+	Span
+	Pat  Pattern // a *BindPat or a *WildcardPat
+	Type Type
+}
+
 // A TuplePat is (a, b).
 type TuplePat struct {
 	Span
@@ -1134,6 +1144,7 @@ func (*WildcardPat) patternNode() {}
 func (*BindPat) patternNode()     {}
 func (*LitPat) patternNode()      {}
 func (*CasePat) patternNode()     {}
+func (*TypedPat) patternNode()    {}
 func (*TuplePat) patternNode()    {}
 func (*OrPat) patternNode()       {}
 func (*BadPat) patternNode()      {}

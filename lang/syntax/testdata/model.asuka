@@ -41,6 +41,18 @@ interface Named {
   fn describe() -> string
 }
 
+fn describe(n: Named) -> string {
+  if let m: Message = n, m.read {
+    return "read"
+  }
+  return match n {
+    m: Message => m.subject
+    Message(subject: "") | _: Contact => "?"
+    MailError.server(status, _) => "{status}"
+    _ => n.describe()
+  }
+}
+
 fn label(p: Priority) -> string {
   match p {
     .low | .normal => return "normal"
