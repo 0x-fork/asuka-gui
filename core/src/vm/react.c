@@ -397,21 +397,23 @@ void ak_vm_batch(bool begin) {
 //
 // Each task has an owner of its own under the owner that started it:
 // disposing that one cancels the task, and the task disposes its owner
-// when it finishes, so a finished task holds nothing.
+// when it finishes, so a finished task holds nothing. The owner's
+// cleanup refers to the task, not its future: the task is there until
+// it disposes the owner, and the future's references are those who can
+// await it (an error none of them can see goes to the owner's catcher).
 
 static void task_owner_cleanup(void *ctx) {
-	ak_future *f = ctx;
-	ak_future_cancel(f);
-	ak_release(f);
+	ak_task *t = ctx;
+	if (t->fut) ak_future_cancel(t->fut);
 }
 
-static void register_cancel(void *ctx) { ak_on_cleanup(task_owner_cleanup, ak_retain(ctx)); }
+static void register_cancel(void *ctx) { ak_on_cleanup(task_owner_cleanup, ctx); }
 
 void ak_vm_task_own(ak_task *t) {
 	if (!ak_current_owner()) return;
 	t->owner = ak_owner_new();
 	ak_owner_retain(t->owner);
-	ak_with_owner(t->owner, register_cancel, t->fut);
+	ak_with_owner(t->owner, register_cancel, t);
 }
 
 typedef struct {

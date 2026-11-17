@@ -1,0 +1,57 @@
+// An error an async handler or a task lets out after an await (nobody
+// awaits them) goes to the nearest Boundary, as one it throws at once.
+
+enum SaveError: Error { boom }
+
+state started = false
+
+component Saver {
+  task {
+    if started {
+      await sleep(1ms)
+      throw SaveError.boom
+    }
+  }
+
+  Column {
+    Button("Now") { on press { throw SaveError.boom } }
+    Button("Later") {
+      on press {
+        await sleep(1ms)
+        throw SaveError.boom
+      }
+    }
+  }
+}
+
+component Guarded {
+  Boundary {
+    Saver()
+    on error(e, reset) { Text("caught: {e.message}") }
+  }
+}
+
+app { Guarded() }
+
+test "a handler's error, at once" {
+  started = false
+  let app = mount(Guarded())
+  app.tap("Now")
+  await app.idle()
+  app.expect("caught: SaveError.boom")
+}
+
+test "a handler's error after an await" {
+  started = false
+  let app = mount(Guarded())
+  app.tap("Later")
+  await sleep(10ms)
+  app.expect("caught: SaveError.boom")
+}
+
+test "a task's error after an await" {
+  started = true
+  let app = mount(Guarded())
+  await sleep(10ms)
+  app.expect("caught: SaveError.boom")
+}

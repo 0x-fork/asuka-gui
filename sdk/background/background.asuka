@@ -70,13 +70,18 @@ store Tasks {
     if !any {
       return
     }
-    for await b in host.next("background", "next") {
-      let got: Pressed? = try? json.decode(b.string())
-      if let p = got {
-        if let f = handlers[p.id] {
-          f(p.action)
+    // A host with no background module: nothing comes.
+    do {
+      for await b in host.next("background", "next") {
+        let got: Pressed? = try? json.decode(b.string())
+        if let p = got {
+          if let f = handlers[p.id] {
+            f(p.action)
+          }
         }
       }
+    } catch e {
+      if !host.unsupported(e) { throw e }
     }
   }
 }

@@ -138,15 +138,20 @@ store Rewriter {
     if !on {
       return
     }
-    for await b in host.next("push", "nextRewrite") {
-      let req: Request? = try? json.decode(b.string())
-      if let r = req {
-        if let out = await rewritten(r.message) {
-          host.send("push", "rewritten", shown(r.token, out).bytes())
-        } else {
-          host.send("push", "rewritten", json.encode(NoAnswer(token: r.token, ok: false)).bytes())
+    // A host with no push module: nothing comes.
+    do {
+      for await b in host.next("push", "nextRewrite") {
+        let req: Request? = try? json.decode(b.string())
+        if let r = req {
+          if let out = await rewritten(r.message) {
+            host.send("push", "rewritten", shown(r.token, out).bytes())
+          } else {
+            host.send("push", "rewritten", json.encode(NoAnswer(token: r.token, ok: false)).bytes())
+          }
         }
       }
+    } catch e {
+      if !host.unsupported(e) { throw e }
     }
   }
 
