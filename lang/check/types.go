@@ -705,7 +705,7 @@ func whyNotHashable1(t Type, seen map[*TypeName]bool) string {
 	switch x := t.(type) {
 	case *Basic:
 		switch x {
-		case Int, Bool, String, Duration, Color, Invalid:
+		case Int, Bool, String, Bytes, Duration, Color, Invalid:
 			return ""
 		case Float:
 			return "floats aren't (NaN isn't equal to itself): key by an int or a string"
@@ -725,12 +725,21 @@ func whyNotHashable1(t Type, seen map[*TypeName]bool) string {
 			}
 		}
 		return ""
+	// Collections hash by their contents, as == compares them (a map's
+	// and a set's in any order): one is Hashable when what it holds is,
+	// as in Swift.
 	case *Array:
-		return "arrays aren't"
+		if why := whyNotHashable1(x.Elem, seen); why != "" {
+			return "its elements are " + aType(x.Elem) + ", and " + why
+		}
+		return ""
 	case *Map:
-		return "maps aren't"
+		if why := whyNotHashable1(x.Elem, seen); why != "" {
+			return "its values are " + aType(x.Elem) + ", and " + why
+		}
+		return whyNotHashable1(x.Key, seen)
 	case *Set:
-		return "sets aren't"
+		return whyNotHashable1(x.Elem, seen)
 	case *FuncType:
 		return "functions aren't"
 	case *Named:

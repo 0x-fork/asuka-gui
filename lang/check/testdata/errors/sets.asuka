@@ -27,7 +27,11 @@ fn marks(s: Set<Mark>) {} // ERROR "a Set's element must be Hashable, and Mark i
 
 fn pairs(s: Set<(int, float)>) {} // ERROR "a Set's element must be Hashable, and \(int, float\) isn't: it holds a float"
 
-fn arrays(s: Set<[int]>) {} // ERROR "a Set's element must be Hashable, and \[int\] isn't: arrays aren't"
+fn arrays(s: Set<[float]>) {} // ERROR "a Set's element must be Hashable, and \[float\] isn't: its elements are a float, and floats aren't"
+
+fn arrayKeys(m: [[int]: string], s: Set<[string]>) {}
+
+fn mapOfFloats(s: Set<[string: float]>) {} // ERROR "a Set's element must be Hashable, and \[string: float\] isn't: its values are a float, and floats aren't"
 
 // Its fields are read after the declarations that name it.
 fn later(m: [Late: int]) {} // ERROR "a map's key must be Hashable, and Late isn't: its field f is a fn\(\) -> int, and functions aren't"
@@ -74,7 +78,9 @@ fn noIndex(s: Set<int>) -> int = s[0] // ERROR "a Set<int> can't be indexed"
 
 fn ordered(s: Set<int>) -> bool = s < s // ERROR "Set<int> can't be ordered with <: ints, floats"
 
-fn setOfSets(s: Set<Set<int>>) {} // ERROR "a Set's element must be Hashable, and Set<int> isn't: sets aren't"
+fn setOfSets(s: Set<Set<int>>) {}
+
+fn setOfFns(s: Set<[fn()]>) {} // ERROR "a Set's element must be Hashable, and \[\(?fn\(\)\)?\] isn't: its elements are a fn\(\), and functions aren't"
 
 fn ok(s: Set<string>) -> Set<string> {
   var t = s

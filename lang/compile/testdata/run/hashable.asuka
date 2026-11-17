@@ -80,6 +80,26 @@ test "a generic Hashable" {
   print(count(["a", "b", "a"]))
 }
 
+// Collections hash by their contents, as == compares them: a set's and
+// a map's in any order.
+test "collection keys" {
+  var paths: [[string]: int] = [:]
+  paths[["a", "b"]] = 1
+  paths[["a", "b"]] = (paths[["a", "b"]] ?? 0) + 1
+  paths[["b", "a"]] = 5
+  print(paths.count())
+  print(paths[["a", "b"]] ?? -1)
+  let groups: Set<Set<int>> = [Set([1, 2]), Set([2, 1]), Set([3])]
+  print(groups.count())
+  var byMap: [[string: int]: string] = [:]
+  byMap[["x": 1, "y": 2]] = "first"
+  byMap[["y": 2, "x": 1]] = "same"
+  print(byMap.count())
+  print(byMap[["x": 1, "y": 2]] ?? "none")
+  let blobs: Set<bytes> = [bytes([1, 2]), bytes([1, 2]), bytes([3])]
+  print(blobs.count())
+}
+
 // Output:
 // 2
 // c
@@ -105,3 +125,10 @@ test "a generic Hashable" {
 // {"nowhere":2,{"name":["x"]}:1}
 // {"a":2,"b":1}
 // ok a generic Hashable
+// 2
+// 2
+// 2
+// 1
+// same
+// 2
+// ok collection keys

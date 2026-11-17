@@ -41,10 +41,10 @@ apart: `let (count, label) = pair`, `for (i, x) in xs.enumerated()`, or
 a tuple pattern in a `match` ([Control flow](control-flow.md#control-flow)).
 
 A map's keys, and a set's elements, are `Hashable`: ints, strings,
-bools, durations, colors, and the enums, structs, tuples and optionals
-made of them (a struct or an enum that holds itself is when its other
-parts are). Floats aren't, since NaN isn't equal to itself, nor are
-arrays, maps, sets and functions:
+bools, bytes, durations, colors, and the enums, structs, tuples,
+optionals, arrays, maps and sets made of them (a struct or an enum that
+holds itself is when its other parts are; a map's keys and values both).
+Floats aren't, since NaN isn't equal to itself, nor are functions:
 
 ```asuka
 struct Cell {
