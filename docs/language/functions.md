@@ -98,6 +98,64 @@ let shapes: [Shape] = [Circle(radius: 1), Square(side: 2)]
 let areas = shapes.map(s => s.area())
 ```
 
+An interface's method may have a body: the interface provides it. A
+type has the interface when it has the methods without bodies; a
+provided one is the type's own when it declares one of the same
+signature, and the interface's otherwise. Inside it, `self` is the
+interface's value, with its methods and fields by their bare names:
+
+```asuka check
+interface Shape {
+  fn area() -> float
+  fn describe() -> string = "a shape of {area()}"
+}
+
+struct Square {
+  side: float
+  fn area() -> float = side * side
+}
+
+struct Circle {
+  radius: float
+  fn area() -> float = 3.14159 * radius * radius
+  fn describe() -> string = "a circle of {radius}"
+}
+
+fn describeAll(shapes: [Shape]) -> [string] = shapes.map(s => s.describe())
+```
+
+A provided method is called on the interface's values and on type
+parameters constrained by it (`T: Shape`, below); a `Square` that isn't
+seen as a `Shape` has no `describe()`. A type that two interfaces each
+provide a method of one name to, and that has none of its own, can't be
+both: the compiler says so, and the type declares its own.
+
+What an interface's value is, its type, is matched with the patterns of
+the types that have the interface: a struct's (`Circle(radius)`), a
+name with a type (`c: Circle`), or an enum's case written with its type
+(`Unit.big(n)`). A `match` over an interface ends with `_`, since any
+type may have it:
+
+```asuka
+fn label(s: Shape) -> string = match s {
+  Circle(radius: 0) => "a point"
+  c: Circle => "a circle of {c.radius}"
+  Square(side) => "a square of {side}"
+  _ => s.describe()
+}
+
+if let c: Circle = shape { … }
+let sq: Square = shape else { return }
+```
+
+The type must have the interface (a `Shape` can't be a `Point` that has
+no `area()`), and an enum without payloads has it only when it declares
+it (`enum Unit: Shape`). A value of a concrete type needs no test: `c:
+Circle` against a `Circle` is an error. Against a type parameter, the
+test is decided as the function is compiled for each type, and an arm
+that can't match isn't in the program. `catch e: ParseError` is the
+same test, of an `Error` ([Errors](errors.md)).
+
 Generic functions and types take type parameters. A parameter's
 constraints are the program's interfaces and `Equatable` (what `==`
 compares: the built-in values, and structs, enums, tuples, arrays, maps
