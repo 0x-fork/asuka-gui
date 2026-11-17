@@ -75,7 +75,7 @@ func (d Diagnostic) Severity() diag.Severity {
 //
 //	app.asuka:14:9: error[write-in-binding]: can't assign to count here
 //	  = help: change state in a handler (on press { … }), a fn, a task or an effect
-//	  = see https://asuka.dev/docs/errors/write-in-binding
+//	  = see https://asuka.egoist.dev/docs/errors/write-in-binding
 //
 // sev is error or warning; after, when set, ends the first line (the
 // platforms a check found it on: "(for Linux)").

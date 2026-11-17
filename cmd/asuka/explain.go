@@ -12,7 +12,7 @@ import (
 )
 
 // cmdExplain is asuka explain: a diagnostic's code's page (lang/diag), the
-// same as asuka.dev/docs/errors/<code>, in the language the environment
+// same as asuka.egoist.dev/docs/errors/<code>, in the language the environment
 // asks for; without a code, every code and its summary.
 func cmdExplain(args []string) error {
 	var lang string

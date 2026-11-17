@@ -226,7 +226,7 @@ the code's page:
 ```
 app.asuka:14:9: error[write-in-binding]: can't assign to count here
   = help: what the UI follows is computed, not changed; change state in a handler (on press { … }), a fn, a task or an effect
-  = see https://asuka.dev/docs/errors/write-in-binding
+  = see https://asuka.egoist.dev/docs/errors/write-in-binding
 ```
 
 `asuka explain write-in-binding` prints that page in the terminal, in
@@ -239,6 +239,18 @@ line instead, for tools and coding agents: `code`, `severity`, `file`,
 `range` (lines and columns from 1), `message`, `help` and `url`, and
 `platforms` when it's some platforms' only. The editor shows the code
 too, linked to its page.
+
+As the app runs under `asuka dev`, `asuka run` or `asuka test`, the
+core reports what it sees go wrong in its state, with codes too: effects
+that keep triggering each other (`effect-loop`, with the effect's line
+and the state it wrote last), a load that waited for another one it
+doesn't use (`load-waterfall`), a load that has shown its last answer
+for two seconds with nothing reading its `loading` (`long-hold`), a
+write that ran more than 1,000 bindings, twice (`wide-fanout`), and an
+effect's write that ran a binding again in the same update
+(`effect-in-effect-pass`). Each is said once per place in the code, with
+the player's logs. Release builds don't look for them; a crash report
+says a panic's code.
 
 ## Editors
 

@@ -183,7 +183,7 @@ func TestDiagnosticsCoded(t *testing.T) {
 	got := d.Format(diag.Error, "")
 	want := "a.asuka:4:5: error[write-in-binding]: can't assign to n here\n" +
 		"  = help: what the UI follows is computed, not changed; change state in a handler (on press { … }), a fn, a task or an effect\n" +
-		"  = see https://asuka.dev/docs/errors/write-in-binding"
+		"  = see https://asuka.egoist.dev/docs/errors/write-in-binding"
 	if got != want {
 		t.Errorf("Format:\n%s\nwant\n%s", got, want)
 	}

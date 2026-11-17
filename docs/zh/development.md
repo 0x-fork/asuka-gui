@@ -103,12 +103,14 @@ Asuka 会监听应用所在的目录及其本地依赖（`asuka.toml` 中的 `fi
 ```
 app.asuka:14:9: error[write-in-binding]: can't assign to count here
   = help: what the UI follows is computed, not changed; change state in a handler (on press { … }), a fn, a task or an effect
-  = see https://asuka.dev/docs/errors/write-in-binding
+  = see https://asuka.egoist.dev/docs/errors/write-in-binding
 ```
 
 `asuka explain write-in-binding` 会在终端里用你的语言（`LANG`）显示这个页面，内容与所装的版本一致：这条规则为什么存在、违反时如何修正，以及一个违反它的程序和一个不违反它的程序。[错误代码](errors/README.md)列出了全部代码。
 
 `asuka check --json` 和 `asuka test --json` 则改为每行输出一个 JSON 对象，供工具和编程智能体使用：`code`、`severity`、`file`、`range`（行号和列号从 1 开始）、`message`、`help` 和 `url`；只在部分平台上出现的诊断还有 `platforms`。编辑器也会显示代码，并链接到它的页面。
+
+在 `asuka dev`、`asuka run` 或 `asuka test` 下运行时，核心还会报告它在状态中发现的问题，同样带有代码：不断互相触发的 effect（`effect-loop`，附带 effect 所在的行和它最后写入的状态）、等待了另一个它并不使用的 load 的 load（`load-waterfall`）、显示上一次结果已达两秒却没有任何地方读取 `loading` 的 load（`long-hold`）、两次让 1,000 多个绑定重新运行的写入（`wide-fanout`），以及让绑定在同一次更新里再运行一次的 effect 写入（`effect-in-effect-pass`）。代码里的每个位置只报告一次，随开发 App 的日志一起输出。发布构建不做这些检查；崩溃报告会带上 panic 的代码。
 
 ## 编辑器
 

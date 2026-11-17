@@ -1,6 +1,7 @@
 package diag_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -161,5 +162,150 @@ func TestPagesCurrent(t *testing.T) {
 				t.Errorf("%s: no code has it (go generate ./lang/diag removes it)", rel)
 			}
 		}
+	}
+}
+
+// runTime is what the core reports running an example's tests on the
+// fake host: each run-time diagnostic's code, and a panic's (error[code]
+// in what the runner printed), and whether the tests failed otherwise.
+func runTime(t *testing.T, runner, src string) (codes []string, out string) {
+	t.Helper()
+	res, err := compile.Dir(write(t, src), nil)
+	if err != nil || res.Module == nil {
+		t.Fatalf("compile: %v %v", err, res.Err())
+	}
+	out, _ = compile.Run(runner, res.Module, true, "", "-diag-json")
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, `{"diag":`) {
+			var d struct{ Diag string }
+			if err := json.Unmarshal([]byte(line), &d); err != nil {
+				t.Fatal(err)
+			}
+			codes = append(codes, d.Diag)
+		}
+		if m := panicCode.FindStringSubmatch(line); m != nil {
+			codes = append(codes, m[1])
+		}
+	}
+	return codes, out
+}
+
+var panicCode = regexp.MustCompile(`panic: error\[([a-z-]+)\]:`)
+
+// Each run-time code's wrong program makes the core report it as its
+// tests run on the fake host (asuka test's: the clock virtual, the work
+// counted), and only it, once; its right one runs its tests clean.
+func TestRunTimeExamples(t *testing.T) {
+	runner, err := compile.Runner(false)
+	if err != nil {
+		t.Skip(err)
+	}
+	for _, c := range diag.All() {
+		if !c.RunTime {
+			continue
+		}
+		t.Run(c.Name, func(t *testing.T) {
+			t.Parallel()
+			codes, out := runTime(t, runner, c.Wrong)
+			if len(codes) != 1 || codes[0] != c.Name {
+				t.Errorf("the wrong example reported %v:\n%s", codes, out)
+			}
+			codes, out = runTime(t, runner, c.Right)
+			if len(codes) != 0 || !strings.Contains(out, "ok ") || strings.Contains(out, "FAIL") {
+				t.Errorf("the right example reported %v:\n%s", codes, out)
+			}
+		})
+	}
+}
+
+// What the detectors leave alone: a load in another's content that reads
+// its answer (it couldn't start sooner), a hold shorter than two seconds,
+// and a state written wide once (a list's first build).
+func TestRunTimeNotReported(t *testing.T) {
+	runner, err := compile.Runner(false)
+	if err != nil {
+		t.Skip(err)
+	}
+	for name, src := range map[string]string{
+		"a load that uses the answer it waited for": `async fn fetchUser() -> int {
+  await sleep(300ms)
+  return 7
+}
+
+async fn fetchPosts(user: int) -> [string] {
+  await sleep(300ms)
+  return ["post of {user}"]
+}
+
+component Posts(user: int) {
+  let posts = load fetchPosts(user)
+  Text("{(posts.value ?? []).count()} posts")
+}
+
+component Profile {
+  let user = load fetchUser()
+  match user {
+    .pending => Text("…")
+    .failed(e) => Text(e.message)
+    .ready(id) => Posts(id)
+  }
+}
+
+test "it waits for what it needs" {
+  let app = mount(Profile())
+  await app.idle()
+  app.expect("1 posts")
+}
+`,
+		"a short hold": `async fn fetchName(id: int) -> string {
+  await sleep(1s)
+  return "user {id}"
+}
+
+component Profile {
+  state id = 1
+  let user = load fetchName(id)
+  Column {
+    match user {
+      .pending => Text("…")
+      .failed(e) => Text(e.message)
+      .ready(name) => Text(name)
+    }
+    Button("Next") { on press { id += 1 } }
+  }
+}
+
+test "a second" {
+  let app = mount(Profile())
+  await app.idle()
+  app.tap("Next")
+  await app.idle()
+  app.expect("user 2")
+}
+`,
+		"one wide write": `component Grid {
+  state picked = 0
+  Column {
+    for i in 0..<1200 {
+      Text(if picked == i { "picked {i}" } else { "{i}" })
+    }
+    Button("Pick") { on press { picked += 1 } }
+  }
+}
+
+test "once" {
+  let app = mount(Grid())
+  app.tap("Pick")
+  app.expect("picked 1")
+}
+`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			codes, out := runTime(t, runner, src)
+			if len(codes) != 0 || strings.Contains(out, "FAIL") {
+				t.Errorf("reported %v:\n%s", codes, out)
+			}
+		})
 	}
 }

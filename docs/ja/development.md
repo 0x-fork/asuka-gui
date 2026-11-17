@@ -103,12 +103,14 @@ Asuka は、アプリのディレクトリとそのローカルの依存関係�
 ```
 app.asuka:14:9: error[write-in-binding]: can't assign to count here
   = help: what the UI follows is computed, not changed; change state in a handler (on press { … }), a fn, a task or an effect
-  = see https://asuka.dev/docs/errors/write-in-binding
+  = see https://asuka.egoist.dev/docs/errors/write-in-binding
 ```
 
 `asuka explain write-in-binding` を実行すると、そのページがターミナルに、あなたの言語（`LANG`）で、インストールしたバージョンのものが表示されます。ルールがある理由、破ったときの直し方、ルールを破るプログラムと破らないプログラムです。すべてのコードは[エラーコード](errors/README.md)にあります。
 
 `asuka check --json` と `asuka test --json` は、代わりに 1 行に 1 つの JSON オブジェクトを書き出します。ツールやコーディングエージェント向けで、`code`、`severity`、`file`、`range`（行と列は 1 から）、`message`、`help`、`url` を持ち、一部のプラットフォームだけのものには `platforms` も付きます。エディターにもコードが表示され、そのページにリンクされます。
+
+`asuka dev`、`asuka run`、`asuka test` で動かしているあいだは、コアも状態の中で見つけた問題をコード付きで報告します。互いを起こし続けるエフェクト（`effect-loop`。エフェクトの行と、最後に書き込んだ状態も示します）、使ってもいない別の load を待った load（`load-waterfall`）、`loading` を読むものがないまま前の答えを 2 秒表示している load（`long-hold`）、1,000 を超えるバインディングを 2 回実行させた書き込み（`wide-fanout`）、同じ更新の中でバインディングをもう一度実行させたエフェクトの書き込み（`effect-in-effect-pass`）です。コードの場所ごとに 1 回だけ、開発用アプリのログと一緒に表示されます。リリースビルドではこれらを検査しませんが、クラッシュレポートにはパニックのコードが記録されます。
 
 ## エディター
 

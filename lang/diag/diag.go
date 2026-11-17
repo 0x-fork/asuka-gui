@@ -116,7 +116,7 @@ func (c *Code) Translated(lang string) bool {
 }
 
 // Site is where the documentation lives.
-const Site = "https://asuka.dev/docs/errors/"
+const Site = "https://asuka.egoist.dev/docs/errors/"
 
 // URL is code's page.
 func URL(code string) string { return Site + code }

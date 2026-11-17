@@ -70,6 +70,12 @@ Time moves only when nothing else can run: a `sleep(5s)` in a test, or
 a task's timer, takes no time, and a test that waits for something that
 never comes fails at once ("the test never finished").
 
+What the core reports as the app runs (a load that waited for another
+for nothing, a long hold with no sign of it: [Errors and their
+codes](development.md#errors-and-their-codes)) `asuka test` prints
+where it happens, with its code; `asuka test --json` writes it, and each
+test's result, as a line of JSON.
+
 ## What the screen shows
 
 Tests name things by the text a user sees: a text, a button's title, a

@@ -9,12 +9,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/lang/bytecode"
+	"github.com/egoist/asuka/lang/diag"
 )
 
 var (
@@ -76,6 +79,66 @@ func writeJSON(out io.Writer, v any) {
 // TestSummary is a run of a module's tests.
 type TestSummary struct {
 	Results []TestResult
+	// Diags are the run-time diagnostics the core reported as the tests
+	// ran (rfcs/0015: load-waterfall, long-hold...), in order.
+	Diags []RunDiag
+}
+
+// A RunDiag is a diagnostic the core reported as the app ran: its code,
+// its message, and the places in the source it concerns ("Profile's load
+// of user at app.asuka:8"), in the test it ran in.
+type RunDiag struct {
+	Code    string   `json:"diag"`
+	Message string   `json:"message"`
+	Where   []string `json:"where"`
+	Test    string   `json:"test,omitempty"`
+}
+
+// relative is d with dir's files said relative to it.
+func (d RunDiag) relative(dir string) RunDiag {
+	if dir == "" {
+		return d
+	}
+	prefix := dir + string(filepath.Separator)
+	d.Message = strings.ReplaceAll(d.Message, prefix, "")
+	where := make([]string, len(d.Where))
+	for i, w := range d.Where {
+		where[i] = strings.ReplaceAll(w, prefix, "")
+	}
+	d.Where = where
+	return d
+}
+
+// String is d as a terminal shows it (base.h's ak_diag_format).
+func (d RunDiag) String() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "warning[%s]: %s", d.Code, d.Message)
+	for _, w := range d.Where {
+		fmt.Fprintf(&b, "\n  --> %s", w)
+	}
+	fmt.Fprintf(&b, "\n  = see %s", diag.URL(d.Code))
+	return b.String()
+}
+
+// whereAt is the file and line a site's label ends with: "… at app.asuka:8".
+var whereAt = regexp.MustCompile(` at (.+):(\d+)$`)
+
+// Record is d as asuka test --json writes it: a diagnostic's record, its
+// file and line its first place's, with where and the test.
+func (d RunDiag) Record() map[string]any {
+	r := map[string]any{"code": d.Code, "severity": "warning", "message": d.Message, "url": diag.URL(d.Code), "where": d.Where}
+	if len(d.Where) > 0 {
+		if m := whereAt.FindStringSubmatch(d.Where[0]); m != nil {
+			line, _ := strconv.Atoi(m[2])
+			at := map[string]int{"line": line, "column": 1}
+			r["file"] = m[1]
+			r["range"] = map[string]any{"start": at, "end": at}
+		}
+	}
+	if d.Test != "" {
+		r["test"] = d.Test
+	}
+	return r
 }
 
 // Failed is how many tests failed.
@@ -127,7 +190,7 @@ func RunTests(m *bytecode.Module, o TestOptions, out io.Writer) (*TestSummary, e
 	if o.Platform != "" {
 		args = append(args, "-platform", o.Platform)
 	}
-	args = append(args, "-test")
+	args = append(args, "-diag-json", "-test")
 	if pattern != "" {
 		args = append(args, pattern)
 	}
@@ -152,6 +215,19 @@ func RunTests(m *bytecode.Module, o TestOptions, out io.Writer) (*TestSummary, e
 	sc.Buffer(make([]byte, 64<<10), 16<<20)
 	for sc.Scan() {
 		line := sc.Text()
+		if strings.HasPrefix(line, `{"diag":`) {
+			var d RunDiag
+			if err := json.Unmarshal([]byte(line), &d); err == nil {
+				d = d.relative(dir)
+				s.Diags = append(s.Diags, d)
+				if o.JSON {
+					writeJSON(out, d.Record())
+				} else {
+					fmt.Fprintln(out, d.String())
+				}
+				continue
+			}
+		}
 		r, ok := parseResult(line, names)
 		if !ok {
 			if o.JSON {

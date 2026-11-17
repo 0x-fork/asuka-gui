@@ -166,7 +166,7 @@ func TestCmdCheckFormats(t *testing.T) {
 	}
 	lines := strings.Split(strings.TrimSpace(b.String()), "\n")
 	if len(lines) != 2 || !strings.HasSuffix(lines[0], `label_web.asuka:1:24: error[type-mismatch]: the result of label is an int, not a string (put it in a string: "{x}") (for the web)`) ||
-		lines[1] != "  = see https://asuka.dev/docs/errors/type-mismatch" {
+		lines[1] != "  = see https://asuka.egoist.dev/docs/errors/type-mismatch" {
 		t.Errorf("got:\n%s", b.String())
 	}
 	b.Reset()
@@ -176,7 +176,7 @@ func TestCmdCheckFormats(t *testing.T) {
 		t.Fatalf("%v: %s", err, b.String())
 	}
 	if r.Code != "type-mismatch" || r.Severity != "error" || r.Range.Start != (check.Point{Line: 1, Column: 24}) ||
-		!slices.Equal(r.Platforms, []string{"web"}) || r.URL != "https://asuka.dev/docs/errors/type-mismatch" || !strings.HasSuffix(r.File, "label_web.asuka") {
+		!slices.Equal(r.Platforms, []string{"web"}) || r.URL != "https://asuka.egoist.dev/docs/errors/type-mismatch" || !strings.HasSuffix(r.File, "label_web.asuka") {
 		t.Errorf("got %+v", r)
 	}
 }

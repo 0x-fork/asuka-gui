@@ -35,8 +35,10 @@ component Profile {
 
 test "a long hold" {
   let app = mount(Profile())
+  await app.idle()
   app.expect("user 1")
   app.tap("Next")
+  await app.idle()
   app.expect("user 2")
 }
 ```
@@ -64,8 +66,10 @@ component Profile {
 
 test "a hold that says so" {
   let app = mount(Profile())
+  await app.idle()
   app.expect("user 1")
   app.tap("Next")
+  await app.idle()
   app.expect("user 2")
 }
 ```

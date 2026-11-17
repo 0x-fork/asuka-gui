@@ -44,6 +44,7 @@ component Profile {
 
 test "one after the other" {
   let app = mount(Profile())
+  await app.idle()
   app.expect("1 posts")
 }
 ```
@@ -76,6 +77,7 @@ component Profile {
 
 test "side by side" {
   let app = mount(Profile())
+  await app.idle()
   app.expect("1 posts")
 }
 ```
