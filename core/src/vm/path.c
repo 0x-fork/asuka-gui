@@ -321,7 +321,7 @@ static ak_val ret(pv x, bool opt) {
 	return x.v;
 }
 
-bool ak_path_read(ak_pnode **tree, ak_node *root, ak_val v, ak_kind k, const uint8_t *p, uint32_t n, const ak_val *args, bool track, ak_val *out) {
+bool ak_path_read(ak_pnode **tree, ak_node *root, ak_val v, ak_kind k, const uint8_t *p, uint32_t n, const ak_val *args, bool len, bool track, ak_val *out) {
 	pv x = {v, k, false};
 	bool opt = false;
 	// Tracking: the node of the path read so far (NULL: the root's
@@ -330,8 +330,10 @@ bool ak_path_read(ak_pnode **tree, ak_node *root, ak_val v, ak_kind k, const uin
 	ak_node *follow = root;  // what the read subscribes to
 	bool made = false;
 	uint32_t a = 0;
-	for (uint32_t j = 0; j < n;) {
-		uint8_t s = p[j++];
+	// With len, a length step after p's.
+	for (uint32_t j = 0; j < n || (len && j == n);) {
+		uint8_t s = j < n ? p[j] : AK_PS_LEN;
+		j++;
 		ak_pnode *next = NULL;
 		switch (s) {
 		case AK_PS_FIELD:
@@ -366,13 +368,14 @@ bool ak_path_read(ak_pnode **tree, ak_node *root, ak_val v, ak_kind k, const uin
 					ak_throw_msg("index %lld out of range (length %u)", (long long)i, ((ak_arr *)arr.v.p)->len);
 					return false;
 				}
-				j = n;  // none: nothing further to follow
+				j = n + 1;  // none: nothing further to follow
 				continue;
 			}
 			if (track) next = kid_num(at ? at : root_of(tree), PN_INDEX, i, true);
 			break;
 		}
 		case AK_PS_KEY:
+		case AK_PS_VALUE:
 		case AK_PS_HAS:
 		case AK_PS_MEMBER: {
 			ak_kind kk = (ak_kind)p[j++];
@@ -381,6 +384,8 @@ bool ak_path_read(ak_pnode **tree, ak_node *root, ak_val v, ak_kind k, const uin
 			x = key_of(x, key);
 			if (s == AK_PS_KEY) {
 				opt = true;
+			} else if (s == AK_PS_VALUE) {
+				if (x.none) x = (pv){{0}, AK_K_INT, false};  // missing: the caller asked has first
 			} else {
 				bool has = s == AK_PS_HAS ? !x.none : (!x.none && x.v.i);
 				x = m.none ? pv_none : (pv){{.i = has}, AK_K_BOOL, false};

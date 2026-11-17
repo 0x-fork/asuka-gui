@@ -10,7 +10,7 @@ import (
 // Magic starts every module; Version changes with the format.
 const (
 	Magic   = "AKBC"
-	Version = 4
+	Version = 5
 )
 
 // Kind is how a value is stored (core/src/rt/rt.h's ak_kind).

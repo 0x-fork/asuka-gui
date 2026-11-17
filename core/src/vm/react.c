@@ -293,18 +293,18 @@ void ak_vm_cell_put(void *p, ak_val v) {
 	}
 }
 
-ak_val ak_vm_cell_path(void *p, const uint8_t *path, uint32_t n, const ak_val *args, bool track) {
+ak_val ak_vm_cell_path(void *p, const uint8_t *path, uint32_t n, const ak_val *args, bool len) {
 	cell *c = p;
 	ak_val out = {0};
 	if (AK_UNLIKELY(is_follow(c))) {
 		// Read whole (its ak_follow), and the path in its value.
-		ak_val v = follow_get((follow *)c, track);
+		ak_val v = follow_get((follow *)c, true);
 		if (ak_error_pending()) return out;
-		ak_path_read(NULL, NULL, v, (ak_kind)c->kind, path, n, args, false, &out);
+		ak_path_read(NULL, NULL, v, (ak_kind)c->kind, path, n, args, len, false, &out);
 		ak_release_val(v, (ak_kind)c->kind);
 		return out;
 	}
-	ak_path_read(&c->paths, &c->node, c->v, (ak_kind)c->kind, path, n, args, track && ak_tracking(), &out);
+	ak_path_read(&c->paths, &c->node, c->v, (ak_kind)c->kind, path, n, args, len, ak_tracking(), &out);
 	return out;
 }
 

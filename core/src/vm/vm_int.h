@@ -232,9 +232,10 @@ void ak_vm_cell_set(void *cell, ak_val v);         // takes v
 ak_val ak_vm_cell_take(void *cell);
 void ak_vm_cell_put(void *cell, ak_val v);         // takes v
 // ak_vm_cell_path reads the value at path p (n bytes, args its
-// arguments: vm/path.h) below the cell's, tracked or not (CPATH, CLEN);
-// it throws as the read would (an index out of range).
-ak_val ak_vm_cell_path(void *cell, const uint8_t *p, uint32_t n, const ak_val *args, bool track);
+// arguments: vm/path.h) below the cell's (CPATH), or with len its length
+// (CLEN): tracked while a computation is, following the path. It throws
+// as the read would (an index out of range).
+ak_val ak_vm_cell_path(void *cell, const uint8_t *p, uint32_t n, const ak_val *args, bool len);
 // ak_vm_cell_putp puts v (taken) back in the cell after a change in
 // place at the place path p says, and tells the readers of what changed
 // (CPUTP; vm/path.h's ak_path_put).

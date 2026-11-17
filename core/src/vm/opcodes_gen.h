@@ -3,7 +3,7 @@
 #ifndef AK_VM_OPCODES_GEN_H
 #define AK_VM_OPCODES_GEN_H
 
-#define AK_BC_VERSION 4
+#define AK_BC_VERSION 5
 
 enum {
 	AK_OP_NOP = 0, // : does nothing
@@ -101,24 +101,27 @@ enum {
 	AK_OP_CPEEK = 92, // reg reg: a = the cell b's value, untracked
 	AK_OP_CSET = 93, // reg reg: the cell a = b; notifies when it changed
 	AK_OP_CTAKE = 94, // reg reg: a = the cell b's value moved out (for a mutation in place); CPUT puts it back
-	AK_OP_CPUT = 95, // reg reg: the cell a = b (moved), notifying
-	AK_OP_MEMO = 96, // reg reg kind: a = a memo computing the closure b
-	AK_OP_MREAD = 97, // reg reg: a = the memo b's value, tracked
-	AK_OP_ACCV = 98, // reg reg kind: a = an accessor of a constant value b
-	AK_OP_ACCF = 99, // reg reg kind: a = an accessor computing the closure b
-	AK_OP_ACCC = 100, // reg reg: a = an accessor reading the cell or memo b
-	AK_OP_AGET = 101, // reg reg: a = what accessor b reads, tracked
-	AK_OP_CALLU = 102, // reg reg reg imm: a = the closure b called untracked with n arguments from c
-	AK_OP_UNTRACK = 103, // : stops tracking reads (peek): saves the running computation on the coroutine's stack of them, for RETRACK
-	AK_OP_RETRACK = 104, // imm: tracks reads again: ends the UNTRACKs this frame made but its first n (n: the peeks still open where it is; a handler's target says it too)
-	AK_OP_EFFECT = 105, // reg: runs the closure a as an effect of the current owner
-	AK_OP_RENDER = 106, // reg: runs the closure a as a render effect
-	AK_OP_CLEANUP = 107, // reg: runs the closure a when the current owner is disposed or its effect re-runs
-	AK_OP_BATCH = 108, // imm: 1 begins a batch, 0 ends it (flushing)
-	AK_OP_TASK = 109, // reg reg: a = a task running the async closure b (no arguments), owned by the current owner
-	AK_OP_AWAIT = 110, // reg reg: a = the result of task or future b, suspending until it has one; throws its error
-	AK_OP_YIELD = 111, // : suspends until the next turn of the main loop
-	AK_OP__COUNT = 112,
+	AK_OP_CPUT = 95, // reg reg: the cell a = b (moved), notifying the readers of every path below it
+	AK_OP_CPATH = 96, // reg reg const reg: a = the value at the path Strings[k] below the cell b (rfcs/0013; core/src/vm/path.h spells it), its indexes and keys from registers from c; while a computation tracks reads, it follows that path, not the whole state; throws as the read would
+	AK_OP_CLEN = 97, // reg reg const reg: a = the length of the array, map or set at the path Strings[k] below the cell b, its arguments from c; tracked, it follows the length
+	AK_OP_CPUTP = 98, // reg reg const reg: the cell a = b (moved), after a change in place at the place the path Strings[k] says (its last step: what the change was), its arguments from c: notifies the readers of what changed, none for an equal write
+	AK_OP_MEMO = 99, // reg reg kind: a = a memo computing the closure b
+	AK_OP_MREAD = 100, // reg reg: a = the memo b's value, tracked
+	AK_OP_ACCV = 101, // reg reg kind: a = an accessor of a constant value b
+	AK_OP_ACCF = 102, // reg reg kind: a = an accessor computing the closure b
+	AK_OP_ACCC = 103, // reg reg: a = an accessor reading the cell or memo b
+	AK_OP_AGET = 104, // reg reg: a = what accessor b reads, tracked
+	AK_OP_CALLU = 105, // reg reg reg imm: a = the closure b called untracked with n arguments from c
+	AK_OP_UNTRACK = 106, // : stops tracking reads (peek): saves the running computation on the coroutine's stack of them, for RETRACK
+	AK_OP_RETRACK = 107, // imm: tracks reads again: ends the UNTRACKs this frame made but its first n (n: the peeks still open where it is; a handler's target says it too)
+	AK_OP_EFFECT = 108, // reg: runs the closure a as an effect of the current owner
+	AK_OP_RENDER = 109, // reg: runs the closure a as a render effect
+	AK_OP_CLEANUP = 110, // reg: runs the closure a when the current owner is disposed or its effect re-runs
+	AK_OP_BATCH = 111, // imm: 1 begins a batch, 0 ends it (flushing)
+	AK_OP_TASK = 112, // reg reg: a = a task running the async closure b (no arguments), owned by the current owner
+	AK_OP_AWAIT = 113, // reg reg: a = the result of task or future b, suspending until it has one; throws its error
+	AK_OP_YIELD = 114, // : suspends until the next turn of the main loop
+	AK_OP__COUNT = 115,
 };
 
 // Instruction widths in words.
@@ -129,7 +132,8 @@ static const uint8_t ak_op_width[] = {
 	4, 6, 4, 3, 4, 4, 4, 4, 5, 6, 5, 5, 2, 1, 2, 2,
 	2, 6, 3, 4, 3, 3, 3, 6, 5, 4, 4, 6, 3, 4, 4, 3,
 	7, 4, 4, 3, 6, 4, 4, 6, 4, 6, 7, 3, 3, 3, 3, 3,
-	4, 3, 4, 4, 3, 3, 5, 1, 2, 2, 2, 2, 2, 3, 3, 1,
+	6, 6, 6, 4, 3, 4, 4, 3, 3, 5, 1, 2, 2, 2, 2, 2,
+	3, 3, 1,
 };
 
 static const char *const ak_op_names[] = {
@@ -145,8 +149,9 @@ static const char *const ak_op_names[] = {
 	"NEWS", "GETF", "SETF", "NEWE", "ECASE", "GETP", "BOX", "UNBOX",
 	"NEWA", "IDX", "SETIDX", "LEN", "NEWM", "MGET", "MSET", "MGETJ",
 	"CELL", "CELLK", "FOLLOWK", "CGET", "CPEEK", "CSET", "CTAKE", "CPUT",
-	"MEMO", "MREAD", "ACCV", "ACCF", "ACCC", "AGET", "CALLU", "UNTRACK",
-	"RETRACK", "EFFECT", "RENDER", "CLEANUP", "BATCH", "TASK", "AWAIT", "YIELD",
+	"CPATH", "CLEN", "CPUTP", "MEMO", "MREAD", "ACCV", "ACCF", "ACCC",
+	"AGET", "CALLU", "UNTRACK", "RETRACK", "EFFECT", "RENDER", "CLEANUP", "BATCH",
+	"TASK", "AWAIT", "YIELD",
 };
 
 #endif

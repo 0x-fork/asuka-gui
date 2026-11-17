@@ -33,6 +33,7 @@ enum {
 	AK_PS_INDEX = 'i',     // an array's element: an int argument; out of range throws
 	AK_PS_GET = 'g',       // an array's element, optional (get(i), first()): none out of range
 	AK_PS_KEY = 'k',       // a map's value at a key (m[k], get(k)): the key's kind, the key an argument; optional
+	AK_PS_VALUE = 'v',     // a map's value at a key as it's stored (no box; zero when missing): the key's kind; last
 	AK_PS_HAS = 'h',       // whether a map has a key (has(k)): the key's kind; a bool; last
 	AK_PS_MEMBER = 'm',    // whether a set has a member (contains(x)): the member's kind; a bool; last
 	AK_PS_LEN = 'n',       // the length of an array, a map or a set: an int; last
@@ -50,11 +51,12 @@ typedef struct ak_pnode ak_pnode;
 // path goes through an optional step (F, g, k) and ends at a scalar, as
 // MGET's is. Tracking, it subscribes the running computation to the
 // path's node under *tree, made on demand; untracked it makes nothing.
-// It returns false when the read throws (an index out of range), after
+// With len, a length step follows p's (CLEN). It returns false when the
+// read throws (an index out of range), after
 // subscribing (to the array's length: a write that makes the element
 // exist changes it). root is the state's own signal, what's followed
 // when no path is (an index below 0).
-bool ak_path_read(ak_pnode **tree, ak_node *root, ak_val v, ak_kind k, const uint8_t *p, uint32_t n, const ak_val *args, bool track, ak_val *out);
+bool ak_path_read(ak_pnode **tree, ak_node *root, ak_val v, ak_kind k, const uint8_t *p, uint32_t n, const ak_val *args, bool len, bool track, ak_val *out);
 
 // ak_path_keys subscribes the running computation to the keys of the
 // array at path p below the state (n bytes, args), as a for keyed by a

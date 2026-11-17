@@ -56,7 +56,7 @@ typedef struct {
 static void reader_run(void *ctx) {
 	reader *r = ctx;
 	r->runs++;
-	ak_val v = ak_vm_cell_path(r->cell, (const uint8_t *)r->path, r->n, r->args, true);
+	ak_val v = ak_vm_cell_path(r->cell, (const uint8_t *)r->path, r->n, r->args, false);
 	r->threw = ak_error_pending();
 	if (r->threw) {
 		ak_release(ak_error_take());
