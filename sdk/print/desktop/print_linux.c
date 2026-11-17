@@ -318,9 +318,16 @@ struct request {
 	char *path;
 	guint sub;
 	bool answered;
+	int refs;  // the call's, and the answer's until it comes: either may be last
 	request_done done;
 	void *ctx;
 };
+
+static void request_unref(request *r) {
+	if (--r->refs) return;
+	free(r->path);
+	free(r);
+}
 
 static void request_end(request *r, guint32 code, GVariant *results, GError *e) {
 	if (r->answered) {
@@ -335,11 +342,14 @@ static void request_end(request *r, guint32 code, GVariant *results, GError *e) 
 
 static void on_response(GDBusConnection *c, const gchar *sender, const gchar *path, const gchar *iface, const gchar *signal, GVariant *params,
                         gpointer p) {
+	request *r = p;
+	if (r->answered) return;
 	guint32 code = 2;
 	GVariant *results = NULL;
 	if (G(g_variant_is_of_type)(params, G_VARIANT_TYPE("(ua{sv})"))) G(g_variant_get)(params, "(u@a{sv})", &code, &results);
-	request_end(p, code, results, NULL);
+	request_end(r, code, results, NULL);
 	if (results) G(g_variant_unref)(results);
+	request_unref(r);  // the answer's: the call's may not have returned
 }
 
 static void listen_at(request *r, const char *path) {
@@ -355,7 +365,13 @@ static void on_reply(GObject *src, GAsyncResult *res, gpointer p) {
 	GError *e = NULL;
 	GVariant *v = G(g_dbus_connection_call_with_unix_fd_list_finish)(r->bus, NULL, res, &e);
 	if (!v) {
-		request_end(r, 2, NULL, e);
+		if (!r->answered) {
+			request_end(r, 2, NULL, e);
+			request_unref(r);  // the answer's, which won't come
+		} else if (e) {
+			G(g_error_free)(e);
+		}
+		request_unref(r);
 		return;
 	}
 	// An older portal's request path isn't the token's.
@@ -365,6 +381,7 @@ static void on_reply(GObject *src, GAsyncResult *res, gpointer p) {
 		if (path && strcmp(path, r->path)) listen_at(r, path);
 	}
 	G(g_variant_unref)(v);
+	request_unref(r);
 }
 
 // portal_request calls the print portal's method; make makes its
@@ -376,11 +393,13 @@ static void portal_request(const char *method, GVariant *(*make)(void *ctx, cons
 	request *r = calloc(1, sizeof *r);
 	r->done = done;
 	r->ctx = ctx;
+	r->refs = 2;
 	GError *e = NULL;
 	r->bus = asuka_linux_bus(G_BUS_TYPE_SESSION, &e);
 	if (!r->bus) {
 		r->answered = true;
 		done(r, 2, NULL, e);
+		free(r);
 		return;
 	}
 	char token[32];
@@ -400,11 +419,6 @@ static void portal_request(const char *method, GVariant *(*make)(void *ctx, cons
 	G(g_dbus_connection_call_with_unix_fd_list)(r->bus, ASUKA_PORTAL, ASUKA_PORTAL_PATH, "org.freedesktop.portal.Print", method, make(ctx, token),
 	                                            G_VARIANT_TYPE("(o)"), G_DBUS_CALL_FLAGS_NONE, -1, fds, NULL, on_reply, r);
 	if (fds) G(g_object_unref)(fds);
-}
-
-static void request_free(request *r) {
-	free(r->path);
-	free(r);
 }
 
 // no_portal reports whether e says there's no portal (or no print
@@ -503,7 +517,6 @@ static GVariant *print_params(void *ctx, const char *token) {
 
 static void printed(request *r, guint32 code, GVariant *results, GError *e) {
 	filing *f = r->ctx;
-	request_free(r);
 	if (e) {
 		asuka_error err = {0};
 		asuka_linux_fail(&err, e, "print");
@@ -526,7 +539,6 @@ static GVariant *prepare_params(void *ctx, const char *token) {
 
 static void prepared(request *r, guint32 code, GVariant *results, GError *e) {
 	filing *f = r->ctx;
-	request_free(r);
 	if (no_portal(e)) {
 		G(g_error_free)(e);
 		close(f->fd);

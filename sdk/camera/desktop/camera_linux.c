@@ -124,9 +124,16 @@ typedef struct {
 	char *path;
 	guint sub;
 	bool answered;
+	int refs;  // the call's, and the answer's until it comes: either may be last
 	responded_fn fn;
 	void *ctx;
 } request;
+
+static void request_unref(request *r) {
+	if (--r->refs) return;
+	free(r->path);
+	free(r);
+}
 
 static void request_response(GDBusConnection *c, const gchar *sender, const gchar *path, const gchar *iface, const gchar *signal, GVariant *params,
                              gpointer p) {
@@ -144,8 +151,7 @@ static void request_response(GDBusConnection *c, const gchar *sender, const gcha
 	}
 	r->fn(r->ctx, code, results);
 	if (results) G(g_variant_unref)(results);
-	free(r->path);
-	free(r);
+	request_unref(r);  // the answer's: the call's may not have returned
 }
 
 static void request_listen(request *r, const char *path) {
@@ -159,9 +165,10 @@ static void request_replied(GObject *src, GAsyncResult *res, gpointer p) {
 	request *r = p;
 	GError *e = NULL;
 	GVariant *v = G(g_dbus_connection_call_finish)(r->conn, res, &e);
-	if (r->answered) {
+	if (r->answered) {  // answered before the call returned
 		if (v) G(g_variant_unref)(v);
 		if (e) G(g_error_free)(e);
+		request_unref(r);
 		return;
 	}
 	if (!v) {
@@ -169,8 +176,8 @@ static void request_replied(GObject *src, GAsyncResult *res, gpointer p) {
 		G(g_dbus_connection_signal_unsubscribe)(r->conn, r->sub);
 		if (e) G(g_error_free)(e);
 		r->fn(r->ctx, 2, NULL);
-		free(r->path);
-		free(r);
+		request_unref(r);  // the answer's
+		request_unref(r);
 		return;
 	}
 	// An older portal's request path isn't the token's.
@@ -181,6 +188,7 @@ static void request_replied(GObject *src, GAsyncResult *res, gpointer p) {
 		request_listen(r, path);
 	}
 	G(g_variant_unref)(v);
+	request_unref(r);
 }
 
 // portal_request calls a portal's method whose answer is a Request's
@@ -194,6 +202,7 @@ static void portal_request(GDBusConnection *conn, const char *iface, const char 
 		if (*s == '.') *s = '_';
 	request *r = calloc(1, sizeof *r);
 	r->conn = conn;
+	r->refs = 2;
 	r->fn = fn;
 	r->ctx = ctx;
 	char *path = asuka_sprintf("/org/freedesktop/portal/desktop/request/%s/%s", sender, token);
