@@ -62,7 +62,7 @@ async fn refreshAll() {
 
 worker SearchIndex(language: string = "en") {
   var words: [string: [int]] = [:]
-  let stop = stopWords(language)
+  let stop = ["the", language]
 
   pub fn add(id: int, text: string) {
     for w in text.fields() {

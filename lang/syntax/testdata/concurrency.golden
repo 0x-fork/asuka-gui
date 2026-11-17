@@ -417,15 +417,13 @@ SourceFile 1:1-81:3
                   Path: [1]
                     Ident "int" 64:24-64:27
             Value: MapExpr 64:32-64:35
-          LetDecl 65:3-65:33 Keyword=let
+          LetDecl 65:3-65:31 Keyword=let
             Pattern: BindPat 65:7-65:11
               Name: Ident "stop" 65:7-65:11
-            Value: CallExpr 65:14-65:33
-              Fun: Ident "stopWords" 65:14-65:23
-              Args: ArgList 65:23-65:33
-                List: [1]
-                  Arg 65:24-65:32
-                    Value: Ident "language" 65:24-65:32
+            Value: ArrayExpr 65:14-65:31
+              Elems: [2]
+                StringLit 65:15-65:20 Segments=["the"]
+                Ident "language" 65:22-65:30
           FuncDecl 67:3-71:4 blank pub
             Name: Ident "add" 67:10-67:13
             Params: ParamList 67:13-67:36
