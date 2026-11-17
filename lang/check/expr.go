@@ -740,6 +740,14 @@ func (c *Checker) convHint(got, want Type) string {
 // convert reports whether a value of type got may be used where want is
 // expected, and records the conversion on e.
 func (c *Checker) convert(e syntax.Expr, got, want Type) bool {
+	if got == Never && want != nil && !IsInvalid(want) && want != Void && want != Never {
+		// What leaves (return, throw, a call of a fn that never returns)
+		// fits any type; the lowering gives it a register of the one
+		// expected, which the code after it, never reached, is
+		// compiled with.
+		c.info.Convs[e] = want
+		return true
+	}
 	if IsInvalid(got) || IsInvalid(want) || got == Never {
 		return true
 	}

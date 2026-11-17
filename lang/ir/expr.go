@@ -27,6 +27,15 @@ func (b *fb) value(e syntax.Expr, dst int) int {
 	}
 	to := b.typ(conv)
 	from := b.rawType(e)
+	if from == check.Never {
+		// It leaves: the code after it isn't reached, but is compiled
+		// with a register of the type expected (an argument's, …).
+		b.expr(e, -1)
+		if dst >= 0 {
+			return dst
+		}
+		return b.valueReg(-1, b.l.kind(to))
+	}
 	inner := check.Unopt(to)
 	if n, ok := inner.(*check.Named); ok && n.Obj.Kind == check.InterfaceType {
 		b.l.implement(check.Unopt(from), n)

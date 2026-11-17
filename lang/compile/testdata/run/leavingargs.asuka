@@ -1,0 +1,146 @@
+// An argument that leaves (return, throw, a call of a fn that never
+// returns) leaves before the call: the arguments before it are
+// evaluated, the call isn't made.
+
+fn twice(x: int) -> int = x * 2
+
+fn fail(why: string) -> never {
+  panic(why)
+}
+
+fn label(x: float, unit: string = "pt") -> string = "{x}{unit}"
+
+fn pair<T>(a: T, b: T) -> [T] = [a, b]
+
+fn said(s: string) -> int {
+  print(s)
+  return 0
+}
+
+fn add(a: int, b: int) -> int = a + b
+
+interface Shape {
+  fn area() -> float
+  fn scaled(by: float) -> float
+}
+
+struct Square {
+  side: float
+
+  fn area() -> float = side * side
+  fn scaled(by: float) -> float = side * by
+  fn plus(n: int) -> int = n + 1
+}
+
+async fn later(x: int) -> int = x
+
+fn direct(b: bool) -> int {
+  return twice(if b { return 1 } else { 2 })
+}
+
+fn method(s: Square) -> int = s.plus(return 2)
+
+fn closure() -> int {
+  let c = (x: int) => x + 1
+  return c(return 3)
+}
+
+fn builtin() -> int {
+  var xs: [int] = []
+  xs.push(return 4)
+  return xs.count()
+}
+
+fn strings() -> string {
+  let s = "abc"
+  return s.replace(return "leaves", "x")
+}
+
+fn generic() -> [int] = pair(1, return [5])
+
+fn local() -> int {
+  fn inc(x: int) -> int = x + 1
+  return inc(return 6)
+}
+
+fn iface(s: Shape) -> float = s.scaled(return 7.0)
+
+fn defaulted() -> string = label(return "defaulted")
+
+fn order() -> int = add(said("first"), return 8)
+
+fn neverCall(b: bool) -> int {
+  if b {
+    return twice(fail("gone"))
+  }
+  return 10
+}
+
+fn thrown(x: int) throws -> int {
+  expect(x == throw Error("thrown"))
+  return 0
+}
+
+fn throwsArg(x: int) throws -> int = twice(if x > 0 { throw Error("arg") } else { x })
+
+async fn awaited() -> int {
+  let n = await later(return 11)
+  return n
+}
+
+fn inLoop() -> [int] {
+  var out: [int] = []
+  for i in 0..<5 {
+    out.push(if i % 2 == 0 { continue } else { i })
+  }
+  return out
+}
+
+test "arguments that leave" {
+  print(direct(true))
+  print(direct(false))
+  print(method(Square(side: 1)))
+  print(closure())
+  print(builtin())
+  print(strings())
+  print(generic())
+  print(local())
+  print(iface(Square(side: 2)))
+  print(defaulted())
+  print(order())
+  print(neverCall(false))
+  do {
+    print(try thrown(1))
+  } catch e {
+    print(e.message)
+  }
+  do {
+    print(try throwsArg(1))
+  } catch e {
+    print(e.message)
+  }
+  print(try? throwsArg(-1) ?? 0)
+  print(await awaited())
+  print(inLoop())
+}
+
+// Output:
+// 1
+// 4
+// 2
+// 3
+// 4
+// leaves
+// [5]
+// 6
+// 7
+// defaulted
+// first
+// 8
+// 10
+// thrown
+// arg
+// -2
+// 11
+// [1,3]
+// ok arguments that leave
