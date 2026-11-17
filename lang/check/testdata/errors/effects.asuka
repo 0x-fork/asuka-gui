@@ -61,3 +61,19 @@ fn missesTry() -> int {
 }
 
 fn mightFail() throws -> int = 1
+
+fn ticks() -> Stream<int> = Stream(send => { send(1) })
+
+async fn readTicks() {
+  for await n in ticks() { print("{n}") } // ERROR "a stream fails with what its block throws, and readTicks doesn't throw: mark it throws"
+  for n in ticks() { } // ERROR "a stream's values come over time: for await x in it"
+  for await n in [1, 2] { } // ERROR "for await goes over a stream, not a \[int\]"
+}
+
+async fn readTicksCaught() {
+  do {
+    for await n in ticks() { print("{n}") }
+  } catch e {
+    print(e.message)
+  }
+}

@@ -475,6 +475,8 @@ func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
 		default:
 			if t == String {
 				c.errorf(s.Seq, "a string isn't a list: go over its characters, s.chars()")
+			} else if _, ok := t.(*Stream); ok {
+				c.errorf(s.Seq, "a stream's values come over time: for await x in it (in an async fn, a task or a handler)")
 			} else if !IsInvalid(t) {
 				c.errorf(s.Seq, "for goes over an array, a set, a map or a range, not %s", aType(t))
 			}
@@ -1143,6 +1145,9 @@ func (c *Checker) forAwait(s *syntax.ForStmt, fi *ForInfo, view bool) {
 	t := c.expr(s.Seq, nil)
 	if st, ok := t.(*Stream); ok {
 		fi.Elem = st.Elem
+		if msg := c.throwHere(s.Seq); msg != "" {
+			c.errorf(s.Seq, "a stream fails with what its block throws, and %s", msg)
+		}
 	} else {
 		if !IsInvalid(t) {
 			c.errorf(s.Seq, "for await goes over a stream, not %s (for goes over arrays)", aType(t))
@@ -1152,7 +1157,6 @@ func (c *Checker) forAwait(s *syntax.ForStmt, fi *ForInfo, view bool) {
 	if s.Key != nil {
 		c.errorf(s.Key, "key is for a for in a view")
 	}
-	c.mayThrow(s.Seq)
 	c.openScope()
 	c.forBindings(fi, s.Pattern, LocalVar, nil)
 	c.loops++
