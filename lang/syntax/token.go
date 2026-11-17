@@ -580,14 +580,15 @@ func (l ErrorList) Sort() {
 	})
 }
 
-// IsIdentifier reports whether s is a name a declaration can have: a
-// letter or _, then letters, digits and _, and not a keyword.
+// IsIdentifier reports whether s is a name a declaration can have: _
+// or a letter, then letters, combining marks, digits and _ (IsIdentStart,
+// IsIdentContinue), and not a keyword.
 func IsIdentifier(s string) bool {
 	if s == "" {
 		return false
 	}
 	for i, r := range s {
-		if !(isLetter(r) || i > 0 && isDigit(r)) {
+		if i == 0 && !IsIdentStart(r) || i > 0 && !IsIdentContinue(r) {
 			return false
 		}
 	}

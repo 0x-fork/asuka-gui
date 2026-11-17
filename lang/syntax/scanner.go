@@ -464,10 +464,8 @@ func (s *Scanner) comment() int {
 	return nl
 }
 
-func isLetter(ch rune) bool {
-	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_' ||
-		ch >= utf8.RuneSelf && unicode.IsLetter(ch)
-}
+// isLetter reports whether ch starts a name (see IsIdentStart).
+func isLetter(ch rune) bool { return ch >= 0 && IsIdentStart(ch) }
 
 func isDigit(ch rune) bool { return '0' <= ch && ch <= '9' }
 
@@ -480,7 +478,7 @@ func isBinary(ch rune) bool { return ch == '0' || ch == '1' }
 func isOctal(ch rune) bool { return '0' <= ch && ch <= '7' }
 
 func (s *Scanner) ident() {
-	for isLetter(s.ch) || isDigit(s.ch) || s.ch >= utf8.RuneSelf && unicode.IsDigit(s.ch) {
+	for s.ch >= 0 && IsIdentContinue(s.ch) {
 		s.next()
 	}
 }

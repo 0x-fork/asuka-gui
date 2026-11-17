@@ -372,15 +372,16 @@ func (p *parser) skipTerminators() {
 // keyword.
 func (p *parser) isName() bool { return p.tok == IDENT || p.tok.IsKeyword() }
 
+// ident is the name here. Its span is its source's; its Name, NFC
+// normalized, may be shorter (see NormalizeIdent).
 func (p *parser) ident() *Ident {
-	pos, name := p.pos, "_"
 	if isIdentTok(p.tok) {
-		name = p.lit
+		id := &Ident{Span: Span{p.pos, p.pos + Pos(len(p.lit))}, Name: NormalizeIdent(p.lit)}
 		p.next()
-	} else {
-		p.errorExpected("a name")
+		return id
 	}
-	return &Ident{Span: Span{pos, pos + Pos(len(name))}, Name: name}
+	p.errorExpected("a name")
+	return &Ident{Span: Span{p.pos, p.pos + 1}, Name: "_"}
 }
 
 // name is an identifier or a keyword used as a name.

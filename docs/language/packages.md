@@ -29,6 +29,13 @@ goes on to the next.
 Comments are `// …` and `/* … */`. A `///` comment documents the
 declaration under it, and editors show it.
 
+A name starts with a letter or `_` and goes on with letters, digits and
+`_`. A letter is any script's, with its combining marks: `total`,
+`नमस्ते`, `ราคา`, `名前` (Unicode's identifiers, UAX #31's XID_Start and
+XID_Continue, as in Swift, Rust and Python). Names that look the same
+are the same name: they're compared in Unicode's NFC form, so an `é`
+typed as one character and one typed as an `e` and an accent are one.
+
 ## Files for one platform
 
 A file whose name ends in a platform's suffix is part of its package
