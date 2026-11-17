@@ -1156,60 +1156,93 @@ func (b *fb) valueBlock(bl *syntax.Block, dst int) {
 	b.openScope()
 	n := len(bl.Items)
 	if n > 0 {
-		if es, ok := bl.Items[n-1].(*syntax.ExprStmt); ok {
+		last := bl.Items[n-1]
+		switch {
+		case b.l.info.ValueItems[last]:
+			// An if or a match: the block's value is its.
+			b.stmtsThen(bl.Items[:n-1], func() {
+				b.at(last)
+				switch s := last.(type) {
+				case *syntax.IfStmt:
+					b.ifValue(s.Cond, s.Then, s.Else, dst)
+				case *syntax.MatchStmt:
+					b.matchValue(s, s.Subject, s.Arms, dst)
+				}
+			})
+		case isExprStmt(last):
+			es := last.(*syntax.ExprStmt)
 			b.stmtsThen(bl.Items[:n-1], func() {
 				b.at(es)
 				b.value(es.X, dst)
 			})
-		} else {
+		default:
 			b.stmts(bl.Items)
 		}
 	}
 	b.closeScope()
 }
 
+func isExprStmt(it syntax.Item) bool {
+	_, ok := it.(*syntax.ExprStmt)
+	return ok
+}
+
 func (b *fb) ifExpr(e *syntax.IfExpr, dst int) int {
 	r := b.out(dst, b.kind(b.l.info.Types[e]))
-	if f := b.l.foldCond(e.Cond); f.known {
+	b.ifValue(e.Cond, e.Then, e.Else, r)
+	return r
+}
+
+// ifValue lowers an if as a value into r: an IfExpr, or an IfStmt that's
+// its block's value (els an *IfExpr, an *IfStmt or a *Block).
+func (b *fb) ifValue(cond syntax.Expr, then *syntax.Block, els syntax.Node, r int) {
+	elseValue := func() {
+		switch el := els.(type) {
+		case *syntax.IfExpr:
+			b.value(el, r)
+		case *syntax.IfStmt:
+			b.ifValue(el.Cond, el.Then, el.Else, r)
+		case *syntax.Block:
+			b.valueBlock(el, r)
+		}
+	}
+	if f := b.l.foldCond(cond); f.known {
 		// Only the branch @platform takes.
 		b.effects(f)
 		if f.val {
 			b.openScope()
-			b.valueBlock(e.Then, r)
+			b.valueBlock(then, r)
 			b.closeScope()
-			return r
+			return
 		}
-		switch el := e.Else.(type) {
-		case *syntax.IfExpr:
-			b.value(el, r)
-		case *syntax.Block:
-			b.valueBlock(el, r)
-		}
-		return r
+		elseValue()
+		return
 	}
 	b.openScope()
-	els, end := b.f.NewLabel(), b.f.NewLabel()
-	b.condJump(e.Cond, els)
-	b.valueBlock(e.Then, r)
+	els0, end := b.f.NewLabel(), b.f.NewLabel()
+	b.condJump(cond, els0)
+	b.valueBlock(then, r)
 	b.closeScope()
 	b.jmp(end)
-	b.f.Place(els)
-	switch el := e.Else.(type) {
-	case *syntax.IfExpr:
-		b.value(el, r)
-	case *syntax.Block:
-		b.valueBlock(el, r)
-	}
+	b.f.Place(els0)
+	elseValue()
 	b.f.Place(end)
-	return r
 }
 
 func (b *fb) matchExpr(e *syntax.MatchExpr, dst int) int {
 	r := b.out(dst, b.kind(b.l.info.Types[e]))
-	subj := b.value(e.Subject, -1)
-	st := b.rawType(e.Subject)
+	b.matchValue(e, e.Subject, e.Arms, r)
+	return r
+}
+
+// matchValue lowers a match as a value into r: a MatchExpr, or a
+// MatchStmt that's its block's value (an arm's body may then be a
+// statement that leaves).
+func (b *fb) matchValue(n syntax.Node, subject syntax.Expr, arms []*syntax.MatchArm, r int) {
+	subj := b.value(subject, -1)
+	st := b.rawType(subject)
 	end := b.f.NewLabel()
-	for _, a := range b.l.platformArms(e.Subject, e.Arms) {
+	for _, a := range b.l.platformArms(subject, arms) {
 		next := b.f.NewLabel()
 		b.openScope()
 		b.testPattern(a.Pattern, subj, st, next)
@@ -1221,14 +1254,18 @@ func (b *fb) matchExpr(e *syntax.MatchExpr, dst int) int {
 		switch body := a.Body.(type) {
 		case *syntax.Block:
 			b.valueBlock(body, r)
+		case *syntax.ExprStmt:
+			b.at(body)
+			b.value(body.X, r)
 		case syntax.Expr:
 			b.value(body, r)
+		case syntax.Item:
+			b.stmt(body)
 		}
 		b.closeScope()
 		b.jmp(end)
 		b.f.Place(next)
 	}
-	b.throwMsg("no arm of the match matched (" + b.where(e) + ")")
+	b.throwMsg("no arm of the match matched (" + b.where(n) + ")")
 	b.f.Place(end)
-	return r
 }

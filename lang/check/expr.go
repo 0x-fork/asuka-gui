@@ -1635,38 +1635,90 @@ func (c *Checker) valueBlock(b *syntax.Block, want Type) Type {
 		}
 		return c.expr(es.X, nil)
 	}
+	if t, ok := c.valueItem(last, want); ok {
+		return t
+	}
 	c.stmt(last)
 	if c.terminates(b.Items) {
 		return Never
+	}
+	if s, ok := last.(*syntax.IfStmt); ok {
+		c.errorf(lastIf(s), "an if used as a value needs an else")
+		return Invalid
 	}
 	c.errorf(last, "this block has no value: end it with an expression")
 	return Invalid
 }
 
+// lastIf is the last if of s's else-if chain.
+func lastIf(s *syntax.IfStmt) *syntax.IfStmt {
+	for {
+		el, ok := s.Else.(*syntax.IfStmt)
+		if !ok {
+			return s
+		}
+		s = el
+	}
+}
+
+// valueItem checks the last item of a block whose value is its last
+// expression when it's an if (each in its chain with an else) or a
+// match: a value, as if it were one written as an expression. ok is
+// false for any other item.
+func (c *Checker) valueItem(last syntax.Item, want Type) (t Type, ok bool) {
+	switch s := last.(type) {
+	case *syntax.IfStmt:
+		if lastIf(s).Else == nil {
+			return nil, false
+		}
+		t = c.ifValue(s, s.Cond, s.Then, s.Else, want)
+	case *syntax.MatchStmt:
+		t = c.matchValue(s, s.Subject, s.Arms, want)
+	default:
+		return nil, false
+	}
+	c.info.ValueItems[last] = true
+	return t, true
+}
+
 func (c *Checker) ifExpr(e *syntax.IfExpr, want Type) Type {
-	c.openScope()
-	defer c.closeScope()
-	c.cond(e.Cond)
-	a := c.valueBlock(e.Then, want)
-	var b Type
-	switch el := e.Else.(type) {
-	case *syntax.IfExpr:
-		b = c.expr(el, want)
-	case *syntax.Block:
-		b = c.valueBlock(el, want)
-	case nil:
+	if e.Else == nil {
+		c.openScope()
+		c.cond(e.Cond)
+		c.valueBlock(e.Then, want)
+		c.closeScope()
 		if c.styleValue > 0 {
 			// Elsewhere the parser said so.
 			c.errorf(e, "an if used as a value needs an else")
 		}
 		return Invalid
 	}
+	return c.ifValue(e, e.Cond, e.Then, e.Else, want)
+}
+
+// ifValue checks an if as a value (an IfExpr, or an IfStmt that's its
+// block's value): its condition, then each branch's block as a value;
+// els is an *IfExpr, an *IfStmt or a *Block.
+func (c *Checker) ifValue(n syntax.Node, cond syntax.Expr, then *syntax.Block, els syntax.Node, want Type) Type {
+	c.openScope()
+	c.cond(cond)
+	a := c.valueBlock(then, want)
+	c.closeScope()
+	var b Type
+	switch el := els.(type) {
+	case *syntax.IfExpr:
+		b = c.expr(el, want)
+	case *syntax.IfStmt:
+		b = c.ifValue(el, el.Cond, el.Then, el.Else, want)
+	case *syntax.Block:
+		b = c.valueBlock(el, want)
+	}
 	if want != nil {
 		return want
 	}
 	t := c.join(a, b)
 	if t == nil {
-		c.errorf(e, "the branches are %s and %s: make them the same type", aType(a), aType(b))
+		c.errorf(n, "the branches are %s and %s: make them the same type", aType(a), aType(b))
 		return Invalid
 	}
 	return t

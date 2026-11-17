@@ -1,0 +1,106 @@
+// An if or a match that ends a block whose value is its last
+// expression (an if's branch, a match arm's block, a catch's) is that
+// block's value.
+
+enum Size { small, large }
+
+fn nestedIf(a: bool, b: bool) -> string = if a { if b { "ab" } else { "a" } } else { "none" }
+
+fn nestedMatch(a: bool, s: Size) -> string = if a {
+  match s {
+    .small => "small"
+    .large => "large"
+  }
+} else {
+  "none"
+}
+
+fn chain(n: int) -> string = if n > 0 {
+  let half = n / 2
+  if half > 10 { "big" } else if half > 0 { "some" } else { "one" }
+} else {
+  "zero"
+}
+
+fn inArm(s: Size, n: int) -> int = match s {
+  .small => {
+    if n > 0 { n } else { 0 }
+  }
+  .large => 100
+}
+
+fn leaves(s: Size?) -> string {
+  let name = if s != none {
+    match s {
+      .small => "s"
+      .large => return "early"
+      none => "?"
+    }
+  } else {
+    "none"
+  }
+  return "got {name}"
+}
+
+fn parse(s: string) throws -> int {
+  if let n = s.toInt() {
+    return n
+  }
+  throw Error("not a number: {s}")
+}
+
+fn port(s: string, fallback: bool) -> int = try parse(s) catch {
+  if fallback { 80 } else { -1 }
+}
+
+// The else doesn't see what the if let bound.
+fn shadow(o: int?) -> int {
+  let x = 5
+  return if let x = o { x * 10 } else { x }
+}
+
+test "value blocks" {
+  print(nestedIf(true, true))
+  print(nestedIf(true, false))
+  print(nestedIf(false, true))
+  print(nestedMatch(true, .large))
+  print(nestedMatch(false, .small))
+  print(chain(30))
+  print(chain(5))
+  print(chain(1))
+  print(chain(0))
+  print(inArm(.small, 7))
+  print(inArm(.small, -7))
+  print(inArm(.large, 7))
+  print(leaves(.small))
+  print(leaves(.large))
+  print(leaves(none))
+  print(port("8080", true))
+  print(port("x", true))
+  print(port("x", false))
+  print(shadow(2))
+  print(shadow(none))
+}
+
+// Output:
+// ab
+// a
+// none
+// large
+// none
+// big
+// some
+// one
+// zero
+// 7
+// 0
+// 100
+// got s
+// early
+// got none
+// 8080
+// 80
+// -1
+// 20
+// 5
+// ok value blocks

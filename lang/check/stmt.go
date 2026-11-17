@@ -1015,25 +1015,49 @@ func (c *Checker) matchStmt(s *syntax.MatchStmt) {
 }
 
 func (c *Checker) matchExpr(e *syntax.MatchExpr, want Type) Type {
-	t := c.expr(e.Subject, nil)
+	return c.matchValue(e, e.Subject, e.Arms, want)
+}
+
+// matchValue checks a match as a value (a MatchExpr, or a MatchStmt
+// that's its block's value): each arm's body a value, an expression or
+// a block (a MatchStmt's arm may be a statement that leaves).
+func (c *Checker) matchValue(n syntax.Node, subject syntax.Expr, arms []*syntax.MatchArm, want Type) Type {
+	t := c.expr(subject, nil)
 	mi := &MatchInfo{Subject: t}
-	c.info.Matches[e] = mi
+	c.info.Matches[n] = mi
 	var res Type
-	for _, a := range e.Arms {
+	for _, a := range arms {
 		c.openScope()
 		c.pattern(a.Pattern, t, LocalVar)
 		if a.Guard != nil {
 			c.assign(a.Guard, Bool, "the guard")
 		}
+		var x syntax.Expr
+		switch b := a.Body.(type) {
+		case *syntax.ExprStmt:
+			x = b.X
+		case syntax.Expr:
+			x = b
+		}
 		var at Type
 		switch b := a.Body.(type) {
 		case *syntax.Block:
 			at = c.valueBlock(b, want)
-		case syntax.Expr:
-			if want != nil {
-				at = c.assign(b, want, "the value")
+		case nil:
+		default:
+			if x == nil {
+				// A statement: it has no value unless it leaves.
+				c.stmt(b.(syntax.Item))
+				if !c.terminates([]syntax.Item{b.(syntax.Item)}) {
+					c.errorf(b, "this arm has no value: make it an expression")
+					at = Invalid
+				} else {
+					at = Never
+				}
+			} else if want != nil {
+				at = c.assign(x, want, "the value")
 			} else {
-				at = c.expr(b, nil)
+				at = c.expr(x, nil)
 			}
 		}
 		c.closeScope()
@@ -1045,10 +1069,10 @@ func (c *Checker) matchExpr(e *syntax.MatchExpr, want Type) Type {
 			c.errorf(a, "this arm is %s, the ones before %s: make them the same type", aType(at), aType(res))
 		}
 	}
-	ok, missing := c.exhaustive(e.Subject, t, e.Arms)
+	ok, missing := c.exhaustive(subject, t, arms)
 	mi.Exhaustive = ok
 	if !ok {
-		c.errorf(e, "%s", notCovered(missing, e.Arms, "_ =>"))
+		c.errorf(n, "%s", notCovered(missing, arms, "_ =>"))
 	}
 	if want != nil {
 		return want
@@ -1423,8 +1447,15 @@ func (c *Checker) fallback(cl *syntax.CatchClause, t Type) {
 		}
 		return
 	}
+	if _, ok := c.valueItem(last, t); ok {
+		return
+	}
 	c.stmt(last)
 	if !c.terminates(b.Items) {
+		if s, ok := last.(*syntax.IfStmt); ok {
+			c.errorf(lastIf(s), "an if used as a value needs an else")
+			return
+		}
 		c.errorf(last, "this catch has no value: end it with %s, or leave (return, throw)", aType(t))
 	}
 }
