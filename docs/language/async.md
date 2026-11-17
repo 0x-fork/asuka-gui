@@ -32,7 +32,9 @@ async fn loadThread(id: string) throws -> Thread {
   not state, stores, views, native objects or C pointers, nor a file's
   `let` that holds one (a database): the compiler says so if it does. On
   the web it runs on one of the page's Web Workers, which make the
-  file's values for themselves, and nothing else.
+  file's values for themselves, and nothing else. Work that keeps
+  something between calls (an index, a database it opens) is a
+  [worker](#workers).
 - `for await message in socket.messages { … }` reads a stream, a
   `Stream<T>`: values that come over time. `Stream(send => { … })`
   makes one: the block runs as a task when the stream is first read,
@@ -61,6 +63,55 @@ async fn loadThread(id: string) throws -> Thread {
   [Components](components.md)). When that goes (the user leaves the
   screen), the task is cancelled: the `await` it's at ends it, its
   `defer`s run, and no error is reported.
+
+## Workers
+
+`spawn` runs a block once, on another thread. A `worker` keeps a value
+there: a type whose instances each run on a thread of their own, with
+vars that are theirs alone.
+
+```asuka check
+worker SearchIndex {
+  var words: [string: [int]] = [:]
+
+  pub fn add(id: int, text: string) {
+    for w in text.split(" ") {
+      let k = w.lower()
+      words[k] = (words[k] ?? []) + [id]
+    }
+  }
+  pub fn find(q: string) -> [int] = words[q.lower()] ?? []
+}
+
+store Notes {
+  let index = SearchIndex()
+  state results: [int] = []
+
+  pub async fn add(id: int, text: string) { await index.add(id, text) }
+  pub async fn search(q: string) { results = await index.find(q) }
+}
+```
+
+- A worker's `var`s, `let`s and parameters (`worker Index(language:
+  string)`) are its own: only its fns read and change them, on its
+  thread. It has no `state` (views don't read it), props, events or
+  views.
+- Its `pub fn`s, called from outside, are async: `await
+  index.find(q)`. Their arguments go over as values, the calls run one
+  at a time in the order they were made, and the result, or the error a
+  `throws` fn throws, comes back as a value. Inside the worker they're
+  ordinary functions that don't await; its other fns are its own.
+- What crosses is what `spawn` takes: values, never state, stores,
+  views, closures or native objects; a worker's fns don't read the main
+  thread's state either. It may make and keep a C handle of its own (an
+  [extern type](../c.md#types-c-owns), a database it opens): it never
+  leaves the worker, and it's released there.
+- A worker belongs to the component or store that made it. When that
+  goes, the worker stops: the call it's running finishes, and those
+  waiting are cancelled, which their callers' tasks see as their own
+  cancellation, not an error. One that nothing owns stops once nothing
+  refers to it and the calls it was given have run.
+- On the web, each worker is a Web Worker of its own.
 
 ## Data that loads
 

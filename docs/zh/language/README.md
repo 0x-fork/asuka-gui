@@ -59,7 +59,10 @@ app { Counter() }
 `app as async await bind break catch component continue defer do effect
 else emit enum event extern false fn for if import in interface key let load
 match native none on prop provide pub return screen self spawn state
-store struct style task test throw throws true try type use var while`
+store struct style task test throw throws true try type use var while
+worker`
+
+`worker` 从 0.2.7 起是关键字：之前的代码里如果有名叫 `worker` 的东西，需要改名（编译器会指出位置）。
 
 `shader`（[着色器](../components.md#着色器)的声明）、`at`（带路由的屏幕的模式）、`static`（类型的函数：`static fn`）和 `variant`（组件的变体）只在那个位置是关键字，在别处都是普通的名字。
 

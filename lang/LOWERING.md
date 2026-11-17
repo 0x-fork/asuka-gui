@@ -73,6 +73,7 @@ every branch's types are the same on every platform.
 | `T?`, T a scalar | ref | NULL, or an ak_box |
 | `fn(...)` | ref | ak_closure |
 | store | ref | an ak_struct of the store's cells, memos and methods' captures |
+| worker | ref | its handle (core/src/rt/worker.c): its thread and queue; its state, an env, is its thread's |
 | `View` | ref | ak_view (the UI runtime's) |
 | `Graphics`, `Path`, a catalog | ref | the UI runtime's objects (core/src/ui/canvas.c, i18n.c) |
 | `Ref` | ref | a cell holding a `View`, or none |
@@ -133,7 +134,10 @@ value through its owner:
   moved (MOV, no reference counted) into the first register of its
   argument block and moved back after, so a value only the local holds
   is changed in place;
-- a boxed var: VGET, change, VSET;
+- a boxed var (a closure's, a worker's): VTAKE (the reference moved out
+  of the box, none left in it, as a cell's CTAKE), change, VSET, with a
+  handler that puts it back if the change throws; a scalar, or a change
+  whose code may read the var (below), VGET, change, VSET;
 - state (a cell: a component's or a store's, or a file's): CTAKE,
   change, CPUT, with a handler that puts it back if the change throws;
 - a field or an element of those: read it (GETF, IDX), and when it's a
@@ -1163,6 +1167,61 @@ for x, the body, back to the top; at the end CALLB `stream.close(s)`,
 which cancels the producer (core/src/rt/stream.c). An error leaving the
 loop (the body's, the producer's) closes it too, in a handler around the
 loop that throws the error on.
+
+## Workers
+
+A worker (RFC 0011) is a value on a thread of its own: a handle on the
+main thread, its state on its thread (core/src/rt/worker.c).
+
+- Its state is its **env**, a struct of the worker's shape: a field per
+  parameter and `let` (its value) and per `var` (a box, VBOX), made by
+  its init function (`W.init`, its parameters its arguments) on its
+  thread. Its fns are functions taking the env first, as a store's do;
+  in them (and in the init) a `let` or a parameter is GETF of the env, a
+  var GETF then VGET, and a change of a var's value goes through its
+  box (VSET; VTAKE for a change in place: "Changing values in place").
+  The env never changes, only what its boxes hold.
+- `W(args)` is CALLB `worker.new(init)`, init a closure capturing the
+  arguments (defaults filled in) whose function CALLs `W.init` with
+  them: worker.new deep-copies it (as spawn does its closure) and runs
+  the copy on the worker's new thread, which keeps the env it returns.
+  The worker belongs to the current owner (`ak_on_cleanup`), as a
+  store's tasks do.
+- `w.f(args)` from outside (check's CallWorker) is CALLB
+  `worker.call(w, call, kind)`, call a closure capturing the arguments
+  whose one parameter is the env and whose function CALLs `W.f(env,
+  args…)`, then AWAIT of the future it returns (a void result's AWAIT
+  discards). The call is deep-copied onto the worker's queue and run on
+  its thread in order; its result (or error) is deep-copied back, and
+  the main thread settles the future (`ak_post`). In `all`, `race` and
+  `load`, a worker's call is a task's as any async call is (`taskOf`:
+  the handle and the arguments computed first). Inside the worker, `f(…)`
+  is a plain CALL with the env.
+- A closure's copy (the init's, a call's) and the state share what the
+  copy carries once the state keeps it (an argument stored in a var),
+  so the copy is let go of on the worker's thread, as the state is;
+  what it was copied from holds the module and is let go of on the main
+  thread once the work is done (the init's when the thread has ended, a
+  call's once its result is delivered).
+- Its owner's disposal stops it: the call running finishes, those
+  queued fail with the cancellation. Its handle's last release stops it
+  once its queue ran. Either way the thread lets go of the env and ends,
+  and the scheduler is held until it has (`ak_sched_hold`).
+- On the web (core/src/abi/web.c, platform/web/src/workers.js), each
+  worker is a Web Worker: worker.new sends its init's closure as a job
+  (spawn's encoding, `ak_keep_encode`), which there makes the env
+  (`asuka_worker_new`); each call is a job whose function takes it,
+  answered as spawn's (`asuka_spawn_done`), a call cancelled before it
+  ran with `ANSWER_CANCELLED`. Where there are no threads and no Web
+  Workers, a worker runs in place: its env on the main thread, each call
+  run as it's made.
+
+The checker keeps what crosses to values (`sendable`, spawn's rule):
+a `pub fn`'s parameters and result, and a worker's parameters; its body
+and fns read no state, stores or a file's `let` that isn't a value, and
+call nothing that does (as spawn's check, at finalize), make no worker
+or native object, don't spawn and don't await. Its `extern` handles are
+its own: made, used and released on its thread.
 
 ## Live values
 
