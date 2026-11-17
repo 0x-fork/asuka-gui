@@ -141,6 +141,12 @@ pub 3
 			decls: 1,
 		},
 		{
+			name:  "a number without its 0",
+			src:   "let a = .5\nlet b = x * .25\nlet c = .5s\n",
+			errs:  []string{"1:9: a number starts with a digit: 0.5", "2:13: a number starts with a digit: 0.25", "3:9: a number starts with a digit: 0.5s"},
+			decls: 3,
+		},
+		{
 			name:  "if value without else",
 			src:   "let x = if a { 1 }\n",
 			errs:  []string{"1:19: an if used as a value needs an else"},

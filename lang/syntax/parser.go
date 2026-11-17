@@ -2524,6 +2524,9 @@ func (p *parser) parsePrimary() Expr {
 		return &AtExpr{Name: name, Span: p.span(start)}
 	case PERIOD:
 		p.next()
+		if (p.tok == INT || p.tok == FLOAT || p.tok == DURATION || p.tok == LENGTH) && p.pos == p.prevEnd {
+			p.error(start, "a number starts with a digit: 0"+p.toks[p.i-1].lit+p.lit)
+		}
 		return &ImplicitMember{Name: p.ident(), Span: p.span(start)}
 	case LPAREN:
 		return p.parseParenOrTuple()
