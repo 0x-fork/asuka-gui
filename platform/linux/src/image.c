@@ -123,7 +123,10 @@ static bool still(void *ctx, const uint8_t *data, size_t n, uint8_t **rgba, int 
 	*h = gdk_texture_get_height(t);
 	size_t stride = (size_t)*w * 4;
 	uint8_t *px = malloc(stride * (size_t)(*h ? *h : 1));
-	if (!px) abort();
+	if (!px) {  // a frame too big to hold: the animation isn't one
+		g_object_unref(t);
+		return false;
+	}
 	gdk_texture_download(t, px, stride);  // B, G, R, A, premultiplied
 	g_object_unref(t);
 	for (size_t i = 0; i < stride * (size_t)*h; i += 4) {
@@ -200,9 +203,14 @@ static gpointer decode_thread(gpointer data) {
 	const uint8_t *p = g_bytes_get_data(b, &n);
 	if (dsk_anim_is_animated(p, n)) {
 		d->anim = dsk_anim_decode(p, n, still, NULL);
+		dsk_anim_player pl;
+		// The canvas is the file's size, which may be more than there's
+		// memory for: then it's a still's, GDK's to decode (or refuse).
+		if (d->anim && !dsk_anim_player_init(&pl, d->anim)) {
+			dsk_anim_free(d->anim);
+			d->anim = NULL;
+		}
 		if (d->anim) {
-			dsk_anim_player pl;
-			if (!dsk_anim_player_init(&pl, d->anim)) abort();
 			dsk_anim_next(&pl, NULL);
 			d->first = pl.canvas;
 			pl.canvas = NULL;
@@ -355,11 +363,11 @@ static void loaded(node *n, decoded *d, bool placeholder) {
 	if (d->anim) {
 		lx_emit(n, (ak_event){.kind = AK_EVENT_ANIMATED});
 		if (x->playing) dsk_anim_player_free(&x->player);
-		if (!dsk_anim_player_init(&x->player, d->anim)) abort();
-		x->playing = true;
+		// No memory for another canvas: its first frame stays, still.
+		x->playing = dsk_anim_player_init(&x->player, d->anim);
 		x->wait = 0;
-		if (!dsk_anim_next(&x->player, &x->wait)) x->wait = -1;
-		if (!x->paused) next_frame(n, x->wait);
+		if (x->playing && !dsk_anim_next(&x->player, &x->wait)) x->wait = -1;
+		if (x->playing && !x->paused) next_frame(n, x->wait);
 	}
 }
 
