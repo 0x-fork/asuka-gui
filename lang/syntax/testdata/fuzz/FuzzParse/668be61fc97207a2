@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("struct A{A:A\nA:A}\nstruct A{A:A=0()\nA:A\nA:A}\nstruct A{A:A\nA:A\nA:A\nA:A}\nenum A{A000000}\ncomponent A{prop A000=0()\nprop A:[A]=[]\nprop A00=.//\nA//\n0//\n}")

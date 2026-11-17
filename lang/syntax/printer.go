@@ -174,15 +174,16 @@ func (p *printer) unprinted(lo, hi Pos) []*Comment {
 }
 
 // lineNode prints a node that starts a line with print, then moves any
-// comment inside it that print didn't place above it.
-func (p *printer) lineNode(n Node, print func()) {
+// comment inside it that print didn't place above it. It returns where
+// the node's code starts in the output, below those comments.
+func (p *printer) lineNode(n Node, print func()) int {
 	p.write("")
 	mark := len(p.out)
 	print()
 	r := n.Range()
 	left := p.unprinted(r.Start, r.End)
 	if len(left) == 0 {
-		return
+		return mark
 	}
 	tail := append([]byte(nil), p.out[mark:]...)
 	p.out = p.out[:mark]
@@ -192,6 +193,7 @@ func (p *printer) lineNode(n Node, print func()) {
 		p.write("")
 	}
 	p.out = append(p.out, tail...)
+	return len(p.out) - len(tail)
 }
 
 // ownLines prints the unprinted comments in [lo, hi), each on its own
@@ -306,9 +308,7 @@ func (p *printer) lines(inside bool, open Pos, nodes []Node, dangling []*Comment
 			p.ownLines(prev, n.Range().Start)
 		}
 		p.leading(t)
-		p.write("")
-		start := len(p.out)
-		p.lineNode(n, func() { p.node(n) })
+		start := p.lineNode(n, func() { p.node(n) })
 		p.write(sep)
 		limit := close
 		if i+1 < len(nodes) {
@@ -345,8 +345,8 @@ func (p *printer) lines(inside bool, open Pos, nodes []Node, dangling []*Comment
 // An enum's case and a method aren't joined.
 func (p *printer) joined(a, b Node) bool {
 	ra, rb := a.Range(), b.Range()
-	if !ra.End.IsValid() || !rb.Start.IsValid() || p.commentsIn(ra.End, rb.Start) {
-		return false
+	if !ra.End.IsValid() || !rb.Start.IsValid() || p.commentsIn(ra.End, rb.End) {
+		return false // a comment in b would move above its line, a's
 	}
 	if t := TriviaOf(b); t != nil && (t.HasComments() || t.BlankBefore) {
 		return false
