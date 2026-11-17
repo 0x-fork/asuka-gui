@@ -220,3 +220,24 @@ func TestNestedChangeInPlace(t *testing.T) {
 	}
 	t.Fatal("no fn set")
 }
+
+// m[k] ?? d reads the map's value as it is (MGETJ), no optional made
+// (MGET boxes a scalar).
+func TestMapReadWithDefault(t *testing.T) {
+	src := "fn count(m: [string: int], k: string) -> int = m[k] ?? 0\ntest \"t\" { print(count([\"a\": 1], \"a\")) }\n"
+	res := Files(map[string][]byte{"a.asuka": []byte(src)}, nil)
+	if err := res.Err(); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range res.Module.Funcs {
+		if f.Name != "count" {
+			continue
+		}
+		d := bc.Disasm(res.Module, &f)
+		if !strings.Contains(d, "MGETJ") || strings.Contains(d, "MGET ") {
+			t.Fatalf("m[k] ?? 0:\n%s", d)
+		}
+		return
+	}
+	t.Fatal("no fn count")
+}

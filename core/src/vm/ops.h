@@ -221,6 +221,16 @@ static inline void *ak_op_mget(const ak_map *m, ak_val key) {
 	return vk == AK_K_REF ? ak_retain(v.p) : (void *)ak_box_new(vk, v);
 }
 
+// ak_op_mgetj puts m[key] in register a, of the map's value kind (a
+// scalar as it is: no box); false when m has no key.
+static inline bool ak_op_mgetj(ak_val *R, uint16_t a, const ak_map *m, ak_val key) {
+	ak_val v;
+	if (!ak_map_get(m, key, &v)) return false;
+	if ((ak_kind)(m->h.aux >> 4) == AK_K_REF) ak_op_setref(R, a, ak_retain(v.p));
+	else R[a] = v;
+	return true;
+}
+
 static inline void ak_op_mset(ak_val *R, uint16_t a, ak_val k, ak_val v) {
 	ak_map **mp = (ak_map **)&R[a].p;
 	ak_kind kk = (ak_kind)((*mp)->h.aux & 0xf), vk = (ak_kind)((*mp)->h.aux >> 4);

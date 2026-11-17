@@ -370,6 +370,9 @@ int ak_vm_interp(ak_co *co, ak_val *out) {
 		case AK_OP_NEWM: setref(R, a[0], ak_op_newm((ak_kind)a[1], (ak_kind)a[2], R + a[3], a[4])); break;
 		case AK_OP_MGET: setref(R, a[0], ak_op_mget(R[a[1]].p, R[a[2]])); break;
 		case AK_OP_MSET: ak_op_mset(R, a[0], R[a[1]], R[a[2]]); break;
+		case AK_OP_MGETJ:
+			if (!ak_op_mgetj(R, a[0], R[a[1]].p, R[a[2]])) pc += off32(a + 3);
+			break;
 
 		case AK_OP_CELL:
 		case AK_OP_CELLK: {

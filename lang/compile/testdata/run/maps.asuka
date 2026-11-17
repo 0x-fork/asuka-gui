@@ -26,6 +26,31 @@ test "maps" {
   print(m2["a"]!.count())
 }
 
+enum Shade { light, dark }
+
+state defaults = 0
+
+fn fallback(n: int) -> int {
+  defaults += 1
+  return n
+}
+
+test "a read with a default" {
+  // m[k] ?? d reads the value as it is, and evaluates d only when k
+  // is missing.
+  var counts: [string: int] = [:]
+  for w in ["a", "b", "a"] {
+    counts[w] = (counts[w] ?? 0) + 1
+  }
+  let names = [1: "one"]
+  let shades = ["x": Shade.dark]
+  let fs = [1: 1.5]
+  let opt: [string: int?] = ["a": none, "b": 2]
+  print("{counts} {names[1] ?? "?"} {names[3] ?? "?"} {shades["x"] ?? .light} {shades["y"] ?? .light} {fs[1] ?? 0.0}")
+  print("{opt["a"] ?? 9} {opt["b"] ?? 9} {opt["c"] ?? 9}")
+  print("{counts["a"] ?? fallback(1)} {counts["z"] ?? fallback(2)} {defaults}")
+}
+
 // Output:
 // 3
 // 31
@@ -38,3 +63,7 @@ test "maps" {
 // two
 // 2
 // ok maps
+// {"a":2,"b":1} one ? dark light 1.5
+// 9 2 9
+// 2 2 1
+// ok a read with a default

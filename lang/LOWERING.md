@@ -297,6 +297,11 @@ bytes is CALLB `bytes.at` (an int; out of range throws, as IDX does).
 `>>` is two adjacent `>` tokens the parser joins, so types' `>>` close
 two generic argument lists.
 
+`x ?? d` jumps over d when x isn't none (JSOME, or JNONE and UNBOX when
+the whole isn't optional). `m[k] ?? d` of a map whose values aren't
+optional is MGETJ, which reads the value as it is (a scalar unboxed:
+MGET would box it) or jumps to d when k is missing.
+
 ## Patterns
 
 A pattern is tested (testPattern: jumps to the arm's end unless the

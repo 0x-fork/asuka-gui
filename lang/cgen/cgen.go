@@ -659,6 +659,8 @@ func (g *gen) insn(f *bc.FuncDef, in insn, h string) error {
 		w("ak_op_setref(R, %d, ak_op_mget(R[%d].p, R[%d]));", a[0], a[1], a[2])
 	case "MSET":
 		w("ak_op_mset(R, %d, R[%d], R[%d]);", a[0], a[1], a[2])
+	case "MGETJ":
+		w("if (!ak_op_mgetj(R, %d, R[%d].p, R[%d])) goto L%d;", a[0], a[1], a[2], a[3])
 	case "CELL", "CELLK":
 		key := "NULL"
 		if name == "CELLK" {

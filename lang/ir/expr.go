@@ -962,9 +962,9 @@ func (b *fb) binary(e *syntax.BinaryExpr, dst int) int {
 		return r
 	case syntax.COALESCE:
 		res := b.rawType(e)
-		x := b.value(e.X, -1)
 		xt := b.rawType(e.X)
 		if check.IsOptional(res) {
+			x := b.value(e.X, -1)
 			r := b.out(dst, bc.KRef)
 			end := b.f.NewLabel()
 			b.move(r, x)
@@ -974,10 +974,18 @@ func (b *fb) binary(e *syntax.BinaryExpr, dst int) int {
 			return r
 		}
 		k := b.l.kind(res)
-		r := b.out(dst, k)
 		other, end := b.f.NewLabel(), b.f.NewLabel()
-		b.emitJump(op("JNONE"), x, other)
-		b.unbox(x, check.Unopt(xt), r)
+		var r int
+		if m, key, ok := b.mapRead(e.X); ok {
+			// m[k] ?? d: the value read as it is, no optional made.
+			r = b.out(dst, k)
+			b.emit(op("MGETJ"), r, m, key, int(other))
+		} else {
+			x := b.value(e.X, -1)
+			r = b.out(dst, k)
+			b.emitJump(op("JNONE"), x, other)
+			b.unbox(x, check.Unopt(xt), r)
+		}
 		b.jmp(end)
 		b.f.Place(other)
 		b.value(e.Y, r)
@@ -1123,6 +1131,20 @@ func (b *fb) appendEach(r int, xs []syntax.Expr, add string) {
 		b.releaseRegs(blk, ks)
 		b.release(mark)
 	}
+}
+
+// mapRead is a map's index (m[k]) of a value that isn't optional, its
+// map and key evaluated: what MGETJ reads without making an optional.
+func (b *fb) mapRead(x syntax.Expr) (m, key int, ok bool) {
+	ix, isIndex := unparen(x).(*syntax.IndexExpr)
+	if !isIndex {
+		return 0, 0, false
+	}
+	mt, isMap := b.rawType(ix.X).(*check.Map)
+	if !isMap || check.IsOptional(b.typ(mt.Elem)) {
+		return 0, 0, false
+	}
+	return b.value(ix.X, -1), b.value(ix.Index, -1), true
 }
 
 // ---------------------------------------------------------------------

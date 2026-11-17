@@ -160,6 +160,7 @@ var Ops = []OpDef{
 	{"NEWM", []Operand{Reg, KindOp, KindOp, Reg, Imm}, "a = a map (key kind, value kind) from n key/value register pairs from b"},
 	{"MGET", []Operand{Reg, Reg, Reg}, "a = m[k] as an optional (none when missing; scalars boxed)"},
 	{"MSET", []Operand{Reg, Reg, Reg}, "a[b] = c, a copied first if shared"},
+	{"MGETJ", []Operand{Reg, Reg, Reg, Off}, "a = m[k] (b[c]) as the map's value kind, nothing boxed; jumps when b has no c"},
 
 	// State: cells, memos, accessors.
 	{"CELL", []Operand{Reg, Reg, KindOp}, "a = a new state cell holding b, owned by the current owner"},
