@@ -267,6 +267,74 @@ TEST(regex_empty_repeats) {
 	ak_release(ak_error_take());
 }
 
+// xorshift64: the randomized tests' numbers, the same every run.
+static uint64_t rng = 0x9e3779b97f4a7c15;
+static uint64_t next_rand(void) {
+	rng ^= rng << 13;
+	rng ^= rng >> 7;
+	rng ^= rng << 17;
+	return rng;
+}
+
+TEST(regex_random) {
+	// Patterns made of the syntax's pieces compile or throw; compiled
+	// programs with bytes changed load or throw; whatever loads searches
+	// and substitutes within the text, through every template form.
+	static const char *const pieces[] = {"a", "b", ".", "\\w", "\\d", "\\b", "^", "$", "(", ")", "(?:", "(?P<n>", "|", "*", "+", "?", "*?", "{2}", "{0,3}", "{1,}", "[a-c]", "[^b]", "(?i)", "(?m)", "(?s)", "\\", "é", "\xff", "", "{1000}"};
+	static const char *const texts[] = {"", "a", "abcab", "aaaa bbbb", "x\nay\n", ("é\xff" "a1_b2")};
+	static const char *const tmpls[] = {"", "$0", "[$1]", "${n}", "$$", "${", "$x$1y", "${0}${1}${2}"};
+	for (int it = 0; it < 4000; it++) {
+		char pat[96];
+		size_t pl = 0;
+		int np = (int)(next_rand() % 10);
+		for (int k = 0; k < np; k++) {
+			const char *q = pieces[next_rand() % AK_LEN(pieces)];
+			size_t ql = strlen(q);
+			if (pl + ql >= sizeof pat) break;
+			memcpy(pat + pl, q, ql);
+			pl += ql;
+		}
+		pat[pl] = 0;
+		ak_val prog = call("regex.program", (ak_val[]){S(pat)}, 1, 1);
+		if (!prog.p) {
+			REQUIRE(ak_error_pending());
+			ak_release(ak_error_take());
+			continue;
+		}
+		ak_bytes *b = prog.p;
+		// Half the time, a few of its bytes changed.
+		if (next_rand() & 1) {
+			int flips = 1 + (int)(next_rand() % 4);
+			for (int k = 0; k < flips; k++) b->data[next_rand() % b->len] ^= (uint8_t)(1u << (next_rand() % 8));
+		}
+		const char *text = texts[next_rand() % AK_LEN(texts)];
+		ak_val r = call("regex.test", (ak_val[]){prog, S(text)}, 2, 2);
+		if (ak_error_pending()) {
+			ak_release(ak_error_take());
+			ak_release(b);
+			continue;
+		}
+		r = call("regex.search", (ak_val[]){prog, S(text), I((int64_t)(next_rand() % 4) - 1)}, 3, 2);
+		if (ak_error_pending()) ak_release(ak_error_take());
+		ak_arr *ms = r.p;
+		for (uint32_t m = 0; ms && m < ms->len; m++) {
+			ak_arr *caps = ms->data[m].p;
+			for (uint32_t c = 0; c + 1 < caps->len; c += 2) {
+				int64_t lo = caps->data[c].i, hi = caps->data[c + 1].i;
+				if (lo == -1 && hi == -1) continue;
+				if (!(lo >= 0 && lo <= hi && (size_t)hi <= strlen(text))) T_FAIL("%s on %s: a capture at %lld..%lld", pat, text, (long long)lo, (long long)hi);
+			}
+		}
+		ak_release(ms);
+		r = call("regex.substitute", (ak_val[]){prog, S(text), S(tmpls[next_rand() % AK_LEN(tmpls)]), I(-1)}, 4, 6);
+		if (ak_error_pending()) ak_release(ak_error_take());
+		ak_release(r.p);
+		r = call("regex.names", (ak_val[]){prog}, 1, 0);
+		ak_release(r.p);
+		ak_release(b);
+	}
+}
+
 static ak_val search(const char *pattern, const char *text) {
 	ak_val prog = call("regex.program", (ak_val[]){S(pattern)}, 1, 1);
 	if (!prog.p) return prog;
