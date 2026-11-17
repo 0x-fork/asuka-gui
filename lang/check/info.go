@@ -378,6 +378,9 @@ type FuncCtx struct {
 	threwAt  syntax.Node
 	globals  []*Global
 	retTypes []Type
+	// loose: a lambda whose result may yet be the optional of Result,
+	// which its call's arguments say (inferArgs); its values wait there.
+	loose *looseLambda
 }
 
 // awaited notes an await (or a for await) at pos in the body.

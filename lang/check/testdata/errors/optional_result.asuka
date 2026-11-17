@@ -1,0 +1,44 @@
+// An optional expected of a result that's a type parameter alone: the
+// arguments say whether it's the optional or what it holds, and are
+// still checked as one of them.
+
+fn pick<T>(f: fn(int) -> T) -> T = f(1)
+
+fn same<T>(x: T) -> T = x
+
+fn each<T>(x: T, f: fn(T) -> int) -> T {
+  f(x)
+  return x
+}
+
+fn head<T>(xs: [T], or: T) -> T = xs.get(0) ?? or
+
+fn maybe(n: int) -> string? = if n > 1 { "many" } else { none }
+
+fn other() -> string? = pick(n => 5) // ERROR "the closure's result is an int, not a string \(put it in a string"
+
+fn otherOptional(m: int?) -> string? = pick(n => m) // ERROR "the closure's result is an int\?, not a string\?"
+
+fn oneReturn() -> string? = pick(n => {
+  if n > 5 { return 5 } // ERROR "the result is an int, not a string\?"
+  return maybe(n)
+})
+
+fn argument() -> string? = same(5) // ERROR "argument x of same is an int, not a string \(put it in a string"
+
+fn notExpected() -> string = pick(n => maybe(n)) // ERROR "the closure's result is a string\?, not a string \(it may be none"
+
+// The optional, from the first argument: what the closure takes is one.
+fn taken() -> string? = each(maybe(2), f: s => s.count()) // ERROR "string\? may be none: use \?\."
+
+// And for the array, which holds strings.
+fn held(names: [string]) -> string? = head(names, or: maybe(2)) // ERROR "argument xs of head is a \[string\], not a \[string\?\]"
+
+// A type parameter an optional can't be stays what the optional holds.
+fn largest<T: Comparable>(a: T, b: T) -> T = if a < b { b } else { a }
+
+fn held2(m: int?) -> int? = largest(m, 2) // ERROR "argument a of largest is an int\?, not an int \(it may be none"
+
+// An if's branches are checked as the optional: the hint is still for
+// what it holds.
+fn branch() -> string? = pick(n => if n > 1 { 5 } else { "x" }) // ERROR "the value is an int, not a string\? \(put it in a string"

@@ -77,6 +77,9 @@ type Checker struct {
 	fsigs       map[*RuntimeFunc]parsedSig
 	jsonTP      map[*TypeParam]bool // type parameters read or written as JSON: each call's argument must be JSON
 	bindingArgs bool                // inferArgs checks each argument as a binding (a store's)
+	loose       *looseLambda        // the closure inferArgs checks next gives the call's result, maybe an optional
+	tried       *syntax.CallExpr    // the call a try is of, where an optional (triedOpt) is expected of the try
+	triedOpt    Type
 	// The closures whose async-ness or throws came from their bodies, by
 	// their types: their calls' errors say what made them so.
 	inferredFx map[Type]*inferredFx

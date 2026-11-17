@@ -454,15 +454,32 @@ func (c *Checker) inferArgs(args []syntax.Expr, params []*Param, s Subst, free m
 	defer func() { c.free = savedFree }()
 	// What's expected of the result binds first: json.decode, Box(…) as
 	// a Box<int>.
+	// A result that's a type parameter alone, where an optional is
+	// expected, is what the optional holds (let f: float? = pick(n => 1))
+	// unless an argument says it's the optional (pick(n => maybe(n))):
+	// loose is that parameter, until one does. An optional that doesn't
+	// meet its constraints can't be it.
+	var loose *TypeParam
 	if want != nil && mentionsFree(result, free, s) {
 		w := want
 		if !IsOptional(result) {
 			w = Unopt(want)
 		}
+		tp, alone := result.(*TypeParam)
 		c.unify(result, w, s, free)
+		if alone && IsOptional(want) && s[tp] != nil && !IsOptional(s[tp]) && !c.isEdges(s[tp]) {
+			if failed, _ := c.satisfies(&Optional{s[tp]}, tp); failed == "" {
+				loose = tp
+			}
+		}
 	}
+	// Closures that give the result wait for the other arguments, when
+	// nothing else of the parameters holds the type parameter to one type.
+	var lambdas []*looseLambda
+	waits := loose != nil && resultOnly(params, loose)
 	checked := make([]bool, len(args))
 	types := make([]Type, len(args))
+	open := make([]bool, len(args))
 	for pass := 0; pass < 2; pass++ {
 		for i, a := range args {
 			if a == nil || checked[i] {
@@ -476,7 +493,8 @@ func (c *Checker) inferArgs(args []syntax.Expr, params []*Param, s Subst, free m
 			}
 			pt := params[i].Type
 			leave := c.enterArg(a)
-			if !mentionsFree(pt, free, s) {
+			open[i] = loose != nil && !IsOptional(s[loose]) && mentionsOne(pt, loose)
+			if !open[i] && !mentionsFree(pt, free, s) {
 				c.assign(a, s.Apply(pt), argDesc(params[i])+" of "+what)
 				leave()
 				checked[i] = true
@@ -504,14 +522,40 @@ func (c *Checker) inferArgs(args []syntax.Expr, params []*Param, s Subst, free m
 				// What isn't known yet doesn't steer the argument.
 				w = nil
 			}
+			if open[i] && pt == Type(loose) {
+				// The type parameter whole: the argument may be the optional.
+				w = &Optional{pw}
+			}
+			var l *looseLambda
+			if f, ok := Unopt(pt).(*FuncType); ok && open[i] && waits && isLambda && f.Result == Type(loose) {
+				l = &looseLambda{}
+				c.loose = l
+			}
 			got := c.expr(a, w)
 			leave()
 			types[i] = got
+			checked[i] = true
+			if open[i] {
+				// An optional where the parameter has the type parameter
+				// makes it the optional, for the arguments after too.
+				if l != nil && l.ctx != nil {
+					lambdas = append(lambdas, l)
+				}
+				if l != nil && l.optional() || optionalAt(pt, got, loose) {
+					s[loose] = &Optional{s[loose]}
+				}
+				if !mentionsFree(pt, free, s) {
+					continue
+				}
+				pw = s.Apply(pt)
+			}
 			if !c.unify(pw, got, s, free) {
 				c.errorf(a, "%s of %s is %s, which doesn't fit %s", argDesc(params[i]), what, aType(got), typeString(s.Apply(pt)))
 			}
-			checked[i] = true
 		}
+	}
+	for _, l := range lambdas {
+		l.settle(c, s[loose])
 	}
 	for i, a := range args {
 		if a == nil || types[i] == nil {
@@ -522,7 +566,11 @@ func (c *Checker) inferArgs(args []syntax.Expr, params []*Param, s Subst, free m
 			continue
 		}
 		if !c.convert(a, types[i], pt) {
-			c.errorf(a, "%s of %s is %s, not %s", argDesc(params[i]), what, aType(types[i]), aType(pt))
+			hint := ""
+			if open[i] {
+				hint = c.convHint(types[i], pt)
+			}
+			c.errorf(a, "%s of %s is %s, not %s%s", argDesc(params[i]), what, aType(types[i]), aType(pt), hint)
 		}
 	}
 }
@@ -563,6 +611,140 @@ func isEmptyLit(e syntax.Expr) bool {
 	return false
 }
 
+// triedWant returns what's expected of the call e: the optional its try
+// was given, where want is what that holds (unary).
+func (c *Checker) triedWant(e *syntax.CallExpr, want Type) Type {
+	if c.tried == e {
+		return c.triedOpt
+	}
+	return want
+}
+
+// mentionsOne reports whether t mentions tp, in a function's type too.
+func mentionsOne(t Type, tp *TypeParam) bool {
+	return mentionsFree(t, map[*TypeParam]bool{tp: true}, nil)
+}
+
+// resultOnly reports whether the parameters have tp only as one's whole
+// type or as the result of a function that takes none of it: making tp
+// an optional then changes no argument that was checked as what it
+// holds, but to put it in one.
+func resultOnly(params []*Param, tp *TypeParam) bool {
+	for _, p := range params {
+		if !mentionsOne(p.Type, tp) || p.Type == Type(tp) {
+			continue
+		}
+		f, ok := Unopt(p.Type).(*FuncType)
+		if !ok || f.Result != Type(tp) {
+			return false
+		}
+		for _, fp := range f.Params {
+			if mentionsOne(fp, tp) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// optionalAt reports whether a, an argument's type, has an optional (or
+// is none) where p, its parameter's, has tp.
+func optionalAt(p, a Type, tp *TypeParam) bool {
+	switch x := p.(type) {
+	case *TypeParam:
+		return x == tp && (a == NoneType || IsOptional(a))
+	case *Array:
+		y, ok := a.(*Array)
+		return ok && optionalAt(x.Elem, y.Elem, tp)
+	case *Map:
+		y, ok := a.(*Map)
+		return ok && (optionalAt(x.Key, y.Key, tp) || optionalAt(x.Elem, y.Elem, tp))
+	case *Set:
+		y, ok := a.(*Set)
+		return ok && optionalAt(x.Elem, y.Elem, tp)
+	case *Optional:
+		y, ok := a.(*Optional)
+		return ok && optionalAt(x.Elem, y.Elem, tp)
+	case *Tuple:
+		y, ok := a.(*Tuple)
+		if !ok || len(y.Elems) != len(x.Elems) {
+			return false
+		}
+		for i := range x.Elems {
+			if optionalAt(x.Elems[i], y.Elems[i], tp) {
+				return true
+			}
+		}
+	case *FuncType:
+		y, ok := a.(*FuncType)
+		return ok && optionalAt(x.Result, y.Result, tp)
+	case *Task:
+		y, ok := a.(*Task)
+		return ok && optionalAt(x.Elem, y.Elem, tp)
+	case *Stream:
+		y, ok := a.(*Stream)
+		return ok && optionalAt(x.Elem, y.Elem, tp)
+	case *Named:
+		y, ok := a.(*Named)
+		if !ok || y.Obj != x.Obj || len(y.Args) != len(x.Args) {
+			return false
+		}
+		for i := range x.Args {
+			if optionalAt(x.Args[i], y.Args[i], tp) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// A looseLambda is a closure that gives a call's result, a type
+// parameter alone, where an optional is expected: let o: Order? =
+// ask(c => last(c)). Its result is what the optional holds, unless one
+// of its values is an optional (or none): then it's the optional. Its
+// values are checked as they come, and converted once the call's
+// arguments have said which (settle).
+type looseLambda struct {
+	ctx  *FuncCtx
+	ft   *FuncType
+	vals []looseVal
+}
+
+type looseVal struct {
+	e    syntax.Expr
+	typ  Type
+	what string
+}
+
+// value checks e, one of the closure's values.
+func (l *looseLambda) value(c *Checker, e syntax.Expr, what string) {
+	l.vals = append(l.vals, looseVal{e, c.expr(e, &Optional{l.ctx.Result}), what})
+}
+
+// optional reports whether one of the values is an optional. An if, a
+// match and a catch are the optional expected of them whatever their
+// branches are, so the type parameter is the optional for those too:
+// one that meets its constraints (inferArgs), and its values are put in
+// it either way.
+func (l *looseLambda) optional() bool {
+	for _, v := range l.vals {
+		if v.typ == NoneType || IsOptional(v.typ) {
+			return true
+		}
+	}
+	return false
+}
+
+// settle makes res the closure's result, and converts its values to it.
+func (l *looseLambda) settle(c *Checker, res Type) {
+	for _, v := range l.vals {
+		if !c.convert(v.e, v.typ, res) {
+			c.errorf(v.e, "%s is %s, not %s%s", v.what, aType(v.typ), aType(res), c.convHint(v.typ, res))
+		}
+	}
+	l.ft.Result, l.ctx.Result = res, res
+}
+
 // ---------------------------------------------------------------------
 // Functions and methods
 
@@ -600,7 +782,7 @@ func (c *Checker) funcCallInfo(e *syntax.CallExpr, f *Function, recv syntax.Expr
 			}
 		}
 	}
-	c.inferArgs(args, params, s, free, want, f.Sig.Result, what)
+	c.inferArgs(args, params, s, free, c.triedWant(e, want), f.Sig.Result, what)
 	call := &Call{Kind: CallFunc, Func: f, Args: args, Params: params, Recv: recv, RecvType: recvType}
 	if f.Recv != nil {
 		call.Kind = CallMethod
@@ -1133,7 +1315,7 @@ func (c *Checker) builtinMethodCall(e *syntax.CallExpr, fn *syntax.MemberExpr, x
 	c.trailingClosure(e, params, args)
 	s := m.bind(xt)
 	free := map[*TypeParam]bool{tvU: true}
-	c.inferArgs(args, params, s, free, want, result, m.Name)
+	c.inferArgs(args, params, s, free, c.triedWant(e, want), result, m.Name)
 	c.typeDefaults(args, params)
 	if why := m.requires(s); why != "" {
 		c.errorf(fn.Name, "%s %s", m.Name, why)
@@ -1417,6 +1599,8 @@ func (c *Checker) bindingArg(a syntax.Expr, want Type, what string) {
 
 func (c *Checker) lambda(e *syntax.LambdaExpr, want Type) Type {
 	wf, _ := Unopt(want).(*FuncType)
+	loose := c.loose
+	c.loose = nil
 	saved := c.ctx
 	savedTry, savedAwait, savedHandled, savedLoops, savedView := c.inTry, c.inAwait, c.handled, c.loops, c.view
 	c.inTry, c.inAwait, c.handled, c.loops, c.view = 0, 0, 0, 0, false
@@ -1455,6 +1639,10 @@ func (c *Checker) lambda(e *syntax.LambdaExpr, want Type) Type {
 	infer := wf == nil || mentionsFree(wf.Result, c.free, nil)
 	if !infer {
 		ctx.Result = wf.Result
+		if loose != nil {
+			loose.ctx, loose.ft = ctx, ft
+			ctx.loose = loose
+		}
 	} else {
 		ctx.inferRes = true
 	}
@@ -1477,6 +1665,9 @@ func (c *Checker) lambda(e *syntax.LambdaExpr, want Type) Type {
 			}
 		} else if ctx.Result == Void {
 			c.expr(body, nil)
+		} else if ctx.loose != nil {
+			ctx.loose.value(c, body, "the closure's result")
+			ft.Result = ctx.Result
 		} else {
 			c.assign(body, ctx.Result, "the closure's result")
 			ft.Result = ctx.Result

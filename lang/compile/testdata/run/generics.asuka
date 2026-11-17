@@ -76,6 +76,155 @@ test "an empty literal takes its type from the other arguments" {
   print("{p.items.count()} {p.top}")
 }
 
+fn pick<T>(f: fn(int) -> T) -> T = f(1)
+
+fn same<T>(x: T) -> T = x
+
+fn either<T>(first: bool, a: fn() -> T, b: fn() -> T) -> T = if first { a() } else { b() }
+
+fn fold<T>(xs: [int], from: T, f: fn(T, int) -> T) -> T {
+  var acc = from
+  for x in xs { acc = f(acc, x) }
+  return acc
+}
+
+fn head<T>(xs: [T], or: T) -> T = xs.get(0) ?? or
+
+async fn later<T>(f: async fn(int) -> T) -> T = await f(1)
+
+async fn asked<T>(f: async fn(int) throws -> T) throws -> T = try await f(1)
+
+store Asker(with: int) {
+  pub async fn ask<T>(f: async fn(int) throws -> T) throws -> T = try await f(with)
+}
+
+let asker = Asker(2)
+
+fn maybe(n: int) -> string? = if n > 1 { "many" } else { none }
+
+fn larger<T: Comparable>(f: fn(int) -> T) -> T {
+  let a = f(1)
+  let b = f(2)
+  return if a < b { b } else { a }
+}
+
+fn risky(n: int) throws -> int {
+  if n > 0 { throw Failed("no") }
+  return n
+}
+
+struct Failed: Error {
+  message: string
+}
+
+enum Size {
+  small
+  large
+}
+
+// Where an optional is expected of a result that's a type parameter
+// alone, the arguments say whether it's the optional or what it holds.
+test "an optional expected of a type parameter: the optional" {
+  let a: string? = pick(n => maybe(n))
+  print(a ?? "none")
+  let b: string? = pick(n => maybe(n + 1))
+  print(b ?? "none")
+  var c: string? = "was"
+  c = pick(n => {
+    if n > 5 { return "big" }
+    return maybe(n + 1)
+  })
+  print(c ?? "none")
+  let d: string? = pick(n => none)
+  print(d ?? "none")
+  let e: string? = pick(n => if n > 0 { "some" } else { none })
+  print(e ?? "none")
+  let f: string? = pick(maybe)
+  print(f ?? "none")
+  let g: string? = same(maybe(2))
+  print(g ?? "none")
+  let h: string? = same(none)
+  print(h ?? "none")
+  // One closure's value makes it the optional for the other's too.
+  let i: string? = either(true, a: () => "a", b: () => maybe(1))
+  print(i ?? "none")
+  let j: string? = either(false, a: () => "a", b: () => maybe(1))
+  print(j ?? "none")
+  // An argument before a closure does, for what the closure takes.
+  let start: int? = none
+  let k: int? = fold([1, 2, 3], from: start, f: (acc, x) => (acc ?? 0) + x)
+  print(k ?? -1)
+  let words: [string?] = [none, "b"]
+  let l: string? = head(words, or: "z")
+  print(l ?? "none")
+  let m: string? = await later(async n => maybe(n + 1))
+  print(m ?? "none")
+  // A try is what its operand is: an optional is expected of that too.
+  var n: string? = "was"
+  n = try await asked(async n => try await later(async n => maybe(n)))
+  print(n ?? "none")
+  let o: string? = try? await asked(async n => "tried")
+  print(o ?? "none")
+  // A store's method is checked as a function is.
+  var p: string? = "was"
+  p = try await asker.ask(async n => maybe(n))
+  print(p ?? "none")
+  // An argument that's the type parameter is told an optional may be it.
+  let q: string? = same(pick(n => maybe(n + 1)))
+  print(q ?? "none")
+  let r: string? = same(if q == none { "x" } else { none })
+  print(r ?? "none")
+}
+
+test "an optional expected of a type parameter: what it holds" {
+  // The closure's value is still checked as one.
+  let a: float? = pick(n => 1)
+  print(a ?? 0.0)
+  let b: int? = fold([1, 2, 3], from: 0, f: (acc, x) => acc + x)
+  print(b ?? 0)
+  let c: [int]? = pick(n => [])
+  print(c?.count() ?? -1)
+  let d: Size? = pick(n => .large)
+  print(d == .large)
+  let e: string? = pick(n => {
+    if n > 5 { return "big" }
+    return "small"
+  })
+  print(e ?? "none")
+  let f: float? = same(2)
+  print(f ?? 0.0)
+  let g: float? = either(true, a: () => 1, b: () => if true { 2 } else { 3 })
+  print(g ?? 0.0)
+  let h: string? = head(["x", "y"], or: "z")
+  print(h ?? "none")
+  let i: string? = pick(n => {
+    let m = maybe(n) ?? return "early"
+    return m
+  })
+  print(i ?? "none")
+  // Edges from an array is what's expected of it, not what it is.
+  let j: Edges? = same([8, 16])
+  print(j != none)
+  let k: Edges? = pick(n => [8, 16])
+  print(k != none)
+  // An if, a match and a catch are what their branches are: T is an
+  // int here, which is Comparable, and an int? isn't.
+  let l: int? = larger(n => if n > 1 { 10 } else { 20 })
+  print(l ?? -1)
+  let m: string? = larger(n => match n {
+    1 => "a"
+    _ => "b"
+  })
+  print(m ?? "none")
+  let o: int? = larger(n => try risky(n) catch { 7 })
+  print(o ?? -1)
+  let p: int? = larger(n => {
+    if n > 5 { return 0 }
+    return (if n > 1 { 3 } else { 4 })
+  })
+  print(p ?? -1)
+}
+
 // Output:
 // 4
 // x
@@ -94,3 +243,38 @@ test "an empty literal takes its type from the other arguments" {
 // 1
 // 0 x
 // ok an empty literal takes its type from the other arguments
+// none
+// many
+// many
+// none
+// some
+// none
+// many
+// none
+// a
+// none
+// 6
+// z
+// many
+// none
+// tried
+// many
+// many
+// none
+// ok an optional expected of a type parameter: the optional
+// 1
+// 6
+// 0
+// true
+// small
+// 2
+// 1
+// x
+// early
+// true
+// true
+// 20
+// b
+// 7
+// 4
+// ok an optional expected of a type parameter: what it holds
