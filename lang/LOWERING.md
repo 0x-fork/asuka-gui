@@ -353,8 +353,17 @@ the indentation of its closing quotes' line from every line.
   of constants, a struct's `let` (Font.title), are built once in init
   into a global and frozen (`rt.freeze`, which makes them and what they
   hold immortal, so spawn's threads may share them): top-level lets and
-  types' lets; literals in functions are
-  built where they are (hoisting them is an optimization still to do).
+  types' lets.
+- A constant literal anywhere else (a function's, a handler's, a
+  parameter's default) is hoisted the same way: an array, a set or a map
+  of constants (empty too), a tuple, a struct (its omitted fields'
+  defaults constant too: `Style()`), a case with a payload, nested as
+  deep as they go. Constants are literals: numbers, strings without
+  interpolations, bools, none, payloadless cases, colors. `init.strings`
+  builds each one into a global of its own (the node and its type: a
+  generic function's isn't hoisted), and the function reads it (GGET):
+  each call makes nothing. A copy that's changed is copied first, as
+  any shared value is (a frozen one is never changed in place).
 - Init makes each package's globals, the packages in dependency order
   and each package's globals by what their initializers read (a cycle
   is the checker's error). It first calls `init.strings`, which makes

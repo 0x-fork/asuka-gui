@@ -1,0 +1,66 @@
+// The literal workloads BenchmarkLiterals times (async_bench_test.go):
+// functions that make constant literals, called in a loop. Which one is
+// the first argument, its size the second.
+
+import std/os
+
+struct Style {
+  size: int = 12
+  weight: int = 400
+  tags: [string] = []
+}
+
+enum Shape {
+  circle(r: int)
+  rect(w: int, h: int)
+}
+
+fn keywords() -> [string] = ["fn", "let", "var", "if", "else", "for", "while", "match", "return", "struct"]
+fn table() -> [string: int] = ["a": 1, "b": 2, "c": 3, "d": 4]
+fn primes() -> Set<int> = [2, 3, 5, 7, 11, 13]
+fn shapes() -> [Shape] = [.circle(r: 1), .rect(w: 2, h: 3)]
+fn bold() -> Style = Style(size: 14, weight: 600)
+
+// Literals of constants only.
+fn constants(n: int) -> int {
+  var total = 0
+  for i in 0..<n {
+    total += keywords().count() + (table()["c"] ?? 0) + bold().size + shapes().count()
+    if primes().contains(i % 16) { total += 1 }
+  }
+  return total
+}
+
+fn plain() -> Style = Style()
+fn grid() -> [[int]] = [[1, 2], [], [3]]
+fn tagged() -> Style = Style(size: 10, tags: [])
+
+// Literals with empty ones in them, and a struct of its defaults.
+fn empties(n: int) -> int {
+  var total = 0
+  for _ in 0..<n {
+    total += plain().weight + grid()[2][0] + tagged().tags.count() + grid()[1].count()
+  }
+  return total
+}
+
+// A constant literal changed after: each change copies it.
+fn changed(n: int) -> int {
+  var total = 0
+  for i in 0..<n {
+    var xs = [1, 2, 3]
+    xs.push(i)
+    total += xs[3]
+  }
+  return total
+}
+
+fn main() {
+  let args = os.args()
+  let which = args.first() ?? "constants"
+  var n = 1000
+  if args.count() > 1 { n = args[1].toInt() ?? n }
+  if which == "constants" { print(constants(n)) }
+  if which == "empties" { print(empties(n)) }
+  if which == "changed" { print(changed(n)) }
+}
