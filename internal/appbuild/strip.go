@@ -47,7 +47,7 @@ func StripTests(m *bytecode.Module) *bytecode.Module {
 		work = work[:len(work)-1]
 		eachOperand(m.Funcs[f].Code, func(o bytecode.Operand, at int, code []uint16) {
 			if o == bytecode.Func {
-				reach(uint32(code[at]))
+				reach(bytecode.Word32(code, at))
 			}
 		})
 	}
@@ -67,7 +67,8 @@ func StripTests(m *bytecode.Module) *bytecode.Module {
 		eachOperand(out.Funcs[i].Code, func(o bytecode.Operand, at int, code []uint16) {
 			switch o {
 			case bytecode.Func:
-				code[at] = uint16(funcs[code[at]])
+				nf := funcs[bytecode.Word32(code, at)]
+				code[at], code[at+1] = uint16(nf), uint16(nf>>16)
 			case bytecode.Built:
 				b := code[at]
 				nb, ok := builtins[b]
@@ -101,7 +102,7 @@ func StripTests(m *bytecode.Module) *bytecode.Module {
 }
 
 // eachOperand calls f with each operand of code's instructions: its
-// kind and where it is (an offset's first word).
+// kind and where it is (a two-word operand's first word).
 func eachOperand(code []uint16, f func(o bytecode.Operand, at int, code []uint16)) {
 	for pc := 0; pc < len(code); {
 		op := bytecode.Op(code[pc])
@@ -111,11 +112,7 @@ func eachOperand(code []uint16, f func(o bytecode.Operand, at int, code []uint16
 		at := pc + 1
 		for _, o := range bytecode.Ops[op].Operands {
 			f(o, at, code)
-			if o == bytecode.Off {
-				at += 2
-			} else {
-				at++
-			}
+			at += o.Words()
 		}
 		pc += op.Width()
 	}

@@ -216,16 +216,18 @@ func decode(f *bc.FuncDef) ([]insn, map[int]bool, error) {
 		at := pc + 1
 		end := pc + op.Width()
 		for _, o := range bc.Ops[op].Operands {
-			if o == bc.Off {
-				off := int32(uint32(f.Code[at]) | uint32(f.Code[at+1])<<16)
-				t := end + int(off)
+			switch {
+			case o == bc.Off:
+				t := end + int(int32(bc.Word32(f.Code, at)))
 				in.args = append(in.args, t)
 				targets[t] = true
-				at += 2
-				continue
+			case o.Words() == 2:
+				// An index; NEWA's NoShape is -1.
+				in.args = append(in.args, int(int32(bc.Word32(f.Code, at))))
+			default:
+				in.args = append(in.args, int(f.Code[at]))
 			}
-			in.args = append(in.args, int(f.Code[at]))
-			at++
+			at += o.Words()
 		}
 		out = append(out, in)
 		pc = end
@@ -641,7 +643,7 @@ func (g *gen) insn(f *bc.FuncDef, in insn, h string) error {
 		w("R[%d] = ((ak_box *)R[%d].p)->v;", a[0], a[1])
 	case "NEWA":
 		shape := "NULL"
-		if a[2] != bc.None {
+		if a[2] != bc.NoShape {
 			shape = fmt.Sprintf("&M->shapes[%d].s", a[2])
 		}
 		w("ak_op_setref(R, %d, ak_op_newa((ak_kind)%d, %s, &R[%d], %d));", a[0], a[1], shape, a[3], a[4])

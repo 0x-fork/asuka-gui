@@ -172,7 +172,7 @@ func (l *Lowerer) finishNativeErrors() {
 			b.move(blk+i, v)
 		}
 		arr := b.temp(bc.KRef)
-		b.emit(op("NEWA"), arr, int(bc.KRef), bc.None, blk, len(vals))
+		b.emit(op("NEWA"), arr, int(bc.KRef), bc.NoShape, blk, len(vals))
 		b.releaseRegs(blk, ks)
 		arr = b.freeze(arr, bc.KRef)
 		b.emit(op("GSET"), p.global, arr, int(bc.KRef))

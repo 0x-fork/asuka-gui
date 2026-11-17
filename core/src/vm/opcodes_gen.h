@@ -3,7 +3,7 @@
 #ifndef AK_VM_OPCODES_GEN_H
 #define AK_VM_OPCODES_GEN_H
 
-#define AK_BC_VERSION 2
+#define AK_BC_VERSION 3
 
 enum {
 	AK_OP_NOP = 0, // : does nothing
@@ -81,7 +81,7 @@ enum {
 	AK_OP_GETP = 72, // reg reg imm: a = b's payload field i
 	AK_OP_BOX = 73, // reg reg kind: a = b boxed (an optional scalar that isn't none)
 	AK_OP_UNBOX = 74, // reg reg: a = the scalar in box b
-	AK_OP_NEWA = 75, // reg kind shape reg imm: a = an array of kind k (elements of shape s, 0xFFFF none) from n registers from b
+	AK_OP_NEWA = 75, // reg kind shape reg imm: a = an array of kind k (elements of shape s, 0xFFFFFFFF none) from n registers from b
 	AK_OP_IDX = 76, // reg reg reg: a = b[c]; throws out of range
 	AK_OP_SETIDX = 77, // reg reg reg: a[b] = c, a copied first if shared; throws out of range
 	AK_OP_LEN = 78, // reg reg: a = the length of b (an array, a map, a string's bytes)
@@ -114,12 +114,12 @@ enum {
 
 // Instruction widths in words.
 static const uint8_t ak_op_width[] = {
-	1, 3, 3, 2, 3, 3, 3, 3, 2, 4, 4, 4, 4, 4, 4, 4,
+	1, 3, 3, 2, 4, 3, 4, 4, 2, 5, 5, 4, 4, 4, 4, 4,
 	3, 4, 4, 4, 4, 4, 4, 4, 4, 3, 4, 4, 4, 4, 4, 4,
-	4, 3, 4, 4, 4, 4, 3, 3, 3, 5, 5, 3, 4, 4, 5, 4,
-	3, 4, 4, 4, 4, 5, 5, 5, 2, 1, 2, 2, 2, 5, 3, 4,
-	3, 3, 5, 4, 4, 4, 5, 3, 4, 4, 3, 6, 4, 4, 3, 6,
-	4, 4, 4, 5, 3, 3, 3, 3, 3, 4, 3, 4, 4, 3, 3, 5,
+	4, 3, 4, 4, 4, 4, 3, 3, 3, 5, 5, 3, 4, 4, 6, 4,
+	3, 4, 4, 4, 4, 6, 5, 5, 2, 1, 2, 2, 2, 6, 3, 4,
+	3, 3, 6, 5, 4, 4, 6, 3, 4, 4, 3, 7, 4, 4, 3, 6,
+	4, 4, 4, 6, 3, 3, 3, 3, 3, 4, 3, 4, 4, 3, 3, 5,
 	2, 2, 2, 2, 3, 3, 1,
 };
 

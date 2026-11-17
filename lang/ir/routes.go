@@ -159,7 +159,7 @@ func (b *fb) href(h *check.Href, dst int) int {
 		b.move(blk+i, v)
 	}
 	arr := b.temp(bc.KRef)
-	b.emit(op("NEWA"), arr, int(bc.KRef), bc.None, blk, len(vals))
+	b.emit(op("NEWA"), arr, int(bc.KRef), bc.NoShape, blk, len(vals))
 	b.releaseRegs(blk, ks)
 	path := b.callB(uiHrefOf, bc.KRef, b.kstr(h.Pattern), arr)
 	// The parameters the path doesn't say: its query, in the screen's
@@ -186,7 +186,7 @@ func (b *fb) href(h *check.Href, dst int) int {
 		b.move(blk+i, v)
 	}
 	all := b.temp(bc.KRef)
-	b.emit(op("NEWA"), all, int(bc.KRef), bc.None, blk, len(parts))
+	b.emit(op("NEWA"), all, int(bc.KRef), bc.NoShape, blk, len(parts))
 	b.releaseRegs(blk, ks)
 	return b.copyTo(b.callB("str.join", bc.KRef, all, b.kstr("")), dst)
 }

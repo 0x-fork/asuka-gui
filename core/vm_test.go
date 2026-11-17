@@ -248,6 +248,38 @@ func TestVMCallsAndLoops(t *testing.T) {
 	expect(t, got, "6765", "5050", "ok calls")
 }
 
+// A program's tables may hold more than 65535 constants, strings and
+// globals: their indexes are 32-bit operands.
+func TestVMWideIndexes(t *testing.T) {
+	m := module()
+	addInit(m)
+	const n = 66000
+	for i := len(m.Strings); i < n; i++ {
+		m.Strings = append(m.Strings, "s")
+	}
+	m.Strings = append(m.Strings, "past 65535")
+	for i := 0; i <= n; i++ {
+		m.Ints = append(m.Ints, int64(i)*3)
+	}
+	m.Globals = make([]bc.Kind, n+1)
+	m.Globals[n] = bc.KInt
+	f := newFn(m, "t")
+	s, x, y := f.reg(bc.KRef), f.reg(bc.KInt), f.reg(bc.KInt)
+	f.op("KSTR", s, n)
+	f.print(s, bc.KRef)
+	f.op("KINT", x, n)
+	f.op("GSET", n, x, int(bc.KInt))
+	f.op("GGET", y, n, int(bc.KInt))
+	f.print(y, bc.KInt)
+	f.op("RET0")
+	test(m, "wide", f.done(bc.KVoid, 0))
+	got, err := run(t, m, "-test")
+	if err != nil {
+		t.Fatal(err, got)
+	}
+	expect(t, got, "past 65535", "198000", "ok wide")
+}
+
 func TestVMClosuresStructsArrays(t *testing.T) {
 	m := module()
 	addInit(m)
@@ -374,7 +406,7 @@ func TestVMErrorsAndHandlers(t *testing.T) {
 	// Out-of-range index throws past a function with no handler.
 	g := newFn(m, "u")
 	arr, i, el := g.reg(bc.KRef), g.reg(bc.KInt), g.reg(bc.KInt)
-	g.op("NEWA", arr, int(bc.KInt), bc.None, 0, 0)
+	g.op("NEWA", arr, int(bc.KInt), bc.NoShape, 0, 0)
 	g.op("KSMALL", i, 3)
 	g.op("IDX", el, arr, i)
 	g.op("RET0")
@@ -701,7 +733,7 @@ func TestVMAsyncCancel(t *testing.T) {
 	f.op("CLOS", c2, quickIdx, 0, 0)
 	f.op("TASK", t2, c2)
 	arr, won, r := f.reg(bc.KRef), f.reg(bc.KRef), f.reg(bc.KInt)
-	f.op("NEWA", arr, int(bc.KRef), bc.None, t1, 2)
+	f.op("NEWA", arr, int(bc.KRef), bc.NoShape, t1, 2)
 	f.op("CALLB", won, f.b("async.race"), arr, 1)
 	f.op("AWAIT", r, won)
 	f.print(r, bc.KInt)

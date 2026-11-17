@@ -144,7 +144,7 @@ func (b *fb) zeroValue(t check.Type) int {
 		r := b.temp(bc.KRef)
 		sh := b.l.shape(check.Unopt(x.Elem))
 		if sh < 0 {
-			sh = bc.None
+			sh = bc.NoShape
 		}
 		b.emit(op("NEWA"), r, int(b.l.kind(x.Elem)), sh, b.null(), 0)
 		return r
@@ -378,7 +378,7 @@ func (b *fb) builtinMethod(e *syntax.CallExpr, call *check.Call, recv *int, dst 
 			b.move(blk+i, v)
 		}
 		arr := b.temp(bc.KRef)
-		b.emit(op("NEWA"), arr, int(ek), bc.None, blk, len(rest))
+		b.emit(op("NEWA"), arr, int(ek), bc.NoShape, blk, len(rest))
 		b.releaseRegs(blk, ks)
 		vals = append(vals[:k:k], arr)
 	}
@@ -843,7 +843,7 @@ func (b *fb) allRace(e *syntax.CallExpr, call *check.Call, dst int) int {
 		b.move(blk+i, f)
 	}
 	arr := b.temp(bc.KRef)
-	b.emit(op("NEWA"), arr, int(bc.KRef), bc.None, blk, len(futs))
+	b.emit(op("NEWA"), arr, int(bc.KRef), bc.NoShape, blk, len(futs))
 	b.releaseRegs(blk, repeatKind(bc.KRef, len(futs)))
 	if !isAll {
 		f := b.callB("async.race", bc.KRef, arr)
@@ -1175,7 +1175,7 @@ func (b *fb) withTimeout(e *syntax.CallExpr, call *check.Call, dst int) int {
 	b.move(blk, t1)
 	b.move(blk+1, t2)
 	arr := b.temp(bc.KRef)
-	b.emit(op("NEWA"), arr, int(bc.KRef), bc.None, blk, 2)
+	b.emit(op("NEWA"), arr, int(bc.KRef), bc.NoShape, blk, 2)
 	b.releaseRegs(blk, ks)
 	f := b.callB("async.race", bc.KRef, arr)
 	// Its value is the block's, which wins the race (the timer throws).

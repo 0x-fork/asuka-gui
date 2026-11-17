@@ -14,9 +14,10 @@
 // reference registers.
 //
 // Encoding. An instruction is its opcode's word followed by its
-// operands, one word each except for Off (a jump: two words, a signed
-// 32-bit offset from the instruction after the jump) and K32 (a 32-bit
-// constant index). A destination of 0xFFFF discards the result; a call
+// operands, one word each except for Off (a jump: a signed 32-bit offset
+// from the instruction after the jump) and the indexes of a module's
+// tables (Const, Func, Shape, Global: unsigned 32-bit), two words each,
+// the low one first. A destination of 0xFFFF discards the result; a call
 // whose result is a reference always has a register for it (so it's
 // released), and only a call to a bytecode function (CALL, CALLI) may
 // discard one.
@@ -28,15 +29,15 @@ package bytecode
 type Operand uint8
 
 const (
-	Reg   Operand = iota + 1 // a register
-	Imm                      // a 16-bit immediate (signed where it says)
-	Const                    // a constant pool index (ints, floats, strings: the opcode says)
-	Func                     // a function index
-	Shape                    // a shape index
-	Built                    // a builtin index (Module.Builtins)
-	KindOp                     // an ak_kind
-	Off                      // a jump offset: two words
-	Global                   // a module global slot
+	Reg    Operand = iota + 1 // a register
+	Imm                       // a 16-bit immediate (signed where it says)
+	Const                     // a constant pool index (ints, floats, strings: the opcode says): 32-bit
+	Func                      // a function index: 32-bit
+	Shape                     // a shape index: 32-bit
+	Built                     // a builtin index (Module.Builtins)
+	KindOp                    // an ak_kind
+	Off                       // a jump offset: 32-bit
+	Global                    // a module global slot: 32-bit
 )
 
 // Op is an opcode.
@@ -150,7 +151,7 @@ var Ops = []OpDef{
 	{"UNBOX", []Operand{Reg, Reg}, "a = the scalar in box b"},
 
 	// Arrays.
-	{"NEWA", []Operand{Reg, KindOp, Shape, Reg, Imm}, "a = an array of kind k (elements of shape s, 0xFFFF none) from n registers from b"},
+	{"NEWA", []Operand{Reg, KindOp, Shape, Reg, Imm}, "a = an array of kind k (elements of shape s, 0xFFFFFFFF none) from n registers from b"},
 	{"IDX", []Operand{Reg, Reg, Reg}, "a = b[c]; throws out of range"},
 	{"SETIDX", []Operand{Reg, Reg, Reg}, "a[b] = c, a copied first if shared; throws out of range"},
 	{"LEN", []Operand{Reg, Reg}, "a = the length of b (an array, a map, a string's bytes)"},
@@ -195,15 +196,22 @@ var Byname = func() map[string]Op {
 	return m
 }()
 
+// Words is the number of words an operand takes: two for a jump's
+// offset and a table's index (a program's constants, functions, shapes
+// and globals may be more than 16 bits count), one for the rest.
+func (o Operand) Words() int {
+	switch o {
+	case Off, Const, Func, Shape, Global:
+		return 2
+	}
+	return 1
+}
+
 // Width is the number of words an instruction of op takes.
 func (op Op) Width() int {
 	n := 1
 	for _, o := range Ops[op].Operands {
-		if o == Off {
-			n += 2
-		} else {
-			n++
-		}
+		n += o.Words()
 	}
 	return n
 }

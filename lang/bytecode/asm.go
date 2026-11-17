@@ -20,15 +20,21 @@ func (a *Asm) Emit(op Op, args ...int) int {
 		panic(fmt.Sprintf("bytecode: %s takes %d operands, got %d", op, len(ops), len(args)))
 	}
 	for i, o := range ops {
-		if o == Off {
+		if o.Words() == 2 {
 			v := uint32(int32(args[i]))
 			a.Code = append(a.Code, uint16(v), uint16(v>>16))
-		} else {
-			a.Code = append(a.Code, uint16(args[i]))
+			continue
 		}
+		if args[i] < -0x8000 || args[i] > 0xFFFF {
+			panic(fmt.Sprintf("bytecode: %s's operand %d is %d, more than 16 bits", op, i, args[i]))
+		}
+		a.Code = append(a.Code, uint16(args[i]))
 	}
 	return pc
 }
+
+// Word32 is the 32-bit operand at code[at] (two words, the low first).
+func Word32(code []uint16, at int) uint32 { return uint32(code[at]) | uint32(code[at+1])<<16 }
 
 // PatchJump sets the jump at pc (an instruction with an Off operand) to
 // land on target.
@@ -42,7 +48,7 @@ func (a *Asm) PatchJump(pc, target int) {
 			a.Code[at], a.Code[at+1] = uint16(v), uint16(v>>16)
 			return
 		}
-		at++
+		at += o.Words()
 	}
 	panic("bytecode: not a jump: " + op.String())
 }
@@ -65,12 +71,30 @@ func Disasm(m *Module, f *FuncDef) string {
 				b.WriteString(",")
 			}
 			b.WriteString(" ")
-			switch o {
-			case Off:
-				v := int32(uint32(f.Code[at]) | uint32(f.Code[at+1])<<16)
-				fmt.Fprintf(&b, "->%d", pc+op.Width()+int(v))
+			if o.Words() == 2 {
+				v := Word32(f.Code, at)
 				at += 2
+				switch o {
+				case Off:
+					fmt.Fprintf(&b, "->%d", pc+op.Width()+int(int32(v)))
+				case Func:
+					if m != nil && int(v) < len(m.Funcs) {
+						b.WriteString(m.Funcs[v].Name)
+					} else {
+						fmt.Fprintf(&b, "f%d", v)
+					}
+				case Shape:
+					if v == uint32(0xFFFFFFFF) {
+						b.WriteString("_")
+					} else {
+						fmt.Fprintf(&b, "s%d", v)
+					}
+				default:
+					fmt.Fprintf(&b, "%d", v)
+				}
 				continue
+			}
+			switch o {
 			case Reg:
 				if f.Code[at] == None {
 					b.WriteString("_")
@@ -79,12 +103,6 @@ func Disasm(m *Module, f *FuncDef) string {
 				}
 			case KindOp:
 				b.WriteString(Kind(f.Code[at]).String())
-			case Func:
-				if m != nil && int(f.Code[at]) < len(m.Funcs) {
-					b.WriteString(m.Funcs[f.Code[at]].Name)
-				} else {
-					fmt.Fprintf(&b, "f%d", f.Code[at])
-				}
 			case Built:
 				if m != nil && int(f.Code[at]) < len(m.Builtins) {
 					b.WriteString(m.Builtins[f.Code[at]])

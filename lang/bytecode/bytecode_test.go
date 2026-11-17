@@ -47,3 +47,32 @@ func TestTruncated(t *testing.T) {
 		t.Fatal("want an error")
 	}
 }
+
+// A table's index (a constant's, a function's, a shape's, a global's) is
+// 32 bits: a program may have more than 65535 of each.
+func TestWideOperands(t *testing.T) {
+	var a Asm
+	a.Emit(Byname["KSTR"], 1, 70000)
+	a.Emit(Byname["CALL"], 2, 1<<20, 3, 1)
+	a.Emit(Byname["NEWA"], 4, int(KRef), NoShape, 5, 0)
+	a.Emit(Byname["GSET"], 65536, 6, int(KInt))
+	if a.Code[1] != 1 || Word32(a.Code, 2) != 70000 {
+		t.Fatalf("KSTR's index: % x", a.Code[:4])
+	}
+	if w := Byname["CALL"].Width(); w != 6 {
+		t.Fatalf("CALL is %d words", w)
+	}
+	m := &Module{Funcs: []FuncDef{{Name: "f", Code: a.Code}}}
+	d := Disasm(m, &m.Funcs[0])
+	for _, want := range []string{"KSTR     r1, 70000", "CALL     r2, f1048576, r3, 1", "NEWA     r4, ref, _, r5, 0", "GSET     65536, r6, int"} {
+		if !strings.Contains(d, want) {
+			t.Errorf("disasm has no %q:\n%s", want, d)
+		}
+	}
+	defer func() {
+		if recover() == nil {
+			t.Fatal("a register past 16 bits should panic")
+		}
+	}()
+	a.Emit(Byname["MOV"], 70000, 0)
+}

@@ -19,6 +19,7 @@ type Lowerer struct {
 	out  *Program
 	mod  *bc.Module
 
+	strs      map[string]int // a string → its index in the module's
 	funcs     map[string]int // a function's instantiation → its index
 	shapes    map[string]int // a type → its shape
 	shapeType map[int]check.Type
@@ -472,7 +473,26 @@ type pendingStrings struct {
 	ss     []string
 }
 
-func (l *Lowerer) str(s string) int        { return int(l.mod.String(s)) }
+// str interns s in the module's strings: by an index of them, as a
+// program may have many.
+func (l *Lowerer) str(s string) int {
+	if l.strs == nil {
+		l.strs = make(map[string]int, len(l.mod.Strings))
+		for i, x := range l.mod.Strings {
+			if _, ok := l.strs[x]; !ok {
+				l.strs[x] = i
+			}
+		}
+	}
+	if i, ok := l.strs[s]; ok {
+		return i
+	}
+	l.mod.Strings = append(l.mod.Strings, s)
+	i := len(l.mod.Strings) - 1
+	l.strs[s] = i
+	return i
+}
+
 func (l *Lowerer) builtin(name string) int { return int(l.mod.Builtin(name)) }
 
 func op(name string) bc.Op {
@@ -660,7 +680,7 @@ func (l *Lowerer) finishStrings() {
 			b.emit(op("KSTR"), blk+i, l.str(s))
 		}
 		arr := b.temp(bc.KRef)
-		b.emit(op("NEWA"), arr, int(bc.KRef), bc.None, blk, len(p.ss))
+		b.emit(op("NEWA"), arr, int(bc.KRef), bc.NoShape, blk, len(p.ss))
 		b.releaseRegs(blk, repeatKind(bc.KRef, len(p.ss)))
 		arr = b.freeze(arr, bc.KRef)
 		b.emit(op("GSET"), p.global, arr, int(bc.KRef))

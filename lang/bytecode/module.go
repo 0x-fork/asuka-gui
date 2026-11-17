@@ -10,7 +10,7 @@ import (
 // Magic starts every module; Version changes with the format.
 const (
 	Magic   = "AKBC"
-	Version = 2
+	Version = 3
 )
 
 // Kind is how a value is stored (core/src/rt/rt.h's ak_kind).
@@ -30,6 +30,10 @@ func (k Kind) String() string {
 
 // None is the "no index" value of a 16-bit operand or index.
 const None = 0xFFFF
+
+// NoShape is NEWA's shape when its elements have none (a 32-bit
+// operand: 0xFFFFFFFF).
+const NoShape = -1
 
 // Field is a struct's field or an enum case's payload field. Its Name
 // may carry its type's JSON descriptor after a NUL ("title\x00s"; see
@@ -134,23 +138,28 @@ type C struct {
 	Std []string
 }
 
-// String interns s and returns its index.
-func (m *Module) String(s string) uint16 {
+// String interns s and returns its index (a linear search: a compiler
+// keeps an index of its own, as lang/ir does).
+func (m *Module) String(s string) uint32 {
 	for i, x := range m.Strings {
 		if x == s {
-			return uint16(i)
+			return uint32(i)
 		}
 	}
 	m.Strings = append(m.Strings, s)
-	return uint16(len(m.Strings) - 1)
+	return uint32(len(m.Strings) - 1)
 }
 
-// Builtin returns the index of the builtin named name.
+// Builtin returns the index of the builtin named name: a 16-bit
+// operand, as the builtins are the runtime's, not the program's.
 func (m *Module) Builtin(name string) uint16 {
 	for i, x := range m.Builtins {
 		if x == name {
 			return uint16(i)
 		}
+	}
+	if len(m.Builtins) >= None {
+		panic("bytecode: more than 65535 builtins")
 	}
 	m.Builtins = append(m.Builtins, name)
 	return uint16(len(m.Builtins) - 1)

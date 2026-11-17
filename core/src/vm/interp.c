@@ -156,33 +156,37 @@ int ak_vm_interp(ak_co *co, ak_val *out) {
 			setref(R, a[0], NULL);
 			break;
 		case AK_OP_KINT:
-			R[a[0]].i = M->ints[a[1]];
+			R[a[0]].i = M->ints[off32(a + 1)];
 			break;
 		case AK_OP_KSMALL:
 			R[a[0]].i = (int16_t)a[1];
 			break;
 		case AK_OP_KFLOAT:
-			R[a[0]].f = M->floats[a[1]];
+			R[a[0]].f = M->floats[off32(a + 1)];
 			break;
 		case AK_OP_KSTR:
-			setref(R, a[0], ak_retain(M->strings[a[1]]));
+			setref(R, a[0], ak_retain(M->strings[off32(a + 1)]));
 			break;
 		case AK_OP_KNONE:
 			setref(R, a[0], NULL);
 			break;
-		case AK_OP_GGET:
-			if (a[2] == AK_K_REF) setref(R, a[0], ak_retain(M->globals[a[1]].p));
-			else R[a[0]] = M->globals[a[1]];
+		case AK_OP_GGET: {
+			ak_val *g = &M->globals[off32(a + 1)];
+			if (a[3] == AK_K_REF) setref(R, a[0], ak_retain(g->p));
+			else R[a[0]] = *g;
 			break;
-		case AK_OP_GSET:
-			if (a[2] == AK_K_REF) {
-				void *old = M->globals[a[0]].p;
-				M->globals[a[0]].p = ak_retain(R[a[1]].p);
+		}
+		case AK_OP_GSET: {
+			ak_val *g = &M->globals[off32(a)];
+			if (a[3] == AK_K_REF) {
+				void *old = g->p;
+				g->p = ak_retain(R[a[2]].p);
 				ak_release(old);
 			} else {
-				M->globals[a[0]] = R[a[1]];
+				*g = R[a[2]];
 			}
 			break;
+		}
 
 		case AK_OP_ADDI: R[a[0]].i = (int64_t)((uint64_t)R[a[1]].i + (uint64_t)R[a[2]].i); break;
 		case AK_OP_SUBI: R[a[0]].i = (int64_t)((uint64_t)R[a[1]].i - (uint64_t)R[a[2]].i); break;
@@ -226,7 +230,7 @@ int ak_vm_interp(ak_co *co, ak_val *out) {
 
 		case AK_OP_CONCAT: setref(R, a[0], ak_str_concat(R[a[1]].p, R[a[2]].p)); break;
 		case AK_OP_TOSTR: setref(R, a[0], ak_op_tostr(R[a[1]], a[2])); break;
-		case AK_OP_INTERP: setref(R, a[0], ak_op_interp(R, a[1], a[2], M->strings[a[3]])); break;
+		case AK_OP_INTERP: setref(R, a[0], ak_op_interp(R, a[1], a[2], M->strings[off32(a + 3)])); break;
 		case AK_OP_LTS: R[a[0]].i = ak_str_cmp(R[a[1]].p, R[a[2]].p) < 0; break;
 
 		case AK_OP_JMP: pc += off32(a); break;
@@ -236,17 +240,17 @@ int ak_vm_interp(ak_co *co, ak_val *out) {
 		case AK_OP_JSOME: if (R[a[0]].p) pc += off32(a + 1); break;
 
 		case AK_OP_CALL: {
-			const ak_func *g = &M->funcs[a[1]];
+			const ak_func *g = &M->funcs[off32(a + 1)];
 			fr->pc = pc;
 			if (g->native) {
-				ak_val v = g->native(R + a[2], NULL);
+				ak_val v = g->native(R + a[3], NULL);
 				RELOAD();
 				CHECK_ERR();
 				if (a[0] == 0xFFFF) ak_release_val(v, (ak_kind)g->ret);
 				else store(F, R, a[0], v);
 				break;
 			}
-			if (!ak_vm_push(co, g, NULL, R + a[2], a[3], a[0], false, ipc)) goto unwind;
+			if (!ak_vm_push(co, g, NULL, R + a[3], a[4], a[0], false, ipc)) goto unwind;
 			LOAD();
 			if (F->resume) return AK_RUN_PUSHED;
 			break;
@@ -280,20 +284,20 @@ int ak_vm_interp(ak_co *co, ak_val *out) {
 			break;
 		}
 		case AK_OP_CALLI: {
-			ak_str *name = M->strings[a[1]];
-			void *obj = R[a[2]].p;
+			ak_str *name = M->strings[off32(a + 1)];
+			void *obj = R[a[3]].p;
 			const ak_func *g = ak_vm_method(obj, name);
 			if (!g) ak_panic("vm: no method %s", name->data);
 			fr->pc = pc;
 			if (g->native) {
-				ak_val v = g->native(R + a[2], NULL);
+				ak_val v = g->native(R + a[3], NULL);
 				RELOAD();
 				CHECK_ERR();
 				if (a[0] == 0xFFFF) ak_release_val(v, (ak_kind)g->ret);
 				else store(F, R, a[0], v);
 				break;
 			}
-			if (!ak_vm_push(co, g, NULL, R + a[2], a[3], a[0], false, ipc)) goto unwind;
+			if (!ak_vm_push(co, g, NULL, R + a[3], a[4], a[0], false, ipc)) goto unwind;
 			LOAD();
 			if (F->resume) return AK_RUN_PUSHED;
 			break;
@@ -338,20 +342,24 @@ int ak_vm_interp(ak_co *co, ak_val *out) {
 			goto unwind_frame;
 		}
 
-		case AK_OP_CLOS: setref(R, a[0], ak_op_clos(&M->funcs[a[1]], R + a[2])); break;
+		case AK_OP_CLOS: setref(R, a[0], ak_op_clos(&M->funcs[off32(a + 1)], R + a[3])); break;
 		case AK_OP_CAP: ak_op_cap(R, a[0], fr->clos, a[1]); break;
 		case AK_OP_VBOX: ak_op_vbox(R, a[0], R[a[1]], a[2]); break;
 		case AK_OP_VGET: ak_op_vget(R, a[0], R[a[1]].p); break;
 		case AK_OP_VSET: ak_op_vset(R[a[0]].p, R[a[1]]); break;
-		case AK_OP_NEWS: setref(R, a[0], ak_op_news(&M->shapes[a[1]].s, R + a[2])); break;
+		case AK_OP_NEWS: setref(R, a[0], ak_op_news(&M->shapes[off32(a + 1)].s, R + a[3])); break;
 		case AK_OP_GETF: ak_op_getf(R, a[0], R[a[1]].p, a[2]); break;
 		case AK_OP_SETF: ak_op_setf(R, a[0], a[1], R[a[2]]); break;
-		case AK_OP_NEWE: setref(R, a[0], ak_op_newe(&M->shapes[a[1]].s, a[2], R + a[3])); break;
+		case AK_OP_NEWE: setref(R, a[0], ak_op_newe(&M->shapes[off32(a + 1)].s, a[3], R + a[4])); break;
 		case AK_OP_ECASE: R[a[0]].i = ak_enum_case(R[a[1]].p); break;
 		case AK_OP_GETP: ak_op_getp(R, a[0], R[a[1]].p, a[2]); break;
 		case AK_OP_BOX: setref(R, a[0], ak_box_new((ak_kind)a[2], R[a[1]])); break;
 		case AK_OP_UNBOX: R[a[0]] = ((ak_box *)R[a[1]].p)->v; break;
-		case AK_OP_NEWA: setref(R, a[0], ak_op_newa((ak_kind)a[1], a[2] == 0xFFFF ? NULL : &M->shapes[a[2]].s, R + a[3], a[4])); break;
+		case AK_OP_NEWA: {
+			uint32_t s = off32(a + 2);
+			setref(R, a[0], ak_op_newa((ak_kind)a[1], s == 0xFFFFFFFF ? NULL : &M->shapes[s].s, R + a[4], a[5]));
+			break;
+		}
 		case AK_OP_IDX:
 			if (!ak_op_idx(R, a[0], R[a[1]].p, R[a[2]].i)) goto unwind;
 			break;
@@ -368,7 +376,7 @@ int ak_vm_interp(ak_co *co, ak_val *out) {
 			ak_val v = R[a[1]];
 			ak_retain_val(v, (ak_kind)a[2]);
 			fr->pc = pc;
-			ak_val c = ak_vm_cell_new(v, (ak_kind)a[2], op == AK_OP_CELLK ? M->strings[a[3]] : NULL);
+			ak_val c = ak_vm_cell_new(v, (ak_kind)a[2], op == AK_OP_CELLK ? M->strings[off32(a + 3)] : NULL);
 			RELOAD();
 			setref(R, a[0], c.p);
 			break;

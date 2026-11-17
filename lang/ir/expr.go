@@ -228,7 +228,7 @@ func (b *fb) expr(e syntax.Expr, dst int) int {
 		r := b.out(dst, bc.KRef)
 		sh := b.l.shape(check.Unopt(at.Elem))
 		if sh < 0 {
-			sh = bc.None
+			sh = bc.NoShape
 		}
 		b.emit(op("NEWA"), r, int(k), sh, blk, len(vals))
 		b.releaseRegs(blk, ks)
