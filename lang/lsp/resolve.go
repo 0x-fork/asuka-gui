@@ -232,6 +232,12 @@ func (fc *fileCtx) selRef(sel *check.Selection, name string) *ref {
 		return &ref{name: name, special: "color", recv: check.Color}
 	case check.SelLengthAuto:
 		return &ref{name: "auto", special: "auto", recv: check.Length}
+	case check.SelBuiltinField:
+		if sel.Method != nil {
+			return methodRef(sel.Method, sel.Recv)
+		}
+	case check.SelVariant:
+		return fc.objRef(sel.Obj)
 	}
 	return nil
 }

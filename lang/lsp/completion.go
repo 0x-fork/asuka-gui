@@ -346,16 +346,23 @@ func (c *completer) valueMembers(t check.Type, optional bool, dot int) {
 		if c.seen[m.Name] {
 			continue
 		}
-		ps, _ := m.Instantiate(inner)
-		it := c.callItem(m.Name, kindMethod, methodSig(m, inner), methodDoc(m), len(ps) > 0)
-		addItem(it)
+		addItem(c.methodItem(m, inner))
 	}
 }
 
 // method adds a built-in method.
 func (c *completer) method(m *check.Method, recv check.Type) {
+	c.add(c.methodItem(m, recv), prioMember)
+}
+
+// methodItem is a built-in method's item: a call, or for one read as a
+// property (g.width, card.hovered) its name.
+func (c *completer) methodItem(m *check.Method, recv check.Type) CompletionItem {
+	if m.Field {
+		return CompletionItem{Label: m.Name, Kind: kindProperty, Detail: methodSig(m, recv), Documentation: c.doc(methodDoc(m))}
+	}
 	ps, _ := m.Instantiate(recv)
-	c.add(c.callItem(m.Name, kindMethod, methodSig(m, recv), methodDoc(m), len(ps) > 0), prioMember)
+	return c.callItem(m.Name, kindMethod, methodSig(m, recv), methodDoc(m), len(ps) > 0)
 }
 
 // typeMethods adds a struct's or an enum's methods, sorted.

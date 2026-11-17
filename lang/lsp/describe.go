@@ -144,6 +144,10 @@ func methodSig(m *check.Method, recv check.Type) string {
 	if recv != nil {
 		recvS = typeStr(recv)
 	}
+	if m.Field {
+		// Read without parentheses: g.width, card.hovered.
+		return recvS + "." + m.Name + ": " + typeStr(res)
+	}
 	return r + recvS + "." + m.Name + paramsString(ps) + resultString(res, m.Async, m.Throws)
 }
 

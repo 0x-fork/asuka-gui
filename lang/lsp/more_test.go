@@ -166,3 +166,68 @@ func TestCompletionImportNames(t *testing.T) {
 		}
 	}
 }
+
+// A built-in property (g.width, card.hovered) completes as a name, not a
+// call, and hovers as a property; a component's variant read through
+// its name (box.checked) goes to its declaration.
+func TestBuiltinProperties(t *testing.T) {
+	root := t.TempDir()
+	c := newClient(t, root)
+	text := `component Check {
+  prop checked = false
+  prop children: View
+  variant checked = checked
+  View { children }
+}
+
+component Main {
+  Column {
+    View as card { Text("x") }
+    Check as box { Text("y") }
+    Text("{card.hovered} {box.checked}")
+    Canvas(g => {
+      let w = g.width
+    })
+  }
+}
+`
+	uri := c.openText(filepath.Join(root, "a.asuka"), text)
+	c.waitDiags(uri, noDiags)
+	for _, tc := range []struct{ at, want string }{
+		{"card.hove|red", "Ref.hovered: bool"},
+		{"g.wid|th", "Graphics.width: float"},
+		{"box.chec|ked", "variant checked = checked"},
+	} {
+		if got := hoverAt(t, c, uri, text, tc.at); !strings.Contains(got, tc.want) {
+			t.Errorf("hover at %s: %q lacks %q", tc.at, got, tc.want)
+		}
+	}
+	var locs []Location
+	p := tdp(uri, posAt(t, text, "box.chec|ked"))
+	if err := c.call("textDocument/definition", &p, &locs); err != nil {
+		t.Fatal(err)
+	}
+	if want := posAt(t, text, "variant |checked"); len(locs) != 1 || locs[0].Range.Start != want {
+		t.Errorf("definition of box.checked: %+v, want %+v", locs, want)
+	}
+	version := 1
+	for _, marked := range []string{"let w = g.wi|", `Text("{card.ho|`} {
+		i := strings.Index(marked, "|")
+		j := strings.Index(text, marked[:i])
+		items := complete(t, c, uri, &version, text, text[:j+i]+"|")
+		name := map[bool]string{true: "width", false: "hovered"}[strings.Contains(marked, "g.")]
+		found := false
+		for _, it := range items {
+			if it.Label != name {
+				continue
+			}
+			found = true
+			if it.InsertTextFormat == 2 || strings.Contains(it.InsertText, "(") {
+				t.Errorf("%s inserts %q: it's read without parentheses", name, it.InsertText)
+			}
+		}
+		if !found {
+			t.Errorf("no %s in %v", name, labels(items))
+		}
+	}
+}
