@@ -274,6 +274,40 @@ func (p *parser) errorExpected(what string) {
 	p.error(p.pos, "expected "+what+", found "+p.describe())
 }
 
+// errorExpectedName is errorExpected where a name could go: a keyword
+// that was a name before a release says to rename it.
+func (p *parser) errorExpectedName(what string) {
+	p.error(p.pos, "expected "+what+", found "+p.describe()+p.newKeyword())
+}
+
+// newKeywords are the keywords a release made of what were names, by
+// the release: a file that names something so says to rename it.
+var newKeywords = map[Token]string{
+	MUT:    "0.2.7",
+	EXTEND: "0.2.7",
+}
+
+// newKeyword says to rename a name that's a keyword since a release (":
+// rename it: mut is a keyword since 0.2.7"), "" for other tokens.
+func (p *parser) newKeyword() string {
+	if v, ok := newKeywords[p.tok]; ok {
+		return ": rename it: " + p.tok.String() + " is a keyword since " + v
+	}
+	return ""
+}
+
+// funcAhead reports whether [async] [mut] fn starts here.
+func (p *parser) funcAhead() bool {
+	i := 0
+	if p.peek(i) == ASYNC {
+		i++
+	}
+	if p.peek(i) == MUT {
+		i++
+	}
+	return p.peek(i) == FN
+}
+
 // describe names the current token for a message.
 func (p *parser) describe() string {
 	switch p.tok {
@@ -403,7 +437,7 @@ func (p *parser) ident() *Ident {
 		p.next()
 		return id
 	}
-	p.errorExpected("a name")
+	p.errorExpectedName("a name")
 	return &Ident{Span: Span{p.pos, p.pos + 1}, Name: "_"}
 }
 
@@ -842,7 +876,7 @@ func (p *parser) parseDecl() Decl {
 		d = p.parseEnum(start)
 	case INTERFACE:
 		d = p.parseInterface(start, NoPos)
-	case FN, ASYNC:
+	case FN, ASYNC, MUT:
 		d = p.parseFunc(start)
 	case TYPE:
 		d = p.parseTypeAlias(start)
@@ -1229,9 +1263,9 @@ func (p *parser) parseFieldOrMethod(what string, constants bool) Node {
 	}
 	var n Node
 	switch {
-	case p.tok == FN || p.tok == ASYNC:
+	case p.funcAhead():
 		n = p.parseFunc(start)
-	case constants && p.tok == IDENT && p.lit == "static" && (p.peek(1) == FN || p.peek(1) == ASYNC):
+	case constants && p.tok == IDENT && p.lit == "static" && (p.peek(1) == FN || p.peek(1) == ASYNC || p.peek(1) == MUT):
 		// A function of the type's (Money.of(dollars: 2)).
 		static := p.pos
 		p.next()
@@ -1286,8 +1320,8 @@ func (p *parser) parseEnum(start Pos) *EnumDecl {
 		}
 		i := p.i
 		t := p.leading(p.pos)
-		static := p.tok == IDENT && p.lit == "static" && (p.peek(1) == FN || p.peek(1) == ASYNC)
-		if p.tok == FN || p.tok == ASYNC || p.tok == PUB || p.tok == LET || static {
+		static := p.tok == IDENT && p.lit == "static" && (p.peek(1) == FN || p.peek(1) == ASYNC || p.peek(1) == MUT)
+		if p.funcAhead() || p.tok == PUB || p.tok == LET || static {
 			m := p.parseFieldOrMethod("a method or a constant", true)
 			switch f := m.(type) {
 			case *FuncDecl:
@@ -1377,12 +1411,16 @@ func (p *parser) parseInterface(start, native Pos) *InterfaceDecl {
 	return d
 }
 
-// parseFunc parses [async] fn name<T>(params) [throws] [-> T] and a body,
-// = value, or (a signature) neither.
+// parseFunc parses [async] [mut] fn name<T>(params) [throws] [-> T] and a
+// body, = value, or (a signature) neither.
 func (p *parser) parseFunc(start Pos) *FuncDecl {
 	d := &FuncDecl{}
 	if p.tok == ASYNC {
 		d.Async = p.pos
+		p.next()
+	}
+	if p.tok == MUT {
+		d.Mut = p.pos
 		p.next()
 	}
 	p.expect(FN)
@@ -1627,8 +1665,8 @@ func (p *parser) itemAfterPub(start Pos) Item {
 		d := &ProvideDecl{Value: p.parseExpr()}
 		d.Span = p.span(start)
 		return d
-	case FN, ASYNC:
-		if p.tok == FN || next == FN {
+	case FN, ASYNC, MUT:
+		if p.funcAhead() {
 			return p.parseFunc(start)
 		}
 	case TASK:
@@ -2690,7 +2728,7 @@ func (p *parser) parsePrimary() Expr {
 	if p.tok == ADD && p.peek(1) == ADD && p.toks[p.i+1].pos == p.pos+1 {
 		p.error(p.pos, "there's no ++ operator: write x += 1")
 	}
-	p.errorExpected("an expression")
+	p.errorExpectedName("an expression")
 	switch p.tok {
 	case NEWLINE, SEMICOLON, RBRACE, RPAREN, RBRACK, COMMA, EOF, STRING_MID, STRING_TAIL:
 	default:
@@ -3068,7 +3106,7 @@ func (p *parser) parsePrimaryPattern() Pattern {
 		}
 		return &TuplePat{Elems: elems, Span: p.span(start)}
 	}
-	p.errorExpected("a pattern")
+	p.errorExpectedName("a pattern")
 	switch p.tok {
 	case NEWLINE, SEMICOLON, RBRACE, RPAREN, FATARROW, ASSIGN, EOF, LBRACE, IN, COMMA:
 	default:

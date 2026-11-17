@@ -80,11 +80,14 @@ parser normalizes each identifier's text).
 
 ```
 app as async await bind break catch component continue defer do effect
-else emit enum event extern false fn for if import in interface key let
-load match native none on prop provide pub return screen self spawn
-state store struct style task test throw throws true try type use var
-while
+else emit enum event extend extern false fn for if import in interface
+key let load match mut native none on prop provide pub return screen
+self spawn state store struct style task test throw throws true try type
+use var while
 ```
+
+`mut` and `extend` are keywords since 0.2.7: a file that names something
+so is an error that says to rename it.
 
 After `.` or `?.`, a keyword is a member's name (`x.type`,
 `.default`). The soft keywords, which only start a declaration or an
@@ -194,7 +197,7 @@ InterfaceMember = [ "pub" ] ( Func | "native" Func | Field ) .
 Native      = "native" ( Interface | Component | Func ) .
 Extern      = "extern" ( Func | Struct | "type" Ident [ "with" "release" Ident ] ) .
 
-Func        = [ "async" ] "fn" FuncName [ TypeParams ] Params [ "throws" ] [ "->" Type ]
+Func        = [ "async" ] [ "mut" ] "fn" FuncName [ TypeParams ] Params [ "throws" ] [ "->" Type ]
               [ Block | "=" Expr ] .              (* neither: a signature *)
 FuncName    = Ident | Keyword .                  (* a keyword only before ( or <: fn defer() *)
 Params      = "(" [ Param { "," Param } [ "," ] ] ")" .

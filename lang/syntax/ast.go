@@ -369,6 +369,9 @@ type FuncDecl struct {
 	// Static: static fn f(…) in a struct's, an enum's or a store's body:
 	// the type's function (Money.of(dollars: 2)), with no self.
 	Static Pos
+	// Mut: mut fn, a struct's, an enum's or an extension's method that
+	// changes the value it's called on (RFC 0011).
+	Mut Pos
 }
 
 // An ExternTypeDecl is extern type Name with release fn: a pointer C

@@ -41,6 +41,16 @@ extern fn f() -> int
 			decls: 3,
 		},
 		{
+			name: "a keyword that was a name",
+			src: `fn f() {
+  let mut = 1
+  let x = extend + 1
+}
+`,
+			errs:  []string{"2:7: expected a pattern, found keyword 'mut': rename it: mut is a keyword since 0.2.7", "3:11: expected an expression, found keyword 'extend': rename it: extend is a keyword since 0.2.7"},
+			decls: 1,
+		},
+		{
 			name: "unclosed block at the end",
 			src: `component A {
   if ready {

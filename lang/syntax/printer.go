@@ -729,6 +729,9 @@ func (p *printer) funcDecl(d *FuncDecl) {
 	if d.Async.IsValid() {
 		p.write("async ")
 	}
+	if d.Mut.IsValid() {
+		p.write("mut ")
+	}
 	p.write("fn " + d.Name.Name)
 	p.typeParams(d.TypeParams, d.TypeAngles)
 	if d.Params != nil {
