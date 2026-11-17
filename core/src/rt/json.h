@@ -46,7 +46,11 @@ typedef struct {
 #define AK_JSON_MAX_DEPTH 512
 ak_val ak_json_decode(const char *text, size_t len, const char *desc, const ak_json_types *t);
 // ak_json_encode writes v (of the descriptor's type) as JSON; indent > 0
-// pretty-prints with that many spaces.
+// pretty-prints with that many spaces. It writes a value however deep:
+// it keeps its place in a stack of its own, not the C stack, and never
+// fails (json.encode returns a string, no error). Decoding is bounded:
+// text it writes nested deeper than AK_JSON_MAX_DEPTH (a recursive
+// type's long chain) is valid JSON that ak_json_decode won't read back.
 ak_str *ak_json_encode(ak_val v, const char *desc, const ak_json_types *t, int indent);
 
 #endif
