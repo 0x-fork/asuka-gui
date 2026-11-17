@@ -46,7 +46,7 @@ bool ak_vm_push(ak_co *co, const ak_func *f, ak_closure *clos, ak_val *args, uin
 		co->frames = ak_realloc(co->frames, sizeof(ak_frame) * co->fcap);
 	}
 	if (clos) ak_retain(clos);
-	co->frames[co->nframes++] = (ak_frame){.fn = f, .clos = clos, .pc = 0, .callpc = callpc, .base = base, .dst = dst, .boundary = boundary};
+	co->frames[co->nframes++] = (ak_frame){.fn = f, .clos = clos, .pc = 0, .callpc = callpc, .base = base, .udepth = co->nuntracks, .dst = dst, .boundary = boundary};
 	return true;
 }
 
@@ -448,14 +448,16 @@ int ak_vm_interp(ak_co *co, ak_val *out) {
 			store(F, R, a[0], v);
 			break;
 		}
-		case AK_OP_UNTRACK: {
+		case AK_OP_CALLU: {
 			fr->pc = pc;
-			ak_val v = ak_vm_untrack(R[a[1]].p, R + a[2], a[3]);
+			ak_val v = ak_vm_call_untracked(R[a[1]].p, R + a[2], a[3]);
 			RELOAD();
 			CHECK_ERR();
 			store(F, R, a[0], v);
 			break;
 		}
+		case AK_OP_UNTRACK: ak_vm_untrack_begin(co); break;
+		case AK_OP_RETRACK: ak_vm_retrack(co, fr->udepth + a[0]); break;
 		case AK_OP_EFFECT:
 		case AK_OP_RENDER:
 			fr->pc = pc;
@@ -519,6 +521,8 @@ int ak_vm_interp(ak_co *co, ak_val *out) {
 		for (;;) {
 			bool boundary = fr->boundary;
 			uint32_t callpc = fr->callpc;
+			// Out of a peek the error left: what it untracked tracks again.
+			ak_vm_retrack(co, fr->udepth);
 			ak_vm_pop(co, -1);
 			if (boundary || co->nframes == 0) {
 				*out = (ak_val){0};

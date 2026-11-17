@@ -37,7 +37,7 @@ var operandKinds = map[string][]bc.Kind{
 // the value is let go of. No other operand names none.
 var discards = map[string]bool{
 	"CALL": true, "CALLC": true, "CALLB": true, "CALLI": true, "CGET": true, "CPEEK": true,
-	"CTAKE": true, "MREAD": true, "AGET": true, "UNTRACK": true, "AWAIT": true,
+	"CTAKE": true, "MREAD": true, "AGET": true, "CALLU": true, "AWAIT": true,
 }
 
 // Validate checks what the lowering promises of its functions: each

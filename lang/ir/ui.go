@@ -276,13 +276,7 @@ func (b *fb) lowerComponent(t *check.TypeName) {
 			key := b.kstr(b.l.typeKey(b.rawType(d.Value)))
 			b.callBTo(uiProvide, bc.None, key, v)
 		case *syntax.EffectDecl:
-			ectx := b.l.info.Ctxs[d]
-			clos := b.makeClosure(closure{name: "effect", ctxs: []*check.FuncCtx{ectx}, ret: bc.KVoid, throws: true, body: func(c *fb) {
-				c.ctx = ectx
-				c.block(d.Body)
-				c.emit(op("RET0"))
-			}})
-			b.emit(op("EFFECT"), clos)
+			b.effectDecl(d)
 		case *syntax.TaskDecl:
 			b.taskDecl(d, comp.Store)
 		}
@@ -370,18 +364,136 @@ func (b *fb) taskDecl(d *syntax.TaskDecl, store bool) {
 		}
 		return
 	}
-	depsCtx := b.l.info.Ctxs[d]
-	clos := b.makeClosure(closure{name: "task deps", ctxs: []*check.FuncCtx{depsCtx, bodyCtx}, ret: bc.KVoid, throws: true, body: func(c *fb) {
-		c.ctx = depsCtx
-		for _, x := range d.Deps {
-			c.value(x, -1)
-		}
+	deps := b.deps(d.Deps)
+	clos := b.makeClosure(closure{name: "task deps", ctxs: []*check.FuncCtx{bodyCtx}, extra: depCaps(deps), ret: bc.KVoid, throws: true, body: func(c *fb) {
+		c.readDeps(deps)
 		t := body(c)
 		f := c.temp(bc.KRef)
 		c.emit(op("TASK"), f, t)
 		c.emit(op("RET0"))
 	}})
 	b.emit(op("EFFECT"), clos)
+}
+
+// effectDecl makes an effect: effect { B } runs B, following what it
+// reads; effect(a, b) { B } reads its dependencies (deps), then calls B
+// untracked.
+func (b *fb) effectDecl(d *syntax.EffectDecl) {
+	if !d.Lparen.IsValid() {
+		ectx := b.l.info.Ctxs[d]
+		clos := b.makeClosure(closure{name: "effect", ctxs: []*check.FuncCtx{ectx}, ret: bc.KVoid, throws: true, body: func(c *fb) {
+			c.ctx = ectx
+			c.block(d.Body)
+			c.emit(op("RET0"))
+		}})
+		b.emit(op("EFFECT"), clos)
+		return
+	}
+	bodyCtx := b.l.info.Ctxs[d.Body]
+	deps := b.deps(d.Deps)
+	clos := b.makeClosure(closure{name: "effect", ctxs: []*check.FuncCtx{bodyCtx}, extra: depCaps(deps), ret: bc.KVoid, throws: true, body: func(c *fb) {
+		c.readDeps(deps)
+		run := c.makeClosure(closure{name: "effect body", ctxs: []*check.FuncCtx{bodyCtx}, ret: bc.KVoid, throws: true, body: func(c2 *fb) {
+			c2.ctx = bodyCtx
+			c2.block(d.Body)
+			c2.emit(op("RET0"))
+		}})
+		c.emit(op("CALLU"), bc.None, run, 0, 0)
+		c.emit(op("RET0"))
+	}})
+	b.emit(op("EFFECT"), clos)
+}
+
+// A dep is a dependency of an effect(…), a task(…) or a state(…), as
+// its follower captures it: the memo of it, or the cell or memo it reads
+// alone, which the follower reads (read: CGET or MREAD, into a register
+// of kind).
+type dep struct {
+	v    *check.Var
+	reg  int // the maker's register
+	read string
+	kind bc.Kind
+}
+
+// deps makes what an effect(…), a task(…) or a state(…) follows: per
+// dependency, a memo of it, made now, so that the follower runs again
+// only when the dependency's value changes (the memo's equality), not
+// when something else in what it reads does (task(u.id) and a write to
+// u.name); a state or a let read alone (a cell, or a memo already) is
+// read as it is. The follower captures them (depCaps) and reads them
+// with readDeps.
+//
+// Per-path tracking (rfcs/0013) narrows what a dependency's memo reads;
+// the memo per dependency stays what compares it.
+func (b *fb) deps(xs []syntax.Expr) []dep {
+	var out []dep
+	for _, x := range xs {
+		t := b.l.info.Types[x]
+		d := dep{v: &check.Var{}, read: "MREAD", kind: b.kind(t)}
+		if r, memo, ok := b.depDirect(x); ok {
+			d.reg = r
+			if !memo {
+				d.read = "CGET"
+			}
+			out = append(out, d)
+			continue
+		}
+		clos := b.thunk(b.l.info.Ctxs[x], x, t)
+		d.reg = b.temp(bc.KRef)
+		b.emit(op("MEMO"), d.reg, clos, int(d.kind))
+		out = append(out, d)
+	}
+	return out
+}
+
+// depCaps are what a follower captures of its dependencies.
+func depCaps(deps []dep) []extraCap {
+	var out []extraCap
+	for _, d := range deps {
+		out = append(out, extraCap{d.v, d.reg})
+	}
+	return out
+}
+
+// depDirect is the cell (memo false) or memo a dependency reads when it's
+// one state or let read alone: what follows it reads that directly.
+func (b *fb) depDirect(x syntax.Expr) (reg int, memo, ok bool) {
+	if _, conv := b.l.info.Convs[x]; conv {
+		return -1, false, false
+	}
+	id, isID := unparen(x).(*syntax.Ident)
+	if !isID {
+		return -1, false, false
+	}
+	switch o := b.l.info.Uses[id].(type) {
+	case *check.Member:
+		switch {
+		case o.Kind == check.StateMember:
+			return b.memberRef(o, x), false, true
+		case o.Kind == check.LetMember && o.Memo && !isLoad(o.Default):
+			return b.memberRef(o, x), true, true
+		}
+	case *check.Global:
+		switch o.Kind {
+		case check.StateGlobal:
+			return b.globalCell(o), false, true
+		case check.MemoGlobal:
+			return b.globalCell(o), true, true
+		}
+	}
+	return -1, false, false
+}
+
+// readDeps reads, tracked, what deps made: the follower's dependencies.
+// It returns the registers holding their values.
+func (b *fb) readDeps(deps []dep) []int {
+	var out []int
+	for _, d := range deps {
+		r := b.temp(d.kind)
+		b.emit(op(d.read), r, b.vars[d.v])
+		out = append(out, r)
+	}
+	return out
 }
 
 // load makes a component's let x = load f(…): the runtime's loader of a
@@ -508,13 +620,7 @@ func (b *fb) lowerApp(d *syntax.AppDecl) {
 			b.taskDecl(x, false)
 		case *syntax.EffectDecl:
 			b.at(x)
-			ectx := b.l.info.Ctxs[x]
-			clos := b.makeClosure(closure{name: "effect", ctxs: []*check.FuncCtx{ectx}, ret: bc.KVoid, throws: true, body: func(c *fb) {
-				c.ctx = ectx
-				c.block(x.Body)
-				c.emit(op("RET0"))
-			}})
-			b.emit(op("EFFECT"), clos)
+			b.effectDecl(x)
 		}
 		b.release(mark)
 	}

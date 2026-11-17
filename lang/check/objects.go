@@ -553,6 +553,7 @@ const (
 	BEmbedFiles  // embed.files(…): likewise, [path: bytes]
 	BNavigate    // navigate(href), navigate(X(…)): the Router's
 	BReplace     // replace(href): the Router's, replacing where it is
+	BPeek        // peek(e): e, read without following it (rfcs/0012)
 )
 
 // A Builtin is a function the compiler provides (the prelude's print,

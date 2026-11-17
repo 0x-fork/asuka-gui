@@ -1,0 +1,47 @@
+// What a task, an effect and a state follow (rfcs/0012).
+
+component Deps {
+  state n = 0
+  state f: fn() -> int = () => 1
+
+  effect() { print("never") } // ERROR "effect\(\) follows nothing"
+  effect(f) { print("f") } // a closure: compared by which it is
+  effect(n) { print("{n}") }
+
+  Text("{n}")
+}
+
+// peek reads without following: where nothing is followed, it's an error.
+async fn later() -> int = 1
+async fn waits() -> int = peek(await later()) // ERROR "peek reads at once, and can't wait"
+
+component Peeks {
+  state count = 0
+  let label = "{count} {peek(count)}"
+
+  effect { print("{peek(count)}") }
+  effect(count) { print("{peek(count)}") } // ERROR "an effect\(…\)'s body's reads aren't followed: read count"
+  task { print("{peek(count)}") } // ERROR "a task's reads aren't followed: read count"
+
+  fn twice() -> int = peek(count) * 2
+
+  Button(label) {
+    on press { count = peek(count + 1) } // ERROR "a handler's reads aren't followed: read count \+ 1"
+  }
+}
+
+fn peek() {} // ERROR "peek is built in"
+
+test "peek in a test" {
+  let x = peek(1) // ERROR "a test's reads aren't followed: read 1"
+  expect(x == 1)
+}
+
+// State read under peek is state all the same: spawn can't reach it.
+state shared = 1
+fn peeksShared() -> int = peek(shared)
+
+async fn spawns() -> int {
+  let t = spawn { peeksShared() } // ERROR "spawn calls peeksShared, which reads state"
+  return await t
+}

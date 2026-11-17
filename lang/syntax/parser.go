@@ -1462,6 +1462,10 @@ func (p *parser) parseStyleDecl(start Pos) *StyleDecl {
 func (p *parser) parseState(start Pos) *StateDecl {
 	p.expect(STATE)
 	d := &StateDecl{Name: p.ident()}
+	d.Deps, d.Lparen, d.Rparen = p.parseDeps("state's dependencies")
+	if d.Lparen.IsValid() && len(d.Deps) == 0 {
+		p.error(d.Lparen, "state "+d.Name.Name+"() follows nothing: a value read once is peek(…), state "+d.Name.Name+" = peek(…)")
+	}
 	if p.got(COLON) {
 		d.Type = p.parseType()
 	}
@@ -1636,9 +1640,11 @@ func (p *parser) itemAfterPub(start Pos) Item {
 			return p.parseTask(start)
 		}
 	case EFFECT:
-		if next == LBRACE {
+		if next == LBRACE || next == LPAREN {
 			p.next()
-			d := &EffectDecl{Body: p.parseBlock()}
+			d := &EffectDecl{}
+			d.Deps, d.Lparen, d.Rparen = p.parseDeps("effect's dependencies")
+			d.Body = p.parseBlock()
 			d.Span = p.span(start)
 			return d
 		}
@@ -1829,22 +1835,30 @@ func (p *parser) parseProp(start Pos) *PropDecl {
 func (p *parser) parseTask(start Pos) *TaskDecl {
 	p.expect(TASK)
 	d := &TaskDecl{}
-	if p.tok == LPAREN {
-		d.Lparen = p.pos
-		p.next()
-		p.exprLev++
-		for p.tok != RPAREN && p.tok != RBRACE && p.tok != EOF {
-			d.Deps = append(d.Deps, p.parseExpr())
-			if !p.got(COMMA) {
-				break
-			}
-		}
-		p.exprLev--
-		d.Rparen = p.expectClose(RPAREN, d.Lparen, "task's dependencies")
-	}
+	d.Deps, d.Lparen, d.Rparen = p.parseDeps("task's dependencies")
 	d.Body = p.parseBlock()
 	d.Span = p.span(start)
 	return d
+}
+
+// parseDeps parses the dependencies of a task, an effect or a state,
+// (a, b), when there are parentheses.
+func (p *parser) parseDeps(what string) (deps []Expr, lparen, rparen Pos) {
+	if p.tok != LPAREN {
+		return nil, NoPos, NoPos
+	}
+	lparen = p.pos
+	p.next()
+	p.exprLev++
+	for p.tok != RPAREN && p.tok != RBRACE && p.tok != EOF {
+		deps = append(deps, p.parseExpr())
+		if !p.got(COMMA) {
+			break
+		}
+	}
+	p.exprLev--
+	rparen = p.expectClose(RPAREN, lparen, what)
+	return deps, lparen, rparen
 }
 
 // parseOn parses on name(params) { … }.

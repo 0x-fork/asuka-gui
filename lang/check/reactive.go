@@ -1,6 +1,10 @@
 package check
 
-import "github.com/egoist/asuka/lang/syntax"
+import (
+	"strings"
+
+	"github.com/egoist/asuka/lang/syntax"
+)
 
 // The reactive analysis: which expressions read what the UI follows
 // (state, memos, a component's parameters and props, a row's item), so
@@ -78,13 +82,46 @@ func (c *Checker) finalize() {
 			}
 		}
 	}
+	touches := c.touchesState(ctxs)
 	for _, s := range c.spawns {
-		for _, f := range s.calls {
-			if f.Ctx != nil && f.Ctx.readsState {
+		for _, f := range append(s.calls, s.peekCalls...) {
+			if f.Ctx != nil && touches[f.Ctx] {
 				c.errorf(s.Node, "spawn calls %s, which reads state: spawn runs on another thread; read the state first and pass its value", f.name)
 			}
 		}
 	}
+}
+
+// touchesState is which contexts read state, followed or under peek,
+// themselves or through what they call: spawn can't call those.
+func (c *Checker) touchesState(ctxs []*FuncCtx) map[*FuncCtx]bool {
+	t := map[*FuncCtx]bool{}
+	for _, x := range ctxs {
+		if x.readsState || x.peeksState {
+			t[x] = true
+		}
+		for _, g := range append(x.globals, x.peekGlobals...) {
+			if g.Kind == StateGlobal || g.Kind == MemoGlobal {
+				t[x] = true
+			}
+		}
+	}
+	for changed := true; changed; {
+		changed = false
+		for _, x := range ctxs {
+			if t[x] {
+				continue
+			}
+			for _, f := range append(x.calls, x.peekCalls...) {
+				if f.Ctx != nil && t[f.Ctx] {
+					t[x] = true
+					changed = true
+					break
+				}
+			}
+		}
+	}
+	return t
 }
 
 // Reactive reports whether e reads anything reactive.
@@ -140,6 +177,9 @@ func (c *Checker) reactive(e syntax.Expr) bool {
 				}
 			}
 		case *syntax.CallExpr:
+			if c.isPeek(n) {
+				return false // what it reads isn't followed
+			}
 			if call := c.info.Calls[n]; call != nil {
 				switch call.Kind {
 				case CallFunc, CallMethod:
@@ -184,4 +224,77 @@ func (c *Checker) reactiveOnce(m *Member) bool {
 	delete(c.resolving, m)
 	m.Memo = r
 	return r
+}
+
+// peek checks peek(x): x, read without following it. What x reads isn't
+// the context's reads: a binding of it alone is a value computed once,
+// and a fn that reads state only under peek doesn't make the binding that
+// calls it follow it. It's state all the same (peeksState), which spawn
+// can't read.
+func (c *Checker) peek(e *syntax.CallExpr, x syntax.Expr, want Type) Type {
+	if why := c.notFollowedHere(); why != "" {
+		c.errorf(e, "%s reads aren't followed: read %s", why, exprText(x))
+	}
+	ctx := c.ctx
+	if ctx == nil {
+		return c.expr(x, want)
+	}
+	reads, calls, globals := ctx.readsState, len(ctx.calls), len(ctx.globals)
+	ctx.peeks++
+	t := c.expr(x, want)
+	ctx.peeks--
+	if ctx.readsState && !reads {
+		ctx.readsState = false
+		ctx.peeksState = true
+	}
+	ctx.peekCalls = append(ctx.peekCalls, ctx.calls[calls:]...)
+	ctx.calls = ctx.calls[:calls]
+	ctx.peekGlobals = append(ctx.peekGlobals, ctx.globals[globals:]...)
+	ctx.globals = ctx.globals[:globals]
+	return t
+}
+
+// notFollowedHere says, when what's checked runs untracked (a handler,
+// a task, an effect(…)'s body, a test, spawn), whose reads those are: a
+// peek there is a no-op, and an error. A closure is its maker's: a lambda
+// in a handler runs in it; a fn, a binding, a memo or a builder follows
+// what it reads.
+func (c *Checker) notFollowedHere() string {
+	for cc := c.ctx; cc != nil; cc = cc.Parent {
+		switch cc.Kind {
+		case CtxLambda:
+			continue
+		case CtxHandler:
+			return "a handler's"
+		case CtxTask:
+			return "a task's"
+		case CtxEffect:
+			if cc.Untracked {
+				return "an effect(…)'s body's"
+			}
+		case CtxTest:
+			return "a test's"
+		case CtxSpawn:
+			return "spawn's"
+		}
+		return ""
+	}
+	return ""
+}
+
+// exprText is x as it's written, on one line.
+func exprText(x syntax.Expr) string {
+	var b strings.Builder
+	syntax.Fprint(&b, nil, x)
+	return b.String()
+}
+
+// isPeek reports whether n is a call of peek.
+func (c *Checker) isPeek(n syntax.Node) bool {
+	ce, ok := n.(*syntax.CallExpr)
+	if !ok {
+		return false
+	}
+	call := c.info.Calls[ce]
+	return call != nil && call.Kind == CallBuiltin && call.Builtin.ID == BPeek
 }

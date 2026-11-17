@@ -269,7 +269,7 @@ func (c *Checker) initUniverse() {
 		{"dismiss", BDismiss}, {"min", BMin}, {"max", BMax}, {"abs", BAbs}, {"float", BFloat},
 		{"int", BInt}, {"panic", BPanic}, {"withTimeout", BWithTimeout}, {"Stream", BStream}, {"Set", BSet},
 		{"environment", BEnvironment}, {"live", BLive}, {"animate", BAnimate}, {shaderProgram, BShader},
-		{"never", BNever}, {"navigate", BNavigate}, {"replace", BReplace},
+		{"never", BNever}, {"navigate", BNavigate}, {"replace", BReplace}, {"peek", BPeek},
 	} {
 		c.universe.Insert(&Builtin{object: object{name: b.name}, ID: b.id})
 	}
@@ -471,6 +471,9 @@ func pubOf(n syntax.Node) bool {
 func (c *Checker) collect(p *Package, d syntax.Decl) {
 	declare := func(id *syntax.Ident, o Object) {
 		c.info.Defs[id] = o
+		if c.builtinForm(id) {
+			return
+		}
 		if old := p.Scope.Insert(o); old != nil {
 			c.errorf(id, "%s is declared twice in package %s (the other is at %s)", id.Name, pkgLabel(p), c.fset.Position(old.Pos()))
 		}
@@ -594,11 +597,25 @@ func (c *Checker) declareVar(id *syntax.Ident, t Type, mutable bool) *Var {
 	if id.Name == "_" {
 		return v
 	}
+	if c.builtinForm(id) {
+		return v
+	}
 	if old := c.scope.LookupLocal(id.Name); old != nil {
 		c.errorf(id, "%s is declared twice here: give one another name", id.Name)
 	}
 	c.scope.Insert(v)
 	return v
+}
+
+// builtinForm reports a declaration of a name the language's own forms
+// take, which isn't declared: peek, which reads without following, as
+// load is a form.
+func (c *Checker) builtinForm(id *syntax.Ident) bool {
+	if id.Name == "peek" {
+		c.errorf(id, "peek is built in (it reads a value without following it): name this otherwise")
+		return true
+	}
+	return false
 }
 
 // lookup finds a name from the current scope out.
@@ -640,6 +657,9 @@ func (c *Checker) leave(saved *FuncCtx) {
 		// A closure's reads are its maker's when it runs (bindings,
 		// handlers): conservatively, the maker reads state too.
 		c.ctx.Parent.readsState = true
+	}
+	if c.ctx != nil && c.ctx.Parent != nil && c.ctx.peeksState {
+		c.ctx.Parent.peeksState = true
 	}
 	c.ctx = saved
 }

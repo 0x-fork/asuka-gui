@@ -869,17 +869,44 @@ func (b *fb) assignStmt(s *syntax.AssignStmt) {
 // ---------------------------------------------------------------------
 // Errors
 
+// peek is peek(x): x, read untracked. When x reads nothing reactive,
+// it's x.
+func (b *fb) peek(x syntax.Expr, dst int) int {
+	if !b.l.prog.Reactive(x) {
+		return b.value(x, dst)
+	}
+	b.emit(op("UNTRACK"))
+	b.peeks++
+	b.untracks++
+	r := b.value(x, dst)
+	b.peeks--
+	b.emit(op("RETRACK"), b.peeks)
+	return r
+}
+
+// catchAt starts a handler's code, at its target: what a peek in its
+// range untracked, an error leaving the peek, tracks again (RETRACK the
+// peeks open here), then CATCH takes the error into e. untracks is
+// b.untracks where its range began.
+func (b *fb) catchAt(e, untracks int) {
+	if b.untracks > untracks {
+		b.emit(op("RETRACK"), b.peeks)
+	}
+	b.emit(op("CATCH"), e)
+}
+
 // protect runs body with a handler: on an error, onError (with the
 // error's register) runs, and the error goes on.
 func (b *fb) protect(body func(), onError func(e int)) {
 	start, end, target, after := b.f.NewLabel(), b.f.NewLabel(), b.f.NewLabel(), b.f.NewLabel()
+	u := b.untracks
 	b.f.Place(start)
 	body()
 	b.f.Place(end)
 	b.jmp(after)
 	b.f.Place(target)
 	e := b.temp(bc.KRef)
-	b.emit(op("CATCH"), e)
+	b.catchAt(e, u)
 	onError(e)
 	b.emit(op("THROW"), e)
 	b.f.Place(after)
@@ -916,6 +943,7 @@ func (b *fb) doStmt(s *syntax.DoStmt) {
 // error no clause takes (or the cancellation) goes on.
 func (b *fb) catchRegion(catches []*syntax.CatchClause, body func(), clause func(*syntax.CatchClause)) {
 	start, end, target, after := b.f.NewLabel(), b.f.NewLabel(), b.f.NewLabel(), b.f.NewLabel()
+	u := b.untracks
 	b.f.Place(start)
 	body()
 	b.f.Place(end)
@@ -923,7 +951,7 @@ func (b *fb) catchRegion(catches []*syntax.CatchClause, body func(), clause func
 	b.f.Place(target)
 	mark := b.mark()
 	e := b.newReg(bc.KRef)
-	b.emit(op("CATCH"), e)
+	b.catchAt(e, u)
 	rethrow := b.f.NewLabel()
 	user := b.classify(e, rethrow)
 	for _, cl := range catches {
@@ -988,6 +1016,7 @@ func (b *fb) tryOptional(e *syntax.UnaryExpr, dst int) int {
 		r = b.out(dst, bc.KRef)
 	}
 	start, end, target, after := b.f.NewLabel(), b.f.NewLabel(), b.f.NewLabel(), b.f.NewLabel()
+	u := b.untracks
 	b.f.Place(start)
 	if r >= 0 {
 		v := b.value(e.X, -1)
@@ -999,7 +1028,7 @@ func (b *fb) tryOptional(e *syntax.UnaryExpr, dst int) int {
 	b.jmp(after)
 	b.f.Place(target)
 	ev := b.temp(bc.KRef)
-	b.emit(op("CATCH"), ev)
+	b.catchAt(ev, u)
 	cancel := b.f.NewLabel()
 	b.classify(ev, cancel)
 	if r >= 0 {

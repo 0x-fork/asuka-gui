@@ -27,6 +27,9 @@ func (c *Checker) componentMembers(t *TypeName, params *syntax.ParamList, body *
 		m.object = object{id.Name, id.Start}
 		m.Owner = t
 		c.info.Defs[id] = m
+		if c.builtinForm(id) {
+			return
+		}
 		if old := comp.Members[id.Name]; old != nil {
 			c.errorf(id, "%s is declared twice in %s", id.Name, t.name)
 			return
@@ -267,11 +270,7 @@ func (c *Checker) componentBody(t *TypeName) {
 		case *syntax.TaskDecl:
 			c.taskDecl(d)
 		case *syntax.EffectDecl:
-			saved := c.ctx
-			ctx := c.enter(CtxEffect, d, t.name+".effect")
-			ctx.Throws = true
-			c.block(d.Body)
-			c.leave(saved)
+			c.effectDecl(d, t.name+".effect")
 		}
 	}
 	if comp.Store {
@@ -323,17 +322,44 @@ func (c *Checker) screenRoot(t *TypeName, items []syntax.Item) {
 
 func (c *Checker) taskDecl(d *syntax.TaskDecl) {
 	saved := c.ctx
-	if len(d.Deps) > 0 {
-		c.enter(CtxBinding, d, "task deps")
-		for _, x := range d.Deps {
-			c.expr(x, nil)
-		}
-		c.leave(saved)
-	}
+	c.deps(d.Deps)
 	ctx := c.enter(CtxTask, d.Body, "task")
 	ctx.Async, ctx.Throws = true, true
 	c.block(d.Body)
 	c.leave(saved)
+}
+
+// effectDecl checks effect { … }, whose body's reads are what it follows
+// (its context keyed by d), and effect(a, b) { … }, which follows a and b
+// and whose body follows nothing (its context keyed by d.Body).
+func (c *Checker) effectDecl(d *syntax.EffectDecl, name string) {
+	saved := c.ctx
+	var ctx *FuncCtx
+	if d.Lparen.IsValid() {
+		c.deps(d.Deps)
+		if len(d.Deps) == 0 {
+			c.errorf(d, "effect() follows nothing: an effect that runs once is effect { … } reading nothing, or a task { }")
+		}
+		ctx = c.enter(CtxEffect, d.Body, name)
+		ctx.Untracked = true
+	} else {
+		ctx = c.enter(CtxEffect, d, name)
+	}
+	ctx.Throws = true
+	c.block(d.Body)
+	c.leave(saved)
+}
+
+// deps checks the dependencies of a task, an effect or a state: each a
+// binding of its own, compared when it changes as a memo is (a value by
+// what it holds; a store, a closure or a native object by which it is).
+func (c *Checker) deps(deps []syntax.Expr) {
+	saved := c.ctx
+	for _, x := range deps {
+		c.enter(CtxBinding, x, "dependency")
+		c.valueType(c.expr(x, nil), x)
+		c.leave(saved)
+	}
 }
 
 // viewBlock checks the view items of a component's body or app: what it

@@ -406,14 +406,19 @@ type StyleDecl struct {
 }
 
 // A StateDecl is state name: Type = value: a signal. It's a declaration
-// (state the app owns) and a member.
+// (state the app owns) and a member. When value reads what changes, the
+// state follows it (it's value until written, and value again when what
+// value read changes); state name(deps) = value follows deps only.
 type StateDecl struct {
 	Span
 	Trivia
-	Pub   Pos
-	Name  *Ident
-	Type  Type // nil: inferred
-	Value Expr
+	Pub    Pos
+	Name   *Ident
+	Deps   []Expr // state name(a, b) = …: what it follows; nil without parentheses
+	Lparen Pos    // NoPos without parentheses
+	Rparen Pos
+	Type   Type // nil: inferred
+	Value  Expr
 }
 
 // A LetDecl is let pattern: Type = value, or var …. At the top level and
@@ -545,11 +550,16 @@ type TaskDecl struct {
 	Body   *Block
 }
 
-// An EffectDecl is effect { … }.
+// An EffectDecl is effect { … }: runs again when what its body reads
+// changes; effect(deps) { … } runs again when a dependency changes, its
+// body following nothing.
 type EffectDecl struct {
 	Span
 	Trivia
-	Body *Block
+	Deps   []Expr
+	Lparen Pos // NoPos without parentheses
+	Rparen Pos
+	Body   *Block
 }
 
 // A PropSet is name: value in a block: sets a prop of the element.

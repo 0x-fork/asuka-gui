@@ -926,6 +926,10 @@ func (p *printer) node(n Node) {
 		p.pub(n.Pub)
 		p.write("state " + n.Name.Name)
 		after := n.Name.End
+		if n.Lparen.IsValid() || len(n.Deps) > 0 {
+			p.list("(", ")", n.Lparen, n.Rparen, exprNodes(n.Deps))
+			after = n.Rparen + 1
+		}
 		if n.Type != nil {
 			p.write(": ")
 			p.typ(n.Type)
@@ -1012,7 +1016,11 @@ func (p *printer) node(n Node) {
 		p.write(" ")
 		p.block(n.Body)
 	case *EffectDecl:
-		p.write("effect ")
+		p.write("effect")
+		if n.Lparen.IsValid() || len(n.Deps) > 0 {
+			p.list("(", ")", n.Lparen, n.Rparen, exprNodes(n.Deps))
+		}
+		p.write(" ")
 		p.block(n.Body)
 	case *PropSet:
 		p.write(n.Name.Name)

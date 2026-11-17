@@ -1345,6 +1345,8 @@ func (c *Checker) unary(e *syntax.UnaryExpr, want Type) Type {
 	case syntax.AWAIT:
 		if c.ctx == nil || !c.ctx.Async {
 			c.errorf(e, "await only where code may wait: %s", c.asyncHint())
+		} else if c.ctx.peeks > 0 {
+			c.errorf(e, "peek reads at once, and can't wait: await first, into a let, and peek that")
 		} else {
 			c.ctx.awaited(e.Start)
 		}

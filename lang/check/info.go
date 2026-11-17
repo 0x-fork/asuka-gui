@@ -364,6 +364,8 @@ type FuncCtx struct {
 	Awaits bool // does
 	Throws bool // may let errors out
 	Result Type
+	// Untracked: an effect(a, b)'s body, which follows nothing it reads.
+	Untracked bool
 
 	Captures []*Var // outer locals it uses, in order
 	capIndex map[*Var]bool
@@ -378,8 +380,14 @@ type FuncCtx struct {
 	// does (for the reactive analysis and spawn).
 	readsState bool
 	calls      []*Function
-	inferRes   bool // a lambda whose result is inferred from its body
-	threw      bool // lets an error out
+	// What it reads under peek (rfcs/0012): state, read without following
+	// it. Not reactive, but state all the same (spawn's check).
+	peeksState  bool
+	peekCalls   []*Function
+	peekGlobals []*Global
+	peeks       int  // the peeks open where it's being checked
+	inferRes    bool // a lambda whose result is inferred from its body
+	threw       bool // lets an error out
 	// The first await (or for await) and the first thing that lets an
 	// error out (a try, a throw, an untried call): what made an inferred
 	// closure async or throwing, for the errors at its calls.

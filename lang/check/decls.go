@@ -606,11 +606,7 @@ func (c *Checker) appBody(p *Package) {
 			continue
 		}
 		if d, ok := it.(*syntax.EffectDecl); ok {
-			saved := c.ctx
-			ectx := c.enter(CtxEffect, d, "app.effect")
-			ectx.Throws = true
-			c.block(d.Body)
-			c.leave(saved)
+			c.effectDecl(d, "app.effect")
 			continue
 		}
 		views = append(views, it)

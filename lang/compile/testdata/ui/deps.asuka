@@ -1,0 +1,48 @@
+// What's in the parentheses of task(…) and effect(…) is followed, and
+// compared: task(u.id) restarts when the id changes, not when u's name
+// does (rfcs/0012).
+struct User {
+  id: int
+  name: string
+}
+
+component Deps {
+  state u = User(id: 1, name: "a")
+  state other = 0
+  state starts = 0
+  state runs = 0
+  state both = 0
+  state plain: [int] = []
+  let id = u.id
+
+  task(u.id) { starts += 1 }
+  effect(u.id) { runs += 1 }
+  effect(id, other) { both += 1 }
+  effect {
+    let _ = u.id
+    plain.push(1)
+  }
+
+  Column {
+    Text("starts {starts} runs {runs} both {both} plain {plain.count()}")
+    Button("rename") { on press { u.name = u.name + "x" } }
+    Button("renumber") { on press { u.id += 1 } }
+    Button("same") { on press { u = User(id: u.id, name: "b") } }
+    Button("other") { on press { other += 1 } }
+  }
+}
+
+app { Deps() }
+
+test "a dependency restarts its task only when it changes" {
+  let app = mount(Deps())
+  app.expect("starts 1 runs 1 both 1 plain 1")
+  app.tap("rename")
+  app.expect("starts 1 runs 1 both 1 plain 2")
+  app.tap("same")
+  app.expect("starts 1 runs 1 both 1 plain 3")
+  app.tap("renumber")
+  app.expect("starts 2 runs 2 both 2 plain 4")
+  app.tap("other")
+  app.expect("starts 2 runs 2 both 3 plain 4")
+}

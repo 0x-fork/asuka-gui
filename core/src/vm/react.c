@@ -343,7 +343,15 @@ void ak_vm_model_set(void *p, ak_val v) {
 
 // ---- Untracked calls, effects, cleanups, batches ----
 
-ak_val ak_vm_untrack(ak_closure *c, ak_val *args, uint32_t nargs) {
+void ak_vm_untrack_begin(ak_co *co) {
+	if (co->nuntracks == co->ucap) {
+		co->ucap = co->ucap ? co->ucap * 2 : 8;
+		co->untracks = ak_realloc(co->untracks, sizeof(void *) * co->ucap);
+	}
+	co->untracks[co->nuntracks++] = ak_untrack_begin();
+}
+
+ak_val ak_vm_call_untracked(ak_closure *c, ak_val *args, uint32_t nargs) {
 	void *tok = ak_untrack_begin();
 	ak_val v = ak_call(c, args, nargs);
 	ak_untrack_end(tok);

@@ -535,6 +535,8 @@ func (l *Lowerer) methodPush() *check.Method {
 func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 	bi := call.Builtin
 	switch bi.ID {
+	case check.BPeek:
+		return b.peek(call.Args[0], dst)
 	case check.BPrint:
 		v := b.value(call.Args[0], -1)
 		s := b.describe(v, b.typeOf(call.Args[0]))

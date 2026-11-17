@@ -293,6 +293,16 @@ func (g *gen) fn(i int) error {
 		// on the error's path only.
 		g.p("\tuint32_t at_ = 0; AK_UNUSED(at_);\n")
 	}
+	untracks := 0
+	for _, in := range ins {
+		if bc.Ops[in.op].Name == "UNTRACK" {
+			untracks++
+		}
+	}
+	if untracks > 0 && !g.async {
+		// What its peeks untracked, ended as an error leaves (unwind).
+		g.p("\tvoid *U_[%d]; uint32_t un_ = 0;\n", untracks)
+	}
 	g.p("\tif (0) goto unwind;\n")
 	for _, in := range ins {
 		if r, ok := resume[in.pc]; ok {
@@ -316,6 +326,14 @@ func (g *gen) fn(i int) error {
 		}
 	}
 	g.p("unwind:\n\tif (ak_frame_hook) ak_frame_hook(%s, %s, at_);\n", cbytes(f.Name), cbytes(f.File))
+	if untracks > 0 {
+		// Out of a peek the error left: what it untracked tracks again.
+		if g.async {
+			g.p("\tak_vm_retrack(co, co->frames[fi_].udepth);\n")
+		} else {
+			g.p("\twhile (un_) ak_untrack_end(U_[--un_]);\n")
+		}
+	}
 	if g.async {
 		g.p("\tak_op_exit(R, K, N, -1);\n\tdepth--;\n\treturn AK_RUN_THROW;\n")
 	} else {
@@ -687,8 +705,24 @@ func (g *gen) insn(f *bc.FuncDef, in insn, h string) error {
 		w("ak_op_setref(R, %d, ak_vm_acc_cell(R[%d].p).p);", a[0], a[1])
 	case "AGET":
 		w("{ ak_val v_ = ak_vm_acc_get(R[%d].p); %s %s }", a[1], thrown, store(f, a[0], "v_", bc.KVoid))
+	case "CALLU":
+		w("{ ak_val v_ = ak_vm_call_untracked(R[%d].p, &R[%d], %d); %s %s }", a[1], a[2], a[3], thrown, store(f, a[0], "v_", bc.KVoid))
 	case "UNTRACK":
-		w("{ ak_val v_ = ak_vm_untrack(R[%d].p, &R[%d], %d); %s %s }", a[1], a[2], a[3], thrown, store(f, a[0], "v_", bc.KVoid))
+		// A peek: a function that may suspend keeps what it untracked on
+		// its coroutine, as the interpreter does (it may leave and resume
+		// inside the peek, around a call the run loop makes); another, in
+		// its own locals.
+		if g.async {
+			w("ak_vm_untrack_begin(co);")
+		} else {
+			w("U_[un_++] = ak_untrack_begin();")
+		}
+	case "RETRACK":
+		if g.async {
+			w("ak_vm_retrack(co, co->frames[fi_].udepth + %d);", a[0])
+		} else {
+			w("while (un_ > %d) ak_untrack_end(U_[--un_]);", a[0])
+		}
 	case "EFFECT", "RENDER":
 		w("ak_vm_effect(R[%d].p, %v); %s", a[0], name == "RENDER", thrown)
 	case "CLEANUP":

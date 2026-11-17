@@ -3,7 +3,7 @@
 #ifndef AK_VM_OPCODES_GEN_H
 #define AK_VM_OPCODES_GEN_H
 
-#define AK_BC_VERSION 3
+#define AK_BC_VERSION 4
 
 enum {
 	AK_OP_NOP = 0, // : does nothing
@@ -102,15 +102,17 @@ enum {
 	AK_OP_ACCF = 93, // reg reg kind: a = an accessor computing the closure b
 	AK_OP_ACCC = 94, // reg reg: a = an accessor reading the cell or memo b
 	AK_OP_AGET = 95, // reg reg: a = what accessor b reads, tracked
-	AK_OP_UNTRACK = 96, // reg reg reg imm: a = the closure b called untracked with n arguments from c
-	AK_OP_EFFECT = 97, // reg: runs the closure a as an effect of the current owner
-	AK_OP_RENDER = 98, // reg: runs the closure a as a render effect
-	AK_OP_CLEANUP = 99, // reg: runs the closure a when the current owner is disposed or its effect re-runs
-	AK_OP_BATCH = 100, // imm: 1 begins a batch, 0 ends it (flushing)
-	AK_OP_TASK = 101, // reg reg: a = a task running the async closure b (no arguments), owned by the current owner
-	AK_OP_AWAIT = 102, // reg reg: a = the result of task or future b, suspending until it has one; throws its error
-	AK_OP_YIELD = 103, // : suspends until the next turn of the main loop
-	AK_OP__COUNT = 104,
+	AK_OP_CALLU = 96, // reg reg reg imm: a = the closure b called untracked with n arguments from c
+	AK_OP_UNTRACK = 97, // : stops tracking reads (peek): saves the running computation on the coroutine's stack of them, for RETRACK
+	AK_OP_RETRACK = 98, // imm: tracks reads again: ends the UNTRACKs this frame made but its first n (n: the peeks still open where it is; a handler's target says it too)
+	AK_OP_EFFECT = 99, // reg: runs the closure a as an effect of the current owner
+	AK_OP_RENDER = 100, // reg: runs the closure a as a render effect
+	AK_OP_CLEANUP = 101, // reg: runs the closure a when the current owner is disposed or its effect re-runs
+	AK_OP_BATCH = 102, // imm: 1 begins a batch, 0 ends it (flushing)
+	AK_OP_TASK = 103, // reg reg: a = a task running the async closure b (no arguments), owned by the current owner
+	AK_OP_AWAIT = 104, // reg reg: a = the result of task or future b, suspending until it has one; throws its error
+	AK_OP_YIELD = 105, // : suspends until the next turn of the main loop
+	AK_OP__COUNT = 106,
 };
 
 // Instruction widths in words.
@@ -121,7 +123,7 @@ static const uint8_t ak_op_width[] = {
 	3, 4, 4, 4, 4, 6, 5, 5, 2, 1, 2, 2, 2, 6, 3, 4,
 	3, 3, 6, 5, 4, 4, 6, 3, 4, 4, 3, 7, 4, 4, 3, 6,
 	4, 4, 6, 4, 6, 3, 3, 3, 3, 3, 4, 3, 4, 4, 3, 3,
-	5, 2, 2, 2, 2, 3, 3, 1,
+	5, 1, 2, 2, 2, 2, 2, 3, 3, 1,
 };
 
 static const char *const ak_op_names[] = {
@@ -137,7 +139,8 @@ static const char *const ak_op_names[] = {
 	"GETP", "BOX", "UNBOX", "NEWA", "IDX", "SETIDX", "LEN", "NEWM",
 	"MGET", "MSET", "MGETJ", "CELL", "CELLK", "CGET", "CPEEK", "CSET",
 	"CTAKE", "CPUT", "MEMO", "MREAD", "ACCV", "ACCF", "ACCC", "AGET",
-	"UNTRACK", "EFFECT", "RENDER", "CLEANUP", "BATCH", "TASK", "AWAIT", "YIELD",
+	"CALLU", "UNTRACK", "RETRACK", "EFFECT", "RENDER", "CLEANUP", "BATCH", "TASK",
+	"AWAIT", "YIELD",
 };
 
 #endif

@@ -621,5 +621,7 @@ pub async fn fakeHost(app: FakeApp) throws -> FakeHost {
   checkedOnce = false
   failedAt = 0
   prefs.value = Prefs()
+  // The next check in the background, as a launch schedules it.
+  schedule()
   return FakeHost()
 }

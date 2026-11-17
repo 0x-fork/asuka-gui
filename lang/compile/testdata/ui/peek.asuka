@@ -1,0 +1,90 @@
+// peek(e) reads e without following it (rfcs/0012): a binding follows
+// what it reads but what's under peek; a fn called from a binding is
+// followed through, its peeks too; and an error thrown inside a peek
+// leaves the rest of the binding followed, whether it's caught in the
+// same function or one further out.
+state n = 0
+state c = 0
+
+fn risky(x: int) throws -> int {
+  if x % 2 == 1 { throw Error("odd") }
+  return x
+}
+
+// Throws out of a peek, and catches it here; reads c after.
+fn caughtHere() -> string {
+  var x = -1
+  do {
+    x = peek(try risky(n))
+  } catch {
+    x = -2
+  }
+  return "{x} then {c}"
+}
+
+// Throws out of a peek, and out of this function.
+fn throwsOut() throws -> int = peek(try risky(n))
+
+component Peeks {
+  state a = 0
+  state b = 0
+  state runs: [int] = []
+
+  // Reads b only through its peek: computed once.
+  let seed = peek(b) + 100
+  // Follows a and c, not b.
+  let mixed = a * 1000 + peek(b) * 10 + c
+
+  effect {
+    let _ = a
+    let _ = peek(b)
+    runs.push(1)
+  }
+
+  Column {
+    Text("seed {seed} mixed {mixed} runs {runs.count()}")
+    Text("now {peek(b)}")
+    Text("here {caughtHere()}")
+    Text("out {(try? throwsOut()) ?? -3} then {c}")
+    Button("a") { on press { a += 1 } }
+    Button("b") { on press { b += 1 } }
+    Button("c") { on press { c += 1 } }
+    Button("n") { on press { n += 1 } }
+  }
+}
+
+app { Peeks() }
+
+test "what's under peek isn't followed" {
+  let app = mount(Peeks())
+  app.expect("seed 100 mixed 0 runs 1")
+  app.expect("now 0")
+  app.tap("b")
+  app.expect("seed 100 mixed 0 runs 1")
+  app.expect("now 0")
+  app.tap("a")
+  app.expect("seed 100 mixed 1010 runs 2")
+  app.tap("c")
+  app.expect("seed 100 mixed 1011 runs 2")
+}
+
+test "a throw inside a peek leaves the binding followed" {
+  c = 0
+  n = 0
+  let app = mount(Peeks())
+  app.expect("here 0 then 0")
+  app.expect("out 0 then 0")
+  // n isn't followed: nothing changes.
+  app.tap("n")
+  app.expect("here 0 then 0")
+  app.expect("out 0 then 0")
+  // Run again by c, each peek reads n's 1 and throws: in caughtHere,
+  // caught there; in throwsOut, caught by the binding's try?. c, read
+  // after, is still followed.
+  app.tap("c")
+  app.expect("here -2 then 1")
+  app.expect("out -3 then 1")
+  app.tap("c")
+  app.expect("here -2 then 2")
+  app.expect("out -3 then 2")
+}
