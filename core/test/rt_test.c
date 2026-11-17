@@ -1,6 +1,8 @@
 #include "t.h"
 #include "rt/rt.h"
 #include "rt/sched.h"
+#include "rt/lib.h"
+#include "base/thread.h"
 
 #include <pthread.h>
 #include <stdatomic.h>
@@ -245,6 +247,39 @@ TEST(constants_made_once_across_threads) {
 		CHECK(race_strs[i][1] != NULL && race_strs[i][1] == ak_str_from_bool(true));
 		CHECK(race_strs[i][2] != NULL && race_strs[i][2] == ak_str_from_bool(false));
 	}
+}
+
+// A spawn's copy of its closure holds the module (the VM's), whose
+// constants and payloadless cases its result may hold: it's let go on the
+// main thread, once the result is delivered, never on the worker (where a
+// dev reload's last reference would free the module under the result).
+static _Atomic uint64_t spawn_dropped_on;
+static ak_val spawn_body(ak_closure *c, ak_val *args, uint32_t n) {
+	AK_UNUSED(c);
+	AK_UNUSED(args);
+	AK_UNUSED(n);
+	return (ak_val){.i = 7};
+}
+static void spawn_drop(ak_closure *c) {
+	AK_UNUSED(c);
+	atomic_store(&spawn_dropped_on, ak_thread_id());
+}
+
+TEST(spawn_lets_go_of_its_closure_on_the_main_thread) {
+	extern const ak_lib_entry ak_lib_spawn;
+	ak_closure *c = ak_closure_new(spawn_body, NULL, 0, NULL);
+	c->drop = spawn_drop;
+	ak_val args[2] = {{.p = c}, {.i = AK_K_INT}};
+	ak_future *f = ak_lib_spawn.fn(args, 2).p;
+	c->drop = NULL;
+	ak_release(c);
+	while (f->state == AK_FUT_PENDING) {
+		ak_sched_wait_posted();
+		ak_sched_run_posted();
+	}
+	CHECK_EQ_INT(f->result.i, 7);
+	CHECK(atomic_load(&spawn_dropped_on) == ak_thread_id());
+	ak_release(f);
 }
 
 // Posted callbacks run when one of them has the host run them again (a
