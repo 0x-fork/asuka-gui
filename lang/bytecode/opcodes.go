@@ -185,6 +185,8 @@ var Ops = []OpDef{
 	{"ACCF", []Operand{Reg, Reg, KindOp}, "a = an accessor computing the closure b"},
 	{"ACCC", []Operand{Reg, Reg}, "a = an accessor reading the cell or memo b"},
 	{"AGET", []Operand{Reg, Reg}, "a = what accessor b reads, tracked"},
+	{"ACCP", []Operand{Reg, Reg, Const, Reg, KindOp}, "a = an accessor of the path Strings[k] below b (a cell, or an accessor, whose path it continues when it's one's), its arguments' values from registers from c; k its value's kind (rfcs/0013)"},
+	{"AGETP", []Operand{Reg, Reg, Const, Reg}, "a = what's at the path Strings[k] below what accessor b reads, its arguments from c: tracked, following that path when b's is one (a cell's, a path's), else b's value whole"},
 	{"CALLU", []Operand{Reg, Reg, Reg, Imm}, "a = the closure b called untracked with n arguments from c"},
 	{"UNTRACK", nil, "stops tracking reads (peek): saves the running computation on the coroutine's stack of them, for RETRACK"},
 	{"RETRACK", []Operand{Imm}, "tracks reads again: ends the UNTRACKs this frame made but its first n (n: the peeks still open where it is; a handler's target says it too)"},

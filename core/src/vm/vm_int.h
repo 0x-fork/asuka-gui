@@ -255,6 +255,17 @@ ak_val ak_vm_model_new(void *inner, bool bound);
 bool ak_vm_model_bound(void *model);
 void ak_vm_model_set(void *model, ak_val v);
 ak_val ak_vm_acc_get(void *acc);
+// ak_vm_acc_path makes an accessor of the path p (args its arguments)
+// below base: a cell, or an accessor, whose path it continues when it's
+// one's (ACCP). k is its value's kind.
+ak_val ak_vm_acc_path(void *base, const uint8_t *p, uint32_t n, const ak_val *args, ak_kind k);
+// ak_vm_acc_row is the accessor of a for's row's item: base's element
+// at the index the cell index holds (a row's, which changes as it moves).
+ak_val ak_vm_acc_row(void *base, void *index, ak_kind k);
+// ak_vm_acc_getp reads the path p below what accessor acc reads
+// (AGETP): following that path when acc's is one (a cell's, a path's),
+// else acc's value whole and the path in it.
+ak_val ak_vm_acc_getp(void *acc, const uint8_t *p, uint32_t n, const ak_val *args);
 ak_val ak_vm_call_untracked(ak_closure *c, ak_val *args, uint32_t nargs);
 void ak_vm_effect(ak_closure *c, bool render);
 void ak_vm_cleanup(ak_closure *c);

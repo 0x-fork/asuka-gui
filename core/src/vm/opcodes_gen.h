@@ -111,17 +111,19 @@ enum {
 	AK_OP_ACCF = 102, // reg reg kind: a = an accessor computing the closure b
 	AK_OP_ACCC = 103, // reg reg: a = an accessor reading the cell or memo b
 	AK_OP_AGET = 104, // reg reg: a = what accessor b reads, tracked
-	AK_OP_CALLU = 105, // reg reg reg imm: a = the closure b called untracked with n arguments from c
-	AK_OP_UNTRACK = 106, // : stops tracking reads (peek): saves the running computation on the coroutine's stack of them, for RETRACK
-	AK_OP_RETRACK = 107, // imm: tracks reads again: ends the UNTRACKs this frame made but its first n (n: the peeks still open where it is; a handler's target says it too)
-	AK_OP_EFFECT = 108, // reg: runs the closure a as an effect of the current owner
-	AK_OP_RENDER = 109, // reg: runs the closure a as a render effect
-	AK_OP_CLEANUP = 110, // reg: runs the closure a when the current owner is disposed or its effect re-runs
-	AK_OP_BATCH = 111, // imm: 1 begins a batch, 0 ends it (flushing)
-	AK_OP_TASK = 112, // reg reg: a = a task running the async closure b (no arguments), owned by the current owner
-	AK_OP_AWAIT = 113, // reg reg: a = the result of task or future b, suspending until it has one; throws its error
-	AK_OP_YIELD = 114, // : suspends until the next turn of the main loop
-	AK_OP__COUNT = 115,
+	AK_OP_ACCP = 105, // reg reg const reg kind: a = an accessor of the path Strings[k] below b (a cell, or an accessor, whose path it continues when it's one's), its arguments' values from registers from c; k its value's kind (rfcs/0013)
+	AK_OP_AGETP = 106, // reg reg const reg: a = what's at the path Strings[k] below what accessor b reads, its arguments from c: tracked, following that path when b's is one (a cell's, a path's), else b's value whole
+	AK_OP_CALLU = 107, // reg reg reg imm: a = the closure b called untracked with n arguments from c
+	AK_OP_UNTRACK = 108, // : stops tracking reads (peek): saves the running computation on the coroutine's stack of them, for RETRACK
+	AK_OP_RETRACK = 109, // imm: tracks reads again: ends the UNTRACKs this frame made but its first n (n: the peeks still open where it is; a handler's target says it too)
+	AK_OP_EFFECT = 110, // reg: runs the closure a as an effect of the current owner
+	AK_OP_RENDER = 111, // reg: runs the closure a as a render effect
+	AK_OP_CLEANUP = 112, // reg: runs the closure a when the current owner is disposed or its effect re-runs
+	AK_OP_BATCH = 113, // imm: 1 begins a batch, 0 ends it (flushing)
+	AK_OP_TASK = 114, // reg reg: a = a task running the async closure b (no arguments), owned by the current owner
+	AK_OP_AWAIT = 115, // reg reg: a = the result of task or future b, suspending until it has one; throws its error
+	AK_OP_YIELD = 116, // : suspends until the next turn of the main loop
+	AK_OP__COUNT = 117,
 };
 
 // Instruction widths in words.
@@ -132,8 +134,8 @@ static const uint8_t ak_op_width[] = {
 	4, 6, 4, 3, 4, 4, 4, 4, 5, 6, 5, 5, 2, 1, 2, 2,
 	2, 6, 3, 4, 3, 3, 3, 6, 5, 4, 4, 6, 3, 4, 4, 3,
 	7, 4, 4, 3, 6, 4, 4, 6, 4, 6, 7, 3, 3, 3, 3, 3,
-	6, 6, 6, 4, 3, 4, 4, 3, 3, 5, 1, 2, 2, 2, 2, 2,
-	3, 3, 1,
+	6, 6, 6, 4, 3, 4, 4, 3, 3, 7, 6, 5, 1, 2, 2, 2,
+	2, 2, 3, 3, 1,
 };
 
 static const char *const ak_op_names[] = {
@@ -150,8 +152,8 @@ static const char *const ak_op_names[] = {
 	"NEWA", "IDX", "SETIDX", "LEN", "NEWM", "MGET", "MSET", "MGETJ",
 	"CELL", "CELLK", "FOLLOWK", "CGET", "CPEEK", "CSET", "CTAKE", "CPUT",
 	"CPATH", "CLEN", "CPUTP", "MEMO", "MREAD", "ACCV", "ACCF", "ACCC",
-	"AGET", "CALLU", "UNTRACK", "RETRACK", "EFFECT", "RENDER", "CLEANUP", "BATCH",
-	"TASK", "AWAIT", "YIELD",
+	"AGET", "ACCP", "AGETP", "CALLU", "UNTRACK", "RETRACK", "EFFECT", "RENDER",
+	"CLEANUP", "BATCH", "TASK", "AWAIT", "YIELD",
 };
 
 #endif

@@ -533,6 +533,20 @@ int ak_vm_interp(ak_co *co, ak_val *out) {
 			store(F, R, a[0], v);
 			break;
 		}
+		case AK_OP_ACCP: {
+			const ak_str *path = M->strings[off32(a + 2)];
+			setref(R, a[0], ak_vm_acc_path(R[a[1]].p, (const uint8_t *)path->data, path->len, R + a[4], (ak_kind)a[5]).p);
+			break;
+		}
+		case AK_OP_AGETP: {
+			const ak_str *path = M->strings[off32(a + 2)];
+			fr->pc = pc;
+			ak_val v = ak_vm_acc_getp(R[a[1]].p, (const uint8_t *)path->data, path->len, R + a[4]);
+			RELOAD();
+			CHECK_ERR();
+			store(F, R, a[0], v);
+			break;
+		}
 		case AK_OP_CALLU: {
 			fr->pc = pc;
 			ak_val v = ak_vm_call_untracked(R[a[1]].p, R + a[2], a[3]);

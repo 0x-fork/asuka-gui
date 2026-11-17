@@ -752,6 +752,10 @@ func (g *gen) insn(f *bc.FuncDef, in insn, h string) error {
 		w("ak_op_setref(R, %d, ak_vm_acc_cell(R[%d].p).p);", a[0], a[1])
 	case "AGET":
 		w("{ ak_val v_ = ak_vm_acc_get(R[%d].p); %s %s }", a[1], thrown, store(f, a[0], "v_", bc.KVoid))
+	case "ACCP":
+		w("{ const ak_str *p_ = M->strings[%d]; ak_op_setref(R, %d, ak_vm_acc_path(R[%d].p, (const uint8_t *)p_->data, p_->len, &R[%d], (ak_kind)%d).p); }", a[2], a[0], a[1], a[3], a[4])
+	case "AGETP":
+		w("{ const ak_str *p_ = M->strings[%d]; ak_val v_ = ak_vm_acc_getp(R[%d].p, (const uint8_t *)p_->data, p_->len, &R[%d]); %s %s }", a[2], a[1], a[3], thrown, store(f, a[0], "v_", bc.KVoid))
 	case "CALLU":
 		w("{ ak_val v_ = ak_vm_call_untracked(R[%d].p, &R[%d], %d); %s %s }", a[1], a[2], a[3], thrown, store(f, a[0], "v_", bc.KVoid))
 	case "UNTRACK":
