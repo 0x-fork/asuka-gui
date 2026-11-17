@@ -2597,6 +2597,7 @@ func (p *parser) parseString() *StringLit {
 		s.Segments = []string{body}
 		p.next()
 		s.Span = p.span(start)
+		lineBreaks(s)
 		return s
 	}
 	// STRING_HEAD: "…{
@@ -2642,7 +2643,21 @@ func (p *parser) parseString() *StringLit {
 		break
 	}
 	s.Span = p.span(start)
+	lineBreaks(s)
 	return s
+}
+
+// lineBreaks makes a """ string's line breaks \n: one written in a file
+// with Windows's line endings (\r\n) means what it does in any other.
+func lineBreaks(s *StringLit) {
+	if !s.Multiline {
+		return
+	}
+	for i, seg := range s.Segments {
+		if strings.Contains(seg, "\r\n") {
+			s.Segments[i] = strings.ReplaceAll(seg, "\r\n", "\n")
+		}
+	}
 }
 
 // splitString splits a string token into its kind and its text.

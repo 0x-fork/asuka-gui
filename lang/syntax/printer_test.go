@@ -124,7 +124,8 @@ func roundTrip(name string, src, out []byte) string {
 	}
 	f, _ := ParseFile(NewFileSet(), name, src)
 	for _, c := range f.Comments {
-		if !bytes.Contains(out, []byte(strings.TrimRight(c.Text, " \t\r"))) {
+		text := strings.ReplaceAll(strings.TrimRight(c.Text, " \t\r"), "\r\n", "\n")
+		if !bytes.Contains(out, []byte(text)) {
 			return fmt.Sprintf("%s: comment %q lost from %q", name, c.Text, src)
 		}
 	}
@@ -247,6 +248,9 @@ func TestFormatCases(t *testing.T) {
 		{"let m = [/* e */ :]", "/* e */\nlet m = [:]\n"},
 		{"fn f() {\n  g([ // none\n  :])\n}", "fn f() {\n  // none\n  g([:])\n}\n"},
 		{"fn f() {\n  let x = [1, // one\n    2]\n}", "fn f() {\n  let x = [\n    1, // one\n    2,\n  ]\n}\n"},
+		// A file with Windows's line endings prints with \n, in its
+		// block comments and """ strings too.
+		{"fn f() {\r\n  /* a\r\n  b */\r\n  let s = \"\"\"\r\n    x {y}\r\n    \"\"\" // t\r\n}\r\n", "fn f() {\n  /* a\n  b */\n  let s = \"\"\"\n    x {y}\n    \"\"\" // t\n}\n"},
 		// Strings print as written.
 		{"let s = \"a\\n{b}\\{c\"", "let s = \"a\\n{b}\\{c\"\n"},
 		{"let s = r\"\\d+\"", "let s = r\"\\d+\"\n"},

@@ -102,6 +102,8 @@ func (p *printer) comment(c *Comment) {
 	text := c.Text
 	if strings.HasPrefix(text, "//") {
 		text = strings.TrimRight(text, " \t\r")
+	} else if strings.Contains(text, "\r\n") {
+		text = strings.ReplaceAll(text, "\r\n", "\n") // as every line printed
 	}
 	p.write(text)
 	p.printed[c] = true

@@ -256,6 +256,11 @@ func TestParseExpr(t *testing.T) {
 		{"none", "none"},
 		{`"a{b + 1}c{d}"`, `(str "a" (+ b 1) "c" d "")`},
 		{`"{f("x")}"`, `(str "" (call f (str "x")) "")`},
+		// A """ string's \r\n line breaks are \n; a one-line string's
+		// \r stays.
+		{"\"\"\"\r\n  a{b}\r\n  c\r\n  \"\"\"", `(str "\n  a" b "\n  c\n  ")`},
+		{"r\"\"\"\r\n  a\r\n  \"\"\"", `(str "\n  a\n  ")`},
+		{"\"a\rb\"", `(str "a\rb")`},
 		{`r"\{x}"`, `(str "\\{x}")`},
 		{"\"\"\"\nhi\n\"\"\"", `(str "\nhi\n")`},
 		// Lambdas.

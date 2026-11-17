@@ -745,7 +745,8 @@ type BasicLit struct {
 
 // A StringLit is a string: Segments are its text as written (escapes
 // and all) around its interpolations, so len(Segments) ==
-// len(Interps)+1.
+// len(Interps)+1; a """ string's line breaks are \n, whether the file's
+// are \n or \r\n.
 type StringLit struct {
 	Span
 	Raw       bool // r"…": no escapes, no interpolation
