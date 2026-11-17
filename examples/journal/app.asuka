@@ -32,7 +32,7 @@ fn statusOf(f: icloud.File) -> string {
 }
 
 component Journal {
-  state dir = "" // the app's Documents in iCloud
+  state dir = ""  // the app's Documents in iCloud
   state open = "" // the entry open, its path
   state text = ""
   state status = ""

@@ -20,7 +20,7 @@ app {
   Window {
     bind open: shown
     title: "Launcher"
-    panel: true // floats over every app, takes the keyboard without activating the app
+    panel: true      // floats over every app, takes the keyboard without activating the app
     fitContent: true // as tall as its results
     minWidth: 640
     maxWidth: 640

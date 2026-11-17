@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -63,7 +64,9 @@ func TestFormatGolden(t *testing.T) {
 
 // TestFormatRepo formats every .asuka file in the repository that
 // parses (the checker's error cases have syntax errors of their own):
-// formatting keeps its meaning and its comments, and is stable.
+// formatting keeps its meaning and its comments, and is stable. A file
+// outside testdata (whose inputs may be unformatted on purpose) is
+// formatted already: asuka fmt -w formats it.
 func TestFormatRepo(t *testing.T) {
 	n := 0
 	for _, path := range repoFiles(t) {
@@ -73,16 +76,26 @@ func TestFormatRepo(t *testing.T) {
 		}
 		out, err := Format(path, src)
 		if err != nil {
+			if !inTestdata(path) {
+				t.Errorf("%s: %v", path, err)
+			}
 			continue
 		}
 		n++
 		if msg := roundTrip(path, src, out); msg != "" {
 			t.Error(msg)
 		}
+		if !inTestdata(path) && !bytes.Equal(out, src) {
+			t.Errorf("%s isn't formatted (asuka fmt -w); first difference:\n%s", path, firstDiff(string(out), string(src)))
+		}
 	}
 	if n == 0 {
 		t.Fatal("no .asuka files")
 	}
+}
+
+func inTestdata(path string) bool {
+	return slices.Contains(strings.Split(filepath.ToSlash(path), "/"), "testdata")
 }
 
 // repoFiles are the repository's .asuka files.

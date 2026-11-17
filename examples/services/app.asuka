@@ -551,8 +551,8 @@ async fn watchAccelerometer() {
 async fn watchAttitude() {
   do {
     for await m in sensors.motion(every: 10ms) {
-    let a = m.attitude
-    motionLog.push("heading {a.heading.fixed(0)}° pitch {(a.pitch * 180 / math.pi).fixed(0)}° roll {(a.roll * 180 / math.pi).fixed(0)}° up {m.acceleration.z.fixed(1)}g rot {m.rotation.z.fixed(1)}")
+      let a = m.attitude
+      motionLog.push("heading {a.heading.fixed(0)}° pitch {(a.pitch * 180 / math.pi).fixed(0)}° roll {(a.roll * 180 / math.pi).fixed(0)}° up {m.acceleration.z.fixed(1)}g rot {m.rotation.z.fixed(1)}")
     }
   } catch e {
     motionLog.push(e.message)

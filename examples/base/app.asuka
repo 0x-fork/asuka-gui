@@ -195,10 +195,12 @@ component Settings {
             }
             base.Tooltip {
               base.TooltipTrigger { Text("Beta features") { color: t.ink } }
-              popup { base.TooltipPopup {
-                style: popup
-                Text("Try what's next") { color: t.ink }
-              } }
+              popup {
+                base.TooltipPopup {
+                  style: popup
+                  Text("Try what's next") { color: t.ink }
+                }
+              }
             }
           }
         }
