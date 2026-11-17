@@ -995,8 +995,9 @@ type CondList struct {
 // statement (ThrowStmt, ReturnStmt, BranchStmt), not a JumpExpr.
 type JumpExpr struct {
 	Span
-	Tok   Token // THROW, RETURN, BREAK or CONTINUE
-	Value Expr  // throw's error, return's value; nil for none
+	Tok   Token  // THROW, RETURN, BREAK or CONTINUE
+	Value Expr   // throw's error, return's value; nil for none
+	Label *Ident // break's or continue's loop name, nil for none
 }
 
 // A CatchExpr is x catch … { … }…: x's value, or when x throws, the

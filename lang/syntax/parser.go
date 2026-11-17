@@ -2403,6 +2403,9 @@ func (p *parser) parseUnary() Expr {
 			j.Value = p.parseExpr()
 			p.leave()
 		}
+		if j.Tok == BREAK || j.Tok == CONTINUE {
+			j.Label = p.branchLabel()
+		}
 		j.Span = p.span(start)
 		return j
 	case SPAWN:

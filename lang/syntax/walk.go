@@ -404,6 +404,9 @@ func Walk(v Visitor, n Node) {
 		if n.Value != nil {
 			walk(n.Value)
 		}
+		if n.Label != nil {
+			walk(n.Label)
+		}
 	case *CatchExpr:
 		walk(n.X)
 		for _, c := range n.Catches {

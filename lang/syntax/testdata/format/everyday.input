@@ -1,0 +1,26 @@
+// RFC 0011's syntax, laid out.
+struct Cart {
+  items: [Item]=[]
+  mut   fn add(i: Item) {  items.push(i) }
+  async  mut fn bad() {}
+}
+
+extend   string {
+  /// slug
+  pub fn slug() -> string = lower()
+  static fn  of(x: int) -> string = "{x}"
+  let empty=""
+}
+
+extend<T:Comparable>[T]: Shape { fn median() -> T? = none }
+
+fn f(m: [string: int], inbox: [string: Message]) {
+  m["a",default:0] += 1
+  inbox[id]?.read = true
+  if var x = maybe { x.add(1) }
+  for row in grid   as   rows {
+    for c in row { if c == 0 { break   rows } else { continue rows } }
+  }
+  while i < 3 as again { i += 1; continue again }
+  let y = x ?? break rows
+}

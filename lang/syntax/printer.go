@@ -1417,6 +1417,9 @@ func (p *printer) expr1(x Expr) {
 			p.write(" ")
 			p.expr(x.Value)
 		}
+		if x.Label != nil {
+			p.write(" " + x.Label.Name)
+		}
 	case *CatchExpr:
 		p.expr(x.X)
 		for _, c := range x.Catches {
