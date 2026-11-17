@@ -335,6 +335,15 @@ func (c *completer) valueMembers(t check.Type, optional bool, dot int) {
 					addItem(it)
 				}
 			}
+		case check.WorkerType:
+			// Its pub fns: what's called from outside it.
+			if tn.Comp != nil {
+				for _, m := range tn.Comp.Order {
+					if m.Kind == check.FnMember && m.Pub {
+						addItem(c.objectItem(m, ""))
+					}
+				}
+			}
 		case check.InterfaceType:
 			if tn.Iface != nil {
 				for _, f := range tn.Iface.Fields {
@@ -571,6 +580,7 @@ const (
 	elementBlock
 	componentBody
 	storeBody
+	workerBody
 	viewBlock // views: an app's body, a slot's, an if's in a view
 	stmtBlock // statements: a function's, a handler's
 	typeBody  // a struct's, an enum's, an interface's
@@ -592,6 +602,8 @@ func (c *completer) context(path []syntax.Node) (blockKind, *check.TypeName) {
 			return componentBody, nil
 		case *syntax.StoreDecl:
 			return storeBody, nil
+		case *syntax.WorkerDecl:
+			return workerBody, nil
 		case *syntax.AppDecl, *syntax.SlotItem:
 			return viewBlock, nil
 		case *syntax.StyleDecl:
@@ -614,7 +626,7 @@ func atItemStart(before string) bool {
 }
 
 var (
-	topKeywords       = []string{"component", "screen", "store", "struct", "enum", "interface", "fn", "async", "type", "style", "state", "let", "app", "test", "import", "pub", "native", "extern"}
+	topKeywords       = []string{"component", "screen", "store", "worker", "struct", "enum", "interface", "fn", "async", "type", "style", "state", "let", "app", "test", "import", "pub", "native", "extern"}
 	componentKeywords = []string{"prop", "event", "state", "let", "use", "provide", "fn", "async", "task", "effect", "pub"}
 	viewKeywords      = []string{"if", "for", "match"}
 	stmtKeywords      = []string{"let", "var", "if", "for", "while", "match", "return", "throw", "break", "continue", "defer", "do", "emit", "try", "await"}
@@ -669,6 +681,10 @@ func (c *completer) general(path []syntax.Node, pos syntax.Pos, before string) {
 	case storeBody:
 		if item {
 			c.keywords([]string{"state", "let", "use", "fn", "async", "task", "effect", "pub"})
+		}
+	case workerBody:
+		if item {
+			c.keywords([]string{"var", "let", "fn", "pub"})
 		}
 	case viewBlock:
 		views = true
@@ -810,7 +826,7 @@ func (c *completer) objectItem(o check.Object, label string) CompletionItem {
 			it.Kind = kindInterface
 		case check.ParamType:
 			it.Kind = kindTypeParameter
-		case check.ComponentType, check.StoreType:
+		case check.ComponentType, check.StoreType, check.WorkerType:
 			it.Kind = kindClass
 		default:
 			it.Kind = kindClass
@@ -1017,7 +1033,7 @@ func (c *completer) labels(call *syntax.CallExpr) {
 		return
 	}
 	switch cl.Kind {
-	case check.CallComponent, check.CallStore:
+	case check.CallComponent, check.CallStore, check.CallWorkerNew:
 		if cl.Type != nil && cl.Type.Obj.Comp != nil {
 			for _, m := range cl.Type.Obj.Comp.Params {
 				addLabel(m.Name(), typeStr(m.Type), docOf(m.Decl))
@@ -1029,7 +1045,7 @@ func (c *completer) labels(call *syntax.CallExpr) {
 				addLabel(f.Name, typeStr(f.Type), c.fc.declDoc(f.Pos))
 			}
 		}
-	case check.CallFunc, check.CallMethod, check.CallBuiltinMethod, check.CallIface, check.CallNative:
+	case check.CallFunc, check.CallMethod, check.CallBuiltinMethod, check.CallIface, check.CallNative, check.CallWorker:
 		for _, p := range cl.Params {
 			addLabel(p.Name, typeStr(p.Type), "")
 		}

@@ -42,6 +42,7 @@ const (
 	Shader     Kind = "shader"
 	Screen     Kind = "screen"
 	Store      Kind = "store"
+	Worker     Kind = "worker"
 	TypeAlias  Kind = "type"
 	ExternType Kind = "extern type"
 	Const      Kind = "let"
@@ -367,6 +368,22 @@ func decl(d syntax.Decl) *Decl {
 			for _, s := range x.Body.Items {
 				if m := storeMember(x.Name.Name, s); m != nil {
 					out.Members = append(out.Members, m)
+				}
+			}
+		}
+		return out
+	case *syntax.WorkerDecl:
+		if !x.Pub.IsValid() {
+			return nil
+		}
+		c := *x
+		c.Pub, c.Trivia, c.Body = syntax.NoPos, syntax.Trivia{}, nil
+		out := &Decl{Kind: Worker, Name: x.Name.Name, Code: trimBody(print(&c)), Doc: x.Doc()}
+		if x.Body != nil {
+			for _, s := range x.Body.Items {
+				// Its pub fns: what's called from outside it.
+				if f, ok := s.(*syntax.FuncDecl); ok && f.Pub.IsValid() {
+					out.Members = append(out.Members, method(x.Name.Name, f))
 				}
 			}
 		}

@@ -262,7 +262,7 @@ func typeDecl(tn *check.TypeName) string {
 		} else {
 			b.WriteString("\n}")
 		}
-	case check.StoreType, check.ComponentType:
+	case check.StoreType, check.ComponentType, check.WorkerType:
 		b.WriteString(compHeader(tn))
 	}
 	return b.String()
@@ -309,7 +309,7 @@ func imethSig(m *check.IfaceMethod) string {
 }
 
 // compHeader is component Name(params), screen Name, store Name(params),
-// native component Text(text: string).
+// worker Name(params), native component Text(text: string).
 func compHeader(tn *check.TypeName) string {
 	comp := tn.Comp
 	kw := "component"
@@ -317,6 +317,8 @@ func compHeader(tn *check.TypeName) string {
 	case comp == nil:
 	case comp.Store:
 		kw = "store"
+	case comp.Worker:
+		kw = "worker"
 	case comp.Screen:
 		kw = "screen"
 	case comp.Native:
@@ -416,6 +418,8 @@ func pubDecl(n syntax.Node) bool {
 		return d.Pub.IsValid()
 	case *syntax.StoreDecl:
 		return d.Pub.IsValid()
+	case *syntax.WorkerDecl:
+		return d.Pub.IsValid()
 	case *syntax.TypeAliasDecl:
 		return d.Pub.IsValid()
 	case *syntax.ExternTypeDecl:
@@ -450,6 +454,8 @@ func memberDecl(m *check.Member) string {
 		return pub + "state " + m.Name() + ": " + typeStr(m.Type)
 	case check.LetMember:
 		return pub + "let " + m.Name() + ": " + typeStr(m.Type)
+	case check.VarMember:
+		return "var " + m.Name() + ": " + typeStr(m.Type)
 	case check.UseMember:
 		return "use " + m.Name() + ": " + typeStr(m.Type)
 	case check.FnMember:
@@ -479,6 +485,8 @@ func memberKindName(m *check.Member) string {
 		return "state"
 	case check.LetMember:
 		return "let"
+	case check.VarMember:
+		return "var"
 	case check.UseMember:
 		return "use"
 	case check.FnMember:

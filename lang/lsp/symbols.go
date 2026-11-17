@@ -115,6 +115,10 @@ func (sb *symbolBuilder) decl(d syntax.Node) (DocumentSymbol, bool) {
 		s := sb.sym(d.Name.Name, symClass, "store", d, d.Name)
 		s.Children = sb.block(d.Body)
 		return s, true
+	case *syntax.WorkerDecl:
+		s := sb.sym(d.Name.Name, symClass, "worker", d, d.Name)
+		s.Children = sb.block(d.Body)
+		return s, true
 	case *syntax.StructDecl:
 		kw := "struct"
 		if d.Extern.IsValid() {
@@ -209,7 +213,7 @@ func (sb *symbolBuilder) block(b *syntax.Block) []DocumentSymbol {
 			out = append(out, sb.sym(d.Name.Name, symVariable, "state", d, d.Name))
 		case *syntax.LetDecl:
 			if bp, ok := d.Pattern.(*syntax.BindPat); ok {
-				out = append(out, sb.sym(bp.Name.Name, symVariable, "let", d, bp.Name))
+				out = append(out, sb.sym(bp.Name.Name, symVariable, d.Keyword.String(), d, bp.Name)) // let, or a worker's var
 			}
 		case *syntax.UseDecl:
 			out = append(out, sb.sym(d.Name.Name, symVariable, "use", d, d.Name))

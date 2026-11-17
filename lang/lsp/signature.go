@@ -96,7 +96,7 @@ func (fc *fileCtx) commaBetween(a, b syntax.Pos) bool {
 func (fc *fileCtx) callSignature(call *syntax.CallExpr) (string, string) {
 	if c := fc.info.Calls[call]; c != nil {
 		switch c.Kind {
-		case check.CallFunc, check.CallMethod:
+		case check.CallFunc, check.CallMethod, check.CallWorker:
 			if c.Func != nil {
 				return funcSig(c.Func), docOf(c.Func.Decl)
 			}
@@ -108,7 +108,7 @@ func (fc *fileCtx) callSignature(call *syntax.CallExpr) (string, string) {
 			if c.Builtin != nil {
 				return builtinSig(c.Builtin)
 			}
-		case check.CallComponent, check.CallStore:
+		case check.CallComponent, check.CallStore, check.CallWorkerNew:
 			if c.Type != nil {
 				return withParens(compHeader(c.Type.Obj)), docOf(c.Type.Obj.Decl)
 			}
