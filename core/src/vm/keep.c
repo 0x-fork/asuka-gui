@@ -483,8 +483,14 @@ void ak_keep_save(void) {
 		ak_buf_reset(&e->saved);
 		ak_kind k = ak_vm_cell_kind(e->cell);
 		ak_val v = ak_vm_cell_get(e->cell, false);
-		e->has = ak_keep_encode(&e->saved, v, k);
-		ak_release_val(v, k);
+		if (ak_error_pending()) {
+			// A follow whose initializer failed: nothing to keep.
+			ak_release(ak_error_take());
+			e->has = false;
+		} else {
+			e->has = ak_keep_encode(&e->saved, v, k);
+			ak_release_val(v, k);
+		}
 		e->kind = (uint8_t)k;
 		e->cell = NULL;
 		if (e->has) nsaved++;
