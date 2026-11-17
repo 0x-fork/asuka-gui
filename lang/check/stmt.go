@@ -1464,7 +1464,10 @@ func (c *Checker) localFns(items []syntax.Item) {
 		case d.Body == nil && d.Value == nil:
 			c.errorf(d.Name, "fn %s has no body", d.Name.Name)
 		}
+		c.openScope()
+		c.invalidTypeParams(d.TypeParams)
 		sig := c.signature(d, nil)
+		c.closeScope()
 		for i, p := range sig.Params {
 			if p.Default != nil {
 				c.errorf(d.Params.List[i].Default, "a fn in a block takes its arguments in order, without defaults: declare %s at the top of the file for a default", d.Name.Name)
@@ -1496,6 +1499,7 @@ func (c *Checker) localFnBody(lf *LocalFn) {
 	c.partial = nil
 	ctx := c.enter(CtxLocalFn, d, d.Name.Name)
 	lf.Ctx = ctx
+	c.invalidTypeParams(d.TypeParams)
 	ctx.Async, ctx.Throws, ctx.Result = lf.Sig.Async, lf.Sig.Throws, lf.Sig.Result
 	for i, p := range lf.Sig.Params {
 		v := c.declareVar(d.Params.List[i].Name, p.Type, false)
@@ -1518,6 +1522,15 @@ func (c *Checker) localFnBody(lf *LocalFn) {
 	c.leave(saved)
 	c.inTry, c.inAwait, c.handled, c.loops, c.view, c.inDefer = savedTry, savedAwait, savedHandled, savedLoops, savedView, savedInDefer
 	c.partial = savedPartial
+}
+
+// invalidTypeParams declares the type parameters a local fn can't have
+// (said already) as invalid types: its signature and body don't say
+// they're unknown.
+func (c *Checker) invalidTypeParams(tps []*syntax.TypeParam) {
+	for _, p := range tps {
+		c.scope.Insert(&TypeName{object: object{p.Name.Name, p.Name.Start}, Kind: ParamType, Type: Invalid, resolved: true})
+	}
 }
 
 // finishLocalFns works out what each group of local fns captures: what

@@ -72,3 +72,16 @@ fn selfThroughVar(n: int) -> int {
   other = k => k + 1
   return walk(n) + other(n)
 }
+
+// A generic local fn is said once: its type parameter isn't then an
+// unknown type in its signature or its body.
+fn genericOnce(n: int) -> int {
+  fn pick<T>( // ERROR "a fn in a block isn't generic: declare pick at the top of the file"
+    a: T,
+    b: T
+  ) -> T {
+    let c: T = a
+    return c
+  }
+  return n
+}
