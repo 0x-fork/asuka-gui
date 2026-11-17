@@ -58,7 +58,8 @@ jobs:
         run: go run ./cmd/asuka prebuilt build --target ${{ matrix.target }} --version "${GITHUB_REF_NAME#v}" --out "dist/prebuilt/${{ matrix.target }}"
         env:
           ASUKA_CACHE: ${{ runner.temp }}/asuka-cache
-          ASUKA_CC: ${{ runner.os == 'macOS' && '' || 'zig' }}
+          # Not `macOS && '' || 'zig'`: '' is falsy, so that's always zig.
+          ASUKA_CC: ${{ runner.os != 'macOS' && 'zig' || '' }}
       - uses: actions/upload-artifact@v4
         with:
           name: prebuilt-${{ matrix.target }}
