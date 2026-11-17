@@ -407,7 +407,9 @@ void *ak_constant_put(void **slot, void *v) {
 static AK_TLS void *pending_error;
 
 static const uint8_t error_kinds[] = {AK_K_REF};
-static const char *const error_names[] = {"message"};
+// Names carry their field's JSON descriptor after the NUL, as the
+// compiler writes them (rt/json.c's ak_json_field_desc).
+static const char *const error_names[] = {"message\0s"};
 const ak_shape ak_shape_error = {
 	.name = "Error",
 	.nfields = 1,
