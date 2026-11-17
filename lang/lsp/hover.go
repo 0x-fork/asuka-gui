@@ -20,6 +20,11 @@ func (s *server) hover(p *TextDocumentPositionParams) (*Hover, error) {
 	if id != nil {
 		r := fc.resolve(path)
 		if r == nil {
+			if a, ok := at(path, 2).(*syntax.Arg); ok && a.Label == id {
+				// A label that names nothing: not the call's value, nor
+				// the element's around it.
+				return nil, nil
+			}
 			return fc.exprHover(path)
 		}
 		code, doc := fc.describe(r)

@@ -578,6 +578,12 @@ func (fc *fileCtx) describe(r *ref) (code, doc string) {
 		return "case " + owner + caseString(r.ecase), fc.declDoc(r.decl)
 	case r.pkg != nil:
 		return "package " + pkgPath(r.pkg), pkgDoc(r.pkg)
+	case r.param != nil:
+		doc = "Parameter of event `" + r.event.Name() + "`"
+		if r.event.Owner != nil {
+			doc += " of `" + r.event.Owner.Name() + "`"
+		}
+		return "(parameter) " + paramString(r.param), doc + "."
 	}
 	switch o := r.obj.(type) {
 	case *check.Var:
