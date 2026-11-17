@@ -1,0 +1,24 @@
+// Names in any script, and test names with what C's strings escape (a
+// release build's C names each function, for its traces).
+
+fn café(n: int) throws -> int {
+  if n > 2 { throw Error("too big") }
+  return n
+}
+
+fn 数える(xs: [int]) -> int = xs.count()
+
+test "名前1 %s \"quoted\" ??= \\ ok" {
+  print(try café(1))
+  print(数える([1, 2, 3]))
+}
+
+test "日本a" {
+  print(try café(5))
+}
+
+// Output:
+// 1
+// 3
+// ok 名前1 %s "quoted" ??= \ ok
+// FAIL 日本a: too big

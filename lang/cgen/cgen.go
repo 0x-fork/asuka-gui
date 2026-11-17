@@ -272,14 +272,14 @@ func (g *gen) fn(i int) error {
 		for _, pc := range pcs {
 			g.p("\tcase %d: goto S%d;\n", pc, pc)
 		}
-		g.p("\tdefault: ak_panic(\"vm: %s resumed at %%u\", co->frames[fi_].pc);\n\t}\n", cstr(f.Name))
+		g.p("\tdefault: ak_panic(\"vm: %%s resumed at %%u\", %s, co->frames[fi_].pc);\n\t}\n", cbytes(f.Name))
 	} else {
 		g.p("static ak_val f%d(ak_val *A, ak_closure *C) {\n", i)
 		g.p("\tAK_UNUSED(A); AK_UNUSED(C);\n")
 		g.p("\tak_val R[%d];\n\tmemset(R, 0, sizeof R);\n", max(n, 1))
 		// As deep as the VM's frames go, and no deeper than the thread's
 		// C stack.
-		g.p("\tif (AK_UNLIKELY(++depth > 10000 || ak_stack_low())) { depth--; ak_throw_msg(\"stack overflow in %s\"); return (ak_val){0}; }\n", cstr(f.Name))
+		g.p("\tif (AK_UNLIKELY(++depth > 10000 || ak_stack_low())) { depth--; ak_throw_msg(\"stack overflow in %%s\", %s); return (ak_val){0}; }\n", cbytes(f.Name))
 		for p := 0; p < int(f.NParams); p++ {
 			if f.Kinds[p] == bc.KRef {
 				g.p("\tR[%d].p = ak_retain(A[%d].p);\n", p, p)
@@ -313,7 +313,7 @@ func (g *gen) fn(i int) error {
 			return err
 		}
 	}
-	g.p("unwind:\n\tif (ak_frame_hook) ak_frame_hook(\"%s\", \"%s\", at_);\n", cstr(f.Name), cstr(f.File))
+	g.p("unwind:\n\tif (ak_frame_hook) ak_frame_hook(%s, %s, at_);\n", cbytes(f.Name), cbytes(f.File))
 	if g.async {
 		g.p("\tak_op_exit(R, K, N, -1);\n\tdepth--;\n\treturn AK_RUN_THROW;\n")
 	} else {
@@ -372,7 +372,9 @@ func (g *gen) resumes(f *bc.FuncDef, ins []insn) (map[int]*insn, error) {
 	return r, nil
 }
 
-// cbytes is s as a C string literal, byte by byte.
+// cbytes is s as a C string literal, byte by byte: what isn't printable
+// ASCII as an octal escape, which ends after three digits (a hex one
+// would take the digits after it), and ? so that no trigraph forms.
 func cbytes(s string) string {
 	var b strings.Builder
 	b.WriteByte('"')
@@ -385,24 +387,6 @@ func cbytes(s string) string {
 		}
 	}
 	b.WriteByte('"')
-	return b.String()
-}
-
-func cstr(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		switch {
-		case r == '"' || r == '\\':
-			b.WriteByte('\\')
-			b.WriteRune(r)
-		case r < 32 || r > 126:
-			fmt.Fprintf(&b, "\\x%02x", r&0xff)
-		case r == '%':
-			b.WriteString("%%")
-		default:
-			b.WriteRune(r)
-		}
-	}
 	return b.String()
 }
 
