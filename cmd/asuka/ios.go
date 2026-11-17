@@ -455,16 +455,16 @@ type simDevice struct {
 	runtime     string
 }
 
-// XCode 27 does not ship Simulator anymore, so open DeviceHub instead
+// showSimulator shows the simulator udid names: in Simulator.app (Xcode
+// 26 and before), or in Xcode 27's Device Hub, which has its window
+// (Xcode 27 has no Simulator.app), on that device.
 func showSimulator(udid string) {
 	if exec.Command("open", "-a", "Simulator").Run() == nil {
 		return
 	}
-
 	if exec.Command("open", "devices://device/open?id="+udid).Run() == nil {
 		return
 	}
-
 	exec.Command("open", "-a", "DeviceHub").Run()
 }
 
