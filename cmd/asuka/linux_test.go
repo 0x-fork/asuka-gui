@@ -246,7 +246,7 @@ func TestBuildLinux(t *testing.T) {
 		if err := buildLinux(app, &buildOptions{out: out, arch: arch}); err != nil {
 			t.Fatal(err)
 		}
-		prefix := filepath.Join(out, "linux", "sqliteapp")
+		prefix := filepath.Join(out, "linux-"+arch, "sqliteapp")
 		bin := filepath.Join(prefix, "bin", "sqliteapp")
 		e, err := elf.Open(bin)
 		if err != nil {
@@ -277,11 +277,11 @@ func TestBuildLinux(t *testing.T) {
 		if b, err := os.ReadFile(filepath.Join(prefix, "share", "sqliteapp", "asuka-app.json")); err != nil || !strings.Contains(string(b), `"name": "sqliteapp"`) {
 			t.Errorf("%s: the settings: %v\n%s", arch, err, b)
 		}
-		m, _ := os.ReadFile(filepath.Join(out, "linux", app.bundleID+".yml"))
+		m, _ := os.ReadFile(filepath.Join(out, "linux-"+arch, app.bundleID+".yml"))
 		if !strings.Contains(string(m), "cp -a bin share /app/") {
 			t.Errorf("%s: the Flatpak leaves a directory out:\n%s", arch, m)
 		}
-		tgz, _ := filepath.Glob(filepath.Join(out, "linux", "*.tar.gz"))
+		tgz, _ := filepath.Glob(filepath.Join(out, "linux-"+arch, "*.tar.gz"))
 		if len(tgz) != 1 {
 			t.Fatalf("%s: %v", arch, tgz)
 		}
@@ -393,7 +393,7 @@ func TestLinuxPrebuiltFromZig(t *testing.T) {
 			if !linked {
 				t.Fatalf("no link took the package's libraries:\n%s", calls)
 			}
-			bin := filepath.Join(app, "dist", "linux", "sqliteapp", "bin", "sqliteapp")
+			bin := filepath.Join(app, "dist", "linux-"+runtime.GOARCH, "sqliteapp", "bin", "sqliteapp")
 			checkSQLiteLinked(t, bin)
 			if os.Getenv("DISPLAY") == "" {
 				return

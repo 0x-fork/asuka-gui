@@ -58,7 +58,7 @@ func buildWindows(app *asukaApp, o *buildOptions) error {
 	}
 	name := app.displayName()
 	exe := sanitizeExe(name) + ".exe"
-	out := filepath.Join(o.out, sanitizeExe(name))
+	out := filepath.Join(desktopDir(o, "windows", goarch), sanitizeExe(name))
 	if err := os.RemoveAll(out); err != nil {
 		return err
 	}
@@ -132,10 +132,17 @@ func buildWindows(app *asukaApp, o *buildOptions) error {
 		_, err := writeUpdates(app, o.out, updateBuild{}, true)
 		return err
 	}
+	// The folder to hand out, zipped, named for its version and
+	// architecture.
+	zip := releaseFile(app, o, "windows", goarch, ".zip")
+	if err := zipDir(out, zip); err != nil {
+		return err
+	}
+	fmt.Printf("asuka: %s\n", zip)
 	if signed {
-		fmt.Println("asuka: the folder is the app, its .exe signed: zip it, or package it (an installer, MSIX)")
+		fmt.Println("asuka: the folder is the app, its .exe signed: hand out the .zip, or package the folder (an installer, MSIX)")
 	} else {
-		fmt.Println("asuka: the folder is the app: zip it, or package it (an installer, MSIX); set ASUKA_WINDOWS_CERT and ASUKA_WINDOWS_CERT_PASSWORD to sign the .exe and keep SmartScreen quiet")
+		fmt.Println("asuka: the folder is the app: hand out the .zip, or package the folder (an installer, MSIX); set ASUKA_WINDOWS_CERT and ASUKA_WINDOWS_CERT_PASSWORD to sign the .exe and keep SmartScreen quiet")
 	}
 	return nil
 }

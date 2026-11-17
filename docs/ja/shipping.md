@@ -6,9 +6,9 @@
 |---|---|---|---|
 | `ios` | `<Name>.ipa`（App Store 向けに署名済み） | Xcode のある Mac | TestFlight、App Store（`asuka publish`） |
 | `android` | `<Name>.aab`（アップロード鍵で署名済み） | JDK、Android SDK、NDK があればどのシステムでも | Google Play（`asuka publish`） |
-| `mac` | `<Name>.app`（Apple シリコン向け。`--arch amd64` で Intel 向け）、または `.pkg`（`--appstore`） | Xcode のコマンドラインツールのある Mac | 署名・公証済みのダウンロード、Mac App Store |
-| `windows` | `<Name>/`（`.exe` とそのアセット） | clang のある Windows、または Zig のあるどのシステムでも | zip、または独自のインストーラーや MSIX |
-| `linux` | `linux/`：インストールプレフィックス、`.tar.gz`、Flatpak マニフェスト | C コンパイラーのある Linux、または Zig のあるどのシステムでも | `.tar.gz`、Flatpak |
+| `mac` | `darwin-<arch>/`：`<Name>.app` とその `.zip`（Apple シリコン向け。`--arch amd64` で Intel 向け）、または `.pkg`（`--appstore`） | Xcode のコマンドラインツールのある Mac | 署名・公証済みのダウンロード、Mac App Store |
+| `windows` | `windows-<arch>/`：`<Name>/`（`.exe` とそのアセット）とその `.zip` | clang のある Windows、または Zig のあるどのシステムでも | zip、または独自のインストーラーや MSIX |
+| `linux` | `linux-<arch>/`：インストールプレフィックス、`.tar.gz`、Flatpak マニフェスト | C コンパイラーのある Linux、または Zig のあるどのシステムでも | `.tar.gz`、Flatpak |
 | `web` | `web/`（静的サイト） | Zig のあるどのシステムでも | 任意の Web サーバーや CDN |
 
 `--platform` を省略すると、Mac、Windows PC、Linux マシンでは、そのコンピューター向けにビルドします。ビルドにはプラットフォームのコンパイラーを使います（Apple のプラットフォームでは Xcode のもの、Android では NDK のもの、Windows と Linux ではシステムのもの）。[Zig](https://ziglang.org/download) は、Web 向けにビルドするときと、ほかのシステムから Windows と Linux 向けにビルドするときに使います（`ASUKA_CC=zig` を指定すると、どこでも Zig を使います）。デスクトップのビルドの中身は[デスクトップ](desktop.md#デスクトップアプリの構成)を参照してください。
@@ -167,7 +167,7 @@ asuka publish --platform android --track production --rollout 0.1
 asuka build --platform mac
 ```
 
-このコマンドは、Mac 上で `dist/<Name>.app` を作ります。Apple シリコン搭載の Mac 向けで、macOS 11 以降に対応しています。`--arch amd64` を付けると、代わりに Intel Mac 向けを別のビルドとして作ります（両方に対応してサイズが倍になるユニバーサルアプリにはしません）。対応したい Mac の分だけ、それぞれ公開してください。アプリには実行ファイルと、アプリの設定（`Contents/Resources/asuka-app.json`）、Info.plist、アイコン、言語、アセットを含み、アドホック署名されています。つまり、自分の Mac で動かせる状態です。アプリがインポートしたパッケージは、iOS と同じく `ios.usage` から利用目的の説明文を追加します（位置情報の説明文は、Mac では `NSLocationWhenInUseUsageDescription` から取った `NSLocationUsageDescription` になります）。あわせて、それに必要な hardened runtime のエンタイトルメント（`com.apple.security.device.camera`、`...audio-input`、`...personal-information.location` など）も追加します。これがないと、Developer ID で署名したアプリは、カメラ、マイク、ユーザーのデータへのアクセスを拒否されます。アプリのネイティブパッケージの Swift は、ビルドするアーキテクチャ向けに実行ファイルへコンパイルされます（[ネイティブコード](native.md)を参照）。`std/sqlite` を使うアプリでは、SQLite も実行ファイルに組み込まれます（[ライブラリ](data.md#ライブラリ)）。
+このコマンドは、Mac 上で `dist/darwin-arm64/<Name>.app` を作ります。Apple シリコン搭載の Mac 向けで、macOS 11 以降に対応しています。隣には配布用の `<name>-<version>-darwin-arm64.zip` も作られます（Apple のツールと同じ方法で圧縮され、署名と公証が保たれます）。`--arch amd64` を付けると、代わりに Intel Mac 向けを別のビルドとして `dist/darwin-amd64` に作ります（両方に対応してサイズが倍になるユニバーサルアプリにはしません）。ビルドごとにファイル名が異なるので、1 つのリリースに並べて置けます。アプリには実行ファイルと、アプリの設定（`Contents/Resources/asuka-app.json`）、Info.plist、アイコン、言語、アセットを含み、アドホック署名されています。つまり、自分の Mac で動かせる状態です。アプリがインポートしたパッケージは、iOS と同じく `ios.usage` から利用目的の説明文を追加します（位置情報の説明文は、Mac では `NSLocationWhenInUseUsageDescription` から取った `NSLocationUsageDescription` になります）。あわせて、それに必要な hardened runtime のエンタイトルメント（`com.apple.security.device.camera`、`...audio-input`、`...personal-information.location` など）も追加します。これがないと、Developer ID で署名したアプリは、カメラ、マイク、ユーザーのデータへのアクセスを拒否されます。アプリのネイティブパッケージの Swift は、ビルドするアーキテクチャ向けに実行ファイルへコンパイルされます（[ネイティブコード](native.md)を参照）。`std/sqlite` を使うアプリでは、SQLite も実行ファイルに組み込まれます（[ライブラリ](data.md#ライブラリ)）。
 
 Mac App Store 以外でほかの人に配布するには、Developer ID で署名し、Apple に公証してもらいます。これで Gatekeeper がアプリを開けるようになります。
 
@@ -186,7 +186,7 @@ asuka build --platform mac --profile Notes.provisionprofile --notarize asuka
 
 プロファイルは `Contents/embedded.provisionprofile` としてアプリに入ります。アプリは、プロファイルのエンタイトルメントのうちパッケージが必要とするもの（`com.apple.developer.aps-environment`、`com.apple.developer.applesignin`、`com.apple.developer.devicecheck.appattest-environment`）、アプリの ID とチーム、そして hardened runtime を付けて署名されます。プロファイルに足りないものはビルドが教えてくれます。`--sign` を省略すると、プロファイルが許可する、キーチェーン内の証明書（Developer ID Application）で署名します。プロファイルに含まれない証明書を `--sign` に指定するとエラーになります。`--profile` には、パス、またはインストール済みのプロファイルの名前か UUID を指定します。`ASUKA_MAC_PROFILE` や asuka.toml の `mac.profile` でも同じ指定ができます。どれも指定がなければ、これらのパッケージを使うアプリは、アプリの ID に最も合うインストール済みのプロファイル（Xcode のプロファイル用フォルダーにあるもの）で署名されます。それもなければプロファイルなしで署名されます。その場合、Mac で何が動かないかをビルドが表示し、アプリのそれ以外の部分は問題なく動きます。
 
-`--appstore` を指定すると、代わりに Mac App Store 向けの `dist/<Name>.pkg` を作ります。アプリは App Sandbox に入り（ネットワークと、ユーザーが選んだファイルにアクセスできます）、Mac App Store のプロファイルの証明書（Apple Distribution）で署名されます。プロファイルは asuka.toml の `mac.appStoreProfile`、なければ `--profile`、それもなければ最も合うものです。パッケージは、チームの Mac Installer Distribution 証明書で署名されます。アップロードには Transporter か `xcrun altool --upload-package` を使ってください。`asuka publish` は、まだ Mac のビルドのアップロードに対応していません。公証はストア外で配布するアプリのためのものなので、`--appstore` と `--notarize` を一緒に指定するとエラーになります。
+`--appstore` を指定すると、代わりに Mac App Store 向けの `dist/darwin-arm64/<name>-<version>-darwin-arm64.pkg` を作ります。アプリは App Sandbox に入り（ネットワークと、ユーザーが選んだファイルにアクセスできます）、Mac App Store のプロファイルの証明書（Apple Distribution）で署名されます。プロファイルは asuka.toml の `mac.appStoreProfile`、なければ `--profile`、それもなければ最も合うものです。パッケージは、チームの Mac Installer Distribution 証明書で署名されます。アップロードには Transporter か `xcrun altool --upload-package` を使ってください。`asuka publish` は、まだ Mac のビルドのアップロードに対応していません。公証はストア外で配布するアプリのためのものなので、`--appstore` と `--notarize` を一緒に指定するとエラーになります。
 
 ## Windows
 
@@ -195,7 +195,7 @@ asuka build --platform windows               # x64。Arm 版 Windows ではエ�
 asuka build --platform windows --arch arm64  # Arm の PC でネイティブに動きます
 ```
 
-このコマンドは、`dist/<Name>` というフォルダーを作ります。`<Name>.exe` がアプリそのものです（Windows では clang、どのシステムでも Zig で、アーキテクチャに合わせてビルドされます）。その隣には、アプリの設定 `asuka-app.json` とアプリのアセットが置かれます。`std/sqlite` を使うアプリでは、SQLite が `.exe` に組み込まれます。`.exe` は GUI プログラム（コンソールウィンドウを開きません）で、リソースがリンクされています。Windows が使う各サイズのアイコン、バージョン情報（`version` と `build`）、そしてコモンコントロール 6、モニターごとの DPI 対応、UTF-8 を要求する、Windows 10 と 11 向けのマニフェストです。ディレクトリに独自のリソースのオブジェクトファイル（COFF の `.syso`、`rsrc_windows_amd64.syso`）を置いたアプリでは、代わりにそのリソースが使われます。フォルダーを zip にするか、パッケージ（インストーラー、MSIX）にして配布してください。
+このコマンドは、`dist/windows-amd64/<Name>`（Arm 向けは `windows-arm64`）というフォルダーを作ります。`<Name>.exe` がアプリそのものです（Windows では clang、どのシステムでも Zig で、アーキテクチャに合わせてビルドされます）。その隣には、アプリの設定 `asuka-app.json` とアプリのアセットが置かれます。`std/sqlite` を使うアプリでは、SQLite が `.exe` に組み込まれます。`.exe` は GUI プログラム（コンソールウィンドウを開きません）で、リソースがリンクされています。Windows が使う各サイズのアイコン、バージョン情報（`version` と `build`）、そしてコモンコントロール 6、モニターごとの DPI 対応、UTF-8 を要求する、Windows 10 と 11 向けのマニフェストです。ディレクトリに独自のリソースのオブジェクトファイル（COFF の `.syso`、`rsrc_windows_amd64.syso`）を置いたアプリでは、代わりにそのリソースが使われます。フォルダーの隣には、それを zip にした配布用の `<name>-<version>-windows-amd64.zip` が置かれます。フォルダーをパッケージ（インストーラー、MSIX）にして配布することもできます。
 
 SmartScreen が発行元を認識できるように、`.pfx` 形式でエクスポートしたコード署名証明書で `.exe` に署名します。
 
@@ -214,7 +214,7 @@ asuka build --platform linux                # このマシンのアーキテク�
 asuka build --platform linux --arch arm64   # amd64 または arm64
 ```
 
-どのシステムからでもビルドでき、ビルドに GTK のインストールは要りません（アプリは起動時に GTK 4 と libadwaita を開きます）。Linux ではそのマシンの C コンパイラーで、それ以外では Zig でビルドされます。`dist/linux` には次のものが作られます。
+どのシステムからでもビルドでき、ビルドに GTK のインストールは要りません（アプリは起動時に GTK 4 と libadwaita を開きます）。Linux ではそのマシンの C コンパイラーで、それ以外では Zig でビルドされます。`dist/linux-amd64`（`--arch arm64` では `linux-arm64`）には次のものが作られます。
 
 - `<name>/`：インストールプレフィックスの構成になっているフォルダーで、アプリの名前を小文字にした名前が付きます（`My Notes` なら `my-notes`）。
   - `bin/my-notes`：アプリ本体（1 つの実行ファイル）
@@ -234,7 +234,7 @@ asuka build --platform linux --arch arm64   # amd64 または arm64
 
   ```sh
   flatpak install flathub org.gnome.Platform//50 org.gnome.Sdk//50   # 初回のみ
-  flatpak-builder --user --install --force-clean build dist/linux/com.example.notes.yml
+  flatpak-builder --user --install --force-clean build dist/linux-amd64/com.example.notes.yml
   flatpak run com.example.notes
   ```
 
@@ -637,16 +637,13 @@ CLI は自分のバージョンの Asuka でアプリをビルドするため、
           ASUKA_APPLE_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
           ASUKA_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          asuka build --platform mac --sign "Developer ID Application: Your Name (TEAMID)" --notarize env -o dist/arm64
-          asuka build --platform mac --arch amd64 --sign "Developer ID Application: Your Name (TEAMID)" --notarize env -o dist/intel
+          asuka build --platform mac --sign "Developer ID Application: Your Name (TEAMID)" --notarize env
+          asuka build --platform mac --arch amd64 --sign "Developer ID Application: Your Name (TEAMID)" --notarize env
       - name: attach to the tag's release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: |
-          ditto -c -k --keepParent dist/arm64/Notes.app dist/Notes-mac-arm64.zip
-          ditto -c -k --keepParent dist/intel/Notes.app dist/Notes-mac-intel.zip
-          gh release upload "$GITHUB_REF_NAME" dist/Notes-mac-arm64.zip dist/Notes-mac-intel.zip --clobber
+        run: gh release upload "$GITHUB_REF_NAME" dist/*/*.zip --clobber
 
   windows-linux:
     needs: release
@@ -669,10 +666,8 @@ CLI は自分のバージョンの Asuka でアプリをビルドするため、
           ASUKA_WINDOWS_CERT: ${{ runner.temp }}/cert.pfx
           ASUKA_WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
-          asuka build --platform windows -o dist/x64
-          asuka build --platform windows --arch arm64 -o dist/arm64
-          (cd dist/x64 && zip -r ../Notes-windows-x64.zip Notes)
-          (cd dist/arm64 && zip -r ../Notes-windows-arm64.zip Notes)
+          asuka build --platform windows
+          asuka build --platform windows --arch arm64
       - name: Linux, amd64 and arm64
         run: |
           asuka build --platform linux
@@ -681,10 +676,10 @@ CLI は自分のバージョンの Asuka でアプリをビルドするため、
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: gh release upload "$GITHUB_REF_NAME" dist/*.zip dist/linux/*.tar.gz --clobber
+        run: gh release upload "$GITHUB_REF_NAME" dist/*/*.zip dist/*/*.tar.gz --clobber
 ```
 
-これらのジョブが使うシークレットは次のとおりです。`MAC_CERTIFICATE` は Developer ID Application 証明書とその秘密鍵（`.p12`）、`MAC_CERTIFICATE_PASSWORD` はそのパスワードです。`APPLE_ID`、`APPLE_APP_PASSWORD`（account.apple.com で発行する App 用パスワード）、`APPLE_TEAM_ID` は公証サービスに使います。`WINDOWS_CERTIFICATE` はコード署名証明書（`.pfx`）、`WINDOWS_CERTIFICATE_PASSWORD` はそのパスワードです。Linux のビルドはそれぞれ自分の `.tar.gz` を作ります。一方、Flatpak のマニフェストがパッケージするのは最後にビルドしたもので、そのアーキテクチャ向けになります。
+これらのジョブが使うシークレットは次のとおりです。`MAC_CERTIFICATE` は Developer ID Application 証明書とその秘密鍵（`.p12`）、`MAC_CERTIFICATE_PASSWORD` はそのパスワードです。`APPLE_ID`、`APPLE_APP_PASSWORD`（account.apple.com で発行する App 用パスワード）、`APPLE_TEAM_ID` は公証サービスに使います。`WINDOWS_CERTIFICATE` はコード署名証明書（`.pfx`）、`WINDOWS_CERTIFICATE_PASSWORD` はそのパスワードです。どのビルドも、自分専用のディレクトリ（`dist/darwin-arm64`、`dist/windows-amd64`、`dist/linux-arm64`）にファイルを作ります。ファイル名にはアプリ名、バージョン、プラットフォーム、アーキテクチャが入るので、リリースにすべて並べて置けます。Linux の各ビルドの Flatpak マニフェストは、それぞれ自分のビルドをパッケージします。
 
 [自動アップデート](#自動アップデート)を GitHub で配信する場合は、`asuka build` の代わりに `asuka publish` を使うと、各プラットフォームのアップデートもタグのリリースの下書き（`release` ジョブが作ったもの）にアップロードされ、すべてのプラットフォームが揃ってから公開できます。秘密鍵をシークレットとして追加し（`gh secret set ASUKA_UPDATE_PRIVATE_KEY < asuka-update.key`）、ジョブに `ASUKA_UPDATE_PRIVATE_KEY` と `GH_TOKEN` を渡して、タグのバージョンでビルドします。
 

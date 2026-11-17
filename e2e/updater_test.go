@@ -148,7 +148,7 @@ func TestUpdaterMac(t *testing.T) {
 		t.Skip("macOS")
 	}
 	f := newUpdateFeed(t)
-	v100 := filepath.Join(f.build(t, "mac", "1.0.0"), "Updater.app")
+	v100 := filepath.Join(f.build(t, "mac", "1.0.0"), "darwin-arm64", "Updater.app")
 	f.build(t, "mac", "1.0.1") // its delta from the published 1.0.0
 
 	apps := t.TempDir()
@@ -187,7 +187,7 @@ func TestUpdaterLinux(t *testing.T) {
 	prefix := t.TempDir()
 	os.MkdirAll(filepath.Join(prefix, "bin"), 0o755)
 	os.WriteFile(filepath.Join(prefix, "bin", "other"), []byte("another program"), 0o755)
-	run(t, "tar", "-xzf", filepath.Join(v100, "linux", "updater-1.0.0-linux-"+arch+".tar.gz"), "--strip-components=1", "-C", prefix)
+	run(t, "tar", "-xzf", filepath.Join(v100, "linux-"+arch, "updater-1.0.0-linux-"+arch+".tar.gz"), "--strip-components=1", "-C", prefix)
 	runUpdater(t, filepath.Join(prefix, "bin", "updater"))
 
 	if b, _ := os.ReadFile(filepath.Join(prefix, "bin", "other")); string(b) != "another program" {

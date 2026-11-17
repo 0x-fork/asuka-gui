@@ -129,7 +129,7 @@ func buildLinux(app *asukaApp, o *buildOptions) error {
 		return fmt.Errorf("asuka.toml: id %q isn't a valid application ID on Linux: letters, digits, _ and -, in two parts or more, none starting with a digit (com.example.notes)", app.bundleID)
 	}
 	exe := linuxExe(app)
-	base := filepath.Join(o.out, "linux")
+	base := desktopDir(o, "linux", arch)
 	out := filepath.Join(base, exe)
 	if err := os.RemoveAll(out); err != nil {
 		return err
@@ -163,7 +163,7 @@ func buildLinux(app *asukaApp, o *buildOptions) error {
 			return err
 		}
 	}
-	tgz := filepath.Join(base, fmt.Sprintf("%s-%s-linux-%s.tar.gz", exe, app.cfg.Version, arch))
+	tgz := releaseFile(app, o, "linux", arch, ".tar.gz")
 	if err := tarGz(out, tgz); err != nil {
 		return err
 	}

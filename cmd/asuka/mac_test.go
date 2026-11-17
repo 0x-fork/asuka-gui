@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -83,8 +84,12 @@ func TestBuildMac(t *testing.T) {
 	if err := buildMac(app, &buildOptions{out: out}); err != nil {
 		t.Fatal(err)
 	}
-	bundle := filepath.Join(out, app.displayName()+".app")
+	bundle := filepath.Join(out, "darwin-arm64", app.displayName()+".app")
 	bin := filepath.Join(bundle, "Contents", "MacOS", sanitizeExe(app.displayName()))
+	// What to hand out: the app zipped, its name each build's own.
+	if _, err := os.Stat(filepath.Join(out, "darwin-arm64", "sqliteapp-"+app.cfg.Version+"-darwin-arm64.zip")); err != nil {
+		t.Error(err)
+	}
 	if archs, err := exec.Command("lipo", "-archs", bin).Output(); err != nil || strings.TrimSpace(string(archs)) != "arm64" {
 		t.Errorf("the executable: %q %v, want arm64's alone", archs, err)
 	}
@@ -93,7 +98,10 @@ func TestBuildMac(t *testing.T) {
 	if err := buildMac(app, &buildOptions{out: intel, arch: "amd64"}); err != nil {
 		t.Fatal(err)
 	}
-	ibin := filepath.Join(intel, app.displayName()+".app", "Contents", "MacOS", sanitizeExe(app.displayName()))
+	ibin := filepath.Join(intel, "darwin-amd64", app.displayName()+".app", "Contents", "MacOS", sanitizeExe(app.displayName()))
+	if _, err := os.Stat(filepath.Join(intel, "darwin-amd64", "sqliteapp-"+app.cfg.Version+"-darwin-amd64.zip")); err != nil {
+		t.Error(err)
+	}
 	if archs, err := exec.Command("lipo", "-archs", ibin).Output(); err != nil || strings.TrimSpace(string(archs)) != "x86_64" {
 		t.Errorf("--arch amd64's executable: %q %v", archs, err)
 	}
@@ -176,7 +184,7 @@ app { Net() }
 	if err := buildMac(app, &buildOptions{out: out}); err != nil {
 		t.Fatal(err)
 	}
-	bundle := filepath.Join(out, app.displayName()+".app")
+	bundle := filepath.Join(out, "darwin-"+runtime.GOARCH, app.displayName()+".app")
 	snap := filepath.Join(t.TempDir(), "n.png")
 	c := exec.Command(filepath.Join(bundle, "Contents", "MacOS", sanitizeExe(app.displayName())))
 	c.Env = append(os.Environ(), "ASUKA_SCRIPT=until:first: F;until:recent: t", "ASUKA_SNAPSHOT="+snap, "ASUKA_DUMP=1")

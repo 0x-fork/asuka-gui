@@ -1,9 +1,12 @@
 package main
 
 import (
+	"archive/zip"
 	"errors"
 	"fmt"
 	"html"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -44,7 +47,7 @@ func buildFlags(o *buildOptions) *flagSet {
 	fs.String(&o.bin, "bin", 0, "", "build the `program` asuka.toml's [bin.<name>] names, instead of the app")
 	fs.String(&o.target, "target", 0, "", "a program's `os-arch`: darwin-amd64, darwin-arm64, linux-amd64, linux-arm64, windows-amd64 or windows-arm64 (default: this computer's; another needs Zig)")
 	platformFlag(fs, &o.platform, []string{platformIOS, platformAndroid, platformMac, platformWindows, platformLinux, platformWeb},
-		"the `platform` to build for: ios, an .ipa for the App Store (or --distribution); android, an .aab for Google Play; mac, a universal .app (arm64 and x86_64); windows, a folder with the .exe (its icon and version built in) and its assets; linux, a folder in dist/linux laid out to install (the executable, its desktop file, icons, metainfo and assets), a .tar.gz of it and a Flatpak manifest; web, a static site (the core and the app as WebAssembly, and the web host) in dist/web. Default on macOS, Windows and Linux: this computer's")
+		"the `platform` to build for: ios, an .ipa for the App Store (or --distribution); android, an .aab for Google Play; mac, an .app and its .zip in dist/darwin-<arch> (Apple silicon's; --arch amd64: Intel's); windows, a folder in dist/windows-<arch> with the .exe (its icon and version built in) and its assets, and its .zip; linux, a folder in dist/linux-<arch> laid out to install (the executable, its desktop file, icons, metainfo and assets), a .tar.gz of it and a Flatpak manifest; web, a static site (the core and the app as WebAssembly, and the web host) in dist/web. Default on macOS, Windows and Linux: this computer's")
 	fs.String(&o.sign, "sign", 0, "", "macOS: a signing `identity`, e.g. \"Developer ID Application: ...\" (default: ad hoc)")
 	fs.String(&o.notarize, "notarize", 0, "", "macOS: notarize the signed app and staple the ticket: a notarytool keychain `profile` (xcrun notarytool store-credentials), or \"env\" for ASUKA_APPLE_ID, ASUKA_APPLE_PASSWORD (app-specific) and ASUKA_TEAM_ID")
 	fs.Bool(&o.simulator, "simulator", 0, "iOS: a release .app for the simulator instead (not signed for devices)")
@@ -193,4 +196,79 @@ func writePlist(b *strings.Builder, v any, depth int) {
 	default:
 		fmt.Fprintf(b, "%s<string>%s</string>\n", ind, html.EscapeString(fmt.Sprint(x)))
 	}
+}
+
+// desktopDir is where a desktop build for platform (darwin, windows,
+// linux: as its updates' target names it) and arch goes: a directory of its own in the output, so that another
+// architecture's build beside it (Apple silicon's and Intel's) doesn't
+// write over it.
+func desktopDir(o *buildOptions, platform, arch string) string {
+	return filepath.Join(o.out, platform+"-"+arch)
+}
+
+// releaseFile is the path of a desktop build's file to hand out, in its
+// directory: named for the app, its version, the platform and the
+// architecture (notes-1.2.0-darwin-arm64.zip), as its update files are, so
+// that every build's can go in one flat list (a GitHub release's).
+func releaseFile(app *asukaApp, o *buildOptions, platform, arch, ext string) string {
+	name := exeSlug(app.displayName(), app.bundleID) + "-" + app.cfg.Version + "-" + platform + "-" + arch + ext
+	return filepath.Join(desktopDir(o, platform, arch), name)
+}
+
+// zipDir writes a .zip of dir at out, its entries under dir's name (a
+// Windows build's folder, unzipped as it was).
+func zipDir(dir, out string) error {
+	tmp := out + ".tmp"
+	f, err := os.Create(tmp)
+	if err != nil {
+		return err
+	}
+	zw := zip.NewWriter(f)
+	base := filepath.Dir(dir)
+	err = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(base, p)
+		if err != nil {
+			return err
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		h, err := zip.FileInfoHeader(info)
+		if err != nil {
+			return err
+		}
+		h.Name = filepath.ToSlash(rel)
+		if d.IsDir() {
+			h.Name += "/"
+			_, err = zw.CreateHeader(h)
+			return err
+		}
+		h.Method = zip.Deflate
+		w, err := zw.CreateHeader(h)
+		if err != nil {
+			return err
+		}
+		src, err := os.Open(p)
+		if err != nil {
+			return err
+		}
+		defer src.Close()
+		_, err = io.Copy(w, src)
+		return err
+	})
+	if cerr := zw.Close(); err == nil {
+		err = cerr
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return os.Rename(tmp, out)
 }

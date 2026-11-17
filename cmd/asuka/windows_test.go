@@ -226,7 +226,10 @@ func TestBuildWindows(t *testing.T) {
 		if err := buildWindows(app, &buildOptions{out: out, arch: arch}); err != nil {
 			t.Fatal(err)
 		}
-		dir := filepath.Join(out, sanitizeExe(app.displayName()))
+		dir := filepath.Join(out, "windows-"+arch, sanitizeExe(app.displayName()))
+		if _, err := os.Stat(filepath.Join(out, "windows-"+arch, "sqliteapp-"+app.cfg.Version+"-windows-"+arch+".zip")); err != nil {
+			t.Error(err)
+		}
 		entries, _ := os.ReadDir(dir)
 		var names []string
 		for _, e := range entries {

@@ -268,7 +268,8 @@ func buildMac(app *asukaApp, o *buildOptions) error {
 		return err
 	}
 	run := macRunner(o.verbose)
-	bundle := filepath.Join(o.out, app.displayName()+".app")
+	dir := desktopDir(o, "darwin", arch)
+	bundle := filepath.Join(dir, app.displayName()+".app")
 	exe, err := writeMacBundle(app, bundle, work, true, run)
 	if err != nil {
 		return err
@@ -323,14 +324,24 @@ func buildMac(app *asukaApp, o *buildOptions) error {
 	}
 	fmt.Printf("asuka: %s\n", bundle)
 	if !o.appStore {
+		// The app to hand out: zipped as Apple's tools do (its signature
+		// and stapled ticket kept), named for its version and Macs.
+		zip := releaseFile(app, o, "darwin", arch, ".zip")
+		os.Remove(zip)
+		if err := run(dir, nil, "ditto", "-c", "-k", "--keepParent", bundle, zip); err != nil {
+			return err
+		}
+		fmt.Printf("asuka: %s\n", zip)
+	}
+	if !o.appStore {
 		// The update files, of the app as notarized and stapled.
-		b := updateBuild{target: macTarget(arch), kind: iupdate.Bundle, dir: o.out, entries: []string{filepath.Base(bundle)}, root: bundle}
+		b := updateBuild{target: macTarget(arch), kind: iupdate.Bundle, dir: dir, entries: []string{filepath.Base(bundle)}, root: bundle}
 		if _, err := writeUpdates(app, o.out, b, o.publishing); err != nil {
 			return err
 		}
 	}
 	if o.appStore {
-		pkg, err := macPackage(app, bundle, prof, identity, o.out, run)
+		pkg, err := macPackage(app, bundle, prof, identity, releaseFile(app, o, "darwin", arch, ".pkg"), run)
 		if err != nil {
 			return err
 		}
@@ -398,11 +409,10 @@ func macSigning(cfg *appConfig, o *buildOptions) (*macProfile, string, error) {
 	return prof, identity, nil
 }
 
-// macPackage makes the Mac App Store's .pkg of the signed app, signed
-// with the team's Mac Installer Distribution identity (unsigned only for
-// a profile that isn't Apple's, to look at).
-func macPackage(app *asukaApp, bundle string, prof *macProfile, identity, out string, run func(dir string, env []string, cmd string, args ...string) error) (string, error) {
-	pkg := filepath.Join(out, app.displayName()+".pkg")
+// macPackage makes the Mac App Store's .pkg of the signed app at pkg,
+// signed with the team's Mac Installer Distribution identity (unsigned
+// only for a profile that isn't Apple's, to look at).
+func macPackage(app *asukaApp, bundle string, prof *macProfile, identity, pkg string, run func(dir string, env []string, cmd string, args ...string) error) (string, error) {
 	os.Remove(pkg)
 	args := []string{"--component", bundle, "/Applications"}
 	if prof.signed || identity != "-" {

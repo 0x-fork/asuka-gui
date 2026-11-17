@@ -6,9 +6,9 @@
 |---|---|---|---|
 | `ios` | `<Name>.ipa`，已为 App Store 签名 | 装有 Xcode 的 Mac | TestFlight、App Store（`asuka publish`） |
 | `android` | `<Name>.aab`，用你的上传密钥签名 | 装有 JDK、Android SDK 和 NDK 的任意系统 | Google Play（`asuka publish`） |
-| `mac` | `<Name>.app`（Apple 芯片；`--arch amd64`：Intel）；或 `.pkg`（`--appstore`） | 装有 Xcode 命令行工具的 Mac | 签名并公证后供用户下载；Mac App Store |
-| `windows` | `<Name>/`，内含 `.exe` 及其资源 | 装有 clang 的 Windows，或装有 Zig 的任意系统 | zip 压缩包，或你自己制作的安装程序、MSIX |
-| `linux` | `linux/`：一个安装前缀目录、一个 `.tar.gz`、一份 Flatpak 清单 | 装有 C 编译器的 Linux，或装有 Zig 的任意系统 | `.tar.gz`、Flatpak |
+| `mac` | `darwin-<arch>/`：`<Name>.app` 及其 `.zip`（Apple 芯片；`--arch amd64`：Intel）；或 `.pkg`（`--appstore`） | 装有 Xcode 命令行工具的 Mac | 签名并公证后供用户下载；Mac App Store |
+| `windows` | `windows-<arch>/`：`<Name>/`（内含 `.exe` 及其资源）及其 `.zip` | 装有 clang 的 Windows，或装有 Zig 的任意系统 | zip 压缩包，或你自己制作的安装程序、MSIX |
+| `linux` | `linux-<arch>/`：一个安装前缀目录、一个 `.tar.gz`、一份 Flatpak 清单 | 装有 C 编译器的 Linux，或装有 Zig 的任意系统 | `.tar.gz`、Flatpak |
 | `web` | `web/`，一个静态网站 | 装有 Zig 的任意系统 | 任意 Web 服务器或 CDN |
 
 不加 `--platform` 时，在 Mac、Windows PC 或 Linux 机器上会为当前这台电脑构建。构建使用平台的编译器（Apple 平台用 Xcode 的，Android 用 NDK 的，Windows 和 Linux 用系统的）；[Zig](https://ziglang.org/download) 用来为 Web 构建，以及在其他系统上为 Windows 和 Linux 构建（设置 `ASUKA_CC=zig` 则在所有地方都用它）。桌面构建里有什么，见[桌面端](desktop.md#桌面应用是怎么构成的)。
@@ -167,7 +167,7 @@ asuka publish --platform android --track production --rollout 0.1
 asuka build --platform mac
 ```
 
-这条命令在 Mac 上生成 `dist/<Name>.app`：一个面向 Apple 芯片 Mac 的应用，要求 macOS 11 及以上。加上 `--arch amd64` 则生成面向 Intel Mac 的版本，这是单独的一次构建（不会合成一个同时支持两者、体积翻倍的通用应用）；你要支持哪些 Mac，就分别发布对应的版本。应用里有它的可执行文件、应用的设置（`Contents/Resources/asuka-app.json`）、Info.plist、图标、语言和资源，采用临时签名（ad hoc），可以在你自己的 Mac 上运行。和 iOS 一样，应用导入的包会从 `ios.usage` 中带上它们的用途说明（定位的用途说明在 Mac 上是 `NSLocationUsageDescription`，取自 `NSLocationWhenInUseUsageDescription`），以及强化运行时（hardened runtime）所需的对应 entitlement（`com.apple.security.device.camera`、`...audio-input`、`...personal-information.location` 等）。缺少这些 entitlement，用 Developer ID 签名的应用就无法访问相机、麦克风或用户数据。应用的原生包的 Swift 会针对这次构建的架构编译进可执行文件（见[原生代码](native.md)）。使用了 `std/sqlite` 的应用，SQLite 也会编译进可执行文件（见[库文件](data.md#库文件)）。
+这条命令在 Mac 上生成 `dist/darwin-arm64/<Name>.app`：一个面向 Apple 芯片 Mac 的应用，要求 macOS 11 及以上；旁边还有 `<name>-<version>-darwin-arm64.zip`，即用于分发的应用（按 Apple 工具的方式压缩，保留签名和公证）。加上 `--arch amd64` 则在 `dist/darwin-amd64` 中生成面向 Intel Mac 的版本，这是单独的一次构建（不会合成一个同时支持两者、体积翻倍的通用应用）。每次构建的文件名都各不相同，因此可以并排放进同一个 Release。应用里有它的可执行文件、应用的设置（`Contents/Resources/asuka-app.json`）、Info.plist、图标、语言和资源，采用临时签名（ad hoc），可以在你自己的 Mac 上运行。和 iOS 一样，应用导入的包会从 `ios.usage` 中带上它们的用途说明（定位的用途说明在 Mac 上是 `NSLocationUsageDescription`，取自 `NSLocationWhenInUseUsageDescription`），以及强化运行时（hardened runtime）所需的对应 entitlement（`com.apple.security.device.camera`、`...audio-input`、`...personal-information.location` 等）。缺少这些 entitlement，用 Developer ID 签名的应用就无法访问相机、麦克风或用户数据。应用的原生包的 Swift 会针对这次构建的架构编译进可执行文件（见[原生代码](native.md)）。使用了 `std/sqlite` 的应用，SQLite 也会编译进可执行文件（见[库文件](data.md#库文件)）。
 
 要在 Mac App Store 之外分发给别人，需要用你的 Developer ID 签名，再交给 Apple 公证，这样 Gatekeeper 才会放行：
 
@@ -186,7 +186,7 @@ asuka build --platform mac --profile Notes.provisionprofile --notarize asuka
 
 描述文件会以 `Contents/embedded.provisionprofile` 的形式放进应用。签名时，应用会从描述文件授予的 entitlement 中取出它的包需要的那些（`com.apple.developer.aps-environment`、`com.apple.developer.applesignin`、`com.apple.developer.devicecheck.appattest-environment`），再加上应用 ID、团队和强化运行时。描述文件缺了什么，构建会告诉你。不加 `--sign` 时，签名身份取钥匙串中该描述文件允许的证书（Developer ID Application）；如果 `--sign` 指定的身份不在描述文件中，会报错。`--profile` 可以是文件路径，也可以是已安装描述文件的名称或 UUID；`ASUKA_MAC_PROFILE` 和 `asuka.toml` 的 `mac.profile` 作用相同。三者都没有指定时，使用了这些包的应用会用已安装的（位于 Xcode 描述文件目录中的）与其 ID 最匹配的描述文件签名；一个都找不到，就不带描述文件签名，此时构建会告诉你哪些功能在 Mac 上无法使用，应用的其余部分照常工作。
 
-`--appstore` 则改为生成用于 Mac App Store 的 `dist/<Name>.pkg`：应用运行在 App 沙盒中（允许访问网络和用户选择的文件），用 Mac App Store 描述文件对应的证书签名（Apple Distribution；描述文件依次取 `asuka.toml` 的 `mac.appStoreProfile`、`--profile`、最佳匹配），安装包则用团队的 Mac Installer Distribution 证书签名。之后用 Transporter 或 `xcrun altool --upload-package` 上传即可；`asuka publish` 目前还不支持上传 Mac 构建。公证只适用于在商店之外分发的应用，所以同时使用 `--notarize` 和 `--appstore` 会报错。
+`--appstore` 则改为生成用于 Mac App Store 的 `dist/darwin-arm64/<name>-<version>-darwin-arm64.pkg`：应用运行在 App 沙盒中（允许访问网络和用户选择的文件），用 Mac App Store 描述文件对应的证书签名（Apple Distribution；描述文件依次取 `asuka.toml` 的 `mac.appStoreProfile`、`--profile`、最佳匹配），安装包则用团队的 Mac Installer Distribution 证书签名。之后用 Transporter 或 `xcrun altool --upload-package` 上传即可；`asuka publish` 目前还不支持上传 Mac 构建。公证只适用于在商店之外分发的应用，所以同时使用 `--notarize` 和 `--appstore` 会报错。
 
 ## Windows
 
@@ -195,7 +195,7 @@ asuka build --platform windows               # x64，Windows on Arm 上以模拟
 asuka build --platform windows --arch arm64  # 在 Arm PC 上原生运行
 ```
 
-这会生成一个文件夹 `dist/<Name>`：`<Name>.exe` 就是应用本身，在 Windows 上由 clang、在任意系统上由 Zig 为对应架构构建；旁边的 `asuka-app.json` 是应用的设置；然后是应用的资源。使用了 `std/sqlite` 的应用，SQLite 编译在 `.exe` 里。`.exe` 是一个 GUI 程序（不会弹出控制台窗口），链接进了各种资源：Windows 所需各尺寸的图标、版本信息（来自 `version` 和 `build`），以及一份面向 Windows 10 和 11 的清单（manifest），声明使用通用控件 6、支持每显示器 DPI 感知和 UTF-8。如果应用目录里有自己的资源目标文件（COFF 格式的 `.syso`，如 `rsrc_windows_amd64.syso`），就改用其中的资源。最后，把文件夹打成 zip，或者打包成安装程序、MSIX。
+这会生成一个文件夹 `dist/windows-amd64/<Name>`（Arm 版为 `windows-arm64`）：`<Name>.exe` 就是应用本身，在 Windows 上由 clang、在任意系统上由 Zig 为对应架构构建；旁边的 `asuka-app.json` 是应用的设置；然后是应用的资源。使用了 `std/sqlite` 的应用，SQLite 编译在 `.exe` 里。`.exe` 是一个 GUI 程序（不会弹出控制台窗口），链接进了各种资源：Windows 所需各尺寸的图标、版本信息（来自 `version` 和 `build`），以及一份面向 Windows 10 和 11 的清单（manifest），声明使用通用控件 6、支持每显示器 DPI 感知和 UTF-8。如果应用目录里有自己的资源目标文件（COFF 格式的 `.syso`，如 `rsrc_windows_amd64.syso`），就改用其中的资源。文件夹旁边是 `<name>-<version>-windows-amd64.zip`，即压缩好的文件夹，可直接分发；也可以把文件夹打包成安装程序、MSIX。
 
 为了让 SmartScreen 知道这个 `.exe` 出自谁手，要用导出为 `.pfx` 的代码签名证书给它签名：
 
@@ -214,7 +214,7 @@ asuka build --platform linux                # 当前机器的架构，否则为 
 asuka build --platform linux --arch arm64   # amd64 或 arm64
 ```
 
-Linux 构建可以在任何系统上完成，构建时不需要安装 GTK（应用启动时才打开 GTK 4 和 libadwaita）：在 Linux 上用本机的 C 编译器构建，在其他系统上用 Zig 构建。它会在 `dist/linux` 中生成：
+Linux 构建可以在任何系统上完成，构建时不需要安装 GTK（应用启动时才打开 GTK 4 和 libadwaita）：在 Linux 上用本机的 C 编译器构建，在其他系统上用 Zig 构建。它会在 `dist/linux-amd64`（`--arch arm64` 时为 `linux-arm64`）中生成：
 
 - `<name>/`：一个按安装前缀（install prefix）结构组织的文件夹，以应用名的小写形式命名（`My Notes` 会变成 `my-notes`），其中包括：
   - `bin/my-notes`：应用本身，一个可执行文件；
@@ -234,7 +234,7 @@ Linux 构建可以在任何系统上完成，构建时不需要安装 GTK（应�
 
   ```sh
   flatpak install flathub org.gnome.Platform//50 org.gnome.Sdk//50   # 只需一次
-  flatpak-builder --user --install --force-clean build dist/linux/com.example.notes.yml
+  flatpak-builder --user --install --force-clean build dist/linux-amd64/com.example.notes.yml
   flatpak run com.example.notes
   ```
 
@@ -637,16 +637,13 @@ CLI 用它自带的那个版本的 Asuka 构建应用，所以安装的 CLI 版�
           ASUKA_APPLE_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
           ASUKA_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          asuka build --platform mac --sign "Developer ID Application: Your Name (TEAMID)" --notarize env -o dist/arm64
-          asuka build --platform mac --arch amd64 --sign "Developer ID Application: Your Name (TEAMID)" --notarize env -o dist/intel
+          asuka build --platform mac --sign "Developer ID Application: Your Name (TEAMID)" --notarize env
+          asuka build --platform mac --arch amd64 --sign "Developer ID Application: Your Name (TEAMID)" --notarize env
       - name: attach to the tag's release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: |
-          ditto -c -k --keepParent dist/arm64/Notes.app dist/Notes-mac-arm64.zip
-          ditto -c -k --keepParent dist/intel/Notes.app dist/Notes-mac-intel.zip
-          gh release upload "$GITHUB_REF_NAME" dist/Notes-mac-arm64.zip dist/Notes-mac-intel.zip --clobber
+        run: gh release upload "$GITHUB_REF_NAME" dist/*/*.zip --clobber
 
   windows-linux:
     needs: release
@@ -669,10 +666,8 @@ CLI 用它自带的那个版本的 Asuka 构建应用，所以安装的 CLI 版�
           ASUKA_WINDOWS_CERT: ${{ runner.temp }}/cert.pfx
           ASUKA_WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
-          asuka build --platform windows -o dist/x64
-          asuka build --platform windows --arch arm64 -o dist/arm64
-          (cd dist/x64 && zip -r ../Notes-windows-x64.zip Notes)
-          (cd dist/arm64 && zip -r ../Notes-windows-arm64.zip Notes)
+          asuka build --platform windows
+          asuka build --platform windows --arch arm64
       - name: Linux, amd64 and arm64
         run: |
           asuka build --platform linux
@@ -681,10 +676,10 @@ CLI 用它自带的那个版本的 Asuka 构建应用，所以安装的 CLI 版�
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: gh release upload "$GITHUB_REF_NAME" dist/*.zip dist/linux/*.tar.gz --clobber
+        run: gh release upload "$GITHUB_REF_NAME" dist/*/*.zip dist/*/*.tar.gz --clobber
 ```
 
-它们需要的 secrets：`MAC_CERTIFICATE` 是你的 Developer ID Application 证书及其私钥（一个 `.p12`），`MAC_CERTIFICATE_PASSWORD` 是它的密码；`APPLE_ID`、`APPLE_APP_PASSWORD`（App 专用密码，在 account.apple.com 生成）和 `APPLE_TEAM_ID` 供公证服务使用；`WINDOWS_CERTIFICATE` 是代码签名证书（一个 `.pfx`），`WINDOWS_CERTIFICATE_PASSWORD` 是它的密码。每次 Linux 构建都会生成各自的 `.tar.gz`，而 Flatpak 清单只打包最后构建的那一个，因此只对应那一个架构。
+它们需要的 secrets：`MAC_CERTIFICATE` 是你的 Developer ID Application 证书及其私钥（一个 `.p12`），`MAC_CERTIFICATE_PASSWORD` 是它的密码；`APPLE_ID`、`APPLE_APP_PASSWORD`（App 专用密码，在 account.apple.com 生成）和 `APPLE_TEAM_ID` 供公证服务使用；`WINDOWS_CERTIFICATE` 是代码签名证书（一个 `.pfx`），`WINDOWS_CERTIFICATE_PASSWORD` 是它的密码。每次构建都把文件放在自己的目录里（`dist/darwin-arm64`、`dist/windows-amd64`、`dist/linux-arm64`），文件名包含应用名、版本、平台和架构，所以 Release 可以把它们全部并排收下；每次 Linux 构建的 Flatpak 清单打包的都是它自己的那一份。
 
 如果[更新](#自动更新)发布在 GitHub 上，把 `asuka build` 换成 `asuka publish`，就会同时把每个平台的更新上传到该标签的 Release 草稿（由 `release` 任务创建），等所有平台都上传完再发布。具体做法是：把私钥添加为 secret（`gh secret set ASUKA_UPDATE_PRIVATE_KEY < asuka-update.key`），为这些任务提供 `ASUKA_UPDATE_PRIVATE_KEY` 和 `GH_TOKEN`，并按标签上的版本号构建：
 

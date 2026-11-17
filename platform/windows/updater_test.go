@@ -76,7 +76,7 @@ func TestUpdater(t *testing.T) {
 	srv.Close()
 	// 1.0.0 installed: its folder.
 	app := filepath.Join(local, "app")
-	copyTree(t, filepath.Join(v100, "Updater"), app)
+	copyTree(t, filepath.Join(v100, "windows-"+w.arch, "Updater"), app)
 
 	// The feed's server, in the signed-in session as the app is.
 	server := filepath.Join(local, "feed.exe")

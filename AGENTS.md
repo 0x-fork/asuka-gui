@@ -113,7 +113,7 @@ go run ./cmd/asuka dev examples/counter            # macOS (on a Mac, no --platf
 go run ./cmd/asuka build examples/counter          # likewise: a universal .app (--sign "Developer ID Application: ..."; default ad hoc)
 go test ./platform/macos/mactest                 # the macOS host: Asuka apps on the Mac player, driven and read through its automation (ASUKA_COMMANDS: the view tree as JSON)
 swift test --package-path platform/macos         # the macOS host's Swift unit tests and its decoder against the golden files
-ASUKA_SNAPSHOT=/tmp/c.png ASUKA_DUMP=1 ASUKA_SCRIPT="tap:Add" "dist/Counter.app/Contents/MacOS/Counter"  # macOS: steps, then the window as a PNG (the window server's) and its view tree, then quit
+ASUKA_SNAPSHOT=/tmp/c.png ASUKA_DUMP=1 ASUKA_SCRIPT="tap:Add" "dist/darwin-arm64/Counter.app/Contents/MacOS/Counter"  # macOS: steps, then the window as a PNG (the window server's) and its view tree, then quit
 go run ./cmd/asuka dev examples/counter            # Windows (on a PC, no --platform: windows): the app and its Win32 host in one process, rerun on save
 go run ./cmd/asuka build --platform windows examples/counter  # a folder: the .exe (icon, manifest, version) and its assets; from any system
 go test ./platform/windows                       # the Windows host (C), its apps built with Zig and driven in Windows (on Windows, or the swiftvm VM ASUKA_WINDOWS_VM names: "Windows Fresh")
@@ -123,7 +123,7 @@ go run ./cmd/asuka dev examples/counter            # Linux (on Linux, no --platf
 go run ./cmd/asuka build --platform linux examples/counter    # an install prefix, a .tar.gz and a Flatpak manifest; from any system
 go run platform/linux/gen_symbols.go             # the Linux host's fallback symbols, from the web host's
 go test -tags e2e ./e2e -run Linux               # GUI tests: the examples under Xvfb (Linux)
-$env:ASUKA_SNAPSHOT='c.png'; $env:ASUKA_DUMP='1'; $env:ASUKA_SCRIPT='tap:Add'; .\examples\counter\dist\Counter\Counter.exe  # Windows (PowerShell): steps, then the window as a PNG and its view tree
+$env:ASUKA_SNAPSHOT='c.png'; $env:ASUKA_DUMP='1'; $env:ASUKA_SCRIPT='tap:Add'; .\examples\counter\dist\windows-amd64\Counter\Counter.exe  # Windows (PowerShell): steps, then the window as a PNG and its view tree
 go run ./cmd/asuka dev --platform web examples/counter       # the web: served to the browser, reloaded on save (--lan: to a phone)
 go run ./cmd/asuka build --platform web examples/counter     # a static site, in examples/counter/dist/web
 go test -tags e2e ./e2e -run Web                  # GUI tests: the examples in headless Chrome

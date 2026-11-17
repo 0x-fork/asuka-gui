@@ -13,9 +13,9 @@ GitHub's releases or an S3 bucket (see [Updates](#updates)).
 |---|---|---|---|
 | `ios` | `<Name>.ipa`, signed for the App Store | a Mac with Xcode | TestFlight, the App Store (`asuka publish`) |
 | `android` | `<Name>.aab`, signed with your upload key | any system with a JDK, the Android SDK and the NDK | Google Play (`asuka publish`) |
-| `mac` | `<Name>.app` (Apple silicon; `--arch amd64`: Intel); or a `.pkg` (`--appstore`) | a Mac with Xcode's command line tools | a download, signed and notarized; the Mac App Store |
-| `windows` | `<Name>/`, the `.exe` and its assets | Windows with clang, or any system with Zig | a zip, or an installer or MSIX of yours |
-| `linux` | `linux/`: an install prefix, a `.tar.gz`, a Flatpak manifest | Linux with a C compiler, or any system with Zig | the `.tar.gz`, a Flatpak |
+| `mac` | `darwin-<arch>/`: `<Name>.app` and its `.zip` (Apple silicon; `--arch amd64`: Intel); or a `.pkg` (`--appstore`) | a Mac with Xcode's command line tools | a download, signed and notarized; the Mac App Store |
+| `windows` | `windows-<arch>/`: `<Name>/`, the `.exe` and its assets, and its `.zip` | Windows with clang, or any system with Zig | the zip, or an installer or MSIX of yours |
+| `linux` | `linux-<arch>/`: an install prefix, a `.tar.gz`, a Flatpak manifest | Linux with a C compiler, or any system with Zig | the `.tar.gz`, a Flatpak |
 | `web` | `web/`, a static site | any system with Zig | any web server or CDN |
 
 Without `--platform`, on a Mac, a Windows PC or a Linux machine, it
@@ -356,10 +356,14 @@ instead of making one.
 asuka build --platform mac
 ```
 
-makes `dist/<Name>.app` on a Mac: an app for Macs with Apple silicon,
-macOS 11 and later. `--arch amd64` makes Intel Macs' instead, a build of
-its own (not one universal app of both, twice the size); publish each
-for the Macs you ship to. The app has its executable, its settings (`Contents/Resources/asuka-app.json`), its
+makes `dist/darwin-arm64/<Name>.app` on a Mac: an app for Macs with
+Apple silicon, macOS 11 and later, and beside it
+`<name>-<version>-darwin-arm64.zip`, the app to hand out (zipped as
+Apple's tools do, its signature and notarization kept). `--arch amd64`
+makes Intel Macs' in `dist/darwin-amd64` instead, a build of its own
+(not one universal app of both, twice the size): each build's files
+have names of their own, so they go in one release side by side. The
+app has its executable, its settings (`Contents/Resources/asuka-app.json`), its
 Info.plist, icon, languages and assets, signed ad hoc: it runs on your
 Mac. The packages the app imports
 give it their purpose strings, as on iOS, from `ios.usage` (location's
@@ -413,7 +417,7 @@ an app that uses those packages is signed with the best match installed
 for its ID (in Xcode's profile folders), else without one: the build
 says what won't work on the Mac, and the rest of the app does.
 
-`--appstore` makes `dist/<Name>.pkg` for the Mac App Store instead: the app in the
+`--appstore` makes `dist/darwin-arm64/<name>-<version>-darwin-arm64.pkg` for the Mac App Store instead: the app in the
 App Sandbox (with the network and the files the user picks), signed
 with a Mac App Store profile's certificate (Apple Distribution;
 asuka.toml's `mac.appStoreProfile`, else `--profile`, else the best match),
@@ -429,7 +433,8 @@ asuka build --platform windows               # x64, which Windows on Arm runs em
 asuka build --platform windows --arch arm64  # native on Arm PCs
 ```
 
-makes a folder, `dist/<Name>`: `<Name>.exe`, the app (built for the
+makes a folder, `dist/windows-amd64/<Name>` (`windows-arm64` for Arm):
+`<Name>.exe`, the app (built for the
 architecture by clang on Windows or by Zig on any system); beside it
 `asuka-app.json`, its settings; and the app's assets. An app that uses
 `std/sqlite` has SQLite compiled into the `.exe`. The `.exe` is a GUI
@@ -437,8 +442,9 @@ program (no console window) with its resources linked in: the icon at Windows's 
 information (`version` and `build`), and a manifest that asks for the
 common controls 6, per-monitor DPI awareness and UTF-8, for Windows 10
 and 11. An app with a resource object of its own in its directory (a
-COFF `.syso`, `rsrc_windows_amd64.syso`) has its own resources instead. Zip the
-folder, or package it (an installer, MSIX).
+COFF `.syso`, `rsrc_windows_amd64.syso`) has its own resources instead. Beside
+the folder is `<name>-<version>-windows-amd64.zip`, the folder zipped, to
+hand out; or package the folder (an installer, MSIX).
 
 Sign the `.exe`, so SmartScreen knows who it's from, with a code signing
 certificate exported as a `.pfx`:
@@ -473,7 +479,8 @@ asuka build --platform linux --arch arm64   # amd64 or arm64
 
 It builds from any system, with no GTK installed to build against
 (the app opens GTK 4 and libadwaita as it starts): with this machine's
-C compiler on Linux, with Zig elsewhere. In `dist/linux` it makes:
+C compiler on Linux, with Zig elsewhere. In `dist/linux-amd64`
+(`linux-arm64` for `--arch arm64`) it makes:
 
 - `<name>/`, a folder laid out as an install prefix, named after the
   app in lower case (`My Notes`: `my-notes`):
@@ -499,7 +506,7 @@ C compiler on Linux, with Zig elsewhere. In `dist/linux` it makes:
 
   ```sh
   flatpak install flathub org.gnome.Platform//50 org.gnome.Sdk//50   # once
-  flatpak-builder --user --install --force-clean build dist/linux/com.example.notes.yml
+  flatpak-builder --user --install --force-clean build dist/linux-amd64/com.example.notes.yml
   flatpak run com.example.notes
   ```
 
@@ -1096,16 +1103,13 @@ are named after `asuka.toml`'s `name`.)
           ASUKA_APPLE_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
           ASUKA_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          asuka build --platform mac --sign "Developer ID Application: Your Name (TEAMID)" --notarize env -o dist/arm64
-          asuka build --platform mac --arch amd64 --sign "Developer ID Application: Your Name (TEAMID)" --notarize env -o dist/intel
+          asuka build --platform mac --sign "Developer ID Application: Your Name (TEAMID)" --notarize env
+          asuka build --platform mac --arch amd64 --sign "Developer ID Application: Your Name (TEAMID)" --notarize env
       - name: attach to the tag's release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: |
-          ditto -c -k --keepParent dist/arm64/Notes.app dist/Notes-mac-arm64.zip
-          ditto -c -k --keepParent dist/intel/Notes.app dist/Notes-mac-intel.zip
-          gh release upload "$GITHUB_REF_NAME" dist/Notes-mac-arm64.zip dist/Notes-mac-intel.zip --clobber
+        run: gh release upload "$GITHUB_REF_NAME" dist/*/*.zip --clobber
 
   windows-linux:
     needs: release
@@ -1128,10 +1132,8 @@ are named after `asuka.toml`'s `name`.)
           ASUKA_WINDOWS_CERT: ${{ runner.temp }}/cert.pfx
           ASUKA_WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
-          asuka build --platform windows -o dist/x64
-          asuka build --platform windows --arch arm64 -o dist/arm64
-          (cd dist/x64 && zip -r ../Notes-windows-x64.zip Notes)
-          (cd dist/arm64 && zip -r ../Notes-windows-arm64.zip Notes)
+          asuka build --platform windows
+          asuka build --platform windows --arch arm64
       - name: Linux, amd64 and arm64
         run: |
           asuka build --platform linux
@@ -1140,7 +1142,7 @@ are named after `asuka.toml`'s `name`.)
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: gh release upload "$GITHUB_REF_NAME" dist/*.zip dist/linux/*.tar.gz --clobber
+        run: gh release upload "$GITHUB_REF_NAME" dist/*/*.zip dist/*/*.tar.gz --clobber
 ```
 
 Their secrets: `MAC_CERTIFICATE`, your Developer ID Application
@@ -1148,9 +1150,11 @@ certificate with its private key (a `.p12`), and
 `MAC_CERTIFICATE_PASSWORD`; `APPLE_ID`, `APPLE_APP_PASSWORD` (an
 app-specific password, from account.apple.com) and `APPLE_TEAM_ID`, for
 the notary service; `WINDOWS_CERTIFICATE`, a code signing certificate
-(a `.pfx`), and `WINDOWS_CERTIFICATE_PASSWORD`. Each Linux build makes
-its own `.tar.gz`; the Flatpak manifest packages the last one built, for
-its architecture.
+(a `.pfx`), and `WINDOWS_CERTIFICATE_PASSWORD`. Each build makes its
+files in a directory of its own (`dist/darwin-arm64`,
+`dist/windows-amd64`, `dist/linux-arm64`), named for the app, its
+version, platform and architecture, so the release takes them all, side
+by side; each Linux build's Flatpak manifest packages its own.
 
 With [updates](#updates) on GitHub, `asuka publish` in place of `asuka
 build` also uploads each platform's update to the tag's draft release
