@@ -277,4 +277,33 @@ TEST(fuzz_answers) {
 	CHECK_EQ_INT(ak_obj_live, live);
 }
 
+// A host that says its answer is longer than the buffer it wrote it to,
+// without memory of its own for it: a bad answer, not a read past it.
+static size_t too_long(uint64_t h, uint32_t method, const uint8_t *in, size_t len, uint8_t *out, size_t cap, uint8_t **big) {
+	AK_UNUSED(h);
+	AK_UNUSED(method);
+	AK_UNUSED(in);
+	AK_UNUSED(len);
+	AK_UNUSED(big);
+	// Ok, then a string that runs past out, within the length said.
+	uint32_t n = (uint32_t)cap;
+	out[0] = 0;
+	memcpy(out + 1, &n, 4);
+	return cap + 4096;
+}
+
+TEST(answer_longer_than_its_buffer) {
+	asuka_host_callbacks h = host;
+	h.native_call = too_long;
+	ak_native_set_host(&h);
+	ak_native_obj *obj = ak_native_wrap(9);
+	ak_val v = ak_native_call(obj, 1, (ak_val){0}, "", "s", NULL, NULL);
+	void *e = ak_error_take();
+	CHECK(e != NULL);
+	CHECK(v.p == NULL);
+	ak_release(e);
+	ak_release(obj);
+	ak_native_set_host(&host);
+}
+
 T_MAIN()

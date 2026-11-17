@@ -301,6 +301,11 @@ static bool status(ak_reader *r, ak_arr *errors) {
 	return false;
 }
 
+// answer_len is how much of an answer to read: a host's answer longer
+// than out that isn't in memory of its own (*big) breaks the contract,
+// and is read as none (a bad answer) rather than past out.
+static size_t answer_len(size_t n, size_t cap, const uint8_t *big) { return big || n <= cap ? n : 0; }
+
 ak_val ak_native_new(const char *cls, size_t cls_len, uint32_t iface, ak_arr *errors) {
 	if (!host || !host->native_new) {
 		ak_throw_msg("unsupported: no native code here (%.*s)", (int)cls_len, cls);
@@ -308,7 +313,7 @@ ak_val ak_native_new(const char *cls, size_t cls_len, uint32_t iface, ak_arr *er
 	}
 	uint8_t out[256], *big = NULL;
 	size_t n = host->native_new((const uint8_t *)cls, cls_len, iface, out, sizeof out, &big);
-	ak_reader r = {big ? big : out, n, 0, false};
+	ak_reader r = {big ? big : out, answer_len(n, sizeof out, big), 0, false};
 	ak_val v = {0};
 	if (status(&r, errors)) {
 		uint64_t h = ak_read_u64(&r);
@@ -337,7 +342,7 @@ ak_val ak_native_call(ak_native_obj *o, uint32_t method, ak_val args, const char
 	uint8_t out[512], *big = NULL;
 	size_t n = host->native_call(o->handle, method, in.data, in.len, out, sizeof out, &big);
 	ak_buf_free(&in);
-	ak_reader r = {big ? big : out, n, 0, false};
+	ak_reader r = {big ? big : out, answer_len(n, sizeof out, big), 0, false};
 	ak_val v = {0};
 	if (status(&r, errors)) v = ak_native_decode(&r, ret_desc, t);
 	if (big && host->native_free) host->native_free(big);
