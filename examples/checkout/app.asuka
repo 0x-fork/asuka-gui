@@ -3,28 +3,24 @@
 // other browsers. The wallet's sheet asks for a shipping address and a
 // method; the tax follows the address, the shipping the method, and the
 // coupon TEA10 takes 10% off (Apple Pay). Its server is pretend: it
-// accepts any token but "declined".
+// accepts any token but "declined". Its money is std/decimal's Decimals:
+// exact, rounded where the tax is.
 //
 //   asuka dev --platform ios examples/checkout      # the simulator's Apple Pay, with its test cards
 //   asuka dev --platform android examples/checkout  # Google Pay's TEST environment
 
 import platform/pay
+import std/decimal.{Decimal}
 
-let price = 4000 // cents
+let price: Decimal = .parse("40.00")!
 
 let methods = [
-  pay.ShippingMethod(id: "ground", label: "Ground", detail: "Arrives in 5 to 7 days", amount: "0.00"),
-  pay.ShippingMethod(id: "express", label: "Express", detail: "Arrives tomorrow", amount: "9.00"),
+  pay.ShippingMethod(id: "ground", label: "Ground", detail: "Arrives in 5 to 7 days", price: Decimal.zero),
+  pay.ShippingMethod(id: "express", label: "Express", detail: "Arrives tomorrow", price: .parse("9.00")!),
 ]
 
-/// The states' sales tax, in basis points: a pretend table.
-let taxRates = ["CA": 800, "NY": 400, "WA": 650]
-
-fn money(cents: int) -> string {
-  let sign = if cents < 0 { "-" } else { "" }
-  let c = cents.abs()
-  return "{sign}{c / 100}.{(c % 100).padded(2)}"
-}
+/// The states' sales tax: a pretend table.
+let taxRates: [string: Decimal] = ["CA": .parse("0.08")!, "NY": .parse("0.04")!, "WA": .parse("0.065")!]
 
 /// What the sheet shows as the user changes it.
 struct Order {
@@ -33,22 +29,24 @@ struct Order {
   method: string = "ground"
   coupon: string = ""
 
-  fn shipping() -> int = if method == "express" { 900 } else { 0 }
-  fn discount() -> int = if coupon == "TEA10" { quantity * price / 10 } else { 0 }
-  fn tax() -> int = (quantity * price - discount()) * (taxRates[state] ?? 0) / 10000
-  fn total() -> int = quantity * price - discount() + shipping() + tax()
+  fn subtotal() -> Decimal = price * quantity
+  fn shipping() -> Decimal = methods.find(m => m.id == method)?.price ?? Decimal.zero
+  fn discount() -> Decimal = if coupon == "TEA10" { (subtotal() / 10).rounded(places: 2) } else { Decimal.zero }
+  // Rounded to the cent, a half up, as tax tables are.
+  fn tax() -> Decimal = ((subtotal() - discount()) * (taxRates[state] ?? Decimal.zero)).rounded(places: 2, mode: .halfUp)
+  fn total() -> Decimal = subtotal() - discount() + shipping() + tax()
 
   fn items() -> [pay.Item] {
-    var items = [pay.Item(label: "Tea set × {quantity}", amount: money(quantity * price))]
-    if discount() > 0 {
-      items.push(pay.Item(label: "Coupon TEA10", amount: money(-discount()), kind: .discount))
+    var items = [pay.Item(label: "Tea set × {quantity}", price: subtotal())]
+    if !discount().isZero() {
+      items.push(pay.Item(label: "Coupon TEA10", price: -discount(), kind: .discount))
     }
-    items.push(pay.Item(label: "Shipping", amount: money(shipping()), kind: .shippingCost))
-    items.push(pay.Item(label: "Tax", amount: money(tax()), kind: .tax))
+    items.push(pay.Item(label: "Shipping", price: shipping(), kind: .shippingCost))
+    items.push(pay.Item(label: "Tax", price: tax(), kind: .tax))
     return items
   }
 
-  fn update() -> pay.Update = pay.Update(items: items(), total: pay.Item(amount: money(total())))
+  fn update() -> pay.Update = pay.Update(items: items(), total: pay.Item(price: total()))
 }
 
 /// What the server says when the processor declines a card.
@@ -58,7 +56,7 @@ struct Declined: Error {
 
 /// The app's server: it would charge the token with the processor
 /// (Stripe, Adyen, Braintree...). Here: any token but "declined".
-async fn charge(p: pay.Payment, cents: int) throws {
+async fn charge(p: pay.Payment, amount: Decimal) throws {
   if p.token == "declined" {
     throw Declined(message: "Your card was declined. Try another.")
   }
@@ -71,7 +69,7 @@ fn request(quantity: int) -> pay.Request {
     country: "US",
     currency: "USD",
     items: order.items(),
-    total: pay.Item(label: "Asuka Tea", amount: money(order.total())),
+    total: pay.Item(label: "Asuka Tea", price: order.total()),
     shipping: [.name, .address, .email],
     shippingMethods: methods,
     shippingCountries: ["US"],
@@ -153,7 +151,7 @@ component Checkout {
         variant: .gray
         on press { quantity = max(quantity - 1, 1) }
       }
-      Text("{quantity} × ${money(price)}") { font: .headline }
+      Text("{quantity} × {price.formatted(currency: "USD")}") { font: .headline }
       Button("+") {
         variant: .gray
         on press { quantity += 1 }
@@ -194,6 +192,8 @@ let ada = pay.Contact(
   address: pay.PostalAddress(lines: ["1 Infinite Loop"], city: "Cupertino", state: "CA", postalCode: "95014", countryCode: "US"),
 )
 
+fn dollars(text: string) -> Decimal = Decimal.parse(text)!
+
 /// Waits for the app's answer to what the wallet's user did.
 async fn answered(app: TestApp, w: pay.FakeWallet) {
   await app.until("the app's answer", () => !w.waiting)
@@ -210,19 +210,19 @@ test "Apple Pay" {
   app.tap("Buy with Apple Pay")
   await app.until("the sheet", () => w.sheet != none)
   let s = w.sheet!
-  expect(s.total.amount == "80.00" && s.total.label == "Asuka Tea" && s.items[0].label == "Tea set × 2")
+  expect(s.total.price == dollars("80") && s.total.label == "Asuka Tea" && s.items[0].label == "Tea set × 2")
   w.changeShippingContact(ada)
   await answered(app, w)
-  expect(w.sheet!.total.amount == "86.40") // 8% in California
+  expect(w.sheet!.total.price == dollars("86.40")) // 8% in California
   w.chooseShippingMethod("express")
   await answered(app, w)
-  expect(w.sheet!.total.amount == "95.40")
+  expect(w.sheet!.total.price == dollars("95.40"))
   w.enterCoupon("FREE")
   await answered(app, w)
   expect(w.sheet!.errors.map(e => e.field) == [pay.Field.couponInvalid])
   w.enterCoupon("tea10")
   await answered(app, w)
-  expect(w.sheet!.total.amount == "86.76" && w.sheet!.errors.isEmpty()) // 80 - 8 + 9 + 8% of 72
+  expect(w.sheet!.total.price == dollars("86.76") && w.sheet!.errors.isEmpty()) // 80 - 8 + 9 + 8% of 72
   let card = pay.Card(network: .visa, kind: .credit, name: "Visa 1234")
   w.authorize(pay.Payment(token: "declined", card: card, shipping: ada))
   await answered(app, w)
@@ -241,7 +241,7 @@ test "Google Pay" {
   await app.until("the sheet", () => w.sheet != none)
   w.changeShippingContact(ada)
   await answered(app, w)
-  expect(w.sheet!.total.amount == "43.20")
+  expect(w.sheet!.total.price == dollars("43.20"))
   w.changeShippingContact(pay.Contact(givenName: "Ada", address: pay.PostalAddress(state: "CA", postalCode: "75001", countryCode: "FR")))
   await answered(app, w)
   expect(w.sheet!.errors.map(e => e.field) == [pay.Field.unserviceable])

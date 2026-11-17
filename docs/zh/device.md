@@ -1456,8 +1456,8 @@ import platform/pay
 fn request() -> pay.Request = pay.Request(
   country: "US",
   currency: "USD",
-  items: [pay.Item(label: "Tea set", amount: "40.00"), pay.Item(label: "Tax", amount: "3.20", kind: .tax)],
-  total: pay.Item(label: "Asuka Tea", amount: "43.20"),
+  items: [pay.Item(label: "Tea set", price: .parse("40.00")!), pay.Item(label: "Tax", price: .parse("3.20")!, kind: .tax)],
+  total: pay.Item(label: "Asuka Tea", price: .parse("43.20")!),
   shipping: [.name, .address, .email],
   apple: pay.Apple(merchantId: "merchant.com.example.tea"),
   google: pay.Google(gateway: "stripe", gatewayParams: ["stripe:version": "2018-10-31", "stripe:publishableKey": "pk_test_123"]),
@@ -1466,7 +1466,7 @@ fn request() -> pay.Request = pay.Request(
     if c.address.countryCode != "US" {
       throw pay.Invalid(field: .unserviceable, message: "We ship in the United States only.")
     }
-    return pay.Update(total: pay.Item(amount: if c.address.state == "CA" { "43.20" } else { "40.00" }))
+    return pay.Update(total: pay.Item(price: .parse(if c.address.state == "CA" { "43.20" } else { "40.00" })!))
   },
   onAuthorize: p => {
     try await charge(p.token)   // 正常返回：付款成功；抛出的错误会显示在面板里
@@ -1504,7 +1504,7 @@ async fn charge(token: string) throws {}
 
 `pay.available(request)` 告诉你钱包对这个请求所接受的卡能做什么：`wallet` 是哪个钱包，`canPay` 表示能付款（这时才显示按钮），`hasCard` 表示用户有一张它接受的卡。只在 `canPay` 成立时显示 `PayButton`。它就是钱包自己的按钮（`PKPaymentButton`、Google 的 `PayButton`，以及 Web 上 Safari 和 Google 提供的按钮），两家的品牌规范都要求应用不要自己画：按钮上的文字（由 `type` 决定：`.buy`、`.checkout`、`.book`、`.donate`、`.order`、`.subscribe`、`.plain`，以及 Apple 独有的其他几种）和标志都使用用户的语言；`variant` 在浅色背景上用 `.black`，在深色背景上用 `.white`，在白色背景上用 `.whiteOutline`，也可以用 `.automatic`。按钮的高度由钱包决定（iOS 上 44 点，Mac 上 30 点，Google 的是 48），宽度由你给定。Apple Pay 里还没有卡时，Apple 的规范是显示 `.setUp` 按钮，点击后调用 `pay.setUp()` 添加一张卡（也可以照常显示购买按钮，它的面板同样能添加卡）；Google Pay 的面板会自己引导用户添加卡。
 
-`pay.pay(request)` 显示支付面板，面板关闭后返回 `Payment`；用户取消时抛出 `PayError.canceled`（已有另一个面板正在显示时抛出 `.busy`）。金额是以货币主单位表示的十进制字符串（`"12.75"`；Google Pay 最多两位小数；折扣用负数）。`total` 的标签是商家名称，和用户账单上显示的一致（Apple Pay 的面板上写作“Pay Asuka Tea”）；`items` 是总额上方的各行明细，其中的 `kind` 供 Google Pay 的面板使用。请求里还可以指定接受哪些卡（`networks`、`cards`、`cardCountries`），收货和账单联系信息里要用户提供哪些（`.name`、`.email`、`.phone`、`.address`），`shippingType` 和 `shippingMethods`（默认选中第一项），Google Pay 可以配送到哪些国家（`shippingCountries`），以及 Apple Pay 的优惠码（`coupons`）。设置 `recurring` 表示这是一笔订阅付款，包括常规扣款和试用期；`deferred` 表示稍后扣款（比如酒店）；`automaticReload` 表示储值余额的自动充值。钱包会把今后的扣款显示给用户，给出的令牌是用于这些扣款的商户令牌（merchant token）。
+`pay.pay(request)` 显示支付面板，面板关闭后返回 `Payment`；用户取消时抛出 `PayError.canceled`（已有另一个面板正在显示时抛出 `.busy`）。金额是 [`std/decimal`](stdlib.md) 的 `Decimal`，精确表示，以货币主单位计（`price: .parse("12.75")!`；Google Pay 最多两位小数；折扣用负数），每个平台拿到的都是同一个数（Apple 的 `NSDecimalNumber`，Google 的文本）。这个包的第一个版本用字符串表示金额（`amount: "12.75"`）；在下一个版本之前，`price` 为零时仍会读取它。`total` 的标签是商家名称，和用户账单上显示的一致（Apple Pay 的面板上写作“Pay Asuka Tea”）；`items` 是总额上方的各行明细，其中的 `kind` 供 Google Pay 的面板使用。请求里还可以指定接受哪些卡（`networks`、`cards`、`cardCountries`），收货和账单联系信息里要用户提供哪些（`.name`、`.email`、`.phone`、`.address`），`shippingType` 和 `shippingMethods`（默认选中第一项），Google Pay 可以配送到哪些国家（`shippingCountries`），以及 Apple Pay 的优惠码（`coupons`）。设置 `recurring` 表示这是一笔订阅付款，包括常规扣款和试用期；`deferred` 表示稍后扣款（比如酒店）；`automaticReload` 表示储值余额的自动充值。钱包会把今后的扣款显示给用户，给出的令牌是用于这些扣款的商户令牌（merchant token）。
 
 这些回调都是异步的，运行期间面板会等待（最多大约 30 秒），所以回调里可以请求应用的服务器：用户选择收货地址时调用 `onShippingContact`（付款之前，钱包只提供城市、州（省）、邮编和国家，足够计算税费和可选的配送方式），此外还有 `onShippingMethod`、`onPaymentMethod`（比如对某张卡加收手续费）和 `onCoupon`。每个回调要么返回一个 `Update`（新的明细、总额或配送方式；为 none 的保持不变），要么抛出 `pay.Invalid(field:, message:)`，面板会按它的字段显示出来，字段比如 `.shippingPostalCode`、`.unserviceable`（应用不配送的地址）、`.couponInvalid`；它还可以带上在此期间要显示的更新。一个 `Update` 的 `errors` 可以同时给出多个错误。错误信息要写给用户看。用户付款时（面容 ID、触控 ID 或输入 PIN），`onAuthorize` 会收到 `Payment`：把其中的 `token` 发给服务器，由服务器扣款。它抛出的错误会显示在面板里，用户可以重试；正常完成时面板打勾关闭，`pay` 返回这笔付款，其中包括卡片、联系人信息和所选的配送方式。
 
@@ -1534,7 +1534,7 @@ test "the tax, then paid" {
   await app.idle()
   w.changeShippingContact(pay.Contact(address: pay.PostalAddress(state: "CA", countryCode: "US")))
   await app.idle()
-  expect(w.sheet!.total.amount == "43.20")
+  expect(w.sheet!.total.price.string() == "43.2")
   w.authorize(pay.Payment(token: "tok_visa", shipping: pay.Contact(name: "Ana")))
   await app.idle()
   app.expect("Thanks, Ana!")
@@ -1546,9 +1546,9 @@ component Checkout {
   pay.PayButton {
     on press {
       let p = try await pay.pay(pay.Request(
-        total: pay.Item(label: "Asuka Tea", amount: "40.00"),
+        total: pay.Item(label: "Asuka Tea", price: .parse("40.00")!),
         shipping: [.address],
-        onShippingContact: c => pay.Update(total: pay.Item(amount: if c.address.state == "CA" { "43.20" } else { "40.00" })),
+        onShippingContact: c => pay.Update(total: pay.Item(price: .parse(if c.address.state == "CA" { "43.20" } else { "40.00" })!)),
       ))
       placed = "Thanks, {p.shipping.name}!"
     }

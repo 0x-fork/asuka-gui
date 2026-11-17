@@ -151,9 +151,9 @@ app { Store() }
 
 /// The store the tests sell from: the app's three products.
 fn products() -> purchase.FakeStore = purchase.fake([
-  purchase.FakeProduct(id: coins.id, kind: .consumable, title: "100 Coins", price: "$0.99", priceMicros: 990_000),
-  purchase.FakeProduct(id: pro.id, kind: .nonConsumable, title: "Pro", description: "Every level, for life", price: "$9.99", priceMicros: 9_990_000),
-  purchase.FakeProduct(id: plus.id, kind: .autoRenewable, title: "Plus", price: "$4.99", priceMicros: 4_990_000,
+  purchase.FakeProduct(id: coins.id, kind: .consumable, title: "100 Coins", amount: .parse("0.99")!),
+  purchase.FakeProduct(id: pro.id, kind: .nonConsumable, title: "Pro", description: "Every level, for life", amount: .parse("9.99")!),
+  purchase.FakeProduct(id: plus.id, kind: .autoRenewable, title: "Plus", amount: .parse("4.99")!,
     period: purchase.Period(unit: .month), trial: purchase.Period(unit: .week)),
 ])
 

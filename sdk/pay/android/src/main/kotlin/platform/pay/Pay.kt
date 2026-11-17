@@ -168,7 +168,12 @@ internal object Session {
 
     private fun keep(a: Answer) {
         a.update.items?.let { items = it }
-        a.update.total?.let { t -> total = Item(label = t.label.ifEmpty { total.label }, amount = t.amount.ifEmpty { total.amount }, pending = t.pending, kind = t.kind) }
+        // Its price zero and amount "": the amount as it was.
+        a.update.total?.let { t ->
+            val same = t.price.signum() == 0 && t.amount.isEmpty()
+            total = Item(label = t.label.ifEmpty { total.label }, price = if (same) total.price else t.price,
+                amount = if (same) total.amount else t.amount, pending = t.pending, kind = t.kind)
+        }
         a.update.shippingMethods?.let { ms ->
             methods = ms
             if (ms.none { it.id == selected }) selected = ms.firstOrNull()?.id ?: ""
@@ -268,9 +273,13 @@ internal object GPay {
     private val itemTypes = listOf("LINE_ITEM", "SUBTOTAL", "TAX", "DISCOUNT", "SHIPPING_OPTION")
 
     private fun items(its: List<Item>) = JSONArray(its.map { i ->
-        JSONObject().put("label", i.label).put("type", itemTypes[(i.kind.value % 5).toInt()]).put("price", i.amount)
+        JSONObject().put("label", i.label).put("type", itemTypes[(i.kind.value % 5).toInt()]).put("price", text(i.price, i.amount))
             .put("status", if (i.pending) "PENDING" else "FINAL")
     })
+
+    /** An amount as Google Pay takes it: its Decimal, or where that's zero
+     *  its deprecated text (the package's first release's; "": not known). */
+    private fun text(price: java.math.BigDecimal, amount: String) = if (price.signum() != 0) price.toPlainString() else amount
 
     private fun priceStatus(pending: Boolean, amount: String) = when {
         amount.isEmpty() -> "NOT_CURRENTLY_KNOWN"
@@ -282,7 +291,7 @@ internal object GPay {
     private fun rfc3339(day: String) = if (day.isEmpty()) "" else "${day}T00:00:00Z"
 
     fun transaction(r: Sheet, its: List<Item>, total: Item): JSONObject {
-        val t = JSONObject().put("currencyCode", r.currency).put("countryCode", r.country).put("totalPrice", total.amount)
+        val t = JSONObject().put("currencyCode", r.currency).put("countryCode", r.country).put("totalPrice", text(total.price, total.amount))
             .put("totalPriceStatus", if (total.pending) "ESTIMATED" else "FINAL")
             .put("checkoutOption", if (!total.pending && r.google.payNow) "COMPLETE_IMMEDIATE_PURCHASE" else "DEFAULT")
             .put("displayItems", items(its))
@@ -295,7 +304,7 @@ internal object GPay {
         .put("shippingOptions", JSONArray(ms.map { JSONObject().put("id", it.id).put("label", it.label).put("description", it.detail) }))
 
     private fun info(r: Sheet, x: JSONObject): JSONObject {
-        x.put("currencyCode", r.currency).put("countryCode", r.country).put("immediateTotalPrice", r.total.amount).put("immediateDisplayItems", items(r.items))
+        x.put("currencyCode", r.currency).put("countryCode", r.country).put("immediateTotalPrice", text(r.total.price, r.total.amount)).put("immediateDisplayItems", items(r.items))
         if (r.google.transactionId.isNotEmpty()) x.put("transactionId", r.google.transactionId)
         return x
     }
@@ -340,19 +349,19 @@ internal object GPay {
                 if (rec.tokenNotificationURL.isNotEmpty()) x.put("tokenUpdateUrl", rec.tokenNotificationURL)
                 rec.trial?.let { t ->
                     x.put("introductoryPeriod", JSONObject().put("start", rfc3339(t.start)).put("end", rfc3339(t.end)).put("label", t.label)
-                        .put("totalPrice", t.amount.ifEmpty { "0.00" }))
+                        .put("totalPrice", text(t.price, t.amount).ifEmpty { "0.00" }))
                 }
                 val b = rec.regular
                 x.put("recurrenceItems", JSONArray().put(JSONObject().put("start", rfc3339(b.start)).put("end", rfc3339(b.end)).put("label", b.label)
-                    .put("price", b.amount).put("priceStatus", priceStatus(b.pending, b.amount))
+                    .put("price", text(b.price, b.amount)).put("priceStatus", priceStatus(b.pending, text(b.price, b.amount)))
                     .put("period", listOf("MONTH", "DAY", "WEEK", "YEAR")[(b.interval.value % 4).toInt()]).put("periodCount", maxOf(b.every, 1))))
                 g.put("recurringTransactionInfo", x)
             }
             def != null -> g.put("deferredTransactionInfo", info(r, JSONObject()).put("managementUrl", def.managementURL)
                 .put("billingAgreement", def.billingAgreement).put("billingDateTime", rfc3339(def.date)).put("label", def.billing.label)
-                .put("price", def.billing.amount).put("priceStatus", priceStatus(def.billing.pending, def.billing.amount)))
+                .put("price", text(def.billing.price, def.billing.amount)).put("priceStatus", priceStatus(def.billing.pending, text(def.billing.price, def.billing.amount))))
             rel != null -> g.put("automaticReloadTransactionInfo", info(r, JSONObject()).put("managementUrl", rel.managementURL)
-                .put("billingAgreement", rel.billingAgreement).put("minimumBalanceAmount", rel.threshold).put("reloadAmount", rel.billing.amount)
+                .put("billingAgreement", rel.billingAgreement).put("minimumBalanceAmount", text(rel.thresholdPrice, rel.threshold)).put("reloadAmount", text(rel.billing.price, rel.billing.amount))
                 .put("label", rel.billing.label))
             else -> g.put("transactionInfo", transaction(r, r.items, r.total))
         }

@@ -229,6 +229,7 @@ static strings *new_strings(const char *const *list, int n, int at, bool iterato
 typedef struct {
 	char *store_id, *offer_token, *title, *description, *kind, *price, *currency;
 	int64_t micros;
+	asuka_decimal amount;
 	bool subscription, owned;
 	char *period_unit, *trial_unit;
 	int period_count, trial_count;
@@ -292,18 +293,31 @@ static const char *duration_unit(int32_t u) {
 	return "Year";
 }
 
-// list_price_micros reads a SKU's list price from its listing's JSON
-// (Availabilities[0].OrderManagementData.Price.ListPrice): StorePrice has
-// only formatted strings.
-static int64_t list_price_micros(const char *js) {
+// list_price reads a SKU's list price from its listing's JSON
+// (Availabilities[0].OrderManagementData.Price.ListPrice), exactly as its
+// number is written: StorePrice has only formatted strings.
+static asuka_decimal list_price(const char *js) {
 	char *av = asuka_json_get(js, "Availabilities");
 	const char *first = av ? strchr(av, '{') : NULL;
 	char *omd = first ? asuka_json_get(first, "OrderManagementData") : NULL;
 	char *price = omd ? asuka_json_get(omd, "Price") : NULL;
 	char *list = price ? asuka_json_get(price, "ListPrice") : NULL;
-	int64_t micros = list ? (int64_t)(strtod(list, NULL) * 1e6 + 0.5) : 0;
+	asuka_decimal d = {0, 0};
+	if (!list || !asuka_decimal_parse(list, &d)) d = (asuka_decimal){0, 0};
 	free(av), free(omd), free(price), free(list);
-	return micros;
+	return d;
+}
+
+// micros_of is a price in millionths of its unit (the first release's
+// priceMicros): 0 past an int64's.
+static int64_t micros_of(asuka_decimal d) {
+	int64_t c = d.coefficient, e = d.exponent + 6;
+	for (; e < 0 && c != 0; e++) c /= 10;
+	for (; e > 0; e--) {
+		if (c > INT64_MAX / 10 || c < INT64_MIN / 10) return 0;
+		c *= 10;
+	}
+	return c;
 }
 
 static add_on read_add_on(void *p) {
@@ -323,7 +337,8 @@ static add_on read_add_on(void *p) {
 	asuka_com_release(skus);
 	if (sku) {
 		char *js = str(sku, sku_json);
-		a.micros = list_price_micros(js);
+		a.amount = list_price(js);
+		a.micros = micros_of(a.amount);
 		free(js);
 		void *info = flag(sku, sku_is_subscription) ? ptr(sku, sku_subscription) : NULL;
 		if (info) {
@@ -465,6 +480,7 @@ static purchase_StoreTransaction transaction(const add_on *a, const char *id) {
 static purchase_Product product(const add_on *a, const char *id) {
 	purchase_Product p = {asuka_strdup(id), kind_of(a), asuka_strdup(a->title), asuka_strdup(a->description), asuka_strdup(a->price), a->micros,
 	                      asuka_strdup(a->currency)};
+	p.amount = a->amount;
 	if (a->subscription) {
 		purchase_Subscription *sub = calloc(1, sizeof *sub);
 		sub->group = asuka_strdup(product_id_of(a));

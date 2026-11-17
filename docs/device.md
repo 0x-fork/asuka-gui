@@ -2125,8 +2125,8 @@ import platform/pay
 fn request() -> pay.Request = pay.Request(
   country: "US",
   currency: "USD",
-  items: [pay.Item(label: "Tea set", amount: "40.00"), pay.Item(label: "Tax", amount: "3.20", kind: .tax)],
-  total: pay.Item(label: "Asuka Tea", amount: "43.20"),
+  items: [pay.Item(label: "Tea set", price: .parse("40.00")!), pay.Item(label: "Tax", price: .parse("3.20")!, kind: .tax)],
+  total: pay.Item(label: "Asuka Tea", price: .parse("43.20")!),
   shipping: [.name, .address, .email],
   apple: pay.Apple(merchantId: "merchant.com.example.tea"),
   google: pay.Google(gateway: "stripe", gatewayParams: ["stripe:version": "2018-10-31", "stripe:publishableKey": "pk_test_123"]),
@@ -2135,7 +2135,7 @@ fn request() -> pay.Request = pay.Request(
     if c.address.countryCode != "US" {
       throw pay.Invalid(field: .unserviceable, message: "We ship in the United States only.")
     }
-    return pay.Update(total: pay.Item(amount: if c.address.state == "CA" { "43.20" } else { "40.00" }))
+    return pay.Update(total: pay.Item(price: .parse(if c.address.state == "CA" { "43.20" } else { "40.00" })!))
   },
   onAuthorize: p => {
     try await charge(p.token)   // done: paid; what it throws shows in the sheet
@@ -2188,9 +2188,12 @@ sheet adds a card itself.
 
 `pay.pay(request)` shows the sheet and returns the `Payment` once it
 closes, or throws `PayError.canceled` (and `.busy` while another sheet
-shows). Amounts are decimal strings in the currency's major unit
-(`"12.75"`, at most two decimals for Google Pay; negative for a
-discount). The `total`'s label is the business's name, as the card
+shows). Amounts are [`std/decimal`](stdlib.md)'s `Decimal`s, exact, in
+the currency's major unit (`price: .parse("12.75")!`, at most two
+decimals for Google Pay; negative for a discount); each platform gets
+the same number (Apple's `NSDecimalNumber`, Google's text). The
+package's first release took them as text (`amount: "12.75"`), which
+it still reads, for one more release, where the `price` is zero. The `total`'s label is the business's name, as the card
 statement shows it ("Pay Asuka Tea" in Apple Pay's sheet); the `items`
 are the lines above it, their `kind` for Google Pay's sheet. The request
 also says the cards taken (`networks`, `cards`, `cardCountries`), what to
@@ -2278,7 +2281,7 @@ test "the tax, then paid" {
   await app.idle()
   w.changeShippingContact(pay.Contact(address: pay.PostalAddress(state: "CA", countryCode: "US")))
   await app.idle()
-  expect(w.sheet!.total.amount == "43.20")
+  expect(w.sheet!.total.price.string() == "43.2")
   w.authorize(pay.Payment(token: "tok_visa", shipping: pay.Contact(name: "Ana")))
   await app.idle()
   app.expect("Thanks, Ana!")
@@ -2290,9 +2293,9 @@ component Checkout {
   pay.PayButton {
     on press {
       let p = try await pay.pay(pay.Request(
-        total: pay.Item(label: "Asuka Tea", amount: "40.00"),
+        total: pay.Item(label: "Asuka Tea", price: .parse("40.00")!),
         shipping: [.address],
-        onShippingContact: c => pay.Update(total: pay.Item(amount: if c.address.state == "CA" { "43.20" } else { "40.00" })),
+        onShippingContact: c => pay.Update(total: pay.Item(price: .parse(if c.address.state == "CA" { "43.20" } else { "40.00" })!)),
       ))
       placed = "Thanks, {p.shipping.name}!"
     }

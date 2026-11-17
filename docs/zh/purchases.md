@@ -24,7 +24,7 @@ let pro = purchase.Item(id: "pro", kind: .nonConsumable)
 let plus = purchase.Item(id: "plus_monthly", kind: .autoRenewable)
 ```
 
-`purchase.declare(items)` 声明应用售卖哪些商品，但不会去询问商店。请在应用启动时调用它，这样最先到来的消耗型商品交易（上次没有完成的那笔）在完成时就会被消耗掉。`purchase.products(items)` 向商店查询这些商品，使用用户所在的国家和语言；商店不卖的会被略去。每个 `Product` 有 `title`、`description`、用于显示的 `price`（“$4.99”）、`priceMicros` 和 `currency`、`item()`（购买时用它），订阅还有 `subscription`：它的 `group`、`level`、`period`（`unit`、`count`）、`offers`（每个优惠是一组 `phases`：免费试用、一段时间内的优惠价），以及用户是否还能享受推介优惠（`introEligible`）。
+`purchase.declare(items)` 声明应用售卖哪些商品，但不会去询问商店。请在应用启动时调用它，这样最先到来的消耗型商品交易（上次没有完成的那笔）在完成时就会被消耗掉。`purchase.products(items)` 向商店查询这些商品，使用用户所在的国家和语言；商店不卖的会被略去。每个 `Product` 有 `title`、`description`、商店给出的用于显示的 `price`（“$4.99”）、`amount`（精确的价格，是 [`std/decimal`](stdlib.md) 的 `Decimal`：4.99；`amount.formatted(currency: currency)` 按用户的习惯书写它）和 `currency`、`item()`（购买时用它），订阅还有 `subscription`：它的 `group`、`level`、`period`（`unit`、`count`）、`offers`（每个优惠是一组 `phases`：免费试用、一段时间内的优惠价），以及用户是否还能享受推介优惠（`introEligible`）。这个包第一个版本的价格字段 `priceMicros` 会再保留一个版本，请改用 `amount`。
 
 ```asuka
 component Shop {
@@ -140,7 +140,7 @@ storekit = "Products.storekit"
 ```asuka
 test "Ask to Buy, then approved" {
   let store = purchase.fake([
-    purchase.FakeProduct(id: "coins_100", kind: .consumable, title: "100 Coins", price: "$0.99", priceMicros: 990_000),
+    purchase.FakeProduct(id: "coins_100", kind: .consumable, title: "100 Coins", amount: .parse("0.99")!),
     purchase.FakeProduct(id: "plus_monthly", kind: .autoRenewable, title: "Plus", price: "$4.99",
       period: purchase.Period(unit: .month), trial: purchase.Period(unit: .week)),
   ])

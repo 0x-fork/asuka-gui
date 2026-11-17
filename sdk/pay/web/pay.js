@@ -87,12 +87,22 @@ function googleCard(r) {
 const googleReady = (r) => ({ apiVersion: 2, apiVersionMinor: 0, allowedPaymentMethods: [{ type: "CARD", parameters: googleCard(r) }] });
 
 const itemTypes = ["LINE_ITEM", "SUBTOTAL", "TAX", "DISCOUNT", "SHIPPING_OPTION"];
-const googleItems = (its) => its.map((i) => ({ label: i.label, type: itemTypes[i.kind % 5], price: i.amount, status: i.pending ? "PENDING" : "FINAL" }));
+/** An amount: its Decimal (exact text, "0" for zero), or where that's zero
+ *  its deprecated text (the package's first release's; "": not known). */
+const text = (price, amount) => (price && price !== "0" ? price : amount);
+const amountOf = (i) => text(i.price, i.amount);
+/** An Update's total over the sheet's: its price zero and amount "", the
+ *  amount as it was; its label "", the same. */
+const mergeTotal = (old, t) => {
+  const same = (!t.price || t.price === "0") && !t.amount;
+  return { ...old, label: t.label || old.label, price: same ? old.price : t.price, amount: same ? old.amount : t.amount, pending: t.pending };
+};
+const googleItems = (its) => its.map((i) => ({ label: i.label, type: itemTypes[i.kind % 5], price: amountOf(i), status: i.pending ? "PENDING" : "FINAL" }));
 const priceStatus = (pending, amount) => (!amount ? "NOT_CURRENTLY_KNOWN" : pending ? "ESTIMATED" : "FINAL");
 const rfc3339 = (day) => (day ? `${day}T00:00:00Z` : undefined);
 
 function googleTransaction(r, items, total) {
-  const t = { currencyCode: r.currency, countryCode: r.country, totalPrice: total.amount, totalPriceStatus: total.pending ? "ESTIMATED" : "FINAL",
+  const t = { currencyCode: r.currency, countryCode: r.country, totalPrice: amountOf(total), totalPriceStatus: total.pending ? "ESTIMATED" : "FINAL",
     checkoutOption: !total.pending && r.google.payNow ? "COMPLETE_IMMEDIATE_PURCHASE" : "DEFAULT", displayItems: googleItems(items) };
   if (r.google.transactionId) t.transactionId = r.google.transactionId;
   if (items.length) t.totalPriceLabel = r.google.totalLabel || "Total";
@@ -123,20 +133,20 @@ function googleRequest(r) {
   }
   if (r.asks.includes(AskKind.paymentMethod)) intents.push("PAYMENT_METHOD");
   g.callbackIntents = intents;
-  const info = (x) => ({ currencyCode: r.currency, countryCode: r.country, immediateTotalPrice: r.total.amount, immediateDisplayItems: googleItems(r.items),
+  const info = (x) => ({ currencyCode: r.currency, countryCode: r.country, immediateTotalPrice: amountOf(r.total), immediateDisplayItems: googleItems(r.items),
     transactionId: r.google.transactionId || undefined, managementUrl: x.managementURL, billingAgreement: x.billingAgreement,
     tokenUpdateUrl: x.tokenNotificationURL || undefined });
   if (r.recurring) {
     const x = r.recurring, b = x.regular;
-    g.recurringTransactionInfo = { ...info(x), recurrenceItems: [{ start: rfc3339(b.start), end: rfc3339(b.end), label: b.label, price: b.amount,
-      priceStatus: priceStatus(b.pending, b.amount), period: ["MONTH", "DAY", "WEEK", "YEAR"][b.interval % 4], periodCount: Math.max(b.every, 1) }] };
-    if (x.trial) g.recurringTransactionInfo.introductoryPeriod = { start: rfc3339(x.trial.start), end: rfc3339(x.trial.end), label: x.trial.label, totalPrice: x.trial.amount || "0.00" };
+    g.recurringTransactionInfo = { ...info(x), recurrenceItems: [{ start: rfc3339(b.start), end: rfc3339(b.end), label: b.label, price: amountOf(b),
+      priceStatus: priceStatus(b.pending, amountOf(b)), period: ["MONTH", "DAY", "WEEK", "YEAR"][b.interval % 4], periodCount: Math.max(b.every, 1) }] };
+    if (x.trial) g.recurringTransactionInfo.introductoryPeriod = { start: rfc3339(x.trial.start), end: rfc3339(x.trial.end), label: x.trial.label, totalPrice: amountOf(x.trial) || "0.00" };
   } else if (r.deferred) {
     const x = r.deferred;
-    g.deferredTransactionInfo = { ...info(x), billingDateTime: rfc3339(x.date), label: x.billing.label, price: x.billing.amount, priceStatus: priceStatus(x.billing.pending, x.billing.amount) };
+    g.deferredTransactionInfo = { ...info(x), billingDateTime: rfc3339(x.date), label: x.billing.label, price: amountOf(x.billing), priceStatus: priceStatus(x.billing.pending, amountOf(x.billing)) };
   } else if (r.automaticReload) {
     const x = r.automaticReload;
-    g.automaticReloadTransactionInfo = { ...info(x), minimumBalanceAmount: x.threshold, reloadAmount: x.billing.amount, label: x.billing.label };
+    g.automaticReloadTransactionInfo = { ...info(x), minimumBalanceAmount: text(x.thresholdPrice, x.threshold), reloadAmount: amountOf(x.billing), label: x.billing.label };
   } else {
     g.transactionInfo = googleTransaction(r, r.items, r.total);
   }
@@ -188,13 +198,13 @@ function appleData(r) {
 }
 const ShippingTypeNames = { shipping: 0, delivery: 1, storePickup: 2, servicePickup: 3 };
 
-const appleItem = (i) => ({ label: i.label, amount: { currency: "XXX", value: i.amount || "0" }, pending: i.pending });
+const appleItem = (i) => ({ label: i.label, amount: { currency: "XXX", value: amountOf(i) || "0" }, pending: i.pending });
 
 function appleDetails(r, items, total, methods) {
   return {
-    total: { label: total.label, amount: { currency: r.currency, value: total.amount || "0" }, pending: total.pending },
-    displayItems: items.map((i) => ({ ...appleItem(i), amount: { currency: r.currency, value: i.amount || "0" } })),
-    shippingOptions: methods.map((m, i) => ({ id: m.id, label: m.label, amount: { currency: r.currency, value: m.amount || "0" }, selected: i === 0 })),
+    total: { label: total.label, amount: { currency: r.currency, value: amountOf(total) || "0" }, pending: total.pending },
+    displayItems: items.map((i) => ({ ...appleItem(i), amount: { currency: r.currency, value: amountOf(i) || "0" } })),
+    shippingOptions: methods.map((m, i) => ({ id: m.id, label: m.label, amount: { currency: r.currency, value: amountOf(m) || "0" }, selected: i === 0 })),
   };
 }
 
@@ -225,7 +235,7 @@ async function payGoogle(signal, r, asked) {
   const keep = (a) => {
     const u = a.update;
     if (u.items) items = u.items;
-    if (u.total) total = { ...total, label: u.total.label || total.label, amount: u.total.amount || total.amount, pending: u.total.pending };
+    if (u.total) total = mergeTotal(total, u.total);
     if (u.shippingMethods) {
       methods = u.shippingMethods;
       if (!methods.some((m) => m.id === selected)) selected = methods[0]?.id ?? "";
@@ -278,7 +288,7 @@ async function payApple(signal, r, asked) {
   const updated = (a) => {
     const u = a.update;
     if (u.items) items = u.items;
-    if (u.total) total = { ...total, label: u.total.label || total.label, amount: u.total.amount || total.amount, pending: u.total.pending };
+    if (u.total) total = mergeTotal(total, u.total);
     if (u.shippingMethods) methods = u.shippingMethods;
     const d = appleDetails(r, items, total, methods);
     if (u.errors.length) d.error = u.errors[0].message;

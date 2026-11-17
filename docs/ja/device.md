@@ -1456,8 +1456,8 @@ import platform/pay
 fn request() -> pay.Request = pay.Request(
   country: "US",
   currency: "USD",
-  items: [pay.Item(label: "Tea set", amount: "40.00"), pay.Item(label: "Tax", amount: "3.20", kind: .tax)],
-  total: pay.Item(label: "Asuka Tea", amount: "43.20"),
+  items: [pay.Item(label: "Tea set", price: .parse("40.00")!), pay.Item(label: "Tax", price: .parse("3.20")!, kind: .tax)],
+  total: pay.Item(label: "Asuka Tea", price: .parse("43.20")!),
   shipping: [.name, .address, .email],
   apple: pay.Apple(merchantId: "merchant.com.example.tea"),
   google: pay.Google(gateway: "stripe", gatewayParams: ["stripe:version": "2018-10-31", "stripe:publishableKey": "pk_test_123"]),
@@ -1466,7 +1466,7 @@ fn request() -> pay.Request = pay.Request(
     if c.address.countryCode != "US" {
       throw pay.Invalid(field: .unserviceable, message: "We ship in the United States only.")
     }
-    return pay.Update(total: pay.Item(amount: if c.address.state == "CA" { "43.20" } else { "40.00" }))
+    return pay.Update(total: pay.Item(price: .parse(if c.address.state == "CA" { "43.20" } else { "40.00" })!))
   },
   onAuthorize: p => {
     try await charge(p.token)   // 終われば支払い済み。投げたエラーはシートに表示されます
@@ -1504,7 +1504,7 @@ async fn charge(token: string) throws {}
 
 `pay.available(request)` は、リクエストで受け付けるカードについて、ウォレットに何ができるかを返します。`wallet`、`canPay`（ボタンを表示してよいか）、`hasCard`（ウォレットが受け付けるカードをユーザーが持っているか）です。`PayButton` は `canPay` が真のときだけ表示してください。これはウォレット純正のボタン（`PKPaymentButton`、Google の `PayButton`、Web では Safari と Google のボタン）で、各ブランドのガイドラインは、アプリが独自のボタンを描かないよう求めています。文言（`type`：`.buy`、`.checkout`、`.book`、`.donate`、`.order`、`.subscribe`、`.plain`、そのほかの Apple の種類）とロゴはユーザーの言語で表示されます。`variant` は、明るい背景では `.black`、暗い背景では `.white`、白い背景では `.whiteOutline`、または `.automatic` です。高さはウォレットが決めます（iOS では 44 ポイント、Mac では 30、Google は 48）。幅はアプリが指定してください。Apple Pay にまだカードがない場合、Apple のガイドラインでは `.setUp` ボタンを表示します。このボタンは `pay.setUp()` を呼んでカードを追加します（購入ボタンでもかまいません。そのシートでもカードを追加できます）。Google Pay では、シートそのものがカードを追加します。
 
-`pay.pay(request)` はシートを表示し、シートが閉じると `Payment` を返します。ユーザーがキャンセルしたときは `PayError.canceled` を投げます（ほかのシートが表示されているあいだは `.busy`）。金額は、通貨の主単位で表した 10 進数の文字列です（`"12.75"`。Google Pay では小数点以下 2 桁まで。割引は負の値にします）。`total` のラベルは、カードの利用明細に表示されるとおりの事業者名です（Apple Pay のシートでは「Pay Asuka Tea」）。`items` はその上に並ぶ明細行で、その `kind` は Google Pay のシートで使われます。リクエストではほかに、受け付けるカード（`networks`、`cards`、`cardCountries`）、配送先と請求先の連絡先として求める項目（`.name`、`.email`、`.phone`、`.address`）、`shippingType` と `shippingMethods`（最初のものが選ばれた状態になります）、Google Pay の配送先の国（`shippingCountries`）、Apple Pay のクーポンコード（`coupons`）を指定します。`recurring` を指定すると、定期的な請求と無料トライアルを持つサブスクリプションの支払いになります。`deferred` はあとで請求する支払い（ホテルなど）、`automaticReload` は残高のチャージです。ウォレットはこれから発生する請求を表示し、そのトークンはそれらの請求のためのマーチャントトークンになります。
+`pay.pay(request)` はシートを表示し、シートが閉じると `Payment` を返します。ユーザーがキャンセルしたときは `PayError.canceled` を投げます（ほかのシートが表示されているあいだは `.busy`）。金額は [`std/decimal`](stdlib.md) の `Decimal` で、通貨の主単位で正確に表します（`price: .parse("12.75")!`。Google Pay では小数点以下 2 桁まで。割引は負の値にします）。どのプラットフォームにも同じ数が渡ります（Apple の `NSDecimalNumber`、Google のテキスト）。このパッケージの最初のリリースでは金額を文字列（`amount: "12.75"`）で受け取っていました。次のリリースまでは、`price` がゼロのときにその文字列も読み取ります。`total` のラベルは、カードの利用明細に表示されるとおりの事業者名です（Apple Pay のシートでは「Pay Asuka Tea」）。`items` はその上に並ぶ明細行で、その `kind` は Google Pay のシートで使われます。リクエストではほかに、受け付けるカード（`networks`、`cards`、`cardCountries`）、配送先と請求先の連絡先として求める項目（`.name`、`.email`、`.phone`、`.address`）、`shippingType` と `shippingMethods`（最初のものが選ばれた状態になります）、Google Pay の配送先の国（`shippingCountries`）、Apple Pay のクーポンコード（`coupons`）を指定します。`recurring` を指定すると、定期的な請求と無料トライアルを持つサブスクリプションの支払いになります。`deferred` はあとで請求する支払い（ホテルなど）、`automaticReload` は残高のチャージです。ウォレットはこれから発生する請求を表示し、そのトークンはそれらの請求のためのマーチャントトークンになります。
 
 ハンドラーは非同期で、シートが待っているあいだ（最大で約 30 秒）に実行されるので、アプリのサーバーを呼び出してもかまいません。ハンドラーには、ユーザーが住所を選んだときの `onShippingContact`（支払いの前にウォレットが渡すのは住所のうち市区町村、州、郵便番号、国だけですが、税と配送方法を決めるには十分です）、`onShippingMethod`、`onPaymentMethod`（カードの手数料）、`onCoupon` があります。それぞれ `Update`（新しい品目、合計、配送方法。指定しなかったものはそのまま）を返すか、`pay.Invalid(field:, message:)` を投げます。投げたエラーは、シートがそのフィールドに合わせて表示します。フィールドは `.shippingPostalCode`、アプリが配送しない住所を表す `.unserviceable`、`.couponInvalid` などで、あわせて、そのあいだ表示する更新も渡します。複数のエラーは `Update` の `errors` で渡します。メッセージはユーザー向けに書いてください。`onAuthorize` は、ユーザーが（Face ID、Touch ID、PIN で）支払ったときに `Payment` を受け取ります。その `token` をサーバーに送り、サーバーで請求してください。ハンドラーが投げたエラーはシートに表示され、ユーザーはもう一度試せます。正常に終われば、シートはチェックマークを表示して閉じ、`pay` はカード、連絡先、配送方法を含む支払いを返します。
 
@@ -1534,7 +1534,7 @@ test "the tax, then paid" {
   await app.idle()
   w.changeShippingContact(pay.Contact(address: pay.PostalAddress(state: "CA", countryCode: "US")))
   await app.idle()
-  expect(w.sheet!.total.amount == "43.20")
+  expect(w.sheet!.total.price.string() == "43.2")
   w.authorize(pay.Payment(token: "tok_visa", shipping: pay.Contact(name: "Ana")))
   await app.idle()
   app.expect("Thanks, Ana!")
@@ -1546,9 +1546,9 @@ component Checkout {
   pay.PayButton {
     on press {
       let p = try await pay.pay(pay.Request(
-        total: pay.Item(label: "Asuka Tea", amount: "40.00"),
+        total: pay.Item(label: "Asuka Tea", price: .parse("40.00")!),
         shipping: [.address],
-        onShippingContact: c => pay.Update(total: pay.Item(amount: if c.address.state == "CA" { "43.20" } else { "40.00" })),
+        onShippingContact: c => pay.Update(total: pay.Item(price: .parse(if c.address.state == "CA" { "43.20" } else { "40.00" })!)),
       ))
       placed = "Thanks, {p.shipping.name}!"
     }

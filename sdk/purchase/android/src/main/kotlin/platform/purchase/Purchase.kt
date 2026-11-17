@@ -384,8 +384,11 @@ class PlayStore(private val app: Application) : Store, PurchasesUpdatedListener 
             else -> if (ph.priceAmountMicros == 0L) Mode.FREE_TRIAL else Mode.PAY_UP_FRONT
         }
         Phase(price = ph.formattedPrice, priceMicros = ph.priceAmountMicros, currency = ph.priceCurrencyCode,
-            period = period(ph.billingPeriod), cycles = maxOf(ph.billingCycleCount, 1).toLong(), mode = mode)
+            period = period(ph.billingPeriod), cycles = maxOf(ph.billingCycleCount, 1).toLong(), mode = mode, amount = amount(ph.priceAmountMicros))
     }
+
+    /** Play's micros as the price, exactly: 4990000 is 4.99. */
+    private fun amount(micros: Long): java.math.BigDecimal = java.math.BigDecimal.valueOf(micros, 6).stripTrailingZeros()
 
     private fun wire(p: ProductDetails): Product {
         val kind = kinds[p.productId] ?: if (p.productType == BillingClient.ProductType.SUBS) Kind.AUTO_RENEWABLE else Kind.NON_CONSUMABLE
@@ -400,15 +403,18 @@ class PlayStore(private val app: Application) : Store, PurchasesUpdatedListener 
             return Product(id = p.productId, kind = kind, title = p.name, description = p.description,
                 price = last?.formattedPrice ?: "", priceMicros = last?.priceAmountMicros ?: 0, currency = last?.priceCurrencyCode ?: "",
                 subscription = Subscription(group = p.productId, period = last?.let { period(it.billingPeriod) } ?: Period(),
-                    offers = offers, introEligible = subs.any { it.offerId != null && it.pricingPhases.pricingPhaseList.size > 1 }))
+                    offers = offers, introEligible = subs.any { it.offerId != null && it.pricingPhases.pricingPhaseList.size > 1 }),
+                amount = amount(last?.priceAmountMicros ?: 0))
         }
         val one = p.oneTimePurchaseOfferDetails
         val offers = p.oneTimePurchaseOfferDetailsList?.map { d ->
             Offer(id = d.offerId ?: "", type = OfferType.ONE_TIME, basePlan = d.purchaseOptionId ?: "", tags = d.offerTags ?: emptyList(), token = d.offerToken ?: "",
-                phases = listOf(Phase(price = d.formattedPrice, priceMicros = d.priceAmountMicros, currency = d.priceCurrencyCode, cycles = 1, mode = Mode.PAY_UP_FRONT)))
+                phases = listOf(Phase(price = d.formattedPrice, priceMicros = d.priceAmountMicros, currency = d.priceCurrencyCode, cycles = 1, mode = Mode.PAY_UP_FRONT,
+                    amount = amount(d.priceAmountMicros))))
         } ?: emptyList()
         return Product(id = p.productId, kind = kind, title = p.name, description = p.description,
-            price = one?.formattedPrice ?: "", priceMicros = one?.priceAmountMicros ?: 0, currency = one?.priceCurrencyCode ?: "", offers = offers)
+            price = one?.formattedPrice ?: "", priceMicros = one?.priceAmountMicros ?: 0, currency = one?.priceCurrencyCode ?: "", offers = offers,
+            amount = amount(one?.priceAmountMicros ?: 0))
     }
 
     private fun wire(p: Purchase): StoreTransaction {

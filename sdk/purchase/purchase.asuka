@@ -24,8 +24,13 @@
 // it: until then the store gives it again; finishing a consumable
 // consumes it, so it can be bought again.
 //
+// A product's amount is a std/decimal Decimal, exact (4.99), beside the
+// store's text of it (price, "$4.99"); priceMicros, this package's first
+// release's, stays one more release.
+//
 // Tests sell from a fake: purchase.fake() gives the package a FakeStore.
 
+import std/decimal.{Decimal}
 import std/time
 
 /// What kind of product it is.
@@ -76,12 +81,17 @@ pub enum Mode {
 
 /// One price of an offer: cycles periods at price.
 pub struct Phase {
+  /// For display, in the store's currency: "$0.99", "Free".
   price: string = ""
+  /// Deprecated: amount. In millionths of the currency's unit.
   priceMicros: int = 0
   currency: string = ""
   period: Period = Period()
   cycles: int = 1
   mode: Mode = .recurring
+  /// The price, exactly, in the currency's major unit (0.99; a free
+  /// trial's 0).
+  amount: Decimal = Decimal.zero
 }
 
 /// What kind of offer it is.
@@ -138,15 +148,20 @@ pub struct Product {
   description: string = ""
   /// For display, in the store's currency: "$4.99".
   price: string = ""
-  /// In millionths of the currency's unit (4990000 is 4.99); currency
-  /// its ISO 4217 code.
+  /// Deprecated: amount. In millionths of the currency's unit (4990000 is
+  /// 4.99).
   priceMicros: int = 0
+  /// Its ISO 4217 code.
   currency: string = ""
   subscription: Subscription? = none
   /// Family Sharing shares it (Apple's).
   familyShareable: bool = false
   /// A one-time product's purchase options (Play's).
   offers: [Offer] = []
+  /// The price, exactly, in the currency's major unit (4.99), as the
+  /// store has it (StoreKit's Decimal, Play's micros):
+  /// amount.formatted(currency: currency) writes it the user's way.
+  amount: Decimal = Decimal.zero
 
   /// The item to buy it as.
   fn item() -> Item = Item(id: id, kind: kind)
@@ -783,7 +798,11 @@ pub struct FakeProduct {
   kind: Kind = .nonConsumable
   title: string = ""
   description: string = ""
+  /// Its price, exactly; zero: priceMicros's.
+  amount: Decimal = Decimal.zero
+  /// The store's text of it; "": amount.formatted(currency: currency).
   price: string = ""
+  /// Deprecated: amount. Read when amount is zero.
   priceMicros: int = 0
   currency: string = "USD"
   /// A subscription's group (""; its ID) and level.
@@ -822,7 +841,7 @@ pub struct FakeTransaction {
 /// until it does, a consumable gone once finished.
 ///
 ///   let store = purchase.fake([
-///     purchase.FakeProduct(id: "coins_100", kind: .consumable, title: "100 Coins", price: "$0.99", priceMicros: 990_000),
+///     purchase.FakeProduct(id: "coins_100", kind: .consumable, title: "100 Coins", amount: .parse("0.99")!),
 ///   ])
 ///   store.outcome = .pending   // Ask to Buy
 ///   ... the app buys ...
@@ -880,11 +899,15 @@ pub store FakeStore {
     if let per = p.period {
       var offers: [Offer] = []
       if let tr = p.trial {
-        offers.push(Offer(type: .introductory, phases: [Phase(price: "Free", currency: p.currency, period: tr, cycles: 1, mode: .freeTrial)]))
+        offers.push(Offer(type: .introductory, phases: [Phase(price: "Free", currency: p.currency, period: tr, cycles: 1, mode: .freeTrial, amount: Decimal.zero)]))
       }
       sub = Subscription(group: group(p), level: p.level, period: per, offers: offers, introEligible: p.trial.isSome() && !subscribed(group(p)))
     }
-    return Product(id: p.id, kind: p.kind, title: p.title, description: p.description, price: p.price, priceMicros: p.priceMicros, currency: p.currency, subscription: sub)
+    // The amount, or where it's zero the micros of the first release.
+    let amount = if p.amount.isZero() { Decimal.of(p.priceMicros, exponent: -6) } else { p.amount }
+    let micros = if p.amount.isZero() { p.priceMicros } else { (p.amount * 1_000_000).int() }
+    let text = if p.price.isEmpty() && !amount.isZero() { amount.formatted(currency: p.currency) } else { p.price }
+    return Product(id: p.id, kind: p.kind, title: p.title, description: p.description, price: text, priceMicros: micros, currency: p.currency, subscription: sub, amount: amount)
   }
 
   fn tx(t: FakeTransaction) -> Transaction = Transaction(
