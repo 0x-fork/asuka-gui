@@ -1123,6 +1123,9 @@ func (p *printer) expr1(x Expr) {
 		switch x.Op {
 		case NOT, SUB, TILDE:
 			p.write(x.Op.String())
+			if u, ok := x.X.(*UnaryExpr); ok && x.Op == SUB && u.Op == SUB {
+				p.write(" ") // - -a, not --a
+			}
 		case TRY:
 			if x.Optional {
 				p.write("try? ")
