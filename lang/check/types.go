@@ -545,6 +545,14 @@ func IsHashable(t Type) bool {
 	return false
 }
 
+// hashableHint says how a type parameter that isn't Hashable can be.
+func hashableHint(t Type) string {
+	if p, ok := t.(*TypeParam); ok {
+		return ": constrain it, <" + p.Name + ": Hashable>"
+	}
+	return ""
+}
+
 // typeString is t for messages: quoted the way the docs write types.
 func typeString(t Type) string {
 	if t == nil {

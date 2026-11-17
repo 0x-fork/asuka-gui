@@ -1,0 +1,14 @@
+// Inferring a generic call's type arguments.
+
+fn first<T>(xs: [T]) -> T? = xs.first()
+fn countWith<T>(xs: [T], extra: T) -> int = xs.count()
+
+fn uses() -> string {
+  let n = countWith([], 1) // [] takes its type from 1
+  // Nothing tells T: said once, and the result is invalid, not a T?.
+  return "{first([])}" // ERROR "can't tell first's type T from its arguments"
+}
+
+fn keys<K, V>(m: [K: V]) -> int = m.count() // ERROR "not K: constrain it, <K: Hashable>"
+fn members<T>(s: Set<T>) -> int = s.count() // ERROR "not T: constrain it, <T: Hashable>"
+fn fine<K: Hashable, V>(m: [K: V]) -> int = m.count()

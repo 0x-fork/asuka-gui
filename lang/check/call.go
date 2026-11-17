@@ -465,7 +465,9 @@ func (c *Checker) inferArgs(args []syntax.Expr, params []*Param, s Subst, free m
 				continue
 			}
 			_, isLambda := a.(*syntax.LambdaExpr)
-			if isLambda && pass == 0 {
+			if (isLambda || isEmptyLit(a)) && pass == 0 {
+				// [] and [:] say nothing of their types: the other
+				// arguments say them first (f([], 1)).
 				continue
 			}
 			pt := params[i].Type
@@ -484,6 +486,14 @@ func (c *Checker) inferArgs(args []syntax.Expr, params []*Param, s Subst, free m
 					s[tp] = &Array{Int}
 					pw = s[tp]
 				}
+			}
+			if isEmptyLit(a) && mentionsFree(pw, free, s) {
+				// Nothing tells its type: the call says so (can't tell
+				// f's type T).
+				c.expr(a, Invalid)
+				leave()
+				checked[i] = true
+				continue
 			}
 			w := pw
 			if !isLambda && mentionsFree(w, free, s) {
@@ -511,6 +521,17 @@ func (c *Checker) inferArgs(args []syntax.Expr, params []*Param, s Subst, free m
 			c.errorf(a, "argument %s of %s is a %s, not a %s", params[i].Name, what, typeString(types[i]), typeString(pt))
 		}
 	}
+}
+
+// isEmptyLit reports [] or [:], which say nothing of their types.
+func isEmptyLit(e syntax.Expr) bool {
+	switch e := unparen(e).(type) {
+	case *syntax.ArrayExpr:
+		return len(e.Elems) == 0
+	case *syntax.MapExpr:
+		return len(e.Entries) == 0
+	}
+	return false
 }
 
 // ---------------------------------------------------------------------
@@ -560,6 +581,7 @@ func (c *Checker) funcCallInfo(e *syntax.CallExpr, f *Function, recv syntax.Expr
 		if t == nil {
 			c.errorf(e, "can't tell %s's type %s from its arguments: pass them, or say what's expected (let x: T = %s(…))", what, tp.Name, what)
 			t = Invalid
+			s[tp] = Invalid
 		} else {
 			c.checkConstraints(e, what, tp, t)
 		}

@@ -651,7 +651,7 @@ func (c *Checker) typeExpr(t syntax.Type) Type {
 	case *syntax.MapType:
 		k := c.typeExpr(t.Key)
 		if !IsInvalid(k) && !IsHashable(k) {
-			c.errorf(t.Key, "a map's keys are ints, strings, bools or enums without payloads, not %s", typeString(k))
+			c.errorf(t.Key, "a map's keys are ints, strings, bools or enums without payloads, not %s%s", typeString(k), hashableHint(k))
 		}
 		return &Map{k, c.typeExpr(t.Value)}
 	case *syntax.OptionalType:

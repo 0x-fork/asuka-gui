@@ -58,6 +58,24 @@ test "generic types" {
   print(unwrap(rs, or: ""))
 }
 
+fn countWith<T>(xs: [T], extra: T) -> int = xs.count() + 1
+fn keyed<K: Hashable, V>(m: [K: V], k: K, v: V) -> [K: V] {
+  var out = m
+  out[k] = v
+  return out
+}
+struct Pile<T> {
+  items: [T]
+  top: T
+}
+
+test "an empty literal takes its type from the other arguments" {
+  print(countWith([], 1))
+  print(keyed([:], "a", 1)["a"] ?? 0)
+  let p = Pile(items: [], top: "x")
+  print("{p.items.count()} {p.top}")
+}
+
 // Output:
 // 4
 // x
@@ -72,3 +90,7 @@ test "generic types" {
 // 105
 // yes
 // ok generic types
+// 1
+// 1
+// 0 x
+// ok an empty literal takes its type from the other arguments

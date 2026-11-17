@@ -535,7 +535,7 @@ func Dedent(s string) string {
 // written).
 func (c *Checker) setOf(elem Type, at syntax.Node) Type {
 	if !IsInvalid(elem) && !IsHashable(elem) {
-		c.errorf(at, "a Set's elements are ints, strings, bools or enums without payloads, not %s", typeString(elem))
+		c.errorf(at, "a Set's elements are ints, strings, bools or enums without payloads, not %s%s", typeString(elem), hashableHint(elem))
 	}
 	return &Set{elem}
 }
@@ -637,7 +637,7 @@ func (c *Checker) mapLit(e *syntax.MapExpr, want Type) Type {
 		key = c.valueType(c.expr(e.Entries[0].Key, nil), e.Entries[0].Key)
 		val = c.valueType(c.expr(e.Entries[0].Value, nil), e.Entries[0].Value)
 		if !IsInvalid(key) && !IsHashable(key) {
-			c.errorf(e.Entries[0].Key, "a map's keys are ints, strings, bools or enums without payloads, not %s", typeString(key))
+			c.errorf(e.Entries[0].Key, "a map's keys are ints, strings, bools or enums without payloads, not %s%s", typeString(key), hashableHint(key))
 		}
 	}
 	for _, en := range e.Entries {
