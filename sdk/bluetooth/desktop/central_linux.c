@@ -566,9 +566,7 @@ void bl_device_connected(const char *path) {
 static void connect_device(dev *d);
 
 static void retry_now(void *p) {
-	char *path = p;
-	dev *d = dev_of(path);
-	free(path);
+	dev *d = dev_of(p);  // its path: bt_after frees it
 	if (!d) return;
 	d->retry = 0;
 	bool waiting = false;
@@ -580,7 +578,7 @@ static void retry_now(void *p) {
 // connections still connecting then.
 static void retry_connect(dev *d) {
 	bt_after_stop(d->retry);
-	d->retry = bt_after(1000, retry_now, asuka_strdup(d->path));
+	d->retry = bt_after(1000, retry_now, asuka_strdup(d->path), free);
 }
 
 static void disconnect_device(dev *d, bool quiet);

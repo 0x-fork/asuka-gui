@@ -207,7 +207,10 @@ void bt_engine_respond(uint32_t server, uint32_t request, asuka_bytes value, int
 void bt_engine_notify(uint32_t server, uint32_t handle, asuka_bytes value) {}
 void bt_engine_advertise(uint32_t id, const bt_advertising *a, bt_done done, void *ctx) {}
 void bt_engine_stop_advertise(uint32_t id) {}
-uintptr_t bt_after(unsigned ms, void (*fn)(void *), void *ctx) { return 0; }
+uintptr_t bt_after(unsigned ms, void (*fn)(void *), void *ctx, void (*free_ctx)(void *)) {
+	if (free_ctx) free_ctx(ctx);
+	return 0;
+}
 void bt_after_stop(uintptr_t id) {}
 void bluetooth_fn_State_call(bluetooth_fn_State f, bluetooth_State p0) {}
 void bluetooth_fn_Heard_call(bluetooth_fn_Heard f, const bluetooth_Heard *p0) {}

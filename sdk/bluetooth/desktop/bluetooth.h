@@ -166,8 +166,9 @@ void bt_engine_advertise(uint32_t id, const bt_advertising *a, bt_done done, voi
 void bt_engine_stop_advertise(uint32_t id);
 
 // bt_after runs fn(ctx) in ms milliseconds on the main thread: its id,
-// for bt_after_stop (the engine's main loop's timers).
-uintptr_t bt_after(unsigned ms, void (*fn)(void *ctx), void *ctx);
+// for bt_after_stop (the engine's main loop's timers). free_ctx, if not
+// NULL, frees ctx once it has run or been stopped.
+uintptr_t bt_after(unsigned ms, void (*fn)(void *ctx), void *ctx, void (*free_ctx)(void *ctx));
 void bt_after_stop(uintptr_t id);
 
 // ---- The events (bluetooth.c's), as the engine tells them ----

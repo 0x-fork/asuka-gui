@@ -734,6 +734,7 @@ void bt_engine_request(void (*done)(void *ctx, const char *state, const char *er
 typedef struct {
 	void (*fn)(void *);
 	void *ctx;
+	void (*free_ctx)(void *);
 	HANDLE timer;
 	volatile LONG stopped;
 } timer_ctx;
@@ -741,16 +742,18 @@ typedef struct {
 static void run_timer(void *p) {
 	timer_ctx *t = p;
 	if (!t->stopped) t->fn(t->ctx);
+	if (t->free_ctx) t->free_ctx(t->ctx);
 	DeleteTimerQueueTimer(NULL, t->timer, NULL);
 	free(t);
 }
 
 static VOID CALLBACK timer_fired(PVOID p, BOOLEAN fired) { asuka_desktop_post(run_timer, p); }
 
-uintptr_t bt_after(unsigned ms, void (*fn)(void *ctx), void *ctx) {
+uintptr_t bt_after(unsigned ms, void (*fn)(void *ctx), void *ctx, void (*free_ctx)(void *ctx)) {
 	timer_ctx *t = calloc(1, sizeof *t);
-	t->fn = fn, t->ctx = ctx;
+	t->fn = fn, t->ctx = ctx, t->free_ctx = free_ctx;
 	if (!CreateTimerQueueTimer(&t->timer, NULL, timer_fired, t, ms, 0, WT_EXECUTEONLYONCE)) {
+		if (free_ctx) free_ctx(ctx);
 		free(t);
 		return 0;
 	}
