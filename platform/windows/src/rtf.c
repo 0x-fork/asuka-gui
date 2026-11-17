@@ -171,9 +171,17 @@ void rtf_write(const rtf_run *runs, uint32_t n, const rtf_doc *d, rtf_buf *out) 
 			putc_(&body, ' ');
 			if (r->link && *r->link) {
 				puts_(&body, "{\\field{\\*\\fldinst{HYPERLINK \"");
-				for (const char *l = r->link; *l; l++) {
-					if (*l == '"') puts_(&body, "%22");
-					else escape(&body, l, 1);
+				// Its characters whole (a byte at a time, one beyond ASCII
+				// would be U+FFFD); its quotes, which end it, escaped.
+				for (const char *l = r->link; *l;) {
+					if (*l == '"') {
+						puts_(&body, "%22");
+						l++;
+						continue;
+					}
+					size_t q = strcspn(l, "\"");
+					escape(&body, l, q);
+					l += q;
 				}
 				puts_(&body, "\"}}{\\fldrslt{");
 				escape(&body, t, tn);
@@ -246,7 +254,33 @@ typedef struct {
 	const char *mono_face;
 	rtf_buf *fields;
 	uint32_t nfields;
+	uint16_t high;     // a surrogate pair's first half, put_unit's
+	rtf_buf *high_to;  // and where it goes
 } parser;
+
+// put_unit appends a UTF-16 unit of a destination's text (a field's
+// instruction, a font's name) to b as UTF-8: a surrogate pair's halves
+// as their one character, a lone half as U+FFFD.
+static void drop_high(parser *p) {
+	if (!p->high) return;
+	put_utf8(p->high_to, 0xFFFD);
+	p->high = 0;
+	p->high_to = NULL;
+}
+
+static void put_unit(parser *p, rtf_buf *b, uint16_t u) {
+	if (p->high && (p->high_to != b || u < 0xDC00 || u >= 0xE000)) drop_high(p);
+	if (u >= 0xD800 && u < 0xDC00) {
+		p->high = u, p->high_to = b;
+		return;
+	}
+	if (u >= 0xDC00 && u < 0xE000) {
+		put_utf8(b, p->high ? 0x10000 + ((uint32_t)(p->high - 0xD800) << 10) + (u - 0xDC00) : 0xFFFD);
+		p->high = 0;
+		return;
+	}
+	put_utf8(b, u);
+}
 
 static bool is_mono(parser *p, int f) {
 	for (uint32_t i = 0; i < p->nmono; i++)
@@ -316,6 +350,7 @@ static void ch(parser *p, uint16_t u) {
 		// A font's name, up to its ;: the monospaced face's is monospaced
 		// (a control may name it without \fmodern or \fprq1).
 		if (u == ';') {
+			drop_high(p);
 			const char *s = p->font_name.p ? p->font_name.p : "";
 			size_t n = p->font_name.n;
 			while (n && isspace((unsigned char)*s)) s++, n--;
@@ -323,13 +358,13 @@ static void ch(parser *p, uint16_t u) {
 			if (p->mono_face && *p->mono_face && fold_eq(s, n, p->mono_face)) set_mono(p, p->font_num);
 			p->font_name.n = 0;
 		} else {
-			put_utf8(&p->font_name, u);
+			put_unit(p, &p->font_name, u);
 		}
 		return;
 	}
 	if (p->st.colortbl) return;
 	if (p->st.fldinst) {
-		if (p->st.field >= 0) put_utf8(&p->fields[p->st.field], u);
+		if (p->st.field >= 0) put_unit(p, &p->fields[p->st.field], u);
 		return;
 	}
 	if (p->st.skip) return;
@@ -411,13 +446,16 @@ static void control(parser *p) {
 	while (p->i < p->len && letter(p->data[p->i])) p->i++;
 	const char *w = p->data + start;
 	size_t wn = p->i - start;
-	long num = 0;
+	// A parameter is 32 bits (a long is, on Windows): a longer one
+	// stops growing at its largest.
+	int32_t num = 0;
 	bool has = false;
 	if (p->i < p->len && (p->data[p->i] == '-' || digit(p->data[p->i]))) {
 		bool neg = p->data[p->i] == '-';
 		if (neg) p->i++;
 		while (p->i < p->len && digit(p->data[p->i])) {
-			if (num < 1000000000) num = num * 10 + (p->data[p->i] - '0');
+			int d = p->data[p->i] - '0';
+			num = num <= (INT32_MAX - d) / 10 ? num * 10 + d : INT32_MAX;
 			p->i++;
 		}
 		if (neg) num = -num;
@@ -443,6 +481,7 @@ static void control(parser *p) {
 		p->st.font = (int)num;
 		if (p->st.fonttbl) {
 			p->font_num = (int)num;
+			drop_high(p);
 			p->font_name.n = 0;
 			return;
 		}
@@ -474,11 +513,11 @@ static void control(parser *p) {
 	} else if (word_is(w, wn, "uc")) {
 		p->st.uc = (int)num;
 	} else if (word_is(w, wn, "u")) {
-		long u = num < 0 ? num + 65536 : num;
-		ch(p, (uint16_t)u);
+		ch(p, (uint16_t)num);  // a negative one's UTF-16 unit too
 		p->pend = p->st.uc;
 	} else if (word_is(w, wn, "fldinst")) {
 		p->st.fldinst = true;
+		drop_high(p);  // before the fields move
 		p->fields = grow(p->fields, (p->nfields + 1) * sizeof *p->fields);
 		p->fields[p->nfields] = (rtf_buf){0};
 		p->st.field = (int)p->nfields++;
@@ -532,6 +571,7 @@ static void parse(parser *p) {
 			break;
 		case '}':
 			flush(p);
+			drop_high(p);
 			if (p->st.fldinst && p->st.field >= 0) field_link(p, &p->fields[p->st.field]);
 			if (p->nstack) {
 				bool was_rslt = p->st.fldrslt;

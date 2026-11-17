@@ -149,8 +149,38 @@ static void trim(void) {
 	rtf_runs_free(&r);
 }
 
+// A link beyond ASCII is written a character at a time, not a byte at a
+// time: it comes back as it went.
+static void link_beyond_ascii(void) {
+	const char *url = "https://\xe4\xbe\x8b\xe3\x81\x88.jp/\xf0\x9f\x91\x8b?q=\"x\"";
+	rtf_run runs[] = {{.text = "see", .len = 3, .link = (char *)url}};
+	rtf_buf b = {0};
+	rtf_write(runs, 1, &doc, &b);
+	rtf_runs got = {0};
+	rtf_parse(b.p, b.n, &doc, &got);
+	want_run want[] = {{"see", 0, "https://\xe4\xbe\x8b\xe3\x81\x88.jp/\xf0\x9f\x91\x8b?q=%22x%22", 0, 0}};
+	expect("link beyond ASCII", &got, want, 1);
+	if (failed) fprintf(stderr, "%s\n", b.p);
+	rtf_runs_free(&got);
+	free(b.p);
+}
+
+// A control word's parameter past 32 bits (a long, on Windows) stops at
+// its largest, as a reader of 32-bit parameters has it: it doesn't wrap.
+static void long_parameters(void) {
+	const char *src = "{\\rtf1{\\colortbl ;\\red0\\green0\\blue255;}"
+		"{\\b4294967296 big}{\\cf99999999999999999999 none}{\\i-99999999999999999999 neg}}";
+	rtf_runs got = {0};
+	rtf_parse(src, strlen(src), &doc, &got);
+	want_run want[] = {{"big", 1, 0, 0, 0}, {"none", 0, 0, 0, 0}, {"neg", 2, 0, 0, 0}};
+	expect("long parameters", &got, want, 3);
+	rtf_runs_free(&got);
+}
+
 int main(void) {
 	round_trip();
+	link_beyond_ascii();
+	long_parameters();
 	rich_edit_output();
 	mono_by_name();
 	trim();
