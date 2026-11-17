@@ -104,6 +104,51 @@ TEST(started_calls_answer_later) {
 	ak_release(obj);
 }
 
+// A module, as the VM's: its descriptors are its strings, freed with it
+// (a dev reload lets it go while a call is still out).
+typedef struct {
+	int rc;
+	char *ret;  // a result's descriptor
+	ak_json_types types;
+} test_module;
+
+static void module_hold(void *ctx, bool keep) {
+	test_module *m = ctx;
+	if (keep) {
+		m->rc++;
+		return;
+	}
+	if (--m->rc) return;
+	free(m->ret);
+	free(m);
+}
+
+static test_module *module_new(const char *ret) {
+	test_module *m = calloc(1, sizeof *m);
+	m->rc = 1;
+	m->ret = strdup(ret);
+	m->types = (ak_json_types){NULL, NULL, m, module_hold};
+	return m;
+}
+
+// A started call holds the module its answer is read by: the module
+// let go before the answer comes is freed only once it's read.
+TEST(started_call_outlives_its_module) {
+	ak_native_set_host(&host);
+	ak_native_obj *obj = ak_native_wrap(7);
+	test_module *m = module_new("i");
+	ak_future *f = ak_native_start(obj, 3, (ak_val){0}, "", m->ret, NULL, &m->types);
+	CHECK_EQ_INT(m->rc, 2);
+	module_hold(m, false);  // the reload: only the call holds it now
+	uint8_t answer[9] = {0, 99};
+	ak_native_done(pending_call, answer, sizeof answer);
+	ak_sched_run_posted();
+	REQUIRE(f->state == AK_FUT_DONE);
+	CHECK_EQ_INT(f->result.i, 99);
+	ak_release(f);
+	ak_release(obj);
+}
+
 static ak_val twice(ak_closure *c, ak_val *args, uint32_t n) {
 	AK_UNUSED(c);
 	AK_UNUSED(n);
@@ -170,6 +215,50 @@ TEST(callback_registers_callbacks) {
 	ak_free(out);
 	ak_release(c);
 	ak_release(obj);
+}
+
+// A callback lives as long as the object it was passed to: then the
+// closure, and the module its descriptor is in, go; a call after that
+// finds none. The same closure passed with another descriptor is another
+// callback, its calls read and answered by its own.
+static ak_val halve(ak_closure *c, ak_val *args, uint32_t n) {
+	AK_UNUSED(c);
+	AK_UNUSED(n);
+	return (ak_val){.f = args[0].f / 2};
+}
+
+TEST(callbacks_go_with_their_object) {
+	ak_native_set_host(&host);
+	int64_t live = ak_obj_live;
+	ak_native_obj *obj = ak_native_wrap(9);
+	test_module *m = module_new("F1ffv");
+	ak_closure *c = ak_closure_new(halve, NULL, 0, NULL);
+	ak_struct *args = ak_struct_new(&(ak_shape){.name = "(fn)", .nfields = 1, .kinds = (const uint8_t[]){AK_K_REF}});
+	args->f[0].p = ak_retain(c);
+	ak_native_call(obj, 4, (ak_val){.p = args}, m->ret, "v", NULL, &m->types);
+	uint64_t floats = callback_id;
+	ak_native_call(obj, 4, (ak_val){.p = args}, m->ret, "v", NULL, &m->types);
+	CHECK_EQ_INT(callback_id, floats);  // the same callback
+	ak_native_call(obj, 4, (ak_val){.p = args}, "F1ii", "v", NULL, &m->types);
+	uint64_t ints = callback_id;
+	CHECK(ints != floats);
+	ak_release(args);
+	ak_release(c);
+	CHECK_EQ_INT(m->rc, 3);  // the module's own, then each callback's
+	module_hold(m, false);   // the reload
+	double x = 21;
+	uint8_t in[8];
+	memcpy(in, &x, 8);
+	uint8_t *out;
+	REQUIRE(ak_native_invoke(floats, in, sizeof in, &out) == 8);
+	double y;
+	memcpy(&y, out, 8);
+	CHECK_EQ_F(y, 10.5);
+	ak_free(out);
+	ak_release(obj);  // its callbacks go, and with the last, the module
+	CHECK_EQ_INT(ak_obj_live, live);
+	CHECK_EQ_INT(ak_native_invoke(floats, in, sizeof in, &out), 0);
+	CHECK_EQ_INT(ak_native_invoke(ints, in, sizeof in, &out), 0);
 }
 
 // An answer cut short, or wrong, throws and leaves nothing built behind:

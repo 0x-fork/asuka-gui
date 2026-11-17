@@ -28,6 +28,12 @@ typedef struct {
 	ak_json_shape_fn shape;
 	ak_json_cases_fn cases;
 	void *ctx;
+	// hold, when set, keeps ctx and what it owns (the module whose shapes
+	// and descriptors these are) alive for whoever reads by these types
+	// later than the call that gave them (native/native.h's started calls
+	// and callbacks): hold(ctx, true) as it starts keeping them,
+	// hold(ctx, false), on the main thread, as it lets go.
+	void (*hold)(void *ctx, bool keep);
 } ak_json_types;
 
 // ak_json_decode parses text into a value of the descriptor's type. On

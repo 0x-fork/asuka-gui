@@ -62,28 +62,72 @@ static size_t name_len(const char *d) {
 ak_kind ak_native_desc_kind(const char *d) { return kind_of(d); }
 
 // ---- Callbacks: functions the native side calls ----
+//
+// A callback lives as long as the object it was passed to (docs/
+// native.md): its entry, holding the closure and the module its
+// descriptor and types are the module's, goes when the object does
+// (obj_drop). A closure passed to an object twice with the same
+// descriptor is one callback; with another descriptor, another.
 
 typedef struct {
 	uint64_t id;
-	ak_closure *c;
-	const char *desc;  // the F descriptor (kept by the module)
-	const ak_json_types *types;
+	ak_closure *c;                // retained
+	const char *desc;             // the F descriptor (held through types)
+	const ak_json_types *types;   // held (ak_json_types.hold)
+	const ak_native_obj *owner;   // the object it was passed to
 } callback;
 
 static AK_VEC(callback) callbacks;
 static uint64_t next_callback;
 
-static uint64_t callback_add(ak_closure *c, const char *desc, const ak_json_types *t) {
-	for (uint32_t i = 0; i < callbacks.len; i++)
-		if (callbacks.data[i].c == c) return callbacks.data[i].id;
-	callback cb = {++next_callback, ak_retain(c), desc, t};
+static void types_hold(const ak_json_types *t, bool keep) {
+	if (t && t->hold) t->hold(t->ctx, keep);
+}
+
+static size_t desc_len(const char *d) { return (size_t)(desc_skip(d) - d); }
+
+static uint64_t callback_add(ak_closure *c, const char *desc, const ak_json_types *t, const ak_native_obj *owner) {
+	size_t n = desc_len(desc);
+	for (uint32_t i = 0; i < callbacks.len; i++) {
+		const callback *cb = &callbacks.data[i];
+		if (cb->c == c && cb->owner == owner && cb->types == t && desc_len(cb->desc) == n && memcmp(cb->desc, desc, n) == 0) return cb->id;
+	}
+	types_hold(t, true);
+	callback cb = {++next_callback, ak_retain(c), desc, t, owner};
 	ak_vec_push(&callbacks, cb);
 	return cb.id;
 }
 
+// callbacks_drop lets the callbacks passed to owner go, as it goes.
+static void callbacks_drop(const ak_native_obj *owner) {
+	// Taken out of the table first: letting a closure go may let other
+	// objects go, whose callbacks go from the table under this loop.
+	AK_VEC(callback) gone = {0};
+	for (uint32_t i = 0; i < callbacks.len;) {
+		if (callbacks.data[i].owner != owner) {
+			i++;
+			continue;
+		}
+		ak_vec_push(&gone, callbacks.data[i]);
+		callbacks.data[i] = callbacks.data[--callbacks.len];
+	}
+	for (uint32_t i = 0; i < gone.len; i++) {
+		ak_release(gone.data[i].c);
+		types_hold(gone.data[i].types, false);
+	}
+	ak_vec_free(&gone);
+}
+
 // ---- Encoding ----
 
-bool ak_native_encode(ak_buf *b, ak_val v, const char *d, const ak_json_types *t) {
+// encode writes v; a function in it becomes a callback of owner, the
+// object the call that encodes it is to (none: a view's prop, which the
+// checker keeps functions out of, crosses as none).
+static bool encode(ak_buf *b, ak_val v, const char *d, const ak_json_types *t, const ak_native_obj *owner);
+
+bool ak_native_encode(ak_buf *b, ak_val v, const char *d, const ak_json_types *t) { return encode(b, v, d, t, NULL); }
+
+static bool encode(ak_buf *b, ak_val v, const char *d, const ak_json_types *t, const ak_native_obj *owner) {
 	switch (*d) {
 	case 'i':
 	case 'e':
@@ -118,18 +162,18 @@ bool ak_native_encode(ak_buf *b, ak_val v, const char *d, const ak_json_types *t
 		ak_buf_u64(b, v.p && ((ak_obj *)v.p)->tag == AK_TAG_VIEW ? ak_ui_view_id(v.p) : 0);
 		return true;
 	case 'F':
-		ak_buf_u64(b, v.p ? callback_add(v.p, d, t) : 0);
+		ak_buf_u64(b, v.p && owner ? callback_add(v.p, d, t, owner) : 0);
 		return true;
 	case '?':
 		ak_buf_u8(b, v.p != NULL);
 		if (!v.p) return true;
 		if (kind_of(d + 1) != AK_K_REF) v = ((ak_box *)v.p)->v;
-		return ak_native_encode(b, v, d + 1, t);
+		return encode(b, v, d + 1, t, owner);
 	case '[': {
 		ak_arr *a = v.p;
 		ak_buf_u32(b, a ? a->len : 0);
 		for (uint32_t i = 0; a && i < a->len; i++)
-			if (!ak_native_encode(b, a->data[i], d + 1, t)) return false;
+			if (!encode(b, a->data[i], d + 1, t, owner)) return false;
 		return true;
 	}
 	case '{': {
@@ -139,7 +183,7 @@ bool ak_native_encode(ak_buf *b, ak_val v, const char *d, const ak_json_types *t
 			if (m->dead[i]) continue;
 			ak_str *k = m->keys[i].p;
 			ak_buf_str(b, k->data, k->len);
-			if (!ak_native_encode(b, m->vals[i], d + 1, t)) return false;
+			if (!encode(b, m->vals[i], d + 1, t, owner)) return false;
 		}
 		return true;
 	}
@@ -147,7 +191,7 @@ bool ak_native_encode(ak_buf *b, ak_val v, const char *d, const ak_json_types *t
 		ak_struct *s = v.p;
 		extern const char *ak_json_field_desc(const ak_shape *s, int i);
 		for (uint16_t i = 0; s && i < s->shape->nfields; i++)
-			if (!ak_native_encode(b, s->f[i], ak_json_field_desc(s->shape, i), t)) return false;
+			if (!encode(b, s->f[i], ak_json_field_desc(s->shape, i), t, owner)) return false;
 		return true;
 	}
 	}
@@ -253,6 +297,7 @@ static ak_val decode(ak_reader *r, const char *d, const ak_json_types *t) {
 static void obj_drop(ak_opaque *o) {
 	ak_native_obj *n = (ak_native_obj *)o;
 	if (host && host->native_release && n->handle) host->native_release(n->handle);
+	callbacks_drop(n);
 }
 
 ak_native_obj *ak_native_wrap(uint64_t h) {
@@ -324,10 +369,10 @@ ak_val ak_native_new(const char *cls, size_t cls_len, uint32_t iface, ak_arr *er
 	return v;
 }
 
-static void encode_args(ak_buf *b, ak_val args, const char *d, const ak_json_types *t) {
+static void encode_args(ak_buf *b, const ak_native_obj *o, ak_val args, const char *d, const ak_json_types *t) {
 	ak_struct *s = args.p;
 	for (uint16_t i = 0; s && i < s->shape->nfields && *d; i++) {
-		ak_native_encode(b, s->f[i], d, t);
+		encode(b, s->f[i], d, t, o);
 		d = desc_skip(d);
 	}
 }
@@ -338,7 +383,7 @@ ak_val ak_native_call(ak_native_obj *o, uint32_t method, ak_val args, const char
 		return (ak_val){0};
 	}
 	ak_buf in = {0};
-	encode_args(&in, args, args_desc, t);
+	encode_args(&in, o, args, args_desc, t);
 	uint8_t out[512], *big = NULL;
 	size_t n = host->native_call(o->handle, method, in.data, in.len, out, sizeof out, &big);
 	ak_buf_free(&in);
@@ -351,12 +396,17 @@ ak_val ak_native_call(ak_native_obj *o, uint32_t method, ak_val args, const char
 
 // ---- Started calls ----
 
+// A started call holds what its answer is read by until it answers:
+// its errors, and the module its result's descriptor and types are the
+// module's (which a dev reload may otherwise free first); and its
+// object, with the callbacks passed to it, which the call may still call.
 typedef struct {
 	uint64_t call;
+	ak_native_obj *obj;  // retained
 	ak_future *fut;
 	const char *ret_desc;
 	ak_arr *errors;
-	const ak_json_types *types;
+	const ak_json_types *types;  // held
 } started;
 
 static AK_VEC(started) calls;
@@ -377,10 +427,11 @@ ak_future *ak_native_start(ak_native_obj *o, uint32_t method, ak_val args, const
 		return f;
 	}
 	ak_buf in = {0};
-	encode_args(&in, args, args_desc, t);
+	encode_args(&in, o, args, args_desc, t);
+	types_hold(t, true);
 	ak_mutex_lock(&calls_mu);
 	uint64_t id = ++next_call;
-	ak_vec_push(&calls, ((started){id, ak_retain(f), ret_desc, errors ? ak_retain(errors) : NULL, t}));
+	ak_vec_push(&calls, ((started){id, ak_retain(o), ak_retain(f), ret_desc, errors ? ak_retain(errors) : NULL, t}));
 	ak_mutex_unlock(&calls_mu);
 	f->ctx = (void *)(uintptr_t)id;
 	f->cancel = start_cancel;
@@ -409,6 +460,8 @@ static void deliver(void *ctx) {
 	}
 	ak_release(a->s.fut);
 	ak_release(a->s.errors);
+	ak_release(a->s.obj);
+	types_hold(a->s.types, false);  // after the future, which may hold the result, went
 	ak_free(a->p);
 	ak_free(a);
 	ak_sched_unhold();
@@ -449,6 +502,10 @@ size_t ak_native_invoke(uint64_t id, const uint8_t *p, size_t len, uint8_t **out
 	for (uint32_t i = 0; i < callbacks.len; i++)
 		if (callbacks.data[i].id == id) cb = callbacks.data[i];
 	if (!cb.c) return 0;
+	// Held for the call: its body may let its object, and so the
+	// callback, go.
+	ak_retain(cb.c);
+	types_hold(cb.types, true);
 	const char *d = cb.desc;  // F<n><params><ret>
 	int n = d[1] - '0';
 	const char *pd = d + 2;
@@ -475,6 +532,8 @@ size_t ak_native_invoke(uint64_t id, const uint8_t *p, size_t len, uint8_t **out
 		ak_release_val(res, kind_of(pd));
 	}
 	for (int i = 0; i < got; i++) ak_release_val(args[i], kinds[i]);
+	ak_release(cb.c);
+	types_hold(cb.types, false);
 	if (ak_error_pending()) {
 		void *e = ak_error_take();
 		fprintf(stderr, "asuka: a native callback failed: %s\n", ak_error_message(e)->data);
