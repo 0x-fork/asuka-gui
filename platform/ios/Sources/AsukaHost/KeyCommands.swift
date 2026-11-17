@@ -115,8 +115,12 @@ extension AsukaRuntime {
         let first = asukaFirstResponder
         asukaFirstResponder = nil
         if let t = first as? UITextInput, t.markedTextRange != nil { return [] } // an input method composing
-        let start = first.flatMap(node(of:)) ?? focusedNode ?? topController.flatMap(node(of:)).flatMap {
-            $0.kind == .sheet || $0.kind == .popover ? $0 : nil
+        // In steps: one expression of ?? and flatMaps takes Xcode 26.0's
+        // type checker too long.
+        var start: AsukaNode? = first.flatMap { node(of: $0) }
+        if start == nil { start = focusedNode }
+        if start == nil, let top = topController, let n = node(of: top), n.kind == .sheet || n.kind == .popover {
+            start = n
         }
         let way = AsukaKeys.way(from: start, root: nodes[rootID], parent: { $0.parent },
                                 list: { [self] n in keysOut(n) }, kind: { $0.kind })
