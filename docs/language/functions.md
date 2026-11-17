@@ -120,6 +120,13 @@ A generic function's type arguments are inferred from its arguments
 and from what's expected of its result; `f<T>(…)` writes them out where
 nothing says them: `json.decode<[Note]>(text)`, `flag.parse<Options>(args)`.
 
+A generic is compiled for each type it's used with, so it can't come
+back to itself with a bigger one: `fn depth<T>(x: T) -> int` calling
+`depth([x])` would need `depth<[int]>`, then `depth<[[int]]>`, without
+end, and so would `struct Nested<T> { more: Nested<[T]>? }`. The
+compiler says where; a type that holds itself takes the same arguments
+(`Tree<T>` in `Tree<T>`).
+
 A type argument has an interface when it has its methods and fields: a
 struct or an enum (an enum without payloads too), an interface asking
 for them, or another type parameter constrained so. `T: Error` reads an

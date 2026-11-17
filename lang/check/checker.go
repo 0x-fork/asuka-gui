@@ -68,6 +68,7 @@ type Checker struct {
 	// Generic calls, for the type parameters read or written as JSON
 	// (checked once every body has said which: jsonGenerics).
 	genericCalls []genericCall
+	instances    []instance  // where generics get their type arguments (instances.go)
 	laterChecks  []func()    // checks for when the package's declarations are whole
 	lvalueWhole  syntax.Expr // the target of the = (or bind) lvalue checks: a prop assigned whole
 	// The built-in methods' and functions' signatures that name the
@@ -143,6 +144,7 @@ func (c *Checker) Program(root *Package) *Program {
 	c.finishLocalFns()
 	c.finalize()
 	c.jsonGenerics()
+	c.instanceCycles()
 	c.routeHrefs()
 	main := c.entry(root)
 	pkgs := append([]*Package{c.prelude}, c.pkgs...)

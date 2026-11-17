@@ -1,0 +1,47 @@
+// A generic is compiled for each list of type arguments it's used with,
+// so one that comes back to itself with bigger ones would need them
+// without end (the compiler went on making them until it ran out).
+
+fn depth<T>(x: T, n: int) -> int = if n == 0 { 0 } else { 1 + depth([x], n - 1) } // ERROR "depth's T is \[T\] here, made of T, which comes back to here: .*\(T, \[T\], …\); pass a value of the same type"
+
+fn ping<T>(x: T, n: int) -> int = if n == 0 { 0 } else { pong((x, x), n - 1) } // ERROR "pong's U is \(T, T\) here"
+fn pong<U>(y: U, n: int) -> int = if n == 0 { 0 } else { ping(y, n - 1) }
+
+fn viaClosure<T>(x: T, n: int) -> int {
+  let f = (y: T) => viaClosure([y], n - 1) // ERROR "viaClosure's T is \[T\] here"
+  return if n == 0 { 0 } else { f(x) }
+}
+
+struct Box<T> {
+  v: T
+
+  fn deep(n: int) -> int = if n == 0 { 0 } else { Box(v: [v]).deep(n - 1) } // ERROR "Box's T is \[T\] here"
+}
+
+struct Nested<T> {
+  v: T
+  more: Nested<[T]>? // ERROR "Nested's T is \[T\] here, .*a type that holds itself takes the same arguments"
+}
+
+enum Pairs<T> {
+  end
+  more(T, Pairs<(T, T)>) // ERROR "Pairs's T is \(T, T\) here"
+}
+
+// The same arguments, or others that don't grow, are fine.
+fn count<T>(xs: [T]) -> int = if xs.isEmpty() { 0 } else { 1 + count(xs.slice(1)) }
+fn swap<A, B>(a: A, b: B, n: int) -> int = if n == 0 { 0 } else { swap(b, a, n - 1) }
+fn wrap<T>(x: T) -> [T] = [x]
+fn twice<T>(x: T) -> [[T]] = wrap(wrap(x))
+
+struct Tree<T> {
+  v: T
+  kids: [Tree<T>]
+
+  fn size() -> int = 1 + kids.map(k => k.size()).sum()
+}
+
+store Kept<T>(initial: T) {
+  pub state value: T = initial
+  pub fn copy() -> Kept<T> = Kept(value)
+}

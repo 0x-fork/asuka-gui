@@ -24,7 +24,7 @@ struct S { s: S } // ERROR "struct S holds itself \(S.s\).*\(s: S\?\)"
 struct T { pair: (int, T) } // ERROR "struct T holds itself"
 struct W<V> { v: V }
 struct U { w: W<U> } // ERROR "struct U holds itself \(U.w → W.v\)"
-struct G<V> { g: G<[V]> } // ERROR "struct G holds itself"
+struct G<V> { g: G<[V]> } // ERROR "struct G holds itself|G.s V is \\[V\\] here"
 struct Fine { w: W<int>; p: Pair<Node> }
 
 fn uses() {

@@ -621,6 +621,11 @@ func (c *Checker) funcCallInfo(e *syntax.CallExpr, f *Function, recv syntax.Expr
 	c.callEffects(e, what, f.Sig.Async, f.Sig.Throws)
 	if len(f.TypeParams) > 0 {
 		c.genericCalls = append(c.genericCalls, genericCall{e: e, f: f, args: call.TypeArgs, encl: c.enclosingFunc(), own: c.enclosingParams()})
+		c.noteInstance(e, what, f.TypeParams, call.TypeArgs)
+	}
+	if n, ok := recvType.(*Named); ok && f.Recv != nil && n.Obj == f.Recv {
+		// A generic type's method: compiled for its receiver's arguments.
+		c.noteInstance(e, f.Recv.name, f.Recv.TypeParams, n.Args)
 	}
 	return call
 }
@@ -1394,6 +1399,7 @@ func (c *Checker) storeCall(e *syntax.CallExpr, tn *TypeName, want Type) Type {
 	}
 	c.info.Calls[e] = &Call{Kind: CallStore, Type: n, Args: args, Params: inst, Result: n}
 	c.genericCalls = append(c.genericCalls, genericCall{e: e, store: tn, args: n.Args, encl: c.enclosingFunc(), own: c.enclosingParams()})
+	c.noteInstance(e, tn.name, tn.TypeParams, n.Args)
 	return n
 }
 

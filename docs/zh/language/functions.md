@@ -90,4 +90,6 @@ struct Labeled<T: Shape> {
 
 泛型函数的类型实参会从参数和对返回值的期望中推断出来；推断不出来时，用 `f<T>(…)` 显式写出：`json.decode<[Note]>(text)`、`flag.parse<Options>(args)`。
 
+泛型会针对用到的每个类型各编译一份，所以它不能再以更大的类型回到自己身上：`fn depth<T>(x: T) -> int` 里调用 `depth([x])`，就需要 `depth<[int]>`，接着是 `depth<[[int]]>`，没有尽头；`struct Nested<T> { more: Nested<[T]>? }` 也是一样。编译器会指出出问题的位置。包含自身的类型要用同样的类型实参（`Tree<T>` 里的 `Tree<T>`）。
+
 只要具备接口的方法和字段，类型实参就满足这个接口：可以是结构体或枚举（成员不携带值的枚举也可以），可以是要求了这些方法和字段的接口，也可以是带有相应约束的另一个类型参数。`T: Error` 可以读取错误的 `message`。
