@@ -2,8 +2,9 @@
 // target from any system: ASUKA_CC=zig, or this PC's compiler on
 // Windows) and run what they built on Windows: here on a PC, else in the
 // Windows VM swiftvm runs (ASUKA_WINDOWS_VM names it, "Windows Fresh" by
-// default), which sees ~/Library/Caches/asuka/windows-vm as
-// Z:\windows-vm. With neither, they skip.
+// default), in a folder it shares with the guest, which sees it on Z:
+// (~/Library/Caches/asuka/windows-vm as Z:\windows-vm, or whichever of
+// the VM's shared folders the guest has). With neither, they skip.
 //
 //   - TestC builds each test/*_test.c with the host (its main left out)
 //     and the core, the apps under test/apps compiled to bytecode beside
@@ -19,11 +20,13 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -71,16 +74,57 @@ func onWindows(t *testing.T) *windows {
 	if !vmRunning(out, name) {
 		t.Skipf("the Windows VM %q isn't running: swiftvm start %q", name, name)
 	}
-	cache, _ := os.UserCacheDir()
-	share := filepath.Join(cache, "asuka", "windows-vm")
-	if err := os.MkdirAll(share, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	win = &windows{vm: name, share: share, guest: `Z:\windows-vm`, arch: "arm64"}
+	share, guest := vmShare(t, name)
+	win = &windows{vm: name, share: share, guest: guest, arch: "arm64"}
 	if a := os.Getenv("ASUKA_WINDOWS_ARCH"); a != "" {
 		win.arch = a // amd64 runs there too, emulated
 	}
 	return win
+}
+
+// vmShare is a folder the VM shares with its guest, and where the guest
+// sees it: asuka's own (~/Library/Caches/asuka/windows-vm) if the guest
+// has it, else the first of the VM's shared folders it has. SwiftVM's
+// guest tools put a shared folder on Z:, under its name, and the guest
+// may have only some of those the VM lists.
+func vmShare(t *testing.T, vm string) (host, guest string) {
+	t.Helper()
+	cache, _ := os.UserCacheDir()
+	own := filepath.Join(cache, "asuka", "windows-vm")
+	if err := os.MkdirAll(own, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command("swiftvm", "info", vm, "--json").Output()
+	if err != nil {
+		t.Fatalf("swiftvm info %q: %v", vm, err)
+	}
+	var info struct {
+		SharedFolders []string `json:"sharedFolders"`
+	}
+	if err := json.Unmarshal(out, &info); err != nil {
+		t.Fatalf("swiftvm info %q: %v", vm, err)
+	}
+	out, err = exec.Command("swiftvm", "exec", vm, "--", `Get-ChildItem Z:\ -Directory -Name`).Output()
+	if err != nil {
+		t.Fatalf("the guest's Z: (swiftvm exec %q): %v", vm, err)
+	}
+	seen := map[string]bool{}
+	for _, l := range strings.Split(string(out), "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			seen[strings.ToLower(l)] = true
+		}
+	}
+	folders := append([]string{own}, info.SharedFolders...)
+	for _, f := range folders {
+		if !slices.Contains(info.SharedFolders, f) {
+			continue
+		}
+		if name := filepath.Base(f); seen[strings.ToLower(name)] {
+			return f, `Z:\` + name
+		}
+	}
+	t.Skipf("the guest of %q sees none of its shared folders on Z: (%s): swiftvm set %q to share %s, and restart it", vm, strings.Join(info.SharedFolders, ", "), vm, own)
+	return "", ""
 }
 
 func vmRunning(list []byte, name string) bool {

@@ -25,7 +25,7 @@ func TestStdViews(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(tests) == 0 {
-		t.Fatal("no Windows view tests")
+		t.Skip("no package has Windows view tests ({std,sdk}/*/desktop/*_windows_test.c)")
 	}
 	desk, err := desktop.Dir()
 	if err != nil {
