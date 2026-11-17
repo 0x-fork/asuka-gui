@@ -381,7 +381,7 @@ static uint64_t le_read(ak_val *a, int n) {
 	const ak_bytes *b = bytes_arg(a[0]);
 	int64_t at = a[1].i;
 	uint64_t v = 0;
-	if (!b || at < 0 || at + n > (int64_t)b->len) return 0;
+	if (!b || at < 0 || (size_t)n > b->len || (uint64_t)at > b->len - (size_t)n) return 0;
 	for (int i = 0; i < n; i++) v |= (uint64_t)b->data[at + i] << (8 * i);
 	return v;
 }

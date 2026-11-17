@@ -1906,4 +1906,30 @@ TEST(grid_repeat_counts) {
 	}
 }
 
+// The host.read* builtins: at any offset past the end, 0 (an offset near
+// the int's largest overflowed when the read's length was added).
+TEST(host_reads_past_the_end) {
+	ak_bytes *b = ak_bytes_new((const uint8_t *)"\x01\x02\x03\x04\x05\x06\x07\x08\x09", 9);
+	static const char *const readers[] = {"host.readU8", "host.readU32", "host.readU64", "host.readF64"};
+	const int64_t offsets[] = {INT64_MAX, INT64_MAX - 3, INT64_MAX - 7, 9, -1};
+	for (size_t i = 0; i < AK_LEN(readers); i++) {
+		ak_builtin_fn f = ak_builtin_find(readers[i]);
+		REQUIRE(f);
+		for (size_t k = 0; k < AK_LEN(offsets); k++) {
+			ak_val args[2] = {{.p = b}, {.i = offsets[k]}};
+			ak_val v = f(args, 2);
+			if (v.i != 0) T_FAIL("%s at %lld: %lld", readers[i], (long long)offsets[k], (long long)v.i);
+		}
+		ak_val args[2] = {{.p = b}, {.i = 1}};
+		CHECK(f(args, 2).i != 0);
+	}
+	ak_builtin_fn str = ak_builtin_find("host.readStr");
+	REQUIRE(str);
+	ak_val args[2] = {{.p = b}, {.i = INT64_MAX - 3}};
+	ak_str *s = str(args, 2).p;
+	CHECK_EQ_INT(s->len, 0);
+	ak_release(s);
+	ak_release(b);
+}
+
 T_MAIN()
