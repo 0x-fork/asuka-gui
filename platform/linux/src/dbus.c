@@ -38,9 +38,13 @@ GDBusConnection *lx_private_bus(char **err) {
 	return c;
 }
 
-// lx_close_bus closes a connection of one's own and lets it go.
+// lx_close_bus closes a connection of one's own and lets it go, what
+// it has queued sent first: closing doesn't send it, and a call's reply
+// (a menu item's click) is queued as the app hears of the call, which
+// may close it (or quit) then.
 void lx_close_bus(GDBusConnection *c) {
 	if (!c) return;
+	g_dbus_connection_flush_sync(c, NULL, NULL);
 	g_dbus_connection_close_sync(c, NULL, NULL);
 	g_object_unref(c);
 }

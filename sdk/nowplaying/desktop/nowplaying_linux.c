@@ -293,13 +293,16 @@ static void c_set(nowplaying_Center *self, const nowplaying_Info *info, asuka_er
 }
 
 // clear takes the player off the bus: its connection closes, and its name
-// with it.
+// with it. What it has queued goes first: closing doesn't send it, and a
+// command's reply is queued as the command goes to the app, which may
+// stop showing (or quit) on it.
 static void c_clear(nowplaying_Center *self, asuka_error *err) {
 	nowplaying_free_info(p.info);
 	p.info = NULL;
 	if (!p.conn) return;
 	G(g_dbus_connection_unregister_object)(p.conn, p.regs[0]);
 	G(g_dbus_connection_unregister_object)(p.conn, p.regs[1]);
+	G(g_dbus_connection_flush_sync)(p.conn, NULL, NULL);
 	G(g_dbus_connection_close_sync)(p.conn, NULL, NULL);
 	G(g_object_unref)(p.conn);
 	p.conn = NULL;
