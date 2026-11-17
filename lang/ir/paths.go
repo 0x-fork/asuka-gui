@@ -48,9 +48,10 @@ func (b *fb) pathRead(e syntax.Expr, dst int) (int, bool) {
 	if length {
 		steps = steps[:len(steps)-1]
 	}
-	root, acc := b.pathBase(p)
-	spelled, args, kinds := b.pathSteps(steps)
-	blk := b.pathArgs(root, args, kinds)
+	root, acc, spelled, pre := b.pathParts(p)
+	more, args, kinds := b.pathSteps(steps)
+	spelled = append(spelled, more...)
+	blk, kinds := b.pathArgsAfter(root, pre, args, kinds)
 	var r int
 	k := bc.Kind(b.kind(b.rawType(e)))
 	if length {
@@ -106,6 +107,44 @@ func (b *fb) pathBase(p *check.StatePath) (int, bool) {
 	return b.valueReg(-1, bc.KRef), true
 }
 
+// pathParts is where a path starts: the register of its cell or its
+// accessor, and, for a loop's element (a pathVar), the element's own
+// path's spelling and the registers of its arguments, which come first.
+func (b *fb) pathParts(p *check.StatePath) (root int, acc bool, spelled []byte, pre []int) {
+	if p.Var != nil {
+		if pv := b.pathVars[p.Var]; pv != nil {
+			return pv.root, pv.acc, append([]byte(nil), pv.spelled...), pv.args
+		}
+	}
+	root, acc = b.pathBase(p)
+	return root, acc, nil, nil
+}
+
+// pathArgsAfter is pathArgs with the registers pre first (moved in): a
+// loop's element's arguments. It returns the block and its kinds.
+func (b *fb) pathArgsAfter(base int, pre []int, args []syntax.Expr, kinds []bc.Kind) (int, []bc.Kind) {
+	if len(pre) == 0 {
+		return b.pathArgs(base, args, kinds), kinds
+	}
+	all := make([]bc.Kind, 0, len(pre)+len(kinds))
+	for _, r := range pre {
+		all = append(all, b.f.Kinds[r])
+	}
+	all = append(all, kinds...)
+	blk := b.regs(all)
+	for i, r := range pre {
+		b.move(blk+i, r)
+	}
+	for i, a := range args {
+		if a == nil {
+			b.loadInt(blk+len(pre)+i, 0)
+			continue
+		}
+		b.value(a, blk+len(pre)+i)
+	}
+	return blk, all
+}
+
 // pathArgs computes a path's arguments into consecutive registers, the
 // first of which it returns (base when there are none: the operand
 // names a register, which the instruction doesn't read).
@@ -134,6 +173,9 @@ func (b *fb) pathAccessor(e syntax.Expr, t check.Type) int {
 	if p == nil || !b.l.prog.StaticPath(p) {
 		return -1
 	}
+	if p.Var != nil && b.pathVars[p.Var] != nil {
+		return -1 // an element of a loop's: its index changes
+	}
 	root, _ := b.pathBase(p)
 	spelled, args, kinds := b.pathSteps(p.Steps)
 	blk := b.pathArgs(root, args, kinds)
@@ -159,13 +201,14 @@ func (b *fb) pathMapRead(x syntax.Expr, k bc.Kind, dst int, miss Label) (int, bo
 	if mt, ok := b.rawType(m).(*check.Map); !ok || check.IsOptional(b.typ(mt.Elem)) {
 		return 0, false
 	}
-	root, acc := b.pathBase(p)
+	root, acc, spelled, pre := b.pathParts(p)
 	read := op("CPATH")
 	if acc {
 		read = op("AGETP")
 	}
-	spelled, args, kinds := b.pathSteps(p.Steps)
-	blk := b.pathArgs(root, args, kinds)
+	more, args, kinds := b.pathSteps(p.Steps)
+	spelled = append(spelled, more...)
+	blk, kinds := b.pathArgsAfter(root, pre, args, kinds)
 	has := b.temp(bc.KBool)
 	spelled[len(spelled)-2] = psHas
 	b.emit(read, has, root, b.str(spelled), blk)

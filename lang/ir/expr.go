@@ -178,6 +178,9 @@ func (b *fb) expr(e syntax.Expr, dst int) int {
 		if r, ok := b.pathRead(e, dst); ok {
 			return r
 		}
+		if r, ok := b.pathMethod(e, dst); ok {
+			return r
+		}
 		return b.call(e, dst)
 	case *syntax.IndexExpr:
 		if r, ok := b.pathRead(e, dst); ok {

@@ -395,7 +395,7 @@ static ak_val arr_remove_where(ak_val *args, uint32_t n) {
 		ak_change_none();
 		RET_I(0);
 	}
-	ak_change_range(i, -1, true);
+	int64_t first = i;
 	a = ak_arr_mut((ak_arr **)&args[0].p);
 	uint32_t j = i;
 	for (; i < a->len; i++) {
@@ -418,6 +418,7 @@ static ak_val arr_remove_where(ak_val *args, uint32_t n) {
 		}
 	}
 	a->len = j;
+	ak_change_range(first, -1, true);  // last: the predicate may have changed another
 	RET_I(removed);
 }
 

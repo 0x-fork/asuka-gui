@@ -11,6 +11,10 @@ import (
 // fb builds a function: its registers, its code, and where each name it
 // uses lives.
 type fb struct {
+	// pathVars: a collection method's closure's parameter, inlined in a
+	// loop over a path (pathloops.go): the element's path.
+	pathVars map[*check.Var]*pathVar
+
 	l     *Lowerer
 	f     *Func
 	idx   int
@@ -408,6 +412,8 @@ func (b *fb) readVar(v *check.Var, n syntax.Node) int {
 		t := b.temp(b.kind(v.Type))
 		b.emit(op("VGET"), t, r)
 		return t
+	case b.pathVars[v] != nil:
+		return b.pathVarRead(b.pathVars[v], b.kind(v.Type), -1)
 	case v.Kind == check.RowItem, b.l.prog.AccessorVar(v):
 		t := b.temp(b.kind(v.Type))
 		b.emit(op("AGET"), t, r)

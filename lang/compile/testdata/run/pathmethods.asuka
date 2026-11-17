@@ -1,0 +1,82 @@
+// Collection methods with a closure on a path follow what their closure
+// reads (rfcs/0013): count(t => t.done) follows each done and the
+// length, not the titles. What a method returns is read whole: filter's
+// kept items, find's item, sorted's. Each let prints as it computes.
+
+struct Todo {
+  id: int
+  title: string
+  done: bool = false
+}
+
+fn mark<T>(tag: string, v: T) -> T {
+  print(tag)
+  return v
+}
+
+component Methods {
+  state todos = [Todo(id: 1, title: "c"), Todo(id: 2, title: "b"), Todo(id: 3, title: "a")]
+  let doneCount = mark("count", todos.count(t => t.done))
+  let anyDone = mark("any", todos.any(t => t.done))
+  let allDone = mark("all", todos.all(t => t.done))
+  let firstDone = mark("find", todos.find(t => t.done))
+  let firstDoneAt = mark("index", todos.index(t => t.done))
+  let open = mark("filter", todos.filter(t => !t.done))
+  let titles = mark("map", todos.map(t => t.title))
+  let byTitle = mark("sorted", todos.sorted(by: (a, b) => a.title < b.title))
+
+  Column {
+    Text("{doneCount} {anyDone} {allDone} {firstDone?.title ?? "-"} {firstDoneAt ?? -1}")
+    Text("open {open.count()}: {open.map(t => t.title).joined(",")}")
+    Text("titles {titles.joined(",")}")
+    Text("sorted {byTitle.map(t => t.title).joined(",")}")
+    Button("retitle") { on press { todos[2].title = "z" } }
+    Button("toggle") { on press { todos[1].done = true } }
+    Button("push") { on press { todos.push(Todo(id: 4, title: "d")) } }
+  }
+}
+
+test "a method follows what its closure reads" {
+  let app = mount(Methods())
+  app.expect("0 false false - -1", "open 3: c,b,a", "titles c,b,a", "sorted a,b,c")
+  print("-- retitle")
+  app.tap("retitle")
+  app.expect("open 3: c,b,z", "titles c,b,z", "sorted b,c,z")
+  print("-- toggle")
+  app.tap("toggle")
+  app.expect("1 true false b 1", "open 2: c,z", "sorted b,c,z")
+  print("-- push")
+  app.tap("push")
+  app.expect("open 3: c,z,d", "titles c,b,z,d")
+}
+
+// Output:
+// count
+// any
+// all
+// find
+// index
+// filter
+// map
+// sorted
+// -- retitle
+// filter
+// map
+// sorted
+// -- toggle
+// count
+// any
+// find
+// index
+// filter
+// sorted
+// -- push
+// count
+// any
+// all
+// find
+// index
+// filter
+// map
+// sorted
+// ok a method follows what its closure reads
