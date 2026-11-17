@@ -826,6 +826,7 @@ type MemberExpr struct {
 	Span
 	X        Expr
 	Optional bool
+	Dot      Pos // the . or ?.
 	Name     *Ident
 }
 

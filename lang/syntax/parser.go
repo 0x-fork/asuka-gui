@@ -1694,8 +1694,9 @@ func (p *parser) itemAfterPub(start Pos) Item {
 			p.next()
 			var x Expr = p.ident()
 			for p.tok == PERIOD {
+				dot := p.pos
 				p.next()
-				x = &MemberExpr{X: x, Name: p.ident(), Span: p.span(start)}
+				x = &MemberExpr{X: x, Dot: dot, Name: p.ident(), Span: p.span(start)}
 			}
 			d := &StyleUse{Name: x}
 			d.Span = p.span(start)
@@ -2424,7 +2425,7 @@ func (p *parser) postfixFrom(start Pos, x Expr) Expr {
 	for {
 		switch p.tok {
 		case PERIOD, OPTDOT:
-			opt := p.tok == OPTDOT
+			opt, dot := p.tok == OPTDOT, p.pos
 			p.next()
 			var name *Ident
 			if p.tok == INT {
@@ -2434,7 +2435,7 @@ func (p *parser) postfixFrom(start Pos, x Expr) Expr {
 			} else {
 				name = p.ident()
 			}
-			x = &MemberExpr{X: x, Optional: opt, Name: name, Span: Span{}}
+			x = &MemberExpr{X: x, Optional: opt, Dot: dot, Name: name, Span: Span{}}
 			x.(*MemberExpr).Span = p.span(start)
 		case LPAREN:
 			c := &CallExpr{Fun: x, Args: p.parseArgs()}

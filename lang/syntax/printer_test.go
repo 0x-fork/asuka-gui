@@ -212,6 +212,12 @@ func TestFormatCases(t *testing.T) {
 		{"let n = a + (b << c)", "let n = a + (b << c)\n"},
 		{"let n = 0b1010_0101 | 0o17", "let n = 0b1010_0101 | 0o17\n"},
 		{"fn f() {\n  x>>=1; x<<=2; x&=3; x|=4; x^=5\n}", "fn f() {\n  x >>= 1; x <<= 2; x &= 3; x |= 4; x ^= 5\n}\n"},
+		// A break after a dot stays after it: a line that ends in . goes on
+		// where one that starts with .0 is a number, and .name alone on a
+		// value block's last line is its value.
+		{"test \"\" {\n  0.\n  0\n}", "test \"\" {\n  0.\n    0\n}\n"},
+		{"fn f() -> string = if c {\n  x.\n  name\n} else { \"\" }", "fn f() -> string = if c {\n  x.\n    name\n} else { \"\" }\n"},
+		{"let n = items?.\n  first", "let n = items?.\n  first\n"},
 		{"let m = [ 1 : 2 ]", "let m = [1: 2]\n"},
 		{"let m = [ : ]", "let m = [:]\n"},
 		{"type F = async fn( int )throws->bool?", "type F = async fn(int) throws -> bool?\n"},

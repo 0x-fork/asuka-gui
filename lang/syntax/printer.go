@@ -1482,19 +1482,34 @@ func (p *printer) postfix(x Expr) {
 	for i := len(chain) - 1; i >= 0; i-- {
 		switch e := chain[i].(type) {
 		case *MemberExpr:
-			dot, op := e.Name.Start-1, "."
+			dot, op := e.Dot, "."
 			if e.Optional {
-				dot, op = e.Name.Start-2, "?."
+				op = "?."
 			}
-			if l := p.endLine(e.X); l > 0 && p.line(dot) > l {
-				if !cont {
-					cont = true
-					p.indent++
-				}
+			if !dot.IsValid() { // a tree made in code
+				dot = e.Name.Start - Pos(len(op))
+			}
+			// A break before the dot stays before it (.name continues the
+			// line before); one after it stays after it, as gofmt keeps
+			// x.⏎Name: a line that ends in . always goes on, where one
+			// that starts with .name may be a block's value, or a tuple's
+			// .0 a number.
+			l := p.endLine(e.X)
+			before := l > 0 && p.line(dot) > l
+			after := !before && p.line(e.Name.Start) > p.line(dot)
+			if (before || after) && !cont {
+				cont = true
+				p.indent++
+			}
+			if before {
 				p.trailing(nil, e.X, dot)
 				p.newline()
 			}
-			p.write(op + e.Name.Name)
+			p.write(op)
+			if after {
+				p.newline()
+			}
+			p.write(e.Name.Name)
 		case *CallExpr:
 			if len(e.TypeArgs) > 0 {
 				p.list("<", ">", e.Angles.Lt, e.Angles.Gt, typeNodes(e.TypeArgs))
