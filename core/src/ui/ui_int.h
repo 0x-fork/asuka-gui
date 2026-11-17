@@ -477,6 +477,42 @@ ak_owner *ak_root_under(ak_owner *parent);
 void ak_row_update(ak_row *rw, ak_val item, ak_kind item_kind, int64_t i);
 void ak_row_free(ak_row *rw, ak_kind key_kind);
 
+// A for over a path (rfcs/0013): its items are what an accessor of a
+// path below a state reads, and it follows their order, not the items:
+// the length, and the keys. A key that's a field path of the item (key
+// t.id) is one signal for all items, read without calling anything; any
+// other is the key's function of the item's accessor (and its index),
+// whose reads of the item follow their paths; none keys by the index.
+// A row's item is the accessor of its element at its place (its index
+// cell), so it has no item cell: a write inside an item doesn't run the
+// for, and a row that moves reads its item at its new place.
+typedef struct {
+	void *acc;           // the array's accessor, retained
+	uint16_t *fields;    // a field path key's
+	uint16_t nf;
+	bool by_field;
+	ak_closure *key;     // else the key's function, retained; NULL: by index
+	void *cursor;        // its item: an accessor moved over the items
+} ak_fsrc;
+
+// ak_fsrc_init makes s over acc, keyed by key: a path's spelling of the
+// item's fields (an ak_str), a function, or none.
+void ak_fsrc_init(ak_fsrc *s, void *acc, ak_val key);
+void ak_fsrc_free(ak_fsrc *s);
+// ak_fsrc_follow reads the length, and follows the keys of a field
+// path's: tracked. -1 when the read threw.
+int64_t ak_fsrc_follow(ak_fsrc *s);
+// ak_fsrc_items is the array now, untracked: retained, or NULL.
+ak_arr *ak_fsrc_items(ak_fsrc *s);
+// ak_fsrc_key is the key of items' element i (a function's may throw:
+// an error pending).
+ak_val ak_fsrc_key(ak_fsrc *s, ak_arr *items, int64_t i, ak_kind kk);
+// ak_row_make_at builds a row of the element at index i of the array acc
+// reads: its item, that element's accessor (ak_row_make's otherwise).
+void ak_row_make_at(ak_row *rw, ak_ui_root *r, ak_closure *row, ak_path *path, ak_owner *parent, void *acc, ak_kind item_kind, int64_t i, ak_kind key_kind);
+// ak_row_move gives a kept row of a for over a path its new index.
+void ak_row_move(ak_row *rw, int64_t i);
+
 // ---- list.c ----
 
 int64_t ak_list_count(ak_view *e);
@@ -507,6 +543,11 @@ ak_val ak_vm_cell_get(void *cell, bool track);
 void ak_vm_cell_set(void *cell, ak_val v);  // takes v
 ak_val ak_vm_acc_cell(void *cell_or_memo);
 ak_val ak_vm_acc_get(void *acc);
+ak_val ak_vm_acc_path(void *base, const uint8_t *p, uint32_t n, const ak_val *args, ak_kind k);
+ak_val ak_vm_acc_row(void *base, void *index, ak_kind k);
+ak_val ak_vm_acc_getp(void *acc, const uint8_t *p, uint32_t n, const ak_val *args);
+void ak_vm_acc_keys(void *acc, const uint16_t *fields, uint16_t nf);
+void ak_vm_acc_seek(void *acc, int64_t i);
 void ak_vm_effect(ak_closure *c, bool render);
 // A model: the accessor of a prop its component assigns (react.c's
 // "Models"). ak_vm_model_new makes one over the caller's accessor (NULL

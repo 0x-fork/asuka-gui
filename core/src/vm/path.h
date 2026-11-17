@@ -62,8 +62,11 @@ bool ak_path_read(ak_pnode **tree, ak_node *root, ak_val v, ak_kind k, const uin
 // array at path p below the state (n bytes, args), as a for keyed by a
 // field path of its items (key t.id: fields, nf of them) follows them:
 // one signal for all items, notified when the length, the order or a
-// key changes, not when anything else inside an item does.
-void ak_path_keys(ak_pnode **tree, const uint8_t *p, uint32_t n, const ak_val *args, const uint16_t *fields, uint16_t nf);
+// key changes, not when anything else inside an item does. v (of kind
+// k) is the state's value: the node keeps the keys as the for sees them
+// now, so a change it can't compare (a mut fn's, a builtin's) tells the
+// for only when they differ.
+void ak_path_keys(ak_pnode **tree, ak_val v, ak_kind k, const uint8_t *p, uint32_t n, const ak_val *args, const uint16_t *fields, uint16_t nf);
 
 // ak_path_put tells the readers below a state what a change in place at
 // a place changed: p is the place's steps, then a write's last step (r,

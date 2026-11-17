@@ -25,7 +25,10 @@ struct ak_pnode {
 	int64_t i;      // FIELD, INDEX
 	ak_val key;     // KEY: retained
 	uint64_t hash;  // KEY
-	uint16_t *fields;  // KEYS
+	uint16_t *fields;  // KEYS: the field path; and the keys as the for saw them last
+	ak_val *cache;
+	uint32_t ncache;
+	uint8_t ck;        // their kind
 	ak_pnode **num;    // FIELD and INDEX children
 	uint32_t ncap;
 	ak_pnode **keyed;  // KEY children: buckets, chained through next
@@ -112,15 +115,47 @@ static pv item_key(pv item, const uint16_t *fields, uint16_t nf) {
 	return item;
 }
 
-// keys_differ reports whether two arrays' keys differ: in number, or
-// one by one.
-static bool keys_differ(const ak_pnode *c, pv a, pv b) {
-	pv la = len_of(a), lb = len_of(b);
-	if (!pv_eq(la, lb)) return true;
-	if (la.none) return false;
-	for (int64_t i = 0; i < la.v.i; i++)
-		if (!pv_eq(item_key(index_of(a, i), c->fields, c->nf), item_key(index_of(b, i), c->fields, c->nf))) return true;
+static void cache_clear(ak_pnode *n) {
+	if (n->ck == AK_K_REF)
+		for (uint32_t i = 0; i < n->ncache; i++) ak_release(n->cache[i].p);
+	n->ncache = 0;
+}
+
+// keys_changed reports whether the keys of arr, from lo to hi (hi -1:
+// to the end), differ from those the for following kc saw last, or its
+// length does.
+static bool keys_changed(const ak_pnode *kc, pv arr, int64_t lo, int64_t hi) {
+	pv len = len_of(arr);
+	int64_t n = len.none ? 0 : len.v.i;
+	if (n != kc->ncache) return true;
+	if (hi < 0 || hi > n) hi = n;
+	for (int64_t i = lo < 0 ? 0 : lo; i < hi; i++) {
+		pv k = item_key(index_of(arr, i), kc->fields, kc->nf);
+		if (k.none || k.k != (ak_kind)kc->ck || !ak_val_eq(k.v, kc->cache[i], k.k)) return true;
+	}
 	return false;
+}
+
+// keys_seen refreshes kc's keys: arr's, as its for sees them now.
+static void keys_seen(ak_pnode *kc, pv arr) {
+	cache_clear(kc);
+	pv len = len_of(arr);
+	uint32_t n = len.none ? 0 : (uint32_t)len.v.i;
+	if (n == 0) return;
+	kc->cache = ak_realloc(kc->cache, n * sizeof *kc->cache);
+	for (uint32_t i = 0; i < n; i++) {
+		pv k = item_key(index_of(arr, i), kc->fields, kc->nf);
+		if (k.none) {
+			// (a field path to none: the IR spells none of those)
+			kc->cache[i] = (ak_val){0};
+			k.k = (ak_kind)kc->ck;
+		} else {
+			kc->ck = (uint8_t)k.k;
+			ak_retain_val(k.v, k.k);
+			kc->cache[i] = k.v;
+		}
+		kc->ncache = i + 1;
+	}
 }
 
 // ---- Nodes ----
@@ -140,6 +175,8 @@ static ak_pnode *node_new(ak_pnode *parent, uint8_t kind) {
 
 static void node_free(ak_pnode *n) {
 	if (n->kind == PN_KEY) ak_release_val(n->key, (ak_kind)n->kk);
+	cache_clear(n);
+	ak_free(n->cache);
 	ak_free(n->fields);
 	ak_free(n->num);
 	ak_free(n->keyed);
@@ -415,14 +452,16 @@ bool ak_path_read(ak_pnode **tree, ak_node *root, ak_val v, ak_kind k, const uin
 	return true;
 }
 
-void ak_path_keys(ak_pnode **tree, const uint8_t *p, uint32_t n, const ak_val *args, const uint16_t *fields, uint16_t nf) {
+void ak_path_keys(ak_pnode **tree, ak_val v, ak_kind k, const uint8_t *p, uint32_t n, const ak_val *args, const uint16_t *fields, uint16_t nf) {
 	ak_pnode *at = root_of(tree);
+	pv x = {v, k, false};
 	uint32_t a = 0;
 	for (uint32_t j = 0; j < n;) {
 		uint8_t s = p[j++];
 		switch (s) {
 		case AK_PS_FIELD:
 		case AK_PS_OFIELD:
+			x = field_of(x, u16(p + j));
 			at = kid_num(at, PN_FIELD, u16(p + j), true);
 			j += 2;
 			break;
@@ -430,11 +469,13 @@ void ak_path_keys(ak_pnode **tree, const uint8_t *p, uint32_t n, const ak_val *a
 		case AK_PS_GET: {
 			int64_t i = args[a++].i;
 			if (i < 0) i = 0;  // an index below 0 never reads: its row's for has none
+			x = index_of(x, i);
 			at = kid_num(at, PN_INDEX, i, true);
 			break;
 		}
 		case AK_PS_KEY:
 			j++;
+			x = key_of(x, args[a]);
 			at = kid_key(at, args[a], (ak_kind)p[j - 1], true);
 			a++;
 			break;
@@ -442,9 +483,13 @@ void ak_path_keys(ak_pnode **tree, const uint8_t *p, uint32_t n, const ak_val *a
 			ak_panic("path: a step %c in a for's", s);
 		}
 	}
-	ak_pnode *k = kid_keys(at, fields, nf);
-	ak_signal_read(&k->sig.node);
-	if (!k->sig.node.subs) prune(k);
+	ak_pnode *kc = kid_keys(at, fields, nf);
+	ak_signal_read(&kc->sig.node);
+	if (!kc->sig.node.subs) {
+		prune(kc);
+		return;
+	}
+	keys_seen(kc, x);
 }
 
 // ---- Writes ----
@@ -453,10 +498,17 @@ static inline void write(ak_pnode *n) {
 	if (n->sig.node.subs) ak_signal_write(&n->sig.node);
 }
 
-// write_all writes n and everything below it.
-static void write_all(ak_pnode *n) {
+// write_all writes n and everything below it (v its value now): the
+// keys a for follows, when they changed from those it saw.
+static void write_all(ak_pnode *n, pv v) {
 	write(n);
-	EACH_KID(n, c, write_all(c));
+	EACH_KID(n, c, {
+		if (c->kind == PN_KEYS) {
+			if (keys_changed(c, v, 0, -1)) write(c);
+		} else {
+			write_all(c, child_val(v, c));
+		}
+	});
 }
 
 // compare writes the nodes below n whose values differ between old and
@@ -464,7 +516,7 @@ static void write_all(ak_pnode *n) {
 static void compare(ak_pnode *n, pv old, pv now) {
 	EACH_KID(n, c, {
 		if (c->kind == PN_KEYS) {
-			if (!same(old, now) && keys_differ(c, old, now)) write(c);
+			if (!same(old, now) && keys_changed(c, now, 0, -1)) write(c);
 		} else {
 			pv o = child_val(old, c), w = child_val(now, c);
 			if (!same(o, w) && !(c->sig.node.subs && pv_eq(o, w))) {
@@ -590,16 +642,9 @@ bool ak_path_put(ak_pnode **tree, ak_node *root, ak_val now, ak_kind k, const ui
 			uint16_t g[MAX_STEPS];
 			uint16_t gn = 0;
 			for (uint32_t e = d + 1; e < ns && isfield[e]; e++) g[gn++] = fields[e];
-			for (ak_pnode *kc = at->keys; kc; kc = kc->next) {
-				if (!related(g, gn, kc->fields, kc->nf)) continue;
-				if (mode == AK_PS_OLD && gn < kc->nf && gn == ns - d - 1) {
-					// The key is below what was written: compared.
-					pv o = item_key(old, kc->fields + gn, (uint16_t)(kc->nf - gn));
-					pv w = item_key(place->val, kc->fields + gn, (uint16_t)(kc->nf - gn));
-					if (pv_eq(o, w)) continue;
-				}
-				write(kc);
-			}
+			int64_t i = steps[d + 1].index;
+			for (ak_pnode *kc = at->keys; kc; kc = kc->next)
+				if (related(g, gn, kc->fields, kc->nf) && keys_changed(kc, steps[d].val, i, i + 1)) write(kc);
 		}
 		ak_pnode *pn = place->node;
 		if (pn) {
@@ -609,18 +654,25 @@ bool ak_path_put(ak_pnode **tree, ak_node *root, ak_val now, ak_kind k, const ui
 				compare(pn, old, place->val);
 				break;
 			case AK_PS_ALL:
-				EACH_KID(pn, c, write_all(c));
+				EACH_KID(pn, c, {
+					if (c->kind == PN_KEYS) {
+						if (keys_changed(c, place->val, 0, -1)) write(c);
+					} else {
+						write_all(c, child_val(place->val, c));
+					}
+				});
 				break;
 			case AK_PS_CHANGED:
 				if (ch.len && pn->len) write(pn->len);
-				for (ak_pnode *kc = pn->keys; kc; kc = kc->next) write(kc);
 				if (ch.what == AK_CHANGE_RANGE) {
+					for (ak_pnode *kc = pn->keys; kc; kc = kc->next)
+						if (keys_changed(kc, place->val, ch.lo, ch.len ? -1 : ch.hi)) write(kc);
 					int64_t hi = ch.hi < 0 || ch.len ? (int64_t)pn->ncap : ch.hi;
 					for (int64_t i = ch.lo < 0 ? 0 : ch.lo; i < hi && i < pn->ncap; i++)
-						if (pn->num[i] && pn->num[i]->kind == PN_INDEX) write_all(pn->num[i]);
+						if (pn->num[i] && pn->num[i]->kind == PN_INDEX) write_all(pn->num[i], index_of(place->val, i));
 				} else if (pn->kcap) {
 					for (ak_pnode *c = pn->keyed[ch.hash & (pn->kcap - 1)]; c; c = c->next)
-						if (c->hash == ch.hash) write_all(c);
+						if (c->hash == ch.hash) write_all(c, child_val(place->val, c));
 				}
 				break;
 			}

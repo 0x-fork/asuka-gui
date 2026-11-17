@@ -183,6 +183,13 @@ ak_view *ak_ui_show(ak_closure *cond, ak_closure *then, ak_closure *otherwise);
 // the key's value and position. A row is built under its own owner,
 // disposed when its key goes; a moved row moves its native views.
 ak_view *ak_ui_for(ak_closure *items, ak_closure *key, ak_closure *row, ak_kind key_kind);
+// ak_ui_for_path is a for over a path's items (rfcs/0013): those the
+// accessor acc reads, keyed by key (a path's spelling of the item's
+// fields, an ak_str; a function of the item's accessor and its index; or
+// none: by position). It follows the length and the keys, not the
+// items: a row's item is its element's accessor, which follows what the
+// row reads of it.
+ak_view *ak_ui_for_path(void *acc, ak_val key, ak_closure *row, ak_kind key_kind);
 // ak_ui_switch builds build(case) for the case selector() returns (an
 // int), again whenever it changes (a match in a view).
 ak_view *ak_ui_switch(ak_closure *selector, ak_closure *build);
@@ -192,6 +199,9 @@ ak_view *ak_ui_dynamic(ak_closure *build);
 // ak_ui_lazy_for is a for directly in an element that builds its
 // children lazily (a List): rows exist only while the host shows them.
 void ak_ui_lazy_for(ak_view *v, ak_closure *items, ak_closure *key, ak_closure *row, ak_kind key_kind);
+// ak_ui_lazy_for_path is ak_ui_lazy_for over a path's items, as
+// ak_ui_for_path is ak_ui_for.
+void ak_ui_lazy_for_path(ak_view *v, void *acc, ak_val key, ak_closure *row, ak_kind key_kind);
 
 // ---- Components: contexts, tasks, instance paths ----
 

@@ -156,13 +156,8 @@ func (c *Checker) letPath(t *TypeName, m *Member) bool {
 		return false
 	}
 	p := c.path(m.Default)
-	if p == nil {
+	if p == nil || !c.staticPath(p) {
 		return false
-	}
-	for _, s := range p.Steps {
-		if s.Arg != nil && c.reactive(s.Arg) || s.Kind == StepLen && s.Empty {
-			return false
-		}
 	}
 	// What the root and the arguments read of t's must be made first.
 	before := map[*Member]bool{}

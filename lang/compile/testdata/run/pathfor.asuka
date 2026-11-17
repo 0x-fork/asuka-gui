@@ -1,0 +1,147 @@
+// A for over a path follows the order of its items, not the items
+// (rfcs/0013): the length, and the keys. A write inside an item runs
+// neither the for nor the bindings of the item's other fields; each
+// binding prints as it runs.
+
+struct User {
+  name: string
+  avatar: string
+}
+
+struct Todo {
+  id: int
+  title: string
+  done: bool = false
+}
+
+fn show(tag: string, s: string) -> string {
+  print(tag)
+  return s
+}
+
+// The RFC's motivation: the avatar runs nothing, a toggle the count.
+component Motivation {
+  state u = User(name: "a", avatar: "x")
+  state todos = [Todo(id: 1, title: "a"), Todo(id: 2, title: "b"), Todo(id: 3, title: "c")]
+  let doneCount = todos.count(t => t.done)
+
+  Column {
+    Text(show("name", u.name))
+    for t in todos key t.id {
+      Text(show("title {t.id}", t.title))
+    }
+    Text(show("count", "{doneCount}"))
+    Button("avatar") { on press { u.avatar = "y" } }
+    Button("toggle") { on press { todos[1].done = true } }
+    Button("retitle") { on press { todos[2].title = "z" } }
+    Button("push") { on press { todos.push(Todo(id: 4, title: "d")) } }
+    Button("swap") {
+      on press {
+        let first = todos[0]
+        todos[0] = todos[1]
+        todos[1] = first
+      }
+    }
+  }
+}
+
+test "the for runs when its keys change, a row when what it reads does" {
+  let app = mount(Motivation())
+  print("-- avatar")
+  app.tap("avatar")
+  print("-- toggle")
+  app.tap("toggle")
+  print("-- retitle")
+  app.tap("retitle")
+  print("-- push")
+  app.tap("push")
+  print("-- swap")
+  app.tap("swap")
+  app.expect("b", "a", "z", "d", "1")
+}
+
+// A key that isn't a field path is read through the item's path: what
+// it reads of each item is followed, nothing else.
+component Computed {
+  state todos = [Todo(id: 1, title: "a"), Todo(id: 2, title: "b")]
+
+  Column {
+    for t in todos key show("key {t.id}", "{t.id}") {
+      Text(show("title {t.id}", t.title))
+    }
+    Button("toggle") { on press { todos[1].done = true } }
+    Button("renumber") { on press { todos[1].id = 5 } }
+  }
+}
+
+test "a computed key follows what it reads" {
+  let app = mount(Computed())
+  print("-- toggle")
+  app.tap("toggle")
+  print("-- renumber")
+  app.tap("renumber")
+  app.expect("a", "b")
+}
+
+// The same in a List, whose rows exist while they're on screen.
+component Listed {
+  state todos = [Todo(id: 1, title: "a"), Todo(id: 2, title: "b"), Todo(id: 3, title: "c")]
+
+  List {
+    for t in todos key t.id {
+      Row {
+        on press { todos[t.id - 1].done = !t.done }
+        Text(show("title {t.id}", t.title))
+        Text(show("done {t.id}", if t.done { "★" } else { "☆" }))
+      }
+    }
+  }
+}
+
+test "a List's for over a path" {
+  let app = mount(Listed())
+  print("-- tap")
+  app.tap("b")
+  print("-- tap again")
+  app.tap("b")
+  app.expect("a", "b", "c")
+}
+
+// Output:
+// name
+// title 1
+// title 2
+// title 3
+// count
+// -- avatar
+// -- toggle
+// count
+// -- retitle
+// title 3
+// -- push
+// title 4
+// -- swap
+// title 1
+// title 2
+// ok the for runs when its keys change, a row when what it reads does
+// key 1
+// key 2
+// title 1
+// title 2
+// -- toggle
+// -- renumber
+// key 1
+// key 5
+// title 5
+// ok a computed key follows what it reads
+// title 1
+// done 1
+// title 2
+// done 2
+// title 3
+// done 3
+// -- tap
+// done 2
+// -- tap again
+// done 2
+// ok a List's for over a path

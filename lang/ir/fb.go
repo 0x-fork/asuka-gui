@@ -408,7 +408,7 @@ func (b *fb) readVar(v *check.Var, n syntax.Node) int {
 		t := b.temp(b.kind(v.Type))
 		b.emit(op("VGET"), t, r)
 		return t
-	case v.Kind == check.RowItem:
+	case v.Kind == check.RowItem, b.l.prog.AccessorVar(v):
 		t := b.temp(b.kind(v.Type))
 		b.emit(op("AGET"), t, r)
 		return t

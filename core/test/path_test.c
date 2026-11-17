@@ -228,6 +228,11 @@ static void do_swap_last(ak_val *v, void *ctx) {
 	ak_change_range(1, 3, false);  // as a sort that moved 1 and 2
 }
 
+static void do_nothing_sorted(ak_val *v, void *ctx) {
+	AK_UNUSED(ctx);
+	ak_change_range(0, ((ak_arr *)v->p)->len, false);
+}
+
 static void do_nothing(ak_val *v, void *ctx) {
 	AK_UNUSED(v);
 	AK_UNUSED(ctx);
@@ -373,6 +378,19 @@ TEST(a_for_follows_its_keys) {
 	CHECK_EQ_INT(key_runs, 2);
 	change(c, do_push, NULL);
 	CHECK_EQ_INT(key_runs, 3);
+	// A change it can't compare (a mut fn's on an item: anything below
+	// it) tells the for only when the keys differ from those it saw.
+	ak_val now = ak_vm_cell_take(c);
+	ak_struct *s = ak_struct_mut((ak_struct **)&ak_arr_mut((ak_arr **)&now.p)->data[2].p);
+	s->f[2].i = !s->f[2].i;
+	ak_val at = {.i = 2};
+	put(c, now, P("ia"), &at);
+	CHECK_EQ_INT(key_runs, 3);
+	// A builtin's range whose keys stay (a sort that moved nothing).
+	change(c, do_nothing_sorted, NULL);
+	CHECK_EQ_INT(key_runs, 3);
+	change(c, do_swap_last, NULL);
+	CHECK_EQ_INT(key_runs, 4);
 	ak_owner_dispose(o);
 	CHECK_EQ_INT(ak_vm_cell_nodes(c), 0);
 	cell_free(c);

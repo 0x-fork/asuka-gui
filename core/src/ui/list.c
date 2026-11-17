@@ -77,6 +77,15 @@ typedef struct list_t {
 	AK_VEC(lsection) sections;
 	lsecids_vec secids, next_secids;
 	float row_lead, row_trail;  // the room the host's selection control takes from the rows
+	// Over a path (rfcs/0013): its items are src's, and it holds no
+	// array (one held would be copied by each change in place of the
+	// state): n is their number, and keys their keys, computed as its
+	// effect runs (what a key's function reads followed).
+	bool over_path;
+	ak_fsrc src;
+	int64_t n;
+	ak_kind ik;
+	AK_VEC(ak_val) keys;
 } list_t;
 
 // ---- The class ----
@@ -238,6 +247,24 @@ const ak_el_class ak_class_list = {.name = "List", .kind = AK_KIND_LIST, .flags 
 
 // ---- IDs ----
 
+// count is the number of items.
+static int64_t count(const list_t *st) {
+	if (st->over_path) return st->n;
+	return st->list ? st->list->len : 0;
+}
+
+// key_at is item i's key, of a list over a path: its items read now.
+static ak_val key_at(list_t *st, int64_t i) {
+	ak_arr *items = ak_fsrc_items(&st->src);
+	if (ak_error_pending() || !items || i >= items->len) {
+		ak_release(items);
+		return (ak_val){.i = i};
+	}
+	ak_val k = ak_fsrc_key(&st->src, items, i, st->key_kind);
+	ak_release(items);
+	return k;
+}
+
 static ak_val key_of(list_t *st, ak_val item, int64_t i) {
 	if (!st->key) return (ak_val){.i = i};
 	ak_val args[2] = {item, {.i = i}};  // the key's function takes (item, index)
@@ -321,7 +348,13 @@ static void update(list_t *st, ak_arr *list) {
 	st->order.len = 0;
 	ak_vec_reserve(&st->order, n);
 	for (uint32_t i = 0; i < n; i++) {
-		ak_val k = key_of(st, list->data[i], i);
+		ak_val k;
+		if (st->over_path) {
+			k = st->keys.data[i];  // taken
+			st->keys.data[i] = (ak_val){0};
+		} else {
+			k = key_of(st, list->data[i], i);
+		}
 		if (ak_error_pending()) {
 			free_ids(st->next_ids, st->next_cap, st->key_kind);
 			memset(st->next_ids, 0, st->next_cap * sizeof(lid));
@@ -340,9 +373,14 @@ static void update(list_t *st, ak_arr *list) {
 		}
 		st->order.data[st->order.len++] = id;
 	}
-	ak_retain(list);
-	ak_release(st->list);
-	st->list = list;  // section(i) may read it
+	if (st->over_path) {
+		st->n = n;
+		st->ik = ik;
+	} else {
+		ak_retain(list);
+		ak_release(st->list);
+		st->list = list;  // section(i) may read it
+	}
 	bool sections = make_sections(st, n);
 	ak_buf *b = ak_batch_command_begin(e->r->batch, e->id, AK_CMD_LIST_UPDATE);
 	ak_buf_u32(b, n);
@@ -365,7 +403,9 @@ static void update(list_t *st, ak_arr *list) {
 		lcell *c = st->cells.data[i];
 		if (c->header) continue;  // a section's ID keeps its key; the host rebinds the rest
 		lid *x = find_id(st->ids, st->ids_cap, c->row.key, c->row.hash, st->key_kind);
-		if (x->hash) ak_row_update(&c->row, list->data[x->index], ik, x->index);
+		if (!x->hash) continue;
+		if (st->over_path) ak_row_move(&c->row, x->index);
+		else ak_row_update(&c->row, list->data[x->index], ik, x->index);
 	}
 }
 
@@ -379,8 +419,47 @@ static void update_fn(void *ctx) {
 	update(u->st, u->list);
 }
 
+static void free_keys(list_t *st) {
+	for (uint32_t i = 0; i < st->keys.len; i++) ak_release_val(st->keys.data[i], st->key_kind);
+	st->keys.len = 0;
+}
+
+// path_run follows the order of a path's items (the length, the keys),
+// not the items, then updates, untracked.
+static void path_run(list_t *st) {
+	ak_arr *list = NULL;
+	if (ak_fsrc_follow(&st->src) < 0 || (list = ak_fsrc_items(&st->src), ak_error_pending())) {
+		ak_release(list);
+		void *err = ak_error_take();
+		if (ak_is_cancel(err)) ak_release(err);
+		else ak_raise(err);
+		return;
+	}
+	uint32_t n = list ? list->len : 0;
+	free_keys(st);
+	ak_vec_reserve(&st->keys, n);
+	for (uint32_t i = 0; i < n; i++) {
+		ak_val k = ak_fsrc_key(&st->src, list, i, st->key_kind);
+		if (ak_error_pending()) {
+			free_keys(st);
+			ak_release(list);
+			ak_raise(ak_error_take());
+			return;
+		}
+		st->keys.data[st->keys.len++] = k;
+	}
+	update_ctx u = {st, list};
+	ak_untrack(update_fn, &u);
+	free_keys(st);
+	ak_release(list);
+}
+
 static void items_run(void *ctx) {
 	list_t *st = ctx;
+	if (st->over_path) {
+		path_run(st);
+		return;
+	}
 	ak_val v = ak_call(st->items, NULL, 0);
 	if (ak_error_pending()) {
 		void *err = ak_error_take();
@@ -412,6 +491,12 @@ static void items_drop(void *ctx) {
 	st->started = false;
 	ak_release(st->list);
 	st->list = NULL;
+	if (st->over_path) {
+		free_keys(st);
+		ak_vec_free(&st->keys);
+		ak_fsrc_free(&st->src);
+		st->over_path = false;
+	}
 	ak_release(st->items);
 	ak_release(st->key);
 	ak_release(st->row);
@@ -423,15 +508,19 @@ static void items_drop(void *ctx) {
 	ak_release(st->e);
 }
 
-void ak_ui_lazy_for(ak_view *v, ak_closure *items, ak_closure *key, ak_closure *row, ak_kind key_kind) {
+static void lazy_for(ak_view *v, ak_closure *items, ak_closure *key, void *acc, ak_val pkey, ak_closure *row, ak_kind key_kind) {
 	if (v->el != AK_EL_LIST) ak_panic("ui: %s doesn't build its rows lazily", v->el ? ak_el_names[v->el] : v->cls->name);
 	list_t *st = v->impl;
-	if (st->items) ak_panic("ui: a List has one for");
+	if (st->items || st->over_path) ak_panic("ui: a List has one for");
 	ak_retain(v);  // the effect's
 	st->items = ak_retain(items);
 	st->key = ak_retain(key);
 	st->row = ak_retain(row);
-	st->key_kind = key ? key_kind : AK_K_INT;
+	st->key_kind = key || pkey.p ? key_kind : AK_K_INT;
+	if (acc) {
+		st->over_path = true;
+		ak_fsrc_init(&st->src, acc, pkey);
+	}
 	st->owner = ak_current_owner();
 	if (st->owner) ak_owner_retain(st->owner);
 	st->path = ak_path_capture();
@@ -439,12 +528,13 @@ void ak_ui_lazy_for(ak_view *v, ak_closure *items, ak_closure *key, ak_closure *
 	ak_effect_new(items_run, st, AK_EFFECT_RENDER, &st->info);
 }
 
+void ak_ui_lazy_for(ak_view *v, ak_closure *items, ak_closure *key, ak_closure *row, ak_kind key_kind) { lazy_for(v, items, key, NULL, (ak_val){0}, row, key_kind); }
+
+void ak_ui_lazy_for_path(ak_view *v, void *acc, ak_val key, ak_closure *row, ak_kind key_kind) { lazy_for(v, NULL, NULL, acc, key, row, key_kind); }
+
 // ---- From the host ----
 
-int64_t ak_list_count(ak_view *e) {
-	list_t *st = e->impl;
-	return st->list ? st->list->len : 0;
-}
+int64_t ak_list_count(ak_view *e) { return count(e->impl); }
 
 static void post_handler(void *ctx) {
 	void **p = ctx;
@@ -471,7 +561,7 @@ static void post(ak_view *e, uint16_t ev) {
 
 // reached posts endReached when row i is near the end, once per length.
 static void reached(list_t *st, int64_t i) {
-	int64_t n = st->list ? st->list->len : 0;
+	int64_t n = count(st);
 	if (!ak_view_handler(st->e, AK_EV_LIST_END_REACHED) || i < n - 3 || n == st->end_at) return;
 	st->end_at = n;
 	post(st->e, AK_EV_LIST_END_REACHED);
@@ -480,8 +570,8 @@ static void reached(list_t *st, int64_t i) {
 // reached_start posts startReached when row i is near the start, once
 // per first item.
 static void reached_start(list_t *st, int64_t i) {
-	if (!ak_view_handler(st->e, AK_EV_LIST_START_REACHED) || i > 2 || !st->list || st->list->len == 0) return;
-	ak_val k = key_of(st, st->list->data[0], 0);
+	if (!ak_view_handler(st->e, AK_EV_LIST_START_REACHED) || i > 2 || count(st) == 0) return;
+	ak_val k = st->over_path ? key_at(st, 0) : key_of(st, st->list->data[0], 0);
 	if (ak_error_pending()) {
 		ak_ui_raise_pending(st->owner);
 		return;
@@ -513,7 +603,8 @@ typedef struct {
 static void make_row(void *ctx) {
 	make_ctx *m = ctx;
 	lcell *c = m->c;
-	ak_row_make(&c->row, m->st->e->r, m->st->row, m->st->path, m->st->owner, m->item, m->ik, m->i, m->st->key_kind);
+	if (m->st->over_path) ak_row_make_at(&c->row, m->st->e->r, m->st->row, m->st->path, m->st->owner, m->st->src.acc, m->ik, m->i, m->st->key_kind);
+	else ak_row_make(&c->row, m->st->e->r, m->st->row, m->st->path, m->st->owner, m->item, m->ik, m->i, m->st->key_kind);
 	if (c->row.el) {
 		ak_view_append(c->el, c->row.el);
 		ak_release(c->row.el);  // the cell holds it
@@ -816,9 +907,9 @@ void ak_list_bind(ak_view *e, int64_t i, ak_id cell) {
 		bind_header(st, -1 - i, cell);
 		return;
 	}
-	if (!st->list || i >= st->list->len) return;
-	ak_val item = st->list->data[i];
-	ak_kind ik = ak_arr_kind(st->list);
+	if (i >= count(st)) return;
+	ak_val item = st->over_path ? (ak_val){0} : st->list->data[i];
+	ak_kind ik = st->over_path ? st->ik : ak_arr_kind(st->list);
 	reached(st, i);
 	reached_start(st, i);
 	int32_t ci = find_cell(st, cell);
@@ -831,7 +922,7 @@ void ak_list_bind(ak_view *e, int64_t i, ak_id cell) {
 		// A recycled cell: its row takes the item, which updates only the
 		// props that differ.
 		lcell *c = st->cells.data[ci];
-		ak_val k = key_of(st, item, i);
+		ak_val k = st->over_path ? key_at(st, i) : key_of(st, item, i);
 		if (ak_error_pending()) {
 			ak_ui_raise_pending(st->owner);
 			return;
@@ -839,10 +930,11 @@ void ak_list_bind(ak_view *e, int64_t i, ak_id cell) {
 		ak_release_val(c->row.key, st->key_kind);
 		c->row.key = k;
 		c->row.hash = hash_of(k, st->key_kind);
-		ak_row_update(&c->row, item, ik, i);
+		if (st->over_path) ak_row_move(&c->row, i);
+		else ak_row_update(&c->row, item, ik, i);
 		return;
 	}
-	ak_val k = key_of(st, item, i);
+	ak_val k = st->over_path ? key_at(st, i) : key_of(st, item, i);
 	if (ak_error_pending()) {
 		ak_ui_raise_pending(st->owner);
 		return;

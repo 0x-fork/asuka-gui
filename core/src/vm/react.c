@@ -327,7 +327,7 @@ void ak_vm_cell_keys(void *p, const uint8_t *path, uint32_t n, const ak_val *arg
 		ak_release_val(v, (ak_kind)c->kind);
 		return;
 	}
-	if (ak_tracking()) ak_path_keys(&c->paths, path, n, args, fields, nf);
+	if (ak_tracking()) ak_path_keys(&c->paths, c->v, (ak_kind)c->kind, path, n, args, fields, nf);
 }
 
 uint32_t ak_vm_cell_nodes(void *p) { return ak_path_nodes(((cell *)p)->paths); }
@@ -468,16 +468,15 @@ typedef struct {
 	uint8_t *kinds;  // each argument's kind; AK_K_VOID: a cell of an int
 } apath;
 
+// apath_free lets go of what ap holds (it's its accessor's: one
+// allocation, the accessor, then ap, its arguments, its kinds and its
+// steps).
 static void apath_free(apath *p) {
 	ak_release(p->root);
 	for (uint32_t i = 0; i < p->nargs; i++) {
 		if (p->kinds[i] == AK_K_VOID) ak_release(p->args[i].p);
 		else ak_release_val(p->args[i], (ak_kind)p->kinds[i]);
 	}
-	ak_free(p->steps);
-	ak_free(p->args);
-	ak_free(p->kinds);
-	ak_free(p);
 }
 
 static void acc_drop(ak_opaque *o) {
@@ -640,24 +639,32 @@ static acc *acc_of(void *p) {
 	return o && o->tag == AK_TAG_ACC ? (acc *)p : NULL;
 }
 
-// apath_new makes the path p (args its arguments, index a cell of an
-// int as its last argument when not NULL) below base: a cell, or an
-// accessor, whose path it continues when it's a path's.
-static apath *apath_new(void *base, const uint8_t *p, uint32_t n, const ak_val *args, void *index) {
+// acc_path_new makes an accessor (of kind k) of the path p (args its
+// arguments, index a cell of an int as its last argument when not NULL)
+// below base: a cell, or an accessor, whose path it continues when it's
+// a path's.
+static acc *acc_path_new(void *base, const uint8_t *p, uint32_t n, const ak_val *args, void *index, ak_kind k) {
 	acc *b = acc_of(base);
 	const apath *bp = b && b->mode == ACC_PATH ? b->v.p : NULL;
-	apath *ap = ak_alloc(sizeof *ap);
-	memset(ap, 0, sizeof *ap);
+	uint32_t bn = bp ? bp->n : 0, ba = bp ? bp->nargs : 0;
+	uint32_t na = path_kinds(p, n, NULL);
+	uint32_t tn = bn + n, ta = ba + na;
+	// One allocation: the accessor, its path, its arguments, their
+	// kinds, its steps.
+	size_t at = (sizeof(acc) + 7) & ~(size_t)7;
+	acc *a = ak_opaque_new(AK_TAG_ACC, at + sizeof(apath) + sizeof(ak_val) * ta + ta + tn, acc_drop);
+	a->mode = ACC_PATH;
+	a->kind = (uint8_t)k;
+	apath *ap = (apath *)((char *)a + at);
+	a->v.p = ap;
 	if (bp) ap->root = ak_retain(bp->root);
 	else if (b && b->mode == ACC_CELL) ap->root = ak_retain(b->v.p);
 	else ap->root = ak_retain(base);
-	uint32_t bn = bp ? bp->n : 0, ba = bp ? bp->nargs : 0;
-	uint32_t na = path_kinds(p, n, NULL);
-	ap->n = bn + n;
-	ap->nargs = ba + na;
-	ap->steps = ak_alloc(ap->n ? ap->n : 1);
-	ap->args = ak_alloc(sizeof(ak_val) * (ap->nargs ? ap->nargs : 1));
-	ap->kinds = ak_alloc(ap->nargs ? ap->nargs : 1);
+	ap->n = tn;
+	ap->nargs = ta;
+	ap->args = (ak_val *)(ap + 1);
+	ap->kinds = (uint8_t *)(ap->args + ta);
+	ap->steps = ap->kinds + ta;
 	if (bn) memcpy(ap->steps, bp->steps, bn);
 	if (n) memcpy(ap->steps + bn, p, n);
 	for (uint32_t i = 0; i < ba; i++) {
@@ -676,16 +683,16 @@ static apath *apath_new(void *base, const uint8_t *p, uint32_t n, const ak_val *
 		ap->args[ba + i] = args[i];
 		ak_retain_val(args[i], (ak_kind)ap->kinds[ba + i]);
 	}
-	return ap;
+	return a;
 }
 
 ak_val ak_vm_acc_path(void *base, const uint8_t *p, uint32_t n, const ak_val *args, ak_kind k) {
-	return (ak_val){.p = acc_new(ACC_PATH, k, (ak_val){.p = apath_new(base, p, n, args, NULL)})};
+	return (ak_val){.p = acc_path_new(base, p, n, args, NULL, k)};
 }
 
 ak_val ak_vm_acc_row(void *base, void *index, ak_kind k) {
 	static const uint8_t step[1] = {AK_PS_INDEX};
-	return (ak_val){.p = acc_new(ACC_PATH, k, (ak_val){.p = apath_new(base, step, 1, NULL, index)})};
+	return (ak_val){.p = acc_path_new(base, step, 1, NULL, index, k)};
 }
 
 // read_below reads the path p below what a (not a path's) reads: it,
@@ -741,6 +748,47 @@ ak_val ak_vm_acc_getp(void *p, const uint8_t *path, uint32_t n, const ak_val *ar
 	}
 	}
 	return read_below(a, path, n, args);
+}
+
+// ak_vm_acc_keys follows, for a for keyed by a field path of its items
+// (fields, nf of them), the keys of the array acc reads: one signal for
+// them all when acc's is a path below a cell; else acc, whole.
+void ak_vm_acc_keys(void *p, const uint16_t *fields, uint16_t nf) {
+	acc *a = p;
+	switch (a->mode) {
+	case ACC_CELL:
+		ak_vm_cell_keys(a->v.p, NULL, 0, NULL, fields, nf);
+		return;
+	case ACC_MODEL: {
+		model *m = a->v.p;
+		if (m->bound) ak_vm_acc_keys(m->inner, fields, nf);
+		else ak_vm_cell_keys(m->own, NULL, 0, NULL, fields, nf);
+		return;
+	}
+	case ACC_PATH: {
+		apath *ap = a->v.p;
+		if (!acc_of(ap->root)) {
+			ak_val abuf[PATH_ARGS];
+			ak_val *all = ap->nargs <= PATH_ARGS ? abuf : ak_alloc(sizeof(ak_val) * ap->nargs);
+			for (uint32_t i = 0; i < ap->nargs; i++) all[i] = ap->kinds[i] == AK_K_VOID ? ak_vm_cell_get(ap->args[i].p, true) : ap->args[i];
+			ak_vm_cell_keys(ap->root, ap->steps, ap->n, all, fields, nf);
+			if (all != abuf) ak_free(all);
+			return;
+		}
+		break;
+	}
+	}
+	ak_val v = ak_vm_acc_get(a);  // not a path's: what it reads, whole
+	if (!ak_error_pending()) ak_release_val(v, (ak_kind)a->kind);
+}
+
+// ak_vm_acc_seek sets the index an accessor of an array's element reads
+// (its last argument, an int): a for's key's, made once and moved over
+// the items.
+void ak_vm_acc_seek(void *p, int64_t i) {
+	acc *a = p;
+	apath *ap = a->v.p;
+	ap->args[ap->nargs - 1].i = i;
 }
 
 // ---- Untracked calls, effects, cleanups, batches ----

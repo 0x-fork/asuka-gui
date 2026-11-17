@@ -229,6 +229,8 @@ typedef struct {
 	ak_owner *owner;      // what made it, retained: its rows' owners' parent
 	ak_path *path;
 	ak_comp_info info;
+	bool over_path;       // its items are a path's (src), not items()'s
+	ak_fsrc src;
 } for_t;
 
 static void key_seg(ak_buf *b, ak_val k, ak_kind kind) {
@@ -269,6 +271,86 @@ void ak_row_make(ak_row *rw, ak_ui_root *r, ak_closure *row, ak_path *path, ak_o
 	ak_release(rb.args[1].p);
 	ak_path_pop(prev);
 	rw->el = rb.out;
+}
+
+void ak_row_make_at(ak_row *rw, ak_ui_root *r, ak_closure *row, ak_path *path, ak_owner *parent, void *acc, ak_kind item_kind, int64_t i, ak_kind key_kind) {
+	rw->cell_item = NULL;
+	rw->cell_index = ak_vm_cell_new((ak_val){.i = i}, AK_K_INT, NULL).p;
+	rw->owner = ak_root_under(parent);
+	ak_buf seg = {0};
+	key_seg(&seg, rw->key, key_kind);
+	ak_path *prev = ak_path_push(path, (const char *)seg.data, seg.len);
+	ak_buf_free(&seg);
+	row_build rb = {r, row, {ak_vm_acc_row(acc, rw->cell_index, item_kind), ak_vm_acc_cell(rw->cell_index)}, NULL};
+	ak_with_owner(rw->owner, build_row, &rb);
+	ak_release(rb.args[0].p);
+	ak_release(rb.args[1].p);
+	ak_path_pop(prev);
+	rw->el = rb.out;
+}
+
+void ak_row_move(ak_row *rw, int64_t i) { ak_vm_cell_set(rw->cell_index, (ak_val){.i = i}); }
+
+// ---- A for over a path's items ----
+
+void ak_fsrc_init(ak_fsrc *s, void *acc, ak_val key) {
+	memset(s, 0, sizeof *s);
+	s->acc = ak_retain(acc);
+	ak_obj *k = key.p;
+	if (k && k->tag == AK_TAG_STR) {
+		// A path of the item's fields: 'f' and a field's index, each.
+		ak_str *f = key.p;
+		s->by_field = true;
+		s->nf = (uint16_t)(f->len / 3);
+		s->fields = ak_alloc(sizeof(uint16_t) * (s->nf ? s->nf : 1));
+		for (uint16_t j = 0; j < s->nf; j++) s->fields[j] = (uint16_t)((uint8_t)f->data[3 * j + 1] | (uint8_t)f->data[3 * j + 2] << 8);
+	} else if (k) {
+		static const uint8_t at[1] = {'i'};
+		ak_val zero = {.i = 0};
+		s->key = ak_retain(key.p);
+		s->cursor = ak_vm_acc_path(acc, at, 1, &zero, AK_K_REF).p;
+	}
+}
+
+void ak_fsrc_free(ak_fsrc *s) {
+	ak_release(s->acc);
+	ak_release(s->key);
+	ak_release(s->cursor);
+	ak_free(s->fields);
+	memset(s, 0, sizeof *s);
+}
+
+int64_t ak_fsrc_follow(ak_fsrc *s) {
+	static const uint8_t len[1] = {'n'};
+	ak_val n = ak_vm_acc_getp(s->acc, len, 1, NULL);
+	if (ak_error_pending()) return -1;
+	if (s->by_field) ak_vm_acc_keys(s->acc, s->fields, s->nf);
+	if (ak_error_pending()) return -1;
+	return n.i;
+}
+
+ak_arr *ak_fsrc_items(ak_fsrc *s) {
+	void *t = ak_untrack_begin();
+	ak_val v = ak_vm_acc_get(s->acc);
+	ak_untrack_end(t);
+	return v.p;
+}
+
+ak_val ak_fsrc_key(ak_fsrc *s, ak_arr *items, int64_t i, ak_kind kk) {
+	if (s->by_field) {
+		ak_val v = items->data[i];
+		for (uint16_t j = 0; j < s->nf; j++) {
+			ak_struct *st = v.p;
+			if (!st) break;
+			v = st->f[s->fields[j]];
+		}
+		ak_retain_val(v, kk);
+		return v;
+	}
+	if (!s->key) return (ak_val){.i = i};
+	ak_vm_acc_seek(s->cursor, i);
+	ak_val args[2] = {{.p = s->cursor}, {.i = i}};  // (item's accessor, index)
+	return ak_call(s->key, args, 2);
 }
 
 void ak_row_update(ak_row *rw, ak_val item, ak_kind item_kind, int64_t i) {
@@ -330,23 +412,30 @@ static void lis(for_t *s) {
 		for (int64_t i = s->tails.data[s->tails.len - 1]; i >= 0; i = s->prev.data[i]) s->stay.data[i] = 1;
 }
 
+// item_keys computes the items' keys into s->keys: false when one threw
+// (none kept, the rows left as they are).
+static bool item_keys(for_t *s, ak_arr *list) {
+	uint32_t n = list ? list->len : 0;
+	s->keys.len = 0;
+	ak_vec_reserve(&s->keys, n);
+	for (uint32_t i = 0; i < n; i++) {
+		ak_val k = s->over_path ? ak_fsrc_key(&s->src, list, i, s->key_kind) : key_of(s, list->data[i], i);
+		if (ak_error_pending()) {
+			for (uint32_t j = 0; j < s->keys.len; j++) ak_release_val(s->keys.data[j], s->key_kind);
+			s->keys.len = 0;
+			return false;
+		}
+		s->keys.data[s->keys.len++] = k;
+	}
+	return true;
+}
+
+// reconcile makes the rows list's, keyed by s->keys.
 static void reconcile(for_t *s, ak_arr *list) {
 	ak_view *f = s->f;
 	ak_ui_root *r = f->r;
 	ak_kind ik = list ? ak_arr_kind(list) : AK_K_INT;
 	uint32_t n = list ? list->len : 0;
-	// The keys first: a key that throws leaves the rows as they were.
-	s->keys.len = 0;
-	ak_vec_reserve(&s->keys, n);
-	for (uint32_t i = 0; i < n; i++) {
-		ak_val k = key_of(s, list->data[i], i);
-		if (ak_error_pending()) {
-			for (uint32_t j = 0; j < s->keys.len; j++) ak_release_val(s->keys.data[j], s->key_kind);
-			s->keys.len = 0;
-			return;
-		}
-		s->keys.data[s->keys.len++] = k;
-	}
 	// The old rows, by key.
 	uint32_t need = 16;
 	while (need < s->rows.len * 2) need *= 2;
@@ -379,12 +468,14 @@ static void reconcile(for_t *s, ak_arr *list) {
 			s->taken.data[o] = 1;
 			ak_row rw = s->rows.data[o];
 			ak_release_val(k, s->key_kind);
-			ak_row_update(&rw, it, ik, i);
+			if (s->over_path) ak_row_move(&rw, i);
+			else ak_row_update(&rw, it, ik, i);
 			ak_vec_push(&s->next, rw);
 			continue;
 		}
 		ak_row rw = {.key = k, .hash = hash, .old = -1};
-		ak_row_make(&rw, r, s->row, s->path, s->owner, it, ik, i, s->key_kind);
+		if (s->over_path) ak_row_make_at(&rw, r, s->row, s->path, s->owner, s->src.acc, ik, i, s->key_kind);
+		else ak_row_make(&rw, r, s->row, s->path, s->owner, it, ik, i, s->key_kind);
 		ak_vec_push(&s->next, rw);
 	}
 	s->keys.len = 0;  // released, or the new rows'
@@ -434,11 +525,39 @@ typedef struct {
 
 static void reconcile_fn(void *ctx) {
 	rec_ctx *c = ctx;
-	reconcile(c->s, c->list);
+	if (c->s->over_path || item_keys(c->s, c->list)) reconcile(c->s, c->list);
+}
+
+// for_path_run follows the order of a path's items: the length, and the
+// keys (a field path's signal, or what a key's function reads of each
+// item), not the items; then reconciles, untracked.
+static void for_path_run(for_t *s) {
+	if (ak_fsrc_follow(&s->src) < 0) {
+		raise_in_run();
+		return;
+	}
+	ak_arr *list = ak_fsrc_items(&s->src);
+	if (ak_error_pending()) {
+		raise_in_run();
+		return;
+	}
+	if (!item_keys(s, list)) {
+		ak_release(list);
+		raise_in_run();
+		return;
+	}
+	rec_ctx c = {s, list};
+	ak_untrack(reconcile_fn, &c);
+	ak_release(list);
+	if (ak_error_pending()) raise_in_run();
 }
 
 static void for_run(void *ctx) {
 	for_t *s = ctx;
+	if (s->over_path) {
+		for_path_run(s);
+		return;
+	}
 	ak_val v = ak_call(s->items, NULL, 0);
 	if (ak_error_pending()) {
 		raise_in_run();
@@ -461,6 +580,7 @@ static void for_drop(void *ctx) {
 	ak_vec_free(&s->stay);
 	ak_vec_free(&s->keys);
 	ak_free(s->table);
+	if (s->over_path) ak_fsrc_free(&s->src);
 	ak_release(s->f);
 	ak_release(s->items);
 	ak_release(s->key);
@@ -470,20 +590,28 @@ static void for_drop(void *ctx) {
 	ak_free(s);
 }
 
-ak_view *ak_ui_for(ak_closure *items, ak_closure *key, ak_closure *row, ak_kind key_kind) {
+static ak_view *for_new(ak_closure *items, ak_closure *key, void *acc, ak_val pkey, ak_closure *row, ak_kind key_kind) {
 	ak_view *f = ak_frag_new();
 	for_t *s = ak_alloc(sizeof *s);
 	s->f = ak_retain(f);
 	s->items = ak_retain(items);
 	s->key = ak_retain(key);
 	s->row = ak_retain(row);
-	s->key_kind = key ? key_kind : AK_K_INT;
+	s->key_kind = key || pkey.p ? key_kind : AK_K_INT;
+	if (acc) {
+		s->over_path = true;
+		ak_fsrc_init(&s->src, acc, pkey);
+	}
 	s->owner = creator();
 	s->path = ak_path_capture();
 	s->info = (ak_comp_info){.drop = for_drop, .label = "For"};
 	ak_effect_new(for_run, s, AK_EFFECT_RENDER, &s->info);
 	return f;
 }
+
+ak_view *ak_ui_for(ak_closure *items, ak_closure *key, ak_closure *row, ak_kind key_kind) { return for_new(items, key, NULL, (ak_val){0}, row, key_kind); }
+
+ak_view *ak_ui_for_path(void *acc, ak_val key, ak_closure *row, ak_kind key_kind) { return for_new(NULL, NULL, acc, key, row, key_kind); }
 
 // ---- Contexts ----
 

@@ -266,6 +266,12 @@ ak_val ak_vm_acc_row(void *base, void *index, ak_kind k);
 // (AGETP): following that path when acc's is one (a cell's, a path's),
 // else acc's value whole and the path in it.
 ak_val ak_vm_acc_getp(void *acc, const uint8_t *p, uint32_t n, const ak_val *args);
+// ak_vm_acc_keys follows the keys of the array acc reads, at the field
+// path fields of its items (a for's key t.id): one signal for them all.
+void ak_vm_acc_keys(void *acc, const uint16_t *fields, uint16_t nf);
+// ak_vm_acc_seek moves an accessor of an array's element (made by
+// ak_vm_acc_path with one index step last) to the element at i.
+void ak_vm_acc_seek(void *acc, int64_t i);
 ak_val ak_vm_call_untracked(ak_closure *c, ak_val *args, uint32_t nargs);
 void ak_vm_effect(ak_closure *c, bool render);
 void ak_vm_cleanup(ak_closure *c);

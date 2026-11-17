@@ -190,6 +190,66 @@ func (c *Checker) finishPath(root syntax.Expr, steps []PathStep) *StatePath {
 	return p
 }
 
+// StaticPath reports whether p can be kept as an accessor of it (ACCP):
+// what it's below and its indexes and keys read nothing that changes
+// (the accessor keeps them), and it doesn't end in isEmpty() (a
+// comparison).
+func (p *Program) StaticPath(sp *StatePath) bool { return p.checker.staticPath(sp) }
+
+func (c *Checker) staticPath(p *StatePath) bool {
+	if x, ok := p.Expr.(*syntax.MemberExpr); ok && c.reactive(x.X) {
+		return false // a store that may be another (a memo's, a state's)
+	}
+	for _, s := range p.Steps {
+		if s.Arg != nil && c.reactive(s.Arg) || s.Kind == StepLen && s.Empty {
+			return false
+		}
+	}
+	return true
+}
+
+// SetAccessorVar says that v, a for's key's item, is an accessor: the
+// lowering's, for a for over a path (rfcs/0013), whose key's function
+// takes the item's accessor. Paths below it are an accessor's.
+func (p *Program) SetAccessorVar(v *Var) {
+	if p.checker.accVars == nil {
+		p.checker.accVars = map[*Var]bool{}
+	}
+	p.checker.accVars[v] = true
+}
+
+// AccessorVar reports whether SetAccessorVar said v is an accessor.
+func (p *Program) AccessorVar(v *Var) bool { return p.checker.accVars[v] }
+
+// FieldPathOf is the fields of e when it's v's fields, one after
+// another (t.id, t.meta.id), none optional: a for's key that's a field
+// path of its item. Nil otherwise.
+func (p *Program) FieldPathOf(e syntax.Expr, v *Var) []*Field {
+	c := p.checker
+	var fields []*Field
+	for {
+		switch n := unparenExpr(e).(type) {
+		case *syntax.MemberExpr:
+			sel := c.info.Selections[n]
+			if sel == nil || sel.Kind != SelField && sel.Kind != SelTupleElem || sel.Optional || IsOptional(c.info.Types[n.X]) {
+				return nil
+			}
+			if named, ok := sel.Recv.(*Named); ok && named.Obj.IsError {
+				return nil
+			}
+			fields = append([]*Field{sel.Field}, fields...)
+			e = n.X
+		case *syntax.Ident:
+			if c.info.Uses[n] != Object(v) || len(fields) == 0 {
+				return nil
+			}
+			return fields
+		default:
+			return nil
+		}
+	}
+}
+
 func (c *Checker) pathRoot(e syntax.Expr) *StatePath {
 	switch n := unparenExpr(e).(type) {
 	case *syntax.Ident:
@@ -216,7 +276,7 @@ func (c *Checker) pathRoot(e syntax.Expr) *StatePath {
 				return &StatePath{Root: RootState, Expr: n, Global: o}
 			}
 		case *Var:
-			if o.Kind == RowItem && !o.Boxed() {
+			if o.Kind == RowItem && !o.Boxed() || c.accVars[o] {
 				return &StatePath{Root: RootAcc, Expr: n, Var: o}
 			}
 		}

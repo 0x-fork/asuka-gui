@@ -131,13 +131,8 @@ func (b *fb) pathAccessor(e syntax.Expr, t check.Type) int {
 		return -1
 	}
 	p := b.l.prog.StatePathOf(e)
-	if p == nil {
+	if p == nil || !b.l.prog.StaticPath(p) {
 		return -1
-	}
-	for _, s := range p.Steps {
-		if s.Arg != nil && b.l.prog.Reactive(s.Arg) || s.Kind == check.StepLen && s.Empty {
-			return -1
-		}
 	}
 	root, _ := b.pathBase(p)
 	spelled, args, kinds := b.pathSteps(p.Steps)

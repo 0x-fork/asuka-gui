@@ -26,6 +26,10 @@
 //	               -> View?                                           View
 //	ui.dynamic     build: fn() -> View?                               View
 //	ui.lazy_for    list: View, items, key, row, keyKind (as ui.for)   -
+//	ui.for_path    items: Acc<[T]> (a path's), key: string (the item's
+//	               fields, spelled as a path), fn(item: Acc<T>,
+//	               index: int) -> K or none, row, keyKind            View
+//	ui.lazy_for_path list: View, items, key, row, keyKind (as for_path) -
 //	ui.use         key: string (the type's name)                      ref?
 //	ui.scope_begin -                                                  int (the owner it replaced)
 //	ui.scope_end   prev: int (scope_begin's)                          -
@@ -149,6 +153,17 @@ static ak_val b_show(ak_val *a, uint32_t n) { return (ak_val){.p = ak_ui_show(a[
 static ak_val b_for(ak_val *a, uint32_t n) {
 	ak_kind k = n > 3 ? (ak_kind)a[3].i : AK_K_INT;
 	return (ak_val){.p = ak_ui_for(a[0].p, a[1].p, a[2].p, k)};
+}
+
+static ak_val b_for_path(ak_val *a, uint32_t n) {
+	ak_kind k = n > 3 ? (ak_kind)a[3].i : AK_K_INT;
+	return (ak_val){.p = ak_ui_for_path(a[0].p, a[1], a[2].p, k)};
+}
+
+static ak_val b_lazy_for_path(ak_val *a, uint32_t n) {
+	ak_kind k = n > 4 ? (ak_kind)a[4].i : AK_K_INT;
+	ak_ui_lazy_for_path(view_arg(a, n, 0, "ui.lazy_for_path"), a[1].p, a[2], a[3].p, k);
+	return none();
 }
 
 static ak_val b_switch(ak_val *a, uint32_t n) {
@@ -468,6 +483,8 @@ void ak_ui_builtins_init(void) {
 		{"ui.switch", b_switch},
 		{"ui.dynamic", b_dynamic},
 		{"ui.lazy_for", b_lazy_for},
+		{"ui.for_path", b_for_path},
+		{"ui.lazy_for_path", b_lazy_for_path},
 		{"ui.use", b_use}, {"ui.scope_begin", b_scope_begin}, {"ui.scope_end", b_scope_end},
 		{"ui.provide", b_provide},
 		{"ui.task", b_task},
