@@ -1,7 +1,8 @@
-// Shader: a Kage program drawn with WebGL 2. The Go side translates the
-// compiled shader to GLSL ES 3.00 (internal/shadercode's GLSL); its
-// uniforms are U0, U1... in the order of the code's, their values the
-// core's lanes, and the size, scale and Time lanes the host's own.
+// Shader: a Kage program drawn with WebGL 2. The compiler translated it to
+// GLSL ES 3.00 as it compiled the app (internal/shadercode), which comes
+// last in its code; its uniforms are U0, U1... in the order of the
+// code's, their values the core's lanes, and the size, scale and Time
+// lanes the host's own.
 
 import { Kind, KindProp as P, Reader } from "./ops.js";
 import { own } from "./views.js";
@@ -21,7 +22,8 @@ function decodeCode(b) {
   const n = r.u32();
   const uniforms = [];
   for (let i = 0; i < n; i++) uniforms.push({ name: r.string(), lane: r.u32(), lanes: r.u32(), kind: r.atEnd ? 0 : r.u8() });
-  return { lanes, size, scale, time, uniforms };
+  const glsl = r.atEnd ? "" : r.string();
+  return { lanes, size, scale, time, uniforms, glsl };
 }
 
 const shader = {
@@ -38,7 +40,7 @@ const shader = {
     switch (p) {
       case P.Shader.Code:
         n.code = decodeCode(v);
-        n.glsl = h.core.shaderGLSL(v.slice());
+        n.glsl = n.code.glsl;
         n.program = null;
         if (!n.glsl) console.warn("asuka: the web host can't draw this shader");
         break;

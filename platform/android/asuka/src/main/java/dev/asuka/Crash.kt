@@ -11,9 +11,10 @@ import java.io.File
 import java.util.UUID
 
 /**
- * asuka/sdk/crash's native side. The Go code keeps its own crashes (its crash
- * output) and the run's context; the host writes what only it sees, in
- * the directory's inbox, for the Go code to read into reports:
+ * platform/crash's native side. The core keeps the run's record
+ * (asuka_crash_start: core/src/std/crash.c) and its own fatal errors; the
+ * host writes what only it sees, in the directory's inbox, for the core
+ * to read into reports:
  *
  * - an uncaught JVM exception, as the app ends (the handler before it,
  *   the system's, still runs): inbox/exception-<UUID>.json, with every
@@ -26,13 +27,13 @@ import java.util.UUID
  *   The last one written is remembered (exits, in the directory), so
  *   each is written once.
  *
- * Nothing's installed if the app doesn't import asuka/sdk/crash (the Go code
- * says so).
+ * Nothing's installed if the app doesn't read its crash reports (the core
+ * says so: asuka_crash_start answers "").
  */
 object AsukaCrash {
     @Volatile private var inbox: File? = null
 
-    /** Starts the run's record and the native handlers, as the library loads, before the Go code's main. Any thread. */
+    /** Starts the run's record and the native handlers, as the library loads, before the app's init. Any thread. */
     fun start(context: Context) {
         if (inbox != null) return
         val dir = runCatching { AsukaNative.crashStart(info(context)) }.getOrNull() ?: return
@@ -97,7 +98,7 @@ object AsukaCrash {
             newest = maxOf(newest, x.timestamp)
             if (x.reason !in reported) continue
             val name = "exit-${x.timestamp}-${x.pid}"
-            // The trace first: the record is what the Go code looks for.
+            // The trace first: the record is what the core looks for.
             val trace = runCatching { x.traceInputStream?.use { it.readBytes() } }.getOrNull()
             if (trace != null && trace.isNotEmpty()) write("$name.trace", trace)
             val o = JSONObject()

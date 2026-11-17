@@ -1,0 +1,200 @@
+// Bookmarks saves links from other apps, as Raindrop does: "Share" in a
+// browser, YouTube or Photos to Bookmarks opens its editor, with the
+// page's title, description and image read from it, a note, a
+// collection and tags. Save, and the bookmark is in the app's list.
+//
+//   asuka dev --platform ios examples/bookmarks
+
+import platform/device
+import std/sqlite
+
+/// What another app shared, waiting to be edited.
+state shared: [SharedItem] = []
+
+app {
+  // What "Share" in another app sends: the editor, filled with it.
+  on share(items) { shared = items }
+  // Another app (or another window) may have written: look again on
+  // coming back.
+  on foreground { db.changed() }
+  Stack { Bookmarks() }
+}
+
+component ShareEditor(items: [SharedItem]) {
+  event close
+  let draft = Draft()
+
+  task { await draft.fromShare(items) }
+
+  Editor(draft, if draft.link.isEmpty() && !draft.cover.isEmpty() { "New image" } else { "New bookmark" }) {
+    on close { emit close }
+    on saved { emit close }
+  }
+}
+
+/// A bookmark's host and tags, on a line.
+fn about(b: Bookmark) -> string {
+  var parts: [string] = []
+  if !b.url.isEmpty() { parts.push(host(b.url)) }
+  return (parts + splitTags(b.tags).map(t => "#{t}")).joined(" · ")
+}
+
+screen Bookmarks {
+  state query = ""
+  state filter = -1 // -1: all
+  state adding: Draft? = none
+  state deleting: int? = none
+
+  // A swipe's Delete.
+  task(deleting) {
+    if let id = deleting {
+      await write("delete from bookmarks where id = ?", [id])
+      deleting = none
+    }
+  }
+
+  let marks: sqlite.Live<Bookmark> = db.watch(
+    """
+      select * from bookmarks
+      where (?1 < 0 or collection = ?1)
+        and (?2 = '' or instr(lower(title || ' ' || url || ' ' || tags || ' ' || note), lower(?2)) > 0)
+      order by created desc
+      """,
+    (filter, query),
+  )
+  let collections: sqlite.Live<Collection> = db.watch("select * from collections order by name", [])
+  let chips = [Collection(id: -1, name: "All"), Collection(id: 0, name: "Unsorted")] + collections.rows
+
+  title: "Bookmarks"
+  bind search: query
+  searchPlaceholder: "Search bookmarks"
+  toolbar {
+    Button("Add") {
+      icon: "plus"
+      on press {
+        let d = Draft()
+        // A link on the clipboard: the one to add, most likely.
+        if let text = try? await device.clipboardText() {
+          if let u = linkRE.find(text) { d.link = u }
+        }
+        adding = d
+      }
+    }
+  }
+
+  SafeArea {
+    grow: 1
+    // Collections, to filter by.
+    Scroll {
+      horizontal: true
+      direction: .row
+      gap: 8
+      padding: [8, 16]
+      for c in chips key c.id {
+        View {
+          padding: [7, 14]
+          radius: 16
+          role: .button
+          background: if filter == c.id { .accent } else { .groupedBackground }
+          on press { filter = c.id }
+          Text(c.name) {
+            color: if filter == c.id { #ffffff } else { .label }
+            font: if filter == c.id { .subheadline.semibold() } else { .subheadline }
+          }
+        }
+      }
+    }
+    if !marks.loading && marks.rows.isEmpty() {
+      Column {
+        grow: 1
+        justify: .center
+        align: .center
+        gap: 10
+        padding: 32
+        Symbol("bookmark") {
+          font: .largeTitle
+          color: .tertiaryLabel
+        }
+        Text("No bookmarks yet") { font: .headline }
+        Text("Share a page from your browser, or a video or photo from any app, and pick Bookmarks.") {
+          color: .secondaryLabel
+          textAlign: .center
+        }
+      }
+    }
+    List {
+      for b in marks.rows key b.id {
+        Row {
+          gap: 14
+          padding: [12, 16]
+          align: .center
+          swipeActions: [.button(title: "Delete", icon: "trash", role: .destructive, run: () => { deleting = b.id })]
+          on press {
+            if !b.url.isEmpty() { try? await device.browse(b.url) }
+          }
+          Image(b.cover) {
+            mode: .fill
+            width: 56
+            minWidth: 56
+            height: 56
+            radius: 10
+            clip: true
+            background: .groupedBackground
+          }
+          Column {
+            grow: 1
+            shrink: 1
+            gap: 3
+            Text(b.title) {
+              font: .body.semibold()
+              lines: 2
+            }
+            Text(about(b)) {
+              font: .footnote
+              color: .secondaryLabel
+              lines: 1
+            }
+            if !b.note.isEmpty() {
+              Text(b.note) {
+                font: .footnote
+                lines: 2
+              }
+            }
+          }
+        }
+      }
+    }
+    // What another app shared: the editor, in a sheet.
+    Sheet {
+      open: !shared.isEmpty()
+      on dismiss { shared = [] }
+      ShareEditor(shared) { on close { shared = [] } }
+    }
+    // A link added in the app: the same editor, in a sheet.
+    if let d = adding {
+      Sheet {
+        open: true
+        on dismiss { adding = none }
+        Editor(d, "New bookmark") {
+          on close { adding = none }
+          on saved { adding = none }
+        }
+      }
+    }
+  }
+}
+
+test "tags and hosts" {
+  expect(splitTags(" a, b,,a ,c") == ["a", "b", "c"])
+  expect(host("https://www.example.com/x") == "example.com")
+  expect(host("not a link") == "not a link")
+}
+
+test "the list, and what's shared" {
+  let app = mount(Stack { Bookmarks() })
+  await app.idle()
+  app.expect("Bookmarks", "Add")
+  shared = [SharedItem(kind: .text, text: "A page https://example.com/a")]
+  await app.idle()
+  app.expect("New bookmark")
+}

@@ -1,0 +1,19 @@
+// platform/preview with no platform code (the fake host): no viewer, so show
+// throws an unsupported error; no files is nothing to show.
+
+import platform/preview
+
+test "no viewer here" {
+  try? await preview.show([])
+  do {
+    try await preview.show(["docs/Guide.pdf"], start: 3)
+  } catch preview.PreviewError.noViewer {
+    print("no viewer")
+  } catch e {
+    print(e.message)
+  }
+}
+
+// Output:
+// unsupported: no viewer here
+// ok no viewer here

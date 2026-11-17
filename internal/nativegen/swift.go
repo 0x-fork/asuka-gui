@@ -13,7 +13,12 @@ import (
 func SwiftFile(p *Package) string { return upperCamel(p.Name) + ".asuka.swift" }
 
 // SwiftErrorType is the Swift enum of the package's declared errors.
-func SwiftErrorType(p *Package) string { return upperCamel(p.Name) + "Error" }
+func SwiftErrorType(p *Package) string {
+	if p.ErrorName != "" {
+		return p.ErrorName
+	}
+	return upperCamel(p.Name) + "Error"
+}
 
 type swiftGen struct {
 	p       *Package
@@ -31,12 +36,14 @@ var swiftOf = map[Kind]string{
 	Bool: "Bool", Int8: "Int8", Int16: "Int16", Int32: "Int32", Int64: "Int64", Int: "Int",
 	Uint8: "UInt8", Uint16: "UInt16", Uint32: "UInt32", Uint64: "UInt64", Uint: "UInt",
 	Float32: "Float", Float64: "Double", String: "String", Bytes: "Data", Time: "Date", Duration: "TimeInterval",
+	ViewRef: "AsukaViewRef",
 }
 
 var swiftWire = map[Kind]string{
 	Bool: "bool", Int8: "int8", Int16: "int16", Int32: "int32", Int64: "int64", Int: "int",
 	Uint8: "uint8", Uint16: "uint16", Uint32: "uint32", Uint64: "uint64", Uint: "uint",
 	Float32: "float32", Float64: "float64", String: "string", Bytes: "data", Time: "time", Duration: "duration",
+	ViewRef: "viewRef",
 }
 
 // typ is t as Swift writes it.
@@ -228,7 +235,7 @@ func GenerateSwift(p *Package) []byte {
 		g.ifaces[it.Name] = it
 	}
 	g.printf("%s\n", header("//", p.Hash))
-	g.printf("// What the package's Go declares (package %s), as its Swift implements\n", p.Name)
+	g.printf("// What the package declares (%s), as its Swift implements\n", p.Name)
 	g.printf("// it. The Swift writes the functions that make each:\n//\n")
 	for _, it := range p.Interfaces {
 		main := ""
@@ -283,7 +290,13 @@ func (g *swiftGen) structDecl(s *StructDecl) {
 	if g.recursive(s) {
 		kind = "final class"
 	}
-	g.printf("%spublic %s %s {\n", swiftDoc(s.Doc, ""), kind, s.Name)
+	conform := ""
+	if kind == "struct" && g.sendable(&Type{Kind: Struct, Name: s.Name}, map[string]bool{}) {
+		// Plain values: they cross to the main thread (DispatchQueue.main,
+		// a Task) without a warning.
+		conform = ": Sendable"
+	}
+	g.printf("%spublic %s %s%s {\n", swiftDoc(s.Doc, ""), kind, s.Name, conform)
 	var params, sets []string
 	for _, f := range s.Fields {
 		n := swiftName(lowerCamel(f.Name))
@@ -298,9 +311,35 @@ func (g *swiftGen) structDecl(s *StructDecl) {
 	g.printf("\n    public init(%s) {\n%s\n    }\n}\n\n", strings.Join(params, ", "), strings.Join(sets, "\n"))
 }
 
+// sendable reports whether t is a plain value: no native object, no
+// callback, no class (a recursive struct's).
+func (g *swiftGen) sendable(t *Type, seen map[string]bool) bool {
+	switch t.Kind {
+	case Object, Func:
+		return false
+	case Slice, Map, Optional:
+		return g.sendable(t.Elem, seen)
+	case Struct:
+		if seen[t.Name] {
+			return false // recursive: a final class
+		}
+		seen[t.Name] = true
+		s := g.structs[t.Name]
+		if s == nil || g.recursive(s) {
+			return false
+		}
+		for _, f := range s.Fields {
+			if !g.sendable(f.Type, seen) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func (g *swiftGen) errors() {
 	t := SwiftErrorType(g.p)
-	g.printf("/// The errors the package declares (native.NewError), which its Go gets\n/// as those values.\n")
+	g.printf("/// The errors the package declares , which its callers get\n/// as those values.\n")
 	g.printf("public enum %s: Error, AsukaDeclaredError, LocalizedError {\n", t)
 	for _, e := range g.p.Errors {
 		g.printf("    case %s\n", swiftName(lowerCamel(errorCase(e.Name))))
@@ -358,7 +397,7 @@ func (g *swiftGen) viewDecl(v *View) {
 		g.printf("%s    func set%s(_ value: %s)\n", swiftDoc(f.Doc, "    "), f.Name, g.typ(f.Type))
 	}
 	g.printf("}\n\n")
-	g.printf("/// Sends a %s's events to its Go.\n@MainActor public struct %sEvents {\n    let ctx: AsukaNativeContext\n\n", v.Name, v.Name)
+	g.printf("/// Sends a %s's events to the app.\n@MainActor public struct %sEvents {\n    let ctx: AsukaNativeContext\n\n", v.Name, v.Name)
 	for _, e := range v.Events {
 		var ps []string
 		for _, a := range e.Type.Func.Params {
@@ -424,7 +463,7 @@ func (g *swiftGen) provider() {
 	}
 	g.printf("        default: throw AsukaNativeError.unsupported(\"no method \\(iface).\\(method)\")\n        }\n    }\n\n")
 	// start
-	g.printf("    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Result<AsukaNativeWriter, Error>) -> Void) -> Task<Void, Never>? {\n")
+	g.printf("    public static func start(_ object: AnyObject, _ iface: UInt32, _ method: UInt32, _ input: AsukaNativeReader, _ done: @escaping (Swift.Result<AsukaNativeWriter, Swift.Error>) -> Void) -> _Concurrency.Task<Void, Never>? {\n")
 	g.printf("        var r = input\n        switch (iface, method) {\n")
 	for _, it := range g.p.Interfaces {
 		for _, m := range it.Methods {
@@ -442,7 +481,7 @@ func (g *swiftGen) provider() {
 			if m.Error {
 				call = "try " + call
 			}
-			g.printf("            return Task {%s\n                do {\n                    var w = AsukaNativeWriter.ok()\n", actor)
+			g.printf("            return _Concurrency.Task {%s\n                do {\n                    var w = AsukaNativeWriter.ok()\n", actor)
 			if m.Result != nil {
 				g.printf("                    let v = %s\n                    %s\n", call, g.enc(m.Result, "w", "v"))
 			} else {
@@ -466,17 +505,18 @@ func (g *swiftGen) decodeArgs(m *Method, indent string) string {
 	var args []string
 	for _, p := range m.Params {
 		n := swiftName(p.Name)
+		l := argLocal(n)
 		if p.Type.Kind == Func {
-			g.closure(n, p.Type.Func, indent)
+			g.closure(l, p.Type.Func, indent)
 		} else {
-			g.printf("%slet %s = %s\n", indent, n, g.dec(p.Type, "r"))
+			g.printf("%slet %s = %s\n", indent, l, g.dec(p.Type, "r"))
 		}
-		args = append(args, n+": "+n)
+		args = append(args, n+": "+l)
 	}
 	return strings.Join(args, ", ")
 }
 
-// closure decodes a callback: a Swift closure that calls back Go's func.
+// closure decodes a callback: a Swift closure that calls back the app's fn.
 func (g *swiftGen) closure(n string, ft *FuncType, indent string) {
 	var ps, ts []string
 	for i, p := range ft.Params {
@@ -506,7 +546,7 @@ func (g *swiftGen) closure(n string, ft *FuncType, indent string) {
 }
 
 func (g *swiftGen) wire() {
-	g.printf("/// The package's values on the wire (package native's format).\nfileprivate enum Wire {\n")
+	g.printf("/// The package's values on the wire (core/src/native's format).\nfileprivate enum Wire {\n")
 	done := map[string]bool{}
 	for {
 		var names []string

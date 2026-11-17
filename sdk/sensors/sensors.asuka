@@ -1,0 +1,495 @@
+// Package platform/sensors reads the device's motion and environment
+// sensors: the accelerometer, gyroscope and magnetometer, the fused
+// device motion (attitude, gravity, the user's acceleration), the
+// barometer, the light sensor and the pedometer. Core Motion on iOS;
+// Android's SensorManager; Windows' sensors (Windows.Devices.Sensors);
+// iio-sensor-proxy on Linux; the Generic Sensor API and devicemotion in
+// the browser.
+//
+//   for await a in sensors.accelerometer(every: 50ms) { tilt = a.x }
+//
+// The values are the same everywhere: device axes as Android and the W3C
+// define them (x to the right of the screen, y up it, z out of it),
+// acceleration as the accelerometer measures it (a device lying face up
+// reads z = +1 g), rotations counterclockwise positive, attitude in
+// East-North-Up world axes. Readings come on the main thread.
+//
+// Tests drive a fake: sensors.fake() gives the sensors a FakeSensors
+// that the test sends readings through.
+
+import std/json
+import std/math
+import std/time
+
+/// A kind of sensor.
+pub enum Sensor {
+  accelerometer
+  gyroscope
+  magnetometer
+  /// Fused: attitude, gravity, user acceleration, rotation rate.
+  motion
+  barometer
+  /// Android's, Windows' and Linux's: iOS has no light sensor apps read.
+  light
+  pedometer
+
+  let all: [Sensor] = [.accelerometer, .gyroscope, .magnetometer, .motion, .barometer, .light, .pedometer]
+}
+
+/// A reading along the device's axes.
+pub struct Vector {
+  x: float = 0
+  y: float = 0
+  z: float = 0
+  /// When it was read, since the device booted.
+  time: Duration = 0ms
+}
+
+/// The device's orientation in the world.
+pub struct Attitude {
+  /// Turns a vector in device axes into East-North-Up world axes
+  /// (row-major, 9 values): world = matrix × device.
+  matrix: [float] = [1, 0, 0, 0, 1, 0, 0, 0, 1]
+  /// The direction the top of the device points, in degrees clockwise
+  /// from magnetic north (0 to 360), or -1 where the device can't tell
+  /// (no magnetometer, the simulator).
+  heading: float = -1
+  /// In radians, as Android's getOrientation gives them: pitch about the
+  /// x axis (-π/2 to π/2; negative as the top tips up), roll about the y
+  /// axis (-π to π).
+  pitch: float = 0
+  roll: float = 0
+}
+
+/// The fused device motion.
+pub struct MotionReading {
+  attitude: Attitude = Attitude()
+  /// The accelerometer's part that's gravity, in g (face up: z = +1).
+  gravity: Vector = Vector()
+  /// The user's, without gravity, in g.
+  acceleration: Vector = Vector()
+  /// The rotation rate, in radians per second.
+  rotation: Vector = Vector()
+  time: Duration = 0ms
+}
+
+/// The barometer's reading.
+pub struct Pressure {
+  /// The air's pressure, in hectopascals (millibars).
+  hPa: float = 0
+  /// The change in altitude since watching began, in meters (from the
+  /// pressure; iOS fuses it with GPS where it can).
+  altitude: float = 0
+  time: Duration = 0ms
+}
+
+/// The ambient light.
+pub struct Light {
+  lux: float = 0
+  time: Duration = 0ms
+}
+
+/// Steps counted.
+pub struct Steps {
+  steps: int = 0
+  /// In meters, where the platform estimates it (iOS); else -1.
+  distance: float = -1
+}
+
+/// The sensors' errors.
+pub enum SensorError: Error {
+  /// sensors: not available
+  notAvailable
+  /// sensors: not allowed
+  notAllowed
+
+  /// The error's text: "sensors: " and what went wrong, as each case's
+  /// comment says.
+  fn message() -> string = match self {
+    .notAvailable => "sensors: not available"
+    .notAllowed => "sensors: not allowed"
+  }
+}
+
+/// A sample as the platform reads it, in the units above: [x, y, z] for
+/// the accelerometer (g), gyroscope (rad/s) and magnetometer (µT);
+/// gravity, user acceleration and rotation rate (9 values), then the
+/// magnetic field (3 more) or the rotation vector's quaternion x, y, z, w
+/// (4 more) for motion; hPa, then the platform's altitude if it has one,
+/// for the barometer; lux; steps since watching began and meters (-1:
+/// not known) for the pedometer.
+struct Sample {
+  values: [float] = []
+  time: Duration = 0ms
+}
+
+/// The platform's sensors.
+native interface Sensors {
+  /// Whether the device has the sensor.
+  fn available(sensor: Sensor) -> bool
+  /// Calls reading with the sensor's samples, about every interval (at
+  /// most 200 a second), until the task is cancelled. Throws
+  /// notAvailable, or notAllowed (the pedometer's permission).
+  async fn watch(sensor: Sensor, every: Duration, reading: fn(Sample))
+  /// The steps between two times, in milliseconds since 1970 (iOS keeps
+  /// a week's; elsewhere notAvailable).
+  async fn steps(from: int, to: int) -> Steps
+  /// Feeds a reading through the platform's conversions (the iOS
+  /// simulator has no motion sensors): JSON in Core Motion's terms.
+  async fn simulate(json: string)
+}
+
+// Made once; none where the platform has no code for its sensors.
+let platform = try? Sensors()
+
+// The fake the test installed (fake()).
+state faked: FakeSensors? = none
+
+/// Whether the device has s.
+pub fn available(s: Sensor) -> bool {
+  if let f = faked {
+    return f.present.contains(s)
+  }
+  if let p = platform {
+    return (try? p.available(sensor: s)) ?? false
+  }
+  return false
+}
+
+/// The samples of a sensor, no closer than every.
+fn samples(s: Sensor, every: Duration) -> Stream<Sample> = Stream(send => {
+  if let f = faked {
+    if !f.present.contains(s) {
+      throw SensorError.notAvailable
+    }
+    let id = f.listen(s, every, x => send(x))
+    defer { f.unlisten(id) }
+    await never()
+  }
+  if let p = platform {
+    try await p.watch(sensor: s, every: if every < 5ms { 5ms } else { every }, reading: x => send(x))
+  } else {
+    throw SensorError.notAvailable
+  }
+})
+
+fn vector(s: Sample, i: int) -> Vector = Vector(x: s.values[i], y: s.values[i + 1], z: s.values[i + 2], time: s.time)
+
+/// The acceleration, in g, about every interval.
+pub fn accelerometer(every: Duration = 100ms) -> Stream<Vector> = Stream(send => {
+  for await s in samples(.accelerometer, every) {
+    send(vector(s, 0))
+  }
+})
+
+/// The rotation rate, in radians per second, about every interval.
+pub fn gyroscope(every: Duration = 100ms) -> Stream<Vector> = Stream(send => {
+  for await s in samples(.gyroscope, every) {
+    send(vector(s, 0))
+  }
+})
+
+/// The magnetic field, calibrated, in microteslas, about every interval.
+pub fn magnetometer(every: Duration = 100ms) -> Stream<Vector> = Stream(send => {
+  for await s in samples(.magnetometer, every) {
+    send(vector(s, 0))
+  }
+})
+
+/// The fused device motion, about every interval.
+pub fn motion(every: Duration = 100ms) -> Stream<MotionReading> = Stream(send => {
+  for await s in samples(.motion, every) {
+    send(motionOf(s))
+  }
+})
+
+/// The air's pressure and the altitude's change, about every interval.
+pub fn pressure(every: Duration = 1s) -> Stream<Pressure> = Stream(send => {
+  var p0 = 0.0
+  for await s in samples(.barometer, every) {
+    var p = Pressure(hPa: s.values[0], time: s.time)
+    if s.values.count() > 1 {
+      p = Pressure(hPa: p.hPa, altitude: s.values[1], time: s.time)
+    } else {
+      if p0 == 0 {
+        p0 = p.hPa
+      }
+      p = Pressure(hPa: p.hPa, altitude: altitude(p0, p.hPa), time: s.time)
+    }
+    send(p)
+  }
+})
+
+/// The ambient light, in lux, as it changes, about every interval at
+/// most.
+pub fn light(every: Duration = 500ms) -> Stream<Light> = Stream(send => {
+  for await s in samples(.light, every) {
+    send(Light(lux: s.values[0], time: s.time))
+  }
+})
+
+/// The steps taken since watching began, as they come. It asks for the
+/// permission the first time (iOS's Motion & Fitness; Android's physical
+/// activity).
+pub fn stepUpdates() -> Stream<Steps> = Stream(send => {
+  for await s in samples(.pedometer, 0ms) {
+    send(Steps(steps: int(s.values[0]), distance: if s.values.count() > 1 { s.values[1] } else { -1 }))
+  }
+})
+
+/// The steps taken between two times. iOS keeps a week's; elsewhere it
+/// throws notAvailable.
+pub async fn steps(from: time.Time, to: time.Time) throws -> Steps {
+  if let f = faked {
+    if !f.present.contains(.pedometer) {
+      throw SensorError.notAvailable
+    }
+    return f.history
+  }
+  if let p = platform {
+    return try await p.steps(from: from.unixMilli(), to: to.unixMilli())
+  }
+  throw SensorError.notAvailable
+}
+
+/// Feeds a reading through the platform's conversions, as the hardware
+/// would: JSON in Core Motion's terms (kind: 0 the accelerometer, 3
+/// motion; acceleration, gravity, user, rotation, field: each [x, y,
+/// z]). For the iOS simulator, which has no motion sensors, and for a
+/// fake; elsewhere it throws.
+pub async fn simulate(json: string) throws {
+  if let f = faked {
+    try f.simulate(json)
+    return
+  }
+  if let p = platform {
+    try await p.simulate(json: json)
+    return
+  }
+  throw SensorError.notAvailable
+}
+
+// The attitude, from what the platform gives: Android's rotation vector
+// (a quaternion), else gravity and the magnetic field (Android's
+// getRotationMatrix's way).
+
+fn motionOf(s: Sample) -> MotionReading {
+  let v = s.values
+  let n = v.count()
+  var att = Attitude()
+  if n >= 13 {
+    att = fromMatrix(fromQuaternion(v[9], v[10], v[11], v[12]), true)
+  } else if n >= 12 {
+    let (r, ok) = fromGravity([v[0], v[1], v[2]], [v[9], v[10], v[11]])
+    att = fromMatrix(r, ok)
+  } else if n >= 3 {
+    let (r, _) = fromGravity([v[0], v[1], v[2]], [0, 0, 0])
+    att = fromMatrix(r, false)
+  }
+  return MotionReading(
+    attitude: att,
+    gravity: if n >= 3 { vector(s, 0) } else { Vector(time: s.time) },
+    acceleration: if n >= 6 { vector(s, 3) } else { Vector(time: s.time) },
+    rotation: if n >= 9 { vector(s, 6) } else { Vector(time: s.time) },
+    time: s.time,
+  )
+}
+
+/// Android's getRotationMatrixFromVector: the device-to-ENU matrix of a
+/// unit quaternion.
+fn fromQuaternion(x: float, y: float, z: float, w: float) -> [float] = [
+  1 - 2 * y * y - 2 * z * z, 2 * x * y - 2 * z * w, 2 * x * z + 2 * y * w,
+  2 * x * y + 2 * z * w, 1 - 2 * x * x - 2 * z * z, 2 * y * z - 2 * x * w,
+  2 * x * z - 2 * y * w, 2 * y * z + 2 * x * w, 1 - 2 * x * x - 2 * y * y,
+]
+
+fn cross(a: [float], b: [float]) -> [float] = [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+
+fn length(a: [float]) -> float = math.sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2])
+
+fn unit(a: [float]) -> [float]? {
+  let l = length(a)
+  if l < 0.000000001 {
+    return none
+  }
+  return [a[0] / l, a[1] / l, a[2] / l]
+}
+
+fn rows(east: [float], north: [float], up: [float]) -> [float] = [east[0], east[1], east[2], north[0], north[1], north[2], up[0], up[1], up[2]]
+
+/// Android's getRotationMatrix: the device-to-ENU matrix from gravity (as
+/// the accelerometer reads it: up) and the magnetic field, both in device
+/// axes. Without a usable field, the second is false and the device's y
+/// axis is north: tilt, without a heading.
+fn fromGravity(g: [float], m: [float]) -> ([float], bool) {
+  let identity: [float] = [1, 0, 0, 0, 1, 0, 0, 0, 1]
+  let found = unit(g)
+  if found.isNone() {
+    return (identity, false)
+  }
+  let up = found!
+  if let east = unit(cross(m, up)) {
+    if length(m) >= 0.1 {
+      return (rows(east, cross(up, east), up), true)
+    }
+  }
+  // No field: the device's y, flattened, is north.
+  let e = unit(cross([0, 1, 0], up)) ?? unit(cross([0, 0, -1], up)) ?? [1.0, 0, 0]
+  return (rows(e, cross(up, e), up), false)
+}
+
+fn asin(x: float) -> float = math.atan2(x, math.sqrt(max(0.0, 1 - x * x)))
+
+/// The attitude of a device-to-ENU matrix, its angles as Android's
+/// getOrientation gives them.
+fn fromMatrix(r: [float], heading: bool) -> Attitude {
+  // + 0 makes a -0 +0: atan2's answer at ±0 is the sign's, and upright
+  // (pitch ±π/2) both platforms should say roll 0.
+  let pitch = asin(-max(-1.0, min(1.0, r[7])))
+  let roll = math.atan2(-r[6] + 0, r[8] + 0)
+  var h = -1.0
+  if heading {
+    h = math.atan2(r[1], r[4]) * 180 / math.pi
+    if h < 0 {
+      h += 360
+    }
+  }
+  return Attitude(matrix: r, heading: h, pitch: pitch, roll: roll)
+}
+
+/// The change from p0 to p, in meters, by the barometric formula (as
+/// Android's SensorManager.getAltitude).
+fn altitude(p0: float, p: float) -> float {
+  let h0 = 44330 * (1 - math.pow(p0 / 1013.25, 1 / 5.255))
+  let h1 = 44330 * (1 - math.pow(p / 1013.25, 1 / 5.255))
+  return h1 - h0
+}
+
+// ---------------------------------------------------------------------
+// Testing
+
+/// A reading simulate takes: Core Motion's terms (kind 0: the
+/// accelerometer, 3: motion).
+struct Simulated {
+  kind: int = -1
+  acceleration: [float] = []
+  gravity: [float] = []
+  user: [float] = []
+  rotation: [float] = []
+  field: [float] = []
+}
+
+struct Listener {
+  sensor: Sensor
+  every: Duration
+  last: Duration = -1ms
+  send: fn(Sample)
+}
+
+/// Sensors a test drives: fake() installs one, and every function of the
+/// package reads it instead of the platform's. A test sends readings in
+/// the platform's units, as the hardware would.
+///
+///   let s = sensors.fake()
+///   s.accelerate(0, 0, 1)        // lying face up
+pub store FakeSensors {
+  /// The sensors the device has.
+  pub state present: [Sensor] = []
+  /// What steps(from:, to:) answers.
+  pub state history: Steps = Steps()
+  /// The clock the readings carry: each one moves it on by tick.
+  pub state clock: Duration = 0ms
+  /// How far each reading sent moves clock on (10 ms: 100 a second);
+  /// a stream asking for fewer skips the readings that come too soon.
+  pub state tick: Duration = 10ms
+  state listeners: [int: Listener] = [:]
+  state nextID = 0
+
+  /// How many streams read s now.
+  pub fn watching(s: Sensor) -> int = listeners.values().count(l => l.sensor == s)
+
+  /// Sends a sample of s (values as Sample's) to the streams that read
+  /// it, each no more often than it asked for.
+  pub fn send(s: Sensor, values: [float]) {
+    clock += tick
+    for id in listeners.keys() {
+      let l = listeners[id]!
+      if l.sensor != s {
+        continue
+      }
+      if l.last >= 0ms && clock - l.last < l.every - l.every / 10 {
+        continue
+      }
+      listeners[id] = Listener(sensor: l.sensor, every: l.every, last: clock, send: l.send)
+      l.send(Sample(values: values, time: clock))
+    }
+  }
+
+  /// An accelerometer reading, in g.
+  pub fn accelerate(x: float, y: float, z: float) {
+    send(.accelerometer, [x, y, z])
+  }
+
+  /// A gyroscope reading, in radians per second.
+  pub fn rotate(x: float, y: float, z: float) {
+    send(.gyroscope, [x, y, z])
+  }
+
+  /// A device motion reading: gravity (up, in g), the user's
+  /// acceleration, the rotation rate and the magnetic field (µT; [] for
+  /// none, as on the simulator: no heading).
+  pub fn move(gravity: [float], user: [float] = [0, 0, 0], rotation: [float] = [0, 0, 0], field: [float] = []) {
+    send(.motion, gravity + user + rotation + field)
+  }
+
+  /// A barometer reading.
+  pub fn press(hPa: float) {
+    send(.barometer, [hPa])
+  }
+
+  /// A light reading.
+  pub fn shine(lux: float) {
+    send(.light, [lux])
+  }
+
+  /// The pedometer's count since watching began.
+  pub fn walk(steps: int, distance: float = -1) {
+    send(.pedometer, [float(steps), distance])
+  }
+
+  /// simulate's JSON, in Core Motion's terms (accelerations as gravity
+  /// pulls: face up is z = -1), as iOS converts it.
+  fn simulate(text: string) throws {
+    let s: Simulated = try json.decode(text)
+    let neg = (v: [float]) => v.map(x => -x)
+    if s.kind == 0 && s.acceleration.count() == 3 {
+      send(.accelerometer, neg(s.acceleration))
+    } else if s.kind == 3 && s.gravity.count() == 3 {
+      move(neg(s.gravity),
+        user: if s.user.count() == 3 { neg(s.user) } else { [0, 0, 0] },
+        rotation: if s.rotation.count() == 3 { s.rotation } else { [0, 0, 0] },
+        field: if s.field.count() == 3 { s.field } else { [] })
+    } else {
+      throw Error("can't simulate that sensor")
+    }
+  }
+
+  fn listen(s: Sensor, every: Duration, f: fn(Sample)) -> int {
+    nextID += 1
+    listeners[nextID] = Listener(sensor: s, every: every, send: f)
+    return nextID
+  }
+
+  fn unlisten(id: int) {
+    listeners.remove(id)
+  }
+}
+
+/// Installs a FakeSensors with the sensors present, for a test: from now
+/// on the package reads it, not the platform.
+pub fn fake(present: [Sensor] = Sensor.all) -> FakeSensors {
+  let f = FakeSensors()
+  f.present = present
+  faked = f
+  return f
+}

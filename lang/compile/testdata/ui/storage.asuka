@@ -1,0 +1,41 @@
+import std/storage
+
+enum Units { metric, imperial }
+
+struct Account {
+  id: string
+  name: string
+}
+
+let units: storage.Value<Units> = storage.Value("units", .metric)
+let accounts: storage.Value<[Account]> = storage.Value("accounts", [])
+
+component Settings {
+  let wifiOnly = storage.Value("wifiOnly", false)
+
+  Column {
+    Toggle { bind on: wifiOnly.value; title: "Wi-Fi only" }
+    Text("units {units.value}")
+    Text("{accounts.value.count()} accounts")
+    Button("Imperial") { on press { units.value = .imperial } }
+    Button("Add") { on press { accounts.value.push(Account(id: "a", name: "Ana")) } }
+  }
+}
+
+app { Settings() }
+
+test "values are stores, with no platform code" {
+  let app = mount(Settings())
+  app.expect("units metric")
+  app.expect("0 accounts")
+  app.tap("Imperial")
+  app.tap("Add")
+  await app.idle()
+  app.expect("units imperial")
+  app.expect("1 accounts")
+  storage.flush()
+  expect(storage.dirName() == "")
+  units.reset()
+  await app.idle()
+  app.expect("units metric")
+}

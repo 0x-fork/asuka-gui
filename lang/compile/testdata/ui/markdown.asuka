@@ -1,0 +1,84 @@
+import std/markdown
+
+let reply = "# Plan\n\nThree **steps**, in `order`:\n\n1. Read [the docs](https://example.com)\n2. Write\n\n```go\nfmt.Println(1)\n```\n"
+
+component Reply {
+  state text = ""
+  state streaming = true
+
+  Column {
+    markdown.View(text) {
+      streaming: streaming
+      padding: 16
+    }
+    Button("Write") { on press { text = reply.slice(0, 30) } }
+    Button("Done") {
+      on press {
+        text = reply
+        streaming = false
+      }
+    }
+  }
+}
+
+app { Reply() }
+
+test "heals the end of text being written" {
+  expect(markdown.heal("Some **bold") == "Some **bold**")
+  expect(markdown.heal("Some *it and **both") == "Some *it and **both***")
+  expect(markdown.heal("a `code") == "a `code`")
+  expect(markdown.heal("```go\nfmt.") == "```go\nfmt.\n```")
+  expect(markdown.heal("see [docs](https://ex") == "see [docs](https://ex)")
+  expect(markdown.heal("* item and snake_case") == "* item and snake_case")
+  expect(markdown.heal("~~gone") == "~~gone~~")
+  expect(markdown.heal("done **here**\n\nnext") == "done **here**\n\nnext")
+  expect(markdown.heal("```\ncode\n```\n\n_x") == "```\ncode\n```\n\n_x_")
+}
+
+test "streams in, then shows the whole reply" {
+  let app = mount(Reply())
+  app.tap("Write")
+  await app.idle()
+  app.tap("Done")
+  await app.idle()
+  app.expect("Plan")
+  app.expect("Three steps, in order:")
+  app.expect("Read the docs")
+  app.expect("fmt.Println(1)")
+}
+
+component Linked {
+  state opened = ""
+
+  Column {
+    markdown.View("Go to [settings](/settings) or [the docs](https://x.dev).\n\n| a | b |\n|:--|--:|\n| [one](app:1) | 2 |") {
+      on link(url) { opened = url }
+    }
+    Text("opened: {opened}")
+  }
+}
+
+test "a link tapped goes to the app's handler, as written" {
+  let app = mount(Linked())
+  app.tapLink("/settings")
+  app.expect("opened: /settings")
+  app.tapLink("https://x.dev")
+  app.expect("opened: https://x.dev")
+  app.tapLink("app:1")
+  app.expect("opened: app:1")
+}
+
+component Custom {
+  markdown.View("Intro\n\n```mermaid\ngraph TD\n```\n\n```go\nx := 1\n```\n\nEnd") {
+    theme: markdown.Theme(font: .callout, linkColor: .purple, spacing: 8)
+    render: b => if b.kind == .code && b.language == "mermaid" { Text("diagram of {b.text}") } else { none }
+  }
+}
+
+test "the app draws the blocks it says, Markdown the rest" {
+  let app = mount(Custom())
+  app.expect("Intro")
+  app.expect("diagram of graph TD")
+  app.expect("x := 1")
+  app.expect("End")
+}

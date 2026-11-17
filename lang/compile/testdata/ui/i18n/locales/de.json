@@ -1,0 +1,12 @@
+{
+  "@@locale": "de",
+  "inbox": "Posteingang",
+  "greeting": "Hallo, {name}!",
+  "unread": "{count, plural, =0 {Keine ungelesenen Nachrichten} one {# ungelesene Nachricht} other {# ungelesene Nachrichten}}",
+  "storage": "{used, number, percent} deines Speichers",
+  "seen": "Gesehen am {when, date, medium} um {when, time, short}",
+  "place": "{n}. Platz",
+  "replied": "{gender, select, female {Sie hat} male {Er hat} other {Sie haben}} geantwortet",
+  "start": "Anfang",
+  "end": "Ende"
+}

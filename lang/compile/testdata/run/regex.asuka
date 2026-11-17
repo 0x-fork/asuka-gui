@@ -1,0 +1,164 @@
+// std/regex: RE2's syntax, leftmost-first matches, linear time.
+
+import std/regex
+
+test "finding" {
+  let digits = try regex.compile(r"\d+")
+  print(digits.matches("order 66"))
+  print(digits.matches("none"))
+  print(digits.find("order 66, table 7") ?? "none")
+  print(digits.findAll("order 66, table 7, 1999"))
+  print(digits.find("no digits") ?? "none")
+  if let r = digits.findRange("abc 123") {
+    let (a, b) = r
+    print("{a} {b}")
+  }
+  let word = try regex.compile(r"\bcat\b")
+  print(word.findAll("cat concat cat, bobcat cat."))
+}
+
+test "groups" {
+  let date = try regex.compile(r"(?P<y>\d{4})-(\d{2})(?:-(\d{2}))?")
+  print(date.findSubmatch("on 2026-03 and 2025-12-31") ?? [])
+  print(date.findAllSubmatches("on 2026-03 and 2025-12-31"))
+  print(date.groupNames())
+  print(date.replace("2026-03 and 2025-12-31", with: r"$2/${y}"))
+  print(date.replace("2026-03", with: r"$$1 ${1}x [$9]"))
+  let words = try regex.compile(r"[a-z]+")
+  print(words.replaceEach("hello big world", f: m => m[0].upper()))
+}
+
+test "the syntax" {
+  let cases = [
+    (r"a|ab", "ab"),
+    (r"(a|ab)(c|bcd)", "abcd"),
+    (r"a*?b", "aaab"),
+    (r"a{2,3}", "aaaa"),
+    (r"a{2,}?", "aaaa"),
+    (r"x{,3}", r"x{,3}"),
+    (r"[^a-c]+", "abcdef"),
+    (r"[[:upper:]]+", "abcDEFg"),
+    (r"[\d.]+", "v1.2.3!"),
+    (r"(?i)héllo", "HÉLLO there"),
+    (r"(?i:A)b", "aB ab"),
+    (r"^\w+$", "multi\nline"),
+    (r"(?m)^\w+$", "multi\nline"),
+    (r"(?s)a.b", "a\nb"),
+    (r"a.b", "a\nb a-b"),
+    (r"\x41\x{263A}", "A☺"),
+    (r"日本", "こんにちは日本"),
+    (r"..", "日本"),
+    (r"\.\*\?", "a.*?"),
+    (r"(a*)*", "b"),
+    (r"(a*)+$", "aab"),
+    (r"(?U)a+", "aaa"),
+  ]
+  for (p, s) in cases {
+    let re = try regex.compile(p)
+    let m = re.findSubmatch(s) ?? ["none"]
+    print("{p} {m}")
+  }
+}
+
+test "splitting" {
+  let comma = try regex.compile(r"\s*,\s*")
+  print(comma.split("a , b,c ,d"))
+  print(comma.split("a , b,c ,d", count: 2))
+  let any = try regex.compile("a*")
+  print(any.split("abaabaccadaaae", count: 5))
+  print(any.findAll("baaac"))
+  print(comma.split(""))
+}
+
+test "bad patterns" {
+  for p in ["(a", "a)", "[a", "a**", "*a", r"\p{L}", r"a{1001}", "(?z)", "[z-a]", r"\q", "(?P<>a)"] {
+    do {
+      let re = try regex.compile(p)
+      print("compiled {re.pattern}")
+    } catch e {
+      print(e.message)
+    }
+  }
+}
+
+test "quoting and spawn" {
+  let q = regex.quote("1+1=2? (yes)")
+  print(q)
+  let re = try regex.compile(q)
+  print(re.matches("is 1+1=2? (yes)"))
+  let digits = try regex.compile(r"\d+")
+  let n = await spawn { digits.findAll("a1b22c333").count() }
+  print(n)
+}
+
+test "a pattern that would take a backtracker forever" {
+  let re = try regex.compile("(a+)+$")
+  print(re.matches("a".repeat(5000) + "b"))
+  let re2 = try regex.compile("(x+x+)+y")
+  print(re2.matches("x".repeat(3000)))
+}
+
+// Output:
+// true
+// false
+// 66
+// ["66","7","1999"]
+// none
+// 4 7
+// ["cat","cat","cat"]
+// ok finding
+// ["2026-03","2026","03",""]
+// [["2026-03","2026","03",""],["2025-12-31","2025","12","31"]]
+// ["y","",""]
+// 03/2026 and 12/2025
+// $1 2026x []
+// HELLO BIG WORLD
+// ok groups
+// a|ab ["a"]
+// (a|ab)(c|bcd) ["abcd","a","bcd"]
+// a*?b ["aaab"]
+// a{2,3} ["aaa"]
+// a{2,}? ["aa"]
+// x{,3} ["x{,3}"]
+// [^a-c]+ ["def"]
+// [[:upper:]]+ ["DEF"]
+// [\d.]+ ["1.2.3"]
+// (?i)héllo ["HÉLLO"]
+// (?i:A)b ["ab"]
+// ^\w+$ ["none"]
+// (?m)^\w+$ ["multi"]
+// (?s)a.b ["a\nb"]
+// a.b ["a-b"]
+// \x41\x{263A} ["A☺"]
+// 日本 ["日本"]
+// .. ["日本"]
+// \.\*\? [".*?"]
+// (a*)* ["",""]
+// (a*)+$ ["",""]
+// (?U)a+ ["a"]
+// ok the syntax
+// ["a","b","c","d"]
+// ["a","b,c ,d"]
+// ["","b","b","c","cadaaae"]
+// ["","aaa",""]
+// [""]
+// ok splitting
+// regex: (a: a ( without its )
+// regex: a): a ) without its (
+// regex: [a: a [ without its ]
+// regex: a**: a repeat of a repeat (write (?:x*)* to mean it)
+// regex: *a: * with nothing before it to repeat
+// regex: \p{L}: \p (Unicode classes) isn't supported
+// regex: a{1001}: a repeat count over 1000
+// regex: (?z): (?z isn't a flag regex knows (i, m, s, U)
+// regex: [z-a]: a range out of order in a class
+// regex: \q: \q isn't an escape regex knows
+// regex: (?P<>a): a bad named group: (?P<name>…)
+// ok bad patterns
+// 1\+1=2\? \(yes\)
+// true
+// 3
+// ok quoting and spawn
+// false
+// false
+// ok a pattern that would take a backtracker forever

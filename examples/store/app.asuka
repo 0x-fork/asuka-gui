@@ -1,0 +1,213 @@
+// Store sells in the app (platform/purchase): coins, a consumable bought
+// again and again; Pro, a non-consumable kept for life; and Plus, a
+// subscription that renews each month, with a week's free trial.
+//
+// The stores sell only an app they know, so the player in asuka dev
+// can't: on the iOS simulator, run it built, selling from its StoreKit
+// configuration file (Products.storekit, asuka.toml's ios.storekit):
+//
+//   asuka dev --platform ios --no-hot examples/store
+//
+// On Android, upload a build to Play's internal track with the same
+// products, and install it as a license tester.
+
+import platform/purchase
+
+// What the app sells: their IDs in App Store Connect and Play Console.
+let coins = purchase.Item(id: "dev.asuka.store.coins100", kind: .consumable)
+let pro = purchase.Item(id: "dev.asuka.store.pro", kind: .nonConsumable)
+let plus = purchase.Item(id: "dev.asuka.store.plus.monthly", kind: .autoRenewable)
+
+/// What a coins purchase adds.
+let coinsPer = 100
+
+component Store {
+  state balance = 0
+  state status = ""
+  state products: [purchase.Product] = []
+  state busy = false
+
+  let owned = purchase.owned()
+  let has = [pro, plus].filter(it => owned.has(it.id)).map(it => if it.id == pro.id { "Pro" } else { "Plus" })
+
+  /// Gives what a transaction sold, then finishes it. The coins here are
+  /// the app's to keep (a server's, an app's own storage).
+  async fn deliver(t: purchase.Transaction) {
+    match t.state {
+      .pending => {
+        status = "Waiting for approval…"
+        return
+      }
+      .revoked => status = "A purchase was refunded"
+      _ if t.productId == coins.id => {
+        balance += coinsPer * t.quantity
+        status = "+{coinsPer * t.quantity} coins"
+      }
+      _ => status = "Thanks!"
+    }
+    try? await t.finish()
+  }
+
+  /// Does a store call, and shows its error.
+  async fn run(call: async fn() throws) {
+    busy = true
+    defer { busy = false }
+    do {
+      try await call()
+    } catch e {
+      status = e.message
+    }
+  }
+
+  async fn buy(p: purchase.Product) {
+    await run(() => {
+      let r = try await purchase.buy(p.item())
+      match r.status {
+        .bought => await deliver(r.transaction!)
+        .pendingApproval => status = "Waiting for approval…"
+        _ => status = ""
+      }
+    })
+  }
+
+  // From the start: Ask to Buy approved, a renewal, a purchase on another
+  // device, those left unfinished last time.
+  task {
+    purchase.declare([coins, pro, plus])
+    for await e in purchase.events() {
+      if let t = e.transaction { await deliver(t) }
+    }
+  }
+
+  task {
+    await run(() => { products = try await purchase.products([coins, pro, plus]) })
+  }
+
+  SafeArea {
+    Scroll {
+      gap: 16
+      padding: 20
+      Text("{balance} coins") { font: .largeTitle.bold() }
+      if !has.isEmpty() {
+        Text("You have {has.joined(" and ")}") { color: .secondaryLabel }
+      }
+      for p in products key p.id {
+        Row {
+          gap: 12
+          align: .center
+          Column {
+            grow: 1
+            gap: 2
+            Text(p.title) { font: .headline }
+            Text(describe(p)) {
+              font: .subheadline
+              color: .secondaryLabel
+            }
+          }
+          Button(if p.kind != .consumable && owned.has(p.id) { "Owned" } else { p.price }) {
+            variant: .filled
+            disabled: busy || p.kind != .consumable && owned.has(p.id)
+            on press { await buy(p) }
+          }
+        }
+      }
+      Text(status) { color: .secondaryLabel }
+      Row {
+        gap: 12
+        Button("Restore Purchases") {
+          variant: .gray
+          disabled: busy
+          on press { await run(() => try await purchase.restore()) }
+        }
+        Button("Manage") {
+          variant: .gray
+          on press { await run(() => try await purchase.manageSubscriptions(plus.id)) }
+        }
+      }
+    }
+  }
+}
+
+/// A product's line under its title: a subscription's period and its
+/// trial.
+fn describe(p: purchase.Product) -> string {
+  if let s = p.subscription {
+    var line = if s.period.count > 1 {
+      "{p.price} every {s.period.count} {s.period.unit}s"
+    } else {
+      "{p.price} a {s.period.unit}"
+    }
+    for o in s.offers {
+      if s.introEligible && o.type == .introductory && !o.phases.isEmpty() && o.phases[0].mode == .freeTrial {
+        line += ", first {o.phases[0].period.count} {o.phases[0].period.unit} free"
+      }
+    }
+    return line
+  }
+  return p.description
+}
+
+app { Store() }
+
+/// The store the tests sell from: the app's three products.
+fn products() -> purchase.FakeStore = purchase.fake([
+  purchase.FakeProduct(id: coins.id, kind: .consumable, title: "100 Coins", price: "$0.99", priceMicros: 990_000),
+  purchase.FakeProduct(id: pro.id, kind: .nonConsumable, title: "Pro", description: "Every level, for life", price: "$9.99", priceMicros: 9_990_000),
+  purchase.FakeProduct(id: plus.id, kind: .autoRenewable, title: "Plus", price: "$4.99", priceMicros: 4_990_000,
+    period: purchase.Period(unit: .month), trial: purchase.Period(unit: .week)),
+])
+
+// Coins are bought again and again, each purchase delivered and finished
+// (consumed); Pro once, then owned.
+test "buy" {
+  let store = products()
+  let app = mount(Store())
+  await app.waitFor("100 Coins")
+  app.expect("0 coins", "$4.99 a month, first 1 week free")
+  app.tap("$0.99")
+  await app.waitFor("100 coins")
+  app.tap("$0.99")
+  await app.waitFor("200 coins")
+  await app.until("finished", () => store.unfinished().isEmpty())
+  for tx in store.transactions {
+    expect(tx.consumed, "not consumed: {tx.id}")
+  }
+  app.tap("$9.99")
+  await app.waitFor("You have Pro")
+  await app.waitFor("Owned")
+  expect(app.disabled("Owned"), "Pro can be bought twice")
+}
+
+// Ask to Buy: pending, then approved by the parent, delivered through the
+// events; a subscription renewed outside the app is too; a refund takes
+// Pro back.
+test "outside the app" {
+  let store = products()
+  let app = mount(Store())
+  await app.waitFor("100 Coins")
+  store.outcome = purchase.Outcome.pending
+  app.tap("$0.99")
+  await app.waitFor("Waiting for approval…")
+  store.approve(coins.id)
+  await app.waitFor("100 coins")
+
+  store.outcome = purchase.Outcome.bought
+  app.tap("$4.99")
+  await app.waitFor("You have Plus")
+  store.renew(plus.id)
+  await app.waitFor("Thanks!")
+
+  let gift = store.deliver(pro.id) // bought on another device
+  await app.waitFor("You have Pro and Plus")
+  store.refund(gift.id)
+  await app.waitFor("A purchase was refunded")
+  await app.waitFor("You have Plus")
+}
+
+// What was bought before the app started, and not finished, is delivered
+// as it starts.
+test "unfinished" {
+  let _ = products().deliver(coins.id)
+  let app = mount(Store())
+  await app.waitFor("100 coins")
+}

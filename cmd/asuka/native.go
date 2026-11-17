@@ -9,18 +9,20 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
-	"sync"
+
+	"github.com/egoist/asuka/internal/cachedir"
 
 	"github.com/egoist/asuka/internal/nativegen"
 )
 
-// Native packages: Go packages that declare typed native modules
-// (//asuka:native) and views (//asuka:view), with their native code beside
-// them, a project of each platform's own (internal/nativegen): a Swift
-// package (Package.swift, its Swift in swift/) for iOS and macOS, a
+// Native packages: Asuka packages that declare native interfaces (a
+// module's objects) and native components (views), with their native code
+// beside them, a project of each platform's own (internal/nativegen): a
+// Swift package (Package.swift, its Swift in swift/) for iOS and macOS, a
 // Gradle module (android/) for Android, JavaScript (web/) for the web. The
 // CLI keeps their generated files current, and builds each platform's
 // project into the apps that import them: the Swift with xcodebuild, as a
@@ -31,95 +33,69 @@ import (
 // with native code.
 type nativePackage struct {
 	path, name, dir string
-	main            bool // in the app's own module: asuka writes its generated files
+	main            bool // the app's own, or a local dependency's: asuka writes its generated files
 }
 
-// appPackages is what the go command lists of an app's package: its
-// native packages, and every package it imports, all the way down.
-type appPackages struct {
-	natives []nativePackage
-	deps    []string
-}
-
-var (
-	nativesMu    sync.Mutex
-	nativesCache = map[string]appPackages{}
-)
-
-// appNatives are the native packages of package pkg, as the go command
-// in dir builds it for goos and goarch: its dependencies with generated
-// native code.
-func appNatives(dir, pkg, goos, goarch string) ([]nativePackage, error) {
-	ps, err := listApp(dir, pkg, goos, goarch)
-	return ps.natives, err
-}
-
-// appDeps are the import paths of package pkg and its dependencies, as
-// the go command in dir builds it for goos and goarch.
-func appDeps(dir, pkg, goos, goarch string) ([]string, error) {
-	ps, err := listApp(dir, pkg, goos, goarch)
-	return ps.deps, err
-}
-
-// listApp lists package pkg's dependencies once per build of it.
-func listApp(dir, pkg, goos, goarch string) (appPackages, error) {
-	key := dir + "\x00" + pkg + "\x00" + goos + "\x00" + goarch
-	nativesMu.Lock()
-	ps, ok := nativesCache[key]
-	nativesMu.Unlock()
-	if ok {
-		return ps, nil
+// appNatives are the app's packages that declare something native: the
+// packages in its directory, and its dependencies.
+func appNatives(app *asukaApp) ([]nativePackage, error) {
+	type cand struct {
+		dir  bool
+		path string
+		main bool
 	}
-	cgo := "0"
-	if goos == "ios" || goos == "android" {
-		cgo = "1"
+	var dirs []string
+	byDir := map[string]cand{}
+	filepath.WalkDir(app.dir, func(p string, d os.DirEntry, err error) error {
+		if err != nil || !d.IsDir() {
+			return nil
+		}
+		if p != app.dir && skipDir(d.Name()) {
+			return filepath.SkipDir
+		}
+		if hasDirectives(p) {
+			r, _ := filepath.Rel(app.dir, p)
+			dirs = append(dirs, p)
+			byDir[p] = cand{path: "./" + filepath.ToSlash(r), main: true}
+		}
+		return nil
+	})
+	var deps map[string]string
+	var local []string
+	if app.proj != nil {
+		deps, local = app.packageDirs(), app.proj.Local
 	}
-	c := exec.Command("go", "-C", dir, "list", "-deps", "-f", "{{.ImportPath}}\t{{.Name}}\t{{.Dir}}\t{{with .Module}}{{.Main}}{{end}}", pkg)
-	c.Env = append(os.Environ(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED="+cgo)
-	var stderr bytes.Buffer
-	c.Stderr = &stderr
-	out, err := c.Output()
-	if err != nil {
-		return ps, fmt.Errorf("go list: %v\n%s", err, stderr.Bytes())
-	}
-	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		f := strings.Split(l, "\t")
-		if len(f) != 4 {
+	for id, d := range deps {
+		if _, ok := byDir[d]; ok || !hasDirectives(d) {
 			continue
 		}
-		ps.deps = append(ps.deps, f[0])
-		if f[2] == "" || !exists(filepath.Join(f[2], nativegen.GoFile(f[1]))) {
+		dirs = append(dirs, d)
+		byDir[d] = cand{path: id, main: slices.Contains(local, d)}
+	}
+	sort.Strings(dirs)
+	var out []nativePackage
+	for _, d := range dirs {
+		p, err := nativegen.LoadAsuka(d)
+		if err != nil {
+			return nil, err
+		}
+		if p == nil || p.Empty() {
 			continue
 		}
-		ps.natives = append(ps.natives, nativePackage{path: f[0], name: f[1], dir: f[2], main: f[3] == "true"})
-	}
-	nativesMu.Lock()
-	nativesCache[key] = ps
-	nativesMu.Unlock()
-	return ps, nil
-}
-
-// forgetNatives drops what appNatives found for dir (asuka dev rebuilds:
-// its imports may have changed).
-func forgetNatives(dir string) {
-	nativesMu.Lock()
-	for k := range nativesCache {
-		if strings.HasPrefix(k, dir+"\x00") {
-			delete(nativesCache, k)
+		c := byDir[d]
+		path := c.path
+		if p.Path != "" && !c.main {
+			path = p.Path
 		}
+		out = append(out, nativePackage{path: path, name: p.Name, dir: d, main: c.main})
 	}
-	nativesMu.Unlock()
+	return out, nil
 }
 
 // nativeFor are the app's native packages with native code for platform
-// (ios, macos, android, web), built for goarch.
-func nativeFor(app *goApp, platform, goarch string) ([]nativePackage, error) {
-	goos := map[string]string{"ios": "ios", "macos": "darwin", "android": "android", "web": "js"}[platform]
-	if platform == "web" {
-		goarch = "wasm"
-	}
-	dir, pkg := app.goPackage()
-	ps, err := appNatives(dir, pkg, goos, goarch)
+// (ios, macos, android, web).
+func nativeFor(app *asukaApp, platform string) ([]nativePackage, error) {
+	ps, err := appNatives(app)
 	if err != nil {
 		return nil, err
 	}
@@ -148,56 +124,50 @@ func nativeFor(app *goApp, platform, goarch string) ([]nativePackage, error) {
 }
 
 // generateNatives keeps the app's native packages' generated files
-// current: those of its own module (its dependencies there with
-// //asuka: directives) are written again where their declarations
-// changed; a dependency's of another module, stale, is an error (its
-// module is what's published).
-func generateNatives(app *goApp) error {
-	c := exec.Command("go", "-C", app.dir, "list", "-deps", "-f", "{{.Dir}}\t{{.Name}}\t{{with .Module}}{{.Main}}{{end}}", ".")
-	var stderr bytes.Buffer
-	c.Stderr = &stderr
-	out, err := c.Output()
+// current: those of its own (and of its local dependencies) are written
+// again where their declarations changed; a published dependency's,
+// stale, is an error (what's published is what it is).
+func generateNatives(app *asukaApp) error {
+	ps, err := appNatives(app)
 	if err != nil {
-		return fmt.Errorf("go list: %v\n%s", err, stderr.Bytes())
+		return err
 	}
-	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		f := strings.Split(l, "\t")
-		if len(f) != 3 || f[0] == "" || f[2] == "" {
-			continue // the standard library's
+	for _, p := range ps {
+		if p.main {
+			err = generateNative(p.dir)
+		} else {
+			err = checkNative(p.dir)
 		}
-		dir, main := f[0], f[2] == "true"
-		switch {
-		case main && hasDirectives(dir):
-			if err := generateNative(dir); err != nil {
-				return err
-			}
-		case !main && exists(filepath.Join(dir, nativegen.GoFile(f[1]))):
-			if err := checkNative(dir); err != nil {
-				return err
-			}
+		if err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-// hasDirectives reports whether a package's Go has //asuka:native or
-// //asuka:view declarations.
+// hasDirectives reports whether a package's Asuka declares a native
+// interface or a native component. A generated file's are the prelude's
+// elements (lang/prelude's elements.asuka), the runtime's, not a
+// package's.
 func hasDirectives(dir string) bool {
 	es, _ := os.ReadDir(dir)
 	for _, e := range es {
 		n := e.Name()
-		if e.IsDir() || !strings.HasSuffix(n, ".go") || strings.HasSuffix(n, "_test.go") || strings.HasSuffix(n, "_native.go") {
+		if e.IsDir() || !strings.HasSuffix(n, ".asuka") {
 			continue
 		}
-		if b, err := os.ReadFile(filepath.Join(dir, n)); err == nil && (bytes.Contains(b, []byte("//asuka:native")) || bytes.Contains(b, []byte("//asuka:view"))) {
+		if b, err := os.ReadFile(filepath.Join(dir, n)); err == nil && nativeDecl.Match(b) && !bytes.HasPrefix(b, []byte("// Code generated ")) {
 			return true
 		}
 	}
 	return false
 }
 
-// nativeDirs are the packages of the module in moduleDir (as ./...
-// lists them) with //asuka:native or //asuka:view declarations.
+// nativeDecl finds an Asuka file's native declarations.
+var nativeDecl = regexp.MustCompile(`(?m)^\s*(pub\s+)?native\s+(interface|component)\b`)
+
+// nativeDirs are the packages under moduleDir with native declarations
+// (hasDirectives).
 func nativeDirs(moduleDir string) ([]string, error) {
 	var dirs []string
 	err := filepath.WalkDir(moduleDir, func(p string, d os.DirEntry, err error) error {
@@ -209,6 +179,11 @@ func nativeDirs(moduleDir string) ([]string, error) {
 			exists(filepath.Join(p, "go.mod"))) {
 			return filepath.SkipDir
 		}
+		// The prelude declares the built-in elements as native components:
+		// the runtime's, not a native package's.
+		if rel, _ := filepath.Rel(moduleDir, p); filepath.ToSlash(rel) == "lang/prelude" {
+			return filepath.SkipDir
+		}
 		if hasDirectives(p) {
 			dirs = append(dirs, p)
 		}
@@ -218,14 +193,14 @@ func nativeDirs(moduleDir string) ([]string, error) {
 	return dirs, err
 }
 
-// nativeStamp is what a package's generation depends on: its Go files'
-// (but the generated one's) contents, and its projects' presence.
+// nativeStamp is what a package's generation depends on: its Asuka
+// files' contents, and its projects' presence.
 func nativeStamp(dir string) string {
 	h := sha256.New()
 	es, _ := os.ReadDir(dir)
 	for _, e := range es {
 		n := e.Name()
-		if e.IsDir() || !strings.HasSuffix(n, ".go") || strings.HasSuffix(n, "_test.go") || strings.HasSuffix(n, "_native.go") {
+		if e.IsDir() || !strings.HasSuffix(n, ".asuka") {
 			continue
 		}
 		b, _ := os.ReadFile(filepath.Join(dir, n))
@@ -240,9 +215,8 @@ func nativeStamp(dir string) string {
 
 // nativeStampPath is where a package's last generation's stamp is kept.
 func nativeStampPath(dir string) string {
-	base, _ := os.UserCacheDir()
 	sum := sha256.Sum256([]byte(dir))
-	return filepath.Join(base, "asuka", "native", hex.EncodeToString(sum[:])[:16])
+	return cachedir.Path("native", hex.EncodeToString(sum[:])[:16])
 }
 
 // generateNative writes a package's generated files, unless nothing it
@@ -255,7 +229,7 @@ func generateNative(dir string) error {
 			return nil
 		}
 	}
-	p, err := nativegen.Load(dir)
+	p, err := nativegen.LoadAsuka(dir)
 	if err != nil {
 		return err
 	}
@@ -279,7 +253,7 @@ func nativeHashes(dir string) (bool, string) {
 	var hash string
 	ok := true
 	filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.Contains(d.Name(), ".asuka.") && !strings.HasSuffix(d.Name(), "_native.go") {
+		if err != nil || d.IsDir() || !strings.Contains(d.Name(), ".asuka.") {
 			return nil
 		}
 		b, _ := os.ReadFile(p)
@@ -300,7 +274,7 @@ func checkNative(dir string) error {
 	if b, err := os.ReadFile(sp); err == nil && string(b) == "checked "+stamp {
 		return nil
 	}
-	p, err := nativegen.Load(dir)
+	p, err := nativegen.LoadAsuka(dir)
 	if err != nil {
 		return err
 	}
@@ -333,6 +307,19 @@ func rel(p string) string {
 type swiftInfo struct {
 	Platforms []string `json:"platforms"`
 	Products  []string `json:"products"`
+	// Module is its one target when the CLI compiles it as a module of
+	// its own (swiftModules): Swift alone, depending on the host's only,
+	// with no resources or settings. Nil: xcodebuild builds it.
+	Module *swiftModuleInfo `json:"module,omitempty"`
+}
+
+// swiftModuleInfo is a package's target that swiftModules compiles.
+type swiftModuleInfo struct {
+	Name   string `json:"name"`
+	Path   string `json:"path"` // its directory in the package
+	IOS    string `json:"ios"`  // its minimum versions ("" for the app's)
+	MacOS  string `json:"macos"`
+	Swift6 bool   `json:"swift6"` // tools version 6: Swift 6's language mode
 }
 
 func (s swiftInfo) supports(platform string) bool {
@@ -347,8 +334,7 @@ func swiftPackageInfo(dir string) (swiftInfo, error) {
 		return swiftInfo{}, err
 	}
 	sum := sha256.Sum256(manifest)
-	base, _ := os.UserCacheDir()
-	cache := filepath.Join(base, "asuka", "swiftpm", hex.EncodeToString(sum[:])[:16]+".json")
+	cache := cachedir.Path("swiftpm", "2-"+hex.EncodeToString(sum[:])[:16]+".json")
 	var info swiftInfo
 	if b, err := os.ReadFile(cache); err == nil && json.Unmarshal(b, &info) == nil {
 		return info, nil
@@ -366,19 +352,85 @@ func swiftPackageInfo(dir string) (swiftInfo, error) {
 	var dump struct {
 		Platforms []struct {
 			PlatformName string `json:"platformName"`
+			Version      string `json:"version"`
 		} `json:"platforms"`
 		Products []struct {
 			Name string                     `json:"name"`
 			Type map[string]json.RawMessage `json:"type"`
 		} `json:"products"`
+		Dependencies []map[string][]struct {
+			Identity string `json:"identity"`
+		} `json:"dependencies"`
+		Targets []struct {
+			Name         string             `json:"name"`
+			Type         string             `json:"type"`
+			Path         *string            `json:"path"`
+			Sources      []string           `json:"sources"`
+			Exclude      []string           `json:"exclude"`
+			Resources    []json.RawMessage  `json:"resources"`
+			Settings     []json.RawMessage  `json:"settings"`
+			Dependencies []map[string][]any `json:"dependencies"`
+		} `json:"targets"`
+		ToolsVersion struct {
+			Version string `json:"_version"`
+		} `json:"toolsVersion"`
 	}
 	if err := json.Unmarshal(out, &dump); err != nil {
 		return info, fmt.Errorf("%s/Package.swift: %v", dir, err)
 	}
+	mod := &swiftModuleInfo{Swift6: strings.HasPrefix(dump.ToolsVersion.Version, "6")}
 	for _, p := range dump.Platforms {
+		switch p.PlatformName {
+		case "ios":
+			mod.IOS = p.Version
+		case "macos":
+			mod.MacOS = p.Version
+		}
 		if p.PlatformName == "ios" || p.PlatformName == "macos" {
 			info.Platforms = append(info.Platforms, p.PlatformName)
 		}
+	}
+	// A module of its own: its packages' only dependency the host's
+	// (asuka), one regular target that depends on the host's product
+	// alone, with no resources, settings or lists of files.
+	for _, d := range dump.Dependencies {
+		for _, refs := range d {
+			for _, r := range refs {
+				if r.Identity != "asuka" {
+					mod = nil
+				}
+			}
+		}
+	}
+	var targets int
+	for _, t := range dump.Targets {
+		if t.Type == "test" {
+			continue
+		}
+		targets++
+		if mod == nil {
+			continue
+		}
+		if t.Type != "regular" || len(t.Resources) > 0 || len(t.Settings) > 0 || len(t.Sources) > 0 || len(t.Exclude) > 0 {
+			mod = nil
+			continue
+		}
+		for _, d := range t.Dependencies {
+			p, ok := d["product"]
+			if !ok || len(p) < 2 || p[0] != "Asuka" || p[1] != "asuka" {
+				mod = nil
+			}
+		}
+		if mod != nil {
+			mod.Name = t.Name
+			mod.Path = filepath.Join("Sources", t.Name)
+			if t.Path != nil {
+				mod.Path = filepath.FromSlash(*t.Path)
+			}
+		}
+	}
+	if targets == 1 && mod != nil {
+		info.Module = mod
 	}
 	for _, p := range dump.Products {
 		if _, ok := p.Type["library"]; ok {
@@ -419,7 +471,7 @@ func (c *appConfig) nativeNeeds(ps []nativePackage, platform string) error {
 					sort.Strings(have)
 					c.nativePlist[k] = have
 				case string:
-					// A purpose string is a usage: the app's asuka.json says better.
+					// A purpose string is a usage: the app's asuka.toml says better.
 					if strings.HasSuffix(k, "UsageDescription") {
 						if c.IOS.Usage == nil {
 							c.IOS.Usage = map[string]string{}
@@ -497,8 +549,8 @@ func nativeDirsOf(ps []nativePackage, platform string) []string {
 
 // androidNatives sets the app's native packages' Gradle modules (their
 // android/), named by their packages.
-func (c *appConfig) androidNatives(app *goApp) error {
-	natives, err := nativeFor(app, "android", "arm64")
+func (c *appConfig) androidNatives(app *asukaApp) error {
+	natives, err := nativeFor(app, "android")
 	if err != nil {
 		return err
 	}

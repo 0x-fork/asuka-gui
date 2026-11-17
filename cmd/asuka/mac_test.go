@@ -1,22 +1,22 @@
 package main
 
 import (
-	"debug/macho"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/egoist/asuka/internal/cbuild"
 )
 
 // A Mac app's signature carries the hardened runtime's entitlements for
 // what its purpose strings ask for, and none it doesn't need.
 func TestMacEntitlements(t *testing.T) {
 	cfg := &appConfig{}
-	cfg.permissionsFor([]string{"github.com/egoist/asuka/sdk/camera", "github.com/egoist/asuka/sdk/contacts", "github.com/egoist/asuka/sdk/location"})
-	app := &goApp{cfg: cfg}
+	importStd(t, cfg, "macos", "camera", "contacts", "location")
+	app := &asukaApp{cfg: cfg}
 	f, err := writeMacEntitlements(app, t.TempDir())
 	if err != nil || f == "" {
 		t.Fatalf("entitlements: %q, %v", f, err)
@@ -29,39 +29,13 @@ func TestMacEntitlements(t *testing.T) {
 			t.Errorf("no %s in\n%s", want, s)
 		}
 	}
-	for _, not := range []string{"audio-input", "calendars", "aps-environment"} {
+	for _, not := range []string{"calendars", "aps-environment"} {
 		if strings.Contains(s, not) {
 			t.Errorf("%s in\n%s", not, s)
 		}
 	}
-	if f, err := writeMacEntitlements(&goApp{cfg: &appConfig{}}, t.TempDir()); f != "" || err != nil {
+	if f, err := writeMacEntitlements(&asukaApp{cfg: &appConfig{}}, t.TempDir()); f != "" || err != nil {
 		t.Errorf("an app that asks for nothing: %q, %v", f, err)
-	}
-}
-
-// SQLite's library goes in the app's Frameworks, where the package finds
-// it from Contents/MacOS (sqlite/locate_darwin.go): for both of the
-// app's architectures.
-func TestMacSQLiteLib(t *testing.T) {
-	bundle := filepath.Join(t.TempDir(), "Notes.app")
-	lib := filepath.Join(macPluginLibs(bundle), "libasqlite.dylib")
-	if rel, _ := filepath.Rel(filepath.Join(bundle, "Contents", "MacOS"), lib); rel != filepath.Join("..", "Frameworks", "libasqlite.dylib") {
-		t.Errorf("from the executable: %s", rel)
-	}
-	if err := writeTestPluginLib("darwin", lib); err != nil {
-		t.Fatal(err)
-	}
-	f, err := macho.OpenFat(lib)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	var cpus []macho.Cpu
-	for _, a := range f.Arches {
-		cpus = append(cpus, a.Cpu)
-	}
-	if !slices.Contains(cpus, macho.CpuArm64) || !slices.Contains(cpus, macho.CpuAmd64) {
-		t.Errorf("architectures: %v", cpus)
 	}
 }
 
@@ -69,7 +43,7 @@ func TestMacSQLiteLib(t *testing.T) {
 // hardened runtime loads only its own team's), without its entitlements.
 func TestSignMacFrameworks(t *testing.T) {
 	bundle := filepath.Join(t.TempDir(), "Notes.app")
-	lib := filepath.Join(macPluginLibs(bundle), "libasqlite.dylib")
+	lib := filepath.Join(bundle, "Contents", "Frameworks", "libswift_Concurrency.dylib")
 	os.MkdirAll(filepath.Dir(lib), 0o755)
 	os.WriteFile(lib, []byte("lib"), 0o755)
 	for _, id := range []string{"-", "Developer ID Application: X (T)"} {
@@ -96,13 +70,16 @@ func TestSignMacFrameworks(t *testing.T) {
 	}
 }
 
-// A Mac build of an app that uses asuka/sdk/sqlite ships the library in its
-// Frameworks, signed with it, and is built without the copy the package
-// embeds: it runs from the .app, finding the library there.
-func TestBuildMacSQLite(t *testing.T) {
-	if runtime.GOOS != "darwin" {
-		t.Skip("a Mac build signs on a Mac")
+// A Mac build is an .app: its executable the Swift host linked with the
+// core with the app compiled in (universal) and, as it imports
+// std/sqlite, SQLite, signed, the app's settings in its Resources. It
+// runs: the window shows the Counter, which counts a press.
+func TestBuildMac(t *testing.T) {
+	needMacBuild(t)
+	if _, err := cbuild.ForTarget(cbuild.Target{OS: "darwin", Arch: "amd64"}); err != nil {
+		t.Skip(err)
 	}
+	useSQLiteCounter(t, "Count: ")
 	app := sqliteTestApp(t)
 	out := t.TempDir()
 	if err := buildMac(app, &buildOptions{out: out}); err != nil {
@@ -110,24 +87,104 @@ func TestBuildMacSQLite(t *testing.T) {
 	}
 	bundle := filepath.Join(out, app.displayName()+".app")
 	bin := filepath.Join(bundle, "Contents", "MacOS", sanitizeExe(app.displayName()))
-	if tags := buildTags(t, bin); tags != pluginTag {
-		t.Errorf("tags: %q", tags)
+	if archs, err := exec.Command("lipo", "-archs", bin).Output(); err != nil || strings.TrimSpace(string(archs)) != "x86_64 arm64" {
+		t.Errorf("the executable: %q %v", archs, err)
+	}
+	// No Go, no core beside it: the core is linked in.
+	if _, err := os.Stat(filepath.Join(bundle, "Contents", "Frameworks", "libasuka.dylib")); err == nil {
+		t.Error("a libasuka.dylib in Frameworks")
+	}
+	if out, _ := exec.Command("nm", "-arch", "arm64", bin).Output(); !containsField(string(out), "_asuka_run") || strings.Contains(string(out), "runtime.gopanic") {
+		t.Error("the executable isn't the Swift host with the core linked in")
+	}
+	checkSQLiteLinked(t, bin)
+	for _, f := range []string{"Resources/asuka-app.json", "Info.plist"} {
+		if _, err := os.Stat(filepath.Join(bundle, "Contents", f)); err != nil {
+			t.Error(err)
+		}
 	}
 	if b, err := exec.Command("codesign", "--verify", "--deep", "--strict", bundle).CombinedOutput(); err != nil {
 		t.Errorf("codesign --verify --deep: %v\n%s", err, b)
 	}
-	db := filepath.Join(t.TempDir(), "runs.db")
-	for _, want := range []string{"runs 1, SQLite 3.", "runs 2, SQLite 3."} {
-		c := exec.Command(bin, db)
-		c.Env = append(os.Environ(), "ASUKA_SQLITE_LIB=")
-		b, err := c.CombinedOutput()
-		if err != nil || !strings.HasPrefix(string(b), want) {
-			t.Fatalf("%v: %s, want %s", err, b, want)
-		}
+	snap := filepath.Join(t.TempDir(), "c.png")
+	c := exec.Command(bin)
+	c.Env = append(os.Environ(), "ASUKA_SCRIPT=tap:Add", "ASUKA_SNAPSHOT="+snap, "ASUKA_DUMP=1")
+	if b, err := c.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, b)
 	}
-	// Without it, the app says where it looked.
-	os.Remove(filepath.Join(macPluginLibs(bundle), "libasqlite.dylib"))
-	if b, err := exec.Command(bin).CombinedOutput(); err == nil || !strings.Contains(string(b), "Frameworks/libasqlite.dylib") {
-		t.Errorf("without the library: %v, %s", err, b)
+	dump, err := os.ReadFile(snap + ".txt")
+	if err != nil || !strings.Contains(string(dump), `"Count: 1"`) || !strings.Contains(string(dump), `window "sqliteapp"`) {
+		t.Fatalf("after tapping Add, the window shows (%v):\n%s", err, dump)
+	}
+}
+
+// A Mac app made of Asuka (the compiler's) that imports a standard
+// library package with native code: the package's Swift is built into
+// the app, and the host makes the package's objects there (not in Go):
+// the network it shows says what carries it, which only the Swift
+// (NWPathMonitor) knows; without it, the package says "other".
+func TestBuildMacStd(t *testing.T) {
+	needMacBuild(t)
+	if _, err := cbuild.ForTarget(cbuild.Target{OS: "darwin", Arch: "amd64"}); err != nil {
+		t.Skip(err)
+	}
+	dir := filepath.Join(t.TempDir(), "netapp")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte("name = \"netapp\"\nid = \"dev.asuka.netapp\"\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "app.asuka"), []byte(`import platform/apps
+import platform/network
+import platform/recent
+
+component Net {
+  let net = network.status()
+  state asked = "recent: asking"
+
+  state first = "first: asking"
+
+  task {
+    let n = (await recent.list()).count()
+    asked = "recent: {n >= 0}"
+  }
+
+  task {
+    do {
+      let found = try await apps.search(try await apps.list(), "finder")
+      first = "first: {found.first()?.name ?? "none"}"
+    } catch e {
+      first = "first: {e.message}"
+    }
+  }
+
+  Column {
+    Text(if net.connected { "online over {net.type}" } else { "offline" })
+    Text(asked)
+    Text(first)
+  }
+}
+
+app { Net() }
+`), 0o644)
+	app := projectApp(t, dir, nil)
+	out := t.TempDir()
+	if err := buildMac(app, &buildOptions{out: out}); err != nil {
+		t.Fatal(err)
+	}
+	bundle := filepath.Join(out, app.displayName()+".app")
+	snap := filepath.Join(t.TempDir(), "n.png")
+	c := exec.Command(filepath.Join(bundle, "Contents", "MacOS", sanitizeExe(app.displayName())))
+	c.Env = append(os.Environ(), "ASUKA_SCRIPT=until:first: F;until:recent: t", "ASUKA_SNAPSHOT="+snap, "ASUKA_DUMP=1")
+	if b, err := c.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, b)
+	}
+	dump, err := os.ReadFile(snap + ".txt")
+	s := string(dump)
+	if !strings.Contains(s, `"first: Finder"`) {
+		t.Errorf("platform/apps didn't find Finder through the host:\n%s", s)
+	}
+	if !strings.Contains(s, `"recent: true"`) {
+		t.Errorf("the host's recent module didn't answer (platform/host's call):\n%s", s)
+	}
+	if err != nil || !(strings.Contains(s, `"online over wifi"`) || strings.Contains(s, `"online over ethernet"`) || strings.Contains(s, `"online over cellular"`) || strings.Contains(s, `"offline"`)) {
+		t.Fatalf("the window shows (%v):\n%s", err, dump)
 	}
 }

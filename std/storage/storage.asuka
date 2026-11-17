@@ -1,0 +1,36 @@
+// Package std/storage keeps values on the device as stores: a
+// Value's value is state (reading it is tracked, writing it shows), and
+// what it's set to is kept across launches, in the platform's own
+// preferences (std/store: UserDefaults, SharedPreferences,
+// localStorage, a file in the app's data directory). Values are kept
+// as JSON, so a T is anything JSON can say: numbers, strings, arrays,
+// structs, enums. For records, use a database (std/sqlite).
+//
+//   let wifiOnly = storage.Value("wifiOnly", false)
+//   Toggle { bind on: wifiOnly.value; title: "Download on Wi-Fi only" }
+
+import std/store
+
+/// A value kept on the device under key: def until something's kept
+/// (or when what's kept isn't a T any more). Writing value keeps it.
+pub store Value<T>(key: string, def: T) {
+  /// The value kept under key, read as the store is made; setting it
+  /// writes it to the device.
+  pub state value: T = store.read(key, def)
+
+  effect { store.write(key, value) }
+
+  /// Forgets what's kept: the value is def again.
+  pub fn reset() {
+    store.remove(key)
+    value = def
+  }
+}
+
+/// Writes what's kept now rather than a moment later: before the app
+/// may be ended (a background task's last step).
+pub fn flush() = store.flush()
+
+/// Where the values are kept: the preferences' directory, or the
+/// platform's name for them ("localStorage" on the web).
+pub fn dirName() -> string = store.dir()

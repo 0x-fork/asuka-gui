@@ -1,252 +1,211 @@
 # Asuka — design
 
-Asuka (working name) is a UI framework in Go that renders with each
-platform's own widgets. **Mobile comes first: iOS and Android.** Desktop
-(macOS, Windows, Linux) comes after mobile's v0 is done, on the same core
-(see "Desktop, later"). Apps are written in Go. The goals, in order:
+Asuka is a UI framework that renders with each platform's own widgets,
+driven by fine-grained signals. **Mobile comes first: iOS and
+Android**; macOS, Windows, Linux and the web run on the same core. Apps
+are written in **Asuka**, a language of its own (docs/language/), and
+run on a **core written in C** (core/). RFC 0007 has the reasoning for
+both. The goals, in order:
 
-1. **Fast to build with**: fast compiles, a quick edit-and-run loop on
-   the simulator and the emulator, a small API.
+1. **Fast to build with**: a save shows on the device in milliseconds,
+   with its state and its views kept; a small, checked language; one
+   command for every platform.
 2. **Best performance**: an update touches only the native widgets it
-   changes, and crosses into native code once per batch.
+   changes, crosses into native code once per batch, and allocates
+   nothing in the steady state; release builds are compiled to C.
 
-Non-goals: drawing widgets ourselves (that is MyGo's native UI; the one
-planned exception is rich text, see "Rich text"), web views (an app in a phone's web view; the browser is a platform of its own, see "The web"), pixel-identical looks across platforms, stability across a
-large audience before 1.0. Desktop is not a non-goal, only later: no
-core API may assume a phone (one window, touch only) where desktop would
-need something else; such APIs get a desktop-shaped extension point now
-and an implementation later.
+Non-goals: drawing widgets ourselves (the one exception is rich text,
+see "Rich text"), web views (the browser is a platform of its own, see
+"The web"), pixel-identical looks across platforms, stability across a
+large audience before 1.0.
 
 ## Decisions
 
 | Question | Decision | Why |
 |---|---|---|
-| Platforms, in order | iOS, Android; then macOS, Windows, Linux | Mobile is the focus. The core and `ops` are platform-neutral, so desktop hosts are added later without changing apps. |
-| Language | Go | Fast compiles; GC and closures make UI code quick to write; MyGo's purego/Objective-C experience carries over. The cost per frame is in the platform toolkits, so a faster core language would not show. |
-| Retained or immediate | Retained | Native widgets are retained objects that own focus, selection, IME, scroll and accessibility state. Rebuilding a description every frame would mean diffing it against them. |
-| Reactivity | Fine-grained signals (Solid-like), no virtual tree | A signal write re-runs only the effects that read it, and each effect emits exactly the property change it causes. |
-| Threads | Core runs on the platform's main thread | Native callbacks that need answers synchronously (list data sources, text field delegates, measurement, layout inside the keyboard's animation) call straight into the core. Frameworks that run logic and layout off the main thread (React Native, Texture, Litho) do it so slow or garbage-collected app logic can't drop frames, and pay with asynchronous interop: blank cells, input races, layout a frame late. Fabric added synchronous layout and Flutter merged its UI and platform threads (3.29) for that reason; SwiftUI and Compose stay on main. Asuka's logic is compiled Go with fine-grained updates, so the main thread suffices; slow work runs on goroutines that post results back. The place off-main work does pay, preparing long, rich or streaming text, is handled without moving the core (see "Rich text"). |
-| Core ↔ native contract | Batched mount operations (`ops`) | One crossing per batch. The same stream works in process and over a socket. |
-| Layout | Our own engine in Go: CSS block, flexbox and grid (Taffy-like, checked against Chrome), measured by the host | One layout engine for every platform, with the semantics web and React Native developers know; native widgets report their own sizes. Designed for our tree and for zero allocation, not ported from Yoga or Taffy. |
-| iOS host | Swift + UIKit, with Go linked as a `c-archive` | UIKit subclasses and delegates are trivial in Swift. Not SwiftUI: it is a second reconciler. |
-| Android host | Kotlin + Android Views (Material Components 3), with Go loaded as a `c-shared` library | Views are imperative targets for mount ops; JNI is crossed once per batch. Not Compose: it is a second reconciler, it measures only inside its own layout pass (the core measures synchronously during a flush), and it applies changes on the next frame. Views aren't deprecated, but new Material and Jetpack UI (Material 3 Expressive, adaptive scaffolds) often lands in Compose first or only. A component that exists only in Compose is mounted as a `ComposeView` for that one node, driven by the node's props and measured with `ComposeView.measure`; the core and the ops don't change. Not in list rows: each `ComposeView` is its own composition. Revisit only if Material Components is deprecated. |
-| Text and controls | The platform's own views (`UILabel`, `TextView`, ...), measured by the real widget on the main thread | Native behavior for free: accessibility, Dynamic Type and font scale, selection, truncation, line breaking. What's measured is what's drawn. The alternative, laying text out off the main thread with CoreText / `StaticLayout` and drawing it in a custom view (as frameworks whose core runs off the main thread do), would re-implement all of that. The cost: text is measured on the main thread, and each widget's measuring quirks are ours. Mitigations: per-node layout caches, and a shared measure cache keyed by content (below). If profiling ever shows main-thread text measuring hurting (List cells), measure with CoreText / `StaticLayout` while still drawing with the platform view. |
-| Web | The DOM, from a JavaScript host (`platform/web`) the app's Go code drives as WebAssembly (`host/web`) | As the mobile hosts: the core hands over each batch encoded, decoded in place out of the WebAssembly memory by a generated decoder, one crossing per batch; driving the DOM from Go through `syscall/js` would cross per property. Each view is an element at the frame the core laid out, so layout is Asuka's, as on every platform; leaves are measured by the real elements. Not a canvas: the browser's text, controls, focus, autofill and accessibility come with its elements. |
-| cgo | Allowed only in `mobile/` (build tags `ios`, `android`) | Go's `c-archive` and `c-shared` build modes need it. Everything else builds with `CGO_ENABLED=0`, so desktop hosts can stay cgo-free later. |
+| Platforms, in order | iOS, Android; then macOS, Windows, Linux, the web | The core and `ops` are platform-neutral. |
+| App language | Asuka: statically typed, component bodies declarative, async/await, value semantics (docs/language/) | Reactivity the compiler checks (a read that should follow can't be read once), main-thread rules as type errors, and code a VM can reload without restarting. |
+| Core language | C17 (core/) | Every platform's toolchain and FFI calls C; no runtime or GC of its own on the phone; a small WebAssembly build. |
+| Compiler | Go (lang/), part of the CLI | The device never compiles; the CLI and the language server share it. |
+| Running the app | Bytecode on the core's VM in development; C compiled with the core for release (lang/cgen) | Reloads keep state and views on every platform, physical phones included; releases run at native speed. |
+| Memory | Reference counting, copy on write; owners dispose explicitly | No GC pauses; values can't make cycles. |
+| Retained or immediate | Retained | Native widgets are retained objects that own focus, selection, IME, scroll and accessibility state. |
+| Reactivity | Fine-grained signals (alien-signals' algorithm, Solid's owners), no virtual tree | A write re-runs only what read it, and each binding sends only the prop it sets. |
+| Threads | The core runs on the platform's main thread; `spawn` runs values-only work on workers | Native callbacks that need answers synchronously (list data sources, text field delegates, measurement) call straight into the core. |
+| Core ↔ native contract | Batched mount operations (`ops`), encoded once per batch | One crossing per batch, the same stream in process and over a socket. |
+| Layout | Our own engine (core/src/layout): CSS block, flexbox and grid, checked against Chrome, measured by the host | One layout for every platform, with the semantics web and React Native developers know. |
+| iOS host | Swift + UIKit, the core linked as a static library | UIKit subclasses and delegates are trivial in Swift. Not SwiftUI: it is a second reconciler. |
+| Android host | Kotlin + Android Views (Material Components 3), the core a shared library through JNI | Views are imperative targets for mount ops. Not Compose (a second reconciler, measuring only in its own pass). |
+| macOS host | Swift + AppKit (platform/macos), the core linked in, as iOS's | AppKit subclasses and delegates are Swift's to write; no Go at run time (RFC 0008). Not SwiftUI. |
+| Windows and Linux hosts | C, in process (Win32; GTK 4 and libadwaita), the core and the app linked in (platform/windows, platform/linux) | They are hosts behind the ops wire like the others; their cost is the platforms' calls. No Go at run time; no cgo. |
+| Web | The DOM, from a JavaScript host (platform/web), the core as WebAssembly | Batches decoded in place out of the WebAssembly memory; the browser's own elements. |
+| C compiler | The platform's own (Xcode's clang, the NDK's, the system's); Zig's opted into (`ASUKA_CC=zig`) and to cross-compile | What the platforms' SDKs are tested with; Zig for what they can't do. |
+| Packages | The npm registry, with the asuka CLI as the client (`asuka add`, `asuka.lock`) | A registry with scopes, auth and private mirrors for free; one version of each package per app. |
+| Manifest | `asuka.toml` | Written by people, commented, merged by git. |
 
-Open decisions, with the default to use until they are settled:
+Open decisions, with the default until they are settled:
 
-- Minimum versions: **iOS 16, Android API 33 (13)**: Android 13 brought RuntimeShader (ui.Shader) and per-app languages, and what came before it is a small share of devices.
-- Android widgets: Material Components 3 (decided in M2), with the
-  Material 3 Expressive theme and styles (Material Components 1.14).
-- Module path: `github.com/egoist/asuka`.
+- Minimum versions: **iOS 16, Android API 33 (13), macOS 11**.
+- Android widgets: Material Components 3, with Material 3 Expressive.
 
 ## Architecture
 
 ```
-app code (Go)            components, signals
-─────────────────────────────────────────────────────────────
-signal/                  Signal, Memo, Effect, owners, batching
-ui/                      node tree, components, flush scheduler
-layout/                  flexbox over the node tree
-ops/                     mount operations, binary encoding
-─────────────────────────────────────────────────────────────  Host interface
-mobile/ (C ABI, cgo) ──► platform/ios (Swift)   platform/android (Kotlin)
-host/fake                                  tests: records ops
-host/darwin                                macOS: AppKit in process, Go (purego)
-host/windows                               Windows: Win32 in process, Go (syscall)
-host/web (js/wasm) ──► platform/web (JavaScript)   the browser: the DOM
-host/linux                                 later: desktop, in process, Go
+app code (Asuka)        components, stores, state
+─────────────────────────────────────────────────────────────  lang/ (Go, in the CLI)
+compiler                parse, check, lower: bytecode (dev), C (release)
+─────────────────────────────────────────────────────────────  core/ (C)
+vm/  rt/                the VM, values, tasks, the standard library
+signal/                 signals, memos, effects, owners
+ui/                     elements, the node tree, the flush
+layout/                 block, flexbox, grid
+ops/                    mount operations, binary encoding
+abi/                    asuka.h: what hosts call
+─────────────────────────────────────────────────────────────  asuka.h
+platform/ios (Swift)   platform/android (Kotlin)   platform/web (JavaScript)
+platform/macos (Swift)   platform/windows, platform/linux (C, the core linked in)   platform/desktop (C they share)
+core/host/fake          tests: records ops, measures text at 8 points a character
 ```
 
-The core never imports a host. A mobile app is a Go library: `mobile/`
-adapts the C ABI to `host.Host`, and the Swift/Kotlin host app calls its
-exported functions.
+The core never knows a host: it talks to them through `asuka.h` only.
 
-### The Host interface
+### The C ABI
 
-```go
-package host
+core/include/asuka.h is the whole contract. The host gives the core its
+callbacks once, and calls in on the main thread:
 
-type Host interface {
-	// Apply applies a batch of mount operations. Main thread.
-	Apply(b *ops.Batch)
-	// Measure returns the size of a native view's content: c gives the
-	// known width/height (NaN when free) and the space available on each
-	// axis (definite, MaxContentSpace or MinContentSpace). Main thread,
-	// synchronous, only for views that exist (applied in an earlier Apply).
-	Measure(id ops.NodeID, c layout.Constraints) layout.Size
-	// Post schedules f on the main thread, safe from any goroutine.
-	Post(f func())
-	// Environment returns the root view's size, safe area insets, the
-	// keyboard's frame, scale, appearance (dark/light), locale and text
-	// size (Dynamic Type, Android font scale).
-	Environment() Environment
-}
+```c
+typedef struct {
+	void (*apply)(const uint8_t *buf, size_t len);      // a batch of ops
+	void (*measure)(uint32_t id, float width, float height,
+	                float availWidth, float availHeight,
+	                float *outWidth, float *outHeight); // a leaf's size
+	void (*post)(void);                                 // call asuka_run_posted soon (any thread)
+	/* native packages: native_new, native_call, native_start, ... */
+} asuka_host_callbacks;
+
+void asuka_start(asuka_host_callbacks *callbacks);
+int  asuka_load(const uint8_t *module, size_t len);    // bytecode (dev); release builds link the app
+void asuka_event(const uint8_t *buf, size_t len);      // an encoded event
+int64_t asuka_list_count(uint32_t list);
+void asuka_list_bind(uint32_t list, int64_t index, uint32_t cell);
+void asuka_list_unbind(uint32_t list, uint32_t cell);
+void asuka_run_posted(void);
 ```
 
-Events come from the host into `ui` through one entry point
-(`ui.Dispatch(ev ops.Event)`), on the main thread. Hosts that call into
-the core implement `host.Connector`; `ui.Mount` hands them a `host.Core`
-(`Dispatch`, `ListCount`, `ListBind`, `ListUnbind`).
+## The language and its compiler
+
+docs/language/ is the language (docs/language-tour.md, a tour of it); lang/LOWERING.md how each construct
+becomes bytecode and calls into the core. The compiler (lang/syntax,
+lang/types, lang/ir, lang/bytecode, lang/cgen, lang/compile) runs in
+the CLI. In development `asuka dev` sends the player the app's
+bytecode, and on each save the packages that changed: the VM swaps the
+code, keeps every state cell by its component path and name (converted
+to the new types by field names), and keeps the native views that are
+still there. For release, `asuka build` compiles the app to C and links
+it with the core.
+
+### Platforms
+
+A compile is for one platform (lang/target: ios, android, macos,
+windows, linux, web; compile.Options.Platform, iOS when none is given).
+It decides two things, and nothing else: which of each package's files
+are in it (a file named `*_<platform>.asuka`, or `_desktop`, `_mobile`,
+is only on those platforms), and what `@platform` is, a compile-time
+constant of the prelude's `Platform` that lowering folds (lang/ir's
+fold.go): an `if`, `match`, `&&`, `||` or view `if` it decides lowers
+only the branch it takes. Types never depend on the platform: a
+platform's APIs are the same Asuka declarations everywhere, so the
+checker checks every branch whatever the platform, and only a
+package's file set varies. So compile.DirPlatforms (asuka check) and the
+language server check once when no package has platforms' files (every
+platform's check would be the same), else once for each platform, and
+merge the diagnostics, naming the platforms of one
+not every platform reports. A name declared both in a file every
+platform has and a platform's, or in two files one platform has both
+of, is reported by the loader the same way for every platform's compile
+(at the declaration in the broader file: the suffixes nest), and the
+checker's own report of it is dropped, so a check of all platforms says
+it once.
+
+Every compile says its platform: a release build its target's; `asuka
+dev` the platform of each player connected (a player's hello names it;
+internal/devserver keeps a module per platform and sends a player its
+own only after its hello, and the dev loop compiles again, on a save,
+for every platform with a player connected); `asuka test` `--platform`'s
+(iOS by default, as its fake host); a program this computer's or
+`--target`'s; the web's page the web's. internal/appbuild.Project keeps
+its compiles and what they use (permissions, packages) by platform: a
+platform's files may import what only it needs.
 
 ## signal
 
-Port the algorithm of [alien-signals](https://github.com/stackblitz/alien-signals)
+core/src/signal ports [alien-signals](https://github.com/stackblitz/alien-signals)
 (push dirty flags, pull values; glitch-free, no unnecessary
-recomputation), with Solid's ownership model.
-
-```go
-package signal
-
-type Signal[T any] struct{ /* … */ }
-func New[T comparable](v T) *Signal[T]                 // skips equal writes
-func NewFunc[T any](v T, equal func(a, b T) bool) *Signal[T]
-func (s *Signal[T]) Get() T                             // tracks
-func (s *Signal[T]) Peek() T                            // doesn't track
-func (s *Signal[T]) Set(v T)
-func (s *Signal[T]) Update(f func(T) T)
-
-type Memo[T any] struct{ /* … */ }
-func NewMemo[T comparable](f func() T) *Memo[T]         // lazy, cached
-func (m *Memo[T]) Get() T
-
-// Accessor is what components take: a signal, a memo or a func.
-type Accessor[T any] interface{ Get() T }
-func Func[T any](f func() T) Accessor[T]
-func Static[T any](v T) Accessor[T]
-
-func Effect(f func())               // runs at flush, after memos
-func RenderEffect(f func())         // runs now; ui's prop effects
-func NewOwner() *Owner              // disposed with the current owner
-func RunWithOwner(o *Owner, f func())
-func BindThread()                   // asuka_debug: the main thread
-func Untrack[T any](f func() T) T
-func Batch(f func())                // one flush for all writes in f
-
-// Owners
-func Root(f func(dispose func()))
-func OnCleanup(f func())
-type Context[T any] struct{ /* … */ }
-func NewContext[T any](def T) *Context[T]
-func (c *Context[T]) Provide(v T, f func())
-func (c *Context[T]) Use() T
-```
+recomputation), with Solid's ownership model. The graph holds no
+values: the VM's cells and memos own them and tell the graph when they
+read or change one.
 
 Rules:
 
-- Every effect and memo belongs to the owner that was current when it was
-  made. Disposing an owner disposes its children, runs their cleanups,
-  and unsubscribes them. The GC frees memory but never stops a
-  subscribed effect: disposal is explicit and must be tested.
-- Writes during an event handler are batched until the handler returns.
-  `Set` is legal only on the main thread; goroutines use `ui.Post`.
-  Builds with the `asuka_debug` tag check this and panic.
-- Effects run in creation order within a flush: render effects (those
-  `ui` makes for props) before user effects (`signal.Effect`).
-- Writing a signal inside a memo is a panic. Writing inside an effect
-  schedules another pass in the same flush, at most 100 passes, then a
-  panic naming the effect (an infinite loop).
-- No reflection, no `interface{}` boxing on the hot path, no allocation
-  per write in the steady state.
-
-Stores for nested state (a signal per struct field, as Solid's
-`createStore`) come later, generated by `go generate` since generics
-cannot reach fields.
+- Every effect and memo belongs to the owner that was current when it
+  was made. Disposing an owner disposes its children, runs their
+  cleanups and unsubscribes them. Disposal is explicit and tested.
+- Writes during an event handler are batched until the handler returns
+  (or awaits). Writes are legal only on the main thread; worker threads
+  only compute values (`spawn`).
+- Render effects (the UI's bindings) run before user effects within a
+  flush. A write inside a memo is an error; effects that keep dirtying
+  each other stop after 100 passes, naming the effect.
+- No allocation per write in the steady state: links are reused and
+  kept on a free list.
+- Errors: a computation that fails raises its error, which goes to the
+  nearest catcher of its owner (a `Boundary`), or the app's.
 
 ## ui
 
+core/src/ui is the node tree over native views and the flush. Compiled
+code drives it through one protocol (core/src/ui/ui.h), the same for
+every element: make an element, set or bind its keys (a key is a wire
+prop of its native view, a style field, or a behavior such as a text
+field's two-way text), add handlers, children and slots. The elements,
+their keys and events are declared once (lang/prelude/elements.go),
+which generates the C constants and the prelude the compiler reads.
+
 ### Components
 
-A component is a Go function that runs **once** and returns a node.
-Props that can change are `signal.Accessor[T]`; event handlers are plain
-funcs.
+A component is declared in Asuka, and compiles to a function that runs
+**once** per instance and builds the bindings its body declares:
 
-```go
-func Counter() ui.Node {
-	count := signal.New(0)
-	return ui.Column(ui.Style{Gap: 8, Padding: ui.All(16)},
-		ui.Text(signal.Func(func() string {
-			return fmt.Sprintf("Count: %d", count.Get())
-		})),
-		ui.Button(ui.ButtonProps{
-			Title:   ui.Val("Add"),
-			OnPress: func() { count.Update(func(n int) int { return n + 1 }) },
-		}),
-		ui.Show(signal.Func(func() bool { return count.Get() > 10 }),
-			func() ui.Node { return ui.StaticText("That's a lot") }),
-	)
+```asuka
+component Counter {
+  state count = 0
+
+  Column {
+    gap: 8; padding: 16
+    Text("Count: {count}")
+    Button("Add") { on press { count += 1 } }
+    if count > 10 { Text("That's a lot") }
+  }
 }
-
-// On mobile the host calls main once at launch; app.Run mounts the root.
-func main() { app.Run(Counter) }
 ```
 
-The root fills the screen; `ui.SafeArea` (below) keeps content out of
-the notch, the home indicator and the keyboard.
-
-**Props.** A prop that can change after mount is an accessor; one that
-can't (a sheet's detents, an action's title, a tab's icon) is a plain
-value. A nil accessor is the zero value (`false`, `""`, 0): it sends
-nothing and the host keeps its default, so a literal false is just left
-out. A constant is `ui.Val(v)`, which the core spots: it's sent once
-and makes no effect. A style is a `Style` or a `StyleFunc`, one effect
-per element whose result is diffed (layout fields relayout only when
-they change; visual fields send only what changed), not a signal per
-field.
-
-Go has no compile step to hide this, as Solid's JSX compiler does when
-it turns `refreshing={r()}` into a getter, and we don't add one: `go
-build`, `go test`, gopls and the debugger would all see code that means
-something else. Instead, `asuka vet` (package `vet`, analyzers on
-`golang.org/x/tools/go/analysis`, which `asuka dev` and `asuka build` run
-as warnings) reports a signal read in a component's body outside any
-effect, which runs once and never updates (Solid's most common bug,
-too), when what it reads goes into the tree; with shortcuts for the
-common reactive cases planned. A JSX-like syntax, if ever, would be a
-separate file type that generates Go (as templ does), once the
-component API has settled.
-
-**`asuka vet`** reports only what's certain from the code, as the
-compiler would; a check that cries wolf gets turned off. Its analyzers:
-
-- `reads`: what's built is a function returning a `Node` (or `[]Node`)
-  and the func literals given to what runs them once, untracked: `Show`'s
-  branches, `For`'s and `List`'s rows, a screen, a tab's or a sheet's
-  `Content`. Not `Dynamic`'s, which builds again when what it read
-  changes, nor the components it runs. A read is a `Get` of a signal, a
-  memo or an accessor, a call that says the app's language (`ui.Locale`,
-  a catalog's messages, and what calls them, in any package: a fact of
-  the analysis), and a call of the component's own closure that reads.
-  It's reported when its value goes into the tree (a node's argument,
-  `ui.Val`, a `Style`, an `if` or a `range`, what's returned), followed
-  through expressions and local variables, so a read for an action, an
-  event handler's capture or a new signal's first value isn't. Not
-  followed: a function that reads a signal, whose callers often use what
-  can't change (a record's ID); a field that can't change (the
-  environment's `Platform`); a `For` row's item that can't (a pointer,
-  or its own key).
-- `mainthread`: a `Set` or `Update` run by a `go` statement (directly,
-  through what runs right there, as `Batch`, or through the package's
-  functions that write), not inside `ui.Post`.
-- `memowrites`: a write inside a memo's function, which panics.
-
-`asuka` is its own `-vettool`: run by `go vet` (`-V=full`, `-flags`, a
-`.cfg`), it serves the analyzers by `unitchecker`'s protocol, so `asuka
-vet` is `go vet -vettool=asuka` with go vet's caching, build flags and
-facts across packages; dev and build read its `-json`.
+Each prop whose value reads state is a render effect that sends only
+that prop when it changes; a constant prop is sent once and makes no
+effect. A style is a set of keys like any other.
 
 ### Control flow
 
-- `Show(when Accessor[bool], then func() Node, else ...func() Node)`: makes
-  and disposes the branch's owner as `when` changes.
-- `For[T any, K comparable](items Accessor[[]T], key func(T) K, row func(item Accessor[T], index Accessor[int]) Node)`:
-  keyed; a row's owner lives as long as its key. A moved row moves its
-  native view; a changed item updates that row's `item` signal and
-  nothing else.
-- `Switch` / `Match`, `Dynamic(f func() Node)`.
+- `if` (`ak_ui_show`): makes and disposes the branch's owner as the
+  condition changes.
+- `for … key` (`ak_ui_for`): keyed; a row's owner lives as long as its
+  key. A moved row moves its native view; a changed item updates that
+  row's bindings and nothing else. Directly in a `List`, rows are
+  virtualized (`ak_ui_lazy_for`).
+- `match` (`ak_ui_switch`), and views rebuilt from what they read
+  (`ak_ui_dynamic`).
 
-### v0 components
+### Elements
 
 | Component | iOS | Android |
 |---|---|---|
@@ -263,8 +222,8 @@ facts across packages; dev and build read its `-json`.
 | `Refresh` (pull to refresh, on `Scroll`/`List`) | UIRefreshControl | SwipeRefreshLayout |
 | `Stack` (navigation) | UINavigationController | own view stack with transitions, `OnBackPressedDispatcher` and predictive back |
 | `Tabs` | UITabBarController | BottomNavigationView |
-| `Tab.Badge` | UITabBarItem.badgeValue | BadgeDrawable (getOrCreateBadge) |
-| `Destination.Badge` | UICellAccessory.label | a counter (MenuItem's action view) |
+| `Tab`'s `badge` | UITabBarItem.badgeValue | BadgeDrawable (getOrCreateBadge) |
+| `Destination`'s `badge` | UICellAccessory.label | a counter (MenuItem's action view) |
 | `Alert` | UIAlertController (alert, action sheet; `addTextField` for its fields) | MaterialAlertDialogBuilder (its fields: TextInputLayouts) |
 | `Snackbar` | the host's own: a capsule in the system material (Liquid Glass on iOS 26) | Snackbar (Material), in an overlay CoordinatorLayout |
 | `Sheet` | sheet presentation (detents) | BottomSheetDialog |
@@ -274,21 +233,23 @@ facts across packages; dev and build read its `-json`.
 | `Picker` (a menu of options) | UIButton with a menu (`changesSelectionAsPrimaryAction`) | exposed dropdown menu (TextInputLayout, MaterialAutoCompleteTextView) |
 | `ProgressRing` | drawn (SwiftUI's circular Gauge's look); UIActivityIndicatorView without a value | CircularProgressIndicator |
 
-A component a host can't show yet panics in that host with its name, so
-gaps are found, never silently drawn wrong. `host/fake` supports all of
-them.
+An element a host can't show yet is logged by that host with its name,
+so gaps are found, never silently drawn wrong. The fake host
+(core/host/fake) supports all of them.
 
-Gestures on any `View`: `OnPress`, `OnLongPress`, and later pan, swipe
-and pinch, mapped to UIGestureRecognizers and Android's
-`GestureDetector`. Haptics: `ui.Haptic(kind)` (UIFeedbackGenerator,
+Gestures on any `View`: `on press`, `on longPress`, `on pan`, `on
+swipe`, `on pinch`, mapped to UIGestureRecognizers and Android's
+`GestureDetector`. Haptics: `haptic(.success)` (UIFeedbackGenerator,
 `performHapticFeedback`).
 
 ### Navigation
 
-`ui.Stack` holds a stack of screens; `ui.UseNavigator()` (a context) has
-`Push(func() ui.Node, ui.ScreenOptions)` and `Pop()`. A screen is an
-owner: popping it disposes it. `ScreenOptions` has the title, the bar's
-buttons and whether the back gesture is allowed. The host animates
+`Stack { Root() }` holds a stack of screens; `push(Detail(id))` and
+`pop()` act on the nearest one (`ui.push` takes a builder: the screen is
+built as it's pushed). A `screen` is a component whose block takes the
+screen's props (`title`, `largeTitle`, `backGesture`, ...) and slots
+(`actions`, `toolbar`, `primary`). A screen is an owner: popping it
+disposes it. The host animates
 pushes, pops and the interactive back gesture natively; a gesture the
 user finishes tells the core with `Event(stack, popped)`, which disposes
 the screen, and one they cancel changes nothing.
@@ -353,87 +314,88 @@ How the kinds map (ops/schema.go has the wire contract):
 
 #### Routes
 
-`ui.Router` gives every screen an address, an `ui.Href` (a path and a
-query, `/chat/7?tab=info`), as expo-router does, declared in Go: a tree
-of `ui.Route` values, each a path pattern (static segments, `:param`,
-a last `*catchAll`; relative to its parent's unless it starts with `/`)
-mapped to a `Screen func(ui.Params) ui.Node`, or holding routes under a
-navigator (`Layout`: `LayoutStack`, `LayoutTabs`, `LayoutSplit`,
-`LayoutSlot`) or in a group (no layout: a path prefix, a guard, a
-sidebar section). A route with a `Sheet` is presented over its
-navigator instead of pushed or chosen. A `Redirect` replaces an href
-with another; a `Guard func(to Href) Href` sends the user elsewhere
-(`""` lets them in). The router compiles the tree once (ui/router.go),
-panicking at shapes the navigators can't show (a tabs inside a stack:
-two bars), and ranks the screens' full patterns as expo-router does
-(static before parameter before catch-all, segment by segment); its
-top level is a slot of the routes given it and a not-found catch-all.
-Nothing on the hot path: routing runs as the user navigates, and
-reflection only reads and writes the saved state's JSON.
+A `Router` gives every screen an address, an href (a path and a query,
+`/chat/7?tab=info`), as expo-router does. Routes are elements, declared
+where the app's structure is (lang/LOWERING.md, "Routes"): a tree of
+`Route`s, each a path pattern (static segments, `:param`, a last
+`*catchAll`; relative to its parent's unless it starts with `/`) whose
+block builds a screen from its `Params`, or holding routes under a
+navigator (`layout: .stack`, `.tabs`, `.split`, `.slot`) or in a group
+(no layout: a path prefix, a guard, a sidebar section). A `screen`
+declared `at "pattern"` is a route of its own, its parameters typed and
+read from the path or the query. A route with `sheet: true` is
+presented over its navigator instead of pushed or chosen; `redirect:`
+replaces an href with another; a `guard` (`fn(string) -> string`) sends
+the user elsewhere (`""` lets them in). The runtime (core/src/ui's
+router) builds the tree once, logging shapes the navigators can't show
+(a tabs inside a stack: two bars), and ranks the screens' full patterns
+as expo-router does (static before parameter before catch-all, segment
+by segment); its top level is a slot of the routes given it and a
+not-found catch-all. Nothing on the hot path: routing runs as the user
+navigates.
 
 The navigation state is a tree, react-navigation's shape: each
 navigator's entries (a stack's screens bottom first; a tab's or a
 destination's or a slot's chosen entry, each tab keeping its own) and
 the sheets over it, each entry a route with its parameters and query,
 or a navigator. Every change is made on a description of the state
-(`navDesc`, from the live one with each entry's key), then the live
-state is reconciled to it, as a view diff: entries both have are kept
-(by key; by route and parameters for a description from outside, a
-history entry, a reload), the stack's others popped (the lower first,
-so one pop animates) or pushed, the sheets dismissed or presented, the
-tab, destination or slot switched. The views are the existing
-components': `Stack` (pushes through `stackState`, which reports the
-pushes and pops it didn't make, a Navigator's and the user's), `Tabs`
-and `SplitView` (internal hooks report the user's choice), `showSheet`
-(Sheet's own), and a slot (a fragment whose child is swapped). An entry
-is an owner as any screen is: one a route pops, replaces or leaves is
-disposed; a navigator closes its sheets as its owner goes.
+(from the live one with each entry's key), then the live state is
+reconciled to it, as a view diff: entries both have are kept (by key;
+by route and parameters for a description from outside, a history
+entry, a reload), the stack's others popped (the lower first, so one
+pop animates) or pushed, the sheets dismissed or presented, the tab,
+destination or slot switched. The views are the existing elements'
+(`Stack`, `Tabs`, `SplitView`, `Sheet`, and a slot: a fragment whose
+child is swapped), which report the pushes, pops and choices they
+didn't make (the user's). An entry is an owner as any screen is: one a
+route pops, replaces or leaves is disposed; a navigator closes its
+sheets as its owner goes.
 
-- **Navigating**: `Navigate(href)` switches the tabs, destinations and
-  slots on the way, goes back to an entry with the same address in the
-  target's stack or pushes it, presents a sheet (react-navigation's
-  `navigate`); `Push` always pushes; `Replace` replaces the focused
-  entry (a sheet: closed and the screen pushed); `Back` pops the
-  innermost stack or sheet; `SetQuery` changes the focused screen's
-  query, which `Params` follows. `ViewProps.Href`, `ButtonProps.Href`,
-  `NavLink` and a rich text's link to one of the app's hrefs navigate.
-  The imperative API stays: a screen pushed with a Navigator on a routed
-  stack is an entry without a route, at its stack's address.
+- **Navigating**: `navigate(href)` (or `navigate(Thread(id: 7))`)
+  switches the tabs, destinations and slots on the way, goes back to an
+  entry with the same address in the target's stack or pushes it,
+  presents a sheet (react-navigation's `navigate`); `navigate(href,
+  .push)` always pushes; `.replace` replaces the focused entry (a sheet:
+  closed and the screen pushed); `router.back()` pops the innermost
+  stack or sheet; `router.setQuery(q)` changes the focused screen's
+  query, which its `Params` follow. A View's and a Button's `href`, and
+  a rich text's link to one of the app's hrefs, navigate. `push(X(…))`
+  stays: a screen pushed on a routed stack is an entry without a route,
+  at its stack's address.
 - **An href builds a state** (`fresh`): in each stack on the way, the
-  stack's `Initial` entry (expo-router's `initialRouteName`; its first
+  stack's initial entry (expo-router's `initialRouteName`; its first
   route by default), then its screens whose patterns are prefixes of the
   target's (`/inbox/:id` under `/inbox/:id/reply`), then the target,
   each taking its parameters from the target's by name and left out if
   it can't (a parameter missing, a guard); the other tabs at their
   first entries. Redirects and guards are resolved first, at most 32
-  steps (more is a loop: a panic naming the hrefs).
-- **Guards follow signals**: a render effect asks the guards of the
+  steps (more is a loop: an error naming the hrefs).
+- **Guards follow state**: a render effect asks the guards of the
   entries shown, and again as what they read or the state changes; one
   that keeps the user out drops those entries (with what's over them in
   their stacks; the other tabs are kept) and the router goes where the
   focused href resolves now, replacing it.
-- **The state serializes** (`savedNav`: entries by their route's key
-  and their href, JSON), so it reads back after the routes change, as
-  far as they still match. The router sends its address with every
-  change (`Location`, to its window's element: the root or a `Window`
-  node): the focused routed entry's href, the state, the window's key,
-  and how the history moved, decided as react-navigation's linking
-  decides: where the old and new focused chains part, a navigator's
-  history length grew (Push), shrank (Back by as many) or stayed
-  (Replace); a stack's length is its entries', a tabs' or a split's is 1
-  on its first entry and 2 on another ("firstRoute"), plus their sheets.
-  Redirects and guards replace. A host that keeps windows' addresses
-  (`host.Locator`) gives the last back as the router mounts.
+- **The state serializes** (entries by their route's key and their
+  href, JSON), so it reads back after the routes change, as far as they
+  still match. The router sends its address with every change
+  (`Location`, to its window's element: the root or a `Window` node):
+  the focused routed entry's href, the state, the window's key, and how
+  the history moved, decided as react-navigation's linking decides:
+  where the old and new focused chains part, a navigator's history
+  length grew (Push), shrank (Back by as many) or stayed (Replace); a
+  stack's length is its entries', a tabs' or a split's is 1 on its first
+  entry and 2 on another ("firstRoute"), plus their sheets. Redirects
+  and guards replace. A host that keeps windows' addresses gives the
+  last back as the router mounts.
 - **Where it starts**: a launch URL it takes (a link that came before
-  any handler: `OnOpenURL` gives it to the routers first, once the root
-  is built), else the window's address (`host.Locator`: the web's
-  address and history entry; a desktop window's last run), else the
-  last run's under `asuka dev` (`signal.KeepValue`, kept with the
-  signals), else `RouterProps.Initial`. URLs the app is opened with
-  later (its scheme's, universal and app links, notifications') go to
-  the first router that takes them, the main window's first:
-  `scheme://a/b` is `/a/b` (the host the first segment, as expo-router
-  reads it), an https link its path; the rest go to `OnOpenURL`.
+  any handler: `on openURL` gives it to the routers first, once the
+  root is built), else the window's address (the web's address and
+  history entry; a desktop window's last run), else
+  `Router(initial:)`. URLs the app is opened with later (its scheme's,
+  universal and app links, notifications') go to the first router that
+  takes them, the main window's first: `scheme://a/b` is `/a/b` (the
+  host the first segment, as expo-router reads it), an https link its
+  path; the rest go to `on openURL`.
 - **The web** keeps the address in the page's (history.js):
   `pushState`, `replaceState`, back to the latest entry with the href
   (none: replace, a deep link's screens popped one by one), each entry
@@ -441,155 +403,226 @@ disposed; a navigator closes its sheets as its owner goes.
   reload rebuild the screens. The user's back and forward send the
   entry to the core (`Location` event); while it handles it, its answer
   only rewrites the entry, and a back of one that a screen's or sheet's
-  `OnBack` takes answers `Forward`, which goes back to the entry the
+  `onBack` takes answers `Forward`, which goes back to the entry the
   user left. Routed stacks and sheets (`Routed`) go back through the
   history; the host's own back entry stands only for what the router
   doesn't route (an alert, a sheet of the app's). `<base href>` is the
   site's path (`web.base`), and the dev server and the static site
   answer every route's path with the page.
 - **The desktops** keep each window's last address with where the
-  window was (`internal/routestate`, `asuka-routes.json` in the app's
+  window was (platform/desktop's state.c on Windows and Linux, the Mac's
+  Routes.swift over it; `asuka-routes.json` in the app's
   data directory, written a moment after it changes, off the main
-  thread): a window comes back at its screens. Phones don't keep it
-  across launches, as their native apps don't.
-- **Typed links**: Go has no compile step to check a string, so `asuka
-  vet`'s `routes` analyzer checks constant hrefs (of type `ui.Href`, a
-  `Redirect`, `HrefOf`'s pattern) against the app's routes (its
-  `ui.Route` literals, Children in place or in a variable), in the
-  package or through facts where the routes are, and `HrefOf`'s count of
-  values; it reports nothing when the routes can't all be known.
-  Generated route constructors were the alternative: they'd need a
-  generator run on every edit of a route and a name for each, for what
-  the analyzer already catches before the app runs.
+  thread): a window comes back at its screens. The main window's router
+  starts there (`asuka_set_start`, as the web's starts at the page's
+  address); a keyed `Window`'s is given its Location. None is kept under
+  `asuka dev` (its reloads keep the routers) or automation, unless
+  `ASUKA_ROUTES=1` (the hosts' tests). Phones don't keep it across
+  launches, as their native apps don't.
+- **Typed links**: the compiler knows each routed screen's full pattern
+  from the one Router that routes it, so `navigate(Thread(id: 7))` and
+  `href: Thread(id: 7)` are checked as the app compiles (a screen two
+  Routers route, or none, is an error), and a constant string href is
+  checked against the routes.
 
 ### Style
 
-`ui.Style` is a plain struct (static), or a `ui.StyleFunc` that runs in
-an effect and sends only what changed.
+Every element takes the style props, which are keys like any other
+(lang/prelude/elements.go): a constant is set once, a value that reads
+state is a binding that sends only that prop as it changes. A `style`
+declaration is a set of them (with parameters, `style chip(tint:
+Color)`, it's a function of them), applied with the `style:` prop: one
+style or a list, a later entry winning a key, the block's own props
+over the list (rfcs/0009). Every style is known to the compiler (a list
+holds names and calls of styles, never a value made at run time), so
+it's inlined where it's applied: its arguments evaluated once per
+element (a memo when they read state), its props set as the block's
+are. An entry under an `if` or a `match` is a **layer** of the view
+(core/src/ui/interaction.c): its props are laid over the view's own
+values while its condition holds, and each key goes back when it stops;
+turning a layer on or off allocates nothing. The variants are layers
+of the same kind, on while the view is in their state. A style may
+`use` a provided store (a theme a part of the app replaces), found
+where it's applied, and a style named after an element is that kind's
+default in its package, under the list: a package's defaults never
+restyle another package's components.
+
+A component that shows one element may declare **variants** of its own
+(`variant checked = checked`, rfcs/0010): it registers each condition on
+that element's view (`ui.variant_declare`), and its caller's `checked {
+… }` (in its block, or a style's) is a layer of the variant tier, over
+every other, on while the condition holds; `Checkbox as box` reads it
+(`box.checked`). A prop the component assigns (one with its change
+event) is read through a **model** (vm/react.c): bound by the caller,
+the caller's state, which the assignment's change event writes;
+unbound, the component's own value, replaced each time the caller's
+changes. Together they let a component of views be a control its
+caller styles whole (rfcs/0010's headless components).
 
 Layout props map to CSS flexbox with React Native's defaults (column
-direction, border-box): `Width`, `Height`, `Min*`, `Max*` (`ui.Pt`,
-`ui.Pct`, Auto), `Grow`, `Shrink` (0 means CSS's default 1; `NoShrink`),
-`Basis`, `Direction`, `Justify`, `Align`, `AlignSelf`, `Wrap`, `Gap`,
-`Padding`, `Margin`, `Absolute` with `Top`/`Right`/`Bottom`/`Left`,
-`AspectRatio`, and `Grid` (columns, rows, auto tracks, flow) with
-`GridColumn`/`GridRow` placement. `BorderWidth` insets the content, as
-the native border is drawn inside the view.
+direction, border-box): `width`, `height`, `minWidth`, `maxWidth`, ...
+(points, `pct(50)`, `.auto`), `grow`, `shrink`, `basis`, `direction`,
+`justify`, `align`, `alignSelf`, `wrap`, `gap`, `padding`, `margin`,
+`absolute` with `top`/`right`/`bottom`/`left`, `aspectRatio`, and `grid`
+(columns, rows, auto tracks, flow) with `gridColumn`/`gridRow`
+placement. `borderWidth` insets the content, as the native border is
+drawn inside the view.
 
 Visual props, applied where the native widget supports them and ignored
-elsewhere (documented per host): `Background`, `CornerRadius`, `Border`,
-`Shadow`, `Opacity`, `Hidden`, `Font` (size, weight, family), `Color`,
-`TextAlign`, `LineLimit`. Defaults are the platform's own; an app that
-sets nothing looks native.
+elsewhere (documented per host): `background`, `radius`, `border`,
+`shadow`, `opacity`, `hidden`, `font` (size, weight, family), `color`,
+`textAlign`, `lines`. Defaults are the platform's own; an app that sets
+nothing looks native.
 
-A style's values live in `ui` when they're layout's (`ui.AlignCenter`,
-`ui.JustifySpaceBetween`, `ui.TextCenter`: prefixed by their type) and
-in their own packages when they're open-ended sets: `colors` and
-`fonts`, so `ui` keeps its names for components and a color can't be
-read as a weight (`fonts.Black`, `colors.Red`).
+Colors and fonts can be semantic (`.label`, `.secondaryLabel`,
+`.accent`; `.body`, `.title`), resolved by the host (UIKit's semantic
+colors and text styles; Material 3's color roles and type scale), so
+dark mode and Dynamic Type / font scale need no app code. An enum's
+cases are written with a leading dot where the type is known, so a
+color can't be read as a weight.
 
-Colors and fonts can be semantic (`colors.Label`, `colors.SecondaryLabel`,
-`colors.Accent`, `fonts.Body`, `fonts.Title`), resolved by the host
-(UIKit's semantic colors and text styles; Material 3's color roles and
-type scale), so dark mode and Dynamic Type / font scale need no app
-code.
-
-`Font.Family` (`fonts.Custom("Inter-Bold", fonts.Title)`) takes a font file
-of the app's, by its name in `assets/fonts`; a family of them (`Inter`:
-`Inter-Regular`, `Inter-Bold`..., picked by `Weight`); a generic family
-(`serif`, `monospace`, `rounded`: on iOS the system font's designs); or
-a system family. It scales as its text style does. Under `asuka dev` the
-core sends a font file's URL instead, since the player hasn't the app's
-assets: the host loads it, then sends `FontLoaded`, and the core
-measures text again (its measure cache cleared).
+A font's family (`Font(family: "Inter", style: .title)`) takes a font
+file of the app's, by its name in `assets/fonts`; a family of them
+(`Inter`: `Inter-Regular`, `Inter-Bold`..., picked by the weight); a
+generic family (`serif`, `monospace`, `rounded`: on iOS the system
+font's designs); or a system family. It scales as its text style does.
+Under `asuka dev` the core sends a font file's URL instead, since the
+player hasn't the app's assets: the host loads it, then sends
+`FontLoaded`, and the core measures text again (its measure cache
+cleared).
 
 ### Native packages
 
 Platform code an app needs that Asuka doesn't wrap lives in **native
-packages** (package `native`, `internal/nativegen`, `asuka native`): a
-Go package declares a module, `//asuka:native` on an interface, or a
-view, `//asuka:view` on a `<View>Props` struct. Each platform
-implements it in its own language, in a project of that platform's own
-beside the Go:
+packages** (docs/native.md; `internal/nativegen`, `asuka native`): an
+Asuka package declares a module, a `native interface`, or a view, a
+`native component`. Each platform implements it in its own language, in
+a project of that platform's own beside the Asuka:
 
 - `Package.swift` (sources in `swift/`) for iOS and macOS;
 - a Gradle library module in `android/`;
 - `web/<pkg>.js`;
-- Go for Windows and Linux.
+- C for Windows and Linux (`desktop/*.c`; `_windows.c` and `_linux.c`
+  for one of them).
 
 The generator writes the typed glue on every side:
 
-- Go: `<pkg>_native.go`, with `NewT`, a client per interface, the view's
-  constructor, and `implementT` for Go implementations.
 - Swift: protocols, structs and enums, a provider class
   `@objc(AsukaModule_<path>)`.
-- Kotlin: interfaces, data classes, `object AsukaModule`, in the package
-  `KotlinPackage(path)`.
+- Kotlin: interfaces, data classes, `object AsukaModule`, in the
+  package `KotlinPackage(path)`.
 - JavaScript: frozen enums and a provider registered by import path.
+- C: `desktop/<pkg>.asuka.h` (the types as structs and enums, a vtable
+  per interface and per view, the `<pkg>_make_<T>` functions the package
+  writes, async methods' `_done`, callbacks' `_call`, views' events)
+  and `<pkg>.asuka.c` (the codec and a provider, registered by the
+  package's path as the program starts, with the registry,
+  platform/desktop/src/native.c).
 
-The platform side writes only `makeT` functions. The types are the
-scalars, strings, bytes, times and durations, slices, `map[string]T`,
-`*T`, the package's structs and string or integer enums, native
-interfaces (as parameters or results), and funcs (notifications, run on
-the main thread with `ui.Post`; questions, run synchronously).
+The platform side writes only `makeT` functions. The compiler lowers a
+`native interface`'s construction and methods to `native.new`,
+`native.call` and `native.start` (lang/LOWERING.md), and a package's
+`native fn`s to builtins the core implements. The types are the
+scalars, strings, bytes, times and durations, arrays, maps of strings,
+optionals, the package's structs and enums, native interfaces (as
+parameters or results), and functions (notifications, run on the main
+thread; questions, run synchronously).
 
 Values cross as one buffer each way, in a fixed little-endian layout
-(`native.Writer`/`Reader`, pooled), with no reflection or JSON:
+(core/src/native; `asuka_writer`/`asuka_reader` in C), with no reflection
+or JSON:
 
 - the arguments in declaration order;
 - the answer's status byte: ok, a declared error by index, a platform
   error (domain, code, message), unsupported, or canceled.
 
-A call runs synchronously on the calling goroutine's thread, through the
-host's transport (`native.Backend`):
+A call goes through the host's callbacks in `asuka_host_callbacks`
+(`native_new`, `native_call`, `native_start`, `native_cancel`,
+`native_release`):
 
-- iOS: C function pointers in `asuka_host_callbacks`;
+- iOS: the Swift host's C function pointers;
 - Android: JNI into `dev.asuka.AsukaModules`;
-- macOS: the Swift library's `@_cdecl` functions through purego;
+- macOS: the Swift host's C function pointers, as iOS's;
+- Windows and Linux: the registry (platform/desktop: the C hosts fill
+  their callbacks with `asuka_native_callbacks`), which finds a call's
+  provider by its class and keeps the objects by handle;
 - the web: the JavaScript host.
 
-`//asuka:mainthread` hops to the platform's main thread. A first
-`context.Context` makes a method asynchronous (Swift `async`, Kotlin
-`suspend`, JavaScript with an `AbortSignal`): Go's `CallContext` blocks
-on a channel that `native.Done` answers, and cancels the platform's task
-when the context is done. Objects are handles. Go releases them with
-`runtime.AddCleanup` or `io.Closer`'s `Close`, and the platform's last
+A method marked `async` is a task: `native_start` begins it (Swift
+`async`, Kotlin `suspend`, JavaScript with an `AbortSignal`), the
+platform answers with `asuka_native_done`, and cancelling the task (its
+owner going) calls `native_cancel`. Objects are handles; the core
+releases one as its last reference goes, and the platform's last
 reference goes on its main thread.
 
-A view is `ui.Native` of the kind `native.ViewKind` names (the module's
-Swift class or Kotlin class or import path, `#`, the view), each prop
-its encoded bytes (the wire's bytes value). Accessor props are effects
-owned by the node. Each host finds a `#` kind through the module's
-provider, `makeView`, and, on the desktop, first in package `native`'s
-registry, where `implementT` puts a Go view.
+A `native component` is a `Native` view of the kind its package names
+(the module's Swift class or Kotlin class or import path, `#`, the
+view), each prop its encoded bytes (the wire's bytes value), each a
+binding like any prop. Each host finds a `#` kind through the module's
+provider, `makeView`, and, on Windows and Linux, through the registry
+(`asuka_native_view`, `_prop`, `_measure`, `_destroy`; its events go
+back through `asuka_native_emit`).
 
-`ui.Native` is the mechanism under it: a node whose `Type` prop, sent
-right after `Create`, picks the factory, with props of bools, ints,
-floats, strings and bytes, and events back by name. The hosts' own
-native views (`asuka.camera`, `asuka.map`) use it directly.
+What a package's C may use of the C hosts is `asuka_desktop.h`
+(platform/desktop/include): posting to the main thread (one FIFO with
+the core's posts), a view's window, the app's name, ID, version and
+directories, colors, HTTP, local files; `asuka_windows.h` and
+`asuka_linux.h` hold what packages share on each (COM and WinRT; GLib,
+GIO and GTK declared and resolved at run time).
 
-The CLI generates the app's own module's native packages before each
+`Native` is the mechanism under it: a node whose `Type` prop, sent right
+after `Create`, picks the factory, with props of bools, ints, floats,
+strings and bytes, and events back by name. The hosts' own native views
+(`asuka.camera`, `asuka.map`) use it directly.
+
+The CLI generates the app's own native packages' glue before each
 build (others must ship current generated code, which is checked by
 hash). It builds:
 
-- iOS: one `xcodebuild` of a root package depending on the materialized
-  host package `asuka` (the iOS host and the app's feature defines) and
-  the app's native packages, its objects merged with `clang -r`, its
+- iOS: the host's Swift and each native package's as modules with
+  library evolution, prebuilt or cached ("The build cache"), merged with
+  `clang -r`; a package swiftc can't build alone (SwiftPM dependencies
+  of its own, resources, settings) makes it one `xcodebuild` of a root
+  package depending on the materialized host package `asuka` (the iOS
+  host and the app's feature defines) and the app's native packages, its
   frameworks embedded and its bundles copied;
 - macOS: the same per architecture, into the Swift library, then lipo;
-- Android: each module included as `:native-<pkg>` (`-PasukaNativeModules`),
-  given the SDK levels and `:asuka`;
+- Android: the std and sdk packages' AARs, and the app's own modules
+  included as `:native-<pkg>` (`-PasukaNativeModules`), given the SDK
+  levels and the host's AAR;
 - the web: each `web/` shipped at `packages/<pkg>/`, imported before the
-  app starts.
+  app starts;
+- Windows: a package's Windows code is C (`windows/*.c`), compiled with
+  the host's headers into the app's one executable
+  (`appbuild.WindowsOptions.Natives`);
+- Linux: a package's Linux code is C (`desktop/*.c`, asuka_linux.h's
+  GTK), compiled into the app's one executable with the host
+  (`appbuild.DesktopNatives`).
 
-A package's `Info.plist`, `iOS.entitlements` and `macOS.entitlements`
-merge into the app's: usage strings defer to asuka.json, arrays join,
-and other keys are set if absent. Android's manifest merger takes the
+A package's `asuka.toml` (usage strings, background modes, permissions),
+`Info.plist`, `iOS.entitlements` and `macOS.entitlements` merge into the
+app's: usage strings defer to the app's asuka.toml, arrays join, and
+other keys are set if absent. Android's manifest merger takes the
 module's `AndroidManifest.xml`.
+
+### C from Asuka
+
+`extern fn`, `extern type` and `extern struct` (RFC 0008, docs/c.md)
+call C with no native package: the compiler generates C glue (lang/cffi)
+whose wrappers are builtins, `ffi.<package>.<name>`, which an extern
+fn's body calls with CALLB, so the VM and lang/cgen's C call them alike.
+The CLI compiles the glue with the core (`-DAK_FFI`: ak_vm_builtins_init
+calls its asuka_ffi_register) and the app's and its packages' `[c]`
+sources with their own flags, into every target's build of the core:
+iOS's static library (the executable links `[c]`'s libraries and
+frameworks), Android's `libasuka.so`, the desktops' library, the web's
+module, asuka-run, and the dev player, which asuka dev rebuilds when the
+C or an extern declaration changes. The runtime side (extern types'
+objects, callbacks posted to the main thread) is core/src/vm/ffi.c.
 
 ### Images, gestures, animation
 
-- `ui.Image` takes an http(s) URL or a path in the app's `assets/`
+- `Image` takes an http(s) URL or a path in the app's `assets/`
   (copied into the iOS bundle; pushed beside the library on Android).
   The host fetches, decodes (Android subsamples to the screen) and
   prepares it off the main thread, caches it in memory, and reports
@@ -598,22 +631,22 @@ module's `AndroidManifest.xml`.
   it has, the other side from the aspect ratio; a style's `AspectRatio`
   overrides the image's, so a box keeps its size before and after
   loading. A BlurHash or ThumbHash placeholder is decoded by the core
-  (`internal/imagehash`, cached) and sent as pixels (`PlaceholderImage`);
+  (core/src/ui/imagehash.c, cached) and sent as pixels (`PlaceholderImage`);
   the host shows it, in its own mode, until the image arrives and fades
   in over it (`Transition`). An animated image plays: ImageIO's player on
   Apple platforms, `AnimatedImageDrawable` on Android, the browser's (or
   WebCodecs') on the web, and the host frame by frame on Windows and Linux
-  (`internal/animimage`). The host reports `Animated` after `Loaded`, and
+  (platform/desktop's animimage.c). The host reports `Animated` after `Loaded`, and
   only then does the core follow Reduce Motion for it (`Paused`), so a
   still image costs no effect.
-- Gestures are `View` props (`OnPan`, `OnPinch`, `OnSwipe`) with the
+- Gestures are `View` events (`on pan`, `on pinch`, `on swipe`) with the
   platform's recognizers on iOS (pan and pinch recognize together) and a
   touch listener on Android that claims the touch once it moves past the
   touch slop: it cancels the view's press and stops the parent
   intercepting. Android's `ScaleGestureDetector` isn't used: it ignores
   pinches narrower than about 27mm.
-- `ui.Animate(f)` (or `AnimateWith` a duration and curve) brackets the
-  next flush's two batches with `AnimateBegin`/`AnimateEnd`; the host
+- `animate { … }` (or `animate(Animation(duration:, curve:)) { … }`)
+  brackets the next flush's two batches with `AnimateBegin`/`AnimateEnd`; the host
   changes frames, opacity, background and corner radius inside UIView
   animations, and with animators on Android (a frame animates by
   interpolating the layout bounds; views that weren't on screen don't
@@ -623,37 +656,37 @@ module's `AndroidManifest.xml`.
 
 A view's interaction states (pressed, hovered, dragged, a drag over a
 drop target) are reported by the host as events, and the core turns
-them into what styles read (`ui/interaction.go`). There are three
+them into what styles read (core/src/ui/interaction.c). There are three
 layers, each built on the one below:
 
-- **Variants**, for the view's own style: `Style.Pressed`, `Hovered`,
-  `Dragging` and `DragOver` (`*Style`). They are CSS's `:active` and
-  `:hover`, and Tailwind's `active:` and `hover:`. While the view is in
-  a state, its variant is laid over the style. Merging rules:
-  - A variant replaces only the fields it sets (non-zero).
-  - `Font` is merged field by field.
-  - Variants apply in the order Hovered, Pressed, Dragging, DragOver.
-  - A View whose style (or `StyleFunc`) has variants wraps it in an
-    effect that applies them. A flattened container whose
-    `StyleFunc` comes to have variants gets a view of its own.
-  - Other components ignore variants.
-- **`Interaction`** (`ViewProps.Interaction`), the view's states as
-  values. Compose has `InteractionSource` and Flutter has
+- **Variants**, for the view's own style: `hovered { … }`, `pressed {
+  … }`, `dragging { … }` and `dragOver { … }` in a container's block.
+  They are CSS's `:active` and `:hover`, and Tailwind's `active:` and
+  `hover:`. While the view is in a state, its variant is laid over the
+  style:
+  - A variant sets only the props it names (a `font`'s fields one by
+    one), and its values are bindings like any prop's.
+  - Variants apply in the order hovered, pressed, dragging, dragOver,
+    over every other layer: a style's variants (a style may hold them),
+    then the block's own.
+  - A component's variants are over its caller's props: a caller's
+    `background` replaces the component's, and the component's
+    `pressed` still darkens it.
+  - A container with variants always makes a view of its own (it isn't
+    flattened).
+  - Other elements take no variants (the checker says so).
+- **States as values**: `View as card { … }` (or `ref: card`) names the
+  view, and `card.hovered`, `card.pressed`, `card.dragging` and
+  `card.dragOver` are tracked bools (`ui.state`) any binding reads: a
+  child's style (a group's hover), a sibling's (a peer's), a `Text`, an
+  `if`. Compose has `InteractionSource` and Flutter
   `WidgetStatesController` for the same thing.
-  - `it.Pressed()`, `Hovered()`, `Dragging()` and `DragOver()` read
-    signals.
-  - Other views follow the state with `Style.When(it.Hovered, ...)` and
-    `Unless`, and anything else can read it in a `StyleFunc`, a `Text`
-    or a `Show`. That covers Tailwind's group-hover and peer-hover.
-  - Variants use the view's `Interaction` (or one of its own made for
-    them).
-  - Given to several views, a state is true while any of them is in it.
-    Each view's changes are counted, and a disposed view is taken out.
-- **Handlers**, for side effects: `OnPressedChange`, `OnHoverChange`,
-  a `DropTarget`'s `OnOverChange` and a `DragSource`'s `OnPhase`.
+- **Handlers**, for side effects: `on pressedChange(p)`, `on
+  hoverChange(h)`, a drop target's `on dropOver` and a drag source's `on
+  dragPhase`.
 
-A view listens for a state only from when something first reads it,
-whether a variant or a read of its `Interaction`.
+A view listens for a state only from when something first asks for it:
+a variant, a read of its state, a handler.
 
 - A host may get the `Listen` long after `Create`, and every host
   handles that.
@@ -662,15 +695,11 @@ whether a variant or a read of its `Interaction`.
 - This is exact, not an approximation: a read that never happened can't
   have changed any output.
 
-`When` takes any `func() bool`, so styles follow ordinary signals the
-same way. Because a zero field means unset, a state can't clear a field.
-`Unless` sets the field in the other state instead.
-
-`ViewProps.Drag` (a `DragSource`) and `Drop` (a `DropTarget`) set up drag
-and drop. The core reports each state change once, and keeps the states
+A view's `drag` items make it a drag source and its `dropAccept` a drop
+target. The core reports each state change once, and keeps the states
 last reported. A view disposed while in a state reports leaving it, to
-its handlers and its `Interaction`, so what follows it elsewhere doesn't
-stay stuck.
+its handlers and its readers, so what follows it elsewhere doesn't stay
+stuck.
 
 The wire (ops/schema.go): events `Pressed` and `Hover` (bool),
 `DragOver` (a gesture payload: Began, Changed, Cancelled, and X, Y),
@@ -678,7 +707,7 @@ The wire (ops/schema.go): events `Pressed` and `Hover` (bool),
 `DragPhase`); `View` props `DropAccept` (MIME patterns) and `DragItems`
 (the items, each with its kind, text, path, name, MIME type and whether
 it carries an app's value). `ops/item.go` has the codecs and
-`ops.MatchMIME`, which the Go hosts share. What every host does:
+`ops.MatchMIME`, which the desktop hosts share (the core's are in C). What every host does:
 
 - **Pressed** (a `View` listening for `Pressed`). True as the primary
   pointer goes down on the view (a touch, the mouse's primary button);
@@ -764,32 +793,32 @@ it carries an app's value). `ops/item.go` has the codecs and
 
 A hardware keyboard's keys, on a desktop, an iPad, a Chromebook, a
 phone with one, and in a browser: what a view does with them while the
-keyboard's focus is in it (`ViewProps.Keys`, `TextFieldProps.Keys`, a
-`KeyMap` of `Shortcut` to func), and what the window does
-(`UseKeys`).
+keyboard's focus is in it (its `keys` prop, a `[Shortcut]`, each with
+its key, modifiers and what it runs; core/src/ui/keys.c), and what the
+window does (`useKeys([…])` in a component's body).
 
 - Declared, not asked: a view's keys are a prop (`Keys`: each key's
   name, a lower case character or a named key, and its modifiers, as the
   menu bar's), and the host routes a key going down (and each repeat) on
   its own: from the focused view out through its ancestors, the nearest
   with the key takes it, and the host sends `Key` with its index. So no
-  host waits on Go to know whether a key is taken (the platforms want to
-  know as the key goes down: a text field's caret, the menus' key
-  equivalents), and it works the same with the app's Go elsewhere
-  (`asuka dev` on a phone).
+  host waits on the app to know whether a key is taken (the platforms
+  want to know as the key goes down: a text field's caret, the menus'
+  key equivalents).
 - The nearest first, as the responder chains go (AppKit's, UIKit's,
-  the DOM's bubbling): a field's own Keys, then the views around it, then
-  the window's (`UseKeys`: the root's, or a Window node's, Keys prop).
+  the DOM's bubbling): a field's own keys, then the views around it,
+  then the window's (`useKeys`: the root's, or a Window node's, keys
+  prop).
   A key goes out from the focused node through its parents in the
   core's tree. A node the core leaves without a parent, but which shows
   inside another, goes on where it shows: a List's row (a cell the host
   made and bound) to its List; a Sheet's node to the window it's
   declared in (its `Window` prop: the root's or a Window node's ID, the
-  window it's presented on, as `UseKeys` in it are that window's), a
+  window it's presented on, as `useKeys` in it are that window's), a
   Popover's to the root of what its anchor is in (a window's root, or a
   sheet's node, for a popover in a sheet), so its way ends at that
-  window's root and its `UseKeys`; on a phone (one window), the root. A Window node is an end: its window's own keys (its
-  `UseKeys`), never the main window's; the root is one too. With
+  window's root and its `useKeys`; on a phone (one window), the root. A Window node is an end: its window's own keys (its
+  `useKeys`), never the main window's; the root is one too. With
   nothing focused, a key starts at the root of the window that has the
   keyboard: the root, a Window node, or a sheet's or a popover's node
   (then out, as above). A key a view takes doesn't reach the focused
@@ -799,7 +828,7 @@ keyboard's focus is in it (`ViewProps.Keys`, `TextFieldProps.Keys`, a
   case: Shift is a modifier like the others), and exactly the declared
   modifiers. Never while an input method composes text (marked text):
   its keys are its own.
-- `UseKeys`' maps are merged per window, the last one called first for a
+- `useKeys`' lists are merged per window, the last one called first for a
   key; each goes with its component's owner, and a view's with the view.
 - Hosts: macOS, a local event monitor for key down: the first
   responder's view (a field's field editor: its field), its Asuka node
@@ -832,27 +861,84 @@ keyboard's focus is in it (`ViewProps.Keys`, `TextFieldProps.Keys`, a
 
 ### Accessibility
 
-Native widgets bring their own. `View` takes `Label`, `Hint`, `Role`
-(button, header, image, …) and `Decorative` (hidden from screen readers
-with what's in it), which hosts map to UIKit's accessibility properties
-and Android's `AccessibilityNodeInfo` (through `ViewCompat`). Layout-only
-views (below) never appear in the accessibility tree.
+Native widgets bring their own. Every element takes `label`, `hint`,
+`role` (button, header, image, …) and `a11yHidden` (hidden from screen
+readers with what's in it), which hosts map to UIKit's accessibility
+properties and Android's `AccessibilityNodeInfo` (through
+`ViewCompat`). Layout-only views (below) never appear in the
+accessibility tree.
 
 - A pressable `View` is one element, a button, read as its contents'
   labels joined (VoiceOver; TalkBack merges a clickable view's text
   itself).
-- `TextField` and `Toggle` (switch or checkbox) take a `Label` accessor,
-  carried by the common `A11yLabel` prop. The name follows its accessor
+- `TextField` and `Toggle` (switch or checkbox) take a `label` that
+  follows the app's language, carried by the common `A11yLabel` prop,
   without replacing the control's value or native editing and toggling.
-- `ui.Announce` has the screen reader say what changed where focus
-  isn't (a toast, a count of results).
+- `announce(text)` has the screen reader say what changed where focus
+  isn't (a toast, a count of results); `a11yFocus(ref)` moves it to a
+  view; a view's `actions` are what a screen reader offers to do with
+  it.
 - A List row's swipe actions are its accessibility actions on Android
   (UIKit's list offers its contextual actions to VoiceOver itself).
-- `Environment.ReduceMotion` is iOS's Reduce Motion, or Android's
+- `environment().reduceMotion` is iOS's Reduce Motion, or Android's
   animations turned off; on iOS, `Transition`s then dissolve instead of
   moving, as UIKit's do (Android's animator scale already makes every
   animation instant).
 - Text follows Dynamic Type and Android's font scale, custom fonts too.
+- A control built from views says what native ones say (rfcs/0010):
+  `role` has the ARIA roles a control needs (checkbox, radio, switch,
+  tab, slider, menu item, option, combo box, dialog...), and the
+  `a11yChecked`, `a11yExpanded`, `a11ySelected`, `a11yValue`,
+  `a11yRange` and `a11yModal` style keys their states. `a11yControls`,
+  `a11yLabelledBy` and `a11yDescribedBy` take a `Ref`: the core sends the
+  view's ID once the Ref holds a view with one, and again as that changes
+  (focus.c keeps the views that have them, by ID, and checks them at each
+  flush).
+
+### Focus
+
+The core follows the keyboard's focus (core/src/ui/focus.c): hosts
+report `FocusChange` for every view that takes it or loses it (a field's
+`Focus` and `Blur`), with whether it came from the keyboard, and the
+core keeps the focused view per root, by ID. Two interaction states
+follow it, `focused` (the view or one inside it: CSS's `:focus-within`)
+and `focusVisible` (that, from the keyboard or in a field), set on the
+focused view's chain of views that have states, without allocating; a
+view that asks later starts from where the focus is. A container's
+`focusable`, `pressKeepsFocus`, `hideFocusRing` and `trapFocus` are wire
+props each host's focus system follows (UIKit's focus engine, Android's
+focus search, AppKit's key view loop, Win32's Tab handling, GTK's, the
+DOM's); `autofocus` and `restoreFocus` are the core's: it knows the tree
+and the focused view, and sends `Focus` to the first view that takes it,
+or back to the one that had it when the view goes. A view that styles
+`focusVisible` sends `NoFocusRing`: the app draws its own.
+
+### Overlay
+
+`Overlay` (core/src/ui/floating.c) shows its children over a layout
+root, next to an anchor. Open, its layer is a host-sized provider of no
+parent (an `Overlay` view) over the root its anchor is in (the main
+window, a Window, a sheet, a popover; an overlay's own anchor in
+another's is over that one's root), with the core's two views in it: a
+backdrop filling it, and the content, absolutely placed. The host
+reports where the anchor is in the root (`AnchorFrame`), when it's made
+and whenever that changes (a layout, a scroll around it, a resize), and
+the core places the content with `ak_place` (place.c: Floating UI's
+offset, flip, shift and size in one pure function, mirrored right to
+left), relaying out once for the room it has on the side it ended on;
+the layer stays hidden until the first report, so it never shows in the
+wrong place. A press outside its views comes as `OutsidePress` (one on
+its anchor, or in an overlay opened from it, isn't outside), Escape as
+one of the root's keys, Back through the back stack, the focus leaving
+through focus.c, the anchor going out of view as `AnchorFrame`'s
+visible bit: each reports `change(false)` and `dismiss(reason)`, and the
+element closes when `open` goes false. Its layer stays, empty and
+passing presses through, until the element goes, so content leaving in
+`animate { }` plays its transition.
+
+`std/base` is Asuka on these: components with no look of their own,
+whose parts take the app's styles and expose their states as declared
+variants (rfcs/0010).
 
 ## Flush
 
@@ -860,13 +946,14 @@ Writes mark effects dirty; the scheduler flushes once:
 
 - at the end of each event dispatched from the host (synchronously, so
   the host shows the result in the same run loop turn);
-- after `ui.Post` callbacks;
+- after work posted to the main thread (`ak_post`: a task's
+  continuation, a timer, a native call's answer);
 - never on a timer.
 
 A flush:
 
-1. Runs dirty effects. Prop effects append `SetProp` ops; `Show`/`For`
-   append create, insert, remove and destroy ops.
+1. Runs dirty effects. Prop bindings append `SetProp` ops; `if`, `for`
+   and `match` append create, insert, remove and destroy ops.
 2. `Apply` the batch: native views now exist with their props.
 3. Lays out dirty subtrees (`layout`), calling `Measure` for leaves whose
    props or constraints changed (cached per node and constraints).
@@ -885,15 +972,15 @@ during layout) wait in the host until `Apply` returns.
 `Column` with no visual props, no events and no accessibility props makes
 no native view. Its children are placed in the nearest real ancestor,
 offset by its frame. Events and accessibility props are fixed at
-creation; a `StyleFunc` that gains visual props makes its container real
+creation; a binding that gains visual props makes its container real
 and the flush moves its children into the new view (it then stays real).
-`Show`, `For` and `Dynamic` are fragments: no box and no view, their
+`if`, `for` and `match` are fragments: no box and no view, their
 children splice into the parent's layout and native children.
 
 ## layout
 
-Our own engine implementing CSS **block**, **flexbox** and **grid**
-layout (in the spirit of Taffy, not a port of it or of Yoga), in points
+Our own engine (core/src/layout) implementing CSS **block**, **flexbox**
+and **grid** layout (in the spirit of Taffy, not a port of it or of Yoga), in points
 (iOS points, Android dp; hosts convert to pixels).
 
 - **Model.** A node is computed with known sizes (NaN when free), a
@@ -920,23 +1007,27 @@ layout (in the spirit of Taffy, not a port of it or of Yoga), in points
   the way up; nodes whose size is forced by tight inputs are never
   measured. A layout reports the nodes whose frame changed, so the flush
   sends only those `SetFrame`s.
-- **Shared measure cache.** `ui` keeps one per root (two generations
+- **Shared measure cache.** The UI runtime keeps one per root
+  (core/src/ui/measure.c) (two generations
   of up to 1024 entries), keyed by content: the kind, the text or
   title, the font, the line limit, the variant, the font scale and the
   constraints. Nodes showing the same thing (recycled list rows,
   repeated labels) ask the host once.
 - **Performance.** All scratch memory (flex items and lines, grid
-  tracks and items, block items) lives in a reusable `layout.Pass`:
-  steady-state layout allocates nothing. Frames are snapped to the
-  pixel grid by `ui` when it sends them: edges round to the nearest
+  tracks and items, block items) lives in a reusable `ak_lpass`:
+  steady-state layout allocates nothing (counted by the tests). Frames
+  are snapped to the pixel grid by the UI runtime when it sends them: edges round to the nearest
   pixel, except that a measured leaf's size rounds up (rounding both
   edges can take a pixel off a label, and a label a pixel narrower
   wraps), as Yoga does for text.
-- **Correctness** is defined by Chrome: `layout/testdata/css` holds
+- **Correctness** is defined by Chrome: `core/test/testdata/css` holds
   Taffy's Chrome-generated fixtures (block, flex, grid; border-box,
-  either direction), run as table tests, with what they don't cover in
-  `rtl_chrome.xml` and `ltr_chrome.xml`, each rendered by Chrome; `known_failures.txt` lists the ones
-  that don't match yet (mostly the unsupported features above).
+  either direction), with what they don't cover in `rtl_chrome.xml` and
+  `ltr_chrome.xml`, each rendered by Chrome. `gen_fixtures.go` converts
+  them for the C engine (`core/test/testdata/layout_fixtures.txt`) and
+  `go test ./core -run TestC/Layout` runs them; `known_failures.txt`
+  lists the ones that don't match yet (mostly the unsupported features
+  above), and `-update-known` rewrites it.
 
 ## ops
 
@@ -945,8 +1036,9 @@ Go (`ops/schema.go`); `go generate ./ops` writes the Go constants, the
 Swift decoder (`platform/ios`), the Kotlin decoder (`platform/android`)
 and the JavaScript decoder (`platform/web/src/ops.js`), each with event
 encoders.
-Mobile hosts read the binary encoding; `host/fake` (and desktop hosts
-later) read the batch's Go structs directly.
+Every host reads the binary encoding, the C fake host
+(`core/host/fake`) too; package ops' Go decoder serves the tests and the
+CLI.
 
 ```
 NodeID   uint32, made by the core, never reused in a process
@@ -987,8 +1079,8 @@ cellID)`, `ListUnbind(id, cellID)`.
 
 ### Lists
 
-`ui.List(items, key, row)` has `For`'s signature, backed by
-UICollectionView and RecyclerView. Because the core is on the main
+A `for … key` directly in a `List` is virtualized (`ak_ui_lazy_for`,
+core/src/ui/list.c), backed by UICollectionView and RecyclerView. Because the core is on the main
 thread, the data source calls straight in:
 
 - `ListBind` with a cell the host made: the core makes the row's owner
@@ -997,7 +1089,7 @@ thread, the data source calls straight in:
   flushes, and returns. Recycling a cell costs the props that differ.
 - Row heights come from the core's layout of the row at the list's
   width (self-sizing cells measure through `ListBind`'s flush).
-- `ListProps.Appearance: ui.ListInsetGrouped` is each platform's grouped
+- `List { appearance: .insetGrouped }` is each platform's grouped
   list: UIKit's inset grouped list; Material 3 Expressive's segmented
   list on Android (each row its own container, 2dp apart, the group's
   ends rounded, on the surface container); a System Settings group on
@@ -1009,14 +1101,14 @@ thread, the data source calls straight in:
   own margins, so what's measured is what's shown.
 - Changes to `items` send `Command(list, listUpdate, item IDs)`: a
   stable int64 per key, in order. iOS applies them as an
-  `NSDiffableDataSourceSnapshot` (once the call into Go has returned, so
+  `NSDiffableDataSourceSnapshot` (once the call into the core has returned, so
   binding never re-enters a flush); Android diffs them with `DiffUtil`
   (likewise after the call returns) and dispatches item ranges and moves
   to the RecyclerView adapter. Bound rows whose item changed are updated
   in place by the core.
 - Cells are views the host makes; their IDs have the high bit set. A
   cell's `SetFrame` carries the row's height.
-- Sections (`ListProps.Section`) follow the item IDs in the same
+- Sections (a `Section` in the `List`) follow the item IDs in the same
   `ListUpdate`: each section's first item and an ID of its own (stable
   while its key lasts, as an item's). A section's header is a cell too,
   bound with `ListBind`'s index `-1 - section`, so no new entry point
@@ -1026,14 +1118,14 @@ thread, the data source calls straight in:
   `UIScrollEdgeElementContainerInteraction`, whose region takes
   touches); on Android, which has no sticky headers, a cell of its own
   over the RecyclerView, in a frame that is the list's view.
-- The anchor (`AnchorBottom`, a chat's) and keeping what's on screen in
+- The anchor (`anchor: .bottom`, a chat's) and keeping what's on screen in
   place as rows are added above are the host's, which knows where rows
   are: iOS remembers the first visible row and its offset before a
   snapshot applies and puts it back after, and pins the end in
   `layoutSubviews` while the user hasn't scrolled off it; Android's
   `LinearLayoutManager` keeps its anchor row itself (`stackFromEnd` for
   the bottom); the desktop hosts, which tile their own rows, keep the
-  row at the top as rows bind and change height. `OnStartReached` is the
+  row at the top as rows bind and change height. `on startReached` is the
   core's, from the rows it's asked to bind.
 - Selecting rows: the core sends `Selecting` and each cell's `Selected`;
   the host shows its control, reports the user's choices
@@ -1042,33 +1134,34 @@ thread, the data source calls straight in:
 
 ### Text input
 
-`ui.TextField(ui.TextFieldProps{Value: text})` where `text` is a
-`*signal.Signal[string]`. The widget owns its text. Its edits write the
-signal; the core remembers the last value the native side reported and
-sends `SetProp` only when the signal differs from it, so typing never
+`TextField { bind text: query }`, where `query` is state. The widget
+owns its text. Its edits write the state; the core remembers the last
+value the native side reported and sends `SetProp` only when the state
+differs from it, so typing never
 round-trips and IME composition is never disturbed. Props for the
 keyboard: type (text, number, email, URL, phone), return key, secure
 entry, autocapitalization, autocorrection, content type (for AutoFill).
 
-The selection (`TextFieldProps.Selection`) is kept the same way: the
-host reports its moves (`SelectionChanged`, after the text change that
-caused them) and the core sends one only when the signal differs from
+The selection (`bind selection:`) is kept the same way: the host
+reports its moves (`SelectionChanged`, after the text change that
+caused them) and the core sends one only when the state differs from
 what was reported. The wire counts UTF-16 units, as UIKit and Android
-do; the core converts to byte offsets of the Go string. `InsertText`
+do; the core converts to byte offsets of the UTF-8 string. A ref's
+`insert(text)`
 replaces the selection through the platform's own text input (UITextInput's
 `insertText`, `Editable.replace`, the field editor's `insertText:`,
 `EM_REPLACESEL`), so it's undoable and reported as typing. Content of
-`PasteTypes` that's pasted, put in by a keyboard or dropped goes to the
+`pasteTypes` that's pasted, put in by a keyboard or dropped goes to the
 app as files (`Pasted`, its items as `Shared`'s) instead of into the
 text.
 
-A Rich field's styled text (`TextFieldProps.Rich`) goes to the host in
+A rich field's styled text (`bind rich: spans`) goes to the host in
 RichText's Content encoding and comes back in the same, canonically
 (styles in the order runs first use them, runs of one style merged), so
 the core tells the user's edit from what it sent, as with Value. Each
 host keeps a run's style as it was sent beside the platform's
 attributes (an attribute of its own, a span; Windows's rich edit has
-neither, and goes through RTF, `internal/rtf`), so what the user didn't
+neither, and goes through RTF, platform/windows's rtf.c), so what the user didn't
 change comes back as it was: bold, italic, underline, strikethrough,
 monospace and links are read from what the text has. Formatting is
 undoable with the typing around it: UIKit's, AppKit's and the rich
@@ -1091,90 +1184,113 @@ The desktop hosts keep their bezels' own padding inside the inset.
 
 ### Lifecycle and state
 
-`app.OnLifecycle(func(app.State))` reports foreground and background.
-On Android the Go core and the views live in the process, not the
+`on lifecycle(state)` in the app's block reports foreground and
+background. On Android the core and the views live in the process, not the
 Activity: views are made with the app's Material theme
 (`ContextThemeWrapper` over the application). The Activity handles
 rotation, size, dark mode, font scale and density itself
 (`configChanges`); any other configuration change remakes it, and the
 new Activity takes over the existing tree: `asuka_attach` resends the
-root (`ui.Reattach`) and every frame, with no app state lost. Android
+root and every frame, with no app state lost. Android
 views resolve theme colors and text sizes when they're made, so after a
 dark mode, font scale or density change the host makes its text and
 Material views again, replaying the props it was sent and keeping the
 user's state (text, selection, checked, value). There's one Activity
 (`singleTask`), and whichever instance comes to the front takes the
-views. Process death loses state, as in any native app; saving state to
-the device for that is later, under a name that says storage (say
-`signal.Saved(key, initial)` over `UserDefaults` / `SharedPreferences`),
-not to be confused with keeping state across `asuka dev` reloads (below),
-which needs no code.
+views. Process death loses state, as in any native app; what must outlive
+it is stored (`std/storage`'s `Value<T>(key, default)` over
+`UserDefaults` / `SharedPreferences`), not to be confused with keeping
+state across `asuka dev` reloads (below), which needs no code.
 
 The core can also start without a screen: when the system runs a
-background task (`asuka/sdk/periodic`: BGTaskScheduler, WorkManager) with the
-app closed, the host starts the core headless (`startHeadless`): `main`
-runs, the root component mounts into views no window holds yet, and the
-task's Go code runs. A screen that comes later (the user opens the app)
+background task (`platform/periodic`: BGTaskScheduler, WorkManager) with the
+app closed, the host starts the core headless (`startHeadless`): the
+app's init runs, the root component mounts into views no window holds
+yet, and the task's code runs. A screen that comes later (the user opens the app)
 takes that root as a recreated Activity does (`asuka_attach` on Android;
 the root controller mounts the existing root view on iOS).
-`asuka/sdk/location`'s background updates and regions start it the same
-way (iOS relaunches the app for them: `AsukaLocationBackground` registers
-at launch; Android's `PendingIntent`s reach `AsukaLocationReceiver`); the
-host keeps each event in a file until Go reports it handled, and holds
-the app (a background task, the broadcast's `goAsync`) meanwhile. Where
-the system has neither (macOS's and Windows's updates, Linux's and the
-web's regions), the Go package computes them from the positions while the
-app runs (`locationspec.Capabilities` says which). The last root's
-`Dispose` fails the Calls still waiting, so a package's goroutine ends
-with it.
+`platform/location`'s background updates and regions start it the same
+way on Android (its `PendingIntent`s reach the package's
+`LocationReceiver`, which starts the core headless); the package keeps
+each event until the app reads it. On iOS the system relaunches the app
+for them (a region, a significant change) and hands the event to the
+manager made before launch ends: the package's launch class
+(`AsukaLocationLaunch`, its manifest's `ios.launch` for an app that
+calls `startUpdates` or `monitor`) makes it as the app launches, and,
+for such a launch, has the host start the core headless, so the app's
+code reads what woke it.
+
+A native package's code runs at launch this way, before the app's own
+(`AsukaLaunching`): its manifest names the class (`ios.launch`, an
+Objective-C name, listed in Info.plist's `AsukaLaunch`, which
+`AppDelegate` runs before launch ends; `android.launch`, which the
+host's `AsukaLauncher` runs as the process starts, a content provider
+the CLI declares only in the apps that have some), so only the apps that
+import the package, or use the member whose `[uses]` names it, run it:
+Core Location's managers, Core Bluetooth's with their restore
+identifiers, StoreKit's and Play Billing's transaction listeners. Where
+the system has no background updates or regions (macOS's and Windows's
+updates, Linux's and the web's regions), the package computes them from
+the positions while the app runs. The last root's
+`Dispose` fails the Calls still waiting, so what a package waits on
+ends with it.
 
 Packages that need a framework or library of their own cost only the
-apps that use them. On iOS, the host's Swift for them is compiled under a
-flag (`ASUKA_MAPS`...) set when the app's Go archive has the package's
-symbol (`iosFeatures`). On Android, each is an optional Gradle module
-(`asuka-maps`, `asuka-push`...) built in for the apps that import its
-package (`featurePermissions`), whose `AsukaPlugin` registers its methods
-and views by name at start.
+apps that import them: a std native package's code is its own (its
+Swift package, its Gradle module with its libraries, its web module),
+and what it needs of the app (permissions, purpose strings,
+entitlements, services) is in its asuka.toml and beside its code, merged
+into the apps that import it (std/README.md). The hosts keep only what
+the core's elements need and the modules std packages call by name
+(`platform/host`), and what of those links a framework or
+library is built only into the apps that use it: on iOS, under a flag
+(`ASUKA_VIDEO`, `ASUKA_NOTIFY`...) for an element the app shows
+(`elementFlags`) or a package's manifest's `ios.hostFlags`; on Android,
+an optional Gradle module (`asuka-video` for a Video's Media3,
+`asuka-push`'s Firebase, `asuka-periodic`'s WorkManager), for an app
+that shows a Video or whose packages ask for it (`android.hostModules`);
+asuka dev's player has them all. What an app uses is what the checker
+resolved across its program, its dependencies' code too
+(appbuild.Uses: the packages imported, and the members referred to from
+outside their own package), not the identifiers its sources spell: a
+package's needs apply to the apps that import it, a `[uses.<member>]`
+table's to those that refer to the member (platform/location's background
+part, iCloud's store or documents). The host makes their views and hooks by name
+when first used (`AsukaVideo`, `AsukaPlugin`).
 
-In-app purchases (`asuka/sdk/purchase`) are one module, `purchase`,
-whose JSON (`internal/purchasespec`) every host speaks: StoreKit 2 on
-iOS (`ASUKA_PURCHASE`) and on the Mac, where it's Swift the Objective-C
-runtime can't reach, so the same file (`Purchase.swift`, kept identical
-in platform/ios and platform/macos) is built into the app's Swift
-library for an app that imports the package (`featureMacSwift`), and
-`host/darwin` calls it through purego; Play Billing in the optional
-`asuka-purchase` module; the Microsoft Store from Go (`internal/windows`'
-StoreContext); the Digital Goods API on the web; none on Linux;
-`fake.Store` in tests. Each host follows the store's transactions from
-the app's start (StoreKit's `Transaction.updates` from launch, Play's
-listener and its unacknowledged purchases at each return to the front,
-the Store's license changes) and keeps them for `next`, so a purchase
-completed before the Go code observes isn't lost. A root's disposal
-answers the calls still waiting on its host (`ui: the root went`), so a
-package's poll of `next` ends with it.
+In-app purchases (`platform/purchase`) are a std native package: StoreKit 2
+in its Swift (iOS and macOS), Play
+Billing in its Gradle module, the Microsoft Store (WinRT's StoreContext) in its desktop C, the
+Digital Goods API in its web module; none on Linux; `purchase.fake()` in
+tests. Each follows the store's transactions from the app's launch (the
+package's launch class: StoreKit's `Transaction.updates` and its
+unfinished ones, Play's listener and its unacknowledged purchases at
+each return to the front) or the package's start (the Store's license
+changes) and keeps them for the package's `events()`,
+so a purchase completed before the app observes isn't lost.
 
-iCloud (`asuka/sdk/icloud`) is one module, `icloud`, whose JSON
-(`internal/icloudspec`) the iOS host and the Mac speak, the same Swift
-in both (`ICloud.swift`, kept identical in platform/ios and
-platform/macos, as `Purchase.swift` is; `ASUKA_ICLOUD`,
-`featureMacSwift`): NSUbiquitousKeyValueStore, its values converted
+iCloud (`platform/icloud`) is a package over the hosts' module `icloud`,
+whose JSON (sdk/icloud's) the iOS host and the Mac speak, the
+same Swift in both (`ICloud.swift`, kept identical in platform/ios and
+platform/macos; `ASUKA_ICLOUD`, platform/icloud's manifest's `ios.hostFlags`
+on iOS, every Mac app's host): NSUbiquitousKeyValueStore, its values converted
 between JSON and property lists; the app's ubiquity containers through
 NSMetadataQuery, NSFileCoordinator and NSFileVersion, the file system's
-work off the main thread. The other hosts answer not available
-(`icloudspec.Unavailable`); `fake.ICloud` in tests. The package's events
+work off the main thread. The other hosts answer not available. The package's events
 (the account, the store's changes, each scope's files) come through one
 `next`, asked again from its answer on the main thread, so a root's
 disposal ends it. What the app calls, from its source (`useICloud`), says
 which entitlements it gets, which the CLI signs as Xcode does (a
 profile's `*` and `TEAMID.*` as the app's values).
 
-What runs outside the app's process is built from `asuka.json`. iOS's
+What runs outside the app's process is built from `asuka.toml`. iOS's
 widget extension is WidgetKit's, so SwiftUI's (the one place the host
 uses it): one template (platform/ios/Widget) with the app's kinds,
-reading the entries the app's Go code sets (`asuka/sdk/widget`) from the App
-Group they share; it runs no Go. The same extension draws the Live
-Activities (`asuka/sdk/liveactivity`), for an app whose Go code calls the
-package (`ASUKA_LIVEACTIVITY`), with or without widgets: one template,
+reading the entries the app's code sets (`platform/widget`) from the App
+Group they share; it runs none of the app's code. The same extension
+draws the Live Activities (`platform/liveactivity`), for an app that imports
+the package (its manifest's `ios.hostFlags`: `ASUKA_LIVEACTIVITY`), with
+or without widgets: one template,
 its attributes (`AsukaActivityAttributes`) compiled into both the host
 and the extension, since ActivityKit matches them by name and shape. On
 Android an activity is an ongoing notification the host builds, which
@@ -1185,144 +1301,185 @@ opens the app with its URL. On Android, the CLI generates an App Widget
 provider for each kind (over the host's `AsukaWidgetProvider`, with
 RemoteViews) and the launcher's static shortcuts.
 
-Two extensions run the app's Go code, from the app's own symbols rather
-than `asuka.json`: the share sheet (`app.ShareSheet`) and the
-Notification Service Extension (`push.Rewrite`). With either, the app's
-Go code and the host are one dynamic framework (AsukaApp.framework) that
-the app and the extension link, their data in the App Group they share.
-The extension starts the core headless with a root of its own
-(`ASUKA_SHARE_SHEET`, `ASUKA_NOTIFICATION_SERVICE`). Android runs both in
-the app's package: the share sheet's activity, and the push rewrite in
-Firebase's service, starting the core headless as a background task does.
+Two extensions run the app itself, from what its program uses rather
+than `asuka.toml`: its own share sheet and the Notification Service
+Extension. Both are the standard library's, not the language's: the
+process the app runs in is a fact the host sets before the core starts
+(`ASUKA_SHARE_SHEET`, `ASUKA_NOTIFICATION_SERVICE`), which
+`platform/host`'s `process()` reads, and the app decides what its root
+is there. `platform/sharesheet`'s `active()` is true in the sheet's process,
+so the app block shows the sheet there (`if sharesheet.active() {
+SaveLink() } else { Root() }`); the sheet hears what's shared with
+`onShare` (the host sends the root the `Shared` event once the items are
+collected), and `done()`, `cancel()` and `openApp()` are the `ShareClose`
+command, which the sheet's host takes. `push.rewrite(f)` keeps `f` in a
+store whose task serves the host's rewrites (`nextRewrite`, answered by
+`rewritten` with the notification to show, `platform/notify`'s spec), as
+`notify.present` serves its decisions: one at a time, in order, `f`'s
+none or a throw showing the push as it came. The app's root runs in
+either extension, as it does for a background launch (`push.inExtension()`
+lets the app make it one that only calls `rewrite`). An app block is
+the root everywhere, so nothing in the language knows a process: a
+prelude registration (a `shareSheet(…)` item of the app block, an `on
+rewrite`) was the other form, and would have needed the core to choose
+among the app block's items without running them.
+
+The CLI builds each extension from the program's uses (appbuild.Uses):
+the package's manifest says what its member needs. `sharesheet.active`
+derives `shareSheet` (`ios.derived`), which with `asuka.toml`'s
+`shareTarget` makes iOS's share extension the host's
+`AsukaShareSheetController` and gives Android's share filters to
+`AsukaShareActivity` (a `:share` process, shown as a Material bottom
+sheet); `push.rewrite` asks for the host's `ASUKA_NOTIFICATION_SERVICE`
+(so the CLI builds the extension, its principal class
+`AsukaNotificationService`) and for Android's
+`dev.asuka.push.rewrite` meta-data (the host's Firebase service has the
+app rewrite each data message, starting the core headless as a
+background task does, ten seconds at most). With either extension on
+iOS, the app's code, the core and the host are one dynamic framework
+(AsukaApp.framework) that the app and the extension link; their files
+(`std/fs`'s `appDir`) and `std/store`'s values are in the App Group
+they share, moved there from the app's own the first time it runs with
+one, and their keychain group is the app's. On the web the page in
+front rewrites a push before the service worker shows it.
 Notifications' responses work the same way: a background action starts
 the core headless (iOS's center delegate, Android's broadcast receiver)
-and hands Go the response, keeping the process until Go reports it done.
+and hands the app the response, keeping the process until it reports it
+done.
 
-### Plugins
+### Packages' C and vendors' libraries
 
-A plugin is a Go package with a manifest beside it, `asuka-plugin.json`
-(package `plugin`), naming the native libraries it brings: for each
-target (`darwin`, universal; `ios`, `ios-simulator`; `android-<goarch>`;
-`linux-<goarch>`; `windows-<goarch>`; `wasm`) a file, published to the
-plugin's GitHub release gzipped and named for its hash, with the
-SHA-256 of both. Only the manifest is checked in. The plugin's Go code
-loads its library through purego or `syscall`, from the path
-`plugin.LibraryPath` gives it: where the CLI shipped it with the app;
-else, in `go run`, `go test` and `asuka dev` on a desktop, the plugin's
-checkout's build (`build/<target>` beside the manifest) or the
-published file, downloaded once into the user's cache and verified. A
-shipped app (`asuka_bundled`) and a phone's never download.
+Code that isn't Asuka comes in two ways, both compiled with the app: C
+with `extern` (docs/c.md, `asuka.toml`'s `[c]`) and native packages
+(docs/native.md: Swift, Kotlin, JavaScript and C, each platform's own
+project). Nothing is loaded at run time from beside the app: no library
+lookup, no embedding a package's libraries, no rpaths of Asuka's.
 
-The CLI finds an app's plugins among its dependencies for the build's
-platform (`go list -deps`, a manifest beside the package) and ships each
-library's file where `LibraryPath` looks: `Contents/Frameworks` on macOS
-(signed with the app), beside the `.exe` on Windows, `lib/<exe>` of the
-prefix on Linux, a framework of its own on iOS (named for the library;
-an Info.plist, a privacy manifest from the binary's imports, signed with
-the app), beside `libasuka.so` in each Android ABI, and `lib/` of the
-host's files on the web (the page's `libs` option names each file's
-URL): all in one place, so two plugins with a file of the same name for
-a platform don't build. A desktop build that ships any builds with `asuka_bundled`.
-A plugin builds its libraries with its own tool (they need what they
-need: SQLite, Xcode, the NDK and Zig), which writes each with
-`plugin.StoreBuild` and the hash of the plugin's sources (the manifest's
-`sources`); `asuka plugin publish` uploads them, refusing a build older
-than its sources, downloads each back to check it, and records them in
-the manifest.
+**A std or sdk package's own C** is its `asuka.toml`'s `[c]`, as any
+package's, but a unit of the build cache ("The build cache"):
+`cbuild.StdC` makes it `std-<name>-c` for each target, with its
+platform table's flags (after the configuration's, so `-Os` on the web
+wins), which a release prebuilds for every target with the rest
+(`appbuild.Units`). The compiler records the std and sdk packages a
+program imports that have one (`bytecode.C.Std`, all the way down:
+`std/store` brings `std/sqlite`), and every build of it links their
+libraries through `cbuild.Foreign` (`Libs`): the phones' and the Mac's
+core library (a static library has them merged in, libtool), the
+desktops' executables, a program's, and `asuka test`'s and `asuka run`'s
+runners (compiled there with the runner's compiler, unsanitized). The
+core calls them through `core/link/link.c`, compiled per link with
+`AK_STD_<NAME>` for each one linked (`ak_link_sqlite`), so a link that
+has none has no reference to them: an app that doesn't import
+std/sqlite carries no SQLite. A player (`asuka dev`) is built with the C
+of the app's last compile and again when it changes, as for externs.
 
-A plugin's name, which goes in those paths, is letters, digits, `-`, `_` and `.`; two of an app's plugins can't
-share one.
+**A vendor's prebuilt libraries** are `[c.prebuilt]`'s: a static
+library per target (`ios-arm64`, `ios-simulator-x64`, `macos-arm64`,
+`android-arm`, `linux-x64`, `windows-arm64`, `web`; a universal one for
+`ios-simulator` or `macos`), or several, which the link of that target
+adds as it adds `libraries`; a target the table names nothing for
+doesn't build. Static only: an archive is what every target's link
+takes (the web's wasm-ld has no dynamic linking), it needs nothing at
+run time (no loader paths, nothing more to embed, sign or give a
+privacy manifest of its own), and the link drops what the app doesn't
+call. A vendor's dynamic library goes where its platform's build
+handles it: a native package's Swift package (a binary target) or Gradle
+module (`jniLibs`, an AAR).
 
 ### SQLite
 
-`asuka/sdk/sqlite` is a plugin: SQLite's own C, one pinned release
-built with the same options for every platform by
-`sdk/sqlite/internal/build` (Xcode, the NDK, Zig). With it, one library of Asuka's
-(`sdk/sqlite/csrc/asq.c`) and one entry point: `asq_call(op, conn, arg, in,
-inLen, out, outCap)`, every argument pointer-sized. A call is a whole
-statement: its SQL and arguments in, its answer (a query's columns and
-first rows, as many as fit the buffer) out; `next` brings the rest a
-chunk at a time, and an answer too long for the buffer is kept for the
-caller to take with a bigger one. Statements are cached by SQL in C
-(64 per connection). The tables a call's commits wrote (the authorizer,
-the preupdate and commit hooks) and its queries read come back with
-each answer, so the live queries need no callbacks from C into Go.
+`std/sqlite` is plain std C: SQLite's amalgamation, one pinned release
+(`[c.download.sqlite]`: sqlite.org's archive, its SHA-256 pinned,
+fetched into the build cache by a build that compiles it, never kept in
+the repository or the CLI), and one file of Asuka's
+(`std/sqlite/csrc/asq.c`), its `[c]` built with the same options for
+every target (multi-thread natively, `SQLITE_OS_OTHER` with one thread
+on the web), and linked into the apps that import it. One entry point:
+`asq_call(op, conn, arg, in, inLen, out, outCap)`, every argument
+pointer-sized. A call is a whole statement: its SQL and arguments in,
+its answer (a query's columns and first rows, as many as fit the
+buffer) out; `next` brings the rest a chunk at a time, and an answer
+too long for the buffer is kept for the caller to take with a bigger
+one. Statements are cached by SQL in C (64 per connection). The tables
+a call's commits wrote (the authorizer, the preupdate and commit hooks)
+and its queries read come back with each answer, so the live queries
+need no callbacks.
 
-Go crosses into C once per call, never per column, which is what makes
-purego as fast as cgo here (a crossing costs more than a row): macOS,
-Linux, iOS and Android load the library with `dlopen` through purego
-(the mobile build modes' cgo is purego's way to `dlopen`, not
-Asuka's), Windows with `LoadLibrary` through `syscall`, and the web
-calls the same C built to WebAssembly from JavaScript. Every symbol but
-`asq_call` and `asq_version` is hidden, so a system SQLite in the same
-process (GTK may load one) never clashes. The CLI ships it with the app
-as any plugin's library ([Plugins](#plugins)).
+The core (core/src/sqlite) calls `asq_call` (`ak_link_sqlite`) once per
+statement, never per column, on a thread of its own where statements
+run one after another, and decodes the rows on the main thread straight
+into the program's values by the type's descriptor: no JSON text, no
+per-cell crossing. SQLite's symbols are hidden (`-fvisibility=hidden`),
+so a system SQLite in the same process (GTK may load one) never
+clashes, and an app's own SQLite neither. On the web the same C, with
+`csrc/asq_wasm.c` as its system, is a module of its own that the page's
+SQLite worker runs ([The web](#the-web)).
 
-A database has one writer connection and, for a file, up to three
-readers (write-ahead logging), handed out by the Go side. Writes take
-turns on the writer: a semaphore that times out as SQLite's busy timeout
-does, so a write inside another's transaction fails with `ErrBusy`
-rather than hanging. Rows scan into structs by a plan made once per
-type (field offsets and kinds), written in place; no reflection per row.
+## iOS and Android: the core in the app
 
-## mobile
-
-`mobile/` (build tags `ios || android`, cgo) exports a C ABI:
+The phones' hosts link the C core (`core/`, built by `internal/cbuild`
+with Xcode's clang and the NDK's) and call its ABI
+(`core/include/asuka.h`, copied to `platform/ios/Sources/CAsuka/include`):
 
 ```c
-void      asuka_start(asuka_host_callbacks*);   // apply, measure, post; calls main
-void      asuka_attach(void);                 // mount the tree again (new Activity)
-void      asuka_event(const uint8_t*, size_t);
-int64_t   asuka_list_count(uint32_t list);
-void      asuka_list_bind(uint32_t list, int64_t index, uint32_t cell);
-void      asuka_list_unbind(uint32_t list, uint32_t cell);
-void      asuka_run_posted(void);             // the host's main-thread hop
+void asuka_start(asuka_host_callbacks*);  // apply, measure, post, the native calls
+int  asuka_load(const uint8_t*, size_t, char **err);  // bytecode: the dev player
+int  asuka_run(char **err);               // the app compiled into the library
+void asuka_event(const uint8_t*, size_t);
+int64_t asuka_list_count(uint32_t list);
+void asuka_list_bind(uint32_t list, int64_t index, uint32_t cell);
+void asuka_list_unbind(uint32_t list, uint32_t cell);
+void asuka_run_posted(void);              // the host's main-thread hop
 ```
 
-All calls come on the main thread. `post` from Go calls the host's
+All calls come on the main thread. The core's `post` calls the host's
 callback, which hops with `DispatchQueue.main.async` / `Handler.post`
-and calls `asuka_run_posted`. The header Swift and Kotlin compile against
-is `platform/ios/Sources/CAsuka/include/asuka.h`.
+and calls `asuka_run_posted`.
 
-An app is a `main` package whose `main` calls `app.Run(root)`. The CLI
-adds a file to it with `go build -overlay` that imports `mobile` and
-sets `mobile.Main = main`; `asuka_start` calls it, and `app.Run` mounts the
-root on the mobile host.
-
-- iOS: `GOOS=ios GOARCH=arm64 CGO_ENABLED=1 go build
-  -buildmode=c-archive`, with the SDK's clang (iphonesimulator for the
-  simulator, arm64 and x86_64; iphoneos and an XCFramework for devices
-  in M6). `platform/ios` is a Swift package with the decoder (`AsukaOps`),
-  the UIKit host (`AsukaHost`) and the C header (`CAsuka`); `App/` holds the
-  `@main` app delegate. The CLI embeds them.
-- Android: `GOOS=android CGO_ENABLED=1 go build -buildmode=c-shared` per
-  ABI (arm64-v8a, x86_64; armeabi-v7a optional) with the NDK's clang,
-  linked with 16 KB pages (`-z max-page-size=16384`) as new devices
-  require. `mobile/jni_android.c` is the JNI side of the same C ABI:
-  Kotlin's `dev.asuka.AsukaNative` calls in; the core calls
+- iOS: the core, with the app compiled to C (lang/cgen) for a release
+  or without it for `asuka dev`'s player, is a static library in an
+  XCFramework; `platform/ios` is a Swift package with the decoder
+  (`AsukaOps`), the UIKit host (`AsukaHost`) and the C header
+  (`CAsuka`); `App/` holds the `@main` app delegate. The CLI embeds
+  them.
+- Android: the core is `libasuka.so` per ABI (arm64-v8a, armeabi-v7a,
+  x86_64), linked with 16 KB pages as new devices require;
+  `core/src/abi/jni_android.c` is the JNI side of the ABI: Kotlin's
+  `dev.asuka.AsukaNative` calls in; the core calls
   `AsukaRuntime.apply(ByteBuffer)` (a direct buffer over the encoded
   batch, one call per batch), `measure` and `post` back.
   `platform/android` is a Gradle project: the `asuka` library (decoder,
   Views host, JNI bindings) and `app`, the shell app the CLI builds per
   app (application ID and name passed as Gradle properties).
 
-The CLI does these builds itself (no gomobile).
+The C an app's packages bring is in the core's library with it: on
+iOS the static library the executable links, on Android `libasuka.so`
+([Packages' C and vendors' libraries](#packages-c-and-vendors-libraries)):
+nothing beside it to embed, sign or load.
 
-An app's plugins' libraries ([Plugins](#plugins)) ship with it: on iOS a
-framework each in `Frameworks` (`asqlite.framework` for SQLite: an
-Info.plist, a privacy manifest of its own, signed with the app; not
-linked, `dlopen`ed by its path from the executable's directory, or
-`../../Frameworks` from an extension), and an XCFramework each beside
-`AsukaApp.xcframework` for an app embedded in another; on Android each
-beside `libasuka.so` in each ABI's `jniLibs`, loaded by name from the
-APK. `asuka dev --once` pushes them with the Go library to the app's
-`files/asuka`, and package plugin looks first beside the file its own
-code was mapped from (`/proc/self/maps`).
+Crash reports (platform/crash) are the core's record of the run
+(`core/src/std/crash.c`, its files' formats those apps of the Go
+runtime wrote too): the host begins it as the app starts
+(`asuka_crash_start`, after `asuka_set_app_dir`, with JSON of the
+device and the app; only for an app that reads its reports, which
+lang/cgen marks, or the dev player), and the record keeps the run's
+context in `crashes/runs/<run>.ctx` (breadcrumbs, values, foreground,
+written as they change) and the core's own fatal error in its `.crash`
+(`ak_panic`'s message and the VM's stack), locked (flock) while the run
+lives. What only the host sees it writes in `crashes/inbox` (iOS: an
+uncaught NSException with its frames' binaries, MetricKit's payloads;
+Android: an uncaught JVM exception with every thread's stack, how the
+last runs ended from `getHistoricalProcessExitReasons` with a
+tombstone or an ANR's traces) and says so (`asuka_crash_notify`).
+`crash.reports()` collects in a spawn (it reads files): ended runs'
+fatal errors and the inbox become reports with the context of the run
+they were in, each once, kept until the app deletes them; what the
+system reports again of a crash already reported is left out.
 
 ## CLI (`cmd/asuka`)
 
 ```
-asuka new <dir>                             a project from the template
+asuka new [--bin | --lib [--native]] <dir>  an app, a program (fn main), or a library (with a native module)
 asuka dev --platform ios|android <dir>       build, run, rebuild and restart on save
 asuka build --platform ios|android <dir>     a release build for the stores
 asuka publish --platform ios|android <dir>   the release build, uploaded: TestFlight, App Review; a Play track
@@ -1335,39 +1492,71 @@ asuka build --platform web <dir>             a static site: WebAssembly, the web
 asuka dev|build <dir>                       no --platform: this computer's, on macOS (mac) and Windows (windows)
 asuka generate <dir>                        the typed functions of the app's catalogs
 asuka i18n init|add|check                   start, add languages to, and check the catalogs
-asuka vet [packages]                        what builds but runs wrong: a signal read once, written off the main thread
+asuka check|fmt|test|run [paths]            the compiler's errors; formatting; test blocks on the fake host (every [bin]'s too); one file
+asuka run [--bin name] [dir] [-- args]      a program's main on the VM, its arguments after --, its exit code the CLI's
+asuka dev [--bin name] [dir] [-- args]      a program: run, and again with each change saved
+asuka build [--bin name] [--target os-arch] a program's executable: dist/<name> (Linux: static, musl), another desktop's with Zig
+asuka add|remove|install                     packages from the npm registry (asuka.lock)
+asuka native add|generate|check              native packages' projects and their glue
+asuka lsp                                    the language server, on stdio
 asuka publish --platform mac|windows|linux   the desktop build, its signed update (dist/updates), uploaded: a GitHub release, S3
 asuka update keygen                         the Ed25519 key pair that signs desktop updates
+asuka cache stats|clean                     the build cache's size, cap and hits; empty it
 ```
 
-**An app's metadata** is `asuka.json` beside its Go code, all optional:
+**Programs** (docs/programs.md) are the third kind of project, beside
+apps and libraries: a package whose files declare `fn main()` (the
+checker: no parameters, no result, no app block, no components; only
+the root package's). The module records it (`Module.Main`), lang/cgen
+emits a weak C `main()` that calls `asuka_program_main`, and the core
+runs it with no UI host (core/src/abi/program.c): init, then main (as a
+task when async) on the core's own loop (posts wake a condition
+variable) or a host's (`asuka_program_start`: macOS's dispatch queue);
+as main ends, what's left is cancelled and the process exits 0, 1 with
+`error: <message>` and the trace (the VM's frames, and compiled
+functions' noted on the error's path only: `ak_frame_hook`), or what
+`os.exit` said. std/os, std/command (fork and exec; CreateProcess)
+and std/flag (lang/ir/flag.go writes `flag.spec<T>()`'s description
+of T) are the core's C and Asuka. A program whose packages have
+platform code runs on a headless host: platform/desktop/program on
+Windows and Linux (asuka_desktop.h's host half, GLib's loop when it's
+there), the Mac host's Swift with an `AsukaProgram` entry on macOS (the
+packages' Swift is what URLSession is reached through). asuka.toml's
+`[bin.<name>] path = "dir"` names a project's programs; a desktop build
+puts them in the app (Contents/Helpers, bin/, beside the .exe), built
+with the app's data folder (`Module.Data`) so they share its data.
+
+**An app's metadata** is `asuka.toml` beside its Asuka code (TOML 1.0, read
+by `internal/toml`), all optional:
 name, ID (bundle ID and application ID), version and build number, a
 1024×1024 icon, orientations (the phone's: an iPad or a large Android
 screen turns the app any way, for split screen), the iOS team (and
 whether it's iPhone only), provisioning profile, usage
 descriptions and extra Info.plist keys, the Android permissions and
-upload key. `asuka dev` and `asuka build` read it alike.
+upload key. `asuka dev` and `asuka build` read it alike. An error names
+its line and column.
 
-**The accent color** (`"accent": "#7c3aed"`) is the one color an app's
+**The accent color** (`accent = "#7c3aed"`) is the one color an app's
 brand sets on native controls; the controls are the platform's, so
-Asuka has no theme of its own over them (`Style` changes one view). It
-travels with the Go code, not the shell: the CLI builds it in
-(`-ldflags -X`, `internal/boot`), and each root, as it mounts, sends
-the `Accent` command before any view is made. That way the dev player,
-which runs any app, takes each one's, and drops it between apps. On iOS
-it's the windows' tint color, which UIKit's controls and `colors.Accent`
-take. On Android it's the seed of a Material 3 color scheme
+Asuka has no theme of its own over them (a style changes the views it's
+applied to; a package's default styles, its own elements). It
+travels with the app's code, not the shell: the compiler builds it into
+the module's init, and each root, as it mounts, sends the `Accent`
+command before any view is made. That way the dev player, which runs
+any app, takes each one's, and drops it between apps. On iOS it's the
+windows' tint color, which UIKit's controls and `.accent` take. On Android it's the seed of a Material 3 color scheme
 (`SchemeContent`, light and dark, as Material's `DynamicColors` makes
 it) on Android 12 and later; before that, Material's baseline colors,
-with Asuka's own uses of the accent (links, `colors.Accent`) taking the color
-itself. `"android": {"dynamicColor": true}` takes the wallpaper's colors
+with Asuka's own uses of the accent (links, `.accent`) taking the color
+itself. `android.dynamicColor = true` takes the wallpaper's colors
 instead, where the system has them. The theme context is made again
 and the views that resolved theme colors are rebuilt, as on a dark mode
 change.
 
 **`asuka build --platform ios`** makes an `.ipa`, still without an Xcode project:
-the host compiled optimized (no debug automation), the Go archive for
-`arm64` devices, linked with dead stripping; an Info.plist with the
+the host compiled optimized (no debug automation), the core with the
+app compiled to C (lang/cgen) for `arm64` devices, linked with dead
+stripping; an Info.plist with the
 keys App Store validation checks (`DT*` from the SDK and Xcode,
 `ITSAppUsesNonExemptEncryption`); the icon as an asset catalog compiled
 by `actool`; then signing as Xcode would: the installed provisioning
@@ -1380,24 +1569,25 @@ for the simulator.
 
 **`asuka build --platform android`** makes an `.aab` for Google Play (no
 `.apk`: Play makes each device's from it, with only that device's ABI):
-the Go code as a stripped `.so` for arm64-v8a, armeabi-v7a and x86_64,
+the core with the app compiled to C as a stripped `libasuka.so` for
+arm64-v8a, armeabi-v7a and x86_64,
 the assets, launcher icons (legacy per density, and adaptive: the icon
 inside the safe zone over its corner color), the permissions, the
 version; Kotlin shrunk by R8 (the classes JNI and reflection reach are
-kept); signed with the upload key named in `asuka.json` or `ASUKA_KEYSTORE`,
+kept); signed with the upload key named in `asuka.toml` or `ASUKA_KEYSTORE`,
 its passwords from the environment (never on a command line). A
 release build never loads a library from the app's files, as debug
 builds do in development; cleartext HTTP (the player's assets) is
 debug-only, as is iOS's local networking exception.
 
 **`asuka publish --platform ios`** and **`--platform android`** make the release build and
-upload it, through the stores' APIs from Go (no altool, no Gradle
+upload it, through the stores' APIs from the CLI (no altool, no Gradle
 plugin), so a release is one command, in CI too. Everything the store
 can refuse is asked first, before the build: the app (App Store Connect
 by bundle ID; Play by package, in an edit opened to look and deleted),
 whether the version still takes builds (approved or released: no), the
 TestFlight groups by name, and the store's highest build number. The
-build is numbered one above it (and at least `asuka.json`'s `build`), so
+build is numbered one above it (and at least `asuka.toml`'s `build`), so
 `build` needn't be raised by hand; `--build` sets one. iOS: a JWT signed
 with the App Store Connect API key (ES256, renewed every 10 minutes);
 the `.ipa` sent as `buildUploads` says, in parts, a few at a time, each
@@ -1416,113 +1606,49 @@ Console, committed unsent. Requests are retried when rate limited
 (`Retry-After`) and, where safe to repeat, when the server or the
 network fails.
 
-**`asuka dev` runs the app's Go code on the Mac, and its views in a
-player** (`internal/remote`): the platform host with a small Go library
-(`mobile/player`) in place of an app, built and installed once and
-shared by every app. A change rebuilds the Go code for the Mac and
-restarts that process, under a second; the player reconnects and shows
-the new code, with no install. The app's logs are the process's output.
+**`asuka dev` runs the app in a player**: the platform's host with the
+core and no app in it (the simulator's, an emulator's or a phone's
+shell app, a desktop host, a page), built with the app's ID, name, icon
+and native packages, and built and installed again only when those
+change. The CLI compiles the app to bytecode and sends it to the
+players that connect (internal/devserver, core/src/abi/dev.h: framed
+modules one way; hello, logs, how each reload went and errors the
+other); on each save it compiles again, in milliseconds, and sends the
+new module, which each player loads in place:
 
-- **Noticing a change**: the system says when a file under the app's
-  module changes (`asuka/sdk/watch`: FSEvents, inotify,
-  ReadDirectoryChangesW; 25 ms for a burst to end), and a scan of the
-  files' modification times decides whether it needs a build; where the
-  system can't watch (too many files, no way to), `asuka dev` polls.
-  Development builds leave out DWARF (`-ldflags=-w`), much of the
-  linker's time; tracebacks and `runtime.Callers` use the symbol table.
-- **The next run starts behind the last** (`internal/devstate`'s
-  `Wait`): `asuka dev` starts the new build while the old one runs, and
-  it waits on a control connection (`ASUKA_CONTROL`: it connects, sends
-  its process ID, and waits for a byte), before it makes a window,
-  listens or reads its kept state. Once it waits, the old run is stopped
-  (its connection closed: it saves its state and exits), and the new one
-  is let go on and takes the state back. So its start (the runtime, its
-  packages' `init`, the frameworks loaded, and on macOS the system's
-  check of a program it hasn't seen run, a few hundred milliseconds
-  unless the terminal is a developer tool) happens behind the old one;
-  a build that quits as it starts leaves the old one running. A run that
-  takes over 10 s to wait doesn't hold the old one longer; one run
-  elsewhere (`ASUKA_LINUX_RUN`) is stopped and started in turn.
-- **The player's port outlives the runs**: `asuka dev` listens, and each
-  run takes the listener (and the assets' one) as an inherited
-  descriptor (`ASUKA_REMOTE_FD`, `ASUKA_ASSETS_FD`), so the player,
-  reconnecting as its connection ends, waits in the queue for the next
-  run instead of being refused and trying again.
-
-- **Only in that process**: `asuka dev` links `app/remote` into it (an
-  `-overlay` file in the app's main package), and with it the socket
-  and the assets' HTTP server. An app's own builds (on the device, for
-  release, on a desktop) carry none of that code, which is half of a
-  small app's binary. The desktop hosts keep state across reloads with
-  `internal/devstate`, which needs no network.
-
-- **The protocol** is the host interface over a socket, synchronous both
-  ways, with calls nesting as they do in process: while a side waits
-  for its reply it serves the other's requests (a list binding cells in
-  the middle of a batch, a measure during layout). The core takes no
-  events while it waits for a player (hosts never send them in the
-  middle of an `Apply`); one that arrives meanwhile is served when the
-  call returns. Both ends are Go, so the protocol is tested in Go, with
-  the fake host as the player. A call that gets no reply in 10s gives
-  up rather than hang a main thread.
-- **A stuck player is reported**: a session whose player connected 10s
-  ago and hasn't had the app mounted (it never sent its environment)
-  makes the core ask it for its goroutines' stacks (`mStacks`), which
-  the player answers on its connection's reader, not its main thread,
-  which is likely what's stuck. The run says so, with what to do
-  (relaunch the player, `--no-hot`), and writes the stacks beside the
-  kept state. The GUI tests (`e2e`, `-run Player`) install the player,
-  reload after an edit and relaunch it against the running code, and
-  fail on that report.
-- **Several players at once**: each connection is a session with its
-  own root, multiplexed on the core's one loop (the app on an iPhone
-  and an Android phone together). A reconnecting player clears the last
-  session's views first.
 - **State survives a reload** without code, as React's Fast Refresh
-  keeps hooks' state: the process saves every app signal's value as it
-  stops, and the next run gives it back to the signal made at the same
-  place: the same call path (function names), name, type and position
-  among the live signals of that name and type there. A signal made by
-  Asuka itself isn't kept, nor a value JSON would change (funcs,
-  unexported fields). Changing a signal's type resets it. Navigation
-  isn't kept (screens are closures): a reload starts at the root
-  screen. Off in a built app, where `signal.New` pays one nil check.
-- **Places are named from the source** (`signal.KeepPlaces`): Go names
-  closures by their order in their function (`Screen.func2`), so adding
-  one, a button's handler, renumbers those after it. `asuka dev` reads
-  the app's own packages as it builds them (`go/ast`; `go list` once,
-  and again only for an import it hadn't seen) and adds a table to the
-  build's overlay: each function literal's lines, depth and place among
-  its siblings, named by what it is in its function (the variable or
-  field it's assigned to, the call and argument it's passed as, a
-  `go`, `defer` or `return`: `Screen>body`, `Screen>ui.Show#1`, a second
-  of a name `~2`), and each `signal.New` and `NewFunc` by the variable
-  or field it's made for. The run finds a frame's literal by its file
-  and line, at the depth its runtime name says past its function's
-  (`.funcN`, `.N` as inlined, `-rangeN` a range-over-func loop's body,
-  no literal), and of siblings on one line by their place; what the
-  table can't tell keeps the runtime's name. A file that says
-  `//asuka:reset` has its signals start over when it's edited (its
-  digest is in their names).
-- **Reaching the Mac**: the simulator shares its loopback; an Android
-  emulator reaches it at `10.0.2.2`, directly (`adb reverse` adds a
-  round trip's worth of latency to every call); a device goes through
-  `adb reverse`. Assets are served over HTTP from the Mac
-  (`boot.AssetBase`). An iPhone has no `adb reverse`, and its apps can't
-  open connections through the cable, but the Mac can, to a port on the
-  phone (usbmuxd, `internal/usbmux`): `asuka dev` keeps a few idle
-  connections open to the player's tunnel port, and the player takes
-  one for each of its connections, naming in a byte what it's for (the
-  app, or its assets, which it serves on its loopback as the URLs say);
-  the Mac connects it there and answers (`internal/devtunnel`). The
-  player closes a tunnel idle for a second and the Mac opens another,
-  so the newest listener on the port, with `SO_REUSEPORT`, gets them:
-  the share extension's while it runs. Unplugged, the player dials the
-  Mac's addresses on the network and its Bonjour name (iOS's Local
-  Network permission), through relays `asuka dev` keeps, which also
-  tell it which way the player came. Both are in the `devtunnel.Spec`
-  it's launched with (`devicectl --environment-variables`), and keeps
-  for a launch from the home screen.
+  keeps hooks' state: every state cell is made with a key, its
+  component's path and its name (core/src/vm/keep.h). Before the old
+  module goes, each live cell's value is saved in a form that names its
+  types, fields and cases; the new module's cells with the same keys
+  start from it, converted to the new types by name. A value that can't
+  be converted (a field added whose type has no zero value, a type
+  that's now another kind) starts from its initial value, as does a
+  cell whose component moved. The views that are still there are kept,
+  so a reload changes only what the edit changed. The player
+  reports how many cells it kept and how long the load took.
+- **Noticing a change**: the system says when a file under the app's
+  directory changes (`internal/fswatch`: FSEvents, inotify,
+  ReadDirectoryChangesW; 25 ms for a burst to end); where the system
+  can't watch, `asuka dev` polls. A module that doesn't compile is
+  printed and the players keep the last one; the next that does goes
+  out.
+- **Several players at once**: each connection gets every module (the
+  app on an iPhone and an Android phone together, and the desktop).
+  The player's logs come back to the CLI, which prints them.
+- **Reaching the CLI**: the simulator shares the Mac's loopback; an
+  Android device or emulator through `adb reverse` (its loopback reaches
+  the computer's, on the same port); an iPhone through the cable, where
+  the Mac connects to the player (usbmuxd reaches a port on the phone's
+  loopback, `asuka_dev_listen`; the phone can't open one the other way),
+  else over the local network (Local Network permission: the player
+  tries each of the Mac's addresses, on a port kept the same from run to
+  run, and keeps them, so one launched again from the home screen finds
+  it); a desktop player on loopback; the web's page through the dev
+  server, which serves the page and the modules (`asuka_dev_reload`). A
+  player dials again whenever its session ends, so it comes back to an
+  `asuka dev` that restarted; a connection the Mac makes takes over from
+  the player's own.
 - **Signing for an iPhone**: the player's App ID is the team's own
   (`dev.asuka.player.<team>`). A development profile that fits (the
   device among its devices, the capabilities the build's entitlements
@@ -1532,511 +1658,265 @@ the new code, with no install. The app's logs are the process's output.
   -allowProvisioningDeviceRegistration` make the profiles (the Xcode
   account's, or the App Store Connect key's), once a session. The
   player goes without the capabilities its team can't have.
-- **Not in the player**: an app's own native code (`ios/`, `android/`),
-  which only an app built with it can show. Such apps, `--once` and
-  `--no-hot` build the app with its Go code, as before: `asuka dev`
-  rebuilds the library and relaunches on the iOS simulator (no Xcode
-  project: `swiftc` compiles the embedded host, with the app's Swift,
-  into one object, cached; each change rebuilds the archive, links,
-  ad-hoc signs and reinstalls with `xcrun simctl`, in about a second;
-  on an iPhone it signs for development and reinstalls with `xcrun
-  devicectl`, whose `--console` brings the app's output)
-  or an Android device or emulator (Gradle builds the shell app, with
-  the app's Kotlin, once per host version and app ID; each change
-  rebuilds the `.so`, pushes it into the app's private files with `adb`
-  and `run-as`, where the debug shell app loads it from, and restarts
-  the app: about a second and a half).
+- **Native code**: the app's native packages' Swift, Kotlin, JavaScript
+  or Go is built into its player, so a change to it rebuilds and
+  relaunches the player (generating the glue first); a change to Asuka
+  code reloads. `--once` builds and launches once, without watching.
+
+### The build cache
+
+Everything a build makes that another build could use is kept in one
+content-addressed cache (`internal/ccache`; `ASUKA_CACHE`, default the
+user's cache directory's `asuka`), shared by every app, checkout,
+worktree and configuration on the machine, and capped: past
+`ASUKA_CACHE_MAX` (10 GB by default; 0: no cap) the entries used least
+lately go, down to 90%, at most once an hour as a build ends, keeping
+anything used in the last hour (another build may be linking it). Its
+entries: an object, an archive, a module, a downloaded package, an AAR's
+version, and, whole, each top-level directory that isn't one of its
+stores (an app's work directory, a host's shared Gradle project, an
+extracted source tree). `asuka cache stats` prints its size and its
+hits and misses by kind (C objects, Swift modules, prebuilt packages);
+`asuka cache clean` empties it.
+
+**C: an object cache, and units.** Every C file compiled locally goes
+through `cbuild`'s object cache, ccache's direct mode: a source's first
+key is the compiler's identity (its path, `--version`, Zig's version),
+its flags, its directory and its bytes; under it a manifest (`c/m`)
+lists the objects compiled from it (`c/o`), each with the headers that
+compile included (the compiler's `-MMD` depfile) and their hashes, and a
+lookup takes the one whose headers all still hash the same. Paths under
+the checkout or the cache are written relative to them, so another
+worktree's build hits what this one compiled. The core is the same for
+every app: what used to differ by `-D` (an app compiled in, its externs'
+glue, the std packages' C it imports) is `core/link/link.c`'s, compiled
+per link (`ak_link_app`, `ak_link_ffi`, `ak_link_sqlite`, which name the
+app's, the glue's and SQLite's objects so a static library's link keeps
+them). The core, the desktop hosts' C, the native registry, each std and
+sdk package's desktop C and each one's own C (its `[c]`: std/sqlite's
+SQLite, every target's) are **units** (`cbuild.Unit`, `appbuild.Units`):
+one static library per target and configuration (dev: `-g -O1
+-DAK_DEBUG=1`; release: `-O2 -DNDEBUG`; then the unit's own flags), its
+key its objects' keys. A link searches them (a package's desktop C
+whole: its provider registers itself in a constructor); a static
+library (iOS, the Mac) is the core's with the build's objects and the
+std packages' C it imports added; a shared library or the web's module
+links the core's whole, its exports its roots.
+
+**Prebuilt, from npm.** A release builds every unit for every target
+(`asuka prebuilt build`, the release workflow; Zig, Xcode and the NDK as
+a local build would) and publishes them with the CLI as npm packages, one
+per target, versioned as the CLI: `@egoist/asuka-prebuilt-<target>`
+(ios-arm64, ios-sim-arm64, ios-sim-x64, darwin-universal,
+android-arm64-v8a, android-armeabi-v7a, android-x86_64, wasm32,
+linux-x64, linux-arm64, windows-x64, windows-arm64) and
+`@egoist/asuka-prebuilt-android-aar` (Kotlin is the same for every ABI,
+and the dev player needs one ABI's C, not three). They aren't the CLI's
+optional dependencies: those install the host's platform only, and a
+build cross-compiles. The CLI embeds only their manifest
+(`internal/prebuilt/manifest.json`: each package's exact version and
+tarball integrity, each library's path and SHA-256, what compiler built
+it); the first build that needs a target's fetches its package from the
+npm registry (`npm_config_registry`, the project's `.npmrc` beside its
+`asuka.toml` or `package.json`, the user's: `registry`,
+`@egoist:registry`, `//host/:_authToken` or `_auth`, `${VAR}`
+expanded), checks the tarball against the pinned `sha512` (a registry
+or mirror can't give another), unpacks it into the cache (`prebuilt/`)
+and checks each library's hash as it's first used. A prebuilt library
+is used only when its sources are the CLI's own (not a checkout's, not
+`ASUKA_CORE`'s) and the build's compiler is the family that built it
+(Zig's, Xcode's, the NDK's), or, for Linux, any compiler for glibc
+(gcc, clang): Zig builds Linux's against an old glibc
+(`cbuild.LinuxGlibc`, 2.28), and they need nothing of Zig's runtime.
+(Windows' are MinGW's, which a compiler for MSVC's runtime can't link.)
+A CLI run from a checkout has an empty manifest and builds the same
+units into the cache.
+
+**Swift: modules with library evolution.** The host's Swift (the module
+`Asuka`, with its compilation conditions) and each native package's
+(its one target, against the host's module) are compiled by swiftc as
+modules with `-enable-library-evolution`, each a static library and a
+module interface (`<Name>.swiftmodule/<triple>.swiftinterface`): the
+stable form Apple ships its frameworks in, which the swiftc that wrote it
+and later ones read. A release prebuilds them with the oldest Xcode
+Asuka supports (pinned in the release workflow), an XCFramework per
+module of each package's slice: the host's variants a build can share
+(iOS: `base`, none of its optional parts, most apps'; `all`, asuka dev's
+player's; the Mac: an app's and a program's, their entries the only
+difference) and every std and sdk package's, built against the
+interface of `all` (the Mac's app), which every variant's is a subset of
+in its additions only, so a package links with any. A build uses them
+when its swiftc is that one or newer; else (an older Xcode, a checkout,
+a host variant with other parts) it compiles them into the cache's Swift
+store, keyed by swiftc's version, the SDK's, the target, the
+configuration and the sources. An app with no Swift of its own then
+links only; its own packages compile against the modules' interfaces
+(swiftc's module cache is in the store). A package swiftc can't build
+alone (SwiftPM dependencies of its own, resources, settings:
+std/lottie) is built with the rest by xcodebuild, as Xcode would.
+Library evolution costs little on the native call path: the generated
+glue's reader and writer calls across the module boundary measured 85-90
+ns against 84-86 ns without it (in a 2M-call loop of the glue's shape).
+
+**Kotlin: AARs.** An app's Gradle build depends on AARs of the host's
+modules (`dev.asuka:asuka`, `asuka-video`, `asuka-push`,
+`asuka-periodic`) and of the std and sdk packages' (`dev.asuka:std-<name>`,
+`sdk-<name>`) from a local Maven repository instead of compiling their
+modules: the release's (the android-aar package's `maven/`, versioned
+as the CLI), else published once by the CLI into the cache's `maven/`,
+each versioned by a hash of its sources (a package's POM depending on
+the host's version). The app's own native packages' modules compile
+with it as before; Gradle's build cache is on for what remains.
 
 ## Repository layout
 
 ```
 asuka/
-  signal/            reactivity
-  ui/                components, nodes, flush, flattening, navigation
-  colors/            semantic colors and RGB/Hex, for a Style
-  fonts/             semantic text styles, weights, families, for a Style
-  layout/            flexbox
-  ops/               schema, Go encoder; generate writes Swift/Kotlin decoders
+  core/              the C core: base, signal, layout, ops, ui (the UI
+                     runtime), vm (bytecode, tasks), rt (values, the
+                     scheduler, streams, JSON), native, abi; host/fake
+                     (the test host) and runner (asuka-run)
+  lang/              the Asuka compiler: syntax, check, ir, bytecode, cgen
+                     (bytecode to C), prelude (the elements), compile
+                     (the driver), lsp (the language server)
+  std/               the standard library's packages (std/<name>)
+  sdk/               the platform SDK's packages (platform/<name>)
+  ops/               the wire's schema; go generate writes the C, Swift,
+                     Kotlin and JavaScript codecs
   i18n/              languages, catalogs, ICU messages, CLDR's formats
-  vet/               asuka vet's analyzers
-  host/              Host interface, Environment
-    fake/            records ops, measures by fixed rules; for tests
-  mobile/            C ABI (cgo, ios||android)
-  platform/ios/      Swift package
-  platform/android/  Kotlin/Gradle library
-  app/               app.Root, lifecycle
-    remote/          what asuka dev links in to serve a player
-  sdk/               the packages beyond the core: what the platform offers
-                     (biometric, camera, push, tray…) over native modules,
-                     and libraries over ui (chart, markdown, svg, store…);
-                     sdk/sqlite is a plugin (SQLite's own C, no cgo)
-  plugin/            plugins' manifests, fetching and linking
-  native/            native packages' runtime: the codec, modules, views
-  internal/nativegen/ asuka native's generator (Go, Swift, Kotlin, JavaScript)
-  cmd/asuka/         CLI
+                     (compiled into what the core says)
+  internal/nativegen/ asuka native's generator (Swift, Kotlin,
+                     JavaScript, C)
+  platform/ios/      the Swift host and decoder
+  platform/macos/    the Mac's Swift host (AppKit; the decoder iOS's),
+                     its tests (mactest: apps on the Mac player, driven
+                     through its automation)
+  platform/android/  the Kotlin host and decoder (Gradle)
+  platform/web/      the JavaScript host and decoder; the core runs in the
+                     page as WebAssembly
+  platform/windows/  the Windows host, C17 on Win32 (src/), its tests
+                     (Go, driving apps in Windows) and portable C tests
+  platform/linux/    the Linux host, C17 on GTK 4 and libadwaita opened
+                     with dlopen (src/), its tests (Go, driving apps
+                     under Xvfb) and fake D-Bus services
+  platform/desktop/  what the C desktop hosts share: asuka_desktop.h, the
+                     native registry, packages' shared C (fetch, COM,
+                     GLib, WebView2), its tests' test host; and desktop.h,
+                     the hosts' own (JSON, files, the app's settings and
+                     directories, window and route state, flyouts'
+                     places, Asuka's own words, animated images)
+  cmd/asuka/         the CLI
+  internal/          the CLI's parts: cbuild (building the core, the
+                     object cache), ccache (the build cache), prebuilt
+                     (what a release carries, from npm), appbuild,
+                     devserver, pkgs (packages), boot, ...
   template/          what `asuka new` copies
-  examples/counter/  examples/todo/  examples/list10k/  examples/navigation/
-  conformance/       what every host draws for a Style, measured on its pixels
+  examples/          apps in Asuka
+  conformance/       what every host draws for the style props, measured
+  bench/             Asuka against SwiftUI and Compose
+  e2e/               GUI tests on the simulator, the emulator, the
+                     desktops and headless Chrome
 ```
-
-The web adds `host/web` (the Go side, `js && wasm`) and `platform/web`
-(the JavaScript host: `src/`, with the generated `ops.js` and
-`symbols.js`, `gen_symbols.go`, and the decoder's tests).
-
-Desktop adds `host/darwin` and `internal/darwin` (macOS),
-`host/windows` and `internal/windows` (Windows), and `host/linux` later.
 
 ## Testing
 
-- `signal`: unit tests for glitch-freedom (diamonds), laziness of memos,
-  disposal (no effect runs after its owner is disposed), batching, and
-  the panics. Benchmarks from js-reactivity-benchmark's cases.
-- `layout`: Chrome's results on Taffy's CSS fixtures as table tests,
-  plus counts (measures, changed frames) and allocations.
-- `ui` with `host/fake`: assert the op streams. Performance is asserted
-  by counts, never time:
-  - one `Set` on a signal one `Text` reads gives exactly one `SetProp`,
-    at most one `Measure`, and only the `SetFrame`s of boxes that moved;
-  - `For` moving one of 1,000 rows gives one `Remove` and one `Insert`;
-  - a `List` of 10,000 items binds only the cells the host asks for;
-  - rebinding a recycled cell to an item that differs in one field
-    gives one `SetProp`;
-  - a flattened container makes no native view;
-  - popping a screen disposes every owner it made;
-  - steady-state flushes allocate nothing (`testing.AllocsPerRun`).
-- Apps: `uitest` mounts an app's components on `host/fake` in its own
-  `go test` and drives them by what the screen shows (tap, type, back,
-  a row's swipe action), as a user would: only what shows counts (a
-  stack's top screen, the selected tab, a list's rows that fit, which
-  it binds as a collection view does), and taps reach only the top
-  modal layer. It settles after each action (posted work, flushes, list
-  binding), waits on the app's goroutines through the host's posts
-  (never a sleep), and on cleanup fails the test if a view outlives
-  the root. Text is measured by the fake host's rules, so frames hold
-  relative to each other, not to the point. `Snapshot` describes the
-  screen for golden files (`-uitest.update`).
-- `host/darwin` (macOS): tests mount components on the real AppKit
-  host, on the main thread (`TestMain` keeps it), and check the views
-  (their text, frames, clicks, list binding, navigation, disposal).
-- `host/windows` (Windows), likewise on real Win32 windows: a click
-  through the BUTTON's `BM_CLICK`, typing into the EDIT, a 10,000-row
-  list binding only what shows, a stack's back button disposing the
-  screen, and disposal destroying every window.
-- `ops`: the Go encoder and the generated Swift, Kotlin and JavaScript
+- The core (`go test ./core`): C tests under ASan and UBSan, a file per
+  area (`core/test/*_test.c`): signals (glitch-freedom, laziness,
+  disposal, batching), layout (Chrome's results on Taffy's CSS fixtures,
+  measures and allocations counted), ops (byte-identical to the golden
+  batches), the UI runtime on the fake host (op streams: one write to
+  state a Text reads gives one SetProp; a list of 10,000 items binds
+  only what shows; a popped screen disposes every owner it made;
+  steady-state flushes allocate nothing, `ak_alloc_count`), the VM and
+  the release backend (every module run on both, which must agree).
+- The compiler (`go test ./lang/...`): the parser and printer, the
+  checker's diagnostics (`testdata/errors`, `// ERROR` comments), and
+  programs (`lang/compile/testdata/run` and `ui`) run on the VM and
+  compiled to C, which must print the same: the language's conformance
+  suite, UI programs driven on the fake host included.
+- Apps: `test` blocks (`asuka test`) mount views on the fake host and
+  drive them by what the screen shows (`tap`, `type`, `expect`), as a
+  user would; the clock moves only when nothing else can run, so a
+  `sleep(5s)` takes no time and nothing waits on wall-clock time.
+- The macOS host (`go test ./platform/macos/mactest`): each test's
+  Asuka app runs on the Mac player (the Swift host and the core, built
+  once by the CLI), sent as asuka dev sends it; the test drives it
+  through the host's automation (a click through the button's action,
+  typing, keys, menus) and checks the host's own views, windows, menu
+  bar and tray in the JSON tree it writes (frames, texts, controls'
+  states, layers, list binding, disposal). Its Swift's unit tests:
+  `swift test --package-path platform/macos`.
+- The Windows host (`go test ./platform/windows`): each test compiles an
+  Asuka app to C, builds it into one executable with Zig, and runs it in
+  Windows (on Windows, or in the swiftvm VM `ASUKA_WINDOWS_VM` names,
+  through a scheduled task in the signed-in user's session, since a
+  window needs a desktop) with `ASUKA_SCRIPT` steps, then checks the
+  view tree each `snap:` step dumps and the PNGs (a click through the
+  button's action, a sheet's form, list rows bound, rich text typed,
+  overlays, drawing by pixel, drops, UI Automation read by a client).
+  `TestPortable` runs the host's C that needs no Windows (RTF) here,
+  under ASan and UBSan; `go test ./platform/desktop` the shared C.
+- The Linux host (`go test ./platform/linux` under `xvfb-run -a
+  dbus-run-session`): likewise, its apps built into the executable an
+  app ships and driven in real GTK windows (`ASUKA_SCRIPT`), the views
+  read back (`ASUKA_DUMP`), with fake D-Bus services for notifications
+  and the tray.
+- `ops`: the C encoder and the generated Swift, Kotlin and JavaScript
   decoders round-trip the same golden batches (`swift test --package-path
   platform/ios`; `./gradlew :asuka:testDebugUnitTest` in `platform/android`;
   `node --test platform/web`).
-- Hosts: GUI tests (`e2e/`, build tag `e2e`, in CI on a simulator and
-  an emulator) build `examples/` with `asuka dev --once` and drive them
-  through the native views. Debug builds take automation commands (tap,
-  type, submit, back, tab, rotate, dump: what the screen shows), on iOS from a file in the
-  app's container on the `dev.asuka.automation` Darwin notification
-  (`platform/ios/Sources/AsukaHost/Automation.swift`), on Android from a
-  `dev.asuka.automation` broadcast (`Automation.kt`; the dump read with
-  `run-as`). So both platforms run the same test, and neither needs
-  UI Automator's single connection, which device tools hold. Each test
-  waits for the screen to show what it expects, bounded so a broken app
-  fails.
-- Rendering (`conformance`): each host draws one sheet of cases
-  (a background's edges, rounded corners, borders, opacity and group
-  opacity, clips, shadows, gradients, transforms) between two
-  registration markers; its runner captures the screen, and the cases
-  measure the pixels: where an edge is to the device pixel, a shadow's
-  Gaussian σ, a color's mix. They assert measurements with tolerances,
-  not pixels against a reference, so one set holds for every host at
-  any scale, as Graphite's backend conformance suite does. Runners:
-  `host/darwin` (Core Animation's own renderer, `CARenderer`, into a
-  Metal texture: NSView's `cacheDisplayInRect` leaves out transforms and
-  shadows), `host/windows` (`PrintWindow`), and `e2e` on the simulator,
-  the emulator and headless Chrome at 1×, 1.5× and 2× (the DevTools
-  protocol's screenshots). A host that documents lacking a feature
-  (Android's elevation shadows) skips its cases, with the reason.
+- The CLI (`go test ./cmd/asuka ./internal/...`): builds for every
+  platform, the dev loop's reloads keeping state (on the Mac, the
+  simulator, the emulator and headless Chrome), an app with standard
+  library packages built and run on the Mac (`TestBuildMacStd`).
+- Hosts end to end (`e2e/`, build tag `e2e`): the examples built and
+  driven through the native views on the simulator, the emulator, the
+  desktops and headless Chrome. Debug builds take automation commands
+  (tap, type, submit, back, tab, rotate, dump: what the screen shows),
+  so every platform runs the same test.
+- Rendering (`conformance`): each host draws one sheet of cases (a
+  background's edges, rounded corners, borders, opacity and group
+  opacity, clips, shadows, gradients, transforms), written in Asuka,
+  between two registration markers; its runner captures the screen, and
+  the cases measure the pixels: where an edge is to the device pixel, a
+  shadow's Gaussian σ, a color's mix, with tolerances, not against a
+  reference, so one set holds for every host at any scale. A mix is
+  measured between the colors as the capture shows them (the sheet's
+  swatches of the cases' colors), in the space the host blended in: the
+  Mac's window server blends in the display's (Display P3 on its own
+  screen), where sRGB red at half opacity over white is half way to that
+  red, not to sRGB's. Runners: `platform/macos/mactest` (the window
+  server's image of the window, in the display's space),
+  the Windows host (`PrintWindow`), and `e2e` on the simulator, the
+  emulator and headless Chrome at 1×, 1.5× and 2×.
 - Tests never pass or fail on wall-clock time: wait for the condition,
   count the work.
 
 ## Milestones
 
-Each one ends with its examples running and its tests in CI.
+Asuka was first a Go framework: apps in Go on a Go core, which reached
+every platform this document describes (iOS and Android, then the
+desktops and the web) with the hosts, the wire, the layout and the CLI
+that remain. RFC 0007 replaced the app language with Asuka and the core
+with C; its milestones are the rewrite's, each ending with its tests
+green:
 
-- **M0, core without UI** (done): `signal`, `ui` with `host/fake`,
-  `layout`, `ops` with the Go encoder. Everything above under `go test`.
-- **M1, iOS** (done): Swift codegen for `ops`, `mobile/`, `platform/ios`,
-  `asuka new`, `asuka dev --platform ios` on the simulator. Counter, todo (`For`,
-  `TextField`, `Toggle`, `SafeArea` with the keyboard) and list10k
-  (`List`) run. Not yet: XCUITest GUI tests and CI on macOS runners.
-- **M2, Android** (done): Kotlin codegen, `platform/android`,
-  `asuka dev --platform android` on the emulator, Activity recreation
-  (`asuka_attach`). The same examples run unchanged; live rotation, dark
-  mode, font scale and the keyboard (insets, animated) work. Not yet:
-  Espresso GUI tests.
-- **M3, mobile app structure** (done): `Stack` with native back
-  gestures (iOS swipe, Android predictive back), `Tabs`, `Sheet` (detents,
-  grabber, the keyboard), `Alert` and action sheets, `Menu` (buttons,
-  tap and long press), pull to refresh, haptics; the navigation example
-  runs on both. Not yet: gestures beyond press and long press (pan,
-  pinch, swipe: moved to M4).
-- **M4, the rest of mobile v0** (done): gestures (pan, pinch, swipe),
-  `ui.Native` with the app's Swift and Kotlin, native animations
-  (`ui.Animate`), images loaded and decoded off the main thread by the
-  host, with a cache; the media example runs on both. (`Activity`, the
-  spinner, came with M1.)
-- **M5, dev without reinstalling** (done): the socket transport and the
-  player apps (iOS simulator and devices, Android emulator and devices);
-  app state survives a reload with no code.
-- **M6, shipping** (done): `asuka.json`, `asuka build --platform ios` (signed `.ipa`;
-  `--simulator`), `asuka build --platform android` (`.aab`), `asuka
-  publish` (the build uploaded through the stores' APIs: TestFlight's
-  groups and beta review, App Review; a Play track, staged). Not yet:
-  screenshots and store listings (App Store Connect and the Play Console
-  do those).
-- **Split screen** (done): an iOS build is an iPad app too
-  (`UIDeviceFamily` 1 and 2; `ios.iphoneOnly` leaves iPad out), in every
-  orientation there, as Split View, Slide Over and Stage Manager need;
-  the Android Activity is resizable and handles size changes live
-  (`configChanges`). Both report the window's size, not the screen's, as
-  the environment, so the root lays out again at any size the user
-  gives the app, and its size classes (`Environment.WidthClass`,
-  `HeightClass`): UIKit's on iOS (compact; regular as expanded),
-  Material's window size classes on Android (compact, medium,
-  expanded), each platform's own, so an app that branches on them
-  follows each one's conventions. A host that reports none (macOS,
-  Windows) gets Material's, which the core works out from the size.
-- **Rich text** (done): `ui.RichText` (spans, per-line backgrounds,
-  links, per-paragraph layout cache prepared off the main thread, inline
-  components), links as accessibility elements, `ui.Selectable`
-  (selection across texts), and the `markdown` package (incremental,
-  streaming). See "Rich text".
-- **M7, toward a production release** (in progress). Done:
-  - `ui.Symbol` and icons on buttons and actions: SF Symbols on iOS; on
-    Android their Material Symbols, a curated set generated by
-    `platform/android/gen_symbols.go` with TalkBack labels.
-  - Multiline `TextField`, growing to `Lines` lines, then scrolling.
-  - Menus as SwiftUI's: an `Action` can be `Disabled` or `Checked`,
-    open a submenu (`Children`) or be a titled section of its menu
-    (`Inline`), each following its signals; items are numbered depth
-    first (ops/actions.go), the same encoding for menus, bar buttons
-    (which open their children as a menu), alerts (whose buttons follow
-    `Disabled` while they show) and swipe actions (flat). UIMenu's
-    attributes, state and inline menus; Android's checkable items,
-    `SubMenu`s and groups with dividers; NSMenu's states, submenus and
-    section headers; Win32 menus with an owner-drawn header; GMenu
-    sections, submenus and stateful actions; the ARIA menu pattern.
-  - `ui.Segmented`, `ui.Progress` and `ui.DatePicker`, each the
-    platform's control (Material's pickers on Android).
-  - `ui.ProgressRing`: circular progress with a value, or without one
-    (the platform's indeterminate indicator). It is Material's
-    CircularProgressIndicator, NSProgressIndicator's spinning style and
-    Fluent's ProgressRing. iOS and Linux, which have no determinate
-    ring, draw one in their own style. The web draws an SVG ring. A
-    Mac's NSProgressIndicator draws only at 16 and 32 points and only
-    in the accent color, so at any other size or in a Color the macOS
-    host draws AppKit's circle and spinner itself, in the colors read
-    from AppKit's own drawing.
-  - List swipe actions, `OnEndReached` and `ui.ScrollToItem`.
-  - `ui.OnFrame`: a callback each vsync (CADisplayLink at up to 120 Hz,
-    Choreographer) while one is registered, for animation the app
-    computes, as TimelineView(.animation) and withFrameNanos.
-  - `ui.Video` (AVPlayerViewController; Media3's ExoPlayer and
-    PlayerView): its natural size, the platform's controls, AutoPlay,
-    Loop, Muted, `OnEnd`; `ui.Play`, `ui.Pause`, `ui.Seek`.
-  - `ui.WebView` (WKWebView, Android's WebView): a URL, an asset or
-    markup; `OnLoad`, `OnError`; the page posts to Go with
-    `window.asuka.postMessage`, the same on both, and `ui.EvalJS` runs
-    script in it.
-  - Grids: `ListProps.Columns` and `Gap` (a compositional grid on iOS,
-    a GridLayoutManager on Android); the core lays each cell out at
-    exactly the column width the host gives it.
-  - `asuka/sdk/store` (small values kept across launches, `store.Signal`),
-    `ui.Copy`, `ui.Share`.
-  - The app's accent color (`asuka.json`).
-  - The device's time zone as Go's `time.Local`.
-  - Motion: `Style.Transform`, shadows, gradients, `Style.Material`
-    (blur), repeating animations, enter and exit `Transition`s.
-  - `asuka/sdk/sqlite` (SQLite's C, no cgo; live queries with `sqlite.Watch`), native
-    modules (`ui.Call`: `asuka/sdk/secure`, the keychain and Keystore;
-    `asuka/sdk/device`: info, an in-app browser, the photo picker).
-  - A search field in the navigation bar (`ScreenOptions.Search`).
-  - A screen's bottom toolbar and primary action (`ScreenOptions.Toolbar`,
-    `Primary`, `PrimaryExtended`; the Screen's Toolbar and Primary props,
-    encoded as menus, whose Action events add ops.ScreenToolbarActions and
-    ops.ScreenPrimaryAction to the item's number): the navigation
-    controller's toolbar (the primary item prominent, the tab bar hidden
-    under a pushed screen's), Material's `BottomAppBar` and
-    `FloatingActionButton` (docked, or extended and shrinking as the
-    content scrolls), the window's toolbar on a Mac, a Fluent command bar,
-    a `GtkActionBar` in an `AdwToolbarView`, a bar and a floating button
-    on the web.
-  - Incoming links: `asuka.json`'s `scheme` and `links`, `ui.OnOpenURL`.
-  - Shares from other apps: `asuka.json`'s `shareTarget` (`true`, or
-    `{"types": [...], "max": n}`), `ui.OnShare` (a list of
-    `SharedItem`s: texts, links and files). Android takes `ACTION_SEND`
-    and `ACTION_SEND_MULTIPLE` in the app's Activity, with intent
-    filters for the types, and copies the files to the app's caches off
-    the main thread. iOS has a share extension (`platform/ios/Share`, a
-    `.appex` in the app's PlugIns, built by the CLI with no Go in it),
-    whose activation rule comes from the types: it takes texts, web
-    links and files, then opens the app with them in a URL of a scheme
-    of the app's (`asukashare.<app ID>`; the items as JSON), through the
-    application at the end of its responder chain, as an extension has
-    no `UIApplication.shared`. Files go through the App Group
-    `group.<app ID>`: the extension copies them there, the app moves
-    them to its caches. The host turns that URL into the `Shared` event
-    (its items in bytes), so both platforms open the app, as the user
-    expects of a "Download" or "Save" target. The extension has its own
-    bundle ID (`<app ID>.share`) and, on devices, its own provisioning
-    profile, which has the App Group when the app takes files.
-  - The app's own share sheet: `app.ShareSheet(screen)`. The sheet is
-    a root of its own in a process of its own, the share extension's
-    model on both: `ui.ShareSheetRoot` shows the screen once the
-    `Shared` event comes to its root (`OnShare`'s handlers are the
-    root's they were made in), and `ShareClose` (done, cancelled, open
-    the app) ends it. The process says it's a sheet's with
-    `ASUKA_SHARE_SHEET`; `app.Run` mounts the sheet then. iOS: the host
-    and the app's Go code are a dynamic framework,
-    `Frameworks/AsukaApp.framework` (Go's runtime starts as it loads);
-    the app's executable is a main that starts the host's delegate
-    (`AsukaAppDelegate`), the extension's links the framework and starts
-    at `NSExtensionMain`, its principal class
-    `AsukaShareSheetController`, which collects the items
-    (`AsukaShareCollector`, shared with the standalone extension). An
-    app without a sheet stays one executable.
-    The app's data is in the App Group for both (`store.Dir`, from the
-    host through `mobile/shareddir`, a cgo call, since `store.Signal`s
-    in package variables read it as packages initialize), moved there
-    once; the keychain group is the app's in both. Android:
-    `AsukaShareActivity`, in a `:share` process, translucent, a
-    `BottomSheetBehavior` sheet; the process ends with the sheet.
-    `asuka dev`: a share sheet's player tells the core (`mShareSheet`)
-    and its session mounts the sheet; on iOS the player's extension
-    finds the address in the App Group. The CLI looks for
-    `app.ShareSheet`'s symbol (in the archive on iOS; in the function
-    names a release's `.so` keeps on Android).
-  - Sharing files: `ui.ShareFiles` (expo-sharing's `shareAsync`), the
-    `share` module's `files`: `UIActivityViewController` with an item
-    source for the type, anchored to a view on iPad; Android's chooser
-    through the FileProvider, answered when the user is back; the Mac's
-    sharing service picker.
-  - Custom fonts (`Font.Family`).
-  - Accessibility: pressable views as buttons, `Decorative`,
-    `ui.Announce`, swipe actions for TalkBack, Reduce Motion.
-  - Scroll position: `OnScroll` on `Scroll` and `List`, `ui.ScrollTo`
-    and `ui.ScrollToEnd`. Android posts its scroll events to the next
-    turn of the main loop: a scroll runs while the view draws, and the
-    core changing views then stops it.
-  - GUI tests on CI (`e2e/`): the counter; notes (a text field,
-    SQLite, a List, a relaunch); navigation (a push, a sheet with a
-    field, back, tabs); chat (a list anchored at its bottom staying at
-    its end as messages come), on both platforms. `ASUKA_DEVICE` picks
-    one of several simulators or emulators.
-  - Images fetched over http(s) kept on disk across launches (256 MB,
-    least recently used first; not a `no-store` response, nor asuka dev's
-    assets from this machine), and `ImageProps.Placeholder`.
-  - `examples/gallery` shows each; `examples/notes` is SQLite's.
+- **Done**: the language and its compiler (lang/: front end, checker,
+  bytecode, the VM, the C backend, both passing one conformance suite);
+  the core in C (signals, layout at Chrome's parity, ops byte-identical
+  to the golden files, the UI runtime, tasks and streams); iOS, Android
+  and the web on it, with `asuka dev`'s bytecode reloads keeping state;
+  the desktop hosts on it (the Mac in Swift, Windows and Linux in C);
+  packages from the npm
+  registry; the standard library (`std/`).
+- **In progress** (RFC 0007's N1): what the examples still ask of the
+  platforms (examples/STDLIB.md) as standard library packages (native
+  packages and `native fn`s). The Go app runtime is gone (RFC 0007's
+  X): Go is the CLI's, the compiler's, the generators' and the tests'.
 
-  - Lists for chats and mail: `Anchor` (a chat's, at its bottom),
-    `OnStartReached`, rows added above what shows leaving it in place,
-    sections with headers that stick, selecting rows (`Selecting`,
-    `Selected`, `OnSelect`, `OnSelectBegin`), leading swipe actions;
-    desktop rows' swipe actions in their context menus.
-  - Text fields: `Selection`, `ui.InsertText`, pasted and keyboard
-    content (`PasteTypes`, `OnPaste`); on iOS the keyboard followed
-    frame by frame through its interactive dismissal.
-  - Rich text fields (`TextFieldProps.Rich`: bold, italic, underline,
-    strikethrough, code, links; `ToggleFormat`, `SetLink`, `OnFormats`),
-    on every host (Windows through RTF, `internal/rtf`).
-  - A text's and a field's padding inside their frames (`ContentInset`).
-  - `examples/chat` and `examples/mail`.
-
-  - More mobile APIs: `ui.OnBack` (screens, sheets, popovers and
-    the app take the user's going back: `navigationItem.backAction`,
-    `isModalInPresentation`, Android's back callbacks, `BackExit`);
-    `Environment.ScreenReader` and `ui.AccessibilityFocus`; `ui.Catch`
-    (an error boundary: `signal.Catch` owners recover their effects'
-    panics, effects outside every Catch run with no recover); tooltips;
-    `ScrollProps.Paging` and `ui.PageControl`; `ui.Popover` (a
-    content-sized layout root, `fits`); `TextFieldProps.Accessory` (a
-    full-width content-sized root: `inputAccessoryView`, and a bar on the
-    keyboard on Android); `ui.Canvas` (a display list, re-recorded with no
-    allocation) and `asuka/sdk/chart` on it; `ui.Shader` (a Kage shader, Go's
-    syntax, compiled in Go by package `shader`: Metal on iOS and macOS,
-    AGSL on Android, HLSL and Direct3D 11 on Windows, GLSL and OpenGL on
-    Linux and WebGL 2 on the web); `ui.SplitView`
-    (`UISplitViewController`, collapsing into a stack on iPhone; Material's
-    navigation drawer; `Replace` resets a stack at once); springs with
-    `Damping` and `Velocity`, `Delay` and `OnDone`; `ToggleProps.Checkbox`;
-    named `ContentType`s; and embedding in an existing app
-    (`asuka build --platform ios --xcframework`, `asuka build --platform android --aar`).
-
-  docs/parity.md has what Asuka has against SwiftUI and Expo;
-  docs/device-checklist.md, what's left to check on real devices.
-
-  Next:
-  - More accessibility: adjustable custom controls, and checking every component with VoiceOver and
-    TalkBack on a device.
-  - More GUI tests: gestures, alerts and menus, the gallery.
-- **Then desktop** (below), on the same core and `ops`: macOS, Windows,
-  Linux and the web, each its own host, done.
-- **macOS** (done): `host/darwin`, AppKit in the app's process
-  through purego (`internal/darwin`, MyGo's Objective-C runtime layer),
-  no cgo; `app.Run` runs it on macOS. `asuka dev --platform mac` (an `.app` like a
-  release's, its assets read in place, its privacy prompts its own;
-  rebuild and rerun on save, signals' state kept) and `asuka build --platform mac` (a universal,
-  signed `.app` with its icon and assets). The examples run. Done: the
-  v0 components, navigation (below), rich text (an `NSTextView`), shapes,
-  images, symbols, gestures, menus, animation, `WebView`, `Video`; tests
-  in `host/darwin` drive real AppKit views. Native modules: `secureStore`
-  (the login Keychain, which an app signed ad hoc can use), `device`
-  (info, clipboard, keep awake), `browser` (the user's browser), `photos`
-  (an open panel). Screen reader actions and adjustable views
-  (`NSAccessibilityCustomAction`, increment and decrement); enter and
-  exit transitions (the frame carries the scale and offset). Windows,
-  the menu bar and shortcuts (below): each `ui.Window` an `NSWindow`
-  with its own toolbar and title (its innermost stack's), cascaded from
-  the window in use; a sheet and an alert go over the window they're
-  declared in (their `Window` prop: an alert's, the window of the view
-  whose event shows it), whichever is in use. The
-  app's menus join the Mac's own: one titled File, Edit, View, Window or
-  Help adds its items to it, the others go between View and Window; a
-  disabled item is off through `validateMenuItem:`, as is Back with no
-  screen to go back from. Swipes, the inline date picker; the WebView's
-  blocked requests, downloads and state, `EvalJSResult`, `WebCookies`
-  and asuka/sdk/js; device's files and clipboard modules; network
-  (NWPathMonitor), location (Core Location), speech
-  (AVSpeechSynthesizer), audio (AVPlayer), biometric (Touch ID), review;
-  matched views (`Match`); pull to refresh (a trackpad's elastic pull
-  past the top); native packages in Swift (loaded from the bundle) or Go (package
-  `native`, below);
-  notarization (`asuka build --platform mac --notarize`).
-  Every module the packages call answers (below): the camera (its view,
-  capture, recording, codes; `Take` a sheet of the host's), audio
-  recording, contacts, calendars, the photo library and saving to it,
-  scan, vision, transcribe, imageedit, push (APNs), background, periodic
-  (`NSBackgroundActivityScheduler`), Sign in with Apple and its button,
-  webauth, maps (`MKMapView`), tracking, App Attest, screen capture;
-  sensors, widgets and the age range aren't a Mac's ("not available").
-  The CLI gives a Mac app its purpose strings and its hardened runtime's
-  entitlements for them, and its provisioning profile (`--profile`,
-  `ASUKA_MAC_PROFILE`, asuka.json's `mac.profile`, else the best match
-  installed for an app that needs one): embedded as
-  `Contents/embedded.provisionprofile`, the app signed with its app ID,
-  team and what its packages need of the profile's entitlements (push's
-  `com.apple.developer.aps-environment`, Sign in with Apple, App Attest,
-  detected from the imports as on iOS), with the identity the profile
-  allows; without one the build says what won't work. `--appstore`: the
-  app sandboxed, signed with a Mac App Store profile, in a `.pkg`
-  (`productbuild`, Mac Installer Distribution). Not yet: `ZoomFrom`'s
-  zoom (a push slides), beginning a List's selection with a gesture
-  (`RowSelectBegin`), a development profile for `asuka dev`.
-- **Windows** (done): `host/windows`, Win32 and the common
-  controls (version 6) in the app's process through `syscall`
-  (`internal/windows`, much of it MyGo's), no cgo, no WinUI; `app.Run`
-  runs it on Windows (amd64 and arm64). `asuka dev --platform windows` (rebuild and rerun on
-  save, signals' state kept) and `asuka build --platform windows` (a folder of the
-  `.exe`, with its icon, manifest and version built in, signed and
-  timestamped with `ASUKA_WINDOWS_CERT` (by the first timestamp server
-  that answers, `ASUKA_WINDOWS_TIMESTAMP`'s or DigiCert's, Sectigo's,
-  GlobalSign's; signtool on Windows, osslsigncode elsewhere), and its
-  assets; for amd64, or
-  `--arch arm64`; from any system). The examples run (counter, todo, list10k,
-  navigation, gallery, richtext, markdown, notes, media but its native
-  view, usage, downloader), light and dark, at any DPI. Done: the v0
-  components, navigation, rich text (RichEdit), shapes, images, symbols
-  (Segoe Fluent Icons), gestures (press, long press and right-click,
-  pan and swipe with the mouse), menus, animation of frames, `WebView`
-  and `Video` (WebView2), the accent and color scheme; windows, the
-  menu bar and shortcuts (below): each `ui.Window` a top-level window of its
-  own, the app's menus an `HMENU` on the main window with an
-  accelerator table that works in all of them, `WindowOptions` the main
-  window's title, client size and least size; tests in `host/windows`
-  drive real windows. Pinch and rotate (touch, the touchpad, Ctrl and
-  the wheel), the header's search field, the inline date picker, the
-  native modules: every module Asuka's packages call answers (below:
-  implemented where Windows has it, an answer of the package's protocol
-  saying it hasn't where it hasn't; `TestEveryModuleAnswers` checks);
-  native packages' views and modules in Go (package `native`); screen
-  readers through UI Automation (below); shadows (drawn by the parent);
-  enter and exit transitions and matched views (the frame carries them);
-  pull to refresh (F5). Rounded clips (a window region, the corners
-  antialiased by the parent), opacity between 0 and 1 for a view with
-  child windows and rotations (pictures, below), translations and
-  scales (the frame, and the scale of what's in it), materials, the
-  dark date picker, the share UI (text, links and files); the native
-  modules share, network (the Network List Manager), notify (toasts),
-  speech (SAPI), audio (MCI) and location (WinRT's Geolocator); native
-  arm64 builds; code signing; the camera (Media Foundation's capture
-  engine: its view, photos, video, `Take`), audio recording (AAC),
-  webauth (WebView2), Windows Hello for biometrics, vision (Windows'
-  OCR and face detector), imageedit, the Pictures folder as the photo
-  library, background and periodic tasks, screen capture prevention;
-  contacts and calendars (a packaged app's) add through the user's app;
-  toasts' buttons, replies and background actions (the app's COM
-  activator), the taskbar's badge, place names (OpenStreetMap's
-  Nominatim), codes in images and the camera's frames (`internal/barcode`,
-  in Go), a map view of OpenStreetMap's tiles.
-- **Web** (done): `host/web` and `platform/web` (below); `app.Run`
-  runs it on `js/wasm`. `asuka dev --platform web` (serve, rebuild and reload on
-  save, signals' state kept; the app's output and the page's errors in
-  the terminal) and `asuka build --platform web` (a static site). The examples run,
-  light and dark, left to right and right to left, at any size;
-  GUI tests (`e2e`, `-run Web`) drive them in headless Chrome. Done: the
-  v0 components, navigation (the browser's back included), rich text and rich text fields (an editable element; formatting through the browser's editing, so its undo covers it),
-  shapes, canvas, shaders (WebGL 2), images, symbols, video,
-  gestures, drag and drop, menus, animation, transitions, matched views,
-  the app's files kept (IndexedDB, large files in chunks), `asuka/sdk/sqlite`
-  (its C built to WebAssembly, in a worker, below; live queries), the native modules
-  a browser has (`platform/web/src/modules`: the secure store under a
-  non-extractable WebCrypto key, device, clipboard, pickers, share,
-  preview, print, compose, notifications, Web Push, network, location, sensors, speech, audio, recording, the camera and
-  `camera.View`, image editing, codes, WebAuthn for biometrics, web
-  auth; the others answer that the web hasn't them), web views (all of
-  it for the app's own origin; another site's page loads, and talks
-  through `postMessage` if it cooperates), native packages' views and
-  modules (their `web/`), several apps on one page; the app's service
-  worker (`platform/web/src/sw.js`, which the CLI ships with every web
-  app, named by its digest, beside `index.html`): notifications with
-  their actions and inline replies that stay and answer after the page
-  closes (a tap opens a page, which gets the response as it starts),
-  `asuka/sdk/push` as Web Push with the app's VAPID key (`web.vapidPublicKey`;
-  the subscription is the token; the page in front rewrites and presents
-  a push), `asuka/sdk/push/webpush` for servers (RFC 8291's encryption and RFC
-  8292's VAPID tokens, in Go's standard library). Scheduled
-  notifications: browsers have no API to show one at a time with no page
-  open (Notification Triggers were abandoned), so they show at their
-  time while any page of the app is open (kept in Cache Storage, shown
-  once under a Web Lock), else as the next page opens, or when the worker
-  wakes first (a push, periodic background sync where Chrome grants it).
-- **Linux** (done): `host/linux`, GTK 4 and libadwaita in the app's
-  process through purego (`internal/gtk`), no cgo; `app.Run` runs it on
-  Linux (amd64 and arm64; GTK 4.14 and libadwaita 1.5 or later). `asuka
-  dev --platform linux` (on Linux: rebuild and rerun on save, signals'
-  state kept; `ASUKA_LINUX_RUN` runs it on another machine) and `asuka
-  build --platform linux` (from any system: an install prefix with the
-  binary, its assets, its desktop file, icons and AppStream metainfo, a
-  `.tar.gz`, and a Flatpak manifest on GNOME's runtime). The examples
-  run; tests in `host/linux` drive real GTK windows under Xvfb, and GUI
-  tests (`e2e`, `-run Linux`) run the examples. Done: the v0
-  components, navigation (libadwaita's navigation view, view stack and
-  switcher, dialogs, alert dialogs, the split view), lists
-  (core-virtualized), rich text and rich fields, shapes, canvas,
-  shaders (OpenGL), images, symbols (the icon theme's, or Material
-  Symbols as symbolic icons), gestures, drag and drop, menus and the
-  main menu with its shortcuts, windows, animation, transitions,
-  matched views, the app's links (its scheme), `WebView` (WebKitGTK
-  6.0), `Video` (GStreamer), native packages' views and modules in Go,
-  and every native module the packages call, through the desktop
-  portals where there's one: the secure store (libsecret), pickers,
-  notifications, network, location, speech (Speech Dispatcher), audio,
-  recording, the camera (the camera portal, PipeWire), print, compose,
-  preview, library, webauth (WebKitGTK), image editing, codes (ZBar)
-  and text (Tesseract) in images, maps (libshumate), sensors
-  (iio-sensor-proxy), background and periodic tasks, contacts and
-  calendars (Evolution Data Server), notifications due later (systemd
-  user timers, shown whether the app runs or not); the others answer
-  that Linux hasn't them. One selection across a `Selectable`'s texts
-  is the host's (GTK selects in one label at a time). An app's own
-  accessible actions are AT-SPI actions as GTK allows (its bridge lists
-  a widget's action groups: "action.Mark-as-read"), and the context
-  menu; GTK (to 4.22) has no API for named accessible actions.
+Later, past the rewrite: what each platform still lacks is listed in
+its section ("Desktop, later", "The web"), and in docs/parity.md
+against SwiftUI and Expo.
 
 ## Rich text
 
@@ -2045,17 +1925,17 @@ backgrounds shaped per line (radius, box-decoration-break), inline
 components that wrap with the line, selection that crosses paragraphs
 (markdown, chat transcripts), and cheap updates to long streaming text
 (an append re-typesets the whole string on the main thread).
-`ui.RichText` owns its text model and its view; `ui.Text` stays a
-platform label, with native accessibility, Dynamic Type and behavior.
+`RichText` owns its text model and its view (core/src/ui/rich.c); `Text`
+stays a platform label, with native accessibility, Dynamic Type and
+behavior.
 
 **Built:**
 
-- The model is `ui.Rich`, a list of `ui.Span`s (text, font fields that
-  default to the view's, italic, monospaced, color, underline,
-  strikethrough, a background, a link); a `"\n"` starts a paragraph.
-  Helpers: `Plain`, `Strong`, `Em`, `Code`, `Link`, `.Colored`,
-  `.Highlighted`, `.Weighted`. The view's `Style` (font, color, align,
-  lines) is the spans' default, through the common text props.
+- The model is a `[Span]` (text, font fields that default to the
+  view's, italic, monospaced, color, underline, strikethrough, a
+  background, a link, an inline component); a `"\n"` starts a
+  paragraph. The view's style (font, color, textAlign, lines) is the
+  spans' default, through the common text props.
 - On the wire it's one prop: a table of the spans' styles, then the
   paragraphs' runs, each a style index and text. The core sends it only
   when the encoding changed.
@@ -2088,7 +1968,7 @@ platform label, with native accessibility, Dynamic Type and behavior.
   itself. The attributed or spanned strings are built on the main thread
   (they read the view's tint and theme); the line breaking, the work,
   isn't. Texts set in one flush typeset in parallel.
-- Inline components: `ui.Embed(key, build)` is a span that's a component
+- Inline components: a span's `inline: Inline(key:, build:)` is a component
   (an image, a badge, a button), sitting on the baseline and wrapping
   with the words. It's built once for its key, a child view of the
   RichText and a layout root of its own, laid out at its max-content
@@ -2097,11 +1977,11 @@ platform label, with native accessibility, Dynamic Type and behavior.
   the host can measure the component's leaves only once their props are
   applied. So a flush lays out inline components after applying the
   props and before the layout that measures the texts. When a size
-  changed, the sizes (`RichText.Inlines`: node ids and sizes) go out in
+  changed, the sizes (`RichText`'s `Inlines`: node ids and sizes) go out in
   a crossing of their own; otherwise there's none. The host reserves
   each placeholder (a `CTRunDelegate`, a `ReplacementSpan`) and puts the
   child there: its frame's size is the core's, its origin the text's.
-- `ui.Selectable` makes the RichTexts inside it one text (joined by
+- `Selectable { … }` makes the RichTexts inside it one text (joined by
   newlines) with one selection, as the platform selects:
   - iOS: `UITextInteraction` (loupe, handles, the edit menu with Copy and
     Select All) on a `UITextInput` overlay that answers with the texts'
@@ -2115,25 +1995,26 @@ platform label, with native accessibility, Dynamic Type and behavior.
     highlight color. A scroll view's taking the gesture over cancels the
     long press.
   - Copying leaves out the inline components.
-- The `markdown` package renders Markdown with incremental parsing, the
-  parser vendored from MyGo (`markdown/parser`). `Document.Set` reparses
-  only from the last block that changed, `SetStreaming` heals what a
-  stream leaves open (an unclosed emphasis, a link being written), and
-  each block has a revision. The view is a `ui.For` over blocks keyed by
-  start and kind, each with comparable descriptors, so a streaming reply
-  updates only the RichText of the block being written. Paragraphs,
-  headings, lists (tight and loose, ordered, tasks), quotes, code, math
-  and HTML blocks (horizontally scrolled; tabs expanded to 4 columns),
-  tables, thematic breaks and footnotes. Images alone in a paragraph are
-  images; in text they're inline components, a linked one following its
-  link. `Props.Code` replaces code blocks' rendering (for highlighting).
-  The view is selectable unless `NotSelectable`; links open with
-  `ui.OpenURL` unless `OnLink` says otherwise.
-  `markdown.Theme`, as MyGo's, sets fonts, colors and spacing per kind
-  of block and inline; what it leaves zero is `DefaultTheme`'s. Its
-  fonts are text styles (they follow the user's text size, a field left
-  zero keeps the default's) and its colors the platform's semantic ones
-  (dark mode needs nothing), so a view with no theme looks native.
+- `std/markdown` (`markdown.View(text) { streaming: true }`) is read
+  once, in the core, the same on every platform: md4c (core/third_party)
+  into paragraphs of styled runs (`markdown.read`: raw HTML as text, a
+  link's destination as written, an image a run of its description and
+  address, a code block's language, a table row's cells and
+  alignments). The rest is Asuka: the package makes the paragraphs
+  blocks (a table's rows one table, an image alone an image) and draws
+  each as the language's own views, a `RichText` per paragraph in a
+  `Selectable`, a grid for a table, `Image` for an image, so a document
+  reads, selects and speaks as the platform's text does, and its look is
+  the app's: a `Theme` (each part's font, color, spacing), `render` (any
+  block drawn the app's way: a highlighted code block, a diagram), and
+  `on link` (what a link opens; without it, web, mail and phone links
+  open with the platform). While a reply streams in, its text is healed
+  once, in the core (`markdown.heal`: an unclosed emphasis, a link being
+  written), so a half-written document renders as it will. The text is
+  read again as it changes (md4c over all of it: CommonMark has no
+  incremental reading, as a line can turn the paragraph above it into a
+  heading), but the blocks are a keyed `for`: a streamed reply changes
+  its last block or two a frame, and only their RichTexts typeset again.
 
 **Not yet:** selection for screen reader users (VoiceOver and TalkBack
 read the texts and links but don't select across them).
@@ -2146,32 +2027,36 @@ it's built. Package `i18n` and the catalog generator (`internal/i18ngen`) are
 MyGo's, whose data comes from a pinned release of CLDR.
 
 - **Catalogs** are ARB files of ICU MessageFormat, one per language, in
-  `locales/`. `asuka generate` (and `dev`, `build`, as a catalog changes)
-  writes `locales/catalog_gen.go`, a package with a typed function per message,
-  which embeds and registers the catalogs. `locales.Unread(3)` says a string;
-  `locales.Live.Unread(count)` is an accessor over accessors, for props;
-  `locales.In("de").Unread(3)` says another language.
-- **The language shown** is the process's, as `time.Local` is: not a root's,
-  since a message has no context to read one from. `ui/locale.go` matches the
-  environment's `Languages` (with what `ui.SetLocale` chose, first) against
-  the languages the app has, by CLDR's distances, and falls back to the app's
-  own: a reader of Chinese sees an English-only app in English, as on UIKit.
-- **Following it.** A component runs once, so a message has to be read in an
-  effect to follow the language, and it must read like any other function:
-  a goroutine may say one too. A signal read can't do both, since subscribing
-  touches `activeSub`, which is the main thread's. So `signal.Ambient` only
-  counts a read, atomically; the main thread settles the count each time the
-  running computation changes, subscribing the one that ran. A goroutine's read
-  may subscribe whatever ran at that moment, which then runs once more at the
-  next language change: harmless, and rare. A change costs the props whose text
-  changed, as any signal does.
-- **What can't follow.** A string read outside an effect stays what it was:
-  `ui.StaticText(locales.Title())` doesn't change with the language. Every
-  prop that shows text is therefore an accessor (tabs, actions, labels,
-  placeholders, segments), and what a call shows once (an alert, a
-  notification) takes a string.
+  `locales/`. The compiler reads them (lang/compile: internal/i18ngen checks
+  them, a problem a diagnostic at its file and line) and gives the app `tr`:
+  `tr.unread(count: n)` is checked against the source's key and its
+  placeholders' types. Package i18n compiles them (`Catalog.CompileWith`) into
+  a blob the module carries: each message, per language, a small program of
+  text, arguments, plurals, selects, numbers and dates, with what the core
+  needs of CLDR for those languages only (their number symbols and patterns;
+  their dates' names, and every style's and skeleton's pattern in 12 and 24
+  hours, resolved at compile time so the core needs no pattern generator).
+  Nothing is generated into the app's directory.
+- **The core says them** (core/src/ui/i18n.c, a port of `Catalog.Format`):
+  the key's message in the best language the catalog has for the one shown,
+  falling back along CLDR's parent locales to the source; CLDR's plural rules
+  (i18n_gen.c, generated from package i18n's tables); numbers and dates in
+  the shown language's formats, dates in the device's zone and the user's
+  hour cycle; the pseudo locales. A test says over 900 cases of Go's Format
+  the same way, and every CLDR sample of every language's plural rules.
+- **The language shown** is the process's (core/src/ui/locale.c): the environment's languages (or what `setLocale`
+  chose, first) matched against the catalog's languages by CLDR's distances,
+  else the app's own: a reader of Chinese sees an English-only app in
+  English, as on UIKit. It's a signal: `i18n.say` reads it, so a binding that
+  says a message follows the language as it follows its arguments, and a
+  change costs the bindings that said one. The checker counts a message as
+  reading state, so a function that says one is followed where a binding
+  calls it, and `spawn` can't say one (the language is the main thread's).
+  Said in a handler, a message is what it said then, which is what an alert
+  wants. A change of direction lays the app out again, and the host hears
+  `Locale`.
 - **Regional formats** are a setting of their own: the environment's `Locale`,
-  `FirstWeekday` and `HourCycle`, with `ui.FormatLocale()` putting them
+  `FirstWeekday` and `HourCycle`, with `i18n.formatLocale()` putting them
   together with the language (`en-GB-u-fw-mon-hc-h23`), as Apple's
   `Locale.current` does.
 - **Asuka's own words** (`internal/l10n`) are the few the platforms don't supply:
@@ -2197,28 +2082,29 @@ What every host does:
   alignment (`TextStart` is the side the language starts on, and is the default),
   a slider's direction, `RichText`'s paragraphs. Where the platform lets it, it
   also says the platform's own words in the language.
-- **`LayoutDirection`** (a common prop): the same for one view, for what
-  `ui.WithDirection` builds.
+- **`LayoutDirection`** (a common prop): the same for one view and what's
+  in it, for a view's `layoutDirection: .leftToRight`.
 - **A horizontal `Scroll` or `List`** starts at its trailing end right to left,
   and keeps its distance from that end as its content's width changes. The
   content is at the scroll view's origin, laid out from the right within it.
   `OnScroll` and `ScrollToOffset` stay physical.
 - **Symbols** whose names say a direction by `forward` or `backward` mirror
   (`chevron.forward`); `chevron.left` doesn't, since it means left.
-- **`SaveLocale`** keeps the language: AppleLanguages of the app's defaults
+- **`SaveLocale`** (the command `setLocale` sends) keeps the language: AppleLanguages of the app's defaults
   (iOS, macOS), which Settings shows and UIKit and AppKit read at launch;
   `LocaleManager` (Android), or the host's own preferences on Windows. Android declares its languages in `locales_config`, iOS and macOS
   in `CFBundleLocalizations` and `.lproj`s: `asuka build` writes them from the
   catalogs, with the app's name and purpose strings in each.
 
-Under `asuka dev` the player runs every app, so `boot.SaveLocale` keeps the
-choice beside the kept state on the Mac, not in the player.
+Under `asuka dev` the player runs every app: `--lang` and `--dir` force a
+language and a direction for the run through the module's init
+(`i18n.force`), and a choice `setLocale` saves there is the player's.
 
 What each host does by its own means:
 
 - **iOS**: `semanticContentAttribute` through the appearance and a walk of what
   exists, with a window trait override, since the back chevron follows traits
-  (iOS 17 and later). The walk waits until Go has returned: a collection view
+  (iOS 17 and later). The walk waits until the core has returned: a collection view
   asks for its cells as its direction changes. UIKit's own words stay in the
   process's language until the next launch.
 - **Android**: the themed context carries the locale and direction, views are
@@ -2244,20 +2130,31 @@ right-to-left mark (CLDR's Arabic percent begins with a left-to-right one).
 
 ## Desktop, later
 
-After M6, on the same core, `ops` and app code:
+On the same core, `ops` and app code as the phones:
 
 | Platform | Host | Notes |
 |---|---|---|
-| macOS | Go, AppKit through purego (`host/darwin`) | No cgo. `internal/darwin` is MyGo's Objective-C runtime layer (classes made at runtime, blocks, `WithPool`, a main run loop source for `Post`). In progress (see Milestones). |
-| Windows | Go, Win32 with common controls v6 through `syscall` (`host/windows`) | No cgo; `internal/windows` is the Win32, GDI, GDI+, uxtheme, DWM and WebView2 layer. Not WinUI 3: it needs the Windows App SDK beside the app, and XAML is a second reconciler. `List` is core-virtualized: no Win32 list hosts arbitrary rows. In progress (see Milestones). |
-| Linux | Go, GTK 4 and libadwaita through purego (`host/linux`) | No cgo; `internal/gtk` binds GTK 4.14, libadwaita 1.5 and the GLib stack (Ubuntu 24.04, Debian 13, Fedora 40 and later). libadwaita, which every GNOME app links, gives navigation, dialogs and the header bar, and the look an app that sets no style should have. In progress (see Milestones). |
+| macOS | Swift, AppKit (`platform/macos`) | The core linked in (asuka.h), as on iOS; the ops decoder is iOS's (`go generate ./ops` writes both copies). |
+| Windows | C17, Win32 with common controls v6 (`platform/windows`) | The core and the app linked into one executable. GDI+ through its flat API, DWM, uxtheme, Direct3D 11, WebView2, UI Automation and WinRT through their COM vtables in C. Not WinUI 3: it needs the Windows App SDK beside the app, and XAML is a second reconciler. `List` is core-virtualized: no Win32 list hosts arbitrary rows. |
+| Linux | C, GTK 4 and libadwaita opened with dlopen (`platform/linux`) | One executable: the host, the core and the app compiled to C; its own declarations of GTK 4.14, libadwaita 1.5 and the GLib stack (Ubuntu 24.04, Debian 13, Fedora 40 and later), shared with packages' C (`asuka_linux.h`), so it builds from any system with Zig. libadwaita, which every GNOME app links, gives navigation, dialogs and the header bar, and the look an app that sets no style should have. |
 
-Desktop hosts run in process: `app.Run` locks the main OS thread and
-runs the platform's event loop there, and reads the batch's Go structs
-without encoding. purego callbacks are made once per signature and
-routed by user data, never per view.
+Desktop hosts run in the app's process, with no Go at run time (RFC
+0008). The Mac's executable is the Swift host linked with the core (the
+app compiled in to C for a release; under `asuka dev` the player, the
+core without an app, which connects with `asuka_dev_connect`) and the
+app's native packages' Swift: one universal binary (arm64 and x86_64)
+in the .app, which `asuka build` signs. The host calls `asuka.h`
+directly: its callbacks are Swift functions, a batch is decoded in place
+(`asukaDecode`), events go in with `asuka_event`. On Windows and Linux
+the host is C: the host, the C core and the app compiled to C
+(lang/cgen) are one executable per app, the host decoding each batch in
+place with the core's own reader (`core/src/ops`); `asuka dev`'s player
+is the host and the core without an app, which loads the bytecode the
+CLI sends (`asuka_dev_connect`). Either way the core's callbacks are
+made once and routed by user data, never per view.
 
-How the macOS host maps Asuka (`host/darwin`):
+How the macOS host maps Asuka (`platform/macos`, Swift; its parts each
+a file of their own, `Sources/AsukaHost`):
 
 - One window holds the root, its content a flipped view; the
   environment is the content's size, the display's scale, dark mode,
@@ -2291,62 +2188,59 @@ How the macOS host maps Asuka (`host/darwin`):
   through `NSAccessibilityPostNotificationWithUserInfo`).
 - `List` is core-virtualized, as on Windows: a scroll view whose rows
   the host places, binds through `ListBind` and recycles as it
-  scrolls, heights from the cells' frames (estimated until bound).
-  `NSTableView` would want row heights from a callback returning a
-  float, which purego can't make.
+  scrolls, heights from the cells' frames (estimated until bound): the
+  rows are the core's views, laid out by the core, as every host's.
 - `WebView` is a `WKWebView`, as on iOS: `Block` a content rule list
   (the page loads once it's compiled, so its first requests are blocked
   too), a response it can't show a `Download`, its state observed (KVO)
   and reported once a turn; the `web` module runs script for its value
-  (`callAsyncJavaScript`) and reads the cookies, the `js` module runs
-  asuka/sdk/js's scripts in a web view that's never shown.
+  (`callAsyncJavaScript`) and reads the cookies (platform/js has its own
+  Swift).
 - `RichText` is a non-editable `NSTextView` (TextKit lays it out and
   draws it, links, selection and accessibility come with it); outside
   a `Selectable` it takes clicks only on links. Inline components are
   attachments of their size, their views placed at the attachment.
-- Messages with float or struct arguments go through purego's typed
-  functions (`internal/darwin`'s `Msg*`), which use reflection: setting a
-  frame allocates. The rest go through `SyscallN`.
 - Pull to refresh: a trackpad's (or Magic Mouse's) scroll pulled past
   a Scroll's or List's top, as its elastic overscroll lets it, and let
   go of beyond 60 points; a spinner above the content (the scroll view's
   top content inset) while it refreshes. Matched views move the old view
   into its window's content view and the frames carry the motion.
-- Native packages: their Swift is built into the app's Swift library
-  (`host/darwin/swift.go` loads it through purego and calls its
-  `@_cdecl` entry points with `SyscallN`). A package's Go view
-  (`implementT`) registers with package `native`: an `NSView` made
-  through purego's objc package, put in the node's view and filling
-  it; on Windows a child window made in the context's `Parent`, its
-  controls' notifications given to it.
+- Native packages: their Swift is built with the host's (the module
+  Asuka they import: NativeModules.swift, the iOS host's) into the app's
+  executable, as on iOS; a package's view is an `AsukaNativeView` holding
+  an `NSView`, put in the node's view and filling it. On Windows a
+  package's view is a child window its C makes in the parent the
+  registry gives it (`asuka_native_view`'s HWND), its controls'
+  notifications given to it.
 - Visual props are the views' layers'. The layers under the window's
   flipped content view have y down: gradients' points, shadows' offsets
   and transforms are given so. AppKit owns a layer-backed view's
   layer's transform and shadow: it sets the transform to the identity
-  as the window displays, so `Style.Transform` is held by an animation
-  that never ends (from what's drawn, so `ui.Animate` animates it), and
+  as the window displays, so a view's `transform` is held by an animation
+  that never ends (from what's drawn, so `animate { }` animates it), and
   it sets the shadow from the view's own (none) as the view moves into
   a window, so the host sets it again then. A shadow is cast by the
   view's shape (`shadowPath`), as on iOS; a view that clips and casts
   one clips its children in a view of their own that fills it, as on
   iOS: a layer that masks to its bounds masks its own shadow too.
-- The packages' modules are iOS's, the same methods and replies, through
-  the Mac's frameworks (each file of `host/darwin` registers its own):
-  AVFoundation for the camera (the view's layer is the capture session's
-  preview; photo, movie and metadata outputs) and `AVAudioRecorder`,
-  with no audio session; Contacts, EventKit and PhotoKit; Vision,
-  NaturalLanguage and Speech, off the main thread; MapKit;
-  AuthenticationServices; UserNotifications and the application
-  delegate for APNs. What iOS shows that AppKit hasn't, the host shows
-  itself: `camera.Take` is a sheet with a live preview, and
-  `contacts.Add` and `calendar.Add` ask in an alert over the window, then
+- The host's modules are those the platform SDK's packages call
+  through platform/host, iOS's methods and replies through the Mac's
+  frameworks: notifications (UserNotifications; APNs through the
+  application delegate), contacts, calendars and the photo library
+  (Contacts, EventKit and PhotoKit), iCloud and purchases (the iOS host's
+  Swift), and the desktop's (the tray, the Dock, hot keys, apps, recent
+  documents, login, the updater's). The packages with Swift of their own
+  (the camera, Bluetooth, location, Vision, speech, maps...) run it on
+  the Mac too. What iOS shows that AppKit hasn't, the host shows itself:
+  `contacts.add` and `calendar.add` ask in an alert over the window, then
   save. A Mac has no back camera ("back" is the built-in one), no motion
   sensors, no widget extension; a task in the background holds an
   activity (App Nap off: a Mac app runs out of sight), periodic ones run
-  while the app does; `PreventCapture` keeps its windows out of
-  screenshots and recordings (`NSWindowSharingNone`) and `OnScreenshot`
-  sees the files Spotlight finds (`kMDItemIsScreenCapture`).
-- Windows' options are `NSWindow`'s, set as it opens (`winctl.go`):
+  while the app does; `screen.preventCapture` keeps its windows out of
+  screenshots and recordings (`NSWindowSharingNone`) and
+  `screen.screenshots()` sees the files Spotlight finds
+  (`kMDItemIsScreenCapture`).
+- Windows' options are `NSWindow`'s, set as it opens (Windows.swift):
   its style mask (no resize, close or minimize button), the zoom button
   turned off, the content's least and most size, the floating level for
   always on top, out of the Window menu for skipping the taskbar (a Mac
@@ -2373,20 +2267,51 @@ How the macOS host maps Asuka (`host/darwin`):
   (`windowShouldClose:`) leaves it open and sends `CloseRequest`;
   `WindowAction` Close closes the main window past that question, and
   the app quits once its last window has.
-- Debug automation: `ASUKA_SNAPSHOT=file.png` renders the window to a PNG
-  once it has shown, without taking focus (`ASUKA_DUMP=1` writes the view
-  tree beside it), then quits.
+- Debug automation (Automation.swift): `ASUKA_SCRIPT` runs steps (tap,
+  type, key, menu, back, scroll, resize, wait, until...);
+  `ASUKA_SNAPSHOT=file.png` writes the window as the window server
+  composites it, once it has shown, without taking focus (`ASUKA_DUMP=1`
+  writes the view tree beside it), then quits; `ASUKA_COMMANDS=dir` runs
+  the steps written to `dir/asuka-commands.txt` while the app runs and
+  writes what it shows (`dump`), its view tree, windows, menu bar and
+  tray as JSON (`json`), which the host's tests read
+  (platform/macos/mactest).
 
-How the Windows host maps Asuka (`host/windows`):
+How the Windows host maps Asuka (`platform/windows`):
 
-- One thread: the main goroutine is locked to the main thread (the
-  package's `init`), which runs the message loop; `Post` queues work and
-  posts a message to a message-only window. One window procedure, made
-  once with `syscall.NewCallback`, serves every window class and routes
-  by window to its node; controls are subclassed (`SetWindowSubclass`)
-  through one callback too. `IsDialogMessage` gives Tab and arrow key
-  navigation. A control that would run a modal loop (a menu, a task
-  dialog, the color dialog) runs it once the core has returned.
+- The host is C17 (`platform/windows/src`, a file per part: `host.c` the
+  nodes and batches, `views.c` and `controls.c` the views, `nav.c` the
+  navigation, `window.c` and `winctl.c` the windows, `menu.c`,
+  `list.c`, `rich.c`, `web.c`, `a11y.c`, `interaction.c` and so on;
+  `host.h` and `parts.h` what they share), with the C shared with the
+  Linux host in `platform/desktop` (`desktop.h`'s `dsk_` API: JSON,
+  files, the app's settings and directories, window and route state,
+  flyouts' places, Asuka's own words, animated images). It links the
+  C core statically: a release is one executable, the app compiled to C
+  (lang/cgen) in it, its icon, manifest and version a COFF object linked
+  in; `asuka dev`'s player is the host and the core without an app, a
+  console program that loads the bytecode the CLI sends
+  (`asuka_dev_connect`). It decodes each batch in place with the core's
+  own reader (`core/src/ops`: `ak_batch_next`, the payloads' decoders)
+  and encodes events with its encoders.
+- One thread: the core, every Win32 call and every state write run on
+  the main thread, which runs the message loop. Posting (the core's
+  `post` callback, `asuka_desktop.h`'s, a worker's result) appends to a
+  queue under an SRW lock and posts one message to a message-only
+  window, which takes the queue whole and runs it. One window procedure,
+  registered for every window class of the host's, routes by window to
+  its node (a map from `HWND`); controls are subclassed
+  (`SetWindowSubclass`) with one procedure that finds the handler in the
+  subclass's data. Tab is the host's (focus.c): the views' tree order,
+round inside the innermost `FocusTrap` or a modal overlay (alerts keep
+`IsDialogMessage`), each view's focus reported as `FocusChange`; an
+`Overlay` (overlay.c) is a child window over its root, its region its
+children's when it isn't modal, so presses elsewhere go through, with
+outside presses taken from the message loop before their target.
+  Calls into the core are counted: a control that would run a modal loop
+  (a menu, a task dialog, the color dialog), or work that would enter
+  the core again, waits until the core has returned, and so do the
+  events raised meanwhile, sent in order then.
 - Every real node is a child window. The app's window holds the root;
   the environment is its client area's size in points (DIPs), its DPI
   as the scale (per-monitor DPI awareness v2), the text size
@@ -2407,9 +2332,11 @@ How the Windows host maps Asuka (`host/windows`):
   word). Views that take no mouse events are `HTTRANSPARENT`, so a
   click on a text reaches the pressable row under it. A pressable view
   shows Fluent's hover and pressed fills and takes Enter and Space.
-- A `Shader` is its program as HLSL (package hlsl), compiled by
-  Windows's compiler (`d3dcompiler_47`) once per program and drawn with
-  Direct3D 11 (the GPU's device, or WARP's), on a goroutine, into a
+- A `Shader` is its program as HLSL (compiled with the app, beside its
+  GLSL, by `internal/shadercode`), compiled by Windows's compiler
+  (`d3dcompiler_47`, loaded at run time) once per program and drawn with
+  Direct3D 11 (the GPU's device, or WARP's), on a render thread of the
+  host's, into a
   texture of the view's size in pixels that the GPU copies back to
   memory: the main thread paints it with GDI+ as it paints the views
   around it, and never waits for the GPU. Animated, a timer starts a
@@ -2438,8 +2365,8 @@ How the Windows host maps Asuka (`host/windows`):
   in it (`k`, as a window's DPI does: fonts, frames, controls and
   drawing at the scaled size, still windows that take clicks); a scale
   that differs between the axes sizes the window by each and what's in
-  it by their geometric mean. They step with `ui.Animate`'s frames.
-- `Style.Material` is drawn as Fluent's acrylic in the view (DWM's
+  it by their geometric mean. They step with `animate { }`'s frames.
+- A view's `material` is drawn as Fluent's acrylic in the view (DWM's
   backdrops are top-level windows' only): what's behind it, blurred
   (three box blurs, a Gaussian's likeness) and tinted light or dark. A
   view under it painting draws it again.
@@ -2495,7 +2422,7 @@ How the Windows host maps Asuka (`host/windows`):
   sheet. An `Alert` is a task dialog over the window it's declared in,
   likewise; an action sheet's buttons are command
   links. An alert with text fields is a dialog of the host's own, as
-  WinUI's `ContentDialog` (alertdialog.go): its title and message,
+  WinUI's `ContentDialog`: its title and message,
   the host's Fluent text boxes, its buttons in a band below with the
   default one in the accent color; Tab, Enter and Escape as a dialog's,
   the owner disabled meanwhile. A `Snackbar` is a child window at the
@@ -2581,7 +2508,7 @@ How the Windows host maps Asuka (`host/windows`):
   (centered in the work area; 800 by 600 points if the app gives none)
   and its least size (320 points square if the app gives none).
 - Windows' options (the main window's, a `Window`'s `Config`) are applied
-  before the window shows (`winctl.go`): the abilities taken away are
+  before the window shows: the abilities taken away are
   window styles (no `WS_THICKFRAME` and maximize box for a window that
   can't be resized, no `WS_MINIMIZEBOX` or `WS_MAXIMIZEBOX`; one that
   can't be closed has its close button and the system menu's Close
@@ -2668,7 +2595,8 @@ How the Windows host maps Asuka (`host/windows`):
   listens), and a precision touchpad's pinch, which Windows sends as the
   wheel with Ctrl (so is a mouse's Ctrl and wheel, 10% a notch: began
   with the first, ended once the wheel rests for 250 ms).
-- The native modules (`ui.Call`): `secureStore` in the Credential
+- The host's modules (which the standard library's packages call):
+  `secureStore` in the Credential
   Manager (the user's generic credentials, `<app>/<key>`, up to 2560
   bytes a value), `device` (info, the clipboard's text, keeping the
   display on), `browser`, `photos` and `files` (the open file dialog,
@@ -2677,7 +2605,7 @@ How the Windows host maps Asuka (`host/windows`):
   and `js` (a blank page in a WebView2 that's never shown); `share`
   (Windows's share UI, `IDataTransferManagerInterop` and the
   `DataTransferManager` of the window in use: text, a link, files as
-  `StorageFile`s through an `IIterable` of Go's; `ui.Share` too),
+  `StorageFile`s through an `IIterable` of the host's; `share()` too),
   `network` (the Network List Manager: connectivity and its changes
   through a connection point, the connection's adapter's type, the cost
   as metered and constrained), `speech` (SAPI's `ISpVoice`, its events
@@ -2693,8 +2621,9 @@ How the Windows host maps Asuka (`host/windows`):
   gets `INotificationActivationCallback.Activate` with the toast's or
   button's arguments, JSON carrying the notification, and the reply's
   text; started by COM for a click (`-ToastActivated`, taken out of
-  `os.Args` before the app sees them) the app keeps its window hidden
-  for a background action and quits once Go is done with it; `showing`
+  the arguments before the app sees them) the app keeps its window
+  hidden for a background action and quits once it's done with it;
+  `showing`
   is `ToastNotificationHistory`'s toasts, read back from their XML; the
   badge an overlay icon on the taskbar button,
   `ITaskbarList3::SetOverlayIcon`, the count drawn, or
@@ -2702,13 +2631,14 @@ How the Windows host maps Asuka (`host/windows`):
   `Geolocator`, `RequestAccessAsync` first; place names from
   OpenStreetMap's Nominatim, a request at a time and a second apart,
   with a User-Agent naming Asuka, answers cached, as geocode-glib asks
-  it). WinRT is called from Go
-  (`internal/windows/winrt.go`): HSTRINGs, activation factories, the IIDs
-  of parameterized interfaces computed from their signatures, delegates
-  whose `Invoke` calls Go (on the thread WinRT calls them on, posted to
-  the main thread).
-- More modules, each file its own (`moduleHooks`, as on macOS; their
-  windows of a class of their own): `audioRecord` (waveIn, encoded as it
+  it). WinRT is called through its COM vtables in C: HSTRINGs and
+  activation factories from combase.dll, the IIDs of parameterized
+  interfaces computed from their signatures, delegates of the host's
+  whose `Invoke` runs on the thread WinRT calls it on and posts to the
+  main thread.
+- More of what the standard library does on Windows, each part its own
+  (their windows of a class of their own; the packages that are native
+  packages have their Windows code in C, RFC 0008): `audioRecord` (waveIn, encoded as it
   records by Media Foundation's sink writer to AAC in MPEG-4, or ADTS
   when streaming; 44.1 kHz, Windows's AAC encoder's), `camera` (Media
   Foundation's capture engine: the preview sink draws into the view's
@@ -2722,12 +2652,13 @@ How the Windows host maps Asuka (`host/windows`):
   is the callback's), `biometric` (Windows Hello:
   `UserConsentVerifier` through its interop, over the window; the
   sensor's kind from the Windows Biometric Framework), `imageEdit` (WIC
-  decodes, upright from the EXIF orientation; Go does the actions and
-  writes; a video's frame from Media Foundation's source reader),
+  decodes, upright from the EXIF orientation; the package does the
+  actions and writes; a video's frame from Media Foundation's source
+  reader),
   `vision` (Windows.Media.Ocr's lines and words, FaceAnalysis's faces,
-  `internal/barcode`'s codes) and `scan.file` (`internal/barcode`, pure
-  Go: QR codes, Data Matrix, EAN, UPC, Code 128 and Code 39, found at any
-  angle; Windows has no reader for apps), `photoLibrary` (the
+  Asuka's own barcode reader's codes) and `scan.file` (Asuka's own
+  reader: QR codes, Data Matrix, EAN, UPC, Code 128 and Code 39, found
+  at any angle; Windows has no reader for apps), `photoLibrary` (the
   Pictures folder, no permission to ask; screenshots are its
   Screenshots folder's), `library` (the known folders), `clipboard`
   (its image as PNG, from `PNG` or a DIB; copying one; changes by its
@@ -2749,16 +2680,18 @@ How the Windows host maps Asuka (`host/windows`):
   region reported once the user has moved it.
 - Screen readers (Narrator, NVDA) read the host's views through UI
   Automation: each view of the host's own drawing answers `WM_GETOBJECT`
-  with a provider of Go's (`IRawElementProviderSimple`, made once per
-  view, on top of its window's host provider) giving its name (Label; a
-  text's text; a pressable view's texts), help text (Hint, else
-  Tooltip), control type (Role; a pressable view a button; a header a
-  heading), whether it's skipped (Decorative, with what's in it), and the
-  Invoke pattern for a view that presses. `Announce` raises a UI
+  with a provider of the host's (a COM object in C,
+  `IRawElementProviderSimple`, made once per view, on top of its
+  window's host provider) giving its name (Label; a text's text; a
+  pressable view's texts), help text (Hint, else Tooltip), control type
+  (Role; a pressable view a button; a header a heading), whether it's
+  skipped (Decorative, with what's in it), the Invoke pattern for a view
+  that presses, and a ProgressRing's value (the RangeValue pattern, read
+  only, as WinUI's ring has it). A tab bar or a pane is named for its
+  chosen item and its badge ("Inbox, 3 items"). `Announce` raises a UI
   Automation notification. A view's screen reader actions are its
   context menu (Shift+F10, the menu key, a right-click); an adjustable
-  view takes the arrow keys: UI Automation's RangeValue pattern sets a
-  double, which a callback of Go's (`syscall.NewCallback`) can't take.
+  view takes the arrow keys, as a slider does.
 - Shadows are drawn by the view a view's window is in, under its
   children, around the view's shape: a child window can't draw outside
   itself. They're concentric rounded rectangles from 3σ outside the
@@ -2782,15 +2715,17 @@ How the Windows host maps Asuka (`host/windows`):
   dark mode. `Video` is a WebView2 page of a `<video>`, with Edge's
   controls: Win32 has no video view with controls.
 - Frames are set with `SetWindowPos`, without copying the old pixels
-  (a view's pixels depend on what's behind it). `ui.Animate` steps the
+  (a view's pixels depend on what's behind it). `animate { }` steps the
   frames on a timer, and transforms with them.
-- The host builds for amd64 and arm64. GDI+ takes floats: Go's Windows
-  calls pass them in the registers on amd64 (each in its position's), but
-  on arm64 a C function takes floats in the vector registers, which
-  Go's calls don't load; there a trampoline in Go's assembly (no cgo),
-  called through `syscall.SyscallN` with a frame, loads the integer and
-  float arguments and jumps to the function. A `RECT` by value goes in
-  two registers on arm64 (by reference on x64). WebView2's client
+- The host builds for amd64 and arm64: with Zig's MinGW target from any
+  system (`internal/appbuild`'s `WindowsHost`, `internal/cbuild`'s
+  `ExeWith`, the core and the host as units: prebuilt, or built into
+  the build cache), or clang or MSVC on
+  Windows; C17, `-Wall -Wextra -Werror`. Windows's libraries are linked
+  by their import libraries; what not every Windows or MinGW has
+  (`TaskDialogIndirect` in common controls v6, `OpenThemeDataForDpi`,
+  the dark mode's uxtheme ordinals) is looked up at run time, after the
+  common controls v6's activation context is active. WebView2's client
   library is the runtime's of the process's architecture.
 - Debug automation: `ASUKA_SNAPSHOT=file.png` writes the window (and the
   top sheet's, `file.sheet.png`, and each `Window`'s, `file.window.png`,
@@ -2799,31 +2734,44 @@ How the Windows host maps Asuka (`host/windows`):
   taking focus, then quits (`ASUKA_DUMP=1`: the view tree and the menu
   bar beside it); `ASUKA_SCRIPT` runs steps first (`tap:<text>`,
   `type:<text>`, `submit`, `back`, `escape`, `scroll:<y>`,
-  `resize:<w>,<h>`, `key:<shortcut>` such as `key:ctrl+shift+k`,
+  `resize:<w>,<h>`, `hover:<text>`, `press:<text>` and `release` (a
+  press held), `drop:<view>|file:…|text:…|link:…`, `drag:<view>|<target>`,
+  `paste:<field>|…`, `pinch:<view>|<scale>`,
+  `key:<shortcut>` such as `key:ctrl+shift+k`,
   `key:` also goes to a menu open (`key:down`, `key:d`), `menu:<item
   title>`, `open:<menu title>` (a menu bar's menu, shown below its title;
   `escape` closes it), `close` (the window in use, or the last
   `Window`), `dpi:<dpi>` (that window as if moved to a monitor at that
   DPI: `WM_DPICHANGED`, the title bar Windows draws keeping its own),
   `wait:<duration>`, `snap:<file>`), through the controls'
-  own messages and the message loop's key handling;
+  own messages and the message loop's key handling (typing goes to the
+  field last tapped when the app isn't the foreground one, as when a
+  test starts it);
   `ASUKA_COLOR_SCHEME` is light or dark whatever the system's.
 
-How the Linux host maps Asuka (`host/linux`):
+How the Linux host maps Asuka (`platform/linux`, C17):
 
-- GTK 4 and libadwaita in the app's process through purego, no cgo
-  (`internal/gtk`: typed functions purego builds once, and raw function
-  pointers called through `SyscallN` on the hot paths, allocating frames
-  and drawing, so they use no reflection). `app.Run` makes an
-  `AdwApplication` (its ID asuka.json's `id`, `boot.ID`; unique, so a
-  second launch activates the first, but in tests and automation runs)
-  and runs GLib's main loop on the main thread. `Post` queues the
-  function and adds an idle source (`g_idle_add`, thread-safe). Signals
-  are connected through one C callback per signature, made once,
-  routed by the data pointer to the connection's Go function.
+- One executable: the host (platform/linux/src, with platform/desktop's
+  shared C), the core and the app compiled to C (lang/cgen), linked
+  statically; asuka dev's player is the same without an app, which loads
+  the bytecode asuka dev sends (`asuka_dev_connect`). GTK 4, libadwaita
+  and the GLib stack are opened with dlopen as it starts and their
+  functions resolved with dlsym (`syms.def`: the subset the host calls,
+  declared in `gtk.h` with GTK's own type names; optional libraries,
+  WebKitGTK, GStreamer, Xlib, libsoup, libepoxy, Evolution Data Server,
+  when something first needs them), so the host builds from any system
+  with Zig and no GTK sysroot, and an app that lacks GTK says which
+  library to install. The host makes an `AdwApplication` (its ID
+  asuka.toml's `id`; unique, so a second launch activates the first, but
+  in tests and automation runs) and runs GLib's main loop on the main
+  thread. `asuka_desktop_post` and the core's posts go through one FIFO
+  and an idle source (`g_idle_add`, thread-safe). Signals are connected
+  with the node as their data, so a node's going disconnects them all.
+  Its own symbols are `lx_`; it reads the core's batches with the core's
+  own decoders (core/src/ops).
 - Every node's view is a `AsukaView`, a `GtkWidget` subclass the host
-  registers (`g_type_register_static_simple`, its class's vfuncs set from
-  Go at GTK 4's stable offsets): `size_allocate` places its children at
+  registers (`g_type_register_static_simple`, its class's vfuncs set in
+  C at GTK 4's stable offsets): `size_allocate` places its children at
   the frames the core gave them (whole sizes, the fractional origin in
   the allocation's transform, with `Style.Transform` about the center),
   `snapshot` draws the node's shadow, background or gradient, its own
@@ -2844,7 +2792,7 @@ How the Linux host maps Asuka (`host/linux`):
   (/etc/localtime). `Environment.Platform` is `PlatformLinux`.
 - Colors are libadwaita's named colors (`window_bg_color`,
   `card_bg_color`, `accent_color`...), read from the theme for the
-  current style; asuka.json's accent is the theme's accent, through a
+  current style; asuka.toml's accent is the theme's accent, through a
   style sheet of the host's. The text styles are libadwaita's type
   classes relative to the interface font (gtk-font-name): LargeTitle is
   `.title-1`, Title `.title-2`, Title2 `.title-3`, Title3 `.title-4`,
@@ -2858,8 +2806,9 @@ How the Linux host maps Asuka (`host/linux`):
   `Segmented`, `GtkDropDown` for `Wheel` and `Picker`, linked minus and plus buttons
   for `Stepper`, `GtkColorDialogButton`, a date button opening
   `GtkCalendar` and hour and minute spin buttons, `GtkProgressBar`,
-  libadwaita's spinner. Images are decoded off the main thread by Go's
-  decoders (others by GDK's loaders) into textures the view draws at its
+  libadwaita's spinner. Images are decoded off the main thread by GDK's
+  loaders (animated GIF, APNG and WebP by platform/desktop's anim.c, their
+  frames' pictures GDK's) into textures the view draws at its
   mode, tinted through a mask. Symbols are the icon theme's symbolic
   icons where freedesktop or Adwaita has a match for the SF Symbol name,
   else the Material Symbol (as Android and the web draw them), written
@@ -2921,9 +2870,11 @@ How the Linux host maps Asuka (`host/linux`):
   shows (hidden, or its GdkToplevel minimized or suspended), and as it
   quits (its last window closing, GtkApplication's `query-end` as the
   session ends, `shutdown`, or SIGTERM, SIGINT and SIGHUP, which quit it
-  as closing it does), so `asuka/sdk/store` writes what's pending; GLib's
-  memory monitor's warnings are MemoryWarning. Crash reports: Go's crash
-  output (`crashrun`), which has a signal in native code too (Native).
+  as closing it does), so `std/store` writes what's pending; GLib's
+  memory monitor's warnings are MemoryWarning. Crash reports: the core's
+  record (`asuka_crash_start`), and a fatal signal in native code caught
+  on an alternate stack (crash.c), its frames written to the record's
+  inbox with write(2) before the signal's default action runs.
   Windows are placed by the desktop: GTK 4 has no way to place one.
 - Input is GTK's event controllers, added as the core listens: a click
   (Press, Pressed; Enter and Space press a focused pressable view, which
@@ -2982,7 +2933,7 @@ How the Linux host maps Asuka (`host/linux`):
   host sets to the XDG data directory's folder for the app (Flatpak's
   own). It's saved as the window closes and as the app shuts down.
 - Windows' options are GTK's, set before the window shows
-  (`winctl.go`): its content's size (the default size, the header bar's
+  (`winctl.c`): its content's size (the default size, the header bar's
   height on top) and least (the content's size request), not resizable,
   not deletable, the header bar's decoration layout without its minimize
   or maximize button (the window manager's shortcuts still do them),
@@ -2995,7 +2946,7 @@ How the Linux host maps Asuka (`host/linux`):
   way to place a window or center it (Wayland leaves it to the
   compositor, and GTK 4 dropped moving one on X11 too), and none to keep
   one on top or out of the taskbar: under X11 the host does those itself
-  through Xlib on the surface's window (`deskwin.go`: `XMoveWindow`,
+  through Xlib on the surface's window (`desk.c`: `XMoveWindow`,
   EWMH's `_NET_WM_STATE_ABOVE`, GDK's skip-taskbar hint); under Wayland
   they do nothing. The position reported is 0, 0. The actions are GTK's
   (`gtk_window_present`, `_minimize`, `_maximize`, `_fullscreen`, a new
@@ -3010,9 +2961,23 @@ How the Linux host maps Asuka (`host/linux`):
 - Debug automation, as on macOS and Windows: `ASUKA_SCRIPT` runs steps,
   then `ASUKA_SNAPSHOT=file.png` renders each window to a PNG
   (`ASUKA_DUMP=1`: the view tree beside it) and quits.
-- Tests (`go test ./host/linux`) drive real GTK windows; they need a
-  display and a session bus (`xvfb-run dbus-run-session`), and skip
-  without GTK.
+- The update module (Updates): `info` from where the executable started
+  (an install prefix: `bin/<exe>` with `share/<exe>/`; Flatpak, Snap,
+  AppImage and the system's prefixes managed), `download` and `next`
+  through libsoup (a long poll answered as the progress moves by 1%, 64
+  KB while the size is unknown), `cancel`, and `install`, which swaps the
+  prefix's files and links for the staged tree's (`.asuka-files` naming
+  them), puts back what it moved if a rename fails, and runs the
+  desktop's cache tools. `relaunch()` starts the executable at the path
+  it started from with `ASUKA_RELAUNCH_WAIT`, which the new process waits
+  on before it takes the single instance; at launch the host removes the
+  `.asuka-update-*` and `.*.old-*` an update left.
+- Tests (`go test ./platform/linux`) build apps (testdata/*.asuka) into
+  the executable an app ships and drive real GTK windows; they need a
+  display and a session bus (`xvfb-run -a dbus-run-session`), and skip
+  without them. test/fakes.c gives the session bus a notification server
+  and a StatusNotifierWatcher, so notifications and the tray are driven
+  too.
 
 Desktop needs what mobile doesn't: several windows, the app's menu bar
 and keyboard shortcuts, hover and right-click, resizable layouts. To
@@ -3020,139 +2985,182 @@ keep that additive, the core already treats the mobile screen as one
 root with an environment (size, insets) that can change at any time,
 and never assumes a single root in its own data structures.
 
-**Windows, the menu bar and shortcuts** (`ui/window.go`):
+**Windows, the menu bar and shortcuts** (core/src/ui/window.c,
+menubar.c, keys.c; the Asuka API in docs/navigation.md):
 
-- The main window holds the root (`app.Run`); `app.RunWindow(opts,
-  root)` gives it its options (`ui.WindowOptions`, sent to the root as
-  `WindowOptions` when it mounts). With none, a desktop host opens it at
-  800 by 600 points, a desktop window's size (Electron's default), not a
-  phone's, centered. Where the user left it, remembered by the host,
-  wins over its size and place.
-- `ui.Window(WindowProps{Open, Title, Width, Height, ..., Content,
-  OnClose})` is a window of its own while `Open` is true, built as a
-  `Sheet` is: a `Window` node, a host-sized layout root whose
-  `Environment` the host reports (it follows the user resizing
-  it; its Scale is the window's, which on desktop can differ from the
-  main window's: the core measures and snaps the frames in it at that
-  scale), `Present` opens it (unless it's to open hidden), `Destroy`
-  closes it, and the user closing it sends `Dismissed`, which sets `Open`
-  false (or `CloseRequest`, while something asks). Its content's owner
-  lives as long as the window is open, so a `Window` declared in it
-  closes with it. Mobile hosts can't show one (it panics there, as any
-  kind a host lacks).
-- A window's options, the main window's and a `Window`'s alike, are one
-  encoding (`ops.WindowConfig`: the `WindowOptions` command's args, the
-  `Window` kind's `Config` prop), set before it opens and read by one
-  decoder in each desktop host (`ops.DecodeWindowConfig`, and the web
-  host's): its content's size, least and most size, its place (its
-  frame's top left in points from the main display's top left, or
-  centered), abilities taken away (resizing, the minimize, maximize and
-  close buttons), always on top, a hidden title bar (`TitleBarHidden`:
-  the content under it, the window buttons over the content, the title
-  bar's height reported as the window's environment's `SafeTop`, so
-  `SafeArea` keeps clear of a Mac's traffic lights as of a phone's
-  notch), a background or none (transparent), hidden, maximized or full
-  screen as it opens, left out of the taskbar, a state key, and a
-  `Window`'s parent (the node of the window it's declared in: a child
-  stays above it, a modal one blocks it). The options that change later
-  are the handle's actions, not props, as a window's place and size are
-  the user's as much as the app's.
-- `ui.UseWindow()` is the handle (`*ui.WindowHandle`) of the window the
-  component is in, from a context each window provides (the root the
-  main window's, each `Window` its own), and `ui.MainWindow()` the main
-  window's from anywhere: a tray icon's menu brings the window back with
-  `Focus`. Its actions are one `WindowAction` command (u8 action, two
-  floats for a size or a place) to the root or the `Window` node: show,
-  hide, focus, minimize, maximize, restore, full screen, center, size,
-  place, always on top, close. Its state is signals (`Visible`,
-  `Focused`, `Minimized`, `Maximized`, `Fullscreen`, `AlwaysOnTop`,
-  `Position`, `Size`), set from the host's `WindowState` event (the
-  frame's top left, the content's size, six bits), which a host sends
-  only while the core listens: a handle asked for (`UseWindow`,
-  `MainWindow`, a `Window`'s `Handle`) listens; the rest cost nothing.
-  The host reports at once as the core starts listening, then on every
-  change, the user's or the app's, deduplicated; equal values don't
-  re-run readers, as any signal's. Mobile hosts have no windows: the
-  handle sends nothing there.
-- Closing asks the app: `OnCloseRequest` (`WindowProps`',
-  `WindowOptions`', and any component's through the handle, for as long
-  as its owner lives) makes the core listen for `CloseRequest` on the
-  window. A host whose window the core listens on reports the user's
-  closing with it and keeps the window open; the core asks every
-  function, and closes the window if all agree: a `Window` as the user's
-  closing does (`Open` false, `OnClose`), the main window with
-  `WindowAction` Close, which the host does as its own closing would
-  (the app quits). `Destroy` closes without asking, what a refusal's
-  dialog calls once the user has chosen. Quitting the app as a whole
-  (⌘Q, the session ending) doesn't ask the windows.
-- Where windows were is the host's, by the key the app gives (`StateKey`;
-  the main window's is `main` when it gives none, a `Window`'s isn't kept
-  without one): a Mac's frame autosave, the Windows host's rectangle in
-  pixels with its DPI and whether it was maximized, the Linux host's
-  size and whether it was maximized, in one `asuka-window.json` per app
-  (`internal/winstate`, which reads the file an older host kept for the
-  main window alone as the main window's), and on the web a panel's
-  place in `localStorage`.
+- The main window holds the root. The app block's first `Window` is
+  the main window (the lowering calls `ui.main_window` on it before its
+  keys): its keys are the main window's options, sent to the root as
+  the `WindowOptions` command as it mounts, its title's later changes
+  as `WindowTitle`; its children are the root's content, built at once.
+  Its `open` (true unless set) shows and hides it with `WindowAction`
+  Show and Hide; the core follows the root's `WindowState` while `open`
+  is bound, so the user closing it in an app that keeps running (the
+  host hides it) writes false. With no options, a desktop host opens it
+  at 800 by 600 points, a desktop window's size (Electron's default),
+  not a phone's, centered. Where the user left it, remembered by the
+  host, wins over its size and place.
+- Any other `Window` is a window of its own while `open` is true, built
+  as a `Sheet` is: its children are a builder (`ui.lazy`), built under
+  an owner of their own as it opens and disposed as it closes; its view
+  is a `Window` node, a host-sized layout root whose `Environment` the
+  host reports (it follows the user resizing it; its Scale is the
+  window's, which on desktop can differ from the main window's: the
+  core measures and snaps the frames in it at that scale). `Present`
+  opens it (shown, unless its config says hidden), `Destroy` closes it,
+  and the user closing it sends `Dismissed`, which writes `open` false
+  and raises `close` (or `CloseRequest`, while something asks). A
+  `Window` declared in its content closes with it. Mobile hosts can't
+  show one; the core makes none there only because nothing opens one.
+- A window's options, the main window's and a `Window`'s alike, are its
+  keys (`width`, `height`, `minWidth`…, `x`, `y`, `center`, `resizable`,
+  `minimizable`, `maximizable`, `closable`, `alwaysOnTop`, `hidden`,
+  `skipTaskbar`, `transparent`, `maximized`, `fullScreen`, `titleBar`,
+  `background`, `child`, `modal`, `panel`, `flyout`, `fitContent`,
+  `clickThrough`, `menuBar`, `stateKey`), encoded as one
+  `ops.WindowConfig` (the `WindowOptions` command's args, the `Window`
+  kind's `Config` prop) and read by one decoder in each desktop host:
+  its content's size, least and most size, its place (its frame's top
+  left in points from the main display's top left, or centered),
+  abilities taken away, always on top, a hidden title bar
+  (`TitleBarHidden`: the content under it, the window buttons over the
+  content, the title bar's height reported as the window's
+  environment's `SafeTop`, so `SafeArea` keeps clear of a Mac's traffic
+  lights as of a phone's notch), a background or none (transparent),
+  hidden, maximized or full screen as it opens, left out of the
+  taskbar, a state key, and a `Window`'s parent (the node of the window
+  it's declared in: a child stays above it, a modal one blocks it).
+  They're read as it opens; `title`, `edited`, `file` and `flyout` are
+  sent again as their bindings change, and `alwaysOnTop` and
+  `clickThrough` as `WindowAction`s. The rest that changes later are
+  the handle's actions, not keys, as a window's place and size are the
+  user's as much as the app's.
+- A window's handle is a `Ref`: `Window(…) as w` (a `Ref` of any other
+  view names the window that view is in; none, the window the calling
+  code is in, a context each window provides, else the main window).
+  Its actions are one `WindowAction` command (u8 action, two floats for
+  a size or a place) to the `Window` node or, for the main window, the
+  root: `w.show()`, `hide()`, `focus()` (`ui.focus` of a `Window`),
+  `minimize()`, `maximize()`, `restore()`, `setFullScreen(on)`,
+  `center()`, `setSize(w, h)`, `setPosition(x, y)`, `setAlwaysOnTop`,
+  `setClickThrough`, and `close()`, which is the user's closing (it
+  asks first). Show and Focus on a closed `Window` open it, through its
+  `open`. Its state (`w.visible`, `focused`, `minimized`, `maximized`,
+  `fullScreen`, `alwaysOnTop`, `clickThrough`, `position`, `size`,
+  `windowState`) is one signal per window, set from the host's
+  `WindowState` event (the frame's top left, the content's size, seven
+  bits), which a host sends only while the core listens: the core
+  listens from the first read of a handle's state on; the rest cost
+  nothing. The host reports at once as the core starts listening, then
+  on every change, the user's or the app's; the core drops a report
+  equal to the last, so readers don't re-run. Mobile hosts have no
+  windows: the handle's actions go to the root, which they ignore.
+- Closing asks: what asks are a window's `WindowCloseGuard`s (while
+  their `when` holds, they run their `closeRequest` and the window
+  stays) and the `onCloseRequest(fn() -> bool)` functions registered in
+  it, each for as long as its owner lives; then a `Window`'s own `on
+  closeRequest` (the main window's too) takes the closing over. While
+  any of these exists, the core listens for `CloseRequest` on the
+  window's node (the root for the main window): a host whose window the
+  core listens on reports the user's closing with it and keeps the
+  window open. The core asks each, and closes the window if all agree
+  and no handler took it: a `Window` as the user's closing does (`open`
+  false, `close`), the main window with `WindowAction` Close, which the
+  host does as its own closing would (the app quits, or hides it while
+  it keeps running). `closeWindow()` closes without asking, what a
+  guard's question calls once the user has chosen. Quitting the app as
+  a whole (⌘Q, the session ending) doesn't ask the windows: it asks the
+  app (below).
+- Where windows were is the host's, by the key the app gives
+  (`stateKey`; the main window's is `main` when it gives none, a
+  `Window`'s isn't kept without one): a Mac's frame autosave, the
+  Windows host's rectangle in pixels with its DPI and whether it was
+  maximized, the Linux host's size and whether it was maximized, in one
+  `asuka-window.json` per app, and on the web a panel's place in
+  `localStorage`.
+- A window's keys: `WindowKeys { keys }` gives the window it's in
+  (`Keys` on its `Window` node, or the root's, merged with
+  `useKeys`') keys that no view takes, the last registration's winning,
+  for as long as its owner lives.
 
-- `ui.MenuBar(menus)` gives the app its menus, with keyboard shortcuts
-  (`ui.Shortcut{Key, Mods}`, `ui.Cmd("s").With(ui.Shift)`; `Primary` is
-  ⌘ on macOS and Ctrl on Windows). It's a fragment that follows its
-  accessor: the core encodes the menus into one `MenuBar` command to
-  the root and sends it only when the encoding changed; the host makes
-  its menu bar again, and a chosen item (a click or its shortcut) comes
-  back as `Action` on the root with the item's index among all the
-  menus' items. The last `MenuBar` mounted shows; disposed, the one
-  before. Shortcuts are menu items' because that's how both platforms
-  route them (key equivalents, accelerators), and how users find them.
-  Mobile hosts ignore it.
-- A `MenuItem` with a `Submenu` opens a menu of those items. Items are
-  numbered depth first (a submenu's items after the item that opens it;
-  separators and submenus count), and `Action` carries that number. A
-  `MenuItem` with a `Role` is the host's: `MenuRoleQuit` (`ui.MenuQuit`)
-  quits the app as the system quits it ("Quit Notes", ⌘Q on a Mac), its
-  title the host's unless the item has one, and is never reported;
-  `MenuRoleClose` closes the window in use as its close button does
-  (⌘W, Ctrl+W); `MenuRoleOpenRecent` is a Mac's Open Recent submenu,
-  the host's, and elsewhere the item's own (Documents, below).
+- `MenuBar { Menu(title) { MenuItem(title) { shortcut, role, disabled,
+  checked; on press } … } }` gives the app its menus, with keyboard
+  shortcuts (a `Shortcut`'s key and its `primary`, `shift`, `alt`,
+  `control`; `primary` is ⌘ on macOS and Ctrl elsewhere). `MenuItem`s
+  in an item make a submenu, `MenuSeparator()` a line. None makes a
+  view: a `MenuBar` builds its children (`ui.lazy`) under an owner of
+  its own, outside the tree, where a `Menu` is a menu bar's menu (a
+  context the `MenuBar` provides: elsewhere `Menu` is the context menu
+  element), and marks what it holds as its, so a key set on an item, or
+  an item a `for` or an `if` adds or removes, syncs it at the next
+  flush. The last `MenuBar` shown is the app's: the core encodes its
+  menus into one `MenuBar` command to the root and sends it only when
+  the encoding changed; the host makes its menu bar again, and a chosen
+  item (a click or its shortcut) comes back as `Action` on the root
+  with the item's index among all the menus' items. Disposed, the one
+  before shows; with none left, an empty bar is sent. Shortcuts are
+  menu items' because that's how both platforms route them (key
+  equivalents, accelerators), and how users find them. Mobile hosts
+  ignore it.
+- Items are numbered depth first (a submenu's items after the item
+  that opens it; separators and submenus count), and `Action` carries
+  that number. A `MenuItem`'s `role`: `.destructive` sets the item's
+  destructive flag; `.quit` (`MenuRoleQuit`) quits the app as the
+  system quits it ("Quit Notes", ⌘Q on a Mac), its title the host's
+  unless the item has one, and is never reported; `.close`
+  (`MenuRoleClose`) closes the window in use as its close button does
+  (⌘W, Ctrl+W); `.openRecent` (`MenuRoleOpenRecent`) is a Mac's Open
+  Recent submenu, the host's, and elsewhere the item's own.
 
-**Menus, one encoding** (`ops/menu.go`): the menu bar, a tray icon's
-menu and the Dock menu are the same bytes: a menu is u32 count, then per
-item u8 flags (separator, disabled, checked, destructive, submenu), its
-title, its shortcut's key and modifiers, u8 role, and with the submenu
-flag the submenu, a menu. `ui` encodes (`ui.EncodeMenu`, for packages
-that show menus through a module) and finds an item by its number
-(`ui.MenuItemAt`); the desktop hosts decode with `ops.DecodeMenu` and
-`ops.DecodeMenuBar`, which number the items; the web host reads the
-menu bar's shortcuts with the same layout.
+**Menus, one encoding** (`ops/menu.go`, core/src/ops/payload.c's
+`ak_append_menu_bar`): the menu bar, a tray icon's menu and the Dock
+menu are the same bytes: a menu is u32 count, then per item u8 flags
+(separator, disabled, checked, destructive, submenu), its title, its
+shortcut's key and modifiers, u8 role, and with the submenu flag the
+submenu, a menu. The core encodes the menu bar (menubar.c);
+`platform/tray` encodes its menus in Asuka (an `Action`'s `.section` its
+items between separators, under a disabled item of its title when it
+has one) and finds a chosen item by its number the same way; the
+desktop hosts decode with `ops.DecodeMenu` and `ops.DecodeMenuBar`
+(`ak_decode_menu`, `ak_decode_menu_bar` in C), which number the
+items; the web host reads the menu bar's shortcuts with the same
+layout.
 
-**The tray, the Dock menu, background apps** (`tray`, `app`):
+**The tray, the Dock menu, background apps, quitting** (sdk/tray,
+core/src/ui/lifecycle.c):
 
-- `tray.Show(tray.Props{Image, Symbol, Template, Title, Tooltip, Menu,
-  OnClick, ID})`, called in a component, shows an icon in the tray while
-  its owner lives: the menu bar on macOS, the notification area on
-  Windows, the panel's status icons on Linux. It follows its accessors;
-  disposed, the icon goes. `tray.DockMenu(items)` adds items to the app
-  icon's menu, the last mounted showing, as `MenuBar`. Neither is a
-  node: they talk to the host through a module, `tray`, as other
-  packages do (`ui.Call`): `set` sends an icon whole (its strings and its
-  menu, only when its encoding changed), `remove` takes it away, `dock`
-  sets the Dock menu, and `next`, asked again each time it answers,
-  reports a click or a chosen item (an icon's id, 0 for the Dock menu,
-  and the item's number). The asking runs on the main thread, a `Call`
-  from the last one's answer, while an icon or a Dock menu is mounted;
-  the last one going sends `stop`. A host without the module (phones,
-  the web) answers with an error, and the package stops asking: there,
-  `Show` and `DockMenu` do nothing and `tray.Supported` is false.
-- An icon is an `Image` (an asset or a file, drawn 16 points tall) or a
-  `Symbol` (an SF Symbol name, drawn as each host draws `ui.Symbol`),
-  and a template when it's a Symbol or `Template` says so: black on
-  transparent, which the platform colors as its own icons. Without
-  `OnClick` a click opens the menu; with it, a click is `OnClick` and the
-  menu opens on a secondary click.
-- macOS: an `NSStatusItem` (variable length; `ID` its autosave name,
+- `tray.Tray(id) { image, symbol, template, title, tooltip, menu:
+  [Action]; on click }` shows an icon in the tray while it's shown:
+  the menu bar on macOS, the notification area on Windows, the panel's
+  status icons on Linux. Its keys are bindings; disposed, the icon
+  goes. `tray.DockMenu { items }` adds items to the app icon's menu,
+  the last shown showing, as `MenuBar`. Neither is a node: they're
+  plain Asuka over the hosts' `tray` module (`platform/host`'s `call`
+  and `send`): `set` sends an icon whole (u32 its number, 1 and up, u8
+  flags: 1 template, 2 clickable, strings image, symbol, title, tooltip
+  and id, then its menu), again only when its encoding changed;
+  `remove` (u32 its number) takes it away; `dock` (a menu) sets the
+  Dock menu; and `next`, asked again each time it answers, reports a
+  click or a chosen item (u32 an icon's number, 0 for the Dock menu, u8
+  1 a click or 2 an item, u32 the item's number). One `next` is
+  outstanding while any icon or Dock menu shows (a `live` stream the
+  icons read); the last one going cancels it, which sends `stop`, and
+  the host answers the waiting `next` with an error. A host without the
+  module (phones, the web) answers with an error, and the package stops
+  asking: there, `Tray` and `DockMenu` show nothing and
+  `tray.supported()` is false. `tray.anchor(id)` is a flyout's anchor:
+  `Anchor(tray: n)`, the icon's number, followed.
+- An icon is an `image` (an asset or a file, drawn 16 points tall) or a
+  `symbol` (an SF Symbol name, drawn as each host draws `Symbol`), and
+  a template when it's a symbol or `template` says so: black on
+  transparent, which the platform colors as its own icons. Without `on
+  click` (an event's name read as a value is whether the caller handles
+  it) a click opens the menu; with it, a click is `click` and the menu
+  opens on a secondary click.
+- macOS: an `NSStatusItem` (variable length; its `id` its autosave name,
   so it comes back where the user ⌘-dragged it), its button the template
   image and the title in the menu bar's font with monospaced digits;
-  without `OnClick` its menu is the item's own, with it the button's
+  without `on click` its menu is the item's own, with it the button's
   action opens the menu on a right or Control click (the menu set on the
   item for one `performClick:`). Its menu and the Dock's enable items as
   the app says (no validation) and show no shortcuts. The Dock menu is
@@ -3166,18 +3174,19 @@ menu bar's shortcuts with the same layout.
   Template is white on a dark taskbar and black on a light one
   (`SystemUsesLightTheme`, drawn again on `ImmersiveColorSet`). The
   tooltip is `szTip`; Windows shows no title. `NIN_SELECT` and
-  `NIN_KEYSELECT` are `OnClick`, else the menu; `WM_CONTEXTMENU` the
+  `NIN_KEYSELECT` are `click`, else the menu; `WM_CONTEXTMENU` the
   menu, made by the menu bar's code (submenus, checks, destructive items
   owner-drawn), opened at the event's anchor after the tray window comes
-  to the foreground, `WM_NULL` posted after it. `ID` is unused: an
+  to the foreground, `WM_NULL` posted after it. The `id` is unused: an
   `NIF_GUID` is tied to the executable's path. The Dock menu is the
   jump list's Tasks (`ICustomDestinationList`): each top-level item a
   shell link to the executable with `--asuka-dock-item=<number>`, titled
   by `System.Title`; separators `IsDestListSeparator` links; submenus,
   disabled items and roles left out (a jump list can't show them); none
   deletes the list; tests and automation and dev runs don't touch the
-  user's. The argument is taken out of `os.Args`; a running app (one
-  with asuka.json's `id` runs once) is handed `asuka-dock-item:<n>`, and
+  user's. A launch with the argument reports the item and opens nothing
+  else (`wh_dock_item_launch`); a running app (one
+  with asuka.toml's `id` runs once) is handed `asuka-dock-item:<n>`, and
   reports the item without coming to the front. Submenus in the menu bar
   are `MF_POPUP`s, with access keys per level; an owner-drawn item that
   opens one draws the visual style's arrow (`MENU_POPUPSUBMENU`) and
@@ -3187,7 +3196,7 @@ menu bar's shortcuts with the same layout.
   the icons. Keeping running, `WM_CLOSE` hides the main window.
 - Linux: GTK 4 has no tray, and the GTK 3 appindicator libraries can't
   load in a GTK 4 process, so the host speaks their protocol itself
-  through GDBus (`internal/gtk/dbusobject.go`: objects exported with one
+  through GDBus (`platform/linux/src/dbus.c`: objects exported with one
   vtable of callbacks, made once, routed by user data). Each icon is a
   StatusNotifierItem on a session bus connection of its own
   (`/StatusNotifierItem`), its menu a `com.canonical.dbusmenu` object
@@ -3198,7 +3207,7 @@ menu bar's shortcuts with the same layout.
   `IconPixmap` (ARGB32, big-endian, at its size and 48 down to 16), a
   Template white while libadwaita's style is dark; the title is
   `XAyatanaLabel` (GNOME's AppIndicator extension shows it). Without
-  `OnClick`, `ItemIsMenu` has the panel open the menu on a click; with
+  `on click`, `ItemIsMenu` has the panel open the menu on a click; with
   it, `Activate` is the click. The dbusmenu's items have labels (`_`
   doubled), enabled, a checkmark toggle and `children-display` for a
   submenu; a destructive item is set apart by separators, as the
@@ -3212,38 +3221,70 @@ menu bar's shortcuts with the same layout.
   KDE's task manager). Keeping running holds the `GApplication`; closing
   the main window hides it. The menu bar's submenus are GMenu submenus;
   Quit takes Ctrl+Q and quits as SIGTERM does.
-- `app.KeepRunning()` keeps a desktop app running when its last window
-  closes: closing the main window hides it, its root mounted, until the
-  app shows it again (on macOS also the Dock icon, clicked with no window
-  showing: `applicationShouldHandleReopen:hasVisibleWindows:`; on Linux,
-  the app launched again, `activate`). `app.RunInBackground()` (and asuka.json's
-  `"background": true`, which sets it with `-X` and, on macOS, puts
-  `LSUIElement` in the Info.plist so the Dock icon never shows) also
-  leaves the main window hidden at launch, and on macOS makes the app an
-  accessory (no Dock icon, not in ⌘Tab; a `Window` it opens activates
-  it). Windows and Linux have no app without a taskbar button but one
-  without a window showing: that's theirs. Automation runs
-  (`ASUKA_SNAPSHOT`) still show the main window; on macOS they write
-  each tray icon's button beside it (`file.tray.png`) and, with
-  `ASUKA_DUMP`, the icons' and the Dock's menus in the dump.
+- asuka.toml's `keepRunning = true` keeps a desktop app running when
+  its last window closes: closing the main window hides it, its root
+  mounted, until the app shows it again (on macOS also the Dock icon,
+  clicked with no window showing:
+  `applicationShouldHandleReopen:hasVisibleWindows:`; on Linux, the
+  app launched again, `activate`). `background = true` (which on macOS
+  also puts `LSUIElement` in the Info.plist so the Dock icon never
+  shows) also leaves the main window hidden at launch, and on macOS
+  makes the app an accessory (no Dock icon, not in ⌘Tab; a `Window` it
+  opens activates it). Both reach the host in the settings beside its
+  executable (`asuka-app.json`'s `keepRunning` and `background`), read
+  before the app mounts. Windows and Linux have no app without a
+  taskbar button but one without a window showing: that's theirs.
+  Automation runs (`ASUKA_SNAPSHOT`) still show the main window; on
+  macOS they write each tray icon's button beside it (`file.tray.png`)
+  and, with `ASUKA_DUMP`, the icons' and the Dock's menus in the dump.
+- Quitting: `quit()` sends the `Quit` command to the root (u8 flags, 1
+  relaunch: `relaunch()`), which a desktop host does as the user's
+  Quit (⌘Q, its menu's `.quit` item): it asks the app first, then
+  closes the windows and ends the process (Lifecycle Background first,
+  as always); with the relaunch flag, once the process has ended it
+  starts the app again with the same arguments (a Mac app's bundle
+  through Launch Services), unless the quit was canceled or the session
+  is ending. Phones and the web ignore it.
+- Asking: however a quit starts (the user's Quit, the Dock's, closing
+  the main window where that quits, `Quit`, SIGINT or SIGTERM, the
+  session ending), the host calls `asuka_quit_request(ending)` once,
+  synchronously on the main thread, before it goes on: the core runs
+  the app's `on quit(e)` handlers (the app block's and `onQuit`'s,
+  each for as long as its owner lives) with a `QuitEvent`
+  (`sessionEnding`, `cancel()`, `canceled()`), flushes what they
+  changed (an alert to show), and returns 1 if one canceled, which
+  never happens while ending. A canceled quit leaves the app running
+  (macOS: `terminateCancel`); a later `quit()` asks again. A host asks
+  once per quit: a quit already allowed only finishes.
+- Another launch: on Windows and Linux an app with an `id` runs once (a
+  mutex of the user's session and `WM_COPYDATA`; a unique
+  `GApplication` over D-Bus), and the running one gets the second
+  launch's arguments and working directory as the `SecondInstance`
+  event to the root (u32 count, the arguments, the directory, each a
+  u32-length string), after bringing itself to the front and reporting
+  the files and URLs among them as it does a launch's. The core runs
+  the app block's `on secondInstance(args, dir)` and
+  `onSecondInstance`'s. A Mac runs an app once through Launch Services
+  and passes files, not arguments: it never sends it.
 
 **Flyouts, panels, windows sized to their content, click-through**
-(`ui`, `tray`, `apps`; `internal/flyout`):
+(`ui`, `tray`, `apps`; platform/desktop's flyout.c):
 
 - Kinds of `Window`, not kinds of their own: `ops.WindowConfig`'s flags
   `WindowFlyout`, `WindowPanel`, `WindowFitContent` and
   `WindowClickThrough` (bits 14 to 17), set before the window opens
-  (`WindowProps`' `Flyout`, `Panel`, `FitContent`, `ClickThrough`; the
-  main window's `WindowOptions` take all but `Flyout`). A panel also
+  (a `Window`'s keys `flyout`, `panel`, `fitContent`, `clickThrough`;
+  the main window takes all but `flyout`). A panel also
   sets always on top, skip the taskbar, no minimize or maximize; a
   flyout skip the taskbar and its `Parent`, the window it's declared in.
 - A flyout's anchor is the `Window` kind's `Flyout` prop (`ops.Flyout`:
   u32 tray icon, f32 x, y, width, height of a rectangle of its parent's
   content, u8 `Placement`, f32 gap), sent before `Present` and again as
-  its accessor changes (placed again). A tray icon is `asuka/sdk/tray`'s id
-  for it (the "set" call's), which each host's tray module keys its
-  icons by: `tray.Show` returns an `Icon`, whose `Anchor` is that id.
-  `internal/flyout.Place` is one placement for the desktop hosts: on
+  its binding's encoding changes (placed again). A tray icon is
+  `platform/tray`'s number for it (the "set" call's), which each host's
+  tray module keys its icons by: `tray.anchor(id)` is that number.
+  `dsk_flyout_place` (platform/desktop) is one placement for the
+  desktop hosts, the Mac's too (the web's window.js does the same): on
   the side the placement names, flipped to the other side where that
   has no room and the other has, lined up along it (flipped to the other
   end), slid into the work area, shrunk to it, as GTK places menus.
@@ -3265,10 +3306,11 @@ menu bar's shortcuts with the same layout.
   flyout placed again, other windows keeping their top left; a window
   that opens shown with it shows on its first Fit, so never at another
   size first. The environment the host then reports doesn't lay the
-  content out again (the content isn't laid out at it). The tab on the
-  web isn't fitted.
+  content out again (the content isn't laid out at it). The main window
+  sized to its content is the root laid out so, its Fit sent to the
+  root (core/src/ui/root.c). The tab on the web isn't fitted.
 - Click-through is `WindowAction` ClickThrough and NotClickThrough, and
-  the `WindowState` bit 64 (`WindowHandle.ClickThrough`).
+  the `WindowState` bit 64 (`w.clickThrough`).
 - macOS: flyouts and panels are `AsukaPanel`s, `NSPanel`s made
   nonactivating and borderless from the start (the window server learns
   that a window never activates its app only from the style it's made
@@ -3316,8 +3358,8 @@ menu bar's shortcuts with the same layout.
   its parent's rectangle (`XTranslateCoordinates`) or where its tray
   icon was clicked (StatusNotifierItem's `Activate` x, y, where the
   panel says: KDE Plasma, GNOME's AppIndicator extension), in the work
-  area; and with it a window's `X`, `Y`, `SetPosition`, `Center` and
-  `AlwaysOnTop`. Under Wayland the compositor places an ordinary window
+  area; and with it a window's `x`, `y`, `setPosition`, `center` and
+  `alwaysOnTop`. Under Wayland the compositor places an ordinary window
   and keeps it in the taskbar (an `xdg_popup` needs a parent surface,
   which a tray flyout hasn't); a panel is an overlay layer-shell surface
   where the app runs with gtk4-layer-shell (`LD_PRELOAD`: it must load
@@ -3333,54 +3375,59 @@ menu bar's shortcuts with the same layout.
   page's top right), closed on Escape and a press outside them;
   click-through is `pointer-events: none` on the panel, the page under
   it taking the clicks.
-- `asuka/sdk/apps` lists the apps installed (module "apps": "list" answers
-  JSON, "icon" draws a PNG in the caches and answers its path, "open"),
-  sorted and deduplicated in Go; `Search` ranks them in Go. macOS reads
+- `platform/apps` lists the apps installed (the hosts' module "apps",
+  through `platform/host`: "list" answers JSON, "icon" draws a PNG in
+  the caches and answers its path, "open"), sorted, deduplicated and
+  ranked for a search in the package's Asuka. macOS reads
   the application folders (`displayNameAtPath:`, bundle identifiers,
   `iconForFile:`, `openApplicationAtURL:`), Windows the shell's
   Applications folder (`FOLDERID_AppsFolder`, `IShellItemImageFactory`,
-  `ShellExecute`), Linux the XDG desktop entries in Go (the theme's
-  icons drawn by GTK, `g_app_info_launch_uris_async` with the display's
-  launch context). Phones and the web answer `ErrUnsupported`.
+  `ShellExecute`), Linux the XDG desktop entries, read in C as the XDG
+  specs say (platform/linux/src/apps.c: the theme's icons drawn by GTK,
+  `g_app_info_launch_uris_async` with the display's launch context).
+  Phones and the web have no module: `AppsError.unsupported`.
 
 **Displays, power, the Dock and the system's appearance** (`screen`,
 `power`, `dock`, `appearance`):
 
-- Packages over modules, not ops: what the system says about the
-  computer isn't a view's. Each state the app follows is a module with
-  "current", "next" and "stop" (`internal/follow`): a goroutine asks
-  "next" with the state it last got, which the host answers once its
-  state is another (at once for none), and hands the answer to the
-  watchers on the main thread; the last watcher's stop sends "stop",
-  which answers the waiting "next" with "stopped". Events (`power`'s
-  sleep and lock) ride the same answer, after the state: the host
-  queues them from the first "next" until "stop", so none is lost
-  between two. Each package has `Watch` and `Use` (a signal, stopped
-  with its owner); a host reads its state again as the platform says it
-  changed, and the desktop ones as each "next" comes too. `host/fake`
-  answers later as hosts do (`AsyncModules`), and `follow.Fake` is such
-  a module's host side for tests.
-- `screen.Displays` (Electron's `screen`): each display's ID, name,
+- Packages, not ops: what the system says about the computer isn't a
+  view's. `screen`, `power` and `appearance` are native packages (Swift
+  on iOS and the Mac, Kotlin, JavaScript, C on Windows and Linux in
+  their desktop/), each a `native interface` with the state now
+  (`displays()`, `current()`) and an async `watch(changed:)` that calls
+  back with the state, then each change, until its task is cancelled.
+  The Asuka over it is the same for all three: `now()`, `changes()` (a
+  `Stream`), and a tracked read through `live(now(), changes)`
+  (`screen.displays()`, `power.status()`, `appearance.current()`):
+  read in a binding, it follows the state while something reads it, and
+  only then does anything watch the system. Events (`power`'s sleep and
+  lock) are a stream of their own, `events(happened:)`. A platform
+  without the package's code answers its fallback (no displays, no
+  battery, no accent).
+- `screen.displays()` (Electron's `screen`): each `Display`'s id, name,
   bounds and work area in points in the desktop's coordinates (the
   origin at the primary display's top left, y down), scale, refresh
-  rate and whether it's the primary; `Primary`, `Nearest` and
-  `Matching` pick one. Where displays have different scales (Windows),
-  each one's origin is its pixels over the least scale of the displays
-  and it goes on in its own, so displays never overlap. JSON on the
-  wire, the primary first, the same bytes for the same displays (what
-  "next" compares).
-- `power`: whether there's a battery and the computer runs on it, its
-  level and charging, Low Power Mode, the thermal state; `OnSuspend`,
-  `OnResume`, `OnLock`, `OnUnlock`; `IdleTime`, since the user's last
-  input in any app (`ErrIdleUnknown` where the system doesn't say).
-  Keeping the display on stays `device.KeepAwake`, working out of sight
-  `asuka/sdk/background`.
-- `dock.SetProgress` shows a task's progress on the app's icon (Normal,
-  Indeterminate, Paused, Error); `dock.RequestAttention` asks the user
-  to come to the app (Informational, Critical), and does nothing while
-  the app is in use. The icon's count stays `notify.SetBadge`.
-- `appearance`: the system's accent color (0 where it has none),
-  Increase Contrast and Reduce Transparency, beside what
+  rate and whether it's the primary, the primary first;
+  `screen.primary`, `nearest` and `matching` pick one. Where displays
+  have different scales (Windows), each one's origin is its pixels over
+  the least scale of the displays and it goes on in its own, so
+  displays never overlap.
+- `power.status()`: whether there's a battery and the computer runs on
+  it, its level and charging, Low Power Mode, the thermal state
+  (`Status`); `suspends()`, `resumes()`, `locks()`, `unlocks()`
+  (streams of `events()`); `idleTime()`, since the user's last input in
+  any app (`PowerError.idleUnknown` where the system doesn't say).
+  Keeping the display on stays platform/device's `keepAwake`, working
+  out of sight `platform/background`.
+- `dock.setProgress(Progress(value:, state:))` shows a task's progress
+  on the app's icon (`.normal`, `.indeterminate`, `.paused`, `.error`;
+  `.none` takes it away); `dock.requestAttention(.critical)` asks the
+  user to come to the app (`.informational` by default), and does
+  nothing while the app is in use. `dock` is plain Asuka over the
+  hosts' `dock` module (`host.send` through platform/host); the icon's
+  count stays `notify.setBadge`.
+- `appearance.current()`: the system's accent color (none where it has
+  none), Increase Contrast and Reduce Transparency, beside what
   `Environment` carries (dark mode, Reduce Motion, the text size).
 - macOS: the displays are `NSScreen`'s (the first has the menu bar;
   AppKit's bottom-left coordinates flipped; `visibleFrame` the work
@@ -3405,9 +3452,10 @@ menu bar's shortcuts with the same layout.
   accessibility display options, followed through
   `NSSystemColorsDidChangeNotification` and
   `NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification`.
-- Windows: one hidden top-level window of the modules' class, never
-  shown, hears what Windows broadcasts to top-level windows only (a
-  message-only window hears none): `WM_DISPLAYCHANGE`,
+- Windows: the system window (platform/desktop's
+  `asuka_win_system_message`), a top-level window never shown, hears
+  what Windows broadcasts to top-level windows only (a message-only
+  window hears none) and hands it to the packages' C: `WM_DISPLAYCHANGE`,
   `WM_SETTINGCHANGE`, `WM_SYSCOLORCHANGE`,
   `WM_DWMCOLORIZATIONCOLORCHANGED`, `WM_POWERBROADCAST`; the power and
   session notifications are registered for it. Displays are the
@@ -3494,9 +3542,9 @@ menu bar's shortcuts with the same layout.
   does nothing.
 
 **Files, one instance, quitting, recent documents and login**
-(`ui/call.go`, `app/quit.go`, `app/dirs.go`, `recent`, `login`):
+(core/src/ui/lifecycle.c, `recent`, `login`):
 
-- `asuka.json`'s `fileTypes` (name, extensions, MIME types, UTI,
+- `asuka.toml`'s `fileTypes` (name, extensions, MIME types, UTI,
   `conformsTo`, role, icon) are declared by each build
   (`cmd/asuka/filetypes.go`): macOS and iOS `CFBundleDocumentTypes` by
   UTI, the app's own types (a UTI under its ID) exported, others the
@@ -3504,45 +3552,49 @@ menu bar's shortcuts with the same layout.
   `ACTION_VIEW` filters; Windows a ProgID per type and the extensions'
   `OpenWithProgids` (and `Applications\<exe>\SupportedTypes`), which the
   host writes under `HKCU\Software\Classes` as it starts, from
-  `boot.FileTypes` (internal/filetype, `-ldflags -X`), the icons in the
+  asuka-app.json's `fileTypes` (internal/filetype), the icons in the
   executable; Linux the desktop file's `MimeType` (and `%U`), a
   shared-mime-info package for the app's own types and their icons; the
   web manifest's `file_handlers`.
 - Files reach the core with no event of their own: `IncomingURL`'s
   string carries `file://` URLs, one per line (internal/fileurl; a URL
   has no raw line break), so the files opened together arrive together.
-  `ui.incoming` splits them: the paths go to `ui.OnOpenFiles`, the other
-  URLs to `ui.OnOpenURL`; both are owner-scoped and keep what came before
-  any handler for the first. macOS: `application:openURLs:` (Finder,
-  Open With, the Dock icon, the File menu's Open Recent). Windows and
-  Linux: the command line's files that exist (taken from the launch's
-  working directory) and `file://` URIs, with the scheme's URLs
-  (`fileurl.FromArgs`); Linux's GApplication `open` too. The web: the
-  launch queue's files, read into the app's caches.
+  The core splits them (core/src/ui/share.c's `incoming`): the paths go
+  to the app block's `on files(paths)` and `onOpenFiles`, the other URLs
+  to `on openURL(url)`, the router and `onOpenURL`; the handlers are
+  owner-scoped and what came before any handler is kept for the first.
+  macOS: `application:openURLs:` (Finder, Open With, the Dock icon, the
+  File menu's Open Recent). Windows and Linux: the command line's files
+  that exist (taken from the launch's working directory) and `file://`
+  URIs, with the scheme's URLs (internal/fileurl's encoding, in each
+  host's C: Linux's files.c); Linux's GApplication `open` too. The web:
+  the launch queue's files, read into the app's caches.
 - One instance: an app with an ID runs once on Windows (a mutex of the
   session; the second launch sends its working directory and arguments
   through `WM_COPYDATA`) and Linux (a unique GApplication with
   `HANDLES_COMMAND_LINE`: the second launch's command line over D-Bus),
   except under automation and `asuka dev`, or with `"singleInstance":
-  false` (`boot.MultipleInstances`). The running one comes to the front,
-  `app.OnSecondInstance(args, dir)` gets the arguments, and their files
-  and URLs come as above. macOS's Launch Services runs an app once by
-  itself, and passes files as Apple Events, not arguments.
-- Quitting: `app.Quit` (`boot.Quit`, set by a desktop host) quits as the
-  user's Quit does. Every quit asks `boot.QuitRequested` (package app:
-  `app.OnQuit`'s handlers, with a `QuitEvent` they can `Cancel`) once;
-  one they allowed only finishes. macOS asks in
+  false` (asuka-app.json's `multipleInstances`). The running one comes
+  to the front, `on secondInstance(args, dir)` (and `onSecondInstance`)
+  gets the arguments, and their files and URLs come as above. macOS's
+  Launch Services runs an app once by itself, and passes files as Apple
+  Events, not arguments.
+- Quitting: `quit()` quits as the user's Quit does (the Quit command,
+  which a desktop host does as the user's Quit). Every quit asks the
+  core (`asuka_quit_request`: `on quit`'s handlers, which can cancel it)
+  once; one they allowed only finishes. macOS asks in
   `applicationShouldTerminate:` (⌘Q, the Dock, the last window, SIGINT
   and SIGTERM, which send `terminate:`), with `SessionEnding` after
   `NSWorkspaceWillPowerOffNotification`; Windows on the main window's
   `WM_CLOSE`, Ctrl+C and `WM_QUERYENDSESSION`; Linux on the last
   window's `close-request`, SIGTERM, SIGINT and SIGHUP, and `query-end`.
   The session's end can't be canceled; a second signal exits at once.
-  Phones and the browser never quit themselves (`boot.Quit` is nil).
-- `app.DataDir`, `ConfigDir`, `CacheDir` and `LogDir` are
-  internal/appdir's, each platform's place for the app (`store.Dir` is
-  DataDir).
-- `asuka/sdk/recent` (module `recent`: `add`, `clear`, `list`):
+  Phones and the browser never quit themselves.
+- The app's data, config, cache and log directories are each
+  platform's place for the app (platform/desktop's `dsk_dirs` on
+  Windows and Linux, the Foundation's on Apple platforms).
+- `platform/recent` (the hosts' module `recent`, through `platform/host`:
+  `add`, `clear`, `list`):
   NSDocumentController's recent documents on macOS, in an Open Recent
   menu the host fills as it opens (in the File menu once the app
   declares file types, has recent documents or adds one; choosing one
@@ -3552,35 +3604,40 @@ menu bar's shortcuts with the same layout.
   user's `recently-used.xbel`, through GBookmarkFile, as the app's (its
   application name), clearing only the app's. Phones and the web answer
   nothing.
-- `asuka/sdk/login` (module `login`: `set`, `enabled`, `openedAtLogin`):
+- `platform/login` (the hosts' module `login`, through `platform/host`:
+  `set`, `enabled`, `openedAtLogin`):
   SMAppService's `mainAppService` on macOS 13 (a bundle only;
-  `requiresApproval` is `ErrNeedsApproval`), the opening Apple Event's
+  `requiresApproval` is `LoginError.needsApproval`), the opening Apple
+  Event's
   `keyAELaunchedAsLogInItem` for `openedAtLogin`; Windows the HKCU `Run`
   value (and Task Manager's `StartupApproved` for `enabled`); Linux an
   XDG autostart entry, or in a Flatpak the Background portal's
   `RequestBackground`. The Windows and Linux entries start the app with
-  `boot.LoginArg`, which the host takes out of `os.Args` in its init.
+  `--asuka-opened-at-login`, which the host takes out of its arguments
+  as it starts.
 
 **Global shortcuts** (`hotkey`): keys that reach the app while another
 app is in front (a launcher's panel, start and stop a recording).
 
-- `hotkey.Register(Props{Shortcut, Description, OnPress})` registers a
-  `ui.Shortcut` while the calling component's owner lives; disposed (or
-  `Unregister`), the keys are let go. The shortcut follows its accessor:
-  the old keys go as the new ones are taken, and a Shortcut without a
-  Key registers nothing (a setting the user cleared). `OnPress` runs on
-  the main thread at each press; a key held down doesn't repeat it, and
-  only the press is reported (Windows tells no release).
-- `Status()` (off, pending, active, failed) and `Err()` are signals:
-  `ErrTaken` (another app has the keys, or this one already does),
-  `ErrNotAllowed` (the user declined, or the desktop won't bind them for
-  an app it can't place), `ErrNotAvailable` (phones, the web, a Wayland
-  desktop without the portal), `ErrKey` (no such key).
-- One module, `hotkey`: `register` (id, modifiers, key, description),
+- `hotkey.Hotkey(Shortcut(key:, primary:, shift:, alt:, control:)) {
+  description; on press; on error(e) }` is a component that shows
+  nothing: its shortcut (the prelude's `Shortcut`) is registered while
+  it's shown, and let go as it goes. Its task follows the shortcut and
+  the description: the old keys go as the new ones are taken. `press`
+  is emitted on the main thread at each press; a key held down doesn't
+  repeat it, and only the press is reported (Windows tells no release).
+- `error(e)` says why it isn't registered, a `HotkeyError`: `.taken`
+  (another app has the keys, or this one already does), `.notAllowed`
+  (the user declined, or the desktop won't bind them for an app it
+  can't place), `.notAvailable` (phones, the web, a Wayland desktop
+  without the portal), `.noKey` (no such key).
+- Plain Asuka over one module, `hotkey`, through platform/host:
+  `register` (u32 id, u8 modifiers, the key, the description),
   `unregister`, and a long poll, `next`, answered with the ids pressed
-  since; one runs while any shortcut is active, `stop` ends it. Phones and
-  the web have no module, which the package reports as `ErrNotAvailable`.
-- macOS: Carbon's `RegisterEventHotKey` through purego, as every Mac
+  since (u32 each); one runs while any `Hotkey` is shown (a `live`
+  stream they read), `stop` ends it. Phones and the web have no module,
+  which the package reports as `.notAvailable`.
+- macOS: Carbon's `RegisterEventHotKey` (the Swift host's Hotkey.swift), as every Mac
   app's global shortcut (no Accessibility permission), registered
   exclusively; the system's own shortcuts (`CopySymbolicHotKeys`) are
   taken. A character is the key that types it on the keyboard's layout
@@ -3596,27 +3653,28 @@ app is in front (a launcher's panel, start and stop a recording).
   descriptions and preferred triggers; the desktop may ask the user to
   confirm or pick other keys, remembers them by the shortcut's id, and
   knows the app by its desktop entry. `Activated` is a press; its
-  activation token is the display's while `OnPress` runs, so a window
+  activation token is the display's while `press` is handled, so a window
   it shows takes the focus. Linux, X11: `XGrabKey` on the root window
   (in Caps Lock's and Num Lock's states too), taken while another client
   has the keys; presses come through GDK's `xevent`. Neither (GNOME
   before 48, XWayland alone, whose grabs see only X11 windows' keys):
-  `ErrNotAvailable`.
+  `.notAvailable`.
 
 **File dialogs and the file manager** (`dialog`, `shell`):
 
-- `dialog.Open`, `dialog.Save` and `dialog.Folder` give the user's own
-  paths, not copies (`device.PickFiles` gives copies, as a phone's
-  document picker does): the app reads and writes the files where they
-  are. Their options are a title, the button's label, where the dialog
-  starts (a folder, or a file in it: selected on macOS and Windows, or
-  its name suggested), filters (`dialog.Filter`: MIME types as an
-  input's accept takes them, `image/*` a family, or extensions, or
-  both), several files or folders, hidden files, and `From`, a view in
-  the window the dialog belongs to (default: the one in use). They're module calls (`dialog`:
-  `open`, `save`, `folder`, the options as JSON), answered with the
-  paths (JSON) or the path once the user has chosen; nothing is a
-  cancel.
+- `dialog.open`, `dialog.save`, `dialog.chooseFolder` and
+  `chooseFolders` give the user's own paths, not copies
+  (`device.pickFiles` gives copies, as a phone's document picker does):
+  the app reads and writes the files where they are. Their parameters
+  are a title, the button's label, where the dialog starts (a folder,
+  or a file in it: selected on macOS and Windows, or its name
+  suggested), filters (`dialog.Filter(name:, types:, extensions:)`:
+  MIME types as an input's accept takes them, `image/*` a family, or
+  extensions, or both), several files, hidden files, and `save`'s
+  suggested name. The dialog belongs to the main window. A native
+  package: its `Chooser` (`open`, `save`, `folder`, each an async call
+  with the `Request`) answers with the paths once the user has chosen;
+  none is a cancel, everywhere. `dialog.fake()` answers in tests.
 - macOS: `NSOpenPanel` and `NSSavePanel` as sheets on the window (on
   the sheet it has, if it has one: a sheet on a window with one waits
   for it to close), the title the panel's message (a sheet has no
@@ -3633,155 +3691,141 @@ app is in front (a launcher's panel, start and stop a recording).
   a sandbox it's the desktop's file chooser portal, and the paths are
   the document portal's. Each asks before Save replaces a file.
 - The web has no paths: a browser gives a page files, never where they
-  are. `Open` and `Folder` copy what's picked into the app's caches
+  are. `open` and `chooseFolder` copy what's picked into the app's caches
   (`/tmp/shared`, `/tmp/folders`: a folder with all it holds), through
   the File System Access API's dialogs (`showOpenFilePicker`,
   `showDirectoryPicker`: Chrome, Edge) or, without them, the file input
-  (`webkitdirectory` for a folder). `Save` gives a path in the caches
+  (`webkitdirectory` for a folder). `save` gives a path in the caches
   (`/tmp/saved/<n>/<name>`) whose file, each time the app has written
   it (closed a file it opened to write, or renamed one over it: fs.js's
   `onWritten`), goes to the file the user chose with
   `showSaveFilePicker`, or is downloaded by its name where the browser
   has no such dialog. A path a dialog gave is where a later one starts
   (`startIn`, the handle behind it).
-- Phones: iOS and Android have no such dialogs. `Open` is the document
-  picker, through `device.PickFiles` (a phone's host has no `dialog`
-  module: its "no module method" answer sends the package there), and
-  gives its copies; `Save` and `Folder` are `dialog.ErrUnsupported`.
-- `shell.Reveal` shows a file selected in its folder: Finder
+- Phones: iOS and Android have no such dialogs (no `Chooser` there).
+  `open` is the document picker, through `device.pickFiles`, and gives
+  its copies; `save` and `chooseFolder` throw an unsupported error.
+- `platform/shell`, a native package: `shell.reveal` shows a file
+  selected in its folder: Finder
   (`activateFileViewerSelectingURLs:`), Explorer
   (`SHOpenFolderAndSelectItems`, on a thread of its own: a window already
   showing the folder is used), the file manager's
   `org.freedesktop.FileManager1.ShowItems` over D-Bus (Files, Dolphin,
-  Nemo, Thunar; without one, the folder opens). `shell.Open` opens a
+  Nemo, Thunar; without one, the folder opens). `shell.open` opens a
   file in its app and a folder in the file manager (`NSWorkspace`,
-  `ShellExecuteEx`, `GtkFileLauncher`; `ErrNoApp` for a type no app
-  opens, though Windows asks first, as Explorer does); on the web,
-  preview's new tab. `shell.Trash` moves an item to the trash and never
+  `ShellExecuteEx`, `GtkFileLauncher`; `ShellError.noApp` for a type
+  no app opens, though Windows asks first, as Explorer does); on the
+  web, a new tab with what the browser shows. `shell.trash` moves an
+  item to the trash and never
   deletes: `NSFileManager`'s `trashItemAtURL:` (off the main thread),
   GIO's `g_file_trash_async`, which fail on a volume without a trash,
   and on Windows `IFileOperation` with `FOFX_RECYCLEONDELETE` (on a
   thread of its own) and a progress sink whose `PreDeleteItem` refuses a
   delete that wouldn't recycle (too big for the Recycle Bin, a drive
   without one), which Windows would otherwise do without asking.
-  `shell.Beep` is `NSBeep`, `MessageBeep(MB_OK)`, `gdk_display_beep`.
-  Phones and the web have no file manager: Reveal and Trash are
-  `shell.ErrUnsupported` there (Open too on phones: `preview.Show`
-  shows a file), Beep nothing.
+  `shell.beep` is `NSBeep`, `MessageBeep(MB_OK)`, `gdk_display_beep`.
+  Phones and the web have no file manager: `reveal` and `trash` throw
+  an unsupported error there (`open` too on phones: `preview.show`
+  shows a file), `beep` does nothing.
 
-**Watching files** (`watch`): changes to a file or a directory, and with
-`Recursive` the directories in it; every platform, phones and the web
-too. MyGo's `WatchFiles`, ported.
+**Watching files** (`std/watch`): changes to a file or a directory,
+and with `recursive` the directories in it, on the desktops. MyGo's
+`WatchFiles`, ported to Swift and C.
 
-- No module and no host: the package calls each system from Go, in
-  the app's process (on iOS and Android, the Go library's), without
-  cgo. `watch.New(ctx, path, Options)` from any goroutine, `Next` for
-  each batch, `Close`; `watch.Path(path accessor, Options, f)` in a
-  component: the watch starts on a goroutine, follows its accessor,
-  stops with its owner, `f` runs on the main thread (`ui.Post`), and the
-  next batch waits until it has; `Err()`, `Watching()` and `Root()` are
-  signals.
+- A native package with no host module: `watch.path(dir, ignore:,
+  recursive:, attributes:)` opens a `Watcher` (macOS's Swift, Windows'
+  and Linux's C) and returns a `Watch`: its `root` (the path resolved:
+  macOS's /tmp is /private/tmp) and `events`, a `Stream<[Event]>` of
+  batches, which closes the watcher as its reader leaves it. The
+  watcher's `follow(changed:)` calls back on the main thread with each
+  batch until the watch ends or the task is cancelled. Phones and the
+  web have nothing to watch with: `path` throws an unsupported error
+  there.
 - A watch is a snapshot and a comparison, not a relay of the system's
-  events: it keeps each entry's identity (device and inode; volume and
-  file ID on Windows, read when the stat is taken), size, modification
-  time and mode, and where the system says something changed (a
-  notice: a directory, or an entry in one, with a kind that's only a
-  hint), it lists or stats again, once the notices stop for `Debounce`
-  (50 ms; never more than `MaxDelay`, 500 ms). The differences are the
-  events: `Create`, `Write`, `Remove`, `Rename` (paired by identity when
-  exactly one entry has it before and after: any platform, any
-  distance within the tree; a directory renamed is one event),
-  `Attrib` (the mode, with `Attributes`), and `Overflow` first in a
-  batch the system dropped changes for, after which it looked at
-  everything. A file replaced at its path by another file (an atomic
-  save) is a `Write`, never a removal and a creation, and the new file
-  is watched. A file is watched through its directory. The watched
-  directory removed, renamed or replaced ends the watch with a
-  `Remove` of `.`. The watch doesn't look again until `Next` took the
-  last batch, so a slow reader gets one batch of what changed meanwhile;
-  notices that come while it looks wait (spilled, up to `MaxEntries`,
-  then a look at everything).
-- It never leaves the tree: entries are stat'ed and directories
-  opened relative to their directory (`os.Root`), symlinks and
-  junctions are entries, not followed, and each target the system
-  watches is checked to be what the scan saw. What it can't read is
-  left out, not an error; `Ignore` (`watch.Patterns`, gitignore-like)
-  leaves out entries, and a directory it ignores is never opened.
-  `MaxEntries` (65536 on macOS, 8192 elsewhere) bounds a tree.
-- macOS: FSEvents through purego, a stream per directory target with
-  `kFSEventStreamCreateFlagFileEvents` and `WatchRoot`, on one serial
-  dispatch queue, one callback for the process; a stream covers its
-  tree, so directories below need none. Dropped events
+  events: it keeps each entry's identity (device and inode; the file ID
+  on Windows), size, modification time and mode, and where the system
+  says something changed, it looks again once the notices stop for 50
+  ms (never more than 500 ms after the first). The differences are the
+  events (`Op`): `create`, `write`, `remove`, `rename` (with `oldPath`,
+  paired by identity), `attrib` (the mode, with `attributes`), and
+  `overflow` first in a batch the system dropped changes for, after
+  which it looked at everything. A file replaced at its path by another
+  file (an atomic save) is a `write`, never a removal and a creation,
+  and the new file is watched. A file is watched through its directory.
+  The watched directory going ends the watch (`follow` returns, the
+  stream ends).
+- It never leaves the tree: entries are `lstat`ed, symlinks and
+  junctions are entries, not followed. What it can't read is left out,
+  not an error; `ignore` (gitignore-style lines, `path.Match`'s
+  patterns) leaves out entries, and a directory it ignores is never
+  opened.
+- macOS: FSEvents (std/watch's Swift), a stream for the directory (a
+  file's: its folder's) with file events and its root watched; a stream
+  covers its tree, so directories below need none. Its callbacks and
+  the looking again run on the watch's serial queue; dropped events
   (`MustScanSubDirs`, user or kernel drops) are an overflow.
-- iOS: kqueue's `EVFILT_VNODE` on an `O_EVTONLY` descriptor per
-  directory and file, an `EVFILT_USER` event to wake it (macOS runs it
-  too, and the tests run every case through both).
-- Linux and Android: inotify, one instance for the process (watch
-  descriptors, not instances, are what a user has many of), a watch
-  descriptor per directory, `IN_Q_OVERFLOW` an overflow. inotify says a
-  directory was removed (`IN_DELETE_SELF`) only once nothing holds it
-  open, and the watch does: a directory's watch watches its parent too,
-  which says so at once, when it may.
-- Windows: `ReadDirectoryChangesW` on a completion port, one handle for
-  a recursive tree (its directories stay renamable), its parent's too
-  (a directory's own handle says nothing when it's renamed), the
-  buffer's overflow (`ERROR_NOTIFY_ENUM_DIR`, or nothing returned) an
-  overflow. `FILE_NOTIFY_CHANGE_ATTRIBUTES` only with `Attributes`.
-- The web: Go's `os` on js/wasm calls the page's `fs`, fs.js's file
-  system in memory, whose `watch` is Node's `fs.watch` (rename and
-  change, by name, recursive), told after the call that changed it;
-  its entries have inode numbers of their own, kept as they're renamed.
-  Under Node (`go test`), Node's `fs.watch`.
+- Linux: inotify, a watch on each directory looked at (`IN_DONT_FOLLOW`,
+  `IN_EXCL_UNLINK`), read on a thread of the watch's, woken through a
+  pipe to stop; `IN_Q_OVERFLOW` an overflow.
+- Windows: `ReadDirectoryChangesW` on the watched directory (its tree,
+  with `recursive`), overlapped, on a thread of the watch's, woken by an
+  event to stop; the snapshot's ids are `FileIdBothDirectoryInfo`'s,
+  for renames, and a read that returns nothing (the buffer overflowed)
+  an overflow.
+- What both desktops' C share is desktop/watch.c (the snapshot, the
+  comparison, the patterns, the debounce); the Swift does the same.
 
 **Now Playing and the media keys** (`nowplaying`), on every platform
 (phones first): what the app plays in the system's media controls, and
 their commands back.
 
-- `nowplaying.Show(Props)` in a component: accessors for the title,
-  artist, album, artwork (a source, as `Image`'s), duration, state
-  (`Paused`, `Playing`, `Stopped`), position and rate, read in one render
-  effect; handlers for play, pause, toggle, stop, next, previous, seek
-  (to a position) and the skips (by `SkipInterval`, 15 s). A handler
-  enables its command; play, pause and toggle stand in for each other;
-  seek needs a duration. Several mounted: the last shows (a stack). The
-  last one disposed clears the controls once the flush is over (a posted
-  check), so a component replaced by another (a track's, in a `Dynamic`)
-  doesn't drop the app out of them in between.
-- The position is published with the state and the rate, and the host
-  takes its time on receipt, so the system advances it; the package
-  sends it again only when it's half a second off where the system has
-  it while playing (a seek, a stall), or changes while paused. A
-  position signal written from a polled status costs nothing.
-- `Props.Player`, an `*audio.Player`: its `Status` is read once a
-  second (a timer, `ui.Post`) and fills the state, position and
-  duration; play, pause, stop, seek and, with a `SkipInterval`, the
+- `nowplaying.NowPlaying { title; artist; album; artwork; duration;
+  state; position; rate; player; skipInterval }` is a component that
+  shows nothing on screen: while it's mounted, its props are what the
+  system shows (the artwork a source, as `Image`'s; `state` `.paused`,
+  `.playing`, `.stopped`), computed in one effect; its events (`play`,
+  `pause`, `togglePlayPause`, `stop`, `next`, `previous`,
+  `seek(position)`, `skipForward(seconds)`, `skipBackward(seconds)`)
+  are the commands back. A handled event enables its command; play,
+  pause and toggle stand in for each other; seek needs a duration.
+  Several mounted: the last shows (a stack of serials). The last one
+  going clears the controls.
+- The position is published with the state and the rate, and the
+  platform takes its time on receipt, so the system advances it; the
+  package sets it again only when it's half a second off where the
+  system has it while playing (a seek, a stall), or changes while
+  paused. A position read from a polled status costs nothing.
+- `player:`, a platform/audio `audio.Player`: its `status()` is read
+  once a second while it shows (a task) and fills the state, position
+  and duration; play, pause, stop, seek and, with a `skipInterval`, the
   skips run on it unless their handlers are set, and show at once (the
-  status assumed until the next read, which a read already in flight
-  can't overwrite).
-- One module, `nowPlaying` (internal/nowplayingspec): `set` (the info as
-  JSON, with the enabled commands as bits), `clear`, and a long poll,
-  `next`, answered with the commands since (u8 command, f64 value each);
-  `stop` ends it. Hosts drop commands while no poll follows, or that
-  aren't enabled.
+  status assumed until the next read).
+- A native package: its `Center` (`set` the info, with the enabled
+  commands as bits; `clear`; `watch(command:)`, called back with each
+  command and its value until its task is cancelled) is each
+  platform's own code, on the main thread. A platform without it shows
+  nothing.
 - iOS and macOS: `MPNowPlayingInfoCenter` (the playback rate 0 while
   paused; `playbackState` on the Mac) and `MPRemoteCommandCenter`'s
   commands, their targets added once, enabled per `set`; the artwork an
   `MPMediaItemArtwork` of the image loaded off the main thread (on the
   Mac its handler decodes the bytes it holds, so the image goes with the
   artwork). iOS puts the audio session in the playback category; the CLI
-  adds the `audio` background mode for an app whose archive has
-  `nowplaying.Show` (iosFeatures, `ASUKA_NOWPLAYING`). The Mac's through
-  purego (host/darwin), which also routes the keyboard's media keys.
+  adds the `audio` background mode for an app that imports
+  platform/nowplaying (its manifest's `backgroundModes`). Both are the
+  package's Swift; on the Mac it also routes the keyboard's media keys.
 - Android: a platform `MediaSession` (its `PlaybackState` actions the
   commands; the skips also custom actions, which fill the previous and
   next slots of Android 13's media controls), with a `MediaStyle`
-  notification; `AsukaMediaService`, a foreground service of the
-  `mediaPlayback` type, runs while playing and detaches the notification
-  when paused (Android 14's rules; a start the system refuses in the
-  background leaves the notification alone). The build declares it and
-  its permissions only for apps that import the package.
-- Windows: `ISystemMediaTransportControlsInterop::GetForWindow` on the
-  app's window (or a hidden one of the host's), its buttons (fast
+  notification; `MediaService` (the package's Kotlin), a foreground
+  service of the `mediaPlayback` type, runs while playing and detaches
+  the notification when paused (Android 14's rules; a start the system
+  refuses in the background leaves the notification alone). The build
+  declares it and its permissions only for apps that import the
+  package.
+- Windows (the package's C): `ISystemMediaTransportControlsInterop::
+  GetForWindow` on the app's window (or a hidden one of the package's),
+  its buttons (fast
   forward and rewind the skips) and timeline, delegates that post to
   the main thread; the artwork read off it into a stream. Linux: an MPRIS
   player (`org.mpris.MediaPlayer2` and `.Player`) on a session bus
@@ -3789,51 +3833,58 @@ their commands back.
   `org.mpris.MediaPlayer2.<app>.instance<pid>`; `Position` extrapolated
   as it's read, `Seeked` on jumps, a new track id when the track
   changes, `Seek` a skip or a seek; `clear` closes the connection, so
-  the name goes. The web: the Media Session API (`metadata`,
+  the name goes. The web (the package's JavaScript): the Media Session
+  API (`metadata`,
   `playbackState`, action handlers, `setPositionState`).
 
 **Bluetooth LE** (`bluetooth`), on every platform: the app as a central
 (scans, the system's chooser, connections, GATT reads, writes and
 subscriptions) and as a peripheral (advertising, a GATT server).
 
-- Lasting things start on the main thread and stop with their owner, or
-  their stop: `Scan`, `Connect` (a `Connection` at once, `Connecting`; its
-  `State` a signal, `Wait`, `Done` and `Err` for goroutines),
-  `Characteristic.Subscribe`, `Advertise`, `Serve`, `Watch`/`Use`,
-  `OnRestore`. Calls that wait for a device or the user (`Request`,
-  `Choose`, `Services`, reads, writes, MTU, RSSI) are blocking, off the
-  main thread; a connection's wait for it to connect first. An error
-  ends a callback's stream once (`func(v, err)`).
-- One module, `bluetooth` (internal/bluetoothspec, the wire's reference):
-  JSON both ways, byte values base64, UUIDs 128-bit lower case. Go
-  numbers scans, connections, advertisements, servers and their local
-  characteristics; hosts number the remote attributes (stable handles
-  per connection). Events (advertisements, disconnections with their
-  reason, notifications, the server's requests, state changes) come
-  through one long poll, `next`, chained from the main thread (a Call's
-  callback calls again) while anything listens; `stop` when nothing
-  does. Several connections to one device share the platform's link.
-  host/fake implements the protocol whole, with simulated peripherals,
-  for uitest.
-- iOS: Core Bluetooth, compiled in for an app whose archive calls the
-  package (`ASUKA_BLUETOOTH`, through its `call` and `send`); state
-  restoration when the app has the background modes (asuka.json's
-  `bluetooth.background`), the managers made at launch for a relaunch.
-  macOS: the same through purego. Android: one merged scan, one GATT
-  operation at a time per connection, the companion device chooser, a
-  `PendingIntent` background scan whose results wait in a file for
-  `restore`. Windows: WinRT's Bluetooth, GATT and advertisement APIs, the
-  device picker. Linux: BlueZ on the system bus, the app's advertisement
-  and GATT application exported objects. The web: Web Bluetooth, the
-  chooser instead of a scan; no peripheral role (`not available`).
+- What lasts is a `Stream` or a store, stopped as its reader or its
+  owner goes: `bluetooth.scan(services:, duplicates:)` and
+  `backgroundScan` (streams of `Advertisement`s), `connect(device,
+  timeout:, autoConnect:)` (a `Connection` store at once: its `state`,
+  `.connecting` first, and `error` follow the link, read in a binding;
+  `close()` or its owner going ends it), a `Characteristic`'s
+  `notifications()` (on as it's read, off as the reader stops),
+  `serve(services)` and `advertise(…)` (until their task is
+  cancelled), `state()` (tracked, through `live`) and `restored()`.
+  What waits for a device or the user (`request()`, `choose(filters)`,
+  `services()`, `characteristic(…)`, `read()`, `write(value)`, `mtu()`,
+  `rssi()`) is `async` and throws a `BluetoothError`. `bluetooth.fake()`
+  drives it in tests.
+- A native package: one `Adapter` (`native interface`) per platform,
+  its long-running calls async with a callback (`scan(found:)`,
+  `connect(changed:)`, `subscribe(value:)`, `serve(request:)`,
+  `watchRestored`) that ends with its task. The package numbers
+  connections; the platforms number the remote attributes (stable
+  handles per connection). UUIDs are strings, 16-bit SIG ones as four
+  hex digits, others 128-bit lower case (`uuid()` normalizes). Several
+  connections to one device share the platform's link.
+- iOS and macOS: Core Bluetooth (the package's Swift); state
+  restoration when the app has the background modes (asuka.toml's
+  `bluetooth.background`), the managers made at launch for a relaunch
+  (`AsukaBluetoothLaunch`, the manifest's launch class). Android (the
+  package's Kotlin): one merged scan, one GATT operation at a time per
+  connection, the companion device chooser, a `PendingIntent`
+  background scan (`BluetoothScanReceiver`) whose results wait in a
+  file for `restored()`. Windows (the package's C): WinRT's Bluetooth,
+  GATT and advertisement APIs, the device picker. Linux: BlueZ on the
+  system bus (the package's C), the app's advertisement and GATT
+  application exported objects. The web: Web Bluetooth, the chooser
+  instead of a scan; no peripheral role (`BluetoothError.notAvailable`).
 
-**Updates** (`update`, `internal/update`, `app/relaunch.go`,
-`cmd/asuka/updates.go`): a desktop app updates itself as Sparkle's do,
-from releases `asuka build` signs; MyGo's updater, ported.
+**Updates** (`platform/update`, sdk/update; core/src/std/update.c,
+inflate.c, ed25519.c; the hosts' `update` module; `internal/update` and
+`cmd/asuka/updates.go` for the CLI): a desktop app updates itself as
+Sparkle's do, from releases `asuka build` signs; MyGo's updater, ported.
+The package is Asuka, written once; the core does what Asuka shouldn't
+over files, as its `native fn`s; the host does what only it can.
 
-- The format (`internal/update`, shared by the app and the CLI): a
-  manifest per target (`darwin-universal`, `windows-amd64`,
-  `linux-arm64`...), `update-<target>.json`, or a prerelease's channel's
+- The format (`internal/update`, the CLI's): a manifest per target
+  (`darwin-universal`, `windows-amd64`, `linux-arm64`...),
+  `update-<target>.json`, or a prerelease's channel's
   `update-<target>-beta.json` (a version's channel is its prerelease's
   letters): the version, Markdown notes, the date, the archive's URL,
   size and Ed25519 signature of its SHA-256, the deltas from earlier
@@ -3844,161 +3895,230 @@ from releases `asuka build` signs; MyGo's updater, ported.
   content), a bsdiff patch of it (suffix array by qsufsort), or new
   (DEFLATE), and every file it makes is checked against its size and
   SHA-256, so a delta applied to a changed app fails and the archive is
-  downloaded instead.
-- The feed (`buildFeed`, `-ldflags -X` with the public key and the
-  target, only in `asuka build`'s builds): a static manifest URL (S3, a
-  CDN), GitHub's latest release (or, with a tag prefix or a channel, the
-  newest tagged release the API lists), or a custom server's URL with
-  `{target}`, `{version}` and `{channel}` that answers a manifest or
-  204. `update.SetSource` puts code of the app's own in its place.
-  Requests are HTTPS (or the loopback), through the environment's
-  proxy, retried on 429 and 5xx.
-- Where an app is installed (`internal/update.Locate`, pure file
-  operations, tested on any system for each layout): a Mac bundle
-  (`Contents/MacOS/<exe>`; App Translocation and the Mac App Store's
-  receipt refused), a Windows folder (MSIX's `WindowsApps` refused), a
-  Linux prefix (`<prefix>/bin/<exe>` with `share/<exe>/`; Flatpak, Snap,
-  AppImage, `/usr` refused). Updates are made in `Work`, on the
-  install's volume, and put in place by renames.
-- macOS: the new bundle is checked (`codesign --verify --deep --strict`,
-  the running app's team ID and identifier, quarantine taken off) and
-  left to a helper, `/bin/sh` in a session of its own, that waits for
-  the app's pid to exit, swaps the bundles (the old one back if the new
-  can't be moved in), registers it with Launch Services and, when
-  `app.Relaunch` asked (`boot.StagedRelaunch`), opens it with
-  `/usr/bin/open`: after the app quits, so the Dock keeps its tile.
-- Windows and Linux (`Install.Swap`): the units of the new tree (a
-  folder's entries; a prefix's files and links) replace the installed
-  ones, those the old version's `.asuka-files` names and the new lacks go,
-  what no list names stays (the user's files, other programs of
-  `~/.local`); everything moved aside first and put back if one rename
-  fails. The running `.exe` is renamed aside (Windows lets it), removed at
-  the next launch (`CleanLeftovers`). Linux then runs the desktop's cache
-  tools.
-- `app.Relaunch` quits as `app.Quit` does and, once the quit goes on,
-  starts what starts the app after this process exits: on the Mac a
-  detached shell that waits, then `open`s the bundle; elsewhere the
-  executable (its path from launch: Linux's `/proc` names the replaced
-  file), with `ASUKA_RELAUNCH_WAIT`, which package `app`'s init waits on
-  (`kill(pid, 0)`; `OpenProcess` and `WaitForSingleObject`) before the
-  host takes the single instance.
-- The updater (`update.Window`): its state a signal on the main thread
-  (`Use`), checks and downloads in goroutines that `ui.Post` back, a
-  timer that wakes at least hourly to compare with the clock (a computer
-  asleep stops timers); the window's view follows the phase (a memo, so
-  progress doesn't rebuild it), its release notes `asuka/sdk/markdown`, its
-  words `internal/l10n`'s. Preferences in `update.json` in the data
-  directory.
+  downloaded instead. The CLI writes them (WriteArchive, WriteDelta,
+  Diff, Sign); internal/update's TestCoreTestdata writes the core's test
+  data with that code, so the core reads what the CLI writes.
+- The core (`update.*`, blocking, called in spawn): `verifyFile` (the
+  file's SHA-256 streamed, Ed25519 verified, as strictly as Go's
+  crypto/ed25519 (the CLI's signer): ed25519.c, TweetNaCl's
+  arithmetic; std/crypto has the same `ed25519Verify`, `ed25519Sign`,
+  `sha512`), `extract` (gzip and tar
+  read as streams: ustar, PAX and GNU names, files, directories, links),
+  `deltaIndex`, `deltaStart` and `deltaFile` (a file inflated, copied or
+  bspatched; DEFLATE pulled from three sections of the delta at once),
+  `makeDir`, `makeLink`. Nothing is written through a link or out of
+  the tree (a path whose parent is a link or a file is refused; a link's
+  target, read from where it is, stays inside). Tested under ASan with
+  the CLI's archives, deltas and patches, cut and flipped.
+- The package (sdk/update): `check()`, `Release.install(progress:)`,
+  `relaunch()`, `unsupported()`, `setFeed`, `setChannel`,
+  `compareVersions`; the updater's state, the store `update.updater`
+  (phase, release, downloaded, total, error, user, installing);
+  `checkForUpdates()`; automatic checks and downloads, the skipped
+  version and the last check as preferences (std/storage's
+  `asuka.update`); `onInstalled`; `UpdateWindow` (its tasks run what's
+  asked and the next background check: soon after launch, then an
+  interval after the last that succeeded, waking at least hourly to
+  compare with the clock), `CheckForUpdates` (the menu item) and
+  `AppMenu`. The feed: a static manifest URL (a channel's beside it, the
+  newer taken), GitHub's latest release, or with a tag prefix or a
+  channel the newest tagged release the API lists, or a server's URL with
+  `{target}`, `{version}` and `{channel}` that answers a manifest or 204.
+  Everything is read through the host's `download` (manifests and API
+  pages too, into the app's directory): HTTPS, or HTTP to this computer;
+  429 and 5xx tried three times. Installing: a work directory in `work`
+  (`.<Name>.app.update-<id>` for a bundle, `.asuka-update-<id>`
+  otherwise), the delta from the running version downloaded, verified
+  and applied there from `root` (its tree the bundle's or `<exe>/`'s, as
+  an archive unpacks), else the archive downloaded, verified and
+  unpacked; a folder's and a prefix's tree must hold the running
+  executable's counterpart; then the host's `install`. What fails is
+  removed. The window's words are internal/l10n's, copied into
+  sdk/update/words.asuka (internal/l10n's TestUpdateWords), in the app's
+  language (`i18n.locale()`).
+- **The host's `update` module**, JSON both ways through platform/host's
+  `call`, each method answering once. A host without it (the phones, the
+  web) answers "no module": the package says
+  updates aren't available (`.notAvailable`).
+  - `info` → `{installable, reason, message, target, version, name,
+    feed, key, kind, root, exe, work}`. `feed`, `key` and `target` are
+    asuka-app.json's `updateFeed`, `updateKey` and `updateTarget` (only
+    `asuka build`'s builds have them); `version` and `name` asuka.toml's.
+    `kind` is `bundle` (macOS: `root` the .app), `folder` (Windows: the
+    folder holding the .exe and its assets, with `.asuka-files`) or
+    `prefix` (Linux: `root` the prefix of `bin/<exe>` and
+    `share/<exe>/`); `exe` the running executable, links resolved (on
+    Linux, the path it started from: `/proc` names the replaced file);
+    `work` where updates are made, on root's volume (a bundle's parent,
+    the folder, `share/<exe>`). Not installable, `reason` says why:
+    `notConfigured` (no feed or key), `managed` (the Mac App Store's
+    receipt, MSIX's `WindowsApps`, Flatpak, Snap, AppImage, `/usr`),
+    `translocated` (App Translocation), `notWritable` (a probe in `work`,
+    and the bundle's own entry, can't be made), `notInstalled` (not a
+    layout `asuka build` makes); `message` in words.
+  - `download {url, to}` → `{id}`, at once: a GET of `url` (redirects
+    followed, the environment's proxy, `User-Agent: asuka-updater`) into
+    the file `to`, made or emptied. WinHTTP, libsoup through GIO,
+    URLSession.
+  - `next {id}` → `{downloaded, total, done, error, status}`: a long
+    poll, answered when `downloaded` has moved by at least 1% of `total`
+    (64 KB while `total`, the Content-Length, is 0: unknown) or the
+    download has ended (`done`). `status` is the response's, once known
+    (a body is kept for 200 only); `error` a failure of the network or
+    the file ("" when none). After `done` the id is forgotten.
+  - `cancel {id}` → `{}`: stops it; a `next` waiting answers `done` with
+    `error` "canceled".
+  - `install {staged}` → `{}`, or an error: `staged` is a directory in
+    `work`, the new version's tree (the bundle; the folder's entries; the
+    prefix's tree), which the package has verified. macOS: the bundle's
+    code signature is checked (`codesign --verify --deep --strict`, the
+    running app's team ID and identifier when it's signed; the
+    quarantine attribute taken off) and it's left to a helper,
+    `/bin/sh` in a session of its own, that waits for the app's pid to
+    exit, swaps the bundles (the old one back if the new can't be moved
+    in), registers it with Launch Services and, when the app relaunched,
+    opens it with `/usr/bin/open` (after the app quits, so the Dock keeps
+    its tile); its work directory holds `staged`, the helper's pid. A
+    second install replaces the first's. Windows and Linux: the units of
+    the tree (a folder's entries; a prefix's files and links) replace the
+    installed ones now, those the old version's `.asuka-files` names and
+    the new lacks go, what no list names stays (the user's files, other
+    programs of `~/.local`); everything is moved aside first and put back
+    if one rename fails; the new `.asuka-files` is written with them. The
+    running `.exe` is renamed aside (Windows lets it) and removed at the
+    next launch. Linux then runs the desktop's cache tools
+    (`update-desktop-database`, `update-mime-database`,
+    `gtk4-update-icon-cache`). internal/update's install.go and bundle.go
+    at bf1839e2 are the Go reference.
+  - At launch the host removes what an update left: a bundle's
+    `.<Name>.app.update-*` whose helper isn't running, and elsewhere
+    `.asuka-update-*` and the `.*.old-*` set aside.
+  - `relaunch()` (the Quit command's relaunch) quits as `quit()` does and,
+    once the quit goes on, starts the app after this process exits: on
+    the Mac the staged update's helper opens the new bundle (or a
+    detached shell that waits, then `open`s it); elsewhere the
+    executable, with `ASUKA_RELAUNCH_WAIT`, which the new process waits
+    on before it takes the single instance.
+
+  The fake host has the module only once a test sets it up
+  (`update.fakeHost`, core/host/fake/update.c): its `fake`, `serve` and
+  `log` methods say what `info` answers, what a URL downloads (a file's
+  bytes, quarter by quarter, or a status, an error, a download held until
+  cancelled) and what it downloaded and installed.
+- The web: the page's version is the host's (`asuka.native.app.version`,
+  "" under asuka dev); the build writes `version.json` (`Cache-Control:
+  no-cache`), which the package's web side (sdk/update/web) reads past
+  caches; a newer version is a release with nothing to download, and
+  `relaunch()` reloads the page.
 - The CLI: `asuka update keygen`; `asuka build` writes `dist/updates`
   (the Linux tarball is the archive; a Windows folder and a Linux prefix
-  get `.asuka-files`), deltas from the published manifest's versions
-  (downloaded and verified); `asuka publish --platform mac|windows|linux`
-  uploads to the tag's GitHub release (`gh`) or S3 (SigV4 in Go), the
-  manifests last. Phones answer `ErrUnsupported`; the web build writes
-  `version.json`, which `update.Check` reads past caches, and `Relaunch`
-  reloads the page.
+  get `.asuka-files`) and the feed, key and target into asuka-app.json;
+  deltas from the published manifest's versions (downloaded and
+  verified); `asuka publish --platform mac|windows|linux` uploads to the
+  tag's GitHub release (`gh`) or S3 (SigV4 in Go), the manifests last.
+  cmd/asuka's TestUpdatesVerifiedByCore checks that what it signs, the
+  core verifies, unpacks and applies.
 
-**Documents** (`document`): document-based apps, as NSDocument and
-NSDocumentController, SwiftUI's DocumentGroup and MyGo's documents make
-them, built on the desktop's own pieces (`ui.Window`, `MenuBar`,
-`OnOpenFiles`, `app.OnQuit`, `recent`, `dialog`) rather than ops of
-their own.
+**Documents** (`platform/document`): document-based apps, as
+NSDocument and NSDocumentController, SwiftUI's DocumentGroup and MyGo's
+documents make them, built in Asuka on the pieces any app has
+(`Window`, `MenuBar`, `onOpenFiles`, `onQuit`, platform/recent,
+platform/dialog, std/fs) rather than ops of their own.
 
-- `document.New(Options[T]{Types, Read, Write, View, ...})` describes
-  one kind of document whose content is a `T`; `Run` runs the app with
-  it (`app.RunWindow` with the main window hidden), `Root` is its root
-  for an app that runs itself. A `Document[T]`'s content is a signal
-  (`Content()`): the view binds it (a text field's `Value`), and an
-  effect owned by the document marks it edited as it changes, unless
-  `Equal` finds it equal to the file's. Reading the file (open, revert,
-  another app's change) sets it without editing. A mutable content says
-  `Changed()`, and `Snapshot` copies it before a write.
-- Everything is on the main thread. Each document's reads and writes are
-  jobs run one at a time: a job starts on the main thread (where it
-  takes its snapshot of the content), works on a goroutine, and comes
-  back with `ui.Post` before the next starts, so no lock guards a
-  document. Questions are callbacks (alerts, dialogs): a close or a quit
-  that must ask is refused, then done again once answered.
-- Files are written as NSDocument and GIO write them: a sibling file,
-  flushed, renamed over the old one (its permissions, owner and group
-  kept; on a Mac its extended attributes, Finder's tags; on Windows
-  `ReplaceFileW`, which keeps its security, streams and creation time);
-  a file with other hard links, or in a folder the user can't write,
-  in place. Before writing, the file's stamp (modification time, size)
-  is compared with what the document read: a changed file puts it in
-  conflict instead.
-- Desktop: one `ui.Window` per document (`For` over the open ones), its
-  `StateKey` the file's, with the `Edited` and `File` props (the
-  Window kind's): a Mac's `setDocumentEdited:` and `setRepresentedURL:`,
-  a `*` before the title on Windows, Linux and the web, the file's
-  folder as a GNOME title's subtitle; the title is the name, and "name -
-  App" on Windows and Linux. `WindowMenuBar` (a `WindowConfig` flag)
-  gives the window the app's menu bar where it's per window (Windows'
-  HMENU, Linux's main menu). The File menu is the package's `MenuBar`
-  (with `Options.Menus` beside it), its items enabled for the document
-  in use (the window focused last); two `MenuRole`s are the hosts':
-  `MenuRoleClose` closes the window in use as its close button does
-  (`performClose:`, `WM_CLOSE`, `gtk_window_close`), and on a Mac
-  replaces the host's Close Window; `MenuRoleOpenRecent` is a Mac's
-  NSDocumentController submenu, in its place, and elsewhere the item's
-  submenu, which the package fills from `recent.List`.
-- Autosave (`AutosaveInPlace`, the default): a document with a file it
-  can write is saved a moment after the edits stop (5 s, at most 30 s
-  apart), when its window loses the focus and when it closes; others
-  (untitled, read-only, in conflict, deleted, or `AutosaveOff`) keep a
-  recovery copy a second after the edits stop, in `Recovery/<kind>` of
-  `app.DataDir`, in a session a lock file says is alive. A launch claims
-  the sessions no instance holds and opens their documents, edited.
-- Closing: an unedited document closes; an edited one is saved in place
-  or asks (`OnCloseRequest` false; the answer `Destroy`s the window).
-  Quitting (`app.OnQuit`): documents are saved in place or kept in their
-  copies, the quit canceled meanwhile and asked for again; with
-  `AskOnQuit`, a Mac asks whether to review them, then each, Windows and
-  Linux in one question naming them. The session's end saves at once,
-  on the main thread. A Mac's app keeps running with no window
-  (`boot.KeepRunning`) and its Dock icon makes a document
-  (`boot.Reopen`, which `applicationShouldHandleReopen:` asks); Windows'
-  and Linux's quit with their last document.
-- Files other apps change: each open file is watched (asuka/sdk/watch's
-  watch of it, through its folder, so a file an editor replaces stays
-  watched; where there's none, or once its folder went, a poll of its
-  stamp every two seconds) and looked at when its window
-  comes to the front: an unedited document reads it again, an edited one
-  is in conflict; a file gone is looked for by its identity (a Mac:
-  anywhere on its volume, `/.vol/<dev>/<ino>` and `F_GETPATH`; elsewhere
-  its folder, by inode or Windows' file index), else the document is
-  Deleted.
-- Phones and the web: one document at a time in the root's `Stack`: a
-  list of the app's documents (its documents folder: iOS's container's
-  Documents), and a document's screen pushed over it. Every document has
-  a file from the start, is saved in place (also as the app goes to the
-  background), and closes as its screen goes; files from elsewhere are
-  copied in; a crash's copies are written back quietly (beside the file,
-  "(Recovered)", where it changed).
+- `document.open(path, read:, write:)` is a `Document<T>`, a store:
+  its `content` (`T?`, none until read), `state` (`.loading`, `.saved`,
+  `.edited`, `.saving`, `.conflict`, `.failed`), `error`, `file` ("" for
+  an untitled one) and `name`, read in bindings. `edit(c)` changes the
+  content; `save()`, `saveSoon()`, `saveAnyway()`, `saveAs(target)`,
+  `rename(name)`, `moveTo(dir)`, `revert()`, `discard()` and
+  `settle()` are its actions. Reading the file (open, revert) sets the
+  content without editing it.
+- Everything is on the main thread but the files: a `native interface
+  Files` (`read`, `write`, `modified`) reads and writes off it, through
+  NSFileCoordinator on iOS and macOS (iCloud's and other apps' writes
+  coordinated), on Android's IO dispatcher (a path or a `content://`
+  URI), on a thread of the call's on Windows and Linux (desktop/
+  document.c); where there's none (the web, a test), std/fs. A write is
+  a temporary file renamed over the file, its permissions kept. Before
+  writing, the file's stamp (its modification time) is compared with
+  what the document read: a changed file puts it in `.conflict`
+  instead, which `saveAnyway` writes over and `revert` gives up.
+- Autosave: each `edit` starts a task that, a second after the last
+  change, saves the document, or, when it can't be saved in place
+  (untitled, in conflict, failed), writes a recovery copy (the content
+  and a JSON record of its file, name and stamp) in `recoveryDir()`
+  (`Recovery` in `fs.appDir()`); a save drops the copy.
+- `document.Documents(types) { editor: doc => … }` is a text editor's
+  documents (UTF-8 `Document<string>`s) the platform's way. On a desktop
+  (`environment().platform`) it hides the main window and shows one
+  `Window` per document (`DocumentWindow`: its `title` the name, `file`
+  and `edited` its props, so a Mac's `setRepresentedURL:` and
+  `setDocumentEdited:`, a `*` before the title on Windows, Linux and the
+  web), and a `MenuBar` with the File menu: New, Open… (`dialog.open`),
+  Open Recent (a Mac's NSDocumentController submenu, `role:
+  .openRecent`; elsewhere filled from `recent.list()`), Close, Save,
+  Save As… (`dialog.save`), Duplicate, Rename…, Move To…
+  (`dialog.chooseFolder`) and Revert, enabled for the document in use
+  (the window focused last). Files the app is opened with
+  (`onOpenFiles`) open in windows of their own; each opened or saved
+  file goes to `recent.add`. At launch the last run's recovery copies
+  open again, edited.
+- Closing: a document without unsaved changes closes; an edited one
+  with a file is saved first, and asks only if that failed or it's
+  untitled (`on closeRequest`, an `alert`: Save, Don't Save, Cancel; an
+  untitled one Save…, Delete, Cancel). Quitting (`onQuit`): with
+  unsaved documents the quit is canceled, each document `settle`s (its
+  file, else its recovery copy), then the app quits again; nothing is
+  lost and nothing asks.
+- Phones and the web: one document at a time in a `Stack`: a list of
+  the documents in `documentsDir()` (New; a row's swipe Duplicates,
+  Renames or Deletes it), and a document's screen pushed over it, saved
+  as it changes. The words are the package's own (words.asuka), in the
+  app's language (`i18n.locale()`).
 
 ## The web
 
-The app's Go code is a WebAssembly program (`GOOS=js GOARCH=wasm`,
-no cgo), the page's DOM its views. As the mobile hosts, the host is the
-platform's language, JavaScript (`platform/web/src`, plain ES modules the
-CLI ships as they are), and Go's side (`host/web`) carries batches and
-calls:
+The core is WebAssembly (`asuka.wasm`, built by internal/cbuild with
+clang or Zig for `wasm32-wasi`), with the app compiled in for a release
+or loaded as bytecode under `asuka dev`; the page's DOM is its views. As
+the mobile hosts, the host is the platform's language, JavaScript
+(`platform/web/src`, plain ES modules the CLI ships as they are), and
+core/src/abi/web.c is the core's side:
 
-- `Apply` encodes the batch (`ops.Batch.Encode`) and calls the host once;
-  the host copies it out of the WebAssembly memory (a call back into Go
-  meanwhile may grow the memory, which detaches the old buffer) and
-  decodes it with `ops.js`. `Measure` and `Apply` pass their arguments in
-  a buffer the two sides share (its address given once), so they
-  allocate nothing. Events come back encoded, as the mobile hosts send
-  them. `Post` queues the function and asks the page for a task
-  (`MessageChannel`).
-- The page has one thread: the core runs in the callbacks the page makes
-  into Go (events, list requests, posted work), and `Run` keeps the
-  program alive between them. The goroutine a callback runs on is the
-  main thread while it does (`signal.BindThread`). The host never calls
-  into Go while Go is calling it: events raised meanwhile (a field's
-  focus as the core focuses it) and work that would call back (a list
-  tiling) wait until Go returns, as on the other hosts.
+- `apply` hands the host the batch's address and length in a small
+  buffer both sides share (`ak_web_io`); the host decodes it in place
+  out of the WebAssembly memory with `ops.js` (a call back into the core
+  meanwhile may grow the memory, which detaches the old buffer, so it
+  reads through the current one). `measure` passes its arguments and
+  answer in the same buffer, so nothing is allocated per measure. Events
+  go in encoded (`asuka_event`), as the mobile hosts send them; `post`
+  asks the page for a task (`MessageChannel`), and timers are the
+  page's (`timer_set`, `timer_clear`). What the C library calls of WASI
+  (the clock, randomness, the console, files) `wasi.js` answers.
+- The page has one thread, which is the core's main thread: the core
+  runs in the calls the page makes into it (events, list requests,
+  posted work, timers). The host never calls into the core while the
+  core is calling it: events raised meanwhile (a field's focus as the
+  core focuses it) and work that would call back (a list tiling) wait
+  until the core returns, as on the other hosts.
+- `spawn` runs on the page's Web Workers (`spawn.js`): up to four (the
+  browser's cores less the page's), started as `spawn` first needs one,
+  each an instance of the same compiled `asuka.wasm` (the module posted
+  to it) with the same app (asuka dev's bytecode, which a reload sends
+  again, or the app compiled in), whose init runs there without a UI
+  (`asuka_worker_start`: apply and measure go nowhere, natives aren't
+  there) and makes only the file's values a spawn can use: state,
+  memos and what isn't a value (a database, a native object, a store),
+  which the checker keeps out of spawn, and what's made from them, are
+  skipped (`async.in_worker`), so a file's database isn't opened again
+  in each worker. The page's core sends a
+  job: the closure's function by its index in the module (the VM's and
+  lang/cgen's code share it), its captures in `vm/keep.c`'s encoding,
+  which names its types; the worker's core runs it and answers its
+  result or error the same way, and the page's settles the future
+  (`asuka_spawn_done`). A cancelled job that hasn't started never does;
+  one that has runs to its end, its answer dropped. A worker that traps
+  is replaced; one whose app's init fails fails its jobs with why.
 - Each view is an absolutely positioned element at its frame; children
   are placed from the frame's corner, so a border is drawn inside the
   frame over the content (an inset outline), as a layer's is. A measured
@@ -4018,7 +4138,7 @@ calls:
   popovers and menus are `popover` elements. The browser's back goes
   back in the app: a history entry stands for it while there's a dialog
   to close or a stack to pop, and its `popstate` goes back (closing the
-  newest dialog, or popping the innermost stack, or `ui.OnBack`'s Back).
+  newest dialog, or popping the innermost stack, or what an `onBack` takes).
   With a `Router`, the page's address and history are its (see
   "Routes": history.js), and that entry stands only for what it doesn't
   route.
@@ -4027,38 +4147,48 @@ calls:
   `ListBind` as they come into view, recycled as they leave; a row's
   height from its cells' frames, estimated until bound; a chat's list
   kept at its end; swipe actions as the row's context menu.
-- `Shader`: the core's code carries no GLSL, so the host asks Go for it
-  (`internal/shadercode`'s `GLSL`, linked only in apps with a shader,
-  through `boot.ShaderGLSL`), compiles it with WebGL 2, and sets the
-  uniforms' lanes by their GLSL types.
-- Files: Go's `os` on `js/wasm` calls Node's `fs` API; the page gives
-  it a file system in memory that answers at once (Go waits for each
-  callback), the app's data directory (`/data/<name>`, `ASUKA_DATA`)
-  loaded from IndexedDB before Go starts and written back as it changes
-  (a large file in chunks of 64 KiB, only those changed; each data
-  directory's changes in one IndexedDB transaction). Tabs share it: a
-  tab writes holding the directory's Web Lock, then names the files on a
-  `BroadcastChannel`, and the others read them again (one a tab changed
-  and hasn't written stays its own, written whole: last writer wins,
-  never a mix of chunks).
-- SQLite: `asuka/sdk/sqlite`'s C (SQLite and `sdk/sqlite/csrc/asq.c`), built to
-  WebAssembly by `sdk/sqlite/internal/build` (zig, `wasm32-wasi`, `-Os`) with
-  `sdk/sqlite/csrc/asq_wasm.c` as its system (`SQLITE_OS_OTHER`, one thread:
-  a VFS, the time zone and randomness imported from JavaScript, no WASI
-  imports): the plugin's `wasm` file, which the CLI ships with the apps
-  that use it, in `lib/` (as any plugin's, [Plugins](#plugins)), named in
-  the page's `libs` option; the page starts the worker when it has
-  `asqlite.wasm`. It runs in a worker of the
+- `Shader`: the compiler translates a shader declaration to GLSL ES 3.00 as
+  it compiles the app (internal/shadercode, beside its Metal and AGSL),
+  last in the shader's code, since no compiler runs in the page; the
+  host compiles it with WebGL 2 and sets the uniforms' lanes by their
+  GLSL types.
+- Files: the core's file calls (std/fs, the crash record, what the C
+  library opens) are WASI's, which `wasi.js` answers from a file system
+  in memory (`fs.js`, `/` preopened), at once: the app's directory
+  (`/data/<name>`, the core's `appDir`) loaded from IndexedDB before the
+  core starts and written back as it changes (a large file in chunks of
+  64 KiB, only those changed; each data directory's changes in one
+  IndexedDB transaction). Tabs share it: a tab writes holding the
+  directory's Web Lock, then names the files on a `BroadcastChannel`, and
+  the others read them again (one a tab changed and hasn't written stays
+  its own, written whole: last writer wins, never a mix of chunks).
+  spawn's workers each keep a copy: every change is numbered (a journal),
+  a job carries what changed since the worker's last (but its own
+  changes), and its answer what the job changed, which the page takes as
+  another writer's.
+- SQLite: std/sqlite's C (SQLite and `std/sqlite/csrc/asq.c`, its
+  `[c.web]` adding `std/sqlite/csrc/asq_wasm.c` as its system:
+  `SQLITE_OS_OTHER`, one thread, a VFS, the time zone and randomness
+  imported from JavaScript, no WASI imports, `-Os`), its wasm32 unit
+  linked into a module of its own (`appbuild.SQLiteWasm`, a reactor
+  exporting `asq_call`, `asq_version`, `malloc` and `free`, linked once
+  into the build cache) rather than into the app's: the page never calls
+  SQLite, its worker does, and the worker needs none of the app.
+  `asuka dev` and `asuka build` carry it for the apps that import
+  std/sqlite, in `lib/asqlite.wasm` of the host's files, named in the
+  page's `sqlite` option; the page starts the worker when it has one. It runs in a worker of the
   page's (`platform/web/src/sqlite-worker.js`; `sqlite-engine.js` the
   module, `sqlite-vfs.js` its files, `sqlite-store.js` where they're
-  kept). Go's side (`sdk/sqlite/lib_js.go`) posts each call to the worker
-  through `sqlite.js` and waits on a channel; the page writes the answer
-  into Go's buffer (one too long is kept page-side for `TAKE`, answered
-  at once) and wakes the goroutine. The page's callbacks can't wait (the
-  page waits for them), so a call on the goroutine a callback runs on
-  fails at once: `host/web` brackets them with `internal/jsloop`, which
-  tells that goroutine by its `g` (other goroutines run while the page
-  calls back into Go, and may wait). The data directory's databases are
+  kept). std/sqlite's builtins (`core/src/sqlite/sqlite.c`) send each
+  call through `sqlite.js` (`js_sqlite_send`); the worker runs it whole,
+  a query's chunks gathered into one rows answer with the tables it read
+  and wrote, and the answer comes back to the core (`asuka_sqlite_done`),
+  which decodes the rows by their descriptor as on every platform. The
+  main thread can't wait for the worker, so what runs on it elsewhere
+  (`openConn`, `execNow`, `migrateConn`) is sent without waiting, in
+  order before what follows: the page numbers the connection; one that
+  didn't open fails each statement with why, and a call that failed
+  unseen fails its connection's next one. The data directory's databases are
   files of the origin private file system, read and written in place
   through sync access handles; without them, IndexedDB in 64 KiB chunks,
   written once each call returns. One connection per file, a rollback
@@ -4067,14 +4197,22 @@ calls:
   keeps it until another tab asks on a `BroadcastChannel` and it isn't
   in a transaction; a statement that needs it meanwhile gets
   `SQLITE_BUSY` at once while the lock comes (SQLite never sleeps there),
-  and Go runs it again (`library.waits` is false). Between the page's own
-  connections to a file, the VFS locks as the unix VFS does between
-  processes. A database the page's files kept (before) moves to the
-  worker as it's first opened.
-- Native modules: `platform/web/src/modules` (`system.js`,
-  `hardware.js`, `web.js`), each method decoding the Go package's bytes
-  as the native hosts do; what a browser can't do answers an error that
-  says so.
+  and the worker runs it again, outside a transaction, until the busy
+  timeout. Between the page's own connections to a file, the VFS locks as
+  the unix VFS does between processes. A database the page's files kept
+  (before) moves to the worker as it's first opened.
+- Crash reports: the core keeps the run's record as on the phones
+  (`core/src/std/crash.c`, begun by `core.js` with the browser as the
+  device), in the app's files; a page marks its run alive in
+  `localStorage` while it's open (`crash.js`: the core asks through
+  `crash_alive`; spawn's workers, which read the reports, are told the
+  marks and where the page's record is), writes uncaught JavaScript errors
+  to the inbox, and on the core's trap keeps its `.crash` file at once.
+- Native packages: each package's `web/` module, registered by import
+  path (`native.js`), its methods decoding the core's bytes as the
+  native hosts do; the host's own modules are in
+  `platform/web/src/modules`. What a browser can't do answers an error
+  that says so.
 - Web views: a page of the app's origin is fetched and written into a
   fresh `<iframe>` (its URL set to its own), with `window.asuka` and
   `Preload` before its scripts, so the host has its script, events,
@@ -4084,9 +4222,9 @@ calls:
   (`platform/web/gen_symbols.go` reads its drawables).
 - `asuka dev --platform web` serves the page, the host's files (a checkout's, so
   changing them reloads the page too), the build and the assets, and
-  keeps a connection to the page (server-sent events): a new build
-  reloads it (the signals' values saved in its session storage first),
-  a failed one shows its errors over it, and the GUI tests' automation
+  keeps a connection to the page (server-sent events): a new module
+  goes to the page, which loads it keeping the app's state and views
+  (`asuka_dev_reload`), a failed compile shows its errors over it, and the GUI tests' automation
   commands go through it. `asuka build --platform web` names the files by their
   content's digest, so only `index.html` and the manifest need fetching
   again.

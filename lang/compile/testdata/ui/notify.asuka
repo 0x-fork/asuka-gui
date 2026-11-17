@@ -1,0 +1,47 @@
+// platform/notify with no platform code: what needs the host fails as
+// unsupported, what doesn't wait does nothing, and a message's spec takes
+// its conversation's.
+import platform/notify
+
+let ana = notify.Person(id: "ana", name: "Ana")
+let climb = notify.Conversation(id: "climbing", title: "Climbing", group: true)
+
+component Remind {
+  state said = ""
+
+  Column {
+    Button("Remind") {
+      on press {
+        do {
+          if try await notify.request() {
+            try await notify.schedule(notify.Notification(id: "r", title: "Tea", body: "Ready", after: 5s))
+          }
+        } catch e {
+          said = e.message
+        }
+      }
+    }
+    Text(said)
+  }
+}
+
+app { Remind() }
+
+test "without a host" {
+  let app = mount(Remind())
+  app.tap("Remind")
+  await app.idle()
+  app.expect("no module \"notify\"")
+  notify.setBadge(3)
+  notify.removeThread("x")
+  notify.present(n => if n.thread == "climbing" { .hide } else { .banner })
+  notify.setChannels([notify.Channel(id: "m", name: "Messages", importance: .high)])
+  let n = notify.Notification(body: "Saturday?", badge: 1).from(ana, climb)
+  let s = notify.spec(n, 0.0)
+  expect(s.id == "climbing" && s.thread == "climbing" && s.title == "Climbing")
+  let one = notify.spec(notify.Notification(body: "Hi").from(ana, notify.Conversation()), 0.0)
+  expect(one.id == "ana" && one.title == "Ana")
+  let r = notify.Response(action: "reply", reply: "Yes")
+  let done = r.defer()
+  done()
+}

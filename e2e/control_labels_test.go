@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// The checkbox's name survives both a native tap and a value set by Go.
+// The checkbox's name survives both a native tap and a value set by the app.
 // Its visible text is different, so only the control's accessibility
 // label can satisfy the check or receive the tap.
 func TestControlLabelsIOS(t *testing.T) {

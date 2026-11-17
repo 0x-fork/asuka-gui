@@ -1,28 +1,28 @@
 ## Android
 
-sdk_gphone16k_arm64 emulator, 2026-10-30; release builds; the median of 5 runs (after one to warm up).
+sdk_gphone16k_arm64 emulator, 2026-11-17; release builds; the median of 3 runs (after one to warm up).
 
 Memory is the proportional set size (PSS); its peak, the resident set's high-water mark (VmHWM).
 
-| scenario | | Asuka | Compose |
+| scenario | | asuka | Compose |
 |---|---|---:|---:|
-| **startup** | from the process's start to the first frame, ms | 319 | 327 |
-| **memory-idle** | at the first frame, MB | 43.3 | 32.3 |
-|  | peak since launch, MB | 132 | 120 |
-| **mount** | 1,000 rows appear: the main thread's time, ms | 539 | 444 |
-| **memory-mount** | with the 1,000 rows, MB | 72.8 | 66.7 |
-|  | peak since launch, MB | 162 | 156 |
-| **update-one** | mean ms a frame | 2.74 | 26.8 |
-|  | 95th percentile | 7.49 | 36.3 |
-|  | dropped frames | 26.0 | 128 |
-|  | frame's whole time, ms (with the GPU) | 134 | 75.2 |
-| **update-all** | mean ms a frame | 14.6 | 125 |
-|  | 95th percentile | 24.0 | 162 |
-|  | dropped frames | 50.0 | 119 |
-|  | frame's whole time, ms (with the GPU) | 81.8 | 267 |
-| **scroll** | mean ms a frame | 4.03 | 4.19 |
-|  | 95th percentile | 9.49 | 8.70 |
-|  | dropped frames | 165 | 170 |
-|  | frame's whole time, ms (with the GPU) | 127 | 135 |
-| **memory-list** | after scrolling the list, MB | 74.9 | 74.5 |
-|  | peak since launch, MB | 169 | 182 |
+| **startup** | from the process's start to the first frame, ms | 81.0 | 87.0 |
+| **memory-idle** | at the first frame, MB | 41.8 | 34.4 |
+|  | peak since launch, MB | 129 | 119 |
+| **mount** | 1,000 rows appear: the main thread's time, ms | 110 | 86.3 |
+| **memory-mount** | with the 1,000 rows, MB | 64.6 | 68.8 |
+|  | peak since launch, MB | 153 | 155 |
+| **update-one** | mean ms a frame | 0.72 | 14.2 |
+|  | 95th percentile | 1.35 | 30.8 |
+|  | dropped frames | 3.00 | 30.0 |
+|  | frame's whole time, ms (with the GPU) | 22.5 | 41.4 |
+| **update-all** | mean ms a frame | 5.78 | 29.4 |
+|  | 95th percentile | 11.3 | 38.3 |
+|  | dropped frames | 3.00 | 86.0 |
+|  | frame's whole time, ms (with the GPU) | 28.0 | 62.5 |
+| **scroll** | mean ms a frame | 11.2 | 14.9 |
+|  | 95th percentile | 28.1 | 29.6 |
+|  | dropped frames | 24.0 | 35.0 |
+|  | frame's whole time, ms (with the GPU) | 40.7 | 47.4 |
+| **memory-list** | after scrolling the list, MB | 57.7 | 64.1 |
+|  | peak since launch, MB | 169 | 181 |

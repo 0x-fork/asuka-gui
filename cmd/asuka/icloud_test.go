@@ -103,33 +103,64 @@ func TestICloudPlistAndSimulator(t *testing.T) {
 	}
 }
 
-// What an app calls says what it's given: examples/journal calls both
-// parts; the player, which stands in for any app, has neither (an app of
-// iCloud's is built, not run in the player).
+// usesApp writes an app (with a dependency, @test/sync, beside it) whose
+// sources are app's and dep's, and loads it as asuka build does.
+func usesApp(t *testing.T, app, dep string) *asukaApp {
+	t.Helper()
+	root := t.TempDir()
+	dir, sync := filepath.Join(root, "app"), filepath.Join(root, "sync")
+	os.MkdirAll(dir, 0o755)
+	os.MkdirAll(sync, 0o755)
+	os.WriteFile(filepath.Join(dir, "app.asuka"), []byte(app), 0o644)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte("id = \"dev.asuka.journal\"\n\n[dependencies]\n\"@test/sync\" = \"file:../sync\"\n"), 0o644)
+	os.WriteFile(filepath.Join(sync, "sync.asuka"), []byte("pub fn name() -> string = \"sync\"\n"+dep), 0o644)
+	os.WriteFile(filepath.Join(sync, "asuka.toml"), []byte("name = \"@test/sync\"\nversion = \"0.1.0\"\n"), 0o644)
+	return projectApp(t, dir, nil)
+}
+
+// What the program refers to of platform/icloud says what the app's given,
+// by the members its manifest names: the store's (remove), the
+// documents' (writeFile, a dependency's readFile); not a local function
+// that's named as one of them (delete), nor a mere import.
 func TestUseICloud(t *testing.T) {
-	c := &appConfig{ID: "dev.asuka.journal"}
-	c.useICloud("../../examples/journal", ".", []string{icloudPkg})
-	if !c.icloudKV || !c.icloudDocs || c.entitlements[entKVStore] != teamPrefix+"dev.asuka.journal" {
-		t.Errorf("examples/journal: kv %v, docs %v, %v", c.icloudKV, c.icloudDocs, c.entitlements)
-	}
-	none := &appConfig{ID: "dev.asuka.counter"}
-	none.useICloud("../../examples/counter", ".", []string{"github.com/egoist/asuka/ui"})
-	if none.icloudKV || none.icloudDocs || len(none.entitlements) != 0 {
-		t.Errorf("examples/counter: %v", none.entitlements)
-	}
-	if p := playerConfig(); p.icloudKV || p.icloudDocs || p.entitlements[entKVStore] != nil {
-		t.Errorf("the player: %v", p.entitlements)
-	}
-	for _, target := range []string{"ios", "ios-device"} {
-		if b, _ := gapsOf(c, target, icloudPkg); !strings.Contains(b, "iCloud") {
-			t.Errorf("%s: an app of iCloud's runs in the player (%q)", target, b)
+	const local = "\nfn delete(x: string) -> string = x\n\napp { Text(delete(sync.name())) }\n"
+	for _, x := range []struct {
+		name, app, dep string
+		kv, docs       bool
+	}{
+		{"store", "import platform/icloud\nimport @test/sync\n\nasync fn clear() {\n  let _ = try? await icloud.remove(\"k\")\n}\n" + local, "", true, false},
+		{"documents", "import platform/icloud\nimport @test/sync\n\nasync fn save() {\n  let _ = try? await icloud.writeFile(\"a\", \"b\".bytes())\n}\n" + local, "", false, true},
+		{"a dependency's", "import @test/sync\n" + local, "import platform/icloud\n\npub async fn pull() throws -> bytes = try await icloud.readFile(\"notes.txt\")\n", false, true},
+		{"a local delete", "import platform/icloud\nimport @test/sync\n\nfn account() -> string = \"me\"\n" + local, "", false, false},
+	} {
+		c := usesApp(t, x.app, x.dep).cfg
+		if c.icloudKV != x.kv || c.icloudDocs != x.docs {
+			t.Errorf("%s: kv %v, docs %v, %v", x.name, c.icloudKV, c.icloudDocs, c.entitlements)
+		}
+		if _, ok := c.entitlements[entKVStore]; ok != x.kv {
+			t.Errorf("%s: the store's entitlement %v", x.name, c.entitlements)
+		}
+		if _, ok := c.entitlements[entContainers]; ok != x.docs {
+			t.Errorf("%s: the containers' %v", x.name, c.entitlements)
 		}
 	}
-	if b, _ := gapsOf(c, "android", icloudPkg); b != "" {
-		t.Errorf("android: built for %q", b)
+}
+
+// platform/location's background part is the apps' that call it: one that
+// asks where the device is has none of it; one whose dependency asks for
+// Always has its permission and purpose string.
+func TestLocationByUse(t *testing.T) {
+	const app = "import platform/location\nimport @test/sync\n\nasync fn here() {\n  let _ = try? await location.current()\n}\n\napp { Text(sync.name()) }\n"
+	fg := usesApp(t, app, "").cfg
+	man := fg.androidManifest(false)
+	if !strings.Contains(man, "ACCESS_FINE_LOCATION") || strings.Contains(man, "BACKGROUND_LOCATION") || strings.Contains(man, "LocationService") ||
+		fg.IOS.Usage["NSLocationAlwaysAndWhenInUseUsageDescription"] != "" || slices.Contains(fg.IOS.BackgroundModes, "location") {
+		t.Errorf("current() alone: %v %v\n%s", fg.IOS.Usage, fg.IOS.BackgroundModes, man)
 	}
-	if !slices.Equal(featureMacSwift[icloudPkg], []string{"ASUKA_ICLOUD"}) {
-		t.Error("no Mac Swift for iCloud")
+	bg := usesApp(t, app, "import platform/location\n\npub async fn always() throws {\n  let _ = try await location.requestAlways()\n}\n").cfg
+	if man := bg.androidManifest(false); !strings.Contains(man, "android.permission.ACCESS_BACKGROUND_LOCATION") ||
+		bg.IOS.Usage["NSLocationAlwaysAndWhenInUseUsageDescription"] == "" {
+		t.Errorf("a dependency's requestAlways(): %v\n%s", bg.IOS.Usage, man)
 	}
 }
 
@@ -160,5 +191,30 @@ func TestMacICloudEntitlements(t *testing.T) {
 	delete(p.entitlements, entKVStore)
 	if _, err := macEntitlements(cfg, p, false); err == nil || !strings.Contains(err.Error(), "key-value storage") {
 		t.Errorf("no store: %v", err)
+	}
+}
+
+// Communication notifications are the apps' that make a message
+// (notify's Notification.from, or a Notification made with its sender):
+// not those that import platform/push, whose own Message has a notify.Person,
+// nor those whose notifications have no sender.
+func TestConversationsByUse(t *testing.T) {
+	const tail = "\napp { Text(sync.name()) }\n"
+	plain := usesApp(t, "import platform/push\nimport @test/sync\n\nasync fn reg() {\n  let _ = try? await push.register()\n}\n"+tail, "")
+	if fl := usedFeatures(plain, plain.cfg); !slices.Contains(fl, "ASUKA_PUSH") || slices.Contains(fl, "ASUKA_CONVERSATIONS") ||
+		plain.cfg.entitlements["com.apple.developer.usernotifications.communication"] != nil {
+		t.Errorf("push alone: %v %v", fl, plain.cfg.entitlements)
+	}
+	msg := usesApp(t, "import platform/notify\nimport @test/sync\n\nasync fn say() {\n  let n = notify.Notification(body: \"hi\").from(notify.Person(name: \"Ann\"), notify.Conversation())\n  try? await notify.show(n)\n}\n"+tail, "")
+	if fl := usedFeatures(msg, msg.cfg); !slices.Contains(fl, "ASUKA_CONVERSATIONS") || msg.cfg.entitlements["com.apple.developer.usernotifications.communication"] != true {
+		t.Errorf("a message: %v %v", fl, msg.cfg.entitlements)
+	}
+	lit := usesApp(t, "import platform/notify\nimport @test/sync\n\nasync fn say() {\n  try? await notify.show(notify.Notification(body: \"hi\", sender: notify.Person(name: \"Ann\")))\n}\n"+tail, "")
+	if fl := usedFeatures(lit, lit.cfg); !slices.Contains(fl, "ASUKA_CONVERSATIONS") {
+		t.Errorf("a message made with its sender: %v", fl)
+	}
+	plainNote := usesApp(t, "import platform/notify\nimport @test/sync\n\nasync fn say() {\n  try? await notify.show(notify.Notification(title: \"hi\"))\n}\n"+tail, "")
+	if fl := usedFeatures(plainNote, plainNote.cfg); slices.Contains(fl, "ASUKA_CONVERSATIONS") {
+		t.Errorf("a notification without a sender: %v", fl)
 	}
 }

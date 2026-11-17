@@ -1,0 +1,59 @@
+// JSON: typed decoding and encoding, by the compiler's descriptors.
+
+import std/json
+
+enum Status { active, archived }
+
+struct Tag {
+  name: string
+}
+
+struct Note {
+  id: int
+  title: string
+  score: float
+  done: bool
+  status: Status
+  tags: [Tag]
+  extra: [string: int]
+  parent: int?
+}
+
+test "round trip" {
+  let text = r"""
+    {"id": 7, "title": "hi", "score": 1.5, "done": true, "status": "archived",
+     "tags": [{"name": "a"}, {"name": "b"}], "extra": {"x": 1}, "parent": null}
+    """
+  let n: Note = try json.decode(text)
+  print(n.title)
+  print(n.status)
+  print(n.tags.map(t => t.name).joined(separator: ","))
+  print(n.extra["x"]!)
+  expect(n.parent == none)
+  let out = json.encode(n)
+  print(out)
+  let back: Note = try json.decode(out)
+  expect(back == n)
+  let xs: [int] = try json.decode("[1, 2, 3]")
+  print(xs.sum())
+}
+
+test "bad json" {
+  do {
+    let n: Note = try json.decode(r"""{"id": "x"}""")
+    print(n.id)
+  } catch e {
+    print("error")
+  }
+}
+
+// Output:
+// hi
+// archived
+// a,b
+// 1
+// {"id":7,"title":"hi","score":1.5,"done":true,"status":"archived","tags":[{"name":"a"},{"name":"b"}],"extra":{"x":1},"parent":null}
+// 6
+// ok round trip
+// error
+// ok bad json

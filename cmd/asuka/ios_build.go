@@ -16,14 +16,17 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/egoist/asuka/lang/bytecode"
+	"github.com/egoist/asuka/lang/target"
 )
 
 // buildIOS makes a release build: an .ipa signed for distribution, or
 // with --simulator a release .app for the simulator. No Xcode project:
-// swiftc compiles the host (optimized), the Go archive is built for the
+// swiftc compiles the host (optimized), the core is built for the
 // device, actool compiles the icon, and the bundle is signed with the
 // provisioning profile that fits.
-func buildIOS(app *goApp, o *buildOptions) error {
+func buildIOS(app *asukaApp, o *buildOptions) error {
 	start := time.Now()
 	cfg := app.cfg
 	sdkName := "iphoneos"
@@ -58,46 +61,61 @@ func buildIOS(app *goApp, o *buildOptions) error {
 		fmt.Printf("asuka: signing with %q (%s, team %s) as %s\n", prof.name, prof.kind, prof.team, prof.identityName)
 		if cfg.ShareTarget.on {
 			if shareProf, err = o.pickProfile(prof.team, cfg.shareID(), cfg.IOS.ShareProfile); err != nil {
-				return fmt.Errorf("the share extension (asuka.json's shareTarget): %v", err)
+				return fmt.Errorf("the share extension (asuka.toml's shareTarget): %v", err)
 			}
 			fmt.Printf("asuka: signing the share extension with %q\n", shareProf.name)
 		}
 		if len(cfg.Widgets) > 0 {
 			if widgetProf, err = o.pickProfile(prof.team, cfg.widgetID(), cfg.IOS.WidgetProfile); err != nil {
-				return fmt.Errorf("the widget extension (asuka.json's widgets): %v", err)
+				return fmt.Errorf("the widget extension (asuka.toml's widgets): %v", err)
 			}
 			fmt.Printf("asuka: signing the widget extension with %q\n", widgetProf.name)
 		}
 	}
 	fmt.Printf("asuka: building %s %s (%d) for %s\n", cfg.Name, cfg.Version, cfg.Build, map[bool]string{true: "the simulator", false: "devices"}[o.simulator])
-	lib, err := tc.buildGo(app, work)
+	if err := generateNatives(app); err != nil {
+		return err
+	}
+	// The core: with the app compiled in, or, for asuka dev on a device,
+	// the player's, which loads the app's bytecode, with every feature.
+	var m *bytecode.Module
+	features := []string(nil)
+	if o.dev == nil {
+		if m, err = app.compile(target.IOS); err != nil {
+			return err
+		}
+		features = usedFeatures(app, cfg)
+	} else {
+		features = playerFeatures(app, cfg)
+		// It reaches asuka dev on the local network.
+		if cfg.IOS.Usage == nil {
+			cfg.IOS.Usage = map[string]string{}
+		}
+		if cfg.IOS.Usage["NSLocalNetworkUsageDescription"] == "" {
+			cfg.IOS.Usage["NSLocalNetworkUsageDescription"] = "To reach asuka dev on your computer, which runs the app you're working on."
+		}
+	}
+	lib, err := tc.buildCore(work, m, app.c)
 	if err != nil {
 		return err
 	}
-	var hostObj string
-	if app.pkg != "" {
-		// The player (asuka dev on a device): every feature, as on the
-		// simulator, and no native packages.
-		hostObj, err = tc.buildHost(work, nil, allFeatures())
-	} else {
-		hostObj, err = tc.buildHost(work, app, usedFeatures(lib, cfg))
-	}
+	hostObj, err := tc.buildHost(work, app, features)
 	if err != nil {
 		return err
 	}
 	// The widget extension of an app with Live Activities and no widgets,
-	// likewise known once the Go code is.
+	// likewise known once its features are.
 	if cfg.widgetExtension() && widgetProf == nil && !o.simulator {
 		if widgetProf, err = o.pickProfile(prof.team, cfg.widgetID(), cfg.IOS.WidgetProfile); err != nil {
-			return fmt.Errorf("the widget extension (asuka/sdk/liveactivity's Live Activities): %v", err)
+			return fmt.Errorf("the widget extension (platform/liveactivity's Live Activities): %v", err)
 		}
 		fmt.Printf("asuka: signing the widget extension with %q\n", widgetProf.name)
 	}
-	// The Notification Service Extension (push.Rewrite), whose profile is
-	// known once the Go code is: signed with one of its own, likewise.
+	// The Notification Service Extension (platform/push's rewrite), whose profile is
+	// known once the features are: signed with one of its own, likewise.
 	if cfg.pushRewrite && !o.simulator {
 		if notificationProf, err = o.pickProfile(prof.team, cfg.notificationID(), cfg.IOS.NotificationProfile); err != nil {
-			return fmt.Errorf("the Notification Service Extension (push.Rewrite): %v", err)
+			return fmt.Errorf("the Notification Service Extension (platform/push's rewrite): %v", err)
 		}
 		fmt.Printf("asuka: signing the Notification Service Extension with %q\n", notificationProf.name)
 	}
@@ -116,7 +134,7 @@ func buildIOS(app *goApp, o *buildOptions) error {
 	if err != nil {
 		return err
 	}
-	if err := tc.embedPlugins(bundle, app); err != nil {
+	if err := tc.embedPackages(bundle); err != nil {
 		return err
 	}
 	os.RemoveAll(filepath.Join(work, "dSYMs"))
@@ -154,7 +172,7 @@ func buildIOS(app *goApp, o *buildOptions) error {
 		return err
 	}
 	if cfg.Icon == "" && o.dev == nil {
-		fmt.Println("asuka: no icon in asuka.json; the App Store needs one (1024×1024 PNG)")
+		fmt.Println("asuka: no icon in asuka.toml; the App Store needs one (1024×1024 PNG)")
 	}
 	if cfg.Icon != "" || cfg.splashOn() {
 		if err := tc.compileAssets(cfg, work, bundle, infoPath, cfg.Icon != ""); err != nil {
@@ -411,7 +429,7 @@ func xcodeVersion() (string, string) {
 }
 
 // compileAssets compiles the asset catalog (writeAssetCatalog: the app
-// icon from asuka.json's icon, if icon, and the splash's image and color)
+// icon from asuka.toml's icon, if icon, and the splash's image and color)
 // into the bundle, merging the icon keys into Info.plist.
 func (t *iosToolchain) compileAssets(cfg *appConfig, work, bundle, infoPath string, icon bool) error {
 	cat, err := writeAssetCatalog(cfg, work, icon)
@@ -725,7 +743,7 @@ func (p *profile) sign(t *iosToolchain, work, bundle, id string, domains []strin
 		}
 	}
 	// The app's keychain group, first (the one items go to), for the app
-	// and its share sheet: asuka/sdk/secure's items are the same in both.
+	// and its share sheet: platform/secure's items are the same in both.
 	if keychain != "" {
 		if err := t.run(work, nil, "plutil", "-replace", "keychain-access-groups", "-json", `["`+keychain+`"]`, ent); err != nil {
 			return err

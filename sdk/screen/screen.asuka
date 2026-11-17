@@ -1,0 +1,217 @@
+// Package platform/screen is the displays the device has (where each is,
+// its work area, scale and refresh rate) and what an app sets about the
+// screen it runs on: the orientations it may turn to, the system bars,
+// whether what it shows may be captured, and the screenshots the user
+// takes.
+//
+//   let displays = screen.displays()   // tracked: follows the displays while it's read
+//   screen.lock(.landscape)
+//   screen.setBars(hideStatus: true)
+//
+// Each setting holds until it's set again; they're the app's, not a
+// screen's: a screen that sets one resets it as it goes.
+
+/// What the app may turn to.
+pub enum Orientation {
+  /// asuka.toml's orientations (default: all the device turns to):
+  /// unlocked.
+  any
+  /// Upright (and upside down, where the platform allows it: iPad,
+  /// Android's sensor).
+  portrait
+  /// Upright only.
+  portraitUp
+  /// Either way on its side, as the device is held.
+  landscape
+  /// On its side with the top on the left.
+  landscapeLeft
+  /// On its side with the top on the right.
+  landscapeRight
+}
+
+/// The color of the status bar's text and icons.
+pub enum BarStyle {
+  /// Follows the app's color scheme: dark icons in light mode, light in
+  /// dark mode.
+  auto
+  /// Light text and icons, for a dark picture or header under them.
+  light
+  /// Dark text and icons, for a light one.
+  dark
+}
+
+/// A rectangle in points.
+pub struct Rect {
+  x: float = 0
+  y: float = 0
+  width: float = 0
+  height: float = 0
+
+  /// Whether the point x, y is in it.
+  fn contains(px: float, py: float) -> bool = px >= x && py >= y && px < x + width && py < y + height
+}
+
+/// A screen the device shows the app on: a Mac's built-in one and the
+/// monitors plugged in, a phone's own (and one it mirrors or extends to).
+/// Bounds and work areas are in points, in the desktop's coordinates: the
+/// origin at the top left corner of the primary display, y down, the
+/// others where the user arranged them.
+pub struct Display {
+  /// Names it while it's connected: the Mac's CGDirectDisplayID,
+  /// Windows's device name (\\.\DISPLAY1), the connector on Linux (DP-1),
+  /// Android's display ID, "main" for an iPhone's own screen.
+  id: string = ""
+  /// What the system calls it: "Built-in Retina Display", "DELL U2720Q".
+  name: string = ""
+  /// The whole display.
+  bounds: Rect = Rect()
+  /// What windows take, less the menu bar, the Dock, the taskbar and the
+  /// panels. A phone's, and Linux's on Wayland, is its bounds.
+  workArea: Rect = Rect()
+  /// Pixels per point: 2 on a Retina display, 1.5 at 150% on Windows.
+  scale: float = 1
+  /// How many times a second it draws (60, 120); 0 where it's not said.
+  refreshRate: float = 0
+  /// The main display: the one with the menu bar on a Mac, the primary
+  /// monitor on Windows and Linux, a phone's own screen.
+  primary: bool = false
+}
+
+/// The platform's screen.
+native interface Screens {
+  /// The displays now, the primary first.
+  fn displays() -> [Display]
+  /// Calls changed with the displays now, then each time they change,
+  /// until the task is cancelled.
+  async fn watchDisplays(changed: fn([Display]))
+  /// @mainThread
+  fn lock(orientation: Orientation)
+  /// @mainThread
+  fn setBars(style: BarStyle, hideStatus: bool, hideNavigation: bool)
+  /// @mainThread
+  fn preventCapture(on: bool)
+  /// Calls taken with each screenshot of the app, until the task is
+  /// cancelled.
+  async fn watchScreenshots(taken: fn(int))
+}
+
+// Made once; none where the platform has no code for it.
+let platform = try? Screens()
+
+/// The displays connected now, the primary one first; none where the
+/// platform doesn't say.
+pub fn now() -> [Display] {
+  if let p = platform {
+    if let ds = try? p.displays() {
+      return ds
+    }
+  }
+  return []
+}
+
+/// The displays now, then each time they change: one plugged in or out,
+/// the displays arranged, a resolution, scale or refresh rate changed,
+/// the work area moved, a phone turned.
+pub fn changes() -> Stream<[Display]> = Stream(send => {
+  if let p = platform {
+    try await p.watchDisplays(changed: ds => send(ds))
+  } else {
+    send(now())
+  }
+})
+
+let followed = live(now(), changes)
+
+/// The displays, tracked: read in a binding, it follows them while it's
+/// read (and only then does anything watch them).
+pub fn displays() -> [Display] = followed()
+
+/// The primary display among ds (the first, if none says it is); none if
+/// ds is empty.
+pub fn primary(ds: [Display]) -> Display? {
+  for d in ds {
+    if d.primary { return d }
+  }
+  return ds.first()
+}
+
+/// The display among ds that a point in the desktop's coordinates is on,
+/// or else the one nearest it (the cursor, a window's center).
+pub fn nearest(ds: [Display], x: float, y: float) -> Display? {
+  var best = -1.0
+  var found: Display? = none
+  for c in ds {
+    if c.bounds.contains(px: x, py: y) { return c }
+    let dx = max(max(c.bounds.x - x, 0.0), x - (c.bounds.x + c.bounds.width))
+    let dy = max(max(c.bounds.y - y, 0.0), y - (c.bounds.y + c.bounds.height))
+    let dist = dx * dx + dy * dy
+    if best < 0 || dist < best {
+      best = dist
+      found = c
+    }
+  }
+  return found
+}
+
+/// The display among ds that a rectangle overlaps most (the one a window
+/// is on), or else the one nearest its center.
+pub fn matching(ds: [Display], r: Rect) -> Display? {
+  var best = 0.0
+  var found: Display? = none
+  for c in ds {
+    let w = min(r.x + r.width, c.bounds.x + c.bounds.width) - max(r.x, c.bounds.x)
+    let h = min(r.y + r.height, c.bounds.y + c.bounds.height) - max(r.y, c.bounds.y)
+    if w > 0 && h > 0 && w * h > best {
+      best = w * h
+      found = c
+    }
+  }
+  if found != none { return found }
+  return nearest(ds, x: r.x + r.width / 2, y: r.y + r.height / 2)
+}
+
+/// Turns the app to o and keeps it there, whichever way the device is
+/// held (a video player's landscape, a scanner's portrait); lock(.any)
+/// unlocks it. An orientation asuka.toml's orientations leave out stays
+/// out. iPad apps in Split View or Stage Manager, Android's large screens
+/// and the desktops are whatever shape their window is: nothing there.
+pub fn lock(o: Orientation) {
+  if let p = platform {
+    try? p.lock(orientation: o)
+  }
+}
+
+/// Sets how the system bars show: style is the status bar's text and
+/// icons (on Android, the navigation bar's buttons too); hideStatus hides
+/// the status bar (a game, a photo full screen: on Android a swipe from
+/// the edge shows it a moment); hideNavigation hides Android's navigation
+/// bar until a swipe from the edge. The safe area follows. Nothing where
+/// there are no such bars (the desktops).
+pub fn setBars(style: BarStyle = .auto, hideStatus: bool = false, hideNavigation: bool = false) {
+  if let p = platform {
+    try? p.setBars(style: style, hideStatus: hideStatus, hideNavigation: hideNavigation)
+  }
+}
+
+/// Keeps what the app shows out of screenshots and recordings while on is
+/// true: a bank's balance, a ticket's code, paid video. Android: the
+/// window is secure (FLAG_SECURE), screenshots and recordings black, the
+/// recent apps blank; the Mac and Windows leave the app's windows out of
+/// captures. iOS has no way to stop a screenshot: while the screen is
+/// recorded, mirrored or on AirPlay, the app is covered; screenshots()
+/// says when one is taken. Linux and the web: nothing.
+pub fn preventCapture(on: bool) {
+  if let p = platform {
+    try? p.preventCapture(on: on)
+  }
+}
+
+/// Each screenshot the user takes of the app (a count, from 1), to say
+/// what's in it is private or to offer to share it: iOS, Android 14 and
+/// later (DETECT_SCREEN_CAPTURE). A screenshot preventCapture kept out
+/// isn't one. Nothing where the platform doesn't say.
+pub fn screenshots() -> Stream<int> = Stream(send => {
+  if let p = platform {
+    try await p.watchScreenshots(taken: n => send(n))
+  }
+})

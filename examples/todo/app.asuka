@@ -1,0 +1,99 @@
+// Todo shows for (keyed rows), TextField, Toggle and SafeArea moving
+// content above the keyboard.
+//
+//   asuka dev --platform ios examples/todo
+
+struct Todo {
+  id: int
+  title: string
+  done: bool = false
+}
+
+component Todos {
+  state todos = [
+    Todo(id: 1, title: "Buy milk"),
+    Todo(id: 2, title: "Write the iOS host", done: true),
+    Todo(id: 3, title: "Port the layout tests"),
+  ]
+  state draft = ""
+  state nextId = 4
+
+  let left = todos.count(t => !t.done)
+
+  fn add() {
+    let title = draft.trim()
+    if title.isEmpty() { return }
+    todos.push(Todo(id: nextId, title: title))
+    nextId += 1
+    draft = ""
+  }
+
+  fn setDone(id: int, done: bool) {
+    if let i = todos.index(t => t.id == id) { todos[i].done = done }
+  }
+
+  SafeArea {
+    padding: [8, 16]
+    gap: 12
+
+    Text("Todos") { font: .largeTitle.bold() }
+    Scroll {
+      grow: 1
+      for todo in todos key todo.id {
+        Row {
+          align: .center
+          gap: 12
+          padding: [8, 0]
+          Toggle {
+            on: todo.done
+            title: todo.title
+            on change(on) { setDone(todo.id, on) }
+          }
+          Text(todo.title) {
+            grow: 1
+            color: if todo.done { .secondaryLabel } else { .label }
+          }
+          Button("Delete") {
+            color: .red
+            on press { todos.removeWhere(t => t.id == todo.id) }
+          }
+        }
+      }
+    }
+    Text(if left == 1 { "1 thing left" } else { "{left} things left" }) {
+      font: .footnote
+      color: .secondaryLabel
+    }
+    Row {
+      gap: 8
+      align: .center
+      TextField {
+        bind text: draft
+        placeholder: "What needs doing?"
+        returnKey: .done
+        grow: 1
+        on submit { add() }
+      }
+      Button("Add") {
+        variant: .filled
+        disabled: draft.trim().isEmpty()
+        on press { add() }
+      }
+    }
+  }
+}
+
+app { Todos() }
+
+test "adds, completes and deletes a todo" {
+  let app = mount(Todos())
+  app.expect("Buy milk", "2 things left")
+  app.type("Walk the dog", into: "What needs doing?")
+  app.tap("Add")
+  app.expect("Walk the dog", "3 things left")
+  app.toggle("Walk the dog")
+  app.expect("2 things left")
+  app.nextTo("Buy milk").tap("Delete")
+  app.expectNo("Buy milk")
+  app.expect("1 thing left")
+}

@@ -2,22 +2,28 @@
 
 // Package e2e drives the example apps on a simulator and an emulator,
 // through the platform's widgets, not the core. The tests build each app
-// with `asuka dev --once` (its Go code embedded, a debug build; the
-// player's tests, player_test.go, run asuka dev's player instead), then tap
+// with asuka dev (a debug build, which asuka dev serves its code to for
+// the test's run; the player's tests, player_test.go, run asuka dev's
+// player instead), then tap
 // and read the screen through the debug hosts' automation
 // (platform/ios/Sources/AsukaHost/Automation.swift, a notification;
 // platform/android/asuka/src/main/java/dev/asuka/Automation.kt, a broadcast;
 // platform/web/src/automation.js, through asuka dev --platform web's server;
-// host/linux/automation.go, a file).
+// platform/linux/src/automation.c, a file).
 //
 //	go test -tags e2e ./e2e -run IOS      # a booted simulator, else the newest iPhone
 //	go test -tags e2e ./e2e -run Android  # a running emulator or a device
 //	go test -tags e2e ./e2e -run Web      # headless Chrome (ASUKA_CHROME: its path)
+//	go test -tags e2e ./e2e -run StdWebViews  # std packages' web views ({std,sdk}/*/tests/*_view_test.js)
 //	xvfb-run -a dbus-run-session go test -tags e2e ./e2e -run Linux  # GTK 4, on Linux
 //	ASUKA_DEVICE=emulator-5556 go test -tags e2e ./e2e -run Android  # one of several
 //
 // They wait for what they expect (bounded, so a broken app fails rather
 // than hangs), never for a fixed time.
+//
+// The examples and the apps in testdata are Asuka packages (asuka.toml,
+// app.asuka and the files beside it): asuka dev builds each from its
+// directory.
 package e2e
 
 import (
@@ -61,23 +67,63 @@ func appDir(app string) string {
 	return "examples/" + app
 }
 
-// launch builds and launches an app (appDir) on the platform with asuka
-// dev --once, and returns what it printed. ASUKA_DEVICE picks the
-// simulator, emulator or device (asuka dev's --device), when there's more
-// than one.
+// launch builds an app (appDir) for the platform and launches it with
+// asuka dev, which runs until the test ends: a relaunched app (the tests
+// that check what's kept across launches) reconnects to it for its code,
+// as an app does in development. It returns what asuka dev printed once
+// the app was launched. ASUKA_DEVICE picks the simulator, emulator or
+// device (asuka dev's --device), when there's more than one.
 func launch(t *testing.T, platform, app string) string {
 	t.Helper()
-	args := []string{"run", "./cmd/asuka", "dev", "--platform", platform, "--once"}
+	cli := filepath.Join(t.TempDir(), "asuka")
+	if runtime.GOOS == "windows" {
+		cli += ".exe"
+	}
+	run(t, "go", "build", "-C", root(t), "-o", cli, "./cmd/asuka")
+	args := []string{"dev", "--platform", platform}
 	if d := os.Getenv("ASUKA_DEVICE"); d != "" {
 		args = append(args, "--device", d)
 	}
-	c := exec.Command("go", append(args, appDir(app))...)
+	c := exec.Command(cli, append(args, appDir(app))...)
 	c.Dir = root(t)
-	out, err := c.CombinedOutput()
-	if err != nil {
-		t.Fatalf("asuka dev --platform %s --once %s: %v\n%s", platform, appDir(app), err, out)
+	var logs syncBuffer
+	c.Stdout, c.Stderr = &logs, &logs
+	// What it starts may keep its output open: Wait doesn't wait for that.
+	c.WaitDelay = 5 * time.Second
+	interruptible(c)
+	if err := c.Start(); err != nil {
+		t.Fatal(err)
 	}
-	return string(out)
+	exited := make(chan struct{})
+	go func() { c.Wait(); close(exited) }()
+	// Stopped as asuka dev is (Ctrl-C's), which stops the app's run.
+	t.Cleanup(func() {
+		if err := interrupt(c.Process); err != nil {
+			c.Process.Kill()
+		}
+		select {
+		case <-exited:
+		case <-time.After(30 * time.Second):
+			c.Process.Kill()
+			<-exited
+		}
+		if t.Failed() {
+			t.Logf("asuka dev --platform %s:\n%s", platform, logs.String())
+		}
+	})
+	// The first build of a platform's host takes a while.
+	deadline := time.Now().Add(15 * time.Minute)
+	for !strings.Contains(logs.String(), "watching for changes") {
+		select {
+		case <-exited:
+			t.Fatalf("asuka dev --platform %s %s quit:\n%s", platform, appDir(app), logs.String())
+		case <-time.After(200 * time.Millisecond):
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("asuka dev --platform %s %s didn't launch the app:\n%s", platform, appDir(app), logs.String())
+		}
+	}
+	return logs.String()
 }
 
 func run(t *testing.T, name string, args ...string) string {
@@ -187,9 +233,9 @@ func navigation(t *testing.T, s screen) {
 	s.command("tab Settings")
 	waitFor(t, s, []string{"Notifications", "About"}, "Message 19")
 	s.tap("About")
-	waitFor(t, s, []string{"Native widgets, driven by Go and fine-grained signals."})
+	waitFor(t, s, []string{"Native widgets, driven by Asuka and fine-grained signals."})
 	s.command("back")
-	waitFor(t, s, []string{"About"}, "Native widgets, driven by Go and fine-grained signals.")
+	waitFor(t, s, []string{"About"}, "Native widgets, driven by Asuka and fine-grained signals.")
 	s.command("tab Inbox")
 	waitFor(t, s, []string{"Message 19"}, "Notifications")
 }
@@ -539,7 +585,7 @@ func webServer(t *testing.T, example string) string {
 	if b, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("building the CLI: %v\n%s", err, b)
 	}
-	dev := exec.Command(cli, "dev", "--platform", "web", "--no-open", "--no-vet", "--port", fmt.Sprint(port), appDir(example))
+	dev := exec.Command(cli, "dev", "--platform", "web", "--no-open", "--port", fmt.Sprint(port), appDir(example))
 	dev.Dir = root(t)
 	out, _ := dev.StdoutPipe()
 	var logs strings.Builder
@@ -750,9 +796,10 @@ func TestProgressRingWeb(t *testing.T) {
 
 // Linux
 
-// linuxScreen is an app asuka dev --platform linux --once runs on this
-// machine's display (xvfb-run's, in CI); the automation's commands go
-// through a directory (ASUKA_COMMANDS), as on iOS.
+// linuxScreen is an app asuka dev --platform linux runs on this
+// machine's display (xvfb-run's, in CI), until it's stopped (which stops
+// the app); the automation's commands go through a directory
+// (ASUKA_COMMANDS), as on iOS.
 type linuxScreen struct {
 	t    *testing.T
 	cli  string
@@ -781,10 +828,12 @@ func (b *syncBuffer) String() string {
 }
 
 func (s *linuxScreen) start() {
-	c := exec.Command(s.cli, "dev", "--platform", "linux", "--once", "--no-vet", appDir(s.app))
+	c := exec.Command(s.cli, "dev", "--platform", "linux", appDir(s.app))
 	c.Dir = root(s.t)
 	c.Env = append(os.Environ(), "ASUKA_COMMANDS="+s.dir)
 	c.Stdout, c.Stderr = &s.logs, &s.logs
+	// The app it runs has its output too: Wait doesn't wait for that.
+	c.WaitDelay = 5 * time.Second
 	if err := c.Start(); err != nil {
 		s.t.Fatal(err)
 	}

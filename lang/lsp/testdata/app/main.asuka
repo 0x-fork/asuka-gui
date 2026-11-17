@@ -1,0 +1,42 @@
+import ./model
+import ./model.{Todo}
+
+/// A tag's look.
+style tag(tint: Color) { color: tint }
+
+/// A row showing one todo.
+component TodoRow(todo: Todo) {
+  /// The toggle was switched.
+  event toggle(on: bool)
+
+  Row {
+    gap: 8
+    Toggle { on: todo.done; on change(on) { emit toggle(on) } }
+    Text(todo.title) { color: .secondaryLabel }
+  }
+}
+
+component TodoApp {
+  state todos: [Todo] = []
+  state filter = model.Filter.all
+  let remaining = todos.count(where: t => !t.done)
+
+  fn add(title: string) {
+    let next = todos.count() + 1
+    todos.push(Todo(id: next, title: title))
+  }
+
+  Column {
+    padding: 16
+    for todo in todos key todo.id {
+      if model.matches(todo, filter) {
+        TodoRow(todo) {
+          on toggle(on) { add(todo.label()) }
+        }
+      }
+    }
+    Text("{remaining} left") { style: tag(.red) }
+  }
+}
+
+app { TodoApp() }

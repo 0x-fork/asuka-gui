@@ -1,0 +1,332 @@
+// Package std/command runs other programs: their arguments a list,
+// passed as they are (no shell reads them), their output read as it
+// comes, without holding the main thread. In a program and in a desktop
+// app (macOS, Windows, Linux); an app on a phone or the web can't run
+// one (CommandError.unsupported).
+//
+//   let out = try await command.run("git", ["status", "--short"], cwd: repo)
+//   print(out.text())
+//
+//   let p = try command.start("ping", ["-c", "3", "example.com"])
+//   for await line in p.lines() { print(line) }
+//   let code = await p.wait()
+//
+// A task that's cancelled while it waits for a program (run, output,
+// wait) ends the program too. Tests answer for the programs instead of
+// running them: command.fake().
+
+/// Where a child's standard stream goes: the program's own (inherit), a
+/// pipe the program reads or writes (piped), or nowhere (null).
+pub enum Stdio { inherit, piped, null }
+
+/// A signal for kill. Windows ends the program whichever it is.
+pub enum Signal { term, kill, interrupt, hangup }
+
+/// Why a program couldn't run, or ran and failed.
+pub enum CommandError: Error {
+  /// No such program on PATH, or no such working directory.
+  notFound(program: string, reason: string)
+  /// It couldn't start.
+  cannotStart(program: string, reason: string)
+  /// It ended with a code that isn't 0 (run's check).
+  failed(program: string, code: int, stderr: string)
+  /// An app on a phone or the web can't run other programs.
+  unsupported
+
+  /// The error's text: the system's reason it wasn't found or couldn't
+  /// start; "<program> exited with <code>" and stderr's text, trimmed,
+  /// when it failed; that an app here can't run programs, unsupported.
+  fn message() -> string {
+    match self {
+      .notFound(_, reason) => return reason
+      .cannotStart(_, reason) => return reason
+      .failed(program, code, stderr) => {
+        let tail = stderr.trim()
+        if tail.isEmpty() {
+          return "{program} exited with {code}"
+        }
+        return "{program} exited with {code}: {tail}"
+      }
+      .unsupported => return "an app here can't run other programs (a program and a desktop app can)"
+    }
+  }
+}
+
+/// What a program wrote, and how it ended.
+pub struct Output {
+  /// Its exit code: 0 for success (128 + the signal's number for one
+  /// that ended it, on macOS and Linux).
+  code: int
+  stdout: bytes
+  stderr: bytes
+
+  /// stdout as text (UTF-8).
+  fn text() -> string = stdout.string()
+  /// stderr as text.
+  fn errorText() -> string = stderr.string()
+  /// Whether it ended with 0.
+  fn ok() -> bool = code == 0
+}
+
+native fn procSpawn(program: string, args: [string], cwd: string, env: [string], clearEnv: bool, stdin: int, stdout: int, stderr: int) -> int
+native fn procFailure() -> string
+native fn procPid(h: int) -> int
+native async fn procRead(h: int, fd: int) -> bytes?
+native async fn procReadAll(h: int, fd: int) -> bytes
+native async fn procWrite(h: int, data: bytes) -> bool
+native fn procCloseStdin(h: int)
+native async fn procWait(h: int) -> int
+native fn procKill(h: int, signal: int)
+native fn procRelease(h: int)
+native fn bundledPath(name: string) -> string?
+
+fn mode(s: Stdio) -> int {
+  match s {
+    .inherit => return 0
+    .piped => return 1
+    .null => return 2
+  }
+}
+
+fn signalNumber(s: Signal) -> int {
+  match s {
+    .term => return 15
+    .kill => return 9
+    .interrupt => return 2
+    .hangup => return 1
+  }
+}
+
+fn pairs(env: [string: string]) -> [string] {
+  var out: [string] = []
+  for (k, v) in env {
+    out.push(k)
+    out.push(v)
+  }
+  return out
+}
+
+/// A program started: its pid, its pipes (those started .piped), its
+/// end. Read what it writes (stdout, lines, output), then wait for it.
+pub struct Process {
+  pid: int
+  program: string
+  handle: int = 0
+  fake: Answer? = none
+
+  /// What it writes to stdout as it comes. One reader.
+  fn stdout() -> Stream<bytes> = pieces(self, 1)
+  /// What it writes to stderr as it comes.
+  fn stderr() -> Stream<bytes> = pieces(self, 2)
+  /// stdout's lines as they come, without their line endings.
+  fn lines() -> Stream<string> = linesOf(self, 1)
+  /// stderr's lines.
+  fn errorLines() -> Stream<string> = linesOf(self, 2)
+
+  /// Writes text to its stdin (started .piped); false once it's closed
+  /// (the program ended, or closeStdin).
+  async fn write(text: string) -> bool = await writeBytes(text.bytes())
+  /// Writes data to its stdin, as write does text; false once it's
+  /// closed.
+  async fn writeBytes(data: bytes) -> bool {
+    if let f = fake {
+      recordInput(f, data)
+      return true
+    }
+    return await procWrite(handle, data)
+  }
+  /// Closes its stdin: the program reads its end.
+  fn closeStdin() {
+    if fake == none {
+      procCloseStdin(handle)
+    }
+  }
+  /// Waits for it to end: its exit code. A cancelled wait ends it.
+  async fn wait() -> int {
+    if let f = fake {
+      return f.code
+    }
+    let c = await procWait(handle)
+    procRelease(handle)
+    return c
+  }
+  /// Reads all of stdout and stderr (those piped) and waits for it.
+  async fn output() throws -> Output {
+    if let f = fake {
+      return Output(code: f.code, stdout: f.stdout.bytes(), stderr: f.stderr.bytes())
+    }
+    let (out, err) = await all(procReadAll(handle, 1), procReadAll(handle, 2))
+    let code = await procWait(handle)
+    procRelease(handle)
+    return Output(code: code, stdout: out, stderr: err)
+  }
+  /// Sends it a signal (Windows: ends it).
+  fn kill(signal: Signal = .term) {
+    if fake == none {
+      procKill(handle, signalNumber(signal))
+    }
+  }
+}
+
+fn pieces(p: Process, fd: int) -> Stream<bytes> = Stream(send => {
+  if let f = p.fake {
+    let text = if fd == 1 { f.stdout } else { f.stderr }
+    if !text.isEmpty() {
+      send(text.bytes())
+    }
+    return
+  }
+  while let b = await procRead(p.handle, fd) {
+    send(b)
+  }
+})
+
+fn linesOf(p: Process, fd: int) -> Stream<string> = Stream(send => {
+  var pending = ""
+  for await b in pieces(p, fd) {
+    pending = pending + b.string()
+    var parts = pending.split("\n")
+    pending = parts.pop() ?? ""
+    for l in parts {
+      send(l.trimSuffix("\r"))
+    }
+  }
+  if !pending.isEmpty() {
+    send(pending.trimSuffix("\r"))
+  }
+})
+
+/// The path of the app's own program name, one of its asuka.toml's
+/// [bin] (an Asuka program, or one another toolchain builds), in a
+/// desktop app's build: the Mac's Contents/Helpers, beside the .exe on
+/// Windows, in a Linux prefix's bin. asuka dev builds them too, and an
+/// app run there finds them the same way. none where the app has no such
+/// program (a phone, the web, a test):
+///
+///   let cli = command.bundled("notes-sync") ?? "notes-sync"   // else PATH's
+///   let out = try await command.run(cli, ["status"])
+pub fn bundled(name: string) -> string? = if faked.isSome() { none } else { bundledPath(name) }
+
+/// Starts program with args (looked for on PATH unless it's a path): in
+/// cwd ("": this program's), with env over this program's environment
+/// (clearEnv: env alone), its standard streams as said. Read what it
+/// writes and wait for it.
+pub fn start(program: string, args: [string] = [], cwd: string = "", env: [string: string] = [:], clearEnv: bool = false, stdin: Stdio = .null, stdout: Stdio = .piped, stderr: Stdio = .piped) throws -> Process {
+  if let f = faked {
+    let a = try f.started(program, args)
+    return Process(pid: 0, program: program, fake: a)
+  }
+  let h = procSpawn(program, args, cwd, pairs(env), clearEnv, mode(stdin), mode(stdout), mode(stderr))
+  if h == -1 {
+    throw CommandError.unsupported
+  }
+  if h == -2 {
+    throw CommandError.notFound(program: program, reason: procFailure())
+  }
+  if h < 0 {
+    throw CommandError.cannotStart(program: program, reason: procFailure())
+  }
+  return Process(pid: procPid(h), program: program, handle: h)
+}
+
+/// Runs program with args to its end, and returns what it wrote and its
+/// exit code; stdin is given to it (none: it reads nothing). check makes
+/// a code that isn't 0 a CommandError.failed.
+pub async fn run(program: string, args: [string] = [], cwd: string = "", env: [string: string] = [:], clearEnv: bool = false, stdin: string? = none, check: bool = false) throws -> Output {
+  let p = try start(program, args: args, cwd: cwd, env: env, clearEnv: clearEnv, stdin: if stdin == none { Stdio.null } else { Stdio.piped })
+  var done = false
+  // Cancelled: the program goes too.
+  defer {
+    if !done {
+      p.kill(.kill)
+    }
+  }
+  let out = try await collect(p, stdin)
+  done = true
+  if check && out.code != 0 {
+    throw CommandError.failed(program: program, code: out.code, stderr: out.errorText())
+  }
+  return out
+}
+
+// collect gives p its stdin, while what it writes is read (neither
+// waits on the other), and waits for it.
+async fn collect(p: Process, stdin: string?) throws -> Output {
+  if let s = stdin {
+    let (_, o) = try await all(feed(p, s), p.output())
+    return o
+  }
+  return try await p.output()
+}
+
+async fn feed(p: Process, s: string) -> bool {
+  let ok = await p.write(s)
+  p.closeStdin()
+  return ok
+}
+
+/// Runs program with args to its end, its standard streams this
+/// program's own (what it prints shows), and returns its exit code.
+pub async fn status(program: string, args: [string] = [], cwd: string = "", env: [string: string] = [:], clearEnv: bool = false) throws -> int {
+  let p = try start(program, args: args, cwd: cwd, env: env, clearEnv: clearEnv, stdin: .inherit, stdout: .inherit, stderr: .inherit)
+  return await p.wait()
+}
+
+// ---------------------------------------------------------------------
+// Testing
+
+/// A fake program's answer.
+pub struct Answer {
+  program: string
+  /// Its arguments, to answer only those (none: any).
+  args: [string]? = none
+  code: int = 0
+  stdout: string = ""
+  stderr: string = ""
+}
+
+state faked: FakeCommands? = none
+
+fn recordInput(a: Answer, data: bytes) {
+  if let f = faked {
+    f.input = f.input + data.string()
+  }
+}
+
+/// The programs a test runs: each answers as it's told, none runs.
+///
+///   let git = command.fake()
+///   git.answer("git", ["status", "--short"], stdout: " M app.asuka\n")
+///   …
+///   expect(git.calls == [["git", "status", "--short"]])
+pub store FakeCommands {
+  /// What was run: each its program, then its arguments.
+  pub state calls: [[string]] = []
+  /// What was written to the programs' stdin.
+  pub state input = ""
+  state answers: [Answer] = []
+
+  /// Answers program (only with args, when given; the latest answer
+  /// that fits wins). A program without one isn't found.
+  pub fn answer(program: string, args: [string]? = none, code: int = 0, stdout: string = "", stderr: string = "") {
+    answers.push(Answer(program: program, args: args, code: code, stdout: stdout, stderr: stderr))
+  }
+
+  fn started(program: string, args: [string]) throws -> Answer {
+    calls.push([program] + args)
+    for a in answers.reversed() {
+      if a.program == program && (a.args == none || a.args == args) {
+        return a
+      }
+    }
+    throw CommandError.notFound(program: program, reason: "{program}: no such program (command.fake answers none)")
+  }
+}
+
+/// Installs a FakeCommands for a test: from now on start, run and status
+/// answer from it.
+pub fn fake() -> FakeCommands {
+  let f = FakeCommands()
+  faked = f
+  return f
+}

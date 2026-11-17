@@ -1,0 +1,585 @@
+// Services: what the platform does beyond views, a button each: sign-in,
+// biometrics, push and a messaging app's notifications, location in the
+// background (updates, regions), files, the screen, the stores'
+// services, a map, recording and work in the background; the displays,
+// the battery, the system's accent and a progress on the app's icon
+// (platform/screen, platform/power, platform/appearance, platform/dock).
+//
+//   asuka dev --platform ios examples/services
+
+import platform/agerange
+import platform/appearance
+import platform/appleauth
+import platform/audio
+import platform/biometric
+import platform/calendar
+import platform/contacts
+import platform/device
+import platform/dock
+import platform/imageedit
+import platform/integrity
+import platform/liveactivity
+import platform/periodic
+import platform/power
+import platform/push as remotePush
+import platform/record
+import platform/review
+import platform/screen
+import platform/sensors
+import platform/speech
+import platform/splash
+import std/math
+import std/time
+import platform/tracking
+import platform/widget
+
+/// What the last service said: the app's, as notifications and links
+/// that open the app say something too.
+state status = "Tap a service."
+
+app {
+  // Keep the splash a moment, as an app loading its data would.
+  task {
+    splash.hold()
+    await sleep(600ms)
+    splash.hide()
+  }
+  task {
+    for await _ in periodic.runs("refresh") { print("services: a periodic refresh") }
+  }
+  task {
+    for await m in remotePush.opened() { print("services: opened push \"{m.title}\"") }
+  }
+  // The handlers the system starts the app for, before any screen.
+  task { await followLocation() }
+  task { await setUpMessages() }
+
+  // asuka.toml's shortcuts and the widget open the app with these.
+  on openURL(u) {
+    status = "Opened with {u}"
+    if u == "asukaservices://speak" { try? await speech.speak("Hello from Asuka") }
+  }
+
+  Stack { Services() }
+}
+
+/// A service's button.
+component Item(title: string) {
+  event press
+
+  Button(title) {
+    variant: .tinted
+    on press { emit press }
+  }
+}
+
+component Heading(title: string) {
+  Text(title) {
+    font: .headline
+    margin: Edges(top: 8)
+  }
+}
+
+/// Runs a service (it waits on the platform) and shows what it says.
+async fn run(work: async fn() throws -> string) {
+  status = "…"
+  do {
+    status = try await work()
+  } catch e {
+    status = e.message
+  }
+}
+
+/// The live activity started last, and when its trip ends.
+state trip: liveactivity.Activity? = none
+state tripEnd = time.now()
+
+screen Services {
+  state recording = false
+  state lastImage = ""
+  state tilting = false
+  state hidden = false
+
+  let pow = power.status()
+  let look = appearance.current()
+  let displays = screen.displays()
+
+  title: "Services"
+
+  // What happens to the live activities.
+  task {
+    for await e in liveactivity.events() {
+      print("services: live activity {e.type} {e.activity.id} {e.token}")
+      if e.type == .ended && trip?.id == e.activity.id {
+        trip = none
+        status = "The live activity ended"
+      }
+    }
+  }
+  task {
+    for await _ in power.locks() { print("services: the screen locked") }
+  }
+  task {
+    for await _ in power.suspends() { print("services: going to sleep") }
+  }
+  // While tilting: the device's attitude, ten times a second.
+  task(tilting) {
+    if !tilting { return }
+    if !sensors.available(.motion) { status = "No motion sensor here" }
+    for await m in sensors.motion(every: 100ms) {
+      let a = m.attitude
+      status = "pitch {(a.pitch * 180 / math.pi).fixed(0)}°, roll {(a.roll * 180 / math.pi).fixed(0)}°, heading {a.heading.fixed(0)}°"
+    }
+  }
+
+  let battery = describePower(pow, look)
+
+  Scroll {
+    grow: 1
+    SafeArea {
+      padding: 20
+      gap: 10
+      Text(status) {
+        font: .footnote
+        color: .secondaryLabel
+      }
+
+      Heading("Accounts")
+      appleauth.SignInButton {
+        variant: .automatic
+        on press {
+          await run(() => "Signed in: {(try await appleauth.signIn(scopes: [.fullName, .email])).user}")
+        }
+      }
+      Item("Face ID / fingerprint") {
+        on press {
+          await run(() => {
+            let s = try await biometric.check()
+            do {
+              try await biometric.authenticate(reason: "Unlock the demo")
+            } catch e {
+              return "{e.message} ({s.kind})"
+            }
+            return "It's you ({s.kind})"
+          })
+        }
+      }
+      Item("Age range") {
+        on press { await run(() => "{try await agerange.request(13, 18)}") }
+      }
+
+      Heading("Notifications")
+      Item("Register for push") {
+        on press {
+          await run(() => {
+            let r = try await remotePush.register()
+            print("services: {r.service} token {r.token}")
+            return "{r.service} token {r.token.slice(0, 12)}… (allowed: {r.allowed})"
+          })
+        }
+      }
+      Item("Messages: replies, threads, the badge") {
+        on press { push(Messages()) }
+      }
+
+      Heading("Location")
+      Item("In the background: tracking, regions") {
+        on press { push(LocationScreen()) }
+      }
+
+      Heading("Files and sound")
+      Item("Pick files") {
+        on press {
+          await run(() => {
+            let files = try await device.pickFiles(multiple: true)
+            if let f = files.first() { return "{files.count()} files: {f.name} ({f.size} bytes)…" }
+            return "No files"
+          })
+        }
+      }
+      Item(if recording { "Stop recording" } else { "Record 10 seconds" }) {
+        on press {
+          if recording {
+            record.stopAudio()
+            return
+          }
+          recording = true
+          defer { recording = false }
+          await run(() => {
+            let path = try await record.audio(maxDuration: 10s)
+            audio.play(path)
+            return "Recorded; playing it"
+          })
+        }
+      }
+
+      Heading("The screen")
+      Item("Landscape") {
+        on press { screen.lock(.landscape) }
+      }
+      Item("Unlock rotation") {
+        on press { screen.lock(.any) }
+      }
+      Item("Hide or show the status bar") {
+        on press {
+          hidden = !hidden
+          screen.setBars(hideStatus: hidden)
+        }
+      }
+      Item("Keep out of screenshots") {
+        on press {
+          screen.preventCapture(true)
+          status = "Screenshots and recordings are blank now (Android)"
+        }
+      }
+
+      Heading("The stores")
+      Item("Ask for a rating") {
+        on press { try? await review.request() }
+      }
+      Item("Tracking permission") {
+        on press { await run(() => "Tracking: {try await tracking.request()}") }
+      }
+      Item("App integrity") {
+        on press {
+          await run(() => {
+            if !integrity.supported() { return "Not supported here" }
+            return "App Attest key {try await integrity.generateKey()}"
+          })
+        }
+      }
+
+      Heading("Sensors and speech")
+      Item(if tilting { "Stop watching the tilt" } else { "Watch the tilt" }) {
+        on press { tilting = !tilting }
+      }
+      Item("Which sensors") {
+        on press {
+          status = sensors.Sensor.all.map(s => "{s} {sensors.available(s)}").joined(", ")
+        }
+      }
+      Item("Simulate motion (iOS simulator)") {
+        on press { await simulateMotion() }
+      }
+      Item("Steps today") {
+        on press {
+          await run(() => {
+            let now = time.now()
+            return "{(try await sensors.steps(from: now.startOfDay(), to: now)).steps} steps today"
+          })
+        }
+      }
+      Item("Say hello") {
+        on press {
+          await run(() => {
+            try await speech.speak("Hello from Asuka. This sentence is long enough to pause.")
+            return "Spoken"
+          })
+        }
+      }
+      // Speaks, pauses a second in, resumes, then stops: the speaking ends
+      // with .stopped.
+      Item("Pause, resume, stop speech") {
+        on press { await pauseResumeStop() }
+      }
+      Item("Voices") {
+        on press { await run(() => "{(try await speech.voices()).count()} voices") }
+      }
+
+      Heading("Images, people, events")
+      Item("Shrink a photo") {
+        on press {
+          let paths = (try? await device.pickPhotos(max: 1)) ?? []
+          if paths.isEmpty() { return }
+          await run(() => {
+            let r = try await imageedit.edit(paths[0], [.resize(320, 0), .rotate(90)], quality: 0.8)
+            lastImage = r.path
+            return "{r.width}×{r.height}: {r.path}"
+          })
+        }
+      }
+      Item("Video frame at 1.5 s") {
+        on press {
+          // assets/clip.mp4: 320×180, its rotation 90° (as a phone's
+          // portrait video).
+          await run(() => {
+            let r = try await imageedit.videoFrame("clip.mp4", at: 1500ms, format: .png)
+            return "frame {r.width}×{r.height}: {r.path}"
+          })
+        }
+      }
+      Item("Copy that image, then paste it") {
+        on press {
+          if lastImage.isEmpty() {
+            status = "Shrink a photo first"
+            return
+          }
+          await run(() => {
+            try await device.copyImage(lastImage)
+            return try await paste()
+          })
+        }
+      }
+      Item("Pick a contact") {
+        on press {
+          await run(() => {
+            if let c = try await contacts.pick() { return "{c.name}, {c.phones.count()} phones" }
+            return "No contact"
+          })
+        }
+      }
+      Item("Add an event") {
+        on press {
+          let start = (time.now() + 1h).truncate(1h)
+          await run(() => {
+            let saved = try await calendar.add(calendar.Event(title: "Asuka demo", location: "Online", start: start, end: start + 30min))
+            return "event saved: {saved}"
+          })
+        }
+      }
+      Item("Calendars") {
+        on press {
+          await run(() => {
+            let access = try await calendar.request()
+            if access != .full { return "calendar access: {access}" }
+            let cs = try await calendar.calendars()
+            return "{cs.count()} calendars: {cs.map(c => "{c.title} {c.color} writable:{c.writable}").joined(", ")}"
+          })
+        }
+      }
+      Item("Today's events") {
+        on press {
+          await run(() => {
+            let access = try await calendar.request()
+            if access != .full { return "calendar access: {access}" }
+            let now = time.now()
+            let es = try await calendar.events(from: now - 12h, to: now + 12h)
+            let lines = es.map(e => if e.allDay {
+              "{e.title} (all day {e.start.format("MMM d")})"
+            } else {
+              "{e.title} {e.start.format("HH:mm")}–{e.end.format("HH:mm")} {e.location}"
+            })
+            return "{es.count()} events around now: {lines.joined("; ")}"
+          })
+        }
+      }
+      Item("Update the widget") {
+        on press {
+          widget.set("energy", widget.Entry(
+            title: "Energy",
+            symbol: "bolt.fill",
+            value: "72%",
+            body: "Moving well today",
+            caption: time.now().format("HH:mm"),
+            progress: 0.72,
+            showProgress: true,
+            until: time.now() + 25min,
+            url: "asukaservices://speak",
+          ))
+          status = "Widget updated"
+        }
+      }
+      Item("Start a live activity") {
+        on press {
+          let start = time.now()
+          tripEnd = start + 10min
+          await run(() => {
+            trip = try await liveactivity.start(liveactivity.Content(
+              title: "Order #1042",
+              subtitle: "Ana is picking it up",
+              value: "10 min",
+              symbol: "bag.fill",
+              showProgress: true,
+              since: start,
+              until: tripEnd,
+              url: "asukaservices://speak",
+            ))
+            return "Live activity started: lock the screen"
+          })
+        }
+      }
+      Item("Update the live activity") {
+        on press {
+          if let t = trip {
+            t.update(
+              liveactivity.Content(
+                title: "Order #1042",
+                subtitle: "Ana is 2 stops away",
+                value: "4 min",
+                symbol: "bag.fill",
+                showProgress: true,
+                since: tripEnd - 10min,
+                until: tripEnd,
+                url: "asukaservices://speak",
+              ),
+              alert: liveactivity.Alert(title: "Almost there", body: "Ana is 2 stops away"),
+            )
+            status = "Live activity updated"
+          } else {
+            status = "No live activity: start one"
+          }
+        }
+      }
+      Item("End the live activity") {
+        on press {
+          if let t = trip {
+            t.end(liveactivity.Content(title: "Order #1042", subtitle: "Delivered", symbol: "checkmark.circle.fill"), dismiss: .now)
+            trip = none
+            status = "Live activity ended"
+          } else {
+            status = "No live activity: start one"
+          }
+        }
+      }
+
+      Heading("Desktop")
+      Text(battery) { font: .footnote }
+      Text(displays.map(d => "{d.name} {d.bounds.width}x{d.bounds.height}@{d.scale}x {d.refreshRate}Hz").joined("\n")) {
+        font: .footnote
+        color: .secondaryLabel
+      }
+      Item("Idle time") {
+        on press { await run(() => "Idle for {(try await power.idleTime()).rounded(1s)}") }
+      }
+      Item("Progress on the app's icon") {
+        on press {
+          status = "Watch the Dock or the taskbar"
+          for i in 0..20 {
+            dock.setProgress(dock.Progress(value: i.float() / 20))
+            await sleep(150ms)
+          }
+          dock.setProgress(dock.Progress())
+          dock.requestAttention(.informational)
+          status = "Done"
+        }
+      }
+      Item("Ask for attention in 5 seconds") {
+        on press {
+          status = "Switch to another app"
+          await sleep(5s)
+          dock.requestAttention(.critical)
+        }
+      }
+
+      Heading("More")
+      Item("Map") {
+        on press { push(MapScreen()) }
+      }
+      Item("Refresh in the background, hourly") {
+        on press {
+          periodic.schedule("refresh", every: 1h, network: true)
+          status = "Scheduled"
+        }
+      }
+    }
+  }
+}
+
+/// The battery, the system's look and its accent, as the Desktop section
+/// says them.
+fn describePower(p: power.Status, a: appearance.Appearance) -> string {
+  var s = if p.battery {
+    "Battery {(p.level * 100).fixed(0)}%{if p.onBattery { ", unplugged" } else { "" }}"
+  } else {
+    "No battery"
+  }
+  if p.lowPower { s += ", Low Power Mode" }
+  s += ", {p.thermal}"
+  if let accent = a.accent { s += " · accent {accent.hex()}" }
+  if a.increaseContrast { s += " · more contrast" }
+  if a.reduceTransparency { s += " · no transparency" }
+  return s
+}
+
+/// Speaks, pauses a second in, resumes, then stops: the speaking ends
+/// with .stopped.
+async fn pauseResumeStop() {
+  let began = time.now()
+  let (spoken, steps) = await all(speakLong(began), pauseResumeAndStop())
+  status = (steps + [spoken]).joined("; ")
+}
+
+async fn speakLong(began: time.Time) -> string {
+  do {
+    try await speech.speak("This sentence is long enough that it is still being spoken when the demo stops it: it goes on, and on, about nothing in particular, for a good while longer.")
+    return "done at {(time.now() - began).rounded(100ms)}"
+  } catch e {
+    return "done: {e.message} at {(time.now() - began).rounded(100ms)}"
+  }
+}
+
+async fn pauseResumeAndStop() -> [string] {
+  var steps: [string] = []
+  await sleep(1s)
+  speech.pause()
+  steps.push("paused")
+  let paused = speech.speaking()
+  await sleep(1s)
+  speech.resume()
+  steps.push("resumed (speaking while paused: {paused})")
+  await sleep(1s)
+  speech.stop()
+  steps.push("stopped")
+  return steps
+}
+
+/// What simulateMotion's readings brought.
+state motionLog: [string] = []
+
+/// Feeds readings in Core Motion's terms through the iOS host's
+/// conversions (the simulator has no motion sensors) and shows what the
+/// app gets: a face-up accelerometer, then device motion face up with the
+/// top to the east while rising, then upright.
+async fn simulateMotion() {
+  motionLog = []
+  await race(watchMotion(), feedMotion())
+  status = motionLog.joined("; ")
+}
+
+async fn watchMotion() {
+  await all(watchAccelerometer(), watchAttitude())
+}
+
+async fn watchAccelerometer() {
+  do {
+    for await v in sensors.accelerometer(every: 10ms) { motionLog.push("acc z {v.z.fixed(1)}g") }
+  } catch e {
+    motionLog.push(e.message)
+  }
+}
+
+async fn watchAttitude() {
+  do {
+    for await m in sensors.motion(every: 10ms) {
+    let a = m.attitude
+    motionLog.push("heading {a.heading.fixed(0)}° pitch {(a.pitch * 180 / math.pi).fixed(0)}° roll {(a.roll * 180 / math.pi).fixed(0)}° up {m.acceleration.z.fixed(1)}g rot {m.rotation.z.fixed(1)}")
+    }
+  } catch e {
+    motionLog.push(e.message)
+  }
+}
+
+async fn feedMotion() {
+  let steps = [
+    "\{\"kind\": 0, \"acceleration\": [0, 0, -1]}",
+    "\{\"kind\": 3, \"gravity\": [0, 0, -1], \"user\": [0, 0, -0.5], \"rotation\": [0, 0, 0.3], \"field\": [-20, 0, -40]}",
+    "\{\"kind\": 3, \"gravity\": [0, -1, 0], \"field\": [0, -40, -20]}",
+  ]
+  for step in steps {
+    do {
+      try await sensors.simulate(step)
+    } catch e {
+      motionLog.push("simulate: {e.message}")
+    }
+    await sleep(300ms)
+  }
+  await sleep(300ms)
+}
+
+/// Reads the clipboard's image back.
+async fn paste() throws -> string {
+  let kinds = try await device.clipboardHas()
+  if !kinds.image { return "No image on the clipboard ({kinds})" }
+  if let p = try await device.clipboardImage() { return "Pasted {p}" }
+  return "paste: nothing"
+}

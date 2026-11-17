@@ -1,0 +1,120 @@
+// More of the host's modules (modules_test.go's TestServices): a toast
+// shown and found in the notification center, a global hot key, recent
+// documents, start at login, the taskbar's progress and badge, and what
+// Windows hasn't (contacts' access, widgets).
+import std/json
+import platform/host
+
+struct Spec {
+  id: string
+  title: string
+  body: string
+  thread: string
+}
+
+struct Shown {
+  id: string = ""
+  title: string = ""
+  thread: string = ""
+}
+
+fn text(b: bytes) -> string = b.string()
+
+component Services(file: string) {
+  state toast = "?"
+  state hotkey = "?"
+  state recent = "?"
+  state login = "?"
+  state dock = "?"
+  state contacts = "?"
+  state widget = "?"
+  Column {
+    gap: 4; padding: 8
+    Text("toast: {toast}")
+    Text("hotkey: {hotkey}")
+    Text("recent: {recent}")
+    Text("login: {login}")
+    Text("dock: {dock}")
+    Text("contacts: {contacts}")
+    Text("widget: {widget}")
+  }
+
+  task {
+    do {
+      let ok = try await host.call("notify", "request", bytes())
+      let _ = try await host.call("notify", "schedule", json.encode(Spec(id: "t1", title: "Hello", body: "From the test", thread: "th")).bytes())
+      let s = try await host.call("notify", "showing", bytes())
+      let list: [Shown] = try json.decode(s.string())
+      let mine = list.filter(x => x.id == "t1")
+      let _ = try await host.call("notify", "removeThread", "th".bytes())
+      let after: [Shown] = try json.decode((try await host.call("notify", "showing", bytes())).string())
+      toast = "enabled:{host.readU8(ok, 0)} shown:{mine.count()} {mine.map(x => x.title).joined(",")} after:{after.filter(x => x.id == "t1").count()}"
+    } catch e {
+      toast = "error {e.message}"
+    }
+  }
+
+  task {
+    do {
+      let args = host.u32(7).concat(host.u8(3)).concat(host.str("F9")).concat("test".bytes())
+      let _ = try await host.call("hotkey", "register", args)
+      let _ = try await host.call("hotkey", "unregister", host.u32(7))
+      hotkey = "registered"
+    } catch e {
+      hotkey = "error {e.message}"
+    }
+  }
+
+  task {
+    do {
+      let _ = try await host.call("recent", "add", file.bytes())
+      let l = try await host.call("recent", "list", bytes())
+      let _ = try await host.call("recent", "clear", bytes())
+      let l2 = try await host.call("recent", "list", bytes())
+      recent = "{text(l).count() > 2} {text(l2)}"
+    } catch e {
+      recent = "error {e.message}"
+    }
+  }
+
+  task {
+    do {
+      let _ = try await host.call("login", "set", host.u8(1))
+      let on = try await host.call("login", "enabled", bytes())
+      let _ = try await host.call("login", "set", host.u8(0))
+      let off = try await host.call("login", "enabled", bytes())
+      let at = try await host.call("login", "openedAtLogin", bytes())
+      login = "{host.readU8(on, 0)}{host.readU8(off, 0)}{host.readU8(at, 0)}"
+    } catch e {
+      login = "error {e.message}"
+    }
+  }
+
+  task {
+    do {
+      host.send("dock", "progress", host.u8(1).concat(host.f64(0.5)))
+      let _ = try await host.call("notify", "badge", host.u32(3))
+      let a = try await host.call("dock", "attention", host.u8(0))
+      dock = "attention {a.count()}"
+    } catch e {
+      dock = "error {e.message}"
+    }
+  }
+
+  task {
+    do {
+      let b = try await host.call("contacts", "request", bytes())
+      contacts = "{host.readU8(b, 0)}"
+      let _ = try await host.call("contacts", "list", bytes())
+    } catch e {
+      contacts = "{contacts} {e.message}"
+    }
+    do {
+      let _ = try await host.call("widget", "set", bytes())
+    } catch e {
+      widget = e.message
+    }
+  }
+}
+
+app { Services(file: "SERVICES_FILE") }

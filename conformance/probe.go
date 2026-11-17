@@ -68,16 +68,16 @@ func (p *Probe) Logf(format string, args ...any) {
 
 // pixel is the pixel's color at pixel coordinates (clamped to the
 // capture).
-func (p *Probe) pixel(px, py int) RGB {
-	px = min(max(px, p.s.img.Bounds().Min.X), p.s.maxX)
-	py = min(max(py, p.s.img.Bounds().Min.Y), p.s.maxY)
-	r, g, b, a := p.s.img.At(px, py).RGBA()
-	if a == 0 {
-		return RGB{}
+func (p *Probe) pixel(px, py int) RGB { return p.s.pixel(px, py) }
+
+// ref is how the capture shows c, one of the cases' colors (white, red,
+// blue, yellow): as its swatch shows (sheet.colors), so a mix is measured
+// in the space the host blended in.
+func (p *Probe) ref(c RGB) RGB {
+	if v, ok := p.s.colors[c]; ok {
+		return v
 	}
-	// Straight, not premultiplied: captures are opaque, but be safe.
-	k := 255 / float64(a)
-	return RGB{float64(r) * k, float64(g) * k, float64(b) * k}
+	return c
 }
 
 // toPx is a point of the cell in the capture's pixels.
@@ -144,6 +144,7 @@ func Crossing(s []sample, level float64) (at float64, ok bool) {
 // Edge checks that the edge between colors a and b, along the line from
 // (x0, y0) to (x1, y1), is at want, to a device pixel.
 func (p *Probe) Edge(what string, x0, y0, x1, y1 float64, a, b RGB, want float64) {
+	a, b = p.ref(a), p.ref(b)
 	got, ok := Crossing(p.Profile(x0, y0, x1, y1, func(c RGB) float64 { return c.Mix(a, b) }), 0.5)
 	if !ok {
 		p.Errorf("%s: no edge between (%g,%g) and (%g,%g), want one at %g", what, x0, y0, x1, y1, want)
@@ -158,7 +159,7 @@ func (p *Probe) Edge(what string, x0, y0, x1, y1 float64, a, b RGB, want float64
 // 1: b), within tol.
 func (p *Probe) Mix(what string, x, y float64, a, b RGB, want, tol float64) float64 {
 	c := p.At(x, y)
-	got := c.Mix(a, b)
+	got := c.Mix(p.ref(a), p.ref(b))
 	if math.Abs(got-want) > tol {
 		p.Errorf("%s: %v at (%g,%g) is %.2f of the way from %v to %v, want %.2f", what, c, x, y, got, a, b, want)
 	}

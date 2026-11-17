@@ -17,14 +17,22 @@ func KotlinFile(p *Package) string {
 
 // KotlinErrorType is the Kotlin enum of the package's declared errors;
 // KotlinException, the exception that throws one.
-func KotlinErrorType(p *Package) string { return upperCamel(p.Name) + "Error" }
-func KotlinException(p *Package) string { return upperCamel(p.Name) + "Exception" }
+func KotlinErrorType(p *Package) string {
+	if p.ErrorName != "" {
+		return p.ErrorName
+	}
+	return upperCamel(p.Name) + "Error"
+}
+func KotlinException(p *Package) string {
+	return strings.TrimSuffix(KotlinErrorType(p), "Error") + "Exception"
+}
 
 var kotlinOf = map[Kind]string{
 	Bool: "Boolean", Int8: "Byte", Int16: "Short", Int32: "Int", Int64: "Long", Int: "Long",
 	Uint8: "UByte", Uint16: "UShort", Uint32: "UInt", Uint64: "ULong", Uint: "ULong",
 	Float32: "Float", Float64: "Double", String: "String", Bytes: "ByteArray",
 	Time: "java.time.Instant", Duration: "kotlin.time.Duration",
+	ViewRef: "dev.asuka.AsukaViewRef",
 }
 
 var kotlinZero = map[Kind]string{
@@ -41,6 +49,7 @@ type kotlinGen struct {
 	enums   map[string]*EnumDecl
 	structs map[string]*StructDecl
 	ifaces  map[string]*Interface
+	job     string // how the generated code names kotlinx.coroutines.Job
 }
 
 func (g *kotlinGen) printf(format string, args ...any) { fmt.Fprintf(&g.b, format, args...) }
@@ -187,7 +196,7 @@ func GenerateKotlin(p *Package) []byte {
 		g.ifaces[it.Name] = it
 	}
 	g.printf("%s\n", header("//", p.Hash))
-	g.printf("// What the package's Go declares (package %s), as its Kotlin implements\n", p.Name)
+	g.printf("// What the package declares (%s), as its Kotlin implements\n", p.Name)
 	g.printf("// it. The Kotlin (in this package) writes the functions that make each:\n//\n")
 	for _, it := range p.Interfaces {
 		g.printf("//\tfun make%s(): %s\n", it.Name, it.Name)
@@ -196,7 +205,15 @@ func GenerateKotlin(p *Package) []byte {
 		g.printf("//\tfun make%s(events: %sEvents): %s\n", v.Name, v.Name, v.Name)
 	}
 	g.printf("@file:Suppress(\"unused\", \"RedundantVisibilityModifier\")\n\npackage %s\n\n", KotlinPackage(p.Path))
-	g.printf("import dev.asuka.AsukaModuleProvider\nimport dev.asuka.AsukaModules\nimport dev.asuka.AsukaNativeContext\nimport dev.asuka.AsukaNativeReader\nimport dev.asuka.AsukaNativeView\nimport dev.asuka.AsukaNativeWriter\nimport dev.asuka.AsukaDeclaredError\nimport dev.asuka.AsukaUnsupportedException\nimport kotlinx.coroutines.Dispatchers\nimport kotlinx.coroutines.Job\nimport kotlinx.coroutines.launch\n\n")
+	// A package's own type of a name the generated code imports is its
+	// own: the import is left out and the generated code says the
+	// coroutines' in full.
+	g.job = "Job"
+	jobImport := "import kotlinx.coroutines.Job\n"
+	if p.declares("Job") {
+		g.job, jobImport = "kotlinx.coroutines.Job", ""
+	}
+	g.printf("import dev.asuka.AsukaModuleProvider\nimport dev.asuka.AsukaModules\nimport dev.asuka.AsukaNativeContext\nimport dev.asuka.AsukaNativeReader\nimport dev.asuka.AsukaNativeView\nimport dev.asuka.AsukaNativeWriter\nimport dev.asuka.AsukaDeclaredError\nimport dev.asuka.AsukaUnsupportedException\nimport kotlinx.coroutines.Dispatchers\n%simport kotlinx.coroutines.launch\n\n", jobImport)
 	for _, e := range p.Enums {
 		g.enum(e)
 	}
@@ -257,7 +274,7 @@ func (g *kotlinGen) structDecl(s *StructDecl) {
 
 func (g *kotlinGen) errors() {
 	t, x := KotlinErrorType(g.p), KotlinException(g.p)
-	g.printf("/** The errors the package declares (native.NewError), which its Go gets as those values. */\n")
+	g.printf("/** The errors the package declares , which its callers get as those values. */\n")
 	g.printf("public enum class %s(val message: String) {\n", t)
 	for i, e := range g.p.Errors {
 		sep := ","
@@ -305,7 +322,7 @@ func (g *kotlinGen) viewDecl(v *View) {
 		g.printf("%s    fun set%s(value: %s)\n", kotlinDoc(f.Doc, "    "), f.Name, g.typ(f.Type))
 	}
 	g.printf("}\n\n")
-	g.printf("/** Sends a %s's events to its Go, and has the app's themed context to make views with. */\n", v.Name)
+	g.printf("/** Sends a %s's events to the app, and has the app's themed context to make views with. */\n", v.Name)
 	g.printf("public class %sEvents internal constructor(private val ctx: AsukaNativeContext) {\n    val context: android.content.Context get() = ctx.context\n", v.Name)
 	for _, e := range v.Events {
 		var ps []string
@@ -364,7 +381,7 @@ func (g *kotlinGen) provider() {
 		g.printf("                    else -> throw AsukaUnsupportedException(\"no method $iface.$method\")\n                }\n            }\n")
 	}
 	g.printf("            else -> throw AsukaUnsupportedException(\"no interface $iface\")\n        }\n    }\n\n")
-	g.printf("    override fun start(obj: Any, iface: Int, method: Int, r: AsukaNativeReader, done: (Result<AsukaNativeWriter>) -> kotlin.Unit): Job? {\n        when (iface) {\n")
+	g.printf("    override fun start(obj: Any, iface: Int, method: Int, r: AsukaNativeReader, done: (kotlin.Result<AsukaNativeWriter>) -> kotlin.Unit): %s? {\n        when (iface) {\n", g.job)
 	for _, it := range g.p.Interfaces {
 		var async []*Method
 		for _, m := range it.Methods {
@@ -391,7 +408,7 @@ func (g *kotlinGen) provider() {
 			} else {
 				g.printf("                                %s\n", call)
 			}
-			g.printf("                                done(Result.success(w))\n                            } catch (e: Throwable) {\n                                done(Result.failure(e))\n                            }\n                        }\n                    }\n")
+			g.printf("                                done(kotlin.Result.success(w))\n                            } catch (e: Throwable) {\n                                done(kotlin.Result.failure(e))\n                            }\n                        }\n                    }\n")
 		}
 		g.printf("                }\n            }\n")
 	}
@@ -406,9 +423,9 @@ func (g *kotlinGen) provider() {
 func (g *kotlinGen) decodeArgs(m *Method, indent string) string {
 	var args []string
 	for _, p := range m.Params {
-		n := kotlinName(p.Name)
+		n := argLocal(kotlinName(p.Name))
 		if p.Type.Kind == Func {
-			g.closure(p.Name, p.Type.Func, indent)
+			g.closure(argLocal(p.Name), p.Type.Func, indent)
 		} else {
 			g.printf("%sval %s = %s\n", indent, n, g.dec(p.Type, "r"))
 		}
@@ -442,7 +459,7 @@ func (g *kotlinGen) closure(name string, ft *FuncType, indent string) {
 }
 
 func (g *kotlinGen) wire() {
-	g.printf("/** The package's values on the wire (package native's format). */\nprivate object Wire {\n")
+	g.printf("/** The package's values on the wire (core/src/native's format). */\nprivate object Wire {\n")
 	done := map[string]bool{}
 	for {
 		var names []string

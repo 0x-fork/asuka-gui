@@ -20,10 +20,11 @@ import com.google.android.material.shape.ShapeAppearanceModel
 import java.io.File
 
 /**
- * The app's share sheet (app.ShareSheet): what another app shares opens
+ * The app's share sheet (platform/sharesheet): what another app shares opens
  * this Activity over that app, in its task, in a process of its own
- * (":share"), where the Go code's root is the sheet (ASUKA_SHARE_SHEET),
- * as an iOS share extension runs it. It shows the root in a Material 3
+ * (":share"), where the app runs as its sheet (ASUKA_SHARE_SHEET:
+ * sharesheet.active() is true, and the app block shows the sheet), as an
+ * iOS share extension runs it. It shows the root in a Material 3
  * bottom sheet, nearly the screen's height, over a scrim; the root's
  * ShareClose ends it, and so does dragging it down, tapping the scrim or
  * going back (cancelled). Its process ends with it, as an iOS share
@@ -112,6 +113,8 @@ class AsukaShareActivity : AsukaActivity() {
     }
 
     /** The sheet starts below the status bar: no top inset in it. */
+    override val fillsWindow get() = false
+
     override fun safeInsets(bars: IntArray): IntArray = intArrayOf(0, bars[1], bars[2], bars[3])
 
     /** The other app shows around the sheet. */

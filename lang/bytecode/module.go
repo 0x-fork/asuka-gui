@@ -1,0 +1,386 @@
+package bytecode
+
+import (
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"math"
+)
+
+// Magic starts every module; Version changes with the format.
+const (
+	Magic   = "AKBC"
+	Version = 2
+)
+
+// Kind is how a value is stored (core/src/rt/rt.h's ak_kind).
+type Kind uint8
+
+const (
+	KVoid Kind = iota
+	KInt
+	KFloat
+	KBool
+	KRef
+)
+
+func (k Kind) String() string {
+	return [...]string{"void", "int", "float", "bool", "ref"}[k]
+}
+
+// None is the "no index" value of a 16-bit operand or index.
+const None = 0xFFFF
+
+// Field is a struct's field or an enum case's payload field. Its Name
+// may carry its type's JSON descriptor after a NUL ("title\x00s"; see
+// core/src/rt/json.h), which the runtime reads to decode and encode it.
+type Field struct {
+	Name  string
+	Kind  Kind
+	Shape int32 // the shape of a struct or enum value, -1 when none
+}
+
+// Case is a case of an enum with payloads.
+type Case struct {
+	Name   string
+	Fields []Field
+}
+
+// ShapeDef is a struct's, a tuple's or an enum's layout.
+type ShapeDef struct {
+	Name    string
+	Fields  []Field // structs, tuples
+	Cases   []Case  // enums with payloads
+	IsError bool
+	// Methods maps a method's name to its function, for interface calls
+	// (CALLI).
+	Methods map[string]uint32
+}
+
+// Handler is a range of code an error is caught in.
+type Handler struct {
+	Start, End uint32 // [Start, End) in words
+	Target     uint32
+}
+
+// Line maps code from PC on to a source line.
+type Line struct {
+	PC, Line uint32
+}
+
+// Function flags.
+const (
+	FAsync  = 1 << iota // may suspend
+	FThrows             // may throw
+)
+
+// FuncDef is a function: its code and what the VM needs to run it.
+type FuncDef struct {
+	Name     string
+	File     string
+	NParams  uint16
+	Kinds    []Kind // per register: its kind (refs own their value)
+	CapKinds []Kind // a closure's captures
+	Ret      Kind   // the result's kind
+	Flags    uint8
+	Code     []uint16
+	Handlers []Handler
+	Lines    []Line
+}
+
+// Test is a test block.
+type Test struct {
+	Name string
+	Func uint32
+}
+
+// Module is a compiled program.
+type Module struct {
+	Ints     []int64
+	Floats   []float64
+	Strings  []string
+	Shapes   []ShapeDef
+	Funcs    []FuncDef
+	Builtins []string // the names of the builtins CALLB calls, resolved by the VM as it loads
+	Globals  []Kind
+	Init     uint32 // runs first: module-level state, stores
+	App      int32  // the app's root view function, -1 when none
+	Main     int32  // a program's fn main, -1 when none
+	Tests    []Test
+
+	// Data, for a program, is the name of the folder its data goes in,
+	// in the platform's place for an app's (std/fs's appDir): a
+	// program an app ships ([bin] in its asuka.toml) shares the app's.
+	// "": the program's own name. Not encoded: lang/cgen compiles it in.
+	Data string
+
+	// C is the C the module's extern declarations call (RFC 0008), nil
+	// when it has none. It isn't encoded: the CLI compiles it into the
+	// core's build, which the module's ffi.* builtins are then in.
+	C *C
+}
+
+// C is a module's C: the glue lang/cffi generated for its extern
+// declarations, and the projects whose asuka.toml [c] sections build
+// what it calls.
+type C struct {
+	Glue []byte
+	// Dirs are the directories of the projects (the app, the
+	// dependencies) whose packages declare externs, the app's first.
+	Dirs []string
+	// Std are the directories of the std and sdk packages the program
+	// imports that have C of their own (their asuka.toml's [c]: std/sqlite's
+	// SQLite), which a build links.
+	Std []string
+}
+
+// String interns s and returns its index.
+func (m *Module) String(s string) uint16 {
+	for i, x := range m.Strings {
+		if x == s {
+			return uint16(i)
+		}
+	}
+	m.Strings = append(m.Strings, s)
+	return uint16(len(m.Strings) - 1)
+}
+
+// Builtin returns the index of the builtin named name.
+func (m *Module) Builtin(name string) uint16 {
+	for i, x := range m.Builtins {
+		if x == name {
+			return uint16(i)
+		}
+	}
+	m.Builtins = append(m.Builtins, name)
+	return uint16(len(m.Builtins) - 1)
+}
+
+// Encode writes the module in the binary format the VM reads:
+// little-endian; strings as u32 length and bytes; lists as u32 count and
+// items.
+func (m *Module) Encode() []byte {
+	w := &writer{}
+	w.raw([]byte(Magic))
+	w.u32(Version)
+	w.u32(uint32(len(m.Ints)))
+	for _, v := range m.Ints {
+		w.u64(uint64(v))
+	}
+	w.u32(uint32(len(m.Floats)))
+	for _, v := range m.Floats {
+		w.u64(math.Float64bits(v))
+	}
+	w.u32(uint32(len(m.Strings)))
+	for _, s := range m.Strings {
+		w.str(s)
+	}
+	w.u32(uint32(len(m.Shapes)))
+	for _, s := range m.Shapes {
+		w.str(s.Name)
+		w.fields(s.Fields)
+		w.u32(uint32(len(s.Cases)))
+		for _, c := range s.Cases {
+			w.str(c.Name)
+			w.fields(c.Fields)
+		}
+		if s.IsError {
+			w.u8(1)
+		} else {
+			w.u8(0)
+		}
+		names := sortedKeys(s.Methods)
+		w.u32(uint32(len(names)))
+		for _, n := range names {
+			w.str(n)
+			w.u32(s.Methods[n])
+		}
+	}
+	w.u32(uint32(len(m.Funcs)))
+	for _, f := range m.Funcs {
+		w.str(f.Name)
+		w.str(f.File)
+		w.u16(f.NParams)
+		w.kinds(f.Kinds)
+		w.kinds(f.CapKinds)
+		w.u8(uint8(f.Ret))
+		w.u8(f.Flags)
+		w.u32(uint32(len(f.Code)))
+		for _, c := range f.Code {
+			w.u16(c)
+		}
+		w.u32(uint32(len(f.Handlers)))
+		for _, h := range f.Handlers {
+			w.u32(h.Start)
+			w.u32(h.End)
+			w.u32(h.Target)
+		}
+		w.u32(uint32(len(f.Lines)))
+		for _, l := range f.Lines {
+			w.u32(l.PC)
+			w.u32(l.Line)
+		}
+	}
+	w.u32(uint32(len(m.Builtins)))
+	for _, b := range m.Builtins {
+		w.str(b)
+	}
+	w.kinds(m.Globals)
+	w.u32(m.Init)
+	w.u32(uint32(m.App))
+	w.u32(uint32(m.Main))
+	w.u32(uint32(len(m.Tests)))
+	for _, t := range m.Tests {
+		w.str(t.Name)
+		w.u32(t.Func)
+	}
+	return w.b
+}
+
+// Decode reads a module Encode wrote.
+func Decode(b []byte) (*Module, error) {
+	r := &reader{b: b}
+	if string(r.raw(4)) != Magic {
+		return nil, errors.New("bytecode: not a module")
+	}
+	if v := r.u32(); v != Version {
+		return nil, fmt.Errorf("bytecode: version %d, want %d", v, Version)
+	}
+	m := &Module{}
+	for n := r.u32(); n > 0 && r.err == nil; n-- {
+		m.Ints = append(m.Ints, int64(r.u64()))
+	}
+	for n := r.u32(); n > 0 && r.err == nil; n-- {
+		m.Floats = append(m.Floats, math.Float64frombits(r.u64()))
+	}
+	for n := r.u32(); n > 0 && r.err == nil; n-- {
+		m.Strings = append(m.Strings, r.str())
+	}
+	for n := r.u32(); n > 0 && r.err == nil; n-- {
+		s := ShapeDef{Name: r.str(), Fields: r.fields()}
+		for c := r.u32(); c > 0 && r.err == nil; c-- {
+			s.Cases = append(s.Cases, Case{Name: r.str(), Fields: r.fields()})
+		}
+		s.IsError = r.u8() == 1
+		if k := r.u32(); k > 0 {
+			s.Methods = map[string]uint32{}
+			for ; k > 0 && r.err == nil; k-- {
+				name := r.str()
+				s.Methods[name] = r.u32()
+			}
+		}
+		m.Shapes = append(m.Shapes, s)
+	}
+	for n := r.u32(); n > 0 && r.err == nil; n-- {
+		f := FuncDef{Name: r.str(), File: r.str(), NParams: r.u16(), Kinds: r.kinds(), CapKinds: r.kinds(), Ret: Kind(r.u8()), Flags: r.u8()}
+		for c := r.u32(); c > 0 && r.err == nil; c-- {
+			f.Code = append(f.Code, r.u16())
+		}
+		for c := r.u32(); c > 0 && r.err == nil; c-- {
+			f.Handlers = append(f.Handlers, Handler{r.u32(), r.u32(), r.u32()})
+		}
+		for c := r.u32(); c > 0 && r.err == nil; c-- {
+			f.Lines = append(f.Lines, Line{r.u32(), r.u32()})
+		}
+		m.Funcs = append(m.Funcs, f)
+	}
+	for n := r.u32(); n > 0 && r.err == nil; n-- {
+		m.Builtins = append(m.Builtins, r.str())
+	}
+	m.Globals = r.kinds()
+	m.Init = r.u32()
+	m.App = int32(r.u32())
+	m.Main = int32(r.u32())
+	for n := r.u32(); n > 0 && r.err == nil; n-- {
+		m.Tests = append(m.Tests, Test{r.str(), r.u32()})
+	}
+	if r.err != nil {
+		return nil, r.err
+	}
+	return m, nil
+}
+
+type writer struct{ b []byte }
+
+func (w *writer) raw(p []byte) { w.b = append(w.b, p...) }
+func (w *writer) u8(v uint8)   { w.b = append(w.b, v) }
+func (w *writer) u16(v uint16) { w.b = binary.LittleEndian.AppendUint16(w.b, v) }
+func (w *writer) u32(v uint32) { w.b = binary.LittleEndian.AppendUint32(w.b, v) }
+func (w *writer) u64(v uint64) { w.b = binary.LittleEndian.AppendUint64(w.b, v) }
+func (w *writer) str(s string) { w.u32(uint32(len(s))); w.b = append(w.b, s...) }
+
+func (w *writer) kinds(ks []Kind) {
+	w.u32(uint32(len(ks)))
+	for _, k := range ks {
+		w.u8(uint8(k))
+	}
+}
+
+func (w *writer) fields(fs []Field) {
+	w.u32(uint32(len(fs)))
+	for _, f := range fs {
+		w.str(f.Name)
+		w.u8(uint8(f.Kind))
+		w.u32(uint32(f.Shape))
+	}
+}
+
+type reader struct {
+	b   []byte
+	off int
+	err error
+}
+
+func (r *reader) raw(n int) []byte {
+	if r.err != nil || len(r.b)-r.off < n {
+		r.err = errors.New("bytecode: truncated module")
+		return make([]byte, n)
+	}
+	p := r.b[r.off : r.off+n]
+	r.off += n
+	return p
+}
+
+func (r *reader) u8() uint8   { return r.raw(1)[0] }
+func (r *reader) u16() uint16 { return binary.LittleEndian.Uint16(r.raw(2)) }
+func (r *reader) u32() uint32 { return binary.LittleEndian.Uint32(r.raw(4)) }
+func (r *reader) u64() uint64 { return binary.LittleEndian.Uint64(r.raw(8)) }
+func (r *reader) str() string { return string(r.raw(int(r.u32()))) }
+
+func (r *reader) kinds() []Kind {
+	n := r.u32()
+	if r.err != nil || int(n) > len(r.b) {
+		r.err = errors.New("bytecode: truncated module")
+		return nil
+	}
+	if n == 0 {
+		return nil
+	}
+	ks := make([]Kind, n)
+	for i := range ks {
+		ks[i] = Kind(r.u8())
+	}
+	return ks
+}
+
+func (r *reader) fields() []Field {
+	n := r.u32()
+	var fs []Field
+	for ; n > 0 && r.err == nil; n-- {
+		fs = append(fs, Field{Name: r.str(), Kind: Kind(r.u8()), Shape: int32(r.u32())})
+	}
+	return fs
+}
+
+func sortedKeys(m map[string]uint32) []string {
+	ks := make([]string, 0, len(m))
+	for k := range m {
+		ks = append(ks, k)
+	}
+	for i := 1; i < len(ks); i++ {
+		for j := i; j > 0 && ks[j] < ks[j-1]; j-- {
+			ks[j], ks[j-1] = ks[j-1], ks[j]
+		}
+	}
+	return ks
+}

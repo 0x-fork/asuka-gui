@@ -1,12 +1,10 @@
 package main
 
 import (
-	"bytes"
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
 	"io/fs"
-	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -195,7 +193,7 @@ func TestWriteUpdates(t *testing.T) {
 			defer srv.Close()
 			appDir := t.TempDir()
 			writeFiles(t, appDir, map[string]string{"CHANGELOG.md": "# Changes\n\n## 1.0.1\n\n- Faster.\n\n## 1.0.0\n\nFirst.\n"})
-			app := &goApp{dir: appDir, name: "notes", bundleID: "com.example.notes", cfg: &appConfig{
+			app := &asukaApp{dir: appDir, name: "notes", bundleID: "com.example.notes", cfg: &appConfig{
 				Name: "Notes", Updates: &updatesConfig{PublicKey: pub, URL: srv.URL + "/notes"},
 			}}
 			target := "test-target"
@@ -244,7 +242,7 @@ func TestWriteUpdates(t *testing.T) {
 				return b, filepath.Join(out, "updates", iupdate.ManifestName(target, ""))
 			}
 
-			old, _ := build("1.0.0")
+			build("1.0.0")
 			b, manifestPath := build("1.0.1")
 			var m iupdate.Manifest
 			data, _ := os.ReadFile(manifestPath)
@@ -260,18 +258,8 @@ func TestWriteUpdates(t *testing.T) {
 			if len(m.Previous) != 1 || m.Previous[0].Version != "1.0.0" {
 				t.Errorf("the versions before: %+v", m.Previous)
 			}
-			// The delta, applied to the first version, makes the second.
-			delta, err := os.ReadFile(filepath.Join(published, "notes", filepath.Base(m.Deltas[0].URL)))
-			if err != nil {
-				t.Fatal(err)
-			}
-			made := filepath.Join(t.TempDir(), "made")
-			if err := iupdate.ApplyDelta(bytes.NewReader(delta), int64(len(delta)), "1.0.0", "1.0.1", old.root, made); err != nil {
-				t.Fatal(err)
-			}
-			if got, want := readFiles(t, made), readFiles(t, b.root); !maps.Equal(got, want) {
-				t.Errorf("the delta made %v, want %v", slices.Collect(maps.Keys(got)), slices.Collect(maps.Keys(want)))
-			}
+			// The delta, applied to the first version, makes the second:
+			// the app's updater does it (TestUpdatesVerifiedByCore).
 			if kind == iupdate.Prefix {
 				list, _ := os.ReadFile(filepath.Join(b.root, "share/notes", iupdate.FileList))
 				if want := "bin/notes\nshare/applications/com.example.notes.desktop\nshare/notes/assets/a.txt\n"; string(list) != want {
@@ -289,7 +277,7 @@ func TestWriteUpdatesPrerelease(t *testing.T) {
 	t.Setenv("ASUKA_UPDATE_PUBLIC_KEY", "")
 	t.Setenv("ASUKA_UPDATE_URL", "")
 	zero := 0
-	app := &goApp{dir: t.TempDir(), name: "notes", bundleID: "com.example.notes", cfg: &appConfig{
+	app := &asukaApp{dir: t.TempDir(), name: "notes", bundleID: "com.example.notes", cfg: &appConfig{
 		Name: "Notes", Version: "2.0.0-beta.1", Updates: &updatesConfig{PublicKey: pub, GitHub: "me/notes", Deltas: &zero},
 	}}
 	out := t.TempDir()

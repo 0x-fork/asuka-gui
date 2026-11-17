@@ -1,0 +1,3 @@
+name = "platform/update"
+version = "0.1.0"
+description = "A desktop app's self-updater, Sparkle's: checks, signed downloads and deltas, the update window"

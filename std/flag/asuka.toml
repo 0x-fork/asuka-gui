@@ -1,0 +1,3 @@
+name = "std/flag"
+version = "0.1.0"
+description = "A program's command line, read into a struct of options or an enum of commands"

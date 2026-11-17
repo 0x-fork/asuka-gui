@@ -1,0 +1,41 @@
+// Components: their bodies are declarations.
+
+component Row2(title: string) {
+  prop compact = false
+  event archive
+
+  Text(title)
+}
+
+component Body {
+  state count = 0
+  count += 1 // ERROR "an assignment in a view"
+  print("hi") // ERROR "a void isn't a view"
+  let x = await later() // ERROR "await only where code may wait"
+
+  Column {
+    Row2("a") { compact: true; on archive { count = 0 } }
+    Row2(title: "b", compact: true) // ERROR "compact is a prop of Row2: set it in the block"
+    Row2("c") { title: "x" } // ERROR "title is a parameter of Row2: pass it in the parentheses"
+    Row2("d") { on press { } } // ERROR "Row2 has no event press \(its events: archive\)"
+    Text("x") { colour: .red } // ERROR "Text has no prop colour \(did you mean color\?\)"
+    Text("y") { Text("z") } // ERROR "Text takes no children"
+    Button("b") { on press { count = count + 1 } }
+    Text("{count}") { color: .notAColor } // ERROR "notAColor isn't a semantic color"
+    Toggle { bind on: count } // ERROR "bind on takes a bool, and this is a int"
+  }
+}
+
+async fn later() -> int {
+  return 1
+}
+
+component Emits {
+  event done(n: int)
+  Button("go") { on press { emit done(1); emit done("x") } } // ERROR "argument n is a string, not a int"
+}
+
+store Data {
+  state n = 0
+  Text("no") // ERROR "a store has no views or statements"
+}

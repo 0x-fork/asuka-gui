@@ -24,15 +24,15 @@ At set frames after launch (the same frame numbers in every app):
 |---|---|---|
 | startup | the app launches and shows its first screen | ms from the process's start to the second frame |
 | memory-idle | the first screen | memory, and its peak since launch |
-| mount | 1,000 rows (a label and a number) appear in a scroll view (not lazy: `ScrollView`/`VStack`, `Column`/`verticalScroll`, `ui.Scroll`) | the main thread's time over the frames it takes |
+| mount | 1,000 rows (a label and a number) appear in a scroll view (not lazy: `ScrollView`/`VStack`, `Column`/`verticalScroll`, `Scroll`) | the main thread's time over the frames it takes |
 | memory-mount | with the 1,000 rows | memory, and its peak |
 | update-one | one row's number changes, a different row each frame, for 240 frames | the main thread's time a frame: mean, 95th percentile; dropped frames |
 | update-all | every row's number changes each frame, for 120 frames (they all show one counter) | the same |
-| scroll | a lazy list of 10,000 two-line rows (`List`, `LazyColumn`, `ui.List`) scrolls 8 points a frame, for 300 frames | the same |
+| scroll | a lazy list of 10,000 two-line rows (`List`, `LazyColumn`, `List`) scrolls 8 points a frame, for 300 frames | the same |
 | memory-list | after the scroll | memory, and its peak |
 
-State is each framework's idiomatic fine-grained kind: a signal per row
-(Asuka), an `@Observable` per row (SwiftUI's Observation), a
+State is each framework's idiomatic fine-grained kind: a store's state
+per row (Asuka), an `@Observable` per row (SwiftUI's Observation), a
 `mutableIntStateOf` per row (Compose); the shared counter is read by
 each row, so a change to it updates the rows, not the screen.
 
@@ -41,7 +41,7 @@ each row, so a change to it updates the rows, not the screen.
 The same file in every app on a platform (`asuka/meter/swift/Meter.swift`,
 `asuka/meter/android/src/main/kotlin/dev/asuka/app/Meter.kt`, which the
 Compose app links to; the Asuka app calls them through its native
-package, `asuka/meter`):
+package, `meter/`, a `native interface` in Asuka):
 
 - **iOS**: a frame's cost is the main thread's busy time between two
   vsyncs: the run loop's time awake, from a `CFRunLoopObserver`'s
@@ -60,13 +60,14 @@ package, `asuka/meter`):
   deadline. Memory is the proportional set size, and the resident set's
   high-water mark (`VmHWM`) for the peak.
 
-Asuka and SwiftUI are driven by a display link (Asuka's `ui.OnFrame`),
+Asuka and SwiftUI are driven by a display link (Asuka's `onFrame`),
 Compose by `withFrameNanos`; each changes its state at the start of the
 frame, as an animation would.
 
 ## Fairness
 
-- Release builds: Swift `-O`; Go optimized; R8 on Android, not
+- Release builds: Swift `-O`; the Asuka app compiled to C with the core
+  (`-O2`); R8 on Android, not
   debuggable. Both Android apps are compiled ahead of time in full
   (`cmd package compile -m speed`) after installing, so neither runs on
   the interpreter or depends on a profile (Compose ships baseline
@@ -85,37 +86,38 @@ frame, as an animation would.
 
 ## Results
 
-The latest are in `results/` (iPhone 17 Pro simulator; Pixel emulator,
-Android 17; an Apple M5). Main thread ms; memory MB, its peak in
-parentheses.
+The latest are in `results/`. iOS, on the C core (an iPhone 17 Pro
+simulator, iOS 27, an Apple M5, 2026-11-17; the median of 3 runs). Main
+thread ms; memory MB, its peak in parentheses.
 
-| | Asuka, iOS | SwiftUI | Asuka, Android | Compose |
-|---|---:|---:|---:|---:|
-| startup | 307 | 356 | 319 | 327 |
-| mount, 1,000 rows | 88 | 163 | 539 | 444 |
-| update-one, a frame | 2.15 | 4.91 | 2.74 | 26.8 |
-| update-all, a frame | 6.39 | 62.4 | 14.6 | 125 |
-| scroll, a frame | 1.02 | 1.14 | 4.03 | 4.19 |
-| memory, idle | 14.8 | 15.1 | 43.3 | 32.3 |
-| memory, the rows | 36.1 (36.7) | 93.2 (99.1) | 72.8 (162) | 66.7 (156) |
-| memory, after the list | 35.0 (45.2) | 21.4 (125) | 74.9 (169) | 74.5 (182) |
+| | Asuka | SwiftUI |
+|---|---:|---:|
+| mount, 1,000 rows | 88.8 | 174 |
+| update-one, a frame | 1.84 | 4.61 |
+| update-all, a frame | 6.21 | 58.0 |
+| scroll, a frame | 1.73 | 1.72 |
+| memory, idle | 16.6 | 18.5 |
+| memory, the rows | 37.1 (38.0) | 101 (107) |
+| memory, after the list | 28.4 (45.5) | 33.7 (160) |
 
-What changed Asuka, from the first runs:
+Startup isn't comparable on this machine yet: both apps take over a
+second from the process's start on this simulator runtime, most of it
+the runtime's, not the apps'.
 
-| | first | now |
-|---|---|---|
-| iOS startup | 1,269 ms: every host linked WebKit, AVKit, PhotosUI... | 307 ms: the CLI links what the app's Go code calls |
-| iOS update-all, a frame | 33.7 ms | 6.39 ms: a Scroll takes rows out of sight out of the view tree (Core Animation drew every label, on screen or not) |
-| iOS memory with the rows (peak) | 113 (242) MB | 36.1 (36.7) MB: the same |
-| Android mount | 595 ms | about 270 ms on the first meter (539 on this one, which counts every message): texts without AppCompat's font loading, appearances resolved once |
-| Android update-all, a frame | 32 ms | 14.6 ms: a Scroll takes rows out of sight out of the tree |
-| Android startup | 367 ms | 319 ms: the Go library loads on a thread of its own as the app starts |
+Android, on the C core (a Pixel emulator, Android 17, the same Mac,
+2026-11-16; the median of 3 runs, with other builds running on the
+machine, so read Asuka against Compose of the same run):
 
-Where Asuka still trails: Android's mount (making Views costs more than
-Compose's layout nodes) and idle memory there (the Go runtime and its
-library, about 11 MB), and iOS's memory after the list (the Go heap's
-pages, which the runtime gives back slowly; Asuka frees them when the app
-goes to the background or gets a memory warning).
+| | Asuka | Compose |
+|---|---:|---:|
+| startup | 465 | 293 |
+| mount, 1,000 rows | 427 | 377 |
+| update-one, a frame | 5.35 | 35.6 |
+| update-all, a frame | 30.7 | 50.9 |
+| scroll, a frame | 31.3 | 30.7 |
+| memory, idle | 46.9 | 34.9 |
+| memory, the rows | 81.5 (168) | 69.2 (154) |
+| memory, after the list | 82.5 (177) | 67.6 (195) |
 
-`go test ./ui -bench .` runs the same mount and update scenarios against
-the fake host: the core's share alone (signals, effects, ops, layout).
+Where Asuka trails on Android: startup and idle memory, which the C
+core (no Go runtime) should win back; they're being looked into.

@@ -1,0 +1,26 @@
+// never is the result of a function that doesn't return.
+
+fn die(code: int) -> never {
+  panic("exit {code}")
+}
+
+fn port(text: string) -> int {
+  let n = text.toInt() ?? die(2)
+  if n > 0 {
+    return n
+  }
+  die(1)
+}
+
+fn bad() -> never {
+  print("returns")
+} // ERROR "fn bad never returns \\(its result is never\\): it can reach its end"
+
+
+fn twice<T>(x: T) -> [T] = [x, x]
+
+let a = twice<string>("a")
+let b = twice<int>("b") // ERROR "argument x of twice"
+let c = twice<int, int>(1) // ERROR "twice takes 1 type argument"
+
+app { Text("{port("1")} {a} {b} {c}") }

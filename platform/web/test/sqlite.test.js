@@ -1,5 +1,5 @@
-// SQLite's web side, in Node: the module the sqlite plugin builds
-// (asqlite.wasm: ../testing/asqlite.js) driven as the page's worker drives it
+// SQLite's web side, in Node: std/sqlite's module (asqlite.wasm:
+// ../testing/asqlite.js) driven as the page's worker drives it
 // (sqlite-engine.js), its files (sqlite-vfs.js): answers, the tables
 // commits write and queries read, long answers, the browser's time zone,
 // locks between connections, and two tabs taking turns at one kept
@@ -8,7 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { loadWasm } from "../testing/asqlite.js";
+import { loadWasm, sqliteVersion } from "../testing/asqlite.js";
 import { Engine, Reader, Writer, errorAnswer, localtime } from "../src/sqlite-engine.js";
 import { MemoryFile, VFS } from "../src/sqlite-vfs.js";
 
@@ -116,10 +116,9 @@ function rowsOf(r, ncols, rows) {
   return done;
 }
 
-test("the module is the SQLite the Go package was built for", async () => {
+test("the module is the SQLite std/sqlite vendors", async () => {
   const { e } = await engine();
-  const src = await readFile(new URL("../../../sdk/sqlite/version_gen.go", import.meta.url), "utf8");
-  assert.equal(e.version(), Number(/libVersion = (\d+)/.exec(src)[1]));
+  assert.equal(e.version(), await sqliteVersion());
 });
 
 test("statements, rows, and the tables commits write and queries read", async () => {

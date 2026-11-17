@@ -6,16 +6,21 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
 )
 
-// shareTarget is asuka.json's shareTarget (expo-sharing's plugin options,
-// for both platforms at once): true takes texts and links; an object
-// says what else.
+// shareTarget is asuka.toml's shareTarget (expo-sharing's plugin options,
+// for both platforms at once): true takes texts and links; a table says
+// what else.
 //
-//	"shareTarget": {"types": ["text", "image/*", "video/*"], "max": 10}
+//	shareTarget = true
+//
+//	[shareTarget]
+//	types = ["text", "image/*", "video/*"]
+//	max = 10
 type shareTarget struct {
 	on bool
 	// Types are what the app is offered for: "text" (texts and web
@@ -38,7 +43,7 @@ func (s *shareTarget) UnmarshalJSON(b []byte) error {
 	default:
 		type plain shareTarget
 		if err := json.Unmarshal(b, (*plain)(s)); err != nil {
-			return errors.New("shareTarget: want true, or {\"types\": [...], \"max\": n}")
+			return errors.New("shareTarget: want true, or a table of types and max")
 		}
 		s.on = true
 	}
@@ -68,6 +73,14 @@ func (s *shareTarget) check() error {
 		return fmt.Errorf("max %d (want 1 or more)", s.Max)
 	}
 	return nil
+}
+
+// warnShareSheet says that an app with a share sheet (platform/sharesheet)
+// needs asuka.toml's shareTarget, without which no app shares with it.
+func warnShareSheet(c *appConfig) {
+	if c.shareSheet && !c.ShareTarget.on {
+		fmt.Fprintln(os.Stderr, "asuka: the app has a share sheet (platform/sharesheet), but asuka.toml has no shareTarget: no app offers to share with it (shareTarget = true takes texts and links)")
+	}
 }
 
 // textShares is shareTarget: true.

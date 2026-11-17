@@ -1,0 +1,6 @@
+name = "platform/screen"
+version = "0.1.0"
+description = "The displays, and what the app sets of the screen: its orientation, the system bars, capture"
+
+[android]
+permissions = ["android.permission.DETECT_SCREEN_CAPTURE"]

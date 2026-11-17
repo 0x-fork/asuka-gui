@@ -1,0 +1,6 @@
+// A package is an app or a program.
+
+app { Text("hi") }
+
+fn main() { // ERROR "a package is an app or a program, not both"
+}

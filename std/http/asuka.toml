@@ -1,0 +1,6 @@
+name = "std/http"
+version = "0.1.0"
+description = "HTTP requests, through each platform's own client"
+
+[windows]
+libraries = ["winhttp", "ws2_32"]

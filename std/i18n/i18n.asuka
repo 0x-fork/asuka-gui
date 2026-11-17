@@ -1,0 +1,96 @@
+// Package std/i18n is the language the app shows, and numbers and
+// dates written its way (docs/i18n.md):
+//
+//   import std/i18n
+//
+//   Text(i18n.formatNumber(1234567.891))          // 1,234,567.891; 1.234.567,891
+//   Text(i18n.formatDate(time.now(), date: .long)) // January 5, 2026
+//   Button(i18n.autonym("de")) { on press { i18n.setLocale("de") } }
+//
+// The language follows the user's (the system's preferred languages,
+// matched against the app's catalogs), unless setLocale chose one.
+// Everything here that reads it, read in a binding, follows it, as tr's
+// messages do. Numbers and dates use the data of the app's catalogs'
+// languages (an app without catalogs writes English's), in the user's
+// hour cycle.
+
+import std/time
+
+/// How long a date or a time is written, as CLDR's styles: short is
+/// numeric (1/5/26, 1:07 PM), medium abbreviates (Jan 5, 2026), long
+/// writes the month out (January 5, 2026), full everything (Monday,
+/// January 5, 2026). none leaves it out.
+pub enum DateStyle { none, short, medium, long, full }
+
+/// The user's regional formats: the locale of the formats (which may be
+/// another language's than the app's), the first day of the week (1
+/// Sunday ... 7 Saturday) and the hour cycle (12 or 24).
+pub struct Region {
+  locale: string
+  firstWeekday: int
+  hourCycle: int
+}
+
+/// The language the app shows, a BCP 47 tag of its catalogs' ("de",
+/// "zh-Hant"), or a pseudo locale (en-XA, ar-XB).
+pub native fn locale() -> string
+
+/// Shows another language at once (of the app's: the best match), and
+/// keeps it for the next launches where the system keeps an app's
+/// language (iOS's and macOS's Settings, Android 13's per-app language);
+/// "" follows the user's languages again. It throws on a tag that names
+/// no language.
+pub fn setLocale(tag: string) { set_locale(tag) }
+
+/// The languages the app is written in, its source language first: its
+/// catalogs'.
+pub native fn languages() -> [string]
+
+/// Says which languages the app is written in, its own first, for an
+/// app that translates its text itself, without catalogs (an app with
+/// catalogs has theirs).
+pub fn setLanguages(tags: [string]) { set_languages(tags) }
+
+/// The languages the user reads, most preferred first.
+pub fn preferredLanguages() -> [string] = preferred_languages()
+
+/// Whether the app is laid out right to left (its language is written
+/// so, or asuka dev --dir rtl).
+pub fn isRTL() -> bool = is_rtl()
+
+/// The user's regional formats.
+pub native fn region() -> Region
+
+/// The locale numbers and dates are written in: the language shown,
+/// with the user's formats (en-GB-u-fw-mon-hc-h23).
+pub fn formatLocale() -> string = format_locale()
+
+/// A language's name in itself: "Deutsch", "日本語", "العربية", for a
+/// menu of the app's languages (an unknown tag as it is).
+pub native fn autonym(tag: string) -> string
+
+/// n in the language's way: its digits, its separators, its grouping
+/// (1,234,567.891; 1.234.567,891; 12,34,567), with at least min and at
+/// most max fraction digits, rounded half away from zero.
+pub fn formatNumber(n: float, minFractionDigits: int = 0, maxFractionDigits: int = 3, grouping: bool = true) -> string = format_number(n, if grouping { 0 } else { 4 }, minFractionDigits, maxFractionDigits)
+
+/// An integer in the language's way (1,234,567).
+pub fn formatInt(n: int, grouping: bool = true) -> string = format_int(n, if grouping { 0 } else { 4 })
+
+/// A ratio as a percentage in the language's way: 0.25 is 25%, 25 %,
+/// ٪٢٥.
+pub fn formatPercent(ratio: float, fractionDigits: int = 0) -> string = format_number(ratio, 1, fractionDigits, fractionDigits)
+
+/// A time (std/time's: time.now()) in the device's time zone: its
+/// date, its time or both, in styles, in the language's patterns and the
+/// user's hour cycle. No style at all is a medium date.
+pub fn formatDate(t: time.Time, date: DateStyle = .medium, time: DateStyle = .none) -> string = format_date(t.instant, date, time)
+
+native fn set_locale(tag: string)
+native fn set_languages(tags: [string])
+native fn preferred_languages() -> [string]
+native fn is_rtl() -> bool
+native fn format_locale() -> string
+native fn format_number(n: float, flags: int, minFrac: int, maxFrac: int) -> string
+native fn format_int(n: int, flags: int) -> string
+native fn format_date(t: int, date: DateStyle, time: DateStyle) -> string

@@ -24,6 +24,8 @@ open class AsukaActivity : AppCompatActivity() {
     protected lateinit var runtime: AsukaRuntime
     private var safe = IntArray(4)
     private var keyboard = 0
+    /** The frame's size before its first layout: the window's, which it fills (fillsWindow). */
+    private var unlaid: IntArray? = null
     /** The keyboard's height over the window, as it animates, in px. */
     val keyboardPx get() = keyboard
     /** The frame that holds the root's view (and the overlay snackbars show in). */
@@ -61,12 +63,14 @@ open class AsukaActivity : AppCompatActivity() {
         AsukaSplash.theme(this) // asuka.json's splash: shown, then the app's theme
         edgeToEdge()
         super.onCreate(savedInstanceState)
-        AsukaDisplay.apply(this, runtime.isNight(resources.configuration)) // asuka/sdk/screen's, if it set any
+        AsukaDisplay.apply(this, runtime.isNight(resources.configuration)) // platform/screen's, if it set any
         frame = FrameLayout(this)
         localeChanged()
         AsukaSplash.install(frame) // asuka.json's splash, until the first frame
         setContentView(content(frame))
         onBackPressedDispatcher.addCallback(this, runtime.back)
+        // The keyboard's focus moving in the window: FocusChange (Focus.kt).
+        frame.viewTreeObserver.addOnGlobalFocusChangeListener { old, new -> if (runtime.activity === this) runtime.focusMoved(old, new) }
 
         ViewCompat.setOnApplyWindowInsetsListener(frame) { _, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
@@ -94,7 +98,16 @@ open class AsukaActivity : AppCompatActivity() {
         frame.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, or_, ob ->
             if (r - l != or_ - ol || b - t != ob - ot) sendEnvironment()
         }
-        frame.post { runtime.attach(this) }
+        // The core starts now, with the window's size and insets, so the
+        // first frame has the app's views; a frame that doesn't fill the
+        // window (a share sheet's) is measured first.
+        if (fillsWindow) {
+            val m = windowManager.currentWindowMetrics
+            val bars = m.windowInsets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
+            safe = safeInsets(intArrayOf(bars.top, bars.right, bars.bottom, bars.left))
+            unlaid = intArrayOf(m.bounds.width(), m.bounds.height())
+            runtime.attach(this)
+        } else frame.post { runtime.attach(this) }
         // Animations turned off (or on) in the system's settings: less motion.
         contentResolver.registerContentObserver(
             android.provider.Settings.Global.getUriFor(android.provider.Settings.Global.ANIMATOR_DURATION_SCALE), false, motion)
@@ -109,8 +122,23 @@ open class AsukaActivity : AppCompatActivity() {
      * node and its ancestors' take it first (Keys.kt).
      */
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
-        if (::runtime.isInitialized && runtime.activity === this && runtime.routeKey(event, currentFocus, runtime.nodes[runtime.rootID])) return true
-        return super.dispatchKeyEvent(event)
+        val ours = ::runtime.isInitialized && runtime.activity === this
+        if (ours && runtime.routeKey(event, currentFocus, runtime.nodes[runtime.rootID])) return true
+        if (super.dispatchKeyEvent(event)) return true
+        // Text typed that nothing took: the focused view's KeyText (a listbox's typeahead).
+        return ours && runtime.keyText(event, currentFocus)
+    }
+
+    private val touchGate = AsukaTouchGate()
+
+    /** A press beginning: the overlays over the root hear of it first if it's outside them (Overlay.kt). */
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        if (::runtime.isInitialized && runtime.activity === this) {
+            val decor = window.decorView
+            val modal = runtime.outsidePresses(ev) { it.rootView === decor }
+            if (touchGate.holds(ev, modal)) return true
+        }
+        return super.dispatchTouchEvent(ev)
     }
 
     /** The Activity's theme, for what it makes in another language. */
@@ -118,6 +146,9 @@ open class AsukaActivity : AppCompatActivity() {
 
     /** The view the Activity shows, which holds the root's frame: the frame itself. */
     protected open fun content(frame: FrameLayout): View = frame
+
+    /** Whether the root's frame fills the window (edge to edge), whose size it has before it's laid out. */
+    protected open val fillsWindow: Boolean get() = true
 
     /** The root's safe area insets (top, right, bottom, left), from the window's. */
     protected open fun safeInsets(bars: IntArray): IntArray = bars
@@ -132,12 +163,6 @@ open class AsukaActivity : AppCompatActivity() {
      * share sheet hands over (AsukaShareActivity: OpenApp).
      */
     private fun incoming(intent: android.content.Intent) {
-        // A tag of asuka.json's nfc filters (asuka/sdk/nfc): its URI for
-        // ui.OnOpenURL, the others kept for nfc.OnOpen.
-        AsukaNfcHub.opened(intent)?.let { uri ->
-            if (uri.isNotEmpty()) runtime.openURL(uri)
-            return
-        }
         if (intent.action == android.content.Intent.ACTION_SEND || intent.action == android.content.Intent.ACTION_SEND_MULTIPLE) {
             runtime.receive(intent)
             return
@@ -154,9 +179,9 @@ open class AsukaActivity : AppCompatActivity() {
             openFile(data)
             return
         }
-        // A notification's tap or action that opens the app (asuka/sdk/notify).
+        // A notification's tap or action that opens the app (platform/notify).
         AsukaNotifyHub.opened(this, intent)
-        // A push the user tapped (asuka/sdk/push): its data's url, if any.
+        // A push the user tapped (platform/push): its data's url, if any.
         val pushed = AsukaPushHub.opened(intent)
         (intent.data?.toString() ?: pushed)?.let { runtime.openURL(it) }
     }
@@ -178,14 +203,16 @@ open class AsukaActivity : AppCompatActivity() {
     fun mount(root: View) {
         (root.parent as? ViewGroup)?.removeView(root)
         frame.addView(root, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        runtime.mountOverlays() // over it, in this frame
     }
 
     fun sendEnvironment(force: Boolean = false) {
-        if (!::runtime.isInitialized || frame.width == 0) return
+        if (!::runtime.isInitialized) return
+        val size = if (frame.width != 0) intArrayOf(frame.width, frame.height) else unlaid ?: return
         val d = resources.displayMetrics.density
         val c = resources.configuration
         val e = AsukaEnvironment(
-            width = frame.width / d, height = frame.height / d,
+            width = size[0] / d, height = size[1] / d,
             safeTop = safe[0] / d, safeRight = safe[1] / d, safeBottom = safe[2] / d, safeLeft = safe[3] / d,
             keyboard = keyboard / d,
             scale = d,
@@ -193,7 +220,7 @@ open class AsukaActivity : AppCompatActivity() {
             dark = runtime.isNight(c),
             reduceMotion = !android.animation.ValueAnimator.areAnimatorsEnabled(),
             screenReader = a11y.isTouchExplorationEnabled,
-            widthClass = widthClass(frame.width / d), heightClass = heightClass(frame.height / d),
+            widthClass = widthClass(size[0] / d), heightClass = heightClass(size[1] / d),
             locale = runtime.region.locale,
             languages = runtime.region.languages,
             firstWeekday = runtime.region.firstWeekday,
@@ -217,9 +244,8 @@ open class AsukaActivity : AppCompatActivity() {
 
     private fun configured(config: Configuration) {
         edgeToEdge() // status bar icons follow dark mode
-        AsukaDisplay.bars(this, runtime.isNight(config)) // unless asuka/sdk/screen set them
+        AsukaDisplay.bars(this, runtime.isNight(config)) // unless platform/screen set them
         runtime.configurationChanged(config)
-        AsukaSystemAppearance.configurationChanged()
         localeChanged()
         window.setBackgroundDrawable(windowBackground())
         frame.post { sendEnvironment() }
@@ -261,7 +287,6 @@ open class AsukaActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         runtime.resumed()
-        AsukaNfcHub.resumed(this) // a session's reader mode, for this Activity
     }
 
     override fun onStop() {

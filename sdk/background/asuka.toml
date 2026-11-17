@@ -1,0 +1,9 @@
+name = "platform/background"
+version = "0.1.0"
+description = "Long work that goes on out of sight, with its progress shown by the system"
+
+# The host's foreground service of the data sync type, its notification,
+# the CPU kept awake.
+[android]
+permissions = ["android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_DATA_SYNC", "android.permission.POST_NOTIFICATIONS", "android.permission.WAKE_LOCK"]
+application = ['<service android:name="dev.asuka.AsukaWorkService" android:exported="false" android:foregroundServiceType="dataSync" />']

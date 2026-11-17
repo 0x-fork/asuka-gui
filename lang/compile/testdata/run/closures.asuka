@@ -1,0 +1,104 @@
+// Closures: lambdas, captures (a var is shared: boxed when something
+// changes it), spawn's copies.
+
+fn apply(x: int, f: fn(int) -> int) -> int = f(x)
+
+fn counter() -> fn() -> int {
+  var n = 0
+  return () => {
+    n += 1
+    return n
+  }
+}
+
+fn adder(k: int) -> fn(int) -> int = x => x + k
+
+test "lambdas" {
+  print(apply(3, x => x * 2))
+  let add5 = adder(5)
+  print(add5(10))
+  let f: fn(int, int) -> int = (a, b) => a * b
+  print(f(6, 7))
+  let g = (s: string) => s.upper()
+  print(g("hi"))
+}
+
+test "captures" {
+  let c = counter()
+  c()
+  c()
+  print(c())
+  let d = counter()
+  print(d())
+  var total = 0
+  let xs = [1, 2, 3]
+  xs.map(x => {
+    total += x
+    return x
+  })
+  print(total)
+  let base = 10
+  let h = () => base + 1
+  print(h())
+}
+
+test "shared vars" {
+  var m = 1
+  let show = () => "m is {m}"
+  m = 5
+  print(show())
+  var name = "a"
+  let greet = () => "hi {name}"
+  name += "b"
+  print(greet())
+  var log: [string] = []
+  let note = (s: string) => { log.push(s) }
+  note("one")
+  log.push("two")
+  note("three")
+  print(log)
+}
+
+test "spawn copies" {
+  var text = "before"
+  let read = () => text
+  let job = spawn { "spawned {text}" }
+  text = "after"
+  print(await job)
+  print(read())
+  var words: [string] = ["x"]
+  let more = () => words.count()
+  words.push("y")
+  let n = await spawn { words.count() * 10 }
+  print(n + more())
+}
+
+test "functions as values" {
+  let fs: [fn(int) -> int] = [x => x + 1, x => x * 10, adder(100)]
+  print(fs.map(f => f(2)))
+  let named = apply
+  print(named(4, x => -x))
+}
+
+// Output:
+// 6
+// 15
+// 42
+// HI
+// ok lambdas
+// 3
+// 1
+// 6
+// 11
+// ok captures
+// m is 5
+// hi ab
+// ["one","two","three"]
+// ok shared vars
+// spawned before
+// after
+// 22
+// ok spawn copies
+// [3,20,102]
+// -4
+// ok functions as values

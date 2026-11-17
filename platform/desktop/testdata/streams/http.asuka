@@ -1,0 +1,77 @@
+// std/http's streamed bodies against internal/testserver (BASE: its
+// URL), on the desktops' C: pieces as they come, lines, server-sent
+// events, a POST, a 404, a stalled body's timeout, and a read cancelled.
+// Each step is a Text of its own ("#..."); DONE_FILE, if it isn't empty,
+// is written at the end (what a Windows test waits for).
+import std/fs
+import std/http
+
+let base = "BASE"
+let doneFile = "DONE_FILE"
+
+component Probe {
+  state log: [string] = []
+  Column {
+    for s in log key s {
+      Text("#{s}")
+    }
+  }
+  task {
+    do {
+      let r = try await http.stream("{base}/stream")
+      var first = ""
+      var all = ""
+      for await p in r.body {
+        let text = p.string().replace("\n", "|")
+        if first.isEmpty() {
+          first = text
+        }
+        all = all + text
+      }
+      log.push("stream {r.status} {r.headers["content-type"] ?? "-"} first {first} all {all}")
+      var lines = ""
+      for await l in (try await http.stream("{base}/stream")).lines() {
+        lines = lines + "<" + l + ">"
+      }
+      log.push("lines {lines}")
+      var events = ""
+      for await e in http.events("{base}/sse") {
+        events = events + " " + e.event + ":" + e.data.replace("\n", "+") + ":" + e.id
+      }
+      log.push("events{events}")
+      let posted = try await http.stream("{base}/echo", method: "POST", headers: ["X-Who": "probe"], body: "ping".bytes())
+      let echo = try await posted.text()
+      log.push("posted {posted.status} {echo.contains("POST")} {echo.contains("ping")} {echo.contains("probe")}")
+      let missing = try await http.stream("{base}/status/404")
+      log.push("missing {missing.status} {missing.ok()} {try await missing.text()}")
+      do {
+        let s = try await http.stream("{base}/stall", timeout: 500ms)
+        let got = try await s.readAll()
+        log.push("stall read {got.count()}")
+      } catch e {
+        log.push("stall timed out {e.message.contains("timed out")}")
+      }
+      let slow = try await http.stream("{base}/stall", timeout: 30s)
+      do {
+        try await withTimeout(300ms) {
+          for await p in slow.body {
+            log.push("stalled piece {p.count()}")
+          }
+        }
+        log.push("not cancelled")
+      } catch e {
+        log.push("cancelled {slow.status}")
+      }
+      let again = try await http.stream("{base}/stream")
+      log.push("again {(try await again.text()).replace("\n", "|")}")
+      log.push("done")
+    } catch e {
+      log.push("fail {e.message}")
+    }
+    if !doneFile.isEmpty() {
+      try? fs.writeText(doneFile, "done")
+    }
+  }
+}
+
+app { Probe() }

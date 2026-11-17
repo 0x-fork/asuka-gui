@@ -1,124 +1,179 @@
 # デスクトップ
 
-ウィンドウとメニューバー（[ナビゲーション](navigation.md#ウィンドウ)）のほかにも、デスクトップにしかない機能があります。トレイアイコンと Dock メニュー、フライアウト、バックグラウンドで動き続けるアプリ、グローバルショートカット、パネルとランチャー、インストール済みアプリの検索、クリックスルーウィンドウ、ファイルダイアログとファイルマネージャー、アプリで開くファイル、単一インスタンス、終了、最近使ったドキュメント、ドキュメントベースのアプリ、ログイン時の起動、アップデート、「再生中」とメディアキー、ディスプレイ、電源、アプリアイコン上の進捗表示、そしてシステムの外観です。ファイルやフォルダーの変更（アプリが表示しているフォルダーや、ほかのアプリが保存したドキュメントなど）を追いかけるには、[ファイルの監視](data.md#ファイルの監視asukasdkwatch)を参照してください。こちらはスマートフォンと Web でも使えます。
+ウィンドウとメニューバー（[ナビゲーション](navigation.md#ウィンドウ)）のほかにも、デスクトップにしかない機能があります。トレイアイコンと Dock メニュー、フライアウト、バックグラウンドで動き続けるアプリ、グローバルショートカット、パネルとランチャー、インストール済みアプリの検索、クリックスルーウィンドウ、ファイルダイアログとファイルマネージャー、アプリで開くファイル、単一インスタンス、終了、最近使ったドキュメント、ドキュメントベースのアプリ、ログイン時の起動、アップデート、「再生中」とメディアキー、ディスプレイ、電源、アプリアイコン上の進捗表示、そしてシステムの外観です。ファイルやフォルダーの変更（アプリが表示しているフォルダーや、ほかのアプリが保存したドキュメントなど）を追いかけるには、[ファイルの監視](data.md#ファイルの監視stdwatch)を参照してください。こちらはスマートフォンと Web でも使えます。
 
-どの機能もパッケージか、`ui` または `app` の関数として提供されていて、Mac、Windows、Linux で動作します。その機能を持たないスマートフォンやブラウザーでは、使えないことを示す値が返ります（`ErrUnsupported`、`ErrNotAvailable`、または `Supported()` が false）。そのため、アプリは動作する環境でだけその機能を提供できます。
+どれもプラットフォーム SDK（または標準ライブラリ）のパッケージか、prelude の要素や関数で、Mac、Windows、Linux で使えます。その機能がない電話やブラウザーでは、ないことがわかるように答えるか（`unsupported` や `notAvailable` のエラー、`supported()` が false）、何も表示しません。そのため、アプリは対応しているところでだけその機能を提供できます。
+
+## デスクトップアプリの構成
+
+Mac では、アプリは iOS アプリと同じく `Name.app` の中の一つのユニバーサルバイナリで、ネイティブパッケージの Swift もそこに組み込まれます。Windows と Linux では、アプリは 1 つの実行ファイルで、Windows ではアプリのアイコン、マニフェスト、バージョン情報も中に組み込みます。Windows と Linux 向けのビルドは（Zig を使えば）どのシステムからでもでき、GTK をインストールしておく必要もありません。どのデスクトップアプリにも、`asuka.toml` から作られたアプリの設定（`asuka-app.json`：名前、ID、バージョン、アクセントカラー、URL スキーム、ファイルの種類、アップデート）が付きます。
+
+| | アプリ | 設定 |
+|---|---|---|
+| macOS（`Name.app`） | `Contents/MacOS/Name` | `Contents/Resources/asuka-app.json` |
+| Windows（フォルダー） | `Name.exe` | `asuka-app.json`（その隣） |
+| Linux（インストールプレフィックス） | `bin/<exe>` | `share/<exe>/asuka-app.json` |
+
+`asuka dev` では、代わりに開発用アプリの中でアプリを動かし、保存のたびにその変更を読み込みます（[開発](development.md#デスクトップでの実行)を参照）。
 
 ## トレイアイコンと Dock メニュー
 
-コンポーネントの中で `tray.Show` を呼ぶと、そのコンポーネントがマウントされているあいだ、トレイにアイコンが表示されます。Mac ではメニューバーの `NSStatusItem`、Windows では通知領域のアイコン、Linux では StatusNotifierItem になります（KDE、Xfce、Cinnamon、MATE、Budgie、そして AppIndicator 拡張機能を入れた GNOME で表示されます）。
+`platform/tray` の `Tray` は、表示されているあいだトレイにアイコンを置きます（置いた場所には何も表示しません）。Mac ではメニューバーの `NSStatusItem`、Windows では通知領域のアイコン、Linux では StatusNotifierItem になります（KDE、Xfce、Cinnamon、MATE、Budgie、そして AppIndicator 拡張機能を入れた GNOME で表示されます）。
 
-```go
-tray.Show(tray.Props{
-	Symbol:  ui.Val("moon.zzz"),
-	Title:   remaining, // シグナル：アイコンの横に "25:00" と表示
-	Tooltip: ui.Val("Focus timer"),
-	Menu: signal.Static([]ui.MenuItem{
-		{Title: "Start", OnPress: start},
-		{Title: "Length", Submenu: []ui.MenuItem{
-			{Title: "25 minutes", OnPress: func() { length.Set(25) }},
-			{Title: "50 minutes", OnPress: func() { length.Set(50) }},
-		}},
-		ui.MenuSeparator,
-		ui.MenuQuit,
-	}),
-})
+```asuka
+import platform/tray
+
+component Focus {
+  state minutes = 25
+  tray.Tray("timer") {
+    symbol: "moon.zzz"
+    title: "{minutes}:00" // アイコンの横に表示
+    tooltip: "Focus timer"
+    menu: [
+      .button(title: "Start", run: () => start()),
+      .submenu(title: "Length", items: [
+        .button(title: "25 minutes", checked: minutes == 25, run: () => { minutes = 25 }),
+        .button(title: "50 minutes", checked: minutes == 50, run: () => { minutes = 50 }),
+      ]),
+      .section(title: "", items: [.button(title: "Quit", run: () => quit())]),
+    ]
+  }
+  Timer()
+}
+
+fn start() {}
+
+component Timer {
+  Text("25:00")
+}
 ```
 
-`Image` または `Symbol`（Mac ではテンプレート画像になり、メニューバーの外観に合わせて色が変わります）、`Title`（Mac と、ラベルを表示する Linux のパネルで表示されます）、`Tooltip`、`Menu` は、それぞれのシグナルに追従します。オーナーが破棄されるとアイコンは消えます。`OnClick` を指定しなければ、クリックでメニューが開きます。指定した場合は、クリックで `OnClick` が実行され、右クリックでメニューが開きます。
+id はアプリのアイコンの中でそのアイコンを識別します（Mac では、ユーザーが ⌘ を押しながらドラッグした位置に戻ります）。`image`（アセットまたはファイル。高さ 16 ポイントで描かれます）または `symbol`（Mac ではテンプレート画像になり、メニューバーの外観に合わせて色が変わります。`template: true` で画像もテンプレートにできます）、`title`（Mac と、ラベルを表示する Linux のパネルで表示されます）、`tooltip`、`menu` はバインディングで、変わるたびに送り直されます。表示しているコンポーネントがなくなるとアイコンも消えます。`on click` がなければ、クリックでメニューが開きます。ある場合は、クリックで `click` が発生し、右クリックでメニューが開きます。
 
-メニューには、`ui.MenuBar` のメニューと同じく `Submenu` と `ui.MenuQuit` を使えます。`tray.DockMenu(items)` は、Mac では Dock アイコンのメニューに項目を追加します。Windows ではジャンプリストの「タスク」になり、選ぶと実行中のアプリに届きます。Linux ではランチャーのクイックリストになります。
+`menu` は `Menu` と同じく `Action` の配列です。`.button`（`disabled`、`checked`、`.destructive` のロール）、`.submenu`、それに区切り線で分けられる `.section` を使えます。`tray.DockMenu { items: […] }` は、Mac では Dock アイコンのメニューに項目を追加します。Windows ではジャンプリストの「タスク」になり、選ぶと実行中のアプリに届きます。Linux ではランチャーのクイックリストになります。複数表示されているときは、最後のものの項目が使われます。
 
 `examples/tray` は、メニューバーに常駐するタイマーです。
 
 ## フライアウト
 
-フライアウトは、トレイアイコンからぶら下がるように開くウィンドウです。Mac のメニューバーエクストラや、Windows の通知領域から開くパネルがこれにあたります。ウィンドウ内の矩形を起点に開くこともできます。実体は `Flyout` を指定した `ui.Window` です。
+フライアウトは、トレイアイコンからぶら下がるウィンドウです。Mac のメニューバーエクストラや Windows の通知領域が開くパネルのようなもので、ウィンドウ内の矩形からぶら下げることもできます。`flyout` を指定した `Window` として作ります。
 
-```go
-open := signal.New(false)
-icon := tray.Show(tray.Props{
-	Symbol:  ui.Val("bolt.fill"),
-	OnClick: func() { open.Set(!open.Peek()) },
-	Menu:    ui.Val([]ui.MenuItem{ui.MenuQuit}), // 右クリックで開く
-})
-ui.Window(ui.WindowProps{
-	Open:       open,
-	Flyout:     &ui.Flyout{Anchor: icon.Anchor(), Placement: ui.PlacementBottom},
-	FitContent: true, MinWidth: 260, MaxHeight: 480,
-	Content:    panel,
-})
+```asuka
+import platform/tray
+
+component Power {
+  state open = false
+  tray.Tray("power") {
+    symbol: "bolt.fill"
+    menu: [.button(title: "Quit", run: () => quit())] // 右クリックで表示
+    on click { open = !open }
+  }
+  Window {
+    bind open: open
+    flyout: Flyout(anchor: tray.anchor("power"), placement: .bottom)
+    fitContent: true
+    minWidth: 260
+    maxHeight: 480
+    Panel()
+  }
+}
+
+component Panel {
+  Text("Charging")
+}
 ```
 
-- 枠もタスクバーのボタンもありません。Mac では、`Background` を指定しないとコンテンツの背後にメニューと同じマテリアルが表示され、角が丸くなって影が付きます。そのため Mac では、コンテンツに背景を付けないでください。Windows 11 では、ウィンドウの色を背景に、角が丸くなって影が付きます。Linux ではどちらも描かれません。
-- `Placement` は、アンカーのどちら側に出すかと、アンカーに対する揃え方を決めます（`PlacementBottom` なら下側の中央）。ディスプレイのその側に余地がなければ反対側に回り（Mac のメニューバーのアイコンなら下、画面下端のタスクバーのアイコンなら上）、それでも足りなければディスプレイの内側へずれ、最後にはディスプレイに収まるよう縮みます。`Gap` はアンカーとのあいだに空ける間隔です。
-- `Anchor` はアクセサに追従します。`ui.Anchor{X, Y, Width, Height}` は、フライアウトを宣言したウィンドウ内の矩形で、コンテンツの左上を原点としたポイント単位で指定します（`OnLayout` で得たビューのフレームなど）。この場合、フライアウトはそのウィンドウの子になり、ウィンドウと一緒に動きます。
-- 表示されるとキーボード入力を受け取りますが、アプリを前面には出しません。ユーザーがほかの場所をクリックしたとき、ほかのアプリに切り替えたとき、コンテンツが処理しなかった Escape キーを押したときは、ユーザーが閉じたときと同じように閉じます（`Open` が false になる、`OnClose` が呼ばれる、または `OnCloseRequest` に問い合わせる）。
-- フライアウトの上に出すダイアログ：コンテンツ内で宣言した `Modal` の `ui.Window` は、フライアウトの手前に、その中央に揃えて表示されます。ダイアログが閉じるまでフライアウトは開いたままで、閉じるとキーボード入力はフライアウトに戻ります。フライアウトの上に `Alert` を出したときも、フライアウトは開いたままです。
-- `FitContent` を指定するとコンテンツに合わせたサイズになり（後述）、コンテンツが大きくなったり小さくなったりするたびに、アンカーに対して配置し直されます。
+- 枠もタスクバーボタンもありません。Mac では `background` を指定しなければ、コンテンツの背後にメニューの素材が表示され、角が丸く影が付きます。そのため、そこではコンテンツに背景を付けないでください。Windows 11 では角が丸くなり、ウィンドウの色の上に影が付きます。Linux ではどちらも描きません。
+- `placement` は、アンカーのどちら側に出すか、アンカーとどう揃えるかを決めます（`.bottom`：下、中央揃え）。ディスプレイのその側に収まらないときは、まず反対側に移り（Mac のメニューバーのアイコンなら下、画面下部のタスクバーのアイコンなら上）、次にディスプレイ内に収まるようずれ、それでも足りなければ縮みます。`gap` はアンカーとのあいだを空けます。
+- `anchor` はバインディングです。`tray.anchor(id)` はその id で表示されているトレイアイコン、`Anchor(x:, y:, width:, height:)` はフライアウトを宣言したウィンドウ内の矩形で、コンテンツの左上からのポイントで表します（ビューのフレームなど）。この場合、フライアウトはそのウィンドウの子になり、一緒に動きます。アンカーが変わると配置し直されます。
+- 表示されるとキーボードを受け取りますが、アプリを前面には出しません。ユーザーがほかの場所をクリックしたとき、ほかのアプリに移ったとき、コンテンツが処理しない Escape を押したときに、ユーザーが閉じたのと同じように閉じます（`open` が false になり、`close` が発生するか、先に `closeRequest` に確認します）。
+- その上のダイアログ：コンテンツの中で宣言した `modal` の `Window` は、フライアウトの上に、その中央に表示され、閉じるまでフライアウトを開いたままにします。閉じるとキーボードはフライアウトに戻ります。上にアラートを出しているあいだも開いたままです。
+- `fitContent` はサイズをコンテンツに合わせ（後述）、大きさが変わるたびにアンカーに合わせて配置し直します。
 
 | | トレイのフライアウト | 配置の基準 |
 |---|---|---|
-| macOS | メニューと同じレベルに置かれる、枠なしでアクティブにならない `NSPanel`。背景はメニューのマテリアル | ユーザーがクリックしたステータス項目のコピー（ディスプレイごとのメニューバーにそれぞれある） |
-| Windows | Windows 11 の角丸を持つ、枠なしで最前面のツールウィンドウ | アイコンの矩形（`Shell_NotifyIconGetRect`）。タスクバーがどの辺にあるかも考慮する |
-| Linux | 装飾がなく、タスクバーに出ないウィンドウ | X11 では、アイコンがクリックされたとパネルが報告した位置。Wayland ではアプリがウィンドウを配置できないため、デスクトップが置いた位置 |
-| Web | ページ内のパネル。トレイをアンカーにした場合はページの右上 | ページ内の、そのウィンドウの矩形 |
+| macOS | 枠のない、アプリをアクティブにしない `NSPanel`。メニューのレベルにあり、背後はメニューの素材 | ユーザーがクリックしたステータス項目のコピー（ディスプレイごとのメニューバーに一つずつある） |
+| Windows | 枠のない最前面のツールウィンドウ。Windows 11 の丸い角 | アイコンの矩形（`Shell_NotifyIconGetRect`）。タスクバーがどの辺にあるかも考慮 |
+| Linux | 装飾のない、タスクバーに出ないウィンドウ | X11 ではパネルが伝えるアイコンのクリック位置。Wayland ではアプリがウィンドウを配置できないため、デスクトップが決める位置 |
+| Web | ページ内のパネル。トレイがアンカーならページの右上 | ページ内の、そのウィンドウの矩形 |
 
-`examples/tray` のアイコンは、タイマーの入ったフライアウトを開き、その上にダイアログも出します。
+`examples/tray` のアイコンは、タイマーの入ったフライアウトと、その上のダイアログを開きます。
 
 ## コンテンツに合わせたウィンドウサイズ
 
-`FitContent`（`WindowProps` と `WindowOptions` のフィールド）は、ウィンドウを表示内容に合わせたサイズにし、内容が変わればそれに追従させます。たとえば、ノードの一覧が増えていくフライアウトや、検索結果が出たり消えたりするランチャーに使います。幅はコンテンツのいちばん長い行の幅（max-content）で、`MinWidth` から `MaxWidth` の範囲に収まります。`MaxWidth` に達すると、テキストはその幅で折り返されます。高さはその幅でのコンテンツの高さで、`MinHeight` から `MaxHeight` の範囲に収まります。`MaxHeight` を超えた分は、中にある `Scroll` がスクロールさせます。コアは各フレームのレイアウトでコンテンツをそのサイズで配置し、ウィンドウも同じパスでそのサイズになります。そのため、ウィンドウは最初から正しいサイズで表示され、いったん別のサイズで表示されることはありません。フライアウトはアンカーに対して配置し直され、通常のウィンドウやパネルは上端を保ったまま下へ伸びます。ユーザーはサイズを変更できません。Web では、メインウィンドウはタブそのもので、ページ全体を占めます。
+`fitContent: true`（`Window` のもので、メインウィンドウにもあります）は、ウィンドウを表示内容に合わせたサイズにし、内容が変わればそれに追従させます。たとえば、ノードの一覧が増えていくフライアウトや、検索結果が出たり消えたりするランチャーに使います。幅はコンテンツのいちばん長い行の幅（max-content）で、`minWidth` から `maxWidth` の範囲に収まります。`maxWidth` に達すると、テキストはその幅で折り返されます。高さはその幅でのコンテンツの高さで、`minHeight` から `maxHeight` の範囲に収まります。`maxHeight` を超えた分は、中にある `Scroll` がスクロールさせます。Asuka は各フレームのレイアウトでコンテンツをそのサイズで配置し、ウィンドウも同じパスでそのサイズになります。そのため、ウィンドウは最初から正しいサイズで表示され、いったん別のサイズで表示されることはありません。フライアウトはアンカーに対して配置し直され、通常のウィンドウやパネルは上端を保ったまま下へ伸びます。ユーザーはサイズを変更できません。Web では、メインウィンドウはタブそのもので、ページ全体を占めます。
 
 ## バックグラウンドで動くアプリ
 
-`app.KeepRunning()` を呼ぶと、最後のウィンドウを閉じてもアプリは動き続けます。ウィンドウは隠れるだけで、`ui.MainWindow().Show()` で再び表示できます（Mac では Dock アイコンのクリックでも表示されます）。`app.RunInBackground()`、または `asuka.json` の `"background": true` は、これに加えて、ウィンドウなしで（Mac では Dock アイコンもなしで）アプリを起動します。メニューバーやトレイに常駐するアプリ向けです。どちらも `app.Run` より前に呼んでください。
+`asuka.toml` で `keepRunning = true` にすると、最後のウィンドウを閉じてもアプリは動き続けます。メインウィンドウは隠れるだけで（バインドした `open` は false になります）、もう一度表示すれば戻ります（Mac では Dock アイコンのクリック、Linux ではアプリの再起動でも戻ります）。`background = true` にすると、さらに起動時にウィンドウを出さず、Mac では Dock アイコンも出しません。メニューバーやトレイに住み、`Tray` を入口にするアプリ向けです。このアプリが開く `Window` は通常どおり表示されます。終了はメニューから行います。トレイアイコンのメニューの `quit()` や、Dock の「終了」です。
 
 ## グローバルショートカット
 
-`hotkey.Register` は、ほかのアプリが前面にあってもアプリに届くキーを登録します。登録は、それを登録したコンポーネントが存在するあいだ有効です。
+`hotkey.Hotkey` は、ほかのアプリが前面にあるときでもアプリに届くキーを登録します。登録が有効なのは、それが表示されている間です（それ自体は何も表示しません）。
 
-```go
-k := hotkey.Register(hotkey.Props{
-	Shortcut:    ui.Val(ui.Cmd("space").With(ui.Alt)),
-	Description: ui.Val("Show the launcher"),
-	OnPress:     func() { ui.MainWindow().Focus() },
-})
+```asuka
+import platform/hotkey
+
+component Launcher {
+  state problem = ""
+
+  Column {
+    hotkey.Hotkey(Shortcut(key: "space", alt: true)) {
+      description: "Show the launcher"
+      on press { mainWindow().focus() }
+      on error(e) { problem = e.message }
+    }
+    if !problem.isEmpty() { Text(problem) }
+  }
+}
 ```
 
-`OnPress` は、キーが押されるたびにメインスレッドで実行されます。ショートカットはアクセサに追従するので、ユーザーが設定で選んだキーにも対応できます。`k.Status()` と `k.Err()` を見れば、有効になっているか、保留中か、失敗したならその理由がわかります。理由は `ErrTaken`（ほかのアプリがそのキーを使っている）、`ErrNotAllowed`（ユーザーが拒否した、またはデスクトップがアプリを認識していない）、`ErrNotAvailable`、`ErrKey` のいずれかです。
+`on press` は押されるたびにメインスレッドで実行されます。ショートカットはバインディング（ユーザーが設定で選んだキーなど）に追従し、変わると登録し直されます。`on error(e)` は失敗した理由を伝えます。`.taken`（ほかのアプリがそのキーを使っている）、`.notAllowed`（ユーザーが拒否した、またはデスクトップがアプリを認識していない）、`.notAvailable`、`.noKey` のいずれかです。`mainWindow()` はメインウィンドウのハンドルで、どこから呼んでも同じです。`focus()` で前面に出し、`show()`、`hide()` などもこれに対して働きます。
 
-- **macOS**：Carbon のホットキーを使うので、アクセシビリティの許可は要りません。システム自身のショートカットは、使用中のキーとして扱われます。キーを押してもアプリは前面に出ません。前面に出すには、ウィンドウを `Focus` してください。
-- **Windows**：`RegisterHotKey` を使います。キーが押されると、アプリはフォアグラウンドになることを許可されます。
-- **Linux**：X11 では、アプリ自身がキーをグラブします。Wayland では、デスクトップが GlobalShortcuts ポータル（GNOME 48、KDE Plasma 6）を通じてキーを割り当てます。その際、ユーザーに確認を求めたり、別のキーを選ばせたりすることがあります。また、アプリがデスクトップエントリーとともにインストールされている必要があります。`OnPress` で表示したウィンドウは、そのキー入力のアクティベーショントークンを使ってフォーカスを得ます。
-- スマートフォンと Web にはありません（`ErrNotAvailable`）。
+- **macOS**：Carbon のホットキーを使います。アクセシビリティの許可は不要です。システム自体のショートカットは使用中として扱われます。キーを押してもアプリは前面に来ないので、必要ならウィンドウに `focus()` してください。
+- **Windows**：`RegisterHotKey` を使います。キーが押されると、アプリはフォアグラウンドを取れます。
+- **Linux**：X11 ではアプリ自身がキーをつかみます。Wayland ではデスクトップが GlobalShortcuts ポータル（GNOME 48、KDE Plasma 6）を通じてキーを割り当てます。ユーザーに確認を求めたり、別のキーを選ばせたりすることがあり、アプリがデスクトップエントリーとともにインストールされている必要があります。`on press` の中で表示したウィンドウは、そのキー操作のアクティベーショントークンでフォーカスを得ます。
+- スマートフォンと Web にはありません（`.notAvailable`）。
 
 ## パネルとランチャー
 
-パネルは、Spotlight や Raycast のような、ランチャー、コマンドパレット、クイック入力のためのウィンドウです。グローバルショートカットでどこからでも呼び出せ、すべてのアプリのウィンドウより手前に浮かびます。ユーザーがいる操作スペース（Space）や仮想デスクトップに表示され、フルスクリーンのアプリの上にも重なります。タスクバー、Dock のウィンドウ一覧、アプリスイッチャーには現れません。Mac では、アプリを前面に出さずにキーボード入力を受け取ります。そのため、ユーザーが使っていたアプリのメニューバーはそのまま残り、パネルが消えるとキーボード入力もそのアプリに戻ります。パネルは `Panel` を指定したウィンドウです。次の例では、バックグラウンドで動くアプリのメインウィンドウとしてランチャーを作っています。
+パネルは、Spotlight や Raycast のような、ランチャー、コマンドパレット、クイック入力のためのウィンドウです。グローバルショートカットでどこからでも呼び出せ、すべてのアプリのウィンドウより手前に浮かびます。ユーザーがいる操作スペース（Space）や仮想デスクトップに表示され、フルスクリーンのアプリの上にも重なります。タスクバー、Dock のウィンドウ一覧、アプリスイッチャーには現れません。Mac では、アプリを前面に出さずにキーボード入力を受け取ります。そのため、ユーザーが使っていたアプリのメニューバーはそのまま残り、パネルが消えるとキーボード入力もそのアプリに戻ります。パネルは `panel: true` を指定したウィンドウです。次の例では、バックグラウンドで動くアプリ（`background = true`）のメインウィンドウとしてランチャーを作っています。
 
-```go
-func main() {
-	app.RunInBackground()
-	app.RunWindow(ui.WindowOptions{Panel: true, Hidden: true, FitContent: true,
-		MinWidth: 640, MaxWidth: 640, MaxHeight: 440}, Launcher)
+```asuka
+import platform/hotkey
+
+state shown = false
+
+app {
+  Window {
+    bind open: shown // ショートカットで表示するまで隠しておく
+    panel: true
+    fitContent: true
+    minWidth: 640
+    maxWidth: 640
+    maxHeight: 440
+    on closeRequest { shown = false } // Escape やほかの場所のクリック：隠す
+    Launcher()
+  }
 }
 
-func Launcher() ui.Node {
-	w := ui.UseWindow()
-	w.OnCloseRequest(func() bool { w.Hide(); return false }) // Escape キー、ほかの場所のクリック
-	hotkey.Register(hotkey.Props{
-		Shortcut: ui.Val(ui.Shortcut{Key: "space", Mods: ui.Alt}),
-		OnPress:  func() { w.Show() },
-	})
-	// ...
+component Launcher {
+  hotkey.Hotkey(Shortcut(key: "space", alt: true)) {
+    description: "Show the launcher"
+    on press { shown = !shown }
+  }
+  Search()
+}
+
+component Search {
+  TextField { placeholder: "Search" }
 }
 ```
 
-- 枠はありません。Mac では、`Background` を指定しないとコンテンツの背後にポップオーバーのマテリアルが表示され、角が丸くなって影が付きます。Windows 11 では角が丸くなります。Linux では、通常のウィンドウのコンテンツと同じように描かれます。
-- `X` と `Y`（または `StateKey`）を指定しないと、表示するたびに、ポインターのあるディスプレイの左右中央、上から 3 分の 1 の位置に表示されます。`SetPosition` や `Center` を使うと、位置を固定できます。`FitContent` を指定すると、結果が増えるにつれて上端から下へ伸びます。
-- コンテンツが処理しなかった Escape キー（テキストフィールドでの Escape も含む）を押したときや、キーボードフォーカスを失ったとき（ほかの場所のクリック、ほかのアプリへの切り替え）は、ユーザーが閉じたときと同じように閉じます。閉じる代わりに隠すようにすれば（上の例の `OnCloseRequest`）、次はすぐに元の状態のまま表示できます。なお、動き続けるアプリのメインウィンドウは、どのみち閉じると隠れるだけです。
-- `Show` は、パネルをキーボード入力を受け取る状態で表示します。`Focus` も同じ動作で、アプリを前面に出すことはありません。
+- 枠はありません。Mac では、`background` を指定しないとコンテンツの背後にポップオーバーのマテリアルが表示され、角が丸くなって影が付きます。Windows 11 では角が丸くなります。Linux では、通常のウィンドウのコンテンツと同じように描かれます。
+- `x` と `y`（または `stateKey`）を指定しないと、表示するたびに、ポインターのあるディスプレイの左右中央、上から 3 分の 1 の位置に表示されます。`w.setPosition` や `w.center()` を使うと、位置を固定できます。`fitContent` を指定すると、結果が増えるにつれて上端から下へ伸びます。
+- コンテンツが処理しなかった Escape キー（テキストフィールドでの Escape も含む）を押したときや、キーボードフォーカスを失ったとき（ほかの場所のクリック、ほかのアプリへの切り替え）は、ユーザーが閉じたときと同じように閉じます。閉じる代わりに隠すようにすれば（上の例の `on closeRequest`）、次はすぐに元の状態のまま表示できます。なお、動き続けるアプリのメインウィンドウは、どのみち閉じると隠れるだけです。
+- 表示すると（`open` を true にする、`w.show()`）、パネルはキーボード入力を受け取ります。`w.focus()` も同じ動作で、アプリを前面に出すことはありません。
 
 | | パネル |
 |---|---|
@@ -131,19 +186,38 @@ func Launcher() ui.Node {
 
 ## アプリの検索
 
-`asuka/sdk/apps` は、ランチャーが検索するのと同じように、インストール済みのアプリを一覧にします。
+`platform/apps` は、ランチャーのようにインストール済みのアプリを一覧し、検索します。
 
-```go
-apps.List(func(list []apps.App, err error) { installed.Set(list) })
-results := apps.Search(installed.Get(), query.Get())
-apps.Icon(results[0], 32, func(path string, err error) { icon.Set(path) }) // ui.Image で使える PNG
-apps.Open(results[0], nil)
+```asuka
+import platform/apps
+
+component Apps {
+  state installed: [apps.App] = []
+  state query = ""
+  state found: [apps.App] = []
+  state icon = ""
+
+  task { installed = (try? await apps.list()) ?? [] }
+  task(installed, query) {
+    found = (try? await apps.search(installed, query)) ?? []
+    // Image に渡せる PNG。
+    if let first = found.first() { icon = (try? await apps.icon(first, 32)) ?? "" }
+  }
+
+  Column {
+    TextField { bind text: query }
+    for a in found key a.id {
+      Button(a.name) { on press { try? await apps.open(a) } }
+    }
+    if !icon.isEmpty() { Image(icon) }
+  }
+}
 ```
 
-- `List` は、各アプリの `Name`（システムが表示するとおりの、ユーザーの言語での名前）、`ID`、`Path` を名前順に返します。ディスクの読み込みはメインスレッドの外で行い、結果はメインスレッドで返します。アプリが追加されたり削除されたりしているかもしれないので、パネルを表示するたびに取得し直してください。
-- `Search` は、ユーザーの入力に対してアプリを順位付けします。大文字と小文字、アクセント記号の違いは無視します。順位は、名前と完全に一致するもの、名前の先頭に一致するもの、単語の先頭か頭文字に一致するもの（Visual Studio Code に対する「vsc」）、どこかに含まれるもの、文字が順番どおりに含まれるもの、の順です。
-- `Icon` は、アプリのアイコンを指定したサイズ（ポイント単位）の PNG ファイルとしてアプリのキャッシュに描き出し、そのパスを返します。ファイルは次回のために残されます。
-- `Open` は、アプリを起動するか、前面に出します。先にパネルを隠してください。そうすれば、開いたアプリがキーボード入力を受け取るまで、ユーザーが使っていたアプリが受け取り続けます。
+- `list()` は各アプリの `name`（システムが表示する名前、ユーザーの言語で）、`id`、`path` を名前順で返します。ディスクの読み込みはメインスレッドの外で行います。アプリは追加も削除もされうるので、パネルを表示するたびに一覧し直してください。
+- `search` は、ユーザーが入力した文字列でアプリを順位付けします。大文字と小文字、アクセントの違いは無視し、名前そのもの、名前の先頭、単語の先頭または頭文字（"vsc" で Visual Studio Code）、名前のどこか、名前の中に順に現れる文字、の順に並べます。
+- `icon` は、アプリのアイコンをポイント単位のサイズで PNG ファイルとして描き、アプリのキャッシュに保存して（次回にも使います）、そのパスを返します。
+- `open` はアプリを起動するか、前面に出します。先にパネルを隠してください。そうすれば、開いたアプリがキーボードを受け取るまで、ユーザーが使っていたアプリがキーボードを持ち続けます。
 
 | | 場所 | ID | アイコン | 起動 |
 |---|---|---|---|---|
@@ -151,150 +225,239 @@ apps.Open(results[0], nil)
 | Windows | スタートメニューのアプリ（シェルの Applications フォルダー）。パッケージアプリも含む | AppUserModelID | シェルが返すそのアプリの画像 | シェル |
 | Linux | メニューに表示されるデスクトップエントリー（XDG のほか、Flatpak と Snap のものも含む）。`OnlyShowIn`、`NoDisplay`、`TryExec` で判定する | デスクトップファイル ID | テーマから取得したエントリーのアイコン | GIO（ディスプレイの起動コンテキスト付き） |
 
-スマートフォンと Web では `apps.ErrUnsupported` が返ります。
+スマートフォンと Web では `apps.AppsError.unsupported` を投げます。
 
 ## クリックスルーウィンドウ
 
-`ClickThrough`（または `ui.UseWindow().SetClickThrough(true)`）を指定すると、マウス操作がウィンドウを素通りして、その背後にあるもの（ほかのアプリのウィンドウやデスクトップ）に届きます。`Transparent` と `AlwaysOnTop` を組み合わせれば、オーバーレイ、HUD、デスクトップマスコットなどを作れます。`ClickThrough()` は、この状態をシグナルとして返します。有効なあいだ、ウィンドウはクリックもホバーもホイールも一切受け取りません。ユーザーに操作させたいときは無効にしてください。
+`clickThrough: true`（または `w.setClickThrough(true)`）を指定すると、マウス操作がウィンドウを素通りして、その背後にあるもの（ほかのアプリのウィンドウやデスクトップ）に届きます。`transparent` と `alwaysOnTop` を組み合わせれば、オーバーレイ、HUD、デスクトップマスコットなどを作れます。`w.clickThrough` でこの状態を読め、読んだバインディングは追従します。有効なあいだ、ウィンドウはクリックもホバーもホイールも一切受け取りません。ユーザーに操作させたいときは無効にしてください。
 
-```go
-ui.Window(ui.WindowProps{Open: hud, Transparent: true, AlwaysOnTop: true, ClickThrough: true,
-	Width: 240, Height: 80, Content: meters})
+```asuka
+state hud = true
+
+app {
+  Window {
+    bind open: hud
+    transparent: true
+    alwaysOnTop: true
+    clickThrough: true
+    width: 240
+    height: 80
+    Meters()
+  }
+}
+
+component Meters {
+  Text("CPU 12%")
+}
 ```
 
 実装は、Mac では `ignoresMouseEvents`、Windows では `WS_EX_TRANSPARENT` を付けたレイヤードウィンドウ、Linux では空の入力領域（`gdk_surface_set_input_region`）です。Web では、ページ内のウィンドウがクリックをページに通します。ブラウザーの外までクリックを通す方法はありません。
 
 ## ファイルダイアログ
 
-`asuka/sdk/dialog` はシステムのファイルダイアログを表示し、コピーではなく、ユーザーのファイルそのもののパスを返します。
+`platform/dialog` はシステムのファイルダイアログを表示し、コピーではなくユーザーのファイルそのもののパスを返します。
 
-```go
-dialog.Save(dialog.SaveOptions{
-	Name:    "Notes.md",
-	Filters: []dialog.Filter{{Name: "Markdown", Extensions: []string{"md"}}},
-	From:    view, // ダイアログが属するウィンドウ
-}, func(path string, err error) {
-	if path != "" {
-		os.WriteFile(path, export(), 0o644)
-	}
-})
-```
+```asuka
+import platform/dialog
+import std/fs
+import platform/shell
 
-用意されているのは `dialog.Open`（`Multiple` で複数ファイルを選択。`Filters` で `image/*` のような MIME タイプや拡張子による絞り込み）、`dialog.Save`（`Name` で名前を提案。既存のファイルを置き換える前にはダイアログが確認します）、`dialog.Folder` です。`Title`、`Button`、`Start`（フォルダー、またはその中のファイル）、`From` で設定します。キャンセルされた場合は、パスが空で、エラーもありません。
-
-Mac ではウィンドウのシートとして、Windows ではウィンドウに対してモーダルなコモンアイテムダイアログとして、Linux では GTK のファイルダイアログとして表示されます（Flatpak の中では、デスクトップのポータルになります）。ブラウザーでは、Open と Folder は選ばれたものをアプリのファイルにコピーします。Save で得たファイルに書いた内容は、ユーザーが選んだファイルに書き込まれるか（Chrome、Edge）、ダウンロードされます。iOS と Android では、Open はドキュメントピッカーになり（`device.PickFiles` と同じくコピーを返します）、Save と Folder は `dialog.ErrUnsupported` を返します。
-
-## ファイルマネージャー
-
-`asuka/sdk/shell` は、ファイルマネージャーがファイルに対して行う操作を提供します。`shell.Reveal` は、ファイルを含むフォルダーを開き、そのファイルを選択した状態で表示します（Finder、エクスプローラー、またはデスクトップのファイルマネージャー）。`shell.Open` は、ファイルをその種類に対応するユーザーのアプリで開き（該当するアプリがなければ `shell.ErrNoApp`）、フォルダーならファイルマネージャーで開きます。`shell.Trash` は、ファイルをゴミ箱（Windows ではごみ箱）に移します。完全に削除することはなく、移せないときは失敗します。`shell.Beep` は警告音を鳴らします。スマートフォンと Web にはファイルマネージャーがないため、Reveal と Trash は `shell.ErrUnsupported` を返します。Web の Open は、新しいタブでファイルを表示します。ファイルの内容をアプリの中で表示するには、`asuka/sdk/preview` を使ってください。
-
-## ファイルを開く
-
-アプリが開くファイルの種類を `asuka.json` の `fileTypes` で宣言し（[配布](shipping.md)）、`ui.OnOpenFiles` で処理します。
-
-```go
-ui.OnOpenFiles(func(paths []string) {
-	for _, p := range paths {
-		open(p)
-	}
-})
-```
-
-一緒に開かれたファイルは、絶対パスとして 1 回の呼び出しにまとめて届きます。Finder、エクスプローラー、ファイル（Files）でのダブルクリック、「このアプリケーションで開く」（Open With）、Dock アイコンへのドロップ、最近使ったドキュメントの選択、そして Windows と Linux ではコマンドラインに指定したファイルが対象です。アプリの起動時に渡されたファイルは、最初のハンドラーが登録されるまで待たされます。iOS では、パスは元の場所にあるドキュメントそのもので、アプリが終了するまで読み取れます。Android と Web では、アプリのキャッシュにあるアプリ専用のコピーです。
-
-## 単一インスタンス
-
-Windows と Linux では、`id` を持つアプリは一つしか起動しません。もう一度起動すると、実行中のアプリが前面に出ます。`app.OnSecondInstance(func(args []string, dir string))` で、新たな起動の引数と作業ディレクトリを受け取れます。引数に含まれるファイルとリンクは、`ui.OnOpenFiles` と `ui.OnOpenURL` に渡されます。毎回新しいインスタンスを起動したい場合は、`asuka.json` で `"singleInstance": false` を設定します。Mac では、アプリは常に一つしか起動せず、渡されるのは引数ではなくファイルです。
-
-## 終了
-
-`app.Quit()` は、ユーザーが「終了」を選んだときと同じようにアプリを終了します。終了のきっかけ（⌘Q、Dock、最後のウィンドウを閉じる、Ctrl+C や SIGTERM、ログアウト）にかかわらず、まず `app.OnQuit(func(e *app.QuitEvent))` が呼ばれます。`e.Cancel()` を呼べばアプリは終了しないので、未保存の変更について確認できます。`e.SessionEnding` が設定されているときは終了を取り消せないため、ダイアログを出さずにすぐ保存してください。ウィンドウ自体を閉じるかどうかは、それより先に、そのウィンドウの `OnCloseRequest` で問い合わせられます（[ナビゲーション](navigation.md#ウィンドウ)）。
-
-`app.DataDir`、`ConfigDir`、`CacheDir`、`LogDir` はアプリ専用のフォルダーで、要求されたときに作られます。
-
-`app.Relaunch()` は同じ手順で終了し（ハンドラーで取り消すこともできます）、終了したあとでアプリを再び起動します。アップデートのあとや、起動時に反映される設定を変えたときに使います。
-
-## アップデート
-
-アプリのルートに `update.Window(update.Options{})` を置くと、Sparkle 方式のアップデーターになります。起動直後と 1 日 1 回、新しいバージョンを確認し、リリースノートを「アップデートをインストール」「このバージョンをスキップ」「後で通知」のボタンとともに表示します。ダウンロードは進捗バー付きで行い（実行中のバージョンからの差分があれば、変更部分だけをダウンロードします）、アプリの鍵で署名されていることを確かめてからインストールし、「今すぐ再起動」を提示します。`update.AppMenu()` は、Mac では「…について」の次に「アップデートを確認…」を追加します（ほかのプラットフォームでは「ヘルプ」メニューに追加します）。独自の UI を作るには、`update.Check`、`Release.Install`、`update.Relaunch` を使います。
-
-鍵ペアは `asuka update keygen` で作ります。リリースの公開先（GitHub のリリース、S3 バケットや任意の HTTPS ディレクトリ、または自前のサーバー）は `asuka.json` の `updates` で指定し、`asuka publish --platform mac`（`windows`、`linux`）でビルド、署名、アップロードを行います（[配布](shipping.md#自動アップデート)）。Mac アプリの新しいバンドルは、アプリが終了するのを待ってから置き換わります。Windows と Linux では、実行中にアプリのファイルを置き換えます。システムのパッケージ、Flatpak、Snap、アプリストアからインストールされたアプリは、それらによって更新されます。そのことは `update.Supported()` でわかり、スマートフォンでは `ErrUnsupported` が返ります。Web では、サイトより古いページがリロードを促します。
-
-## 最近使ったドキュメント
-
-ユーザーがドキュメントを開いたり保存したりするたびに、`recent.Add(path, nil)` を呼んでください。Mac では「ファイル」メニューの「最近使った項目を開く」と Dock メニューに、Windows ではジャンプリストに、Linux ではユーザーの最近使ったファイルに表示されます。そこから選ぶと、`ui.OnOpenFiles` を通じて開かれます。`recent.List` は新しい順に返し、なくなったファイルは飛ばします。`recent.Clear` は、そのアプリが追加したものを消去します。
-
-## ドキュメント
-
-`asuka/sdk/document` を使うと、テキストエディターやドローアプリのように、ウィンドウごとに一つのファイルを表示するアプリを作れます。Mac アプリが NSDocument から得られるものを、すべてのプラットフォームで提供します。ドキュメントの種類を記述して、実行するだけです。
-
-```go
-func main() {
-	document.New(document.Options[string]{
-		Types: []document.Type{{Name: "Plain Text", Extensions: []string{"txt"}}},
-		Read: func(r io.Reader) (string, error) {
-			b, err := io.ReadAll(r)
-			return string(b), err
-		},
-		Write: func(w io.Writer, text string) error {
-			_, err := io.WriteString(w, text)
-			return err
-		},
-		Equal: func(a, b string) bool { return a == b },
-		View: func(doc *document.Document[string]) ui.Node {
-			return ui.TextField(ui.TextFieldProps{Value: doc.Content(), Multiline: true, Plain: true})
-		},
-	}).Run()
+async fn export(notes: string) throws {
+  let md = [dialog.Filter(name: "Markdown", types: ["text/markdown"], extensions: ["md"])]
+  if let path = try await dialog.save(name: "Notes.md", button: "Export", filters: md) {
+    try fs.writeText(path, notes)
+    try? await shell.reveal(path)
+  }
 }
 ```
 
-システムがこれらのファイルを開くアプリとしてこのアプリを提示できるよう、`asuka.json` の `fileTypes` にも同じ種類を列挙してください。`examples/textedit` は、このエディターに、ステータス行と、ほかのアプリがファイルを変更したときに出るバーを加えたものです。
+`dialog.open`（`multiple` で複数のファイル、`filters` で `image/*` のような MIME タイプや拡張子による絞り込み）、`dialog.save`（候補の `name` を指定でき、既存のファイルを置き換える前にはダイアログが確認します）、`dialog.chooseFolder`、`dialog.chooseFolders` があります。`title`、`button`、`start`（フォルダー、またはその中のファイル）で設定します。キャンセルされると、パスは返らず（`none` または空のリスト）、エラーにもなりません。
 
-ドキュメントの `Content()` はシグナルです。ビューはこれにバインドし、値を変えるとドキュメントは編集済みになります。ただし、`Equal` がファイルの内容と等しいと判断した場合（取り消して元に戻した、1 文字入力して消した、など）は編集済みになりません。ファイルを読み込み直したときにも、このシグナルに値が設定されます。アプリがその場で書き換えるコンテンツ（モデルへのポインターなど）は、変更したことを `doc.Changed()` で知らせ、書き込む前にコピーを取る `Snapshot` を用意します。`doc.State()` は、ドキュメントの名前とファイル、そして編集済み、読み取り専用、競合中、削除済みのどれにあたるかを表すシグナルです。
+Mac ではウィンドウに付くシートとして、Windows ではウィンドウに対してモーダルなコモンアイテムダイアログとして、Linux では GTK のファイルダイアログ（Flatpak の中ではデスクトップのポータル）として表示されます。ブラウザーでは、open と chooseFolder は選ばれたものをアプリのファイルにコピーし、save が返すファイルは、ユーザーが選んだファイルに書き込まれるか（Chrome、Edge）、ダウンロードされます。iOS と Android では、open はドキュメントピッカー（`device.pickFiles` と同じくコピー）で、save と chooseFolder は `unsupported` のエラーを投げます。
 
-デスクトップでは、ユーザーは次のような動作を得られます。
+テストでは、ダイアログにテスト自身が答えます。`dialog.fake()` は `FakeDialogs` を入れます。その `opens`、`saveTo`、`folder` がユーザーの選ぶもの（none や `[]` はキャンセル）で、`shown` は表示を求められたダイアログの一覧です（`"save Untitled.txt"`）。
 
-- **ドキュメントごとのウィンドウ**：ウィンドウの名前はファイル名になり（ファイルがまだないうちは「名称未設定」「名称未設定 2」）、そのファイルのウィンドウをユーザーが最後に置いた位置に開きます。Mac では、未保存の変更があるあいだクローズボタンに点が表示され、タイトルバーにファイルのアイコンが表示されます。Windows と Linux では、タイトルの前に `*` が付き、タイトルの末尾はアプリ名になります。GNOME では、タイトルの下にファイルのフォルダーも表示されます。
-- **「ファイル」メニュー**：「新規」「開く…」「最近使った項目を開く」「閉じる」「保存」「別名で保存…」と、Mac では「複製」「名称変更…」「移動…」「保存された状態に戻す」（ほかのプラットフォームでは「元に戻す」）が、それぞれのショートカット付きで並び、使用中のウィンドウに対して動作します。`Options.Menus` を使うと、その隣にアプリ独自のメニューを追加できます。タイトルが File のメニューを渡すと、その項目は「ファイル」メニューに追加されます。Windows と Linux では、メニューはドキュメントごとのウィンドウに表示されます。
-- **自動保存**：ファイルのあるドキュメントは、Mac アプリと同じように、ユーザーが入力を止めて少したったとき、ウィンドウがフォーカスを失ったとき、ウィンドウを閉じるときに保存されます。確認は一切しません。`AutosaveOff` を指定すると、従来の Windows アプリのように、ユーザーが指示したときに保存し、ウィンドウを閉じるときに確認します。
-- **確認するのは自動で保存できないときだけ**：名称未設定のドキュメント（「新規書類“名称未設定”を残しますか?」）、ファイルが読み取り専用のドキュメントや、ほかのアプリにファイルを変更されたドキュメント（「このまま保存」「元に戻す」）、`AutosaveOff` のときの編集済みのドキュメントを閉じる場合です。
-- **復元用のコピー**：未保存の変更は、ユーザーが入力を止めて 1 秒後にアプリのデータ領域へコピーされます。クラッシュしても、強制終了しても、普通に終了しても、何も失われません。次回の起動時に、それらのドキュメントが編集済みの状態で再び開かれます。終了するときは、VS Code と同じように、ドキュメントをその状態のまま残します。`AskOnQuit` を指定すると、代わりに確認します（Mac では「未保存の変更がある書類が 3 個あります。終了する前に変更内容を確認しますか?」、Windows と Linux では、該当するドキュメントを列挙した一つの確認）。セッションが終了するときは確認する時間がないため、すべてをただちに保存するか、そのまま残します。
-- **外部から開いたファイル**：Finder、エクスプローラー、Dock、コマンドライン、「最近使った項目を開く」、「開く…」から開いたファイルは、そのドキュメントのウィンドウがすでに開いていれば、そのウィンドウに切り替わります。
-- **ほかのアプリによるファイルの変更**：編集していないドキュメントはファイルを読み込み直し、編集済みのドキュメントは次に保存するときに確認します。ファイルの名前が変わっても追従し（Mac では、同じディスク上ならユーザーがどこへ移動しても追従します）、削除されたファイルは次の保存で書き直されます。
+## ファイルマネージャー
 
-Mac のドキュメントアプリは、ウィンドウがなくなっても起動したままで、Dock アイコンをクリックすると新しいドキュメントを作ります。Windows と Linux では、最後のドキュメントのウィンドウを閉じるとアプリも終了します。`NoUntitled` を指定すると、起動時に名称未設定のドキュメントを開かず、何も開きません。
+`platform/shell` は、ファイルマネージャーがファイルに対して行う操作を提供します。`shell.reveal(path)` は、ファイルを含むフォルダーを開き、そのファイルを選択した状態で表示します（Finder、エクスプローラー、またはデスクトップのファイルマネージャー）。`shell.open(path)` は、ファイルをその種類に対応するユーザーのアプリで開き（該当するアプリがなければ `shell.ShellError.noApp` を投げます）、フォルダーならファイルマネージャーで開きます。`shell.trash(path)` は、ファイルをゴミ箱（Windows ではごみ箱）に移します。完全に削除することはなく、移せないときはエラーを投げます。`shell.beep()` は警告音を鳴らします。スマートフォンと Web にはファイルマネージャーがないため、reveal と trash は `unsupported` のエラーを投げます。Web の open は、新しいタブでファイルを表示します。ファイルの内容をアプリの中で表示するには、`platform/preview` を使ってください。
 
-スマートフォンとブラウザーでは、一度に扱うドキュメントは一つです。アプリはドキュメントの一覧（iOS では「ファイル」アプリ内のアプリのフォルダー）を「新規」「開く…」とともに表示して起動し、ドキュメントの画面はその上にプッシュされます。各ドキュメントは作成した時点からファイルを持ち、UIDocument を使うアプリと同じように、ユーザーが編集するたび、アプリがバックグラウンドに移ったとき、ユーザーが前の画面に戻ったときに保存されます。確認は一切ありません。ほかの場所にあるファイルは、まずアプリのドキュメントにコピーされます。
+## ファイルを開く
 
-確認ダイアログとメニューは、アプリの言語で表示されます（現在は英語、ドイツ語、フランス語、スペイン語、日本語、中国語）。ほかの言語を追加したり文言を変えたりするには、アプリのカタログに `document.<key>` というキーを書きます。
+アプリが開くファイルの種類を `asuka.toml` の `fileTypes` で宣言し（[配布](shipping.md)を参照）、`app` ブロックの `on files(paths)` で処理します（コンポーネントの本体で `onOpenFiles` を使えば、そのコンポーネントがある間だけ処理します）。
 
-Mac の NSDocument だけが備える機能のうち、バージョン（Revert To で過去のバージョンに戻す機能）、ロック、タイトルバーのポップオーバーでの名称変更、フォルダー形式のドキュメントは提供していません。
+```asuka
+state opened: [string] = []
+
+app {
+  on files(paths) {
+    for p in paths { opened.push(p) }
+  }
+  Column {
+    for p in opened key p { Text(p) }
+  }
+}
+```
+
+一緒に開かれたファイルは、絶対パスとして 1 回の呼び出しでまとめて届きます。Finder、エクスプローラー、「ファイル」でのダブルクリック、「このアプリケーションで開く」、Dock アイコンへのドロップ、最近使ったドキュメントの選択、Windows と Linux ではコマンドラインで渡されたファイルです。起動時に渡されたファイルは、最初のハンドラーが登録されるまで待ちます。iOS では、パスはドキュメントがある場所そのもので、アプリが終了するまで読めます。Android と Web では、アプリのキャッシュにあるアプリ自身のコピーです。
+
+## 単一インスタンス
+
+Windows と Linux では、`id` を持つアプリは一つしか起動しません。もう一度起動すると、実行中のアプリが前面に出ます。`app` ブロックの `on secondInstance(args, dir)` で、新たな起動の引数と作業ディレクトリを受け取れます。引数に含まれるファイルとリンクは、`on files(paths)` と `on openURL(url)` にも渡されます。
+
+```asuka
+state newWindow = false
+
+app {
+  on secondInstance(args, dir) {
+    if args.contains("--new-window") { newWindow = true }
+  }
+  Window { Main() }
+}
+component Main {
+  Text(if newWindow { "A new window" } else { "Main" })
+}
+```
+
+コンポーネントの本体に書く `onSecondInstance(fn([string], string))` も同じ働きで、そのコンポーネントがあるあいだ有効です。毎回新しいインスタンスを起動したい場合は、`asuka.toml` で `singleInstance = false` と設定します。Mac では、アプリは常に一つしか起動せず、渡されるのは引数ではなくファイルなので、これは呼ばれません。
+
+## 終了
+
+`quit()` は、ユーザーが「終了」を選んだときと同じようにアプリを終了します。終了のきっかけ（⌘Q、Dock、最後のウィンドウを閉じる、`quit()`、Ctrl+C や SIGTERM、ログアウト）にかかわらず、まず `app` ブロックの `on quit(e)` が呼ばれます。`e.cancel()` を呼べばアプリは終了しないので、未保存の変更について確認できます。`e.canceled()` で、ほかのハンドラーが取り消したかどうかがわかります。`e.sessionEnding` が true のときは終了を取り消せないため、ダイアログを出さずにすぐ保存してください。
+
+```asuka
+state unsaved = false
+state confirmQuit = false
+
+app {
+  on quit(e) {
+    if unsaved && !e.sessionEnding {
+      e.cancel()
+      confirmQuit = true // 確認し、保存できたらもう一度 quit() を呼ぶ
+    }
+  }
+  Window { Editor() }
+}
+component Editor {
+  Text("Editor")
+}
+```
+
+コンポーネントの本体に書く `onQuit(fn(QuitEvent))` も同じ働きで、そのコンポーネントがあるあいだ有効です。ウィンドウ自体を閉じるかどうかは、それより先に、そのウィンドウのガードで問い合わせられます（[ナビゲーション](navigation.md#ウィンドウを閉じる前の確認)）。
+
+`relaunch()` は同じ手順で終了し（ハンドラーで取り消すこともできます）、終了したあとで同じ引数でアプリを再び起動します。アップデートのあとや、起動時に反映される設定を変えたときに使います。アプリが自分で終了しない電話と Web では、どちらも無視されます。
+
+## アップデート
+
+`platform/update` の `update.UpdateWindow()` をアプリのメインウィンドウに一度置くと、Sparkle 方式のアップデーターになります。起動直後と 1 日 1 回、新しいバージョンを確認し、リリースノートを「アップデートをインストール」「このバージョンをスキップ」「後で通知」のボタンとともに表示します。ダウンロードは進捗バー付きで行い（実行中のバージョンからの差分があれば、変更部分だけをダウンロードします）、アプリの鍵で署名されていることを確かめてからインストールし、「今すぐ再起動」を提示します。`MenuBar` に `update.AppMenu()` を置くと、Mac では「…について」の次に「アップデートを確認…」が入ります（ほかのプラットフォームでは「ヘルプ」メニューに入ります）。`update.CheckForUpdates()` はその項目だけです。独自の UI を作るには、`update.check()`、`Release.install(progress:)`、`update.relaunch()` と、アップデーターの状態（`update.updater`）を使います。
+
+```asuka
+import platform/update
+
+app {
+  Window {
+    title: "Notes"
+    update.UpdateWindow()
+    MenuBar { update.AppMenu() }
+    Text("Notes")
+  }
+}
+```
+
+鍵ペアは `asuka update keygen` で作ります。リリースの公開先（GitHub のリリース、S3 バケットや任意の HTTPS ディレクトリ、または自前のサーバー）は `asuka.toml` の `updates` で指定し、`asuka publish --platform mac`（`windows`、`linux`）でビルド、署名、アップロードを行います（[配布](shipping.md#自動アップデート)）。ダウンロードとアップデートの配置はアプリ自身が行います。Mac アプリの新しいバンドルは、アプリが終了するのを待ってから置き換わります。Windows と Linux では、実行中にアプリのファイルを置き換えます。システムのパッケージ、Flatpak、Snap、アプリストアからインストールされたアプリは、それらによって更新されます。そのことは `await update.unsupported()` でわかり、スマートフォンでは `.notAvailable` が返ります。Web では、サイトより古いページがリロードを促します。
+
+## 最近使ったドキュメント
+
+ユーザーがドキュメントを開いたり保存したりするたびに、`recent.add(path)`（`platform/recent`）を呼びます。Mac では「ファイル」メニューの「最近使った項目を開く」と Dock メニューに、Windows ではジャンプリストに、Linux ではユーザーの最近使ったファイルに並びます。ユーザーがその一つを選ぶと、`on files(paths)` で開かれます。`await recent.list()` は、なくなったファイルを除いて新しい順に返し、`recent.clear()` はアプリ自身の項目を消します。
+
+## ドキュメント
+
+`platform/document` を使うと、テキストエディターのように、ウィンドウごとに一つのファイルを表示するアプリを作れます。ドキュメントのモデルと、その周りのウィンドウや画面を提供します。ドキュメントの種類とエディターを記述します。
+
+```asuka
+import platform/document
+
+let types = [document.Type(name: "Plain Text", extensions: ["txt"])]
+
+app {
+  document.Documents(types) { editor: doc => Editor(doc) }
+}
+
+component Editor(doc: document.Document<string>) {
+  if let text = doc.content {
+    TextField {
+      text: text
+      multiline: true
+      grow: 1
+      on change(t) { doc.edit(t) }
+    }
+  }
+}
+```
+
+システムがこれらのファイルを開くアプリとしてこのアプリを候補に出すよう、同じ種類を `asuka.toml` の `fileTypes` にも列挙してください。`examples/textedit` はこの種のエディターに、ステータス行と、ほかのアプリがファイルを変更したときに出るバーを加えたものです。
+
+`Document` はストアです。`content`（ファイルを読むまでは none）と `state`（`.loading`、`.saved`、`.edited`、`.saving`、`.conflict`、`.failed`、理由は `error`）を持ちます。`doc.edit(c)` で内容を変えると、最後の変更から少しして保存されます。`save()` はすぐに保存し、`saveSoon()` は待てないコード（キーやメニュー項目）から保存します。読み込んだあとにほかのプログラムがファイルを変更していると、競合になります。`saveAnyway()` はアプリの内容を残し、`revert()` はファイルの内容を取ります。`file` はドキュメントのあるファイル（名称未設定なら ""）、`name` はその名前です。`saveAs(path)`、`rename(name)`、`moveTo(dir)` で場所を変え、`unsaved()` はファイルにまだない変更があるかどうかを返し、`discard()` はその変更を捨てます。`document.open(path, read:, write:)` は、独自の read と write 関数でバイト列と相互に変換する、どんな型の内容のドキュメントでも作れます。`Documents` が編集するのはテキストです。
+
+ユーザーに見えるもの：
+
+- **デスクトップでは、ドキュメントごとにウィンドウが一つ**。ファイル名がタイトルになり、Mac ではタイトルバーにファイルのアイコンが、未保存の変更があるあいだは閉じるボタンに点が表示されます。アプリのメインウィンドウ（`Documents` はその中身です）は、起動時に隠されます。Windows と Linux では、メモ帳と同じく最後のウィンドウを閉じるとアプリが終了します。Mac ではアプリは動き続け、メニューバーの新規と開く…が使えます。
+- **「ファイル」メニュー**：Mac ではテキストエディットと同じく、新規（⌘N）は名称未設定のドキュメントを開き、開く…（⌘O）はシステムのダイアログ、最近使った項目を開くはシステムの最近使ったドキュメントです。続いて、閉じる（⌘W）、保存（⌘S）、複製（⇧⌘S）、別名で保存…（⌥⇧⌘S）、名称変更…、移動…、最後に保存した状態に戻す。Windows と Linux では、メモ帳や GNOME テキストエディターと同じく、新規、開く…、最近使った項目を開く（最近のドキュメントと「メニューを消去」）、保存、別名で保存…（Ctrl+Shift+S）、元に戻す、閉じる、終了です。どの項目も、使用中のウィンドウのドキュメントに対して働きます。メニューの言葉はアプリの言語に合わせます（英語、ドイツ語、スペイン語、フランス語、日本語、中国語。それ以外は英語）。
+- **自動保存**：ユーザーが入力をやめて少しすると、ドキュメントは保存されます。何も尋ねません。その場で保存できないドキュメント（名称未設定のもの、ほかのアプリが変更したもの、ファイルに書き込めないもの）は、変更を `document.recoveryDir()` の復元用コピーに残し、アプリを終了してもそこに残ります。次に起動したとき、それらのドキュメントは編集済みの状態でまた開きます。
+- **変更が失われるときの確認**：変更のある名称未設定のドキュメントを閉じると、残すかどうかを尋ねます（保存…、削除、キャンセル）。保存に失敗したドキュメントや、ほかのアプリの変更とぶつかったドキュメントを閉じると、保存するかどうかを尋ねます（保存、保存しない、キャンセル）。ほかのアプリが変更したファイルに保存するときは「それでも保存」か「元に戻す」かを尋ね、最後に保存した状態に戻す前にも確認します。移動…は、同じ名前のファイルを置き換える前に尋ねます。
+- **スマートフォンとブラウザーでは**、一度に一つのドキュメントです。アプリはドキュメントの一覧（新規付き）で始まり、ドキュメントを開くとその画面が一覧の上にプッシュされ、編集するそばから保存されます。一覧の行をスワイプすると、複製、名称変更（新しい名前を尋ねます）、削除（先に確認します）ができます。
 
 ## ログイン時の起動
 
-`login.Set(true, done)` を設定項目として用意し、`login.Enabled` で現在の状態を読み取ります。macOS 13 以降ではログイン項目（パッケージされたアプリのみ。ユーザーが「システム設定」で許可するまでは `login.ErrNeedsApproval` が返ります）、Windows では Run エントリー、Linux では自動起動（autostart）エントリー（Flatpak の中では Background ポータル）になります。`login.OpenedAtLogin` を使うとログイン時の起動かどうかを見分けられるので、その場合はウィンドウを出さずに起動できます。
+`try await login.set(true)`（`platform/login`）を設定として用意し、`await login.enabled()` で状態を読み戻します。macOS 13 以降ではログイン項目になります（パッケージ化したアプリのみ。ユーザーがシステム設定で許可するまでは `LoginError.needsApproval` を投げます）。Windows では Run エントリー、Linux では自動起動エントリー（Flatpak では Background ポータル）です。`await login.openedAtLogin()` でログイン時の起動かどうかを見分けられるので、アプリは目立たずに起動できます。
 
 ## 「再生中」とメディアキー
 
-`nowplaying.Show` は、アプリが再生しているものをシステムのメディアコントロールに表示します。そのボタンやキーボードのメディアキー（再生／一時停止、次へ、前へ）の操作は、アプリのハンドラーに届きます。Mac ではコントロールセンターとメニューバーの「再生中」、Windows では音量のフライアウトとクイック設定のメディアコントロール（アプリのウィンドウの SystemMediaTransportControls）、Linux では MPRIS プレイヤーになり、GNOME や KDE のコントロール、`playerctl` から操作できます。スマートフォンと同じパッケージで、スマートフォンではロック画面のコントロールになります（[デバイスとサービス](device.md#再生中の表示とメディアキー-asukasdknowplaying)）。
+`nowplaying.NowPlaying` は、表示されている間、アプリが再生しているものをシステムのメディアコントロールに表示します。そのボタンやキーボードのメディアキー（再生／一時停止、次へ、前へ）の操作は、アプリのハンドラーに届きます。Mac ではコントロールセンターとメニューバーの「再生中」、Windows では音量のフライアウトとクイック設定のメディアコントロール（アプリのウィンドウの SystemMediaTransportControls）、Linux では MPRIS プレイヤーになり、GNOME や KDE のコントロール、`playerctl` から操作できます。スマートフォンと同じパッケージで、スマートフォンではロック画面のコントロールになります（[デバイスとサービス](device.md#再生中の表示とメディアキーplatformnowplaying)）。
 
-```go
-music := audio.Load("music/spring.mp3")
-signal.OnCleanup(music.Release)
-nowplaying.Show(nowplaying.Props{
-	Title:  ui.Val("Spring"),
-	Artist: ui.Val("Vivaldi"),
-	Player: music, // 再生状態と位置を反映し、再生・一時停止・シークはこれに対して行う
-	OnNext: playNext,
-})
+```asuka
+import platform/audio
+import platform/nowplaying
+
+component Spring {
+  event next
+
+  let music = audio.Player("music/spring.mp3")
+
+  nowplaying.NowPlaying {
+    title: "Spring"
+    artist: "Vivaldi"
+    // 再生状態と再生位置はここから取り、再生・一時停止・シークもここに対して行う。
+    player: music
+    on next { emit next }
+  }
+}
 ```
 
 ## ディスプレイ、電源、アプリのアイコン
 
-`screen.UseDisplays()` はディスプレイの状態に追従します。各ディスプレイの位置、作業領域、スケール、リフレッシュレート、どれがメインかがわかります。`Nearest` と `Matching` は、ある点やウィンドウの下にあるディスプレイを選びます。Wayland には作業領域がないため、ディスプレイ全体の範囲になります。
+`screen.displays()` はディスプレイの状態に追従します（追跡される値で、バインディングで読むと、読まれているあいだディスプレイを監視します）。各ディスプレイの位置、作業領域、スケール、リフレッシュレート、どれがメインかがわかります。`screen.nearest` と `screen.matching` は、ある点やウィンドウの下にあるディスプレイを選びます。Wayland には作業領域がないため、ディスプレイ全体の範囲になります。
 
-`power.Use()` は、バッテリー、低電力モード、温度の状態に追従します。`power.OnSuspend`、`OnResume`、`OnLock`、`OnUnlock` で、コンピューターのスリープと復帰、画面のロックとその解除がわかります。`power.IdleTime()` は、ユーザーが操作していない時間を返します。スマートフォンにはロックとロック解除はありますが、スリープとアイドル時間はありません。Web ではバッテリーだけです。
+`power.status()` は、バッテリー、低電力モード、温度の状態に追従します。`power.suspends()`、`resumes()`、`locks()`、`unlocks()` は、コンピューターのスリープと復帰、画面のロックとその解除のストリームです。`power.idleTime()` は、ユーザーが操作していない時間を返します。スマートフォンにはロックとロック解除はありますが、スリープとアイドル時間はありません。Web ではバッテリーだけです。
 
-`dock.SetProgress` は、タスクの進捗を Dock アイコン、タスクバーのボタン、または Unity ランチャー API を持つ Linux のドックに表示します（GNOME 標準の Dash には表示されません）。`dock.RequestAttention` は、アプリがバックグラウンドにあるあいだ、アイコンを弾ませたり点滅させたりします。アイコン上の数字は `notify.SetBadge` で設定します。
+```asuka
+import platform/power
+import platform/screen
 
-`appearance.Use()` は、システムのアクセントカラーと、「コントラストを上げる」「透明度を下げる」の設定を返します。これはアプリが自分で描くもののためのもので、Asuka が表示するビューはすでにこれらに従います。
+component Status {
+  let p = power.status()
+  let displays = screen.displays()
+
+  task {
+    for await _ in power.suspends() { print("going to sleep") }
+  }
+
+  Column {
+    Text(if p.battery { "Battery {(p.level * 100).fixed(0)}%" } else { "No battery" })
+    Text(displays.map(d => "{d.name} {d.bounds.width}x{d.bounds.height}@{d.scale}x").joined(separator: "\n"))
+  }
+}
+```
+
+`dock.setProgress` は、タスクの進捗を Dock アイコン、タスクバーのボタン、または Unity ランチャー API を持つ Linux のドックに表示します（GNOME 標準の Dash には表示されません）。`dock.requestAttention` は、アプリがバックグラウンドにあるあいだ、アイコンを弾ませたり点滅させたりします。アイコン上の数字は `notify.setBadge` で設定します。
+
+`appearance.current()` は、システムのアクセントカラー（`Color?`）と、「コントラストを上げる」「透明度を下げる」の設定を、追跡される値として返します。これはアプリが自分で描くもののためのもので、Asuka が表示するビューはすでにこれらに従います。

@@ -1,47 +1,37 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/egoist/asuka/internal/appbuild"
 )
 
 func TestAccent(t *testing.T) {
 	dir := t.TempDir()
 	write := func(s string) {
-		if err := os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(s), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte(s), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
-	write(`{"accent": "#7c3aed", "android": {"dynamicColor": true}}`)
+	write("accent = \"#7c3aed\"\n\n[android]\ndynamicColor = true")
 	c, err := loadConfig(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "-ldflags=-s -w -X github.com/egoist/asuka/internal/boot.Accent=#7c3aed -X github.com/egoist/asuka/internal/boot.DynamicColor=1"
-	if got := c.ldflags(true); got != want {
-		t.Fatalf("ldflags %q", got)
-	}
-	// A development build: no DWARF, which it doesn't use.
-	if got := (&appConfig{}).ldflags(false); got != "-ldflags=-w" {
-		t.Fatalf("no accent: %q", got)
-	}
-	// Releases that keep symbols for crash reports: iOS all (its dSYM),
-	// Android the symbol table (its native debug symbols).
-	if got := c.ldflagsStrip(); got != "-ldflags=-X github.com/egoist/asuka/internal/boot.Accent=#7c3aed -X github.com/egoist/asuka/internal/boot.DynamicColor=1" {
-		t.Fatalf("iOS release: %q", got)
-	}
-	if got := c.ldflagsStrip("-w"); !strings.HasPrefix(got, "-ldflags=-w -X ") {
-		t.Fatalf("Android release: %q", got)
+	if c.Accent != "#7c3aed" || !c.Android.DynamicColor {
+		t.Fatalf("accent %q, dynamic color %v", c.Accent, c.Android.DynamicColor)
 	}
 	// A background app says so to the desktop hosts.
-	write(`{"background": true}`)
-	if c, err := loadConfig(dir); err != nil || c.ldflags(false) != "-ldflags=-w -X github.com/egoist/asuka/internal/boot.Background=1" {
+	write(`background = true`)
+	if c, err := loadConfig(dir); err != nil || !(&asukaApp{cfg: c}).hostConfig(platformMac, "", false).Background {
 		t.Fatalf("background: %v, %v", c, err)
 	}
-	write(`{"accent": "purple"}`)
+	write(`accent = "purple"`)
 	if _, err := loadConfig(dir); err == nil {
 		t.Fatal("a bad accent was taken")
 	}
@@ -49,8 +39,12 @@ func TestAccent(t *testing.T) {
 
 func TestLinks(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(`{"id": "com.example.notes", "scheme": "notes", "links": ["notes.example.com"],
-		"android": {"permissions": ["android.permission.CAMERA"]}}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte(`id = "com.example.notes"
+scheme = "notes"
+links = ["notes.example.com"]
+
+[android]
+permissions = ["android.permission.CAMERA"]`), 0o644)
 	c, err := loadConfig(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -68,7 +62,7 @@ func TestLinks(t *testing.T) {
 	if d := c.associatedDomains(true); len(d) != 1 || d[0] != "applinks:notes.example.com?mode=developer" {
 		t.Errorf("domains %v", d)
 	}
-	os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(`{"scheme": "my app"}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte(`scheme = "my app"`), 0o644)
 	if _, err := loadConfig(dir); err == nil {
 		t.Error("a bad scheme was taken")
 	}
@@ -114,13 +108,13 @@ func TestShareTarget(t *testing.T) {
 func TestShareTargetConfig(t *testing.T) {
 	dir := t.TempDir()
 	load := func(js string) (*appConfig, error) {
-		os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(`{"id": "com.example.pics", "shareTarget": `+js+`}`), 0o644)
+		os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte("id = \"com.example.pics\"\nshareTarget = "+js), 0o644)
 		return loadConfig(dir)
 	}
 	for js, want := range map[string]shareTarget{
 		"false": {},
 		"true":  textShares,
-		`{"types": ["Image/*", "video/*"], "max": 5}`: {on: true, Types: []string{"image/*", "video/*"}, Max: 5},
+		`{types = ["Image/*", "video/*"], max = 5}`: {on: true, Types: []string{"image/*", "video/*"}, Max: 5},
 		`{}`: textShares,
 	} {
 		c, err := load(js)
@@ -128,7 +122,7 @@ func TestShareTargetConfig(t *testing.T) {
 			t.Errorf("%s: %+v, %v", js, c.ShareTarget, err)
 		}
 	}
-	for _, js := range []string{`{"types": ["pictures"]}`, `{"max": -1}`, `"yes"`} {
+	for _, js := range []string{`{types = ["pictures"]}`, `{max = -1}`, `"yes"`} {
 		if _, err := load(js); err == nil {
 			t.Errorf("%s was taken", js)
 		}
@@ -136,7 +130,7 @@ func TestShareTargetConfig(t *testing.T) {
 
 	// Images and videos, five at once: Apple's keys, an App Group, and
 	// both of Android's actions.
-	c, _ := load(`{"types": ["text", "image/*", "video/*"], "max": 5}`)
+	c, _ := load(`{types = ["text", "image/*", "video/*"], max = 5}`)
 	rule := c.shareInfo(nil)["NSExtension"].(map[string]any)["NSExtensionAttributes"].(map[string]any)["NSExtensionActivationRule"].(map[string]any)
 	if rule["NSExtensionActivationSupportsImageWithMaxCount"] != 5 || rule["NSExtensionActivationSupportsMovieWithMaxCount"] != 5 ||
 		rule["NSExtensionActivationSupportsText"] != true {
@@ -153,7 +147,7 @@ func TestShareTargetConfig(t *testing.T) {
 	}
 
 	// A type Apple has no key for: a predicate on the attachments' types.
-	c, _ = load(`{"types": ["audio/*", "application/pdf", "application/x-thing"]}`)
+	c, _ = load(`{types = ["audio/*", "application/pdf", "application/x-thing"]}`)
 	want := `SUBQUERY(extensionItems, $e, SUBQUERY($e.attachments, $a, ANY $a.registeredTypeIdentifiers UTI-CONFORMS-TO "public.audio" OR ` +
 		`ANY $a.registeredTypeIdentifiers UTI-CONFORMS-TO "com.adobe.pdf" OR ANY $a.registeredTypeIdentifiers UTI-CONFORMS-TO "public.data").@count >= 1).@count >= 1`
 	if got := c.ShareTarget.activationRule(); got != want {
@@ -164,46 +158,67 @@ func TestShareTargetConfig(t *testing.T) {
 	}
 }
 
+// What an app's imports need of the platforms: their manifests'
+// permissions and purpose strings; the host's optional modules only for
+// what the host still does (a Video's player, push, periodic), the std
+// packages' own libraries being their Gradle modules'.
 func TestFeaturesFromImports(t *testing.T) {
 	var c appConfig
-	c.permissionsFor([]string{"github.com/egoist/asuka/ui", "github.com/egoist/asuka/sdk/scan", "github.com/egoist/asuka/sdk/camera"})
-	if got := strings.Join(c.gradleProps(), " "); got != "-PasukaModules=scan" {
+	importStd(t, &c, "ios", "scan", "camera")
+	if got := strings.Join(c.gradleProps(), " "); got != "-PasukaModules=" {
 		t.Errorf("modules: %s", got)
 	}
 	if !slices.Contains(c.Android.Permissions, "android.permission.CAMERA") || slices.Contains(c.Android.Permissions, "android.permission.POST_NOTIFICATIONS") {
 		t.Errorf("permissions: %v", c.Android.Permissions)
 	}
 	var pics appConfig
-	pics.permissionsFor([]string{"github.com/egoist/asuka/sdk/vision", "github.com/egoist/asuka/sdk/photos"})
-	if got := strings.Join(pics.gradleProps(), " "); got != "-PasukaModules=vision" {
+	importStd(t, &pics, "ios", "vision", "photos")
+	if got := strings.Join(pics.gradleProps(), " "); got != "-PasukaModules=" {
 		t.Errorf("modules: %s", got)
 	}
 	if !slices.Contains(pics.Android.Permissions, "android.permission.READ_MEDIA_IMAGES") || pics.IOS.Usage["NSPhotoLibraryUsageDescription"] == "" {
 		t.Errorf("photos: %v %v", pics.Android.Permissions, pics.IOS.Usage)
 	}
 	var none appConfig
-	none.permissionsFor([]string{"github.com/egoist/asuka/ui"})
+	importStd(t, &none, "ios")
 	if got := strings.Join(none.gradleProps(), " "); got != "-PasukaModules=" {
 		t.Errorf("no modules: %s", got)
 	}
-	if p := playerConfig(); !slices.Contains(p.androidModules, "scan") {
-		t.Errorf("the player's modules: %v", p.androidModules)
+
+	// Video's player: in an app whose sources name Video, and in asuka
+	// dev's player, which shows whatever the next save does.
+	for _, x := range []struct {
+		refs   map[string]bool
+		player bool
+		want   string
+	}{
+		{map[string]bool{"Video": true}, false, "-PasukaModules=video"},
+		{map[string]bool{"Text": true}, false, "-PasukaModules="},
+		{nil, true, "-PasukaModules=video"},
+	} {
+		var v appConfig
+		app := &asukaApp{cfg: &v, uses: &appbuild.Uses{Refs: x.refs}}
+		v.androidFeatures(app, x.player)
+		v.androidFeatures(app, x.player)
+		if got := strings.Join(v.gradleProps(), " "); got != x.want {
+			t.Errorf("%v, player %v: %s, want %s", x.refs, x.player, got, x.want)
+		}
 	}
 }
 
-// An app that imports asuka/sdk/pay gets Google Pay's module (whose
-// manifest has its API and callbacks service) and Apple Pay's
-// entitlement with asuka.json's merchant IDs (none without them); one
-// that doesn't, neither.
+// An app that imports platform/pay gets Apple Pay's entitlement with
+// asuka.toml's merchant IDs (none without them), and no host module
+// (Google Pay's library, API and callbacks service are platform/pay's
+// Gradle module's); one that doesn't, neither.
 func TestPayFeature(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(`{"applePay": {"merchantIds": ["merchant.dev.asuka.shop"]}}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte("[applePay]\nmerchantIds = [\"merchant.dev.asuka.shop\"]"), 0o644)
 	c, err := loadConfig(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.permissionsFor([]string{"github.com/egoist/asuka/ui", payPkg})
-	if got := strings.Join(c.gradleProps(), " "); got != "-PasukaModules=pay" {
+	importStd(t, c, "", "pay")
+	if got := strings.Join(c.gradleProps(), " "); got != "-PasukaModules=" {
 		t.Errorf("modules: %s", got)
 	}
 	if ids, _ := c.entitlements["com.apple.developer.in-app-payments"].([]string); !slices.Equal(ids, []string{"merchant.dev.asuka.shop"}) {
@@ -211,12 +226,12 @@ func TestPayFeature(t *testing.T) {
 	}
 	var without appConfig
 	without.ApplePay.MerchantIDs = []string{"merchant.dev.asuka.shop"}
-	without.permissionsFor([]string{"github.com/egoist/asuka/ui"})
+	importStd(t, &without, "")
 	if _, ok := without.entitlements["com.apple.developer.in-app-payments"]; ok || len(without.androidModules) != 0 {
 		t.Errorf("an app without the package: %v", without.entitlements)
 	}
 	var noIDs appConfig
-	noIDs.permissionsFor([]string{payPkg})
+	importStd(t, &noIDs, "", "pay")
 	if _, ok := noIDs.entitlements["com.apple.developer.in-app-payments"]; ok {
 		t.Errorf("no merchant IDs: %v", noIDs.entitlements)
 	}
@@ -224,7 +239,7 @@ func TestPayFeature(t *testing.T) {
 
 func TestIPad(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(`{"orientations": ["portrait"]}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte(`orientations = ["portrait"]`), 0o644)
 	c, err := loadConfig(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -237,7 +252,7 @@ func TestIPad(t *testing.T) {
 	if o := c.ipadOrientations(); len(o) != 4 {
 		t.Errorf("iPad orientations %v", o)
 	}
-	os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(`{"ios": {"iphoneOnly": true}}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte("[ios]\niphoneOnly = true"), 0o644)
 	if c, err = loadConfig(dir); err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +261,7 @@ func TestIPad(t *testing.T) {
 	}
 }
 
-// An app with its own share sheet (app.ShareSheet): Android's share
+// An app with its own share sheet (platform/sharesheet): Android's share
 // filters are its Activity's; iOS's extension is the host's sheet, with
 // the app's ID, and an App Group for the data even for texts alone; the
 // app's keychain group for both.
@@ -269,29 +284,25 @@ func TestShareSheetConfig(t *testing.T) {
 	if c.appGroup() != "" || c.keychainGroup("T") != "" || c.sharePrincipal() != "AsukaShareViewController" {
 		t.Error("no sheet: a group, or the sheet's class")
 	}
-	// The sheet's symbol is found in a library's function names.
-	dir := t.TempDir()
-	lib := filepath.Join(dir, "libasuka.so")
-	os.WriteFile(lib, []byte("..."+sheetSymbol+"\x00..."), 0o644)
-	other := filepath.Join(dir, "other.so")
-	os.WriteFile(other, []byte("..."+sheetSymbol+"Thing\x00..."), 0o644)
-	if !hasSheet(lib) || hasSheet(other) {
-		t.Error("hasSheet")
-	}
 }
 
-// A push rewrite (push.Rewrite) gives the app a Notification Service
-// Extension: the shared layout, the App Group and keychain group it
-// shares, its own bundle ID; Android's manifest says so to the host.
+// A push rewrite (platform/push's rewrite) gives the app a Notification
+// Service Extension: the shared layout, the App Group and keychain group
+// it shares, its own bundle ID; Android's manifest says so to the host.
 func TestPushRewriteConfig(t *testing.T) {
 	c := &appConfig{ID: "com.example.chat"}
-	if c.sharedLayout() || c.appGroup() != "" || c.keychainGroup("TEAM") != "" {
+	importStd(t, c, "ios", "push.register")
+	if c.pushRewrite || c.sharedLayout() || c.appGroup() != "" || c.keychainGroup("TEAM") != "" {
 		t.Fatal("no rewrite: one executable, no group")
 	}
 	if strings.Contains(c.androidManifest(false), "dev.asuka.push.rewrite") {
 		t.Fatal("no rewrite: no meta-data")
 	}
-	c.pushRewrite = true
+	c = &appConfig{ID: "com.example.chat"}
+	importStd(t, c, "ios", "push.rewrite")
+	if !c.pushRewrite {
+		t.Fatal("push.rewrite: no rewrite")
+	}
 	if !c.sharedLayout() || c.appGroup() != "group.com.example.chat" || c.keychainGroup("TEAM") != "TEAM.com.example.chat" {
 		t.Fatalf("rewrite: %v %q %q", c.sharedLayout(), c.appGroup(), c.keychainGroup("TEAM"))
 	}
@@ -307,31 +318,21 @@ func TestPushRewriteConfig(t *testing.T) {
 	}
 }
 
-// Messages in conversations (notify's From) need the Communication
-// Notifications entitlement and the intent in Info.plist: only in the
-// apps whose Go code calls From.
-func TestFeatureExtras(t *testing.T) {
-	c := &appConfig{ID: "com.example.chat"}
-	c.addFeatureExtras([]string{"ASUKA_NOTIFY"})
-	if c.entitlements != nil || c.plistArrays != nil {
-		t.Fatalf("notify alone: %v %v", c.entitlements, c.plistArrays)
-	}
-	c.addFeatureExtras([]string{"ASUKA_CONVERSATIONS"})
-	c.addFeatureExtras([]string{"ASUKA_CONVERSATIONS"})
-	if c.entitlements["com.apple.developer.usernotifications.communication"] != true ||
-		len(c.plistArrays["NSUserActivityTypes"]) != 1 || c.plistArrays["NSUserActivityTypes"][0] != "INSendMessageIntent" {
-		t.Fatalf("conversations: %v %v", c.entitlements, c.plistArrays)
-	}
-	if got := c.plistExtras()["NSUserActivityTypes"]; len(got.([]string)) != 1 {
-		t.Fatalf("Info.plist %v", got)
-	}
-	found := false
-	for _, f := range iosFeatures {
-		if f.flag == "ASUKA_CONVERSATIONS" && f.symbol == "github.com/egoist/asuka/sdk/notify.Notification.From" {
-			found = true
+// asuka.toml's errors say where: a TOML one its line and column, a value
+// Asuka can't take its key.
+func TestConfigErrors(t *testing.T) {
+	dir := t.TempDir()
+	for doc, want := range map[string]string{
+		"name = \"Notes\"\nbuild = \"7\"":     `asuka.toml:2:9: build: want an integer, not a string`,
+		"[ios]\nteam = \"A\"\n[ios]":          `asuka.toml:3:2: table ios is defined twice`,
+		"accent = \"red\"":                    `asuka.toml: accent "red" (want #rrggbb or #rrggbbaa)`,
+		"shareTarget = \"yes\"":               `asuka.toml: shareTarget: want true, or a table of types and max`,
+		"[[widgets]]\nkind = \"a\"\nsize = 1": ``,
+	} {
+		os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte(doc), 0o644)
+		_, err := loadConfig(dir)
+		if got := fmt.Sprint(err); want == "" && err != nil || want != "" && got != want {
+			t.Errorf("%q: got %v, want %s", doc, err, want)
 		}
-	}
-	if !found {
-		t.Fatal("From's symbol isn't a feature's")
 	}
 }

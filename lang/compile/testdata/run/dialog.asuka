@@ -1,0 +1,33 @@
+// platform/dialog with no platform code (the fake host): no dialogs, so
+// open falls back to the document picker (device's), and save and
+// chooseFolder throw an unsupported error.
+
+import platform/dialog
+
+test "no dialogs here" {
+  let md = [dialog.Filter(name: "Markdown", extensions: ["*.md"])]
+  do {
+    let paths = try await dialog.open(filters: md, multiple: true)
+    print(paths.count())
+  } catch e {
+    print(e.message)
+  }
+  do {
+    let p = try await dialog.save(name: "Notes.md", button: "Export", filters: md)
+    print(p ?? "cancelled")
+  } catch e {
+    print(e.message)
+  }
+  do {
+    let p = try await dialog.chooseFolder(button: "Show")
+    print(p ?? "cancelled")
+  } catch e {
+    print(e.message)
+  }
+}
+
+// Output:
+// unsupported: no device here
+// unsupported: no save dialog here
+// unsupported: no folder dialog here
+// ok no dialogs here

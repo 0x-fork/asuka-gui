@@ -1,0 +1,281 @@
+// Usage follows a subscription's quotas: Claude's 5-hour window and its
+// week, how much is left of each, and, at the rate the week has gone so
+// far, how much will be left when it resets. You sign in with Claude
+// (OAuth in the system's sign-in sheet, platform/webauth; see auth.asuka).
+// Accounts are kept with std/storage, their tokens in the keychain
+// (platform/secure). A demo account shows it without one.
+//
+// It draws its own meters and a forecast chart (Shape, dashed), tints
+// with semantic colors at an opacity (Color.opacity), and has an
+// appearance setting (the app's colorScheme).
+//
+//   asuka dev --platform android examples/usage
+
+import platform/secure
+import std/storage
+import std/time
+
+let accounts: storage.Value<[Account]> = storage.Value("accounts", [])
+/// Shows how much of each quota is used, rather than left.
+let showUsed = storage.Value("showUsed", false)
+let scheme: storage.Value<ColorScheme> = storage.Value("colorScheme", .system)
+/// How often, in minutes, the accounts refresh while the app is open.
+let every = storage.Value("refreshEvery", 5)
+
+/// Now, to the half minute: what "updated 5 min ago" and the forecasts
+/// read.
+state clock = time.now()
+/// The accounts being refreshed.
+state busy: [string] = []
+state foreground = true
+
+app {
+  effect { setColorScheme(scheme.value) }
+  on foreground {
+    foreground = true
+    clock = time.now()
+    await refreshStale()
+  }
+  on background { foreground = false }
+  task { await readIOSVersion() }
+  task {
+    await refreshStale()
+    while true {
+      await sleep(30s)
+      if foreground {
+        clock = time.now()
+        await refreshStale()
+      }
+    }
+  }
+  Stack { Home() }
+}
+
+/// The accounts, a card each, or a way to add one.
+screen Home {
+  state adding = false
+
+  title: "Usage"
+  toolbar {
+    Button("Add account") {
+      icon: "plus"
+      on press { adding = true }
+    }
+    Button("Refresh") {
+      icon: "arrow.clockwise"
+      on press { await refreshAll() }
+    }
+    Button("Settings") {
+      icon: "gear"
+      on press { push(Settings()) }
+    }
+  }
+
+  Scroll {
+    grow: 1
+    background: page
+    refreshing: !busy.isEmpty()
+    on refresh { await refreshAll() }
+    SafeArea {
+      padding: [8, 16]
+      gap: 12
+      for a in accounts.value key a.id { AccountCard(a) }
+      if accounts.value.isEmpty() {
+        Column {
+          padding: [80, 24]
+          gap: 16
+          align: .center
+          Badge("claude", size: 72)
+          Text("Follow your plan's limits") {
+            font: .title3.semibold()
+            textAlign: .center
+          }
+          Text("See how much of your 5-hour window and your week is left, and whether the week will last.") {
+            color: .secondaryLabel
+            textAlign: .center
+          }
+          Button("Add an account") {
+            icon: "plus"
+            variant: .filled
+            on press { adding = true }
+          }
+        }
+      }
+    }
+  }
+  Sheet {
+    bind open: adding
+    detents: [.large]
+    grabber: true
+    AddSheet("") { on done { adding = false } }
+  }
+}
+
+/// An account on the home screen: up to three of its windows, those it
+/// shows there.
+component AccountCard(a: Account) {
+  let shown = a.windows.filter(w => a.shown(w.key)).prefix(3)
+
+  Column {
+    label: "Account details"
+    role: .button
+    padding: cardPadding
+    gap: 18
+    background: .secondaryGroupedBackground
+    radius: radius
+    on press { push(Detail(a.id)) }
+    Row {
+      gap: 16
+      align: .center
+      Badge(a.service, size: if ios { 44 } else { 52 })
+      Column {
+        grow: 1
+        shrink: 1
+        gap: 2
+        Text(a.title()) {
+          font: if ios { .headline } else { .title3.semibold() }
+          lines: 1
+        }
+        Text(status(a)) {
+          font: .subheadline
+          color: .secondaryLabel
+          lines: 1
+        }
+      }
+      Chevron()
+    }
+    for w in shown key w.key { WindowRow(w) { forecast: true } }
+    if !a.error.isEmpty() {
+      Text("Couldn't refresh: {a.error}") {
+        font: .footnote
+        color: .red
+      }
+    }
+  }
+}
+
+/// When an account was last updated, or that it's updating.
+fn status(a: Account) -> string {
+  if busy.contains(a.id) { return "Updating…" }
+  if let t = a.updated { return "Updated {ago(t, clock)}" }
+  return "Not updated yet"
+}
+
+/// A window's name, what's left (or used), its meter and when it resets;
+/// with forecast, what the reset will leave.
+component WindowRow(w: Window) {
+  prop forecast = false
+
+  let f = w.forecast(clock)
+
+  Column {
+    gap: 10
+    Row {
+      gap: 12
+      align: .baseline
+      Text(w.title()) {
+        grow: 1
+        shrink: 1
+        font: .headline
+        lines: 1
+      }
+      Text(quota(w.used)) { color: .secondaryLabel }
+    }
+    Meter(w)
+    if let r = w.resets {
+      RichText([Span(text: "Resets {when(r, clock)}")] + (if forecast && f.pace != .unknown {
+        [Span(text: " · "), Span(text: outlook(f, clock), color: paceColor(f.pace))]
+      } else {
+        []
+      })) {
+        font: .subheadline
+        color: .secondaryLabel
+      }
+    }
+  }
+}
+
+/// The account with id.
+fn find(id: string) -> Account? = accounts.value.find(a => a.id == id)
+
+/// Puts a in the accounts, in its place, or adds it.
+fn save(a: Account) {
+  if let i = accounts.value.index(x => x.id == a.id) {
+    accounts.value[i] = a
+  } else {
+    accounts.value.push(a)
+  }
+}
+
+async fn remove(id: string) {
+  accounts.value.removeWhere(a => a.id == id)
+  try? await secure.remove("token.{id}")
+}
+
+/// Reads an account's usage again, with its token from the keychain.
+async fn refresh(id: string) {
+  if busy.contains(id) { return }
+  if let a = find(id) {
+    busy.push(id)
+    defer { busy.removeWhere(b => b == id) }
+    var fresh: Account? = none
+    var failure = ""
+    if a.demo {
+      await sleep(600ms) // as a request would
+      fresh = refreshDemo(a, time.now())
+    } else {
+      do {
+        let token = try await secure.read("token.{id}") ?? ""
+        if token.isEmpty() { throw SignedOut(message: "signed out: sign in again") }
+        let (read, kept) = try await refreshClaude(a, token)
+        // Refreshed tokens: the old refresh token may be spent.
+        if kept != token { try? await secure.write("token.{id}", kept) }
+        fresh = read
+      } catch e {
+        failure = e.message
+      }
+    }
+    // Removed while it refreshed: nothing to keep.
+    if let cur = find(id) {
+      var kept = cur
+      if let f = fresh {
+        kept = Account(
+          id: f.id,
+          service: f.service,
+          name: cur.name,
+          demo: f.demo,
+          email: f.email,
+          org: f.org,
+          extra: f.extra,
+          windows: f.windows,
+          hidden: cur.hidden,
+          updated: time.now(),
+        )
+      } else {
+        kept.error = failure
+      }
+      animate(() => save(kept))
+    }
+  }
+}
+
+async fn refreshAll() {
+  for a in accounts.value { await refresh(a.id) }
+}
+
+/// Refreshes the accounts last updated longer ago than the setting says.
+async fn refreshStale() {
+  let stale = accounts.value.filter(a => a.error.isEmpty() && time.now() - (a.updated ?? time.date(1970, 1, 1)) >= every.value * 1min)
+  for a in stale { await refresh(a.id) }
+}
+
+test "a demo account" {
+  let app = mount(Stack { Home() })
+  app.expect("Follow your plan's limits")
+  app.tap("Add an account")
+  app.tap("Try a Demo Account")
+  app.expect("Claude", "This week")
+  app.expectNo("Follow your plan's limits")
+  app.tap("Claude")
+  app.expect("Usage", "Forecast", "On the home screen")
+}

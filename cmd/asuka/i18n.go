@@ -1,32 +1,29 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"html"
-	iofs "io/fs"
+	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strings"
 	"sync"
 
 	"github.com/egoist/asuka/i18n"
+	"github.com/egoist/asuka/internal/appbuild"
 	"github.com/egoist/asuka/internal/i18ngen"
 	"github.com/egoist/asuka/internal/l10n"
 )
 
-// i18nConfig is asuka.json's "i18n": where the app's catalogs are. An app
+// i18nConfig is asuka.toml's i18n: where the app's catalogs are. An app
 // with a locales directory of catalogs needs none of it.
 //
-//	"i18n": {"dir": "locales", "source": "en"}
+//	[i18n]
+//	dir = "locales"
+//	source = "en"
 type i18nConfig struct {
 	// Dir holds a catalog per language, named after its BCP 47 tag: en.json,
 	// de.json, zh-Hans.json (default: locales).
@@ -53,10 +50,12 @@ func setDevLocale(lang, dir string) error {
 		return fmt.Errorf("--dir %q: want rtl or ltr", dir)
 	}
 	devDirection = dir
+	// Compiled into the module, which every platform's player runs.
+	appbuild.DevLang, appbuild.DevDirection = devLang, devDirection
 	return nil
 }
 
-// useI18nDefaults finds the app's catalogs when asuka.json doesn't say where
+// useI18nDefaults finds the app's catalogs when asuka.toml doesn't say where
 // they are, and fills in what it leaves out.
 func (c *appConfig) useI18nDefaults(dir string) {
 	c.dir = dir
@@ -106,40 +105,6 @@ func (c *appConfig) loadCatalogs() (*i18ngen.Catalog, i18ngen.Diagnostics, error
 	})
 }
 
-// generateCatalogs checks the app's catalogs and writes their functions,
-// only if they differ: a rebuild's watcher sees no change otherwise. It
-// reports problems on stderr; errors in the catalogs are the error it
-// returns, which names how many.
-func (c *appConfig) generateCatalogs() error {
-	if c.I18n == nil {
-		return nil
-	}
-	cat, diags, err := c.loadCatalogs()
-	if err != nil {
-		return err
-	}
-	for _, d := range diags {
-		fmt.Fprintln(os.Stderr, "asuka:", d)
-	}
-	if n := diags.Errors(); n > 0 {
-		return fmt.Errorf("%d %s in the catalogs in %s", n, plural(n, "error", "errors"), c.I18n.Dir)
-	}
-	dir := c.i18nDir()
-	pkg, err := i18ngen.PackageName(dir)
-	if err != nil {
-		return err
-	}
-	src, err := i18ngen.Go(cat, pkg)
-	if err != nil {
-		return err
-	}
-	path := filepath.Join(dir, i18ngen.GoFile)
-	if old, err := os.ReadFile(path); err == nil && bytes.Equal(old, src) {
-		return nil
-	}
-	return os.WriteFile(path, src, 0o644)
-}
-
 func plural(n int, one, other string) string {
 	if n == 1 {
 		return one
@@ -164,25 +129,12 @@ func warnDevLang(c *appConfig) {
 	}
 }
 
-// warnCatalogsUnused says when the app doesn't import its catalogs, whose
-// languages it then doesn't ship.
-func warnCatalogsUnused(c *appConfig, deps []string) {
-	if c.I18n == nil {
-		return
-	}
-	out, err := exec.Command("go", "-C", c.i18nDir(), "list", ".").Output()
-	if err != nil {
-		return
-	}
-	if pkg := strings.TrimSpace(string(out)); !slices.Contains(deps, pkg) {
-		fmt.Fprintf(os.Stderr, "asuka: the app doesn't import %s, so it shows only its source language: import it, with _ if its Go code says no message itself\n", pkg)
-	}
-}
-
-// cmdGenerate is asuka generate.
+// cmdGenerate is asuka generate: what the app's sources need made of its
+// other files. The compiler reads the catalogs itself (tr), so for them it
+// checks them, as asuka dev and asuka build do.
 func cmdGenerate(args []string) error {
 	fs := newFlagSet("generate", "[dir]")
-	fs.about = "Writes the typed functions of the app's catalogs (locales/catalog_gen.go), as asuka dev and\nasuka build do. Commit them, so that go build and go test work without the CLI."
+	fs.about = "Checks the app's catalogs, as asuka dev and asuka build do: the compiler reads them itself\n(tr.key(…)), so nothing is written. Errors exit 1, warnings don't."
 	if err := fs.parse(args); err != nil {
 		return err
 	}
@@ -190,7 +142,7 @@ func cmdGenerate(args []string) error {
 	if err != nil {
 		return err
 	}
-	return c.generateCatalogs()
+	return c.checkCatalogs(os.Stdout)
 }
 
 func configOf(dir string) (*appConfig, error) {
@@ -214,7 +166,7 @@ func configOf(dir string) (*appConfig, error) {
 // cmdI18n is asuka i18n.
 func cmdI18n(args []string) error {
 	const usage = `usage:
-  asuka i18n init [--source en] [dir]   start the app's catalogs: locales/en.json and its functions
+  asuka i18n init [--source en] [dir]   start the app's catalogs: locales/en.json
   asuka i18n add <tag>... [--dir dir]   add languages, each with the source's messages to translate
   asuka i18n check [dir]                check the catalogs: errors exit 1, warnings don't
 `
@@ -247,26 +199,30 @@ func i18nCheck(args []string) error {
 	if err != nil {
 		return err
 	}
+	return c.checkCatalogs(os.Stdout)
+}
+
+// checkCatalogs checks the app's catalogs, printing their problems (to
+// w) and a summary; errors are the error. The compiler checks them the
+// same way, and what tr's calls say of them.
+func (c *appConfig) checkCatalogs(w io.Writer) error {
 	cat, diags, err := c.loadCatalogs()
 	if err != nil {
 		return err
 	}
 	for _, d := range diags {
-		fmt.Println(d)
-	}
-	for _, w := range frozenMessages(c, c.dir) {
-		fmt.Println(w)
+		fmt.Fprintln(w, d)
 	}
 	if n := diags.Errors(); n > 0 {
-		return fmt.Errorf("%d %s in the catalogs", n, plural(n, "error", "errors"))
+		return fmt.Errorf("%d %s in the catalogs in %s", n, plural(n, "error", "errors"), c.I18n.Dir)
 	}
-	fmt.Printf("%d %s in %s\n", len(cat.Keys), plural(len(cat.Keys), "message", "messages"), strings.Join(cat.Languages, ", "))
+	fmt.Fprintf(w, "%d %s in %s\n", len(cat.Keys), plural(len(cat.Keys), "message", "messages"), strings.Join(cat.Languages, ", "))
 	return nil
 }
 
 func i18nInit(args []string) error {
 	fs := newFlagSet("i18n init", "[dir]")
-	fs.about = "Starts the app's catalogs: locales/<source>.json and its functions."
+	fs.about = "Starts the app's catalogs: locales/<source>.json, whose messages the app says with tr."
 	var source string
 	fs.String(&source, "source", 0, "en", "the `language` the app is written in")
 	if err := fs.parse(args); err != nil {
@@ -306,12 +262,12 @@ func i18nInit(args []string) error {
 		return err
 	}
 	if c.I18n.Source != tag {
-		return fmt.Errorf("the source language is %s, as asuka.json says", c.I18n.Source)
+		return fmt.Errorf("the source language is %s, as asuka.toml says", c.I18n.Source)
 	}
-	if err := c.generateCatalogs(); err != nil {
+	if err := c.checkCatalogs(io.Discard); err != nil {
 		return err
 	}
-	fmt.Printf("wrote %s and its functions: import \"<module>/locales\", and say ui.Text(locales.Live.AppTitle())\n", filepath.Join("locales", tag+".json"))
+	fmt.Printf("wrote %s: say its messages with tr, as Text(tr.appTitle())\n", filepath.Join("locales", tag+".json"))
 	return nil
 }
 
@@ -358,7 +314,7 @@ func i18nAdd(args []string) error {
 		}
 		fmt.Printf("wrote %s with the source's %d messages to translate\n", filepath.Join(c.I18n.Dir, tag+".json"), len(src.Keys))
 	}
-	return c.generateCatalogs()
+	return c.checkCatalogs(io.Discard)
 }
 
 // catalogStrings returns what the catalogs say for packaging, by language
@@ -458,7 +414,7 @@ func (c *appConfig) writeLprojs(dir string) error {
 	return nil
 }
 
-// packagingSource returns what a packaging key says in asuka.json, which is
+// packagingSource returns what a packaging key says in asuka.toml, which is
 // what Swift looks up: a shortcut's title or a widget's name or description.
 func (c *appConfig) packagingSource(key string, source map[string]string) string {
 	if v, ok := strings.CutPrefix(key, "shortcut."); ok {
@@ -576,78 +532,4 @@ func (c *appConfig) androidLocaleRes(res string) (bool, error) {
 		}
 	}
 	return true, nil
-}
-
-// warnFrozenMessages finds messages said once where they'd never follow the
-// language: ui.StaticText(locales.Title()) and ui.Val(locales.Title()), which
-// read natural and which locales.Live.Title() is for. It looks at the syntax
-// alone, so that it runs before the app compiles.
-func warnFrozenMessages(c *appConfig, moduleDir string) {
-	for _, w := range frozenMessages(c, moduleDir) {
-		fmt.Fprintln(os.Stderr, "asuka:", w)
-	}
-}
-
-// frozenMessages returns a warning per message found so.
-func frozenMessages(c *appConfig, moduleDir string) []string {
-	if c.I18n == nil {
-		return nil
-	}
-	pkg, err := i18ngen.PackageName(c.i18nDir())
-	if err != nil {
-		return nil
-	}
-	var out []string
-	filepath.WalkDir(c.dir, func(path string, d iofs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			if n := d.Name(); path != c.dir && (strings.HasPrefix(n, ".") || n == "testdata" || n == "build" || n == "dist") {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") || filepath.Base(path) == i18ngen.GoFile {
-			return nil
-		}
-		fset := token.NewFileSet()
-		f, err := parser.ParseFile(fset, path, nil, 0)
-		if err != nil {
-			return nil
-		}
-		ast.Inspect(f, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok || len(call.Args) == 0 {
-				return true
-			}
-			outer, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok || (outer.Sel.Name != "StaticText" && outer.Sel.Name != "Val") {
-				return true
-			}
-			if x, ok := outer.X.(*ast.Ident); !ok || x.Name != "ui" {
-				return true
-			}
-			inner, ok := call.Args[0].(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			sel, ok := inner.Fun.(*ast.SelectorExpr)
-			if !ok {
-				return true
-			}
-			if x, ok := sel.X.(*ast.Ident); !ok || x.Name != pkg || sel.Sel.Name == "In" {
-				return true
-			}
-			rel, err := filepath.Rel(moduleDir, path)
-			if err != nil {
-				rel = path
-			}
-			pos := fset.Position(call.Pos())
-			out = append(out, fmt.Sprintf("%s:%d: ui.%s(%s.%s(...)) won't follow the app's language: use %s.Live.%s", rel, pos.Line, outer.Sel.Name, pkg, sel.Sel.Name, pkg, sel.Sel.Name))
-			return true
-		})
-		return nil
-	})
-	return out
 }

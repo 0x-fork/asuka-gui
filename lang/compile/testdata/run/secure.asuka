@@ -1,0 +1,24 @@
+// platform/secure with no platform code (the fake host): there's no
+// keychain, so each call throws an unsupported error.
+
+import platform/secure
+
+test "no keychain here" {
+  do {
+    try await secure.write("token", "s3cr3t")
+  } catch e {
+    print(e.message)
+  }
+  print((try? await secure.read("token")) ?? "none")
+  do {
+    try await secure.remove("token")
+  } catch e {
+    print(e.message.hasPrefix("unsupported"))
+  }
+}
+
+// Output:
+// unsupported: no secure store here
+// none
+// true
+// ok no keychain here

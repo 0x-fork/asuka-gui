@@ -1,0 +1,22 @@
+import platform/login
+import platform/recent
+
+component Prefs {
+  Text("prefs")
+}
+
+app { Prefs() }
+
+test "with no host modules, they say none and keep nothing" {
+  let app = mount(Prefs())
+  print(await login.enabled())
+  print(await login.openedAtLogin())
+  do {
+    try await login.set(true)
+  } catch e {
+    print("set: {e.message}")
+  }
+  recent.add("/tmp/a.txt")
+  print((await recent.list()).count())
+  app.expect("prefs")
+}

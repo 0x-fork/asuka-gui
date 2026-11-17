@@ -1,0 +1,29 @@
+// Native interfaces, and JSON through generics.
+
+import std/json
+
+native interface Battery {
+  level: float // ERROR "a native interface has methods only"
+  fn charge() -> float
+}
+
+struct Fake: Battery { // ERROR "Battery is a native interface: its platforms' code implements it"
+  x: int
+}
+
+fn level() throws -> float {
+  let b = try Battery()
+  return b.charge() // ERROR "try"
+}
+
+fn made() throws -> Battery {
+  return Battery(1) // ERROR "takes nothing: its platforms' code makes it|try"
+}
+
+fn keep<T>(value: T) -> string = json.encode(value)
+fn keepTwice<T>(value: T) -> string = keep(value) + keep(value)
+
+fn use() -> string {
+  let ok = keep([1, 2]) + keepTwice("a")
+  return ok + keepTwice((1, 2)) // ERROR "keepTwice reads or writes its T as JSON, and a \(int, int\) can't be"
+}

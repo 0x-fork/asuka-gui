@@ -1,0 +1,691 @@
+// The prelude's core types: what the built-in elements' props take.
+// Every program sees these without importing them.
+//
+// Built into the compiler, not declared here: int, float, bool, string,
+// bytes, void, arrays [T], maps [K: V], optionals T?, tuples, functions,
+// View, Error, Task<T>, Loading<T>, Duration (300ms), Color (#7c3aed and
+// the semantic colors: .label, .secondaryLabel, .accent, ...), Length
+// (100, 50%, .auto), Canvas's Graphics and Path, and Ref, a view's
+// handle (their methods are builtins: lang/LOWERING.md's "Graphics" and
+// "Refs").
+
+/// The axis a container stacks its children on.
+enum Axis {
+  column
+  row
+}
+
+/// Where children go on a container's main axis.
+enum Justify {
+  start
+  center
+  end
+  spaceBetween
+  spaceAround
+  spaceEvenly
+}
+
+/// How children line up on a container's cross axis.
+enum Align {
+  auto
+  start
+  center
+  end
+  stretch
+  baseline
+}
+
+/// Space on each side of a box, in points. start and end are the sides a
+/// line of text starts and ends on (left and right, or right and left in
+/// Arabic); where a side has both, start or end wins.
+///
+///   padding: 16             every side
+///   padding: [8, 16]        vertical, horizontal
+///   padding: [4, 8, 4, 8]   top, right, bottom, left
+///   padding: Edges(top: 4)
+struct Edges {
+  top: float = 0
+  right: float = 0
+  bottom: float = 0
+  left: float = 0
+  start: float = 0
+  end: float = 0
+}
+
+/// A font: a text style the platform scales with the user's text size,
+/// a size, a weight, and a family of the app's (assets/fonts) or the
+/// system's.
+///
+///   font: .title
+///   font: .largeTitle.bold
+///   font: Font(size: 17, weight: .semibold, family: "Inter")
+struct Font {
+  style: TextStyle = .default
+  size: float = 0
+  weight: FontWeight = .default
+  family: string = ""
+
+  let largeTitle = Font(style: .largeTitle)
+  let title = Font(style: .title)
+  let title2 = Font(style: .title2)
+  let title3 = Font(style: .title3)
+  let headline = Font(style: .headline)
+  let subheadline = Font(style: .subheadline)
+  let body = Font(style: .body)
+  let callout = Font(style: .callout)
+  let footnote = Font(style: .footnote)
+  let caption = Font(style: .caption)
+  let caption2 = Font(style: .caption2)
+
+  fn weighted(weight: FontWeight) -> Font = Font(style: style, size: size, weight: weight, family: family)
+  fn sized(size: float) -> Font = Font(style: style, size: size, weight: weight, family: family)
+  fn family(name: string) -> Font = Font(style: style, size: size, weight: weight, family: name)
+  fn bold() -> Font = weighted(.bold)
+  fn semibold() -> Font = weighted(.semibold)
+  fn medium() -> Font = weighted(.medium)
+}
+
+/// Moves, scales and rotates a view as it's drawn, around its center;
+/// layout doesn't see it.
+struct Transform {
+  x: float = 0
+  y: float = 0
+  scale: float = 1
+  scaleX: float = 1
+  scaleY: float = 1
+  rotation: float = 0 // degrees, clockwise
+}
+
+/// A shadow under a view, cast by its shape.
+struct Shadow {
+  color: Color = #00000033
+  radius: float = 4 // blur radius
+  x: float = 0
+  y: float = 2
+}
+
+/// A stop of a gradient: a color at a location from 0 to 1.
+struct Stop {
+  color: Color
+  at: float
+}
+
+/// A linear gradient over a view's background, from start to end in
+/// unit points of the view (0, 0 is its top left).
+struct Gradient {
+  stops: [Stop]
+  startX: float = 0
+  startY: float = 0
+  endX: float = 0
+  endY: float = 1
+}
+
+/// How a view comes in when it's added during animate { }, and goes out
+/// when it's removed during one.
+struct Transition {
+  fade: bool = false
+  scale: float = 0 // 0: none
+  x: float = 0
+  y: float = 0
+
+  let opacity = Transition(fade: true)
+  let slide = Transition(y: 24, fade: true)
+  let pop = Transition(scale: 0.9, fade: true)
+}
+
+/// A grid's tracks.
+///
+///   grid: Grid(columns: [.fr(1), .fr(2)], rows: [.auto])
+struct Grid {
+  columns: [Track] = []
+  rows: [Track] = []
+  autoColumns: [Track] = []
+  autoRows: [Track] = []
+  dense: bool = false
+  flowColumn: bool = false
+}
+
+/// A grid track's size.
+enum Track {
+  auto
+  points(float)
+  percent(float)
+  fr(float)
+  minContent
+  maxContent
+  minmax(Track, Track)
+  repeat(int, [Track])
+  autoFill([Track])
+  autoFit([Track])
+}
+
+/// Where a child sits on a grid's axis: lines from 1, negative from the
+/// end, or a span.
+enum GridLine {
+  auto
+  line(int)
+  span(int)
+  between(int, int)
+}
+
+/// An item of a menu, a swipe, a context menu or an alert. A field left
+/// out is its zero: .button(title: "Cancel", role: .cancel) runs nothing.
+enum Action {
+  button(title: string, icon: string, role: ActionRole, disabled: bool, checked: bool, run: (async fn())?)
+  submenu(title: string, icon: string, items: [Action])
+  section(title: string, items: [Action])
+}
+
+/// An action's role, which the platform draws it by.
+enum ActionRole {
+  normal
+  cancel
+  destructive
+}
+
+/// The kinds of haptic feedback.
+enum Feedback {
+  selection
+  light
+  medium
+  heavy
+  success
+  warning
+  error
+}
+
+/// An animation's timing. repeat runs it again, that many times more
+/// (Animation.forever, -1: until its props change again), each run going back first with
+/// autoreverses. A spring's damping is from 0 to 1 (1 settles without
+/// overshooting; 0: 0.85, a little) and its velocity, a fraction of the
+/// change per second at the start (to carry on a fling). done is called
+/// once it's complete (never for -1).
+struct Animation {
+  duration: Duration = 350ms
+  curve: AnimationCurve = .easeInOut
+  delay: Duration = 0ms
+  repeat: int = 0
+  autoreverses: bool = false
+  damping: float = 0
+  velocity: float = 0
+  done: fn()? = none
+
+  let spring = Animation(curve: .spring)
+  let linear = Animation(curve: .linear)
+  let quick = Animation(duration: 200ms)
+  /// repeat's: until the props change again.
+  let forever = -1
+}
+
+/// A span of a text field's text, as byte offsets into it
+/// (text[start..<end]); start == end is the cursor.
+struct TextRange {
+  start: int = 0
+  end: int = 0
+}
+
+/// A slider's, progress bar's, meter's or spin button's range, for
+/// screen readers: where it is (now) between min and max.
+struct ValueRange {
+  min: float = 0
+  max: float = 1
+  now: float = 0
+}
+
+/// Where an Overlay went: the side of its anchor it's on after flipping
+/// (.center over it, or in the window without an anchor), where the
+/// anchor's middle is along that side from its own start (an arrow's
+/// place), and the room it has there (its largest width and height).
+struct Placed {
+  side: Side = .bottom
+  arrow: float = 0
+  width: float = 0
+  height: float = 0
+  availableWidth: float = 0
+  availableHeight: float = 0
+}
+
+/// A view's place in its parent and its size, in points.
+struct Frame {
+  x: float = 0
+  y: float = 0
+  width: float = 0
+  height: float = 0
+}
+
+/// The system an app runs on.
+enum Platform {
+  unknown
+  iOS
+  android
+  macOS
+  windows
+  web
+  linux
+}
+
+/// How much room a window gives an app along one axis: compact under
+/// 600 points wide (480 high), medium under 840 (900), else expanded.
+enum SizeClass {
+  unspecified
+  compact
+  medium
+  expanded
+}
+
+/// What the platform says about where the app shows: its size, the safe
+/// area's insets, the keyboard, the display, the text size, the user's
+/// languages. environment() reads it, and a binding that does follows it
+/// (a rotation, dark mode, the keyboard showing). The UI runtime builds
+/// it: its fields' order is core/src/ui's.
+struct Environment {
+  width: float = 0
+  height: float = 0
+  safeTop: float = 0
+  safeRight: float = 0
+  safeBottom: float = 0
+  safeLeft: float = 0
+  keyboard: float = 0  // how much of the bottom the keyboard covers
+  scale: float = 1     // pixels per point
+  fontScale: float = 1 // the user's text size; 1 is the default
+  dark: bool = false
+  reduceMotion: bool = false
+  screenReader: bool = false
+  platform: Platform = .unknown
+  widthClass: SizeClass = .unspecified
+  heightClass: SizeClass = .unspecified
+  locale: string = ""     // the user's regional formats (BCP 47)
+  timeZone: string = ""   // IANA
+  languages: string = ""  // BCP 47 tags, most preferred first, joined by commas
+  firstWeekday: int = 0   // 1 Sunday to 7 Saturday; 0 unknown
+  hourCycle: int = 0      // 12 or 24; 0 unknown
+}
+
+// ---- Interaction ----
+
+/// A pan's, a pinch's or a rotation's progress, in points: x and y are
+/// where the touch is in the view, the translation how far it moved
+/// since it began, the velocity in points per second, scale a pinch's
+/// since it began (1 otherwise), rotation two fingers' turn since they
+/// began, in radians clockwise.
+struct Gesture {
+  state: GestureState = .began
+  x: float = 0
+  y: float = 0
+  translationX: float = 0
+  translationY: float = 0
+  velocityX: float = 0
+  velocityY: float = 0
+  scale: float = 1
+  rotation: float = 0
+}
+
+/// A part of the screen a test looks in: app.in(.bottomToolbar).tap("Star")
+/// taps the bottom toolbar's Star, not the navigation bar's.
+enum TestScope {
+  content       // what screens, sheets, alerts and popovers show, not their bars
+  navigationBar // the screens' titles and their toolbar's buttons
+  bottomToolbar // the screens' bottom toolbars and primary actions
+  tabBar        // the tab bars' tabs
+  sidebar       // the split views' sidebars: their destinations
+}
+
+/// A swipe's direction.
+enum SwipeDirection {
+  right
+  left
+  up
+  down
+}
+
+/// A key a view takes while the keyboard's focus is in it, and what it
+/// does. key is a character ("d", any case) or a named key (up, down,
+/// left, right, escape, enter, tab, space, delete, home, end, pageup,
+/// pagedown, f1...); with a modifier, a shortcut: its bools, or mods.
+/// primary is ⌘ on Apple platforms and Ctrl elsewhere.
+///
+///   keys: [Shortcut(key: "down", run: () => { sel += 1 }), Shortcut(key: "d", primary: true, run: duplicate)]
+///   keys: [Shortcut(key: "n", mods: [.control], run: next)]
+///   MenuItem("Save") { shortcut: .cmd("s") }
+struct Shortcut {
+  key: string
+  primary: bool = false
+  shift: bool = false
+  alt: bool = false
+  control: bool = false
+  run: fn() = () => {} // a MenuItem's shortcut runs the item
+  mods: [Modifier] = [] // modifiers besides the bools'
+
+  /// The key with primary (⌘ on Apple platforms, Ctrl elsewhere): a menu
+  /// item's shortcut, MenuItem("Save") { shortcut: .cmd("s") }.
+  static fn cmd(key: string, mods: [Modifier] = []) -> Shortcut = Shortcut(key: key, primary: true, mods: mods)
+}
+
+/// A modifier key of a Shortcut.
+enum Modifier {
+  primary // ⌘ on Apple platforms, Ctrl elsewhere
+  shift
+  alt     // a Mac's option
+  control
+}
+
+/// What a screen reader offers to do with a view (VoiceOver's rotor,
+/// TalkBack's actions): what a swipe or a long press does for a sighted
+/// user.
+struct A11yAction {
+  name: string
+  run: fn()
+}
+
+/// A thing another app shared with this one, or pasted into a field: a
+/// text, a link, or a file (the app's own copy, in its caches).
+struct SharedItem {
+  kind: ShareKind = .text
+  text: string = ""   // a text's text, a link's URL
+  path: string = ""   // a file's
+  name: string = ""   // the file's name where it came from
+  mime: string = ""
+  size: int = -1      // a file's size in bytes; -1: unknown
+}
+
+/// A thing a drag carries: a text, a link, a file, and the app's own
+/// value for a drag within the app (an id), which other apps never see.
+/// mime is what drop targets accept it by: "text/plain" for a text and
+/// "text/uri-list" for a link unless set, a file's from its name.
+struct DragItem {
+  kind: ShareKind = .text
+  text: string = ""
+  path: string = ""
+  name: string = ""
+  mime: string = ""
+  size: int = -1
+  value: string = ""
+}
+
+/// What's dropped on a view: the items it accepts, where in it, whether
+/// it was dragged from the app (its items' values are there), and
+/// whether the files are the app's own copies (another app's drop on a
+/// phone: move or remove them).
+struct Drop {
+  items: [DragItem] = []
+  x: float = 0
+  y: float = 0
+  local: bool = false
+  copied: bool = false
+}
+
+// ---- Rich text ----
+
+/// A run of styled text, for RichText and a rich TextField. A field
+/// left zero is the element's (its font's style, size and weight, its
+/// color); a link's color is the accent's. A "\n" starts a paragraph.
+/// inline makes the span a component in the text instead (text is
+/// ignored).
+struct Span {
+  text: string = ""
+  font: Font = Font()
+  italic: bool = false
+  mono: bool = false
+  underline: bool = false
+  strike: bool = false
+  color: Color = .default
+  background: Color = .default
+  link: string = ""
+  inline: Inline? = none
+}
+
+/// A component in a RichText's text, where its span is, laid out at its
+/// own size and sitting on the baseline. key keeps it (and its state)
+/// from one text to the next; build makes it, once per key.
+struct Inline {
+  key: string
+  build: fn() -> View
+}
+
+/// A style of a rich TextField's text (format, toggleFormat).
+enum TextFormat {
+  bold
+  italic
+  underline
+  strike
+  mono
+}
+
+/// The styles a rich TextField has where its cursor is, or that all its
+/// selection has.
+struct TextFormats {
+  bold: bool = false
+  italic: bool = false
+  underline: bool = false
+  strike: bool = false
+  mono: bool = false
+  link: string = ""
+}
+
+// ---- Media ----
+
+/// How an Image's placeholder fills its box: as the image does, or its
+/// own way.
+enum PlaceholderMode {
+  asImage
+  fit
+  fill
+  stretch
+  center
+}
+
+/// A WebView's page: its URL, title, progress (0 to 1), and where its
+/// history can go.
+struct WebState {
+  url: string = ""
+  title: string = ""
+  loading: bool = false
+  progress: float = 0
+  canGoBack: bool = false
+  canGoForward: bool = false
+}
+
+/// A file a WebView's page leads to, which it can't show.
+struct WebDownload {
+  url: string = ""
+  mime: string = ""
+  filename: string = ""
+  size: int = -1
+}
+
+// ---- Graphics ----
+
+/// How a Canvas strokes a path.
+struct StrokeStyle {
+  width: float = 1
+  cap: LineCap = .butt
+  join: LineJoin = .miter
+  dash: [float] = []   // lengths drawn and skipped in turn; []: solid
+  dashPhase: float = 0
+}
+
+/// A Canvas's linear gradient: colors at locations from start to end,
+/// in points of the canvas ([] locations: evenly spaced; start and end
+/// both 0: the canvas's top to its bottom).
+struct LinearGradient {
+  colors: [Color]
+  locations: [float] = []
+  startX: float = 0
+  startY: float = 0
+  endX: float = 0
+  endY: float = 0
+}
+
+/// A Canvas's radial gradient: colors from center (0) to the circle of
+/// radius (1); focusX, focusY move where it starts (SVG's focal point),
+/// the center when unset.
+struct RadialGradient {
+  colors: [Color]
+  locations: [float] = []
+  centerX: float = 0
+  centerY: float = 0
+  radius: float = 0
+  focusX: float? = none
+  focusY: float? = none
+}
+
+/// How Graphics.text draws: its size (0: 17, the body's), weight,
+/// color (0: the label color), and where x is on it, physically.
+struct CanvasText {
+  size: float = 0
+  weight: FontWeight = .default
+  color: Color = .default
+  align: TextAlign = .start
+}
+
+/// A Shader's uniform variable's value, by its name: a scalar's number,
+/// a vector's components, a matrix's columns in turn.
+struct Uniform {
+  name: string
+  value: [float]
+}
+
+// ---- Languages ----
+
+/// The user's regional formats: the locale of the formats (which may be
+/// another language's than the app's), the first day of the week (1
+/// Sunday to 7 Saturday) and the hour cycle (12 or 24).
+struct Region {
+  locale: string = ""
+  firstWeekday: int = 2
+  hourCycle: int = 24
+}
+
+/// A height a sheet can rest at.
+enum Detent {
+  medium
+  large
+  fit // as tall as its content (macOS; large elsewhere)
+}
+
+/// How a Route shows its child routes.
+enum RouteLayout {
+  group // no navigator of its own: its children join its parent's
+  stack // a navigation stack: its children are its screens
+  tabs  // each child a tab
+  split // each child a destination of a sidebar
+  slot  // one child at a time, with no bar (signed out, signed in)
+}
+
+/// A route's parameters, given to its screen: the path's (:id, *path),
+/// the query's, and the screen's own href. The UI runtime builds it: its
+/// fields' order is core/src/ui's.
+struct Params {
+  href: string = ""
+  path: [string: string] = [:]
+  query: [string: string] = [:]
+
+  fn get(name: string) -> string = path[name] ?? query[name] ?? ""
+  /// A parameter as a whole number: none when it isn't one, or isn't there.
+  fn int(name: string) -> int? = get(name).toInt()
+}
+
+/// What a routed screen throws, to the nearest Boundary, when its
+/// address doesn't say a parameter it needs, or says one that doesn't
+/// convert to its type.
+struct RouteError: Error {
+  message: string
+}
+
+// A routed screen's parameters, read from its Params (lang/ir's
+// routedRoute calls these).
+fn routeParam(p: Params, name: string) -> string? = p.path[name] ?? p.query[name]
+
+fn routeMissing(name: string) throws {
+  throw RouteError(message: "the address has no {name}")
+}
+
+fn routeInt(s: string, name: string) throws -> int {
+  if let n = s.toInt() { return n }
+  throw RouteError(message: "the address's {name} isn't a whole number: \"{s}\"")
+}
+
+fn routeFloat(s: string, name: string) throws -> float {
+  if let x = s.toFloat() { return x }
+  throw RouteError(message: "the address's {name} isn't a number: \"{s}\"")
+}
+
+fn routeBool(s: string, name: string) throws -> bool {
+  if s == "true" || s == "1" { return true }
+  if s == "false" || s == "0" || s == "" { return false }
+  throw RouteError(message: "the address's {name} isn't true or false: \"{s}\"")
+}
+
+fn routeCase(s: string, name: string, cases: [string]) throws -> int {
+  if let i = cases.index(c => c == s) { return i }
+  throw RouteError(message: "the address's {name} isn't one of {cases.joined(separator: ", ")}: \"{s}\"")
+}
+
+/// A text field of an alert.
+struct AlertField {
+  text: string = ""        // what it starts with
+  placeholder: string = ""
+  secure: bool = false     // a password's
+  keyboard: Keyboard = .default
+  contentType: string = "" // AutoFill's hint
+  change: fn(string)? = none // the user's typing
+}
+
+/// What a flyout Window hangs from: a tray icon (platform/tray's
+/// anchor(id)), or a rectangle of the window it's declared in, in points
+/// from its content's top left (a rectangle of no size is a point).
+struct Anchor {
+  tray: int = 0 // a tray icon's (0: the rectangle)
+  x: float = 0
+  y: float = 0
+  width: float = 0
+  height: float = 0
+}
+
+/// A flyout Window's anchor and the side of it the window goes to: where
+/// the display has no room there, it flips to the other side, slides into
+/// the display, then shrinks to fit it.
+struct Flyout {
+  anchor: Anchor = Anchor()
+  placement: PopoverPlacement = .bottom
+  gap: float = 0 // between the anchor and the window, in points
+}
+
+/// What a MenuBar's item is: the app's own (drawn red when destructive),
+/// or one the platform does itself, with its own title (unless the item
+/// has one) and shortcut: quit quits the app ("Quit Notes", ⌘Q), close
+/// closes the window in use as its close button does (⌘W, Ctrl+W),
+/// openRecent is the recent documents' submenu (a Mac's own).
+enum MenuRole {
+  normal
+  destructive
+  quit
+  close
+  openRecent
+}
+
+/// A quit about to happen (the app block's on quit(e), onQuit): cancel()
+/// keeps the app running (to ask about unsaved changes first; quit()
+/// again once they're dealt with), unless the session is ending (logout,
+/// shutdown), when it can't be refused and the process may end as soon
+/// as the handlers return. canceled() says whether a handler canceled it.
+struct QuitEvent {
+  sessionEnding: bool = false
+  cancel: fn()
+  canceled: fn() -> bool
+}
+
+/// A window's state, as the platform reports it (windowState(w)).
+struct WindowState {
+  x: float = 0
+  y: float = 0
+  width: float = 0
+  height: float = 0
+  visible: bool = false
+  focused: bool = false
+  minimized: bool = false
+  maximized: bool = false
+  fullscreen: bool = false
+  alwaysOnTop: bool = false
+  clickThrough: bool = false
+}

@@ -1,0 +1,274 @@
+import std/storage
+import std/time
+
+let periodNames = ["Today", "This week", "This month"]
+let milks = ["Whole", "Oat", "Almond", "Soy"]
+let sizes = ["Extra small", "Small", "Medium", "Large", "Extra large"]
+
+component Controls {
+  state volume = 0.4
+  state wifi = true
+  state agreed = false
+  state size = 2
+  state cups = 2.0
+  state tint = #039be5
+  state milk = -1 // none yet: the picker shows its prompt
+
+  /// Kept across launches.
+  let period = storage.Value("period", 1)
+
+  Section("Controls") {
+    Segmented(["Day", "Week", "Month"]) { bind selected: period.value }
+    Text(periodNames[period.value]) { color: .secondaryLabel }
+    Row {
+      align: .start
+      Picker(milks) {
+        bind selected: milk
+        prompt: "Milk"
+      }
+    }
+    Text(if milk >= 0 { "{milks[milk]} milk" } else { "No milk chosen" }) { color: .secondaryLabel }
+    Row {
+      gap: 12
+      align: .center
+      Symbol("speaker.wave.2")
+      Slider {
+        bind value: volume
+        grow: 1
+      }
+    }
+    Progress { value: volume }
+    Progress { value: none }
+    Row {
+      gap: 16
+      align: .center
+      ProgressRing { value: volume }
+      ProgressRing {
+        value: volume
+        width: 24
+        color: .green
+      }
+      ProgressRing { value: none }
+    }
+    Row {
+      gap: 12
+      align: .center
+      Text("Wi-Fi") { grow: 1 }
+      Toggle {
+        bind on: wifi
+        title: "Wi-Fi"
+      }
+    }
+    Row {
+      gap: 12
+      align: .center
+      Toggle {
+        bind on: agreed
+        checkbox: true
+        title: "I've read the terms"
+      }
+      Text("I've read the terms") { grow: 1 }
+    }
+    Row {
+      gap: 12
+      align: .center
+      Activity()
+      Text("Loading…") { color: .secondaryLabel }
+    }
+    Row {
+      gap: 12
+      align: .center
+      Text("{cups.fixed(0)} cups") { grow: 1 }
+      Stepper {
+        bind value: cups
+        min: 1
+        max: 8
+      }
+    }
+    Row {
+      gap: 12
+      align: .center
+      Symbol("heart.fill") {
+        color: tint
+        font: .title2
+      }
+      Text("Tint") { grow: 1 }
+      ColorPicker {
+        bind value: tint
+        alpha: true
+        title: "Tint"
+      }
+    }
+    PopoverRow()
+    Wheel(sizes) { bind selected: size }
+    Text("Size: {sizes[size]}") { color: .secondaryLabel }
+  }
+}
+
+/// A small panel pointing at its button.
+component PopoverRow {
+  state open = false
+
+  Row {
+    align: .center
+    gap: 12
+    Text("Popover") { grow: 1 }
+    Popover {
+      bind open: open
+      maxWidth: 280
+      content {
+        Column {
+          padding: 16
+          gap: 8
+          Text("About this gallery") { font: .headline }
+          Text("Every view here is the platform's own, laid out by Asuka's core and driven by signals.") { color: .secondaryLabel }
+          Button("Done") {
+            variant: .tinted
+            on press { open = false }
+          }
+        }
+      }
+      Button("") {
+        icon: "info.circle"
+        label: "About"
+        tooltip: "About"
+        on press { open = true }
+      }
+    }
+  }
+}
+
+/// Brief messages at the bottom of the window: one with an Undo, one that
+/// stays until it's dismissed, one that just says so.
+component Snackbars {
+  state drafts = 3
+  state upload: (fn())? = none
+
+  Section("Snackbars") {
+    Text("{drafts} drafts") { color: .secondaryLabel }
+    Row {
+      gap: 12
+      wrap: true
+      Button("Delete a draft") {
+        icon: "trash"
+        variant: .gray
+        disabled: drafts == 0
+        on press {
+          drafts -= 1
+          snackbar("Draft deleted", action: .button(title: "Undo", run: () => { drafts += 1 }))
+        }
+      }
+      Button("Copy the link") {
+        icon: "doc.on.doc"
+        variant: .gray
+        on press { snackbar("Link copied") }
+      }
+      Button("Upload") {
+        icon: "icloud.and.arrow.up"
+        variant: .gray
+        // Until it's done (or the user swipes it away).
+        on press { upload = snackbar("Uploading 3 photos…", duration: .indefinite) }
+      }
+      Button("Finish the upload") {
+        variant: .gray
+        on press {
+          if let dismiss = upload { dismiss() }
+          upload = none
+          snackbar("3 photos uploaded", duration: .long)
+        }
+      }
+    }
+  }
+}
+
+let tints = [#039be5, #43a047, #fb8c00, #8e24aa]
+
+/// A carousel: a paging Scroll and a PageControl sharing a page.
+component Pages {
+  state page = 0
+
+  Section("Pages") {
+    Scroll {
+      horizontal: true
+      paging: true
+      bind page: page
+      height: 160
+      for (i, c) in tints.enumerated() key i {
+        View {
+          background: c
+          radius: 16
+          margin: [0, 4]
+          justify: .center
+          align: .center
+          Text("Page {i + 1}") {
+            font: .title2
+            color: #ffffff
+          }
+        }
+      }
+    }
+    Row {
+      justify: .center
+      align: .center
+      gap: 8
+      Button("") {
+        icon: "chevron.backward"
+        tooltip: "Previous page"
+        label: "Previous page"
+        on press { page = max(page - 1, 0) }
+      }
+      PageControl(tints.count()) { bind page: page }
+      Button("") {
+        icon: "chevron.forward"
+        tooltip: "Next page"
+        label: "Next page"
+        on press { page = min(page + 1, tints.count() - 1) }
+      }
+    }
+  }
+}
+
+component Dates {
+  state when = (time.now() + 24h).truncate(1h)
+
+  let now = time.now()
+
+  Section("Dates") {
+    DateRow("Date") {
+      bind value: when
+      mode: .date
+    }
+    DateRow("Time") {
+      bind value: when
+      mode: .time
+    }
+    DateRow("Starts") {
+      bind value: when
+      mode: .dateTime
+    }
+    time.Picker {
+      bind value: when
+      inline: true
+      min: now
+    }
+    Text(when.format("EEE MMM d, HH:mm")) { style: caption }
+  }
+}
+
+component DateRow(label: string) {
+  prop value = time.now()
+  prop mode: DateMode = .date
+  event valueChange(value: time.Time)
+
+  Row {
+    gap: 12
+    align: .center
+    Text(label) { grow: 1 }
+    time.Picker {
+      value: value
+      mode: mode
+      min: time.now()
+      on valueChange(v) { emit valueChange(v) }
+    }
+  }
+}

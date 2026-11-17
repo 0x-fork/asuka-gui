@@ -4,12 +4,22 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"os"
+	"strings"
 	"testing"
+
+	"github.com/egoist/asuka/lang/compile"
 )
 
 // canvas is a synthetic capture: a sheet at (ox, oy) pixels, k pixels
-// per point, painted by f from each pixel's center in the sheet's points.
+// per point, painted by f from each pixel's center in the sheet's points,
+// its swatches their colors in sRGB.
 func canvas(w, h int, ox, oy, k float64, f func(x, y float64) color.RGBA) *image.RGBA {
+	return canvasIn(w, h, ox, oy, k, f, func(c RGB) color.RGBA { return color.RGBA{uint8(c.R), uint8(c.G), uint8(c.B), 255} })
+}
+
+// canvasIn is canvas with its swatches as space shows the cases' colors.
+func canvasIn(w, h int, ox, oy, k float64, f func(x, y float64) color.RGBA, space func(RGB) color.RGBA) *image.RGBA {
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
 	sw, sh := SheetSize()
 	for py := range h {
@@ -18,8 +28,16 @@ func canvas(w, h int, ox, oy, k float64, f func(x, y float64) color.RGBA) *image
 			c := color.RGBA{40, 40, 40, 255} // the screen around the sheet
 			if x >= 0 && y >= 0 && x < float64(sw) && y < float64(sh) {
 				c = color.RGBA{255, 255, 255, 255}
+				swatch := -1
+				for i := range swatches {
+					if sx := float64(swatchX(i)); y < marker && x >= sx && x < sx+marker {
+						swatch = i
+					}
+				}
 				if (x < marker && y < marker) || (x >= float64(sw)-marker && y >= float64(sh)-marker) {
 					c = color.RGBA{255, 0, 255, 255}
+				} else if swatch >= 0 {
+					c = space(swatches[swatch].rgb)
 				} else if f != nil {
 					c = f(x, y)
 				}
@@ -85,6 +103,39 @@ func TestEdge(t *testing.T) {
 	}
 }
 
+// A capture in another color space than sRGB (the Mac's window server
+// blends in Display P3's): a mix is measured between the colors as its
+// swatches show them, so half way there is 0.5, not what sRGB's red
+// would make it.
+func TestMixInTheCapturesSpace(t *testing.T) {
+	p3Red := color.RGBA{234, 51, 35, 255}  // sRGB's red in Display P3
+	half := color.RGBA{245, 153, 145, 255} // half of it over white, blended there
+	sw, sh := SheetSize()
+	k := 2.0
+	img := canvasIn(int(float64(sw)*k)+10, int(float64(sh)*k)+10, 3, 5, k, func(x, y float64) color.RGBA {
+		if y < marker {
+			return color.RGBA{255, 255, 255, 255} // the margin
+		}
+		return half
+	}, func(c RGB) color.RGBA {
+		if c == red {
+			return p3Red
+		}
+		return color.RGBA{uint8(c.R), uint8(c.G), uint8(c.B), 255}
+	})
+	s, err := locate(img)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &Probe{s: s, x: marker, y: marker}
+	if got := p.Mix("half", 50, 50, white, red, 0.5, 0.02); len(p.errors) > 0 {
+		t.Errorf("%.3f: %v", got, p.errors)
+	}
+	if got := p.At(50, 50).Mix(white, red); math.Abs(got-0.5) < 0.03 {
+		t.Errorf("against sRGB's red the mix is %.3f: the test shows nothing", got)
+	}
+}
+
 func TestBlur(t *testing.T) {
 	for _, k := range []float64{1, 2, 3} {
 		for _, sigma := range []float64{2, 4} {
@@ -114,5 +165,21 @@ func TestCasesFit(t *testing.T) {
 	// default window.
 	if w, h := SheetSize(); w > 360 || h > 580 {
 		t.Errorf("the sheet is %gx%g points", w, h)
+	}
+}
+
+// The app's source is what App says (go generate ./conformance), and it
+// compiles.
+func TestApp(t *testing.T) {
+	b, err := os.ReadFile("app/app.asuka")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(string(b), App()) {
+		t.Fatal("conformance/app/app.asuka is stale: go generate ./conformance")
+	}
+	res := compile.Files(map[string][]byte{"app.asuka": b}, nil)
+	if err := res.Err(); err != nil {
+		t.Fatalf("the sheet's app doesn't compile:\n%v", err)
 	}
 }

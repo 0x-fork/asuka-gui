@@ -1,5 +1,5 @@
-// asuka/sdk/push's Android side: Firebase Cloud Messaging. Only the apps that
-// import asuka/sdk/push are built with it (the Asuka CLI's asukaModules); the
+// platform/push's Android side: Firebase Cloud Messaging. Only the apps that
+// import platform/push are built with it (the Asuka CLI's asukaModules); the
 // CLI writes the project's Firebase settings (google-services.json) as
 // resources, as Google's Gradle plugin would.
 plugins {

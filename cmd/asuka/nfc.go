@@ -11,19 +11,22 @@ import (
 	"strings"
 )
 
-// nfcPkg is asuka/sdk/nfc's import path: an app that imports it gets what
-// its sessions and tags need (featurePermissions, addNFC).
-const nfcPkg = "github.com/egoist/asuka/sdk/nfc"
+// nfcPkg is platform/nfc's import path: an app that imports it gets what its
+// sessions and tags need (its manifest's, and asuka.toml's nfc: addNFC).
+const nfcPkg = "platform/nfc"
 
-// nfcConfig is asuka.json's "nfc": what asuka/sdk/nfc needs of the
+// nfcConfig is asuka.toml's nfc: what platform/nfc needs of the
 // platforms beyond the permissions every app that imports it has.
 //
-//	"nfc": {
-//	  "iso7816": ["D2760000850101"],
-//	  "felica": ["8008"],
-//	  "ndef": [{"uri": "https://example.com/tags/"}, {"mime": "application/vnd.example.ticket"}, {"external": "example.com:ticket"}],
-//	  "tech": [["IsoDep"], ["NfcA", "MifareUltralight"]]
-//	}
+//	[nfc]
+//	iso7816 = ["D2760000850101"]
+//	felica = ["8008"]
+//	ndef = [
+//	  {uri = "https://example.com/tags/"},
+//	  {mime = "application/vnd.example.ticket"},
+//	  {external = "example.com:ticket"},
+//	]
+//	tech = [["IsoDep"], ["NfcA", "MifareUltralight"]]
 type nfcConfig struct {
 	// ISO7816 are the applications (AIDs, in hex) iOS selects as it finds
 	// an ISO 7816 card, in order: Info.plist's
@@ -116,7 +119,7 @@ func (n *nfcConfig) check() error {
 	return nil
 }
 
-// addNFC adds, for an app that imports asuka/sdk/nfc (deps; nil: the
+// addNFC adds, for an app that imports platform/nfc (deps; nil: the
 // player, which runs any app), what its config asks of the platforms:
 // Info.plist's AIDs and system codes, Android's uses-feature and filters.
 func (c *appConfig) addNFC(deps []string) {
@@ -147,7 +150,7 @@ func (c *appConfig) addNFC(deps []string) {
 }
 
 // nfcFilters are the Activity's NDEF_DISCOVERED and TECH_DISCOVERED
-// intent filters ("" without asuka/sdk/nfc or filters).
+// intent filters ("" without platform/nfc or filters).
 func (c *appConfig) nfcFilters() string {
 	if !c.nfcOn {
 		return ""

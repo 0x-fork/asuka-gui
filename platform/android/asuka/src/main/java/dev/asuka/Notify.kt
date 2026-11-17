@@ -35,9 +35,9 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /**
- * asuka/sdk/notify's module (and asuka/sdk/push's notifications, which go through
+ * platform/notify's module (and platform/push's notifications, which go through
  * the same builder):
- * - "request" (u8 allowed); "schedule" (a notifyspec.Spec; seconds 0
+ * - "request" (u8 allowed); "schedule" (a sdk/notify's Spec; seconds 0
  *   posts it now, else an inexact alarm does, allowed while idle: no
  *   exact-alarm permission); "cancel" (the id).
  * - "categories", "channels", "channelGroups" (JSON), kept: a push that
@@ -241,7 +241,7 @@ object AsukaNotifyHub {
 }
 
 /**
- * The one builder of notifications, from a notifyspec.Spec: asuka/sdk/notify's
+ * The one builder of notifications, from a sdk/notify's Spec: platform/notify's
  * and pushes'. What it posts is kept (by id, in SharedPreferences) while
  * it shows: its data for "showing", its messages to add the next one to,
  * the reply to add after an inline reply. Off the main thread ([worker]):
@@ -325,7 +325,7 @@ object AsukaNotifications {
         return emptyList()
     }
 
-    /** What's reported of a notification (a notifyspec.Shown), from its spec. */
+    /** What's reported of a notification (a sdk/notify's WireDelivered), from its spec. */
     fun shown(spec: JSONObject, time: Long = System.currentTimeMillis()): JSONObject = JSONObject()
         .put("id", spec.optString("id")).put("title", spec.optString("title")).put("subtitle", spec.optString("subtitle"))
         .put("body", spec.optString("body")).put("url", spec.optString("url"))
@@ -333,7 +333,7 @@ object AsukaNotifications {
         .put("thread", spec.optString("thread")).put("time", time).put("remote", spec.optBoolean("asuka.remote"))
 
     /**
-     * Shows spec now (a notifyspec.Spec; remote: a push's, whose data are
+     * Shows spec now (a sdk/notify's Spec; remote: a push's, whose data are
      * the tap's extras as Firebase's are), unless Go hides it. Off the main
      * thread.
      */
@@ -568,7 +568,7 @@ object AsukaNotifications {
         }
     }
 
-    /** The notifications showing (notifyspec.Shown), newest first, without the summaries. */
+    /** The notifications showing (sdk/notify's WireDelivered), newest first, without the summaries. */
     fun showing(ctx: Context): JSONArray {
         val out = JSONArray()
         for (s in manager(ctx).activeNotifications.sortedByDescending { it.postTime }) {
@@ -663,7 +663,7 @@ object AsukaNotifications {
 object AsukaMessages {
     data class Message(val sender: JSONObject?, val text: String, val time: Long)
 
-    /** earlier's (a notifyspec.Conversation's), or else shown's (the spec kept for the notification showing), then text from sender. */
+    /** earlier's (a sdk/notify's WireConversation's), or else shown's (the spec kept for the notification showing), then text from sender. */
     fun thread(conversation: JSONObject, shown: JSONObject?, sender: JSONObject, text: String, now: Long): List<Message> {
         val out = ArrayList<Message>()
         val earlier = conversation.optJSONArray("earlier")

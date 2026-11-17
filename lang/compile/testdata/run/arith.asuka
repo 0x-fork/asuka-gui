@@ -1,0 +1,58 @@
+// Ints, floats, bools and their operators.
+
+test "ints" {
+  let a = 40
+  let b = 2
+  print(a + b)
+  print(a - b * 3)
+  print(a / 3)
+  print(a % 7)
+  print(-a)
+  var n = 1_000
+  n += 0xff
+  n *= 2
+  print(n)
+  expect(7 / 2 == 3)
+  expect(-7 % 3 == -1)
+}
+
+test "floats" {
+  let x = 1.5
+  let y: float = 2
+  print(x * y)
+  print(x / 4)
+  expect(x + 1 == 2.5)
+  expect(float(3) / 2 == 1.5)
+  expect(int(2.9) == 2)
+  print(float(min(3, 9)) + max(2.0, 0.5))
+}
+
+test "bools and comparisons" {
+  let t = true
+  print(t && !false)
+  print(1 < 2 || false)
+  expect(3 >= 3 && 2 <= 3 && 4 > 3 && 2 != 3)
+  expect("abc" < "abd")
+}
+
+test "division by zero throws" {
+  let z = 0
+  print(1 / z)
+}
+
+// Output:
+// 42
+// 34
+// 13
+// 5
+// -40
+// 2510
+// ok ints
+// 3
+// 0.375
+// 5
+// ok floats
+// true
+// true
+// ok bools and comparisons
+// FAIL division by zero throws: division by zero

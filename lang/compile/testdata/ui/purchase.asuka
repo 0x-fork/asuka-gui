@@ -1,0 +1,151 @@
+import platform/purchase
+
+let coins = purchase.Item(id: "coins100", kind: .consumable)
+let pro = purchase.Item(id: "pro", kind: .nonConsumable)
+let plus = purchase.Item(id: "plus.monthly", kind: .autoRenewable)
+
+state balance = 0
+state status = ""
+
+/// Gives what a transaction sold, then finishes it.
+async fn deliver(t: purchase.Transaction) {
+  if t.state == .pending {
+    status = "Waiting for approval…"
+    return
+  }
+  if t.state == .revoked {
+    status = "A purchase was refunded"
+  } else if t.productId == coins.id {
+    balance += 100 * t.quantity
+    status = "+{100 * t.quantity} coins"
+  } else {
+    status = "Thanks!"
+  }
+  try? await t.finish()
+}
+
+async fn followEvents() throws {
+  for await e in purchase.events() {
+    if let t = e.transaction { await deliver(t) }
+  }
+}
+
+async fn followQuietly() { try? await followEvents() }
+
+component Store {
+  state products: [purchase.Product] = []
+  let owned = purchase.owned()
+
+  task {
+    purchase.declare([coins, pro, plus])
+    await followQuietly()
+  }
+  task {
+    do {
+      products = try await purchase.products([coins, pro, plus])
+    } catch e {
+      status = e.message
+    }
+  }
+
+  Column {
+    Text("{balance} coins")
+    Text("owns pro {owned.has(pro.id)} plus {owned.has(plus.id)}")
+    for p in products key p.id {
+      Button(if p.kind != .consumable && owned.has(p.id) { "Owned {p.title}" } else { "{p.title} {p.price}" }) {
+        on press {
+          do {
+            let r = try await purchase.buy(p.item())
+            if r.status == .bought {
+              await deliver(r.transaction!)
+            } else if r.status == .pendingApproval {
+              status = "Waiting for approval…"
+            }
+          } catch e {
+            status = e.message
+          }
+        }
+      }
+    }
+    Text("status {status}")
+    Button("Restore") { on press { let _ = try? await purchase.restore() } }
+  }
+}
+
+app { Store() }
+
+fn sells() -> purchase.FakeStore = purchase.fake([
+  purchase.FakeProduct(id: coins.id, kind: .consumable, title: "Coins", price: "$0.99", priceMicros: 990_000),
+  purchase.FakeProduct(id: pro.id, kind: .nonConsumable, title: "Pro", price: "$9.99", priceMicros: 9_990_000),
+  purchase.FakeProduct(id: plus.id, kind: .autoRenewable, title: "Plus", price: "$4.99", priceMicros: 4_990_000,
+    period: purchase.Period(unit: .month), trial: purchase.Period(unit: .week)),
+])
+
+test "with no platform code, there's no store" {
+  expect(!purchase.available())
+  let app = mount(Store())
+  await app.idle()
+  app.expect("status purchase: no store")
+}
+
+test "buy" {
+  balance = 0
+  let store = sells()
+  let app = mount(Store())
+  await app.idle()
+  app.tap("Coins $0.99")
+  await app.idle()
+  app.expect("100 coins")
+  app.tap("Coins $0.99")
+  await app.idle()
+  app.expect("200 coins")
+  expect(store.unfinished().isEmpty())
+  expect(store.transactions.all(t => t.consumed))
+  app.tap("Pro $9.99")
+  await app.idle()
+  app.expect("owns pro true plus false")
+  app.expect("Owned Pro")
+  // Plus's trial is the user's: they never subscribed.
+  let products = try await purchase.products([plus])
+  let sub = products[0].subscription!
+  expect(sub.introEligible && sub.offers[0].phases[0].mode == .freeTrial)
+}
+
+test "outside the app" {
+  balance = 0
+  let store = sells()
+  let app = mount(Store())
+  await app.idle()
+  store.outcome = .pending
+  app.tap("Coins $0.99")
+  await app.idle()
+  app.expect("status Waiting for approval…")
+  let _ = store.approve(coins.id)
+  await app.idle()
+  app.expect("100 coins")
+  store.outcome = .bought
+  app.tap("Plus $4.99")
+  await app.idle()
+  app.expect("owns pro false plus true")
+  expect(!(try await purchase.products([plus]))[0].subscription!.introEligible)
+  let _ = store.renew(plus.id)
+  await app.idle()
+  app.expect("status Thanks!")
+  let gift = store.deliver(pro.id)
+  await app.idle()
+  app.expect("owns pro true plus true")
+  store.refund(gift.id)
+  await app.idle()
+  app.expect("status A purchase was refunded")
+  app.expect("owns pro false plus true")
+}
+
+test "unfinished from before" {
+  balance = 0
+  let store = sells()
+  let _ = store.deliver(coins.id)
+  let app = mount(Store())
+  await app.idle()
+  app.expect("100 coins")
+  expect(store.unfinished().isEmpty())
+}

@@ -1,0 +1,17 @@
+// A stub of std/http.
+pub struct Response {
+  status: int
+  body: string
+
+  pub fn json<T>() throws -> T {
+    throw Error("stub")
+  }
+}
+
+pub async fn get(url: string, headers: [string: string] = [:]) throws -> Response {
+  return Response(status: 200, body: "")
+}
+
+pub async fn post(url: string, body: string = "") throws -> Response {
+  return Response(status: 200, body: "")
+}

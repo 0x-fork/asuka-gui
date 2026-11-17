@@ -1,0 +1,45 @@
+// static fn: a struct's or an enum's function, with no self, called on
+// the type (Money.of(dollars: 2)) with named arguments and defaults, or
+// as .of(…) where the type is expected, or taken as a value.
+
+struct Money {
+  cents: int
+
+  static fn of(dollars: int, cents: int = 0) -> Money = Money(cents: dollars * 100 + cents)
+  static async fn fetched(url: string) -> Money {
+    await sleep(1ms)
+    return .of(dollars: url.count())
+  }
+}
+
+enum Size {
+  small
+  large
+
+  static fn parse(s: string, fallback: Size = .small) -> Size = if s == "large" { .large } else { fallback }
+}
+
+fn price() -> Money = .of(dollars: 1, cents: 50)
+
+test "static functions" {
+  print(Money.of(dollars: 2, cents: 5).cents)
+  print(Money.of(dollars: 3).cents)
+  print(price().cents)
+  let make = Money.of
+  print(make(1, 1).cents)
+  print(Size.parse("large") == .large && Size.parse("x", fallback: .large) == .large)
+  let m = await Money.fetched(url: "abcd")
+  print(m.cents)
+  let s: Shortcut = .cmd("s", mods: [.shift])
+  print("{s.key} {s.primary} {s.mods.count()}")
+}
+
+// Output:
+// 205
+// 300
+// 150
+// 101
+// true
+// 400
+// s true 1
+// ok static functions

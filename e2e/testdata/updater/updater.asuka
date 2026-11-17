@@ -1,0 +1,71 @@
+// Updater is e2e/updater_test.go's app: built at two versions, the first
+// updates itself to the second and relaunches into it. When its directory
+// (fs.appDir(), ASUKA_DATA in the test) holds "selfupdate", each launch
+// writes its version to "report" there; the first checks, installs and
+// relaunches with platform/update's API, the second quits. Otherwise it's an
+// app with the update window and "Check for Updates…" in its menu.
+
+import platform/update
+import std/fs
+
+fn marker(name: string) -> string = fs.join([fs.appDir(), name])
+
+async fn report(line: string) {
+  let path = marker("report")
+  try? await spawn { try fs.appendText(path, text: "{line}\n") }
+}
+
+// selfUpdate reports this launch's version, then updates the app and
+// relaunches it, or quits once it's the new version.
+async fn selfUpdate() {
+  if let e = await update.unsupported() {
+    await report("check failed: {e.message}")
+    quit()
+    return
+  }
+  await report("launched {update.version()}")
+  do {
+    if let r = try await update.check() {
+      await report("found {r.version} ({r.size} bytes)")
+      do {
+        try await r.install()
+      } catch e {
+        await report("install failed: {e.message}")
+        quit()
+        return
+      }
+      await report("installed {r.version}")
+      update.relaunch()
+    } else {
+      await report("up to date")
+      quit()
+    }
+  } catch e {
+    await report("check failed: {e.message}")
+    quit()
+  }
+}
+
+component Main {
+  task {
+    let path = marker("selfupdate")
+    if await spawn { fs.exists(path) } {
+      await selfUpdate()
+    }
+  }
+
+  Column {
+    padding: 24; gap: 12
+    update.UpdateWindow()
+    MenuBar { update.AppMenu() }
+    Text("Version {update.version()}")
+    Button("Check for Updates…") { on press { update.checkForUpdates() } }
+  }
+}
+
+app {
+  Window {
+    title: "Updater"
+    Main()
+  }
+}

@@ -10,19 +10,18 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 )
 
-// The player: asuka dev without --once runs the app's Go code here and
-// its views in the player app (dev.asuka.player), which the other tests
-// never use. These install the player again (the path that broke when its
-// link listed its plugins in a directory that isn't a Go package), show
-// the counter, reload it after an edit that used to lose its state, and
-// relaunch the player against the running code (where a fresh player
-// was once seen to stay blank).
+// The player: asuka dev runs the app's code (the counter's app.asuka, as
+// bytecode) and its views in the player, the app's own debug build (its
+// bundle ID's). These build and install the player for a copy of the
+// counter (a work directory of its own: installed afresh), show the
+// counter, reload it after an edit that used to lose its state, and
+// relaunch the player against the running code (where a fresh player was
+// once seen to stay blank).
 //
 //	go test -tags e2e ./e2e -run PlayerIOS
 //	go test -tags e2e ./e2e -run PlayerAndroid
@@ -36,47 +35,31 @@ type playerDev struct {
 	logs syncBuffer
 }
 
-// startPlayerDev copies the counter to a module of its own (Asuka
-// replaced by this checkout), so the test can edit it, makes the
-// player install again, and runs asuka dev for platform.
+// startPlayerDev copies the counter (an Asuka package: no Go module to
+// make), so the test can edit it, and runs asuka dev for platform.
 func startPlayerDev(t *testing.T, platform string) *playerDev {
 	t.Helper()
 	repo := root(t)
 	dir := filepath.Join(t.TempDir(), "counter")
 	os.MkdirAll(dir, 0o755)
-	for _, f := range []string{"main.go", "asuka.json", "icon.png"} {
+	for _, f := range []string{"app.asuka", "asuka.toml", "icon.png"} {
 		b, err := os.ReadFile(filepath.Join(repo, "examples", "counter", f))
 		if err != nil {
 			t.Fatal(err)
 		}
 		os.WriteFile(filepath.Join(dir, f), b, 0o644)
 	}
-	// Quoted: a path with spaces, or a Windows path's backslashes.
-	gomod := "module example.com/counter\n\ngo 1.26\n\nrequire github.com/egoist/asuka v0.0.0\n\nreplace github.com/egoist/asuka => " + strconv.Quote(repo) + "\n"
-	os.WriteFile(filepath.Join(dir, "go.mod"), []byte(gomod), 0o644)
-	if sum, err := os.ReadFile(filepath.Join(repo, "go.sum")); err == nil {
-		os.WriteFile(filepath.Join(dir, "go.sum"), sum, 0o644)
-	}
-	// The player installs again: what asuka dev remembers of its installs
-	// goes (one per device: they just install again next time).
-	if cache, err := os.UserCacheDir(); err == nil {
-		marks, _ := filepath.Glob(filepath.Join(cache, "asuka", "player", platform, "installed-*"))
-		for _, m := range marks {
-			os.Remove(m)
-		}
-	}
 	cli := filepath.Join(t.TempDir(), "asuka")
 	if runtime.GOOS == "windows" {
 		cli += ".exe" // what Windows runs
 	}
 	run(t, "go", "build", "-C", repo, "-o", cli, "./cmd/asuka")
-	args := []string{"dev", "--platform", platform, "--no-vet"}
+	args := []string{"dev", "--platform", platform}
 	if d := os.Getenv("ASUKA_DEVICE"); d != "" {
 		args = append(args, "--device", d)
 	}
 	p := &playerDev{t: t, dir: dir}
 	c := exec.Command(cli, append(args, dir)...)
-	c.Env = append(os.Environ(), "GOFLAGS=-mod=mod") // the copy's requirements are the replaced Asuka's
 	var out io.Writer = &p.logs
 	if testing.Verbose() {
 		out = io.MultiWriter(&p.logs, os.Stdout) // to follow a slow first build
@@ -113,16 +96,16 @@ func (p *playerDev) waitLog(want string, d time.Duration) {
 	p.t.Fatalf("asuka dev didn't print %q:\n%s", want, p.logs.String())
 }
 
-// edit changes the app's main.go, and waits for the reload.
+// edit changes the app's app.asuka, and waits for the reload.
 func (p *playerDev) edit(from, to string) {
 	p.t.Helper()
-	path := filepath.Join(p.dir, "main.go")
+	path := filepath.Join(p.dir, "app.asuka")
 	b, err := os.ReadFile(path)
 	if err != nil {
 		p.t.Fatal(err)
 	}
 	if !strings.Contains(string(b), from) {
-		p.t.Fatalf("main.go has no %q", from)
+		p.t.Fatalf("app.asuka has no %q", from)
 	}
 	reloads := strings.Count(p.logs.String(), "asuka: reloaded")
 	os.WriteFile(path, []byte(strings.Replace(string(b), from, to, 1)), 0o644)
@@ -161,10 +144,11 @@ func playerCounter(t *testing.T, p *playerDev, s screen) {
 		s.tap("Add")
 		waitFor(t, s, []string{fmt.Sprintf("Count: %d", i)})
 	}
-	// A signal of count's type made before it: the third keeps its value
-	// (it's named by its variable, not its place among the ints).
-	p.edit("\tcount := signal.New(0)\n", "\tstep := signal.New(1)\n\t_ = step\n\tcount := signal.New(0)\n")
-	p.edit(`"Count: %d"`, `"Total: %d"`)
+	// A state of count's type declared before it: count keeps its value
+	// (a state is kept by its component and its name, not its place among
+	// the ints).
+	p.edit("  state count = 0\n", "  state step = 1\n  state count = 0\n")
+	p.edit(`"Count: {count}"`, `"Total: {count}"`)
 	waitFor(t, s, []string{"Total: 3"}, "Count: 3")
 	// A fresh player against the running code, a few times: each shows
 	// the app. (Its state starts over: the core keeps the last player's
@@ -187,7 +171,7 @@ func TestPlayerIOS(t *testing.T) {
 	if m == nil {
 		t.Fatalf("no simulator in:\n%s", p.logs.String())
 	}
-	const bundle = "dev.asuka.player"
+	const bundle = "dev.asuka.counter" // the counter's player
 	data := strings.TrimSpace(run(t, "xcrun", "simctl", "get_app_container", m[1], bundle, "data"))
 	s := &iosScreen{t: t, udid: m[1], bundle: bundle, tmp: filepath.Join(data, "tmp")}
 	playerCounter(t, p, s)
@@ -202,5 +186,5 @@ func TestPlayerAndroid(t *testing.T) {
 	if m == nil {
 		t.Fatalf("no device in:\n%s", p.logs.String())
 	}
-	playerCounter(t, p, &androidScreen{t: t, serial: m[1], pkg: "dev.asuka.player"})
+	playerCounter(t, p, &androidScreen{t: t, serial: m[1], pkg: "dev.asuka.counter"})
 }

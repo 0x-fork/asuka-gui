@@ -1,0 +1,1059 @@
+// Package platform/document is a document's model: a file's content as a
+// store the app edits, read with the app's read function, autosaved a
+// moment after each change with its write function, reverted to what's
+// on disk, and a conflict when another program changed the file since
+// it was read (saveAnyway keeps the app's, revert takes theirs).
+//
+//   let doc = document.open(path, read: data => data.string(), write: text => text.bytes())
+//   if let text = doc.content { TextField { text: text; on change(t) { doc.edit(t) } } }
+//
+// The files are read and written off the main thread by each platform
+// (coordinated with iCloud and other apps on iOS and macOS). A document
+// with changes it can't save in place (an untitled one, one in conflict,
+// one whose file can't be written) keeps them in a recovery copy in the
+// app's data, which Documents opens again at the next launch.
+//
+// Documents is a text editor's documents, the platform's way: on a
+// desktop a window per document open, the File menu's New, Open…, Open
+// Recent, Save, Save As…, Duplicate, Rename…, Move To… and Revert, and a
+// question before closing a document whose changes would be lost; on a
+// phone or in a browser, a list of the app's documents (Duplicate,
+// Rename, Delete) and the one open, each in its editor.
+//
+//   app {
+//     document.Documents(types) { editor: doc => Editor(doc) }
+//   }
+
+import platform/dialog
+import std/fs
+import std/i18n
+import std/json
+import platform/recent
+import std/time
+
+/// A kind of file the documents are (list the same in asuka.toml's
+/// fileTypes).
+pub struct Type {
+  /// What the files are ("Plain Text").
+  name: string
+  /// Their extensions, without the dot ("txt"); new documents take the
+  /// first type's first.
+  extensions: [string] = []
+  mimeTypes: [string] = []
+}
+
+/// Where a document is.
+pub enum State {
+  /// Being read.
+  loading
+  /// As it is on disk.
+  saved
+  /// Changed, to be saved a moment after the last change.
+  edited
+  saving
+  /// Another program changed the file since it was read: saveAnyway
+  /// writes this one over it, revert reads theirs.
+  conflict
+  /// It couldn't be read or written: error says why.
+  failed
+}
+
+/// The platform's files.
+native interface Files {
+  /// The file's bytes.
+  async fn read(path: string) -> bytes
+  /// Writes data to path, whole (a temporary file renamed over it).
+  async fn write(path: string, data: bytes)
+  /// When the file last changed, in milliseconds since 1970 (0: it
+  /// isn't there).
+  async fn modified(path: string) -> int
+}
+
+let files = try? Files()
+
+// The files through the platform's code (coordinated, off the main
+// thread) where it has some, else std/fs's (the web's, a test's).
+
+async fn readFile(path: string) throws -> bytes {
+  if let f = files {
+    return try await f.read(path)
+  }
+  return try fs.read(path)
+}
+
+async fn writeFile(path: string, data: bytes) throws {
+  if let f = files {
+    try await f.write(path, data)
+    return
+  }
+  try fs.write(path, data)
+}
+
+/// When path last changed, as a stamp a document compares with the next
+/// (0: it isn't there): the platform's milliseconds since 1970, or
+/// std/fs's nanoseconds.
+async fn modifiedOf(path: string) throws -> int {
+  if let f = files {
+    return try await f.modified(path)
+  }
+  if !fs.exists(path) {
+    return 0
+  }
+  return (try fs.stat(path)).modified.unixNano()
+}
+
+/// How long after the last change a document saves itself (or, when it
+/// can't, writes its recovery copy).
+let autosaveAfter = 1s
+
+/// A recovery copy's record, beside its content (id.data): the file the
+/// document was (none: untitled), its name, and when the file had
+/// changed as the document knew it.
+struct Copy {
+  file: string = ""
+  name: string = ""
+  known: int = 0
+}
+
+/// Where documents keep their recovery copies: Recovery in the app's
+/// directory.
+pub fn recoveryDir() -> string = fs.join([fs.appDir(), "Recovery"])
+
+/// A document: path's content as T ("" for an untitled one, which start
+/// gives its content).
+pub store Document<T>(path: string, read: fn(bytes) throws -> T, write: fn(T) -> bytes) {
+  /// The content; none until it's read.
+  pub state content: T? = none
+  /// Where it is between the disk and the edits: loading as it's read,
+  /// then saved, edited, saving, conflict or failed.
+  pub state state: State = .loading
+  /// Why it's failed, or what the conflict is.
+  pub state error = ""
+  /// The file it's kept in: "" while it's untitled (its changes are in
+  /// its recovery copy until the user saves it somewhere). Save As,
+  /// rename and moveTo change it.
+  pub state file = path
+  /// What it's called: its file's name, or an untitled one's
+  /// ("Untitled 2").
+  pub state name = if path.isEmpty() { say("untitled") } else { fs.base(path) }
+  // When the file last changed as this document knows it, and its
+  // edits, counted (what autosave follows).
+  state known = 0
+  state edits = 0
+  state saves = 0
+  // Its recovery copy's name in recoveryDir() ("": none written).
+  state copy = ""
+
+  task {
+    if file.isEmpty() {
+      if state == .loading {
+        state = .saved
+      }
+      return
+    }
+    if state == .loading {
+      await reload()
+    }
+  }
+
+  task(saves) {
+    if saves > 0 {
+      await save()
+    }
+  }
+
+  // A moment after the last edit: saved, or kept in the recovery copy
+  // when it can't be (cancelled by the next edit).
+  task(edits) {
+    if edits == 0 || state == .saved || state == .saving || state == .loading {
+      return
+    }
+    await sleep(autosaveAfter)
+    if file.isEmpty() || state == .conflict || state == .failed {
+      await keepCopy()
+    } else {
+      await save()
+    }
+  }
+
+  async fn reload() {
+    state = .loading
+    do {
+      let data = try await readFile(file)
+      known = try await modifiedOf(file)
+      content = try read(data)
+      error = ""
+      state = .saved
+      await dropCopy()
+    } catch e {
+      error = e.message
+      state = .failed
+    }
+  }
+
+  /// Starts the document with content, as a new untitled one (name its
+  /// name) or one restored from a recovery copy: edited says whether it
+  /// has changes to keep.
+  pub fn start(content: T, name: string, edited: bool) {
+    self.content = content
+    if !name.isEmpty() {
+      self.name = name
+    }
+    if edited {
+      state = .edited
+      edits += 1
+    } else if state == .loading {
+      state = .saved
+    }
+  }
+
+  /// Changes the content: saved a moment after the last change.
+  pub fn edit(c: T) {
+    content = c
+    if state != .conflict {
+      state = .edited
+    }
+    edits += 1
+  }
+
+  /// Whether it has changes that aren't in its file: an untitled one
+  /// edited, or one edited, in conflict, or whose save failed.
+  pub fn unsaved() -> bool = edits > 0 && (state == .edited || state == .saving || state == .conflict || state == .failed && content.isSome())
+
+  /// Saves now, unless another program changed the file since it was
+  /// read (a conflict). An untitled document can't: Save As.
+  pub async fn save() {
+    await put(false)
+  }
+
+  /// Saves as soon as it can, as save does, from code that can't wait
+  /// (a key's, a menu item's).
+  pub fn saveSoon() {
+    saves += 1
+  }
+
+  /// Writes this document's content over the file, whatever changed it.
+  pub async fn saveAnyway() {
+    await put(true)
+  }
+
+  async fn put(force: bool) {
+    if file.isEmpty() {
+      return
+    }
+    if let c = content {
+      do {
+        if !force {
+          let now = try await modifiedOf(file)
+          if now != known && known != 0 {
+            state = .conflict
+            error = "{file} changed since it was opened"
+            await keepCopy()
+            return
+          }
+        }
+        state = .saving
+        try await writeFile(file, write(c))
+        known = try await modifiedOf(file)
+        error = ""
+        if state == .saving {
+          state = .saved
+          edits = 0
+          await dropCopy()
+        }
+      } catch e {
+        error = e.message
+        state = .failed
+        await keepCopy()
+      }
+    }
+  }
+
+  /// Writes the document to target and keeps it there from then on, as
+  /// Save As does (an untitled one's first save). It throws what went
+  /// wrong, the document as it was.
+  pub async fn saveAs(target: string) throws {
+    if let c = content {
+      let was = state
+      state = .saving
+      do {
+        try await writeFile(target, write(c))
+      } catch e {
+        state = was
+        throw e
+      }
+      file = target
+      name = fs.base(target)
+      known = try await modifiedOf(target)
+      error = ""
+      state = .saved
+      edits = 0
+      await dropCopy()
+      recent.add(target)
+    }
+  }
+
+  /// Gives the document's file another name in its folder ("Notes.txt"),
+  /// as Rename… does. Throws when a file has that name, or the name
+  /// isn't one.
+  pub async fn rename(newName: string) throws {
+    let n = newName.trim()
+    if n.isEmpty() || n.contains("/") || n.contains("\\") || n == "." || n == ".." {
+      throw Error("document: {newName} isn't a file name")
+    }
+    if file.isEmpty() {
+      try await saveAs(fs.join([documentsDir(), n]))
+      return
+    }
+    let target = fs.join([fs.dir(file), n])
+    if target == file {
+      return
+    }
+    if fs.exists(target) {
+      throw Error("document: a file named {n} is there already")
+    }
+    try await relocate(target)
+  }
+
+  /// Moves the document's file into the folder dir, as Move To… does
+  /// (replacing a file of its name there). An untitled one is saved
+  /// there.
+  pub async fn moveTo(dir: string) throws {
+    if file.isEmpty() {
+      try await saveAs(fs.join([dir, name]))
+      return
+    }
+    let target = fs.join([dir, fs.base(file)])
+    if target == file {
+      return
+    }
+    try await relocate(target)
+  }
+
+  // relocate moves the file to target (a copy then a removal across
+  // volumes), its changes saved first.
+  async fn relocate(target: string) throws {
+    if state == .edited {
+      await save()
+    }
+    do {
+      try fs.rename(file, target)
+    } catch {
+      try fs.copy(file, target)
+      try fs.remove(file)
+    }
+    file = target
+    name = fs.base(target)
+    known = try await modifiedOf(target)
+    recent.add(target)
+  }
+
+  /// Reads the file again, dropping this document's changes.
+  pub async fn revert() {
+    if file.isEmpty() {
+      return
+    }
+    edits = 0
+    await reload()
+  }
+
+  /// Lets the document's unsaved changes go (its recovery copy), as
+  /// Don't Save and Delete do.
+  pub async fn discard() {
+    edits = 0
+    await dropCopy()
+  }
+
+  /// Writes the changes where they're kept now: the file, else the
+  /// recovery copy (what a quit does).
+  pub async fn settle() {
+    if !unsaved() {
+      return
+    }
+    if !file.isEmpty() && state == .edited {
+      await save()
+    }
+    if unsaved() {
+      await keepCopy()
+    }
+  }
+
+  // keepCopy writes the content and its record into recoveryDir().
+  async fn keepCopy() {
+    if let c = content {
+      do {
+        let dir = recoveryDir()
+        try fs.mkdirAll(dir)
+        if copy.isEmpty() {
+          copy = "{time.now().unixNano()}"
+        }
+        try await writeFile(fs.join([dir, "{copy}.data"]), write(c))
+        try await writeFile(fs.join([dir, "{copy}.json"]), json.encode(Copy(file: file, name: name, known: known)).bytes())
+      } catch e {
+        error = e.message
+      }
+    }
+  }
+
+  async fn dropCopy() {
+    if copy.isEmpty() {
+      return
+    }
+    let dir = recoveryDir()
+    try? fs.remove(fs.join([dir, "{copy}.json"]))
+    try? fs.remove(fs.join([dir, "{copy}.data"]))
+    copy = ""
+  }
+
+  /// Takes over the recovery copy id (Documents' restoring it): it's
+  /// this document's from then on.
+  pub fn adopt(id: string, knownModified: int) {
+    copy = id
+    known = knownModified
+  }
+}
+
+/// Opens path as a document: read makes its content of the file's
+/// bytes, write the bytes of its content.
+pub fn open<T>(path: string, read: fn(bytes) throws -> T, write: fn(T) -> bytes) -> Document<T> = Document(path, read, write)
+
+/// Where Documents keeps the documents it makes on a phone: Documents in
+/// the app's directory (and where an untitled one's Save As starts).
+pub fn documentsDir() -> string = fs.join([fs.appDir(), "Documents"])
+
+/// Whether the app runs on a desktop: a window per document, there.
+fn onDesktop() -> bool {
+  let p = environment().platform
+  return p == .macOS || p == .windows || p == .linux
+}
+
+fn onMac() -> bool = environment().platform == .macOS
+
+// ---- Words ----
+
+/// The word of key in the app's language (i18n.locale(), which it
+/// follows), its {placeholders} filled from args; English where the
+/// language has none. An app's own catalog changes none of them.
+fn say(key: string, args: [string: string] = [:]) -> string {
+  var text = wordsOf(i18n.locale())[key] ?? (words["en"] ?? [:])[key] ?? key
+  for (k, v) in args {
+    text = text.replace("\{{k}\}", v)
+  }
+  return text
+}
+
+/// The words of the language nearest tag: the tag, Chinese's script,
+/// then its language alone.
+fn wordsOf(tag: string) -> [string: string] {
+  let t = tag.replace("_", "-")
+  if let w = words[t] { return w }
+  let lang = t.split("-")[0].lower()
+  if lang == "zh" {
+    return words["zh-Hans"] ?? [:]
+  }
+  return words[lang] ?? (words["en"] ?? [:])
+}
+
+/// An untitled document's name: Untitled, Untitled 2...
+fn untitledName(n: int) -> string = if n <= 1 { say("untitled") } else { say("untitledNumbered", ["n": "{n}"]) }
+
+/// A file's name without its extension.
+fn stem(name: string) -> string {
+  let e = fs.ext(name)
+  return if e.isEmpty() { name } else { name.trimSuffix(e) }
+}
+
+/// The name of a file of types (the first one's extension) called name.
+fn fileName(types: [Type], name: string) -> string {
+  let ext = types.first()?.extensions.first() ?? "txt"
+  return if fs.ext(name).isEmpty() { "{name}.{ext}" } else { name }
+}
+
+fn filtersOf(types: [Type]) -> [dialog.Filter] = types.map(t => dialog.Filter(name: t.name, types: t.mimeTypes, extensions: t.extensions))
+
+/// A new document's path in documentsDir(): name, then "name 2"..., with
+/// types' first extension.
+fn freePath(types: [Type], name: string, taken: [string]) -> string {
+  let ext = types.first()?.extensions.first() ?? "txt"
+  let dir = documentsDir()
+  var n = 1
+  while true {
+    let base = if n == 1 { name } else { "{name} {n}" }
+    let path = fs.join([dir, "{base}.{ext}"])
+    if !fs.exists(path) && !taken.contains(path) { return path }
+    n += 1
+  }
+  return ""
+}
+
+/// Tells the user what went wrong with a document.
+fn failed(key: string, name: string, e: Error) {
+  alert(say(key, ["name": name]), message: e.message)
+}
+
+// ---- Documents ----
+
+/// A document window's: what it opens (a file, or an untitled or
+/// recovered document's content).
+struct Entry {
+  id: int
+  path: string = ""
+  name: string = ""
+  content: string? = none
+  /// A recovery copy it restores, and when its file had changed.
+  copy: string = ""
+  known: int = 0
+}
+
+/// A text editor's documents (UTF-8 text, of types): on a desktop a
+/// window per document open (width by height), the File menu's New (⌘N),
+/// Open… (⌘O), Open Recent, Close (⌘W), Save (⌘S), Save As…, Duplicate,
+/// Rename…, Move To… and Revert, the recovery copies of the last run's
+/// unsaved documents opened again, and questions before closing a
+/// document whose changes would be lost; on a phone or in a browser, a
+/// list of the documents in documentsDir() and the one open. editor
+/// makes a document's view.
+pub component Documents(types: [Type]) {
+  prop width: float = 640
+  prop height: float = 480
+  prop editor: fn(Document<string>) -> View
+  /// The windows open on a desktop.
+  state entries: [Entry] = []
+  state nextID = 0
+  /// The documents of the windows, by their entries' IDs, and the one in
+  /// use (its window has the keyboard, or had it last).
+  state docs: [int: Document<string>] = [:]
+  state current = -1
+  /// The recent documents Open Recent lists (Windows, Linux).
+  state recents: [string] = []
+  state quitting = false
+  // Read as the component's view is built, where the platform is its.
+  let desktop = onDesktop()
+  let mac = onMac()
+
+  fn add(e: Entry) {
+    nextID += 1
+    var x = e
+    x.id = nextID
+    entries.push(x)
+  }
+
+  fn openPath(p: string) {
+    if entries.any(e => e.path == p) || docs.values().any(d => d.file == p) {
+      return
+    }
+    add(Entry(id: 0, path: p))
+    recent.add(p)
+    refreshRecent()
+  }
+
+  /// The next untitled document's name: one no window has.
+  fn nextUntitled() -> string {
+    var n = 1
+    while true {
+      let name = untitledName(n)
+      if !entries.any(e => e.path.isEmpty() && e.name == name) && !docs.values().any(d => d.file.isEmpty() && d.name == name) {
+        return name
+      }
+      n += 1
+    }
+    return ""
+  }
+
+  fn newDocument() {
+    add(Entry(id: 0, name: nextUntitled(), content: ""))
+  }
+
+  async fn openDocuments() {
+    if let paths = try? await dialog.open(filters: filtersOf(types), multiple: true) {
+      for p in paths { openPath(p) }
+    }
+  }
+
+  fn refreshRecent() {
+    if !mac {
+      recentsLoad += 1
+    }
+  }
+
+  state recentsLoad = 0
+
+  task(recentsLoad) {
+    recents = await recent.list()
+  }
+
+  fn doc() -> Document<string>? = docs[current]
+
+  async fn saveAsking(d: Document<string>) {
+    if d.file.isEmpty() {
+      await saveAs(d)
+      return
+    }
+    await d.save()
+    if d.state == .conflict {
+      alert(say("changedOnDisk", ["name": d.name]), message: say("changedOnDiskDetail"), actions: [
+        .button(title: say("saveAnyway"), run: () => { await d.saveAnyway() }),
+        .button(title: say("revert"), role: .destructive, run: () => { await d.revert() }),
+        .button(title: say("cancel"), role: .cancel),
+      ])
+    } else if d.state == .failed {
+      alert(say("failedSaved", ["name": d.name]), message: d.error, actions: [
+        .button(title: say("saveAs"), run: () => { await saveAs(d) }),
+        .button(title: say("cancel"), role: .cancel),
+      ])
+    }
+  }
+
+  async fn saveAs(d: Document<string>) {
+    let start = if d.file.isEmpty() { documentsDir() } else { d.file }
+    do {
+      if let target = try await dialog.save(name: fileName(types, stem(d.name)), start: start, filters: filtersOf(types)) {
+        try await d.saveAs(fileName(types, target))
+        refreshRecent()
+      }
+    } catch e {
+      failed("failedSaved", d.name, e)
+    }
+  }
+
+  fn duplicate(d: Document<string>) {
+    let base = if d.file.isEmpty() { d.name } else { stem(d.name) }
+    add(Entry(id: 0, name: say("copyName", ["name": base]), content: d.content ?? ""))
+  }
+
+  async fn rename(d: Document<string>) {
+    if d.file.isEmpty() {
+      await saveAs(d)
+      return
+    }
+    var typed = d.name
+    alert(say("rename"), actions: [
+      .button(title: say("cancel"), role: .cancel),
+      .button(title: say("rename"), run: () => {
+        do {
+          try await d.rename(fileName(types, typed))
+          refreshRecent()
+        } catch e {
+          failed("failedRenamed", d.name, e)
+        }
+      }),
+    ], fields: [AlertField(text: d.name, placeholder: d.name, change: t => { typed = t })])
+  }
+
+  async fn moveTo(d: Document<string>) {
+    do {
+      if let dir = try await dialog.chooseFolder(title: say("moveToEllipsis"), button: say("move")) {
+        let target = fs.join([dir, if d.file.isEmpty() { fileName(types, d.name) } else { fs.base(d.file) }])
+        if target != d.file && fs.exists(target) {
+          alert(say("alreadyExists", ["name": fs.base(target)]), message: say("alreadyExistsDetail"), actions: [
+            .button(title: say("replace"), role: .destructive, run: () => {
+              do {
+                try fs.remove(target)
+                try await d.moveTo(dir)
+                refreshRecent()
+              } catch e {
+                failed("failedMoved", d.name, e)
+              }
+            }),
+            .button(title: say("cancel"), role: .cancel),
+          ])
+          return
+        }
+        try await d.moveTo(dir)
+        refreshRecent()
+      }
+    } catch e {
+      failed("failedMoved", d.name, e)
+    }
+  }
+
+  fn revert(d: Document<string>) {
+    if d.file.isEmpty() || !d.unsaved() {
+      return
+    }
+    alert(say("revertQuestion", ["name": d.name]), message: say("revertDetail"), actions: [
+      .button(title: say("revert"), role: .destructive, run: () => { await d.revert() }),
+      .button(title: say("cancel"), role: .cancel),
+    ])
+  }
+
+  // The last run's recovery copies: their documents open again, edited
+  // (a file that changed since is in conflict once saved).
+  task {
+    if !desktop {
+      return
+    }
+    // The documents are the app's windows: the main one, whose content
+    // this is, stays out of sight (an app block's Window { hidden: true }
+    // never shows it at all).
+    mainWindow().hide()
+    refreshRecent()
+    let dir = recoveryDir()
+    let found = (try? fs.readDir(dir)) ?? []
+    for e in found {
+      if fs.ext(e.name) != ".json" {
+        continue
+      }
+      let id = stem(e.name)
+      do {
+        let c: Copy = try json.decode(try fs.readText(fs.join([dir, e.name])))
+        let text = try fs.readText(fs.join([dir, "{id}.data"]))
+        if !c.file.isEmpty() && fs.exists(c.file) {
+          add(Entry(id: 0, path: c.file, name: c.name, content: text, copy: id, known: c.known))
+        } else {
+          let name = if c.file.isEmpty() { c.name } else { say("recoveredName", ["name": stem(c.name)]) }
+          add(Entry(id: 0, name: name, content: text, copy: id))
+        }
+      } catch {
+        // A copy half written (the app ended as it wrote it): gone.
+        try? fs.remove(fs.join([dir, e.name]))
+        try? fs.remove(fs.join([dir, "{id}.data"]))
+      }
+    }
+    if entries.isEmpty() {
+      newDocument()
+    }
+  }
+
+  // A quit keeps what can't be saved in place in recovery copies, which
+  // the next launch opens again: the quit waits for them, then goes on.
+  onQuit(e => {
+    if quitting || !docs.values().any(d => d.unsaved()) {
+      return
+    }
+    e.cancel()
+    quitting = true
+  })
+
+  task(quitting) {
+    if !quitting {
+      return
+    }
+    for d in docs.values() { await d.settle() }
+    quit()
+  }
+
+  onOpenFiles(paths => {
+    if desktop {
+      for p in paths { openPath(p) }
+    }
+  })
+
+  if desktop {
+    MenuBar {
+      Menu(say("file")) {
+        MenuItem(say("new")) {
+          shortcut: .cmd("n")
+          on press { newDocument() }
+        }
+        MenuItem(say("open")) {
+          shortcut: .cmd("o")
+          on press { await openDocuments() }
+        }
+        if mac {
+          MenuItem(say("openRecent")) { role: .openRecent }
+        } else {
+          MenuItem(say("openRecent")) {
+            disabled: recents.isEmpty()
+            for p in recents key p {
+              MenuItem(fs.base(p)) {
+                on press { openPath(p) }
+              }
+            }
+            MenuSeparator()
+            MenuItem(say("clearMenu")) {
+              disabled: recents.isEmpty()
+              on press {
+                recent.clear()
+                recents = []
+              }
+            }
+          }
+        }
+        MenuSeparator()
+        if mac {
+          MenuItem(say("close")) {
+            shortcut: .cmd("w")
+            role: .close
+          }
+          MenuItem(say("save")) {
+            shortcut: .cmd("s")
+            disabled: current < 0
+            on press { if let d = doc() { await saveAsking(d) } }
+          }
+          MenuItem(say("duplicate")) {
+            shortcut: .cmd("s", mods: [.shift])
+            disabled: current < 0
+            on press { if let d = doc() { duplicate(d) } }
+          }
+          MenuItem(say("saveAs")) {
+            shortcut: .cmd("s", mods: [.shift, .alt])
+            disabled: current < 0
+            on press { if let d = doc() { await saveAs(d) } }
+          }
+          MenuItem(say("renameEllipsis")) {
+            disabled: current < 0
+            on press { if let d = doc() { await rename(d) } }
+          }
+          MenuItem(say("moveToEllipsis")) {
+            disabled: current < 0
+            on press { if let d = doc() { await moveTo(d) } }
+          }
+          MenuItem(say("revertToSaved")) {
+            disabled: current < 0
+            on press { if let d = doc() { revert(d) } }
+          }
+        } else {
+          MenuItem(say("save")) {
+            shortcut: .cmd("s")
+            disabled: current < 0
+            on press { if let d = doc() { await saveAsking(d) } }
+          }
+          MenuItem(say("saveAs")) {
+            shortcut: .cmd("s", mods: [.shift])
+            disabled: current < 0
+            on press { if let d = doc() { await saveAs(d) } }
+          }
+          MenuItem(say("revert")) {
+            disabled: current < 0
+            on press { if let d = doc() { revert(d) } }
+          }
+          MenuSeparator()
+          MenuItem(say("close")) {
+            shortcut: .cmd("w")
+            role: .close
+          }
+          MenuItem("") { role: .quit }
+        }
+      }
+    }
+    for e in entries key e.id {
+      DocumentWindow(e) {
+        width: width
+        height: height
+        editor: editor
+        on ready(d) { docs[e.id] = d }
+        on use { current = e.id }
+        on save(d) { await saveAsking(d) }
+        on close {
+          docs.remove(e.id)
+          entries.removeWhere(x => x.id == e.id)
+          if current == e.id {
+            current = -1
+          }
+          // Windows and Linux end the app with its last window, as
+          // Notepad and GNOME Text Editor do; a Mac's stays, its menu
+          // bar's New and Open… there.
+          if entries.isEmpty() && !mac && !quitting {
+            quit()
+          }
+        }
+      }
+    }
+  } else {
+    Stack {
+      DocumentList(types) { editor: editor }
+    }
+  }
+}
+
+/// A document's window: its title, its edited mark, Save (⌘S) in its
+/// keys, and the question before it closes with changes that would be
+/// lost.
+component DocumentWindow(entry: Entry) {
+  prop width: float = 640
+  prop height: float = 480
+  prop editor: fn(Document<string>) -> View
+  /// The document, made with the window.
+  event ready(doc: Document<string>)
+  /// The window took the keyboard: its document is the one in use.
+  event use
+  /// Save from its keys, which may ask.
+  event save(doc: Document<string>)
+  event close
+  let doc = open(entry.path, read: data => data.string(), write: text => text.bytes())
+  let win = Ref()
+  state shown = true
+
+  // finish closes the window (its question answered).
+  fn finish() {
+    shown = false
+    emit close
+  }
+
+  task {
+    if let c = entry.content {
+      doc.start(c, entry.name, edited: !entry.path.isEmpty() || !entry.copy.isEmpty() || !c.isEmpty())
+    }
+    if !entry.copy.isEmpty() {
+      doc.adopt(entry.copy, entry.known)
+    }
+    emit ready(doc)
+    emit use
+  }
+
+  task(win.focused) {
+    if win.focused {
+      emit use
+    }
+  }
+
+  async fn closing() {
+    if !doc.unsaved() {
+      finish()
+      return
+    }
+    if !doc.file.isEmpty() && doc.state == .edited {
+      await doc.save()
+      if !doc.unsaved() {
+        finish()
+        return
+      }
+    }
+    if doc.file.isEmpty() {
+      alert(say("keepNewDocument", ["name": doc.name]), message: say("keepNewDocumentDetail"), actions: [
+        .button(title: say("saveEllipsis"), run: () => {
+          emit save(doc)
+          await sleep(0ms)
+        }),
+        .button(title: say("delete"), role: .destructive, run: () => {
+          await doc.discard()
+          finish()
+        }),
+        .button(title: say("cancel"), role: .cancel),
+      ])
+      return
+    }
+    alert(say("saveChanges", ["name": doc.name]), message: say("changesLost"), actions: [
+      .button(title: say("save"), run: () => {
+        await doc.saveAnyway()
+        if !doc.unsaved() {
+          finish()
+        }
+      }),
+      .button(title: say("dontSave"), role: .destructive, run: () => {
+        await doc.discard()
+        finish()
+      }),
+      .button(title: say("cancel"), role: .cancel),
+    ])
+  }
+
+  Window {
+    ref: win
+    open: shown
+    title: doc.name
+    file: doc.file
+    edited: doc.unsaved()
+    width: width
+    height: height
+    on closeRequest { await closing() }
+    on close { emit close }
+    WindowKeys {
+      keys: [
+        Shortcut(key: "s", primary: true, run: () => { emit save(doc) }),
+      ]
+    }
+    editor(doc)
+  }
+}
+
+/// The documents in documentsDir(), each opening in its editor; New
+/// makes one, and a row's swipe Duplicates, Renames or Deletes it.
+screen DocumentList(types: [Type]) {
+  prop editor: fn(Document<string>) -> View
+  state paths: [string] = []
+  state made = 0
+
+  title: say("documents")
+  toolbar {
+    Button(say("new")) {
+      icon: "square.and.pencil"
+      on press {
+        try? fs.mkdirAll(documentsDir())
+        let path = freePath(types, untitledName(1), paths)
+        try? fs.writeText(path, "")
+        made += 1
+        push(DocumentScreen(path) { editor: editor })
+      }
+    }
+  }
+
+  task(made) {
+    var exts: [string] = []
+    for t in types { exts = exts + t.extensions }
+    let entries = (try? fs.readDir(documentsDir())) ?? []
+    let files = entries.filter(e => !e.isDir && (exts.isEmpty() || exts.contains(fs.ext(e.name).trimPrefix("."))))
+    paths = files.map(e => fs.join([documentsDir(), e.name]))
+  }
+
+  fn duplicate(p: string) {
+    let copy = freePath(types, say("copyName", ["name": stem(fs.base(p))]), paths)
+    do {
+      try fs.copy(p, copy)
+    } catch e {
+      failed("failedSaved", fs.base(copy), e)
+    }
+    made += 1
+  }
+
+  fn rename(p: string) {
+    var typed = fs.base(p)
+    alert(say("rename"), actions: [
+      .button(title: say("cancel"), role: .cancel),
+      .button(title: say("rename"), run: () => {
+        let n = fileName(types, typed.trim())
+        let target = fs.join([fs.dir(p), n])
+        do {
+          if n.contains("/") || target != p && fs.exists(target) {
+            throw Error("document: a file named {n} is there already")
+          }
+          try fs.rename(p, target)
+        } catch e {
+          failed("failedRenamed", fs.base(p), e)
+        }
+        made += 1
+      }),
+    ], fields: [AlertField(text: fs.base(p), placeholder: fs.base(p), change: t => { typed = t })])
+  }
+
+  fn delete(p: string) {
+    alert(say("deleteQuestion", ["name": fs.base(p)]), message: say("deleteDetail"), actions: [
+      .button(title: say("delete"), role: .destructive, run: () => {
+        try? fs.remove(p)
+        made += 1
+      }),
+      .button(title: say("cancel"), role: .cancel),
+    ])
+  }
+
+  if paths.isEmpty() {
+    Text(say("noDocuments")) {
+      color: .secondaryLabel
+      padding: 24
+    }
+  }
+  List {
+    for p in paths key p {
+      Row {
+        padding: [12, 16]
+        swipeActions: [
+          .button(title: say("delete"), role: .destructive, run: () => { delete(p) }),
+          .button(title: say("rename"), run: () => { rename(p) }),
+          .button(title: say("duplicate"), run: () => { duplicate(p) }),
+        ]
+        on press { push(DocumentScreen(p) { editor: editor }) }
+        Text(fs.base(p))
+      }
+    }
+  }
+}
+
+/// A document open on a phone: its editor, saved as it changes.
+screen DocumentScreen(path: string) {
+  prop editor: fn(Document<string>) -> View
+  let doc = open(path, read: data => data.string(), write: text => text.bytes())
+
+  title: doc.name
+  editor(doc)
+}

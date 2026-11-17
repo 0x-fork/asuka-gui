@@ -1,0 +1,54 @@
+// async, await, try and throws.
+
+async fn fetch() -> int {
+  await sleep(10ms)
+  return 1
+}
+
+fn mayFail() throws -> int { return 1 }
+
+fn notAsync() -> int {
+  return await fetch() // ERROR "await only where code may wait: mark notAsync async"
+}
+
+async fn forgot() -> int {
+  return fetch() // ERROR "fetch is async: await it"
+}
+
+fn noTry() throws -> int {
+  return mayFail() // ERROR "mayFail can throw: call it with try"
+}
+
+fn doesntThrow() -> int {
+  return try mayFail() // ERROR "doesntThrow doesn't throw: mark it throws"
+}
+
+fn caught() -> int {
+  do {
+    return try mayFail()
+  } catch {
+    return 0
+  }
+}
+
+fn optional() -> int {
+  return try? mayFail() ?? 0
+}
+
+fn throwsWrong() throws {
+  throw 3 // ERROR "throw takes an error, and a int isn't one"
+}
+
+struct State {
+  n: int
+}
+
+state shared = 1
+
+async fn spawns(cb: fn() -> int) -> int {
+  let n = 3
+  let t = spawn { n * 2 }
+  let u = spawn { shared + 1 } // ERROR "spawn can't use shared: it's state"
+  let v = spawn { cb() } // ERROR "spawn can't use cb"
+  return await t
+}

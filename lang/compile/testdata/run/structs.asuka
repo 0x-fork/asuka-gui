@@ -1,0 +1,96 @@
+// Structs: fields, defaults, methods, value semantics, constants.
+
+struct Point {
+  x: float
+  y: float = 0
+
+  let origin = Point(x: 0)
+
+  fn plus(o: Point) -> Point = Point(x: x + o.x, y: y + o.y)
+  fn length() -> float {
+    return x * x + y * y
+  }
+  fn moved(dx: float) -> Point = plus(Point(x: dx))
+}
+
+struct Todo {
+  id: int
+  title: string
+  done: bool = false
+  tags: [string] = []
+}
+
+test "fields and methods" {
+  let p = Point(x: 3, y: 4)
+  print(p.x)
+  print(p.length())
+  let q = p.plus(Point(x: 1, y: 1))
+  print("{q.x} {q.y}")
+  print(p.moved(10).x)
+  print(Point.origin.x)
+  let o: Point = .origin
+  print(o.y)
+}
+
+test "value semantics" {
+  var a = Todo(id: 1, title: "milk")
+  var b = a
+  b.title = "eggs"
+  b.done = true
+  print("{a.title} {a.done}")
+  print("{b.title} {b.done}")
+  a.tags.push("shop")
+  print(a.tags.count())
+  print(b.tags.count())
+  expect(a != b)
+  let c = Todo(id: 1, title: "milk", tags: ["shop"])
+  expect(a == c)
+}
+
+test "arrays of structs" {
+  var todos = [Todo(id: 1, title: "a"), Todo(id: 2, title: "b")]
+  let copy = todos
+  todos[0].done = true
+  todos[1].title += "!"
+  print("{todos[0].done} {todos[1].title}")
+  print("{copy[0].done} {copy[1].title}")
+}
+
+// Types and values are named apart: a function or a method may be named
+// as a type is, and the type is still the type.
+fn int(a: int, b: int) -> int = a * 10 + b
+
+struct Celsius {
+  degrees: float
+  fn float() -> float = degrees
+  fn string() -> string = "{degrees}°C"
+}
+
+test "names of types as functions" {
+  let x: int = int(4, 2)
+  print(x)
+  let c = Celsius(degrees: 21.5)
+  print(c.float() + 0.5)
+  print(c.string())
+}
+
+// Output:
+// 3
+// 25
+// 4 5
+// 13
+// 0
+// 0
+// ok fields and methods
+// milk false
+// eggs true
+// 1
+// 0
+// ok value semantics
+// true b!
+// false b
+// ok arrays of structs
+// 42
+// 22
+// 21.5°C
+// ok names of types as functions

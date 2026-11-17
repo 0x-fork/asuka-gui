@@ -1,0 +1,167 @@
+// Launcher is a Spotlight of its own: an app in the background, with no
+// Dock icon and no window, whose panel a global shortcut (⌥Space,
+// Alt+Space) summons over whatever app the user is in, without taking
+// that app out of the front. It searches the apps installed as the user
+// types; Up and Down (and Control-P, Control-N) move through the
+// results, Enter opens the one selected, a click any; Escape, or a click
+// elsewhere, puts the panel away. Its tray icon (the menu bar on a Mac)
+// opens it too, and quits it.
+//
+//   asuka dev examples/launcher
+
+import platform/apps
+import platform/hotkey
+import platform/tray
+
+/// Whether the panel shows: hidden until the shortcut shows it.
+state shown = false
+
+app {
+  Window {
+    bind open: shown
+    title: "Launcher"
+    panel: true // floats over every app, takes the keyboard without activating the app
+    fitContent: true // as tall as its results
+    minWidth: 640
+    maxWidth: 640
+    maxHeight: 440
+    // Escape and a click elsewhere close the panel: it hides instead, so
+    // it shows again at once.
+    on closeRequest { shown = false }
+    Launcher()
+  }
+}
+
+/// How many results show at most.
+let most = 8
+
+component Launcher {
+  state query = ""
+  state focused = false
+  state installed: [apps.App] = []
+  // The result Enter opens: the first as the results change, then where
+  // Up and Down move it.
+  state selected = 0
+
+  state results: [apps.App] = []
+
+  // The matches, best first, as the query changes.
+  task(query, installed) {
+    results = if query.isEmpty() { [] } else { ((try? await apps.search(installed, query)) ?? []).prefix(most) }
+    selected = 0
+  }
+
+  // Read the apps again each time it shows: one may have come or gone.
+  task(shown) {
+    if !shown { return }
+    query = ""
+    focused = true
+    if let list = try? await apps.list() { installed = list }
+  }
+
+  fn move(by: int) {
+    let n = results.count()
+    if n > 0 { selected = (selected + by + n) % n }
+  }
+
+  async fn open(a: apps.App) {
+    shown = false // first, so the app the user was in has the keyboard until a's takes it
+    try? await apps.open(a)
+  }
+
+  hotkey.Hotkey(Shortcut(key: "space", mods: [.alt])) {
+    description: "Show the launcher"
+    on press { shown = !shown }
+  }
+  tray.Tray("launcher") {
+    symbol: "magnifyingglass"
+    tooltip: "Launcher"
+    menu: [
+      .button(title: "Show Launcher", run: () => { shown = true }),
+      .section(title: "", items: [.button(title: "Quit Launcher", run: () => quit())]),
+    ]
+  }
+
+  Column {
+    Row {
+      padding: Edges(top: 14, bottom: 14, left: 18, right: 18)
+      gap: 12
+      align: .center
+      Symbol("magnifyingglass") {
+        font: .title2
+        color: .secondaryLabel
+      }
+      TextField {
+        bind text: query
+        bind focused: focused
+        placeholder: "Search apps"
+        plain: true
+        autocorrect: .no
+        grow: 1
+        font: .title2
+        // The field keeps the keyboard; these keys move through the
+        // results instead of its caret (Spotlight's, and Emacs' too).
+        keys: [
+          Shortcut(key: "down", run: () => move(1)),
+          Shortcut(key: "up", run: () => move(-1)),
+          Shortcut(key: "n", mods: [.control], run: () => move(1)),
+          Shortcut(key: "p", mods: [.control], run: () => move(-1)),
+        ]
+        on submit {
+          if selected < results.count() { await open(results[selected]) }
+        }
+      }
+    }
+    if !results.isEmpty() {
+      Column {
+        padding: Edges(bottom: 8, left: 8, right: 8)
+        View {
+          height: 1
+          background: .separator
+          margin: Edges(bottom: 6, left: 10, right: 10)
+        }
+        for (i, a) in results.enumerated() key a.path {
+          AppRow(a) {
+            selected: i == selected
+            on press { await open(a) }
+          }
+        }
+      }
+    }
+  }
+}
+
+/// An app among the results: its icon and name, highlighted while
+/// selected (Enter opens it), and under the pointer.
+component AppRow(app: apps.App) {
+  prop selected = false
+  event press
+
+  let icon = load apps.icon(app, size: 32)
+
+  Row {
+    padding: [6, 10]
+    gap: 12
+    align: .center
+    radius: 8
+    background: if selected { .separator } else { .clear }
+    hovered { background: .separator }
+    label: app.name
+    on press { emit press }
+    Image(icon.value ?? "") {
+      width: 32
+      height: 32
+    }
+    Text(app.name) { font: .body }
+  }
+}
+
+test "the panel searches as the user types" {
+  let app = mount(Launcher(), platform: .macOS)
+  app.expect("Search apps")
+  app.type("sa", into: "Search apps")
+  await app.idle()
+  // No apps here to find: the fake host installs none.
+  app.expectNo("Safari")
+  expect(app.trays().contains("launcher"), app.trays())
+}

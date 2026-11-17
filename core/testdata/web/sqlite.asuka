@@ -1,0 +1,118 @@
+// std/sqlite on the web, run by web_test.go under Node: the core's
+// calls go to the page's SQLite worker (platform/web/src/sqlite-worker.js)
+// and come back decoded as on the other platforms; what the main thread
+// can't wait for (open, migrate) runs before the statements after it,
+// and a migration that fails fails the next statement; a live query
+// follows what's written; spawn's workers run the app's init, which
+// opens the database, harmlessly.
+import std/sqlite
+
+struct Note {
+  id: int
+  text: string
+  done: bool
+}
+
+enum Mood {
+  happy
+  sad
+}
+
+struct Added {
+  text: string
+  done: bool
+}
+
+struct Entry {
+  id: int
+  mood: Mood
+  tags: [string]
+  score: float?
+}
+
+fn openDB(name: string, steps: [string]) throws -> sqlite.DB {
+  let db = try sqlite.open(name)
+  try db.migrate(steps)
+  return db
+}
+
+let db = (try? openDB("notes.db", [
+  "create table notes (id integer primary key, text text not null, done bool not null default 0)",
+  "create table entries (id integer primary key, mood text, tags text, score real)",
+]))!
+
+fn double(n: int) -> int = n * 2
+
+component Main {
+  let notes: sqlite.Live<Note> = db.watch("select * from notes where done = ? order by id", [false])
+
+  async fn run() throws {
+    try await db.exec("insert into notes (text) values (?)", ["milk"])
+    try await db.exec("insert into notes (text, done) values (:text, :done)", Added(text: "eggs", done: false))
+    try await db.exec("update notes set done = 1 where text = ?", ["eggs"])
+    let all: [Note] = try await db.query("select * from notes order by id", [])
+    for n in all {
+      print("{n.id} {n.text} {n.done}")
+    }
+    let count: [int] = try await db.query("select count(*) from notes", [])
+    print("count {count.first() ?? 0}")
+
+    try await db.exec("insert into entries (mood, tags, score) values (?, ?, ?)", ("sad", "[\"a\",\"b\"]", 2.5))
+    try await db.exec("insert into entries (mood, tags, score) values (?, ?, null)", ("happy", "[]"))
+    let es: [Entry] = try await db.query("select * from entries order by id", [])
+    for e in es {
+      print("{e.id} {e.mood == Mood.sad} {e.tags.count()} {e.score ?? -1.0}")
+    }
+
+    do {
+      let nothing: [Note] = try await db.query("select * from nowhere", [])
+      print("got {nothing.count()}")
+    } catch e {
+      print("caught {e.message}")
+    }
+
+    // A migration that fails: the next statement says so, then the
+    // database goes on at the step before it.
+    let bad = try openDB(":memory:", ["create table t (id integer)", "this isn't sql"])
+    do {
+      try await bad.exec("insert into t (id) values (1)", [])
+      print("no error")
+    } catch e {
+      print("caught {e.message}")
+    }
+    try await bad.exec("insert into t (id) values (2)", [])
+    let ts: [int] = try await bad.query("select id from t", [])
+    print("t {ts.count()} {ts.first() ?? 0}")
+    bad.close()
+
+    // The live query follows the writes.
+    while notes.loading || notes.rows.count() != 1 {
+      await sleep(1ms)
+    }
+    print("live {notes.rows.count()} {notes.rows[0].text}")
+    try await db.exec("insert into notes (text) values (?)", ["bread"])
+    while notes.rows.count() != 2 {
+      await sleep(1ms)
+    }
+    print("live {notes.rows.count()} {notes.rows[1].text}")
+    // A name is a file in the app's directory, which the page's worker
+    // keeps (not a temporary file, gone with the page).
+    print(db.path)
+
+    // spawn beside it: the worker's init opens the database too.
+    print(try await spawn { double(21) })
+    print("done")
+  }
+
+  task {
+    do {
+      try await run()
+    } catch e {
+      print("failed: {e.message}")
+      print("done")
+    }
+  }
+  Text("sqlite")
+}
+
+app { Main() }

@@ -56,6 +56,9 @@ android {
         // The app's manifest (asuka.json's permissions, scheme and links),
         // over the debug one in development.
         getByName("debug") {
+            // The core: a player's (asuka dev sends it the app's bytecode),
+            // or one with the app compiled in.
+            prop("asukaJniLibs")?.let { jniLibs.srcDir(it) }
             prop("asukaManifest")?.let { manifest.srcFile(it) }
             prop("asukaRes")?.let { res.srcDir(it) } // the splash, Firebase's settings
         }
@@ -75,9 +78,16 @@ android {
 kotlin { jvmToolchain(17) }
 
 dependencies {
-    implementation(project(":asuka"))
-    // The optional modules the app's packages need (the CLI's asukaModules).
-    prop("asukaModules")?.split(',')?.filter { it.isNotEmpty() }?.forEach { implementation(project(":asuka-$it")) }
+    val prebuilt = prop("asukaPrebuiltDeps")
+    if (prebuilt != null) {
+        // The host's, its optional modules' and the std and sdk packages'
+        // AARs (the CLI's asukaPrebuiltDeps: coordinates).
+        prebuilt.split(',').filter { it.isNotEmpty() }.forEach { implementation(it) }
+    } else {
+        implementation(project(":asuka"))
+        // The optional modules the app's packages need (the CLI's asukaModules).
+        prop("asukaModules")?.split(',')?.filter { it.isNotEmpty() }?.forEach { implementation(project(":asuka-$it")) }
+    }
     // The app's native packages' modules (the CLI's asukaNativeModules).
     prop("asukaNativeModules")?.split(';')?.filter { it.isNotEmpty() }?.forEach { implementation(project(":" + it.substringBefore('='))) }
 }

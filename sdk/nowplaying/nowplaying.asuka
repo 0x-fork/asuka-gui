@@ -1,0 +1,355 @@
+// Package platform/nowplaying shows what the app plays where the system
+// shows media, and takes the commands the system sends back: the lock
+// screen, Control Center and the notification shade, the media keys of
+// keyboards, headsets and cars. MPNowPlayingInfoCenter and
+// MPRemoteCommandCenter on iOS and macOS, a MediaSession and its
+// notification on Android, the page's Media Session on the web, the
+// SystemMediaTransportControls on Windows, an MPRIS player on Linux.
+//
+//   nowplaying.NowPlaying {
+//     title: track.title
+//     artist: "Vivaldi"
+//     artwork: track.cover        // an asset, a file, an http(s) URL
+//     player: music               // an audio.Player: its state, and the commands on it
+//     on next { next() }
+//   }
+//
+// It shows while the component is mounted, following its props; while
+// several are, the last one mounted shows. A command is enabled when it's
+// handled (on next { … }), or, for play, pause, stop, seek and (with a
+// skipInterval) skipping, when a player is set: they run on the player.
+// The system advances the position by itself while playing.
+
+import platform/audio
+import std/time
+
+/// Where playback is.
+pub enum State {
+  /// It can play from where it is.
+  paused
+  playing
+  /// Nothing is playing, but it still shows.
+  stopped
+}
+
+/// What the system asks of the app (the nowPlaying module's numbers).
+enum Command {
+  unknown
+  play
+  pause
+  togglePlayPause
+  stop
+  next
+  previous
+  /// Its value: the position to move to, in seconds.
+  seek
+  /// Its value: how far, in seconds.
+  skipForward
+  skipBackward
+}
+
+/// What shows.
+struct Info {
+  title: string = ""
+  artist: string = ""
+  album: string = ""
+  /// An image: an asset, a file's path, an http(s) URL.
+  artwork: string = ""
+  /// Seconds; 0: not known (a live stream: no seeking).
+  duration: float = 0
+  /// Seconds, as the platform gets it: it advances it while playing.
+  position: float = 0
+  rate: float = 1
+  state: State = .paused
+  /// The commands enabled: a bit each (1 << the command's number).
+  commands: int = 0
+  /// How far a skip goes, in seconds.
+  skip: float = 0
+}
+
+/// The system's media controls.
+/// @mainThread
+native interface Center {
+  /// Shows info and enables its commands.
+  fn set(info: Info)
+  /// Takes it away: the app no longer shows, and its commands are off.
+  fn clear()
+  /// Calls command with what the system asks (and its value), until the
+  /// task is cancelled; each call that waits hears each command.
+  async fn watch(command: fn(Command, float))
+}
+
+let center = try? Center()
+
+// The NowPlayings mounted, by serial, in order: the last one shows.
+state shown: [int] = []
+state serial = 0
+
+// What was last set, and when (the platform advances the position from
+// then while playing).
+state sent: Info? = none
+state sentAt = 0
+
+fn bit(c: Command) -> int = match c {
+  .unknown => 0
+  .play => 2
+  .pause => 4
+  .togglePlayPause => 8
+  .stop => 16
+  .next => 32
+  .previous => 64
+  .seek => 128
+  .skipForward => 256
+  .skipBackward => 512
+}
+
+/// Where playback is t seconds after the platform got i.
+fn positionAfter(i: Info, t: float) -> float {
+  var p = i.position
+  if i.state == .playing && t > 0 {
+    p += t * i.rate
+  }
+  if i.duration > 0 {
+    p = min(p, i.duration)
+  }
+  return max(p, 0)
+}
+
+/// Whether info shows what was sent elapsed seconds ago: the same but
+/// for a position the platform has advanced to by itself (half a second
+/// off at most while playing, for a player's position read late).
+fn same(info: Info, was: Info, elapsed: float) -> bool {
+  let a = Info(title: info.title, artist: info.artist, album: info.album, artwork: info.artwork, duration: info.duration, position: 0, rate: info.rate, state: info.state, commands: info.commands, skip: info.skip)
+  let b = Info(title: was.title, artist: was.artist, album: was.album, artwork: was.artwork, duration: was.duration, position: 0, rate: was.rate, state: was.state, commands: was.commands, skip: was.skip)
+  if a != b {
+    return false
+  }
+  let tolerance = if was.state == .playing { 0.5 } else { 0.01 }
+  return abs(info.position - positionAfter(was, elapsed)) <= tolerance
+}
+
+fn publish(info: Info) {
+  let now = time.now().instant
+  if let was = sent {
+    if same(info, was, float(now - sentAt) / 1e9) {
+      return
+    }
+  }
+  sent = info
+  sentAt = now
+  if let c = center {
+    try? c.set(info)
+  }
+}
+
+fn clearShown() {
+  sent = none
+  if let c = center {
+    try? c.clear()
+  }
+}
+
+fn finite(f: float) -> bool = f == f && f < 1e300 && f > -1e300
+
+/// Shows what the app plays while it's mounted (it shows nothing on
+/// screen), and runs the commands the system sends: each is enabled by
+/// its handler, or by a player.
+pub component NowPlaying {
+  prop title: string = ""
+  prop artist: string = ""
+  prop album: string = ""
+  /// Its cover: an asset ("covers/spring.jpg"), a file's path, an
+  /// http(s) URL. A square image of 512 pixels or more looks sharp
+  /// everywhere.
+  prop artwork: string = ""
+  /// Its length in seconds; none: the player's (0: not known, as a live
+  /// stream's, which can't be sought).
+  prop duration: float? = none
+  /// none: the player's (else paused).
+  prop state: State? = none
+  /// Where it is, in seconds; none: the player's. It need only change
+  /// when playback jumps: the platform advances it while playing.
+  prop position: float? = none
+  /// How fast it plays (1: normal speed).
+  prop rate: float = 1
+  /// A player to follow (its status, read once a second) and drive: play,
+  /// pause, stop, seek and, with a skipInterval, skip run on it when
+  /// they aren't handled.
+  prop player: audio.Player? = none
+  /// How far a skip goes, in seconds (15 if none is given).
+  prop skipInterval: float = 0
+
+  event play
+  event pause
+  event togglePlayPause
+  event stop
+  event next
+  event previous
+  /// A scrubber dragged: the position to move to, in seconds.
+  event seek(position: float)
+  event skipForward(seconds: float)
+  event skipBackward(seconds: float)
+
+  state me = 0
+  state status = audio.Status()
+
+  let onTop = me != 0 && shown.last() == me
+
+  // The player's status, once a second, while it shows.
+  let following = if onTop { player } else { none }
+  task(following) {
+    status = audio.Status()
+    if let p = following {
+      while true {
+        status = await p.status()
+        await sleep(1s)
+      }
+    }
+  }
+
+  let skip = if skipInterval > 0 { skipInterval } else { 15.0 }
+
+  let info = compute()
+
+  /// What shows now, from the props, the player's status and the
+  /// handlers.
+  fn compute() -> Info {
+    let hasPlayer = player.isSome()
+    var i = Info(title: title, artist: artist, album: album, artwork: artwork, rate: if rate > 0 && finite(rate) { rate } else { 1.0 })
+    i.duration = duration ?? status.duration
+    if let s = state {
+      i.state = s
+    } else if status.playing && !status.ended {
+      i.state = .playing
+    }
+    if let p = position {
+      i.position = p
+    } else if status.ended && status.duration > 0 {
+      i.position = status.duration
+    } else {
+      i.position = status.position
+    }
+    if !finite(i.duration) || i.duration < 0 { i.duration = 0 }
+    if !finite(i.position) || i.position < 0 { i.position = 0 }
+    if i.duration > 0 { i.position = min(i.position, i.duration) }
+    var c = 0
+    if play || pause || togglePlayPause || hasPlayer {
+      c += bit(.play) + bit(.pause) + bit(.togglePlayPause)
+    }
+    if stop || hasPlayer { c += bit(.stop) }
+    if next { c += bit(.next) }
+    if previous { c += bit(.previous) }
+    if (seek || hasPlayer) && i.duration > 0 { c += bit(.seek) }
+    if skipForward || hasPlayer && skipInterval > 0 { c += bit(.skipForward) }
+    if skipBackward || hasPlayer && skipInterval > 0 { c += bit(.skipBackward) }
+    i.commands = c
+    if c >= bit(.skipForward) { i.skip = skip }
+    return i
+  }
+
+  effect {
+    if onTop {
+      publish(info)
+    }
+  }
+
+  // Mounted where the platform has media controls: on the stack, its
+  // commands heard until it goes (the one on top runs them); gone, off
+  // it, and the last one clears what shows.
+  task {
+    if let c = center {
+      serial += 1
+      let mine = serial
+      me = mine
+      shown.push(mine)
+      defer {
+        shown.removeWhere(x => x == mine)
+        if shown.isEmpty() {
+          clearShown()
+        }
+      }
+      try? await c.watch(command: (cmd, v) => {
+        if onTop {
+          run(cmd, v)
+        }
+      })
+    }
+  }
+
+  fn assume(s: audio.Status) {
+    status = s
+  }
+
+  fn runPlay() {
+    if play {
+      emit play
+    } else if togglePlayPause {
+      if info.state != .playing { emit togglePlayPause }
+    } else if let p = player {
+      p.play()
+      assume(audio.Status(position: status.position, duration: status.duration, playing: true, ended: false))
+    }
+  }
+
+  fn runPause() {
+    if pause {
+      emit pause
+    } else if togglePlayPause {
+      if info.state == .playing { emit togglePlayPause }
+    } else if let p = player {
+      p.pause()
+      assume(audio.Status(position: status.position, duration: status.duration, playing: false, ended: status.ended))
+    }
+  }
+
+  fn seekPlayer(to: float) {
+    if let p = player {
+      var t = max(to, 0)
+      if info.duration > 0 { t = min(t, info.duration) }
+      p.seek(t)
+      assume(audio.Status(position: t, duration: status.duration, playing: status.playing, ended: false))
+    }
+  }
+
+  fn run(c: Command, v: float) {
+    if info.commands / bit(c) % 2 == 0 {
+      return
+    }
+    match c {
+      .play => runPlay()
+      .pause => runPause()
+      .togglePlayPause => {
+        if togglePlayPause {
+          emit togglePlayPause
+        } else if info.state == .playing {
+          runPause()
+        } else {
+          runPlay()
+        }
+      }
+      .stop => {
+        if stop {
+          emit stop
+        } else if let p = player {
+          p.pause()
+          p.seek(0)
+          assume(audio.Status(position: 0, duration: status.duration, playing: false, ended: false))
+        }
+      }
+      .next => emit next
+      .previous => emit previous
+      .seek => {
+        if seek { emit seek(v) } else { seekPlayer(v) }
+      }
+      .skipForward => {
+        let by = if v > 0 { v } else { skip }
+        if skipForward { emit skipForward(by) } else { seekPlayer(info.position + by) }
+      }
+      .skipBackward => {
+        let by = if v > 0 { v } else { skip }
+        if skipBackward { emit skipBackward(by) } else { seekPlayer(info.position - by) }
+      }
+      .unknown => {}
+    }
+  }
+}

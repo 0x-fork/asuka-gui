@@ -1,0 +1,24 @@
+// A task reading a stream whose producer waits, cancelled as its
+// component goes: the loop closes the stream, the producer unwinds.
+
+fn opened() -> Stream<int> = Stream(send => {
+  defer { print("producer done") }
+  await never()
+})
+
+async fn follow() throws {
+  for await t in opened() { print("{t}") }
+}
+
+component Tags {
+  task { try? await follow() }
+  Text("on")
+}
+
+test "a task's stream, cancelled" {
+  let app = mount(Tags())
+  await app.idle()
+  app.expect("on")
+}
+
+app { Tags() }

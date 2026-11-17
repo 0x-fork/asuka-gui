@@ -1,0 +1,316 @@
+import std/math
+import std/svg
+import std/time
+
+// The icons: Lucide's, and Claude's mark (from Simple Icons).
+let iconClaude = svg.Icon(r"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></svg>""")
+let iconTrendUp = svg.Icon(r"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>""")
+let iconCheck = svg.Icon(r"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>""")
+let iconAlert = svg.Icon(r"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>""")
+let iconHourglass = svg.Icon(r"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/></svg>""")
+let iconExternal = svg.Icon(r"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>""")
+
+// Claude's colors: its terracotta mark on its cream, as its app's icon,
+// the same in light and dark.
+let claude = #d97757
+let claudeCream = #f4f3ee
+
+/// A service's mark: on iOS on a rounded square, as an app's icon; on
+/// Android on Material 3's scalloped "cookie".
+component Badge(service: string, size: float) {
+  View {
+    a11yHidden: true
+    width: size
+    height: size
+    align: .center
+    justify: .center
+    Shape((w, h) => if ios { Path().roundedRect(0, 0, w, h, radius: size * 0.225) } else { cookie(w, h) }) {
+      fill: claudeCream
+      style: fill
+    }
+    svg.View(iconClaude) {
+      color: claude
+      width: size * 0.56
+      height: size * 0.56
+    }
+  }
+}
+
+/// A view's whole box, for views stacked over each other.
+style fill {
+  absolute: true
+  left: 0
+  top: 0
+  width: 100%
+  height: 100%
+}
+
+/// A disc with nine soft scallops.
+fn cookie(w: float, h: float) -> Path {
+  var p = Path()
+  let r = min(w, h) / 2
+  for i in 0..180 {
+    let a = 2 * math.pi * i.float() / 180
+    let d = r * (0.93 + 0.07 * math.cos(9 * a))
+    let x = r + d * math.cos(a)
+    let y = r + d * math.sin(a)
+    p = if i == 0 { p.move(x, y) } else { p.line(x, y) }
+  }
+  return p.close()
+}
+
+/// A forecast's color: semantic, so it follows dark mode.
+fn paceColor(p: Pace) -> Color = match p {
+  .ok => .green
+  .tight => .orange
+  .over | .usedUp => .red
+  .unknown => .secondaryLabel
+}
+
+fn paceIcon(p: Pace) -> svg.Icon = match p {
+  .ok => iconCheck
+  .tight => iconTrendUp
+  .over | .usedUp => iconAlert
+  .unknown => iconHourglass
+}
+
+/// A quota's bar, as Material 3's progress indicator draws one: what's
+/// left (or, showing use, what's used) filled; the part the forecast says
+/// will go before the reset in the forecast's color; the rest the track;
+/// a stop dot at its end. The parts are apart by a gap.
+component Meter(w: Window) {
+  let pace = w.forecast(clock).pace
+  let used = min(w.used, 100)
+  let next = if pace == .unknown { used } else { min(w.forecast(clock).atReset, 100) }
+  let filled = if showUsed.value { used } else { 100 - next }
+  let burn = next - used
+  let track = if showUsed.value { 100 - next } else { used }
+
+  if ios {
+    // A capsule, as UIProgressView: what's filled over the forecast's part
+    // over the track.
+    View {
+      label: "Meter"
+      height: 6
+      radius: 3
+      clip: true
+      background: Color.gray.opacity(0.2)
+      View {
+        absolute: true
+        left: 0
+        top: 0
+        height: 100%
+        width: (filled + burn) * 1%
+        radius: 3
+        background: paceColor(pace).opacity(0.4)
+      }
+      View {
+        absolute: true
+        left: 0
+        top: 0
+        height: 100%
+        width: filled * 1%
+        radius: 3
+        background: .accent
+      }
+    }
+  } else {
+    Row {
+      label: "Meter"
+      gap: 4
+      height: 4
+      MeterPart(filled, Color.accent)
+      MeterPart(burn, paceColor(pace).opacity(0.45))
+      MeterPart(track, Color.accent.opacity(0.2))
+      View {
+        absolute: true
+        right: 0
+        top: 0
+        width: 4
+        height: 4
+        radius: 2
+        background: .accent
+      }
+    }
+  }
+}
+
+component MeterPart(size: float, color: Color) {
+  if size >= 0.5 {
+    View {
+      grow: size
+      basis: 0
+      height: 4
+      radius: 2
+      background: color
+    }
+  }
+}
+
+let pad = 8.0
+
+/// Where a time and a percent used are drawn on a window's chart.
+fn at(w: Window, t: time.Time, used: float, width: float, height: float) -> (float, float) {
+  let start = (w.resets ?? t) - w.period()
+  let x = (t - start).seconds() / w.period().seconds()
+  return (pad + min(max(x, 0), 1) * (width - 2 * pad), height - pad - min(used, 100) / 100 * (height - 2 * pad))
+}
+
+/// The use so far: the window's start, its samples, now.
+fn points(w: Window, now: time.Time, width: float, height: float) -> [(float, float)] {
+  let start = (w.resets ?? now) - w.period()
+  return [at(w, start, 0, width, height)] + w.history.map(s => at(w, s.at, s.used, width, height)) + [at(w, now, w.used, width, height)]
+}
+
+/// Where the forecast ends.
+fn forecastEnd(w: Window, now: time.Time, width: float, height: float) -> (float, float) {
+  let f = w.forecast(now)
+  return match f.pace {
+    .over => at(w, f.out!, 100, width, height)
+    .usedUp => at(w, now, 100, width, height) // nothing more to forecast
+    _ => at(w, w.resets ?? now, f.atReset, width, height)
+  }
+}
+
+fn polyline(pts: [(float, float)]) -> Path {
+  var p = Path()
+  for (i, (x, y)) in pts.enumerated() {
+    p = if i == 0 { p.move(x, y) } else { p.line(x, y) }
+  }
+  return p
+}
+
+fn dot(at: (float, float), r: float) -> Path {
+  let (x, y) = at
+  return Path().ellipse(x - r, y - r, 2 * r, 2 * r)
+}
+
+/// A window's use from its start to now, a line, and the forecast's from
+/// now to its reset (or to when it runs out), dashed.
+component UsageChart(w: Window) {
+  state size = Frame()
+
+  let pace = w.forecast(clock).pace
+  let label = (t: time.Time) => if w.period() < 24h { t.format("HH:mm") } else { t.format("MMM d") }
+  let start = (w.resets ?? clock) - w.period()
+  let now = points(w, clock, max(size.width, 1), max(size.height, 1)).last()!
+
+  Column {
+    gap: 8
+    View {
+      label: "Use so far, and the forecast to the reset"
+      height: 150
+      on layout(f) { size = f }
+      // The limit, and nothing used.
+      Shape((width, _) => Path().move(pad, pad).line(width - pad, pad)) {
+        style: fill
+        stroke: Color.secondaryLabel.opacity(0.5)
+        dash: [2, 4]
+      }
+      Shape((width, height) => Path().move(pad, height - pad).line(width - pad, height - pad)) {
+        style: fill
+        stroke: .separator
+      }
+      Shape((width, height) => {
+        let pts = points(w, clock, width, height)
+        let (lastX, _) = pts.last()!
+        let (firstX, _) = pts[0]
+        return polyline(pts).line(lastX, height - pad).line(firstX, height - pad).close()
+      }) {
+        style: fill
+        fill: Color.accent.opacity(0.15)
+      }
+      Shape((width, height) => polyline(points(w, clock, width, height))) {
+        style: fill
+        stroke: .accent
+        lineWidth: 3
+        lineCap: .round
+        lineJoin: .round
+      }
+      // The forecast, in its pace's color.
+      if pace != .unknown {
+        Shape((width, height) => {
+          let (x0, y0) = points(w, clock, width, height).last()!
+          let (x1, y1) = forecastEnd(w, clock, width, height)
+          return Path().move(x0, y0).line(x1, y1)
+        }) {
+          style: fill
+          stroke: paceColor(pace)
+          lineWidth: 3
+          lineCap: .round
+          dash: [7, 7]
+        }
+        Shape((width, height) => dot(forecastEnd(w, clock, width, height), 5)) {
+          style: fill
+          fill: paceColor(pace)
+        }
+      }
+      Shape((width, height) => dot(points(w, clock, width, height).last()!, 8)) {
+        style: fill
+        fill: .accent
+        stroke: .secondaryGroupedBackground
+        lineWidth: 3
+      }
+      // Centered over the dot, inside the chart.
+      Text("Now") {
+        absolute: true
+        left: min(max(xOf(now) - 30, 0), size.width - 60)
+        top: max(yOf(now) - 36, 0)
+        width: 60
+        textAlign: .center
+        font: .footnote
+        color: .secondaryLabel
+      }
+    }
+    Row {
+      justify: .spaceBetween
+      Text(label(start)) {
+        font: .footnote
+        color: .secondaryLabel
+      }
+      Text(label(w.resets ?? clock)) {
+        font: .footnote
+        color: .secondaryLabel
+      }
+    }
+  }
+}
+
+/// A percent used, as the setting shows it: left or used.
+fn quota(used: float) -> string = if showUsed.value { "{used.fixed(0)}% used" } else { "{max(100 - used, 0).fixed(0)}% left" }
+
+/// What a forecast says, for its pace.
+fn outlook(f: Forecast, now: time.Time) -> string = match f.pace {
+  .usedUp => "Used up"
+  .over => "Runs out {when(f.out!, now)}"
+  _ if showUsed.value => "~{min(f.atReset, 100).fixed(0)}% used at reset"
+  _ => "~{max(100 - f.atReset, 0).fixed(0)}% left at reset"
+}
+
+/// A time to come: its hour today, else its day too.
+fn when(t: time.Time, now: time.Time) -> string {
+  if t.sameDay(now) { return t.format("HH:mm") }
+  if t.sameDay(now + 24h) { return "tomorrow {t.format("HH:mm")}" }
+  return t.format("MMM d, HH:mm")
+}
+
+/// How long ago t was.
+fn ago(t: time.Time, now: time.Time) -> string {
+  let d = now - t
+  if d < 1min { return "just now" }
+  if d < 1h { return "{(d / 1min).int()} min ago" }
+  if d < 24h { return plural((d / 1h).int(), "hour") }
+  return plural((d / 24h).int(), "day")
+}
+
+fn plural(n: int, unit: string) -> string = if n == 1 { "1 {unit} ago" } else { "{n} {unit}s ago" }
+
+fn xOf(p: (float, float)) -> float {
+  let (x, _) = p
+  return x
+}
+
+fn yOf(p: (float, float)) -> float {
+  let (_, y) = p
+  return y
+}

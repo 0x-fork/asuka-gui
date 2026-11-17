@@ -303,7 +303,7 @@ func TestLoadServiceAccount(t *testing.T) {
 	_, js := newServiceAccount(t, "")
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "play.json"), js, 0o600)
-	os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(`{"android":{"serviceAccount":"play.json"}}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte("[android]\nserviceAccount = \"play.json\""), 0o644)
 	cfg, err := loadConfig(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -389,9 +389,9 @@ func TestReadNotes(t *testing.T) {
 
 func TestNextBuild(t *testing.T) {
 	for _, c := range []struct{ high, cfg, want, out int }{
-		{0, 1, 0, 1},   // a first upload: asuka.json's
+		{0, 1, 0, 1},   // a first upload: asuka.toml's
 		{7, 3, 0, 8},   // after the store's
-		{7, 20, 0, 20}, // asuka.json's, if higher
+		{7, 20, 0, 20}, // asuka.toml's, if higher
 		{7, 3, 10, 10},
 	} {
 		if n, err := nextBuild(c.high, c.cfg, c.want); err != nil || n != c.out {

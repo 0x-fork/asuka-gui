@@ -11,99 +11,33 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
-	"github.com/egoist/asuka/internal/filetype"
+	"github.com/egoist/asuka/internal/appbuild"
+	"github.com/egoist/asuka/internal/appconfig"
+	"github.com/egoist/asuka/internal/cbuild"
 	iupdate "github.com/egoist/asuka/internal/update"
+	"github.com/egoist/asuka/lang/target"
 )
 
-// Windows: the app's Go code and its host (host/windows, Win32 through
-// syscall) are one Go program, built with CGO_ENABLED=0 for amd64 or
+// Windows: the app is one executable, the Windows host in C
+// (platform/windows: Win32, the common controls, GDI+, DWM) with the C
+// core and the app compiled to C (lang/cgen) linked in, for amd64 or
 // arm64: asuka dev builds for this PC's, asuka build for amd64 unless
 // --arch arm64 (an amd64 build runs on Windows on Arm too, emulated).
+// Zig builds it from any system; on Windows, clang or MinGW's gcc too
+// (ASUKA_CC).
 //
-// asuka dev --platform windows runs it here and, on each change, rebuilds it and runs
-// it again (its signals' state kept, as with the player: Windows can't
-// send a process SIGINT, so Asuka closes its standard input, ASUKA_STOP=stdin,
-// and it saves its state and quits). asuka build --platform windows makes a folder
-// with the .exe, its icon, manifest and version information built in
-// (a .syso written beside the app's Go code for the build), and its
-// assets beside it, with its plugins' libraries (asqlite.dll for
-// asuka's sqlite plugin); it builds from any system. With ASUKA_WINDOWS_CERT
-// (a .pfx) and ASUKA_WINDOWS_CERT_PASSWORD set, it signs the .exe,
-// timestamped (and its plugins' libraries with it): with signtool on Windows,
-// osslsigncode elsewhere.
-
-// windowsLdflags is the -ldflags of a Windows build: asuka.json's, the
-// app's name (its window title), ID (its AppUserModelID, and what makes
-// it run once), scheme (registered for the user as it starts) and
-// version (its crash reports'), and for a release, the GUI subsystem (no
-// console window).
-func windowsLdflags(app *goApp, release bool) string {
-	f := strings.TrimPrefix(app.cfg.ldflags(release), "-ldflags=")
-	f += " -X " + strconv.Quote("github.com/egoist/asuka/internal/boot.Name="+app.displayName())
-	if app.cfg != nil {
-		if app.cfg.ID != "" {
-			// The app's AppUserModelID, its toasts' (host/windows).
-			f += " -X " + strconv.Quote("github.com/egoist/asuka/internal/boot.ID="+app.cfg.ID)
-		}
-		if app.cfg.Scheme != "" {
-			f += " -X " + strconv.Quote("github.com/egoist/asuka/internal/boot.Scheme="+app.cfg.Scheme)
-		}
-		// The file types, registered as the app starts; a release's icons
-		// are the executable's (winresSyso).
-		if types := app.cfg.fileTypes(); len(types) > 0 {
-			ids := map[int]int{}
-			for i, t := range types {
-				if release && t.icon != "" {
-					ids[i] = fileTypeIconID(i)
-				}
-			}
-			f += " -X " + strconv.Quote("github.com/egoist/asuka/internal/boot.FileTypes="+filetype.Encode(windowsFileTypes(types, ids)))
-		}
-		f += app.cfg.multipleInstances()
-		f += " -X " + strconv.Quote("github.com/egoist/asuka/internal/boot.Version="+app.cfg.Version)
-		f += " -X " + strconv.Quote("github.com/egoist/asuka/internal/boot.Build="+strconv.Itoa(app.cfg.Build))
-	}
-	if release {
-		f += " -H windowsgui"
-	}
-	return "-ldflags=" + strings.TrimSpace(f)
-}
-
-func devWindows(dir string, o *devOptions, stop <-chan os.Signal) error {
-	if runtime.GOOS != "windows" {
-		return errors.New("asuka dev --platform windows runs the app on this PC: run it on Windows (asuka build --platform windows builds from anywhere)")
-	}
-	app, err := loadApp(dir)
-	if err != nil {
-		return err
-	}
-	work, err := workDir(app, "windows")
-	if err != nil {
-		return err
-	}
-	fmt.Printf("asuka: %s on this PC\n", app.name)
-	proc := &hostProcess{app: app, work: work, flags: windowsLdflags(app, false), goarch: runtime.GOARCH, env: []string{
-		"ASUKA_STATE=" + filepath.Join(work, "state.json"),
-		"ASUKA_DATA=" + filepath.Join(work, "data"),
-		"ASUKA_STOP=stdin",
-	}}
-	os.MkdirAll(filepath.Join(work, "data"), 0o755)
-	start := time.Now()
-	if err := proc.build(); err != nil {
-		return err
-	}
-	if err := proc.restart(); err != nil {
-		return err
-	}
-	fmt.Printf("asuka: built and started in %.1fs\n", time.Since(start).Seconds())
-	if o.once {
-		<-proc.done()
-		return nil
-	}
-	return watchHost(proc, stop, func() {})
-}
+// asuka dev --platform windows runs the player here (the host and the
+// core without an app, a console program), which loads the app's
+// bytecode from asuka dev and again on each save, keeping its state
+// (Windows can't send a process SIGINT, so Asuka closes its standard
+// input to stop it, ASUKA_STOP=stdin). asuka build --platform windows
+// makes a folder with the .exe, its icon, manifest and version
+// information built in (a COFF object of resources linked into it), the
+// app's settings (asuka-app.json) and its assets beside it. With
+// ASUKA_WINDOWS_CERT (a .pfx) and ASUKA_WINDOWS_CERT_PASSWORD set, it
+// signs the .exe, timestamped: with signtool on Windows, osslsigncode
+// elsewhere.
 
 // windowsArch is a Windows build's GOARCH: arch (amd64 or arm64), else
 // amd64, which runs on every Windows PC.
@@ -117,7 +51,7 @@ func windowsArch(arch string) (string, error) {
 	return "", fmt.Errorf("--arch %q: amd64 or arm64", arch)
 }
 
-func buildWindows(app *goApp, o *buildOptions) error {
+func buildWindows(app *asukaApp, o *buildOptions) error {
 	goarch, err := windowsArch(o.arch)
 	if err != nil {
 		return err
@@ -131,58 +65,46 @@ func buildWindows(app *goApp, o *buildOptions) error {
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		return err
 	}
-	// The resources: an icon, the manifest, the version. go build links the
-	// main package's .syso files; -overlay doesn't reach them, so it's
-	// written there for the build, unless the app has its own.
-	syso := filepath.Join(app.dir, "asuka_windows_"+goarch+".syso")
-	own := false
-	if m, _ := filepath.Glob(filepath.Join(app.dir, "*.syso")); len(m) > 0 {
-		for _, f := range m {
-			if f != syso {
-				own = true
-			}
-		}
-	}
-	if !own {
-		res, err := winresSyso(app, goarch)
-		if err != nil {
-			return err
-		}
-		if err := os.WriteFile(syso, res, 0o644); err != nil {
-			return err
-		}
-		defer os.Remove(syso)
-	} else {
-		fmt.Println("asuka: using the app's own .syso resources")
-	}
-	target := "windows-" + goarch
-	libs, err := appLibs(app.dir, "windows", goarch, target)
+	// The host, with the resources (an icon, the manifest, the version)
+	// linked in, the core with the app compiled in beside it, and the
+	// app's settings.
+	res, err := winresSyso(app, goarch)
 	if err != nil {
 		return err
 	}
-	args := append([]string{"build", "-trimpath", windowsLdflags(app, true) + updateLdflags(app, target)}, pluginBuildFlags(libs)...)
-	args = append(args, "-o", filepath.Join(out, exe), ".")
-	if o.verbose {
-		fmt.Println("+ go", strings.Join(args, " "))
+	// An app's own resources (a .syso in its directory, for the
+	// architecture: rsrc_windows_arm64.syso) instead.
+	if own, _ := filepath.Glob(filepath.Join(app.dir, "*.syso")); len(own) > 0 {
+		pick := own[0]
+		for _, f := range own {
+			if strings.Contains(filepath.Base(f), "_"+goarch) {
+				pick = f
+			}
+		}
+		if res, err = os.ReadFile(pick); err != nil {
+			return err
+		}
+		fmt.Println("asuka: using the app's own resources,", filepath.Base(pick))
 	}
-	c := exec.Command("go", args...)
-	c.Dir = app.dir
-	c.Env = append(os.Environ(), "GOOS=windows", "GOARCH="+goarch, "CGO_ENABLED=0")
-	if b, err := c.CombinedOutput(); err != nil {
-		return fmt.Errorf("go build failed: %v\n%s", err, b)
+	target := "windows-" + goarch
+	t := cbuild.Target{OS: "windows", Arch: goarch}
+	if err := windowsRelease(app, t, res, filepath.Join(out, exe), o.verbose); err != nil {
+		return err
+	}
+	if err := writeHostConfig(app, platformWindows, target, true, filepath.Join(out, appconfig.File)); err != nil {
+		return err
 	}
 	signed, err := signWindows(filepath.Join(out, exe), name, o.verbose)
 	if err != nil {
 		return err
 	}
-	// The plugins' libraries, beside the .exe (where package plugin finds
-	// them), signed as it is.
-	for _, l := range libs {
-		dll := filepath.Join(out, l.file.Name)
-		if err := l.write(dll); err != nil {
-			return err
-		}
-		if _, err := signWindows(dll, name, o.verbose); err != nil {
+	// The project's programs beside the .exe, signed as it is.
+	progs, err := bundlePrograms(app, t, nil, out, o.verbose)
+	if err != nil {
+		return err
+	}
+	for _, p := range progs {
+		if _, err := signWindows(p, name, o.verbose); err != nil {
 			return err
 		}
 	}
@@ -216,6 +138,38 @@ func buildWindows(app *goApp, o *buildOptions) error {
 		fmt.Println("asuka: the folder is the app: zip it, or package it (an installer, MSIX); set ASUKA_WINDOWS_CERT and ASUKA_WINDOWS_CERT_PASSWORD to sign the .exe and keep SmartScreen quiet")
 	}
 	return nil
+}
+
+// windowsRelease builds a release's executable for t at exe: the host,
+// the core and the app compiled to C, with the C it calls (its externs',
+// the std packages': std/sqlite's SQLite) and the resources (a COFF
+// object) linked in.
+func windowsRelease(app *asukaApp, t cbuild.Target, res []byte, exe string, verbose bool) error {
+	m, err := app.compile(target.Windows)
+	if err != nil {
+		return err
+	}
+	c, err := appbuild.AppC(m)
+	if err != nil {
+		return err
+	}
+	tmp, err := os.MkdirTemp("", "asuka-res")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmp)
+	obj := filepath.Join(tmp, "resources.o")
+	if err := os.WriteFile(obj, res, 0o644); err != nil {
+		return err
+	}
+	natives, err := appbuild.DesktopNatives(t, desktopNativeDirs(app))
+	if err != nil {
+		return err
+	}
+	if verbose {
+		fmt.Printf("asuka: building the Windows host for %s/%s\n", t.OS, t.Arch)
+	}
+	return appbuild.WindowsHost(t, appbuild.WindowsOptions{App: []string{c}, C: m.C, Native: natives, Resources: obj}, exe)
 }
 
 // defaultTimestamps are the RFC 3161 timestamp servers a signature is

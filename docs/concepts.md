@@ -1,508 +1,362 @@
 # Concepts
 
-A Asuka app is Go functions that build its views once, and signals that
-hold its state. This page covers how they fit: the root component,
-signals and what they update, showing and repeating views, owners and
-cleanup, the main thread, and the environment.
+An Asuka app is components that declare what they show, and state that
+says what changes. This page covers how they fit: the app, components
+and their state, what updates when state changes, effects and tasks,
+showing and repeating views, owners and cleanup, the main thread, and
+the environment. [The Asuka language](language-tour.md) is the reference for
+the syntax.
 
 ## An app
 
-`app.Run` takes the root component and mounts it as the app's screen:
+`app { … }` is the app's root:
 
-```go
-func App() ui.Node {
-	return ui.SafeArea(ui.Style{Padding: ui.All(16), Gap: 12},
-		ui.StaticText("Hello", ui.Style{Font: fonts.LargeTitle}),
-		Greeting("Ada"),
-	)
+```asuka
+component Greeting(name: string) {
+  Text("Hello, {name}")
 }
 
-func Greeting(name string) ui.Node {
-	return ui.StaticText("Hello, " + name)
+app {
+  SafeArea {
+    padding: 16
+    gap: 12
+    Text("Hello") { font: .largeTitle }
+    Greeting("Ada")
+  }
 }
-
-func main() { app.Run(App) }
 ```
 
 The root fills the screen on a phone, under the notch and the home
-indicator, and the window on a desktop; `ui.SafeArea` keeps its content
+indicator, and the window on a desktop; `SafeArea` keeps its content
 clear of what covers it, and of the keyboard (see [Layout and
 style](layout.md#the-safe-area-the-keyboard-and-the-window)).
 
-How `app.Run` runs depends on the platform:
+How it starts depends on the platform:
 
-- **iOS and Android**: the platform starts the app, whose host (Swift,
-  Kotlin) loads the Go code and calls `main`; `app.Run` mounts the root
-  and returns.
-- **macOS, Windows and Linux**: the app is one Go program, its host
-  included. `app.Run` opens the main window, mounts the root in it and
-  runs the platform's event loop on the main thread, until the app
-  quits. Call it from `main`, as above.
-- **The web**: the page loads the app's WebAssembly; `app.Run` mounts
-  the root in the page.
+- **iOS and Android**: the platform starts the app, which mounts the
+  root.
+- **macOS, Windows and Linux**: the app opens its main window, mounts
+  the root in it, and runs until the app quits.
+- **The web**: the page loads the app, which mounts the root in the
+  page.
 
-`app.RunWindow` is `app.Run` with the main window's options (its title,
-size and least size), which a phone ignores. A desktop app can open more
-windows with `ui.Window`, and have a menu bar with `ui.MenuBar`: see
-[Navigation](navigation.md).
+Under `asuka dev`, each save reaches the running app in milliseconds,
+keeping its state and its views.
 
 ## Components
 
-A component is a Go function that returns a `ui.Node`. It's an ordinary
-function: it takes whatever parameters it needs, and calls other
-components to make its children.
+A component is a piece of interface. Its header takes its parameters;
+its body declares its props, events and state, and its views:
 
-A component **runs once**. It builds its views and returns; it isn't
-called again when state changes. What changes afterwards is only what
-read a signal, and only that.
+```asuka
+component Counter(label: string) {
+  prop step = 1
+  event changed(count: int)
+  state count = 0
 
-Props that can change take a `signal.Accessor[T]`: a signal, a memo or
-a `signal.Func`. A prop that never changes is `ui.Val(v)`, which is sent
-once and costs nothing more. A nil accessor is the zero value (`false`,
-`""`, 0), so a prop you'd set to false is left out. Event handlers, such
-as `OnPress`, are plain funcs.
-
-```go
-ui.Button(ui.ButtonProps{
-	Title:    ui.Val("Save"),
-	Disabled: saving, // a *signal.Signal[bool]
-	OnPress:  save,
-})
+  Row {
+    gap: 12
+    Text("{label}: {count}")
+    Button("Add") {
+      on press {
+        count += step
+        emit changed(count)
+      }
+    }
+  }
+}
 ```
 
-## Signals
+A component's body is **declarations**, not code that runs once and is
+forgotten. `Text("{label}: {count}")` says what the text is now and
+later; there's no way to read `count` once by mistake and show a value
+that never updates.
 
-A signal holds a value. Package `signal` makes them:
+## State
 
-- `signal.New(v)` makes a signal of a comparable type. A write equal to
-  the current value is skipped.
-- `signal.NewFunc(v, equal)` makes one with your own equality, for
-  values `==` can't compare (slices, maps, structs holding them). With a
-  nil `equal`, every write notifies.
-- `Get` reads the value, and subscribes what's reading it: an effect, a
-  prop, a memo.
-- `Peek` reads it without subscribing. Use it in event handlers, which
-  aren't updated anyway.
-- `Set` writes it; `Update(f)` sets it to `f` of the current value.
+`state` is a value the interface follows:
 
-```go
-count := signal.New(0)
-count.Update(func(n int) int { return n + 1 })
-
-tags := signal.NewFunc([]string{"go"}, nil)
-tags.Update(func(t []string) []string { return append(slices.Clone(t), "ios") })
+```asuka
+state count = 0
+state draft = ""
+state todos: [Todo] = []
 ```
 
-Signals are made in components, as local variables, or as package
-variables for state the whole app shares.
+Writing it (`count += 1`, `todos.push(t)`, `todos[0].done = true`)
+updates what reads it, and only that. A write of the value it already
+has does nothing.
+
+State in a component is the component's: each instance has its own, and
+it goes with the instance. `state` at the top of a file is the app's: one
+for the whole app. A **store** groups state with the functions that
+change it, for views that share it:
+
+```asuka
+pub store Cart {
+  state items: [Item] = []
+  let total = items.sum(i => i.price)
+
+  pub fn add(i: Item) { items.push(i) }
+}
+```
 
 ### Derived values
 
-`signal.Func` makes an accessor that computes its value from others. It
-runs each time it's read, and what it reads is tracked by whoever reads
-it:
+`let` in a component, a store or a file derives a value from others:
 
-```go
-first := signal.New("Ada")
-last := signal.New("Lovelace")
-full := signal.Func(func() string { return first.Get() + " " + last.Get() })
+```asuka
+state first = "Ada"
+state last = "Lovelace"
+let full = "{first} {last}"
+let left = todos.count(t => !t.done)
 ```
 
-`signal.NewMemo` caches the value: it computes on the first `Get`, and
-again only when something it read changed. Use it when the computation
-costs something or many things read it:
-
-```go
-left := signal.NewMemo(func() int {
-	n := 0
-	for _, t := range todos.Get() {
-		if !t.Done {
-			n++
-		}
-	}
-	return n
-})
-```
-
-`signal.NewMemoFunc` is a memo with your own equality, as `NewFunc` is
-for signals. A memo must not write signals: `Set` inside one panics
-(and `asuka vet` reports it).
+It's computed when it's read, and again only when something it read
+changed; reading it twice costs once. A `let` can't write state.
 
 ## What updates
 
-Each prop given an accessor becomes an effect of its own. When a signal
-it read changes, that effect runs again and sends that one prop to the
+Each prop that reads state is a binding of its own. When the state it
+read changes, that binding runs again and sends that one prop to the
 native view; nothing else runs.
 
-```go
-func Score() ui.Node {
-	score := signal.New(0)
-	return ui.Column(nil,
-		// Read once, when Score runs: this text never changes.
-		ui.StaticText(fmt.Sprintf("Started at %d", score.Get())),
-		// Read in an accessor: this text follows score.
-		ui.Text(signal.Func(func() string { return fmt.Sprintf("%d points", score.Get()) })),
-		ui.Button(ui.ButtonProps{
-			Title:   ui.Val("Score"),
-			OnPress: func() { score.Update(func(n int) int { return n + 1 }) },
-		}),
-	)
+```asuka
+component Score {
+  state score = 0
+
+  Column {
+    Text("Score: {score}")          // updates when score changes
+    Text("Keep going")              // sent once
+    Button("Point") { on press { score += 1 } }
+  }
 }
 ```
 
-The first text is the most common mistake: a signal read in the
-component's body is read once, as the component runs once. Read it
-inside an accessor, a `ui.StyleFunc` or an effect. To read it once on
-purpose, say so with `Peek` (`signal.Untrack` for an accessor).
+Pressing *Point* sets `score`. The first `Text`'s binding runs again
+and sends its new text. The component doesn't run again, the second
+`Text` isn't touched, and there's no tree to compare: the change goes
+from the state to the one prop that reads it.
 
-[`asuka vet`](development.md#asuka-vet), which `asuka dev` runs as you
-save, finds these: a read in a component's body, or in a `ui.Show`
-branch or a `ui.For` row, which run once too, whose value goes into the
-views it builds. The same holds for the language the app shows: a
-catalog's message said in the body (`locales.Title()`) won't follow a
-change of language, where `locales.Live.Title()` does.
+Writes in a handler show together when it ends (or when it reaches an
+`await`): three writes, one update.
 
-A `ui.StyleFunc` is a style that changes. It runs in one effect for its
-view; what it returns is compared with the last, and only the props that
-differ are sent (layout runs again only if a layout prop changed). See
-[Layout and style](layout.md#styles-that-change).
+## Effects and tasks
 
-## Effects
+An `effect` runs code now, and again when what it read changes:
 
-`signal.Effect(f)` runs `f`, and again whenever what it read changes:
-for work beyond the views, such as saving, logging or starting a
-request. Made while a component builds, or in an event handler, it runs
-once that's done; otherwise at once.
-
-`signal.OnCleanup(f)` inside an effect runs `f` before the effect runs
-again, and when it's disposed. Here a search waits until typing pauses:
-
-```go
-signal.Effect(func() {
-	q := strings.TrimSpace(query.Get())
-	t := time.AfterFunc(300*time.Millisecond, func() {
-		ui.Post(func() { results.Set(search(q)) })
-	})
-	signal.OnCleanup(func() { t.Stop() })
-})
+```asuka
+effect { storage.set("draft", draft) }
 ```
 
-An effect may write signals: the effects that write dirties run again
-in the same flush. If effects keep dirtying each other for 100 passes,
-it panics, naming one of them.
+A `task` is async work a component does while it's shown: it starts when
+the component appears, and is cancelled when it goes. With values in
+parentheses, it starts again when they change, cancelling the run
+before:
 
-`signal.RenderEffect(f)` runs `f` immediately, and again on changes,
-before user effects. It's what `ui` uses for props; an app rarely needs
-it.
-
-`signal.Untrack(f)` calls `f` without subscribing to what it reads. It
-returns `f`'s value: use it to read an accessor that has no `Peek`.
-
-```go
-signal.Effect(func() {
-	q := query.Get() // runs again when query changes
-	who := signal.Untrack(func() string { return full.Get() }) // but not when full does
-	fmt.Println(who, "searched for", q)
-})
+```asuka
+task { messages = try await api.inbox() }
+task(query) {
+  await sleep(300ms)
+  results = try await api.search(query)
+}
 ```
 
-`signal.Batch(f)` runs `f` and then the effects its writes dirtied, once.
-Event handlers and `ui.Post` already batch their writes, and the views
-are updated once the handler returns; `Batch` is for writes made
-elsewhere.
+`load` keeps an async result as state, with its loading and its error
+(see [The Asuka language](language/async.md#data-that-loads)).
 
 ## Showing and repeating
 
-`ui.Show` shows a branch while its condition is true, and the other
-branch, if given, while it's false:
+`if` shows views while a condition holds; `match` shows one of several;
+`for … key` shows a row per item:
 
-```go
-ui.Show(signedIn,
-	func() ui.Node { return ui.StaticText("Welcome back") },
-	func() ui.Node { return SignIn(signedIn) },
-)
+```asuka
+if loggedIn {
+  Profile(user)
+} else {
+  Button("Log in") { on press { present(Login()) } }
+}
 
-ui.Show(signal.Func(func() bool { return len(items.Get()) == 0 }),
-	func() ui.Node { return ui.StaticText("Nothing yet") })
-```
+match status {
+  .loading => Spinner()
+  .failed(e) => Text(e.message)
+  .ready(items) => ItemList(items)
+}
 
-A branch is built when it's shown and disposed when it goes: its
-effects stop and its views are destroyed. Show rebuilds only when the
-condition flips, not each time it's computed.
-
-`ui.For` shows a row per item of a slice, keyed:
-
-```go
-ui.For(items, func(it Item) int { return it.ID }, func(item signal.Accessor[Item], index signal.Accessor[int]) ui.Node {
-	return ui.Text(signal.Func(func() string {
-		return fmt.Sprintf("%d. %s", index.Get()+1, item.Get().Name)
-	}))
-})
-```
-
-A row lives as long as its key is in the slice. A new key builds a row;
-a removed one disposes it; a moved item moves its row's views. When an
-item with the same key changes, its row isn't rebuilt: its `item` signal
-is set, and only what reads it updates. Give each item a stable key (an
-ID, not its index).
-
-`ui.Dynamic` shows what a function returns, and rebuilds it all when
-anything it read changes:
-
-```go
-ui.Dynamic(func() ui.Node {
-	switch mode.Get() {
-	case "grid":
-		return GridView()
-	default:
-		return ListView()
-	}
-})
-```
-
-Everything the function reads is tracked, including reads in the bodies
-of the components it calls, and each change rebuilds the whole subtree.
-Prefer `Show` and `For`.
-
-### When something panics
-
-`ui.Catch` keeps a panic in part of the UI from taking the app down: it
-shows what a build function returns, and when building it panics, or an
-effect in it does later, it shows a fallback instead.
-
-```go
-ui.Catch(func() ui.Node { return Profile(id) }, func(err any, reset func()) ui.Node {
-	log.Printf("profile: %v", err)
-	return ui.Column(ui.Style{Gap: 8},
-		ui.StaticText("Couldn't show this profile"),
-		ui.Button(ui.ButtonProps{Title: ui.Val("Try again"), OnPress: reset}))
-})
-```
-
-The failed UI is disposed, as a `Show` branch that goes: its effects
-stop, and its views are destroyed, including those a build made before
-it panicked. `reset` builds it again. Effects owned by a `Catch` run
-with a recover; effects outside every `Catch` don't, and pay nothing.
-
-What a `Catch` doesn't own still crashes, as it would without one: an
-event handler's panic (`OnPress`), a goroutine's, the fallback's. Put
-a `Catch` around a part of the screen that could fail on its own (a
-widget fed by a server, a plugin, a rich document), not around the app
-to hide bugs.
-
-The signal package's `signal.Catch` is the same for effects without UI.
-
-### Long lists
-
-`For` builds every row and keeps them all. For long or unbounded lists
-(a feed, thousands of rows), use `ui.List`: the same arguments, backed by
-the platform's recycling list, which builds rows only for what's on
-screen. See [Components](components.md#lists).
-
-## Owners and cleanup
-
-Every effect and memo belongs to an owner: the one that was current
-when it was made. The app's root has one; each `Show` branch, `For` row,
-`Dynamic` build, stack screen, tab and sheet has its own, under its
-parent's. Disposing an owner stops its effects, disposes the owners
-under it, and runs its cleanups, the last registered first.
-
-Owners are disposed when:
-
-- a `Show` switches branches: the old branch's;
-- a `For` item's key leaves the slice: its row's;
-- a `Dynamic` rebuilds: the previous build's;
-- a screen is popped (the back button, a swipe, `Navigator.Pop`): the
-  screen's;
-- a sheet closes: its content's.
-
-Go's garbage collector frees memory, but it never stops an effect that
-is still subscribed: stopping is the owner's job. `signal.OnCleanup` in
-a component's body runs when the component's owner is disposed. Use it
-to stop what the component started:
-
-```go
-func Clock() ui.Node {
-	now := signal.New(time.Now().Format("15:04:05"))
-	ticker := time.NewTicker(time.Second)
-	done := make(chan struct{})
-	go func() {
-		for {
-			select {
-			case t := <-ticker.C:
-				ui.Post(func() { now.Set(t.Format("15:04:05")) })
-			case <-done:
-				return
-			}
-		}
-	}()
-	signal.OnCleanup(func() {
-		ticker.Stop()
-		close(done)
-	})
-	return ui.Text(now, ui.Style{Font: fonts.Title.Weighted(fonts.Semibold)})
+for todo in todos key todo.id {
+  TodoRow(todo)
 }
 ```
 
-Shown with `ui.Show(showClock, Clock)`, the ticker stops when the clock
+A `for` keeps a row per key: a row whose item changed updates its
+bindings, a new item makes a row, a removed one disposes its row, and a
+row that moved is moved, not made again.
+
+### When something fails
+
+An error a handler or a task doesn't catch goes to the nearest
+`Boundary` around it, which shows what it says instead of its content:
+
+```asuka
+Boundary {
+  Feed()
+  on error(e) { Text("Something went wrong: {e.message}") }
+}
+```
+
+With no `Boundary`, the app's own reports it: in development the player
+shows it, and in a release it's logged.
+
+### Long lists
+
+`for` directly in a `List` builds only the rows on screen and reuses
+them as they scroll, so a list of 100,000 costs what's visible. See
+[Components](components.md#lists).
+
+## Owners and cleanup
+
+Everything a component makes (its state, bindings, effects and tasks)
+belongs to an **owner**: the component instance's. Each `if` branch,
+`for` row, `match` case, stack screen, tab and sheet has its own, under
+its parent's. Disposing an owner stops its bindings and effects, cancels
+its tasks, and disposes the owners under it.
+
+Owners are disposed when:
+
+- an `if` switches branches: the old branch's;
+- a `for` item's key leaves the array: its row's;
+- a `match` changes case: the old case's;
+- a screen is popped (the back button, a swipe, `pop()`): the screen's;
+- a sheet closes: its content's.
+
+A task that's cancelled ends at the `await` it's waiting at, running
+its `defer`s on the way: that's where to stop what it started.
+
+```asuka
+component Clock {
+  state now = time.now()
+
+  task {
+    let ticker = time.ticker(1s)
+    defer { ticker.stop() }
+    for await t in ticker.ticks { now = t }
+  }
+
+  Text(now.format("HH:mm:ss")) { font: .title.semibold() }
+}
+```
+
+Shown with `if showClock { Clock() }`, the ticker stops when the clock
 is hidden, and a new one starts when it's shown again.
 
 ## The main thread
 
-Components, event handlers, effects and every signal write run on the
+Components, handlers, effects, tasks and every state write run on the
 platform's main thread: the UI thread on iOS and Android, the process's
-first thread on macOS, Windows and Linux, which the host keeps for
-itself, and the page's thread in a browser. Don't block it: while it
-waits, the app can't draw, scroll or take input (a desktop marks the
-window as not responding). A slow request or a big file belongs in a
-goroutine.
+first thread on macOS, Windows and Linux, and the page's thread in a
+browser. Don't hold it up: while it's busy, the app can't draw, scroll
+or take input.
 
-A goroutine doesn't touch signals or views itself. It hands a function
-to `ui.Post`, which runs it on the main thread, then updates the views
-(`asuka vet` reports a signal a goroutine writes itself):
+Work that waits (the network, a file, a timer) is `async`: `await` lets
+the main thread run while it waits, and the code after it runs there
+again, so it can write state.
 
-```go
-load := func() {
-	loading.Set(true)
-	go func() {
-		msg := "Done"
-		resp, err := http.Get("https://example.com")
-		if err != nil {
-			msg = err.Error()
-		} else {
-			io.Copy(io.Discard, resp.Body)
-			resp.Body.Close()
-		}
-		ui.Post(func() {
-			status.Set(msg)
-			loading.Set(false)
-		})
-	}()
+```asuka
+on press {
+  loading = true
+  defer { loading = false }
+  do {
+    let page = try await http.get("https://example.com").text()
+    status = "{page.count()} characters"
+  } catch e {
+    status = e.message
+  }
 }
 ```
 
-A [native package](native.md)'s methods run on the thread that calls
-them. Call a slow one from a goroutine, or give it a context, and post
-its result back:
+Work that computes for long (parsing, image processing) goes in
+`spawn { … }`, which runs it on another thread. It may use values, not
+state or views (the compiler says so if it does), and its result comes
+back to the main thread with `await`:
 
-```go
-go func() {
-	level, err := b.Level() // a native package's module
-	ui.Post(func() {
-		if err != nil {
-			status.Set(err.Error())
-			return
-		}
-		status.Set(fmt.Sprintf("%.0f%%", level*100))
-	})
-}()
+```asuka
+let html = await spawn { markdown.render(source) }
 ```
 
 ## The environment
 
-`ui.UseEnvironment()` returns what the platform says about where a
-component shows, as an accessor: read it in an accessor, a `StyleFunc`
-or an effect, and it follows rotation, the keyboard, dark mode and the
-text size. It's the environment of the screen the component is in (a
-stack screen, a tab, a sheet, or the root). Call it while the component
-builds.
+`environment()` is what the platform says about where a component
+shows: read it in a binding or a `let`, and it follows rotation, the
+keyboard, dark mode and the text size. It's the environment of the
+screen the component is in (a stack screen, a tab, a sheet, or the
+root).
 
-```go
-env := ui.UseEnvironment()
-orientation := signal.Func(func() string {
-	if e := env.Get(); e.Width > e.Height {
-		return "Landscape"
-	}
-	return "Portrait"
-})
+```asuka
+let landscape = environment().width > environment().height
 ```
 
 Its fields:
 
-- `Width`, `Height`: the screen's size, in points. It's the app's
+- `width`, `height`: the screen's size, in points. It's the app's
   window, not the device: in split screen (iPad's Split View, Stage
   Manager, Android's split screen) it's the app's part, and on a
   desktop or in a browser it's the window's content; it changes as the
   user resizes it.
-- `SafeTop`, `SafeRight`, `SafeBottom`, `SafeLeft`: the safe area's
+- `safeTop`, `safeRight`, `safeBottom`, `safeLeft`: the safe area's
   insets. A desktop window has none: they're 0.
-- `Keyboard`: how much of the bottom the on-screen keyboard covers.
-- `Scale`: pixels per point: 2 or 3 on a phone, 2 on a Retina Mac, the
+- `keyboard`: how much of the bottom the on-screen keyboard covers.
+- `scale`: pixels per point: 2 or 3 on a phone, 2 on a Retina Mac, the
   display's scaling on Windows and Linux (1.5 at 150%).
-- `FontScale`: the user's text size (Dynamic Type, Android's font
-  scale, Windows' text size, GNOME's text scaling); 1 is the default,
-  and on a Mac, which has no such setting, it stays 1.
-- `Dark`: dark mode is on.
-- `ReduceMotion`: the user asked for less motion (iOS's and macOS's
-  Reduce Motion, Android's animations off, Windows' animation effects
-  off, GNOME's animations off). See [Motion](motion.md).
-- `ScreenReader`: VoiceOver, TalkBack, Narrator or Orca is on. See
+- `fontScale`: the user's text size (Dynamic Type, Android's font scale,
+  Windows' text size, GNOME's text scaling); 1 is the default.
+- `dark`: dark mode is on.
+- `reduceMotion`: the user asked for less motion. See
+  [Motion](motion.md).
+- `screenReader`: VoiceOver, TalkBack, Narrator or Orca is on. See
   [Accessibility](accessibility.md#is-a-screen-reader-on).
-- `WidthClass`, `HeightClass`: how much room the window gives the app
-  along each axis, as the platform classes it: `ui.SizeClassCompact`,
-  `ui.SizeClassMedium` or `ui.SizeClassExpanded`. Branch on them, not
-  on a width of your own, to put a sidebar beside the content or a
-  list beside its detail. iOS reports UIKit's size classes, compact or
-  regular (as Expanded); Android, Material's window size classes
-  (compact under 600 dp wide, medium under 840, expanded; compact under
-  480 dp tall, medium under 900). So an iPad mini in portrait, which
-  UIKit calls regular, is Expanded on iOS, and a tablet the same size
-  is Medium on Android, where Material still shows one pane: each
-  follows its platform. macOS, Windows, Linux and the web have none of
-  their own, and take Material's from the window's size.
-- `Locale`, `Languages`, `FirstWeekday`, `HourCycle`: the locale of the
-  user's regional formats, the languages they read, the day their weeks
-  start on and their clock. Most apps read them through
-  [`ui.Locale` and `ui.FormatLocale`](i18n.md).
-- `TimeZone`: the device's time zone, by its IANA name. Asuka makes it
-  Go's `time.Local`, so `time.Now().Format` shows the device's time.
+- `widthClass`, `heightClass`: how much room the window gives the app
+  along each axis, as the platform classes it: `.compact`, `.medium` or
+  `.expanded`. Branch on them, not on a width of your own, to put a
+  sidebar beside the content or a list beside its detail. iOS reports
+  UIKit's size classes, compact or regular (as expanded); Android,
+  Material's window size classes. macOS, Windows, Linux and the web take
+  Material's from the window's size.
+- `locale`, `languages`, `timeZone`: the user's regional formats, the
+  languages they read, and their time zone. Most apps read them through
+  [their catalogs and formats](i18n.md).
+- `platform`: the system the app runs on: `.iOS`, `.android`, `.macOS`,
+  `.windows`, `.linux` or `.web`.
 
 Semantic colors and fonts follow dark mode and the text size on their
 own; read the environment for what they don't cover.
 
-```go
-env := ui.UseEnvironment()
-ui.Show(signal.Func(func() bool { return env.Get().WidthClass == ui.SizeClassExpanded }),
-	func() ui.Node { return ui.Row(ui.Style{Grow: 1}, sidebar(), detail()) },
-	func() ui.Node { return list() })
-```
-
-### The platform
-
-`ui.Platform()` is the system the app runs on: `ui.PlatformIOS`,
-`ui.PlatformAndroid`, `ui.PlatformMacOS`, `ui.PlatformWindows`,
-`ui.PlatformLinux` or `ui.PlatformWeb`. It's the device's, also in
-`asuka dev`, where a phone's Go code runs on your computer, so branch on
-it, not on `runtime.GOOS` or build tags. It never changes, so it's a
-plain value: no accessor, no effect.
-
-```go
-variant := ui.ButtonFilled
-if ui.Platform() == ui.PlatformIOS {
-	variant = ui.ButtonGlassProminent
+```asuka
+if environment().widthClass == .expanded {
+  Row { grow: 1; Sidebar(); Detail() }
+} else {
+  ItemList()
 }
 ```
 
-Call it while the component builds, as `UseEnvironment`: `asuka dev`
-can serve an iPhone and an Android phone from one process, and each has
-its own. Keep it in a variable for an event handler or a goroutine.
-
-The platform's views look as they should by themselves; use it for what
-an app draws itself, to follow each platform's design, as
-[`examples/usage`](../examples/usage) draws UIKit's inset grouped lists
-on iOS and Material 3's on Android.
+The platform's views look as they should by themselves; branch on
+`platform` for what an app draws itself, to follow each platform's
+design, as [`examples/usage`](../examples/usage) draws UIKit's inset
+grouped lists on iOS and Material 3's on Android.
 
 ## Values that persist
 
-Signals live as long as the app runs. `store.Signal(key, def)` makes a
-signal whose value is kept across launches: it starts with the kept
-value, or `def`, and each value it's set to is saved.
+State lives as long as the app runs. The store
+(`import std/store`) keeps small values, such as settings, across
+launches: `read` gives the kept value (or a default), `write` keeps one.
+An effect keeps the state's every value:
 
-```go
-units := store.Signal("units", "metric")
+```asuka
+import std/store
+
+state units = store.read("units", "metric")
+effect { store.write("units", units) }
 ```
 
-It's for small values, such as settings; see [Data](data.md) for the
-store and for databases. Under `asuka dev`, every signal's value is also
-kept across reloads, with no code (see
-[Getting started](getting-started.md#run-it)).
+Values are kept as JSON in the platform's own preferences, so numbers,
+strings, arrays and structs all work. See [Data](data.md) for the store and for databases. Under
+`asuka dev`, every state's value is also kept across saves, with no
+code (see [Getting started](getting-started.md#run-it)).

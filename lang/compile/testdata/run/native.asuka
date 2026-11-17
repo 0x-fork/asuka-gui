@@ -1,0 +1,31 @@
+// A native interface without its platform's code: making one throws.
+
+enum KitchenError: Error {
+  /// kitchen: busy
+  busy
+
+  // Used only by the native errors' table: lowered with it.
+  fn message() -> string = "kitchen: busy"
+}
+
+native interface Oven {
+  fn heat(to: int) -> int
+  async fn bake(minutes: int)
+}
+
+let oven = try? Oven()
+
+test "no platform code" {
+  print(oven.isNone())
+  do {
+    let o = try Oven()
+    print(try o.heat(to: 200))
+  } catch e {
+    print(e.message.hasPrefix("unsupported"))
+  }
+}
+
+// Output:
+// true
+// true
+// ok no platform code

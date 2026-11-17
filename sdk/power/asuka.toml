@@ -1,0 +1,3 @@
+name = "platform/power"
+version = "0.1.0"
+description = "The device's power: its battery, Low Power Mode and heat, sleep and the lock screen, the idle time"

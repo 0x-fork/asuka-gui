@@ -7,11 +7,11 @@ should see; note anything that doesn't match.
 ## Getting the apps on a phone
 
 - **Android**: plug the phone in with USB debugging on, then
-  `go run ./cmd/asuka dev --platform android examples/gallery` (the player; your
-  code runs on the Mac and reloads on save), or add `--once` for a build
-  with the Go code in it.
+  `go run ./cmd/asuka dev --platform android examples/gallery` (the player: it loads the app's bytecode
+  from the Mac and reloads on save), or add `--once` to launch it once,
+  without watching.
 - **iPhone**: `go run ./cmd/asuka build --platform ios examples/gallery` makes a
-  signed `.ipa` (it needs your team in `asuka.json`'s `ios.team` and a
+  signed `.ipa` (it needs your team in `asuka.toml`'s `ios.team` and a
   provisioning profile); install it with Xcode's Devices window or
   `xcrun devicectl device install app`.
 - The benchmarks: `go run ./bench/run -android` runs on a connected
@@ -27,7 +27,7 @@ Turn the screen reader on (Settings → Accessibility), open the gallery.
       titles, texts, buttons with their titles ("Compose, button").
 - [ ] The Motion card ("Tap me") is one item, a button, read as its
       texts; double-tapping it toggles it.
-- [ ] The toast: tap "Show a toast" — the reader says "Saved" (ui.Announce),
+- [ ] The toast: tap "Show a toast" — the reader says "Saved" (`announce`),
       without the checkmark's name.
 - [ ] Headings: in the markdown example, the rotor (VoiceOver) or
       "Headings" navigation (TalkBack) moves between the reply's headings.
@@ -97,15 +97,15 @@ fix what didn't match.
 ## Languages
 
 - On an iPhone: choose the app's language in Settings; the app relaunches in it, with
-  UIKit's own words. `ui.SetLocale`, then relaunch.
+  UIKit's own words. `i18n.setLocale`, then relaunch.
 - iOS 16: the navigation bar's back chevron in a language forced against the system's.
-- On Android 12 or earlier: `ui.SetLocale`, kill the app, relaunch (Asuka's preferences).
+- On Android 12 or earlier: `i18n.setLocale`, kill the app, relaunch (Asuka's preferences).
 - Android, in Arabic: predictive back, a sheet, dragging selection handles, TalkBack.
 - Windows: Arabic and English Windows, the mirrored title
   and menu bars, clicks landing on the right views, a runtime switch with a sheet and a
   window open, Arabic font fallback and punctuation in `DT_RTLREADING`, `TPM_LAYOUTRTL`
   menus opening on the right side, RichEdit's paragraph direction. Then
-  `go test ./host/windows ./internal/windows`.
+  `go test ./platform/windows`.
 
 ## Previewing, printing, composing
 
@@ -131,7 +131,7 @@ In the gallery's Documents section.
       with the number and the text.
 - [ ] Windows: Preview opens the PDF in its
       app; Print shows the system's print dialog; the PDF is made
-      (`go test ./host/windows -run Documents`); Mail with Outlook classic
+      (`go test ./platform/windows`); Mail with Outlook classic
       or Thunderbird set as the mail app shows its composer with the PDF.
 
 ## On the desktop
@@ -143,7 +143,7 @@ GNOME, on real hardware rather than a VM where you can.
 - [ ] Screen readers: VoiceOver (macOS: ⌘F5), Narrator (Windows:
       Ctrl+Win+Enter), Orca (GNOME: Super+Alt+S). Tabbing and the
       reader's own navigation reach each control of the gallery, read
-      with its title and role; `ui.Announce` (the toast) is spoken.
+      with its title and role; `announce` (the toast) is spoken.
 - [ ] Keyboard: Tab and Shift+Tab move through the controls in order,
       with a visible focus ring; Space and Enter press buttons; Escape
       closes a sheet, an alert and a menu.

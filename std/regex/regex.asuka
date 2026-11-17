@@ -1,0 +1,147 @@
+// Package std/regex has regular expressions in RE2's syntax, matched
+// in time linear in the text (no backtracking, so no pattern can take
+// forever).
+//
+//   let digits = try regex.compile(r"\d+")    // regex.must(…) for a constant
+//   digits.find("order 66, table 7")     // "66"
+//   digits.findAll("order 66, table 7")  // ["66", "7"]
+//   let date = try regex.compile(r"(?P<y>\d{4})-(\d\d)")
+//   date.replace("2026-03", with: "$2/${y}") // "03/2026"
+//
+// The syntax: literals; . (any character but \n); classes [abc] [^a-z]
+// [[:alpha:]], \d \w \s and \D \W \S (ASCII, as RE2's); anchors ^ $ \A
+// \z, \b \B; groups (re), (?:re), (?P<name>re) or (?<name>re); flags
+// (?i) (?m) (?s) (?U) and (?i:re); alternation a|b; repeats * + ? {n}
+// {n,} {n,m}, lazy with a ? after; escapes \n \t \x41 \x{263A} and \ before
+// punctuation. Matches are leftmost-first, as Perl's, RE2's and Go's;
+// offsets are bytes of UTF-8; (?i) folds ASCII, Latin, Greek and
+// Cyrillic letters. \p{…} classes and backreferences aren't supported.
+
+/// A compiled pattern: make one with compile. A value, so it can be a
+/// constant, a field, or go into spawn.
+pub struct Regex {
+  pattern: string
+  /// The compiled program the matcher runs.
+  program: bytes
+
+  /// Whether the pattern matches somewhere in text.
+  fn matches(text: string) -> bool = test(program, text)
+
+  /// The first match in text, or none.
+  fn find(text: string) -> string? {
+    let ms = search(program, text, 1)
+    if ms.isEmpty() {
+      return none
+    }
+    return text.byteSlice(ms[0][0], ms[0][1])
+  }
+
+  /// Every match in text, in order (matches don't overlap).
+  fn findAll(text: string) -> [string] = search(program, text, -1).map(m => text.byteSlice(m[0], m[1]))
+
+  /// Where the first match is: its byte offsets from and to, or none.
+  fn findRange(text: string) -> (int, int)? {
+    let ms = search(program, text, 1)
+    if ms.isEmpty() {
+      return none
+    }
+    return (ms[0][0], ms[0][1])
+  }
+
+  /// The first match and its groups' text ("" for a group that took no
+  /// part), or none: [whole, group 1, group 2, …].
+  fn findSubmatch(text: string) -> [string]? {
+    let ms = search(program, text, 1)
+    if ms.isEmpty() {
+      return none
+    }
+    return groups(ms[0], text)
+  }
+
+  /// Every match and its groups' text, as findSubmatch gives one.
+  fn findAllSubmatches(text: string) -> [[string]] = search(program, text, -1).map(m => groups(m, text))
+
+  /// text with every match replaced by template, where $1 or ${1} is
+  /// group 1's text, $name or ${name} a named group's, $0 the match and
+  /// $$ a $.
+  fn replace(text: string, with: string) -> string = substitute(program, text, with, -1)
+
+  /// text with every match replaced by what f gives for its groups
+  /// ([whole, group 1, …], as findSubmatch's).
+  fn replaceEach(text: string, f: fn([string]) -> string) -> string {
+    var out = ""
+    var at = 0
+    for m in search(program, text, -1) {
+      out = out + text.byteSlice(at, m[0]) + f(groups(m, text))
+      at = m[1]
+    }
+    return out + text.byteSlice(at, text.byteCount())
+  }
+
+  /// text split around the matches: at most count parts (the last holds
+  /// the rest), every one when count is negative. As Go's Split: an
+  /// empty match at the start splits nothing off, nor one at the end.
+  fn split(text: string, count: int = -1) -> [string] {
+    if count == 0 {
+      return []
+    }
+    if text.isEmpty() {
+      return [""]
+    }
+    var parts: [string] = []
+    var beg = 0
+    var end = 0
+    for m in search(program, text, count) {
+      if count > 0 && parts.count() == count - 1 {
+        break
+      }
+      end = m[0]
+      if m[1] != 0 {
+        parts.push(text.byteSlice(beg, end))
+      }
+      beg = m[1]
+    }
+    if end != text.byteCount() {
+      parts.push(text.byteSlice(beg, text.byteCount()))
+    }
+    return parts
+  }
+
+  /// The groups' names, from group 1 ("" for a group without one).
+  fn groupNames() -> [string] = names(program)
+}
+
+/// Compiles pattern; a bad one throws, saying what's wrong.
+pub fn compile(pattern: string) throws -> Regex = Regex(pattern: pattern, program: try program(pattern))
+
+/// The pattern compiled, for one known to be right (a constant's): one
+/// that isn't panics, so the mistake shows as the app starts.
+///
+///   let digits = regex.must(r"\d+")
+pub fn must(pattern: string) -> Regex {
+  do {
+    return try compile(pattern)
+  } catch e {
+    panic("regex.must({pattern}): {e.message}")
+  }
+}
+
+/// text with the pattern syntax's characters escaped: a pattern that
+/// matches text as it is.
+pub native fn quote(text: string) -> string
+
+fn groups(m: [int], text: string) -> [string] {
+  var out: [string] = []
+  var i = 0
+  while i < m.count() {
+    out.push(if m[i] < 0 { "" } else { text.byteSlice(m[i], m[i + 1]) })
+    i += 2
+  }
+  return out
+}
+
+native fn program(pattern: string) throws -> bytes
+native fn test(program: bytes, text: string) -> bool
+native fn search(program: bytes, text: string, limit: int) -> [[int]]
+native fn names(program: bytes) -> [string]
+native fn substitute(program: bytes, text: string, template: string, limit: int) -> string

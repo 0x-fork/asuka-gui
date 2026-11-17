@@ -1,0 +1,900 @@
+// fs.c: std/fs's builtins: paths, and the file system's calls (POSIX,
+// Win32 in UTF-16, WASI's where the web gives it a directory). The calls
+// block, so apps make them in spawn { }; each is safe on any thread.
+//
+// A call that fails returns its failure value (none, false) and leaves
+// why in this thread's last error, which fs.failureKind() gives (a
+// FAIL_*) and fs.failureReason() says; the Asuka side throws an FsError
+// of it (std/fs/fs.asuka).
+//
+//	fs.appDir() -> string
+//	fs.join(parts) / clean(p) / dir(p) / base(p) / ext(p) -> string
+//	fs.listNames(p) -> [string]?     names in a directory, sorted
+//	fs.statInfo(p) -> [int]?         [isDir, size, modified (ns)]
+//	fs.readFile(p) -> bytes?
+//	fs.writeFile(p, data, append) -> bool
+//	fs.copyFile(from, to) / moveFile(from, to) -> bool
+//	fs.makeDirs(p) / removeOne(p) / removeTree(p) -> bool
+//	fs.exists(p) -> bool
+//	fs.failureKind() -> int / failureReason() -> string
+#if defined(__APPLE__)
+#define _DARWIN_C_SOURCE  // st_mtimespec, getprogname
+#elif !defined(_WIN32)
+#define _POSIX_C_SOURCE 200809L
+#define _DEFAULT_SOURCE  // DT_DIR
+#endif
+#include "std/std.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
+#include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
+
+#define STR(i) ((ak_str *)args[i].p)
+#define BYTES(i) ((ak_bytes *)args[i].p)
+
+#if defined(_WIN32)
+#define SEP '\\'
+static bool is_sep(char c) { return c == '/' || c == '\\'; }
+#else
+#define SEP '/'
+static bool is_sep(char c) { return c == '/'; }
+#endif
+
+// ---- Failures ----
+
+enum { FAIL_OTHER = 1, FAIL_NOT_FOUND, FAIL_EXISTS, FAIL_DENIED, FAIL_NOT_DIR, FAIL_IS_DIR, FAIL_NOT_EMPTY };
+
+static AK_TLS int fail_kind;
+static AK_TLS char fail_reason[200];
+
+static void failed(int kind, const char *reason) {
+	fail_kind = kind;
+	snprintf(fail_reason, sizeof fail_reason, "%s", reason);
+}
+
+#if defined(_WIN32)
+static void failed_os(void) {
+	DWORD e = GetLastError();
+	int kind;
+	switch (e) {
+	case ERROR_FILE_NOT_FOUND:
+	case ERROR_PATH_NOT_FOUND:
+	case ERROR_INVALID_NAME:
+		kind = FAIL_NOT_FOUND;
+		break;
+	case ERROR_ALREADY_EXISTS:
+	case ERROR_FILE_EXISTS:
+		kind = FAIL_EXISTS;
+		break;
+	case ERROR_ACCESS_DENIED:
+	case ERROR_SHARING_VIOLATION:
+		kind = FAIL_DENIED;
+		break;
+	case ERROR_DIRECTORY:
+		kind = FAIL_NOT_DIR;
+		break;
+	case ERROR_DIR_NOT_EMPTY:
+		kind = FAIL_NOT_EMPTY;
+		break;
+	default:
+		kind = FAIL_OTHER;
+	}
+	char msg[160] = "";
+	DWORD n = FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, e, 0, msg, sizeof msg, NULL);
+	while (n > 0 && (msg[n - 1] == '\n' || msg[n - 1] == '\r' || msg[n - 1] == '.')) msg[--n] = 0;
+	if (n == 0) snprintf(msg, sizeof msg, "error %lu", (unsigned long)e);
+	failed(kind, msg);
+}
+#else
+static void failed_os(void) {
+	int e = errno;
+	int kind;
+	switch (e) {
+	case ENOENT: kind = FAIL_NOT_FOUND; break;
+	case EEXIST: kind = FAIL_EXISTS; break;
+	case EACCES:
+	case EPERM: kind = FAIL_DENIED; break;
+	case ENOTDIR: kind = FAIL_NOT_DIR; break;
+	case EISDIR: kind = FAIL_IS_DIR; break;
+	case ENOTEMPTY: kind = FAIL_NOT_EMPTY; break;
+	default: kind = FAIL_OTHER;
+	}
+	failed(kind, strerror(e));
+}
+#endif
+
+static ak_val failure(ak_val *args, uint32_t n) {
+	AK_UNUSED(args), AK_UNUSED(n);
+	return (ak_val){.i = fail_kind ? fail_kind : FAIL_OTHER};
+}
+
+static ak_val failure_reason(ak_val *args, uint32_t n) {
+	AK_UNUSED(args), AK_UNUSED(n);
+	return (ak_val){.p = ak_str_c(fail_reason)};
+}
+
+// ---- Paths ----
+
+// clean is p's shortest equivalent (Go's filepath.Clean): one separator
+// between names, no "." names, ".." names folded into the name before
+// them, "." for an empty path.
+static ak_str *clean(const char *p, size_t n) {
+	ak_buf b = {0};
+	size_t i = 0;
+	size_t root = 0;  // what ".." never goes above
+#if defined(_WIN32)
+	if (n >= 2 && p[1] == ':') {  // a drive
+		ak_buf_put(&b, p, 2);
+		i = 2;
+	} else if (n >= 2 && is_sep(p[0]) && is_sep(p[1])) {  // \\server\share
+		ak_buf_put(&b, "\\\\", 2);
+		i = 2;
+		for (int part = 0; part < 2; part++) {
+			size_t j = i;
+			while (j < n && !is_sep(p[j])) j++;
+			ak_buf_put(&b, p + i, j - i);
+			i = j;
+			if (part == 0 && i < n) ak_buf_u8(&b, SEP), i++;
+		}
+	}
+#endif
+	size_t vol = b.len;
+	bool abs = i < n && is_sep(p[i]);
+	if (abs) {
+		ak_buf_u8(&b, SEP);
+		i++;
+	}
+	root = b.len;
+	size_t names = 0;  // names written after root that ".." can fold
+	while (i < n) {
+		if (is_sep(p[i])) {
+			i++;
+			continue;
+		}
+		size_t j = i;
+		while (j < n && !is_sep(p[j])) j++;
+		size_t len = j - i;
+		if (len == 1 && p[i] == '.') {
+			// nothing
+		} else if (len == 2 && p[i] == '.' && p[i + 1] == '.') {
+			if (names > 0) {
+				while (b.len > root && b.data[b.len - 1] != SEP) b.len--;
+				if (b.len > root) b.len--;
+				names--;
+			} else if (!abs) {
+				if (b.len > vol && b.data[b.len - 1] != SEP) ak_buf_u8(&b, SEP);
+				ak_buf_put(&b, "..", 2);
+				root = b.len;  // ".." can't fold a ".."
+			}
+		} else {
+			if (b.len > vol && b.data[b.len - 1] != SEP) ak_buf_u8(&b, SEP);
+			ak_buf_put(&b, p + i, len);
+			names++;
+		}
+		i = j;
+	}
+	if (b.len == 0) ak_buf_u8(&b, '.');
+	ak_str *s = ak_str_new((const char *)b.data, b.len);
+	ak_buf_free(&b);
+	return s;
+}
+
+static ak_val clean_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	return (ak_val){.p = clean(STR(0)->data, STR(0)->len)};
+}
+
+static ak_val join_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_arr *parts = args[0].p;
+	ak_buf b = {0};
+	for (uint32_t k = 0; k < parts->len; k++) {
+		ak_str *s = parts->data[k].p;
+		if (!s || s->len == 0) continue;
+		if (b.len) ak_buf_u8(&b, SEP);
+		ak_buf_put(&b, s->data, s->len);
+	}
+	ak_str *r = b.len ? clean((const char *)b.data, b.len) : ak_str_new("", 0);
+	ak_buf_free(&b);
+	return (ak_val){.p = r};
+}
+
+// volume is the length of p's drive or share (Windows), 0 elsewhere.
+static size_t volume(const char *p, size_t n) {
+#if defined(_WIN32)
+	if (n >= 2 && p[1] == ':') return 2;
+	if (n >= 2 && is_sep(p[0]) && is_sep(p[1])) {
+		size_t i = 2;
+		for (int part = 0; part < 2; part++) {
+			while (i < n && !is_sep(p[i])) i++;
+			if (part == 0 && i < n) i++;
+		}
+		return i;
+	}
+#else
+	AK_UNUSED(p), AK_UNUSED(n);
+#endif
+	return 0;
+}
+
+// dir: all but p's last name, cleaned ("." when there's none).
+static ak_val dir_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	const ak_str *s = STR(0);
+	size_t v = volume(s->data, s->len), i = s->len;
+	while (i > v && !is_sep(s->data[i - 1])) i--;
+	ak_str *d = clean(s->data + v, i - v);
+	if (v) {
+		ak_str *r = ak_str_new(NULL, v + d->len);
+		memcpy(r->data, s->data, v);
+		memcpy(r->data + v, d->data, d->len);
+		ak_release(d);
+		d = r;
+	}
+	return (ak_val){.p = d};
+}
+
+// base: p's last name ("." for an empty path, the separator for a root).
+static ak_val base_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	const ak_str *s = STR(0);
+	size_t v = volume(s->data, s->len), end = s->len;
+	while (end > v && is_sep(s->data[end - 1])) end--;
+	if (end == v) {
+		if (s->len > v) return (ak_val){.p = ak_str_new((char[]){SEP}, 1)};
+		return (ak_val){.p = ak_str_new(".", 1)};
+	}
+	size_t i = end;
+	while (i > v && !is_sep(s->data[i - 1])) i--;
+	return (ak_val){.p = ak_str_new(s->data + i, end - i)};
+}
+
+// ext: the last name's extension from its last '.', "" when none.
+static ak_val ext_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	const ak_str *s = STR(0);
+	for (size_t i = s->len; i > 0; i--) {
+		char c = s->data[i - 1];
+		if (is_sep(c)) break;
+		if (c == '.') return (ak_val){.p = ak_str_new(s->data + i - 1, s->len - i + 1)};
+	}
+	return (ak_val){.p = ak_str_new("", 0)};
+}
+
+// ---- The app's directory ----
+
+static char *app_dir;
+
+void ak_fs_set_app_dir(const char *path) {
+	char *old = app_dir;
+	app_dir = path && *path ? strcpy(ak_alloc(strlen(path) + 1), path) : NULL;
+	ak_free(old);
+}
+
+static char *dup_path(const char *s) {
+	size_t n = strlen(s);
+	char *p = ak_alloc(n + 1);
+	memcpy(p, s, n + 1);
+	return p;
+}
+
+char *ak_fs_app_dir(void) {
+	if (app_dir) return dup_path(app_dir);
+	const char *env = getenv("ASUKA_DATA");
+	if (env && *env) return dup_path(env);
+#if !defined(__wasm__)
+	char buf[1024];
+#endif
+#if defined(_WIN32)
+	const char *base = getenv("LOCALAPPDATA");
+	if (base && *base) {
+		char exe[MAX_PATH];
+		DWORD k = GetModuleFileNameA(NULL, exe, sizeof exe);
+		const char *name = exe + k;
+		while (name > exe && !is_sep(name[-1])) name--;
+		size_t len = strlen(name);
+		if (len > 4 && _stricmp(name + len - 4, ".exe") == 0) len -= 4;
+		snprintf(buf, sizeof buf, "%s\\%.*s", base, (int)len, name);
+		return dup_path(buf);
+	}
+#elif defined(__APPLE__)
+	// On iOS, HOME is the app's container.
+	const char *home = getenv("HOME");
+	if (home && *home) {
+		snprintf(buf, sizeof buf, "%s/Library/Application Support/%s", home, getprogname());
+		return dup_path(buf);
+	}
+#elif defined(__wasm__)
+	return dup_path("/data");
+#else
+	const char *xdg = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
+	char name[256] = "asuka";
+	FILE *f = fopen("/proc/self/comm", "r");
+	if (f) {
+		if (fgets(name, sizeof name, f)) name[strcspn(name, "\n")] = 0;
+		fclose(f);
+	}
+	if (xdg && *xdg) {
+		snprintf(buf, sizeof buf, "%s/%s", xdg, name);
+		return dup_path(buf);
+	}
+	if (home && *home) {
+		snprintf(buf, sizeof buf, "%s/.local/share/%s", home, name);
+		return dup_path(buf);
+	}
+#endif
+	return dup_path(".");
+}
+
+static ak_val app_dir_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(args), AK_UNUSED(n);
+	char *d = ak_fs_app_dir();
+	ak_str *s = ak_str_c(d);
+	ak_free(d);
+	return (ak_val){.p = s};
+}
+
+// ---- The file system ----
+
+#if defined(_WIN32)
+
+// wide is p in UTF-16 (ak_free it); NULL when p has a NUL.
+static wchar_t *wide(const ak_str *p) {
+	if (memchr(p->data, 0, p->len)) {
+		failed(FAIL_NOT_FOUND, "the path has a NUL");
+		return NULL;
+	}
+	int n = MultiByteToWideChar(CP_UTF8, 0, p->data, (int)p->len, NULL, 0);
+	wchar_t *w = ak_alloc(sizeof(wchar_t) * ((size_t)n + 1));
+	MultiByteToWideChar(CP_UTF8, 0, p->data, (int)p->len, w, n);
+	w[n] = 0;
+	return w;
+}
+
+static char *narrow(const wchar_t *w, int *len) {
+	int n = WideCharToMultiByte(CP_UTF8, 0, w, -1, NULL, 0, NULL, NULL);
+	char *s = ak_alloc((size_t)n + 1);
+	WideCharToMultiByte(CP_UTF8, 0, w, -1, s, n, NULL, NULL);
+	*len = n > 0 ? n - 1 : 0;
+	return s;
+}
+
+static int64_t filetime_ns(FILETIME ft) {
+	uint64_t t = (uint64_t)ft.dwHighDateTime << 32 | ft.dwLowDateTime;
+	return (int64_t)(t - 116444736000000000ull) * 100;
+}
+
+#else
+
+// path is p as a C string (p's own data: strings end in a NUL); NULL
+// when p has a NUL inside.
+static const char *path(const ak_str *p) {
+	if (memchr(p->data, 0, p->len)) {
+		failed(FAIL_NOT_FOUND, "the path has a NUL");
+		return NULL;
+	}
+	return p->len ? p->data : "";
+}
+
+#endif
+
+static int cmp_str(const void *a, const void *b) { return ak_str_cmp(*(ak_str *const *)a, *(ak_str *const *)b); }
+
+static ak_val list_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_arr *out = ak_str_arr(0);
+#if defined(_WIN32)
+	ak_str *pat = ak_str_new(NULL, STR(0)->len + 2);
+	memcpy(pat->data, STR(0)->data, STR(0)->len);
+	memcpy(pat->data + STR(0)->len, "\\*", 2);
+	wchar_t *w = wide(pat);
+	ak_release(pat);
+	if (!w) goto fail;
+	WIN32_FIND_DATAW fd;
+	HANDLE h = FindFirstFileW(w, &fd);
+	ak_free(w);
+	if (h == INVALID_HANDLE_VALUE) {
+		if (GetLastError() == ERROR_FILE_NOT_FOUND) goto done;  // empty
+		failed_os();
+		goto fail;
+	}
+	do {
+		if (wcscmp(fd.cFileName, L".") == 0 || wcscmp(fd.cFileName, L"..") == 0) continue;
+		int len;
+		char *s = narrow(fd.cFileName, &len);
+		ak_str_arr_push(&out, s, (size_t)len);
+		ak_free(s);
+	} while (FindNextFileW(h, &fd));
+	FindClose(h);
+done:;
+#else
+	const char *p = path(STR(0));
+	if (!p) goto fail;
+	DIR *d = opendir(p);
+	if (!d) {
+		failed_os();
+		goto fail;
+	}
+	struct dirent *e;
+	while ((e = readdir(d)) != NULL) {
+		if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) continue;
+		ak_str_arr_push(&out, e->d_name, strlen(e->d_name));
+	}
+	closedir(d);
+#endif
+	if (out->len > 1) qsort(out->data, out->len, sizeof(ak_val), cmp_str);
+	return (ak_val){.p = out};
+fail:
+	ak_release(out);
+	return (ak_val){.p = NULL};
+}
+
+static ak_val stat_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	int64_t is_dir, size, mtime;
+#if defined(_WIN32)
+	wchar_t *w = wide(STR(0));
+	if (!w) return (ak_val){.p = NULL};
+	WIN32_FILE_ATTRIBUTE_DATA a;
+	BOOL ok = GetFileAttributesExW(w, GetFileExInfoStandard, &a);
+	ak_free(w);
+	if (!ok) {
+		failed_os();
+		return (ak_val){.p = NULL};
+	}
+	is_dir = (a.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+	size = (int64_t)((uint64_t)a.nFileSizeHigh << 32 | a.nFileSizeLow);
+	mtime = filetime_ns(a.ftLastWriteTime);
+#else
+	const char *p = path(STR(0));
+	struct stat st;
+	if (!p) return (ak_val){.p = NULL};
+	if (stat(p, &st) != 0) {
+		failed_os();
+		return (ak_val){.p = NULL};
+	}
+	is_dir = S_ISDIR(st.st_mode);
+	size = (int64_t)st.st_size;
+#if defined(__APPLE__)
+	mtime = (int64_t)st.st_mtimespec.tv_sec * 1000000000 + st.st_mtimespec.tv_nsec;
+#else
+	mtime = (int64_t)st.st_mtim.tv_sec * 1000000000 + st.st_mtim.tv_nsec;
+#endif
+#endif
+	ak_arr *a3 = ak_arr_new(AK_K_INT, NULL, 3);
+	a3->data[0].i = is_dir;
+	a3->data[1].i = is_dir ? 0 : size;
+	a3->data[2].i = mtime;
+	a3->len = 3;
+	return (ak_val){.p = a3};
+}
+
+static ak_val exists_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+#if defined(_WIN32)
+	wchar_t *w = wide(STR(0));
+	if (!w) return (ak_val){.i = 0};
+	DWORD a = GetFileAttributesW(w);
+	ak_free(w);
+	return (ak_val){.i = a != INVALID_FILE_ATTRIBUTES};
+#else
+	const char *p = path(STR(0));
+	struct stat st;
+	return (ak_val){.i = p && stat(p, &st) == 0};
+#endif
+}
+
+static ak_val read_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_buf b = {0};
+#if defined(_WIN32)
+	wchar_t *w = wide(STR(0));
+	if (!w) return (ak_val){.p = NULL};
+	HANDLE h = CreateFileW(w, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	ak_free(w);
+	if (h == INVALID_HANDLE_VALUE) {
+		failed_os();
+		return (ak_val){.p = NULL};
+	}
+	for (;;) {
+		ak_buf_reserve(&b, 65536);
+		DWORD got;
+		if (!ReadFile(h, b.data + b.len, 65536, &got, NULL)) {
+			failed_os();
+			CloseHandle(h);
+			ak_buf_free(&b);
+			return (ak_val){.p = NULL};
+		}
+		if (got == 0) break;
+		b.len += got;
+	}
+	CloseHandle(h);
+#else
+	const char *p = path(STR(0));
+	if (!p) return (ak_val){.p = NULL};
+	int fd = open(p, O_RDONLY);
+	if (fd < 0) {
+		failed_os();
+		return (ak_val){.p = NULL};
+	}
+	struct stat st;
+	if (fstat(fd, &st) == 0 && S_ISDIR(st.st_mode)) {
+		close(fd);
+		failed(FAIL_IS_DIR, "is a directory");
+		return (ak_val){.p = NULL};
+	}
+	for (;;) {
+		ak_buf_reserve(&b, 65536);
+		ssize_t got = read(fd, b.data + b.len, 65536);
+		if (got < 0) {
+			if (errno == EINTR) continue;
+			failed_os();
+			close(fd);
+			ak_buf_free(&b);
+			return (ak_val){.p = NULL};
+		}
+		if (got == 0) break;
+		b.len += (size_t)got;
+	}
+	close(fd);
+#endif
+	if (b.len > UINT32_MAX) {
+		ak_buf_free(&b);
+		failed(FAIL_OTHER, "the file is larger than 4 GB");
+		return (ak_val){.p = NULL};
+	}
+	ak_bytes *out = ak_bytes_new(b.data, b.len);
+	ak_buf_free(&b);
+	return (ak_val){.p = out};
+}
+
+// write_fn(p, data, append): the file made (or emptied, unless append)
+// with data.
+static ak_val write_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	const ak_bytes *data = BYTES(1);
+	size_t len = data ? data->len : 0;
+	bool append = args[2].i != 0;
+#if defined(_WIN32)
+	wchar_t *w = wide(STR(0));
+	if (!w) return (ak_val){.i = 0};
+	HANDLE h = CreateFileW(w, append ? FILE_APPEND_DATA : GENERIC_WRITE, FILE_SHARE_READ, NULL, append ? OPEN_ALWAYS : CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	ak_free(w);
+	if (h == INVALID_HANDLE_VALUE) {
+		failed_os();
+		return (ak_val){.i = 0};
+	}
+	size_t off = 0;
+	while (off < len) {
+		DWORD put;
+		DWORD chunk = len - off > (1u << 30) ? (1u << 30) : (DWORD)(len - off);
+		if (!WriteFile(h, data->data + off, chunk, &put, NULL)) {
+			failed_os();
+			CloseHandle(h);
+			return (ak_val){.i = 0};
+		}
+		off += put;
+	}
+	CloseHandle(h);
+#else
+	const char *p = path(STR(0));
+	if (!p) return (ak_val){.i = 0};
+	int fd = open(p, O_WRONLY | O_CREAT | (append ? O_APPEND : O_TRUNC), 0644);
+	if (fd < 0) {
+		failed_os();
+		return (ak_val){.i = 0};
+	}
+	size_t off = 0;
+	while (off < len) {
+		ssize_t put = write(fd, data->data + off, len - off);
+		if (put < 0) {
+			if (errno == EINTR) continue;
+			failed_os();
+			close(fd);
+			return (ak_val){.i = 0};
+		}
+		off += (size_t)put;
+	}
+	if (close(fd) != 0) {
+		failed_os();
+		return (ak_val){.i = 0};
+	}
+#endif
+	return (ak_val){.i = 1};
+}
+
+static ak_val copy_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+#if defined(_WIN32)
+	wchar_t *from = wide(STR(0)), *to = from ? wide(STR(1)) : NULL;
+	BOOL ok = from && to && CopyFileW(from, to, FALSE);
+	if (from && to && !ok) failed_os();
+	ak_free(from);
+	ak_free(to);
+	return (ak_val){.i = ok};
+#else
+	const char *from = path(STR(0)), *to = from ? path(STR(1)) : NULL;
+	if (!from || !to) return (ak_val){.i = 0};
+	int in = open(from, O_RDONLY);
+	if (in < 0) {
+		failed_os();
+		return (ak_val){.i = 0};
+	}
+	struct stat st;
+	if (fstat(in, &st) == 0 && S_ISDIR(st.st_mode)) {
+		close(in);
+		failed(FAIL_IS_DIR, "is a directory");
+		return (ak_val){.i = 0};
+	}
+	int out = open(to, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	if (out < 0) {
+		failed_os();
+		close(in);
+		return (ak_val){.i = 0};
+	}
+	char buf[65536];
+	bool ok = true;
+	for (;;) {
+		ssize_t got = read(in, buf, sizeof buf);
+		if (got < 0 && errno == EINTR) continue;
+		if (got <= 0) {
+			if (got < 0) failed_os(), ok = false;
+			break;
+		}
+		for (ssize_t off = 0; off < got;) {
+			ssize_t put = write(out, buf + off, (size_t)(got - off));
+			if (put < 0 && errno == EINTR) continue;
+			if (put < 0) {
+				failed_os();
+				ok = false;
+				break;
+			}
+			off += put;
+		}
+		if (!ok) break;
+	}
+	close(in);
+	if (close(out) != 0 && ok) failed_os(), ok = false;
+	return (ak_val){.i = ok};
+#endif
+}
+
+static ak_val rename_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+#if defined(_WIN32)
+	wchar_t *from = wide(STR(0)), *to = from ? wide(STR(1)) : NULL;
+	BOOL ok = from && to && MoveFileExW(from, to, MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED);
+	if (from && to && !ok) failed_os();
+	ak_free(from);
+	ak_free(to);
+	return (ak_val){.i = ok};
+#else
+	const char *from = path(STR(0)), *to = from ? path(STR(1)) : NULL;
+	if (!from || !to) return (ak_val){.i = 0};
+	if (rename(from, to) != 0) {
+		failed_os();
+		return (ak_val){.i = 0};
+	}
+	return (ak_val){.i = 1};
+#endif
+}
+
+// make_dir makes one directory; true when it's there after (made, or
+// one already).
+static bool make_dir(const ak_str *p) {
+#if defined(_WIN32)
+	wchar_t *w = wide(p);
+	if (!w) return false;
+	bool ok = CreateDirectoryW(w, NULL) != 0;
+	DWORD e = ok ? 0 : GetLastError();
+	if (!ok) {
+		// One there already: some shares say so as access denied.
+		DWORD a = GetFileAttributesW(w);
+		if (a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY)) ok = true;
+		else if (e == ERROR_ALREADY_EXISTS) failed(FAIL_EXISTS, "a file is there");
+		else {
+			SetLastError(e);
+			failed_os();
+		}
+	}
+	ak_free(w);
+	return ok;
+#else
+	const char *c = path(p);
+	if (!c) return false;
+	if (mkdir(c, 0755) == 0) return true;
+	int e = errno;
+	struct stat st;
+	if (e == EEXIST) {
+		if (stat(c, &st) == 0 && S_ISDIR(st.st_mode)) return true;
+		failed(FAIL_EXISTS, "a file is there");
+		return false;
+	}
+	errno = e;
+	failed_os();
+	return false;
+#endif
+}
+
+static ak_val mkdir_all_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	const ak_str *p = STR(0);
+	size_t v = volume(p->data, p->len);
+	// Each prefix that ends a name, in order.
+	for (size_t i = v; i <= p->len; i++) {
+		if (i < p->len && !is_sep(p->data[i])) continue;
+		if (i == v || is_sep(p->data[i - 1])) continue;  // a root, or "//"
+		ak_str *prefix = ak_str_new(p->data, i);
+		bool ok = make_dir(prefix);
+		ak_release(prefix);
+		if (!ok) return (ak_val){.i = 0};
+	}
+	return (ak_val){.i = 1};
+}
+
+bool ak_fs_make_dirs(const char *path) {
+	ak_str *s = ak_str_c(path);
+	ak_val a = {.p = s};
+	ak_val r = mkdir_all_fn(&a, 1);
+	ak_release(s);
+	return r.i != 0;
+}
+
+static bool remove_one(const ak_str *p) {
+#if defined(_WIN32)
+	wchar_t *w = wide(p);
+	if (!w) return false;
+	DWORD a = GetFileAttributesW(w);
+	bool ok;
+	if (a == INVALID_FILE_ATTRIBUTES) ok = false;
+	else if (a & FILE_ATTRIBUTE_DIRECTORY) ok = RemoveDirectoryW(w) != 0;
+	else ok = DeleteFileW(w) != 0;
+	if (!ok) failed_os();
+	ak_free(w);
+	return ok;
+#else
+	const char *c = path(p);
+	if (!c) return false;
+	struct stat st;
+	if (lstat(c, &st) != 0) {
+		failed_os();
+		return false;
+	}
+	if ((S_ISDIR(st.st_mode) ? rmdir(c) : unlink(c)) != 0) {
+		failed_os();
+		return false;
+	}
+	return true;
+#endif
+}
+
+static ak_val remove_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	return (ak_val){.i = remove_one(STR(0))};
+}
+
+// remove_all removes p and what's in it; one that isn't there is
+// removed already.
+static bool remove_all(const ak_str *p, int depth) {
+	if (depth > 256) {
+		failed(FAIL_OTHER, "directories nested too deep");
+		return false;
+	}
+	bool dir;
+#if defined(_WIN32)
+	wchar_t *w = wide(p);
+	if (!w) return false;
+	DWORD a = GetFileAttributesW(w);
+	ak_free(w);
+	if (a == INVALID_FILE_ATTRIBUTES) {
+		DWORD e = GetLastError();
+		if (e == ERROR_FILE_NOT_FOUND || e == ERROR_PATH_NOT_FOUND) return true;
+		failed_os();
+		return false;
+	}
+	dir = (a & FILE_ATTRIBUTE_DIRECTORY) && !(a & FILE_ATTRIBUTE_REPARSE_POINT);
+#else
+	const char *c = path(p);
+	if (!c) return false;
+	struct stat st;
+	if (lstat(c, &st) != 0) {
+		if (errno == ENOENT) return true;
+		failed_os();
+		return false;
+	}
+	dir = S_ISDIR(st.st_mode);
+#endif
+	if (dir) {
+		ak_val arg = {.p = (void *)p};
+		ak_val names = list_fn(&arg, 1);
+		ak_arr *a = names.p;
+		if (!a) return false;
+		for (uint32_t k = 0; k < a->len; k++) {
+			ak_str *name = a->data[k].p;
+			ak_str *child = ak_str_new(NULL, p->len + 1 + name->len);
+			memcpy(child->data, p->data, p->len);
+			child->data[p->len] = SEP;
+			memcpy(child->data + p->len + 1, name->data, name->len);
+			bool ok = remove_all(child, depth + 1);
+			ak_release(child);
+			if (!ok) {
+				ak_release(a);
+				return false;
+			}
+		}
+		ak_release(a);
+	}
+	return remove_one(p);
+}
+
+static ak_val remove_all_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	return (ak_val){.i = remove_all(STR(0), 0)};
+}
+
+char *ak_fs_temp_dir(void) {
+#if defined(_WIN32)
+	char base[MAX_PATH + 1];
+	DWORD n = GetTempPathA(sizeof base, base);
+	if (n == 0 || n > MAX_PATH) return NULL;
+	for (unsigned k = 0; k < 100; k++) {
+		char *p = ak_alloc(n + 48);
+		snprintf(p, n + 48, "%sasuka-test-%lu-%u", base, (unsigned long)GetCurrentProcessId(), (unsigned)(GetTickCount() + k));
+		if (CreateDirectoryA(p, NULL)) return p;
+		ak_free(p);
+	}
+	return NULL;
+#elif defined(__wasm__)
+	return NULL;
+#else
+	const char *base = getenv("TMPDIR");
+	if (!base || !*base) base = "/tmp";
+	size_t n = strlen(base) + 32;
+	char *p = ak_alloc(n);
+	snprintf(p, n, "%s/asuka-test-XXXXXX", base);
+	if (!mkdtemp(p)) {
+		ak_free(p);
+		return NULL;
+	}
+	return p;
+#endif
+}
+
+bool ak_fs_remove_tree(const char *path) {
+	ak_str *p = ak_str_c(path);
+	bool ok = remove_all(p, 0);
+	ak_release(p);
+	return ok;
+}
+
+const ak_lib_entry ak_std_fs[] = {
+	{"fs.appDir", app_dir_fn},
+	{"fs.join", join_fn},
+	{"fs.clean", clean_fn},
+	{"fs.dir", dir_fn},
+	{"fs.base", base_fn},
+	{"fs.ext", ext_fn},
+	{"fs.listNames", list_fn},
+	{"fs.statInfo", stat_fn},
+	{"fs.exists", exists_fn},
+	{"fs.readFile", read_fn},
+	{"fs.writeFile", write_fn},
+	{"fs.copyFile", copy_fn},
+	{"fs.moveFile", rename_fn},
+	{"fs.makeDirs", mkdir_all_fn},
+	{"fs.removeOne", remove_fn},
+	{"fs.removeTree", remove_all_fn},
+	{"fs.failureKind", failure},
+	{"fs.failureReason", failure_reason},
+	{NULL, NULL},
+};

@@ -1,0 +1,9 @@
+name = "platform/sensors"
+version = "0.1.0"
+description = "The device's motion and environment sensors, and its pedometer"
+
+[ios]
+usage = { NSMotionUsageDescription = "To count your steps." }
+
+[android]
+permissions = ["android.permission.ACTIVITY_RECOGNITION"]

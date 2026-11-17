@@ -1,0 +1,74 @@
+// An action's run may await: a menu's choice, an alert's button, a
+// swipe action, a snackbar's action and runAction start it as a task of
+// the code that made it, which they don't wait for. A sync fn is a run
+// too.
+
+state said = ""
+
+async fn save(what: string) {
+  await sleep(10ms)
+  said = "saved {what}"
+}
+
+fn clear() { said = "" }
+
+component Actions {
+  Column {
+    Text("Said: {said}")
+    Button("More") {
+      menu: [
+        .button(title: "Save from the menu", run: () => { await save("menu") }),
+        .button(title: "Clear", run: clear),
+      ]
+    }
+    Button("Ask") {
+      on press { alert("Save?", actions: [.button(title: "Save", run: () => { await save("alert") })]) }
+    }
+    Button("Tell") {
+      on press { let _ = snackbar("Draft", action: .button(title: "Keep", run: () => { await save("snackbar") })) }
+    }
+    Button("Run") {
+      on press { runAction(.button(title: "x", run: () => { await save("runAction") })) }
+    }
+    Button("Disabled") {
+      on press { runAction(.button(title: "x", disabled: true, run: () => { said = "ran" })) }
+    }
+    List {
+      for r in ["A row"] key r {
+        Row {
+          swipeActions: [.button(title: "Save it", run: () => { await save("swipe") })]
+          Text(r)
+        }
+      }
+    }
+  }
+}
+
+app { Actions() }
+
+test "async runs" {
+  let app = mount(Actions())
+  app.tap("More")
+  app.tap("Save from the menu")
+  await app.idle()
+  app.expect("Said: saved menu")
+  app.tap("More")
+  app.tap("Clear")
+  app.expect("Said: ")
+  app.tap("Ask")
+  app.tap("Save")
+  await app.idle()
+  app.expect("Said: saved alert")
+  app.tap("Tell")
+  app.tap("Keep")
+  await app.idle()
+  app.expect("Said: saved snackbar")
+  app.tap("Run")
+  await app.idle()
+  app.expect("Said: saved runAction")
+  app.swipe("A row", action: "Save it")
+  await app.idle()
+  app.expect("Said: saved swipe")
+  app.tap("Disabled")
+  app.expectNo("Said: ran")
+}

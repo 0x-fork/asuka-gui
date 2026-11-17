@@ -1,0 +1,62 @@
+// The file's first comment.
+
+// Imports.
+import std/http // the client
+import ./ui.{Row, Card}
+
+/// A counter.
+/// It counts.
+component Counter(
+  start: int = 0, // where it starts
+  step: int = 1,
+) { // the body
+  state count = start // the count
+
+  // Derived.
+  let doubled = count * 2
+
+  Column {
+    gap: 12
+    padding: 16
+    Text("Count: {count}") { fontSize: 24 }
+    Button("Add") { on tap { count += step } } // adds
+    /* a block comment */
+    if count > 10 &&
+      count < 100 {
+      Text("big")
+    } else { Text("small") }
+    // dangling at the end of the column
+  }
+  // dangling at the end of the body
+}
+
+fn sum(xs: [int]) -> int {
+  var total = 0
+  for x in xs { total += x }
+  let pairs = [
+    1: "one", // first
+    // the second
+    2: "two",
+  ]
+  let list = [1, 2, 3]
+  let tall = [
+    1,
+    2, // two
+  ]
+  call(a, b: 2)
+  call(
+    a, // the a
+    b: 2,
+  )
+  return total ??
+    0
+}
+
+enum Dir { up, down, left, right }
+enum Mode {
+  light
+  dark // two of them
+  fn flip() -> Mode = match self { .light => .dark, .dark => .light }
+}
+struct P { x: int }
+// The end.

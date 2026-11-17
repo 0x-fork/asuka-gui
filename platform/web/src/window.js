@@ -56,7 +56,7 @@ export const State = Object.freeze({ Visible: 1, Focused: 2, Minimized: 4, Maxim
 /**
  * center is a w by h rectangle centered across r, its top a third of the
  * way down the room left (as Spotlight's panel shows), within r
- * (internal/flyout's Center).
+ * (platform/desktop's dsk_flyout_center).
  */
 export function center(w, h, r) {
   w = Math.min(w, r.w); h = Math.min(h, r.h);
@@ -65,8 +65,8 @@ export function center(w, h, r) {
 
 /**
  * place is the frame of a w by h flyout next to anchor ({x, y, w, h}),
- * gap away, on the side Placement p names, within work (internal/flyout's
- * Place): flipped to the other side where that has no room and the other
+ * gap away, on the side Placement p names, within work (platform/desktop's
+ * dsk_flyout_place): flipped to the other side where that has no room and the other
  * has more, lined up with the anchor along it (flipped to the other end
  * where that has no room), then slid back into work, then shrunk to it.
  */

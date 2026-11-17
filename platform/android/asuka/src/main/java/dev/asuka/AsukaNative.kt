@@ -4,7 +4,7 @@ import android.content.Context
 import android.util.Log
 import java.io.File
 
-/** The Go core's JNI entry points (mobile/jni_android.c). Main thread. */
+/** The core's JNI entry points (core/src/abi/jni_android.c). Main thread. */
 object AsukaNative {
     @JvmStatic external fun start(runtime: AsukaRuntime)
     @JvmStatic external fun attach()
@@ -16,6 +16,28 @@ object AsukaNative {
     @JvmStatic external fun setenv(key: String, value: String)
     @JvmStatic external fun crashStart(info: String): String
     @JvmStatic external fun crashNotify()
+    /** Runs the app compiled into the library: null, or what went wrong. */
+    @JvmStatic external fun run(): String?
+    /** Connects to asuka dev, which sends the app's bytecode: null, or what went wrong. */
+    @JvmStatic external fun devConnect(host: String, port: Int, hello: String): String?
+
+    /**
+     * Starts the app, once the core has: under asuka dev (a debuggable
+     * build with files/asuka/dev, host:port, which the CLI writes), the
+     * bytecode the CLI sends; otherwise the app compiled into the library.
+     */
+    fun startApp(context: Context) {
+        val debuggable = context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
+        val dev = File(context.filesDir, "asuka/dev")
+        val err = if (debuggable && dev.exists()) {
+            val (host, port) = dev.readText().trim().split(":").let { it[0] to it[1].toInt() }
+            val hello = """{"platform":"android","device":"${android.os.Build.MODEL}","sdk":${android.os.Build.VERSION.SDK_INT}}"""
+            devConnect(host, port, hello)
+        } else {
+            run()
+        }
+        if (err != null) Log.e("asuka", err)
+    }
 
     private var loaded = false
     private var loader: Thread? = null
@@ -53,10 +75,11 @@ object AsukaNative {
         } else {
             System.loadLibrary("asuka")
         }
-        // Where the Go code keeps its files (asuka/sdk/store). A library from
-        // before asuka_setenv hasn't it: nothing to set then.
+        // The app's directory (std/fs's appDir, where the crash record is
+        // kept too): the core reads ASUKA_DATA. A library from before
+        // asuka_setenv hasn't it: nothing to set then.
         runCatching { setenv("ASUKA_DATA", context.filesDir.absolutePath) }
-        // asuka/sdk/crash's record of the run, before the Go code's main.
+        // platform/crash's record of the run, before the app's init.
         AsukaCrash.start(context)
     }
 }

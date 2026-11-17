@@ -1,0 +1,363 @@
+SourceFile 1:1-69:3
+  Decls: [3]
+    StructDecl 1:1-5:2
+      Name: Ident "Todo" 1:8-1:12
+      Members: [3]
+        Field 2:3-2:10
+          Name: Ident "id" 2:3-2:5
+          Type: NamedType 2:7-2:10
+            Path: [1]
+              Ident "int" 2:7-2:10
+        Field 3:3-3:16
+          Name: Ident "title" 3:3-3:8
+          Type: NamedType 3:10-3:16
+            Path: [1]
+              Ident "string" 3:10-3:16
+        Field 4:3-4:21
+          Name: Ident "done" 4:3-4:7
+          Type: NamedType 4:9-4:13
+            Path: [1]
+              Ident "bool" 4:9-4:13
+          Default: BoolLit 4:16-4:21 Value=false
+    ComponentDecl 7:1-59:2 blank
+      Name: Ident "TodoApp" 7:11-7:18
+      Body: Block 7:19-59:2
+        Items: [6]
+          StateDecl 8:3-8:27
+            Name: Ident "todos" 8:9-8:14
+            Type: ArrayType 8:16-8:22
+              Elem: NamedType 8:17-8:21
+                Path: [1]
+                  Ident "Todo" 8:17-8:21
+            Value: ArrayExpr 8:25-8:27
+          StateDecl 9:3-9:19
+            Name: Ident "draft" 9:9-9:14
+            Value: StringLit 9:17-9:19 Segments=[""]
+          StateDecl 10:3-10:19
+            Name: Ident "nextId" 10:9-10:15
+            Value: BasicLit 10:18-10:19 Kind=integer Value="1"
+          LetDecl 12:3-12:51 blank Keyword=let
+            Pattern: BindPat 12:7-12:16
+              Name: Ident "remaining" 12:7-12:16
+            Value: MemberExpr 12:19-12:51
+              X: CallExpr 12:19-12:45
+                Fun: MemberExpr 12:19-12:31
+                  X: Ident "todos" 12:19-12:24
+                  Name: Ident "filter" 12:25-12:31
+                Args: ArgList 12:31-12:45
+                  List: [1]
+                    Arg 12:32-12:44
+                      Value: LambdaExpr 12:32-12:44
+                        Params: [1]
+                          Param 12:32-12:33
+                            Name: Ident "t" 12:32-12:33
+                        Body: UnaryExpr 12:37-12:44 Op=!
+                          X: MemberExpr 12:38-12:44
+                            X: Ident "t" 12:38-12:39
+                            Name: Ident "done" 12:40-12:44
+              Name: Ident "count" 12:46-12:51
+          FuncDecl 14:3-22:4 blank
+            Name: Ident "add" 14:6-14:9
+            Params: ParamList 14:9-14:11
+            Body: Block 14:12-22:4
+              Items: [5]
+                LetDecl 15:5-15:29 Keyword=let
+                  Pattern: BindPat 15:9-15:14
+                    Name: Ident "title" 15:9-15:14
+                  Value: CallExpr 15:17-15:29
+                    Fun: MemberExpr 15:17-15:27
+                      X: Ident "draft" 15:17-15:22
+                      Name: Ident "trim" 15:23-15:27
+                    Args: ArgList 15:27-15:29
+                IfStmt 16:5-18:6
+                  Cond: MemberExpr 16:8-16:21
+                    X: Ident "title" 16:8-16:13
+                    Name: Ident "isEmpty" 16:14-16:21
+                  Then: Block 16:22-18:6
+                    Items: [1]
+                      ReturnStmt 17:7-17:13
+                ExprStmt 19:5-19:49
+                  X: CallExpr 19:5-19:49
+                    Fun: MemberExpr 19:5-19:17
+                      X: Ident "todos" 19:5-19:10
+                      Name: Ident "append" 19:11-19:17
+                    Args: ArgList 19:17-19:49
+                      List: [1]
+                        Arg 19:18-19:48
+                          Value: CallExpr 19:18-19:48
+                            Fun: Ident "Todo" 19:18-19:22
+                            Args: ArgList 19:22-19:48
+                              List: [2]
+                                Arg 19:23-19:33
+                                  Label: Ident "id" 19:23-19:25
+                                  Value: Ident "nextId" 19:27-19:33
+                                Arg 19:35-19:47
+                                  Label: Ident "title" 19:35-19:40
+                                  Value: Ident "title" 19:42-19:47
+                AssignStmt 20:5-20:16 Op=+=
+                  Target: Ident "nextId" 20:5-20:11
+                  Value: BasicLit 20:15-20:16 Kind=integer Value="1"
+                AssignStmt 21:5-21:15 Op==
+                  Target: Ident "draft" 21:5-21:10
+                  Value: StringLit 21:13-21:15 Segments=[""]
+          ExprStmt 24:3-58:4 blank
+            X: CallExpr 24:3-58:4
+              Fun: Ident "Column" 24:3-24:9
+              Block: Block 24:10-58:4
+                Items: [5]
+                  PropSet 25:5-25:11
+                    Name: Ident "gap" 25:5-25:8
+                    Value: BasicLit 25:10-25:11 Kind=integer Value="8"
+                  PropSet 26:5-26:16
+                    Name: Ident "padding" 26:5-26:12
+                    Value: BasicLit 26:14-26:16 Kind=integer Value="16"
+                  ExprStmt 27:5-38:6
+                    X: CallExpr 27:5-38:6
+                      Fun: Ident "Row" 27:5-27:8
+                      Block: Block 27:9-38:6
+                        Items: [3]
+                          PropSet 28:7-28:13
+                            Name: Ident "gap" 28:7-28:10
+                            Value: BasicLit 28:12-28:13 Kind=integer Value="8"
+                          ExprStmt 29:7-33:8
+                            X: CallExpr 29:7-33:8
+                              Fun: Ident "TextField" 29:7-29:16
+                              Block: Block 29:17-33:8
+                                Items: [3]
+                                  PropSet 30:9-30:41
+                                    Name: Ident "placeholder" 30:9-30:20
+                                    Value: StringLit 30:22-30:41 Segments=["What needs doing?"]
+                                  BindItem 31:9-31:25
+                                    Name: Ident "text" 31:14-31:18
+                                    Target: Ident "draft" 31:20-31:25
+                                  OnHandler 32:9-32:28
+                                    Name: Ident "submit" 32:12-32:18
+                                    Body: Block 32:19-32:28
+                                      Items: [1]
+                                        ExprStmt 32:21-32:26
+                                          X: CallExpr 32:21-32:26
+                                            Fun: Ident "add" 32:21-32:24
+                                            Args: ArgList 32:24-32:26
+                          ExprStmt 34:7-37:8
+                            X: CallExpr 34:7-37:8
+                              Fun: Ident "Button" 34:7-34:13
+                              Args: ArgList 34:13-34:20
+                                List: [1]
+                                  Arg 34:14-34:19
+                                    Value: StringLit 34:14-34:19 Segments=["Add"]
+                              Block: Block 34:21-37:8
+                                Items: [2]
+                                  PropSet 35:9-35:32
+                                    Name: Ident "disabled" 35:9-35:17
+                                    Value: MemberExpr 35:19-35:32
+                                      X: Ident "draft" 35:19-35:24
+                                      Name: Ident "isEmpty" 35:25-35:32
+                                  OnHandler 36:9-36:25
+                                    Name: Ident "tap" 36:12-36:15
+                                    Body: Block 36:16-36:25
+                                      Items: [1]
+                                        ExprStmt 36:18-36:23
+                                          X: CallExpr 36:18-36:23
+                                            Fun: Ident "add" 36:18-36:21
+                                            Args: ArgList 36:21-36:23
+                  ExprStmt 39:5-56:6
+                    X: CallExpr 39:5-56:6
+                      Fun: Ident "List" 39:5-39:9
+                      Block: Block 39:10-56:6
+                        Items: [1]
+                          ForStmt 40:7-55:8
+                            Pattern: BindPat 40:11-40:15
+                              Name: Ident "todo" 40:11-40:15
+                            Seq: Ident "todos" 40:19-40:24
+                            Key: MemberExpr 40:29-40:36
+                              X: Ident "todo" 40:29-40:33
+                              Name: Ident "id" 40:34-40:36
+                            Body: Block 40:37-55:8
+                              Items: [1]
+                                ExprStmt 41:9-54:10
+                                  X: CallExpr 41:9-54:10
+                                    Fun: Ident "Row" 41:9-41:12
+                                    Block: Block 41:13-54:10
+                                      Items: [4]
+                                        PropSet 42:11-42:17
+                                          Name: Ident "gap" 42:11-42:14
+                                          Value: BasicLit 42:16-42:17 Kind=integer Value="8"
+                                        ExprStmt 43:11-45:12
+                                          X: CallExpr 43:11-45:12
+                                            Fun: Ident "Toggle" 43:11-43:17
+                                            Block: Block 43:18-45:12
+                                              Items: [1]
+                                                BindItem 44:13-44:66
+                                                  Name: Ident "isOn" 44:18-44:22
+                                                  Target: MemberExpr 44:24-44:66
+                                                    X: IndexExpr 44:24-44:61
+                                                      X: Ident "todos" 44:24-44:29
+                                                      Index: UnwrapExpr 44:30-44:60
+                                                        X: CallExpr 44:30-44:59
+                                                          Fun: MemberExpr 44:30-44:46
+                                                            X: Ident "todos" 44:30-44:35
+                                                            Name: Ident "firstIndex" 44:36-44:46
+                                                          Args: ArgList 44:46-44:59
+                                                            List: [1]
+                                                              Arg 44:47-44:58
+                                                                Label: Ident "id" 44:47-44:49
+                                                                Value: MemberExpr 44:51-44:58
+                                                                  X: Ident "todo" 44:51-44:55
+                                                                  Name: Ident "id" 44:56-44:58
+                                                    Name: Ident "done" 44:62-44:66
+                                        ExprStmt 46:11-49:12
+                                          X: CallExpr 46:11-49:12
+                                            Fun: Ident "Text" 46:11-46:15
+                                            Args: ArgList 46:15-46:27
+                                              List: [1]
+                                                Arg 46:16-46:26
+                                                  Value: MemberExpr 46:16-46:26
+                                                    X: Ident "todo" 46:16-46:20
+                                                    Name: Ident "title" 46:21-46:26
+                                            Block: Block 46:28-49:12
+                                              Items: [2]
+                                                PropSet 47:13-47:20
+                                                  Name: Ident "grow" 47:13-47:17
+                                                  Value: BasicLit 47:19-47:20 Kind=integer Value="1"
+                                                PropSet 48:13-48:68
+                                                  Name: Ident "color" 48:13-48:18
+                                                  Value: IfExpr 48:20-48:68
+                                                    Cond: MemberExpr 48:23-48:32
+                                                      X: Ident "todo" 48:23-48:27
+                                                      Name: Ident "done" 48:28-48:32
+                                                    Then: Block 48:33-48:52
+                                                      Items: [1]
+                                                        ExprStmt 48:35-48:50
+                                                          X: ImplicitMember 48:35-48:50
+                                                            Name: Ident "secondaryLabel" 48:36-48:50
+                                                    Else: Block 48:58-48:68
+                                                      Items: [1]
+                                                        ExprStmt 48:60-48:66
+                                                          X: ImplicitMember 48:60-48:66
+                                                            Name: Ident "label" 48:61-48:66
+                                        ExprStmt 50:11-53:12
+                                          X: CallExpr 50:11-53:12
+                                            Fun: Ident "Button" 50:11-50:17
+                                            Args: ArgList 50:17-50:27
+                                              List: [1]
+                                                Arg 50:18-50:26
+                                                  Value: StringLit 50:18-50:26 Segments=["Delete"]
+                                            Block: Block 50:28-53:12
+                                              Items: [2]
+                                                PropSet 51:13-51:31
+                                                  Name: Ident "role" 51:13-51:17
+                                                  Value: ImplicitMember 51:19-51:31
+                                                    Name: Ident "destructive" 51:20-51:31
+                                                OnHandler 52:13-52:61
+                                                  Name: Ident "tap" 52:16-52:19
+                                                  Body: Block 52:20-52:61
+                                                    Items: [1]
+                                                      ExprStmt 52:22-52:59
+                                                        X: CallExpr 52:22-52:59
+                                                          Fun: MemberExpr 52:22-52:37
+                                                            X: Ident "todos" 52:22-52:27
+                                                            Name: Ident "removeAll" 52:28-52:37
+                                                          Args: ArgList 52:37-52:59
+                                                            List: [1]
+                                                              Arg 52:38-52:58
+                                                                Value: LambdaExpr 52:38-52:58
+                                                                  Params: [1]
+                                                                    Param 52:38-52:39
+                                                                      Name: Ident "t" 52:38-52:39
+                                                                  Body: BinaryExpr 52:43-52:58 Op===
+                                                                    X: MemberExpr 52:43-52:47
+                                                                      X: Ident "t" 52:43-52:44
+                                                                      Name: Ident "id" 52:45-52:47
+                                                                    Y: MemberExpr 52:51-52:58
+                                                                      X: Ident "todo" 52:51-52:55
+                                                                      Name: Ident "id" 52:56-52:58
+                  ExprStmt 57:5-57:56
+                    X: CallExpr 57:5-57:56
+                      Fun: Ident "Text" 57:5-57:9
+                      Args: ArgList 57:9-57:29
+                        List: [1]
+                          Arg 57:10-57:28
+                            Value: StringLit 57:10-57:28 Segments=["" " left"]
+                              Interps: [1]
+                                Ident "remaining" 57:12-57:21
+                      Block: Block 57:30-57:56
+                        Items: [1]
+                          PropSet 57:32-57:54
+                            Name: Ident "color" 57:32-57:37
+                            Value: ImplicitMember 57:39-57:54
+                              Name: Ident "secondaryLabel" 57:40-57:54
+    TestDecl 61:1-69:2 blank
+      Name: StringLit 61:6-61:33 Segments=["adds and completes a todo"]
+      Body: Block 61:34-69:2
+        Items: [7]
+          LetDecl 62:3-62:29 Keyword=let
+            Pattern: BindPat 62:7-62:10
+              Name: Ident "app" 62:7-62:10
+            Value: CallExpr 62:13-62:29
+              Fun: Ident "mount" 62:13-62:18
+              Args: ArgList 62:18-62:29
+                List: [1]
+                  Arg 62:19-62:28
+                    Value: CallExpr 62:19-62:28
+                      Fun: Ident "TodoApp" 62:19-62:26
+                      Args: ArgList 62:26-62:28
+          ExprStmt 63:3-63:52
+            X: UnaryExpr 63:3-63:52 Op=await
+              X: CallExpr 63:9-63:52
+                Fun: MemberExpr 63:9-63:17
+                  X: Ident "app" 63:9-63:12
+                  Name: Ident "type" 63:13-63:17
+                Args: ArgList 63:17-63:52
+                  List: [2]
+                    Arg 63:18-63:24
+                      Value: StringLit 63:18-63:24 Segments=["Milk"]
+                    Arg 63:26-63:51
+                      Label: Ident "into" 63:26-63:30
+                      Value: StringLit 63:32-63:51 Segments=["What needs doing?"]
+          ExprStmt 64:3-64:23
+            X: UnaryExpr 64:3-64:23 Op=await
+              X: CallExpr 64:9-64:23
+                Fun: MemberExpr 64:9-64:16
+                  X: Ident "app" 64:9-64:12
+                  Name: Ident "tap" 64:13-64:16
+                Args: ArgList 64:16-64:23
+                  List: [1]
+                    Arg 64:17-64:22
+                      Value: StringLit 64:17-64:22 Segments=["Add"]
+          ExprStmt 65:3-65:21
+            X: CallExpr 65:3-65:21
+              Fun: MemberExpr 65:3-65:13
+                X: Ident "app" 65:3-65:6
+                Name: Ident "expect" 65:7-65:13
+              Args: ArgList 65:13-65:21
+                List: [1]
+                  Arg 65:14-65:20
+                    Value: StringLit 65:14-65:20 Segments=["Milk"]
+          ExprStmt 66:3-66:23
+            X: CallExpr 66:3-66:23
+              Fun: MemberExpr 66:3-66:13
+                X: Ident "app" 66:3-66:6
+                Name: Ident "expect" 66:7-66:13
+              Args: ArgList 66:13-66:23
+                List: [1]
+                  Arg 66:14-66:22
+                    Value: StringLit 66:14-66:22 Segments=["1 left"]
+          ExprStmt 67:3-67:26
+            X: UnaryExpr 67:3-67:26 Op=await
+              X: CallExpr 67:9-67:26
+                Fun: MemberExpr 67:9-67:16
+                  X: Ident "app" 67:9-67:12
+                  Name: Ident "tap" 67:13-67:16
+                Args: ArgList 67:16-67:26
+                  List: [1]
+                    Arg 67:17-67:25
+                      Value: StringLit 67:17-67:25 Segments=["Delete"]
+          ExprStmt 68:3-68:23
+            X: CallExpr 68:3-68:23
+              Fun: MemberExpr 68:3-68:15
+                X: Ident "app" 68:3-68:6
+                Name: Ident "expectNo" 68:7-68:15
+              Args: ArgList 68:15-68:23
+                List: [1]
+                  Arg 68:16-68:22
+                    Value: StringLit 68:16-68:22 Segments=["Milk"]

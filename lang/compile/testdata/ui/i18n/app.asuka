@@ -1,0 +1,136 @@
+// The app's catalogs (locales/): tr's messages, typed and checked, follow
+// their arguments and the language shown, which follows the user's
+// languages unless the app chose one, and lays the app out right to left
+// in Arabic.
+import std/i18n
+import std/time
+
+component Inbox {
+  state count = 1
+  state n = 1
+
+  Column {
+    Text(tr.inbox())
+    Text(tr.greeting(name: "Ada"))
+    Text(tr.unread(count: count))
+    Text(tr.storage(used: 0.42))
+    Text(tr.seen(when: 1767618429000000000))
+    Text(tr.place(n: n))
+    Text(tr.replied(gender: "female"))
+    Text(tr.onlyEnglish())
+    Text("{i18n.locale()} rtl={i18n.isRTL()}")
+    Text(i18n.formatNumber(1234567.891))
+    Text(i18n.formatPercent(0.256))
+    Row {
+      Text(tr.start())
+      Text(tr.end())
+    }
+    Button("More") { on press { count += 1; n += 1 } }
+    Button("German") { on press { i18n.setLocale("de") } }
+    Button("Arabic") { on press { i18n.setLocale("ar") } }
+    Button("Pseudo") { on press { i18n.setLocale("en-XA") } }
+    Button("System") { on press { i18n.setLocale("") } }
+  }
+}
+
+app { Inbox() }
+
+test "messages follow their arguments" {
+  let app = mount(Inbox())
+  app.expect("Inbox")
+  app.expect("Hello, Ada!")
+  app.expect("1 unread message")
+  app.expect("42% of your storage")
+  app.expect("Seen Jan 5, 2026 at 1:07 PM")
+  app.expect("1st place")
+  app.expect("She replied")
+  app.expect("en rtl=false")
+  app.expect("1,234,567.891")
+  app.expect("26%")
+  app.tap("More")
+  app.expect("2 unread messages")
+  app.expect("2nd place")
+  app.tap("More")
+  app.expect("3rd place")
+}
+
+test "switching the language says every message in it" {
+  let app = mount(Inbox())
+  app.tap("German")
+  app.expect("Posteingang")
+  app.expect("Hallo, Ada!")
+  app.expect("1 ungelesene Nachricht")
+  app.expect("42\u{a0}% deines Speichers") // German's percent sign, a no-break space apart
+  // In the user's regional formats' hour cycle: the fake host's en_US has
+  // 12 hours.
+  app.expect("Gesehen am 05.01.2026 um 01:07 PM")
+  app.expect("1. Platz")
+  app.expect("Sie hat geantwortet")
+  app.expect("Only in English") // not translated: the source's
+  app.expect("de rtl=false")
+  app.expect("1.234.567,891")
+  app.expectNo("Inbox")
+  app.tap("More")
+  app.expect("2 ungelesene Nachrichten")
+  app.tap("System")
+  app.expect("Inbox")
+  app.expect("2 unread messages")
+}
+
+test "Arabic lays the app out right to left, and back" {
+  let app = mount(Inbox())
+  let (startX, _, _, _) = app.frameOf("Start")
+  let (endX, _, _, _) = app.frameOf("End")
+  expect(startX < endX)
+  app.tap("Arabic")
+  app.expect("ar rtl=true")
+  app.expect("البريد الوارد")
+  app.expect("رسالة واحدة غير مقروءة")
+  // A message Arabic lacks says the source's, with Arabic's numbers and
+  // dates.
+  app.expect("42\u{200e}%\u{200e} of your storage")
+  app.expect("Seen 05\u{200f}/01\u{200f}/2026 at 1:07 م")
+  let (arStart, _, _, _) = app.frameOf("البداية")
+  let (arEnd, _, _, _) = app.frameOf("النهاية")
+  expect(arStart > arEnd)
+  app.tap("System")
+  app.expect("en rtl=false")
+  let (back, _, _, _) = app.frameOf("Start")
+  expect(back == startX)
+}
+
+test "the language follows the user's" {
+  let app = mount(Inbox())
+  app.setLanguages("de-AT,en")
+  app.expect("Posteingang")
+  app.expect("de rtl=false")
+  app.setLanguages("ar-EG,en")
+  app.expect("ar rtl=true")
+  app.setLanguages("ja,en-GB")
+  app.expect("Inbox") // Japanese isn't the app's: the next the user reads
+  app.expect("en rtl=false")
+  // What the app chose wins over the user's languages.
+  app.tap("German")
+  app.setLanguages("ar")
+  app.expect("de rtl=false")
+  app.tap("System")
+  app.expect("ar rtl=true")
+}
+
+test "the pseudo locale accents the source's messages" {
+  let app = mount(Inbox())
+  app.tap("Pseudo")
+  app.expect("en-XA rtl=false")
+  app.expectNo("Inbox")
+  app.expect("[Îñƀöẋ one]")
+  app.tap("System")
+  app.expect("Inbox")
+}
+
+test "the app's languages, each by its own name" {
+  expect(i18n.languages() == ["en", "ar", "de"])
+  expect(i18n.autonym("de") == "Deutsch")
+  expect(i18n.autonym("ar") == "العربية")
+  expect(i18n.formatDate(time.unixNano(1767618429000000000), date: .long) == "January 5, 2026")
+  expect(i18n.formatInt(-1234567) == "-1,234,567")
+}

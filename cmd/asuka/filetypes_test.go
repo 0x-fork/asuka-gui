@@ -11,21 +11,37 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/egoist/asuka/internal/appconfig"
 	"github.com/egoist/asuka/internal/filetype"
 )
 
-const fileTypesJSON = `{"name":"My Notes","id":"com.example.notes","icon":"icon.png","fileTypes":[
-	{"name":"Markdown Document","extensions":["md","markdown"],"role":"viewer"},
-	{"name":"Notes Document","extensions":[".note"],"icon":"note.png","conformsTo":["public.plain-text"]},
-	{"extensions":["mydb"],"uti":"org.example.mydb","mimeTypes":["application/x-mydb"]}
-]}`
+const fileTypesConfig = `name = "My Notes"
+id = "com.example.notes"
+icon = "icon.png"
+
+[[fileTypes]]
+name = "Markdown Document"
+extensions = ["md", "markdown"]
+role = "viewer"
+
+[[fileTypes]]
+name = "Notes Document"
+extensions = [".note"]
+icon = "note.png"
+conformsTo = ["public.plain-text"]
+
+[[fileTypes]]
+extensions = ["mydb"]
+uti = "org.example.mydb"
+mimeTypes = ["application/x-mydb"]
+`
 
 // fileTypesApp is an app with three file types: one the systems know
 // (Markdown), the app's own (.note, with an icon), and another's the
 // systems don't know (org.example.mydb).
-func fileTypesApp(t *testing.T) *goApp {
+func fileTypesApp(t *testing.T) *asukaApp {
 	t.Helper()
-	app := linuxTestApp(t, fileTypesJSON)
+	app := linuxTestApp(t, fileTypesConfig)
 	img := image.NewNRGBA(image.Rect(0, 0, 64, 64))
 	for i := range img.Pix {
 		img.Pix[i] = 200
@@ -55,13 +71,13 @@ func TestFileTypes(t *testing.T) {
 		t.Fatalf("fileTypes:\n%+v\nwant\n%+v", got, want)
 	}
 	for _, bad := range []string{
-		`{"fileTypes":[{"name":"x"}]}`,
-		`{"fileTypes":[{"extensions":["m d"]}]}`,
-		`{"fileTypes":[{"extensions":["md"],"role":"owner"}]}`,
-		`{"fileTypes":[{"extensions":["md"],"mimeTypes":["text"]}]}`,
+		"[[fileTypes]]\nname = \"x\"",
+		"[[fileTypes]]\nextensions = [\"m d\"]",
+		"[[fileTypes]]\nextensions = [\"md\"]\nrole = \"owner\"",
+		"[[fileTypes]]\nextensions = [\"md\"]\nmimeTypes = [\"text\"]",
 	} {
 		dir := t.TempDir()
-		os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(bad), 0o644)
+		os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte(bad), 0o644)
 		if _, err := loadConfig(dir); err == nil || !strings.Contains(err.Error(), "fileTypes[0]") {
 			t.Errorf("%s: %v", bad, err)
 		}
@@ -109,7 +125,7 @@ func TestDocumentTypes(t *testing.T) {
 	if x["CFBundleDocumentTypes"] == nil || x["LSSupportsOpeningDocumentsInPlace"] != true {
 		t.Errorf("plistExtras: %v", x)
 	}
-	// asuka/sdk/library has the key already: once in the plist.
+	// platform/library has the key already: once in the plist.
 	app.cfg.iosTrue = []string{"LSSupportsOpeningDocumentsInPlace"}
 	if _, ok := app.cfg.plistExtras()["LSSupportsOpeningDocumentsInPlace"]; ok {
 		t.Error("LSSupportsOpeningDocumentsInPlace twice")
@@ -206,20 +222,20 @@ func TestLinuxFileTypes(t *testing.T) {
 	}
 }
 
-// Windows: the build carries the types, which the host registers; a
+// Windows: the host's settings carry the types, which it registers; a
 // release's icons are the executable's resources.
 func TestWindowsFileTypes(t *testing.T) {
 	app := fileTypesApp(t)
-	types := ldflagsFileTypes(t, windowsLdflags(app, true))
+	types := configFileTypes(t, app.hostConfig(platformWindows, "windows-amd64", true))
 	want := []filetype.Type{
 		{Name: "Markdown Document", Extensions: []string{"md", "markdown"}},
 		{Name: "Notes Document", Extensions: []string{"note"}, Own: true, Icon: 102},
 		{Name: "MYDB Document", Extensions: []string{"mydb"}},
 	}
 	if !reflect.DeepEqual(types, want) {
-		t.Fatalf("boot.FileTypes: %+v", types)
+		t.Fatalf("fileTypes: %+v", types)
 	}
-	if dev := ldflagsFileTypes(t, windowsLdflags(app, false)); dev[1].Icon != 0 {
+	if dev := configFileTypes(t, app.hostConfig(platformWindows, "", false)); dev[1].Icon != 0 {
 		t.Error("a dev build's types name icons it hasn't")
 	}
 	b, err := winresSyso(app, "amd64")
@@ -233,15 +249,13 @@ func TestWindowsFileTypes(t *testing.T) {
 	}
 }
 
-// ldflagsFileTypes are the types -ldflags sets boot.FileTypes to.
-func ldflagsFileTypes(t *testing.T, flags string) []filetype.Type {
+// configFileTypes are the types the host's settings carry.
+func configFileTypes(t *testing.T, c appconfig.Config) []filetype.Type {
 	t.Helper()
-	_, enc, ok := strings.Cut(flags, "boot.FileTypes=")
-	if !ok {
-		t.Fatalf("no boot.FileTypes in %s", flags)
+	if c.FileTypes == "" {
+		t.Fatalf("no file types in %+v", c)
 	}
-	enc, _, _ = strings.Cut(enc, `"`)
-	return filetype.Decode(enc)
+	return filetype.Decode(c.FileTypes)
 }
 
 // The web manifest's file handlers accept the types.

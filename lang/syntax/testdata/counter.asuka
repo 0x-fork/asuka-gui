@@ -1,0 +1,21 @@
+/// A button that counts its taps.
+component Counter {
+  state count = 0
+
+  Column {
+    gap: 12
+    padding: 16
+    Text("Count: {count}") { fontSize: 24 }
+    Button("Add") {
+      on tap { count += 1 }
+    }
+    Button("Reset") {
+      disabled: count == 0
+      on tap { count = 0 }
+    }
+  }
+}
+
+app {
+  Counter()
+}

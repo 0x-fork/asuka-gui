@@ -635,8 +635,8 @@ html:lang(ja) :is(pre, code, kbd, samp) {
   @apply text-sm leading-6 font-normal text-muted-foreground;
 }
 
-/* The home page's translation: a pulse runs down each wire from the Go
-   source to the host's widget. */
+/* The home page's translation: a pulse runs down each wire from the
+   Asuka source to the host's widget. */
 .wire::after {
   content: "";
   position: absolute;

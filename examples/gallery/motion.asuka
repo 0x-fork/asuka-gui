@@ -1,0 +1,311 @@
+import std/math
+
+/// Motion's examples, with the toast they show over the screen's bottom
+/// and a button back to the top.
+component MotionPage {
+  state toast = false
+  state down = false // scrolled past the first screen
+
+  let scroll = Ref()
+
+  View {
+    grow: 1
+    Scroll {
+      ref: scroll
+      grow: 1
+      on scroll(_, y) { down = y > 300 }
+      SafeArea {
+        padding: 20
+        gap: 28
+        Motion { on toast { await showToast() } }
+      }
+    }
+    Toast(toast)
+    TopButton(down) {
+      on press { scroll.scrollTo(0, 0, animated: true) }
+    }
+  }
+
+  /// In, then out a while after it's in: a chain of animations.
+  async fn showToast() {
+    announce("Saved") // a screen reader wouldn't notice the toast
+    await animate(() => { toast = true })
+    await animate(Animation(delay: 1500ms), () => { toast = false })
+  }
+}
+
+/// Animates transforms (a tap flips and grows the card, with a spring),
+/// follows a drag, and brings a toast in and out with a transition.
+component Motion {
+  event toast
+  state flipped = false
+  state dragX = 0.0
+  state dragY = 0.0
+
+  Section("Motion") {
+    View {
+      height: 120
+      radius: 20
+      padding: 20
+      justify: .end
+      gradient: Gradient(stops: [Stop(color: #6366f1, at: 0), Stop(color: #ec4899, at: 1)])
+      shadow: Shadow(color: #00000050, radius: 16, y: 8)
+      transform: if flipped { Transform(scale: 1.04, rotation: 6) } else { Transform() }
+      on press { animate(Animation(duration: 500ms, curve: .spring), () => { flipped = !flipped }) }
+      Text("Tap me") {
+        color: #ffffff
+        font: .title3.bold()
+      }
+      // A material: frosted glass over the gradient.
+      View {
+        absolute: true
+        top: 16
+        right: 16
+        material: .thin
+        radius: 12
+        padding: [6, 12]
+        Text("Material") { font: .footnote.semibold() }
+      }
+    }
+    Row {
+      gap: 16
+      align: .center
+      View {
+        width: 64
+        height: 64
+        radius: 32
+        background: .accent
+        shadow: Shadow(color: #0000003c, radius: 10, y: 4)
+        transform: Transform(x: dragX, y: dragY)
+        on pan(g) {
+          if g.state == .ended || g.state == .cancelled {
+            // Back home on a bouncy spring that carries on the fling: its
+            // speed toward home, as a fraction of the way left per second.
+            let d = math.hypot(g.translationX, g.translationY)
+            let v = if d > 1 { -(g.velocityX * g.translationX + g.velocityY * g.translationY) / d / d } else { 0.0 }
+            animate(Animation(duration: 600ms, curve: .spring, damping: 0.55, velocity: v), () => {
+              dragX = 0
+              dragY = 0
+            })
+          } else {
+            dragX = g.translationX
+            dragY = g.translationY
+          }
+        }
+      }
+      Text("Drag the dot; it springs back.") {
+        style: caption
+        grow: 1
+      }
+    }
+    Matched()
+    Pulse()
+    Spinner()
+    Turner()
+    Button("Show a toast") {
+      variant: .gray
+      on press { emit toast }
+    }
+  }
+}
+
+/// A row that opens into a card: its artwork and title are the card's
+/// (shared), growing from the row's places into the card's, and back.
+component Matched {
+  state open = false
+
+  fn toggle() { animate(Animation(duration: 500ms, curve: .spring), () => { open = !open }) }
+
+  Column {
+    if open {
+      View {
+        label: "Night Drive, close"
+        gap: 12
+        align: .center
+        on press { toggle() }
+        Art(240, 24)
+        Text("Night Drive") {
+          font: .title2.bold()
+          shared: "album-title"
+        }
+      }
+    } else {
+      Row {
+        label: "Night Drive, open"
+        gap: 12
+        align: .center
+        on press { toggle() }
+        Art(56, 10)
+        Text("Night Drive") {
+          font: .headline
+          shared: "album-title"
+        }
+      }
+    }
+  }
+}
+
+component Art(size: float, radius: float) {
+  View {
+    width: size
+    height: size
+    aspectRatio: 1
+    radius: radius
+    shared: "album"
+    gradient: Gradient(stops: [Stop(color: #fb923c, at: 0), Stop(color: #db2777, at: 1)])
+  }
+}
+
+/// A repeating animation: a dot that breathes until it's stopped (set
+/// without an animation).
+component Pulse {
+  state pulsing = false
+
+  Row {
+    gap: 16
+    align: .center
+    View {
+      width: 64
+      height: 64
+      justify: .center
+      align: .center
+      View {
+        width: 24
+        height: 24
+        radius: 12
+        background: .red
+        transform: if pulsing { Transform(scale: 1.6) } else { Transform() }
+        opacity: if pulsing { 0.35 } else { 1 }
+      }
+    }
+    Button(if pulsing { "Stop" } else { "Pulse" }) {
+      variant: .gray
+      on press {
+        if pulsing {
+          pulsing = false
+        } else {
+          animate(Animation(duration: 800ms, curve: .easeInOut, repeat: Animation.forever, autoreverses: true), () => { pulsing = true })
+        }
+      }
+    }
+  }
+}
+
+/// Turns a gear frame by frame, at a speed the slider sets: animation the
+/// app computes, rather than the platform.
+component Spinner {
+  state speed = 0.5 // turns a second
+  state angle = 0.0
+
+  task {
+    var last: Duration? = none
+    for await t in frames() {
+      if let l = last { angle = (angle + (t - l).seconds() * speed * 360) % 360 }
+      last = t
+    }
+  }
+
+  Row {
+    gap: 16
+    align: .center
+    View {
+      a11yHidden: true
+      width: 64
+      justify: .center
+      align: .center
+      transform: Transform(rotation: angle)
+      Symbol("gear") {
+        font: .largeTitle
+        color: .accent
+      }
+    }
+    Slider {
+      bind value: speed
+      min: 0
+      max: 2
+      grow: 1
+    }
+  }
+}
+
+/// A square two fingers turn and pinch; letting go keeps where it is.
+component Turner {
+  state angle = 0.0
+  state base = 0.0
+  state scale = 1.0
+  state baseScale = 1.0
+
+  Column {
+    gap: 12
+    align: .center
+    padding: [24, 0]
+    View {
+      label: "A square to turn"
+      width: 160
+      height: 160
+      radius: 24
+      background: .purple
+      transform: Transform(scale: scale, rotation: angle)
+      on rotate(g) {
+        angle = base + g.rotation * 180 / math.pi
+        if g.state == .ended || g.state == .cancelled { base = angle }
+      }
+      on pinch(g) {
+        scale = min(max(baseScale * g.scale, 0.5), 2)
+        if g.state == .ended || g.state == .cancelled { baseScale = scale }
+      }
+    }
+    Text("Turned {angle.fixed(0)}°, at {scale.fixed(1)}×") { style: caption }
+  }
+}
+
+/// The toast over the screen's bottom, above the home indicator, sliding
+/// up in and down out.
+component Toast(shown: bool) {
+  let env = environment()
+
+  if shown {
+    View {
+      absolute: true
+      left: 20
+      right: 20
+      bottom: env.safeBottom + 12
+      background: .secondaryBackground
+      radius: 16
+      padding: [14, 18]
+      shadow: Shadow(color: #00000032, radius: 14, y: 4)
+      transition: .slide
+      Row {
+        gap: 10
+        align: .center
+        View {
+          a11yHidden: true
+          Symbol("checkmark") { color: .green }
+        }
+        Text("Saved")
+      }
+    }
+  }
+}
+
+/// Scrolls the page back to its top: shown once it's scrolled down.
+component TopButton(shown: bool) {
+  event press
+
+  let env = environment()
+
+  if shown {
+    View {
+      absolute: true
+      right: 20
+      bottom: env.safeBottom + 12
+      transition: .pop
+      Button("") {
+        icon: "arrow.up"
+        label: "Back to top"
+        variant: .filled
+        on press { emit press }
+      }
+    }
+  }
+}

@@ -21,11 +21,11 @@ func TestConfigDefaults(t *testing.T) {
 	if c.Name != "My App" || c.ID != "dev.asuka.my-app" || c.Version != "1.0" || c.Build != 1 || len(c.Orientations) != 2 {
 		t.Fatalf("%+v", c)
 	}
-	os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(`{"id":"com.x.y","icon":"i.png","orientations":["sideways"]}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte("id = \"com.x.y\"\nicon = \"i.png\"\norientations = [\"sideways\"]"), 0o644)
 	if _, err := loadConfig(dir); err == nil || !strings.Contains(err.Error(), "sideways") {
 		t.Fatal(err)
 	}
-	os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(`{"id":"com.x.y","icon":"i.png","build":3}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte("id = \"com.x.y\"\nicon = \"i.png\"\nbuild = 3"), 0o644)
 	c, _ = loadConfig(dir)
 	if c.ID != "com.x.y" || c.Build != 3 || c.Icon != filepath.Join(dir, "i.png") {
 		t.Fatalf("%+v", c)
@@ -151,54 +151,4 @@ func TestNotaryCredentials(t *testing.T) {
 	if id, st := notaryResult([]byte("Conducting pre-submission checks...\n{\"id\":\"abc\",\"status\":\"Invalid\",\"message\":\"x\"}")); id != "abc" || st != "Invalid" {
 		t.Errorf("result: %q %q", id, st)
 	}
-}
-
-// A build that ships SQLite's library adds its tag to GOFLAGS' (which a
-// -tags on go build's command line would otherwise replace).
-func TestGoTags(t *testing.T) {
-	for goflags, want := range map[string]string{
-		"":                                 "-tags=asuka_bundled",
-		"-mod=mod":                         "-tags=asuka_bundled",
-		"-tags=foo,bar -trimpath":          "-tags=foo,bar,asuka_bundled",
-		"--tags=foo":                       "-tags=foo,asuka_bundled",
-		"-tags=asuka_bundled,foo":          "-tags=asuka_bundled,foo",
-		"-mod=mod -tags=foo -tags=bar,baz": "-tags=foo,bar,baz,asuka_bundled",
-	} {
-		if got := goTags(goflags, pluginTag); got != want {
-			t.Errorf("GOFLAGS=%q: %s, want %s", goflags, got, want)
-		}
-	}
-	if pluginBuildFlags(nil) != nil {
-		t.Error("a build without SQLite has flags")
-	}
-}
-
-// sqliteTestApp is testdata/sqliteapp, an app that uses asuka/sdk/sqlite and
-// has no window: it prints how many times it has run with a database.
-func sqliteTestApp(t *testing.T) *goApp {
-	t.Helper()
-	dir, err := filepath.Abs(filepath.Join("testdata", "sqliteapp"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := loadConfig(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return &goApp{dir: dir, name: filepath.Base(dir), bundleID: cfg.ID, cfg: cfg}
-}
-
-// buildTags are the tags a Go binary was built with (go version -m).
-func buildTags(t *testing.T, bin string) string {
-	t.Helper()
-	out, err := exec.Command("go", "version", "-m", bin).Output()
-	if err != nil {
-		t.Fatalf("go version -m %s: %v", bin, err)
-	}
-	for _, l := range strings.Split(string(out), "\n") {
-		if f := strings.Fields(l); len(f) == 2 && f[0] == "build" && strings.HasPrefix(f[1], "-tags=") {
-			return strings.TrimPrefix(f[1], "-tags=")
-		}
-	}
-	return ""
 }

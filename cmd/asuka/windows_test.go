@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/egoist/asuka/internal/cbuild"
 )
 
 func TestWindowsArch(t *testing.T) {
@@ -26,7 +28,7 @@ func TestWindowsArch(t *testing.T) {
 
 // The resources' object is the build's machine's, with its relocations.
 func TestWinresMachine(t *testing.T) {
-	app := &goApp{name: "Notes", dir: t.TempDir()}
+	app := &asukaApp{name: "Notes", dir: t.TempDir()}
 	for arch, machine := range map[string]uint16{"amd64": 0x8664, "arm64": 0xAA64} {
 		b, err := winresSyso(app, arch)
 		if err != nil {
@@ -195,74 +197,29 @@ func tinyPE() []byte {
 	return b
 }
 
-// A Windows build carries asuka.json's ID and scheme, which the host
-// registers and runs once by.
-func TestWindowsLdflags(t *testing.T) {
-	app := &goApp{name: "notes", cfg: &appConfig{ID: "com.example.notes", Scheme: "notes", Version: "1.2", Build: 3}}
-	f := windowsLdflags(app, true)
-	for _, want := range []string{
-		`"github.com/egoist/asuka/internal/boot.ID=com.example.notes"`,
-		`"github.com/egoist/asuka/internal/boot.Scheme=notes"`,
-		"-H windowsgui",
-	} {
-		if !strings.Contains(f, want) {
-			t.Errorf("windowsLdflags: %s, want %s in it", f, want)
-		}
-	}
-	if strings.Contains(f, "MultipleInstances") {
-		t.Errorf("a single instance's: %s", f)
-	}
-	app.cfg.Scheme = ""
-	if f := windowsLdflags(app, false); strings.Contains(f, "boot.Scheme") {
-		t.Errorf("windowsLdflags without a scheme: %s", f)
+// A Windows build carries asuka.toml's ID and scheme in the host's
+// settings, which it registers and runs once by.
+func TestWindowsHostConfig(t *testing.T) {
+	app := &asukaApp{name: "notes", cfg: &appConfig{ID: "com.example.notes", Scheme: "notes", Version: "1.2", Build: 3}}
+	c := app.hostConfig(platformWindows, "windows-amd64", true)
+	if c.ID != "com.example.notes" || c.Scheme != "notes" || c.Version != "1.2" || c.Build != "3" || c.MultipleInstances {
+		t.Errorf("%+v", c)
 	}
 	no := false
 	app.cfg.SingleInstance = &no
-	if f := windowsLdflags(app, false); !strings.Contains(f, `"github.com/egoist/asuka/internal/boot.MultipleInstances=1"`) {
-		t.Errorf("singleInstance false: %s", f)
+	if c := app.hostConfig(platformWindows, "", false); !c.MultipleInstances {
+		t.Errorf("singleInstance false: %+v", c)
 	}
 }
 
-// SQLite's library for Windows needs only what every Windows 10 and 11
-// has: the Universal C Runtime (its api-ms-win-crt sets) and KERNEL32,
-// nothing of MinGW's (libgcc, libwinpthread); and it exports only its
-// entry points.
-func TestWindowsSQLiteImports(t *testing.T) {
-	for arch, machine := range map[string]uint16{"amd64": pe.IMAGE_FILE_MACHINE_AMD64, "arm64": pe.IMAGE_FILE_MACHINE_ARM64} {
-		dll := filepath.Join(t.TempDir(), "asqlite.dll")
-		if filepath.Base(dll) != "asqlite.dll" {
-			t.Errorf("%s: %s", arch, dll)
-		}
-		if err := writeTestPluginLib("windows-"+arch, dll); err != nil {
-			t.Fatal(err)
-		}
-		f, err := pe.Open(dll)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if f.Machine != machine {
-			t.Errorf("%s: machine %#x", arch, f.Machine)
-		}
-		libs, err := f.ImportedLibraries()
-		f.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, l := range libs {
-			l = strings.ToLower(l)
-			if l != "kernel32.dll" && !strings.HasPrefix(l, "api-ms-win-crt-") {
-				t.Errorf("%s: imports %s", arch, l)
-			}
-		}
-	}
-}
-
-// A Windows build of an app that uses asuka/sdk/sqlite puts the library for
-// its architecture beside the .exe (sqlite/locate_windows.go), and is
-// built without the copy the package embeds, with GOFLAGS' tags.
-func TestBuildWindowsSQLite(t *testing.T) {
+// A Windows build is a folder: one executable (the host, the core, the
+// app and, as it imports std/sqlite, SQLite, its resources linked in), the
+// app's settings. The executable needs only what Windows has: no MinGW
+// runtime's DLLs.
+func TestBuildWindows(t *testing.T) {
+	needDesktopBuild(t, cbuild.Target{OS: "windows", Arch: "amd64"})
 	t.Setenv("ASUKA_WINDOWS_CERT", "")
-	t.Setenv("GOFLAGS", "-tags=extra")
+	useSQLiteCounter(t, "Count: ")
 	app := sqliteTestApp(t)
 	for arch, machine := range map[string]uint16{"amd64": pe.IMAGE_FILE_MACHINE_AMD64, "arm64": pe.IMAGE_FILE_MACHINE_ARM64} {
 		out := t.TempDir()
@@ -275,19 +232,30 @@ func TestBuildWindowsSQLite(t *testing.T) {
 		for _, e := range entries {
 			names = append(names, e.Name())
 		}
-		if want := []string{"asqlite.dll", "sqliteapp.exe"}; !slices.Equal(names, want) {
+		if want := []string{"asuka-app.json", "sqliteapp.exe"}; !slices.Equal(names, want) {
 			t.Errorf("%s: %v, want %v", arch, names, want)
 		}
-		f, err := pe.Open(filepath.Join(dir, "asqlite.dll"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if f.Machine != machine {
-			t.Errorf("%s: the library's machine is %#x", arch, f.Machine)
-		}
-		f.Close()
-		if tags := buildTags(t, filepath.Join(dir, "sqliteapp.exe")); tags != "extra,"+pluginTag {
-			t.Errorf("%s: tags %q", arch, tags)
+		checkSQLiteLinked(t, filepath.Join(dir, "sqliteapp.exe"))
+		for _, n := range []string{"sqliteapp.exe"} {
+			f, err := pe.Open(filepath.Join(dir, n))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if f.Machine != machine {
+				t.Errorf("%s: %s's machine is %#x", arch, n, f.Machine)
+			}
+			if n == "sqliteapp.exe" && f.Section(".rsrc") == nil {
+				t.Errorf("%s: the executable has no resources (its icon, manifest, version)", arch)
+			}
+			if n == "sqliteapp.exe" {
+				libs, _ := f.ImportedLibraries()
+				for _, l := range libs {
+					if l = strings.ToLower(l); strings.HasPrefix(l, "lib") || strings.Contains(l, "pthread") || strings.Contains(l, "gcc") {
+						t.Errorf("%s: the executable imports %s", arch, l)
+					}
+				}
+			}
+			f.Close()
 		}
 	}
 	if m, _ := filepath.Glob(filepath.Join(app.dir, "*.syso")); len(m) > 0 {

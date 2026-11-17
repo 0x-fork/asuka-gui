@@ -11,7 +11,7 @@ import (
 // site's base.
 func TestWebIndexBase(t *testing.T) {
 	for base, want := range map[string]string{"": "/", "/": "/", "app": "/app/", "/app/": "/app/", "/a/b": "/a/b/"} {
-		page := webIndex(webPage{Name: "Notes", Lang: "en", Base: base, Host: "asuka/x", Wasm: "app.wasm", Exec: "asuka/x/wasm_exec.js"})
+		page := webIndex(webPage{Name: "Notes", Lang: "en", Base: base, Host: "asuka/x", Core: "asuka.wasm"})
 		if !strings.Contains(page, `<base href="`+want+`">`) || strings.Index(page, "<base") > strings.Index(page, "<link") && strings.Contains(page, "<link") {
 			t.Errorf("base %q: %s", base, page)
 		}
@@ -36,9 +36,9 @@ func TestWebSiteRewritesAndHeaders(t *testing.T) {
 // asuka dev serves the page at a route's path too (a reload, a link
 // pasted), and still a 404 for a file that isn't there.
 func TestDevServerServesRoutes(t *testing.T) {
-	s := &devServer{app: &goApp{cfg: &appConfig{ID: "com.example.notes", Name: "Notes"}}}
-	empty := map[string]pluginLib{}
-	s.plugins.Store(&empty)
+	s := &devServer{app: &asukaApp{cfg: &appConfig{ID: "com.example.notes", Name: "Notes"}}}
+	noSQLite := ""
+	s.sqlite.Store(&noSQLite)
 	var none []webScript
 	s.scripts.Store(&none)
 	for _, c := range []struct {

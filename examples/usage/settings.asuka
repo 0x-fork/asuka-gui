@@ -1,0 +1,54 @@
+fn schemeName(s: ColorScheme) -> string = match s {
+  .system => "System"
+  .light => "Light"
+  .dark => "Dark"
+}
+let intervals = [3, 5, 10]
+
+/// How quotas show, the app's appearance and how often it refreshes.
+screen Settings {
+  title: "Settings"
+
+  Scroll {
+    grow: 1
+    background: page
+    SafeArea {
+      padding: [8, 16]
+      gap: 12
+      Heading("Display")
+      Group {
+        Cell {
+          stacked: true
+          Text("Show quotas as")
+          Segmented(["Left", "Used"]) {
+            selected: if showUsed.value { 1 } else { 0 }
+            on change(i) { showUsed.value = i == 1 }
+          }
+        }
+        Cell {
+          Text("Appearance") { grow: 1 }
+          Button(schemeName(scheme.value)) {
+            menu: [ColorScheme.system, ColorScheme.light, ColorScheme.dark].map(s => .button(
+              title: schemeName(s),
+              run: () => { scheme.value = s },
+            ))
+          }
+        }
+      }
+
+      Heading("Refresh")
+      Group {
+        Cell {
+          stacked: true
+          Text("Refresh every")
+          Segmented(["3 min", "5 min", "10 min"]) {
+            selected: intervals.index(n => n == every.value) ?? 1
+            on change(i) { every.value = intervals[i] }
+          }
+        }
+      }
+      Note("While the app is open. Pull down on a page to refresh now.")
+      Note("The numbers are Claude's own, as /usage shows them in Claude Code. The forecast is this app's guess.")
+    }
+  }
+}

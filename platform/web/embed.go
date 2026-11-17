@@ -1,5 +1,5 @@
 // Package web is Asuka's web host's JavaScript (src): the DOM host the
-// app's Go code (WebAssembly) drives through host/web, its generated
+// C core (WebAssembly, src/core.js) drives, its generated
 // decoder (src/ops.js), the loader (src/asuka.js) and the stylesheet. The
 // Asuka CLI serves and ships it with each web app.
 package web

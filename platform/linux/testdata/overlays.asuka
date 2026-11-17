@@ -1,0 +1,39 @@
+app {
+  Split("Mail") {
+    Destination("Inbox") { icon: "tray"; badge: "3"; section: "Boxes"; Stack { Inbox() } }
+    Destination("Drafts") { icon: "doc"; section: "Boxes"; Stack { Drafts() } }
+  }
+}
+
+component Inbox {
+  state fruit = -1
+  state open = false
+  Screen {
+    title: "Inbox"
+    Column {
+      padding: 16; gap: 8
+      Picker(["Apple", "Banana", "Cherry"]) { bind selected: fruit; prompt: "Fruit" }
+      Text(if fruit < 0 { "No fruit" } else { "Fruit {fruit}" })
+      Popover {
+        bind open: open
+        maxWidth: 240
+        content {
+          Column {
+            padding: 16; gap: 8
+            Text("Popover text")
+            Button("Done") { on press { open = false } }
+          }
+        }
+        Button("Info") { on press { open = true } }
+      }
+      Text(if open { "Open" } else { "Closed" })
+    }
+  }
+}
+
+component Drafts {
+  Screen {
+    title: "Drafts"
+    Text("Draft list")
+  }
+}

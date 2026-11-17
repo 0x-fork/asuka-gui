@@ -42,9 +42,10 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
         internal val current: AsukaRuntime? get() = instance
 
         fun get(context: Context): AsukaRuntime =
-            instance ?: AsukaRuntime(context.applicationContext as Application).also {
-                instance = it
+            instance ?: run {
+                // The core's library loads as the runtime is made.
                 AsukaNative.preload(context)
+                AsukaRuntime(context.applicationContext as Application).also { instance = it }
             }
     }
 
@@ -69,9 +70,22 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
     /** Whether the app is laid out right to left: the Locale command's flag, which may disagree with its tag (asuka dev --dir). */
     var rtl = false
         private set
-    /** The user's languages and formats, as the environment reports them. */
-    var region = readRegion()
-        private set
+    /**
+     * The user's languages and formats, as the environment reports them:
+     * read on a thread of its own as the app starts (ICU's calendar and
+     * patterns, the settings), while the Activity makes its window.
+     */
+    private var regionRead: java.util.concurrent.FutureTask<AsukaRegion>? =
+        java.util.concurrent.FutureTask { readRegion() }.also { Thread(it, "asuka-region").start() }
+    var region = AsukaRegion("", "", 1, 24)
+        get() {
+            regionRead?.let { regionRead = null; field = it.get() }
+            return field
+        }
+        private set(v) {
+            regionRead = null
+            field = v
+        }
 
     /** config with the language and direction the app shows: what its views' strings and resources come from. */
     fun localized(config: android.content.res.Configuration): android.content.res.Configuration {
@@ -250,6 +264,8 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
     private var draining = false
     /** Every Stack, to find the one back pops. */
     val stacks = LinkedHashSet<AsukaNode>()
+    /** Every Overlay, in the order they were presented: the last is on top (Overlay.kt). */
+    val overlays = ArrayList<AsukaNode>()
     /** Back pops the active stack's top screen, following the predictive back gesture. */
     val back = makeBackCallback()
     val nativeFactories = HashMap<String, (AsukaNativeContext) -> AsukaNativeView>()
@@ -423,11 +439,13 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
             AsukaAutomation.start(this)
             watchRegion()
             AsukaNative.load(app)
-            // A share sheet's process: the Go code's root is the app's sheet.
+            // A share sheet's process: the app runs as its sheet (platform/sharesheet).
             if (activity is AsukaShareActivity) runCatching { AsukaNative.setenv("ASUKA_SHARE_SHEET", "1") }
-            registerNatives()
             activity.sendEnvironment(force = true)
-            enter { AsukaNative.start(this) }
+            enter {
+                AsukaNative.start(this)
+                AsukaNative.startApp(app)
+            }
             AsukaSplash.started()
             val urls = ArrayList(pendingURLs)
             pendingURLs.clear()
@@ -443,7 +461,7 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
 
     /**
      * Starts the core without an Activity, if it hasn't started: the
-     * system runs a task (asuka/sdk/periodic) with the app in the background.
+     * system runs a task (platform/periodic) with the app in the background.
      * The root's views are made; an Activity that comes takes them (attach).
      */
     fun startHeadless() {
@@ -451,8 +469,10 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
         started = true
         watchRegion()
         AsukaNative.load(app)
-        registerNatives()
-        enter { AsukaNative.start(this) }
+        enter {
+            AsukaNative.start(this)
+            AsukaNative.startApp(app)
+        }
         AsukaSplash.started()
     }
 
@@ -472,13 +492,8 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
 
     /** The app was opened with url (its scheme, an app link): ui.OnOpenURL gets it, once the core started. */
     fun openURL(url: String) {
-        // A sign-in's callback (webAuth): its answer, not the app's link.
-        val a = auth
-        if (a != null && a.scheme.isNotEmpty() && Uri.parse(url).scheme.equals(a.scheme, ignoreCase = true)) {
-            auth = null
-            a.reply(Result.success(url.toByteArray()))
-            return
-        }
+        // A native package's (platform/webauth's redirect).
+        if (AsukaModules.openedURL(url)) return
         if (!started) { pendingURLs.add(url); return }
         send(AsukaEvents.incomingURL(rootID, url))
     }
@@ -494,19 +509,11 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
         if (started) send(AsukaEvents.lifecycle(rootID, state.toLong()))
     }
 
-    /** The webAuth module's sign-in under way. */
-    var auth: AsukaAuth? = null
+    /** The Activity was paused (a native package's tab may be over it). */
+    fun paused() = AsukaModules.lifecycle(false)
 
-    /** The Activity was paused: a sign-in's tab may be over it. */
-    fun paused() { auth?.away = true }
-
-    /** The Activity is back: a sign-in's tab closed without a callback is canceled. */
-    fun resumed() {
-        val a = auth ?: return
-        if (!a.away) return
-        auth = null
-        a.reply(Result.failure(Exception("canceled")))
-    }
+    /** The Activity is back. */
+    fun resumed() = AsukaModules.lifecycle(true)
 
     /** The configuration changed (dark mode, font scale): restyle what the theme decided. */
     fun configurationChanged(system: android.content.res.Configuration) {
@@ -607,6 +614,7 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
             old is android.widget.CompoundButton && cur is android.widget.CompoundButton -> cur.isChecked = old.isChecked
             old is Slider && cur is Slider -> { cur.valueFrom = old.valueFrom; cur.valueTo = old.valueTo; cur.value = old.value }
         }
+        if (hasA11yProps(n)) installA11y(n) // a range isn't replayed
         settingProp = false
         val now = n.view // replaying a button's variant replaced it again
         restyle(n)
@@ -616,7 +624,7 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
         val parent = old.parent as? ViewGroup
         if (parent == null) {
             // A Scroll's row out of sight: it keeps its frame to come back with.
-            if (lp != null) now.layoutParams = lp
+            now.layoutParams = lp ?: ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             now.measure(View.MeasureSpec.makeMeasureSpec(old.width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(old.height, View.MeasureSpec.EXACTLY))
             now.layout(old.left, old.top, old.right, old.bottom)
             return
@@ -710,6 +718,7 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
             AsukaKind.NATIVE -> AsukaNativeHost(ctx)
             AsukaKind.RICH_TEXT -> AsukaRichText(this, id)
             AsukaKind.SELECTABLE -> AsukaSelectionArea(this)
+            AsukaKind.OVERLAY -> AsukaOverlay(ctx, this, id)
             else -> error("asuka: the Android host can't show ${AsukaKind.name(kind)} ($kind) yet")
         }.also { if (rtl) it.layoutDirection = View.LAYOUT_DIRECTION_RTL }
     }
@@ -801,6 +810,7 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
         val v: android.widget.FrameLayout = if (horizontal) AsukaHorizontalScroll(themed).apply { isFillViewport = false }
             else NestedScrollView(themed).apply { isFillViewport = false }
         v.layoutDirection = directionOf(n)
+        carryViewProps(old, v)
         clipsToFrame(v)
         reportScrolls(v, n.id)
         while (old.childCount > 0) {
@@ -823,14 +833,45 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
         AsukaPager.apply(this, n)
     }
 
+    /**
+     * What props set on a view that's replaced by another of its node's
+     * (a button's variant, a Toggle made a checkbox, a Scroll turned
+     * horizontal) and the new one doesn't get again: what TalkBack is
+     * told, its tooltip, whether it's shown, enabled, and its transform.
+     */
+    private fun carryViewProps(old: View, v: View) {
+        v.contentDescription = old.contentDescription
+        androidx.core.view.ViewCompat.setStateDescription(v, androidx.core.view.ViewCompat.getStateDescription(old))
+        when (val d = old.accessibilityDelegate) {
+            // Its node's, over the new view's own.
+            is AsukaA11yDelegate -> v.accessibilityDelegate = AsukaA11yDelegate(this, d.id, v.accessibilityDelegate)
+            null -> {}
+            else -> v.accessibilityDelegate = d
+        }
+        v.accessibilityLiveRegion = old.accessibilityLiveRegion
+        v.defaultFocusHighlightEnabled = old.defaultFocusHighlightEnabled
+        v.tooltipText = old.tooltipText
+        v.importantForAccessibility = old.importantForAccessibility
+        v.visibility = old.visibility
+        v.isEnabled = old.isEnabled
+        v.alpha = old.alpha
+        v.translationX = old.translationX
+        v.translationY = old.translationY
+        v.rotation = old.rotation
+        v.scaleX = old.scaleX
+        v.scaleY = old.scaleY
+    }
+
     /** Makes a Toggle a checkbox: Material's, in place of its switch. */
     fun makeCheckbox(n: AsukaNode) {
         val old = n.view as? MaterialSwitch ?: return
         val id = n.id
         val c = com.google.android.material.checkbox.MaterialCheckBox(themed).apply {
             isChecked = old.isChecked
-            isEnabled = old.isEnabled
             layoutDirection = directionOf(n)
+            // What props set on the switch before checkbox came (they go
+            // in the order the app wrote them): its name for TalkBack first.
+            carryViewProps(old, this)
             setOnCheckedChangeListener { _, on -> if (!settingProp) emit(id, AsukaEventKind.TOGGLED) { AsukaEvents.toggled(id, on) } }
         }
         val parent = old.parent as? ViewGroup
@@ -851,7 +892,10 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
         val b = makeButton(n.id, variant)
         b.layoutDirection = directionOf(n)
         b.text = old.text
-        b.isEnabled = old.isEnabled
+        // What props set on the button before its variant came (they go in
+        // the order the app wrote them): label: before variant: is its name
+        // for TalkBack.
+        carryViewProps(old, b)
         (n.props[AsukaProp.Button.ICON] as? String)?.let { setButtonIcon(n, b, it) }
         val parent = old.parent as? ViewGroup
         if (parent != null) {
@@ -861,7 +905,7 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
             parent.addView(b, i, lp)
             b.measure(View.MeasureSpec.makeMeasureSpec(old.width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(old.height, View.MeasureSpec.EXACTLY))
             b.layout(old.left, old.top, old.right, old.bottom)
-        }
+        } else old.layoutParams?.let { b.layoutParams = it }
         n.view = b
         restyle(n)
         n.basePadding = null // the new button's own
@@ -923,6 +967,13 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
             setA11yActions(n, v)
             return
         }
+        if (prop == AsukaProp.A11Y_RANGE) {
+            val r = decodeA11yRange(v)
+            if (r != null) n.props[prop] = r else n.props.remove(prop)
+            installA11y(n)
+            a11yChanged(n)
+            return
+        }
         if (prop == AsukaProp.SWIPE_ACTIONS) {
             n.swipeActions = decodeActions(v)
             swipeAccessibility(n)
@@ -947,6 +998,8 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
         keyed.remove(id)
         (n.view as? AsukaVideo)?.release()
         stacks.remove(n)
+        if (n.kind == AsukaKind.OVERLAY) { destroyOverlay(n); return }
+        if (n.props[AsukaProp.A11Y_MODAL] == true) n.view.post { refreshModals() } // once its view is gone
         if (n.underDying) return // its views leave with the animating screen or sheet
         if (n.kind == AsukaKind.SNACKBAR) { (n.view as AsukaSnackbar).dismiss(); return }
         if ((n.kind == AsukaKind.SCREEN || n.kind == AsukaKind.SHEET || n.kind == AsukaKind.POPOVER || n.kind == AsukaKind.ALERT) && destroyNav(n)) return
@@ -990,6 +1043,7 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
         val f = n.frame ?: FloatArray(4).also { n.frame = it }
         f[0] = x; f[1] = y; f[2] = width; f[3] = height
         if (n.parent?.view is AsukaSplit) return // a SplitView's detail: it fills what the drawer leaves
+        if (n.kind == AsukaKind.OVERLAY) return // its root's size, where its root is: the host's
         // A Scroll, or a row of its content, moved: what it takes out is redone.
         if (n.kind == AsukaKind.SCROLL) pendingCulls.add(n)
         n.parent?.parent?.let { if (it.kind == AsukaKind.SCROLL) pendingCulls.add(it) }
@@ -1026,6 +1080,7 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
             lp.y = t
             lp.w = r - l
             lp.h = b - t
+            lp.framed = true
         }
         v.measure(View.MeasureSpec.makeMeasureSpec(r - l, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(b - t, View.MeasureSpec.EXACTLY))
         v.layout(l, t, r, b)
@@ -1046,27 +1101,22 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
         n.setListening(event, true)
         if (event == AsukaEventKind.PRESS || event == AsukaEventKind.LONG_PRESS || event == AsukaEventKind.PRESSED || event == AsukaEventKind.HOVER) wirePresses(n)
         if (n.kind == AsukaKind.VIEW && (event == AsukaEventKind.PAN || event == AsukaEventKind.PINCH || event == AsukaEventKind.SWIPE || event == AsukaEventKind.ROTATE)) listenGesture(n, event)
+        if (event == AsukaEventKind.PRESS_POINT) wirePressPoint(n)
+        if (event == AsukaEventKind.ANCHOR_FRAME) (n.view as? AsukaOverlay)?.let { o -> o.post { reportAnchor(n) } }
     }
 
     override fun unlisten(id: Int, event: Int) {
         val n = nodes[id] ?: return
         n.setListening(event, false)
         if (event == AsukaEventKind.PRESSED || event == AsukaEventKind.HOVER) wirePresses(n)
+        if (event == AsukaEventKind.PRESS_POINT) wirePressPoint(n)
     }
 
     override fun command(id: Int, command: Int, args: ByteBuffer) {
         val n = nodes[id] ?: return
         when (command) {
-            AsukaCommand.FOCUS -> {
-                n.view.requestFocus()
-                val imm = app.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
-                imm?.showSoftInput(n.view, 0)
-            }
-            AsukaCommand.BLUR -> {
-                n.view.clearFocus()
-                val imm = app.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
-                imm?.hideSoftInputFromWindow(n.view.windowToken, 0)
-            }
+            AsukaCommand.FOCUS -> focusNode(n)
+            AsukaCommand.BLUR -> blurNode(n)
             AsukaCommand.LIST_UPDATE -> {
                 val count = args.int
                 val ids = LongArray(count) { args.long }
@@ -1119,7 +1169,7 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
             AsukaCommand.FRAMES -> setFrames(args.remaining() > 0 && args.get().toInt() == 1)
             AsukaCommand.PLAY -> (n.view as? AsukaVideo)?.player?.play()
             AsukaCommand.PAUSE -> (n.view as? AsukaVideo)?.player?.pause()
-            AsukaCommand.SEEK -> if (args.remaining() >= 8) (n.view as? AsukaVideo)?.player?.seekTo((args.double * 1000).toLong())
+            AsukaCommand.SEEK -> if (args.remaining() >= 8) (n.view as? AsukaVideo)?.player?.seek(args.double)
             AsukaCommand.WEB_NAVIGATE -> if (args.remaining() > 0) (n.view as? AsukaWebView)?.navigate(args.get().toInt())
             AsukaCommand.EVAL -> {
                 val b = ByteArray(args.remaining())

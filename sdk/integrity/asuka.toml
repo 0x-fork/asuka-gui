@@ -1,0 +1,3 @@
+name = "platform/integrity"
+version = "0.1.0"
+description = "Proves to the app's server that a request comes from the app, on a real device: App Attest, Play Integrity"

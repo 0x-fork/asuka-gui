@@ -1,0 +1,16 @@
+component Size {
+  let wide = environment().widthClass == .expanded
+
+  Column {
+    Text("{environment().width} wide")
+    if wide { Text("a sidebar") } else { Text("a list") }
+  }
+}
+
+app { Size() }
+
+test "reads the environment" {
+  let app = mount(Size())
+  app.expect("390 wide")
+  app.expect("a list")
+}

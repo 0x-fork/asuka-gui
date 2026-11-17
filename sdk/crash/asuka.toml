@@ -1,0 +1,8 @@
+name = "platform/crash"
+version = "0.1.0"
+description = "The app's crash reports, kept for it to send where it likes"
+
+# MetricKit's diagnostics, for an app that reads its reports (the core
+# keeps the crashes' record either way).
+[uses.reports.ios]
+hostFlags = ["ASUKA_CRASH"]

@@ -1,0 +1,280 @@
+#include "rt/rt.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+
+ak_str *ak_str_new(const char *s, size_t n) {
+	ak_str *o = ak_obj_new(AK_TAG_STR, sizeof(ak_str) + n + 1);
+	o->len = (uint32_t)n;
+	if (n && s) memcpy(o->data, s, n);  // s NULL: the caller fills them
+	o->data[n] = 0;
+	return o;
+}
+
+ak_str *ak_str_empty(void) {
+	static ak_str *e;
+	if (!e) {
+		e = ak_str_new("", 0);
+		ak_make_immortal(e);
+	}
+	return e;
+}
+
+ak_str *ak_str_concat(ak_str *a, ak_str *b) {
+	if (a->len == 0) return ak_retain(b);
+	if (b->len == 0) return ak_retain(a);
+	ak_str *o = ak_obj_new(AK_TAG_STR, sizeof(ak_str) + a->len + b->len + 1);
+	o->len = a->len + b->len;
+	memcpy(o->data, a->data, a->len);
+	memcpy(o->data + a->len, b->data, b->len);
+	o->data[o->len] = 0;
+	return o;
+}
+
+ak_str *ak_str_from_int(int64_t v) {
+	char buf[24];
+	int n = snprintf(buf, sizeof buf, "%lld", (long long)v);
+	return ak_str_new(buf, (size_t)n);
+}
+
+// fmt_float writes the shortest form of v that reads back as v, as
+// JavaScript prints numbers: integers without a fraction, exponents only
+// for very large or small magnitudes.
+static int fmt_float(char *buf, size_t cap, double v) {
+	if (v != v) return snprintf(buf, cap, "NaN");
+	if (v == INFINITY) return snprintf(buf, cap, "Infinity");
+	if (v == -INFINITY) return snprintf(buf, cap, "-Infinity");
+	if (v == 0) return snprintf(buf, cap, "0");
+	double a = fabs(v);
+	if (a < 1e21 && a == floor(a)) return snprintf(buf, cap, "%.0f", v);
+	char tmp[48];
+	// %.*f with a fixed precision: find the shortest that round-trips.
+	if (a >= 1e-6 && a < 1e21) {
+		for (int p = 1; p <= 20; p++) {
+			snprintf(tmp, sizeof tmp, "%.*f", p, v);
+			if (strtod(tmp, NULL) == v) break;
+		}
+		// Trim trailing zeros.
+		size_t n = strlen(tmp);
+		while (n > 0 && tmp[n - 1] == '0') n--;
+		if (n > 0 && tmp[n - 1] == '.') n--;
+		tmp[n] = 0;
+	} else {
+		for (int p = 1; p <= 17; p++) {
+			snprintf(tmp, sizeof tmp, "%.*e", p - 1, v);
+			if (strtod(tmp, NULL) == v) break;
+		}
+		// C writes at least two exponent digits (1e-07); JavaScript, one.
+		char *e = strchr(tmp, 'e');
+		if (e && (e[1] == '-' || e[1] == '+')) {
+			char *d = e + 2;
+			while (d[0] == '0' && d[1]) memmove(d, d + 1, strlen(d));
+		}
+	}
+	return snprintf(buf, cap, "%s", tmp);
+}
+
+ak_str *ak_str_from_float(double v) {
+	char buf[48];
+	int n = fmt_float(buf, sizeof buf, v);
+	return ak_str_new(buf, (size_t)n);
+}
+
+ak_str *ak_str_from_bool(bool v) {
+	static ak_str *t, *f;
+	if (!t) {
+		t = ak_str_c("true");
+		f = ak_str_c("false");
+		ak_make_immortal(t);
+		ak_make_immortal(f);
+	}
+	return v ? t : f;
+}
+
+bool ak_str_eq(const ak_str *a, const ak_str *b) {
+	if (a == b) return true;
+	if (!a || !b || a->len != b->len) return false;
+	if (a->hash && b->hash && a->hash != b->hash) return false;
+	return memcmp(a->data, b->data, a->len) == 0;
+}
+
+int ak_str_cmp(const ak_str *a, const ak_str *b) {
+	uint32_t n = a->len < b->len ? a->len : b->len;
+	int c = memcmp(a->data, b->data, n);
+	if (c) return c < 0 ? -1 : 1;
+	return a->len < b->len ? -1 : a->len > b->len ? 1 : 0;
+}
+
+uint32_t ak_str_hash(ak_str *s) {
+	if (s->hash) return s->hash;
+	uint32_t h = 2166136261u;  // FNV-1a
+	for (uint32_t i = 0; i < s->len; i++) {
+		h ^= (uint8_t)s->data[i];
+		h *= 16777619u;
+	}
+	if (h == 0) h = 1;
+	// Immortal strings (constants) may be read from worker threads: their
+	// hash is computed once, as they become immortal.
+	if (s->h.rc != AK_RC_IMMORTAL) s->hash = h;
+	return h;
+}
+
+ak_str *ak_str_slice(ak_str *s, int64_t from, int64_t to) {
+	if (from < 0) from = 0;
+	if (to > s->len) to = s->len;
+	if (from >= to) return ak_str_empty();
+	if (from == 0 && to == s->len) return ak_retain(s);
+	return ak_str_new(s->data + from, (size_t)(to - from));
+}
+
+int64_t ak_str_count(const ak_str *s) {
+	int64_t n = 0;
+	for (uint32_t i = 0; i < s->len; i++)
+		if (((uint8_t)s->data[i] & 0xc0) != 0x80) n++;
+	return n;
+}
+
+int64_t ak_str_find(const ak_str *s, const ak_str *sub) {
+	if (sub->len == 0) return 0;
+	if (sub->len > s->len) return -1;
+	for (uint32_t i = 0; i + sub->len <= s->len; i++)
+		if (s->data[i] == sub->data[0] && memcmp(s->data + i, sub->data, sub->len) == 0) return i;
+	return -1;
+}
+
+bool ak_str_has_prefix(const ak_str *s, const ak_str *p) {
+	return p->len <= s->len && memcmp(s->data, p->data, p->len) == 0;
+}
+
+bool ak_str_has_suffix(const ak_str *s, const ak_str *p) {
+	return p->len <= s->len && memcmp(s->data + s->len - p->len, p->data, p->len) == 0;
+}
+
+bool ak_str_contains(const ak_str *s, const ak_str *sub) { return ak_str_find(s, sub) >= 0; }
+
+static ak_str *map_ascii(ak_str *s, bool upper) {
+	bool change = false;
+	for (uint32_t i = 0; i < s->len && !change; i++) {
+		char c = s->data[i];
+		change = upper ? (c >= 'a' && c <= 'z') : (c >= 'A' && c <= 'Z');
+	}
+	if (!change) return ak_retain(s);
+	ak_str *o = ak_str_new(s->data, s->len);
+	for (uint32_t i = 0; i < o->len; i++) {
+		char c = o->data[i];
+		if (upper && c >= 'a' && c <= 'z') o->data[i] = (char)(c - 32);
+		if (!upper && c >= 'A' && c <= 'Z') o->data[i] = (char)(c + 32);
+	}
+	return o;
+}
+
+// Case mapping beyond ASCII needs the locale's rules (Turkish i, German
+// ß), which the platform has: the i18n runtime overrides these.
+ak_str *ak_str_lower(ak_str *s) { return map_ascii(s, false); }
+ak_str *ak_str_upper(ak_str *s) { return map_ascii(s, true); }
+
+static bool is_space(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f'; }
+
+ak_str *ak_str_trim(ak_str *s) {
+	uint32_t a = 0, b = s->len;
+	while (a < b && is_space(s->data[a])) a++;
+	while (b > a && is_space(s->data[b - 1])) b--;
+	return ak_str_slice(s, a, b);
+}
+
+ak_str *ak_str_replace(ak_str *s, const ak_str *old, const ak_str *new_) {
+	if (old->len == 0 || ak_str_find(s, old) < 0) return ak_retain(s);
+	ak_strb b = {0};
+	uint32_t i = 0;
+	while (i < s->len) {
+		if (i + old->len <= s->len && memcmp(s->data + i, old->data, old->len) == 0) {
+			ak_strb_str(&b, new_);
+			i += old->len;
+		} else {
+			ak_strb_cstr(&b, s->data + i, 1);
+			i++;
+		}
+	}
+	return ak_strb_finish(&b);
+}
+
+ak_arr *ak_str_split(ak_str *s, const ak_str *sep) {
+	ak_arr *a = ak_arr_new(AK_K_REF, NULL, 4);
+	a->h.flags = 1;
+	if (sep->len == 0) {
+		// Split into characters.
+		uint32_t i = 0;
+		while (i < s->len) {
+			uint32_t j = i + 1;
+			while (j < s->len && ((uint8_t)s->data[j] & 0xc0) == 0x80) j++;
+			ak_arr_push(&a, (ak_val){.p = ak_str_new(s->data + i, j - i)});
+			i = j;
+		}
+		return a;
+	}
+	uint32_t start = 0;
+	for (uint32_t i = 0; i + sep->len <= s->len;) {
+		if (memcmp(s->data + i, sep->data, sep->len) == 0) {
+			ak_arr_push(&a, (ak_val){.p = ak_str_new(s->data + start, i - start)});
+			i += sep->len;
+			start = i;
+		} else {
+			i++;
+		}
+	}
+	ak_arr_push(&a, (ak_val){.p = ak_str_new(s->data + start, s->len - start)});
+	return a;
+}
+
+bool ak_str_to_int(const ak_str *s, int64_t *out) {
+	if (s->len == 0 || s->len > 30) return false;
+	char *end;
+	errno = 0;
+	long long v = strtoll(s->data, &end, 10);
+	if (errno || end != s->data + s->len) return false;
+	*out = v;
+	return true;
+}
+
+bool ak_str_to_float(const ak_str *s, double *out) {
+	if (s->len == 0) return false;
+	char *end;
+	double v = strtod(s->data, &end);
+	if (end != s->data + s->len) return false;
+	*out = v;
+	return true;
+}
+
+void ak_strb_str(ak_strb *b, const ak_str *s) { ak_buf_put(&b->b, s->data, s->len); }
+void ak_strb_cstr(ak_strb *b, const char *s, size_t n) { ak_buf_put(&b->b, s, n); }
+
+void ak_strb_int(ak_strb *b, int64_t v) {
+	char buf[24];
+	int n = snprintf(buf, sizeof buf, "%lld", (long long)v);
+	ak_buf_put(&b->b, buf, (size_t)n);
+}
+
+void ak_strb_float(ak_strb *b, double v) {
+	char buf[48];
+	int n = fmt_float(buf, sizeof buf, v);
+	ak_buf_put(&b->b, buf, (size_t)n);
+}
+
+void ak_strb_bool(ak_strb *b, bool v) {
+	if (v) ak_buf_put(&b->b, "true", 4);
+	else ak_buf_put(&b->b, "false", 5);
+}
+
+ak_str *ak_strb_finish(ak_strb *b) {
+	ak_str *s = b->b.len ? ak_str_new((const char *)b->b.data, b->b.len) : ak_str_empty();
+	ak_buf_free(&b->b);
+	return s;
+}
+
+ak_bytes *ak_bytes_new(const void *p, size_t n) {
+	ak_bytes *o = ak_obj_new(AK_TAG_BYTES, sizeof(ak_bytes) + n);
+	o->len = (uint32_t)n;
+	if (n && p) memcpy(o->data, p, n);  // p NULL: the caller fills them
+	return o;
+}

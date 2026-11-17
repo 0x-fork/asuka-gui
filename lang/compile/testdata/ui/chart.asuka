@@ -1,0 +1,39 @@
+import std/chart
+
+let days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+component Charts {
+  state steps = [4200.0, 8100, 6400, 10200, 7300, 12800, 3900]
+
+  Column {
+    chart.View([chart.Series(name: "Steps", kind: .bar, values: steps)]) {
+      labels: days
+      label: "Steps this week"
+      height: 180
+    }
+    chart.View([
+      chart.Series(name: "Heart rate", kind: .area, smooth: true, values: [62, 71, 68, 90, 84, 76, 70]),
+      chart.Series(name: "Resting", kind: .line, color: #ff9500, values: [58, 58, 59, 60, 59, 58, 57]),
+      chart.Series(name: "Peaks", kind: .points, values: [62, 71, 68, 90, 84, 76, 70]),
+    ]) {
+      labels: days
+      grid: false
+    }
+    Button("More") { on press { steps = [4200.0, 8100, 6400, 10200, 7300, 12800, 25000] } }
+  }
+}
+
+app { Charts() }
+
+test "a chart's axes are the platform's text" {
+  let app = mount(Charts())
+  app.expect("Mon")
+  app.expect("Sun")
+  app.expect("15k")
+  app.expect("0")
+  app.expect("100")
+  app.tap("More")
+  await app.idle()
+  app.expect("30k")
+  app.expectNo("15k")
+}

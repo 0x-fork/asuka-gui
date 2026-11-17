@@ -4,7 +4,7 @@ import { staticFunctionMiddleware } from "@tanstack/start-static-server-function
 import { loadHome } from "@/lib/home.server"
 
 export interface HomeData {
-  /** The docs' first example, main.go, highlighted. */
+  /** The docs' first example, an app in Asuka, highlighted. */
   main: string
 }
 

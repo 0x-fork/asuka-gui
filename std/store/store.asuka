@@ -1,0 +1,74 @@
+// Package std/store keeps small values (settings, the last tab, a
+// draft) across launches, in each platform's own preferences:
+// UserDefaults on iOS and macOS, SharedPreferences on Android,
+// localStorage on the web, a file in the app's data directory on
+// Windows and Linux. Values are kept as JSON, so any value JSON can say
+// (numbers, strings, arrays, structs) works. For records, use a
+// database (std/sqlite).
+//
+//   state units = store.read("units", "metric")
+//   effect { store.write("units", units) }
+
+import std/json
+
+/// The platform's preferences: strings by key.
+native interface Prefs {
+  fn get(key: string) -> string?
+  fn set(key: string, value: string)
+  fn remove(key: string)
+  /// Writes what's changed now (before the app may be ended).
+  fn flush()
+  /// Where the values are kept: a directory, or what the platform names.
+  fn dir() -> string
+}
+
+// Made once; none where the platform has no preferences, and then
+// nothing is kept.
+let prefs = try? Prefs()
+
+/// The value kept under key, or def when there's none (or what's kept
+/// isn't a T any more).
+pub fn read<T>(key: string, def: T) -> T {
+  if let p = prefs {
+    if let s = try? p.get(key) {
+      if let v = try? json.decode<T>(s) {
+        return v
+      }
+    }
+  }
+  return def
+}
+
+/// Keeps value under key.
+pub fn write<T>(key: string, value: T) {
+  if let p = prefs {
+    try? p.set(key, json.encode(value))
+  }
+}
+
+/// Forgets what's kept under key.
+pub fn remove(key: string) {
+  if let p = prefs {
+    try? p.remove(key)
+  }
+}
+
+/// Writes what's kept now, rather than a moment later: before the app
+/// may be ended (it goes to the background, a task's last step).
+pub fn flush() {
+  if let p = prefs {
+    try? p.flush()
+  }
+}
+
+/// Where the values are kept: the preferences' directory, or the
+/// platform's name for them ("localStorage" on the web); "" with no
+/// preferences.
+pub fn dir() -> string {
+  if let p = prefs {
+    if let d = try? p.dir() {
+      return d
+    }
+  }
+  return ""
+}

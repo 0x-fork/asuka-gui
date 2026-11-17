@@ -1,0 +1,16 @@
+// A type's static functions: no self, called on the type.
+struct Money {
+  cents: int
+
+  static fn of(dollars: int, cents: int = 0) -> Money = Money(cents: dollars * 100 + cents)
+  pub static async fn fetched(url: string) throws -> Money {
+    return .of(dollars: 1)
+  }
+}
+
+enum Size {
+  small
+  large
+
+  static fn parse(s: string) -> Size = .small
+}

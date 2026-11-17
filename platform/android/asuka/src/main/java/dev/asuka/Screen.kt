@@ -9,7 +9,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
 /**
- * asuka/sdk/screen's settings: the app's, kept here so that an Activity made
+ * platform/screen's settings: the app's, kept here so that an Activity made
  * again (a configuration change) takes them, as AsukaActivity applies them.
  */
 object AsukaDisplay {
@@ -51,15 +51,38 @@ object AsukaDisplay {
         if (hideNavigation) c.hide(WindowInsetsCompat.Type.navigationBars()) else c.show(WindowInsetsCompat.Type.navigationBars())
     }
 
+    private val watchers = ArrayList<() -> kotlin.Unit>()
+
+    /** Applies the settings to the activity showing the app, now, as they're set (platform/screen). Main thread. */
+    fun applyNow() {
+        val rt = AsukaRuntime.current ?: return
+        val act = rt.activity ?: return
+        apply(act, rt.isNight(act.resources.configuration))
+    }
+
+    /**
+     * Calls taken at each screenshot of the app (Android 14 and later),
+     * until the function it returns is called (platform/screen). Main thread.
+     */
+    fun watchScreenshots(taken: () -> kotlin.Unit): () -> kotlin.Unit {
+        watchers.add(taken)
+        AsukaRuntime.current?.activity?.let { watch(it, true) }
+        return {
+            watchers.remove(taken)
+            if (watchers.isEmpty() && screenshots.isEmpty()) AsukaRuntime.current?.activity?.let { watch(it, false) }
+        }
+    }
+
     /** Follows screenshots while the Activity shows and someone waits for one (Android 14 and later). */
     fun watch(act: Activity, on: Boolean) {
         if (Build.VERSION.SDK_INT < 34) return
         try {
-            if (on && callback == null && screenshots.isNotEmpty()) {
+            if (on && callback == null && (screenshots.isNotEmpty() || watchers.isNotEmpty())) {
                 val cb = Activity.ScreenCaptureCallback {
                     val ws = ArrayList(screenshots)
                     screenshots.clear()
                     for (w in ws) w(Result.success(ByteArray(0)))
+                    for (w in ArrayList(watchers)) w()
                 }
                 act.registerScreenCaptureCallback(act.mainExecutor, cb)
                 callback = cb
@@ -68,43 +91,7 @@ object AsukaDisplay {
                 callback = null
             }
         } catch (_: SecurityException) {
-            // No DETECT_SCREEN_CAPTURE: the app doesn't import asuka/sdk/screen's package path.
+            // No DETECT_SCREEN_CAPTURE: the app doesn't import platform/screen's package path.
         }
     }
-}
-
-/** asuka/sdk/screen's module: "lock", "bars", "preventCapture", "screenshot", "stopScreenshots" (see screen.go). */
-fun AsukaRuntime.screenMethods(): Map<String, AsukaModuleMethod> {
-    fun applied(reply: (Result<ByteArray>) -> Unit) {
-        activity?.let { AsukaDisplay.apply(it, isNight(it.resources.configuration)) }
-        reply(Result.success(ByteArray(0)))
-    }
-    return mapOf(
-        "lock" to { args, reply ->
-            AsukaDisplay.lock = args.firstOrNull()?.toInt() ?: 0
-            applied(reply)
-        },
-        "bars" to { args, reply ->
-            AsukaDisplay.style = args.firstOrNull()?.toInt() ?: 0
-            val flags = args.getOrNull(1)?.toInt() ?: 0
-            AsukaDisplay.hideStatus = flags and 1 != 0
-            AsukaDisplay.hideNavigation = flags and 2 != 0
-            applied(reply)
-        },
-        "preventCapture" to { args, reply ->
-            AsukaDisplay.secure = args.firstOrNull()?.toInt() == 1
-            applied(reply)
-        },
-        "screenshot" to { _, reply ->
-            AsukaDisplay.screenshots.add(reply)
-            activity?.let { AsukaDisplay.watch(it, true) }
-        },
-        "stopScreenshots" to { _, reply ->
-            val ws = ArrayList(AsukaDisplay.screenshots)
-            AsukaDisplay.screenshots.clear()
-            for (w in ws) w(Result.failure(Exception("stopped")))
-            activity?.let { AsukaDisplay.watch(it, false) }
-            reply(Result.success(ByteArray(0)))
-        },
-    )
 }

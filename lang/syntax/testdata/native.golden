@@ -1,0 +1,112 @@
+SourceFile 1:1-22:3
+  Decls: [3]
+    InterfaceDecl 2:1-5:2 comments="/// Taps the user feels." pub native
+      Name: Ident "Haptics" 2:22-2:29
+      Members: [2]
+        FuncDecl 3:3-3:27
+          Name: Ident "impact" 3:6-3:12
+          Params: ParamList 3:12-3:27
+            List: [1]
+              Param 3:13-3:26
+                Name: Ident "style" 3:13-3:18
+                Type: NamedType 3:20-3:26
+                  Path: [1]
+                    Ident "Impact" 3:20-3:26
+        FuncDecl 4:3-4:36 async throws
+          Name: Ident "prepare" 4:12-4:19
+          Params: ParamList 4:19-4:21
+          Result: NamedType 4:32-4:36
+            Path: [1]
+              Ident "bool" 4:32-4:36
+    ComponentDecl 7:1-10:2 blank pub native
+      Name: Ident "MapView" 7:22-7:29
+      Params: ParamList 7:29-7:45
+        List: [1]
+          Param 7:30-7:44
+            Name: Ident "region" 7:30-7:36
+            Type: NamedType 7:38-7:44
+              Path: [1]
+                Ident "Region" 7:38-7:44
+      Body: Block 7:46-10:2
+        Items: [2]
+          PropDecl 8:3-8:24
+            Name: Ident "pins" 8:8-8:12
+            Type: ArrayType 8:14-8:19
+              Elem: NamedType 8:15-8:18
+                Path: [1]
+                  Ident "Pin" 8:15-8:18
+            Default: ArrayExpr 8:22-8:24
+          EventDecl 9:3-9:38
+            Name: Ident "regionChanged" 9:9-9:22
+            Params: ParamList 9:22-9:38
+              List: [1]
+                Param 9:23-9:37
+                  Name: Ident "region" 9:23-9:29
+                  Type: NamedType 9:31-9:37
+                    Path: [1]
+                      Ident "Region" 9:31-9:37
+    ComponentDecl 12:1-22:2 blank
+      Name: Ident "Map" 12:11-12:14
+      Body: Block 12:15-22:2
+        Items: [2]
+          StateDecl 13:3-13:60
+            Name: Ident "region" 13:9-13:15
+            Value: CallExpr 13:18-13:60
+              Fun: Ident "Region" 13:18-13:24
+              Args: ArgList 13:24-13:60
+                List: [3]
+                  Arg 13:25-13:35
+                    Label: Ident "lat" 13:25-13:28
+                    Value: BasicLit 13:30-13:35 Kind=float Value="35.68"
+                  Arg 13:37-13:48
+                    Label: Ident "lng" 13:37-13:40
+                    Value: BasicLit 13:42-13:48 Kind=float Value="139.76"
+                  Arg 13:50-13:59
+                    Label: Ident "span" 13:50-13:54
+                    Value: BasicLit 13:56-13:59 Kind=float Value="0.1"
+          ExprStmt 15:3-21:4 blank
+            X: CallExpr 15:3-21:4
+              Fun: Ident "MapView" 15:3-15:10
+              Args: ArgList 15:10-15:18
+                List: [1]
+                  Arg 15:11-15:17
+                    Value: Ident "region" 15:11-15:17
+              Block: Block 15:19-21:4
+                Items: [2]
+                  PropSet 16:5-16:57
+                    Name: Ident "pins" 16:5-16:9
+                    Value: ArrayExpr 16:11-16:57
+                      Elems: [1]
+                        CallExpr 16:12-16:56
+                          Fun: Ident "Pin" 16:12-16:15
+                          Args: ArgList 16:15-16:56
+                            List: [3]
+                              Arg 16:16-16:26
+                                Label: Ident "lat" 16:16-16:19
+                                Value: BasicLit 16:21-16:26 Kind=float Value="35.68"
+                              Arg 16:28-16:39
+                                Label: Ident "lng" 16:28-16:31
+                                Value: BasicLit 16:33-16:39 Kind=float Value="139.76"
+                              Arg 16:41-16:55
+                                Label: Ident "title" 16:41-16:46
+                                Value: StringLit 16:48-16:55 Segments=["Tokyo"]
+                  OnHandler 17:5-20:6
+                    Name: Ident "regionChanged" 17:8-17:21
+                    Params: [1]
+                      Ident "r" 17:22-17:23
+                    Body: Block 17:25-20:6
+                      Items: [2]
+                        AssignStmt 18:7-18:17 Op==
+                          Target: Ident "region" 18:7-18:13
+                          Value: Ident "r" 18:16-18:17
+                        ExprStmt 19:7-19:36
+                          X: CallExpr 19:7-19:36
+                            Fun: MemberExpr 19:7-19:21
+                              X: Ident "Haptics" 19:7-19:14
+                              Name: Ident "impact" 19:15-19:21
+                            Args: ArgList 19:21-19:36
+                              List: [1]
+                                Arg 19:22-19:35
+                                  Label: Ident "style" 19:22-19:27
+                                  Value: ImplicitMember 19:29-19:35
+                                    Name: Ident "light" 19:30-19:35

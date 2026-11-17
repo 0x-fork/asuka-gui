@@ -1,0 +1,307 @@
+SourceFile 1:1-48:3
+  Imports: [1]
+    ImportDecl 1:1-1:16
+      Path: [2]
+        Ident "std" 1:8-1:11
+        Ident "http" 1:12-1:16
+  Decls: [2]
+    StoreDecl 4:1-40:2 comments="/// The app's mail: what's loaded, and what changes it." pub
+      Name: Ident "Mailbox" 4:11-4:18
+      Params: ParamList 4:18-4:36
+        List: [1]
+          Param 4:19-4:35
+            Name: Ident "account" 4:19-4:26
+            Type: NamedType 4:28-4:35
+              Path: [1]
+                Ident "Account" 4:28-4:35
+      Body: Block 4:37-40:2
+        Items: [8]
+          StateDecl 5:3-5:33
+            Name: Ident "messages" 5:9-5:17
+            Type: ArrayType 5:19-5:28
+              Elem: NamedType 5:20-5:27
+                Path: [1]
+                  Ident "Message" 5:20-5:27
+            Value: ArrayExpr 5:31-5:33
+          StateDecl 6:3-6:19
+            Name: Ident "unread" 6:9-6:15
+            Value: BasicLit 6:18-6:19 Kind=integer Value="0"
+          StateDecl 7:3-7:29
+            Name: Ident "error" 7:9-7:14
+            Type: OptionalType 7:16-7:22
+              Elem: NamedType 7:16-7:21
+                Path: [1]
+                  Ident "Error" 7:16-7:21
+            Value: NoneLit 7:25-7:29
+          LetDecl 9:3-9:65 blank Keyword=let
+            Pattern: BindPat 9:7-9:18
+              Name: Ident "unreadLabel" 9:7-9:18
+            Value: IfExpr 9:21-9:65
+              Cond: BinaryExpr 9:24-9:35 Op=>
+                X: Ident "unread" 9:24-9:30
+                Y: BasicLit 9:33-9:35 Kind=integer Value="99"
+              Then: Block 9:36-9:45
+                Items: [1]
+                  ExprStmt 9:38-9:43
+                    X: StringLit 9:38-9:43 Segments=["99+"]
+              Else: Block 9:51-9:65
+                Items: [1]
+                  ExprStmt 9:53-9:63
+                    X: StringLit 9:53-9:63 Segments=["" ""]
+                      Interps: [1]
+                        Ident "unread" 9:55-9:61
+          TaskDecl 11:3-23:4 blank
+            Deps: [1]
+              Ident "account" 11:8-11:15
+            Body: Block 11:17-23:4
+              Items: [1]
+                WhileStmt 12:5-22:6
+                  Cond: BoolLit 12:11-12:15 Value=true
+                  Body: Block 12:16-22:6
+                    Items: [2]
+                      DoStmt 13:7-20:8
+                        Body: Block 13:10-16:8
+                          Items: [2]
+                            AssignStmt 14:9-14:52 Op==
+                              Target: Ident "messages" 14:9-14:17
+                              Value: UnaryExpr 14:20-14:52 Op=try
+                                X: UnaryExpr 14:24-14:52 Op=await
+                                  X: CallExpr 14:30-14:52
+                                    Fun: Ident "fetchMessages" 14:30-14:43
+                                    Args: ArgList 14:43-14:52
+                                      List: [1]
+                                        Arg 14:44-14:51
+                                          Value: Ident "account" 14:44-14:51
+                            AssignStmt 15:9-15:53 Op==
+                              Target: Ident "unread" 15:9-15:15
+                              Value: MemberExpr 15:18-15:53
+                                X: CallExpr 15:18-15:47
+                                  Fun: MemberExpr 15:18-15:33
+                                    X: Ident "messages" 15:18-15:26
+                                    Name: Ident "filter" 15:27-15:33
+                                  Args: ArgList 15:33-15:47
+                                    List: [1]
+                                      Arg 15:34-15:46
+                                        Value: LambdaExpr 15:34-15:46
+                                          Params: [1]
+                                            Param 15:34-15:35
+                                              Name: Ident "m" 15:34-15:35
+                                          Body: UnaryExpr 15:39-15:46 Op=!
+                                            X: MemberExpr 15:40-15:46
+                                              X: Ident "m" 15:40-15:41
+                                              Name: Ident "read" 15:42-15:46
+                                Name: Ident "count" 15:48-15:53
+                        Catches: [2]
+                          CatchClause 16:9-18:8
+                            Pattern: BindPat 16:15-16:16
+                              Name: Ident "e" 16:15-16:16
+                            Type: NamedType 16:18-16:27
+                              Path: [1]
+                                Ident "HttpError" 16:18-16:27
+                            Body: Block 16:28-18:8
+                              Items: [1]
+                                AssignStmt 17:9-17:18 Op==
+                                  Target: Ident "error" 17:9-17:14
+                                  Value: Ident "e" 17:17-17:18
+                          CatchClause 18:9-20:8
+                            Body: Block 18:15-20:8
+                              Items: [1]
+                                AssignStmt 19:9-19:21 Op==
+                                  Target: Ident "error" 19:9-19:14
+                                  Value: NoneLit 19:17-19:21
+                      ExprStmt 21:7-21:24
+                        X: UnaryExpr 21:7-21:24 Op=await
+                          X: CallExpr 21:13-21:24
+                            Fun: Ident "sleep" 21:13-21:18
+                            Args: ArgList 21:18-21:24
+                              List: [1]
+                                Arg 21:19-21:23
+                                  Value: BasicLit 21:19-21:23 Kind=duration Value="5min"
+          EffectDecl 25:3-27:4 blank
+            Body: Block 25:10-27:4
+              Items: [1]
+                ExprStmt 26:5-26:30
+                  X: CallExpr 26:5-26:30
+                    Fun: Ident "print" 26:5-26:10
+                    Args: ArgList 26:10-26:30
+                      List: [1]
+                        Arg 26:11-26:29
+                          Value: StringLit 26:11-26:29 Segments=["unread: " ""]
+                            Interps: [1]
+                              Ident "unread" 26:21-26:27
+          FuncDecl 29:3-37:4 blank async throws
+            Name: Ident "archive" 29:12-29:19
+            Params: ParamList 29:19-29:37
+              List: [1]
+                Param 29:20-29:36
+                  Name: Ident "message" 29:20-29:27
+                  Type: NamedType 29:29-29:36
+                    Path: [1]
+                      Ident "Message" 29:29-29:36
+            Body: Block 29:45-37:4
+              Items: [5]
+                LetDecl 30:5-30:58 Keyword=let
+                  Pattern: BindPat 30:9-30:14
+                    Name: Ident "index" 30:9-30:14
+                  Value: BinaryExpr 30:17-30:58 Op=??
+                    X: CallExpr 30:17-30:52
+                      Fun: MemberExpr 30:17-30:36
+                        X: Ident "messages" 30:17-30:25
+                        Name: Ident "firstIndex" 30:26-30:36
+                      Args: ArgList 30:36-30:52
+                        List: [1]
+                          Arg 30:37-30:51
+                            Label: Ident "id" 30:37-30:39
+                            Value: MemberExpr 30:41-30:51
+                              X: Ident "message" 30:41-30:48
+                              Name: Ident "id" 30:49-30:51
+                    Y: UnaryExpr 30:56-30:58 Op=-
+                      X: BasicLit 30:57-30:58 Kind=integer Value="1"
+                IfStmt 31:5-33:6
+                  Cond: BinaryExpr 31:8-31:17 Op=<
+                    X: Ident "index" 31:8-31:13
+                    Y: BasicLit 31:16-31:17 Kind=integer Value="0"
+                  Then: Block 31:18-33:6
+                    Items: [1]
+                      ThrowStmt 32:7-32:43
+                        Value: CallExpr 32:13-32:43
+                          Fun: MemberExpr 32:13-32:31
+                            X: Ident "MailError" 32:13-32:22
+                            Name: Ident "notFound" 32:23-32:31
+                          Args: ArgList 32:31-32:43
+                            List: [1]
+                              Arg 32:32-32:42
+                                Value: MemberExpr 32:32-32:42
+                                  X: Ident "message" 32:32-32:39
+                                  Name: Ident "id" 32:40-32:42
+                AssignStmt 34:5-34:36 Op==
+                  Target: MemberExpr 34:5-34:29
+                    X: IndexExpr 34:5-34:20
+                      X: Ident "messages" 34:5-34:13
+                      Index: Ident "index" 34:14-34:19
+                    Name: Ident "archived" 34:21-34:29
+                  Value: BoolLit 34:32-34:36 Value=true
+                DeferStmt 35:5-35:74
+                  Body: Block 35:11-35:74
+                    Items: [1]
+                      AssignStmt 35:13-35:72 Op==
+                        Target: Ident "unread" 35:13-35:19
+                        Value: MemberExpr 35:22-35:72
+                          X: CallExpr 35:22-35:66
+                            Fun: MemberExpr 35:22-35:37
+                              X: Ident "messages" 35:22-35:30
+                              Name: Ident "filter" 35:31-35:37
+                            Args: ArgList 35:37-35:66
+                              List: [1]
+                                Arg 35:38-35:65
+                                  Value: LambdaExpr 35:38-35:65
+                                    Params: [1]
+                                      Param 35:38-35:39
+                                        Name: Ident "m" 35:38-35:39
+                                    Body: BinaryExpr 35:43-35:65 Op=&&
+                                      X: UnaryExpr 35:43-35:50 Op=!
+                                        X: MemberExpr 35:44-35:50
+                                          X: Ident "m" 35:44-35:45
+                                          Name: Ident "read" 35:46-35:50
+                                      Y: UnaryExpr 35:54-35:65 Op=!
+                                        X: MemberExpr 35:55-35:65
+                                          X: Ident "m" 35:55-35:56
+                                          Name: Ident "archived" 35:57-35:65
+                          Name: Ident "count" 35:67-35:72
+                ExprStmt 36:5-36:49
+                  X: UnaryExpr 36:5-36:49 Op=try
+                    X: UnaryExpr 36:9-36:49 Op=await
+                      X: CallExpr 36:15-36:49
+                        Fun: MemberExpr 36:15-36:24
+                          X: Ident "http" 36:15-36:19
+                          Name: Ident "post" 36:20-36:24
+                        Args: ArgList 36:24-36:49
+                          List: [1]
+                            Arg 36:25-36:48
+                              Value: StringLit 36:25-36:48 Segments=["/archive/" ""]
+                                Interps: [1]
+                                  MemberExpr 36:36-36:46
+                                    X: Ident "message" 36:36-36:43
+                                    Name: Ident "id" 36:44-36:46
+          FuncDecl 39:3-39:80 blank
+            Name: Ident "messagesIn" 39:6-39:16
+            Params: ParamList 39:16-39:30
+              List: [1]
+                Param 39:17-39:29
+                  Name: Ident "box" 39:17-39:20
+                  Type: NamedType 39:22-39:29
+                    Path: [1]
+                      Ident "Mailbox" 39:22-39:29
+            Result: ArrayType 39:34-39:43
+              Elem: NamedType 39:35-39:42
+                Path: [1]
+                  Ident "Message" 39:35-39:42
+            Value: CallExpr 39:46-39:80
+              Fun: MemberExpr 39:46-39:61
+                X: Ident "messages" 39:46-39:54
+                Name: Ident "filter" 39:55-39:61
+              Args: ArgList 39:61-39:80
+                List: [1]
+                  Arg 39:62-39:79
+                    Value: LambdaExpr 39:62-39:79
+                      Params: [1]
+                        Param 39:62-39:63
+                          Name: Ident "m" 39:62-39:63
+                      Body: BinaryExpr 39:67-39:79 Op===
+                        X: MemberExpr 39:67-39:72
+                          X: Ident "m" 39:67-39:68
+                          Name: Ident "box" 39:69-39:72
+                        Y: Ident "box" 39:76-39:79
+    FuncDecl 42:1-48:2 blank async throws
+      Name: Ident "fetchMessages" 42:10-42:23
+      Params: ParamList 42:23-42:41
+        List: [1]
+          Param 42:24-42:40
+            Name: Ident "account" 42:24-42:31
+            Type: NamedType 42:33-42:40
+              Path: [1]
+                Ident "Account" 42:33-42:40
+      Result: ArrayType 42:52-42:61
+        Elem: NamedType 42:53-42:60
+          Path: [1]
+            Ident "Message" 42:53-42:60
+      Body: Block 42:62-48:2
+        Items: [2]
+          LetDecl 43:3-46:5 Keyword=let
+            Pattern: BindPat 43:7-43:15
+              Name: Ident "response" 43:7-43:15
+            Value: UnaryExpr 43:18-46:5 Op=try
+              X: UnaryExpr 43:22-46:5 Op=await
+                X: CallExpr 43:28-46:5
+                  Fun: MemberExpr 43:28-43:36
+                    X: Ident "http" 43:28-43:32
+                    Name: Ident "get" 43:33-43:36
+                  Args: ArgList 43:36-46:5
+                    List: [2]
+                      Arg 43:37-43:85
+                        Value: StringLit 43:37-43:85 Segments=["https://mail.example.com/" "/messages"]
+                          Interps: [1]
+                            MemberExpr 43:64-43:74
+                              X: Ident "account" 43:64-43:71
+                              Name: Ident "id" 43:72-43:74
+                      Arg 43:87-46:4
+                        Label: Ident "headers" 43:87-43:94
+                        Value: MapExpr 43:96-46:4
+                          Entries: [2]
+                            MapEntry 44:5-44:46
+                              Key: StringLit 44:5-44:20 Segments=["Authorization"]
+                              Value: StringLit 44:22-44:46 Segments=["Bearer " ""]
+                                Interps: [1]
+                                  MemberExpr 44:31-44:44
+                                    X: Ident "account" 44:31-44:38
+                                    Name: Ident "token" 44:39-44:44
+                            MapEntry 45:5-45:33
+                              Key: StringLit 45:5-45:13 Segments=["Accept"]
+                              Value: StringLit 45:15-45:33 Segments=["application/json"]
+          ReturnStmt 47:3-47:29
+            Value: UnaryExpr 47:10-47:29 Op=try
+              X: CallExpr 47:14-47:29
+                Fun: MemberExpr 47:14-47:27
+                  X: Ident "response" 47:14-47:22
+                  Name: Ident "json" 47:23-47:27
+                Args: ArgList 47:27-47:29

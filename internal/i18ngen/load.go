@@ -1,8 +1,8 @@
-// Package i18ngen reads the catalogs of an app's messages, checks them,
-// and writes their typed accessors: Go functions in the catalogs'
-// directory, which embed and register them, and accessors of them for the
-// props of components. `asuka generate`, `asuka dev`, `asuka build` and
-// `asuka i18n check` use it, and so does internal/l10n for Asuka's own strings.
+// Package i18ngen reads the catalogs of an app's messages and checks them:
+// their keys, their messages and their placeholders' types, which the
+// compiler types the app's tr accessors with (lang/compile). `asuka dev`,
+// `asuka build`, `asuka test` and `asuka i18n check` use it, and so does
+// internal/l10n for Asuka's own strings.
 package i18ngen
 
 import (
@@ -16,8 +16,6 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/egoist/asuka/i18n"
 )
@@ -79,8 +77,6 @@ type Key struct {
 	Message     string
 	Description string
 	Params      []Param
-	// GoName is the name of its Go function: Name, exported.
-	GoName string
 }
 
 // Param is an argument of a message: a parameter of its accessors.
@@ -88,19 +84,10 @@ type Param struct {
 	Name string // in the message
 	// Type is one of ARB's: String, int, double, num, DateTime or Object.
 	Type string
-	// Go is its name in the accessors.
-	Go string
 }
 
-// types maps the types of placeholders to Go.
-var types = map[string]string{
-	"String":   "string",
-	"int":      "int",
-	"double":   "float64",
-	"num":      "float64",
-	"DateTime": "time.Time",
-	"Object":   "any",
-}
+// types are the types a placeholder may declare (ARB's).
+var types = map[string]bool{"String": true, "int": true, "double": true, "num": true, "DateTime": true, "Object": true}
 
 // IsPackagingKey reports whether name, of a key "asuka.<name>", is one that
 // no library message has: what packaging writes into the files that list
@@ -349,10 +336,6 @@ func (l *loader) readFile(name, tag string, data []byte) *File {
 
 // sourceKeys reads the keys of the source language and their parameters.
 func (l *loader) sourceKeys(f *File) {
-	taken := map[string]string{} // Go names
-	for _, name := range []string{"In", "Messages", "Catalog"} {
-		taken[name] = ""
-	}
 	for _, key := range f.Keys {
 		at := f.Lines[key]
 		if l.override(key) {
@@ -362,16 +345,7 @@ func (l *loader) sourceKeys(f *File) {
 			l.errorf(f.Name, at, "%q is not a key: a letter, then letters, digits and _, as filesSelected", key)
 			continue
 		}
-		k := &Key{Name: key, Message: f.Messages[key], GoName: goName(key)}
-		if other, ok := taken[k.GoName]; ok {
-			if other == "" {
-				l.errorf(f.Name, at, "%q would name its Go function %s, which the generated code declares", key, k.GoName)
-			} else {
-				l.errorf(f.Name, at, "%q and %q would both name their Go function %s", other, key, k.GoName)
-			}
-			continue
-		}
-		taken[k.GoName] = key
+		k := &Key{Name: key, Message: f.Messages[key]}
 		l.readMeta(f, k)
 		l.c.Keys = append(l.c.Keys, k)
 	}
@@ -459,7 +433,7 @@ func (l *loader) readMeta(f *File, k *Key) {
 		} else if !compatible(typ, kind) {
 			l.errorf(f.Name, f.Lines[k.Name], "%q uses %s as a %s argument, which its type %s cannot be", k.Name, name, kind, typ)
 		}
-		k.Params = append(k.Params, Param{Name: name, Type: typ, Go: goParam(name)})
+		k.Params = append(k.Params, Param{Name: name, Type: typ})
 	}
 	if m != nil {
 		l.checkPlurals(f, k.Name, m)
@@ -669,35 +643,4 @@ func orderedObject(data []byte) ([]string, map[string]json.RawMessage, error) {
 		values[key] = raw
 	}
 	return keys, values, nil
-}
-
-// goName is the name of the Go function of a key: its words, split at _,
-// capitalized.
-func goName(key string) string {
-	var b strings.Builder
-	for _, w := range strings.Split(key, "_") {
-		if w == "" {
-			continue
-		}
-		r, size := utf8.DecodeRuneInString(w)
-		b.WriteRune(unicode.ToUpper(r))
-		b.WriteString(w[size:])
-	}
-	return b.String()
-}
-
-var goKeywords = strings.Fields(`break case chan const continue default defer else fallthrough for func go goto if import interface map package range return select struct switch type var`)
-
-// goReserved are the names the generated functions use, and the
-// predeclared identifiers they name, which a parameter would shadow.
-var goReserved = []string{"msgs", "i18n", "In", "Catalog", "time", "string", "any", "int", "float64", "map", "nil", "true", "false"}
-
-func goParam(name string) string {
-	if r, _ := utf8.DecodeRuneInString(name); unicode.IsDigit(r) {
-		return "arg" + name
-	}
-	if slices.Contains(goKeywords, name) || slices.Contains(goReserved, name) {
-		return name + "_"
-	}
-	return name
 }

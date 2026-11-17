@@ -1,7 +1,10 @@
 // Package shadercode is a compiled ui.Shader as it crosses to the hosts
 // (Shader's Code prop): its Kage source (for hosts that run it on the CPU
 // with package interp), its Metal program (iOS, macOS), its AGSL program
-// (Android), and where each uniform's lanes go in each.
+// (Android), its GLSL ES 3.00 one (the web: no compiler runs in the
+// page), its HLSL one (Windows, compiled by Direct3D's compiler on the
+// device), its desktop GLSL one (Linux's OpenGL), and where each
+// uniform's lanes go in each.
 //
 // The uniforms' values cross as lanes (Shader's Uniforms prop): a u32 each,
 // in package interp's order (each uniform's lanes in turn, a matrix's by
@@ -19,6 +22,7 @@ import (
 	"github.com/egoist/asuka/internal/shader"
 	"github.com/egoist/asuka/internal/shaderir"
 	"github.com/egoist/asuka/internal/shaderir/glsl"
+	"github.com/egoist/asuka/internal/shaderir/hlsl"
 	"github.com/egoist/asuka/internal/shaderir/interp"
 	"github.com/egoist/asuka/internal/shaderir/msl"
 )
@@ -46,11 +50,29 @@ type Code struct {
 	Source string // the Kage source
 	Metal  string // a whole library: vertex asuka_vertex, fragment asuka_fragment (buffer 0: Uniforms; textures 0 to 3)
 	AGSL   string // a whole RuntimeShader program
+	GLSL   string // a whole GLSL ES 3.00 fragment shader (glslProgram)
+	// HLSL is a whole pixel shader, asuka_ps, for shader model 4 or 5: the
+	// uniforms in cbuffer b0, asuka_step in b1 (hlslEntry).
+	HLSL string
 	// MetalOffsets is where each lane goes in the Metal buffer, in bytes,
 	// and MetalBool which lanes are a bool's (a byte); MetalSize its size.
 	MetalOffsets []uint32
 	MetalBool    []bool
 	MetalSize    int
+	// HLSLOffsets is where each lane goes in HLSL's cbuffer b0, in bytes
+	// (a bool's a 32-bit word too); HLSLSize its size, a multiple of 16.
+	HLSLOffsets []uint32
+	HLSLSize    int
+	// GL is the fragment shader Linux's OpenGL draws (GL 3.3 core or GL
+	// ES 3.0), with no #version line (the host writes the context's): its
+	// uniforms in the std140 block AsukaUniforms (lane i at GLOffsets[i]
+	// bytes, GLSize bytes in all), its position GL's window position
+	// mapped by the uniform vec4 asuka_frame (xy*frame.xy + frame.zw: a
+	// framebuffer's rows count up, the view's down), its colors clamped,
+	// premultiplied.
+	GL        string
+	GLOffsets []uint32
+	GLSize    int
 	// Uniforms are all the uniforms, the bridge's too (their names begin
 	// with __), in order: AGSL's are U0, U1... in this order.
 	Uniforms []Uniform
@@ -97,6 +119,9 @@ func Compile(src string) (*Code, error) {
 		return nil, fmt.Errorf("shader: Android can't run it: %s", strings.TrimPrefix(err.Error(), "agsl: "))
 	}
 	c.Metal = msl.Fragment(p, "asuka_shade") + fmt.Sprintf(metalEntry, scale)
+	if c.GLSL, err = glslProgram(p, c.Uniforms); err != nil {
+		return nil, err
+	}
 	offsets, size := msl.UniformLanes(p)
 	c.MetalSize = size
 	for _, u := range c.Uniforms {
@@ -105,8 +130,57 @@ func Compile(src string) (*Code, error) {
 			c.MetalBool = append(c.MetalBool, u.Kind == Bool)
 		}
 	}
+	lanes, hsize := hlsl.UniformLanes(p)
+	if len(lanes) != c.Lanes {
+		return nil, fmt.Errorf("shader: %d HLSL lanes, the code has %d", len(lanes), c.Lanes)
+	}
+	c.HLSL = hlsl.Fragment(p, "asuka_shade", 0, 0) + fmt.Sprintf(hlslEntry, scale)
+	c.HLSLSize = hsize
+	for _, o := range lanes {
+		c.HLSLOffsets = append(c.HLSLOffsets, uint32(o))
+	}
+	glLanes, gsize := glsl.UniformLanes(p)
+	if len(glLanes) != c.Lanes {
+		return nil, fmt.Errorf("shader: %d GL lanes, the code has %d", len(glLanes), c.Lanes)
+	}
+	c.GL = glsl.Fragment(p, "asuka_shade", glsl.Options{Block: "AsukaUniforms"}) + fmt.Sprintf(glEntry, scale)
+	c.GLSize = gsize
+	for _, o := range glLanes {
+		c.GLOffsets = append(c.GLOffsets, uint32(o))
+	}
 	return c, nil
 }
+
+// glEntry is the desktop GLSL's entry point: the pixel's position from
+// the view's top (asuka_frame maps a framebuffer's), its color clamped
+// and premultiplied.
+const glEntry = `
+uniform vec4 asuka_frame;
+out vec4 asuka_color;
+
+void main() {
+	vec4 p = vec4(gl_FragCoord.xy * asuka_frame.xy + asuka_frame.zw, gl_FragCoord.zw);
+	vec4 c = clamp(asuka_shade(p, p.xy / U%d), 0.0, 1.0);
+	asuka_color = vec4(min(c.rgb, vec3(c.a)), c.a);
+}
+`
+
+// hlslEntry is the pixel shader's entry point: it calls the shader's
+// function with the pixel's position and the position in points.
+// asuka_step is 1 but where the frame has fewer pixels than the view (a
+// view larger than a texture can be). Its colors are clamped,
+// premultiplied, as GDI+ draws them.
+const hlslEntry = `
+cbuffer AsukaStep : register(b1) {
+	float2 asuka_step;
+}
+
+float4 asuka_ps(float4 position : SV_Position) : SV_Target {
+	float4 p = float4(position.xy * asuka_step, position.zw);
+	float4 c = saturate(asuka_shade(p, p.xy / U%d));
+	return float4(min(c.rgb, c.aaa), c.a);
+}
+`
 
 // metalEntry draws a triangle over the whole target and calls the
 // shader's function with the pixel's position, and the position in points.
@@ -146,7 +220,9 @@ var le = binary.LittleEndian
 // Encode is c on the wire: strings u32-length; then u32 lanes, size,
 // scale, time+1; u32 Metal size, then per lane u32 offset (bit 31 a
 // bool's); u32 uniform count, per uniform a string name, u32 lane, u32
-// lanes, u8 Kind.
+// lanes, u8 Kind; then the GLSL program, a string; then the HLSL program,
+// a string, u32 its cbuffer's size and per lane u32 offset. A reader may
+// stop before what it doesn't use.
 func (c *Code) Encode() []byte {
 	var b []byte
 	str := func(s string) {
@@ -173,6 +249,17 @@ func (c *Code) Encode() []byte {
 		b = le.AppendUint32(b, uint32(u.Lane))
 		b = le.AppendUint32(b, uint32(u.Lanes))
 		b = append(b, byte(u.Kind))
+	}
+	str(c.GLSL)
+	str(c.HLSL)
+	b = le.AppendUint32(b, uint32(c.HLSLSize))
+	for _, o := range c.HLSLOffsets {
+		b = le.AppendUint32(b, o)
+	}
+	str(c.GL)
+	b = le.AppendUint32(b, uint32(c.GLSize))
+	for _, o := range c.GLOffsets {
+		b = le.AppendUint32(b, o)
 	}
 	return b
 }
@@ -217,28 +304,37 @@ func Decode(b []byte) (*Code, error) {
 		}
 		c.Uniforms = append(c.Uniforms, u)
 	}
+	if i < len(b) {
+		c.GLSL = str()
+	}
+	if i < len(b) {
+		c.HLSL = str()
+		c.HLSLSize = u32()
+		for range c.Lanes {
+			c.HLSLOffsets = append(c.HLSLOffsets, uint32(u32()))
+		}
+	}
+	if i < len(b) {
+		c.GL = str()
+		c.GLSize = u32()
+		for range c.Lanes {
+			c.GLOffsets = append(c.GLOffsets, uint32(u32()))
+		}
+	}
 	if bad || c.Lanes > 1<<16 {
 		return nil, errors.New("shadercode: bad code")
 	}
 	return c, nil
 }
 
-// GLSL is a compiled shader as a whole GLSL ES 3.00 fragment shader, which
-// the web host draws with WebGL 2: its Kage source compiled again, the
-// uniforms U0, U1... in the order of Code.Uniforms, its entry point given
-// the pixel's position from the top of the box (GL's counts from the
-// bottom) and the position in points.
-func GLSL(code []byte) (string, error) {
-	c, err := Decode(code)
-	if err != nil {
-		return "", err
-	}
-	p, err := shader.CompileFragment([]byte(c.Source))
-	if err != nil {
-		return "", err
-	}
+// glslProgram is the shader as a whole GLSL ES 3.00 fragment shader,
+// which the web host draws with WebGL 2: the uniforms U0, U1... in the
+// order of uniforms, its entry point given the pixel's position from the
+// top of the box (GL's counts from the bottom) and the position in
+// points.
+func glslProgram(p *shaderir.Program, uniforms []Uniform) (string, error) {
 	size, scale := -1, -1
-	for i, u := range c.Uniforms {
+	for i, u := range uniforms {
 		switch u.Name {
 		case shader.RectSizeUniform:
 			size = i

@@ -1,0 +1,28 @@
+// Package std/json reads and writes JSON as typed values: the compiler
+// knows the type read or written, so there's no schema to declare and
+// nothing to cast.
+//
+//   struct Note { title: string; done: bool = false }
+//
+//   let notes: [Note] = try json.decode(text)
+//   let same = try json.decode<[Note]>(text)
+//   let out = json.encode(notes, indent: 2)
+//
+// A struct reads from an object by its fields' names; a field the object
+// doesn't have is empty (nil, 0, false, "", an empty array or map), but
+// a missing struct is an error. An enum without payloads reads from its
+// case's name, an optional from null; [T] from an array, [string: T] from
+// an object. A generic function may read or write its
+// T: each call then needs a T JSON can say, which the compiler checks
+// where it's called.
+
+/// The value of type T that text says. It throws when text isn't JSON or
+/// doesn't fit T (a value of the wrong type, a missing struct), its
+/// message saying what. T comes from what's expected of the call (let
+/// notes: [Note] = try json.decode(text)) or is given: json.decode<[Note]>(text).
+pub native fn decode<T>(text: string) throws -> T
+
+/// value as JSON text: on one line, or with indent spaces per level.
+/// Fields are written in their declaration order, a map's entries in its
+/// own order.
+pub native fn encode<T>(value: T, indent: int = 0) -> string

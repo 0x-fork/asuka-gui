@@ -1,0 +1,5 @@
+// A stub of tests.asuka's ./app.
+pub component Counter {
+  state count = 0
+  Text("Count: {count}")
+}

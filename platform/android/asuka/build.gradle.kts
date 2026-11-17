@@ -57,21 +57,15 @@ dependencies {
     // Typed native modules' methods that take a context are suspend funs.
     api("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("androidx.recyclerview:recyclerview:1.4.0")
-    implementation("androidx.activity:activity:1.10.1") // predictive back, the photo picker
-    implementation("androidx.browser:browser:1.9.0") // in-app browser tabs
-    implementation("androidx.biometric:biometric:1.1.0") // asuka/sdk/biometric's prompt
+    implementation("androidx.activity:activity:1.10.1") // predictive back, edge to edge, the result launchers
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
-    // Video: ExoPlayer and its PlayerView (controls), HLS streams.
-    implementation("androidx.media3:media3-exoplayer:1.11.1")
-    implementation("androidx.media3:media3-exoplayer-hls:1.11.1")
-    implementation("androidx.media3:media3-ui:1.11.1")
-    // asuka/sdk/camera's View: CameraX's preview and photo capture.
-    implementation("androidx.exifinterface:exifinterface:1.4.1") // a photo's orientation
+    implementation("androidx.exifinterface:exifinterface:1.4.1") // an image's orientation
     implementation("androidx.webkit:webkit:1.14.0") // WebView's document-start scripts
-    implementation("androidx.camera:camera-camera2:1.6.2")
-    implementation("androidx.camera:camera-lifecycle:1.6.2")
-    implementation("androidx.camera:camera-view:1.6.2")
-    implementation("androidx.camera:camera-video:1.6.2")
+    // What a std package does (the camera, biometrics, the in-app browser,
+    // Play's libraries...) is its own Gradle module's
+    // (std/<name>/android), with its libraries: only in the apps that
+    // import it. Video's player (Media3) is asuka-video's: only in the
+    // apps that show one.
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303") // the real org.json: android.jar's is a stub
 }

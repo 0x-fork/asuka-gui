@@ -1,0 +1,403 @@
+// Package std/http makes HTTP requests through each platform's own
+// client: URLSession on iOS and macOS, HttpURLConnection on Android,
+// fetch on the web, WinHTTP on Windows and libsoup on Linux. So proxies,
+// certificates the user trusts, and the system's caches and cookies
+// work as they do for the platform's own apps.
+//
+//   let r = try await http.get("https://example.com/inbox.json")
+//   let inbox = try r.json<[Message]>()
+//
+// A large answer goes into a file as it comes, its progress reported:
+//
+//   try await http.download(url, path, progress: (got, total) => { done = got })
+//
+// A body that comes over time (a reply a language model writes, a log)
+// is read as it's sent, in pieces, lines, or server-sent events:
+//
+//   let r = try await http.stream(url, method: "POST", body: prompt)
+//   for await line in r.lines() { reply = reply + line }
+//
+//   for await e in http.events("https://example.com/updates") {
+//     if e.event == "price" { price = e.data }
+//   }
+
+import std/fs
+import std/json as codec
+
+/// What a request answered.
+pub struct Response {
+  /// The status code: 200, 404...
+  status: int
+  /// The URL it answered from, after redirects.
+  url: string
+  /// The headers, by lower-case name.
+  headers: [string: string]
+  body: bytes
+
+  /// The body as UTF-8 text.
+  fn text() -> string = body.string()
+
+  /// The body as JSON, decoded into T.
+  fn json<T>() throws -> T = try codec.decode<T>(text())
+
+  /// Whether the status is a success (200 to 299).
+  fn ok() -> bool = status >= 200 && status < 300
+}
+
+/// The platform's HTTP client.
+native interface Transport {
+  /// Sends a request and waits for its answer: a network failure throws,
+  /// an answer of any status returns.
+  async fn send(method: string, url: string, headers: [string: string], body: bytes, timeout: Duration) -> Response
+  /// Sends a request and writes its answer's body into the file at path
+  /// as it comes (a file beside it, renamed to path once it's all in),
+  /// calling progress with the bytes written and the whole's (-1 when
+  /// the answer doesn't say). timeout is the longest wait for more. Its
+  /// Response's body is empty. Where the platform can't write the app's
+  /// files from its client, it answers with the body for the caller to
+  /// write.
+  async fn download(method: string, url: string, headers: [string: string], body: bytes, timeout: Duration, path: string, progress: fn(int, int)) -> Response
+  /// Sends a request and answers as soon as its response's head (status,
+  /// URL, headers) is in, with its body to read as it comes. timeout is
+  /// the longest wait for the head, and for each piece after it. A
+  /// network failure throws; an answer of any status returns.
+  async fn open(method: string, url: string, headers: [string: string], body: bytes, timeout: Duration) -> Body
+}
+
+/// A response's body, read as it comes. Let go (or closed), it stops the
+/// request.
+native interface Body {
+  /// The response's head: its status, URL (after redirects) and headers
+  /// by lower-case name; its body empty.
+  fn head() -> Response
+  /// The next piece of the body, as soon as some is in (whatever the
+  /// network delivered, never empty): empty at the body's end. A network
+  /// failure, or no piece within the timeout, throws.
+  async fn read() -> bytes
+  /// Stops the request.
+  fn close()
+}
+
+// Made once; none where the platform has no client (making one again
+// says why).
+let transport = try? Transport()
+
+/// Sends a request: method (GET, POST...), url, headers, body, and how
+/// long to wait for the answer.
+pub async fn request(method: string, url: string, headers: [string: string] = [:], body: bytes = bytes(), timeout: Duration = 60s) throws -> Response {
+  if let t = transport {
+    return try await t.send(method, url, headers, body, timeout)
+  }
+  return try await Transport().send(method, url, headers, body, timeout)
+}
+
+/// Sends a GET request to url, waiting up to 60 s for the answer: a
+/// network failure throws, an answer of any status returns (check ok()).
+pub async fn get(url: string, headers: [string: string] = [:]) throws -> Response {
+  return try await request("GET", url, headers: headers)
+}
+
+/// Sends a POST request with body to url, waiting up to 60 s, as get
+/// does. Say what body is with a content-type header.
+pub async fn post(url: string, body: bytes, headers: [string: string] = [:]) throws -> Response {
+  return try await request("POST", url, headers: headers, body: body)
+}
+
+/// Posts value as JSON.
+pub async fn postJSON<T>(url: string, value: T, headers: [string: string] = [:]) throws -> Response {
+  var h = headers
+  h["content-type"] = "application/json"
+  return try await request("POST", url, headers: h, body: codec.encode(value).bytes())
+}
+
+/// Downloads url into the file at path as the answer comes, made (or
+/// replaced) once it's all in: a video, an archive, what's too large to
+/// hold. progress, if given, is called as it goes with the bytes written
+/// and the whole's (-1 when the server doesn't say), at most a few times
+/// a second. timeout is the longest wait for more bytes, not for the
+/// whole. It answers with the Response, its body empty; a status that
+/// isn't a success is the caller's to check (the file then holds what
+/// the server said). Cancelling the task stops it, leaving no file.
+pub async fn download(url: string, path: string, headers: [string: string] = [:], method: string = "GET", body: bytes = bytes(), timeout: Duration = 60s, progress: (fn(int, int))? = none) throws -> Response {
+  let report = (got: int, total: int) => {
+    if let p = progress { p(got, total) }
+  }
+  let t = transport ?? try Transport()
+  var r = try await t.download(method, url, headers, body, timeout, path, report)
+  if !r.body.isEmpty() {
+    // The web's client hands the body over: the app's files are the
+    // core's.
+    try fs.write(path, r.body)
+    report(r.body.count(), r.body.count())
+    r.body = bytes()
+  }
+  return r
+}
+
+// ---- Bodies as they come: streams, lines, server-sent events ----
+
+/// What a request answered, its body to read as it's sent.
+pub struct StreamedResponse {
+  /// The status code: 200, 404...
+  status: int
+  /// The URL it answered from, after redirects.
+  url: string
+  /// The headers, by lower-case name.
+  headers: [string: string]
+  /// The body's pieces as the network delivers them, read once: for
+  /// await piece in r.body { … }. It ends with the body; leaving its
+  /// loop (or the task going) stops the request.
+  body: Stream<bytes>
+
+  /// Whether the status is a success (200 to 299).
+  fn ok() -> bool = status >= 200 && status < 300
+
+  /// The body as lines of UTF-8 text, as each one is in: split at \n,
+  /// \r\n or \r, without them. A last line without one comes at the end.
+  fn lines() -> Stream<string> = linesOf(body)
+
+  /// The body as server-sent events (text/event-stream, as a browser's
+  /// EventSource reads it), as each one is in.
+  fn events() -> Stream<Event> = eventsOf(linesOf(body))
+
+  /// The whole body, read to its end.
+  async fn readAll() throws -> bytes {
+    var all = bytes()
+    for await b in body {
+      all = all.concat(b)
+    }
+    return all
+  }
+
+  /// The whole body as UTF-8 text, read to its end.
+  async fn text() throws -> string = (try await readAll()).string()
+}
+
+/// A server-sent event (the HTML standard's text/event-stream).
+pub struct Event {
+  /// Its type: what the server said in event:, else "message".
+  event: string
+  /// Its data: the data: lines, joined by \n.
+  data: string
+  /// The last ID the server gave (id:, in this event or one before), ""
+  /// for none: what a reconnection sends back as Last-Event-ID.
+  id: string
+  /// How long the server asked a client to wait before reconnecting
+  /// (retry:, in this event or one before), 0 for what it hasn't said.
+  retry: Duration = 0s
+}
+
+/// What a request for events can say went wrong.
+pub enum HTTPError: Error {
+  /// The server answered with a status that isn't a success.
+  status(code: int)
+}
+
+/// Sends a request and answers as soon as the response's head is in,
+/// its body to read as it's sent (r.body, r.lines(), r.events()):
+/// a reply a language model writes, a log, a feed. timeout is the
+/// longest wait for the head, and then for each piece. A network failure
+/// throws; an answer of any status returns (check ok()). Cancelling the
+/// task, or leaving the body's loop, stops it. On iOS and macOS the head
+/// comes with the body's first bytes (URLSession gives it no sooner): a
+/// server that answers and then waits is waited for.
+pub async fn stream(url: string, method: string = "GET", headers: [string: string] = [:], body: bytes = bytes(), timeout: Duration = 60s) throws -> StreamedResponse {
+  let t = transport ?? try Transport()
+  let b = try await t.open(method, url, headers, body, timeout)
+  let head = try b.head()
+  let pieces = Stream<bytes>(send => {
+    defer { try? b.close() }
+    while true {
+      let piece = try await b.read()
+      if piece.isEmpty() {
+        return
+      }
+      send(piece)
+    }
+  })
+  return StreamedResponse(status: head.status, url: head.url, headers: head.headers, body: pieces)
+}
+
+/// The server-sent events at url (text/event-stream), as each one is in:
+/// a GET with Accept: text/event-stream, or the request method and body
+/// say (a language model's API that streams its reply to a POST). A
+/// status that isn't a success throws HTTPError.status. With reconnect,
+/// a connection that ends or fails is made again after the server's
+/// retry (3 s if it said none), sending the last event's ID as
+/// Last-Event-ID, as a browser's EventSource does; without it, the
+/// stream ends with the body. timeout is the longest wait for the head,
+/// and then for each piece.
+pub fn events(url: string, method: string = "GET", headers: [string: string] = [:], body: bytes = bytes(), reconnect: bool = false, timeout: Duration = 60s) -> Stream<Event> = Stream(send => {
+  var h = headers
+  if h["accept"] == none && h["Accept"] == none {
+    h["accept"] = "text/event-stream"
+  }
+  var lastID = ""
+  var wait = 3s
+  while true {
+    do {
+      let r = try await stream(url, method: method, headers: h, body: body, timeout: timeout)
+      if !r.ok() {
+        throw HTTPError.status(code: r.status)
+      }
+      for await e in r.events() {
+        lastID = e.id
+        if e.retry > 0s {
+          wait = e.retry
+        }
+        send(e)
+      }
+    } catch HTTPError.status(code) {
+      throw HTTPError.status(code: code)
+    } catch e {
+      if !reconnect {
+        throw e
+      }
+    }
+    if !reconnect {
+      return
+    }
+    await sleep(wait)
+    if !lastID.isEmpty() {
+      h["last-event-id"] = lastID
+    }
+  }
+})
+
+/// Splits bytes into lines of text as they come: at \n, \r\n or \r
+/// (one \r\n split across two pieces is one break), without them.
+fn linesOf(pieces: Stream<bytes>) -> Stream<string> = Stream(send => {
+  var pending = bytes()
+  // A \r ended the last piece: a \n starting the next is its pair.
+  var afterCR = false
+  for await piece in pieces {
+    var start = 0
+    var i = 0
+    if afterCR && piece.count() > 0 && piece[0] == 10 {
+      start = 1
+      i = 1
+    }
+    afterCR = false
+    while i < piece.count() {
+      let c = piece[i]
+      if c == 10 || c == 13 {
+        send(pending.concat(piece.slice(start, i)).string())
+        pending = bytes()
+        if c == 13 {
+          if i + 1 < piece.count() {
+            if piece[i + 1] == 10 {
+              i = i + 1
+            }
+          } else {
+            afterCR = true
+          }
+        }
+        start = i + 1
+      }
+      i = i + 1
+    }
+    pending = pending.concat(piece.slice(start, piece.count()))
+  }
+  if !pending.isEmpty() {
+    send(pending.string())
+  }
+})
+
+/// Reads server-sent events from lines, as the HTML standard's event
+/// stream interpretation says: field: value lines, an empty line ending
+/// an event; a line starting : a comment; data: lines joined by \n; an
+/// event without data not dispatched.
+fn eventsOf(lines: Stream<string>) -> Stream<Event> = Stream(send => {
+  var first = true
+  var data = ""
+  var hasData = false
+  var event = ""
+  var id = ""
+  var retry = 0s
+  for await raw in lines {
+    // A byte order mark at the stream's start.
+    let line = if first { raw.trimPrefix("\u{FEFF}") } else { raw }
+    first = false
+    if line.isEmpty() {
+      if hasData {
+        send(Event(event: if event.isEmpty() { "message" } else { event }, data: data, id: id, retry: retry))
+      }
+      data = ""
+      hasData = false
+      event = ""
+      continue
+    }
+    if line.hasPrefix(":") {
+      continue
+    }
+    var field = line
+    var value = ""
+    if let at = line.find(":") {
+      field = line.byteSlice(0, at)
+      value = line.byteSlice(at + 1, line.byteCount())
+      if value.hasPrefix(" ") {
+        value = value.byteSlice(1, value.byteCount())
+      }
+    }
+    if field == "data" {
+      data = if hasData { data + "\n" + value } else { value }
+      hasData = true
+    } else if field == "event" {
+      event = value
+    } else if field == "id" {
+      if !value.contains("\u{0}") {
+        id = value
+      }
+    } else if field == "retry" {
+      if !value.isEmpty() && value.chars().all(c => c >= "0" && c <= "9") {
+        if let ms = value.toInt() {
+          retry = 1ms * ms
+        }
+      }
+    }
+  }
+})
+
+// ---- A server on the loopback, for a sign-in's redirect ----
+
+/// The platform's server on the loopback interface (127.0.0.1).
+native interface LocalServer {
+  /// Listens at a port the system picks, for requests to path: the port.
+  async fn listen(path: string, page: string) -> int
+  /// Waits for the next request to the port's path, answers it with its
+  /// page, and gives the URL asked for (with its query).
+  async fn next(port: int) -> string
+  /// Stops listening at port.
+  fn close(port: int)
+}
+
+let localServer = try? LocalServer()
+
+/// A server of the app's on the loopback interface, for an OAuth sign-in
+/// that redirects to http://127.0.0.1:port/path (RFC 8252, a desktop
+/// app's way): url is the redirect URI to give; next() waits for the
+/// browser to come back to it, answers with the page (what the browser
+/// shows: "You can close this window"), and gives the URL it came to,
+/// its query the code. close() stops it; it stops as the app quits too.
+pub struct Loopback {
+  url: string
+  port: int
+
+  /// The next request's URL: the redirect, with its query.
+  async fn next() throws -> string = try await (localServer ?? try LocalServer()).next(port)
+
+  /// Stops listening.
+  fn close() {
+    if let s = localServer { try? s.close(port) }
+  }
+}
+
+/// Starts a server on the loopback interface, at a port the system picks,
+/// answering requests to path with page. Phones can (Android, iOS while
+/// the app runs); a browser can't listen: it throws there.
+pub async fn loopback(path: string = "/callback", page: string = "<!doctype html><title>Signed in</title><p>You can close this window and go back to the app.</p>") throws -> Loopback {
+  let s = localServer ?? try LocalServer()
+  let p = if path.hasPrefix("/") { path } else { "/{path}" }
+  let port = try await s.listen(p, page)
+  return Loopback(url: "http://127.0.0.1:{port}{p}", port: port)
+}

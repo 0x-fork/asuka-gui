@@ -1,0 +1,9 @@
+name = "Notes"
+id = "dev.asuka.notes"
+scheme = "asukanotes"
+
+# The notes command: the same notes from a terminal (cli/). asuka build
+# puts it in the app (the Mac's Contents/Helpers, Linux's bin, beside the
+# Windows .exe); asuka run --bin notes -- add "Buy milk" runs it.
+[bin.notes]
+path = "cli"

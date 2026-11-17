@@ -1,7 +1,9 @@
 # Shipping
 
 `asuka build` makes an app's release build for one platform, from the
-app's directory (or the one given), into its `dist`. `asuka publish`
+app's directory (or the one given), into its `dist`. It compiles the app
+ahead of time and builds it, optimized, for the platform, with the
+platform's own compiler: there's no interpreter in what you ship. `asuka publish`
 uploads the iOS and Android builds to their stores: to TestFlight and
 App Review, or a Google Play track (see [Publishing](#publishing)); and
 the desktop builds' signed updates, which installed apps update to, to
@@ -12,29 +14,36 @@ GitHub's releases or an S3 bucket (see [Updates](#updates)).
 | `ios` | `<Name>.ipa`, signed for the App Store | a Mac with Xcode | TestFlight, the App Store (`asuka publish`) |
 | `android` | `<Name>.aab`, signed with your upload key | any system with a JDK, the Android SDK and the NDK | Google Play (`asuka publish`) |
 | `mac` | `<Name>.app`, universal; or a `.pkg` (`--appstore`) | a Mac with Xcode's command line tools | a download, signed and notarized; the Mac App Store |
-| `windows` | `<Name>/`, the `.exe` and its assets | any system | a zip, or an installer or MSIX of yours |
-| `linux` | `linux/`: an install prefix, a `.tar.gz`, a Flatpak manifest | any system | the `.tar.gz`, a Flatpak |
-| `web` | `web/`, a static site | any system | any web server or CDN |
+| `windows` | `<Name>/`, the `.exe` and its assets | Windows with clang, or any system with Zig | a zip, or an installer or MSIX of yours |
+| `linux` | `linux/`: an install prefix, a `.tar.gz`, a Flatpak manifest | Linux with a C compiler, or any system with Zig | the `.tar.gz`, a Flatpak |
+| `web` | `web/`, a static site | any system with Zig | any web server or CDN |
 
 Without `--platform`, on a Mac, a Windows PC or a Linux machine, it
-builds for that computer. Every build but iOS's and Android's is plain
-Go with `CGO_ENABLED=0`, so it needs no C toolchain.
+builds for that computer. It builds with the platform's compiler
+(Xcode's for Apple's platforms, the NDK's for Android, the system's on
+Windows and Linux); [Zig](https://ziglang.org/download) builds for the
+web, and for Windows and Linux from another system (`ASUKA_CC=zig` uses
+it everywhere). See [the desktop](desktop.md#how-a-desktop-app-is-made)
+for what a desktop build holds.
 
-## asuka.json
+## asuka.toml
 
-```json
-{
-  "name": "Notes",
-  "id": "com.example.notes",
-  "version": "1.2",
-  "build": 7,
-  "icon": "icon.png",
-  "ios": { "team": "ABCDE12345" },
-  "android": { "keystore": "upload.jks", "keyAlias": "upload" }
-}
+```toml
+name = "Notes"
+id = "com.example.notes"
+version = "1.2"
+build = 7
+icon = "icon.png"
+
+[ios]
+team = "ABCDE12345"
+
+[android]
+keystore = "upload.jks"
+keyAlias = "upload"
 ```
 
-Every key is optional; [the asuka.json reference](asuka-json.md) lists
+Every key is optional; [the asuka.toml reference](asuka-toml.md) lists
 them all, with their types and defaults. These apply on every platform:
 
 - `name` is the app's name: under the icon, in the Mac's menu bar, the
@@ -69,15 +78,20 @@ them all, with their types and defaults. These apply on every platform:
   `x-scheme-handler`) and Windows (the app registers it for the user as
   it starts, in `HKEY_CURRENT_USER\Software\Classes`). `links`
   opens it for https links to your domains (universal links, App Links;
-  iOS and Android). `ui.OnOpenURL` gets them.
+  iOS and Android). `onOpenURL` gets them.
 - `fileTypes` are the kinds of files the app opens, which
-  `ui.OnOpenFiles` gets:
+  `onOpenFiles` gets:
 
-  ```json
-  "fileTypes": [
-    {"name": "Markdown Document", "extensions": ["md", "markdown"], "role": "viewer"},
-    {"name": "Notes Document", "extensions": ["note"], "icon": "note.png"}
-  ]
+  ```toml
+  [[fileTypes]]
+  name = "Markdown Document"
+  extensions = ["md", "markdown"]
+  role = "viewer"
+
+  [[fileTypes]]
+  name = "Notes Document"
+  extensions = ["note"]
+  icon = "note.png"
   ```
 
   `extensions` is required; `name` defaults to the first extension in
@@ -100,7 +114,7 @@ them all, with their types and defaults. These apply on every platform:
   `file_handlers` (an installed app, in Chromium).
 - `singleInstance`, `true` by default: on Windows and Linux an app with
   an `id` runs once, a second launch handing its arguments to the
-  running one (`app.OnSecondInstance`, its files to `ui.OnOpenFiles`)
+  running one (`onSecondInstance`, its files to `onOpenFiles`)
   and quitting. `false` runs it as often as it's started. The Mac runs
   an app once either way.
 
@@ -115,8 +129,8 @@ Platform by platform:
 - `linux.*` is what a Linux build's desktop file and AppStream metainfo
   say: see [Linux](#linux).
 - `web.vapidPublicKey` is the app server's VAPID public key, for
-  `asuka/sdk/push` on the web (Web Push; see
-  [the web](web.md#asukasdkpush-web-push)).
+  `platform/push` on the web (Web Push; see
+  [the web](web.md#platformpush-web-push)).
 - A Windows build needs nothing beyond the keys above; its signing
   certificate is given in the environment ([Windows](#windows)).
 
@@ -129,24 +143,24 @@ These are for the phones and tablets:
 - `ios.iphoneOnly` leaves iPad out. By default the app is an iPad app
   too, at whatever size the user gives its window; on Android it's
   resizable for split screen and desktop windows. Lay out from
-  `ui.UseEnvironment()`'s `Width` and `Height`, the window's size, not
+  `environment()`'s `width` and `height`, the window's size, not
   the device's.
 - `shareTarget` offers the app in other apps' share sheets: `true` for
-  texts and links, or `{"types": ["text", "image/*"], "max": 10}` for
-  files too (see [Device](device.md#shares-from-other-apps-uionshare));
-  `ui.OnShare` gets them. On iOS it's a share extension in the app, with
+  texts and links, or a table, `{types = ["text", "image/*"], max = 10}`,
+  for files too (see [Device](device.md#shares-from-other-apps-onshare));
+  `onShare` gets them. On iOS it's a share extension in the app, with
   a bundle ID of its own (the app's plus `.share`).
-- `splash` is the launch screen: `{"image": "logo.png", "size": 96,
-  "background": "#ffffff", "darkBackground": "#000000"}` (see
-  [Device](device.md#the-launch-screen-asukasdksplash)).
+- `splash` is the launch screen: `{image = "logo.png", size = 96,
+  background = "#ffffff", darkBackground = "#000000"}` (see
+  [Device](device.md#the-launch-screen-platformsplash)).
 - `widgets` are the app's home screen widgets and `shortcuts` its
   actions for Siri, Spotlight and the launcher (see
-  [Device](device.md#home-screen-widgets-asukasdkwidget)). The widget
+  [Device](device.md#home-screen-widgets-platformwidget)). The widget
   extension has a bundle ID of its own (the app's plus `.widgets`): a
   release needs a profile for it too, and `ios.widgetProfile` names one.
 - `android.googleServices` is the Firebase project's
-  `google-services.json`, for `asuka/sdk/push`; `android.mapsKey`, a Google
-  Maps Platform API key, for `asuka/sdk/maps`.
+  `google-services.json`, for `platform/push`; `android.mapsKey`, a Google
+  Maps Platform API key, for `platform/maps`.
 - `ios.usage` gives the purpose strings of protected resources
   (`NSCameraUsageDescription`...; the Mac's too), and `ios.infoPlist` adds keys to
   Info.plist; `ios.backgroundModes` adds to `UIBackgroundModes` (`"audio"`,
@@ -154,12 +168,12 @@ These are for the phones and tablets:
   permissions.
 
 The packages an app imports give it the permissions and purpose strings
-they need: `asuka/sdk/camera` the camera's, `asuka/sdk/location` the location's.
+they need: `platform/camera` the camera's, `platform/location` the location's.
 Write your own in `ios.usage`: the default is generic. Some need a
-capability on the App ID too (Push Notifications for `asuka/sdk/push`, Sign
-in with Apple for `asuka/sdk/appleauth`, App Attest for `asuka/sdk/integrity`,
-Declared Age Range for `asuka/sdk/agerange`, iCloud with its containers for
-`asuka/sdk/icloud`): turn it on at
+capability on the App ID too (Push Notifications for `platform/push`, Sign
+in with Apple for `platform/appleauth`, App Attest for `platform/integrity`,
+Declared Age Range for `platform/agerange`, iCloud with its containers for
+`platform/icloud`): turn it on at
 developer.apple.com, then make the profile again. `asuka build --platform ios` (and
 `--platform mac`) says which a profile lacks.
 
@@ -169,17 +183,18 @@ developer.apple.com, then make the profile again. `asuka build --platform ios` (
 asuka build --platform ios
 ```
 
-makes a `.ipa` signed for the App Store, with the team's distribution
+makes a `.ipa` signed for the App Store: the app, linking only the
+system frameworks it uses (WebKit, AVKit..., from the packages it
+imports and the elements it shows), with the team's distribution
 certificate (in your keychain, from Xcode's Accounts) and a provisioning
 profile for the app's ID: `ios.profile`, or `--profile`, else the best
 match installed. `--distribution ad-hoc` or `development` signs it for the
 devices of its profile instead, and `--simulator` makes an unsigned `.app`
 for the simulator.
 
-An app that uses `asuka/sdk/sqlite` has SQLite in its `Frameworks`, as
-`asqlite.framework` (the device's or the simulator's), signed with the
-app, which loads it the first time it opens a database. Its extensions
-(the share sheet, the Notification Service Extension) load the app's.
+An app that uses `std/sqlite` has SQLite compiled into it, as the rest
+of the app is: there's no library of its own beside it to embed or
+sign.
 
 With `shareTarget`, the share extension is signed too, with a profile
 for its own ID (`com.example.notes.share` for `com.example.notes`), from
@@ -193,7 +208,7 @@ app. At developer.apple.com, register the group, give both IDs (the
 app's and the extension's) the App Groups capability with it, then make
 their profiles again. A wildcard ID can't have App Groups. The build
 stops, saying so, if a profile lacks the group. The simulator needs
-none of this. An app with its own share sheet (`app.ShareSheet`) needs
+none of this. An app with its own share sheet (`platform/sharesheet`) needs
 the group too, for its data, whatever it takes.
 
 `asuka publish --platform ios` makes it and uploads it to App Store Connect (see
@@ -201,26 +216,27 @@ the group too, for its data, whatever it takes.
 
 **Privacy manifest.** The App Store requires one, giving a reason for
 each API of Apple's list the app uses. Asuka writes it, from what the
-binary uses: Go's runtime reads the clock and file times. It declares
+binary uses: Asuka reads the clock and file times. It declares
 no tracking, and the data the app collects as `ios.collected` lists it,
 for what App Store Connect compares with the app's privacy labels:
 
-```json
-"ios": {
-  "collected": [{ "type": "EmailAddress", "linked": true, "purposes": ["AppFunctionality"] }]
-}
+```toml
+[[ios.collected]]
+type = "EmailAddress"
+linked = true
+purposes = ["AppFunctionality"]
 ```
 
 `type` and `purposes` are Apple's names without their prefixes
 (`NSPrivacyCollectedDataType`, `NSPrivacyCollectedDataTypePurpose`);
 `linked` says the data is tied to the user's identity, `tracking` that
-it's used to track them (see [the reference](asuka-json.md#ios)). If
+it's used to track them (see [the reference](asuka-toml.md#ios)). If
 your app tracks, or its manifest needs more than this, write your own
 as `ios/PrivacyInfo.xcprivacy`, with the reasons above in it too; Asuka
-uses it instead, and `ios.collected` with it is ignored.
-`asqlite.framework` has a manifest of its
-own, for what SQLite uses (file times, the disk's free space), whichever
-the app's is.
+uses it instead, and `ios.collected` with it is ignored. SQLite is part
+of the app's executable: the reasons Asuka writes cover what it uses
+(file times, the disk's free space), and a manifest of your own needs
+them too.
 
 ## Android
 
@@ -231,7 +247,7 @@ safe:
 keytool -genkeypair -v -keystore upload.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000
 ```
 
-Name it in `asuka.json` (`android.keystore`, `android.keyAlias`), and give
+Name it in `asuka.toml` (`android.keystore`, `android.keyAlias`), and give
 its password in the environment:
 
 ```sh
@@ -241,11 +257,15 @@ ASUKA_KEYSTORE_PASSWORD=... asuka build --platform android
 (`ASUKA_KEY_PASSWORD` too if the key's differs; `ASUKA_KEYSTORE` and
 `ASUKA_KEY_ALIAS` name them in CI.) It makes an `.aab` for Google Play, for
 64-bit and 32-bit ARM phones and x86_64 (emulators, Chromebooks),
-Android 13 and later; Play makes each phone's APK from it, with only
-that phone's architecture. An app that uses `asuka/sdk/sqlite` has SQLite
-beside its Go code in each architecture, `libasqlite.so`, which Android
-loads from the APK as it does the app's (uncompressed, on 16 KB pages). `asuka publish --platform android` makes it and uploads it to Google Play (see
+Android 13 and later: the app compiled for each architecture. Play makes
+each phone's APK from it, with only that phone's architecture. An app
+that uses `std/sqlite` has SQLite compiled into it for each
+architecture. `asuka publish --platform android` makes it and uploads it to Google Play (see
 [Publishing](#publishing)).
+
+`--apk` makes a signed release `.apk` with every architecture instead,
+to install directly (`adb install dist/<Name>.apk`): for testing a
+release build, or for an app given out other than through a store.
 
 ## Publishing
 
@@ -254,12 +274,12 @@ uploads it through the store's API. It asks the store first what could
 stop it (that the app is there and the key may upload to it, that the
 version still takes builds, that the TestFlight groups exist), so
 nothing is built for an upload that would fail. Each build is numbered
-one above the store's highest (and at least `asuka.json`'s `build`):
+one above the store's highest (and at least `asuka.toml`'s `build`):
 there's nothing to bump between releases. `--build 42` gives one.
 
 **App Store Connect.** Make an API key in App Store Connect (Users and
 Access › Integrations › App Store Connect API) with the App Manager
-role, download its `.p8`, and name it in `asuka.json`, or in the
+role, download its `.p8`, and name it in `asuka.toml`, or in the
 environment (`ASUKA_ASC_KEY_ID`, `ASUKA_ASC_ISSUER_ID`, and
 `ASUKA_ASC_KEY`, the `.p8`'s path or its text). Without a `key`, it's
 looked for as `altool` does, `AuthKey_<id>.p8` in
@@ -267,10 +287,10 @@ looked for as `altool` does, `AuthKey_<id>.p8` in
 repository. Add the app in App Store Connect first (Apps › + › New
 App), with its bundle ID.
 
-```json
-"ios": {
-  "appStoreConnect": { "keyId": "ABC123DEF4", "issuerId": "57246542-96fe-1a63-e053-0824d011072a" }
-}
+```toml
+[ios.appStoreConnect]
+keyId = "ABC123DEF4"
+issuerId = "57246542-96fe-1a63-e053-0824d011072a"
 ```
 
 ```sh
@@ -291,7 +311,7 @@ then:
 - `--groups` gives the build to TestFlight groups, by name. With an
   external group (testers outside your team), the build goes to beta
   review; fill in the test information in TestFlight first.
-- `--review` makes the App Store version (`asuka.json`'s `version`) if
+- `--review` makes the App Store version (`asuka.toml`'s `version`) if
   there isn't one, gives it the build, and submits it for review. A
   first submission needs its listing, screenshots and privacy answers
   filled in App Store Connect first; what's missing is printed.
@@ -303,7 +323,7 @@ then:
 (IAM › Service accounts › Keys), in a project with the Google Play
 Android Developer API turned on. Invite its email in the Play Console
 (Users and permissions), with the rights to release the app. Name its
-key in `asuka.json` (`"android": {"serviceAccount": "play.json"}`) or in
+key in `asuka.toml` (`serviceAccount = "play.json"` under `[android]`) or in
 `ASUKA_PLAY_SERVICE_ACCOUNT` (its path or its JSON). Play takes an app's
 first `.aab` only in the Play Console: create the app there and upload
 its first build by hand; `asuka publish` uploads the ones after.
@@ -337,21 +357,20 @@ asuka build --platform mac
 ```
 
 makes `dist/<Name>.app` on a Mac: a universal app (Apple silicon and
-Intel), for macOS 11 and later, with its Info.plist, icon, languages and
-assets, signed ad hoc: it runs on your Mac. The packages the app imports
+Intel), for macOS 11 and later: its executable (universal), its settings (`Contents/Resources/asuka-app.json`), its
+Info.plist, icon, languages and assets, signed ad hoc: it runs on your
+Mac. The packages the app imports
 give it their purpose strings, as on iOS, from `ios.usage` (location's
 is `NSLocationUsageDescription` on the Mac, taken from
 `NSLocationWhenInUseUsageDescription`), and the hardened runtime's
 entitlements for them (`com.apple.security.device.camera`,
 `...audio-input`, `...personal-information.location`...), without which
 an app signed with a Developer ID is refused the camera, the microphone
-or the user's data. An app with Swift of its own (`macos/*.swift`) has it
-compiled for both architectures into `Contents/Frameworks`, signed with
-the app (see [Native code](native.md)). An app that uses `asuka/sdk/sqlite`
-has SQLite's library there too (`libasqlite.dylib`, for both
-architectures), signed as the app is: with a Developer ID, the hardened
-runtime loads only libraries signed by the app's own team, and the
-notary service checks each one ([The library](data.md#the-library)).
+or the user's data. An app's native packages' Swift is
+compiled for both architectures into its executable (see
+[Native code](native.md)). An app that uses `std/sqlite` has SQLite
+compiled into its executable too, for both architectures
+([The library](data.md#the-library)).
 
 To give it to others outside the Mac App Store, sign it with your
 Developer ID and have Apple notarize it, so Gatekeeper opens it:
@@ -368,8 +387,8 @@ In CI, `--notarize env` takes `ASUKA_APPLE_ID`, `ASUKA_APPLE_PASSWORD` (an
 app-specific password) and `ASUKA_TEAM_ID` from the environment instead
 of a keychain profile.
 
-Push (`asuka/sdk/push`), Sign in with Apple (`asuka/sdk/appleauth`), App Attest
-(`asuka/sdk/integrity`) and iCloud (`asuka/sdk/icloud`) need entitlements
+Push (`platform/push`), Sign in with Apple (`platform/appleauth`), App Attest
+(`platform/integrity`) and iCloud (`platform/icloud`) need entitlements
 only a provisioning profile grants.
 Make a macOS Developer ID profile for the app's ID at developer.apple.com
 (Profiles), with those capabilities on for the ID, and download it:
@@ -387,7 +406,7 @@ team, and the hardened runtime. The build says which a profile lacks.
 Without `--sign`, the identity is the keychain's certificate the profile
 allows (Developer ID Application); a `--sign` the profile doesn't list is
 an error. `--profile` takes a path, or an installed profile's name or UUID;
-`ASUKA_MAC_PROFILE` and asuka.json's `mac.profile` say the same. With none,
+`ASUKA_MAC_PROFILE` and asuka.toml's `mac.profile` say the same. With none,
 an app that uses those packages is signed with the best match installed
 for its ID (in Xcode's profile folders), else without one: the build
 says what won't work on the Mac, and the rest of the app does.
@@ -395,7 +414,7 @@ says what won't work on the Mac, and the rest of the app does.
 `--appstore` makes `dist/<Name>.pkg` for the Mac App Store instead: the app in the
 App Sandbox (with the network and the files the user picks), signed
 with a Mac App Store profile's certificate (Apple Distribution;
-asuka.json's `mac.appStoreProfile`, else `--profile`, else the best match),
+asuka.toml's `mac.appStoreProfile`, else `--profile`, else the best match),
 and the package with the team's Mac Installer Distribution certificate.
 Upload it with Transporter or `xcrun altool --upload-package`;
 `asuka publish` doesn't upload Mac builds yet. Notarizing is for apps
@@ -408,15 +427,16 @@ asuka build --platform windows               # x64, which Windows on Arm runs em
 asuka build --platform windows --arch arm64  # native on Arm PCs
 ```
 
-makes a folder, `dist/<Name>`, from any system: `<Name>.exe` and the
-app's assets beside it, and for an app that uses `asuka/sdk/sqlite`,
-SQLite's library, `asqlite.dll`, for the same architecture (it needs
-only what every Windows 10 and 11 has: the Universal C Runtime). The
-`.exe` is a GUI program (no console window) with its resources built
-in: the icon at Windows's sizes, its version information (`version` and
-`build`), and a manifest that asks for the common controls 6,
-per-monitor DPI awareness and UTF-8, for Windows 10 and 11. An app with a `.syso` of its own in its directory has its own
-resources instead. Zip the folder, or package it (an installer, MSIX).
+makes a folder, `dist/<Name>`: `<Name>.exe`, the app (built for the
+architecture by clang on Windows or by Zig on any system); beside it
+`asuka-app.json`, its settings; and the app's assets. An app that uses
+`std/sqlite` has SQLite compiled into the `.exe`. The `.exe` is a GUI
+program (no console window) with its resources linked in: the icon at Windows's sizes, its version
+information (`version` and `build`), and a manifest that asks for the
+common controls 6, per-monitor DPI awareness and UTF-8, for Windows 10
+and 11. An app with a resource object of its own in its directory (a
+COFF `.syso`, `rsrc_windows_amd64.syso`) has its own resources instead. Zip the
+folder, or package it (an installer, MSIX).
 
 Sign the `.exe`, so SmartScreen knows who it's from, with a code signing
 certificate exported as a `.pfx`:
@@ -433,14 +453,14 @@ fails, saying so; `ASUKA_WINDOWS_TIMESTAMP=none` signs without a timestamp
 (the signature then ends with the certificate). It signs with `signtool` on
 Windows (the Windows SDK's; on the `PATH`, else the newest installed),
 with `osslsigncode` elsewhere (`brew install osslsigncode`, `apt install
-osslsigncode`), and `asqlite.dll` with it. Without `ASUKA_WINDOWS_CERT`
-the `.exe` isn't signed. A certificate on a hardware token or in a cloud
-service (Azure Trusted Signing) signs through its own tool: sign the
-`.exe` (and `asqlite.dll`) in the folder with it after the build.
+osslsigncode`). Without `ASUKA_WINDOWS_CERT` the `.exe` isn't signed. A
+certificate on a hardware token or in a cloud service (Azure Trusted
+Signing) signs through its own tool: sign the `.exe` in the folder with
+it after the build.
 
-An app that shows notifications (`asuka/sdk/notify`) is given a shortcut in the
+An app that shows notifications (`platform/notify`) is given a shortcut in the
 user's Start menu the first time, which Windows needs for an app's
-toasts: its AppUserModelID is asuka.json's `id` (else one of its name).
+toasts: its AppUserModelID is asuka.toml's `id` (else one of its name).
 
 ## Linux
 
@@ -449,18 +469,15 @@ asuka build --platform linux                # this machine's architecture, else 
 asuka build --platform linux --arch arm64   # amd64 or arm64
 ```
 
-It builds from any system: the host calls GTK 4 and libadwaita without
-cgo. In `dist/linux` it makes:
+It builds from any system, with no GTK installed to build against
+(the app opens GTK 4 and libadwaita as it starts): with this machine's
+C compiler on Linux, with Zig elsewhere. In `dist/linux` it makes:
 
 - `<name>/`, a folder laid out as an install prefix, named after the
   app in lower case (`My Notes`: `my-notes`):
-  - `bin/my-notes`, the app;
-  - `share/my-notes/assets`, its assets, which it finds from
-    `bin/`;
-  - `lib/my-notes/libasqlite.so`, SQLite's library, for an app that
-    uses `asuka/sdk/sqlite`, which it finds from `bin/` too (glibc 2.17 or
-    later; it shows none of SQLite's own symbols, so a system SQLite in
-    the same process doesn't mind it);
+  - `bin/my-notes`, the app, one executable;
+  - `share/my-notes/assets` and `share/my-notes/asuka-app.json`, its
+    assets and settings, which it finds from `bin/` too;
   - `share/applications/<id>.desktop`, what launchers show and run;
   - `share/icons/hicolor/<size>/apps/<id>.png`, the `icon` at each size
     from 16 to 512 pixels;
@@ -476,7 +493,7 @@ cgo. In `dist/linux` it makes:
 
 - `my-notes-<version>-linux-<arch>.tar.gz`, that folder, to hand out.
 - `<id>.yml`, a [Flatpak](https://flatpak.org) manifest that packages
-  that folder (its `bin`, `lib` and `share`) on the GNOME runtime:
+  that folder (its `bin` and `share`) on the GNOME runtime:
 
   ```sh
   flatpak install flathub org.gnome.Platform//50 org.gnome.Sdk//50   # once
@@ -491,19 +508,21 @@ shows the first's window), and its data directory
 (`~/.local/share/<id>`); it must be letters, digits, `_` and `-`, in two
 parts or more, none starting with a digit.
 
-What the desktop file and metainfo say, in `asuka.json`:
+What the desktop file and metainfo say, in `asuka.toml`:
 
-```json
-"linux": {
-  "summary": "Write things down",
-  "description": "Notes, kept on your computer.\n\nA second paragraph.",
-  "categories": ["Office"],
-  "keywords": ["memo"],
-  "license": "MIT",
-  "developer": "Example Inc.",
-  "homepage": "https://example.com",
-  "flatpakRuntime": "50"
-}
+```toml
+[linux]
+summary = "Write things down"
+description = """
+Notes, kept on your computer.
+
+A second paragraph."""
+categories = ["Office"]
+keywords = ["memo"]
+license = "MIT"
+developer = "Example Inc."
+homepage = "https://example.com"
+flatpakRuntime = "50"
 ```
 
 `categories` are [freedesktop.org's](https://specifications.freedesktop.org/menu-spec/latest/category-registry.html)
@@ -517,7 +536,7 @@ asuka build --platform web
 ```
 
 makes a static site in `dist/web`: `index.html`, the app as
-WebAssembly, the web host's scripts, the app's service worker, its
+WebAssembly (built by Zig), Asuka's scripts, the app's service worker, its
 assets, a web app manifest with its icons, gzipped copies, and a
 `_headers` file for Cloudflare and Netlify. The files are named by their
 digests, so all but `index.html` and the manifest can be cached for
@@ -527,7 +546,7 @@ store need it). See [the web](web.md) for what's in it and what a
 browser does differently.
 
 It also writes `version.json`, the version built and its release notes
-(`CHANGELOG.md`'s section), which `asuka/sdk/update` reads in the page: a
+(`CHANGELOG.md`'s section), which `platform/update` reads in the page: a
 page older than the site offers to reload ([Updates](#updates)).
 
 ## Updates
@@ -548,16 +567,15 @@ asuka update keygen
 
 It writes `asuka-update.key`, the secret key, and `asuka-update.pub`, the
 public key, to `asuka/update-keys` in your configuration directory
-(`--out` chooses another), and prints what to add to `asuka.json`. Keep
+(`--out` chooses another), and prints what to add to `asuka.toml`. Keep
 the secret key out of the repository: in a password manager, and in your
 CI's secrets. Installed apps take only updates signed with it, so losing
 it strands them, and whoever has it can ship code to your users.
 
-```json
-"updates": {
-  "publicKey": "…the contents of asuka-update.pub…",
-  "github": "you/notes"
-}
+```toml
+[updates]
+publicKey = "…the contents of asuka-update.pub…"
+github = "you/notes"
 ```
 
 | Key | What it is |
@@ -578,69 +596,107 @@ The environment says the same for CI and tests: `ASUKA_UPDATE_PRIVATE_KEY`
 
 ### In the app
 
-`update.Window` is the update window, in the app's root; `update.AppMenu`
-puts "Check for Updates…" in the app's menu after About on the Mac (a
-Help menu on Windows, the header bar's main menu on Linux):
+`platform/update`'s `UpdateWindow` is the update window: show it once, in
+the app's main window, where it takes no room. Its `AppMenu` puts "Check
+for Updates…" in the app's menu after About on the Mac (a Help menu on
+Windows and Linux); `CheckForUpdates` is that item alone, for a menu of
+your own or a tray icon's:
 
-```go
-func Root() ui.Node {
-	return ui.Column(ui.Style{},
-		update.Window(update.Options{Icon: "logo.png"}), // an image in assets/
-		ui.MenuBar(ui.Val([]ui.MenuBarMenu{update.AppMenu()})),
-		// ...
-	)
+```asuka
+import platform/update
+
+app {
+  Window {
+    title: "Notes"
+    update.UpdateWindow { icon: "logo.png" }  // an image in assets/
+    MenuBar { update.AppMenu() }
+    Text("Notes")
+  }
 }
 ```
 
-It checks 10 seconds after launch, then once a day (`Options.Interval`),
-and when a version is out it shows its release notes with **Install
+It checks 10 seconds after launch, then once a day (its `interval`), and
+when a version is out it shows its release notes with **Install
 Update**, **Remind Me Later** and **Skip This Version** (checks in the
 background don't offer that version again, but offer the next), and
 "Automatically download and install updates in the future": then checks
 install what they find without asking, and it runs at the next launch.
 Installing shows the download's progress, then **Relaunch Now**.
-`update.CheckForUpdates()` checks as the user asked (the menu item, a
+`update.checkForUpdates()` checks as the user asked (the menu item, a
 button): the window also says when the app is up to date or can't
-update itself. `AutomaticChecks`, `SetAutomaticChecks`,
-`AutomaticDownloads`, `SetAutomaticDownloads` and `LastCheck` are the
-user's choices (in `update.json` in the app's data directory), for a
-settings page. The window's words are Asuka's, in the app's language; an
-app changes them with keys `asuka.updateInstall` and so on in its
-catalogs.
+update itself. `automaticChecks()`, `setAutomaticChecks(on)`,
+`automaticDownloads()`, `setAutomaticDownloads(on)`, `lastCheck()` and
+`skippedVersion()` are the user's choices, kept on the device
+(std/storage), for a settings page; `UpdateWindow { automaticChecks:
+false }` doesn't check in the background until the user turns it on.
+The window's words are Asuka's, in the app's language.
 
-An interface of the app's own uses the package's functions, off the main
-thread, or the updater's state (`update.Use()`: checking, available,
-downloading with its bytes, ready...):
+An interface of the app's own uses `check()`, `Release.install` and
+`relaunch()`, or follows the updater's state, `update.updater`, a store
+(its `phase`: checking, available, downloading with `downloaded` and
+`total`, ready...):
 
-```go
-go func() {
-	r, err := update.Check(ctx) // nil: up to date
-	if err != nil || r == nil {
-		return
-	}
-	// r.Version, r.Notes (Markdown), r.Date, r.Size
-	if err := r.Install(ctx, func(done, total int64) { /* ui.Post the progress */ }); err == nil {
-		update.Relaunch() // app.Relaunch: quits (OnQuit may cancel), then starts the new version
-	}
-}()
+```asuka
+import platform/update
+
+component UpdateBanner {
+  state found: update.Release? = none
+  state done = 0.0
+
+  task {
+    do {
+      found = try await update.check()  // none: up to date
+    } catch e {
+      print(e.message)
+    }
+  }
+
+  if let r = found {
+    Row {
+      gap: 8
+      Text("Notes {r.version} is out")  // r.notes: Markdown; r.date, r.size
+      Button("Install") {
+        on press {
+          do {
+            try await r.install(progress: (got, total) => { done = float(got) / float(total) })
+            update.relaunch()  // quits (on quit may cancel), then starts the new version
+          } catch e {
+            print(e.message)
+          }
+        }
+      }
+      if done > 0 { Progress { value: done } }
+    }
+  }
+}
 ```
 
-`update.Supported()` says whether the app can update itself, and why not:
-a development build or one without `updates` (`ErrNotConfigured`), an app
-the system's packages, Flatpak, Snap, the Mac App Store or the Microsoft
-Store installed (`ErrManaged`: they update it), a Mac app run from where
-it was downloaded, which macOS translocates (`ErrTranslocated`: the user
-moves it to Applications), a folder the user can't write
-(`ErrNotWritable`), a phone (`ErrUnsupported`). The window never checks
-in the background then, and says why when the user checks.
+`await update.unsupported()` says why the app can't update itself, or
+none when it can: a development build or one without `updates`
+(`.notConfigured`), an app the system's packages, Flatpak, Snap, the Mac
+App Store or the Microsoft Store installed (`.managed`: they update it),
+a Mac app run from where it was downloaded, which macOS translocates
+(`.translocated`: the user moves it to Applications), a folder the user
+can't write (`.notWritable`), a phone (`.notAvailable`). The window
+never checks in the background then, and says why when the user checks.
 
-`update.SetChannel("beta")` offers a channel's prereleases too, for the
+`update.setChannel("beta")` offers a channel's prereleases too, for the
 users who chose your beta: a version's channel is its prerelease's
 letters (`1.4.0-beta.2` is `beta`'s), `"*"` takes every prerelease.
-Releases are offered on every channel. `update.SetSource` reads the
-manifests and downloads the files through code of the app's own (a
-service that wants the user's token); the signatures are checked all the
-same.
+Releases are offered on every channel. `update.setFeed(url)` reads
+another feed than `asuka.toml`'s (one chosen by the user's account): a
+manifest's URL, GitHub's releases, or a server's URL with `{target}`,
+`{version}` and `{channel}`; the signatures are checked all the same.
+`update.compareVersions(a, b)` orders versions as the updater does.
+
+On the web there's nothing to install: `check()` reads the site's
+`version.json` past the browser's caches, and a newer version's
+`relaunch()` reloads the page.
+
+In tests there's no update module, as on a phone, until
+`update.fakeHost(update.FakeApp(…))` makes the test answer as an
+installed app would and serve the feed's files (`host.serve(update.Served(url:,
+file:))`); `host.log()` says what it downloaded and installed.
 
 ### Build and publish
 
@@ -664,7 +720,7 @@ With `updates` and the secret key, `asuka build --platform mac`,
   `update-<target>-beta.json`, which only apps on its channel read.
 
 Without the key it builds the app and writes no update files, saying
-so. `--version 1.2.0` builds another version than `asuka.json`'s (CI takes
+so. `--version 1.2.0` builds another version than `asuka.toml`'s (CI takes
 it from the tag). A Windows folder and a Linux prefix also get
 `.asuka-files`, the list of what the version installs, so that its
 update removes what the next one no longer has, and nothing of yours.
@@ -698,12 +754,11 @@ asuka publish --platform linux --draft
 With `feed`, apps ask your server instead, its URL with `{target}`,
 `{version}` (the version they run) and `{channel}` filled in:
 
-```json
-"updates": {
-  "publicKey": "…",
-  "url": "https://downloads.example.com/notes",
-  "feed": "https://api.example.com/updates?target={target}&version={version}&channel={channel}"
-}
+```toml
+[updates]
+publicKey = "…"
+url = "https://downloads.example.com/notes"
+feed = "https://api.example.com/updates?target={target}&version={version}&channel={channel}"
 ```
 
 It answers `204 No Content` (or 404) when there's nothing newer, else
@@ -752,13 +807,13 @@ The signatures are the ones `asuka build` made: the server only chooses.
 
 ## In an existing app
 
-A Asuka app can live inside an app made in Xcode or Android Studio: a
-feature written once in Go, shown from a native app. (On the web, the
+An Asuka app can live inside an app made in Xcode or Android Studio: a
+feature written once in Asuka, shown from a native app. (On the web, the
 build's app runs in an element of a page of yours: see
 [the web](web.md).)
 
 **iOS.** `asuka build --platform ios --xcframework` makes `dist/AsukaApp.xcframework`:
-the app's Go code and the UIKit host, for devices and the simulator, with
+the app, for devices and the simulator, with
 a Swift module interface and the app's assets. Add it to your target
 (Embed & Sign), then show the Asuka app as any view controller:
 
@@ -769,17 +824,16 @@ present(AsukaViewController(), animated: true)
 // or push it, or make it a tab, or a window's root
 ```
 
-An app that uses `asuka/sdk/sqlite` comes with `dist/asqlite.xcframework`
-beside it, SQLite's library: embed it too (Embed & Sign). The Go code
-loads it from your app's `Frameworks`; it has its own privacy manifest.
+An app that uses `std/sqlite` has SQLite in the framework, its names
+its own: a SQLite of your app's doesn't mind it.
 
 **Android.** `asuka build --platform android --aar` makes a Maven repository in
-`dist/maven`: the host library with the app's Go code for each ABI, its
+`dist/maven`: the app's library for each ABI, its
 assets, and `AsukaActivity` declared, with its dependencies (Material,
-AndroidX) in its POM, and the optional modules the app uses (`asuka/sdk/push`,
-`asuka/sdk/maps`) beside it, and SQLite's library for each ABI when the app
-uses `asuka/sdk/sqlite`. Add the repository and the dependency the
-command prints, then start the activity:
+AndroidX) in its POM, and the optional modules the app uses (`platform/push`,
+`platform/maps`) beside it; SQLite, when the app uses `std/sqlite`, is in
+the app's library. Add the repository and the dependency the command
+prints, then start the activity:
 
 ```kotlin
 // settings.gradle.kts
@@ -791,7 +845,7 @@ startActivity(Intent(this, dev.asuka.AsukaActivity::class.java))
 ```
 
 The embedded app is one Asuka app, mounted once, as in a standalone
-build. What `asuka.json` sets for a whole app (its icon, URL scheme,
+build. What `asuka.toml` sets for a whole app (its icon, URL scheme,
 share target, widgets, permissions' texts) is the embedding app's to
 set in its own project.
 
@@ -799,19 +853,17 @@ set in its own project.
 
 A native crash's frames are addresses in the app's binaries; a crash
 service (or App Store Connect, or Google Play) turns them into
-functions and lines with the build's symbols. Go's own stack traces
-need none (their tables are in the binary), so a Go panic reads as it
-is.
+functions and lines with the build's symbols. An error the app
+doesn't catch is reported by Asuka with its message, whatever the
+symbols.
 
-**iOS.** `asuka build --platform ios` compiles the host with debug information,
-keeps the Go code's, and makes a dSYM of each binary (the app, its
+**iOS.** `asuka build --platform ios` builds the app with debug information
+and makes a dSYM of each binary (the app, its
 framework when it has a share sheet, its extensions), as Xcode's archive
 does, then strips the binaries. They're in `dist/<Name>.dSYMs`, beside
 the `.ipa` (or the simulator's `.app`), and their symbols in the `.ipa`
 (`Symbols/`), so App Store Connect and Xcode's Organizer symbolicate
-the crashes they show. SQLite's library (`asqlite.framework`) ships
-stripped, without a dSYM: its frames show as `asq_call`. Upload the
-dSYMs to your crash service:
+the crashes they show. Upload the dSYMs to your crash service:
 
 ```sh
 sentry-cli debug-files upload --org ORG --project PROJECT dist/Notes.dSYMs
@@ -819,7 +871,7 @@ sentry-cli debug-files upload --org ORG --project PROJECT dist/Notes.dSYMs
 upload-symbols -gsp GoogleService-Info.plist -p ios dist/Notes.dSYMs
 ```
 
-**Android.** `asuka build --platform android` keeps the Go libraries' symbol tables
+**Android.** `asuka build --platform android` keeps the app's symbol tables
 for Gradle, which strips the libraries it packages and puts their
 symbols in the `.aab`, with R8's map of the Kotlin it renamed: Google
 Play symbolicates native crashes and ANRs, and deobfuscates stack
@@ -831,13 +883,14 @@ sentry-cli debug-files upload --org ORG --project PROJECT dist/Notes-native-debu
 sentry-cli upload-proguard --org ORG --project PROJECT dist/Notes-mapping.txt
 ```
 
-**The Mac, Windows, Linux and the web.** The app is one Go binary, built
-without its symbol table and debug information (`-s -w`); Go's stack
-traces keep their function names and lines, so its panics read as they
-are, and there are no symbols to upload.
+**The Mac, Windows, Linux and the web.** Apps are built
+without debug information, and on Windows and Linux without their
+symbol tables (a Mac's binary keeps its global symbols): a crash
+report's frames are each a binary and an offset, named where the binary
+has the name. There are no symbols to upload.
 
 Keep each release's symbols: a crash is symbolicated with those of the
-build it happened in. See [Device](device.md#crash-reports-asukasdkcrash)
+build it happened in. See [Device](device.md#crash-reports-platformcrash)
 for the reports themselves.
 
 ## Before you release
@@ -879,6 +932,8 @@ on:
   workflow_dispatch:
 permissions:
   contents: write # to attach the builds to the tag's release
+env:
+  ASUKA_VERSION: 0.1.0 # the Asuka the app is made with
 
 jobs:
   release:
@@ -896,10 +951,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version-file: go.mod }
-      - name: the asuka CLI, at the app's version of asuka
-        run: go install github.com/egoist/asuka/cmd/asuka@$(go list -m -f '{{.Version}}' github.com/egoist/asuka)
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: the asuka CLI, at the app's version of Asuka
+        run: npm install -g @egoist/asuka@$ASUKA_VERSION
       - name: the distribution certificate and the profile
         env:
           CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
@@ -940,16 +995,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version-file: go.mod }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 17 }
       - uses: android-actions/setup-android@v3
         with: { packages: platform-tools }
       - name: an NDK
         run: sdkmanager "ndk;27.1.12297006"
-      - name: the asuka CLI, at the app's version of asuka
-        run: go install github.com/egoist/asuka/cmd/asuka@$(go list -m -f '{{.Version}}' github.com/egoist/asuka)
+      - name: the asuka CLI, at the app's version of Asuka
+        run: npm install -g @egoist/asuka@$ASUKA_VERSION
       - name: the upload key
         env:
           KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
@@ -990,8 +1045,9 @@ base64 (`base64 -i file | pbcopy`):
   invited in the Play Console's Users and permissions with the right to
   release to testing tracks.
 
-The CLI carries the iOS and Android hosts, so it's installed at the
-version of Asuka in the app's `go.mod`. Each build is numbered after the
+The CLI builds the app with its own version of Asuka, so it's installed
+at the version the app is made with: `ASUKA_VERSION`, which you
+raise as you move the app to a newer Asuka. Each build is numbered after the
 store's highest, so nothing is bumped before you tag; `--no-wait` ends
 the iOS job once Apple has the upload, not once it's processed. The App Store takes builds
 made with a recent Xcode only; if the runner's default is older, pick
@@ -1004,7 +1060,7 @@ tag and attach them to its draft release: the Mac's signed with your
 Developer ID and notarized, Windows' for x64 and Arm, signed, and
 Linux's for amd64 and arm64. Windows' and Linux's build on Linux, so
 one Ubuntu runner makes both. (The app is named Notes here: its files
-are named after `asuka.json`'s `name`.)
+are named after `asuka.toml`'s `name`.)
 
 ```yaml
   mac:
@@ -1012,10 +1068,10 @@ are named after `asuka.json`'s `name`.)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version-file: go.mod }
-      - name: the asuka CLI, at the app's version of asuka
-        run: go install github.com/egoist/asuka/cmd/asuka@$(go list -m -f '{{.Version}}' github.com/egoist/asuka)
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: the asuka CLI, at the app's version of Asuka
+        run: npm install -g @egoist/asuka@$ASUKA_VERSION
       - name: the Developer ID certificate
         env:
           CERTIFICATE: ${{ secrets.MAC_CERTIFICATE }}
@@ -1049,10 +1105,11 @@ are named after `asuka.json`'s `name`.)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version-file: go.mod }
-      - name: the asuka CLI, at the app's version of asuka
-        run: go install github.com/egoist/asuka/cmd/asuka@$(go list -m -f '{{.Version}}' github.com/egoist/asuka)
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: mlugg/setup-zig@v2 # cross-compiles the app
+      - name: the asuka CLI, at the app's version of Asuka
+        run: npm install -g @egoist/asuka@$ASUKA_VERSION
       - name: osslsigncode, and the code signing certificate
         env:
           CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
@@ -1118,7 +1175,7 @@ and in the Windows and Linux job:
 Then publish the draft (`gh release edit v1.2.0 --draft=false`, or in
 the release's page): installed apps update to it. The release job's tag
 is `tagPrefix` and the version (`v1.2.0`); `--version` makes the build's
-the tag's, so `asuka.json`'s needn't be bumped. Deltas start from the
+the tag's, so `asuka.toml`'s needn't be bumped. Deltas start from the
 published release, which the runners download (`GH_TOKEN` lifts the
 GitHub API's limit on requests, which a `tagPrefix` uses).
 

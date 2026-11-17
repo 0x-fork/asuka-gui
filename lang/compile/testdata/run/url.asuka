@@ -1,0 +1,115 @@
+// std/url: parsing, resolving (RFC 3986's examples), escaping, queries.
+
+import std/url
+
+test "parsing" {
+  if let u = url.parse("HTTPS://user:pw@Example.com:8443/a/b%20c?q=asuka+lang&x=1&q=two#top") {
+    print("{u.scheme} {u.user} {u.host} {u.port ?? 0} {u.path} {u.rawQuery} {u.fragment}")
+    print(u.query("q") ?? "none")
+    print(u.queryAll("q"))
+    print(u.query("nope") ?? "none")
+    print(u.text())
+  }
+  if let u = url.parse("http://[::1]:80/") {
+    print("{u.host} {u.port ?? 0} {u.text()}")
+  }
+  if let u = url.parse("mailto:someone@example.com") {
+    print("{u.scheme}|{u.host}|{u.path}|{u.text()}")
+  }
+  if let u = url.parse("file:///etc/hosts") {
+    print("{u.host}|{u.path}|{u.text()}")
+  }
+  if let u = url.parse("../a?b") {
+    print("{u.scheme}|{u.path}|{u.rawQuery}")
+  }
+  for bad in ["http://a b", "http://x:99999", "http://x:8a", "1http://x", "a%zz", "http://[::1"] {
+    print(url.parse(bad).isNone())
+  }
+}
+
+test "resolving" {
+  let base = "http://a/b/c/d;p?q"
+  for r in ["g:h", "g", "./g", "g/", "/g", "//g", "?y", "g?y", "#s", "g#s", "g?y#s", ";x", "g;x", "", ".", "./", "..", "../", "../g", "../..", "../../", "../../g", "../../../g", "/./g", "/../g", "g.", ".g", "g..", "..g", "./../g", "./g/.", "g/./h", "g/../h", "g;x=1/./y", "g;x=1/../y"] {
+    print("{r} -> {url.resolve(base, r)}")
+  }
+  if let u = url.parse("https://example.com") {
+    print(u.resolve("x/y"))
+  }
+}
+
+test "escaping" {
+  print(url.escape("fish & chips/€ ~ok"))
+  print(url.pathEscape("fish & chips/€ ~ok"))
+  print(url.unescape("fish+%26+chips%2F%E2%82%AC") ?? "bad")
+  print(url.pathUnescape("a+b%20c") ?? "bad")
+  print(url.unescape("bad%2") ?? "bad")
+  print(url.encodeQuery(["q": "fish & chips", "page": "2", "empty": ""]))
+  for (k, v) in url.parseQuery("a=1&b&c=x%3Dy&&d=%zz") {
+    print("{k}={v};")
+  }
+}
+
+// Output:
+// https user:pw Example.com 8443 /a/b%20c q=asuka+lang&x=1&q=two top
+// asuka lang
+// ["asuka lang","two"]
+// none
+// https://user:pw@Example.com:8443/a/b%20c?q=asuka+lang&x=1&q=two#top
+// ::1 80 http://[::1]:80/
+// mailto||someone@example.com|mailto:someone@example.com
+// |/etc/hosts|file:///etc/hosts
+// |../a|b
+// true
+// true
+// true
+// true
+// true
+// true
+// ok parsing
+// g:h -> g:h
+// g -> http://a/b/c/g
+// ./g -> http://a/b/c/g
+// g/ -> http://a/b/c/g/
+// /g -> http://a/g
+// //g -> http://g
+// ?y -> http://a/b/c/d;p?y
+// g?y -> http://a/b/c/g?y
+// #s -> http://a/b/c/d;p?q#s
+// g#s -> http://a/b/c/g#s
+// g?y#s -> http://a/b/c/g?y#s
+// ;x -> http://a/b/c/;x
+// g;x -> http://a/b/c/g;x
+//  -> http://a/b/c/d;p?q
+// . -> http://a/b/c/
+// ./ -> http://a/b/c/
+// .. -> http://a/b/
+// ../ -> http://a/b/
+// ../g -> http://a/b/g
+// ../.. -> http://a/
+// ../../ -> http://a/
+// ../../g -> http://a/g
+// ../../../g -> http://a/g
+// /./g -> http://a/g
+// /../g -> http://a/g
+// g. -> http://a/b/c/g.
+// .g -> http://a/b/c/.g
+// g.. -> http://a/b/c/g..
+// ..g -> http://a/b/c/..g
+// ./../g -> http://a/b/g
+// ./g/. -> http://a/b/c/g/
+// g/./h -> http://a/b/c/g/h
+// g/../h -> http://a/b/c/h
+// g;x=1/./y -> http://a/b/c/g;x=1/y
+// g;x=1/../y -> http://a/b/c/y
+// https://example.com/x/y
+// ok resolving
+// fish+%26+chips%2F%E2%82%AC+~ok
+// fish%20&%20chips/%E2%82%AC%20~ok
+// fish & chips/€
+// a+b c
+// bad
+// empty=&page=2&q=fish+%26+chips
+// a=1;
+// b=;
+// c=x=y;
+// ok escaping

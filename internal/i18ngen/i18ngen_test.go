@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"flag"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -96,62 +94,28 @@ func TestApp(t *testing.T) {
 	for _, k := range c.Keys {
 		var ps []string
 		for _, p := range k.Params {
-			ps = append(ps, p.Name+":"+p.Type+":"+p.Go)
+			ps = append(ps, p.Name+":"+p.Type)
 		}
-		params = append(params, k.GoName+"("+strings.Join(ps, ", ")+")")
+		params = append(params, k.Name+"("+strings.Join(ps, ", ")+")")
 	}
 	wantParams := []string{
-		"Title()",
-		"FilesSelected(count:int:count)",
-		"Greeting(name:String:name)",
-		"Replied(gender:String:gender, when:DateTime:when)",
-		"Progress(done:double:done)",
-		"Place(n:int:n)",
-		"Guests(host:String:host, n:num:n)",
-		"Positional(0:String:arg0, 1:String:arg1)",
-		"Keyword(type:String:type_, default:String:default_, string:String:string_, any:String:any_)",
-		"Untyped(value:String:value)",
-		"Object(item:Object:item)",
-		"SaveAs()",
+		"title()",
+		"filesSelected(count:int)",
+		"greeting(name:String)",
+		"replied(gender:String, when:DateTime)",
+		"progress(done:double)",
+		"place(n:int)",
+		"guests(host:String, n:num)",
+		"positional(0:String, 1:String)",
+		"keyword(type:String, default:String, string:String, any:String)",
+		"untyped(value:String)",
+		"object(item:Object)",
+		"save_as()",
 	}
 	if !slices.Equal(params, wantParams) {
 		t.Errorf("keys:\n%s\nwant:\n%s", strings.Join(params, "\n"), strings.Join(wantParams, "\n"))
 	}
 
-	src, err := Go(c, "locales")
-	if err != nil {
-		t.Fatal(err)
-	}
-	golden(t, "testdata/app/"+GoFile, src)
-}
-
-// TestGoldenBuilds compiles the Go accessors of the golden catalog, with a
-// program that says its messages.
-func TestGoldenBuilds(t *testing.T) {
-	if testing.Short() {
-		t.Skip("builds a program")
-	}
-	out, err := exec.Command("go", "vet", "./testdata/app").CombinedOutput()
-	if err != nil {
-		t.Fatalf("go vet: %v\n%s", err, out)
-	}
-	out, err = exec.Command("go", "run", "./testdata/app/say").CombinedOutput()
-	if err != nil {
-		t.Fatalf("go run: %v\n%s", err, out)
-	}
-	want := `Notes
-Notizen
-3 files selected
-Keine Dateien ausgewählt
-已選取 1 個檔案
-Ada and 2 others
-Dismiss
-Abbrechen
-[en de en-GB zh-Hant]
-`
-	if string(out) != want {
-		t.Errorf("the program says:\n%s\nwant:\n%s", out, want)
-	}
 }
 
 func TestBad(t *testing.T) {
@@ -198,41 +162,5 @@ func TestLibraryKeys(t *testing.T) {
 	}
 	if len(diags) != 1 || !strings.Contains(diags[0].Msg, `"other.b" is not a key`) {
 		t.Errorf("diagnostics: %v", diags)
-	}
-	src, err := Go(library(t), "l10n")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{`i18n.NewLibraryCatalog(files, "en", "asuka")`, "func QuitApp(app string) string", `"asuka.<key>"`} {
-		if !bytes.Contains(src, []byte(want)) {
-			t.Errorf("the library's accessors lack %q:\n%s", want, src)
-		}
-	}
-	if bytes.Contains(src, []byte("Register")) {
-		t.Error("a library's catalog is registered")
-	}
-}
-
-func TestPackageName(t *testing.T) {
-	dir := t.TempDir()
-	for name, want := range map[string]string{"locales": "locales", "My-Strings": "mystrings", "2l10n": "l10n", "---": "locales"} {
-		d := filepath.Join(dir, name)
-		if err := os.Mkdir(d, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if got, err := PackageName(d); err != nil || got != want {
-			t.Errorf("PackageName(%s) = %q, %v, want %q", name, got, err, want)
-		}
-	}
-	d := filepath.Join(dir, "locales")
-	os.WriteFile(filepath.Join(d, GoFile), []byte("package ignored\n"), 0o644)
-	os.WriteFile(filepath.Join(d, "x_test.go"), []byte("package ignored_test\n"), 0o644)
-	os.WriteFile(filepath.Join(d, "doc.go"), []byte("// Package strings.\npackage strs\n"), 0o644)
-	if got, err := PackageName(d); err != nil || got != "strs" {
-		t.Errorf("PackageName with doc.go = %q, %v", got, err)
-	}
-	os.WriteFile(filepath.Join(d, "doc.go"), []byte("package main\n"), 0o644)
-	if _, err := PackageName(d); err == nil || !strings.Contains(err.Error(), "main package") {
-		t.Errorf("PackageName of a main package: %v", err)
 	}
 }

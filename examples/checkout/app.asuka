@@ -1,0 +1,280 @@
+// Checkout sells a tea set with the platform's wallet (platform/pay): Apple
+// Pay on iOS, macOS and in Safari, Google Pay on Android and in the
+// other browsers. The wallet's sheet asks for a shipping address and a
+// method; the tax follows the address, the shipping the method, and the
+// coupon TEA10 takes 10% off (Apple Pay). Its server is pretend: it
+// accepts any token but "declined".
+//
+//   asuka dev --platform ios examples/checkout      # the simulator's Apple Pay, with its test cards
+//   asuka dev --platform android examples/checkout  # Google Pay's TEST environment
+
+import platform/pay
+
+let price = 4000 // cents
+
+let methods = [
+  pay.ShippingMethod(id: "ground", label: "Ground", detail: "Arrives in 5 to 7 days", amount: "0.00"),
+  pay.ShippingMethod(id: "express", label: "Express", detail: "Arrives tomorrow", amount: "9.00"),
+]
+
+/// The states' sales tax, in basis points: a pretend table.
+let taxRates = ["CA": 800, "NY": 400, "WA": 650]
+
+fn money(cents: int) -> string {
+  let sign = if cents < 0 { "-" } else { "" }
+  let c = cents.abs()
+  return "{sign}{c / 100}.{(c % 100).padded(2)}"
+}
+
+/// What the sheet shows as the user changes it.
+struct Order {
+  quantity: int
+  state: string = ""
+  method: string = "ground"
+  coupon: string = ""
+
+  fn shipping() -> int = if method == "express" { 900 } else { 0 }
+  fn discount() -> int = if coupon == "TEA10" { quantity * price / 10 } else { 0 }
+  fn tax() -> int = (quantity * price - discount()) * (taxRates[state] ?? 0) / 10000
+  fn total() -> int = quantity * price - discount() + shipping() + tax()
+
+  fn items() -> [pay.Item] {
+    var items = [pay.Item(label: "Tea set × {quantity}", amount: money(quantity * price))]
+    if discount() > 0 {
+      items.push(pay.Item(label: "Coupon TEA10", amount: money(-discount()), kind: .discount))
+    }
+    items.push(pay.Item(label: "Shipping", amount: money(shipping()), kind: .shippingCost))
+    items.push(pay.Item(label: "Tax", amount: money(tax()), kind: .tax))
+    return items
+  }
+
+  fn update() -> pay.Update = pay.Update(items: items(), total: pay.Item(amount: money(total())))
+}
+
+/// What the server says when the processor declines a card.
+struct Declined: Error {
+  message: string
+}
+
+/// The app's server: it would charge the token with the processor
+/// (Stripe, Adyen, Braintree...). Here: any token but "declined".
+async fn charge(p: pay.Payment, cents: int) throws {
+  if p.token == "declined" {
+    throw Declined(message: "Your card was declined. Try another.")
+  }
+}
+
+/// The payment for quantity sets.
+fn request(quantity: int) -> pay.Request {
+  var order = Order(quantity: quantity)
+  return pay.Request(
+    country: "US",
+    currency: "USD",
+    items: order.items(),
+    total: pay.Item(label: "Asuka Tea", amount: money(order.total())),
+    shipping: [.name, .address, .email],
+    shippingMethods: methods,
+    shippingCountries: ["US"],
+    coupons: true,
+    apple: pay.Apple(merchantId: "merchant.dev.asuka.checkout"),
+    // Google's example gateway: TEST tokens, for any app.
+    google: pay.Google(gateway: "example", gatewayParams: ["gatewayMerchantId": "exampleGatewayMerchantId"]),
+    onShippingContact: c => {
+      if !c.address.countryCode.isEmpty() && c.address.countryCode != "US" {
+        throw pay.Invalid(field: .unserviceable, message: "We ship in the United States only.")
+      }
+      order.state = c.address.state.upper()
+      return order.update()
+    },
+    onShippingMethod: m => {
+      order.method = m.id
+      return order.update()
+    },
+    onCoupon: code => {
+      let c = code.trim().upper()
+      if !c.isEmpty() && c != "TEA10" {
+        order.coupon = ""
+        throw pay.Invalid(field: .couponInvalid, message: "That coupon isn't ours.", update: order.update())
+      }
+      order.coupon = c
+      return order.update()
+    },
+    onAuthorize: p => {
+      if p.shipping.address.postalCode.isEmpty() {
+        throw pay.Invalid(field: .shippingPostalCode, message: "Enter a ZIP code.")
+      }
+      try await charge(p, order.total())
+    },
+  )
+}
+
+/// What the wallet's button says.
+fn payLabel(a: pay.Availability) -> string = match a.wallet {
+  .applePay => if a.hasCard { "Buy with Apple Pay" } else { "Set up Apple Pay" }
+  .googlePay => "Buy with Google Pay"
+  .none => ""
+}
+
+fn firstName(c: pay.Contact) -> string {
+  if !c.givenName.isEmpty() { return c.givenName }
+  return c.name.fields().first() ?? "friend"
+}
+
+component Checkout {
+  state quantity = 1
+  state status = ""
+  state paying = false
+
+  let wallet = load pay.available(request(1))
+
+  async fn buy() {
+    if paying { return }
+    paying = true
+    defer { paying = false }
+    status = ""
+    do {
+      let p = try await pay.pay(request(quantity))
+      status = "Thanks, {firstName(p.shipping)}! Your tea is on its way ({p.shippingMethod})."
+    } catch pay.PayError.canceled {} catch e {
+      status = e.message
+    }
+  }
+
+  SafeArea {
+    padding: 24
+    gap: 16
+    justify: .center
+    Text("Tea set") { font: .largeTitle.bold() }
+    Text("A pot and four cups in celadon.") { color: .secondaryLabel }
+    Row {
+      gap: 12
+      align: .center
+      Button("−") {
+        variant: .gray
+        on press { quantity = max(quantity - 1, 1) }
+      }
+      Text("{quantity} × ${money(price)}") { font: .headline }
+      Button("+") {
+        variant: .gray
+        on press { quantity += 1 }
+      }
+    }
+    match wallet {
+      .ready(w) => if w.canPay {
+        pay.PayButton {
+          // Apple's guidelines: Set Up Apple Pay where the user has no card
+          // yet (its sheet adds one too).
+          type: if w.wallet == .applePay && !w.hasCard { .setUp } else { .buy }
+          variant: .automatic
+          // What screen readers say of it (and tests tap it by).
+          label: payLabel(w)
+          on press {
+            if w.wallet == .applePay && !w.hasCard {
+              try? await pay.setUp()
+            } else {
+              await buy()
+            }
+          }
+        }
+      } else {
+        Text("This device has no wallet to pay with.") { color: .secondaryLabel }
+      }
+      _ => Activity()
+    }
+    Text(status) { color: .secondaryLabel }
+  }
+}
+
+app { Checkout() }
+
+let ada = pay.Contact(
+  givenName: "Ada",
+  familyName: "Lovelace",
+  email: "ada@example.com",
+  address: pay.PostalAddress(lines: ["1 Infinite Loop"], city: "Cupertino", state: "CA", postalCode: "95014", countryCode: "US"),
+)
+
+/// Waits for the app's answer to what the wallet's user did.
+async fn answered(app: TestApp, w: pay.FakeWallet) {
+  await app.until("the app's answer", () => !w.waiting)
+}
+
+// On Apple Pay: the tax follows the address, the shipping the method, a
+// bad coupon shows by its field, a declined card in the sheet; the
+// payment that goes through thanks the user.
+test "Apple Pay" {
+  let w = pay.fake(wallet: .applePay)
+  let app = mount(Checkout(), platform: .iOS)
+  await app.waitFor("Buy with Apple Pay")
+  app.tap("+")
+  app.tap("Buy with Apple Pay")
+  await app.until("the sheet", () => w.sheet != none)
+  let s = w.sheet!
+  expect(s.total.amount == "80.00" && s.total.label == "Asuka Tea" && s.items[0].label == "Tea set × 2")
+  w.changeShippingContact(ada)
+  await answered(app, w)
+  expect(w.sheet!.total.amount == "86.40") // 8% in California
+  w.chooseShippingMethod("express")
+  await answered(app, w)
+  expect(w.sheet!.total.amount == "95.40")
+  w.enterCoupon("FREE")
+  await answered(app, w)
+  expect(w.sheet!.errors.map(e => e.field) == [pay.Field.couponInvalid])
+  w.enterCoupon("tea10")
+  await answered(app, w)
+  expect(w.sheet!.total.amount == "86.76" && w.sheet!.errors.isEmpty()) // 80 - 8 + 9 + 8% of 72
+  let card = pay.Card(network: .visa, kind: .credit, name: "Visa 1234")
+  w.authorize(pay.Payment(token: "declined", card: card, shipping: ada))
+  await answered(app, w)
+  expect(w.sheet!.errors.map(e => e.message) == ["Your card was declined. Try another."])
+  w.authorize(pay.Payment(token: "\{\"data\":\"…\"}", card: card, shipping: ada))
+  await app.waitFor("Thanks, Ada! Your tea is on its way (express).")
+  expect(w.sheet == none && w.authorized)
+}
+
+// On Google Pay: the same order, through Google's callbacks.
+test "Google Pay" {
+  let w = pay.fake(wallet: .googlePay)
+  let app = mount(Checkout(), platform: .android)
+  await app.waitFor("Buy with Google Pay")
+  app.tap("Buy with Google Pay")
+  await app.until("the sheet", () => w.sheet != none)
+  w.changeShippingContact(ada)
+  await answered(app, w)
+  expect(w.sheet!.total.amount == "43.20")
+  w.changeShippingContact(pay.Contact(givenName: "Ada", address: pay.PostalAddress(state: "CA", postalCode: "75001", countryCode: "FR")))
+  await answered(app, w)
+  expect(w.sheet!.errors.map(e => e.field) == [pay.Field.unserviceable])
+  let card = pay.Card(network: .visa, kind: .debit, name: "Visa •••• 4242")
+  w.authorize(pay.Payment(token: "tok_visa", card: card, shipping: ada))
+  await app.waitFor("Thanks, Ada! Your tea is on its way (ground).")
+}
+
+// Closed without paying: nothing said. Without a wallet (a desktop, a
+// browser with neither), no button.
+test "cancelled, and no wallet" {
+  let w = pay.fake(wallet: .applePay)
+  let a = mount(Checkout(), platform: .iOS)
+  await a.waitFor("Buy with Apple Pay")
+  a.tap("Buy with Apple Pay")
+  await a.until("the sheet", () => w.sheet != none)
+  w.cancel()
+  await a.until("pay's return", () => w.sheet == none)
+  a.expectNo("Thanks, Ada! Your tea is on its way (ground).")
+
+  let nowallet = pay.fake(wallet: .none)
+  nowallet.canPay = false
+  let b = mount(Checkout(), platform: .windows)
+  await b.waitFor("This device has no wallet to pay with.")
+  b.expectNo("Buy with Apple Pay", "Buy with Google Pay")
+}
+
+// Apple Pay without a card: its Set Up button, which opens Wallet's.
+test "set up Apple Pay" {
+  let w = pay.fake(wallet: .applePay)
+  w.hasCard = false
+  let app = mount(Checkout(), platform: .iOS)
+  await app.waitFor("Set up Apple Pay")
+  app.tap("Set up Apple Pay")
+  await app.until("setUp", () => w.setUps == 1)
+}

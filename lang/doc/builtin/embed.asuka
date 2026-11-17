@@ -1,0 +1,40 @@
+// Package std/embed compiles files of the package into the app, read as
+// it compiles: text, bytes, JSON read as a type of yours (and checked
+// then: a file that doesn't fit is a compile error, not one at run time),
+// and every file a glob names.
+//
+//   struct Config { api: string; retries: int }
+//
+//   let readme = embed.text("README.md")
+//   let logo = embed.bytes("art/logo.png")
+//   let config: Config = embed.json("config.json")
+//   let posts = embed.texts("posts/*.md")
+//
+// A path is a string literal, relative to the package's directory (where
+// its asuka.toml is), inside it. A glob is a path with * (any name, or
+// part of one), ? (one character), [abc] (one of them) and ** (any
+// directories); it never names a file or a directory whose name starts
+// with a dot. A file that isn't there, or a glob that names none, is a
+// compile error. With asuka dev, changing an embedded file (or adding one
+// a glob names) reloads the app in place, as changing its code does.
+//
+// The files are in the app's code, so a phone, a desktop and the web all
+// have them, with nothing to load. For files the platform reads as the
+// app runs (images, fonts, sounds), use assets/ instead.
+
+/// The text of the file at path (UTF-8).
+pub native fn text(path: string) -> string
+/// The bytes of the file at path.
+pub native fn bytes(path: string) -> bytes
+/// The file at path read as JSON into a T, as json.decode reads it: T
+/// comes from what's expected of the call (let config: Config =
+/// embed.json("config.json")) or is given (embed.json<Config>(path)). The
+/// file is checked against T as the app compiles, so it can't fail as
+/// it runs.
+pub native fn json<T>(path: string) -> T
+/// The text of each file the glob names, by its path in the package
+/// ("posts/hello.md"), in order of path.
+pub native fn texts(glob: string) -> [string: string]
+/// The bytes of each file the glob names, by its path in the package, in
+/// order of path.
+pub native fn files(glob: string) -> [string: bytes]

@@ -1,10 +1,9 @@
 package conformance
 
 import (
+	"fmt"
 	"math"
-
-	"github.com/egoist/asuka/colors"
-	"github.com/egoist/asuka/ui"
+	"strings"
 )
 
 // Case is one rendering check: a scene in a Cell-point square, on
@@ -12,25 +11,37 @@ import (
 type Case struct {
 	Name  string
 	Needs []Feature
-	// Scene is the case's views, placed from the cell's top left.
-	Scene func() ui.Node
+	// Scene is the case's views, Asuka view items placed from the cell's
+	// top left.
+	Scene string
 	Check func(p *Probe)
 }
 
-var (
-	cRed    = colors.RGB(255, 0, 0)
-	cBlue   = colors.RGB(0, 0, 255)
-	cYellow = colors.RGB(255, 255, 0)
-	cBlack  = colors.RGB(0, 0, 0)
-	yellow  = RGB{255, 255, 0}
+var yellow = RGB{255, 255, 0}
+
+// box is a view at (x, y), w by h points, in its parent, with style (its
+// other props, Asuka's) and kids (view items): Asuka source.
+func box(x, y, w, h float32, style string, kids ...string) string {
+	b := fmt.Sprintf("View { absolute: true; left: %g; top: %g; width: %g; height: %g", x, y, w, h)
+	if style != "" {
+		b += "; " + style
+	}
+	for _, k := range kids {
+		b += "; " + k
+	}
+	return b + " }"
+}
+
+// The cases' colors.
+const (
+	cRed    = "#ff0000"
+	cBlue   = "#0000ff"
+	cYellow = "#ffff00"
+	cBlack  = "#000000"
 )
 
-// box is a view at (x, y), w by h points, in its parent.
-func box(x, y, w, h float32, s ui.Style, kids ...ui.Node) ui.Node {
-	s.Absolute = true
-	s.Left, s.Top, s.Width, s.Height = ui.Pt(x), ui.Pt(y), ui.Pt(w), ui.Pt(h)
-	return ui.View(ui.ViewProps{Style: s}, kids...)
-}
+// style joins props: style("background: #ff0000", "radius: 20").
+func style(props ...string) string { return strings.Join(props, "; ") }
 
 // edges checks a red rectangle's four edges on white, through its
 // middle.
@@ -78,16 +89,16 @@ func shadowed(p *Probe) float64 {
 var Cases = []Case{
 	{
 		Name:  "background",
-		Scene: func() ui.Node { return box(20, 30, 60, 40, ui.Style{Background: cRed}) },
+		Scene: box(20, 30, 60, 40, "background: "+cRed),
 		Check: func(p *Probe) { edges(p, "the box", 20, 30, 80, 70) },
 	},
 	{
 		// The core places frames on the device's pixels, so an edge set
 		// between them lands on one, crisp: no column half covered.
 		Name:  "pixel_aligned",
-		Scene: func() ui.Node { return box(20.3, 30.3, 59.4, 39.4, ui.Style{Background: cRed}) },
+		Scene: box(20.3, 30.3, 59.4, 39.4, "background: "+cRed),
 		Check: func(p *Probe) {
-			cov := func(c RGB) float64 { return c.Mix(white, red) }
+			cov := func(c RGB) float64 { return c.Mix(p.ref(white), p.ref(red)) }
 			for _, line := range [][4]float64{{0, 50, Cell - 1, 50}, {50, 0, 50, Cell - 1}} {
 				for _, s := range p.Profile(line[0], line[1], line[2], line[3], cov) {
 					if s.v > 0.1 && s.v < 0.9 {
@@ -101,7 +112,7 @@ var Cases = []Case{
 	},
 	{
 		Name:  "corner_radius",
-		Scene: func() ui.Node { return box(10, 10, 80, 80, ui.Style{Background: cRed, CornerRadius: 20}) },
+		Scene: box(10, 10, 80, 80, style("background: "+cRed, "radius: 20")),
 		Check: func(p *Probe) {
 			edges(p, "the box", 10, 10, 90, 90)
 			p.Mix("the corner", 11.5, 11.5, white, red, 0, 0.1)
@@ -117,10 +128,8 @@ var Cases = []Case{
 		},
 	},
 	{
-		Name: "border",
-		Scene: func() ui.Node {
-			return box(10, 10, 80, 80, ui.Style{Background: cYellow, BorderWidth: 6, BorderColor: cBlue})
-		},
+		Name:  "border",
+		Scene: box(10, 10, 80, 80, style("background: "+cYellow, "border: 6", "borderColor: "+cBlue)),
 		Check: func(p *Probe) {
 			p.Edge("the border's outside, left", 0, 50, 13, 50, white, blue, 10)
 			p.Edge("the border's inside, left", 13, 50, 50, 50, blue, yellow, 16)
@@ -131,7 +140,7 @@ var Cases = []Case{
 	},
 	{
 		Name:  "opacity",
-		Scene: func() ui.Node { return box(20, 20, 60, 60, ui.Style{Background: cRed, Opacity: 0.5}) },
+		Scene: box(20, 20, 60, 60, style("background: "+cRed, "opacity: 0.5")),
 		Check: func(p *Probe) {
 			p.Logf("the middle %.2f red", p.Mix("the middle", 50, 50, white, red, 0.5, 0.06))
 		},
@@ -141,12 +150,10 @@ var Cases = []Case{
 		// one picture, then faded, the overlap is as light as the rest.
 		Name:  "group_opacity",
 		Needs: []Feature{GroupOpacity},
-		Scene: func() ui.Node {
-			return box(10, 10, 80, 80, ui.Style{Opacity: 0.5},
-				box(0, 0, 50, 50, ui.Style{Background: cRed}),
-				box(30, 30, 50, 50, ui.Style{Background: cRed}),
-			)
-		},
+		Scene: box(10, 10, 80, 80, "opacity: 0.5",
+			box(0, 0, 50, 50, "background: "+cRed),
+			box(30, 30, 50, 50, "background: "+cRed),
+		),
 		Check: func(p *Probe) {
 			a := p.Mix("one child", 25, 25, white, red, 0.5, 0.06)
 			b := p.Mix("the overlap", 50, 50, white, red, 0.5, 0.06)
@@ -157,10 +164,8 @@ var Cases = []Case{
 		// A child larger than its clipping parent shows only inside the
 		// parent's rounded bounds.
 		Name: "clip",
-		Scene: func() ui.Node {
-			return box(20, 20, 60, 60, ui.Style{Clip: true, CornerRadius: 16},
-				box(-20, -20, 100, 100, ui.Style{Background: cRed}))
-		},
+		Scene: box(20, 20, 60, 60, style("clip: true", "radius: 16"),
+			box(-20, -20, 100, 100, "background: "+cRed)),
 		Check: func(p *Probe) {
 			edges(p, "the clip", 20, 20, 80, 80)
 			p.Mix("outside the clip", 15, 50, white, red, 0, 0.1)
@@ -172,9 +177,7 @@ var Cases = []Case{
 		// The shadow of a box, moved below it: its edges and blur.
 		Name:  "shadow_blur",
 		Needs: []Feature{ShadowBlur},
-		Scene: func() ui.Node {
-			return box(20, 8, 60, 30, ui.Style{Background: cRed, Shadow: ui.Shadow{Color: cBlack, Radius: 8, Y: 44}})
-		},
+		Scene: box(20, 8, 60, 30, style("background: "+cRed, "shadow: Shadow(color: "+cBlack+", radius: 8, y: 44)")),
 		Check: func(p *Probe) {
 			// The shadow is the box's shape at (20, 52), 60 by 30.
 			shadow(p, "its bottom edge", 50, 67, 50, Cell-1, 82, 8)
@@ -185,10 +188,8 @@ var Cases = []Case{
 		// A view without a background casts its shadow from its shape (its
 		// bounds, rounded), not from what's drawn in it.
 		Name: "shadow_shape",
-		Scene: func() ui.Node {
-			return box(20, 10, 60, 40, ui.Style{Shadow: ui.Shadow{Color: cBlack, Radius: 8}},
-				box(0, 0, 20, 20, ui.Style{Background: cRed}))
-		},
+		Scene: box(20, 10, 60, 40, "shadow: Shadow(color: "+cBlack+", radius: 8)",
+			box(0, 0, 20, 20, "background: "+cRed)),
 		Check: func(p *Probe) {
 			c := p.At(65, 51)
 			p.Logf("below the view's bottom right, far from its child: %v", c)
@@ -201,10 +202,8 @@ var Cases = []Case{
 		// A view that clips its children still casts its shadow (SwiftUI's
 		// .clipShape().shadow(), CSS's overflow: hidden and box-shadow).
 		Name: "clip_shadow",
-		Scene: func() ui.Node {
-			return box(20, 20, 60, 60, ui.Style{Clip: true, CornerRadius: 12, Shadow: ui.Shadow{Color: cBlack, Radius: 8}},
-				box(-20, -20, 100, 100, ui.Style{Background: cRed}))
-		},
+		Scene: box(20, 20, 60, 60, style("clip: true", "radius: 12", "shadow: Shadow(color: "+cBlack+", radius: 8)"),
+			box(-20, -20, 100, 100, "background: "+cRed)),
 		Check: func(p *Probe) {
 			p.Mix("inside the clip", 50, 50, white, red, 1, 0.1)
 			sides := [][2]float64{{50, 81.5}, {81.5, 50}, {50, 18.5}}
@@ -226,34 +225,26 @@ var Cases = []Case{
 		},
 	},
 	{
-		Name: "gradient",
-		Scene: func() ui.Node {
-			return box(10, 10, 80, 80, ui.Style{Gradient: ui.LinearGradient(cRed, cBlue)})
-		},
+		Name:  "gradient",
+		Scene: box(10, 10, 80, 80, "gradient: Gradient(stops: [Stop(color: "+cRed+", at: 0), Stop(color: "+cBlue+", at: 1)])"),
 		Check: func(p *Probe) { gradient(p, 50, 11, 50, 89) },
 	},
 	{
-		Name: "gradient_across",
-		Scene: func() ui.Node {
-			return box(10, 10, 80, 80, ui.Style{Gradient: &ui.Gradient{Colors: []ui.Color{cRed, cBlue}, End: ui.Point{X: 1}}})
-		},
+		Name:  "gradient_across",
+		Scene: box(10, 10, 80, 80, "gradient: Gradient(stops: [Stop(color: "+cRed+", at: 0), Stop(color: "+cBlue+", at: 1)], endX: 1, endY: 0)"),
 		Check: func(p *Probe) { gradient(p, 11, 50, 89, 50) },
 	},
 	{
 		Name:  "translate",
 		Needs: []Feature{Transform},
-		Scene: func() ui.Node {
-			return box(10, 30, 40, 40, ui.Style{Background: cRed, Transform: ui.Transform{TranslateX: 30, TranslateY: 10}})
-		},
+		Scene: box(10, 30, 40, 40, style("background: "+cRed, "transform: Transform(x: 30, y: 10)")),
 		Check: func(p *Probe) { edges(p, "the moved box", 40, 40, 80, 80) },
 	},
 	{
 		// Scaled about its center.
 		Name:  "scale",
 		Needs: []Feature{Transform},
-		Scene: func() ui.Node {
-			return box(20, 20, 60, 60, ui.Style{Background: cRed, Transform: ui.Transform{Scale: 0.5}})
-		},
+		Scene: box(20, 20, 60, 60, style("background: "+cRed, "transform: Transform(scale: 0.5)")),
 		Check: func(p *Probe) { edges(p, "the scaled box", 35, 35, 65, 65) },
 	},
 	{
@@ -261,9 +252,7 @@ var Cases = []Case{
 		// box's sides' middles were, 35.4 points from its center.
 		Name:  "rotate",
 		Needs: []Feature{Transform},
-		Scene: func() ui.Node {
-			return box(25, 25, 50, 50, ui.Style{Background: cRed, Transform: ui.Transform{Rotate: 45}})
-		},
+		Scene: box(25, 25, 50, 50, style("background: "+cRed, "transform: Transform(rotation: 45)")),
 		Check: func(p *Probe) {
 			p.Mix("the middle", 50, 50, white, red, 1, 0.1)
 			p.Mix("where the box's corner was", 28, 28, white, red, 0, 0.1)
@@ -279,7 +268,7 @@ func diagonal(p *Probe, x, y float64) float64 {
 	k := p.Scale()
 	prev, prevD := 0.0, 0.0
 	for d := 0.0; d < 20; d += 0.5 / k {
-		v := p.At(x+d, y+d).Mix(white, red)
+		v := p.At(x+d, y+d).Mix(p.ref(white), p.ref(red))
 		if v >= 0.5 && d > 0 {
 			return prevD + (0.5-prev)/(v-prev)*(d-prevD)
 		}
@@ -292,7 +281,7 @@ func diagonal(p *Probe, x, y float64) float64 {
 // to (x1, y1): red at its start, blue at its end, half way in the
 // middle, and never back.
 func gradient(p *Probe, x0, y0, x1, y1 float64) {
-	s := p.Profile(x0, y0, x1, y1, func(c RGB) float64 { return c.Mix(red, blue) })
+	s := p.Profile(x0, y0, x1, y1, func(c RGB) float64 { return c.Mix(p.ref(red), p.ref(blue)) })
 	if len(s) < 3 {
 		p.Errorf("no gradient")
 		return

@@ -1,0 +1,26 @@
+// platform/document on the fake host, its files std/fs's: a file that
+// isn't there fails, saying why; an edit saves it, a moment later; its
+// model is a store all the same.
+import platform/document
+import std/fs
+
+let types = [document.Type(name: "Plain Text", extensions: ["txt"], mimeTypes: ["text/plain"])]
+
+test "document" {
+  let path = fs.join([fs.appDir(), "a.txt"])
+  let doc = document.open(path, read: data => data.string(), write: text => text.bytes())
+  await sleep(1ms)
+  print("{doc.state} {doc.error.contains("no such file")}")
+  doc.edit("hello")
+  print("{doc.state} {doc.content ?? ""}")
+  await sleep(2s)
+  print("{doc.state} {try fs.readText(path)} {doc.unsaved()}")
+  print(types[0].extensions)
+}
+
+// Output:
+// failed true
+// edited hello
+// saved hello false
+// ["txt"]
+// ok document

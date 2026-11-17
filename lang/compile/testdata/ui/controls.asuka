@@ -1,0 +1,69 @@
+// Controls: Wheel, ColorPicker, DatePicker (and std/time's Picker, of a Time,
+// bound through a component's valueChange), a component's bind, and
+// Shortcuts' mods.
+
+import std/time
+
+component Swatch {
+  prop color: Color = #ff0000
+  event colorChange(color: Color)
+  Row {
+    Text("Tint")
+    ColorPicker { value: color; title: "Tint"; on change(c) { emit colorChange(c) } }
+  }
+}
+
+component Controls {
+  state size = 1
+  state tint: Color = #ff0000
+  state ms = 0
+  state when = time.unix(0, zone: .utc)
+  state keys = ""
+  let sizes = ["Small", "Medium", "Large"]
+
+  useKeys([
+    Shortcut(key: "n", mods: [.control], run: () => { keys += "n" }),
+    Shortcut(key: "k", primary: true, run: () => { keys += "k" }),
+  ])
+
+  Column {
+    Wheel(sizes) { bind selected: size }
+    Text("Size: {sizes[size]}")
+    Swatch { bind color: tint }
+    Text("Tint: {tint}")
+    Row {
+      Text("Raw")
+      DatePicker { bind value: ms }
+    }
+    Text("ms {ms}")
+    Row {
+      Text("When")
+      time.Picker { bind value: when; zone: .utc }
+    }
+    Text("When {when.format("yyyy-MM-dd")}")
+    Text("Keys: {keys}")
+  }
+}
+
+app { Controls() }
+
+test "a wheel, a color, dates" {
+  let app = mount(Controls())
+  app.expect("Size: Medium")
+  app.select("Large")
+  app.expect("Size: Large")
+  app.pickColor("Tint", #00ff00)
+  app.expect("Tint: #00ff00")
+  app.pickDate("Raw", 86_400_000)
+  app.expect("ms 86400000")
+  app.pickDate("When", 1_767_225_600_000)
+  app.expect("When 2026-01-01")
+}
+
+test "shortcuts' mods" {
+  let app = mount(Controls())
+  expect(app.pressKey("n", control: true), "control+n")
+  expect(app.pressKey("k", primary: true), "primary+k")
+  expect(!app.pressKey("n"), "n alone")
+  app.expect("Keys: nk")
+}

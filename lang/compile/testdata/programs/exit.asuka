@@ -1,0 +1,14 @@
+// args: 7
+// exit: 7
+import std/os
+
+fn main() {
+  defer { print("not run: exit ends the process at once") }
+  print("before")
+  os.exit(os.args()[0].toInt() ?? 1)
+  print("after")
+}
+
+// Stdout:
+// before
+// Stderr:

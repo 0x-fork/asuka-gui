@@ -6,8 +6,8 @@ import UIKit
 /// color, as UILaunchScreen lays them out) stays over the app until the
 /// core's first flush is in, or, if the app holds it (splash.Hold), until
 /// "hide".
-@MainActor final class AsukaSplash {
-    static let shared = AsukaSplash()
+@MainActor public final class AsukaSplash {
+    public static let shared = AsukaSplash()
     private var cover: UIView?
     private var held = false
     private var ready = false
@@ -35,18 +35,17 @@ import UIKit
         if !held { hide() }
     }
 
-    func methods() -> [String: AsukaModuleMethod] {
-        [
-            "hold": { [unowned self] _, reply in
-                if !self.ready { self.held = true }
-                reply(.success(Data()))
-            },
-            "hide": { [unowned self] _, reply in
-                self.held = false
-                if self.ready { self.hide() }
-                reply(.success(Data()))
-            },
-        ]
+    /// Keeps the splash up after the first frame, until release: asked
+    /// before the first frame (platform/splash).
+    public func hold() {
+        if !ready { held = true }
+    }
+
+    /// Takes the splash away (a short fade), now or once the first frame
+    /// is in.
+    public func release() {
+        held = false
+        if ready { hide() }
     }
 
     private func hide() {

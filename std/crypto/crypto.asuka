@@ -1,0 +1,47 @@
+// Package std/crypto has hashes, HMAC, Ed25519 signatures, the
+// system's randomness and UUIDs.
+//
+//   let digest = encoding.hexEncode(crypto.sha256(data))
+//   let id = crypto.uuid()
+//   let ok = crypto.ed25519Verify(publicKey, message, signature)
+
+/// SHA-256 of data (32 bytes).
+pub native fn sha256(data: bytes) -> bytes
+
+/// SHA-512 of data (64 bytes).
+pub native fn sha512(data: bytes) -> bytes
+
+/// SHA-1 of data (20 bytes): for what needs it (old protocols, Git);
+/// it isn't safe against collisions.
+pub native fn sha1(data: bytes) -> bytes
+
+/// HMAC-SHA256 of data under key (32 bytes).
+pub native fn hmacSHA256(key: bytes, data: bytes) -> bytes
+
+/// count bytes of the system's randomness: safe for keys and tokens.
+pub native fn randomBytes(count: int) -> bytes
+
+/// A random (version 4) UUID, lower-case: 0f8fad5b-d9cb-469f-a165-70867728950e.
+pub native fn uuid() -> string
+
+/// Whether a and b are the same bytes, in time that doesn't depend on
+/// where they differ (for comparing MACs and tokens).
+pub native fn equal(a: bytes, b: bytes) -> bool
+
+/// Whether signature (64 bytes) is the Ed25519 (RFC 8032) signature of
+/// message by the private key of publicKey (32 bytes). It's strict, as
+/// Go's crypto/ed25519 is: a signature that isn't canonical, or a key
+/// that's no point of the curve, doesn't verify.
+pub native fn ed25519Verify(publicKey: bytes, message: bytes, signature: bytes) -> bool
+
+/// The Ed25519 signature of message (64 bytes) by privateKey: its 32-byte
+/// seed, or the 64 bytes Go and `asuka update keygen` keep (the seed, then
+/// the public key). A key of another size throws.
+pub native fn ed25519Sign(privateKey: bytes, message: bytes) -> bytes
+
+/// The public key (32 bytes) of an Ed25519 private key.
+pub native fn ed25519PublicKey(privateKey: bytes) -> bytes
+
+/// A new Ed25519 private key, from the system's randomness: 64 bytes, the
+/// seed then the public key, as Go keeps them.
+pub native fn ed25519NewKey() -> bytes

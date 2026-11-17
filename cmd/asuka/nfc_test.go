@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -8,19 +9,25 @@ import (
 	"testing"
 )
 
-// An app that imports asuka/sdk/nfc gets Android's permission and
+// An app that imports platform/nfc gets Android's permission and
 // uses-feature, iOS's purpose string and entitlement, and its config's
 // AIDs, system codes and filters; one that doesn't gets none of them,
 // config or not.
 func TestNFCConfig(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(`{"id": "com.example.tags", "nfc": {
-		"iso7816": ["d2760000850101", "A0000002471001"],
-		"felica": ["8008"],
-		"ndef": [{"uri": "https://Example.com/t/"}, {"uri": "geo:"}, {"mime": "Application/vnd.example.ticket"}, {"external": "Example.com:Ticket"}],
-		"tech": [["IsoDep"], ["android.nfc.tech.NfcA", "mifareultralight"]],
-		"required": true
-	}}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte(`id = "com.example.tags"
+
+[nfc]
+iso7816 = ["d2760000850101", "A0000002471001"]
+felica = ["8008"]
+ndef = [
+  {uri = "https://Example.com/t/"},
+  {uri = "geo:"},
+  {mime = "Application/vnd.example.ticket"},
+  {external = "Example.com:Ticket"},
+]
+tech = [["IsoDep"], ["android.nfc.tech.NfcA", "mifareultralight"]]
+required = true`), 0o644)
 	c, err := loadConfig(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -31,7 +38,7 @@ func TestNFCConfig(t *testing.T) {
 
 	// Not imported: nothing of it.
 	none := *c
-	none.permissionsFor([]string{"github.com/egoist/asuka/ui"})
+	importStd(t, &none, "ios")
 	if m := none.androidManifest(false); strings.Contains(m, "NFC") || strings.Contains(m, "nfc") {
 		t.Errorf("an app without the package has NFC:\n%s", m)
 	}
@@ -39,7 +46,7 @@ func TestNFCConfig(t *testing.T) {
 		t.Error("an app without the package has iOS's NFC keys")
 	}
 
-	c.permissionsFor([]string{"github.com/egoist/asuka/ui", nfcPkg})
+	importStd(t, c, "ios", "nfc")
 	m := c.androidManifest(false)
 	for _, want := range []string{
 		`<uses-permission android:name="android.permission.NFC" />`,
@@ -63,7 +70,7 @@ func TestNFCConfig(t *testing.T) {
 	if c.IOS.Usage["NFCReaderUsageDescription"] == "" {
 		t.Error("no NFCReaderUsageDescription")
 	}
-	if f, _ := c.entitlements["com.apple.developer.nfc.readersession.formats"].([]string); !slices.Equal(f, []string{"NDEF", "TAG"}) {
+	if f := fmt.Sprint(c.entitlements["com.apple.developer.nfc.readersession.formats"]); f != "[NDEF TAG]" {
 		t.Errorf("formats %v", c.entitlements["com.apple.developer.nfc.readersession.formats"])
 	}
 	x := c.plistExtras()
@@ -84,13 +91,13 @@ func TestNFCConfig(t *testing.T) {
 	}
 	ent := filepath.Join(t.TempDir(), "e.plist")
 	os.WriteFile(ent, []byte("<plist><dict></dict></plist>"), 0o644)
-	if missing := c.missingEntitlements(ent); !slices.Contains(missing, "NFC Tag Reading (asuka/sdk/nfc)") {
+	if missing := c.missingEntitlements(ent); !slices.Contains(missing, "NFC Tag Reading (platform/nfc)") {
 		t.Errorf("missing %v", missing)
 	}
 
 	// Without filters or required: optional NFC, no filters.
 	plain := &appConfig{ID: "com.example.plain"}
-	plain.permissionsFor([]string{nfcPkg})
+	importStd(t, plain, "", "nfc")
 	pm := plain.androidManifest(false)
 	if !strings.Contains(pm, `android:name="android.hardware.nfc" android:required="false"`) || strings.Contains(pm, "DISCOVERED") {
 		t.Errorf("plain:\n%s", pm)
@@ -98,31 +105,25 @@ func TestNFCConfig(t *testing.T) {
 	if ok, _ := androidRes(plain, t.TempDir()); ok {
 		t.Error("tech lists without any")
 	}
-
-	// The player has the permission and the entitlement, as any app could.
-	p := playerConfig()
-	if !slices.Contains(p.Android.Permissions, "android.permission.NFC") || p.entitlements["com.apple.developer.nfc.readersession.formats"] == nil {
-		t.Error("the player can't read tags")
-	}
 }
 
 func TestNFCConfigErrors(t *testing.T) {
 	for _, js := range []string{
-		`{"iso7816": ["xyz"]}`,
-		`{"iso7816": ["A000"]}`,
-		`{"felica": ["FFFF"]}`,
-		`{"felica": ["80080"]}`,
-		`{"ndef": [{}]}`,
-		`{"ndef": [{"uri": "https://a", "mime": "a/b"}]}`,
-		`{"ndef": [{"uri": "example.com"}]}`,
-		`{"ndef": [{"mime": "text"}]}`,
-		`{"ndef": [{"external": "thing"}]}`,
-		`{"tech": [[]]}`,
-		`{"tech": [["Felica"]]}`,
+		`iso7816 = ["xyz"]`,
+		`iso7816 = ["A000"]`,
+		`felica = ["FFFF"]`,
+		`felica = ["80080"]`,
+		`ndef = [{}]`,
+		`ndef = [{uri = "https://a", mime = "a/b"}]`,
+		`ndef = [{uri = "example.com"}]`,
+		`ndef = [{mime = "text"}]`,
+		`ndef = [{external = "thing"}]`,
+		`tech = [[]]`,
+		`tech = [["Felica"]]`,
 	} {
 		dir := t.TempDir()
-		os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(`{"nfc": `+js+`}`), 0o644)
-		if _, err := loadConfig(dir); err == nil || !strings.Contains(err.Error(), "asuka.json: nfc:") {
+		os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte("[nfc]\n"+js), 0o644)
+		if _, err := loadConfig(dir); err == nil || !strings.Contains(err.Error(), "asuka.toml: nfc:") {
 			t.Errorf("%s: %v", js, err)
 		}
 	}

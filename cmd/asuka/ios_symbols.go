@@ -9,7 +9,7 @@ import (
 // A release's crashes are symbolicated with its dSYMs: the debug
 // information of each binary (the app's executable, its framework, its
 // extensions'), by its UUID. The host and the extensions are compiled
-// with it (-g), the Go code keeps it (no -s -w); dsymutil gathers it
+// with it (-g), the core keeps its symbols; dsymutil gathers it
 // from the objects the linker linked, and the binaries are stripped of
 // it, as Xcode's archive does. They're written beside the build,
 // <Name>.dSYMs, for a crash service (Crashlytics' upload-symbols,

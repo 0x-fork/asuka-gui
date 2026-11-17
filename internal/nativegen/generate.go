@@ -7,29 +7,32 @@ import (
 	"sort"
 )
 
-// A package's native code lives beside its Go, a project of the
+// A package's native code lives beside its Asuka, a project of the
 // platform's own for each:
 //
 //	Package.swift  a Swift package, for iOS and macOS (the platforms it
 //	               names): its Swift in swift/
 //	android/       a Gradle module (build.gradle.kts), its Kotlin in
 //	               src/main/kotlin, in the package's Kotlin package
-//	web/           JavaScript modules: <package>.js
+//	web/           JavaScript modules: <package>.js, which may import
+//	               the package's enums and errors from <package>.asuka.js
 //
-// Windows and Linux (and wherever the package says so) implement it in
-// Go. Generate writes what connects each to the package's Go. The Swift
+//	desktop/       C, for Windows and Linux (DesktopDir)
+//
+// Generate writes what connects each to the package's declarations. The Swift
 // package is at the package's root because SwiftPM knows a package by
-// its folder's name: the Go package's, not one every package shares.
+// its folder's name: the package's, not one every package shares.
 
 // Platforms are the projects a package can have native code in.
-var Platforms = []string{"swift", "android", "web"}
+var Platforms = []string{"swift", "android", "web", "desktop"}
 
 // SwiftDir is the folder of a package's Swift, which its Package.swift's
 // target is (path: "swift").
 const SwiftDir = "swift"
 
 // HasPlatform reports whether the package in dir has native code in
-// platform's project (swift: its Package.swift).
+// platform's project (swift: its Package.swift; desktop: its C, for
+// Windows and Linux).
 func HasPlatform(dir, platform string) bool {
 	switch platform {
 	case "swift":
@@ -38,18 +41,21 @@ func HasPlatform(dir, platform string) bool {
 		return exists(filepath.Join(dir, platform, "build.gradle.kts"))
 	case "web":
 		return exists(filepath.Join(dir, platform))
+	case "desktop":
+		return exists(filepath.Join(dir, platform))
 	}
 	return false
 }
 
 // Files are what the package generates, by their paths relative to its
-// directory: its Go, and each platform's it has native code for.
+// directory: each platform's it has native code for.
 func Files(p *Package) (map[string][]byte, error) {
-	goSrc, err := GenerateGo(p)
-	if err != nil {
-		return nil, err
+	files := map[string][]byte{}
+	if HasPlatform(p.Dir, "desktop") {
+		h, c := GenerateC(p)
+		files[filepath.Join(DesktopDir, CHeader(p))] = h
+		files[filepath.Join(DesktopDir, CSource(p))] = c
 	}
-	files := map[string][]byte{GoFile(p.Name): goSrc}
 	if HasPlatform(p.Dir, "swift") {
 		files[filepath.Join(SwiftDir, SwiftFile(p))] = GenerateSwift(p)
 	}
@@ -57,7 +63,13 @@ func Files(p *Package) (map[string][]byte, error) {
 		files[filepath.Join("android", KotlinFile(p))] = GenerateKotlin(p)
 	}
 	if HasPlatform(p.Dir, "web") {
+		if err := CheckJSImports(p); err != nil {
+			return nil, err
+		}
 		files[filepath.Join("web", JSFile(p))] = GenerateJS(p)
+		if d := GenerateJSDecl(p); d != nil {
+			files[filepath.Join("web", JSDeclFile(p))] = d
+		}
 	}
 	return files, nil
 }
@@ -101,6 +113,19 @@ func Write(p *Package) ([]string, error) {
 			return nil, err
 		}
 		wrote = append(wrote, rel)
+	}
+	// A declarations module the package no longer has (its last enum
+	// and error gone): generated, so it goes.
+	if HasPlatform(p.Dir, "web") {
+		rel := filepath.Join("web", JSDeclFile(p))
+		if _, ok := files[rel]; !ok {
+			if b, err := os.ReadFile(filepath.Join(p.Dir, rel)); err == nil && HashOf(b) != "" {
+				if err := os.Remove(filepath.Join(p.Dir, rel)); err != nil {
+					return nil, err
+				}
+				wrote = append(wrote, rel)
+			}
+		}
 	}
 	sort.Strings(wrote)
 	return wrote, nil

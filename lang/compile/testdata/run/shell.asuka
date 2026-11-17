@@ -1,0 +1,19 @@
+// platform/shell with no platform code (the fake host): no file manager, so
+// reveal throws an unsupported error and beep does nothing.
+
+import platform/shell
+
+test "no file manager here" {
+  shell.beep()
+  do {
+    try await shell.reveal("notes.md")
+  } catch shell.ShellError.noApp {
+    print("no app")
+  } catch e {
+    print(e.message)
+  }
+}
+
+// Output:
+// unsupported: no file manager here
+// ok no file manager here

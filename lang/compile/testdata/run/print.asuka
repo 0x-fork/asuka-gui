@@ -1,0 +1,33 @@
+// platform/print with no platform code (the fake host): no printing, so its
+// calls throw an unsupported error; the region's paper; margins that
+// leave no room. (Imported as printing: print is the prelude's too.)
+
+import platform/print as printing
+
+test "no printing here" {
+  do {
+    let r = try await printing.html("<p>Hi</p>", job: "Receipt")
+    print("{r}")
+  } catch e {
+    print(e.message)
+  }
+  do {
+    let path = try await printing.pdf("<p>Hi</p>", margins: printing.Margins(left: 400, right: 400))
+    print(path)
+  } catch e {
+    print(e.message)
+  }
+  print(printing.regionPage("en-US") == printing.Page.letter)
+  print(printing.regionPage("fr-CA") == printing.Page.letter)
+  print(printing.regionPage("de-DE") == printing.Page.a4)
+  print(printing.regionPage("en-u-rg-uszzzz") == printing.Page.a4)
+}
+
+// Output:
+// unsupported: no printing here
+// print: the margins leave no room on the page
+// true
+// true
+// true
+// true
+// ok no printing here

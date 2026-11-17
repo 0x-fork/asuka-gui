@@ -22,75 +22,77 @@ const words: Record<Locale, Words> = {
   en: {
     live: "Live",
     source: "Source",
-    ops: "Ops to the host",
-    recorded: "As host/fake records them for this code, on an iPhone's 390 × 844.",
+    ops: "Changes to the native views",
+    recorded: "As asuka test records them for this code, on an iPhone's 390 × 844.",
     replay: "Replay",
     mount: "mount",
-    flush: (n, ops, batches) => `flush ${String(n).padStart(2, "0")} · ${ops} op${ops === 1 ? "" : "s"}${batches > 1 ? ` · ${batches} batches` : ""}`,
+    flush: (n, ops, batches) => `update ${String(n).padStart(2, "0")} · ${ops} change${ops === 1 ? "" : "s"}${batches > 1 ? ` · props, then frames` : ""}`,
     ran: "ran",
     times: (n) => `${n}×`,
-    last: "last flush",
-    opCount: (n) => `${n} op${n === 1 ? "" : "s"}`,
+    last: "last update",
+    opCount: (n) => `${n} change${n === 1 ? "" : "s"}`,
     wider: "wider text, a new frame",
   },
   zh: {
     live: "运行中",
     source: "源码",
-    ops: "发给宿主的 op",
-    recorded: "即 host/fake 为这段代码记录下的 op，屏幕为 iPhone 的 390 × 844。",
+    ops: "对原生视图的改动",
+    recorded: "即 asuka test 为这段代码记录下的改动，屏幕为 iPhone 的 390 × 844。",
     replay: "重放",
     mount: "挂载",
-    flush: (n, ops, batches) => `第 ${String(n).padStart(2, "0")} 次提交 · ${ops} 个 op${batches > 1 ? ` · ${batches} 批` : ""}`,
+    flush: (n, ops, batches) => `第 ${String(n).padStart(2, "0")} 次更新 · ${ops} 处改动${batches > 1 ? ` · 先属性，后位置` : ""}`,
     ran: "运行",
     times: (n) => `${n} 次`,
-    last: "上次提交",
-    opCount: (n) => `${n} 个 op`,
+    last: "上次更新",
+    opCount: (n) => `${n} 处改动`,
     wider: "文字变宽，重新排版",
   },
   ja: {
     live: "稼働中",
     source: "ソース",
-    ops: "ホストへの op",
-    recorded: "このコードについて host/fake が記録した op です。画面は iPhone の 390 × 844。",
+    ops: "ネイティブのビューへの変更",
+    recorded: "このコードについて asuka test が記録した変更です。画面は iPhone の 390 × 844。",
     replay: "リプレイ",
     mount: "マウント",
-    flush: (n, ops, batches) => `フラッシュ ${String(n).padStart(2, "0")} · ${ops} op${batches > 1 ? ` · ${batches} バッチ` : ""}`,
+    flush: (n, ops, batches) => `更新 ${String(n).padStart(2, "0")} · ${ops} 件の変更${batches > 1 ? ` · プロパティ、次にフレーム` : ""}`,
     ran: "実行",
     times: (n) => `${n} 回`,
-    last: "直前のフラッシュ",
-    opCount: (n) => `${n} op`,
+    last: "直前の更新",
+    opCount: (n) => `${n} 件の変更`,
     wider: "文字が広がり、フレームを更新",
   },
 }
 
 /**
  * What mounting the docs' first example sends the host, in two batches
- * (props, then frames), as host/fake logs it on its default iPhone. Its
- * text is measured as 8 points a character, 20 high.
+ * (props, then frames), as the C core's fake host logs it on its default
+ * iPhone (app.ops() in a test block). Its text is measured as 8 points a
+ * character, 20 high.
  */
 const mountOps = [
   "Create 1 View",
+  "SetRoot 1",
   "Command 1 Locale 00656e",
   "Create 2 Text",
   'SetProp 2 Text="Count: 0"',
+  "SetProp 2 TextStyle=1",
   "Create 3 Button",
-  "SetProp 3 Variant=1",
   'SetProp 3 Title="Add"',
+  "SetProp 3 Variant=1",
   "Listen 3 Press",
   "Insert 1 2 @0",
   "Insert 1 3 @1",
-  "SetRoot 1",
-  "SetFrame 2 163,396.66666 64x20",
-  "SetFrame 3 171,416.66666 48x44",
+  "SetFrame 2 163,388.66666 64x20",
+  "SetFrame 3 171,424.66666 48x44",
   "SetFrame 1 0,0 390x844",
 ]
 
 const label = (n: number) => `Count: ${n}`
 
-/** The frame host/fake gives the label: centered, as wide as its text. */
+/** The frame the fake host gives the label: centered, as wide as its text. */
 function frame(n: number) {
   const w = label(n).length * 8
-  return `SetFrame 2 ${(390 - w) / 2},396.66666 ${w}x20`
+  return `SetFrame 2 ${(390 - w) / 2},388.66666 ${w}x20`
 }
 
 type Row = { key: number; kind: "op" | "event" | "flush" | "note"; text: string }
@@ -118,8 +120,8 @@ function Op({ text }: { text: string }) {
 /**
  * Hello, native, running: the docs' first example beside the app it makes
  * and the ops it sends the host. Pressing Add lights the lines that run,
- * a press's path through the code: the button's OnPress, the label that
- * reads the count, the Text that shows it; boxes the one view that
+ * a press's path through the code: the button's on press, the state it
+ * writes, the Text whose binding reads it; boxes the one view that
  * changed; and logs the flush: one op. Counter itself ran once, at mount.
  * When it scrolls into view it mounts, its ops streaming in, and presses
  * Add by itself to 10, where the text grows wider and gets a new frame,
@@ -213,14 +215,14 @@ export function LiveCounter({ code }: { code: string }) {
     const s = state.current
     const n = ++s.count
     const f = ++s.flush
-    light("OnPress")
+    light("on press")
     button.current?.animate([{ scale: 1 }, { scale: 0.94, opacity: 0.7 }, { scale: 1 }], { duration: 260, easing: "ease-out" })
     after(s.reduce ? 0 : 140, () => {
-      light("count.Get()")
+      light("count += 1")
       setLabelRuns((r) => r + 1)
     })
     after(s.reduce ? 0 : 280, () => {
-      light("ui.Text(label)")
+      light('Text("Count')
       setCount(n)
       const grew = label(n).length !== label(n - 1).length
       // The press's rows together, however quickly presses come.
@@ -265,7 +267,7 @@ export function LiveCounter({ code }: { code: string }) {
       setRows([])
       setMounted(false)
       // Counter's body runs once, top to bottom.
-      for (const [i, needle] of ["func Counter", "signal.New", "signal.Func", "count.Get()", "ui.SafeArea", "ui.Text(label)", "ui.Button", "OnPress"].entries()) {
+      for (const [i, needle] of ["component Counter", "state count", "SafeArea", "align:", 'Text("Count', 'Button("Add")', "variant:", "on press"].entries()) {
         after(i * 55, () => light(needle, "var(--unit)"))
       }
       mountOps.forEach((op, i) => after(200 + i * 45, () => push("op", op)))
@@ -323,7 +325,7 @@ export function LiveCounter({ code }: { code: string }) {
       <figure className="flex min-w-0 flex-col">
         <figcaption className="label flex items-center justify-between border-b px-4 py-3 sm:px-6">
           <span className="flex items-center gap-2">
-            <span className="size-1.5 bg-signal" /> main.go
+            <span className="size-1.5 bg-signal" /> app.asuka
           </span>
           <span>{t.source}</span>
         </figcaption>
@@ -331,7 +333,7 @@ export function LiveCounter({ code }: { code: string }) {
         <dl className="label grid grid-cols-3 border-t">
           {[
             ["Counter()", t.times(1)],
-            ["label", t.times(labelRuns)],
+            ['Text(…)', t.times(labelRuns)],
             [t.last, t.opCount(lastOps)],
           ].map(([name, value], i) => (
             <div key={i} className="flex flex-col gap-1 border-r px-4 py-3 last:border-r-0 sm:px-6">

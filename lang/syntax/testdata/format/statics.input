@@ -1,0 +1,4 @@
+struct Money {
+  cents: int
+  static   fn of(dollars: int,cents: int = 0) -> Money = Money(cents: dollars*100+cents)
+}

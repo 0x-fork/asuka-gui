@@ -1,0 +1,41 @@
+// Package platform/review asks the user to rate the app without leaving it:
+// the App Store's rating prompt (StoreKit's requestReview, on iOS and
+// the Mac) and Google Play's in-app review. The stores decide whether it
+// shows (iOS at most three times a year, Play on its own quota), and
+// neither says whether it did. Ask after a success (a task done, an
+// order placed), never from a button: for a button, open appStoreURL or
+// playStoreURL.
+//
+//   try? await review.request()
+//
+// Windows, Linux and the web have no such prompt: request does nothing
+// there.
+
+/// The store's prompt.
+native interface Store {
+  /// Asks the store to show its prompt; returns once it's been handled
+  /// (shown, rated, dismissed, or not shown).
+  async fn request()
+}
+
+// Made once; none where the platform has no store prompt.
+let store = try? Store()
+
+/// Asks the store to show its rating prompt, and returns once it's been
+/// handled: shown, rated, dismissed, or not shown. It throws only for a
+/// failure (Play's library missing, no Play Store). Where there's no
+/// store prompt (Windows, Linux, the web), it does nothing.
+pub async fn request() throws {
+  if let s = store {
+    try await s.request()
+  }
+}
+
+/// The app's App Store page, open on writing a review, for openURL (a
+/// button's "Rate us"): id is its Apple ID, the number in its App Store
+/// link.
+pub fn appStoreURL(id: string) -> string = "https://apps.apple.com/app/id{id}?action=write-review"
+
+/// The app's Google Play page, for openURL: id is its application ID
+/// (asuka.toml's id).
+pub fn playStoreURL(id: string) -> string = "https://play.google.com/store/apps/details?id={id}&showAllReviews=true"

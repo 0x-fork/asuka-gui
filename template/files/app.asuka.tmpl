@@ -1,0 +1,26 @@
+// {{.Name}}: an Asuka app. `asuka dev` runs it and shows each save at
+// once; docs/language.md is the language.
+
+component Counter {
+  state count = 0
+
+  SafeArea {
+    justify: .center
+    align: .center
+    gap: 16
+
+    Text("{{.Name}}: {count}") { font: .title }
+    Button("Add") {
+      variant: .filled
+      on press { count += 1 }
+    }
+  }
+}
+
+app { Counter() }
+
+test "Add counts" {
+  let app = mount(Counter())
+  app.tap("Add")
+  app.expect("{{.Name}}: 1")
+}

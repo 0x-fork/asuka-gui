@@ -1,126 +1,116 @@
-// asuka/sdk/crash in the browser (crash.js): Go's crash output kept as the
-// program ends, the run's mark, uncaught errors as exception records,
-// and what the page says of the browser.
+// platform/crash in the browser (crash.js): the page's side of the core's
+// record: begun with the browser as the device, the run marked alive,
+// uncaught errors as exception records in the inbox (the core told), the
+// core's trap ending the run; and what the page says of the browser.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as fs from "../src/fs.js";
 import { Crash, frames, systemOf, browserOf } from "../src/crash.js";
 
-const target = new EventTarget();
-globalThis.addEventListener ??= target.addEventListener.bind(target);
 const items = new Map();
 Object.defineProperty(globalThis, "localStorage", {
   configurable: true,
-  value: { getItem: (k) => items.get(k) ?? null, setItem: (k, v) => items.set(k, String(v)), removeItem: (k) => items.delete(k) },
+  value: {
+    getItem: (k) => items.get(k) ?? null, setItem: (k, v) => items.set(k, String(v)), removeItem: (k) => items.delete(k),
+    key: (i) => [...items.keys()][i] ?? null, get length() { return items.size; },
+  },
 });
+const enc = new TextEncoder();
 const dec = new TextDecoder();
 
-/** fakeGo is a Go of wasm_exec.js, as far as Crash needs one: its imports, its memory, whether it exited. */
-function fakeGo() {
-  const buffer = new ArrayBuffer(1 << 16);
-  const go = { mem: new DataView(buffer), exited: false, written: [], importObject: { gojs: {} } };
-  go.importObject.gojs["runtime.wasmWrite"] = (sp) => go.written.push(sp);
-  let heap = 4096;
-  // print writes s to fd as Go's runtime does (runtime.wasmWrite(fd, p, n), its arguments on the stack at sp+8).
-  go.print = (fd, s) => {
-    const b = new TextEncoder().encode(s);
-    new Uint8Array(buffer, heap, b.length).set(b);
-    const sp = 64;
-    go.mem.setUint32(sp + 8, fd, true);
-    go.mem.setInt32(sp + 12, 0, true);
-    go.mem.setUint32(sp + 16, heap, true);
-    go.mem.setInt32(sp + 20, 0, true);
-    go.mem.setInt32(sp + 24, b.length, true);
-    heap += b.length;
-    go.importObject.gojs["runtime.wasmWrite"](sp);
+// fakeCore is the core's exports as Crash uses them, its strings in a memory of its own.
+function fakeCore(dir, run) {
+  const mem = new Uint8Array(4096);
+  let top = 16;
+  const str = (s) => { const b = enc.encode(s + "\0"); const p = top; mem.set(b, p); top += b.length; return p; };
+  const core = {
+    started: null, notified: 0, freed: [],
+    asuka_crash_start: (p) => { core.started = text(p); return dir ? str(dir) : 0; },
+    asuka_crash_where: () => str(`${dir}\n${run}`),
+    asuka_crash_notify: () => core.notified++,
+    asuka_free: (p) => core.freed.push(p),
   };
-  return go;
+  const withBytes = (b, f) => { const p = top; mem.set(b, p); top += b.length; return f(p, b.length); };
+  const text = (p) => dec.decode(mem.subarray(p, mem.indexOf(0, p)));
+  return { core, withBytes, text };
 }
 
-const fakeHost = () => {
-  const h = { notified: 0, afterCore: (f) => f(), core: { crashNotify: () => h.notified++ } };
-  return h;
-};
+const inbox = (dir) => (fs.fsys.entry(fs.clean(dir + "/inbox")) ? fs.fsys.names(fs.clean(dir + "/inbox")) : []).map((n) => [n, JSON.parse(dec.decode(fs.readFile(`${dir}/inbox/${n}`)))]);
 
-const tick = () => new Promise((r) => setTimeout(r, 0));
-
-test("a crash: what the runtime printed from the panic on goes in the run's .crash file", async () => {
-  const go = fakeGo(), h = fakeHost();
-  const c = new Crash(go, h);
-  const path = "/data/crash1/crashes/runs/1-7.crash";
-  fs.writeFile(path, new Uint8Array(0));
-  c.begin(path);
-  assert.ok(c.alive(path), "the run is marked alive");
-  // Printed while Go ran before: not a crash, forgotten once Go returns.
-  go.print(2, "a debug line\n");
-  await tick();
-  assert.equal(c.printed, "");
-  // A crash: the program prints and ends at once.
-  go.print(2, "earlier output\n");
-  go.print(2, "panic: boom\n\ngoroutine 1 [running]:\nmain.main()\n\t/app/main.go:5 +0x1d\n");
-  go.print(1, "stdout isn't kept\n");
-  go.exited = true;
-  await tick();
-  c.exited(2);
-  assert.ok(c.alive(path), "alive until its crash is kept");
-  await tick();
-  assert.equal(dec.decode(fs.readFile(path)), "panic: boom\n\ngoroutine 1 [running]:\nmain.main()\n\t/app/main.go:5 +0x1d\n");
-  assert.ok(!c.alive(path), "an ended run isn't alive");
-  assert.equal(go.written.length, 4, "the runtime's writes still go to the console");
+test("the record begins with the browser as the device, and the run is marked alive while the page is", () => {
+  const dir = "/data/crash1/crashes";
+  const { core, withBytes, text } = fakeCore(dir, "100-7");
+  const c = new Crash({ afterCore: (f) => f() });
+  c.start(core, withBytes, text);
+  assert.equal(JSON.parse(core.started).system, "Web");
+  assert.equal(core.freed.length, 1, "the directory's string freed");
+  assert.equal(c.where(), `${dir}\n100-7`);
+  assert.ok(c.alive(`${dir}/runs/100-7.crash`));
+  assert.ok(c.aliveRuns().includes(`${dir}/runs/100-7.crash`));
+  assert.equal(c.alive(`${dir}/runs/1-1.crash`), false, "another page's, not marked");
+  items.set(`asuka-run:${dir}/runs/1-1.crash`, String(Date.now()));
+  assert.ok(c.alive(`${dir}/runs/1-1.crash`), "another open page's");
+  items.set(`asuka-run:${dir}/runs/1-1.crash`, String(Date.now() - 11 * 60_000));
+  assert.equal(c.alive(`${dir}/runs/1-1.crash`), false, "a mark gone stale");
+  c.onHide();
+  assert.equal(items.has(`asuka-run:${dir}/runs/100-7.crash`), false);
+  c.onShow();
+  assert.ok(items.has(`asuka-run:${dir}/runs/100-7.crash`));
 });
 
-test("an exit that isn't a crash (os.Exit(1), no panic printed) writes nothing", async () => {
-  const go = fakeGo();
-  const c = new Crash(go, fakeHost());
-  const path = "/data/crash2/crashes/runs/2-7.crash";
-  fs.writeFile(path, new Uint8Array(0));
-  c.begin(path);
-  go.print(2, "something went wrong\n");
-  go.exited = true;
-  c.exited(1);
-  assert.equal(fs.readFile(path).length, 0);
+test("an app that doesn't read its reports keeps no record", () => {
+  const { core, withBytes, text } = fakeCore("", "");
+  const c = new Crash({ afterCore: (f) => f() });
+  c.start(core, withBytes, text);
+  assert.equal(c.where(), "");
+  c.exception(new Error("x"));
+  assert.equal(core.notified, 0);
 });
 
-test("a fatal error is a crash too", async () => {
-  const go = fakeGo();
-  const c = new Crash(go, fakeHost());
-  const path = "/data/crash3/crashes/runs/3-7.crash";
-  fs.writeFile(path, new Uint8Array(0));
-  c.begin(path);
-  go.print(2, "fatal error: all goroutines are asleep - deadlock!\n\ngoroutine 1 [chan receive]:\n");
-  go.exited = true;
-  c.exited(2);
-  assert.match(dec.decode(fs.readFile(path)), /^fatal error: all goroutines are asleep/);
-});
-
-test("uncaught errors: an exception record each in the inbox, not fatal, each once, Go told", async () => {
-  const go = fakeGo(), h = fakeHost();
-  const c = new Crash(go, h);
-  fs.writeFile("/data/crash4/crashes/runs/4-7.crash", new Uint8Array(0));
-  c.begin("/data/crash4/crashes/runs/4-7.crash");
-  const err = new TypeError("x is undefined");
-  c.exception(err);
-  c.exception(err); // the same again
-  c.exception("a rejected string");
-  const names = [];
-  fs.memfs.readdir("/data/crash4/crashes/inbox", (e, ns) => names.push(...ns));
-  assert.equal(names.length, 2);
-  assert.ok(names.every((n) => /^exception-web-\w+\.json$/.test(n)));
-  const recs = names.map((n) => JSON.parse(dec.decode(fs.readFile("/data/crash4/crashes/inbox/" + n))));
+test("uncaught errors: an exception record each in the inbox, not fatal, each once, the core told", () => {
+  const dir = "/data/crash2/crashes";
+  const { core, withBytes, text } = fakeCore(dir, "200-9");
+  const c = new Crash({ afterCore: (f) => f() });
+  c.start(core, withBytes, text);
+  const e = new TypeError("x is undefined");
+  c.exception(e);
+  c.exception(e);
+  c.exception("a string");
+  const recs = inbox(dir).map(([, r]) => r);
+  assert.equal(recs.length, 2);
   const te = recs.find((r) => r.name === "TypeError");
   assert.equal(te.reason, "x is undefined");
   assert.equal(te.fatal, false);
-  assert.equal(te.thread, "main");
-  assert.ok(te.frames.length > 0 && te.frames[0].file);
-  assert.ok(!te.stack.startsWith("TypeError"), "the stack without its message line");
-  const s = recs.find((r) => r.name === "Uncaught");
-  assert.equal(s.reason, "a rejected string");
-  assert.equal(h.notified, 3 - 1);
-  // Once Go has ended, the errors of calls into it aren't reports.
-  go.exited = true;
-  c.exception(new Error("Go program has already exited"));
-  assert.equal(h.notified, 2);
-  c.exited(0);
+  assert.equal(te.run, "200-9");
+  assert.ok(te.frames.length > 0);
+  assert.ok(recs.find((r) => r.name === "Uncaught" && r.reason === "a string"));
+  assert.equal(core.notified, 2);
+});
+
+test("the core's trap ends the run: its panic's .crash kept; without one, a fatal exception", async () => {
+  const dir = "/data/crash3/crashes";
+  const { core, withBytes, text } = fakeCore(dir, "300-1");
+  const c = new Crash({ afterCore: (f) => f() });
+  c.start(core, withBytes, text);
+  fs.writeFile(`${dir}/runs/300-1.crash`, enc.encode("panic: boom\n"));
+  c.exception(new WebAssembly.RuntimeError("unreachable"));
+  assert.equal(inbox(dir).length, 0, "the panic says it");
+  assert.equal(c.panicMessage(), "boom", "what the page shows: the panic's message");
+  await fs.flush();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(c.alive(`${dir}/runs/300-1.crash`), false);
+  c.exception(new Error("after"));
+  assert.equal(inbox(dir).length, 0, "nothing after the end");
+
+  const dir2 = "/data/crash4/crashes";
+  const k = fakeCore(dir2, "400-1");
+  const c2 = new Crash({ afterCore: (f) => f() });
+  c2.start(k.core, k.withBytes, k.text);
+  c2.exception(new WebAssembly.RuntimeError("memory access out of bounds"));
+  const [[, rec]] = inbox(dir2);
+  assert.equal(rec.name, "RuntimeError");
+  assert.equal(rec.fatal, true);
+  assert.equal(c2.panicMessage(), "", "no panic: the page shows the trap's own");
 });
 
 test("a stack's frames, V8's and Firefox's and Safari's", () => {

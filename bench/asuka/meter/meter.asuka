@@ -1,0 +1,20 @@
+// The benchmarks' meter (bench/README.md), a native package: the same
+// Swift and Kotlin the SwiftUI and Compose apps measure with
+// (swift/Meter.swift, android/src/main/kotlin/dev/asuka/app/Meter.kt),
+// for the app to mark its scenarios.
+
+/// Measures the main thread's work, frame by frame, and reports it (the
+/// log: bench/run reads it). Making one starts watching.
+/// @mainThread
+pub native interface Meter {
+  /// Starts recording a scenario's frames.
+  fn begin(scenario: string)
+  /// Stops recording and reports the scenario's frames.
+  fn end()
+  /// Reports the time from the process's start to now.
+  fn startup()
+  /// Reports the memory the app uses, after a scenario.
+  fn memory(scenario: string)
+  /// Reports that the benchmarks are over.
+  fn done()
+}

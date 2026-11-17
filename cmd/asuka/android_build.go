@@ -7,8 +7,11 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
+
+	"github.com/egoist/asuka/internal/appbuild"
+	"github.com/egoist/asuka/internal/cbuild"
+	"github.com/egoist/asuka/lang/target"
 )
 
 // androidABIs are the ABIs a release build carries: phones (arm64), old
@@ -22,10 +25,10 @@ var androidABIs = []struct{ abi, goarch, goarm, clang string }{
 }
 
 // buildAndroid makes a release build: an .aab for Google Play, signed
-// with the upload key, the Go code built for every ABI, the assets and
+// with the upload key, the core with the app compiled in for every ABI, the assets and
 // icons packaged, and the Kotlin shrunk by R8. No .apk: Google Play makes
 // each device's from the .aab, with only that device's ABI and density.
-func buildAndroid(app *goApp, o *buildOptions) error {
+func buildAndroid(app *asukaApp, o *buildOptions) error {
 	start := time.Now()
 	cfg := app.cfg
 	tc, err := newAndroidToolchain(o.verbose)
@@ -36,14 +39,14 @@ func buildAndroid(app *goApp, o *buildOptions) error {
 	if err != nil {
 		return err
 	}
-	// The upload key: asuka.json, or the environment (CI).
+	// The upload key: asuka.toml, or the environment (CI).
 	keystore := firstOf(os.Getenv("ASUKA_KEYSTORE"), cfg.Android.Keystore)
 	alias := firstOf(os.Getenv("ASUKA_KEY_ALIAS"), cfg.Android.KeyAlias)
 	storePass := os.Getenv("ASUKA_KEYSTORE_PASSWORD")
 	if keystore == "" || alias == "" || storePass == "" {
 		return errors.New(`a release build is signed with your upload key; make one (once, and keep it safe):
   keytool -genkeypair -v -keystore upload.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000
-then name it in asuka.json ("android": {"keystore": "upload.jks", "keyAlias": "upload"})
+then name it in asuka.toml's [android] (keystore = "upload.jks", keyAlias = "upload")
 and give its password in ASUKA_KEYSTORE_PASSWORD (and ASUKA_KEY_PASSWORD if the key's differs)`)
 	}
 	fmt.Printf("asuka: building %s %s (%d) for Android\n", cfg.Name, cfg.Version, cfg.Build)
@@ -62,7 +65,7 @@ and give its password in ASUKA_KEYSTORE_PASSWORD (and ASUKA_KEY_PASSWORD if the 
 		}
 		icon = "@mipmap/ic_launcher"
 	} else {
-		fmt.Println("asuka: no icon in asuka.json; Google Play needs one (512×512 or larger PNG)")
+		fmt.Println("asuka: no icon in asuka.toml; Google Play needs one (512×512 or larger PNG)")
 	}
 	if _, err := androidRes(cfg, res); err != nil {
 		return err
@@ -82,7 +85,14 @@ and give its password in ASUKA_KEYSTORE_PASSWORD (and ASUKA_KEY_PASSWORD if the 
 	if err != nil {
 		return err
 	}
-	args := []string{":app:bundleRelease",
+	if err := tc.androidPrebuilt(app, src); err != nil {
+		return err
+	}
+	task := ":app:bundleRelease"
+	if o.apk {
+		task = ":app:assembleRelease"
+	}
+	args := []string{task,
 		"-PasukaApplicationId=" + androidPackage(cfg.ID), "-PasukaAppName=" + cfg.androidLabel(),
 		"-PasukaVersionCode=" + strconv.Itoa(cfg.Build), "-PasukaVersionName=" + cfg.Version,
 		"-PasukaIcon=" + icon, "-PasukaJniLibs=" + jni, "-PasukaRes=" + res, "-PasukaManifest=" + manifest,
@@ -106,9 +116,10 @@ and give its password in ASUKA_KEYSTORE_PASSWORD (and ASUKA_KEY_PASSWORD if the 
 		from, to string
 		optional bool
 	}{
-		{filepath.Join(built, "bundle", "release", "app-release.aab"), filepath.Base(aabPath(cfg, o)), false},
-		// For a crash service (the .aab has both for Google Play): the Go
-		// code's and the host's native symbols, and R8's map of the
+		{filepath.Join(built, "bundle", "release", "app-release.aab"), filepath.Base(aabPath(cfg, o)), o.apk},
+		{filepath.Join(built, "apk", "release", "app-release.apk"), name + ".apk", !o.apk},
+		// For a crash service (the .aab has both for Google Play): the
+		// core's and the host's native symbols, and R8's map of the
 		// Kotlin it renamed.
 		{filepath.Join(built, "native-debug-symbols", "release", "native-debug-symbols.zip"), name + "-native-debug-symbols.zip", true},
 		{filepath.Join(built, "mapping", "release", "mapping.txt"), name + "-mapping.txt", true},
@@ -126,6 +137,10 @@ and give its password in ASUKA_KEYSTORE_PASSWORD (and ASUKA_KEY_PASSWORD if the 
 			return err
 		}
 		fmt.Println("asuka:", to)
+	}
+	if o.apk {
+		fmt.Printf("asuka: built in %.0fs; adb install installs it\n", time.Since(start).Seconds())
+		return nil
 	}
 	fmt.Printf("asuka: built in %.0fs; asuka publish --platform android builds and uploads it to Google Play\n", time.Since(start).Seconds())
 	return nil
@@ -192,37 +207,26 @@ func androidIcons(path, res string) error {
 `), 0o644)
 }
 
-// buildAndroidLibs builds the app's Go code as a shared library for each
-// ABI a release carries, in work/jniLibs/<abi>/libasuka.so, with its
-// plugins' libraries beside it (plugins.go).
-func buildAndroidLibs(app *goApp, tc *androidToolchain, work string) (string, error) {
+// buildAndroidLibs builds the C core with the app compiled in as a shared
+// library for each ABI a release carries, in work/jniLibs/<abi>/libasuka.so,
+// with its plugins' libraries beside it (plugins.go).
+func buildAndroidLibs(app *asukaApp, tc *androidToolchain, work string) (string, error) {
 	cfg := app.cfg
 	jni := filepath.Join(work, "jniLibs")
 	os.RemoveAll(jni)
-	ov, err := writeOverlay(app, work)
+	m, err := app.compile(target.Android)
 	if err != nil {
 		return "", err
 	}
 	for _, a := range androidABIs {
 		out := filepath.Join(jni, a.abi, "libasuka.so")
-		env := tc.cgoEnv(a.goarch, a.goarm, a.clang)
-		// The symbol table stays, for the native debug symbols: Gradle
-		// strips the libraries it packages (with the NDK the build names).
-		if err := tc.run(app.dir, env, "go", "build", "-buildmode=c-shared", "-trimpath", cfg.ldflagsStrip("-w"),
-			"-overlay", ov, "-o", out, "."); err != nil {
+		if err := appbuild.Lib(cbuild.Target{OS: "android", Arch: a.goarch}, cbuild.Shared, m, out); err != nil {
 			return "", fmt.Errorf("%s: %v", a.abi, err)
 		}
-		os.Remove(strings.TrimSuffix(out, ".so") + ".h")
-		libs, err := appLibs(app.dir, "android", a.goarch, "android-"+a.goarch)
-		if err != nil {
-			return "", fmt.Errorf("%s: %v", a.abi, err)
-		}
-		if err := writeLibs(libs, filepath.Dir(out)); err != nil {
-			return "", fmt.Errorf("%s: %v", a.abi, err)
-		}
-		cfg.shareSheet = hasSheet(out)
-		cfg.pushRewrite = hasSymbol(out, rewriteSymbol)
-		cfg.useLocation(func(s string) bool { return hasSymbol(out, s) })
 	}
+	// What the app's sources use decides its manifest's share sheet and
+	// push rewrite, and whether it has Video's player.
+	usedFeatures(app, cfg)
+	cfg.androidFeatures(app, false)
 	return jni, nil
 }

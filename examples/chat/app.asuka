@@ -1,0 +1,261 @@
+// Chat is a conversation: a List anchored at its bottom (it opens at the
+// newest message and stays there as messages come), older messages
+// loaded as the top comes into view (on startReached) without moving
+// what shows, a day per section with its header pinned at the top, swipe
+// actions both ways, selecting messages to delete, and a composer that
+// rides on the keyboard, inserts at the cursor and takes pasted images.
+//
+//   asuka dev --platform ios examples/chat
+
+import std/time
+
+struct Message {
+  id: int = 0
+  from: string = "" // "" is me
+  text: string = ""
+  image: string = "" // a pasted image's file
+  at: time.Time = time.now()
+}
+
+let people = ["Ada", "Grace", "Linus"]
+
+let lines = [
+  "Did the build pass?",
+  "Shipping it after lunch.",
+  "Can you look at the list's anchor?",
+  "The sticky headers look right on Android now.",
+  "👍",
+  "Let's keep the API small.",
+  "I pushed a fix for the keyboard.",
+  "Who's on call this week?",
+  "Reviewing now.",
+  "The chat example scrolls nicely.",
+  "Meeting moved to 3pm.",
+  "Coffee?",
+]
+
+/// n messages ending before the first id and time given.
+fn history(firstId: int, before: time.Time, n: int) -> [Message] {
+  var out: [Message] = []
+  var at = before
+  for i in (0..<n).reversed() {
+    at = at - (7 + (firstId + i) % 50) * 9min
+    let id = firstId - n + i
+    let from = if id % 4 == 0 { "" } else { people[(id % 3 + 3) % 3] }
+    out.insert(Message(id: id, from: from, text: lines[(id % lines.count() + lines.count()) % lines.count()], at: at), at: 0)
+  }
+  return out
+}
+
+fn day(t: time.Time) -> string {
+  let today = time.now()
+  if t.sameDay(today) { return "Today" }
+  if t.sameDay(today - 24h) { return "Yesterday" }
+  if t.year == today.year { return t.format("EEEE, MMMM d") }
+  return t.format("MMMM d, yyyy")
+}
+
+screen Chat {
+  state messages = history(1000, time.now(), 40)
+  state loading = false
+  state selecting = false
+  state chosen: [int] = []
+  state draft = ""
+  state selection = TextRange()
+  state nextId = 1000
+
+  let list = Ref()
+  let field = Ref()
+
+  /// The history's start.
+  let oldest = 960 - 400
+
+  title: "Design Team"
+  toolbar {
+    Button(if selecting { "Done" } else { "Select" }) {
+      on press {
+        if selecting { endSelecting() } else { selecting = true }
+      }
+    }
+  }
+
+  async fn loadOlder() {
+    let first = messages[0]
+    if loading || first.id <= oldest { return }
+    loading = true
+    defer { loading = false }
+    // As a server would answer.
+    await sleep(400ms)
+    messages = history(first.id, first.at, 30) + messages
+  }
+
+  fn add(m: Message) {
+    nextId += 1
+    messages.push(Message(id: nextId, from: m.from, text: m.text, image: m.image))
+  }
+
+  async fn send() {
+    let text = draft.trim()
+    if text.isEmpty() { return }
+    add(Message(text: text))
+    draft = ""
+    // One's own message shows, wherever the list was.
+    list.scrollToEnd(animated: true)
+    // Someone answers.
+    await sleep(1200ms)
+    add(Message(from: "Ada", text: "Got it: “{text}”"))
+  }
+
+  fn remove(ids: [int]) { messages.removeWhere(m => ids.contains(m.id)) }
+
+  fn choose(id: int, on: bool) {
+    chosen.removeWhere(c => c == id)
+    if on { chosen.push(id) }
+  }
+
+  fn endSelecting() {
+    selecting = false
+    chosen = []
+  }
+
+  fn reply(m: Message) {
+    draft = "@{if m.from.isEmpty() { "me" } else { m.from }} "
+    selection = TextRange(start: draft.count(), end: draft.count())
+    field.focus()
+  }
+
+  SafeArea {
+    grow: 1
+    List {
+      ref: list
+      appearance: .bare
+      anchor: .bottom
+      selecting: selecting
+      on startReached { await loadOlder() }
+      // A day per section, its header pinned at the top.
+      section: i => day(messages[i].at)
+      header: name => Row {
+        justify: .center
+        padding: [6, 0]
+        View {
+          padding: [3, 10]
+          radius: 999
+          background: .secondaryBackground
+          Text(name) {
+            font: .caption.semibold()
+            color: .secondaryLabel
+          }
+        }
+      }
+      leadingSwipeActions: i => [.button(title: "Reply", icon: "arrowshape.turn.up.left", run: () => reply(messages[i]))]
+      swipeActions: i => [.button(title: "Delete", icon: "trash", role: .destructive, run: () => remove([messages[i].id]))]
+      selected: i => chosen.contains(messages[i].id)
+      on select(i, on) { choose(messages[i].id, on) }
+      on selectBegin(i) {
+        selecting = true
+        choose(messages[i].id, true)
+      }
+      for m in messages key m.id {
+        View {
+          padding: [3, 12]
+          Bubble(m)
+        }
+      }
+    }
+    if selecting {
+      Row {
+        justify: .spaceBetween
+        align: .center
+        padding: [8, 16]
+        Text("{chosen.count()} selected")
+        Button("Delete") {
+          color: .red
+          disabled: chosen.isEmpty()
+          on press {
+            remove(chosen)
+            endSelecting()
+          }
+        }
+      }
+    } else {
+      Row {
+        gap: 8
+        align: .end
+        padding: [8, 12]
+        Button("") {
+          icon: "face.smiling"
+          label: "Insert an emoji"
+          on press { field.insert("😀") }
+        }
+        TextField {
+          ref: field
+          bind text: draft
+          bind selection: selection
+          multiline: true
+          placeholder: "Message"
+          pasteTypes: ["image/*"]
+          grow: 1
+          lines: 5
+          on paste(items) {
+            for it in items { add(Message(image: it.path)) }
+          }
+        }
+        Button("") {
+          icon: "paperplane"
+          label: "Send"
+          variant: .filled
+          disabled: draft.trim().isEmpty()
+          on press { await send() }
+        }
+      }
+    }
+  }
+}
+
+component Bubble(m: Message) {
+  let mine = m.from.isEmpty()
+
+  Column {
+    padding: [8, 12]
+    radius: 18
+    maxWidth: 78%
+    gap: 2
+    alignSelf: if mine { .end } else { .start }
+    background: if mine { .accent } else { .secondaryBackground }
+    if !mine {
+      Text(m.from) {
+        font: .caption.semibold()
+        color: .secondaryLabel
+      }
+    }
+    if !m.image.isEmpty() {
+      Image(m.image) {
+        mode: .fill
+        width: 200
+        height: 150
+        radius: 12
+      }
+    }
+    if !m.text.isEmpty() {
+      Text(m.text) { color: if mine { .onAccent } else { .label } }
+    }
+  }
+}
+
+app {
+  Stack { Chat() }
+}
+
+test "a message sent is answered" {
+  let app = mount(Stack { Chat() })
+  app.type("Hello", into: "Message")
+  app.tap("Send")
+  app.expect("Hello")
+  await app.waitFor("Got it: “Hello”")
+}
+
+test "history ends before the first id" {
+  let h = history(1000, time.now(), 40)
+  expect(h.count() == 40 && h[0].id == 960 && h[39].id == 999)
+  expect(h[0].at < h[39].at)
+}

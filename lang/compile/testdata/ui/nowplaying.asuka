@@ -1,0 +1,33 @@
+import platform/audio
+import platform/nowplaying
+
+component Player {
+  state index = 0
+  state music: audio.Player? = audio.Player("music/afternoon.mp3")
+  let titles = ["Afternoon", "Evening"]
+
+  nowplaying.NowPlaying {
+    title: titles[index]
+    artist: "Asuka"
+    player: music
+    skipInterval: 10
+    on next { index = (index + 1) % titles.count() }
+    on previous { index = (index + titles.count() - 1) % titles.count() }
+  }
+
+  Column {
+    Text("Now: {titles[index]}")
+    Button("Next") { on press { index = (index + 1) % titles.count() } }
+  }
+}
+
+app { Player() }
+
+test "with no platform code, what plays shows nothing, and the screen works" {
+  let app = mount(Player())
+  await app.idle()
+  app.expect("Now: Afternoon")
+  app.tap("Next")
+  await app.idle()
+  app.expect("Now: Evening")
+}

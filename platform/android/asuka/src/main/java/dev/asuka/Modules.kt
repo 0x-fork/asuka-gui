@@ -1,19 +1,7 @@
 package dev.asuka
 
-import android.content.Context
-import android.net.Uri
-import android.os.Build
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
-import android.util.Base64
-import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.security.KeyStore
-import javax.crypto.Cipher
-import javax.crypto.KeyGenerator
-import javax.crypto.SecretKey
-import javax.crypto.spec.GCMParameterSpec
 
 /** A native module's method: the call's bytes, and a reply (once). */
 typealias AsukaModuleMethod = (args: ByteArray, reply: (Result<ByteArray>) -> Unit) -> Unit
@@ -33,12 +21,7 @@ fun AsukaRuntime.call(root: Int, args: ByteBuffer) {
     val method = str()
     val payload = ByteArray(b.remaining())
     b.get(payload)
-    if (!builtinModules) {
-        builtinModules = true
-        val apps = HashMap(modules)
-        registerBuiltinModules()
-        modules.putAll(apps) // an app's module of the same name stays the app's
-    }
+    builtins()
     var answered = false
     val reply: (Result<ByteArray>) -> Unit = { res ->
         onMain {
@@ -62,142 +45,29 @@ fun AsukaRuntime.call(root: Int, args: ByteBuffer) {
     }
 }
 
-/** A webAuth sign-in under way: its session, callback scheme, and start's reply. */
-class AsukaAuth(val id: Int, val scheme: String, val reply: (Result<ByteArray>) -> Unit) {
-    /** The app went behind the tab: coming back without a callback is closing it. */
-    var away = false
-}
-
-/** A u32-length string, then the rest. */
-private fun split(b: ByteArray): Pair<String, ByteArray> {
-    val buf = ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN)
-    if (buf.remaining() < 4) return "" to ByteArray(0)
-    val k = ByteArray(buf.int)
-    buf.get(k)
-    val rest = ByteArray(buf.remaining())
-    buf.get(rest)
-    return String(k, Charsets.UTF_8) to rest
-}
-
-/** The secure store's key: in the Android Keystore, never out of it. */
-private fun secureKey(): SecretKey {
-    val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-    (ks.getKey("asuka.secure", null) as? SecretKey)?.let { return it }
-    val g = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
-    g.init(KeyGenParameterSpec.Builder("asuka.secure", KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
-        .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-        .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-        .build())
-    return g.generateKey()
-}
-
+/**
+ * The host's own modules, by name: what the platform SDK's packages
+ * over platform/host call (notify, push, the library...),
+ * and what the core calls itself (web: a WebView's scripts and cookies;
+ * share: ui.ShareFiles). What a std native package implements is that
+ * package's (std/<name>/android), in the apps that import it.
+ */
 private fun AsukaRuntime.registerBuiltinModules() {
-    val prefs = app.getSharedPreferences("asuka.secure", Context.MODE_PRIVATE)
-    modules["secureStore"] = mapOf(
-        // args: key; result: u8 found, then the value. Values are AES-GCM
-        // ciphertext (iv first), base64, in private preferences.
-        "get" to { args, reply ->
-            val v = prefs.getString(String(args, Charsets.UTF_8), null)
-            if (v == null) reply(Result.success(byteArrayOf(0)))
-            else {
-                val raw = Base64.decode(v, Base64.NO_WRAP)
-                val c = Cipher.getInstance("AES/GCM/NoPadding")
-                c.init(Cipher.DECRYPT_MODE, secureKey(), GCMParameterSpec(128, raw, 0, 12))
-                reply(Result.success(byteArrayOf(1) + c.doFinal(raw, 12, raw.size - 12)))
-            }
-        },
-        "set" to { args, reply ->
-            val (key, value) = split(args)
-            val c = Cipher.getInstance("AES/GCM/NoPadding")
-            c.init(Cipher.ENCRYPT_MODE, secureKey())
-            val sealed = c.iv + c.doFinal(value)
-            prefs.edit().putString(key, Base64.encodeToString(sealed, Base64.NO_WRAP)).apply()
-            reply(Result.success(ByteArray(0)))
-        },
-        "delete" to { args, reply ->
-            prefs.edit().remove(String(args, Charsets.UTF_8)).apply()
-            reply(Result.success(ByteArray(0)))
-        },
-    )
-    modules["browser"] = mapOf(
-        // args: the URL: shown in the app (a Custom Tab).
-        "open" to { args, reply ->
-            val act = activity
-            val url = Uri.parse(String(args, Charsets.UTF_8))
-            if (act == null || (url.scheme != "https" && url.scheme != "http")) reply(Result.failure(Exception("not a web URL")))
-            else {
-                androidx.browser.customtabs.CustomTabsIntent.Builder().build().launchUrl(act, url)
-                reply(Result.success(ByteArray(0)))
-            }
-        },
-    )
-    modules["webAuth"] = mapOf(
-        // args: u32 session, u8 flags (1 ephemeral), string URL, string
-        // callback scheme (empty: none); result: the callback URL, or the
-        // error "canceled". A Custom Tab: it ends with a link of the
-        // scheme (the app's), with cancel, or when the user comes back.
-        "start" to { args, reply ->
-            val b = ByteBuffer.wrap(args).order(ByteOrder.LITTLE_ENDIAN)
-            val id = b.int
-            b.get() // flags: Custom Tabs keep the browser's cookies
-            fun str(): String { val a = ByteArray(b.int); b.get(a); return String(a, Charsets.UTF_8) }
-            val url = Uri.parse(str())
-            val scheme = str()
-            val act = activity
-            if (act == null || (url.scheme != "https" && url.scheme != "http")) reply(Result.failure(Exception("not a web URL")))
-            else {
-                auth?.reply?.invoke(Result.failure(Exception("canceled"))) // one at a time
-                auth = AsukaAuth(id, scheme, reply)
-                androidx.browser.customtabs.CustomTabsIntent.Builder().build().launchUrl(act, url)
-            }
-        },
-        "cancel" to { args, reply ->
-            val id = ByteBuffer.wrap(args).order(ByteOrder.LITTLE_ENDIAN).int
-            val a = auth
-            if (a != null && a.id == id) {
-                auth = null
-                a.reply(Result.failure(Exception("canceled")))
-                // The app again, over the tab (in its task): it closes.
-                activity?.let { act ->
-                    act.startActivity(android.content.Intent(act, act.javaClass)
-                        .addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP))
-                }
-            }
-            reply(Result.success(ByteArray(0)))
-        },
-    )
-    modules["photos"] = mapOf(
-        // args: u8 limit (0: one); result: the picked images' files, a
-        // line each (none: cancelled). The system's Photo Picker.
-        "pick" to { args, reply ->
-            val act = activity
-            if (act == null) reply(Result.failure(Exception("no screen")))
-            else pickPhotos(act, maxOf(args.firstOrNull()?.toInt() ?: 1, 1), reply)
-        },
-    )
-    modules["location"] = AsukaLocation(this).methods()
-    modules["locationAccess"] = AsukaLocationAccess(this).methods()
-    modules["locationBackground"] = AsukaLocationBackground(this).methods()
-    modules["network"] = AsukaNetwork(this).methods()
-    modules["displays"] = AsukaDisplays(this).methods()
-    modules["power"] = AsukaPower(this).methods()
-    modules["appearance"] = AsukaSystemAppearance(this).methods()
-    modules["dock"] = dockMethods()
-    modules["js"] = scriptMethods()
     modules["web"] = webMethods()
-    modules["library"] = libraryMethods()
     modules["share"] = shareMethods()
+    modules["library"] = libraryMethods()
+    modules["photoLibrary"] = AsukaPhotoLibrary(this).methods()
     modules["background"] = AsukaBackground(this).methods()
     modules["notify"] = notifyMethods()
-    modules["audio"] = audioMethods()
-    modules["nowPlaying"] = AsukaNowPlaying(this).methods()
-    modules["camera"] = cameraMethods()
-    modules["scan"] = scanMethods()
-    modules["vision"] = visionMethods()
-    modules["photoLibrary"] = AsukaPhotoLibrary(this).methods()
-    modules["screen"] = screenMethods()
-    modules["splash"] = AsukaSplash.methods()
-    // asuka/sdk/recent and asuka/sdk/login: a desktop's. Android's file pickers keep
+    modules["push"] = pushMethods()
+    modules["periodic"] = AsukaPeriodicHub.methods(this)
+    modules["contacts"] = contactsMethods()
+    modules["calendar"] = calendarMethods()
+    modules["compose"] = composeMethods()
+    modules["widget"] = widgetMethods()
+    modules["liveActivity"] = liveActivityMethods()
+    modules["dock"] = dockMethods()
+    // platform/recent and platform/login: a desktop's. Android's file pickers keep
     // their own recent files, and an app doesn't start at login.
     val answer = { b: ByteArray -> { _: ByteArray, reply: (Result<ByteArray>) -> Unit -> reply(Result.success(b)) } }
     modules["recent"] = mapOf("add" to answer(ByteArray(0)), "clear" to answer(ByteArray(0)), "list" to answer("[]".toByteArray()))
@@ -206,129 +76,48 @@ private fun AsukaRuntime.registerBuiltinModules() {
         "enabled" to answer(byteArrayOf(0)),
         "openedAtLogin" to answer(byteArrayOf(0)),
     )
-    modules["clipboard"] = AsukaClipboard(this).methods()
-    modules["imageEdit"] = AsukaImageEdit(this).methods()
-    modules["speech"] = AsukaSpeech(this).methods()
-    modules["sensors"] = AsukaSensors(this).methods()
-    modules["nfc"] = AsukaNfcHub.methods(this)
-    modules["bluetooth"] = AsukaBluetooth(this).methods()
-    modules["contacts"] = contactsMethods()
-    modules["calendar"] = calendarMethods()
-    modules["widget"] = widgetMethods()
-    modules["liveActivity"] = liveActivityMethods()
-    modules["files"] = filesMethods()
-    modules["preview"] = previewMethods()
-    modules["print"] = printMethods()
-    modules["compose"] = composeMethods()
-    modules["biometric"] = biometricMethods()
-    modules["tracking"] = trackingMethods()
-    modules["push"] = pushMethods()
-    modules["audioRecord"] = AsukaAudioRecorder(this).methods()
-    modules["transcribe"] = AsukaTranscribe(this).methods()
-    modules["periodic"] = AsukaPeriodicHub.methods(this)
-    modules["appleAuth"] = mapOf(
-        "available" to { _, reply -> reply(Result.success(byteArrayOf(0))) },
-        "*" to { _, reply -> reply(Result.failure(Exception("not available"))) },
-    )
-    // asuka/sdk/icloud: iCloud is Apple's.
+    // platform/icloud: iCloud is Apple's.
     modules["icloud"] = mapOf(
         "stop" to { _, reply -> reply(Result.success(ByteArray(0))) },
         "*" to { _, reply -> reply(Result.failure(Exception("not available: iCloud is Apple's"))) },
     )
-    // Without its module, a package's calls fail with what's missing.
-    for ((m, pkg) in listOf("review" to "review", "integrity" to "integrity", "ageRange" to "agerange")) {
-        modules[m] = mapOf("*" to { _, reply -> reply(Result.failure(Exception("asuka/$pkg isn't in this build"))) })
-    }
-    modules["device"] = mapOf(
-        // result: JSON: model, system, systemVersion, appVersion, build.
-        "info" to { _, reply ->
-            val p = app.packageManager.getPackageInfo(app.packageName, 0)
-            val build = p.longVersionCode
-            val json = org.json.JSONObject(mapOf(
-                "model" to Build.MODEL, "system" to "Android", "systemVersion" to Build.VERSION.RELEASE,
-                "appVersion" to (p.versionName ?: ""), "build" to build.toString(),
-            ))
-            reply(Result.success(json.toString().toByteArray()))
-        },
-        // result: u8 has, then the clipboard's text.
-        "clipboard" to { _, reply ->
-            val cm = app.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-            val t = cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(app)?.toString()
-            reply(Result.success(if (t == null) byteArrayOf(0) else byteArrayOf(1) + t.toByteArray()))
-        },
-        // args: u8 on: the screen stays on while on.
-        "keepAwake" to { args, reply ->
-            val w = activity?.window
-            if (args.firstOrNull()?.toInt() == 1) w?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            else w?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            reply(Result.success(ByteArray(0)))
-        },
-    )
 }
 
-private var pickers = 0
-
-/** Picks images with the Photo Picker; copies them to files (its URIs are the picker's). */
-private fun AsukaRuntime.pickPhotos(act: AsukaActivity, limit: Int, reply: (Result<ByteArray>) -> Unit) {
-    val reg = act.activityResultRegistry
-    val key = "asuka-photos-${pickers++}"
-    val done = { uris: List<Uri> ->
-        Thread {
-            val dir = File(app.cacheDir, "asuka-photos").apply { mkdirs() }
-            val paths = uris.mapNotNull { u ->
-                runCatching {
-                    val f = File(dir, java.util.UUID.randomUUID().toString() + ".jpg")
-                    app.contentResolver.openInputStream(u)!!.use { i -> f.outputStream().use { o -> i.copyTo(o) } }
-                    f.absolutePath
-                }.getOrNull()
-            }
-            reply(Result.success(paths.joinToString("\n").toByteArray()))
-        }.start()
-    }
-    val request = androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)
-    if (limit > 1) {
-        var launcher: androidx.activity.result.ActivityResultLauncher<androidx.activity.result.PickVisualMediaRequest>? = null
-        launcher = reg.register(key, androidx.activity.result.contract.ActivityResultContracts.PickMultipleVisualMedia(limit)) { uris ->
-            launcher?.unregister()
-            done(uris)
-        }
-        launcher.launch(request)
-    } else {
-        var launcher: androidx.activity.result.ActivityResultLauncher<androidx.activity.result.PickVisualMediaRequest>? = null
-        launcher = reg.register(key, androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { uri ->
-            launcher?.unregister()
-            done(listOfNotNull(uri))
-        }
-        launcher.launch(request)
-    }
-}
+/** platform/dock: a phone has no Dock or taskbar: nothing to show, nothing asked. */
+fun dockMethods(): Map<String, AsukaModuleMethod> = mapOf(
+    "progress" to { _, reply -> reply(Result.success(ByteArray(0))) },
+    "attention" to { _, reply -> reply(Result.success(ByteArray(4))) },
+    "cancelAttention" to { _, reply -> reply(Result.success(ByteArray(0))) },
+)
 
 /**
- * An optional module's (platform/android/asuka-<name>: Play's libraries,
- * Google Maps, Firebase), which only the apps that import its package are
- * built with: it registers its methods and views. Found by name.
+ * An optional module's (platform/android/asuka-<name>: Firebase's
+ * messaging, WorkManager), which only the apps that import its package are
+ * built with: it sets the hooks of the host's module it serves. Found by
+ * name.
  */
 interface AsukaPlugin {
     fun register(rt: AsukaRuntime)
 }
 
-/** The optional modules' plugins, by class name. */
+/** The optional modules' plugins, by class name: platform/push's, platform/periodic's. */
 private val plugins = listOf(
-    "dev.asuka.review.AsukaReviewPlugin",
-    "dev.asuka.integrity.AsukaIntegrityPlugin",
-    "dev.asuka.agerange.AsukaAgeRangePlugin",
-    "dev.asuka.maps.AsukaMapsPlugin",
     "dev.asuka.push.AsukaPushPlugin",
     "dev.asuka.periodic.AsukaPeriodicPlugin",
-    "dev.asuka.purchase.AsukaPurchasePlugin",
-    "dev.asuka.pay.AsukaPayPlugin",
 )
 
 /**
- * Registers the optional modules this app was built with: at start (with
- * the native views), so their modules are the app's, over the fallbacks.
+ * Makes the host's modules, and the optional modules' hooks this app was
+ * built with, on the first call of one: an app that calls none makes none
+ * (nor looks for the plugins' classes). An app's module of the same name
+ * stays the app's. Main thread.
  */
-fun AsukaRuntime.registerPlugins() {
+private fun AsukaRuntime.builtins() {
+    if (builtinModules) return
+    builtinModules = true
+    val apps = HashMap(modules)
+    registerBuiltinModules()
+    modules.putAll(apps)
     for (name in plugins) {
         try {
             (Class.forName(name).getDeclaredConstructor().newInstance() as AsukaPlugin).register(this)

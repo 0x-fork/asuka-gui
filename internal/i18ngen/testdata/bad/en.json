@@ -4,9 +4,6 @@
   "files": "{n, plural, one {# file} other {# files}}",
   "broken": "{n, plural, one {# file}}",
   "bad-key": "A key with a dash",
-  "In": "Collides with In",
-  "dup_name": "One",
-  "dupName": "Two",
   "typed": "{n, plural, one {#} other {#}}",
   "@typed": {
     "placeholders": {

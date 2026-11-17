@@ -1,0 +1,5 @@
+// An app with a native package (internal/nativegen's pantry): the Mac
+// build's tests build its Swift.
+import @asuka/pantry
+
+app { Text("pantry") }

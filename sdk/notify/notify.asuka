@@ -1,0 +1,467 @@
+// Package platform/notify is local notifications: shown now or after a
+// while, whether or not the app runs then; tapping one opens the app with
+// its URL (the app's openURL). The user allows them first (request).
+//
+// What a messaging app needs is here too, for platform/push's notifications
+// as well: actions and inline replies (setCategories, responses), threads
+// that group a chat's notifications, Android's channels (setChannels),
+// messages in conversations (Notification.from), the app icon's badge
+// (setBadge), the notifications showing (showing, remove, removeThread),
+// and which ones show while the app is open (present).
+//
+// Each platform's host shows them as its own apps' do (iOS's and macOS's
+// UserNotifications, Android's notifications, Windows' toasts, Linux's
+// desktop notifications, the browser's), through platform/host.
+//
+//   if try await notify.request() {
+//     try await notify.schedule(notify.Notification(title: "Tea", body: "It's ready", after: 4min))
+//   }
+
+import platform/host
+import std/json
+import std/time
+
+/// Who sent a message, or the user (Conversation.me).
+pub struct Person {
+  /// Names them for the system, the same each time: a contact's, an
+  /// account's.
+  id: string = ""
+  name: string = ""
+  /// Their picture: an asset's path, a file's, or an http(s) URL.
+  image: string = ""
+  /// An automated sender (Android shows it as one).
+  bot: bool = false
+}
+
+/// A message said before the one a notification shows.
+pub struct Message {
+  /// Who said it; none: the user.
+  from: Person? = none
+  text: string
+  /// When; none: unknown.
+  time: time.Time? = none
+}
+
+/// Where a message was said.
+pub struct Conversation {
+  /// Names it, the same each time; "": a 1:1 conversation with the
+  /// sender, whose ID it is.
+  id: string = ""
+  /// A group's name.
+  title: string = ""
+  /// More than two people are in it.
+  group: bool = false
+  /// A group's picture, as Person's.
+  image: string = ""
+  /// The user as the conversation shows them (Android shows their
+  /// replies under it).
+  me: Person? = none
+  /// Messages said before this one, oldest first (Android shows them).
+  earlier: [Message] = []
+}
+
+/// What to show, and when.
+pub struct Notification {
+  /// Names it, to replace or cancel it: one with an ID that's waiting or
+  /// showing replaces that one. A message's is its conversation's ID by
+  /// default.
+  id: string = ""
+  title: string = ""
+  body: string = ""
+  /// What the app is opened with when it's tapped (one of its scheme's).
+  url: string = ""
+  /// How long from now it shows (schedule: at least a second).
+  after: Duration = 0s
+  /// A line under the title (iOS); Android's sub text.
+  subtitle: string = ""
+  /// The app's own keys, given back in showing, responses and present.
+  data: [string: string] = [:]
+  /// A category's ID (setCategories): the actions it shows.
+  category: string = ""
+  /// Groups it with the thread's others; a message's is its
+  /// conversation's ID by default.
+  thread: string = ""
+  /// The line under an Android group's summary ("3 new messages").
+  summary: string = ""
+  /// The Android channel it's in (setChannels); iOS has none.
+  channel: string = ""
+  /// Sets the app icon's badge as it shows; 0 leaves it.
+  badge: int = 0
+  /// Shows it without its sound.
+  silent: bool = false
+  /// A picture shown with it: an asset's path, a file's, or an http(s) URL.
+  image: string = ""
+  /// A message's sender and conversation (from).
+  sender: Person? = none
+  conversation: Conversation? = none
+
+  /// Makes it a message: sender said its body in c, shown as the
+  /// platform shows messages (iOS's communication notifications,
+  /// Android's conversations). Its ID and thread default to the
+  /// conversation's ID, its title to the sender's name (a group's title).
+  fn from(sender: Person, c: Conversation) -> Notification {
+    var n = self
+    n.sender = sender
+    n.conversation = c
+    return n
+  }
+}
+
+/// A notification of the app's that shows, or showed.
+pub struct Delivered {
+  id: string = ""
+  title: string = ""
+  subtitle: string = ""
+  body: string = ""
+  url: string = ""
+  data: [string: string] = [:]
+  category: string = ""
+  thread: string = ""
+  /// When it showed.
+  time: time.Time = time.unix(0)
+  /// A push's (platform/push), whose data are its payload's.
+  remote: bool = false
+}
+
+// A notification as the hosts say it: its time in milliseconds since
+// 1970.
+struct WireDelivered {
+  id: string = ""
+  title: string = ""
+  subtitle: string = ""
+  body: string = ""
+  url: string = ""
+  data: [string: string] = [:]
+  category: string = ""
+  thread: string = ""
+  time: int = 0
+  remote: bool = false
+}
+
+fn deliveredOf(w: WireDelivered) -> Delivered = Delivered(id: w.id, title: w.title, subtitle: w.subtitle, body: w.body, url: w.url, data: w.data, category: w.category, thread: w.thread, time: time.unixMilli(w.time), remote: w.remote)
+
+struct WireResponse {
+  action: string = ""
+  reply: string = ""
+  notification: WireDelivered = WireDelivered()
+  token: string = ""
+}
+
+/// What the user did with a notification: tapped it (action ""), or one
+/// of its category's actions, with a reply's text.
+pub struct Response {
+  action: string = ""
+  reply: string = ""
+  notification: Delivered = Delivered()
+  token: string = ""
+
+  /// Keeps the app running for the work the response starts (a reply
+  /// sent), until the function it gives is called (or the system's time
+  /// for it is up).
+  fn defer() -> fn() {
+    let t = token
+    if t.isEmpty() {
+      return () => {}
+    }
+    return () => host.send("notify", "actionDone", t.bytes())
+  }
+}
+
+/// A category's actions: the buttons a notification of it shows.
+pub struct Category {
+  id: string
+  actions: [Action] = []
+}
+
+/// One of a category's buttons.
+pub struct Action {
+  id: string
+  title: string
+  /// An SF Symbol's name (iOS 15).
+  icon: string = ""
+  destructive: bool = false
+  /// Only once the device is unlocked.
+  unlock: bool = false
+  /// Brings the app to the front; other actions run in the background.
+  open: bool = false
+  /// A text field to reply with.
+  reply: Reply? = none
+}
+
+/// An action's text field.
+pub struct Reply {
+  button: string = ""
+  placeholder: string = ""
+}
+
+/// How much an Android channel's notifications interrupt.
+pub enum Importance {
+  default
+  high
+  low
+  min
+}
+
+/// An Android notification channel: what the user turns on or off in
+/// Settings. iOS and the desktops have none.
+pub struct Channel {
+  id: string
+  name: string
+  description: string = ""
+  importance: Importance = .default
+  silent: bool = false
+  noVibration: bool = false
+  noBadge: bool = false
+  group: string = ""
+}
+
+/// A group of Android channels.
+pub struct ChannelGroup {
+  id: string
+  name: string
+}
+
+/// How a notification that comes while the app is in front shows.
+pub enum Presentation {
+  /// As a banner, with its sound.
+  banner
+  /// In the list (Notification Center), without a banner or a sound.
+  quiet
+  /// Not at all.
+  hide
+}
+
+/// Asks the user to allow notifications (the first time; then it's
+/// their answer, or what they've set in Settings since), and answers
+/// whether they're allowed.
+pub async fn request() throws -> bool {
+  let b = try await host.call("notify", "request", bytes())
+  return host.readU8(b, 0) == 1
+}
+
+/// Shows n after n.after (at least a second).
+pub async fn schedule(n: Notification) throws {
+  let secs = max(n.after.seconds(), 1.0)
+  try await post(n, secs)
+}
+
+/// Shows n now; with its ID, it replaces the one showing.
+pub async fn show(n: Notification) throws {
+  try await post(n, 0.0)
+}
+
+async fn post(n: Notification, seconds: float) throws {
+  let _ = try await host.call("notify", "schedule", json.encode(spec(n, seconds)).bytes())
+}
+
+/// Takes away the notification id: waiting, or showing.
+pub fn cancel(id: string) = host.send("notify", "cancel", id.bytes())
+
+/// Sets the number on the app's icon; 0 takes it away. Android has no
+/// badge of its own (launchers count the notifications): it does nothing
+/// there.
+pub fn setBadge(n: int) = host.send("notify", "badge", host.u32(max(n, 0)))
+
+/// The app's notifications showing, its pushes' too, newest first.
+pub async fn showing() throws -> [Delivered] {
+  let b = try await host.call("notify", "showing", bytes())
+  let ws: [WireDelivered] = try json.decode(b.string())
+  return ws.map(deliveredOf)
+}
+
+/// Takes away the notifications ids that show.
+pub fn remove(ids: [string]) = host.send("notify", "remove", json.encode(ids).bytes())
+
+/// Takes away the notifications of thread that show: a chat's, once it's
+/// read.
+pub fn removeThread(thread: string) = host.send("notify", "removeThread", thread.bytes())
+
+/// Takes away all the app's notifications that show (not the ones
+/// waiting: cancel them).
+pub fn removeAll() = host.send("notify", "removeAll", bytes())
+
+/// Sets the app's categories: the actions their notifications show.
+pub fn setCategories(cs: [Category]) = host.send("notify", "categories", json.encode(cs).bytes())
+
+/// Sets the app's Android channels (iOS and the desktops have none).
+pub fn setChannels(cs: [Channel]) {
+  let wire = cs.map(c => WireChannel(id: c.id, name: c.name, description: c.description, importance: importance(c.importance), silent: c.silent, noVibration: c.noVibration, noBadge: c.noBadge, group: c.group))
+  host.send("notify", "channels", json.encode(wire).bytes())
+}
+
+/// Sets the app's Android channel groups.
+pub fn setChannelGroups(gs: [ChannelGroup]) = host.send("notify", "channelGroups", json.encode(gs).bytes())
+
+/// What the user does with the app's notifications (and its pushes'):
+/// taps, actions, replies. A response that comes as the app starts waits
+/// until this is read.
+pub fn responses() -> Stream<Response> = Stream(give => {
+  for await b in host.next("notify", "nextAction") {
+    let r: WireResponse? = try? json.decode(b.string())
+    if let x = r {
+      give(Response(action: x.action, reply: x.reply, notification: deliveredOf(x.notification), token: x.token))
+    }
+  }
+})
+
+/// Decides how each notification that comes while the app is in front
+/// shows (a chat's, while the chat shows: hidden). Without it, it shows
+/// as a banner.
+pub fn present(decide: fn(Delivered) -> Presentation) {
+  presenter.set(decide)
+}
+
+/// Stops deciding: notifications that come while the app is in front
+/// show as banners.
+pub fn stopPresenting() {
+  presenter.clear()
+}
+
+// What decides, and its task: the host asks for each notification, which
+// waits for the answer (a second at most).
+store Presenter {
+  state decide: (fn(Delivered) -> Presentation)? = none
+  state on = false
+
+  fn set(f: fn(Delivered) -> Presentation) {
+    decide = f
+    if !on {
+      on = true
+      host.send("notify", "present", host.u8(1))
+    }
+  }
+
+  fn clear() {
+    decide = none
+    if on {
+      on = false
+      host.send("notify", "present", host.u8(0))
+    }
+  }
+
+  task(on) {
+    if !on {
+      return
+    }
+    for await b in host.next("notify", "nextPresent") {
+      let got: Present? = try? json.decode(b.string())
+      if let p = got {
+        var how = 0
+        if let f = decide {
+          how = presentation(f(deliveredOf(p.notification)))
+        }
+        host.send("notify", "presented", host.u8(how).concat(p.token.bytes()))
+      }
+    }
+  }
+}
+
+let presenter = Presenter()
+
+struct Present {
+  token: string = ""
+  notification: WireDelivered = WireDelivered()
+}
+
+fn presentation(p: Presentation) -> int = match p {
+  .banner => 0
+  .quiet => 1
+  .hide => 2
+}
+
+fn importance(i: Importance) -> int = match i {
+  .default => 0
+  .high => 1
+  .low => 2
+  .min => 3
+}
+
+struct WireChannel {
+  id: string
+  name: string
+  description: string
+  importance: int
+  silent: bool
+  noVibration: bool
+  noBadge: bool
+  group: string
+}
+
+// What the hosts take (sdk/notify's Spec).
+struct Spec {
+  id: string
+  title: string
+  subtitle: string
+  body: string
+  url: string
+  data: [string: string]
+  seconds: float
+  category: string
+  thread: string
+  summary: string
+  channel: string
+  badge: int
+  silent: bool
+  image: string
+  sender: Person?
+  conversation: WireConversation?
+}
+
+struct WireConversation {
+  id: string
+  title: string
+  group: bool
+  image: string
+  me: Person?
+  earlier: [WireMessage]
+}
+
+struct WireMessage {
+  sender: Person?
+  text: string
+  time: int
+}
+
+fn firstOf(a: string, b: string, c: string) -> string {
+  if !a.isEmpty() {
+    return a
+  }
+  if !b.isEmpty() {
+    return b
+  }
+  return c
+}
+
+/// n shown now as a message when sender is given, said in c: platform/push's
+/// rewrite, whose message carries its own (so that only an app that makes
+/// one has communication notifications, as with from).
+pub fn specOf(n: Notification, sender: Person?, c: Conversation?) -> Spec {
+  var m = n
+  m.sender = sender
+  m.conversation = c
+  return spec(m, 0.0)
+}
+
+/// n as the hosts take it: a message's ID, thread and title from its
+/// conversation and sender.
+pub fn spec(n: Notification, seconds: float) -> Spec {
+  var id = n.id
+  var thread = n.thread
+  var title = n.title
+  var conv: WireConversation? = none
+  if let s = n.sender {
+    let c = n.conversation ?? Conversation()
+    let cid = firstOf(c.id, s.id, firstOf(s.name, "asuka", ""))
+    conv = WireConversation(id: cid, title: c.title, group: c.group, image: c.image, me: c.me, earlier: c.earlier.map(m => WireMessage(sender: m.from, text: m.text, time: m.time?.unixMilli() ?? 0)))
+    if id.isEmpty() {
+      id = cid
+    }
+    if thread.isEmpty() {
+      thread = cid
+    }
+    if title.isEmpty() {
+      title = if c.group && !c.title.isEmpty() { c.title } else { s.name }
+    }
+  }
+  return Spec(id: id, title: title, subtitle: n.subtitle, body: n.body, url: n.url, data: n.data, seconds: seconds, category: n.category, thread: thread, summary: n.summary, channel: n.channel, badge: n.badge, silent: n.silent, image: n.image, sender: n.sender, conversation: conv)
+}

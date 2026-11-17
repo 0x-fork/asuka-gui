@@ -1,0 +1,219 @@
+// Media: images, gestures, animation and a native view, one screen each.
+//
+//   asuka dev --platform ios examples/media
+
+import ./segmented
+
+app {
+  Stack { Home() }
+}
+
+screen Home {
+  title: "Media"
+
+  SafeArea {
+    padding: 20
+    gap: 12
+    Button("Images") {
+      variant: .tinted
+      on press { push(Images()) }
+    }
+    Button("Gestures") {
+      variant: .tinted
+      on press { push(Gestures()) }
+    }
+    Button("Animation") {
+      variant: .tinted
+      on press { push(AnimationDemo()) }
+    }
+    Button("Native view") {
+      variant: .tinted
+      on press { push(NativeView()) }
+    }
+  }
+}
+
+screen Images {
+  state status = "Loading…"
+
+  title: "Images"
+
+  Scroll {
+    grow: 1
+    SafeArea {
+      padding: 20
+      gap: 12
+      Text("From the network, filling a 16:9 box") { font: .headline }
+      Image("https://picsum.photos/id/1015/1200/800") {
+        mode: .fill
+        label: "A river between mountains"
+        aspectRatio: 16.0 / 9
+        radius: 12
+        background: .secondaryBackground
+        on loaded(w, h) { status = "Loaded, {w.fixed(0)}×{h.fixed(0)}" }
+        on error(m) { status = "Failed: {m}" }
+      }
+      Text(status) {
+        font: .footnote
+        color: .secondaryLabel
+      }
+      Text("From the app's assets, at its natural size") { font: .headline }
+      Image("sunset.png") { alignSelf: .start }
+    }
+  }
+}
+
+/// A card you drag around and pinch to resize; it springs back.
+screen Gestures {
+  state x = 0.0
+  state y = 0.0
+  state size = 120.0
+  state start = (0.0, 0.0, 0.0) // where a gesture began: x, y and size
+  state swipe = "Swipe the bar below"
+  state last = ""
+
+  title: "Gestures"
+
+  SafeArea {
+    padding: 20
+    gap: 16
+    Text(if last.isEmpty() { "Drag the card, pinch it, let go" } else { last }) { color: .secondaryLabel }
+    View {
+      grow: 1
+      background: .secondaryBackground
+      radius: 16
+      clip: true
+      View {
+        absolute: true
+        left: 40 + x
+        top: 40 + y
+        width: size
+        height: size
+        background: .accent
+        radius: 24
+        justify: .center
+        align: .center
+        on pan(g) {
+          match g.state {
+            .began => start = (x, y, size)
+            .changed => {
+              let (x0, y0, _) = start
+              x = x0 + g.translationX
+              y = y0 + g.translationY
+            }
+            _ => {
+              last = "Dragged {g.translationX.fixed(0)}, {g.translationY.fixed(0)} at {max(g.velocityX.abs(), g.velocityY.abs()).fixed(0)} pt/s"
+              animate(Animation(duration: 500ms, curve: .spring), () => {
+                x = 0
+                y = 0
+              })
+            }
+          }
+        }
+        on pinch(g) {
+          match g.state {
+            .began => start = (x, y, size)
+            .changed => {
+              let (_, _, s0) = start
+              size = min(max(s0 * g.scale, 60), 280)
+            }
+            _ => {
+              last = "Pinched ×{g.scale.fixed(2)}"
+              animate(Animation(duration: 500ms, curve: .spring), () => { size = 120 })
+            }
+          }
+        }
+        Text("Drag me") {
+          color: #ffffff
+          font: .headline
+        }
+      }
+    }
+    View {
+      height: 72
+      background: .secondaryBackground
+      radius: 16
+      justify: .center
+      align: .center
+      on swipe(direction) { swipe = "Swiped {direction}" }
+      Text(swipe)
+    }
+  }
+}
+
+screen AnimationDemo {
+  state open = false
+
+  title: "Animation"
+
+  SafeArea {
+    padding: 20
+    gap: 16
+    Button("Toggle") {
+      variant: .filled
+      on press { animate(() => { open = !open }) }
+    }
+    View {
+      height: if open { 240 } else { 80 }
+      background: if open { .purple } else { .orange }
+      radius: if open { 32 } else { 12 }
+      opacity: if open { 1 } else { 0.6 }
+      padding: 16
+      Text("A card that grows, rounds and darkens") { color: #ffffff }
+    }
+    Row {
+      gap: 12
+      View {
+        width: if open { 200 } else { 60 }
+        height: 24
+        background: .green
+        radius: 12
+      }
+      View {
+        grow: 1
+        height: 24
+        background: .blue
+        radius: 12
+      }
+    }
+  }
+}
+
+let periods = ["Day", "Week", "Month"]
+
+screen NativeView {
+  state selected = 1
+
+  title: "Native view"
+
+  SafeArea {
+    padding: 20
+    gap: 16
+    Text("A segmented control, a native view of a package's (segmented/): Swift on iOS and macOS, Kotlin on Android, JavaScript on the web, and C on Windows and Linux:") { color: .secondaryLabel }
+    segmented.Segmented(periods) {
+      selected: selected
+      on changed(i) { selected = i }
+    }
+    Text("Selected: {periods[selected]}")
+    Button("Select Month from Asuka") {
+      on press { selected = 2 }
+    }
+  }
+}
+
+test "the native view follows the state" {
+  let app = mount(Stack { NativeView() })
+  app.expect("Selected: Week")
+  app.tap("Select Month from Asuka")
+  app.expect("Selected: Month")
+}
+
+test "the screens" {
+  let app = mount(Stack { Home() })
+  app.tap("Animation")
+  app.tap("Toggle")
+  app.expect("A card that grows, rounds and darkens")
+  app.back()
+  app.tap("Images")
+  app.expect("Loading…")
+}

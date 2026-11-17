@@ -1,0 +1,44 @@
+import platform/appleauth
+
+component Account {
+  state status = ""
+  Column {
+    appleauth.SignInButton {
+      variant: .black
+      height: 44
+      on press {
+        do {
+          let c = try await appleauth.signIn(scopes: [.email], nonce: "n1")
+          status = "Signed in: {c.user} {c.email}"
+        } catch appleauth.AppleAuthError.canceled {
+          status = "Canceled"
+        } catch e {
+          status = e.message
+        }
+      }
+    }
+    Text("status {status}")
+  }
+}
+
+app { Account() }
+
+test "with no platform code, it isn't available" {
+  expect(!appleauth.available())
+  let app = mount(Account())
+  app.tap("SignInButton")
+  app.expect("status appleauth: not available")
+}
+
+test "a fake's sign-in" {
+  let apple = appleauth.fake()
+  apple.credential = appleauth.Credential(user: "001.abc", email: "kai@example.com", givenName: "Kai")
+  let app = mount(Account())
+  app.tap("SignInButton")
+  app.expect("status Signed in: 001.abc kai@example.com")
+  expect(apple.nonce == "n1" && apple.scopes == [appleauth.Scope.email])
+  expect((try await appleauth.credentialState("001.abc")) == .authorized)
+  apple.cancel = true
+  app.tap("SignInButton")
+  app.expect("status Canceled")
+}

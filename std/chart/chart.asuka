@@ -1,0 +1,382 @@
+// Package std/chart draws charts: lines, areas, bars and points over a
+// value axis, as Swift Charts' and Material's do. It's Asuka: the scale,
+// its ticks and the marks' geometry are worked out here, the marks drawn
+// by svg.Shape (the platform's vector drawing), the axes' labels the
+// platform's text, scaled with the user's text size. Screen readers get a
+// summary: the label, then each series' values.
+//
+//   chart.View([chart.Series(name: "Steps", kind: .bar, values: steps)]) {
+//     labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+//     label: "Steps this week"
+//     height: 180
+//   }
+
+import std/svg
+
+/// How a series is drawn.
+pub enum Kind {
+  /// A line through its values.
+  line
+  /// A line, filled down to the axis's zero (or its bottom).
+  area
+  /// A bar per value; several bar series stand side by side.
+  bar
+  /// A dot per value.
+  points
+}
+
+/// One set of values: one per label, from the first.
+pub struct Series {
+  name: string = ""
+  kind: Kind = .line
+  values: [float] = []
+  /// A line or an area as a curve through its values (monotone, so it
+  /// never overshoots them).
+  smooth: bool = false
+  /// Its color; none: the next of the palette (the app's accent first).
+  color: Color? = none
+  /// A line's width, in points (0: 2), or a dot's diameter (0: 7).
+  width: float = 0
+}
+
+/// The colors series take, in turn, when they give none: the app's
+/// accent, then the system's colors.
+pub let palette: [Color] = [.accent, .orange, .green, .purple, .pink, .blue]
+
+/// The plot's inset, top and bottom, in points: room for a line's width
+/// and a dot.
+let inset = 4.0
+
+/// The value axis: its range and its ticks, from lo up to hi.
+struct Scale {
+  lo: float
+  hi: float
+  step: float
+  ticks: [float]
+
+  /// Where v is up the plot: 0 at lo, 1 at hi.
+  fn at(v: float) -> float = (v - lo) / (hi - lo)
+}
+
+/// A step between ticks that reads well: 1, 2, 2.5 or 5 times a power of
+/// ten.
+fn niceStep(raw: float) -> float {
+  if raw <= 0 { return 1 }
+  var p = 1.0
+  while p * 10 <= raw { p = p * 10 }
+  while p > raw { p = p / 10 }
+  for m in [1.0, 2.0, 2.5, 5.0, 10.0] {
+    if raw <= m * p { return m * p }
+  }
+  return 10 * p
+}
+
+/// The range the values need (from low and high when they're given),
+/// rounded out to whole ticks, with zero in it when a series is bars or
+/// an area.
+fn valueScale(series: [Series], low: float?, high: float?) -> Scale {
+  var lo = 0.0
+  var hi = 0.0
+  var any = false
+  var zero = false
+  for s in series {
+    if s.kind == .bar || s.kind == .area { zero = true }
+    for v in s.values {
+      if !any {
+        lo = v
+        hi = v
+        any = true
+      }
+      lo = min(lo, v)
+      hi = max(hi, v)
+    }
+  }
+  if !any {
+    lo = 0
+    hi = 1
+  }
+  if zero {
+    lo = min(lo, 0)
+    hi = max(hi, 0)
+  }
+  lo = low ?? lo
+  hi = high ?? hi
+  if hi <= lo { hi = lo + 1 }
+  let step = niceStep((hi - lo) / 4)
+  lo = (lo / step).floor() * step
+  hi = (hi / step).ceil() * step
+  var ticks: [float] = []
+  var t = lo
+  while t <= hi + step / 1000 {
+    ticks.push(if abs(t) < step / 1000 { 0 } else { t })
+    t = t + step
+  }
+  return Scale(lo: lo, hi: hi, step: step, ticks: ticks)
+}
+
+/// How many digits after the point a step needs.
+fn decimals(step: float) -> int {
+  var s = step
+  var d = 0
+  while s < 1 && d < 6 {
+    s = s * 10
+    d = d + 1
+  }
+  if s != s.floor() && d < 6 { d = d + 1 }
+  return d
+}
+
+/// s without the zeros a fixed number ends with.
+fn trimmed(s: string) -> string {
+  if !s.contains(".") { return s }
+  var t = s
+  while t.hasSuffix("0") { t = t.slice(0, t.count() - 1) }
+  if t.hasSuffix(".") { t = t.slice(0, t.count() - 1) }
+  return t
+}
+
+/// An axis label: as many digits as the step needs, thousands as k and
+/// millions as M.
+fn short(v: float, step: float) -> string {
+  let a = abs(v)
+  if a >= 1000000 && step >= 100000 { return trimmed((v / 1000000).fixed(decimals(step / 1000000))) + "M" }
+  if a >= 1000 && step >= 100 { return trimmed((v / 1000).fixed(decimals(step / 1000))) + "k" }
+  return trimmed(v.fixed(decimals(step)))
+}
+
+/// A value, read out whole.
+fn spoken(v: float) -> string = trimmed(v.fixed(6))
+
+/// What screen readers say: the label, then each series' values.
+fn summary(label: string, series: [Series], labels: [string], format: (fn(float) -> string)? = none) -> string {
+  var parts: [string] = []
+  if !label.isEmpty() { parts.push(label) }
+  for s in series {
+    var vals: [string] = []
+    for (i, v) in s.values.enumerated() {
+      let said = if let f = format { f(v) } else { spoken(v) }
+      if let l = labels.get(i) {
+        vals.push("{l} {said}")
+      } else {
+        vals.push(said)
+      }
+    }
+    let list = vals.joined(separator: ", ")
+    parts.push(if s.name.isEmpty() { list } else { "{s.name}: {list}" })
+  }
+  return parts.joined(separator: ". ")
+}
+
+/// The number of values along the bottom: the longest series', or the
+/// labels'.
+fn countOf(series: [Series], labels: [string]) -> int {
+  var n = labels.count()
+  for s in series { n = max(n, s.values.count()) }
+  return n
+}
+
+/// A point of the plot: x a fraction of its width, f a fraction up its
+/// height inside the inset, plus points (dx, dy).
+fn at(x: float, f: float, dx: float = 0, dy: float = 0) -> svg.Point = svg.Point(fx: x, x: dx, fy: 1 - f, y: inset * (2 * f - 1) + dy)
+
+/// A monotone curve's tangent at value i (Fritsch–Carlson): in fractions
+/// up per fraction across.
+fn slope(ys: [float], i: int, slot: float) -> float {
+  let n = ys.count()
+  let hasL = i > 0
+  let hasR = i + 1 < n
+  let l = if hasL { (ys[i] - ys[i - 1]) / slot } else { 0.0 }
+  let r = if hasR { (ys[i + 1] - ys[i]) / slot } else { 0.0 }
+  if hasL && hasR {
+    if l * r <= 0 { return 0 } // a peak or a valley: flat, so it doesn't overshoot
+    return 2 / (1 / l + 1 / r)
+  }
+  if hasL { return l }
+  return r
+}
+
+/// A series' line: straight, or a monotone cubic when it's smooth.
+fn trace(s: Series, sc: Scale, n: int) -> svg.Path {
+  let slot = 1.0 / float(n)
+  var ys: [float] = []
+  for v in s.values { ys.push(sc.at(v)) }
+  var p = svg.Path()
+  for (j, y) in ys.enumerated() {
+    let x = slot * (float(j) + 0.5)
+    if j == 0 {
+      p = p.move(at(x, y))
+    } else if !s.smooth {
+      p = p.line(at(x, y))
+    } else {
+      let x0 = x - slot
+      let y0 = ys[j - 1]
+      let d = slot / 3
+      p = p.cubic(at(x0 + d, y0 + slope(ys, j - 1, slot) * d), at(x - d, y - slope(ys, j, slot) * d), at(x, y))
+    }
+  }
+  return p
+}
+
+/// The grid and the marks: bars first, then areas, lines and points over
+/// them.
+fn marks(series: [Series], sc: Scale, n: int, grid: bool) -> [svg.Layer] {
+  var out: [svg.Layer] = []
+  if n == 0 { return out }
+  let slot = 1.0 / float(n)
+  if grid {
+    for t in sc.ticks {
+      let f = sc.at(t)
+      out.push(svg.Layer(path: svg.Path().move(at(0, f)).line(at(1, f)), stroke: .separator, width: 1))
+    }
+  }
+  let base = sc.at(min(max(0, sc.lo), sc.hi))
+  var bars: [int] = []
+  for (i, s) in series.enumerated() {
+    if s.kind == .bar { bars.push(i) }
+  }
+  let group = slot * 0.7
+  for (bi, i) in bars.enumerated() {
+    let s = series[i]
+    let bw = group / float(bars.count())
+    var p = svg.Path()
+    for (j, v) in s.values.enumerated() {
+      let x0 = slot * (float(j) + 0.5) - group / 2 + float(bi) * bw + bw * 0.08
+      let f = sc.at(v)
+      p = p.rect(at(x0, max(f, base)), at(x0 + bw * 0.84, min(f, base)), radius: 4)
+    }
+    out.push(svg.Layer(path: p, fill: colorOf(s, i)))
+  }
+  for kind in [Kind.area, Kind.line, Kind.points] {
+    for (i, s) in series.enumerated() {
+      if s.kind != kind || s.values.isEmpty() { continue }
+      let c = colorOf(s, i)
+      if kind == .points {
+        let d = if s.width > 0 { s.width } else { 7.0 }
+        var p = svg.Path()
+        for (j, v) in s.values.enumerated() {
+          let x = slot * (float(j) + 0.5)
+          let f = sc.at(v)
+          p = p.ellipse(at(x, f, dx: -d / 2, dy: -d / 2), at(x, f, dx: d / 2, dy: d / 2))
+        }
+        out.push(svg.Layer(path: p, fill: c))
+        continue
+      }
+      let line = trace(s, sc, n)
+      if kind == .area {
+        let last = slot * (float(s.values.count() - 1) + 0.5)
+        let fill = line.line(at(last, base)).line(at(slot * 0.5, base)).close()
+        out.push(svg.Layer(path: fill, fill: c.opacity(0.35), fade: c.opacity(0.04)))
+      }
+      let w = if s.width > 0 { s.width } else { 2.0 }
+      out.push(svg.Layer(path: line, stroke: c, width: w, cap: .round, join: .round))
+    }
+  }
+  return out
+}
+
+/// A series' color: its own, or the palette's i-th.
+fn colorOf(s: Series, i: int) -> Color = s.color ?? palette[i % palette.count()]
+
+/// A chart: the plot, its value labels along its leading side and its
+/// category labels along its bottom. Its height is 200 when its style
+/// gives none.
+pub component View(series: [Series]) {
+  /// The categories along the bottom, one per value; with none, the
+  /// values are numbered from 1.
+  prop labels: [string] = []
+  /// What screen readers say the chart is ("Steps this week"); they
+  /// read each series' values after it.
+  prop label: string = ""
+  /// The value axis's range, rounded out to whole ticks; none: from the
+  /// values (with zero, for bars and areas).
+  prop low: float? = none
+  prop high: float? = none
+  /// Lines behind the marks at each tick.
+  prop grid = true
+  /// A value as the axis and screen readers say it ("$1.20", "40%");
+  /// none: as many digits as the ticks need, thousands as k.
+  prop format: (fn(float) -> string)? = none
+
+  let scale = valueScale(series, low, high)
+  let count = countOf(series, labels)
+  // Fewer category labels when they'd crowd.
+  let every = if count > 12 { (count + 5) / 6 } else { 1 }
+  let ticks = scale.ticks.reversed()
+  let xs = range(count)
+
+  Column {
+    height: 200
+    role: .image
+    label: summary(label, series, labels, format)
+    grid: Grid(columns: [.auto, .fr(1)], rows: [.fr(1), .auto])
+    // The value labels: each centered on its tick (zero-high rows,
+    // spaced from the plot's top to its bottom, inset as it is).
+    Column {
+      gridColumn: .line(1)
+      gridRow: .line(1)
+      margin: Edges(end: 6)
+      padding: [inset, 0]
+      justify: .spaceBetween
+      align: .end
+      a11yHidden: true
+      for t in ticks {
+        Row {
+          height: 0
+          align: .center
+          Text(if let f = format { f(t) } else { short(t, scale.step) }) {
+            font: .caption
+            color: .secondaryLabel
+          }
+        }
+      }
+    }
+    svg.Shape(marks(series, scale, count, grid)) {
+      gridColumn: .line(2)
+      gridRow: .line(1)
+      minHeight: 40
+    }
+    // The category labels: each centered under its value (a bar's
+    // center), in a cell of the plot's width over the count.
+    Row {
+      gridColumn: .line(2)
+      gridRow: .line(2)
+      margin: Edges(top: 6)
+      a11yHidden: true
+      for i in xs {
+        Row {
+          grow: 1
+          basis: 0
+          justify: .center
+          if i % every == 0 {
+            Text(labels.get(i) ?? "{i + 1}") {
+              font: .caption
+              color: .secondaryLabel
+              lines: 1
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+/// 0 up to n.
+fn range(n: int) -> [int] {
+  var out: [int] = []
+  var i = 0
+  while i < n {
+    out.push(i)
+    i = i + 1
+  }
+  return out
+}
+
+test "a chart's own format" {
+  let money = (v: float) => "${v.fixed(2)}"
+  let app = mount(View([Series(name: "Spend", kind: .bar, values: [0.5, 1.5])]) {
+    labels: ["Mon", "Tue"]
+    format: money
+  })
+  app.expect("$0.00", "$1.50", "Spend: Mon $0.50, Tue $1.50")
+  expect(summary("", [Series(name: "Spend", values: [1.5])], ["Tue"], format: money) == "Spend: Tue $1.50")
+}

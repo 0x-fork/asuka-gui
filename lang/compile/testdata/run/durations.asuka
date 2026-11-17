@@ -1,0 +1,26 @@
+// Durations as numbers, and all() of calls that return nothing.
+
+async fn a() { await sleep(1ms) }
+async fn b() { await sleep(2ms) }
+
+test "a duration's numbers" {
+  let d = 1500ms
+  print(d.nanoseconds())
+  print(d.milliseconds())
+  print(d.seconds())
+  print((2min).seconds())
+}
+
+test "all of nothing" {
+  await all(a(), b())
+  print("both done")
+}
+
+// Output:
+// 1500000000
+// 1500
+// 1.5
+// 120
+// ok a duration's numbers
+// both done
+// ok all of nothing

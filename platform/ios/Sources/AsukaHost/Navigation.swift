@@ -26,7 +26,7 @@ class AsukaScreenController: UIViewController {
 
     override func loadView() { view = content }
 
-    // asuka/sdk/screen's status bar, when this screen is presented full screen.
+    // platform/screen's status bar, when this screen is presented full screen.
     override var preferredStatusBarStyle: UIStatusBarStyle { AsukaScreen.statusBarStyle }
     override var prefersStatusBarHidden: Bool { AsukaScreen.statusBarHidden }
 
@@ -72,6 +72,17 @@ class AsukaScreenController: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         AsukaRuntime.shared.adoptControllers(in: self)
+    }
+
+    // The keyboard's focus (Focus.swift), as the root controller's.
+    override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
+        super.didUpdateFocus(in: context, with: coordinator)
+        AsukaRuntime.shared.focusSystemMoved(context)
+    }
+
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if AsukaRuntime.shared.focusedKey(presses) { return }
+        super.pressesBegan(presses, with: event)
     }
 
     func report(force: Bool = false) {
@@ -358,6 +369,7 @@ func decodeActions(_ b: UnsafeRawBufferPointer) -> [AsukaAction] { AsukaActions.
         for n in nodes.values {
             (n.vc as? AsukaScreenController)?.report()
         }
+        reportOverlays()
     }
 
     /// The controller whose view holds node's view: the nearest screen or

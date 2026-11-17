@@ -1,0 +1,166 @@
+// Signing in with Claude is OAuth 2 with PKCE, as Claude Code signs in,
+// with its client. Its sign-in redirects to a server of the app's on the
+// loopback interface (http://localhost:port/callback, RFC 8252), or to a
+// page that shows the code to paste (manualRedirect). It asks only to
+// read the account's profile and usage (user:profile), not to use it.
+
+import std/crypto
+import std/encoding
+import std/http
+import std/json
+import std/time
+import std/url
+
+let oauthClient = "9d1c250a-e61b-44d9-88ed-5944d1962f5e" // Claude Code's
+let authorizeURL = "https://claude.com/cai/oauth/authorize"
+let manualRedirect = "https://platform.claude.com/oauth/code/callback"
+let tokenURL = "https://platform.claude.com/v1/oauth/token"
+let oauthScope = "user:profile"
+
+/// An account's tokens, kept in the keychain as JSON. A token pasted
+/// before sign-in existed is kept as itself: an access token alone.
+struct Tokens {
+  access: string
+  refresh: string = ""
+  expires: time.Time? = none
+
+  fn string() -> string = json.encode(self)
+
+  /// Whether the access token has expired, or is about to.
+  fn stale(now: time.Time) -> bool {
+    if refresh.isEmpty() { return false }
+    if let e = expires { return now + 5min > e }
+    return false
+  }
+}
+
+fn parseTokens(s: string) -> Tokens {
+  let t: Tokens? = try? json.decode(s)
+  if let tokens = t {
+    if !tokens.access.isEmpty() { return tokens }
+  }
+  return Tokens(access: s)
+}
+
+/// A sign-in under way: its PKCE verifier, its state, and where it
+/// redirects to.
+struct Login {
+  verifier: string = randomKey()
+  state: string = randomKey()
+  redirect: string
+
+  /// The page the user signs in on.
+  fn address() -> string = "{authorizeURL}?{url.encodeQuery([
+    "code": "true",
+    "client_id": oauthClient,
+    "response_type": "code",
+    "redirect_uri": redirect,
+    "scope": oauthScope,
+    "code_challenge": encoding.base64URLEncode(crypto.sha256(verifier.bytes())),
+    "code_challenge_method": "S256",
+    "state": state,
+  ])}"
+
+  /// The code in where the sign-in ended: the redirect's URL
+  /// (…/callback?code=…&state=…), or what its page shows to paste
+  /// ("code#state"). None when there's none, or it's another sign-in's:
+  /// its state is this one's.
+  fn codeFrom(s: string) -> string? {
+    let text = s.trim()
+    var code = ""
+    var st = ""
+    if text.hasPrefix(redirect) {
+      if let u = url.parse(text) {
+        code = u.query("code") ?? ""
+        st = u.query("state") ?? ""
+      }
+    } else {
+      let parts = cleanToken(text).split("#", count: 2)
+      code = parts[0]
+      st = if parts.count() > 1 { parts[1] } else { "" }
+    }
+    if code.isEmpty() || st != state { return none }
+    return code
+  }
+
+  /// Trades the code for tokens.
+  async fn exchange(code: string) throws -> SignedIn {
+    let r: TokenReply = try await postJSON(tokenURL, [
+      "grant_type": "authorization_code",
+      "code": code,
+      "redirect_uri": redirect,
+      "client_id": oauthClient,
+      "code_verifier": verifier,
+      "state": state,
+    ])
+    return SignedIn(tokens: r.tokens(""), email: r.account.email_address, org: r.organization.name)
+  }
+}
+
+fn randomKey() -> string = encoding.base64URLEncode(crypto.randomBytes(32))
+
+/// What a sign-in gets: the tokens, and whose they are.
+struct SignedIn {
+  tokens: Tokens
+  email: string
+  org: string
+}
+
+/// t with a new access token.
+async fn refreshed(t: Tokens) throws -> Tokens {
+  let r: TokenReply = try await postJSON(tokenURL, [
+    "grant_type": "refresh_token",
+    "refresh_token": t.refresh,
+    "client_id": oauthClient,
+    "scope": oauthScope,
+  ])
+  return r.tokens(t.refresh)
+}
+
+struct TokenReply {
+  access_token: string = ""
+  refresh_token: string = ""
+  expires_in: int = 0 // seconds
+  account: TokenAccount = TokenAccount()
+  organization: ProfileOrganization = ProfileOrganization()
+
+  /// The reply's tokens; a refresh may keep the refresh token it had.
+  fn tokens(refresh: string) -> Tokens = Tokens(
+    access: access_token,
+    refresh: if refresh_token.isEmpty() { refresh } else { refresh_token },
+    expires: if expires_in > 0 { time.now() + expires_in * 1s } else { none },
+  )
+}
+
+struct TokenAccount {
+  email_address: string = ""
+}
+
+async fn postJSON<R>(url: string, body: [string: string]) throws -> R {
+  let res = try await http.request("POST", url, headers: ["Content-Type": "application/json"], body: json.encode(body).bytes(), timeout: 20s)
+  let text = res.text()
+  if res.status != 200 { throw apiError(res.status, text) }
+  return try json.decode(text)
+}
+
+test "the sign-in's address, and its code" {
+  let l = Login(redirect: manualRedirect)
+  let u = url.parse(l.address())!
+  expect(u.query("client_id") == oauthClient && u.query("redirect_uri") == manualRedirect && u.query("scope") == "user:profile")
+  expect(u.query("code_challenge") == encoding.base64URLEncode(crypto.sha256(l.verifier.bytes())))
+  expect(u.query("state") == l.state && u.query("code") == "true")
+  // The code, from the redirect or pasted from its page.
+  expect(l.codeFrom("{manualRedirect}?code=abc&state={l.state}") == "abc")
+  expect(l.codeFrom(" abc#{l.state}\n") == "abc")
+  expect(l.codeFrom("{manualRedirect}?code=abc&state=another") == none) // another sign-in's code
+  expect(l.codeFrom("https://claude.ai/login") == none) // a page on the way
+}
+
+test "tokens" {
+  let pasted = parseTokens("sk-ant-oat01-x")
+  expect(pasted.access == "sk-ant-oat01-x" && pasted.refresh.isEmpty() && !pasted.stale(time.now()))
+  let t = Tokens(access: "a", refresh: "r", expires: time.now() + 1h)
+  let back = parseTokens(t.string())
+  expect(back.access == "a" && back.refresh == "r" && back.expires == t.expires)
+  expect(!t.stale(time.now()) && t.stale(time.now() + 57min))
+}

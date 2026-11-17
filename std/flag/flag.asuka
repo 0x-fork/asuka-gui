@@ -1,0 +1,526 @@
+// Package std/flag reads a program's command line into a struct of
+// options, or an enum of commands, from what the compiler knows of its
+// type: no table of flags to keep in step with the fields.
+//
+//   /// Counts the lines of files.
+//   struct Options {
+//     /// -v Print each file's count.
+//     verbose: bool = false
+//     /// How many files at once.
+//     jobs: int = 4
+//     /// The files to count.
+//     files: [string]
+//   }
+//
+//   fn main() {
+//     let opts = flag.parse<Options>(os.args())
+//     …
+//   }
+//
+// A field with a default is an option: dryRun is --dry-run, its doc
+// comment its help, a first word -x its short name. A bool is a switch
+// (--no-x turns off one that defaults to true); an int, a float, a
+// string or an enum's case takes a value (--jobs 8, --jobs=8, -j8); an
+// array may be given again and again; an optional may be left out. A
+// field without a default is an argument, in order: an array takes the
+// rest, an optional may be left out. The struct's doc comment says what
+// the program does.
+//
+// An enum whose cases carry structs of options is a set of commands
+// (tool add --force x): parse<Command>, or a field of a struct of the
+// enum's type, after its options. -h and --help print the help;
+// --version prints asuka.toml's version; a mistake prints what's wrong
+// and exits with 2.
+
+import std/json
+import std/os
+
+/// What went otherwise than parsing: help or the version asked for, or
+/// a mistake in the command line (usage is the usage line to show with
+/// it).
+pub enum FlagError: Error {
+  help(text: string)
+  version(text: string)
+  usage(problem: string, usage: string, program: string)
+
+  /// The error's text: the help or the version to print, or the
+  /// mistake's problem (without the usage line).
+  fn message() -> string {
+    match self {
+      .help(text) => return text
+      .version(text) => return text
+      .usage(problem, _, _) => return problem
+    }
+  }
+}
+
+// What the compiler writes of T (lang/ir/flag.go).
+struct Item {
+  field: string
+  name: string
+  short: string
+  help: string
+  kind: string
+  default: string
+  repeat: bool
+  optional: bool
+  choices: [string]
+  cases: [string]
+}
+
+struct Command {
+  name: string
+  case: string
+  help: string
+  form: string
+  label: string
+  spec: string
+}
+
+struct Spec {
+  about: string
+  version: string
+  options: [Item]
+  args: [Item]
+  commands: [Command]
+  commandField: string
+  isEnum: bool
+}
+
+native fn spec<T>() -> string
+
+/// Reads args (os.args(): without the program) into a T. --help and
+/// --version print what they ask for and exit with 0; a mistake prints
+/// what's wrong, with the usage, and exits with 2.
+pub fn parse<T>(args: [string]) -> T {
+  do {
+    return try tryParse<T>(args)
+  } catch FlagError.help(text) {
+    print(text)
+    os.exit(0)
+  } catch FlagError.version(text) {
+    print(text)
+    os.exit(0)
+  } catch FlagError.usage(problem, usage, program) {
+    os.eprint("error: {problem}\n\n{usage}\n\nFor more, try '{program} --help'.")
+    os.exit(2)
+  } catch e {
+    os.eprint("error: {e.message}")
+    os.exit(2)
+  }
+}
+
+/// parse's work, without printing or exiting: a FlagError says what
+/// parse would have printed. program names the program in the help
+/// ("": os.program()'s name).
+pub fn tryParse<T>(args: [string], program: string = "") throws -> T {
+  let s: Spec = try json.decode(spec<T>())
+  let text = try parseWith(s, args, programName(program))
+  return try json.decode<T>(text)
+}
+
+/// The help -h prints for T.
+pub fn help<T>(program: string = "") -> string {
+  let s: Spec = (try? json.decode<Spec>(spec<T>())) ?? Spec(about: "", version: "", options: [], args: [], commands: [], commandField: "", isEnum: false)
+  return helpText(s, programName(program))
+}
+
+fn programName(given: string) -> string {
+  if !given.isEmpty() {
+    return given
+  }
+  var p = os.program()
+  if let i = p.findAny("/\\") {
+    p = lastPart(p)
+  }
+  if p.lower().hasSuffix(".exe") {
+    p = p.byteSlice(0, p.byteCount() - 4)
+  }
+  if p.isEmpty() {
+    return "program"
+  }
+  return p
+}
+
+fn lastPart(p: string) -> string {
+  var out = p
+  while let i = out.findAny("/\\") {
+    out = out.byteSlice(i + 1, out.byteCount())
+  }
+  return out
+}
+
+// ---------------------------------------------------------------------
+// Parsing
+
+fn parseWith(s: Spec, args: [string], prog: string) throws -> string {
+  var values: [string: string] = [:]
+  var lists: [string: [string]] = [:]
+  var positional: [string] = []
+  var only = false
+  var i = 0
+  while i < args.count() {
+    let a = args[i]
+    i += 1
+    if only || a == "-" || !a.hasPrefix("-") {
+      if !s.commands.isEmpty() {
+        // The command, and what's after it is the command's.
+        let c = findCommand(s, a) ?? throw usageError(s, prog, "unknown command {a}{suggestion(a, s.commands.map(c => c.name), "")}")
+        let rest = args.slice(i, args.count())
+        let cmd = try commandJSON(c, rest, prog)
+        if s.isEnum {
+          return cmd
+        }
+        values[s.commandField] = cmd
+        return try objectJSON(s, prog, values, lists, positional, cmd)
+      }
+      positional.push(a)
+      continue
+    }
+    if a == "--" {
+      only = true
+      continue
+    }
+    if a == "--help" || a == "-h" {
+      throw FlagError.help(helpText(s, prog))
+    }
+    if a == "--version" && !s.version.isEmpty() && findLong(s, "version") == none {
+      throw FlagError.version("{prog} {s.version}")
+    }
+    if a.hasPrefix("--") {
+      var name = a.byteSlice(2, a.byteCount())
+      var given: string? = none
+      if let eq = name.find("=") {
+        given = name.byteSlice(eq + 1, name.byteCount())
+        name = name.byteSlice(0, eq)
+      }
+      var negated = false
+      var found = findLong(s, name)
+      if found == none && name.hasPrefix("no-") {
+        if let o = findLong(s, name.byteSlice(3, name.byteCount())), o.kind == "bool" {
+          found = o
+          negated = true
+        }
+      }
+      let o = found ?? throw usageError(s, prog, "unknown option --{name}{suggestion(name, s.options.map(o => o.name), "--")}")
+      if o.kind == "bool" {
+        if let v = given {
+          if negated {
+            throw usageError(s, prog, "--{name} takes no value")
+          }
+          values[o.field] = try boolJSON(s, prog, "--" + name, v)
+        } else {
+          values[o.field] = if negated { "false" } else { "true" }
+        }
+        continue
+      }
+      var v = ""
+      if let g = given {
+        v = g
+      } else if i < args.count() {
+        v = args[i]
+        i += 1
+      } else {
+        throw usageError(s, prog, "--{name} needs a value ({placeholder(o)})")
+      }
+      let j = try valueJSON(s, prog, o, "--" + name, v)
+      if o.repeat {
+        var l = lists[o.field] ?? []
+        l.push(j)
+        lists[o.field] = l
+      } else {
+        values[o.field] = j
+      }
+      continue
+    }
+    // -v, -abc (switches grouped), -j8 or -j 8 (a value).
+    let cs = a.byteSlice(1, a.byteCount()).chars()
+    var k = 0
+    while k < cs.count() {
+      let c = cs[k]
+      k += 1
+      if c == "h" {
+        throw FlagError.help(helpText(s, prog))
+      }
+      let o = findShort(s, c) ?? throw usageError(s, prog, "unknown option -{c}")
+      if o.kind == "bool" {
+        values[o.field] = "true"
+        continue
+      }
+      var v = cs.slice(k, cs.count()).joined(separator: "")
+      if v.isEmpty() {
+        if i < args.count() {
+          v = args[i]
+          i += 1
+        } else {
+          throw usageError(s, prog, "-{c} needs a value ({placeholder(o)})")
+        }
+      }
+      let j = try valueJSON(s, prog, o, "-" + c, v)
+      if o.repeat {
+        var l = lists[o.field] ?? []
+        l.push(j)
+        lists[o.field] = l
+      } else {
+        values[o.field] = j
+      }
+      k = cs.count()
+    }
+  }
+  if !s.commands.isEmpty() {
+    throw usageError(s, prog, "missing a command ({s.commands.map(c => c.name).joined(separator: ", ")})")
+  }
+  return try objectJSON(s, prog, values, lists, positional, "")
+}
+
+fn objectJSON(s: Spec, prog: string, values: [string: string], lists: [string: [string]], positional: [string], command: string) throws -> string {
+  var parts: [string] = []
+  for o in s.options {
+    var v = values[o.field] ?? o.default
+    if o.repeat {
+      if let l = lists[o.field] {
+        v = "[" + l.joined(separator: ",") + "]"
+      }
+    }
+    parts.push(json.encode(o.field) + ":" + v)
+  }
+  var p = 0
+  for a in s.args {
+    if a.repeat {
+      var l: [string] = []
+      while p < positional.count() {
+        l.push(try valueJSON(s, prog, a, "<{a.name}>", positional[p]))
+        p += 1
+      }
+      parts.push(json.encode(a.field) + ":[" + l.joined(separator: ",") + "]")
+    } else if p < positional.count() {
+      parts.push(json.encode(a.field) + ":" + try valueJSON(s, prog, a, "<{a.name}>", positional[p]))
+      p += 1
+    } else if a.optional {
+      parts.push(json.encode(a.field) + ":null")
+    } else {
+      throw usageError(s, prog, "missing <{a.name}>")
+    }
+  }
+  if p < positional.count() {
+    throw usageError(s, prog, "unexpected argument {positional[p]}")
+  }
+  if !s.commandField.isEmpty() {
+    parts.push(json.encode(s.commandField) + ":" + command)
+  }
+  return "\{" + parts.joined(separator: ",") + "}"
+}
+
+fn commandJSON(c: Command, rest: [string], prog: string) throws -> string {
+  let name = json.encode(c.case)
+  let sub = "{prog} {c.name}"
+  if c.spec.isEmpty() {
+    let empty = Spec(about: c.help, version: "", options: [], args: [], commands: [], commandField: "", isEnum: false)
+    // No options: only --help, and nothing else.
+    let _ = try parseWith(empty, rest, sub)
+    return name
+  }
+  let s: Spec = try json.decode(c.spec)
+  let o = try parseWith(s, rest, sub)
+  if c.form == "object" {
+    return "\{" + name + ":\{" + json.encode(c.label) + ":" + o + "}}"
+  }
+  return "\{" + name + ":[" + o + "]}"
+}
+
+fn valueJSON(s: Spec, prog: string, o: Item, flag: string, v: string) throws -> string {
+  if o.kind == "int" {
+    let n = v.toInt() ?? throw usageError(s, prog, "{flag}: {v} isn't a whole number")
+    return "{n}"
+  }
+  if o.kind == "float" {
+    let x = v.toFloat() ?? throw usageError(s, prog, "{flag}: {v} isn't a number")
+    return json.encode(x)
+  }
+  if o.kind == "bool" {
+    return try boolJSON(s, prog, flag, v)
+  }
+  if o.kind == "enum" {
+    if let i = o.choices.index(c => c == v) {
+      return json.encode(o.cases[i])
+    }
+    throw usageError(s, prog, "{flag}: {v} isn't one of {o.choices.joined(separator: ", ")}{suggestion(v, o.choices, "")}")
+  }
+  return json.encode(v)
+}
+
+fn boolJSON(s: Spec, prog: string, flag: string, v: string) throws -> string {
+  let l = v.lower()
+  if l == "true" || l == "yes" || l == "1" || l == "on" {
+    return "true"
+  }
+  if l == "false" || l == "no" || l == "0" || l == "off" {
+    return "false"
+  }
+  throw usageError(s, prog, "{flag}: {v} isn't true or false")
+}
+
+fn findLong(s: Spec, name: string) -> Item? = s.options.find(o => o.name == name)
+fn findShort(s: Spec, c: string) -> Item? = s.options.find(o => o.short == c)
+fn findCommand(s: Spec, name: string) -> Command? = s.commands.find(c => c.name == name)
+
+fn usageError(s: Spec, prog: string, problem: string) -> FlagError = FlagError.usage(problem: problem, usage: usageLine(s, prog), program: prog)
+
+// suggestion is " (did you mean …?)" for the candidate nearest to what
+// was typed, when one is near enough.
+fn suggestion(typed: string, candidates: [string], prefix: string) -> string {
+  var best = ""
+  var bestD = 3
+  for c in candidates {
+    let d = distance(typed, c)
+    if d < bestD || d == bestD && best.isEmpty() && d <= typed.count() / 3 {
+      if d <= max(1, min(2, c.count() / 3 + 1)) {
+        best = c
+        bestD = d
+      }
+    }
+  }
+  if best.isEmpty() {
+    return ""
+  }
+  return " (did you mean {prefix}{best}?)"
+}
+
+// distance is Levenshtein's: the edits that make a into b.
+fn distance(a: string, b: string) -> int {
+  let x = a.chars()
+  let y = b.chars()
+  var prev: [int] = []
+  for j in 0..y.count() {
+    prev.push(j)
+  }
+  for i in 1..x.count() {
+    var cur: [int] = [i]
+    for j in 1..y.count() {
+      let cost = if x[i - 1] == y[j - 1] { 0 } else { 1 }
+      cur.push(min(min(prev[j] + 1, cur[j - 1] + 1), prev[j - 1] + cost))
+    }
+    prev = cur
+  }
+  return prev[y.count()]
+}
+
+// ---------------------------------------------------------------------
+// Help
+
+fn placeholder(o: Item) -> string {
+  if o.kind == "int" {
+    return "<n>"
+  }
+  if o.kind == "float" {
+    return "<number>"
+  }
+  if o.kind == "enum" {
+    return "<" + o.choices.joined(separator: "|") + ">"
+  }
+  return "<{o.name}>"
+}
+
+fn argUsage(a: Item) -> string {
+  if a.repeat {
+    return "[<{a.name}>...]"
+  }
+  if a.optional {
+    return "[<{a.name}>]"
+  }
+  return "<{a.name}>"
+}
+
+fn usageLine(s: Spec, prog: string) -> string {
+  var u = "Usage: {prog} [options]"
+  for a in s.args {
+    u += " " + argUsage(a)
+  }
+  if !s.commands.isEmpty() {
+    u += " <command>"
+  }
+  return u
+}
+
+// shownDefault is a default as the help shows it ("": not shown).
+fn shownDefault(o: Item) -> string {
+  let d = o.default
+  if d == "false" || d == "null" || d == "[]" || d == "\"\"" || d.isEmpty() {
+    return ""
+  }
+  if o.kind == "enum" {
+    for (i, c) in o.cases.enumerated() {
+      if json.encode(c) == d {
+        return o.choices[i]
+      }
+    }
+  }
+  if o.kind == "string" {
+    return (try? json.decode<string>(d)) ?? d
+  }
+  return d
+}
+
+fn helpText(s: Spec, prog: string) -> string {
+  var out = ""
+  if !s.about.isEmpty() {
+    out += s.about + "\n\n"
+  }
+  out += usageLine(s, prog) + "\n"
+  if !s.args.isEmpty() {
+    var rows: [(string, string)] = []
+    for a in s.args {
+      rows.push((argUsage(a), a.help))
+    }
+    out += "\nArguments:\n" + table(rows)
+  }
+  var rows: [(string, string)] = []
+  for o in s.options {
+    // A switch that's on unless turned off reads --[no-]color.
+    let long = if o.kind == "bool" && o.default == "true" { "--[no-]{o.name}" } else { "--{o.name}" }
+    var left = if o.short.isEmpty() { "    {long}" } else { "-{o.short}, {long}" }
+    if o.kind != "bool" {
+      left += " " + placeholder(o)
+    }
+    if o.repeat {
+      left += "..."
+    }
+    var help = o.help
+    let d = shownDefault(o)
+    if !d.isEmpty() {
+      help += if help.isEmpty() { "(default: {d})" } else { " (default: {d})" }
+    }
+    rows.push((left, help))
+  }
+  rows.push(("-h, --help", "Show this help."))
+  if !s.version.isEmpty() && findLong(s, "version") == none {
+    rows.push(("    --version", "Show the version."))
+  }
+  out += "\nOptions:\n" + table(rows)
+  if !s.commands.isEmpty() {
+    var cs: [(string, string)] = []
+    for c in s.commands {
+      cs.push((c.name, c.help))
+    }
+    out += "\nCommands:\n" + table(cs)
+    out += "\nSee '{prog} <command> --help' for a command's options.\n"
+  }
+  return out.trimEnd()
+}
+
+// table lays rows out in two columns, the second aligned.
+fn table(rows: [(string, string)]) -> string {
+  var w = 0
+  for (l, _) in rows {
+    w = max(w, l.count())
+  }
+  var out = ""
+  for (l, r) in rows {
+    if r.isEmpty() {
+      out += "  " + l + "\n"
+    } else {
+      out += "  " + l.padEnd(w) + "  " + r + "\n"
+    }
+  }
+  return out
+}

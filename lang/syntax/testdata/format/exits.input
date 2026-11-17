@@ -1,0 +1,19 @@
+fn f(cache: [string: int], id: string) throws -> int {
+  let user = cache[id]   else { return 0 }   // none: zero
+  let .ok(v) = result else {
+    // a failure
+    throw Error("x")
+  }
+  if let a = x,let b = y,a > b { print(a) } else { print(b) }
+  while let n = next(),
+      n > 0 { print(n) }
+  let u = cache[id] ?? throw   MailError.missing(id)
+  let w = cache[id] ?? return 1
+  let k = items.map(x => x ?? return)
+  let port = try parsePort(text) catch e { log(e.message); 80 }
+  let p2 = try await f() catch MailError.offline { 1 }
+  catch e: ParseError { 2 } // the rest
+  try save() catch { failed = true }
+  let z = match q { .a => 1, .b => throw E.b }
+  return f(x ?? break, y ?? continue)
+}

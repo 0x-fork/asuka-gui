@@ -1,0 +1,74 @@
+// Generic functions and types, and their constraints.
+
+struct Box<T> {
+  value: T
+
+  fn map<U>(f: fn(T) -> U) -> Box<U> = Box(value: f(value))
+}
+
+enum Result<T> {
+  ok(T)
+  err(string)
+}
+
+fn first<T>(xs: [T]) -> T? {
+  if xs.isEmpty() { return none }
+  return xs[0]
+}
+
+fn largest<T: Comparable>(xs: [T]) -> T {
+  var best = xs[0]
+  for x in xs {
+    if best < x { best = x }
+  }
+  return best
+}
+
+fn count<T: Equatable>(xs: [T], of: T) -> int = xs.count(x => x == of)
+
+fn pair<A, B>(a: A, b: B) -> (A, B) = (a, b)
+
+fn unwrap<T>(r: Result<T>, or: T) -> T = match r {
+  .ok(v) => v
+  .err(_) => or
+}
+
+test "generic functions" {
+  print(first([4, 5]) ?? 0)
+  print(first(["x"]) ?? "")
+  let empty: [float] = []
+  print(first(empty) ?? -1.0)
+  print(largest([3, 9, 2]))
+  print(largest(["pear", "apple"]))
+  print(count([1, 2, 1, 1], of: 1))
+  let (a, b) = pair(1, "one")
+  print("{a} {b}")
+}
+
+test "generic types" {
+  let b = Box(value: 21)
+  let c = b.map(x => x * 2)
+  print(c.value)
+  let s = c.map(x => "n={x}")
+  print(s.value)
+  let r: Result<int> = .ok(5)
+  let e: Result<int> = .err("no")
+  print(unwrap(r, or: 0) + unwrap(e, or: 100))
+  let rs: Result<string> = .ok("yes")
+  print(unwrap(rs, or: ""))
+}
+
+// Output:
+// 4
+// x
+// -1
+// 9
+// pear
+// 3
+// 1 one
+// ok generic functions
+// 42
+// n=42
+// 105
+// yes
+// ok generic types

@@ -1,0 +1,49 @@
+import platform/record
+
+component Recorder {
+  state status = "idle"
+  let level = record.audioStatus().level
+
+  Column {
+    Text(status)
+    Text("level {level}")
+    Button("Voice note") {
+      on press {
+        do {
+          let path = try await record.audio(maxDuration: 10s)
+          status = "recorded {path}"
+        } catch e {
+          status = "no microphone here"
+        }
+      }
+    }
+    Button("Video") {
+      on press {
+        do {
+          let path = try await record.start(maxDuration: 1min)
+          status = "filmed {path}"
+        } catch e {
+          status = "no camera here"
+        }
+      }
+    }
+  }
+}
+
+app { Recorder() }
+
+test "with no platform code, recording says why" {
+  let app = mount(Recorder())
+  await app.idle()
+  app.expect("level 0")
+  app.tap("Voice note")
+  await app.idle()
+  app.expect("no microphone here")
+  app.tap("Video")
+  await app.idle()
+  app.expect("no camera here")
+  record.stopAudio()
+  record.pauseAudio()
+  record.resumeAudio()
+  record.stop()
+}

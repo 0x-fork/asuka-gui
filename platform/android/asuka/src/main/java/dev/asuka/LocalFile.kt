@@ -11,7 +11,7 @@ import java.util.UUID
 import java.util.concurrent.Executors
 
 /*
- * The files asuka/sdk/preview, asuka/sdk/print and asuka/sdk/compose take: a path, an
+ * The files platform/preview, platform/print and platform/compose take: a path, an
  * asset's path (pushed by asuka dev, else in the APK, copied out), or an
  * http(s) URL, downloaded to the caches (asuka-files/) first, under its
  * name, with the extension of the type the server gives if it has none.
@@ -31,7 +31,7 @@ fun AsukaRuntime.localFiles(sources: List<AsukaSource>, done: (Result<List<File>
 }
 
 /** source's file; off the main thread. */
-private fun AsukaRuntime.localFile(s: AsukaSource): File {
+internal fun AsukaRuntime.localFile(s: AsukaSource): File {
     val source = s.source
     val f = when {
         source.startsWith("http://") || source.startsWith("https://") -> download(source, s.type)
@@ -67,11 +67,6 @@ private fun AsukaRuntime.download(url: String, type: String): File {
     } finally {
         c.disconnect()
     }
-}
-
-/** A file's MIME type: the app's, else its extension's. */
-fun fileMIME(f: File, type: String): String = type.ifEmpty {
-    MimeTypeMap.getSingleton().getMimeTypeFromExtension(f.extension.lowercase()) ?: "application/octet-stream"
 }
 
 /** The app's name, as the launcher has it. */

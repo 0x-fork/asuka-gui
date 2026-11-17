@@ -1,0 +1,122 @@
+// Strings: interpolation, escapes, raw and multi-line strings, methods.
+
+test "interpolation" {
+  let name = "Asuka"
+  let n = 3
+  print("Hello, {name}! {n} items, {n * 2} doubled, {1.5}, {n > 2}")
+  print("braces: \{ and \}; tab:[\t]")
+  print(r"raw: \n {name}")
+  let block = """
+    one
+      two {n}
+    three
+    """
+  print(block)
+}
+
+test "methods" {
+  let s = "  Hello, World  "
+  let t = s.trim()
+  print(t)
+  print(t.upper())
+  print(t.lower())
+  print(t.count())
+  expect(t.contains("World"))
+  expect(t.hasPrefix("Hello") && t.hasSuffix("World"))
+  print(t.replace("World", "Asuka"))
+  print(t.split(", ").count())
+  print(t.slice(0, 5))
+  print(t.find("World") ?? -1)
+  print("x".repeat(3))
+  expect("".isEmpty())
+  print("42".toInt()! + 1)
+  expect("nope".toInt() == none)
+  print("2.5".toFloat()!)
+  print(["a", "b", "c"].joined(separator: "-"))
+  print("héllo".count())
+  print("héllo".byteCount())
+  print(3.14159.fixed(2))
+}
+
+test "concatenation and comparison" {
+  var s = "a"
+  s += "b"
+  s = s + "c"
+  print(s)
+  expect(s == "abc")
+  expect("apple" < "banana")
+  expect("b" > "a")
+  expect("a" <= "a")
+}
+
+test "trimming, splitting, finding" {
+  print("v1.2".trimPrefix("v") + "|" + "v1.2".trimPrefix("x"))
+  print("a.md".trimSuffix(".md") + "|" + "a.md".trimSuffix(".txt"))
+  print("[" + "  x  ".trimStart() + "][" + "  x  ".trimEnd() + "]")
+  print("a-b-c-d".replace("-", "+", count: 2))
+  print("a-b-c-d".replace("-", "", count: 0))
+  print("a-b-c-d".replace("-", "/"))
+  print("k=v=w".split("=", count: 2))
+  print("a,b,c".split(",", count: 1))
+  print("a,b,c".split(",", count: 0))
+  print("héllo".split("", count: 3))
+  print("  the quick\tbrown\n fox ".fields())
+  print("one\r\ntwo\n\nthree\n".lines())
+  print("a/b/c".findLast("/") ?? -1)
+  print("a/b/c".findLast("x") ?? -1)
+  print("héllo, wörld".findAny("öw,") ?? -1)
+  print("abc".findAny("xyz") ?? -1)
+  let s = "héllo wörld"
+  if let at = s.find(" ") {
+    print(s.byteSlice(0, at) + "|" + s.byteSlice(at + 1, s.byteCount()))
+  }
+  print("7".padStart(3, with: "0") + " " + "7".padEnd(3) + "|")
+  print("héllo".padStart(8, with: "ab") + " " + "toolong".padStart(3))
+}
+
+// Output:
+// Hello, Asuka! 3 items, 6 doubled, 1.5, true
+// braces: { and }; tab:[	]
+// raw: \n {name}
+// one
+//   two 3
+// three
+// ok interpolation
+// Hello, World
+// HELLO, WORLD
+// hello, world
+// 12
+// Hello, Asuka
+// 2
+// Hello
+// 7
+// xxx
+// 43
+// 2.5
+// a-b-c
+// 5
+// 6
+// 3.14
+// ok methods
+// abc
+// ok concatenation and comparison
+// 1.2|v1.2
+// a|a.md
+// [x  ][  x]
+// a+b+c-d
+// a-b-c-d
+// a/b/c/d
+// ["k","v=w"]
+// ["a,b,c"]
+// []
+// ["h","é","llo"]
+// ["the","quick","brown","fox"]
+// ["one","two","","three"]
+// 3
+// -1
+// 6
+// -1
+// héllo|wörld
+// 007 7  |
+// abahéllo toolong
+// ok trimming, splitting, finding

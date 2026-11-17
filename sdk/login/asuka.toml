@@ -1,0 +1,3 @@
+name = "platform/login"
+version = "0.1.0"
+description = "Start the app as the user logs in"

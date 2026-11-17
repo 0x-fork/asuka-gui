@@ -1,0 +1,159 @@
+// Rich text: styled spans, highlights drawn per line, links, and a reply
+// that streams in word by word, as a chat assistant's does.
+//
+//   asuka dev --platform ios examples/richtext
+
+screen RichTextDemo {
+  title: "Rich text"
+
+  Scroll {
+    grow: 1
+    SafeArea {
+      padding: 20
+      gap: 20
+      RichText([
+        strong("Spans"),
+        plain(" can be "),
+        em("italic"),
+        plain(", "),
+        strong("bold"),
+        plain(", "),
+        Span(text: "underlined", underline: true),
+        plain(", "),
+        Span(text: "struck", strike: true),
+        plain(", "),
+        Span(text: "colored", color: .purple),
+        plain(" or "),
+        Span(text: "highlighted across a line break, which a label can't draw", background: #ffd60a6e),
+        plain(". Inline "),
+        code("code"),
+        plain(" and "),
+        link("links", "https://go.dev"),
+        plain(" too.\n\nA second paragraph, "),
+        Span(text: "larger", font: Font(size: 22)),
+        plain(" and "),
+        Span(text: "smaller", font: .footnote),
+        plain("."),
+      ]) {
+        on link(url) { openLink(url) }
+      }
+      RichText([
+        strong("Two lines at most: "),
+        plain("this paragraph goes on long enough to wrap past its second line, where it's cut off with an ellipsis instead."),
+      ]) {
+        lines: 2
+        color: .secondaryLabel
+      }
+      StreamedReply()
+    }
+  }
+}
+
+fn openLink(url: string) {
+  alert("Open link?", message: url, actions: [
+    .button(title: "Cancel", role: .cancel),
+    .button(title: "Open", run: () => openURL(url)),
+  ])
+}
+
+fn plain(text: string) -> Span = Span(text: text)
+fn strong(text: string) -> Span = Span(text: text, font: Font(weight: .bold))
+fn em(text: string) -> Span = Span(text: text, italic: true)
+fn code(text: string) -> Span = Span(text: text, mono: true)
+fn link(text: string, url: string) -> Span = Span(text: text, link: url)
+
+let reply = """
+  Here's how it works. Each paragraph is typeset by the platform's engine and **cached** by its content and width, so while this reply streams in, only the paragraph being written is typeset again: the ones above it are cache hits.
+
+  Spans carry their own look: `code`, **strong**, _emphasis_, and links like [the Go site](https://go.dev).
+
+  The view draws exactly what it measured, so the layout never disagrees with what's on screen.
+  """
+
+/// The reply as spans, word by word, with a tiny subset of Markdown
+/// (**strong**, _em_, `code`, [link](url)).
+fn tokens(text: string) -> [Span] {
+  var out: [Span] = []
+  var s = text
+  while !s.isEmpty() {
+    if s.hasPrefix("**") {
+      let end = s.slice(2).find("**")!
+      out.push(strong(s.slice(2, 2 + end)))
+      s = s.slice(4 + end)
+    } else if s.hasPrefix("_") {
+      let end = s.slice(1).find("_")!
+      out.push(em(s.slice(1, 1 + end)))
+      s = s.slice(2 + end)
+    } else if s.hasPrefix("`") {
+      let end = s.slice(1).find("`")!
+      out.push(code(s.slice(1, 1 + end)))
+      s = s.slice(2 + end)
+    } else if s.hasPrefix("[") {
+      let mid = s.find("](")!
+      let end = s.find(")")!
+      out.push(link(s.slice(1, mid), s.slice(mid + 2, end)))
+      s = s.slice(end + 1)
+    } else {
+      // A word, with the spaces or newlines after it.
+      var j = (s.slice(1).findAny(" \n*_`[") ?? s.count() - 1) + 1
+      while j < s.count() && (s.slice(j, j + 1) == " " || s.slice(j, j + 1) == "\n") {
+        j += 1
+      }
+      out.push(plain(s.slice(0, j)))
+      s = s.slice(j)
+    }
+  }
+  return out
+}
+
+component StreamedReply {
+  state text: [Span] = []
+  state streaming = false
+
+  async fn start() {
+    if streaming { return }
+    streaming = true
+    defer { streaming = false }
+    text = []
+    for t in tokens(reply) {
+      await sleep(25ms)
+      text.push(t)
+    }
+  }
+
+  Column {
+    gap: 12
+    Button(if streaming { "Streaming…" } else { "Stream a reply" }) {
+      variant: .filled
+      disabled: streaming
+      on press { await start() }
+    }
+    View {
+      padding: 14
+      background: .secondaryBackground
+      radius: 18
+      RichText(text) {
+        on link(url) { openLink(url) }
+      }
+    }
+  }
+}
+
+app {
+  Stack { RichTextDemo() }
+}
+
+test "a reply streams in, word by word" {
+  let app = mount(StreamedReply())
+  app.tap("Stream a reply")
+  app.expect("Streaming…")
+  await app.idle()
+  app.expect("Stream a reply")
+  app.expect("The view draws exactly what it measured, so the layout never disagrees with what's on screen.")
+}
+
+test "tokens reads the Markdown subset" {
+  let spans = tokens("a **b** _c_ `d` [e](f)")
+  expect(spans.map(s => s.text) == ["a ", "b", " ", "c", " ", "d", " ", "e"])
+  expect(spans[7].link == "f")
+}

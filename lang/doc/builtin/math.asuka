@@ -1,0 +1,56 @@
+// Package std/math is floating-point arithmetic: roots and powers,
+// rounding, trigonometry, and a fast pseudo-random generator.
+//
+//   let d = math.hypot(dx, dy)
+//   let angle = math.atan2(dy, dx) * 180 / math.pi
+//
+// For randomness to show a user (dice, a shuffle) std/random says what
+// it means more plainly; for keys and tokens, std/crypto's randomBytes.
+
+/// π, the ratio of a circle's circumference to its diameter.
+pub let pi: float = 3.141592653589793
+
+/// The square root of x (NaN when x is negative).
+pub native fn sqrt(x: float) -> float
+/// The largest whole number at most x.
+pub native fn floor(x: float) -> float
+/// The smallest whole number at least x.
+pub native fn ceil(x: float) -> float
+/// x rounded to the nearest whole number, halves away from zero (2.5 is 3,
+/// -2.5 is -3).
+pub native fn round(x: float) -> float
+/// The sine of x radians.
+pub native fn sin(x: float) -> float
+/// The cosine of x radians.
+pub native fn cos(x: float) -> float
+/// The tangent of x radians.
+pub native fn tan(x: float) -> float
+/// The angle in radians, from -π/2 to π/2, whose tangent is x.
+pub native fn atan(x: float) -> float
+/// e raised to the power x.
+pub native fn exp(x: float) -> float
+/// The natural logarithm of x (-infinity at 0, NaN when x is negative).
+pub native fn log(x: float) -> float
+/// The base-2 logarithm of x.
+pub native fn log2(x: float) -> float
+/// The base-10 logarithm of x.
+pub native fn log10(x: float) -> float
+/// x raised to the power y.
+pub native fn pow(x: float, y: float) -> float
+/// The angle in radians, from -π to π, from the x axis to the point (x, y):
+/// atan2(y, x), y first.
+pub native fn atan2(y: float, x: float) -> float
+/// The length of the hypotenuse of a right triangle with sides x and y:
+/// √(x² + y²), without overflowing for large ones.
+pub native fn hypot(x: float, y: float) -> float
+/// x kept within min and max.
+pub native fn clamp(x: float, min: float, max: float) -> float
+/// A pseudo-random float from 0 (included) to 1 (excluded). The generator
+/// starts at the same seed in every run; seed it for another sequence.
+pub native fn random() -> float
+/// A pseudo-random int from min (included) to max (excluded); min when max
+/// isn't above it.
+pub native fn randomInt(min: int, max: int) -> int
+/// Starts random and randomInt's sequence at n: the same n, the same
+/// numbers.
+pub native fn seed(n: int)

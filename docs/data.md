@@ -1,376 +1,263 @@
 # Data
 
-An app keeps its data in a few places: small values in `asuka/sdk/store`, records
-in SQLite with `asuka/sdk/sqlite`, secrets in the platform's keychain with
-`asuka/sdk/secure`, and files of its own with Go's `os`. This page covers each,
-the network through `net/http`, watching files, and which calls may block
-the main thread.
+An app keeps its data in a few places: small values in
+`std/storage`, records in SQLite with `std/sqlite`, secrets in the
+platform's keychain with `platform/secure`, values the user's devices
+share in iCloud with `platform/icloud`, and a document's file with
+`platform/document`. This page covers each, the network through
+`std/http`, watching files with `std/watch`, and what runs off the
+main thread.
 
 ## Where data lives
 
-`store.Dir()` is the app's data directory. `asuka/sdk/store`'s file is there,
-and so are the databases `sqlite.Open` makes from a plain name. Put your
-own files there too.
+Each package keeps its data where the platform's own apps keep theirs:
 
-| | `store.Dir()` |
-|---|---|
-| iOS | Application Support in the app's container (in its App Group, with a [share sheet](device.md#the-apps-own-share-sheet-appsharesheet)) |
-| Android | the app's files directory |
-| macOS | `~/Library/Application Support/<name>` |
-| Windows | `%LOCALAPPDATA%\<name>` |
-| Linux | `$XDG_DATA_HOME/<id>` (`~/.local/share/<id>`; in a Flatpak, the sandbox's own) |
-| The web | `/data/<name>`, in a file system in memory that the page keeps in the browser's storage (IndexedDB) |
+| | `std/storage` (and `std/store`) | `std/sqlite`'s databases, by a plain name |
+|---|---|---|
+| iOS | UserDefaults | Application Support, in the app's container |
+| macOS | UserDefaults | `~/Library/Application Support/<bundle ID>` |
+| Android | SharedPreferences | the app's files directory |
+| Windows | `store.json` in `%LOCALAPPDATA%\<name>` | `%LOCALAPPDATA%\<name>` |
+| Linux | `store.json` in `$XDG_DATA_HOME/<id>` | `$XDG_DATA_HOME/<id>` (`~/.local/share/<id>`; in a Flatpak, the sandbox's own) |
+| The web | `localStorage` | the browser's origin private file system (IndexedDB without it) |
 
-`<name>` is `asuka.json`'s `name`, and `<id>` its `id`; either is the
-program's name when the app is run without the CLI (`go run`). The
-directory is made by what first writes there. On Windows and Linux, the
-host keeps a few files of its own there too (the main window's size and
-place, the app's chosen language). In a browser, the directory's files
-are loaded before the app starts and written back a moment after they
-change, and as the page is hidden: see [the web](web.md).
+`<name>` is `asuka.toml`'s `name`, and `<id>` its `id`.
+`storage.dirName()` says where the values are on the platform the app
+runs on.
 
-Under `asuka dev`, where your Go code runs on your computer (a desktop
-app, and iOS and Android in the player), `store.Dir()` is a directory of
-`asuka dev`'s own there (in the user's cache directory, under `asuka/`,
-one for each app and platform), so what you try while developing never
-mixes with an installed build's data. With the player, the store, the
-databases and your files are on the computer, not on the device.
-`asuka/sdk/secure` is the exception: it is the platform's store, as in a
-release build (under the player, the device's keychain). On the web,
-`asuka dev`'s page keeps its files in the browser, for the dev server's
-address.
+Under `asuka dev`, a desktop app's data directory is one of `asuka
+dev`'s own (in the user's cache directory, one for each app), so what
+you try while developing never mixes with an installed build's data.
 
-## Small values: asuka/sdk/store
+## Small values: std/storage
 
-`asuka/sdk/store` keeps small values across launches: settings, a signed-in
-user's name, the tab last open. Values are JSON, in one file
-(`store.json` in `store.Dir()`), written off the main thread a moment
-after they change, and when the app goes to the background (on a Mac,
-as it's hidden or minimized or quits; on Windows, as its window loses
-focus; on Linux, as none of its windows shows, each hidden, minimized or
-on another workspace, and as it quits, its session ends or it's sent
-SIGTERM; in a browser, as the page is hidden). It's not a
-database: for many or large records, use SQLite.
+`std/storage` keeps small values across launches: settings, a
+signed-in user's name, the tab last open. A `storage.Value` is a
+[store](language/stores.md#stores) whose `value` is kept: it starts with what
+was kept, or the default the first time, and each value it's set to is
+kept. Reading it is tracked, as any state's is, and writing it shows:
 
-`store.Signal` is a signal whose value is kept. It starts with the value
-kept, or the default the first time, and each value it's set to is kept:
+```asuka
+import std/storage
 
-```go
-func Settings() ui.Node {
-	dark := store.Signal("dark", false) // false the first time; then what it was last set to
-	return ui.Toggle(ui.ToggleProps{Value: dark})
+let wifiOnly = storage.Value("wifiOnly", false)
+
+component DownloadSettings {
+  Column {
+    Toggle { bind on: wifiOnly.value; title: "Download on Wi-Fi only" }
+    if wifiOnly.value { Text("Large files wait for Wi-Fi") { color: .secondaryLabel } }
+  }
 }
 ```
 
-Make it on the main thread, as any signal. A package-level variable works
-too (`examples/downloader` has `var wifiOnly = store.Signal("wifiOnly",
-false)`). Each call makes a new signal: two made with the same key don't
-follow each other, so make one and share it.
+A value is anything JSON can say: numbers, strings, arrays, structs,
+enums. A type the default doesn't say is written:
 
-`Get`, `Set` and `Delete` work on values directly. `Set` takes anything
-`encoding/json` encodes; `Get` decodes into a pointer, and returns false
-if the key has no value, or the value doesn't decode into it:
-
-```go
-type Prefs struct {
-	Theme    string
-	FontSize int
+```asuka
+struct Account {
+  id: string
+  email: string
 }
 
-store.Set("prefs", Prefs{Theme: "dark", FontSize: 17})
+let accounts: storage.Value<[Account]> = storage.Value("accounts", [])
 
-var p Prefs
-if !store.Get("prefs", &p) {
-	p = Prefs{Theme: "light", FontSize: 15}
+fn signIn(a: Account) {
+  accounts.value.push(a)
 }
-
-store.Delete("prefs")
 ```
 
-`store.Flush()` waits until what's pending is written. Asuka calls it when
-the app goes to the background; you need it only in tests.
+What's kept goes to the platform's preferences: UserDefaults on iOS and
+macOS, SharedPreferences on Android, `localStorage` on the web, and on
+Windows and Linux a file, `store.json`, written a moment after a change.
+`storage.flush()` writes now, before the app may be ended (a background
+task's last step). `value.reset()` forgets what's kept. What's kept is
+read when the store is made: a value that no longer decodes as the type
+(the type changed) gives the default.
 
-## Records: the sqlite plugin
+`std/store` is the same without a store: `store.read(key, default)`,
+`store.write(key, value)` and `store.remove(key)`, for code that keeps a
+value at a moment of its choosing.
 
-`asuka/sdk/sqlite` is an app's SQLite database, a
-[plugin](plugins.md): import it, and the CLI ships its library with the
-app. It's SQLite itself, its C, one release built the same way for
-every platform, with a small library of Asuka's that runs a whole
-statement, and hands back its rows a chunk at a time, in one call from
-Go. Go calls it without cgo: through purego
-on macOS, Linux, iOS and Android, and syscall on Windows. In a browser
-it's the same C built to WebAssembly ([The web](web.md#sqlite)).
-[`examples/notes`](../examples/notes) uses it; [The library](#the-library)
-says how it ships.
+It's not a database: for many or large records, use SQLite.
+
+## Records: std/sqlite
+
+`std/sqlite` is the app's SQLite database. It's SQLite itself, one
+release built the same way for every platform and compiled into the
+app: import the package, and there's nothing to install. Asuka runs
+each statement whole, off the main thread, and decodes the rows it
+answers straight into the type asked for. [`examples/notes`](../examples/notes) uses it.
 
 ### Open and migrate
 
-```go
-var db *sqlite.DB
+```asuka
+import std/sqlite
 
-func main() {
-	var err error
-	db, err = sqlite.Open("notes.db")
-	if err != nil {
-		panic(err)
-	}
-	err = db.Migrate(
-		// 1
-		`create table notes (id integer primary key, text text not null, done bool not null default 0)`,
-		// 2
-		`alter table notes add column created_at integer not null default 0;
-		 create index notes_done on notes (done)`,
-	)
-	if err != nil {
-		panic(err)
-	}
-	app.Run(App)
+struct Note {
+  id: int
+  text: string
+  done: bool
 }
+
+fn openDB() throws -> sqlite.DB {
+  let db = try sqlite.open("notes.db")
+  try db.migrate([
+    // 1
+    "create table notes (id integer primary key, text text not null, done bool not null default 0)",
+    // 2
+    "alter table notes add column created integer not null default 0",
+  ])
+  return db
+}
+
+let db = (try? openDB())!
 ```
 
-`Open` takes a name, a file in `store.Dir()` (the directory is made if it
-isn't there), an absolute path, or `":memory:"`. It turns on write-ahead
-logging and foreign keys, and sets a busy timeout of 5 seconds.
+`sqlite.open(name)` opens the database (creating it): a plain name is a
+file in the app's data directory (see [Where data lives](#where-data-lives)),
+an absolute path is that file, and `":memory:"` is a database in memory.
+A file is in write-ahead logging, with foreign keys on.
 
-A database has one connection that writes, and, for a file, up to three
-that read beside it, opened as reads need them. Writes take turns on the
-writer: one waits for another, a transaction holds it to its end, and a
-write that waits longer than the busy timeout fails with `ErrBusy` (as a
-`db.Exec` inside `db.Tx`'s function would: use `tx.Exec` there). Reads
-never wait for a write, and see the database as the last commit left it.
-`":memory:"` has one connection for both.
-
-`Migrate` brings the schema up to date. Each argument is a version of the
-database, in order: its SQL (statements separated by semicolons) runs
-once, in a transaction, and the version is recorded in `PRAGMA
-user_version`. Add a step to change the schema; never change a step that
-has shipped, since devices that ran it won't run it again.
-
-`db.Close()` closes it. Most apps open one database at launch and keep
-it.
+`db.migrate(steps)` brings the schema up to date. The steps are the
+database's versions in order: each one's SQL (statements separated by
+semicolons) runs once, in a transaction, and its number is kept in
+`PRAGMA user_version`. A database at version 1 runs step 2 and on; a new
+one runs them all. Add steps at the end, and never change one that has
+shipped. It runs on the main thread, so call it as the app starts. On
+the web, where the page's main thread can't wait for SQLite's worker,
+`open` and `migrate` go to the worker without waiting and run before
+the statements after them: a database that didn't open fails each
+statement with why, and a migration that failed fails the next one.
 
 ### Query
 
-`sqlite.Query[T]` runs a query and scans its rows into a slice of `T`.
-For a struct, each column goes to the field of the same name: the field's
-`db` tag, or its name, case-insensitively, with the column's underscores
-ignored (`created_at` fills `CreatedAt`). Columns without a field are
-skipped; a field tagged `db:"-"` is never filled. For any other `T`, the
-first column is scanned.
+```asuka
+async fn undone() throws -> [Note] = try await db.query("select * from notes where done = ? order by id", [false])
 
-```go
-type Note struct {
-	ID      int64
-	Text    string
-	Done    bool
-	Created int64  `db:"created_at"`
-	Draft   string `db:"-"`
+async fn noteCount() throws -> int {
+  let n: [int] = try await db.query("select count(*) from notes", [])
+  return n.first() ?? 0
 }
-
-notes, err := sqlite.Query[Note](db, `select * from notes where done = ? order by id`, false)
-
-n, ok, err := sqlite.QueryOne[Note](db, `select * from notes where id = ?`, 1)
-
-count, _, err := sqlite.QueryOne[int](db, `select count(*) from notes`)
 ```
 
-`QueryOne` is the first row; `ok` is false if there's none.
+`db.query<T>(sql, args)` runs a query off the main thread and gives its
+rows as `T`s. A struct's fields are filled by the columns' names (`select
+*` fills `Note`); a field no column has is its zero (`0`, `""`, `false`,
+`[]`, `none`), and a column no field has is left. Any other `T` is the
+first column's: `[int]` for a count, `[string]` for names.
 
-A column's value converts to its field's type as it can: an integer into
-a `string` field as its digits, text into an `int` field if it's one, an
-integer into a `bool` as nonzero; a value that doesn't fit (a real into
-an `int`, 300 into an `int8`) is an error. NULL leaves the zero value,
-or nil in a pointer field (`*string`). A `time.Time` field reads text
-(`sqlite.TimeFormat`, what SQLite's date and time functions write, RFC
-3339) or seconds since 1970 (`unixepoch()`). A field whose pointer is a
-`sqlite.Scanner` (`sql.NullString`, an app's own type) scans the value
-itself. The fields of an embedded struct are the struct's own.
+A column fits its field as it can: an integer fits an `int`, a `float`, a
+`bool` (not zero) or a `string`; a real fits a `float` or an `int`; text
+fits a `string`, `bytes`, a number it spells, a payloadless enum by its
+case's name, and, holding JSON, a struct, an array or a map; a blob fits
+`bytes` or JSON; null is the field's zero, or `none` for an optional. One
+that can't fit fails the query with the column's name.
 
 ### Arguments
 
-`?` takes the arguments in order, `?2` the second; `:name`, `@name` and
-`$name` take `sqlite.Named` arguments:
+A statement's arguments are a tuple or an array, by position (`?`,
+`?1`), or a struct or a `[string: T]`, by name (`:name`, `@name`,
+`$name`) and position:
 
-```go
-db.Exec(`update notes set text = :text where id = :id`,
-	sqlite.Named("id", 1), sqlite.Named("text", "Buy milk"))
-```
+```asuka
+async fn add(text: string) throws {
+  try await db.exec("insert into notes (text, created) values (?, ?)", (text, 1700000000))
+}
 
-An argument is an integer, a float, a bool (1 or 0), a string, a
-`[]byte` (a blob; nil is NULL), a `time.Time` (text, as
-`sqlite.TimeFormat`: `2006-01-02 15:04:05.999999999-07:00`, which
-SQLite's date functions read and which sorts by time within one zone),
-nil, a pointer to one of them (nil is NULL), an app's own type of one
-(`type Status string`), or a `driver.Valuer` (`sql.NullString`).
+struct Rename {
+  id: int
+  text: string
+}
 
-### Exec and transactions
-
-`db.Exec` runs a statement (insert, update, delete, create...), or several
-separated by semicolons, and returns its `sqlite.Changes`: `LastInsertID`
-and `RowsAffected`. `db.Tx` runs a function in a transaction: committed if
-it returns nil, rolled back if it returns an error (which `Tx` returns) or
-panics. In it, `tx.Exec` writes and `sqlite.Query` and `sqlite.QueryOne`
-read, given the `*sqlite.Tx` instead of the database:
-
-```go
-err := db.Tx(func(tx *sqlite.Tx) error {
-	if _, err := tx.Exec(`update notes set done = 1 where id = ?`, 1); err != nil {
-		return err // rolled back
-	}
-	left, _, err := sqlite.QueryOne[int](tx, `select count(*) from notes where done = 0`)
-	if err != nil {
-		return err
-	}
-	fmt.Println(left, "left")
-	return nil // committed
-})
-```
-
-### Writes off the main thread
-
-`Exec`, `Tx`, `Query`, `QueryOne` and `Migrate` wait for the disk. On the
-main thread, write with `ExecAsync` and `TxAsync`: they run off it, then
-call `done` on the main thread. With a nil `done`, an error is logged.
-
-```go
-db.ExecAsync(`insert into notes (text, created_at) values (?, ?)`, []any{"Buy milk", time.Now().Unix()},
-	func(r sqlite.Changes, err error) {
-		if err != nil {
-			status.Set("Couldn't save: " + err.Error())
-			return
-		}
-		status.Set(fmt.Sprintf("Saved note %d", r.LastInsertID))
-	})
-
-db.TxAsync(func(tx *sqlite.Tx) error {
-	if _, err := tx.Exec(`delete from notes where done = 1`); err != nil {
-		return err
-	}
-	_, err := tx.Exec(`update notes set text = trim(text)`)
-	return err
-}, nil)
-```
-
-To read from the main thread, use a live query (below), or a goroutine
-that queries, then `ui.Post`s the rows back.
-
-### Live queries
-
-`sqlite.Watch[T]` is a live query: a signal of its rows, fetched off the
-main thread now, and again each time a write to a table it reads commits.
-Make it in a component; it stops with the component's owner.
-
-```go
-func Notes() ui.Node {
-	notes := sqlite.Watch[Note](db, `select * from notes order by id desc`)
-	return ui.Text(signal.Func(func() string {
-		r := notes.Get()
-		switch {
-		case r.Loading:
-			return "Loading…"
-		case r.Err != nil:
-			return r.Err.Error()
-		}
-		return fmt.Sprintf("%d notes", len(r.Rows))
-	}))
+async fn rename(r: Rename) throws {
+  try await db.exec("update notes set text = :text where id = :id", r)
 }
 ```
 
-Its value is a `sqlite.Result[T]`: `Rows`, the latest rows; `Err`, the
-error the query last got; and `Loading`, true until the first fetch is
-done. Give `Rows` to a `ui.List` and the list follows the table, as in
-`examples/notes`.
+Each is an `int`, a `float`, a `bool` (stored as 0 or 1), a `string`, `bytes`
+(a blob), an enum's case without a payload (its index), or an optional of
+one (`none` is null). `[]` is no arguments.
+
+### Exec
+
+`db.exec(sql, args)` runs a statement (insert, update, delete, create...),
+or several separated by semicolons, off the main thread, after the
+statements before it: a query that follows an `exec` sees what it wrote.
+A transaction is SQL: `begin`, the statements, `commit`, in one `exec`.
+
+### Live queries
+
+`db.watch<T>(sql, args)` is a live query: a store of its rows, fetched
+off the main thread now, and again each time a write through the
+database commits to a table it reads. Made in a component, it stops with
+the component.
+
+```asuka
+let search = "select * from notes where ?1 = '' or instr(lower(text), lower(?1)) > 0 order by done, id desc"
+
+component Notes {
+  state query = ""
+  let notes: sqlite.Live<Note> = db.watch(search, [query])
+
+  Column {
+    TextField { bind text: query; placeholder: "Search" }
+    if notes.loading { Text("Loading…") }
+    if let e = notes.error { Text(e) { color: .red } }
+    for n in notes.rows key n.id { Text(n.text) }
+  }
+}
+```
+
+A `Live<T>` has `rows`, the latest rows; `loading`, true until the first
+fetch is done; and `error`, what the last fetch failed with (none after
+one that worked). They're state: what shows them follows them.
 
 A live query reruns only for the tables it reads. It learns them as
 SQLite prepares it, the tables behind a view included, and reruns when a
 write to one of them commits, including rows written by triggers and by
-foreign keys' actions. A write to another table doesn't run it. Writes
-that come while it's fetching make one more fetch, not one each.
+foreign keys' actions. A write to another table doesn't run it.
 
-`sqlite.WatchWith[T]` is `Watch` with arguments that change. Its
-arguments come from a function that reads signals (a search field's text,
-a page size), and the query runs again when they change, as when the
-database does. Until the new rows come, the old ones stay; rows fetched
-for arguments that have since changed are dropped.
+Its arguments may read state, as `[query]` does: when they change, the
+`let` makes the live query again, which starts from its SQL's last rows
+while the new ones load, so a list doesn't empty as the user types.
 
-```go
-func Search() ui.Node {
-	q := signal.New("")
-	notes := sqlite.WatchWith[Note](db, `select * from notes where text like ? order by id`,
-		func() []any { return []any{"%" + q.Get() + "%"} })
-	return ui.Column(nil,
-		ui.TextField(ui.TextFieldProps{Value: q, Placeholder: ui.Val("Search")}),
-		ui.Text(signal.Func(func() string { return fmt.Sprintf("%d found", len(notes.Get().Rows)) })),
-	)
-}
-```
-
-A query that writes (`insert ... returning`) is heard as an `Exec` is.
+`db.changed()` runs every live query again: for a change the database
+can't see (another process's, the file replaced).
 
 ### Errors
 
-An error SQLite returns is a `*sqlite.Error`: its result code (extended:
-`2067` is `SQLITE_CONSTRAINT_UNIQUE`) and message. `errors.Is` matches it
-against the package's `Err` values by code; one for a whole kind matches
-every code of it:
+What SQLite returns is an error whose message is SQLite's, with its
+result code: `sqlite: UNIQUE constraint failed: users.email (2067)`.
 
-```go
-_, err := db.Exec(`insert into users (email) values (?)`, email)
-switch {
-case errors.Is(err, sqlite.ErrConstraintUnique):
-	status.Set("That email is taken")
-case errors.Is(err, sqlite.ErrConstraint): // any other constraint
-	status.Set("Check the form")
-case err != nil:
-	status.Set(err.Error()) // sqlite: no such table: users (SQLITE_ERROR)
+```asuka
+async fn signUp(email: string) -> string {
+  do {
+    try await db.exec("insert into users (email) values (?)", [email])
+    return ""
+  } catch e {
+    if e.message.contains("UNIQUE constraint failed") { return "That email is taken" }
+    return e.message
+  }
 }
 ```
-
-### Backups
-
-`db.Serialize()` is the database's bytes, as its file would hold them:
-save them anywhere, share them, upload them. `db.Restore(data)` replaces
-the database with them and runs every live query again. On every
-platform, the web's included, they're the way to copy a database whole;
-`VACUUM INTO 'path'` writes a copy to a file where there are files.
-
-`db.Changed()` runs every live query again. Call it after a change the
-database can't see: another process's, or the file replaced.
 
 ### The library
 
 SQLite is release 3.54.1 on every platform, with FTS5, R*Tree, Geopoly,
 the math functions, `dbstat`, `STAT4` and `soundex` built in, loadable
-extensions left out, and temporary tables kept in memory (a phone may
-have no temporary directory). It's the plugin's library, `asqlite`,
-built for each platform and published to the plugin's GitHub release;
-its manifest (`sdk/sqlite/asuka-plugin.json`) names each file and
-its SHA-256, and the CLI and the package download them from there,
-once, into the user's cache. An app's developers need no C compiler.
+extensions left out, and temporary tables kept in memory. It's compiled
+into each app that imports `std/sqlite`, on every platform, as the rest
+of the app is: there's no library to install, download or ship beside
+it, and an app that doesn't import `std/sqlite` doesn't carry it.
+`asuka dev`, `asuka test` and `asuka run` have it too. Its own names
+stay inside the app, so a system SQLite that another library loads into
+the same process (GTK's, on Linux) doesn't mind it. On the web it's the
+same SQLite built to WebAssembly, in a worker of the page's
+([SQLite on the web](web.md#sqlite)).
 
-- **`asuka build`** ships the library with the app, as it does every
-  plugin's ([Plugins](plugins.md#where-the-libraries-go)): in the app's
-  `Contents/Frameworks` on macOS (signed with it), beside the `.exe` on
-  Windows, in `lib/<app>` of the install prefix on Linux, as
-  `asqlite.framework` in an iOS app, and in each of an APK's ABIs.
-- **`go run`, `go test`, `asuka dev`** on a desktop load the published
-  library, from the user's cache; `asuka dev` on a phone puts it in the
-  app as a build does. An app embedded in another (`asuka build
-  --xcframework`) comes with `asqlite.xcframework`, for that app to embed
-  too ([Shipping](shipping.md#in-an-existing-app)).
-- **`ASUKA_SQLITE_LIB`** names a library to load instead (one of the
-  plugin's; the package checks its SQLite version).
+## Secrets: platform/secure
 
-To change SQLite or the plugin's C, in a checkout: `go generate
-./sdk/sqlite` builds every platform's library (Xcode for Apple's
-platforms, the Android NDK, Zig for Linux, Windows and the web) into
-`sdk/sqlite/build`, which the checkout's own tests and examples use
-from then on, and `go run ./cmd/asuka plugin publish sdk/sqlite`
-publishes it.
-
-## Secrets: asuka/sdk/secure
-
-`asuka/sdk/secure` keeps small secrets, tokens and passwords, encrypted by the
+`platform/secure` keeps small secrets, tokens and passwords, encrypted by the
 platform. It's for secrets, not data: keep everything else in the store
 or a database.
 
@@ -398,234 +285,327 @@ or a database.
   running in the app's origin can still have the key decrypt them: it's
   a web app's best, not a keychain. It needs https or localhost.
 
-On the main thread, `Load`, `Save` and `Remove` take a callback, called
-on the main thread:
+`secure.read(key)` is a key's value (`none` if there's none),
+`secure.write(key, value)` keeps one, and `secure.remove(key)` forgets
+it. Each waits for the platform without holding the main thread, and
+throws what it says (a locked keyring, no keyring at all); where the
+platform has no code for it (`asuka test`), an `unsupported` error.
 
-```go
-func Account() ui.Node {
-	status := signal.New("")
-	secure.Load("token", func(token string, ok bool, err error) {
-		switch {
-		case err != nil:
-			status.Set(err.Error())
-		case !ok:
-			status.Set("Signed out")
-		default:
-			status.Set("Signed in")
-		}
-	})
-	return ui.Column(nil,
-		ui.Text(status),
-		ui.Button(ui.ButtonProps{Title: ui.Val("Sign out"), OnPress: func() {
-			secure.Remove("token", func(err error) { status.Set("Signed out") })
-		}}),
-	)
+```asuka
+import platform/secure
+
+component SignedIn {
+  state status = ""
+
+  task {
+    do {
+      status = if (try await secure.read("token")) != none { "Signed in" } else { "Signed out" }
+    } catch e {
+      status = e.message
+    }
+  }
+
+  Column {
+    Text(status)
+    Button("Sign out") {
+      on press {
+        try? await secure.remove("token")
+        status = "Signed out"
+      }
+    }
+  }
 }
 
-func signIn(token string) {
-	secure.Save("token", token, nil) // nil: no callback
+async fn keepToken(token: string) throws {
+  try await secure.write("token", token)
 }
 ```
 
-From a goroutine, `Get`, `Set` and `Delete` wait for the platform and
-return. Never call them on the main thread:
+## Values the user's devices share: platform/icloud
 
-```go
-go func() {
-	token, ok, err := secure.Get("token")
-	if err != nil || !ok {
-		return
-	}
-	// ... use token ...
-}()
+On iOS and macOS, `icloud.Value(key, default)` is a store kept in iCloud's
+key-value store, read again as another device changes it, as a
+`storage.Value` is kept on the device:
+
+```asuka
+import platform/icloud
+
+let textSize = icloud.Value("textSize", 17.0)
 ```
 
-## Files and the network
+`icloud.account()` and `icloud.files(scope)` follow the account and the
+app's files in iCloud, and `readFile`, `writeFile`, `conflicts` and
+`resolve` work with them: see [iCloud](icloud.md). Elsewhere, a value
+keeps its default and what it's set to, on the device.
 
-Files are Go's `os`, and the network is Go's `net/http`: Asuka adds nothing
-of its own. Keep the files in `store.Dir()`. Files Asuka's packages give you
-(a photo taken, a video recorded, photos picked, files dropped or pasted)
-are in the app's caches or temporary directory, which the system may
-clear: move one into `store.Dir()` to keep it. In a browser, `os` works on
-the page's file system: `store.Dir()` is kept, and the rest (`/tmp`, the
-caches) lasts as long as the page. `net/http` there is the browser's
-`fetch`, so a request to another origin needs that origin's CORS
+## A document's file: platform/document
+
+`document.open(path, read:, write:)` is a file's content as a store: read
+off the main thread with the app's `read`, saved with its `write` a
+moment after each `edit`, reverted, and a conflict when another program
+changed the file since it was read:
+
+```asuka
+import platform/document
+
+component Editor(path: string) {
+  let doc = document.open(path, read: data => data.string(), write: text => text.bytes())
+
+  Column {
+    if let text = doc.content {
+      TextField { text: text; multiline: true; on change(t) { doc.edit(t) } }
+    }
+    if doc.state == .conflict {
+      Button("Keep Mine") { on press { await doc.saveAnyway() } }
+      Button("Take Theirs") { on press { await doc.revert() } }
+    }
+  }
+}
+```
+
+## The network: std/http
+
+`std/http` sends requests through the platform's own client, so
+proxies, trusted certificates, caches and cookies work as the system's
+do. A request waits, so it's `async`:
+
+```asuka
+import std/http
+
+struct Release {
+  name: string
+}
+
+async fn latest() throws -> string {
+  let r = try await http.get("https://api.github.com/repos/egoist/asuka/releases/latest")
+  if !r.ok() { throw Error("HTTP {r.status}") }
+  let rel: Release = try r.json()
+  return rel.name
+}
+```
+
+In a browser, a request to another origin needs that origin's CORS
 headers.
 
-Both wait, so do them in a goroutine, and `ui.Post` the result back to
-the main thread:
+A large answer (a video, an archive) goes into a file as it comes:
+`http.download(url, path, progress:)` writes it beside the path and
+renames it into place once it's all in, calling `progress` with the
+bytes so far and the whole's (-1 when the server doesn't say) a few
+times a second. Its `timeout` is the longest wait for more, not for the
+whole; cancelling its task stops it and leaves no file. URLSession on
+iOS and macOS, `HttpURLConnection` on Android, WinHTTP and libsoup on
+Windows and Linux stream it to the file; in a browser it's read from
+fetch's stream into the app's files.
 
-```go
-func Avatar() ui.Node {
-	path := signal.New("")
-	status := signal.New("Downloading…")
-	go func() {
-		file := filepath.Join(store.Dir(), "avatar.jpg")
-		err := download("https://example.com/avatar.jpg", file)
-		ui.Post(func() {
-			if err != nil {
-				status.Set(err.Error())
-				return
-			}
-			status.Set("")
-			path.Set(file)
-		})
-	}()
-	return ui.Column(nil,
-		ui.Text(status),
-		ui.Image(ui.ImageProps{Source: path}),
-	)
-}
+```asuka
+import std/fs
+import std/http
 
-func download(url, file string) error {
-	res, err := http.Get(url)
-	if err != nil {
-		return err
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("%s", res.Status)
-	}
-	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
-		return err
-	}
-	out, err := os.Create(file)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-	_, err = io.Copy(out, res.Body)
-	return err
+component Download(url: string) {
+  state got = 0
+  state total = -1
+  state problem = ""
+
+  task(url) {
+    let file = fs.join([fs.appDir(), "downloads", "video.mp4"])
+    do {
+      try fs.mkdirAll(fs.dir(file))
+      let r = try await http.download(url, file, progress: (n, all) => {
+        got = n
+        total = all
+      })
+      if !r.ok() { problem = "HTTP {r.status}" }
+    } catch e {
+      problem = e.message
+    }
+  }
+
+  Column {
+    Progress { value: if total > 0 { got.float() / total.float() } else { none } }
+    if !problem.isEmpty() { Text(problem) }
+  }
 }
 ```
 
-To keep a long download going while the app is out of sight, see
-[`asuka/sdk/background`](device.md#background-work-asukasdkbackground); to know
-whether the connection is Wi-Fi or metered, see
-[`asuka/sdk/network`](device.md#network-state-asukasdknetwork).
-[`examples/downloader`](../examples/downloader) does both.
+An OAuth sign-in on a desktop redirects to a server of the app's on the
+loopback interface (RFC 8252): `http.loopback(path:, page:)` listens at
+a port the system picks, its `url` the redirect URI to give;
+`next()` waits for the browser to come back, answers it with `page`
+("You can close this window"), and gives the URL it came to, its query
+the code; `close()` stops it. Android and iOS can listen too, while the
+app runs; a browser can't (it throws there): a web app's sign-in
+redirects to its own site.
 
-## Watching files: asuka/sdk/watch
+```asuka
+import std/http
 
-`asuka/sdk/watch` tells the app when files change: a folder it shows, a
-project open in an editor, a settings file another program writes, a
-document another app saved. It works on every platform, phones and the
-web too.
-
-In a component, `watch.Path` watches a path while the component is
-there, and calls a function on the main thread with each batch of
-changes. Read the files again there:
-
-```go
-func Folder(dir signal.Accessor[string]) ui.Node {
-	names := signal.NewFunc[[]string](nil, slices.Equal)
-	reload := func() {
-		d := signal.Untrack(dir.Get)
-		go func() {
-			list := readNames(d) // os.ReadDir, off the main thread
-			ui.Post(func() { names.Set(list) })
-		}()
-	}
-	signal.Effect(func() { dir.Get(); reload() }) // and as dir changes
-	w := watch.Path(dir, watch.Options{Ignore: watch.Patterns(".*")}, func([]watch.Event) {
-		reload()
-	})
-	return ui.Column(nil,
-		ui.Show(signal.Func(func() bool { return w.Err() != nil }), func() ui.Node {
-			return ui.Text(signal.Func(func() string { return w.Err().Error() }))
-		}),
-		ui.For(names, func(n string) string { return n }, func(n signal.Accessor[string], _ signal.Accessor[int]) ui.Node {
-			return ui.Text(n)
-		}),
-	)
+async fn signInBack(authorize: string) throws -> string {
+  let lb = try await http.loopback()
+  defer { lb.close() }
+  openURL("{authorize}&redirect_uri={lb.url}")
+  let back = try await lb.next() // http://127.0.0.1:port/callback?code=…
+  return back
 }
 ```
 
-The watch follows its accessor (a new path stops the old watch and
-starts one of the new), and stops as the component goes. It starts on
-a goroutine, since listing a large folder takes a while: `w.Watching()`
-says once it has, and `w.Err()` what kept it from starting (the path
-doesn't exist, can't be read, holds too many files: `watch.ErrLimit`).
-While the function runs, the watch waits, so a busy app gets the
-changes of the meantime in one batch rather than many.
+### Bodies as they come
 
-Off the main thread, as in a command-line tool or a sync loop,
-`watch.New` watches from any goroutine and `Next` returns each batch:
+A body that comes over time (the reply a language model writes, a log,
+a feed) is read as it's sent. `http.stream(url, method:, headers:,
+body:)` answers as soon as the response's head is in: its `status`,
+`url` and `headers`, and its `body`, a stream of the pieces as the
+network delivers them. `lines()` reads them as lines of text,
+`events()` as server-sent events (`text/event-stream`, as a browser's
+`EventSource` reads it: each an `Event` with its `event`, `data` and
+`id`), and `text()` the whole. `http.events(url, …)` does both: it asks
+for events (a `POST` too, as language models' APIs stream their
+replies), throws `HTTPError.status` for a status that isn't a success,
+and with `reconnect: true` connects again after the server's `retry`,
+sending the last event's ID, as `EventSource` does. Leaving the loop, or
+the task going, stops the request; `timeout` is the longest wait for
+the head and then for each piece.
 
-```go
-w, err := watch.New(ctx, dir, watch.Options{Recursive: true, Ignore: watch.Patterns("node_modules/", ".git/")})
-if err != nil {
-	return err
+```asuka
+import std/http
+import std/json
+
+struct Prompt {
+  model: string
+  input: string
+  stream: bool = true
 }
-defer w.Close()
-for {
-	events, err := w.Next(ctx)
-	if err != nil {
-		return err // io.EOF once closed, or once dir went away
-	}
-	for _, e := range events {
-		fmt.Println(e) // "create src/a.go", "rename a.txt -> b.txt", ...
-	}
+
+screen Ask {
+  state reply = ""
+  state done = false
+
+  title: "Ask"
+
+  task {
+    let prompt = json.encode(Prompt(model: "a-model", input: "Tell me a story"))
+    for await e in http.events("https://example.com/v1/responses", method: "POST", headers: ["content-type": "application/json"], body: prompt.bytes()) {
+      if e.data == "[DONE]" { break }
+      reply = reply + e.data
+    }
+    done = true
+  }
+
+  Text(reply)
 }
 ```
 
-An event's `Op` is `Create`, `Write`, `Remove`, `Rename` (with
-`OldPath`), `Attrib` (permissions, with `Options.Attributes`) or
-`Overflow`; its `Path` is relative to what's watched, separated by
-slashes, `.` for itself. A watch compares what it sees with what it saw,
-so events say what's different, not every step that made it so:
+Each platform's own client streams it: URLSession, `HttpURLConnection`,
+`fetch`'s body stream, WinHTTP and libsoup. The lines and events are
+read the same everywhere. On iOS and macOS the head comes with the
+body's first bytes: URLSession gives it no sooner.
 
-- A file written many times in a row is one `Write`, and one created
-  and removed in between is nothing. Changes wait for 50 ms of quiet
-  (`Debounce`), and never more than 500 ms while more keep coming
-  (`MaxDelay`).
-- A file saved as editors save, a temporary file renamed over it, is a
-  `Write`, not a removal and a creation, and the new file is watched in
-  its turn.
-- A file or folder moved within the watched folder is a `Rename`,
-  however far it moved, on every platform: the watch knows files by
-  their identity (device and inode, or Windows's file ID), not their
-  name. What moved in or out is a `Create` or a `Remove`.
-- `Overflow` starts a batch when the system dropped changes (too many at
-  once): the watch looked at everything again, and the rest of the
-  batch is what it found.
-- When the watched folder (or a watched file's folder) is removed or
-  renamed, the last batch has a `Remove` of `.`, and the watch ends.
+## Live connections: std/websocket
 
-Without `Recursive`, a folder's watch reports its files and folders,
-not what's in them. A file is watched through its folder: watch the
-file's own path, and its replacement, removal and return are reported
-as `.`. Symlinks are reported as themselves, never followed. `Ignore`
-leaves out what it matches, and never opens a folder it ignores:
-`watch.Patterns` takes `.gitignore`'s simple patterns (`*.log`,
-`node_modules/`, `/dist`, `src/**/gen`).
+`std/websocket` keeps a connection open both ways (RFC 6455):
+`websocket.connect(url, headers:, protocols:)` answers once the server
+accepted it, with a `WebSocket`. `send(text)` and `sendBinary(data)`
+send, `messages` is a stream of what comes (`.text` or `.binary`),
+which ends when the server closes the connection normally and throws
+`WebSocketError.closed(code, reason)` when it closes it otherwise, and
+`close(code:, reason:)` closes it. Each platform's own client carries
+it: URLSession, OkHttp, the browser's `WebSocket`, WinHTTP and libsoup;
+a browser sends no headers of the app's.
 
-Each platform's own way: FSEvents on macOS (a whole tree for the cost of
-one stream), kqueue on iOS (a descriptor per file and folder, so keep
-iOS watches to the app's own folders), inotify on Android and Linux (a
-watch per folder, up to `fs.inotify.max_user_watches`), and
-`ReadDirectoryChangesW` on Windows. On the web, the app's files are the
-page's (see [Where data lives](#where-data-lives)), and the watch sees
-what the app's own code changes in them. The watch never leaves the
-folder: what it can't read is left out, and `MaxEntries` (65536 files
-and folders on macOS, 8192 elsewhere) stops a watch of a tree too
-large with `watch.ErrLimit`. [`examples/files`](../examples/files)
-shows a folder that updates live.
+```asuka
+import std/websocket
+
+screen Chat {
+  state lines: [string] = []
+  state ws: websocket.WebSocket? = none
+
+  title: "Chat"
+
+  task {
+    let socket = try await websocket.connect("wss://example.com/chat", protocols: ["chat"])
+    ws = socket
+    for await m in socket.messages {
+      match m {
+        .text(t) => { lines.push(t) }
+        .binary(b) => { lines.push("{b.count()} bytes") }
+      }
+    }
+  }
+
+  Column {
+    for l in lines { Text(l) }
+    Button("Wave") {
+      on press {
+        if let s = ws { try? await s.send("👋") }
+      }
+    }
+  }
+}
+```
+
+## Watching files: std/watch
+
+`watch.path(dir)` follows changes to a folder (or a file): a folder the
+app shows, a project open in an editor, a settings file another program
+writes. Its `events` is a stream of batches of changes:
+
+```asuka
+import std/watch
+
+component Folder(dir: string) {
+  state changes: [string] = []
+  state problem = ""
+
+  task(dir) {
+    do {
+      let w = try await watch.path(dir, ignore: [".*", "node_modules/"])
+      for await events in w.events {
+        for e in events { changes.push("{e.op} {e.path}") }
+      }
+    } catch e {
+      problem = e.message
+    }
+  }
+
+  Column {
+    if !problem.isEmpty() { Text(problem) }
+    for c in changes { Text(c) }
+  }
+}
+```
+
+A watch keeps what it saw of the files and, each time the system says
+something changed, looks again and compares: the events are the
+differences, not every step that made them. A file written many times
+in a row is one `write`; one created and removed in between is nothing;
+a file replaced at its path, as editors and atomic saves do, is a
+`write`; a file or folder that moved within the folder is a `rename`
+with its `oldPath`. Treat events as hints to read the files again. When
+the system drops changes, the watch looks at everything again and the
+batch starts with an `overflow`.
+
+`ignore` takes `.gitignore`'s simple patterns (`*.log`, `node_modules/`,
+`/dist`, `src/**/gen`); `recursive: true` watches the folders in it too,
+and `attributes: true` reports permission changes. On Linux each folder
+watched counts against `fs.inotify.max_user_watches`; raise it for a
+large tree.
+Phones and the web have nothing to watch with: `watch.path` throws an
+unsupported error there. Leaving the loop (or the component going)
+stops the watch. [`examples/files`](../examples/files) shows a folder
+that updates live.
 
 ## The main thread
 
-The interface runs on the main thread, and a call that waits there
-freezes it. [The main thread](concepts.md#the-main-thread) explains the
-rule; for data, it comes to this:
+The interface runs on the main thread, and work that waits there would
+freeze it. For data:
 
-- **Don't call on the main thread**: `sqlite.Open`, `Migrate`, `Exec`,
-  `Tx`, `Query` and `QueryOne` (except at launch, before `app.Run`);
-  `secure.Get`, `Set` and `Delete`; file and network calls.
-- **Call on the main thread**: `ExecAsync`, `TxAsync`, `Watch`,
-  `WatchWith`; `secure.Load`, `Save` and `Remove`; `store.Signal`, as any
-  signal.
-- **Either**: `store.Get`, `Set` and `Delete`, which only read and write
-  memory (the file is written off the main thread).
+- **Off the main thread, awaited**: `db.exec`, `db.query` and a live
+  query's fetches; `icloud`'s calls; `document`'s reads and writes;
+  `http`'s requests. Their `await` lets the interface go on.
+- **On the main thread, quick**: `sqlite.open` and `db.migrate` (as the
+  app starts); `storage.Value` and `std/store`, which read and write
+  the platform's preferences (on Windows and Linux, memory: the file is
+  written a moment later).
 
-From a goroutine, `ui.Post(f)` runs `f` on the main thread: set signals
-there.
+Work of your own that would hold the main thread up (parsing a large
+file, resizing an image) goes in `spawn { … }`, which runs it on
+another thread ([Async](language/async.md#async)).

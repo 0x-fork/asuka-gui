@@ -8,11 +8,13 @@ import AsukaOps
 #endif
 
 /// The share extension of an app with a share sheet of its own
-/// (app.ShareSheet): its principal class, which runs the app's Go code
-/// in the extension, with the sheet as its root (ASUKA_SHARE_SHEET). iOS
+/// (platform/sharesheet): its principal class, which runs the app in the
+/// extension (ASUKA_SHARE_SHEET: platform/host's process is "share",
+/// sharesheet.active() true, and the app block shows the sheet). iOS
 /// shows it as a sheet over the app that shares. What's shared is
 /// collected (AsukaShareCollector: files into the App Group) and sent to
-/// the root as the Shared event; the root's ShareClose ends it.
+/// the root as the Shared event (onShare); the root's ShareClose
+/// (sharesheet.done, cancel, openApp) ends it.
 @objc(AsukaShareSheetController)
 public final class AsukaShareSheetController: UIViewController {
     private var collector: AsukaShareCollector?
@@ -80,17 +82,32 @@ public final class AsukaShareSheetController: UIViewController {
     }
 }
 
-/// The directory the app keeps its data in (store.Dir) when it has a
-/// share sheet or a push rewrite, which run in its extensions: in the App
-/// Group they share, so all see the same; nil without either (the app's
-/// container). Go asks for it as its packages initialize, before the
-/// host has started it.
-@_cdecl("asuka_ios_shared_dir")
-public func asukaIOSSharedDir() -> UnsafeMutablePointer<CChar>? {
-    let info = Bundle.main.infoDictionary ?? [:]
-    guard info["AsukaShareSheet"] as? Bool == true || info["AsukaNotificationService"] as? Bool == true,
-          let group = Bundle.main.object(forInfoDictionaryKey: "AsukaAppGroup") as? String,
-          let c = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) else { return nil }
-    return strdup(c.appendingPathComponent("Library/Application Support", isDirectory: true).path)
+/// What an app with a share sheet or a push rewrite shares with its
+/// extensions, which run the app too (Info.plist's AsukaShareSheet,
+/// AsukaNotificationService): its files, in the App Group's container,
+/// which all see.
+enum AsukaShared {
+    /// The App Group, when the app runs in an extension too; nil without.
+    static var group: String? {
+        let info = Bundle.main.infoDictionary ?? [:]
+        guard info["AsukaShareSheet"] as? Bool == true || info["AsukaNotificationService"] as? Bool == true else { return nil }
+        return info["AsukaAppGroup"] as? String
+    }
+
+    /// The directory the app keeps its files in (std/fs's appDir):
+    /// Application Support, the App Group's when the app has extensions
+    /// that run it. The first time the app runs with them, what it kept
+    /// in its own moves there.
+    static func appDir() -> URL? {
+        let fm = FileManager.default
+        let own = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        guard let g = group, let c = fm.containerURL(forSecurityApplicationGroupIdentifier: g) else { return own }
+        let shared = c.appendingPathComponent("Library/Application Support", isDirectory: true)
+        if !Bundle.main.bundlePath.hasSuffix(".appex"), let own, !fm.fileExists(atPath: shared.path), fm.fileExists(atPath: own.path) {
+            try? fm.createDirectory(at: shared.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? fm.moveItem(at: own, to: shared)
+        }
+        return shared
+    }
 }
 #endif

@@ -1,0 +1,25 @@
+app {
+  Notes()
+}
+
+component Notes {
+  state notes: [Span] = [Span(text: "Hello "), Span(text: "world", font: Font(weight: .bold))]
+  state opened = ""
+  Screen {
+    title: "Rich"
+    Column {
+      padding: 16; gap: 8
+      RichText([
+        Span(text: "Read "),
+        Span(text: "the docs", link: "https://example.com/docs"),
+        Span(text: " first.\nSecond line."),
+      ]) {
+        on link(url) { opened = url }
+      }
+      Text("Opened: {opened}")
+      TextField { bind rich: notes; placeholder: "Notes" }
+      Text("Spans: {notes.count()}")
+      Button("Reset") { on press { notes = [Span(text: "Plain")] } }
+    }
+  }
+}

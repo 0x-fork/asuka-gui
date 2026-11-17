@@ -1,0 +1,10 @@
+// A stub of platform/sensors.
+pub struct Reading {
+  x: float
+  y: float
+  z: float
+}
+
+pub struct Accelerometer {
+  pub let shared = Accelerometer()
+}

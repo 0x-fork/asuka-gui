@@ -1,0 +1,73 @@
+// Package platform/shell does what a desktop's file manager does with a
+// file: shows it in its folder (reveal), opens it in its app (open),
+// moves it to the trash (trash), and sounds the system's alert (beep).
+//
+//   try await shell.reveal(path)
+//
+// The Mac goes through NSWorkspace (Finder), Windows through the shell
+// (Explorer, the Recycle Bin), Linux through GIO and the file manager's
+// D-Bus interface (org.freedesktop.FileManager1: Files, Dolphin, Nemo,
+// Thunar...). Phones and the web have no file manager of these: reveal,
+// open and trash throw an unsupported error there, and beep does
+// nothing. platform/preview shows a file with the system's viewer.
+
+/// What the shell couldn't do.
+pub enum ShellError: Error {
+  /// shell: no app opens this file
+  noApp
+}
+
+/// The desktop's file manager.
+native interface Desktop {
+  /// Shows the item selected in a window of its folder.
+  async fn reveal(path: string)
+  /// Opens the item in its app (a folder in the file manager);
+  /// ShellError.noApp when none opens it.
+  async fn open(path: string)
+  /// Moves the item to the trash of its volume; fails where there's none.
+  async fn trash(path: string)
+  /// The system's alert sound.
+  fn beep()
+}
+
+// Made once; none where there's no file manager.
+let desktop = try? Desktop()
+
+fn made() throws -> Desktop {
+  if let d = desktop {
+    return d
+  }
+  throw Error("unsupported: no file manager here")
+}
+
+/// Shows the file or folder at path in the file manager, selected in a
+/// window of its folder: Finder, Explorer (a window already showing the
+/// folder is used), or the desktop's file manager (without one, the
+/// folder opens, unselected). Throws if there's nothing at path.
+pub async fn reveal(path: string) throws {
+  try await made().reveal(path: path)
+}
+
+/// Opens the file at path in the app the user opens its type with, as a
+/// double click in the file manager does, and a folder in the file
+/// manager: ShellError.noApp if no app opens it (Windows asks the user
+/// which app first, as Explorer does).
+pub async fn open(path: string) throws {
+  try await made().open(path: path)
+}
+
+/// Moves the file or folder at path to the trash (the Recycle Bin on
+/// Windows), where the user can put it back. It never deletes: where the
+/// item can't go to the trash (a network share, many removable drives),
+/// it throws and the item stays.
+pub async fn trash(path: string) throws {
+  try await made().trash(path: path)
+}
+
+/// Sounds the system's alert sound, as a refused key press does; nothing
+/// where there's none (phones, the web).
+pub fn beep() {
+  if let d = desktop {
+    try? d.beep()
+  }
+}

@@ -1,13 +1,13 @@
 // Kept identical in platform/ios (the iOS host) and platform/macos (the
-// Mac's Swift library, which host/darwin calls through purego).
-#if ASUKA_ICLOUD // an app that calls asuka/sdk/icloud (see the CLI's iosFeatures; on the Mac, its featurePermissions)
+// Mac's host, whose "icloud" module answers with it).
+#if ASUKA_ICLOUD // an app that calls platform/icloud (see the CLI's iosFeatures; on the Mac, its featurePermissions)
 import CryptoKit
 import Foundation
 #if os(macOS)
 import Security
 #endif
 
-/// asuka/sdk/icloud's module: internal/icloudspec's methods and JSON. The
+/// platform/icloud's module: sdk/icloud's methods and JSON. The
 /// account (the ubiquity identity token, hashed), the key-value store
 /// (NSUbiquitousKeyValueStore, its values converted between JSON and
 /// property lists), and the app's ubiquity containers: NSMetadataQuery's

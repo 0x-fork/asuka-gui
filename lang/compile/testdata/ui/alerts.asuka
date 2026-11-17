@@ -1,0 +1,109 @@
+// Alerts and snackbars: alert(…) now, an Alert element shown while open
+// (its Buttons its buttons, its TextFields its fields), snackbar(…) and
+// the closure that dismisses it.
+
+component Alerts {
+  state confirming = false
+  state signingIn = false
+  state name = ""
+  state said = ""
+  state dismiss: (fn())? = none
+
+  Column {
+    Text("Said: {said}")
+    Button("Delete") { on press { confirming = true } }
+    Button("Sign in") { on press { signingIn = true } }
+    Button("Ask") {
+      on press {
+        alert("Open link?", message: "example.com", actions: [
+          .button(title: "Cancel", role: .cancel),
+          .button(title: "Open", run: () => { said = "opened" }),
+        ])
+      }
+    }
+    Button("Tell") { on press { alert("Saved") } }
+    Button("Undoable") {
+      on press {
+        dismiss = snackbar("Deleted", action: .button(title: "Undo", run: () => { said = "undone" }), duration: .indefinite)
+      }
+    }
+    Button("Hide") {
+      on press {
+        if let d = dismiss { d() }
+        dismiss = none
+      }
+    }
+  }
+
+  Alert("Delete this message?") {
+    bind open: confirming
+    message: "You can't undo this."
+    Button("Cancel") { role: .cancel }
+    Button("Delete") {
+      role: .destructive
+      on press { said = "deleted" }
+    }
+  }
+
+  Alert("Sign in") {
+    bind open: signingIn
+    TextField { bind text: name; placeholder: "Name" }
+    Button("Cancel") { role: .cancel }
+    Button("Sign In") {
+      disabled: name.isEmpty()
+      on press { said = "hi {name}" }
+    }
+  }
+}
+
+app { Alerts() }
+
+test "an Alert while open, its buttons" {
+  let app = mount(Alerts())
+  app.tap("Delete")
+  app.expect("Delete this message?", "You can't undo this.")
+  app.tap("Cancel")
+  app.expectNo("Delete this message?")
+  app.expect("Said: ")
+  app.tap("Delete")
+  app.in(.content).tap("Delete") // the alert's: the screen's is under it
+  app.expect("Said: deleted")
+  app.expectNo("You can't undo this.")
+  // Again: open went back to false.
+  app.tap("Delete")
+  app.dismiss()
+  app.expectNo("Delete this message?")
+}
+
+test "an Alert's fields, its buttons following them" {
+  let app = mount(Alerts())
+  app.tap("Sign in")
+  expect(app.disabled("Sign In"), "Sign In with no name")
+  app.type("Ada", into: "Name")
+  expect(!app.disabled("Sign In"))
+  app.tap("Sign In")
+  app.expect("Said: hi Ada")
+}
+
+test "alert now" {
+  let app = mount(Alerts())
+  app.tap("Ask")
+  app.expect("Open link?", "example.com")
+  app.tap("Open")
+  app.expect("Said: opened")
+  app.tap("Tell")
+  app.expect("Saved")
+  app.tap("OK")
+  app.expectNo("Saved")
+}
+
+test "snackbars" {
+  let app = mount(Alerts())
+  app.tap("Undoable")
+  app.expect("Deleted", "Undo")
+  app.tap("Undo")
+  app.expect("Said: undone")
+  app.tap("Undoable")
+  app.tap("Hide")
+  app.expectNo("Deleted")
+}

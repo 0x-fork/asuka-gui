@@ -1,0 +1,421 @@
+#define _POSIX_C_SOURCE 200809L  // sockets, pipes and dup under -std=c17
+#if defined(_WIN32) && !defined(__wasm__)
+#include <winsock2.h>  // before windows.h (base/thread.h's)
+#endif
+#include "abi/dev.h"
+#include "base/thread.h"
+#include "rt/sched.h"
+
+#include <stdio.h>
+
+#if defined(__wasm__)
+
+void ak_dev_set_reload(void (*reload)(const uint8_t *, size_t)) { AK_UNUSED(reload); }
+bool ak_dev_connect(const char *host, int port, const char *hello, bool capture, char *err, size_t errcap) {
+	AK_UNUSED(host);
+	AK_UNUSED(port);
+	AK_UNUSED(hello);
+	AK_UNUSED(capture);
+	snprintf(err, errcap, "the web reloads the page instead");
+	return false;
+}
+void ak_dev_send(uint8_t kind, const void *p, size_t len) {
+	AK_UNUSED(kind);
+	AK_UNUSED(p);
+	AK_UNUSED(len);
+}
+bool ak_dev_listen(int port, const char *hello, bool capture, char *err, size_t errcap) {
+	AK_UNUSED(port);
+	AK_UNUSED(hello);
+	AK_UNUSED(capture);
+	snprintf(err, errcap, "the web reloads the page instead");
+	return false;
+}
+bool ak_dev_connected(void) { return false; }
+
+#else
+
+#include <stdio.h>
+#include <stdlib.h>
+#if defined(_WIN32)
+#include <winsock2.h>
+#include <ws2tcpip.h>
+typedef SOCKET sock_t;
+#define BAD_SOCK INVALID_SOCKET
+#define close_sock closesocket
+#else
+#include <netdb.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <unistd.h>
+typedef int sock_t;
+#define BAD_SOCK (-1)
+#define close_sock close
+#endif
+
+#if !defined(_WIN32)
+#include <arpa/inet.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <poll.h>
+#endif
+#include <string.h>
+
+// Writes to a closed connection fail rather than signal the process.
+#if defined(MSG_NOSIGNAL)
+#define MSG_NOSIGNAL_FLAG MSG_NOSIGNAL
+#else
+#define MSG_NOSIGNAL_FLAG 0
+#endif
+
+static void (*reload_fn)(const uint8_t *, size_t);
+
+// The session: the one connection to the CLI, which a newer one replaces
+// (one the CLI made through the cable takes over from the player's own).
+// The dialer waits while there's one, and dials again when it ends, so
+// the player comes back to a CLI that restarted or a network that went.
+static ak_mutex mu = AK_MUTEX_INIT;  // sock, gen, hello
+static ak_cond ended;
+static bool ended_inited;
+static sock_t sock = BAD_SOCK;
+static uint32_t gen;
+static char *hello_json;
+static ak_mutex send_mu = AK_MUTEX_INIT;  // writes to sock
+
+void ak_dev_set_reload(void (*reload)(const uint8_t *, size_t)) { reload_fn = reload; }
+
+bool ak_dev_connected(void) {
+	ak_mutex_lock(&mu);
+	bool c = sock != BAD_SOCK;
+	ak_mutex_unlock(&mu);
+	return c;
+}
+
+static bool write_all(sock_t s, const uint8_t *p, size_t n) {
+	while (n > 0) {
+#if defined(_WIN32)
+		int w = send(s, (const char *)p, (int)n, 0);
+#else
+		ssize_t w = send(s, p, n, MSG_NOSIGNAL_FLAG);
+#endif
+		if (w <= 0) return false;
+		p += w;
+		n -= (size_t)w;
+	}
+	return true;
+}
+
+static bool read_all(sock_t s, uint8_t *p, size_t n) {
+	while (n > 0) {
+#if defined(_WIN32)
+		int r = recv(s, (char *)p, (int)n, 0);
+#else
+		ssize_t r = recv(s, p, n, 0);
+#endif
+		if (r <= 0) return false;
+		p += r;
+		n -= (size_t)r;
+	}
+	return true;
+}
+
+static void send_on(sock_t s, uint8_t kind, const void *p, size_t len) {
+	uint8_t h[5] = {(uint8_t)(len + 1), (uint8_t)((len + 1) >> 8), (uint8_t)((len + 1) >> 16), (uint8_t)((len + 1) >> 24), kind};
+	ak_mutex_lock(&send_mu);
+	if (!write_all(s, h, 5) || !write_all(s, p, len)) {
+		// The CLI went away: its reader ends the session.
+	}
+	ak_mutex_unlock(&send_mu);
+}
+
+void ak_dev_send(uint8_t kind, const void *p, size_t len) {
+	ak_mutex_lock(&mu);
+	sock_t s = sock;
+	ak_mutex_unlock(&mu);
+	if (s != BAD_SOCK) send_on(s, kind, p, len);
+}
+
+typedef struct {
+	uint8_t *p;
+	size_t len;
+} module_t;
+
+static void deliver(void *ctx) {
+	module_t *m = ctx;
+	if (reload_fn) reload_fn(m->p, m->len);
+	ak_free(m->p);
+	ak_free(m);
+}
+
+// session serves s as the CLI's connection until it closes or a newer
+// one replaces it.
+static void session(sock_t s) {
+	int one = 1;
+	setsockopt(s, IPPROTO_TCP, TCP_NODELAY, (const char *)&one, sizeof one);
+#if defined(SO_NOSIGPIPE)
+	setsockopt(s, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one);
+#endif
+	ak_mutex_lock(&mu);
+	sock_t old = sock;
+	sock = s;
+	uint32_t mine = ++gen;
+	ak_mutex_unlock(&mu);
+	if (old != BAD_SOCK) close_sock(old);  // its reader ends
+	if (hello_json) send_on(s, AK_DEV_HELLO, hello_json, strlen(hello_json));
+	for (;;) {
+		uint8_t h[5];
+		if (!read_all(s, h, 5)) break;
+		uint32_t n = (uint32_t)h[0] | (uint32_t)h[1] << 8 | (uint32_t)h[2] << 16 | (uint32_t)h[3] << 24;
+		if (n == 0 || n > (256u << 20)) break;
+		uint8_t *p = ak_alloc(n);
+		if (!read_all(s, p, n - 1)) {
+			ak_free(p);
+			break;
+		}
+		if (h[4] == AK_DEV_MODULE) {
+			module_t *m = ak_alloc(sizeof *m);
+			m->p = p;
+			m->len = n - 1;
+			ak_post(deliver, m);
+		} else {
+			ak_free(p);
+		}
+	}
+	ak_mutex_lock(&mu);
+	bool current = gen == mine;
+	if (current) {
+		sock = BAD_SOCK;
+		ak_cond_broadcast(&ended);
+	}
+	ak_mutex_unlock(&mu);
+	if (current) {
+		close_sock(s);
+		fprintf(stderr, "asuka: the dev connection closed; the app keeps running, and comes back when asuka dev does\n");
+	}
+}
+
+// dial_one connects to host:port, waiting at most two seconds (a
+// network address the phone can't reach would hang a connect for a
+// minute).
+static sock_t dial_one(const char *host, int port) {
+	char ports[16];
+	snprintf(ports, sizeof ports, "%d", port);
+	struct addrinfo hints = {0}, *res = NULL;
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+	if (getaddrinfo(host, ports, &hints, &res) != 0 || !res) return BAD_SOCK;
+	sock_t s = BAD_SOCK;
+	for (struct addrinfo *a = res; a && s == BAD_SOCK; a = a->ai_next) {
+		s = socket(a->ai_family, a->ai_socktype, a->ai_protocol);
+		if (s == BAD_SOCK) continue;
+#if defined(_WIN32)
+		u_long nb = 1;
+		ioctlsocket(s, FIONBIO, &nb);
+		bool ok = connect(s, a->ai_addr, (int)a->ai_addrlen) == 0;
+		if (!ok && WSAGetLastError() == WSAEWOULDBLOCK) {
+			fd_set w, e;
+			FD_ZERO(&w);
+			FD_ZERO(&e);
+			FD_SET(s, &w);
+			FD_SET(s, &e);
+			struct timeval tv = {2, 0};
+			ok = select(0, NULL, &w, &e, &tv) > 0 && FD_ISSET(s, &w);
+		}
+		nb = 0;
+		ioctlsocket(s, FIONBIO, &nb);
+#else
+		int fl = fcntl(s, F_GETFL, 0);
+		fcntl(s, F_SETFL, fl | O_NONBLOCK);
+		bool ok = connect(s, a->ai_addr, a->ai_addrlen) == 0;
+		if (!ok && errno == EINPROGRESS) {
+			struct pollfd pf = {.fd = s, .events = POLLOUT};
+			int e = 0;
+			socklen_t el = sizeof e;
+			ok = poll(&pf, 1, 2000) == 1 && getsockopt(s, SOL_SOCKET, SO_ERROR, &e, &el) == 0 && e == 0;
+		}
+		fcntl(s, F_SETFL, fl);
+#endif
+		if (!ok) {
+			close_sock(s);
+			s = BAD_SOCK;
+		}
+	}
+	freeaddrinfo(res);
+	return s;
+}
+
+typedef struct {
+	char *hosts;  // comma-separated
+	int port;
+} dial_t;
+
+// dial_any tries each of d's hosts in turn.
+static sock_t dial_any(dial_t *d) {
+	char *list = ak_alloc(strlen(d->hosts) + 1);
+	strcpy(list, d->hosts);
+	sock_t s = BAD_SOCK;
+	for (char *h = list, *next; h && s == BAD_SOCK; h = next) {
+		next = strchr(h, ',');
+		if (next) *next++ = 0;
+		if (*h) s = dial_one(h, d->port);
+	}
+	ak_free(list);
+	return s;
+}
+
+static void dialer(void *arg) {
+	dial_t *d = arg;
+	sock_t first = dial_any(d);
+	for (;;) {
+		sock_t s = first != BAD_SOCK ? first : dial_any(d);
+		first = BAD_SOCK;
+		if (s != BAD_SOCK) {
+			session(s);
+		}
+		// Wait for the session (this one, or one the CLI made) to end,
+		// then a moment, then dial again.
+		ak_mutex_lock(&mu);
+		while (sock != BAD_SOCK) ak_cond_wait(&ended, &mu);
+		ak_mutex_unlock(&mu);
+#if defined(_WIN32)
+		Sleep(500);
+#else
+		struct timespec ts = {0, 500 * 1000000};
+		nanosleep(&ts, NULL);
+#endif
+	}
+}
+
+typedef struct {
+	sock_t ln;
+} listen_t;
+
+static void session_thread(void *arg) {
+	sock_t s = (sock_t)(intptr_t)arg;
+	session(s);
+}
+
+static void listener(void *arg) {
+	listen_t *l = arg;
+	for (;;) {
+		sock_t s = accept(l->ln, NULL, NULL);
+		if (s == BAD_SOCK) continue;
+		if (!ak_thread_start(session_thread, (void *)(intptr_t)s)) close_sock(s);
+	}
+}
+
+static void net_init(void) {
+#if defined(_WIN32)
+	static bool done;
+	if (!done) {
+		WSADATA wsa;
+		WSAStartup(MAKEWORD(2, 2), &wsa);
+		done = true;
+	}
+#endif
+}
+
+static void set_hello(const char *hello) {
+	ak_mutex_lock(&mu);
+	if (!hello_json && hello) {
+		hello_json = ak_alloc(strlen(hello) + 1);
+		strcpy(hello_json, hello);
+	}
+	if (!ended_inited) {
+		ak_cond_init(&ended);
+		ended_inited = true;
+	}
+	ak_mutex_unlock(&mu);
+}
+
+#if !defined(_WIN32)
+// Logs: what the process writes to stdout and stderr goes through pipes
+// read on threads that send it to the CLI, and to where it went before.
+typedef struct {
+	int fd, orig;
+	uint8_t which;  // 1 stdout, 2 stderr
+} pipe_t;
+
+static void pump(void *arg) {
+	pipe_t *p = arg;
+	char buf[4096];
+	for (;;) {
+		ssize_t n = read(p->fd, buf + 1, sizeof buf - 1);
+		if (n <= 0) break;
+		if (write(p->orig, buf + 1, (size_t)n) < 0) {
+		}
+		buf[0] = (char)p->which;
+		ak_dev_send(AK_DEV_LOG, buf, (size_t)n + 1);
+	}
+}
+
+static void capture_fd(int fd) {
+	int fds[2];
+	if (pipe(fds) != 0) return;
+	pipe_t *p = ak_alloc(sizeof *p);
+	p->orig = dup(fd);
+	p->fd = fds[0];
+	p->which = fd == STDERR_FILENO ? 2 : 1;
+	dup2(fds[1], fd);
+	close(fds[1]);
+	if (fd == STDOUT_FILENO) setvbuf(stdout, NULL, _IOLBF, 0);
+	ak_thread_start(pump, p);
+}
+#endif
+
+static void start_capture(bool capture) {
+	static bool started;
+	if (!capture || started) return;
+	started = true;
+#if !defined(_WIN32)
+	capture_fd(STDOUT_FILENO);
+	capture_fd(STDERR_FILENO);
+#endif
+}
+
+bool ak_dev_connect(const char *hosts, int port, const char *hello, bool capture, char *err, size_t errcap) {
+	net_init();
+	set_hello(hello);
+	start_capture(capture);
+	dial_t *d = ak_alloc(sizeof *d);
+	d->hosts = ak_alloc(strlen(hosts) + 1);
+	strcpy(d->hosts, hosts);
+	d->port = port;
+	if (!ak_thread_start(dialer, d)) {
+		snprintf(err, errcap, "no thread for the dev connection");
+		return false;
+	}
+	return true;
+}
+
+bool ak_dev_listen(int port, const char *hello, bool capture, char *err, size_t errcap) {
+	net_init();
+	set_hello(hello);
+	start_capture(capture);
+	sock_t ln = socket(AF_INET, SOCK_STREAM, 0);
+	if (ln == BAD_SOCK) {
+		snprintf(err, errcap, "asuka dev's tunnel port: no socket");
+		return false;
+	}
+	int one = 1;
+	setsockopt(ln, SOL_SOCKET, SO_REUSEADDR, (const char *)&one, sizeof one);
+	struct sockaddr_in a = {0};
+	a.sin_family = AF_INET;
+	a.sin_port = htons((uint16_t)port);
+	a.sin_addr.s_addr = htonl(0x7f000001);  // 127.0.0.1
+	if (bind(ln, (struct sockaddr *)&a, sizeof a) != 0 || listen(ln, 4) != 0) {
+		close_sock(ln);
+		snprintf(err, errcap, "asuka dev's tunnel port %d is taken", port);
+		return false;
+	}
+	listen_t *l = ak_alloc(sizeof *l);
+	l->ln = ln;
+	if (!ak_thread_start(listener, l)) {
+		snprintf(err, errcap, "no thread for the dev connection");
+		return false;
+	}
+	return true;
+}
+
+#endif

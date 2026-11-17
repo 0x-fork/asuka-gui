@@ -64,7 +64,11 @@ func main() {
 	for !exists(filepath.Join(root, "go.mod")) {
 		root = filepath.Dir(root)
 	}
-	os.MkdirAll(filepath.Join(root, *outDir), 0o755)
+	// -out: relative to the repository, or absolute.
+	if !filepath.IsAbs(*outDir) {
+		*outDir = filepath.Join(root, *outDir)
+	}
+	os.MkdirAll(*outDir, 0o755)
 	var failed bool
 	if *ios {
 		if err := runIOS(); err != nil {
@@ -241,7 +245,7 @@ func report(platform, device string, apps []app, all map[string][][]result) erro
 	}
 	fmt.Print("\n" + b.String())
 	raw, _ := json.MarshalIndent(all, "", "  ")
-	base := filepath.Join(root, *outDir, strings.ToLower(platform))
+	base := filepath.Join(*outDir, strings.ToLower(platform))
 	if err := os.WriteFile(base+".json", raw, 0o644); err != nil {
 		return err
 	}
@@ -287,7 +291,10 @@ func simulator() (string, error) {
 		if err != nil {
 			return "", err
 		}
-		udid = strings.TrimSpace(out)
+		// The UDID is the last line: simctl may say which runtime it
+		// picked before it ("No runtime specified, using ...").
+		lines := strings.Split(strings.TrimSpace(out), "\n")
+		udid = strings.TrimSpace(lines[len(lines)-1])
 	}
 	if state != "Booted" {
 		fmt.Println("bench: booting the asuka-bench simulator")
@@ -444,7 +451,7 @@ func buildAsukaAndroid() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	out, err := output(root, env, "go", "run", "./cmd/asuka", "build", "--platform", "android", "bench/asuka")
+	out, err := output(root, env, "go", "run", "./cmd/asuka", "build", "--platform", "android", "--apk", "bench/asuka")
 	if err != nil {
 		return "", err
 	}

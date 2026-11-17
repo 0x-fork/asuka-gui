@@ -7,16 +7,16 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/egoist/asuka/lang/target"
 	iosHost "github.com/egoist/asuka/platform/ios"
 )
 
-// An app embedded in another (asuka build --platform ios --xcframework): its Go code
-// and the UIKit host in AsukaApp.xcframework, a framework for devices and
+// An app embedded in another (asuka build --platform ios --xcframework): the
+// C core with the app compiled in and the UIKit host in AsukaApp.xcframework, a framework for devices and
 // one for the simulator, with a Swift module interface, so an app made in
 // Xcode adds it and shows the Asuka app where it likes:
 //
@@ -26,16 +26,19 @@ import (
 // The host's own app delegate isn't in it: the app around it is the
 // other one. Assets go in the framework, where the host finds them. An
 // app's plugins' libraries come beside it, an XCFramework each
-// (ios_plugins.go), which the app around it embeds too: the Go code loads
+// (ios_plugins.go), which the app around it embeds too: the app loads
 // them from that app's Frameworks.
 
 const embedModule = "AsukaApp"
 
-func buildIOSFramework(app *goApp, o *buildOptions) error {
+func buildIOSFramework(app *asukaApp, o *buildOptions) error {
 	start := time.Now()
 	cfg := app.cfg
+	m, err := app.compile(target.IOS)
+	if err != nil {
+		return err
+	}
 	var slices []string
-	pluginSlices := map[string][]string{} // by library
 	for _, sdk := range []string{"iphoneos", "iphonesimulator"} {
 		tc, err := newIOSToolchainFor(sdk, o.verbose)
 		if err != nil {
@@ -47,11 +50,11 @@ func buildIOSFramework(app *goApp, o *buildOptions) error {
 			return err
 		}
 		fmt.Printf("asuka: building %s %s as a framework for %s\n", cfg.Name, cfg.Version, map[bool]string{true: "devices", false: "the simulator"}[sdk == "iphoneos"])
-		lib, err := tc.buildGo(app, work)
+		lib, err := tc.buildCore(work, m, nil)
 		if err != nil {
 			return err
 		}
-		fw, err := tc.buildEmbedded(work, app, lib, usedFeatures(lib, cfg))
+		fw, err := tc.buildEmbedded(work, app, lib, usedFeatures(app, cfg))
 		if err != nil {
 			return err
 		}
@@ -59,44 +62,13 @@ func buildIOSFramework(app *goApp, o *buildOptions) error {
 			return err
 		}
 		slices = append(slices, fw)
-		// The plugins' libraries, which the Go code loads from the app's
-		// Frameworks: a framework each, for the app to embed too.
-		libs, err := tc.pluginLibs(app)
-		if err != nil {
-			return err
-		}
-		for _, l := range libs {
-			pfw, err := tc.writePluginFramework(filepath.Join(work, "plugins"), l)
-			if err != nil {
-				return err
-			}
-			pluginSlices[l.lib.Name] = append(pluginSlices[l.lib.Name], pfw)
-		}
 	}
 	tc := &iosToolchain{verbose: o.verbose}
 	out := filepath.Join(o.out, embedModule+".xcframework")
 	if err := tc.createXCFramework(o.out, out, slices); err != nil {
 		return err
 	}
-	var extra []string
-	var names []string
-	for name := range pluginSlices {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		pout := filepath.Join(o.out, name+".xcframework")
-		if err := tc.createXCFramework(o.out, pout, pluginSlices[name]); err != nil {
-			return err
-		}
-		extra = append(extra, pout)
-	}
 	fmt.Printf("asuka: %s in %s\n", out, time.Since(start).Round(time.Second))
-	if len(extra) > 0 {
-		fmt.Printf("asuka: beside it, the libraries of its plugins, which the app's Go code loads: %s\n", strings.Join(extra, ", "))
-		fmt.Println("asuka: add them all to your Xcode target (Embed & Sign), then: import AsukaApp; present(AsukaViewController(), animated: true)")
-		return nil
-	}
 	fmt.Println("asuka: add it to your Xcode target (Embed & Sign), then: import AsukaApp; present(AsukaViewController(), animated: true)")
 	return nil
 }
@@ -114,7 +86,7 @@ func (t *iosToolchain) createXCFramework(dir, out string, frameworks []string) e
 // buildEmbedded compiles the host (without its app delegate) and links it
 // with the app's Go archive into work/AsukaApp.framework, its module and
 // module interface in Modules/.
-func (t *iosToolchain) buildEmbedded(work string, app *goApp, lib string, features []string) (string, error) {
+func (t *iosToolchain) buildEmbedded(work string, app *asukaApp, lib string, features []string) (string, error) {
 	src := filepath.Join(work, "host")
 	os.RemoveAll(src)
 	h := sha256.New()
@@ -141,7 +113,7 @@ func (t *iosToolchain) buildEmbedded(work string, app *goApp, lib string, featur
 	// The app's native packages' Swift is packages of its own, which the
 	// framework's module (AsukaApp, built as one module with swiftc for
 	// the embedding app to import) can't be built with.
-	natives, err := nativeFor(app, "ios", t.goarch)
+	natives, err := nativeFor(app, "ios")
 	if err != nil {
 		return "", err
 	}
@@ -171,6 +143,7 @@ func (t *iosToolchain) buildEmbedded(work string, app *goApp, lib string, featur
 	for _, f := range features {
 		args = append(args, "-D", f)
 	}
+	args = append(args, t.cLink...)
 	fmt.Println("asuka: compiling the iOS host as a framework")
 	if err := t.run(work, nil, "xcrun", append(args, swift...)...); err != nil {
 		return "", err

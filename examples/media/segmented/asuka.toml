@@ -1,0 +1,5 @@
+name = "@asuka/segmented"
+version = "0.1.0"
+
+[windows]
+libraries = ["comctl32", "gdi32"]

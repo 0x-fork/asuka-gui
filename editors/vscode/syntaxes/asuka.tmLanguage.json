@@ -1,0 +1,667 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Asuka",
+  "scopeName": "source.asuka",
+  "fileTypes": [
+    "asuka"
+  ],
+  "patterns": [
+    {
+      "include": "#statements"
+    }
+  ],
+  "repository": {
+    "statements": {
+      "patterns": [
+        {
+          "include": "#comments"
+        },
+        {
+          "include": "#strings"
+        },
+        {
+          "include": "#import"
+        },
+        {
+          "include": "#declarations"
+        },
+        {
+          "include": "#labels"
+        },
+        {
+          "include": "#keywords"
+        },
+        {
+          "include": "#numbers"
+        },
+        {
+          "include": "#calls"
+        },
+        {
+          "include": "#members"
+        },
+        {
+          "include": "#types"
+        },
+        {
+          "include": "#operators"
+        },
+        {
+          "include": "#punctuation"
+        },
+        {
+          "include": "#block"
+        }
+      ]
+    },
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.documentation.asuka",
+          "begin": "///",
+          "end": "$",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.comment.asuka"
+            }
+          },
+          "patterns": [
+            {
+              "name": "markup.inline.raw.asuka",
+              "match": "`[^`]*`"
+            }
+          ]
+        },
+        {
+          "name": "comment.line.double-slash.asuka",
+          "begin": "//",
+          "end": "$",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.comment.asuka"
+            }
+          }
+        },
+        {
+          "name": "comment.block.asuka",
+          "begin": "/\\*",
+          "end": "\\*/",
+          "captures": {
+            "0": {
+              "name": "punctuation.definition.comment.asuka"
+            }
+          }
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.triple.raw.asuka",
+          "begin": "\\br\"\"\"",
+          "end": "\"\"\"",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.begin.asuka"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.end.asuka"
+            }
+          }
+        },
+        {
+          "name": "string.quoted.raw.asuka",
+          "begin": "\\br\"",
+          "end": "\"",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.begin.asuka"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.end.asuka"
+            }
+          }
+        },
+        {
+          "name": "string.quoted.triple.asuka",
+          "begin": "\"\"\"",
+          "end": "\"\"\"",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.begin.asuka"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.end.asuka"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#escapes"
+            },
+            {
+              "include": "#interpolation"
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.double.asuka",
+          "begin": "\"",
+          "end": "\"|$",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.begin.asuka"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.end.asuka"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#escapes"
+            },
+            {
+              "include": "#interpolation"
+            }
+          ]
+        }
+      ]
+    },
+    "escapes": {
+      "patterns": [
+        {
+          "name": "constant.character.escape.unicode.asuka",
+          "match": "\\\\u\\{[0-9a-fA-F]{1,6}\\}"
+        },
+        {
+          "name": "constant.character.escape.asuka",
+          "match": "\\\\[\\\\\\\"nrt0{}]"
+        },
+        {
+          "name": "invalid.illegal.escape.asuka",
+          "match": "\\\\."
+        }
+      ]
+    },
+    "interpolation": {
+      "name": "meta.interpolation.asuka",
+      "begin": "\\{",
+      "end": "\\}",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.section.interpolation.begin.asuka"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.section.interpolation.end.asuka"
+        }
+      },
+      "contentName": "source.asuka.embedded",
+      "patterns": [
+        {
+          "include": "#statements"
+        }
+      ]
+    },
+    "block": {
+      "begin": "\\{",
+      "end": "\\}",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.section.block.begin.asuka"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.section.block.end.asuka"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#statements"
+        }
+      ]
+    },
+    "import": {
+      "name": "meta.import.asuka",
+      "begin": "\\b(import)\\b",
+      "end": "(?=$|;|//)",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.import.asuka"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#comments"
+        },
+        {
+          "match": "\\b(as)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.control.as.asuka"
+            },
+            "2": {
+              "name": "entity.name.namespace.asuka"
+            }
+          }
+        },
+        {
+          "begin": "\\.\\{",
+          "end": "\\}",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.section.braces.begin.asuka"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.section.braces.end.asuka"
+            }
+          },
+          "patterns": [
+            {
+              "name": "entity.name.type.asuka",
+              "match": "[A-Za-z_][A-Za-z0-9_]*"
+            },
+            {
+              "name": "punctuation.separator.comma.asuka",
+              "match": ","
+            }
+          ]
+        },
+        {
+          "name": "entity.name.namespace.asuka",
+          "match": "(?:\\./|@)?[A-Za-z_][A-Za-z0-9_-]*(?:/[A-Za-z_][A-Za-z0-9_-]*)*"
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "match": "\\b(native|extern)\\s+(component|interface|struct|type)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.modifier.asuka"
+            },
+            "2": {
+              "name": "storage.type.asuka"
+            },
+            "3": {
+              "name": "entity.name.type.asuka"
+            }
+          }
+        },
+        {
+          "comment": "shader is a keyword only at a declaration's start, before its name",
+          "match": "^\\s*(?:(pub)\\s+)?(shader)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.modifier.asuka"
+            },
+            "2": {
+              "name": "storage.type.asuka"
+            },
+            "3": {
+              "name": "entity.name.type.asuka"
+            }
+          }
+        },
+        {
+          "match": "\\b(component|screen|store|struct|enum|interface|type)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.type.asuka"
+            },
+            "2": {
+              "name": "entity.name.type.asuka"
+            }
+          }
+        },
+        {
+          "match": "\\b(fn)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.type.function.asuka"
+            },
+            "2": {
+              "name": "entity.name.function.asuka"
+            }
+          }
+        },
+        {
+          "match": "\\b(event)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.type.asuka"
+            },
+            "2": {
+              "name": "entity.name.function.event.asuka"
+            }
+          }
+        },
+        {
+          "match": "\\b(variant)\\s+([A-Za-z_][A-Za-z0-9_]*)(?=\\s*=)",
+          "captures": {
+            "1": {
+              "name": "storage.type.asuka"
+            },
+            "2": {
+              "name": "variable.other.declaration.asuka"
+            }
+          }
+        },
+        {
+          "match": "\\b(state|let|var|prop|use)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.type.asuka"
+            },
+            "2": {
+              "name": "variable.other.declaration.asuka"
+            }
+          }
+        },
+        {
+          "match": "\\b(style)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.type.style.asuka"
+            },
+            "2": {
+              "name": "entity.name.tag.style.asuka"
+            }
+          }
+        },
+        {
+          "match": "\\b(on)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.other.on.asuka"
+            },
+            "2": {
+              "name": "entity.name.function.event.asuka"
+            }
+          }
+        },
+        {
+          "match": "\\b(emit)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.control.emit.asuka"
+            },
+            "2": {
+              "name": "entity.name.function.event.asuka"
+            }
+          }
+        },
+        {
+          "match": "\\b(bind)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.other.bind.asuka"
+            },
+            "2": {
+              "name": "variable.other.property.asuka"
+            }
+          }
+        },
+        {
+          "match": "(?<=\\s)(key)\\b(?=\\s+[^\\s:=])",
+          "name": "keyword.other.key.asuka"
+        }
+      ]
+    },
+    "labels": {
+      "patterns": [
+        {
+          "match": "(?:(?<=^)|(?<=[{;(,]))\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(?=:(?!:))",
+          "captures": {
+            "1": {
+              "name": "variable.other.property.asuka"
+            }
+          }
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.asuka",
+          "match": "\\b(if|else|for|in|while|match|return|throw|break|continue|defer|do|catch|try|await|spawn|load|emit)\\b"
+        },
+        {
+          "name": "storage.type.asuka",
+          "match": "\\b(component|screen|store|struct|enum|interface|fn|type|style|state|let|var|prop|event|use|provide)\\b"
+        },
+        {
+          "name": "storage.type.asuka",
+          "match": "\\b(app|effect)\\b(?=\\s*\\{)"
+        },
+        {
+          "name": "storage.type.asuka",
+          "match": "\\btask\\b(?=\\s*[({])"
+        },
+        {
+          "name": "storage.type.asuka",
+          "match": "\\btest\\b(?=\\s*(?:r?\\\"))"
+        },
+        {
+          "name": "storage.modifier.asuka",
+          "match": "\\b(pub|native|extern|async|throws)\\b"
+        },
+        {
+          "name": "keyword.other.asuka",
+          "match": "\\b(as)\\b"
+        },
+        {
+          "name": "constant.language.asuka",
+          "match": "\\b(true|false|none)\\b"
+        },
+        {
+          "name": "constant.language.platform.asuka",
+          "match": "@platform\\b"
+        },
+        {
+          "name": "variable.language.self.asuka",
+          "match": "\\bself\\b"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.other.color.rgb-value.asuka",
+          "match": "#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})\\b"
+        },
+        {
+          "name": "constant.numeric.hex.asuka",
+          "match": "\\b0[xX][0-9a-fA-F_]+\\b"
+        },
+        {
+          "name": "constant.numeric.binary.asuka",
+          "match": "\\b0[bB][01_]+\\b"
+        },
+        {
+          "name": "constant.numeric.octal.asuka",
+          "match": "\\b0[oO][0-7_]+\\b"
+        },
+        {
+          "match": "\\b(\\d[\\d_]*(?:\\.\\d[\\d_]*)?)(ms|min|s|h|fr)\\b",
+          "captures": {
+            "1": {
+              "name": "constant.numeric.asuka"
+            },
+            "2": {
+              "name": "keyword.other.unit.asuka"
+            }
+          }
+        },
+        {
+          "match": "\\b(\\d[\\d_]*(?:\\.\\d[\\d_]*)?)(%)",
+          "captures": {
+            "1": {
+              "name": "constant.numeric.asuka"
+            },
+            "2": {
+              "name": "keyword.other.unit.percent.asuka"
+            }
+          }
+        },
+        {
+          "name": "constant.numeric.float.asuka",
+          "match": "\\b\\d[\\d_]*(?:\\.\\d[\\d_]*(?:[eE][+-]?\\d+)?|[eE][+-]?\\d+)\\b"
+        },
+        {
+          "name": "constant.numeric.integer.asuka",
+          "match": "\\b\\d[\\d_]*\\b"
+        }
+      ]
+    },
+    "calls": {
+      "patterns": [
+        {
+          "match": "\\b(print|expect|sleep|all|race|mount|idle|push|pop|present|dismiss|min|max|abs|float|int|panic|withTimeout)(?=\\s*\\()",
+          "captures": {
+            "1": {
+              "name": "support.function.builtin.asuka"
+            }
+          }
+        },
+        {
+          "match": "\\b([a-z_][A-Za-z0-9_]*)(?=\\s*(?:<[^<>()]*>)?\\()",
+          "captures": {
+            "1": {
+              "name": "entity.name.function.call.asuka"
+            }
+          }
+        }
+      ]
+    },
+    "members": {
+      "patterns": [
+        {
+          "name": "keyword.operator.range.asuka",
+          "match": "\\.\\.<?"
+        },
+        {
+          "match": "(\\??\\.)\\s*([A-Za-z_][A-Za-z0-9_]*)(?=\\s*(?:<[^<>()]*>)?\\()",
+          "captures": {
+            "1": {
+              "name": "punctuation.accessor.asuka"
+            },
+            "2": {
+              "name": "entity.name.function.member.asuka"
+            }
+          }
+        },
+        {
+          "match": "(?<=[A-Za-z0-9_)\\]\\\"!?}])(\\??\\.)([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "punctuation.accessor.asuka"
+            },
+            "2": {
+              "name": "variable.other.property.asuka"
+            }
+          }
+        },
+        {
+          "match": "(\\.)([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "punctuation.accessor.implicit.asuka"
+            },
+            "2": {
+              "name": "variable.other.enummember.asuka"
+            }
+          }
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.builtin.asuka",
+          "match": "\\b(int|float|bool|string|bytes|void|never|Duration|Color|Length|View|Error|Task|Stream|Loading|Set)\\b"
+        },
+        {
+          "name": "entity.name.type.asuka",
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.arrow.asuka",
+          "match": "=>|->"
+        },
+        {
+          "name": "keyword.operator.assignment.compound.bitwise.asuka",
+          "match": "<<=|>>=|&=|\\|=|\\^="
+        },
+        {
+          "name": "keyword.operator.assignment.compound.asuka",
+          "match": "\\?\\?=|\\+=|-=|\\*=|/=|%="
+        },
+        {
+          "name": "keyword.operator.comparison.asuka",
+          "match": "==|!=|<=|>="
+        },
+        {
+          "name": "keyword.operator.logical.asuka",
+          "match": "&&|\\|\\||\\?\\?"
+        },
+        {
+          "name": "keyword.operator.bitwise.shift.asuka",
+          "match": "<<|>>"
+        },
+        {
+          "name": "keyword.operator.bitwise.asuka",
+          "match": "&|\\^|~"
+        },
+        {
+          "name": "keyword.operator.assignment.asuka",
+          "match": "="
+        },
+        {
+          "name": "keyword.operator.arithmetic.asuka",
+          "match": "[-+*/%]"
+        },
+        {
+          "name": "keyword.operator.asuka",
+          "match": "[!?<>|]"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.separator.comma.asuka",
+          "match": ","
+        },
+        {
+          "name": "punctuation.terminator.asuka",
+          "match": ";"
+        },
+        {
+          "name": "punctuation.separator.colon.asuka",
+          "match": ":"
+        },
+        {
+          "name": "punctuation.definition.at.asuka",
+          "match": "@"
+        }
+      ]
+    }
+  }
+}

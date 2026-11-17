@@ -3,15 +3,44 @@
 // calls (through globalThis.asuka.native), and what Go's calls reach,
 // through its host (Host's nativeNew, nativeCall...).
 //
-// The wire format is package native's: values in declaration order,
+// The wire format is core/src/native's: values in declaration order,
 // little-endian. int64 and uint64 are BigInts; Go's int and uint, and the
 // smaller integers, are numbers; a time is a Date; a duration is
 // milliseconds; a []byte is a Uint8Array; a map is an object.
 
+import * as appFS from "./fs.js";
+import { pickFiles, download, typeOf } from "./files.js";
+import { css } from "./color.js";
+
+/** fs is the app's files (the page's own file system): readFile, writeFile, blobURL... for a package's JavaScript. */
+export const fs = appFS;
+
+/** color is a Color that crossed to a package's JavaScript (a bigint, the core's encoding) as CSS: a semantic one a variable that follows light and dark; "" for none. */
+export function color(v) { return css(null, Number(v)); }
+
+let assets = "assets";
+
+/** setAssets is for the host: the URL the app's assets are served from. */
+// The host's views by id (setViews): what a Ref passed to a package's
+// JavaScript is.
+let viewOf = () => null;
+export function setViews(f) { viewOf = f; }
+
+export function setAssets(url) { assets = (url || "assets").replace(/\/$/, ""); }
+
+/** assetURL is a source as the hosts take one (a URL, or a file in the app's assets) as a URL a package can load. */
+export function assetURL(src) {
+  if (!src) return "";
+  if (/^(https?|blob|data):/.test(src)) return src;
+  if (src.startsWith("file://")) src = decodeURIComponent(src.slice(7));
+  if (src.startsWith("/")) return appFS.blobURL(src);
+  return assets + "/" + src.replace(/^\.?\//, "");
+}
+
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
-/** Encodes values (package native's Writer). */
+/** Encodes values (core/src/native's writer). */
 export class NativeWriter {
   constructor() {
     this.b = new Uint8Array(64);
@@ -67,7 +96,7 @@ export class NativeWriter {
   bytes() { return this.b.slice(0, this.n); }
 }
 
-/** Decodes values (package native's Reader); past what's there, every read is its zero value and failed is true. */
+/** Decodes values (core/src/native's reader); past what's there, every read is its zero value and failed is true. */
 export class NativeReader {
   constructor(b, back) {
     this.b = b instanceof Uint8Array ? b : new Uint8Array(b);
@@ -96,6 +125,8 @@ export class NativeReader {
   uint32() { const at = this.take(4); return at < 0 ? 0 : this.v.getUint32(at, true); }
   int64() { const at = this.take(8); return at < 0 ? 0n : this.v.getBigInt64(at, true); }
   uint64() { const at = this.take(8); return at < 0 ? 0n : this.v.getBigUint64(at, true); }
+  /** A view the app shows (an Asuka Ref), by its id: its element, or null. */
+  viewRef() { const id = Number(this.uint64()); return id ? viewOf(id) : null; }
   int() { return Number(this.int64()); }
   uint() { return Number(this.uint64()); }
   float32() { const at = this.take(4); return at < 0 ? 0 : this.v.getFloat32(at, true); }
@@ -139,13 +170,62 @@ export class NativeReader {
   check() { if (this.failed) throw new Error("asuka: a malformed call"); }
 }
 
-/** An error a package declares (native.NewError): its Go gets that value. Generated code subclasses it. */
+/** An error a package declares (its enum ...: Error): the app gets that value. Generated code subclasses it. */
 export class DeclaredError extends Error {
   constructor(index, message) {
     super(message);
     this.asukaIndex = index;
   }
 }
+
+/**
+ * The app the page runs: its name (asuka.toml's, the host's options), for
+ * a package to keep its data under, as the host keeps the app's; and
+ * where its assets are served from; its version (asuka.toml's), and
+ * whether it's asuka dev's build. Set as the host starts.
+ */
+export const app = { name: "app", assets: "assets", version: "", build: "", dev: false };
+
+/**
+ * The app's files, for a package that hands it some: a browser gives a
+ * page files, never their paths, so what the user picks is copied into
+ * the app's own file system (fs.js), whose paths the app opens.
+ */
+export const files = {
+  /** The app's file system: readFile, writeFile, makeDir, removeFile, saveUpload, onWritten, blobURL, fileOf, clean. */
+  fs: appFS,
+  /** Asks for files with the browser's picker (limit 0: any number): their copies, { path, name, type, size }. */
+  pick: pickFiles,
+  /** Saves a File with the browser's download. */
+  download,
+  /** A file name's MIME type, from its extension ("" if not known). */
+  typeOf,
+  /**
+   * Where a source loads from: an http(s), blob: or data: URL as it is,
+   * an asset's path under the app's assets; null for a file of the app's
+   * (a path: readFile has it).
+   */
+  sourceURL(src) {
+    if (/^(https?|blob|data):/.test(src)) return src;
+    if (src.startsWith("file://")) src = decodeURIComponent(src.slice(7));
+    if (src.startsWith("/")) return null;
+    return new URL(app.assets + "/" + src.replace(/^\.?\//, ""), location.href).href;
+  },
+  /** A source's bytes as a Blob of type: a file of the app's, an asset, a URL. */
+  async blob(src, type) {
+    const url = files.sourceURL(src);
+    if (url == null) {
+      const path = src.startsWith("file://") ? decodeURIComponent(src.slice(7)) : src;
+      const b = appFS.readFile(path);
+      if (!b) throw new Error("no file at " + path);
+      return new Blob([b.slice()], { type });
+    }
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`${url}: ${r.status} ${r.statusText}`);
+    const blob = await r.blob();
+    return type && blob.type !== type ? new Blob([blob], { type }) : blob;
+  },
+};
 
 /** What the platform doesn't have: Go gets errors.ErrUnsupported. */
 export class UnsupportedError extends Error {}
@@ -225,7 +305,12 @@ export function start(h, method, input, id, back) {
 }
 
 export function cancel(id) { calls.get(id)?.abort(); }
-export function release(h) { objects.delete(h); }
+export function release(h) {
+  const o = objects.get(h)?.obj;
+  objects.delete(h);
+  // An object that frees what it holds as it's let go (Swift's deinit).
+  o?.released?.();
+}
 
 /** A typed view of a kind (its module's id # its name). */
 export function makeView(kind, ctx) {
@@ -233,3 +318,4 @@ export function makeView(kind, ctx) {
   if (i < 0) return null;
   return providers.get(kind.slice(0, i))?.makeView(kind.slice(i + 1), ctx) ?? null;
 }
+

@@ -13,13 +13,15 @@ import (
 	iosHost "github.com/egoist/asuka/platform/ios"
 )
 
-// The share extension (asuka.json's shareTarget): platform/ios/Share, a
-// binary of its own in the app's PlugIns. It runs no Go: it opens the
-// app with what was shared in a URL of the app's share scheme, which the
-// host turns into the Shared event (ui.OnShare), as Android's
+// The share extension (asuka.toml's shareTarget): platform/ios/Share, a
+// binary of its own in the app's PlugIns. It runs no app code: it opens
+// the app with what was shared in a URL of the app's share scheme, which
+// the host turns into the Shared event (onShare), as Android's
 // ACTION_SEND opens the app. Files go through the App Group the two
 // share (appGroup): the extension copies them there, the app moves
-// them to its caches.
+// them to its caches. An app with a share sheet of its own
+// (platform/sharesheet's active) has the host's sheet instead, which runs
+// the app as its sheet.
 
 const shareExe = "AsukaShare"
 
@@ -33,7 +35,7 @@ func (c *appConfig) shareScheme() string { return "asukashare." + c.ID }
 // shareEntitlements are the linker flags that give the extension its
 // entitlements on the simulator, as the app's (simulatorEntitlements):
 // the App Group it leaves files in, and with a share sheet, the app's
-// keychain group (asuka/sdk/secure's items are the app's there).
+// keychain group (platform/secure's items are the app's there).
 func (t *iosToolchain) shareEntitlements(work string, cfg *appConfig) ([]string, string, error) {
 	g := cfg.appGroup()
 	if g == "" || !strings.HasSuffix(t.target, "-simulator") {
@@ -55,11 +57,12 @@ func (t *iosToolchain) shareEntitlements(work string, cfg *appConfig) ([]string,
 }
 
 // buildShare makes the extension's executable for cfg's app. With a share
-// sheet (app.ShareSheet), it links the app's framework (fw: the host and
-// the app's Go code), whose AsukaShareSheetController is its principal
-// class. Without, it's platform/ios/Share, which runs no Go, cached (by
-// its sources, the SDK and the flags) beside the host's builds, shared by
-// the apps that build the same.
+// sheet (platform/sharesheet), it links the app's framework (fw: the host
+// and the core with the app), whose AsukaShareSheetController is its
+// principal class. Without (an app with only a push rewrite has the
+// framework too), it's platform/ios/Share, which runs no app code, cached
+// (by its sources, the SDK and the flags) beside the host's builds,
+// shared by the apps that build the same.
 func (t *iosToolchain) buildShare(work string, cfg *appConfig, fw string) (string, error) {
 	ents, ent, err := t.shareEntitlements(work, cfg)
 	if err != nil {
@@ -69,7 +72,7 @@ func (t *iosToolchain) buildShare(work string, cfg *appConfig, fw string) (strin
 	// principal class Info.plist names; it's linked as Xcode links one.
 	entry := []string{"-Xlinker", "-e", "-Xlinker", "_NSExtensionMain", "-Xlinker", "-application_extension",
 		"-framework", "UIKit", "-framework", "Foundation"}
-	if cfg.sharedLayout() {
+	if cfg.shareSheet {
 		return t.linkSheet(work, fw, ents)
 	}
 	opt := []string{"-Onone", "-D", "DEBUG"}
@@ -127,17 +130,13 @@ func (t *iosToolchain) buildShare(work string, cfg *appConfig, fw string) (strin
 }
 
 // sharePrincipal is the extension's principal class: the host's sheet,
-// running the app's Go, or the one that opens the app.
+// running the app as its sheet, or the one that opens the app.
 func (c *appConfig) sharePrincipal() string {
 	if c.shareSheet {
 		return "AsukaShareSheetController"
 	}
 	return "AsukaShareViewController"
 }
-
-// sheetSymbol is app.ShareSheet's: the app's Go calls it (its share
-// target shows a sheet) if the archive has it.
-const sheetSymbol = "github.com/egoist/asuka/app.ShareSheet"
 
 // shareInfo is the extension's Info.plist. It takes the app's name,
 // version, platform and build keys from app (the app's Info.plist),

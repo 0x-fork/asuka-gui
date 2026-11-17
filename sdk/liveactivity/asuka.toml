@@ -1,0 +1,16 @@
+name = "platform/liveactivity"
+version = "0.1.0"
+description = "Live activities: what's going on, on the Lock Screen and in the Dynamic Island"
+
+# An ongoing notification each, which Android 16 promotes to a Live Update
+# (POST_PROMOTED_NOTIFICATIONS); the host's receiver hears one dismissed,
+# and refreshes a bar that fills by itself.
+[android]
+permissions = ["android.permission.POST_NOTIFICATIONS", "android.permission.POST_PROMOTED_NOTIFICATIONS"]
+application = ['<receiver android:name="dev.asuka.AsukaLiveActivityReceiver" android:exported="false" />']
+
+# ActivityKit (the host's liveActivity module), and the widget extension
+# with the Live Activities' template; the app says it has them.
+[ios]
+hostFlags = ["ASUKA_LIVEACTIVITY"]
+plist = { NSSupportsLiveActivities = true }

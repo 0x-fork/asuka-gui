@@ -8,6 +8,7 @@ import { defineConfig } from "vite"
 import { llmsDocs } from "./llms.ts"
 import { localeInfo, locales, localized } from "./src/lib/locales.ts"
 import { isPublished } from "./src/lib/markdown-source.ts"
+import { referenceSlugs } from "./src/lib/reference.ts"
 
 const repo = (file: string) => new URL(`../${file}`, import.meta.url)
 
@@ -20,6 +21,12 @@ const docs = locales.flatMap((locale) =>
     .readdirSync(repo(localeInfo[locale].docsDir), { recursive: true, encoding: "utf8" })
     .filter((file) => file !== "README.md" && isPublished(locale, file))
     .map((file) => localized(locale, `/docs/${file.slice(0, -3).split(path.sep).join("/").replace(/\/README$/, "")}`))
+)
+
+// The API reference's pages, in each language: /docs/std, /docs/std/time,
+// /docs/platform/camera (asuka doc's, generated as the build starts).
+const reference = referenceSlugs(path.resolve(import.meta.dirname, "..")).flatMap((slug) =>
+  locales.map((locale) => localized(locale, `/docs/${slug}`))
 )
 
 // Asuka's version: the highest release tag. Not `git describe`: it needs the
@@ -49,6 +56,7 @@ export default defineConfig({
       prerender: { enabled: true, crawlLinks: true, filter: ({ path }) => !path.includes("#") },
       pages: [
         ...docs.map((path) => ({ path })),
+        ...reference.map((path) => ({ path })),
         ...locales.map((locale) => ({ path: localized(locale, "/docs/search.json") })),
         // Served by Cloudflare for any path that has no page.
         { path: "/404", prerender: { enabled: true, outputPath: "/404.html" } },

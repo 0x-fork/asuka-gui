@@ -1,0 +1,669 @@
+// Navigation shows the app structure components, routed: every screen
+// has an address, as on the web. Tabs hold stacks (native push, pop and
+// back gestures), a message's screen is /inbox/:id (a link of the app's
+// scheme, asukanav://inbox/18, opens it, with the inbox under it), its
+// reply a full-screen sheet of its own address, a guard keeps the
+// account screen to a signed-in user (back there after signing in), and
+// the browser's address bar, back and forward follow it all. Also: a
+// refreshable List, bar buttons, a bottom toolbar and a primary action
+// (a floating button on Android), a Sheet with detents opened from code,
+// Alerts (one with text fields), menus and haptics.
+//
+//   asuka dev --platform ios examples/navigation
+//   asuka dev --platform android examples/navigation
+//   asuka dev --platform web examples/navigation
+
+import std/url
+
+struct Message {
+  id: int
+  from: string
+  subject: string
+  body: string
+  starred: bool = false
+  unread: bool = false
+}
+
+let senders = ["Ada", "Grace", "Linus", "Margaret", "Ken", "Barbara"]
+
+fn newMessage(id: int, unread: bool = false) -> Message = Message(
+  id: id,
+  from: senders[id % senders.count()],
+  subject: "Message {id}",
+  body: "This is a message. Open it to see the detail screen, with bar buttons, a sheet, a menu and an alert.",
+  unread: unread,
+)
+
+/// The inbox, which its screens share.
+pub store Mail {
+  state messages = (1..20).reversed().map(i => newMessage(i, unread: i > 17))
+  state next = 21
+  /// Who's signed in ("": nobody).
+  state account = ""
+
+  /// The Inbox tab's badge counts the unread messages: opening one reads
+  /// it, and a refresh brings a new one.
+  let badge = match messages.count(m => m.unread) {
+    0 => ""
+    n => "{n}"
+  }
+
+  pub fn find(id: int) -> Message? = messages.find(m => m.id == id)
+
+  pub fn read(id: int) {
+    if let i = messages.index(m => m.id == id) { messages[i].unread = false }
+  }
+
+  pub fn remove(id: int) { messages.removeWhere(m => m.id == id) }
+
+  pub fn compose() {
+    messages.insert(newMessage(next), at: 0)
+    next += 1
+    haptic(.success)
+  }
+
+  pub fn star(id: int) {
+    if let i = messages.index(m => m.id == id) { messages[i].starred = !messages[i].starred }
+    haptic(.selection)
+  }
+
+  /// Pretends to fetch: a new message comes.
+  pub async fn refresh() {
+    await sleep(800ms)
+    messages.insert(newMessage(next, unread: true), at: 0)
+    next += 1
+  }
+}
+
+app {
+  provide Mail()
+  Routes()
+}
+
+component Routes {
+  use mail: Mail
+
+  Router(initial: "/inbox") {
+    Route("/", redirect: "/inbox")
+    Route(layout: .tabs) {
+      Route("/inbox", layout: .stack, title: "Inbox", icon: "list.bullet", badge: mail.badge) {
+        InboxScreen
+        Detail
+        // A reply takes the screen until it's sent or given up.
+        Route(":id/reply", sheet: true, fullScreen: true) { p => Reply(id: p.get("id").toInt() ?? 0) }
+      }
+      Route("/settings", layout: .stack, title: "Settings", icon: "gear") {
+        Settings
+        About
+        // Only a signed-in user sees their account: the others sign in
+        // first, and come back here after.
+        Route("account", guard: to => if mail.account.isEmpty() { "/settings/sign-in?next={url.escape(to)}" } else { "" }) { _ => Account() }
+        Route("sign-in", sheet: true, detents: [.medium, .large], grabber: true) { p => SignIn(next: p.get("next")) }
+      }
+    }
+  }
+}
+
+screen InboxScreen at "" {
+  use mail: Mail
+  state refreshing = false
+
+  title: "Inbox"
+  // Android: an extended FAB, shrinking as the list scrolls down.
+  primaryExtended: true
+  primary {
+    Button("Compose") {
+      icon: "square.and.pencil"
+      on press { mail.compose() }
+    }
+  }
+
+  List {
+    refreshing: refreshing
+    on refresh {
+      refreshing = true
+      await mail.refresh()
+      refreshing = false
+    }
+    for m in mail.messages key m.id {
+      Row {
+        align: .center
+        gap: 12
+        padding: [10, 16]
+        on press {
+          mail.read(m.id)
+          navigate("/inbox/{m.id}")
+        }
+        Column {
+          grow: 1
+          gap: 2
+          Text(m.from) { font: .headline }
+          Text(m.subject) {
+            font: .subheadline
+            color: .secondaryLabel
+          }
+        }
+        Text(if m.unread { "●" } else { "" }) { color: .blue }
+        Text(if m.starred { "★" } else { "" }) { color: .orange }
+      }
+    }
+  }
+}
+
+/// A message's screen. Its bar: its sender, Star; Mail's bottom toolbar
+/// (delete, star, reply's menu); compose at its trailing end (Android: a
+/// FAB docked in the bar).
+screen Detail(id: int) at ":id" {
+  use mail: Mail
+  // A sheet of the screen's own, opened from code (not a route).
+  state noting = false
+  state note = ""
+  state draft = ""
+  state confirming = false
+
+  let message = mail.find(id)
+
+  title: message?.from ?? "Message"
+  toolbar {
+    if message != none {
+      Button("Star") {
+        on press { mail.star(id) }
+      }
+    }
+  }
+  bottomToolbar {
+    if let m = message {
+      Button("Delete") {
+        icon: "trash"
+        role: .destructive
+        on press { confirming = true }
+      }
+      Button(if m.starred { "Unstar" } else { "Star" }) {
+        icon: "star"
+        on press { mail.star(id) }
+      }
+      Button("Reply") {
+        icon: "arrowshape.turn.up.left"
+        menu: [
+          .button(title: "Reply", icon: "arrowshape.turn.up.left", run: () => haptic(.light)),
+          .button(title: "Forward", icon: "arrowshape.turn.up.forward", run: () => haptic(.light)),
+        ]
+      }
+      Button("Mark as unread") {
+        icon: "envelope"
+        disabled: true
+      }
+    }
+  }
+  primary {
+    if message != none {
+      Button("Compose") {
+        icon: "square.and.pencil"
+        on press { mail.compose() }
+      }
+    }
+  }
+
+  Alert("Delete this message?") {
+    bind open: confirming
+    message: "You can't undo this."
+    Button("Cancel") { role: .cancel }
+    Button("Delete") {
+      role: .destructive
+      on press {
+        mail.remove(id)
+        haptic(.success)
+        pop()
+      }
+    }
+  }
+
+  if let m = message {
+    Scroll {
+      grow: 1
+      SafeArea {
+        padding: 20
+        gap: 16
+        Text(m.subject) { font: .title2.bold() }
+        Text(m.body) { color: .secondaryLabel }
+        Text(if note.isEmpty() { "No note yet." } else { "Note: {note}" }) {
+          font: .footnote
+          color: .tertiaryLabel
+        }
+        Row {
+          gap: 12
+          wrap: true
+          Button("Add a note") {
+            variant: .filled
+            on press {
+              draft = note
+              noting = true
+            }
+          }
+          // A route of its own: the address says it's open.
+          Button("Write a Reply") {
+            variant: .gray
+            href: "/inbox/{id}/reply"
+          }
+          Button("More") {
+            variant: .gray
+            menu: [
+              .button(title: "Star", run: () => mail.star(id)),
+              .button(title: "Delete…", role: .destructive, run: () => { confirming = true }),
+            ]
+          }
+        }
+        Menu {
+          longPress: true
+          actions: [
+            .button(title: "Reply", run: () => haptic(.light)),
+            .button(title: "Delete…", role: .destructive, run: () => { confirming = true }),
+          ]
+          View {
+            padding: 16
+            background: .secondaryBackground
+            radius: 12
+            Text("Long-press here for a context menu")
+          }
+        }
+        Sheet {
+          bind open: noting
+          detents: [.medium, .large]
+          grabber: true
+          SafeArea {
+            padding: 20
+            gap: 12
+            Text("Note") { font: .title3.semibold() }
+            TextField {
+              bind text: draft
+              placeholder: "Write a note"
+              returnKey: .done
+              on submit {
+                note = draft
+                noting = false
+              }
+            }
+            Button("Save") {
+              variant: .filled
+              on press {
+                note = draft
+                noting = false
+              }
+            }
+          }
+        }
+      }
+    }
+  } else {
+    SafeArea {
+      padding: 20
+      gap: 12
+      Text("There's no message {id}.")
+      Button("Back to the inbox") { href: "/inbox" }
+    }
+  }
+}
+
+/// A reply, in a full-screen sheet that's a route (/inbox/:id/reply): it
+/// takes the screen until it's sent or cancelled. Going back (Android's
+/// back, Escape, the browser's back) with a draft asks first. It shows
+/// its environment, and the screen's: on a phone they're the same, the
+/// whole screen and its safe area.
+screen Reply(id: int) {
+  use mail: Mail
+  state draft = ""
+  state discarding = false
+
+  let to = mail.find(id)?.from ?? ""
+  let env = environment()
+  let whole = screenEnvironment()
+
+  // Going back with a draft asks first.
+  onBack {
+    if draft.isEmpty() { return false }
+    discarding = true
+    return true
+  }
+
+  Alert("Discard this reply?") {
+    bind open: discarding
+    Button("Keep Editing") { role: .cancel }
+    Button("Discard") {
+      role: .destructive
+      on press { dismiss() }
+    }
+  }
+
+  SafeArea {
+    grow: 1
+    padding: [8, 16]
+    gap: 12
+    Row {
+      align: .center
+      gap: 8
+      Button("Cancel") {
+        variant: .plain
+        on press {
+          if draft.isEmpty() { dismiss() } else { discarding = true }
+        }
+      }
+      Text("Reply") {
+        grow: 1
+        font: .headline
+        textAlign: .center
+      }
+      Button("Send") {
+        variant: .filled
+        disabled: draft.isEmpty()
+        on press {
+          haptic(.success)
+          dismiss()
+        }
+      }
+    }
+    Text("To: {to}") { color: .secondaryLabel }
+    TextField {
+      bind text: draft
+      placeholder: "Message"
+      multiline: true
+      grow: 1
+    }
+    Text(describe("This sheet", env)) {
+      font: .footnote
+      color: .tertiaryLabel
+    }
+    Text(describe("The screen", whole)) {
+      font: .footnote
+      color: .tertiaryLabel
+    }
+    Text(if covers(env, whole) { "Covers the screen" } else { "" }) {
+      font: .footnote
+      color: .green
+    }
+  }
+}
+
+fn describe(what: string, e: Environment) -> string = "{what}: {e.width.fixed(0)} × {e.height.fixed(0)}, safe area {e.safeTop.fixed(0)} {e.safeRight.fixed(0)} {e.safeBottom.fixed(0)} {e.safeLeft.fixed(0)}"
+
+fn covers(e: Environment, s: Environment) -> bool = e.width == s.width && e.height == s.height &&
+  e.safeTop == s.safeTop && e.safeRight == s.safeRight && e.safeBottom == s.safeBottom && e.safeLeft == s.safeLeft
+
+screen Settings at "" {
+  use mail: Mail
+  state notifications = true
+  state haptics = true
+
+  title: "Settings"
+
+  SafeArea {
+    padding: [12, 20]
+    gap: 16
+    SettingRow("Notifications") { bind on: notifications }
+    SettingRow("Haptics") { bind on: haptics }
+    Row {
+      align: .center
+      gap: 12
+      Text(if mail.account.isEmpty() { "Not signed in" } else { "Signed in as {mail.account}" }) {
+        grow: 1
+        color: .secondaryLabel
+      }
+      Button("Account") { href: "/settings/account" }
+    }
+    Button("Try a haptic") {
+      variant: .tinted
+      on press {
+        if haptics { haptic(.success) }
+      }
+    }
+    Button("About") { href: "/settings/about" }
+  }
+}
+
+component SettingRow(label: string) {
+  prop on = false
+  event onChange(on: bool)
+
+  Row {
+    align: .center
+    Text(label) { grow: 1 }
+    Toggle {
+      on: on
+      title: label
+      on change(v) { emit onChange(v) }
+    }
+  }
+}
+
+screen About at "about" {
+  title: "About"
+
+  SafeArea {
+    padding: 20
+    gap: 8
+    Text("asuka") { font: .largeTitle.bold() }
+    Text("Native widgets, driven by Asuka and fine-grained signals.") { color: .secondaryLabel }
+    // A link to another tab's screen: the inbox shows, the message on it.
+    Button("Read the newest message") { href: "/inbox/20" }
+  }
+}
+
+/// A sheet that signs the user in: an alert with text fields, Sign In
+/// disabled until both are filled in, following them as they're typed.
+/// Once signed in, the user goes where they were going (next).
+screen SignIn(next: string) {
+  use mail: Mail
+  state asking = false
+  state user = ""
+  state pass = ""
+
+  Alert("Sign in") {
+    bind open: asking
+    message: "Enter your account's name and password."
+    TextField {
+      bind text: user
+      placeholder: "Name"
+      contentType: "username"
+    }
+    TextField {
+      bind text: pass
+      placeholder: "Password"
+      secure: true
+      contentType: "password"
+    }
+    Button("Cancel") { role: .cancel }
+    Button("Sign In") {
+      disabled: user.isEmpty() || pass.isEmpty()
+      on press {
+        mail.account = user
+        replace(if next.isEmpty() { "/settings" } else { next })
+      }
+    }
+  }
+
+  SafeArea {
+    padding: 20
+    gap: 12
+    Text("Your account") { font: .title3.semibold() }
+    Text("Sign in to see it.") { color: .secondaryLabel }
+    Button("Sign In…") {
+      variant: .filled
+      on press {
+        user = mail.account
+        pass = ""
+        asking = true
+      }
+    }
+  }
+}
+
+screen Account {
+  use mail: Mail
+
+  title: "Account"
+
+  SafeArea {
+    padding: 20
+    gap: 12
+    Text("Signed in as {mail.account}") { font: .title3 }
+    // Signing out: the guard no longer lets the user in here, and the
+    // router leaves for the sign-in sheet on its own.
+    Button("Sign Out") {
+      variant: .tinted
+      on press { mail.account = "" }
+    }
+  }
+}
+
+test "open, star and delete" {
+  let app = mount(Routes(), provide: Mail())
+  app.expect("Inbox", "Settings", "Message 20")
+  app.expectNo("Message 1") // further down the list
+
+  app.tap("Message 20") // the row takes the tap
+  app.expect("Linus", "Message 20", "This is a message. Open it to see the detail screen, with bar buttons, a sheet, a menu and an alert.")
+  app.expectNo("Message 19") // the inbox is under the detail screen
+
+  app.in(.navigationBar).tap("Star") // the bottom toolbar says Star too
+  app.expect("Unstar")
+
+  app.tap("More") // a button's menu
+  app.tap("Delete…")
+  app.expect("Delete this message?")
+  app.tap("Cancel")
+  app.expectNo("Delete this message?")
+
+  app.tap("Delete") // the toolbar's, which asks too
+  app.tap("Delete") // the alert's: it's the only one in reach now
+  app.expect("Message 19")
+  app.expectNo("Message 20")
+}
+
+test "a note" {
+  let app = mount(Routes(), provide: Mail())
+  app.tap("Message 18")
+  app.expect("No note yet.")
+  app.tap("Add a note")
+  app.type("Call back", into: "Write a note")
+  app.submit("")
+  app.expectNo("Write a note")
+  app.expect("Note: Call back")
+}
+
+test "a reply asks before it's discarded" {
+  let app = mount(Routes(), provide: Mail())
+  app.tap("Message 17")
+  app.tap("Write a Reply")
+  app.expect("To: Barbara", "Covers the screen")
+  app.type("On my way", into: "Message")
+  app.back() // a draft: it asks
+  app.expect("Discard this reply?")
+  app.tap("Keep Editing")
+  app.expect("To: Barbara")
+  app.tap("Cancel")
+  app.tap("Discard")
+  app.expectNo("To: Barbara")
+}
+
+test "a refresh brings a message" {
+  let app = mount(Routes(), provide: Mail())
+  app.expectNo("Message 21")
+  app.refresh("Message 20")
+  await app.waitFor("Message 21") // after the pretend fetch
+}
+
+test "compose, and the badge" {
+  let app = mount(Routes(), provide: Mail())
+  app.tap("Compose") // the primary action
+  app.expect("Message 21")
+  app.scrollTo("Message 1")
+}
+
+test "settings" {
+  let app = mount(Routes(), provide: Mail())
+  app.tap("Settings")
+  app.expectNo("Message 20")
+  app.toggle("Haptics")
+  app.tap("About")
+  app.expect("Native widgets, driven by Asuka and fine-grained signals.")
+  app.back()
+  app.expect("Not signed in")
+}
+
+// Every screen has an address: the inbox's, a message's, its reply's; the
+// tabs' and the stacks' moves are the history's.
+test "addresses" {
+  let app = mount(Routes(), provide: Mail())
+  expect(app.href == "/inbox") // "/" redirects to it
+  app.tap("Message 19")
+  app.tap("Write a Reply")
+  app.expect("To: Grace")
+  expect(app.href == "/inbox/19/reply")
+  app.tap("Cancel") // no draft: it closes
+  app.expectNo("To: Grace")
+  app.tap("Settings")
+  app.tap("About")
+  let (hrefs, at) = app.history()
+  expect(app.href == "/settings/about" && at == 3 && hrefs[1] == "/inbox/19", "at {app.href}, history {hrefs} at {at}")
+  // The browser's back goes back through the tabs and stacks.
+  app.goBack()
+  app.expect("Not signed in")
+  app.goBack()
+  app.expect("Message 19", "No note yet.")
+  app.goForward()
+  app.goForward()
+  app.expect("Native widgets, driven by Asuka and fine-grained signals.")
+  // A link to another tab's screen.
+  app.tap("Read the newest message")
+  app.expect("Message 20", "No note yet.")
+  expect(app.href == "/inbox/20")
+}
+
+// A link of the app's scheme, or a browser opened at an address, shows
+// its screen with the inbox under it: back goes there.
+test "deep links" {
+  let a = mount(Routes(), provide: Mail())
+  a.openURL("asukanav://inbox/18")
+  a.expect("Message 18", "No note yet.")
+  a.back()
+  a.expect("Message 20", "Message 19")
+
+  let b = mount(Routes(), provide: Mail(), at: "/inbox/17/reply")
+  b.expect("To: Barbara", "Covers the screen")
+  b.tap("Cancel")
+  b.expect("Message 17", "No note yet.")
+  b.back()
+  b.expect("Message 20")
+
+  let c = mount(Routes(), provide: Mail(), at: "/inbox/99")
+  c.expect("There's no message 99.")
+  c.tap("Back to the inbox")
+  c.expect("Message 20")
+
+  let d = mount(Routes(), provide: Mail(), at: "/nowhere")
+  d.expect("This screen doesn't exist.")
+  d.tap("Go home")
+  d.expect("Message 20")
+}
+
+// The account screen is a signed-in user's: the others sign in first, in
+// a sheet, and are taken there after; signing out leaves it.
+test "the sign-in guard" {
+  let app = mount(Routes(), provide: Mail())
+  app.tap("Settings")
+  app.tap("Account")
+  app.expect("Sign in to see it.")
+  expect(app.href == "/settings/sign-in?next=%2Fsettings%2Faccount")
+  app.tap("Sign In…")
+  app.type("ada", into: "Name")
+  expect(app.disabled("Sign In")) // until both are filled in
+  app.type("secret", into: "Password")
+  app.tap("Sign In")
+  app.expect("Signed in as ada", "Sign Out")
+  app.expectNo("Sign in to see it.")
+  expect(app.href == "/settings/account")
+  app.tap("Sign Out")
+  app.expect("Sign in to see it.")
+  app.expectNo("Sign Out")
+  app.dismiss()
+  app.expect("Not signed in")
+}

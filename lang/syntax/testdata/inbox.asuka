@@ -1,0 +1,52 @@
+import std/http
+import ./components.{MessageRow, EmptyState} as c
+
+/// The list of a mailbox's messages.
+pub screen Inbox(mailbox: Mailbox) {
+  use mail: Mailbox
+  state query = ""
+  state selected: Message? = none
+
+  let messages = load mail.messages(in: mailbox, matching: query)
+
+  title: "Inbox"
+  largeTitle: true
+
+  toolbar {
+    Button("Compose") {
+      on tap { present(Compose()) }
+    }
+  }
+
+  SearchField {
+    bind text: query
+  }
+
+  match messages {
+    .pending => ProgressView()
+    .failed(error) => Text("Couldn't load: {error.message}") { color: .red }
+    .ready(list) if list.isEmpty => EmptyState("No messages")
+    .ready(list) => List {
+      for message in list key message.id {
+        MessageRow(message) {
+          compact: query.isEmpty
+          on archive { await mail.archive(message) }
+          on tap { push(Detail(message: message)) }
+        }
+      }
+    }
+  }
+}
+
+component MessageRow(message: Message) {
+  prop compact = false
+  prop accessory: View? = none
+  event archive
+
+  Row {
+    gap: 12
+    Text(message.subject)
+    if !compact { Text(message.preview) { color: .secondaryLabel } }
+    accessory
+  }
+}

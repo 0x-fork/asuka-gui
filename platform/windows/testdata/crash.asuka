@@ -1,0 +1,24 @@
+import platform/crash
+
+enum Oops: Error {
+  /// it broke on purpose
+  broke
+}
+
+component Crashes {
+  state lines: [string] = []
+
+  task {
+    crash.breadcrumb("opened")
+    for await r in crash.reports() { lines.push("{r.kind} {r.fatal}: {r.message}") }
+  }
+
+  Column {
+    padding: 16; gap: 8
+    Text("Reports: {lines.count()}")
+    for l in lines key l { Text(l) }
+    Button("Record") { on press { crash.record(Oops.broke) } }
+  }
+}
+
+app { Crashes() }

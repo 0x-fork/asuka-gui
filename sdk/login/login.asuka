@@ -1,0 +1,50 @@
+// Package platform/login starts the app as the user logs in: the "Open at
+// login" setting a desktop app offers, which the system's own settings
+// list too, and where the user can turn it off. macOS 13 and later: a
+// login item of the user's (SMAppService; System Settings › General ›
+// Login Items), which needs the app's bundle (asuka build, or asuka
+// dev's). Windows: a value of the user's Run key, which Task Manager's
+// Startup apps lists. Linux: an XDG autostart entry (in a Flatpak, the
+// Background portal asks the user). A phone's app can't: there set
+// throws, and enabled() is false.
+//
+//   do { try await login.set(true) } catch LoginError.needsApproval { … }
+
+import platform/host
+
+/// Why set didn't take effect.
+pub enum LoginError: Error {
+  /// login: allow the app to open at login in System Settings › General › Login Items
+  needsApproval
+
+  /// The error's text, which tells the user where to allow it.
+  fn message() -> string = "login: allow the app to open at login in System Settings › General › Login Items"
+}
+
+/// Makes the app start as the user logs in (on), or no longer. On macOS,
+/// an app the user must still allow throws LoginError.needsApproval
+/// (it's registered, and starts once they do).
+pub async fn set(on: bool) throws {
+  let r = try await host.call("login", "set", host.u8(if on { 1 } else { 0 }))
+  if host.readU8(r, 0) == 2 {
+    throw LoginError.needsApproval
+  }
+}
+
+/// Whether the app starts as the user logs in: as set left it, or as the
+/// user changed it in the system's settings since.
+pub async fn enabled() -> bool {
+  if let r = try? await host.call("login", "enabled", bytes()) {
+    return host.readU8(r, 0) == 1
+  }
+  return false
+}
+
+/// Whether this run of the app is the one the system started as the user
+/// logged in: an app may then start out of sight.
+pub async fn openedAtLogin() -> bool {
+  if let r = try? await host.call("login", "openedAtLogin", bytes()) {
+    return host.readU8(r, 0) == 1
+  }
+  return false
+}

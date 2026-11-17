@@ -1,0 +1,22 @@
+// platform/biometric with no platform code (the fake host): no biometry, so
+// check answers none and authenticate notAvailable, as on Linux.
+
+import platform/biometric
+
+test "no biometry here" {
+  let s = try await biometric.check()
+  print("{s.kind} {s.enrolled} {s.passcode}")
+  do {
+    try await biometric.authenticate(reason: "Unlock the demo")
+    print("it's you")
+  } catch biometric.BiometricError.notAvailable {
+    print("not available")
+  } catch e {
+    print(e.message)
+  }
+}
+
+// Output:
+// none false false
+// not available
+// ok no biometry here

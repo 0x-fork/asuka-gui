@@ -1,0 +1,245 @@
+// The desktop: the main window from the app block, Windows and their
+// handles, what asks before a window closes, a window's keys, the menu
+// bar, and the app's lifecycle, on the fake host.
+
+state stats = false
+state draft = ""
+state added: [string] = []
+state unsaved = false
+state confirm = false
+state quitting = false
+state launches: [string] = []
+state shown = true
+
+app {
+  on quit(e) {
+    if unsaved && !e.sessionEnding {
+      e.cancel()
+      confirm = true
+    }
+    quitting = e.canceled()
+  }
+  on secondInstance(args, dir) {
+    launches.push("{args.joined(" ")} in {dir}")
+  }
+  Window {
+    bind open: shown
+    title: "Notes"
+    width: 420
+    height: 640
+    minWidth: 320
+    maxWidth: 720
+    stateKey: "notes"
+    Notes()
+  }
+}
+
+component Notes {
+  MenuBar {
+    Menu("File") {
+      MenuItem("Add Note") {
+        shortcut: Shortcut(key: "Enter", primary: true)
+        disabled: draft.isEmpty()
+        on press { add() }
+      }
+      MenuSeparator()
+      MenuItem("Export") {
+        MenuItem("As Text") { on press { added.push("exported") } }
+        MenuItem("As PDF") { checked: true }
+      }
+      MenuItem("Close") { role: .close }
+    }
+    Menu("Edit") {
+      MenuItem("Clear") {
+        shortcut: Shortcut(key: "k", primary: true, shift: true)
+        role: .destructive
+        on press { added = [] }
+      }
+      for n in added {
+        MenuItem(n)
+      }
+    }
+    Menu("Window") {
+      MenuItem("Statistics") {
+        shortcut: Shortcut(key: "i", primary: true)
+        on press { stats = true }
+      }
+    }
+  }
+  Column {
+    TextField {
+      bind text: draft
+      placeholder: "New note"
+    }
+    Text("{added.count()} notes")
+    Text(if quitting { "quit canceled" } else { "" })
+    for l in launches { Text(l) }
+    if confirm { Text("Save first?") }
+    Window as w {
+      bind open: stats
+      title: "Statistics"
+      width: 280
+      height: 140
+      alwaysOnTop: true
+      maximizable: false
+      stateKey: "statistics"
+      Stats(w: w)
+    }
+  }
+}
+
+fn add() {
+  added.push(draft)
+  draft = ""
+}
+
+fn sizeOf(w: Ref) -> string {
+  let (width, height) = w.size
+  return "{width}x{height}"
+}
+
+component Stats(w: Ref) {
+  state guard = true
+  state asked = 0
+  WindowCloseGuard {
+    when: guard
+    on closeRequest { asked += 1 }
+  }
+  WindowKeys { keys: [Shortcut(key: "r", primary: true, run: () => { asked = 0 })] }
+  Column {
+    Text("{added.count()} added")
+    Text("asked {asked}")
+    Text(if w.visible { "shown" } else { "hidden" })
+    Text(sizeOf(w))
+    Button("Let it close") { on press { guard = false } }
+    Button("Close now") { on press { closeWindow() } }
+    Button("Minimize") { on press { w.minimize() } }
+    Button("Resize") { on press { w.setSize(300, 200) } }
+    Button("Main window") { on press { mainWindow().focus() } }
+  }
+}
+
+test "the app block's Window is the main window" {
+  let app = mountApp()
+  expect(app.windows() == "main \"Notes\" 420x640 visible focused min 320x0 max 720x0 key=notes\n")
+  app.expect("0 notes")
+}
+
+test "the menu bar follows its items, and runs what's chosen" {
+  let app = mountApp()
+  expect(app.menuBar() == """
+    File > Add Note [primary+enter] (disabled)
+    File > ---
+    File > Export
+    File > Export > As Text
+    File > Export > As PDF (checked)
+    File > Close (close)
+    Edit > Clear [primary+shift+k] (destructive)
+    Window > Statistics [primary+i]
+
+    """, app.menuBar())
+  app.type("hi", into: "New note")
+  app.chooseMenuItem("File > Add Note")
+  app.expect("1 notes")
+  expect(app.menuBar().contains("Edit > hi\n"))
+  app.chooseMenuItem("File > Export > As Text")
+  app.expect("2 notes")
+  app.chooseMenuItem("Edit > Clear")
+  app.expect("0 notes")
+  expect(!app.menuBar().contains("Edit > hi"))
+}
+
+test "a Window opens, its handle acts on it and follows it" {
+  let app = mountApp()
+  app.chooseMenuItem("Window > Statistics")
+  expect(app.windows().contains("\"Statistics\" 280x140 visible focused alwaysOnTop noMaximize key=statistics"))
+  app.expect("shown")
+  app.expect("280x140")
+  app.tap("Minimize")
+  expect(app.windowActions("Statistics") == "minimize")
+  app.tap("Resize")
+  expect(app.windowActions("Statistics") == "size(300,200)")
+  app.expect("300x200")
+  app.setWindowState("Statistics", WindowState(width: 500, height: 400, visible: false))
+  app.expect("hidden")
+  app.expect("500x400")
+  let _ = app.windowActions()
+  app.tap("Main window")
+  expect(app.windowActions() == "focus")
+  expect(app.windowActions("Statistics") == "")
+}
+
+test "a guard keeps a window open, and its keys are the window's" {
+  let app = mountApp()
+  app.chooseMenuItem("Window > Statistics")
+  app.closeWindow("Statistics")
+  app.closeWindow("Statistics")
+  app.expect("asked 2")
+  app.focusWindow("Statistics")
+  expect(app.pressKey("r", primary: true))
+  app.expect("asked 0")
+  app.tap("Let it close")
+  app.closeWindow("Statistics")
+  app.expectNo("asked 0")
+  expect(!stats)
+  app.chooseMenuItem("Window > Statistics")
+  app.tap("Close now")
+  expect(!stats)
+}
+
+test "the main window shows and hides with open" {
+  let app = mountApp()
+  shown = false
+  await app.idle()
+  expect(app.windowActions() == "hide")
+  shown = true
+  await app.idle()
+  expect(app.windowActions() == "show")
+  // The user closing it in an app that keeps running hides it: open
+  // follows.
+  app.closeWindow()
+  expect(!shown)
+}
+
+test "quitting asks the app" {
+  let app = mountApp()
+  expect(app.requestQuit())
+  unsaved = true
+  expect(!app.requestQuit())
+  app.expect("Save first?")
+  app.expect("quit canceled")
+  expect(app.requestQuit(sessionEnding: true))
+  quit()
+  relaunch()
+  await app.idle()
+  expect(app.quits() == "quit relaunch")
+}
+
+test "another launch reaches the app" {
+  let app = mountApp()
+  app.secondInstance(["--new", "a.txt"], "/home")
+  app.expect("--new a.txt in /home")
+}
+
+component Bars {
+  state second = true
+  state any = true
+  Column {
+    if any { MenuBar { Menu("One") { MenuItem("A") } } }
+    if second { MenuBar { Menu("Two") { MenuItem("B") } } }
+    Button("Second") { on press { second = !second } }
+    Button("None") { on press { any = false } }
+  }
+}
+
+test "the last MenuBar shown is the app's; when it goes, the one before's" {
+  let app = mount(Bars())
+  expect(app.menuBar() == "Two > B\n", app.menuBar())
+  app.tap("Second")
+  expect(app.menuBar() == "One > A\n", app.menuBar())
+  app.tap("Second")
+  expect(app.menuBar() == "Two > B\n", app.menuBar())
+  app.tap("Second")
+  app.tap("None")
+  expect(app.menuBar() == "", app.menuBar())
+}

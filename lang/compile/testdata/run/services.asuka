@@ -1,0 +1,52 @@
+// The packages over the hosts' modules, without a host (asuka test):
+// what waits for one fails as unsupported, what doesn't does nothing.
+import platform/background
+import platform/calendar
+import platform/compose
+import platform/contacts
+import platform/library
+import platform/liveactivity
+import platform/periodic
+import platform/photos
+import std/time
+import platform/widget
+
+async fn report(what: string, f: async fn() throws -> string) {
+  do {
+    print("{what}: {try await f()}")
+  } catch e {
+    print("{what}: {e.message}")
+  }
+}
+
+test "services" {
+  await report("library", () => try await library.save("/tmp/a.mp4", collection: .movies, folder: "App", move: true))
+  await report("photos", () => "{(try await photos.list(limit: 10)).count()}")
+  await report("contacts", () => if let c = try await contacts.pick() { c.name } else { "none" })
+  await report("calendar", () => "{try await calendar.add(calendar.Event(title: "Demo", start: time.unix(0), end: time.unix(1800)))}")
+  await report("compose", () => "{try await compose.mail(to: ["a@b.c"], subject: "Hi there", body: "<p>Hello</p>", html: true)}")
+  await report("liveactivity", () => (try await liveactivity.start(liveactivity.Content(title: "Order"))).id)
+  periodic.schedule("refresh", every: 1h, network: true)
+  periodic.cancel("refresh")
+  let t = background.start(title: "Downloading", actions: [background.Action(id: "cancel", title: "Cancel")], onAction: a => print(a))
+  t.update(title: "Downloading", text: "half", progress: 0.5)
+  t.end()
+  widget.set("energy", widget.Entry(title: "Energy", value: "72%", progress: 0.72, showProgress: true))
+  print(compose.escape("a b&c=d/é"))
+  print(compose.plainText("<p>Hello &amp; bye</p><br>x"))
+  print(library.mimeOf("IMG.HEIC"))
+}
+
+// Output:
+// library: unsupported: no host to call (no app is shown)
+// photos: unsupported: no host to call (no app is shown)
+// contacts: unsupported: no host to call (no app is shown)
+// calendar: unsupported: no host to call (no app is shown)
+// compose: unsupported: no host to call (no app is shown)
+// liveactivity: liveactivity: not available
+// a%20b%26c%3Dd/%C3%A9
+// Hello & bye
+//
+// x
+// image/heic
+// ok services

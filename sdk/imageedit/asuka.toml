@@ -1,0 +1,3 @@
+name = "platform/imageedit"
+version = "0.1.0"
+description = "Images edited and frames taken from videos, with the platform's own codecs"

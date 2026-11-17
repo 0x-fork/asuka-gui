@@ -1,0 +1,62 @@
+// x?.name where name is itself optional: the result is name's optional,
+// not boxed again.
+struct Use {
+  used: float? = none
+  on: bool? = none
+  n: int? = none
+}
+
+struct Reply {
+  use: Use? = none
+}
+
+test "optional members" {
+  let r = Reply(use: Use(used: 15.5, on: false, n: 3))
+  if let u = r.use?.used { print(u) }
+  print(r.use?.on == false)
+  print((r.use?.n ?? 0) + 1)
+  let empty = Reply(use: Use())
+  print(empty.use?.used == none)
+  let gone = Reply()
+  print(gone.use?.on ?? true)
+  for (k, u) in [("a", r.use), ("b", gone.use)] {
+    if let x = u?.used { print("{k} {x}") } else { print("{k} none") }
+  }
+}
+
+// x?.f() where f itself returns an optional: the chain's result is f's,
+// flattened, not boxed again (a boxed int? read as an int was its
+// pointer).
+struct Box {
+  text: string
+  fn number() -> int? = text.toInt()
+}
+
+test "optional method results" {
+  let words = ["7"]
+  print(words.first()?.toInt() ?? -1)
+  let none_: [string] = []
+  print(none_.first()?.toInt() == none)
+  let s: string? = "8"
+  print((s?.toInt() ?? 0) + 1)
+  let b: Box? = Box(text: "41")
+  print((b?.number() ?? 0) + 1)
+  let bad: Box? = Box(text: "x")
+  print(bad?.number() == none)
+}
+
+// Output:
+// 15.5
+// true
+// 4
+// true
+// true
+// a 15.5
+// b none
+// ok optional members
+// 7
+// true
+// 9
+// 42
+// true
+// ok optional method results

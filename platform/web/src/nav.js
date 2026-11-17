@@ -160,16 +160,23 @@ export class Navigation {
     // The safe area it overlaps: the root's insets less how far it is from each edge.
     const c = this.h.container.getBoundingClientRect();
     const r = (el || n.el).getBoundingClientRect();
-    // Where it rests: a dialog sliding in (or out) is measured without the
-    // animation's translation, so its environment is its place's.
+    // Where it rests: what slides it in or out (a screen pushed or popped,
+    // a sheet's dialog, a sheet dragged down) is measured without that
+    // translation, so its environment is its place's, not the animation's
+    // (a screen pushed from the right would have the whole width as its
+    // right inset).
     let x = r.left, y = r.top;
-    const d = (el || n.el).closest?.("dialog");
-    if (d) {
-      const t = getComputedStyle(d).transform;
-      if (t && t !== "none") {
-        const m = new DOMMatrixReadOnly(t);
+    for (let p = el || n.el; p && p !== this.h.container; p = p.parentElement) {
+      const cs = getComputedStyle(p);
+      if (cs.transform && cs.transform !== "none") {
+        const m = new DOMMatrixReadOnly(cs.transform);
         x -= m.m41;
         y -= m.m42;
+      }
+      if (cs.translate && cs.translate !== "none") {
+        const [tx, ty] = cs.translate.split(" ");
+        x -= parseFloat(tx) || 0;
+        y -= parseFloat(ty) || 0;
       }
     }
     const dt = y - c.top, dl = x - c.left, db = c.bottom - (y + h), dr = c.right - (x + w);
@@ -600,6 +607,7 @@ export class Navigation {
     n.frame = [0, top, w, h - top];
     n.placed = true;
     this.report(n, w, h - top, n.el, n.kind === Kind.Window ? n.win.safeTop : 0);
+    this.h.overlays?.changed();
     if (n.kind === Kind.Window) {
       this.h.windows.report(n);
       // Its sheets and alerts go with it.
@@ -857,6 +865,7 @@ export class Navigation {
     n.frame = [0, 0, w, h];
     n.placed = true;
     this.report(n, w, h, p);
+    this.h.overlays?.changed();
   }
 
   presentWindow(n) {

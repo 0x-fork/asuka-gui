@@ -1,0 +1,58 @@
+// What the Windows host draws itself: images (an asset, an animated GIF,
+// one that isn't there), a Shape, a Canvas, a Shader, a rounded clip, a
+// turned view, a faded one and a material (TestDrawing).
+
+shader Glow(tint: Color) {
+  fn fragment(pos: vec2) -> vec4 {
+    let uv = pos / size
+    return vec4(tint.rgb * uv.x, 1)
+  }
+}
+
+component Draw {
+  state size = "none"
+  state frames = "still"
+  state missing = "waiting"
+  state level = 0.5
+
+  Column {
+    gap: 8; padding: 16
+    Row {
+      gap: 8
+      Image("pic.png") { width: 64; height: 64; on loaded(w, h) { size = "{w}x{h}" } }
+      Image("anim.gif") { width: 48; height: 48; mode: .fit }
+      Image("gone.png") { width: 16; height: 16; on error(m) { missing = "failed" } }
+      Image("pic.png") { width: 32; height: 32; color: .red }
+    }
+    Text("Loaded {size}, {missing}")
+    Row {
+      gap: 8
+      Shape((w, h) => Path().ellipse(0, 0, w, h)) { fill: #ff0000; stroke: #0000ff; lineWidth: 3; width: 40; height: 40 }
+      Shape((w, h) => Path().move(0, h).line(w / 2, 0).line(w, h).close()) { stroke: #008000; lineWidth: 4; trimEnd: level; width: 40; height: 40 }
+      Canvas(g => {
+        g.fill(Path().rect(0, 0, g.width, g.height), LinearGradient(colors: [.red, .blue]))
+        g.fill(Path().ellipse(10, 5, 20, 20), RadialGradient(colors: [#ffffff, #000000], centerX: 20, centerY: 15, radius: 10))
+        g.text("Hi", g.width / 2, 25, CanvasText(size: 16, align: .center))
+      }) { width: 80; height: 40 }
+    }
+    Glow(tint: #00ff00) { height: 40; radius: 12; clip: true }
+    Row {
+      gap: 16
+      View {
+        width: 60; height: 60; radius: 20; clip: true; background: #0000ff
+        View { width: 80; height: 80; background: #ff0000 }
+      }
+      View {
+        width: 60; height: 30; background: #008000; transform: Transform(rotation: 30)
+        Text("Turned")
+      }
+      View {
+        opacity: 0.5; background: #ffff00
+        Button("Faded") { on press { level = 1 } }
+      }
+      View { width: 60; height: 60; material: .regular; Text("Glass") }
+    }
+  }
+}
+
+app { Draw() }

@@ -1,0 +1,18 @@
+import ./screens.{Inbox, Settings}
+
+state theme: Theme = .system
+
+app {
+  provide Mailbox(account: Account.current)
+  Tabs {
+    Tab("Mail") {
+      icon: "envelope"
+      Stack { Inbox(mailbox: .inbox) }
+    }
+    Tab("Settings") {
+      icon: "gear"
+      badge: if theme == .dark { "1" } else { none }
+      Stack { Settings() }
+    }
+  }
+}

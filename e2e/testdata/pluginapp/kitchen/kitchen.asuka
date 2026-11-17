@@ -1,0 +1,26 @@
+// Kitchen is a native package whose module answers with a struct, an
+// enum and a list (asuka native): each platform's code makes them, the
+// generated code carries them across. The GUI tests' plugin app
+// (e2e/testdata/pluginapp) says what it answers.
+
+/// A weight's unit.
+pub enum Unit {
+  gram
+  ounce
+}
+
+/// Something in the kitchen.
+pub struct Item {
+  name: string
+  weight: float
+  unit: Unit
+  tags: [string]
+}
+
+/// The platform's kitchen.
+pub native interface Kitchen {
+  /// The kitchen's name.
+  fn name() -> string
+  /// What it has of filter.
+  fn items(filter: string) -> [Item]
+}

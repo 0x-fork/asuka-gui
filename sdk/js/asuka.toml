@@ -1,0 +1,3 @@
+name = "platform/js"
+version = "0.1.0"
+description = "JavaScript run off screen, in the platform's own engine"

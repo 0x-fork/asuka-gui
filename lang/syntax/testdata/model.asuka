@@ -1,0 +1,84 @@
+/// A message in a mailbox.
+pub struct Message: Equatable, Hashable {
+  id: int
+  subject: string
+  preview: string = ""
+  from: Contact?
+  read: bool = false
+  archived: bool = false
+  sent: Date
+
+  fn isRecent(now: Date) -> bool = now - sent < 24h
+}
+
+pub enum MailError: Error {
+  notFound(int)
+  offline
+  server(status: int, message: string)
+
+  fn message() -> string {
+    return match self {
+      .notFound(id) => "No message {id}"
+      .offline => "You're offline"
+      .server(status, message) => "{status}: {message}"
+    }
+  }
+}
+
+enum Priority { low, normal, high }
+
+enum Result<T, E: Error> {
+  ok(T)
+  err(E)
+}
+
+type Messages = [int: Message]
+
+type Handler = async fn(Message) throws -> bool
+
+interface Named {
+  name: string
+  fn describe() -> string
+}
+
+fn label(p: Priority) -> string {
+  match p {
+    .low | .normal => return "normal"
+    .high => return "high"
+  }
+}
+
+fn classify(n: int, pair: (int, string)) -> string {
+  let (count, name) = pair
+  let size = match n {
+    0 => "none"
+    1 => "one"
+    -1 => "minus one"
+    _ => "many"
+  }
+  var tags: [string: int] = [:]
+  tags["{name}"] = count
+  tags[name] ??= 0
+  for (key, value) in tags {
+    if value > 10 && key != "" || n % 2 == 0 {
+      break
+    }
+    continue
+  }
+  for i in 0..<n {
+    print(i * 2 + 1)
+  }
+  let range = 1..10
+  let empty: [int] = []
+  let numbers = [1, 2, 3]
+  let hex = 0xff_ff + 1_000 + 3.14 + 1e-3
+  let t = (1, "two")
+  if let first = numbers.first {
+    print(first)
+  } else if numbers.isEmpty {
+    print("empty")
+  } else {
+    print("?")
+  }
+  return "{size} {numbers.count} {hex} {t} {range} {empty}"
+}

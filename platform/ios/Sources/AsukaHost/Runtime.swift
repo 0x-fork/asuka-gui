@@ -1,8 +1,5 @@
 #if canImport(UIKit)
 import UIKit
-#if ASUKA_WEBAUTH
-import AuthenticationServices
-#endif
 #if canImport(AsukaOps)
 import AsukaOps
 #endif
@@ -91,6 +88,17 @@ let asukaAssets: URL? = {
     var direction = AsukaLayoutDirection.inherit
     /// Its Keys prop's keys, as key commands (KeyCommands.swift).
     var keyCommands: [UIKeyCommand] = []
+    /// NoFocusRing, and the view's focus effect before it was set.
+    var noFocusRing = false
+    var ownFocusEffect: UIFocusEffect??
+    /// Its accessibility props of RFC 0010 (A11y.swift).
+    var a11y = AsukaA11yState()
+    /// An Overlay's layer (Overlay.swift).
+    var overlay: AsukaOverlay?
+
+    /// Whether its container holds an Overlay's view, which stays over
+    /// the children inserted after it (a sheet's content).
+    var hostsOverlays = false
 
     /// Whether an ancestor is being popped or dismissed.
     var underDying: Bool {
@@ -122,6 +130,7 @@ let asukaAssets: URL? = {
             c.addSubview(child.view)
         }
         if let o = menuOverlay { o.superview?.bringSubviewToFront(o) }
+        if hostsOverlays { AsukaRuntime.shared.raiseOverlays(in: c) }
     }
 
     func remove(_ child: AsukaNode) {
@@ -148,6 +157,39 @@ final class AsukaContainerView: UIView {
         isAccessibilityElement = false
     }
     required init?(coder: NSCoder) { fatalError() }
+
+    // The keyboard's focus (Focus.swift).
+
+    /// Focusable: it takes the keyboard's focus, as it does while it
+    /// presses or adjusts, unless it's disabled.
+    var focusable = false
+    var disabled = false
+    /// FocusTrap: the focus system's moves never leave it.
+    var focusTrap = false
+    /// Being blurred: it can't keep the focus.
+    var refusesFocus = false
+
+    var takesFocus: Bool { (focusable || pressable || adjustable) && !disabled && !isHidden }
+
+    override var canBecomeFocused: Bool { takesFocus && !refusesFocus }
+
+    override func shouldUpdateFocus(in context: UIFocusUpdateContext) -> Bool {
+        if focusTrap, let from = context.previouslyFocusedView, from.isDescendant(of: self) {
+            guard let to = context.nextFocusedView, to.isDescendant(of: self) else { return false }
+        }
+        return super.shouldUpdateFocus(in: context)
+    }
+
+    override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
+        super.didUpdateFocus(in: context, with: coordinator)
+        AsukaRuntime.shared.focusSystemMoved(context)
+    }
+
+    /// Return, Space and typed text, while it has the focus.
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if AsukaRuntime.shared.focusedKey(presses) { return }
+        super.pressesBegan(presses, with: event)
+    }
 
     /// Leaving the window, or hidden: no longer pressed or hovered.
     override func didMoveToWindow() {
@@ -294,11 +336,6 @@ final class AsukaTextField: UITextField {
     var colorScheme = UIUserInterfaceStyle.unspecified
     /// The app's direction (the Locale command's).
     lazy var rtl = systemRTL
-    #if ASUKA_WEBAUTH
-    /// The webAuth module's sign-ins under way: each session, what presents
-    /// it, and its start's reply.
-    var authSessions: [UInt32: (ASWebAuthenticationSession, AsukaAuthAnchor, (Result<Data, Error>) -> Void)] = [:]
-    #endif
     /// Views coming in with a transition in the batch being applied.
     var entering: [(AsukaNode, (Double, Int32))] = []
     /// Views going out with a transition, still shown.
@@ -315,12 +352,27 @@ final class AsukaTextField: UITextField {
     public static let shared = AsukaRuntime()
 
     var nodes: [UInt32: AsukaNode] = [:]
+    /// The keyboard's focus (Focus.swift): the view that has it as last
+    /// reported (not a field), whether the last input was a key, how a
+    /// focus update under way came (the Focus command's), the update last
+    /// seen, and presses a view took.
+    var focusedID: UInt32 = 0
+    var keyboardModality = false
+    var programmaticFocus: Int64?
+    var lastFocusUpdate: ObjectIdentifier?
+    var handledPresses = Set<ObjectIdentifier>()
+    /// The Overlays, in the order they were made (Overlay.swift).
+    var overlays: [AsukaNode] = []
+    var presentCount = 0
+    var anchorsDue = false
+    /// The nodes that name others for screen readers (A11y.swift).
+    var related = Set<UInt32>()
     /// The nodes with Keys.
     var keyed = Set<UInt32>()
     /// Buttons with a glass variant (roundGlass).
     var glassButtons = Set<ObjectIdentifier>()
     weak var controller: AsukaViewController?
-    /// The share sheet this runtime is in (app.ShareSheet, in the share
+    /// The share sheet this runtime is in (platform/sharesheet, in the share
     /// extension), if it is.
     weak var sheet: AsukaShareSheetController?
     var rootID: UInt32 = 0
@@ -382,7 +434,7 @@ final class AsukaTextField: UITextField {
     func start(_ controller: AsukaViewController) {
         self.controller = controller
         guard !started else {
-            // Started without a screen (asuka/sdk/periodic's task): the root goes in it now.
+            // Started without a screen (platform/periodic's task): the root goes in it now.
             if let n = nodes[rootID], n.view.superview == nil { controller.mount(n.view) }
             return
         }
@@ -390,7 +442,7 @@ final class AsukaTextField: UITextField {
     }
 
     /// Starts the core without a screen, if it hasn't started: the system
-    /// launched the app in the background for a task (asuka/sdk/periodic). The
+    /// launched the app in the background for a task (platform/periodic). The
     /// root view is made, and goes on screen if a scene comes.
     func startHeadless() {
         guard !started else { return }
@@ -399,15 +451,21 @@ final class AsukaTextField: UITextField {
 
     private func boot() {
         started = true
-        AsukaCrash.start() // before the Go code's main: its crashes are kept
+        // The app's own files (std/fs's appDir): Application Support,
+        // which the app makes as it writes there (the App Group's, with a
+        // share sheet or a push rewrite: AsukaShared). Before the crash
+        // record, which is kept there.
+        if let dir = AsukaShared.appDir() {
+            dir.path.withCString { asuka_set_app_dir($0) }
+        }
+        AsukaCrash.start() // before the app's init: its crashes are kept
         NotificationCenter.default.addObserver(self, selector: #selector(voiceOverChanged), name: UIAccessibility.voiceOverStatusDidChangeNotification, object: nil)
         #if ASUKA_NOTIFY || ASUKA_PUSH || ASUKA_NOTIFICATION_SERVICE
-        AsukaNotifyCenter.shared.install() // asuka/sdk/push's too
+        AsukaNotifyCenter.shared.install() // platform/push's too
         #endif
         #if DEBUG
         AsukaAutomation.start()
         #endif
-        registerNatives()
         // Typed native modules' way back to Go.
         AsukaNative.done = { call, b in b.withUnsafeBufferPointer { asuka_native_done(call, $0.baseAddress, $0.count) } }
         AsukaNative.invoke = { id, b in
@@ -417,6 +475,8 @@ final class AsukaTextField: UITextField {
             defer { free(out) }
             return Array(UnsafeBufferPointer(start: out, count: n))
         }
+        // A Ref a package's method was passed: the view of its id.
+        AsukaNative.views = { [weak self] id in id <= UInt64(UInt32.max) ? self?.nodes[UInt32(id)]?.view : nil }
         if let c = controller { AsukaSplash.shared.show(over: c) }
         var cb = asuka_host_callbacks(
             apply: { buf, len in
@@ -448,13 +508,61 @@ final class AsukaTextField: UITextField {
             },
             native_cancel: { AsukaNative.cancel($0) },
             native_release: { AsukaNative.release($0) },
-            native_free: { free($0) }
+            native_free: { free($0) },
+            measure_v: nil
         )
-        enter { asuka_start(&cb) }
+        enter {
+            asuka_start(&cb)
+            startApp()
+        }
         AsukaSplash.shared.started()
         let urls = pendingURLs
         pendingURLs = []
         openURLs(urls)
+    }
+
+    /// startApp runs the app: under asuka dev (ASUKA_DEV=host,...:port in
+    /// the environment, which the CLI launches the player with, and on a
+    /// phone ASUKA_DEV_TUNNEL, the port the Mac reaches it on through the
+    /// cable), the bytecode the CLI sends; otherwise the app compiled into
+    /// this build. A player keeps where asuka dev was, so opened again
+    /// from the home screen it finds it; with a share sheet or a push
+    /// rewrite, in the App Group, where its extensions (which asuka dev
+    /// doesn't launch) find it too and load the app from it as well.
+    private func startApp() {
+        var err: UnsafeMutablePointer<CChar>?
+        var rc: Int32
+        let env = ProcessInfo.processInfo.environment
+        let saved = AsukaShared.group.flatMap { UserDefaults(suiteName: $0) } ?? UserDefaults.standard
+        let player = asuka_has_app() == 0
+        let dev = env["ASUKA_DEV"] ?? (player ? saved.string(forKey: "AsukaDev") : nil)
+        // The tunnel's port is the app's to listen on, not an extension's.
+        let appex = Bundle.main.bundlePath.hasSuffix(".appex")
+        let tunnel = env["ASUKA_DEV_TUNNEL"].flatMap { Int32($0) } ?? (player && !appex ? Int32(saved.integer(forKey: "AsukaDevTunnel")) : 0)
+        if let dev, let colon = dev.lastIndex(of: ":"), let port = Int32(dev[dev.index(after: colon)...]) {
+            if env["ASUKA_DEV"] != nil, player {
+                saved.set(dev, forKey: "AsukaDev")
+                saved.set(Int(tunnel), forKey: "AsukaDevTunnel")
+            }
+            let hosts = String(dev[..<colon])
+            #if targetEnvironment(simulator)
+            let kind = "simulator"
+            #else
+            let kind = "device"
+            #endif
+            let hello = "{\"platform\":\"ios\",\"device\":\"\(kind)\",\"os\":\"\(UIDevice.current.systemVersion)\"}"
+            rc = asuka_dev_connect(hosts, port, hello, &err)
+            if rc == 0, tunnel > 0 {
+                rc = asuka_dev_listen(tunnel, hello, &err)
+            }
+        } else {
+            rc = asuka_run(&err)
+        }
+        if rc != 0 {
+            let msg = err.map { String(cString: $0) } ?? "asuka: the core failed"
+            asuka_free_string(err)
+            print(msg)
+        }
     }
 
     /// The app was opened with urls together (scene(_:openURLContexts:)):
@@ -501,6 +609,8 @@ final class AsukaTextField: UITextField {
         asukaDecode(buf, self)
         runEnters()
         runMatches()
+        if !related.isEmpty { refreshRelations() }
+        if !overlays.isEmpty { reportAnchors() }
     }
 
     public func create(_ id: UInt32, kind raw: UInt16) {
@@ -645,6 +755,8 @@ final class AsukaTextField: UITextField {
             let r = AsukaRichTextView()
             r.onLink = { [weak self] url in self?.emit(id, .link) { AsukaEvents.link(id, url) } }
             view = r
+        case .overlay:
+            view = AsukaOverlayView()
         default:
             fatalError("asuka: the iOS host can't show \(kind.name) yet")
         }
@@ -656,12 +768,17 @@ final class AsukaTextField: UITextField {
         (view as? AsukaScrollView)?.node = node
         (view as? AsukaSelectionArea)?.node = node
         nodes[id] = node
+        if kind == .overlay { makeOverlay(node) }
         adoptDirection(node)
     }
 
     public func destroy(_ id: UInt32) {
         guard let n = nodes.removeValue(forKey: id) else { return }
         keyed.remove(id)
+        related.remove(id)
+        if focusedID == id { focusedID = 0 } // its focus goes with it, unreported
+        if n.overlay != nil { destroyOverlay(n) }
+        if n.a11y.modal { setA11yModal(n, false) }
         if let s = n.view as? AsukaSnackbarView {
             s.dismiss()
             return
@@ -750,6 +867,7 @@ final class AsukaTextField: UITextField {
     public func listen(_ id: UInt32, event: UInt16) {
         guard let n = nodes[id] else { return }
         n.listens.insert(event)
+        if event == AsukaEventKind.anchorFrame.rawValue, n.overlay != nil { scheduleAnchors() }
         if event == AsukaEventKind.scrolled.rawValue || event == AsukaEventKind.paged.rawValue, let s = n.view as? UIScrollView, n.scrolls == nil {
             n.scrolls = AsukaScrollReporter(id, self)
             if n.list == nil { s.delegate = n.scrolls } // a list's own delegate forwards it
@@ -797,11 +915,11 @@ final class AsukaTextField: UITextField {
         case .setLink:
             setLink(n, String(decoding: args, as: UTF8.self))
         case .focus:
-            n.view.becomeFirstResponder()
+            focus(n)
         case .blur:
-            n.view.resignFirstResponder()
+            blur(n)
         case .present:
-            present(n)
+            if n.kind == .overlay { presentOverlay(n) } else { present(n) }
         case .haptic:
             if args.count > 0 { haptic(Int32(args[0])) }
         case .animateBegin:
@@ -883,8 +1001,8 @@ final class AsukaTextField: UITextField {
             guard args.count >= 8 else { return }
             var r = AsukaReader(args)
             setAccent(asukaColor(r.u64()))
-        case .menuBar, .windowOptions, .windowTitle, .windowAction:
-            break // desktop hosts' (a phone has no menu bar or windows)
+        case .menuBar, .windowOptions, .windowTitle, .windowAction, .quit:
+            break // desktop hosts' (a phone has no menu bar or windows, and its app doesn't quit itself)
         case .location:
             break // a Router's address: the web's and the desktops' (a phone has no address bar, and its windows don't come back where they were)
         case .locale:
@@ -956,6 +1074,7 @@ extension AsukaRuntime: UITextFieldDelegate {
     public func textFieldDidBeginEditing(_ textField: UITextField) {
         guard let t = textField as? AsukaTextField else { return }
         let id = t.asukaID
+        focusMoved(to: id, how: 1) // the field's own Focus, not the view's that had it
         emit(id, .focus) { AsukaEvents.focus(id) }
         revealOnFocus()
     }

@@ -1,0 +1,22 @@
+// stdin: one\ntwo\r\nthree
+// exit: 0
+import std/os
+
+async fn main() throws {
+  print(os.readLine() ?? "none")
+  var n = 0
+  for await line in os.lines() {
+    n += 1
+    print("{n}: {line}")
+  }
+  print(os.readLine() ?? "none at the end")
+  print(os.terminal(.stdin))
+}
+
+// Stdout:
+// one
+// 1: two
+// 2: three
+// none at the end
+// false
+// Stderr:

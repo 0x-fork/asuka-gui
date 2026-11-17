@@ -9,7 +9,7 @@ import UIKit
 // asukashare.<app ID>), which the app's host turns into the Shared event.
 // Texts and links are in the URL; files are in the App Group the two
 // share, which the app moves them out of. An app with a sheet
-// (app.ShareSheet) has AsukaShareSheetController instead, with its Go.
+// (platform/sharesheet) has AsukaShareSheetController instead, running the app.
 
 @objc(AsukaShareViewController)
 final class ShareViewController: UIViewController {

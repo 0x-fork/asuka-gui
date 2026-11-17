@@ -1,0 +1,4 @@
+// A stub of app.asuka's ./screens.
+pub enum Folder { inbox, sent }
+pub component Inbox(mailbox: Folder) { Text("inbox") }
+pub component Settings { Text("settings") }

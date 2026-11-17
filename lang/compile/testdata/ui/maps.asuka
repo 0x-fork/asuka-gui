@@ -1,0 +1,34 @@
+import platform/maps
+
+let pins = [
+  maps.Marker(id: "ferry", at: maps.Coordinate(lat: 37.7955, lng: -122.3937), title: "Ferry Building"),
+  maps.Marker(id: "park", at: maps.Coordinate(lat: 37.7694, lng: -122.4862), title: "Golden Gate Park", color: #2e7d32),
+]
+
+component MapScreen {
+  state region = maps.Region(center: maps.Coordinate(lat: 37.7749, lng: -122.4194), latDelta: 0.08, lngDelta: 0.08)
+  state picked = "Tap a pin"
+
+  Column {
+    maps.View {
+      bind region: region
+      markers: pins
+      mapType: .muted
+      height: 300
+      on markerPress(id) { picked = "Picked {id}" }
+      on press(c) { picked = "{c.lat.fixed(4)}, {c.lng.fixed(4)}" }
+      on error(m) { picked = m }
+    }
+    Text(picked)
+    Text("at {region.center.lat.fixed(2)}")
+  }
+}
+
+app { MapScreen() }
+
+test "a map is an empty box on the fake host, and its region binds" {
+  let app = mount(MapScreen())
+  await app.idle()
+  app.expect("Tap a pin")
+  app.expect("at 37.77")
+}

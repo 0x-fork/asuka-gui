@@ -1,0 +1,5 @@
+name = "Chat"
+id = "dev.asuka.chat"
+version = "1.0.0"
+build = 1
+orientations = ["portrait", "landscape"]

@@ -12,11 +12,11 @@ import (
 func TestWidgetsConfig(t *testing.T) {
 	dir := t.TempDir()
 	write := func(s string) error {
-		os.WriteFile(filepath.Join(dir, "asuka.json"), []byte(s), 0o644)
+		os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte(s), 0o644)
 		_, err := loadConfig(dir)
 		return err
 	}
-	if err := write(`{"widgets": [{"kind": "today"}], "shortcuts": [{"id": "newNote", "title": "New Note", "url": "notes://new"}]}`); err != nil {
+	if err := write("[[widgets]]\nkind = \"today\"\n\n[[shortcuts]]\nid = \"newNote\"\ntitle = \"New Note\"\nurl = \"notes://new\""); err != nil {
 		t.Fatal(err)
 	}
 	c, _ := loadConfig(dir)
@@ -30,12 +30,12 @@ func TestWidgetsConfig(t *testing.T) {
 		t.Errorf("widgets need the App Group: %q", c.appGroup())
 	}
 	for _, bad := range []string{
-		`{"widgets": [{"kind": "1x"}]}`,
-		`{"widgets": [{"kind": "a", "sizes": ["huge"]}]}`,
-		`{"widgets": [{"kind": "aB"}, {"kind": "a_b"}]}`, // the same Android names
-		`{"shortcuts": [{"id": "a", "title": "A", "url": "no scheme"}]}`,
-		`{"shortcuts": [{"id": "a", "title": "A", "url": "x://a", "phrases": ["no app name"]}]}`,
-		`{"shortcuts": [{"id": "a", "url": "x://a"}]}`,
+		`widgets = [{kind = "1x"}]`,
+		`widgets = [{kind = "a", sizes = ["huge"]}]`,
+		`widgets = [{kind = "aB"}, {kind = "a_b"}]`, // the same Android names
+		`shortcuts = [{id = "a", title = "A", url = "no scheme"}]`,
+		`shortcuts = [{id = "a", title = "A", url = "x://a", phrases = ["no app name"]}]`,
+		`shortcuts = [{id = "a", url = "x://a"}]`,
 	} {
 		if write(bad) == nil {
 			t.Errorf("no error for %s", bad)
@@ -125,7 +125,7 @@ func TestLiveActivityExtension(t *testing.T) {
 	if c.widgetExtension() {
 		t.Fatal("an extension for an app with neither widgets nor Live Activities")
 	}
-	c.addFeatureExtras([]string{"ASUKA_LIVEACTIVITY"})
+	importStd(t, &c, "ios", "liveactivity")
 	if !c.widgetExtension() || !slices.Contains(c.iosTrue, "NSSupportsLiveActivities") {
 		t.Fatalf("Live Activities: extension %v, Info.plist's %v", c.widgetExtension(), c.iosTrue)
 	}

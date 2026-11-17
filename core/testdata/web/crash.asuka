@@ -1,0 +1,35 @@
+// platform/crash on the web, run by web_test.go under Node: the core keeps
+// the run's record in the app's files; an error the app records is a
+// report with the run's values and breadcrumbs, read off the page's
+// thread (crash.reports() reads them in a spawn worker, which is told
+// where the page's record is), and deleted.
+import platform/crash
+
+enum PayError: Error {
+  declined
+
+  fn message() -> string = match self {
+    .declined => "card declined"
+  }
+}
+
+component Main {
+  task {
+    crash.set("user", "u1")
+    crash.breadcrumb("opened the cart")
+    crash.record(PayError.declined)
+    var n = 0
+    for await r in crash.reports() {
+      print("{r.kind} {r.fatal} {r.message} {r.context.values["user"] ?? "-"} {r.context.breadcrumbs.count()} {r.context.system}")
+      crash.delete(r.id)
+      n += 1
+      if n == 1 {
+        break
+      }
+    }
+    print("done")
+  }
+  Text("crash")
+}
+
+app { Main() }

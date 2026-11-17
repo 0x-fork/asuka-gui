@@ -1,0 +1,141 @@
+import platform/tray
+
+state running = false
+state minutes = 25
+state open = false
+state flyout = false
+state clicks = 0
+
+let lengths = [15, 25, 50]
+
+component Focus {
+  tray.Tray("timer") {
+    symbol: if running { "timer" } else { "moon.zzz" }
+    title: "{minutes}:00"
+    tooltip: "Focus"
+    menu: [
+      .section(title: "", items: [
+        .button(title: if running { "Pause" } else { "Start" }, run: () => { running = !running }),
+        .button(title: "Reset", disabled: running, run: () => { minutes = 25 }),
+        .submenu(title: "Length", items: lengths.map(m => .button(
+          title: "{m} minutes",
+          checked: minutes == m,
+          run: () => { minutes = m },
+        ))),
+      ]),
+      .section(title: "", items: [.button(title: "Open Timer", run: () => { open = true })]),
+      .section(title: "", items: [.button(title: "Quit Focus", run: () => quit())]),
+    ]
+    on click {
+      clicks += 1
+      flyout = !flyout
+    }
+  }
+  tray.DockMenu { items: [.button(title: if running { "Pause" } else { "Start" }, run: () => { running = !running })] }
+  Column {
+    Text("{minutes} min")
+    Text(if running { "running" } else { "stopped" })
+    Text("clicks {clicks}")
+    Window {
+      bind open: flyout
+      title: "Flyout"
+      flyout: Flyout(anchor: tray.anchor("timer"), placement: .bottom, gap: 4)
+      fitContent: true
+      minWidth: 260
+      Text("In the flyout")
+    }
+  }
+}
+
+component Plain {
+  tray.Tray("plain") {
+    symbol: "magnifyingglass"
+    menu: [.button(title: "Show", run: () => { open = true })]
+  }
+  Text("plain")
+}
+
+app { Focus() }
+
+fn reset() {
+  running = false
+  minutes = 25
+  open = false
+  flyout = false
+  clicks = 0
+}
+
+test "an icon in the tray follows its props, and runs what's chosen" {
+  reset()
+  let app = mount(Focus())
+  await app.idle()
+  expect(app.trays() == """
+    timer: symbol="moon.zzz" title="25:00" tooltip="Focus" clickable
+      Start
+      Reset
+      Length
+      Length > 15 minutes
+      Length > 25 minutes (checked)
+      Length > 50 minutes
+      ---
+      Open Timer
+      ---
+      Quit Focus
+
+    """)
+  app.chooseTrayItem("timer", "Length > 50 minutes")
+  app.expect("50 min")
+  app.chooseTrayItem("timer", "Start")
+  app.expect("running")
+  expect(app.trays().contains("symbol=\"timer\" title=\"50:00\""))
+  expect(app.trays().contains("Reset (disabled)"))
+  app.chooseTrayItem("timer", "Quit Focus")
+  expect(app.quits() == "quit")
+}
+
+test "a click is the icon's, and a flyout hangs from it" {
+  reset()
+  let app = mount(Focus())
+  await app.idle()
+  app.clickTray("timer")
+  app.expect("clicks 1")
+  expect(app.windows().contains("\"Flyout\""))
+  expect(app.windows().contains("flyout"))
+  // Hung from the icon (its number, not 0), sized to what it shows.
+  expect(!app.windows().contains("anchor=0") && app.windows().contains("placement=0 gap=4"), app.windows())
+  expect(app.windows().contains("\"Flyout\" 260x20"), app.windows())
+  app.expect("In the flyout")
+}
+
+test "the Dock menu's items run" {
+  reset()
+  let app = mount(Focus())
+  await app.idle()
+  expect(app.dockMenu() == "Start\n")
+  app.chooseTrayItem("", "Start")
+  app.expect("running")
+  expect(app.dockMenu() == "Pause\n")
+}
+
+test "an icon without on click isn't clickable" {
+  let app = mount(Plain())
+  await app.idle()
+  expect(app.trays() == "plain: symbol=\"magnifyingglass\"\n  Show\n")
+}
+
+component Toggle {
+  state on = true
+  Column {
+    Button("Toggle") { on press { on = !on } }
+    if on { Plain() }
+  }
+}
+
+test "the icon goes with its owner" {
+  let app = mount(Toggle())
+  await app.idle()
+  expect(app.trays() != "")
+  app.tap("Toggle")
+  await app.idle()
+  expect(app.trays() == "")
+}

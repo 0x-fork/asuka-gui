@@ -1,0 +1,53 @@
+// frames(): the display's frames as a stream, drawn only while it's read.
+
+component Ticker {
+  state count = 0
+  state last = 0ms
+
+  task {
+    for await t in frames() {
+      count += 1
+      last = t
+      if count == 3 { break }
+    }
+  }
+
+  Text("Frames: {count} at {last}")
+}
+
+component Host {
+  state shown = true
+  Column {
+    if shown { Ticker() }
+    Button("Hide") { on press { shown = false } }
+  }
+}
+
+app { Host() }
+
+test "a loop over frames() gets each frame, until it ends" {
+  let app = mount(Ticker())
+  await app.idle()
+  app.frame(16ms)
+  await app.idle()
+  app.frame(32ms)
+  await app.idle()
+  app.expect("Frames: 2 at 32ms")
+  app.frame(48ms)
+  await app.idle()
+  app.frame(64ms)
+  await app.idle()
+  app.expect("Frames: 3 at 48ms")
+}
+
+test "the frames stop with the component" {
+  let app = mount(Host())
+  await app.idle()
+  app.frame(16ms)
+  await app.idle()
+  app.expect("Frames: 1 at 16ms")
+  app.tap("Hide")
+  app.frame(32ms)
+  await app.idle()
+  app.expectNo("Frames:")
+}

@@ -1,0 +1,46 @@
+// Interaction states: a container's variants, and other views
+// following its states through its name.
+
+style raised {
+  shadow: Shadow(radius: 8)
+}
+
+component Card {
+  state taps = 0
+
+  View as card {
+    padding: 16; radius: 12; background: .secondaryBackground
+    hovered { borderColor: .accent; border: 1 }
+    pressed { opacity: 0.6; style: raised; background: if taps > 0 { .red } else { .blue } }
+    on press { taps += 1 }
+    Text(if card.pressed { "Down" } else { "Up" })
+    Text("Taps: {taps}")
+  }
+  Text(if card.hovered { "Over" } else { "Away" })
+}
+
+app { Card() }
+
+test "a variant lays its props over the style while in its state" {
+  let app = mount(Card())
+  app.expect("Up")
+  app.expect("Away")
+  expect(!app.ops().contains("Opacity"))
+  app.press("Up")
+  app.expect("Down")
+  let pressed = app.ops()
+  expect(pressed.contains("Opacity=0.6") && pressed.contains("Shadow="), pressed)
+  app.press("Down", down: false)
+  app.expect("Up")
+  expect(app.ops().contains("Opacity=1"))
+  app.hover("Up")
+  app.expect("Over")
+  app.hover("Up", over: false)
+  app.expect("Away")
+  app.tap("Up")
+  app.expect("Taps: 1")
+  app.ops()
+  app.press("Up")
+  let red = app.ops()
+  expect(red.contains("Background=#100000009"), red) // .red: the binding followed taps
+}

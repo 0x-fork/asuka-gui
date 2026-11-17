@@ -1,0 +1,78 @@
+// Variants, refs, animate, graphics and the system's functions.
+
+style tall {
+  height: 100
+}
+
+component Bad {
+  state on = false
+  let r = Ref()
+
+  Column {
+    pressed { opacity: 0.5 }
+    hovered { dragItems: [] } // ERROR "a variant holds style props, and dragItems is Column's own"
+    dragging { colour: .red } // ERROR "a variant holds style props, and colour isn't one \(did you mean color\?\)"
+    dragOver { keys: [] } // ERROR "keys don't change with a state"
+    pressed { on press { } } // ERROR "a variant holds style props only"
+    hovered { style: tall }
+    Text("x") { pressed { opacity: 0.5 } } // ERROR "Text takes no variants"
+    Card() { pressed { opacity: 0.5 } } // ERROR "Card has no variant pressed \(its variants: none\)"
+    Card() as c // the view of the one element it shows
+    Card() { ref: r } // ERROR "ref names an element's view, and Card is a component"
+    Text("y") { ref: 3 } // ERROR "ref is a int, not a Ref"
+    View as v { Text(if v.hovered { "a" } else { "b" }) }
+    Text(if v.pressed { "a" } else { "b" })
+    Text(if r.hovered() { "a" } else { "b" }) // ERROR "hovered is a property of Ref, not a method"
+  }
+  pressed { opacity: 1 } // ERROR "pressed \{ … \} goes in an element's block"
+}
+
+component Card {
+  Text("card")
+}
+
+fn draw(g: Graphics) {
+  g.fill(Path().rect(0, 0, 1, 1), .red)
+  g.fill(Path().rect(0, 0, 1, 1), LinearGradient(colors: [.red]))
+  g.stroke(g.path().move(0, 0).line(1, 1), .red, StrokeStyle(width: 2))
+  g.stroke(Path(), 3) // ERROR "argument color of stroke"
+  let w: int = g.width // ERROR "a float"
+  g.fly() // ERROR "Graphics has no method fly"
+}
+
+fn system() {
+  haptic(.success)
+  haptic(.loud) // ERROR "Haptic has no case or constant loud"
+  share(1) // ERROR "argument text of share"
+  let stop = onFrame(t => { print("{t}") })
+  stop()
+  animate { print("now") }
+  animate(.spring) { print("now") }
+  animate(Animation(duration: 1s), () => print("now"))
+  await animate { print("now") } // ERROR "await only where code may wait"
+  animate(1, 2, 3) // ERROR "animate takes its changes"
+  let p = shader("not kage") // ERROR "is a declaration now"
+}
+
+shader NoEntry { // ERROR "a shader needs its fragment function"
+  fn other() -> float = 1
+}
+
+shader Wrong(label: string) { // ERROR "a shader's parameter is a uniform"
+  fn fragment(pos: vec2) -> vec4 {
+    let f = x => x // ERROR "a shader's expressions are numbers"
+    return vec4(nope) // ERROR "unknown name nope in a shader"
+  }
+}
+
+async fn files() throws {
+  shareFiles(["a"]) // ERROR "shareFiles is async"
+  try await shareFiles(["a"], title: "A")
+  let c = webCookies("https://a") // ERROR "webCookies is async|webCookies can throw"
+}
+
+app {
+  on openURL(url) { print(url) }
+  on launch { } // ERROR "the app has no event launch"
+  Bad()
+}

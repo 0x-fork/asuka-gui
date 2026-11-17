@@ -1,0 +1,15 @@
+import platform/network
+
+component Net {
+  let net = network.status()
+
+  Text(if net.connected { "online over {net.type}" } else { "offline" })
+}
+
+app { Net() }
+
+test "with no platform code, the network is there" {
+  let app = mount(Net())
+  await app.idle()
+  app.expect("online over other")
+}

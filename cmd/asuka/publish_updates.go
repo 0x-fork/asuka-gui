@@ -14,7 +14,7 @@ import (
 )
 
 // asuka publish --platform mac|windows|linux: the release build, its update
-// files (writeUpdates) required, uploaded where asuka.json's updates say:
+// files (writeUpdates) required, uploaded where asuka.toml's updates say:
 // a GitHub release of the version (with the gh CLI), or an S3 bucket
 // (s3.go). The manifests go last, so that no app reads one whose files
 // aren't there yet.
@@ -23,13 +23,13 @@ func desktopPlatform(p string) bool {
 	return p == platformMac || p == platformWindows || p == platformLinux
 }
 
-func publishDesktop(app *goApp, o *publishOptions) error {
+func publishDesktop(app *asukaApp, o *publishOptions) error {
 	u, err := app.cfg.updates()
 	if err != nil {
 		return err
 	}
 	if u == nil {
-		return errors.New("publishing a desktop app needs asuka.json's updates: asuka update keygen prints them")
+		return errors.New("publishing a desktop app needs asuka.toml's updates: asuka update keygen prints them")
 	}
 	// Where to, and the key, before building.
 	var bucket *s3Client
@@ -63,7 +63,6 @@ func publishDesktop(app *goApp, o *publishOptions) error {
 	if err := os.MkdirAll(b.out, 0o755); err != nil {
 		return err
 	}
-	vetBuild(app.dir, !b.noVet)
 	var target string
 	switch b.platform {
 	case platformMac:

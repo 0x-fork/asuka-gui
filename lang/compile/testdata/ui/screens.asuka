@@ -1,0 +1,118 @@
+// Screens: a screen's body sets its Screen's props, slots and handlers;
+// push, pop, back and onBack; the test methods that drive a stack, its
+// bars and its alerts.
+
+store Notes {
+  state items = ["Milk", "Eggs"]
+  state draft = ""
+}
+
+screen List {
+  use notes: Notes
+
+  title: "Notes"
+  largeTitle: true
+  toolbar {
+    Button("Add") { on press { push(Editor()) } }
+  }
+  bottomToolbar {
+    Button("Clear") { on press { notes.items = [] } }
+    Button("Add") { on press { notes.items.push("Bread") } }
+  }
+
+  Column {
+    for item in notes.items key item {
+      Text(item)
+    }
+    Text("{notes.items.count()} notes, depth {depth()}")
+  }
+}
+
+screen Editor {
+  use notes: Notes
+  state asking = false
+  state pinned = false
+
+  title: "New Note"
+  onBack {
+    if notes.draft.isEmpty() { return false }
+    asking = true
+    return true
+  }
+
+  Column {
+    TextField { bind text: notes.draft; placeholder: "Note" }
+    Row {
+      Text("Pinned")
+      Toggle { bind on: pinned }
+    }
+    Text(if pinned { "pinned" } else { "not pinned" })
+    Text("depth {depth()}")
+    Button("Save") {
+      disabled: notes.draft.isEmpty()
+      on press {
+        notes.items.push(notes.draft)
+        notes.draft = ""
+        pop()
+      }
+    }
+    if asking {
+      Text("Discard the draft?")
+      Button("Discard") {
+        on press {
+          notes.draft = ""
+          asking = false
+          pop()
+        }
+      }
+    }
+  }
+}
+
+app {
+  provide Notes()
+  Stack { List() }
+}
+
+test "a screen's bar and bottom toolbar, push and pop" {
+  let app = mount(Stack { List() }, provide: Notes())
+  app.expect("Notes", "Milk", "Eggs", "2 notes, depth 1")
+  // Add is in both bars: the navigation bar's pushes.
+  app.in(.navigationBar).tap("Add")
+  app.expect("New Note", "depth 2")
+  expect(app.disabled("Save"), "Save with no text")
+  app.type("Tea", into: "Note")
+  expect(!app.disabled("Save"))
+  app.tap("Save")
+  app.expect("Notes", "Tea")
+  app.in(.bottomToolbar).tap("Add")
+  app.expect("Bread", "4 notes, depth 1")
+  app.tap("Clear")
+  app.expectNo("Milk", "Eggs", "Tea", "Bread")
+}
+
+test "onBack keeps a draft" {
+  let app = mount(Stack { List() }, provide: Notes())
+  app.in(.navigationBar).tap("Add")
+  app.back()
+  app.expect("Notes")
+  app.in(.navigationBar).tap("Add")
+  app.type("Tea", into: "Note")
+  app.back() // a draft: it asks
+  app.expect("New Note", "Discard the draft?")
+  app.tap("Discard")
+  app.expect("Notes")
+  app.expectNo("Tea")
+}
+
+test "texts and toggles" {
+  let app = mount(Stack { List() }, provide: Notes())
+  let texts = app.texts()
+  expect(texts.contains("Notes") && texts.contains("Milk"), "texts: {texts}")
+  app.in(.navigationBar).tap("Add")
+  app.expect("not pinned")
+  app.toggle("Pinned")
+  app.expect("pinned")
+  expect(app.has("New Note"))
+  app.back()
+}

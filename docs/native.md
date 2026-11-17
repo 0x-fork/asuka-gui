@@ -1,30 +1,27 @@
 # Native code
 
 An app reaches what Asuka doesn't wrap through **native packages**. A
-native package is a Go package that declares, in Go, a module (an
-interface) or a view (its props). Each platform implements it in its own
+native package declares, in Asuka, a module (a `native interface`) or a
+view (a `native component`). Each platform implements it in its own
 language: Swift on iOS and macOS, Kotlin on Android, JavaScript on the
-web, and Go on Windows and Linux. `asuka native generate` writes the glue
-on every side, typed. Go calls the module's methods as it calls any Go
-interface, and shows the view as it shows any component. Values cross
+web, and C on Windows and Linux. `asuka native generate` writes the
+typed glue on every side. Asuka calls the module's methods as it calls
+any method, and shows the view as it shows any component. Values cross
 in a compact binary form, with no JSON and no reflection.
 
-```go
-// Package battery is the device's battery.
-package battery
-
-//asuka:native
-type Battery interface {
-	// Level is the charge, from 0 to 1.
-	Level() (float64, error)
-	// Watch calls changed as the level changes, until ctx is done.
-	Watch(ctx context.Context, changed func(level float64)) error
+```asuka
+/// The device's battery.
+pub native interface Battery {
+  /// The charge, from 0 to 1.
+  fn level() -> float
+  /// Calls changed as the level changes, until the task is cancelled.
+  async fn watch(changed: fn(float))
 }
 ```
 
-```go
-b, err := battery.NewBattery()
-level, err := b.Level()
+```asuka
+let battery = try Battery()
+let level = try battery.level()
 ```
 
 ```swift
@@ -39,42 +36,52 @@ final class IOSBattery: Battery {
 func makeBattery() throws -> any Battery { IOSBattery() }
 ```
 
-A native package is an ordinary Go package. It can live in the app, or
-the app can import it from any module, and every app that imports it
-gets its native code. Each platform's code lives in that platform's own
-project (a Swift package, a Gradle module), with that platform's own
-dependency manager: SwiftPM and Maven.
+A native package is an ordinary Asuka package: it can live in the app,
+or the app can depend on it ([Packages](packages.md)), and every app that
+imports it gets its native code. Each platform's code lives in that
+platform's own project (a Swift package, a Gradle module), with that
+platform's own dependency manager: SwiftPM and Maven.
 
 ## When you need it
 
-Asuka's components and packages (`asuka/sdk/...`) cover what most apps
-show and use; the [comparison with SwiftUI and Expo](parity.md) lists
-them. Write a native package when you need a platform API no package
+Asuka's components, the standard library (`std/...`) and the platform
+SDK (`platform/...`) cover what
+most apps show and use; the [comparison with SwiftUI and Expo](parity.md)
+lists them. Write a native package when you need a platform API nothing
 wraps, a vendor's SDK, or a view Asuka doesn't have (a map, a chart, a
 control only one platform has).
 
 A package needs code only for the platforms its apps run on. Where it
-has none, its module's constructor returns an error that wraps
-`errors.ErrUnsupported`, and its view shows nothing (the host logs that
-the view is missing).
+has none, making its module throws an `unsupported` error, and its view
+shows nothing (the log says the view is missing).
+
+For a library with a C API, or code you'd write in C anyway, call C
+directly instead: an `extern fn` is one declaration, the same C runs on
+every platform (the web too, compiled into the module), and a call
+converts only what its types need, with no encoding. A native package
+is for what only a platform's own language reaches (UIKit, Android's
+APIs, the DOM, a vendor's Swift or Kotlin SDK) and for views. See [C
+from Asuka](c.md).
 
 ## Making one
 
+A native package is a library ([Packages](packages.md#making-a-package))
+that declares a native module, so `asuka new` makes one:
+
 ```sh
-asuka native new ./battery                # Go, Swift, Kotlin, JavaScript and Go for the desktop
-asuka native new --projects swift,android ./battery
-asuka native add web ./battery            # add a platform's project later
+asuka new --lib --native ./battery          # Asuka, Swift, Kotlin, JavaScript and C for the desktop
+asuka new --lib --native --projects swift,android ./battery
+asuka native add web ./battery              # add a platform's project later
 ```
 
-`asuka native new` writes a package that compiles and runs on every
-platform, with a `Hello` method that each side implements. Rename and
-fill it in. A native package looks like this:
+`asuka new --lib --native` writes a library that compiles and runs on
+every platform, with a `hello` method that each side implements. Rename
+and fill it in. A native package looks like this:
 
 ```
 battery/
-  battery.go               the declarations: //asuka:native, //asuka:view
-  battery_native.go        generated: NewBattery, the client, the views
-  battery_desktop.go       Go for Windows and Linux (implementBattery)
+  asuka.toml               its name and version
+  battery.asuka            the declarations: native interface, native component
   Package.swift            the Swift package, for iOS and macOS
   swift/
     Battery.swift          yours: makeBattery
@@ -88,197 +95,176 @@ battery/
   web/
     battery.js             yours: export function makeBattery
     battery.asuka.js       generated
+    battery.decl.asuka.js  generated: its enums and errors, when it has some
+  desktop/                 C for Windows and Linux
+    battery.c              yours: battery_make_Battery (_windows.c, _linux.c for one)
+    battery.asuka.h        generated: types, vtables, what yours writes
+    battery.asuka.c        generated: the codec, the provider
   Info.plist               (optional) what the package needs of an Apple app
   iOS.entitlements         (optional)
   macOS.entitlements       (optional)
 ```
 
 The generated files start with `// Code generated by asuka native. DO
-NOT EDIT.` and carry a hash of the declarations. Commit them, as you
-commit `go generate`'s output.
+NOT EDIT.` and carry a hash of the declarations. Commit them.
 
-- `asuka dev` and `asuka build` regenerate the app's own module's native
-  packages before they build, so a changed declaration is picked up on
-  save.
-- A native package from another module (a dependency) must ship its
-  generated code. The CLI checks that the code matches the declarations
-  and fails with what to run if it doesn't.
+- `asuka dev` and `asuka build` regenerate the app's own native packages
+  before they build, so a changed declaration is picked up on save.
+- A native package the app depends on ships its generated code. The CLI
+  checks that it matches the declarations and fails with what to run
+  if it doesn't.
 - `asuka native generate [dir]` writes it by hand. `asuka native check`
   fails when anything is stale, which suits CI.
 
 ## Declaring a module
 
-`//asuka:native` on an interface makes it a module:
+A `native interface` is a module:
 
-```go
-// Package kitchen is the kitchen.
-package kitchen
-
-// ErrBusy is the kitchen's: it's cooking something else.
-var ErrBusy = native.NewError("kitchen: busy")
-
-type Unit string
-
-const (
-	UnitGram  Unit = "g"
-	UnitOunce Unit = "oz"
-)
-
-type Item struct {
-	Name   string
-	Weight float64
-	Unit   Unit
-	Tags   []string
-	Best   *time.Time // optional
+```asuka
+/// The kitchen's errors.
+pub enum KitchenError: Error {
+  /// kitchen: busy
+  busy
 }
 
-//asuka:native
-type Kitchen interface {
-	Name() string
-	Items(filter string) ([]Item, error)
-	Cook(ctx context.Context, recipe string, progress func(done float64)) (Item, error)
-	Ask(question func(q string) bool) (bool, error)
-	Open(name string) (Oven, error)
-	//asuka:mainthread
-	Show() error
+pub enum Level { low, high }
+
+pub struct Item {
+  name: string
+  weight: float
+  level: Level
+  tags: [string]
+  best: Duration?   // optional
 }
 
-//asuka:native
-//asuka:mainthread
-type Oven interface {
-	io.Closer
-	Heat(to float32, unit Unit) error
+pub native interface Kitchen {
+  fn name() -> string
+  fn items(filter: string) -> [Item]
+  async fn cook(recipe: string, progress: fn(float)) -> Item
+  fn ask(question: fn(string) -> bool) -> bool
+  fn open(name: string) -> Oven
+  /// @mainThread
+  fn show()
+}
+
+/// @mainThread
+pub native interface Oven {
+  fn heat(to: float, level: Level)
+  fn close()
 }
 ```
 
-The generated code gives the package:
-
-- `NewKitchen() (Kitchen, error)`: the platform's implementation. Its
-  error is the platform's when making one fails, or one that wraps
-  `errors.ErrUnsupported` when the package has no code for the
-  platform.
-- `implementKitchen(func() (Kitchen, error))`: for Go implementations
-  (below). It is unexported, so only the package calls it.
+`Kitchen()` makes the platform's implementation: it throws the
+platform's error when making one fails, or an `unsupported` one when the
+package has no code for the platform. Every method may throw (the
+platform's side can always fail), so calls are `try`.
 
 ### Types
 
-| Go | Swift | Kotlin | JavaScript |
-| --- | --- | --- | --- |
-| `bool` | `Bool` | `Boolean` | `boolean` |
-| `int`, `int64`, `int8`...`int32` | `Int`, `Int64`, `Int8`...`Int32` | `Long`, `Long`, `Byte`...`Int` | `number`; `int64`/`uint64`: `bigint` |
-| `uint`...`uint64` | `UInt`...`UInt64` | `ULong`...`UByte` | `number`; `uint64`: `bigint` |
-| `float32`, `float64` | `Float`, `Double` | `Float`, `Double` | `number` |
-| `string` | `String` | `String` | `string` |
-| `[]byte` | `Data` | `ByteArray` | `Uint8Array` |
-| `time.Time` | `Date` | `java.time.Instant` | `Date` |
-| `time.Duration` | `TimeInterval` (seconds) | `kotlin.time.Duration` | `number` (milliseconds) |
-| `[]T` | `[T]` | `List<T>` | `Array` |
-| `map[string]T` | `[String: T]` | `Map<String, T>` | `object` |
-| `*T` | `T?` | `T?` | `T` or `null` |
-| a struct of the package | a struct (a final class when it holds itself) | a data class | an object |
-| a named `string` or integer type with constants | a `RawRepresentable` struct with a static per constant | a value class with a constant per constant | a frozen object of the constants |
-| a `//asuka:native` interface (a parameter or result) | `any T` | `T` | an object |
-| `func(...)` (a parameter) | a closure | a function | a function |
+| Asuka | Swift | Kotlin | JavaScript | C |
+| --- | --- | --- | --- | --- |
+| `bool` | `Bool` | `Boolean` | `boolean` | `bool` |
+| `int` | `Int` | `Long` | `bigint` | `int64_t` |
+| `float` | `Double` | `Double` | `number` | `double` |
+| `string` | `String` | `String` | `string` | `char *`, UTF-8 and NUL-terminated |
+| `bytes` | `Data` | `ByteArray` | `Uint8Array` | `asuka_bytes` (`data`, `len`) |
+| `Duration` | `TimeInterval` (seconds) | `kotlin.time.Duration` | `number` (milliseconds) | `int64_t` (nanoseconds) |
+| `[T]` | `[T]` | `List<T>` | `Array` | `<pkg>_list_T` (`data`, `len`) |
+| `[string: T]` | `[String: T]` | `Map<String, T>` | `object` | `<pkg>_map_T` (`keys`, `values`, `len`) |
+| `T?` | `T?` | `T?` | `T` or `null` | `T *` (`NULL`: none; a `string?` is a `char *`) |
+| `Color` | `Int`, Asuka's encoding: `AsukaColors.color(_:)` makes it a `UIColor` or `NSColor` (a semantic one follows light and dark) | `Long`: `AsukaModules.color(v, fallback)` makes it an ARGB `Int` | `bigint`: `native.color(v)` makes it a CSS color (a semantic one a variable) | `uint64_t`: `asuka_desktop_color(v)` makes it RGBA for the appearance shown |
+| a struct of the package | a struct (a final class when it holds itself) | a data class | an object | a struct, `<pkg>_Name` |
+| an enum of the package (cases without payloads) | a `RawRepresentable` struct with a static per case | a value class with a constant per case | a frozen object of the cases | an `int64_t`, a constant per case (`<pkg>_Level_low`) |
+| a `native interface` (a parameter or result) | `any T` | `T` | an object | `<pkg>_T *` |
+| `fn(...)` (a parameter) | a closure | a function | a function | `<pkg>_fn_…`, called with its `_call` |
+| `Ref` (a parameter) | `AsukaViewRef`: its `view` (main actor) is the `UIView` or `NSView` Asuka shows (a WebView's `WKWebView`), `nil` for none | `AsukaViewRef`: its `view` (main thread) is the `View` (a WebView's `WebView`), `null` for none | the element, or `null` | `uint32_t`, the view's id: `asuka_desktop_view(v)` is its `HWND` or `GtkWidget *`, `asuka_desktop_webview(v)` a WebView's `ICoreWebView2 *` or `WebKitWebView *` |
 
-Go's `int` and `uint` are 64-bit on every platform Asuka runs on. A
-struct's fields are its exported ones, in their order. Objects (native
-interfaces) pass only as a parameter or a result, not inside a slice, a
-map or a struct. `asuka native generate` reports anything else at its
-position in your Go, with what to use instead.
+A struct's fields cross in their order; its constants and methods stay
+on Asuka's side. Objects (native interfaces) pass only as a parameter
+or a result, not inside an array, a map or a struct. A `Ref` passes
+only as a parameter: what crosses is the view it holds at the call
+(platform/print's `webView(view: Ref, …)` prints the page of the WebView
+put in it with `ref:`), which the platform's code looks up on the main
+thread; it's `nil` when the Ref holds none, or a view Asuka doesn't
+show (yet). `asuka native
+generate` reports anything else at its position, with what to use
+instead.
 
 ### Methods
 
-- **Errors.** A method whose last result is `error` can fail. What the
-  platform throws comes back as:
-  - one of the package's declared errors (`var ErrX =
-    native.NewError("...")`), which it throws as `KitchenError.busy` in
-    Swift, `KitchenException(KitchenError.BUSY)` in Kotlin, or `new
-    KitchenError("busy")` in JavaScript. Go gets the declared value
-    itself, so `errors.Is(err, kitchen.ErrBusy)` works.
-  - `AsukaNativeError.unsupported(msg)`, `AsukaUnsupportedException`, or
-    `asuka.native.UnsupportedError`, which wraps `errors.ErrUnsupported`.
-  - anything else, as a `*native.Error` with its domain (an `NSError`'s,
-    an exception's class), its code and its message.
-
-  A method without an error result panics in Go if the platform side
-  throws, so declare `error` on anything that can fail.
-- **A `context.Context` first** makes the method asynchronous: `async`
-  in Swift, `suspend` in Kotlin, and in JavaScript an `async` function
-  that gets an `AbortSignal` first. The Go call blocks its goroutine
-  until the work answers. When the context is done, the platform's task
-  is canceled (Swift's task, Kotlin's coroutine, the signal's abort),
-  and Go returns `ctx.Err()`. Use it for anything slow: network, files,
-  a dialog's answer.
-- **Callbacks.** A `func` parameter is one of two kinds:
-  - **A notification**: a func that returns nothing (`progress
-    func(done float64)`). The platform may call it any number of times,
-    from any thread, while the call runs or after it returns (a
-    watcher). It runs in Go on the main thread (`ui.Post`), so it can set
-    signals.
-  - **A question**: a func that returns something (`question func(q
-    string) bool`). It runs at once, on the thread that calls it, and its
-    result goes back to the platform.
+- **Errors.** What the platform throws comes back as:
+  - one of the package's declared errors (the cases of an enum declared
+    `: Error`, whose `///` doc is the message), which it throws as
+    `KitchenError.busy` in Swift, `KitchenException(KitchenError.BUSY)`
+    in Kotlin, `new KitchenError("busy")` in JavaScript, or
+    `asuka_error_declared(err, kitchen_KitchenError_busy)` in C. Asuka
+    catches it as `catch KitchenError.busy`.
+  - `AsukaNativeError.unsupported(msg)`, `AsukaUnsupportedException`,
+    `asuka.native.UnsupportedError`, or `asuka_error_unsupported`: an
+    `unsupported` error.
+  - anything else, as an error with its domain (an `NSError`'s, an
+    exception's class), its code and its message.
+- **`async`** makes the method asynchronous: `async` in Swift, `suspend`
+  in Kotlin, in JavaScript an `async` function that gets an
+  `AbortSignal` first, and in C a function that gets an `asuka_call`
+  and answers it once, from any thread. Asuka awaits it without holding
+  the main thread. When the task is cancelled (the screen that started
+  it went), the platform's task is cancelled too (Swift's task,
+  Kotlin's coroutine, the signal's abort, C's `asuka_call_on_cancel`). Use it for anything slow: network, files, a
+  dialog's answer.
+- **Callbacks.** A `fn` parameter is one of two kinds:
+  - **A notification**: a function that returns nothing (`progress:
+    fn(float)`). The platform may call it any number of times, from any
+    thread, while the call runs or after it returns (a watcher). It runs
+    in Asuka on the main thread, so it can write state.
+  - **A question**: a function that returns something (`question:
+    fn(string) -> bool`). It runs at once and its result goes back to the
+    platform.
 
   A callback lives as long as the object it was passed to.
-- **Objects.** A method can return another native interface (`Open`
-  gives an `Oven`). Each is its own object on the platform's side. It's
-  released when Go no longer holds it, or as soon as it's closed: an
-  interface that embeds `io.Closer` has a `Close` that calls the
-  platform's `close()` and then releases the object. Calls after `Close`
-  return `native.ErrClosed`.
-- **Threads.** A method runs on the platform's side on the calling
-  goroutine's thread, synchronously: there is no hop and no queue. That
-  makes a call cheap, but it also means a method called from the main
-  thread blocks it. Do slow work in a method that takes a context, or
-  call it from a goroutine.
-  - `//asuka:mainthread` on a method or an interface runs it on the
-    platform's main thread, which UIKit, AppKit and Android's views
-    require. A call from the main thread runs at once. Swift's protocol
-    is `@MainActor` there.
-  - The other methods run where they're called, so their implementations
-    must be thread-safe.
-  - JavaScript is single-threaded, so this doesn't apply on the web.
-
-### What a call costs
-
-A call encodes its arguments into a pooled buffer and crosses once: C on
-iOS, JNI on Android, a function pointer into the Mac's Swift library,
-the JavaScript host on the web. The answer is decoded the same way. A
-steady-state call of a string method costs about 0.5µs on a Mac and
-allocates only its results. Nothing on the way reflects.
+- **Objects.** A method can return another native interface (`open`
+  gives an `Oven`). Each is its own object on the platform's side, let go
+  when Asuka no longer holds it, or as soon as its `close()` (a method
+  of that name, with no parameters) is called.
+- **Threads.** A method runs on the platform's side on the main thread
+  that called it, synchronously: there is no hop and no queue. That
+  makes a call cheap, but a slow one holds the main thread: make it
+  `async`.
+  - `@mainThread` in a method's or an interface's `///` doc runs it on
+    the platform's main thread for sure, which UIKit, AppKit and
+    Android's views require. Swift's protocol is `@MainActor` there.
+  - JavaScript is single-threaded, so this doesn't apply on the web; C
+    on Windows and Linux runs every call on the main thread.
 
 ## Declaring a view
 
-`//asuka:view` on a struct named `<View>Props` makes a view:
+A `native component` is a view:
 
-```go
-//asuka:view
-type SegmentedProps struct {
-	Items    []string             // set once
-	Selected signal.Accessor[int] // set again as it changes
-	Changed  func(index int)      // an event
-	Style    ui.Style
+```asuka
+pub native component Segmented(items: [string]) {
+  prop selected: int = 0
+  event selectedChange(selected: int)
 }
 ```
 
-The generated `func Segmented(p SegmentedProps) ui.Node` shows it, as
-any component:
+Asuka shows it as any component:
 
-```go
-segmented.Segmented(segmented.SegmentedProps{
-	Items:    []string{"Day", "Week", "Month"},
-	Selected: selected,
-	Changed:  func(i int) { selected.Set(i) },
-})
+```asuka
+state selected = 0
+
+segmented.Segmented(["Day", "Week", "Month"]) {
+  bind selected: selected
+}
 ```
 
-- A field of a type from [Types](#types) is a prop that's set once.
-- A `signal.Accessor[T]` is a prop that's set again each time it
-  changes. The view's effect is owned like any other, and it goes when
-  the view does.
-- A `func` returning nothing is an event. It runs on the main thread.
-- `Style ui.Style` is the view's style, if the struct has one; a
-  `Style ui.Styler` takes a `StyleFunc` too.
+- Every prop follows what it reads: the platform's setter runs again
+  when it changes, and only then.
+- An event runs on the main thread.
+- `bind name: target` binds a prop the view reports with an event
+  `nameChange(name: T)` of the prop's type: the view sends it when the
+  user changes the value (not when the app sets it), and it writes the
+  target.
+- It takes the style every element takes.
 
 Each platform implements the view as a protocol: the view itself, a
 setter per prop, and an events object it gets as it's made:
@@ -291,30 +277,78 @@ setter per prop, and an events object it gets as it's made:
     init(_ events: SegmentedEvents) { self.events = events; ... }
     func setItems(_ value: [String]) { ... }
     func setSelected(_ value: Int) { ... }
-    // on a change: events.changed(index: i)
+    // on a change: events.selectedChange(selected: i)
 }
 @MainActor func makeSegmented(_ events: SegmentedEvents) -> any Segmented { SwiftSegmented(events) }
 ```
 
 Props come in no set order, so a view that depends on two of them (a
 selection among items) keeps what it got and applies them once both are
-there. The host sizes the view as it does its own:
+there. Asuka sizes the view as it does its own:
 
 - in Swift, `sizeThatFits` (iOS), or `fittingSize` (macOS), or
   `AsukaSizing`'s `sizeThatFits` if the view conforms;
 - the view's own measuring on Android;
 - `measure(c)` in JavaScript;
-- `Measure` in Go (below).
+- its vtable's `measure` in C, else the widget's own size (below).
 
 A view with no natural size takes its size from its style. A view that
 holds something to free conforms to `AsukaDestroying`, or has a
-`destroy` in JavaScript, or is a `native.Destroyer` in Go.
+`destroy` in JavaScript or in its C vtable.
 
 `examples/media/segmented` is a complete view on every platform.
 
+In an app's tests (`asuka test`, with no platform code) a native
+view shows as its component's name, and `app.tap("Segmented")` sends it
+a `press` event, as a platform's button would.
+
+## What the app needs
+
+What the package needs of an app (a permission, a purpose string, a
+background mode, an entitlement) is the package's to say, and only the
+apps that use it get it. Its `asuka.toml` says it, in tables for every
+app that imports the package:
+
+```toml
+[ios]
+usage = { NSLocationWhenInUseUsageDescription = "To show where you are." }
+backgroundModes = ["audio"]
+entitlements = { aps-environment = "development" }   # a simulator build's value
+plist = { LSApplicationQueriesSchemes = ["mailto"] } # true, a string, or an array joined with the app's
+
+[android]
+permissions = ["android.permission.ACCESS_FINE_LOCATION", "android.permission.WRITE_EXTERNAL_STORAGE:28"]
+application = ['<service android:name="com.example.battery.Watcher" android:exported="false" />']
+manifest = ['<queries><intent><action android:name="android.intent.action.TTS_SERVICE" /></intent></queries>']
+```
+
+A permission `"name:28"` holds up to that API level; `"name|neverForLocation"`
+has its `usesPermissionFlags`. An app's own `asuka.toml` wins over a
+package's purpose strings.
+
+What only part of the package needs goes in a `[uses.<member>]` table,
+with the same keys: the app gets it only if its code, or a dependency's,
+refers to that member (a function, a type, a store; `"Type.name"` for a
+type's method or field: a field when the code makes the struct with it,
+assigns it or reads it, not when it's left at its default). A local
+function of the same name doesn't count, nor does a test block. platform/location's background part is such:
+
+```toml
+[uses.requestAlways.android]
+permissions = ["android.permission.ACCESS_BACKGROUND_LOCATION"]
+
+[uses.startUpdates.ios]
+backgroundModes = ["location"]
+```
+
+The files beside the package's code are for every app that imports it:
+its Gradle module's `AndroidManifest.xml`, its Swift package's
+`Info.plist` and entitlements (see below). Put there what every app of
+the package needs, and in `[uses]` what one member does.
+
 ## iOS and macOS: Swift
 
-The package's Swift is a Swift package, `Package.swift` at the Go
+The package's Swift is a Swift package, `Package.swift` at the
 package's root, with its sources in `swift/`. One package serves iOS
 and macOS, using `#if canImport(UIKit)` where they differ:
 
@@ -340,12 +374,12 @@ let package = Package(
 ```
 
 It's yours: its dependencies, targets, resources, C targets and
-binary targets are SwiftPM's, as in any package. The CLI builds it with
-`xcodebuild` together with the app's other native packages and Asuka's
-host. It links the result into the app, and embeds the dynamic
-frameworks and resource bundles it makes. `asuka` (the product `Asuka`)
-is the Asuka host the generated code builds on; the CLI points it at
-the CLI's own copy, so it always matches the app's Go. The `platforms`
+binary targets are SwiftPM's, as in any package. Asuka builds it with
+the app and its other native packages, links it into the app, and
+embeds the dynamic frameworks and resource bundles it makes. `asuka`
+(the product `Asuka`) is the library the generated code builds on; a
+build uses the copy that comes with your `asuka`, so it always matches
+the app's Asuka. The `platforms`
 the package declares count: an app built for an older iOS or macOS
 fails with what the package needs, and a package that lists only one of
 them (`platforms: [.iOS("16.0")]`) is built only for that one.
@@ -359,19 +393,19 @@ generated file's header listing them:
 
 ```swift
 func makeKitchen() throws -> any Kitchen
-@MainActor func makeOven() throws -> any Oven      // a //asuka:mainthread interface
+@MainActor func makeOven() throws -> any Oven      // a @mainThread interface
 @MainActor func makeDial(_ events: DialEvents) -> any Dial
 ```
 
-An object that's made on the platform's side and handed to Go (`Open`'s
-`Oven`) comes from your code. To make a main-actor one from a
+An object that's made on the platform's side and handed to Asuka
+(`open`'s `Oven`) comes from your code. To make a main-actor one from a
 background method, use `try AsukaNative.onMain { SwiftOven() }`.
 
 An `Info.plist` beside `Package.swift` holds what the package needs of
 an Apple app:
 
 - its usage strings (`NSBluetoothAlwaysUsageDescription`): the app's
-  own, in its `asuka.json`, win;
+  own, in its `asuka.toml`, win;
 - its arrays (`UIBackgroundModes`), which are joined with the app's and
   other packages';
 - any other key, which is set unless the app sets it.
@@ -401,13 +435,14 @@ dependencies {
 ```
 
 Its Kotlin goes in `src/main/kotlin/`, in the package the generated file
-names: the Go package's import path, reversed host first
-(`github.com/you/app/battery` gives `com.github.you.app.battery`). The
+names: the package's name (asuka.toml's `name`), its segments lower
+case, a host reversed first (`@acme/battery` gives `_acme.battery`,
+`github.com/you/battery` gives `com.github.you.battery`). The
 CLI includes the module in the app's Gradle build, which sets the
 following, so the module needs only its namespace and dependencies:
 
 - the SDK levels, Java 17 and the Kotlin toolchain;
-- the dependency on Asuka's host library (`dev.asuka`), which brings
+- the dependency on Asuka's Android library (`dev.asuka`), which brings
   AndroidX, Material Components and coroutines.
 
 Its `src/main/AndroidManifest.xml` (permissions, services, receivers,
@@ -428,7 +463,7 @@ view's events object has the themed context the view is made in
 (`events.context`).
 `AsukaModules.onMain { }` makes an object on the main thread, as Swift's
 `AsukaNative.onMain` does. Kotlin's `Unit` is spelled `kotlin.Unit` in
-the generated code, so a Go type named `Unit` is fine.
+the generated code, so a type of yours named `Unit` is fine.
 
 Open the app's Android project (`asuka build --platform android` writes
 it) in Android Studio to edit a module with completion. The modules are
@@ -453,82 +488,174 @@ export function makeSegmented(events) {
 }
 ```
 
-A method may return a promise, even one that has no context on the Go
-side. Throw the package's declared errors with the generated classes
-(`import { KitchenError } from "./kitchen.asuka.js"`). Every file in
+A method may return a promise, even one that isn't `async` in Asuka. Throw the package's declared errors with the generated classes
+(`import { KitchenError } from "./kitchen.asuka.js"`). The package's
+enums and errors are made before its own module runs, so it may read
+them as it loads (a table of an enum's cases); `asuka native generate`
+fails on an import of a name the package doesn't declare. Every file in
 `web/` ships with the app, so a module can import its own helpers and
 fetch its assets relative to `import.meta.url`. `asuka dev --platform
 web` reloads the page as one changes. See [the web](web.md#native-code).
 
-## Windows and Linux: Go
+## Windows and Linux: C
 
-The desktop hosts run the app's Go in their own process, so a native
-package's code there is Go: Win32 through `syscall` on Windows, and GTK 4
-through purego on Linux, without cgo. A file built for those platforms
-gives `implement<T>` its implementation from an `init`:
+The package's code for Windows and Linux is C, in its `desktop/`
+directory, compiled into the app's executable (with Zig when you build
+from another system). A file whose name
+ends in `_windows.c` or `_linux.c` is built for that platform only, and
+the others for both, with `#ifdef _WIN32` where they differ; a platform
+with no file of the package's has none of its code, and making its
+module throws `unsupported` there. `asuka native generate` writes
+`<package>.asuka.h`, which yours includes: the package's types, a vtable
+per interface, and the functions yours writes, one per interface and
+per view:
 
-```go
-//go:build windows || (linux && !android)
+```c
+// desktop/battery.c
+#include "battery.asuka.h"
 
-package battery
+#include <stdlib.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <stdio.h>
+#include <time.h>
+#endif
 
-func init() {
-	implementBattery(func() (Battery, error) { return desktopBattery{}, nil })
+// level_now is the battery's charge, from 0 to 1 (negative: none).
+static double level_now(void) {
+#ifdef _WIN32
+	SYSTEM_POWER_STATUS s;
+	return GetSystemPowerStatus(&s) && s.BatteryLifePercent <= 100 ? s.BatteryLifePercent / 100.0 : -1;
+#else
+	FILE *f = fopen("/sys/class/power_supply/BAT0/capacity", "r");
+	int n = -100;
+	if (f) {
+		if (fscanf(f, "%d", &n) != 1) n = -100;
+		fclose(f);
+	}
+	return n / 100.0;
+#endif
+}
+
+static double level(battery_Battery *self, asuka_error *err) {
+	double l = level_now();
+	if (l < 0) asuka_error_unsupported(err, "no battery");
+	return l;
+}
+
+typedef struct {
+	battery_fn_float changed;
+	asuka_call *call;
+} watching;
+
+// run reads the level on a thread of its own, once a second, until the
+// task that watches is cancelled.
+static void run(void *p) {
+	watching *w = p;
+	double last = -2;
+	while (!asuka_call_cancelled(w->call)) {
+		double l = level_now();
+		if (l != last) battery_fn_float_call(w->changed, l);  // posted to the main thread
+		last = l;
+#ifdef _WIN32
+		Sleep(1000);
+#else
+		nanosleep(&(struct timespec){1, 0}, NULL);
+#endif
+	}
+	asuka_error e = {0};
+	asuka_error_cancelled(&e);
+	asuka_call_fail(w->call, &e);
+	free(w);
+}
+
+static void watch(battery_Battery *self, battery_fn_float changed, asuka_call *call) {
+	watching *w = malloc(sizeof *w);
+	*w = (watching){changed, call};
+	asuka_desktop_spawn(run, w);
+}
+
+static const battery_Battery_vtable vt = {.level = level, .watch = watch};
+
+battery_Battery *battery_make_Battery(asuka_error *err) {
+	battery_Battery *b = malloc(sizeof *b);
+	b->vt = &vt;
+	return b;  // freed as Asuka lets it go (the vtable has no release)
 }
 ```
 
-A Go implementation is the interface itself, with no encoding and no
-crossing. A view's is `<View>Native`, made from its events:
+- **Calls** run on the main thread, where the platform's UI is: a
+  synchronous method returns its result, and must not block; one that
+  fails sets `err` and returns a zero value. An `async` method gets an
+  `asuka_call` and returns at once: it answers later, once, from any
+  thread, with its generated `_done` (`battery_Battery_watch_done`) or
+  `asuka_call_fail`. `asuka_call_cancelled` and `asuka_call_on_cancel`
+  say when the task that called went. `asuka_desktop_spawn` runs work
+  that blocks on a thread of its own.
+- **Memory**: everything crossing is `malloc`'s. A method's arguments
+  are the generated code's, valid during a synchronous call and until an
+  async one answers; what a method returns (or answers) becomes the
+  generated code's, which frees it (`asuka_strdup` a literal). A
+  callback's arguments stay yours; what a question returns is yours to
+  free (`<pkg>_<Type>_free`). A NULL `release` in a vtable frees the
+  object as Asuka lets it go.
+- **Callbacks**: `<pkg>_fn_…_call` calls one. A notification may come
+  from any thread (it's posted to the main thread); a question runs at
+  once on the main thread, and from another thread waits for it.
+- **Views**: `<pkg>_make_<View>(events)` makes the view's object and its
+  `widget`, an `HWND` (a child of `events.parent`) or a `GtkWidget *`,
+  which Asuka shows and destroys as the view goes. Each prop has a
+  setter in the vtable (`set_selected`), `measure` sizes it when the
+  widget has no size of its own to give, and the events are generated
+  functions (`segmented_Segmented_selectedChange(events, i)`), from any
+  thread.
+- **Asuka's C API**: `asuka_desktop.h` is what a package's C may use
+  of Asuka on the desktop: posting to the main thread, the
+  window a view is in, the app's name, ID, version and directories, its
+  assets, a color resolved for the appearance shown, HTTP
+  (`asuka_fetch`; `asuka_fetch_stream` for a response a piece at a
+  time, a download into a file; `asuka_abort` to stop one from any
+  thread) and a file an app names (`asuka_desktop_local_file`).
+  `asuka_windows.h` has COM and WinRT's helpers (UTF-16, a vtable's
+  slot, HSTRINGs, activation factories, delegates, waiting for an async
+  operation, WIC's images, the system window's broadcasts);
+  `asuka_barcode.h` reads QR codes and
+  barcodes from an image's gray levels, on every desktop;
+  `asuka_linux.h` declares the GLib, GIO, GTK and libadwaita functions
+  packages use, resolved at run time (called as
+  `G(g_variant_new)(…)`), so building needs no GTK headers.
+- **Libraries**: what the package's C links on each platform is in its
+  `asuka.toml`:
 
-```go
-func init() {
-	implementSegmented(func(events SegmentedEvents) SegmentedNative { ... })
-}
+  ```toml
+  [windows]
+  libraries = ["ole32", "winhttp"]
+  [linux]
+  libraries = []
+  ```
+- **A library of its own**: a C library the package builds with (a
+  parser, a decoder) goes in `desktop/third_party/<name>/`, unchanged,
+  with its license and the version it is; a file of the package's
+  includes its sources (`#include "third_party/<name>/<name>.c"`), so it's
+  compiled with the package's C, and a change to it rebuilds the app.
 
-type SegmentedNative interface {
-	Handle() uintptr // an HWND on Windows, a GtkWidget on Linux
-	SetItems(items []string)
-	SetSelected(selected int)
-}
-```
-
-`events.Changed(i)` sends an event. `events.Context.Parent()` is the
-host's view the native view goes in: create a Windows child window in it
-(`WS_CHILD`); on Linux, leave the widget unparented, and the host adds
-it. A view can also implement:
-
-- `Measure(width, height float32) (float32, float32)`: its natural size
-  for what the layout offers (`NaN`: as it likes). GTK measures a widget
-  without one; on Windows nothing does, so it takes its size from its
-  style.
-- `Destroy()`: frees what it holds.
-- `ParentMessage(msg uint32, wparam, lparam uintptr) (uintptr, bool)`
-  (Windows): the `WM_COMMAND`, `WM_NOTIFY`, `WM_*SCROLL` and
-  `WM_CTLCOLOR*` its controls send their parent.
-
-Use the build constraints `windows` and `linux && !android`, since an
-Android build satisfies `linux`. The Mac can take Go too: a file built
-for `darwin && !ios` that calls `implement<T>` wins over the package's
-Swift there, using AppKit through purego's `objc`.
-
-On the desktop, everything a Go implementation does runs on the main
-thread when it's called there, as the hosts do. A GTK signal needs a C
-callback (`purego.NewCallback`), and those are never freed, so make one
-and route by the widget. `examples/media/segmented/segmented_linux.go`
-does that.
+On macOS a package's Swift runs (its `Package.swift`); its C doesn't.
 
 ## Developing native code
 
-- **iOS and Android**: `asuka dev` builds the app with its Go and its
-  native packages, installs it, and rebuilds on save, Swift, Kotlin,
-  `Package.swift`, `build.gradle.kts`, `Info.plist` and the manifests
-  included. An app with no native packages runs in the player, which
+- **iOS and Android**: `asuka dev` builds the app's shell with its
+  native packages, installs it, and rebuilds it when their native code
+  changes, Swift, Kotlin, `Package.swift`, `build.gradle.kts`,
+  `Info.plist` and the manifests included; the app's Asuka reloads as
+  you save, without a rebuild. An app with no native packages runs in the player, which
   holds only Asuka's own native code. See
-  [Development](development.md#on-a-phone-the-player-and-built-apps).
+  [Development](development.md#the-player).
 - **macOS**: the packages' Swift builds into the app's Swift library,
-  again only when it changes, and the app runs again with its signals
+  again only when it changes, and the app runs again with its state
   kept.
-- **Windows and Linux**: native code is Go, built with the app.
+- **Windows and Linux**: the packages' C builds into the app's
+  executable, again only when it changes.
 - **Web**: the page reloads as a package's JavaScript changes.
 
 The first iOS or macOS build of a package resolves its Swift

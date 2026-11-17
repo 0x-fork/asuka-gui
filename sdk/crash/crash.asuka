@@ -1,0 +1,213 @@
+// Package platform/crash keeps reports of the app's crashes, for the app to
+// send where it likes: its own server, Sentry, Crashlytics. A report is
+// made of each crash (a panic or a signal in the host, a native one), and
+// of each error the app records; the app reads them on its next launch
+// (reports), sends them, and deletes them.
+//
+//   task {
+//     for await r in crash.reports() {
+//       if try? await api.send(r) { crash.delete(r.id) }
+//     }
+//   }
+//   crash.set("user", userID)
+//   crash.breadcrumb("opened the cart")
+//
+// What the app was doing is in each report's context: its version, the
+// device, how long it had run, whether it was in the foreground, its last
+// breadcrumbs and its values, written as they change so a crash can't
+// lose them. Nothing is uploaded.
+//
+// Where: everywhere a host keeps the runs' record: the core keeps it
+// (core/src/std/crash.c: its own fatal errors, with what the host saw:
+// uncaught exceptions, fatal signals in native code, MetricKit's
+// diagnostics, how Android's runs ended, uncaught JavaScript errors). Where none
+// keeps it (asuka test), reports ends empty and the rest does nothing.
+
+import std/json
+import std/time
+
+/// A frame of a thread's stack, the innermost first.
+pub struct Frame {
+  function: string = ""
+  file: string = ""
+  line: int = 0
+  /// The binary it's in, and its build's ID, for symbolicating.
+  binary: string = ""
+  binaryId: string = ""
+  address: int = 0
+  offset: int = 0
+}
+
+/// A thread as it was.
+pub struct Thread {
+  name: string = ""
+  crashed: bool = false
+  frames: [Frame] = []
+}
+
+/// Something the app said it did.
+pub struct Crumb {
+  time: time.Time = time.unix(0)
+  message: string = ""
+}
+
+/// What the app was doing.
+pub struct Context {
+  appVersion: string = ""
+  build: string = ""
+  model: string = ""
+  system: string = ""
+  systemVersion: string = ""
+  arch: string = ""
+  process: string = ""
+  pid: int = 0
+  /// When the run started.
+  started: time.Time = time.unix(0)
+  uptime: Duration = 0s
+  foreground: bool = false
+  breadcrumbs: [Crumb] = []
+  values: [string: string] = [:]
+}
+
+/// A crash, or an error the app recorded.
+pub struct Report {
+  id: string = ""
+  /// What crashed: "go" (the host's), "exception", "native", "hang",
+  /// "nonfatal" (record's)...
+  kind: string = ""
+  fatal: bool = false
+  /// When it crashed, or was recorded.
+  time: time.Time = time.unix(0)
+  /// A line: what crashed, and why.
+  message: string = ""
+  /// The whole report, as the platform wrote it.
+  text: string = ""
+  threads: [Thread] = []
+  context: Context = Context()
+}
+
+// A report as the platforms write it: its times in milliseconds since
+// 1970.
+struct WireCrumb {
+  time: int = 0
+  message: string = ""
+}
+
+struct WireContext {
+  appVersion: string = ""
+  build: string = ""
+  model: string = ""
+  system: string = ""
+  systemVersion: string = ""
+  arch: string = ""
+  process: string = ""
+  pid: int = 0
+  started: int = 0
+  uptime: Duration = 0s
+  foreground: bool = false
+  breadcrumbs: [WireCrumb] = []
+  values: [string: string] = [:]
+}
+
+struct WireReport {
+  id: string = ""
+  kind: string = ""
+  fatal: bool = false
+  time: int = 0
+  message: string = ""
+  text: string = ""
+  threads: [Thread] = []
+  context: WireContext = WireContext()
+}
+
+fn reportOf(w: WireReport) -> Report {
+  let c = w.context
+  return Report(id: w.id, kind: w.kind, fatal: w.fatal, time: time.unixMilli(w.time), message: w.message, text: w.text, threads: w.threads, context: Context(appVersion: c.appVersion, build: c.build, model: c.model, system: c.system, systemVersion: c.systemVersion, arch: c.arch, process: c.process, pid: c.pid, started: time.unixMilli(c.started), uptime: c.uptime, foreground: c.foreground, breadcrumbs: c.breadcrumbs.map(b => Crumb(time: time.unixMilli(b.time), message: b.message)), values: c.values))
+}
+
+/// The platform's record.
+native interface Reporter {
+  fn breadcrumb(message: string)
+  fn set(key: string, value: string)
+  fn record(message: string)
+  /// Calls found with each report kept, now and as more come, each once,
+  /// until the task is cancelled.
+  async fn follow(found: fn(WireReport))
+  fn delete(id: string)
+}
+
+let reporter = try? Reporter()
+
+// The core's record (phones, the web): its builtins.
+native fn coreStarted() -> bool
+native fn coreBreadcrumb(message: string)
+native fn coreSet(key: string, value: string)
+native fn coreRecord(message: string)
+native fn coreReports() throws -> string
+native fn coreDelete(id: string)
+native fn coreVersion() -> int
+native async fn coreChanged(version: int) -> int
+
+/// Adds message to what reports say the app last did, with the time.
+pub fn breadcrumb(message: string) {
+  if let r = reporter {
+    try? r.breadcrumb(message)
+  } else {
+    coreBreadcrumb(message)
+  }
+}
+
+/// Sets a value reports have ("user": an ID); "" removes it.
+pub fn set(key: string, value: string) {
+  if let r = reporter {
+    try? r.set(key, value)
+  } else {
+    coreSet(key, value)
+  }
+}
+
+/// Makes a report of e, which the app handled: it's read with the
+/// crashes, at once.
+pub fn record(e: Error) {
+  if let r = reporter {
+    try? r.record(e.message)
+  } else {
+    coreRecord(e.message)
+  }
+}
+
+/// Forgets report id, once the app has sent it.
+pub fn delete(id: string) {
+  if let r = reporter {
+    try? r.delete(id)
+  } else {
+    coreDelete(id)
+  }
+}
+
+/// The reports kept, the oldest first, then each as it comes (a
+/// recorded error, what the platform hands over late), each once.
+pub fn reports() -> Stream<Report> = Stream(give => {
+  if let r = reporter {
+    try await r.follow(found: x => give(reportOf(x)))
+    return
+  }
+  if !coreStarted() {
+    return
+  }
+  // Read off the main thread (they're files), then again each time the
+  // record says more may have come.
+  var seen: [string: bool] = [:]
+  while true {
+    let version = coreVersion()
+    let text = try await spawn { try coreReports() }
+    let found: [WireReport] = try json.decode(text)
+    for x in found {
+      if !(seen[x.id] ?? false) {
+        seen[x.id] = true
+        give(reportOf(x))
+      }
+    }
+    await coreChanged(version)
+  }
+})

@@ -1,10 +1,9 @@
 // Package ops is the contract between Asuka's core and its hosts: batched
 // mount operations going down, events coming up.
 //
-// The core appends ops to a Batch; a host applies a whole batch at once.
-// In-process Go hosts (host/fake, desktop later) read Batch.Ops directly;
-// mobile hosts read the binary encoding (Batch.Encode), decoded by code
-// generated from schema.go.
+// The core appends ops to a Batch; a host applies a whole batch at once,
+// reading the binary encoding (Batch.Encode), decoded by code generated
+// from schema.go. Go reads batches (Batch.Ops) in tests and tools only.
 //
 // Binary encoding, little-endian:
 //

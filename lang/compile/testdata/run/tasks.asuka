@@ -1,0 +1,87 @@
+// Async closures, tasks as values, and stores with parameters.
+
+async fn twice(f: async fn() -> int) -> int {
+  let a = await f()
+  let b = await f()
+  return a + b
+}
+
+async fn wait(n: int) -> int {
+  await sleep(ms(n))
+  return n
+}
+
+fn ms(n: int) -> Duration = 1ms * n
+
+store Counter(start: int, step: int = 1) {
+  state n = start
+  let label = "n={n}"
+
+  fn bump() { n += step }
+}
+
+test "async closures" {
+  var calls = 0
+  let total = await twice(() => {
+    calls += 1
+    await sleep(1ms)
+    return calls
+  })
+  print(total)
+}
+
+test "tasks as values" {
+  let ts = [spawn { 1 + 1 }, spawn { 2 * 3 }]
+  let results = await all(ts)
+  print(results)
+  let fast = await race(wait(30), wait(10), wait(20))
+  print(fast)
+}
+
+test "stores with parameters" {
+  let c = Counter(5)
+  c.bump()
+  print(c.label)
+  let d = Counter(start: 1, step: 10)
+  d.bump()
+  d.bump()
+  print(d.n)
+}
+
+test "with a timeout" {
+  try await withTimeout(50ms) {
+    await sleep(10ms)
+    print("in time")
+  }
+  do {
+    try await withTimeout(20ms) {
+      defer { print("cancelled, cleaned up") }
+      await sleep(1h)
+      print("never")
+    }
+  } catch e {
+    print(e.message)
+  }
+  // Its value is the block's.
+  let n = try await withTimeout(50ms) { return 6 * 7 }
+  let late: string? = try? await withTimeout(10ms) {
+    await sleep(1h)
+    return "late"
+  }
+  print("{n} {late ?? "none"}")
+}
+
+// Output:
+// 3
+// ok async closures
+// [2,6]
+// 10
+// ok tasks as values
+// n=6
+// 21
+// ok stores with parameters
+// in time
+// cancelled, cleaned up
+// timed out (tasks.asuka:57)
+// 42 none
+// ok with a timeout

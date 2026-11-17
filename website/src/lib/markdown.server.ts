@@ -2,6 +2,9 @@
 // heading anchors that match GitHub's, links rewritten for the site, and code
 // highlighted by Shiki for both color schemes.
 
+import fs from "node:fs"
+import path from "node:path"
+
 import GithubSlugger from "github-slugger"
 import type { Element, ElementContent, Root, RootContent } from "hast"
 import { toString } from "hast-util-to-string"
@@ -9,7 +12,7 @@ import rehypeStringify from "rehype-stringify"
 import remarkGfm from "remark-gfm"
 import remarkParse from "remark-parse"
 import remarkRehype from "remark-rehype"
-import { createHighlighter, type Highlighter } from "shiki"
+import { createHighlighter, type Highlighter, type LanguageRegistration } from "shiki"
 import { unified } from "unified"
 import { visit } from "unist-util-visit"
 
@@ -41,11 +44,19 @@ export interface RenderedMarkdown {
 // The site is dark only: one theme, its colors as --shiki-dark.
 const themes = { dark: "github-dark-default" } as const
 
+// Asuka's grammar is the editors': the VS Code extension's TextMate grammar
+// (editors/vscode), so the site highlights the language as an editor does.
+function asukaGrammar(): LanguageRegistration {
+  const file = path.resolve(process.cwd(), "../editors/vscode/syntaxes/asuka.tmLanguage.json")
+  const grammar = JSON.parse(fs.readFileSync(file, "utf8")) as LanguageRegistration
+  return { ...grammar, name: "asuka", aliases: ["ak"] }
+}
+
 let highlighter: Promise<Highlighter> | undefined
-function getHighlighter() {
+export function getHighlighter() {
   highlighter ??= createHighlighter({
     themes: Object.values(themes),
-    langs: ["go", "ts", "tsx", "js", "json", "sh", "css", "html", "xml", "yaml", "swift", "kotlin"],
+    langs: [asukaGrammar(), "c", "go", "ts", "tsx", "js", "json", "toml", "sh", "css", "html", "xml", "yaml", "swift", "kotlin"],
   })
   return highlighter
 }
@@ -172,7 +183,7 @@ function codeBlock(pre: Element, shiki: Highlighter, labels: PageLabels): Elemen
 
 /** A code block's language, as its header names it. */
 function langName(lang: string) {
-  const names: Record<string, string> = { sh: "Shell", bash: "Shell", text: "Text", ts: "TypeScript", tsx: "TSX", js: "JavaScript", kotlin: "Kotlin", swift: "Swift", go: "Go", json: "JSON", yaml: "YAML", xml: "XML", html: "HTML", css: "CSS" }
+  const names: Record<string, string> = { sh: "Shell", bash: "Shell", text: "Text", ts: "TypeScript", tsx: "TSX", js: "JavaScript", kotlin: "Kotlin", swift: "Swift", go: "Go", json: "JSON", toml: "TOML", yaml: "YAML", xml: "XML", html: "HTML", css: "CSS" }
   return names[lang] ?? lang
 }
 

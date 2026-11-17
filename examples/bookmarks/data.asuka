@@ -1,0 +1,135 @@
+// The bookmarks are in SQLite, in the app's data directory
+// (fs.appDir()), which the share sheet's process shares: what it saves,
+// the app lists.
+
+import std/fs
+import std/html
+import std/http
+import std/regex
+import std/sqlite
+import std/time
+import std/url
+
+struct Bookmark {
+  id: int
+  url: string
+  title: string
+  description: string
+  note: string
+  cover: string // an image's URL, or a file of the app's
+  collection: int // 0: Unsorted
+  tags: string // comma-separated
+  created: int
+}
+
+struct Collection {
+  id: int
+  name: string
+}
+
+fn openDB() throws -> sqlite.DB {
+  let db = try sqlite.open("bookmarks.db")
+  try db.migrate([
+    "create table collections (id integer primary key, name text not null unique)",
+    "insert into collections (name) values ('Reading'), ('Design'), ('Development')",
+    """
+      create table bookmarks (
+        id integer primary key,
+        url text not null default '',
+        title text not null default '',
+        description text not null default '',
+        note text not null default '',
+        cover text not null default '',
+        collection integer not null default 0,
+        tags text not null default '',
+        created integer not null
+      )
+      """,
+  ])
+  return db
+}
+
+let db = (try? openDB())!
+
+/// Runs a statement off the main thread; a failure shows.
+async fn write<A>(query: string, args: A) {
+  do {
+    try await db.exec(query, args)
+  } catch e {
+    alert("Couldn't save", message: e.message)
+  }
+}
+
+fn splitTags(s: string) -> [string] {
+  var out: [string] = []
+  for t in s.split(",") {
+    let tag = t.trim()
+    if !tag.isEmpty() && !out.contains(tag) { out.push(tag) }
+  }
+  return out
+}
+
+/// A link's site, without "www.".
+fn host(raw: string) -> string {
+  if let u = url.parse(raw) {
+    if !u.host.isEmpty() { return u.host.trimPrefix("www.") }
+  }
+  return raw
+}
+
+let linkRE = regex.must(r"https?://\S+")
+
+/// Copies a shared file (the sheet's to read only while it's open) to the
+/// app's data directory, returning the copy's path. It blocks: call it in
+/// a spawn.
+fn keepFile(path: string) throws -> string {
+  let dir = fs.join([fs.appDir(), "covers"])
+  try fs.mkdirAll(dir)
+  let dst = fs.join([dir, "{time.now().format("yyyyMMdd-HHmmss.SSS")}{fs.ext(path)}"])
+  try fs.copy(path, dst)
+  return dst
+}
+
+/// What a web page says of itself: its title, description and image
+/// (Open Graph's, else its <title>).
+struct Page {
+  title: string = ""
+  description: string = ""
+  image: string = ""
+}
+
+let metaRE = regex.must(r"(?is)<meta\s[^>]*>")
+let attrRE = regex.must(r"""(?is)(property|name|content)\s*=\s*("([^"]*)"|'([^']*)')""")
+let titleRE = regex.must(r"(?is)<title[^>]*>(.*?)</title>")
+
+/// Reads the head of the page at link.
+async fn fetchPage(link: string) throws -> Page {
+  let res = try await http.request("GET", link, headers: [
+    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+  ], timeout: 8s)
+  let doc = res.text().slice(0, 512 * 1024)
+  var p = Page()
+  for m in metaRE.findAll(doc) {
+    var key = ""
+    var content = ""
+    for a in attrRE.findAllSubmatches(m) {
+      let v = a[3] + a[4]
+      if a[1].lower() == "content" { content = v } else { key = v.lower() }
+    }
+    content = html.unescape(content).trim()
+    match key {
+      "og:title" | "twitter:title" => if p.title.isEmpty() { p.title = content }
+      "og:description" | "twitter:description" | "description" => if p.description.isEmpty() { p.description = content }
+      "og:image" | "twitter:image" => if p.image.isEmpty() { p.image = content }
+      _ => {}
+    }
+  }
+  if p.title.isEmpty() {
+    if let m = titleRE.findSubmatch(doc) { p.title = html.unescape(m[1]).trim() }
+  }
+  // An image's link relative to the page: from the page's.
+  if !p.image.isEmpty() {
+    if let base = url.parse(res.url) { p.image = base.resolve(p.image) }
+  }
+  return p
+}

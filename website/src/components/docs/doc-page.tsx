@@ -1,16 +1,18 @@
 import { useMatch } from "@tanstack/react-router"
-import { ArrowLeftIcon, ArrowRightIcon, ChevronRightIcon, MenuIcon } from "lucide-react"
+import { ArrowLeftIcon, ArrowRightIcon, BookOpenIcon, CheckIcon, ChevronRightIcon, CopyIcon, MenuIcon } from "lucide-react"
 import * as React from "react"
 
 import { DocContent } from "@/components/docs/doc-content"
 import { DocLink } from "@/components/docs/doc-link"
+import { sidebarOf } from "@/components/docs/docs-layout"
 import { DocsNav } from "@/components/docs/docs-nav"
 import { NotFound } from "@/components/not-found"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { getDoc, type Doc, type Navs } from "@/lib/docs"
 import { episodeKanji, episodeNumber } from "@/lib/episode"
-import { alternates, localized, messages, useMessages, type Locale } from "@/lib/i18n"
+import { alternates, localized, messages, useLocale, useMessages, type Locale } from "@/lib/i18n"
 
 /**
  * The loader of a page: null, before anything is fetched, for a slug without
@@ -55,8 +57,9 @@ function useNav(): Navs {
 }
 
 export function DocPage({ doc }: { doc: Doc }) {
-  const nav = useNav()
-  const t = useMessages().docs
+  const nav = sidebarOf(useNav(), doc)
+  const words = useMessages()
+  const t = words.docs
   const [menuOpen, setMenuOpen] = React.useState(false)
   const article = React.useRef<HTMLElement>(null)
   const bar = React.useRef<HTMLDivElement>(null)
@@ -71,7 +74,7 @@ export function DocPage({ doc }: { doc: Doc }) {
           </SheetTrigger>
           <SheetContent side="left" className="w-72 overflow-y-auto">
             <SheetHeader>
-              <SheetTitle>{t.documentation}</SheetTitle>
+              <SheetTitle>{doc.reference ? words.nav.references : t.documentation}</SheetTitle>
             </SheetHeader>
             <div className="px-2 pb-8">
               <DocsNav sections={nav} page={doc} onNavigate={() => setMenuOpen(false)} />
@@ -105,7 +108,23 @@ export function DocPage({ doc }: { doc: Doc }) {
             <span className="block origin-bottom-left scale-y-[1.12]">{doc.title}</span>
           </h1>
           {doc.summary && <p className="mt-5 max-w-2xl text-lg leading-8 text-foreground/70">{doc.summary}</p>}
-          <div className="hazard mt-8 h-2" />
+          <div className="mt-6 flex flex-wrap items-center gap-2">
+            {doc.references?.length ? (
+              <>
+                <span className="label mr-1 flex items-center gap-1.5">
+                  <BookOpenIcon className="size-3.5" /> {t.apiReference}
+                </span>
+                {doc.references.map((p) => (
+                  <DocLink key={p} slug={p} className="inline-flex h-7 items-center rounded-[min(var(--radius-md),12px)] border px-2.5 font-mono text-[0.8rem] text-signal-ink transition-colors hover:border-foreground/30 hover:bg-code">
+                    {p}
+                  </DocLink>
+                ))}
+              </>
+            ) : null}
+            {/* After the links, at the row's end; alone, where the row starts. */}
+            <CopyMarkdown slug={doc.slug} className={doc.references?.length ? "ml-auto" : undefined} />
+          </div>
+          <div className="hazard mt-6 h-2" />
         </header>
 
         <div className="mt-10">
@@ -119,9 +138,11 @@ export function DocPage({ doc }: { doc: Doc }) {
                 <span className="label flex items-center gap-1.5">
                   <ArrowLeftIcon className="size-3" /> {t.previous}
                 </span>
-                <span lang="ja" className="display text-sm text-unit-ink">
-                  {episodeKanji(doc.prev.episode)}
-                </span>
+                {!doc.reference && (
+                  <span lang="ja" className="display text-sm text-unit-ink">
+                    {episodeKanji(doc.prev.episode)}
+                  </span>
+                )}
                 <span className="display text-xl leading-tight transition-colors group-hover:text-unit-ink">{doc.prev.title}</span>
               </DocLink>
             ) : (
@@ -132,19 +153,57 @@ export function DocPage({ doc }: { doc: Doc }) {
                 <span className="label flex items-center gap-1.5 text-signal-ink">
                   {t.next} <ArrowRightIcon className="size-3" />
                 </span>
-                <span lang="ja" className="display text-sm text-unit-ink">
-                  {episodeKanji(doc.next.episode)}
-                </span>
+                {!doc.reference && (
+                  <span lang="ja" className="display text-sm text-unit-ink">
+                    {episodeKanji(doc.next.episode)}
+                  </span>
+                )}
                 <span className="display text-xl leading-tight transition-colors group-hover:text-unit-ink">{doc.next.title}</span>
               </DocLink>
             )}
           </nav>
           <a href={doc.editUrl} className="mt-6 inline-block text-sm text-muted-foreground hover:text-foreground">
-            {t.edit}
+            {doc.reference ? words.reference.source : t.edit}
           </a>
         </footer>
       </article>
     </div>
+  )
+}
+
+/**
+ * Copies the page as Markdown (its download, /docs/<slug>.md: the source,
+ * links made absolute), for pasting into a chat with a model or a note.
+ */
+function CopyMarkdown({ slug, className }: { slug: string; className?: string }) {
+  const locale = useLocale()
+  const t = useMessages().docs
+  const [copied, setCopied] = React.useState(false)
+  React.useEffect(() => {
+    if (!copied) return
+    const timer = setTimeout(() => setCopied(false), 2000)
+    return () => clearTimeout(timer)
+  }, [copied])
+  async function copy() {
+    const href = localized(locale, slug ? `/docs/${slug}` : "/docs") + ".md"
+    // The text is fetched as the clipboard is written: Safari wants the
+    // write to start in the click, so it's given a promise of it.
+    const text = fetch(href).then((r) => {
+      if (!r.ok) throw new Error(`${href}: ${r.status}`)
+      return r.text()
+    })
+    if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+      await navigator.clipboard.write([new ClipboardItem({ "text/plain": text.then((s) => new Blob([s], { type: "text/plain" })) })])
+    } else {
+      await navigator.clipboard.writeText(await text)
+    }
+    setCopied(true)
+  }
+  return (
+    <Button variant="outline" size="sm" className={cn("gap-1.5", className)} onClick={() => void copy().catch(() => setCopied(false))}>
+      {copied ? <CheckIcon /> : <CopyIcon />}
+      {copied ? t.copied : t.copyMarkdown}
+    </Button>
   )
 }
 

@@ -1,0 +1,57 @@
+// Generics calling generics, recursion, and closures two levels deep.
+
+fn wrap<T>(x: T) -> [T] = [x]
+fn twice<T>(x: T) -> [T] = wrap(x) + wrap(x)
+fn size<T>(xs: [T]) -> int = if xs.isEmpty() { 0 } else { 1 + size(xs.slice(1, xs.count())) }
+
+struct Stack<T> {
+  items: [T] = []
+
+  fn pushed(x: T) -> Stack<T> = Stack(items: items + wrap(x))
+  fn top() -> T? = items.last()
+  fn depth() -> int = size(items)
+}
+
+fn makeCounter() -> fn() -> fn() -> int {
+  var total = 0
+  return () => {
+    var local = 0
+    return () => {
+      total += 1
+      local += 10
+      return total + local
+    }
+  }
+}
+
+test "generic chains" {
+  print(twice(3))
+  print(twice("a"))
+  print(size([1, 2, 3, 4]))
+  let empty: Stack<string> = Stack()
+  let s = empty.pushed("x").pushed("y")
+  print("{s.top()!} {s.depth()}")
+  let n = Stack(items: [1]).pushed(2)
+  print(n.items)
+}
+
+test "closures two deep" {
+  let outer = makeCounter()
+  let a = outer()
+  let b = outer()
+  print(a())
+  print(a())
+  print(b())
+}
+
+// Output:
+// [3,3]
+// ["a","a"]
+// 4
+// y 2
+// [1,2]
+// ok generic chains
+// 11
+// 22
+// 13
+// ok closures two deep

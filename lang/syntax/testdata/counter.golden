@@ -1,0 +1,78 @@
+SourceFile 1:1-21:3
+  Decls: [2]
+    ComponentDecl 2:1-17:2 comments="/// A button that counts its taps."
+      Name: Ident "Counter" 2:11-2:18
+      Body: Block 2:19-17:2
+        Items: [2]
+          StateDecl 3:3-3:18
+            Name: Ident "count" 3:9-3:14
+            Value: BasicLit 3:17-3:18 Kind=integer Value="0"
+          ExprStmt 5:3-16:4 blank
+            X: CallExpr 5:3-16:4
+              Fun: Ident "Column" 5:3-5:9
+              Block: Block 5:10-16:4
+                Items: [5]
+                  PropSet 6:5-6:12
+                    Name: Ident "gap" 6:5-6:8
+                    Value: BasicLit 6:10-6:12 Kind=integer Value="12"
+                  PropSet 7:5-7:16
+                    Name: Ident "padding" 7:5-7:12
+                    Value: BasicLit 7:14-7:16 Kind=integer Value="16"
+                  ExprStmt 8:5-8:44
+                    X: CallExpr 8:5-8:44
+                      Fun: Ident "Text" 8:5-8:9
+                      Args: ArgList 8:9-8:27
+                        List: [1]
+                          Arg 8:10-8:26
+                            Value: StringLit 8:10-8:26 Segments=["Count: " ""]
+                              Interps: [1]
+                                Ident "count" 8:19-8:24
+                      Block: Block 8:28-8:44
+                        Items: [1]
+                          PropSet 8:30-8:42
+                            Name: Ident "fontSize" 8:30-8:38
+                            Value: BasicLit 8:40-8:42 Kind=integer Value="24"
+                  ExprStmt 9:5-11:6
+                    X: CallExpr 9:5-11:6
+                      Fun: Ident "Button" 9:5-9:11
+                      Args: ArgList 9:11-9:18
+                        List: [1]
+                          Arg 9:12-9:17
+                            Value: StringLit 9:12-9:17 Segments=["Add"]
+                      Block: Block 9:19-11:6
+                        Items: [1]
+                          OnHandler 10:7-10:28
+                            Name: Ident "tap" 10:10-10:13
+                            Body: Block 10:14-10:28
+                              Items: [1]
+                                AssignStmt 10:16-10:26 Op=+=
+                                  Target: Ident "count" 10:16-10:21
+                                  Value: BasicLit 10:25-10:26 Kind=integer Value="1"
+                  ExprStmt 12:5-15:6
+                    X: CallExpr 12:5-15:6
+                      Fun: Ident "Button" 12:5-12:11
+                      Args: ArgList 12:11-12:20
+                        List: [1]
+                          Arg 12:12-12:19
+                            Value: StringLit 12:12-12:19 Segments=["Reset"]
+                      Block: Block 12:21-15:6
+                        Items: [2]
+                          PropSet 13:7-13:27
+                            Name: Ident "disabled" 13:7-13:15
+                            Value: BinaryExpr 13:17-13:27 Op===
+                              X: Ident "count" 13:17-13:22
+                              Y: BasicLit 13:26-13:27 Kind=integer Value="0"
+                          OnHandler 14:7-14:27
+                            Name: Ident "tap" 14:10-14:13
+                            Body: Block 14:14-14:27
+                              Items: [1]
+                                AssignStmt 14:16-14:25 Op==
+                                  Target: Ident "count" 14:16-14:21
+                                  Value: BasicLit 14:24-14:25 Kind=integer Value="0"
+    AppDecl 19:1-21:2 blank
+      Body: Block 19:5-21:2
+        Items: [1]
+          ExprStmt 20:3-20:12
+            X: CallExpr 20:3-20:12
+              Fun: Ident "Counter" 20:3-20:10
+              Args: ArgList 20:10-20:12

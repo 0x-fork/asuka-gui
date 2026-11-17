@@ -9,72 +9,107 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/egoist/asuka/sdk/watch"
+	"github.com/egoist/asuka/internal/appbuild"
+	"github.com/egoist/asuka/internal/fswatch"
 )
 
-// watcher notices changes to Go sources, native code, catalogs and
-// assets. The system tells it when something changed under its roots
-// (asuka/sdk/watch: FSEvents, inotify, ReadDirectoryChangesW), and wake
-// receives; changed then compares the files' modification times with
-// what it saw last, which decides.
+// watcher notices changes to an app: its sources (.asuka), which asuka
+// dev compiles and sends to the players, and the rest of it (asuka.toml,
+// its assets, its native packages' code and projects, its catalogs),
+// which a player is built and launched again for. The system tells it
+// when something changed under its roots (internal/fswatch: FSEvents,
+// inotify, ReadDirectoryChangesW), and wake receives; changed then
+// compares the files' modification times with what it saw last, which
+// decides.
 type watcher struct {
-	roots []string
-	last  string
+	roots          []string
+	lastSrc, lastP string
 	// wake receives when something under the roots may have changed: a
 	// value may stand for many changes.
 	wake <-chan struct{}
+	// embedded reports whether the program embeds a file (std/embed's,
+	// by its absolute path): a change to it is a change to the sources,
+	// whatever its name. embedKey says which set it is.
+	embedded atomic.Pointer[func(string) bool]
+	embedKey string
 }
 
-// beforeRebuild runs when something changed, before the rebuild: it writes
-// what's generated from what changed (the catalogs' functions), which the
-// same change shouldn't then notice.
-var beforeRebuild func()
+// watchEmbeds tells w what the program embeds, as u (its last compile's)
+// says.
+func watchEmbeds(w *watcher, u *appbuild.Uses) {
+	if u == nil {
+		return
+	}
+	var key strings.Builder
+	for _, p := range u.Embeds {
+		key.WriteString(p.Dir + "\x00" + p.Pattern + "\n")
+	}
+	w.setEmbedded(key.String(), u.Embedded)
+}
+
+// isEmbedded reports whether the program embeds the file at path.
+func (w *watcher) isEmbedded(path string) bool {
+	f := w.embedded.Load()
+	return f != nil && (*f)(path)
+}
+
+// setEmbedded says what the program embeds, as its last compile found:
+// key names the set (when it's the same, nothing changes), embedded
+// matches a file's path. The files it names count as sources from now
+// on: what they are now is the starting point.
+func (w *watcher) setEmbedded(key string, embedded func(string) bool) {
+	if key == w.embedKey {
+		return
+	}
+	w.embedKey = key
+	w.embedded.Store(&embedded)
+	w.lastSrc, w.lastP = w.scan()
+}
 
 // newWatcher watches roots (and what's in them). Its loop waits on wake
 // and asks changed.
 func newWatcher(roots ...string) *watcher {
 	roots = slices.DeleteFunc(slices.Clone(roots), func(r string) bool { return r == "" })
 	w := &watcher{roots: roots}
-	w.wake = newWakeup(roots).c // before the first scan, so that no change falls between
-	w.last = w.scan()
+	w.wake = newWakeup(roots, w.isEmbedded).c // before the first scan, so that no change falls between
+	w.lastSrc, w.lastP = w.scan()
 	return w
 }
 
 // skipDir reports whether a directory named name, under a root, is left
 // out: hidden ones, testdata, build outputs and node_modules.
 func skipDir(name string) bool {
-	return strings.HasPrefix(name, ".") || name == "testdata" || name == "build" || name == "node_modules"
+	return strings.HasPrefix(name, ".") || name == "testdata" || name == "build" || name == "dist" || name == "node_modules"
 }
 
-// rebuildFile reports whether a change to the file at path named name
-// needs a rebuild: Go, native packages' code and projects (Swift, Kotlin,
-// their Gradle files, manifests, Info.plist and entitlements), the app's
-// assets, asuka.json and the language catalogs.
-func rebuildFile(path, name string) bool {
-	if strings.HasSuffix(name, "_test.go") {
-		return false
-	}
-	code := strings.HasSuffix(name, ".go") || name == "go.mod" || strings.HasSuffix(name, ".swift") || strings.HasSuffix(name, ".kt") ||
-		strings.HasSuffix(name, ".kts") || name == "AndroidManifest.xml" || name == "Info.plist" || strings.HasSuffix(name, ".entitlements")
+// sourceFile reports whether the file named name is Asuka source.
+func sourceFile(name string) bool { return strings.HasSuffix(name, ".asuka") }
+
+// projectFile reports whether a change to the file at path named name
+// needs the player built again: native packages' code and projects
+// (Swift, Kotlin, their Gradle files, manifests, Info.plist and
+// entitlements, JavaScript), C ([c]'s sources and headers), the app's
+// assets, its asuka.toml and asuka.lock, and the language catalogs.
+func projectFile(path, name string) bool {
+	code := strings.HasSuffix(name, ".swift") || strings.HasSuffix(name, ".kt") || strings.HasSuffix(name, ".kts") ||
+		strings.HasSuffix(name, ".c") || strings.HasSuffix(name, ".h") || strings.HasSuffix(name, ".inc") ||
+		name == "AndroidManifest.xml" || name == "Info.plist" || strings.HasSuffix(name, ".entitlements") || strings.HasSuffix(name, ".js")
 	asset := strings.Contains(filepath.ToSlash(path), "/assets/")
-	catalog := strings.HasSuffix(name, ".json") && (name == "asuka.json" || isCatalogDir(filepath.Dir(path)))
-	return code || asset || catalog
+	return code || asset || name == configFile || name == "asuka.lock" || strings.HasSuffix(name, ".json")
 }
 
 // watchedFile reports, quickly, whether the system should say when the
-// file at path (slashes) named name changes: what rebuildFile may take,
-// and the web's scripts (webWatcher's).
+// file at path (slashes) named name changes.
 func watchedFile(path, name string) bool {
-	return !strings.HasSuffix(name, "_test.go") && (strings.HasSuffix(name, ".go") || name == "go.mod" ||
-		strings.HasSuffix(name, ".swift") || strings.HasSuffix(name, ".kt") || strings.HasSuffix(name, ".kts") ||
-		name == "AndroidManifest.xml" || name == "Info.plist" || strings.HasSuffix(name, ".entitlements") ||
-		strings.HasSuffix(name, ".js") || strings.HasSuffix(name, ".json") || strings.Contains(path, "/assets/"))
+	return sourceFile(name) || projectFile(path, name)
 }
 
-func (w *watcher) scan() string {
-	var b strings.Builder
+// scan is the modification times of the sources, and of the rest.
+func (w *watcher) scan() (src, proj string) {
+	var bs, bp strings.Builder
 	for _, root := range w.roots {
 		filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
@@ -87,38 +122,41 @@ func (w *watcher) scan() string {
 				}
 				return nil
 			}
-			if !rebuildFile(path, name) {
+			// An embedded file is a source, whatever its name; one under
+			// assets/ is the platform's too, which a player is given again.
+			embedded := w.isEmbedded(path)
+			asset := embedded && strings.Contains(filepath.ToSlash(path), "/assets/")
+			var bufs []*strings.Builder
+			switch {
+			case sourceFile(name) || embedded:
+				bufs = append(bufs, &bs)
+				if asset {
+					bufs = append(bufs, &bp)
+				}
+			case projectFile(path, name):
+				bufs = append(bufs, &bp)
+			default:
 				return nil
 			}
 			if info, err := d.Info(); err == nil {
-				b.WriteString(path)
-				b.WriteString(info.ModTime().Format(time.RFC3339Nano))
+				for _, b := range bufs {
+					b.WriteString(path)
+					b.WriteString(info.ModTime().Format(time.RFC3339Nano))
+				}
 			}
 			return nil
 		})
 	}
-	return b.String()
+	return bs.String(), bp.String()
 }
 
-func (w *watcher) changed() bool {
-	s := w.scan()
-	if s == w.last {
-		return false
-	}
-	if beforeRebuild != nil {
-		beforeRebuild()
-		s = w.scan()
-	}
-	w.last = s
-	vetAgain()
-	return true
-}
-
-// isCatalogDir reports whether dir holds catalogs: it has a catalog_gen.go
-// beside them.
-func isCatalogDir(dir string) bool {
-	_, err := os.Stat(filepath.Join(dir, "catalog_gen.go"))
-	return err == nil
+// changed reports what changed since it last looked: the sources, the
+// rest.
+func (w *watcher) changed() (src, proj bool) {
+	s, p := w.scan()
+	src, proj = s != w.lastSrc, p != w.lastP
+	w.lastSrc, w.lastP = s, p
+	return src, proj
 }
 
 // wakeup turns the system's reports of changes under its roots into
@@ -139,21 +177,21 @@ const (
 	pollEvery = 300 * time.Millisecond
 )
 
-func newWakeup(roots []string) *wakeup {
+func newWakeup(roots []string, embedded func(string) bool) *wakeup {
 	u := &wakeup{c: make(chan struct{}, 1)}
-	var ws []*watch.Watcher
+	var ws []*fswatch.Watcher
 	for _, root := range outermost(roots) {
 		if _, err := os.Stat(root); err != nil {
 			continue // a native package's directory that isn't there
 		}
-		w, err := watch.New(context.Background(), root, watch.Options{
+		w, err := fswatch.New(context.Background(), root, fswatch.Options{
 			Recursive: true,
 			Ignore: func(path string, isDir bool) bool {
 				name := path[strings.LastIndexByte(path, '/')+1:]
 				if isDir {
 					return skipDir(name)
 				}
-				return !watchedFile("/"+path, name)
+				return !watchedFile("/"+path, name) && !embedded(filepath.Join(root, filepath.FromSlash(path)))
 			},
 			Debounce:   wakeDebounce,
 			MaxEntries: 1 << 18,
@@ -173,7 +211,7 @@ func newWakeup(roots []string) *wakeup {
 	return u
 }
 
-func (u *wakeup) follow(w *watch.Watcher) {
+func (u *wakeup) follow(w *fswatch.Watcher) {
 	for {
 		if _, err := w.Next(context.Background()); err != nil {
 			u.poll(w.Root(), err)

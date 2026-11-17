@@ -1,0 +1,6 @@
+name = "platform/device"
+version = "0.1.0"
+description = "The device and the app, the in-app browser, the photo and file pickers, the clipboard beyond text"
+
+[windows]
+libraries = ["comdlg32"]

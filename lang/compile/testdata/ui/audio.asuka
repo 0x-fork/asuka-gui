@@ -1,0 +1,37 @@
+import platform/audio
+
+component Music {
+  state music: audio.Player? = none
+  state status = audio.Status()
+
+  task {
+    let m = audio.Player("music/afternoon.mp3")
+    music = m
+    defer {
+      m.release()
+      music = none
+    }
+    m.setVolume(0.5)
+    m.setLoop(true)
+    m.play()
+    status = await m.status()
+  }
+
+  Column {
+    Text(if status.playing { "playing" } else { "silent at {status.position}" })
+    Button("Chime") { on press { audio.play("sounds/chime.wav") } }
+    Button("Pause") { on press { music?.pause() } }
+  }
+}
+
+app { Music() }
+
+test "with no platform code, a player plays nothing and says so" {
+  let app = mount(Music())
+  await app.idle()
+  app.expect("silent at 0")
+  app.tap("Chime")
+  app.tap("Pause")
+  await app.idle()
+  app.expect("silent at 0")
+}

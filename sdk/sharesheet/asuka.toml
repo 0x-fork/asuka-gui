@@ -1,0 +1,12 @@
+name = "platform/sharesheet"
+version = "0.1.0"
+description = "The app's own share sheet: a screen over the app that shares, instead of opening the app"
+
+# The sheet's root (active): asuka.toml's shareTarget then shows it rather
+# than opening the app. On iOS the share extension runs the app (its
+# AsukaShareSheetController, linking the app's framework, with the App
+# Group and keychain group the two share); on Android the share intents
+# go to AsukaShareActivity, in a :share process. Both are the CLI's to
+# make, from the app's shareTarget: a derived need.
+[uses.active.ios]
+derived = ["shareSheet"]

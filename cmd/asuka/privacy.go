@@ -59,23 +59,6 @@ func privacyManifest(appDir, bin string, collected ...collectedData) ([]byte, er
 	})), nil
 }
 
-// libraryPrivacy is the PrivacyInfo.xcprivacy of a framework whose
-// binary is bin (SQLite's): the reasons for the APIs it uses, nothing
-// tracked or collected. App Store Connect checks each binary in the app
-// against the manifests, the app's or the framework's own.
-func libraryPrivacy(bin string) ([]byte, error) {
-	accessed, err := binaryAccessed(bin)
-	if err != nil {
-		return nil, err
-	}
-	return []byte(plist(map[string]any{
-		"NSPrivacyTracking":           false,
-		"NSPrivacyTrackingDomains":    []string{},
-		"NSPrivacyCollectedDataTypes": []any{},
-		"NSPrivacyAccessedAPITypes":   accessed,
-	})), nil
-}
-
 // binaryAccessed is privacyAccessed for the binary bin: the C functions
 // and classes it imports (every architecture's), and its bytes.
 func binaryAccessed(bin string) ([]any, error) {

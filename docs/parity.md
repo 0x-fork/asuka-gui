@@ -4,9 +4,18 @@ Each row is something apps often need: how SwiftUI and Expo do it, and
 what Asuka has for it. A ✓ is on every platform Asuka runs on (iOS,
 Android, the Mac, Windows, Linux and the web) unless the row says
 otherwise; where a platform hasn't something (a Mac has no sensors, a
-browser no home screen widgets), its package answers that it hasn't.
-In a browser, what each package does instead where a browser can't do
+browser no home screen widgets), its package answers that it hasn't
+(an `unsupported` or `notAvailable` error, or `available()` false). In
+a browser, what each package does instead where a browser can't do
 what a phone does is in [The web](web.md#native-modules).
+
+The Asuka column names the element, the prop or the package
+(`std/...` or `platform/...`, [The standard library and the platform
+SDK](stdlib.md)) that does it,
+and what it is on each platform: Asuka shows each platform's own
+widgets and calls each platform's own APIs, from Swift on iOS and the
+Mac, Kotlin on Android, JavaScript on the web and C on Windows and
+Linux.
 
 SwiftUI also runs on the Mac. Expo runs on iOS, Android and the web;
 React Native reaches Windows and the Mac through Microsoft's React
@@ -22,175 +31,179 @@ draws its own UI, see [Asuka and MyGo](mygo.md).
 
 | | SwiftUI | Expo (React Native) | Asuka |
 |---|---|---|---|
-| Stacks, spacing, padding, alignment | `HStack`, `VStack`, `Spacer` | flexbox | ✓ `Row`, `Column`, `Style` (flexbox: `Grow`, `Gap`, `Align`, `Justify`, `Wrap`) |
-| Overlays, absolute placement | `ZStack`, `.overlay` | `position: absolute` | ✓ `Style.Absolute`, `Top`/`Left`/... |
-| Scrolling | `ScrollView` | `ScrollView` | ✓ `Scroll` (vertical, horizontal; out-of-sight rows leave the tree) |
-| Lazy lists, cell recycling | `List`, `LazyVStack` | `FlatList` | ✓ `List` (the platform's: UICollectionView, RecyclerView; on the Mac, Windows, Linux and the web, the host binds and recycles the rows in view) |
-| Grids | `LazyVGrid` | `FlatList numColumns` | ✓ `ListProps.Columns`, `Gap` |
-| Chat lists: start at the end, load older above | `defaultScrollAnchor(.bottom)`, `scrollPosition` | `FlatList inverted`, `maintainVisibleContentPosition` | ✓ `ListProps.Anchor`, `OnStartReached`; rows added above what shows leave it in place, in every list |
-| Sections, sticky headers | `Section` in a `List` | `SectionList`, `stickySectionHeadersEnabled` | ✓ `ListProps.Section`, `Header` (sticky in plain and bare lists) |
-| Selecting rows | `List(selection:)`, `EditButton` | community | ✓ `ListProps.Selecting`, `Selected`, `OnSelect`, `OnSelectBegin` (iOS's edit mode and two-finger pan; Android's checkboxes and long press) |
-| Safe area, keyboard | automatic | `SafeAreaView`, `KeyboardAvoidingView` | ✓ `SafeArea`, `UseEnvironment().Keyboard` |
-| Reading a view's size | `GeometryReader` | `onLayout` | ✓ `ViewProps.OnLayout` |
-| Aspect ratio, min/max sizes | `.aspectRatio`, `.frame(min:max:)` | style | ✓ `Style` |
+| Stacks, spacing, padding, alignment | `HStack`, `VStack`, `Spacer` | flexbox | ✓ `Row`, `Column`, `View` and flexbox's props: `grow`, `shrink`, `gap`, `align`, `justify`, `wrap`, `padding`, `margin` ([Layout](layout.md)) |
+| Overlays, absolute placement | `ZStack`, `.overlay` | `position: absolute` | ✓ `absolute` with `top`, `left`, `start`, `end`... |
+| Grids of views | `Grid`, `LazyVGrid` | community | ✓ `grid` (CSS grid: `Grid(columns:)`, `.fr`, `.repeat`, `.autoFill`; `gridColumn`, `gridRow`) |
+| Scrolling | `ScrollView` | `ScrollView` | ✓ `Scroll` (vertical, `horizontal`) |
+| Lazy lists, cell recycling | `List`, `LazyVStack` | `FlatList` | ✓ `List` (the platform's: `UICollectionView`, `RecyclerView`; on the Mac, Windows, Linux and the web Asuka recycles the rows in view, in the platform's scroll view) |
+| Lazy grids | `LazyVGrid` | `FlatList numColumns` | ✓ a `List`'s `columns`, `gap` |
+| Chat lists: start at the end, load older above | `defaultScrollAnchor(.bottom)`, `scrollPosition` | `FlatList inverted`, `maintainVisibleContentPosition` | ✓ a `List`'s `anchor: .bottom`, `on startReached`; rows added above what shows leave it in place, in every list |
+| Sections, sticky headers | `Section` in a `List` | `SectionList`, `stickySectionHeadersEnabled` | ✓ a `List`'s `section` and `header` (sticky in plain and bare lists) |
+| Selecting rows | `List(selection:)`, `EditButton` | community | ✓ a `List`'s `selecting`, a row's `selected`, `on select`, `on selectBegin` (iOS's edit mode and two-finger pan; Android's checkboxes and long press; a highlighted row on the desktops, a checkmark in a browser) |
+| Safe area, keyboard | automatic | `SafeAreaView`, `KeyboardAvoidingView` | ✓ `SafeArea` (padded by the keyboard too), `environment()`'s `safeTop`... and `keyboard` |
+| Reading a view's size, the window's | `GeometryReader`, size classes | `onLayout`, `useWindowDimensions` | ✓ `on layout(frame)`; `environment()`'s `width`, `height`, `widthClass`, `heightClass` |
+| Aspect ratio, min and max sizes | `.aspectRatio`, `.frame(min:max:)` | style | ✓ `aspectRatio`, `minWidth`, `maxWidth`, `minHeight`, `maxHeight` |
 
 ## Controls
 
 | | SwiftUI | Expo | Asuka |
 |---|---|---|---|
-| Text, styled text, links | `Text`, `AttributedString` | `Text` | ✓ `Text`, `RichText` (spans, links, inline views, selection), `asuka/sdk/markdown` |
-| Buttons (variants, icons, menus) | `Button`, `Menu` | `Pressable` | ✓ `Button` (filled, tinted, gray, bordered; icon; menu), `Menu`, context menus; menu items disabled, checked, in submenus and titled sections (`Action.Disabled`, `Checked`, `Children`, `Inline`; `ui.Submenu`, `ui.MenuSection`), bar buttons that open menus |
-| Text fields | `TextField`, `SecureField`, `TextEditor` | `TextInput` | ✓ `TextField` (secure, keyboards, return keys, multiline) |
-| The cursor, inserting at it | `TextSelection` | `selection`, `onSelectionChange` | ✓ `TextFieldProps.Selection`, `ui.InsertText` |
-| Rich text editing (a mail's body) | `TextEditor` with `AttributedString` (iOS 26) | community (10tap, pell) | ✓ `TextFieldProps.Rich`, `ToggleFormat`, `SetLink`, `OnFormats` |
-| A bar on the keyboard | `.toolbar { ToolbarItemGroup(placement: .keyboard) }` | `InputAccessoryView` (iOS) | ✓ `TextFieldProps.Accessory` (both) |
-| Pasted images, keyboard GIFs and stickers | `onPasteCommand`, `PasteButton` | community (`onPaste`) | ✓ `TextFieldProps.PasteTypes`, `OnPaste` (Android's `commitContent` too) |
+| Text, styled text, links | `Text`, `AttributedString` | `Text` | ✓ `Text`, `RichText` (spans, links), `Selectable`; Markdown with `std/markdown` (parsed by Asuka, the same everywhere; drawn as the platform's styled text) |
+| Buttons (variants, icons, menus) | `Button`, `Menu` | `Pressable` | ✓ `Button` (`variant`: plain, filled, tinted, gray, bordered, glass, glass prominent; `icon`; `menu`), `Menu` (a tap or `longPress`: context menus); items `disabled`, `checked`, in a `.submenu` or a titled `.section`; bar buttons that open menus |
+| Text fields | `TextField`, `SecureField`, `TextEditor` | `TextInput` | ✓ `TextField` (`secure`, `keyboard`, `returnKey`, `contentType` for AutoFill, `multiline`, `plain`) |
+| The cursor, inserting at it | `TextSelection` | `selection`, `onSelectionChange` | ✓ `bind selection`; a `Ref`'s `insert(text)` |
+| Rich text editing (a mail's body) | `TextEditor` with `AttributedString` (iOS 26) | community (10tap, pell) | ✓ `bind rich`, a `Ref`'s `toggleFormat`, `format`, `setLink`, `on formats` (`UITextView`, `EditText`, `NSTextView`, a rich edit control, `GtkTextView`, `contenteditable`) |
+| A bar on the keyboard | `.toolbar { ToolbarItemGroup(placement: .keyboard) }` | `InputAccessoryView` (iOS) | ✓ a `TextField`'s `accessory { … }` (iOS's `inputAccessoryView`; on Android a bar that follows the keyboard; in a browser on a touch screen) |
+| Pasted images, keyboard GIFs and stickers | `onPasteCommand`, `PasteButton` | community (`onPaste`) | ✓ `pasteTypes`, `on paste` (what's pasted, or put in by the keyboard) |
 | Toggle, slider | `Toggle`, `Slider` | community | ✓ `Toggle`, `Slider` |
 | Segmented control | `Picker(.segmented)` | community | ✓ `Segmented` |
-| Date and time | `DatePicker` | community | ✓ `DatePicker` (date, time, both) |
-| Progress, spinner | `ProgressView` | `ActivityIndicator` | ✓ `Progress`, `ProgressRing` (circular, with a value or without), `Activity` |
-| Wheel and menu pickers, stepper | `Picker`, `Stepper` | community | ✓ `Wheel`, `Picker` (a pop-up button on iOS and the Mac, Material's exposed dropdown menu on Android), `Stepper` |
-| Color picker | `ColorPicker` | community | ✓ `ColorPicker` (iOS's system picker; on Android, which has none, a Material dialog of Google's palette, with opacity) |
-| Icons | SF Symbols | `@expo/vector-icons` | ✓ `Symbol` (SF Symbols on iOS and the Mac; for the same names, Material Symbols on Android and the web, Segoe Fluent Icons on Windows, the icon theme's or Material Symbols on Linux: a curated set) |
-| Images (remote, cached, placeholders) | `AsyncImage` | `expo-image` | ✓ `Image` (memory and disk cache, `Placeholder`, BlurHash and ThumbHash placeholders, a cross-dissolving `Transition`; WebP, HEIC and AVIF where the platform decodes them, on Windows through WIC's installed codecs; animated GIF, APNG and WebP playing on every platform, `Animated`, Reduce Motion; SVG on the Mac, Linux and the web) |
-| Lottie animations | community (lottie-ios) | `lottie-react-native` | ✓ `asuka/sdk/lottie` (lottie-ios, lottie-android, lottie-web; drawn by its own renderer on Windows and Linux: JSON and dotLottie, playing, looping, speed, `Progress` read and written, animated in `ui.Animate`, segments, markers, keypath overrides for themes and dark mode, Reduce Motion) |
-| Video | `VideoPlayer` | `expo-video` | ✓ `Video` (AVKit on iOS and the Mac, Media3 on Android, WebView2 on Windows, GStreamer on Linux, `<video>` on the web) |
-| Web content | `WKWebView` | `react-native-webview` | ✓ `WebView` (WKWebView on iOS and the Mac, Android's WebView, WebView2 on Windows, WebKitGTK on Linux; URL, HTML, messages both ways, scripts before the page's, blocked requests, its state and history, downloads, new windows, cookies, a script's value; each request on Android; on the web, all of it for the app's own site and for pages that cooperate through `postMessage`, while another site's page only loads); `asuka/sdk/js` runs JavaScript off screen |
-| Maps | `Map` | `expo-maps` | ✓ `asuka/sdk/maps` (Apple Maps; Google Maps with an API key: region, markers, the user's location, taps; libshumate's OpenStreetMap map on Linux; on Windows the host draws OpenStreetMap's tiles itself) |
-| Custom drawing | `Shape`, `Path`, `Canvas` | `react-native-svg`, Skia | ✓ `Shape` and `Path` (fill, stroke, caps, joins, dashes, an animatable trim); `Canvas` (paths, gradients, text, transforms, clips, opacity); SVG icons drawn natively (`asuka/sdk/svg`) |
-| Charts | Swift Charts | `victory-native`, community | ✓ `asuka/sdk/chart` (bars, lines, areas, points) |
-| Shaders | `.colorEffect(ShaderLibrary...)` | Skia's runtime effects | ✓ `Shader` (Kage, Go's syntax: Metal on iOS and the Mac, AGSL on Android, WebGL 2 on the web, Direct3D 11 on Windows, OpenGL on Linux) |
-| Native escape hatch | `UIViewRepresentable` | native modules | ✓ native packages: typed modules and views declared in Go, implemented in Swift on iOS and macOS, Kotlin on Android, JavaScript on the web, Go on Windows and Linux ([Native code](native.md)) |
-| Paging, page dots | `.scrollTargetBehavior(.paging)`, `TabView(.page)` | `react-native-pager-view` | ✓ `ScrollProps.Paging`, `PageControl` |
-| Checkbox | `Toggle` (`.checkbox`, macOS) | community | ✓ `ToggleProps.Checkbox` |
+| Date and time | `DatePicker` | community | ✓ `DatePicker`, `time.Picker` (`mode`: date, time, both; `inline`) |
+| Progress, spinner | `ProgressView` | `ActivityIndicator` | ✓ `Progress`, `ProgressRing` (with a value or without), `Activity` |
+| Wheel and menu pickers, stepper | `Picker`, `Stepper` | community | ✓ `Wheel` (`UIPickerView`, `NumberPicker`; a pop-up menu on the desktops and the web), `Picker` (a pop-up button on iOS and the Mac, Material's exposed dropdown menu on Android, a combo box drawn as WinUI's on Windows, `GtkDropDown`, `<select>`), `Stepper` |
+| Color picker | `ColorPicker` | community | ✓ `ColorPicker` (`UIColorWell`; on Android, which has none, a Material dialog of a palette, with opacity; `NSColorWell`, Windows' color dialog, `GtkColorDialogButton`, `<input type="color">`) |
+| Icons | SF Symbols | `@expo/vector-icons` | ✓ `Symbol` (SF Symbols on iOS and the Mac; for the same names, Material Symbols on Android and the web, Segoe Fluent Icons on Windows, the icon theme's or Material Symbols on Linux: a curated set); SVG icons drawn as vectors with `std/svg` |
+| Images (remote, cached, placeholders) | `AsyncImage` | `expo-image` | ✓ `Image` (`placeholder`, `blurHash` and `thumbHash` placeholders, a fading `transition`; cached in memory, and on disk on iOS and Android; each platform's decoders: ImageIO, `ImageDecoder`, `NSImage`, WIC, GDK's loaders, the browser's, so WebP, HEIC and AVIF where the platform reads them; animated GIF, APNG and WebP play everywhere, `animated`; SVG on the Mac, Linux and the web) |
+| Lottie animations | community (lottie-ios) | `lottie-react-native` | ◐ `std/lottie`'s `lottie.View` (lottie-ios, lottie-android, lottie-web: JSON and dotLottie, `playing`, `loop`, `speed`, `progress` read and written, `segment`, `marker`, keypath `overrides`); nothing yet on Windows and Linux, where it's an empty box |
+| Video | `VideoPlayer` | `expo-video` | ✓ `Video` (AVKit on iOS and the Mac, Media3 on Android, a `<video>` in WebView2 on Windows, `GtkVideo` (GStreamer) on Linux, `<video>` on the web) |
+| Web content | `WKWebView` | `react-native-webview` | ✓ `WebView` (`WKWebView` on iOS and the Mac, Android's `WebView`, WebView2 on Windows, WebKitGTK on Linux: a URL or HTML, messages both ways, scripts before the page's (`preload`), blocked requests, its state and history, downloads, new windows, each request, a script's value, `webCookies(url)`; on the web an `<iframe>`, all of it for the app's own site); `platform/js` runs JavaScript off screen |
+| Maps | `Map` | `expo-maps` | ✓ `platform/maps`'s `maps.View` (MapKit on iOS and the Mac, Google Maps on Android, OpenStreetMap's tiles on Windows, Linux (libshumate) and the web: a region, markers, the user's location, presses) |
+| Custom drawing | `Shape`, `Path`, `Canvas` | `react-native-svg`, Skia | ✓ `Shape` and `Path` (fill, stroke, caps, joins, dashes, an animatable trim); `Canvas` (paths, gradients, text, transforms, clips: Core Graphics, Android's `Canvas`, GDI+, GSK, a 2D `<canvas>`); `std/svg` |
+| Charts | Swift Charts | `victory-native`, community | ✓ `std/chart` (bars, lines, areas, points; drawn with `svg.Shape`, the same everywhere) |
+| Shaders | `.colorEffect(ShaderLibrary...)` | Skia's runtime effects | ✓ `shader` declarations (Asuka, compiled with the app: Metal on iOS and the Mac, AGSL on Android 13 and later, WebGL 2 on the web, Direct3D 11 on Windows, OpenGL on Linux) |
+| Native escape hatch | `UIViewRepresentable` | native modules | ✓ native packages: a `native interface` or `native component` declared in Asuka, implemented in Swift on iOS and the Mac, Kotlin on Android, JavaScript on the web, C on Windows and Linux ([Native code](native.md)); C libraries called directly with `extern` ([C from Asuka](c.md)) |
+| Paging, page dots | `.scrollTargetBehavior(.paging)`, `TabView(.page)` | `react-native-pager-view` | ✓ a `Scroll`'s `paging`, `PageControl` |
+| Checkbox | `Toggle` (`.checkbox`, macOS) | community | ✓ `Toggle { checkbox: true }` |
 
 ## Navigation and presentation
 
 | | SwiftUI | Expo (expo-router) | Asuka |
 |---|---|---|---|
-| Stacks with native push, pop, back gestures | `NavigationStack` | Stack | ✓ `Stack`, `UseNavigator` |
-| Tabs | `TabView` | Tabs | ✓ `Tabs` |
-| Sidebar, drawer | `NavigationSplitView` | Drawer | ✓ `SplitView` (a stack on iPhone, a drawer on Android; `NSSplitViewController` on the Mac, a navigation pane on Windows, libadwaita's split view on Linux) |
-| Badges on tabs and sidebar rows | `badge` | `tabBarBadge`, `drawerItem` counts | ✓ `Tab.Badge`, `Destination.Badge` (`badgeValue`, `BadgeDrawable`, a drawer counter; the label on the Mac's `NSTabView`, the source list's count; Fluent's `InfoBadge`; libadwaita's `badge-number`) |
-| Bar buttons, titles, search | `.toolbar`, `.searchable` | header options | ✓ `ScreenOptions` (`Actions`, `Search`) |
-| Bottom toolbar, primary action (FAB) | `ToolbarItem(placement: .bottomBar)` | — | ✓ `ScreenOptions` (`Toolbar`, `Primary`, `PrimaryExtended`): UIKit's toolbar with a prominent trailing item, Material's `BottomAppBar` and (extended) FAB, the window's toolbar on a Mac, a command bar on Windows, a `GtkActionBar` on Linux, a bar and a floating button on the web |
-| Sheets with detents | `.sheet`, `.presentationDetents` | modal | ✓ `Sheet` (`Detents`, `Grabber`) |
-| Full-screen modals | `.fullScreenCover` | `presentation: "fullScreenModal"` | ✓ `Sheet` with `FullScreen` (iOS's `.fullScreen`; Material's full-screen dialog, edge to edge, predictive back; a sheet or window over all of a desktop window's content; a `<dialog>` over the page) |
-| Taking back, preventing dismissal | `.navigationBarBackButtonHidden`, `.interactiveDismissDisabled` | `BackHandler`, `usePreventRemove` | ✓ `OnBack` (screens, sheets, the app) |
+| Stacks with native push, pop, back gestures | `NavigationStack` | Stack | ✓ `Stack`, `push`, `pop` |
+| Tabs | `TabView` | Tabs | ✓ `Tabs`, `Tab` |
+| Sidebar, drawer | `NavigationSplitView` | Drawer | ✓ `Split`, `Destination`, `Sidebar` (a stack on iPhone, a drawer on Android; `UISplitViewController`, `NSSplitViewController`, WinUI's `NavigationView` pane drawn on Windows, libadwaita's split view on Linux) |
+| Badges on tabs and sidebar rows | `badge` | `tabBarBadge`, `drawerItem` counts | ✓ a `Tab`'s and a `Destination`'s `badge` (`badgeValue`, `BadgeDrawable`, a drawer counter; the source list's count on the Mac; Fluent's `InfoBadge`; a count on Linux and the web) |
+| Bar buttons, titles, search | `.toolbar`, `.searchable` | header options | ✓ a screen's `title`, `largeTitle`, `toolbar { … }`, `bind search` |
+| Bottom toolbar, primary action (FAB) | `ToolbarItem(placement: .bottomBar)` | — | ✓ a screen's `bottomToolbar`, `primary`, `primaryExtended`: UIKit's toolbar, Material's `BottomAppBar` and (extended) FAB, the window's toolbar on a Mac, a command bar on Windows, a `GtkActionBar` on Linux, a bar and a floating button on the web |
+| Sheets with detents | `.sheet`, `.presentationDetents` | modal | ✓ `Sheet` (`detents`, `grabber`) |
+| Full-screen modals | `.fullScreenCover` | `presentation: "fullScreenModal"` | ✓ `Sheet { fullScreen: true }` (iOS's `.fullScreen`; Material's full-screen dialog; over all of a desktop window's content; a `<dialog>` over the page) |
+| Taking back, preventing dismissal | `.navigationBarBackButtonHidden`, `.interactiveDismissDisabled` | `BackHandler`, `usePreventRemove` | ✓ `onBack { … }` (screens, sheets, the app), `backGesture: false` |
 | Popovers | `.popover` | — | ✓ `Popover` (a popover on iPhone too) |
-| Alerts, action sheets | `.alert`, `.confirmationDialog` | `Alert` | ✓ `Alert` (both styles; an alert's text fields: `Fields`, a password's `Secure`, buttons following them through `Disabled`) |
-| Snackbars, toasts (a brief message with Undo) | — | community (react-native-paper's `Snackbar`) | ✓ `Snackbar` (Material's on Android, `AdwToast` on Linux; drawn as the platform's on iOS, macOS, Windows and the web) |
-| Deep links, universal and app links | `.onOpenURL` | Linking | ✓ a `Router` goes to its routes' links itself (the scheme's, universal and app links, notifications' URLs); `OnOpenURL` for the rest; `asuka.json` scheme and links |
-| URL routes: path patterns, nested navigators, an initial route under a link, redirects, guards, not found | `NavigationPath` with `Codable` values | expo-router (`[id]`, `[...rest]`, `unstable_settings`, `<Redirect>`, `Stack.Protected`, `+not-found`) | ✓ `Router` and `Route` (`:id`, `*rest`, `Initial`, `Redirect`, `Guard`, `NotFound`; stacks, tabs, split views, slots and sheets as routes), `Navigate`, `Push`, `Replace`, `Back`, `SetQuery`, `NavLink` and `Href` on views and buttons; the state restores from its address (a reload, a desktop window's last run, `asuka dev`'s reloads) |
-| Typed links | `NavigationPath` values | typed routes (generated `.d.ts`) | ✓ `asuka vet`'s `routes` (a constant href no route takes, `HrefOf`'s values); `ui.HrefOf` fills a route's pattern |
-| Pull to refresh, swipe actions | `.refreshable`, `.swipeActions` | `RefreshControl` | ✓ (both edges: `SwipeActions`, `LeadingSwipeActions`) |
+| Alerts, action sheets | `.alert`, `.confirmationDialog` | `Alert` | ✓ `Alert` (`actionSheet`; text fields in it, a password's `secure`, buttons that follow them with `disabled`) |
+| Snackbars, toasts (a brief message with Undo) | — | community (react-native-paper's `Snackbar`) | ✓ `snackbar(message, …)` (Material's on Android, `AdwToast` on Linux; drawn as the platform's on iOS, macOS, Windows and the web) |
+| Deep links, universal and app links | `.onOpenURL` | Linking | ✓ a `Router` goes to its routes' links itself (the scheme's, universal and app links, notifications' URLs); `on openURL(url)` for the rest; `asuka.toml`'s `scheme` and `links` |
+| URL routes: path patterns, nested navigators, an initial route under a link, redirects, guards, not found | `NavigationPath` with `Codable` values | expo-router (`[id]`, `[...rest]`, `unstable_settings`, `<Redirect>`, `Stack.Protected`, `+not-found`) | ✓ `Router` and `Route` (`:id`, `*rest`, `initial`, `redirect`, `guard`; `layout`: stacks, tabs, split views, slots; `sheet: true`), `navigate`, `replace`, `router.back()`, `router.setQuery`, `href` on buttons and views; the state comes back from its address (a reload, a desktop window's last run, `asuka dev`'s reloads) ([Routes](navigation.md#routes)) |
+| Typed links | `NavigationPath` values | typed routes (generated `.d.ts`) | ✓ a routed screen's call is its address, checked as the app compiles: `navigate(Thread(id: 7))`, `href: Thread(id: 7)` |
+| Pull to refresh, swipe actions | `.refreshable`, `.swipeActions` | `RefreshControl` | ✓ `on refresh`, `refreshing`; both edges: `swipeActions`, `leadingSwipeActions` |
 
 ## Motion
 
 | | SwiftUI | Expo (Reanimated) | Asuka |
 |---|---|---|---|
-| Animating changes | `withAnimation` | `withTiming`, `withSpring` | ✓ `Animate`, `AnimateWith` (ease, linear, spring; repeat, autoreverse) |
-| Transforms | `.rotationEffect`, `.scaleEffect`, `.offset` | `transform` | ✓ `Style.Transform` |
-| Enter and exit transitions | `.transition` | entering/exiting | ✓ `Style.Transition` (`Fade`, `Pop`, `SlideUp`, your own) |
-| Frame-driven animation | `TimelineView(.animation)` | `useFrameCallback` | ✓ `OnFrame` |
-| Shadows, gradients, blur | `.shadow`, `LinearGradient`, materials | style, expo-linear-gradient, expo-blur | ✓ `Shadow`, `LinearGradient`, `Material` |
-| Gestures | tap, long press, drag, magnify, rotate | Gesture Handler | ✓ tap, long press, pan, pinch, rotate, swipe |
-| Keys of a hardware keyboard | `.onKeyPress`, `.keyboardShortcut` | `onKeyPress` (a `TextInput`'s; React Native for Windows and macOS: `onKeyDown`) | ✓ `ViewProps.Keys`, `TextFieldProps.Keys` (from the focused view out, ahead of the control and the menus), `UseKeys` (the window's) |
-| Pressed and hover states | `ButtonStyle`'s `isPressed`, `.onHover` | `Pressable`'s `pressed`, `onHoverIn`/`onHoverOut` | ✓ `Style.Pressed`, `Hovered` variants; `Interaction` for a group's or a peer's (`Style.When`); `OnPressedChange`, `OnHoverChange` |
-| Drag and drop | `.draggable`, `.dropDestination` | (none built in) | ✓ `Drag`, `Drop` (Go values within the app; texts, links, files with other apps; `Dragging` and `DragOver` variants) |
-| Shared-element transitions | `matchedGeometryEffect`, `.navigationTransition(.zoom)` | shared transitions | ✓ `Style.Match` (a view grows from another's place and size), `ScreenOptions.ZoomFrom` (a pushed screen zooms out of a view: iOS 18's zoom; Material's container transform) |
-| Haptics | `sensoryFeedback` | `expo-haptics` | ✓ `Haptic` |
-| Reduce Motion | `accessibilityReduceMotion` | `useReducedMotion` | ✓ `Environment.ReduceMotion` (iOS transitions dissolve) |
+| Animating changes | `withAnimation` | `withTiming`, `withSpring` | ✓ `animate { … }`, `animate(.spring) { … }` (an `Animation`: duration, ease, linear, spring, delay, repeat, autoreverse) ([Motion](motion.md)) |
+| Transforms | `.rotationEffect`, `.scaleEffect`, `.offset` | `transform` | ✓ `transform: Transform(…)` |
+| Enter and exit transitions | `.transition` | entering/exiting | ✓ `transition` (`.opacity`, `.pop`, `.slide`, `Transition(…)` of your own) |
+| Frame-driven animation | `TimelineView(.animation)` | `useFrameCallback` | ✓ `frames()`, `onFrame` |
+| Shadows, gradients, blur | `.shadow`, `LinearGradient`, materials | style, expo-linear-gradient, expo-blur | ✓ `shadow`, `gradient`, `material` |
+| Gestures | tap, long press, drag, magnify, rotate | Gesture Handler | ✓ `on press`, `on longPress`, `on pan`, `on pinch`, `on rotate`, `on swipe` |
+| Keys of a hardware keyboard | `.onKeyPress`, `.keyboardShortcut` | `onKeyPress` (a `TextInput`'s; React Native for Windows and macOS: `onKeyDown`) | ✓ `keys` (from the focused view out, ahead of the control and the menus), `useKeys`, `WindowKeys` (the window's) |
+| Pressed and hover states | `ButtonStyle`'s `isPressed`, `.onHover` | `Pressable`'s `pressed`, `onHoverIn`/`onHoverOut` | ✓ `pressed { … }` and `hovered { … }` variants; a `Ref`'s `pressed` and `hovered` for a group's or a peer's; `on pressedChange`, `on hoverChange` |
+| Drag and drop | `.draggable`, `.dropDestination` | (none built in) | ✓ `dragItems`, `dropTypes`, `on drop` (the app's own values within it; texts, links and files with other apps; `dragging { … }` and `dragOver { … }` variants) |
+| Shared-element transitions | `matchedGeometryEffect`, `.navigationTransition(.zoom)` | shared transitions | ✓ `shared` (a view grows from another's place and size), a screen's `zoomFrom` (iOS 18's zoom; Material's container transform) |
+| Haptics | `sensoryFeedback` | `expo-haptics` | ✓ `haptic(…)` (a Force Touch trackpad on the Mac, `navigator.vibrate` in a browser) |
+| Reduce Motion | `accessibilityReduceMotion` | `useReducedMotion` | ✓ `environment().reduceMotion` (iOS transitions dissolve; the desktops and the web apply `animate`'s changes at once) |
 
 ## Data and services
 
 | | SwiftUI / Apple | Expo | Asuka |
 |---|---|---|---|
-| State | `@State`, `@Observable` | hooks | ✓ signals (fine-grained: a write updates only what reads it) |
-| Small persisted values | `@AppStorage` | AsyncStorage | ✓ `asuka/sdk/store` |
-| SQLite | SwiftData / GRDB | `expo-sqlite` | ✓ `asuka/sdk/sqlite` (migrations, typed queries, transactions, writes off the main thread, live queries that run again when a table they read is written, also with arguments that change: `WatchWith`; in the browser too, SQLite's WebAssembly build) |
-| Secure storage | Keychain | `expo-secure-store` | ✓ `asuka/sdk/secure` (on the web: encrypted in IndexedDB under a key the browser won't let out; not a keychain) |
-| Files, network | Foundation | `expo-file-system`, fetch | ✓ Go's `os`, `net/http` |
-| Photos | `PhotosPicker` | `expo-image-picker` | ✓ `device.PickPhotos` |
-| Documents | `UIDocumentPickerViewController` | `expo-document-picker` | ✓ `device.PickFiles` (MIME types, several) |
-| Camera | AVFoundation | `expo-camera` | ✓ `asuka/sdk/camera`: `Take` (the system's camera; on the Mac, Windows and Linux, a dialog with a live preview; Windows: Media Foundation's capture engine; Linux: the camera portal or Video4Linux through GStreamer), `View` (a live preview, front or back), `Capture`; `asuka/sdk/camera/record` records video with sound |
-| Barcodes, QR codes | AVFoundation, Vision | `expo-camera` scanning | ✓ `asuka/sdk/scan`: live in `camera.View` (`Scan: scan.Codes(...)`) and in image files (`scan.File`); ML Kit on Android, only in the apps that import it; ZBar on Linux; on Windows Asuka's own reader in Go (`internal/barcode`: QR, Data Matrix, EAN, UPC, Code 128, Code 39) |
-| Location | Core Location | `expo-location` | ✓ `asuka/sdk/location` (place names: on Windows, OpenStreetMap's Nominatim); when in use and always, precise or approximate; background updates and geofencing (`expo-task-manager`'s tasks: the app started for their events on iOS and Android; computed while the app runs where the system has none) |
-| Translations, plurals, regional formats | String Catalogs, FormatStyle | `expo-localization`, i18next | ✓ `asuka/i18n`, catalogs ([Languages](i18n.md)) |
-| Right-to-left layout | `layoutDirection` | `I18nManager` | ✓ follows the language, `ui.WithDirection` |
-| Local notifications | UserNotifications | `expo-notifications` | ✓ `asuka/sdk/notify` (now or scheduled, images; iOS, Android, macOS, Linux; Windows' toasts, with buttons and replies through the app's COM activator; on the web through the app's service worker, so they stay and answer after the page closes, a scheduled one showing at its time while a page of the app is open, else as the next opens: browsers can't schedule one) |
-| Push notifications | APNs | `expo-notifications` | ✓ `asuka/sdk/push` (APNs on iOS and macOS, Firebase Cloud Messaging, Web Push with VAPID on the web: the token, messages received and tapped; `asuka/sdk/push/webpush` sends Web Push from a Go server) |
-| Notification actions, inline replies | `UNNotificationCategory`, `UNTextInputNotificationAction` | `setNotificationCategoryAsync` | ✓ `notify.SetCategories`, `OnAction` (background actions run the app's Go code, started without a screen if it isn't running; `Response.Defer`; Android's reply posted back into the conversation; on the web, the service worker's notification actions, inline replies where Chrome has them) |
-| Threads, the notifications showing, the badge | `threadIdentifier`, `getDeliveredNotifications`, `setBadgeCount` | `getPresentedNotificationsAsync`, `setBadgeCountAsync` | ✓ `Thread` (Android: a group with its summary kept), `notify.Showing`, `Remove`, `RemoveThread`, `SetBadge` (Android: the launcher's, from the notifications) |
-| Notifications in the foreground | `willPresent` | `setNotificationHandler` | ✓ `notify.Present` (banner, quiet, hidden) |
-| Android notification channels | — | `setNotificationChannelAsync` | ✓ `notify.SetChannels`, `SetChannelGroups`; a push's `channel_id` (iOS has none) |
-| Messages in conversations | Communication notifications (`INSendMessageIntent`) | community | ✓ `Notification.From`, `push.Message.From`: iOS's communication notifications (the entitlement added for the apps that use it), Android's MessagingStyle and conversation shortcuts; plain on macOS; no bubbles |
-| Changing a push before it shows | Notification Service Extension | community (`expo-notifications` has none) | ✓ `push.Rewrite`: the app's Go code in iOS's extension (built and signed by `asuka build`), in the app's process for Android's data messages |
-| Clipboard, share sheet, browser | `UIPasteboard`, `ShareLink`, `SFSafariViewController` | `expo-clipboard`, `expo-sharing`, `expo-web-browser` | ✓ `Copy`, `device.Clipboard` (text; images: `CopyImage`, `ClipboardImage`; `ClipboardHas`, `OnClipboardChange`), `Share` (text), `ShareFiles` (files, with expo-sharing's MIME type, UTI, title and iPad anchor; done when the sheet closes), `device.Browse` |
-| Previewing files | `QLPreviewController`, `.quickLookPreview` | `react-native-file-viewer` | ✓ `asuka/sdk/preview` (Quick Look on iOS and the Mac, several files, Markup; Android's viewer apps; Windows's and Linux's default app) |
-| Printing, PDFs from HTML | `UIPrintInteractionController`, `UIPrintPageRenderer` | `expo-print` | ✓ `asuka/sdk/print` (files, HTML, a WebView, with the system's dialog and its result; `PDF`: paginated, the region's paper, margins) |
-| Mail and message composers | `MFMailComposeViewController`, `MFMessageComposeViewController` | `expo-mail-composer`, `expo-sms` | ✓ `asuka/sdk/compose` (recipients, subject, HTML body, attachments; what the user did on iOS; the mail apps only on Android; Messages on the Mac) |
-| Keep awake, device info | `isIdleTimerDisabled`, `UIDevice` | `expo-keep-awake`, `expo-device` | ✓ `device.KeepAwake`, `device.GetInfo` |
-| Network state | `NWPathMonitor` | `expo-network` | ✓ `asuka/sdk/network` (online, Wi-Fi or cellular, metered, Data Saver / Low Data Mode) |
-| Saving to the gallery, Downloads | `PHPhotoLibrary` | `expo-media-library` | ✓ `asuka/sdk/library` (MediaStore's collections; Photos, or Documents in Files) |
-| Work in the background | `beginBackgroundTask`, `BGTaskScheduler` | `expo-task-manager`, `expo-background-task` | ✓ `asuka/sdk/background`: Android keeps the app running, its progress and buttons in a notification; iOS gives about 30 seconds; the Mac keeps it running (App Nap off), Linux and Windows keep the system from suspending. `asuka/sdk/periodic`: tasks the system runs now and then, the app's Go code started without a screen (BGTaskScheduler, WorkManager; on the Mac while the app runs, `NSBackgroundActivityScheduler`; on Linux and Windows, a timer while it runs) |
-| Receiving shares from other apps | Share extension | `expo-sharing` (`useIncomingShare`) | ✓ `ui.OnShare`: texts, links, images, videos, audio and files, one or many, with their name, MIME type and size (`asuka.json`'s `shareTarget`: types and max, Android's intent filters and iOS's activation rule from them; on iOS a share extension that opens the app, files through an App Group); `app.ShareSheet`, the app's own screen over the app that shares (iOS: its share extension; Android: a bottom sheet in a process of its own), its data shared with the app; no resolving of links (`net/http`) |
-| Audio | AVAudioPlayer, AVAudioRecorder | `expo-audio` | ✓ `asuka/sdk/audio` (load, play, pause, seek, volume, loop); `asuka/sdk/audio/record` (voice or music quality, pause, a level meter) |
-| Now Playing, lock screen controls, media keys | `MPNowPlayingInfoCenter`, `MPRemoteCommandCenter` | `expo-audio`'s lock screen controls, community (`react-native-track-player`) | ✓ `asuka/sdk/nowplaying` (title, artist, album, artwork, duration, a position the system advances, play, pause, next, previous, seek, skips, stop, enabled by the handlers set; follows an `audio.Player` by itself; a MediaSession and a media playback service on Android; Control Center on the Mac, the media flyout on Windows, MPRIS on Linux, the Media Session API on the web) |
-| Sign in with Apple | `SignInWithAppleButton` | `expo-apple-authentication` | ✓ `asuka/sdk/appleauth` (Apple's button, the credential, its state; iOS and macOS) |
-| iCloud: key-value store, iCloud Drive | `NSUbiquitousKeyValueStore`, ubiquity containers, `NSMetadataQuery` | community (`react-native-cloud-storage`, `expo-icloud-storage`) | ✓ `asuka/sdk/icloud` (the account and its changes; values as JSON, a signal that follows other devices, changes with their reason; the app's documents in iCloud Drive, listed with their download and upload status, read and written coordinated, downloaded, evicted, moved in and out of iCloud, conflicts resolved, public links; entitlements and containers from what the app calls; iOS and macOS; `fake.ICloud` for tests; no CloudKit databases) |
-| Apple Pay, Google Pay | PassKit (`PayWithApplePayButton`) | `@stripe/stripe-react-native`'s Platform Pay, `react-native-payments` | ✓ `asuka/sdk/pay` (the wallet's sheet and button; the token for the app's processor; shipping, coupons and card changes that update the totals; errors by field; subscriptions, deferred and reload payments; iOS, macOS, Android, Apple Pay in Safari and Google Pay in other browsers) |
-| Face ID, fingerprints | LocalAuthentication | `expo-local-authentication` | ✓ `asuka/sdk/biometric` (Windows Hello on Windows; on the web, the platform's authenticator through WebAuthn) |
-| In-app purchases, subscriptions | StoreKit 2 | `expo-iap`, `react-native-iap`, RevenueCat | ✓ `asuka/sdk/purchase` (products with localized prices and offers, purchases, Ask to Buy and pending payments, a stream of transactions from the app's start: renewals, refunds, purchases outside the app; finishing and consuming, entitlements as a signal, restore, subscription status, Play's upgrades and downgrades, the manage, refund and offer code sheets, the JWS and the purchase token for a server; StoreKit 2 on iOS and macOS, Play Billing 9, the Microsoft Store, the Digital Goods API in a Trusted Web Activity; `fake.Store` for tests) |
-| Store review | `requestReview` | `expo-store-review` | ✓ `asuka/sdk/review` (the App Store's prompt, Play's in-app review) |
-| Tracking permission | App Tracking Transparency | `expo-tracking-transparency` | ✓ `asuka/sdk/tracking` |
-| App integrity | App Attest | `expo-app-integrity` | ✓ `asuka/sdk/integrity` (App Attest, Play Integrity) |
-| Age range | Declared Age Range | `expo-age-range` | ✓ `asuka/sdk/agerange` (Declared Age Range, Play Age Signals) |
-| Sensors | Core Motion | `expo-sensors` | ✓ `asuka/sdk/sensors` (accelerometer, gyroscope, magnetometer, device motion with attitude and heading, barometer, light, pedometer; the same axes and units on both; a Mac and Windows have none; Linux: iio-sensor-proxy's light and orientation) |
-| NFC tags | Core NFC | `react-native-nfc-manager` | ✓ `asuka/sdk/nfc` (NDEF reading and writing with text, URI, MIME, external and smart poster records, read-only tags, capacity; the tag's ID and technologies; ISO 7816 APDUs, MIFARE, FeliCa and ISO 15693 commands, Android's NfcA/B/F/V, IsoDep and MIFARE Classic; iOS's sheet, Android's reader mode; tags that open the app: iOS's universal links, Android's NDEF_DISCOVERED and TECH_DISCOVERED from `asuka.json`; the web: Web NFC in Chrome on Android, NDEF only; the desktops have none) |
-| Bluetooth LE | Core Bluetooth | community (`react-native-ble-plx`) | ✓ `asuka/sdk/bluetooth` (scans with service filters, duplicates and RSSI, advertisement data; connections with their disconnection's reason, services, reads, writes with and without response, notifications and indications, MTU, RSSI, Android's priority; known and system-connected devices; advertising and a GATT server; iOS's background modes and state restoration, Android's background scan; Windows.Devices.Bluetooth, BlueZ on Linux; the web: Web Bluetooth's chooser, in Chrome and Edge, no peripheral role) |
-| Image editing | Core Graphics, ImageIO | `expo-image-manipulator` | ✓ `asuka/sdk/imageedit` (resize, crop, rotate, flip, fill, pixelate; HEIC in, JPEG or PNG out, upright, without the source's metadata; GdkPixbuf's decoders on Linux, WIC's on Windows) |
-| Text, faces and codes in an image | Vision | no | ✓ `asuka/sdk/vision`, with where each is; ML Kit on Android, only in the apps that import it; Linux: ZBar's codes and Tesseract's text, no faces; Windows: its OCR's text and faces, Asuka's reader's codes |
-| The photo library | PhotoKit | `expo-media-library` | ✓ `asuka/sdk/photos`: permission, listing, thumbnails, the original files (Windows: the Pictures folder) |
-| Video thumbnails | `AVAssetImageGenerator` | `expo-video-thumbnails` | ✓ `imageedit.VideoFrame` |
-| Text to speech | `AVSpeechSynthesizer` | `expo-speech` | ✓ `asuka/sdk/speech` (a queue, voices, pitch, rate, pause at a word) |
-| Contacts | Contacts, ContactsUI | `expo-contacts` | ✓ `asuka/sdk/contacts` (the picker and new contact screen without permission; the address book with it; Windows: adding opens a vCard, no address book) |
-| Calendars | EventKit, EventKitUI | `expo-calendar` | ✓ `asuka/sdk/calendar` (the event editor without permission; calendars and events with it; Windows: adding opens an iCalendar file, no calendars) |
-| Home screen widgets | WidgetKit | `expo-widgets` | ✓ `asuka/sdk/widget` and `asuka.json`'s `widgets` (a template in every size, the lock screen's on iOS; timelines, countdowns, taps with a URL) |
-| Live Activities | ActivityKit | `expo-live-activity` | ✓ `asuka/sdk/liveactivity` (iOS: the lock screen and the Dynamic Island; Android: an ongoing notification, Android 16's Live Update; countdowns, progress, alerts, updates and starts from a server's push) |
-| App Intents, shortcuts | App Intents, App Shortcuts | — | ✓ `asuka.json`'s `shortcuts` (iOS: App Shortcuts with Siri phrases, in Spotlight and Shortcuts; Android: launcher shortcuts) |
-| Custom fonts | `.font(.custom)` | `expo-font` | ✓ `Font.Family` |
-| Lifecycle | `scenePhase` | AppState | ✓ `app.OnLifecycle` |
-| Launch screen | `UILaunchScreen` | `expo-splash-screen` | ✓ `asuka.json`'s `splash`; `asuka/sdk/splash` holds it while the app loads |
-| Status bar, navigation bar | `statusBarHidden`, `preferredStatusBarStyle` | `expo-status-bar`, `expo-navigation-bar` | ✓ `asuka/sdk/screen`'s `SetBars` |
-| Orientation lock | `supportedInterfaceOrientations` | `expo-screen-orientation` | ✓ `asuka/sdk/screen`'s `Lock` |
-| Screenshots | `isCaptured`, `userDidTakeScreenshotNotification` | `expo-screen-capture` | ✓ `asuka/sdk/screen`'s `PreventCapture` (Android: blank captures; iOS: covered while recorded; macOS and Windows: the windows left out), `OnScreenshot` (Linux and Windows: new images in Pictures/Screenshots) |
-| Crash reports | MetricKit, Crashlytics, Sentry | Sentry, Crashlytics (`@react-native-firebase/crashlytics`) | ✓ `asuka/sdk/crash`: Go panics and fatal errors, uncaught exceptions, MetricKit's crashes and hangs, Android's native crashes and ANRs, with breadcrumbs and values; the app sends them where it likes (no service built in); dSYMs and native debug symbols from `asuka build` |
+| State | `@State`, `@Observable` | hooks | ✓ `state`, `store`s, derived `let`s (fine-grained signals: a write updates only what reads it) ([Concepts](concepts.md)) |
+| Small persisted values | `@AppStorage` | AsyncStorage | ✓ `std/storage`'s `storage.Value`, `std/store` (UserDefaults, SharedPreferences, a file on Windows and Linux, `localStorage`) |
+| SQLite | SwiftData / GRDB | `expo-sqlite` | ✓ `std/sqlite` (`migrate`, `query<T>` with rows decoded into `T`, `exec`, transactions, off the main thread; `watch<T>`: live queries that run again when a table they read is written and as their arguments change; the same SQLite on every platform, in a worker of the page's in a browser) ([Data](data.md)) |
+| Secure storage | Keychain | `expo-secure-store` | ✓ `platform/secure` (the Keychain, the Android Keystore, Credential Manager, libsecret; on the web encrypted in IndexedDB under a key the browser won't let out, not a keychain) |
+| Files, network | Foundation | `expo-file-system`, fetch | ✓ `std/fs`; `std/http` (the platform's own client: URLSession, `HttpURLConnection`, WinHTTP, libsoup, `fetch`), `http.download`, `http.stream` and server-sent events (`http.events`); `std/websocket` |
+| Photos | `PhotosPicker` | `expo-image-picker` | ✓ `device.pickPhotos(max:)` |
+| Documents | `UIDocumentPickerViewController` | `expo-document-picker` | ✓ `device.pickFiles(types:, multiple:)`; `platform/dialog` on the desktops |
+| Camera | AVFoundation | `expo-camera` | ✓ `platform/camera`: `camera.take()` (the system's camera; on the Mac, Windows and Linux a dialog with a live preview), `camera.View` (a live preview, front or back), `capture()`, `record()` (AVFoundation, CameraX, Media Foundation, GStreamer, `getUserMedia`); `platform/record` records video with sound |
+| Barcodes, QR codes | AVFoundation, Vision | `expo-camera` scanning | ✓ live in `camera.View` (`scan`, `on code`) and in image files (`scan.file`): Vision, ML Kit on Android (only in the apps that import it), the browser's `BarcodeDetector` where it has one, and on Windows and Linux Asuka's own reader in C (QR, Data Matrix, EAN, UPC, Code 128, Code 39) |
+| Location | Core Location | `expo-location` | ✓ `platform/location` (Core Location, Android's location manager, WinRT's `Geolocator`, GeoClue or the location portal, the Geolocation API; when in use and always, precise or approximate; place names; background updates and regions, the app started for their events on iOS and Android, held while it works) |
+| Translations, plurals, regional formats | String Catalogs, FormatStyle | `expo-localization`, i18next | ✓ catalogs and `tr.key(…)`, `std/i18n` ([Languages](i18n.md)) |
+| Right-to-left layout | `layoutDirection` | `I18nManager` | ✓ follows the language (`start` and `end` mirror); `layoutDirection` for what reads one way everywhere |
+| Local notifications | UserNotifications | `expo-notifications` | ✓ `platform/notify` (now or scheduled, images; UserNotifications on iOS and macOS, Android's, Windows' toasts with buttons and replies, Linux's desktop notifications; on the web through the app's service worker, a scheduled one showing at its time while a page of the app is open, else as the next opens: browsers can't schedule one) |
+| Push notifications | APNs | `expo-notifications` | ✓ `platform/push` (APNs on iOS and macOS, Firebase Cloud Messaging on Android, Web Push with VAPID on the web: `register()` for the token, `received()`, `opened()`) |
+| Notification actions, inline replies | `UNNotificationCategory`, `UNTextInputNotificationAction` | `setNotificationCategoryAsync` | ✓ `notify.setCategories`, `notify.responses()` (actions and replies; `r.defer()` keeps the app running for the work; on the web, the service worker's actions, inline replies where Chrome has them) |
+| Threads, the notifications showing, the badge | `threadIdentifier`, `getDeliveredNotifications`, `setBadgeCount` | `getPresentedNotificationsAsync`, `setBadgeCountAsync` | ✓ a notification's `thread` (Android: a group with its summary kept), `notify.showing()`, `remove`, `removeThread`, `setBadge` |
+| Notifications in the foreground | `willPresent` | `setNotificationHandler` | ✓ `notify.present(decide)` |
+| Android notification channels | — | `setNotificationChannelAsync` | ✓ `notify.setChannels`, `setChannelGroups`; a push's channel (iOS has none) |
+| Messages in conversations | Communication notifications (`INSendMessageIntent`) | community | ✓ `Notification(…).from(person, conversation)`, `Message.from`: iOS's communication notifications, Android's MessagingStyle and conversation shortcuts; plain elsewhere |
+| Changing a push before it shows | Notification Service Extension | community (`expo-notifications` has none) | ✓ `push.rewrite(f)`: the app's code in iOS's Notification Service Extension (built and signed by `asuka build`), in Android's Firebase service for data messages |
+| Clipboard, share sheet, browser | `UIPasteboard`, `ShareLink`, `SFSafariViewController` | `expo-clipboard`, `expo-sharing`, `expo-web-browser` | ✓ `copy(text)`, `device.clipboardText()`, `clipboardHas`, `clipboardImage`, `copyImage`, `clipboardChanges()`; `share(text)`, `shareFiles(paths)` (the share menu on a Mac, Windows' share UI, the browser's; Linux has none: copied, with a toast); `device.browse(url)` (`SFSafariViewController`, a Custom Tab), `openURL(url)` |
+| Previewing files | `QLPreviewController`, `.quickLookPreview` | `react-native-file-viewer` | ✓ `platform/preview` (Quick Look on iOS and the Mac, several files, Markup; the file's app on Android, Windows and Linux; a new tab on the web) |
+| Printing, PDFs from HTML | `UIPrintInteractionController`, `UIPrintPageRenderer` | `expo-print` | ✓ `platform/print` (files, HTML, a `WebView`, with the system's dialog and its outcome; `print.pdf`: paginated, the region's paper, margins) |
+| Mail and message composers | `MFMailComposeViewController`, `MFMessageComposeViewController` | `expo-mail-composer`, `expo-sms` | ✓ `platform/compose` (`compose.mail`: recipients, subject, HTML body, attachments, what the user did on iOS, the mail app elsewhere; `compose.message`: Messages on iOS, Android's SMS app) |
+| Keep awake, device info | `isIdleTimerDisabled`, `UIDevice` | `expo-keep-awake`, `expo-device` | ✓ `device.keepAwake(on)`, `device.info()` |
+| Network state | `NWPathMonitor` | `expo-network` | ✓ `platform/network` (`network.status()`: online, Wi-Fi or cellular, metered, Low Data Mode; NWPathMonitor, ConnectivityManager, the Network List Manager, NetworkManager, the Network Information API) |
+| Saving to the gallery, Downloads | `PHPhotoLibrary` | `expo-media-library` | ✓ `platform/library` (`library.save`: Photos, Android's gallery and Downloads, Music; the desktops' Downloads, Pictures, Movies and Music folders) |
+| Work in the background | `beginBackgroundTask`, `BGTaskScheduler` | `expo-task-manager`, `expo-background-task` | ✓ `platform/background`: Android keeps the app running, its progress and buttons in a notification; iOS gives about 30 seconds; the desktops keep the app from being suspended (App Nap, sleep). `platform/periodic`: work the system runs now and then, the app started without a screen (BGTaskScheduler, WorkManager; on the desktops a timer while the app runs) |
+| Receiving shares from other apps | Share extension | `expo-sharing` (`useIncomingShare`) | ✓ `on share(items)`: texts, links, images, videos, audio and files, one or many, with their name, MIME type and size (`asuka.toml`'s `shareTarget`: Android's intent filters and iOS's share extension and activation rule from it); `platform/sharesheet`, the app's own sheet over the app that shares (iOS's share extension; an Android activity), its data shared with the app; iOS and Android |
+| Audio | AVAudioPlayer, AVAudioRecorder | `expo-audio` | ✓ `platform/audio` (`audio.play`, `audio.Player`: play, pause, seek, volume, rate, loop; AVPlayer, Media3's ExoPlayer, MCI, GStreamer, `<audio>`); `platform/record` (`record.audio`: quality, pause, a level) |
+| Now Playing, lock screen controls, media keys | `MPNowPlayingInfoCenter`, `MPRemoteCommandCenter` | `expo-audio`'s lock screen controls, community (`react-native-track-player`) | ✓ `platform/nowplaying`'s `nowplaying.NowPlaying` (title, artist, artwork, duration, a position the system advances, play, pause, next, previous, seek; follows an `audio.Player` by itself; a MediaSession on Android, the SystemMediaTransportControls on Windows, MPRIS on Linux, the Media Session API on the web) |
+| Sign in with Apple | `SignInWithAppleButton` | `expo-apple-authentication` | ✓ `platform/appleauth` (Apple's `SignInButton`, `signIn`, `credentialState`; iOS and macOS; elsewhere through `platform/webauth`) |
+| Web sign-in (OAuth) | `ASWebAuthenticationSession` | `expo-auth-session`, `expo-web-browser` | ✓ `platform/webauth` (`ASWebAuthenticationSession`, a Custom Tab, a WebView2 window, a WebKitGTK dialog, a popup) |
+| iCloud: key-value store, iCloud Drive | `NSUbiquitousKeyValueStore`, ubiquity containers, `NSMetadataQuery` | community (`react-native-cloud-storage`, `expo-icloud-storage`) | ✓ `platform/icloud` (the account; `icloud.Value`, kept in iCloud's key-value store; the app's documents in iCloud Drive, listed as they change with their download and upload status, read and written coordinated, downloaded, evicted, conflicts resolved; `icloud.fake()` for tests; iOS and macOS; no CloudKit databases) |
+| Apple Pay, Google Pay | PassKit (`PayWithApplePayButton`) | `@stripe/stripe-react-native`'s Platform Pay, `react-native-payments` | ✓ `platform/pay` (the wallet's sheet and `PayButton`; the token for the app's processor; shipping, coupons and card changes that update the totals; errors by field; Apple Pay on iOS, macOS and in Safari, Google Pay on Android and in other browsers) |
+| Face ID, fingerprints | LocalAuthentication | `expo-local-authentication` | ✓ `platform/biometric` (LocalAuthentication, BiometricPrompt, Windows Hello; on the web, the platform's authenticator through WebAuthn; Linux has none) |
+| In-app purchases, subscriptions | StoreKit 2 | `expo-iap`, `react-native-iap`, RevenueCat | ✓ `platform/purchase` (products with localized prices and offers, purchases, pending payments, a stream of transactions from the app's start, finishing, entitlements, restore, subscription status, the manage, refund and offer code sheets; StoreKit 2 on iOS and macOS, Play Billing, the Microsoft Store, the Digital Goods API in a Trusted Web Activity; `purchase.fake()` for tests) ([In-app purchases](purchases.md)) |
+| Store review | `requestReview` | `expo-store-review` | ✓ `platform/review` (the App Store's prompt, Play's in-app review) |
+| Tracking permission | App Tracking Transparency | `expo-tracking-transparency` | ✓ `platform/tracking` |
+| App integrity | App Attest | `expo-app-integrity` | ✓ `platform/integrity` (App Attest, Play Integrity) |
+| Age range | Declared Age Range | `expo-age-range` | ✓ `platform/agerange` (Declared Age Range, Play Age Signals) |
+| Sensors | Core Motion | `expo-sensors` | ✓ `platform/sensors` (accelerometer, gyroscope, magnetometer, device motion, barometer, light, pedometer; the same axes and units everywhere; Core Motion, SensorManager, iio-sensor-proxy's light and orientation on Linux, the Generic Sensor API; a Mac and Windows have none) |
+| NFC tags | Core NFC | `react-native-nfc-manager` | ✓ `platform/nfc` (NDEF reading and writing, read-only tags, the tag's ID, raw commands; iOS's sheet, Android's reader mode, tags that open the app; Web NFC in Chrome on Android; the desktops have none) ([NFC tags](nfc.md)) |
+| Bluetooth LE | Core Bluetooth | community (`react-native-ble-plx`) | ✓ `platform/bluetooth` (scans, connections, services, reads, writes, notifications; advertising and a GATT server; background scans and state restoration; Core Bluetooth, Android's BLE, WinRT's, BlueZ; Web Bluetooth's chooser in Chromium, no peripheral role) ([Bluetooth](bluetooth.md)) |
+| Image editing | Core Graphics, ImageIO | `expo-image-manipulator` | ✓ `platform/imageedit` (resize, crop, rotate, flip, fill, pixelate; HEIC in, JPEG or PNG out, upright; Image I/O, Android's `Bitmap`, WIC, GdkPixbuf, a canvas) |
+| Video thumbnails | `AVAssetImageGenerator` | `expo-video-thumbnails` | ✓ `imageedit.videoFrame` |
+| Text, faces and codes in an image | Vision | no | ✓ `platform/vision`, with where each is (Vision; ML Kit on Android, only in the apps that import it; Windows' OCR and face detection; Tesseract's text on Linux, no faces; the browser's Shape Detection API where it has one) |
+| Speech to text | Speech (`SFSpeechRecognizer`) | community (`expo-speech-recognition`) | ◐ `platform/transcribe` (a recording, on the device only: Speech on iOS and macOS, Android 13's on-device recognizer, Windows' speech recognition; not on Linux and the web) |
+| The photo library | PhotoKit | `expo-media-library` | ✓ `platform/photos`: permission, listing, thumbnails, the original files (PhotoKit, MediaStore) |
+| Text to speech | `AVSpeechSynthesizer` | `expo-speech` | ✓ `platform/speech` (a queue, voices, pitch, rate, pause; AVSpeechSynthesizer, TextToSpeech, SAPI, Speech Dispatcher, `speechSynthesis`) |
+| Contacts | Contacts, ContactsUI | `expo-contacts` | ✓ `platform/contacts` (`pick()` and the new contact form without permission; the address book with it) |
+| Calendars | EventKit, EventKitUI | `expo-calendar` | ✓ `platform/calendar` (the event form without permission; calendars and events with it; EventKit, the Calendar Provider) |
+| Home screen widgets | WidgetKit | `expo-widgets` | ✓ `platform/widget` and `asuka.toml`'s `widgets` (a template in every size, the lock screen's on iOS; timelines, countdowns, taps with a URL; iOS and Android) |
+| Live Activities | ActivityKit | `expo-live-activity` | ✓ `platform/liveactivity` (iOS: the lock screen and the Dynamic Island; Android 16's Live Updates; countdowns, progress, alerts, push tokens for a server's updates) |
+| App Intents, shortcuts | App Intents, App Shortcuts | — | ✓ `asuka.toml`'s `shortcuts` (iOS: App Shortcuts with Siri phrases, in Spotlight and Shortcuts; Android: launcher shortcuts) |
+| Custom fonts | `.font(.custom)` | `expo-font` | ✓ `assets/fonts`, `Font(family:)` |
+| Lifecycle | `scenePhase` | AppState | ✓ `onLifecycle` |
+| Launch screen | `UILaunchScreen` | `expo-splash-screen` | ✓ `asuka.toml`'s `splash`; `platform/splash` holds it while the app loads |
+| Status bar, navigation bar | `statusBarHidden`, `preferredStatusBarStyle` | `expo-status-bar`, `expo-navigation-bar` | ✓ `screen.setBars` (`platform/screen`) |
+| Orientation lock | `supportedInterfaceOrientations` | `expo-screen-orientation` | ✓ `screen.lock` |
+| Screenshots | `isCaptured`, `userDidTakeScreenshotNotification` | `expo-screen-capture` | ✓ `screen.preventCapture` (Android: black captures; iOS: covered while recorded; macOS and Windows: the windows left out), `screen.screenshots()` |
+| Crash reports | MetricKit, Crashlytics, Sentry | Sentry, Crashlytics (`@react-native-firebase/crashlytics`) | ✓ `platform/crash`: Asuka's fatal errors with the Asuka stack, uncaught exceptions, MetricKit's crashes and hangs, Android's native crashes and ANRs, the desktops' crashes, with breadcrumbs and values; the app sends them where it likes (no service built in); symbols from `asuka build` |
 
 ## Appearance and accessibility
 
 | | SwiftUI | Expo | Asuka |
 |---|---|---|---|
-| Dark mode, semantic colors, accent | automatic | `useColorScheme` | ✓ semantic colors, `asuka.json` accent (Material 3 dynamic color on Android; on the Mac, AppKit's own controls keep the user's accent) |
-| Dynamic Type, font scale | automatic | `allowFontScaling` | ✓ text styles and custom fonts scale |
-| Screen reader labels, roles, hiding | `.accessibilityLabel`... | `accessibilityLabel`... | ✓ `Label`, `Hint`, `Role`, `Decorative`; pressable views are buttons |
-| Announcements | `AccessibilityNotification.Announcement` | `announceForAccessibility` | ✓ `Announce` |
-| Moving a screen reader's focus | `@AccessibilityFocusState` | `setAccessibilityFocus` | ✓ `AccessibilityFocus` |
-| Is a screen reader on | `voiceOverEnabled` | `isScreenReaderEnabled` | ✓ `Environment.ScreenReader` |
-| Custom actions, adjustable | `.accessibilityAction`, `.accessibilityAdjustableAction` | `accessibilityActions` | ✓ `ViewProps.Actions`, `OnAdjust` (and List swipe actions are TalkBack actions) |
+| Dark mode, semantic colors, accent | automatic | `useColorScheme` | ✓ semantic colors, `environment().dark`, `asuka.toml`'s `accent` (Material 3's color scheme from it on Android, `dynamicColor` for the wallpaper's) |
+| Dynamic Type, font scale | automatic | `allowFontScaling` | ✓ text styles and custom fonts scale; `environment().fontScale` |
+| Screen reader labels, roles, hiding | `.accessibilityLabel`... | `accessibilityLabel`... | ✓ `label`, `hint`, `role`, `a11yHidden`; pressable views are buttons ([Accessibility](accessibility.md)) |
+| Announcements | `AccessibilityNotification.Announcement` | `announceForAccessibility` | ✓ `announce(text)` |
+| Moving a screen reader's focus | `@AccessibilityFocusState` | `setAccessibilityFocus` | ✓ `a11yFocus(ref)` |
+| Is a screen reader on | `voiceOverEnabled` | `isScreenReaderEnabled` | ✓ `environment().screenReader` |
+| Custom actions, adjustable | `.accessibilityAction`, `.accessibilityAdjustableAction` | `accessibilityActions` | ✓ `actions`, `on adjust` (and a list's swipe actions are TalkBack's and VoiceOver's actions) |
 
 ## Tooling
 
 | | Xcode / Expo | Asuka |
 |---|---|---|
-| Live reload, keeping state | previews, Fast Refresh | ✓ `asuka dev`: reloads on save, keeps signals' values (on a phone the Go code runs on your computer; on the desktop the app is rebuilt and run again; in the browser the page reloads) |
-| Running on a phone | Xcode's Run, Expo's dev builds | ✓ `asuka dev --device`: the simulator, an emulator, an Android phone (`adb reverse`), an iPhone by USB or Wi-Fi (signed by your team, its profiles made by Xcode; usbmuxd's tunnels, else the local network) |
-| Release builds and signing | Xcode, EAS Build | ✓ `asuka build`: an `.ipa`, an `.aab`, a universal `.app` signed and notarized (or a Mac App Store `.pkg`), a Windows folder with its `.exe` signed, a Linux install prefix with a `.tar.gz` and a Flatpak manifest, a static site ([Shipping](shipping.md)) |
-| Uploading to the stores | Xcode, EAS Submit | ✓ `asuka publish`: TestFlight, App Review, Google Play's tracks; not the Mac App Store yet |
-| GUI tests | XCUITest, Detox, Maestro | ✓ `e2e/`: the examples on the iOS simulator, an Android emulator, Linux under Xvfb and headless Chrome; the Mac's and Windows' host tests drive real AppKit views and Win32 windows |
+| Live reload, keeping state | previews, Fast Refresh | ✓ `asuka dev`: the player swaps in each save in milliseconds, keeping every `state`, on the phones, the desktops and in the browser ([Development](development.md)) |
+| Running on a phone | Xcode's Run, Expo's dev builds | ✓ `asuka dev --platform ios` or `android`: the simulator, an emulator, an Android phone (`adb reverse`), an iPhone by USB or Wi-Fi (`--device iphone`, signed by your team) |
+| Tests | XCTest, Jest with React Native Testing Library | ✓ `asuka test`: `test` blocks, the app mounted with no device (`mount`, `app.tap`, `app.expect`), fakes for the device's packages ([Testing](testing.md)) |
+| Release builds and signing | Xcode, EAS Build | ✓ `asuka build`: the app compiled ahead of time; an `.ipa`, an `.aab`, a universal `.app` signed and notarized (or a Mac App Store `.pkg`), a Windows folder with its `.exe` signed, a Linux install prefix with a `.tar.gz` and a Flatpak manifest, a static site ([Shipping](shipping.md)) |
+| Uploading to the stores | Xcode, EAS Submit | ✓ `asuka publish`: TestFlight, App Review, Google Play's tracks; a desktop build and its signed update; not the Mac App Store yet |
+| GUI tests | XCUITest, Detox, Maestro | ◐ a desktop app's steps and snapshots (`ASUKA_SCRIPT`, `ASUKA_SNAPSHOT`, `ASUKA_DUMP`), under Xvfb in CI on Linux; Asuka's own GUI tests drive its examples on the simulator, an emulator and headless Chrome, but an app has no runner for them yet |
 | Benchmarks | Instruments | ✓ `bench/` (against SwiftUI and Compose) |
-| Embedding in an existing app | — | brownfield (React Native's) | ✓ `asuka build --platform ios --xcframework`, `asuka build --platform android --aar` |
-| Over-the-air updates | — | EAS Update: ✗ |
+| Embedding in an existing app | brownfield (React Native's) | ✓ `asuka build --platform ios --xcframework`, `asuka build --platform android --aar` |
+| Over-the-air updates | EAS Update | ✗ (a release has the app compiled into it) |
 
 ## On the desktop
 
@@ -201,17 +214,16 @@ around HTML instead. How those frameworks compare with Asuka:
 |---|---|---|---|---|---|
 | Platforms | Mac, Windows, Linux | Mac, Windows, Linux; iOS and Android (Tauri 2) | Mac, Windows, Linux | Windows, Mac (with React Native's iOS and Android) | Mac, Windows, Linux, iOS, Android, the web |
 | What shows the interface | HTML and CSS in Chromium | HTML and CSS in the system's web view (WKWebView, WebView2, WebKitGTK) | HTML and CSS in the system's web view | the platform's native views | the platform's widgets: AppKit; Win32 and the common controls, drawn as Windows 11's; GTK 4 and libadwaita |
-| The app's language | JavaScript (Node.js beside the page) | Rust, and JavaScript in the page | Go, and JavaScript in the page | JavaScript | Go |
-| What ships with the app | Chromium and Node.js | the app's binary (the web view is the system's) | the app's binary (likewise) | a JavaScript engine and React Native's runtime | the app's Go binary (on Linux, GTK 4 and libadwaita come from the system); no web view unless the app shows a `WebView` |
+| The app's language | JavaScript (Node.js beside the page) | Rust, and JavaScript in the page | Go, and JavaScript in the page | JavaScript | Asuka (and Swift, C or JavaScript in its native packages) |
+| What ships with the app | Chromium and Node.js | the app's binary (the web view is the system's) | the app's binary (likewise) | a JavaScript engine and React Native's runtime | one executable, the app compiled ahead of time; on Linux GTK 4 and libadwaita come from the system; no web view unless the app shows a `WebView` |
 
 A web view app looks the same on every system, as its HTML and CSS
-say, and uses the web's libraries. A Asuka app looks as each platform's
+say, and uses the web's libraries. An Asuka app looks as each platform's
 apps do (an app that sets no style is a Mac app on the Mac, a GNOME app
 on Linux, a Windows 11 app on Windows) and gets their accessibility,
-text input and menus, with one layout engine, in Go, for all of them.
-The desktop hosts run the app's Go in its own process, calling the
-platform without cgo, so `asuka build` makes Windows and Linux builds
-from any system.
+text input and menus, with one layout engine for all of them. `asuka
+build` makes Windows and Linux builds from any system (with Zig, and no
+GTK installed); a Mac's needs a Mac with Xcode.
 
 ## The desktop
 
@@ -221,45 +233,48 @@ Windows and Linux unless the row says otherwise.
 
 | | Electron | MyGo | Asuka |
 |---|---|---|---|
-| Controlling windows | `BrowserWindow` | `Window` | ✓ `ui.UseWindow`, `ui.MainWindow`: show, hide, focus, minimize, maximize, full screen, size, place, always on top, their state as signals; `OnCloseRequest`; where they were, by `StateKey`; child and modal windows; a hidden title bar (Wayland: no place, center or always on top, which the compositor decides; X11: done through Xlib) |
-| Tray icons | `Tray` | tray icons | ✓ `tray.Show` (an `NSStatusItem`; the notification area; a StatusNotifierItem on Linux): icon or symbol, title, tooltip, menu, click |
-| Submenus, a Quit item | `MenuItem.submenu`, roles | roles, submenus | ✓ `MenuItem.Submenu`, `ui.MenuQuit`, in the menu bar, tray and Dock menus |
+| Controlling windows | `BrowserWindow` | `Window` | ✓ the `app` block's `Window` and any other `Window`, `mainWindow()`, a window's `Ref` (`Window as w`): show, hide, focus, minimize, maximize, full screen, size, place, always on top, its state followed; `on closeRequest`, `WindowCloseGuard`; where they were, by `stateKey`; `child` and `modal` windows; `titleBar: .hidden` (Wayland: no place, center or always on top, which the compositor decides) |
+| Tray icons | `Tray` | tray icons | ✓ `platform/tray`'s `tray.Tray` (an `NSStatusItem`; the notification area; a StatusNotifierItem on Linux): image or symbol, title, tooltip, menu, click |
+| Submenus, a Quit item | `MenuItem.submenu`, roles | roles, submenus | ✓ `MenuBar`, `Menu`, `MenuItem` (items in an item are a submenu; `role: .quit`, `.close`, `.openRecent`); `Action`'s `.submenu` and `.section` in tray and Dock menus |
 | The Dock menu, jump list tasks | `app.dock.setMenu`, `setUserTasks` | the Dock menu, jump lists | ✓ `tray.DockMenu` (the Dock's menu, the jump list's Tasks, Linux's launcher quicklist) |
-| Apps in the background | `app.dock.hide`, not quitting on `window-all-closed` | an app in the background | ✓ `app.KeepRunning`, `app.RunInBackground`, `asuka.json`'s `background` |
-| Flyouts: a window hanging from a tray icon | a frameless `BrowserWindow` placed at `tray.getBounds()` by the app | flyouts | ✓ `WindowProps.Flyout` hanging from `tray.Icon.Anchor()` or a rectangle of its window: placed and flipped in the display, closed by a click elsewhere or Escape, a modal dialog over it (Linux: placed under X11 only) |
-| Panels for launchers | `type: 'panel'` (macOS) | panels | ✓ `Panel`: floating over every app and Space, the keyboard without activating the app on a Mac, closed by Escape or a click elsewhere (Linux under Wayland: a window as others) |
-| Windows sized to their content | `setContentSize` by the app | `FitContent` | ✓ `FitContent`: the core's layout sizes the window as its content changes |
-| Click-through windows | `setIgnoreMouseEvents` | `SetIgnoreMouseEvents`, `SetInputRegion` | ✓ `ClickThrough`, `WindowHandle.SetClickThrough` (the whole window) |
-| The apps installed, for a launcher | none | `InstalledApps`, `FileIcon`, `LaunchApp` | ✓ `asuka/sdk/apps` `List`, `Search`, `Icon`, `Open` |
-| Global shortcuts | `globalShortcut` | global shortcuts | ✓ `hotkey.Register` (Carbon's hot keys; `RegisterHotKey`; X11 grabs or Wayland's GlobalShortcuts portal) |
-| Open, save and folder dialogs | `dialog.showOpenDialog`, `showSaveDialog` | dialogs | ✓ `asuka/sdk/dialog` `Open`, `Save`, `Folder` (sheets on the Mac; the web: the File System Access pickers or the file input; phones: `Open` only) |
-| Reveal, open in its app, move to the trash | `shell.showItemInFolder`, `openPath`, `trashItem` | the shell | ✓ `asuka/sdk/shell` `Reveal`, `Open`, `Trash`, `Beep` |
-| File associations | `fileAssociations` (electron-builder), `open-file` | file associations | ✓ `asuka.json`'s `fileTypes`, `ui.OnOpenFiles` (also iOS, Android and installed web apps) |
-| One instance, its second launch | `requestSingleInstanceLock`, `second-instance` | a single instance | ✓ `app.OnSecondInstance`, `asuka.json`'s `singleInstance` (the Mac passes files, not arguments) |
-| Quitting, asking first | `app.quit`, `before-quit` | quitting | ✓ `app.Quit`, `app.OnQuit` (`Cancel`, `SessionEnding`) |
-| The app's folders | `app.getPath` | directories | ✓ `app.DataDir`, `ConfigDir`, `CacheDir`, `LogDir` (everywhere) |
-| Recent documents | `app.addRecentDocument` | recent documents | ✓ `asuka/sdk/recent` (Open Recent on the Mac, the jump list, the user's recent files on Linux) |
-| Document-based apps | — | documents | ✓ `asuka/sdk/document`: a window per file, the File menu, autosave, recovery copies, save questions on close and quit, files changed by other apps (phones and the web: one document at a time, saved in place) |
-| Starting at login | `app.setLoginItemSettings` | start at login | ✓ `asuka/sdk/login` (`SMAppService`, macOS 13+; the Run key; XDG autostart or the Background portal) |
-| Watching files | Node's `fs.watch` (chokidar) | `WatchFiles`, the watch plugin | ✓ `asuka/sdk/watch` `Path`, `New` (FSEvents, inotify, `ReadDirectoryChangesW`; also iOS's kqueue, Android's inotify and the web's own files): renames paired, atomic saves as writes, bursts coalesced |
-| Displays | `screen` | displays | ✓ `screen.UseDisplays`, `Nearest`, `Matching` (Wayland: no work area; phones and the web: theirs) |
-| Sleep, wake, lock, idle time, battery | `powerMonitor` | power | ✓ `asuka/sdk/power` (phones: battery, Low Power Mode, lock; the web: the battery) |
-| Progress and attention on the app's icon | `setProgressBar`, `flashFrame`, `dock.bounce` | the Dock and the taskbar | ✓ `dock.SetProgress`, `RequestAttention` (Linux: docks with the Unity launcher API) |
-| Accent color, Increase Contrast, Reduce Transparency | `systemPreferences` | accent color and accessibility | ✓ `asuka/sdk/appearance` (no Reduce Transparency on Linux) |
-| Now Playing and the media keys | (none: `navigator.mediaSession` in the page) | Now Playing | ✓ `asuka/sdk/nowplaying` (`MPNowPlayingInfoCenter`; the window's SystemMediaTransportControls; an MPRIS player) |
-| Auto-updates: signed releases, deltas, Sparkle's window | `autoUpdater` (Squirrel), electron-updater | the updater, its plugin | ✓ `asuka/sdk/update` (`Window`, `CheckForUpdates`, `Check`, `Install`, `Relaunch`; Ed25519 signatures, delta updates, channels; GitHub releases, an S3 bucket or any HTTPS directory, a server of yours; `asuka publish --platform mac\|windows\|linux`); apps the system's packages, Flatpak or a store installed update through them; the web reloads |
+| Apps in the background | `app.dock.hide`, not quitting on `window-all-closed` | an app in the background | ✓ `asuka.toml`'s `keepRunning` and `background` |
+| Flyouts: a window hanging from a tray icon | a frameless `BrowserWindow` placed at `tray.getBounds()` by the app | flyouts | ✓ a `Window`'s `flyout`, hanging from `tray.anchor(id)` or a rectangle of its window: placed and flipped in the display, closed by a click elsewhere or Escape, a modal dialog over it (Linux: placed under X11 only) |
+| Panels for launchers | `type: 'panel'` (macOS) | panels | ✓ a `Window`'s `panel`: floating over every app and Space, the keyboard without activating the app on a Mac, closed by Escape or a click elsewhere (Linux under Wayland: a layer-shell surface where gtk4-layer-shell is there) |
+| Windows sized to their content | `setContentSize` by the app | `FitContent` | ✓ `fitContent`: Asuka's layout sizes the window as its content changes |
+| Click-through windows | `setIgnoreMouseEvents` | `SetIgnoreMouseEvents`, `SetInputRegion` | ✓ `clickThrough`, `w.setClickThrough(on)` (the whole window) |
+| The apps installed, for a launcher | none | `InstalledApps`, `FileIcon`, `LaunchApp` | ✓ `platform/apps`'s `list`, `search`, `icon`, `open` |
+| Global shortcuts | `globalShortcut` | global shortcuts | ✓ `platform/hotkey`'s `hotkey.Hotkey` (Carbon's hot keys; `RegisterHotKey`; X11 grabs or Wayland's GlobalShortcuts portal) |
+| Open, save and folder dialogs | `dialog.showOpenDialog`, `showSaveDialog` | dialogs | ✓ `platform/dialog`'s `open`, `save`, `chooseFolder`, `chooseFolders` (sheets on the Mac, the common item dialogs, GTK's file dialog or the portal; the web: the File System Access pickers or the file input; phones: `open` only) |
+| Reveal, open in its app, move to the trash | `shell.showItemInFolder`, `openPath`, `trashItem` | the shell | ✓ `platform/shell`'s `reveal`, `open`, `trash`, `beep` |
+| File associations | `fileAssociations` (electron-builder), `open-file` | file associations | ✓ `asuka.toml`'s `fileTypes`, `on files(paths)` (also iOS, Android and installed web apps) |
+| One instance, its second launch | `requestSingleInstanceLock`, `second-instance` | a single instance | ✓ `on secondInstance(args, dir)`, `asuka.toml`'s `singleInstance` (the Mac passes files, not arguments) |
+| Quitting, asking first | `app.quit`, `before-quit` | quitting | ✓ `quit()`, `relaunch()`, `on quit(e)` (`e.cancel()`, `e.sessionEnding`) |
+| The app's folders | `app.getPath` | directories | ◐ `fs.appDir()`, the app's own directory (everywhere); no separate config, cache and log folders |
+| Recent documents | `app.addRecentDocument` | recent documents | ✓ `platform/recent` (Open Recent on the Mac, the jump list, the user's recent files on Linux) |
+| Document-based apps | — | documents | ✓ `platform/document`: `Documents`, a window per file, the File menu, autosave, recovery copies, save questions on close and quit, files changed by other apps (phones and the web: one document at a time, saved in place) |
+| Starting at login | `app.setLoginItemSettings` | start at login | ✓ `platform/login` (`SMAppService`, macOS 13+; the Run key; XDG autostart or the Background portal) |
+| Watching files | Node's `fs.watch` (chokidar) | `WatchFiles`, the watch plugin | ✓ `std/watch`'s `watch.path`: renames paired, atomic saves as writes, bursts coalesced; phones and the web: unsupported |
+| Displays | `screen` | displays | ✓ `screen.displays()`, `nearest`, `matching` (Wayland: no work area; phones and the web: theirs) |
+| Sleep, wake, lock, idle time, battery | `powerMonitor` | power | ✓ `platform/power` (phones: battery, Low Power Mode, lock; the web: the battery) |
+| Progress and attention on the app's icon | `setProgressBar`, `flashFrame`, `dock.bounce` | the Dock and the taskbar | ✓ `dock.setProgress`, `dock.requestAttention` (Linux: docks with the Unity launcher API) |
+| Accent color, Increase Contrast, Reduce Transparency | `systemPreferences` | accent color and accessibility | ✓ `platform/appearance` (no Reduce Transparency on Linux) |
+| Now Playing and the media keys | (none: `navigator.mediaSession` in the page) | Now Playing | ✓ `platform/nowplaying` (`MPNowPlayingInfoCenter`; the window's SystemMediaTransportControls; an MPRIS player) |
+| Auto-updates: signed releases, deltas, Sparkle's window | `autoUpdater` (Squirrel), electron-updater | the updater, its plugin | ✓ `platform/update` (`update.UpdateWindow`, `update.AppMenu()`, `checkForUpdates`, `check`, `install`, `relaunch`; Ed25519 signatures, delta updates, channels; GitHub releases, an S3 bucket or any HTTPS directory, a server of yours; `asuka publish --platform mac\|windows\|linux`); apps the system's packages, Flatpak or a store installed update through them; the web reloads |
 
 Not yet, of what MyGo has: of its documents, versions (a Mac's Browse
-All Versions) and locking; and of its click-through windows, an input
+All Versions) and locking; of its click-through windows, an input
 region (the parts of a window that still take clicks: Asuka's let the
-mouse through all of it, or none).
+mouse through all of it, or none); and of its directories, the
+platform's config, cache and log folders.
 
 ## Not yet
 
 In order of what apps miss most: App Intents with parameters and
 entities (shortcuts take none yet), widgets of the app's own layout (one
-template for now), and over-the-air updates (EAS Update's; Asuka apps are compiled Go, which the
-stores don't let an app replace). On the Mac: `ScreenOptions.ZoomFrom`'s
-zoom (a push slides instead), beginning a list's selection with a
-gesture, and uploading to the Mac App Store with `asuka publish` (upload
-the `.pkg` with Transporter).
+template for now), over-the-air updates (EAS Update's: a release has the
+app compiled into it), and GUI tests of an app on the simulator and the
+emulator. On Windows and Linux, Lottie (`lottie.View` is an empty box).
+On Linux and the web, speech to text. On the Mac, Windows, Linux and the
+web: a screen's `zoomFrom` (a push slides instead) and beginning a
+list's selection with a gesture. And uploading to the Mac App Store with
+`asuka publish` (upload the `.pkg` with Transporter).

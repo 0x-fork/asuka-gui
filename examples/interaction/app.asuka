@@ -1,0 +1,353 @@
+// Interaction shows the states a view reports for styles to follow, as
+// its style's variants (pressed { }, hovered { }, dragging { },
+// dragOver { }) and through its events: pressed (CSS's :active),
+// hovered (:hover, and a group's), dragged, a drag over a drop target;
+// and drag and drop, within the app (cards between columns) and with
+// other apps (files, photos, links, text); and a hardware keyboard's
+// keys (an iPad's, a Chromebook's, a computer's), which a view takes
+// from a field inside it.
+//
+//   asuka dev --platform ios examples/interaction
+//   asuka dev --platform mac examples/interaction
+
+app {
+  Stack { Home() }
+}
+
+screen Home {
+  title: "Interaction"
+
+  Scroll {
+    grow: 1
+    SafeArea {
+      gap: 24
+      padding: 16
+      Section("Pressed and hovered") { Cards() }
+      Section("Hold") { Hold() }
+      Section("Keys") { Keys() }
+      Section("Drag between columns") { Board() }
+      Section("Drop from another app") { DropZone() }
+      Section("Drag to another app") { Sources() }
+    }
+  }
+}
+
+component Section(title: string) {
+  prop children: View
+
+  Column {
+    gap: 8
+    Text(title) { font: .headline }
+    children
+  }
+}
+
+/// Pressable rows. Their own states are their style's variants:
+/// pressed, a card shrinks a little and darkens; hovered, it lightens and
+/// takes an accent border. Its title and chevron follow its hover too,
+/// through its events (a group's hover).
+component Cards {
+  state presses = 0
+  state pressed: string? = none
+  state hovered: string? = none
+
+  Column {
+    gap: 8
+    for name in ["Card 1", "Card 2", "Card 3"] key name {
+      Card(name) {
+        on press { presses += 1 }
+        on pressedChange(on) { pressed = if on { name } else { none } }
+        on hoverChange(on) { hovered = if on { name } else { none } }
+      }
+    }
+    Text("Pressed: {pressed ?? "none"} · Hovered: {hovered ?? "none"}") { color: .secondaryLabel }
+    Text("Presses: {presses}") { color: .secondaryLabel }
+  }
+}
+
+component Card(name: string) {
+  event press
+  event pressedChange(on: bool)
+  event hoverChange(on: bool)
+  state hovered = false
+
+  Row {
+    align: .center
+    gap: 12
+    padding: 16
+    radius: 12
+    background: .secondaryGroupedBackground
+    border: 1
+    borderColor: .separator
+    label: name
+    hovered {
+      background: .secondaryBackground
+      borderColor: .accent
+    }
+    pressed {
+      background: .separator
+      transform: Transform(scale: 0.97)
+    }
+    on press { emit press }
+    on pressedChange(on) { emit pressedChange(on) }
+    on hoverChange(on) {
+      hovered = on
+      emit hoverChange(on)
+    }
+    Symbol("star")
+    Text(name) {
+      grow: 1
+      font: .body
+      color: if hovered { .accent } else { .label }
+    }
+    Symbol("chevron.forward") { color: if hovered { .accent } else { .tertiaryLabel } }
+  }
+}
+
+/// A press held, with no on press: recording while it's down. The
+/// recording is a side effect, so it's pressedChange's; the look is the
+/// variant's, and the state's for the text and symbol inside (text color
+/// isn't inherited).
+component Hold {
+  state recording = false
+
+  Row {
+    align: .center
+    justify: .center
+    gap: 8
+    padding: 16
+    radius: 28
+    background: .secondaryBackground
+    label: "Hold to record"
+    pressed { background: .red }
+    on pressedChange(on) { recording = on } // start and stop the recorder here
+    Symbol("mic") { color: if recording { #ffffff } else { .label } }
+    Text(if recording { "Recording…" } else { "Hold to record" }) {
+      color: if recording { #ffffff } else { .label }
+    }
+  }
+}
+
+/// What Keys searches.
+let fruits = ["Apple", "Apricot", "Banana", "Blueberry", "Cherry", "Grape", "Lemon", "Lime", "Mango", "Orange", "Peach", "Pear", "Plum"]
+
+/// A search field over its results: with a hardware keyboard, Up and
+/// Down (and Control-N, Control-P) move the highlighted result (not the
+/// field's caret: the column's keys take them while the field has the
+/// focus), Enter picks it and Escape clears the field. Characters type
+/// into the field, as the map has none. Cmd-K (Ctrl-K) is the window's:
+/// it puts the focus in the field from anywhere.
+component Keys {
+  state query = ""
+  state selected = 0
+  state picked = ""
+  state focused = false
+
+  let results = fruits.filter(f => f.lower().contains(query.lower()))
+
+  // The first result is highlighted as the results change.
+  effect {
+    let _ = results
+    selected = 0
+  }
+
+  fn move(by: int) {
+    let n = results.count()
+    if n > 0 { selected = (selected + by + n) % n }
+  }
+
+  fn pick() {
+    if selected < results.count() { picked = results[selected] }
+  }
+
+  WindowKeys { keys: [Shortcut(key: "k", primary: true, run: () => { focused = true })] }
+
+  Column {
+    gap: 8
+    keys: [
+      Shortcut(key: "down", run: () => move(1)),
+      Shortcut(key: "up", run: () => move(-1)),
+      Shortcut(key: "n", mods: [.control], run: () => move(1)),
+      Shortcut(key: "p", mods: [.control], run: () => move(-1)),
+      Shortcut(key: "enter", run: () => pick()),
+      Shortcut(key: "escape", run: () => { query = "" }),
+    ]
+    TextField {
+      bind text: query
+      placeholder: "Search fruits"
+      autocorrect: .no
+      bind focused: focused
+      on submit { pick() }
+    }
+    Text(if selected >= results.count() {
+      "No fruit"
+    } else if picked.isEmpty() {
+      "Highlighted: {results[selected]}"
+    } else {
+      "Highlighted: {results[selected]}, picked: {picked}"
+    }) {
+      font: .footnote
+      color: .secondaryLabel
+    }
+    Column {
+      for (i, fruit) in results.enumerated() key fruit {
+        View {
+          padding: [6, 10]
+          radius: 8
+          background: if i == selected { .separator } else { .clear }
+          on press {
+            selected = i
+            pick()
+          }
+          Text(fruit)
+        }
+      }
+    }
+  }
+}
+
+struct Lane {
+  title: string
+  done: bool
+}
+
+let lanes = [Lane(title: "To do", done: false), Lane(title: "Done", done: true)]
+
+struct Task {
+  id: int
+  title: string
+  done: bool
+}
+
+/// Two columns of cards: a card dragged to the other column moves
+/// there. The drag carries the task's id.
+component Board {
+  state tasks = [
+    Task(id: 1, title: "Write the design", done: true),
+    Task(id: 2, title: "Implement the hosts", done: false),
+    Task(id: 3, title: "Test on devices", done: false),
+  ]
+
+  fn move(id: int, done: bool) {
+    if let i = tasks.index(t => t.id == id) {
+      var t = tasks.removeAt(i)
+      t.done = done
+      tasks.push(t)
+    }
+  }
+
+  Row {
+    gap: 8
+    align: .stretch
+    for lane in lanes key lane.title {
+      Column {
+        grow: 1
+        basis: 0
+        gap: 8
+        padding: 8
+        radius: 12
+        minHeight: 160
+        background: .secondaryBackground
+        border: 2
+        borderColor: .clear
+        dragOver { borderColor: .accent }
+        dropTypes: [taskMime]
+        on drop(d) {
+          for item in d.items {
+            if let id = item.text.toInt() {
+              animate(() => move(id, lane.done))
+            }
+          }
+        }
+        Text(lane.title) {
+          font: .subheadline
+          color: .secondaryLabel
+        }
+        for t in tasks.filter(t => t.done == lane.done) key t.id {
+          View {
+            padding: 12
+            radius: 8
+            background: .background
+            dragging { opacity: 0.4 }
+            dragItems: [DragItem(mime: taskMime, text: "{t.id}")]
+            Text(t.title)
+          }
+        }
+      }
+    }
+  }
+}
+
+let taskMime = "application/x-asuka-task"
+
+/// Takes anything another app drags in: files, photos, links, text.
+component DropZone {
+  state dropped = "Drop files, photos, links or text here"
+
+  View {
+    align: .center
+    justify: .center
+    padding: 24
+    minHeight: 120
+    radius: 12
+    border: 2
+    borderColor: .separator
+    background: .secondaryBackground
+    dragOver {
+      borderColor: .accent
+      background: .secondaryGroupedBackground
+    }
+    dropTypes: ["*/*"]
+    on drop(d) {
+      let lines = d.items.map(it => if !it.path.isEmpty() {
+        "{it.name} ({it.mime}, {it.size} bytes)"
+      } else {
+        "\"{it.text}\" ({it.mime})"
+      })
+      let from = if d.local { "this app" } else { "another app" }
+      dropped = "From {from}:\n{lines.joined("\n")}"
+    }
+    Text(dropped) {
+      textAlign: .center
+      color: .secondaryLabel
+    }
+  }
+}
+
+/// Drag a text and a link out of the app (to Notes, a browser, a text
+/// field), and into its drop zone.
+component Sources {
+  Row {
+    gap: 8
+    wrap: true
+    Chip("Some text", DragItem(text: "Hello from Asuka"))
+    Chip("A link", DragItem(kind: .link, text: "https://github.com/egoist/asuka"))
+  }
+}
+
+component Chip(label: string, item: DragItem) {
+  View {
+    padding: [8, 14]
+    radius: 16
+    background: .secondaryBackground
+    dragging { opacity: 0.4 }
+    dragItems: [item]
+    Text(label)
+  }
+}
+
+test "cards count their presses" {
+  let app = mount(Home())
+  app.tap("Card 2")
+  app.tap("Card 2")
+  app.expect("Presses: 2")
+}
+
+test "keys search, move and pick" {
+  let app = mount(Keys())
+  app.type("ap", into: "Search fruits")
+  app.expect("Highlighted: Apple", "Apricot", "Grape")
+  app.expectNo("Banana")
+  app.tap("Grape")
+  app.expect("Highlighted: Grape, picked: Grape")
+}

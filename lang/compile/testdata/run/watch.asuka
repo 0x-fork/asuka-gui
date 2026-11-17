@@ -1,0 +1,29 @@
+// std/watch without platform code (phones, the web, asuka test): path
+// throws an unsupported error; events are plain values.
+import std/watch
+
+fn describe(e: watch.Event) -> string = match e.op {
+  .rename => "Renamed {e.oldPath} to {e.path}"
+  .overflow => "Looked at everything again"
+  .create => "Created {e.path}"
+  .write => "Changed {e.path}"
+  .remove => "Removed {e.path}"
+  .attrib => "Permissions of {e.path}"
+}
+
+test "watch" {
+  do {
+    let w = try await watch.path("/tmp", ignore: [".*"])
+    for await events in w.events {
+      print(events.count())
+    }
+  } catch e {
+    print(e.message)
+  }
+  print(describe(watch.Event(op: .rename, path: "b", oldPath: "a")))
+}
+
+// Output:
+// unsupported: std/watch has nothing to watch with on this platform
+// Renamed a to b
+// ok watch

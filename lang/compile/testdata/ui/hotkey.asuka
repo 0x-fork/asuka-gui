@@ -1,0 +1,21 @@
+import platform/hotkey
+
+component Launcher {
+  state problem = ""
+  Column {
+    hotkey.Hotkey(Shortcut(key: "space", alt: true)) {
+      description: "Show"
+      on press { problem = "pressed" }
+      on error(e) { problem = e.message }
+    }
+    Text(problem)
+  }
+}
+
+app { Launcher() }
+
+test "a host without global shortcuts says so" {
+  let app = mount(Launcher())
+  await app.idle()
+  app.expect("hotkey: not available here")
+}

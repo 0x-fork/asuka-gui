@@ -1,0 +1,625 @@
+// Package platform/update keeps a desktop app up to date, as Sparkle does on
+// the Mac: it checks a feed for a newer version, shows its release notes,
+// downloads it (only what changed, when the feed has a delta from the
+// running version), checks that it's signed with the app's key, and
+// installs it; the app relaunches into it.
+//
+// The ready-made way is the update window, Sparkle's, in Asuka's own
+// elements:
+//
+//   app {
+//     Window {
+//       title: "Notes"
+//       update.UpdateWindow()          // checks in the background, shows the window
+//       MenuBar { update.AppMenu() }    // "Check for Updates…"
+//       Notes()
+//     }
+//   }
+//
+// It checks soon after launch and then once a day; when a version is
+// out, it offers Install Update, Skip This Version and Remind Me Later
+// with the version's release notes (Markdown), then shows the download's
+// progress and offers to relaunch. checkForUpdates() checks as the user
+// asked (the CheckForUpdates menu item): the window says when the app is
+// up to date, too.
+//
+// An app with an interface of its own uses check(), Release.install and
+// relaunch(), or follows the updater's state (update.updater).
+//
+// Updates come from where asuka.toml's [updates] says: GitHub's
+// releases, a static HTTPS location (an S3 bucket, a CDN: the JSON feed
+// `asuka build` writes), or a server of the app's own that answers the
+// same JSON. `asuka build` builds the feed and the public key into the
+// app and signs the archives with the private key (docs/shipping.md,
+// Updates): an archive or a delta that isn't signed with it is never
+// installed.
+//
+// The host does what only it can, through its "update" module (DESIGN.md,
+// "Updates"): it says how the app is installed, downloads, and puts a
+// verified update in place (on the Mac once the app quits; on Windows and
+// Linux at once, the running executable set aside). Where it has none (a
+// phone, which updates from its store; a host that doesn't update apps),
+// the package says updates aren't available. On the web, a new version is
+// a reload of the page: check() reads the version.json `asuka build`
+// writes beside it, and relaunch() reloads.
+
+import platform/host
+import std/json
+import std/fs
+import std/time
+import std/storage
+
+/// Why the app can't update itself, or an update failed.
+pub enum UpdateError: Error {
+  /// update: this platform updates apps itself (its app store)
+  notAvailable
+  /// update: this build has no updates (asuka.toml's [updates]; asuka dev's builds have none)
+  notConfigured
+  /// update: a package manager or an app store installed the app, and updates it
+  managed
+  /// update: macOS runs the app from a read-only copy: move it to the Applications folder, then open it again
+  translocated
+  /// update: the app can't write where it's installed
+  notWritable
+  /// update: the app isn't laid out as asuka build makes it (a bundle, a folder, an install prefix)
+  notInstalled
+  /// update: the update is not signed with the app's key
+  notSigned
+  /// update: checking or installing failed
+  failed(reason: string)
+
+  /// The error's text: "update: " and what went wrong, as each case's
+  /// comment says (failed's: its reason).
+  fn message() -> string = match self {
+    .notAvailable => "update: this platform updates apps itself (its app store)"
+    .notConfigured => "update: this build has no updates (asuka.toml's [updates]; asuka dev's builds have none)"
+    .managed => "update: a package manager or an app store installed the app, and updates it"
+    .translocated => "update: macOS runs the app from a read-only copy: move it to the Applications folder, then open it again"
+    .notWritable => "update: the app can't write where it's installed"
+    .notInstalled => "update: the app isn't laid out as asuka build makes it (a bundle, a folder, an install prefix)"
+    .notSigned => "update: the update is not signed with the app's key"
+    .failed(r) => "update: {r}"
+  }
+}
+
+/// A newer version of the app, which check() found.
+pub struct Release {
+  version: string
+  /// The release notes, in Markdown (the version's section of the app's
+  /// CHANGELOG.md).
+  notes: string = ""
+  /// When it was built, in RFC 3339 ("" if the feed doesn't say).
+  date: string = ""
+  /// What install() downloads: the delta from the running version when
+  /// there's one, else the whole archive.
+  size: int = 0
+  /// The feed's manifest of it.
+  manifest: Manifest = Manifest()
+  /// The version running.
+  current: string = ""
+
+  /// Downloads the release, checks that it's signed with the app's key,
+  /// and installs it; progress hears the bytes downloaded so far and how
+  /// many in all. With a delta from the running version, only the delta
+  /// is downloaded and the new version made from the installed one; when
+  /// that fails (the app changed since it was installed), the whole
+  /// archive is, and the progress starts over. The running app goes on as
+  /// it is: the new version runs after relaunch(), or at the next launch.
+  /// On the web there's nothing to download: the page's next load is the
+  /// new version.
+  pub async fn install(progress: fn(int, int) = noProgress) throws {
+    if let p = page {
+      progress(1, 1)
+      return
+    }
+    try await installManifest(manifest, current, progress)
+    for f in installedFns.values() { f(self) }
+  }
+}
+
+// ---- The web: version.json beside the page ----
+
+/// version.json's (asuka build --platform web writes it): the version
+/// built, its release notes and when.
+struct PageRelease {
+  version: string = ""
+  notes: string = ""
+  date: string = ""
+}
+
+/// The page's side (web/update.js): the version it runs, the newest the
+/// site has, and loading the page again.
+native interface Page {
+  /// The page's version: asuka.toml's; "" in a development build, which
+  /// reloads itself.
+  fn current() -> string
+  /// version.json's, read past caches; version "" when there's none.
+  async fn latest() -> PageRelease
+  fn reload()
+}
+
+let page = try? Page()
+
+// ---- Checking ----
+
+/// The running app's version, asuka.toml's ("" before the host says, or
+/// where it has no updates).
+pub fn version() -> string = hostInfo?.version ?? ""
+
+/// Why the app can't update itself here, or none when it can: not on a
+/// phone (notAvailable), in a build without updates or asuka dev's
+/// (notConfigured), an app a package manager or a store installed
+/// (managed), one macOS runs from a read-only copy (translocated), or
+/// where the user can't write (notWritable).
+pub async fn unsupported() -> UpdateError? {
+  if let p = page {
+    let current = (try? p.current()) ?? ""
+    if current.isEmpty() { return UpdateError.notConfigured }
+    return none
+  }
+  return await hostProblem()
+}
+
+/// Asks the feed for a version newer than the running one, of the
+/// channel followed (setChannel): the release, or none when the app is up
+/// to date. It throws unsupported()'s error where the app can't update
+/// itself.
+pub async fn check() throws -> Release? {
+  if let p = page {
+    let current = (try? p.current()) ?? ""
+    if current.isEmpty() { throw UpdateError.notConfigured }
+    let r = try await p.latest()
+    if r.version.isEmpty() || compareVersions(r.version, current) <= 0 { return none }
+    return Release(version: r.version, notes: r.notes, date: r.date, size: 1, current: current)
+  }
+  let i = try await installable()
+  let feed = if feedOverride.isEmpty() { i.feed } else { feedOverride }
+  var text: string? = none
+  do {
+    text = try await manifestText(feed, i.target, i.version, followed)
+  } catch e {
+    throw UpdateError.failed(reason: "checking for updates: {messageOf(e)}")
+  }
+  let t = text ?? ""
+  if t.isEmpty() { return none }
+  if t.byteCount() > maxManifestSize { throw UpdateError.failed(reason: "checking for updates: the manifest is too large") }
+  var m = Manifest()
+  do {
+    m = try json.decode<Manifest>(t)
+  } catch e {
+    throw UpdateError.failed(reason: "checking for updates: {e.message}")
+  }
+  if m.version.isEmpty() || m.url.isEmpty() || m.signature.isEmpty() || m.size <= 0 {
+    throw UpdateError.failed(reason: "checking for updates: the manifest is incomplete")
+  }
+  if compareVersions(m.version, i.version) <= 0 || !onChannel(m.version, followed) { return none }
+  var size = m.size
+  if let d = m.deltaFrom(i.version) {
+    if d.size > 0 { size = d.size }
+  }
+  return Release(version: m.version, notes: m.notes, date: m.date, size: size, manifest: m, current: i.version)
+}
+
+// messageOf is an error's message without the package's "update: ".
+fn messageOf(e: Error) -> string = e.message.trimPrefix("update: ")
+
+/// Quits the app as the user's Quit does (its on quit handlers may
+/// cancel it) and starts it again: the new version, once one is
+/// installed. On the web, the page loads again.
+pub fn relaunch() {
+  if let p = page {
+    try? p.reload()
+    return
+  }
+  host.relaunchApp()
+}
+
+// ---- Installed ----
+
+state installedFns: [int: fn(Release)] = [:]
+state nextInstalled = 0
+
+/// Calls f when an update is installed, by the update window or by
+/// Release.install: it runs after relaunch(), or at the next launch (on
+/// Windows and Linux the app's files are the new version's by then; on
+/// the Mac the new bundle waits for the app to quit). The function it
+/// returns stops it.
+pub fn onInstalled(f: fn(Release)) -> fn() {
+  nextInstalled += 1
+  let id = nextInstalled
+  installedFns[id] = f
+  return () => { installedFns.remove(id) }
+}
+
+// ---- Preferences (std/storage) ----
+
+/// The user's choices about updates, kept on the device.
+struct Prefs {
+  /// 0 until the app or the user chose, 1 on, 2 off.
+  automaticChecks: int = 0
+  automaticDownloads: bool = false
+  skippedVersion: string = ""
+  /// When the app last checked successfully, in nanoseconds since 1970.
+  lastCheck: int = 0
+}
+
+let prefs = storage.Value("asuka.update", Prefs())
+
+/// The default of automaticChecks until the user chooses: the update
+/// window's automaticChecks prop.
+state checksByDefault = true
+
+/// Whether the updater (UpdateWindow) checks in the background: the
+/// user's choice, else the window's automaticChecks.
+pub fn automaticChecks() -> bool {
+  let c = prefs.value.automaticChecks
+  if c == 0 { return checksByDefault }
+  return c == 1
+}
+
+/// Turns checking in the background on or off (Sparkle's "Automatically
+/// check for updates"), for a setting of the app.
+pub fn setAutomaticChecks(on: bool) {
+  prefs.value.automaticChecks = if on { 1 } else { 2 }
+  schedule()
+}
+
+/// Whether what a check in the background finds is installed without
+/// asking (the update window's checkbox): it runs at the next launch.
+pub fn automaticDownloads() -> bool = prefs.value.automaticDownloads
+
+/// Turns installing what a check in the background finds without asking
+/// on or off (the update window's checkbox), for a setting of the app.
+pub fn setAutomaticDownloads(on: bool) { prefs.value.automaticDownloads = on }
+
+/// When the app last checked for updates successfully, or none.
+pub fn lastCheck() -> time.Time? {
+  let n = prefs.value.lastCheck
+  if n == 0 { return none }
+  return time.unixNano(n)
+}
+
+/// The version the user skipped (Skip This Version): checks in the
+/// background don't offer it, but offer the next.
+pub fn skippedVersion() -> string = prefs.value.skippedVersion
+
+// ---- The updater's state ----
+
+/// Where the updater is: what its window shows.
+pub enum Phase {
+  /// Nothing under way; the window is closed.
+  idle
+  /// Asking the feed.
+  checking
+  /// The check found nothing newer (said when the user asked).
+  upToDate
+  /// release is out; the window offers it.
+  available
+  /// Downloading release: downloaded of total bytes.
+  downloading
+  /// Downloaded, being checked and put in place.
+  installing
+  /// release is installed: it runs after relaunch(), or at the next launch.
+  ready
+  /// The check or the install failed (error).
+  failed
+  /// The app can't update itself (error: unsupported()'s).
+  unavailable
+}
+
+/// The updater's state, for an interface of the app's own (a badge on
+/// its settings, a banner): `update.updater.phase`, read as any state.
+pub store Updater {
+  /// Where the updater is; idle until a check starts.
+  pub state phase: Phase = .idle
+  /// The version offered, downloading, or installed.
+  pub state release: Release? = none
+  /// The download's bytes, while downloading.
+  pub state downloaded = 0
+  /// The download's size in bytes, while downloading: the release's
+  /// size, then what the download reports.
+  pub state total = 0
+  /// Why the updater failed, or is unavailable.
+  pub state error: Error? = none
+  /// Whether the user asked (checkForUpdates): the window shows every
+  /// phase then, as it does an update found in the background.
+  pub state user = false
+  /// Whether failed is the install's, not the check's.
+  pub state installing = false
+
+  fn set(p: Phase, r: Release? = none, e: Error? = none, u: bool = false, inst: bool = false) {
+    phase = p
+    release = r
+    error = e
+    user = u
+    installing = inst
+    downloaded = 0
+    total = if let x = r { x.size } else { 0 }
+  }
+}
+
+/// The updater's state.
+pub let updater = Updater()
+
+// What the window shows, and the work the mounted UpdateWindow does: a
+// check or an install, run by its task, which a new one cancels.
+enum Work {
+  none
+  check(user: bool)
+  install(release: Release, user: bool)
+}
+
+state windowOpen = false
+state work: Work = .none
+state workID = 0
+state ranID = 0
+state scheduleID = 0
+state windows = 0
+state checkedOnce = false
+/// The last background check that failed, in nanoseconds since 1970.
+state failedAt = 0
+
+fn startWork(w: Work) {
+  work = w
+  workID += 1
+}
+
+// cancelWork drops what's under way: the task's next run does nothing.
+fn cancelWork() { startWork(.none) }
+
+fn schedule() { scheduleID += 1 }
+
+/// Checks for updates as the user asked, from a menu item or a button:
+/// the update window shows at once, says when the app is up to date or
+/// can't update itself, and offers a version the user skipped too. While
+/// a check or a download is under way, it brings its window back. The
+/// window does the work: UpdateWindow must be shown.
+pub fn checkForUpdates() {
+  match updater.phase {
+    .checking | .available | .downloading | .installing | .ready => {
+      updater.user = true
+      windowOpen = true
+    }
+    _ => begin(true)
+  }
+}
+
+fn begin(user: bool) {
+  checkedOnce = true
+  startWork(.check(user: user))
+}
+
+// runWork does the work asked for, once: the window's task runs it as
+// workID changes (a window shown later doesn't do what's done).
+async fn runWork(id: int, w: Work) {
+  if id <= ranID { return }
+  ranID = id
+  match w {
+    .none => {}
+    .check(user) => await runCheck(user)
+    .install(r, user) => await runInstall(r, user)
+  }
+}
+
+async fn runCheck(user: bool) {
+  if let e = await unsupported() {
+    if user {
+      updater.set(.unavailable, e: e, u: true)
+      windowOpen = true
+    } else {
+      updater.set(.idle)
+    }
+    return
+  }
+  updater.set(.checking, u: user)
+  if user { windowOpen = true }
+  var found: Release? = none
+  do {
+    found = try await check()
+  } catch e {
+    failedAt = time.now().unixNano()
+    if user {
+      updater.set(.failed, e: e, u: true)
+    } else {
+      updater.set(.idle)
+    }
+    schedule()
+    return
+  }
+  failedAt = 0
+  prefs.value.lastCheck = time.now().unixNano()
+  if let r = found {
+    if !user && r.version == prefs.value.skippedVersion {
+      updater.set(.idle)
+      windowOpen = false
+      schedule()
+    } else if !user && automaticDownloads() {
+      await runInstall(r, false)
+    } else {
+      updater.set(.available, r: r, u: user)
+      windowOpen = true
+    }
+  } else if user {
+    updater.set(.upToDate, u: true)
+  } else {
+    updater.set(.idle)
+    windowOpen = false
+    schedule()
+  }
+}
+
+async fn runInstall(r: Release, user: bool) {
+  updater.set(.downloading, r: r, u: user)
+  do {
+    try await r.install(progress: (done, total) => {
+      if updater.phase != .downloading { return }
+      updater.downloaded = done
+      updater.total = total
+      if done >= total { updater.phase = .installing }
+    })
+  } catch e {
+    failedAt = time.now().unixNano()
+    let shown = updater.user || windowOpen
+    updater.set(.failed, r: r, e: e, u: updater.user, inst: true)
+    if shown { windowOpen = true }
+    return
+  }
+  updater.set(.ready, r: r, u: updater.user)
+}
+
+// The window's answers.
+
+fn installOffered(automatic: bool) {
+  if updater.phase != .available { return }
+  if let r = updater.release {
+    setAutomaticDownloads(automatic)
+    startWork(.install(release: r, user: true))
+  }
+}
+
+// skip skips the release offered: background checks don't offer it
+// again, but offer the next one.
+fn skip(automatic: bool) {
+  if let r = updater.release {
+    prefs.value.skippedVersion = r.version
+  }
+  setAutomaticDownloads(automatic)
+  dismiss()
+}
+
+// remindLater closes the window: the next check offers the release again.
+fn remindLater(automatic: bool) {
+  setAutomaticDownloads(automatic)
+  dismiss()
+}
+
+// dismiss closes the window and ends what it shows: a check or a download
+// under way is canceled; an installed update stays (it runs at the next
+// launch).
+fn dismiss() {
+  windowOpen = false
+  match updater.phase {
+    .checking | .downloading | .installing => cancelWork()
+    _ => {}
+  }
+  if updater.phase == .ready {
+    updater.user = false
+    return // installed: nothing more to check until the app relaunches
+  }
+  updater.set(.idle)
+  schedule()
+}
+
+fn relaunchNow() {
+  windowOpen = false
+  relaunch()
+}
+
+// How long after the updater starts it first checks, the longest a check
+// that failed waits for the next, and the longest the scheduler sleeps
+// (a computer asleep stops timers, not the clock: it wakes to compare).
+let firstCheck = 10s
+let retryAfterFailure = 1h
+let wakeEvery = 1h
+
+// scheduled waits for the next check in the background and begins it:
+// soon after launch, then an interval after the last that succeeded (an
+// hour after one that failed, at most). The window's task runs it again
+// as schedule() asks.
+async fn scheduled(interval: Duration) {
+  if windows == 0 || !automaticChecks() { return }
+  if updater.phase != .idle && updater.phase != .upToDate && updater.phase != .failed { return }
+  if (await unsupported()).isSome() { return }
+  let now = time.now().unixNano()
+  let every = interval.nanoseconds()
+  var due = now + firstCheck.nanoseconds()
+  if checkedOnce {
+    due = prefs.value.lastCheck + every
+    if due > now + every { due = now + every } // the clock was set back
+    if failedAt != 0 {
+      let retry = failedAt + min(every, retryAfterFailure.nanoseconds())
+      if retry > due { due = retry }
+    }
+    if due < now + firstCheck.nanoseconds() { due = now + firstCheck.nanoseconds() }
+  }
+  while time.now().unixNano() < due {
+    let left = due - time.now().unixNano()
+    await sleep(1ns * min(left, wakeEvery.nanoseconds()))
+  }
+  begin(false)
+}
+
+// ---- Tests ----
+
+/// How the fake host's update module answers (fakeHost): as an installed
+/// app's host does.
+pub struct FakeApp {
+  version: string = "1.0.0"
+  name: string = "App"
+  target: string = "test"
+  feed: string = ""
+  /// The update public key, base64 (32 bytes).
+  key: string = ""
+  /// bundle, folder or prefix, as the host found the app installed.
+  kind: string = "folder"
+  root: string = ""
+  exe: string = ""
+  work: string = ""
+  /// false, with reason (notConfigured, managed, translocated,
+  /// notWritable, notInstalled): the app can't update itself.
+  installable: bool = true
+  reason: string = ""
+  /// What the host's install answers instead of doing it.
+  installError: string = ""
+}
+
+/// What a download of a URL gets from the fake host: file's bytes (a 404
+/// without one), or status, or an error; hold keeps it at 0 bytes until
+/// it's cancelled.
+pub struct Served {
+  url: string
+  file: string = ""
+  status: int = 200
+  error: string = ""
+  hold: bool = false
+}
+
+/// What the fake host's update module did.
+pub struct FakeLog {
+  downloads: [string] = []
+  installed: [string] = []
+  canceled: int = 0
+}
+
+/// The fake host's update module (core/host/fake), for an app's tests: it
+/// has none until fakeHost sets it up, as an installed app's host has.
+pub struct FakeHost {
+  /// What a download of a URL gets.
+  pub async fn serve(s: Served) throws {
+    let _ = try await host.call("update", "serve", json.encode(s).bytes())
+  }
+
+  /// What it downloaded and installed.
+  pub async fn log() throws -> FakeLog {
+    let b = try await host.call("update", "log", bytes())
+    return try json.decode<FakeLog>(b.string())
+  }
+}
+
+/// Makes the fake host's update module answer as app's host would, for an
+/// app's tests (after mount: the module is the mounted app's host's), and
+/// starts the updater over as a launch does: what it learned of the host,
+/// its state and the user's choices are forgotten.
+pub async fn fakeHost(app: FakeApp) throws -> FakeHost {
+  let _ = try await host.call("update", "fake", json.encode(app).bytes())
+  hostAsked = false
+  hostInfo = none
+  cancelWork()
+  ranID = workID
+  updater.set(.idle)
+  windowOpen = false
+  checkedOnce = false
+  failedAt = 0
+  prefs.value = Prefs()
+  return FakeHost()
+}
