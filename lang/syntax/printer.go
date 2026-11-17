@@ -57,7 +57,7 @@ func Format(filename string, src []byte) ([]byte, error) {
 // A *SourceFile prints with all its comments, any other node with the
 // comments its Trivia hold.
 func Fprint(w io.Writer, file *File, node Node) error {
-	p := &printer{file: file, printed: map[*Comment]bool{}, broken: map[Pos]bool{}}
+	p := &printer{file: file, printed: map[*Comment]bool{}}
 	if f, ok := node.(*SourceFile); ok {
 		if p.file == nil {
 			p.file = f.File
@@ -398,6 +398,9 @@ func (p *printer) body(lbrace Pos, comment *Comment, nodes []Node, dangling []*C
 			// Printed again below, and maybe again as part of an
 			// enclosing body that breaks too: don't try once more.
 			p.out, p.bol = p.out[:mark], bol
+			if p.broken == nil {
+				p.broken = map[Pos]bool{}
+			}
 			p.broken[lbrace] = true
 		}
 	}
