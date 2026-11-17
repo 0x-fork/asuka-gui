@@ -56,3 +56,12 @@ struct Sized {
   width: int
   area: int = width * 2 // ERROR "a default can't read the struct's fields \(width\): .*a method"
 }
+
+enum Pair {
+  of(int, string)
+}
+
+fn pairs() -> [Pair] = [
+  .of(1), // ERROR "Pair.of needs its payload 2: a string"
+  .of(1, 2), // ERROR "payload 2 of Pair.of is an int, not a string"
+]

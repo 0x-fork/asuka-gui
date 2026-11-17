@@ -248,7 +248,11 @@ func (c *Checker) matchArgList(e *syntax.CallExpr, list []*syntax.Arg, params []
 			if e.Args != nil {
 				at = e.Args
 			}
-			c.errorf(at, "%s needs %s: %s", what, p.Name, typeString(p.Type))
+			if n, ok := payloadIndex(p); ok {
+				c.errorf(at, "%s needs its payload %d: %s", what, n, aType(p.Type))
+			} else {
+				c.errorf(at, "%s needs %s: %s", what, p.Name, typeString(p.Type))
+			}
 		}
 	}
 	return out
@@ -473,7 +477,7 @@ func (c *Checker) inferArgs(args []syntax.Expr, params []*Param, s Subst, free m
 			pt := params[i].Type
 			leave := c.enterArg(a)
 			if !mentionsFree(pt, free, s) {
-				c.assign(a, s.Apply(pt), "argument "+params[i].Name+" of "+what)
+				c.assign(a, s.Apply(pt), argDesc(params[i])+" of "+what)
 				leave()
 				checked[i] = true
 				continue
@@ -504,7 +508,7 @@ func (c *Checker) inferArgs(args []syntax.Expr, params []*Param, s Subst, free m
 			leave()
 			types[i] = got
 			if !c.unify(pw, got, s, free) {
-				c.errorf(a, "argument %s of %s is %s, which doesn't fit %s", params[i].Name, what, aType(got), typeString(s.Apply(pt)))
+				c.errorf(a, "%s of %s is %s, which doesn't fit %s", argDesc(params[i]), what, aType(got), typeString(s.Apply(pt)))
 			}
 			checked[i] = true
 		}
@@ -518,9 +522,34 @@ func (c *Checker) inferArgs(args []syntax.Expr, params []*Param, s Subst, free m
 			continue
 		}
 		if !c.convert(a, types[i], pt) {
-			c.errorf(a, "argument %s of %s is %s, not %s", params[i].Name, what, aType(types[i]), aType(pt))
+			c.errorf(a, "%s of %s is %s, not %s", argDesc(params[i]), what, aType(types[i]), aType(pt))
 		}
 	}
+}
+
+// payloadIndex is the place (from 1) of an enum case's payload without
+// a label, which its call's params name _0, _1, ….
+func payloadIndex(p *Param) (int, bool) {
+	if len(p.Name) < 2 || p.Name[0] != '_' {
+		return 0, false
+	}
+	n := 0
+	for _, r := range p.Name[1:] {
+		if r < '0' || r > '9' {
+			return 0, false
+		}
+		n = n*10 + int(r-'0')
+	}
+	return n + 1, true
+}
+
+// argDesc names a parameter's argument in a message: argument title, or
+// payload 2 (a case's without a label).
+func argDesc(p *Param) string {
+	if n, ok := payloadIndex(p); ok {
+		return "payload " + itoa(n)
+	}
+	return "argument " + p.Name
 }
 
 // isEmptyLit reports [] or [:], which say nothing of their types.
@@ -1280,7 +1309,7 @@ func (c *Checker) caseCall(e *syntax.CallExpr, tn *TypeName, k *Case, want Type)
 	for i, p := range k.Params {
 		name := k.Labels[i]
 		if name == "" {
-			name = "_" + itoa(i)
+			name = "_" + itoa(i) // payloadIndex's
 		}
 		params[i] = &Param{Name: name, Type: p}
 		// A labeled payload with a zero value may be left out: it's
@@ -1327,7 +1356,7 @@ func (c *Checker) storeCall(e *syntax.CallExpr, tn *TypeName, want Type) Type {
 	if len(tn.TypeParams) == 0 {
 		for i, a := range args {
 			if a != nil {
-				c.bindingArg(a, params[i].Type, "argument "+params[i].Name+" of "+tn.name)
+				c.bindingArg(a, params[i].Type, argDesc(params[i])+" of "+tn.name)
 			}
 		}
 		c.info.Calls[e] = &Call{Kind: CallStore, Type: tn.Type.(*Named), Args: args, Params: params, Result: tn.Type}
