@@ -80,7 +80,9 @@ func launch(t *testing.T, platform, app string) string {
 	if runtime.GOOS == "windows" {
 		cli += ".exe"
 	}
+	start := time.Now()
 	run(t, "go", "build", "-C", root(t), "-o", cli, "./cmd/asuka")
+	built := time.Since(start)
 	args := []string{"dev", "--platform", platform}
 	if d := os.Getenv("ASUKA_DEVICE"); d != "" {
 		args = append(args, "--device", d)
@@ -124,6 +126,15 @@ func launch(t *testing.T, platform, app string) string {
 			t.Fatalf("asuka dev --platform %s %s didn't launch the app:\n%s", platform, appDir(app), logs.String())
 		}
 	}
+	// Where a slow launch's time went (go test -v shows it): the CLI's
+	// build, then its own steps (the simulator's boot, the player's build).
+	var steps []string
+	for _, l := range strings.Split(logs.String(), "\n") {
+		if strings.HasPrefix(l, "asuka: ") && !strings.Contains(l, "watching for changes") {
+			steps = append(steps, "  "+l)
+		}
+	}
+	t.Logf("launched in %s (the CLI built in %s):\n%s", time.Since(start).Round(100*time.Millisecond), built.Round(100*time.Millisecond), strings.Join(steps, "\n"))
 	return logs.String()
 }
 

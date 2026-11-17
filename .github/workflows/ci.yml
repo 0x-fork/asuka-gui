@@ -74,6 +74,14 @@ jobs:
   e2e-ios:
     runs-on: macos-latest
     steps:
+      # A fresh runner's first boot of a simulator takes minutes: started
+      # first, it goes on while the rest sets up, and asuka dev takes the
+      # iPhone that's booting.
+      - name: an iPhone simulator, booting
+        run: |
+          udid=$(xcrun simctl list devices available -j | jq -r '[.devices | to_entries | sort_by(.key) | reverse | .[] | select(.key | test("iOS")) | .value[] | select(.name | test("^iPhone.* Pro$"))][0].udid')
+          echo "booting $udid"
+          nohup xcrun simctl boot "$udid" > /dev/null 2>&1 &
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with: { go-version: stable }

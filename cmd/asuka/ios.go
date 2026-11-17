@@ -493,8 +493,8 @@ func pickSimulator(want string) (*simDevice, error) {
 		switch {
 		case want != "" && (d.UDID == want || d.Name == want):
 			pick = d
-		case want == "" && d.State == "Booted" && strings.HasPrefix(d.Name, "iPhone") && pick == nil:
-			pick = d
+		case want == "" && (d.State == "Booted" || d.State == "Booting") && strings.HasPrefix(d.Name, "iPhone") && pick == nil:
+			pick = d  // one that's up, or coming up
 		}
 	}
 	if pick == nil && want == "" {
@@ -521,8 +521,13 @@ func pickSimulator(want string) (*simDevice, error) {
 	}
 	if pick.State != "Booted" {
 		fmt.Printf("asuka: booting %s\n", pick.Name)
-		if out, err := exec.Command("xcrun", "simctl", "boot", pick.UDID).CombinedOutput(); err != nil && !bytes.Contains(out, []byte("current state: Booted")) {
-			return nil, fmt.Errorf("simctl boot: %s", bytes.TrimSpace(out))
+		start := time.Now()
+		defer func() { fmt.Printf("asuka: %s booted in %.1fs\n", pick.Name, time.Since(start).Seconds()) }()
+		// One already booting (Simulator.app's, a script's) is waited for.
+		if pick.State != "Booting" {
+			if out, err := exec.Command("xcrun", "simctl", "boot", pick.UDID).CombinedOutput(); err != nil && !bytes.Contains(out, []byte("current state: Boot")) {
+				return nil, fmt.Errorf("simctl boot: %s", bytes.TrimSpace(out))
+			}
 		}
 		exec.Command("xcrun", "simctl", "bootstatus", pick.UDID, "-b").Run()
 		exec.Command("open", "-a", "Simulator").Run() // shows it, when installed
