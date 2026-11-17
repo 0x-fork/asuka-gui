@@ -2163,6 +2163,17 @@ func (p *parser) parseBinary(minPrec int) Expr {
 	x := p.parseUnary()
 	for {
 		op, opPos := p.binaryOp(), p.pos
+		if p.incDec() {
+			// x++, x--: C's, not ours.
+			p.error(opPos, "there's no "+op.String()+op.String()+" operator: write x "+op.String()+"= 1")
+			p.next()
+			p.next()
+			return x
+		}
+		if op == QUESTION {
+			p.error(opPos, "there's no ?: operator: write if a { b } else { c }")
+			return x
+		}
 		prec := op.Precedence()
 		if prec == 0 || prec < minPrec {
 			return x
@@ -2185,6 +2196,28 @@ func (p *parser) parseBinary(minPrec int) Expr {
 				p.error(p.pos, "ranges don't chain")
 			}
 		}
+	}
+}
+
+// incDec reports ++ or -- here: two + or two - side by side, the second
+// the end of the expression or its line (a--b is a - -b).
+func (p *parser) incDec() bool {
+	if p.tok != ADD && p.tok != SUB || p.i+2 >= len(p.toks) {
+		return false
+	}
+	n := p.toks[p.i+1]
+	if n.tok != p.tok || n.pos != p.pos+1 {
+		return false
+	}
+	if p.tok == ADD {
+		return true // there's no unary +
+	}
+	switch t := p.toks[p.i+2]; t.tok {
+	case NEWLINE, SEMICOLON, RBRACE, RPAREN, RBRACK, COMMA, EOF:
+		return true
+	default:
+		// A newline after an operator doesn't end the line: y-- ⏎ z.
+		return p.line(t.pos) > p.line(p.pos)
 	}
 }
 
@@ -2503,6 +2536,9 @@ func (p *parser) parsePrimary() Expr {
 	}
 	if softKeyword(p.tok) {
 		return p.name()
+	}
+	if p.tok == ADD && p.peek(1) == ADD && p.toks[p.i+1].pos == p.pos+1 {
+		p.error(p.pos, "there's no ++ operator: write x += 1")
 	}
 	p.errorExpected("an expression")
 	switch p.tok {

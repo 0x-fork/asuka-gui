@@ -123,6 +123,24 @@ pub 3
 			decls: 2,
 		},
 		{
+			name: "C's operators",
+			src: `fn f() {
+  x++
+  y--
+  ++z
+  w = a--b
+  v = a ? b : c
+}
+`,
+			errs: []string{
+				"2:4: there's no ++ operator: write x += 1",
+				"3:4: there's no -- operator: write x -= 1",
+				"4:3: there's no ++ operator: write x += 1",
+				"6:9: there's no ?: operator: write if a { b } else { c }",
+			},
+			decls: 1,
+		},
+		{
 			name:  "if value without else",
 			src:   "let x = if a { 1 }\n",
 			errs:  []string{"1:19: an if used as a value needs an else"},
