@@ -1,0 +1,4 @@
+extend string {
+  pub fn slug() -> string = "words"
+  pub fn wordCount() -> int = fields().count()
+}

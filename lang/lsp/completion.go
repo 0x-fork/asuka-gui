@@ -365,6 +365,37 @@ func (c *completer) valueMembers(t check.Type, optional bool, dot int) {
 		}
 		addItem(c.methodItem(m, inner))
 	}
+	// What the extensions the file's package sees add.
+	c.extMembers(inner, "method", addItem)
+}
+
+// extMembers adds what the extensions the file's package sees give type
+// t: its methods, or its static fns and constants (kind "static").
+func (c *completer) extMembers(t check.Type, kind string, add func(CompletionItem)) {
+	for _, e := range check.VisibleExtensions(c.fc.pkg) {
+		if !e.Extends(t) {
+			continue
+		}
+		if kind == "method" {
+			for _, f := range e.Order {
+				if !e.SeenFrom(c.fc.pkg, f.Decl.Pub.IsValid()) {
+					continue
+				}
+				add(c.callItem(f.Name(), kindMethod, funcSig(f), docOf(f.Decl), f.Sig != nil && len(f.Sig.Params) > 0))
+			}
+			continue
+		}
+		for _, f := range e.Statics {
+			if e.SeenFrom(c.fc.pkg, f.Decl.Pub.IsValid()) {
+				add(c.callItem(f.Name(), kindFunction, funcSig(f), docOf(f.Decl), f.Sig != nil && len(f.Sig.Params) > 0))
+			}
+		}
+		for _, g := range e.Consts {
+			if e.SeenFrom(c.fc.pkg, g.Pub) {
+				add(CompletionItem{Label: g.Name(), Kind: kindConstant, Detail: typeStr(g.Type), Documentation: c.doc(docOf(g.Decl))})
+			}
+		}
+	}
 }
 
 // method adds a built-in method.
@@ -422,6 +453,9 @@ func (c *completer) staticMembers(tn *check.TypeName) {
 		c.caseItem(k, tn)
 	}
 	c.consts(tn)
+	if tn.Type != nil {
+		c.extMembers(tn.Type, "static", func(it CompletionItem) { c.add(it, prioMember) })
+	}
 }
 
 func (c *completer) caseItem(k *check.Case, tn *check.TypeName) {
@@ -535,6 +569,10 @@ func (c *completer) patternType(pat *syntax.CasePat) check.Type {
 // expectedMembers completes .name for a value of type t.
 func (c *completer) expectedMembers(t check.Type) {
 	u := check.Unopt(t)
+	if _, named := u.(*check.Named); !named && u != nil && !check.IsInvalid(u) {
+		// A built-in type's (a named one's are staticMembers').
+		c.extMembers(u, "static", func(it CompletionItem) { c.add(it, prioMember) })
+	}
 	switch u {
 	case check.Color:
 		for _, n := range check.SemanticColors() {
@@ -627,7 +665,7 @@ func atItemStart(before string) bool {
 }
 
 var (
-	topKeywords       = []string{"component", "screen", "store", "worker", "struct", "enum", "interface", "fn", "async", "type", "style", "state", "let", "app", "test", "import", "pub", "native", "extern"}
+	topKeywords       = []string{"component", "screen", "store", "worker", "struct", "enum", "interface", "fn", "async", "type", "style", "state", "let", "app", "test", "import", "pub", "native", "extern", "extend"}
 	componentKeywords = []string{"prop", "event", "state", "let", "use", "provide", "fn", "async", "task", "effect", "pub"}
 	viewKeywords      = []string{"if", "for", "match"}
 	stmtKeywords      = []string{"let", "var", "if", "for", "while", "match", "return", "throw", "break", "continue", "defer", "do", "emit", "try", "await"}
@@ -651,7 +689,7 @@ func (c *completer) general(path []syntax.Node, pos syntax.Pos, before string) {
 	}
 	if kind == typeBody {
 		if item {
-			c.keywords([]string{"fn", "async", "let", "pub"})
+			c.keywords([]string{"fn", "mut", "async", "let", "pub"})
 		}
 		return
 	}

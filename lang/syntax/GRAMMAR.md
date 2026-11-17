@@ -80,15 +80,15 @@ parser normalizes each identifier's text).
 
 ```
 app as async await bind break catch component continue defer do effect
-else emit enum event extern false fn for if import in interface key let
-load match native none on prop provide pub return screen self spawn
-state store struct style task test throw throws true try type use var
-while worker
+else emit enum event extend extern false fn for if import in interface
+key let load match mut native none on prop provide pub return screen
+self spawn state store struct style task test throw throws true try type
+use var while worker
 ```
 
-A keyword newer than the language's first (`worker`, since 0.2.7) used
-as a name is an error that says so: "rename it: worker is a keyword
-since 0.2.7".
+`mut`, `extend` and `worker` are keywords since 0.2.7: a file that
+names something so is an error that says to rename it ("rename it:
+worker is a keyword since 0.2.7").
 
 After `.` or `?.`, a keyword is a member's name (`x.type`,
 `.default`). The soft keywords, which only start a declaration or an
@@ -172,7 +172,7 @@ Imports come before the declarations.
 Decl        = [ "pub" ] ( Component | Screen | Store | Worker | Struct | Enum | Interface
                         | Func | TypeAlias | StyleDecl | StateDecl | LetDecl
                         | Shader | Native | Extern | App )
-            | Test .
+            | Extend | Test .
 
 Component   = "component" Ident [ TypeParams ] [ Params ] Block .
 Screen      = "screen" Ident [ Params ] [ "at" STRING ] Block .
@@ -194,12 +194,13 @@ CaseParam   = [ Name ":" ] Type .
 EnumMember  = [ "pub" ] ( Func | "static" Func | Constant ) .
 
 Interface   = "interface" Ident [ TypeParams ] "{" { InterfaceMember Term } "}" .
+Extend      = "extend" [ TypeParams ] Type [ Conforms ] "{" { StructMember Term } "}" .   (* fields: the checker's error *)
 InterfaceMember = [ "pub" ] ( Func | "native" Func | Field ) .
 
 Native      = "native" ( Interface | Component | Func ) .
 Extern      = "extern" ( Func | Struct | "type" Ident [ "with" "release" Ident ] ) .
 
-Func        = [ "async" ] "fn" FuncName [ TypeParams ] Params [ "throws" ] [ "->" Type ]
+Func        = [ "async" ] [ "mut" ] "fn" FuncName [ TypeParams ] Params [ "throws" ] [ "->" Type ]
               [ Block | "=" Expr ] .              (* neither: a signature *)
 FuncName    = Ident | Keyword .                  (* a keyword only before ( or <: fn defer() *)
 Params      = "(" [ Param { "," Param } [ "," ] ] ")" .
@@ -215,14 +216,16 @@ Constant    = "let" Pattern [ ":" Type ] "=" Expr .   (* a type's: Font.title *)
 ```
 
 `pub` may precede any declaration or member, and the checker says where
-it means something; a test can't be `pub`. `var` at a file's top level
+it means something; a test can't be `pub`, nor an `extend` (its members
+are, each). `mut fn` is a method's: a struct's, an enum's, an
+interface's or an extension's. `var` at a file's top level
 is an error (a file's mutable values are `state`). An enum's cases come
 before its constants and methods. `let … else`: the `else` is on the
 line of the let's value (decision 20), and only a statement's let may
 have one (the checker's).
 
 A declaration that can only be a file's (`component`, `screen`,
-`store`, `worker`, `struct`, `enum`, `interface`, `type`, `native …`, `extern …`,
+`store`, `worker`, `struct`, `enum`, `interface`, `extend`, `type`, `native …`, `extern …`,
 `import`, `app {`, `test "…"`) in column 1 inside a block ends the
 block: its `}` is missing.
 
@@ -257,13 +260,13 @@ ViewItem    = OnHandler
 OnHandler   = "on" Name [ "(" [ Ident { "," Ident } [ "," ] ] ")" ] Block .
 
 Stmt        = IfStmt
-            | "for" [ "await" ] Pattern "in" HeadExpr [ "key" HeadExpr ] Block
-            | "while" Cond Block
+            | "for" [ "await" ] Pattern "in" HeadExpr [ "key" HeadExpr ] [ "as" Ident ] Block
+            | "while" Cond [ "as" Ident ] Block      (* as names the loop: break rows *)
             | "match" HeadExpr Arms
             | "do" Block CatchClause { CatchClause }
             | "return" [ Expr ]                     (* its value on its line *)
             | "throw" Expr
-            | "break" | "continue"
+            | ( "break" | "continue" ) [ Ident ]    (* a loop's name, on break's line *)
             | "defer" Block
             | "emit" Name [ Args ]                  (* the ( on emit's line *)
             | Expr [ AssignOp Expr ] .
@@ -271,7 +274,7 @@ IfStmt      = "if" Cond Block [ "else" ( IfStmt | Block ) ] .
 AssignOp    = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^=" | "<<=" | ">>=" | "??=" .
 
 Cond        = CondClause { "," CondClause } .   (* if let a = x, a > 0 { … } (decision 21) *)
-CondClause  = "let" Pattern "=" Expr | Expr .
+CondClause  = ( "let" | "var" ) Pattern "=" Expr | Expr .   (* if var x = y: a copy that may change *)
 CatchClause = "catch" [ Ident ":" Type | Pattern ] Block .
 Arms        = "{" { Arm ( "," | Term ) } "}" .
 Arm         = Pattern [ "if" HeadExpr ] "=>" ( Block | Item ) .   (* a match expression's: Block | Expr *)
@@ -318,7 +321,7 @@ Selector    = "." Name | "?." Name
             | [ TypeArgs ] Args [ "as" Ident ] [ Trailing ]
             | "as" Ident [ Trailing ]            (* after an element's name: View as card { … } *)
             | Trailing                           (* after an element's or a lower-case name *)
-            | "[" Expr "]"
+            | "[" Expr [ "," "default" ":" Expr ] "]"   (* m[k, default: v]: default is a label only here *)
             | "!" .                              (* right after its operand: x! *)
 TypeArgs    = "<" Type { "," Type } [ "," ] ">" .  (* only right before a ( *)
 Args        = "(" [ Arg { "," Arg } [ "," ] ] ")" .
@@ -358,6 +361,8 @@ What the parser decides where the productions are ambiguous:
   `animate { … }`); elsewhere it's a call with that trailing block
   (`await animate { … }`). A trailing block never binds in a
   `HeadExpr`, and binds only on its call's line.
+- **Loops' names**: in a `for`'s or a `while`'s head, `as` names the
+  loop, not an element (`for x in Items() as rows {`).
 - **Lambdas** (decision 7): a name and `=>`, or a parenthesized list of
   names, each maybe with a type, whose `)` is followed by `=>`, maybe
   after `async`. Anything else in parentheses is a grouping or a tuple.

@@ -68,9 +68,11 @@ type Checker struct {
 	// Generic calls, for the type parameters read or written as JSON
 	// (checked once every body has said which: jsonGenerics).
 	genericCalls []genericCall
-	instances    []instance  // where generics get their type arguments (instances.go)
-	laterChecks  []func()    // checks for when the package's declarations are whole
-	lvalueWhole  syntax.Expr // the target of the = (or bind) lvalue checks: a prop assigned whole
+	instances    []instance   // where generics get their type arguments (instances.go)
+	laterChecks  []func()     // checks for when the package's declarations are whole
+	lvalueWhole  syntax.Expr  // the target of the = (or bind) lvalue checks: a prop assigned whole
+	mutName      string       // the mut fn whose receiver lvalue checks, for its errors
+	labels       []*loopLabel // the named loops around, innermost last
 	// The built-in methods' and functions' signatures that name the
 	// prelude's types, read with this checker's prelude.
 	sigs        map[*Method]parsedSig
@@ -329,6 +331,9 @@ func (c *Checker) checkFiles(p *Package, files []*syntax.SourceFile, imports map
 	for _, t := range p.Types {
 		c.typeMembers(t)
 	}
+	for _, e := range p.Exts {
+		c.extMembers(e)
+	}
 	c.structCycles(p)
 	for _, f := range p.Funcs {
 		c.funcSig(f)
@@ -339,6 +344,9 @@ func (c *Checker) checkFiles(p *Package, files []*syntax.SourceFile, imports map
 	c.checkStyles(p)
 	for _, t := range p.Types {
 		c.typeBodies(t)
+	}
+	for _, e := range p.Exts {
+		c.extBodies(e)
 	}
 	for _, f := range p.Funcs {
 		c.funcBody(f)
@@ -559,6 +567,8 @@ func (c *Checker) collect(p *Package, d syntax.Decl) {
 		p.App = d
 	case *syntax.TestDecl:
 		p.Tests = append(p.Tests, &Test{Name: unquoteSimple(d.Name), Decl: d, Pkg: p})
+	case *syntax.ExtendDecl:
+		c.collectExtend(p, d)
 	}
 }
 

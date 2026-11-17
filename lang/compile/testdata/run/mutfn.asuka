@@ -1,0 +1,210 @@
+// mut fn: a struct's or an enum's method that changes the value it's
+// called on, a place: a var, state, a field or an element of one.
+
+struct Item {
+  id: int
+  qty: int = 1
+
+  mut fn bump() { qty += 1 }
+}
+
+struct Cart {
+  items: [Item] = []
+  changes: int = 0
+
+  mut fn add(i: Item) {
+    changes += 1
+    if let n = items.index(x => x.id == i.id) {
+      items[n].bump()
+    } else {
+      items.push(i)
+    }
+  }
+  mut fn clear() { self = Cart() }
+  mut fn take() -> Item? {
+    changes += 1
+    return items.pop()
+  }
+  // It calls its own mut fns, by name and on self.
+  mut fn addTwice(i: Item) {
+    add(i)
+    self.add(i)
+  }
+  fn total() -> int {
+    var t = 0
+    for i in items { t += i.qty }
+    return t
+  }
+}
+
+enum Light {
+  red
+  green
+  yellow
+
+  mut fn next() {
+    self = match self {
+      .red => .green
+      .green => .yellow
+      .yellow => .red
+    }
+  }
+}
+
+enum Gauge {
+  empty
+  level(int)
+
+  mut fn fill(n: int) {
+    self = match self {
+      .empty => .level(n)
+      .level(k) => .level(k + n)
+    }
+  }
+}
+
+enum Oops: Error { tooMany }
+
+struct Bag {
+  n: int = 0
+
+  // What it changed before it threw stays.
+  mut fn put(k: int) throws {
+    n += k
+    if n > 3 { throw Oops.tooMany }
+  }
+  // A closure has self's value as it's made.
+  mut fn later() -> fn() -> int {
+    let f = () => n
+    n += 100
+    return f
+  }
+  mut fn me() -> Bag {
+    n += 1
+    return self
+  }
+}
+
+interface Counter {
+  mut fn count() -> int
+}
+
+struct Clicks: Counter {
+  n: int = 0
+  mut fn count() -> int {
+    n += 1
+    return n
+  }
+}
+
+struct Ticks: Counter {
+  n: int = 10
+  mut fn count() -> int {
+    n += 10
+    return n
+  }
+}
+
+fn thrice<C: Counter>(c: C) -> int {
+  var x = c
+  x.count()
+  x.count()
+  return x.count()
+}
+
+state cart = Cart()
+state light = Light.red
+
+store Shop {
+  state cart = Cart()
+  pub fn buy(i: Item) { cart.add(i) }
+}
+
+test "a var" {
+  var c = Cart()
+  c.add(Item(id: 1))
+  c.add(Item(id: 1))
+  c.add(Item(id: 2))
+  c.addTwice(Item(id: 3))
+  print("{c.total()} {c.changes} {c.items.count()}")
+  let t = c.take()
+  print("{t?.id ?? 0} {c.changes}")
+  c.clear()
+  print("{c.total()} {c.changes}")
+}
+
+test "fields and elements" {
+  var cs = [Cart(), Cart()]
+  cs[1].add(Item(id: 7))
+  cs[1].items[0].bump()
+  cs[1].items[0].bump()
+  print("{cs[0].total()} {cs[1].total()}")
+}
+
+test "enums" {
+  var l = Light.red
+  l.next()
+  l.next()
+  print(l)
+  var g = Gauge.empty
+  g.fill(2)
+  g.fill(3)
+  print(g)
+}
+
+test "state" {
+  cart.add(Item(id: 1))
+  cart.items[0].bump()
+  print(cart.total())
+  light.next()
+  print(light)
+  let s = Shop()
+  s.buy(Item(id: 4))
+  s.buy(Item(id: 4))
+  print(s.cart.total())
+}
+
+test "throws" {
+  var b = Bag()
+  do {
+    try b.put(2)
+    try b.put(2)
+  } catch {
+    print("caught at {b.n}")
+  }
+  let f = b.later()
+  print("{f()} {b.n}")
+  let m = b.me()
+  print("{m.n} {b.n}")
+}
+
+test "interfaces" {
+  var c: Counter = Clicks()
+  c.count()
+  print(c.count())
+  print(thrice(Clicks()))
+  print(thrice(Ticks()))
+}
+
+// Output:
+// 5 5 3
+// 3 6
+// 0 0
+// ok a var
+// 0 3
+// ok fields and elements
+// yellow
+// {"level":[5]}
+// ok enums
+// 2
+// green
+// 2
+// ok state
+// caught at 4
+// 4 104
+// 105 105
+// ok throws
+// 2
+// 3
+// 40
+// ok interfaces

@@ -1,0 +1,65 @@
+// Extensions: what they may add, and to what.
+
+struct Money {
+  cents: int
+  fn doubled() -> Money = Money(cents: cents * 2)
+}
+
+extend Money {
+  currency: string // ERROR "an extension adds no fields: a type's fields are its declaration's; a value made of others is a fn, fn currency\(\) -> string = …"
+  fn doubled() -> Money = self // ERROR "Money has a method doubled of its own: an extension adds names, it doesn't replace them"
+  fn cents() -> int = 0 // ERROR "Money has a field cents of its own"
+  fn half() -> Money = Money(cents: cents / 2)
+  fn half() -> Money = self // ERROR "half is declared twice in this extension"
+  var rate = 1 // ERROR "an extension adds no state: its constants are let"
+  fn bump() { cents += 1 } // ERROR "bump is a fn: declare it mut fn to change the value"
+  native fn raw() -> int // ERROR "an extension's fns have bodies"
+}
+
+extend string {
+  fn trim() -> string = self // ERROR "string has a method trim of its own"
+  let empty = ""
+}
+
+extend [int] {
+  static fn make() -> [int] = [] // ERROR "a static fn of \[int\] can't be named \(\[int\].make\): extend a type with a name for it"
+  let zeros = [0] // ERROR "a constant of \[int\] can't be named \(.zeros\): extend a type with a name for it"
+}
+
+struct Box<T> {
+  value: T
+}
+
+extend<T> Box<T> {
+  let empty = 1 // ERROR "a generic extension has no constants"
+  fn get() -> T = value
+}
+
+extend<T, U> [T] {} // ERROR "extend's U isn't in the type it extends \(\[T\]\): name it there"
+
+interface Shape {
+  fn area() -> float
+}
+
+extend Shape {} // ERROR "can't extend Shape: an interface's methods are its body's"
+extend Money? {} // ERROR "can't extend Money\?: extend the type, and call its methods with \?."
+
+extend Money: Shape {} // ERROR "Money declares Shape but it has no method area"
+
+pub extend Money {} // ERROR "pub goes on an extension's members, each"
+
+extend<T: Comparable> [T] {
+  fn median() -> T? = if isEmpty() { none } else { sorted()[count() / 2] }
+}
+
+struct Plain {}
+
+fn uses() {
+  print([1, 2].median())
+  print([Plain()].median()) // ERROR "median is \[T\]'s, and its T must be Comparable, and Plain isn't"
+  print("x".nope()) // ERROR "string has no method nope"
+}
+
+fn local() {
+  extend string {} // ERROR "an extension is declared at the top level of a file, not in a block"
+}

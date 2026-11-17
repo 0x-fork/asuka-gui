@@ -1,0 +1,118 @@
+// for over the program's own types: an iterator (mut fn next() -> T?)
+// or a sequence (fn iter() that gives one). And loops' names.
+
+struct Node {
+  name: string
+  children: [Node] = []
+}
+
+struct Walk {
+  stack: [Node]
+
+  mut fn next() -> Node? {
+    let n = stack.pop() else { return none }
+    stack = stack + n.children.reversed()
+    return n
+  }
+}
+
+extend Node {
+  fn walk() -> Walk = Walk(stack: [self])
+}
+
+struct Countdown {
+  from: int
+
+  fn iter() -> Steps = Steps(left: from)
+}
+
+struct Steps {
+  left: int
+
+  mut fn next() -> int? {
+    if left == 0 { return none }
+    left -= 1
+    return left + 1
+  }
+}
+
+struct Pairs {
+  n: int = 0
+  mut fn next() -> (int, string)? {
+    n += 1
+    if n > 2 { return none }
+    return (n, "#{n}")
+  }
+}
+
+fn sum<I: Iterator<int>>(xs: I) -> int {
+  var t = 0
+  for x in xs { t += x }
+  return t
+}
+
+test "iterators" {
+  let root = Node(name: "a", children: [Node(name: "b", children: [Node(name: "c")]), Node(name: "d")])
+  var names: [string] = []
+  for n in root.walk() { names.push(n.name) }
+  print(names)
+  let w = root.walk()
+  var count = 0
+  for _ in w { count += 1 }
+  print("{count} {w.stack.count()}")
+  for k in Countdown(from: 3) { print(k) }
+  for (i, s) in Pairs() { print("{i} {s}") }
+  print(sum(Steps(left: 4)))
+  let it: Iterator<int> = Steps(left: 2)
+  var got: [int] = []
+  for x in it { got.push(x) }
+  print(got)
+}
+
+test "loops' names" {
+  let grid = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+  var seen: [int] = []
+  for row in grid as rows {
+    for cell in row {
+      if cell == 2 { continue rows }
+      if cell == 8 { break rows }
+      seen.push(cell)
+    }
+  }
+  print(seen)
+  var i = 0
+  var log: [string] = []
+  while i < 3 as outer {
+    i += 1
+    for j in 0..<3 {
+      defer { log.push("d{i}{j}") }
+      if j == 1 { continue outer }
+      if i == 3 { break outer }
+    }
+  }
+  print(log)
+  var found = -1
+  for (k, x) in [5, 6, 7].enumerated() as search {
+    if x == 6 {
+      found = k
+      break search
+    }
+  }
+  print(found)
+}
+
+// Output:
+// ["a","b","c","d"]
+// 4 1
+// 3
+// 2
+// 1
+// 1 #1
+// 2 #2
+// 10
+// [2,1]
+// ok iterators
+// [1,4,5,6,7]
+// ["d10","d11","d20","d21","d30"]
+// 1
+// ok loops' names

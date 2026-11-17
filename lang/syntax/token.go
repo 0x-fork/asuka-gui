@@ -271,6 +271,7 @@ const (
 	EMIT
 	ENUM
 	EVENT
+	EXTEND
 	EXTERN
 	FALSE
 	FN
@@ -283,6 +284,7 @@ const (
 	LET
 	LOAD
 	MATCH
+	MUT
 	NATIVE
 	NONE
 	ON
@@ -400,6 +402,7 @@ var tokens = [...]string{
 	EMIT:      "emit",
 	ENUM:      "enum",
 	EVENT:     "event",
+	EXTEND:    "extend",
 	EXTERN:    "extern",
 	FALSE:     "false",
 	FN:        "fn",
@@ -412,6 +415,7 @@ var tokens = [...]string{
 	LET:       "let",
 	LOAD:      "load",
 	MATCH:     "match",
+	MUT:       "mut",
 	NATIVE:    "native",
 	NONE:      "none",
 	ON:        "on",

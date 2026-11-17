@@ -76,9 +76,25 @@ fn label(f: Filter) -> string = match f {
 
 let m = Message(subject: "Hello")
 let n = label(.from(sender: "ana"))
+
+struct Counter {
+  n: int = 0
+
+  mut fn bump() { n += 1 }
+}
+
+extend string {
+  fn shout() -> string = upper() + "!"
+}
+
+fn bumped() -> string {
+  var c = Counter()
+  c.bump()
+  return "{c.n}".shout()
+}
 ```
 
-構造体はフィールドとメソッドからなり、列挙型のケースは値を持てます。`match` はすべてのケースを扱う必要があります（漏れていれば、どれが足りないかをコンパイラーが教えてくれます）。`if`、`match`、ブロックも値です。[宣言](language/declarations.md)と[制御フロー](language/control-flow.md)を参照してください。
+構造体はフィールドとメソッドからなり、`mut fn` は呼び出された値（`var` や状態）を変更します。`extend` を使うと、`string` や `Color` も含め、どんな型にもメソッドや定数を追加できます。列挙型のケースは値を持てます。`match` はすべてのケースを扱う必要があります（漏れていれば、どれが足りないかをコンパイラーが教えてくれます）。`if`、`match`、ブロックも値です。[宣言](language/declarations.md)と[制御フロー](language/control-flow.md)を参照してください。
 
 ## コンポーネントと状態
 

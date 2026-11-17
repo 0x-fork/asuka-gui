@@ -542,6 +542,8 @@ func (l *Lowerer) funcIndex(f *check.Function, targs []check.Type, recv check.Ty
 		} else {
 			name = f.Recv.Name() + "." + name
 		}
+	} else if f.IsExtMethod() && recv != nil {
+		name = l.typeKey(recv) + "." + name
 	}
 	if len(targs) > 0 {
 		var ts []string
@@ -551,7 +553,10 @@ func (l *Lowerer) funcIndex(f *check.Function, targs []check.Type, recv check.Ty
 		name += "<" + strings.Join(ts, ",") + ">"
 	}
 	s := check.Subst{}
-	if n, ok := recv.(*check.Named); ok {
+	if f.IsExtMethod() {
+		// An extension's: its type parameters are the receiver's.
+		s = check.ExtSubst(f, recv)
+	} else if n, ok := recv.(*check.Named); ok {
 		for k, v := range n.Subst() {
 			s[k] = v
 		}
@@ -562,7 +567,7 @@ func (l *Lowerer) funcIndex(f *check.Function, targs []check.Type, recv check.Ty
 		}
 	}
 	nparams := len(f.Sig.Params)
-	if f.Recv != nil {
+	if f.Recv != nil || f.IsExtMethod() {
 		nparams++
 	}
 	b := l.newFunc(name, l.fileOf(f.Decl), nparams, l.kind(s.Apply(f.Sig.Result)))
@@ -812,6 +817,15 @@ func (l *Lowerer) lowerTest(t *check.Test) {
 	})
 }
 
+// method is struct or enum n's method name: its own, or the extension's
+// that gives it the method where it has an interface (check.ExtMethod).
+func (l *Lowerer) method(n *check.Named, name string) *check.Function {
+	if f := n.Obj.Methods[name]; f != nil {
+		return f
+	}
+	return l.prog.ExtMethod(n, name)
+}
+
 // implement fills the method table of t's shape with what interface
 // iface calls through CALLI: its methods, and getters of its fields.
 func (l *Lowerer) implement(t, iface check.Type) {
@@ -832,7 +846,7 @@ func (l *Lowerer) implement(t, iface check.Type) {
 		if _, done := sd.Methods[m.Name]; done {
 			continue
 		}
-		if f := n.Obj.Methods[m.Name]; f != nil {
+		if f := l.method(n, m.Name); f != nil {
 			sd.Methods[m.Name] = uint32(l.funcIndex(f, nil, n))
 		}
 	}
@@ -840,7 +854,7 @@ func (l *Lowerer) implement(t, iface check.Type) {
 		if _, done := sd.Methods[fl.Name]; done {
 			continue
 		}
-		if f := n.Obj.Methods[fl.Name]; f != nil && n.Obj.Kind == check.EnumType {
+		if f := l.method(n, fl.Name); f != nil && n.Obj.Kind == check.EnumType {
 			sd.Methods[fl.Name] = uint32(l.funcIndex(f, nil, n))
 			continue
 		}

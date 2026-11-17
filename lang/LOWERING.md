@@ -152,6 +152,99 @@ back: the closure may read that state, and sees it as it was.
 A builtin that may raise an error (`removeAt` out of range, one that
 calls a closure) runs in a handler that moves the receiver back first.
 
+A map's entry (`m[k]?.f = v`, `m[k, default: v].push(x)`) is reached
+with MGETJ: when it's there, taken out as a field's value is (MSET of
+none, the change, MSET back); when it's missing, `m[k, default: v]`
+evaluates v there, and only then, and the change MSETs it, while
+`m[k]?.…` leaves the map as it is.
+
+## Methods that change
+
+A `mut fn` (RFC 0011) is lowered as a method whose function has
+bytecode.FMut: its first parameter, self, is inout. Its call is an
+update of the receiver's place, as `x.f = v` and the inout builtins are
+(`lvalue`, lang/ir/stmt.go; lang/ir/mut.go): the arguments are computed,
+the place reached (a cell taken out, CTAKE; an element or a field taken
+out of its place), and the receiver moved (MOV, no reference counted)
+into the first register of the call's argument block. The VM's
+`ak_vm_push` moves it into the callee's register 0 without retaining it
+and clears the caller's, so a value only the place held stays unique
+and the body's SETF and SETIDX change it in place; as the frame ends,
+returned or thrown, `ak_vm_pop` moves register 0 back into the caller's
+register (by its index in the coroutine's registers, which stays as
+they grow; a call from C, by its address). A compiled mut fn moves
+`A[0]` in and back itself; the interpreter calls one with a copy of the
+argument block, so that what it puts back lands where the caller's
+register is after the call (it may have moved the registers). An async
+caller compiled to C calls a mut fn from C, never through the run loop
+(a mut fn never suspends). The caller moves the receiver back into its
+place after the call, and in a handler around the call when it throws:
+what the body changed before the throw stays. On state that's one CPUT:
+one write, which rows and memos narrow by comparing (ak_val_eq).
+
+When the callee may read state (check.FuncCtx.ReadsState: it reads a
+package's state or a store, or calls a closure or an interface's method
+that may), a cell is read (CPEEK) rather than taken out, so the body
+sees its value, and the change copies it. A mut fn called by its bare
+name, or on self, in another updates register 0. A closure made in one
+captures self's value (self is never boxed). Through an interface's
+value, it's CALLI: the method found has FMut, and the VM moves the
+receiver the same way.
+
+## Writes through ?.
+
+A place whose path has a `?.` (`inbox[id]?.read = true`, `user?.mail?
+.archive()`, `tags?.push(t)`) is lowered in two steps (lang/ir/
+places.go). First the path is read as it is, with its prepared indexes,
+up to its last `?.` (CPEEK, GETF, IDX, MGET), taking nothing out, and a
+none jumps past the whole change: nothing is written, the value on the
+right isn't computed, and a cell's readers aren't told (CPUT always
+writes the signal). Then the change runs as any (the value computed,
+the place taken out), and tests again where it is (lvSome: JNONE past
+the change, a scalar UNBOXed and BOXed back), since computing the value
+may have changed the place. A call through `?.` gives its result made
+optional, none when it didn't happen. `a?.items[0]` reads, in a chain,
+as `a?.b` does: none when `a` is.
+
+`if var x = v` is `if let` whose name is declared mutable: a local
+register holding a copy.
+
+## Extensions
+
+An extension's method (check.Function.Ext) is a function whose first
+parameter is its receiver, compiled per receiver type (funcIndex's key
+has it; its type parameters are the receiver's, check.ExtSubst) and
+called with CALL, as a struct's method is. Its static fns are the
+package's functions; its constants are globals made in init, frozen, as
+a type's are. A bare name in a method's body that's self's method or
+property (a built-in one, or an extension's) is checked and lowered as
+`self.name` (check.Info.ImplicitSelf).
+
+A type has an interface through an extension where the checker sees the
+conversion (check.Info.ExtImpls): `implement` enters that function in
+the shape's table of methods, and a type parameter's method resolves to
+it. A shape has one table in a program, so two packages' extensions
+that give one type the same method, both making it an interface's, are
+the checker's error. An enum without payloads that `extend E:
+Interface` gives an interface is stored as a reference (an ak_enum)
+everywhere, as one that declares it is.
+
+## Iteration
+
+`for x in v` over a value whose type has `next() -> T?` copies v into a
+hidden var (check.ForInfo.IterVar), and each turn calls `next()` on it
+as a mut fn's call on a var (the iterator changed in place), JNONE to
+the loop's end, the value unboxed into the item. A sequence (`fn
+iter()`) is held in a hidden var too, and `iter()` called once.
+Arrays, sets, maps and ranges keep their own loops.
+
+## Loops' names
+
+`break name` and `continue name` (check.Info.Labels: the loop) jump to
+the named loop's end or next turn (`b.loops`' entry whose statement it
+is), after running the defers of every loop they leave, innermost
+first, as a `return` runs a function's.
+
 ## Functions
 
 - A function is a FuncDef; its parameters are its first registers.
@@ -187,8 +280,8 @@ calls a closure) runs in a handler that moves the receiver back first.
   the function that makes it, in its capture list's order, and loads
   them (CAP) as it starts.
 - A struct's or an enum's methods take `self` first; inside them, the
-  fields and methods are in scope by their bare names. A struct's
-  methods can't change it (it's a value): they return a new one.
+  fields and methods are in scope by their bare names. A `fn` can't
+  change its value; a `mut fn` can (see "Methods that change").
 - `throws` sets FThrows; `async` sets FAsync. Calling an async function
   is a plain CALL: it runs on the caller's coroutine (a task) and
   suspends it if it waits. AWAIT waits on a future: a `Task<T>`, what an

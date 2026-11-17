@@ -1,0 +1,38 @@
+// A mut fn called on an element of state is one write of that state:
+// the rows whose element didn't change aren't updated, and a call that
+// changes several fields sets the row's text once.
+
+struct Todo {
+  id: int
+  title: string
+  done: bool = false
+  edits: int = 0
+
+  mut fn toggle() {
+    done = !done
+    edits += 1
+  }
+}
+
+component Todos {
+  state todos = [Todo(id: 1, title: "Milk"), Todo(id: 2, title: "Eggs"), Todo(id: 3, title: "Tea")]
+  Column {
+    for t in todos key t.id {
+      Text("{t.title} {t.done} {t.edits}")
+    }
+    Button("Toggle") { on press { todos[1].toggle() } }
+  }
+}
+
+app { Todos() }
+
+test "one row, once" {
+  let app = mount(Todos())
+  app.ops()
+  app.tap("Toggle")
+  let ops = app.ops()
+  expect(ops.split("SetProp").count() == 2, ops)
+  expect(ops.contains("Text=\"Eggs true 1\""), ops)
+  app.tap("Toggle")
+  app.expect("Eggs false 2", "Milk false 0", "Tea false 0")
+}

@@ -87,10 +87,29 @@ fn label(f: Filter) -> string = match f {
 
 let m = Message(subject: "Hello")
 let n = label(.from(sender: "ana"))
+
+struct Counter {
+  n: int = 0
+
+  mut fn bump() { n += 1 }
+}
+
+extend string {
+  fn shout() -> string = upper() + "!"
+}
+
+fn bumped() -> string {
+  var c = Counter()
+  c.bump()
+  return "{c.n}".shout()
+}
 ```
 
-A struct is fields and methods; an enum's cases can carry values, and
-`match` covers every case (the compiler says which one is missing).
+A struct is fields and methods; a `mut fn` changes the value it's
+called on (a `var`, or state). `extend` adds methods and constants to
+any type, `string` and `Color` included. An enum's cases can carry
+values, and `match` covers every case (the compiler says which one is
+missing).
 `if`, `match` and blocks are values too. [Declarations](language/declarations.md),
 [Control flow](language/control-flow.md)
 

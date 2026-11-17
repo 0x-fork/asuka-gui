@@ -21,13 +21,23 @@ func (b *fb) call1(e *syntax.CallExpr, dst int, discard bool) int {
 	if h := b.l.info.Hrefs[e]; h != nil {
 		return b.href(h, dst)
 	}
+	if x, ok := b.l.info.ImplicitSelf[e].(*syntax.CallExpr); ok {
+		// self's method by its bare name: self.name(…).
+		return b.call1(x, dst, discard)
+	}
 	call := b.l.info.Calls[e]
 	if call == nil {
 		b.l.errorf(e, "internal: no call info")
 		return -1
 	}
+	if call.Optional && (call.Mut || call.Kind == check.CallBuiltinMethod && call.Method.Inout) {
+		return b.optionalMutCall(e, call, dst, discard)
+	}
 	if call.Optional {
 		return b.optionalCall(e, call, dst)
+	}
+	if call.Mut {
+		return b.mutCall(e, call, dst, discard)
 	}
 	switch call.Kind {
 	case check.CallFunc, check.CallMethod:
@@ -189,7 +199,7 @@ func (b *fb) invoke(idx int, vals []int, k bc.Kind, dst int, discard bool) int {
 
 func (b *fb) funcCall(e *syntax.CallExpr, call *check.Call, dst int, discard bool) int {
 	f := call.Func
-	if f.Recv == nil {
+	if f.Recv == nil && !f.IsExtMethod() {
 		var targs []check.Type
 		for _, t := range call.TypeArgs {
 			targs = append(targs, b.typ(t))
@@ -215,7 +225,9 @@ func (b *fb) funcCall(e *syntax.CallExpr, call *check.Call, dst int, discard boo
 func (b *fb) funcCallRecv(e *syntax.CallExpr, call *check.Call, recv int, dst int, discard bool) int {
 	f := call.Func
 	var rt check.Type
-	if f.Recv.Kind == check.StructType || f.Recv.Kind == check.EnumType {
+	if f.IsExtMethod() {
+		rt = b.typ(check.Unopt(call.RecvType))
+	} else if f.Recv.Kind == check.StructType || f.Recv.Kind == check.EnumType {
 		if call.RecvType != nil {
 			rt = b.typ(check.Unopt(call.RecvType))
 		} else if b.ctx.Self != nil {
@@ -242,7 +254,9 @@ func (b *fb) funcCallRecv(e *syntax.CallExpr, call *check.Call, recv int, dst in
 // calleeSubst is the substitution a callee's signature is read with.
 func (b *fb) calleeSubst(f *check.Function, targs []check.Type, recv check.Type) check.Subst {
 	s := check.Subst{}
-	if n, ok := recv.(*check.Named); ok {
+	if f.IsExtMethod() {
+		s = check.ExtSubst(f, recv)
+	} else if n, ok := recv.(*check.Named); ok {
 		for k, v := range n.Subst() {
 			s[k] = v
 		}
@@ -302,7 +316,7 @@ func (b *fb) ifaceCall(e *syntax.CallExpr, call *check.Call, recv *int, dst int)
 func (b *fb) ifaceInvoke(name string, call *check.Call, vals []int, dst int) int {
 	k := b.l.kind(b.typ(call.Result))
 	if n, ok := b.typ(check.Unopt(call.RecvType)).(*check.Named); ok && (n.Obj.Kind == check.StructType || n.Obj.Kind == check.EnumType) {
-		if f := n.Obj.Methods[name]; f != nil {
+		if f := b.l.method(n, name); f != nil {
 			r := b.invoke(b.l.funcIndex(f, nil, n), vals, k, dst, false)
 			if k == bc.KVoid {
 				return -1
@@ -433,9 +447,16 @@ func (b *fb) builtinMethod(e *syntax.CallExpr, call *check.Call, recv *int, dst 
 		r = b.out(dst, k)
 	}
 	if m.Inout && recv == nil {
-		lv := b.prepare(call.Recv)
-		b.updateWith(lv, hasClosureArg(m) || inoutGuard, func(cur int) {
+		lv, after := b.inout, b.inoutAfter
+		b.inout, b.inoutAfter = nil, nil
+		if lv == nil {
+			lv = b.prepare(call.Recv)
+		}
+		b.updateWith(lv, hasClosureArg(m) || inoutGuard || b.placeReads(lv), func(cur int) {
 			b.callInout(m, cur, vals, r, inoutGuard)
+			if after != nil {
+				after(r)
+			}
 		})
 	} else {
 		x := b.recvValue(call, recv)

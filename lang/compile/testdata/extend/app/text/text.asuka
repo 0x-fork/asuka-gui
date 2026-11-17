@@ -1,0 +1,27 @@
+import ../model
+
+/// A string as a URL's path segment.
+extend string {
+  pub fn slug() -> string = lower().fields().joined(separator: "-")
+  // Not pub: this package's own.
+  fn secret() -> string = "secret {self}"
+  pub fn twice() -> string = "{secret().count()}"
+}
+
+extend model.Message {
+  pub fn isFromVIP(vips: Set<string>) -> bool = vips.contains(from.address)
+  pub mut fn archive() { folder = .archive }
+  pub fn area() -> float = float(subject.count())
+}
+
+pub interface Named {
+  fn name() -> string
+}
+
+// An enum without payloads from another package gets an interface.
+extend model.Unit: Named {
+  pub fn name() -> string = match self {
+    .points => "pt"
+    .inches => "in"
+  }
+}

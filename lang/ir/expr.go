@@ -174,8 +174,24 @@ func (b *fb) expr(e syntax.Expr, dst int) int {
 	case *syntax.CallExpr:
 		return b.call(e, dst)
 	case *syntax.IndexExpr:
+		if xt := b.rawType(e.X); check.IsOptional(xt) {
+			// In a ?. chain (a?.items[0]): none when what's before is.
+			return b.chainedIndex(e, xt, dst)
+		}
 		x := b.value(e.X, -1)
 		i := b.value(e.Index, -1)
+		if _, ok := b.rawType(e.X).(*check.Map); ok && e.Default != nil {
+			// m[k, default: v]: the value as it is, or v (evaluated only
+			// then).
+			r := b.out(dst, b.kind(b.l.info.Types[e]))
+			end, miss := b.f.NewLabel(), b.f.NewLabel()
+			b.emit(op("MGETJ"), r, x, i, int(miss))
+			b.jmp(end)
+			b.f.Place(miss)
+			b.move(r, b.value(e.Default, r))
+			b.f.Place(end)
+			return r
+		}
 		if _, ok := b.rawType(e.X).(*check.Map); ok {
 			r := b.out(dst, bc.KRef)
 			b.emit(op("MGET"), r, x, i)
@@ -428,6 +444,10 @@ func (b *fb) throwMsg(msg string) {
 // Names
 
 func (b *fb) ident(e *syntax.Ident, dst int) int {
+	if x := b.l.info.ImplicitSelf[e]; x != nil {
+		// self's property by its bare name.
+		return b.value(x, dst)
+	}
 	switch o := b.l.info.Uses[e].(type) {
 	case *check.Var:
 		if o.Fn != nil {
@@ -1215,7 +1235,7 @@ func (b *fb) appendReg(r, v int, add string) {
 // map and key evaluated: what MGETJ reads without making an optional.
 func (b *fb) mapRead(x syntax.Expr) (m, key int, ok bool) {
 	ix, isIndex := unparen(x).(*syntax.IndexExpr)
-	if !isIndex {
+	if !isIndex || ix.Default != nil {
 		return 0, 0, false
 	}
 	mt, isMap := b.rawType(ix.X).(*check.Map)

@@ -729,6 +729,9 @@ func (p *printer) funcDecl(d *FuncDecl) {
 	if d.Async.IsValid() {
 		p.write("async ")
 	}
+	if d.Mut.IsValid() {
+		p.write("mut ")
+	}
 	p.write("fn " + d.Name.Name)
 	p.typeParams(d.TypeParams, d.TypeAngles)
 	if d.Params != nil {
@@ -897,6 +900,15 @@ func (p *printer) node(n Node) {
 			p.write(n.Label.Name + ": ")
 		}
 		p.typ(n.Type)
+	case *ExtendDecl:
+		p.pub(n.Pub)
+		p.write("extend")
+		p.typeParams(n.TypeParams, n.TypeAngles)
+		p.write(" ")
+		p.typ(n.Type)
+		p.conforms(n.Conforms)
+		p.write(" ")
+		p.body(n.Lbrace, nil, n.Members, n.Dangling, n.Rbrace, true, "; ")
 	case *InterfaceDecl:
 		p.pub(n.Pub)
 		if n.Native.IsValid() {
@@ -1055,11 +1067,17 @@ func (p *printer) node(n Node) {
 			p.write(" key ")
 			p.expr(n.Key)
 		}
+		if n.Label != nil {
+			p.write(" as " + n.Label.Name)
+		}
 		p.write(" ")
 		p.block(n.Body)
 	case *WhileStmt:
 		p.write("while ")
 		p.cond(n.Cond)
+		if n.Label != nil {
+			p.write(" as " + n.Label.Name)
+		}
 		p.write(" ")
 		p.block(n.Body)
 	case *MatchStmt:
@@ -1112,6 +1130,9 @@ func (p *printer) node(n Node) {
 		p.expr(n.Value)
 	case *BranchStmt:
 		p.write(n.Tok.String())
+		if n.Label != nil {
+			p.write(" " + n.Label.Name)
+		}
 	case *DeferStmt:
 		p.write("defer ")
 		p.block(n.Body)
@@ -1184,7 +1205,11 @@ func (p *printer) cond(x Expr) {
 		return
 	}
 	if c, ok := x.(*LetCond); ok {
-		p.write("let ")
+		if c.Var {
+			p.write("var ")
+		} else {
+			p.write("let ")
+		}
 		p.pattern(c.Pattern)
 		p.write(" = ")
 		p.expr(c.Value)
@@ -1398,6 +1423,9 @@ func (p *printer) expr1(x Expr) {
 			p.write(" ")
 			p.expr(x.Value)
 		}
+		if x.Label != nil {
+			p.write(" " + x.Label.Name)
+		}
 	case *CatchExpr:
 		p.expr(x.X)
 		for _, c := range x.Catches {
@@ -1531,6 +1559,10 @@ func (p *printer) postfix(x Expr) {
 		case *IndexExpr:
 			p.write("[")
 			p.expr(e.Index)
+			if e.Default != nil {
+				p.write(", default: ")
+				p.expr(e.Default)
+			}
 			p.write("]")
 		case *UnwrapExpr:
 			p.write("!")

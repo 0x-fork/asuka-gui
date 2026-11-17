@@ -34,6 +34,11 @@ func (b *fb) lowerFunc(f *check.Function, recv check.Type) {
 			b.envReg = b.newReg(bc.KRef)
 			b.comp = f.Recv
 		}
+	} else if f.IsExtMethod() {
+		r := b.newReg(b.l.kind(recv))
+		if ctx.Self != nil {
+			b.vars[ctx.Self] = r
+		}
 	}
 	var params []int
 	for _, p := range f.Sig.Params {
@@ -55,6 +60,9 @@ func (b *fb) lowerFunc(f *check.Function, recv check.Type) {
 	}
 	if f.Sig.Throws {
 		b.f.Flags |= bc.FThrows
+	}
+	if f.Sig.Mut {
+		b.f.Flags |= bc.FMut
 	}
 	d := f.Decl
 	if d.Native.IsValid() {

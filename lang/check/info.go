@@ -82,6 +82,16 @@ type Info struct {
 	// Shaders: shader declarations' programs, compiled (shaderlang.go).
 	Shaders map[*syntax.CallExpr][]byte
 
+	// ImplicitSelf: a bare call or name in a method's body that's self's
+	// method or property (a built-in one, or an extension's): the
+	// self.name it's checked and lowered as.
+	ImplicitSelf map[syntax.Expr]syntax.Expr
+	// ExtImpls: the extensions' methods that give types interfaces where
+	// they're converted to one, by ExtImplKey.
+	ExtImpls map[string]*Function
+	// Labels: the loop each break name and continue name says.
+	Labels map[*syntax.Ident]syntax.Node
+
 	// For editors (lang/lsp).
 	//
 	// Imports: the package each import names (absent: it failed).
@@ -117,6 +127,9 @@ func newInfo() *Info {
 		Trailing:       map[*syntax.CallExpr]*syntax.LambdaExpr{},
 		Shaders:        map[*syntax.CallExpr][]byte{},
 		SlotCalls:      map[*syntax.SlotItem]*syntax.CallExpr{},
+		ImplicitSelf:   map[syntax.Expr]syntax.Expr{},
+		ExtImpls:       map[string]*Function{},
+		Labels:         map[*syntax.Ident]syntax.Node{},
 		BodyCalls:      map[syntax.Item]bool{},
 		ScreenRoots:    map[*TypeName]*syntax.CallExpr{},
 		RouteBuilders:  map[*ElementCall]*RouteBuilder{},
@@ -179,9 +192,12 @@ type Call struct {
 	// SelfCall: a method of the enclosing type, called by name (self's,
 	// or the env's).
 	SelfCall bool
-	Optional bool   // x?.f(): none when x is
-	Index    int    // CallNative: the method's number, from 1
-	Name     string // CallIface, CallNative: the method's name
+	Optional bool // x?.f(): none when x is
+	// Mut: a mut fn's call, which changes its receiver, a place (Recv;
+	// self's when SelfCall).
+	Mut   bool
+	Index int    // CallNative: the method's number, from 1
+	Name  string // CallIface, CallNative: the method's name
 	// Awaited: animate(…) awaited, which returns once it's complete.
 	Awaited bool
 	// TrKey is CallTr's message; Args are its arguments, by its Params.
@@ -243,6 +259,7 @@ const (
 	ForMap                // (key, value) in a map
 	ForEnumerated         // (i, x) in xs.enumerated()
 	ForStream             // for await x in a stream
+	ForIter               // a value of the program's type: an iterator (next) or a sequence (iter)
 	ForSet                // x in a set, in insertion order
 )
 
@@ -259,6 +276,10 @@ type ForInfo struct {
 	View  bool // in a view: Item and Index are accessors
 	Key   syntax.Expr
 	Lazy  bool // directly in an element that builds rows lazily (a List)
+	// ForIter's: the hidden vars of the sequence (when it's iter()'s)
+	// and of the iterator, and the calls of iter() and next() on them.
+	SeqVar, IterVar *Var
+	IterCall, Next  *syntax.CallExpr
 }
 
 // MatchInfo is a match's subject type and arms' bindings.
@@ -402,6 +423,11 @@ func (c *FuncCtx) awaited(pos syntax.Pos) {
 	}
 	c.Awaits = true
 }
+
+// ReadsState reports whether the body reads package state, a store's or
+// a memo, or calls what may (a closure, an interface's method): known
+// once the program is checked.
+func (c *FuncCtx) ReadsState() bool { return c.readsState }
 
 // IsClosure reports whether the lowering makes the body a closure.
 func (c *FuncCtx) IsClosure() bool {

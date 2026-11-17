@@ -83,15 +83,20 @@ func resultString(t check.Type, async, throws bool) string {
 }
 
 // funcSig is a function's signature: async fn name<T>(params) throws ->
-// Result.
+// Result, or mut fn for a method that changes its value.
 func funcSig(f *check.Function) string {
 	var b strings.Builder
 	if f.Sig != nil && f.Sig.Async || f.Decl != nil && f.Decl.Async.IsValid() {
 		b.WriteString("async ")
 	}
+	if f.Sig != nil && f.Sig.Mut || f.Decl != nil && f.Decl.Mut.IsValid() {
+		b.WriteString("mut ")
+	}
 	b.WriteString("fn ")
 	if f.Recv != nil {
 		b.WriteString(f.Recv.Name() + ".")
+	} else if f.Ext != nil {
+		b.WriteString(f.Ext.Name() + ".")
 	}
 	b.WriteString(f.Name())
 	b.WriteString(typeParamsString(f.TypeParams))
@@ -300,6 +305,9 @@ func caseString(k *check.Case) string {
 func imethSig(m *check.IfaceMethod) string {
 	s := "fn " + m.Name
 	if m.Sig != nil {
+		if m.Sig.Mut {
+			s = "mut " + s
+		}
 		if m.Sig.Async {
 			s = "async " + s
 		}
@@ -621,6 +629,12 @@ func (fc *fileCtx) describe(r *ref) (code, doc string) {
 		return "(parameter) " + paramString(r.param), doc + "."
 	}
 	switch o := r.obj.(type) {
+	case *check.LoopName:
+		kw := "for"
+		if _, ok := o.Loop.(*syntax.WhileStmt); ok {
+			kw = "while"
+		}
+		return kw + " … as " + o.Name(), "A loop's name: `break " + o.Name() + "` leaves it, `continue " + o.Name() + "` goes on with its next turn, from the loops inside it."
 	case *check.Var:
 		if o.Fn != nil {
 			return localFnSig(o.Fn), docOf(o.Fn.Decl)

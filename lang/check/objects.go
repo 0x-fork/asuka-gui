@@ -41,6 +41,7 @@ type Package struct {
 	Funcs   []*Function // top-level functions
 	Types   []*TypeName // declared types
 	Tests   []*Test
+	Exts    []*Extension // its extend declarations
 	App     *syntax.AppDecl
 	Imports []*Package
 
@@ -210,7 +211,10 @@ type Function struct {
 	TypeParams []*TypeParam
 	Recv       *TypeName // a method's type (struct, enum, store, component); nil for a function
 	Static     *TypeName // a static fn's type (Money.of), which has no receiver
-	Ctx        *FuncCtx  // its body's
+	// Ext: an extension's fn (a method, with its receiver first, or a
+	// static fn, Static set too).
+	Ext *Extension
+	Ctx *FuncCtx // its body's
 	// Extern: an extern fn's C side (nil for the rest).
 	Extern *Extern
 
@@ -230,11 +234,14 @@ type Signature struct {
 	Result Type
 	Async  bool
 	Throws bool
+	// Mut: a mut fn, which changes the value it's called on (its
+	// receiver is a place: lang/LOWERING.md's "Methods that change").
+	Mut bool
 }
 
 // applySig is sig with s's type parameters replaced.
 func (s Subst) applySig(sig *Signature) *Signature {
-	out := &Signature{Result: s.Apply(sig.Result), Async: sig.Async, Throws: sig.Throws}
+	out := &Signature{Result: s.Apply(sig.Result), Async: sig.Async, Throws: sig.Throws, Mut: sig.Mut}
 	for _, p := range sig.Params {
 		out.Params = append(out.Params, &Param{Name: p.Name, Type: s.Apply(p.Type), Default: p.Default})
 	}
@@ -497,8 +504,9 @@ type Global struct {
 	Type  Type
 	Decl  syntax.Node
 	Value syntax.Expr
-	Owner *TypeName // a type's constant
-	Ctx   *FuncCtx  // its initializer's
+	Owner *TypeName  // a type's constant
+	Ext   *Extension // an extension's constant
+	Ctx   *FuncCtx   // its initializer's
 	deps  []*Global
 	Pub   bool
 }

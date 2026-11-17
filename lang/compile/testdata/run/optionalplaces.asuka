@@ -1,0 +1,166 @@
+// Writes through ?.: nothing happens when the chain meets none. A map's
+// entry with a default, m[k, default: v]: v when there's none, evaluated
+// only then. if var: a copy that may change.
+
+struct Message {
+  id: string
+  read: bool = false
+  tags: [string] = []
+  count: int = 0
+
+  mut fn mark() { read = true }
+  mut fn tag(t: string) -> int {
+    tags.push(t)
+    return tags.count()
+  }
+}
+
+struct User {
+  name: string
+  mail: Message? = none
+}
+
+struct Session {
+  user: User? = none
+}
+
+enum Light {
+  red
+  green
+
+  mut fn flip() {
+    self = match self {
+      .red => .green
+      .green => .red
+    }
+  }
+}
+
+state inbox: [string: Message] = [:]
+state reads = 0
+
+fn dflt() -> int {
+  reads += 1
+  return 0
+}
+
+store Mail {
+  state inbox: [string: Message] = [:]
+  state counts: [string: int] = [:]
+
+  pub fn add(id: string) { inbox[id] = Message(id: id) }
+  pub fn read(id: string) { inbox[id]?.read = true }
+  pub fn count(w: string) { counts[w, default: 0] += 1 }
+}
+
+test "assign through ?." {
+  var s = Session()
+  s.user?.name = "nobody"
+  print(s.user == none)
+  s.user = User(name: "ann")
+  s.user?.name = "bob"
+  s.user?.mail?.read = true
+  print(s.user?.name ?? "-")
+  s.user?.mail = Message(id: "m")
+  s.user?.mail?.read = true
+  s.user?.mail?.count += 2
+  s.user?.mail?.count += 3
+  print("{s.user?.mail?.read ?? false} {s.user?.mail?.count ?? 0}")
+}
+
+test "mut fns through ?." {
+  var m: Message? = none
+  m?.mark()
+  print(m?.tag("x") == none)
+  m = Message(id: "a")
+  m?.mark()
+  let n = m?.tag("x")
+  print("{m?.read ?? false} {n ?? 0}")
+  var l: Light? = .red
+  l?.flip()
+  print(l)
+  var tags: [string]? = none
+  tags?.push("a")
+  tags = []
+  tags?.push("b")
+  print(tags)
+}
+
+test "map entries" {
+  inbox["a"] = Message(id: "a")
+  inbox["b"]?.read = true
+  inbox["a"]?.read = true
+  inbox["a"]?.mark()
+  print("{inbox["a"]?.read ?? false} {inbox.count()}")
+  var counts: [string: int] = [:]
+  for w in ["a", "b", "a", "c", "a"] { counts[w, default: 0] += 1 }
+  print("{counts["a"] ?? 0} {counts["b"] ?? 0} {counts.count()}")
+  var groups: [int: [string]] = [:]
+  for w in ["one", "two", "three", "four"] { groups[w.count(), default: []].push(w) }
+  print(groups[3] ?? [])
+  print(counts["z", default: 7])
+  var hits: [string: int] = ["x": 1]
+  hits["x", default: dflt()] += 1
+  hits["y", default: dflt()] += 1
+  print("{hits["x"] ?? 0} {hits["y"] ?? 0} {reads}")
+  var msgs: [string: Message] = [:]
+  msgs["m", default: Message(id: "m")].mark()
+  print(msgs["m"]?.read ?? false)
+}
+
+test "a store's state" {
+  let s = Mail()
+  s.read("x")
+  s.add("x")
+  s.read("x")
+  s.count("w")
+  s.count("w")
+  print("{s.inbox["x"]?.read ?? false} {s.counts["w"] ?? 0}")
+}
+
+test "if var" {
+  let found: Message? = Message(id: "f")
+  if var m = found {
+    m.read = true
+    m.mark()
+    print("{m.read} {found?.read ?? false}")
+  }
+}
+
+test "elements through ?." {
+  var u: User? = User(name: "u", mail: Message(id: "m", tags: ["a", "b"]))
+  u?.mail?.tags[1] = "c"
+  u?.mail?.tags[0] += "!"
+  var nobody: User? = none
+  nobody?.mail?.tags[0] = "x"
+  var w: (int, string)? = (1, "a")
+  w?.0 += 2
+  w?.1 = "b"
+  print(w)
+  print("{u?.mail?.tags ?? []} {u?.mail?.tags[0] ?? "-"}")
+}
+
+// Output:
+// true
+// bob
+// true 5
+// ok assign through ?.
+// true
+// true 1
+// green
+// ["b"]
+// ok mut fns through ?.
+// true 1
+// 3 1 3
+// ["one","two"]
+// 7
+// 2 1 1
+// true
+// ok map entries
+// true 2
+// ok a store's state
+// true false
+// ok if var
+// (3,"b")
+// ["a!","c"] a!
+// ok elements through ?.

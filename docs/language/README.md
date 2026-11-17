@@ -65,13 +65,13 @@ belong to the component that made them, and go with it.
 ## Keywords
 
 `app as async await bind break catch component continue defer do effect
-else emit enum event extern false fn for if import in interface key let load
-match native none on prop provide pub return screen self spawn state
-store struct style task test throw throws true try type use var while
-worker`
+else emit enum event extend extern false fn for if import in interface
+key let load match mut native none on prop provide pub return screen
+self spawn state store struct style task test throw throws true try type
+use var while worker`
 
-`worker` is a keyword since 0.2.7: code from before that names
-something `worker` renames it (the compiler says where).
+`mut`, `extend` and `worker` are keywords since 0.2.7: a name that was
+one is an error that says to rename it.
 
 `shader` (a [shader](../components.md#shaders)'s declaration), `at` (a
 routed screen's pattern), `static` (a type's function: `static fn`) and

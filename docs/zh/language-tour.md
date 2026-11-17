@@ -76,9 +76,25 @@ fn label(f: Filter) -> string = match f {
 
 let m = Message(subject: "Hello")
 let n = label(.from(sender: "ana"))
+
+struct Counter {
+  n: int = 0
+
+  mut fn bump() { n += 1 }
+}
+
+extend string {
+  fn shout() -> string = upper() + "!"
+}
+
+fn bumped() -> string {
+  var c = Counter()
+  c.bump()
+  return "{c.n}".shout()
+}
 ```
 
-结构体由字段和方法组成；枚举的分支可以携带值，`match` 必须覆盖每一个分支（漏了哪个，编译器会指出来）。`if`、`match` 和代码块也都是值。见[声明](language/declarations.md)和[控制流](language/control-flow.md)。
+结构体由字段和方法组成；`mut fn` 会修改调用它的那个值（一个 `var` 或者状态）。`extend` 可以给任何类型添加方法和常量，`string` 和 `Color` 也不例外。枚举的分支可以携带值，`match` 必须覆盖每一个分支（漏了哪个，编译器会指出来）。`if`、`match` 和代码块也都是值。见[声明](language/declarations.md)和[控制流](language/control-flow.md)。
 
 ## 组件与状态
 

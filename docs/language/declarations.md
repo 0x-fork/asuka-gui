@@ -29,8 +29,50 @@ let n = Message(id: m.id, subject: m.subject, read: true)
 
 A struct is made by calling it with its fields, by name or in order;
 fields with a default may be left out. Its methods see its fields by
-their names; they can't change it (it's a value): one that would
-returns a new one. `let` in a struct's body is a constant of the
+their names. A `fn` reads the value; a `mut fn` may change it: assign
+its fields (and their parts), call its other `mut fn`s, or assign
+`self` a new value.
+
+```asuka check
+struct Item {
+  id: int
+  qty: int = 1
+}
+
+struct Cart {
+  items: [Item] = []
+
+  mut fn add(i: Item) {
+    if let n = items.index(x => x.id == i.id) { items[n].qty += 1 } else { items.push(i) }
+  }
+  mut fn clear() { self = Cart() }
+  fn total() -> int {
+    var sum = 0
+    for i in items { sum += i.qty }
+    return sum
+  }
+}
+
+fn twoApples() -> int {
+  var cart = Cart()
+  cart.add(Item(id: 1))
+  cart.add(Item(id: 1))
+  return cart.total()
+}
+```
+
+A `mut fn` is called on what can change: a `var`, state (a component's,
+a store's, the app's), or a field, an element or a map's entry of one
+(`carts[0].add(i)`, `order.cart.clear()`). Not on a `let`, a parameter,
+a prop or what a call returns: the compiler says so. On state, the call
+is one change of that state, however many fields it changes: what reads
+`todos[i]` updates, not every row. A `mut fn` can't be `async` (a value
+half changed across an `await` would be seen by every handler that runs
+meanwhile: an async change is a store's `fn`). It may throw: what it
+changed before the throw stays. A closure made in one has `self`'s
+value as it was then, and can't change it.
+
+`let` in a struct's body is a constant of the
 type (`Font.title`), which `.title` names wherever a `Font` is
 expected. `static fn` in a struct's or an enum's body is a function of
 the type's, with no `self`: called on the type with named arguments and
@@ -101,6 +143,55 @@ fn withTip(bill: Money) -> Money {
 A struct isn't ordered field by field: what its order means is its
 `compare`'s to say.
 
+## Extensions
+
+`extend` adds methods, `mut fn`s, `static fn`s and constants to a type:
+a built-in one (`string`, `int`, `[T]`, `[K: V]`, `Set<T>`, `Color`,
+`Duration`), the package's own, or another package's.
+
+```asuka check
+extend string {
+  fn slug() -> string = lower().fields().joined(separator: "-")
+}
+
+extend Color {
+  let brand = #7c3aed
+  let brandSoft = #7c3aed.opacity(0.15)
+}
+
+extend<T: Comparable> [T] {
+  fn median() -> T? = if isEmpty() { none } else { sorted()[count() / 2] }
+}
+
+component Title {
+  prop text: string
+  Text(text.slug()) { color: .brand }
+}
+```
+
+An extension's methods see the value as the type's own do: its fields,
+and its methods by their bare names (`lower()` is `self.lower()`). A
+constant of the type's is `.name` wherever the type is expected, as a
+type's own constants are, and `Color.brand` too; a `static fn` likewise.
+An extension adds no fields and no state, and a name it adds can't be
+the type's own: the type's layout and members stay its declaration's.
+A generic extension takes its type parameters after `extend`
+(`extend<K: Hashable, V> [K: V]`).
+
+What an extension adds is visible in its package, and its `pub` members
+in the packages that import it, and nowhere else: a dependency doesn't
+change what `x.trim()` means in your code. Two extensions you see that
+add one name to a type are an error where you use it, naming both
+packages.
+
+A type has an interface through what extensions give it, where they're
+visible: `extend Money { fn area() -> float … }` makes `Money` a
+`Shape`. `extend Money: Shape { … }` says so, and the compiler checks
+it as it does `struct Money: Shape`; it's how an enum without payloads
+from another package gets an interface. A type has one method of a name
+in a program: two packages' extensions that give a type the same
+method, both of which make it an interface's, are an error.
+
 ## Enums
 
 ```asuka
@@ -117,6 +208,24 @@ enum Filter {
 }
 
 let f: Filter = .unread
+```
+
+An enum's `mut fn` changes the value too, often by assigning `self`:
+
+```asuka check
+enum Light {
+  red
+  green
+  yellow
+
+  mut fn next() {
+    self = match self {
+      .red => .green
+      .green => .yellow
+      .yellow => .red
+    }
+  }
+}
 ```
 
 Where the type is known, a case is written `.name`. `match` must cover

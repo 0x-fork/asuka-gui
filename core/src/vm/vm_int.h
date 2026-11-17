@@ -54,6 +54,10 @@ struct ak_func {
 
 #define AK_F_ASYNC 1
 #define AK_F_THROWS 2
+// AK_F_MUT: a mut fn, whose first parameter is inout (bytecode.FMut): a
+// call moves it in from the caller's argument register, not retained,
+// and the frame moves it back there as it ends, returned or thrown.
+#define AK_F_MUT 4
 
 typedef struct {
 	ak_str *name;
@@ -117,7 +121,15 @@ typedef struct {
 	uint32_t base;     // r0's index in the coroutine's registers
 	uint16_t dst;      // the caller's register for the result
 	uint8_t boundary;  // returning from it returns to C
+	// A mut fn's (AK_F_MUT): where its first argument goes back as it
+	// ends: the coroutine's register at, or (from C) *argp.
+	uint8_t inout;     // 0: none, AK_INOUT_REG or AK_INOUT_PTR
+	uint32_t at;
+	ak_val *argp;
 } ak_frame;
+
+#define AK_INOUT_REG 1
+#define AK_INOUT_PTR 2
 
 typedef struct ak_co {
 	ak_val *regs;

@@ -689,3 +689,9 @@ struct WindowState {
   alwaysOnTop: bool = false
   clickThrough: bool = false
 }
+
+/// A value that gives values one at a time: for x in it calls next() on a copy of it, until next() gives none. A type has it when it has the method.
+interface Iterator<T> {
+  /// The next value, none once there are no more.
+  mut fn next() -> T?
+}

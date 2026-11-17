@@ -280,7 +280,10 @@ func (c *Checker) staticFunc(t *TypeName, d *syntax.FuncDecl) {
 // signature resolves a function's parameters and result in the current
 // scope (with the function's type parameters declared).
 func (c *Checker) signature(d *syntax.FuncDecl, f *Function) *Signature {
-	s := &Signature{Async: d.Async.IsValid(), Throws: d.Throws.IsValid(), Result: Void}
+	s := &Signature{Async: d.Async.IsValid(), Throws: d.Throws.IsValid(), Result: Void, Mut: d.Mut.IsValid()}
+	if s.Mut && s.Async {
+		c.errorf(d.Name, "a mut fn can't be async: change a store's state from an async fn instead")
+	}
 	if d.Params != nil {
 		seen := map[string]bool{}
 		for _, p := range d.Params.List {
@@ -306,18 +309,43 @@ func (c *Checker) funcSig(f *Function) {
 		return
 	}
 	savedScope := c.scope
-	if f.Recv != nil {
+	switch {
+	case f.Recv != nil:
 		c.scope = c.typeScope(f.Recv)
-	} else {
+	case f.Ext != nil:
+		c.scope = c.extScope(f.Ext)
+	default:
 		c.scope = NewScope(c.declScope(f.Decl))
 	}
 	f.TypeParams = c.typeParams(f.Decl.TypeParams)
+	if f.Decl.Mut.IsValid() {
+		c.mutDecl(f)
+	}
 	if f.Decl.Extern.IsValid() {
 		c.externSig(f)
 	} else {
 		f.Sig = c.signature(f.Decl, f)
 	}
 	c.scope = savedScope
+}
+
+// mutDecl reports a mut fn where nothing is changed through it: only a
+// struct's, an enum's or an extension's method changes the value it's
+// called on.
+func (c *Checker) mutDecl(f *Function) {
+	d := f.Decl
+	switch {
+	case f.Static != nil:
+		c.errorf(d.Name, "a static fn has no value to change: drop mut")
+	case f.Recv != nil && f.Recv.Kind == StoreType:
+		c.errorf(d.Name, "a store's fns change its state as they are: drop mut")
+	case f.Recv != nil && f.Recv.Kind == ComponentType:
+		c.errorf(d.Name, "a component's fns change its state as they are: drop mut")
+	case f.Recv == nil && !f.IsExtMethod():
+		c.errorf(d.Name, "mut fn is a method that changes its value: declare it in a struct, an enum or an extend")
+	case d.Native.IsValid() || d.Extern.IsValid():
+		c.errorf(d.Name, "a native fn can't be mut")
+	}
 }
 
 // globalType gives a package-level value, or a type's constant, its type.
@@ -503,6 +531,17 @@ func (c *Checker) funcBody(f *Function) {
 				c.scope.Insert(&selfMember{object: object{m.name, m.pos}, method: m, owner: f.Recv})
 			}
 		}
+	} else if f.IsExtMethod() {
+		// self's fields by their bare names, as the type's own methods
+		// see them; its methods are self's (implicitSelf).
+		c.scope = NewScope(c.extScope(f.Ext))
+		if n, ok := f.Ext.Target.(*Named); ok && n.Obj.Kind == StructType {
+			for _, fl := range n.Obj.Fields {
+				c.scope.Insert(&selfMember{object: object{fl.Name, fl.Pos}, field: fl, owner: n.Obj, subst: n.Subst()})
+			}
+		}
+	} else if f.Ext != nil {
+		c.scope = c.extScope(f.Ext)
 	} else {
 		c.scope = c.declScope(d)
 	}
@@ -516,6 +555,9 @@ func (c *Checker) funcBody(f *Function) {
 	if f.Recv != nil {
 		kind = CtxMethod
 		name = f.Recv.name + "." + f.name
+	} else if f.IsExtMethod() {
+		kind = CtxMethod
+		name = f.Ext.Name() + "." + f.name
 	}
 	ctx := c.enter(kind, d, name)
 	ctx.Func = f
@@ -534,6 +576,8 @@ func (c *Checker) funcBody(f *Function) {
 		case StoreType, ComponentType, WorkerType:
 			ctx.Comp = f.Recv
 		}
+	} else if f.IsExtMethod() {
+		ctx.Self = &Var{object: object{"self", d.Name.Start}, Type: f.Ext.Target, Kind: SelfVar, Ctx: ctx}
 	}
 	for i, p := range f.Sig.Params {
 		v := c.declareVar(d.Params.List[i].Name, p.Type, false)
@@ -693,17 +737,26 @@ func (c *Checker) implementsMembers(t Type, iface *Named) string {
 	}
 	s, is := n.Subst(), iface.Subst()
 	for _, m := range it.Iface.Methods {
-		f := n.Obj.Methods[m.Name]
+		f, fs := n.Obj.Methods[m.Name], s
 		if f == nil {
-			return "it has no method " + m.Name
+			// An extension's, where the package sees it.
+			hit, _ := c.extLookup(t, m.Name, "method", nil)
+			if hit.f == nil {
+				return "it has no method " + m.Name
+			}
+			f, fs = hit.f, hit.s
+			c.extImpl(n, m.Name, f)
 		}
 		c.funcSig(f)
-		got, want := s.Apply(f.Sig.Type()), is.Apply(m.Sig.Type())
+		got, want := fs.Apply(f.Sig.Type()), is.Apply(m.Sig.Type())
 		if !Identical(got, want) {
-			if why := extraParams(s.applySig(f.Sig), is.applySig(m.Sig), m.Name); why != "" {
+			if why := extraParams(fs.applySig(f.Sig), is.applySig(m.Sig), m.Name); why != "" {
 				return why
 			}
 			return "its " + m.Name + " is " + typeString(got) + ", not " + typeString(want)
+		}
+		if f.Sig.Mut && !m.Sig.Mut {
+			return mutNotAsked(m.Name)
 		}
 	}
 	for _, fl := range it.Iface.Fields {
@@ -717,12 +770,18 @@ func (c *Checker) implementsMembers(t Type, iface *Named) string {
 				return "its field " + fl.Name + " is " + typeString(s.Apply(f.Type)) + ", not " + typeString(want)
 			}
 		} else {
-			f := n.Obj.Methods[fl.Name]
+			f, fs := n.Obj.Methods[fl.Name], s
+			if f == nil {
+				if hit, _ := c.extLookup(t, fl.Name, "method", nil); hit.f != nil {
+					f, fs = hit.f, hit.s
+					c.extImpl(n, fl.Name, f)
+				}
+			}
 			if f == nil {
 				return "it has no " + fl.Name + " (an enum has it as a method: fn " + fl.Name + "() -> " + typeString(want) + ")"
 			}
 			c.funcSig(f)
-			if len(f.Sig.Params) != 0 || !Identical(s.Apply(f.Sig.Result), want) {
+			if len(f.Sig.Params) != 0 || !Identical(fs.Apply(f.Sig.Result), want) {
 				return "its " + fl.Name + " isn't fn " + fl.Name + "() -> " + typeString(want)
 			}
 		}
@@ -875,4 +934,10 @@ func (c *Checker) structCycles(p *Package) {
 			c.errorPos(f.Pos, "struct %s holds itself (%s): a value can't hold a whole copy of itself, so none can be made; make a field on the way optional (%s: %s?), or an array", t.name, strings.Join(path, " → "), f.Name, typeString(f.Type))
 		}
 	}
+}
+
+// mutNotAsked says why a mut fn isn't an interface's method that isn't
+// one: the interface's is called on any value, not only on a place.
+func mutNotAsked(name string) string {
+	return "its " + name + " is a mut fn, and the interface's isn't (an interface's fn is called on any value, a mut fn on a var or state): declare the interface's mut fn " + name
 }
