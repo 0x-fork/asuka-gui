@@ -208,7 +208,7 @@ struct Animation {
   autoreverses: bool = false
   damping: float = 0
   velocity: float = 0
-  done: fn()? = none
+  done: (fn())? = none
 
   let spring = Animation(curve: .spring)
   let linear = Animation(curve: .linear)
@@ -294,11 +294,11 @@ struct Environment {
   platform: Platform = .unknown
   widthClass: SizeClass = .unspecified
   heightClass: SizeClass = .unspecified
-  locale: string = ""     // the user's regional formats (BCP 47)
-  timeZone: string = ""   // IANA
-  languages: string = ""  // BCP 47 tags, most preferred first, joined by commas
-  firstWeekday: int = 0   // 1 Sunday to 7 Saturday; 0 unknown
-  hourCycle: int = 0      // 12 or 24; 0 unknown
+  locale: string = ""    // the user's regional formats (BCP 47)
+  timeZone: string = ""  // IANA
+  languages: string = "" // BCP 47 tags, most preferred first, joined by commas
+  firstWeekday: int = 0  // 1 Sunday to 7 Saturday; 0 unknown
+  hourCycle: int = 0     // 12 or 24; 0 unknown
 }
 
 // ---- Interaction ----
@@ -353,7 +353,7 @@ struct Shortcut {
   shift: bool = false
   alt: bool = false
   control: bool = false
-  run: fn() = () => {} // a MenuItem's shortcut runs the item
+  run: fn() = () => {}  // a MenuItem's shortcut runs the item
   mods: [Modifier] = [] // modifiers besides the bools'
 
   /// The key with primary (⌘ on Apple platforms, Ctrl elsewhere): a menu
@@ -365,7 +365,7 @@ struct Shortcut {
 enum Modifier {
   primary // ⌘ on Apple platforms, Ctrl elsewhere
   shift
-  alt     // a Mac's option
+  alt // a Mac's option
   control
 }
 
@@ -381,11 +381,11 @@ struct A11yAction {
 /// text, a link, or a file (the app's own copy, in its caches).
 struct SharedItem {
   kind: ShareKind = .text
-  text: string = ""   // a text's text, a link's URL
-  path: string = ""   // a file's
-  name: string = ""   // the file's name where it came from
+  text: string = "" // a text's text, a link's URL
+  path: string = "" // a file's
+  name: string = "" // the file's name where it came from
   mime: string = ""
-  size: int = -1      // a file's size in bytes; -1: unknown
+  size: int = -1 // a file's size in bytes; -1: unknown
 }
 
 /// A thing a drag carries: a text, a link, a file, and the app's own
@@ -500,7 +500,7 @@ struct StrokeStyle {
   width: float = 1
   cap: LineCap = .butt
   join: LineJoin = .miter
-  dash: [float] = []   // lengths drawn and skipped in turn; []: solid
+  dash: [float] = [] // lengths drawn and skipped in turn; []: solid
   dashPhase: float = 0
 }
 
@@ -623,12 +623,12 @@ fn routeCase(s: string, name: string, cases: [string]) throws -> int {
 
 /// A text field of an alert.
 struct AlertField {
-  text: string = ""        // what it starts with
+  text: string = "" // what it starts with
   placeholder: string = ""
-  secure: bool = false     // a password's
+  secure: bool = false // a password's
   keyboard: Keyboard = .default
-  contentType: string = "" // AutoFill's hint
-  change: fn(string)? = none // the user's typing
+  contentType: string = ""     // AutoFill's hint
+  change: (fn(string))? = none // the user's typing
 }
 
 /// What a flyout Window hangs from: a tray icon (platform/tray's

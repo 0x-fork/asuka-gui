@@ -14,7 +14,7 @@ Canvas(g => {
 
 `shader` 宣言は、GPU のプログラムが描く箱です。Asuka の構文で書き、アプリと一緒にコンパイルされ（間違いはその行を示すコンパイルエラーになります）、ビューとして使います。引数がそのまま uniform になります。
 
-```asuka
+```asuka check
 shader Ring(tint: Color, thickness: float = 0.05) {
   fn fragment(pos: vec2) -> vec4 {
     let d = abs(distance(pos / size, vec2(0.5)) - 0.4)

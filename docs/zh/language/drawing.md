@@ -14,7 +14,7 @@ Canvas(g => {
 
 `shader` 声明是一个由 GPU 程序绘制的方框。它用 Asuka 的语法编写，随应用一起编译（写错了就是编译错误，并指出所在的行），用的时候当作视图，参数就是它的 uniform：
 
-```asuka
+```asuka check
 shader Ring(tint: Color, thickness: float = 0.05) {
   fn fragment(pos: vec2) -> vec4 {
     let d = abs(distance(pos / size, vec2(0.5)) - 0.4)

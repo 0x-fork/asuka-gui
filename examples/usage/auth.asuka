@@ -153,7 +153,7 @@ test "the sign-in's address, and its code" {
   expect(l.codeFrom("{manualRedirect}?code=abc&state={l.state}") == "abc")
   expect(l.codeFrom(" abc#{l.state}\n") == "abc")
   expect(l.codeFrom("{manualRedirect}?code=abc&state=another") == none) // another sign-in's code
-  expect(l.codeFrom("https://claude.ai/login") == none) // a page on the way
+  expect(l.codeFrom("https://claude.ai/login") == none)                 // a page on the way
 }
 
 test "tokens" {

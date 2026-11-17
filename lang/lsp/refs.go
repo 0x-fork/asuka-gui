@@ -39,7 +39,7 @@ type occurrence struct {
 func (fc *fileCtx) occurrences(key declKey, out *[]occurrence) {
 	walkPaths(fc.file, func(path []syntax.Node) {
 		id, ok := path[len(path)-1].(*syntax.Ident)
-		if !ok || id.Name == "_" || fc.textOf(id.Span) != id.Name {
+		if !ok || id.Name == "_" || !fc.written(id) {
 			return
 		}
 		if imp, ok := at(path, 2).(*syntax.ImportDecl); ok && imp.Alias != id {

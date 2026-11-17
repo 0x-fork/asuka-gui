@@ -7,12 +7,12 @@ import std/time
 /// A quota that resets: Claude's 5-hour window, its week, its week for
 /// one model.
 struct Window {
-  key: string // which: five_hour, seven_day, seven_day_fable
-  name: string = "" // the server's name for it; empty: label(key)
-  span: Duration = 0s // how long it runs; 0: periodOf(key)
-  used: float = 0 // percent of the quota used, 0 to 100
+  key: string               // which: five_hour, seven_day, seven_day_fable
+  name: string = ""         // the server's name for it; empty: label(key)
+  span: Duration = 0s       // how long it runs; 0: periodOf(key)
+  used: float = 0           // percent of the quota used, 0 to 100
   resets: time.Time? = none // none: not started (nothing used yet)
-  history: [Sample] = [] // what was used, as the window went
+  history: [Sample] = []    // what was used, as the window went
 
   /// The window's name.
   fn title() -> string = if name.isEmpty() { label(key) } else { name }
@@ -48,7 +48,7 @@ struct Sample {
 struct Account {
   id: string
   service: string = "claude"
-  name: string = "" // the user's name for it; empty: the service's
+  name: string = ""  // the user's name for it; empty: the service's
   demo: bool = false // made-up numbers, for trying the app
   email: string = ""
   org: string = ""
@@ -82,10 +82,10 @@ fn label(key: string) -> string {
 /// How a window's use is going, at the rate it has gone so far.
 enum Pace {
   unknown // too early to tell
-  ok // ends with a fifth or more left
-  tight // ends with little left
-  over // runs out before it resets
-  usedUp // all used, until it resets
+  ok      // ends with a fifth or more left
+  tight   // ends with little left
+  over    // runs out before it resets
+  usedUp  // all used, until it resets
 
   fn label() -> string = match self {
     .unknown => "Too early"

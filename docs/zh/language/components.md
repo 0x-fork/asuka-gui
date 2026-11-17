@@ -144,7 +144,7 @@ Toggle { bind on: notify; title: "Notifications" }
 
 组件的 prop 也可以这样绑定，只要组件用 `event <prop>Change` 报告它：一个有 `prop value` 和 `event valueChange(value: T)` 的组件，写 `bind value: when` 就会把状态传进去，并在组件发出变化时写回：
 
-```asuka
+```asuka check
 component Rating {
   prop value = 0
   event valueChange(value: int)

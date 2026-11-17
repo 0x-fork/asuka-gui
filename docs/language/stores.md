@@ -42,7 +42,7 @@ other's.
 component that works alone and in a group (a checkbox, in a checkbox
 group or not).
 
-```asuka
+```asuka check
 store Group {
   pub state chosen: [string] = []
 }
@@ -59,7 +59,7 @@ component Choice(value: string) {
 A store takes type parameters as a struct does, inferred from its
 arguments or from what's expected:
 
-```asuka
+```asuka check
 store Kept<T>(key: string, initial: T) {
   pub state value: T = initial
 }

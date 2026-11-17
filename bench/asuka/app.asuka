@@ -6,7 +6,7 @@
 
 import ./meter
 
-let rows = 1000 // the mount and update scenarios' rows
+let rows = 1000       // the mount and update scenarios' rows
 let listRows = 10_000 // the scroll scenario's
 
 enum Phase { ready, mounted, list }

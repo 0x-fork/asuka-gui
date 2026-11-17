@@ -24,7 +24,7 @@ C is called directly. `extern` declarations say what a C function
 takes and gives back, in C's types, and Asuka sees each as one of its
 own (an `Int32` is an `int`, a `CString` a `string`):
 
-```asuka
+```asuka check
 extern type Db with release db_close
 extern fn db_open(path: CString) -> Db?
 extern fn db_close(db: Db)

@@ -12,7 +12,7 @@ state count = 0              // 状态：界面会跟随变化的值
 
 ## 结构体
 
-```asuka
+```asuka check
 struct Message {
   id: string
   subject: string
@@ -29,7 +29,7 @@ let n = Message(id: m.id, subject: m.subject, read: true)
 
 结构体或枚举主体里的 `static fn` 是这个类型自己的函数，没有 `self`：在类型上调用，和普通函数一样可以用具名参数和默认值（`Money.of(dollars: 2)`），在任何需要这个类型的地方也可以写成 `.of(…)`。
 
-```asuka
+```asuka check
 struct Money {
   cents: int
 
@@ -41,7 +41,7 @@ let price: Money = .of(dollars: 4, cents: 50)
 
 结构体可以带类型参数，创建时会自动推断：
 
-```asuka
+```asuka check
 struct Page<T> {
   items: [T]
   next: string? = none
@@ -62,7 +62,7 @@ match line {
 
 结构体和枚举可以从它们的方法获得运算符：`fn add(o: T) -> R` 就是 `a + b`，`fn sub(o: T) -> R`（或 `minus`）就是 `a - b`，`fn compare(o: T) -> int`（负数、零或正数）就是 `<`、`<=`、`>` 和 `>=`，也让 `sorted()` 和 `T: Comparable` 可用（见[函数](functions.md#接口与泛型)）。只要 `add` 返回的还是 `a` 的类型，`a += b` 就是借助这些方法的 `a = a + b`，可以用在 var、状态、字段和元素上（状态只改变一次）。`std/time` 的 `Time` 就是这样加上一个 `Duration`、减去另一个 `Time` 的：
 
-```asuka
+```asuka check
 struct Money {
   cents: int
 
@@ -104,7 +104,7 @@ let f: Filter = .unread
 
 成员携带的值可以是这个枚举本身，因此枚举可以表示一棵树：
 
-```asuka
+```asuka check
 enum Expr {
   num(int)
   add(Expr, Expr)

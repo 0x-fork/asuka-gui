@@ -10,7 +10,7 @@ import platform/nfc
 // What the last tag held, and what happened: the app's, as a tag that
 // opens the app shows here too.
 state status = "Hold a tag near the phone after tapping Read or Write."
-state link = "" // the link read
+state link = ""  // the link read
 state about = "" // the tag's ID and technologies
 
 app {

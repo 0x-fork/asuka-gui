@@ -19,8 +19,12 @@
 
 Strings take any expression between braces: `"{count} items"`, `"Total:
 {price * qty}"`. `\{` is a brace; `r"…"` is a raw string with no escapes
-or interpolation; `"""…"""` spans lines (without its first line when
-that's blank, and without the indentation of its closing quotes' line).
+or interpolation, and `r#"…"#` a raw string that may hold a `"`: it
+ends at a `"` followed by as many `#`s as it starts with (`r#"say
+"hi""#`, `r##"a "# b"##`). `"""…"""` spans lines (without its first
+line when that's blank, and without the indentation of its closing
+quotes' line) and holds `"` and `""` as they are; `r"""…"""` is a raw
+one.
 A value that isn't a number, a bool or a string shows as text: an enum's
 case by its name, an optional as `none` or its value, an error as its
 message, a color as it's written (`#0a84ff`, `.accent`), a duration in

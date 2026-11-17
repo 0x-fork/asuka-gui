@@ -51,7 +51,7 @@ for line in lines {
 
 `@platform` は、アプリのビルド先のプラットフォームを表す `Platform` 型の値です（`.iOS`、`.android`、`.macOS`、`.windows`、`.linux`、`.web`）。これはコンパイル時に決まる定数で、追跡されません。ファイルのトップレベルやコンポーネントの本体も含め、値を書ける場所ならどこでも使えます。`@platform` で決まる分岐のうち、あるプラットフォームが通らない側は、そのプラットフォームのビルドに含まれません。コードも、文字列も、ビューも含まれません。
 
-```asuka
+```asuka check
 let saveKey = if @platform == .macOS { "⌘S" } else { "Ctrl+S" }
 
 component Toolbar {

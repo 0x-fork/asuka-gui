@@ -519,10 +519,10 @@ fn encodeMessage(m: Message) -> bytes {
   for (i, r) in m.records.enumerated() {
     let (tnf, type, id, payload) = parts(r)
     var header = tnf
-    if i == 0 { header += 0x80 } // MB
+    if i == 0 { header += 0x80 }     // MB
     if i == n - 1 { header += 0x40 } // ME
     let short = payload.count() < 256
-    if short { header += 0x10 } // SR
+    if short { header += 0x10 }         // SR
     if !id.isEmpty() { header += 0x08 } // IL
     out = out.concat(bytes([header, type.count()]))
     if short {

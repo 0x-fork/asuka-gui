@@ -107,7 +107,7 @@ enum Entry {
 
 fn entries(items: [Action]) -> [Entry] {
   var out: [Entry] = []
-  var any = false // something came before: a section is set apart from it
+  var any = false   // something came before: a section is set apart from it
   var after = false // a section just ended: what follows is set apart
   for a in items {
     match a {

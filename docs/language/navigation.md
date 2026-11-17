@@ -32,7 +32,7 @@ With a `Router`, every screen has an address. A screen declared with
 its pattern is routable, its parameters typed; a call of it is its
 address, checked as the app compiles:
 
-```asuka
+```asuka check
 app {
   Router(initial: "/inbox") {
     Route("/inbox", layout: .stack, title: "Inbox") {

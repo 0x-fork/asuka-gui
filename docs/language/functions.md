@@ -80,7 +80,7 @@ itself without holding itself.
 An interface is a set of methods and fields; a type has it if it has
 them (nothing to declare).
 
-```asuka
+```asuka check
 interface Shape { fn area() -> float }
 
 fn total<T>(items: [T], size: fn(T) -> float) -> float {

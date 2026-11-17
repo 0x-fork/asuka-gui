@@ -3,6 +3,7 @@ package lsp
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -459,5 +460,38 @@ func TestSymbolsAndSignatures(t *testing.T) {
 	var toks SemanticTokens
 	if err := c.call("textDocument/semanticTokens/full", &SemanticTokensParams{TextDocument: TextDocumentIdentifier{URI: uri}}, &toks); err != nil || len(toks.Data) == 0 || len(toks.Data)%5 != 0 {
 		t.Errorf("semantic tokens: %v %d", err, len(toks.Data))
+	}
+}
+
+// A name spelled in two Unicode normal forms is one name (the parser
+// takes its NFC form): its references are found in each spelling, at
+// their spans in the source, in UTF-16's units.
+func TestReferencesNormalizedNames(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "main.asuka")
+	text := "fn f() -> int {\n  let café = 1\n  let 𝒳 = 2\n  return 𝒳 + café\n}\n\ntest \"t\" { expect(f() == 3) }\n"
+	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := newClient(t, root)
+	uri, _ := c.open(path)
+	c.waitDiags(uri, noDiags)
+	var locs []Location
+	p := ReferenceParams{TextDocumentPositionParams: tdp(uri, Position{Line: 1, Character: 7})}
+	p.Context.IncludeDeclaration = true
+	if err := c.call("textDocument/references", &p, &locs); err != nil {
+		t.Fatal(err)
+	}
+	want := []Range{
+		{Start: Position{Line: 1, Character: 6}, End: Position{Line: 1, Character: 10}},
+		{Start: Position{Line: 3, Character: 14}, End: Position{Line: 3, Character: 19}},
+	}
+	var got []Range
+	for _, l := range locs {
+		got = append(got, l.Range)
+	}
+	sort.Slice(got, func(i, j int) bool { return got[i].Start.Line < got[j].Start.Line })
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("references: %+v, want %+v", got, want)
 	}
 }

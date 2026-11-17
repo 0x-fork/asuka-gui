@@ -49,7 +49,6 @@ screen Inbox {
   state chosen: [int] = []
   state composing = false
 
-
   title: "Inbox"
   largeTitle: true
   toolbar {

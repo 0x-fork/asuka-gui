@@ -596,28 +596,40 @@ component MenuDemo {
     Text("wrap {wrap} sort {sort}")
     ContextMenu {
       Text("Hold me")
-      popup { MenuPopup { MenuItem {
-        label: "Delete"
-        on select { did = "delete" }
-        Text("Delete")
-      } } }
+      popup {
+        MenuPopup {
+          MenuItem {
+            label: "Delete"
+            on select { did = "delete" }
+            Text("Delete")
+          }
+        }
+      }
     }
     Menubar {
       Menu {
         MenuTrigger { Text("File") }
-        popup { MenuPopup { MenuItem {
-          label: "New"
-          on select { did = "new" }
-          Text("New")
-        } } }
+        popup {
+          MenuPopup {
+            MenuItem {
+              label: "New"
+              on select { did = "new" }
+              Text("New")
+            }
+          }
+        }
       }
       Menu {
         MenuTrigger { Text("Edit") }
-        popup { MenuPopup { MenuItem {
-          label: "Undo"
-          on select { did = "undo" }
-          Text("Undo")
-        } } }
+        popup {
+          MenuPopup {
+            MenuItem {
+              label: "Undo"
+              on select { did = "undo" }
+              Text("Undo")
+            }
+          }
+        }
       }
     }
   }

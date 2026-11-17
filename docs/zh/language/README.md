@@ -2,7 +2,7 @@
 
 Asuka 应用用 Asuka 语言编写。这是一门小巧的语言，专为使用各平台原生控件的界面而设计。它是静态类型的：发布构建时会预先编译；开发时则原地重新加载，所以保存后几毫秒内就能看到改动，所有的值和原生视图都会保留下来。
 
-```asuka
+```asuka check
 component Counter {
   state count = 0
 
@@ -62,3 +62,5 @@ match native none on prop provide pub return screen self spawn state
 store struct style task test throw throws true try type use var while`
 
 `shader`（[着色器](../components.md#着色器)的声明）、`at`（带路由的屏幕的模式）、`static`（类型的函数：`static fn`）和 `variant`（组件的变体）只在那个位置是关键字，在别处都是普通的名字。
+
+`load` 后面跟一个调用时，它是 [load](async.md#需要加载的数据) 关键字（`load api.user(id)`，或 `load (api.user(id))`）；后面跟的括号里是别的内容时（`load()`、`load(id)`），它调用的是名为 `load` 的函数。

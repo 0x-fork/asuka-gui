@@ -683,7 +683,7 @@ pub store FakeWallet {
   pub state setUps = 0
   /// The sheets shown.
   pub state shown = 0
-  state send: fn(Step)? = none
+  state send: (fn(Step))? = none
   state asks: [AskKind] = []
   state nextID = 0
   state current = 0

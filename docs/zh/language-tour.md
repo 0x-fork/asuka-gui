@@ -2,7 +2,7 @@
 
 Asuka 应用用 Asuka 编写。这是一门为界面而设计的小语言，界面使用各平台自己的控件。它是静态类型的，发布版本会提前编译，开发时保存即在原处重新加载。本页按你接触这门语言的顺序来介绍它；每一部分的完整内容见[语言参考](language/README.md)。
 
-```asuka
+```asuka check
 component Counter {
   state count = 0
 
@@ -20,7 +20,7 @@ app { Counter() }
 
 ## 值
 
-```asuka
+```asuka check
 fn values() -> string {
   let name = "Asuka"               // 常量：类型由推断得出
   var visits = 0                   // 变量
@@ -39,7 +39,7 @@ fn values() -> string {
 
 ## 函数
 
-```asuka
+```asuka check
 fn area(width: float, height: float = 1) -> float {
   return width * height
 }
@@ -54,7 +54,7 @@ let squares = [1, 2, 3].map(x => x * x)
 
 ## 结构体与枚举
 
-```asuka
+```asuka check
 struct Message {
   subject: string
   read: bool = false
@@ -82,7 +82,7 @@ let n = label(.from(sender: "ana"))
 
 ## 组件与状态
 
-```asuka
+```asuka check
 component Greeting(name: string) {
   prop excited = false                // 一个 prop，带默认值
   state draft = ""                    // 组件自己的状态
@@ -104,7 +104,7 @@ app { Greeting("Ana") { excited: true } }
 
 ## 异步与错误
 
-```asuka
+```asuka check
 enum LoadError: Error {
   offline
   server(code: int)
@@ -138,7 +138,7 @@ component Badge {
 
 ## 包
 
-```asuka
+```asuka check
 import std/time
 
 let today = time.now().format("EEE d MMM")
@@ -148,7 +148,7 @@ let today = time.now().format("EEE d MMM")
 
 ## 测试
 
-```asuka
+```asuka check
 component Counter {
   state count = 0
   Button("Add {count}") { on press { count += 1 } }

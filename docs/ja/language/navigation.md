@@ -25,7 +25,7 @@ screen Inbox {
 
 `Router` を使うと、どの画面にもアドレスが付きます。パターン付きで宣言した画面はルートに載せられ、パラメーターには型があります。その呼び出しがアドレスになり、コンパイル時に検査されます。
 
-```asuka
+```asuka check
 app {
   Router(initial: "/inbox") {
     Route("/inbox", layout: .stack, title: "Inbox") {

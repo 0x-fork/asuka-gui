@@ -51,7 +51,7 @@ for line in lines {
 
 `@platform` 是应用构建时所针对的平台，类型是 `Platform`：`.iOS`、`.android`、`.macOS`、`.windows`、`.linux` 或 `.web`。它是一个常量，编译应用时就已确定：它不会被追踪，凡是能写值的地方都能用，包括文件顶层和组件主体。由它决定的分支中，某个平台不会走的那一支不会进入该平台的构建：代码、字符串和视图都不会。
 
-```asuka
+```asuka check
 let saveKey = if @platform == .macOS { "⌘S" } else { "Ctrl+S" }
 
 component Toolbar {

@@ -16,9 +16,9 @@ struct Bookmark {
   title: string
   description: string
   note: string
-  cover: string // an image's URL, or a file of the app's
+  cover: string   // an image's URL, or a file of the app's
   collection: int // 0: Unsorted
-  tags: string // comma-separated
+  tags: string    // comma-separated
   created: int
 }
 

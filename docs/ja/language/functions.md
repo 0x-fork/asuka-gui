@@ -58,7 +58,7 @@ fn total(root: Node) -> int {
 
 インターフェースはメソッドとフィールドの集まりです。それらを持っている型は、そのインターフェースを満たします（何も宣言する必要はありません）。
 
-```asuka
+```asuka check
 interface Shape { fn area() -> float }
 
 fn total<T>(items: [T], size: fn(T) -> float) -> float {

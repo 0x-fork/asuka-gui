@@ -28,7 +28,7 @@ A `shader` declaration is a box a GPU program draws, written in
 Asuka's syntax and compiled with the app (a mistake in it is a compile
 error at its line), used as a view, its parameters its uniforms:
 
-```asuka
+```asuka check
 shader Ring(tint: Color, thickness: float = 0.05) {
   fn fragment(pos: vec2) -> vec4 {
     let d = abs(distance(pos / size, vec2(0.5)) - 0.4)

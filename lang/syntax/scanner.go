@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"strconv"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 )
@@ -40,12 +41,18 @@ func (c *Comment) IsDoc() bool {
 //     operators, =, the assignment operators, =>, ->, ., ?., .., ..<, |),
 //     after a , or a :, and after an opening bracket;
 //   - after another newline, a ; or the start of the file: runs of
-//     newlines are one.
+//     newlines are one;
+//   - before a line (blank lines and comments aside) that starts with a
+//     binary operator that can't start an expression: + * / % == != <
+//     <= > >= && || ?? & | ^ << >> .. ..< and ?. (a ⏎ ?? b). Not -, !
+//     or ~, which can (a ⏎ -b is two lines), and not an assignment's
+//     operator (+=). A line that starts with .name is the parser's to
+//     join (decision 26): it may be an implicit member of its own.
 //
 // Not after ? (a line may end with an optional type, String?), ! (one
 // may end with a force unwrap, x!) or > (one may end with a generic
 // type, Loading<User>): a comparison broken across lines puts its > at
-// the start of the next line instead, inside parentheses.
+// the start of the next line instead.
 type Scanner struct {
 	file *File
 	src  string
@@ -168,6 +175,59 @@ func (s *Scanner) newlineCounts() bool {
 	return true
 }
 
+// continued reports whether the next line, after the source at from
+// (blank lines and comments aside), starts with a binary operator that
+// can't start an expression, which continues this line's: a ⏎ ?? b,
+// items.count() ⏎ * 2. Not -, which can (a ⏎ -b is two lines), nor
+// one's assignment form (a ⏎ += 1). A leading . is the parser's to
+// decide (an implicit member may start a line).
+func (s *Scanner) continued(from int) bool {
+	src, i := s.src, from
+	for i < len(src) {
+		switch c := src[i]; {
+		case c == ' ' || c == '\t' || c == '\r' || c == '\n':
+			i++
+			continue
+		case c == '/' && i+1 < len(src) && src[i+1] == '/':
+			for i < len(src) && src[i] != '\n' {
+				i++
+			}
+			continue
+		case c == '/' && i+1 < len(src) && src[i+1] == '*':
+			end := strings.Index(src[i+2:], "*/")
+			if end < 0 {
+				return false
+			}
+			i += 2 + end + 2
+			continue
+		}
+		break
+	}
+	at := func(k int) byte {
+		if i+k < len(src) {
+			return src[i+k]
+		}
+		return 0
+	}
+	switch at(0) {
+	case '.':
+		return at(1) == '.' // .. and ..<
+	case '?':
+		return at(1) == '.' || at(1) == '?' && at(2) != '=' // ?. and ??
+	case '+', '*', '/', '%', '^':
+		return at(1) != '='
+	case '&', '|':
+		return at(1) == at(0) || at(1) != '=' // && ||, & |
+	case '=', '!':
+		return at(1) == '=' // == !=
+	case '<':
+		return !(at(1) == '<' && at(2) == '=') // < <= <<
+	case '>':
+		return !(at(1) == '>' && at(2) == '=') // > >= >>
+	}
+	return false
+}
+
 // endLineInterp ends, at a line's end, the interpolation of a one-line
 // string it's in: the string wasn't terminated.
 func (s *Scanner) endLineInterp() {
@@ -204,7 +264,7 @@ redo:
 			continue
 		case '\n':
 			s.endLineInterp()
-			if s.newlineCounts() {
+			if s.newlineCounts() && !s.continued(s.offset+1) {
 				off := s.offset
 				s.next()
 				return s.file.Pos(off), NEWLINE, "\n"
@@ -216,7 +276,7 @@ redo:
 				if nl := s.comment(); nl >= 0 {
 					// A block comment spanning lines ends a line.
 					s.endLineInterp()
-					if s.newlineCounts() {
+					if s.newlineCounts() && !s.continued(s.offset) {
 						return s.file.Pos(nl), NEWLINE, "\n"
 					}
 				}
@@ -231,15 +291,25 @@ redo:
 	ch := s.ch
 	switch {
 	case ch == eof:
-		if n := len(s.frames); n > 0 && s.frames[n-1].kind == interp {
-			s.error(s.frames[n-1].start, "string not terminated")
-			s.frames = s.frames[:n-1]
+		// A string whose interpolation is open, maybe inside a bracket
+		// left open in it ("{f(), isn't terminated.
+		for n := len(s.frames); n > 0; n-- {
+			if f := s.frames[n-1]; f.kind == interp {
+				s.error(f.start, "string not terminated")
+				s.frames = s.frames[:0]
+				break
+			}
 		}
 		return pos, EOF, ""
 	case isLetter(ch):
-		if ch == 'r' && s.peek() == '"' {
-			s.next()
-			return s.string(start, true)
+		if ch == 'r' {
+			if n, ok := s.rawHashes(); ok {
+				s.next() // past r
+				for range n {
+					s.next()
+				}
+				return s.string(start, true, n)
+			}
 		}
 		s.ident()
 		lit := s.src[start:s.offset]
@@ -261,7 +331,7 @@ redo:
 		tok := s.number()
 		return pos, tok, s.src[start:s.offset]
 	case ch == '"':
-		return s.string(start, false)
+		return s.string(start, false, 0)
 	}
 
 	s.next() // past ch
@@ -289,7 +359,7 @@ redo:
 			// The end of an interpolation: the string goes on.
 			multiline, open := s.frames[n-1].multiline, s.frames[n-1].start
 			s.frames = s.frames[:n-1]
-			return s.stringRest(start, open, false, multiline, true)
+			return s.stringRest(start, open, false, multiline, true, 0)
 		}
 		// A } closes its { and any ( or [ left open inside it, so an
 		// unclosed bracket doesn't swallow the newlines of the rest of
@@ -465,10 +535,8 @@ func (s *Scanner) comment() int {
 	return nl
 }
 
-func isLetter(ch rune) bool {
-	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_' ||
-		ch >= utf8.RuneSelf && unicode.IsLetter(ch)
-}
+// isLetter reports whether ch starts a name (see IsIdentStart).
+func isLetter(ch rune) bool { return ch >= 0 && IsIdentStart(ch) }
 
 func isDigit(ch rune) bool { return '0' <= ch && ch <= '9' }
 
@@ -481,7 +549,7 @@ func isBinary(ch rune) bool { return ch == '0' || ch == '1' }
 func isOctal(ch rune) bool { return '0' <= ch && ch <= '7' }
 
 func (s *Scanner) ident() {
-	for isLetter(s.ch) || isDigit(s.ch) || s.ch >= utf8.RuneSelf && unicode.IsDigit(s.ch) {
+	for s.ch >= 0 && IsIdentContinue(s.ch) {
 		s.next()
 	}
 }
@@ -607,11 +675,22 @@ func (s *Scanner) color(start int) Token {
 	return COLOR
 }
 
+// rawHashes reports, at the r of r"…", r#"…"#, r##"…"## (s.ch == 'r'),
+// that a raw string starts there, and how many #s it has.
+func (s *Scanner) rawHashes() (int, bool) {
+	i := s.rdOffset
+	for i < len(s.src) && s.src[i] == '#' {
+		i++
+	}
+	return i - s.rdOffset, i < len(s.src) && s.src[i] == '"'
+}
+
 // string scans a string starting at its opening quote (s.ch == '"';
-// start is the r of a raw string). A string with interpolations comes
-// out as STRING_HEAD, the interpolation's tokens, then STRING_MID or
-// STRING_TAIL from the } that ends it.
-func (s *Scanner) string(start int, raw bool) (Pos, Token, string) {
+// start is the r of a raw string, hashes the #s between its r and its
+// quote). A string with interpolations comes out as STRING_HEAD, the
+// interpolation's tokens, then STRING_MID or STRING_TAIL from the } that
+// ends it.
+func (s *Scanner) string(start int, raw bool, hashes int) (Pos, Token, string) {
 	multiline := false
 	if s.peek() == '"' && s.peek2() == '"' {
 		multiline = true
@@ -619,13 +698,28 @@ func (s *Scanner) string(start int, raw bool) (Pos, Token, string) {
 		s.next()
 	}
 	s.next() // past the (last) opening quote
-	return s.stringRest(start, start, raw, multiline, false)
+	return s.stringRest(start, start, raw, multiline, false, hashes)
+}
+
+// closes reports whether n #s follow the closing quote at s.ch, which
+// close a raw string opened with them, and moves past them.
+func (s *Scanner) closes(quotes, n int) bool {
+	at := s.offset + quotes
+	if at+n > len(s.src) || strings.Count(s.src[at:at+n], "#") != n {
+		return false
+	}
+	for range quotes + n {
+		s.next()
+	}
+	return true
 }
 
 // stringRest scans a string's text from s.ch to its closing quote or
 // its next interpolation; resumed says the text follows an
 // interpolation's }. start is the token's first byte, open the string's.
-func (s *Scanner) stringRest(start, open int, raw, multiline, resumed bool) (Pos, Token, string) {
+// A raw string with hashes ends only at its quote followed by as many
+// #s: r#"say "hi""#.
+func (s *Scanner) stringRest(start, open int, raw, multiline, resumed bool, hashes int) (Pos, Token, string) {
 	pos := s.file.Pos(start)
 	done := func(t Token) (Pos, Token, string) { return pos, t, s.src[start:s.offset] }
 	for {
@@ -640,13 +734,10 @@ func (s *Scanner) stringRest(start, open int, raw, multiline, resumed bool) (Pos
 			}
 		case '"':
 			if !multiline {
-				s.next()
-				return done(tailOr(resumed))
-			}
-			if s.peek() == '"' && s.peek2() == '"' {
-				s.next()
-				s.next()
-				s.next()
+				if s.closes(1, hashes) {
+					return done(tailOr(resumed))
+				}
+			} else if s.peek() == '"' && s.peek2() == '"' && s.closes(3, hashes) {
 				return done(tailOr(resumed))
 			}
 		case '\\':

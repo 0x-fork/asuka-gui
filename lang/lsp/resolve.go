@@ -714,17 +714,24 @@ func (fc *fileCtx) eventParamRef(m *check.Member, name string) *ref {
 func (fc *fileCtx) identAt(pos syntax.Pos) ([]syntax.Node, *syntax.Ident) {
 	path := pathTo(fc.file, pos)
 	// The parser stands in "_" for a name that's missing: not a name.
-	if id, ok := at(path, 1).(*syntax.Ident); ok && fc.textOf(id.Span) == id.Name {
+	if id, ok := at(path, 1).(*syntax.Ident); ok && fc.written(id) {
 		return path, id
 	}
 	// A name the cursor is just after (Text|(…)): the editor's word.
 	if pos > syntax.Pos(fc.file.File.Base()) {
 		p2 := pathTo(fc.file, pos-1)
-		if id, ok := at(p2, 1).(*syntax.Ident); ok && id.End == pos && fc.textOf(id.Span) == id.Name {
+		if id, ok := at(p2, 1).(*syntax.Ident); ok && id.End == pos && fc.written(id) {
 			return p2, id
 		}
 	}
 	return path, nil
+}
+
+// written reports whether id is a name the file has where id says (not
+// one the parser stood in for a missing name): its text, which may be
+// spelled in another Unicode normal form than its Name (NFC).
+func (fc *fileCtx) written(id *syntax.Ident) bool {
+	return syntax.NormalizeIdent(fc.textOf(id.Span)) == id.Name
 }
 
 // textOf is the file's text in a span.

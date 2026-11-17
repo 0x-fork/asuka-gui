@@ -153,7 +153,11 @@ func TestScanNewlines(t *testing.T) {
 		{"x: T?\ny", "ident:x : ident:T ? NL ident:y"},
 		{"x!\ny", "ident:x ! NL ident:y"},
 		{"x: Task<T>\ny", "ident:x : ident:Task < ident:T > NL ident:y"},
-		// A leading . doesn't continue a line: it's an implicit member.
+		// Nor before a line that starts with a binary operator; a leading
+		// .name is the parser's to join (an implicit member may start a
+		// line).
+		{"a\n?? b", "ident:a ?? ident:b"},
+		{"a\n-b", "ident:a NL - ident:b"},
 		{"a\n.b", "ident:a NL . ident:b"},
 	}
 	for _, tt := range tests {

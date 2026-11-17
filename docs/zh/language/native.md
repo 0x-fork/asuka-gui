@@ -17,7 +17,7 @@ pub native component MapView(region: Region) {
 
 C 则可以直接调用。`extern` 声明用 C 的类型写明一个 C 函数接收什么、返回什么，Asuka 把每个声明都当作自己的函数来看待（`Int32` 就是 `int`，`CString` 就是 `string`）：
 
-```asuka
+```asuka check
 extern type Db with release db_close
 extern fn db_open(path: CString) -> Db?
 extern fn db_close(db: Db)

@@ -35,7 +35,7 @@ screen Inbox {
 
 オプショナル型で `use` すると、上のどこにも提供されていないときは none になります。単独でもグループの中でも動くコンポーネントに使います（チェックボックスグループの中にあってもなくてもよいチェックボックスなど）。
 
-```asuka
+```asuka check
 store Group {
   pub state chosen: [string] = []
 }
@@ -51,7 +51,7 @@ component Choice(value: string) {
 
 ストアは構造体と同じように型パラメータを取れます。型は引数か、期待される型から推論されます。
 
-```asuka
+```asuka check
 store Kept<T>(key: string, initial: T) {
   pub state value: T = initial
 }
