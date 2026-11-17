@@ -7,8 +7,10 @@
 // appDir), removed after it. With -leaks, a test also fails when objects
 // it made outlive it (its owner disposed, everything it started
 // settled): what it made and didn't free, such as a reference cycle.
+// With -count, each test's line also says how many allocations it made
+// (ak_alloc_count): work counted, for comparing two builds of the core.
 //
-//	asuka-run [-leaks] [-test [pattern]] module.akb
+//	asuka-run [-leaks] [-count] [-test [pattern]] module.akb
 #include "vm/vm.h"
 #include "rt/sched.h"
 #include "signal/signal.h"
@@ -72,7 +74,7 @@ static void settle(ak_future *fut) {
 }
 
 int main(int argc, char **argv) {
-	bool test = false, aot = false, app = false, leaks = false, program = false;
+	bool test = false, aot = false, app = false, leaks = false, count = false, program = false;
 	const char *pattern = NULL, *path = NULL, *name = "main";
 	int rest = argc;  // the program's arguments, after --
 	for (int i = 1; i < argc; i++) {
@@ -91,6 +93,8 @@ int main(int argc, char **argv) {
 			app = true;
 		} else if (strcmp(argv[i], "-leaks") == 0) {
 			leaks = true;
+		} else if (strcmp(argv[i], "-count") == 0) {
+			count = true;
 		} else if (strcmp(argv[i], "-platform") == 0 && i + 1 < argc) {
 			static const char *names[] = {"", "ios", "android", "macos", "windows", "web", "linux"};
 			const char *want = argv[++i];
@@ -110,7 +114,7 @@ int main(int argc, char **argv) {
 		}
 	}
 	if (!path && !aot) {
-		fprintf(stderr, "usage: asuka-run [-leaks] [-test [pattern]] [-app] [-platform name] (module.akb | -aot)\n"
+		fprintf(stderr, "usage: asuka-run [-leaks] [-count] [-test [pattern]] [-app] [-platform name] (module.akb | -aot)\n"
 		                "       asuka-run -main [-program name] (module.akb | -aot) [-- args...]\n");
 		return 2;
 	}
@@ -183,6 +187,7 @@ int main(int argc, char **argv) {
 			ak_fs_set_app_dir(dir);
 			const ak_func *f = ak_module_func(m, fi);
 			int64_t live = ak_obj_live;
+			uint64_t allocs = ak_alloc_count;
 			ak_owner *o = ak_owner_new();
 			run_t r = {f, NULL};
 			ak_with_owner(o, run_test, &r);
@@ -212,6 +217,8 @@ int main(int argc, char **argv) {
 			if (failure[0]) {
 				failures++;
 				printf("FAIL %s: %s\n", name, failure);
+			} else if (count) {
+				printf("ok %s (%llu allocations)\n", name, (unsigned long long)(ak_alloc_count - allocs));
 			} else {
 				printf("ok %s\n", name);
 			}
