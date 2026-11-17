@@ -199,6 +199,9 @@ int main(int argc, char **argv) {
 			ak_owner_dispose(o);
 			settle(NULL);
 			ak_os_reset();
+			// What the test's app's mount set: the next test's app its own.
+			ak_locale_reset();
+			ak_ui_env_reset();
 			if (dir) {
 				ak_fs_remove_tree(dir);
 				ak_free(dir);

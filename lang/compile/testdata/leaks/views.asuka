@@ -1,0 +1,25 @@
+// A view a memo computed (a component's let, as markdown.View's render
+// makes one) retains the memo's computation: the component going lets go
+// of the memo's value, and the view, and everything it's in, with it.
+
+component Drawn(render: fn(string) -> View?) {
+  let custom = render("diagram")
+
+  if let v = custom {
+    v
+  } else {
+    Text("none")
+  }
+}
+
+component Doc {
+  Drawn(render: s => Text("drawn {s}"))
+}
+
+test "a view a memo made goes with its component" {
+  let app = mount(Doc())
+  app.expect("drawn diagram")
+}
+
+// Output:
+// ok a view a memo made goes with its component

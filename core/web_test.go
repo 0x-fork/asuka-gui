@@ -80,12 +80,7 @@ await fetch("/result", { method: "POST", body: document.body.innerText });
 	srv := &http.Server{Handler: mux}
 	go srv.Serve(l)
 	defer srv.Close()
-	cmd := exec.Command(browser, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-gpu",
-		"--user-data-dir="+t.TempDir(), "--window-size=430,932", "http://"+l.Addr().String()+"/")
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	defer func() { cmd.Process.Kill(); cmd.Wait() }()
+	startChrome(t, browser, "--window-size=430,932", "http://"+l.Addr().String()+"/")
 	select {
 	case got := <-results:
 		if strings.HasPrefix(got, "ERROR") || !strings.Contains(got, "Count: 1") {
@@ -111,4 +106,26 @@ func chromePath() string {
 		}
 	}
 	return ""
+}
+
+// startChrome starts headless Chrome with args, a profile of its own;
+// at the test's end Chrome and every process it started end before the
+// profile goes (its renderers and crash handler write there until then).
+func startChrome(t *testing.T, browser string, args ...string) {
+	t.Helper()
+	profile, err := os.MkdirTemp("", "asuka-chrome")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(browser, append([]string{"--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-gpu", "--user-data-dir=" + profile}, args...)...)
+	inGroup(cmd)
+	if err := cmd.Start(); err != nil {
+		os.RemoveAll(profile)
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		killGroup(cmd)
+		cmd.Wait()
+		os.RemoveAll(profile)
+	})
 }

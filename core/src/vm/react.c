@@ -114,6 +114,7 @@ typedef struct {
 
 static bool memo_update(void *ctx) {
 	memo *m = ctx;
+	if (!m->c) return false;  // its owner went (memo_gone)
 	ak_val v = ak_call(m->c, NULL, 0);
 	if (ak_error_pending()) {
 		ak_raise(ak_error_take());  // the memo holds it (ak_memo_error)
@@ -132,13 +133,27 @@ static bool memo_update(void *ctx) {
 static void memo_comp_drop(void *ctx) {
 	memo *m = ctx;
 	m->m = NULL;
-	// It never runs again: its closure goes now, not with the memo, which
-	// what the closure holds may hold (a store's memo, whose closure
-	// holds the store).
+	ak_release(m);  // the graph's reference
+}
+
+// memo_gone runs as the owner the memo was made under is disposed (the
+// component or store it's in goes): it never runs again, and its closure
+// and value go now, not with the memo, which they may hold (a store's
+// memo, whose closure holds the store), or which may outlive the
+// computation's drop (a view it computed retains the computation's
+// owner). Read after, it throws.
+static void memo_gone(void *ctx) {
+	memo *m = ctx;
 	ak_closure *c = m->c;
 	m->c = NULL;
 	ak_release(c);
-	ak_release(m);  // the graph's reference
+	if (m->has) {
+		ak_val v = m->v;
+		m->v = (ak_val){0};
+		m->has = false;
+		ak_release_val(v, (ak_kind)m->kind);
+	}
+	ak_release(m);
 }
 
 static void memo_drop(ak_opaque *o) {
@@ -154,6 +169,7 @@ ak_val ak_vm_memo_new(ak_closure *c, ak_kind k) {
 	m->info = (ak_comp_info){.drop = memo_comp_drop, .label = label_of(c)};
 	ak_retain(m);  // the graph's, until the computation is dropped
 	m->m = ak_memo_new(memo_update, m, &m->info);
+	if (ak_current_owner()) ak_on_cleanup(memo_gone, ak_retain(m));
 	return (ak_val){.p = m};
 }
 

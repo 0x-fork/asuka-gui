@@ -92,6 +92,9 @@ void ak_ui_init(const ak_host *host);
 // ak_ui_shutdown unmounts what's mounted and lets the runtime's memory
 // go (tests, a dev player switching apps).
 void ak_ui_shutdown(void);
+// ak_ui_env_reset forgets the environment the next mount takes
+// (ak_ui_set_environment's before one): each test's app its own.
+void ak_ui_env_reset(void);
 
 // ---- Roots ----
 
@@ -425,6 +428,9 @@ ak_arr *ak_ui_preferred_languages(void);
 bool ak_ui_is_rtl(void);
 ak_val ak_ui_region(void);
 ak_str *ak_ui_format_locale(void);
+// ak_locale_reset forgets the process's locale: what an app's mount
+// set, before the next test's app (tests).
+void ak_locale_reset(void);
 
 // ---- Builtins ----
 

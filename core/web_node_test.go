@@ -255,12 +255,7 @@ await start({ core: "/asuka.wasm", module: "/app.akb", name: "webtest", sqlite: 
 			srv := &http.Server{Handler: mux}
 			go srv.Serve(l)
 			defer srv.Close()
-			cmd := exec.Command(browser, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-gpu",
-				"--user-data-dir="+t.TempDir(), "http://"+l.Addr().String()+"/")
-			if err := cmd.Start(); err != nil {
-				t.Fatal(err)
-			}
-			defer func() { cmd.Process.Kill(); cmd.Wait() }()
+			startChrome(t, browser, "http://"+l.Addr().String()+"/")
 			select {
 			case got := <-results:
 				if strings.TrimSpace(got) != c.want {

@@ -176,9 +176,10 @@ static bool same_tree(const char *a, const char *b) {
 			ok = same_tree(pa, pb) && ok;
 		} else if (S_ISLNK(sa.st_mode)) {
 			char la[512] = "", lb[512] = "";
-			readlink(pa, la, sizeof la - 1);
-			readlink(pb, lb, sizeof lb - 1);
-			if (strcmp(la, lb)) {
+			if (readlink(pa, la, sizeof la - 1) < 0 || readlink(pb, lb, sizeof lb - 1) < 0) {
+				T_FAIL("%s: its link can't be read", pa);
+				ok = false;
+			} else if (strcmp(la, lb)) {
 				T_FAIL("%s: links to %s, not %s", pa, la, lb);
 				ok = false;
 			}
@@ -221,7 +222,7 @@ TEST(extract) {
 	free(noise);
 #if !defined(_WIN32)
 	char link[64] = "";
-	readlink(path_in(out, "assets/current"), link, sizeof link - 1);
+	CHECK(readlink(path_in(out, "assets/current"), link, sizeof link - 1) > 0);
 	CHECK_EQ_STR(link, "new.txt");
 	struct stat st;
 	CHECK(stat(path_in(out, "bin/tool"), &st) == 0 && (st.st_mode & 0777) == 0755);

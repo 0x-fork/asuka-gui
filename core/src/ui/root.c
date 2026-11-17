@@ -336,12 +336,16 @@ void ak_ui_shutdown(void) {
 	ak_free(ak_ui.ids);
 	ak_ui.ids = NULL;
 	ak_ui.ids_cap = ak_ui.ids_len = 0;
+	ak_ui_env_reset();
+	ak_path_reset();
+}
+
+void ak_ui_env_reset(void) {
 	for (int i = 0; i < 3; i++) {
 		ak_release(ak_ui.pending_strs[i]);
 		ak_ui.pending_strs[i] = NULL;
 	}
 	ak_ui.has_env = false;
-	ak_path_reset();
 }
 
 // ---- Building ----
