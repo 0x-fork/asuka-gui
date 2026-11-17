@@ -47,7 +47,7 @@ void watch_Event_free(watch_Event *v) {
 }
 
 HELPER void w_list_Event(asuka_writer *w, const watch_list_Event *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_Event(w, &v->data[i]);
 }
 
@@ -67,7 +67,7 @@ void watch_list_Event_free(watch_list_Event *v) {
 }
 
 HELPER void w_list_string(asuka_writer *w, const watch_list_string *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) asuka_writer_string(w, v->data[i]);
 }
 

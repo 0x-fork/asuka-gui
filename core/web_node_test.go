@@ -118,6 +118,18 @@ done
 	}
 }
 
+// Recursing too deep on the web throws the core's "stack overflow", on
+// the page and on a worker: the core's bound on its stack is reached
+// before the engine's own call stack (which wasm's frames share with
+// JavaScript's) runs out, which would end the run with a RangeError.
+func TestWebStackOverflow(t *testing.T) {
+	got := runWebNode(t, "stackoverflow.asuka", nil)
+	want := "52\n100\nstack overflow\nstack overflow\nstack overflow\nstack overflow\n(2 jobs on workers)\ndone\n"
+	if strings.TrimSpace(got) != strings.TrimSpace(want) {
+		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
 // A native package's module on the web: the core makes it and calls it
 // through the page's JavaScript (native.mjs's), now and async, and its
 // callbacks answer, during a call and on their own; an interface its

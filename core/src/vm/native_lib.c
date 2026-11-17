@@ -5,7 +5,9 @@
 //	native.start(same) -> Task<result>
 //
 // Descriptors are the module's string constants, which live as long as
-// the code that uses them.
+// the module. A started call's answer and a callback's calls come after
+// the call that gave them, maybe after a dev reload let the module go:
+// they hold it through its types (ak_json_types.hold).
 #include "vm/vm_int.h"
 #include "native/native.h"
 
@@ -20,12 +22,18 @@ static const ak_shape *shape(void *ctx, const char *name, size_t n) {
 	return NULL;
 }
 
-// The types a module's native calls use, on the module: callbacks that
-// outlive the call that registered them keep a pointer to them.
+static void hold(void *ctx, bool keep) {
+	if (keep) ak_module_retain(ctx);
+	else ak_module_release(ctx);
+}
+
+// The types a module's native calls use, on the module: started calls
+// and callbacks that outlive the call that gave them keep a pointer to
+// them, holding the module.
 static const ak_json_types *types_of(ak_module *m) {
-	static const ak_json_types none = {shape, NULL, NULL};
+	static const ak_json_types none = {shape, NULL, NULL, NULL};
 	if (!m) return &none;
-	if (!m->native_types.shape) m->native_types = (ak_json_types){shape, NULL, m};
+	if (!m->native_types.shape) m->native_types = (ak_json_types){shape, NULL, m, hold};
 	return &m->native_types;
 }
 

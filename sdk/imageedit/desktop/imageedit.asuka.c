@@ -72,7 +72,7 @@ void imageedit_Result_free(imageedit_Result *v) {
 }
 
 HELPER void w_list_Step(asuka_writer *w, const imageedit_list_Step *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_Step(w, &v->data[i]);
 }
 

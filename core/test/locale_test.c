@@ -362,6 +362,18 @@ TEST(formatting) {
 	ak_i18n_reset();
 	check_str(ak_i18n_format_number(1234.5, 0, 0, 3), "1,234.5");
 	check_str(ak_i18n_format_date(t, 2, 0), "2026-01-05 13:07");
+	// Any double, however large or small, in its shortest digits and the
+	// zeros after or ahead of them (Go's FormatFloat(v, 'f', -1, 64)).
+	char want[400];
+	snprintf(want, sizeof want, "1%0300d", 0);
+	check_str(ak_i18n_format_number(1e300, 4, 0, 0), want);
+	snprintf(want, sizeof want, "-1%063d", 0);
+	check_str(ak_i18n_format_number(-1e63, 4, 0, 0), want);
+	check_str(ak_i18n_format_number(1.2345678901234567e25, 4, 0, 0), "12345678901234566000000000");
+	check_str(ak_i18n_format_number(1.7976931348623157e308, 0, 0, 0), "179,769,313,486,231,570,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000");
+	check_str(ak_i18n_format_number(1e-25, 0, 0, 30), "0.0000000000000000000000001");
+	check_str(ak_i18n_format_number(0.1 + 0.2, 0, 0, 20), "0.30000000000000004");
+	check_str(ak_i18n_format_number(-0.5, 0, 0, 3), "-0.5");
 }
 
 // The regional formats, with the rg keyword's region, and the locale to

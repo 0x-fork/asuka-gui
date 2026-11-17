@@ -30,7 +30,7 @@ HELPER void w_opt_string(asuka_writer *w, const char *v);
 HELPER char *r_opt_string(asuka_reader *r);
 
 HELPER void w_list_string(asuka_writer *w, const dialog_list_string *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) asuka_writer_string(w, v->data[i]);
 }
 
@@ -70,7 +70,7 @@ void dialog_Filter_free(dialog_Filter *v) {
 }
 
 HELPER void w_list_Filter(asuka_writer *w, const dialog_list_Filter *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_Filter(w, &v->data[i]);
 }
 

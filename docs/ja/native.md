@@ -432,7 +432,7 @@ battery_Battery *battery_make_Battery(asuka_error *err) {
 }
 ```
 
-- **呼び出し**は、プラットフォームの UI があるメインスレッドで動きます。同期メソッドは結果をそのまま返し、メインスレッドを止めてはいけません。失敗したメソッドは `err` を設定してゼロ値を返します。`async` のメソッドは `asuka_call` を受け取ってすぐに戻り、あとでどのスレッドからでも、生成された `_done`（`battery_Battery_watch_done`）か `asuka_call_fail` で一度だけ応答します。呼び出したタスクがなくなったことは `asuka_call_cancelled` と `asuka_call_on_cancel` でわかります。ブロックする処理は `asuka_desktop_spawn` で専用のスレッドに回します。
+- **呼び出し**は、プラットフォームの UI があるメインスレッドで動きます。同期メソッドは結果をそのまま返し、メインスレッドを止めてはいけません。失敗したメソッドは `err` を設定してゼロ値を返します。`async` のメソッドは `asuka_call` を受け取ってすぐに戻り、あとでどのスレッドからでも、生成された `_done`（`battery_Battery_watch_done`）か `asuka_call_fail` で一度だけ応答します。呼び出したタスクがなくなったことは `asuka_call_cancelled` と `asuka_call_on_cancel` でわかります。`asuka_call_off_cancel` で登録したキャンセル処理を外せば、呼び出しが応答する前にそのコンテキストを解放できます。ブロックする処理は `asuka_desktop_spawn` で専用のスレッドに回します。
 - **メモリ**：境界を越える値はすべて `malloc` で確保します。メソッドの引数は生成されたコードのもので、同期呼び出しのあいだと、非同期呼び出しが応答するまで有効です（それより長く使うならコピーします）。メソッドが返す（または応答する）値は生成されたコードに渡り、そちらで解放されます（リテラルは `asuka_strdup` してから返します）。コールバックの引数は自分のもののままで、問い合わせ型のコールバックが返した値は自分で解放します（`<pkg>_<Type>_free`）。vtable の `release` が `NULL` なら、Asuka が手放したときにオブジェクトがそのまま解放されます。
 - **コールバック**は `<pkg>_fn_…_call` で呼び出します。通知型はどのスレッドからでも呼べます（メインスレッドに投げられます）。問い合わせ型はメインスレッドならその場で動き、ほかのスレッドからは結果を待ちます。
 - **ビュー**：`<pkg>_make_<View>(events)` が、ビューのオブジェクトとその `widget`（`HWND`（`events.parent` の子）か `GtkWidget *`）を作ります。Asuka がそれを表示し、ビューがなくなるときに破棄します。プロパティごとに vtable のセッター（`set_selected`）があり、ウィジェットが自分のサイズを返せないときは `measure` がサイズを決めます。イベントは生成された関数（`segmented_Segmented_selectedChange(events, i)`）で、どのスレッドからでも呼べます。

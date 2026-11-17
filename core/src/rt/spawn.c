@@ -11,7 +11,12 @@
 #include "base/thread.h"
 
 typedef struct job {
-	ak_closure *c;   // the copy the worker runs (and frees)
+	// The copy the worker runs, let go on the main thread as the result
+	// is delivered: it holds the module (the VM's code), whose constants,
+	// shapes and payloadless cases the result may hold too, so the module
+	// is freed only on the main thread and only once that result is
+	// delivered (and, if nobody waits for it, gone).
+	ak_closure *c;
 	ak_future *fut;  // retained; touched on the main thread only
 	ak_kind kind;
 	ak_val result;
@@ -29,6 +34,7 @@ static void deliver(void *p) {
 	if (j->err) ak_future_reject(j->fut, j->err);
 	else ak_future_resolve(j->fut, j->result);
 	ak_release(j->fut);
+	ak_release(j->c);
 	ak_free(j);
 	ak_sched_unhold();
 }
@@ -56,7 +62,6 @@ static void worker(void *arg) {
 			j->result = ak_deep_copy(v, j->kind);
 			ak_release_val(v, j->kind);
 		}
-		ak_release(j->c);
 		ak_post(deliver, j);
 	}
 }

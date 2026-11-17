@@ -53,7 +53,7 @@ void svg_Icon_free(svg_Icon *v) {
 }
 
 HELPER void w_list_float(asuka_writer *w, const svg_list_float *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) asuka_writer_f64(w, v->data[i]);
 }
 
@@ -127,7 +127,7 @@ void svg_Layer_free(svg_Layer *v) {
 }
 
 HELPER void w_list_Layer(asuka_writer *w, const svg_list_Layer *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_Layer(w, &v->data[i]);
 }
 

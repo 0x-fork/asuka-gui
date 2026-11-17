@@ -26,7 +26,7 @@ HELPER void w_Steps(asuka_writer *w, const sensors_Steps *v);
 HELPER sensors_Steps r_Steps(asuka_reader *r);
 
 HELPER void w_list_float(asuka_writer *w, const sensors_list_float *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) asuka_writer_f64(w, v->data[i]);
 }
 

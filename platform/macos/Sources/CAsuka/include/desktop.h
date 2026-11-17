@@ -108,6 +108,15 @@ bool dsk_exists(const char *path);
 bool dsk_mkdirs(const char *path);
 // dsk_join is a, the platform's separator and b (free it).
 char *dsk_join(const char *a, const char *b);
+// dsk_windows_name reports whether s (n bytes of UTF-8) names an entry of
+// a directory on Windows as written, and nothing else: not empty, . or
+// .., with no character Windows keeps out of names (< > : " / \ | ? *
+// and the controls; a colon would name a drive, C:x, or a file's stream,
+// x:s), not ending in a dot or a space (Windows drops them: "x." is
+// "x", ".. " is ".."), and not a device's name (CON, PRN, AUX, NUL,
+// COM and LPT with a digit or a superscript one, CONIN$, CONOUT$), with
+// any extension or spaces after it ("nul.txt", "COM1 .log").
+bool dsk_windows_name(const char *s, size_t n);
 // dsk_getenv is an environment variable, UTF-8, or NULL when it's unset
 // or empty (free it).
 char *dsk_getenv(const char *name);

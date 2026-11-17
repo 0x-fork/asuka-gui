@@ -275,8 +275,24 @@ ak_module *ak_module_load(const uint8_t *p, size_t n, char *err, size_t errcap) 
 
 void ak_module_retain(ak_module *m) { atomic_fetch_add(&m->rc, 1); }
 
+static void module_free(void *ctx);
+
+// ak_module_release may run on any thread (a closure a spawn's worker
+// made and let go); the module is freed on the main thread, where
+// everything that reads its constants without holding it (views, state,
+// delivered results) lives: a last reference let go elsewhere posts the
+// free there.
 void ak_module_release(ak_module *m) {
 	if (atomic_fetch_sub(&m->rc, 1) != 1) return;
+	if (!ak_signal_on_main_thread()) {
+		ak_post(module_free, m);
+		return;
+	}
+	module_free(m);
+}
+
+static void module_free(void *ctx) {
+	ak_module *m = ctx;
 	for (uint32_t i = 0; i < m->nglobals; i++) ak_release_val(m->globals[i], (ak_kind)m->gkinds[i]);
 	ak_free(m->globals);
 	ak_frozen_free(&m->frozen);

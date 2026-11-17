@@ -432,7 +432,7 @@ battery_Battery *battery_make_Battery(asuka_error *err) {
 }
 ```
 
-- **调用**在主线程上运行，平台的界面也在那里：同步方法直接返回结果，不能阻塞；失败的方法设置 `err` 并返回零值。`async` 方法接收一个 `asuka_call` 并立即返回：之后在任意线程上用生成的 `_done`（`battery_Battery_watch_done`）或 `asuka_call_fail` 应答一次。`asuka_call_cancelled` 和 `asuka_call_on_cancel` 告诉你发起调用的 task 什么时候离开了。会阻塞的工作用 `asuka_desktop_spawn` 放到单独的线程上。
+- **调用**在主线程上运行，平台的界面也在那里：同步方法直接返回结果，不能阻塞；失败的方法设置 `err` 并返回零值。`async` 方法接收一个 `asuka_call` 并立即返回：之后在任意线程上用生成的 `_done`（`battery_Battery_watch_done`）或 `asuka_call_fail` 应答一次。`asuka_call_cancelled` 和 `asuka_call_on_cancel` 告诉你发起调用的 task 什么时候离开了；`asuka_call_off_cancel` 再把取消回调撤掉，这样它的上下文可以在调用应答之前释放。会阻塞的工作用 `asuka_desktop_spawn` 放到单独的线程上。
 - **内存**：所有跨边界的值都用 `malloc` 分配。方法的参数归生成的代码所有，同步调用期间有效，异步调用在应答之前有效（要保留得更久就复制一份）；方法返回（或应答）的值交给生成的代码，由它释放（字面量要先 `asuka_strdup`）。回调的参数仍归你；问题型回调返回的值由你释放（`<pkg>_<Type>_free`）。vtable 的 `release` 为 `NULL` 时，Asuka 不再持有对象时会直接释放它。
 - **回调**：用 `<pkg>_fn_…_call` 调用。通知型回调可以在任意线程上调用（会被投递到主线程）；问题型回调在主线程上立即运行，在其他线程上调用时会等待它的结果。
 - **视图**：`<pkg>_make_<View>(events)` 创建视图的对象和它的 `widget`，即一个 `HWND`（`events.parent` 的子窗口）或一个 `GtkWidget *`，Asuka 负责显示它，并在视图离开时销毁它。每个属性在 vtable 里有一个 setter（`set_selected`）；控件自己给不出尺寸时，由 `measure` 决定尺寸；事件是生成的函数（`segmented_Segmented_selectedChange(events, i)`），可以在任意线程上调用。

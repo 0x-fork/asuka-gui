@@ -132,7 +132,7 @@ void purchase_Phase_free(purchase_Phase *v) {
 }
 
 HELPER void w_list_string(asuka_writer *w, const purchase_list_string *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) asuka_writer_string(w, v->data[i]);
 }
 
@@ -152,7 +152,7 @@ void purchase_list_string_free(purchase_list_string *v) {
 }
 
 HELPER void w_list_Phase(asuka_writer *w, const purchase_list_Phase *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_Phase(w, &v->data[i]);
 }
 
@@ -200,7 +200,7 @@ void purchase_Offer_free(purchase_Offer *v) {
 }
 
 HELPER void w_list_Offer(asuka_writer *w, const purchase_list_Offer *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_Offer(w, &v->data[i]);
 }
 
@@ -590,7 +590,7 @@ void purchase_StoreEvent_free(purchase_StoreEvent *v) {
 }
 
 HELPER void w_list_Item(asuka_writer *w, const purchase_list_Item *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_Item(w, &v->data[i]);
 }
 
@@ -610,7 +610,7 @@ void purchase_list_Item_free(purchase_list_Item *v) {
 }
 
 HELPER void w_list_Product(asuka_writer *w, const purchase_list_Product *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_Product(w, &v->data[i]);
 }
 
@@ -630,7 +630,7 @@ void purchase_list_Product_free(purchase_list_Product *v) {
 }
 
 HELPER void w_list_StoreTransaction(asuka_writer *w, const purchase_list_StoreTransaction *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_StoreTransaction(w, &v->data[i]);
 }
 
@@ -650,7 +650,7 @@ void purchase_list_StoreTransaction_free(purchase_list_StoreTransaction *v) {
 }
 
 HELPER void w_list_StoreStatus(asuka_writer *w, const purchase_list_StoreStatus *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_StoreStatus(w, &v->data[i]);
 }
 

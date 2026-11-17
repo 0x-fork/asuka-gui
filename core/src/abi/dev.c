@@ -288,6 +288,15 @@ static sock_t dial_any(dial_t *d) {
 	return s;
 }
 
+static void sleep_ms(int ms) {
+#if defined(_WIN32)
+	Sleep((DWORD)ms);
+#else
+	struct timespec ts = {ms / 1000, (long)(ms % 1000) * 1000000};
+	nanosleep(&ts, NULL);
+#endif
+}
+
 static void dialer(void *arg) {
 	dial_t *d = arg;
 	sock_t first = dial_any(d);
@@ -302,12 +311,7 @@ static void dialer(void *arg) {
 		ak_mutex_lock(&mu);
 		while (sock != BAD_SOCK) ak_cond_wait(&ended, &mu);
 		ak_mutex_unlock(&mu);
-#if defined(_WIN32)
-		Sleep(500);
-#else
-		struct timespec ts = {0, 500 * 1000000};
-		nanosleep(&ts, NULL);
-#endif
+		sleep_ms(500);
 	}
 }
 
@@ -320,13 +324,58 @@ static void session_thread(void *arg) {
 	session(s);
 }
 
+// accept_failed says how accept failing goes on: -1, the socket can't
+// take connections (it's closed, or not a listening socket): the
+// listener ends; 0, a connection that went before it was taken, or a
+// signal: at once; else after that many milliseconds, a lack of file
+// descriptors or memory that other connections closing free (as Go's
+// net/http: from 5 ms, doubled, at most a second).
+static int accept_failed(int backoff) {
+#if defined(_WIN32)
+	switch (WSAGetLastError()) {
+	case WSAEINTR:
+	case WSAECONNRESET:
+		return 0;
+	case WSANOTINITIALISED:
+	case WSAENOTSOCK:
+	case WSAEINVAL:
+	case WSAEOPNOTSUPP:
+	case WSAEFAULT:
+		return -1;
+	}
+#else
+	switch (errno) {
+	case EINTR:
+	case ECONNABORTED:
+		return 0;
+	case EBADF:
+	case ENOTSOCK:
+	case EINVAL:
+	case EOPNOTSUPP:
+	case EFAULT:
+		return -1;
+	}
+#endif
+	return backoff ? (backoff * 2 > 1000 ? 1000 : backoff * 2) : 5;
+}
+
 static void listener(void *arg) {
 	listen_t *l = arg;
+	int backoff = 0;
 	for (;;) {
 		sock_t s = accept(l->ln, NULL, NULL);
-		if (s == BAD_SOCK) continue;
+		if (s == BAD_SOCK) {
+			int wait = accept_failed(backoff);
+			if (wait < 0) break;
+			if (wait) sleep_ms(wait);
+			backoff = wait;
+			continue;
+		}
+		backoff = 0;
 		if (!ak_thread_start(session_thread, (void *)(intptr_t)s)) close_sock(s);
 	}
+	close_sock(l->ln);
+	ak_free(l);
 }
 
 static void net_init(void) {
@@ -407,6 +456,8 @@ bool ak_dev_connect(const char *hosts, int port, const char *hello, bool capture
 	strcpy(d->hosts, hosts);
 	d->port = port;
 	if (!ak_thread_start(dialer, d)) {
+		ak_free(d->hosts);
+		ak_free(d);
 		snprintf(err, errcap, "no thread for the dev connection");
 		return false;
 	}
@@ -436,6 +487,8 @@ bool ak_dev_listen(int port, const char *hello, bool capture, char *err, size_t 
 	listen_t *l = ak_alloc(sizeof *l);
 	l->ln = ln;
 	if (!ak_thread_start(listener, l)) {
+		close_sock(ln);
+		ak_free(l);
 		snprintf(err, errcap, "no thread for the dev connection");
 		return false;
 	}

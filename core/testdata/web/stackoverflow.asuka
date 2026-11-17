@@ -1,0 +1,99 @@
+// Recursion too deep on the web throws "stack overflow", which a catch
+// sees, rather than the engine's own call stack running out under the
+// core (a RangeError the app can't catch, which ends the page): run by
+// web_node_test.go under Node.
+
+fn wide(n: int) -> int {
+  if n == 0 { return 0 }
+  let a0 = n * 0 + 1
+  let a1 = n * 1 + 1
+  let a2 = n * 2 + 1
+  let a3 = n * 3 + 1
+  let a4 = n * 4 + 1
+  let a5 = n * 5 + 1
+  let a6 = n * 6 + 1
+  let a7 = n * 7 + 1
+  let a8 = n * 8 + 1
+  let a9 = n * 9 + 1
+  let a10 = n * 10 + 1
+  let a11 = n * 11 + 1
+  let a12 = n * 12 + 1
+  let a13 = n * 13 + 1
+  let a14 = n * 14 + 1
+  let a15 = n * 15 + 1
+  let a16 = n * 16 + 1
+  let a17 = n * 17 + 1
+  let a18 = n * 18 + 1
+  let a19 = n * 19 + 1
+  let a20 = n * 20 + 1
+  let a21 = n * 21 + 1
+  let a22 = n * 22 + 1
+  let a23 = n * 23 + 1
+  let a24 = n * 24 + 1
+  let a25 = n * 25 + 1
+  let a26 = n * 26 + 1
+  let a27 = n * 27 + 1
+  let a28 = n * 28 + 1
+  let a29 = n * 29 + 1
+  let a30 = n * 30 + 1
+  let a31 = n * 31 + 1
+  let a32 = n * 32 + 1
+  let a33 = n * 33 + 1
+  let a34 = n * 34 + 1
+  let a35 = n * 35 + 1
+  let a36 = n * 36 + 1
+  let a37 = n * 37 + 1
+  let a38 = n * 38 + 1
+  let a39 = n * 39 + 1
+  let a40 = n * 40 + 1
+  let a41 = n * 41 + 1
+  let a42 = n * 42 + 1
+  let a43 = n * 43 + 1
+  let a44 = n * 44 + 1
+  let a45 = n * 45 + 1
+  let a46 = n * 46 + 1
+  let a47 = n * 47 + 1
+  let s = "{a0} {a1} {a2} {a3} {a4} {a5} {a6} {a7} {a8} {a9} {a10} {a11} {a12} {a13} {a14} {a15} {a16} {a17} {a18} {a19} {a20} {a21} {a22} {a23} {a24} {a25} {a26} {a27} {a28} {a29} {a30} {a31} {a32} {a33} {a34} {a35} {a36} {a37} {a38} {a39} {a40} {a41} {a42} {a43} {a44} {a45} {a46} {a47}"
+  return s.count() % 2 + wide(n - 1)
+}
+
+fn mapped(n: int) -> int {
+  if n == 0 { return 0 }
+  return [n].map(x => mapped(x - 1))[0] + 1
+}
+
+fn said(e: Error) -> string {
+  if e.message.hasPrefix("stack overflow") { return "stack overflow" }
+  return e.message
+}
+
+fn deepWide(n: int) -> string {
+  do {
+    return "{wide(n)}"
+  } catch e {
+    return said(e)
+  }
+}
+
+fn deepMapped(n: int) -> string {
+  do {
+    return "{mapped(n)}"
+  } catch e {
+    return said(e)
+  }
+}
+
+component Main {
+  task {
+    print(deepWide(100))
+    print(deepMapped(100))
+    print(deepWide(1000000))
+    print(deepMapped(1000000))
+    print(await spawn { deepWide(1000000) })
+    print(await spawn { deepMapped(1000000) })
+    print("done")
+  }
+  Text("stack overflow")
+}
+
+app { Main() }

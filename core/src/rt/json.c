@@ -774,13 +774,47 @@ static void enc_str(ak_strb *b, const char *s, size_t n) {
 	ak_strb_cstr(b, "\"", 1);
 }
 
-static void nl(ak_strb *b, int indent, int depth) {
+static void nl(ak_strb *b, int indent, uint32_t depth) {
 	if (indent <= 0) return;
 	ak_strb_cstr(b, "\n", 1);
-	for (int i = 0; i < indent * depth; i++) ak_strb_cstr(b, " ", 1);
+	for (uint64_t i = 0; i < (uint64_t)indent * depth; i++) ak_strb_cstr(b, " ", 1);
 }
 
-static void enc(ak_strb *b, ak_val v, const char *d, const ak_json_types *t, int indent, int depth) {
+// The encoder keeps the arrays and objects it's in on a stack of its own,
+// not the C stack: a value nests as deep as the app made it (a long
+// linked list of a recursive enum), and writing it takes no C stack per
+// level.
+typedef struct {
+	const char *d;  // the container's descriptor: [T, <T, {T, S, E (a case with fields)
+	void *o;        // the container
+	uint32_t i;     // its next item
+	bool any;       // an item written
+} enc_open;
+
+typedef struct {
+	ak_strb *b;
+	const ak_json_types *t;
+	int indent;
+	AK_VEC(enc_open) open;
+} encoder;
+
+static void open_(encoder *e, const char *d, void *o, const char *text, size_t n) {
+	ak_strb_cstr(e->b, text, n);
+	ak_vec_push(&e->open, ((enc_open){d, o, 0, false}));
+}
+
+// enc_value writes v whole if it's a scalar, else opens it: its items are
+// written as enc_step reaches them.
+static void enc_value(encoder *e, ak_val v, const char *d) {
+	ak_strb *b = e->b;
+	while (*d == '?') {
+		if (!v.p) {
+			ak_strb_cstr(b, "null", 4);
+			return;
+		}
+		if (desc_kind(d + 1) != AK_K_REF) v = ((ak_box *)v.p)->v;
+		d++;
+	}
 	switch (*d) {
 	case 'i':
 		ak_strb_int(b, v.i);
@@ -810,75 +844,16 @@ static void enc(ak_strb *b, ak_val v, const char *d, const ak_json_types *t, int
 		ak_strb_cstr(b, "\"", 1);
 		return;
 	}
-	case '?':
-		if (!v.p) {
-			ak_strb_cstr(b, "null", 4);
-			return;
-		}
-		if (desc_kind(d + 1) != AK_K_REF) v = ((ak_box *)v.p)->v;
-		enc(b, v, d + 1, t, indent, depth);
+	case '[':
+	case '<':
+		open_(e, d, v.p, "[", 1);
 		return;
-	case '[': {
-		ak_arr *a = v.p;
-		ak_strb_cstr(b, "[", 1);
-		for (uint32_t i = 0; a && i < a->len; i++) {
-			if (i) ak_strb_cstr(b, ",", 1);
-			nl(b, indent, depth + 1);
-			enc(b, a->data[i], d + 1, t, indent, depth + 1);
-		}
-		if (a && a->len) nl(b, indent, depth);
-		ak_strb_cstr(b, "]", 1);
+	case '{':
+	case 'S':
+		open_(e, d, v.p, "{", 1);
 		return;
-	}
-	case '<': {
-		ak_map *s = v.p;
-		ak_strb_cstr(b, "[", 1);
-		bool first = true;
-		for (uint32_t i = 0; s && i < s->len; i++) {
-			if (s->dead[i]) continue;
-			if (!first) ak_strb_cstr(b, ",", 1);
-			first = false;
-			nl(b, indent, depth + 1);
-			enc(b, s->keys[i], d + 1, t, indent, depth + 1);
-		}
-		if (!first) nl(b, indent, depth);
-		ak_strb_cstr(b, "]", 1);
-		return;
-	}
-	case '{': {
-		ak_map *m = v.p;
-		ak_strb_cstr(b, "{", 1);
-		bool first = true;
-		for (uint32_t i = 0; m && i < m->len; i++) {
-			if (m->dead[i]) continue;
-			if (!first) ak_strb_cstr(b, ",", 1);
-			first = false;
-			nl(b, indent, depth + 1);
-			ak_str *k = m->keys[i].p;
-			enc_str(b, k->data, k->len);
-			ak_strb_cstr(b, indent > 0 ? ": " : ":", indent > 0 ? 2 : 1);
-			enc(b, m->vals[i], d + 1, t, indent, depth + 1);
-		}
-		if (!first) nl(b, indent, depth);
-		ak_strb_cstr(b, "}", 1);
-		return;
-	}
-	case 'S': {
-		ak_struct *s = v.p;
-		ak_strb_cstr(b, "{", 1);
-		for (uint16_t i = 0; s && i < s->shape->nfields; i++) {
-			if (i) ak_strb_cstr(b, ",", 1);
-			nl(b, indent, depth + 1);
-			const char *n = s->shape->names ? s->shape->names[i] : "";
-			enc_str(b, n, strlen(n));
-			ak_strb_cstr(b, indent > 0 ? ": " : ":", indent > 0 ? 2 : 1);
-			enc(b, s->f[i], ak_json_field_desc(s->shape, i), t, indent, depth + 1);
-		}
-		if (s && s->shape->nfields) nl(b, indent, depth);
-		ak_strb_cstr(b, "}", 1);
-		return;
-	}
 	case 'e': {
+		const ak_json_types *t = e->t;
 		const char *const *cases;
 		uint32_t n;
 		if (t && t->cases && t->cases(t->ctx, d + 1, name_len(d), &cases, &n) && v.i >= 0 && (uint64_t)v.i < n) enc_str(b, cases[v.i], strlen(cases[v.i]));
@@ -886,28 +861,102 @@ static void enc(ak_strb *b, ak_val v, const char *d, const ak_json_types *t, int
 		return;
 	}
 	case 'E': {
-		ak_enum *e = v.p;
-		const ak_case *c = &e->shape->cases[ak_enum_case(e)];
+		ak_enum *en = v.p;
+		const ak_case *c = &en->shape->cases[ak_enum_case(en)];
 		if (c->nfields == 0) {
 			enc_str(b, c->name, strlen(c->name));
 			return;
 		}
 		ak_strb_cstr(b, "{", 1);
 		enc_str(b, c->name, strlen(c->name));
-		ak_strb_cstr(b, indent > 0 ? ": [" : ":[", indent > 0 ? 3 : 2);
-		for (uint16_t i = 0; i < c->nfields; i++) {
-			if (i) ak_strb_cstr(b, ",", 1);
-			enc(b, e->f[i], ak_json_case_desc(e->shape, ak_enum_case(e), i), t, indent, depth + 1);
-		}
-		ak_strb_cstr(b, "]}", 2);
+		open_(e, d, en, e->indent > 0 ? ": [" : ":[", e->indent > 0 ? 3 : 2);
 		return;
 	}
 	}
 	ak_strb_cstr(b, "null", 4);
 }
 
+// enc_step writes the innermost open container's next item, or closes it.
+static void enc_step(encoder *e) {
+	ak_strb *b = e->b;
+	uint32_t depth = e->open.len - 1;
+	enc_open *o = &e->open.data[depth];
+	ak_val item = {0};
+	const char *id = NULL;
+	const char *key = NULL;
+	size_t keylen = 0;
+	bool done = false;
+	switch (*o->d) {
+	case '[': {
+		ak_arr *a = o->o;
+		if (!a || o->i >= a->len) done = true;
+		else item = a->data[o->i++], id = o->d + 1;
+		break;
+	}
+	case '<':
+	case '{': {
+		ak_map *m = o->o;
+		while (m && o->i < m->len && m->dead[o->i]) o->i++;
+		if (!m || o->i >= m->len) {
+			done = true;
+		} else if (*o->d == '<') {
+			item = m->keys[o->i++], id = o->d + 1;
+		} else {
+			ak_str *k = m->keys[o->i].p;
+			key = k->data, keylen = k->len;
+			item = m->vals[o->i++], id = o->d + 1;
+		}
+		break;
+	}
+	case 'S': {
+		ak_struct *s = o->o;
+		if (!s || o->i >= s->shape->nfields) {
+			done = true;
+		} else {
+			key = s->shape->names ? s->shape->names[o->i] : "";
+			keylen = strlen(key);
+			id = ak_json_field_desc(s->shape, (int)o->i);
+			item = s->f[o->i++];
+		}
+		break;
+	}
+	case 'E': {
+		ak_enum *en = o->o;
+		const ak_case *c = &en->shape->cases[ak_enum_case(en)];
+		if (o->i >= c->nfields) {
+			ak_strb_cstr(b, "]}", 2);
+			e->open.len--;
+			return;
+		}
+		if (o->any) ak_strb_cstr(b, ",", 1);
+		o->any = true;
+		id = ak_json_case_desc(en->shape, ak_enum_case(en), (int)o->i);
+		item = en->f[o->i++];
+		enc_value(e, item, id);
+		return;
+	}
+	}
+	if (done) {
+		if (o->any) nl(b, e->indent, depth);
+		ak_strb_cstr(b, *o->d == '[' || *o->d == '<' ? "]" : "}", 1);
+		e->open.len--;
+		return;
+	}
+	if (o->any) ak_strb_cstr(b, ",", 1);
+	o->any = true;
+	nl(b, e->indent, depth + 1);
+	if (key) {
+		enc_str(b, key, keylen);
+		ak_strb_cstr(b, e->indent > 0 ? ": " : ":", e->indent > 0 ? 2 : 1);
+	}
+	enc_value(e, item, id);  // last: opening item grows the stack under o
+}
+
 ak_str *ak_json_encode(ak_val v, const char *d, const ak_json_types *t, int indent) {
 	ak_strb b = {0};
-	enc(&b, v, d, t, indent, 0);
+	encoder e = {&b, t, indent, {0}};
+	enc_value(&e, v, d);
+	while (e.open.len) enc_step(&e);
+	ak_vec_free(&e.open);
 	return ak_strb_finish(&b);
 }

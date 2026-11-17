@@ -9,6 +9,7 @@
 
 import { wasi } from "./wasi.js";
 import { Pool } from "./spawn.js";
+import { stackRoom } from "./stack.js";
 
 /**
  * startCore loads the core into the page and connects it to host. Options: wasm (the
@@ -55,6 +56,8 @@ export async function startCore(host, options = {}) {
       // The zone's offset from UTC at a time (Unix seconds), in seconds east:
       // dates, and std/time's local zone.
       zone_offset: (s) => -new Date(s * 1000).getTimezoneOffset() * 60,
+      // Whether the engine's stack has room for the core to go deeper (stack.js).
+      stack_room: stackRoom(),
       // spawn's jobs (core/src/abi/web.c): its bytes copied out, for a worker.
       spawn: (id, p, n) => pool.run(id, new Uint8Array(memory().buffer, p, n).slice()),
       spawn_cancel: (id) => pool?.cancel(id),

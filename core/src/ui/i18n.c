@@ -354,24 +354,56 @@ static void sb_put(sbuf *b, const char *s, size_t n) {
 
 static void sb_span(sbuf *b, ak_span s) { sb_put(b, s.p, s.len); }
 
-// A decimal number as it's written ("-1234.5"), in a buffer of its own.
+// A decimal number as it's written ("-1234.5"), in a buffer of its own:
+// room for any double's (dec_float's: up to 309 integer digits, or 324
+// fraction digits) and for one less an int64 offset (minus's: an
+// integer part of up to 20 digits ahead of those fraction digits).
+#define DEC_MAX 384
 typedef struct {
-	char s[64];
+	char s[DEC_MAX];
 } decimal;
 
 static void dec_int(decimal *d, int64_t v) { snprintf(d->s, sizeof d->s, "%lld", (long long)v); }
 
 // dec_float writes v in its fewest digits that read back as it, without
-// an exponent (Go's strconv.FormatFloat(v, 'f', -1, 64)).
+// an exponent (Go's strconv.FormatFloat(v, 'f', -1, 64)): the shortest
+// of 1 to 17 significant digits that do, then the zeros up to the point
+// or from it, however large or small v is.
 static void dec_float(decimal *d, double v) {
 	if (v != v || v == (double)INFINITY || v == -(double)INFINITY) {
 		snprintf(d->s, sizeof d->s, "0");
 		return;
 	}
-	for (int prec = 0; prec <= 20; prec++) {
-		snprintf(d->s, sizeof d->s, "%.*f", prec, v);
-		if (strtod(d->s, NULL) == v) return;
+	char e[32];
+	for (int prec = 1; prec <= 17; prec++) {
+		snprintf(e, sizeof e, "%.*e", prec - 1, v);
+		if (strtod(e, NULL) == v) break;
 	}
+	// e is [-]d[.ddd]e±x: its digits, and the point's place after the first.
+	const char *p = e;
+	char *o = d->s;
+	if (*p == '-') *o++ = *p++;
+	char digits[24];
+	int nd = 0;
+	for (; *p && *p != 'e'; p++)
+		if (*p != '.') digits[nd++] = *p;
+	while (nd > 1 && digits[nd - 1] == '0') nd--;
+	int point = (*p ? atoi(p + 1) : 0) + 1;  // digits ahead of the point
+	if (point <= 0) {
+		*o++ = '0';
+		if (nd > 1 || digits[0] != '0') {
+			*o++ = '.';
+			for (int i = 0; i < -point; i++) *o++ = '0';
+			for (int i = 0; i < nd; i++) *o++ = digits[i];
+		}
+	} else {
+		for (int i = 0; i < point; i++) *o++ = i < nd ? digits[i] : '0';
+		if (nd > point) {
+			*o++ = '.';
+			for (int i = point; i < nd; i++) *o++ = digits[i];
+		}
+	}
+	*o = 0;
 }
 
 static void write_digits(sbuf *b, const cat_lang *l, const char *digits, size_t n) {
@@ -916,7 +948,7 @@ static ak_operands shown_operands(const decimal *d) {
 	format_number(&s, NULL, d->s, (num_opts){.max_frac = 3});
 	// The latin form: digits, no grouping (3 digits ahead of a group are
 	// fine: the operands skip separators).
-	char plain[96];
+	char plain[DEC_MAX];
 	size_t n = 0;
 	for (size_t i = 0; i < s.len && n + 1 < sizeof plain; i++)
 		if ((s.p[i] >= '0' && s.p[i] <= '9') || s.p[i] == '.') plain[n++] = s.p[i];
@@ -988,15 +1020,11 @@ static void run_plural(fmt_ctx *f, ak_reader *r, bool ordinal, int depth) {
 
 static void run_select(fmt_ctx *f, ak_reader *r, const decimal *pound, int depth) {
 	arg_val a = arg_of(f, ak_read_u8(r));
-	char buf[64];
 	ak_span key = AK_STR("");
 	decimal d;
 	if (a.kind == AK_K_REF) key = ak_span_str(a.v.p);
 	else if (a.kind == AK_K_BOOL) key = a.v.i ? AK_STR("true") : AK_STR("false");
-	else if (arg_number(a, &d)) {
-		snprintf(buf, sizeof buf, "%s", d.s);
-		key = ak_cstr(buf);
-	}
+	else if (arg_number(a, &d)) key = ak_cstr(d.s);
 	uint32_t n = ak_read_u32(r);
 	size_t start = r->off;
 	int pick = -1, other = -1;

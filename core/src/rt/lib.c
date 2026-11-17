@@ -2,6 +2,7 @@
 #include "rt/sched.h"
 #include "base/thread.h"
 
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -816,11 +817,14 @@ static ak_val m_minf(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(fmin(A(0).f
 static ak_val m_maxf(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(fmax(A(0).f, A(1).f)); }
 static ak_val m_clampf(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_F(fmin(fmax(A(0).f, A(1).f), A(2).f)); }
 
-static uint64_t rng_state = 0x853c49e6748fea9bull;
+// math.random's generator, splitmix64, whose state is a counter: shared
+// by spawn's workers, each draw takes its step with an atomic add, so
+// threads drawing at once each get a value of the one sequence, none
+// twice, and a thread alone sees the sequence a seed gives.
+static _Atomic uint64_t rng_state = 0x853c49e6748fea9bull;
 
 static uint64_t rng_next(void) {
-	// splitmix64
-	uint64_t z = (rng_state += 0x9e3779b97f4a7c15ull);
+	uint64_t z = atomic_fetch_add_explicit(&rng_state, 0x9e3779b97f4a7c15ull, memory_order_relaxed) + 0x9e3779b97f4a7c15ull;
 	z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ull;
 	z = (z ^ (z >> 27)) * 0x94d049bb133111ebull;
 	return z ^ (z >> 31);
@@ -843,7 +847,7 @@ static ak_val m_random_int(ak_val *args, uint32_t n) {
 
 static ak_val m_seed(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
-	rng_state = (uint64_t)A(0).i;
+	atomic_store_explicit(&rng_state, (uint64_t)A(0).i, memory_order_relaxed);
 	RET_VOID;
 }
 

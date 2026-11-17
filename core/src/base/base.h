@@ -45,10 +45,22 @@ static inline float ak_maxf(float a, float b) { return a > b ? a : b; }
 // throws a stack overflow then, rather than overflowing it.
 extern AK_TLS uintptr_t ak_stack_lim;
 uintptr_t ak_stack_init(void);
+#if defined(__wasm__)
+// On the web the C stack (in the core's memory) isn't the only one: the
+// engine runs wasm's frames on its own stack, JavaScript's, which can
+// run out first. Past each step the C stack grows, below ak_stack_ask
+// (or back above ak_stack_reask), ak_stack_engine asks the page.
+extern uintptr_t ak_stack_ask, ak_stack_reask;
+bool ak_stack_engine(uintptr_t sp);
+#endif
 static inline bool ak_stack_low(void) {
 	uintptr_t lim = ak_stack_lim;
 	if (AK_UNLIKELY(!lim)) lim = ak_stack_init();
-	return (uintptr_t)__builtin_frame_address(0) < lim;
+	uintptr_t sp = (uintptr_t)__builtin_frame_address(0);
+#if defined(__wasm__)
+	if (AK_UNLIKELY(sp < ak_stack_ask || sp > ak_stack_reask)) return ak_stack_engine(sp);
+#endif
+	return sp < lim;
 }
 
 // Allocation. Never returns NULL: running out of memory aborts.
@@ -61,7 +73,9 @@ void ak_free(void *p);
 // neither race with it nor add to what a test counts.
 extern AK_TLS uint64_t ak_alloc_count;
 
-// ak_panic reports a bug in the core or the app and aborts.
+// ak_panic reports a bug in the core or the app and aborts. Any thread:
+// the first to panic reports and aborts; one that panics as it does waits
+// for the process to end.
 AK_NORETURN void ak_panic(const char *fmt, ...) AK_PRINTF(1, 2);
 // ak_panic_hook, when set, gets a panic's message before the core aborts
 // (platform/crash's record keeps it).

@@ -22,7 +22,7 @@ HELPER void w_list_string(asuka_writer *w, const preview_list_string *v);
 HELPER preview_list_string r_list_string(asuka_reader *r);
 
 HELPER void w_list_string(asuka_writer *w, const preview_list_string *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) asuka_writer_string(w, v->data[i]);
 }
 

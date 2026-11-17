@@ -43,7 +43,7 @@ void scan_Code_free(scan_Code *v) {
 }
 
 HELPER void w_list_string(asuka_writer *w, const scan_list_string *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) asuka_writer_string(w, v->data[i]);
 }
 
@@ -63,7 +63,7 @@ void scan_list_string_free(scan_list_string *v) {
 }
 
 HELPER void w_list_Code(asuka_writer *w, const scan_list_Code *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_Code(w, &v->data[i]);
 }
 

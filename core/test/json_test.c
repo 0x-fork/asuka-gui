@@ -23,7 +23,8 @@ static const ak_case shape_cases[] = {
 	{.name = "dot"},
 	{.name = "at", .nfields = 1, .kinds = at_kinds, .names = at_names},
 };
-static const ak_shape shape_enum = {.name = "Shape", .ncases = 3, .cases = shape_cases};
+// Not const: its payloadless cases' shared values are made on it.
+static ak_shape shape_enum = {.name = "Shape", .ncases = 3, .cases = shape_cases};
 
 static const ak_shape *shape(void *ctx, const char *name, size_t n) {
 	AK_UNUSED(ctx);
@@ -215,6 +216,60 @@ TEST(nesting_depth) {
 	CHECK(!ak_error_pending());
 	ak_release(v.p);
 	free(src);
+}
+
+// Encoding takes no C stack per level: a value as deep as an app can
+// make it (a long chain of a type that nests itself) is written whole.
+TEST(encode_depth) {
+	enum { DEPTH = 1000000 };
+	ak_struct *head = NULL;
+	for (int i = 0; i < DEPTH; i++) {
+		ak_struct *n = ak_struct_new(&node);
+		n->f[0].p = ak_str_c("n");
+		n->f[1].p = head;
+		head = n;
+	}
+	ak_str *out = ak_json_encode((ak_val){.p = head}, "SNode;", &types, 0);
+	REQUIRE(out != NULL);
+	CHECK_EQ_INT(out->len, (size_t)DEPTH * strlen("{\"name\":\"n\",\"next\":") + strlen("null") + DEPTH);
+	CHECK(memcmp(out->data, "{\"name\":\"n\",\"next\":{\"name\":\"n\",", 30) == 0);
+	CHECK(memcmp(out->data + out->len - DEPTH - 4, "null}}", 6) == 0 && out->data[out->len - 1] == '}');
+	ak_release(out);
+	// Freed link by link: releasing the head would free the chain by
+	// recursion.
+	while (head) {
+		ak_struct *next = head->f[1].p;
+		head->f[1].p = NULL;
+		ak_release(head);
+		head = next;
+	}
+}
+
+// Every kind of container, compact and indented.
+TEST(encode_containers) {
+	static const struct {
+		const char *desc, *src, *compact, *pretty;
+	} cases[] = {
+		{"[?EShape;", "[{\"circle\": [1.5, \"c\", [\"x\", \"y\"]]}, \"dot\", null, {\"at\": [{\"name\": \"n\", \"next\": {\"name\": \"m\"}}]}]",
+		 "[{\"circle\":[1.5,\"c\",[\"x\",\"y\"]]},\"dot\",null,{\"at\":[{\"name\":\"n\",\"next\":{\"name\":\"m\",\"next\":null}}]}]",
+		 "[\n  {\"circle\": [1.5,\"c\",[\n      \"x\",\n      \"y\"\n    ]]},\n  \"dot\",\n  null,\n  {\"at\": [{\n      \"name\": \"n\",\n      \"next\": {\n        \"name\": \"m\",\n        \"next\": null\n      }\n    }]}\n]"},
+		{"{[?i", "{\"a\": [1, null], \"b\": [], \"c\": null}", "{\"a\":[1,null],\"b\":[],\"c\":[]}", "{\n  \"a\": [\n    1,\n    null\n  ],\n  \"b\": [],\n  \"c\": []\n}"},
+		{"<s", "[\"x\", \"y\", \"x\"]", "[\"x\",\"y\"]", "[\n  \"x\",\n  \"y\"\n]"},
+		{"[STodo;", "[{\"title\": \"t\", \"done\": true, \"due\": 3}]", "[{\"title\":\"t\",\"done\":true,\"tags\":[],\"due\":3}]",
+		 "[\n  {\n    \"title\": \"t\",\n    \"done\": true,\n    \"tags\": [],\n    \"due\": 3\n  }\n]"},
+		{"?[?s", "[null, \"a\"]", "[null,\"a\"]", "[\n  null,\n  \"a\"\n]"},
+		{"{s", "{}", "{}", "{}"},
+	};
+	for (size_t i = 0; i < AK_LEN(cases); i++) {
+		ak_val v = ak_json_decode(cases[i].src, strlen(cases[i].src), cases[i].desc, &types);
+		REQUIRE(!ak_error_pending());
+		ak_str *c = ak_json_encode(v, cases[i].desc, &types, 0), *p = ak_json_encode(v, cases[i].desc, &types, 2);
+		CHECK_EQ_STR(c->data, cases[i].compact);
+		CHECK_EQ_STR(p->data, cases[i].pretty);
+		ak_release(c);
+		ak_release(p);
+		ak_release(v.p);
+	}
 }
 
 // An integer out of int's range is an error (not clamped, not a float

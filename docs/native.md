@@ -591,8 +591,9 @@ battery_Battery *battery_make_Battery(asuka_error *err) {
   `asuka_call` and returns at once: it answers later, once, from any
   thread, with its generated `_done` (`battery_Battery_watch_done`) or
   `asuka_call_fail`. `asuka_call_cancelled` and `asuka_call_on_cancel`
-  say when the task that called went. `asuka_desktop_spawn` runs work
-  that blocks on a thread of its own.
+  say when the task that called went; `asuka_call_off_cancel` takes the
+  cancel off again, so its context may go before the call answers.
+  `asuka_desktop_spawn` runs work that blocks on a thread of its own.
 - **Memory**: everything crossing is `malloc`'s. A method's arguments
   are the generated code's, valid during a synchronous call and until an
   async one answers; what a method returns (or answers) becomes the

@@ -951,6 +951,37 @@ TEST(list_binds_only_what_the_host_asks) {
 	ak_release(items), ak_release(all);
 }
 
+// A host that binds a row into an ID that isn't a cell's of its own (0,
+// one of the core's views', another list's cell) is wrong: the bind is
+// dropped, and the views keep their IDs, rather than two views sharing
+// one and the ID table naming a freed one.
+TEST(list_bind_into_bad_cell_ids) {
+	ak_arr *all = todos(100);
+	items = cell_ref(ak_retain(all));
+	ak_uitest *a = mount(list_app, NULL);
+	ak_fake *f = ak_uitest_host(a);
+	ak_fake_view *list = nth(a, AK_KIND_LIST, 0);
+	ak_fake_view *text = nth(a, AK_KIND_TEXT, 0);
+	REQUIRE(list && text);
+	int made = rows_made;
+	ak_fake_view bad = {.kind = AK_FAKE_KIND_CELL};
+	uint32_t ids[] = {0, list->id, text->id};
+	for (size_t i = 0; i < AK_LEN(ids); i++) {
+		bad.id = ids[i];
+		ak_fake_bind(f, list, 50, &bad);
+	}
+	CHECK_EQ_INT(rows_made, made);
+	CHECK(ak_view_of(list->id) != NULL && ak_view_of(list->id)->el == AK_EL_LIST);
+	// A cell bound twice is recycled, as it should be.
+	ak_fake_view *c = ak_fake_new_cell(f);
+	ak_fake_bind(f, list, 60, c);
+	ak_fake_bind(f, list, 61, c);
+	CHECK_EQ_INT(rows_made, made + 1);
+	check_text(c, "item 61");
+	done(a);
+	ak_release(items), ak_release(all);
+}
+
 static void *list_shown;
 
 static ak_val list_branch(ak_closure *c, ak_val *a, uint32_t n) { return list_app(c, a, n); }
