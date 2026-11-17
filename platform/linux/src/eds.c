@@ -618,7 +618,7 @@ static void c_list(ak_span args, reply *r) {
 // The pick dialog.
 typedef struct {
 	AdwDialog *dialog;
-	GtkWidget *list, *search;
+	GtkWidget *list, *search, *cancel;
 	AK_VEC(GtkWidget *) rows;
 	job *j;  // its contacts
 	bool done;
@@ -635,6 +635,10 @@ static void finish(picker *p, int i) {
 		reply_str(p->j->r, p->j->cs.data[i].json);
 	else
 		reply_ok(p->j->r, NULL, 0);
+	// Its handlers go with it: the dialog says it closed once its closing
+	// is done, after p is.
+	GObject *with[] = {(GObject *)p->dialog, (GObject *)p->list, (GObject *)p->search, (GObject *)p->cancel};
+	for (size_t k = 0; k < sizeof with / sizeof *with; k++) g_signal_handlers_disconnect_matched(with[k], G_SIGNAL_MATCH_DATA, 0, 0, NULL, NULL, p);
 	adw_dialog_force_close(p->dialog);
 	g_object_unref(p->dialog);
 	job_free(p->j);
@@ -709,6 +713,7 @@ static void pick_done(job *j) {
 	g_signal_connect(p->list, "row-activated", G_CALLBACK(on_row), p);
 	g_signal_connect(p->search, "search-changed", G_CALLBACK(on_search), p);
 	g_signal_connect(cancel, "clicked", G_CALLBACK(on_cancel), p);
+	p->cancel = cancel;
 	g_signal_connect(p->dialog, "closed", G_CALLBACK(on_closed), p);
 	picking = p;
 	win *w = H.active_win ? H.active_win : H.main;
