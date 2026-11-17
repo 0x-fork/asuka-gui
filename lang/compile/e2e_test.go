@@ -179,3 +179,44 @@ func TestBigLiteral(t *testing.T) {
 		}
 	}
 }
+
+// A nested element is taken out of its place before it's changed (none
+// put there), so that it's changed in place, not copied: IDX t, a, i
+// then SETIDX a, i, none, before t changes.
+func TestNestedChangeInPlace(t *testing.T) {
+	src := "fn set(g: [[int]], i: int) -> [[int]] {\n  var x = g\n  x[i][0] = 1\n  return x\n}\ntest \"t\" { print(set([[0]], 0)) }\n"
+	res := Files(map[string][]byte{"a.asuka": []byte(src)}, nil)
+	if err := res.Err(); err != nil {
+		t.Fatal(err)
+	}
+	m := res.Module
+	for _, f := range m.Funcs {
+		if f.Name != "set" {
+			continue
+		}
+		type insn struct {
+			name string
+			args []int
+		}
+		var ins []insn
+		for pc := 0; pc < len(f.Code); {
+			op := bc.Op(f.Code[pc])
+			in := insn{name: bc.Ops[op].Name}
+			at := pc + 1
+			for _, o := range bc.Ops[op].Operands {
+				in.args = append(in.args, int(f.Code[at]))
+				at += o.Words()
+			}
+			ins = append(ins, in)
+			pc += op.Width()
+		}
+		for i := 0; i+1 < len(ins); i++ {
+			a, b := ins[i], ins[i+1]
+			if a.name == "IDX" && b.name == "SETIDX" && b.args[0] == a.args[1] && b.args[1] == a.args[2] && b.args[2] != a.args[0] {
+				return
+			}
+		}
+		t.Fatalf("x[i] isn't taken out before it changes:\n%s", bc.Disasm(m, &f))
+	}
+	t.Fatal("no fn set")
+}

@@ -1,0 +1,66 @@
+// A change to part of a value (a field, an element, nested) changes it
+// in place when nothing else holds it, and a copy when something does:
+// what holds it before sees it as it was. A change that throws leaves
+// the part as it was.
+
+struct Shelf {
+  name: string
+  items: [int]
+}
+
+test "nested elements" {
+  var grid = [[1, 2], [3, 4]]
+  let row = grid[0]
+  let before = grid
+  grid[0][1] = 9
+  grid[1].push(5)
+  print("{grid} {row} {before}")
+}
+
+test "fields" {
+  var s = Shelf(name: "a", items: [1])
+  let snap = s
+  s.items.push(2)
+  s.name += "b"
+  var shelves = [s, s]
+  shelves[1].items.push(3)
+  shelves[0].items[0] = 7
+  print("{snap.items} {s.items} {shelves[0].items} {shelves[1].items} {s.name}")
+}
+
+test "a change that throws" {
+  var grid = [[1, 2], [3]]
+  do {
+    grid[1].removeAt(5)
+  } catch e {
+    print(e.message)
+  }
+  print(grid)
+  var shelves = [Shelf(name: "x", items: [4])]
+  do {
+    shelves[0].items.removeAt(9)
+  } catch {
+    print("caught")
+  }
+  print(shelves[0].items)
+}
+
+test "a closure sharing the var sees it as it was during the change" {
+  var grid = [[3, 1, 2]]
+  let f = () => grid[0].count()
+  grid[0].removeWhere(x => x == f())
+  print("{grid} {f()}")
+}
+
+// Output:
+// [[1,9],[3,4,5]] [1,2] [[1,2],[3,4]]
+// ok nested elements
+// [1] [1,2] [7,2] [1,2,3] ab
+// ok fields
+// index 5 out of range (length 1)
+// [[1,2],[3]]
+// caught
+// [4]
+// ok a change that throws
+// [[1,2]] 2
+// ok a closure sharing the var sees it as it was during the change

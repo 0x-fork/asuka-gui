@@ -690,17 +690,32 @@ func (b *fb) updateWith(lv *lvalue, reads bool, fn func(cur int)) {
 	case lvField:
 		b.updateWith(lv.inner, reads, func(rx int) {
 			t := b.getField(rx, lv.named, lv.field, -1)
-			fn(t)
-			b.emit(op("SETF"), rx, lv.field.Index, t)
+			b.changePart(t, fn, func(v int) { b.emit(op("SETF"), rx, lv.field.Index, v) })
 		})
 	case lvIndex:
 		b.updateWith(lv.inner, reads, func(rx int) {
 			t := b.temp(b.kind(b.l.info.Types[lv.x]))
 			b.emit(op("IDX"), t, rx, lv.idx)
-			fn(t)
-			b.emit(op("SETIDX"), rx, lv.idx, t)
+			b.changePart(t, fn, func(v int) { b.emit(op("SETIDX"), rx, lv.idx, v) })
 		})
 	}
+}
+
+// changePart runs fn on t, a field's or an element's value read into
+// it, and puts it back (put). A reference is taken out of its place
+// first (none put there, as a cell's CTAKE leaves it), so that it's
+// unique and fn changes it in place rather than a copy of it; a handler
+// puts it back if fn throws, and t lets it go after.
+func (b *fb) changePart(t int, fn func(cur int), put func(v int)) {
+	if b.f.Kinds[t] != bc.KRef {
+		fn(t)
+		put(t)
+		return
+	}
+	put(b.null())
+	b.protect(func() { fn(t) }, func(int) { put(t) })
+	put(t)
+	b.emit(op("CLR"), t)
 }
 
 func (b *fb) cellKind(lv *lvalue) bc.Kind {

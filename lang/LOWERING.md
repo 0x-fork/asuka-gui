@@ -132,8 +132,14 @@ value through its owner:
 - a boxed var: VGET, change, VSET;
 - state (a cell: a component's or a store's, or a file's): CTAKE,
   change, CPUT, with a handler that puts it back if the change throws;
-- a field or an element of those: read it (GETF, IDX), change it, write
-  it back (SETF, SETIDX).
+- a field or an element of those: read it (GETF, IDX), and when it's a
+  reference take it out (none put in its place, so it's unique and
+  changed in place, not copied), change it, write it back (SETF,
+  SETIDX), with a handler that puts it back if the change throws.
+
+A builtin that calls a closure (`removeWhere`, `sort(by:)`) on state
+reads the cell (CPEEK) rather than taking it, and puts the changed copy
+back: the closure may read that state, and sees it as it was.
 
 A builtin that may raise an error (`removeAt` out of range, one that
 calls a closure) runs in a handler that moves the receiver back first.
