@@ -32,6 +32,8 @@ enum {
 	AK_PS_OFIELD = 'F',    // the same through an optional (x?.f): none when x is none
 	AK_PS_INDEX = 'i',     // an array's element: an int argument; out of range throws
 	AK_PS_GET = 'g',       // an array's element, optional (get(i), first()): none out of range
+	AK_PS_EACH = 'I',      // an array's element as a loop reads it (an int argument): what it reads below
+	                       // it, along the fields that follow, is followed for every element at once
 	AK_PS_KEY = 'k',       // a map's value at a key (m[k], get(k)): the key's kind, the key an argument; optional
 	AK_PS_VALUE = 'v',     // a map's value at a key as it's stored (no box; zero when missing): the key's kind; last
 	AK_PS_HAS = 'h',       // whether a map has a key (has(k)): the key's kind; a bool; last

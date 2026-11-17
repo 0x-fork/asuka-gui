@@ -396,6 +396,54 @@ TEST(a_for_follows_its_keys) {
 	cell_free(c);
 }
 
+// A loop's reads through its element follow a column: that field of
+// every element, one node for all of them.
+static int col_runs;
+static void col_run(void *ctx) {
+	col_runs++;
+	ak_val n = ak_vm_cell_path(ctx, NULL, 0, NULL, true);
+	for (int64_t i = 0; i < n.i; i++) {
+		ak_val at = {.i = i};
+		ak_vm_cell_path(ctx, (const uint8_t *)"I" F2, 4, &at, false);  // todos[i].done, each
+	}
+}
+static void col_build(void *ctx, ak_owner *root) {
+	AK_UNUSED(root);
+	ak_effect_new(col_run, ctx, AK_EFFECT_RENDER, NULL);
+}
+
+TEST(a_loop_follows_a_column) {
+	void *c = ak_vm_cell_new((ak_val){.p = todos(100)}, AK_K_REF, NULL).p;
+	col_runs = 0;
+	ak_owner *o = ak_root(col_build, c);
+	CHECK_EQ_INT(col_runs, 1);
+	CHECK_EQ_INT(ak_vm_cell_nodes(c), 2);  // the length and the column: not 100 nodes
+	set_field(c, P("i" F1), 7, 1, (ak_val){.p = str("x")}, AK_K_REF);  // a title
+	CHECK_EQ_INT(col_runs, 1);
+	set_field(c, P("i" F2), 7, 2, (ak_val){.i = 1}, AK_K_BOOL);  // a done
+	CHECK_EQ_INT(col_runs, 2);
+	set_field(c, P("i" F2), 7, 2, (ak_val){.i = 1}, AK_K_BOOL);  // equal
+	CHECK_EQ_INT(col_runs, 2);
+	change(c, do_push, NULL);
+	CHECK_EQ_INT(col_runs, 3);
+	// A whole write: compared, the column's values.
+	ak_val cur = ak_vm_cell_get(c, false);
+	ak_arr *a = ak_arr_copy(cur.p);
+	ak_release(cur.p);
+	ak_struct *t = ak_struct_mut((ak_struct **)&a->data[3].p);
+	ak_release(t->f[1].p);
+	t->f[1].p = str("renamed");
+	ak_vm_cell_set(c, (ak_val){.p = a});
+	CHECK_EQ_INT(col_runs, 3);
+	uint64_t before = ak_alloc_count;
+	set_field(c, P("i" F2), 7, 2, (ak_val){.i = 0}, AK_K_BOOL);
+	CHECK_EQ_INT(col_runs, 4);
+	CHECK_EQ_INT(ak_alloc_count - before, 0);
+	ak_owner_dispose(o);
+	CHECK_EQ_INT(ak_vm_cell_nodes(c), 0);
+	cell_free(c);
+}
+
 // A reader that runs again reading the same paths allocates nothing,
 // and neither does a write that notifies it.
 TEST(steady_state_allocates_nothing) {

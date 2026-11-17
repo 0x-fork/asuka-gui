@@ -24,6 +24,7 @@ const (
 	psField    = 'f'
 	psOptField = 'F'
 	psIndex    = 'i'
+	psEach     = 'I'
 	psGet      = 'g'
 	psKey      = 'k'
 	psHas      = 'h'

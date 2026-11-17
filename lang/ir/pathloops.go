@@ -13,14 +13,19 @@ import (
 // path: the length read with CLEN (or AGETP's), and the closure's body
 // inlined with its parameter the element's path at the loop's index (a
 // pathVar), so each of its reads is a path read: count(t => t.done)
-// follows each done and the length, not the titles. No closure is made
-// and no element is retained to call it. The elements a method returns
-// (find, filter, sorted(by)) are read whole. Elsewhere they're the
-// builtins they are.
+// follows the dones and the length, not the titles. A read through the
+// element follows a column (its step 'I'): that field path of every
+// element, one node for them all, not one per element. No closure is
+// made and no element is retained to call it. The elements a method
+// returns are read whole: find's, filter's kept ones (each its own
+// path), sorted(by)'s (all of them: the column of the whole elements).
+// Elsewhere they're the builtins they are.
 
 // A pathVar is a loop's element: the path of the array's (its root
 // register, a cell's or an accessor's, its spelling and its arguments'
-// registers) and the element's index, its last argument.
+// registers) and the element's index, its last argument. Its spelling
+// ends with the column's step (psEach): reads through it follow every
+// element's.
 type pathVar struct {
 	root    int
 	acc     bool
@@ -28,8 +33,9 @@ type pathVar struct {
 	args    []int
 }
 
-// pathVarRead reads a loop's element whole into dst.
-func (b *fb) pathVarRead(pv *pathVar, k bc.Kind, dst int) int {
+// pathVarRead reads a loop's element whole into dst: as one of every
+// element's (each), or as this one, its own path (what a method returns).
+func (b *fb) pathVarRead(pv *pathVar, k bc.Kind, dst int, each bool) int {
 	ks := make([]bc.Kind, len(pv.args))
 	for i, r := range pv.args {
 		ks[i] = b.f.Kinds[r]
@@ -43,7 +49,11 @@ func (b *fb) pathVarRead(pv *pathVar, k bc.Kind, dst int) int {
 	if pv.acc {
 		read = op("AGETP")
 	}
-	b.emit(read, r, pv.root, b.str(pv.spelled), blk)
+	spelled := append([]byte(nil), pv.spelled...)
+	if !each {
+		spelled[len(spelled)-1] = psIndex
+	}
+	b.emit(read, r, pv.root, b.str(spelled), blk)
 	b.releaseRegs(blk, ks)
 	return r
 }
@@ -155,7 +165,7 @@ func (b *fb) pathMethod(e *syntax.CallExpr, dst int) (int, bool) {
 		b.pathVars = map[*check.Var]*pathVar{}
 	}
 	b.l.prog.SetAccessorVar(v)
-	pv := &pathVar{root: root, acc: acc, spelled: append(append([]byte(nil), spelled...), psIndex), args: append(append([]int(nil), pre...), i)}
+	pv := &pathVar{root: root, acc: acc, spelled: append(append([]byte(nil), spelled...), psEach), args: append(append([]int(nil), pre...), i)}
 	b.pathVars[v] = pv
 	defer delete(b.pathVars, v)
 
@@ -212,7 +222,7 @@ func (b *fb) pathMethod(e *syntax.CallExpr, dst int) (int, bool) {
 	case "find":
 		skip := b.f.NewLabel()
 		b.emitJump(op("JF"), x, skip)
-		el := b.pathVarRead(pv, b.kind(elem), -1) // what it returns, read whole
+		el := b.pathVarRead(pv, b.kind(elem), -1, false) // what it returns, read whole
 		b.toOptional(el, elem, res, r)
 		b.jmp(end)
 		b.f.Place(skip)
@@ -225,7 +235,7 @@ func (b *fb) pathMethod(e *syntax.CallExpr, dst int) (int, bool) {
 	case "filter":
 		skip := b.f.NewLabel()
 		b.emitJump(op("JF"), x, skip)
-		el := b.pathVarRead(pv, b.kind(elem), -1) // what it keeps, read whole
+		el := b.pathVarRead(pv, b.kind(elem), -1, false) // what it keeps, read whole
 		b.appendReg(r, el, "arr.push")
 		b.f.Place(skip)
 	case "map":
@@ -258,7 +268,7 @@ func (b *fb) sortedPath(e *syntax.CallExpr, call *check.Call, lam *syntax.Lambda
 	}
 	i := b.temp(bc.KInt)
 	b.loadInt(i, 0)
-	pv := &pathVar{root: root, acc: acc, spelled: append(append([]byte(nil), spelled...), psIndex), args: append(append([]int(nil), pre...), i)}
+	pv := &pathVar{root: root, acc: acc, spelled: append(append([]byte(nil), spelled...), psEach), args: append(append([]int(nil), pre...), i)}
 	all := b.temp(bc.KRef)
 	k := b.kind(elem)
 	sh := b.l.shape(check.Unopt(elem))
@@ -272,7 +282,7 @@ func (b *fb) sortedPath(e *syntax.CallExpr, call *check.Call, lam *syntax.Lambda
 	b.emit(op("LTI"), more, i, n)
 	b.emitJump(op("JF"), more, end)
 	mark := b.mark()
-	el := b.pathVarRead(pv, k, -1)
+	el := b.pathVarRead(pv, k, -1, true) // all of them: every element's column
 	b.appendReg(all, el, "arr.push")
 	b.release(mark)
 	b.emit(op("ADDIK"), i, i, 1)

@@ -1,7 +1,9 @@
 // Collection methods with a closure on a path follow what their closure
 // reads (rfcs/0013): count(t => t.done) follows each done and the
-// length, not the titles. What a method returns is read whole: filter's
-// kept items, find's item, sorted's. Each let prints as it computes.
+// length, not the titles: what it reads through its item, it follows of
+// every item (a toggle runs all, which stopped at the first item, as it
+// runs count). What a method returns is read whole: filter's kept items,
+// find's item, sorted's. Each let prints as it computes.
 
 struct Todo {
   id: int
@@ -69,6 +71,7 @@ test "a method follows what its closure reads" {
 // -- toggle
 // count
 // any
+// all
 // find
 // index
 // filter

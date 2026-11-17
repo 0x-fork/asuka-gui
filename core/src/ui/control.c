@@ -276,14 +276,14 @@ void ak_row_make(ak_row *rw, ak_ui_root *r, ak_closure *row, ak_path *path, ak_o
 void ak_row_make_at(ak_row *rw, ak_ui_root *r, ak_closure *row, ak_path *path, ak_owner *parent, void *acc, ak_effect *eff, ak_val item, ak_kind item_kind, int64_t i, ak_kind key_kind) {
 	rw->cell_item = NULL;
 	rw->cell_index = ak_vm_cell_new((ak_val){.i = i}, AK_K_INT, NULL).p;
-	rw->rowref = ak_vm_rowref_new(acc, eff);
-	ak_vm_rowref_set(rw->rowref, item, item_kind);
+	rw->item_acc = ak_vm_acc_row(acc, rw->cell_index, item_kind, eff).p;
+	ak_vm_acc_row_set(rw->item_acc, item, item_kind);
 	rw->owner = ak_root_under(parent);
 	ak_buf seg = {0};
 	key_seg(&seg, rw->key, key_kind);
 	ak_path *prev = ak_path_push(path, (const char *)seg.data, seg.len);
 	ak_buf_free(&seg);
-	row_build rb = {r, row, {ak_vm_acc_row(acc, rw->cell_index, item_kind, rw->rowref), ak_vm_acc_cell(rw->cell_index)}, NULL};
+	row_build rb = {r, row, {{.p = ak_retain(rw->item_acc)}, ak_vm_acc_cell(rw->cell_index)}, NULL};
 	ak_with_owner(rw->owner, build_row, &rb);
 	ak_release(rb.args[0].p);
 	ak_release(rb.args[1].p);
@@ -292,7 +292,7 @@ void ak_row_make_at(ak_row *rw, ak_ui_root *r, ak_closure *row, ak_path *path, a
 }
 
 void ak_row_move(ak_row *rw, ak_val item, ak_kind item_kind, int64_t i) {
-	ak_vm_rowref_set(rw->rowref, item, item_kind);
+	ak_vm_acc_row_set(rw->item_acc, item, item_kind);
 	ak_vm_cell_set(rw->cell_index, (ak_val){.i = i});
 }
 
@@ -310,7 +310,7 @@ void ak_fsrc_init(ak_fsrc *s, void *acc, ak_val key) {
 		s->fields = ak_alloc(sizeof(uint16_t) * (s->nf ? s->nf : 1));
 		for (uint16_t j = 0; j < s->nf; j++) s->fields[j] = (uint16_t)((uint8_t)f->data[3 * j + 1] | (uint8_t)f->data[3 * j + 2] << 8);
 	} else if (k) {
-		static const uint8_t at[1] = {'i'};
+		static const uint8_t at[1] = {'I'};  // what the key reads of each item: a column's
 		ak_val zero = {.i = 0};
 		s->key = ak_retain(key.p);
 		s->cursor = ak_vm_acc_path(acc, at, 1, &zero, AK_K_REF).p;
@@ -369,10 +369,10 @@ void ak_row_free(ak_row *rw, ak_kind key_kind) {
 	rw->owner = NULL;
 	ak_release(rw->cell_item);
 	ak_release(rw->cell_index);
-	if (rw->rowref) {
-		ak_vm_rowref_gone(rw->rowref);
-		ak_release(rw->rowref);
-		rw->rowref = NULL;
+	if (rw->item_acc) {
+		ak_vm_acc_row_gone(rw->item_acc);
+		ak_release(rw->item_acc);
+		rw->item_acc = NULL;
 	}
 	ak_release_val(rw->key, key_kind);
 }

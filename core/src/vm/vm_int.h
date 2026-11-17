@@ -260,16 +260,14 @@ ak_val ak_vm_acc_get(void *acc);
 // one's (ACCP). k is its value's kind.
 ak_val ak_vm_acc_path(void *base, const uint8_t *p, uint32_t n, const ak_val *args, ak_kind k);
 // ak_vm_acc_row is the accessor of a for's row's item: base's element
-// at the index the cell index holds (a row's, which changes as it moves).
-// row (ak_vm_rowref_new) is what it reads untracked while its place may
-// not be its item's.
-ak_val ak_vm_acc_row(void *base, void *index, ak_kind k, void *row);
-// A row of a for over a path, made by its for (its effect, eff), inside the row of parent_acc's (an accessor) when it's one's:
-// ak_vm_rowref_set gives it its element as the for places it,
-// ak_vm_rowref_gone says the row went.
-void *ak_vm_rowref_new(void *parent_acc, ak_effect *eff);
-void ak_vm_rowref_set(void *row, ak_val item, ak_kind ik);
-void ak_vm_rowref_gone(void *row);
+// at the index the cell index holds (a row's, which changes as it moves),
+// made by eff (its for's effect). ak_vm_acc_row_set gives it its element
+// as the for places it: what an untracked read reads while its place may
+// not be its item's (its for, or one it's in, has yet to run since their
+// items changed), and once ak_vm_acc_row_gone says the row went.
+ak_val ak_vm_acc_row(void *base, void *index, ak_kind k, ak_effect *eff);
+void ak_vm_acc_row_set(void *row, ak_val item, ak_kind ik);
+void ak_vm_acc_row_gone(void *row);
 // ak_vm_acc_getp reads the path p below what accessor acc reads
 // (AGETP): following that path when acc's is one (a cell's, a path's),
 // else acc's value whole and the path in it.

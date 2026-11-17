@@ -404,7 +404,7 @@ func (b *fb) declare(v *check.Var, init int) int {
 func (b *fb) readVar(v *check.Var, n syntax.Node) int {
 	if pv := b.pathVars[v]; pv != nil {
 		// A loop's element (pathloops.go): read whole, by its path.
-		return b.pathVarRead(pv, b.kind(v.Type), -1)
+		return b.pathVarRead(pv, b.kind(v.Type), -1, true)
 	}
 	r, ok := b.vars[v]
 	if !ok {

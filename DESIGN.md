@@ -187,7 +187,12 @@ signal for all of them when the key is a field path of the item (`key
 t.id`), which keeps the keys as the `for` saw them, so a change it can't
 compare runs it only when they differ; a write inside an item doesn't
 run the `for`. `count(where)`, `filter` and the other collection methods
-with a closure literal, in a binding, are loops whose reads are paths.
+with a closure literal, in a binding, are loops whose reads are paths:
+through the element, a column (that field of every element, one node),
+so following them costs what's read, not the array's length. A row's
+item, read untracked while its `for` has yet to run after a change of
+its items (the rest of the handler that changed them), is the item as
+the `for` placed it.
 A state that follows (rfcs/0012) is read whole: its initializer's memo
 replaces its value.
 

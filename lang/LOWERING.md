@@ -613,10 +613,15 @@ initializer, with a closure literal (`count(where)`, `any`, `all`,
 `find`, `index`, `filter`, `map`, `sorted(by)`), are loops over the path
 (ir/pathloops.go): the length read with CLEN, the closure's body
 inlined with its parameter the element's path at the loop's index (a
-pathVar), so each of its reads is a CPATH. What a method returns is read
-whole (`find`'s item, `filter`'s kept ones, every element for
-`sorted(by)`, then sorted as the builtin does). Elsewhere they're the
-builtins.
+pathVar), so each of its reads is a CPATH. Its step is `I`, not `i`:
+what it reads through the element, along the fields after it, follows a
+column, that field path of every element, one node for them all (not a
+node per element: `count(t => t.done)` over 10,000 items keeps two
+nodes, the length and the dones). What a method returns is read whole
+(`find`'s item, `filter`'s kept ones, each by its own path; every
+element for `sorted(by)`, a column of the whole elements, then sorted as
+the builtin does). A key's function in a `for` over a path reads its
+item the same way. Elsewhere they're the builtins.
 
 A **binding** is any expression the UI follows: a prop's value, an
 `if`'s condition, a `for`'s items, a `match`'s subject, a `let`. The

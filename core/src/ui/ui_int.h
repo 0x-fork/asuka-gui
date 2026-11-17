@@ -460,7 +460,7 @@ typedef struct {
 	uint32_t hash;
 	void *cell_item;   // the item's cell (vm), and its index's
 	void *cell_index;
-	void *rowref;      // a for over a path's: its item as the for placed it (vm)
+	void *item_acc;    // a for over a path's: its item's accessor (vm), retained
 	ak_view *el;       // retained
 	ak_owner *owner;
 	int64_t old;
@@ -548,10 +548,9 @@ void ak_vm_cell_set(void *cell, ak_val v);  // takes v
 ak_val ak_vm_acc_cell(void *cell_or_memo);
 ak_val ak_vm_acc_get(void *acc);
 ak_val ak_vm_acc_path(void *base, const uint8_t *p, uint32_t n, const ak_val *args, ak_kind k);
-ak_val ak_vm_acc_row(void *base, void *index, ak_kind k, void *row);
-void *ak_vm_rowref_new(void *parent_acc, ak_effect *eff);
-void ak_vm_rowref_set(void *row, ak_val item, ak_kind ik);
-void ak_vm_rowref_gone(void *row);
+ak_val ak_vm_acc_row(void *base, void *index, ak_kind k, ak_effect *eff);
+void ak_vm_acc_row_set(void *row, ak_val item, ak_kind ik);
+void ak_vm_acc_row_gone(void *row);
 ak_val ak_vm_acc_getp(void *acc, const uint8_t *p, uint32_t n, const ak_val *args);
 void ak_vm_acc_keys(void *acc, const uint16_t *fields, uint16_t nf);
 void ak_vm_acc_seek(void *acc, int64_t i);
