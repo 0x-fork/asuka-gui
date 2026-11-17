@@ -74,6 +74,14 @@ pub struct Time {
 pub component Clock(time: Time) {
   Text("now")
 }
+
+pub screen Alarm(at: Time) {
+  /// Shown smaller.
+  prop compact = false
+  event snoozed
+  title: "Alarm"
+  Text("now")
+}
 `)})
 	if err != nil {
 		t.Fatal(err)
@@ -84,6 +92,8 @@ pub component Clock(time: Time) {
 		"```asuka\nimport std/clock\n```\n",
 		"## Functions\n\n### now\n\n```asuka\nfn now() -> Time\n```\n\nNow.\n",
 		"## Components\n\n### Clock\n\n```asuka\ncomponent Clock(time: Time)\n```\n",
+		// A screen's props and events, as a component's.
+		"### Alarm\n\n```asuka\nscreen Alarm(at: Time) {\n  /// Shown smaller.\n  prop compact = false\n  event snoozed\n}\n```\n",
 		"## Types\n\n### Time\n\n```asuka\nstruct Time {\n  /// Milliseconds.\n  ms: int\n}\n```\n\nA time.\n\n#### Time.add\n\n```asuka\nfn add(d: int) -> Time\n```\n\nLater by d.\n",
 	} {
 		if !strings.Contains(got, want) {

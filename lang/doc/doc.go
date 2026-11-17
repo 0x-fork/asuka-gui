@@ -340,7 +340,7 @@ func decl(d syntax.Decl) *Decl {
 		}
 		c := *x
 		c.Pub, c.Trivia, c.Body = syntax.NoPos, syntax.Trivia{}, nil
-		return &Decl{Kind: Component, Name: x.Name.Name, Code: componentCode(trimBody(print(&c)), x), Doc: x.Doc()}
+		return &Decl{Kind: Component, Name: x.Name.Name, Code: componentCode(trimBody(print(&c)), x.Body), Doc: x.Doc()}
 	case *syntax.ShaderDecl:
 		if !x.Pub.IsValid() {
 			return nil
@@ -354,7 +354,7 @@ func decl(d syntax.Decl) *Decl {
 		}
 		c := *x
 		c.Pub, c.Trivia, c.Body = syntax.NoPos, syntax.Trivia{}, nil
-		return &Decl{Kind: Screen, Name: x.Name.Name, Code: trimBody(print(&c)), Doc: x.Doc()}
+		return &Decl{Kind: Screen, Name: x.Name.Name, Code: componentCode(trimBody(print(&c)), x.Body), Doc: x.Doc()}
 	case *syntax.StoreDecl:
 		if !x.Pub.IsValid() {
 			return nil
@@ -409,12 +409,12 @@ func decl(d syntax.Decl) *Decl {
 	return nil
 }
 
-// componentCode is a component's header with what its caller gives and
-// gets: its props (slots among them) and events, and the variants it
-// declares pub (their names: a caller styles them, name { … }), each
-// with its /// comment.
-func componentCode(header string, x *syntax.ComponentDecl) string {
-	if x.Body == nil {
+// componentCode is a component's (or a screen's) header with what its
+// caller gives and gets: its props (slots among them) and events, and
+// the variants it declares pub (their names: a caller styles them,
+// name { … }), each with its /// comment.
+func componentCode(header string, body *syntax.Block) string {
+	if body == nil {
 		return header
 	}
 	var b strings.Builder
@@ -433,7 +433,7 @@ func componentCode(header string, x *syntax.ComponentDecl) string {
 		}
 		b.WriteString("  " + code + "\n")
 	}
-	for _, it := range x.Body.Items {
+	for _, it := range body.Items {
 		switch m := it.(type) {
 		case *syntax.PropDecl:
 			c := *m
