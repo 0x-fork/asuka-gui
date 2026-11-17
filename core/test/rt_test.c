@@ -45,6 +45,55 @@ TEST(float_format) {
 	}
 }
 
+TEST(str_to_number) {
+	struct { const char *s; bool ok; int64_t v; } ints[] = {
+		{"42", true, 42}, {"-7", true, -7}, {"+7", true, 7}, {"007", true, 7},
+		{"9223372036854775807", true, INT64_MAX}, {"-9223372036854775808", true, INT64_MIN},
+		// Long, but in range: no cap on the length.
+		{"0000000000000000000000000000000000000001", true, 1},
+		{"9223372036854775808", false, 0}, {"", false, 0}, {"-", false, 0}, {"+", false, 0},
+		{" 12", false, 0}, {"12 ", false, 0}, {"\t12", false, 0}, {"\n12", false, 0}, {"1_000", false, 0},
+		{"0x10", false, 0}, {"1.0", false, 0}, {"--1", false, 0}, {"+-1", false, 0}, {"1e3", false, 0},
+	};
+	for (size_t i = 0; i < AK_LEN(ints); i++) {
+		ak_str *s = S(ints[i].s);
+		int64_t v = 0;
+		bool ok = ak_str_to_int(s, &v);
+		if (ok != ints[i].ok) fprintf(stderr, "toInt(\"%s\")\n", ints[i].s);
+		CHECK(ok == ints[i].ok);
+		if (ok) CHECK(v == ints[i].v);
+		ak_release(s);
+	}
+	struct { const char *s; bool ok; double v; } floats[] = {
+		{"2.5", true, 2.5}, {"-2.5", true, -2.5}, {"+2.5", true, 2.5}, {".5", true, 0.5}, {"5.", true, 5},
+		{"1e3", true, 1000}, {"2.5E-3", true, 0.0025}, {"1e+2", true, 100}, {"42", true, 42},
+		{"Infinity", true, INFINITY}, {"-Infinity", true, -INFINITY}, {"inf", true, INFINITY},
+		{"1e400", true, INFINITY},
+		{"", false, 0}, {".", false, 0}, {"-", false, 0}, {"e3", false, 0}, {"1e", false, 0}, {"1e+", false, 0},
+		{" 2.5", false, 0}, {"2.5 ", false, 0}, {"0x1p3", false, 0}, {"1,5", false, 0}, {"nan(1)", false, 0},
+		{"infinit", false, 0}, {"1.2.3", false, 0},
+	};
+	for (size_t i = 0; i < AK_LEN(floats); i++) {
+		ak_str *s = S(floats[i].s);
+		double v = 0;
+		bool ok = ak_str_to_float(s, &v);
+		if (ok != floats[i].ok) fprintf(stderr, "toFloat(\"%s\")\n", floats[i].s);
+		CHECK(ok == floats[i].ok);
+		if (ok) CHECK(v == floats[i].v);
+		ak_release(s);
+	}
+	// NaN reads back as what it prints as.
+	ak_str *n = S("NaN");
+	double v = 0;
+	CHECK(ak_str_to_float(n, &v) && v != v);
+	ak_release(n);
+	// A string with a NUL in it isn't a number.
+	ak_str *z = ak_str_new("1\0002", 3);
+	int64_t iv;
+	CHECK(!ak_str_to_int(z, &iv));
+	ak_release(z);
+}
+
 TEST(strb) {
 	ak_strb b = {0};
 	ak_strb_cstr(&b, "Count: ", 7);

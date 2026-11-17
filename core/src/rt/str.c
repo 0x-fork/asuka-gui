@@ -239,21 +239,72 @@ ak_arr *ak_str_split(ak_str *s, const ak_str *sep) {
 	return a;
 }
 
+// The digits from p, past which it returns.
+static const char *digits(const char *p, const char *end) {
+	while (p < end && *p >= '0' && *p <= '9') p++;
+	return p;
+}
+
+// Whether p..end, past a sign, is word, whatever its case.
+static bool word_is(const char *p, const char *end, const char *word) {
+	size_t n = strlen(word);
+	if ((size_t)(end - p) != n) return false;
+	for (size_t i = 0; i < n; i++)
+		if ((p[i] | 0x20) != word[i]) return false;
+	return true;
+}
+
+// toInt and toFloat read the whole string as Swift, Kotlin and Go do:
+// an optional sign, then the number, with nothing around it (no spaces:
+// trim() first). strtoll and strtod alone would also take leading
+// spaces, and strtod hex floats; what they're given here is only ever
+// the decimal form, so they read it the same way everywhere.
 bool ak_str_to_int(const ak_str *s, int64_t *out) {
-	if (s->len == 0 || s->len > 30) return false;
-	char *end;
+	const char *p = s->data, *end = s->data + s->len;
+	if (p < end && (*p == '+' || *p == '-')) p++;
+	if (p == end || digits(p, end) != end) return false;
+	char *e;
 	errno = 0;
-	long long v = strtoll(s->data, &end, 10);
-	if (errno || end != s->data + s->len) return false;
+	long long v = strtoll(s->data, &e, 10);
+	if (errno || e != end) return false;
 	*out = v;
 	return true;
 }
 
 bool ak_str_to_float(const ak_str *s, double *out) {
-	if (s->len == 0) return false;
-	char *end;
-	double v = strtod(s->data, &end);
-	if (end != s->data + s->len) return false;
+	const char *p = s->data, *end = s->data + s->len;
+	bool neg = p < end && *p == '-';
+	if (p < end && (*p == '+' || *p == '-')) p++;
+	// What a float prints as (Infinity, NaN), and the short forms.
+	if (word_is(p, end, "infinity") || word_is(p, end, "inf")) {
+		*out = neg ? -INFINITY : INFINITY;
+		return true;
+	}
+	if (word_is(p, end, "nan")) {
+		*out = NAN;
+		return true;
+	}
+	// digits [. digits] [e [sign] digits], with a digit before or after
+	// the point: 1, 1.5, .5, 5., 1e3, 2.5E-3.
+	const char *q = digits(p, end);
+	bool some = q > p;
+	if (q < end && *q == '.') {
+		const char *f = digits(q + 1, end);
+		some = some || f > q + 1;
+		q = f;
+	}
+	if (!some) return false;
+	if (q < end && (*q == 'e' || *q == 'E')) {
+		q++;
+		if (q < end && (*q == '+' || *q == '-')) q++;
+		const char *x = digits(q, end);
+		if (x == q) return false;
+		q = x;
+	}
+	if (q != end) return false;
+	char *e;
+	double v = strtod(s->data, &e);
+	if (e != end) return false;
 	*out = v;
 	return true;
 }

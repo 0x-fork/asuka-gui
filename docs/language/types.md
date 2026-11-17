@@ -92,6 +92,13 @@ that change their value (`push`, `insert`, `removeAt`, `removeWhere`,
 `min`, `max`, `abs`, `float(n)` and `int(x)` are functions;
 `std/math` has the rest (`math.sqrt`, `math.pow`, `math.pi`, ...).
 
+`toInt()` and `toFloat()` read the whole string, or give none: an
+optional sign, then the number, with nothing around it (`" 12"` is
+none: `trim()` it first). `toInt()` takes digits (`"+7"`, `"-42"`);
+`toFloat()` also a fraction and an exponent (`"2.5"`, `".5"`,
+`"1e-3"`) and what a float prints as (`"Infinity"`, `"NaN"`). Both
+read `.` as the decimal point in every language.
+
 ## Value semantics
 
 Strings, arrays, sets, maps, structs and enums are **values**: assigning one
