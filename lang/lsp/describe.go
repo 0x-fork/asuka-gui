@@ -619,6 +619,12 @@ func (fc *fileCtx) describe(r *ref) (code, doc string) {
 		return "(parameter) " + paramString(r.param), doc + "."
 	}
 	switch o := r.obj.(type) {
+	case *check.LoopName:
+		kw := "for"
+		if _, ok := o.Loop.(*syntax.WhileStmt); ok {
+			kw = "while"
+		}
+		return kw + " … as " + o.Name(), "A loop's name: `break " + o.Name() + "` leaves it, `continue " + o.Name() + "` goes on with its next turn, from the loops inside it."
 	case *check.Var:
 		if o.Fn != nil {
 			return localFnSig(o.Fn), docOf(o.Fn.Decl)
