@@ -269,7 +269,7 @@ IfStmt      = "if" Cond Block [ "else" ( IfStmt | Block ) ] .
 AssignOp    = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^=" | "<<=" | ">>=" | "??=" .
 
 Cond        = CondClause { "," CondClause } .   (* if let a = x, a > 0 { … } (decision 21) *)
-CondClause  = "let" Pattern "=" Expr | Expr .
+CondClause  = ( "let" | "var" ) Pattern "=" Expr | Expr .   (* if var x = y: a copy that may change *)
 CatchClause = "catch" [ Ident ":" Type | Pattern ] Block .
 Arms        = "{" { Arm ( "," | Term ) } "}" .
 Arm         = Pattern [ "if" HeadExpr ] "=>" ( Block | Item ) .   (* a match expression's: Block | Expr *)
@@ -316,7 +316,7 @@ Selector    = "." Name | "?." Name
             | [ TypeArgs ] Args [ "as" Ident ] [ Trailing ]
             | "as" Ident [ Trailing ]            (* after an element's name: View as card { … } *)
             | Trailing                           (* after an element's or a lower-case name *)
-            | "[" Expr "]"
+            | "[" Expr [ "," "default" ":" Expr ] "]"   (* m[k, default: v]: default is a label only here *)
             | "!" .                              (* right after its operand: x! *)
 TypeArgs    = "<" Type { "," Type } [ "," ] ">" .  (* only right before a ( *)
 Args        = "(" [ Arg { "," Arg } [ "," ] ] ")" .

@@ -1929,10 +1929,11 @@ func (p *parser) parseCond() Expr {
 // condClause parses a clause of a condition: an expression, or let
 // pattern = value.
 func (p *parser) condClause() Expr {
-	if p.tok == LET {
+	if p.tok == LET || p.tok == VAR {
 		start := p.pos
+		isVar := p.tok == VAR
 		p.next()
-		c := &LetCond{Pattern: p.parsePattern()}
+		c := &LetCond{Pattern: p.parsePattern(), Var: isVar}
 		p.expect(ASSIGN)
 		c.Value = p.parseExpr()
 		c.Span = p.span(start)
@@ -2487,9 +2488,17 @@ func (p *parser) postfixFrom(start Pos, x Expr) Expr {
 			p.next()
 			p.exprLev++
 			idx := p.parseExpr()
+			var def Expr
+			if p.tok == COMMA && p.peek(1) == IDENT && p.toks[p.i+1].lit == "default" && p.peek(2) == COLON {
+				// m[k, default: v]: "default" is a label only here.
+				p.next()
+				p.next()
+				p.next()
+				def = p.parseExpr()
+			}
 			p.exprLev--
 			p.expectClose(RBRACK, open, "index")
-			x = &IndexExpr{X: x, Index: idx, Span: p.span(start)}
+			x = &IndexExpr{X: x, Index: idx, Default: def, Span: p.span(start)}
 		case NOT:
 			if p.pos != p.prevEnd {
 				return x

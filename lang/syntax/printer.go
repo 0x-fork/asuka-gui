@@ -1181,7 +1181,11 @@ func (p *printer) cond(x Expr) {
 		return
 	}
 	if c, ok := x.(*LetCond); ok {
-		p.write("let ")
+		if c.Var {
+			p.write("var ")
+		} else {
+			p.write("let ")
+		}
 		p.pattern(c.Pattern)
 		p.write(" = ")
 		p.expr(c.Value)
@@ -1513,6 +1517,10 @@ func (p *printer) postfix(x Expr) {
 		case *IndexExpr:
 			p.write("[")
 			p.expr(e.Index)
+			if e.Default != nil {
+				p.write(", default: ")
+				p.expr(e.Default)
+			}
 			p.write("]")
 		case *UnwrapExpr:
 			p.write("!")

@@ -853,6 +853,9 @@ type IndexExpr struct {
 	Span
 	X     Expr
 	Index Expr
+	// Default: m[k, default: v], a map's entry, or v when it has none
+	// (RFC 0011); nil for m[k].
+	Default Expr
 }
 
 // An UnwrapExpr is x!: the value of an optional, which mustn't be none.
@@ -949,6 +952,8 @@ type LetCond struct {
 	Span
 	Pattern Pattern
 	Value   Expr
+	// Var: if var x = optional, a copy that may change (RFC 0011).
+	Var bool
 }
 
 // A CondList is a condition of clauses separated by commas, as an if's

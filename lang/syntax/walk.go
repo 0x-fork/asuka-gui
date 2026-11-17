@@ -330,6 +330,9 @@ func Walk(v Visitor, n Node) {
 	case *IndexExpr:
 		walk(n.X)
 		walk(n.Index)
+		if n.Default != nil {
+			walk(n.Default)
+		}
 	case *UnwrapExpr:
 		walk(n.X)
 	case *UnaryExpr:
