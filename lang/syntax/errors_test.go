@@ -155,6 +155,13 @@ let d = 1
 			decls: 2,
 		},
 		{
+			// A block comment's newline ends the line, as a newline does.
+			name:  "interpolation spanning lines in a comment",
+			src:   "let s = \"a {b /* x\n*/ } c\"\nlet t = 1\n",
+			errs:  []string{"1:9: string not terminated", "2:7: string not terminated"},
+			decls: 3, // the rest of line 2 is a bad one
+		},
+		{
 			name:  "var at the top level",
 			src:   "var n = 0\n",
 			errs:  []string{"1:1: a file has no variables: its mutable values are state (state x = …)"},
