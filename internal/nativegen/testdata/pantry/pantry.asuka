@@ -2,6 +2,8 @@
 // every kind of value that crosses: nativegen's tests generate the
 // platforms' code from it.
 
+import std/decimal.{Decimal}
+
 /// The pantry's errors.
 pub enum PantryError: Error {
   /// pantry: busy
@@ -28,6 +30,8 @@ pub struct Item {
   took: Duration
   count: int
   fresh: bool
+  price: Decimal = Decimal.zero
+  discount: Decimal? = none
 }
 
 /// The platform's pantry.
@@ -43,6 +47,8 @@ pub native interface Pantry {
   /// @mainThread
   fn show()
   fn counts() -> [string: int]
+  /// What the prices come to.
+  fn total(prices: [Decimal]) -> Decimal
   /// Whether the host shows a view of the app's.
   fn shows(view: Ref) -> bool
 }

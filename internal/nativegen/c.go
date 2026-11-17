@@ -111,6 +111,8 @@ func (g *cGen) mangle(t *Type) string {
 		return "bytes"
 	case Duration:
 		return "Duration"
+	case Decimal:
+		return "decimal"
 	case ViewRef:
 		return "view"
 	case Struct, Enum, Object:
@@ -153,6 +155,8 @@ func (g *cGen) ctype(t *Type) string {
 		return "char *"
 	case Bytes:
 		return "asuka_bytes"
+	case Decimal:
+		return "asuka_decimal"
 	case Struct, Enum:
 		return g.pre + t.Name
 	case Object:
@@ -273,6 +277,8 @@ func (g *cGen) enc(t *Type, w, v string) string {
 		return fmt.Sprintf("asuka_writer_string(%s, %s);", w, v)
 	case Bytes:
 		return fmt.Sprintf("asuka_writer_bytes(%s, (%s).data, (%s).len);", w, v, v)
+	case Decimal:
+		return fmt.Sprintf("asuka_writer_decimal(%s, %s);", w, v)
 	case ViewRef:
 		return fmt.Sprintf("asuka_writer_u64(%s, %s);", w, v)
 	case Object:
@@ -302,6 +308,8 @@ func (g *cGen) dec(t *Type, r string) string {
 		return fmt.Sprintf("asuka_reader_string(%s)", r)
 	case Bytes:
 		return fmt.Sprintf("asuka_reader_bytes(%s)", r)
+	case Decimal:
+		return fmt.Sprintf("asuka_reader_decimal(%s)", r)
 	case ViewRef:
 		return fmt.Sprintf("(uint32_t)asuka_reader_u64(%s)", r)
 	case Object:

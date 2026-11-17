@@ -91,9 +91,50 @@ export class NativeWriter {
 
   /** A duration, in milliseconds (Go's: nanoseconds). */
   duration(ms) { return this.int64(BigInt(Math.round(ms * 1e6))); }
+  /** A Decimal (std/decimal's), as its exact text ("19.99", "-1.5e3", or
+   *  a number): its coefficient without trailing zeros and its exponent;
+   *  more than 18 significant digits are rounded half to even. */
+  decimal(x) {
+    const [c, e] = decimalParts(x);
+    return this.int64(c).int64(e);
+  }
   len(k) { return this.uint32(k); }
   present(x) { return this.bool(x); }
   bytes() { return this.b.slice(0, this.n); }
+}
+
+/** decimalParts is a decimal's text (or a number) as std/decimal keeps it:
+ *  [coefficient, exponent] as BigInts, the coefficient without trailing
+ *  zeros, rounded half to even to 18 significant digits. */
+export function decimalParts(x) {
+  const m = /^([+-]?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(String(x).trim());
+  if (!m || (m[2] + (m[3] ?? "")) === "") throw new TypeError(`not a decimal number: ${x}`);
+  let digits = (m[2] + (m[3] ?? "")).replace(/^0+/, "");
+  let exp = BigInt(m[4] ?? 0) - BigInt((m[3] ?? "").length);
+  if (digits.length > 18) {
+    const rest = digits.slice(18);
+    let kept = BigInt(digits.slice(0, 18));
+    exp += BigInt(rest.length);
+    const more = /[1-9]/.test(rest.slice(1));
+    if (rest[0] > "5" || (rest[0] === "5" && (more || kept % 2n === 1n))) kept += 1n;
+    digits = kept.toString();
+  }
+  if (digits === "") return [0n, 0n];
+  const t = digits.replace(/0+$/, "");
+  exp += BigInt(digits.length - t.length);
+  const c = BigInt(t);
+  return [m[1] === "-" ? -c : c, exp];
+}
+
+/** decimalText is coefficient × 10^exponent in plain digits: "19.99". */
+export function decimalText(c, e) {
+  if (c === 0n) return "0";
+  const sign = c < 0n ? "-" : "";
+  const d = (c < 0n ? -c : c).toString();
+  if (e >= 0) return sign + d + "0".repeat(e);
+  const point = d.length + e;
+  if (point > 0) return sign + d.slice(0, point) + "." + d.slice(point);
+  return sign + "0." + "0".repeat(-point) + d;
 }
 
 /** Decodes values (core/src/native's reader); past what's there, every read is its zero value and failed is true. */
@@ -145,6 +186,12 @@ export class NativeReader {
   }
 
   duration() { return Number(this.int64()) / 1e6; }
+
+  /** A Decimal (std/decimal's), as its exact text: "19.99". */
+  decimal() {
+    const c = this.int64(), e = Number(this.int64());
+    return decimalText(c, e);
+  }
 
   /** A slice's or a map's length, bounded by what's left. */
   len() {

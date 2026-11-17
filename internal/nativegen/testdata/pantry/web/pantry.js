@@ -8,6 +8,7 @@ export function makePantry() {
     items: (filter) => [{
       name: filter, weight: 1.5, level: Level.high, tags: ["a", "b"], notes: { k: "v" },
       next: { name: "inner" }, data: new Uint8Array([1, 2, 3]), took: 2500, count: -3, fresh: true,
+      price: "19.990", discount: "-1.5e-1",
     }],
     add(item) {
       if (!item.name) throw new PantryError("busy");
@@ -31,6 +32,17 @@ export function makePantry() {
     },
     show() {},
     counts: () => ({ a: 1, b: -2 }),
+    // Decimals are their exact text: summed here by their parts.
+    total: (prices) => {
+      let [c, e] = [0n, 0n];
+      for (const p of prices) {
+        let [pc, pe] = asuka.native.decimalParts(p);
+        while (e > pe) [c, e] = [c * 10n, e - 1n];
+        while (pe > e) [pc, pe] = [pc * 10n, pe - 1n];
+        c += pc;
+      }
+      return asuka.native.decimalText(c, Number(e));
+    },
     shows: (view) => view != null,
   };
 }

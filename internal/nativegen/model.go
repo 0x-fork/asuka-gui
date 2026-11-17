@@ -47,6 +47,11 @@ const (
 	// the u64 id its host knows it by (0: none), which each platform's
 	// generated code turns into its view.
 	ViewRef
+	// Decimal is std/decimal's Decimal: its coefficient and exponent, 8
+	// bytes each, the coefficient without trailing zeros. Each platform
+	// has it as its decimal type (Swift's Decimal, Kotlin's BigDecimal,
+	// JavaScript's exact text, C's asuka_decimal).
+	Decimal
 )
 
 // Type is a parameter's, a result's or a field's type.

@@ -169,6 +169,7 @@ platform's side can always fail), so calls are `try`.
 | `string` | `String` | `String` | `string` | `char *`, UTF-8 and NUL-terminated |
 | `bytes` | `Data` | `ByteArray` | `Uint8Array` | `asuka_bytes` (`data`, `len`) |
 | `Duration` | `TimeInterval` (seconds) | `kotlin.time.Duration` | `number` (milliseconds) | `int64_t` (nanoseconds) |
+| `Decimal` (std/decimal's, imported) | `Decimal` | `java.math.BigDecimal` | `string`, its exact text (`"19.99"`) | `asuka_decimal` (`coefficient`, `exponent`; `asuka_decimal_text`, `asuka_decimal_parse`) |
 | `[T]` | `[T]` | `List<T>` | `Array` | `<pkg>_list_T` (`data`, `len`) |
 | `[string: T]` | `[String: T]` | `Map<String, T>` | `object` | `<pkg>_map_T` (`keys`, `values`, `len`) |
 | `T?` | `T?` | `T?` | `T` or `null` | `T *` (`NULL`: none; a `string?` is a `char *`) |
@@ -189,6 +190,11 @@ thread; it's `nil` when the Ref holds none, or a view Asuka doesn't
 show (yet). `asuka native
 generate` reports anything else at its position, with what to use
 instead.
+
+A `Decimal` (`import std/decimal.{Decimal}`) crosses exactly, as its
+coefficient and exponent; one the platform's side gives back with more
+than 18 significant digits is rounded half to even, as Asuka can't hold
+more.
 
 ### Methods
 

@@ -168,6 +168,85 @@ void asuka_writer_u64(asuka_writer *w, uint64_t v) {
 
 void asuka_writer_i64(asuka_writer *w, int64_t v) { asuka_writer_u64(w, (uint64_t)v); }
 
+void asuka_writer_decimal(asuka_writer *w, asuka_decimal d) {
+	if (d.coefficient == 0) d.exponent = 0;
+	while (d.coefficient != 0 && d.coefficient % 10 == 0) d.coefficient /= 10, d.exponent++;
+	asuka_writer_i64(w, d.coefficient);
+	asuka_writer_i64(w, d.exponent);
+}
+
+bool asuka_decimal_parse(const char *text, asuka_decimal *out) {
+	const char *p = text;
+	bool neg = *p == '-';
+	if (*p == '-' || *p == '+') p++;
+	char digits[19];
+	int nd = 0, seen = 0, dropped = 0;
+	bool point = false, more = false;  // more: a nonzero digit past the dropped one
+	char first = 0;                    // the first digit dropped
+	int64_t exp = 0;
+	for (;; p++) {
+		if (*p == '.' && !point) {
+			point = true;
+		} else if (*p >= '0' && *p <= '9') {
+			seen++;
+			if (point) exp--;
+			if (nd == 0 && *p == '0') continue;
+			if (nd < 18) {
+				digits[nd++] = *p;
+			} else {
+				if (!dropped) first = *p;
+				else more |= *p != '0';
+				dropped++;
+				exp++;
+			}
+		} else {
+			break;
+		}
+	}
+	if (!seen) return false;
+	if (*p == 'e' || *p == 'E') {
+		char *end;
+		long long e = strtoll(p + 1, &end, 10);
+		if (end == p + 1) return false;
+		exp += e;
+		p = end;
+	}
+	if (*p) return false;
+	int64_t c = 0;
+	for (int i = 0; i < nd; i++) c = c * 10 + (digits[i] - '0');
+	if (dropped && (first > '5' || (first == '5' && (more || c % 2 == 1)))) c++;
+	out->coefficient = neg ? -c : c;
+	out->exponent = c ? exp : 0;
+	while (out->coefficient != 0 && out->coefficient % 10 == 0) out->coefficient /= 10, out->exponent++;
+	return true;
+}
+
+char *asuka_decimal_text(asuka_decimal d) {
+	if (d.coefficient == 0) return asuka_strdup("0");
+	char digits[24];
+	uint64_t m = d.coefficient < 0 ? 0 - (uint64_t)d.coefficient : (uint64_t)d.coefficient;
+	int n = snprintf(digits, sizeof digits, "%llu", (unsigned long long)m);
+	const char *sign = d.coefficient < 0 ? "-" : "";
+	if (d.exponent >= 0) {
+		size_t len = strlen(sign) + (size_t)n + (size_t)d.exponent + 1;
+		char *s = malloc(len);
+		if (!s) return NULL;
+		int k = snprintf(s, len, "%s%s", sign, digits);
+		memset(s + k, '0', (size_t)d.exponent);
+		s[len - 1] = 0;
+		return s;
+	}
+	int64_t point = n + d.exponent;  // digits before the point
+	if (point > 0) return asuka_sprintf("%s%.*s.%s", sign, (int)point, digits, digits + point);
+	size_t zeros = (size_t)-point, len = strlen(sign) + 2 + zeros + (size_t)n + 1;
+	char *s = malloc(len);
+	if (!s) return NULL;
+	int k = snprintf(s, len, "%s0.", sign);
+	memset(s + k, '0', zeros);
+	memcpy(s + k + zeros, digits, (size_t)n + 1);
+	return s;
+}
+
 void asuka_writer_f64(asuka_writer *w, double v) {
 	uint64_t u;
 	memcpy(&u, &v, 8);
@@ -227,6 +306,13 @@ uint64_t asuka_reader_u64(asuka_reader *r) {
 }
 
 int64_t asuka_reader_i64(asuka_reader *r) { return (int64_t)asuka_reader_u64(r); }
+
+asuka_decimal asuka_reader_decimal(asuka_reader *r) {
+	asuka_decimal d;
+	d.coefficient = asuka_reader_i64(r);
+	d.exponent = asuka_reader_i64(r);
+	return d;
+}
 
 double asuka_reader_f64(asuka_reader *r) {
 	uint64_t u = asuka_reader_u64(r);
