@@ -90,6 +90,10 @@ project is experimental; nothing is kept for compatibility.
 
 ### Grammar
 
+The grammar as the language grew is
+[lang/syntax/GRAMMAR.md](../lang/syntax/GRAMMAR.md): this one is the
+first.
+
 ```ebnf
 File        = { Import } { Decl } .
 Import      = "import" ImportPath [ ".{" Ident { "," Ident } "}" ] [ "as" Ident ] .

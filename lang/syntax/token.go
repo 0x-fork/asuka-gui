@@ -3,8 +3,8 @@
 // printer that formats a tree back to canonical source (asuka fmt).
 //
 // The language is specified in rfcs/0007-c-core-and-asuka-language.md
-// ("The language"); parser.go writes down how this package resolves what
-// the grammar leaves open.
+// ("The language"); GRAMMAR.md is its grammar now, and parser.go writes
+// down how this package resolves what the grammar leaves open.
 package syntax
 
 import (
