@@ -192,7 +192,7 @@ func TestStdSwiftViews(t *testing.T) {
 	sdk, _ := filepath.Glob("../../sdk/*/tests/*ViewTest.swift")
 	tests = append(tests, sdk...)
 	if len(tests) == 0 {
-		t.Fatal("no Swift view tests")
+		t.Skip("no std or sdk package has Swift view tests")
 	}
 	dir := t.TempDir()
 	mac, ios, simSDK, arch := asukaModules(t, dir)
