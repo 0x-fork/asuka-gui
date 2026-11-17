@@ -1231,9 +1231,12 @@ static void dedupe(target_vec *ts) {
 
 typedef bool (*target_ok)(const target *t);
 
-static bool not_label(const target *t) { return t->how != BY_SNACKBAR && t->how != BY_TITLE && t->how != BY_FIELD; }
+// alert_text is an alert's title or message: read, as a Screen's title
+// is, not pressed. Its button with the same title is the one a tap means.
+static bool alert_text(const target *t) { return t->how == BY_VIEW && t->v->kind == AK_KIND_ALERT; }
+static bool not_label(const target *t) { return t->how != BY_SNACKBAR && t->how != BY_TITLE && t->how != BY_FIELD && !alert_text(t); }
 static bool by_view(const target *t) { return t->how == BY_VIEW; }
-static bool not_shown(const target *t) { return t->how != BY_SNACKBAR && t->how != BY_TITLE; }
+static bool not_shown(const target *t) { return t->how != BY_SNACKBAR && t->how != BY_TITLE && !alert_text(t); }
 
 // one finds the one target in reach that shows text and passes ok.
 static bool one(ak_uitest *a, ak_span text, target_ok ok, target *out, ak_buf *err) {
