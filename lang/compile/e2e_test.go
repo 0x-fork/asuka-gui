@@ -2,9 +2,11 @@ package compile
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -177,6 +179,74 @@ func TestBigLiteral(t *testing.T) {
 		if len(f.Kinds) > 1000 {
 			t.Errorf("%s has %d registers", f.Name, len(f.Kinds))
 		}
+	}
+}
+
+// A string of any number of parts and an enum of any number of cases
+// (its names' table) compile in as many registers as small ones (a
+// block of each part would take 2000 here), and run on the VM and as C.
+func TestBigStringsAndEnums(t *testing.T) {
+	var src strings.Builder
+	src.WriteString("enum Big {\n")
+	for i := range 1000 {
+		fmt.Fprintf(&src, "  c%d\n", i)
+	}
+	src.WriteString("}\n\nfn parts(x: int) -> string = \"")
+	for range 1000 {
+		src.WriteString("{x}-")
+	}
+	src.WriteString("\"\n\ntest \"big\" {\n  print(\"{Big.c999} {Big.c300}\")\n  let s = parts(7)\n  print(\"{s.count()} {s.hasPrefix(\"7-7-\")} {s.hasSuffix(\"7-\")}\")\n}\n")
+	res := Files(map[string][]byte{"big.asuka": []byte(src.String())}, nil)
+	if err := res.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if err := res.IR.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range res.Module.Funcs {
+		if len(f.Kinds) > 1000 {
+			t.Errorf("%s has %d registers", f.Name, len(f.Kinds))
+		}
+	}
+	out, err := runBoth(t, res.Module)
+	if want := "c999 c300\n2000 true true\nok big"; err != nil || !strings.HasPrefix(strings.TrimSpace(out), want) {
+		t.Fatalf("got (%v):\n%s\nwant:\n%s", err, out, want)
+	}
+}
+
+// What needs more than the bytecode holds (a register or an operand is
+// 16 bits) is a compile error where it is, not a panic.
+func TestBytecodeLimits(t *testing.T) {
+	gen := func(f func(b *strings.Builder)) string {
+		var b strings.Builder
+		f(&b)
+		return b.String()
+	}
+	for _, tc := range []struct {
+		name, src, want string
+	}{
+		{"locals", gen(func(b *strings.Builder) {
+			b.WriteString("fn f() -> int {\n")
+			for i := range 70000 {
+				fmt.Fprintf(b, "  let v%d = %d\n", i, i)
+			}
+			b.WriteString("  return v0 + v69999\n}\n\ntest \"t\" { print(f()) }\n")
+		}), `big.asuka:65535:\d+: this needs more than 65534 registers \(values held at once\) in one function`},
+		{"cases", gen(func(b *strings.Builder) {
+			b.WriteString("enum E {\n")
+			for i := range 70000 {
+				fmt.Fprintf(b, "  c%d(int)\n", i)
+			}
+			b.WriteString("}\n\nfn f(n: int) -> E = E.c69999(n)\n\ntest \"t\" { let e = f(1) }\n")
+		}), `big.asuka:70004:\d+: this needs more than 65535 enum cases in one instruction`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res := Files(map[string][]byte{"big.asuka": []byte(tc.src)}, nil)
+			err := res.Err()
+			if err == nil || !regexp.MustCompile(tc.want).MatchString(err.Error()) {
+				t.Fatalf("got %v, want %s", err, tc.want)
+			}
+		})
 	}
 }
 

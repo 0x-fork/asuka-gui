@@ -69,12 +69,11 @@ func (f *Func) Emit(line int32, op bytecode.Op, args ...int) {
 	f.Code = append(f.Code, in)
 }
 
-// Reg adds a register of kind k.
+// Reg adds a register of kind k. A function encodes with fewer than
+// bytecode.None (an instruction names a register in 16 bits): the
+// lowering says when one would need more.
 func (f *Func) Reg(k bytecode.Kind) int {
 	f.Kinds = append(f.Kinds, k)
-	if len(f.Kinds) >= bytecode.None {
-		panic("ir: " + f.Name + " needs more than 65534 registers")
-	}
 	return len(f.Kinds) - 1
 }
 

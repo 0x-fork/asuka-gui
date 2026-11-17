@@ -574,33 +574,68 @@ func (b *fb) stringLit(e *syntax.StringLit, dst int) int {
 		return r
 	}
 	// INTERP over a block: text, value, text, ...
-	var ks []bc.Kind
-	var vals []int
+	type part struct {
+		text string
+		x    syntax.Expr // nil for text
+	}
+	var parts []part
 	for i, x := range e.Interps {
 		if s := literalText(segs[i], e.Raw, e.Multiline); s != "" {
-			ks = append(ks, bc.KRef)
-			vals = append(vals, b.kstr(s))
+			parts = append(parts, part{text: s})
 		}
-		v, k := b.stringPart(x)
-		ks = append(ks, k)
-		vals = append(vals, v)
+		parts = append(parts, part{x: x})
 	}
 	if s := literalText(segs[len(segs)-1], e.Raw, e.Multiline); s != "" {
-		ks = append(ks, bc.KRef)
-		vals = append(vals, b.kstr(s))
+		parts = append(parts, part{text: s})
 	}
-	blk := b.regs(ks)
-	for i, v := range vals {
-		b.move(blk+i, v)
+	interp := func(parts []part, r int) {
+		var ks []bc.Kind
+		var vals []int
+		for _, p := range parts {
+			if p.x == nil {
+				ks = append(ks, bc.KRef)
+				vals = append(vals, b.kstr(p.text))
+				continue
+			}
+			v, k := b.stringPart(p.x)
+			ks = append(ks, k)
+			vals = append(vals, v)
+		}
+		blk := b.regs(ks)
+		for i, v := range vals {
+			b.move(blk+i, v)
+		}
+		kinds := make([]byte, len(ks))
+		for i, k := range ks {
+			kinds[i] = byte(k)
+		}
+		b.emit(op("INTERP"), r, blk, len(ks), b.l.str(string(kinds)))
+		b.releaseRegs(blk, ks)
 	}
-	kinds := make([]byte, len(ks))
-	for i, k := range ks {
-		kinds[i] = byte(k)
+	if len(parts) <= literalChunk {
+		r := b.out(dst, bc.KRef)
+		interp(parts, r)
+		return r
 	}
-	r := b.out(dst, bc.KRef)
-	b.emit(op("INTERP"), r, blk, len(ks), b.l.str(string(kinds)))
-	b.releaseRegs(blk, ks)
-	return r
+	// A string of more parts: literalChunk of them at a time, each
+	// chunk's text concatenated to the ones before, so that it takes as
+	// many registers as one of literalChunk.
+	acc := -1
+	for len(parts) > 0 {
+		n := min(len(parts), literalChunk)
+		r := b.temp(bc.KRef)
+		mark := b.mark()
+		interp(parts[:n], r)
+		b.release(mark)
+		parts = parts[n:]
+		if acc >= 0 {
+			t := b.temp(bc.KRef)
+			b.emit(op("CONCAT"), t, acc, r)
+			r = t
+		}
+		acc = r
+	}
+	return b.copyTo(acc, dst)
 }
 
 // stringPart is an interpolated value: a scalar INTERP prints itself, or
@@ -1131,19 +1166,24 @@ func (b *fb) literalDone(r, dst int) int {
 func (b *fb) appendEach(r int, xs []syntax.Expr, add string) {
 	for _, x := range xs {
 		mark := b.mark()
-		v := b.value(x, -1)
-		ks := []bc.Kind{bc.KRef, b.f.Kinds[v]}
-		blk := b.regs(ks)
-		null := b.null()
-		b.move(blk+1, v)
-		b.emit(op("MOV"), blk, r)
-		b.emit(op("MOV"), r, null)
-		b.emit(op("CALLB"), bc.None, b.l.builtin(add), blk, 2)
-		b.emit(op("MOV"), r, blk)
-		b.emit(op("MOV"), blk, null)
-		b.releaseRegs(blk, ks)
+		b.appendReg(r, b.value(x, -1), add)
 		b.release(mark)
 	}
+}
+
+// appendReg adds the value in v to the array or set in r, as appendEach
+// does.
+func (b *fb) appendReg(r, v int, add string) {
+	ks := []bc.Kind{bc.KRef, b.f.Kinds[v]}
+	blk := b.regs(ks)
+	null := b.null()
+	b.move(blk+1, v)
+	b.emit(op("MOV"), blk, r)
+	b.emit(op("MOV"), r, null)
+	b.emit(op("CALLB"), bc.None, b.l.builtin(add), blk, 2)
+	b.emit(op("MOV"), r, blk)
+	b.emit(op("MOV"), blk, null)
+	b.releaseRegs(blk, ks)
 }
 
 // mapRead is a map's index (m[k]) of a value that isn't optional, its

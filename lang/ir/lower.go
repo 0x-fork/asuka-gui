@@ -13,11 +13,12 @@ import (
 
 // A Lowerer lowers a checked program.
 type Lowerer struct {
-	prog *check.Program
-	info *check.Info
-	fset *syntax.FileSet
-	out  *Program
-	mod  *bc.Module
+	lastNode syntax.Node // the last node a function lowered (fb.at), for an error in one that has none
+	prog     *check.Program
+	info     *check.Info
+	fset     *syntax.FileSet
+	out      *Program
+	mod      *bc.Module
 
 	strs      map[string]int // a string → its index in the module's
 	funcs     map[string]int // a function's instantiation → its index
@@ -675,13 +676,25 @@ func (l *Lowerer) finishStrings() {
 	b := l.stringsFn
 	for _, p := range l.pendingStrings {
 		mark := b.mark()
-		blk := b.regs(repeatKind(bc.KRef, len(p.ss)))
-		for i, s := range p.ss {
+		// literalChunk of them from a block, the rest added one by one: a
+		// table of any length (an enum's 70000 cases' names) takes as many
+		// registers as one of literalChunk.
+		first, rest := p.ss, []string(nil)
+		if len(first) > literalChunk {
+			first, rest = first[:literalChunk], first[literalChunk:]
+		}
+		blk := b.regs(repeatKind(bc.KRef, len(first)))
+		for i, s := range first {
 			b.emit(op("KSTR"), blk+i, l.str(s))
 		}
 		arr := b.temp(bc.KRef)
-		b.emit(op("NEWA"), arr, int(bc.KRef), bc.NoShape, blk, len(p.ss))
-		b.releaseRegs(blk, repeatKind(bc.KRef, len(p.ss)))
+		b.emit(op("NEWA"), arr, int(bc.KRef), bc.NoShape, blk, len(first))
+		b.releaseRegs(blk, repeatKind(bc.KRef, len(first)))
+		for _, s := range rest {
+			m := b.mark()
+			b.appendReg(arr, b.kstr(s), "arr.push")
+			b.release(m)
+		}
 		arr = b.freeze(arr, bc.KRef)
 		b.emit(op("GSET"), p.global, arr, int(bc.KRef))
 		b.release(mark)
