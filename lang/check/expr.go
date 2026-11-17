@@ -91,7 +91,9 @@ func (c *Checker) expr1(e syntax.Expr, want Type) Type {
 	case *syntax.IndexExpr:
 		return c.index(e)
 	case *syntax.UnwrapExpr:
-		t := c.expr(e.X, nil)
+		// x! where a T is expected: x is a T? (.parse("19.99")! where a
+		// Decimal is: Decimal.parse).
+		t := c.expr(e.X, MakeOptionalOrNil(want))
 		if IsInvalid(t) {
 			return Invalid
 		}

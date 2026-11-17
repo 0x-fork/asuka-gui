@@ -1,0 +1,510 @@
+// Package std/decimal is exact decimal numbers, for money and what else
+// mustn't be a float (0.1 + 0.2 is 0.30000000000000004) nor cents in an
+// int (a currency of three decimals, a rate):
+//
+//   import std/decimal.{Decimal}
+//
+//   let price: Decimal = .parse("19.99")!
+//   let total = price * 3 + Decimal.parse("4.50")!         // 64.47
+//   let each = (total / 4).rounded(places: 2, mode: .halfEven)
+//   Text(each.formatted(currency: "EUR"))                  // €16.12; 16,12 €
+//
+// A Decimal is a coefficient and a power of ten, an int each, so it's
+// the same on every platform. +, - and * are exact; / gives 18
+// significant digits, rounded half to even, and divided(by:places:mode:)
+// and rounded(places:mode:) as many places as asked, rounded as asked. A
+// result whose coefficient doesn't fit an int (more than 18 digits, a few
+// of 19) throws "integer overflow", as the int's operators do, and
+// dividing by zero throws "division by zero".
+
+import std/i18n
+
+/// How a number is rounded to fewer digits (as Java's RoundingMode, and
+/// IEEE 754's).
+pub enum RoundingMode {
+  /// Toward zero: 2.7 is 2, -2.7 is -2.
+  down
+  /// Away from zero: 2.1 is 3, -2.1 is -3.
+  up
+  /// Toward positive infinity: 2.1 is 3, -2.7 is -2.
+  ceiling
+  /// Toward negative infinity: 2.7 is 2, -2.1 is -3.
+  floor
+  /// To the nearest, a half away from zero: 2.5 is 3, -2.5 is -3.
+  halfUp
+  /// To the nearest, a half toward zero: 2.5 is 2, -2.5 is -2.
+  halfDown
+  /// To the nearest, a half to the even neighbor (banker's rounding):
+  /// 2.5 is 2, 3.5 is 4.
+  halfEven
+}
+
+/// An exact decimal number: coefficient × 10^exponent, kept with no
+/// trailing zero in the coefficient (1.50 is 15 × 10^-1), so that equal
+/// numbers are == and hash alike. Make one with parse, of, or the
+/// operators; compare them with <, <=, > and >=.
+pub struct Decimal {
+  /// The digits, signed, without trailing zeros: 1999 of 19.99.
+  coefficient: int
+  /// The power of ten the coefficient is multiplied by: -2 of 19.99.
+  exponent: int
+
+  /// 0.
+  let zero = Decimal(coefficient: 0, exponent: 0)
+  /// 1.
+  let one = Decimal(coefficient: 1, exponent: 0)
+
+  /// coefficient × 10^exponent: Decimal.of(1999, exponent: -2) is
+  /// 19.99, Decimal.of(3) is 3.
+  static fn of(coefficient: int, exponent: int = 0) -> Decimal = make(coefficient, exponent)
+
+  /// The number written in text: an optional sign, digits with an
+  /// optional decimal point ("19.99", "-0.5", ".25", "1000"), and an
+  /// optional exponent ("1.5e3"); none for anything else, or a number
+  /// whose digits don't fit (more than 18 significant ones, a few of 19).
+  static fn parse(text: string) -> Decimal? = parseDecimal(text)
+
+  /// The sum: exact.
+  fn add(o: Decimal) -> Decimal {
+    if o.coefficient == 0 {
+      return self
+    }
+    if coefficient == 0 {
+      return o
+    }
+    if exponent == o.exponent {
+      return sum(coefficient, o.coefficient, exponent)
+    }
+    let hi = if exponent > o.exponent { self } else { o }
+    let lo = if exponent > o.exponent { o } else { self }
+    let k = hi.exponent - lo.exponent
+    if let p = pow10Checked(k) {
+      if let a = hi.coefficient.multipliedChecked(p) {
+        return sum(a, lo.coefficient, lo.exponent)
+      }
+    }
+    // hi scaled to lo's exponent is past an int: the sum fits one only
+    // when lo takes it back, so it's half of it, lo, and the other half.
+    let half = hi.coefficient * 5 * pow10(k - 1)
+    return make(half + lo.coefficient + half, lo.exponent)
+  }
+
+  /// The difference: exact.
+  fn sub(o: Decimal) -> Decimal = add(o.neg())
+
+  /// The product: exact.
+  fn mul(o: Decimal) -> Decimal {
+    if coefficient == 0 || o.coefficient == 0 {
+      return Decimal.zero
+    }
+    // The factors of ten the product would have, a 2 of one with a 5 of
+    // the other, go to the exponent first: what's left has none, so it
+    // fits an int or the product can't be one.
+    var a = coefficient
+    var b = o.coefficient
+    var e = exponent + o.exponent
+    while a % 2 == 0 && b % 5 == 0 {
+      a /= 2
+      b /= 5
+      e += 1
+    }
+    while a % 5 == 0 && b % 2 == 0 {
+      a /= 5
+      b /= 2
+      e += 1
+    }
+    return make(a * b, e)
+  }
+
+  /// The product with an int: exact (price * 3).
+  fn times(n: int) -> Decimal = mul(make(n, 0))
+
+  /// The quotient, to 18 significant digits, rounded half to even (exact
+  /// when it has fewer): divided(by:places:mode:) says how many places.
+  fn div(o: Decimal) -> Decimal {
+    let d = magnitude(o.coefficient)
+    let n = magnitude(coefficient)
+    var q = n / d
+    var r = n % d
+    let negative = (coefficient < 0) != (o.coefficient < 0)
+    if q >= 1_000_000_000_000_000_000 {
+      // 19 digits already: rounded to 18.
+      return divided(by: o, places: o.exponent - exponent - 1)
+    }
+    // A digit more while there's a remainder and room for one.
+    var places = o.exponent - exponent
+    while r != 0 && q < 100_000_000_000_000_000 {
+      let (digit, rest) = step(r, d)
+      q = q * 10 + digit
+      r = rest
+      places += 1
+    }
+    var half = -1
+    if r != 0 {
+      let (digit, rest) = step(r, d)
+      half = if digit > 5 || digit == 5 && rest != 0 { 1 } else if digit == 5 { 0 } else { -1 }
+    }
+    if roundsAway(q, half, r != 0, negative, .halfEven) {
+      q += 1
+    }
+    return make(if negative { -q } else { q }, -places)
+  }
+
+  /// The quotient by an int, as / of a Decimal (total / 4).
+  fn quo(n: int) -> Decimal = div(make(n, 0))
+
+  /// The remainder of the quotient truncated toward zero, exact, with
+  /// this number's sign: 7.5 % 2 is 1.5, -7.5 % 2 is -1.5.
+  fn rem(o: Decimal) -> Decimal {
+    let d = magnitude(o.coefficient)
+    let n = magnitude(coefficient)
+    if d == 0 {
+      return Decimal(coefficient: n / d, exponent: 0)
+    }
+    if n == 0 {
+      return Decimal.zero
+    }
+    let e = min(exponent, o.exponent)
+    var r = 0
+    if exponent >= o.exponent {
+      // n × 10^k modulo d, by squaring: k may be large.
+      r = mulMod(n % d, powMod(10, exponent - o.exponent, d), d)
+    } else if let p = pow10Checked(o.exponent - exponent) {
+      if let m = d.multipliedChecked(p) {
+        r = n % m
+      } else {
+        r = n
+      }
+    } else {
+      r = n
+    }
+    return make(if coefficient < 0 { -r } else { r }, e)
+  }
+
+  /// The number negated.
+  fn neg() -> Decimal = Decimal(coefficient: -coefficient, exponent: exponent)
+
+  /// Negative, zero or positive as this is less than, equal to or more
+  /// than o: what <, <=, > and >= compare, and sorted() orders by.
+  fn compare(o: Decimal) -> int {
+    let s = sign()
+    if s != o.sign() {
+      return if s < o.sign() { -1 } else { 1 }
+    }
+    if s == 0 {
+      return 0
+    }
+    // Their magnitudes, by where their first digits are, then by digits.
+    let ea = exponent + digits(coefficient) - 1
+    let eb = o.exponent + digits(o.coefficient) - 1
+    var c = 0
+    if ea != eb {
+      c = if ea < eb { -1 } else { 1 }
+    } else if exponent == o.exponent {
+      c = if magnitude(coefficient) < magnitude(o.coefficient) { -1 } else if magnitude(coefficient) > magnitude(o.coefficient) { 1 } else { 0 }
+    } else {
+      let (big, small, flip) = if exponent > o.exponent { (self, o, 1) } else { (o, self, -1) }
+      let scaled = magnitude(big.coefficient).multipliedChecked(pow10(big.exponent - small.exponent))
+      let m = magnitude(small.coefficient)
+      c = if let x = scaled { if x > m { flip } else if x < m { -flip } else { 0 } } else { flip }
+    }
+    return c * s
+  }
+
+  /// The quotient with places digits after the point (before it when
+  /// negative: -2 rounds to hundreds), rounded as mode says.
+  fn divided(by: Decimal, places: int, mode: RoundingMode = .halfEven) -> Decimal {
+    let d = magnitude(by.coefficient)
+    let n = magnitude(coefficient)
+    let negative = (coefficient < 0) != (by.coefficient < 0)
+    let s = exponent - by.exponent + places
+    var q = n / d
+    var r = n % d
+    var half = -1
+    var inexact = false
+    // The quotient is q × 10^(shift - places): shift is the places an
+    // exact quotient didn't need.
+    var shift = 0
+    if s >= 0 {
+      // n × 10^s / d, a digit at a time, while there's a remainder.
+      for i in 0..<s {
+        if r == 0 {
+          shift = s - i
+          break
+        }
+        let (digit, rest) = step(r, d)
+        q = q * 10 + digit
+        r = rest
+      }
+      inexact = r != 0
+      if inexact {
+        half = halfOf(r, d)
+      }
+    } else {
+      // (n / d) / 10^k: what's cut is q's last k digits and r / d.
+      let k = -s
+      var cut = q
+      var halfK = 0
+      if let p = pow10Checked(k) {
+        cut = q % p
+        q = q / p
+        halfK = p / 2
+      } else {
+        q = 0
+        // A half of 10^k, 5 × 10^(k-1), past an int too: more than any cut.
+        halfK = -1
+        if let p = pow10Checked(k - 1) {
+          halfK = p.multipliedChecked(5) ?? -1
+        }
+      }
+      inexact = cut != 0 || r != 0
+      if inexact {
+        half = if halfK < 0 || cut < halfK { -1 } else if cut > halfK { 1 } else if r == 0 { 0 } else { 1 }
+      }
+    }
+    if roundsAway(q, half, inexact, negative, mode) {
+      q += 1
+    }
+    return make(if negative { -q } else { q }, shift - places)
+  }
+
+  /// The number with places digits after the point (before it when
+  /// negative), rounded as mode says: 2.345.rounded(places: 2) is 2.34
+  /// (half to even), with mode .halfUp 2.35.
+  fn rounded(places: int = 0, mode: RoundingMode = .halfEven) -> Decimal {
+    if exponent >= -places {
+      return self
+    }
+    return divided(by: Decimal.one, places: places, mode: mode)
+  }
+
+  /// The number without its sign.
+  fn abs() -> Decimal = if coefficient < 0 { neg() } else { self }
+  /// -1, 0 or 1: the number's sign.
+  fn sign() -> int = if coefficient < 0 { -1 } else if coefficient > 0 { 1 } else { 0 }
+  /// Whether it's 0.
+  fn isZero() -> bool = coefficient == 0
+
+  /// The whole part, toward zero (2.7 is 2, -2.7 is -2); one past an
+  /// int throws "integer overflow".
+  fn int() -> int {
+    let w = rounded(places: 0, mode: .down)
+    return w.coefficient * pow10(w.exponent)
+  }
+
+  /// The nearest float.
+  fn float() -> float = string().toFloat()!
+
+  /// The number in plain digits, as parse reads it: "19.99", "-0.5",
+  /// "1000".
+  fn string() -> string {
+    let digits = "{magnitude(coefficient)}"
+    let sign = if coefficient < 0 { "-" } else { "" }
+    if exponent >= 0 {
+      return sign + digits + "0".repeat(exponent)
+    }
+    let point = digits.count() + exponent
+    if point > 0 {
+      return sign + digits.slice(0, point) + "." + digits.slice(point)
+    }
+    return sign + "0." + "0".repeat(-point) + digits
+  }
+
+  /// The number in the language shown's way, exactly (1,234.5;
+  /// 1.234,5), or with currency (an ISO 4217 code) as an amount of it:
+  /// its symbol, its fraction digits (€1,234.50; 1.234,50 €; ¥1,235),
+  /// rounded half away from zero. As std/i18n's formatDecimal and
+  /// formatCurrency.
+  fn formatted(currency: string = "") -> string = if currency.isEmpty() { i18n.formatDecimal(string()) } else { i18n.formatCurrency(string(), currency) }
+}
+
+// make is coefficient × 10^exponent without the coefficient's trailing
+// zeros. The smallest int has no magnitude: it throws, as -x of it does,
+// so every coefficient's abs() is one.
+fn make(coefficient: int, exponent: int) -> Decimal {
+  if coefficient == 0 {
+    return Decimal.zero
+  }
+  var c = abs(coefficient)
+  var e = exponent
+  while c % 10 == 0 {
+    c /= 10
+    e += 1
+  }
+  return Decimal(coefficient: if coefficient < 0 { -c } else { c }, exponent: e)
+}
+
+// sum is a + b of one exponent. Past an int, it may still be one with a
+// trailing zero cut: 5000000000000000001 + 4999999999999999999.
+fn sum(a: int, b: int, exponent: int) -> Decimal {
+  if let s = a.addingChecked(b) {
+    return make(s, exponent)
+  }
+  if (a % 10 + b % 10) % 10 == 0 {
+    return make(a / 10 + b / 10 + (a % 10 + b % 10) / 10, exponent + 1)
+  }
+  return make(a + b, exponent)
+}
+
+// pow10 is 10^n, n >= 0; past an int it throws "integer overflow".
+fn pow10(n: int) -> int {
+  var p = 1
+  for _ in 0..<n {
+    p *= 10
+  }
+  return p
+}
+
+// pow10Checked is 10^n, or none past an int.
+fn pow10Checked(n: int) -> int? = if n < 0 || n > 18 { none } else { pow10(n) }
+
+// magnitude is |c|: the struct's abs() is its own.
+fn magnitude(c: int) -> int = abs(c)
+
+// digits is how many digits c has.
+fn digits(c: int) -> int {
+  var n = 1
+  var x = abs(c)
+  while x >= 10 {
+    x /= 10
+    n += 1
+  }
+  return n
+}
+
+// step is r × 10 / d and its remainder, r < d, without overflowing: past
+// an int, r is added ten times modulo d, each time it wraps a digit.
+fn step(r: int, d: int) -> (int, int) {
+  if r <= 922_337_203_685_477_580 {
+    return ((r * 10) / d, r * 10 % d)
+  }
+  var digit = 0
+  var acc = 0
+  for _ in 0..<10 {
+    if acc >= d - r {
+      acc -= d - r
+      digit += 1
+    } else {
+      acc += r
+    }
+  }
+  return (digit, acc)
+}
+
+// halfOf compares a fraction r / d with a half: -1 below, 0 a half, 1
+// above.
+fn halfOf(r: int, d: int) -> int = if r < d - r { -1 } else if r == d - r { 0 } else { 1 }
+
+// roundsAway says whether a magnitude q, with a fraction cut off (half:
+// how it compares with a half; inexact: whether it's more than 0), goes
+// up to q + 1.
+fn roundsAway(q: int, half: int, inexact: bool, negative: bool, mode: RoundingMode) -> bool = match mode {
+  .down => false
+  .up => inexact
+  .ceiling => inexact && !negative
+  .floor => inexact && negative
+  .halfUp => inexact && half >= 0
+  .halfDown => inexact && half > 0
+  .halfEven => inexact && (half > 0 || half == 0 && q % 2 == 1)
+}
+
+// mulMod is a × b modulo m, a and b below m, without overflowing.
+fn mulMod(a: int, b: int, m: int) -> int {
+  var r = 0
+  var x = a
+  var y = b
+  while y > 0 {
+    if y % 2 == 1 {
+      r = addMod(r, x, m)
+    }
+    x = addMod(x, x, m)
+    y /= 2
+  }
+  return r
+}
+
+fn addMod(a: int, b: int, m: int) -> int = if a >= m - b { a - (m - b) } else { a + b }
+
+// powMod is base^k modulo m.
+fn powMod(base: int, k: int, m: int) -> int {
+  var r = 1 % m
+  var b = base % m
+  var e = k
+  while e > 0 {
+    if e % 2 == 1 {
+      r = mulMod(r, b, m)
+    }
+    b = mulMod(b, b, m)
+    e /= 2
+  }
+  return r
+}
+
+// parseDecimal reads [sign] digits [. digits] [e [sign] digits].
+fn parseDecimal(text: string) -> Decimal? {
+  let b = text.bytes()
+  let n = b.count()
+  var i = 0
+  var negative = false
+  if i < n && (b[i] == 0x2d || b[i] == 0x2b) {
+    negative = b[i] == 0x2d
+    i += 1
+  }
+  var c = 0
+  var zeros = 0
+  var e = 0
+  var seen = 0
+  var point = false
+  while i < n {
+    let ch = b[i]
+    if ch == 0x2e && !point {
+      point = true
+    } else if ch >= 0x30 && ch <= 0x39 {
+      seen += 1
+      if point {
+        e -= 1
+      }
+      if ch == 0x30 {
+        if c != 0 {
+          zeros += 1
+        }
+      } else {
+        let p = pow10Checked(zeros + 1) ?? 0
+        let scaled = if p == 0 { none } else { c.multipliedChecked(p) }
+        let next = scaled?.addingChecked(ch - 0x30)
+        if next == none {
+          return none
+        }
+        c = next!
+        zeros = 0
+      }
+    } else {
+      break
+    }
+    i += 1
+  }
+  if seen == 0 {
+    return none
+  }
+  if i < n && (b[i] == 0x65 || b[i] == 0x45) {
+    i += 1
+    let x = text.byteSlice(i, n).toInt()
+    if x == none {
+      return none
+    }
+    let shifted = e.addingChecked(x!)
+    if shifted == none {
+      return none
+    }
+    e = shifted!
+    i = n
+  }
+  if i != n {
+    return none
+  }
+  let exponent = e.addingChecked(zeros)
+  if exponent == none {
+    return none
+  }
+  return make(if negative { -c } else { c }, exponent!)
+}
