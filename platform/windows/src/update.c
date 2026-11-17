@@ -418,17 +418,18 @@ static void wl_free(wlist *l) {
 }
 
 // valid_list_path reports whether p can be in a FileList: a path inside
-// the install's root, with slashes, that isn't a FileList itself.
+// the install's root, its entries separated by slashes, each one that
+// Windows reads as written (dsk_windows_name: no drive, stream, device,
+// backslash or name Windows trims to another, such as ".. "), that isn't
+// a FileList itself.
 static bool valid_list_path(const char *p, size_t n) {
-	if (!n || (n == 1 && p[0] == '.') || p[0] == '/' || p[n - 1] == '/') return false;
-	for (size_t i = 0; i < n; i++)
-		if (p[i] == '\\' || !p[i] || p[i] == '\r' || p[i] == '\n') return false;
+	if (!n || p[0] == '/' || p[n - 1] == '/') return false;
 	size_t at = 0;
 	while (at <= n) {
 		size_t e = at;
 		while (e < n && p[e] != '/') e++;
 		size_t l = e - at;
-		if (!l || (l == 1 && p[at] == '.') || (l == 2 && p[at] == '.' && p[at + 1] == '.')) return false;
+		if (!dsk_windows_name(p + at, l)) return false;
 		if (e == n && l == strlen(FILE_LIST) && !memcmp(p + at, FILE_LIST, l)) return false;
 		at = e + 1;
 	}

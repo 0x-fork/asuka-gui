@@ -115,6 +115,40 @@ const char *dsk_base(const char *path) {
 	return b;
 }
 
+static bool same_ascii(const char *s, size_t n, const char *word) {
+	if (strlen(word) != n) return false;
+	for (size_t i = 0; i < n; i++) {
+		char c = s[i] >= 'a' && s[i] <= 'z' ? (char)(s[i] - 'a' + 'A') : s[i];
+		if (c != word[i]) return false;
+	}
+	return true;
+}
+
+// device reports whether s (n bytes) is a device's name, as Windows reads
+// one: case aside, any extension and the spaces ahead of it dropped.
+static bool device(const char *s, size_t n) {
+	size_t b = 0;
+	while (b < n && s[b] != '.') b++;
+	while (b && s[b - 1] == ' ') b--;
+	static const char *const named[] = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"};
+	for (size_t i = 0; i < sizeof named / sizeof *named; i++)
+		if (same_ascii(s, b, named[i])) return true;
+	if (b < 4 || (!same_ascii(s, 3, "COM") && !same_ascii(s, 3, "LPT"))) return false;
+	// A digit, or a superscript one, two or three (U+00B9, U+00B2, U+00B3).
+	if (b == 4) return s[3] >= '0' && s[3] <= '9';
+	return b == 5 && (uint8_t)s[3] == 0xC2 && ((uint8_t)s[4] == 0xB9 || (uint8_t)s[4] == 0xB2 || (uint8_t)s[4] == 0xB3);
+}
+
+bool dsk_windows_name(const char *s, size_t n) {
+	if (!n || (n == 1 && s[0] == '.') || (n == 2 && s[0] == '.' && s[1] == '.')) return false;
+	for (size_t i = 0; i < n; i++) {
+		uint8_t c = (uint8_t)s[i];
+		if (c < 0x20 || strchr("<>:\"/\\|?*", c)) return false;
+	}
+	if (s[n - 1] == '.' || s[n - 1] == ' ') return false;
+	return !device(s, n);
+}
+
 char *dsk_join(const char *a, const char *b) {
 	size_t na = strlen(a), nb = strlen(b);
 	char *s = malloc(na + nb + 2);

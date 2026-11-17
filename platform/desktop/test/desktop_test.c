@@ -300,7 +300,23 @@ static void test_anim(const char *dir) {
 	test_apng_offsets();
 }
 
+// Names Windows reads as written, and those it reads as something else:
+// a parent (".. "), a drive or a stream (a colon), a device, a name it
+// trims.
+static void test_windows_names(void) {
+	static const char *const ok[] = {"a", "a.txt", ".asuka-files", "...x", "x..y", "CONSOLE", "con2", "COM10", "LPT", "nul_", "a b", " lead", "\xc3\xa9t\xc3\xa9", "COM\xc2\xb4"};
+	static const char *const bad[] = {"", ".", "..", ".. ", "...", "x.", "x ", "x. ", "C:", "C:x", "a:stream", "a::$DATA", "a\\b", "a/b", "a<b",
+	                                  "a>b", "a\"b", "a|b", "a?b", "a*b", "a\tb", "CON", "con", "Nul.txt", "aux.tar.gz", "PRN ", "COM1", "lpt9.log",
+	                                  "COM0", "COM1 .txt", "CONIN$", "conout$.x", "COM\xc2\xb9", "LPT\xc2\xb3.txt"};
+	for (size_t i = 0; i < sizeof ok / sizeof *ok; i++)
+		if (!dsk_windows_name(ok[i], strlen(ok[i]))) fprintf(stderr, "dsk_windows_name(\"%s\") false\n", ok[i]), failed++;
+	for (size_t i = 0; i < sizeof bad / sizeof *bad; i++)
+		if (dsk_windows_name(bad[i], strlen(bad[i]))) fprintf(stderr, "dsk_windows_name(\"%s\") true\n", bad[i]), failed++;
+	CHECK(!dsk_windows_name("a\0b", 3));
+}
+
 int main(int argc, char **argv) {
+	test_windows_names();
 	test_words();
 	test_flyout();
 	test_json();
