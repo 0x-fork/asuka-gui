@@ -25,11 +25,128 @@ import (
 //
 //	[bin.notes]
 //	path = "cli"
+//
+// or are built by another toolchain, a command the CLI runs for each
+// target (a Go or Rust command-line tool the app ships):
+//
+//	[bin.notes-sync]
+//	build = ["go", "build", "-o", "{out}", "./cmd/sync"]
+//	env = { GOOS = "{goos}", GOARCH = "{goarch}", CGO_ENABLED = "0" }
+//
+//	[bin.notes-index]
+//	build = ["cargo", "build", "--release", "--target", "{target}"]
+//	output = "target/{target}/release/notes-index{exe}"
 
 // Bin is one of a project's programs.
 type Bin struct {
 	Name string // the executable's
-	Dir  string // its package's directory
+	Dir  string // its package's directory; "" for one Build makes
+	// Build is the command that builds it, for a program another
+	// toolchain builds; Env what it runs with. See Command.
+	Build []string
+	Env   map[string]string
+	// Output is where Build leaves the program, relative to the
+	// project, for a toolchain that picks its own place (cargo's
+	// target/); "": Build writes it to {out}.
+	Output string
+}
+
+// Built says whether the program is built by a command of its own,
+// not compiled from Asuka.
+func (b Bin) Built() bool { return len(b.Build) > 0 }
+
+// Command is the program's build for t into out: its arguments and the
+// environment over the CLI's. BuildVars' placeholders are replaced in
+// the arguments and Env's values, and are in the environment too, for a
+// script: ASUKA_OUT, ASUKA_OS, ASUKA_ARCH, ASUKA_EXE, ASUKA_TARGET,
+// ASUKA_GOOS, ASUKA_GOARCH (Env's own over them).
+func (b Bin) Command(t cbuild.Target, out string) (args, env []string) {
+	vars := BuildVars(t, cbuild.Host())
+	vars["{out}"] = out
+	r := replacer(vars)
+	for _, a := range b.Build {
+		args = append(args, r.Replace(a))
+	}
+	for _, k := range []string{"{out}", "{os}", "{arch}", "{exe}", "{target}", "{goos}", "{goarch}"} {
+		env = append(env, "ASUKA_"+strings.ToUpper(strings.Trim(k, "{}"))+"="+vars[k])
+	}
+	keys := make([]string, 0, len(b.Env))
+	for k := range b.Env {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		env = append(env, k+"="+r.Replace(b.Env[k]))
+	}
+	return args, env
+}
+
+// BuiltAt is where the build for t leaves the program: out, or Output
+// (its placeholders replaced) in the project's directory dir.
+func (b Bin) BuiltAt(t cbuild.Target, dir, out string) string {
+	if b.Output == "" {
+		return out
+	}
+	vars := BuildVars(t, cbuild.Host())
+	vars["{out}"] = out
+	return filepath.Join(dir, filepath.FromSlash(replacer(vars).Replace(b.Output)))
+}
+
+// BuildVars are the placeholders in a [bin]'s build, env and output, for
+// target t built on host: each toolchain's names for it, none of them
+// Asuka's internal ones ({out} besides, where the build writes the
+// program).
+//
+//	{os}      macos, windows, linux ([c.prebuilt]'s names)
+//	{arch}    arm64, x64
+//	{exe}     .exe on Windows, else nothing
+//	{target}  Rust's and clang's triple, the one Asuka's own toolchain
+//	          for t would pick: on its own system, the system's
+//	          (aarch64-apple-darwin, x86_64-pc-windows-msvc,
+//	          x86_64-unknown-linux-gnu); cross-built, as Zig cross-builds
+//	          (x86_64-pc-windows-gnu, MinGW, needing no Windows SDK;
+//	          x86_64-unknown-linux-musl, static)
+//	{goos}    Go's: darwin, windows, linux
+//	{goarch}  Go's: arm64, amd64
+func BuildVars(t, host cbuild.Target) map[string]string {
+	name, arch, exe := t.OS, t.Arch, ""
+	if name == "darwin" {
+		name = "macos"
+	}
+	if arch == "amd64" {
+		arch = "x64"
+	}
+	cpu := map[string]string{"arm64": "aarch64", "amd64": "x86_64", "386": "i686", "arm": "armv7"}[t.Arch]
+	native := t.OS == host.OS
+	var triple string
+	switch t.OS {
+	case "darwin":
+		triple = cpu + "-apple-darwin"
+	case "linux":
+		triple = cpu + "-unknown-linux-gnu"
+		if !native {
+			triple = cpu + "-unknown-linux-musl"
+		}
+	case "windows":
+		exe = ".exe"
+		switch {
+		case native:
+			triple = cpu + "-pc-windows-msvc"
+		case t.Arch == "arm64":
+			triple = "aarch64-pc-windows-gnullvm" // Rust's MinGW on arm64
+		default:
+			triple = cpu + "-pc-windows-gnu"
+		}
+	}
+	return map[string]string{"{os}": name, "{arch}": arch, "{exe}": exe, "{target}": triple, "{goos}": t.OS, "{goarch}": t.Arch}
+}
+
+func replacer(vars map[string]string) *strings.Replacer {
+	pairs := make([]string, 0, 2*len(vars))
+	for k, v := range vars {
+		pairs = append(pairs, k, v)
+	}
+	return strings.NewReplacer(pairs...)
 }
 
 // bins reads a project's [bin] tables.
@@ -39,8 +156,24 @@ func bins(dir string, m *pkgs.Manifest) ([]Bin, error) {
 		if !validBinName(name) {
 			return nil, fmt.Errorf("asuka.toml: [bin.%s]: a program's name is letters, digits, - and _", name)
 		}
+		if len(b.Build) > 0 {
+			if b.Path != "" {
+				return nil, fmt.Errorf("asuka.toml: [bin.%s]: path or build, not both: path is an Asuka program's directory, build the command another toolchain builds one with", name)
+			}
+			if b.Output != "" && filepath.IsAbs(filepath.FromSlash(b.Output)) {
+				return nil, fmt.Errorf("asuka.toml: [bin.%s]: output is relative to the project", name)
+			}
+			out = append(out, Bin{Name: name, Build: b.Build, Env: b.Env, Output: b.Output})
+			continue
+		}
+		if len(b.Env) > 0 {
+			return nil, fmt.Errorf("asuka.toml: [bin.%s]: env is for build's command", name)
+		}
+		if b.Output != "" {
+			return nil, fmt.Errorf("asuka.toml: [bin.%s]: output is where build's command leaves the program", name)
+		}
 		if b.Path == "" {
-			return nil, fmt.Errorf("asuka.toml: [bin.%s] needs path, its package's directory (path = \"cli\")", name)
+			return nil, fmt.Errorf("asuka.toml: [bin.%s] needs path, its package's directory (path = \"cli\"), or build, the command that builds it (build = [\"go\", \"build\", \"-o\", \"{out}\", \".\"])", name)
 		}
 		if filepath.IsAbs(b.Path) {
 			return nil, fmt.Errorf("asuka.toml: [bin.%s]: path is relative to the project", name)
@@ -83,6 +216,9 @@ func binRoot(dir string) string {
 func (p *Project) Bin(name string) (*Project, error) {
 	for _, b := range p.Bins {
 		if b.Name == name {
+			if b.Built() {
+				return nil, fmt.Errorf("[bin.%s] is built by its own command (asuka.toml's build): asuka run, test and build --bin take Asuka programs; asuka build puts it in the app", name)
+			}
 			if _, err := os.Stat(b.Dir); err != nil {
 				return nil, fmt.Errorf("[bin.%s]: %v", name, err)
 			}

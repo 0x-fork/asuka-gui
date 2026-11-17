@@ -444,7 +444,23 @@ strip = 1
 
 | 键 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `path` | 路径 | 必填 | 程序所在的目录，相对于 `asuka.toml`。程序用相对路径导入项目里的包（`import ../model`）。 |
+| `path` | 路径 | `path` 或 `build` | 程序所在的目录，相对于 `asuka.toml`。程序用相对路径导入项目里的包（`import ../model`）。 |
+| `build` | 字符串数组 | `path` 或 `build` | 代替 `path`：由其他工具链构建的程序（应用附带的 Go 或 Rust 工具）的构建命令，针对每个目标在项目目录中运行。`{out}` 是它写出可执行文件的位置；目标的占位符见下表。 |
+| `env` | 表 | 无 | `build` 的环境变量，覆盖 CLI 的；值中的占位符同样会被替换。 |
+| `output` | 路径 | `{out}` | `build` 把可执行文件留在哪里，相对于 `asuka.toml`。用于自己决定输出位置的工具链（cargo 的 `target/<triple>/release`）：CLI 会从那里取。 |
+
+`build`、`env` 和 `output` 里的目标，用各个工具链自己的名字：
+
+| 占位符 | Mac（Apple 芯片、Intel） | Linux | Windows |
+|---|---|---|---|
+| `{os}` | `macos` | `linux` | `windows` |
+| `{arch}` | `arm64`、`x64` | `arm64`、`x64` | `arm64`、`x64` |
+| `{exe}` | | | `.exe` |
+| `{target}`，Rust 和 clang 的目标三元组，在该系统上构建 | `aarch64-apple-darwin`、`x86_64-apple-darwin` | `aarch64-unknown-linux-gnu`、`x86_64-unknown-linux-gnu` | `aarch64-pc-windows-msvc`、`x86_64-pc-windows-msvc` |
+| `{target}`，从其他系统交叉构建 | | `aarch64-unknown-linux-musl`、`x86_64-unknown-linux-musl`（静态链接） | `aarch64-pc-windows-gnullvm`、`x86_64-pc-windows-gnu`（MinGW：不需要 Windows SDK） |
+| `{goos}`、`{goarch}`，Go 的 | `darwin`；`arm64`、`amd64` | `linux`；`arm64`、`amd64` | `windows`；`arm64`、`amd64` |
+
+`{target}` 和 Asuka 自己的工具链选的三元组一致：在目标系统上构建时用该系统自己的（Windows 上是 MSVC 的，也就是 rustup 在那里默认安装的），交叉构建时用 Zig 的。命令的环境变量里也有这些值，方便脚本使用：`ASUKA_OUT`、`ASUKA_OS`、`ASUKA_ARCH`、`ASUKA_EXE`、`ASUKA_TARGET`、`ASUKA_GOOS` 和 `ASUKA_GOARCH`。如果构建需要别的名字或参数（比如 Linux 上也用 musl，或只在某个系统上开启一个 feature），可以让 `build` 运行一个脚本，由脚本在运行时决定，见[由其他工具链构建的程序](programs.md#由其他工具链构建的程序)。
 
 ```toml
 [bin.notes]
@@ -452,9 +468,17 @@ path = "cli"
 
 [bin.notes-sync]
 path = "sync"
+
+[bin.notes-server]
+build = ["go", "build", "-o", "{out}", "./cmd/server"]
+env = { GOOS = "{goos}", GOARCH = "{goarch}", CGO_ENABLED = "0" }
+
+[bin.notes-index]
+build = ["cargo", "build", "--release", "--manifest-path", "index/Cargo.toml", "--target", "{target}"]
+output = "index/target/{target}/release/notes-index{exe}"
 ```
 
-`asuka run --bin notes` 和 `asuka build --bin notes` 分别运行和构建其中一个（只有一个时可以省略 `--bin`），`asuka test` 会把每个程序的测试和应用的测试一起运行。桌面构建会把它们放进应用：Mac 的 `Contents/Helpers`、Linux 的 `bin`、Windows `.exe` 的旁边；手机和 Web 会忽略它们。应用自带的程序把数据保存在应用保存的地方。见[应用自带的程序](programs.md#应用自带的程序)。
+`asuka run --bin notes` 和 `asuka build --bin notes` 分别运行和构建其中一个（只有一个时可以省略 `--bin`），`asuka test` 会把每个程序的测试和应用的测试一起运行。桌面构建会把它们放进应用：Mac 的 `Contents/Helpers`、Linux 的 `bin`、Windows `.exe` 的旁边；手机和 Web 会忽略它们；`asuka dev` 启动时也会构建一次。应用用 `command.bundled(name)`（std/command）找到它们。应用自带的程序把数据保存在应用保存的地方。`asuka run`、`test` 和 `build --bin` 处理 Asuka 程序；由 `build` 构建的程序由它自己的工具链运行和测试。见[应用自带的程序](programs.md#应用自带的程序)。
 
 ## 环境变量
 

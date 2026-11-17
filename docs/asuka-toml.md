@@ -520,7 +520,30 @@ none.
 
 | Key | Type | Default | What it is |
 |---|---|---|---|
-| `path` | path | required | The program's directory, relative to `asuka.toml`. It imports the project's packages relatively (`import ../model`). |
+| `path` | path | `path` or `build` | The program's directory, relative to `asuka.toml`. It imports the project's packages relatively (`import ../model`). |
+| `build` | strings | `path` or `build` | Instead of `path`: the command that builds a program another toolchain makes (a Go or Rust tool the app ships), run in the project's directory for each target. `{out}` is where it writes the executable; the target's are below. |
+| `env` | table | none | `build`'s environment, over the CLI's, with the same placeholders replaced in its values. |
+| `output` | path | `{out}` | Where `build` leaves the executable, relative to `asuka.toml`, for a toolchain that picks its own place (cargo's `target/<triple>/release`): the CLI takes it from there. |
+
+The target in `build`, `env` and `output`, in each toolchain's names:
+
+| Placeholder | Mac (Apple silicon, Intel) | Linux | Windows |
+|---|---|---|---|
+| `{os}` | `macos` | `linux` | `windows` |
+| `{arch}` | `arm64`, `x64` | `arm64`, `x64` | `arm64`, `x64` |
+| `{exe}` | | | `.exe` |
+| `{target}`, Rust's and clang's triple, built there | `aarch64-apple-darwin`, `x86_64-apple-darwin` | `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-gnu` | `aarch64-pc-windows-msvc`, `x86_64-pc-windows-msvc` |
+| `{target}`, cross-built from another system | | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl` (static) | `aarch64-pc-windows-gnullvm`, `x86_64-pc-windows-gnu` (MinGW: no Windows SDK needed) |
+| `{goos}`, `{goarch}`, Go's | `darwin`; `arm64`, `amd64` | `linux`; `arm64`, `amd64` | `windows`; `arm64`, `amd64` |
+
+`{target}` is the triple Asuka's own toolchain picks: the system's own
+on that system (MSVC's on Windows, as rustup installs by default there),
+and Zig's when it cross-builds. The command's environment has them all
+too, for a script: `ASUKA_OUT`, `ASUKA_OS`, `ASUKA_ARCH`, `ASUKA_EXE`,
+`ASUKA_TARGET`, `ASUKA_GOOS` and `ASUKA_GOARCH`. A build that wants
+other names or flags (musl on Linux too, a feature on one system) runs
+a script that picks them; see [Programs another toolchain
+builds](programs.md#programs-another-toolchain-builds).
 
 ```toml
 [bin.notes]
@@ -528,14 +551,26 @@ path = "cli"
 
 [bin.notes-sync]
 path = "sync"
+
+[bin.notes-server]
+build = ["go", "build", "-o", "{out}", "./cmd/server"]
+env = { GOOS = "{goos}", GOARCH = "{goarch}", CGO_ENABLED = "0" }
+
+[bin.notes-index]
+build = ["cargo", "build", "--release", "--manifest-path", "index/Cargo.toml", "--target", "{target}"]
+output = "index/target/{target}/release/notes-index{exe}"
 ```
 
 `asuka run --bin notes` and `asuka build --bin notes` run and build one
 (`--bin` left out when there's one), `asuka test` runs each one's tests
 with the app's. A desktop build puts them in the app: the Mac's
 `Contents/Helpers`, Linux's `bin`, beside the Windows `.exe`; phones and
-the web leave them out. An app's program keeps its data where the app
-does. See [An app's programs](programs.md#an-apps-programs).
+the web leave them out, and `asuka dev` builds them once as it starts.
+The app finds one with `command.bundled(name)` (std/command). An
+app's program keeps its data where the app does. `asuka run`, `test`
+and `build --bin` take the Asuka ones; a program `build` makes is its
+toolchain's to run and test. See [An app's
+programs](programs.md#an-apps-programs).
 
 ## The environment
 

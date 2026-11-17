@@ -34,10 +34,20 @@ type Manifest struct {
 	Bin map[string]BinTarget `json:"bin"`
 }
 
-// BinTarget is a program of a project's: [bin.<name>] path = "cli".
+// BinTarget is a program of a project's: [bin.<name>] path = "cli", or
+// one another toolchain builds: build = ["go", "build", "-o", "{out}", "."].
 type BinTarget struct {
 	// Path is its package's directory, relative to the project's.
 	Path string `json:"path"`
+	// Build is the command that builds it, run in the project's directory,
+	// with placeholders for the target ({out}, {os}, {arch}, {target}...:
+	// appbuild.BuildVars) in its arguments, Env's values and Output.
+	Build []string `json:"build"`
+	// Env is what Build runs with over the CLI's environment.
+	Env map[string]string `json:"env"`
+	// Output is where Build leaves the program, relative to the project,
+	// when it can't write it to {out} (cargo's target/<triple>/release).
+	Output string `json:"output"`
 }
 
 // ReadManifest reads dir's asuka.toml (an empty manifest when there's

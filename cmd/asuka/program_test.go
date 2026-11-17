@@ -285,3 +285,95 @@ func TestBundlePrograms(t *testing.T) {
 		}
 	}
 }
+
+// A [bin] another toolchain builds: its command runs for each target in
+// the project's directory, {out}, {os} and {arch} replaced, and what it
+// writes goes in the app as an Asuka program's executable does.
+func TestBundleBuiltPrograms(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the command is sh's")
+	}
+	dir := filepath.Join(t.TempDir(), "proj")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte(`name = "Proj"
+
+[bin.gate]
+build = ["sh", "-c", "printf '%s %s %s %s' {os} {arch} {target} \"$WHERE\" > {out}"]
+env = { WHERE = "{goos}/{goarch}" }
+
+# cargo's way: it leaves the program where it likes, and output says where.
+[bin.index]
+build = ["sh", "-c", "mkdir -p target/{target}/release && printf {target} > target/{target}/release/index{exe}"]
+output = "target/{target}/release/index{exe}"
+
+# A script of its own, the target in its environment.
+[bin.script]
+build = ["sh", "build.sh"]
+`), 0o644)
+	os.WriteFile(filepath.Join(dir, "build.sh"), []byte(`case $ASUKA_OS in
+  windows) how=win ;;
+  *) how=plain ;;
+esac
+printf '%s %s %s' "$how" "$ASUKA_TARGET" "$ASUKA_EXE" > "$ASUKA_OUT"
+`), 0o644)
+	os.WriteFile(filepath.Join(dir, "app.asuka"), []byte("app { Text(\"hi\") }\n"), 0o644)
+	app, err := loadApp(dir, thisComputer())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b := app.proj.Bins; len(b) != 3 || !b[0].Built() || !b[1].Built() || !b[2].Built() {
+		t.Fatalf("bins: %+v", b)
+	}
+	if _, err := app.proj.Bin("gate"); err == nil || !strings.Contains(err.Error(), "its own command") {
+		t.Fatalf("Bin(gate): %v", err)
+	}
+	for _, c := range []struct {
+		t                   cbuild.Target
+		gate, index, script string // the files
+		want, built, ran    string // what's in them
+	}{
+		// {target}, TARGET: the triple for here (TestBuildVars has each).
+		{cbuild.Target{OS: "linux", Arch: "amd64"}, "gate", "index", "script", "linux x64 TARGET linux/amd64", "TARGET", "plain TARGET "},
+		{cbuild.Target{OS: "windows", Arch: "arm64"}, "gate.exe", "index.exe", "script.exe", "windows arm64 TARGET windows/arm64", "TARGET", "win TARGET .exe"},
+	} {
+		triple := appbuild.BuildVars(c.t, cbuild.Host())["{target}"]
+		c.want = strings.ReplaceAll(c.want, "TARGET", triple)
+		c.built = strings.ReplaceAll(c.built, "TARGET", triple)
+		c.ran = strings.ReplaceAll(c.ran, "TARGET", triple)
+		out := filepath.Join(t.TempDir(), "bundle")
+		got, err := bundlePrograms(app, c.t, nil, out, false)
+		if err != nil {
+			t.Fatalf("%s: %v", c.t.OS, err)
+		}
+		if len(got) != 3 || got[0] != filepath.Join(out, c.gate) || got[1] != filepath.Join(out, c.index) || got[2] != filepath.Join(out, c.script) {
+			t.Fatalf("%s: %v", c.t.OS, got)
+		}
+		if b, _ := os.ReadFile(got[0]); string(b) != c.want {
+			t.Fatalf("%s: %q, want %q", c.t.OS, b, c.want)
+		}
+		if b, _ := os.ReadFile(got[1]); string(b) != c.built {
+			t.Fatalf("%s: %q, want %q", c.t.OS, b, c.built)
+		}
+		if b, _ := os.ReadFile(got[2]); string(b) != c.ran {
+			t.Fatalf("%s: %q, want %q", c.t.OS, b, c.ran)
+		}
+	}
+}
+
+// A [bin] is an Asuka program's directory or a command, not both.
+func TestBinPathOrBuild(t *testing.T) {
+	for _, c := range []struct{ toml, err string }{
+		{"[bin.x]\npath = \"cli\"\nbuild = [\"true\"]\n", "not both"},
+		{"[bin.x]\npath = \"cli\"\nenv = { A = \"b\" }\n", "env is for build"},
+		{"[bin.x]\n", "or build"},
+		{"[bin.x]\npath = \"cli\"\noutput = \"x\"\n", "output is where build"},
+		{"[bin.x]\nbuild = [\"true\"]\noutput = \"/x\"\n", "output is relative"},
+	} {
+		dir := t.TempDir()
+		os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte(c.toml), 0o644)
+		os.WriteFile(filepath.Join(dir, "app.asuka"), []byte("app { Text(\"hi\") }\n"), 0o644)
+		if _, err := appbuild.Load(dir); err == nil || !strings.Contains(err.Error(), c.err) {
+			t.Fatalf("%q: %v, want %q", c.toml, err, c.err)
+		}
+	}
+}
