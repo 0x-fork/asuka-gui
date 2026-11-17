@@ -138,15 +138,18 @@ static void buf_many(void) {
 
 // Two threads that panic at once: one panic is reported, whole, and the
 // process ends with it (not the other's message over its own, or both
-// written into each other's record). The first's hook lets the second
-// panic before it writes.
+// written into each other's record). The first is in its hook before
+// the second panics (so the order is the test's, not the scheduler's),
+// and its hook gives the second time to get into ak_panic before it
+// writes: the second must wait, whenever it gets there.
 static ak_mutex two_mu = AK_MUTEX_INIT;
 static ak_cond two_cond;
-static bool second_going;
+static bool first_in_hook;
 
 static void slow_hook(const char *msg) {
 	ak_mutex_lock(&two_mu);
-	while (!second_going) ak_cond_wait(&two_cond, &two_mu);
+	first_in_hook = true;
+	ak_cond_broadcast(&two_cond);
 	ak_mutex_unlock(&two_mu);
 	struct timespec ts = {0, 100 * 1000000};  // for the second to get in
 	nanosleep(&ts, NULL);
@@ -157,8 +160,7 @@ static void slow_hook(const char *msg) {
 static void second_panics(void *arg) {
 	AK_UNUSED(arg);
 	ak_mutex_lock(&two_mu);
-	second_going = true;
-	ak_cond_broadcast(&two_cond);
+	while (!first_in_hook) ak_cond_wait(&two_cond, &two_mu);
 	ak_mutex_unlock(&two_mu);
 	ak_panic("second");
 }
