@@ -35,10 +35,12 @@ var operandKinds = map[string][]bc.Kind{
 }
 
 // discards are the opcodes whose result register may be none (bc.None):
-// the value is let go of. No other operand names none.
+// the value is let go of. No other operand names none. A read of a
+// cell, a memo or an accessor (CGET, CPEEK, CTAKE, MREAD, AGET) never
+// is: its value's kind is the register's, and with none to say it, a
+// reference would be dropped without its release.
 var discards = map[string]bool{
-	"CALL": true, "CALLC": true, "CALLB": true, "CALLI": true, "CGET": true, "CPEEK": true,
-	"CTAKE": true, "MREAD": true, "AGET": true, "CALLU": true, "AWAIT": true,
+	"CALL": true, "CALLC": true, "CALLB": true, "CALLI": true, "CALLU": true, "AWAIT": true,
 }
 
 // Validate checks what the lowering promises of its functions: each
