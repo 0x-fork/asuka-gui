@@ -8,6 +8,9 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <time.h>
+#include <pthread.h>
+#include <stdatomic.h>
+#include <fcntl.h>
 
 static uint8_t got[64];
 static size_t got_len;
@@ -137,6 +140,50 @@ TEST(the_session) {
 	expect_hello(c);
 	close(c);
 	close(ln);
+}
+
+// A frame sent from another thread (a log) while its connection ends is
+// written to that connection, still open: its socket isn't closed under
+// the sender, where its number, reused by a file opened since, would get
+// the frame.
+static atomic_int sending_to = -1;
+static atomic_bool sent_to_open;
+
+static void while_sending(int s) {
+	ak_dev_test_sending = NULL;
+	sending_to = s;
+	// The CLI closes the connection; wait for the session to end.
+	while (ak_dev_connected()) {
+		struct timespec ts = {0, 1000000};
+		nanosleep(&ts, NULL);
+	}
+	atomic_store(&sent_to_open, fcntl(s, F_GETFD) != -1);
+}
+
+static void *send_log(void *arg) {
+	AK_UNUSED(arg);
+	ak_dev_send(AK_DEV_LOG, "\x01x", 2);
+	return NULL;
+}
+
+TEST(send_while_the_connection_ends) {
+	int port = free_port();
+	char err[128];
+	REQUIRE(ak_dev_listen(port, "{\"platform\":\"test\"}", false, err, sizeof err));
+	int t = socket(AF_INET, SOCK_STREAM, 0);
+	struct sockaddr_in ta = {.sin_family = AF_INET, .sin_port = htons((uint16_t)port), .sin_addr.s_addr = htonl(0x7f000001)};
+	REQUIRE(connect(t, (struct sockaddr *)&ta, sizeof ta) == 0);
+	expect_hello(t);
+	ak_dev_test_sending = while_sending;
+	pthread_t th;
+	REQUIRE(pthread_create(&th, NULL, send_log, NULL) == 0);
+	while (sending_to < 0) {
+		struct timespec ts = {0, 1000000};
+		nanosleep(&ts, NULL);
+	}
+	close(t);
+	pthread_join(th, NULL);
+	CHECK(atomic_load(&sent_to_open));
 }
 
 T_MAIN()

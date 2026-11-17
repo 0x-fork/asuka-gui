@@ -60,4 +60,10 @@ bool ak_dev_connected(void);
 // (the web's page).
 bool ak_dev_player(void);
 
+#if defined(AK_TEST)
+// ak_dev_test_sending, when set, is called by ak_dev_send with the socket
+// it read, before it writes (tests: a connection ending meanwhile).
+extern void (*ak_dev_test_sending)(int sock);
+#endif
+
 #endif
