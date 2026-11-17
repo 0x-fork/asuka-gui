@@ -320,6 +320,7 @@ static void keep_states(void) {
 static int dev_load(const uint8_t *p, size_t n, bool fresh, uint32_t *micros, char **err) {
 	if (err) *err = NULL;
 	dev_player = true;
+	ak_diag_enabled = true;  // a development build: the run-time diagnostics (rfcs/0015)
 	keep_states();
 	int64_t t0 = ak_now_ns();
 	if (load_module(p, n, fresh, err) != 0) return -1;
@@ -340,6 +341,7 @@ int asuka_dev_connect(const char *host_name, int port, const char *hello, char *
 	keep_states();
 	ak_dev_set_reload(reload);
 	dev_player = true;
+	ak_diag_enabled = true;  // a development build: the run-time diagnostics (rfcs/0015)
 	char msg[256];
 	if (!ak_dev_connect(host_name, port, hello, true, msg, sizeof msg)) {
 		fail(err, msg);
@@ -357,6 +359,7 @@ int asuka_dev_listen(int port, const char *hello, char **err) {
 	keep_states();
 	ak_dev_set_reload(reload);
 	dev_player = true;
+	ak_diag_enabled = true;  // a development build: the run-time diagnostics (rfcs/0015)
 	char msg[256];
 	if (!ak_dev_listen(port, hello, true, msg, sizeof msg)) {
 		fail(err, msg);

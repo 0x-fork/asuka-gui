@@ -78,6 +78,9 @@ struct ak_comp {
 	// panic of a loop.
 	const char *wrote;
 	size_t wrote_len;
+	// diag_flush: the flush a render effect last ran in, or will (its
+	// number + 1: 0 is never), with ak_diag_enabled (effect-in-effect-pass).
+	uint32_t diag_flush;
 	ak_owner owner;
 };
 
@@ -112,6 +115,11 @@ typedef struct ak_graph {
 	void *panic_ctx;
 	uintptr_t main_thread;
 	bool thread_bound;
+	// Diagnostics (ak_diag_enabled): the number of flushes ended, and the
+	// user effect that wrote last in the pass running (effect-in-effect-pass).
+	uint32_t flush_id;
+	ak_comp *diag_writer;
+	uint64_t enqueued;  // effects ever queued (ak_signal_enqueued)
 } ak_graph;
 
 extern ak_graph *ak_sig;
@@ -141,7 +149,11 @@ void ak_sig_memo_unwatched(ak_comp *m);
 void ak_sig_enqueue(ak_comp *e);
 void ak_sig_flush(void);
 const char *ak_sig_describe(const ak_comp *c, char *buf, size_t n);
-void ak_sig_panic(const char *fmt, ...) AK_PRINTF(1, 2);
+// ak_sig_panic reports what the graph can't go on with: to the panic hook
+// (ak_signal_set_panic_hook), else ak_panic. code, when set, is the
+// app's mistake's diagnostic code (effect-loop): the message starts
+// error[code]:, in every build, so a crash report says which.
+void ak_sig_panic(const char *code, const char *fmt, ...) AK_PRINTF(2, 3);
 
 // owner.c
 void ak_sig_owner_attach(ak_owner *o, ak_owner *parent);

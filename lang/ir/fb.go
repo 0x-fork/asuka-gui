@@ -782,8 +782,15 @@ func (b *fb) makeClosure(s closure) int {
 
 // thunk is a closure of no arguments returning e's value: a binding.
 func (b *fb) thunk(ctx *check.FuncCtx, e syntax.Expr, t check.Type) int {
+	return b.thunkNamed("binding", ctx, e, t)
+}
+
+// thunkNamed is thunk, its function named name: what the core's
+// diagnostics call the site ("let total": Counter's let total at
+// app.asuka:4).
+func (b *fb) thunkNamed(name string, ctx *check.FuncCtx, e syntax.Expr, t check.Type) int {
 	k := b.kind(t)
-	return b.makeClosure(closure{name: "binding", ctxs: []*check.FuncCtx{ctx}, ret: k, throws: true, body: func(c *fb) {
+	return b.makeClosure(closure{name: name, ctxs: []*check.FuncCtx{ctx}, ret: k, throws: true, body: func(c *fb) {
 		c.at(e)
 		r := c.value(e, -1)
 		c.ret(r, k)

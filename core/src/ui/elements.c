@@ -7,6 +7,8 @@
 // trips, and IME composition is never disturbed.
 #include "ui/ui_ext.h"
 
+#include <stdio.h>
+
 // ---- Helpers ----
 
 bool ak_ui_eq(ak_val a, ak_val b, ak_kind k) { return ak_val_eq(a, b, k); }
@@ -1129,6 +1131,17 @@ static void binding_drop(void *ctx) {
 	ak_free(b);
 }
 
+// binding_describe names a binding as its source says it: "Card's text
+// binding at card.asuka:30".
+static void binding_describe(void *ctx, char *buf, size_t n) {
+	binding *b = ctx;
+	char what[64];
+	snprintf(what, sizeof what, "%s binding", ak_key_names[b->key]);
+	ak_vm_where(b->thunk, what, buf, n);
+}
+
+static const void *binding_site(void *ctx) { return ak_vm_where_site(((binding *)ctx)->thunk); }
+
 static void bind_key(ak_view *v, uint16_t key, ak_closure *thunk, bool outer) {
 	check_key(v, key);
 	if (outer && key >= AK_KEY__STYLE_END) ak_panic("ui: %s isn't a style key", ak_key_names[key]);
@@ -1137,7 +1150,7 @@ static void bind_key(ak_view *v, uint16_t key, ak_closure *thunk, bool outer) {
 	b->thunk = ak_retain(thunk);
 	b->key = key;
 	b->outer = outer;
-	b->info = (ak_comp_info){.drop = binding_drop, .label = ak_key_names[key]};
+	b->info = (ak_comp_info){.drop = binding_drop, .label = ak_key_names[key], .describe = binding_describe, .site = binding_site};
 	ak_effect_new(binding_run, b, AK_EFFECT_RENDER, &b->info);
 }
 

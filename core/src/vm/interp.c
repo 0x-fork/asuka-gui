@@ -134,6 +134,26 @@ void ak_vm_traceback(char *buf, size_t cap) {
 	}
 }
 
+// ak_vm_here names where the VM is, as its source says it: the
+// innermost frame of the app's that runs as bytecode, "Grid's on press
+// at app.asuka:9" (ak_vm_where's form, at the frame's line).
+void ak_vm_here(char *buf, size_t cap) {
+	snprintf(buf, cap, "the app");
+	ak_co *co = cur_co();
+	for (uint32_t i = co->nframes; i-- > 0;) {
+		ak_frame *fr = &co->frames[i];
+		if (fr->fn->resume) continue;
+		const char *name = fr->fn->name->data;
+		size_t owner = strcspn(name, "/");
+		const char *last = strrchr(name, '/');
+		const char *what = last ? last + 1 : name;
+		uint32_t line = line_of(fr->fn, fr->pc ? fr->pc - 1 : 0);
+		if (name[owner]) snprintf(buf, cap, "%.*s's %s at %s:%u", (int)owner, name, what, fr->fn->file->data, line);
+		else snprintf(buf, cap, "%s at %s:%u", what, fr->fn->file->data, line);
+		return;
+	}
+}
+
 // ---- Interface calls ----
 
 const ak_func *ak_vm_method(void *obj, ak_str *name) {

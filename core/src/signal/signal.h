@@ -91,6 +91,10 @@ typedef struct ak_comp_info {
 	// describe, when set, names it in panics instead of label, into buf
 	// ("Picker's effect at picker.asuka:12"): made only when it's said.
 	void (*describe)(void *ctx, char *buf, size_t n);
+	// site, when set, is the place in the app's source it's made at (a
+	// static address: its function): what a run-time diagnostic is
+	// reported once by (ak_diag_first). Unset: the computation itself.
+	const void *(*site)(void *ctx);
 } ak_comp_info;
 
 // ak_memo_new makes a memo owned by the current owner (by the caller
@@ -314,6 +318,25 @@ void ak_signal_bind_thread(void);
 // thread may also run (the app's language, read by formatting) reads
 // such state from a plain signal and tracks it only here.
 bool ak_signal_on_main_thread(void);
+// Run-time diagnostics (rfcs/0015; base.h's ak_diag), kept only while
+// ak_diag_enabled.
+//
+// effect-in-effect-pass: a render effect (a binding) that runs again in
+// the flush it ran in, because a user effect wrote what it reads, is
+// reported, naming both, once per pair of sites.
+//
+// ak_signal_enqueued counts the effects queued to run, ever: what it
+// grows by across a write is how many the write runs (wide-fanout).
+// ak_signal_each_reader calls fn with each computation that read n.
+uint64_t ak_signal_enqueued(void);
+void ak_signal_each_reader(const ak_node *n, void (*fn)(void *ctx, const ak_comp *c), void *ctx);
+// ak_comp_reads reports whether c's last run read n: itself, or through
+// the memos it read (a load whose arguments read another's answer).
+bool ak_comp_reads(const ak_comp *c, const ak_node *n);
+// ak_comp_name names c as panics do; ak_comp_site is its site.
+const char *ak_comp_name(const ak_comp *c, char *buf, size_t n);
+const void *ak_comp_site(const ak_comp *c);
+
 // ak_signal_set_panic_hook makes the graph's panics (an infinite loop of
 // effects, a write inside a memo or off the main thread, an uncaught
 // error) call fn instead of aborting. When fn returns, the graph gives

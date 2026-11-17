@@ -34,7 +34,7 @@ test "an effect's loop the compiler can't see" {
 	if err == nil {
 		t.Fatalf("the runner should fail:\n%s", out)
 	}
-	const want = "signal: Looper's effect at loop.asuka:5 is still writing runs after 100 passes"
+	const want = "error[effect-loop]: signal: Looper's effect at loop.asuka:5 is still writing runs after 100 passes"
 	if !strings.Contains(out, want) || strings.Contains(out, "unreached") {
 		t.Fatalf("got:\n%s\nwant %q", out, want)
 	}

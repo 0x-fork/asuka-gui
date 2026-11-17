@@ -19,6 +19,8 @@
 #define _POSIX_C_SOURCE 200809L  // getcwd under -std=c17
 #include "ui/ui_ext.h"
 
+#include <stdio.h>
+
 #ifdef _WIN32
 #include <direct.h>  // _getcwd
 #define getcwd _getcwd
@@ -438,13 +440,22 @@ static void lbinding_drop(void *ctx) {
 	ak_free(b);
 }
 
+static void lbinding_describe(void *ctx, char *buf, size_t n) {
+	lbinding *b = ctx;
+	char what[64];
+	snprintf(what, sizeof what, "%s binding", b->key ? ak_key_names[b->key] : "style condition");
+	ak_vm_where(b->thunk, what, buf, n);
+}
+
+static const void *lbinding_site(void *ctx) { return ak_vm_where_site(((lbinding *)ctx)->thunk); }
+
 static void layer_binding(ak_view *v, uint16_t layer, uint16_t key, ak_closure *thunk) {
 	lbinding *b = ak_alloc(sizeof *b);
 	b->v = ak_retain(v);
 	b->thunk = ak_retain(thunk);
 	b->layer = layer;
 	b->key = key;
-	b->info = (ak_comp_info){.drop = lbinding_drop, .label = key ? ak_key_names[key] : "style condition"};
+	b->info = (ak_comp_info){.drop = lbinding_drop, .label = key ? ak_key_names[key] : "style condition", .describe = lbinding_describe, .site = lbinding_site};
 	ak_effect_new(lbinding_run, b, AK_EFFECT_RENDER, &b->info);
 }
 

@@ -312,7 +312,7 @@ void ak_sig_handle_error(ak_owner *o, void *err) {
 	ak_owner *c = o ? o->catcher : NULL;
 	if (!c) {
 		if (g->on_error) g->on_error(g->on_error_ctx, err);
-		else ak_sig_panic("signal: an error no catcher handled (%p)", err);
+		else ak_sig_panic(NULL, "signal: an error no catcher handled (%p)", err);
 		ak_sig_err_release(err);
 		return;
 	}

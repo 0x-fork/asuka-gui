@@ -52,6 +52,16 @@ const char *ak_module_test(const ak_module *m, uint32_t i, uint32_t *func);
 const ak_shape *ak_module_shape(const ak_module *m, uint32_t i);
 const ak_shape *ak_module_shape_named(const ak_module *m, const char *name);
 const char *ak_func_name(const ak_func *f);
+// ak_vm_where names the site of the program c is, as its source says it:
+// "Picker's effect at picker.asuka:12" (its function's owner, what it is
+// or what says, and the line it's made at), into buf: for panics and the
+// run-time diagnostics (ak_diag). ak_vm_where_site is the site itself,
+// what its reports are kept once by (ak_diag_first).
+void ak_vm_where(const ak_closure *c, const char *what, char *buf, size_t n);
+const void *ak_vm_where_site(const ak_closure *c);
+// ak_vm_here names where the VM is running now, in the same form, at the
+// line it's at ("Grid's on press at app.asuka:9").
+void ak_vm_here(char *buf, size_t n);
 bool ak_func_async(const ak_func *f);
 // ak_closure_async reports whether calling c (ak_call) starts a task and
 // returns its future, rather than running it to its end.

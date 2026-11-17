@@ -58,21 +58,29 @@ func TestC(t *testing.T) {
 			if err := cc.Link(append(obj, objs...), exe, link); err != nil {
 				t.Fatal(err)
 			}
-			cmd := exec.Command(exe)
-			cmd.Dir = filepath.Join(root, "test")
-			cmd.Env = append(os.Environ(), "ASUKA_ROOT="+filepath.Dir(root))
-			if testing.Verbose() {
-				cmd.Env = append(cmd.Env, "T_VERBOSE=1")
-			}
-			if *updateKnown {
-				cmd.Env = append(cmd.Env, "ASUKA_UPDATE_KNOWN=1")
-			}
-			out, err := cmd.CombinedOutput()
-			if err != nil || testing.Verbose() {
-				t.Logf("%s", out)
-			}
-			if err != nil {
-				t.Fatal(err)
+			// Twice: as a release build's core, and with the run-time
+			// diagnostics on, as a development build's (rfcs/0015): the
+			// tests, the allocation counts among them, hold for both.
+			for _, diag := range []bool{false, true} {
+				cmd := exec.Command(exe)
+				cmd.Dir = filepath.Join(root, "test")
+				cmd.Env = append(os.Environ(), "ASUKA_ROOT="+filepath.Dir(root))
+				if diag {
+					cmd.Env = append(cmd.Env, "AK_TEST_DIAG=1")
+				}
+				if testing.Verbose() {
+					cmd.Env = append(cmd.Env, "T_VERBOSE=1")
+				}
+				if *updateKnown && !diag {
+					cmd.Env = append(cmd.Env, "ASUKA_UPDATE_KNOWN=1")
+				}
+				out, err := cmd.CombinedOutput()
+				if err != nil || testing.Verbose() {
+					t.Logf("diagnostics %v:\n%s", diag, out)
+				}
+				if err != nil {
+					t.Fatalf("diagnostics %v: %v", diag, err)
+				}
 			}
 		})
 	}

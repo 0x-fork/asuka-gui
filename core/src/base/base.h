@@ -85,6 +85,38 @@ AK_NORETURN void ak_panic(const char *fmt, ...) AK_PRINTF(1, 2);
 // (platform/crash's record keeps it).
 extern void (*ak_panic_hook)(const char *msg);
 
+// Run-time diagnostics (rfcs/0015): what the core reports of the app as
+// it runs, each with its code in lang/diag's table (load-waterfall,
+// long-hold...). The detectors run only when ak_diag_enabled, which the
+// development hosts (asuka dev's players) and the fake host (asuka test,
+// asuka run) set: off, each costs one predictable branch, outside the
+// loops over the graph's nodes, and the bookkeeping they need isn't kept.
+extern bool ak_diag_enabled;
+
+// ak_diag reports a diagnostic: its code, a message, and the places in
+// the app's source it concerns (each a site's label: "Profile's load at
+// profile.asuka:8"). It goes to the handler (by default: stderr, which
+// a player sends to asuka dev with its logs). Main thread.
+void ak_diag(const char *code, const char *msg, const char *const *where, int nwhere);
+typedef void (*ak_diag_fn)(void *ctx, const char *code, const char *msg, const char *const *where, int nwhere);
+// ak_diag_set_handler sets where diagnostics go (NULL: stderr).
+void ak_diag_set_handler(ak_diag_fn fn, void *ctx);
+// ak_diag_format writes a diagnostic as a terminal shows it into buf:
+//
+//	warning[long-hold]: Profile's load has held …
+//	  --> Profile's load at profile.asuka:8
+//	  = see https://asuka.egoist.dev/docs/errors/long-hold
+void ak_diag_format(char *buf, size_t n, const char *code, const char *msg, const char *const *where, int nwhere);
+// ak_diag_first reports whether site (a static address: a function of
+// the app's) hasn't had code reported in this run yet, and notes that it
+// has: each is reported once per site, so a list's thousand rows say it
+// once. ak_diag_reset starts a run (a test, a reload) afresh.
+bool ak_diag_first(const void *site, const char *code);
+void ak_diag_reset(void);
+// ak_panic_code is ak_panic of a diagnostic: the message says its code
+// (error[effect-loop]: …), in every build, so a crash report says which.
+AK_NORETURN void ak_panic_code(const char *code, const char *fmt, ...) AK_PRINTF(2, 3);
+
 #define AK_ASSERT(c) do { if (AK_UNLIKELY(!(c))) ak_panic("%s:%d: assertion failed: %s", __FILE__, __LINE__, #c); } while (0)
 
 // A growable array: `AK_VEC(T) v = {0};` then ak_vec_push(&v, x).

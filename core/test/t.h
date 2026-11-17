@@ -4,6 +4,7 @@
 #ifndef AK_T_H
 #define AK_T_H
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,6 +17,9 @@ extern t_case t_cases[];
 extern int t_ncases;
 extern int t_failed;
 extern const char *t_current;
+// AK_TEST_DIAG=1: the run-time diagnostics on (base.h), as in a
+// development build; core_test.go runs every test both ways.
+extern bool ak_diag_enabled;
 
 #define TEST(name) \
 	static void test_##name(void); \
@@ -33,6 +37,7 @@ extern const char *t_current;
 	t_case t_cases[4096]; int t_ncases; int t_failed; const char *t_current; \
 	int main(int argc, char **argv) { \
 		int ran = 0; \
+		if (getenv("AK_TEST_DIAG")) ak_diag_enabled = true; \
 		for (int i = 0; i < t_ncases; i++) { \
 			if (argc > 1 && strstr(t_cases[i].name, argv[1]) == NULL) continue; \
 			t_current = t_cases[i].name; \

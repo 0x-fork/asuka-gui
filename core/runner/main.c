@@ -9,8 +9,13 @@
 // settled): what it made and didn't free, such as a reference cycle.
 // With -count, each test's line also says how many allocations it made
 // (ak_alloc_count): work counted, for comparing two builds of the core.
+// It's a development build: the core's run-time diagnostics (rfcs/0015)
+// are on, printed to stderr as a terminal shows them; with -diag-json,
+// each is a line of JSON on stdout instead ({"diag": code, "message",
+// "where", "test"}), which asuka test reads. -no-diag turns them off (a
+// release build's core: the allocation counts without the detectors).
 //
-//	asuka-run [-leaks] [-count] [-test [pattern]] module.akb
+//	asuka-run [-leaks] [-count] [-no-diag] [-diag-json] [-test [pattern]] module.akb
 #include "vm/vm.h"
 #include "rt/sched.h"
 #include "signal/signal.h"
@@ -47,6 +52,48 @@ static void show_app(ak_owner *o, const ak_func *f);
 static int failures;
 static const char *current;
 static char failure[2048];
+static bool diag_json;
+
+static void json_str(const char *s) {
+	putchar('"');
+	for (; *s; s++) {
+		unsigned char c = (unsigned char)*s;
+		if (c == '"' || c == '\\') printf("\\%c", c);
+		else if (c < 0x20) printf("\\u%04x", c);
+		else putchar(c);
+	}
+	putchar('"');
+}
+
+// on_diag prints a run-time diagnostic: as a terminal shows it, to
+// stderr, or as a line of JSON on stdout (-diag-json), with the test
+// it's in.
+static void on_diag(void *ctx, const char *code, const char *msg, const char *const *where, int nwhere) {
+	AK_UNUSED(ctx);
+	if (!diag_json) {
+		char buf[8192];
+		ak_diag_format(buf, sizeof buf, code, msg, where, nwhere);
+		fprintf(stderr, "%s\n", buf);
+		fflush(stderr);
+		return;
+	}
+	printf("{\"diag\":");
+	json_str(code);
+	printf(",\"message\":");
+	json_str(msg);
+	printf(",\"where\":[");
+	for (int i = 0; i < nwhere; i++) {
+		if (i) putchar(',');
+		json_str(where[i]);
+	}
+	putchar(']');
+	if (current) {
+		printf(",\"test\":");
+		json_str(current);
+	}
+	printf("}\n");
+	fflush(stdout);
+}
 
 static void on_error(void *ctx, void *err) {
 	AK_UNUSED(ctx);
@@ -74,7 +121,7 @@ static void settle(ak_future *fut) {
 }
 
 int main(int argc, char **argv) {
-	bool test = false, aot = false, app = false, leaks = false, count = false, program = false;
+	bool test = false, aot = false, app = false, leaks = false, count = false, program = false, diag = true;
 	const char *pattern = NULL, *path = NULL, *name = "main";
 	int rest = argc;  // the program's arguments, after --
 	for (int i = 1; i < argc; i++) {
@@ -95,6 +142,10 @@ int main(int argc, char **argv) {
 			leaks = true;
 		} else if (strcmp(argv[i], "-count") == 0) {
 			count = true;
+		} else if (strcmp(argv[i], "-no-diag") == 0) {
+			diag = false;
+		} else if (strcmp(argv[i], "-diag-json") == 0) {
+			diag_json = true;
 		} else if (strcmp(argv[i], "-platform") == 0 && i + 1 < argc) {
 			static const char *names[] = {"", "ios", "android", "macos", "windows", "web", "linux"};
 			const char *want = argv[++i];
@@ -114,7 +165,7 @@ int main(int argc, char **argv) {
 		}
 	}
 	if (!path && !aot) {
-		fprintf(stderr, "usage: asuka-run [-leaks] [-count] [-test [pattern]] [-app] [-platform name] (module.akb | -aot)\n"
+		fprintf(stderr, "usage: asuka-run [-leaks] [-count] [-no-diag] [-diag-json] [-test [pattern]] [-app] [-platform name] (module.akb | -aot)\n"
 		                "       asuka-run -main [-program name] (module.akb | -aot) [-- args...]\n");
 		return 2;
 	}
@@ -136,6 +187,8 @@ int main(int argc, char **argv) {
 	ak_ui_builtins_init();
 	ak_uitest_builtins_init();
 	ak_signal_set_error_handler(on_error, NULL);
+	ak_diag_enabled = diag;
+	ak_diag_set_handler(on_diag, NULL);
 	if (test || app) ak_sched_manual_clock(true);
 	char err[512] = "";
 	ak_module *m = aot ? ak_app_loader() : ak_module_load(p, n, err, sizeof err);
@@ -183,6 +236,7 @@ int main(int argc, char **argv) {
 			if (pattern && !strstr(name, pattern)) continue;
 			current = name;
 			failure[0] = 0;
+			ak_diag_reset();  // each test's app is a run of its own
 			char *dir = ak_fs_temp_dir();
 			ak_fs_set_app_dir(dir);
 			const ak_func *f = ak_module_func(m, fi);

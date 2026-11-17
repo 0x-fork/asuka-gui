@@ -30,7 +30,7 @@ bool ak_signal_on_main_thread(void) { return !g->thread_bound || self() == g->ma
 bool ak_sig_check_thread(void) {
 #if defined(AK_DEBUG) || defined(AK_TEST)
 	if (AK_UNLIKELY(!ak_signal_on_main_thread())) {
-		ak_sig_panic("signal: write off the main thread; use asuka_post");
+		ak_sig_panic(NULL, "signal: write off the main thread; use asuka_post");
 		return false;
 	}
 #endif

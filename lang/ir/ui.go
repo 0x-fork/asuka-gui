@@ -252,7 +252,7 @@ func (b *fb) lowerComponent(t *check.TypeName) {
 				b.move(r, b.pathAccessor(m.Default, m.Type))
 				b.memberRegs[m] = r
 			case m.Memo:
-				clos := b.thunk(b.l.info.Ctxs[m.Default], m.Default, m.Type)
+				clos := b.thunkNamed("let "+m.Name(), b.l.info.Ctxs[m.Default], m.Default, m.Type)
 				r := b.local(bc.KRef)
 				b.emit(op("MEMO"), r, clos, int(b.kind(m.Type)))
 				b.memberRegs[m] = r
@@ -559,7 +559,9 @@ func (b *fb) load(m *check.Member) int {
 	u := m.Default.(*syntax.UnaryExpr)
 	ctx := b.l.info.Ctxs[m.Default]
 	inner := b.typ(b.l.info.Types[u.X])
-	thunk := b.makeClosure(closure{name: "load", ctxs: []*check.FuncCtx{ctx}, ret: bc.KRef, throws: true, body: func(c *fb) {
+	// Named for what the core's diagnostics say of it: Profile's load of
+	// user at profile.asuka:8.
+	thunk := b.makeClosure(closure{name: "load of " + m.Name(), ctxs: []*check.FuncCtx{ctx}, ret: bc.KRef, throws: true, body: func(c *fb) {
 		c.ctx = ctx
 		f := c.taskOf(u.X, -1, inner, false)
 		c.emit(op("RET"), f)

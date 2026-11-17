@@ -37,7 +37,12 @@ typedef struct {
 enum {
 	CELL_KEPT = 1,    // kept across reloads (keep.c)
 	CELL_FOLLOW = 2,  // a follow: the cell is a follow's first field
+	CELL_WIDE = 4,    // a write of it ran more than AK_WIDE_FANOUT (ak_diag_enabled)
 };
+
+// A write that runs more than this many bindings and lets is wide; the
+// second wide write of a state is reported (wide-fanout).
+#define AK_WIDE_FANOUT 1000
 
 typedef struct follow follow;
 struct follow {
@@ -196,6 +201,13 @@ static void follow_store(follow *w, ak_val v, bool always) {
 	if (w->f) ak_follow_set(w->f);
 }
 
+// follow_describe names a state that follows as its source says it:
+// "Edit's state at edit.asuka:3".
+static void follow_describe(void *ctx, char *buf, size_t n) {
+	follow *w = ctx;
+	ak_vm_where(w->update, w->update && w->update->invoke == ak_vm_closure_invoke ? NULL : "a prop's caller's value", buf, n);
+}
+
 ak_val ak_vm_follow_new(ak_closure *update, ak_kind k, ak_str *keep_key, bool self) {
 	follow *w = ak_opaque_new(AK_TAG_CELL, sizeof(follow), cell_drop);
 	w->c.h.h.flags |= CELL_FOLLOW;
@@ -203,7 +215,7 @@ ak_val ak_vm_follow_new(ak_closure *update, ak_kind k, ak_str *keep_key, bool se
 	cell_name(&w->c, keep_key);
 	w->update = ak_retain(update);
 	w->self = self;
-	w->info = (ak_comp_info){.drop = follow_comp_drop, .label = update->invoke == ak_vm_closure_invoke ? ak_func_name(update->fn) : "a prop's caller's value"};
+	w->info = (ak_comp_info){.drop = follow_comp_drop, .label = update->invoke == ak_vm_closure_invoke ? ak_func_name(update->fn) : "a prop's caller's value", .describe = follow_describe};
 	ak_retain(w);  // the graph's, until the computation is dropped
 	w->f = ak_follow_new(follow_update, w, &w->info);
 	if (ak_current_owner()) ak_on_cleanup(follow_gone, ak_retain(w));
@@ -240,7 +252,10 @@ ak_val ak_vm_cell_get(void *p, bool track) {
 	return c->v;
 }
 
-void ak_vm_cell_set(void *p, ak_val v) {
+static void cell_put(void *p, ak_val v);
+static void cell_putp(void *p, ak_val v, const uint8_t *path, uint32_t n, const ak_val *args);
+
+static void cell_set(void *p, ak_val v) {
 	cell *c = p;
 	if (AK_UNLIKELY(is_follow(c))) {
 		follow_store((follow *)c, v, false);
@@ -270,7 +285,7 @@ ak_val ak_vm_cell_take(void *p) {
 	return v;
 }
 
-void ak_vm_cell_put(void *p, ak_val v) {
+static void cell_put(void *p, ak_val v) {
 	cell *c = p;
 	if (AK_UNLIKELY(is_follow(c))) {
 		// What take moved out, back: the follow is up to date already.
@@ -308,16 +323,100 @@ ak_val ak_vm_cell_path(void *p, const uint8_t *path, uint32_t n, const ak_val *a
 	return out;
 }
 
-void ak_vm_cell_putp(void *p, ak_val v, const uint8_t *path, uint32_t n, const ak_val *args) {
+static void cell_putp(void *p, ak_val v, const uint8_t *path, uint32_t n, const ak_val *args) {
 	cell *c = p;
 	if (AK_UNLIKELY(is_follow(c))) {
-		ak_vm_cell_put(p, v);
+		cell_put(p, v);
 		return;
 	}
 	ak_release_val(c->v, (ak_kind)c->kind);
 	c->v = v;
 	cell_wrote(c);
 	ak_path_put(&c->paths, &c->node, v, (ak_kind)c->kind, path, n, args);
+}
+
+// ---- Wide writes (wide-fanout) ----
+//
+// With ak_diag_enabled, a write of a state counts the effects it queues
+// (ak_signal_enqueued's growth across it): one that runs more than
+// AK_WIDE_FANOUT bindings and lets is wide, and the second wide write of
+// a state is reported once, with where it's written and the sites of the
+// readers that ran most.
+
+typedef struct {
+	const void *site;
+	char name[512];
+	uint32_t n;
+} reader_tally;
+
+typedef struct {
+	reader_tally top[4];
+	uint32_t ntop;
+} tally;
+
+static void tally_reader(void *ctx, const ak_comp *c) {
+	tally *t = ctx;
+	const void *site = ak_comp_site(c);
+	for (uint32_t i = 0; i < t->ntop; i++)
+		if (t->top[i].site == site) {
+			t->top[i].n++;
+			return;
+		}
+	if (t->ntop < 4) {
+		reader_tally *r = &t->top[t->ntop++];
+		r->site = site;
+		r->n = 1;
+		ak_comp_name(c, r->name, sizeof r->name);
+	}
+}
+
+static void wide_write(cell *c, uint64_t ran) {
+	if (!(c->h.h.flags & CELL_WIDE)) {
+		c->h.h.flags |= CELL_WIDE;  // once is a list's first build, or a reset
+		return;
+	}
+	char here[512];
+	ak_vm_here(here, sizeof here);
+	if (!ak_diag_first(c->key ? (const void *)c->key : (const void *)c, "wide-fanout")) return;
+	tally t = {0};
+	ak_signal_each_reader(&c->node, tally_reader, &t);
+	char what[64];
+	if (c->key) snprintf(what, sizeof what, "%.*s", (int)c->name_len, c->key->data + c->name_off);
+	else snprintf(what, sizeof what, "a state");
+	char msg[1024];
+	snprintf(msg, sizeof msg, "a write of %s ran %llu bindings and lets, again: what reads %s whole runs again on every change; read what each one shows by its path, or a set's contains", what, (unsigned long long)ran, what);
+	char lines[4][528];
+	const char *where[5] = {here};
+	int nwhere = 1;
+	for (uint32_t i = 0; i < t.ntop; i++) {
+		snprintf(lines[i], sizeof lines[i], "%s (%u)", t.top[i].name, t.top[i].n);
+		where[nwhere++] = lines[i];
+	}
+	ak_diag("wide-fanout", msg, where, nwhere);
+}
+
+static AK_NOINLINE void diag_set(cell *c, int how, ak_val v, const uint8_t *path, uint32_t n, const ak_val *args) {
+	uint64_t before = ak_signal_enqueued();
+	if (how == 0) cell_set(c, v);
+	else if (how == 1) cell_put(c, v);
+	else cell_putp(c, v, path, n, args);
+	uint64_t ran = ak_signal_enqueued() - before;
+	if (ran > AK_WIDE_FANOUT) wide_write(c, ran);
+}
+
+void ak_vm_cell_set(void *p, ak_val v) {
+	if (AK_UNLIKELY(ak_diag_enabled)) diag_set(p, 0, v, NULL, 0, NULL);
+	else cell_set(p, v);
+}
+
+void ak_vm_cell_put(void *p, ak_val v) {
+	if (AK_UNLIKELY(ak_diag_enabled)) diag_set(p, 1, v, NULL, 0, NULL);
+	else cell_put(p, v);
+}
+
+void ak_vm_cell_putp(void *p, ak_val v, const uint8_t *path, uint32_t n, const ak_val *args) {
+	if (AK_UNLIKELY(ak_diag_enabled)) diag_set(p, 2, v, path, n, args);
+	else cell_putp(p, v, path, n, args);
 }
 
 void ak_vm_cell_keys(void *p, const uint8_t *path, uint32_t n, const ak_val *args, const uint16_t *fields, uint16_t nf) {
@@ -354,6 +453,34 @@ static void raise_pending(void) {
 
 static const char *label_of(ak_closure *c) {
 	return c->invoke == ak_vm_closure_invoke ? ak_func_name(c->fn) : "closure";
+}
+
+// ak_vm_where names the site of the program a closure is, as its source
+// says it: "Picker's effect at picker.asuka:12", from its function's name
+// (Picker/effect: its owner, then what it is) and the line it's made at.
+// what, when set, says what it is instead ("text binding"). Nothing is
+// allocated: it's made when it's said.
+void ak_vm_where(const ak_closure *c, const char *what, char *buf, size_t n) {
+	if (!c || c->invoke != ak_vm_closure_invoke) {
+		snprintf(buf, n, "%s", what ? what : "a closure of the runtime's");
+		return;
+	}
+	const ak_func *f = c->fn;
+	const char *name = f->name->data;
+	size_t owner = strcspn(name, "/");
+	if (!what) {
+		const char *last = strrchr(name, '/');
+		what = last ? last + 1 : name;
+	}
+	uint32_t line = f->nlines ? f->lines[0].line : 0;
+	if (name[owner]) snprintf(buf, n, "%.*s's %s at %s:%u", (int)owner, name, what, f->file->data, line);
+	else snprintf(buf, n, "%s at %s:%u", what, f->file->data, line);
+}
+
+// ak_vm_where_site is what a site's reports are kept once by: its
+// closure's function, one per place in the source.
+const void *ak_vm_where_site(const ak_closure *c) {
+	return c && c->invoke == ak_vm_closure_invoke ? c->fn : (const void *)c;
 }
 
 // ---- Memos ----
@@ -418,11 +545,24 @@ static void memo_drop(ak_opaque *o) {
 	ak_release(m->c);
 }
 
+// memo_describe names a let as its source says it: "Counter's let total
+// at app.asuka:4".
+static void memo_describe(void *ctx, char *buf, size_t n) {
+	memo *m = ctx;
+	if (m->c) ak_vm_where(m->c, NULL, buf, n);
+	else snprintf(buf, n, "a let whose owner went");
+}
+
+static const void *memo_site(void *ctx) {
+	memo *m = ctx;
+	return m->c ? ak_vm_where_site(m->c) : (const void *)m;
+}
+
 ak_val ak_vm_memo_new(ak_closure *c, ak_kind k) {
 	memo *m = ak_opaque_new(AK_TAG_MEMO, sizeof(memo), memo_drop);
 	m->kind = (uint8_t)k;
 	m->c = ak_retain(c);
-	m->info = (ak_comp_info){.drop = memo_comp_drop, .label = label_of(c)};
+	m->info = (ak_comp_info){.drop = memo_comp_drop, .label = label_of(c), .describe = memo_describe, .site = memo_site};
 	ak_retain(m);  // the graph's, until the computation is dropped
 	m->m = ak_memo_new(memo_update, m, &m->info);
 	if (ak_current_owner()) ak_on_cleanup(memo_gone, ak_retain(m));
@@ -918,22 +1058,15 @@ static void effect_drop(void *ctx) {
 // where its declaration is).
 static void effect_describe(void *ctx, char *buf, size_t n) {
 	effect_ctx *e = ctx;
-	if (e->c->invoke != ak_vm_closure_invoke) {
-		snprintf(buf, n, "effect %s", label_of(e->c));
-		return;
-	}
-	const ak_func *f = e->c->fn;
-	const char *name = f->name->data;
-	size_t owner = strcspn(name, "/");
-	const char *what = name[owner] ? name + owner + 1 : "effect";
-	uint32_t line = f->nlines ? f->lines[0].line : 0;
-	snprintf(buf, n, "%.*s's %s at %s:%u", (int)owner, name, what, f->file->data, line);
+	ak_vm_where(e->c, e->c->invoke == ak_vm_closure_invoke ? NULL : "an effect of the runtime's", buf, n);
 }
+
+static const void *effect_site(void *ctx) { return ak_vm_where_site(((effect_ctx *)ctx)->c); }
 
 void ak_vm_effect(ak_closure *c, bool render) {
 	effect_ctx *e = ak_alloc(sizeof *e);
 	e->c = ak_retain(c);
-	e->info = (ak_comp_info){.drop = effect_drop, .label = label_of(c), .describe = render ? NULL : effect_describe};
+	e->info = (ak_comp_info){.drop = effect_drop, .label = label_of(c), .describe = render ? NULL : effect_describe, .site = effect_site};
 	ak_effect_new(effect_run, e, render ? AK_EFFECT_RENDER : AK_EFFECT_USER, &e->info);
 }
 

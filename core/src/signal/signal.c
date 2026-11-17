@@ -6,11 +6,12 @@
 
 #define g ak_sig
 
-void ak_sig_panic(const char *fmt, ...) {
+void ak_sig_panic(const char *code, const char *fmt, ...) {
 	char buf[512];
+	int at = code ? snprintf(buf, sizeof buf, "error[%s]: ", code) : 0;
 	va_list ap;
 	va_start(ap, fmt);
-	vsnprintf(buf, sizeof buf, fmt, ap);
+	vsnprintf(buf + at, sizeof buf - (size_t)at, fmt, ap);
 	va_end(ap);
 	if (g->panic_hook) {
 		g->panic_hook(g->panic_ctx, buf);
@@ -56,6 +57,14 @@ static bool own_scratch(const ak_node *n) {
 	return !n->subs || (n->subs == n->subs_tail && n->subs->sub == g->active);
 }
 
+// diag_wrote notes e, a user effect, as the last to write (NULL: none),
+// held while it's noted.
+static void diag_wrote(ak_comp *e) {
+	if (g->diag_writer) ak_owner_release(&g->diag_writer->owner);
+	if (e) ak_owner_retain(&e->owner);
+	g->diag_writer = e;
+}
+
 void ak_signal_write(ak_node *n) {
 	if (!ak_sig_check_thread()) return;
 	if (AK_UNLIKELY(g->in_memo > 0)) {
@@ -63,12 +72,15 @@ void ak_signal_write(ak_node *n) {
 		// else reads: that can't make anything stale (it isn't done yet).
 		if (!((n->flags & AK_F_FRESH) && own_scratch(n))) {
 			char d[256];
-			ak_sig_panic("signal: write inside a memo (%s)", g->active ? ak_sig_describe(g->active, d, sizeof d) : "?");
+			ak_sig_panic("write-in-memo", "signal: write inside a memo (%s)", g->active ? ak_sig_describe(g->active, d, sizeof d) : "?");
 			return;
 		}
 		return;
 	}
 	if (n->subs) {
+		// A user effect's write, which may run a binding again in the
+		// flush it ran in (effect-in-effect-pass).
+		if (AK_UNLIKELY(ak_diag_enabled) && g->effect && !(g->effect->node.flags & AK_F_RENDER) && g->diag_writer != g->effect) diag_wrote(g->effect);
 		ak_sig_propagate(n->subs, AK_F_DIRTY);
 		if (g->batch_depth == 0 && !g->flushing) ak_sig_flush();
 	}
@@ -244,6 +256,9 @@ ak_effect *ak_effect_new(void (*run)(void *ctx), void *ctx, uint32_t flags, cons
 	if (e->node.flags & AK_F_DISPOSED) {
 		// Made under a disposed owner: never runs.
 	} else if (render) {
+		// Its first run, now: one a user effect's write makes again
+		// before the flush it's in ends is a pass late.
+		if (AK_UNLIKELY(ak_diag_enabled)) e->diag_flush = g->flush_id + 1;
 		effect_update(e);
 	} else {
 		ak_sig_enqueue(e);
@@ -317,6 +332,7 @@ void ak_signal_set_after_flush(void (*fn)(void *ctx), void *ctx) {
 void ak_sig_enqueue(ak_comp *e) {
 	if (e->node.flags & AK_F_QUEUED) return;
 	e->node.flags |= AK_F_QUEUED;
+	g->enqueued++;  // a count, not a branch: what a write runs (wide-fanout)
 	ak_owner_retain(&e->owner);
 	ak_vec_push(&g->queue, e);
 }
@@ -370,8 +386,48 @@ static void drop_queue(void) {
 	g->queue.len = 0;
 }
 
+// diag_render_run checks a render effect about to run: one that ran in
+// this flush already runs again because a user effect (w) wrote what it
+// reads in the pass before, a pass late (effect-in-effect-pass).
+static void diag_render_run(ak_comp *e, ak_comp *w) {
+	if (e->diag_flush == g->flush_id + 1 && w) {
+		// Once per pair: the binding's site, under the effect's code.
+		if (ak_diag_first(ak_comp_site(e), "effect-in-effect-pass") && ak_diag_first(ak_comp_site(w), "effect-in-effect-pass")) {
+			char wn[512], en[512], msg[1536];
+			ak_comp_name(w, wn, sizeof wn);
+			ak_comp_name(e, en, sizeof en);
+			if (w->wrote) snprintf(msg, sizeof msg, "%s wrote %.*s, which %s reads: the binding ran twice in one flush, a pass late; a let or a following state settles in one pass", wn, (int)w->wrote_len, w->wrote, en);
+			else snprintf(msg, sizeof msg, "%s wrote what %s reads: the binding ran twice in one flush, a pass late; a let or a following state settles in one pass", wn, en);
+			const char *where[2] = {wn, en};
+			ak_diag("effect-in-effect-pass", msg, where, 2);
+		}
+	}
+	e->diag_flush = g->flush_id + 1;
+}
+
+// run_pass runs the effects of a pass, in g->running's order; with diag,
+// it checks each binding as it runs (inlined twice: the check costs the
+// pass without it nothing).
+static AK_ALWAYS_INLINE void run_pass(bool diag, ak_comp *writer) {
+	for (uint32_t i = 0; i < g->running.len; i++) {
+		ak_comp *e = g->running.data[i];
+		g->running.data[i] = NULL;
+		uint32_t f = e->node.flags &= ~(uint32_t)AK_F_QUEUED;
+		if (!(f & AK_F_DISPOSED)) {
+			if ((f & AK_F_DIRTY) || ((f & AK_F_PENDING) && ak_sig_check_dirty(e))) {
+				if (diag && (f & AK_F_RENDER)) diag_render_run(e, writer);
+				effect_update(e);
+			} else {
+				e->node.flags &= ~(uint32_t)AK_F_PENDING;
+			}
+		}
+		ak_owner_release(&e->owner);
+	}
+}
+
 void ak_sig_flush(void) {
 	g->flushing = true;
+	diag_wrote(NULL);
 	for (int round = 0;; round++) {
 		for (int pass = 0; g->queue.len; pass++) {
 			if (pass == AK_MAX_PASSES) {
@@ -389,8 +445,8 @@ void ak_sig_flush(void) {
 				int len = (int)e->wrote_len;
 				drop_queue();
 				g->flushing = false;
-				if (wrote) ak_sig_panic("signal: %s is still writing %.*s after %d passes (an infinite loop?)", d, len, wrote, AK_MAX_PASSES);
-				else ak_sig_panic("signal: effects still dirty after %d passes (an infinite loop?), e.g. %s", AK_MAX_PASSES, d);
+				if (wrote) ak_sig_panic("effect-loop", "signal: %s is still writing %.*s after %d passes (an infinite loop?)", d, len, wrote, AK_MAX_PASSES);
+				else ak_sig_panic("effect-loop", "signal: effects still dirty after %d passes (an infinite loop?), e.g. %s", AK_MAX_PASSES, d);
 				return;
 			}
 			ak_comp_vec t = g->running;
@@ -398,15 +454,17 @@ void ak_sig_flush(void) {
 			g->queue = t;
 			g->queue.len = 0;
 			sort_effects(g->running.data, g->running.len);
-			for (uint32_t i = 0; i < g->running.len; i++) {
-				ak_comp *e = g->running.data[i];
-				g->running.data[i] = NULL;
-				uint32_t f = e->node.flags &= ~(uint32_t)AK_F_QUEUED;
-				if (!(f & AK_F_DISPOSED)) {
-					if ((f & AK_F_DIRTY) || ((f & AK_F_PENDING) && ak_sig_check_dirty(e))) effect_update(e);
-					else e->node.flags &= ~(uint32_t)AK_F_PENDING;
-				}
-				ak_owner_release(&e->owner);
+			// The pass, with the diagnostics' check or without: one branch
+			// here, none per effect.
+			if (AK_UNLIKELY(ak_diag_enabled)) {
+				// The bindings this pass runs again were dirtied by the
+				// last pass's writes: the user effect that made them.
+				ak_comp *w = g->diag_writer;
+				g->diag_writer = NULL;
+				run_pass(true, w);
+				if (w) ak_owner_release(&w->owner);
+			} else {
+				run_pass(false, NULL);
 			}
 			g->running.len = 0;
 		}
@@ -414,11 +472,42 @@ void ak_sig_flush(void) {
 		if (round == AK_MAX_PASSES) {
 			drop_queue();
 			g->flushing = false;
-			ak_sig_panic("signal: the after-flush hook dirtied effects %d times (an infinite loop?)", AK_MAX_PASSES);
+			ak_sig_panic("effect-loop", "signal: the after-flush hook dirtied effects %d times (an infinite loop?)", AK_MAX_PASSES);
 			return;
 		}
 		g->after_flush(g->after_flush_ctx);
 		if (!g->queue.len) break;
 	}
+	diag_wrote(NULL);
+	// What runs from now on (a batch's new bindings, at once) is the next
+	// flush's: diag_flush is flush_id + 1 for this one's.
+	g->flush_id++;
 	g->flushing = false;
 }
+
+// ---- Diagnostics ----
+
+const char *ak_comp_name(const ak_comp *c, char *buf, size_t n) { return ak_sig_describe(c, buf, n); }
+
+const void *ak_comp_site(const ak_comp *c) {
+	if (c->info && c->info->site) return c->info->site(c->ctx);
+	return c;
+}
+
+uint64_t ak_signal_enqueued(void) { return g->enqueued; }
+
+void ak_signal_each_reader(const ak_node *n, void (*fn)(void *ctx, const ak_comp *c), void *ctx) {
+	for (const ak_link *l = n->subs; l; l = l->next_sub) fn(ctx, l->sub);
+}
+
+// reads_node walks c's deps, and the memos' among them, for n; depth
+// bounds a walk the graph's acyclic shape already ends.
+static bool reads_node(const ak_comp *c, const ak_node *n, int depth) {
+	for (const ak_link *l = c->deps; l; l = l->next_dep) {
+		if (l->dep == n) return true;
+		if (depth > 0 && (l->dep->flags & AK_F_MEMO) && reads_node((const ak_comp *)l->dep, n, depth - 1)) return true;
+	}
+	return false;
+}
+
+bool ak_comp_reads(const ak_comp *c, const ak_node *n) { return reads_node(c, n, 64); }

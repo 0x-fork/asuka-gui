@@ -9,6 +9,7 @@
 #include "ui/ui_int.h"
 
 #include <stdio.h>
+#include <string.h>
 
 static void raise_in_run(void) {
 	void *err = ak_error_take();
@@ -721,7 +722,20 @@ typedef struct ak_loader {
 	ak_future *fut;  // the run's task, while it's in flight
 	ak_effect *eff;  // borrowed: NULL once disposed
 	ak_closure *thunk;
+	// Diagnostics (ak_diag_enabled): the load whose answer made the
+	// content this one is in, until its first run says what it read
+	// (load-waterfall); the timer of a hold, while it runs holding the
+	// last answer (long-hold).
+	struct ak_loader *cause;
+	uint64_t hold;
 } ak_loader;
+
+// A hold this long, with nothing reading .loading, is said (long-hold):
+// time the user waits, on asuka test's virtual clock a test's.
+#define AK_LONG_HOLD_NS (2 * 1000000000LL)
+
+// The load whose answer is being written, while what it shows is made.
+static ak_loader *answering;
 
 enum { AK_LOAD_PENDING, AK_LOAD_READY, AK_LOAD_FAILED };
 
@@ -730,8 +744,14 @@ typedef struct {
 	ak_future *f;   // retained
 } loader_ticket;
 
+static void hold_end(ak_loader *l);
+static void loader_describe(void *ctx, char *buf, size_t n);
+static const void *loader_site(void *ctx);
+
 static void loader_drop(ak_opaque *o) {
 	ak_loader *l = (ak_loader *)o;
+	hold_end(l);
+	if (l->cause) ak_release(l->cause);
 	ak_signal_drop(&l->node);
 	ak_signal_drop(&l->busy);
 	ak_signal_drop(&l->again);
@@ -772,6 +792,60 @@ static void loader_fail(ak_loader *l, void *err) {
 	ak_signal_write(&l->node);
 }
 
+// loader_settle shows a run's answer: its value, or its error.
+static void loader_settle(ak_loader *l, ak_future *f) {
+	loader_running(l, false);
+	if (f->state == AK_FUT_DONE) loader_answer(l, f->result, (ak_kind)f->kind);
+	else if (!ak_is_cancel(f->error)) loader_fail(l, ak_retain(f->error));
+}
+
+// waterfall checks a load's first run, made in what another's answer
+// showed (l->cause): its arguments, read now, don't read that answer, so
+// it could have started beside it (load-waterfall).
+static void waterfall(ak_loader *l) {
+	ak_loader *cause = l->cause;
+	l->cause = NULL;
+	if (l->eff && cause->eff && !ak_comp_reads(l->eff, &cause->node) && ak_diag_first(loader_site(l), "load-waterfall")) {
+		char mine[512], theirs[512], msg[1536];
+		loader_describe(l, mine, sizeof mine);
+		loader_describe(cause, theirs, sizeof theirs);
+		snprintf(msg, sizeof msg, "%s waited for %s, but doesn't use its answer: it could have run at the same time; start it beside it, and pass the result down", mine, theirs);
+		const char *where[2] = {mine, theirs};
+		ak_diag("load-waterfall", msg, where, 2);
+	}
+	ak_release(cause);
+}
+
+// hold_fire: a run has held the last answer for AK_LONG_HOLD_NS. Nothing
+// reading .loading (busy), nothing says so (long-hold).
+static void hold_fire(void *ctx) {
+	ak_loader *l = ctx;
+	l->hold = 0;
+	if (!l->running || !l->eff || ak_signal_watched(&l->busy) || !ak_diag_first(loader_site(l), "long-hold")) return;
+	char me[512], msg[1536], name[64] = "it";
+	loader_describe(l, me, sizeof me);
+	const char *of = strstr(me, "load of ");
+	if (of) {
+		of += strlen("load of ");
+		size_t k = strcspn(of, " ");
+		snprintf(name, sizeof name, "%.*s", (int)k, of);
+	}
+	snprintf(msg, sizeof msg, "%s has shown its last answer for %lld s while loading the next, with nothing saying so: read %s.loading (dim it, show a ring), or show a spinner in its place", me, AK_LONG_HOLD_NS / 1000000000LL, name);
+	const char *where[1] = {me};
+	ak_diag("long-hold", msg, where, 1);
+}
+
+// hold_start times a run that holds the last answer; hold_end stops it
+// (the run answered, or the load went). The timer holds no reference:
+// the load stops it as it goes.
+static void hold_start(ak_loader *l) { l->hold = ak_after(AK_LONG_HOLD_NS, hold_fire, l); }
+
+static void hold_end(ak_loader *l) {
+	if (!l->hold) return;
+	ak_timer_cancel(l->hold);
+	l->hold = 0;
+}
+
 static void loader_done(void *ctx) {
 	loader_ticket *t = ctx;
 	ak_loader *l = t->l;
@@ -779,9 +853,19 @@ static void loader_done(void *ctx) {
 	if (l->fut == f) {  // else a later run replaced it, or it went
 		ak_release(l->fut);
 		l->fut = NULL;
-		loader_running(l, false);
-		if (f->state == AK_FUT_DONE) loader_answer(l, f->result, (ak_kind)f->kind);
-		else if (!ak_is_cancel(f->error)) loader_fail(l, ak_retain(f->error));
+		hold_end(l);
+		if (AK_UNLIKELY(ak_diag_enabled)) {
+			// What the answer shows is made in this batch: a load made
+			// there waited for this one (load-waterfall).
+			ak_loader *prev = answering;
+			answering = l;
+			ak_batch_begin();
+			loader_settle(l, f);
+			ak_batch_end();
+			answering = prev;
+		} else {
+			loader_settle(l, f);
+		}
 	}
 	ak_release(f);
 	ak_release(l);
@@ -793,6 +877,7 @@ static void loader_run_fn(void *ctx) {
 	if (l->fut) ak_release(l->fut), l->fut = NULL;  // cancelled with the owner
 	ak_signal_read(&l->again);
 	ak_val v = ak_call(l->thunk, NULL, 0);
+	if (AK_UNLIKELY(l->cause)) waterfall(l);
 	if (ak_error_pending()) {
 		void *err = ak_error_take();
 		loader_running(l, false);
@@ -803,6 +888,7 @@ static void loader_run_fn(void *ctx) {
 	ak_future *f = v.p;
 	l->fut = ak_retain(f);
 	loader_running(l, true);
+	if (AK_UNLIKELY(ak_diag_enabled) && l->state != AK_LOAD_PENDING && !l->hold) hold_start(l);
 	loader_ticket *t = ak_alloc(sizeof *t);
 	t->l = ak_retain(l);
 	t->f = f;  // the call's reference
@@ -812,6 +898,7 @@ static void loader_run_fn(void *ctx) {
 static void loader_effect_drop(void *ctx) {
 	ak_loader *l = ctx;
 	l->eff = NULL;
+	hold_end(l);
 	if (l->fut) ak_release(l->fut), l->fut = NULL;
 	// No run is in flight once its owner went: none will answer.
 	loader_running(l, false);
@@ -822,12 +909,26 @@ static void loader_effect_drop(void *ctx) {
 	ak_release(l);
 }
 
-static const ak_comp_info loader_info = {.drop = loader_effect_drop, .label = "load"};
+// loader_describe names a load as its source says it: "Profile's load of
+// user at profile.asuka:8".
+static void loader_describe(void *ctx, char *buf, size_t n) {
+	ak_loader *l = ctx;
+	if (l->thunk) ak_vm_where(l->thunk, NULL, buf, n);
+	else snprintf(buf, n, "a load whose owner went");
+}
+
+static const void *loader_site(void *ctx) {
+	ak_loader *l = ctx;
+	return l->thunk ? ak_vm_where_site(l->thunk) : (const void *)l;
+}
+
+static const ak_comp_info loader_info = {.drop = loader_effect_drop, .label = "load", .describe = loader_describe, .site = loader_site};
 
 ak_val ak_ui_load(ak_closure *thunk) {
 	ak_loader *l = ak_opaque_new(AK_TAG_OPAQUE, sizeof *l, loader_drop);
 	l->thunk = ak_retain(thunk);
 	l->state = AK_LOAD_PENDING;
+	if (AK_UNLIKELY(ak_diag_enabled) && answering && answering != l) l->cause = ak_retain(answering);
 	l->eff = ak_effect_new(loader_run_fn, ak_retain(l), AK_EFFECT_USER, &loader_info);
 	return (ak_val){.p = l};
 }
