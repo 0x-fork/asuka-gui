@@ -48,7 +48,7 @@ func (s *server) semanticTokens(p *SemanticTokensParams) (*SemanticTokens, error
 		if !ok || id.Name == "_" {
 			return
 		}
-		if fc.textOf(id.Span) != id.Name {
+		if !fc.written(id) {
 			return
 		}
 		r := fc.resolve(path)
