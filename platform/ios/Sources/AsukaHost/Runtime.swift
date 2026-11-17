@@ -281,9 +281,19 @@ final class AsukaTextField: UITextField {
         didSet { if contentInset_ != oldValue { setNeedsLayout() } }
     }
 
-    override func textRect(forBounds bounds: CGRect) -> CGRect { super.textRect(forBounds: bounds.inset(by: contentInset_)) }
-    override func editingRect(forBounds bounds: CGRect) -> CGRect { super.editingRect(forBounds: bounds.inset(by: contentInset_)) }
-    override func placeholderRect(forBounds bounds: CGRect) -> CGRect { super.placeholderRect(forBounds: bounds.inset(by: contentInset_)) }
+    /// UIKit's placeholderRect asks textRect for its own: the inset is
+    /// taken once, by the outermost of them.
+    private var insetting = false
+    private func inset(_ bounds: CGRect, _ rect: (CGRect) -> CGRect) -> CGRect {
+        if insetting { return rect(bounds) }
+        insetting = true
+        defer { insetting = false }
+        return rect(bounds.inset(by: contentInset_))
+    }
+
+    override func textRect(forBounds bounds: CGRect) -> CGRect { inset(bounds) { super.textRect(forBounds: $0) } }
+    override func editingRect(forBounds bounds: CGRect) -> CGRect { inset(bounds) { super.editingRect(forBounds: $0) } }
+    override func placeholderRect(forBounds bounds: CGRect) -> CGRect { inset(bounds) { super.placeholderRect(forBounds: $0) } }
     /// As AsukaLabel's.
     var holdsFont = false
     override func didMoveToWindow() {
