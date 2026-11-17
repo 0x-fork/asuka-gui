@@ -198,7 +198,7 @@ const (
 	SelColor                            // a semantic color: Value
 	SelLengthAuto                       // .auto, a Length
 	SelLoading                          // a Loading's value, pending, error
-	SelTupleElem                        // a tuple's element (t.0 isn't parsed; unused)
+	SelTupleElem                        // a tuple's element, t.0 (Field: its place and type)
 	SelBuiltinField                     // a built-in type's property: g.width, card.hovered (Method)
 	SelVariant                          // Component as c, then c.checked: its variant (Obj a *VariantDef)
 )

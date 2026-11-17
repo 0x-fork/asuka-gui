@@ -657,6 +657,10 @@ func (b *fb) prepare(x syntax.Expr) *lvalue {
 			n, _ := b.typ(sel.Recv).(*check.Named)
 			return &lvalue{x: x, kind: lvField, inner: b.prepare(x.X), field: sel.Field, named: n}
 		}
+		if sel != nil && sel.Kind == check.SelTupleElem {
+			// A tuple's element: its field, by place (named nil).
+			return &lvalue{x: x, kind: lvField, inner: b.prepare(x.X), field: sel.Field}
+		}
 	case *syntax.IndexExpr:
 		inner := b.prepare(x.X)
 		_, isMap := b.rawType(x.X).(*check.Map)

@@ -371,7 +371,7 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 			return
 		}
 		switch sel.Kind {
-		case SelField:
+		case SelField, SelTupleElem:
 			c.checkLvalue(x.X, what)
 		case SelStoreMember:
 			if sel.Member.Kind != StateMember {

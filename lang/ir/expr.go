@@ -465,11 +465,17 @@ func (b *fb) selfField(e *syntax.Ident) int {
 	return b.getField(self, n, f, -1)
 }
 
-// getField reads struct value x's field f.
+// getField reads struct value x's field f (t nil: a tuple's element,
+// f its place).
 func (b *fb) getField(x int, t *check.Named, f *check.Field, dst int) int {
-	k := b.l.kind(t.Subst().Apply(f.Type))
+	var k bc.Kind
+	if t == nil {
+		k = b.kind(f.Type)
+	} else {
+		k = b.l.kind(t.Subst().Apply(f.Type))
+	}
 	r := b.out(dst, k)
-	if t.Obj.IsError {
+	if t != nil && t.Obj.IsError {
 		b.emit(op("GETP"), r, x, f.Index)
 	} else {
 		b.emit(op("GETF"), r, x, f.Index)
@@ -830,6 +836,8 @@ func (b *fb) member(e syntax.Expr, sel *check.Selection, x int, recv check.Type,
 		return r
 	case check.SelField:
 		return b.getField(x, recv.(*check.Named), sel.Field, dst)
+	case check.SelTupleElem:
+		return b.getField(x, nil, sel.Field, dst)
 	case check.SelStoreMember:
 		ref := b.storeMemberRef(x, sel.Member)
 		m := sel.Member

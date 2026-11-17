@@ -1,9 +1,42 @@
-// Tuples printed as their elements, and maps from other than strings.
+// Tuples: their elements read and changed by place (t.0), and printed
+// as their elements.
 
 enum Light { red, green }
 
 struct Hold {
   pair: (int, string)
+}
+
+fn swap(p: (int, string)) -> (string, int) = (p.1, p.0)
+
+fn first<A, B>(p: (A, B)) -> A = p.0
+
+test "elements" {
+  var t = (1, ("a", 2.5), Light.red)
+  print(t.0)
+  print(t.1.0)
+  print(t.1.1 * 2.0)
+  print(t.2)
+  t.0 = 5
+  t.1.0 += "b"
+  t.1.1 = t.1.1 + 1.0
+  let u = t
+  t.0 += 1
+  print(t.0)
+  print(u.0)
+  print(t.1.0)
+  print(swap((7, "x")).0)
+  print(first(("y", 1)))
+  var h = Hold(pair: (1, "one"))
+  h.pair.0 = 2
+  print(h.pair.0)
+  var ps = [(1, "a"), (2, "b")]
+  ps[1].1 = "c"
+  print(ps[1].1)
+  let o: (int, string)? = (3, "z")
+  print(o?.1 ?? "none")
+  let n: (int, string)? = none
+  print(n?.0 ?? -1)
 }
 
 test "printed" {
@@ -20,6 +53,20 @@ test "printed" {
 }
 
 // Output:
+// 1
+// a
+// 5
+// red
+// 6
+// 5
+// ab
+// x
+// y
+// 2
+// c
+// z
+// -1
+// ok elements
 // (1,"a","red")
 // t is (1,"a","red")
 // [(1,"x"),(2,"y")]

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/egoist/asuka/internal/pkgs"
@@ -302,6 +303,12 @@ func (c *completer) valueMembers(t check.Type, optional bool, dot int) {
 			for _, m := range tn.Iface.Methods {
 				addItem(c.callItem(m.Name, kindMethod, imethSig(m), "", m.Sig != nil && len(m.Sig.Params) > 0))
 			}
+		}
+	}
+	if tt, ok := inner.(*check.Tuple); ok {
+		// Its elements, by place: t.0, t.1.
+		for i, e := range tt.Elems {
+			addItem(CompletionItem{Label: strconv.Itoa(i), Kind: kindField, Detail: typeStr(e), Documentation: c.doc(tupleElemDoc(i))})
 		}
 	}
 	if n, ok := inner.(*check.Named); ok {

@@ -575,6 +575,8 @@ func (fc *fileCtx) describe(r *ref) (code, doc string) {
 			return "Color." + r.name, "A semantic color: it follows the platform's light and dark appearance."
 		case "auto":
 			return "Length.auto", "The size its content and its parent's layout give it."
+		case "tuple":
+			return typeStr(r.recv) + "." + r.name + ": " + typeStr(r.field.Type), tupleElemDoc(r.field.Index)
 		}
 	case r.method != nil:
 		return methodSig(r.method, r.recv), methodDoc(r.method)
@@ -760,4 +762,9 @@ func pkgDoc(p *check.Package) string {
 		lines = append(lines, strings.TrimPrefix(t, " "))
 	}
 	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+// tupleElemDoc is what hover and completion say of a tuple's element i.
+func tupleElemDoc(i int) string {
+	return fmt.Sprintf("The tuple's element %d, counting from 0.", i)
 }

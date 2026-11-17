@@ -1041,6 +1041,9 @@ func (c *Checker) staticMember(e syntax.Expr, tn *TypeName, name string, want Ty
 
 // valueMember is x.name for a value x of type t.
 func (c *Checker) valueMember(e *syntax.MemberExpr, t Type, name string) Type {
+	if isIndexName(name) {
+		return c.tupleElem(e, t, name)
+	}
 	switch u := t.(type) {
 	case *TypeParam:
 		if f, i := paramField(u, name); f != nil {
@@ -1160,6 +1163,52 @@ func (c *Checker) valueMember(e *syntax.MemberExpr, t Type, name string) Type {
 	}
 	c.errorf(e.Name, "%s has no %s%s", typeString(t), name, c.memberSuggest(t, name))
 	return Invalid
+}
+
+// isIndexName reports a member named by digits: a tuple's element, t.0.
+func isIndexName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, r := range name {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// tupleElem is t.0, t.1: a tuple's element, by its place.
+func (c *Checker) tupleElem(e *syntax.MemberExpr, t Type, name string) Type {
+	tt, ok := t.(*Tuple)
+	if !ok {
+		c.errorf(e.Name, "%s isn't a tuple: .%s reads a tuple's element", typeString(t), name)
+		return Invalid
+	}
+	i, err := strconv.Atoi(name)
+	if err != nil || i >= len(tt.Elems) || len(name) > 1 && name[0] == '0' {
+		c.errorf(e.Name, "%s has no element %s: its elements are %s", typeString(t), name, tupleElemNames(len(tt.Elems)))
+		return Invalid
+	}
+	f := &Field{Name: name, Type: tt.Elems[i], Index: i}
+	c.info.Selections[e] = &Selection{Kind: SelTupleElem, Field: f, Recv: t}
+	return tt.Elems[i]
+}
+
+// tupleElemNames is how a tuple of n's elements are read: .0 and .1.
+func tupleElemNames(n int) string {
+	var b strings.Builder
+	for i := 0; i < n; i++ {
+		switch {
+		case i == 0:
+		case i == n-1:
+			b.WriteString(" and ")
+		default:
+			b.WriteString(", ")
+		}
+		b.WriteString("." + strconv.Itoa(i))
+	}
+	return b.String()
 }
 
 func (c *Checker) memberSuggest(t Type, name string) string {
