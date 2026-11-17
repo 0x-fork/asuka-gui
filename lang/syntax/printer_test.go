@@ -274,6 +274,22 @@ func TestFormatCases(t *testing.T) {
 	}
 }
 
+// TestFormatNestedOneLine formats blocks written on one line, nested
+// 100 deep, the innermost too long for one: each is tried on one line
+// once, so it ends (trying each again when the one around it breaks
+// was 2^100 tries).
+func TestFormatNestedOneLine(t *testing.T) {
+	const depth = 100
+	src := "component C { " + strings.Repeat("Row { ", depth) + "a(); b()" + strings.Repeat(" }", depth) + " }"
+	out, err := Format("t.asuka", []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(string(out), "\n"); n != 2*depth+4 {
+		t.Errorf("%d lines, want %d:\n%s", n, 2*depth+4, out)
+	}
+}
+
 // TestFprintMadeTree prints a tree made in code, with no positions:
 // parentheses where precedence needs them, lists on one line.
 func TestFprintMadeTree(t *testing.T) {

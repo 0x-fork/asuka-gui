@@ -57,7 +57,7 @@ func Format(filename string, src []byte) ([]byte, error) {
 // A *SourceFile prints with all its comments, any other node with the
 // comments its Trivia hold.
 func Fprint(w io.Writer, file *File, node Node) error {
-	p := &printer{file: file, printed: map[*Comment]bool{}}
+	p := &printer{file: file, printed: map[*Comment]bool{}, broken: map[Pos]bool{}}
 	if f, ok := node.(*SourceFile); ok {
 		if p.file == nil {
 			p.file = f.File
@@ -76,6 +76,7 @@ type printer struct {
 	file     *File
 	comments []*Comment // the file's, in source order
 	printed  map[*Comment]bool
+	broken   map[Pos]bool // bodies, by their {, written on one line that don't fit on one
 	indent   int
 	bol      bool // at the start of a line, its indentation not written yet
 }
@@ -370,7 +371,7 @@ func (p *printer) body(lbrace Pos, comment *Comment, nodes []Node, dangling []*C
 		p.write("{}")
 		return
 	}
-	if oneLine && len(nodes) > 0 && comment == nil && len(dangling) == 0 &&
+	if oneLine && len(nodes) > 0 && comment == nil && len(dangling) == 0 && !p.broken[lbrace] &&
 		p.sameLine(lbrace, rbrace) && !p.commentsIn(lbrace, rbrace+1) {
 		ok := true
 		for _, n := range nodes {
@@ -394,7 +395,10 @@ func (p *printer) body(lbrace Pos, comment *Comment, nodes []Node, dangling []*C
 				p.write(" }")
 				return
 			}
+			// Printed again below, and maybe again as part of an
+			// enclosing body that breaks too: don't try once more.
 			p.out, p.bol = p.out[:mark], bol
+			p.broken[lbrace] = true
 		}
 	}
 	p.write("{")
