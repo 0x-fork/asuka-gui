@@ -150,7 +150,7 @@ state selected: string? = if let s = selected, results.any(r => r.id == s) { s }
 on press {
   count += 1
   todos.push(Todo(title: draft))
-  todos[0].done = true      // 写入 todos：只有读取了 todos[0] 的行会更新
+  todos[0].done = true      // 写入 todos[0].done：只有读取它（或 todos[0]、整个 todos）的地方会更新
   draft = ""
 }
 ```
@@ -245,6 +245,6 @@ task(query) { results = await search(query) } // query 变化时再运行一次
 task(user.id) { profile = try await load(user.id) } // id 变化时才重新运行，name 变化时不会
 ```
 
-effect 会立即运行，之后每当它读取过的内容（包括它调用的函数读取的内容）变化时再次运行。`effect(a, b)` 只在 `a` 或 `b` 变化时再次运行，它的主体读取的东西都不会被跟随。task 是异步的（见[异步](async.md#异步)）：组件出现时启动；圆括号里的内容变化时重新启动（并取消上一次运行）；组件消失时被取消。effect 和 task 圆括号里的内容会被比较：变化后如果值仍然相等，就什么都不会发生，所以用户改名时 `task(user.id)` 会继续运行。`app` 代码块里也可以写它们：它们属于应用本身，在应用运行期间一直有效（比如一个刷新循环，或者一个跟随应用状态的设置：`effect { setColorScheme(scheme) }`）。
+effect 会立即运行，之后每当它读取过的内容（包括它调用的函数读取的内容）变化时再次运行。它读取的就是代码里写到的那部分：`effect { log(user.name) }` 在名字变化时重新运行，头像变化时不会。`effect(a, b)` 只在 `a` 或 `b` 变化时再次运行，它的主体读取的东西都不会被跟随。task 是异步的（见[异步](async.md#异步)）：组件出现时启动；圆括号里的内容变化时重新启动（并取消上一次运行）；组件消失时被取消。effect 和 task 圆括号里的内容会被比较：变化后如果值仍然相等，就什么都不会发生，所以用户改名时 `task(user.id)` 会继续运行。`app` 代码块里也可以写它们：它们属于应用本身，在应用运行期间一直有效（比如一个刷新循环，或者一个跟随应用状态的设置：`effect { setColorScheme(scheme) }`）。
 
 effect 可以写入状态，但不能写入它跟随的状态：`effect { if n > 3 { n = 3 } }` 会在自己写入之后再运行一次，晚了一轮，而在那之前处理函数已经看到 `n` 是 4 了。编译器会报错，并给出替代的写法：跟随的状态（`state n: int = min(n ?? 0, 3)`、`state selected(results) = 0`），跟随别的内容的 `effect(…)`，或者在改变它读取内容的那个处理函数里直接写入。task 可以写入它跟随的状态：它通过取消来重新启动，最终会结束。

@@ -139,7 +139,9 @@ value through its owner:
   handler that puts it back if the change throws; a scalar, or a change
   whose code may read the var (below), VGET, change, VSET;
 - state (a cell: a component's or a store's, or a file's): CTAKE,
-  change, CPUT, with a handler that puts it back if the change throws;
+  change, CPUTP with the place's path (see "Reactivity"), with a handler
+  that puts it back if the change throws (CPUTP saying anything below
+  the place may have changed);
 - a field or an element of those: read it (GETF, IDX), and when it's a
   reference take it out (none put in its place, so it's unique and
   changed in place, not copied), change it, write it back (SETF,
@@ -179,8 +181,11 @@ register is after the call (it may have moved the registers). An async
 caller compiled to C calls a mut fn from C, never through the run loop
 (a mut fn never suspends). The caller moves the receiver back into its
 place after the call, and in a handler around the call when it throws:
-what the body changed before the throw stays. On state that's one CPUT:
-one write, which rows and memos narrow by comparing (ak_val_eq).
+what the body changed before the throw stays. On state that's one
+CPUTP: one write, of the receiver's place, which tells the readers of
+everything below it (the body's changes aren't recorded), or, when the
+cell was read rather than taken out (the callee reads state), one CSET,
+compared path by path.
 
 When the callee may read state (check.FuncCtx.ReadsState: it reads a
 package's state or a store, or calls a closure or an interface's method
@@ -198,8 +203,8 @@ A place whose path has a `?.` (`inbox[id]?.read = true`, `user?.mail?
 places.go). First the path is read as it is, with its prepared indexes,
 up to its last `?.` (CPEEK, GETF, IDX, MGET), taking nothing out, and a
 none jumps past the whole change: nothing is written, the value on the
-right isn't computed, and a cell's readers aren't told (CPUT always
-writes the signal). Then the change runs as any (the value computed,
+right isn't computed, and a cell's readers aren't told (a put tells
+them what it changed, but the probe doesn't even take the cell out). Then the change runs as any (the value computed,
 the place taken out), and tests again where it is (lvSome: JNONE past
 the change, a scalar UNBOXed and BOXed back), since computing the value
 may have changed the place. A call through `?.` gives its result made
@@ -417,7 +422,7 @@ A compound assignment (`x <<= 1`, `xs[i] |= m`, `h &*= p`)
 is its operator on the place's value, written back as `=` is; one a
 struct's or an enum's method does (`t += 1h`, check.Info.AssignOps)
 is that method's call (the place read, not taken out, for the method may
-read it: a state's cell is CPEEKed and CPUT once). The operators a
+read it: a state's cell is CPEEKed and put back once, CPUTP). The operators a
 struct's or an enum's methods do (check.Info.Operators) are calls of
 them: `+` add, `-` sub or minus, `*` mul or times, `/` div or quo, `%`
 rem, the one whose parameter's type is the right operand's
@@ -565,17 +570,53 @@ Reads, by what's read:
 
 | Read of | In a reactive context (a binding, a memo, an effect) | In a handler or function |
 |---|---|---|
-| a cell (`state`) | CGET: tracked | CGET (the runtime runs handlers untracked) |
-| a follow (a `state` that follows) | CGET: the cell is a follow's, which it brings up to date (a memo's pull), tracked | CGET, brought up to date |
+| a cell (`state`), whole | CGET: tracked | CGET (the runtime runs handlers untracked) |
+| a path below a cell (`user.name`, `todos[i].done`, `cart[k]`, `picked.contains(x)`) | CPATH: tracked, following the path; CLEN for `count()`, `isEmpty()` | CPATH, navigating |
+| a follow (a `state` that follows) | CGET: the cell is a follow's, which it brings up to date (a memo's pull), tracked; a path below it, CPATH, read whole | CGET, brought up to date |
 | a memo (`let` in a component, a store, a file) | MREAD | MREAD |
 | a parameter or prop of a component | AGET of its accessor | AGET |
 | a `for` row's item, a `match` arm's payload | AGET | AGET |
+| a path below a parameter, a prop, a row's item, a `let` that's a path | AGETP: following the path when the accessor's is one | AGETP |
 
 Writes: `x = e` is CSET. A write into part of a cell's value
 (`todos[i].done = true`, `form.name = n`, `todos.push(t)`) takes the
 value out (CTAKE), changes it in place (SETF, SETIDX, an inout builtin
-on the register), and puts it back (CPUT, which always notifies). The
+on the register), and puts it back with CPUTP and the place's path. The
 index and the new value are computed before the CTAKE.
+
+**Paths** (rfcs/0013). A read of state follows its path: the checker
+spells an expression's path below a state or an accessor
+(check.StatePath: fields, `?.` fields, indexes, `get(i)`, `first()`, map
+keys and `get(k)`, `has(k)`, a set's `contains(x)`, `count()`,
+`isEmpty()`), and the lowering, from the outside in, reads the longest
+one at once: `CPATH a, cell, P, base`, P a string constant spelling the
+steps (core/src/vm/path.h: a letter each, a field's index after a
+field's, a kind after a key's), their indexes and keys from consecutive
+registers from base. An index or a key that calls something stops the
+path (it's computed before the cell is read). `m[k] ?? d` and `if let v
+= m[k]` read `has` then the value as it's stored (`h`, `v`), both
+following k. Tracking, CPATH finds or makes the path's node under the
+cell and subscribes to it; untracked, it navigates.
+
+CPUTP's last step says what the change was: `o`, an assignment, its old
+value kept (GETF, IDX, MGETJ with whether the key was there, before the
+SETF, SETIDX or MSET) and compared, so an equal write notifies no one;
+`r`, an inout builtin, which records what it changed (rt.h's
+`ak_change`: the first index and whether the length changed, or the
+key); `a`, anything below the place (a mut fn's call, a compound change
+of a map's entry, the handler of a change that threw). A whole write
+(CSET) compares the old and new values at each followed path, skipping
+what's the same object.
+
+Collection methods on a path, in a binding, an effect or a file's
+initializer, with a closure literal (`count(where)`, `any`, `all`,
+`find`, `index`, `filter`, `map`, `sorted(by)`), are loops over the path
+(ir/pathloops.go): the length read with CLEN, the closure's body
+inlined with its parameter the element's path at the loop's index (a
+pathVar), so each of its reads is a CPATH. What a method returns is read
+whole (`find`'s item, `filter`'s kept ones, every element for
+`sorted(by)`, then sorted as the builtin does). Elsewhere they're the
+builtins.
 
 A **binding** is any expression the UI follows: a prop's value, an
 `if`'s condition, a `for`'s items, a `match`'s subject, a `let`. The
@@ -617,7 +658,10 @@ events' handlers, in declaration order:
 
 - A parameter or prop is passed as an **accessor**: ACCV of the value
   when the caller's expression is constant, ACCC of a cell or memo when
-  it's one read alone, ACCF of a thunk otherwise. A prop the caller
+  it's one read alone, ACCP when it's a path whose indexes and keys read
+  nothing that changes (`TodoRow(todos[0])`, `TodoRow(todo)` of a row's
+  item: what the callee reads through it follows its paths, AGETP),
+  ACCF of a thunk otherwise. A prop the caller
   leaves out is none, and the callee's default applies (evaluated in the
   callee, as an accessor too).
 - A prop of type `View` (a slot, `children`) is passed as a builder: a
@@ -661,6 +705,9 @@ The function's body, in order:
    value (hot reload) is a write: it stands until what `e` reads
    changes. A file's state is the same, in init.
 2. `let y = e`: MEMO of a thunk (or a constant when it reads nothing).
+   A `let` whose value is a path (check's `Member.Path`: `let draft =
+   form.draft`, made after what it reads) is an ACCP of it instead, no
+   memo: reads of it are AGET, reads through it AGETP.
 3. `use x: T`: CALLB `ui.use(key)`, the key being T's type name.
    `provide e`: CALLB `ui.provide(key, value)`, on the component's owner,
    before the views are built.
@@ -818,7 +865,8 @@ layer of a state, made the first time, after the style's.
 | `if let u = user { A }` | `ui.show(thunk{user != none}, builder{ let u = memo(user!); A })` |
 | `if let a = x, let b = f(a), b > 0 { A }`, `if let .ready(n) = s { A }` | `let m = memo{ the chain's tests; (a, b) or none }; ui.show(thunk{m != none}, builder{ let a = memo(m!.0); let b = memo(m!.1); A })`; a chain without names: `ui.show(thunk{its tests}, builder{A})` |
 | `for x in xs key k { R }` | `ui.for(thunk{xs}, closure(x){k}, closure(xAcc, iAcc){R})`; `x` in R is AGET xAcc |
-| the same, directly in a `List` | `ui.lazy_for(list, …)` with the same arguments |
+| the same, xs a path (a state, a parameter, a prop, a row's item, or a path below one, made of what doesn't change) | `ui.for_path(xsAcc, key, closure(xAcc, iAcc){R})`, key the item's fields spelled as a path when k is a field path of x (`key x.id`), else `closure(xAcc, i){k}`: it follows the length and the keys, not the items; a row's item is its element's accessor at its index cell |
+| the same, directly in a `List` | `ui.lazy_for(list, …)` (`ui.lazy_for_path`) with the same arguments |
 | `match s { .a => A; .b(p) => B }` | `ui.switch(thunk{the index of the arm s matches, -1 for none}, closure(arm){ switch on it: A, or { let p = memo(payload of s); B } })` |
 
 Each builder and row runs under its own owner, which the runtime
