@@ -23,10 +23,16 @@ or interpolation; `"""…"""` spans lines (without its first line when
 that's blank, and without the indentation of its closing quotes' line).
 A value that isn't a number, a bool or a string shows as text: an enum's
 case by its name, an optional as `none` or its value, an error as its
-message, the rest as JSON.
+message, a color as it's written (`#0a84ff`, `.accent`), a duration in
+milliseconds (`1500ms`), the rest as JSON (and what JSON can't hold, a
+tuple or a function, as its type: `<(int, string)>`).
 
-A map's keys, and a set's elements, are ints, strings, bools or enums
-without payloads (the type's `Hashable`).
+A tuple's elements are read by taking it apart: `let (count, label) =
+pair`, `for (i, x) in xs.enumerated()`, or a tuple pattern in a `match`
+([Control flow](control-flow.md#control-flow)).
+
+A map's keys, and a set's elements, are ints, strings, bools, durations,
+colors or enums without payloads (the type's `Hashable`).
 
 ## Operators
 

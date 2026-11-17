@@ -99,16 +99,19 @@ let areas = shapes.map(s => s.area())
 ```
 
 Generic functions and types take type parameters. A parameter's
-constraints are the program's interfaces and `Equatable`, `Comparable`
-and `Hashable` (structs and enums have those when their fields do),
-several joined by `&`. What a type argument must have, its values in
+constraints are the program's interfaces and `Equatable` (what `==`
+compares: the built-in values, and structs, enums, tuples, arrays, maps
+and optionals whose parts are), `Comparable` (what `<` orders: ints,
+floats, strings and durations) and `Hashable` (what a map's key can
+be: see [Values and types](types.md#values-and-types)), several joined
+by `&`. What a type argument must have, its values in
 the generic code have: the interfaces' methods and fields, called
 directly on each type it's compiled for.
 
 ```asuka
 fn sortByArea<T: Shape>(xs: [T]) -> [T] = xs.sorted((a, b) => a.area() < b.area())
 
-fn largestOnce<T: Shape & Hashable>(xs: [T]) -> [T] { … }
+fn largestOnce<T: Shape & Equatable>(xs: [T]) -> [T] { … }
 
 struct Labeled<T: Shape> {
   item: T

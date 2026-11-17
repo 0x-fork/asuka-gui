@@ -15,7 +15,8 @@ let icon = match (online, unread) {
 A tuple pattern (`(true, 0)`) matches each element with a pattern of
 its own.
 
-`for` goes over an array, a map's `(key, value)` pairs, or a range:
+`for` goes over an array, a set, a map's `(key, value)` pairs, or a
+range:
 `a..<b` is the ints from `a` up to `b`, without it, and `a..b` with it
 (`0..<3` is `[0, 1, 2]`, and a `for` over a range makes no array).
 `while cond { … }` loops while cond holds; `break` and `continue` leave
