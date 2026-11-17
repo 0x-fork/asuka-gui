@@ -8,7 +8,7 @@ jobs:
       - uses: actions/setup-go@v5
         with: { go-version: stable }
       - run: CGO_ENABLED=0 go build ./... && go vet ./...
-      - run: go test ./...
+      - run: go test -timeout 30m ./... # cmd/asuka builds apps for every target: Gradle's first build downloads it
       - name: generated files are up to date
         run: go generate ./ops ./lang/bytecode ./lang/prelude && git diff --exit-code
   # The C core: its tests under ASan and UBSan with the system's compiler
