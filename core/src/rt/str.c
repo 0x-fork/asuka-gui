@@ -13,12 +13,9 @@ ak_str *ak_str_new(const char *s, size_t n) {
 }
 
 ak_str *ak_str_empty(void) {
-	static ak_str *e;
-	if (!e) {
-		e = ak_str_new("", 0);
-		ak_make_immortal(e);
-	}
-	return e;
+	static void *e;
+	ak_str *s = ak_constant_get(&e);
+	return s ? s : ak_constant_put(&e, ak_str_new("", 0));
 }
 
 ak_str *ak_str_concat(ak_str *a, ak_str *b) {
@@ -82,14 +79,10 @@ ak_str *ak_str_from_float(double v) {
 }
 
 ak_str *ak_str_from_bool(bool v) {
-	static ak_str *t, *f;
-	if (!t) {
-		t = ak_str_c("true");
-		f = ak_str_c("false");
-		ak_make_immortal(t);
-		ak_make_immortal(f);
-	}
-	return v ? t : f;
+	static void *t, *f;
+	void **slot = v ? &t : &f;
+	ak_str *s = ak_constant_get(slot);
+	return s ? s : ak_constant_put(slot, ak_str_c(v ? "true" : "false"));
 }
 
 bool ak_str_eq(const ak_str *a, const ak_str *b) {

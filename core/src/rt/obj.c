@@ -110,17 +110,22 @@ ak_enum *ak_enum_new(const ak_shape *s, uint16_t ci) {
 	const ak_case *c = &s->cases[ci];
 	if (c->nfields == 0) {
 		// Payloadless cases of a payload enum are shared and immortal.
+		// A shape is shared by the threads that run its module's code
+		// (spawn's workers), so its table and each case's value are put
+		// there once, whole, whichever thread asks first.
 		ak_shape *ms = (ak_shape *)s;
-		if (!ms->singletons) ms->singletons = ak_alloc(sizeof(ak_enum *) * s->ncases);
-		ak_enum **tab = ms->singletons;
-		if (!tab[ci]) {
-			ak_enum *e = ak_obj_new(AK_TAG_ENUM, sizeof(ak_enum));
-			e->shape = s;
-			e->h.aux = ci;
-			ak_make_immortal(e);
-			tab[ci] = e;
+		void **tab = ak_constant_get(&ms->singletons);
+		if (!tab) {
+			void **made = ak_alloc(sizeof(ak_enum *) * s->ncases);
+			if (__atomic_compare_exchange_n(&ms->singletons, (void **)&tab, made, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) tab = made;
+			else ak_free(made);
 		}
-		return tab[ci];
+		ak_enum *e = ak_constant_get(&tab[ci]);
+		if (e) return e;
+		e = ak_obj_new(AK_TAG_ENUM, sizeof(ak_enum));
+		e->shape = s;
+		e->h.aux = ci;
+		return ak_constant_put(&tab[ci], e);
 	}
 	ak_enum *e = ak_obj_new(AK_TAG_ENUM, sizeof(ak_enum) + sizeof(ak_val) * c->nfields);
 	e->shape = s;
@@ -385,6 +390,18 @@ void ak_frozen_free(ak_frozen *made) {
 	ak_vec_free(made);
 }
 
+void *ak_constant_put(void **slot, void *v) {
+	ak_frozen made = {0};
+	ak_freeze((ak_val){.p = v}, AK_K_REF, &made);
+	void *had = NULL;
+	if (__atomic_compare_exchange_n(slot, &had, v, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
+		ak_vec_free(&made);
+		return v;
+	}
+	ak_frozen_free(&made);  // nothing else saw it
+	return had;
+}
+
 // ---- Errors ----
 
 static AK_TLS void *pending_error;
@@ -430,14 +447,14 @@ void ak_throw_msg(const char *fmt, ...) {
 }
 
 void ak_throw_cancel(void) {
-	static ak_struct *cancel;
-	if (!cancel) {
-		cancel = ak_struct_new(&cancel_shape);
-		cancel->f[0].p = ak_str_c("cancelled");
-		ak_make_immortal(cancel->f[0].p);
-		ak_make_immortal(cancel);
+	static void *cancel;
+	void *c = ak_constant_get(&cancel);
+	if (!c) {
+		ak_struct *made = ak_struct_new(&cancel_shape);
+		made->f[0].p = ak_str_c("cancelled");
+		c = ak_constant_put(&cancel, made);
 	}
-	ak_throw(cancel);
+	ak_throw(c);
 }
 
 bool ak_error_pending(void) { return pending_error != NULL; }

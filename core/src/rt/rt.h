@@ -316,6 +316,13 @@ ak_val ak_deep_copy(ak_val v, ak_kind k);
 typedef AK_VEC(ak_obj *) ak_frozen;
 void ak_freeze(ak_val v, ak_kind k, ak_frozen *made);
 void ak_frozen_free(ak_frozen *made);
+// A constant made on first use, which threads (spawn's workers) may ask
+// for at once: ak_constant_get is what *slot holds (NULL: not made yet);
+// ak_constant_put freezes v, just made, and puts it in *slot unless
+// another thread put one there first (v is then freed), and returns the
+// one *slot holds, whole on every thread.
+static inline void *ak_constant_get(void *const *slot) { return __atomic_load_n(slot, __ATOMIC_ACQUIRE); }
+void *ak_constant_put(void **slot, void *v);
 
 // ---- Errors ----
 //
