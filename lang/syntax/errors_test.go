@@ -247,8 +247,8 @@ func check(t *testing.T, name string, src []byte) {
 		t.Fatalf("%s: Format's error %v with %d parse errors", name, err, len(errs))
 	}
 	if err == nil {
-		if again, _ := Format(name, out); string(again) != string(out) {
-			t.Fatalf("%s: not idempotent on %q:\n%s\n---\n%s", name, src, out, again)
+		if msg := roundTrip(name, src, out); msg != "" {
+			t.Fatal(msg)
 		}
 	}
 }

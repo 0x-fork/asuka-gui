@@ -3,6 +3,7 @@ package syntax
 import (
 	"bytes"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,32 +55,82 @@ func TestFormatGolden(t *testing.T) {
 		} else if !bytes.Equal(out, want) {
 			t.Errorf("%s: the output differs from %s; first difference:\n%s", name, golden, firstDiff(string(out), string(want)))
 		}
-		again, err := Format(name, out)
-		if err != nil {
-			t.Fatalf("%s: the output doesn't parse: %v\n%s", name, err, out)
-		}
-		if !bytes.Equal(again, out) {
-			t.Errorf("%s: not idempotent; first difference:\n%s", name, firstDiff(string(again), string(out)))
-		}
-		f, _ := ParseFile(NewFileSet(), name, src)
-		for _, c := range f.Comments {
-			if !bytes.Contains(out, []byte(strings.TrimRight(c.Text, " \t"))) {
-				t.Errorf("%s: comment %q lost", name, c.Text)
-			}
-		}
-		// The trees match, comments aside (and the form style: replaced
-		// rewritten, as the printer does).
-		Inspect(f, func(n Node) bool {
-			if b, ok := n.(*Block); ok {
-				b.Items = styleUses(b.Items)
-			}
-			return n != nil
-		})
-		g, _ := ParseFile(NewFileSet(), name, out)
-		if a, b := shape(f), shape(g); a != b {
-			t.Errorf("%s: formatting changed the tree:\n%s", name, firstDiff(b, a))
+		if msg := roundTrip(name, src, out); msg != "" {
+			t.Error(msg)
 		}
 	}
+}
+
+// TestFormatRepo formats every .asuka file in the repository that
+// parses (the checker's error cases have syntax errors of their own):
+// formatting keeps its meaning and its comments, and is stable.
+func TestFormatRepo(t *testing.T) {
+	root := filepath.Join("..", "..")
+	n := 0
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if path != root && (strings.HasPrefix(d.Name(), ".") || d.Name() == "node_modules" || d.Name() == "dist") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".asuka") {
+			return nil
+		}
+		src, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		out, err := Format(path, src)
+		if err != nil {
+			return nil
+		}
+		n++
+		if msg := roundTrip(path, src, out); msg != "" {
+			t.Error(msg)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n == 0 {
+		t.Fatal("no .asuka files")
+	}
+}
+
+// roundTrip checks out, src formatted: it formats to itself again, has
+// every comment of src, and parses to src's tree (comments aside, and
+// the form style: replaced rewritten, as the printer does). It returns
+// what's wrong, or "".
+func roundTrip(name string, src, out []byte) string {
+	again, err := Format(name, out)
+	if err != nil {
+		return fmt.Sprintf("%s: the output doesn't parse: %v\n%s", name, err, out)
+	}
+	if !bytes.Equal(again, out) {
+		return fmt.Sprintf("%s: not idempotent on %q; first difference:\n%s", name, src, firstDiff(string(again), string(out)))
+	}
+	f, _ := ParseFile(NewFileSet(), name, src)
+	for _, c := range f.Comments {
+		if !bytes.Contains(out, []byte(strings.TrimRight(c.Text, " \t\r"))) {
+			return fmt.Sprintf("%s: comment %q lost from %q", name, c.Text, src)
+		}
+	}
+	Inspect(f, func(n Node) bool {
+		if b, ok := n.(*Block); ok {
+			b.Items = styleUses(b.Items)
+		}
+		return n != nil
+	})
+	g, _ := ParseFile(NewFileSet(), name, out)
+	if a, b := shape(f), shape(g); a != b {
+		return fmt.Sprintf("%s: formatting %q changed the tree:\n%s", name, src, firstDiff(b, a))
+	}
+	return ""
 }
 
 // shape is a tree's kinds and names, without positions or comments.
@@ -150,6 +201,9 @@ func TestFormatCases(t *testing.T) {
 		{"component C {\n\n\n  state a = 1\n\n\n\n  state b = 2\n\n}", "component C {\n  state a = 1\n\n  state b = 2\n}\n"},
 		{"fn f() {\n  if a { b() }\n  else { c() }\n}", "fn f() {\n  if a { b() } else { c() }\n}\n"},
 		{"fn f() {\n  do { a() }\n  catch { b() }\n}", "fn f() {\n  do { a() } catch { b() }\n}\n"},
+		// A one-line block whose item spans lines breaks too.
+		{"component C { Button(\"x\") { on press { a(); b() } } }", "component C {\n  Button(\"x\") {\n    on press {\n      a()\n      b()\n    }\n  }\n}\n"},
+		{"let x = match v { .a => () => { a(); b() } }", "let x = match v {\n  .a => () => {\n    a()\n    b()\n  }\n}\n"},
 		// Lists.
 		{"let a = f(1,\n  2)", "let a = f(1, 2)\n"},
 		{"let a = f(\n  1, 2)", "let a = f(\n  1,\n  2,\n)\n"},

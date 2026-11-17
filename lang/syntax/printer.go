@@ -366,6 +366,10 @@ func (p *printer) body(lbrace Pos, comment *Comment, nodes []Node, dangling []*C
 			}
 		}
 		if ok {
+			// What spans lines inside (a nested block of two items)
+			// breaks this one too: { on press {⏎…⏎} } would print
+			// differently the next time.
+			mark, bol := len(p.out), p.bol
 			p.write("{ ")
 			for i, n := range nodes {
 				if i > 0 {
@@ -373,8 +377,11 @@ func (p *printer) body(lbrace Pos, comment *Comment, nodes []Node, dangling []*C
 				}
 				p.node(n)
 			}
-			p.write(" }")
-			return
+			if bytes.IndexByte(p.out[mark:], '\n') < 0 {
+				p.write(" }")
+				return
+			}
+			p.out, p.bol = p.out[:mark], bol
 		}
 	}
 	p.write("{")
