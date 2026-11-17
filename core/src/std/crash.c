@@ -307,15 +307,26 @@ static void jv_set(jv *o, const char *key, jv *x) {
 static const char *jv_s(const jv *j) { return j && j->t == JV_STR ? j->s : ""; }
 static const char *jv_sget(const jv *o, const char *key) { return jv_s(jv_get(o, key)); }
 
+// jv_i and jv_u read a number as an integer, saturating: what hosts
+// write may be beyond the type's range.
 static int64_t jv_i(const jv *j) {
 	if (!j || j->t != JV_NUM) return 0;
-	if (!j->integral) return (int64_t)j->n;
-	return j->neg ? -(int64_t)j->u : (int64_t)j->u;
+	if (!j->integral) {
+		if (j->n != j->n) return 0;
+		if (j->n >= 0x1p63) return INT64_MAX;
+		if (j->n < -0x1p63) return INT64_MIN;
+		return (int64_t)j->n;
+	}
+	if (!j->neg) return j->u > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)j->u;
+	if (j->u > (uint64_t)INT64_MAX) return INT64_MIN;  // -2^63 itself, or below it
+	return -(int64_t)j->u;
 }
 
 static uint64_t jv_u(const jv *j) {
 	if (!j || j->t != JV_NUM || j->neg) return 0;
-	return j->integral ? j->u : (uint64_t)j->n;
+	if (j->integral) return j->u;
+	if (!(j->n > 0)) return 0;  // NaN too
+	return j->n >= 0x1p64 ? UINT64_MAX : (uint64_t)j->n;
 }
 
 static bool jv_b(const jv *j) { return j && j->t == JV_BOOL && j->b; }
@@ -561,12 +572,13 @@ static void civil_from_days(int64_t z, int64_t *y, int *m, int *d) {
 	*y = yoe + era * 400 + (*m <= 2);
 }
 
-static int64_t floordiv(int64_t a, int64_t b) { return a / b - (a % b != 0 && (a < 0) != (b < 0)); }
-
 // rfc3339 writes ms (since 1970) as RFC 3339, in UTC: what Go's
 // time.Time reads.
 static void rfc3339(int64_t ms, char out[40]) {
-	int64_t days = floordiv(ms, 86400000), rem = ms - days * 86400000;
+	// Days and the ms into the day, floored without multiplying back: ms
+	// is whatever a host wrote, int64's ends too.
+	int64_t days = ms / 86400000, rem = ms % 86400000;
+	if (rem < 0) rem += 86400000, days--;
 	int64_t y;
 	int m, d;
 	civil_from_days(days, &y, &m, &d);
@@ -2101,7 +2113,7 @@ static bool ts_decode(const uint8_t *p, size_t n, tombstone *t) {
 	size_t k;
 	while (pb_field(&r, &num, &v, &b, &k)) {
 		switch (num) {
-		case 2: t->fingerprint = dupn((const char *)b, k); break;
+		case 2: ak_free(t->fingerprint), t->fingerprint = dupn((const char *)b, k); break;
 		case 5: t->pid = v; break;
 		case 6: t->tid = v; break;
 		case 9: ak_vec_push(&t->command, dupn((const char *)b, k)); break;

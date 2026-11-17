@@ -274,4 +274,51 @@ TEST(crash_record_and_reports) {
 	ak_free(app);
 }
 
+// What hosts write is read whatever it says: numbers beyond int64's
+// range or at its ends saturate, a time no RFC 3339 year holds is none
+// (0), a tombstone's field said twice is its last.
+TEST(crash_inbox_extremes) {
+	// The record began in the test before, its directory removed since:
+	// made again.
+	char *dir = asuka_crash_start("{}");
+	REQUIRE(dir && *dir);
+	char app[1100], inbox[1100], runs[1100];
+	snprintf(app, sizeof app, "%s", dir);
+	*strrchr(app, '/') = 0;
+	snprintf(inbox, sizeof inbox, "%s/inbox", dir);
+	snprintf(runs, sizeof runs, "%s/runs", dir);
+	mkdir(app, 0700), mkdir(dir, 0700), mkdir(inbox, 0700), mkdir(runs, 0700);
+	static const struct {
+		const char *json, *want;
+	} cases[] = {
+		{"{\"time\":-9223372036854775808,\"pid\":-9223372036854775808,\"name\":\"min\"}", "\"time\":0,\"message\":\"min\""},
+		{"{\"time\":-9223372036854775809,\"name\":\"below\"}", "\"time\":0,\"message\":\"below\""},
+		{"{\"time\":-9223372036854775807,\"name\":\"near\"}", "\"time\":0,\"message\":\"near\""},
+		{"{\"time\":9223372036854775808,\"name\":\"above\"}", "\"time\":0,\"message\":\"above\""},
+		{"{\"time\":1e300,\"name\":\"huge\"}", "\"time\":0,\"message\":\"huge\""},
+		{"{\"time\":-1e300,\"name\":\"tiny\"}", "\"time\":0,\"message\":\"tiny\""},
+		{"{\"time\":1e3,\"name\":\"second\"}", "\"time\":1000,\"message\":\"second\""},
+	};
+	for (size_t i = 0; i < AK_LEN(cases); i++) {
+		puts_(inbox, "exception-x.json", cases[i].json);
+		char *r = reports();
+		HAS(r, cases[i].want);
+		free(r);
+	}
+	// A tombstone with its fingerprint twice.
+	pbw ts = {0};
+	pb_str(&ts, 2, "google/first:16");
+	pb_str(&ts, 2, "google/x:16");
+	pb_int(&ts, 5, 45);
+	put(inbox, "exit-4000-45.trace", ts.b, ts.n);
+	puts_(inbox, "exit-4000-45.json", "{\"time\":4000,\"pid\":45,\"reason\":5,\"status\":11,\"importance\":400,\"description\":\"crash\",\"pss\":0,\"rss\":0,\"process\":\"a\"}");
+	char *r = reports();
+	HAS(r, "\"id\":\"exit-4000-45\"");
+	HAS(r, "google/x:16");
+	HASNT(r, "google/first:16");
+	free(r);
+	ak_fs_remove_tree(app);
+	free(dir);
+}
+
 T_MAIN()
