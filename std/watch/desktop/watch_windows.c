@@ -111,7 +111,14 @@ static void run(void *p) {
 		}
 		if (!watch_settle(w)) break;
 	}
-	CancelIoEx(n->dir, &n->ov);
+	if (armed) {
+		// The read cancelled, and waited for: until it completes the system
+		// may still write the buffer and the OVERLAPPED, which go once the
+		// watcher does.
+		DWORD got = 0;
+		CancelIoEx(n->dir, &n->ov);
+		GetOverlappedResult(n->dir, &n->ov, &got, TRUE);
+	}
 	watch_exit(w);
 }
 
