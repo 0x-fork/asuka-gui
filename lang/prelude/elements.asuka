@@ -527,12 +527,10 @@ native component ProgressRing() {
 }
 
 /// a spinner
-native component Activity() {
-}
+native component Activity() {}
 
 /// a symbol (an SF Symbol, the Material Symbol for it), sized as text of its font and colored with its color
-native component Symbol(name: string) {
-}
+native component Symbol(name: string) {}
 
 /// a picture the host loads; without a size it takes its natural one, no wider than its room, and keeps its aspect ratio when one side is set
 native component Image(source: string) {
@@ -621,8 +619,7 @@ native component Selectable() {
 }
 
 /// draws what draw draws: a chart, a gauge, a signature. It takes the size its style gives it; with none, it's empty
-native component Canvas(draw: fn(Graphics)) {
-}
+native component Canvas(draw: fn(Graphics)) {}
 
 /// an outline, filled, stroked or both. It takes the size its style gives it
 native component Shape(path: fn(float, float) -> Path) {
@@ -959,8 +956,7 @@ native component MenuItem(title: string) {
 }
 
 /// a line between a menu's groups of items
-native component MenuSeparator() {
-}
+native component MenuSeparator() {}
 
 /// keeps the window it's in open while when is true, asking the app first (unsaved changes) when the user closes it
 native component WindowCloseGuard() {

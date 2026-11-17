@@ -1,41 +1,53 @@
 package syntax
 
 // The printer: a tree back to source, in the one canonical form asuka
-// fmt writes.
+// fmt writes. Like gofmt, it keeps the line breaks the author chose
+// where the form allows more than one, and fixes the rest.
 //
-//   - Two spaces of indentation; one member, item, field, case or arm
-//     per line; prop sets as name: value; spaces around binary
-//     operators, none around .. and ..< (0..<n), none inside brackets.
+//   - Two spaces of indentation; prop sets as name: value; spaces
+//     around binary operators, none around .. and ..< (0..<n), none
+//     inside brackets.
+//   - One member, item, field, case or arm per line, except those the
+//     source had on one line, which stay there separated by ; (an
+//     enum's cases and a match's arms by ,): gap: 8; padding: 16.
 //   - A block, a struct's or an enum's body, a match's arms stay on one
-//     line when they were written on one line and hold one item (an
-//     enum: only cases; a match: arms separated by commas) and no
-//     comment: on tap { count += 1 }. Otherwise each item goes on a line
-//     of its own, and an empty block is {}.
+//     line when they were written on one line and hold no comment (an
+//     enum: only cases): Column { height: 1; background: x }. Otherwise
+//     each item goes on a line of its own, and an empty block is {}.
 //   - Arguments, parameters (a closure's and a handler's too), type
 //     parameters and arguments, arrays, maps, tuples (and tuple and
 //     function types, tuple and case patterns), a task's dependencies
-//     and an import's names go one per line, each with a trailing comma,
-//     when the first was written on the line after the opening bracket
-//     or a comment sits between them; otherwise on one line. A blank line between two of
-//     them is kept. A binary expression broken before or after its
-//     operator, and a chain broken before a . or a ?., stays broken
-//     there, its next lines indented once more.
+//     and an import's names go a line each (those the source had on one
+//     line together), each with a trailing comma, when the first was
+//     written on the line after the opening bracket or a comment sits
+//     between them; otherwise on one line, but for the line breaks the
+//     source had after their commas, the next lines indented once more.
+//     A blank line between two of them is kept.
+//   - A binary expression broken before or after its operator, a chain
+//     broken before a . or a ?., and a value broken after its =, its :
+//     or its =>, stay broken there, the next lines indented once more.
 //   - } else and } catch go on the }'s line. Imports' .{…} follow the
-//     path directly: import ./components.{Row, Card}.
+//     path directly: import ./components.{Row, Card}. An optional
+//     function type is (fn(…))?, its parentheses kept whether they're
+//     needed (fn() -> int?, a function that returns an optional, isn't
+//     one) or not.
 //   - Comments are kept: above the node that follows them, after the
-//     node on its line, or at the end of a block. A comment inside an
-//     expression that can't stay where it was (a // in a binary
-//     expression joined on one line) moves above the line it was on.
-//     Blank lines between items are kept, at most one in a row; none
-//     after an opening brace or before a closing one.
+//     node on its line, or at the end of a block. The comments after the
+//     code of consecutive lines start in one column, as gofmt aligns
+//     them. A comment inside an expression that can't stay where it was
+//     (a // in a binary expression joined on one line) moves above the
+//     line it was on. Blank lines between items are kept, at most one in
+//     a row; none after an opening brace or before a closing one.
 //
 // Printing a file the printer wrote gives the same bytes again.
 
 import (
 	"bytes"
 	"io"
+	"slices"
 	"sort"
 	"strings"
+	"unicode/utf8"
 )
 
 // Format parses src as the file filename and returns it in canonical
@@ -256,11 +268,27 @@ func (p *printer) trailing(t *Trivia, n Node, limit Pos) {
 // lines prints nodes one per line after an opening bracket at open and
 // before its closer at close (NoPos when unknown, as for a file), with
 // the comments around them; sep follows each node (, in lists). In a
-// bracket (inside), the first line starts on a line of its own.
-func (p *printer) lines(inside bool, open Pos, nodes []Node, dangling []*CommentGroup, close Pos, sep string) {
+// bracket (inside), the first line starts on a line of its own. Nodes
+// the source had on one line stay so, join between them (; between
+// items, a space after a list's comma). The comments after the nodes of
+// consecutive lines are aligned, as gofmt's are.
+func (p *printer) lines(inside bool, open Pos, nodes []Node, dangling []*CommentGroup, close Pos, sep, join string) {
 	prev := open
+	var notes []note
 	for i, n := range nodes {
 		t := TriviaOf(n)
+		if i > 0 && join != "" && p.joined(nodes[i-1], n) {
+			p.write(join)
+			p.lineNode(n, func() { p.node(n) })
+			p.write(sep)
+			limit := close
+			if i+1 < len(nodes) {
+				limit = nodes[i+1].Range().Start
+			}
+			notes = p.note(notes, -1, func() { p.trailing(t, n, limit) })
+			prev = n.Range().End
+			continue
+		}
 		if i > 0 || inside {
 			p.newline()
 		}
@@ -278,15 +306,18 @@ func (p *printer) lines(inside bool, open Pos, nodes []Node, dangling []*Comment
 			p.ownLines(prev, n.Range().Start)
 		}
 		p.leading(t)
+		p.write("")
+		start := len(p.out)
 		p.lineNode(n, func() { p.node(n) })
 		p.write(sep)
 		limit := close
 		if i+1 < len(nodes) {
 			limit = nodes[i+1].Range().Start
 		}
-		p.trailing(t, n, limit)
+		notes = p.note(notes, start, func() { p.trailing(t, n, limit) })
 		prev = n.Range().End
 	}
+	p.align(notes)
 	for gi, g := range dangling {
 		if len(nodes) > 0 || gi > 0 || inside {
 			p.newline()
@@ -307,6 +338,85 @@ func (p *printer) lines(inside bool, open Pos, nodes []Node, dangling []*Comment
 			p.comment(c)
 		}
 	}
+}
+
+// joined reports whether the source had b on a's line, nothing between
+// them, both on one line: a; b in a block, a row of an array's elements.
+// An enum's case and a method aren't joined.
+func (p *printer) joined(a, b Node) bool {
+	ra, rb := a.Range(), b.Range()
+	if !ra.End.IsValid() || !rb.Start.IsValid() || p.commentsIn(ra.End, rb.Start) {
+		return false
+	}
+	if t := TriviaOf(b); t != nil && (t.HasComments() || t.BlankBefore) {
+		return false
+	}
+	if _, ca := a.(*EnumCase); ca != isEnumCase(b) {
+		return false
+	}
+	la := p.line(ra.Start)
+	return la > 0 && la == p.endLine(a) && la == p.line(rb.Start) && la == p.endLine(b)
+}
+
+func isEnumCase(n Node) bool {
+	_, ok := n.(*EnumCase)
+	return ok
+}
+
+// A note is a comment printed after a line's code: where the code ends,
+// and where its line starts, in the output.
+type note struct {
+	code, line int
+}
+
+// note runs comment, which may print a comment after the code just
+// printed, and keeps where, when the line's code (from start, -1 for the
+// line's start) is on one line.
+func (p *printer) note(notes []note, start int, comment func()) []note {
+	end := len(p.out)
+	comment()
+	if len(p.out) == end {
+		return notes
+	}
+	line := bytes.LastIndexByte(p.out[:end], '\n') + 1
+	if start >= 0 && line > start {
+		return notes // the node took more than one line
+	}
+	return append(notes, note{code: end, line: line})
+}
+
+// align pads the code of consecutive lines with comments after it, so
+// the comments start in one column, as a tabwriter's cells do in gofmt:
+// a line without one, a blank line or a node of several lines ends a
+// run.
+func (p *printer) align(notes []note) {
+	for i := len(notes) - 1; i >= 0; {
+		j := i // the run is notes[j..i]
+		for j > 0 && p.nextLine(notes[j-1].code) == notes[j].line {
+			j--
+		}
+		if i > j {
+			width := 0
+			for _, n := range notes[j : i+1] {
+				width = max(width, utf8.RuneCount(p.out[n.line:n.code]))
+			}
+			for k := i; k >= j; k-- {
+				n := notes[k]
+				if pad := width - utf8.RuneCount(p.out[n.line:n.code]); pad > 0 {
+					p.out = slices.Insert(p.out, n.code, bytes.Repeat([]byte{' '}, pad)...)
+				}
+			}
+		}
+		i = j - 1
+	}
+}
+
+// nextLine is where the output's line after the one at off starts.
+func (p *printer) nextLine(off int) int {
+	if k := bytes.IndexByte(p.out[off:], '\n'); k >= 0 {
+		return off + k + 1
+	}
+	return -1
 }
 
 // blankBetween reports whether a blank line separates end and start,
@@ -351,24 +461,45 @@ func (p *printer) list(openTok, closeTok string, open, close Pos, elems []Node) 
 	p.write(openTok)
 	if p.multiline(open, close, elems) {
 		p.indent++
-		p.lines(true, open, elems, nil, close, ",")
+		p.lines(true, open, elems, nil, close, ",", " ")
 		p.indent--
 		p.newline()
 		p.write(closeTok)
 		return
 	}
+	broke := false
 	for i, e := range elems {
-		if i > 0 {
-			p.write(", ")
-		}
+		p.sep(elems, i, &broke)
 		p.node(e)
+	}
+	if broke {
+		p.indent--
 	}
 	p.write(closeTok)
 }
 
+// sep writes what goes before a list's element i on its first line: a
+// comma, and a line break where the source had one after it (gofmt keeps
+// those), the next lines indented once more (broke says they are).
+func (p *printer) sep(elems []Node, i int, broke *bool) {
+	if i == 0 {
+		return
+	}
+	p.write(",")
+	if l := p.endLine(elems[i-1]); l > 0 && p.line(elems[i].Range().Start) > l {
+		if !*broke {
+			*broke = true
+			p.indent++
+		}
+		p.newline()
+		return
+	}
+	p.write(" ")
+}
+
 // body prints { nodes } as a block's, a struct's or an enum's body.
 // oneLine says it may stay on one line, sep how to separate the nodes
-// there.
+// there and those the source had on one line.
 func (p *printer) body(lbrace Pos, comment *Comment, nodes []Node, dangling []*CommentGroup, rbrace Pos, oneLine bool, sep string) {
 	if len(nodes) == 0 && len(dangling) == 0 && comment == nil && !p.commentsIn(lbrace, rbrace) {
 		p.write("{}")
@@ -413,7 +544,7 @@ func (p *printer) body(lbrace Pos, comment *Comment, nodes []Node, dangling []*C
 		p.comment(comment)
 	}
 	p.indent++
-	p.lines(true, lbrace, nodes, dangling, rbrace, "")
+	p.lines(true, lbrace, nodes, dangling, rbrace, "", sep)
 	p.indent--
 	p.newline()
 	p.write("}")
@@ -425,7 +556,7 @@ func (p *printer) block(b *Block) {
 		return
 	}
 	items := styleUses(b.Items)
-	p.body(b.Lbrace, b.Comment, itemNodes(items), b.Dangling, b.Rbrace, len(items) == 1, "")
+	p.body(b.Lbrace, b.Comment, itemNodes(items), b.Dangling, b.Rbrace, true, "; ")
 }
 
 // styleUses rewrites the form style: replaced, style name, as style:
@@ -520,7 +651,7 @@ func (p *printer) sourceFile(f *SourceFile) {
 	for _, d := range f.Decls {
 		nodes = append(nodes, d)
 	}
-	p.lines(false, NoPos, nodes, f.Dangling, NoPos, "")
+	p.lines(false, NoPos, nodes, f.Dangling, NoPos, "", "; ")
 	// Anything left (there shouldn't be): at the end, never lost.
 	for _, c := range p.comments {
 		if !p.printed[c] {
@@ -617,9 +748,40 @@ func (p *printer) funcDecl(d *FuncDecl) {
 		p.write(" ")
 		p.block(d.Body)
 	case d.Value != nil:
-		p.write(" = ")
-		p.expr(d.Value)
+		after := d.Params.End
+		if d.Throws.IsValid() {
+			after = d.Throws + Pos(len("throws"))
+		}
+		if d.Result != nil {
+			after = d.Result.Range().End
+		}
+		p.value(" =", after, d.Value)
 	}
+}
+
+// value prints op and x after it, on op's line or, where the source
+// broke the line after op, on the next one, indented once more. after
+// is where what's before x ends: op is on its line.
+func (p *printer) value(op string, after Pos, x Expr) {
+	p.write(op)
+	if l := p.line(after - 1); l > 0 && p.line(x.Range().Start) > l {
+		p.trailing(nil, &BadExpr{Span: Span{after, after}}, x.Range().Start)
+		p.indent++
+		p.newline()
+		p.expr(x)
+		p.indent--
+		return
+	}
+	p.write(" ")
+	p.expr(x)
+}
+
+// end is where n ends, NoPos for nil.
+func end(n Node) Pos {
+	if n == nil {
+		return NoPos
+	}
+	return n.Range().End
 }
 
 // node prints any node.
@@ -668,7 +830,7 @@ func (p *printer) node(n Node) {
 		p.write("shader " + n.Name.Name)
 		p.params(n.Params)
 		p.write(" ")
-		p.body(n.Lbrace, nil, n.Members, n.Dangling, n.Rbrace, false, "")
+		p.body(n.Lbrace, nil, n.Members, n.Dangling, n.Rbrace, false, "; ")
 	case *ScreenDecl:
 		p.pub(n.Pub)
 		p.write("screen " + n.Name.Name)
@@ -695,14 +857,13 @@ func (p *printer) node(n Node) {
 		p.typeParams(n.TypeParams, n.TypeAngles)
 		p.conforms(n.Conforms)
 		p.write(" ")
-		p.body(n.Lbrace, nil, n.Members, n.Dangling, n.Rbrace, len(n.Members) == 1, "")
+		p.body(n.Lbrace, nil, n.Members, n.Dangling, n.Rbrace, true, "; ")
 	case *Field:
 		p.pub(n.Pub)
 		p.write(n.Name.Name + ": ")
 		p.typ(n.Type)
 		if n.Default != nil {
-			p.write(" = ")
-			p.expr(n.Default)
+			p.value(" =", end(n.Type), n.Default)
 		}
 	case *EnumDecl:
 		p.pub(n.Pub)
@@ -738,7 +899,7 @@ func (p *printer) node(n Node) {
 		p.write("interface " + n.Name.Name)
 		p.typeParams(n.TypeParams, n.TypeAngles)
 		p.write(" ")
-		p.body(n.Lbrace, nil, n.Members, n.Dangling, n.Rbrace, len(n.Members) == 1, "")
+		p.body(n.Lbrace, nil, n.Members, n.Dangling, n.Rbrace, true, "; ")
 	case *FuncDecl:
 		p.funcDecl(n)
 	case *ExternTypeDecl:
@@ -764,25 +925,27 @@ func (p *printer) node(n Node) {
 	case *StateDecl:
 		p.pub(n.Pub)
 		p.write("state " + n.Name.Name)
+		after := n.Name.End
 		if n.Type != nil {
 			p.write(": ")
 			p.typ(n.Type)
+			after = end(n.Type)
 		}
 		if n.Value != nil {
-			p.write(" = ")
-			p.expr(n.Value)
+			p.value(" =", after, n.Value)
 		}
 	case *LetDecl:
 		p.pub(n.Pub)
 		p.write(n.Keyword.String() + " ")
 		p.pattern(n.Pattern)
+		after := end(n.Pattern)
 		if n.Type != nil {
 			p.write(": ")
 			p.typ(n.Type)
+			after = end(n.Type)
 		}
 		if n.Value != nil {
-			p.write(" = ")
-			p.expr(n.Value)
+			p.value(" =", after, n.Value)
 		}
 		if n.Else != nil {
 			p.write(" else ")
@@ -818,13 +981,14 @@ func (p *printer) node(n Node) {
 	case *PropDecl:
 		p.pub(n.Pub)
 		p.write("prop " + n.Name.Name)
+		after := n.Name.End
 		if n.Type != nil {
 			p.write(": ")
 			p.typ(n.Type)
+			after = end(n.Type)
 		}
 		if n.Default != nil {
-			p.write(" = ")
-			p.expr(n.Default)
+			p.value(" =", after, n.Default)
 		}
 	case *EventDecl:
 		p.pub(n.Pub)
@@ -832,8 +996,8 @@ func (p *printer) node(n Node) {
 		p.params(n.Params)
 	case *VariantDecl:
 		p.pub(n.Pub)
-		p.write("variant " + n.Name.Name + " = ")
-		p.expr(n.Value)
+		p.write("variant " + n.Name.Name)
+		p.value(" =", n.Name.End, n.Value)
 	case *UseDecl:
 		p.write("use " + n.Name.Name + ": ")
 		p.typ(n.Type)
@@ -851,8 +1015,8 @@ func (p *printer) node(n Node) {
 		p.write("effect ")
 		p.block(n.Body)
 	case *PropSet:
-		p.write(n.Name.Name + ": ")
-		p.expr(n.Value)
+		p.write(n.Name.Name)
+		p.value(":", n.Name.End, n.Value)
 	case *OnHandler:
 		p.onHandler(n)
 	case *BindItem:
@@ -903,10 +1067,14 @@ func (p *printer) node(n Node) {
 			p.write(" if ")
 			p.expr(n.Guard)
 		}
-		p.write(" => ")
 		if x, ok := n.Body.(Expr); ok {
-			p.expr(x)
+			after := end(n.Pattern)
+			if n.Guard != nil {
+				after = end(n.Guard)
+			}
+			p.value(" =>", after, x)
 		} else {
+			p.write(" => ")
 			p.node(n.Body)
 		}
 	case *DoStmt:
@@ -948,8 +1116,7 @@ func (p *printer) node(n Node) {
 		}
 	case *AssignStmt:
 		p.expr(n.Target)
-		p.write(" " + n.Op.String() + " ")
-		p.expr(n.Value)
+		p.value(" "+n.Op.String(), n.OpPos+Pos(len(n.Op.String())), n.Value)
 	case *ExprStmt:
 		p.expr(n.X)
 	case *BadDecl, *BadItem:
@@ -1000,11 +1167,13 @@ func (p *printer) onHandler(n *OnHandler) {
 // cond prints an if's or a while's condition.
 func (p *printer) cond(x Expr) {
 	if l, ok := x.(*CondList); ok {
+		broke := false
 		for i, c := range l.List {
-			if i > 0 {
-				p.write(", ")
-			}
+			p.sep(exprNodes(l.List), i, &broke)
 			p.cond(c)
+		}
+		if broke {
+			p.indent--
 		}
 		return
 	}
@@ -1149,12 +1318,16 @@ func (p *printer) expr1(x Expr) {
 			}
 			p.list("(", ")", x.Lparen, x.Rparen, nodes)
 		}
-		p.write(" => ")
 		switch b := x.Body.(type) {
 		case *Block:
+			p.write(" => ")
 			p.block(b)
 		case Expr:
-			p.expr(b)
+			after := x.Rparen + 1
+			if !x.Parens && len(x.Params) > 0 {
+				after = x.Params[len(x.Params)-1].End
+			}
+			p.value(" =>", after, b)
 		}
 	case *ParenExpr:
 		p.write("(")
@@ -1166,14 +1339,16 @@ func (p *printer) expr1(x Expr) {
 			return
 		}
 		p.write("(")
+		broke := false
 		for i, e := range x.Elems {
-			if i > 0 {
-				p.write(", ")
-			}
+			p.sep(exprNodes(x.Elems), i, &broke)
 			p.expr(e)
 		}
 		if len(x.Elems) == 1 {
 			p.write(",")
+		}
+		if broke {
+			p.indent--
 		}
 		p.write(")")
 	case *ArrayExpr:
@@ -1448,14 +1623,16 @@ func (p *printer) typ(t Type) {
 			return
 		}
 		p.write("(")
+		broke := false
 		for i, e := range t.Elems {
-			if i > 0 {
-				p.write(", ")
-			}
+			p.sep(typeNodes(t.Elems), i, &broke)
 			p.typ(e)
 		}
 		if len(t.Elems) == 1 {
 			p.write(",")
+		}
+		if broke {
+			p.indent--
 		}
 		p.write(")")
 	case *FuncType:
@@ -1522,14 +1699,16 @@ func (p *printer) pattern(pt Pattern) {
 			return
 		}
 		p.write("(")
+		broke := false
 		for i, e := range pt.Elems {
-			if i > 0 {
-				p.write(", ")
-			}
+			p.sep(patternNodes(pt.Elems), i, &broke)
 			p.pattern(e)
 		}
 		if len(pt.Elems) == 1 {
 			p.write(",")
+		}
+		if broke {
+			p.indent--
 		}
 		p.write(")")
 	case *OrPat:

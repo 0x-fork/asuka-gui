@@ -10,13 +10,14 @@ import (
 	"strings"
 
 	"github.com/egoist/asuka/lang/prelude"
+	"github.com/egoist/asuka/lang/syntax"
 	"github.com/egoist/asuka/ops"
 )
 
 func main() {
 	readEnums("types.asuka")
-	write("elements.asuka", asuka())
-	write("enums.asuka", enums())
+	write("elements.asuka", format("elements.asuka", asuka()))
+	write("enums.asuka", format("enums.asuka", enums()))
 	write(filepath.Join("..", "..", "core", "src", "ui", "elements_gen.h"), header())
 }
 
@@ -25,6 +26,16 @@ func write(path string, b []byte) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+// format is src as asuka fmt writes it.
+func format(name string, src []byte) []byte {
+	out, err := syntax.Format(name, src)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	return out
 }
 
 func upper(s string) string {

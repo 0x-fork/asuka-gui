@@ -3,10 +3,7 @@ component Card {
   Column {
     style: card
     gap: 8
-    Text("a") {
-      style: title
-      color: #f00
-    }
+    Text("a") { style: title; color: #f00 }
     Text("b") { style: [card, theme.title] }
     View {
       style: card

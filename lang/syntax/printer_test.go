@@ -198,7 +198,7 @@ func TestFormatCases(t *testing.T) {
 		{"let n = (a + b) << (c & d)", "let n = (a + b) << (c & d)\n"},
 		{"let n = a + (b << c)", "let n = a + (b << c)\n"},
 		{"let n = 0b1010_0101 | 0o17", "let n = 0b1010_0101 | 0o17\n"},
-		{"fn f() { x>>=1; x<<=2; x&=3; x|=4; x^=5 }", "fn f() {\n  x >>= 1\n  x <<= 2\n  x &= 3\n  x |= 4\n  x ^= 5\n}\n"},
+		{"fn f() {\n  x>>=1; x<<=2; x&=3; x|=4; x^=5\n}", "fn f() {\n  x >>= 1; x <<= 2; x &= 3; x |= 4; x ^= 5\n}\n"},
 		{"let m = [ 1 : 2 ]", "let m = [1: 2]\n"},
 		{"let m = [ : ]", "let m = [:]\n"},
 		{"type F = async fn( int )throws->bool?", "type F = async fn(int) throws -> bool?\n"},
@@ -206,25 +206,34 @@ func TestFormatCases(t *testing.T) {
 		{"import @acme/line-charts  as lc", "import @acme/line-charts as lc\n"},
 		{"pub  native  async fn  f( a:int )throws->int", "pub native async fn f(a: int) throws -> int\n"},
 		{"struct T { native fn  g()->int }", "struct T { native fn g() -> int }\n"},
-		// Items, one per line.
-		{"component C { prop a = 1; event e; Text(\"x\") }", "component C {\n  prop a = 1\n  event e\n  Text(\"x\")\n}\n"},
+		// Items: a line each, but those the source had on one line stay
+		// so, and a block written on one line stays on one.
+		{"component C {\n  prop a = 1\n  event e; Text(\"x\")\n}", "component C {\n  prop a = 1\n  event e; Text(\"x\")\n}\n"},
+		{"component C { prop a = 1; event e; Text(\"x\") }", "component C { prop a = 1; event e; Text(\"x\") }\n"},
 		{"component C { Text(\"x\") }", "component C { Text(\"x\") }\n"},
-		{"component C { prop on=false; pub  variant  on=on&&!x; View { variant: 1 } }", "component C {\n  prop on = false\n  pub variant on = on && !x\n  View { variant: 1 }\n}\n"},
+		{"component C {\n  prop on=false; pub  variant  on=on&&!x\n  View { variant: 1; gap: 2 }\n}", "component C {\n  prop on = false; pub variant on = on && !x\n  View { variant: 1; gap: 2 }\n}\n"},
+		{"component C {\n  a(); Row {\n    b()\n  }\n}", "component C {\n  a()\n  Row {\n    b()\n  }\n}\n"},
+		{"struct P { x: int; y: int }", "struct P { x: int; y: int }\n"},
 		{"component C { variant(1) }", "component C { variant(1) }\n"},
 		{"component C {\n}", "component C {}\n"},
 		{"component C {\n\n\n  state a = 1\n\n\n\n  state b = 2\n\n}", "component C {\n  state a = 1\n\n  state b = 2\n}\n"},
 		{"fn f() {\n  if a { b() }\n  else { c() }\n}", "fn f() {\n  if a { b() } else { c() }\n}\n"},
 		{"fn f() {\n  do { a() }\n  catch { b() }\n}", "fn f() {\n  do { a() } catch { b() }\n}\n"},
 		// A one-line block whose item spans lines breaks too.
-		{"component C { Button(\"x\") { on press { a(); b() } } }", "component C {\n  Button(\"x\") {\n    on press {\n      a()\n      b()\n    }\n  }\n}\n"},
-		{"let x = match v { .a => () => { a(); b() } }", "let x = match v {\n  .a => () => {\n    a()\n    b()\n  }\n}\n"},
+		{"component C { Button(\"x\") { on press { a(1 /* x */, 2) } } }", "component C {\n  Button(\"x\") {\n    on press {\n      a(\n        1, /* x */\n        2,\n      )\n    }\n  }\n}\n"},
+		{"let x = match v { .a => () => { a(1 /* x */, 2) } }", "let x = match v {\n  .a => () => {\n    a(\n      1, /* x */\n      2,\n    )\n  }\n}\n"},
 		// Lists.
-		{"let a = f(1,\n  2)", "let a = f(1, 2)\n"},
-		{"let a = f(\n  1, 2)", "let a = f(\n  1,\n  2,\n)\n"},
+		// A line break after a comma stays, as gofmt keeps it; elements
+		// on one line of a list a line each stay on it.
+		{"let a = f(1,\n  2)", "let a = f(1,\n  2)\n"},
+		{"let a = f(1, 2,\n         3, g(4,\n    5), 6)", "let a = f(1, 2,\n  3, g(4,\n    5), 6)\n"},
+		{"let a = f(\n  1, 2)", "let a = f(\n  1, 2,\n)\n"},
+		{"let m = [\n  1, 0,\n  0, 1]", "let m = [\n  1, 0,\n  0, 1,\n]\n"},
 		{"let a = [\n1]", "let a = [\n  1,\n]\n"},
 		{"let a = [\n  1,\n\n\n  2]", "let a = [\n  1,\n\n  2,\n]\n"},
 		{"fn f(\n  a: int,\n\n  b: int) {}", "fn f(\n  a: int,\n\n  b: int,\n) {}\n"},
-		{"let t = (\n  1, 2)", "let t = (\n  1,\n  2,\n)\n"},
+		{"let t = (\n  1, 2)", "let t = (\n  1, 2,\n)\n"},
+		{"let t = (1,\n  2)", "let t = (1,\n  2)\n"},
 		{"let t = (1, // one\n  2)", "let t = (\n  1, // one\n  2,\n)\n"},
 		{"let t = (\n  1,\n)", "let t = (\n  1,\n)\n"},
 		{"let t = ( 1 , )", "let t = (1,)\n"},
@@ -232,9 +241,9 @@ func TestFormatCases(t *testing.T) {
 		// Type parameters and arguments, case patterns' arguments, a
 		// handler's parameters, a task's dependencies, tuple and function
 		// types, tuple patterns, a closure's parameters: as arguments.
-		{"struct Page<\n  T, U> { items: [T] }", "struct Page<\n  T,\n  U,\n> { items: [T] }\n"},
+		{"struct Page<\n  T, U> { items: [T] }", "struct Page<\n  T, U,\n> { items: [T] }\n"},
 		{"struct Page<T, // the item\n  U: Hashable> {}", "struct Page<\n  T, // the item\n  U: Hashable,\n> {}\n"},
-		{"fn f<T,\n  U>(x: T) {}", "fn f<T, U>(x: T) {}\n"},
+		{"fn f<T,\n  U>(x: T) {}", "fn f<T,\n  U>(x: T) {}\n"},
 		{"fn f<\n  T\n>(x: T) {}", "fn f<\n  T,\n>(x: T) {}\n"},
 		{"type M = Map<string, /* values */ int>", "type M = Map<\n  string, /* values */\n  int,\n>\n"},
 		{"let x = decode<\n  [Item]>(s)", "let x = decode<\n  [Item],\n>(s)\n"},
@@ -247,11 +256,23 @@ func TestFormatCases(t *testing.T) {
 		{"type F = fn(\n  int) -> bool", "type F = fn(\n  int,\n) -> bool\n"},
 		{"type F = fn(int, /* b */ int)", "type F = fn(\n  int, /* b */\n  int,\n)\n"},
 		{"let f = (a, // first\n  b) => a", "let f = (\n  a, // first\n  b,\n) => a\n"},
-		{"import ./a.{b,\n  c} as x", "import ./a.{b, c} as x\n"},
+		{"import ./a.{b,\n  c} as x", "import ./a.{b,\n  c} as x\n"},
 		{"import ./a.{ /* none */ }", "import ./a.{\n  /* none */\n}\n"},
-		{"enum E {\n  a, b\n}", "enum E {\n  a\n  b\n}\n"},
+		{"enum E {\n  a, b\n}", "enum E {\n  a, b\n}\n"},
+		{"enum E {\n  a\n  b; fn f() {}\n}", "enum E {\n  a\n  b\n  fn f() {}\n}\n"},
 		{"enum E { a, b }", "enum E { a, b }\n"},
-		{"let x = match v {\n  .a => 1, .b => 2\n}", "let x = match v {\n  .a => 1\n  .b => 2\n}\n"},
+		{"let x = match v {\n  .a => 1, .b => 2\n}", "let x = match v {\n  .a => 1, .b => 2\n}\n"},
+		// A line break after =, : or => stays.
+		{"fn f() -> int =\n      g()", "fn f() -> int =\n  g()\n"},
+		{"fn f() {\n  let x: int = // why\n    g()\n  x +=\n    1\n}", "fn f() {\n  let x: int = // why\n    g()\n  x +=\n    1\n}\n"},
+		{"component C {\n  title:\n    \"Inbox\"\n}", "component C {\n  title:\n    \"Inbox\"\n}\n"},
+		{"let f = x =>\n  x + 1", "let f = x =>\n  x + 1\n"},
+		// Comments after the code of consecutive lines line up.
+		{"struct S {\n  a: int = 0 // one\n  bcd: string = \"\"   // two\n\n  e: int // three\n  f: int\n  g: int // four\n}", "struct S {\n  a: int = 0       // one\n  bcd: string = \"\" // two\n\n  e: int // three\n  f: int\n  g: int // four\n}\n"},
+		{"enum E {\n  a // one\n  bb // two\n  c(int) // three\n}", "enum E {\n  a      // one\n  bb     // two\n  c(int) // three\n}\n"},
+		{"let xs = [\n  1, // one\n  22, // two\n]", "let xs = [\n  1,  // one\n  22, // two\n]\n"},
+		{"fn f() {\n  a() // x\n  // own line\n  bb() // y\n}", "fn f() {\n  a() // x\n  // own line\n  bb() // y\n}\n"},
+		{"fn f() {\n  let é = 1 // x\n  let ab = 2 // y\n}", "fn f() {\n  let é = 1  // x\n  let ab = 2 // y\n}\n"},
 		// A binary expression broken after its operator.
 		{"let ok = a &&\n        b ||\n  c", "let ok = a &&\n  b ||\n  c\n"},
 		// Comments.
@@ -305,13 +326,13 @@ func TestFormatCases(t *testing.T) {
 // was 2^100 tries).
 func TestFormatNestedOneLine(t *testing.T) {
 	const depth = 100
-	src := "component C { " + strings.Repeat("Row { ", depth) + "a(); b()" + strings.Repeat(" }", depth) + " }"
+	src := "component C { " + strings.Repeat("Row { ", depth) + "a(1 /* one */, 2)" + strings.Repeat(" }", depth) + " }"
 	out, err := Format("t.asuka", []byte(src))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := strings.Count(string(out), "\n"); n != 2*depth+4 {
-		t.Errorf("%d lines, want %d:\n%s", n, 2*depth+4, out)
+	if n := strings.Count(string(out), "\n"); n != 2*depth+6 {
+		t.Errorf("%d lines, want %d:\n%s", n, 2*depth+6, out)
 	}
 }
 

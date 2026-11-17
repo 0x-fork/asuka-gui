@@ -16,8 +16,7 @@ component Counter(
   let doubled = count * 2
 
   Column {
-    gap: 12
-    padding: 16
+    gap: 12; padding: 16
     Text("Count: {count}") { fontSize: 24 }
     Button("Add") { on tap { count += step } } // adds
     /* a block comment */
@@ -38,12 +37,14 @@ fn sum(xs: [int]) -> int {
     // the second
     2: "two",
   ]
-  let list = [1, 2, 3]
+  let list = [1,
+    2, 3]
   let tall = [
     1,
     2, // two
   ]
-  call(a, b: 2)
+  call(a,
+    b: 2)
   call(
     a, // the a
     b: 2,
