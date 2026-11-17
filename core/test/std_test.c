@@ -258,7 +258,7 @@ TEST(regex_empty_repeats) {
 	// thousand to the fourth compiles of it.
 	ak_val prog = call("regex.program", (ak_val[]){S("(?:(?:(?:(?:){1000}){1000}){1000}){1000}x")}, 1, 1);
 	REQUIRE(prog.p);
-	ak_val r = call("regex.test", (ak_val[]){prog, S("ax")}, 2, 1);
+	ak_val r = call("regex.test", (ak_val[]){prog, S("ax")}, 2, 3);
 	CHECK(r.i);
 	// A group in it still counts: a thousand saves of it, a thousand times
 	// over, is too large.
