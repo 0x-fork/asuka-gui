@@ -1,0 +1,15 @@
+// A native component's values cross to the platform's view: a type that
+// isn't one is said once, where it's written.
+
+struct Pin {
+  id: string
+}
+
+native component Map {
+  prop pins: [Pinz] = [] // ERROR "unknown type Pinz"
+  prop at: Pinz? = none // ERROR "unknown type Pinz"
+  prop byID: [string: Pinz] = [:] // ERROR "unknown type Pinz"
+  prop shown: [Pin] = []
+  prop tap: fn() = () => { } // ERROR "tap can't cross to the platform's view"
+  event picked(pin: Pinz) // ERROR "unknown type Pinz"
+}

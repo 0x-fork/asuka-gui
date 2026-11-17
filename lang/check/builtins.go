@@ -678,7 +678,9 @@ func jsonable1(t Type, seen map[*TypeName]bool, param func(*TypeParam) bool) str
 		}
 	case *Basic:
 		switch x {
-		case Int, Float, Bool, String, Bytes, Duration, Color:
+		case Int, Float, Bool, String, Bytes, Duration, Color, Invalid:
+			// Invalid: a type that isn't one, which is said where it's
+			// written.
 			return ""
 		}
 		return "it's a " + x.name
