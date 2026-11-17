@@ -97,11 +97,18 @@ bool ak_memo_read(ak_memo *m) {
 	ak_node *n = &m->node;
 	if (n->flags & AK_F_DISPOSED) return true;
 	if (n->flags & (AK_F_DIRTY | AK_F_PENDING)) {
+		// Held: updating it (or a memo it reads) may dispose it.
+		ak_owner_retain(&m->owner);
 		if ((n->flags & AK_F_DIRTY) || ak_sig_check_dirty(m)) {
 			if (ak_sig_memo_update(m) && n->subs) ak_sig_shallow_propagate(n->subs);
 		} else {
 			n->flags &= ~(uint32_t)AK_F_PENDING;
 		}
+		if (n->flags & AK_F_DISPOSED) {
+			ak_owner_release(&m->owner);
+			return true;
+		}
+		ak_owner_release(&m->owner);  // not the last hold: its owner's
 	}
 	if (g->active) ak_sig_track(n, g->active);
 	if (m->err) {
