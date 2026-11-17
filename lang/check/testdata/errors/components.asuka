@@ -39,3 +39,24 @@ store Data {
   state n = 0
   Text("no") // ERROR "a store has no views or statements"
 }
+
+fn risky() throws -> int = 1
+
+component Declares {
+  let n = try risky() // ERROR "what a component's body declares can't throw: give a fallback"
+  let m = try risky() catch { 0 }
+  Column {
+    let inner = 3 // ERROR "a let in a view: .*declare it in the body, beside its state"
+    var w = 1 // ERROR "var in a view: .*a value that changes is state"
+    Text("{inner} {w} {n} {m}") // known names, if not values
+  }
+}
+
+component Unknown {
+  Text("x") {
+    colourful: .red // ERROR "Text has no prop colourful"
+    things: [] // ERROR "Text has no prop things"
+  }
+}
+
+fn bitsOfBools(a: bool, b: bool) -> bool = a | b && !b // ERROR "\| takes ints, not a bool"

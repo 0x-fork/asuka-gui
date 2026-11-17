@@ -805,31 +805,35 @@ type inferredFx struct {
 // callEffectsWhy is callEffects for a call of a closure whose effects
 // came from its body (fx, or nil): the errors say where.
 func (c *Checker) callEffectsWhy(at syntax.Node, what string, async, throws bool, fx *inferredFx) {
-	if async {
-		if c.inAwait == 0 {
-			why := ""
-			if fx != nil && fx.awaitAt.IsValid() {
-				why = fmt.Sprintf("; it's async because it awaits at %s (if it's meant to be, mark it: %s)", c.where(fx.awaitAt), fx.markedAsync())
-			}
-			if c.ctx != nil && c.ctx.Async {
-				c.errorf(at, "%s is async: await it (await %s(…)), or start it with spawn%s", what, what, why)
-			} else {
-				c.errorf(at, "%s is async, and this can't wait: %s%s", what, c.asyncHint(), why)
-			}
-		}
+	missAwait := async && c.inAwait == 0
+	missTry := throws && c.inTry == 0
+	awaitWhy, throwWhy := "", ""
+	if missAwait && fx != nil && fx.awaitAt.IsValid() {
+		awaitWhy = fmt.Sprintf("; it's async because it awaits at %s (if it's meant to be, mark it: %s)", c.where(fx.awaitAt), fx.markedAsync())
 	}
-	if throws && c.inTry == 0 {
-		why := ""
-		if fx != nil && fx.threwAt != nil {
-			why = fmt.Sprintf("; it can throw because of %s at %s", throwCause(fx.threwAt), c.where(fx.threwAt.Range().Start))
-		}
-		// One error for the call: the try it misses, and what a try
-		// would then need of what's around it.
-		also := ""
+	if missTry && fx != nil && fx.threwAt != nil {
+		throwWhy = fmt.Sprintf("; it can throw because of %s at %s", throwCause(fx.threwAt), c.where(fx.threwAt.Range().Start))
+	}
+	// One error for the call: what it misses, and what a try would then
+	// need of what's around it.
+	also := ""
+	if missTry {
 		if msg := c.throwHere(at); msg != "" {
 			also = "; and " + msg
 		}
-		c.errorf(at, "%s can throw: call it with try (try %s(…)), or try? for none on an error%s%s", what, what, why, also)
+	}
+	canWait := c.ctx != nil && c.ctx.Async
+	switch {
+	case missAwait && missTry && canWait:
+		c.errorf(at, "%s is async and can throw: call it with try await (try await %s(…)), or try? await for none on an error%s%s%s", what, what, awaitWhy, throwWhy, also)
+	case missAwait && missTry:
+		c.errorf(at, "%s is async and can throw, and this can't wait: %s%s%s%s", what, c.asyncHint(), awaitWhy, throwWhy, also)
+	case missAwait && canWait:
+		c.errorf(at, "%s is async: await it (await %s(…)), or start it with spawn%s", what, what, awaitWhy)
+	case missAwait:
+		c.errorf(at, "%s is async, and this can't wait: %s%s", what, c.asyncHint(), awaitWhy)
+	case missTry:
+		c.errorf(at, "%s can throw: call it with try (try %s(…)), or try? for none on an error%s%s", what, what, throwWhy, also)
 	}
 }
 

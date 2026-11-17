@@ -47,7 +47,9 @@ type Checker struct {
 	loops       int
 	curGlobal   *Global
 	resolving   map[any]bool
-	view        bool // checking view items
+	view        bool      // checking view items
+	styleValue  int       // checking a style: value, where the parser lets an if go without an else
+	defaultOf   *TypeName // checking a default of this type's field (or its case's payload)
 
 	chained map[syntax.Expr]bool // the members and calls of a ?. chain
 	// The Routes around the views checked: the Router, the path the

@@ -16,7 +16,7 @@ style bad {
   toolbar { } // ERROR "a style holds style props \(name: value\), style: …, use and variants"
   use n: int // ERROR "use takes a store's type"
   pressed {
-    use m: int // ERROR "use goes in the style's body, not in pressed"
+    use m: int // ERROR "use goes in the style's body, not in pressed|use takes a store's type"
     hovered { opacity: 0.5 } // ERROR "hovered \{ … \} in pressed \{ … \}"
     style: [if true { card }] // ERROR "the style: of pressed \{ … \} takes no conditions"
   }

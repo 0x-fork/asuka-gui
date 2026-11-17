@@ -228,7 +228,7 @@ func (c *Checker) styleItems(items []syntax.Item, d *StyleDef, state string) []*
 			if m == nil {
 				saved := c.ctx
 				c.enter(CtxBinding, s.Value, "binding")
-				c.expr(s.Value, nil)
+				c.expr(s.Value, Invalid) // said: what it'd be is unknown
 				c.leave(saved)
 				continue
 			}
@@ -337,6 +337,8 @@ func styleHasVariants(d *StyleDef, seen map[*StyleDef]bool) bool {
 // match choosing them. owner is the style whose body it's in (nil for an
 // element's).
 func (c *Checker) styleList(x syntax.Expr, owner *StyleDef) []*StyleEntry {
+	c.styleValue++
+	defer func() { c.styleValue-- }()
 	switch e := x.(type) {
 	case *syntax.ParenExpr:
 		return c.styleList(e.X, owner)

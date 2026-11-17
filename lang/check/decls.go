@@ -322,7 +322,8 @@ func (c *Checker) globalType(g *Global) Type {
 	c.resolving[g] = true
 	defer delete(c.resolving, g)
 
-	savedScope, savedCtx, savedG, savedPkg := c.scope, c.ctx, c.curGlobal, c.pkg
+	savedScope, savedCtx, savedG, savedPkg, savedOf := c.scope, c.ctx, c.curGlobal, c.pkg, c.defaultOf
+	c.defaultOf = nil
 	savedTry, savedAwait, savedHandled, savedView := c.inTry, c.inAwait, c.handled, c.view
 	c.inTry, c.inAwait, c.handled, c.view = 0, 0, 0, false
 	c.pkg = g.Pkg
@@ -358,7 +359,7 @@ func (c *Checker) globalType(g *Global) Type {
 		c.errorf(g.Value, "a type's constant can't read state: compute it where it's used")
 	}
 	c.leave(nil)
-	c.scope, c.ctx, c.curGlobal, c.pkg = savedScope, savedCtx, savedG, savedPkg
+	c.scope, c.ctx, c.curGlobal, c.pkg, c.defaultOf = savedScope, savedCtx, savedG, savedPkg, savedOf
 	c.inTry, c.inAwait, c.handled, c.view = savedTry, savedAwait, savedHandled, savedView
 	g.Type = t
 	return t
@@ -442,11 +443,13 @@ func (c *Checker) defaultValue(owner *TypeName, e syntax.Expr, want Type, what s
 		c.scope = c.pkg.Scope
 	}
 	c.ctx = nil
+	savedOf := c.defaultOf
+	c.defaultOf = owner
 	ctx := c.enter(CtxGlobal, nil, "default")
 	c.info.Ctxs[e] = ctx
 	c.assign(e, want, "the default of "+what)
 	c.leave(nil)
-	c.scope, c.ctx = savedScope, savedCtx
+	c.scope, c.ctx, c.defaultOf = savedScope, savedCtx, savedOf
 }
 
 // funcBody checks a function's or a method's body.

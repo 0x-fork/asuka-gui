@@ -1,6 +1,7 @@
 package check
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -179,6 +180,12 @@ func (c *Checker) ident(e *syntax.Ident) Type {
 		return Invalid
 	}
 	if o == nil {
+		if d := c.defaultOf; d != nil && d.fieldIndex != nil {
+			if _, ok := d.fieldIndex[e.Name]; ok {
+				c.errorf(e, "a default can't read the struct's fields (%s): it's computed before there's a struct; a value made of others is a method, fn name() -> T = …", e.Name)
+				return Invalid
+			}
+		}
 		c.errorf(e, "unknown name %s%s", e.Name, c.suggest(e.Name))
 		return Invalid
 	}
@@ -340,7 +347,8 @@ func (c *Checker) noteCall(f *Function) {
 func (c *Checker) basicLit(e *syntax.BasicLit, want Type) Type {
 	switch e.Kind {
 	case syntax.INT:
-		if _, err := ParseInt(e.Value); err != nil {
+		if _, err := ParseInt(e.Value); errors.Is(err, strconv.ErrRange) {
+			// (One that isn't a number at all, the scanner said so.)
 			c.errorf(e, "%s doesn't fit in an int (64 bits)", e.Value)
 		}
 		if w := Unopt(want); w == Float || w == Length {
@@ -1150,6 +1158,9 @@ func (c *Checker) memberSuggest(t Type, name string) string {
 func (c *Checker) implicitMember(e *syntax.ImplicitMember, want Type) Type {
 	name := e.Name.Name
 	c.info.Expected[e] = want
+	if want == Invalid {
+		return Invalid // what's expected is invalid, and said why
+	}
 	w := Unopt(want)
 	switch w {
 	case nil:
@@ -1216,22 +1227,28 @@ func (c *Checker) index(e *syntax.IndexExpr) Type {
 	return Invalid
 }
 
-// intOperand checks an operand of a bitwise operator, which takes ints.
-func (c *Checker) intOperand(x syntax.Expr, op syntax.Token) {
+// intOperand checks an operand of a bitwise operator, which takes ints:
+// whether it's one (an invalid one, said already, isn't).
+func (c *Checker) intOperand(x syntax.Expr, op syntax.Token) bool {
 	t := c.expr(x, Int)
 	switch {
-	case IsInvalid(t) || t == Int:
+	case t == Int:
+		return true
+	case IsInvalid(t):
 	case t == Bool && (op == syntax.AMP || op == syntax.PIPE):
 		c.errorf(x, "%s takes ints, not a bool: write %s%s for bools", op, op, op)
 	default:
 		c.errorf(x, "%s takes ints, not %s", op, aType(t))
 	}
+	return false
 }
 
 func (c *Checker) unary(e *syntax.UnaryExpr, want Type) Type {
 	switch e.Op {
 	case syntax.TILDE:
-		c.intOperand(e.X, e.Op)
+		if !c.intOperand(e.X, e.Op) {
+			return Invalid
+		}
 		return Int
 	case syntax.NOT:
 		c.assign(e.X, Bool, "the operand of !")
@@ -1323,6 +1340,8 @@ func (c *Checker) throwHere(at syntax.Node) string {
 	case CtxSpawn:
 		// spawn's error is its task's.
 		return ""
+	case CtxBinding, CtxComponent, CtxStore, CtxBuilder:
+		return "what a component's body declares can't throw: give a fallback (try … catch { fallback }), or none on an error (try?)"
 	}
 	return "this can't throw here: catch the error (try … catch { }, do { } catch { }, try?)"
 }
@@ -1377,8 +1396,12 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 		c.assign(e.Y, Int, "a range's end")
 		return &Array{Int}
 	case syntax.AMP, syntax.PIPE, syntax.CARET, syntax.SHL, syntax.SHR:
-		c.intOperand(e.X, e.Op)
-		c.intOperand(e.Y, e.Op)
+		// Not an int when an operand isn't one: what it's used as
+		// isn't asked again.
+		okX := c.intOperand(e.X, e.Op)
+		if !c.intOperand(e.Y, e.Op) || !okX {
+			return Invalid
+		}
 		return Int
 	}
 	// Arithmetic and comparisons: an int literal on one side takes the
@@ -1604,7 +1627,10 @@ func (c *Checker) ifExpr(e *syntax.IfExpr, want Type) Type {
 	case *syntax.Block:
 		b = c.valueBlock(el, want)
 	case nil:
-		c.errorf(e, "an if that's a value needs an else")
+		if c.styleValue > 0 {
+			// Elsewhere the parser said so.
+			c.errorf(e, "an if used as a value needs an else")
+		}
 		return Invalid
 	}
 	if want != nil {

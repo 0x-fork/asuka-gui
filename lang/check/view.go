@@ -421,7 +421,15 @@ func (c *Checker) viewItem(it syntax.Item, el *ElementCall) {
 		}
 	case *syntax.PropSet, *syntax.OnHandler, *syntax.BindItem, *syntax.StyleUse, *syntax.SlotItem:
 		c.errorf(it, "%s goes in an element's block, not here", itemName(it))
-	case *syntax.LetDecl, *syntax.AssignStmt, *syntax.WhileStmt, *syntax.DoStmt, *syntax.ReturnStmt,
+	case *syntax.LetDecl:
+		if s.Keyword == syntax.VAR {
+			c.errorf(it, "var in a view: a component's body is declarations; a value that changes is state, declared in the body (state x = …)")
+		} else {
+			c.errorf(it, "a let in a view: a component's body is declarations; declare it in the body, beside its state (a let there is kept up to date)")
+		}
+		// Its names, so their uses don't say they're unknown.
+		c.bindIrrefutable(s.Pattern, Invalid, false, true)
+	case *syntax.AssignStmt, *syntax.WhileStmt, *syntax.DoStmt, *syntax.ReturnStmt,
 		*syntax.ThrowStmt, *syntax.BranchStmt, *syntax.DeferStmt, *syntax.EmitStmt:
 		c.errorf(it, "%s in a view: a component's body is declarations; put statements in a handler (on press { … }), a fn, a task or an effect", stmtName(it))
 	case *syntax.StateDecl, *syntax.PropDecl, *syntax.EventDecl, *syntax.VariantDecl, *syntax.UseDecl, *syntax.ProvideDecl,
@@ -807,7 +815,7 @@ func (c *Checker) variantItem(s *syntax.SlotItem, ec *ElementCall) {
 			m = nil
 		}
 		if m == nil {
-			c.expr(value, nil)
+			c.expr(value, Invalid) // said: what it'd be is unknown
 			return
 		}
 		c.propValue(value, m, name.Name)
@@ -872,7 +880,7 @@ func (c *Checker) propSet(name *syntax.Ident, value syntax.Expr, ec *ElementCall
 	}
 	if m == nil {
 		c.errorf(name, "%s has no prop %s%s", ec.Comp.name, name.Name, c.propSuggest(comp, name.Name))
-		c.expr(value, nil)
+		c.expr(value, Invalid) // what it'd be is unknown: not asked again
 		return
 	}
 	switch m.Kind {

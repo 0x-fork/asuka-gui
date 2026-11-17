@@ -51,3 +51,8 @@ fn equality(f: fn() -> int) -> bool {
 
 fn dup() {}
 fn dup() {} // ERROR "dup is declared twice"
+
+struct Sized {
+  width: int
+  area: int = width * 2 // ERROR "a default can't read the struct's fields \(width\): .*a method"
+}
