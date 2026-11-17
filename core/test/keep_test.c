@@ -239,4 +239,42 @@ TEST(reload_keeps_a_follow_as_a_write) {
 	ak_keep_stop();
 }
 
+// A follow's reads, its initializer's runs (given its current value, a
+// scalar boxed as an optional) and its writes allocate nothing once
+// it's made.
+static ak_val kf_self_update(ak_closure *c, ak_val *args, uint32_t nargs) {
+	AK_UNUSED(c);
+	AK_UNUSED(nargs);
+	ak_signal_read(&kf.n);
+	ak_box *prev = args[0].p;
+	return (ak_val){.i = (prev ? prev->v.i : 0) + kf.v};
+}
+
+static void kf_make_self(void *ctx, ak_owner *root) {
+	AK_UNUSED(ctx);
+	AK_UNUSED(root);
+	ak_closure *u = ak_closure_new(kf_self_update, NULL, 0, NULL);
+	kf.f = ak_vm_follow_new(u, AK_K_INT, NULL, true);
+	ak_release(u);
+}
+
+TEST(follow_allocates_nothing_in_the_steady_state) {
+	memset(&kf, 0, sizeof kf);
+	kf.v = 1;
+	ak_owner *r = ak_root(kf_make_self, NULL);
+	CHECK_EQ_INT(cell_int(kf.f), 1);  // none the first time
+	kf.v = 2;
+	ak_signal_write(&kf.n);
+	CHECK_EQ_INT(cell_int(kf.f), 3);  // its value, then 2 more
+	uint64_t before = ak_alloc_count;
+	for (int i = 0; i < 1000; i++) {
+		ak_signal_write(&kf.n);
+		(void)cell_int(kf.f);
+		ak_vm_cell_set(kf.f.p, (ak_val){.i = i});
+	}
+	CHECK_EQ_INT(ak_alloc_count - before, 0);
+	ak_owner_dispose(r);
+	ak_release(kf.f.p);
+}
+
 T_MAIN()

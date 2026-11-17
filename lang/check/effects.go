@@ -284,7 +284,7 @@ func (c *Checker) checkEffectWrites() {
 			}
 			ways = append(ways,
 				fmt.Sprintf("to run it when %s changes, compared: effect(%s) { … }", strings.Join(list, " or "), strings.Join(list, ", ")),
-				fmt.Sprintf("to reset %s when they change: state %s(%s) = …", name, name, strings.Join(list, ", ")))
+				fmt.Sprintf("to reset %s when they change: state %s(%s) = … (a let, let %s = …, when nothing else writes it)", name, name, strings.Join(list, ", "), name))
 		}
 		ways = append(ways, fmt.Sprintf("to keep it in range: state %s: T = … (in its initializer, %s is its current value)", name, name))
 		ways = append(ways, "or write it in the handler that changes what it reads")

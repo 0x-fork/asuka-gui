@@ -11,6 +11,7 @@ struct Item {
 state base = 1
 // A file's state follows too.
 state derived = base * 10
+state since(base) = 0
 
 store Kept(initial: int) {
   pub state value: int = initial
@@ -56,7 +57,7 @@ component Page {
     Edit(title)
     Picker(items)
     Text("d {d} read {read}")
-    Text("kept {kept.value} derived {derived}")
+    Text("kept {kept.value} derived {derived} since {since}")
     Button("rename") { on press { title = title + "b" } }
     Button("input then write") {
       on press {
@@ -80,6 +81,7 @@ component Page {
     Button("keep") { on press { kept.value = 100 } }
     Button("base") { on press { base += 1 } }
     Button("derive") { on press { derived = -1 } }
+    Button("tick") { on press { since += 1 } }
   }
 }
 
@@ -121,13 +123,15 @@ test "state x(a) follows a; its own name is its current value" {
 test "a store's state and a file's follow too" {
   base = 1
   let app = mount(Page())
-  app.expect("kept 0 derived 10")
+  app.expect("kept 0 derived 10 since 0")
   app.tap("keep")
-  app.expect("kept 100 derived 10")
+  app.expect("kept 100 derived 10 since 0")
   app.tap("count")
-  app.expect("kept 1 derived 10")
+  app.expect("kept 1 derived 10 since 0")
   app.tap("derive")
-  app.expect("kept 1 derived -1")
+  app.tap("tick")
+  app.tap("tick")
+  app.expect("kept 1 derived -1 since 2")
   app.tap("base")
-  app.expect("kept 1 derived 20")
+  app.expect("kept 1 derived 20 since 0")
 }

@@ -1,0 +1,65 @@
+// What rfcs/0012 makes goes with its component: a state that follows
+// (its initializer's thunk holds the component's env, which holds the
+// state), one of its own name and one of its dependencies' memos, an
+// effect(…) and a task(…) with theirs, a peek, a store whose state
+// follows its parameter, and a prop the component assigns (a follow of
+// its caller's accessor).
+struct Item {
+  id: string
+  name: string
+}
+
+store Kept(initial: string) {
+  pub state value: string = initial
+}
+
+component Field {
+  prop text = ""
+  event textChange(text: string)
+
+  Button("field {text}") { on press { text = text + "!" } }
+}
+
+component Picker(items: [Item]) {
+  state query = ""
+  let results = items.filter(i => i.name.contains(query))
+  state highlighted(results) = 0
+  state selected: string? = if let s = selected, results.any(r => r.id == s) { s } else { results.first()?.id }
+  state draft = items.count()
+  state runs: [int] = []
+  let kept = Kept(initial: "{draft}")
+
+  effect(selected, highlighted) { runs.push(1) }
+  task(results.count()) { draft = results.count() }
+
+  Column {
+    for item in results key item.id { Text(item.name) }
+    Text("{highlighted} {selected ?? "-"} {draft} {kept.value} {peek(query)} {runs.count()}")
+    Field { text: "{draft}" }
+    Button("search") { on press { query = "b" } }
+  }
+}
+
+component Page {
+  state shown = true
+  state items = [Item(id: "a", name: "apple"), Item(id: "b", name: "banana")]
+
+  Column {
+    if shown { Picker(items) }
+    Button("hide") { on press { shown = false } }
+    Button("more") { on press { items.push(Item(id: "c", name: "cherry")) } }
+  }
+}
+
+test "following states, dependencies and peeks go with their component" {
+  let app = mount(Page())
+  app.expect("0 a 2 2  1")
+  app.tap("field 2")
+  app.tap("search")
+  app.tap("more")
+  app.tap("hide")
+  app.expectNo("apple")
+}
+
+// Output:
+// ok following states, dependencies and peeks go with their component

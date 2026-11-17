@@ -37,6 +37,7 @@ typedef struct {
 	ak_follow *f;        // NULL once the graph let go of it
 	ak_closure *update;  // the initializer's thunk; NULL once settled or its owner went
 	ak_comp_info info;
+	ak_box *selfbox;     // a scalar's current value as T?, reused while only it holds it
 	bool self;           // the thunk takes the state's current value (T?)
 	bool has;            // computed or set once
 } follow;
@@ -44,7 +45,10 @@ typedef struct {
 static void cell_drop(ak_opaque *o) {
 	cell *c = (cell *)o;
 	if (o->h.flags & CELL_KEPT) ak_keep_forget(c);  // a keyed cell (keep.c)
-	if (o->h.flags & CELL_FOLLOW) ak_release(((follow *)c)->update);
+	if (o->h.flags & CELL_FOLLOW) {
+		ak_release(((follow *)c)->update);
+		ak_release(((follow *)c)->selfbox);
+	}
 	ak_release(c->key);
 	ak_signal_drop(&c->node);
 	ak_release_val(c->v, (ak_kind)c->kind);
@@ -102,10 +106,21 @@ static bool follow_update(void *ctx) {
 	ak_kind k = (ak_kind)w->c.kind;
 	ak_val arg = {0}, v;
 	if (w->self) {
-		// T?: a reference is its own optional; a scalar, boxed.
-		if (w->has) arg = k == AK_K_REF ? w->c.v : (ak_val){.p = ak_box_new(k, w->c.v)};
+		// T?: a reference is its own optional; a scalar, boxed, in a box
+		// the follow keeps while nothing else holds it (no allocation
+		// each time it runs).
+		if (w->has && k == AK_K_REF) arg = w->c.v;
+		else if (w->has) {
+			ak_box *b = w->selfbox;
+			if (b && b->h.rc == 1) {
+				b->v = w->c.v;
+			} else {
+				ak_release(b);
+				b = w->selfbox = ak_box_new(k, w->c.v);
+			}
+			arg.p = b;
+		}
 		v = ak_call(w->update, &arg, 1);
-		if (w->has && k != AK_K_REF) ak_release(arg.p);
 	} else {
 		v = ak_call(w->update, NULL, 0);
 	}

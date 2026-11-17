@@ -530,9 +530,10 @@ func (b *fb) depDirect(x syntax.Expr) (reg int, memo, ok bool) {
 }
 
 // readDeps reads, tracked, what deps made: the follower's dependencies.
+// Into temps: a reference read into none would be dropped unreleased.
 func (b *fb) readDeps(deps []dep) {
 	for _, d := range deps {
-		b.emit(op(d.read), bc.None, b.vars[d.v])
+		b.emit(op(d.read), b.temp(d.kind), b.vars[d.v])
 	}
 }
 
