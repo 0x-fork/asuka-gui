@@ -153,13 +153,13 @@ func (c *Checker) interpolated(x syntax.Expr, t Type) {
 		case Void:
 			c.errorf(x, "this has no value to put in a string")
 		case View, TestApp:
-			c.errorf(x, "a %s can't be put in a string", typeString(u))
+			c.errorf(x, "%s can't be put in a string", aType(u))
 		}
 	case *FuncType, *Task, *Stream, *TypeParam:
-		c.errorf(x, "a %s can't be put in a string", typeString(t))
+		c.errorf(x, "%s can't be put in a string", aType(t))
 	case *Named:
 		if u.Obj.Kind == StoreType || u.Obj.Kind == ComponentType {
-			c.errorf(x, "a %s can't be put in a string", typeString(t))
+			c.errorf(x, "%s can't be put in a string", aType(t))
 		}
 	}
 }
@@ -244,7 +244,7 @@ func (c *Checker) useVar(v *Var, at syntax.Node) {
 		v.Captured = true
 		cc.capture(v)
 		if cc.Kind == CtxSpawn && !sendable(v.Type) {
-			c.errorf(at, "spawn can't use %s (a %s): it runs on another thread and takes values only", v.name, typeString(v.Type))
+			c.errorf(at, "spawn can't use %s (%s): it runs on another thread and takes values only", v.name, aType(v.Type))
 		}
 	}
 }
@@ -282,7 +282,7 @@ func (c *Checker) spawnState(at syntax.Node, name string) {
 func (c *Checker) spawnNotValue(at syntax.Node, name string, t Type) {
 	for cc := c.ctx; cc != nil; cc = cc.Parent {
 		if cc.Kind == CtxSpawn {
-			c.errorf(at, "spawn can't use %s (a %s): it isn't a value, and spawn runs on another thread; use it outside spawn, with what spawn returns", name, typeString(t))
+			c.errorf(at, "spawn can't use %s (%s): it isn't a value, and spawn runs on another thread; use it outside spawn, with what spawn returns", name, aType(t))
 			return
 		}
 	}
@@ -677,7 +677,7 @@ func (c *Checker) assign(e syntax.Expr, want Type, what string) Type {
 	if c.convert(e, got, want) {
 		return want
 	}
-	c.errorf(e, "%s is a %s, not a %s%s", describe(what), typeString(got), typeString(want), c.convHint(got, want))
+	c.errorf(e, "%s is %s, not %s%s", describe(what), aType(got), aType(want), c.convHint(got, want))
 	return want
 }
 
@@ -747,7 +747,7 @@ func (c *Checker) convert(e syntax.Expr, got, want Type) bool {
 				c.info.Convs[e] = want
 				return true
 			} else if _, ok := got.(*Named); ok {
-				c.errorf(e, "%s isn't a %s: %s", typeString(got), typeString(want), why)
+				c.errorf(e, "%s isn't %s: %s", typeString(got), aType(want), why)
 				return true
 			}
 		}
@@ -1187,7 +1187,7 @@ func (c *Checker) implicitMember(e *syntax.ImplicitMember, want Type) Type {
 		c.errorf(e, "%s has no case or constant %s", typeString(w), name)
 		return Invalid
 	}
-	c.errorf(e, ".%s: a %s has no implicit members (they're an enum's cases or a type's constants)", name, typeString(w))
+	c.errorf(e, ".%s: %s has no implicit members (they're an enum's cases or a type's constants)", name, aType(w))
 	return Invalid
 }
 
@@ -1210,7 +1210,7 @@ func (c *Checker) index(e *syntax.IndexExpr) Type {
 	}
 	c.expr(e.Index, nil)
 	if !IsInvalid(xt) {
-		c.errorf(e, "a %s can't be indexed: only arrays, maps and bytes can", typeString(xt))
+		c.errorf(e, "%s can't be indexed: only arrays, maps and bytes can", aType(xt))
 	}
 	return Invalid
 }
@@ -1223,7 +1223,7 @@ func (c *Checker) intOperand(x syntax.Expr, op syntax.Token) {
 	case t == Bool && (op == syntax.AMP || op == syntax.PIPE):
 		c.errorf(x, "%s takes ints, not a bool: write %s%s for bools", op, op, op)
 	default:
-		c.errorf(x, "%s takes ints, not a %s", op, typeString(t))
+		c.errorf(x, "%s takes ints, not %s", op, aType(t))
 	}
 }
 
@@ -1238,7 +1238,7 @@ func (c *Checker) unary(e *syntax.UnaryExpr, want Type) Type {
 	case syntax.SUB:
 		t := c.expr(e.X, want)
 		if !IsInvalid(t) && !IsNumeric(t) && t != Duration {
-			c.errorf(e, "- negates numbers, not a %s", typeString(t))
+			c.errorf(e, "- negates numbers, not %s", aType(t))
 			return Invalid
 		}
 		return t
@@ -1361,7 +1361,7 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 			return xt
 		}
 		if !c.convert(e.Y, yt, el) {
-			c.errorf(e.Y, "the default is a %s, not a %s", typeString(yt), typeString(el))
+			c.errorf(e.Y, "the default is %s, not %s", aType(yt), aType(el))
 		}
 		return el
 	case syntax.RANGE, syntax.RANGELT:
@@ -1404,7 +1404,7 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 			return Bool
 		}
 		if !Identical(xt, yt) && !c.convert(e.Y, yt, xt) && !c.convert(e.X, xt, yt) {
-			c.errorf(e, "can't compare a %s with a %s", typeString(xt), typeString(yt))
+			c.errorf(e, "can't compare %s with %s", aType(xt), aType(yt))
 			return Bool
 		}
 		t := xt
@@ -1417,7 +1417,7 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 		return Bool
 	case syntax.LSS, syntax.LEQ, syntax.GTR, syntax.GEQ:
 		if !Identical(xt, yt) {
-			c.errorf(e, "can't compare a %s with a %s", typeString(xt), typeString(yt))
+			c.errorf(e, "can't compare %s with %s", aType(xt), aType(yt))
 			return Bool
 		}
 		if !IsComparable(xt) {
@@ -1466,7 +1466,7 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 			c.errorf(e, "%s on an int and a float: make them the same, float(x) or int(x)", e.Op)
 			return Invalid
 		}
-		c.errorf(e, "%s doesn't take a %s and a %s", e.Op, typeString(xt), typeString(yt))
+		c.errorf(e, "%s doesn't take %s and %s", e.Op, aType(xt), aType(yt))
 		return Invalid
 	}
 	c.errorf(e, "unexpected operator %s", e.Op)
@@ -1604,7 +1604,7 @@ func (c *Checker) ifExpr(e *syntax.IfExpr, want Type) Type {
 	}
 	t := c.join(a, b)
 	if t == nil {
-		c.errorf(e, "the branches are a %s and a %s: make them the same type", typeString(a), typeString(b))
+		c.errorf(e, "the branches are %s and %s: make them the same type", aType(a), aType(b))
 		return Invalid
 	}
 	return t

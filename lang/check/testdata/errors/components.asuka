@@ -22,7 +22,7 @@ component Body {
     Text("y") { Text("z") } // ERROR "Text takes no children"
     Button("b") { on press { count = count + 1 } }
     Text("{count}") { color: .notAColor } // ERROR "notAColor isn't a semantic color"
-    Toggle { bind on: count } // ERROR "bind on takes a bool, and this is a int"
+    Toggle { bind on: count } // ERROR "bind on takes a bool, and this is an int"
   }
 }
 
@@ -32,7 +32,7 @@ async fn later() -> int {
 
 component Emits {
   event done(n: int)
-  Button("go") { on press { emit done(1); emit done("x") } } // ERROR "argument n is a string, not a int"
+  Button("go") { on press { emit done(1); emit done("x") } } // ERROR "argument n is a string, not an int"
 }
 
 store Data {

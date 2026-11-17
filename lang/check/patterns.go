@@ -43,7 +43,7 @@ func (c *Checker) structPattern(p *syntax.CasePat, tn *TypeName, t Type) {
 	n, ok := Unopt(t).(*Named)
 	if !ok || n.Obj != tn {
 		if !IsInvalid(t) {
-			c.errorf(p, "a %s can't be a %s", typeString(t), tn.name)
+			c.errorf(p, "%s can't be a %s", aType(t), tn.name)
 		}
 		for _, a := range p.Args {
 			c.pattern(a, Invalid, LocalVar)

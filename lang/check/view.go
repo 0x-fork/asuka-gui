@@ -261,7 +261,7 @@ func (c *Checker) componentBody(t *TypeName) {
 			pt := c.expr(d.Value, nil)
 			if n, ok := pt.(*Named); !ok || n.Obj.Kind != StoreType {
 				if !IsInvalid(pt) {
-					c.errorf(d.Value, "provide takes a store, for use in the components below: this is a %s", typeString(pt))
+					c.errorf(d.Value, "provide takes a store, for use in the components below: this is %s", aType(pt))
 				}
 			}
 		case *syntax.TaskDecl:
@@ -417,7 +417,7 @@ func (c *Checker) viewItem(it syntax.Item, el *ElementCall) {
 	case *syntax.ExprStmt:
 		t := c.expr(s.X, View)
 		if !IsInvalid(t) && t != View && !(IsOptional(t) && Unopt(t) == View) {
-			c.errorf(s, "a %s isn't a view: a body shows elements and components (Text(\"{x}\") shows a value)", typeString(t))
+			c.errorf(s, "%s isn't a view: a body shows elements and components (Text(\"{x}\") shows a value)", aType(t))
 		}
 	case *syntax.PropSet, *syntax.OnHandler, *syntax.BindItem, *syntax.StyleUse, *syntax.SlotItem:
 		c.errorf(it, "%s goes in an element's block, not here", itemName(it))
@@ -1068,7 +1068,7 @@ func (c *Checker) bindItem(b *syntax.BindItem, ec *ElementCall) {
 	c.view = savedView
 	c.leave(saved)
 	if !IsInvalid(t) && !Identical(t, m.Type) {
-		c.errorf(b.Target, "bind %s takes a %s, and this is a %s", b.Name.Name, typeString(m.Type), typeString(t))
+		c.errorf(b.Target, "bind %s takes %s, and this is %s", b.Name.Name, aType(m.Type), aType(t))
 	}
 	ec.Binds = append(ec.Binds, &BindArg{Prop: m, Event: ev, Target: b.Target, Item: b})
 }

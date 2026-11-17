@@ -17,15 +17,15 @@ fn arrays(s: Set<[int]>) {} // ERROR "a Set's elements are ints, strings, bools 
 
 fn twoTypes() -> Set<int, string> = [] // ERROR "Set takes one type: Set<T>"
 
-fn literal() -> Set<int> = [1, "a"] // ERROR "an element of Set<int> is a string, not a int"
+fn literal() -> Set<int> = [1, "a"] // ERROR "an element of Set<int> is a string, not an int"
 
-fn fromWhat() -> Set<int> = Set(3) // ERROR "Set\\(…\\)'s argument is a int, not a \\[int\\]"
+fn fromWhat() -> Set<int> = Set(3) // ERROR "Set\\(…\\)'s argument is an int, not a \\[int\\]"
 
 fn fromNothing() {
   let s = Set() // ERROR "can't tell the set's elements: Set<T>\(\), or say what's expected"
 }
 
-fn wrongElement(s: Set<string>) -> bool = s.contains(1) // ERROR "is a int, not a string"
+fn wrongElement(s: Set<string>) -> bool = s.contains(1) // ERROR "is an int, not a string"
 
 fn noIndex(s: Set<int>) -> int = s[0] // ERROR "a Set<int> can't be indexed"
 

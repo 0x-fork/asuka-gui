@@ -49,7 +49,7 @@ fn wrongType(f: Flag) -> int = match f {
 }
 
 fn fieldType(p: Point) -> int = match p {
-  Point(x: "a") => 1 // ERROR "a int can't be a string"
+  Point(x: "a") => 1 // ERROR "an int can't be a string"
   _ => 0
 }
 

@@ -567,3 +567,12 @@ func plural(n int, one, many string) string {
 	}
 	return strconv.Itoa(n) + " " + many
 }
+
+// aType is t for messages, after its article: "an int", "a string".
+func aType(t Type) string {
+	s := typeString(t)
+	if s != "" && strings.ContainsRune("aeioAEIO", rune(s[0])) {
+		return "an " + s
+	}
+	return "a " + s
+}

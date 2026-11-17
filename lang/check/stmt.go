@@ -197,7 +197,7 @@ func (c *Checker) bindIrrefutable(p syntax.Pattern, t Type, mutable, let bool) {
 		tt, ok := t.(*Tuple)
 		if !ok || len(tt.Elems) != len(p.Elems) {
 			if !IsInvalid(t) {
-				c.errorf(p, "a %s isn't a tuple of %d", typeString(t), len(p.Elems))
+				c.errorf(p, "%s isn't a tuple of %d", aType(t), len(p.Elems))
 			}
 			for _, e := range p.Elems {
 				c.bindIrrefutable(e, Invalid, mutable, let)
@@ -249,9 +249,9 @@ func (c *Checker) assignStmt(s *syntax.AssignStmt) {
 		switch {
 		case s.Op.AssignOp().IsBitwise():
 			if lt != Int {
-				c.errorf(s.Target, "%s= takes ints, not a %s", op, typeString(lt))
+				c.errorf(s.Target, "%s= takes ints, not %s", op, aType(lt))
 			} else if vt != Int {
-				c.errorf(s.Value, "%s= takes ints, not a %s", op, typeString(vt))
+				c.errorf(s.Value, "%s= takes ints, not %s", op, aType(vt))
 			}
 		case IsNumeric(lt) && Identical(lt, vt):
 		case lt == String && vt == String && s.Op == syntax.ADD_ASSIGN:
@@ -261,7 +261,7 @@ func (c *Checker) assignStmt(s *syntax.AssignStmt) {
 			if _, ok := lt.(*Array); ok && Identical(lt, vt) && s.Op == syntax.ADD_ASSIGN {
 				return
 			}
-			c.errorf(s, "%s= doesn't take a %s and a %s", op, typeString(lt), typeString(vt))
+			c.errorf(s, "%s= doesn't take %s and %s", op, aType(lt), aType(vt))
 		}
 	}
 }
@@ -476,7 +476,7 @@ func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
 			if t == String {
 				c.errorf(s.Seq, "a string isn't a list: go over its characters, s.chars()")
 			} else if !IsInvalid(t) {
-				c.errorf(s.Seq, "for goes over an array, a set, a map or a range, not a %s", typeString(t))
+				c.errorf(s.Seq, "for goes over an array, a set, a map or a range, not %s", aType(t))
 			}
 			fi.Kind, fi.Elem = ForArray, Invalid
 		}
@@ -495,7 +495,7 @@ func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
 		c.forBindings(fi, s.Pattern, LocalVar, kc)
 		kt := c.expr(s.Key, nil)
 		if !IsInvalid(kt) && !IsHashable(kt) {
-			c.errorf(s.Key, "a key is an int, a string or an enum without payloads, not a %s", typeString(kt))
+			c.errorf(s.Key, "a key is an int, a string or an enum without payloads, not %s", aType(kt))
 		}
 		kc.Result = kt
 		c.leave(saved)
@@ -627,7 +627,7 @@ func (c *Checker) returnValue(s syntax.Node, value syntax.Expr) {
 	}
 	switch {
 	case value == nil && res != Void:
-		c.errorf(s, "return needs a %s", typeString(res))
+		c.errorf(s, "return needs %s", aType(res))
 	case value != nil && res == Void:
 		c.expr(value, nil)
 		c.errorf(value, "%s returns nothing: drop the value, or declare a result (-> T)", ctxLabel(ctx))
@@ -811,13 +811,13 @@ func (c *Checker) pattern(p syntax.Pattern, t Type, kind VarKind) {
 		}
 		lt := c.expr(p.Value, et)
 		if !IsInvalid(lt) && !IsInvalid(t) && !c.convert(p.Value, lt, et) && !(lt == NoneType && IsOptional(t)) {
-			c.errorf(p, "a %s can't be a %s", typeString(t), typeString(lt))
+			c.errorf(p, "%s can't be %s", aType(t), aType(lt))
 		}
 	case *syntax.TuplePat:
 		tt, ok := t.(*Tuple)
 		if !ok || len(tt.Elems) != len(p.Elems) {
 			if !IsInvalid(t) {
-				c.errorf(p, "a %s isn't a tuple of %d", typeString(t), len(p.Elems))
+				c.errorf(p, "%s isn't a tuple of %d", aType(t), len(p.Elems))
 			}
 			for _, e := range p.Elems {
 				c.pattern(e, Invalid, kind)
@@ -859,7 +859,7 @@ func (c *Checker) pattern(p syntax.Pattern, t Type, kind VarKind) {
 			n, ok := et.(*Named)
 			if !ok || n.Obj.Kind != EnumType {
 				if !IsInvalid(t) {
-					c.errorf(p, ".%s: a %s isn't an enum", p.Path[0].Name, typeString(t))
+					c.errorf(p, ".%s: %s isn't an enum", p.Path[0].Name, aType(t))
 				}
 				return
 			}
@@ -891,7 +891,7 @@ func (c *Checker) pattern(p syntax.Pattern, t Type, kind VarKind) {
 			}
 			if n, ok := et.(*Named); !ok || n.Obj != tn {
 				if !IsInvalid(t) {
-					c.errorf(p, "a %s can't be a %s", typeString(t), tn.name)
+					c.errorf(p, "%s can't be a %s", aType(t), tn.name)
 				}
 				return
 			}
@@ -1032,7 +1032,7 @@ func (c *Checker) matchExpr(e *syntax.MatchExpr, want Type) Type {
 		} else if j := c.join(res, at); j != nil {
 			res = j
 		} else {
-			c.errorf(a, "this arm is a %s, the ones before a %s: make them the same type", typeString(at), typeString(res))
+			c.errorf(a, "this arm is %s, the ones before %s: make them the same type", aType(at), aType(res))
 		}
 	}
 	ok, missing := c.exhaustive(e.Subject, t, e.Arms)
@@ -1145,7 +1145,7 @@ func (c *Checker) forAwait(s *syntax.ForStmt, fi *ForInfo, view bool) {
 		fi.Elem = st.Elem
 	} else {
 		if !IsInvalid(t) {
-			c.errorf(s.Seq, "for await goes over a stream, not a %s (for goes over arrays)", typeString(t))
+			c.errorf(s.Seq, "for await goes over a stream, not %s (for goes over arrays)", aType(t))
 		}
 		fi.Elem = Invalid
 	}
@@ -1205,7 +1205,7 @@ func (c *Checker) letElse(d *syntax.LetDecl) {
 		return
 	}
 	if isIrrefutablePattern(d.Pattern) && !IsOptional(t) && !IsInvalid(t) {
-		c.errorf(d.Pattern, "this pattern always matches a %s: drop the else", typeString(t))
+		c.errorf(d.Pattern, "this pattern always matches %s: drop the else", aType(t))
 	}
 	if d.Keyword == syntax.VAR {
 		c.errorf(d, "var … else binds a name: var x = optional else { … }; a pattern's names are lets")
@@ -1234,7 +1234,7 @@ func isIrrefutablePattern(p syntax.Pattern) bool {
 func (c *Checker) throwValue(s syntax.Node, value syntax.Expr) {
 	t := c.expr(value, c.errT.Type)
 	if !IsInvalid(t) && !IsErrorType(t) {
-		c.errorf(value, "throw takes an error, and a %s isn't one (declare it: struct %s: Error, or throw Error(\"…\"))", typeString(t), typeString(t))
+		c.errorf(value, "throw takes an error, and %s isn't one (declare it: struct %s: Error, or throw Error(\"…\"))", aType(t), typeString(t))
 	}
 	c.mayThrow(s)
 }
@@ -1393,7 +1393,7 @@ func (c *Checker) fallback(cl *syntax.CatchClause, t Type) {
 	b := cl.Body
 	n := len(b.Items)
 	if n == 0 {
-		c.errorPos(b.Lbrace, "this catch has no value: end it with a %s, or leave (return, throw)", typeString(t))
+		c.errorPos(b.Lbrace, "this catch has no value: end it with %s, or leave (return, throw)", aType(t))
 		return
 	}
 	c.openScope()
@@ -1403,17 +1403,17 @@ func (c *Checker) fallback(cl *syntax.CatchClause, t Type) {
 	if es, ok := last.(*syntax.ExprStmt); ok {
 		got := c.expr(es.X, t)
 		if got == Void && !IsInvalid(t) {
-			c.errorf(es.X, "this catch has no value (it's void): end it with a %s, or leave (return, throw)", typeString(t))
+			c.errorf(es.X, "this catch has no value (it's void): end it with %s, or leave (return, throw)", aType(t))
 			return
 		}
 		if !c.convert(es.X, got, t) {
-			c.errorf(es.X, "the catch's value is a %s, and the try's a %s: make them the same type%s", typeString(got), typeString(t), c.convHint(got, t))
+			c.errorf(es.X, "the catch's value is %s, and the try's %s: make them the same type%s", aType(got), aType(t), c.convHint(got, t))
 		}
 		return
 	}
 	c.stmt(last)
 	if !c.terminates(b.Items) {
-		c.errorf(last, "this catch has no value: end it with a %s, or leave (return, throw)", typeString(t))
+		c.errorf(last, "this catch has no value: end it with %s, or leave (return, throw)", aType(t))
 	}
 }
 
@@ -1512,7 +1512,7 @@ func (c *Checker) localFnBody(lf *LocalFn) {
 	case d.Body != nil:
 		c.stmts(d.Body.Items)
 		if ctx.Result != Void && !c.terminates(d.Body.Items) {
-			c.errorPos(d.Body.Rbrace, "fn %s must return a %s: it can reach its end without a return", d.Name.Name, typeString(ctx.Result))
+			c.errorPos(d.Body.Rbrace, "fn %s must return %s: it can reach its end without a return", d.Name.Name, aType(ctx.Result))
 		}
 	}
 	c.leave(saved)

@@ -11,7 +11,7 @@ fn f() -> int {
 
 fn g() -> string {
   let t = Todo(title: "a")
-  let x: int = t.title // ERROR "the value is a string, not a int"
+  let x: int = t.title // ERROR "the value is a string, not an int"
   return t.titel // ERROR "Todo has no titel \(did you mean title\?\)"
 }
 
@@ -31,14 +31,14 @@ fn mixed() -> float {
 fn args() {
   let t = Todo() // ERROR "Todo needs title: string"
   let u = Todo(title: "x", nope: 1) // ERROR "Todo has no parameter nope"
-  let v = Todo(title: 1) // ERROR "argument title of Todo is a int, not a string"
+  let v = Todo(title: 1) // ERROR "argument title of Todo is an int, not a string"
 }
 
 fn immutables() {
   let a = 1
   a = 2 // ERROR "can't assign to a: it's a let: make it a var"
   var xs = [1]
-  xs.push("x") // ERROR "argument value of push is a string, not a int"
+  xs.push("x") // ERROR "argument value of push is a string, not an int"
 }
 
 fn optionals(t: Todo?) -> string {

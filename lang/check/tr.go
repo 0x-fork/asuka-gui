@@ -171,14 +171,14 @@ func (c *Checker) trArg(x syntax.Expr, p *CatalogParam, key string) {
 		// A number: an int or a float, as it is.
 		t := c.expr(x, Float)
 		if !IsInvalid(t) && t != Int && t != Float {
-			c.errorf(x, "%s is a number (%s), not a %s", what, p.ARB, typeString(t))
+			c.errorf(x, "%s is a number (%s), not %s", what, p.ARB, aType(t))
 		}
 	case "DateTime":
 		t := c.expr(x, Int)
 		if IsInvalid(t) || t == Int || isTime(t) {
 			return
 		}
-		c.errorf(x, "%s is a date: a Time (time.now()), or nanoseconds since 1970, not a %s", what, typeString(t))
+		c.errorf(x, "%s is a date: a Time (time.now()), or nanoseconds since 1970, not %s", what, aType(t))
 	default: // String, Object
 		c.assign(x, String, what)
 	}

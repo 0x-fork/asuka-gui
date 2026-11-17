@@ -135,7 +135,7 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 			pt := c.expr(args[1], nil)
 			if n, ok := pt.(*Named); !ok || n.Obj.Kind != StoreType {
 				if !IsInvalid(pt) {
-					c.errorf(args[1], "provide takes a store: this is a %s", typeString(pt))
+					c.errorf(args[1], "provide takes a store: this is %s", aType(pt))
 				}
 			}
 		}
@@ -182,7 +182,7 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		if len(args) == 1 {
 			t := c.expr(args[0], numOnly(Unopt(want)))
 			if !IsNumeric(t) && !IsInvalid(t) {
-				c.errorf(args[0], "abs takes a number, not a %s", typeString(t))
+				c.errorf(args[0], "abs takes a number, not %s", aType(t))
 			}
 			call.Result = t
 		} else {
@@ -194,7 +194,7 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		if len(args) == 1 {
 			t := c.expr(args[0], nil)
 			if t != Int && t != Float && !IsInvalid(t) {
-				c.errorf(args[0], "float(…) takes an int, not a %s", typeString(t))
+				c.errorf(args[0], "float(…) takes an int, not %s", aType(t))
 			}
 		}
 		call.Result = Float
@@ -204,7 +204,7 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		if len(args) == 1 {
 			t := c.expr(args[0], nil)
 			if t != Int && t != Float && !IsInvalid(t) {
-				c.errorf(args[0], "int(…) takes a float, not a %s", typeString(t))
+				c.errorf(args[0], "int(…) takes a float, not %s", aType(t))
 			}
 		}
 		call.Result = Int
@@ -225,7 +225,7 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 			c.errorf(e, "json.decode needs to know what it reads: json.decode<T>(text), or say what's expected, let x: T = try json.decode(text)")
 			t = Invalid
 		} else if why := c.jsonable(t); why != "" {
-			c.errorf(e, "json can't read a %s: %s", typeString(t), why)
+			c.errorf(e, "json can't read %s: %s", aType(t), why)
 		}
 		call.Result = t
 		c.callEffects(e, "json.decode", false, true)
@@ -236,7 +236,7 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 			t := c.valueType(c.expr(args[0], nil), args[0])
 			ps[0].Type = t
 			if why := c.jsonable(t); why != "" && !IsInvalid(t) {
-				c.errorf(args[0], "json can't write a %s: %s", typeString(t), why)
+				c.errorf(args[0], "json can't write %s: %s", aType(t), why)
 			}
 		}
 		if args[1] != nil {
@@ -335,7 +335,7 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 				elem = a.Elem
 			} else {
 				if t := c.info.Types[args[0]]; !IsInvalid(t) {
-					c.errorf(args[0], "Set(…) takes an array of its elements, not a %s", typeString(t))
+					c.errorf(args[0], "Set(…) takes an array of its elements, not %s", aType(t))
 				}
 				elem = Invalid
 			}
@@ -402,7 +402,7 @@ func (c *Checker) sameNumbers(e *syntax.CallExpr, args []syntax.Expr, want Type)
 		return Invalid
 	}
 	if !IsNumeric(xt) || !Identical(xt, yt) {
-		c.errorf(e, "this takes two ints or two floats, not a %s and a %s", typeString(xt), typeString(yt))
+		c.errorf(e, "this takes two ints or two floats, not %s and %s", aType(xt), aType(yt))
 		return Invalid
 	}
 	return xt
@@ -442,7 +442,7 @@ func (c *Checker) allRace(e *syntax.CallExpr, b *Builtin, args []syntax.Expr) Ty
 			if j := c.join(t, u); j != nil {
 				t = j
 			} else {
-				c.errorf(args[i+1], "race's calls must have one type: this is a %s, the first a %s", typeString(u), typeString(t))
+				c.errorf(args[i+1], "race's calls must have one type: this is %s, the first %s", aType(u), aType(t))
 			}
 		}
 		return t
@@ -505,7 +505,7 @@ func (c *Checker) builderExpr(x syntax.Expr) {
 	c.view = true
 	t := c.expr(x, View)
 	if !IsInvalid(t) && t != View {
-		c.errorf(x, "this is a %s, not a view", typeString(t))
+		c.errorf(x, "this is %s, not a view", aType(t))
 	}
 	c.view = savedView
 	c.leave(saved)
@@ -635,7 +635,7 @@ func (c *Checker) jsonGenerics() {
 				continue
 			}
 			if why := jsonable1(g.args[i], map[*TypeName]bool{}, func(*TypeParam) bool { return true }); why != "" {
-				c.errorf(g.e, "%s reads or writes its %s as JSON, and a %s can't be: %s", g.name(), tp.Name, typeString(g.args[i]), why)
+				c.errorf(g.e, "%s reads or writes its %s as JSON, and %s can't be: %s", g.name(), tp.Name, aType(g.args[i]), why)
 			}
 		}
 	}

@@ -126,7 +126,7 @@ component C {
 		msgs = append(msgs, d.String())
 	}
 	got := strings.Join(msgs, "\n")
-	for _, want := range []string{"the result is a string, not a int", "unknown name y", "an assignment in a view"} {
+	for _, want := range []string{"the result is a string, not an int", "unknown name y", "an assignment in a view"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in:\n%s", want, got)
 		}

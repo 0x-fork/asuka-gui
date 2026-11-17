@@ -142,7 +142,7 @@ func (c *Checker) call(e *syntax.CallExpr, want Type) Type {
 		} else if w == nil {
 			c.errorf(fn, "can't tell what .%s is here: write its type, Type.%s(…)", fn.Name.Name, fn.Name.Name)
 		} else if !IsInvalid(w) {
-			c.errorf(fn, ".%s(…) makes an enum's case, and a %s isn't an enum", fn.Name.Name, typeString(w))
+			c.errorf(fn, ".%s(…) makes an enum's case, and %s isn't an enum", fn.Name.Name, aType(w))
 		}
 		c.checkArgsLoosely(e)
 		return Invalid
@@ -504,7 +504,7 @@ func (c *Checker) inferArgs(args []syntax.Expr, params []*Param, s Subst, free m
 			leave()
 			types[i] = got
 			if !c.unify(pw, got, s, free) {
-				c.errorf(a, "argument %s of %s is a %s, which doesn't fit %s", params[i].Name, what, typeString(got), typeString(s.Apply(pt)))
+				c.errorf(a, "argument %s of %s is %s, which doesn't fit %s", params[i].Name, what, aType(got), typeString(s.Apply(pt)))
 			}
 			checked[i] = true
 		}
@@ -518,7 +518,7 @@ func (c *Checker) inferArgs(args []syntax.Expr, params []*Param, s Subst, free m
 			continue
 		}
 		if !c.convert(a, types[i], pt) {
-			c.errorf(a, "argument %s of %s is a %s, not a %s", params[i].Name, what, typeString(types[i]), typeString(pt))
+			c.errorf(a, "argument %s of %s is %s, not %s", params[i].Name, what, aType(types[i]), aType(pt))
 		}
 	}
 }
@@ -887,7 +887,7 @@ func (c *Checker) closureCall(e *syntax.CallExpr, fun syntax.Expr, t Type) Type 
 	}
 	ft, ok := t.(*FuncType)
 	if !ok {
-		c.errorf(fun, "%s is a %s, not a function", exprName(fun), typeString(t))
+		c.errorf(fun, "%s is %s, not a function", exprName(fun), aType(t))
 		c.checkArgsLoosely(e)
 		return Invalid
 	}
@@ -1395,7 +1395,7 @@ func (c *Checker) lambda(e *syntax.LambdaExpr, want Type) Type {
 	marked := e.Async.IsValid()
 	if wf != nil {
 		if marked && !wf.Async {
-			c.errorPos(e.Async, "this closure is async, where a %s is expected, which can't wait: remove async (and the awaits in it)", typeString(wf))
+			c.errorPos(e.Async, "this closure is async, where %s is expected, which can't wait: remove async (and the awaits in it)", aType(wf))
 		}
 		// Marked async where a sync function is expected: an error, and
 		// its body may still await (no second error for each await).
@@ -1423,7 +1423,7 @@ func (c *Checker) lambda(e *syntax.LambdaExpr, want Type) Type {
 				if j := c.join(ft.Result, r); j != nil {
 					ft.Result = j
 				} else {
-					c.errorf(body, "this closure's value is a %s, and it returns a %s: make them the same type", typeString(ft.Result), typeString(r))
+					c.errorf(body, "this closure's value is %s, and it returns %s: make them the same type", aType(ft.Result), aType(r))
 					break
 				}
 			}
@@ -1450,7 +1450,7 @@ func (c *Checker) lambda(e *syntax.LambdaExpr, want Type) Type {
 		} else {
 			ft.Result = ctx.Result
 			if ctx.Result != Void && !c.terminates(body.Items) {
-				c.errorPos(body.Rbrace, "this closure must return a %s: it can reach its end without a return", typeString(ctx.Result))
+				c.errorPos(body.Rbrace, "this closure must return %s: it can reach its end without a return", aType(ctx.Result))
 			}
 		}
 	}
@@ -1496,7 +1496,7 @@ func (c *Checker) spawn(e *syntax.SpawnExpr) Type {
 		}
 	}
 	if !sendable(res) {
-		c.errorf(e, "spawn's result is a %s, which can't cross threads: return values only", typeString(res))
+		c.errorf(e, "spawn's result is %s, which can't cross threads: return values only", aType(res))
 	}
 	ctx.Result = res
 	c.leave(saved)

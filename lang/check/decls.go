@@ -544,7 +544,7 @@ func (c *Checker) funcBody(f *Function) {
 			if ctx.Result == Never {
 				c.errorPos(d.Body.Rbrace, "fn %s never returns (its result is never): it can reach its end, which it mustn't (end it with panic, a throw or a call of another that never returns)", f.name)
 			} else {
-				c.errorPos(d.Body.Rbrace, "fn %s must return a %s: it can reach its end without a return", f.name, typeString(ctx.Result))
+				c.errorPos(d.Body.Rbrace, "fn %s must return %s: it can reach its end without a return", f.name, aType(ctx.Result))
 			}
 		}
 	}
@@ -579,7 +579,7 @@ func (c *Checker) appBody(p *Package) {
 			pt := c.expr(d.Value, nil)
 			if n, ok := pt.(*Named); !ok || n.Obj.Kind != StoreType {
 				if !IsInvalid(pt) {
-					c.errorf(d.Value, "provide takes a store, for use in the components below: this is a %s", typeString(pt))
+					c.errorf(d.Value, "provide takes a store, for use in the components below: this is %s", aType(pt))
 				}
 			}
 			continue

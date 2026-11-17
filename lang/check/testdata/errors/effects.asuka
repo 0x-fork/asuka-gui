@@ -36,7 +36,7 @@ fn optional() -> int {
 }
 
 fn throwsWrong() throws {
-  throw 3 // ERROR "throw takes an error, and a int isn't one"
+  throw 3 // ERROR "throw takes an error, and an int isn't one"
 }
 
 struct State {

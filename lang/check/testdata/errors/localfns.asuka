@@ -32,7 +32,7 @@ fn defaults(n: int) -> int {
 fn noReturn(n: int) -> int {
   fn half(k: int) -> int {
     if k > 0 { return k / 2 }
-  } // ERROR "fn half must return a int"
+  } // ERROR "fn half must return an int"
   return half(n)
 }
 

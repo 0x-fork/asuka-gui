@@ -19,7 +19,7 @@ component Bad {
     Card() { pressed { opacity: 0.5 } } // ERROR "Card has no variant pressed \(its variants: none\)"
     Card() as c // the view of the one element it shows
     Card() { ref: r } // ERROR "ref names an element's view, and Card is a component"
-    Text("y") { ref: 3 } // ERROR "ref is a int, not a Ref"
+    Text("y") { ref: 3 } // ERROR "ref is an int, not a Ref"
     View as v { Text(if v.hovered { "a" } else { "b" }) }
     Text(if v.pressed { "a" } else { "b" })
     Text(if r.hovered() { "a" } else { "b" }) // ERROR "hovered is a property of Ref, not a method"

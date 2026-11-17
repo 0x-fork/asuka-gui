@@ -63,7 +63,7 @@ app { Inbox() }
 		{`Text(tr.inbx())`, "app.asuka:3:13: locales/en.json has no message inbx (did you mean tr.inbox?)"},
 		{`Text(tr.greeting())`, "tr.greeting needs its argument name (a string)"},
 		{`Text(tr.greeting(nam: "x"))`, "tr.greeting has no argument nam: it takes tr.greeting(name:)"},
-		{`Text(tr.unread(count: "3"))`, "tr.unread's count is a string, not a int"},
+		{`Text(tr.unread(count: "3"))`, "tr.unread's count is a string, not an int"},
 		{`Text(tr.unread(count: 1.5))`, "tr.unread's count"},
 		{`Text(tr.storage(used: "x"))`, "tr.storage's used is a number (double), not a string"},
 		{`Text(tr.seen(when: "today"))`, "tr.seen's when is a date"},
