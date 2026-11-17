@@ -616,6 +616,8 @@ func (c *Checker) returnValue(s syntax.Node, value syntax.Expr) {
 	case value != nil && res == Void:
 		c.expr(value, nil)
 		c.errorf(value, "%s returns nothing: drop the value, or declare a result (-> T)", ctxLabel(ctx))
+	case value != nil && ctx.loose != nil:
+		ctx.loose.value(c, value, "the result")
 	case value != nil:
 		c.assign(value, res, "the result")
 	}

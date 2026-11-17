@@ -683,6 +683,11 @@ func describe(what string) string {
 }
 
 func (c *Checker) convHint(got, want Type) string {
+	if o, ok := want.(*Optional); ok && got != NoneType && !IsOptional(got) {
+		// What isn't an optional would be put in one: it's what the
+		// optional holds that it doesn't fit.
+		want = o.Elem
+	}
 	if got == Int && want == Float {
 		return " (make it one: float(x))"
 	}
@@ -1263,7 +1268,16 @@ func (c *Checker) unary(e *syntax.UnaryExpr, want Type) Type {
 		if e.Optional {
 			c.handled++
 		}
+		// The operand is given what an expected optional holds: try? makes
+		// the optional of it. try is what its operand is, so a call there
+		// whose result is a type parameter is told of the optional, which
+		// its arguments may be (inferArgs).
+		tried, triedOpt := c.tried, c.triedOpt
+		if ce, ok := tryCall(e.X); ok && !e.Optional && IsOptional(want) {
+			c.tried, c.triedOpt = ce, want
+		}
 		t := c.expr(e.X, Unopt(want))
+		c.tried, c.triedOpt = tried, triedOpt
 		c.handled = saved
 		c.inTry--
 		if e.Optional {
@@ -1278,6 +1292,20 @@ func (c *Checker) unary(e *syntax.UnaryExpr, want Type) Type {
 	}
 	c.errorf(e, "unexpected operator %s", e.Op)
 	return Invalid
+}
+
+// tryCall returns the call a try is of: try f(), try await f().
+func tryCall(x syntax.Expr) (*syntax.CallExpr, bool) {
+	for {
+		x = unparen(x)
+		u, ok := x.(*syntax.UnaryExpr)
+		if !ok || u.Op != syntax.AWAIT {
+			break
+		}
+		x = u.X
+	}
+	ce, ok := x.(*syntax.CallExpr)
+	return ce, ok
 }
 
 // mayThrow reports a throw (or try) where nothing catches it.
