@@ -396,7 +396,8 @@ final class Send: @unchecked Sendable {
 
     private func offer(_ o: StoreKit.Product.SubscriptionOffer, _ type: OfferType, _ currency: String) -> Offer {
         Offer(id: o.id ?? "", type: type, phases: [Phase(price: o.displayPrice, priceMicros: Self.micros(o.price), currency: currency,
-                                                         period: Self.period(o.period), cycles: o.periodCount, mode: Self.mode(o.paymentMode))])
+                                                         period: Self.period(o.period), cycles: o.periodCount, mode: Self.mode(o.paymentMode),
+                                                         amount: o.price)])
     }
 
     private func wire(_ p: StoreKit.Product) async -> Product {
@@ -415,7 +416,8 @@ final class Send: @unchecked Sendable {
                                introEligible: await s.isEligibleForIntroOffer)
         }
         return Product(id: p.id, kind: Self.kind(p.type), title: p.displayName, description: p.description, price: p.displayPrice,
-                       priceMicros: Self.micros(p.price), currency: currency, subscription: sub, familyShareable: p.isFamilyShareable)
+                       priceMicros: Self.micros(p.price), currency: currency, subscription: sub, familyShareable: p.isFamilyShareable,
+                       amount: p.price)
     }
 
     nonisolated static func wire(_ v: VerificationResult<StoreKit.Transaction>) -> StoreTransaction {

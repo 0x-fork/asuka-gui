@@ -37,12 +37,15 @@ store; call it as the app starts, so a consumable's transaction that comes
 first (one left unfinished) is consumed as it's finished.
 `purchase.products(items)` asks the store for them, in the user's country
 and language; those it doesn't sell are left out. A `Product` has its
-`title`, `description`, `price` (for display: "$4.99"), `priceMicros`
-and `currency`, `item()` (to buy it as), and a subscription's
+`title`, `description`, `price` (the store's text, for display:
+"$4.99"), `amount` (the price exactly, a [`std/decimal`](stdlib.md)
+`Decimal`: 4.99; `amount.formatted(currency: currency)` writes it the
+user's way) and `currency`, `item()` (to buy it as), and a subscription's
 `subscription`: its `group`, `level`, `period` (`unit`, `count`), its
 `offers` (each a list of `phases`: a free trial, a lower price for a
 while) and whether the user can have the introductory offer
-(`introEligible`).
+(`introEligible`). `priceMicros`, the price in the package's first
+release, stays one more release: read `amount`.
 
 ```asuka
 component Shop {
@@ -223,7 +226,7 @@ then.
 ```asuka
 test "Ask to Buy, then approved" {
   let store = purchase.fake([
-    purchase.FakeProduct(id: "coins_100", kind: .consumable, title: "100 Coins", price: "$0.99", priceMicros: 990_000),
+    purchase.FakeProduct(id: "coins_100", kind: .consumable, title: "100 Coins", amount: .parse("0.99")!),
     purchase.FakeProduct(id: "plus_monthly", kind: .autoRenewable, title: "Plus", price: "$4.99",
       period: purchase.Period(unit: .month), trial: purchase.Period(unit: .week)),
   ])

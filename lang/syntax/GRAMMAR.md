@@ -50,7 +50,7 @@ statement; `;` does the same on a line. A newline is no token:
   one;
 - before a line (blank lines and comments aside) that starts with a
   binary operator that can't start an expression: `+ * / % == != < <= >
-  >= && || ?? & | ^ << >> .. ..<`, or with `?.`. Not `-`, `!` or `~`,
+  >= && || ?? & | ^ << >> &+ &- &* .. ..<`, or with `?.`. Not `-`, `!` or `~`,
   which can start one (`a ⏎ -b` is two lines), and not an assignment's
   operator (`+=`).
 
@@ -144,13 +144,15 @@ multi-line one.
 ### Operators and punctuation
 
 ```
-+ - * / % & | ^ ~ << >>   == != < <= > >=   && || !   ?? ? ?. .. ..<
-= += -= *= /= %= &= |= ^= <<= >>= ??=   => -> . .{ , : ; @
++ - * / % & | ^ ~ << >> &+ &- &*   == != < <= > >=   && || !   ?? ? ?. .. ..<
+= += -= *= /= %= &= |= ^= <<= >>= &+= &-= &*= ??=   => -> . .{ , : ; @
 ( ) [ ] { }
 ```
 
 `>>` and `>>=` are two tokens side by side (`>` `>`, `>` `>=`), so a
-type's `Box<Box<int>>` closes twice (decision 24). `++` and `--` are
+type's `Box<Box<int>>` closes twice (decision 24). `&+`, `&-` and `&*`
+(an int's wrapping arithmetic) are one token each, so `a &-b` is `a &-
+b`: `a & -b` needs its space. `++` and `--` are
 errors that say what to write.
 
 ## Files
@@ -271,7 +273,8 @@ Stmt        = IfStmt
             | "emit" Name [ Args ]                  (* the ( on emit's line *)
             | Expr [ AssignOp Expr ] .
 IfStmt      = "if" Cond Block [ "else" ( IfStmt | Block ) ] .
-AssignOp    = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^=" | "<<=" | ">>=" | "??=" .
+AssignOp    = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^=" | "<<=" | ">>="
+            | "&+=" | "&-=" | "&*=" | "??=" .
 
 Cond        = CondClause { "," CondClause } .   (* if let a = x, a > 0 { … } (decision 21) *)
 CondClause  = ( "let" | "var" ) Pattern "=" Expr | Expr .   (* if var x = y: a copy that may change *)
@@ -306,7 +309,7 @@ LambdaParam = Name [ ":" Type ] [ "=" Expr ] .
 
 Binary      = Unary { BinaryOp Unary } .         (* by precedence, below *)
 BinaryOp    = "??" | "||" | "&&" | "==" | "!=" | "<" | "<=" | ">" | ">=" | ".." | "..<"
-            | "+" | "-" | "|" | "^" | "*" | "/" | "%" | "&" | "<<" | ">>" .
+            | "+" | "-" | "|" | "^" | "&+" | "&-" | "*" | "/" | "%" | "&" | "&*" | "<<" | ">>" .
 
 Unary       = ( "!" | "-" | "~" | "await" ) Unary
             | "try" [ "?" ] Unary                (* try? : the ? right after try *)
@@ -344,8 +347,8 @@ Literal     = INT | FLOAT | DURATION | LENGTH | COLOR | STRING | "true" | "false
 ```
 
 Operator precedence, from the loosest: a lambda, then `catch`; `??`
-(right-associative); `||`; `&&`; `== != < <= > >=`; `.. ..<`; `+ - | ^`;
-`* / % &`; `<< >>`; the unary operators; the postfix ones. The binary
+(right-associative); `||`; `&&`; `== != < <= > >=`; `.. ..<`; `+ - | ^
+&+ &-`; `* / % & &*`; `<< >>`; the unary operators; the postfix ones. The binary
 operators but `??` are left-associative; comparisons don't chain, nor
 do ranges (`a < b < c` is an error that says what to write).
 

@@ -214,6 +214,8 @@ func TestFormatCases(t *testing.T) {
 		{"let n = (a + b) << (c & d)", "let n = (a + b) << (c & d)\n"},
 		{"let n = a + (b << c)", "let n = a + (b << c)\n"},
 		{"let n = 0b1010_0101 | 0o17", "let n = 0b1010_0101 | 0o17\n"},
+		{"let h = (h^b)&*p&+1 &- -c", "let h = (h ^ b) &* p &+ 1 &- -c\n"},
+		{"fn f() {\n  h&+=1; h&-=2; h&*=3\n}", "fn f() {\n  h &+= 1; h &-= 2; h &*= 3\n}\n"},
 		{"fn f() {\n  x>>=1; x<<=2; x&=3; x|=4; x^=5\n}", "fn f() {\n  x >>= 1; x <<= 2; x &= 3; x |= 4; x ^= 5\n}\n"},
 		// A break after a dot stays after it: a line that ends in . goes on
 		// where one that starts with .0 is a number, and .name alone on a

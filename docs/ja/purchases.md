@@ -24,7 +24,7 @@ let pro = purchase.Item(id: "pro", kind: .nonConsumable)
 let plus = purchase.Item(id: "plus_monthly", kind: .autoRenewable)
 ```
 
-`purchase.declare(items)` は、ストアに問い合わせずに、アプリが何を販売しているかを伝えます。アプリの起動時に呼んでください。そうしておくと、先に届いた消耗型のトランザクション（前回完了しなかったもの）が、完了したときに消費されます。`purchase.products(items)` はストアにそれらの商品を問い合わせます。結果はユーザーの国と言語のもので、ストアが販売していない商品は含まれません。`Product` には、`title`、`description`、`price`（表示用。「$4.99」など）、`priceMicros` と `currency`、`item()`（購入に使う `Item`）があり、サブスクリプションなら `subscription` もあります。`subscription` には、`group`、`level`、`period`（`unit`、`count`）、`offers`（それぞれが `phases` のリストで、無料トライアルや一定期間の割引価格などからなります）、ユーザーが導入オファーを受けられるかどうか（`introEligible`）があります。
+`purchase.declare(items)` は、ストアに問い合わせずに、アプリが何を販売しているかを伝えます。アプリの起動時に呼んでください。そうしておくと、先に届いた消耗型のトランザクション（前回完了しなかったもの）が、完了したときに消費されます。`purchase.products(items)` はストアにそれらの商品を問い合わせます。結果はユーザーの国と言語のもので、ストアが販売していない商品は含まれません。`Product` には、`title`、`description`、`price`（ストアが返す表示用のテキスト。「$4.99」など）、`amount`（正確な価格。[`std/decimal`](stdlib.md) の `Decimal` で 4.99。`amount.formatted(currency: currency)` でユーザーの書き方にできます）と `currency`、`item()`（購入に使う `Item`）があり、サブスクリプションなら `subscription` もあります。`subscription` には、`group`、`level`、`period`（`unit`、`count`）、`offers`（それぞれが `phases` のリストで、無料トライアルや一定期間の割引価格などからなります）、ユーザーが導入オファーを受けられるかどうか（`introEligible`）があります。このパッケージの最初のリリースの価格 `priceMicros` は、あと 1 リリース残ります。`amount` を使ってください。
 
 ```asuka
 component Shop {
@@ -140,7 +140,7 @@ storekit = "Products.storekit"
 ```asuka
 test "Ask to Buy, then approved" {
   let store = purchase.fake([
-    purchase.FakeProduct(id: "coins_100", kind: .consumable, title: "100 Coins", price: "$0.99", priceMicros: 990_000),
+    purchase.FakeProduct(id: "coins_100", kind: .consumable, title: "100 Coins", amount: .parse("0.99")!),
     purchase.FakeProduct(id: "plus_monthly", kind: .autoRenewable, title: "Plus", price: "$4.99",
       period: purchase.Period(unit: .month), trial: purchase.Period(unit: .week)),
   ])

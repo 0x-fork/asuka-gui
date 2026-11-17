@@ -134,6 +134,7 @@ pub native interface Oven {
 | `string` | `String` | `String` | `string` | `char *`（UTF-8、NUL 終端） |
 | `bytes` | `Data` | `ByteArray` | `Uint8Array` | `asuka_bytes`（`data`、`len`） |
 | `Duration` | `TimeInterval`（秒） | `kotlin.time.Duration` | `number`（ミリ秒） | `int64_t`（ナノ秒） |
+| `Decimal`（インポートした std/decimal のもの） | `Decimal` | `java.math.BigDecimal` | `string`。正確なテキスト（`"19.99"`） | `asuka_decimal`（`coefficient`、`exponent`。`asuka_decimal_text`、`asuka_decimal_parse`） |
 | `[T]` | `[T]` | `List<T>` | `Array` | `<pkg>_list_T`（`data`、`len`） |
 | `[string: T]` | `[String: T]` | `Map<String, T>` | `object` | `<pkg>_map_T`（`keys`、`values`、`len`） |
 | `T?` | `T?` | `T?` | `T` または `null` | `T *`（`NULL` は値なし。`string?` は `char *`） |
@@ -145,6 +146,8 @@ pub native interface Oven {
 | `Ref`（引数） | `AsukaViewRef`。その `view`（メインアクターで読みます）が Asuka の表示している `UIView` か `NSView`（WebView なら `WKWebView`）で、なければ `nil` | `AsukaViewRef`。その `view`（メインスレッドで読みます）が `View`（WebView なら `WebView`）で、なければ `null` | その要素、または `null` | `uint32_t`（ビューの id）。`asuka_desktop_view(v)` がその `HWND` か `GtkWidget *`、`asuka_desktop_webview(v)` が WebView の `ICoreWebView2 *` か `WebKitWebView *` です |
 
 構造体のフィールドは宣言順に渡されます。構造体の定数とメソッドは Asuka 側に残ります。オブジェクト（ネイティブのインターフェース）を渡せるのは引数か戻り値としてだけで、配列、マップ、構造体の中には入れられません。`Ref` を渡せるのも引数としてだけです。渡るのは呼び出した時点で Ref が持っているビューで（platform/print の `webView(view: Ref, …)` は、`ref:` で入れた WebView のページを印刷します）、プラットフォームのコードはそれをメインスレッドで引きます。Ref がビューを持っていないときや、Asuka がまだそのビューを表示していないときは `nil` になります。それ以外の型を使うと、`asuka native generate` がその位置とともに報告し、代わりに使うべきものを示します。
+
+`Decimal`（`import std/decimal.{Decimal}`）は係数と指数として正確に渡ります。プラットフォーム側から返す値の有効数字が 18 桁を超えるときは、偶数への丸め（銀行型丸め）で 18 桁に丸められます。Asuka はそれ以上の桁を持てないためです。Swift の `Decimal` が表せる指数は -128 から 127 までで、それを超えると NaN になります。
 
 ### メソッド
 

@@ -8,6 +8,8 @@ import { Kind, State, Status, Mode, OfferType, PeriodUnit, EventType, PurchaseEr
 const PLAY = "https://play.google.com/billing";
 
 const micros = (v) => Math.round(Number(v || 0) * 1e6);
+/** The price exactly: the Digital Goods API's value, its decimal text. */
+const amount = (v) => (v == null || v === "" ? "0" : String(v));
 
 function period(iso) {
   const m = /^P(\d+)([DWMY])$/.exec(iso || "");
@@ -76,16 +78,16 @@ async function reconcile() {
 
 function product(d) {
   const p = { id: d.itemId, kind: kindOf(d.itemId, d.type), title: d.title, description: d.description,
-    price: format(d.price), priceMicros: micros(d.price?.value), currency: d.price?.currency ?? "", offers: [] };
+    price: format(d.price), priceMicros: micros(d.price?.value), currency: d.price?.currency ?? "", offers: [], amount: amount(d.price?.value) };
   if (d.type === "subscription") {
     const phases = [];
     if (d.freeTrialPeriod) {
       phases.push({ price: format({ value: 0, currency: d.price?.currency }), priceMicros: 0, currency: d.price?.currency ?? "",
-        period: period(d.freeTrialPeriod), cycles: 1, mode: Mode.freeTrial });
+        period: period(d.freeTrialPeriod), cycles: 1, mode: Mode.freeTrial, amount: "0" });
     }
     if (d.introductoryPrice) {
       phases.push({ price: format(d.introductoryPrice), priceMicros: micros(d.introductoryPrice.value), currency: d.introductoryPrice.currency,
-        period: period(d.introductoryPricePeriod), cycles: d.introductoryPriceCycles || 1, mode: Mode.payAsYouGo });
+        period: period(d.introductoryPricePeriod), cycles: d.introductoryPriceCycles || 1, mode: Mode.payAsYouGo, amount: amount(d.introductoryPrice.value) });
     }
     p.subscription = { group: d.itemId, level: 0, period: period(d.subscriptionPeriod),
       offers: phases.length ? [{ type: OfferType.introductory, phases, tags: [] }] : [], introEligible: phases.length > 0 };

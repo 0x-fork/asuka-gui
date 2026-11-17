@@ -66,6 +66,21 @@ class AsukaNativeWriter {
     /** A time: seconds and nanoseconds since 1970. */
     fun time(v: Instant) { put64(v.epochSecond); put32(v.nano) }
     fun duration(v: Duration) = put64(v.inWholeNanoseconds)
+    /** A Decimal (std/decimal's): its coefficient, without trailing zeros,
+     *  and its exponent. One of more digits than a Long holds is rounded
+     *  half to even to 18 significant digits. */
+    fun decimal(v: java.math.BigDecimal) {
+        var d = v
+        if (d.signum() != 0 && d.precision() > 18) d = d.round(java.math.MathContext(18, java.math.RoundingMode.HALF_EVEN))
+        if (d.signum() == 0) {
+            put64(0)
+            put64(0)
+            return
+        }
+        d = d.stripTrailingZeros()
+        put64(d.unscaledValue().toLong())
+        put64(-d.scale().toLong())
+    }
     fun len(k: Int) = put32(k)
     fun present(v: Boolean) = bool(v)
 
@@ -154,6 +169,13 @@ class AsukaNativeReader(private val b: ByteArray) {
     }
 
     fun duration(): Duration = get64().nanoseconds
+    /** A Decimal (std/decimal's): coefficient × 10^exponent. */
+    fun decimal(): java.math.BigDecimal {
+        val c = get64()
+        val e = get64()
+        if (c == 0L || e < Int.MIN_VALUE + 1 || e > Int.MAX_VALUE) return java.math.BigDecimal.ZERO
+        return java.math.BigDecimal.valueOf(c, (-e).toInt())
+    }
 
     /** A slice's or a map's length, bounded by what's left. */
     fun len(): Int {

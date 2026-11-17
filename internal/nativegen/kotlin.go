@@ -32,7 +32,7 @@ var kotlinOf = map[Kind]string{
 	Uint8: "UByte", Uint16: "UShort", Uint32: "UInt", Uint64: "ULong", Uint: "ULong",
 	Float32: "Float", Float64: "Double", String: "String", Bytes: "ByteArray",
 	Time: "java.time.Instant", Duration: "kotlin.time.Duration",
-	ViewRef: "dev.asuka.AsukaViewRef",
+	ViewRef: "dev.asuka.AsukaViewRef", Decimal: "java.math.BigDecimal",
 }
 
 var kotlinZero = map[Kind]string{
@@ -40,6 +40,7 @@ var kotlinZero = map[Kind]string{
 	Uint8: "0u", Uint16: "0u", Uint32: "0u", Uint64: "0uL", Uint: "0uL",
 	Float32: "0f", Float64: "0.0", String: `""`, Bytes: "ByteArray(0)",
 	Time: "java.time.Instant.EPOCH", Duration: "kotlin.time.Duration.ZERO",
+	Decimal: "java.math.BigDecimal.ZERO",
 }
 
 type kotlinGen struct {

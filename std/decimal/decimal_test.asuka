@@ -1,0 +1,64 @@
+test "exact where floats aren't" {
+  let a = Decimal.parse("0.1")!
+  let b = Decimal.parse("0.2")!
+  expect(a + b == Decimal.parse("0.3")!)
+  expect((a + b).string() == "0.3")
+  expect((Decimal.parse("19.99")! * 3).string() == "59.97")
+  expect((Decimal.parse("1.10")! * Decimal.parse("1.10")!).string() == "1.21")
+}
+
+test "parse keeps no trailing zeros" {
+  let x = Decimal.parse("1.500")!
+  expect(x.coefficient == 15 && x.exponent == -1)
+  expect(x == Decimal.of(15, exponent: -1))
+  expect(Decimal.parse("1e2")!.string() == "100")
+  expect(Decimal.parse("-.5")!.string() == "-0.5")
+  expect(Decimal.parse("1,5") == none)
+  expect(Decimal.parse("12345678901234567891") == none)
+  expect(Decimal.parse("12345678901234567890")!.exponent == 1)
+}
+
+test "rounding" {
+  let x = Decimal.parse("2.5")!
+  expect(x.rounded().string() == "2")
+  expect(x.rounded(mode: .halfUp).string() == "3")
+  expect(x.rounded(mode: .halfDown).string() == "2")
+  expect(x.neg().rounded(mode: .ceiling).string() == "-2")
+  expect(x.neg().rounded(mode: .floor).string() == "-3")
+  expect(x.neg().rounded(mode: .up).string() == "-3")
+  expect(x.neg().rounded(mode: .down).string() == "-2")
+  expect(Decimal.parse("1234.5")!.rounded(places: -2).string() == "1200")
+}
+
+test "division" {
+  let one = Decimal.one
+  expect((one / Decimal.of(3)).string() == "0.333333333333333333")
+  expect(one.divided(by: Decimal.of(3), places: 4, mode: .up).string() == "0.3334")
+  expect((Decimal.of(10) / 4).string() == "2.5")
+  let z = try (one / Decimal.zero).string() catch e { e.message }
+  expect(z == "division by zero")
+}
+
+test "overflow is an error" {
+  let big = Decimal.parse("9223372036854775807")!
+  let r = try (big + Decimal.one).string() catch e { e.message }
+  expect(r == "integer overflow")
+  let p = try (big * big).string() catch e { e.message }
+  expect(p == "integer overflow")
+  expect((big * Decimal.parse("1e10")!).string() == "92233720368547758070000000000")
+}
+
+test "ordered and hashable" {
+  let xs = [Decimal.of(3), Decimal.parse("-1.5")!, Decimal.parse("2.75")!]
+  expect(xs.sorted().map(x => x.string()) == ["-1.5", "2.75", "3"])
+  expect(Decimal.parse("2.50")! >= Decimal.parse("2.5")!)
+  let seen: Set<Decimal> = [Decimal.parse("1.0")!, Decimal.one]
+  expect(seen.count() == 1)
+}
+
+test "formatted" {
+  let x = Decimal.parse("1234.5")!
+  expect(x.formatted() == "1,234.5")
+  expect(x.formatted(currency: "EUR") == "€1,234.50")
+  expect(x.formatted(currency: "JPY") == "¥1,235")
+}

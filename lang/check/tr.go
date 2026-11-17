@@ -80,7 +80,7 @@ func trackedNative(path, name string) bool {
 		return false
 	}
 	switch name {
-	case "locale", "preferred_languages", "is_rtl", "region", "format_locale", "format_number", "format_int", "format_date", "languages", "autonym":
+	case "locale", "preferred_languages", "is_rtl", "region", "format_locale", "format_number", "format_decimal", "format_int", "format_date", "languages", "autonym":
 		return true
 	}
 	return false

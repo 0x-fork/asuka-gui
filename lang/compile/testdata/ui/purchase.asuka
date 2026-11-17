@@ -149,3 +149,19 @@ test "unfinished from before" {
   app.expect("100 coins")
   expect(store.unfinished().isEmpty())
 }
+
+// A product's amount is a Decimal: the fake's own, or where that's zero
+// the micros of the package's first release; its store text, when the
+// fake has none, the amount written the user's way.
+test "amounts" {
+  let store = purchase.fake([
+    purchase.FakeProduct(id: coins.id, kind: .consumable, title: "Coins", price: "$0.99", priceMicros: 990_000),
+    purchase.FakeProduct(id: pro.id, kind: .nonConsumable, title: "Pro", amount: .parse("9.99")!, currency: "EUR"),
+    purchase.FakeProduct(id: plus.id, kind: .autoRenewable, title: "Plus", amount: .parse("1250")!, currency: "JPY", period: purchase.Period(unit: .month)),
+  ])
+  let ps = try await purchase.products([coins, pro, plus])
+  expect(ps[0].amount.string() == "0.99" && ps[0].price == "$0.99" && ps[0].priceMicros == 990_000)
+  expect(ps[1].amount.string() == "9.99" && ps[1].price == "€9.99" && ps[1].priceMicros == 9_990_000)
+  expect(ps[2].price == "¥1,250" && ps[2].amount * 2 == ps[2].amount + ps[2].amount)
+  expect(store.products.count() == 3)
+}

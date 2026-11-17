@@ -120,7 +120,10 @@ final class Asker: @unchecked Sendable {
     }
 
     private func merge(_ old: Item, _ new: Item) -> Item {
-        Item(label: new.label.isEmpty ? old.label : new.label, amount: new.amount.isEmpty ? old.amount : new.amount, pending: new.pending, kind: new.kind)
+        // Its price zero and amount "": the amount as it was.
+        let same = new.price == 0 && new.amount.isEmpty
+        return Item(label: new.label.isEmpty ? old.label : new.label, price: same ? old.price : new.price, amount: same ? old.amount : new.amount,
+                    pending: new.pending, kind: new.kind)
     }
 
     private func errors(_ a: Answer) -> [Error] { a.update.errors.map(Requests.error) }
@@ -253,7 +256,10 @@ enum Requests {
         return s
     }
 
-    static func decimal(_ s: String) -> NSDecimalNumber {
+    /// An amount: its Decimal, or where that's zero its deprecated text
+    /// (the package's first release's).
+    static func decimal(_ price: Decimal, _ s: String) -> NSDecimalNumber {
+        if price != 0 { return NSDecimalNumber(decimal: price) }
         let d = NSDecimalNumber(string: s.isEmpty ? "0" : s, locale: Locale(identifier: "en_US_POSIX"))
         return d == .notANumber ? .zero : d
     }
@@ -268,11 +274,11 @@ enum Requests {
     static func date(_ s: String) -> Date? { day(s)?.date }
 
     static func item(_ i: Item) -> PKPaymentSummaryItem {
-        PKPaymentSummaryItem(label: i.label, amount: decimal(i.amount), type: i.pending ? .pending : .final)
+        PKPaymentSummaryItem(label: i.label, amount: decimal(i.price, i.amount), type: i.pending ? .pending : .final)
     }
 
     static func method(_ m: ShippingMethod) -> PKShippingMethod {
-        let p = PKShippingMethod(label: m.label, amount: decimal(m.amount))
+        let p = PKShippingMethod(label: m.label, amount: decimal(m.price, m.amount))
         p.identifier = m.id
         p.detail = m.detail
         if #available(iOS 15.0, macOS 12.0, *), let f = day(m.from), let t = day(m.to.isEmpty ? m.from : m.to) {
@@ -283,7 +289,7 @@ enum Requests {
 
     @available(iOS 15.0, macOS 12.0, *)
     static func recurring(_ b: Billing) -> PKRecurringPaymentSummaryItem {
-        let r = PKRecurringPaymentSummaryItem(label: b.label, amount: decimal(b.amount), type: b.pending ? .pending : .final)
+        let r = PKRecurringPaymentSummaryItem(label: b.label, amount: decimal(b.price, b.amount), type: b.pending ? .pending : .final)
         r.startDate = date(b.start)
         r.endDate = date(b.end)
         switch b.interval {
@@ -329,8 +335,8 @@ enum Requests {
                 r.recurringPaymentRequest = rr
             }
             if let x = s.automaticReload, let url = URL(string: x.managementURL) {
-                let b = PKAutomaticReloadPaymentSummaryItem(label: x.billing.label, amount: decimal(x.billing.amount), type: .final)
-                b.thresholdAmount = decimal(x.threshold)
+                let b = PKAutomaticReloadPaymentSummaryItem(label: x.billing.label, amount: decimal(x.billing.price, x.billing.amount), type: .final)
+                b.thresholdAmount = decimal(x.thresholdPrice, x.threshold)
                 let rr = PKAutomaticReloadPaymentRequest(paymentDescription: x.description, automaticReloadBilling: b, managementURL: url)
                 if !x.billingAgreement.isEmpty { rr.billingAgreement = x.billingAgreement }
                 rr.tokenNotificationURL = URL(string: x.tokenNotificationURL)
@@ -338,7 +344,7 @@ enum Requests {
             }
         }
         if #available(iOS 17.0, macOS 14.0, *), let x = s.deferred, let url = URL(string: x.managementURL), let at = date(x.date) {
-            let b = PKDeferredPaymentSummaryItem(label: x.billing.label, amount: decimal(x.billing.amount), type: .final)
+            let b = PKDeferredPaymentSummaryItem(label: x.billing.label, amount: decimal(x.billing.price, x.billing.amount), type: .final)
             b.deferredDate = at
             let d = PKDeferredPaymentRequest(paymentDescription: x.description, deferredBilling: b, managementURL: url)
             if !x.billingAgreement.isEmpty { d.billingAgreement = x.billingAgreement }

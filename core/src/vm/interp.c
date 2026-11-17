@@ -231,14 +231,25 @@ int ak_vm_interp(ak_co *co, ak_val *out) {
 			break;
 		}
 
-		case AK_OP_ADDI: R[a[0]].i = (int64_t)((uint64_t)R[a[1]].i + (uint64_t)R[a[2]].i); break;
-		case AK_OP_SUBI: R[a[0]].i = (int64_t)((uint64_t)R[a[1]].i - (uint64_t)R[a[2]].i); break;
-		case AK_OP_MULI: R[a[0]].i = (int64_t)((uint64_t)R[a[1]].i * (uint64_t)R[a[2]].i); break;
+		case AK_OP_ADDI:
+			if (!ak_op_addi(R, a[0], a[1], a[2])) goto unwind;
+			break;
+		case AK_OP_SUBI:
+			if (!ak_op_subi(R, a[0], a[1], a[2])) goto unwind;
+			break;
+		case AK_OP_MULI:
+			if (!ak_op_muli(R, a[0], a[1], a[2])) goto unwind;
+			break;
 		case AK_OP_DIVI:
 		case AK_OP_MODI:
 			if (!ak_op_divi(R, a[0], a[1], a[2], op == AK_OP_MODI)) goto unwind;
 			break;
-		case AK_OP_NEGI: R[a[0]].i = (int64_t)(0 - (uint64_t)R[a[1]].i); break;
+		case AK_OP_NEGI:
+			if (!ak_op_negi(R, a[0], a[1])) goto unwind;
+			break;
+		case AK_OP_WADDI: R[a[0]].i = (int64_t)((uint64_t)R[a[1]].i + (uint64_t)R[a[2]].i); break;
+		case AK_OP_WSUBI: R[a[0]].i = (int64_t)((uint64_t)R[a[1]].i - (uint64_t)R[a[2]].i); break;
+		case AK_OP_WMULI: R[a[0]].i = (int64_t)((uint64_t)R[a[1]].i * (uint64_t)R[a[2]].i); break;
 		case AK_OP_ADDIK: R[a[0]].i = (int64_t)((uint64_t)R[a[1]].i + (uint64_t)(int64_t)(int16_t)a[2]); break;
 		case AK_OP_EQI: R[a[0]].i = R[a[1]].i == R[a[2]].i; break;
 		case AK_OP_NEI: R[a[0]].i = R[a[1]].i != R[a[2]].i; break;

@@ -181,8 +181,63 @@ public struct AsukaNativeWriter {
 
     /// A duration, in seconds (Go's: nanoseconds).
     public mutating func duration(_ v: TimeInterval) { put(Int64((v * 1e9).rounded())) }
+    /// A Decimal (std/decimal's): its coefficient, without trailing zeros,
+    /// and its exponent. One of more digits than an Int64 holds is rounded
+    /// half to even to 18 significant digits; NaN is 0.
+    public mutating func decimal(_ v: Decimal) {
+        let (c, e) = AsukaDecimalParts.of(v)
+        put(c)
+        put(e)
+    }
     public mutating func len(_ n: Int) { put(UInt32(n)) }
     public mutating func present(_ v: Bool) { bool(v) }
+}
+
+/// A Decimal's parts as std/decimal keeps them: its coefficient without
+/// trailing zeros, and its exponent.
+enum AsukaDecimalParts {
+    static func of(_ v: Decimal) -> (Int64, Int64) {
+        if v.isNaN || v.isZero { return (0, 0) }
+        // Its plain digits ("-123.4500"): those, and where the point is.
+        var text = Substring(NSDecimalNumber(decimal: v).stringValue)
+        let negative = text.hasPrefix("-")
+        if negative { text = text.dropFirst() }
+        var digits = [UInt8]()
+        var exponent: Int64 = 0
+        var point = false
+        for ch in text.utf8 {
+            if ch == UInt8(ascii: ".") {
+                point = true
+            } else if ch >= UInt8(ascii: "0") && ch <= UInt8(ascii: "9") {
+                if !(digits.isEmpty && ch == UInt8(ascii: "0")) { digits.append(ch - UInt8(ascii: "0")) }
+                if point { exponent -= 1 }
+            }
+        }
+        // More than 18 significant digits: rounded half to even.
+        if digits.count > 18 {
+            let rest = digits[18...]
+            exponent += Int64(rest.count)
+            var kept = Array(digits[..<18])
+            let first = rest.first!
+            let more = rest.dropFirst().contains { $0 != 0 }
+            if first > 5 || first == 5 && (more || kept.last! % 2 == 1) {
+                var i = kept.count - 1
+                while i >= 0 && kept[i] == 9 {
+                    kept[i] = 0
+                    i -= 1
+                }
+                if i >= 0 { kept[i] += 1 } else { kept.insert(1, at: 0) }
+            }
+            digits = kept
+        }
+        while let last = digits.last, last == 0 {
+            digits.removeLast()
+            exponent += 1
+        }
+        var c: Int64 = 0
+        for d in digits { c = c * 10 + Int64(d) }
+        return (negative ? -c : c, exponent)
+    }
 }
 
 /// One of the app's views a method was passed (an Asuka Ref): the id its
@@ -256,6 +311,12 @@ public struct AsukaNativeReader {
     }
 
     public mutating func duration() -> TimeInterval { Double(get(Int64.self)) / 1e9 }
+    /// A Decimal (std/decimal's): coefficient × 10^exponent.
+    public mutating func decimal() -> Decimal {
+        let c = get(Int64.self), e = get(Int64.self)
+        guard c != 0, let exp = Int(exactly: e) else { return 0 }
+        return Decimal(sign: c < 0 ? .minus : .plus, exponent: exp, significand: Decimal(c.magnitude))
+    }
 
     /// A slice's or a map's length, bounded by what's left.
     public mutating func len() -> Int {

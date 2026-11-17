@@ -36,7 +36,66 @@ func (s *server) hover(p *TextDocumentPositionParams) (*Hover, error) {
 		rg := fc.rng(id.Span)
 		return &Hover{Contents: markdown(code, doc), Range: &rg}, nil
 	}
+	if h := fc.operatorHover(path, pos); h != nil {
+		return h, nil
+	}
 	return fc.exprHover(path)
+}
+
+// operatorDocs say what the int operators whose meaning isn't plain do:
+// the wrapping ones, and those that throw past int's range.
+var operatorDocs = map[syntax.Token]string{
+	syntax.WADD: "An int's sum, wrapping: past the largest int it goes on from the smallest, as 64-bit two's complement does (`+` throws instead). For hashes, checksums and binary protocols.",
+	syntax.WSUB: "An int's difference, wrapping: past the smallest int it goes on from the largest (`-` throws instead).",
+	syntax.WMUL: "An int's product, wrapping: its low 64 bits (`*` throws instead).",
+	syntax.ADD:  "On ints, throws an error (\"integer overflow\") past int's range: `&+` wraps, `addingChecked` gives none.",
+	syntax.SUB:  "On ints, throws an error (\"integer overflow\") past int's range: `&-` wraps, `subtractingChecked` gives none.",
+	syntax.MUL:  "On ints, throws an error (\"integer overflow\") past int's range: `&*` wraps, `multipliedChecked` gives none.",
+}
+
+// operatorHover is the hover of the operator at pos: the method of a
+// type's that it calls (a * b: mul), or what an int operator does.
+func (fc *fileCtx) operatorHover(path []syntax.Node, pos syntax.Pos) *Hover {
+	for i := len(path) - 1; i >= 0; i-- {
+		var (
+			op   syntax.Token
+			at   syntax.Pos
+			o    *check.Operator
+			ints bool
+		)
+		switch n := path[i].(type) {
+		case *syntax.BinaryExpr:
+			op, at, o = n.Op, n.OpPos, fc.info.Operators[n]
+			ints = fc.info.Types[n.X] == check.Int
+		case *syntax.AssignStmt:
+			op, at, o = n.Op.AssignOp(), n.OpPos, fc.info.AssignOps[n]
+			ints = fc.info.Types[n.Target] == check.Int
+		case *syntax.UnaryExpr:
+			if n.Op != syntax.SUB {
+				continue
+			}
+			op, at, o = n.Op, n.Start, fc.info.Negations[n]
+		default:
+			continue
+		}
+		width := len(op.String())
+		if as, ok := path[i].(*syntax.AssignStmt); ok {
+			width = len(as.Op.String())
+		}
+		if pos < at || pos > at+syntax.Pos(width) {
+			return nil
+		}
+		rg := fc.rng(syntax.Span{Start: at, End: at + syntax.Pos(width)})
+		if o != nil {
+			return &Hover{Contents: markdown(funcSig(o.Func), docOf(o.Func.Decl)), Range: &rg}
+		}
+		doc, ok := operatorDocs[op]
+		if !ok || !ints && op != syntax.WADD && op != syntax.WSUB && op != syntax.WMUL {
+			return nil
+		}
+		return &Hover{Contents: markdown("", doc), Range: &rg}
+	}
+	return nil
 }
 
 // exprHover shows the type of the expression at the end of path: a

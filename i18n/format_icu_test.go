@@ -92,6 +92,9 @@ func numberOptions(o map[string]any) NumberOptions {
 	if o["useGrouping"] == false {
 		n.NoGrouping = true
 	}
+	if c, ok := o["currency"].(string); ok && o["style"] == "currency" {
+		n.Currency = c
+	}
 	return n
 }
 

@@ -158,6 +158,20 @@ typedef struct {
 	size_t len;
 } asuka_bytes;
 
+// asuka_decimal is std/decimal's Decimal: coefficient × 10^exponent.
+// asuka_writer_decimal writes it as Asuka keeps it, the coefficient's
+// trailing zeros moved to the exponent; asuka_decimal_text writes it in
+// plain digits ("19.99", malloc's).
+typedef struct {
+	int64_t coefficient;
+	int64_t exponent;
+} asuka_decimal;
+char *asuka_decimal_text(asuka_decimal d);
+// asuka_decimal_parse reads a decimal number's text ("4.99", "-1.5e3", a
+// JSON number), more than 18 significant digits rounded half to even:
+// false for text that isn't one.
+bool asuka_decimal_parse(const char *text, asuka_decimal *out);
+
 // asuka_strdup is s, copied with malloc (NULL: "").
 char *asuka_strdup(const char *s);
 char *asuka_strndup(const char *s, size_t n);
@@ -195,6 +209,7 @@ void asuka_writer_bool(asuka_writer *w, bool v);
 // asuka_writer_string writes s (NULL: "").
 void asuka_writer_string(asuka_writer *w, const char *s);
 void asuka_writer_bytes(asuka_writer *w, const void *p, size_t n);
+void asuka_writer_decimal(asuka_writer *w, asuka_decimal d);
 // asuka_writer_count writes a list's or a map's count.
 void asuka_writer_count(asuka_writer *w, size_t n);
 // asuka_writer_put appends n raw bytes (no length): a buffer to grow.
@@ -216,6 +231,7 @@ bool asuka_reader_bool(asuka_reader *r);
 // asuka_reader_string is a string read into malloc's, NUL-terminated.
 char *asuka_reader_string(asuka_reader *r);
 asuka_bytes asuka_reader_bytes(asuka_reader *r);
+asuka_decimal asuka_reader_decimal(asuka_reader *r);
 // asuka_reader_count is a list's or a map's count: 0, and failed, when
 // more than the bytes left could hold.
 uint32_t asuka_reader_count(asuka_reader *r);

@@ -165,6 +165,20 @@ static pantry_map_int p_counts(pantry_Pantry *self, asuka_error *err) {
 	return m;
 }
 
+// total sums decimals of one exponent and another: aligned to the
+// smaller (the test's prices fit).
+static asuka_decimal p_total(pantry_Pantry *self, pantry_list_decimal prices, asuka_error *err) {
+	asuka_decimal sum = {0, 0};
+	for (size_t i = 0; i < prices.len; i++) {
+		asuka_decimal p = prices.data[i];
+		while (sum.exponent > p.exponent) sum.coefficient *= 10, sum.exponent--;
+		while (p.exponent > sum.exponent && sum.coefficient != 0) p.coefficient *= 10, p.exponent--;
+		if (sum.coefficient == 0) sum.exponent = p.exponent;
+		sum.coefficient += p.coefficient;
+	}
+	return sum;
+}
+
 static void p_release(pantry_Pantry *self) {
 	printf("pantry: release pantry\n");
 	fflush(stdout);
@@ -189,6 +203,7 @@ static const pantry_Pantry_vtable pantry_vt = {
 	.open = p_open,
 	.show = p_show,
 	.counts = p_counts,
+	.total = p_total,
 	.shows = p_shows,
 };
 

@@ -36,14 +36,14 @@ var swiftOf = map[Kind]string{
 	Bool: "Bool", Int8: "Int8", Int16: "Int16", Int32: "Int32", Int64: "Int64", Int: "Int",
 	Uint8: "UInt8", Uint16: "UInt16", Uint32: "UInt32", Uint64: "UInt64", Uint: "UInt",
 	Float32: "Float", Float64: "Double", String: "String", Bytes: "Data", Time: "Date", Duration: "TimeInterval",
-	ViewRef: "AsukaViewRef",
+	ViewRef: "AsukaViewRef", Decimal: "Decimal",
 }
 
 var swiftWire = map[Kind]string{
 	Bool: "bool", Int8: "int8", Int16: "int16", Int32: "int32", Int64: "int64", Int: "int",
 	Uint8: "uint8", Uint16: "uint16", Uint32: "uint32", Uint64: "uint64", Uint: "uint",
 	Float32: "float32", Float64: "float64", String: "string", Bytes: "data", Time: "time", Duration: "duration",
-	ViewRef: "viewRef",
+	ViewRef: "viewRef", Decimal: "decimal",
 }
 
 // typ is t as Swift writes it.

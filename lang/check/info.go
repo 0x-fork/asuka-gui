@@ -69,6 +69,8 @@ type Info struct {
 	DurationFloats map[*syntax.BinaryExpr]bool
 	// Operators: the binary operators a struct's method does (t + 1h).
 	Operators map[*syntax.BinaryExpr]*Operator
+	// Negations: the unary -s a struct's or an enum's neg() does.
+	Negations map[*syntax.UnaryExpr]*Operator
 	// AssignOps: the compound assignments a struct's or an enum's
 	// method does (t += 1h is t = t.add(1h)).
 	AssignOps map[*syntax.AssignStmt]*Operator
@@ -143,6 +145,7 @@ func newInfo() *Info {
 		EmbeddedFiles:  map[*syntax.CallExpr][]EmbeddedFile{},
 		EmbedPaths:     map[EmbedPath]bool{},
 		Operators:      map[*syntax.BinaryExpr]*Operator{},
+		Negations:      map[*syntax.UnaryExpr]*Operator{},
 		AssignOps:      map[*syntax.AssignStmt]*Operator{},
 		LengthScales:   map[*syntax.BinaryExpr]bool{},
 		DurationFloats: map[*syntax.BinaryExpr]bool{},

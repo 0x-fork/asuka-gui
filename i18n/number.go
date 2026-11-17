@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -34,6 +35,12 @@ type NumberOptions struct {
 	// ICU's MessageFormat does ("2.5" is "2"), rather than away from zero
 	// ("3"), as Intl.NumberFormat does.
 	HalfEven bool
+	// Currency, an ISO 4217 code ("EUR"), writes the number as an amount
+	// of it, as Intl.NumberFormat's style "currency" does: in the
+	// locale's currency pattern, with its symbol of the currency ("€",
+	// "CA$", the code when it has none) and the currency's fraction digits
+	// (CurrencyDigits) unless the fraction digits are given.
+	Currency string
 }
 
 // FormatNumber writes a number in the way of locale: its decimal and
@@ -60,6 +67,8 @@ type NumberFormatter struct {
 	pat      *numberPattern
 	o        NumberOptions
 	min, max int
+	// A currency's: the pattern's affixes with its symbol in place of ¤.
+	prefix, suffix, negPrefix, negSuffix string
 }
 
 type numberFormatterKey struct {
@@ -91,9 +100,15 @@ func NewNumberFormatter(locale string, o NumberOptions) *NumberFormatter {
 	if f.min < 0 {
 		f.min = 0
 	}
+	if o.Currency != "" {
+		f.currency(k.dat(), strings.ToUpper(o.Currency))
+	}
 	switch {
 	case o.Integer:
 		f.min, f.max = 0, 0
+	case o.Currency != "" && f.max <= 0 && f.min == 0:
+		f.min = CurrencyDigits(o.Currency)
+		f.max = f.min
 	case f.max <= 0 && f.min == 0:
 		f.max = f.pat.maxFrac
 	}
@@ -159,10 +174,14 @@ func (f *NumberFormatter) formatDecimal(decimal string) string {
 	var b strings.Builder
 	b.Grow(len(intPart) + len(frac) + 16)
 	p := f.pat
+	prefix, suffix, negPrefix, negSuffix := p.prefix, p.suffix, p.negPrefix, p.negSuffix
+	if f.o.Currency != "" {
+		prefix, suffix, negPrefix, negSuffix = f.prefix, f.suffix, f.negPrefix, f.negSuffix
+	}
 	if neg {
-		b.WriteString(p.negPrefix)
+		b.WriteString(negPrefix)
 	} else {
-		b.WriteString(p.prefix)
+		b.WriteString(prefix)
 	}
 	f.sys.writeInteger(&b, intPart, p, !f.o.NoGrouping, f.o.MinIntegerDigits)
 	if frac != "" {
@@ -170,11 +189,78 @@ func (f *NumberFormatter) formatDecimal(decimal string) string {
 		f.sys.writeDigits(&b, frac)
 	}
 	if neg {
-		b.WriteString(p.negSuffix)
+		b.WriteString(negSuffix)
 	} else {
-		b.WriteString(p.suffix)
+		b.WriteString(suffix)
 	}
 	return b.String()
+}
+
+// currency sets f to write amounts of the currency code: the locale's
+// pattern for its symbol (or the currency's own), the symbol in the
+// pattern's affixes, and the separators of amounts.
+func (f *NumberFormatter) currency(d *localeData, code string) {
+	c := d.currencyOf(code)
+	sym := c.symbol
+	// The separators: the currency's own, else amounts', else numbers'.
+	sys := *f.sys
+	if f.sys.currencyDecimal != "" {
+		sys.decimalSep = f.sys.currencyDecimal
+	}
+	if f.sys.currencyGroup != "" {
+		sys.group = f.sys.currencyGroup
+	}
+	if c.decimal != "" {
+		sys.decimalSep = c.decimal
+	}
+	if c.group != "" {
+		sys.group = c.group
+	}
+	f.sys = &sys
+	f.pat = &f.sys.currency
+	if c.pattern != "" {
+		p := parseNumberPattern(c.pattern, f.sys)
+		f.pat = &p
+	}
+	// A symbol whose letter would touch the number ("CHF", where ¤ is
+	// next to it) takes the pattern of such: "CHF 12.00", not "CHF12.00".
+	if p := f.pat; c.pattern == "" && (strings.HasSuffix(p.prefix, "¤") && letterNextTo(sym, false) || strings.HasPrefix(p.suffix, "¤") && letterNextTo(sym, true)) {
+		f.pat = &f.sys.currencyAlpha
+	}
+	p := f.pat
+	f.prefix = currencyAffix(p.prefix, sym, f.sys.currencySpacing, true)
+	f.suffix = currencyAffix(p.suffix, sym, f.sys.currencySpacing, false)
+	f.negPrefix = currencyAffix(p.negPrefix, sym, f.sys.currencySpacing, true)
+	f.negSuffix = currencyAffix(p.negSuffix, sym, f.sys.currencySpacing, false)
+}
+
+// letterNextTo reports whether the symbol's first rune (its last, when
+// !first) is neither a symbol nor a space: CLDR's [[:^S:]&[:^Z:]], what
+// takes the currency spacing next to a digit.
+func letterNextTo(sym string, first bool) bool {
+	var r rune
+	if first {
+		r, _ = utf8.DecodeRuneInString(sym)
+	} else {
+		r, _ = utf8.DecodeLastRuneInString(sym)
+	}
+	return r != utf8.RuneError && !unicode.In(r, unicode.S, unicode.Z)
+}
+
+// currencyAffix is a currency pattern's affix with sym for its ¤: a
+// prefix's ¤ that touches the number, or a suffix's, with the spacing
+// between when sym's letter would touch a digit.
+func currencyAffix(a, sym, spacing string, prefix bool) string {
+	if !strings.Contains(a, "¤") {
+		return a
+	}
+	if prefix && strings.HasSuffix(a, "¤") && letterNextTo(sym, false) {
+		return strings.Replace(a, "¤", sym+spacing, 1)
+	}
+	if !prefix && strings.HasPrefix(a, "¤") && letterNextTo(sym, true) {
+		return strings.Replace(a, "¤", spacing+sym, 1)
+	}
+	return strings.Replace(a, "¤", sym, 1)
 }
 
 // splitDecimal splits a decimal number into its sign, integer digits
@@ -260,6 +346,13 @@ type numberSystem struct {
 	percentSign, exponential, infinity, nan string
 	minGrouping                             int
 	decimal, percent                        numberPattern
+	// currency is the currency pattern, with ¤ where the symbol goes;
+	// currencyAlpha the one for a symbol of letters next to the number
+	// ("CHF 12.00"); currencySpacing what goes between a digit and such a
+	// symbol when the pattern puts them together.
+	currency, currencyAlpha        numberPattern
+	currencySpacing                string
+	currencyDecimal, currencyGroup string // amounts' separators, "" where they're numbers'
 }
 
 // numbers returns the numbering system of the locale: its default, or
@@ -268,8 +361,8 @@ func (d *localeData) numbers(latn bool) *numberSystem {
 	d.numOnce.Do(func() {
 		minGrouping, _ := strconv.Atoi(d.v[slotMinGrouping])
 		for i := range d.num {
-			base := slotNumbers + i*11
-			v := d.v[base : base+11]
+			base := slotNumbers + i*16
+			v := d.v[base : base+16]
 			if v[0] == "" {
 				continue // the default is latn
 			}
@@ -285,6 +378,10 @@ func (d *localeData) numbers(latn bool) *numberSystem {
 			}
 			s.decimal = parseNumberPattern(v[9], s)
 			s.percent = parseNumberPattern(v[10], s)
+			s.currency = parseNumberPattern(v[11], s)
+			s.currencyAlpha = parseNumberPattern(v[12], s)
+			s.currencySpacing = v[13]
+			s.currencyDecimal, s.currencyGroup = v[14], v[15]
 			d.num[i] = s
 		}
 		if d.num[1] == nil {

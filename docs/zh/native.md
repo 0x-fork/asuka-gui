@@ -134,6 +134,7 @@ pub native interface Oven {
 | `string` | `String` | `String` | `string` | `char *`，UTF-8，以 NUL 结尾 |
 | `bytes` | `Data` | `ByteArray` | `Uint8Array` | `asuka_bytes`（`data`、`len`） |
 | `Duration` | `TimeInterval`（秒） | `kotlin.time.Duration` | `number`（毫秒） | `int64_t`（纳秒） |
+| `Decimal`（导入的 std/decimal 的） | `Decimal` | `java.math.BigDecimal` | `string`，它的精确文本（`"19.99"`） | `asuka_decimal`（`coefficient`、`exponent`；`asuka_decimal_text`、`asuka_decimal_parse`） |
 | `[T]` | `[T]` | `List<T>` | `Array` | `<pkg>_list_T`（`data`、`len`） |
 | `[string: T]` | `[String: T]` | `Map<String, T>` | `object` | `<pkg>_map_T`（`keys`、`values`、`len`） |
 | `T?` | `T?` | `T?` | `T` 或 `null` | `T *`（`NULL` 表示没有值；`string?` 是 `char *`） |
@@ -145,6 +146,8 @@ pub native interface Oven {
 | `Ref`（作为参数） | `AsukaViewRef`：它的 `view`（在主 actor 上读取）是 Asuka 显示的 `UIView` 或 `NSView`（WebView 的是 `WKWebView`），没有时为 `nil` | `AsukaViewRef`：它的 `view`（在主线程上读取）是对应的 `View`（WebView 的是 `WebView`），没有时为 `null` | 对应的元素，或 `null` | `uint32_t`，即视图的 id：`asuka_desktop_view(v)` 是它的 `HWND` 或 `GtkWidget *`，`asuka_desktop_webview(v)` 是 WebView 的 `ICoreWebView2 *` 或 `WebKitWebView *` |
 
 结构体的字段按声明顺序传递；它的常量和方法只留在 Asuka 这一端。对象（原生接口）只能作为参数或返回值传递，不能放在数组、map 或结构体里。`Ref` 只能作为参数传递：传过去的是调用时它所持有的视图（platform/print 的 `webView(view: Ref, …)` 打印的就是用 `ref:` 放进去的那个 WebView 的页面），平台代码在主线程上查找这个视图；如果 Ref 里没有视图，或者 Asuka（还）没有显示它，得到的就是 `nil`。其他不支持的用法，`asuka native generate` 都会在对应位置报错，并告诉你应该改用什么。
+
+`Decimal`（`import std/decimal.{Decimal}`）按系数和指数精确传递；平台一端传回的值如果超过 18 位有效数字，会按四舍六入五成双舍入，因为 Asuka 容纳不了更多位。Swift 的 `Decimal` 只能表示 -128 到 127 的指数，超出这个范围就成了 NaN。
 
 ### 方法
 

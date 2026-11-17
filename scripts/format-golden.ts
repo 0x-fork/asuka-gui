@@ -43,6 +43,12 @@ for (const value of ["2.5", "3.5", "-2.5"]) {
 }
 cases.push({ kind: "number", value: "1234567.891", options: { useGrouping: false } });
 cases.push({ kind: "number", value: "1234.5", options: { minimumFractionDigits: 3 } });
+// Currencies: the locale's pattern, its symbol (a sign, letters next to
+// the number, the code of one it hasn't), the currency's fraction digits.
+for (const currency of ["USD", "EUR", "JPY", "CHF", "GBP", "INR", "KWD", "CAD", "CNY", "XYZ"]) {
+  for (const value of ["1234.5", "-0.125", "0"]) cases.push({ kind: "number", value, options: { style: "currency", currency } });
+}
+cases.push({ kind: "number", value: "19.999", options: { style: "currency", currency: "EUR", minimumFractionDigits: 3 } });
 
 // Dates and times.
 const times = ["2026-01-05T13:07:09Z", "2025-12-29T00:07:09Z", "2024-07-14T12:00:00Z", "1999-10-31T06:30:05Z"];

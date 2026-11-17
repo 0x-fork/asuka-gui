@@ -90,6 +90,26 @@ extern const ak_i18n_likely ak_i18n_likelies[];
 extern const uint32_t ak_i18n_nlikelies;
 extern const char *const ak_i18n_parents[];  // child, parent, ...
 extern const uint32_t ak_i18n_nparents;
+// Currencies: those of other than two fraction digits ("JPY0"), and how
+// English writes amounts (an app without catalogs): its currency pattern
+// and the one of a symbol of letters next to the number, the spacing
+// between such a letter and a digit, and its currencies' symbols (those
+// not their code, sorted by code; flags 1: the first rune a letter, 2:
+// the last).
+typedef struct {
+	const char *prefix, *suffix, *neg_prefix, *neg_suffix;
+	uint8_t primary, secondary, min_int, max_frac;
+} ak_i18n_pattern;
+typedef struct {
+	const char *code, *symbol;
+	uint8_t flags;
+} ak_i18n_currency;
+extern const char *const ak_i18n_currency_digits[];
+extern const uint32_t ak_i18n_ncurrency_digits;
+extern const ak_i18n_pattern ak_i18n_en_currency[2];
+extern const char ak_i18n_en_currency_spacing[];
+extern const ak_i18n_currency ak_i18n_en_currencies[];
+extern const uint32_t ak_i18n_nen_currencies;
 
 // ---- Catalogs ----
 
@@ -115,6 +135,12 @@ ak_arr *ak_i18n_catalog_languages(void);
 // in the device's zone, in styles 0 none, 1 short, 2 medium, 3 long, 4
 // full, in the user's hour cycle. All owned.
 ak_str *ak_i18n_format_number(double v, int flags, int min_frac, int max_frac);
+// ak_i18n_format_decimal writes a decimal number as it's written
+// ("-1234.50", exact however many digits), as format_number does; with
+// currency (an ISO 4217 code, not NULL or ""), as an amount of it: its
+// symbol where the language's currency pattern puts it, and its fraction
+// digits unless flags has 16 (min_frac and max_frac given).
+ak_str *ak_i18n_format_decimal(const ak_str *digits, int flags, int min_frac, int max_frac, const ak_str *currency);
 ak_str *ak_i18n_format_int(int64_t v, int flags);
 ak_str *ak_i18n_format_date(int64_t ns, int date_style, int time_style);
 // ak_i18n_autonym is a language's name in itself ("Deutsch"), of the

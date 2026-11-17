@@ -22,14 +22,59 @@ static inline void ak_op_store(const uint8_t *kinds, ak_val *R, uint16_t a, ak_v
 	else R[a] = v;
 }
 
+// ak_op_overflow throws the error an int's +, -, * or - of the smallest
+// int (or its / -1) gives when the result doesn't fit: as dividing by
+// zero, a catch takes it. Out of line: the checks' paths stay short.
+__attribute__((cold, noinline)) static inline bool ak_op_overflow(void) {
+	ak_throw_msg("integer overflow");
+	return false;
+}
+
+// ak_op_addi, ak_op_subi, ak_op_muli and ak_op_negi are ADDI, SUBI, MULI
+// and NEGI: the operation, checked (the CPU's overflow flag, one
+// predicted branch); false when it overflowed and threw.
+static inline bool ak_op_addi(ak_val *R, uint16_t a, uint16_t b, uint16_t c) {
+	int64_t r;
+	if (__builtin_expect(__builtin_add_overflow(R[b].i, R[c].i, &r), 0)) return ak_op_overflow();
+	R[a].i = r;
+	return true;
+}
+
+static inline bool ak_op_subi(ak_val *R, uint16_t a, uint16_t b, uint16_t c) {
+	int64_t r;
+	if (__builtin_expect(__builtin_sub_overflow(R[b].i, R[c].i, &r), 0)) return ak_op_overflow();
+	R[a].i = r;
+	return true;
+}
+
+static inline bool ak_op_muli(ak_val *R, uint16_t a, uint16_t b, uint16_t c) {
+	int64_t r;
+	if (__builtin_expect(__builtin_mul_overflow(R[b].i, R[c].i, &r), 0)) return ak_op_overflow();
+	R[a].i = r;
+	return true;
+}
+
+static inline bool ak_op_negi(ak_val *R, uint16_t a, uint16_t b) {
+	int64_t r;
+	if (__builtin_expect(__builtin_sub_overflow((int64_t)0, R[b].i, &r), 0)) return ak_op_overflow();
+	R[a].i = r;
+	return true;
+}
+
 static inline bool ak_op_divi(ak_val *R, uint16_t a, uint16_t b, uint16_t c, bool mod) {
 	int64_t x = R[b].i, y = R[c].i;
 	if (y == 0) {
 		ak_throw_msg("division by zero");
 		return false;
 	}
-	if (y == -1) R[a].i = mod ? 0 : (int64_t)(0 - (uint64_t)x);
-	else R[a].i = mod ? x % y : x / y;
+	if (y == -1) {
+		// x % -1 is 0; x / -1 is -x, which the smallest int hasn't.
+		if (mod) R[a].i = 0;
+		else if (x == INT64_MIN) return ak_op_overflow();
+		else R[a].i = -x;
+	} else {
+		R[a].i = mod ? x % y : x / y;
+	}
 	return true;
 }
 

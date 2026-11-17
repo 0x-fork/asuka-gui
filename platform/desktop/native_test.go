@@ -139,6 +139,7 @@ func checkProbe(t *testing.T, cmd *exec.Cmd) string {
 		"host: locked: PantryError.busy",
 		"pantry: show on the main thread: 1",
 		"host: counts jars=12 tins=4",
+		"host: total 1020 102 1",
 		"pantry: shows a view 1",
 		"pantry: shows none 0",
 		"host: shows true false",
@@ -157,6 +158,7 @@ func checkProbe(t *testing.T, cmd *exec.Cmd) string {
 }
 
 const probe = `import ./pantry
+import std/decimal.{Decimal}
 
 let stepView = Ref()
 
@@ -229,6 +231,11 @@ component Probe {
       try p.show()
       let counts = try p.counts()
       step = "counts jars={counts["jars"] ?? 0} tins={counts["tins"] ?? 0}"
+      await sleep(1ms)
+      // Decimals cross as coefficient and exponent, back without
+      // trailing zeros: 19.99 + 0.01 + 1e3 is 1020.
+      let total = try p.total([Decimal.parse("19.99")!, Decimal.parse("0.01")!, Decimal.of(1, exponent: 3)])
+      step = "total {total.string()} {total.coefficient} {total.exponent}"
       await sleep(1ms)
       step = "shows {try p.shows(stepView)} {try p.shows(Ref())}"
       await sleep(1ms)

@@ -51,7 +51,7 @@ var jsZero = map[Kind]string{
 	Bool: "false", Int8: "0", Int16: "0", Int32: "0", Int64: "0n", Int: "0",
 	Uint8: "0", Uint16: "0", Uint32: "0", Uint64: "0n", Uint: "0",
 	Float32: "0", Float64: "0", String: `""`, Bytes: "new Uint8Array(0)", Time: "new Date(0)", Duration: "0",
-	ViewRef: "null",
+	ViewRef: "null", Decimal: `"0"`,
 }
 
 type jsGen struct {
@@ -150,7 +150,7 @@ func GenerateJS(p *Package) []byte {
 	for _, v := range p.Views {
 		g.printf("//\texport function make%s(events) // returns { el, set<Prop>(value)..., measure?, destroy? }\n", v.Name)
 	}
-	g.printf("//\n// An async method gets an AbortSignal first. An int is a number; a\n// Duration is milliseconds; bytes are a Uint8Array.\n\n")
+	g.printf("//\n// An async method gets an AbortSignal first. An int is a number; a\n// Duration is milliseconds; bytes are a Uint8Array; a Decimal is its\n// exact text (\"19.99\").\n\n")
 	if jsHasDecl(p) {
 		// Before the package's own module: what it imports of these is
 		// made first (an import's module runs before the next import's).

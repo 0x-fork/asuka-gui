@@ -1,4 +1,8 @@
+// platform/pay's Decimal prices, and its first release's amount strings,
+// read where the Decimal is zero.
+
 import platform/pay
+import std/decimal.{Decimal}
 
 let methods = [
   pay.ShippingMethod(id: "ground", label: "Ground", detail: "Arrives in 5 to 7 days", amount: "0.00"),
@@ -135,4 +139,45 @@ test "canceled" {
   await app.idle()
   app.expect("status Canceled")
   expect(w.sheet.isNone())
+}
+
+// Decimal prices: an Update's total of a price changes the sheet's; one
+// of neither a price nor an amount keeps it, its label changed.
+component Priced {
+  state status = ""
+
+  fn req() -> pay.Request = pay.Request(
+    items: [pay.Item(label: "Tea set", price: .parse("40.00")!), pay.Item(label: "Tax", amount: "3.20", kind: .tax)],
+    total: pay.Item(label: "Asuka Tea", price: .parse("43.20")!),
+    shippingMethods: [pay.ShippingMethod(id: "ground", label: "Ground"), pay.ShippingMethod(id: "express", label: "Express", price: .parse("9")!)],
+    onShippingMethod: m => pay.Update(total: if m.id == "express" { pay.Item(price: Decimal.parse("43.20")! + m.price) } else { pay.Item(label: "Asuka Tea Co.") }),
+    onAuthorize: p => {},
+  )
+
+  pay.PayButton {
+    on press {
+      let p = try? await pay.pay(req())
+      status = p?.token ?? "none"
+    }
+  }
+}
+
+test "Decimal prices, and the deprecated strings where they're zero" {
+  let w = pay.fake()
+  let app = mount(Priced())
+  await app.idle()
+  app.tap("PayButton")
+  await app.idle()
+  let s = w.sheet!
+  expect(s.total.price.string() == "43.2" && s.items[0].price.formatted(currency: "USD") == "$40.00")
+  expect(s.items[1].price.isZero() && s.items[1].amount == "3.20")
+  w.chooseShippingMethod("express")
+  await app.idle()
+  expect(w.sheet!.total.price == Decimal.parse("52.20")!)
+  w.chooseShippingMethod("ground")
+  await app.idle()
+  expect(w.sheet!.total.price == Decimal.parse("52.2")! && w.sheet!.total.label == "Asuka Tea Co.")
+  w.authorize(pay.Payment(token: "tok"))
+  await app.idle()
+  expect(w.authorized)
 }

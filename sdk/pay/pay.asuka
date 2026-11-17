@@ -19,8 +19,15 @@
 // and Linux have no wallet for apps: available() says so, pay() throws
 // notAvailable and PayButton shows nothing.
 //
+// Amounts are std/decimal's Decimals, exact, in the currency's major
+// unit: price: .parse("12.75")!. The amount strings of this package's
+// first release (Item's amount, "12.75") are read where the Decimal is
+// zero, for one more release: write price.
+//
 // Tests drive a fake: pay.fake() is a FakeWallet whose sheet a test
 // changes and pays with.
+
+import std/decimal.{Decimal}
 
 /// The platform's wallet.
 pub enum Wallet {
@@ -55,8 +62,11 @@ pub enum ItemKind {
 /// A line of the sheet: a label and an amount.
 pub struct Item {
   label: string = ""
-  /// A decimal in the currency's major unit, as "12.75" (at most two
+  /// The amount, in the currency's major unit (12.75; at most two
   /// decimals for Google Pay); negative for a discount.
+  price: Decimal = Decimal.zero
+  /// Deprecated: price. The amount as text ("12.75"), read when price is
+  /// zero; "": not known yet (Google Pay), or an Update's as it was.
   amount: string = ""
   /// The amount isn't known yet (a tip, an estimate).
   pending: bool = false
@@ -157,6 +167,8 @@ pub struct ShippingMethod {
   /// "Arrives in 5 to 7 days"
   detail: string = ""
   /// Its cost: put it in the request's items too.
+  price: Decimal = Decimal.zero
+  /// Deprecated: price. Its cost as text, read when price is zero.
   amount: string = "0"
   /// When it arrives, as "2026-11-20" (Apple Pay; "": unsaid).
   from: string = ""
@@ -201,7 +213,7 @@ pub struct FieldError {
 /// The sheet's new totals and methods: none, as they were.
 pub struct Update {
   items: [Item]? = none
-  /// Its amount "": as it was (its label "": the same).
+  /// Its price zero and amount "": as it was (its label "": the same).
   total: Item? = none
   shippingMethods: [ShippingMethod]? = none
   errors: [FieldError] = []
@@ -238,6 +250,9 @@ pub enum Interval {
 /// A recurring or deferred payment's charge.
 pub struct Billing {
   label: string = ""
+  price: Decimal = Decimal.zero
+  /// Deprecated: price. As text, read when price is zero ("": not known
+  /// yet).
   amount: string = ""
   pending: bool = false
   /// The first and last charges ("2026-11-20"; "": now, and until
@@ -280,6 +295,9 @@ pub struct Deferred {
 pub struct AutomaticReload {
   description: string = ""
   billing: Billing = Billing()
+  /// The balance below which it reloads.
+  thresholdPrice: Decimal = Decimal.zero
+  /// Deprecated: thresholdPrice. As text, read when it's zero.
   threshold: string = ""
   managementURL: string = ""
   billingAgreement: string = ""
@@ -662,7 +680,7 @@ pub struct FakeSheet {
 ///   ... the app calls pay.pay(…) ...
 ///   w.changeShippingContact(pay.Contact(address: pay.PostalAddress(state: "CA", countryCode: "US")))
 ///   await app.idle()
-///   expect(w.sheet!.total.amount == "86.40")
+///   expect(w.sheet!.total.price == Decimal.parse("86.40")!)
 ///   w.authorize(pay.Payment(token: "tok_visa"))
 pub store FakeWallet {
   /// The wallet it is, what available() answers (fake()'s wallet).
@@ -736,8 +754,9 @@ pub store FakeWallet {
 
   fn mergeTotal(old: Item, new: Item?) -> Item {
     if let n = new {
-      return Item(label: if n.label.isEmpty() { old.label } else { n.label }, amount: if n.amount.isEmpty() { old.amount } else { n.amount },
-        pending: n.pending, kind: n.kind)
+      let same = n.price.isZero() && n.amount.isEmpty()
+      return Item(label: if n.label.isEmpty() { old.label } else { n.label }, price: if same { old.price } else { n.price },
+        amount: if same { old.amount } else { n.amount }, pending: n.pending, kind: n.kind)
     }
     return old
   }

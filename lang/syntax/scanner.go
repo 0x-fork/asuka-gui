@@ -165,9 +165,9 @@ func (s *Scanner) newlineCounts() bool {
 	}
 	switch s.last {
 	case NEWLINE, SEMICOLON, LBRACE, LPAREN, LBRACK, DOTBRACE, COMMA, COLON,
-		ADD, SUB, MUL, QUO, REM, AMP, CARET, TILDE, SHL,
+		ADD, SUB, MUL, QUO, REM, AMP, CARET, TILDE, SHL, WADD, WSUB, WMUL,
 		ASSIGN, ADD_ASSIGN, SUB_ASSIGN, MUL_ASSIGN, QUO_ASSIGN, REM_ASSIGN, COALESCE_ASSIGN,
-		AND_ASSIGN, OR_ASSIGN, XOR_ASSIGN, SHL_ASSIGN,
+		AND_ASSIGN, OR_ASSIGN, XOR_ASSIGN, SHL_ASSIGN, WADD_ASSIGN, WSUB_ASSIGN, WMUL_ASSIGN,
 		EQL, NEQ, LSS, LEQ, GEQ, LAND, LOR, COALESCE,
 		OPTDOT, FATARROW, ARROW, RANGE, RANGELT, PERIOD, PIPE, ELSE:
 		return false
@@ -217,6 +217,9 @@ func (s *Scanner) continued(from int) bool {
 	case '+', '*', '/', '%', '^':
 		return at(1) != '='
 	case '&', '|':
+		if at(0) == '&' && (at(1) == '+' || at(1) == '-' || at(1) == '*') {
+			return at(2) != '=' // &+ &- &*
+		}
 		return at(1) == at(0) || at(1) != '=' // && ||, & |
 	case '=', '!':
 		return at(1) == '=' // == !=
@@ -434,6 +437,20 @@ redo:
 		case '=':
 			s.next()
 			tok = AND_ASSIGN
+		case '+', '-', '*':
+			// &+ &- &*: wrapping arithmetic, and their assignments.
+			op, assign := WADD, WADD_ASSIGN
+			if s.ch == '-' {
+				op, assign = WSUB, WSUB_ASSIGN
+			} else if s.ch == '*' {
+				op, assign = WMUL, WMUL_ASSIGN
+			}
+			s.next()
+			tok = op
+			if s.ch == '=' {
+				s.next()
+				tok = assign
+			}
 		default:
 			tok = AMP
 		}

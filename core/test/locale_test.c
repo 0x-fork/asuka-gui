@@ -636,7 +636,7 @@ static void put_str(ak_buf *b, const char *s) { ak_buf_str(b, s, strlen(s)); }
 // digits at least.
 static ak_bytes *catalog_min_int(uint8_t min_int) {
 	ak_buf b = {0};
-	ak_buf_put(&b, "AKC2", 4);
+	ak_buf_put(&b, "AKC3", 4);
 	put_str(&b, "zz");
 	ak_buf_u32(&b, 0);  // keys
 	ak_buf_u32(&b, 0);  // skeletons
@@ -648,10 +648,12 @@ static ak_bytes *catalog_min_int(uint8_t min_int) {
 	put_str(&b, ".");
 	put_str(&b, ",");
 	ak_buf_u8(&b, 1);
-	for (int pat = 0; pat < 2; pat++) {
-		put_str(&b, ""), put_str(&b, ""), put_str(&b, "-"), put_str(&b, "");
+	for (int pat = 0; pat < 4; pat++) {  // decimal, percent, currency, a currency's of letters
+		put_str(&b, pat >= 2 ? "\302\244" : ""), put_str(&b, ""), put_str(&b, "-"), put_str(&b, "");
 		ak_buf_u8(&b, 3), ak_buf_u8(&b, 3), ak_buf_u8(&b, min_int), ak_buf_u8(&b, 3);
 	}
+	put_str(&b, " "), put_str(&b, ""), put_str(&b, "");  // currency spacing, separators
+	ak_buf_u32(&b, 0);  // currencies
 	ak_buf_u8(&b, 0);   // no dates
 	ak_buf_u32(&b, 0);  // messages
 	ak_bytes *out = ak_bytes_new(b.data, b.len);
@@ -689,6 +691,56 @@ TEST(number_digits_asked_for) {
 	ak_release(zz);
 	ak_release(c);
 	ak_release(blob);
+	ak_i18n_reset();
+	ak_locale_reset();
+}
+
+// Amounts of a currency without catalogs: English's pattern and symbols,
+// the currency's fraction digits; a symbol of letters spaced from the
+// number; a number of any length, exact; what isn't one, an error.
+TEST(format_decimal) {
+	ak_locale_reset();
+	ak_i18n_reset();
+	static const char *const cases[][3] = {
+	    {"1234.5", "USD", "$1,234.50"},
+	    {"-1234.5", "EUR", "-\342\202\2541,234.50"},
+	    {"1234.5", "JPY", "\302\2451,235"},
+	    {"1.2345", "KWD", "KWD\302\2401.235"},
+	    {"12", "CHF", "CHF\302\24012.00"},
+	    {"-0.125", "CHF", "-CHF\302\2400.13"},
+	    {"5", "XYZ", "XYZ\302\2405.00"},
+	    {"1234.5678", "", "1,234.568"},
+	    {"123456789012345678901234567890.25", "USD", "$123,456,789,012,345,678,901,234,567,890.25"},
+	};
+	for (size_t i = 0; i < AK_LEN(cases); i++) {
+		ak_str *d = ak_str_c(cases[i][0]), *c = ak_str_c(cases[i][1]);
+		ak_str *s = ak_i18n_format_decimal(d, 0, 0, 0, c);
+		if (!s || strcmp(s->data, cases[i][2]) != 0) T_FAIL("%s %s: %s, want %s", cases[i][0], cases[i][1], s ? s->data : "(error)", cases[i][2]);
+		ak_release(s), ak_release(d), ak_release(c);
+	}
+	// Fraction digits asked for; a number longer than a frame's.
+	ak_str *d = ak_str_c("19.999"), *c = ak_str_c("EUR");
+	ak_str *s = ak_i18n_format_decimal(d, 16, 3, 3, c);
+	CHECK_EQ_STR(s->data, "\342\202\25419.999");
+	ak_release(s), ak_release(d);
+	char big[1200];
+	memset(big, '9', 1000);
+	strcpy(big + 1000, ".999");  // rounded up: a carry through every digit
+	d = ak_str_c(big);
+	s = ak_i18n_format_decimal(d, 4, 0, 0, c);
+	REQUIRE(s != NULL);
+	CHECK_EQ_INT(s->len, 3 + 1001 + 3);  // €, a carry and 1000 zeros, .00
+	CHECK(strncmp(s->data, "\342\202\2541000", 7) == 0);
+	ak_release(s), ak_release(d);
+	static const char *const bad[] = {"", "-", "1.", ".5", "1e5", "1.2.3", "12a", "--1"};
+	for (size_t i = 0; i < AK_LEN(bad); i++) {
+		d = ak_str_c(bad[i]);
+		s = ak_i18n_format_decimal(d, 0, 0, 0, c);
+		void *e = ak_error_take();
+		if (s || !e) T_FAIL("%s: not an error", bad[i]);
+		ak_release(e), ak_release(s), ak_release(d);
+	}
+	ak_release(c);
 	ak_i18n_reset();
 	ak_locale_reset();
 }

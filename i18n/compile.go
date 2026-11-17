@@ -41,7 +41,7 @@ type CompileOptions struct {
 
 // The blob, little-endian, strings a u32 length and UTF-8:
 //
-//	"AKC2", string source language
+//	"AKC3", string source language
 //	u32 key count, per key a string
 //	u32 skeleton count (of the messages' {d, date, ::skeleton}s)
 //	u32 language count, per language:
@@ -52,6 +52,17 @@ type CompileOptions struct {
 //	  prefix, suffix, negative prefix, negative suffix, u8 primary
 //	  group, u8 secondary group, u8 minimum integer digits, u8 maximum
 //	  fraction digits
+//	  the currencies: the currency pattern and the one of a symbol of
+//	  letters next to the number, each a pattern as above (¤ in its
+//	  affixes where the symbol goes), string the spacing between a digit
+//	  and a symbol's letter, string amounts' decimal separator and
+//	  string their group separator ("" where numbers' are); u32 count,
+//	  per currency whose symbol isn't its code or that has its own
+//	  pattern, sorted by code: string ISO 4217 code, string symbol, u8
+//	  flags (1 its first rune is a letter, 2 its last: neither a symbol
+//	  nor a space, what takes the spacing next to a digit; 4 its own
+//	  pattern follows, as above), string its decimal separator, string
+//	  its group separator ("" for the locale's)
 //	  u8 dates (1: what follows; 0: the catalog writes no dates), then
 //	    u8 its own hour cycle (12 or 24: its short time's)
 //	    170 strings: the months (format then stand-alone; abbreviated,
@@ -77,8 +88,9 @@ type CompileOptions struct {
 //	            written as a number is by default
 //	2 pound     (in a plural's case: its number less the offset)
 //	3 number    u8 index, u8 flags (1 percent, 2 integer, 4 no grouping,
-//	            8 half even, 16 its fraction digits given), u8 minimum
-//	            fraction digits, u8 maximum
+//	            8 half even, 16 its fraction digits given, 32 an amount
+//	            of a currency), u8 minimum fraction digits, u8 maximum;
+//	            with 32, string the currency's ISO 4217 code
 //	4 date      u8 index, u8 date style, u8 time style (as the styles'
 //	            patterns are indexed; 255 255: a skeleton), u32 the
 //	            skeleton's index when it is one
@@ -162,7 +174,7 @@ func (c *Catalog) CompileWith(o CompileOptions) (*Compiled, error) {
 			}
 		}
 	}
-	w.b = append(w.b, "AKC2"...)
+	w.b = append(w.b, "AKC3"...)
 	w.str(c.source)
 	w.u32(len(out.Keys))
 	for _, k := range out.Keys {
@@ -186,12 +198,24 @@ func (c *Catalog) CompileWith(o CompileOptions) (*Compiled, error) {
 		w.str(sys.decimalSep)
 		w.str(sys.group)
 		w.b = append(w.b, byte(sys.minGrouping))
-		for _, p := range []*numberPattern{&sys.decimal, &sys.percent} {
-			w.str(p.prefix)
-			w.str(p.suffix)
-			w.str(p.negPrefix)
-			w.str(p.negSuffix)
-			w.b = append(w.b, byte(p.primary), byte(p.secondary), byte(p.minInt), byte(p.maxFrac))
+		for _, p := range []*numberPattern{&sys.decimal, &sys.percent, &sys.currency, &sys.currencyAlpha} {
+			w.pattern(p)
+		}
+		w.str(sys.currencySpacing)
+		w.str(sys.currencyDecimal)
+		w.str(sys.currencyGroup)
+		curs := Currencies(lang)
+		w.u32(len(curs))
+		for _, c := range curs {
+			w.str(c.Code)
+			w.str(c.Symbol)
+			w.b = append(w.b, c.flags())
+			if c.Pattern != "" {
+				p := parseNumberPattern(c.Pattern, sys)
+				w.pattern(&p)
+			}
+			w.str(c.Decimal)
+			w.str(c.Group)
 		}
 		if dates {
 			w.b = append(w.b, 1)
@@ -216,6 +240,14 @@ func (c *Catalog) CompileWith(o CompileOptions) (*Compiled, error) {
 	}
 	out.Blob = w.b
 	return out, nil
+}
+
+func (w *cWriter) pattern(p *numberPattern) {
+	w.str(p.prefix)
+	w.str(p.suffix)
+	w.str(p.negPrefix)
+	w.str(p.negSuffix)
+	w.b = append(w.b, byte(p.primary), byte(p.secondary), byte(p.minInt), byte(p.maxFrac))
 }
 
 type cWriter struct {
@@ -348,8 +380,11 @@ func (w *cWriter) node(n *node, args []Arg) error {
 		}
 		w.b = append(w.b, cArg, byte(index))
 	case nodeNumber:
-		flags, minFrac, maxFrac := numberStyle(n.style)
+		flags, minFrac, maxFrac, currency := numberStyle(n.style)
 		w.b = append(w.b, cNumber, byte(index), flags, minFrac, maxFrac)
+		if flags&32 != 0 {
+			w.str(currency)
+		}
 	case nodeDate, nodeTime:
 		w.b = append(w.b, cDate, byte(index))
 		if skel, ok := strings.CutPrefix(n.style, "::"); ok {
@@ -413,8 +448,8 @@ func (w *cWriter) node(n *node, args []Arg) error {
 
 // numberStyle is formatNumber's reading of a number style, as the core's
 // flags: 1 percent, 2 integer, 4 no grouping, 8 half even, 16 its
-// fraction digits given (then min and max).
-func numberStyle(style string) (flags, minFrac, maxFrac byte) {
+// fraction digits given (then min and max), 32 an amount of currency.
+func numberStyle(style string) (flags, minFrac, maxFrac byte, currency string) {
 	stems := []string{style}
 	if rest, ok := strings.CutPrefix(style, "::"); ok {
 		stems = strings.Fields(rest)
@@ -427,11 +462,14 @@ func numberStyle(style string) (flags, minFrac, maxFrac byte) {
 			flags |= 1 | 8
 		case stem == "group-off":
 			flags |= 4
+		case strings.HasPrefix(stem, "currency/") && len(stem) == len("currency/")+3:
+			flags |= 32
+			currency = strings.ToUpper(stem[len("currency/"):])
 		case strings.HasPrefix(stem, ".") && strings.Trim(stem[1:], "0#") == "" && len(stem) > 1:
 			flags |= 16
 			minFrac = byte(strings.Count(stem, "0"))
 			maxFrac = byte(len(stem) - 1)
 		}
 	}
-	return flags, minFrac, maxFrac
+	return flags, minFrac, maxFrac, currency
 }

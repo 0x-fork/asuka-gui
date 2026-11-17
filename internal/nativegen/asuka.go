@@ -19,8 +19,8 @@ import (
 // messages). Nil when it declares nothing native.
 //
 // On the wire an Asuka int is 8 bytes, a float 8, an enum its case's
-// index in 8 bytes, a Duration its nanoseconds: what core/src/native
-// encodes.
+// index in 8 bytes, a Duration its nanoseconds, a std/decimal Decimal
+// its coefficient and exponent: what core/src/native encodes.
 //
 // A doc line @mainThread on an interface or a method makes the platform
 // run it on the main thread; a method close() releases the object after.
@@ -59,7 +59,7 @@ func LoadAsuka(dir string) (*Package, error) {
 	}
 	l := &aloader{fset: fset, out: &Package{Path: path, Name: sanitizeName(name), Dir: abs},
 		structs: map[string]*syntax.StructDecl{}, enums: map[string]*syntax.EnumDecl{}, ifaces: map[string]bool{},
-		doneS: map[string]*StructDecl{}, doneE: map[string]*EnumDecl{}}
+		doneS: map[string]*StructDecl{}, doneE: map[string]*EnumDecl{}, decimal: map[string]bool{}}
 	if err := l.load(files); err != nil {
 		return nil, err
 	}
@@ -93,6 +93,9 @@ type aloader struct {
 	ifaces  map[string]bool
 	doneS   map[string]*StructDecl
 	doneE   map[string]*EnumDecl
+	// decimal names std/decimal's Decimal as the files import it: Decimal
+	// (import std/decimal.{Decimal}), or the package's name and Decimal.
+	decimal map[string]bool
 }
 
 func (l *aloader) errorf(n syntax.Node, format string, args ...any) error {
@@ -134,6 +137,21 @@ func (l *aloader) load(files []*syntax.SourceFile) error {
 	var views []*syntax.ComponentDecl
 	var errEnums []*syntax.EnumDecl
 	for _, f := range files {
+		for _, imp := range f.Imports {
+			if imp.PathString() != "std/decimal" {
+				continue
+			}
+			for _, n := range imp.Names {
+				if n.Name == "Decimal" {
+					l.decimal["Decimal"] = true
+				}
+			}
+			pkg := "decimal"
+			if imp.Alias != nil {
+				pkg = imp.Alias.Name
+			}
+			l.decimal[pkg+".Decimal"] = true
+		}
 		for _, d := range f.Decls {
 			switch d := d.(type) {
 			case *syntax.StructDecl:
@@ -317,8 +335,15 @@ func (l *aloader) typ(t syntax.Type, param bool) (*Type, error) {
 		}
 		return &Type{Kind: Func, Func: ft}, nil
 	case *syntax.NamedType:
+		var names []string
+		for _, p := range t.Path {
+			names = append(names, p.Name)
+		}
+		if len(t.Args) == 0 && l.decimal[strings.Join(names, ".")] {
+			return &Type{Kind: Decimal, Go: "decimal.Decimal"}, nil
+		}
 		if len(t.Path) != 1 || len(t.Args) > 0 {
-			return nil, l.errorf(t, "a native declaration uses the package's own types and the built-in ones")
+			return nil, l.errorf(t, "a native declaration uses the package's own types, the built-in ones and std/decimal's Decimal")
 		}
 		n := t.Path[0].Name
 		switch n {

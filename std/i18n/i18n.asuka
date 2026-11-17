@@ -74,6 +74,22 @@ pub native fn autonym(tag: string) -> string
 /// most max fraction digits, rounded half away from zero.
 pub fn formatNumber(n: float, minFractionDigits: int = 0, maxFractionDigits: int = 3, grouping: bool = true) -> string = format_number(n, if grouping { 0 } else { 4 }, minFractionDigits, maxFractionDigits)
 
+/// A decimal number as it's written ("1234.5", exact however many digits:
+/// a std/decimal Decimal's text) in the language's way, as formatNumber
+/// writes a float: all its fraction digits (up to 100) unless
+/// maxFractionDigits says fewer (rounded half away from zero). Text that
+/// isn't a decimal number is an error.
+pub fn formatDecimal(amount: string, minFractionDigits: int = 0, maxFractionDigits: int = -1, grouping: bool = true) -> string = format_decimal(amount, 16 | if grouping { 0 } else { 4 }, minFractionDigits, maxFractionDigits, "")
+
+/// An amount of a currency, an ISO 4217 code ("EUR", "JPY"), in the
+/// language's way: its symbol where the language puts it (€1,234.50,
+/// 1.234,50 €, CHF 12.00; the code of a currency it has no symbol of),
+/// with the currency's fraction digits (two for most, none for JPY, three
+/// for KWD), rounded half away from zero. amount is a decimal number as
+/// it's written ("1234.5": a std/decimal Decimal's text); text that isn't
+/// one is an error.
+pub fn formatCurrency(amount: string, currency: string) -> string = format_decimal(amount, 0, 0, 0, currency.upper())
+
 /// An integer in the language's way (1,234,567).
 pub fn formatInt(n: int, grouping: bool = true) -> string = format_int(n, if grouping { 0 } else { 4 })
 
@@ -92,5 +108,6 @@ native fn preferred_languages() -> [string]
 native fn is_rtl() -> bool
 native fn format_locale() -> string
 native fn format_number(n: float, flags: int, minFrac: int, maxFrac: int) -> string
+native fn format_decimal(amount: string, flags: int, minFrac: int, maxFrac: int, currency: string) -> string
 native fn format_int(n: int, flags: int) -> string
 native fn format_date(t: int, date: DateStyle, time: DateStyle) -> string

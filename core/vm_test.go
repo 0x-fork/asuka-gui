@@ -2,6 +2,7 @@ package core_test
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -198,6 +199,51 @@ func TestVMArith(t *testing.T) {
 		t.Fatal("want a failure")
 	}
 	expect(t, got, "42", "21", "n=42 half=21 ok=true", "FAIL arith: division by zero")
+}
+
+// ADDI, SUBI, MULI, NEGI and DIVI throw past int's range, on the VM and
+// compiled to C; WADDI, WSUBI and WMULI wrap.
+func TestVMOverflow(t *testing.T) {
+	m := module()
+	addInit(m)
+	m.Ints = append(m.Ints, math.MaxInt64, math.MinInt64)
+	for _, tc := range []struct {
+		name string
+		ops  func(f *fn, a, b, c int)
+	}{
+		{"add", func(f *fn, a, b, c int) { f.op("ADDI", c, a, a) }},
+		{"sub", func(f *fn, a, b, c int) { f.op("SUBI", c, b, a) }},
+		{"mul", func(f *fn, a, b, c int) { f.op("MULI", c, a, a) }},
+		{"neg", func(f *fn, a, b, c int) { f.op("NEGI", c, b) }},
+		{"div", func(f *fn, a, b, c int) { f.op("KSMALL", c, 0xFFFF); f.op("DIVI", c, b, c) }},
+		{"wrap", func(f *fn, a, b, c int) {
+			f.op("WADDI", c, a, b)
+			f.print(c, bc.KInt)
+			f.op("KSMALL", c, 1)
+			f.op("WADDI", c, a, c)
+			f.print(c, bc.KInt)
+			f.op("WSUBI", c, b, a)
+			f.print(c, bc.KInt)
+			f.op("WMULI", c, a, a)
+			f.print(c, bc.KInt)
+		}},
+	} {
+		f := newFn(m, tc.name)
+		a, b, c := f.reg(bc.KInt), f.reg(bc.KInt), f.reg(bc.KInt)
+		f.op("KINT", a, 0) // the largest int
+		f.op("KINT", b, 1) // the smallest
+		tc.ops(f, a, b, c)
+		f.op("RET0")
+		test(m, tc.name, f.done(bc.KVoid, bc.FThrows))
+	}
+	got, err := run(t, m, "-test")
+	if err == nil {
+		t.Fatal("want a failure")
+	}
+	expect(t, got,
+		"FAIL add: integer overflow", "FAIL sub: integer overflow", "FAIL mul: integer overflow",
+		"FAIL neg: integer overflow", "FAIL div: integer overflow",
+		"-1", "-9223372036854775808", "1", "1", "ok wrap")
 }
 
 func TestVMCallsAndLoops(t *testing.T) {
