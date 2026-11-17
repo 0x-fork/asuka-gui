@@ -62,7 +62,7 @@ void transcribe_Segment_free(transcribe_Segment *v) {
 }
 
 HELPER void w_list_Segment(asuka_writer *w, const transcribe_list_Segment *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_Segment(w, &v->data[i]);
 }
 

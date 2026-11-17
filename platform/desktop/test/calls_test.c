@@ -21,8 +21,12 @@
 // ---- The core's and the host's half ----
 
 static atomic_int answers;
+static atomic_int last_status;  // the last answer's first byte
 
-void asuka_native_done(uint64_t call, const uint8_t *p, size_t len) { atomic_fetch_add(&answers, 1); }
+void asuka_native_done(uint64_t call, const uint8_t *p, size_t len) {
+	atomic_store(&last_status, len ? p[0] : -1);
+	atomic_fetch_add(&answers, 1);
+}
 size_t asuka_native_invoke(uint64_t id, const uint8_t *p, size_t len, uint8_t **out) { return 0; }
 void asuka_free(void *p) { free(p); }
 void asuka_event(const uint8_t *buf, size_t len) {}
@@ -84,6 +88,8 @@ static void cancelled(void *p) {
 // for it, so that the cancel and the answer meet).
 static atomic_int registered;
 
+static bool big_answer;
+
 static void *work(void *p) {
 	job *j = p;
 	if (j->off) {
@@ -98,6 +104,10 @@ static void *work(void *p) {
 		atomic_store(&registered, 1);
 	}
 	asuka_writer w = asuka_call_begin();
+	if (big_answer) {
+		static const char few[8];
+		asuka_writer_bytes(&w, few, (size_t)UINT32_MAX + 1);
+	}
 	asuka_call_done(j->call, &w);
 	free(j);  // answered: the context may go
 	return NULL;
@@ -118,6 +128,28 @@ static void start(void *obj, uint32_t iface, uint32_t method, asuka_reader *in, 
 static void release(void *obj, uint32_t iface) {}
 
 static const asuka_native_provider provider = {"test/calls", make, call, start, release, NULL};
+
+// A string of 4 GB or more is past the wire's u32 length: the writer
+// fails (nothing written, nothing read past the bytes, which aren't
+// there), and a call answered with it answers an error, not a length cut
+// short. (The size is only said: nothing that large is made.)
+
+static int too_big(asuka_host_callbacks *cb, uint64_t handle) {
+	static const char few[8];
+	asuka_writer w = {0};
+	asuka_writer_u8(&w, 0);
+	asuka_writer_bytes(&w, few, (size_t)UINT32_MAX + 1);
+	asuka_writer_count(&w, (size_t)UINT32_MAX + 2);
+	bool ok = w.failed && w.len == 1;
+	asuka_writer_free(&w);
+	big_answer = true;
+	cb->native_start(handle, 0, NULL, 0, 1u << 20);
+	pthread_join(worker, NULL);
+	run_posts();
+	ok = ok && atomic_load(&last_status) == ASUKA_FAILED;
+	fprintf(stderr, "a 4 GB string: %s\n", ok ? "an error" : "not an error");
+	return ok ? 0 : 1;
+}
 
 int main(void) {
 	asuka_native_register(&provider);
@@ -142,5 +174,6 @@ int main(void) {
 	}
 	int n = atomic_load(&answers);
 	fprintf(stderr, "%d answers, %d cancels\n", n, atomic_load(&cancels));
-	return n == runs ? 0 : 1;
+	if (n != runs) return 1;
+	return too_big(&cb, handle);
 }

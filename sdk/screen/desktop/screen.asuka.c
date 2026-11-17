@@ -75,7 +75,7 @@ void screen_Display_free(screen_Display *v) {
 }
 
 HELPER void w_list_Display(asuka_writer *w, const screen_list_Display *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_Display(w, &v->data[i]);
 }
 

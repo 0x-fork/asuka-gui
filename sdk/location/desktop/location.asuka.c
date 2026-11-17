@@ -155,7 +155,7 @@ void location_Updates_free(location_Updates *v) {
 }
 
 HELPER void w_list_Transition(asuka_writer *w, const location_list_Transition *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) asuka_writer_i64(w, v->data[i]);
 }
 
@@ -199,7 +199,7 @@ void location_Region_free(location_Region *v) {
 }
 
 HELPER void w_list_Fix(asuka_writer *w, const location_list_Fix *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_Fix(w, &v->data[i]);
 }
 
@@ -247,7 +247,7 @@ void location_Event_free(location_Event *v) {
 }
 
 HELPER void w_list_Region(asuka_writer *w, const location_list_Region *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_Region(w, &v->data[i]);
 }
 

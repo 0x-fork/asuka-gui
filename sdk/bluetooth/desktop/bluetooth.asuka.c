@@ -68,7 +68,7 @@ HELPER void w_list_ServedService(asuka_writer *w, const bluetooth_list_ServedSer
 HELPER bluetooth_list_ServedService r_list_ServedService(asuka_reader *r);
 
 HELPER void w_list_string(asuka_writer *w, const bluetooth_list_string *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) asuka_writer_string(w, v->data[i]);
 }
 
@@ -123,7 +123,7 @@ void bluetooth_Device_free(bluetooth_Device *v) {
 }
 
 HELPER void w_map_bytes(asuka_writer *w, const bluetooth_map_bytes *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) {
 		asuka_writer_string(w, v->keys[i]);
 		asuka_writer_bytes(w, (v->values[i]).data, (v->values[i]).len);
@@ -249,7 +249,7 @@ void bluetooth_Link_free(bluetooth_Link *v) {
 }
 
 HELPER void w_list_Property(asuka_writer *w, const bluetooth_list_Property *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) asuka_writer_i64(w, v->data[i]);
 }
 
@@ -288,7 +288,7 @@ void bluetooth_FoundCharacteristic_free(bluetooth_FoundCharacteristic *v) {
 }
 
 HELPER void w_list_FoundCharacteristic(asuka_writer *w, const bluetooth_list_FoundCharacteristic *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_FoundCharacteristic(w, &v->data[i]);
 }
 
@@ -325,7 +325,7 @@ void bluetooth_FoundService_free(bluetooth_FoundService *v) {
 }
 
 HELPER void w_list_Permission(asuka_writer *w, const bluetooth_list_Permission *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) asuka_writer_i64(w, v->data[i]);
 }
 
@@ -369,7 +369,7 @@ void bluetooth_ServedCharacteristic_free(bluetooth_ServedCharacteristic *v) {
 }
 
 HELPER void w_list_ServedCharacteristic(asuka_writer *w, const bluetooth_list_ServedCharacteristic *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_ServedCharacteristic(w, &v->data[i]);
 }
 
@@ -464,7 +464,7 @@ void bluetooth_Advertising_free(bluetooth_Advertising *v) {
 }
 
 HELPER void w_list_Device(asuka_writer *w, const bluetooth_list_Device *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_Device(w, &v->data[i]);
 }
 
@@ -484,7 +484,7 @@ void bluetooth_list_Device_free(bluetooth_list_Device *v) {
 }
 
 HELPER void w_list_Heard(asuka_writer *w, const bluetooth_list_Heard *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_Heard(w, &v->data[i]);
 }
 
@@ -524,7 +524,7 @@ void bluetooth_Brought_free(bluetooth_Brought *v) {
 }
 
 HELPER void w_list_Filter(asuka_writer *w, const bluetooth_list_Filter *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_Filter(w, &v->data[i]);
 }
 
@@ -544,7 +544,7 @@ void bluetooth_list_Filter_free(bluetooth_list_Filter *v) {
 }
 
 HELPER void w_list_FoundService(asuka_writer *w, const bluetooth_list_FoundService *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_FoundService(w, &v->data[i]);
 }
 
@@ -564,7 +564,7 @@ void bluetooth_list_FoundService_free(bluetooth_list_FoundService *v) {
 }
 
 HELPER void w_list_ServedService(asuka_writer *w, const bluetooth_list_ServedService *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_ServedService(w, &v->data[i]);
 }
 

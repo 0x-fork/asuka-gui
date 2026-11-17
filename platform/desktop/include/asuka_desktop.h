@@ -179,6 +179,11 @@ asuka_bytes asuka_bytes_copy(const void *p, size_t n);
 typedef struct {
 	uint8_t *data;
 	size_t len, cap;
+	// failed: a length or a count past the wire's u32 was written (a
+	// string or bytes of 4 GB or more): what's written is no value, and
+	// an answer of it is an error (a callback's call of it isn't made, an
+	// event of it isn't sent), never a value cut short.
+	bool failed;
 } asuka_writer;
 
 void asuka_writer_u8(asuka_writer *w, uint8_t v);
@@ -190,6 +195,8 @@ void asuka_writer_bool(asuka_writer *w, bool v);
 // asuka_writer_string writes s (NULL: "").
 void asuka_writer_string(asuka_writer *w, const char *s);
 void asuka_writer_bytes(asuka_writer *w, const void *p, size_t n);
+// asuka_writer_count writes a list's or a map's count.
+void asuka_writer_count(asuka_writer *w, size_t n);
 // asuka_writer_put appends n raw bytes (no length): a buffer to grow.
 void asuka_writer_put(asuka_writer *w, const void *p, size_t n);
 void asuka_writer_free(asuka_writer *w);

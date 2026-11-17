@@ -98,7 +98,7 @@ void device_ClipboardKinds_free(device_ClipboardKinds *v) {
 }
 
 HELPER void w_list_string(asuka_writer *w, const device_list_string *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) asuka_writer_string(w, v->data[i]);
 }
 
@@ -118,7 +118,7 @@ void device_list_string_free(device_list_string *v) {
 }
 
 HELPER void w_list_File(asuka_writer *w, const device_list_File *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_File(w, &v->data[i]);
 }
 

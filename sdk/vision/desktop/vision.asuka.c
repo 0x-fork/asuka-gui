@@ -81,7 +81,7 @@ void vision_Word_free(vision_Word *v) {
 }
 
 HELPER void w_list_Word(asuka_writer *w, const vision_list_Word *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_Word(w, &v->data[i]);
 }
 
@@ -141,7 +141,7 @@ void vision_Code_free(vision_Code *v) {
 }
 
 HELPER void w_list_Line(asuka_writer *w, const vision_list_Line *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_Line(w, &v->data[i]);
 }
 
@@ -161,7 +161,7 @@ void vision_list_Line_free(vision_list_Line *v) {
 }
 
 HELPER void w_list_Box(asuka_writer *w, const vision_list_Box *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_Box(w, &v->data[i]);
 }
 
@@ -181,7 +181,7 @@ void vision_list_Box_free(vision_list_Box *v) {
 }
 
 HELPER void w_list_Code(asuka_writer *w, const vision_list_Code *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_Code(w, &v->data[i]);
 }
 
@@ -225,7 +225,7 @@ void vision_Result_free(vision_Result *v) {
 }
 
 HELPER void w_list_string(asuka_writer *w, const vision_list_string *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) asuka_writer_string(w, v->data[i]);
 }
 

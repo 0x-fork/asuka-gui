@@ -24,7 +24,7 @@ HELPER void w_Response(asuka_writer *w, const http_Response *v);
 HELPER http_Response r_Response(asuka_reader *r);
 
 HELPER void w_map_string(asuka_writer *w, const http_map_string *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) {
 		asuka_writer_string(w, v->keys[i]);
 		asuka_writer_string(w, v->values[i]);

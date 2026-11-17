@@ -176,7 +176,16 @@ void asuka_writer_f64(asuka_writer *w, double v) {
 
 void asuka_writer_bool(asuka_writer *w, bool v) { asuka_writer_u8(w, v ? 1 : 0); }
 
+void asuka_writer_count(asuka_writer *w, size_t n) {
+	if ((uint64_t)n > UINT32_MAX) w->failed = true;
+	else asuka_writer_u32(w, (uint32_t)n);
+}
+
 void asuka_writer_bytes(asuka_writer *w, const void *p, size_t n) {
+	if ((uint64_t)n > UINT32_MAX) {
+		w->failed = true;
+		return;
+	}
 	asuka_writer_u32(w, (uint32_t)n);
 	put(w, p, n);
 }
@@ -293,6 +302,7 @@ void asuka_error_cancelled(asuka_error *e) {
 // answer_error rewrites w as e's answer, and frees e's strings.
 static void answer_error(asuka_writer *w, asuka_error *e) {
 	w->len = 0;
+	w->failed = false;
 	asuka_writer_u8(w, e->status);
 	switch (e->status) {
 	case ASUKA_DECLARED:
@@ -308,6 +318,11 @@ static void answer_error(asuka_writer *w, asuka_error *e) {
 		break;
 	}
 	error_reset(e);
+}
+
+// too_big is the error a failed writer's answer is.
+static void too_big(asuka_error *e, const char *what) {
+	asuka_error_failed(e, "asuka", 0, "%s has a string, bytes or a list of 4 GB or more, past what the native wire carries", what);
 }
 
 // ---- Providers ----
@@ -443,6 +458,7 @@ static size_t n_call(uint64_t handle, uint32_t method, const uint8_t *in, size_t
 	asuka_reader r = {in, len, 0, false};
 	asuka_error err = {0};
 	e.p->call(e.obj, e.iface, method, &r, w, &err);
+	if (!err.status && w->failed) too_big(&err, "the answer");
 	if (err.status) answer_error(w, &err);
 	size_t n = give(w, out, cap, big);
 	if (w->cap > 64 << 10) asuka_writer_free(w);  // a big answer's buffer goes
@@ -615,6 +631,11 @@ void asuka_call_done(asuka_call *c, asuka_writer *out) {
 		asuka_writer_free(out);
 		return;
 	}
+	if (out->failed) {
+		asuka_error e = {0};
+		too_big(&e, "the answer");
+		answer_error(out, &e);
+	}
 	// Answered from another thread while the main thread runs the call's
 	// cancel: not before it ends, so the package may let the cancel's
 	// context go once this returns. (On the main thread, the cancel has
@@ -695,6 +716,10 @@ static void run_notify(void *ctx) {
 
 void asuka_native_notify(uint64_t callback, asuka_writer *args) {
 	if (!callback) return;
+	if (args->failed) {
+		fputs("asuka: a native callback's arguments have a string, bytes or a list of 4 GB or more: it isn't called\n", stderr);
+		return;
+	}
 	if (asuka_desktop_on_main()) {
 		invoke_now(callback, args->data, args->len, NULL);
 		return;
@@ -719,6 +744,10 @@ static void run_ask(void *ctx) {
 void asuka_native_ask(uint64_t callback, asuka_writer *args, asuka_writer *answer) {
 	*answer = (asuka_writer){0};
 	if (!callback) return;
+	if (args->failed) {
+		fputs("asuka: a native callback's arguments have a string, bytes or a list of 4 GB or more: it isn't called\n", stderr);
+		return;
+	}
 	if (asuka_desktop_on_main()) {
 		invoke_now(callback, args->data, args->len, answer);
 		return;
@@ -838,7 +867,8 @@ void asuka_native_emit(uint32_t view, const char *event, const uint8_t *values, 
 	asuka_writer_u8(&w, EVENT_NATIVE & 0xff);
 	asuka_writer_u8(&w, EVENT_NATIVE >> 8);
 	asuka_writer_bytes(&w, payload.data, payload.len);
-	asuka_event(w.data, w.len);
+	if (payload.failed || w.failed) fprintf(stderr, "asuka: a native view's %s event has 4 GB or more: it isn't sent\n", event);
+	else asuka_event(w.data, w.len);
 	asuka_writer_free(&payload);
 	asuka_writer_free(&w);
 }

@@ -662,7 +662,7 @@ func (g *cGen) helper(k string, t *Type) {
 		}
 		g.cf("}\n\n")
 	case Slice:
-		g.cf("HELPER void w_%s(asuka_writer *w, const %s *v) {\n\tasuka_writer_u32(w, (uint32_t)v->len);\n\tfor (size_t i = 0; i < v->len; i++) %s\n}\n\n", k, ct, g.enc(t.Elem, "w", "v->data[i]"))
+		g.cf("HELPER void w_%s(asuka_writer *w, const %s *v) {\n\tasuka_writer_count(w, v->len);\n\tfor (size_t i = 0; i < v->len; i++) %s\n}\n\n", k, ct, g.enc(t.Elem, "w", "v->data[i]"))
 		g.cf("HELPER %s r_%s(asuka_reader *r) {\n\t%s v = {0};\n\tuint32_t n = asuka_reader_count(r);\n\tv.data = calloc(n ? n : 1, sizeof *v.data);\n", ct, k, ct)
 		g.cf("\tfor (uint32_t i = 0; i < n && !r->failed; i++) v.data[v.len++] = %s;\n\treturn v;\n}\n\n", g.dec(t.Elem, "r"))
 		g.cf("void %s_free(%s *v) {\n", pub, ct)
@@ -671,7 +671,7 @@ func (g *cGen) helper(k string, t *Type) {
 		}
 		g.cf("\tfree(v->data);\n\tv->data = NULL;\n\tv->len = 0;\n}\n\n")
 	case Map:
-		g.cf("HELPER void w_%s(asuka_writer *w, const %s *v) {\n\tasuka_writer_u32(w, (uint32_t)v->len);\n\tfor (size_t i = 0; i < v->len; i++) {\n\t\tasuka_writer_string(w, v->keys[i]);\n\t\t%s\n\t}\n}\n\n", k, ct, g.enc(t.Elem, "w", "v->values[i]"))
+		g.cf("HELPER void w_%s(asuka_writer *w, const %s *v) {\n\tasuka_writer_count(w, v->len);\n\tfor (size_t i = 0; i < v->len; i++) {\n\t\tasuka_writer_string(w, v->keys[i]);\n\t\t%s\n\t}\n}\n\n", k, ct, g.enc(t.Elem, "w", "v->values[i]"))
 		g.cf("HELPER %s r_%s(asuka_reader *r) {\n\t%s v = {0};\n\tuint32_t n = asuka_reader_count(r);\n\tv.keys = calloc(n ? n : 1, sizeof *v.keys);\n\tv.values = calloc(n ? n : 1, sizeof *v.values);\n", ct, k, ct)
 		g.cf("\tfor (uint32_t i = 0; i < n && !r->failed; i++) {\n\t\tv.keys[i] = asuka_reader_string(r);\n\t\tv.values[i] = %s;\n\t\tv.len++;\n\t}\n\treturn v;\n}\n\n", g.dec(t.Elem, "r"))
 		g.cf("void %s_free(%s *v) {\n\tfor (size_t i = 0; i < v->len; i++) {\n\t\tfree(v->keys[i]);\n", pub, ct)

@@ -32,7 +32,7 @@ HELPER void w_map_int(asuka_writer *w, const pantry_map_int *v);
 HELPER pantry_map_int r_map_int(asuka_reader *r);
 
 HELPER void w_list_string(asuka_writer *w, const pantry_list_string *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) asuka_writer_string(w, v->data[i]);
 }
 
@@ -52,7 +52,7 @@ void pantry_list_string_free(pantry_list_string *v) {
 }
 
 HELPER void w_map_string(asuka_writer *w, const pantry_map_string *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) {
 		asuka_writer_string(w, v->keys[i]);
 		asuka_writer_string(w, v->values[i]);
@@ -133,7 +133,7 @@ void pantry_Item_free(pantry_Item *v) {
 }
 
 HELPER void w_list_Item(asuka_writer *w, const pantry_list_Item *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_Item(w, &v->data[i]);
 }
 
@@ -153,7 +153,7 @@ void pantry_list_Item_free(pantry_list_Item *v) {
 }
 
 HELPER void w_map_int(asuka_writer *w, const pantry_map_int *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) {
 		asuka_writer_string(w, v->keys[i]);
 		asuka_writer_i64(w, v->values[i]);

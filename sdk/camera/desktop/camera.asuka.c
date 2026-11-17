@@ -41,7 +41,7 @@ void camera_Code_free(camera_Code *v) {
 }
 
 HELPER void w_list_string(asuka_writer *w, const camera_list_string *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) asuka_writer_string(w, v->data[i]);
 }
 

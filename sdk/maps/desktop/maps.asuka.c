@@ -102,7 +102,7 @@ void maps_Marker_free(maps_Marker *v) {
 }
 
 HELPER void w_list_Marker(asuka_writer *w, const maps_list_Marker *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_Marker(w, &v->data[i]);
 }
 

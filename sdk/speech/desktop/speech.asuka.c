@@ -73,7 +73,7 @@ void speech_Voice_free(speech_Voice *v) {
 }
 
 HELPER void w_list_Voice(asuka_writer *w, const speech_list_Voice *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) w_Voice(w, &v->data[i]);
 }
 

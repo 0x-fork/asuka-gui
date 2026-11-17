@@ -47,7 +47,7 @@ void websocket_Frame_free(websocket_Frame *v) {
 }
 
 HELPER void w_map_string(asuka_writer *w, const websocket_map_string *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) {
 		asuka_writer_string(w, v->keys[i]);
 		asuka_writer_string(w, v->values[i]);
@@ -80,7 +80,7 @@ void websocket_map_string_free(websocket_map_string *v) {
 }
 
 HELPER void w_list_string(asuka_writer *w, const websocket_list_string *v) {
-	asuka_writer_u32(w, (uint32_t)v->len);
+	asuka_writer_count(w, v->len);
 	for (size_t i = 0; i < v->len; i++) asuka_writer_string(w, v->data[i]);
 }
 
