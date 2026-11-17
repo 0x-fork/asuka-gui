@@ -92,6 +92,22 @@ TEST(time_format) {
 	CHECK_STR(fmt("é-ç", 2026, 1, 1, 0, 0, 0, 0, 4, 0), "é-ç");
 }
 
+TEST(time_format_any_fields) {
+	// A Time made by hand has whatever fields it was given: they format
+	// (months and weekdays around the year and the week), never read
+	// outside the names or overflow.
+	CHECK_STR(fmt("MMMM MMM", 2026, 0, 1, 0, 0, 0, 0, 4, 0), "December Dec");
+	CHECK_STR(fmt("MMMM", 2026, -40, 1, 0, 0, 0, 0, 4, 0), "August");
+	CHECK_STR(fmt("MMMM", 2026, 13, 1, 0, 0, 0, 0, 4, 0), "January");
+	CHECK_STR(fmt("EEEE e", 2026, 1, 1, 0, 0, 0, 0, -1, 0), "Saturday 7");
+	CHECK_STR(fmt("EEE e", 2026, 1, 1, 0, 0, 0, 0, INT64_MAX, 0), "Sun 1");
+	CHECK_STR(fmt("y", INT64_MIN, 1, 1, 0, 0, 0, 0, 4, 0), "-9223372036854775808");
+	CHECK_STR(fmt("xxx", 2026, 1, 1, 0, 0, 0, 0, 4, INT64_MIN), "-2562047788015215:30");
+	CHECK_STR(fmt("D", INT64_MAX, 3, 1, 0, 0, 0, 0, 4, 0), "60");
+	CHECK_STR(fmt("D", INT64_MIN, 12, 31, 0, 0, 0, 0, 4, 0), "366");
+	CHECK_STR(fmt("D", 2026, 1, INT64_MAX, 0, 0, 0, 0, 4, 0), "9223372036854775807");
+}
+
 TEST(time_parse) {
 	const char *good[] = {"2024-02-29T00:00:00Z", "1678-01-01T00:00:00Z", "2262-04-11T23:47:16.854775807Z"};
 	for (size_t i = 0; i < AK_LEN(good); i++) {

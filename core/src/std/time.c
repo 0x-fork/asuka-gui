@@ -61,12 +61,29 @@ static ak_val local_offset_fn(ak_val *args, uint32_t n) {
 static const char *const month_names[] = {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"};
 static const char *const day_names[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 
+// A Time made by hand has whatever fields it was given: they format
+// without overflowing, months and weekdays around the year and the week.
+
+// magnitude is |v|, INT64_MIN's too.
+static uint64_t magnitude(int64_t v) { return v < 0 ? 0 - (uint64_t)v : (uint64_t)v; }
+
+// wrap is v mod n, from 0 to n-1.
+static int64_t wrap(int64_t v, int64_t n) {
+	int64_t r = v % n;
+	return r < 0 ? r + n : r;
+}
+
 static void num(ak_buf *b, int64_t v, int width) {
-	if (v < 0) {
-		ak_buf_u8(b, '-');
-		v = -v;
-	}
-	ak_buf_printf(b, "%0*lld", width, (long long)v);
+	if (v < 0) ak_buf_u8(b, '-');
+	ak_buf_printf(b, "%0*llu", width, (unsigned long long)magnitude(v));
+}
+
+// day_of_year is y-m-d's day in its year (month 1 to 12).
+static int64_t day_of_year(int64_t y, int64_t m, int64_t d) {
+	static const int16_t before[12] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+	bool leap = y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
+	uint64_t days = (uint64_t)(before[m - 1] + (m > 2 && leap));
+	return (int64_t)(days + (uint64_t)d);  // a day past the year's wraps, never overflows
 }
 
 static void name(ak_buf *b, const char *s, int count) {
@@ -83,10 +100,10 @@ static void zone(ak_buf *b, int64_t off, bool colon, bool minutes, bool z) {
 		return;
 	}
 	ak_buf_u8(b, off < 0 ? '-' : '+');
-	if (off < 0) off = -off;
-	int64_t h = off / 3600, m = off / 60 % 60;
-	ak_buf_printf(b, "%02lld", (long long)h);
-	if (minutes || m) ak_buf_printf(b, colon ? ":%02lld" : "%02lld", (long long)m);
+	uint64_t mag = magnitude(off);
+	unsigned long long h = mag / 3600, m = mag / 60 % 60;
+	ak_buf_printf(b, "%02llu", h);
+	if (minutes || m) ak_buf_printf(b, colon ? ":%02llu" : "%02llu", m);
 }
 
 typedef struct {
@@ -106,19 +123,19 @@ static void field(ak_buf *b, char c, int count, const fields *f) {
 	case 'M':
 	case 'L':
 		if (count <= 2) num(b, f->month, count);
-		else name(b, month_names[(f->month - 1) % 12], count);
+		else name(b, month_names[wrap(wrap(f->month, 12) + 11, 12)], count);
 		break;
 	case 'd':
 		num(b, f->day, count);
 		break;
 	case 'D':
-		num(b, days_from_civil(f->year, f->month, f->day) - days_from_civil(f->year, 1, 1) + 1, count);
+		num(b, day_of_year(f->year, wrap(wrap(f->month, 12) + 11, 12) + 1, f->day), count);
 		break;
 	case 'E':
 	case 'c':
 	case 'e':
-		if ((c == 'e' || c == 'c') && count <= 2) num(b, f->weekday + 1, count);
-		else name(b, day_names[f->weekday % 7], count < 3 ? 3 : count);
+		if ((c == 'e' || c == 'c') && count <= 2) num(b, wrap(f->weekday, 7) + 1, count);
+		else name(b, day_names[wrap(f->weekday, 7)], count < 3 ? 3 : count);
 		break;
 	case 'a':
 		ak_buf_put(b, f->hour < 12 ? "AM" : "PM", 2);
