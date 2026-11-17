@@ -955,7 +955,9 @@ static void info_line(void) {
 
 // The core's own fatal error (ak_panic), into the run's .crash file: its
 // message and the VM's stack, as it ends. No allocation (the heap may be
-// what failed).
+// what failed). It runs on the thread that panicked, one panic at a time
+// (ak_panic sees to it), and its stack is that thread's own (the VM's
+// coroutines are per thread: a spawn's worker's is the spawned code's).
 static void on_panic(const char *msg) {
 	int fd = crash_fd;
 	if (fd < 0) return;

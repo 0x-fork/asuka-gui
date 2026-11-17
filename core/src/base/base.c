@@ -1,6 +1,8 @@
 #include "base.h"
+#include "base/thread.h"
 
 #include <stdarg.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -24,8 +26,25 @@ void ak_free(void *p) { free(p); }
 
 void (*ak_panic_hook)(const char *msg);
 
+// The thread reporting a panic (0: none). One panic is reported at a
+// time: its message, the hook's record (platform/crash's .crash file, in
+// buffers of the process's) are written whole, by the thread whose
+// panic it is, and the process ends with it.
+static _Atomic uint64_t panicking;
+
 void ak_panic(const char *fmt, ...) {
 	static char msg[1024];
+	uint64_t me = ak_thread_id(), none = 0;
+	if (!atomic_compare_exchange_strong(&panicking, &none, me)) {
+		// A panic in the hook, on the thread reporting one: end now.
+		if (none == me) abort();
+		// Another thread's is being reported: it ends the process.
+		ak_mutex m = AK_MUTEX_INIT;
+		ak_cond c;
+		ak_cond_init(&c);
+		ak_mutex_lock(&m);
+		for (;;) ak_cond_wait(&c, &m);
+	}
 	va_list ap;
 	va_start(ap, fmt);
 	vsnprintf(msg, sizeof msg, fmt, ap);

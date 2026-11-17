@@ -61,7 +61,9 @@ void ak_free(void *p);
 // neither race with it nor add to what a test counts.
 extern AK_TLS uint64_t ak_alloc_count;
 
-// ak_panic reports a bug in the core or the app and aborts.
+// ak_panic reports a bug in the core or the app and aborts. Any thread:
+// the first to panic reports and aborts; one that panics as it does waits
+// for the process to end.
 AK_NORETURN void ak_panic(const char *fmt, ...) AK_PRINTF(1, 2);
 // ak_panic_hook, when set, gets a panic's message before the core aborts
 // (platform/crash's record keeps it).

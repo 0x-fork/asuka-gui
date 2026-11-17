@@ -3,6 +3,7 @@
 #include "base/thread.h"
 
 #include <signal.h>
+#include <time.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -132,6 +133,46 @@ static void buf_past_size(void) {
 static void buf_many(void) {
 	ak_buf b = {small, 16, 16};
 	ak_buf_reserve(&b, SIZE_MAX - 8);
+}
+
+// Two threads that panic at once: one panic is reported, whole, and the
+// process ends with it (not the other's message over its own, or both
+// written into each other's record). The first's hook lets the second
+// panic before it writes.
+static ak_mutex two_mu = AK_MUTEX_INIT;
+static ak_cond two_cond;
+static bool second_going;
+
+static void slow_hook(const char *msg) {
+	ak_mutex_lock(&two_mu);
+	while (!second_going) ak_cond_wait(&two_cond, &two_mu);
+	ak_mutex_unlock(&two_mu);
+	struct timespec ts = {0, 100 * 1000000};  // for the second to get in
+	nanosleep(&ts, NULL);
+	panic_to_pipe(msg);
+	panic_to_pipe("|");
+}
+
+static void second_panics(void *arg) {
+	AK_UNUSED(arg);
+	ak_mutex_lock(&two_mu);
+	second_going = true;
+	ak_cond_broadcast(&two_cond);
+	ak_mutex_unlock(&two_mu);
+	ak_panic("second");
+}
+
+static void two_threads_panic(void) {
+	ak_cond_init(&two_cond);
+	ak_panic_hook = slow_hook;
+	if (!ak_thread_start(second_panics, NULL)) return;
+	ak_panic("first");
+}
+
+TEST(concurrent_panics) {
+	char msg[256];
+	panics(two_threads_panic, msg, sizeof msg);
+	CHECK_EQ_STR(msg, "first|");
 }
 
 TEST(growth_past_sizes) {
