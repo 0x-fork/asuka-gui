@@ -279,9 +279,13 @@ func (b *fb) closureCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 
 func (b *fb) ifaceCall(e *syntax.CallExpr, call *check.Call, recv *int, dst int) int {
 	var x int
-	if recv != nil {
+	switch {
+	case recv != nil:
 		x = *recv
-	} else {
+	case call.SelfCall:
+		// In a provided method: another of the interface's, on self.
+		x = b.readVar(b.ctx.Self, e)
+	default:
 		x = b.value(call.Recv, -1)
 	}
 	vals := append([]int{x}, b.args(call, nil)...)
@@ -295,14 +299,39 @@ func (b *fb) ifaceCall(e *syntax.CallExpr, call *check.Call, recv *int, dst int)
 // constrained type parameter's, here) its method directly.
 func (b *fb) ifaceInvoke(name string, call *check.Call, vals []int, dst int) int {
 	k := b.l.kind(b.typ(call.Result))
-	if n, ok := b.typ(check.Unopt(call.RecvType)).(*check.Named); ok && (n.Obj.Kind == check.StructType || n.Obj.Kind == check.EnumType) {
-		if f := n.Obj.Methods[name]; f != nil {
-			r := b.invoke(b.l.funcIndex(f, nil, n), vals, k, dst, false)
+	// The interface method: a type parameter's (its interface, read with
+	// this instantiation's types), or an interface value's.
+	var m *check.IfaceMethod
+	var in *check.Named
+	switch rt := check.Unopt(call.RecvType).(type) {
+	case *check.TypeParam:
+		m, in = check.ParamMethod(rt, name)
+	case *check.Named:
+		m, in = check.IfaceMethodOf(rt, name), rt
+	}
+	if in != nil {
+		in, _ = b.typ(in).(*check.Named)
+	}
+	recv := b.typ(check.Unopt(call.RecvType))
+	if n, ok := recv.(*check.Named); ok && (n.Obj.Kind == check.StructType || n.Obj.Kind == check.EnumType) {
+		idx := -1
+		if m != nil && in != nil {
+			idx, _ = b.l.methodFor(n, in, m)
+		} else if f := n.Obj.Methods[name]; f != nil {
+			idx = b.l.funcIndex(f, nil, n)
+		}
+		if idx >= 0 {
+			r := b.invoke(idx, vals, k, dst, false)
 			if k == bc.KVoid {
 				return -1
 			}
 			return r
 		}
+	}
+	if j, ok := recv.(*check.Named); ok && j.Obj.Kind == check.InterfaceType && m != nil && m.Provided != nil && in != nil && check.IfaceMethodOf(j, name) == nil {
+		// A type parameter's value of another interface, which hasn't
+		// this provided method: its values' types get in's.
+		b.l.flow(j, in, b.l.lastNode)
 	}
 	ks := make([]bc.Kind, len(vals))
 	for i, v := range vals {

@@ -25,7 +25,8 @@ func (b *fb) lowerFunc(f *check.Function, recv check.Type) {
 	b.at(f.Decl)
 	if f.Recv != nil {
 		switch f.Recv.Kind {
-		case check.StructType, check.EnumType:
+		case check.StructType, check.EnumType, check.InterfaceType:
+			// An interface's: a provided method, compiled for recv.
 			r := b.newReg(b.l.kind(recv))
 			if ctx.Self != nil {
 				b.vars[ctx.Self] = r

@@ -1,0 +1,45 @@
+// Provided methods in interfaces (RFC 0011): a method with a body that a
+// type may have its own of.
+
+interface Shape {
+  name: string
+  fn area() -> float
+  fn describe() -> string = "a {name} of {area()}"
+  fn twice() -> float = self.area() * 2.0
+  fn loud() -> string = describe().upper()
+  fn me() -> Shape = self
+  fn broken() -> int = area() // ERROR "the result of broken is a float, not an int"
+  fn unknown() -> int = perimeter() // ERROR "unknown name perimeter"
+  fn generic<T>(x: T) -> T = x // ERROR "an interface's methods aren't generic"
+}
+
+interface Twice {
+  fn one() -> int
+  fn one() -> int = 1 // ERROR "method one is declared twice in Twice"
+}
+
+native interface Haptics {
+  fn buzz() = print("buzz") // ERROR "a native interface's methods have no bodies"
+}
+
+struct Square {
+  name: string = "square"
+  side: float
+  fn area() -> float = side * side
+}
+
+struct Plain {
+  name: string = "plain"
+}
+
+fn use(s: Shape) -> string = s.describe() + s.loud()
+
+fn useParam<T: Shape>(x: T) -> string = x.describe()
+
+test "provided" {
+  let s: Shape = Square(side: 2)
+  print(use(s))
+  print(useParam(Square(side: 1)))
+  print(Square(side: 1).describe()) // ERROR "Square has no method describe"
+  let p: Shape = Plain() // ERROR "Plain isn't a Shape: it has no area\(\)"
+}

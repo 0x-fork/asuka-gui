@@ -29,8 +29,16 @@ type Lowerer struct {
 	memberIdx map[*check.Member]int
 	enumNames map[string]int // an int enum → the global holding its case names
 	errIDs    map[int]int    // an error's shape → its type id
-	work      []func()
-	errs      []check.Diagnostic
+	// What the shapes' method tables hold for interfaces (implement):
+	// the conversions made, which types each interface's values may be,
+	// and the interfaces whose values another's are seen as (a type
+	// parameter's, instantiated with an interface), by typeKey.
+	implemented map[string]bool
+	impls       map[string][]*check.Named
+	flows       map[string][]*check.Named
+	methodFrom  map[int]map[string]string // a shape's methods: the interface whose provided one it is
+	work        []func()
+	errs        []check.Diagnostic
 
 	opts           *Options
 	pendingStrings []pendingStrings
@@ -83,7 +91,12 @@ func Lower(prog *check.Program, opts *Options) (*Program, []check.Diagnostic) {
 		memberIdx: map[*check.Member]int{},
 		enumNames: map[string]int{},
 		errIDs:    map[int]int{},
-		catalog:   -1,
+
+		implemented: map[string]bool{},
+		impls:       map[string][]*check.Named{},
+		flows:       map[string][]*check.Named{},
+		methodFrom:  map[int]map[string]string{},
+		catalog:     -1,
 	}
 	l.out = &Program{Mod: l.mod}
 	l.opts = opts
@@ -550,15 +563,18 @@ func (l *Lowerer) funcIndex(f *check.Function, targs []check.Type, recv check.Ty
 		}
 		name += "<" + strings.Join(ts, ",") + ">"
 	}
-	s := check.Subst{}
-	if n, ok := recv.(*check.Named); ok {
-		for k, v := range n.Subst() {
-			s[k] = v
+	s := providedSubst(f, targs, recv)
+	if s == nil {
+		s = check.Subst{}
+		if n, ok := recv.(*check.Named); ok {
+			for k, v := range n.Subst() {
+				s[k] = v
+			}
 		}
-	}
-	for i, tp := range f.TypeParams {
-		if i < len(targs) {
-			s[tp] = targs[i]
+		for i, tp := range f.TypeParams {
+			if i < len(targs) {
+				s[tp] = targs[i]
+			}
 		}
 	}
 	nparams := len(f.Sig.Params)
@@ -812,30 +828,103 @@ func (l *Lowerer) lowerTest(t *check.Test) {
 	})
 }
 
+// providedSubst is what an interface's provided method f is compiled
+// with for recv, a type that has the interface (targs: the interface's
+// type arguments): self is a recv. nil when f isn't one.
+func providedSubst(f *check.Function, targs []check.Type, recv check.Type) check.Subst {
+	if f.Recv == nil || f.Recv.Kind != check.InterfaceType || f.Recv.Iface == nil {
+		return nil
+	}
+	s := check.Subst{f.Recv.Iface.Self: recv}
+	for i, tp := range f.Recv.TypeParams {
+		if i < len(targs) {
+			s[tp] = targs[i]
+		}
+	}
+	return s
+}
+
+// methodFor is the function n (a struct or an enum) answers interface
+// in's method m with: its own, or the interface's provided one compiled
+// for n when n has none of its signature (provided); -1 when it has
+// neither.
+func (l *Lowerer) methodFor(n, in *check.Named, m *check.IfaceMethod) (idx int, provided bool) {
+	f := n.Obj.Methods[m.Name]
+	if m.Provided == nil {
+		if f == nil {
+			return -1, false
+		}
+		return l.funcIndex(f, nil, n), false
+	}
+	if f != nil && f.Sig != nil && check.Identical(n.Subst().Apply(f.Sig.Type()), in.Subst().Apply(m.Sig.Type())) {
+		return l.funcIndex(f, nil, n), false
+	}
+	return l.funcIndex(m.Provided, in.Args, n), true
+}
+
 // implement fills the method table of t's shape with what interface
-// iface calls through CALLI: its methods, and getters of its fields.
-func (l *Lowerer) implement(t, iface check.Type) {
-	n, ok := t.(*check.Named)
-	in, ok2 := iface.(*check.Named)
-	if !ok || !ok2 || in.Obj.Iface == nil {
+// iface calls through CALLI: its methods (a provided one the type has
+// none of compiled for it), and getters of its fields. A value of
+// another interface converted to iface (a type parameter's) is a flow:
+// each type the first's values may be gets iface's methods too. at is
+// where the conversion is, for its errors.
+func (l *Lowerer) implement(t, iface check.Type, at syntax.Node) {
+	in, ok := iface.(*check.Named)
+	if !ok || in.Obj.Iface == nil {
 		return
 	}
+	if from, ok := t.(*check.Named); ok && from.Obj.Kind == check.InterfaceType {
+		if !check.Identical(from, in) {
+			l.flow(from, in, at)
+		}
+		return
+	}
+	n, ok := t.(*check.Named)
+	if !ok {
+		return
+	}
+	if n.Obj.Kind == check.EnumType && !n.Obj.RefEnum() {
+		// A type parameter's, of an enum without payloads: an int.
+		l.errorf(at, "%s is stored as an int: declare the interface (enum %s: %s) to use it as one", n, n.Obj.Name(), in.Obj.Name())
+		return
+	}
+	key := l.typeKey(n) + "|" + l.typeKey(in)
+	if l.implemented[key] {
+		return
+	}
+	l.implemented[key] = true
 	shape := l.shape(n)
 	if shape < 0 {
 		return
 	}
-	sd := &l.mod.Shapes[shape]
-	if sd.Methods == nil {
-		sd.Methods = map[string]uint32{}
+	if l.mod.Shapes[shape].Methods == nil {
+		l.mod.Shapes[shape].Methods = map[string]uint32{}
 	}
 	for _, m := range in.Obj.Iface.Methods {
-		if _, done := sd.Methods[m.Name]; done {
+		f, provided := l.methodFor(n, in, m)
+		if f < 0 {
 			continue
 		}
-		if f := n.Obj.Methods[m.Name]; f != nil {
-			sd.Methods[m.Name] = uint32(l.funcIndex(f, nil, n))
+		sd := &l.mod.Shapes[shape]
+		from := ""
+		if provided {
+			from = in.Obj.Name()
+		}
+		if old, done := sd.Methods[m.Name]; done {
+			if int(old) != f {
+				l.methodConflict(n, m.Name, l.methodFrom[shape][m.Name], from, in, at)
+			}
+			continue
+		}
+		sd.Methods[m.Name] = uint32(f)
+		if from != "" {
+			if l.methodFrom[shape] == nil {
+				l.methodFrom[shape] = map[string]string{}
+			}
+			l.methodFrom[shape][m.Name] = from
 		}
 	}
+	sd := &l.mod.Shapes[shape]
 	for _, fl := range in.Obj.Iface.Fields {
 		if _, done := sd.Methods[fl.Name]; done {
 			continue
@@ -855,6 +944,39 @@ func (l *Lowerer) implement(t, iface check.Type) {
 		g.emit(op("RET"), r)
 		sd.Methods[fl.Name] = uint32(g.idx)
 	}
+	ik := l.typeKey(in)
+	l.impls[ik] = append(l.impls[ik], n)
+	for _, to := range l.flows[ik] {
+		l.implement(n, to, at)
+	}
+}
+
+// flow says that values of interface from are seen as to's (a type
+// parameter's, of one, called with to's methods): each type from's
+// values may be, now and later, gets to's methods.
+func (l *Lowerer) flow(from, to *check.Named, at syntax.Node) {
+	fk := l.typeKey(from)
+	for _, t := range l.flows[fk] {
+		if check.Identical(t, to) {
+			return
+		}
+	}
+	l.flows[fk] = append(l.flows[fk], to)
+	for _, n := range append([]*check.Named(nil), l.impls[fk]...) {
+		l.implement(n, to, at)
+	}
+}
+
+// methodConflict reports n's method name, which two interfaces it's
+// converted to give it differently (a shape has one table: CALLI finds
+// a method by its name): before and now are the interfaces whose
+// provided ones they are ("" for n's own).
+func (l *Lowerer) methodConflict(n *check.Named, name, before, now string, in *check.Named, at syntax.Node) {
+	if before != "" && now != "" {
+		l.errorf(at, "%s gets %s() from both %s and %s: declare %s's own %s()", n, name, before, now, n.Obj.Name(), name)
+		return
+	}
+	l.errorf(at, "%s's own %s isn't of %s's %s()'s signature, and both are called through its interfaces: rename one", n, name, in.Obj.Name(), name)
 }
 
 // hoist returns a constant literal (an array, a map, a tuple, a struct or

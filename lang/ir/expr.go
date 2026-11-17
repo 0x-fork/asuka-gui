@@ -38,7 +38,7 @@ func (b *fb) value(e syntax.Expr, dst int) int {
 	}
 	inner := check.Unopt(to)
 	if n, ok := inner.(*check.Named); ok && n.Obj.Kind == check.InterfaceType {
-		b.l.implement(check.Unopt(from), n)
+		b.l.implement(check.Unopt(from), n, e)
 	}
 	// What's converted when compiling: lengths and edges.
 	if inner == check.Length && from != check.Length {
@@ -448,10 +448,15 @@ func (b *fb) ident(e *syntax.Ident, dst int) int {
 	return b.valueReg(-1, bc.KRef)
 }
 
-// selfField reads a field of self named by its bare name in a method.
+// selfField reads a field of self named by its bare name in a method
+// (an interface's field in a provided method's).
 func (b *fb) selfField(e *syntax.Ident) int {
 	if b.ctx == nil || b.ctx.Self == nil {
 		return -1
+	}
+	if fl, _, owner, ok := check.SelfMember(b.l.info.Uses[e]); ok && fl != nil && owner.Kind == check.InterfaceType {
+		self := b.readVar(b.ctx.Self, e)
+		return b.ifaceField(self, b.typ(b.ctx.Self.Type), fl.Name, fl.Type, -1)
 	}
 	n, ok := b.typ(b.ctx.Self.Type).(*check.Named)
 	if !ok || n.Obj.Kind != check.StructType {
@@ -860,22 +865,7 @@ func (b *fb) member(e syntax.Expr, sel *check.Selection, x int, recv check.Type,
 		}
 		return b.copyTo(ref, dst)
 	case check.SelIfaceField:
-		if n, ok := recv.(*check.Named); ok && (n.Obj.Kind == check.StructType || n.Obj.Kind == check.EnumType) {
-			// A constrained type parameter's field, this instantiation's
-			// type's own: a struct's field, an enum's method.
-			if f := n.Obj.Field(sel.Name); f != nil && n.Obj.Kind == check.StructType {
-				return b.getField(x, n, f, dst)
-			}
-			if m := n.Obj.Methods[sel.Name]; m != nil {
-				return b.invoke(b.l.funcIndex(m, nil, n), []int{x}, b.kind(sel.Field.Type), dst, false)
-			}
-		}
-		r := b.out(dst, b.kind(sel.Field.Type))
-		blk := b.regs([]bc.Kind{bc.KRef})
-		b.move(blk, x)
-		b.emit(op("CALLI"), r, b.l.str(sel.Name), blk, 1)
-		b.releaseRegs(blk, []bc.Kind{bc.KRef})
-		return r
+		return b.ifaceField(x, recv, sel.Name, sel.Field.Type, dst)
 	case check.SelErrorMessage:
 		n, _ := recv.(*check.Named)
 		return b.copyTo(b.errorMessage(x, n), dst)
@@ -884,6 +874,27 @@ func (b *fb) member(e syntax.Expr, sel *check.Selection, x int, recv check.Type,
 	}
 	b.l.errorf(e, "internal: can't lower member")
 	return b.valueReg(-1, bc.KRef)
+}
+
+// ifaceField reads field name (of type ft) that an interface asks for of
+// x, a recv: a constrained type parameter's, this instantiation's type's
+// own (a struct's field, an enum's method), or an interface's value's
+// through CALLI.
+func (b *fb) ifaceField(x int, recv check.Type, name string, ft check.Type, dst int) int {
+	if n, ok := recv.(*check.Named); ok && (n.Obj.Kind == check.StructType || n.Obj.Kind == check.EnumType) {
+		if f := n.Obj.Field(name); f != nil && n.Obj.Kind == check.StructType {
+			return b.getField(x, n, f, dst)
+		}
+		if m := n.Obj.Methods[name]; m != nil {
+			return b.invoke(b.l.funcIndex(m, nil, n), []int{x}, b.kind(ft), dst, false)
+		}
+	}
+	r := b.out(dst, b.kind(ft))
+	blk := b.regs([]bc.Kind{bc.KRef})
+	b.move(blk, x)
+	b.emit(op("CALLI"), r, b.l.str(name), blk, 1)
+	b.releaseRegs(blk, []bc.Kind{bc.KRef})
+	return r
 }
 
 // caseValue is a payloadless case of enum t.
