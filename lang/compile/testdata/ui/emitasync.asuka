@@ -1,0 +1,69 @@
+// emit from a function that can't wait (a handler that only forwards the
+// event, a fn) starts a handler that awaits as a task of its own, as the
+// host's call of it does: the function goes on, and the handler never
+// runs on the coroutine the function was called on. A test's tap comes
+// in on the test's task, in a call from C.
+
+state said = ""
+
+component Forward(title: string) {
+  event press
+  Button(title) { on press { emit press } }
+}
+
+component Later(title: string) {
+  event press
+  fn fire() { emit press }
+  Button(title) {
+    on press {
+      await sleep(1ms)
+      fire()
+      said += ", went on"
+    }
+  }
+}
+
+async fn save(what: string) {
+  await sleep(1ms)
+  said = "saved {what}"
+}
+
+component Choices {
+  Column {
+    Text(said)
+    Forward("Emitted") { on press { await save("emitted") } }
+    Forward("Inline") {
+      on press {
+        await sleep(1ms)
+        said = "saved inline"
+      }
+    }
+    Later("Later") {
+      on press {
+        said = "began"
+        await sleep(1ms)
+        said += ", ended"
+      }
+    }
+  }
+}
+
+app { Choices() }
+
+test "an emitted event's handler can suspend" {
+  let app = mount(Choices())
+  app.tap("Emitted")
+  await app.waitFor("saved emitted")
+}
+
+test "and so can one that awaits in its own body" {
+  let app = mount(Choices())
+  app.tap("Inline")
+  await app.waitFor("saved inline")
+}
+
+test "a function that can't wait goes on before the handler it emits to ends" {
+  let app = mount(Choices())
+  app.tap("Later")
+  await app.waitFor("began, went on")
+}
