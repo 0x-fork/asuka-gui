@@ -101,3 +101,24 @@ fn ordered(v: Version, p: Plain, s: Size, c: Coin) {
   let j = [v, v].sorted()
   let k = [s].sorted()
 }
+
+// An interface's method is called with its own parameters: a method
+// with more, though they have defaults, isn't it.
+interface Greeter {
+  fn greet(loud: bool) -> string
+}
+
+struct En {
+  fn greet(loud: bool, times: int = 1) -> string = "hi"
+}
+
+struct Fr: Greeter { // ERROR "Fr declares Greeter but greet takes times and polite, which the interface's greet doesn't: an interface's method is called with its own parameters"
+  fn greet(loud: bool, times: int = 1, polite: bool = true) -> string = "salut"
+}
+
+fn hello<T: Greeter>(g: T) -> string = g.greet(true)
+
+fn greeters() {
+  let g: Greeter = En() // ERROR "En isn't a Greeter: greet takes times, which the interface's greet doesn't: an interface's method is called with its own parameters"
+  let h = hello(En()) // ERROR "hello's T must be Greeter, and En isn't: greet takes times, which the interface's greet doesn't"
+}
