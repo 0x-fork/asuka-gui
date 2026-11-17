@@ -679,6 +679,11 @@ func TestTypeArguments(t *testing.T) {
 		{"let x = f(a < b, c > d)", "f(a < b, c > d)"},
 		// As C#: <...> right before ( is type arguments.
 		{"let x = f(a < b, c > (d))", "f(a<b, c>(d))"},
+		// Nested, and among comparisons: each < finds its own >.
+		{"let x = [a < b, f<Box<int>>(x), c < d, g<[int]>()]", "[a < b, f<Box<int>>(x), c < d, g<[int]>()]"},
+		{"let x = a < b.c(f<int>(x))", "a < b.c(f<int>(x))"},
+		{"let x = [a < b, c<d>(e), f < g]", "[a < b, c<d>(e), f < g]"},
+		{"let x = f(a < g<int>(b))", "f(a < g<int>(b))"},
 	} {
 		f := parseOK(t, c.src)
 		got := printed(f.Decls[0].(*LetDecl).Value)

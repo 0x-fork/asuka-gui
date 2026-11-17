@@ -170,6 +170,8 @@ type parser struct {
 	comments []*Comment
 	ci       int // the next comment not yet attached
 
+	angles map[int]int // each <'s matching >, by token index (angleEnd)
+
 	depth int
 	bail  bool // nesting too deep: give up on the rest of the file
 }
@@ -2342,27 +2344,10 @@ func (p *parser) tryTypeArgs(x Expr) ([]Type, bool) {
 		return nil, false
 	}
 	// Types are what's between: names, brackets, ?, commas, colons, fn,
-	// arrows. A quick scan rejects most comparisons without parsing.
-	depth := 0
-	j := 1
-	for ; ; j++ {
-		switch t := p.peek(j); t {
-		case IDENT, PERIOD, COMMA, COLON, LBRACK, RBRACK, QUESTION, LPAREN, RPAREN, FN, ARROW, ASYNC, THROWS:
-		case LSS:
-			depth++
-		case GTR:
-			if depth == 0 {
-				if p.peek(j+1) != LPAREN {
-					return nil, false
-				}
-				goto parse
-			}
-			depth--
-		default:
-			return nil, false
-		}
+	// arrows. A quick look rejects most comparisons without parsing.
+	if end := p.angleEnd(); end < 0 || end+1 >= len(p.toks) || p.toks[end+1].tok != LPAREN {
+		return nil, false
 	}
-parse:
 	saved, savedEnd := p.i, p.prevEnd
 	nerr := len(p.errors)
 	p.next() // <
@@ -2383,6 +2368,35 @@ parse:
 	}
 	p.next() // >
 	return ts, true
+}
+
+// angleEnd is the index of the > that closes the < here, with only
+// what a type has between them (names, brackets, ?, commas, colons, fn,
+// arrows, nested <…>), or -1. The file's < are matched once, in one pass,
+// so a list of comparisons (a < b, c < d, …) costs no rescan for each.
+func (p *parser) angleEnd() int {
+	if p.angles == nil {
+		p.angles = make(map[int]int)
+		var open []int
+		for j, t := range p.toks {
+			switch t.tok {
+			case IDENT, PERIOD, COMMA, COLON, LBRACK, RBRACK, QUESTION, LPAREN, RPAREN, FN, ARROW, ASYNC, THROWS:
+			case LSS:
+				open = append(open, j)
+			case GTR:
+				if n := len(open); n > 0 {
+					p.angles[open[n-1]] = j
+					open = open[:n-1]
+				}
+			default:
+				open = open[:0] // a < still open here closes nowhere
+			}
+		}
+	}
+	if end, ok := p.angles[p.i]; ok {
+		return end
+	}
+	return -1
 }
 
 // elementName parses an element's as name, when it has one.
