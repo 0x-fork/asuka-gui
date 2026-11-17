@@ -55,3 +55,39 @@ component Selves(items: [string]) {
 
   Text("{picked ?? "-"} {count} {top}")
 }
+
+// An effect that writes a state it follows.
+struct U {
+  id: int
+  name: string
+}
+
+component Writes {
+  state n = 0
+  state runs = 0
+  state other = 0
+  state u = U(id: 1, name: "a")
+  state labels: [string: string] = [:]
+  let doubled = n * 2
+
+  fn bump() { n = n + 1 }
+
+  effect { if n > 3 { n = 3 } } // ERROR "this effect writes n \(at \d+\), which it reads at \d+: it would run again after its own write, a pass late; to keep it in range: state n: T = …"
+  effect { // ERROR "this effect writes runs .*which it reads.*to run it when u changes, compared: effect\(u\) \{ … \}; to reset runs when they change: state runs\(u\) = …"
+    let _ = u.id
+    runs += 1
+  }
+  effect { bump() } // ERROR "this effect writes n"
+  effect { if doubled > 10 { n = 0 } } // ERROR "this effect writes n"
+  effect(n) { n = 3 } // ERROR "this effect writes n \(at \d+\), which its dependencies read"
+  effect(other) { n = n + 1 } // its body follows nothing
+  effect { labels["a"] = "{other}" } // a write into part of a state reads nothing
+  effect {
+    let _ = peek(n)
+    n = 1
+  }
+  task(n) { n = 0 } // a task restarts by cancelling: it may
+
+  Text("{n} {runs}")
+}
+

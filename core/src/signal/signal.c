@@ -26,9 +26,17 @@ void ak_signal_set_panic_hook(void (*fn)(void *ctx, const char *msg), void *ctx)
 
 const char *ak_sig_describe(const ak_comp *c, char *buf, size_t n) {
 	const char *kind = (c->node.flags & AK_F_FOLLOW) ? "state" : (c->node.flags & AK_F_MEMO) ? "memo" : "effect";
-	if (c->info && c->info->label) snprintf(buf, n, "%s %s", kind, c->info->label);
+	if (c->info && c->info->describe) c->info->describe(c->ctx, buf, n);
+	else if (c->info && c->info->label) snprintf(buf, n, "%s %s", kind, c->info->label);
 	else snprintf(buf, n, "an unnamed %s", kind);
 	return buf;
+}
+
+void ak_signal_note_write(const char *what, size_t len) {
+	if (g->effect) {
+		g->effect->wrote = what;
+		g->effect->wrote_len = len;
+	}
 }
 
 // Signals.
@@ -202,13 +210,16 @@ static void effect_update(ak_comp *e) {
 	ak_frame f = {.prev = g->frame};
 	g->frame = &f;
 	ak_sig_owner_clean(&e->owner);
-	ak_comp *prev_sub = g->active;
+	ak_comp *prev_sub = g->active, *prev_effect = g->effect;
 	ak_owner *prev_owner = g->owner;
 	g->active = e;
+	g->effect = e;
 	g->owner = &e->owner;
+	e->wrote = NULL;
 	ak_sig_start_tracking(e);
 	e->fn.run(e->ctx);
 	g->active = prev_sub;
+	g->effect = prev_effect;
 	g->owner = prev_owner;
 	// After an error too: it re-runs when what it read so far changes.
 	if (e->node.flags & AK_F_DISPOSED) ak_sig_unlink_all_deps(e);
@@ -352,11 +363,22 @@ void ak_sig_flush(void) {
 	for (int round = 0;; round++) {
 		for (int pass = 0; g->queue.len; pass++) {
 			if (pass == AK_MAX_PASSES) {
+				// The effect to name: one that wrote a state it named, the
+				// loop's writer, else the first.
+				ak_comp *e = g->queue.data[0];
+				for (uint32_t i = 0; i < g->queue.len; i++)
+					if (g->queue.data[i]->wrote) {
+						e = g->queue.data[i];
+						break;
+					}
 				char d[256];
-				ak_sig_describe(g->queue.data[0], d, sizeof d);
+				ak_sig_describe(e, d, sizeof d);
+				const char *wrote = e->wrote;
+				int len = (int)e->wrote_len;
 				drop_queue();
 				g->flushing = false;
-				ak_sig_panic("signal: effects still dirty after %d passes (an infinite loop?), e.g. %s", AK_MAX_PASSES, d);
+				if (wrote) ak_sig_panic("signal: %s is still writing %.*s after %d passes (an infinite loop?)", d, len, wrote, AK_MAX_PASSES);
+				else ak_sig_panic("signal: effects still dirty after %d passes (an infinite loop?), e.g. %s", AK_MAX_PASSES, d);
 				return;
 			}
 			ak_comp_vec t = g->running;

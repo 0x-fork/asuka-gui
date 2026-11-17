@@ -222,6 +222,12 @@ func notTuple(t Type, n int) string {
 
 func (c *Checker) assignStmt(s *syntax.AssignStmt) {
 	lt := c.lvalue(s.Target, "assign to")
+	if s.Op != syntax.ASSIGN {
+		// x += y reads x, then writes it.
+		if obj, at := c.writeRoot(s.Target); obj != nil {
+			c.noteRead(obj, at)
+		}
+	}
 	if ix, ok := unparen(s.Target).(*syntax.IndexExpr); ok {
 		if _, isMap := c.info.Types[ix.X].(*Map); isMap {
 			// m[k] reads a V?, and stores a V.
@@ -289,6 +295,7 @@ func (c *Checker) assignStmt(s *syntax.AssignStmt) {
 // returns its type.
 func (c *Checker) lvalue(x syntax.Expr, what string) Type {
 	t := c.expr(x, nil)
+	c.noteWrite(x)
 	if c.ctx != nil {
 		switch c.ctx.Kind {
 		case CtxBinding, CtxGlobal, CtxBuilder, CtxComponent, CtxStore, CtxApp:

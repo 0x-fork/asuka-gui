@@ -247,7 +247,7 @@ pub component NowPlaying {
     return i
   }
 
-  effect {
+  effect(onTop, info) {
     if onTop {
       publish(info)
     }

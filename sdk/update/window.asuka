@@ -113,7 +113,7 @@ component UpdateContent(icon: string) {
     }
   }
 
-  effect {
+  effect(updater.phase) {
     let p = updater.phase
     if p == shown { return }
     shown = p

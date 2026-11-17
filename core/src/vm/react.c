@@ -4,6 +4,9 @@
 #include "signal/signal.h"
 #include "vm/keep.h"
 
+#include <stdio.h>
+#include <string.h>
+
 // ---- Cells ----
 //
 // A state's cell holds its value. A state whose initializer reads what
@@ -18,6 +21,10 @@ typedef struct {
 	ak_node node;
 	ak_val v;
 	uint8_t kind;
+	// Its name in its key (Picker.selected#…: selected), which an effect
+	// writing it notes for the panic of a loop (ak_signal_note_write).
+	uint16_t name_off, name_len;
+	ak_str *key;  // retained; NULL for a cell made without one
 } cell;
 
 enum {
@@ -38,11 +45,29 @@ static void cell_drop(ak_opaque *o) {
 	cell *c = (cell *)o;
 	if (o->h.flags & CELL_KEPT) ak_keep_forget(c);  // a keyed cell (keep.c)
 	if (o->h.flags & CELL_FOLLOW) ak_release(((follow *)c)->update);
+	ak_release(c->key);
 	ak_signal_drop(&c->node);
 	ak_release_val(c->v, (ak_kind)c->kind);
 }
 
 static inline bool is_follow(const cell *c) { return (c->h.h.flags & CELL_FOLLOW) != 0; }
+
+// cell_name keeps key as c's name: what's between its last . and its #.
+static void cell_name(cell *c, ak_str *key) {
+	if (!key) return;
+	c->key = ak_retain(key);
+	const char *s = key->data;
+	size_t n = strcspn(s, "#"), start = 0;
+	for (size_t i = 0; i < n; i++)
+		if (s[i] == '.') start = i + 1;
+	c->name_off = (uint16_t)(start < 0xFFFF ? start : 0);
+	c->name_len = (uint16_t)(n - c->name_off < 0xFFFF ? n - c->name_off : 0);
+}
+
+// cell_wrote notes, for an effect writing c, what it wrote.
+static inline void cell_wrote(const cell *c) {
+	if (c->key) ak_signal_note_write(c->key->data + c->name_off, c->name_len);
+}
 
 // A cell kept across reloads is looked up and stored through these
 // (dev.c sets them while the dev loop runs; NULL otherwise).
@@ -54,6 +79,7 @@ ak_val ak_vm_cell_new(ak_val v, ak_kind k, ak_str *keep_key) {
 	ak_signal_born(&c->node);
 	c->kind = (uint8_t)k;
 	c->v = v;
+	cell_name(c, keep_key);
 	if (keep_key && ak_vm_keep_find) {
 		ak_val kept;
 		if (ak_vm_keep_find(keep_key, k, &kept)) {
@@ -140,6 +166,7 @@ static void follow_store(follow *w, ak_val v, bool always) {
 	w->c.v = v;
 	w->has = true;
 	ak_release_val(old, k);
+	cell_wrote(&w->c);
 	if (w->f) ak_follow_set(w->f);
 }
 
@@ -147,6 +174,7 @@ ak_val ak_vm_follow_new(ak_closure *update, ak_kind k, ak_str *keep_key, bool se
 	follow *w = ak_opaque_new(AK_TAG_CELL, sizeof(follow), cell_drop);
 	w->c.h.h.flags |= CELL_FOLLOW;
 	w->c.kind = (uint8_t)k;
+	cell_name(&w->c, keep_key);
 	w->update = ak_retain(update);
 	w->self = self;
 	w->info = (ak_comp_info){.drop = follow_comp_drop, .label = update->invoke == ak_vm_closure_invoke ? ak_func_name(update->fn) : "a prop's caller's value"};
@@ -199,6 +227,7 @@ void ak_vm_cell_set(void *p, ak_val v) {
 	ak_val old = c->v;
 	c->v = v;
 	ak_release_val(old, (ak_kind)c->kind);
+	cell_wrote(c);
 	ak_signal_write(&c->node);
 }
 
@@ -222,11 +251,13 @@ void ak_vm_cell_put(void *p, ak_val v) {
 		ak_release_val(c->v, (ak_kind)c->kind);
 		c->v = v;
 		w->has = true;
+		cell_wrote(c);
 		if (w->f) ak_follow_set(w->f);
 		return;
 	}
 	ak_release_val(c->v, (ak_kind)c->kind);
 	c->v = v;
+	cell_wrote(c);
 	ak_signal_write(&c->node);
 }
 
@@ -500,10 +531,27 @@ static void effect_drop(void *ctx) {
 	ak_free(e);
 }
 
+// effect_describe names an effect for a panic as its source says it:
+// "Picker's effect at picker.asuka:12" (its closure, Picker/effect, made
+// where its declaration is).
+static void effect_describe(void *ctx, char *buf, size_t n) {
+	effect_ctx *e = ctx;
+	if (e->c->invoke != ak_vm_closure_invoke) {
+		snprintf(buf, n, "effect %s", label_of(e->c));
+		return;
+	}
+	const ak_func *f = e->c->fn;
+	const char *name = f->name->data;
+	size_t owner = strcspn(name, "/");
+	const char *what = name[owner] ? name + owner + 1 : "effect";
+	uint32_t line = f->nlines ? f->lines[0].line : 0;
+	snprintf(buf, n, "%.*s's %s at %s:%u", (int)owner, name, what, f->file->data, line);
+}
+
 void ak_vm_effect(ak_closure *c, bool render) {
 	effect_ctx *e = ak_alloc(sizeof *e);
 	e->c = ak_retain(c);
-	e->info = (ak_comp_info){.drop = effect_drop, .label = label_of(c)};
+	e->info = (ak_comp_info){.drop = effect_drop, .label = label_of(c), .describe = render ? NULL : effect_describe};
 	ak_effect_new(effect_run, e, render ? AK_EFFECT_RENDER : AK_EFFECT_USER, &e->info);
 }
 

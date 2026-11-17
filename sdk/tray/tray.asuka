@@ -224,7 +224,6 @@ pub component Tray(id: string) {
 
   state number = 0
   state seen = 0
-  state sent = bytes()
 
   task(id) {
     lastNumber += 1
@@ -241,22 +240,22 @@ pub component Tray(id: string) {
   }
 
   // The icon whole, again whenever its encoding changes.
-  effect {
-    if number == 0 { return }
+  let encoding = encode()
+  effect(encoding) {
+    if number != 0 { host.send("tray", "set", encoding) }
+  }
+
+  fn encode() -> bytes {
     var flags = 0
     if template { flags += 1 }
     if click { flags += 2 }
     var b = host.u32(number).concat(host.u8(flags))
     for s in [image, symbol, title, tooltip, id] { b = b.concat(host.str(s)) }
-    b = b.concat(encodeMenu(menu))
-    if b != sent {
-      sent = b
-      host.send("tray", "set", b)
-    }
+    return b.concat(encodeMenu(menu))
   }
 
-  effect {
-    let _ = poll()
+  // What the poll brings in for it, once.
+  effect(poll(), number, happened[number] ?? []) {
     let hs = happened[number] ?? []
     if number != 0 && hs.count() > seen {
       let from = seen
@@ -304,12 +303,12 @@ pub component DockMenu {
     await never()
   }
 
-  effect {
+  // Its items, when it's the last shown, again as they change.
+  effect(number, docks.last() ?? 0, encodeMenu(items)) {
     if number != 0 && (docks.last() ?? 0) == number { sendDock(encodeMenu(items)) }
   }
 
-  effect {
-    let _ = poll()
+  effect(poll(), number, happened[0] ?? []) {
     let hs = happened[0] ?? []
     if number != 0 && hs.count() > seen {
       let from = seen

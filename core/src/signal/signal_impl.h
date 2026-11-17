@@ -73,6 +73,10 @@ struct ak_comp {
 	void *ctx;
 	const ak_comp_info *info;
 	void *err; // a memo's last error
+	// An effect's last write it named (ak_signal_note_write), for the
+	// panic of a loop.
+	const char *wrote;
+	size_t wrote_len;
 	ak_owner owner;
 };
 
@@ -88,6 +92,7 @@ typedef AK_VEC(ak_comp *) ak_comp_vec;
 // ak_graph is all of the graph's state.
 typedef struct ak_graph {
 	ak_comp *active; // the computation tracking reads, NULL when untracked
+	ak_comp *effect; // the effect running, tracking or not
 	ak_owner *owner; // the current owner
 	ak_frame *frame; // the innermost run
 	int in_memo;     // >0 while a memo computes

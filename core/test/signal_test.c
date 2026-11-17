@@ -463,7 +463,10 @@ TEST(effect_write_schedules_another_pass) {
 
 static isig loop_a;
 static const ak_comp_info loop_info = {.label = "loop (signal_test.c)"};
-static void loop_effect(void *ctx) { set(&loop_a, get(&loop_a) + 1); }
+static void loop_effect(void *ctx) {
+	ak_signal_note_write("loop_a", 6);
+	set(&loop_a, get(&loop_a) + 1);
+}
 static void loop_build(void *ctx, ak_owner *root) { ak_effect_new(loop_effect, NULL, AK_EFFECT_USER, &loop_info); }
 
 TEST(infinite_loop_panics) {
@@ -471,7 +474,7 @@ TEST(infinite_loop_panics) {
 	ak_owner *r = ak_root(loop_build, NULL);
 	CHECK_EQ_INT(panics.n, 1);
 	CHECK(strstr(panics.msg, "100 passes") != NULL);
-	CHECK(strstr(panics.msg, "effect loop (signal_test.c)") != NULL);
+	CHECK(strstr(panics.msg, "effect loop (signal_test.c) is still writing loop_a after 100 passes") != NULL);
 	CHECK(!ak_signal_flushing());
 	stop_catching_panics();
 	ak_owner_dispose(r);

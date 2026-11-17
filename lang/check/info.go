@@ -385,9 +385,16 @@ type FuncCtx struct {
 	peeksState  bool
 	peekCalls   []*Function
 	peekGlobals []*Global
-	peeks       int  // the peeks open where it's being checked
-	inferRes    bool // a lambda whose result is inferred from its body
-	threw       bool // lets an error out
+	peeks       int // the peeks open where it's being checked
+
+	// What it reads and writes of state, for the check of an effect's
+	// writes (effects.go): states, lets and props, as declarations. Reads
+	// under peek aren't kept; a closure's reads are its maker's, and a
+	// local fn's writes; calls are kept to follow them through.
+	stateReads, stateWrites []stateUse
+	readCalls, writeCalls   []callUse
+	inferRes                bool // a lambda whose result is inferred from its body
+	threw                   bool // lets an error out
 	// The first await (or for await) and the first thing that lets an
 	// error out (a try, a throw, an untried call): what made an inferred
 	// closure async or throwing, for the errors at its calls.

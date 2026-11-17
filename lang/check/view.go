@@ -351,8 +351,12 @@ func (c *Checker) taskDecl(d *syntax.TaskDecl) {
 func (c *Checker) effectDecl(d *syntax.EffectDecl, name string) {
 	saved := c.ctx
 	var ctx *FuncCtx
+	ec := effectCheck{decl: d}
 	if d.Lparen.IsValid() {
 		c.deps(d.Deps)
+		for _, x := range d.Deps {
+			ec.deps = append(ec.deps, c.info.Ctxs[x])
+		}
 		if len(d.Deps) == 0 {
 			c.errorf(d, "effect() follows nothing: an effect that runs once is effect { … } reading nothing, or a task { }")
 		}
@@ -364,6 +368,8 @@ func (c *Checker) effectDecl(d *syntax.EffectDecl, name string) {
 	ctx.Throws = true
 	c.block(d.Body)
 	c.leave(saved)
+	ec.body = ctx
+	c.effects = append(c.effects, ec)
 }
 
 // deps checks the dependencies of a task, an effect or a state: each a

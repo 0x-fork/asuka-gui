@@ -52,6 +52,11 @@ void ak_signal_read(ak_node *n);
 // panics, but to a signal the memo made in this run (ak_signal_born) that
 // nothing but the memo reads.
 void ak_signal_write(ak_node *n);
+// ak_signal_note_write names the write the caller is about to make (a
+// state's name, len bytes of what), for the effect running, if any: the
+// panic of an effect still dirty after AK_MAX_PASSES says the state it
+// wrote last. what must outlive the effect's run.
+void ak_signal_note_write(const char *what, size_t len);
 // ak_signal_drop unsubscribes everything that read n, before the caller
 // frees it. Reads of a dropped signal track nothing.
 void ak_signal_drop(ak_node *n);
@@ -70,6 +75,9 @@ typedef struct ak_comp_info {
 	// read.
 	void (*unwatched)(void *ctx);
 	const char *label; // names it in panics, e.g. "Counter.total (app.ak:12)"
+	// describe, when set, names it in panics instead of label, into buf
+	// ("Picker's effect at picker.asuka:12"): made only when it's said.
+	void (*describe)(void *ctx, char *buf, size_t n);
 } ak_comp_info;
 
 // ak_memo_new makes a memo owned by the current owner (by the caller

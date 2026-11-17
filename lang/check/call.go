@@ -808,7 +808,7 @@ func (c *Checker) funcCall(e *syntax.CallExpr, f *Function, recv syntax.Expr, re
 
 func (c *Checker) funcCallInfo(e *syntax.CallExpr, f *Function, recv syntax.Expr, recvType Type, want Type) *Call {
 	c.funcSig(f)
-	c.noteCall(f)
+	c.noteCall(f, e)
 	what := f.name
 	params := f.Sig.Params
 	args := c.matchArgs(e, params, what)

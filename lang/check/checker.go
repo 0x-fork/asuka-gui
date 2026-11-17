@@ -64,7 +64,8 @@ type Checker struct {
 	inDefer    int
 	free       map[*TypeParam]bool
 	spawns     []*FuncCtx
-	errT       *TypeName // Error
+	effects    []effectCheck // whose writes finalize checks
+	errT       *TypeName     // Error
 	// Generic calls, for the type parameters read or written as JSON
 	// (checked once every body has said which: jsonGenerics).
 	genericCalls []genericCall
@@ -660,6 +661,9 @@ func (c *Checker) leave(saved *FuncCtx) {
 	}
 	if c.ctx != nil && c.ctx.Parent != nil && c.ctx.peeksState {
 		c.ctx.Parent.peeksState = true
+	}
+	if c.ctx != nil && c.ctx.Parent != nil {
+		c.ctx.Parent.closureUses(c.ctx)
 	}
 	c.ctx = saved
 }
