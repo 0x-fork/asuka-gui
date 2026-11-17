@@ -50,7 +50,7 @@ store Group {
 component Choice(value: string) {
   use group: Group?
 
-  Text(if let g = group { if g.chosen.contains(value) { "✓ {value}" } else { value } } else { value })
+  Text(if let g = group, g.chosen.contains(value) { "✓ {value}" } else { value })
 }
 ```
 

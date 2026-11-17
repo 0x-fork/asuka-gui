@@ -10,18 +10,19 @@ component MessageRow(message: Message) {
   event archive                   // something it reports
   state expanded = false          // its own state
 
-  Row {
-    gap: 12; padding: [12, 16]
-    Avatar(message.from)
-    Column {
-      grow: 1
-      Text(message.subject) { font: .headline; lines: 1 }
-      if !compact { Text(message.preview()) { color: .secondaryLabel } }
+  Menu {
+    longPress: true               // a context menu: a long press, a secondary click
+    actions: [.button(title: "Archive", role: .destructive, run: () => { emit archive })]
+    Row {
+      gap: 12; padding: [12, 16]
+      Avatar(message.from)
+      Column {
+        grow: 1
+        Text(message.subject) { font: .headline; lines: 1 }
+        if !compact { Text(message.preview()) { color: .secondaryLabel } }
+      }
+      accessory
     }
-    accessory
-  }
-  contextMenu {
-    Button("Archive") { role: .destructive; on press { emit archive } }
   }
 }
 ```
@@ -164,7 +165,7 @@ array, a set), `for (k, v) in m`, `for (i, x) in xs.enumerated()`,
 `while` and `while let`, `match`, `return`, `break`, `continue`,
 `throw`, `do { } catch { }`, `defer { }`, `emit`
 ([Control flow](control-flow.md#control-flow)), and `fn` declarations ([Functions and
-closures](#functions-and-closures)).
+closures](functions.md#functions-and-closures)).
 
 ## Two-way bindings
 
@@ -258,7 +259,7 @@ task(query) { results = await search(query) } // and again when query changes
 ```
 
 An effect runs at once and again whenever what it read changes. A task
-is async (see below): it starts when the component appears, restarts
+is async ([Async](async.md#async)): it starts when the component appears, restarts
 when what's in its parentheses changes (cancelling the last run), and
 is cancelled when the component goes. The `app` block takes them too:
 the app's own, for as long as it runs (a refresh loop, a setting that
