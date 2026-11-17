@@ -74,5 +74,11 @@ static void task_cancel(ak_future *f) {
 	// Nobody else can see what it waited for (the task's register and
 	// t->awaiting hold the only references): stop that work too.
 	if (w->h.h.rc <= 2u + w->held) ak_future_cancel(w);
-	ak_ready(ak_vm_task_resume, t);
+	// It unwinds through its defers here, not later from the ready queue:
+	// its owner going cancels it, and what the owner's cleanups let go
+	// after (the component's memos, which a defer may read) is still
+	// there. An error already unwinding (the canceller's) waits for it.
+	void *pending = ak_error_pending() ? ak_error_take() : NULL;
+	ak_vm_task_resume(t);
+	if (pending) ak_throw(pending);
 }

@@ -1,0 +1,42 @@
+// A task cancelled as its component goes runs its defers while what the
+// component computed is still there: a defer reads a store's parameter,
+// a let derived from a prop and the prop, and writes state.
+
+state shown = true
+state left = ""
+
+store Ctx(name: string, tag: string?) {
+  pub let n = 1
+}
+
+component Panel {
+  prop name = "panel"
+  prop tag: string? = none
+  let ctx = Ctx(name: name, tag: if tag == none { "none" } else { tag })
+  let title = "{name}!"
+  task {
+    defer { left = "{ctx.name} {ctx.tag ?? "?"} {title}" }
+    await never()
+  }
+  Text(title)
+}
+
+component Page {
+  Column {
+    Text("left: {left}")
+    Button("Hide") {
+      on press { shown = false }
+    }
+    if shown { Panel { name: "menu" } }
+  }
+}
+
+app { Page() }
+
+test "a cancelled task's defer reads what its component computed" {
+  let app = mount(Page())
+  app.expect("menu!")
+  app.tap("Hide")
+  app.expectNo("menu!")
+  app.expect("left: menu none menu!")
+}

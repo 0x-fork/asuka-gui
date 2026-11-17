@@ -22,8 +22,8 @@ test "race: never loses" {
 
 // Output:
 // got 1
-// after
 // producer stopped
+// after
 // ok a stream that ends with its reader
 // raced
 // ok race: never loses

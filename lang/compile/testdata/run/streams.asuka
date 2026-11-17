@@ -72,7 +72,7 @@ test "an error leaving the loop stops the producer" {
 // producer stopped
 // after
 // ok break stops the producer
-// left with CountError.tooFar
 // producer stopped
+// left with CountError.tooFar
 // after the error
 // ok an error leaving the loop stops the producer
