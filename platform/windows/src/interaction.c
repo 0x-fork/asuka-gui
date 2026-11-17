@@ -115,10 +115,16 @@ static void hover_once(void) {
 	node **was = hovered;
 	uint32_t nwas = nhovered;
 	hovered = now, nhovered = nnow;
+	// Reported from a copy: a report runs the core, whose flush may
+	// destroy views, taken out of hovered as they go (their nodes stay
+	// until the message returns, dead: wh_emit skips them).
+	node **seen = wh_alloc((nnow ? nnow : 1) * sizeof *seen);
+	memcpy(seen, now, nnow * sizeof *seen);
 	for (uint32_t i = 0; i < nwas; i++)
-		if (!among(now, nnow, was[i])) wh_emit_bool(was[i], AK_EVENT_HOVER, false);
+		if (!among(seen, nnow, was[i])) wh_emit_bool(was[i], AK_EVENT_HOVER, false);
 	for (uint32_t i = nnow; i-- > 0;)
-		if (!among(was, nwas, now[i])) wh_emit_bool(now[i], AK_EVENT_HOVER, true);
+		if (!among(was, nwas, seen[i])) wh_emit_bool(seen[i], AK_EVENT_HOVER, true);
+	free(seen);
 	free(was);
 }
 
@@ -324,10 +330,12 @@ static uint32_t virtual_files(IDataObject *d, vfile **out) {
 	}
 	uint32_t n;
 	memcpy(&n, b, 4);
+	// Another app's count: no more than its descriptors there are.
 	const size_t size = sizeof(FILEDESCRIPTORW);
+	if (n > (len - 4) / size) n = (uint32_t)((len - 4) / size);
 	vfile *v = wh_alloc((n ? n : 1) * sizeof *v);
 	uint32_t k = 0;
-	for (uint32_t i = 0; i < n && 4 + (i + 1) * size <= len; i++) {
+	for (uint32_t i = 0; i < n; i++) {
 		FILEDESCRIPTORW fd;
 		memcpy(&fd, b + 4 + i * size, size);
 		fd.cFileName[MAX_PATH - 1] = 0;
@@ -835,7 +843,8 @@ static void set_target(drop_target *t, node *n, POINT pt) {
 			t->target = NULL;
 			emit_over(old, AK_GESTURE_STATE_CANCELLED, t->at);
 		}
-		if (!n || wh_node(n->id) != n || !n->hwnd) return;
+		// Reporting the view it left ran the core: n may be gone.
+		if (!n || n->dead || !n->hwnd) return;
 		t->target = n;
 		point_in(n, pt, t->at);
 		emit_over(n, AK_GESTURE_STATE_BEGAN, t->at);
@@ -1007,12 +1016,8 @@ void wh_forget_interaction(node *n) {
 	if (node_listening(n, AK_EVENT_HOVER)) hover_views--;
 	for (uint32_t i = 0; i < nhovered; i++)
 		if (hovered[i] == n) {
-			// A new list: hover_once may be going through the old one.
-			node **h = wh_alloc((nhovered ? nhovered : 1) * sizeof *h);
-			memcpy(h, hovered, i * sizeof *h);
-			memcpy(h + i, hovered + i + 1, (nhovered - i - 1) * sizeof *h);
-			free(hovered);
-			hovered = h;
+			// hover_once reports from its own copies.
+			memmove(hovered + i, hovered + i + 1, (nhovered - i - 1) * sizeof *hovered);
 			nhovered--;
 			break;
 		}
@@ -1494,16 +1499,16 @@ static bool drop_at(node *on, IDataObject *data, DWORD allowed, DWORD *effect) {
 	return true;
 }
 
-static node *scripted_target;
+static uint32_t scripted_target;  // the view a scripted drag drops on
 
 // scripted_drag_drop is the drag a "drag" step runs: dropped on its
 // target, as OLE would run it over the app's own drop target.
 static HRESULT scripted_drag_drop(IDataObject *data, DWORD allowed, DWORD *effect) {
 	do_drag_drop = real_drag_drop;
 	*effect = DROPEFFECT_NONE;
-	node *t = scripted_target;
-	scripted_target = NULL;
-	if (!t || wh_node(t->id) != t || !t->hwnd || !drop_at(t, data, allowed, effect)) return DRAGDROP_S_CANCEL;
+	node *t = wh_node(scripted_target);
+	scripted_target = 0;
+	if (!t || !t->hwnd || !drop_at(t, data, allowed, effect)) return DRAGDROP_S_CANCEL;
 	return *effect != DROPEFFECT_NONE ? DRAGDROP_S_DROP : DRAGDROP_S_CANCEL;
 }
 
@@ -1553,7 +1558,7 @@ bool wh_interaction_step(const char *verb, const wchar_t *arg) {
 		node *src = n;
 		while (src && !wh_draggable(src)) src = src->parent;
 		if (src && src->hwnd) {
-			scripted_target = t;
+			scripted_target = t ? t->id : 0;
 			do_drag_drop = scripted_drag_drop;
 			RECT c;
 			GetClientRect(src->hwnd, &c);
