@@ -237,6 +237,9 @@ TEST(shape_dash) {
 
 // A compiled shader's bytes (internal/shadercode's Encode): the programs,
 // 6 lanes (Time's, Tint's 4, Count's), the Metal offsets, the uniforms.
+// Count's lane and lanes: count_at's.
+static uint32_t count_at[2] = {5, 1};
+
 static ak_bytes *shader_code(void) {
 	ak_buf b = {0};
 	ak_buf_wstr(&b, AK_STR("package main"));
@@ -249,7 +252,7 @@ static ak_bytes *shader_code(void) {
 	ak_buf_u32(&b, 3);
 	ak_buf_wstr(&b, AK_STR("Time")), ak_buf_u32(&b, 0), ak_buf_u32(&b, 1), ak_buf_u8(&b, 0);
 	ak_buf_wstr(&b, AK_STR("Tint")), ak_buf_u32(&b, 1), ak_buf_u32(&b, 4), ak_buf_u8(&b, 0);
-	ak_buf_wstr(&b, AK_STR("Count")), ak_buf_u32(&b, 5), ak_buf_u32(&b, 1), ak_buf_u8(&b, 1);
+	ak_buf_wstr(&b, AK_STR("Count")), ak_buf_u32(&b, count_at[0]), ak_buf_u32(&b, count_at[1]), ak_buf_u8(&b, 1);
 	ak_bytes *code = ak_bytes_new(b.data, b.len);
 	ak_buf_free(&b);
 	return code;
@@ -324,6 +327,22 @@ TEST(shader) {
 	CHECK_EQ_INT(sets(a), 1);
 	done(a);
 	ak_release(tint);
+}
+
+// A uniform whose lanes are beyond the shader's isn't one, however its
+// lane and lanes add up (here to 2^32, 0 in 32 bits).
+TEST(shader_uniform_beyond_its_lanes) {
+	count_at[0] = 1000, count_at[1] = 0xFFFFFC18;
+	tint = cell_int((int64_t)ak_rgba(0x38, 0xbd, 0xf8, 0xff));
+	ak_uitest *a = mount(shader_app, NULL);
+	ak_fake_view *s = nth(a, AK_KIND_SHADER, 0);
+	REQUIRE(s);
+	ak_span lanes = bytes_of(s, AK_PROP_SHADER_UNIFORMS);
+	CHECK_EQ_INT(lanes.len, 24);
+	CHECK_EQ_INT(lane(lanes, 5), 0);
+	done(a);
+	ak_release(tint);
+	count_at[0] = 5, count_at[1] = 1;
 }
 
 T_MAIN()

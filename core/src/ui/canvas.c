@@ -604,7 +604,8 @@ static void shader_parse(shader_state *s, ak_bytes *code) {
 		u.lane = ak_read_u32(&r);
 		u.lanes = ak_read_u32(&r);
 		u.kind = ak_read_u8(&r);
-		if (!r.err && u.lane + u.lanes <= lanes) ak_vec_push(&s->uniforms, u);
+		// Its lanes within the shader's (a sum would wrap in 32 bits).
+		if (!r.err && u.lane <= lanes && u.lanes <= lanes - u.lane) ak_vec_push(&s->uniforms, u);
 	}
 	if (!r.err) s->lanes = lanes;
 }
