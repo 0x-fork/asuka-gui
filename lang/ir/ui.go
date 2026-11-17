@@ -56,6 +56,9 @@ func (b *fb) lowerFunc(f *check.Function, recv check.Type) {
 	if f.Sig.Throws {
 		b.f.Flags |= bc.FThrows
 	}
+	if f.Sig.Mut {
+		b.f.Flags |= bc.FMut
+	}
 	d := f.Decl
 	if d.Native.IsValid() {
 		b.nativeBody(f, params)

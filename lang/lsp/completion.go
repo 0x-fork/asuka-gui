@@ -614,7 +614,7 @@ func atItemStart(before string) bool {
 }
 
 var (
-	topKeywords       = []string{"component", "screen", "store", "struct", "enum", "interface", "fn", "async", "type", "style", "state", "let", "app", "test", "import", "pub", "native", "extern"}
+	topKeywords       = []string{"component", "screen", "store", "struct", "enum", "interface", "fn", "async", "type", "style", "state", "let", "app", "test", "import", "pub", "native", "extern", "extend"}
 	componentKeywords = []string{"prop", "event", "state", "let", "use", "provide", "fn", "async", "task", "effect", "pub"}
 	viewKeywords      = []string{"if", "for", "match"}
 	stmtKeywords      = []string{"let", "var", "if", "for", "while", "match", "return", "throw", "break", "continue", "defer", "do", "emit", "try", "await"}
@@ -638,7 +638,7 @@ func (c *completer) general(path []syntax.Node, pos syntax.Pos, before string) {
 	}
 	if kind == typeBody {
 		if item {
-			c.keywords([]string{"fn", "async", "let", "pub"})
+			c.keywords([]string{"fn", "mut", "async", "let", "pub"})
 		}
 		return
 	}

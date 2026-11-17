@@ -278,7 +278,10 @@ func (c *Checker) staticFunc(t *TypeName, d *syntax.FuncDecl) {
 // signature resolves a function's parameters and result in the current
 // scope (with the function's type parameters declared).
 func (c *Checker) signature(d *syntax.FuncDecl, f *Function) *Signature {
-	s := &Signature{Async: d.Async.IsValid(), Throws: d.Throws.IsValid(), Result: Void}
+	s := &Signature{Async: d.Async.IsValid(), Throws: d.Throws.IsValid(), Result: Void, Mut: d.Mut.IsValid()}
+	if s.Mut && s.Async {
+		c.errorf(d.Name, "a mut fn can't be async: change a store's state from an async fn instead")
+	}
 	if d.Params != nil {
 		seen := map[string]bool{}
 		for _, p := range d.Params.List {
@@ -310,12 +313,34 @@ func (c *Checker) funcSig(f *Function) {
 		c.scope = NewScope(c.declScope(f.Decl))
 	}
 	f.TypeParams = c.typeParams(f.Decl.TypeParams)
+	if f.Decl.Mut.IsValid() {
+		c.mutDecl(f)
+	}
 	if f.Decl.Extern.IsValid() {
 		c.externSig(f)
 	} else {
 		f.Sig = c.signature(f.Decl, f)
 	}
 	c.scope = savedScope
+}
+
+// mutDecl reports a mut fn where nothing is changed through it: only a
+// struct's, an enum's or an extension's method changes the value it's
+// called on.
+func (c *Checker) mutDecl(f *Function) {
+	d := f.Decl
+	switch {
+	case f.Static != nil:
+		c.errorf(d.Name, "a static fn has no value to change: drop mut")
+	case f.Recv != nil && f.Recv.Kind == StoreType:
+		c.errorf(d.Name, "a store's fns change its state as they are: drop mut")
+	case f.Recv != nil && f.Recv.Kind == ComponentType:
+		c.errorf(d.Name, "a component's fns change its state as they are: drop mut")
+	case f.Recv == nil:
+		c.errorf(d.Name, "mut fn is a method that changes its value: declare it in a struct, an enum or an extend")
+	case d.Native.IsValid() || d.Extern.IsValid():
+		c.errorf(d.Name, "a native fn can't be mut")
+	}
 }
 
 // globalType gives a package-level value, or a type's constant, its type.
@@ -703,6 +728,9 @@ func (c *Checker) implementsMembers(t Type, iface *Named) string {
 			}
 			return "its " + m.Name + " is " + typeString(got) + ", not " + typeString(want)
 		}
+		if f.Sig.Mut && !m.Sig.Mut {
+			return mutNotAsked(m.Name)
+		}
 	}
 	for _, fl := range it.Iface.Fields {
 		want := is.Apply(fl.Type)
@@ -873,4 +901,10 @@ func (c *Checker) structCycles(p *Package) {
 			c.errorPos(f.Pos, "struct %s holds itself (%s): a value can't hold a whole copy of itself, so none can be made; make a field on the way optional (%s: %s?), or an array", t.name, strings.Join(path, " → "), f.Name, typeString(f.Type))
 		}
 	}
+}
+
+// mutNotAsked says why a mut fn isn't an interface's method that isn't
+// one: the interface's is called on any value, not only on a place.
+func mutNotAsked(name string) string {
+	return "its " + name + " is a mut fn, and the interface's isn't (an interface's fn is called on any value, a mut fn on a var or state): declare the interface's mut fn " + name
 }

@@ -854,6 +854,14 @@ func (c *Checker) funcCallInfo(e *syntax.CallExpr, f *Function, recv syntax.Expr
 	}
 	call.Result = s.Apply(f.Sig.Result)
 	c.info.Calls[e] = call
+	if f.Sig.Mut {
+		call.Mut = true
+		if recv == nil {
+			c.selfWrite(e.Fun, "call "+f.name+" on", "self")
+		} else {
+			c.mutReceiver(recv, f.name)
+		}
+	}
 	c.callEffects(e, what, f.Sig.Async, f.Sig.Throws)
 	if len(f.TypeParams) > 0 {
 		c.genericCalls = append(c.genericCalls, genericCall{e: e, f: f, args: call.TypeArgs, encl: c.enclosingFunc(), own: c.enclosingParams()})
@@ -966,6 +974,9 @@ func (c *Checker) ifaceCovers(method func(string) *IfaceMethod, field func(strin
 		}
 		if want := s.Apply(m.Sig.Type()); !Identical(got.Sig.Type(), want) {
 			return "its " + m.Name + " is " + typeString(got.Sig.Type()) + ", not " + typeString(want)
+		}
+		if got.Sig.Mut && !m.Sig.Mut {
+			return mutNotAsked(m.Name)
 		}
 	}
 	for _, fl := range iface.Obj.Iface.Fields {
@@ -1247,7 +1258,10 @@ func (c *Checker) ifaceMethodCall(e *syntax.CallExpr, fn *syntax.MemberExpr, xt 
 			c.assign(a, m.Sig.Params[i].Type, "argument "+m.Sig.Params[i].Name+" of "+name)
 		}
 	}
-	c.info.Calls[e] = &Call{Kind: kind, Recv: fn.X, RecvType: xt, Args: args, Params: m.Sig.Params, Result: m.Sig.Result, Bound: map[string]Type{"name": nil}, Index: index, Name: name}
+	c.info.Calls[e] = &Call{Kind: kind, Recv: fn.X, RecvType: xt, Args: args, Params: m.Sig.Params, Result: m.Sig.Result, Bound: map[string]Type{"name": nil}, Index: index, Name: name, Mut: m.Sig.Mut}
+	if m.Sig.Mut {
+		c.mutReceiver(fn.X, name)
+	}
 	c.info.Selections[fn] = &Selection{Kind: SelMethod, Name: name, Recv: xt}
 	c.callEffects(e, name, m.Sig.Async, m.Sig.Throws)
 	if c.ctx != nil {
@@ -1445,6 +1459,23 @@ func (c *Checker) typeDefaults(args []syntax.Expr, params []*Param) {
 			c.info.Types[params[i].Default] = params[i].Type
 		}
 	}
+}
+
+// mutReceiver checks that x, the receiver of mut fn name's call, is a
+// place: a var, state, or a field, an element or a map's entry of one.
+func (c *Checker) mutReceiver(x syntax.Expr, name string) {
+	what := "call " + name + " on"
+	if c.ctx != nil {
+		switch c.ctx.Kind {
+		case CtxBinding, CtxGlobal, CtxBuilder, CtxComponent, CtxStore, CtxApp:
+			c.errorf(x, "can't %s %s here: what the UI follows is computed, not changed; change state in a handler (on press { … }), a fn, a task or an effect", what, exprName(x))
+			return
+		}
+	}
+	savedWhole, savedMut := c.lvalueWhole, c.mutName
+	c.lvalueWhole, c.mutName = nil, name
+	c.checkLvalue(x, what)
+	c.lvalueWhole, c.mutName = savedWhole, savedMut
 }
 
 // mutates checks that x, which a method changes, can be changed.

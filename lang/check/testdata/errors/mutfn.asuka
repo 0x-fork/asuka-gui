@@ -1,0 +1,84 @@
+// mut fn: a method that changes its value, called on a place.
+
+struct Counter {
+  n: int = 0
+
+  fn inc() { n += 1 } // ERROR "inc is a fn: declare it mut fn to change the value"
+  fn reset() { self = Counter() } // ERROR "reset is a fn: declare it mut fn to change the value"
+  fn twice() { bump() } // ERROR "twice is a fn: declare it mut fn to change the value"
+  fn again() { self.bump() } // ERROR "again is a fn: declare it mut fn to change the value"
+  mut fn bump() { n += 1 }
+  mut fn later() -> fn() {
+    return () => { n += 1 } // ERROR "can't assign to n in a closure: it has self's value as it was made; change it in later's body"
+  }
+  async mut fn wait() {} // ERROR "a mut fn can't be async: change a store's state from an async fn instead"
+  static mut fn make() -> Counter = Counter() // ERROR "a static fn has no value to change: drop mut"
+}
+
+struct List {
+  xs: [int] = []
+  fn add(x: int) { xs.push(x) } // ERROR "add is a fn: declare it mut fn to change the value"
+}
+
+mut fn free() {} // ERROR "mut fn is a method that changes its value: declare it in a struct, an enum or an extend"
+
+store S {
+  state c = Counter()
+  let d = Counter()
+  mut fn go() {} // ERROR "a store's fns change its state as they are: drop mut"
+  fn ok() { c.bump() }
+  fn bad() { d.bump() } // ERROR "bump changes its value: call it on a var or state \(d is a let\)"
+}
+
+fn make() -> Counter = Counter()
+
+fn calls(p: Counter) {
+  let c = Counter()
+  c.bump() // ERROR "bump changes its value: call it on a var or state \(c is a let\)"
+  p.bump() // ERROR "bump changes its value: call it on a var or state \(p is a parameter\)"
+  make().bump() // ERROR "bump changes its value: call it on a var or state \(make\(…\) gives a value, not a place\)"
+  for x in [Counter()] {
+    x.bump() // ERROR "bump changes its value: call it on a var or state \(x is a copy of what it matched\)"
+  }
+  var v = Counter()
+  v.bump()
+  var vs = [Counter()]
+  vs[0].bump()
+  fn local() {
+    mut fn inner() {} // ERROR "mut fn is a method that changes its value"
+  }
+}
+
+component View1(c: Counter) {
+  prop d: Counter = Counter()
+  fn touch() {
+    c.bump() // ERROR "bump changes its value: call it on a var or state \(c is a parameter\)"
+    d.bump() // ERROR "bump changes its value: call it on a var or state \(d is a prop\)"
+  }
+  Text("")
+}
+
+interface Steps {
+  fn step()
+  mut fn advance()
+}
+
+struct Walker {
+  mut fn step() {}
+  fn advance() {}
+}
+
+struct Plain {
+  fn step() {}
+  mut fn advance() {}
+}
+
+fn steps(s: Steps) {
+  s.advance() // ERROR "advance changes its value: call it on a var or state \(s is a parameter\)"
+  var t = s
+  t.advance()
+  s.step()
+}
+
+let w: Steps = Walker() // ERROR "its step is a mut fn, and the interface's isn't"
+let p: Steps = Plain()

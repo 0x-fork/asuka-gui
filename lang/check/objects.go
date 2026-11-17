@@ -230,11 +230,14 @@ type Signature struct {
 	Result Type
 	Async  bool
 	Throws bool
+	// Mut: a mut fn, which changes the value it's called on (its
+	// receiver is a place: lang/LOWERING.md's "Methods that change").
+	Mut bool
 }
 
 // applySig is sig with s's type parameters replaced.
 func (s Subst) applySig(sig *Signature) *Signature {
-	out := &Signature{Result: s.Apply(sig.Result), Async: sig.Async, Throws: sig.Throws}
+	out := &Signature{Result: s.Apply(sig.Result), Async: sig.Async, Throws: sig.Throws, Mut: sig.Mut}
 	for _, p := range sig.Params {
 		out.Params = append(out.Params, &Param{Name: p.Name, Type: s.Apply(p.Type), Default: p.Default})
 	}

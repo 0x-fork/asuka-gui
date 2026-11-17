@@ -315,20 +315,21 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 		switch o := c.info.Uses[x].(type) {
 		case *Var:
 			if o.Kind != LocalVar || !o.Mutable {
-				hint := "it's a let: make it a var"
+				hint, short := "it's a let: make it a var", x.Name+" is a let"
 				if o.Bound && o.Kind == LocalVar {
 					hint = "it's a pattern's name, a copy of what it matched (a for's element, an if let's value): copy it into a var, or change what it came from"
+					short = x.Name + " is a copy of what it matched"
 				}
 				if o.Kind == RowItem {
-					hint = "it's a row's item: change the state it comes from"
+					hint, short = "it's a row's item: change the state it comes from", x.Name+" is a row's item"
 				} else if o.Kind == SelfVar {
 					hint = "self is a value"
 				} else if o.Kind == LocalFnVar {
-					hint = "it's a fn: a var holds a closure that changes"
+					hint, short = "it's a fn: a var holds a closure that changes", x.Name+" is a fn"
 				} else if o.Ctx != nil && o.Ctx.Kind == CtxLambda && contains(o.Ctx.Params, o) || isParam(o) {
-					hint = "parameters are values: copy it into a var"
+					hint, short = "parameters are values: copy it into a var", x.Name+" is a parameter"
 				}
-				c.errorf(x, "can't %s %s: %s", what, x.Name, hint)
+				c.notPlace(x, short, "can't %s %s: %s", what, x.Name, hint)
 				return
 			}
 			o.Assigned = true
@@ -347,30 +348,30 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 			case PropMember:
 				switch {
 				case o.ChangeEvent() == nil:
-					c.errorf(x, "can't %s %s: it's the caller's (a prop); declare event %sChange(%s: %s) to assign it (a caller that binds it gets the change), or keep state of your own", what, x.Name, x.Name, x.Name, typeString(o.Type))
+					c.notPlace(x, x.Name+" is a prop", "can't %s %s: it's the caller's (a prop); declare event %sChange(%s: %s) to assign it (a caller that binds it gets the change), or keep state of your own", what, x.Name, x.Name, x.Name, typeString(o.Type))
 				case c.lvalueWhole != syntax.Expr(x):
-					c.errorf(x, "can't %s %s: a prop changes as a whole, which %sChange reports; assign it a new value (%s = …)", what, x.Name, x.Name, x.Name)
+					c.notPlace(x, x.Name+" is a prop", "can't %s %s: a prop changes as a whole, which %sChange reports; assign it a new value (%s = …)", what, x.Name, x.Name, x.Name)
 				case o.IsSlot():
 					c.errorf(x, "can't %s %s: it's a slot, the caller's views", what, x.Name)
 				default:
 					o.Assigned = true
 				}
 			case ParamMember:
-				c.errorf(x, "can't %s %s: it's the caller's (a parameter); keep state of your own, or emit an event", what, x.Name)
+				c.notPlace(x, x.Name+" is a parameter", "can't %s %s: it's the caller's (a parameter); keep state of your own, or emit an event", what, x.Name)
 			case LetMember:
-				c.errorf(x, "can't %s %s: it's derived (a let); change what it reads", what, x.Name)
+				c.notPlace(x, x.Name+" is a let", "can't %s %s: it's derived (a let); change what it reads", what, x.Name)
 			default:
-				c.errorf(x, "can't %s %s", what, x.Name)
+				c.notPlace(x, x.Name+" isn't state", "can't %s %s", what, x.Name)
 			}
 		case *Global:
 			if o.Kind != StateGlobal {
-				c.errorf(x, "can't %s %s: it's a let; a value that changes is state", what, x.Name)
+				c.notPlace(x, x.Name+" is a let", "can't %s %s: it's a let; a value that changes is state", what, x.Name)
 			}
 		case *selfMember:
-			c.errorf(x, "can't %s %s: a struct's methods can't change it (it's a value); return a new one", what, x.Name)
+			c.selfWrite(x, what, x.Name)
 		case nil:
 		default:
-			c.errorf(x, "can't %s %s", what, x.Name)
+			c.notPlace(x, x.Name+" isn't a var", "can't %s %s", what, x.Name)
 		}
 	case *syntax.MemberExpr:
 		sel := c.info.Selections[x]
@@ -386,14 +387,14 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 			c.checkLvalue(x.X, what)
 		case SelStoreMember:
 			if sel.Member.Kind != StateMember {
-				c.errorf(x, "can't %s %s: it isn't state", what, x.Name.Name)
+				c.notPlace(x, exprName(x)+" isn't state", "can't %s %s: it isn't state", what, x.Name.Name)
 			}
 		case SelPkg:
 			if g, ok := sel.Obj.(*Global); !ok || g.Kind != StateGlobal {
-				c.errorf(x, "can't %s %s: only a package's state changes", what, exprName(x))
+				c.notPlace(x, exprName(x)+" isn't state", "can't %s %s: only a package's state changes", what, exprName(x))
 			}
 		default:
-			c.errorf(x, "can't %s %s", what, exprName(x))
+			c.notPlace(x, exprName(x)+" isn't a var", "can't %s %s", what, exprName(x))
 		}
 	case *syntax.IndexExpr:
 		if c.info.Types[x.X] == Bytes {
@@ -402,9 +403,46 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 		}
 		c.checkLvalue(x.X, what)
 	case *syntax.SelfExpr:
-		c.errorf(x, "can't %s self: a struct's methods can't change it (it's a value); return a new one", what)
+		c.selfWrite(x, what, "self")
 	default:
-		c.errorf(x, "can't %s this: only vars, state, and their fields and elements", what)
+		short := "this isn't a var"
+		if call, ok := unparen(x).(*syntax.CallExpr); ok {
+			short = exprName(call.Fun) + "(…) gives a value, not a place"
+		}
+		c.notPlace(x, short, "can't %s this: only vars, state, and their fields and elements", what)
+	}
+}
+
+// notPlace reports x, which a statement changes, as what it can't
+// change: for a mut fn's call (c.mutName), the call's error, with short
+// saying why ("cart is a let"); for the rest, format's.
+func (c *Checker) notPlace(x syntax.Node, short, format string, args ...any) {
+	if c.mutName != "" {
+		c.errorf(x, "%s changes its value: call it on a var or state (%s)", c.mutName, short)
+		return
+	}
+	c.errorf(x, format, args...)
+}
+
+// selfWrite checks a change of self, or of its field name, in a method:
+// a mut fn's body may (its closures may not: they have self's value as
+// it was); a fn's may not.
+func (c *Checker) selfWrite(x syntax.Node, what, name string) {
+	closure := false
+	m := c.ctx
+	for m != nil && m.Kind != CtxMethod {
+		if m.IsClosure() {
+			closure = true
+		}
+		m = m.Parent
+	}
+	switch {
+	case m == nil || m.Func == nil:
+		c.errorf(x, "can't %s %s: it's a value", what, name)
+	case !m.Func.Sig.Mut:
+		c.errorf(x, "%s is a fn: declare it mut fn to change the value", m.Func.name)
+	case closure:
+		c.errorf(x, "can't %s %s in a closure: it has self's value as it was made; change it in %s's body", what, name, m.Func.name)
 	}
 }
 
@@ -1519,6 +1557,9 @@ func (c *Checker) localFns(items []syntax.Item) {
 			c.errorf(d.Name, "a fn in a block isn't generic: declare %s at the top of the file", d.Name.Name)
 		case d.Body == nil && d.Value == nil:
 			c.errorf(d.Name, "fn %s has no body", d.Name.Name)
+		}
+		if d.Mut.IsValid() {
+			c.errorf(d.Name, "mut fn is a method that changes its value: declare it in a struct, an enum or an extend")
 		}
 		c.openScope()
 		c.invalidTypeParams(d.TypeParams)

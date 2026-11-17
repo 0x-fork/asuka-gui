@@ -1,0 +1,95 @@
+// Run with the runner's -leaks: a mut fn's receiver moves into the call
+// and back, on a var, a field, an element and a store's state, when the
+// call returns and when it throws, and nothing it made outlives the test.
+
+struct Item {
+  name: string
+  qty: int = 1
+
+  mut fn bump() { qty += 1 }
+  mut fn rename(to: string) { name = to }
+}
+
+enum Oops: Error { tooMany }
+
+struct Cart {
+  items: [Item] = []
+
+  mut fn add(i: Item) {
+    if let n = items.index(x => x.name == i.name) { items[n].bump() } else { items.push(i) }
+  }
+  mut fn fill(n: int) throws {
+    for k in 0..<n {
+      add(Item(name: "item {k}"))
+      if items.count() > 2 { throw Oops.tooMany }
+    }
+  }
+  mut fn first() -> Item? = items.first()
+  mut fn me() -> Cart {
+    items.push(Item(name: "me {items.count()}"))
+    return self
+  }
+  mut fn later() -> fn() -> int {
+    let f = () => items.count()
+    items.push(Item(name: "later"))
+    return f
+  }
+}
+
+interface Bumps {
+  mut fn bump()
+}
+
+store Shop {
+  state cart = Cart()
+  state carts: [Cart] = []
+
+  pub fn buy(name: string) {
+    cart.add(Item(name: name))
+    cart.items[0].rename(to: "{name}!")
+    if carts.isEmpty() { carts.push(Cart()) }
+    carts[0].add(Item(name: name))
+  }
+  pub fn fill() {
+    do { try cart.fill(n: 5) } catch {}
+  }
+}
+
+test "a var" {
+  var c = Cart()
+  for k in 0..<4 { c.add(Item(name: "n{k % 2}")) }
+  c.items[1].rename(to: "x {c.items.count()}")
+  let me = c.me()
+  let f = c.later()
+  print("{c.items.count()} {me.items.count()} {f()} {c.first()?.qty ?? 0}")
+}
+
+test "throws" {
+  var c = Cart()
+  do { try c.fill(n: 5) } catch { print("caught at {c.items.count()}") }
+}
+
+test "a store's state" {
+  let s = Shop()
+  s.buy("a {1}")
+  s.buy("a {1}")
+  s.fill()
+  print("{s.cart.items.count()} {s.carts[0].items[0].qty}")
+}
+
+test "an interface's value" {
+  var b: Bumps = Item(name: "i {2}")
+  b.bump()
+  b.bump()
+  print("bumped")
+}
+
+// Output:
+// 4 3 3 2
+// ok a var
+// caught at 3
+// ok throws
+// 3 2
+// ok a store's state
+// bumped
+// ok an interface's value

@@ -662,6 +662,15 @@ func (b *fb) prepare(x syntax.Expr) *lvalue {
 		case *check.Global:
 			return &lvalue{x: x, kind: lvCell, cell: b.globalCell(o), g: o}
 		}
+		if lv := b.selfPlace(x); lv != nil {
+			return lv
+		}
+	case *syntax.SelfExpr:
+		if _, store := b.l.info.StoreSelf[x]; !store {
+			if lv := b.selfPlace(x); lv != nil {
+				return lv
+			}
+		}
 	case *syntax.MemberExpr:
 		sel := b.l.info.Selections[x]
 		if sel != nil && sel.Kind == check.SelPkg {

@@ -29,6 +29,9 @@ func (b *fb) call1(e *syntax.CallExpr, dst int, discard bool) int {
 	if call.Optional {
 		return b.optionalCall(e, call, dst)
 	}
+	if call.Mut {
+		return b.mutCall(e, call, dst, discard)
+	}
 	switch call.Kind {
 	case check.CallFunc, check.CallMethod:
 		return b.funcCall(e, call, dst, discard)

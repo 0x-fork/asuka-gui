@@ -83,11 +83,14 @@ func resultString(t check.Type, async, throws bool) string {
 }
 
 // funcSig is a function's signature: async fn name<T>(params) throws ->
-// Result.
+// Result, or mut fn for a method that changes its value.
 func funcSig(f *check.Function) string {
 	var b strings.Builder
 	if f.Sig != nil && f.Sig.Async || f.Decl != nil && f.Decl.Async.IsValid() {
 		b.WriteString("async ")
+	}
+	if f.Sig != nil && f.Sig.Mut || f.Decl != nil && f.Decl.Mut.IsValid() {
+		b.WriteString("mut ")
 	}
 	b.WriteString("fn ")
 	if f.Recv != nil {
@@ -300,6 +303,9 @@ func caseString(k *check.Case) string {
 func imethSig(m *check.IfaceMethod) string {
 	s := "fn " + m.Name
 	if m.Sig != nil {
+		if m.Sig.Mut {
+			s = "mut " + s
+		}
 		if m.Sig.Async {
 			s = "async " + s
 		}
