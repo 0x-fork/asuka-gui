@@ -139,19 +139,26 @@ void asuka_win_webview2(void (*done)(void *ctx, void *env, HRESULT hr), void *ct
 	web.started = true;
 	// Videos play without a click, as a WebView's autoPlay asks.
 	SetEnvironmentVariableW(L"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", L"--autoplay-policy=no-user-gesture-required");
-	wchar_t local[MAX_PATH];
-	if (!GetEnvironmentVariableW(L"LOCALAPPDATA", local, MAX_PATH)) wcscpy(local, L".");
+	// %LOCALAPPDATA%\<app>\WebView2, its length what the variable's and
+	// the name's are (either may be longer than MAX_PATH).
+	DWORD ln = GetEnvironmentVariableW(L"LOCALAPPDATA", NULL, 0);
+	wchar_t *local = ln ? malloc((size_t)ln * sizeof(wchar_t)) : NULL;
+	if (local && GetEnvironmentVariableW(L"LOCALAPPDATA", local, ln) != ln - 1) free(local), local = NULL;
 	wchar_t *app = asuka_wide(asuka_desktop_app_name());
-	wchar_t data[2 * MAX_PATH];
-	swprintf(data, 2 * MAX_PATH, L"%ls\\%ls", local, app);
+	const wchar_t *root = local ? local : L".";
+	size_t dn = wcslen(root) + 1 + wcslen(app) + sizeof "\\WebView2";
+	wchar_t *data = malloc(dn * sizeof(wchar_t));
+	swprintf(data, dn, L"%ls\\%ls", root, app);
 	CreateDirectoryW(data, NULL);
 	wcscat(data, L"\\WebView2");
 	CreateDirectoryW(data, NULL);
 	free(app);
+	free(local);
 	void *h = asuka_win_handler(made, NULL, NULL);
 	HRESULT hr;
 	if (!create(data, h, &hr) && !web.made) made(NULL, (void *)(INT_PTR)hr, NULL);
 	asuka_com_release(h);
+	free(data);
 }
 
 struct asuka_web_page {
