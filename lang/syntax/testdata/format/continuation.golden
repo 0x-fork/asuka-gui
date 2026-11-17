@@ -1,0 +1,30 @@
+// Lines that start with .name or a binary operator continue the line
+// before; the printer keeps those breaks.
+fn names(users: [User]) -> [string] {
+  return users
+    .filter(u => u.active) // the active ones
+    .map(u => u.name)
+}
+
+fn total(a: int?, b: int?) -> int {
+  let n = a
+    ?? b
+    ?? 0
+  let m = n *
+    2
+  let ok = n > 0
+    && m > 0 // both
+    || false
+  return items.count()
+    + n
+}
+
+fn chain() {
+  let t = text.trimmed()
+    .lowercased()
+    ?.first
+  let r = 0
+    ..<10
+  sheet
+    .present(x)
+}

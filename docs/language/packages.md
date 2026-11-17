@@ -24,7 +24,33 @@ other package can be named under `std/` or `platform/`.
 
 Statements and declarations end at the end of a line; `;` puts several
 on one. A line that ends with an operator, a comma or an opening bracket
-goes on to the next.
+goes on to the next. So does a line followed by one that starts with
+`.name` or `?.name`, or with a binary operator that can't start an
+expression (any but `-`, which can: `-x`), so a chain may take a line
+a step:
+
+```asuka
+let names = users
+  .filter(u => u.active)
+  .map(u => u.name)
+let label = user?.nickname
+  ?? user?.name
+  ?? "Guest"
+```
+
+A line that starts with `.name` is something of its own in two places.
+In a `match`, it's the next arm (`.ready(v) => …`). And alone on the
+last line of a block whose last expression is its value (an `if` or a
+`match` used as a value, a closure's block), it's that value:
+
+```asuka
+let tint: Color = if urgent {
+  log("urgent")
+  .red  // the if's value
+} else { .gray }
+```
+
+There, two `.name` lines or more are still a chain.
 
 Comments are `// …` and `/* … */`. A `///` comment documents the
 declaration under it, and editors show it.

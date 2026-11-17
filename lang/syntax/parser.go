@@ -133,6 +133,16 @@ package syntax
 //      case pattern whose path is P: the checker says it's a struct's
 //      when P names one. Its arguments may be labeled (P(x: 0, y)), as
 //      a case's payload's may (.server(code: c)).
+//  26. Lines that start with .name. Such a line continues the expression
+//      on the line before, as a member of it (users ⏎ .filter(…) ⏎
+//      .map(…)), except where it starts something of its own: at a match
+//      arm's level it's the next arm's pattern (.a => x ⏎ .b => y), and
+//      alone on the last line of a block whose last item is its value
+//      (an if or a match used as a value, a closure's, a catch's or a
+//      spawn's block, and an if, a match or a do inside one) it's that
+//      value: if c { log() ⏎ .red }. A chain of two .name lines or more
+//      continues there too (.a() alone would be no value). The scanner
+//      continues a line that starts with a binary operator.
 //
 // The scanner documents how newlines end items (Scanner) and how a %
 // after a number reads (50% is a length, 10%3 a remainder).
@@ -163,6 +173,16 @@ type parser struct {
 
 	prevEnd Pos // the end of the last token consumed, newlines and ;s aside
 	exprLev int // < 0: in a control clause's head, where { starts the body
+
+	// Lines that start with .name (decision 26). armLev > 0: at a match
+	// arm's level, where such a line starts the next arm. valueBlock: the
+	// block being parsed gives its last item as its value (wantValue: the
+	// next one parsed does). dotLine: the item being parsed has gone on
+	// past a line already.
+	armLev     int
+	valueBlock bool
+	wantValue  bool
+	dotLine    bool
 	// styleValue > 0: in a style: prop's value, where an if may have no
 	// else (an entry that adds nothing when it's false).
 	styleValue int
@@ -1475,7 +1495,17 @@ func (p *parser) parseLet(start Pos) *LetDecl {
 // ---------------------------------------------------------------------
 // Blocks and items
 
+// parseValueBlock parses a block whose last item may be its value (an if
+// used as a value, a closure's), when value says so: there, a last line
+// that starts with .name is that value (decision 26).
+func (p *parser) parseValueBlock(value bool) *Block {
+	p.wantValue = value
+	return p.parseBlock()
+}
+
 func (p *parser) parseBlock() *Block {
+	value := p.wantValue
+	p.wantValue = false
 	p.braceOnNextLine()
 	b := &Block{Lbrace: p.pos}
 	if p.tok != LBRACE {
@@ -1498,14 +1528,16 @@ func (p *parser) parseBlock() *Block {
 			p.ci++
 		}
 	}
-	lev := p.exprLev
-	p.exprLev = 0
+	lev, arm, vb, dl := p.exprLev, p.armLev, p.valueBlock, p.dotLine
+	p.exprLev, p.armLev, p.valueBlock = 0, 0, value
+	defer func() { p.armLev, p.valueBlock, p.dotLine = arm, vb, dl }()
 	p.skipTerminators()
 	for p.tok != RBRACE && p.tok != EOF {
 		if p.declAhead() {
 			break
 		}
 		i := p.i
+		p.dotLine = false
 		it := p.parseItem()
 		b.Items = append(b.Items, it)
 		p.endItem(it, describeNode(it))
@@ -1889,13 +1921,13 @@ func (p *parser) continues(tok Token) bool {
 func (p *parser) parseIfStmt() *IfStmt {
 	start := p.expect(IF)
 	d := &IfStmt{Cond: p.parseCond()}
-	d.Then = p.parseBlock()
+	d.Then = p.parseValueBlock(p.valueBlock)
 	if p.continues(ELSE) {
 		p.next()
 		if p.tok == IF {
 			d.Else = p.parseIfStmt()
 		} else {
-			d.Else = p.parseBlock()
+			d.Else = p.parseValueBlock(p.valueBlock)
 		}
 	}
 	d.Span = p.span(start)
@@ -1922,9 +1954,9 @@ func (p *parser) parseFor() *ForStmt {
 
 func (p *parser) parseDo() *DoStmt {
 	start := p.expect(DO)
-	d := &DoStmt{Body: p.parseBlock()}
+	d := &DoStmt{Body: p.parseValueBlock(p.valueBlock)}
 	for p.continues(CATCH) {
-		d.Catches = append(d.Catches, p.parseCatch())
+		d.Catches = append(d.Catches, p.parseCatch(p.valueBlock))
 	}
 	if len(d.Catches) == 0 {
 		p.errorExpected("'catch' after do { … }")
@@ -1934,8 +1966,9 @@ func (p *parser) parseDo() *DoStmt {
 }
 
 // parseCatch parses a catch clause, at its catch: catch { … }, catch e
-// { … }, catch e: Type { … }, catch Type.case(…) { … }.
-func (p *parser) parseCatch() *CatchClause {
+// { … }, catch e: Type { … }, catch Type.case(…) { … }. value says its
+// block's last item may be its value.
+func (p *parser) parseCatch(value bool) *CatchClause {
 	cs := p.expect(CATCH)
 	c := &CatchClause{}
 	if p.tok != LBRACE {
@@ -1951,7 +1984,7 @@ func (p *parser) parseCatch() *CatchClause {
 			p.exprLev = lev
 		}
 	}
-	c.Body = p.parseBlock()
+	c.Body = p.parseValueBlock(value)
 	c.Span = p.span(cs)
 	return c
 }
@@ -1961,9 +1994,9 @@ func (p *parser) parseCatch() *CatchClause {
 func (p *parser) parseCatchExpr(x Expr) *CatchExpr {
 	start := x.Range().Start
 	c := &CatchExpr{X: x}
-	c.Catches = append(c.Catches, p.parseCatch())
+	c.Catches = append(c.Catches, p.parseCatch(true))
 	for p.continues(CATCH) {
-		c.Catches = append(c.Catches, p.parseCatch())
+		c.Catches = append(c.Catches, p.parseCatch(true))
 	}
 	c.Span = p.span(start)
 	return c
@@ -2009,6 +2042,7 @@ func (p *parser) parseArms(expr bool) (lbrace Pos, arms []*MatchArm, rbrace Pos)
 		i := p.i
 		start := p.pos
 		a := &MatchArm{Trivia: p.leading(start)}
+		p.armLev++
 		a.Pattern = p.parsePattern()
 		if p.got(IF) {
 			a.Guard = p.headExpr()
@@ -2016,12 +2050,13 @@ func (p *parser) parseArms(expr bool) (lbrace Pos, arms []*MatchArm, rbrace Pos)
 		p.expect(FATARROW)
 		switch {
 		case p.tok == LBRACE:
-			a.Body = p.parseBlock()
+			a.Body = p.parseValueBlock(expr || p.valueBlock)
 		case expr:
 			a.Body = p.parseExpr()
 		default:
 			a.Body = p.item()
 		}
+		p.armLev--
 		a.Span = p.span(start)
 		arms = append(arms, a)
 		if p.tok == COMMA {
@@ -2121,7 +2156,7 @@ func (p *parser) parseLambda() *LambdaExpr {
 	}
 	p.expect(FATARROW)
 	if p.tok == LBRACE {
-		l.Body = p.parseBlock()
+		l.Body = p.parseValueBlock(true)
 	} else {
 		l.Body = p.parseExpr()
 	}
@@ -2277,7 +2312,7 @@ func (p *parser) parseUnary() Expr {
 		return j
 	case SPAWN:
 		p.next()
-		b := p.parseBlock()
+		b := p.parseValueBlock(true)
 		return &SpawnExpr{Body: b, Span: p.span(start)}
 	}
 	return p.parsePostfix()
@@ -2311,7 +2346,12 @@ func isElement(x Expr) bool {
 
 func (p *parser) parsePostfix() Expr {
 	start := p.pos
-	x := p.parsePrimary()
+	return p.postfixFrom(start, p.parsePrimary())
+}
+
+// postfixFrom parses what follows x, which started at start: members,
+// calls, indexes, unwraps.
+func (p *parser) postfixFrom(start Pos, x Expr) Expr {
 	for {
 		switch p.tok {
 		case PERIOD, OPTDOT:
@@ -2372,10 +2412,53 @@ func (p *parser) parsePostfix() Expr {
 			}
 			p.next()
 			x = &UnwrapExpr{X: x, Span: p.span(start)}
+		case NEWLINE:
+			if !p.dotContinues() {
+				return x
+			}
+			p.next() // the line's end: the next line's .name goes on
+			p.dotLine = true
 		default:
 			return x
 		}
 	}
+}
+
+// dotContinues reports, at a newline, whether the next line starts
+// with .name that continues the expression before it (decision 26): not
+// at a match arm's level, where it starts the next arm, nor where it's a
+// block's value, alone on the block's last line.
+func (p *parser) dotContinues() bool {
+	if p.peek(1) != PERIOD || p.peek(2) != IDENT || p.armLev > 0 {
+		return false
+	}
+	return !p.valueBlock || p.dotLine || !p.lastLine(p.i+1)
+}
+
+// lastLine reports whether the line that starts at token j is its
+// block's last: the block's } ends it.
+func (p *parser) lastLine(j int) bool {
+	depth := 0
+	for ; j < len(p.toks); j++ {
+		switch p.toks[j].tok {
+		case LPAREN, LBRACK, LBRACE, DOTBRACE:
+			depth++
+		case RPAREN, RBRACK:
+			depth--
+		case RBRACE:
+			if depth == 0 {
+				return true
+			}
+			depth--
+		case NEWLINE, SEMICOLON:
+			if depth == 0 {
+				return j+1 < len(p.toks) && p.toks[j+1].tok == RBRACE
+			}
+		case EOF:
+			return true
+		}
+	}
+	return true
 }
 
 // tryTypeArgs parses <T, U> after a name, when it's followed at once by
@@ -2637,13 +2720,13 @@ func (p *parser) parseArrayOrMap() Expr {
 func (p *parser) parseIfExpr() *IfExpr {
 	start := p.expect(IF)
 	x := &IfExpr{Cond: p.parseCond()}
-	x.Then = p.parseBlock()
+	x.Then = p.parseValueBlock(true)
 	if p.continues(ELSE) {
 		p.next()
 		if p.tok == IF {
 			x.Else = p.parseIfExpr()
 		} else {
-			x.Else = p.parseBlock()
+			x.Else = p.parseValueBlock(true)
 		}
 	} else if p.styleValue == 0 {
 		p.error(p.pos, "an if used as a value needs an else")

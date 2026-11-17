@@ -41,12 +41,18 @@ func (c *Comment) IsDoc() bool {
 //     operators, =, the assignment operators, =>, ->, ., ?., .., ..<, |),
 //     after a , or a :, and after an opening bracket;
 //   - after another newline, a ; or the start of the file: runs of
-//     newlines are one.
+//     newlines are one;
+//   - before a line (blank lines and comments aside) that starts with a
+//     binary operator that can't start an expression: + * / % == != <
+//     <= > >= && || ?? & | ^ << >> .. ..< and ?. (a ⏎ ?? b). Not -, !
+//     or ~, which can (a ⏎ -b is two lines), and not an assignment's
+//     operator (+=). A line that starts with .name is the parser's to
+//     join (decision 26): it may be an implicit member of its own.
 //
 // Not after ? (a line may end with an optional type, String?), ! (one
 // may end with a force unwrap, x!) or > (one may end with a generic
 // type, Loading<User>): a comparison broken across lines puts its > at
-// the start of the next line instead, inside parentheses.
+// the start of the next line instead.
 type Scanner struct {
 	file *File
 	src  string
@@ -169,6 +175,59 @@ func (s *Scanner) newlineCounts() bool {
 	return true
 }
 
+// continued reports whether the next line, after the source at from
+// (blank lines and comments aside), starts with a binary operator that
+// can't start an expression, which continues this line's: a ⏎ ?? b,
+// items.count() ⏎ * 2. Not -, which can (a ⏎ -b is two lines), nor
+// one's assignment form (a ⏎ += 1). A leading . is the parser's to
+// decide (an implicit member may start a line).
+func (s *Scanner) continued(from int) bool {
+	src, i := s.src, from
+	for i < len(src) {
+		switch c := src[i]; {
+		case c == ' ' || c == '\t' || c == '\r' || c == '\n':
+			i++
+			continue
+		case c == '/' && i+1 < len(src) && src[i+1] == '/':
+			for i < len(src) && src[i] != '\n' {
+				i++
+			}
+			continue
+		case c == '/' && i+1 < len(src) && src[i+1] == '*':
+			end := strings.Index(src[i+2:], "*/")
+			if end < 0 {
+				return false
+			}
+			i += 2 + end + 2
+			continue
+		}
+		break
+	}
+	at := func(k int) byte {
+		if i+k < len(src) {
+			return src[i+k]
+		}
+		return 0
+	}
+	switch at(0) {
+	case '.':
+		return at(1) == '.' // .. and ..<
+	case '?':
+		return at(1) == '.' || at(1) == '?' && at(2) != '=' // ?. and ??
+	case '+', '*', '/', '%', '^':
+		return at(1) != '='
+	case '&', '|':
+		return at(1) == at(0) || at(1) != '=' // && ||, & |
+	case '=', '!':
+		return at(1) == '=' // == !=
+	case '<':
+		return !(at(1) == '<' && at(2) == '=') // < <= <<
+	case '>':
+		return !(at(1) == '>' && at(2) == '=') // > >= >>
+	}
+	return false
+}
+
 // endLineInterp ends, at a line's end, the interpolation of a one-line
 // string it's in: the string wasn't terminated.
 func (s *Scanner) endLineInterp() {
@@ -205,7 +264,7 @@ redo:
 			continue
 		case '\n':
 			s.endLineInterp()
-			if s.newlineCounts() {
+			if s.newlineCounts() && !s.continued(s.offset+1) {
 				off := s.offset
 				s.next()
 				return s.file.Pos(off), NEWLINE, "\n"
@@ -217,7 +276,7 @@ redo:
 				if nl := s.comment(); nl >= 0 {
 					// A block comment spanning lines ends a line.
 					s.endLineInterp()
-					if s.newlineCounts() {
+					if s.newlineCounts() && !s.continued(s.offset) {
 						return s.file.Pos(nl), NEWLINE, "\n"
 					}
 				}

@@ -17,8 +17,9 @@ package syntax
 //     and an import's names go one per line, each with a trailing comma,
 //     when the first was written on the line after the opening bracket
 //     or a comment sits between them; otherwise on one line. A blank line between two of
-//     them is kept. A binary expression broken after its operator stays
-//     broken there, its next lines indented once more.
+//     them is kept. A binary expression broken before or after its
+//     operator, and a chain broken before a . or a ?., stays broken
+//     there, its next lines indented once more.
 //   - } else and } catch go on the }'s line. Imports' .{…} follow the
 //     path directly: import ./components.{Row, Card}.
 //   - Comments are kept: above the node that follows them, after the
@@ -1103,41 +1104,8 @@ func (p *printer) expr1(x Expr) {
 		p.write("@" + x.Name)
 	case *ImplicitMember:
 		p.write("." + x.Name.Name)
-	case *MemberExpr:
-		p.postfixOperand(x.X, !x.Optional)
-		if x.Optional {
-			p.write("?.")
-		} else {
-			p.write(".")
-		}
-		p.write(x.Name.Name)
-	case *CallExpr:
-		p.postfixOperand(x.Fun, len(x.TypeArgs) == 0 && x.Args != nil)
-		if len(x.TypeArgs) > 0 {
-			p.list("<", ">", x.Angles.Lt, x.Angles.Gt, typeNodes(x.TypeArgs))
-		}
-		if x.Args != nil {
-			p.args(x.Args)
-		}
-		if x.As != nil {
-			p.write(" as " + x.As.Name)
-		}
-		if x.Block != nil {
-			p.write(" ")
-			p.block(x.Block)
-		}
-		for _, h := range x.Handlers {
-			p.write(" ")
-			p.onHandler(h)
-		}
-	case *IndexExpr:
-		p.postfixOperand(x.X, true)
-		p.write("[")
-		p.expr(x.Index)
-		p.write("]")
-	case *UnwrapExpr:
-		p.exprPrec(x.X, precPostfix)
-		p.write("!")
+	case *MemberExpr, *CallExpr, *IndexExpr, *UnwrapExpr:
+		p.postfix(x)
 	case *UnaryExpr:
 		switch x.Op {
 		case NOT, SUB, TILDE:
@@ -1285,18 +1253,102 @@ func startsWithDot(x Expr) bool {
 	}
 }
 
-// postfixOperand prints what a postfix operator applies to. A % length
-// before (, [ or . (open says one follows) keeps a space: 50%(…) would
-// be a remainder.
-func (p *printer) postfixOperand(x Expr, open bool) {
-	p.exprPrec(x, precPostfix)
-	if l, ok := x.(*BasicLit); ok && open && l.Kind == LENGTH && strings.HasSuffix(l.Value, "%") {
-		p.write(" ")
+// postfixOperand is what a member, a call, an index or an unwrap applies
+// to, or nil when x is none of them.
+func postfixOperand(x Expr) Expr {
+	switch e := x.(type) {
+	case *MemberExpr:
+		return e.X
+	case *CallExpr:
+		return e.Fun
+	case *IndexExpr:
+		return e.X
+	case *UnwrapExpr:
+		return e.X
+	}
+	return nil
+}
+
+// postfix prints a chain of members, calls, indexes and unwraps from its
+// first operand on. A line break the source had before a . or a ?. stays
+// (a line that starts with .name continues the one before), the chain's
+// next lines indented once more.
+func (p *printer) postfix(x Expr) {
+	var chain []Expr
+	for e := x; e != nil; e = postfixOperand(e) {
+		chain = append(chain, e)
+	}
+	base := chain[len(chain)-1]
+	chain = chain[:len(chain)-1]
+	p.exprPrec(base, precPostfix)
+	// A % length before (, [ or . keeps a space: 50%(…) would be a
+	// remainder.
+	if l, ok := base.(*BasicLit); ok && l.Kind == LENGTH && strings.HasSuffix(l.Value, "%") {
+		switch e := chain[len(chain)-1].(type) {
+		case *MemberExpr:
+			if !e.Optional {
+				p.write(" ")
+			}
+		case *CallExpr:
+			if len(e.TypeArgs) == 0 && e.Args != nil {
+				p.write(" ")
+			}
+		case *IndexExpr:
+			p.write(" ")
+		}
+	}
+	cont := false
+	for i := len(chain) - 1; i >= 0; i-- {
+		switch e := chain[i].(type) {
+		case *MemberExpr:
+			dot, op := e.Name.Start-1, "."
+			if e.Optional {
+				dot, op = e.Name.Start-2, "?."
+			}
+			if l := p.endLine(e.X); l > 0 && p.line(dot) > l {
+				if !cont {
+					cont = true
+					p.indent++
+				}
+				p.trailing(nil, e.X, dot)
+				p.newline()
+			}
+			p.write(op + e.Name.Name)
+		case *CallExpr:
+			if len(e.TypeArgs) > 0 {
+				p.list("<", ">", e.Angles.Lt, e.Angles.Gt, typeNodes(e.TypeArgs))
+			}
+			if e.Args != nil {
+				p.args(e.Args)
+			}
+			if e.As != nil {
+				p.write(" as " + e.As.Name)
+			}
+			if e.Block != nil {
+				p.write(" ")
+				p.block(e.Block)
+			}
+			for _, h := range e.Handlers {
+				p.write(" ")
+				p.onHandler(h)
+			}
+		case *IndexExpr:
+			p.write("[")
+			p.expr(e.Index)
+			p.write("]")
+		case *UnwrapExpr:
+			p.write("!")
+		}
+	}
+	if cont {
+		p.indent--
 	}
 }
 
-// binary prints x op y, keeping a line break after op where the source
-// had one; cont says the chain's next lines are indented already.
+// binary prints x op y, keeping a line break before or after op where
+// the source had one (a line that starts with a binary operator
+// continues the one before); cont says the chain's next lines are
+// indented already.
 func (p *printer) binary(b *BinaryExpr, cont *bool) {
 	prec := b.Op.Precedence()
 	lp, rp := prec, prec+1
@@ -1311,16 +1363,26 @@ func (p *printer) binary(b *BinaryExpr, cont *bool) {
 	if (b.Op == RANGE || b.Op == RANGELT) && !startsWithDot(b.Y) {
 		sp = "" // but a .. .end: a...end isn't a range
 	}
-	p.write(sp + b.Op.String())
-	if l := p.endLine(b.X); l > 0 && l < p.line(b.Y.Range().Start) {
+	l := p.endLine(b.X)
+	switch {
+	case l > 0 && p.line(b.OpPos) > l:
+		if !*cont {
+			*cont = true
+			p.indent++
+		}
+		p.trailing(nil, b.X, b.OpPos)
+		p.newline()
+		p.write(b.Op.String() + sp)
+	case l > 0 && l < p.line(b.Y.Range().Start):
+		p.write(sp + b.Op.String())
 		if !*cont {
 			*cont = true
 			p.indent++
 		}
 		p.trailing(nil, &BadExpr{Span: Span{b.OpPos, b.OpPos + Pos(len(b.Op.String()))}}, b.Y.Range().Start)
 		p.newline()
-	} else {
-		p.write(sp)
+	default:
+		p.write(sp + b.Op.String() + sp)
 	}
 	p.operand(b.Y, rp, cont)
 }
