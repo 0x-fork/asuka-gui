@@ -291,9 +291,14 @@ redo:
 	ch := s.ch
 	switch {
 	case ch == eof:
-		if n := len(s.frames); n > 0 && s.frames[n-1].kind == interp {
-			s.error(s.frames[n-1].start, "string not terminated")
-			s.frames = s.frames[:n-1]
+		// A string whose interpolation is open, maybe inside a bracket
+		// left open in it ("{f(), isn't terminated.
+		for n := len(s.frames); n > 0; n-- {
+			if f := s.frames[n-1]; f.kind == interp {
+				s.error(f.start, "string not terminated")
+				s.frames = s.frames[:0]
+				break
+			}
 		}
 		return pos, EOF, ""
 	case isLetter(ch):

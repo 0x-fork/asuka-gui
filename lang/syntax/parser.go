@@ -2525,8 +2525,13 @@ func (p *parser) tryTypeArgs(x Expr) ([]Type, Angles, bool) {
 		}
 	}
 	if p.tok != GTR || len(p.errors) != nerr {
-		// Not types after all: back to the <.
+		// Not types after all: back to the <, and to the lines with
+		// errors then, so the errors of what it is are reported.
 		p.errors = p.errors[:nerr]
+		clear(p.errLines)
+		for _, e := range p.errors {
+			p.errLines[e.Pos.Line] = true
+		}
 		p.i, p.prevEnd = saved, savedEnd
 		t := p.toks[p.i]
 		p.tok, p.pos, p.lit = t.tok, t.pos, t.lit
