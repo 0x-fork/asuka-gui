@@ -257,6 +257,11 @@ type ForInfo struct {
 	View  bool // in a view: Item and Index are accessors
 	Key   syntax.Expr
 	Lazy  bool // directly in an element that builds rows lazily (a List)
+	// KeyItem: in a view without a key, its rows are keyed by the item
+	// itself, which is what identifies it: a set's element, a range's
+	// number (rfcs/0012). An array without a key is a constant one, its
+	// rows kept by position.
+	KeyItem bool
 }
 
 // MatchInfo is a match's subject type and arms' bindings.

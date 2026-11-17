@@ -926,7 +926,16 @@ func (b *fb) forParts(s *syntax.ForStmt) (items, key, row int, keyKind bc.Kind) 
 			c.ctx = kctx
 			c.ret(c.value(s.Key, -1), kk)
 		}})
+	} else if fi.KeyItem {
+		// A set's element, a range's number: the item is its key.
+		item := &check.Var{Type: fi.Elem}
+		kk := b.kind(fi.Elem)
+		keyKind = kk
+		key = b.makeClosure(closure{name: "key", params: []*check.Var{item, nil}, pkinds: []bc.Kind{kk, bc.KInt}, ret: kk, body: func(c *fb) {
+			c.ret(c.vars[item], kk)
+		}})
 	} else {
+		// A constant array: its rows kept by position.
 		key = b.temp(bc.KRef)
 		b.emit(op("KNONE"), key)
 	}

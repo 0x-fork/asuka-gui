@@ -89,6 +89,7 @@ func (c *Checker) finalize() {
 		}
 	}
 	c.checkEffectWrites()
+	c.checkKeys()
 	touches := c.touchesState(ctxs)
 	for _, s := range c.spawns {
 		for _, f := range append(s.calls, s.peekCalls...) {

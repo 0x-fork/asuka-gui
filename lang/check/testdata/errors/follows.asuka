@@ -91,3 +91,27 @@ component Writes {
   Text("{n} {runs}")
 }
 
+// A for in a view over what changes says what identifies a row.
+struct Msg {
+  id: string
+  text: string
+}
+
+component Rows(msgs: [Msg]) {
+  state names = ["a", "b"]
+  state tags: Set<string> = []
+  state count = 3
+  state blobs: [fn() -> int] = []
+
+  Column {
+    for m in msgs { Text(m.text) } // ERROR "rows are kept by position here, so a row's state stays where it is when msgs move: say what identifies a Msg, key m.id"
+    for n in names { Text(n) } // ERROR "say what identifies a string, key n$"
+    for (i, n) in names.enumerated() { Text("{i} {n}") } // ERROR "key n \(or key i, for the position on purpose\)"
+    for b in blobs { Text("{b()}") } // ERROR "key b.<what identifies it>"
+    for m in msgs key m.id { Text(m.text) }
+    for (i, n) in names.enumerated() key i { Text("{i} {n}") }
+    for t in tags { Text(t) } // a set's element is its key
+    for i in 0..<count { Text("{i}") } // a range's number is
+    for d in ["Mon", "Tue"] { Text(d) } // constant: nothing moves
+  }
+}

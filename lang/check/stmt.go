@@ -511,6 +511,12 @@ func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
 	}
 	if view {
 		c.leave(saved)
+		if s.Key == nil && (fi.Kind == ForSet || isRange(seq)) {
+			fi.KeyItem = true
+		}
+		if s.Key == nil && !fi.KeyItem {
+			c.viewFors = append(c.viewFors, s)
+		}
 	}
 	// The key, in a view: a function of the item.
 	if s.Key != nil {

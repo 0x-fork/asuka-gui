@@ -64,8 +64,9 @@ type Checker struct {
 	inDefer    int
 	free       map[*TypeParam]bool
 	spawns     []*FuncCtx
-	effects    []effectCheck // whose writes finalize checks
-	errT       *TypeName     // Error
+	effects    []effectCheck     // whose writes finalize checks
+	viewFors   []*syntax.ForStmt // in views, without a key: finalize checks their items are constant
+	errT       *TypeName         // Error
 	// Generic calls, for the type parameters read or written as JSON
 	// (checked once every body has said which: jsonGenerics).
 	genericCalls []genericCall

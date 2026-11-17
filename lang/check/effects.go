@@ -306,3 +306,57 @@ func isStateLike(o Object) bool {
 	}
 	return false
 }
+
+// checkKeys reports a for in a view over an array that reads what changes
+// without a key (rfcs/0012): its rows are kept by position, so a row's
+// state, tasks and views stay where they are when the items move. A
+// constant array never moves; a set's or a range's rows are keyed by
+// their items (ForInfo.KeyItem).
+func (c *Checker) checkKeys() {
+	for _, s := range c.viewFors {
+		fi := c.info.Fors[s]
+		if fi == nil || IsInvalid(fi.Elem) || !c.reactive(fi.Seq) {
+			continue
+		}
+		item, index := "item", ""
+		switch p := s.Pattern.(type) {
+		case *syntax.BindPat:
+			item = p.Name.Name
+		case *syntax.TuplePat:
+			if len(p.Elems) == 2 {
+				if b, ok := p.Elems[0].(*syntax.BindPat); ok {
+					index = b.Name.Name
+				}
+				if b, ok := p.Elems[1].(*syntax.BindPat); ok {
+					item = b.Name.Name
+				}
+			}
+		}
+		seq := exprText(fi.Seq)
+		if len(seq) > 24 {
+			seq = "the items"
+		}
+		key := keySuggestion(fi.Elem, item)
+		msg := fmt.Sprintf("rows are kept by position here, so a row's state stays where it is when %s move: say what identifies %s, key %s", seq, aType(fi.Elem), key)
+		if index != "" {
+			msg += fmt.Sprintf(" (or key %s, for the position on purpose)", index)
+		}
+		c.errorf(s, "%s", msg)
+	}
+}
+
+// keySuggestion is what a key of item, an elem, would be: its id field
+// when it has one, else the item itself when it's hashable.
+func keySuggestion(elem Type, item string) string {
+	if n, ok := elem.(*Named); ok && n.Obj.Kind == StructType {
+		for _, f := range n.Obj.Fields {
+			if f.Name == "id" {
+				return item + ".id"
+			}
+		}
+	}
+	if IsHashable(elem) {
+		return item
+	}
+	return item + ".<what identifies it>"
+}

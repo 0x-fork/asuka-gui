@@ -330,7 +330,7 @@ component Screenshots {
   }
 
   Scroll {
-    for t in thumbs { Image(t) { width: 100; height: 100 } }
+    for (i, t) in thumbs.enumerated() key i { Image(t) { width: 100; height: 100 } }
   }
 }
 
@@ -362,7 +362,7 @@ component Gallery {
     Button("Help") {
       on press { try? await device.browse("https://example.com/help") }
     }
-    for p in photos { Image(p) }
+    for p in photos key p { Image(p) }
   }
 }
 ```
@@ -1161,7 +1161,7 @@ component Shared {
 
   Column {
     Text(link)
-    for p in photos { Image(p) }
+    for p in photos key p { Image(p) }
   }
 }
 ```

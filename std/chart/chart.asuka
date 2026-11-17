@@ -319,7 +319,8 @@ pub component View(series: [Series]) {
       justify: .spaceBetween
       align: .end
       a11yHidden: true
-      for t in ticks {
+      // A row per tick, by its place: they hold nothing of their own.
+      for (i, t) in ticks.enumerated() key i {
         Row {
           height: 0
           align: .center
@@ -342,7 +343,7 @@ pub component View(series: [Series]) {
       gridRow: .line(2)
       margin: Edges(top: 6)
       a11yHidden: true
-      for i in xs {
+      for i in xs key i {
         Row {
           grow: 1
           basis: 0
