@@ -3,6 +3,7 @@ package check
 import (
 	"fmt"
 
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -98,9 +99,9 @@ func (c *Checker) instanceCycles() {
 				msg := fmt.Sprintf("%s's %s is %s here, made of %s, which comes back to here: a generic is compiled for each type it's used with, and this would need them without end (%s, %s, …)",
 					e.inst.name, e.to.Name, arg, p.Name, p.Name, arg)
 				if e.inst.at != nil {
-					c.errorf(e.inst.at, "%s; pass a value of the same type", msg)
+					c.errorf(e.inst.at, diag.RecursiveType, "%s; pass a value of the same type", msg)
 				} else {
-					c.errorPos(e.inst.pos, "%s; a type that holds itself takes the same arguments (Tree<T> in Tree<T>)", msg)
+					c.errorPos(e.inst.pos, diag.RecursiveType, "%s; a type that holds itself takes the same arguments (Tree<T> in Tree<T>)", msg)
 				}
 			}
 		}

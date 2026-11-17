@@ -1,6 +1,7 @@
 package check
 
 import (
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -139,7 +140,7 @@ func (c *Checker) animateCall(e *syntax.CallExpr, call *Call) {
 	if e.Args != nil {
 		for _, a := range e.Args.List {
 			if a.Label != nil {
-				c.errorf(a.Label, "animate's arguments have no names: animate(Animation(…)) { … }")
+				c.errorf(a.Label, diag.ArgumentLabel, "animate's arguments have no names: animate(Animation(…)) { … }")
 			}
 			list = append(list, a.Value)
 		}
@@ -158,7 +159,7 @@ func (c *Checker) animateCall(e *syntax.CallExpr, call *Call) {
 	case e.Block == nil && len(list) == 2:
 		anim, body = list[0], list[1]
 	default:
-		c.errorf(e, "animate takes its changes, and maybe how they animate: animate { … }, animate(.spring) { … }")
+		c.errorf(e, diag.ArgumentCount, "animate takes its changes, and maybe how they animate: animate { … }, animate(.spring) { … }")
 		for _, a := range list {
 			c.expr(a, nil)
 		}
@@ -243,13 +244,13 @@ func (c *Checker) appEvent(h *syntax.OnHandler) {
 	c.view, c.loops = false, 0
 	c.openScope()
 	if ev == nil {
-		c.errorf(h.Name, "the app has no event %s (its events: openURL, files, share, quit, secondInstance, foreground, background)", h.Name.Name)
+		c.errorf(h.Name, diag.UnknownEvent, "the app has no event %s (its events: openURL, files, share, quit, secondInstance, foreground, background)", h.Name.Name)
 		for _, p := range h.Params {
 			c.declareVar(p, Invalid, false)
 		}
 	} else {
 		if len(h.Params) > len(ev.Params) {
-			c.errorf(h, "event %s gives %s", h.Name.Name, plural(len(ev.Params), "value", "values"))
+			c.errorf(h, diag.ArgumentCount, "event %s gives %s", h.Name.Name, plural(len(ev.Params), "value", "values"))
 		}
 		var vars []*Var
 		for i, p := range h.Params {

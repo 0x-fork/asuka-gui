@@ -1,0 +1,119 @@
+# エラーコード
+
+Asuka が報告するエラーと警告には、すべてコードがあります。コードは変わらない名前で、ターミナル（`error[write-in-binding]`）、`asuka check --json` と `asuka test --json` の出力、エディターに表示され、エディターからはこのページにリンクされます。各ページでは、そのルールがある理由と、破ったときの直し方を説明し、ルールを破るプログラムと破らないプログラムを示します。ターミナルで `asuka explain <code>` を実行すると、インストールしたバージョンのページが表示されます。
+
+## コンパイラーが報告するもの
+
+- [argument-count](argument-count.md): 呼び出しの引数が多すぎる、または少なすぎる。
+- [argument-label](argument-label.md): 関数に対応するパラメーターのない名前付き引数。
+- [async-in-effect](async-in-effect.md): エフェクトの中にある `await`。
+- [await-outside-async](await-outside-async.md): 待つことのできない場所にある `await`。
+- [bad-operand](bad-operand.md): 演算子が受け付けない値に使われている。
+- [brace-placement](brace-placement.md): ブロックの `{` は前の行の末尾に書く。
+- [cannot-infer-type](cannot-infer-type.md): 書かれた内容から値の型を判断できない。
+- [closure-keeps-itself](closure-keeps-itself.md): 自分を保存した変数を通して自分を呼ぶクロージャー。
+- [constraint-not-met](constraint-not-met.md): ジェネリックやメソッドが必要とするものを型が持っていない。
+- [deprecated-syntax](deprecated-syntax.md): 置き換えられた古い書き方（`asuka fmt` が書き直す）。
+- [duplicate-declaration](duplicate-declaration.md): 同じ場所で 2 回宣言された名前。
+- [effect-writes-what-it-follows](effect-writes-what-it-follows.md): 自分が読む状態に書き込むエフェクト。
+- [embed-file](embed-file.md): パッケージにないファイルの `embed`。
+- [extension-conflict](extension-conflict.md): 型がすでに持つ名前、またはほかの拡張も追加する名前を追加する拡張。
+- [fn-body](fn-body.md): 本体のない関数、または持てない本体を持つ関数。
+- [follows-nothing](follows-nothing.md): 追従するもののない `state x()` や `effect()`。
+- [import-cycle](import-cycle.md): 互いにインポートし合うパッケージ。
+- [int-overflow](int-overflow.md): 64 ビットに収まらない整数リテラル。
+- [interface-not-satisfied](interface-not-satisfied.md): 宣言した interface を実装していない型。
+- [internal-error](internal-error.md): コンパイラー自身の誤り。
+- [invalid-catalog](invalid-catalog.md): メッセージのファイルとして正しくないカタログ。
+- [invalid-catch](invalid-catch.md): 到達しない、または捕捉するものがない `catch`。
+- [invalid-character](invalid-character.md): ここでは言語の一部にならない文字。
+- [invalid-conformance](invalid-conformance.md): 型が宣言する、または型パラメーターが求めるものが interface ではない。
+- [invalid-constant](invalid-constant.md): コンパイル時に作られる値が、リテラルでないか解析できない。
+- [invalid-declaration](invalid-declaration.md): 置かれた場所が受け付けない形で書かれた宣言。
+- [invalid-entry](invalid-entry.md): 実行のされ方と違う形で宣言されたプログラムの `fn main`。
+- [invalid-extension](invalid-extension.md): 拡張できないものの `extend`、または受け付けない形の `extend`。
+- [invalid-extern](invalid-extern.md): C が裏付けられない extern 宣言。
+- [invalid-flag-spec](invalid-flag-spec.md): `flag.parse` がコマンドラインを読み込めない型。
+- [invalid-for](invalid-for.md): `for` がたどれないものをたどっている。
+- [invalid-literal](invalid-literal.md): 正しく書かれていない数値、色、時間、エスケープ。
+- [invalid-modifier](invalid-modifier.md): 当てはまらない場所にある `pub`、`mut`、`async`、`throws`、型パラメーター。
+- [invalid-pattern](invalid-pattern.md): 言語が受け付けない形で書かれたパターン。
+- [invalid-project](invalid-project.md): プロジェクトの asuka.toml やディレクトリを、書いてあるとおりに読めない。
+- [invalid-ref](invalid-ref.md): 1 つの要素のビューではないものを指す `ref` や `as`。
+- [invalid-route](invalid-route.md): 画面のアドレス、またはルートでは作れないナビゲーション。
+- [invalid-shader](invalid-shader.md): GPU の言語にないものを使ったシェーダー。
+- [invalid-style](invalid-style.md): 受け付けない形で宣言・適用されたスタイル。
+- [invalid-variant](invalid-variant.md): 成り立たない形で宣言・使用されたバリアント。
+- [let-else](let-else.md): `let … else` の else がそのまま先へ進む、またはアンラップするものがない。
+- [load-outside-component](load-outside-component.md): コンポーネントやストアの `let` の外にある `load`。
+- [local-fn](local-fn.md): ブロック内の関数が、ファイルの関数にしかないものを使っている。
+- [loop-label](loop-label.md): 使われていない、または存在しないループ名。
+- [maybe-none](maybe-none.md): `none` かもしれない値を、あるものとして使っている。
+- [message-arguments](message-arguments.md): プレースホルダーと違う引数で呼び出されたメッセージ。
+- [misplaced-declaration](misplaced-declaration.md): その種類の宣言が置けない場所にある宣言。
+- [misplaced-statement](misplaced-statement.md): 書いた内容が意味をなさない場所にある文。
+- [missing-await](missing-await.md): async 関数を `await` なしで呼び出している。
+- [missing-prop](missing-prop.md): 必要なプロパティのない要素。
+- [missing-return](missing-return.md): 結果を返す関数が、結果なしで最後まで到達しうる。
+- [missing-translation](missing-translation.md): ソース言語のメッセージの一部がない言語のカタログ。
+- [missing-try](missing-try.md): throw する関数を `try` なしで呼び出している。
+- [missing-type](missing-type.md): 型を書かなければならない宣言。
+- [native-type](native-type.md): プラットフォームのビューが受け取れない型のネイティブコンポーネントのプロパティやイベント。
+- [no-children](no-children.md): 子を取らない要素に子を渡している、または渡す子が違う。
+- [no-such-operator](no-such-operator.md): ほかの言語にはあって Asuka にはない演算子。
+- [no-value](no-value.md): 値として使われているが、値を生まないもの。
+- [non-exhaustive-match](non-exhaustive-match.md): すべての場合を網羅していない `match`。
+- [not-a-type](not-a-type.md): 型として使われているが、型ではないもの。
+- [not-a-value](not-a-value.md): 値が入る場所で使われた型、パッケージ、メソッド。
+- [not-a-view](not-a-view.md): ビューのあいだにある、ビューではない値。
+- [not-an-error](not-an-error.md): エラー型ではない値を throw / catch している。
+- [not-assignable](not-assignable.md): 変えられないものを変えている。
+- [not-async-call](not-async-call.md): `load`、`all`、`race` に async 呼び出しではないものを渡している。
+- [not-bindable](not-bindable.md): 変化を伝えないプロパティの `bind`。
+- [not-c-type](not-c-type.md): C に渡せない型。
+- [not-callable](not-callable.md): 関数ではないものの呼び出し。
+- [not-json](not-json.md): JSON で読み書きできない型。
+- [not-optional](not-optional.md): 必ず値がある値に、オプショナル用の演算子を使っている。
+- [not-pub](not-pub.md): ほかのパッケージ（またはストア、ワーカー）が公開していない宣言。
+- [not-sendable](not-sendable.md): 別のスレッドに渡せない値。
+- [not-supported](not-supported.md): 言語がまだ対応していないもの。
+- [pattern-type](pattern-type.md): 値の型に一致しえないパターン。
+- [peek-untracked](peek-untracked.md): 何も追従しない場所での `peek`。
+- [plural-categories](plural-categories.md): 複数形や select のカテゴリーが言語のものと合わないメッセージ。
+- [prop-not-assignable](prop-not-assignable.md): コンポーネントが代入できない prop に代入している。
+- [prop-or-argument](prop-or-argument.md): パラメーター、プロパティ、イベント、子が置き場所を間違えている。
+- [recursive-definition](recursive-definition.md): 自分自身で定義された値やスタイル。
+- [recursive-type](recursive-type.md): 自分自身の完全なコピーを含む型。
+- [reserved-name](reserved-name.md): 言語自身が使っている名前。
+- [return-value](return-value.md): 関数が返さない値を持つ `return`、または値が必要なのに値のない `return`。
+- [row-without-key](row-without-key.md): 変わるデータをたどる、`key` のないビューの `for`。
+- [spawn-captures-state](spawn-captures-state.md): 状態や値でないものを読み書きする `spawn`。
+- [statement-in-view](statement-in-view.md): コンポーネントのビューのあいだにある文。
+- [syntax-error](syntax-error.md): パーサーがここで別のものを期待している。
+- [too-large](too-large.md): バイトコードに収まらないほど大きい関数。
+- [tr-in-package](tr-in-package.md): アプリではないパッケージでの `tr`。
+- [type-arguments](type-arguments.md): 型引数の数が違う。
+- [type-mismatch](type-mismatch.md): 期待とは違う型の値。
+- [undefined-name](undefined-name.md): 使われている場所で何も宣言していない名前。
+- [unexpected-block](unexpected-block.md): ブロックを取らない呼び出しのあとにあるブロック。
+- [unhandled-error](unhandled-error.md): 受け取り手のいない場所からエラーが出ていきうる。
+- [unknown-event](unknown-event.md): コンポーネントが宣言していないイベントのハンドラーや `emit`。
+- [unknown-member](unknown-member.md): 型、列挙型、パッケージにその名前のメンバーがない。
+- [unknown-message](unknown-message.md): カタログにないメッセージの `tr.key`。
+- [unknown-package](unknown-package.md): インポートがどのパッケージも指していない。
+- [unknown-prop](unknown-prop.md): 要素にないプロパティ、スロット、バリアント。
+- [unterminated](unterminated.md): 文字列、コメント、エスケープが閉じていない。
+- [unused-catalog-entry](unused-catalog-entry.md): 何にも使われていないカタログの説明や引数。
+- [view-in-statement](view-in-statement.md): 実行されるコードの中で作られたビュー。
+- [worker-captures-state](worker-captures-state.md): メインスレッドの状態を読むワーカー。
+- [worker-misuse](worker-misuse.md): ワーカー自身の値を外から読んでいる、または作れない・呼べない場所でワーカーを作ったり呼んだりしている。
+- [write-in-binding](write-in-binding.md): UI が追従する場所で状態に書き込んでいる。
+
+## 実行時に報告されるもの
+
+- [effect-in-effect-pass](effect-in-effect-pass.md): エフェクトの書き込みで、1 回のフラッシュの中でバインディングが 2 回実行された。
+- [effect-loop](effect-loop.md): 1 回のフラッシュの中で互いを汚し続けるエフェクト。
+- [load-waterfall](load-waterfall.md): 使ってもいない別の load を待った load。
+- [long-hold](long-hold.md): load が数秒間、何も示さずに古いコンテンツを保っている。
+- [wide-fanout](wide-fanout.md): 1 回の書き込みが 1,000 を超えるバインディングと let を、2 回以上実行した。
+- [write-in-memo](write-in-memo.md): `let` の計算中に状態に書き込んでいる。

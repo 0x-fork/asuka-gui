@@ -3,6 +3,7 @@ package check
 import (
 	"strings"
 
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -78,7 +79,7 @@ func (c *Checker) collectStyle(p *Package, d *syntax.StyleDecl) {
 	def := &StyleDef{object: object{d.Name.Name, d.Name.Start}, Pkg: p, Decl: d, Pub: d.Pub.IsValid(), scope: c.declScope(d)}
 	c.info.Defs[d.Name] = def
 	if _, ok := c.styles[d.Name.Name]; ok {
-		c.errorf(d.Name, "style %s is declared twice", d.Name.Name)
+		c.errorf(d.Name, diag.DuplicateDeclaration, "style %s is declared twice", d.Name.Name)
 		return
 	}
 	c.styles[d.Name.Name] = def
@@ -106,7 +107,7 @@ func (c *Checker) checkStyles(p *Package) {
 			for i, s := range path {
 				names[i+1] = s.name
 			}
-			c.errorf(d.Decl.Name, "style %s applies itself (%s): a style can't include itself", d.name, strings.Join(names, " → "))
+			c.errorf(d.Decl.Name, diag.RecursiveDefinition, "style %s applies itself (%s): a style can't include itself", d.name, strings.Join(names, " → "))
 		}
 	}
 }
@@ -141,7 +142,7 @@ func (c *Checker) styleSig(d *StyleDef) {
 		seen := map[string]bool{}
 		for _, p := range l.List {
 			if seen[p.Name.Name] {
-				c.errorf(p.Name, "parameter %s is declared twice", p.Name.Name)
+				c.errorf(p.Name, diag.DuplicateDeclaration, "parameter %s is declared twice", p.Name.Name)
 			}
 			seen[p.Name.Name] = true
 			var t Type = Invalid
@@ -154,7 +155,7 @@ func (c *Checker) styleSig(d *StyleDef) {
 	if tn := c.scope.LookupType(d.name); tn != nil && tn.Comp != nil && !tn.Comp.Store && !tn.Comp.Style {
 		d.Default = tn
 		if d.Decl.Params != nil {
-			c.errorf(d.Decl.Params, "style %s is %s's default style, and a default takes no parameters", d.name, d.name)
+			c.errorf(d.Decl.Params, diag.InvalidStyle, "style %s is %s's default style, and a default takes no parameters", d.name, d.name)
 		}
 		if c.pkg.defaults == nil {
 			c.pkg.defaults = map[*TypeName]*StyleDef{}
@@ -162,7 +163,7 @@ func (c *Checker) styleSig(d *StyleDef) {
 		c.pkg.defaults[tn] = d
 		c.laterChecks = append(c.laterChecks, func() {
 			if !c.TakesStyle(tn) || tn.Comp.Screen {
-				c.errorf(d.Decl.Name, "style %s would be %s's default style, and %s doesn't take the style props: name it otherwise", d.name, d.name, d.name)
+				c.errorf(d.Decl.Name, diag.InvalidStyle, "style %s would be %s's default style, and %s doesn't take the style props: name it otherwise", d.name, d.name, d.name)
 			}
 		})
 	}
@@ -207,7 +208,7 @@ func (c *Checker) styleItems(items []syntax.Item, d *StyleDef, state string) []*
 		case *syntax.PropSet:
 			if s.Name.Name == "style" {
 				if styleSet != nil {
-					c.errorf(s.Name, "style: is set twice: put the styles in one list, style: [a, b]")
+					c.errorf(s.Name, diag.InvalidStyle, "style: is set twice: put the styles in one list, style: [a, b]")
 				}
 				styleSet = s
 				entries := c.styleList(s.Value, d)
@@ -220,9 +221,9 @@ func (c *Checker) styleItems(items []syntax.Item, d *StyleDef, state string) []*
 			m := c.styleMember(s.Name.Name)
 			switch {
 			case m == nil:
-				c.errorf(s.Name, "a style holds style props, and %s isn't one%s", s.Name.Name, c.propSuggest(c.styleComp(), s.Name.Name))
+				c.errorf(s.Name, diag.UnknownProp, "a style holds style props, and %s isn't one%s", s.Name.Name, c.propSuggest(c.styleComp(), s.Name.Name))
 			case state != "" && (s.Name.Name == "keys" || s.Name.Name == "actions"):
-				c.errorf(s.Name, "%s don't change with a state: set them outside %s { … }", s.Name.Name, state)
+				c.errorf(s.Name, diag.InvalidVariant, "%s don't change with a state: set them outside %s { … }", s.Name.Name, state)
 				m = nil
 			}
 			if m == nil {
@@ -238,32 +239,32 @@ func (c *Checker) styleItems(items []syntax.Item, d *StyleDef, state string) []*
 			t := c.typeExpr(s.Type)
 			if n, ok := Unopt(t).(*Named); !ok || n.Obj.Kind != StoreType {
 				if !IsInvalid(t) {
-					c.errorf(s.Type, "use takes a store's type (or an optional one, none when nothing provides it), provided by a component above: %s isn't one", typeString(t))
+					c.errorf(s.Type, diag.TypeMismatch, "use takes a store's type (or an optional one, none when nothing provides it), provided by a component above: %s isn't one", typeString(t))
 				}
 			}
 			if state != "" {
-				c.errorf(s, "use goes in the style's body, not in %s { … }", state)
+				c.errorf(s, diag.InvalidStyle, "use goes in the style's body, not in %s { … }", state)
 			}
 			v := c.declareVar(s.Name, t, false)
 			v.Kind = StyleLocal
 			out = append(out, &StyleItem{Use: v})
 		case *syntax.SlotItem:
 			if !isVariant(s.Name.Name) && !c.variantDeclared(s.Name.Name) {
-				c.errorf(s.Name, "a style holds style props (name: value), style: …, use and variants (pressed { … }, or a variant a component declares); no component this package sees declares variant %s", s.Name.Name)
+				c.errorf(s.Name, diag.InvalidStyle, "a style holds style props (name: value), style: …, use and variants (pressed { … }, or a variant a component declares); no component this package sees declares variant %s", s.Name.Name)
 				continue
 			}
 			if state != "" {
-				c.errorf(s.Name, "%s { … } in %s { … }: a variant holds style props", s.Name.Name, state)
+				c.errorf(s.Name, diag.InvalidVariant, "%s { … } in %s { … }: a variant holds style props", s.Name.Name, state)
 				continue
 			}
 			v := &StyleVariant{State: s.Name.Name, Node: s}
 			v.Items = c.styleItems(s.Body.Items, d, s.Name.Name)
 			out = append(out, &StyleItem{Variant: v})
 		case *syntax.StyleUse:
-			c.errorf(s, "write style: %s: a style applies others with style:, as an element does (asuka fmt rewrites it)", styleName(s.Name))
+			c.errorf(s, diag.DeprecatedSyntax, "write style: %s: a style applies others with style:, as an element does (asuka fmt rewrites it)", styleName(s.Name))
 		case *syntax.BadItem:
 		default:
-			c.errorf(it, "a style holds style props (name: value), style: …, use and variants (pressed { … }), not %s", itemName(it))
+			c.errorf(it, diag.InvalidStyle, "a style holds style props (name: value), style: …, use and variants (pressed { … }), not %s", itemName(it))
 		}
 	}
 	return out
@@ -284,13 +285,13 @@ func styleName(x syntax.Expr) string {
 func (c *Checker) variantEntries(entries []*StyleEntry, state string) {
 	for _, e := range entries {
 		if e.Cond != nil {
-			c.errorf(e.Node, "the style: of %s { … } takes no conditions: put the condition around the whole style instead", state)
+			c.errorf(e.Node, diag.InvalidStyle, "the style: of %s { … } takes no conditions: put the condition around the whole style instead", state)
 			continue
 		}
 		d := e.Style
 		c.laterChecks = append(c.laterChecks, func() {
 			if styleHasVariants(d, nil) {
-				c.errorf(e.Node, "style %s holds variants, and %s { … } can't: apply it outside", d.name, state)
+				c.errorf(e.Node, diag.InvalidStyle, "style %s holds variants, and %s { … } can't: apply it outside", d.name, state)
 			}
 		})
 	}
@@ -356,7 +357,7 @@ func (c *Checker) styleList(x syntax.Expr, owner *StyleDef) []*StyleEntry {
 		c.styleRef(owner, d)
 		for _, p := range d.Params {
 			if p.Default == nil {
-				c.errorf(e, "style %s takes arguments: %s(…)", d.name, styleName(e))
+				c.errorf(e, diag.ArgumentCount, "style %s takes arguments: %s(…)", d.name, styleName(e))
 				return nil
 			}
 		}
@@ -373,11 +374,11 @@ func (c *Checker) styleList(x syntax.Expr, owner *StyleDef) []*StyleEntry {
 		}
 		c.styleRef(owner, d)
 		if d.Decl.Params == nil {
-			c.errorf(e, "style %s takes no arguments: style: %s", d.name, styleName(e.Fun))
+			c.errorf(e, diag.ArgumentCount, "style %s takes no arguments: style: %s", d.name, styleName(e.Fun))
 			return nil
 		}
 		if e.Block != nil {
-			c.errorf(e.Block, "a style's call takes its arguments in the parentheses")
+			c.errorf(e.Block, diag.UnexpectedBlock, "a style's call takes its arguments in the parentheses")
 		}
 		args := c.matchArgs(e, d.Params, "style "+d.name)
 		for i, a := range args {
@@ -391,7 +392,7 @@ func (c *Checker) styleList(x syntax.Expr, owner *StyleDef) []*StyleEntry {
 	case *syntax.MatchExpr:
 		return []*StyleEntry{{Node: e, Cond: c.styleMatch(e, owner)}}
 	}
-	c.errorf(x, "a style list holds styles: a style's name (card, theme.card), its call (chip(.red)), an if or a match choosing them")
+	c.errorf(x, diag.InvalidStyle, "a style list holds styles: a style's name (card, theme.card), its call (chip(.red)), an if or a match choosing them")
 	saved := c.ctx
 	c.enter(CtxBinding, x, "binding")
 	c.expr(x, nil)
@@ -420,11 +421,11 @@ func (c *Checker) styleNamed(name syntax.Expr) *StyleDef {
 		if d == nil {
 			if o := c.lookup(n.Name); o != nil {
 				if _, ok := o.(*TypeName); !ok {
-					c.errorf(n, "%s isn't a style: a style list holds styles (for one while %s holds, if %s { card })", n.Name, n.Name, n.Name)
+					c.errorf(n, diag.InvalidStyle, "%s isn't a style: a style list holds styles (for one while %s holds, if %s { card })", n.Name, n.Name, n.Name)
 					return nil
 				}
 			}
-			c.errorf(n, "unknown style %s%s", n.Name, c.styleSuggest(n.Name))
+			c.errorf(n, diag.UndefinedName, "unknown style %s%s", n.Name, c.styleSuggest(n.Name))
 			return nil
 		}
 		c.info.Uses[n] = d
@@ -433,23 +434,26 @@ func (c *Checker) styleNamed(name syntax.Expr) *StyleDef {
 		id, ok := n.X.(*syntax.Ident)
 		pn, _ := c.lookup(idName(id, ok)).(*PkgName)
 		if !ok || pn == nil {
-			c.errorf(n.X, "a style is named name, or pkg.name for another package's")
+			c.errorf(n.X, diag.InvalidStyle, "a style is named name, or pkg.name for another package's")
 			return nil
 		}
 		c.info.Uses[id] = pn
 		d := pn.Pkg.Styles[n.Name.Name]
+		if d == nil && pn.Pkg.Broken {
+			return nil
+		}
 		if d == nil {
-			c.errorf(n.Name, "%s has no style %s", pn.Pkg.Path, n.Name.Name)
+			c.errorf(n.Name, diag.UnknownMember, "%s has no style %s", pn.Pkg.Path, n.Name.Name)
 			return nil
 		}
 		if !d.Pub {
-			c.errorf(n.Name, "style %s isn't pub in %s", n.Name.Name, pn.Pkg.Path)
+			c.errorf(n.Name, diag.NotPub, "style %s isn't pub in %s", n.Name.Name, pn.Pkg.Path)
 			return nil
 		}
 		c.info.Uses[n.Name] = d
 		return d
 	}
-	c.errorf(name, "a style is named name, or pkg.name for another package's")
+	c.errorf(name, diag.InvalidStyle, "a style is named name, or pkg.name for another package's")
 	return nil
 }
 
@@ -498,7 +502,7 @@ func (c *Checker) styleIf(e *syntax.IfExpr, owner *StyleDef) *StyleCond {
 	c.enter(CtxBinding, e, "style condition")
 	for _, x := range chain {
 		if hasLetCond(x.Cond) {
-			c.errorf(x.Cond, "a style list's if takes a bool: if let names a value the list can't use")
+			c.errorf(x.Cond, diag.InvalidStyle, "a style list's if takes a bool: if let names a value the list can't use")
 			continue
 		}
 		c.cond(x.Cond)
@@ -543,7 +547,7 @@ func (c *Checker) styleBranch(b *syntax.Block, owner *StyleDef) []*StyleEntry {
 			return c.styleList(es.X, owner)
 		}
 	}
-	c.errorf(b, "a branch of a style list holds the styles it applies: a style, or a list of them")
+	c.errorf(b, diag.InvalidStyle, "a branch of a style list holds the styles it applies: a style, or a list of them")
 	return nil
 }
 
@@ -560,7 +564,7 @@ func (c *Checker) styleMatch(e *syntax.MatchExpr, owner *StyleDef) *StyleCond {
 		c.openScope()
 		c.pattern(a.Pattern, t, LocalVar)
 		if len(c.scope.Names()) > 0 {
-			c.errorf(a.Pattern, "a style list's match binds no names: match the case alone (.tint, not .tint(c))")
+			c.errorf(a.Pattern, diag.InvalidStyle, "a style list's match binds no names: match the case alone (.tint, not .tint(c))")
 			ok = false
 		}
 		if a.Guard != nil {
@@ -598,7 +602,7 @@ func (c *Checker) takesStyleProps(ec *ElementCall) bool {
 // styleProp checks an element's style: list.
 func (c *Checker) styleProp(s *syntax.PropSet, ec *ElementCall) {
 	if ec.StyleNode != nil {
-		c.errorf(s.Name, "style: is set twice: put the styles in one list, style: [a, b]")
+		c.errorf(s.Name, diag.InvalidStyle, "style: is set twice: put the styles in one list, style: [a, b]")
 	}
 	ec.StyleNode = s
 	entries := c.styleList(s.Value, nil)
@@ -607,7 +611,7 @@ func (c *Checker) styleProp(s *syntax.PropSet, ec *ElementCall) {
 		if !ec.Comp.Comp.Native {
 			hint = ": a component takes them when its body is one element"
 		}
-		c.errorf(s.Name, "%s doesn't take the style props%s", ec.Comp.name, hint)
+		c.errorf(s.Name, diag.UnknownProp, "%s doesn't take the style props%s", ec.Comp.name, hint)
 		return
 	}
 	ec.Style = append(ec.Style, entries...)

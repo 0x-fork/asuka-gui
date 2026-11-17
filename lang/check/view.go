@@ -3,6 +3,7 @@ package check
 import (
 	"strings"
 
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/prelude"
 	"github.com/egoist/asuka/lang/syntax"
 )
@@ -35,7 +36,7 @@ func (c *Checker) componentMembers(t *TypeName, params *syntax.ParamList, body *
 			return
 		}
 		if old := comp.Members[id.Name]; old != nil {
-			c.errorf(id, "%s is declared twice in %s", id.Name, t.name)
+			c.errorf(id, diag.DuplicateDeclaration, "%s is declared twice in %s", id.Name, t.name)
 			return
 		}
 		comp.Members[id.Name] = m
@@ -48,7 +49,7 @@ func (c *Checker) componentMembers(t *TypeName, params *syntax.ParamList, body *
 	if params != nil {
 		for _, p := range params.List {
 			if p.Type == nil {
-				c.errorf(p.Name, "parameter %s needs a type: %s: Type", p.Name.Name, p.Name.Name)
+				c.errorf(p.Name, diag.MissingType, "parameter %s needs a type: %s: Type", p.Name.Name, p.Name.Name)
 			}
 			m := &Member{Kind: ParamMember, Type: c.typeExpr(p.Type), Default: p.Default, Decl: p, Pub: true}
 			add(p.Name, m)
@@ -62,24 +63,24 @@ func (c *Checker) componentMembers(t *TypeName, params *syntax.ParamList, body *
 		switch d := it.(type) {
 		case *syntax.PropDecl:
 			if comp.Store {
-				c.errorf(d, "a store has no props: give it parameters, store %s(name: T)", t.name)
+				c.errorf(d, diag.MisplacedDeclaration, "a store has no props: give it parameters, store %s(name: T)", t.name)
 				continue
 			}
 			if d.Name.Name == "style" {
-				c.errorf(d.Name, "style is the style list every element takes (style: card): name the prop otherwise")
+				c.errorf(d.Name, diag.ReservedName, "style is the style list every element takes (style: card): name the prop otherwise")
 			}
 			m := &Member{Kind: PropMember, Default: d.Default, Decl: d, Pub: true}
 			if d.Type != nil {
 				m.Type = c.typeExpr(d.Type)
 			} else if d.Default == nil {
-				c.errorf(d.Name, "prop %s needs a type or a default", d.Name.Name)
+				c.errorf(d.Name, diag.MissingType, "prop %s needs a type or a default", d.Name.Name)
 				m.Type = Invalid
 			}
 			add(d.Name, m)
 			comp.Props = append(comp.Props, m)
 		case *syntax.EventDecl:
 			if comp.Store {
-				c.errorf(d, "a store has no events")
+				c.errorf(d, diag.MisplacedDeclaration, "a store has no events")
 				continue
 			}
 			m := &Member{Kind: EventMember, Type: Void, Decl: d, Pub: true}
@@ -100,11 +101,11 @@ func (c *Checker) componentMembers(t *TypeName, params *syntax.ParamList, body *
 			c.noLetElse(d)
 			bp, ok := d.Pattern.(*syntax.BindPat)
 			if !ok {
-				c.errorf(d.Pattern, "a component's let names one value: let name = …")
+				c.errorf(d.Pattern, diag.InvalidDeclaration, "a component's let names one value: let name = …")
 				continue
 			}
 			if d.Keyword == syntax.VAR {
-				c.errorf(d, "a component's body is declarations: a value that changes is state (state %s = …)", bp.Name.Name)
+				c.errorf(d, diag.InvalidDeclaration, "a component's body is declarations: a value that changes is state (state %s = …)", bp.Name.Name)
 			}
 			m := &Member{Kind: LetMember, Default: d.Value, Decl: d, Pub: d.Pub.IsValid()}
 			if d.Type != nil {
@@ -116,7 +117,7 @@ func (c *Checker) componentMembers(t *TypeName, params *syntax.ParamList, body *
 			m := &Member{Kind: UseMember, Type: c.typeExpr(d.Type), Decl: d}
 			if n, ok := Unopt(m.Type).(*Named); !ok || n.Obj.Kind != StoreType {
 				if !IsInvalid(m.Type) {
-					c.errorf(d.Type, "use takes a store's type (or an optional one, none when nothing provides it), provided by a component above: %s isn't one", typeString(m.Type))
+					c.errorf(d.Type, diag.TypeMismatch, "use takes a store's type (or an optional one, none when nothing provides it), provided by a component above: %s isn't one", typeString(m.Type))
 				}
 			}
 			add(d.Name, m)
@@ -135,19 +136,19 @@ func (c *Checker) componentMembers(t *TypeName, params *syntax.ParamList, body *
 		case *syntax.VariantDecl:
 			switch {
 			case comp.Store:
-				c.errorf(d, "a store has no variants: a component declares them, for its caller's styles")
+				c.errorf(d, diag.MisplacedDeclaration, "a store has no variants: a component declares them, for its caller's styles")
 				continue
 			case comp.Screen:
-				c.errorf(d, "a screen has no variants: a component declares them, for its caller's styles")
+				c.errorf(d, diag.MisplacedDeclaration, "a screen has no variants: a component declares them, for its caller's styles")
 				continue
 			case isVariant(d.Name.Name):
-				c.errorf(d.Name, "%s is an interaction state, which every view that takes variants has: name the variant otherwise", d.Name.Name)
+				c.errorf(d.Name, diag.ReservedName, "%s is an interaction state, which every view that takes variants has: name the variant otherwise", d.Name.Name)
 				continue
 			case syntax.Lookup(d.Name.Name).IsKeyword():
-				c.errorf(d.Name, "%s is a keyword, so %s { … } can't name the variant in a block: name it otherwise", d.Name.Name, d.Name.Name)
+				c.errorf(d.Name, diag.ReservedName, "%s is a keyword, so %s { … } can't name the variant in a block: name it otherwise", d.Name.Name, d.Name.Name)
 				continue
 			case comp.Variant(d.Name.Name) != nil:
-				c.errorf(d.Name, "variant %s is declared twice in %s", d.Name.Name, t.name)
+				c.errorf(d.Name, diag.DuplicateDeclaration, "variant %s is declared twice in %s", d.Name.Name, t.name)
 				continue
 			}
 			v := &VariantDef{object: object{d.Name.Name, d.Name.Start}, Pub: d.Pub.IsValid(), Value: d.Value, Decl: d, Owner: t, Index: len(comp.Variants)}
@@ -166,9 +167,9 @@ func (c *Checker) memberType(m *Member) Type {
 	}
 	if c.resolving[m] {
 		if m.Kind == StateMember {
-			c.errorf(m.Decl, "%s reads itself (its current value, none the first time), so its type must be written: state %s: T = …", m.name, m.name)
+			c.errorf(m.Decl, diag.MissingType, "%s reads itself (its current value, none the first time), so its type must be written: state %s: T = …", m.name, m.name)
 		} else {
-			c.errorf(m.Decl, "%s's value is defined in terms of itself", m.name)
+			c.errorf(m.Decl, diag.RecursiveDefinition, "%s's value is defined in terms of itself", m.name)
 		}
 		m.Type = Invalid
 		return m.Type
@@ -247,7 +248,7 @@ func (c *Checker) variantDecls(t *TypeName) {
 	}
 	for _, v := range comp.Variants {
 		if m := comp.Members[v.name]; m != nil && m.IsSlot() {
-			c.errorf(v.Decl.Name, "variant %s has the name of %s's slot %s: %s { … } in a caller's block would be either; name one otherwise", v.name, t.name, v.name, v.name)
+			c.errorf(v.Decl.Name, diag.InvalidVariant, "variant %s has the name of %s's slot %s: %s { … } in a caller's block would be either; name one otherwise", v.name, t.name, v.name, v.name)
 		}
 		saved := c.ctx
 		c.enter(CtxBinding, v.Value, "variant "+v.name)
@@ -255,7 +256,7 @@ func (c *Checker) variantDecls(t *TypeName) {
 		c.leave(saved)
 	}
 	if !c.TakesStyle(t) {
-		c.errorf(comp.Variants[0].Decl, "a component with variants shows one element: its caller's %s { … } goes on that element (%s's views are more than one call, or one that takes no style)", comp.Variants[0].name, t.name)
+		c.errorf(comp.Variants[0].Decl, diag.InvalidVariant, "a component with variants shows one element: its caller's %s { … } goes on that element (%s's views are more than one call, or one that takes no style)", comp.Variants[0].name, t.name)
 	}
 }
 
@@ -268,7 +269,7 @@ func (c *Checker) componentBody(t *TypeName) {
 		return
 	}
 	if comp.Screen && prelude.FindElement("Screen") == nil {
-		c.errorf(t.Decl, "screen %s needs the Screen element, which the runtime doesn't have yet: make it a component", t.name)
+		c.errorf(t.Decl, diag.NotSupported, "screen %s needs the Screen element, which the runtime doesn't have yet: make it a component", t.name)
 	}
 	if comp.Screen {
 		c.screenAt(t)
@@ -291,7 +292,7 @@ func (c *Checker) componentBody(t *TypeName) {
 			pt := c.expr(d.Value, nil)
 			if n, ok := pt.(*Named); !ok || n.Obj.Kind != StoreType {
 				if !IsInvalid(pt) {
-					c.errorf(d.Value, "provide takes a store, for use in the components below: this is %s", aType(pt))
+					c.errorf(d.Value, diag.TypeMismatch, "provide takes a store, for use in the components below: this is %s", aType(pt))
 				}
 			}
 		case *syntax.TaskDecl:
@@ -306,7 +307,7 @@ func (c *Checker) componentBody(t *TypeName) {
 			case *syntax.PropDecl, *syntax.EventDecl, *syntax.StateDecl, *syntax.LetDecl, *syntax.UseDecl,
 				*syntax.FuncDecl, *syntax.VariantDecl, *syntax.ProvideDecl, *syntax.TaskDecl, *syntax.EffectDecl, *syntax.BadItem:
 			default:
-				c.errorf(it, "a store has no views or statements: it's state, lets, fns, tasks and effects")
+				c.errorf(it, diag.MisplacedDeclaration, "a store has no views or statements: it's state, lets, fns, tasks and effects")
 			}
 		}
 		return
@@ -369,7 +370,7 @@ func (c *Checker) effectDecl(d *syntax.EffectDecl, name string) {
 			ec.deps = append(ec.deps, c.info.Ctxs[x])
 		}
 		if len(d.Deps) == 0 {
-			c.errorf(d, "effect() follows nothing: an effect that runs once is effect { … } reading nothing, or a task { }")
+			c.errorf(d, diag.FollowsNothing, "effect() follows nothing: an effect that runs once is effect { … } reading nothing, or a task { }")
 		}
 		ctx = c.enter(CtxEffect, d.Body, name)
 		ctx.Untracked = true
@@ -461,7 +462,7 @@ func (c *Checker) viewItem(it syntax.Item, el *ElementCall) {
 			c.enter(CtxBuilder, a, "arm")
 			c.topPattern(a.Pattern, s.Subject, t, ViewMemo)
 			if a.Guard != nil {
-				c.errorf(a.Guard, "a match in a view takes no guards: put an if in the arm")
+				c.errorf(a.Guard, diag.StatementInView, "a match in a view takes no guards: put an if in the arm")
 			}
 			switch b := a.Body.(type) {
 			case *syntax.Block:
@@ -476,29 +477,29 @@ func (c *Checker) viewItem(it syntax.Item, el *ElementCall) {
 	case *syntax.ExprStmt:
 		t := c.expr(s.X, View)
 		if !IsInvalid(t) && t != View && !(IsOptional(t) && Unopt(t) == View) {
-			c.errorf(s, "%s isn't a view: a body shows elements and components (Text(\"{x}\") shows a value)", aType(t))
+			c.errorf(s, diag.NotAView, "%s isn't a view: a body shows elements and components (Text(\"{x}\") shows a value)", aType(t))
 		}
 	case *syntax.PropSet, *syntax.OnHandler, *syntax.BindItem, *syntax.StyleUse, *syntax.SlotItem:
-		c.errorf(it, "%s goes in an element's block, not here", itemName(it))
+		c.errorf(it, diag.StatementInView, "%s goes in an element's block, not here", itemName(it))
 	case *syntax.LetDecl:
 		if s.Keyword == syntax.VAR {
-			c.errorf(it, "var in a view: a component's body is declarations; a value that changes is state, declared in the body (state x = …)")
+			c.errorf(it, diag.StatementInView, "var in a view: a component's body is declarations; a value that changes is state, declared in the body (state x = …)")
 		} else {
-			c.errorf(it, "a let in a view: a component's body is declarations; declare it in the body, beside its state (a let there is kept up to date)")
+			c.errorf(it, diag.StatementInView, "a let in a view: a component's body is declarations; declare it in the body, beside its state (a let there is kept up to date)")
 		}
 		// Its names, so their uses don't say they're unknown.
 		c.bindIrrefutable(s.Pattern, Invalid, false, true)
 	case *syntax.AssignStmt, *syntax.WhileStmt, *syntax.DoStmt, *syntax.ReturnStmt,
 		*syntax.ThrowStmt, *syntax.BranchStmt, *syntax.DeferStmt, *syntax.EmitStmt:
-		c.errorf(it, "%s in a view: a component's body is declarations; put statements in a handler (on press { … }), a fn, a task or an effect", stmtName(it))
+		c.errorf(it, diag.StatementInView, "%s in a view: a component's body is declarations; put statements in a handler (on press { … }), a fn, a task or an effect", stmtName(it))
 	case *syntax.StateDecl, *syntax.PropDecl, *syntax.EventDecl, *syntax.VariantDecl, *syntax.UseDecl, *syntax.ProvideDecl,
 		*syntax.TaskDecl, *syntax.EffectDecl, *syntax.FuncDecl:
-		c.errorf(it, "%s belongs in a component's body, not in an element's block", itemName(it))
+		c.errorf(it, diag.StatementInView, "%s belongs in a component's body, not in an element's block", itemName(it))
 	case *syntax.StyleDecl:
-		c.errorf(it, "a style is declared at the top of a file")
+		c.errorf(it, diag.MisplacedDeclaration, "a style is declared at the top of a file")
 	case *syntax.BadItem:
 	default:
-		c.errorf(it, "this isn't a view")
+		c.errorf(it, diag.NotAView, "this isn't a view")
 	}
 }
 
@@ -549,7 +550,7 @@ func (c *Checker) styleMember(name string) *Member {
 func (c *Checker) componentCall(e *syntax.CallExpr, tn *TypeName) Type {
 	comp := tn.Comp
 	if comp.Style {
-		c.errorf(e.Fun, "Style isn't an element: its props are every element's")
+		c.errorf(e.Fun, diag.NotAView, "Style isn't an element: its props are every element's")
 	}
 	ec := &ElementCall{Comp: tn, Type: tn.Type.(*Named)}
 	c.info.Elements[e] = ec
@@ -567,7 +568,7 @@ func (c *Checker) componentCall(e *syntax.CallExpr, tn *TypeName) Type {
 		for _, a := range e.Args.List {
 			if a.Label != nil {
 				if m := comp.Members[a.Label.Name]; m != nil && m.Kind != ParamMember || (comp.Native || c.TakesStyle(tn)) && c.styleMember(a.Label.Name) != nil {
-					c.errorf(a.Label, "%s is a prop of %s: set it in the block, %s(…) { %s: … }", a.Label.Name, tn.name, tn.name, a.Label.Name)
+					c.errorf(a.Label, diag.PropOrArgument, "%s is a prop of %s: set it in the block, %s(…) { %s: … }", a.Label.Name, tn.name, tn.name, a.Label.Name)
 					c.expr(a.Value, nil)
 					continue
 				}
@@ -591,7 +592,7 @@ func (c *Checker) componentCall(e *syntax.CallExpr, tn *TypeName) Type {
 			ec.As = c.declareVar(e.As, Ref, false)
 			ec.As.RefComp = tn
 		default:
-			c.errorf(e.As, "as names an element's view, and %s shows more than one: name an element inside it", tn.name)
+			c.errorf(e.As, diag.InvalidRef, "as names an element's view, and %s shows more than one: name an element inside it", tn.name)
 		}
 	}
 	if e.Block != nil {
@@ -626,7 +627,7 @@ func (c *Checker) componentCall(e *syntax.CallExpr, tn *TypeName) Type {
 			}
 		}
 		if !set {
-			c.errorf(e, "%s needs %s: set it in the block, %s { %s: … }", tn.name, m.name, tn.name, m.name)
+			c.errorf(e, diag.MissingProp, "%s needs %s: set it in the block, %s { %s: … }", tn.name, m.name, tn.name, m.name)
 		}
 	}
 	return View
@@ -684,7 +685,7 @@ func (c *Checker) elementBlock(items []syntax.Item, ec *ElementCall) {
 		case *syntax.BindItem:
 			c.bindItem(s, ec)
 		case *syntax.StyleUse:
-			c.errorf(s, "write style: %s: an element applies styles with the style: prop (asuka fmt rewrites it)", styleName(s.Name))
+			c.errorf(s, diag.DeprecatedSyntax, "write style: %s: an element applies styles with the style: prop (asuka fmt rewrites it)", styleName(s.Name))
 		case *syntax.SlotItem:
 			if m := comp.Members[s.Name.Name]; m == nil && isVariant(s.Name.Name) || (m == nil || !m.IsSlot()) && c.FindVariant(ec.Comp, s.Name.Name) != nil {
 				c.variantItem(s, ec)
@@ -703,7 +704,7 @@ func (c *Checker) elementBlock(items []syntax.Item, ec *ElementCall) {
 	}
 	cm := comp.Members["children"]
 	if cm == nil || cm.Kind != PropMember {
-		c.errorf(children[0], "%s takes no children%s", ec.Comp.name, childHint(ec.Comp))
+		c.errorf(children[0], diag.NoChildren, "%s takes no children%s", ec.Comp.name, childHint(ec.Comp))
 		return
 	}
 	if comp.Native && isRouteElement(ec) {
@@ -741,11 +742,11 @@ func (c *Checker) alertChildren(items []syntax.Item) {
 			call, _ := s.X.(*syntax.CallExpr)
 			ec := c.info.Elements[call]
 			if ec == nil {
-				c.errorf(s, "an Alert's block holds Buttons and TextFields: its buttons and its fields")
+				c.errorf(s, diag.NoChildren, "an Alert's block holds Buttons and TextFields: its buttons and its fields")
 				continue
 			}
 			if el := ec.Comp.Comp.Element; el == nil || el.Name != "Button" && el.Name != "TextField" {
-				c.errorf(s, "an Alert's block holds Buttons and TextFields (its buttons and its fields), not a %s", ec.Comp.name)
+				c.errorf(s, diag.NoChildren, "an Alert's block holds Buttons and TextFields (its buttons and its fields), not a %s", ec.Comp.name)
 			}
 		case *syntax.IfStmt:
 			c.alertChildren(s.Then.Items)
@@ -850,27 +851,27 @@ func (c *Checker) variantItem(s *syntax.SlotItem, ec *ElementCall) {
 	switch d := c.FindVariant(ec.Comp, s.Name.Name); {
 	case d != nil:
 		if !d.Pub && d.Owner.Pkg != c.pkg {
-			c.errorf(s.Name, "%s's variant %s isn't pub: its package styles it, or declares it pub variant %s", d.Owner.name, d.name, d.name)
+			c.errorf(s.Name, diag.NotPub, "%s's variant %s isn't pub: its package styles it, or declares it pub variant %s", d.Owner.name, d.name, d.name)
 			return
 		}
 		va.Decl = d
 		c.info.Uses[s.Name] = d // its declaration, for an editor
 	case comp.Native && (comp.Element == nil || !comp.Element.Variants):
-		c.errorf(s.Name, "%s takes no variants: %s { … } goes in a View, a Row, a Column or a SafeArea", ec.Comp.name, s.Name.Name)
+		c.errorf(s.Name, diag.UnknownProp, "%s takes no variants: %s { … } goes in a View, a Row, a Column or a SafeArea", ec.Comp.name, s.Name.Name)
 		return
 	case !comp.Native && !c.styleTakesVariants(ec.Comp):
-		c.errorf(s.Name, "%s has no variant %s (its variants: %s)", ec.Comp.name, s.Name.Name, c.variantNames(ec.Comp))
+		c.errorf(s.Name, diag.UnknownProp, "%s has no variant %s (its variants: %s)", ec.Comp.name, s.Name.Name, c.variantNames(ec.Comp))
 		return
 	}
 	set := func(name *syntax.Ident, value syntax.Expr) {
 		m := c.styleMember(name.Name)
 		switch {
 		case m == nil && comp.Members[name.Name] != nil:
-			c.errorf(name, "a variant holds style props, and %s is %s's own: set it outside %s { … }", name.Name, ec.Comp.name, s.Name.Name)
+			c.errorf(name, diag.InvalidVariant, "a variant holds style props, and %s is %s's own: set it outside %s { … }", name.Name, ec.Comp.name, s.Name.Name)
 		case m == nil:
-			c.errorf(name, "a variant holds style props, and %s isn't one%s", name.Name, c.propSuggest(c.styleComp(), name.Name))
+			c.errorf(name, diag.UnknownProp, "a variant holds style props, and %s isn't one%s", name.Name, c.propSuggest(c.styleComp(), name.Name))
 		case name.Name == "keys" || name.Name == "actions":
-			c.errorf(name, "%s don't change with a state: set them outside %s { … }", name.Name, s.Name.Name)
+			c.errorf(name, diag.InvalidVariant, "%s don't change with a state: set them outside %s { … }", name.Name, s.Name.Name)
 			m = nil
 		}
 		if m == nil {
@@ -887,7 +888,7 @@ func (c *Checker) variantItem(s *syntax.SlotItem, ec *ElementCall) {
 			if x.Name.Name == "style" {
 				// The variant's styles, under its own props.
 				if styleSet != nil {
-					c.errorf(x.Name, "style: is set twice: put the styles in one list, style: [a, b]")
+					c.errorf(x.Name, diag.InvalidStyle, "style: is set twice: put the styles in one list, style: [a, b]")
 				}
 				styleSet = x
 				entries := c.styleList(x.Value, nil)
@@ -897,10 +898,10 @@ func (c *Checker) variantItem(s *syntax.SlotItem, ec *ElementCall) {
 			}
 			set(x.Name, x.Value)
 		case *syntax.StyleUse:
-			c.errorf(x, "write style: %s: a variant applies styles with style: (asuka fmt rewrites it)", styleName(x.Name))
+			c.errorf(x, diag.DeprecatedSyntax, "write style: %s: a variant applies styles with style: (asuka fmt rewrites it)", styleName(x.Name))
 		case *syntax.BadItem:
 		default:
-			c.errorf(it, "a variant holds style props only (name: value, style: …), not %s", itemName(it))
+			c.errorf(it, diag.InvalidVariant, "a variant holds style props only (name: value, style: …), not %s", itemName(it))
 		}
 	}
 	ec.Variants = append(ec.Variants, va)
@@ -915,12 +916,12 @@ func (c *Checker) styleComp() *Component {
 // refProp checks ref: r, which puts the element's view in the Ref r.
 func (c *Checker) refProp(name *syntax.Ident, value syntax.Expr, ec *ElementCall) {
 	if !ec.Comp.Comp.Native {
-		c.errorf(name, "ref names an element's view, and %s is a component: put it on an element inside it", ec.Comp.name)
+		c.errorf(name, diag.InvalidRef, "ref names an element's view, and %s is a component: put it on an element inside it", ec.Comp.name)
 		c.expr(value, nil)
 		return
 	}
 	if ec.Ref != nil {
-		c.errorf(name, "ref is set twice")
+		c.errorf(name, diag.InvalidRef, "ref is set twice")
 	}
 	c.assign(value, Ref, "ref")
 	ec.Ref = value
@@ -938,21 +939,21 @@ func (c *Checker) propSet(name *syntax.Ident, value syntax.Expr, ec *ElementCall
 		return
 	}
 	if m == nil {
-		c.errorf(name, "%s has no prop %s%s", ec.Comp.name, name.Name, c.propSuggest(comp, name.Name))
+		c.errorf(name, diag.UnknownProp, "%s has no prop %s%s", ec.Comp.name, name.Name, c.propSuggest(comp, name.Name))
 		c.expr(value, Invalid) // what it'd be is unknown: not asked again
 		return
 	}
 	switch m.Kind {
 	case ParamMember:
-		c.errorf(name, "%s is a parameter of %s: pass it in the parentheses, %s(%s: …)", name.Name, ec.Comp.name, ec.Comp.name, name.Name)
+		c.errorf(name, diag.PropOrArgument, "%s is a parameter of %s: pass it in the parentheses, %s(%s: …)", name.Name, ec.Comp.name, ec.Comp.name, name.Name)
 	case EventMember:
-		c.errorf(name, "%s is an event: handle it with on %s { … }", name.Name, name.Name)
+		c.errorf(name, diag.PropOrArgument, "%s is an event: handle it with on %s { … }", name.Name, name.Name)
 	case PropMember:
 		if name.Name == "children" {
-			c.errorf(name, "children are the block's views: put them in the block")
+			c.errorf(name, diag.PropOrArgument, "children are the block's views: put them in the block")
 		}
 	default:
-		c.errorf(name, "%s isn't a prop of %s", name.Name, ec.Comp.name)
+		c.errorf(name, diag.UnknownProp, "%s isn't a prop of %s", name.Name, ec.Comp.name)
 	}
 	if m.Kind != PropMember {
 		c.expr(value, nil)
@@ -1020,13 +1021,13 @@ func (c *Checker) onHandler(h *syntax.OnHandler, ec *ElementCall) {
 	savedView, savedLoops, savedTry, savedAwait, savedHandled := c.view, c.loops, c.inTry, c.inAwait, c.handled
 	c.view, c.loops, c.inTry, c.inAwait, c.handled = false, 0, 0, 0, 0
 	if m == nil || m.Kind != EventMember {
-		c.errorf(h.Name, "%s has no event %s%s", ec.Comp.name, h.Name.Name, c.eventSuggest(comp, h.Name.Name))
+		c.errorf(h.Name, diag.UnknownEvent, "%s has no event %s%s", ec.Comp.name, h.Name.Name, c.eventSuggest(comp, h.Name.Name))
 		for _, p := range h.Params {
 			c.declareVar(p, Invalid, false)
 		}
 	} else {
 		if len(h.Params) > len(m.Params) {
-			c.errorf(h, "event %s gives %s", h.Name.Name, plural(len(m.Params), "value", "values"))
+			c.errorf(h, diag.ArgumentCount, "event %s gives %s", h.Name.Name, plural(len(m.Params), "value", "values"))
 		}
 		var vars []*Var
 		for i, p := range h.Params {
@@ -1127,7 +1128,7 @@ func (c *Checker) bindItem(b *syntax.BindItem, ec *ElementCall) {
 		// <prop>Change(value), as a native component does.
 		ev = nativeBindEvent(comp, m)
 		if ev == nil {
-			c.errorf(b.Name, "%s can't bind %s: a component binds a prop it reports with event %sChange(%s: %s)", ec.Comp.name, b.Name.Name, b.Name.Name, b.Name.Name, typeString(m.Type))
+			c.errorf(b.Name, diag.NotBindable, "%s can't bind %s: a component binds a prop it reports with event %sChange(%s: %s)", ec.Comp.name, b.Name.Name, b.Name.Name, b.Name.Name, typeString(m.Type))
 			c.expr(b.Target, nil)
 			return
 		}
@@ -1136,12 +1137,12 @@ func (c *Checker) bindItem(b *syntax.BindItem, ec *ElementCall) {
 		// event <prop>Change(value) (docs/native.md).
 		ev = nativeBindEvent(comp, m)
 		if ev == nil {
-			c.errorf(b.Name, "%s can't bind %s: it binds a prop it reports with event %sChange(%s: %s)", ec.Comp.name, b.Name.Name, b.Name.Name, b.Name.Name, typeString(m.Type))
+			c.errorf(b.Name, diag.NotBindable, "%s can't bind %s: it binds a prop it reports with event %sChange(%s: %s)", ec.Comp.name, b.Name.Name, b.Name.Name, b.Name.Name, typeString(m.Type))
 			c.expr(b.Target, nil)
 			return
 		}
 	case m == nil || key == nil || !key.Bind:
-		c.errorf(b.Name, "%s can't bind %s: only a control's own value binds (TextField's text, Toggle's on)", ec.Comp.name, b.Name.Name)
+		c.errorf(b.Name, diag.NotBindable, "%s can't bind %s: only a control's own value binds (TextField's text, Toggle's on)", ec.Comp.name, b.Name.Name)
 		c.expr(b.Target, nil)
 		return
 	default:
@@ -1161,7 +1162,7 @@ func (c *Checker) bindItem(b *syntax.BindItem, ec *ElementCall) {
 	c.view = savedView
 	c.leave(saved)
 	if !IsInvalid(t) && !Identical(t, m.Type) {
-		c.errorf(b.Target, "bind %s takes %s, and this is %s", b.Name.Name, aType(m.Type), aType(t))
+		c.errorf(b.Target, diag.TypeMismatch, "bind %s takes %s, and this is %s", b.Name.Name, aType(m.Type), aType(t))
 	}
 	ec.Binds = append(ec.Binds, &BindArg{Prop: m, Event: ev, Target: b.Target, Item: b})
 }
@@ -1179,10 +1180,10 @@ func (c *Checker) slotItem(s *syntax.SlotItem, ec *ElementCall) {
 	m := comp.Members[s.Name.Name]
 	if m == nil || !m.IsSlot() {
 		if !comp.Native && m == nil && c.variantNames(ec.Comp) != "none" {
-			c.errorf(s.Name, "%s has no slot or variant %s (a slot is a prop of type View; its variants: %s)", ec.Comp.name, s.Name.Name, c.variantNames(ec.Comp))
+			c.errorf(s.Name, diag.UnknownProp, "%s has no slot or variant %s (a slot is a prop of type View; its variants: %s)", ec.Comp.name, s.Name.Name, c.variantNames(ec.Comp))
 			return
 		}
-		c.errorf(s.Name, "%s has no slot %s (a slot is a prop of type View)", ec.Comp.name, s.Name.Name)
+		c.errorf(s.Name, diag.UnknownProp, "%s has no slot %s (a slot is a prop of type View)", ec.Comp.name, s.Name.Name)
 		return
 	}
 	saved := c.ctx

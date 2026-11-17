@@ -1,6 +1,9 @@
 package check
 
-import "github.com/egoist/asuka/lang/syntax"
+import (
+	"github.com/egoist/asuka/lang/diag"
+	"github.com/egoist/asuka/lang/syntax"
+)
 
 // Loops' names and iteration over the program's own types (RFC 0011).
 
@@ -27,7 +30,7 @@ func (c *Checker) loopBody(loop syntax.Node, id *syntax.Ident, body func()) {
 	if id != nil {
 		for _, o := range c.labels {
 			if o.id.Name == id.Name && o.ctx == c.ctx {
-				c.errorf(id, "%s names a loop around this one already: give this one another name", id.Name)
+				c.errorf(id, diag.LoopLabel, "%s names a loop around this one already: give this one another name", id.Name)
 			}
 		}
 		l = &loopLabel{obj: &LoopName{object: object{id.Name, id.Start}, Loop: loop}, id: id, loop: loop, ctx: c.ctx, inDefer: c.inDefer}
@@ -40,7 +43,7 @@ func (c *Checker) loopBody(loop syntax.Node, id *syntax.Ident, body func()) {
 	if l != nil {
 		c.labels = c.labels[:len(c.labels)-1]
 		if !l.used {
-			c.errorf(id, "%s names this loop, and no break or continue says it: drop as %s", id.Name, id.Name)
+			c.errorf(id, diag.LoopLabel, "%s names this loop, and no break or continue says it: drop as %s", id.Name, id.Name)
 		}
 	}
 }
@@ -57,15 +60,15 @@ func (c *Checker) branchLabel(tok syntax.Token, id *syntax.Ident) {
 		c.info.Uses[id] = l.obj
 		switch {
 		case l.ctx != c.ctx:
-			c.errorf(id, "%s %s is in a closure: it can't leave the loop around the closure; return a value that says to, and %s there", tok, id.Name, tok)
+			c.errorf(id, diag.LoopLabel, "%s %s is in a closure: it can't leave the loop around the closure; return a value that says to, and %s there", tok, id.Name, tok)
 		case l.inDefer != c.inDefer:
-			c.errorf(id, "%s %s is in a defer, which runs to its end", tok, id.Name)
+			c.errorf(id, diag.LoopLabel, "%s %s is in a defer, which runs to its end", tok, id.Name)
 		default:
 			c.info.Labels[id] = l.loop
 		}
 		return
 	}
-	c.errorf(id, "no loop around this is named %s: name one, for … as %s", id.Name, id.Name)
+	c.errorf(id, diag.LoopLabel, "no loop around this is named %s: name one, for … as %s", id.Name, id.Name)
 }
 
 // forIter checks for x in v over a value of the program's types: an

@@ -1,0 +1,119 @@
+# 错误代码
+
+Asuka 报告的每个错误和警告都有一个代码：一个稳定的名称，会出现在终端里（`error[write-in-binding]`）、`asuka check --json` 和 `asuka test --json` 的输出里，以及编辑器里，编辑器会链接到这里。每一页都说明这条规则为什么存在、违反时如何修正，并给出一个违反它的程序和一个不违反它的程序。在终端里运行 `asuka explain <code>` 可以看到与所装版本一致的页面。
+
+## 编译器报告的
+
+- [argument-count](argument-count.md): 调用时参数太多或太少。
+- [argument-label](argument-label.md): 具名参数在函数里没有对应的形参。
+- [async-in-effect](async-in-effect.md): 在 effect 里写了 `await`。
+- [await-outside-async](await-outside-async.md): 在不能等待的地方写了 `await`。
+- [bad-operand](bad-operand.md): 运算符用在了它不接受的值上。
+- [brace-placement](brace-placement.md): 代码块的 `{` 要写在上一行的末尾。
+- [cannot-infer-type](cannot-infer-type.md): 编译器无法从代码中推断出值的类型。
+- [closure-keeps-itself](closure-keeps-itself.md): 闭包通过保存它的变量调用自己。
+- [constraint-not-met](constraint-not-met.md): 类型缺少泛型或方法对它的要求。
+- [deprecated-syntax](deprecated-syntax.md): 已被替换的旧写法，`asuka fmt` 会自动改写。
+- [duplicate-declaration](duplicate-declaration.md): 同一个地方声明了两次的名称。
+- [effect-writes-what-it-follows](effect-writes-what-it-follows.md): effect 写入了它读取的状态。
+- [embed-file](embed-file.md): `embed` 的文件不在包里。
+- [extension-conflict](extension-conflict.md): 扩展添加了类型已有的名称，或者另一个扩展也添加了同样的名称。
+- [fn-body](fn-body.md): 函数缺少函数体，或者有了不该有的函数体。
+- [follows-nothing](follows-nothing.md): `state x()` 或 `effect()` 没有可跟随的东西。
+- [import-cycle](import-cycle.md): 相互导入的包。
+- [int-overflow](int-overflow.md): 超出 64 位范围的整数字面量。
+- [interface-not-satisfied](interface-not-satisfied.md): 类型声明了某个 interface，却没有实现它。
+- [internal-error](internal-error.md): 编译器自身的错误。
+- [invalid-catalog](invalid-catalog.md): 不是有效消息文件的目录。
+- [invalid-catch](invalid-catch.md): 执行不到或无错可捕的 `catch`。
+- [invalid-character](invalid-character.md): 在这里不属于这门语言的字符。
+- [invalid-conformance](invalid-conformance.md): 类型声明的、或类型参数要求的东西不是 interface。
+- [invalid-constant](invalid-constant.md): 编译时生成的值不是字面量，或者无法解析。
+- [invalid-declaration](invalid-declaration.md): 声明的写法不被它所在的位置接受。
+- [invalid-entry](invalid-entry.md): 程序的 `fn main` 声明方式与它的运行方式不符。
+- [invalid-extension](invalid-extension.md): `extend` 了不能扩展的东西，或者写法不对。
+- [invalid-extern](invalid-extern.md): C 无法支撑的 extern 声明。
+- [invalid-flag-spec](invalid-flag-spec.md): `flag.parse` 无法把命令行读进的类型。
+- [invalid-for](invalid-for.md): `for` 遍历了它不能遍历的东西。
+- [invalid-literal](invalid-literal.md): 写法不正确的数字、颜色、时长或转义。
+- [invalid-modifier](invalid-modifier.md): 在不适用的地方写了 `pub`、`mut`、`async`、`throws` 或类型参数。
+- [invalid-pattern](invalid-pattern.md): 写法不被语言接受的模式。
+- [invalid-project](invalid-project.md): 项目的 asuka.toml 或目录无法按它所写的读取。
+- [invalid-ref](invalid-ref.md): `ref` 或 `as` 指向的不是单个元素的视图。
+- [invalid-route](invalid-route.md): 页面的地址，或者路由无法完成的导航。
+- [invalid-shader](invalid-shader.md): shader 里用了 GPU 语言没有的东西。
+- [invalid-style](invalid-style.md): 样式的声明或应用方式不被接受。
+- [invalid-variant](invalid-variant.md): 变体的声明或用法不可行。
+- [let-else](let-else.md): `let … else` 的 else 会继续往下执行，或者根本没有可解包的东西。
+- [load-outside-component](load-outside-component.md): 在组件或 store 的 `let` 之外使用了 `load`。
+- [local-fn](local-fn.md): 代码块里的函数用了只有文件顶层函数才有的特性。
+- [loop-label](loop-label.md): 循环名没有被使用，或者不存在。
+- [maybe-none](maybe-none.md): 把可能为 `none` 的值当作一定存在来使用。
+- [message-arguments](message-arguments.md): 调用消息时给的参数与它的占位符不符。
+- [misplaced-declaration](misplaced-declaration.md): 声明出现在它这一类不能出现的地方。
+- [misplaced-statement](misplaced-statement.md): 语句写在了无法发挥作用的地方。
+- [missing-await](missing-await.md): 调用 async 函数时没有写 `await`。
+- [missing-prop](missing-prop.md): 元素缺少它必需的属性。
+- [missing-return](missing-return.md): 有返回值的函数可能在没有返回值的情况下运行到结尾。
+- [missing-translation](missing-translation.md): 某种语言的目录缺少源语言的部分消息。
+- [missing-try](missing-try.md): 调用会抛错的函数时没有写 `try`。
+- [missing-type](missing-type.md): 必须写出类型的声明。
+- [native-type](native-type.md): 原生组件的属性或事件使用了平台视图无法接收的类型。
+- [no-children](no-children.md): 给不接受子视图的元素传了子视图，或者传的子视图不对。
+- [no-such-operator](no-such-operator.md): 其他语言有、Asuka 没有的运算符。
+- [no-value](no-value.md): 当作值使用、却不产生值的东西。
+- [non-exhaustive-match](non-exhaustive-match.md): 没有覆盖所有情况的 `match`。
+- [not-a-type](not-a-type.md): 当作类型使用、实际上却不是类型的东西。
+- [not-a-value](not-a-value.md): 在需要值的地方用了类型、包或方法。
+- [not-a-view](not-a-view.md): 视图之间出现了不是视图的值。
+- [not-an-error](not-an-error.md): 抛出或捕获的值不是错误类型。
+- [not-assignable](not-assignable.md): 修改了不能修改的东西。
+- [not-async-call](not-async-call.md): 传给 `load`、`all` 或 `race` 的不是 async 调用。
+- [not-bindable](not-bindable.md): `bind` 了一个不报告变化的属性。
+- [not-c-type](not-c-type.md): 无法传给 C 的类型。
+- [not-callable](not-callable.md): 调用了不是函数的东西。
+- [not-json](not-json.md): JSON 无法读写的类型。
+- [not-optional](not-optional.md): 对一定有值的值使用了可选类型的运算符。
+- [not-pub](not-pub.md): 其他包（或 store、worker）没有公开的声明。
+- [not-sendable](not-sendable.md): 无法传到另一个线程的值。
+- [not-supported](not-supported.md): 语言暂时还不支持的写法。
+- [pattern-type](pattern-type.md): 与值的类型不可能匹配的模式。
+- [peek-untracked](peek-untracked.md): 在不跟随任何东西的地方使用了 `peek`。
+- [plural-categories](plural-categories.md): 复数或选择消息的类别与语言的类别不符。
+- [prop-not-assignable](prop-not-assignable.md): 组件给不能赋值的 prop 赋了值。
+- [prop-or-argument](prop-or-argument.md): 参数、属性、事件或子视图放错了位置。
+- [recursive-definition](recursive-definition.md): 用自己来定义自己的值或样式。
+- [recursive-type](recursive-type.md): 包含自身完整副本的类型。
+- [reserved-name](reserved-name.md): 语言本身在用的名称。
+- [return-value](return-value.md): `return` 带了函数不返回的值，或者在需要值时没有带。
+- [row-without-key](row-without-key.md): 视图里的 `for` 遍历会变化的数据，却没有 `key`。
+- [spawn-captures-state](spawn-captures-state.md): `spawn` 读取或修改了状态，或者用了不是值的东西。
+- [statement-in-view](statement-in-view.md): 组件的视图之间写了语句。
+- [syntax-error](syntax-error.md): 解析器在这里期望的是别的内容。
+- [too-large](too-large.md): 函数太大，字节码装不下。
+- [tr-in-package](tr-in-package.md): 在不是应用的包里使用了 `tr`。
+- [type-arguments](type-arguments.md): 类型参数的个数不对。
+- [type-mismatch](type-mismatch.md): 值的类型和期望的类型不同。
+- [undefined-name](undefined-name.md): 在使用的地方没有任何声明的名称。
+- [unexpected-block](unexpected-block.md): 在不接受代码块的调用后面写了代码块。
+- [unhandled-error](unhandled-error.md): 错误可能从没有人接收它的地方离开。
+- [unknown-event](unknown-event.md): 处理或 `emit` 了组件没有声明的事件。
+- [unknown-member](unknown-member.md): 类型、枚举或包里没有这个名称的成员。
+- [unknown-message](unknown-message.md): `tr.key` 用了目录里没有的消息。
+- [unknown-package](unknown-package.md): 导入的路径不对应任何包。
+- [unknown-prop](unknown-prop.md): 元素没有这个属性、插槽或变体。
+- [unterminated](unterminated.md): 字符串、注释或转义没有闭合。
+- [unused-catalog-entry](unused-catalog-entry.md): 目录里没有被使用的描述或参数。
+- [view-in-statement](view-in-statement.md): 在会运行的代码里创建视图。
+- [worker-captures-state](worker-captures-state.md): worker 读取了主线程的状态。
+- [worker-misuse](worker-misuse.md): 从外部读取了 worker 自己的值，或者在不能创建、调用 worker 的地方这么做了。
+- [write-in-binding](write-in-binding.md): 在界面跟随的地方写入了状态。
+
+## 运行时报告的
+
+- [effect-in-effect-pass](effect-in-effect-pass.md): effect 的写入让一个绑定在一次刷新里运行了两次。
+- [effect-loop](effect-loop.md): 在一次刷新（flush）里不断互相弄脏的 effect。
+- [load-waterfall](load-waterfall.md): 一个 load 等待了另一个它并不使用的 load。
+- [long-hold](long-hold.md): load 保留旧内容已有好几秒，却没有任何提示。
+- [wide-fanout](wide-fanout.md): 一次写入让 1,000 多个绑定和 let 重新运行，而且不止一次。
+- [write-in-memo](write-in-memo.md): 在计算 `let` 时写入了状态。

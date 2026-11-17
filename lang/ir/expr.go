@@ -5,6 +5,7 @@ import (
 
 	bc "github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/lang/check"
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -327,7 +328,7 @@ func (b *fb) expr(e syntax.Expr, dst int) int {
 	case *syntax.CatchExpr:
 		return b.catchExpr(e, dst)
 	}
-	b.l.errorf(e, "can't lower this expression yet")
+	b.l.errorf(e, diag.NotSupported, "can't lower this expression yet")
 	return b.valueReg(-1, b.kind(b.l.info.Types[e]))
 }
 
@@ -476,7 +477,7 @@ func (b *fb) ident(e *syntax.Ident, dst int) int {
 	if sm := b.selfField(e); sm >= 0 {
 		return b.copyTo(sm, dst)
 	}
-	b.l.errorf(e, "internal: can't lower %s", e.Name)
+	b.l.errorf(e, diag.InternalError, "internal: can't lower %s", e.Name)
 	return b.valueReg(-1, bc.KRef)
 }
 
@@ -797,7 +798,7 @@ func (b *fb) argBlock1(r int) int {
 func (b *fb) selection(e syntax.Expr, x syntax.Expr, dst int) int {
 	sel := b.l.info.Selections[e]
 	if sel == nil {
-		b.l.errorf(e, "internal: no selection")
+		b.l.errorf(e, diag.InternalError, "internal: no selection")
 		return b.valueReg(-1, bc.KRef)
 	}
 	resT := b.rawType(e)
@@ -821,7 +822,7 @@ func (b *fb) selection(e syntax.Expr, x syntax.Expr, dst int) int {
 		case *check.Function:
 			return b.copyTo(b.funcValue(o), dst)
 		}
-		b.l.errorf(e, "internal: package member")
+		b.l.errorf(e, diag.InternalError, "internal: package member")
 		return b.valueReg(-1, bc.KRef)
 	}
 	// A member of a value.
@@ -912,7 +913,7 @@ func (b *fb) member(e syntax.Expr, sel *check.Selection, x int, recv check.Type,
 		}
 		return b.copyTo(b.callB(uiLoadValue, bc.KRef, x), dst)
 	}
-	b.l.errorf(e, "internal: can't lower member")
+	b.l.errorf(e, diag.InternalError, "internal: can't lower member")
 	return b.valueReg(-1, bc.KRef)
 }
 
@@ -1020,7 +1021,7 @@ func (b *fb) unary(e *syntax.UnaryExpr, dst int) int {
 		}
 		return b.value(e.X, dst)
 	case syntax.LOAD:
-		b.l.errorf(e, "load is a component's let")
+		b.l.errorf(e, diag.LoadOutsideComponent, "load is a component's let")
 		return b.valueReg(-1, bc.KRef)
 	}
 	return b.valueReg(-1, bc.KRef)

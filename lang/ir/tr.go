@@ -3,6 +3,7 @@ package ir
 import (
 	bc "github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/lang/check"
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -31,7 +32,7 @@ func (l *Lowerer) initCatalog(b *fb) {
 // trCall says a message: a string in the language shown, tracked.
 func (b *fb) trCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 	if b.l.catalog < 0 {
-		b.l.errorf(e, "internal: tr without a catalog")
+		b.l.errorf(e, diag.InternalError, "internal: tr without a catalog")
 		return -1
 	}
 	cat := b.temp(bc.KRef)

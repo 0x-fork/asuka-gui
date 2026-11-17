@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/egoist/asuka/i18n"
+	"github.com/egoist/asuka/lang/diag"
 )
 
 // Options say what catalogs to read.
@@ -112,6 +113,7 @@ type Diagnostic struct {
 	File    string
 	Line    int // 0 when it is the whole file's
 	Warning bool
+	Code    string // its code in lang/diag
 	Msg     string
 }
 
@@ -258,11 +260,11 @@ type loader struct {
 }
 
 func (l *loader) errorf(file string, line int, format string, args ...any) {
-	l.diags = append(l.diags, Diagnostic{File: file, Line: line, Msg: fmt.Sprintf(format, args...)})
+	l.diags = append(l.diags, Diagnostic{File: file, Line: line, Code: diag.InvalidCatalog.Name, Msg: fmt.Sprintf(format, args...)})
 }
 
-func (l *loader) warnf(file string, line int, format string, args ...any) {
-	l.diags = append(l.diags, Diagnostic{File: file, Line: line, Warning: true, Msg: fmt.Sprintf(format, args...)})
+func (l *loader) warnf(code *diag.Code, file string, line int, format string, args ...any) {
+	l.diags = append(l.diags, Diagnostic{File: file, Line: line, Warning: true, Code: code.Name, Msg: fmt.Sprintf(format, args...)})
 }
 
 // readFile reads a catalog: an object of messages, metadata and
@@ -351,7 +353,7 @@ func (l *loader) sourceKeys(f *File) {
 	}
 	for key := range l.meta {
 		if _, ok := f.Messages[key]; !ok {
-			l.warnf(f.Name, f.Lines["@"+key], "@%s describes no message", key)
+			l.warnf(diag.UnusedCatalogEntry, f.Name, f.Lines["@"+key], "@%s describes no message", key)
 		}
 	}
 }
@@ -425,7 +427,7 @@ func (l *loader) readMeta(f *File, k *Key) {
 	for _, name := range names {
 		kind, used := kinds[name]
 		if !used && m != nil {
-			l.warnf(f.Name, at, "@%s declares the placeholder %s, which the message does not use", k.Name, name)
+			l.warnf(diag.UnusedCatalogEntry, f.Name, at, "@%s declares the placeholder %s, which the message does not use", k.Name, name)
 		}
 		typ := declaredType[name]
 		if typ == "" {
@@ -511,7 +513,7 @@ func (l *loader) checkFile(f *File) {
 		if len(missing) > 8 {
 			list = strings.Join(missing[:8], ", ") + fmt.Sprintf(" and %d more", len(missing)-8)
 		}
-		l.warnf(f.Name, 0, "%d of %d messages missing, which say the language they fall back to: %s", len(missing), len(l.c.Keys), list)
+		l.warnf(diag.MissingTranslation, f.Name, 0, "%d of %d messages missing, which say the language they fall back to: %s", len(missing), len(l.c.Keys), list)
 	}
 }
 
@@ -540,7 +542,7 @@ func (l *loader) checkArgs(f *File, key string, m *i18n.Message, params []Param)
 	}
 	for _, p := range params {
 		if !slices.ContainsFunc(args, func(a i18n.Arg) bool { return a.Name == p.Name }) {
-			l.warnf(f.Name, at, "%q does not use the argument %s", key, p.Name)
+			l.warnf(diag.UnusedCatalogEntry, f.Name, at, "%q does not use the argument %s", key, p.Name)
 		}
 	}
 }
@@ -574,10 +576,10 @@ func (l *loader) checkPlurals(f *File, key string, m *i18n.Message) {
 			}
 		}
 		if len(extra) > 0 {
-			l.warnf(f.Name, at, "%q: %s has no %s %s of %s (its %s categories are %s)", key, f.Tag, kind, plural(len(extra), "category", "categories"), strings.Join(extra, ", "), kind, names(have))
+			l.warnf(diag.PluralCategories, f.Name, at, "%q: %s has no %s %s of %s (its %s categories are %s)", key, f.Tag, kind, plural(len(extra), "category", "categories"), strings.Join(extra, ", "), kind, names(have))
 		}
 		if len(lacking) > 0 {
-			l.warnf(f.Name, at, "%q: the %s argument %s lacks %s, a %s category of %s, which says other in its place", key, a.Kind, a.Name, strings.Join(lacking, ", "), kind, f.Tag)
+			l.warnf(diag.PluralCategories, f.Name, at, "%q: the %s argument %s lacks %s, a %s category of %s, which says other in its place", key, a.Kind, a.Name, strings.Join(lacking, ", "), kind, f.Tag)
 		}
 	}
 }

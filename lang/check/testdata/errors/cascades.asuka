@@ -1,0 +1,29 @@
+// One mistake is reported once: what follows from it isn't reported
+// again.
+
+import std/nowhere // ERROR "no package std/nowhere"
+
+let later = nowhere.thing() + nowhere.other
+
+enum Shape {
+  circle(radius: float)
+  dot
+}
+
+fn notACase(s: Shape) -> float {
+  if let circle(r) = s { return r } // ERROR "circle\(…\) isn't a case"
+  return 0
+}
+
+fn payloads(s: Shape) -> float = match s {
+  .circle(r, extra) => r + extra // ERROR "case circle has 1 payload value"
+  .dot => 0
+}
+
+fn area(width: float, height: float) -> float = width * height
+
+let a = area(width: 2, hieght: 3) // ERROR "area has no parameter hieght"
+
+component Box<T>(value: T) { // ERROR "generic components aren't supported yet"
+  Text("box")
+}

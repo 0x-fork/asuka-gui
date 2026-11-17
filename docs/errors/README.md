@@ -1,0 +1,119 @@
+# Error codes
+
+Every error and warning Asuka reports has a code: a stable name, said in the terminal (`error[write-in-binding]`), by `asuka check --json` and `asuka test --json`, and by the editor, which links it here. Each page says why the rule is there, how to fix what breaks it, and shows a program that breaks it and one that doesn't. `asuka explain <code>` prints the page in a terminal, for the version installed.
+
+## The compiler's
+
+- [argument-count](argument-count.md): A call with too many or too few arguments.
+- [argument-label](argument-label.md): A named argument the function has no parameter for.
+- [async-in-effect](async-in-effect.md): An `await` in an effect.
+- [await-outside-async](await-outside-async.md): An `await` where nothing may wait.
+- [bad-operand](bad-operand.md): An operator on values it doesn't take.
+- [brace-placement](brace-placement.md): A block's `{` goes at the end of the line before.
+- [cannot-infer-type](cannot-infer-type.md): The compiler can't tell a value's type from what's written.
+- [closure-keeps-itself](closure-keeps-itself.md): A closure that calls itself through the variable it's stored in.
+- [constraint-not-met](constraint-not-met.md): A type that lacks what a generic or a method needs of it.
+- [deprecated-syntax](deprecated-syntax.md): A form the language replaced, which `asuka fmt` rewrites.
+- [duplicate-declaration](duplicate-declaration.md): A name declared twice in one place.
+- [effect-writes-what-it-follows](effect-writes-what-it-follows.md): An effect that writes state it reads.
+- [embed-file](embed-file.md): `embed` of a file the package doesn't have.
+- [extension-conflict](extension-conflict.md): An extension that adds a name the type already has, or another extension adds.
+- [fn-body](fn-body.md): A function without its body, or with one it can't have.
+- [follows-nothing](follows-nothing.md): `state x()` or `effect()` with nothing to follow.
+- [import-cycle](import-cycle.md): Packages that import each other.
+- [int-overflow](int-overflow.md): An integer literal that doesn't fit in 64 bits.
+- [interface-not-satisfied](interface-not-satisfied.md): A type that declares an interface it doesn't implement.
+- [internal-error](internal-error.md): A mistake of the compiler's own.
+- [invalid-catalog](invalid-catalog.md): A catalog that isn't a valid file of messages.
+- [invalid-catch](invalid-catch.md): A `catch` that can't be reached, or has nothing to catch.
+- [invalid-character](invalid-character.md): A character that isn't part of the language here.
+- [invalid-conformance](invalid-conformance.md): A type declares, or a type parameter needs, what isn't an interface.
+- [invalid-constant](invalid-constant.md): A value made when the app compiles that isn't a literal, or doesn't parse.
+- [invalid-declaration](invalid-declaration.md): A declaration written in a form its place doesn't take.
+- [invalid-entry](invalid-entry.md): A program's `fn main` declared otherwise than it runs.
+- [invalid-extension](invalid-extension.md): An `extend` of what can't be extended, or in a form it doesn't take.
+- [invalid-extern](invalid-extern.md): An extern declaration C can't stand behind.
+- [invalid-flag-spec](invalid-flag-spec.md): A type `flag.parse` can't read a command line into.
+- [invalid-for](invalid-for.md): A `for` over something it doesn't go over.
+- [invalid-literal](invalid-literal.md): A number, a color, a duration or an escape that isn't written right.
+- [invalid-modifier](invalid-modifier.md): `pub`, `mut`, `async`, `throws` or type parameters where they don't apply.
+- [invalid-pattern](invalid-pattern.md): A pattern written in a form the language doesn't take.
+- [invalid-project](invalid-project.md): The project's asuka.toml or directory can't be read as it says.
+- [invalid-ref](invalid-ref.md): `ref` or `as` naming what isn't one element's view.
+- [invalid-route](invalid-route.md): A screen's address or a navigation the routes can't make.
+- [invalid-shader](invalid-shader.md): A shader written with what the GPU's language doesn't have.
+- [invalid-style](invalid-style.md): A style declared or applied in a form it doesn't take.
+- [invalid-variant](invalid-variant.md): A variant declared or used in a way it can't work.
+- [let-else](let-else.md): A `let … else` whose else goes on, or has nothing to unwrap.
+- [load-outside-component](load-outside-component.md): `load` outside a component's or a store's `let`.
+- [local-fn](local-fn.md): A function in a block declared with what only a file's functions have.
+- [loop-label](loop-label.md): A loop's name that isn't used, or isn't there.
+- [maybe-none](maybe-none.md): A value that may be `none` used as if it were there.
+- [message-arguments](message-arguments.md): A message called with other arguments than its placeholders.
+- [misplaced-declaration](misplaced-declaration.md): A declaration where its kind doesn't go.
+- [misplaced-statement](misplaced-statement.md): A statement where it can't do what it says.
+- [missing-await](missing-await.md): A call of an async function without `await`.
+- [missing-prop](missing-prop.md): An element without a prop it needs.
+- [missing-return](missing-return.md): A function with a result that can reach its end without one.
+- [missing-translation](missing-translation.md): A language's catalog without some of the source's messages.
+- [missing-try](missing-try.md): A call of a function that throws without `try`.
+- [missing-type](missing-type.md): A declaration whose type must be written.
+- [native-type](native-type.md): A native component's prop or event of a type the platform's view can't take.
+- [no-children](no-children.md): Children given to an element that takes none, or not those.
+- [no-such-operator](no-such-operator.md): An operator other languages have and Asuka doesn't.
+- [no-value](no-value.md): Something used as a value that gives none.
+- [non-exhaustive-match](non-exhaustive-match.md): A `match` that doesn't cover every case.
+- [not-a-type](not-a-type.md): Something used as a type that isn't one.
+- [not-a-value](not-a-value.md): A type, a package or a method used where a value goes.
+- [not-a-view](not-a-view.md): A value among views that isn't one.
+- [not-an-error](not-an-error.md): A value thrown or caught that isn't an error type.
+- [not-assignable](not-assignable.md): A change of something that can't change.
+- [not-async-call](not-async-call.md): `load`, `all` or `race` given something that isn't an async call.
+- [not-bindable](not-bindable.md): `bind` of a prop that doesn't report its changes.
+- [not-c-type](not-c-type.md): A type that can't cross to C.
+- [not-callable](not-callable.md): A call of something that isn't a function.
+- [not-json](not-json.md): A type JSON can't read or write.
+- [not-optional](not-optional.md): An optional's operator on a value that's always there.
+- [not-pub](not-pub.md): A declaration another package (or a store, a worker) keeps to itself.
+- [not-sendable](not-sendable.md): A value that can't cross to another thread.
+- [not-supported](not-supported.md): Something the language doesn't do yet.
+- [pattern-type](pattern-type.md): A pattern that can't match the value's type.
+- [peek-untracked](peek-untracked.md): `peek` where nothing is followed.
+- [plural-categories](plural-categories.md): A plural or select message whose categories don't match its language's.
+- [prop-not-assignable](prop-not-assignable.md): A component assigns a prop it can't.
+- [prop-or-argument](prop-or-argument.md): A parameter, a prop, an event or children given in the wrong place.
+- [recursive-definition](recursive-definition.md): A value or a style defined in terms of itself.
+- [recursive-type](recursive-type.md): A type that holds a whole copy of itself.
+- [reserved-name](reserved-name.md): A name the language uses itself.
+- [return-value](return-value.md): A `return` with a value the function doesn't give, or without one it does.
+- [row-without-key](row-without-key.md): A `for` in a view over items that change, without a `key`.
+- [spawn-captures-state](spawn-captures-state.md): `spawn` that reads or changes state, or what isn't a value.
+- [statement-in-view](statement-in-view.md): A statement among a component's views.
+- [syntax-error](syntax-error.md): The parser expected something else here.
+- [too-large](too-large.md): A function too large for the bytecode.
+- [tr-in-package](tr-in-package.md): `tr` in a package that isn't the app.
+- [type-arguments](type-arguments.md): The wrong number of type arguments.
+- [type-mismatch](type-mismatch.md): A value of another type than the one expected.
+- [undefined-name](undefined-name.md): A name nothing declares where it's used.
+- [unexpected-block](unexpected-block.md): A block after a call that takes none.
+- [unhandled-error](unhandled-error.md): An error that can leave where nothing takes it.
+- [unknown-event](unknown-event.md): A handler or an `emit` of an event the component doesn't declare.
+- [unknown-member](unknown-member.md): A type, an enum or a package has no member of that name.
+- [unknown-message](unknown-message.md): `tr.key` of a message the catalogs don't have.
+- [unknown-package](unknown-package.md): An import names no package.
+- [unknown-prop](unknown-prop.md): A prop, a slot or a variant the element doesn't have.
+- [unterminated](unterminated.md): A string, a comment or an escape isn't closed.
+- [unused-catalog-entry](unused-catalog-entry.md): A catalog's description or argument that nothing uses.
+- [view-in-statement](view-in-statement.md): A view made in code that runs.
+- [worker-captures-state](worker-captures-state.md): A worker that reads the main thread's state.
+- [worker-misuse](worker-misuse.md): A worker's own values read from outside, or a worker made or called where it can't be.
+- [write-in-binding](write-in-binding.md): State written where the UI follows it.
+
+## As the app runs
+
+- [effect-in-effect-pass](effect-in-effect-pass.md): An effect's write made a binding run twice in one flush.
+- [effect-loop](effect-loop.md): Effects that keep dirtying each other in one flush.
+- [load-waterfall](load-waterfall.md): A load that waited for another one it doesn't use.
+- [long-hold](long-hold.md): A load has held old content for seconds with nothing saying so.
+- [wide-fanout](wide-fanout.md): One write ran more than 1,000 bindings and lets, more than once.
+- [write-in-memo](write-in-memo.md): State written while a `let` is computed.

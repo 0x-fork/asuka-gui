@@ -155,6 +155,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/egoist/asuka/lang/diag"
 )
 
 type tokRec struct {
@@ -233,8 +235,8 @@ func ParseExpr(src string) (Expr, ErrorList) {
 func (p *parser) init(fset *FileSet, filename string, src []byte) {
 	p.file = fset.AddFile(filename, len(src))
 	var s Scanner
-	s.Init(p.file, src, func(pos Pos, msg string) {
-		p.addError(pos, msg)
+	s.Init(p.file, src, func(pos Pos, code *diag.Code, msg string) {
+		p.addError(pos, code, msg)
 	})
 	p.toks = make([]tokRec, 0, len(src)/4+1)
 	for {
@@ -252,29 +254,29 @@ func (p *parser) init(fset *FileSet, filename string, src []byte) {
 // ---------------------------------------------------------------------
 // Errors
 
-func (p *parser) addError(pos Pos, msg string) {
+func (p *parser) addError(pos Pos, code *diag.Code, msg string) {
 	position := p.file.Position(pos)
 	if p.errLines == nil {
 		p.errLines = map[int]bool{}
 	}
 	p.errLines[position.Line] = true
-	p.errors = append(p.errors, &Error{Pos: position, End: position, Msg: msg})
+	p.errors = append(p.errors, &Error{Pos: position, End: position, Code: code.Name, Msg: msg})
 }
 
 // error reports msg at pos, unless the line already has an error: one
 // mistake often confuses the rest of its line.
-func (p *parser) error(pos Pos, msg string) {
+func (p *parser) error(pos Pos, code *diag.Code, msg string) {
 	if p.bail {
 		return
 	}
 	if p.errLines[p.line(pos)] {
 		return
 	}
-	p.addError(pos, msg)
+	p.addError(pos, code, msg)
 }
 
 func (p *parser) errorExpected(what string) {
-	p.error(p.pos, "expected "+what+", found "+p.describe()+p.newKeyword())
+	p.error(p.pos, diag.SyntaxError, "expected "+what+", found "+p.describe()+p.newKeyword())
 }
 
 // errorExpectedName is errorExpected where a name could go.
@@ -388,7 +390,7 @@ func (p *parser) expect(tok Token) Pos {
 func (p *parser) expectClose(tok Token, open Pos, what string) Pos {
 	pos := p.pos
 	if p.tok != tok {
-		p.error(p.pos, "expected '"+tok.String()+"' to close the "+what+" opened at "+p.at(open)+", found "+p.describe())
+		p.error(p.pos, diag.SyntaxError, "expected '"+tok.String()+"' to close the "+what+" opened at "+p.at(open)+", found "+p.describe())
 		return pos
 	}
 	p.next()
@@ -482,7 +484,7 @@ func (p *parser) sync() {
 func (p *parser) enter() bool {
 	p.depth++
 	if p.depth > maxDepth && !p.bail {
-		p.error(p.pos, "too deeply nested")
+		p.error(p.pos, diag.SyntaxError, "too deeply nested")
 		p.bail = true
 	}
 	if p.bail {
@@ -594,7 +596,7 @@ func (p *parser) endItem(n Node, what string) {
 			// unclosed ( or [, already reported. Go on from here.
 			return
 		}
-		p.error(p.pos, "expected a newline or ';' after the "+what+", found "+p.describe())
+		p.error(p.pos, diag.SyntaxError, "expected a newline or ';' after the "+what+", found "+p.describe())
 		p.sync()
 	}
 }
@@ -638,7 +640,7 @@ func (p *parser) declAhead() bool {
 func (p *parser) braceOnNextLine() {
 	if p.tok == NEWLINE && p.peek(1) == LBRACE {
 		p.next()
-		p.error(p.pos, "a '{' goes at the end of the line before, not on a line of its own")
+		p.error(p.pos, diag.BracePlacement, "a '{' goes at the end of the line before, not on a line of its own")
 	}
 }
 
@@ -655,7 +657,7 @@ func (p *parser) parseFile() *SourceFile {
 			d := p.parseImport()
 			d.Trivia = t
 			if len(f.Decls) > 0 {
-				p.error(start, "an import goes before the file's declarations")
+				p.error(start, diag.MisplacedDeclaration, "an import goes before the file's declarations")
 			}
 			f.Imports = append(f.Imports, d)
 			p.endItem(d, "import")
@@ -666,7 +668,7 @@ func (p *parser) parseFile() *SourceFile {
 			p.endItem(d, describeNode(d))
 		}
 		if p.tok == RBRACE {
-			p.error(p.pos, "unexpected '}'")
+			p.error(p.pos, diag.SyntaxError, "unexpected '}'")
 			p.next()
 		}
 		if p.i == i {
@@ -898,7 +900,7 @@ func (p *parser) parseDecl() Decl {
 	case LET:
 		d = p.parseLet(start)
 	case VAR:
-		p.error(p.pos, "a file has no variables: its mutable values are state (state x = …)")
+		p.error(p.pos, diag.InvalidDeclaration, "a file has no variables: its mutable values are state (state x = …)")
 		d = p.parseLet(start)
 	case NATIVE:
 		native := p.pos
@@ -941,7 +943,7 @@ func (p *parser) parseDecl() Decl {
 		d = &AppDecl{Body: p.parseBlock()}
 	case TEST:
 		if pub.IsValid() {
-			p.error(pub, "a test can't be pub")
+			p.error(pub, diag.InvalidModifier, "a test can't be pub")
 		}
 		p.next()
 		t := &TestDecl{}
@@ -1091,7 +1093,7 @@ func (p *parser) parseTypeParams() ([]*TypeParam, Angles) {
 		}
 	}
 	if len(list) == 0 {
-		p.error(open, "expected a type parameter")
+		p.error(open, diag.SyntaxError, "expected a type parameter")
 	}
 	p.lineBeforeAngle()
 	return list, Angles{open, p.expectClose(GTR, open, "type parameters")}
@@ -1364,14 +1366,14 @@ func (p *parser) parseEnum(start Pos) *EnumDecl {
 				p.endItem(f, "constant")
 			default:
 				if m != nil {
-					p.error(m.Range().Start, "an enum has cases, constants and methods, not fields")
+					p.error(m.Range().Start, diag.MisplacedDeclaration, "an enum has cases, constants and methods, not fields")
 				}
 			}
 		} else if p.isName() {
 			c := p.parseEnumCase()
 			c.Trivia = t
 			if len(d.Members) > 0 {
-				p.error(c.Pos(), "an enum's cases come before its constants and methods")
+				p.error(c.Pos(), diag.MisplacedDeclaration, "an enum's cases come before its constants and methods")
 			}
 			d.Cases = append(d.Cases, c)
 			if p.tok == COMMA {
@@ -1546,7 +1548,7 @@ func (p *parser) parseState(start Pos) *StateDecl {
 	d := &StateDecl{Name: p.ident()}
 	d.Deps, d.Lparen, d.Rparen = p.parseDeps("state's dependencies")
 	if d.Lparen.IsValid() && len(d.Deps) == 0 {
-		p.error(d.Lparen, "state "+d.Name.Name+"() follows nothing: a value read once is peek(…), state "+d.Name.Name+" = peek(…)")
+		p.error(d.Lparen, diag.FollowsNothing, "state "+d.Name.Name+"() follows nothing: a value read once is peek(…), state "+d.Name.Name+" = peek(…)")
 	}
 	if p.got(COLON) {
 		d.Type = p.parseType()
@@ -1675,7 +1677,7 @@ func (p *parser) item() Item {
 	}
 	it := p.itemAfterPub(start)
 	if !setPub(it, pub) {
-		p.error(pub, "pub goes before a declaration")
+		p.error(pub, diag.SyntaxError, "pub goes before a declaration")
 	}
 	setSpan(it, p.span(start))
 	return it
@@ -1765,7 +1767,7 @@ func (p *parser) itemAfterPub(start Pos) Item {
 	case LBRACE:
 		// A block on a line of its own isn't one (decision 4): Row ⏎ {
 		// meant Row {.
-		p.error(p.pos, "a block on a line of its own isn't one: its '{' goes at the end of the line before (Row {)")
+		p.error(p.pos, diag.BracePlacement, "a block on a line of its own isn't one: its '{' goes at the end of the line before (Row {)")
 		p.sync()
 		return &BadItem{Span: p.span(start)}
 	case IF:
@@ -1816,7 +1818,7 @@ func (p *parser) itemAfterPub(start Pos) Item {
 		d.Span = p.span(start)
 		return d
 	case EXTEND:
-		p.error(p.pos, "an extension is declared at the top level of a file, not in a block")
+		p.error(p.pos, diag.MisplacedDeclaration, "an extension is declared at the top level of a file, not in a block")
 		p.parseDecl()
 		return &BadItem{Span: p.span(start)}
 	case COMPONENT, SCREEN, STORE, STRUCT, ENUM, INTERFACE, NATIVE, EXTERN, APP, TEST, IMPORT, WORKER:
@@ -1841,7 +1843,7 @@ func (p *parser) itemAfterPub(start Pos) Item {
 		case EXTERN:
 			what = "an extern " + p.peek(1).String()
 		}
-		p.error(p.pos, what+" is declared at the top level of a file, not in a block")
+		p.error(p.pos, diag.MisplacedDeclaration, what+" is declared at the top level of a file, not in a block")
 		if p.tok == IMPORT {
 			p.parseImport()
 		} else {
@@ -1850,7 +1852,7 @@ func (p *parser) itemAfterPub(start Pos) Item {
 		return &BadItem{Span: p.span(start)}
 	case TYPE:
 		if isIdentTok(next) {
-			p.error(p.pos, "a type alias is declared at the top level of a file, not in a block")
+			p.error(p.pos, diag.MisplacedDeclaration, "a type alias is declared at the top level of a file, not in a block")
 			p.parseDecl()
 			return &BadItem{Span: p.span(start)}
 		}
@@ -2341,13 +2343,13 @@ func (p *parser) parseBinary(minPrec int) Expr {
 		op, opPos := p.binaryOp(), p.pos
 		if p.incDec() {
 			// x++, x--: C's, not ours.
-			p.error(opPos, "there's no "+op.String()+op.String()+" operator: write x "+op.String()+"= 1")
+			p.error(opPos, diag.NoSuchOperator, "there's no "+op.String()+op.String()+" operator: write x "+op.String()+"= 1")
 			p.next()
 			p.next()
 			return x
 		}
 		if op == QUESTION {
-			p.error(opPos, "there's no ?: operator: write if a { b } else { c }")
+			p.error(opPos, diag.NoSuchOperator, "there's no ?: operator: write if a { b } else { c }")
 			return x
 		}
 		prec := op.Precedence()
@@ -2367,9 +2369,9 @@ func (p *parser) parseBinary(minPrec int) Expr {
 		x = &BinaryExpr{X: x, Op: op, OpPos: opPos, Y: y, Span: p.span(start)}
 		if (prec == 4 || prec == 5) && p.binaryOp().Precedence() == prec {
 			if prec == 4 {
-				p.error(p.pos, "comparisons don't chain: write a < b && b < c")
+				p.error(p.pos, diag.NoSuchOperator, "comparisons don't chain: write a < b && b < c")
 			} else {
-				p.error(p.pos, "ranges don't chain")
+				p.error(p.pos, diag.NoSuchOperator, "ranges don't chain")
 			}
 		}
 	}
@@ -2812,7 +2814,7 @@ func (p *parser) parsePrimary() Expr {
 	case PERIOD:
 		p.next()
 		if (p.tok == INT || p.tok == FLOAT || p.tok == DURATION || p.tok == LENGTH) && p.pos == p.prevEnd {
-			p.error(start, "a number starts with a digit: 0"+p.toks[p.i-1].lit+p.lit)
+			p.error(start, diag.InvalidLiteral, "a number starts with a digit: 0"+p.toks[p.i-1].lit+p.lit)
 		}
 		return &ImplicitMember{Name: p.ident(), Span: p.span(start)}
 	case LPAREN:
@@ -2828,7 +2830,7 @@ func (p *parser) parsePrimary() Expr {
 		return p.name()
 	}
 	if p.tok == ADD && p.peek(1) == ADD && p.toks[p.i+1].pos == p.pos+1 {
-		p.error(p.pos, "there's no ++ operator: write x += 1")
+		p.error(p.pos, diag.NoSuchOperator, "there's no ++ operator: write x += 1")
 	}
 	p.errorExpectedName("an expression")
 	switch p.tok {
@@ -2920,7 +2922,7 @@ func (p *parser) parseIfExpr() *IfExpr {
 			x.Else = p.parseValueBlock(true)
 		}
 	} else if p.styleValue == 0 {
-		p.error(p.pos, "an if used as a value needs an else")
+		p.error(p.pos, diag.NoValue, "an if used as a value needs an else")
 	}
 	x.Span = p.span(start)
 	return x
@@ -2953,7 +2955,7 @@ func (p *parser) parseString() *StringLit {
 		p.exprLev = 0
 		var x Expr
 		if p.tok == STRING_MID || p.tok == STRING_TAIL {
-			p.error(p.pos, "expected an expression between '{' and '}' (a brace in a string is \\{)")
+			p.error(p.pos, diag.SyntaxError, "expected an expression between '{' and '}' (a brace in a string is \\{)")
 			x = &BadExpr{Span: Span{p.pos, p.pos}}
 		} else {
 			x = p.parseExpr()

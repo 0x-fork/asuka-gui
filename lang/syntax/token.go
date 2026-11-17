@@ -566,9 +566,10 @@ func (t Token) Precedence() int {
 
 // An Error is a diagnostic: where, and what's wrong.
 type Error struct {
-	Pos Position
-	End Position // where the problem ends; may be Pos
-	Msg string
+	Pos  Position
+	End  Position // where the problem ends; may be Pos
+	Code string   // its code in lang/diag (syntax-error, unterminated, ...)
+	Msg  string
 }
 
 func (e *Error) Error() string { return e.Pos.String() + ": " + e.Msg }

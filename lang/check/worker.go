@@ -1,6 +1,9 @@
 package check
 
-import "github.com/egoist/asuka/lang/syntax"
+import (
+	"github.com/egoist/asuka/lang/diag"
+	"github.com/egoist/asuka/lang/syntax"
+)
 
 // Workers (RFC 0011): worker W(params) { var …; let …; fn … }, a type
 // whose instances each run on a thread of their own. Its vars, lets and
@@ -24,7 +27,7 @@ func (c *Checker) workerMembers(t *TypeName, params *syntax.ParamList, body *syn
 		m.Owner = t
 		c.info.Defs[id] = m
 		if comp.Members[id.Name] != nil {
-			c.errorf(id, "%s is declared twice in %s", id.Name, t.name)
+			c.errorf(id, diag.DuplicateDeclaration, "%s is declared twice in %s", id.Name, t.name)
 			return
 		}
 		comp.Members[id.Name] = m
@@ -37,11 +40,11 @@ func (c *Checker) workerMembers(t *TypeName, params *syntax.ParamList, body *syn
 	if params != nil {
 		for _, p := range params.List {
 			if p.Type == nil {
-				c.errorf(p.Name, "parameter %s needs a type: %s: Type", p.Name.Name, p.Name.Name)
+				c.errorf(p.Name, diag.MissingType, "parameter %s needs a type: %s: Type", p.Name.Name, p.Name.Name)
 			}
 			m := &Member{Kind: ParamMember, Type: c.typeExpr(p.Type), Default: p.Default, Decl: p}
 			if !IsInvalid(m.Type) && !sendable(m.Type) {
-				c.errorf(p.Type, "worker %s takes values only: %s is %s, which can't cross to its thread", t.name, p.Name.Name, aType(m.Type))
+				c.errorf(p.Type, diag.NotSendable, "worker %s takes values only: %s is %s, which can't cross to its thread", t.name, p.Name.Name, aType(m.Type))
 			}
 			add(p.Name, m)
 			comp.Params = append(comp.Params, m)
@@ -56,7 +59,7 @@ func (c *Checker) workerMembers(t *TypeName, params *syntax.ParamList, body *syn
 			c.noLetElse(d)
 			bp, ok := d.Pattern.(*syntax.BindPat)
 			if !ok {
-				c.errorf(d.Pattern, "a worker's %s names one value: %s name = …", d.Keyword, d.Keyword)
+				c.errorf(d.Pattern, diag.InvalidDeclaration, "a worker's %s names one value: %s name = …", d.Keyword, d.Keyword)
 				continue
 			}
 			m := &Member{Kind: LetMember, Default: d.Value, Decl: d}
@@ -67,7 +70,7 @@ func (c *Checker) workerMembers(t *TypeName, params *syntax.ParamList, body *syn
 				m.Type = c.typeExpr(d.Type)
 			}
 			if d.Value == nil {
-				c.errorf(bp.Name, "%s needs a value: %s %s = …", bp.Name.Name, d.Keyword, bp.Name.Name)
+				c.errorf(bp.Name, diag.InvalidDeclaration, "%s needs a value: %s %s = …", bp.Name.Name, d.Keyword, bp.Name.Name)
 			}
 			add(bp.Name, m)
 		case *syntax.FuncDecl:
@@ -75,13 +78,13 @@ func (c *Checker) workerMembers(t *TypeName, params *syntax.ParamList, body *syn
 			m := &Member{Kind: FnMember, Decl: d, Fn: f, Pub: d.Pub.IsValid()}
 			switch {
 			case d.Static.IsValid():
-				c.errorf(d.Name, "a worker has no static fns: declare %s outside it", d.Name.Name)
+				c.errorf(d.Name, diag.MisplacedDeclaration, "a worker has no static fns: declare %s outside it", d.Name.Name)
 			case d.Native.IsValid() || d.Extern.IsValid():
-				c.errorf(d.Name, "a worker's fns are Asuka's: declare an extern fn outside it, and call it from here")
+				c.errorf(d.Name, diag.MisplacedDeclaration, "a worker's fns are Asuka's: declare an extern fn outside it, and call it from here")
 			case d.Async.IsValid():
-				c.errorf(d.Name, "a worker's fns don't await: each runs on its thread, one call at a time; drop async (called from outside, a pub fn is async already)")
+				c.errorf(d.Name, diag.InvalidModifier, "a worker's fns don't await: each runs on its thread, one call at a time; drop async (called from outside, a pub fn is async already)")
 			case len(d.TypeParams) > 0:
-				c.errorf(d.Name, "a worker's fns aren't generic: its pub fns' values cross to its thread, and their types are known")
+				c.errorf(d.Name, diag.InvalidModifier, "a worker's fns aren't generic: its pub fns' values cross to its thread, and their types are known")
 			}
 			add(d.Name, m)
 			if t.Methods == nil {
@@ -94,20 +97,20 @@ func (c *Checker) workerMembers(t *TypeName, params *syntax.ParamList, body *syn
 				c.workerSignature(t, d, f.Sig)
 			}
 		case *syntax.StateDecl:
-			c.errorf(d, "a worker has no state: views don't read it, and its values are its own: var %s = …", d.Name.Name)
+			c.errorf(d, diag.MisplacedDeclaration, "a worker has no state: views don't read it, and its values are its own: var %s = …", d.Name.Name)
 		case *syntax.PropDecl:
-			c.errorf(d, "a worker has no props: give it parameters, worker %s(name: T)", t.name)
+			c.errorf(d, diag.MisplacedDeclaration, "a worker has no props: give it parameters, worker %s(name: T)", t.name)
 		case *syntax.EventDecl:
-			c.errorf(d, "a worker has no events: its pub fns return what it has to say")
+			c.errorf(d, diag.MisplacedDeclaration, "a worker has no events: its pub fns return what it has to say")
 		case *syntax.UseDecl, *syntax.ProvideDecl:
-			c.errorf(d, "a worker has no contexts: it runs on a thread of its own; pass it values")
+			c.errorf(d, diag.MisplacedDeclaration, "a worker has no contexts: it runs on a thread of its own; pass it values")
 		case *syntax.VariantDecl:
-			c.errorf(d, "a worker has no variants: a component declares them, for its caller's styles")
+			c.errorf(d, diag.MisplacedDeclaration, "a worker has no variants: a component declares them, for its caller's styles")
 		case *syntax.TaskDecl, *syntax.EffectDecl:
-			c.errorf(d, "a worker has no tasks or effects: its pub fns run when they're called")
+			c.errorf(d, diag.MisplacedDeclaration, "a worker has no tasks or effects: its pub fns run when they're called")
 		case *syntax.BadItem:
 		default:
-			c.errorf(it, "a worker has no views or statements: it's vars, lets and fns")
+			c.errorf(it, diag.MisplacedDeclaration, "a worker has no views or statements: it's vars, lets and fns")
 		}
 	}
 }
@@ -123,14 +126,14 @@ func (c *Checker) workerSignature(t *TypeName, d *syntax.FuncDecl, sig *Signatur
 		if d.Params != nil && i < len(d.Params.List) && d.Params.List[i].Type != nil {
 			at = d.Params.List[i].Type
 		}
-		c.errorf(at, "%s.%s is pub, so it takes values only: %s is %s, which can't cross to the worker's thread", t.name, d.Name.Name, p.Name, aType(p.Type))
+		c.errorf(at, diag.NotSendable, "%s.%s is pub, so it takes values only: %s is %s, which can't cross to the worker's thread", t.name, d.Name.Name, p.Name, aType(p.Type))
 	}
 	if !IsInvalid(sig.Result) && !sendable(sig.Result) {
 		var at syntax.Node = d.Name
 		if d.Result != nil {
 			at = d.Result
 		}
-		c.errorf(at, "%s.%s is pub, so it returns values only: %s can't cross back from the worker's thread", t.name, d.Name.Name, aType(sig.Result))
+		c.errorf(at, diag.NotSendable, "%s.%s is pub, so it returns values only: %s can't cross back from the worker's thread", t.name, d.Name.Name, aType(sig.Result))
 	}
 }
 
@@ -196,10 +199,10 @@ func (c *Checker) offThread() string {
 // arguments are values, copied over.
 func (c *Checker) workerNew(e *syntax.CallExpr, tn *TypeName) Type {
 	if e.Block != nil {
-		c.errorf(e.Block, "%s is a worker: its parameters go in parentheses", tn.name)
+		c.errorf(e.Block, diag.UnexpectedBlock, "%s is a worker: its parameters go in parentheses", tn.name)
 	}
 	if what := c.offThread(); what != "" {
-		c.errorf(e.Fun, "%s can't make worker %s: a worker is made on the main thread, by what owns it (a component, a store)", what, tn.name)
+		c.errorf(e.Fun, diag.WorkerMisuse, "%s can't make worker %s: a worker is made on the main thread, by what owns it (a component, a store)", what, tn.name)
 	}
 	var params []*Param
 	for _, m := range tn.Comp.Params {
@@ -225,7 +228,7 @@ func (c *Checker) workerMethodCall(e *syntax.CallExpr, fn *syntax.MemberExpr, n 
 		return nil, false
 	}
 	if m.Kind != FnMember {
-		c.errorf(fn.Name, "%s is worker %s's own: it's read on its thread, by its fns (return it from a pub fn)", name, n.Obj.name)
+		c.errorf(fn.Name, diag.WorkerMisuse, "%s is worker %s's own: it's read on its thread, by its fns (return it from a pub fn)", name, n.Obj.name)
 		c.checkArgsLoosely(e)
 		return Invalid, true
 	}
@@ -233,10 +236,10 @@ func (c *Checker) workerMethodCall(e *syntax.CallExpr, fn *syntax.MemberExpr, n 
 		return c.funcCall(e, m.Fn, fn.X, n, want), true
 	}
 	if !m.Pub {
-		c.errorf(fn.Name, "%s isn't pub in worker %s: only its pub fns are called from outside it", name, n.Obj.name)
+		c.errorf(fn.Name, diag.NotPub, "%s isn't pub in worker %s: only its pub fns are called from outside it", name, n.Obj.name)
 	}
 	if what := c.offThread(); what != "" {
-		c.errorf(fn, "%s can't call worker %s: its calls are made on the main thread", what, n.Obj.name)
+		c.errorf(fn, diag.WorkerMisuse, "%s can't call worker %s: its calls are made on the main thread", what, n.Obj.name)
 	}
 	call := c.funcCallAs(e, m.Fn, fn.X, n, want, true)
 	call.Kind = CallWorker
@@ -265,7 +268,7 @@ func (c *Checker) workerCalls() {
 					if f.Recv == t || f.Ctx == nil || !f.Ctx.readsState {
 						continue
 					}
-					c.errorf(r.Node, "worker %s calls %s, which reads state: the worker runs on a thread of its own; read the state on the main thread and pass its value to a pub fn", t.name, f.name)
+					c.errorf(r.Node, diag.WorkerCapturesState, "worker %s calls %s, which reads state: the worker runs on a thread of its own; read the state on the main thread and pass its value to a pub fn", t.name, f.name)
 				}
 			}
 		}

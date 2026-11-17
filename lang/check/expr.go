@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -50,7 +51,7 @@ func (c *Checker) expr1(e syntax.Expr, want Type) Type {
 		return c.basicLit(e, want)
 	case *syntax.StringLit:
 		if _, err := Unescape(strings.Join(e.Segments, ""), e.Raw); err != nil {
-			c.errorf(e, "%v", err)
+			c.errorf(e, diag.InvalidLiteral, "%v", err)
 		}
 		for _, x := range e.Interps {
 			t := c.expr(x, nil)
@@ -75,10 +76,10 @@ func (c *Checker) expr1(e syntax.Expr, want Type) Type {
 				}
 			}
 			if st := c.enclosingStatic(); st != nil {
-				c.errorf(e, "a static fn has no self: it's %s's, not a value's; take one as a parameter, or make it a method", st.name)
+				c.errorf(e, diag.UndefinedName, "a static fn has no self: it's %s's, not a value's; take one as a parameter, or make it a method", st.name)
 				return Invalid
 			}
-			c.errorf(e, "self is only in a struct's, an enum's or a store's methods")
+			c.errorf(e, diag.UndefinedName, "self is only in a struct's, an enum's or a store's methods")
 			return Invalid
 		}
 		c.useVar(c.ctx.Self, e)
@@ -101,7 +102,7 @@ func (c *Checker) expr1(e syntax.Expr, want Type) Type {
 			return Invalid
 		}
 		if !IsOptional(t) {
-			c.errorf(e, "%s isn't optional: nothing to unwrap with !", typeString(t))
+			c.errorf(e, diag.NotOptional, "%s isn't optional: nothing to unwrap with !", typeString(t))
 			return t
 		}
 		return Unopt(t)
@@ -117,7 +118,7 @@ func (c *Checker) expr1(e syntax.Expr, want Type) Type {
 		return c.expr(e.X, want)
 	case *syntax.TupleExpr:
 		if len(e.Elems) == 0 {
-			c.errorf(e, "() isn't a value")
+			c.errorf(e, diag.NoValue, "() isn't a value")
 			return Invalid
 		}
 		var wt *Tuple
@@ -142,17 +143,17 @@ func (c *Checker) expr1(e syntax.Expr, want Type) Type {
 	case *syntax.MatchExpr:
 		return c.matchExpr(e, want)
 	case *syntax.LetCond:
-		c.errorf(e, "let here is only an if's or a while's condition")
+		c.errorf(e, diag.MisplacedStatement, "let here is only an if's or a while's condition")
 		return Invalid
 	case *syntax.CondList:
-		c.errorf(e, "a condition's clauses go in an if's or a while's head: write && between bools")
+		c.errorf(e, diag.MisplacedStatement, "a condition's clauses go in an if's or a while's head: write && between bools")
 		return Invalid
 	case *syntax.JumpExpr:
 		return c.jumpExpr(e)
 	case *syntax.CatchExpr:
 		return c.catchExpr(e, want)
 	}
-	c.errorf(e, "unexpected expression")
+	c.errorf(e, diag.InternalError, "unexpected expression")
 	return Invalid
 }
 
@@ -162,15 +163,15 @@ func (c *Checker) interpolated(x syntax.Expr, t Type) {
 	case *Basic:
 		switch u {
 		case Void:
-			c.errorf(x, "this has no value to put in a string")
+			c.errorf(x, diag.NoValue, "this has no value to put in a string")
 		case View, TestApp:
-			c.errorf(x, "%s can't be put in a string", aType(u))
+			c.errorf(x, diag.TypeMismatch, "%s can't be put in a string", aType(u))
 		}
 	case *FuncType, *Task, *Stream, *TypeParam:
-		c.errorf(x, "%s can't be put in a string", aType(t))
+		c.errorf(x, diag.TypeMismatch, "%s can't be put in a string", aType(t))
 	case *Named:
 		if u.Obj.Kind == StoreType || u.Obj.Kind == ComponentType {
-			c.errorf(x, "%s can't be put in a string", aType(t))
+			c.errorf(x, diag.TypeMismatch, "%s can't be put in a string", aType(t))
 		}
 	}
 }
@@ -180,7 +181,7 @@ func (c *Checker) interpolated(x syntax.Expr, t Type) {
 
 func (c *Checker) ident(e *syntax.Ident) Type {
 	if e.Name == "_" {
-		c.errorf(e, "_ isn't a value")
+		c.errorf(e, diag.NoValue, "_ isn't a value")
 		return Invalid
 	}
 	if x := c.implicitSelf(e, false); x != nil {
@@ -189,7 +190,7 @@ func (c *Checker) ident(e *syntax.Ident) Type {
 	}
 	o := c.lookup(e.Name)
 	if o == nil && e.Name == "shader" {
-		c.errorf(e, shaderMoved)
+		c.errorf(e, diag.InvalidShader, shaderMoved)
 		return Invalid
 	}
 	if o == nil {
@@ -210,34 +211,34 @@ func (c *Checker) ident(e *syntax.Ident) Type {
 		return c.useMember(o, e)
 	case *selfMember:
 		if c.ctx == nil || c.ctx.Self == nil {
-			c.errorf(e, "%s is a member of %s: use it in its methods", e.Name, o.owner.name)
+			c.errorf(e, diag.NotAValue, "%s is a member of %s: use it in its methods", e.Name, o.owner.name)
 			return Invalid
 		}
 		c.useVar(c.ctx.Self, e)
 		if o.field != nil {
 			return o.subst.Apply(o.field.Type)
 		}
-		c.errorf(e, "%s is a method: call it, %s()", e.Name, e.Name)
+		c.errorf(e, diag.NotAValue, "%s is a method: call it, %s()", e.Name, e.Name)
 		return Invalid
 	case *Function:
 		c.funcSig(o)
 		if len(o.TypeParams) > 0 {
-			c.errorf(e, "%s is generic: call it, or pass it where its types are known", e.Name)
+			c.errorf(e, diag.CannotInferType, "%s is generic: call it, or pass it where its types are known", e.Name)
 			return Invalid
 		}
 		c.noteCall(o, e)
 		return o.Sig.Type()
 	case *TypeName:
-		c.errorf(e, "%s is a type, not a value%s", e.Name, typeValueHint(o))
+		c.errorf(e, diag.NotAValue, "%s is a type, not a value%s", e.Name, typeValueHint(o))
 		return Invalid
 	case *Builtin:
-		c.errorf(e, "%s is a built-in function: call it, %s(…)", e.Name, e.Name)
+		c.errorf(e, diag.NotAValue, "%s is a built-in function: call it, %s(…)", e.Name, e.Name)
 		return Invalid
 	case *PkgName:
-		c.errorf(e, "%s is a package: use its members, %s.name", e.Name, e.Name)
+		c.errorf(e, diag.NotAValue, "%s is a package: use its members, %s.name", e.Name, e.Name)
 		return Invalid
 	case *TrName:
-		c.errorf(e, "tr says the app's messages: call one, tr.key(…)")
+		c.errorf(e, diag.NotAValue, "tr says the app's messages: call one, tr.key(…)")
 		return Invalid
 	}
 	return Invalid
@@ -257,16 +258,16 @@ func typeValueHint(t *TypeName) string {
 // a field's or a method's where there's no self to have it.
 func (c *Checker) unknownName(e *syntax.Ident) {
 	if st := c.enclosingStatic(); st != nil && (st.Field(e.Name) != nil || st.Methods[e.Name] != nil) {
-		c.errorf(e, "%s is %s's, and a static fn has no self: take %s as a parameter, or make it a method", e.Name, st.name, aType(st.Type))
+		c.errorf(e, diag.UndefinedName, "%s is %s's, and a static fn has no self: take %s as a parameter, or make it a method", e.Name, st.name, aType(st.Type))
 		return
 	}
 	if d := c.defaultOf; d != nil && d.fieldIndex != nil {
 		if _, ok := d.fieldIndex[e.Name]; ok {
-			c.errorf(e, "a default can't read the struct's fields (%s): it's computed before there's a struct; a value made of others is a method, fn name() -> T = …", e.Name)
+			c.errorf(e, diag.InvalidDeclaration, "a default can't read the struct's fields (%s): it's computed before there's a struct; a value made of others is a method, fn name() -> T = …", e.Name)
 			return
 		}
 	}
-	c.errorf(e, "unknown name %s%s", e.Name, c.suggest(e.Name))
+	c.errorf(e, diag.UndefinedName, "unknown name %s%s", e.Name, c.suggest(e.Name))
 }
 
 // enclosingStatic is the type whose static fn is being checked, or nil.
@@ -285,7 +286,7 @@ func (c *Checker) useVar(v *Var, at syntax.Node) {
 		v.Captured = true
 		cc.capture(v)
 		if cc.Kind == CtxSpawn && !sendable(v.Type) {
-			c.errorf(at, "spawn can't use %s (%s): it runs on another thread and takes values only", v.name, aType(v.Type))
+			c.errorf(at, diag.SpawnCapturesState, "spawn can't use %s (%s): it runs on another thread and takes values only", v.name, aType(v.Type))
 		}
 	}
 }
@@ -311,12 +312,12 @@ func (c *Checker) useGlobal(g *Global, at syntax.Node) Type {
 // spawnState reports a read of state inside spawn.
 func (c *Checker) spawnState(at syntax.Node, name string) {
 	if w := c.workerOf(); w != nil {
-		c.errorf(at, "worker %s can't use %s: it's state, and the worker runs on a thread of its own (read it on the main thread and pass its value to a pub fn)", w.name, name)
+		c.errorf(at, diag.WorkerCapturesState, "worker %s can't use %s: it's state, and the worker runs on a thread of its own (read it on the main thread and pass its value to a pub fn)", w.name, name)
 		return
 	}
 	for cc := c.ctx; cc != nil; cc = cc.Parent {
 		if cc.Kind == CtxSpawn {
-			c.errorf(at, "spawn can't use %s: it's state, and spawn runs on another thread (read it into a let first)", name)
+			c.errorf(at, diag.SpawnCapturesState, "spawn can't use %s: it's state, and spawn runs on another thread (read it into a let first)", name)
 			return
 		}
 	}
@@ -327,12 +328,12 @@ func (c *Checker) spawnState(at syntax.Node, name string) {
 // thread's, and on the web a spawn's worker has none of it.
 func (c *Checker) spawnNotValue(at syntax.Node, name string, t Type) {
 	if w := c.workerOf(); w != nil {
-		c.errorf(at, "worker %s can't use %s (%s): it isn't a value, and the worker runs on a thread of its own; make what it needs in the worker (var x = …)", w.name, name, aType(t))
+		c.errorf(at, diag.WorkerCapturesState, "worker %s can't use %s (%s): it isn't a value, and the worker runs on a thread of its own; make what it needs in the worker (var x = …)", w.name, name, aType(t))
 		return
 	}
 	for cc := c.ctx; cc != nil; cc = cc.Parent {
 		if cc.Kind == CtxSpawn {
-			c.errorf(at, "spawn can't use %s (%s): it isn't a value, and spawn runs on another thread; use it outside spawn, with what spawn returns", name, aType(t))
+			c.errorf(at, diag.SpawnCapturesState, "spawn can't use %s (%s): it isn't a value, and spawn runs on another thread; use it outside spawn, with what spawn returns", name, aType(t))
 			return
 		}
 	}
@@ -347,7 +348,7 @@ func (c *Checker) useMember(m *Member, at syntax.Node) Type {
 		// Read as a value, an event is whether the caller handles it.
 		return Bool
 	case FnMember:
-		c.errorf(at, "%s is a fn: call it, %s()", m.name, m.name)
+		c.errorf(at, diag.NotAValue, "%s is a fn: call it, %s()", m.name, m.name)
 		return Invalid
 	case StateMember, LetMember, ParamMember, PropMember:
 		if c.ctx != nil && !m.Owner.Comp.Worker {
@@ -370,11 +371,11 @@ func (c *Checker) envUse(owner *TypeName, at syntax.Node, name string) {
 			return
 		}
 		if (cc.Kind == CtxMethod || cc.Kind == CtxWorker) && cc.Comp != nil && cc.Comp.Kind == WorkerType {
-			c.errorf(at, "worker %s can't use %s: it belongs to %s, and the worker runs on a thread of its own (pass its value to a pub fn)", cc.Comp.name, name, owner.name)
+			c.errorf(at, diag.WorkerCapturesState, "worker %s can't use %s: it belongs to %s, and the worker runs on a thread of its own (pass its value to a pub fn)", cc.Comp.name, name, owner.name)
 			return
 		}
 		if cc.Kind == CtxSpawn {
-			c.errorf(at, "spawn can't use %s: it belongs to %s, and spawn runs on another thread (read it into a let first)", name, owner.name)
+			c.errorf(at, diag.SpawnCapturesState, "spawn can't use %s: it belongs to %s, and spawn runs on another thread (read it into a let first)", name, owner.name)
 			return
 		}
 		cc.UsesEnv = true
@@ -408,7 +409,7 @@ func (c *Checker) basicLit(e *syntax.BasicLit, want Type) Type {
 	case syntax.INT:
 		if _, err := ParseInt(e.Value); errors.Is(err, strconv.ErrRange) {
 			// (One that isn't a number at all, the scanner said so.)
-			c.errorf(e, "%s doesn't fit in an int (64 bits)", e.Value)
+			c.errorf(e, diag.IntOverflow, "%s doesn't fit in an int (64 bits)", e.Value)
 		}
 		if w := Unopt(want); w == Float || w == Length {
 			return Float
@@ -418,18 +419,18 @@ func (c *Checker) basicLit(e *syntax.BasicLit, want Type) Type {
 		return Float
 	case syntax.DURATION:
 		if _, err := ParseDuration(e.Value); err != nil {
-			c.errorf(e, "%v", err)
+			c.errorf(e, diag.InvalidLiteral, "%v", err)
 		}
 		return Duration
 	case syntax.LENGTH:
 		if strings.HasSuffix(e.Value, "fr") {
-			c.errorf(e, "%s is a grid track's share: write it .fr(%s)", e.Value, strings.TrimSuffix(e.Value, "fr"))
+			c.errorf(e, diag.InvalidLiteral, "%s is a grid track's share: write it .fr(%s)", e.Value, strings.TrimSuffix(e.Value, "fr"))
 			return Invalid
 		}
 		return Length
 	case syntax.COLOR:
 		if _, err := ParseColor(e.Value); err != nil {
-			c.errorf(e, "%v", err)
+			c.errorf(e, diag.InvalidLiteral, "%v", err)
 		}
 		return Color
 	}
@@ -625,7 +626,7 @@ func (c *Checker) arrayLit(e *syntax.ArrayExpr, want Type) Type {
 	if len(e.Elems) == 0 {
 		if elem == nil {
 			if want != Invalid { // an invalid type said why already
-				c.errorf(e, "[] says nothing of its elements' type: write it, let xs: [T] = []")
+				c.errorf(e, diag.CannotInferType, "[] says nothing of its elements' type: write it, let xs: [T] = []")
 			}
 			return Invalid
 		}
@@ -693,7 +694,7 @@ func (c *Checker) mapLit(e *syntax.MapExpr, want Type) Type {
 	if len(e.Entries) == 0 {
 		if key == nil {
 			if want != Invalid { // an invalid type said why already
-				c.errorf(e, "[:] says nothing of its keys' and values' types: write them, let m: [K: V] = [:]")
+				c.errorf(e, diag.CannotInferType, "[:] says nothing of its keys' and values' types: write them, let m: [K: V] = [:]")
 			}
 			return Invalid
 		}
@@ -746,7 +747,7 @@ func (c *Checker) assigned(e syntax.Expr, got, want Type, what string) Type {
 	if c.convert(e, got, want) {
 		return want
 	}
-	c.errorf(e, "%s is %s, not %s%s", describe(what), aType(got), aType(want), c.convHint(got, want))
+	c.errorf(e, diag.TypeMismatch, "%s is %s, not %s%s", describe(what), aType(got), aType(want), c.convHint(got, want))
 	return want
 }
 
@@ -836,7 +837,7 @@ func (c *Checker) convert(e syntax.Expr, got, want Type) bool {
 				c.info.Convs[e] = want
 				return true
 			} else if _, ok := got.(*Named); ok {
-				c.errorf(e, "%s isn't %s: %s", typeString(got), aType(want), why)
+				c.errorf(e, diag.TypeMismatch, "%s isn't %s: %s", typeString(got), aType(want), why)
 				return true
 			}
 		}
@@ -971,11 +972,13 @@ func (c *Checker) member(e *syntax.MemberExpr, want Type) Type {
 			c.info.Uses[id] = pn
 			o := pn.Pkg.Scope.LookupLocal(name)
 			if o == nil {
-				c.errorf(e.Name, "package %s has no %s", pn.Pkg.Path, name)
+				if !pn.Pkg.Broken {
+					c.errorf(e.Name, diag.UnknownMember, "package %s has no %s", pn.Pkg.Path, name)
+				}
 				return Invalid
 			}
 			if !c.exported(pn.Pkg, o) {
-				c.errorf(e.Name, "%s isn't pub in package %s", name, pn.Pkg.Path)
+				c.errorf(e.Name, diag.NotPub, "%s isn't pub in package %s", name, pn.Pkg.Path)
 			}
 			c.info.Selections[e] = &Selection{Kind: SelPkg, Obj: o}
 			c.info.Uses[e.Name] = o
@@ -987,9 +990,9 @@ func (c *Checker) member(e *syntax.MemberExpr, want Type) Type {
 				c.noteCall(o, e)
 				return o.Sig.Type()
 			case *TypeName:
-				c.errorf(e, "%s is a type, not a value%s", name, typeValueHint(o))
+				c.errorf(e, diag.NotAValue, "%s is a type, not a value%s", name, typeValueHint(o))
 			case *Builtin:
-				c.errorf(e, "%s.%s is a function: call it", id.Name, name)
+				c.errorf(e, diag.NotAValue, "%s.%s is a function: call it", id.Name, name)
 			}
 			return Invalid
 		}
@@ -1013,7 +1016,7 @@ func (c *Checker) member(e *syntax.MemberExpr, want Type) Type {
 		// what's before is.
 		c.chained[e] = true
 		if !IsOptional(xt) {
-			c.errorf(e, "%s isn't optional: use . (?. is for optionals)", typeString(xt))
+			c.errorf(e, diag.NotOptional, "%s isn't optional: use . (?. is for optionals)", typeString(xt))
 		}
 		t := c.valueMember(e, Unopt(xt), name)
 		if sel := c.info.Selections[e]; sel != nil {
@@ -1026,7 +1029,7 @@ func (c *Checker) member(e *syntax.MemberExpr, want Type) Type {
 		return MakeOptional(t)
 	}
 	if IsOptional(xt) {
-		c.errorf(e, "%s may be none: use ?. (x?.%s), or unwrap it first", typeString(xt), name)
+		c.errorf(e, diag.MaybeNone, "%s may be none: use ?. (x?.%s), or unwrap it first", typeString(xt), name)
 		return Invalid
 	}
 	return c.valueMember(e, xt, name)
@@ -1041,14 +1044,14 @@ func (c *Checker) staticMember(e syntax.Expr, tn *TypeName, name string, want Ty
 		if n, ok := Unopt(want).(*Named); ok && n.Obj == tn {
 			t = n
 		} else {
-			c.errorf(e, "%s is generic: write the type where it's expected (let x: %s<…> = .%s)", tn.name, tn.name, name)
+			c.errorf(e, diag.CannotInferType, "%s is generic: write the type where it's expected (let x: %s<…> = .%s)", tn.name, tn.name, name)
 			return Invalid
 		}
 	}
 	if k := tn.Case(name); k != nil {
 		c.info.Selections[e] = &Selection{Kind: SelCase, Case: k, Recv: t}
 		if len(k.Params) > 0 {
-			c.errorf(e, "case %s of %s has a payload: give it, %s.%s(…)", name, tn.name, tn.name, name)
+			c.errorf(e, diag.ArgumentCount, "case %s of %s has a payload: give it, %s.%s(…)", name, tn.name, tn.name, name)
 		}
 		return t
 	}
@@ -1087,9 +1090,9 @@ func (c *Checker) staticMember(e syntax.Expr, tn *TypeName, name string, want Ty
 		}
 	}
 	if tn.Kind == EnumType || tn.Kind == StructType {
-		c.errorf(e, "%s has no case or constant %s", tn.name, name)
+		c.errorf(e, diag.UnknownMember, "%s has no case or constant %s", tn.name, name)
 	} else {
-		c.errorf(e, "%s is a type: it has no member %s", tn.name, name)
+		c.errorf(e, diag.UnknownMember, "%s is a type: it has no member %s", tn.name, name)
 	}
 	return Invalid
 }
@@ -1110,10 +1113,10 @@ func (c *Checker) valueMember(e *syntax.MemberExpr, t Type, name string) Type {
 			return f.Type
 		}
 		if m, _ := paramMethod(u, name); m != nil {
-			c.errorf(e.Name, "%s is a method: call it, %s()", name, name)
+			c.errorf(e.Name, diag.NotAValue, "%s is a method: call it, %s()", name, name)
 			return Invalid
 		}
-		c.errorf(e.Name, "%s has no %s%s", u.Name, name, paramHint(u))
+		c.errorf(e.Name, diag.UnknownMember, "%s has no %s%s", u.Name, name, paramHint(u))
 		return Invalid
 	case *Named:
 		s := u.Subst()
@@ -1124,7 +1127,7 @@ func (c *Checker) valueMember(e *syntax.MemberExpr, t Type, name string) Type {
 				return s.Apply(f.Type)
 			}
 			if u.Obj.Methods[name] != nil && !(u.Obj.IsError && name == "message") {
-				c.errorf(e.Name, "%s is a method of %s: call it, %s()", name, u.Obj.name, name)
+				c.errorf(e.Name, diag.NotAValue, "%s is a method of %s: call it, %s()", name, u.Obj.name, name)
 				return Invalid
 			}
 		case EnumType:
@@ -1133,7 +1136,7 @@ func (c *Checker) valueMember(e *syntax.MemberExpr, t Type, name string) Type {
 				return String
 			}
 			if u.Obj.Methods[name] != nil {
-				c.errorf(e.Name, "%s is a method of %s: call it, %s()", name, u.Obj.name, name)
+				c.errorf(e.Name, diag.NotAValue, "%s is a method of %s: call it, %s()", name, u.Obj.name, name)
 				return Invalid
 			}
 			if u.Obj == loadingT && (name == "value" || name == "loading") {
@@ -1153,23 +1156,23 @@ func (c *Checker) valueMember(e *syntax.MemberExpr, t Type, name string) Type {
 		case WorkerType:
 			if m := u.Obj.Comp.Members[name]; m != nil {
 				if m.Kind == FnMember {
-					c.errorf(e.Name, "%s is a fn of %s: call it, %s()", name, u.Obj.name, name)
+					c.errorf(e.Name, diag.NotAValue, "%s is a fn of %s: call it, %s()", name, u.Obj.name, name)
 				} else {
-					c.errorf(e.Name, "%s is worker %s's own: it's read on its thread, by its fns (return it from a pub fn)", name, u.Obj.name)
+					c.errorf(e.Name, diag.WorkerMisuse, "%s is worker %s's own: it's read on its thread, by its fns (return it from a pub fn)", name, u.Obj.name)
 				}
 				return Invalid
 			}
 		case StoreType:
 			if m := u.Obj.Comp.Members[name]; m != nil {
 				if u.Obj.Pkg != c.pkg && !m.Pub {
-					c.errorf(e.Name, "%s isn't pub in store %s", name, u.Obj.name)
+					c.errorf(e.Name, diag.NotPub, "%s isn't pub in store %s", name, u.Obj.name)
 				}
 				switch m.Kind {
 				case FnMember:
-					c.errorf(e.Name, "%s is a fn of %s: call it, %s()", name, u.Obj.name, name)
+					c.errorf(e.Name, diag.NotAValue, "%s is a fn of %s: call it, %s()", name, u.Obj.name, name)
 					return Invalid
 				case EventMember:
-					c.errorf(e.Name, "a store has no events")
+					c.errorf(e.Name, diag.UnknownMember, "a store has no events")
 					return Invalid
 				}
 				c.info.Selections[e] = &Selection{Kind: SelStoreMember, Member: m, Recv: t}
@@ -1193,7 +1196,7 @@ func (c *Checker) valueMember(e *syntax.MemberExpr, t Type, name string) Type {
 			}
 			for _, m := range u.Obj.Iface.Methods {
 				if m.Name == name {
-					c.errorf(e.Name, "%s is a method: call it, %s()", name, name)
+					c.errorf(e.Name, diag.NotAValue, "%s is a method: call it, %s()", name, name)
 					return Invalid
 				}
 			}
@@ -1202,7 +1205,7 @@ func (c *Checker) valueMember(e *syntax.MemberExpr, t Type, name string) Type {
 			c.info.Selections[e] = &Selection{Kind: SelErrorMessage, Recv: t}
 			return String
 		}
-		c.errorf(e.Name, "%s has no %s%s", typeString(t), name, c.memberSuggest(t, name))
+		c.errorf(e.Name, diag.UnknownMember, "%s has no %s%s", typeString(t), name, c.memberSuggest(t, name))
 		return Invalid
 	}
 	if id, ok := unparen(e.X).(*syntax.Ident); ok && t == Ref {
@@ -1226,10 +1229,10 @@ func (c *Checker) valueMember(e *syntax.MemberExpr, t Type, name string) Type {
 		return res
 	}
 	if lookupMethod(t, name) != nil {
-		c.errorf(e.Name, "%s is a method of %s: call it, %s()", name, typeString(t), name)
+		c.errorf(e.Name, diag.NotAValue, "%s is a method of %s: call it, %s()", name, typeString(t), name)
 		return Invalid
 	}
-	c.errorf(e.Name, "%s has no %s%s", typeString(t), name, c.memberSuggest(t, name))
+	c.errorf(e.Name, diag.UnknownMember, "%s has no %s%s", typeString(t), name, c.memberSuggest(t, name))
 	return Invalid
 }
 
@@ -1250,12 +1253,12 @@ func isIndexName(name string) bool {
 func (c *Checker) tupleElem(e *syntax.MemberExpr, t Type, name string) Type {
 	tt, ok := t.(*Tuple)
 	if !ok {
-		c.errorf(e.Name, "%s isn't a tuple: .%s reads a tuple's element", typeString(t), name)
+		c.errorf(e.Name, diag.UnknownMember, "%s isn't a tuple: .%s reads a tuple's element", typeString(t), name)
 		return Invalid
 	}
 	i, err := strconv.Atoi(name)
 	if err != nil || i >= len(tt.Elems) || len(name) > 1 && name[0] == '0' {
-		c.errorf(e.Name, "%s has no element %s: its elements are %s", typeString(t), name, tupleElemNames(len(tt.Elems)))
+		c.errorf(e.Name, diag.UnknownMember, "%s has no element %s: its elements are %s", typeString(t), name, tupleElemNames(len(tt.Elems)))
 		return Invalid
 	}
 	f := &Field{Name: name, Type: tt.Elems[i], Index: i}
@@ -1333,21 +1336,21 @@ func (c *Checker) implicitMember(e *syntax.ImplicitMember, want Type) Type {
 	}
 	switch w {
 	case nil:
-		c.errorf(e, "can't tell what .%s is here: write its type, Type.%s", name, name)
+		c.errorf(e, diag.CannotInferType, "can't tell what .%s is here: write its type, Type.%s", name, name)
 		return Invalid
 	case Color:
 		if v, ok := SemanticColor(name); ok {
 			c.info.Selections[e] = &Selection{Kind: SelColor, Value: v, Recv: Color}
 			return Color
 		}
-		c.errorf(e, "%s isn't a semantic color (they're %s)", name, strings.Join(semanticColorNames(), ", "))
+		c.errorf(e, diag.UnknownMember, "%s isn't a semantic color (they're %s)", name, strings.Join(semanticColorNames(), ", "))
 		return Invalid
 	case Length:
 		if name == "auto" {
 			c.info.Selections[e] = &Selection{Kind: SelLengthAuto, Recv: Length}
 			return Length
 		}
-		c.errorf(e, "a Length is a number of points, a percentage (50%%) or .auto, not .%s", name)
+		c.errorf(e, diag.UnknownMember, "a Length is a number of points, a percentage (50%%) or .auto, not .%s", name)
 		return Invalid
 	}
 	if IsInvalid(w) {
@@ -1357,7 +1360,7 @@ func (c *Checker) implicitMember(e *syntax.ImplicitMember, want Type) Type {
 		if k := n.Obj.Case(name); k != nil {
 			c.info.Selections[e] = &Selection{Kind: SelCase, Case: k, Recv: n}
 			if len(k.Params) > 0 {
-				c.errorf(e, "case %s has a payload: give it, .%s(…)", name, name)
+				c.errorf(e, diag.ArgumentCount, "case %s has a payload: give it, .%s(…)", name, name)
 			}
 			return n
 		}
@@ -1365,10 +1368,10 @@ func (c *Checker) implicitMember(e *syntax.ImplicitMember, want Type) Type {
 			c.info.Selections[e] = &Selection{Kind: SelConst, Global: g, Recv: n}
 			return c.useGlobal(g, e)
 		}
-		c.errorf(e, "%s has no case or constant %s", typeString(w), name)
+		c.errorf(e, diag.UnknownMember, "%s has no case or constant %s", typeString(w), name)
 		return Invalid
 	}
-	c.errorf(e, ".%s: %s has no implicit members (they're an enum's cases or a type's constants)", name, aType(w))
+	c.errorf(e, diag.UnknownMember, ".%s: %s has no implicit members (they're an enum's cases or a type's constants)", name, aType(w))
 	return Invalid
 }
 
@@ -1389,7 +1392,7 @@ func (c *Checker) index1(e *syntax.IndexExpr, xt Type) Type {
 	if _, isMap := xt.(*Map); !isMap && e.Default != nil {
 		c.expr(e.Default, nil)
 		if !IsInvalid(xt) {
-			c.errorf(e.Default, "default: is a map's, for a key it may not have: %s has no such entries", aType(xt))
+			c.errorf(e.Default, diag.BadOperand, "default: is a map's, for a key it may not have: %s has no such entries", aType(xt))
 		}
 	}
 	switch t := xt.(type) {
@@ -1411,7 +1414,7 @@ func (c *Checker) index1(e *syntax.IndexExpr, xt Type) Type {
 	}
 	c.expr(e.Index, nil)
 	if !IsInvalid(xt) {
-		c.errorf(e, "%s can't be indexed: only arrays, maps and bytes can", aType(xt))
+		c.errorf(e, diag.BadOperand, "%s can't be indexed: only arrays, maps and bytes can", aType(xt))
 	}
 	return Invalid
 }
@@ -1425,9 +1428,9 @@ func (c *Checker) intOperand(x syntax.Expr, op syntax.Token) bool {
 		return true
 	case IsInvalid(t):
 	case t == Bool && (op == syntax.AMP || op == syntax.PIPE):
-		c.errorf(x, "%s takes ints, not a bool: write %s%s for bools", op, op, op)
+		c.errorf(x, diag.BadOperand, "%s takes ints, not a bool: write %s%s for bools", op, op, op)
 	default:
-		c.errorf(x, "%s takes ints, not %s", op, aType(t))
+		c.errorf(x, diag.BadOperand, "%s takes ints, not %s", op, aType(t))
 	}
 	return false
 }
@@ -1449,21 +1452,21 @@ func (c *Checker) unary(e *syntax.UnaryExpr, want Type) Type {
 			return res
 		}
 		if !IsInvalid(t) && !IsNumeric(t) && t != Duration {
-			c.errorf(e, "- negates numbers, not %s", aType(t))
+			c.errorf(e, diag.BadOperand, "- negates numbers, not %s", aType(t))
 			return Invalid
 		}
 		if lit, ok := unparen(e.X).(*syntax.BasicLit); ok && lit.Kind == syntax.INT && t == Int {
 			// -0x8000_0000_0000_0000: the smallest int's bits, negated.
 			if v, err := ParseInt(lit.Value); err == nil && v == math.MinInt64 {
-				c.errorf(e, "-%s overflows: %s is the smallest int, which has no positive", lit.Value, lit.Value)
+				c.errorf(e, diag.IntOverflow, "-%s overflows: %s is the smallest int, which has no positive", lit.Value, lit.Value)
 			}
 		}
 		return t
 	case syntax.AWAIT:
 		if c.ctx == nil || !c.ctx.Async {
-			c.errorf(e, "await only where code may wait: %s", c.asyncHint())
+			c.errorf(e, c.awaitCode(), "await only where code may wait: %s", c.asyncHint())
 		} else if c.ctx.peeks > 0 {
-			c.errorf(e, "peek reads at once, and can't wait: await first, into a let, and peek that")
+			c.errorf(e, diag.AwaitOutsideAsync, "peek reads at once, and can't wait: await first, into a let, and peek that")
 		} else {
 			c.ctx.awaited(e.Start)
 		}
@@ -1510,7 +1513,7 @@ func (c *Checker) unary(e *syntax.UnaryExpr, want Type) Type {
 	case syntax.LOAD:
 		return c.load(e)
 	}
-	c.errorf(e, "unexpected operator %s", e.Op)
+	c.errorf(e, diag.InternalError, "unexpected operator %s", e.Op)
 	return Invalid
 }
 
@@ -1531,7 +1534,7 @@ func tryCall(x syntax.Expr) (*syntax.CallExpr, bool) {
 // mayThrow reports a throw (or try) where nothing catches it.
 func (c *Checker) mayThrow(at syntax.Node) {
 	if msg := c.throwHere(at); msg != "" {
-		c.errorf(at, "%s", msg)
+		c.errorf(at, diag.UnhandledError, "%s", msg)
 	}
 }
 
@@ -1570,6 +1573,16 @@ func (c *Checker) throwHere(at syntax.Node) string {
 	return "this can't throw here: catch the error (try … catch { }, do { } catch { }, try?)"
 }
 
+// awaitCode is the code of an await where nothing may wait: in an
+// effect, async-in-effect (its work belongs in a task); elsewhere,
+// await-outside-async.
+func (c *Checker) awaitCode() *diag.Code {
+	if c.ctx != nil && c.ctx.Kind == CtxEffect {
+		return diag.AsyncInEffect
+	}
+	return diag.AwaitOutsideAsync
+}
+
 func (c *Checker) asyncHint() string {
 	if c.ctx == nil {
 		return "in an async fn, a handler, a task or a test"
@@ -1605,7 +1618,7 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 			return Invalid
 		}
 		if !IsOptional(xt) {
-			c.errorf(e.X, "%s isn't optional: ?? has nothing to do", typeString(xt))
+			c.errorf(e.X, diag.NotOptional, "%s isn't optional: ?? has nothing to do", typeString(xt))
 			c.expr(e.Y, nil)
 			return xt
 		}
@@ -1615,7 +1628,7 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 			return xt
 		}
 		if !c.convert(e.Y, yt, el) {
-			c.errorf(e.Y, "the default is %s, not %s", aType(yt), aType(el))
+			c.errorf(e.Y, diag.TypeMismatch, "the default is %s, not %s", aType(yt), aType(el))
 		}
 		return el
 	case syntax.RANGE, syntax.RANGELT:
@@ -1662,7 +1675,7 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 			return Bool
 		}
 		if !Identical(xt, yt) && !c.convert(e.Y, yt, xt) && !c.convert(e.X, xt, yt) {
-			c.errorf(e, "can't compare %s with %s", aType(xt), aType(yt))
+			c.errorf(e, diag.BadOperand, "can't compare %s with %s", aType(xt), aType(yt))
 			return Bool
 		}
 		t := xt
@@ -1670,16 +1683,16 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 			t = yt
 		}
 		if !IsEquatable(t) {
-			c.errorf(e, "%s can't be compared with %s: %s", typeString(t), e.Op, whyNotEquatable(t))
+			c.errorf(e, diag.ConstraintNotMet, "%s can't be compared with %s: %s", typeString(t), e.Op, whyNotEquatable(t))
 		}
 		return Bool
 	case syntax.LSS, syntax.LEQ, syntax.GTR, syntax.GEQ:
 		if !Identical(xt, yt) {
-			c.errorf(e, "can't compare %s with %s", aType(xt), aType(yt))
+			c.errorf(e, diag.BadOperand, "can't compare %s with %s", aType(xt), aType(yt))
 			return Bool
 		}
 		if why := c.whyNotComparable(xt); why != "" {
-			c.errorf(e, "%s can't be ordered with %s: %s", typeString(xt), e.Op, why)
+			c.errorf(e, diag.ConstraintNotMet, "%s can't be ordered with %s: %s", typeString(xt), e.Op, why)
 		}
 		return Bool
 	case syntax.ADD:
@@ -1721,13 +1734,13 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 			return xt
 		}
 		if IsNumeric(xt) && IsNumeric(yt) {
-			c.errorf(e, "%s on an int and a float: make them the same, float(x) or int(x)", e.Op)
+			c.errorf(e, diag.BadOperand, "%s on an int and a float: make them the same, float(x) or int(x)", e.Op)
 			return Invalid
 		}
-		c.errorf(e, "%s doesn't take %s and %s", e.Op, aType(xt), aType(yt))
+		c.errorf(e, diag.BadOperand, "%s doesn't take %s and %s", e.Op, aType(xt), aType(yt))
 		return Invalid
 	}
-	c.errorf(e, "unexpected operator %s", e.Op)
+	c.errorf(e, diag.InternalError, "unexpected operator %s", e.Op)
 	return Invalid
 }
 
@@ -1900,7 +1913,7 @@ func (c *Checker) valueBlock(b *syntax.Block, want Type) Type {
 	defer c.closeScope()
 	n := len(b.Items)
 	if n == 0 {
-		c.errorPos(b.Lbrace, "this block has no value: end it with one")
+		c.errorPos(b.Lbrace, diag.NoValue, "this block has no value: end it with one")
 		return Invalid
 	}
 	c.stmts(b.Items[:n-1])
@@ -1919,10 +1932,10 @@ func (c *Checker) valueBlock(b *syntax.Block, want Type) Type {
 		return Never
 	}
 	if s, ok := last.(*syntax.IfStmt); ok {
-		c.errorf(lastIf(s), "an if used as a value needs an else")
+		c.errorf(lastIf(s), diag.NoValue, "an if used as a value needs an else")
 		return Invalid
 	}
-	c.errorf(last, "this block has no value: end it with an expression")
+	c.errorf(last, diag.NoValue, "this block has no value: end it with an expression")
 	return Invalid
 }
 
@@ -1965,7 +1978,7 @@ func (c *Checker) ifExpr(e *syntax.IfExpr, want Type) Type {
 		c.closeScope()
 		if c.styleValue > 0 {
 			// Elsewhere the parser said so.
-			c.errorf(e, "an if used as a value needs an else")
+			c.errorf(e, diag.NoValue, "an if used as a value needs an else")
 		}
 		return Invalid
 	}
@@ -1994,7 +2007,7 @@ func (c *Checker) ifValue(n syntax.Node, cond syntax.Expr, then *syntax.Block, e
 	}
 	t := c.join(a, b)
 	if t == nil {
-		c.errorf(n, "the branches are %s and %s: make them the same type", aType(a), aType(b))
+		c.errorf(n, diag.TypeMismatch, "the branches are %s and %s: make them the same type", aType(a), aType(b))
 		return Invalid
 	}
 	return t
@@ -2029,7 +2042,7 @@ func IsConstNumber(e syntax.Expr) bool { return constNumber(e) }
 // every branch is checked whatever it is, and lowering folds it.
 func (c *Checker) atExpr(e *syntax.AtExpr) Type {
 	if e.Name != "platform" {
-		c.errorf(e, "no compile-time constant @%s: there's @platform, the platform the app is compiled for", e.Name)
+		c.errorf(e, diag.UndefinedName, "no compile-time constant @%s: there's @platform, the platform the app is compiled for", e.Name)
 		return Invalid
 	}
 	pt := c.prelude.Scope.LookupLocal("Platform").(*TypeName)

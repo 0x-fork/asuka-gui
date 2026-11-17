@@ -3,6 +3,7 @@ package check
 import (
 	"strings"
 
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -61,17 +62,17 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		var out []syntax.Expr
 		for _, a := range list {
 			if a.Label != nil {
-				c.errorf(a.Label, "%s's arguments have no names", b.name)
+				c.errorf(a.Label, diag.ArgumentLabel, "%s's arguments have no names", b.name)
 			}
 			out = append(out, a.Value)
 		}
 		if n >= 0 && len(out) != n {
-			c.errorf(e, "%s takes %s", b.name, what)
+			c.errorf(e, diag.ArgumentCount, "%s takes %s", b.name, what)
 		}
 		return out
 	}
 	if e.Block != nil && b.ID != BMount && b.ID != BWithTimeout && b.ID != BAnimate && b.ID != BRuntime {
-		c.errorf(e.Block, "%s takes no block", b.name)
+		c.errorf(e.Block, diag.UnexpectedBlock, "%s takes no block", b.name)
 	}
 	switch b.ID {
 	case BPeek:
@@ -91,7 +92,7 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 	case BExpect:
 		args := positional(-1, "a condition: expect(count == 2)")
 		if len(args) < 1 || len(args) > 2 {
-			c.errorf(e, "expect takes a condition, and maybe a message: expect(count == 2, \"…\")")
+			c.errorf(e, diag.ArgumentCount, "expect takes a condition, and maybe a message: expect(count == 2, \"…\")")
 		}
 		if len(args) > 0 {
 			c.assign(args[0], Bool, "expect's condition")
@@ -142,7 +143,7 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 			pt := c.expr(args[1], nil)
 			if n, ok := pt.(*Named); !ok || n.Obj.Kind != StoreType {
 				if !IsInvalid(pt) {
-					c.errorf(args[1], "provide takes a store: this is %s", aType(pt))
+					c.errorf(args[1], diag.TypeMismatch, "provide takes a store: this is %s", aType(pt))
 				}
 			}
 		}
@@ -189,7 +190,7 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		if len(args) == 1 {
 			t := c.expr(args[0], numOnly(Unopt(want)))
 			if !IsNumeric(t) && !IsInvalid(t) {
-				c.errorf(args[0], "abs takes a number, not %s", aType(t))
+				c.errorf(args[0], diag.TypeMismatch, "abs takes a number, not %s", aType(t))
 			}
 			call.Result = t
 		} else {
@@ -201,7 +202,7 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		if len(args) == 1 {
 			t := c.expr(args[0], nil)
 			if t != Int && t != Float && !IsInvalid(t) {
-				c.errorf(args[0], "float(…) takes an int, not %s", aType(t))
+				c.errorf(args[0], diag.TypeMismatch, "float(…) takes an int, not %s", aType(t))
 			}
 		}
 		call.Result = Float
@@ -211,7 +212,7 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		if len(args) == 1 {
 			t := c.expr(args[0], nil)
 			if t != Int && t != Float && !IsInvalid(t) {
-				c.errorf(args[0], "int(…) takes a float, not %s", aType(t))
+				c.errorf(args[0], diag.TypeMismatch, "int(…) takes a float, not %s", aType(t))
 			}
 		}
 		call.Result = Int
@@ -226,13 +227,13 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		if len(e.TypeArgs) == 1 {
 			t = c.typeExpr(e.TypeArgs[0]) // json.decode<T>(text)
 		} else if len(e.TypeArgs) > 1 {
-			c.errorf(e, "json.decode takes one type: json.decode<T>(text)")
+			c.errorf(e, diag.TypeArguments, "json.decode takes one type: json.decode<T>(text)")
 		}
 		if t == nil {
-			c.errorf(e, "json.decode needs to know what it reads: json.decode<T>(text), or say what's expected, let x: T = try json.decode(text)")
+			c.errorf(e, diag.CannotInferType, "json.decode needs to know what it reads: json.decode<T>(text), or say what's expected, let x: T = try json.decode(text)")
 			t = Invalid
 		} else if why := c.jsonable(t); why != "" {
-			c.errorf(e, "json can't read %s: %s", aType(t), why)
+			c.errorf(e, diag.NotJSON, "json can't read %s: %s", aType(t), why)
 		}
 		call.Result = t
 		c.callEffects(e, "json.decode", false, true)
@@ -243,7 +244,7 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 			t := c.valueType(c.expr(args[0], nil), args[0])
 			ps[0].Type = t
 			if why := c.jsonable(t); why != "" && !IsInvalid(t) {
-				c.errorf(args[0], "json can't write %s: %s", aType(t), why)
+				c.errorf(args[0], diag.NotJSON, "json can't write %s: %s", aType(t), why)
 			}
 		}
 		if args[1] != nil {
@@ -269,7 +270,7 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 			c.assign(args[0], Duration, "the timeout")
 		}
 		if e.Block == nil {
-			c.errorf(e, "withTimeout takes a block: withTimeout(5s) { … }")
+			c.errorf(e, diag.ArgumentCount, "withTimeout takes a block: withTimeout(5s) { … }")
 		} else {
 			lam := &syntax.LambdaExpr{Span: e.Block.Span, Body: e.Block}
 			c.info.Trailing[e] = lam
@@ -325,14 +326,14 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		if len(e.TypeArgs) == 1 {
 			elem = c.typeExpr(e.TypeArgs[0])
 		} else if len(e.TypeArgs) > 1 {
-			c.errorf(e, "Set takes one type: Set<T>")
+			c.errorf(e, diag.TypeArguments, "Set takes one type: Set<T>")
 		} else if st, ok := Unopt(want).(*Set); ok {
 			elem = st.Elem
 		}
 		switch len(args) {
 		case 0:
 			if elem == nil {
-				c.errorf(e, "can't tell the set's elements: Set<T>(), or say what's expected (let s: Set<T> = [])")
+				c.errorf(e, diag.CannotInferType, "can't tell the set's elements: Set<T>(), or say what's expected (let s: Set<T> = [])")
 				elem = Invalid
 			}
 		case 1:
@@ -342,12 +343,12 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 				elem = a.Elem
 			} else {
 				if t := c.info.Types[args[0]]; !IsInvalid(t) {
-					c.errorf(args[0], "Set(…) takes an array of its elements, not %s", aType(t))
+					c.errorf(args[0], diag.TypeMismatch, "Set(…) takes an array of its elements, not %s", aType(t))
 				}
 				elem = Invalid
 			}
 		default:
-			c.errorf(e, "Set takes an array of its elements: Set([a, b]), or Set<T>() for none")
+			c.errorf(e, diag.ArgumentCount, "Set takes an array of its elements: Set([a, b]), or Set<T>() for none")
 			for _, a := range args {
 				c.expr(a, nil)
 			}
@@ -364,7 +365,7 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 			elem = st.Elem
 		}
 		if elem == nil {
-			c.errorf(e, "can't tell what the stream sends: Stream<T>(…), or say what's expected")
+			c.errorf(e, diag.CannotInferType, "can't tell what the stream sends: Stream<T>(…), or say what's expected")
 			elem = Invalid
 		}
 		prod := &FuncType{Params: []Type{&FuncType{Params: []Type{elem}, Result: Void}}, Result: Void, Async: true, Throws: true}
@@ -387,7 +388,7 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		positional(0, "nothing: Path(), then its methods: Path().move(0, 0).line(10, 10)")
 		call.Result = Path
 	default:
-		c.errorf(e, "unknown builtin %s", b.name)
+		c.errorf(e, diag.InternalError, "unknown builtin %s", b.name)
 		call.Result = Invalid
 	}
 	return call.Result
@@ -409,7 +410,7 @@ func (c *Checker) sameNumbers(e *syntax.CallExpr, args []syntax.Expr, want Type)
 		return Invalid
 	}
 	if !IsNumeric(xt) || !Identical(xt, yt) {
-		c.errorf(e, "this takes two ints or two floats, not %s and %s", aType(xt), aType(yt))
+		c.errorf(e, diag.BadOperand, "this takes two ints or two floats, not %s and %s", aType(xt), aType(yt))
 		return Invalid
 	}
 	return xt
@@ -419,7 +420,7 @@ func (c *Checker) sameNumbers(e *syntax.CallExpr, args []syntax.Expr, want Type)
 // tasks, started at once.
 func (c *Checker) allRace(e *syntax.CallExpr, b *Builtin, args []syntax.Expr) Type {
 	if len(args) == 0 {
-		c.errorf(e, "%s takes the calls it runs at once: %s(f(), g())", b.name, b.name)
+		c.errorf(e, diag.NotAsyncCall, "%s takes the calls it runs at once: %s(f(), g())", b.name, b.name)
 		return Invalid
 	}
 	var types []Type
@@ -438,7 +439,7 @@ func (c *Checker) allRace(e *syntax.CallExpr, b *Builtin, args []syntax.Expr) Ty
 			}
 		} else if ce, ok := unparen(a).(*syntax.CallExpr); !ok || c.info.Calls[ce] == nil || !c.isAsyncCall(c.info.Calls[ce]) {
 			if !IsInvalid(t) {
-				c.errorf(a, "%s runs async calls (or tasks) at once, and this isn't one", b.name)
+				c.errorf(a, diag.NotAsyncCall, "%s runs async calls (or tasks) at once, and this isn't one", b.name)
 			}
 		}
 		types = append(types, t)
@@ -449,7 +450,7 @@ func (c *Checker) allRace(e *syntax.CallExpr, b *Builtin, args []syntax.Expr) Ty
 			if j := c.join(t, u); j != nil {
 				t = j
 			} else {
-				c.errorf(args[i+1], "race's calls must have one type: this is %s, the first %s", aType(u), aType(t))
+				c.errorf(args[i+1], diag.TypeMismatch, "race's calls must have one type: this is %s, the first %s", aType(u), aType(t))
 			}
 		}
 		return t
@@ -514,7 +515,7 @@ func (c *Checker) builderExpr(x syntax.Expr) {
 	c.view = true
 	t := c.expr(x, View)
 	if !IsInvalid(t) && t != View {
-		c.errorf(x, "this is %s, not a view", aType(t))
+		c.errorf(x, diag.NotAView, "this is %s, not a view", aType(t))
 	}
 	c.view = savedView
 	c.leave(saved)
@@ -524,11 +525,11 @@ func (c *Checker) builderExpr(x syntax.Expr) {
 // keeps.
 func (c *Checker) load(e *syntax.UnaryExpr) Type {
 	if c.ctx == nil || c.ctx.Kind != CtxBinding || !c.loadOK {
-		c.errorf(e, "load is a component's or a store's: let x = load f(…)")
+		c.errorf(e, diag.LoadOutsideComponent, "load is a component's or a store's: let x = load f(…)")
 	}
 	call, ok := unparen(e.X).(*syntax.CallExpr)
 	if !ok {
-		c.errorf(e.X, "load takes an async call: load f(…)")
+		c.errorf(e.X, diag.NotAsyncCall, "load takes an async call: load f(…)")
 		c.expr(e.X, nil)
 		return Invalid
 	}
@@ -538,7 +539,7 @@ func (c *Checker) load(e *syntax.UnaryExpr) Type {
 	c.inTry--
 	c.inAwait--
 	if ci := c.info.Calls[call]; ci != nil && !c.isAsyncCall(ci) {
-		c.errorf(call, "load takes an async call, and this isn't one")
+		c.errorf(call, diag.NotAsyncCall, "load takes an async call, and this isn't one")
 	}
 	if IsInvalid(t) {
 		return Invalid
@@ -644,7 +645,7 @@ func (c *Checker) jsonGenerics() {
 				continue
 			}
 			if why := jsonable1(g.args[i], map[*TypeName]bool{}, func(*TypeParam) bool { return true }); why != "" {
-				c.errorf(g.e, "%s reads or writes its %s as JSON, and %s can't be: %s", g.name(), tp.Name, aType(g.args[i]), why)
+				c.errorf(g.e, diag.NotJSON, "%s reads or writes its %s as JSON, and %s can't be: %s", g.name(), tp.Name, aType(g.args[i]), why)
 			}
 		}
 	}

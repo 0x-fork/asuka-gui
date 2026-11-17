@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -789,7 +790,7 @@ func (c *Checker) checkHashable(t Type, at syntax.Node, what string, later bool)
 	}
 	check := func() {
 		if why := whyNotHashable(t); why != "" {
-			c.errorf(at, "%s must be Hashable, and %s isn't: %s", what, typeString(t), why)
+			c.errorf(at, diag.ConstraintNotMet, "%s must be Hashable, and %s isn't: %s", what, typeString(t), why)
 		}
 	}
 	if later {

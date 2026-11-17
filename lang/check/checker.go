@@ -1,10 +1,10 @@
 package check
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/prelude"
 	"github.com/egoist/asuka/lang/syntax"
 )
@@ -105,7 +105,7 @@ func NewChecker(fset *syntax.FileSet) *Checker {
 	for _, src := range prelude.Sources() {
 		f, errs := syntax.ParseFile(fset, src.Name, src.Text)
 		for _, e := range errs {
-			c.diags = append(c.diags, Diagnostic{Pos: e.Pos, End: e.End, Msg: e.Msg})
+			c.diags = append(c.diags, FromSyntax(e))
 		}
 		files = append(files, f)
 	}
@@ -194,23 +194,23 @@ func (c *Checker) entry(root *Package) *Function {
 	}
 	d := main.Decl
 	if root.App != nil {
-		c.errorf(d.Name, "a package is an app or a program, not both: it has an app block and fn main (rename main to call it from the app)")
+		c.errorf(d.Name, diag.InvalidEntry, "a package is an app or a program, not both: it has an app block and fn main (rename main to call it from the app)")
 	}
 	if d.Native.IsValid() || d.Extern.IsValid() {
-		c.errorf(d.Name, "fn main is the program's entry: it has a body")
+		c.errorf(d.Name, diag.FnBody, "fn main is the program's entry: it has a body")
 	}
 	if len(main.TypeParams) > 0 {
-		c.errorf(d.Name, "fn main is the program's entry: it has no type parameters")
+		c.errorf(d.Name, diag.InvalidEntry, "fn main is the program's entry: it has no type parameters")
 	}
 	if len(main.Sig.Params) > 0 {
-		c.errorf(d.Params, "fn main takes no parameters: the program's arguments are os.args() (import std/os)")
+		c.errorf(d.Params, diag.InvalidEntry, "fn main takes no parameters: the program's arguments are os.args() (import std/os)")
 	}
 	if r := main.Sig.Result; r != Void && r != Never {
-		c.errorf(d.Result, "fn main returns nothing: os.exit(code) ends the program with a code")
+		c.errorf(d.Result, diag.InvalidEntry, "fn main returns nothing: os.exit(code) ends the program with a code")
 	}
 	for _, t := range root.Types {
 		if root.App == nil && t.Kind == ComponentType && t.Comp != nil && !t.Comp.Store {
-			c.errorPos(t.Pos(), "a program shows no views: %s needs an app (an app block, without fn main)", t.Name())
+			c.errorPos(t.Pos(), diag.InvalidEntry, "a program shows no views: %s needs an app (an app block, without fn main)", t.Name())
 		}
 	}
 	return main
@@ -219,42 +219,43 @@ func (c *Checker) entry(root *Package) *Function {
 // ---------------------------------------------------------------------
 // Diagnostics
 
-func (c *Checker) errorf(n syntax.Node, format string, args ...any) {
+func (c *Checker) errorf(n syntax.Node, code *diag.Code, format string, args ...any) {
 	var pos, end syntax.Position
 	if n != nil {
 		r := n.Range()
 		pos = c.fset.Position(r.Start)
 		end = c.fset.Position(r.End)
 	}
-	c.errorAt(pos, end, fmt.Sprintf(format, args...))
+	c.errorAt(pos, end, code, format, args...)
 }
 
 // warnf reports what's worth saying that doesn't stop the build.
-func (c *Checker) warnf(n syntax.Node, format string, args ...any) {
+func (c *Checker) warnf(n syntax.Node, code *diag.Code, format string, args ...any) {
 	r := n.Range()
 	pos, end := c.fset.Position(r.Start), c.fset.Position(r.End)
-	msg := fmt.Sprintf(format, args...)
-	key := "warning " + pos.String() + msg
+	d := newDiagnostic(pos, end, code, format, args...)
+	key := "warning " + pos.String() + d.Msg
 	if c.errLines[key] {
 		return
 	}
 	c.errLines[key] = true
-	c.warns = append(c.warns, Diagnostic{Pos: pos, End: end, Msg: msg})
+	c.warns = append(c.warns, d)
 }
 
-func (c *Checker) errorPos(p syntax.Pos, format string, args ...any) {
+func (c *Checker) errorPos(p syntax.Pos, code *diag.Code, format string, args ...any) {
 	pos := c.fset.Position(p)
-	c.errorAt(pos, pos, fmt.Sprintf(format, args...))
+	c.errorAt(pos, pos, code, format, args...)
 }
 
-func (c *Checker) errorAt(pos, end syntax.Position, msg string) {
+func (c *Checker) errorAt(pos, end syntax.Position, code *diag.Code, format string, args ...any) {
+	d := newDiagnostic(pos, end, code, format, args...)
 	// One error per position: a mistake reported once.
-	key := pos.String() + msg
+	key := pos.String() + d.Msg
 	if c.errLines[key] {
 		return
 	}
 	c.errLines[key] = true
-	c.diags = append(c.diags, Diagnostic{Pos: pos, End: end, Msg: msg})
+	c.diags = append(c.diags, d)
 }
 
 // ---------------------------------------------------------------------
@@ -378,17 +379,21 @@ func (c *Checker) importDecl(fs *Scope, imp *syntax.ImportDecl, imports map[stri
 	path := imp.PathString()
 	ip, found := imports[path]
 	if found && ip == nil {
-		return // the compiler couldn't load it, and said so
+		// The compiler couldn't load it, and said so.
+		c.brokenImport(fs, imp)
+		return
 	}
 	if ip == nil {
 		ip = c.Std(path)
 	}
 	if ip == nil && path == "std/assets" {
-		c.errorf(imp, "std/assets is std/embed now: embed.text(\"assets/reply.md\"), its paths relative to the package's directory")
+		c.errorf(imp, diag.UnknownPackage, "std/assets is std/embed now: embed.text(\"assets/reply.md\"), its paths relative to the package's directory")
+		c.brokenImport(fs, imp)
 		return
 	}
 	if ip == nil {
-		c.errorf(imp, "no package %s: %s", path, importHint(imp))
+		c.errorf(imp, diag.UnknownPackage, "no package %s: %s", path, importHint(imp))
+		c.brokenImport(fs, imp)
 		return
 	}
 	c.info.Imports[imp] = ip
@@ -399,15 +404,15 @@ func (c *Checker) importDecl(fs *Scope, imp *syntax.ImportDecl, imports map[stri
 		for _, n := range imp.Names {
 			o := ip.Scope.LookupLocal(n.Name)
 			if o == nil {
-				c.errorf(n, "package %s has no %s", path, n.Name)
+				c.errorf(n, diag.UnknownMember, "package %s has no %s", path, n.Name)
 				continue
 			}
 			if !c.exported(ip, o) {
-				c.errorf(n, "%s isn't pub in package %s: it's private to it", n.Name, path)
+				c.errorf(n, diag.NotPub, "%s isn't pub in package %s: it's private to it", n.Name, path)
 			}
 			c.info.Defs[n] = o
 			if old := fs.Insert(o); old != nil && old != o {
-				c.errorf(n, "%s is imported twice", n.Name)
+				c.errorf(n, diag.DuplicateDeclaration, "%s is imported twice", n.Name)
 			}
 		}
 		if imp.Alias == nil {
@@ -418,13 +423,29 @@ func (c *Checker) importDecl(fs *Scope, imp *syntax.ImportDecl, imports map[stri
 	if imp.Alias != nil {
 		name = imp.Alias.Name
 	} else if !syntax.IsIdentifier(name) {
-		c.errorf(imp, "import %s as a name: %s isn't one", path, name)
+		c.errorf(imp, diag.SyntaxError, "import %s as a name: %s isn't one", path, name)
 		return
 	}
 	pn := &PkgName{object: object{name, imp.Start}, Pkg: ip}
 	if old := fs.Insert(pn); old != nil {
-		c.errorf(imp, "%s is imported twice (import it as another name: import %s as other)", name, path)
+		c.errorf(imp, diag.DuplicateDeclaration, "%s is imported twice (import it as another name: import %s as other)", name, path)
 	}
+}
+
+// brokenImport declares the name of an import that failed (reported) as
+// a package without members, so that what the file uses of it isn't
+// reported again, once per use.
+func (c *Checker) brokenImport(fs *Scope, imp *syntax.ImportDecl) {
+	path := imp.PathString()
+	name := path[strings.LastIndexByte(path, '/')+1:]
+	if imp.Alias != nil {
+		name = imp.Alias.Name
+	}
+	if imp.Names != nil && imp.Alias == nil || !syntax.IsIdentifier(name) {
+		return
+	}
+	broken := &Package{Path: path, Name: name, Scope: NewScope(nil), Broken: true}
+	fs.Insert(&PkgName{object: object{name, imp.Start}, Pkg: broken})
 }
 
 func importHint(imp *syntax.ImportDecl) string {
@@ -494,7 +515,7 @@ func (c *Checker) collect(p *Package, d syntax.Decl) {
 			return
 		}
 		if old := p.Scope.Insert(o); old != nil {
-			c.errorf(id, "%s is declared twice in package %s (the other is at %s)", id.Name, pkgLabel(p), c.fset.Position(old.Pos()))
+			c.errorf(id, diag.DuplicateDeclaration, "%s is declared twice in package %s (the other is at %s)", id.Name, pkgLabel(p), c.fset.Position(old.Pos()))
 		}
 	}
 	switch d := d.(type) {
@@ -561,11 +582,11 @@ func (c *Checker) collect(p *Package, d syntax.Decl) {
 		c.noLetElse(d)
 		bp, ok := d.Pattern.(*syntax.BindPat)
 		if !ok {
-			c.errorf(d.Pattern, "a let at the top of a file names one value: let name = …")
+			c.errorf(d.Pattern, diag.InvalidDeclaration, "a let at the top of a file names one value: let name = …")
 			return
 		}
 		if d.Keyword == syntax.VAR {
-			c.errorf(d, "a file's values don't change: a value that changes is state (state %s = …)", bp.Name.Name)
+			c.errorf(d, diag.InvalidDeclaration, "a file's values don't change: a value that changes is state (state %s = …)", bp.Name.Name)
 		}
 		g := &Global{object: object{bp.Name.Name, bp.Name.Start}, Pkg: p, Kind: ConstGlobal, Decl: d, Value: d.Value, Pub: d.Pub.IsValid()}
 		p.Globals = append(p.Globals, g)
@@ -574,7 +595,7 @@ func (c *Checker) collect(p *Package, d syntax.Decl) {
 		c.collectStyle(p, d)
 	case *syntax.AppDecl:
 		if p.App != nil {
-			c.errorf(d, "a package has one app")
+			c.errorf(d, diag.DuplicateDeclaration, "a package has one app")
 		}
 		p.App = d
 	case *syntax.TestDecl:
@@ -627,7 +648,7 @@ func (c *Checker) declareVar(id *syntax.Ident, t Type, mutable bool) *Var {
 		return v
 	}
 	if old := c.scope.LookupLocal(id.Name); old != nil {
-		c.errorf(id, "%s is declared twice here: give one another name", id.Name)
+		c.errorf(id, diag.DuplicateDeclaration, "%s is declared twice here: give one another name", id.Name)
 	}
 	c.scope.Insert(v)
 	return v
@@ -638,7 +659,7 @@ func (c *Checker) declareVar(id *syntax.Ident, t Type, mutable bool) *Var {
 // load is a form.
 func (c *Checker) builtinForm(id *syntax.Ident) bool {
 	if id.Name == "peek" {
-		c.errorf(id, "peek is built in (it reads a value without following it): name this otherwise")
+		c.errorf(id, diag.ReservedName, "peek is built in (it reads a value without following it): name this otherwise")
 		return true
 	}
 	return false
@@ -711,13 +732,13 @@ func (c *Checker) typeExpr(t syntax.Type) Type {
 	case *syntax.OptionalType:
 		e := c.typeExpr(t.Elem)
 		if e == Void {
-			c.errorf(t, "void? isn't a type: use bool")
+			c.errorf(t, diag.NotAType, "void? isn't a type: use bool")
 			return Invalid
 		}
 		if _, ok := unparenType(t.Elem).(*syntax.OptionalType); ok && IsOptional(e) {
 			// Optionals don't nest (a generic T? of an optional T is that
 			// T); written twice, it says what it isn't.
-			c.errorf(t, "%s? is the same as %s: one ? is enough", typeString(e), typeString(e))
+			c.errorf(t, diag.NotAType, "%s? is the same as %s: one ? is enough", typeString(e), typeString(e))
 		}
 		return MakeOptional(e)
 	case *syntax.TupleType:
@@ -755,7 +776,7 @@ func (c *Checker) namedType(t *syntax.NamedType) Type {
 		case "Stream":
 			if o, _ := c.lookup(name).(*Builtin); o != nil && o.ID == BStream {
 				if len(t.Args) != 1 {
-					c.errorf(t, "Stream takes one type: Stream<T>")
+					c.errorf(t, diag.TypeArguments, "Stream takes one type: Stream<T>")
 					return Invalid
 				}
 				return &Stream{c.typeExpr(t.Args[0])}
@@ -763,7 +784,7 @@ func (c *Checker) namedType(t *syntax.NamedType) Type {
 		case "Set":
 			if o, _ := c.lookup(name).(*Builtin); o != nil && o.ID == BSet {
 				if len(t.Args) != 1 {
-					c.errorf(t, "Set takes one type: Set<T>")
+					c.errorf(t, diag.TypeArguments, "Set takes one type: Set<T>")
 					return Invalid
 				}
 				return c.setOf(c.typeExpr(t.Args[0]), t.Args[0], true)
@@ -777,7 +798,7 @@ func (c *Checker) namedType(t *syntax.NamedType) Type {
 		case "Task":
 			if c.lookup(name) == nil {
 				if len(t.Args) != 1 {
-					c.errorf(t, "Task takes one type: Task<T>")
+					c.errorf(t, diag.TypeArguments, "Task takes one type: Task<T>")
 					return Invalid
 				}
 				return &Task{c.typeExpr(t.Args[0])}
@@ -790,10 +811,10 @@ func (c *Checker) namedType(t *syntax.NamedType) Type {
 		}
 		if o == nil {
 			if IsCTypeName(name) {
-				c.errorf(t, "%s is a C type: it's written in extern declarations, and Asuka sees it as %s", name, map[bool]string{true: "a string", false: map[bool]string{true: "a float", false: "an int"}[name == "Float32"]}[name == "CString"])
+				c.errorf(t, diag.NotCType, "%s is a C type: it's written in extern declarations, and Asuka sees it as %s", name, map[bool]string{true: "a string", false: map[bool]string{true: "a float", false: "an int"}[name == "Float32"]}[name == "CString"])
 				return Invalid
 			}
-			c.errorf(t, "unknown type %s%s", name, c.suggest(name))
+			c.errorf(t, diag.UndefinedName, "unknown type %s%s", name, c.suggest(name))
 			return Invalid
 		}
 		c.info.Uses[t.Path[0]] = o
@@ -801,25 +822,28 @@ func (c *Checker) namedType(t *syntax.NamedType) Type {
 		pn, ok := c.lookup(t.Path[0].Name).(*PkgName)
 		if !ok {
 			// A type's nested name isn't a thing: Foo.Bar.
-			c.errorf(t, "unknown type %s (%s isn't an imported package)", joinPath(t.Path), t.Path[0].Name)
+			c.errorf(t, diag.UndefinedName, "unknown type %s (%s isn't an imported package)", joinPath(t.Path), t.Path[0].Name)
 			return Invalid
 		}
 		c.info.Uses[t.Path[0]] = pn
 		o = pn.Pkg.Scope.LookupLocal(name)
+		if o == nil && pn.Pkg.Broken {
+			return Invalid
+		}
 		if o == nil {
-			c.errorf(t, "package %s has no type %s", pn.Pkg.Path, name)
+			c.errorf(t, diag.UnknownMember, "package %s has no type %s", pn.Pkg.Path, name)
 			return Invalid
 		}
 		if len(t.Path) == 2 {
 			c.info.Uses[t.Path[1]] = o
 		}
 		if !c.exported(pn.Pkg, o) {
-			c.errorf(t, "%s isn't pub in package %s", name, pn.Pkg.Path)
+			c.errorf(t, diag.NotPub, "%s isn't pub in package %s", name, pn.Pkg.Path)
 		}
 	}
 	tn, ok := o.(*TypeName)
 	if !ok {
-		c.errorf(t, "%s isn't a type", name)
+		c.errorf(t, diag.NotAType, "%s isn't a type", name)
 		return Invalid
 	}
 	switch tn.Kind {
@@ -828,13 +852,13 @@ func (c *Checker) namedType(t *syntax.NamedType) Type {
 		return View
 	case BasicType, ParamType:
 		if len(t.Args) > 0 {
-			c.errorf(t, "%s takes no type arguments", name)
+			c.errorf(t, diag.TypeArguments, "%s takes no type arguments", name)
 		}
 		return tn.Type
 	case AliasType:
 		c.resolveType(tn)
 		if len(tn.TypeParams) != len(t.Args) {
-			c.errorf(t, "%s takes %s", name, plural(len(tn.TypeParams), "type argument", "type arguments"))
+			c.errorf(t, diag.TypeArguments, "%s takes %s", name, plural(len(tn.TypeParams), "type argument", "type arguments"))
 			return Invalid
 		}
 		s := Subst{}
@@ -849,9 +873,9 @@ func (c *Checker) namedType(t *syntax.NamedType) Type {
 	c.resolveType(tn)
 	if len(tn.TypeParams) != len(t.Args) {
 		if len(t.Args) == 0 {
-			c.errorf(t, "%s is generic: give its types, %s<…>", name, name)
+			c.errorf(t, diag.TypeArguments, "%s is generic: give its types, %s<…>", name, name)
 		} else {
-			c.errorf(t, "%s takes %s", name, plural(len(tn.TypeParams), "type argument", "type arguments"))
+			c.errorf(t, diag.TypeArguments, "%s takes %s", name, plural(len(tn.TypeParams), "type argument", "type arguments"))
 		}
 		return Invalid
 	}
@@ -977,10 +1001,10 @@ func (c *Checker) constraints(p *TypeParam, list []syntax.Type) {
 		case IsInvalid(t):
 			continue
 		case !ok || n.Obj.Kind != InterfaceType:
-			c.errorf(ct, "a type parameter's constraint is an interface, Equatable, Comparable or Hashable, not %s", typeString(t))
+			c.errorf(ct, diag.InvalidConformance, "a type parameter's constraint is an interface, Equatable, Comparable or Hashable, not %s", typeString(t))
 			continue
 		case n.Obj.Native:
-			c.errorf(ct, "%s is a native interface: its platforms' code implements it, and no type of the program has it", n.Obj.name)
+			c.errorf(ct, diag.InvalidConformance, "%s is a native interface: its platforms' code implements it, and no type of the program has it", n.Obj.name)
 			continue
 		}
 		p.Ifaces = append(p.Ifaces, n)

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -84,17 +85,17 @@ func (c *Checker) embedCall(e *syntax.CallExpr, b *Builtin, call *Call, want Typ
 		if len(e.TypeArgs) == 1 {
 			result = c.typeExpr(e.TypeArgs[0])
 		} else if len(e.TypeArgs) > 1 {
-			c.errorf(e, "embed.json takes one type: embed.json<T>(path)")
+			c.errorf(e, diag.TypeArguments, "embed.json takes one type: embed.json<T>(path)")
 		}
 		if result == nil {
-			c.errorf(e, "embed.json needs to know what it reads: embed.json<T>(path), or say what's expected, let config: Config = embed.json(path)")
+			c.errorf(e, diag.CannotInferType, "embed.json needs to know what it reads: embed.json<T>(path), or say what's expected, let config: Config = embed.json(path)")
 			result = Invalid
 		} else if why := c.jsonable(result); why != "" && !IsInvalid(result) {
-			c.errorf(e, "json can't read %s: %s", aType(result), why)
+			c.errorf(e, diag.NotJSON, "json can't read %s: %s", aType(result), why)
 			return result
 		}
 	} else if len(e.TypeArgs) > 0 {
-		c.errorf(e, "%s takes no type", name)
+		c.errorf(e, diag.TypeArguments, "%s takes no type", name)
 	}
 	call.Result = result
 	a := args[0]
@@ -104,27 +105,27 @@ func (c *Checker) embedCall(e *syntax.CallExpr, b *Builtin, call *Call, want Typ
 	c.assign(a, String, "the path")
 	path, ok := constString(a)
 	if !ok {
-		c.errorf(a, "a file is embedded as the app compiles: its path is a string literal, without {…}")
+		c.errorf(a, diag.EmbedFile, "a file is embedded as the app compiles: its path is a string literal, without {…}")
 		return result
 	}
 	if c.pkg == nil || c.pkg.Dir == "" {
-		c.errorf(a, "%s: this package has no directory to read %s from", name, path)
+		c.errorf(a, diag.EmbedFile, "%s: this package has no directory to read %s from", name, path)
 		return result
 	}
 	slash := filepath.ToSlash(path)
 	if path == "" || filepath.IsAbs(path) || strings.HasPrefix(slash, "/") || slash == ".." || strings.HasPrefix(slash, "../") || strings.Contains(slash, "/../") || strings.HasSuffix(slash, "/..") {
-		c.errorf(a, "%s: %q isn't in the package: a path is relative to its directory (where its asuka.toml is), inside it", name, path)
+		c.errorf(a, diag.EmbedFile, "%s: %q isn't in the package: a path is relative to its directory (where its asuka.toml is), inside it", name, path)
 		return result
 	}
 	switch b.ID {
 	case BEmbedTexts, BEmbedFiles:
 		files, err := embedGlob(c.pkg.Dir, slash)
 		if err != nil {
-			c.errorf(a, "%s(%q): %v", name, path, err)
+			c.errorf(a, diag.EmbedFile, "%s(%q): %v", name, path, err)
 			return result
 		}
 		if len(files) == 0 {
-			c.errorf(a, "%s(%q): no file in the package matches it", name, path)
+			c.errorf(a, diag.EmbedFile, "%s(%q): no file in the package matches it", name, path)
 		}
 		c.info.EmbedPaths[EmbedPath{c.pkg.Dir, slash}] = true
 		c.info.EmbeddedFiles[e] = files
@@ -135,15 +136,15 @@ func (c *Checker) embedCall(e *syntax.CallExpr, b *Builtin, call *Call, want Typ
 	data, err := os.ReadFile(file)
 	if err != nil {
 		if os.IsNotExist(err) {
-			c.errorf(a, "%s: there's no %s in the package", name, slash)
+			c.errorf(a, diag.EmbedFile, "%s: there's no %s in the package", name, slash)
 		} else {
-			c.errorf(a, "%s: %v", name, err)
+			c.errorf(a, diag.EmbedFile, "%s: %v", name, err)
 		}
 		return result
 	}
 	if b.ID == BEmbedJSON && !IsInvalid(result) {
 		if err := checkJSON(string(data), result); err != nil {
-			c.errorf(a, "%s doesn't fit %s: %s:%v", name, aType(result), slash, err)
+			c.errorf(a, diag.EmbedFile, "%s doesn't fit %s: %s:%v", name, aType(result), slash, err)
 		}
 	}
 	c.info.Embedded[e] = string(data)

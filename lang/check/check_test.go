@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -18,13 +19,16 @@ func checkSrc(t *testing.T, files map[string]string) (*Program, []Diagnostic) {
 	for name, src := range files {
 		f, errs := syntax.ParseFile(fset, name, []byte(src))
 		for _, e := range errs {
-			diags = append(diags, Diagnostic{Pos: e.Pos, Msg: e.Msg})
+			diags = append(diags, FromSyntax(e))
 		}
 		parsed = append(parsed, f)
 	}
 	p := c.CheckPackage("", "main", parsed, nil)
 	prog := c.Program(p)
-	return prog, append(diags, prog.Diags...)
+	diags = append(diags, prog.Diags...)
+	uncoded(t, diags)
+	uncoded(t, prog.Warnings)
+	return prog, diags
 }
 
 func TestPreludeChecks(t *testing.T) {
@@ -130,5 +134,57 @@ component C {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in:\n%s", want, got)
 		}
+	}
+}
+
+// uncoded fails t for each diagnostic without a code in lang/diag's
+// table: every diagnostic has one (rfcs/0015), and every checker test
+// checks it of what it reports.
+func uncoded(t *testing.T, diags []Diagnostic) {
+	t.Helper()
+	for _, d := range diags {
+		if c := diag.Lookup(d.Code); c == nil {
+			t.Errorf("%s: no code (%q isn't in lang/diag)", d, d.Code)
+		} else if c.RunTime {
+			t.Errorf("%s: %s is a run-time code", d, d.Code)
+		}
+	}
+}
+
+// Every diagnostic's message ends with its help when it has one, and its
+// severity is its code's: warnings are the codes that are warnings.
+func TestDiagnosticsCoded(t *testing.T) {
+	_, diags := checkSrc(t, map[string]string{"a.asuka": `component C {
+  state n = 0
+  let m = if n > 0 {
+    n = 0
+    1
+  } else {
+    2
+  }
+  Text("{m}")
+}
+`})
+	if len(diags) == 0 {
+		t.Fatal("no diagnostics")
+	}
+	for _, d := range diags {
+		if d.Help != "" && !strings.HasSuffix(d.Msg, ": "+d.Help) {
+			t.Errorf("%s: help %q isn't the message's end", d, d.Help)
+		}
+		if d.Severity() != diag.Error {
+			t.Errorf("%s: an error whose code is a warning", d)
+		}
+	}
+	d := diags[0]
+	if d.Code != "write-in-binding" || d.What() != "can't assign to n here" {
+		t.Errorf("got %s [%s] %q", d, d.Code, d.What())
+	}
+	got := d.Format(diag.Error, "")
+	want := "a.asuka:4:5: error[write-in-binding]: can't assign to n here\n" +
+		"  = help: what the UI follows is computed, not changed; change state in a handler (on press { … }), a fn, a task or an effect\n" +
+		"  = see https://asuka.dev/docs/errors/write-in-binding"
+	if got != want {
+		t.Errorf("Format:\n%s\nwant\n%s", got, want)
 	}
 }

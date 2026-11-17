@@ -14,6 +14,7 @@ import (
 	"github.com/egoist/asuka/internal/l10n"
 	"github.com/egoist/asuka/internal/toml"
 	"github.com/egoist/asuka/lang/check"
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -121,7 +122,7 @@ func (cs *Catalogs) catalog(dates bool) (*check.Catalog, []check.Diagnostic, []c
 		if cs.Root != "" {
 			pos.Filename = filepath.Join(cs.Root, filepath.FromSlash(cs.Dir))
 		}
-		return nil, append(errs, check.Diagnostic{Pos: pos, End: pos, Msg: msg}), warns
+		return nil, append(errs, check.NewDiagnostic(pos, pos, diag.InvalidCatalog, "%s", msg)), warns
 	}
 	gen, diags, err := cs.Load()
 	if err != nil {
@@ -129,7 +130,7 @@ func (cs *Catalogs) catalog(dates bool) (*check.Catalog, []check.Diagnostic, []c
 	}
 	for _, d := range diags {
 		pos := cs.position(d)
-		cd := check.Diagnostic{Pos: pos, End: pos, Msg: d.Msg}
+		cd := check.NewDiagnostic(pos, pos, diag.Lookup(d.Code), "%s", d.Msg)
 		if d.Warning {
 			warns = append(warns, cd)
 		} else {

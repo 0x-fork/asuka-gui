@@ -3,6 +3,7 @@ package check
 import (
 	"strings"
 
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -99,7 +100,7 @@ func (c *Checker) finalize() {
 	for _, s := range c.spawns {
 		for _, f := range append(s.calls, s.peekCalls...) {
 			if f.Ctx != nil && touches[f.Ctx] {
-				c.errorf(s.Node, "spawn calls %s, which reads state: spawn runs on another thread; read the state first and pass its value", f.name)
+				c.errorf(s.Node, diag.SpawnCapturesState, "spawn calls %s, which reads state: spawn runs on another thread; read the state first and pass its value", f.name)
 			}
 		}
 	}
@@ -288,7 +289,7 @@ func (c *Checker) reactiveOnce(m *Member) bool {
 // can't read.
 func (c *Checker) peek(e *syntax.CallExpr, x syntax.Expr, want Type) Type {
 	if why := c.notFollowedHere(); why != "" {
-		c.errorf(e, "%s reads aren't followed: read %s", why, exprText(x))
+		c.errorf(e, diag.PeekUntracked, "%s reads aren't followed: read %s", why, exprText(x))
 	}
 	ctx := c.ctx
 	if ctx == nil {

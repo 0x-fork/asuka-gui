@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/egoist/asuka/internal/shadercode"
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -84,7 +85,7 @@ func (c *Checker) shaderComponent(d *syntax.ShaderDecl) *syntax.ComponentDecl {
 				v := &syntax.IfExpr{Span: at, Cond: id(p.Name.Name), Then: block(&syntax.ExprStmt{Span: at, X: one}), Else: block(&syntax.ExprStmt{Span: at, X: zero})}
 				uniforms = append(uniforms, call(shaderUniform, arg("name", str(name)), arg("value", &syntax.ArrayExpr{Span: at, Elems: []syntax.Expr{v}})))
 			default:
-				c.errorf(p, "a shader's parameter is a uniform: a float, an int, a bool or a Color")
+				c.errorf(p, diag.InvalidShader, "a shader's parameter is a uniform: a float, an int, a bool or a Color")
 			}
 		}
 	}
@@ -118,7 +119,7 @@ func (c *Checker) shaderProgramCall(e *syntax.CallExpr, call *Call) {
 	call.Result = Bytes
 	d := c.shaderDecls[e]
 	if d == nil {
-		c.errorf(e, "a shader is a declaration: shader Name(params) { fn fragment(pos: vec2) -> vec4 { … } }")
+		c.errorf(e, diag.InvalidShader, "a shader is a declaration: shader Name(params) { fn fragment(pos: vec2) -> vec4 { … } }")
 		return
 	}
 	t := &shaderTranslator{c: c, decl: d}
@@ -169,9 +170,9 @@ var shaderTypes = map[string]bool{"bool": true, "int": true, "float": true, "vec
 	"ivec2": true, "ivec3": true, "ivec4": true, "uint": true, "uvec2": true, "uvec3": true, "uvec4": true,
 	"mat2": true, "mat3": true, "mat4": true}
 
-func (t *shaderTranslator) errorf(n syntax.Node, format string, args ...any) {
+func (t *shaderTranslator) errorf(n syntax.Node, code *diag.Code, format string, args ...any) {
 	t.failed = true
-	t.c.errorf(n, format, args...)
+	t.c.errorf(n, code, format, args...)
 }
 
 // line writes a line of the program, from n.
@@ -215,7 +216,7 @@ func (t *shaderTranslator) translate() (string, bool) {
 		}
 	}
 	if fragment == nil {
-		t.errorf(d.Name, "a shader needs its fragment function: fn fragment(pos: vec2) -> vec4 { … }, the pixel's color from its position")
+		t.errorf(d.Name, diag.InvalidShader, "a shader needs its fragment function: fn fragment(pos: vec2) -> vec4 { … }, the pixel's color from its position")
 		return "", false
 	}
 	for _, m := range d.Members {
@@ -223,7 +224,7 @@ func (t *shaderTranslator) translate() (string, bool) {
 		case *syntax.LetDecl:
 			bp, ok := m.Pattern.(*syntax.BindPat)
 			if !ok || m.Value == nil || m.Keyword != syntax.LET {
-				t.errorf(m, "a shader's constant is let name = value")
+				t.errorf(m, diag.InvalidShader, "a shader's constant is let name = value")
 				continue
 			}
 			t.line(m, "const c_"+bp.Name.Name+" = "+t.expr(m.Value))
@@ -247,21 +248,21 @@ func (t *shaderTranslator) typ(ty syntax.Type) string {
 		return n
 	}
 	if ty != nil {
-		t.errorf(ty, "a shader's values are numbers, vectors and matrices: bool, int, float, vec2 to vec4, ivec2 to ivec4, mat2 to mat4")
+		t.errorf(ty, diag.InvalidShader, "a shader's values are numbers, vectors and matrices: bool, int, float, vec2 to vec4, ivec2 to ivec4, mat2 to mat4")
 	}
 	return "float"
 }
 
 func (t *shaderTranslator) fn(f *syntax.FuncDecl, fragment bool) {
 	if f.Async.IsValid() || f.Throws.IsValid() || len(f.TypeParams) > 0 || f.Native.IsValid() || f.Extern.IsValid() {
-		t.errorf(f.Name, "a shader's function is fn name(params) -> T { … }: not async, throwing, generic, native or extern")
+		t.errorf(f.Name, diag.InvalidShader, "a shader's function is fn name(params) -> T { … }: not async, throwing, generic, native or extern")
 	}
 	t.scopes = []map[string]bool{{}}
 	var params []string
 	if f.Params != nil {
 		for _, p := range f.Params.List {
 			if p.Default != nil {
-				t.errorf(p, "a shader's function's parameters have no defaults")
+				t.errorf(p, diag.InvalidShader, "a shader's function's parameters have no defaults")
 			}
 			t.scopes[0][p.Name.Name] = true
 			params = append(params, "x_"+p.Name.Name+" "+t.typ(p.Type))
@@ -270,7 +271,7 @@ func (t *shaderTranslator) fn(f *syntax.FuncDecl, fragment bool) {
 	name := "f_" + f.Name.Name
 	if fragment {
 		if len(params) != 1 || typeName(f.Params.List[0].Type) != "vec2" || typeName(f.Result) != "vec4" {
-			t.errorf(f.Name, "fragment takes the pixel's position and gives its color: fn fragment(pos: vec2) -> vec4, the color premultiplied")
+			t.errorf(f.Name, diag.InvalidShader, "fragment takes the pixel's position and gives its color: fn fragment(pos: vec2) -> vec4, the color premultiplied")
 			return
 		}
 		name = "Fragment"
@@ -320,7 +321,7 @@ func (t *shaderTranslator) stmt(it syntax.Item) {
 	case *syntax.LetDecl:
 		bp, ok := s.Pattern.(*syntax.BindPat)
 		if !ok || s.Value == nil || s.Else != nil {
-			t.errorf(s, "a shader's let and var name one value: let x = …")
+			t.errorf(s, diag.InvalidShader, "a shader's let and var name one value: let x = …")
 			return
 		}
 		v := t.expr(s.Value)
@@ -333,7 +334,7 @@ func (t *shaderTranslator) stmt(it syntax.Item) {
 	case *syntax.AssignStmt:
 		op, ok := assignOps[s.Op]
 		if !ok {
-			t.errorf(s, "a shader can't assign with %s", s.Op)
+			t.errorf(s, diag.InvalidShader, "a shader can't assign with %s", s.Op)
 			return
 		}
 		t.line(s, t.expr(s.Target)+" "+op+" "+t.expr(s.Value))
@@ -342,7 +343,7 @@ func (t *shaderTranslator) stmt(it syntax.Item) {
 	case *syntax.WhileStmt:
 		cond, ok := s.Cond.(syntax.Expr)
 		if !ok {
-			t.errorf(s, "a shader's while takes a condition, not a let")
+			t.errorf(s, diag.InvalidShader, "a shader's while takes a condition, not a let")
 			return
 		}
 		t.line(s, "for "+t.expr(cond)+" {")
@@ -352,7 +353,7 @@ func (t *shaderTranslator) stmt(it syntax.Item) {
 		bp, ok := s.Pattern.(*syntax.BindPat)
 		r, isRange := s.Seq.(*syntax.BinaryExpr)
 		if !ok || !isRange || (r.Op != syntax.RANGE && r.Op != syntax.RANGELT) || s.Await.IsValid() || s.Key != nil {
-			t.errorf(s, "a shader's for counts over a range: for i in 0..<n { … }")
+			t.errorf(s, diag.InvalidShader, "a shader's for counts over a range: for i in 0..<n { … }")
 			return
 		}
 		from, to := t.expr(r.X), t.expr(r.Y)
@@ -380,19 +381,19 @@ func (t *shaderTranslator) stmt(it syntax.Item) {
 		}
 	case *syntax.ExprStmt:
 		if _, ok := s.X.(*syntax.CallExpr); !ok {
-			t.errorf(s, "a statement of a shader's is a call: its value isn't used otherwise")
+			t.errorf(s, diag.InvalidShader, "a statement of a shader's is a call: its value isn't used otherwise")
 			return
 		}
 		t.line(s, t.expr(s.X))
 	default:
-		t.errorf(it, "a shader's functions have let and var, assignments, if, while, for over a range, return, break and continue")
+		t.errorf(it, diag.InvalidShader, "a shader's functions have let and var, assignments, if, while, for over a range, return, break and continue")
 	}
 }
 
 func (t *shaderTranslator) ifStmt(s *syntax.IfStmt, prefix string) {
 	cond, ok := s.Cond.(syntax.Expr)
 	if !ok {
-		t.errorf(s, "a shader's if takes a condition, not a let")
+		t.errorf(s, diag.InvalidShader, "a shader's if takes a condition, not a let")
 		return
 	}
 	t.line(s, prefix+t.expr(cond)+" {")
@@ -433,7 +434,7 @@ func (t *shaderTranslator) expr(e syntax.Expr) string {
 		case syntax.COLOR:
 			return t.color(x)
 		}
-		t.errorf(x, "a shader's literals are numbers and colors")
+		t.errorf(x, diag.InvalidShader, "a shader's literals are numbers and colors")
 		return "0"
 	case *syntax.BoolLit:
 		return strconv.FormatBool(x.Value)
@@ -446,17 +447,17 @@ func (t *shaderTranslator) expr(e syntax.Expr) string {
 		case syntax.NOT:
 			return "!" + t.expr(x.X)
 		}
-		t.errorf(x, "a shader can't use %s", x.Op)
+		t.errorf(x, diag.InvalidShader, "a shader can't use %s", x.Op)
 		return "0"
 	case *syntax.BinaryExpr:
 		if !binaryOps[x.Op] {
-			t.errorf(x, "a shader can't use %s here", x.Op)
+			t.errorf(x, diag.InvalidShader, "a shader can't use %s here", x.Op)
 			return "0"
 		}
 		return t.expr(x.X) + " " + x.Op.String() + " " + t.expr(x.Y)
 	case *syntax.MemberExpr:
 		if x.Optional {
-			t.errorf(x, "a shader has no optionals")
+			t.errorf(x, diag.InvalidShader, "a shader has no optionals")
 		}
 		return t.expr(x.X) + "." + x.Name.Name
 	case *syntax.IndexExpr:
@@ -464,10 +465,10 @@ func (t *shaderTranslator) expr(e syntax.Expr) string {
 	case *syntax.CallExpr:
 		return t.call(x)
 	case *syntax.IfExpr:
-		t.errorf(x, "a shader's if is a statement, not a value: var x = …; if c { x = … } else { x = … } (or mix, step)")
+		t.errorf(x, diag.InvalidShader, "a shader's if is a statement, not a value: var x = …; if c { x = … } else { x = … } (or mix, step)")
 		return "0"
 	}
-	t.errorf(e, "a shader's expressions are numbers, vectors and matrices: arithmetic, comparisons, calls, swizzles (v.rgb) and indexing")
+	t.errorf(e, diag.InvalidShader, "a shader's expressions are numbers, vectors and matrices: arithmetic, comparisons, calls, swizzles (v.rgb) and indexing")
 	return "0"
 }
 
@@ -491,40 +492,40 @@ func (t *shaderTranslator) name(x *syntax.Ident) string {
 	case n == "time":
 		return "Time"
 	case t.funcs[n] || shaderBuiltins[n]:
-		t.errorf(x, "%s is a function: call it", n)
+		t.errorf(x, diag.NotAValue, "%s is a function: call it", n)
 		return "0"
 	}
-	t.errorf(x, "unknown name %s in a shader (its own: size, scale, time; its parameters, constants and locals)", n)
+	t.errorf(x, diag.UndefinedName, "unknown name %s in a shader (its own: size, scale, time; its parameters, constants and locals)", n)
 	return "0"
 }
 
 func (t *shaderTranslator) call(x *syntax.CallExpr) string {
 	f, ok := x.Fun.(*syntax.Ident)
 	if !ok || x.Block != nil || len(x.Handlers) > 0 || len(x.TypeArgs) > 0 || x.Args == nil {
-		t.errorf(x, "a shader calls a function by its name: f(a, b)")
+		t.errorf(x, diag.InvalidShader, "a shader calls a function by its name: f(a, b)")
 		return "0"
 	}
 	var args []string
 	for _, a := range x.Args.List {
 		if a.Label != nil {
-			t.errorf(a, "a shader's arguments are in order, without labels")
+			t.errorf(a, diag.InvalidShader, "a shader's arguments are in order, without labels")
 		}
 		args = append(args, t.expr(a.Value))
 	}
 	var name string
 	switch {
 	case t.local(f.Name) || t.uniforms[f.Name] || t.consts[f.Name]:
-		t.errorf(f, "%s isn't a function", f.Name)
+		t.errorf(f, diag.NotCallable, "%s isn't a function", f.Name)
 		return "0"
 	case t.funcs[f.Name]:
 		name = "f_" + f.Name
 	case f.Name == "fragment":
-		t.errorf(f, "fragment is the shader's entry: the GPU calls it")
+		t.errorf(f, diag.InvalidShader, "fragment is the shader's entry: the GPU calls it")
 		return "0"
 	case shaderBuiltins[f.Name]:
 		name = f.Name
 	default:
-		t.errorf(f, "unknown function %s in a shader (GLSL's: sin, mix, smoothstep, …; the vector and matrix types; the shader's own)", f.Name)
+		t.errorf(f, diag.UndefinedName, "unknown function %s in a shader (GLSL's: sin, mix, smoothstep, …; the vector and matrix types; the shader's own)", f.Name)
 		return "0"
 	}
 	return name + "(" + strings.Join(args, ", ") + ")"
@@ -546,14 +547,14 @@ func (t *shaderTranslator) color(x *syntax.BasicLit) string {
 		h += "ff"
 	}
 	if len(h) != 8 {
-		t.errorf(x, "a color literal is #rgb, #rrggbb or #rrggbbaa")
+		t.errorf(x, diag.InvalidLiteral, "a color literal is #rgb, #rrggbb or #rrggbbaa")
 		return "vec4(0)"
 	}
 	var ch []string
 	for i := 0; i < 8; i += 2 {
 		v, err := strconv.ParseUint(h[i:i+2], 16, 8)
 		if err != nil {
-			t.errorf(x, "a color literal's digits are hexadecimal")
+			t.errorf(x, diag.InvalidLiteral, "a color literal's digits are hexadecimal")
 			return "vec4(0)"
 		}
 		ch = append(ch, strconv.FormatFloat(float64(v)/255, 'g', 6, 64))
@@ -580,7 +581,7 @@ func (t *shaderTranslator) report(err error) {
 		msg = strings.TrimPrefix(kageNames.ReplaceAllString(msg, "$1"), "shader: ")
 		msg = strings.NewReplacer("Fragment", "fragment", "rectSize()", "size", "pixelScale()", "scale", "Time", "time").Replace(msg)
 		if msg != "" {
-			t.c.errorf(at, "the shader: %s", msg)
+			t.c.errorf(at, diag.InvalidShader, "the shader: %s", msg)
 		}
 	}
 }

@@ -5,11 +5,13 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/egoist/asuka/lang/diag"
 )
 
 // An ErrorHandler is told about each error the scanner finds. The
 // scanner keeps going after one.
-type ErrorHandler func(pos Pos, msg string)
+type ErrorHandler func(pos Pos, code *diag.Code, msg string)
 
 // A Comment is a // line comment (/// for documentation) or a /* block
 // */ comment, with its delimiters.
@@ -110,9 +112,9 @@ func (s *Scanner) Init(file *File, src []byte, err ErrorHandler) {
 // Comments are the comments scanned so far, in source order.
 func (s *Scanner) Comments() []*Comment { return s.comments }
 
-func (s *Scanner) error(offset int, msg string) {
+func (s *Scanner) error(offset int, code *diag.Code, msg string) {
 	if s.err != nil {
-		s.err(s.file.Pos(offset), msg)
+		s.err(s.file.Pos(offset), code, msg)
 	}
 	s.ErrorCount++
 }
@@ -135,9 +137,9 @@ func (s *Scanner) next() {
 	if r >= utf8.RuneSelf {
 		r, w = utf8.DecodeRuneInString(s.src[s.rdOffset:])
 		if r == utf8.RuneError && w == 1 {
-			s.error(s.offset, "invalid UTF-8")
+			s.error(s.offset, diag.InvalidCharacter, "invalid UTF-8")
 		} else if r == '\uFEFF' && s.offset > 0 {
-			s.error(s.offset, "a byte order mark in the middle of the file")
+			s.error(s.offset, diag.InvalidCharacter, "a byte order mark in the middle of the file")
 		}
 	}
 	s.rdOffset += w
@@ -235,7 +237,7 @@ func (s *Scanner) continued(from int) bool {
 // string it's in: the string wasn't terminated.
 func (s *Scanner) endLineInterp() {
 	if n := len(s.frames); n > 0 && s.frames[n-1].kind == interp && !s.frames[n-1].multiline {
-		s.error(s.frames[n-1].start, "string not terminated")
+		s.error(s.frames[n-1].start, diag.Unterminated, "string not terminated")
 		s.frames = s.frames[:n-1]
 	}
 }
@@ -298,7 +300,7 @@ redo:
 		// left open in it ("{f(), isn't terminated.
 		for n := len(s.frames); n > 0; n-- {
 			if f := s.frames[n-1]; f.kind == interp {
-				s.error(f.start, "string not terminated")
+				s.error(f.start, diag.Unterminated, "string not terminated")
 				s.frames = s.frames[:0]
 				break
 			}
@@ -488,7 +490,7 @@ redo:
 			s.next()
 			tok = s.alt('<', RANGELT, RANGE)
 			if tok == RANGE && s.ch == '.' {
-				s.error(start, "unexpected '...' (a range is a..b or a..<b)")
+				s.error(start, diag.InvalidCharacter, "unexpected '...' (a range is a..b or a..<b)")
 				s.next()
 			}
 		case '{':
@@ -502,7 +504,7 @@ redo:
 		if ch == '\uFEFF' {
 			goto redo
 		}
-		s.error(start, "unexpected character "+strconv.QuoteRune(ch))
+		s.error(start, diag.InvalidCharacter, "unexpected character "+strconv.QuoteRune(ch))
 	}
 	return pos, tok, s.src[start:s.offset]
 }
@@ -530,7 +532,7 @@ func (s *Scanner) comment() int {
 		s.next() // past *
 		for {
 			if s.ch == eof {
-				s.error(start, "comment not terminated")
+				s.error(start, diag.Unterminated, "comment not terminated")
 				break
 			}
 			if s.ch == '\n' && nl < 0 {
@@ -577,7 +579,7 @@ func (s *Scanner) digits(ok func(rune) bool) {
 	for ok(s.ch) || s.ch == '_' {
 		if s.ch == '_' {
 			if r := rune(s.peek()); !ok(r) {
-				s.error(s.offset, "'_' must separate digits")
+				s.error(s.offset, diag.InvalidLiteral, "'_' must separate digits")
 			}
 		}
 		s.next()
@@ -619,11 +621,11 @@ func (s *Scanner) number() Token {
 			s.next()
 			s.next()
 			if !ok(s.ch) {
-				s.error(start, base+" number needs digits after "+prefix)
+				s.error(start, diag.InvalidLiteral, base+" number needs digits after "+prefix)
 			}
 			s.digits(ok)
 			if isLetter(s.ch) || isDigit(s.ch) {
-				s.error(s.offset, "unexpected "+strconv.QuoteRune(s.ch)+" in "+base+" number")
+				s.error(s.offset, diag.InvalidLiteral, "unexpected "+strconv.QuoteRune(s.ch)+" in "+base+" number")
 				s.ident()
 			}
 			return INT
@@ -664,7 +666,7 @@ func (s *Scanner) number() Token {
 		case "fr":
 			return LENGTH
 		default:
-			s.error(u, "unknown unit "+strconv.Quote(unit)+" after a number (a duration takes ns, us, ms, s, min or h; a length % or fr)")
+			s.error(u, diag.InvalidLiteral, "unknown unit "+strconv.Quote(unit)+" after a number (a duration takes ns, us, ms, s, min or h; a length % or fr)")
 		}
 	}
 	return tok
@@ -679,15 +681,15 @@ func (s *Scanner) color(start int) Token {
 	n := s.offset - d
 	if isLetter(s.ch) || isDigit(s.ch) {
 		s.ident()
-		s.error(start, "a color is #rgb, #rgba, #rrggbb or #rrggbbaa, in hexadecimal digits")
+		s.error(start, diag.InvalidLiteral, "a color is #rgb, #rgba, #rrggbb or #rrggbbaa, in hexadecimal digits")
 		return COLOR
 	}
 	switch n {
 	case 3, 4, 6, 8:
 	case 0:
-		s.error(start, "unexpected '#' (a color is #rgb, #rrggbb or #rrggbbaa)")
+		s.error(start, diag.InvalidLiteral, "unexpected '#' (a color is #rgb, #rrggbb or #rrggbbaa)")
 	default:
-		s.error(start, "a color has 3, 4, 6 or 8 hexadecimal digits, not "+strconv.Itoa(n))
+		s.error(start, diag.InvalidLiteral, "a color has 3, 4, 6 or 8 hexadecimal digits, not "+strconv.Itoa(n))
 	}
 	return COLOR
 }
@@ -742,11 +744,11 @@ func (s *Scanner) stringRest(start, open int, raw, multiline, resumed bool, hash
 	for {
 		switch s.ch {
 		case eof:
-			s.error(open, "string not terminated")
+			s.error(open, diag.Unterminated, "string not terminated")
 			return done(tailOr(resumed))
 		case '\n':
 			if !multiline {
-				s.error(open, "string not terminated (a string that spans lines is \"\"\"…\"\"\")")
+				s.error(open, diag.Unterminated, "string not terminated (a string that spans lines is \"\"\"…\"\"\")")
 				return done(tailOr(resumed))
 			}
 		case '"':
@@ -794,7 +796,7 @@ func (s *Scanner) escape() {
 	case 'u':
 		s.next()
 		if s.ch != '{' {
-			s.error(start, "a \\u escape is \\u{hex digits}")
+			s.error(start, diag.InvalidLiteral, "a \\u escape is \\u{hex digits}")
 			return
 		}
 		s.next()
@@ -804,17 +806,17 @@ func (s *Scanner) escape() {
 		}
 		n, err := strconv.ParseUint(s.src[d:s.offset], 16, 32)
 		if s.ch != '}' || s.offset == d || s.offset-d > 6 {
-			s.error(start, "a \\u escape is \\u{1 to 6 hex digits}")
+			s.error(start, diag.InvalidLiteral, "a \\u escape is \\u{1 to 6 hex digits}")
 			return
 		}
 		s.next()
 		if err != nil || n > unicode.MaxRune || 0xD800 <= n && n < 0xE000 {
-			s.error(start, "\\u{"+s.src[d:s.offset-1]+"} isn't a Unicode code point")
+			s.error(start, diag.InvalidLiteral, "\\u{"+s.src[d:s.offset-1]+"} isn't a Unicode code point")
 		}
 	case eof, '\n':
-		s.error(start, "escape not terminated")
+		s.error(start, diag.Unterminated, "escape not terminated")
 	default:
-		s.error(start, "unknown escape \\"+string(s.ch))
+		s.error(start, diag.InvalidLiteral, "unknown escape \\"+string(s.ch))
 		s.next()
 	}
 }

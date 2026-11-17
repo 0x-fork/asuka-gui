@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -288,7 +289,7 @@ func (c *Checker) checkEffectWrites() {
 		}
 		ways = append(ways, fmt.Sprintf("to keep it in range: state %s: T = … (in its initializer, %s is its current value)", name, name))
 		ways = append(ways, "or write it in the handler that changes what it reads")
-		c.errorf(e.decl, "%s; %s", msg, strings.Join(ways, "; "))
+		c.errorf(e.decl, diag.EffectWritesWhatItFollows, "%s; %s", msg, strings.Join(ways, "; "))
 	}
 }
 
@@ -341,7 +342,7 @@ func (c *Checker) checkKeys() {
 		if index != "" {
 			msg += fmt.Sprintf(" (or key %s, for the position on purpose)", index)
 		}
-		c.errorf(s, "%s", msg)
+		c.errorf(s, diag.RowWithoutKey, "%s", msg)
 	}
 }
 

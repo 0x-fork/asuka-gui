@@ -36,6 +36,9 @@ type Package struct {
 	Scope       *Scope
 	Prelude     bool
 	qualify     bool // types print as Name.Type
+	// Broken: the package couldn't be loaded, which its import reported.
+	// It has no members, and what a file uses of it isn't reported again.
+	Broken bool
 
 	Globals []*Global   // top-level state and let, in source order
 	Funcs   []*Function // top-level functions
@@ -604,13 +607,3 @@ type Builtin struct {
 
 // ---------------------------------------------------------------------
 // Diagnostics
-
-// A Diagnostic is a problem the checker found.
-type Diagnostic struct {
-	Pos syntax.Position
-	End syntax.Position
-	Msg string
-}
-
-func (d Diagnostic) String() string { return d.Pos.String() + ": " + d.Msg }
-func (d Diagnostic) Error() string  { return d.String() }

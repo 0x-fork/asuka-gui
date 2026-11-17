@@ -3,6 +3,7 @@ package check
 import (
 	"strings"
 
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -71,7 +72,7 @@ func (c *Checker) stmt(it syntax.Item) {
 		c.branch(s, s.Tok, s.Label)
 	case *syntax.DeferStmt:
 		if c.inDefer > 0 {
-			c.errorf(s, "a defer inside a defer: put the code in the first one")
+			c.errorf(s, diag.MisplacedStatement, "a defer inside a defer: put the code in the first one")
 		}
 		c.inDefer++
 		savedLoops := c.loops
@@ -89,7 +90,7 @@ func (c *Checker) stmt(it syntax.Item) {
 		t := c.expr(s.X, nil)
 		if t == View {
 			if call, ok := s.X.(*syntax.CallExpr); ok && c.info.Elements[call] != nil {
-				c.errorf(s, "a view here does nothing: views go in a component's body")
+				c.errorf(s, diag.ViewInStatement, "a view here does nothing: views go in a component's body")
 			}
 		}
 	case *syntax.SlotItem:
@@ -100,12 +101,12 @@ func (c *Checker) stmt(it syntax.Item) {
 			c.expr(call, nil)
 			return
 		}
-		c.errorf(it, "%s isn't a statement: %s", itemName(it), notStatementHint(it))
+		c.errorf(it, diag.MisplacedDeclaration, "%s isn't a statement: %s", itemName(it), notStatementHint(it))
 	case *syntax.BadItem:
 	case *syntax.FuncDecl:
-		c.errorf(s, "a fn here goes in a block of statements: put it in braces, or use a closure, let %s = (…) => …", s.Name.Name)
+		c.errorf(s, diag.MisplacedDeclaration, "a fn here goes in a block of statements: put it in braces, or use a closure, let %s = (…) => …", s.Name.Name)
 	default:
-		c.errorf(it, "%s isn't a statement: %s", itemName(it), notStatementHint(it))
+		c.errorf(it, diag.MisplacedDeclaration, "%s isn't a statement: %s", itemName(it), notStatementHint(it))
 	}
 }
 
@@ -179,7 +180,7 @@ func (c *Checker) letStmt(d *syntax.LetDecl) {
 				if name == "this" {
 					name = "…"
 				}
-				c.errorf(d.Value, "%s isn't always %s: if let %s: %s = %s, or let … else", aType(Unopt(got)), aType(want), bp.Name.Name, typeString(want), name)
+				c.errorf(d.Value, diag.MaybeNone, "%s isn't always %s: if let %s: %s = %s, or let … else", aType(Unopt(got)), aType(want), bp.Name.Name, typeString(want), name)
 				t = want
 			} else {
 				t = c.assigned(d.Value, got, want, "the value")
@@ -210,7 +211,7 @@ func (c *Checker) bindIrrefutable(p syntax.Pattern, t Type, mutable, let bool) {
 		tt, ok := t.(*Tuple)
 		if !ok || len(tt.Elems) != len(p.Elems) {
 			if !IsInvalid(t) {
-				c.errorf(p, "%s", notTuple(t, len(p.Elems)))
+				c.errorf(p, diag.PatternType, "%s", notTuple(t, len(p.Elems)))
 			}
 			for _, e := range p.Elems {
 				c.bindIrrefutable(e, Invalid, mutable, let)
@@ -221,7 +222,7 @@ func (c *Checker) bindIrrefutable(p syntax.Pattern, t Type, mutable, let bool) {
 			c.bindIrrefutable(e, tt.Elems[i], mutable, let)
 		}
 	default:
-		c.errorf(p, "a let binds names (let x = …, let (a, b) = …); to match, use if let or match")
+		c.errorf(p, diag.InvalidPattern, "a let binds names (let x = …, let (a, b) = …); to match, use if let or match")
 	}
 }
 
@@ -249,7 +250,7 @@ func (c *Checker) assignStmt(s *syntax.AssignStmt) {
 				c.assign(s.Value, Unopt(lt), "the value")
 			default:
 				c.expr(s.Value, nil)
-				c.errorf(s, "m[k] may be none: write m[k] = (m[k] ?? 0) %s …", strings.TrimSuffix(s.Op.String(), "="))
+				c.errorf(s, diag.MaybeNone, "m[k] may be none: write m[k] = (m[k] ?? 0) %s …", strings.TrimSuffix(s.Op.String(), "="))
 			}
 			return
 		}
@@ -260,7 +261,7 @@ func (c *Checker) assignStmt(s *syntax.AssignStmt) {
 		c.selfThroughVar(s)
 	case syntax.COALESCE_ASSIGN:
 		if !IsOptional(lt) && !IsInvalid(lt) {
-			c.errorf(s.Target, "%s isn't optional: ??= has nothing to do", typeString(lt))
+			c.errorf(s.Target, diag.NotOptional, "%s isn't optional: ??= has nothing to do", typeString(lt))
 		}
 		c.assign(s.Value, lt, "the value")
 	default:
@@ -281,15 +282,15 @@ func (c *Checker) assignStmt(s *syntax.AssignStmt) {
 		}
 		op := strings.TrimSuffix(s.Op.String(), "=")
 		if o, res := c.findOperator(s.Op.AssignOp(), lt, vt, nil); o != nil && !o.Compare {
-			c.errorf(s, "%s= is x = x %s y, and %s's %s gives %s, not %s", op, op, typeString(lt), o.Func.name, aType(res), aType(lt))
+			c.errorf(s, diag.BadOperand, "%s= is x = x %s y, and %s's %s gives %s, not %s", op, op, typeString(lt), o.Func.name, aType(res), aType(lt))
 			return
 		}
 		switch {
 		case s.Op.AssignOp().IsBitwise():
 			if lt != Int {
-				c.errorf(s.Target, "%s= takes ints, not %s", op, aType(lt))
+				c.errorf(s.Target, diag.BadOperand, "%s= takes ints, not %s", op, aType(lt))
 			} else if vt != Int {
-				c.errorf(s.Value, "%s= takes ints, not %s", op, aType(vt))
+				c.errorf(s.Value, diag.BadOperand, "%s= takes ints, not %s", op, aType(vt))
 			}
 		case IsNumeric(lt) && Identical(lt, vt):
 		case lt == String && vt == String && s.Op == syntax.ADD_ASSIGN:
@@ -299,7 +300,7 @@ func (c *Checker) assignStmt(s *syntax.AssignStmt) {
 			if _, ok := lt.(*Array); ok && Identical(lt, vt) && s.Op == syntax.ADD_ASSIGN {
 				return
 			}
-			c.errorf(s, "%s= doesn't take %s and %s", op, aType(lt), aType(vt))
+			c.errorf(s, diag.BadOperand, "%s= doesn't take %s and %s", op, aType(lt), aType(vt))
 		}
 	}
 }
@@ -336,7 +337,7 @@ func (c *Checker) lvalue(x syntax.Expr, what string) Type {
 	if c.ctx != nil {
 		switch c.ctx.Kind {
 		case CtxBinding, CtxGlobal, CtxBuilder, CtxComponent, CtxStore, CtxApp:
-			c.errorf(x, "can't %s %s here: what the UI follows is computed, not changed; change state in a handler (on press { … }), a fn, a task or an effect", what, exprName(x))
+			c.errorf(x, diag.WriteInBinding, "can't %s %s here: what the UI follows is computed, not changed; change state in a handler (on press { … }), a fn, a task or an effect", what, exprName(x))
 			return t
 		}
 	}
@@ -375,7 +376,7 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 				} else if o.Ctx != nil && o.Ctx.Kind == CtxLambda && contains(o.Ctx.Params, o) || isParam(o) {
 					hint, short = "parameters are values: copy it into a var", x.Name+" is a parameter"
 				}
-				c.notPlace(x, short, "can't %s %s: %s", what, x.Name, hint)
+				c.notPlace(x, diag.NotAssignable, short, "can't %s %s: %s", what, x.Name, hint)
 				return
 			}
 			o.Assigned = true
@@ -383,7 +384,7 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 				o.AssignedInClosure = true
 				for cc := c.ctx; cc != nil; cc = cc.Parent {
 					if cc.Kind == CtxSpawn {
-						c.errorf(x, "spawn can't change %s: it runs on another thread; return a value instead", x.Name)
+						c.errorf(x, diag.SpawnCapturesState, "spawn can't change %s: it runs on another thread; return a value instead", x.Name)
 						break
 					}
 				}
@@ -394,39 +395,39 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 			case PropMember:
 				switch {
 				case o.ChangeEvent() == nil:
-					c.notPlace(x, x.Name+" is a prop", "can't %s %s: it's the caller's (a prop); declare event %sChange(%s: %s) to assign it (a caller that binds it gets the change), or keep state of your own", what, x.Name, x.Name, x.Name, typeString(o.Type))
+					c.notPlace(x, diag.PropNotAssignable, x.Name+" is a prop", "can't %s %s: it's the caller's (a prop); declare event %sChange(%s: %s) to assign it (a caller that binds it gets the change), or keep state of your own", what, x.Name, x.Name, x.Name, typeString(o.Type))
 				case c.lvalueWhole != syntax.Expr(x):
-					c.notPlace(x, x.Name+" is a prop", "can't %s %s: a prop changes as a whole, which %sChange reports; assign it a new value (%s = …)", what, x.Name, x.Name, x.Name)
+					c.notPlace(x, diag.PropNotAssignable, x.Name+" is a prop", "can't %s %s: a prop changes as a whole, which %sChange reports; assign it a new value (%s = …)", what, x.Name, x.Name, x.Name)
 				case o.IsSlot():
-					c.errorf(x, "can't %s %s: it's a slot, the caller's views", what, x.Name)
+					c.errorf(x, diag.NotAssignable, "can't %s %s: it's a slot, the caller's views", what, x.Name)
 				default:
 					o.Assigned = true
 				}
 			case ParamMember:
 				if o.Owner.Comp.Worker {
-					c.notPlace(x, x.Name+" is a parameter", "can't %s %s: it's a parameter; keep a var of the worker's own (var x = %s)", what, x.Name, x.Name)
+					c.notPlace(x, diag.NotAssignable, x.Name+" is a parameter", "can't %s %s: it's a parameter; keep a var of the worker's own (var x = %s)", what, x.Name, x.Name)
 					break
 				}
-				c.notPlace(x, x.Name+" is a parameter", "can't %s %s: it's the caller's (a parameter); keep state of your own, or emit an event", what, x.Name)
+				c.notPlace(x, diag.NotAssignable, x.Name+" is a parameter", "can't %s %s: it's the caller's (a parameter); keep state of your own, or emit an event", what, x.Name)
 			case VarMember:
 			case LetMember:
 				if o.Owner.Comp.Worker {
-					c.notPlace(x, x.Name+" is a let", "can't %s %s: it's a let; a value the worker changes is a var (var %s = …)", what, x.Name, x.Name)
+					c.notPlace(x, diag.NotAssignable, x.Name+" is a let", "can't %s %s: it's a let; a value the worker changes is a var (var %s = …)", what, x.Name, x.Name)
 					break
 				}
-				c.notPlace(x, x.Name+" is a let", "can't %s %s: it's derived (a let); change what it reads", what, x.Name)
+				c.notPlace(x, diag.NotAssignable, x.Name+" is a let", "can't %s %s: it's derived (a let); change what it reads", what, x.Name)
 			default:
-				c.notPlace(x, x.Name+" isn't state", "can't %s %s", what, x.Name)
+				c.notPlace(x, diag.NotAssignable, x.Name+" isn't state", "can't %s %s", what, x.Name)
 			}
 		case *Global:
 			if o.Kind != StateGlobal {
-				c.notPlace(x, x.Name+" is a let", "can't %s %s: it's a let; a value that changes is state", what, x.Name)
+				c.notPlace(x, diag.NotAssignable, x.Name+" is a let", "can't %s %s: it's a let; a value that changes is state", what, x.Name)
 			}
 		case *selfMember:
 			c.selfWrite(x, what, x.Name)
 		case nil:
 		default:
-			c.notPlace(x, x.Name+" isn't a var", "can't %s %s", what, x.Name)
+			c.notPlace(x, diag.NotAssignable, x.Name+" isn't a var", "can't %s %s", what, x.Name)
 		}
 	case *syntax.MemberExpr:
 		sel := c.info.Selections[x]
@@ -439,7 +440,7 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 			switch unparen(x.X).(type) {
 			case *syntax.Ident, *syntax.MemberExpr, *syntax.IndexExpr, *syntax.SelfExpr:
 			default:
-				c.notPlace(x, exprName(x.X)+" gives a value, not a place", "can't %s %s: the ?. chain starts at a value, not a place; a chain that's changed starts at a var or state", what, exprName(x))
+				c.notPlace(x, diag.NotAssignable, exprName(x.X)+" gives a value, not a place", "can't %s %s: the ?. chain starts at a value, not a place; a chain that's changed starts at a var or state", what, exprName(x))
 				return
 			}
 		}
@@ -448,18 +449,18 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 			c.checkLvalue(x.X, what)
 		case SelStoreMember:
 			if sel.Member.Kind != StateMember {
-				c.notPlace(x, exprName(x)+" isn't state", "can't %s %s: it isn't state", what, x.Name.Name)
+				c.notPlace(x, diag.NotAssignable, exprName(x)+" isn't state", "can't %s %s: it isn't state", what, x.Name.Name)
 			}
 		case SelPkg:
 			if g, ok := sel.Obj.(*Global); !ok || g.Kind != StateGlobal {
-				c.notPlace(x, exprName(x)+" isn't state", "can't %s %s: only a package's state changes", what, exprName(x))
+				c.notPlace(x, diag.NotAssignable, exprName(x)+" isn't state", "can't %s %s: only a package's state changes", what, exprName(x))
 			}
 		default:
-			c.notPlace(x, exprName(x)+" isn't a var", "can't %s %s", what, exprName(x))
+			c.notPlace(x, diag.NotAssignable, exprName(x)+" isn't a var", "can't %s %s", what, exprName(x))
 		}
 	case *syntax.IndexExpr:
 		if c.info.Types[x.X] == Bytes {
-			c.errorf(x, "can't %s a byte: bytes don't change in place; make new ones (bytes([…]) of ints, b.slice, b.concat)", what)
+			c.errorf(x, diag.NotAssignable, "can't %s a byte: bytes don't change in place; make new ones (bytes([…]) of ints, b.slice, b.concat)", what)
 			return
 		}
 		c.checkLvalue(x.X, what)
@@ -470,19 +471,19 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 		if _, ok := unparen(x).(*syntax.CallExpr); ok {
 			short = exprName(x) + " gives a value, not a place"
 		}
-		c.notPlace(x, short, "can't %s this: only vars, state, and their fields and elements", what)
+		c.notPlace(x, diag.NotAssignable, short, "can't %s this: only vars, state, and their fields and elements", what)
 	}
 }
 
 // notPlace reports x, which a statement changes, as what it can't
 // change: for a mut fn's call (c.mutName), the call's error, with short
 // saying why ("cart is a let"); for the rest, format's.
-func (c *Checker) notPlace(x syntax.Node, short, format string, args ...any) {
+func (c *Checker) notPlace(x syntax.Node, code *diag.Code, short, format string, args ...any) {
 	if c.mutName != "" {
-		c.errorf(x, "%s changes its value: call it on a var or state (%s)", c.mutName, short)
+		c.errorf(x, diag.NotAssignable, "%s changes its value: call it on a var or state (%s)", c.mutName, short)
 		return
 	}
-	c.errorf(x, format, args...)
+	c.errorf(x, code, format, args...)
 }
 
 // selfWrite checks a change of self, or of its field name, in a method:
@@ -499,11 +500,11 @@ func (c *Checker) selfWrite(x syntax.Node, what, name string) {
 	}
 	switch {
 	case m == nil || m.Func == nil:
-		c.errorf(x, "can't %s %s: it's a value", what, name)
+		c.errorf(x, diag.NotAssignable, "can't %s %s: it's a value", what, name)
 	case !m.Func.Sig.Mut:
-		c.errorf(x, "%s is a fn: declare it mut fn to change the value", m.Func.name)
+		c.errorf(x, diag.NotAssignable, "%s is a fn: declare it mut fn to change the value", m.Func.name)
 	case closure:
-		c.errorf(x, "can't %s %s in a closure: it has self's value as it was made; change it in %s's body", what, name, m.Func.name)
+		c.errorf(x, diag.NotAssignable, "can't %s %s in a closure: it has self's value as it was made; change it in %s's body", what, name, m.Func.name)
 	}
 }
 
@@ -535,7 +536,7 @@ func (c *Checker) cond(e syntax.Expr) {
 
 func (c *Checker) letCondPattern(lc *syntax.LetCond, t Type, kind VarKind) {
 	if lc.Var && kind != LocalVar {
-		c.errorf(lc, "a view's if binds what it shows, which changes with what it reads: if let, not if var")
+		c.errorf(lc, diag.InvalidPattern, "a view's if binds what it shows, which changes with what it reads: if let, not if var")
 	}
 	if bp, ok := lc.Pattern.(*syntax.BindPat); ok {
 		if !IsOptional(t) && !IsInvalid(t) {
@@ -543,7 +544,7 @@ func (c *Checker) letCondPattern(lc *syntax.LetCond, t Type, kind VarKind) {
 			if lc.Var {
 				kw = "var"
 			}
-			c.errorf(lc.Value, "%s isn't optional: if %s unwraps an optional (use %s)", typeString(t), kw, kw)
+			c.errorf(lc.Value, diag.NotOptional, "%s isn't optional: if %s unwraps an optional (use %s)", typeString(t), kw, kw)
 		}
 		v := c.declareVar(bp.Name, Unopt(t), lc.Var && kind == LocalVar)
 		v.Kind = kind
@@ -551,7 +552,7 @@ func (c *Checker) letCondPattern(lc *syntax.LetCond, t Type, kind VarKind) {
 		return
 	}
 	if lc.Var {
-		c.errorf(lc.Pattern, "if var binds a name, a copy that may change: if var x = optional")
+		c.errorf(lc.Pattern, diag.InvalidPattern, "if var binds a name, a copy that may change: if var x = optional")
 	}
 	c.topPattern(lc.Pattern, lc.Value, t, kind)
 }
@@ -596,7 +597,7 @@ func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
 		case *Map:
 			fi.Kind, fi.Elem = ForMap, &Tuple{[]Type{u.Key, u.Elem}}
 			if view {
-				c.errorf(s.Seq, "a for in a view goes over an array: use the map's keys() or values()")
+				c.errorf(s.Seq, diag.InvalidFor, "a for in a view goes over an array: use the map's keys() or values()")
 			}
 		case *Set:
 			fi.Kind, fi.Elem = ForSet, u.Elem
@@ -609,11 +610,11 @@ func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
 				c.closeScope()
 			}
 			if t == String {
-				c.errorf(s.Seq, "a string isn't a list: go over its characters, s.chars()")
+				c.errorf(s.Seq, diag.InvalidFor, "a string isn't a list: go over its characters, s.chars()")
 			} else if _, ok := t.(*Stream); ok {
-				c.errorf(s.Seq, "a stream's values come over time: for await x in it (in an async fn, a task or a handler)")
+				c.errorf(s.Seq, diag.InvalidFor, "a stream's values come over time: for await x in it (in an async fn, a task or a handler)")
 			} else if !IsInvalid(t) {
-				c.errorf(s.Seq, "for goes over an array, a set, a map, a range or an iterator (a type with mut fn next() -> T?, or fn iter() that gives one), not %s", aType(t))
+				c.errorf(s.Seq, diag.InvalidFor, "for goes over an array, a set, a map, a range or an iterator (a type with mut fn next() -> T?, or fn iter() that gives one), not %s", aType(t))
 			}
 			fi.Kind, fi.Elem = ForArray, Invalid
 		}
@@ -630,7 +631,7 @@ func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
 	// The key, in a view: a function of the item.
 	if s.Key != nil {
 		if !view {
-			c.errorf(s.Key, "key is for a for in a view")
+			c.errorf(s.Key, diag.InvalidFor, "key is for a for in a view")
 		}
 		saved := c.ctx
 		kc := c.enter(CtxLambda, s.Key, "key")
@@ -643,7 +644,7 @@ func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
 	}
 	if view {
 		if s.Label != nil {
-			c.errorf(s.Label, "a for among views makes rows, and isn't a loop to break: drop as %s", s.Label.Name)
+			c.errorf(s.Label, diag.LoopLabel, "a for among views makes rows, and isn't a loop to break: drop as %s", s.Label.Name)
 		}
 		saved := c.ctx
 		row := c.enter(CtxBuilder, s.Body, "row")
@@ -684,14 +685,14 @@ func (c *Checker) forBindings(fi *ForInfo, p syntax.Pattern, kind VarKind, ctx *
 			return v
 		case *syntax.TuplePat:
 			if kind != LocalVar {
-				c.errorf(p, "a row's item is one name: for x in xs")
+				c.errorf(p, diag.InvalidPattern, "a row's item is one name: for x in xs")
 				return nil
 			}
 			v := &Var{object: object{"_", p.Start}, Type: t, Ctx: c.ctx}
 			c.bindIrrefutable(p, t, false, false)
 			return v
 		}
-		c.errorf(p, "for binds a name, _ or a tuple of names")
+		c.errorf(p, diag.InvalidPattern, "for binds a name, _ or a tuple of names")
 		return nil
 	}
 	switch fi.Kind {
@@ -699,9 +700,9 @@ func (c *Checker) forBindings(fi *ForInfo, p syntax.Pattern, kind VarKind, ctx *
 		tp, ok := p.(*syntax.TuplePat)
 		if !ok || len(tp.Elems) != 2 {
 			if fi.Kind == ForMap {
-				c.errorf(p, "a map gives (key, value): for (k, v) in m")
+				c.errorf(p, diag.InvalidPattern, "a map gives (key, value): for (k, v) in m")
 			} else {
-				c.errorf(p, "enumerated gives (index, item): for (i, x) in xs.enumerated()")
+				c.errorf(p, diag.InvalidPattern, "enumerated gives (index, item): for (i, x) in xs.enumerated()")
 			}
 			return
 		}
@@ -743,7 +744,7 @@ func (c *Checker) returnStmt(s *syntax.ReturnStmt) { c.returnValue(s, s.Value) }
 // statement's or a JumpExpr's.
 func (c *Checker) returnValue(s syntax.Node, value syntax.Expr) {
 	if c.inDefer > 0 {
-		c.errorf(s, "return in a defer: a defer runs as its block ends, and can't change how")
+		c.errorf(s, diag.MisplacedStatement, "return in a defer: a defer runs as its block ends, and can't change how")
 		if value != nil {
 			c.expr(value, nil) // checked, but not as the result: there's none
 		}
@@ -755,7 +756,7 @@ func (c *Checker) returnValue(s syntax.Node, value syntax.Expr) {
 	}
 	switch ctx.Kind {
 	case CtxComponent, CtxStore, CtxBinding, CtxBuilder, CtxGlobal, CtxApp:
-		c.errorf(s, "return in a component's body: a body is declarations, not code")
+		c.errorf(s, diag.MisplacedStatement, "return in a component's body: a body is declarations, not code")
 		return
 	}
 	if ctx.inferRes {
@@ -772,10 +773,10 @@ func (c *Checker) returnValue(s syntax.Node, value syntax.Expr) {
 	}
 	switch {
 	case value == nil && res != Void:
-		c.errorf(s, "return needs %s", aType(res))
+		c.errorf(s, diag.ReturnValue, "return needs %s", aType(res))
 	case value != nil && res == Void:
 		c.expr(value, nil)
-		c.errorf(value, "%s returns nothing: drop the value, or declare a result (-> T)", ctxLabel(ctx))
+		c.errorf(value, diag.ReturnValue, "%s returns nothing: drop the value, or declare a result (-> T)", ctxLabel(ctx))
 	case value != nil && ctx.loose != nil:
 		ctx.loose.value(c, value, "the result")
 	case value != nil:
@@ -802,13 +803,13 @@ func ctxLabel(ctx *FuncCtx) string {
 func (c *Checker) emitStmt(s *syntax.EmitStmt) {
 	comp := c.ctx.Comp
 	if comp == nil || comp.Kind != ComponentType {
-		c.errorf(s, "emit raises a component's event, and this isn't in a component")
+		c.errorf(s, diag.MisplacedStatement, "emit raises a component's event, and this isn't in a component")
 		c.emitArgs(s, nil)
 		return
 	}
 	m := comp.Comp.Members[s.Name.Name]
 	if m == nil || m.Kind != EventMember {
-		c.errorf(s.Name, "%s has no event %s: declare it, event %s", comp.name, s.Name.Name, s.Name.Name)
+		c.errorf(s.Name, diag.UnknownEvent, "%s has no event %s: declare it, event %s", comp.name, s.Name.Name, s.Name.Name)
 		c.emitArgs(s, nil)
 		return
 	}
@@ -823,7 +824,7 @@ func (c *Checker) emitArgs(s *syntax.EmitStmt, params []*Param) {
 		list = s.Args.List
 	}
 	if params != nil && len(list) != len(params) {
-		c.errorf(s, "event %s takes %s", s.Name.Name, plural(len(params), "argument", "arguments"))
+		c.errorf(s, diag.ArgumentCount, "event %s takes %s", s.Name.Name, plural(len(params), "argument", "arguments"))
 	}
 	for i, a := range list {
 		if params != nil && i < len(params) {
@@ -839,17 +840,17 @@ func (c *Checker) emitArgs(s *syntax.EmitStmt, params []*Param) {
 
 func (c *Checker) doStmt(s *syntax.DoStmt) {
 	if len(s.Catches) == 0 {
-		c.errorf(s, "do needs a catch")
+		c.errorf(s, diag.InvalidCatch, "do needs a catch")
 	}
 	c.catching(s.Catches, func() { c.block(s.Body) })
 	for i, cl := range s.Catches {
-		if i < len(s.Catches)-1 && c.info.Catches[cl] != nil && c.info.Catches[cl].All {
-			c.errorf(s.Catches[i+1], "this catch is never reached: the one before catches everything")
-		}
 		c.openScope()
 		c.catchClause(cl)
 		c.block(cl.Body)
 		c.closeScope()
+		if i < len(s.Catches)-1 && c.info.Catches[cl].All {
+			c.errorf(s.Catches[i+1], diag.InvalidCatch, "this catch is never reached: the one before catches everything")
+		}
 	}
 }
 
@@ -886,7 +887,7 @@ func (c *Checker) catchClause(cl *syntax.CatchClause) {
 			} else if n, ok := t.(*Named); ok && n.Obj.IsError {
 				ci.Type = n.Obj
 			} else if !IsInvalid(t) {
-				c.errorf(cl.Type, "%s isn't an error type: catch e: T takes a type declared : Error", typeString(t))
+				c.errorf(cl.Type, diag.NotAnError, "%s isn't an error type: catch e: T takes a type declared : Error", typeString(t))
 			}
 		} else {
 			ci.All = true
@@ -894,7 +895,7 @@ func (c *Checker) catchClause(cl *syntax.CatchClause) {
 		ci.Var = c.declareVar(p.Name, t, false)
 	case *syntax.CasePat:
 		if p.Implicit || len(p.Path) < 2 {
-			c.errorf(p, "write the error's type: catch MailError.offline")
+			c.errorf(p, diag.InvalidCatch, "write the error's type: catch MailError.offline")
 			return
 		}
 		tn := c.casePathType(p.Path[:len(p.Path)-1])
@@ -902,19 +903,19 @@ func (c *Checker) catchClause(cl *syntax.CatchClause) {
 			return
 		}
 		if !tn.IsError {
-			c.errorf(p, "%s isn't an error type (declare it: enum %s: Error)", tn.name, tn.name)
+			c.errorf(p, diag.NotAnError, "%s isn't an error type (declare it: enum %s: Error)", tn.name, tn.name)
 			return
 		}
 		k := tn.Case(p.Path[len(p.Path)-1].Name)
 		if k == nil {
-			c.errorf(p, "%s has no case %s", tn.name, p.Path[len(p.Path)-1].Name)
+			c.errorf(p, diag.UnknownMember, "%s has no case %s", tn.name, p.Path[len(p.Path)-1].Name)
 			return
 		}
 		ci.Type, ci.Case = tn, k
 		c.info.Cases[p] = k
 		c.caseArgs(p, k, tn.Type)
 	default:
-		c.errorf(cl.Pattern, "catch takes a name (catch e), a typed one (catch e: T) or a case (catch T.case)")
+		c.errorf(cl.Pattern, diag.InvalidCatch, "catch takes a name (catch e), a typed one (catch e: T) or a case (catch T.case)")
 	}
 }
 
@@ -930,7 +931,7 @@ func (c *Checker) casePathType(path []*syntax.Ident) *TypeName {
 	}
 	tn, ok := o.(*TypeName)
 	if !ok || tn.Kind != EnumType && tn.Kind != StructType {
-		c.errorf(path[0], "%s isn't an enum", joinPath(path))
+		c.errorf(path[0], diag.PatternType, "%s isn't an enum", joinPath(path))
 		return nil
 	}
 	c.info.Uses[path[len(path)-1]] = tn
@@ -960,7 +961,7 @@ func (c *Checker) pattern(p syntax.Pattern, t Type, kind VarKind) {
 		}
 		lt := c.expr(p.Value, et)
 		if !IsInvalid(lt) && !IsInvalid(t) && !c.convert(p.Value, lt, et) && !(lt == NoneType && IsOptional(t)) {
-			c.errorf(p, "%s can't be %s", aType(t), aType(lt))
+			c.errorf(p, diag.PatternType, "%s can't be %s", aType(t), aType(lt))
 		}
 	case *syntax.TuplePat:
 		// An optional's value, as a case's or a literal's (none doesn't
@@ -968,7 +969,7 @@ func (c *Checker) pattern(p syntax.Pattern, t Type, kind VarKind) {
 		tt, ok := Unopt(t).(*Tuple)
 		if !ok || len(tt.Elems) != len(p.Elems) {
 			if !IsInvalid(t) {
-				c.errorf(p, "%s isn't a tuple of %d", aType(t), len(p.Elems))
+				c.errorf(p, diag.PatternType, "%s isn't a tuple of %d", aType(t), len(p.Elems))
 			}
 			for _, e := range p.Elems {
 				c.pattern(e, Invalid, kind)
@@ -997,70 +998,84 @@ func (c *Checker) pattern(p syntax.Pattern, t Type, kind VarKind) {
 		}
 		c.scope = saved
 		if binds {
-			c.errorf(p, "a | pattern can't bind names: match the cases in arms of their own")
+			c.errorf(p, diag.InvalidPattern, "a | pattern can't bind names: match the cases in arms of their own")
 		}
 	case *syntax.CasePat:
-		if st := c.patternStruct(p); st != nil {
-			c.structPattern(p, st, t)
-			return
-		}
-		et := Unopt(t)
-		var tn *TypeName
-		if p.Implicit {
-			n, ok := et.(*Named)
-			if !ok || n.Obj.Kind != EnumType {
-				if !IsInvalid(t) {
-					c.errorf(p, ".%s: %s isn't an enum", p.Path[0].Name, aType(t))
-				}
-				return
-			}
-			tn = n.Obj
-		} else if len(p.Path) < 2 {
-			name := "case"
-			if len(p.Path) == 1 {
-				name = p.Path[0].Name
-			}
-			c.errorf(p, "%s(…) isn't a case: write .%s(…), or Type.%s(…)", name, name, name)
-			return
-		} else {
-			tn = c.casePathType(p.Path[:len(p.Path)-1])
-			if tn == nil {
-				return
-			}
-			if n, ok := et.(*Named); (!ok || n.Obj != tn) && testable(et) && tn.Kind == EnumType {
-				// A value of an interface (an Error too) or of a type
-				// parameter, matched by an enum's case: a type test,
-				// then the case.
-				name := p.Path[len(p.Path)-1].Name
-				k := tn.Case(name)
-				if k == nil {
-					c.errorf(p, "%s has no case %s", tn.name, name)
-					return
-				}
-				tt := c.typeTest(p, t, c.testedType(p, tn))
-				if tt == nil {
-					return
-				}
-				c.info.Cases[p] = k
-				c.caseArgs(p, k, tt)
-				return
-			}
-			if n, ok := et.(*Named); !ok || n.Obj != tn {
-				if !IsInvalid(t) {
-					c.errorf(p, "%s can't be a %s", aType(t), tn.name)
-				}
-				return
+		if !c.casePattern(p, t) {
+			// Its names are bound all the same, so that what reads them
+			// isn't reported too.
+			for _, a := range p.Args {
+				c.pattern(a, Invalid, kind)
 			}
 		}
-		name := p.Path[len(p.Path)-1].Name
-		k := tn.Case(name)
-		if k == nil {
-			c.errorf(p, "%s has no case %s", tn.name, name)
-			return
-		}
-		c.info.Cases[p] = k
-		c.caseArgs(p, k, et)
 	}
+}
+
+// casePattern checks a case's (or a struct's) pattern, and reports whether
+// it bound its payload's patterns: not when it reported what's wrong
+// with it.
+func (c *Checker) casePattern(p *syntax.CasePat, t Type) bool {
+	if st := c.patternStruct(p); st != nil {
+		c.structPattern(p, st, t)
+		return true
+	}
+	et := Unopt(t)
+	var tn *TypeName
+	if p.Implicit {
+		n, ok := et.(*Named)
+		if !ok || n.Obj.Kind != EnumType {
+			if !IsInvalid(t) {
+				c.errorf(p, diag.PatternType, ".%s: %s isn't an enum", p.Path[0].Name, aType(t))
+			}
+			return false
+		}
+		tn = n.Obj
+	} else if len(p.Path) < 2 {
+		name := "case"
+		if len(p.Path) == 1 {
+			name = p.Path[0].Name
+		}
+		c.errorf(p, diag.InvalidPattern, "%s(…) isn't a case: write .%s(…), or Type.%s(…)", name, name, name)
+		return false
+	} else {
+		tn = c.casePathType(p.Path[:len(p.Path)-1])
+		if tn == nil {
+			return false
+		}
+		if n, ok := et.(*Named); (!ok || n.Obj != tn) && testable(et) && tn.Kind == EnumType {
+			// A value of an interface (an Error too) or of a type
+			// parameter, matched by an enum's case: a type test,
+			// then the case.
+			name := p.Path[len(p.Path)-1].Name
+			k := tn.Case(name)
+			if k == nil {
+				c.errorf(p, diag.UnknownMember, "%s has no case %s", tn.name, name)
+				return false
+			}
+			tt := c.typeTest(p, t, c.testedType(p, tn))
+			if tt == nil {
+				return false
+			}
+			c.info.Cases[p] = k
+			c.caseArgs(p, k, tt)
+			return true
+		}
+		if n, ok := et.(*Named); !ok || n.Obj != tn {
+			if !IsInvalid(t) {
+				c.errorf(p, diag.PatternType, "%s can't be a %s", aType(t), tn.name)
+			}
+			return false
+		}
+	}
+	name := p.Path[len(p.Path)-1].Name
+	k := tn.Case(name)
+	if k == nil {
+		c.errorf(p, diag.UnknownMember, "%s has no case %s", tn.name, name)
+		return false
+	}
+	c.info.Cases[p] = k
+	c.caseArgs(p, k, et)
+	return true
 }
 
 // caseArgs checks a case pattern's payload patterns.
@@ -1068,27 +1083,30 @@ func (c *Checker) caseArgs(p *syntax.CasePat, k *Case, t Type) {
 	if !p.Lparen.IsValid() {
 		return
 	}
+	kind := LocalVar
+	if c.view {
+		kind = ViewMemo
+	}
 	if len(p.Args) != len(k.Params) {
-		c.errorf(p, "case %s has %s", k.Name, plural(len(k.Params), "payload value", "payload values"))
+		c.errorf(p, diag.InvalidPattern, "case %s has %s", k.Name, plural(len(k.Params), "payload value", "payload values"))
+		for _, a := range p.Args {
+			c.pattern(a, Invalid, kind)
+		}
 		return
 	}
 	for i := range p.Args {
 		// A label names the payload's: positions still say which.
 		if l := p.Label(i); l != nil && l.Name != k.Labels[i] {
 			if k.Labels[i] == "" {
-				c.errorf(l, "case %s's payload %d has no label: leave it out", k.Name, i+1)
+				c.errorf(l, diag.InvalidPattern, "case %s's payload %d has no label: leave it out", k.Name, i+1)
 			} else {
-				c.errorf(l, "case %s's payload %d is %s, not %s", k.Name, i+1, k.Labels[i], l.Name)
+				c.errorf(l, diag.InvalidPattern, "case %s's payload %d is %s, not %s", k.Name, i+1, k.Labels[i], l.Name)
 			}
 		}
 	}
 	var s Subst
 	if n, ok := t.(*Named); ok {
 		s = n.Subst()
-	}
-	kind := LocalVar
-	if c.view {
-		kind = ViewMemo
 	}
 	for i, a := range p.Args {
 		pt := s.Apply(k.Params[i])
@@ -1156,7 +1174,7 @@ func (c *Checker) matchStmt(s *syntax.MatchStmt) {
 	ok, missing := c.exhaustive(s.Subject, t, s.Arms)
 	mi.Exhaustive = ok
 	if !ok {
-		c.errorf(s, "%s", notCovered(missing, s.Arms, "_ => { }"))
+		c.errorf(s, diag.NonExhaustiveMatch, "%s", notCovered(missing, s.Arms, "_ => { }"))
 	}
 }
 
@@ -1195,7 +1213,7 @@ func (c *Checker) matchValue(n syntax.Node, subject syntax.Expr, arms []*syntax.
 				// A statement: it has no value unless it leaves.
 				c.stmt(b.(syntax.Item))
 				if !c.terminates([]syntax.Item{b.(syntax.Item)}) {
-					c.errorf(b, "this arm has no value: make it an expression")
+					c.errorf(b, diag.NoValue, "this arm has no value: make it an expression")
 					at = Invalid
 				} else {
 					at = Never
@@ -1212,13 +1230,13 @@ func (c *Checker) matchValue(n syntax.Node, subject syntax.Expr, arms []*syntax.
 		} else if j := c.join(res, at); j != nil {
 			res = j
 		} else {
-			c.errorf(a, "this arm is %s, the ones before %s: make them the same type", aType(at), aType(res))
+			c.errorf(a, diag.TypeMismatch, "this arm is %s, the ones before %s: make them the same type", aType(at), aType(res))
 		}
 	}
 	ok, missing := c.exhaustive(subject, t, arms)
 	mi.Exhaustive = ok
 	if !ok {
-		c.errorf(n, "%s", notCovered(missing, arms, "_ =>"))
+		c.errorf(n, diag.NonExhaustiveMatch, "%s", notCovered(missing, arms, "_ =>"))
 	}
 	if want != nil {
 		return want
@@ -1313,10 +1331,10 @@ func hasBreak(items []syntax.Item) bool {
 func (c *Checker) forAwait(s *syntax.ForStmt, fi *ForInfo, view bool) {
 	fi.Kind, fi.Seq = ForStream, s.Seq
 	if view {
-		c.errorf(s, "a view can't wait: read the stream in a task { }, into state")
+		c.errorf(s, diag.AwaitOutsideAsync, "a view can't wait: read the stream in a task { }, into state")
 	}
 	if c.ctx == nil || !c.ctx.Async {
-		c.errorf(s, "for await waits, and this can't: %s", c.asyncHint())
+		c.errorf(s, c.awaitCode(), "for await waits, and this can't: %s", c.asyncHint())
 	} else {
 		c.ctx.awaited(s.Start)
 	}
@@ -1324,16 +1342,16 @@ func (c *Checker) forAwait(s *syntax.ForStmt, fi *ForInfo, view bool) {
 	if st, ok := t.(*Stream); ok {
 		fi.Elem = st.Elem
 		if msg := c.throwHere(s.Seq); msg != "" {
-			c.errorf(s.Seq, "a stream fails with what its block throws, and %s", msg)
+			c.errorf(s.Seq, diag.UnhandledError, "a stream fails with what its block throws, and %s", msg)
 		}
 	} else {
 		if !IsInvalid(t) {
-			c.errorf(s.Seq, "for await goes over a stream, not %s (for goes over arrays)", aType(t))
+			c.errorf(s.Seq, diag.InvalidFor, "for await goes over a stream, not %s (for goes over arrays)", aType(t))
 		}
 		fi.Elem = Invalid
 	}
 	if s.Key != nil {
-		c.errorf(s.Key, "key is for a for in a view")
+		c.errorf(s.Key, diag.InvalidFor, "key is for a for in a view")
 	}
 	c.openScope()
 	c.forBindings(fi, s.Pattern, LocalVar, nil)
@@ -1347,7 +1365,7 @@ func (c *Checker) forAwait(s *syntax.ForStmt, fi *ForInfo, view bool) {
 // noLetElse reports a let … else where a let isn't a statement.
 func (c *Checker) noLetElse(d *syntax.LetDecl) {
 	if d.Else != nil {
-		c.errorPos(d.Else.Lbrace, "let … else is a statement, in a fn, a handler, a task or a test; a let here is derived: use if let, or ?? for a default")
+		c.errorPos(d.Else.Lbrace, diag.MisplacedStatement, "let … else is a statement, in a fn, a handler, a task or a test; a let here is derived: use if let, or ?? for a default")
 	}
 }
 
@@ -1389,7 +1407,7 @@ func (c *Checker) letElse(d *syntax.LetDecl) {
 	// The else block doesn't see the names.
 	c.block(d.Else)
 	if !c.terminates(d.Else.Items) {
-		c.errorPos(d.Else.Rbrace, "the else of a %s goes on with nothing to bind: end it with return, throw, break or continue (or panic)", what)
+		c.errorPos(d.Else.Rbrace, diag.LetElse, "the else of a %s goes on with nothing to bind: end it with return, throw, break or continue (or panic)", what)
 	}
 	if name && tested != nil {
 		bound := Type(tested)
@@ -1401,16 +1419,16 @@ func (c *Checker) letElse(d *syntax.LetDecl) {
 	}
 	if name {
 		if !IsOptional(t) && !IsInvalid(t) {
-			c.errorf(d.Value, "%s isn't optional: %s unwraps an optional or matches a pattern; this always has a value (drop the else)", typeString(t), what)
+			c.errorf(d.Value, diag.LetElse, "%s isn't optional: %s unwraps an optional or matches a pattern; this always has a value (drop the else)", typeString(t), what)
 		}
 		c.declareVar(bp.Name, Unopt(t), d.Keyword == syntax.VAR)
 		return
 	}
 	if isIrrefutablePattern(d.Pattern) && !IsOptional(t) && !IsInvalid(t) {
-		c.errorf(d.Pattern, "this pattern always matches %s: drop the else", aType(t))
+		c.errorf(d.Pattern, diag.LetElse, "this pattern always matches %s: drop the else", aType(t))
 	}
 	if d.Keyword == syntax.VAR {
-		c.errorf(d, "var … else binds a name: var x = optional else { … }; a pattern's names are lets")
+		c.errorf(d, diag.LetElse, "var … else binds a name: var x = optional else { … }; a pattern's names are lets")
 	}
 	c.pattern(d.Pattern, t, LocalVar)
 }
@@ -1436,7 +1454,7 @@ func isIrrefutablePattern(p syntax.Pattern) bool {
 func (c *Checker) throwValue(s syntax.Node, value syntax.Expr) {
 	t := c.expr(value, c.errT.Type)
 	if !IsInvalid(t) && !IsErrorType(t) {
-		c.errorf(value, "throw takes an error, and %s isn't one (declare it: struct %s: Error, or throw Error(\"…\"))", aType(t), typeString(t))
+		c.errorf(value, diag.NotAnError, "throw takes an error, and %s isn't one (declare it: struct %s: Error, or throw Error(\"…\"))", aType(t), typeString(t))
 	}
 	c.mayThrow(s)
 }
@@ -1448,7 +1466,7 @@ func (c *Checker) branch(s syntax.Node, tok syntax.Token, label *syntax.Ident) {
 		return
 	}
 	if c.loops == 0 {
-		c.errorf(s, "%s outside a loop", tok)
+		c.errorf(s, diag.MisplacedStatement, "%s outside a loop", tok)
 	}
 }
 
@@ -1534,7 +1552,7 @@ func (c *Checker) throwsHint() string {
 // statements.
 func (c *Checker) catchExpr(e *syntax.CatchExpr, want Type) Type {
 	if !throwsIn(e.X) {
-		c.errorf(e.Catches[0], "nothing before this catch throws: it takes the errors of a try (try f() catch { … })")
+		c.errorf(e.Catches[0], diag.InvalidCatch, "nothing before this catch throws: it takes the errors of a try (try f() catch { … })")
 	}
 	var xt Type
 	c.catching(e.Catches, func() {
@@ -1549,7 +1567,7 @@ func (c *Checker) catchExpr(e *syntax.CatchExpr, want Type) Type {
 		target = xt
 	}
 	if target == NoneType {
-		c.errorf(e.X, "none says nothing of the type: write it, let x: T? = none")
+		c.errorf(e.X, diag.CannotInferType, "none says nothing of the type: write it, let x: T? = none")
 		target = Invalid
 	}
 	c.catchBlocks(e.Catches, func(cl *syntax.CatchClause) {
@@ -1573,7 +1591,7 @@ func (c *Checker) catchExpr(e *syntax.CatchExpr, want Type) Type {
 // and its type is void.
 func (c *Checker) catchStmt(e *syntax.CatchExpr) {
 	if !throwsIn(e.X) {
-		c.errorf(e.Catches[0], "nothing before this catch throws: it takes the errors of a try (try f() catch { … })")
+		c.errorf(e.Catches[0], diag.InvalidCatch, "nothing before this catch throws: it takes the errors of a try (try f() catch { … })")
 	}
 	c.catching(e.Catches, func() { c.expr(e.X, nil) })
 	c.catchBlocks(e.Catches, func(cl *syntax.CatchClause) { c.block(cl.Body) })
@@ -1585,7 +1603,7 @@ func (c *Checker) catchStmt(e *syntax.CatchExpr) {
 func (c *Checker) catchBlocks(catches []*syntax.CatchClause, body func(*syntax.CatchClause)) {
 	for i, cl := range catches {
 		if i < len(catches)-1 && c.catchAll(cl) {
-			c.errorf(catches[i+1], "this catch is never reached: the one before catches everything")
+			c.errorf(catches[i+1], diag.InvalidCatch, "this catch is never reached: the one before catches everything")
 		}
 		c.openScope()
 		c.catchClause(cl)
@@ -1599,7 +1617,7 @@ func (c *Checker) fallback(cl *syntax.CatchClause, t Type) {
 	b := cl.Body
 	n := len(b.Items)
 	if n == 0 {
-		c.errorPos(b.Lbrace, "this catch has no value: end it with %s, or leave (return, throw)", aType(t))
+		c.errorPos(b.Lbrace, diag.NoValue, "this catch has no value: end it with %s, or leave (return, throw)", aType(t))
 		return
 	}
 	c.openScope()
@@ -1609,11 +1627,11 @@ func (c *Checker) fallback(cl *syntax.CatchClause, t Type) {
 	if es, ok := last.(*syntax.ExprStmt); ok {
 		got := c.expr(es.X, t)
 		if got == Void && !IsInvalid(t) {
-			c.errorf(es.X, "this catch has no value (it's void): end it with %s, or leave (return, throw)", aType(t))
+			c.errorf(es.X, diag.NoValue, "this catch has no value (it's void): end it with %s, or leave (return, throw)", aType(t))
 			return
 		}
 		if !c.convert(es.X, got, t) {
-			c.errorf(es.X, "the catch's value is %s, and the try's %s: make them the same type%s", aType(got), aType(t), c.convHint(got, t))
+			c.errorf(es.X, diag.TypeMismatch, "the catch's value is %s, and the try's %s: make them the same type%s", aType(got), aType(t), c.convHint(got, t))
 		}
 		return
 	}
@@ -1623,10 +1641,10 @@ func (c *Checker) fallback(cl *syntax.CatchClause, t Type) {
 	c.stmt(last)
 	if !c.terminates(b.Items) {
 		if s, ok := last.(*syntax.IfStmt); ok {
-			c.errorf(lastIf(s), "an if used as a value needs an else")
+			c.errorf(lastIf(s), diag.NoValue, "an if used as a value needs an else")
 			return
 		}
-		c.errorf(last, "this catch has no value: end it with %s, or leave (return, throw)", aType(t))
+		c.errorf(last, diag.NoValue, "this catch has no value: end it with %s, or leave (return, throw)", aType(t))
 	}
 }
 
@@ -1669,16 +1687,16 @@ func (c *Checker) localFns(items []syntax.Item) {
 		d := it.(*syntax.FuncDecl)
 		switch {
 		case d.Pub.IsValid():
-			c.errorf(d, "a fn in a block is its own: pub goes on a file's declarations")
+			c.errorf(d, diag.LocalFn, "a fn in a block is its own: pub goes on a file's declarations")
 		case d.Native.IsValid() || d.Extern.IsValid():
-			c.errorf(d, "native and extern fns are declared at the top of a file")
+			c.errorf(d, diag.LocalFn, "native and extern fns are declared at the top of a file")
 		case len(d.TypeParams) > 0:
-			c.errorf(d.Name, "a fn in a block isn't generic: declare %s at the top of the file", d.Name.Name)
+			c.errorf(d.Name, diag.LocalFn, "a fn in a block isn't generic: declare %s at the top of the file", d.Name.Name)
 		case d.Body == nil && d.Value == nil:
-			c.errorf(d.Name, "fn %s has no body", d.Name.Name)
+			c.errorf(d.Name, diag.FnBody, "fn %s has no body", d.Name.Name)
 		}
 		if d.Mut.IsValid() {
-			c.errorf(d.Name, "mut fn is a method that changes its value: declare it in a struct, an enum or an extend")
+			c.errorf(d.Name, diag.MisplacedDeclaration, "mut fn is a method that changes its value: declare it in a struct, an enum or an extend")
 		}
 		c.openScope()
 		c.invalidTypeParams(d.TypeParams)
@@ -1686,7 +1704,7 @@ func (c *Checker) localFns(items []syntax.Item) {
 		c.closeScope()
 		for i, p := range sig.Params {
 			if p.Default != nil {
-				c.errorf(d.Params.List[i].Default, "a fn in a block takes its arguments in order, without defaults: declare %s at the top of the file for a default", d.Name.Name)
+				c.errorf(d.Params.List[i].Default, diag.LocalFn, "a fn in a block takes its arguments in order, without defaults: declare %s at the top of the file for a default", d.Name.Name)
 			}
 		}
 		ft := &FuncType{Async: sig.Async, Throws: sig.Throws, Result: sig.Result}
@@ -1732,7 +1750,7 @@ func (c *Checker) localFnBody(lf *LocalFn) {
 	case d.Body != nil:
 		c.stmts(d.Body.Items)
 		if ctx.Result != Void && !c.terminates(d.Body.Items) {
-			c.errorPos(d.Body.Rbrace, "fn %s must return %s: it can reach its end without a return", d.Name.Name, aType(ctx.Result))
+			c.errorPos(d.Body.Rbrace, diag.MissingReturn, "fn %s must return %s: it can reach its end without a return", d.Name.Name, aType(ctx.Result))
 		}
 	}
 	c.leave(saved)
@@ -1827,6 +1845,6 @@ func (c *Checker) selfThroughVar(s *syntax.AssignStmt) {
 		return
 	}
 	if ctx := c.info.Ctxs[lam]; ctx != nil && ctx.capIndex[v] {
-		c.warnf(lam, "%s calls itself through the variable it's stored in, which keeps it alive forever: declare it fn %s(…)", v.name, v.name)
+		c.warnf(lam, diag.ClosureKeepsItself, "%s calls itself through the variable it's stored in, which keeps it alive forever: declare it fn %s(…)", v.name, v.name)
 	}
 }

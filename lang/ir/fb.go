@@ -5,6 +5,7 @@ import (
 
 	bc "github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/lang/check"
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -119,7 +120,7 @@ func (b *fb) overflow(format string, args ...any) {
 	if where == nil {
 		where = b.l.lastNode
 	}
-	b.l.errorf(where, format, args...)
+	b.l.errorf(where, diag.TooLarge, format, args...)
 }
 
 // emitJump emits a jump to l: JMP, or a conditional one on reg.
@@ -408,7 +409,7 @@ func (b *fb) readVar(v *check.Var, n syntax.Node) int {
 	}
 	r, ok := b.vars[v]
 	if !ok {
-		b.l.errorf(n, "internal: %s has no register in %s", v.Name(), b.f.Name)
+		b.l.errorf(n, diag.InternalError, "internal: %s has no register in %s", v.Name(), b.f.Name)
 		return b.valueReg(-1, b.kind(v.Type))
 	}
 	switch {
@@ -432,7 +433,7 @@ func (b *fb) readVar(v *check.Var, n syntax.Node) int {
 func (b *fb) writeVar(v *check.Var, val int, n syntax.Node) {
 	r, ok := b.vars[v]
 	if !ok {
-		b.l.errorf(n, "internal: %s has no register", v.Name())
+		b.l.errorf(n, diag.InternalError, "internal: %s has no register", v.Name())
 		return
 	}
 	if v.Boxed() {
@@ -450,7 +451,7 @@ func (b *fb) env(n syntax.Node) int {
 	if b.envReg >= 0 {
 		return b.envReg
 	}
-	b.l.errorf(n, "%s's members can't be used here (while it's being made)", b.compName())
+	b.l.errorf(n, diag.NotSupported, "%s's members can't be used here (while it's being made)", b.compName())
 	return b.null()
 }
 

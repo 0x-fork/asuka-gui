@@ -20,6 +20,7 @@ import (
 	"github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/lang/cffi"
 	"github.com/egoist/asuka/lang/check"
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/ir"
 	"github.com/egoist/asuka/lang/syntax"
 	"github.com/egoist/asuka/lang/target"
@@ -237,7 +238,7 @@ func (l *loader) loadSources(path, id, dir string, files map[string][]byte) *uni
 		}
 		f, errs := syntax.ParseFile(l.fset, n, files[n])
 		for _, e := range errs {
-			l.diags = append(l.diags, check.Diagnostic{Pos: e.Pos, End: e.End, Msg: e.Msg})
+			l.diags = append(l.diags, check.FromSyntax(e))
 		}
 		u.files = append(u.files, f)
 	}
@@ -277,7 +278,7 @@ func (l *loader) loadSources(path, id, dir string, files map[string][]byte) *uni
 				dep, err = l.loadDir(ip, "", d)
 			case strings.HasPrefix(ip, "asuka/"):
 				pos := l.fset.Position(imp.Start)
-				l.diags = append(l.diags, check.Diagnostic{Pos: pos, End: l.fset.Position(imp.End), Msg: retired(ip)})
+				l.diags = append(l.diags, check.NewDiagnostic(pos, l.fset.Position(imp.End), diag.UnknownPackage, "%s", retired(ip)))
 				u.imports[ip] = nil // reported: the checker skips it
 				continue
 			default:
@@ -300,7 +301,7 @@ func (l *loader) loadSources(path, id, dir string, files map[string][]byte) *uni
 				if imp.Relative {
 					what = "can't read package"
 				}
-				l.diags = append(l.diags, check.Diagnostic{Pos: pos, End: pos, Msg: fmt.Sprintf("%s %s: %v", what, ip, err)})
+				l.diags = append(l.diags, check.NewDiagnostic(pos, pos, diag.UnknownPackage, "%s %s: %v", what, ip, err))
 				u.imports[ip] = nil // reported: the checker skips it
 				continue
 			}
@@ -345,7 +346,7 @@ func (l *loader) compile(root *unit) *Result {
 		cat, err := implicitCatalog()
 		if err != nil {
 			pos := syntax.Position{Filename: "std/i18n", Line: 1, Column: 1}
-			l.diags = append(l.diags, check.Diagnostic{Pos: pos, End: pos, Msg: err.Error()})
+			l.diags = append(l.diags, check.NewDiagnostic(pos, pos, diag.InternalError, "%s", err.Error()))
 		} else {
 			c.SetCatalog(cat)
 		}
@@ -367,7 +368,8 @@ func (l *loader) compile(root *unit) *Result {
 			}
 			if !visit(dep) {
 				pos := l.fset.Position(u.files[0].Start)
-				l.diags = append(l.diags, check.Diagnostic{Pos: pos, End: pos, Msg: "import cycle through " + ip + ": packages can't import each other"})
+				l.diags = append(l.diags, check.NewDiagnostic(pos, pos, diag.ImportCycle, "import cycle through %s: packages can't import each other", ip))
+				imports[ip] = nil // reported: the checker skips it
 				continue
 			}
 			imports[ip] = dep.pkg
@@ -393,7 +395,7 @@ func (l *loader) compile(root *unit) *Result {
 	accent, accentFlags, err := appAccent(root.dir)
 	if err != nil {
 		pos := syntax.Position{Filename: filepath.Join(root.dir, "asuka.toml"), Line: 1, Column: 1}
-		res.Diags = append(res.Diags, check.Diagnostic{Pos: pos, End: pos, Msg: err.Error()})
+		res.Diags = append(res.Diags, check.NewDiagnostic(pos, pos, diag.InvalidProject, "%s", err.Error()))
 		return res
 	}
 	vdir := root.dir
@@ -410,7 +412,7 @@ func (l *loader) compile(root *unit) *Result {
 	glue, err := cffi.Generate(prog)
 	if err != nil {
 		pos := syntax.Position{Filename: root.dir, Line: 1, Column: 1}
-		res.Diags = append(res.Diags, check.Diagnostic{Pos: pos, End: pos, Msg: err.Error()})
+		res.Diags = append(res.Diags, check.NewDiagnostic(pos, pos, diag.DuplicateDeclaration, "%s", err.Error()))
 		res.Module = nil
 		return res
 	}

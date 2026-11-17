@@ -3,6 +3,8 @@ package syntax
 import (
 	"strings"
 	"testing"
+
+	"github.com/egoist/asuka/lang/diag"
 )
 
 // scanAll scans src and returns its tokens, one string each: a
@@ -12,7 +14,7 @@ func scanAll(src string) (toks []string, errs []string, s *Scanner) {
 	fset := NewFileSet()
 	file := fset.AddFile("x.asuka", len(src))
 	s = &Scanner{}
-	s.Init(file, []byte(src), func(pos Pos, msg string) {
+	s.Init(file, []byte(src), func(pos Pos, _ *diag.Code, msg string) {
 		errs = append(errs, file.Position(pos).String()+": "+msg)
 	})
 	for {

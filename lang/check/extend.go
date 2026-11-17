@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -38,7 +39,7 @@ func (f *Function) IsExtMethod() bool { return f.Ext != nil && f.Static == nil }
 // once the package's types are (extMembers).
 func (c *Checker) collectExtend(p *Package, d *syntax.ExtendDecl) {
 	if d.Pub.IsValid() {
-		c.errorPos(d.Pub, "pub goes on an extension's members, each: pub fn, pub let")
+		c.errorPos(d.Pub, diag.InvalidModifier, "pub goes on an extension's members, each: pub fn, pub let")
 	}
 	e := &Extension{Pkg: p, Decl: d, Methods: map[string]*Function{}, Statics: map[string]*Function{}, Consts: map[string]*Global{}}
 	for _, m := range d.Members {
@@ -83,20 +84,20 @@ func (c *Checker) extMembers(e *Extension) {
 		return
 	}
 	if why := extensible(e.Target); why != "" {
-		c.errorf(d.Type, "can't extend %s: %s", typeString(e.Target), why)
+		c.errorf(d.Type, diag.InvalidExtension, "can't extend %s: %s", typeString(e.Target), why)
 		e.Target = Invalid
 		return
 	}
 	for _, tp := range e.TypeParams {
 		if !mentionsParam(e.Target, tp) {
-			c.errorf(d.Type, "extend's %s isn't in the type it extends (%s): name it there, extend<%s> [%s]", tp.Name, typeString(e.Target), tp.Name, tp.Name)
+			c.errorf(d.Type, diag.InvalidExtension, "extend's %s isn't in the type it extends (%s): name it there, extend<%s> [%s]", tp.Name, typeString(e.Target), tp.Name, tp.Name)
 		}
 	}
 	tn := c.typeNameOf(e.Target)
 	for _, m := range d.Members {
 		switch m := m.(type) {
 		case *syntax.Field:
-			c.errorf(m.Name, "an extension adds no fields: a type's fields are its declaration's; a value made of others is a fn, fn %s() -> %s = …", m.Name.Name, syntaxTypeString(m.Type))
+			c.errorf(m.Name, diag.MisplacedDeclaration, "an extension adds no fields: a type's fields are its declaration's; a value made of others is a fn, fn %s() -> %s = …", m.Name.Name, syntaxTypeString(m.Type))
 		case *syntax.LetDecl:
 			c.noLetElse(m)
 			c.extConst(e, tn, m)
@@ -109,7 +110,7 @@ func (c *Checker) extMembers(e *Extension) {
 		n, ok := ty.(*Named)
 		if !ok || n.Obj.Kind != InterfaceType || n.Obj.isErrorIface || n.Obj.Native {
 			if !IsInvalid(ty) {
-				c.errorf(ct, "%s isn't an interface an extension can give: extend T: Interface", typeString(ty))
+				c.errorf(ct, diag.InvalidConformance, "%s isn't an interface an extension can give: extend T: Interface", typeString(ty))
 			}
 			continue
 		}
@@ -195,11 +196,11 @@ func (c *Checker) owns(t Type, name string) string {
 func (c *Checker) extDeclared(e *Extension, id *syntax.Ident) bool {
 	name := id.Name
 	if e.Methods[name] != nil || e.Statics[name] != nil || e.Consts[name] != nil {
-		c.errorf(id, "%s is declared twice in this extension", name)
+		c.errorf(id, diag.DuplicateDeclaration, "%s is declared twice in this extension", name)
 		return true
 	}
 	if what := c.owns(e.Target, name); what != "" {
-		c.errorf(id, "%s has %s %s of its own: an extension adds names, it doesn't replace them", typeString(e.Target), what, name)
+		c.errorf(id, diag.ExtensionConflict, "%s has %s %s of its own: an extension adds names, it doesn't replace them", typeString(e.Target), what, name)
 		return true
 	}
 	return false
@@ -213,15 +214,15 @@ func (c *Checker) extFunc(e *Extension, tn *TypeName, d *syntax.FuncDecl) {
 	c.info.Defs[d.Name] = f
 	switch {
 	case d.Native.IsValid() || d.Extern.IsValid():
-		c.errorf(d.Name, "an extension's fns have bodies: a native or extern fn is declared at the top of a file")
+		c.errorf(d.Name, diag.MisplacedDeclaration, "an extension's fns have bodies: a native or extern fn is declared at the top of a file")
 		return
 	case d.Static.IsValid():
 		if tn == nil {
-			c.errorf(d.Name, "a static fn of %s can't be named (%s.%s): extend a type with a name for it", typeString(e.Target), typeString(e.Target), d.Name.Name)
+			c.errorf(d.Name, diag.InvalidExtension, "a static fn of %s can't be named (%s.%s): extend a type with a name for it", typeString(e.Target), typeString(e.Target), d.Name.Name)
 			return
 		}
 		if len(e.TypeParams) > 0 {
-			c.errorf(d.Name, "a generic extension's static fns would need its type parameters; declare a function outside it")
+			c.errorf(d.Name, diag.MisplacedDeclaration, "a generic extension's static fns would need its type parameters; declare a function outside it")
 			return
 		}
 		f.Static = tn
@@ -236,22 +237,22 @@ func (c *Checker) extFunc(e *Extension, tn *TypeName, d *syntax.FuncDecl) {
 func (c *Checker) extConst(e *Extension, tn *TypeName, d *syntax.LetDecl) {
 	bp, ok := d.Pattern.(*syntax.BindPat)
 	if !ok {
-		c.errorf(d.Pattern, "an extension's constant is let name = value")
+		c.errorf(d.Pattern, diag.InvalidDeclaration, "an extension's constant is let name = value")
 		return
 	}
 	if d.Keyword == syntax.VAR {
-		c.errorf(d, "an extension adds no state: its constants are let")
+		c.errorf(d, diag.MisplacedDeclaration, "an extension adds no state: its constants are let")
 		return
 	}
 	if c.extDeclared(e, bp.Name) {
 		return
 	}
 	if tn == nil {
-		c.errorf(bp.Name, "a constant of %s can't be named (.%s): extend a type with a name for it", typeString(e.Target), bp.Name.Name)
+		c.errorf(bp.Name, diag.InvalidExtension, "a constant of %s can't be named (.%s): extend a type with a name for it", typeString(e.Target), bp.Name.Name)
 		return
 	}
 	if len(e.TypeParams) > 0 {
-		c.errorf(bp.Name, "a generic extension has no constants: they'd need its type parameters")
+		c.errorf(bp.Name, diag.MisplacedDeclaration, "a generic extension has no constants: they'd need its type parameters")
 		return
 	}
 	g := &Global{object: object{bp.Name.Name, bp.Name.Start}, Pkg: e.Pkg, Kind: ConstGlobal, Decl: d, Value: d.Value, Ext: e, Pub: d.Pub.IsValid()}
@@ -274,7 +275,7 @@ func (c *Checker) extBodies(e *Extension) {
 	}
 	for _, i := range e.Conforms {
 		if why := c.implementsMembers(e.Target, &Named{Obj: i}); why != "" {
-			c.errorf(e.Decl.Type, "%s declares %s but %s", typeString(e.Target), i.name, why)
+			c.errorf(e.Decl.Type, diag.InterfaceNotSatisfied, "%s declares %s but %s", typeString(e.Target), i.name, why)
 		}
 	}
 }
@@ -463,9 +464,9 @@ func (c *Checker) extLookup(t Type, name, kind string, at syntax.Node) (extHit, 
 		}
 		sort.Strings(where)
 		if where[0] == where[len(where)-1] {
-			c.errorf(at, "%s is extended twice for %s in %s: keep one", name, typeString(t), where[0])
+			c.errorf(at, diag.ExtensionConflict, "%s is extended twice for %s in %s: keep one", name, typeString(t), where[0])
 		} else {
-			c.errorf(at, "%s is extended by %s; import one", name, strings.Join(where, " and "))
+			c.errorf(at, diag.ExtensionConflict, "%s is extended by %s; import one", name, strings.Join(where, " and "))
 		}
 	}
 	if len(hits) == 0 {
@@ -539,9 +540,9 @@ func (c *Checker) extImpl(t *Named, name string, f *Function) {
 	case old != f:
 		a, b := pkgDisplay(old.Pkg), pkgDisplay(f.Pkg)
 		if a == b {
-			c.errorf(f.Decl.Name, "%s is extended twice for %s, and both make it an interface's: keep one", name, typeString(t))
+			c.errorf(f.Decl.Name, diag.ExtensionConflict, "%s is extended twice for %s, and both make it an interface's: keep one", name, typeString(t))
 		} else {
-			c.errorf(f.Decl.Name, "%s is extended by %s and %s, and both make %s an interface's: a type has one %s in a program", name, a, b, typeString(t), name)
+			c.errorf(f.Decl.Name, diag.ExtensionConflict, "%s is extended by %s and %s, and both make %s an interface's: a type has one %s in a program", name, a, b, typeString(t), name)
 		}
 	}
 }

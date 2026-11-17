@@ -6,6 +6,7 @@ import (
 
 	bc "github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/lang/check"
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -27,7 +28,7 @@ func (b *fb) call1(e *syntax.CallExpr, dst int, discard bool) int {
 	}
 	call := b.l.info.Calls[e]
 	if call == nil {
-		b.l.errorf(e, "internal: no call info")
+		b.l.errorf(e, diag.InternalError, "internal: no call info")
 		return -1
 	}
 	if call.Optional && (call.Mut || call.Kind == check.CallBuiltinMethod && call.Method.Inout) {
@@ -78,7 +79,7 @@ func (b *fb) call1(e *syntax.CallExpr, dst int, discard bool) int {
 	case check.CallWorker:
 		return b.workerCall(e, call, nil, dst)
 	}
-	b.l.errorf(e, "internal: unknown call")
+	b.l.errorf(e, diag.InternalError, "internal: unknown call")
 	return -1
 }
 
@@ -796,7 +797,7 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 		}
 		return b.copyTo(b.callB(bi.RT, k, vals...), dst)
 	}
-	b.l.errorf(e, "can't lower %s yet", bi.Name())
+	b.l.errorf(e, diag.NotSupported, "can't lower %s yet", bi.Name())
 	return -1
 }
 
@@ -1292,7 +1293,7 @@ func (b *fb) structHook(hook func(string) (map[string]any, error), t *check.Name
 			at = call.Args[0]
 		}
 		if at != nil {
-			b.l.errorf(at, "%s's %s is made when the app compiles: give it a string literal", t.Obj.Name(), t.Obj.Fields[0].Name)
+			b.l.errorf(at, diag.InvalidConstant, "%s's %s is made when the app compiles: give it a string literal", t.Obj.Name(), t.Obj.Fields[0].Name)
 		}
 		return
 	}
@@ -1305,7 +1306,7 @@ func (b *fb) structHook(hook func(string) (map[string]any, error), t *check.Name
 	}
 	fields, err := hook(text)
 	if err != nil {
-		b.l.errorf(src, "%s", err)
+		b.l.errorf(src, diag.InvalidConstant, "%s", err)
 		return
 	}
 	for i, f := range t.Obj.Fields {

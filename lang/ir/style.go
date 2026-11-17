@@ -3,6 +3,7 @@ package ir
 import (
 	bc "github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/lang/check"
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/prelude"
 	"github.com/egoist/asuka/lang/syntax"
 )
@@ -322,7 +323,7 @@ func (b *fb) styleSet(t styleTarget, p stylePiece) {
 	mark := b.mark()
 	defer b.release(mark)
 	if p.key == 0 {
-		b.l.errorf(p.value, "%s isn't a style key the runtime has", p.member.Name())
+		b.l.errorf(p.value, diag.InternalError, "%s isn't a style key the runtime has", p.member.Name())
 		return
 	}
 	b.bindEnv(p.env)
@@ -376,7 +377,7 @@ func (b *fb) styleLayer(t styleTarget, pieces []stylePiece) {
 	for _, q := range pieces {
 		mark := b.mark()
 		if q.key == 0 {
-			b.l.errorf(q.value, "%s isn't a style key the runtime has", q.member.Name())
+			b.l.errorf(q.value, diag.InternalError, "%s isn't a style key the runtime has", q.member.Name())
 			b.release(mark)
 			continue
 		}

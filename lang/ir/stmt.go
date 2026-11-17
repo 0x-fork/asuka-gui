@@ -3,6 +3,7 @@ package ir
 import (
 	bc "github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/lang/check"
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -118,11 +119,11 @@ func (b *fb) stmt(it syntax.Item) {
 			b.exprStmt(call)
 			return
 		}
-		b.l.errorf(it, "can't lower this statement")
+		b.l.errorf(it, diag.NotSupported, "can't lower this statement")
 	case *syntax.DeferStmt:
 		b.withDefer(s, nil, nil)
 	default:
-		b.l.errorf(it, "can't lower this statement")
+		b.l.errorf(it, diag.NotSupported, "can't lower this statement")
 	}
 }
 
@@ -952,7 +953,7 @@ func (b *fb) prepare(x syntax.Expr) *lvalue {
 		_, isMap := check.Unopt(b.rawType(x.X)).(*check.Map)
 		return &lvalue{x: x, kind: lvIndex, inner: inner, idx: b.value(x.Index, -1), isMap: isMap, def: x.Default}
 	}
-	b.l.errorf(x, "can't change this")
+	b.l.errorf(x, diag.NotAssignable, "can't change this")
 	return &lvalue{x: x, kind: lvVar}
 }
 
@@ -976,7 +977,7 @@ func (b *fb) updatePut(lv *lvalue, reads bool, fn func(cur int), p *put) {
 	case lvVar:
 		r, ok := b.vars[lv.v]
 		if !ok {
-			b.l.errorf(lv.x, "internal: no register for %s", lv.v.Name())
+			b.l.errorf(lv.x, diag.InternalError, "internal: no register for %s", lv.v.Name())
 			return
 		}
 		fn(r)
@@ -1101,7 +1102,7 @@ func (b *fb) set(lv *lvalue, val int) {
 		b.f.Place(end)
 	case lvField:
 		if lv.named != nil && lv.named.Obj.IsError {
-			b.l.errorf(lv.x, "an error's fields can't be changed: make a new one")
+			b.l.errorf(lv.x, diag.NotAssignable, "an error's fields can't be changed: make a new one")
 			return
 		}
 		// In a state: the old value kept, so that the write tells only
@@ -1775,7 +1776,7 @@ func (b *fb) localCaps(g *check.LocalGroup, n syntax.Node) []int {
 	for _, v := range g.Captures {
 		r, ok := b.vars[v]
 		if !ok {
-			b.l.errorf(n, "internal: %s has no register in %s", v.Name(), b.f.Name)
+			b.l.errorf(n, diag.InternalError, "internal: %s has no register in %s", v.Name(), b.f.Name)
 			r = b.valueReg(-1, b.capKind(v))
 		} else if v.Boxed() && b.unboxed[v] {
 			box := b.temp(bc.KRef)
@@ -1794,7 +1795,7 @@ func (b *fb) localCaps(g *check.LocalGroup, n syntax.Node) []int {
 func (b *fb) localIndex(lf *check.LocalFn, n syntax.Node) (int, bool) {
 	idx, ok := b.locals[lf]
 	if !ok {
-		b.l.errorf(n, "internal: local fn %s isn't lowered in %s", lf.Decl.Name.Name, b.f.Name)
+		b.l.errorf(n, diag.InternalError, "internal: local fn %s isn't lowered in %s", lf.Decl.Name.Name, b.f.Name)
 	}
 	return idx, ok
 }
@@ -1827,7 +1828,7 @@ func (b *fb) localFnValue(lf *check.LocalFn, n syntax.Node) int {
 	for _, v := range g.Captures {
 		r, ok := b.vars[v]
 		if !ok {
-			b.l.errorf(n, "internal: %s has no register in %s", v.Name(), b.f.Name)
+			b.l.errorf(n, diag.InternalError, "internal: %s has no register in %s", v.Name(), b.f.Name)
 			continue
 		}
 		if v.Boxed() && b.unboxed[v] {

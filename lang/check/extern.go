@@ -3,6 +3,7 @@ package check
 import (
 	"regexp"
 
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -130,24 +131,24 @@ func (c *Checker) cType(t syntax.Type, at cPlace, what string) (Type, *CType) {
 				return MakeOptional(e), ct
 			}
 		}
-		c.errorf(t, "%s can't be none: C's NULL is a CString?, a Pointer?, an extern type's T? or (as a parameter) bytes? or a function's (fn(…))?", what)
+		c.errorf(t, diag.NotCType, "%s can't be none: C's NULL is a CString?, a Pointer?, an extern type's T? or (as a parameter) bytes? or a function's (fn(…))?", what)
 		return Invalid, nil
 	case *syntax.FuncType:
 		switch at {
 		case cParam:
 		case cResult:
-			c.errorf(t, "%s can't be a function: C gives none back (a callback is a parameter)", what)
+			c.errorf(t, diag.NotCType, "%s can't be a function: C gives none back (a callback is a parameter)", what)
 			return Invalid, nil
 		default:
-			c.errorf(t, "%s can't be a function: a callback is an extern fn's parameter", what)
+			c.errorf(t, diag.NotCType, "%s can't be a function: a callback is an extern fn's parameter", what)
 			return Invalid, nil
 		}
 		if x.Async.IsValid() {
-			c.errorf(t, "a callback isn't async: C calls it and it runs to its end")
+			c.errorf(t, diag.NotCType, "a callback isn't async: C calls it and it runs to its end")
 			return Invalid, nil
 		}
 		if x.Throws.IsValid() {
-			c.errorf(t, "a callback doesn't throw: C can't catch Asuka's errors")
+			c.errorf(t, diag.NotCType, "a callback doesn't throw: C can't catch Asuka's errors")
 			return Invalid, nil
 		}
 		ft := &FuncType{Result: Void}
@@ -181,13 +182,13 @@ func (c *Checker) cType(t syntax.Type, at cPlace, what string) (Type, *CType) {
 		if len(x.Elems) == 1 {
 			return c.cType(x.Elems[0], at, what)
 		}
-		c.errorf(t, "%s can't be a tuple: C has none (an extern struct is C's)", what)
+		c.errorf(t, diag.NotCType, "%s can't be a tuple: C has none (an extern struct is C's)", what)
 		return Invalid, nil
 	case *syntax.ArrayType:
-		c.errorf(t, "%s can't be an array: C takes bytes, or a Pointer to memory of its own", what)
+		c.errorf(t, diag.NotCType, "%s can't be an array: C takes bytes, or a Pointer to memory of its own", what)
 		return Invalid, nil
 	case *syntax.MapType:
-		c.errorf(t, "%s can't be a map: C has none", what)
+		c.errorf(t, diag.NotCType, "%s can't be a map: C has none", what)
 		return Invalid, nil
 	case *syntax.NamedType:
 		if len(x.Path) == 1 && len(x.Args) == 0 {
@@ -196,7 +197,7 @@ func (c *Checker) cType(t syntax.Type, at cPlace, what string) (Type, *CType) {
 				ct := &CType{Kind: k}
 				if k == CString {
 					if at == cField {
-						c.errorf(t, "%s can't be a CString: a struct crosses by value, and the string's memory wouldn't outlive the call (hold a Pointer, or pass the string as a parameter)", what)
+						c.errorf(t, diag.NotCType, "%s can't be a CString: a struct crosses by value, and the string's memory wouldn't outlive the call (hold a Pointer, or pass the string as a parameter)", what)
 						return Invalid, nil
 					}
 					return String, ct
@@ -236,16 +237,16 @@ func (c *Checker) cOf(at syntax.Node, t Type, place cPlace, what string) (Type, 
 			return t, &CType{Kind: CVoid}
 		}
 	case String:
-		c.errorf(at, "%s is a string: it crosses to C as a CString (a NUL-terminated const char *), so write CString", what)
+		c.errorf(at, diag.NotCType, "%s is a string: it crosses to C as a CString (a NUL-terminated const char *), so write CString", what)
 		return Invalid, nil
 	case Bytes:
 		switch place {
 		case cParam:
 			return t, &CType{Kind: CBytes}
 		case cResult:
-			c.errorf(at, "%s can't be bytes: their length can't come back from C with them (return a Pointer or an extern type, and read it with more functions)", what)
+			c.errorf(at, diag.NotCType, "%s can't be bytes: their length can't come back from C with them (return a Pointer or an extern type, and read it with more functions)", what)
 		default:
-			c.errorf(at, "%s can't be bytes: bytes cross as an extern fn's parameter only (a pointer and a length)", what)
+			c.errorf(at, diag.NotCType, "%s can't be bytes: bytes cross as an extern fn's parameter only (a pointer and a length)", what)
 		}
 		return Invalid, nil
 	}
@@ -254,26 +255,26 @@ func (c *Checker) cOf(at syntax.Node, t Type, place cPlace, what string) (Type, 
 		case n.Obj.Kind == ExternType:
 			switch place {
 			case cField:
-				c.errorf(at, "%s can't be an extern type: Asuka frees it as its last reference goes, which a struct C copies can't follow (hold a Pointer)", what)
+				c.errorf(at, diag.NotCType, "%s can't be an extern type: Asuka frees it as its last reference goes, which a struct C copies can't follow (hold a Pointer)", what)
 				return Invalid, nil
 			case cCbParam, cCbResult:
-				c.errorf(at, "%s can't be an extern type: who would free it? (pass a Pointer)", what)
+				c.errorf(at, diag.NotCType, "%s can't be an extern type: who would free it? (pass a Pointer)", what)
 				return Invalid, nil
 			}
 			return t, &CType{Kind: CExtern, Named: n.Obj}
 		case n.Obj.Kind == StructType && n.Obj.Extern:
 			switch place {
 			case cCbParam, cCbResult:
-				c.errorf(at, "%s can't be an extern struct: a callback takes numbers, bools, CStrings and Pointers", what)
+				c.errorf(at, diag.NotCType, "%s can't be an extern struct: a callback takes numbers, bools, CStrings and Pointers", what)
 				return Invalid, nil
 			}
 			return t, &CType{Kind: CStruct, Named: n.Obj}
 		case n.Obj.Kind == StructType:
-			c.errorf(at, "%s is %s, an Asuka struct: C takes an extern struct, whose fields are C types (extern struct %s { … })", what, n.Obj.name, n.Obj.name)
+			c.errorf(at, diag.NotCType, "%s is %s, an Asuka struct: C takes an extern struct, whose fields are C types (extern struct %s { … })", what, n.Obj.name, n.Obj.name)
 			return Invalid, nil
 		}
 	}
-	c.errorf(at, "%s can't cross to C: %s isn't a C type (an extern declaration takes Int8…Int64, UInt8…UInt64, int, Float32, float, bool, CString, bytes, Pointer, an extern type or struct, or a function; https://asuka.egoist.dev/docs/c)", what, aType(t))
+	c.errorf(at, diag.NotCType, "%s can't cross to C: %s isn't a C type (an extern declaration takes Int8…Int64, UInt8…UInt64, int, Float32, float, bool, CString, bytes, Pointer, an extern type or struct, or a function; https://asuka.egoist.dev/docs/c)", what, aType(t))
 	return Invalid, nil
 }
 
@@ -287,13 +288,13 @@ func (c *Checker) externSig(f *Function) {
 	seen := map[string]bool{}
 	for _, p := range d.Params.List {
 		if seen[p.Name.Name] {
-			c.errorf(p.Name, "parameter %s is declared twice", p.Name.Name)
+			c.errorf(p.Name, diag.DuplicateDeclaration, "parameter %s is declared twice", p.Name.Name)
 		}
 		seen[p.Name.Name] = true
 		var pt Type = Invalid
 		var pc *CType
 		if p.Type == nil {
-			c.errorf(p.Name, "parameter %s needs a type: %s: Type", p.Name.Name, p.Name.Name)
+			c.errorf(p.Name, diag.MissingType, "parameter %s needs a type: %s: Type", p.Name.Name, p.Name.Name)
 		} else {
 			pt, pc = c.cType(p.Type, cParam, "parameter "+p.Name.Name)
 		}
@@ -318,17 +319,17 @@ func (c *Checker) externFunc(f *Function) {
 	d := f.Decl
 	switch {
 	case d.Body != nil || d.Value != nil:
-		c.errorf(d.Name, "an extern fn has no body: C implements it")
+		c.errorf(d.Name, diag.FnBody, "an extern fn has no body: C implements it")
 	case len(d.TypeParams) > 0:
-		c.errorf(d.Name, "an extern fn isn't generic: C's function has one signature")
+		c.errorf(d.Name, diag.InvalidModifier, "an extern fn isn't generic: C's function has one signature")
 	case d.Async.IsValid():
-		c.errorf(d.Name, "an extern fn isn't async: a C call runs to its end (spawn runs one on another thread)")
+		c.errorf(d.Name, diag.InvalidModifier, "an extern fn isn't async: a C call runs to its end (spawn runs one on another thread)")
 	case d.Throws.IsValid():
-		c.errorf(d.Name, "an extern fn doesn't throw: C has no errors to raise (return a status, and throw in Asuka)")
+		c.errorf(d.Name, diag.InvalidModifier, "an extern fn doesn't throw: C has no errors to raise (return a status, and throw in Asuka)")
 	case f.Recv != nil:
-		c.errorf(d.Name, "an extern fn is declared at the top of a file, not in a type")
+		c.errorf(d.Name, diag.MisplacedDeclaration, "an extern fn is declared at the top of a file, not in a type")
 	case !cIdent.MatchString(f.name):
-		c.errorf(d.Name, "%s isn't a C function's name (letters, digits and _)", f.name)
+		c.errorf(d.Name, diag.InvalidExtern, "%s isn't a C function's name (letters, digits and _)", f.name)
 	}
 }
 
@@ -342,17 +343,17 @@ func (c *Checker) externType(t *TypeName) {
 	o := t.Pkg.Scope.LookupLocal(d.Release.Name)
 	f, ok := o.(*Function)
 	if !ok || f.Decl == nil || !f.Decl.Extern.IsValid() {
-		c.errorf(d.Release, "release %s: the function that frees a %s is an extern fn of this package (extern fn %s(x: %s))", d.Release.Name, t.name, d.Release.Name, t.name)
+		c.errorf(d.Release, diag.InvalidExtern, "release %s: the function that frees a %s is an extern fn of this package (extern fn %s(x: %s))", d.Release.Name, t.name, d.Release.Name, t.name)
 		return
 	}
 	c.info.Uses[d.Release] = f
 	c.funcSig(f)
 	if f.Extern == nil || len(f.Extern.Params) != 1 || f.Extern.Params[0].Kind != CExtern || f.Extern.Params[0].Named != t {
-		c.errorf(d.Release, "release %s: it takes one %s, the pointer it frees", d.Release.Name, t.name)
+		c.errorf(d.Release, diag.InvalidExtern, "release %s: it takes one %s, the pointer it frees", d.Release.Name, t.name)
 		return
 	}
 	if f.Extern.Releases != nil {
-		c.errorf(d.Release, "%s already releases %s", d.Release.Name, f.Extern.Releases.name)
+		c.errorf(d.Release, diag.InvalidExtern, "%s already releases %s", d.Release.Name, f.Extern.Releases.name)
 		return
 	}
 	t.Release = f
@@ -363,10 +364,10 @@ func (c *Checker) externType(t *TypeName) {
 // not generic, declaring nothing, not containing itself.
 func (c *Checker) externStructDecl(t *TypeName, d *syntax.StructDecl) {
 	if len(d.TypeParams) > 0 {
-		c.errorf(d.Name, "an extern struct isn't generic: C's struct has one layout")
+		c.errorf(d.Name, diag.InvalidModifier, "an extern struct isn't generic: C's struct has one layout")
 	}
 	if len(d.Conforms) > 0 {
-		c.errorf(d.Conforms[0], "an extern struct declares nothing: it's C's layout")
+		c.errorf(d.Conforms[0], diag.InvalidExtern, "an extern struct declares nothing: it's C's layout")
 	}
 }
 
@@ -388,6 +389,6 @@ func (c *Checker) externStructCycle(t *TypeName) {
 		return false
 	}
 	if visit(t, map[*TypeName]bool{}) {
-		c.errorf(t.Decl.(*syntax.StructDecl).Name, "extern struct %s holds itself: C can't lay it out (hold a Pointer)", t.name)
+		c.errorf(t.Decl.(*syntax.StructDecl).Name, diag.RecursiveType, "extern struct %s holds itself: C can't lay it out (hold a Pointer)", t.name)
 	}
 }

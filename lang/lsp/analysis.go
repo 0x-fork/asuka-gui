@@ -13,6 +13,7 @@ import (
 	"github.com/egoist/asuka/internal/pkgs"
 	"github.com/egoist/asuka/lang/check"
 	"github.com/egoist/asuka/lang/compile"
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/prelude"
 	"github.com/egoist/asuka/lang/syntax"
 	"github.com/egoist/asuka/lang/target"
@@ -183,10 +184,11 @@ func (s *server) publish(st *pkgState) {
 			files = append(files, p)
 			_, errs := syntax.ParseFile(syntax.NewFileSet(), p, d.text)
 			for _, e := range errs {
-				byFile[p] = append(byFile[p], check.Diagnostic{Pos: e.Pos, End: e.End, Msg: e.Msg})
+				byFile[p] = append(byFile[p], check.FromSyntax(e))
 			}
 			if st.err != nil && len(errs) == 0 {
-				byFile[p] = append(byFile[p], check.Diagnostic{Pos: syntax.Position{Filename: p, Line: 1, Column: 1}, Msg: st.err.Error()})
+				pos := syntax.Position{Filename: p, Line: 1, Column: 1}
+				byFile[p] = append(byFile[p], check.NewDiagnostic(pos, pos, diag.InvalidProject, "%s", st.err.Error()))
 			}
 		}
 	}
@@ -200,10 +202,10 @@ func (s *server) publish(st *pkgState) {
 		m := newMapper(src, s.utf8)
 		diags := []Diagnostic{}
 		for _, d := range byFile[name] {
-			diags = append(diags, Diagnostic{Range: diagRange(m, d), Severity: 1, Source: "asuka", Message: d.Msg})
+			diags = append(diags, lspDiagnostic(m, d, 1))
 		}
 		for _, d := range warnings[name] {
-			diags = append(diags, Diagnostic{Range: diagRange(m, d), Severity: 2, Source: "asuka", Message: d.Msg})
+			diags = append(diags, lspDiagnostic(m, d, 2))
 		}
 		params := &PublishDiagnosticsParams{URI: s.uri(name), Diagnostics: diags}
 		if doc := s.docs[name]; doc != nil {
@@ -495,4 +497,14 @@ func (s *server) preludeState(dir string) *pkgState {
 	}
 	s.pkgs[dir] = st
 	return st
+}
+
+// lspDiagnostic is d as the protocol says it, with its code and its
+// page.
+func lspDiagnostic(m *mapper, d check.Diagnostic, severity int) Diagnostic {
+	out := Diagnostic{Range: diagRange(m, d), Severity: severity, Source: "asuka", Message: d.Msg, Code: d.Code}
+	if d.Code != "" {
+		out.CodeDescription = &CodeDescription{Href: diag.URL(d.Code)}
+	}
+	return out
 }

@@ -203,10 +203,18 @@ type PublishDiagnosticsParams struct {
 }
 
 type Diagnostic struct {
-	Range    Range  `json:"range"`
-	Severity int    `json:"severity"` // 1 error, 2 warning, 3 information, 4 hint
-	Source   string `json:"source"`
-	Message  string `json:"message"`
+	Range    Range `json:"range"`
+	Severity int   `json:"severity"` // 1 error, 2 warning, 3 information, 4 hint
+	// Code is the diagnostic's code (lang/diag), and CodeDescription its
+	// page (LSP 3.16).
+	Code            string           `json:"code,omitempty"`
+	CodeDescription *CodeDescription `json:"codeDescription,omitempty"`
+	Source          string           `json:"source"`
+	Message         string           `json:"message"`
+}
+
+type CodeDescription struct {
+	Href string `json:"href"`
 }
 
 // Hover.

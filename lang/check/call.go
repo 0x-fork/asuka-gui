@@ -6,13 +6,14 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
 func (c *Checker) call(e *syntax.CallExpr, want Type) Type {
 	if len(e.Handlers) > 0 {
 		if _, ok := c.componentOf(e.Fun); !ok {
-			c.errorf(e.Handlers[0], "on after a block handles a component's event: %s isn't one", exprName(e.Fun))
+			c.errorf(e.Handlers[0], diag.UnknownEvent, "on after a block handles a component's event: %s isn't one", exprName(e.Fun))
 		}
 	}
 	switch fn := e.Fun.(type) {
@@ -25,7 +26,7 @@ func (c *Checker) call(e *syntax.CallExpr, want Type) Type {
 		}
 		o := c.lookup(fn.Name)
 		if o == nil && fn.Name == "shader" {
-			c.errorf(fn, shaderMoved)
+			c.errorf(fn, diag.InvalidShader, shaderMoved)
 			c.checkArgsLoosely(e)
 			return Invalid
 		}
@@ -60,7 +61,7 @@ func (c *Checker) call(e *syntax.CallExpr, want Type) Type {
 				return c.closureCall(e, fn, c.ident(fn))
 			}
 			if c.ctx == nil || c.ctx.Self == nil {
-				c.errorf(fn, "%s is a method of %s: call it on a value", fn.Name, o.owner.name)
+				c.errorf(fn, diag.NotAValue, "%s is a method of %s: call it on a value", fn.Name, o.owner.name)
 				return Invalid
 			}
 			c.useVar(c.ctx.Self, fn)
@@ -84,12 +85,14 @@ func (c *Checker) call(e *syntax.CallExpr, want Type) Type {
 				c.info.Uses[id] = pn
 				o := pn.Pkg.Scope.LookupLocal(fn.Name.Name)
 				if o == nil {
-					c.errorf(fn.Name, "package %s has no %s", pn.Pkg.Path, fn.Name.Name)
+					if !pn.Pkg.Broken {
+						c.errorf(fn.Name, diag.UnknownMember, "package %s has no %s", pn.Pkg.Path, fn.Name.Name)
+					}
 					c.checkArgsLoosely(e)
 					return Invalid
 				}
 				if !c.exported(pn.Pkg, o) {
-					c.errorf(fn.Name, "%s isn't pub in package %s", fn.Name.Name, pn.Pkg.Path)
+					c.errorf(fn.Name, diag.NotPub, "%s isn't pub in package %s", fn.Name.Name, pn.Pkg.Path)
 				}
 				c.info.Uses[fn.Name] = o
 				c.info.Selections[fn] = &Selection{Kind: SelPkg, Obj: o}
@@ -130,9 +133,9 @@ func (c *Checker) call(e *syntax.CallExpr, want Type) Type {
 				return c.closureCall(e, fn, c.expr(fn, nil))
 			}
 			if d, ok := tn.Decl.(*syntax.InterfaceDecl); ok && d.Native.IsValid() {
-				c.errorf(fn, "%s is a native interface: make one, %s(), and call %s on it", tn.name, tn.name, fn.Name.Name)
+				c.errorf(fn, diag.NotCallable, "%s is a native interface: make one, %s(), and call %s on it", tn.name, tn.name, fn.Name.Name)
 			} else {
-				c.errorf(fn.Name, "%s has no case %s", tn.name, fn.Name.Name)
+				c.errorf(fn.Name, diag.UnknownMember, "%s has no case %s", tn.name, fn.Name.Name)
 			}
 			c.checkArgsLoosely(e)
 			return Invalid
@@ -168,11 +171,11 @@ func (c *Checker) call(e *syntax.CallExpr, want Type) Type {
 			if k := n.Obj.Case(fn.Name.Name); k != nil {
 				return c.caseCall(e, n.Obj, k, n)
 			}
-			c.errorf(fn, "%s has no case %s", typeString(n), fn.Name.Name)
+			c.errorf(fn, diag.UnknownMember, "%s has no case %s", typeString(n), fn.Name.Name)
 		} else if w == nil {
-			c.errorf(fn, "can't tell what .%s is here: write its type, Type.%s(…)", fn.Name.Name, fn.Name.Name)
+			c.errorf(fn, diag.CannotInferType, "can't tell what .%s is here: write its type, Type.%s(…)", fn.Name.Name, fn.Name.Name)
 		} else if !IsInvalid(w) {
-			c.errorf(fn, ".%s(…) makes an enum's case, and %s isn't an enum", fn.Name.Name, aType(w))
+			c.errorf(fn, diag.TypeMismatch, ".%s(…) makes an enum's case, and %s isn't an enum", fn.Name.Name, aType(w))
 		}
 		c.checkArgsLoosely(e)
 		return Invalid
@@ -248,15 +251,20 @@ func (c *Checker) matchArgs(e *syntax.CallExpr, params []*Param, what string) []
 func (c *Checker) matchArgList(e *syntax.CallExpr, list []*syntax.Arg, params []*Param, what string) []syntax.Expr {
 	out := make([]syntax.Expr, len(params))
 	named := false
+	// unmatched: an argument went to no parameter (reported), which a
+	// parameter left without one was most likely meant to get: that's
+	// not reported again.
+	unmatched := false
 	pos := 0
 	for _, a := range list {
 		if a.Label == nil {
 			if named {
-				c.errorf(a, "a positional argument after a named one: put it first")
+				c.errorf(a, diag.ArgumentLabel, "a positional argument after a named one: put it first")
+				unmatched = true
 				continue
 			}
 			if pos >= len(params) {
-				c.errorf(a, "too many arguments: %s takes %s", what, plural(len(params), "parameter", "parameters"))
+				c.errorf(a, diag.ArgumentCount, "too many arguments: %s takes %s", what, plural(len(params), "parameter", "parameters"))
 				c.expr(a.Value, nil)
 				continue
 			}
@@ -267,12 +275,13 @@ func (c *Checker) matchArgList(e *syntax.CallExpr, list []*syntax.Arg, params []
 		named = true
 		i := paramIndex(params, a.Label.Name)
 		if i < 0 {
-			c.errorf(a.Label, "%s has no parameter %s%s", what, a.Label.Name, paramSuggest(params, a.Label.Name))
+			c.errorf(a.Label, diag.ArgumentLabel, "%s has no parameter %s%s", what, a.Label.Name, paramSuggest(params, a.Label.Name))
 			c.expr(a.Value, nil)
+			unmatched = true
 			continue
 		}
 		if out[i] != nil {
-			c.errorf(a.Label, "%s is given twice", a.Label.Name)
+			c.errorf(a.Label, diag.ArgumentLabel, "%s is given twice", a.Label.Name)
 			continue
 		}
 		out[i] = a.Value
@@ -283,15 +292,15 @@ func (c *Checker) matchArgList(e *syntax.CallExpr, list []*syntax.Arg, params []
 				continue // the trailing block
 			}
 		}
-		if out[i] == nil && p.Default == nil && !p.optional() {
+		if out[i] == nil && p.Default == nil && !p.optional() && !unmatched {
 			at := syntax.Node(e)
 			if e.Args != nil {
 				at = e.Args
 			}
 			if n, ok := payloadIndex(p); ok {
-				c.errorf(at, "%s needs its payload %d: %s", what, n, aType(p.Type))
+				c.errorf(at, diag.ArgumentCount, "%s needs its payload %d: %s", what, n, aType(p.Type))
 			} else {
-				c.errorf(at, "%s needs %s: %s", what, p.Name, typeString(p.Type))
+				c.errorf(at, diag.ArgumentCount, "%s needs %s: %s", what, p.Name, typeString(p.Type))
 			}
 		}
 	}
@@ -619,7 +628,7 @@ func (c *Checker) inferArgs(args []syntax.Expr, params []*Param, s Subst, free m
 				pw = s.Apply(pt)
 			}
 			if !c.unify(pw, got, s, free) {
-				c.errorf(a, "%s of %s is %s, which doesn't fit %s", argDesc(params[i]), what, aType(got), typeString(s.Apply(pt)))
+				c.errorf(a, diag.ConstraintNotMet, "%s of %s is %s, which doesn't fit %s", argDesc(params[i]), what, aType(got), typeString(s.Apply(pt)))
 			}
 		}
 	}
@@ -639,7 +648,7 @@ func (c *Checker) inferArgs(args []syntax.Expr, params []*Param, s Subst, free m
 			if open[i] {
 				hint = c.convHint(types[i], pt)
 			}
-			c.errorf(a, "%s of %s is %s, not %s%s", argDesc(params[i]), what, aType(types[i]), aType(pt), hint)
+			c.errorf(a, diag.TypeMismatch, "%s of %s is %s, not %s%s", argDesc(params[i]), what, aType(types[i]), aType(pt), hint)
 		}
 	}
 }
@@ -832,7 +841,7 @@ func (l *looseLambda) optional() bool {
 func (l *looseLambda) settle(c *Checker, res Type) {
 	for _, v := range l.vals {
 		if !c.convert(v.e, v.typ, res) {
-			c.errorf(v.e, "%s is %s, not %s%s", v.what, aType(v.typ), aType(res), c.convHint(v.typ, res))
+			c.errorf(v.e, diag.TypeMismatch, "%s is %s, not %s%s", v.what, aType(v.typ), aType(res), c.convHint(v.typ, res))
 		}
 	}
 	l.ft.Result, l.ctx.Result = res, res
@@ -873,7 +882,7 @@ func (c *Checker) funcCallAs(e *syntax.CallExpr, f *Function, recv syntax.Expr, 
 	if len(e.TypeArgs) > 0 {
 		// f<T>(…): the type arguments written out.
 		if len(e.TypeArgs) != len(f.TypeParams) {
-			c.errorf(e, "%s takes %s", what, plural(len(f.TypeParams), "type argument", "type arguments"))
+			c.errorf(e, diag.TypeArguments, "%s takes %s", what, plural(len(f.TypeParams), "type argument", "type arguments"))
 		}
 		for i, ta := range e.TypeArgs {
 			t := c.typeExpr(ta)
@@ -891,7 +900,7 @@ func (c *Checker) funcCallAs(e *syntax.CallExpr, f *Function, recv syntax.Expr, 
 	for _, tp := range f.TypeParams {
 		t := s[tp]
 		if t == nil {
-			c.errorf(e, "can't tell %s's type %s from its arguments: pass them, or say what's expected (let x: T = %s(…))", what, tp.Name, what)
+			c.errorf(e, diag.CannotInferType, "can't tell %s's type %s from its arguments: pass them, or say what's expected (let x: T = %s(…))", what, tp.Name, what)
 			t = Invalid
 			s[tp] = Invalid
 		} else {
@@ -931,7 +940,7 @@ func (c *Checker) checkConstraints(at syntax.Node, what string, p *TypeParam, t 
 		if why != "" {
 			why = ": " + why
 		}
-		c.errorf(at, "%s's %s must be %s, and %s isn't%s", what, p.Name, failed, typeString(t), why)
+		c.errorf(at, diag.ConstraintNotMet, "%s's %s must be %s, and %s isn't%s", what, p.Name, failed, typeString(t), why)
 	}
 }
 
@@ -1121,11 +1130,11 @@ func (c *Checker) trailingClosure(e *syntax.CallExpr, params []*Param, args []sy
 	}
 	n := len(params)
 	if n == 0 || args[n-1] != nil {
-		c.errorf(e.Block, "a block after this call has nowhere to go: it takes no function last")
+		c.errorf(e.Block, diag.UnexpectedBlock, "a block after this call has nowhere to go: it takes no function last")
 		return
 	}
 	if _, ok := params[n-1].Type.(*FuncType); !ok {
-		c.errorf(e.Block, "a block after this call has nowhere to go: its last parameter isn't a function")
+		c.errorf(e.Block, diag.UnexpectedBlock, "a block after this call has nowhere to go: its last parameter isn't a function")
 		return
 	}
 	lam := &syntax.LambdaExpr{Span: e.Block.Span, Body: e.Block}
@@ -1172,15 +1181,15 @@ func (c *Checker) callEffectsWhy(at syntax.Node, what string, async, throws bool
 	canWait := c.ctx != nil && c.ctx.Async
 	switch {
 	case missAwait && missTry && canWait:
-		c.errorf(at, "%s is async and can throw: call it with try await (try await %s(…)), or try? await for none on an error%s%s%s", what, what, awaitWhy, throwWhy, also)
+		c.errorf(at, diag.MissingAwait, "%s is async and can throw: call it with try await (try await %s(…)), or try? await for none on an error%s%s%s", what, what, awaitWhy, throwWhy, also)
 	case missAwait && missTry:
-		c.errorf(at, "%s is async and can throw, and this can't wait: %s%s%s%s", what, c.asyncHint(), awaitWhy, throwWhy, also)
+		c.errorf(at, c.awaitCode(), "%s is async and can throw, and this can't wait: %s%s%s%s", what, c.asyncHint(), awaitWhy, throwWhy, also)
 	case missAwait && canWait:
-		c.errorf(at, "%s is async: await it (await %s(…)), or start it with spawn%s", what, what, awaitWhy)
+		c.errorf(at, diag.MissingAwait, "%s is async: await it (await %s(…)), or start it with spawn%s", what, what, awaitWhy)
 	case missAwait:
-		c.errorf(at, "%s is async, and this can't wait: %s%s", what, c.asyncHint(), awaitWhy)
+		c.errorf(at, c.awaitCode(), "%s is async, and this can't wait: %s%s", what, c.asyncHint(), awaitWhy)
 	case missTry:
-		c.errorf(at, "%s can throw: call it with try (try %s(…)), or try? for none on an error%s%s", what, what, throwWhy, also)
+		c.errorf(at, diag.MissingTry, "%s can throw: call it with try (try %s(…)), or try? for none on an error%s%s", what, what, throwWhy, also)
 	}
 }
 
@@ -1243,7 +1252,7 @@ func (c *Checker) closureCall(e *syntax.CallExpr, fun syntax.Expr, t Type) Type 
 	}
 	ft, ok := t.(*FuncType)
 	if !ok {
-		c.errorf(fun, "%s is %s, not a function", exprName(fun), aType(t))
+		c.errorf(fun, diag.NotCallable, "%s is %s, not a function", exprName(fun), aType(t))
 		c.checkArgsLoosely(e)
 		return Invalid
 	}
@@ -1251,7 +1260,7 @@ func (c *Checker) closureCall(e *syntax.CallExpr, fun syntax.Expr, t Type) Type 
 	if e.Args != nil {
 		for i, a := range e.Args.List {
 			if a.Label != nil {
-				c.errorf(a.Label, "a function value's arguments have no names")
+				c.errorf(a.Label, diag.ArgumentLabel, "a function value's arguments have no names")
 			}
 			if i < len(ft.Params) {
 				what := "argument " + itoa(i+1)
@@ -1266,7 +1275,7 @@ func (c *Checker) closureCall(e *syntax.CallExpr, fun syntax.Expr, t Type) Type 
 		}
 	}
 	if len(args) != len(ft.Params) {
-		c.errorf(e, "%s takes %s, not %d", exprName(fun), plural(len(ft.Params), "argument", "arguments"), len(args))
+		c.errorf(e, diag.ArgumentCount, "%s takes %s, not %d", exprName(fun), plural(len(ft.Params), "argument", "arguments"), len(args))
 	}
 	c.info.Calls[e] = &Call{Kind: CallClosure, Recv: fun, Args: args, Result: ft.Result, RecvType: ft}
 	c.callEffectsWhy(e, exprName(fun), ft.Async, ft.Throws, c.inferredFx[ft])
@@ -1293,12 +1302,12 @@ func (c *Checker) methodCall(e *syntax.CallExpr, fn *syntax.MemberExpr, want Typ
 	if fn.Optional || IsOptional(xt) && c.chained[unparen(fn.X)] {
 		c.chained[e] = true
 		if !IsOptional(xt) {
-			c.errorf(fn, "%s isn't optional: use . (?. is for optionals)", typeString(xt))
+			c.errorf(fn, diag.NotOptional, "%s isn't optional: use . (?. is for optionals)", typeString(xt))
 		}
 		xt = Unopt(xt)
 		optional = true
 	} else if IsOptional(xt) && lookupMethod(xt, name) == nil {
-		c.errorf(fn, "%s may be none: use ?. (x?.%s()), or unwrap it first", typeString(xt), name)
+		c.errorf(fn, diag.MaybeNone, "%s may be none: use ?. (x?.%s()), or unwrap it first", typeString(xt), name)
 		c.checkArgsLoosely(e)
 		return Invalid
 	}
@@ -1339,7 +1348,7 @@ func (c *Checker) ifaceMethodCall(e *syntax.CallExpr, fn *syntax.MemberExpr, xt 
 // parameter, resolved per type the body is compiled for).
 func (c *Checker) selfIfaceCall(e *syntax.CallExpr, fn *syntax.Ident, want Type) Type {
 	if c.ctx == nil || c.ctx.Self == nil {
-		c.errorf(fn, "%s is an interface's method: call it on a value", fn.Name)
+		c.errorf(fn, diag.NotAValue, "%s is an interface's method: call it on a value", fn.Name)
 		c.checkArgsLoosely(e)
 		return Invalid
 	}
@@ -1349,7 +1358,7 @@ func (c *Checker) selfIfaceCall(e *syntax.CallExpr, fn *syntax.Ident, want Type)
 		m, _ = paramMethod(self, fn.Name)
 	}
 	if m == nil {
-		c.errorf(fn, "%s is an interface's method: call it on a value", fn.Name)
+		c.errorf(fn, diag.NotAValue, "%s is an interface's method: call it on a value", fn.Name)
 		c.checkArgsLoosely(e)
 		return Invalid
 	}
@@ -1395,7 +1404,7 @@ func (c *Checker) methodCall1(e *syntax.CallExpr, fn *syntax.MemberExpr, xt Type
 		case StoreType:
 			if m := n.Obj.Comp.Members[name]; m != nil {
 				if n.Obj.Pkg != c.pkg && !m.Pub {
-					c.errorf(fn.Name, "%s isn't pub in store %s", name, n.Obj.name)
+					c.errorf(fn.Name, diag.NotPub, "%s isn't pub in store %s", name, n.Obj.name)
 				}
 				if m.Kind == FnMember {
 					c.spawnState(fn, n.Obj.name+"."+name)
@@ -1425,7 +1434,7 @@ func (c *Checker) methodCall1(e *syntax.CallExpr, fn *syntax.MemberExpr, xt Type
 	if hit, why := c.extLookup(xt, name, "method", fn.Name); hit.f != nil {
 		return c.extMethodCall(e, fn, xt, hit, want)
 	} else if why != "" {
-		c.errorf(fn.Name, "%s", why)
+		c.errorf(fn.Name, diag.ConstraintNotMet, "%s", why)
 		c.checkArgsLoosely(e)
 		return Invalid
 	}
@@ -1442,11 +1451,11 @@ func (c *Checker) methodCall1(e *syntax.CallExpr, fn *syntax.MemberExpr, xt Type
 				c.record(fn, ft)
 				return c.closureCall(e, fn, ft)
 			}
-			c.errorf(fn.Name, "%s is a field of %s, not a method: %s", name, p.Name, name)
+			c.errorf(fn.Name, diag.NotCallable, "%s is a field of %s, not a method: %s", name, p.Name, name)
 			c.checkArgsLoosely(e)
 			return Invalid
 		}
-		c.errorf(fn.Name, "%s has no method %s%s", p.Name, name, paramHint(p))
+		c.errorf(fn.Name, diag.UnknownMember, "%s has no method %s%s", p.Name, name, paramHint(p))
 		c.checkArgsLoosely(e)
 		return Invalid
 	}
@@ -1459,14 +1468,14 @@ func (c *Checker) methodCall1(e *syntax.CallExpr, fn *syntax.MemberExpr, xt Type
 	}
 	if m := lookupMethod(xt, name); m != nil {
 		if m.Field {
-			c.errorf(e, "%s is a property of %s, not a method: %s", name, typeString(xt), name)
+			c.errorf(e, diag.NotCallable, "%s is a property of %s, not a method: %s", name, typeString(xt), name)
 		} else {
-			c.errorf(e, "%s takes %s", name, plural(len(m.Params), "argument", "arguments"))
+			c.errorf(e, diag.ArgumentCount, "%s takes %s", name, plural(len(m.Params), "argument", "arguments"))
 		}
 		c.checkArgsLoosely(e)
 		return Invalid
 	}
-	c.errorf(fn.Name, "%s has no method %s%s", typeString(xt), name, c.memberSuggest(xt, name))
+	c.errorf(fn.Name, diag.UnknownMember, "%s has no method %s%s", typeString(xt), name, c.memberSuggest(xt, name))
 	c.checkArgsLoosely(e)
 	return Invalid
 }
@@ -1503,14 +1512,14 @@ func (c *Checker) builtinMethodCall(e *syntax.CallExpr, fn *syntax.MemberExpr, x
 		if !strings.HasPrefix(why, "(") {
 			why = " " + why // sorted() orders …, contains compares …
 		}
-		c.errorf(fn.Name, "%s%s", m.Name, why)
+		c.errorf(fn.Name, diag.ConstraintNotMet, "%s%s", m.Name, why)
 	}
 	bound := map[string]Type{}
 	for tp, t := range s {
 		bound[tp.Name] = t
 	}
 	if result != nil && mentionsFree(result, free, s) {
-		c.errorf(e, "can't tell what %s returns", m.Name)
+		c.errorf(e, diag.CannotInferType, "can't tell what %s returns", m.Name)
 	}
 	res := s.Apply(result)
 	c.info.Calls[e] = &Call{Kind: CallBuiltinMethod, Method: m, Recv: fn.X, RecvType: xt, Args: args, Params: params, Result: res, Bound: bound}
@@ -1577,7 +1586,7 @@ func (c *Checker) mutReceiver(x syntax.Expr, name string) {
 	if c.ctx != nil {
 		switch c.ctx.Kind {
 		case CtxBinding, CtxGlobal, CtxBuilder, CtxComponent, CtxStore, CtxApp:
-			c.errorf(x, "can't %s %s here: what the UI follows is computed, not changed; change state in a handler (on press { … }), a fn, a task or an effect", what, exprName(x))
+			c.errorf(x, diag.WriteInBinding, "can't %s %s here: what the UI follows is computed, not changed; change state in a handler (on press { … }), a fn, a task or an effect", what, exprName(x))
 			return
 		}
 	}
@@ -1618,20 +1627,20 @@ func (c *Checker) typeCall(e *syntax.CallExpr, tn *TypeName, want Type) Type {
 		}
 		if tn.Native {
 			if w := c.workerOf(); w != nil {
-				c.errorf(e.Fun, "worker %s can't make %s: a native interface's object is the platform's, on the main thread", w.name, tn.name)
+				c.errorf(e.Fun, diag.WorkerMisuse, "worker %s can't make %s: a native interface's object is the platform's, on the main thread", w.name, tn.name)
 			}
 			if argCount(e) > 0 || e.Block != nil {
-				c.errorf(e, "%s() takes nothing: its platforms' code makes it", tn.name)
+				c.errorf(e, diag.ArgumentCount, "%s() takes nothing: its platforms' code makes it", tn.name)
 			}
 			c.info.Calls[e] = &Call{Kind: CallNativeNew, Type: tn.Type.(*Named), Result: tn.Type}
 			c.callEffects(e, tn.name, false, true)
 			return tn.Type
 		}
-		c.errorf(e.Fun, "%s is an interface: make a struct or an enum that has it", tn.name)
+		c.errorf(e.Fun, diag.NotCallable, "%s is an interface: make a struct or an enum that has it", tn.name)
 	case EnumType:
-		c.errorf(e.Fun, "%s is an enum: make one of its cases, %s.name", tn.name, tn.name)
+		c.errorf(e.Fun, diag.NotCallable, "%s is an enum: make one of its cases, %s.name", tn.name, tn.name)
 	case ExternType:
-		c.errorf(e.Fun, "%s is an extern type: C makes one, and an extern fn returns it", tn.name)
+		c.errorf(e.Fun, diag.NotCallable, "%s is an extern type: C makes one, and an extern fn returns it", tn.name)
 	case BasicType:
 		switch tn.Type {
 		case Float, Int:
@@ -1648,9 +1657,9 @@ func (c *Checker) typeCall(e *syntax.CallExpr, tn *TypeName, want Type) Type {
 		case Path:
 			return c.builtinCall(e, &Builtin{object: object{name: tn.name}, ID: BPathNew}, want)
 		}
-		c.errorf(e.Fun, "%s is a type, not a function", tn.name)
+		c.errorf(e.Fun, diag.NotCallable, "%s is a type, not a function", tn.name)
 	default:
-		c.errorf(e.Fun, "%s is a type, not a function", tn.name)
+		c.errorf(e.Fun, diag.NotCallable, "%s is a type, not a function", tn.name)
 	}
 	c.checkArgsLoosely(e)
 	return Invalid
@@ -1669,7 +1678,7 @@ func fieldParams(tn *TypeName) []*Param {
 
 func (c *Checker) structCall(e *syntax.CallExpr, tn *TypeName, want Type) Type {
 	if e.Block != nil {
-		c.errorf(e.Block, "%s is a struct: its fields go in parentheses, %s(name: value)", tn.name, tn.name)
+		c.errorf(e.Block, diag.UnexpectedBlock, "%s is a struct: its fields go in parentheses, %s(name: value)", tn.name, tn.name)
 	}
 	params := fieldParams(tn)
 	args := c.matchArgs(e, params, tn.name)
@@ -1683,7 +1692,7 @@ func (c *Checker) structCall(e *syntax.CallExpr, tn *TypeName, want Type) Type {
 	for _, tp := range tn.TypeParams {
 		t := s[tp]
 		if t == nil {
-			c.errorf(e, "can't tell %s's %s: pass its fields, or say what's expected (let x: %s<…> = …)", tn.name, tp.Name, tn.name)
+			c.errorf(e, diag.CannotInferType, "can't tell %s's %s: pass its fields, or say what's expected (let x: %s<…> = …)", tn.name, tp.Name, tn.name)
 			t = Invalid
 		} else {
 			c.checkConstraints(e, tn.name, tp, t)
@@ -1700,7 +1709,7 @@ func (c *Checker) structCall(e *syntax.CallExpr, tn *TypeName, want Type) Type {
 
 func (c *Checker) caseCall(e *syntax.CallExpr, tn *TypeName, k *Case, want Type) Type {
 	if len(k.Params) == 0 {
-		c.errorf(e, "case %s of %s has no payload: write it without parentheses", k.Name, tn.name)
+		c.errorf(e, diag.ArgumentCount, "case %s of %s has no payload: write it without parentheses", k.Name, tn.name)
 		return tn.Type
 	}
 	params := make([]*Param, len(k.Params))
@@ -1727,7 +1736,7 @@ func (c *Checker) caseCall(e *syntax.CallExpr, tn *TypeName, k *Case, want Type)
 	for _, tp := range tn.TypeParams {
 		t := s[tp]
 		if t == nil {
-			c.errorf(e, "can't tell %s's %s: say what's expected (let x: %s<…> = …)", tn.name, tp.Name, tn.name)
+			c.errorf(e, diag.CannotInferType, "can't tell %s's %s: say what's expected (let x: %s<…> = …)", tn.name, tp.Name, tn.name)
 			t = Invalid
 		} else {
 			c.checkConstraints(e, tn.name, tp, t)
@@ -1744,7 +1753,7 @@ func (c *Checker) caseCall(e *syntax.CallExpr, tn *TypeName, k *Case, want Type)
 
 func (c *Checker) storeCall(e *syntax.CallExpr, tn *TypeName, want Type) Type {
 	if e.Block != nil {
-		c.errorf(e.Block, "%s is a store: its parameters go in parentheses", tn.name)
+		c.errorf(e.Block, diag.UnexpectedBlock, "%s is a store: its parameters go in parentheses", tn.name)
 	}
 	var params []*Param
 	for _, m := range tn.Comp.Params {
@@ -1775,7 +1784,7 @@ func (c *Checker) storeCall(e *syntax.CallExpr, tn *TypeName, want Type) Type {
 	for _, tp := range tn.TypeParams {
 		t := s[tp]
 		if t == nil {
-			c.errorf(e, "can't tell %s's %s: pass its parameters, or say what's expected (let x: %s<…> = …)", tn.name, tp.Name, tn.name)
+			c.errorf(e, diag.CannotInferType, "can't tell %s's %s: pass its parameters, or say what's expected (let x: %s<…> = …)", tn.name, tp.Name, tn.name)
 			t = Invalid
 		} else {
 			c.checkConstraints(e, tn.name, tp, t)
@@ -1814,7 +1823,7 @@ func (c *Checker) lambda(e *syntax.LambdaExpr, want Type) Type {
 	ctx := c.enter(CtxLambda, e, "closure")
 	ft := &FuncType{Result: Void}
 	if wf != nil && len(wf.Params) != len(e.Params) {
-		c.errorf(e, "this closure takes %s, where one taking %s is expected", plural(len(e.Params), "parameter", "parameters"), plural(len(wf.Params), "parameter", "parameters"))
+		c.errorf(e, diag.ArgumentCount, "this closure takes %s, where one taking %s is expected", plural(len(e.Params), "parameter", "parameters"), plural(len(wf.Params), "parameter", "parameters"))
 		wf = nil
 	}
 	for i, p := range e.Params {
@@ -1825,7 +1834,7 @@ func (c *Checker) lambda(e *syntax.LambdaExpr, want Type) Type {
 		case wf != nil && !mentionsFree(wf.Params[i], c.free, nil):
 			t = wf.Params[i]
 		default:
-			c.errorf(p.Name, "can't tell %s's type: write it, (%s: T) => …", p.Name.Name, p.Name.Name)
+			c.errorf(p.Name, diag.CannotInferType, "can't tell %s's type: write it, (%s: T) => …", p.Name.Name, p.Name.Name)
 			t = Invalid
 		}
 		ft.Params = append(ft.Params, t)
@@ -1834,7 +1843,7 @@ func (c *Checker) lambda(e *syntax.LambdaExpr, want Type) Type {
 	marked := e.Async.IsValid()
 	if wf != nil {
 		if marked && !wf.Async {
-			c.errorPos(e.Async, "this closure is async, where %s is expected, which can't wait: remove async (and the awaits in it)", aType(wf))
+			c.errorPos(e.Async, diag.TypeMismatch, "this closure is async, where %s is expected, which can't wait: remove async (and the awaits in it)", aType(wf))
 		}
 		// Marked async where a sync function is expected: an error, and
 		// its body may still await (no second error for each await).
@@ -1866,7 +1875,7 @@ func (c *Checker) lambda(e *syntax.LambdaExpr, want Type) Type {
 				if j := c.join(ft.Result, r); j != nil {
 					ft.Result = j
 				} else {
-					c.errorf(body, "this closure's value is %s, and it returns %s: make them the same type", aType(ft.Result), aType(r))
+					c.errorf(body, diag.TypeMismatch, "this closure's value is %s, and it returns %s: make them the same type", aType(ft.Result), aType(r))
 					break
 				}
 			}
@@ -1891,12 +1900,12 @@ func (c *Checker) lambda(e *syntax.LambdaExpr, want Type) Type {
 				}
 			}
 			if len(ctx.retTypes) > 0 && !c.terminates(body.Items) {
-				c.errorPos(body.Rbrace, "this closure returns a value, but can reach its end without one")
+				c.errorPos(body.Rbrace, diag.MissingReturn, "this closure returns a value, but can reach its end without one")
 			}
 		} else {
 			ft.Result = ctx.Result
 			if ctx.Result != Void && !c.terminates(body.Items) {
-				c.errorPos(body.Rbrace, "this closure must return %s: it can reach its end without a return", aType(ctx.Result))
+				c.errorPos(body.Rbrace, diag.MissingReturn, "this closure must return %s: it can reach its end without a return", aType(ctx.Result))
 			}
 		}
 	}
@@ -1924,7 +1933,7 @@ func (c *Checker) spawn(e *syntax.SpawnExpr) Type {
 	savedTry, savedAwait, savedHandled, savedLoops, savedView := c.inTry, c.inAwait, c.handled, c.loops, c.view
 	c.inTry, c.inAwait, c.handled, c.loops, c.view = 0, 0, 0, 0, false
 	if w := c.workerOf(); w != nil {
-		c.errorf(e, "worker %s's fns already run on its own thread: do the work here, without spawn", w.name)
+		c.errorf(e, diag.WorkerMisuse, "worker %s's fns already run on its own thread: do the work here, without spawn", w.name)
 	}
 	ctx := c.enter(CtxSpawn, e, "spawn")
 	ctx.Throws = true
@@ -1945,7 +1954,7 @@ func (c *Checker) spawn(e *syntax.SpawnExpr) Type {
 		}
 	}
 	if !sendable(res) {
-		c.errorf(e, "spawn's result is %s, which can't cross threads: return values only", aType(res))
+		c.errorf(e, diag.NotSendable, "spawn's result is %s, which can't cross threads: return values only", aType(res))
 	}
 	ctx.Result = res
 	c.leave(saved)

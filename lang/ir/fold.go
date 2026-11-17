@@ -3,6 +3,7 @@ package ir
 import (
 	"github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/lang/check"
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 	"github.com/egoist/asuka/lang/target"
 )
@@ -222,6 +223,6 @@ func (b *fb) platformValue(e *syntax.AtExpr, dst int) int {
 			}
 		}
 	}
-	b.l.errorf(e, "internal: no Platform case %s", b.l.platform())
+	b.l.errorf(e, diag.InternalError, "internal: no Platform case %s", b.l.platform())
 	return b.valueReg(-1, bytecode.KInt)
 }

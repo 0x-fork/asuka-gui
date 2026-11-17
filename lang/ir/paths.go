@@ -3,6 +3,7 @@ package ir
 import (
 	bc "github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/lang/check"
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -94,7 +95,7 @@ func (b *fb) pathBase(p *check.StatePath) (int, bool) {
 	case p.Var != nil:
 		r, ok := b.vars[p.Var]
 		if !ok {
-			b.l.errorf(p.Expr, "internal: %s has no register", p.Var.Name())
+			b.l.errorf(p.Expr, diag.InternalError, "internal: %s has no register", p.Var.Name())
 			return b.valueReg(-1, bc.KRef), true
 		}
 		return r, true
@@ -104,7 +105,7 @@ func (b *fb) pathBase(p *check.StatePath) (int, bool) {
 		}
 		return b.memberRef(p.Member, p.Expr), true
 	}
-	b.l.errorf(p.Expr, "internal: a path's accessor")
+	b.l.errorf(p.Expr, diag.InternalError, "internal: a path's accessor")
 	return b.valueReg(-1, bc.KRef), true
 }
 
@@ -243,7 +244,7 @@ func (b *fb) pathCell(p *check.StatePath) int {
 		}
 		return b.memberRef(p.Member, p.Expr)
 	}
-	b.l.errorf(p.Expr, "internal: a path's state")
+	b.l.errorf(p.Expr, diag.InternalError, "internal: a path's state")
 	return b.valueReg(-1, bc.KRef)
 }
 

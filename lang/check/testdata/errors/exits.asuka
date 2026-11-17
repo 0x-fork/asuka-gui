@@ -101,6 +101,16 @@ fn nothingThrows() -> int = 1 + 2 catch { 0 } // ERROR "nothing before this catc
 
 fn unreachable() -> int = try fetch(1) catch { 0 } catch MailError.offline { 1 } // ERROR "this catch is never reached"
 
+fn unreachableDo() -> int {
+  do {
+    return try fetch(1)
+  } catch {
+    return 0
+  } catch MailError.offline { // ERROR "this catch is never reached"
+    return 1
+  }
+}
+
 fn leaves() -> int {
   let n = try fetch(1) catch { return -1 }
   return n

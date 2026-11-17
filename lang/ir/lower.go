@@ -8,6 +8,7 @@ import (
 
 	bc "github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/lang/check"
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -105,12 +106,12 @@ func Lower(prog *check.Program, opts *Options) (*Program, []check.Diagnostic) {
 }
 
 // errorf reports what the lowering can't do (yet) with the program.
-func (l *Lowerer) errorf(n syntax.Node, format string, args ...any) {
+func (l *Lowerer) errorf(n syntax.Node, code *diag.Code, format string, args ...any) {
 	var pos syntax.Position
 	if n != nil {
 		pos = l.fset.Position(n.Range().Start)
 	}
-	l.errs = append(l.errs, check.Diagnostic{Pos: pos, End: pos, Msg: fmt.Sprintf(format, args...)})
+	l.errs = append(l.errs, check.NewDiagnostic(pos, pos, code, format, args...))
 }
 
 func (l *Lowerer) lower() {
@@ -898,7 +899,7 @@ func (l *Lowerer) implement(t, iface check.Type, at syntax.Node) {
 	}
 	if n.Obj.Kind == check.EnumType && !n.Obj.RefEnum() {
 		// A type parameter's, of an enum without payloads: an int.
-		l.errorf(at, "%s is stored as an int: declare the interface (enum %s: %s) to use it as one", n, n.Obj.Name(), in.Obj.Name())
+		l.errorf(at, diag.NotSupported, "%s is stored as an int: declare the interface (enum %s: %s) to use it as one", n, n.Obj.Name(), in.Obj.Name())
 		return
 	}
 	key := l.typeKey(n) + "|" + l.typeKey(in)
@@ -986,10 +987,10 @@ func (l *Lowerer) flow(from, to *check.Named, at syntax.Node) {
 // provided ones they are ("" for n's own).
 func (l *Lowerer) methodConflict(n *check.Named, name, before, now string, in *check.Named, at syntax.Node) {
 	if before != "" && now != "" {
-		l.errorf(at, "%s gets %s() from both %s and %s: declare %s's own %s()", n, name, before, now, n.Obj.Name(), name)
+		l.errorf(at, diag.ExtensionConflict, "%s gets %s() from both %s and %s: declare %s's own %s()", n, name, before, now, n.Obj.Name(), name)
 		return
 	}
-	l.errorf(at, "%s's own %s isn't of %s's %s()'s signature, and both are called through its interfaces: rename one", n, name, in.Obj.Name(), name)
+	l.errorf(at, diag.ExtensionConflict, "%s's own %s isn't of %s's %s()'s signature, and both are called through its interfaces: rename one", n, name, in.Obj.Name(), name)
 }
 
 // hoist returns a constant literal (an array, a map, a tuple, a struct or

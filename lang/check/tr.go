@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -96,10 +97,10 @@ func (c *Checker) trCall(e *syntax.CallExpr, fn *syntax.MemberExpr, tr *TrName) 
 		c.ctx.readsState = true
 	}
 	if c.pkg != nil && (StdPath(c.pkg.Path) || strings.HasPrefix(c.pkg.Path, "@")) {
-		c.errorf(fn.X, "tr is the app's catalogs: a package can't say their messages (take the text as a parameter)")
+		c.errorf(fn.X, diag.TrInPackage, "tr is the app's catalogs: a package can't say their messages (take the text as a parameter)")
 	}
 	if e.Block != nil {
-		c.errorf(e.Block, "tr.%s takes no block", fn.Name.Name)
+		c.errorf(e.Block, diag.UnexpectedBlock, "tr.%s takes no block", fn.Name.Name)
 	}
 	name := fn.Name.Name
 	if tr.Catalog.Broken {
@@ -108,7 +109,7 @@ func (c *Checker) trCall(e *syntax.CallExpr, fn *syntax.MemberExpr, tr *TrName) 
 	}
 	k := tr.Catalog.Keys[name]
 	if k == nil {
-		c.errorf(fn.Name, "%s has no message %s%s", tr.Catalog.sourceFile(), name, tr.Catalog.suggest(name))
+		c.errorf(fn.Name, diag.UnknownMessage, "%s has no message %s%s", tr.Catalog.sourceFile(), name, tr.Catalog.suggest(name))
 		c.checkArgsLoosely(e)
 		return String
 	}
@@ -125,7 +126,7 @@ func (c *Checker) trCall(e *syntax.CallExpr, fn *syntax.MemberExpr, tr *TrName) 
 				call.Args[0] = a.Value
 				continue
 			}
-			c.errorf(a.Value, "tr.%s's arguments are named after the message's: %s", name, k.signature())
+			c.errorf(a.Value, diag.MessageArguments, "tr.%s's arguments are named after the message's: %s", name, k.signature())
 			c.expr(a.Value, nil)
 			continue
 		}
@@ -138,13 +139,13 @@ func (c *Checker) trCall(e *syntax.CallExpr, fn *syntax.MemberExpr, tr *TrName) 
 		switch {
 		case j < 0:
 			if len(k.Params) == 0 {
-				c.errorf(a.Label, "tr.%s takes no arguments: its message is %q", name, k.Message)
+				c.errorf(a.Label, diag.MessageArguments, "tr.%s takes no arguments: its message is %q", name, k.Message)
 			} else {
-				c.errorf(a.Label, "tr.%s has no argument %s: it takes %s", name, a.Label.Name, k.signature())
+				c.errorf(a.Label, diag.MessageArguments, "tr.%s has no argument %s: it takes %s", name, a.Label.Name, k.signature())
 			}
 			c.expr(a.Value, nil)
 		case call.Args[j] != nil:
-			c.errorf(a.Label, "tr.%s's %s is given twice", name, a.Label.Name)
+			c.errorf(a.Label, diag.MessageArguments, "tr.%s's %s is given twice", name, a.Label.Name)
 			c.expr(a.Value, nil)
 		default:
 			call.Args[j] = a.Value
@@ -153,7 +154,7 @@ func (c *Checker) trCall(e *syntax.CallExpr, fn *syntax.MemberExpr, tr *TrName) 
 	for i, p := range k.Params {
 		x := call.Args[i]
 		if x == nil {
-			c.errorf(e, "tr.%s needs its argument %s (%s): its message is %q", name, p.Name, c.trTypeName(p), k.Message)
+			c.errorf(e, diag.MessageArguments, "tr.%s needs its argument %s (%s): its message is %q", name, p.Name, c.trTypeName(p), k.Message)
 			continue
 		}
 		c.trArg(x, p, name)
@@ -171,14 +172,14 @@ func (c *Checker) trArg(x syntax.Expr, p *CatalogParam, key string) {
 		// A number: an int or a float, as it is.
 		t := c.expr(x, Float)
 		if !IsInvalid(t) && t != Int && t != Float {
-			c.errorf(x, "%s is a number (%s), not %s", what, p.ARB, aType(t))
+			c.errorf(x, diag.TypeMismatch, "%s is a number (%s), not %s", what, p.ARB, aType(t))
 		}
 	case "DateTime":
 		t := c.expr(x, Int)
 		if IsInvalid(t) || t == Int || isTime(t) {
 			return
 		}
-		c.errorf(x, "%s is a date: a Time (time.now()), or nanoseconds since 1970, not %s", what, aType(t))
+		c.errorf(x, diag.TypeMismatch, "%s is a date: a Time (time.now()), or nanoseconds since 1970, not %s", what, aType(t))
 	default: // String, Object
 		c.assign(x, String, what)
 	}

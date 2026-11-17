@@ -3,6 +3,7 @@ package check
 import (
 	"strings"
 
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -46,7 +47,7 @@ func (c *Checker) structPattern(p *syntax.CasePat, tn *TypeName, t Type) {
 		if testable(t) {
 			n = c.typeTest(p, t, c.testedType(p, tn))
 		} else if !IsInvalid(t) {
-			c.errorf(p, "%s can't be a %s", aType(t), tn.name)
+			c.errorf(p, diag.PatternType, "%s can't be a %s", aType(t), tn.name)
 			n = nil
 		}
 		if n == nil {
@@ -73,21 +74,21 @@ func (c *Checker) structPattern(p *syntax.CasePat, tn *TypeName, t Type) {
 		} else {
 			switch a.(type) {
 			case *syntax.WildcardPat:
-				c.errorf(a, "a struct pattern names the fields it matches: leave out a field to match any")
+				c.errorf(a, diag.InvalidPattern, "a struct pattern names the fields it matches: leave out a field to match any")
 			default:
-				c.errorf(a, "a struct pattern names the fields it matches: write field: pattern (%s(x: …))", tn.name)
+				c.errorf(a, diag.InvalidPattern, "a struct pattern names the fields it matches: write field: pattern (%s(x: …))", tn.name)
 			}
 			c.pattern(a, Invalid, kind)
 			continue
 		}
 		f := tn.Field(name)
 		if f == nil {
-			c.errorf(at, "%s has no field %s%s", tn.name, name, c.fieldSuggest(tn, name))
+			c.errorf(at, diag.UnknownMember, "%s has no field %s%s", tn.name, name, c.fieldSuggest(tn, name))
 			c.pattern(a, Invalid, kind)
 			continue
 		}
 		if seen[name] {
-			c.errorf(at, "%s is matched twice in this pattern", name)
+			c.errorf(at, diag.InvalidPattern, "%s is matched twice in this pattern", name)
 		}
 		seen[name] = true
 		fields[i] = f
@@ -118,7 +119,7 @@ func testable(t Type) bool {
 // types, which a typed name says: b: Box<int>).
 func (c *Checker) testedType(p syntax.Node, tn *TypeName) *Named {
 	if len(tn.TypeParams) > 0 {
-		c.errorf(p, "%s is generic: test for one of its types with a typed name (x: %s<…>)", tn.name, tn.name)
+		c.errorf(p, diag.InvalidPattern, "%s is generic: test for one of its types with a typed name (x: %s<…>)", tn.name, tn.name)
 		return nil
 	}
 	n, _ := tn.Type.(*Named)
@@ -139,20 +140,20 @@ func (c *Checker) typeTest(p syntax.Node, t Type, tt *Named) *Named {
 	case *Named:
 		if x.Obj.isErrorIface {
 			if !tt.Obj.IsError {
-				c.errorf(p, "%s can't be %s: it isn't an error (declare it one: %s %s: Error)", aType(t), aType(tt), kindWord(tt.Obj), tt.Obj.name)
+				c.errorf(p, diag.NotAnError, "%s can't be %s: it isn't an error (declare it one: %s %s: Error)", aType(t), aType(tt), kindWord(tt.Obj), tt.Obj.name)
 				return nil
 			}
 		} else if why := c.implements(tt, x); why != "" {
-			c.errorf(p, "%s can't be %s: %s", aType(et), aType(tt), why)
+			c.errorf(p, diag.PatternType, "%s can't be %s: %s", aType(et), aType(tt), why)
 			return nil
 		}
 	case *TypeParam:
 		if failed, why := c.satisfies(tt, x); failed != "" {
 			if isSelf(x) {
 				// A provided method's self: the interface.
-				c.errorf(p, "%s can't be %s: %s", aType(et), aType(tt), why)
+				c.errorf(p, diag.PatternType, "%s can't be %s: %s", aType(et), aType(tt), why)
 			} else {
-				c.errorf(p, "%s can't be %s: %s is %s, and %s isn't (%s)", aType(et), aType(tt), x.Name, failed, typeString(tt), why)
+				c.errorf(p, diag.PatternType, "%s can't be %s: %s is %s, and %s isn't (%s)", aType(et), aType(tt), x.Name, failed, typeString(tt), why)
 			}
 			return nil
 		}
@@ -212,7 +213,7 @@ func (c *Checker) typedPat(p *syntax.TypedPat, t Type, kind VarKind) {
 	case testable(t):
 		n, ok := tt.(*Named)
 		if !ok || n.Obj.Kind != StructType && n.Obj.Kind != EnumType {
-			c.errorf(p.Type, "a type test is for a struct's or an enum's type, and %s isn't one", typeString(tt))
+			c.errorf(p.Type, diag.PatternType, "a type test is for a struct's or an enum's type, and %s isn't one", typeString(tt))
 			bound = Invalid
 			break
 		}
@@ -221,10 +222,10 @@ func (c *Checker) typedPat(p *syntax.TypedPat, t Type, kind VarKind) {
 		}
 	case Identical(Unopt(t), tt):
 		if !IsOptional(t) {
-			c.errorf(p, "%s is always %s: drop the type, or test a value of an interface", c.subjectName(p), aType(tt))
+			c.errorf(p, diag.PatternType, "%s is always %s: drop the type, or test a value of an interface", c.subjectName(p), aType(tt))
 		}
 	default:
-		c.errorf(p, "%s can't be %s", aType(t), aType(tt))
+		c.errorf(p, diag.PatternType, "%s can't be %s", aType(t), aType(tt))
 		bound = Invalid
 	}
 	if bp, ok := p.Pat.(*syntax.BindPat); ok {

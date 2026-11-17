@@ -3,6 +3,7 @@ package check
 import (
 	"strings"
 
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -115,18 +116,18 @@ func (c *Checker) screenAt(t *TypeName) {
 	}
 	p, ok := RoutePattern(t)
 	if !ok {
-		c.errorf(d.At, "a screen's route pattern is a string literal, without {…}: at \":id\"")
+		c.errorf(d.At, diag.InvalidRoute, "a screen's route pattern is a string literal, without {…}: at \":id\"")
 		return
 	}
 	comp := t.Comp
 	for _, name := range patternParams(p) {
 		if m := comp.Members[name]; m == nil || m.Kind != ParamMember {
-			c.errorf(d.At, "the pattern's :%s isn't a parameter of %s: screen %s(%s: int) at …", name, t.name, t.name, name)
+			c.errorf(d.At, diag.InvalidRoute, "the pattern's :%s isn't a parameter of %s: screen %s(%s: int) at …", name, t.name, t.name, name)
 		}
 	}
 	for _, m := range comp.Params {
 		if !routable(c.memberType(m)) {
-			c.errorf(m.Decl, "%s is routed, and its parameter %s is %s: an address says ints, floats, bools, strings and enums' cases", t.name, m.name, aType(m.Type))
+			c.errorf(m.Decl, diag.InvalidRoute, "%s is routed, and its parameter %s is %s: an address says ints, floats, bools, strings and enums' cases", t.name, m.name, aType(m.Type))
 		}
 	}
 }
@@ -194,7 +195,7 @@ func (c *Checker) routeChildren(children []syntax.Item, ec *ElementCall) {
 // routeBuilder checks a Route's p => View.
 func (c *Checker) routeBuilder(lam *syntax.LambdaExpr, it syntax.Item, ec *ElementCall) {
 	if c.info.RouteBuilders[ec] != nil {
-		c.errorf(lam, "a Route has one screen: p => View")
+		c.errorf(lam, diag.InvalidRoute, "a Route has one screen: p => View")
 	}
 	rb := &RouteBuilder{Lambda: lam, Item: it}
 	pt := c.prelude.Scope.LookupLocal("Params").(*TypeName)
@@ -202,12 +203,12 @@ func (c *Checker) routeBuilder(lam *syntax.LambdaExpr, it syntax.Item, ec *Eleme
 	saved := c.ctx
 	ctx := c.enter(CtxBuilder, lam, "route")
 	if len(lam.Params) > 1 {
-		c.errorf(lam, "a Route's screen takes its Params: p => View")
+		c.errorf(lam, diag.InvalidRoute, "a Route's screen takes its Params: p => View")
 	}
 	for i, p := range lam.Params {
 		if p.Type != nil {
 			if t := c.typeExpr(p.Type); !IsInvalid(t) && !Identical(t, pt.Type) {
-				c.errorf(p.Type, "a Route's screen takes its Params, not %s", aType(t))
+				c.errorf(p.Type, diag.InvalidRoute, "a Route's screen takes its Params, not %s", aType(t))
 			}
 		}
 		if i > 0 {
@@ -235,7 +236,7 @@ func (c *Checker) routeBuilder(lam *syntax.LambdaExpr, it syntax.Item, ec *Eleme
 func (c *Checker) routedChild(it syntax.Item, id *syntax.Ident, tn *TypeName) {
 	p, ok := RoutePattern(tn)
 	if !ok {
-		c.errorf(id, "%s isn't routed: declare it screen %s at \"pattern\", or build it in a Route: Route(\"…\") { _ => %s() }", tn.name, tn.name, tn.name)
+		c.errorf(id, diag.InvalidRoute, "%s isn't routed: declare it screen %s at \"pattern\", or build it in a Route: Route(\"…\") { _ => %s() }", tn.name, tn.name, tn.name)
 		return
 	}
 	c.resolveType(tn)
@@ -281,7 +282,7 @@ func (c *Checker) hrefArg(x syntax.Expr, what string) {
 	}
 	c.resolveType(tn)
 	if call.Block != nil {
-		c.errorf(call.Block, "an href is a screen's address: %s(…) takes no block here", tn.name)
+		c.errorf(call.Block, diag.UnexpectedBlock, "an href is a screen's address: %s(…) takes no block here", tn.name)
 	}
 	var params []*Param
 	for _, m := range tn.Comp.Params {
@@ -313,13 +314,13 @@ func (c *Checker) routeHrefs() {
 		rs := c.info.ScreenRoutes[h.Screen]
 		switch {
 		case len(rs) == 0:
-			c.errorf(h.Call, "no Router routes %s: name it in a Route's block, Route(\"…\") { %s }", h.Screen.name, h.Screen.name)
+			c.errorf(h.Call, diag.InvalidRoute, "no Router routes %s: name it in a Route's block, Route(\"…\") { %s }", h.Screen.name, h.Screen.name)
 			continue
 		case len(rs) > 1:
-			c.errorf(h.Call, "%d Routes route %s: its address is ambiguous; navigate to an href", len(rs), h.Screen.name)
+			c.errorf(h.Call, diag.InvalidRoute, "%d Routes route %s: its address is ambiguous; navigate to an href", len(rs), h.Screen.name)
 			continue
 		case !rs[0].Known:
-			c.errorf(h.Call, "a path of a Route around %s isn't a constant: navigate to an href", h.Screen.name)
+			c.errorf(h.Call, diag.InvalidRoute, "a path of a Route around %s isn't a constant: navigate to an href", h.Screen.name)
 			continue
 		}
 		h.Pattern = rs[0].Pattern
@@ -329,10 +330,10 @@ func (c *Checker) routeHrefs() {
 				in = in || n == m.name
 			}
 			if !in && i < len(h.Args) && h.Args[i] == nil && m.Default == nil {
-				c.errorf(h.Call, "%s needs %s for its address", h.Screen.name, m.name)
+				c.errorf(h.Call, diag.InvalidRoute, "%s needs %s for its address", h.Screen.name, m.name)
 			}
 			if in && i < len(h.Args) && h.Args[i] == nil {
-				c.errorf(h.Call, "%s needs %s: its address's path has :%s", h.Screen.name, m.name, m.name)
+				c.errorf(h.Call, diag.InvalidRoute, "%s needs %s: its address's path has :%s", h.Screen.name, m.name, m.name)
 			}
 		}
 	}
@@ -346,7 +347,7 @@ func (c *Checker) builderLambda(lam *syntax.LambdaExpr, ft *FuncType, what strin
 	saved := c.ctx
 	ctx := c.enter(CtxBuilder, lam, what)
 	if len(lam.Params) != len(ft.Params) {
-		c.errorf(lam, "%s takes %s", what, plural(len(ft.Params), "parameter", "parameters"))
+		c.errorf(lam, diag.InvalidRoute, "%s takes %s", what, plural(len(ft.Params), "parameter", "parameters"))
 	}
 	for i, p := range lam.Params {
 		if i >= len(ft.Params) {
@@ -354,7 +355,7 @@ func (c *Checker) builderLambda(lam *syntax.LambdaExpr, ft *FuncType, what strin
 		}
 		if p.Type != nil {
 			if t := c.typeExpr(p.Type); !IsInvalid(t) && !Identical(t, ft.Params[i]) {
-				c.errorf(p.Type, "%s's parameter is %s, not %s", what, aType(ft.Params[i]), aType(t))
+				c.errorf(p.Type, diag.InvalidRoute, "%s's parameter is %s, not %s", what, aType(ft.Params[i]), aType(t))
 			}
 		}
 		v := c.declareVar(p.Name, ft.Params[i], false)

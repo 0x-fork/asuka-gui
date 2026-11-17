@@ -3,6 +3,7 @@ package check
 import (
 	"strings"
 
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -12,6 +13,13 @@ func (c *Checker) typeScope(t *TypeName) *Scope {
 	s := NewScope(c.declScope(t.Decl))
 	for _, p := range t.TypeParams {
 		s.Insert(p.object())
+	}
+	if d, ok := t.Decl.(*syntax.ComponentDecl); ok && len(t.TypeParams) == 0 {
+		// A generic component (reported): its type parameters name no
+		// type, rather than being reported unknown at each use.
+		for _, p := range d.TypeParams {
+			s.Insert(&TypeName{object: object{p.Name.Name, p.Name.Start}, Kind: AliasType, Type: Invalid, resolved: true})
+		}
 	}
 	return s
 }
@@ -55,7 +63,7 @@ func (c *Checker) resolveType(t *TypeName) {
 	case *syntax.ComponentDecl:
 		tps = d.TypeParams
 		if len(tps) > 0 {
-			c.errorf(d.Name, "generic components aren't supported yet: take a View or a closure instead")
+			c.errorf(d.Name, diag.NotSupported, "generic components aren't supported yet: take a View or a closure instead")
 			tps = nil
 		}
 	}
@@ -74,7 +82,7 @@ func (c *Checker) resolveType(t *TypeName) {
 		delete(c.resolving, t)
 		if c.resolving[aliasCycle{t}] {
 			delete(c.resolving, aliasCycle{t})
-			c.errorf(a.Name, "type %s is defined in terms of itself: an alias can't hold itself; a struct or an enum can (struct Node { next: Node? })", t.name)
+			c.errorf(a.Name, diag.RecursiveType, "type %s is defined in terms of itself: an alias can't hold itself; a struct or an enum can (struct Node { next: Node? })", t.name)
 			return
 		}
 		t.Type = at
@@ -106,7 +114,7 @@ func (c *Checker) typeMembers(t *TypeName) {
 			switch m := m.(type) {
 			case *syntax.Field:
 				if _, dup := t.fieldIndex[m.Name.Name]; dup {
-					c.errorf(m.Name, "field %s is declared twice", m.Name.Name)
+					c.errorf(m.Name, diag.DuplicateDeclaration, "field %s is declared twice", m.Name.Name)
 					continue
 				}
 				var ft Type
@@ -131,7 +139,7 @@ func (c *Checker) typeMembers(t *TypeName) {
 		c.conforms(t, d.Conforms)
 		for _, cs := range d.Cases {
 			if _, dup := t.caseIndex[cs.Name.Name]; dup {
-				c.errorf(cs.Name, "case %s is declared twice", cs.Name.Name)
+				c.errorf(cs.Name, diag.DuplicateDeclaration, "case %s is declared twice", cs.Name.Name)
 				continue
 			}
 			k := &Case{Name: cs.Name.Name, Index: len(t.Cases), Pos: cs.Name.Start, Owner: t}
@@ -164,13 +172,13 @@ func (c *Checker) typeMembers(t *TypeName) {
 			c.nextTP++
 		}
 		if t.Native && len(d.TypeParams) > 0 {
-			c.errorf(d.Name, "a native interface isn't generic: its platforms' code can't be")
+			c.errorf(d.Name, diag.InvalidModifier, "a native interface isn't generic: its platforms' code can't be")
 		}
 		for _, m := range d.Members {
 			switch m := m.(type) {
 			case *syntax.Field:
 				if t.Native {
-					c.errorf(m.Name, "a native interface has methods only")
+					c.errorf(m.Name, diag.MisplacedDeclaration, "a native interface has methods only")
 				}
 				t.Iface.Fields = append(t.Iface.Fields, &Field{Name: m.Name.Name, Type: c.typeExpr(m.Type), Pos: m.Name.Start})
 			case *syntax.FuncDecl:
@@ -183,7 +191,7 @@ func (c *Checker) typeMembers(t *TypeName) {
 				var tps []*TypeParam
 				saved := c.scope
 				if len(m.TypeParams) > 0 {
-					c.errorf(m.Name, "an interface's methods aren't generic: a call through the interface can't say their types")
+					c.errorf(m.Name, diag.InvalidModifier, "an interface's methods aren't generic: a call through the interface can't say their types")
 					c.scope = NewScope(c.scope)
 					tps = c.typeParams(m.TypeParams)
 					for _, p := range tps {
@@ -195,7 +203,7 @@ func (c *Checker) typeMembers(t *TypeName) {
 				im := &IfaceMethod{Name: m.Name.Name, Sig: sig}
 				switch {
 				case t.Native && (m.Body != nil || m.Value != nil):
-					c.errorf(m.Name, "a native interface's methods have no bodies: its platforms' code implements them")
+					c.errorf(m.Name, diag.FnBody, "a native interface's methods have no bodies: its platforms' code implements them")
 				case m.Body != nil || m.Value != nil:
 					// Provided: a method of the interface's own, checked
 					// with self as the interface.
@@ -227,13 +235,13 @@ func (c *Checker) typeMembers(t *TypeName) {
 func (c *Checker) ifaceMethodDeclared(t *TypeName, name *syntax.Ident) bool {
 	for _, m := range t.Iface.Methods {
 		if m.Name == name.Name {
-			c.errorf(name, "method %s is declared twice in %s", name.Name, t.name)
+			c.errorf(name, diag.DuplicateDeclaration, "method %s is declared twice in %s", name.Name, t.name)
 			return true
 		}
 	}
 	for _, f := range t.Iface.Fields {
 		if f.Name == name.Name {
-			c.errorf(name, "%s is %s's field and a method", name.Name, t.name)
+			c.errorf(name, diag.DuplicateDeclaration, "%s is %s's field and a method", name.Name, t.name)
 			return true
 		}
 	}
@@ -256,14 +264,14 @@ func (c *Checker) conforms(t *TypeName, list []syntax.Type) {
 		ty := c.typeExpr(ct)
 		if n, ok := ty.(*Named); ok && n.Obj.Kind == InterfaceType {
 			if n.Obj.Native {
-				c.errorf(ct, "%s is a native interface: its platforms' code implements it (https://asuka.egoist.dev/docs/native)", n.Obj.name)
+				c.errorf(ct, diag.InvalidConformance, "%s is a native interface: its platforms' code implements it (https://asuka.egoist.dev/docs/native)", n.Obj.name)
 				continue
 			}
 			t.Conforms = append(t.Conforms, n.Obj)
 			continue
 		}
 		if !IsInvalid(ty) {
-			c.errorf(ct, "%s isn't an interface: a type declares Error, Equatable, Comparable, Hashable or an interface", typeString(ty))
+			c.errorf(ct, diag.InvalidConformance, "%s isn't an interface: a type declares Error, Equatable, Comparable, Hashable or an interface", typeString(ty))
 		}
 	}
 }
@@ -271,14 +279,14 @@ func (c *Checker) conforms(t *TypeName, list []syntax.Type) {
 func (c *Checker) typeConst(t *TypeName, d *syntax.LetDecl) {
 	bp, ok := d.Pattern.(*syntax.BindPat)
 	if !ok {
-		c.errorf(d.Pattern, "a type's constant is let name = value")
+		c.errorf(d.Pattern, diag.InvalidDeclaration, "a type's constant is let name = value")
 		return
 	}
 	if d.Keyword == syntax.VAR {
-		c.errorf(d, "a type's constants don't change: let, not var")
+		c.errorf(d, diag.InvalidDeclaration, "a type's constants don't change: let, not var")
 	}
 	if _, dup := t.Consts[bp.Name.Name]; dup {
-		c.errorf(bp.Name, "%s is declared twice in %s", bp.Name.Name, t.name)
+		c.errorf(bp.Name, diag.DuplicateDeclaration, "%s is declared twice in %s", bp.Name.Name, t.name)
 		return
 	}
 	g := &Global{object: object{bp.Name.Name, bp.Name.Start}, Pkg: t.Pkg, Kind: ConstGlobal, Decl: d, Value: d.Value, Owner: t, Pub: true}
@@ -293,7 +301,7 @@ func (c *Checker) method(t *TypeName, d *syntax.FuncDecl) {
 		return
 	}
 	if _, dup := t.Methods[d.Name.Name]; dup {
-		c.errorf(d.Name, "method %s is declared twice in %s", d.Name.Name, t.name)
+		c.errorf(d.Name, diag.DuplicateDeclaration, "method %s is declared twice in %s", d.Name.Name, t.name)
 		return
 	}
 	f := &Function{object: object{d.Name.Name, d.Name.Start}, Pkg: t.Pkg, Decl: d, Recv: t}
@@ -306,14 +314,14 @@ func (c *Checker) method(t *TypeName, d *syntax.FuncDecl) {
 // lowered as any of the package's functions, with no self.
 func (c *Checker) staticFunc(t *TypeName, d *syntax.FuncDecl) {
 	if len(t.TypeParams) > 0 {
-		c.errorf(d.Name, "%s is generic: its static functions would need its type parameters; declare a function outside it", t.name)
+		c.errorf(d.Name, diag.MisplacedDeclaration, "%s is generic: its static functions would need its type parameters; declare a function outside it", t.name)
 		return
 	}
 	if t.Statics == nil {
 		t.Statics = map[string]*Function{}
 	}
 	if _, dup := t.Statics[d.Name.Name]; dup || t.Methods[d.Name.Name] != nil || t.Consts[d.Name.Name] != nil {
-		c.errorf(d.Name, "%s is declared twice in %s", d.Name.Name, t.name)
+		c.errorf(d.Name, diag.DuplicateDeclaration, "%s is declared twice in %s", d.Name.Name, t.name)
 		return
 	}
 	f := &Function{object: object{d.Name.Name, d.Name.Start}, Pkg: t.Pkg, Decl: d, Static: t}
@@ -327,17 +335,17 @@ func (c *Checker) staticFunc(t *TypeName, d *syntax.FuncDecl) {
 func (c *Checker) signature(d *syntax.FuncDecl, f *Function) *Signature {
 	s := &Signature{Async: d.Async.IsValid(), Throws: d.Throws.IsValid(), Result: Void, Mut: d.Mut.IsValid()}
 	if s.Mut && s.Async {
-		c.errorf(d.Name, "a mut fn can't be async: change a store's state from an async fn instead")
+		c.errorf(d.Name, diag.InvalidModifier, "a mut fn can't be async: change a store's state from an async fn instead")
 	}
 	if d.Params != nil {
 		seen := map[string]bool{}
 		for _, p := range d.Params.List {
 			if seen[p.Name.Name] {
-				c.errorf(p.Name, "parameter %s is declared twice", p.Name.Name)
+				c.errorf(p.Name, diag.DuplicateDeclaration, "parameter %s is declared twice", p.Name.Name)
 			}
 			seen[p.Name.Name] = true
 			if p.Type == nil {
-				c.errorf(p.Name, "parameter %s needs a type: %s: Type", p.Name.Name, p.Name.Name)
+				c.errorf(p.Name, diag.MissingType, "parameter %s needs a type: %s: Type", p.Name.Name, p.Name.Name)
 			}
 			s.Params = append(s.Params, &Param{Name: p.Name.Name, Type: c.typeExpr(p.Type), Default: p.Default})
 		}
@@ -381,15 +389,15 @@ func (c *Checker) mutDecl(f *Function) {
 	d := f.Decl
 	switch {
 	case f.Static != nil:
-		c.errorf(d.Name, "a static fn has no value to change: drop mut")
+		c.errorf(d.Name, diag.InvalidModifier, "a static fn has no value to change: drop mut")
 	case f.Recv != nil && f.Recv.Kind == StoreType:
-		c.errorf(d.Name, "a store's fns change its state as they are: drop mut")
+		c.errorf(d.Name, diag.InvalidModifier, "a store's fns change its state as they are: drop mut")
 	case f.Recv != nil && f.Recv.Kind == ComponentType:
-		c.errorf(d.Name, "a component's fns change its state as they are: drop mut")
+		c.errorf(d.Name, diag.InvalidModifier, "a component's fns change its state as they are: drop mut")
 	case f.Recv == nil && !f.IsExtMethod():
-		c.errorf(d.Name, "mut fn is a method that changes its value: declare it in a struct, an enum or an extend")
+		c.errorf(d.Name, diag.MisplacedDeclaration, "mut fn is a method that changes its value: declare it in a struct, an enum or an extend")
 	case d.Native.IsValid() || d.Extern.IsValid():
-		c.errorf(d.Name, "a native fn can't be mut")
+		c.errorf(d.Name, diag.InvalidModifier, "a native fn can't be mut")
 	}
 }
 
@@ -400,9 +408,9 @@ func (c *Checker) globalType(g *Global) Type {
 	}
 	if c.resolving[g] {
 		if _, ok := g.Decl.(*syntax.StateDecl); ok {
-			c.errorf(g.Decl, "%s reads itself (its current value, none the first time), so its type must be written: state %s: T = …", g.name, g.name)
+			c.errorf(g.Decl, diag.MissingType, "%s reads itself (its current value, none the first time), so its type must be written: state %s: T = …", g.name, g.name)
 		} else {
-			c.errorf(g.Decl, "%s's value is defined in terms of itself", g.name)
+			c.errorf(g.Decl, diag.RecursiveDefinition, "%s's value is defined in terms of itself", g.name)
 		}
 		g.Type = Invalid
 		return g.Type
@@ -447,7 +455,7 @@ func (c *Checker) globalType(g *Global) Type {
 		t = c.valueType(c.expr(g.Value, nil), g.Value)
 	}
 	if g.Owner != nil && ctx.readsState {
-		c.errorf(g.Value, "a type's constant can't read state: compute it where it's used")
+		c.errorf(g.Value, diag.InvalidDeclaration, "a type's constant can't read state: compute it where it's used")
 	}
 	g.Self = c.selfUsed(self, g.Value)
 	c.leave(nil)
@@ -461,15 +469,15 @@ func (c *Checker) globalType(g *Global) Type {
 // says nothing.
 func (c *Checker) valueType(t Type, e syntax.Expr) Type {
 	if t == NoneType {
-		c.errorf(e, "none says nothing of the type: write it, let x: T? = none")
+		c.errorf(e, diag.CannotInferType, "none says nothing of the type: write it, let x: T? = none")
 		return Invalid
 	}
 	if t == Void {
-		c.errorf(e, "this has no value (it's void)")
+		c.errorf(e, diag.NoValue, "this has no value (it's void)")
 		return Invalid
 	}
 	if t == Never {
-		c.errorf(e, "this has no value: it leaves (throw, return, break, continue)")
+		c.errorf(e, diag.NoValue, "this has no value: it leaves (throw, return, break, continue)")
 		return Invalid
 	}
 	return t
@@ -554,16 +562,16 @@ func (c *Checker) funcBody(f *Function) {
 	if d.Native.IsValid() {
 		switch {
 		case d.Body != nil || d.Value != nil:
-			c.errorf(d.Name, "a native fn has no body: the runtime implements it")
+			c.errorf(d.Name, diag.FnBody, "a native fn has no body: the runtime implements it")
 		case f.Pkg == nil || !StdPath(f.Pkg.Path):
-			c.errorf(d.Name, "native fn is the standard library's (its runtime implements it); a package's platform code is a native interface (https://asuka.egoist.dev/docs/native)")
+			c.errorf(d.Name, diag.MisplacedDeclaration, "native fn is the standard library's (its runtime implements it); a package's platform code is a native interface (https://asuka.egoist.dev/docs/native)")
 		case len(f.TypeParams) > 0 && f.Recv != nil:
-			c.errorf(d.Name, "a method's native fn isn't generic")
+			c.errorf(d.Name, diag.InvalidModifier, "a method's native fn isn't generic")
 		}
 	} else if d.Extern.IsValid() {
 		c.externFunc(f)
 	} else if d.Body == nil && d.Value == nil {
-		c.errorf(d.Name, "fn %s has no body", f.name)
+		c.errorf(d.Name, diag.FnBody, "fn %s has no body", f.name)
 		return
 	}
 	savedScope, savedCtx := c.scope, c.ctx
@@ -669,9 +677,9 @@ func (c *Checker) funcBody(f *Function) {
 		c.stmts(d.Body.Items)
 		if ctx.Result != Void && !c.terminates(d.Body.Items) {
 			if ctx.Result == Never {
-				c.errorPos(d.Body.Rbrace, "fn %s never returns (its result is never): it can reach its end, which it mustn't (end it with panic, a throw or a call of another that never returns)", f.name)
+				c.errorPos(d.Body.Rbrace, diag.MissingReturn, "fn %s never returns (its result is never): it can reach its end, which it mustn't (end it with panic, a throw or a call of another that never returns)", f.name)
 			} else {
-				c.errorPos(d.Body.Rbrace, "fn %s must return %s: it can reach its end without a return", f.name, aType(ctx.Result))
+				c.errorPos(d.Body.Rbrace, diag.MissingReturn, "fn %s must return %s: it can reach its end without a return", f.name, aType(ctx.Result))
 			}
 		}
 	}
@@ -706,7 +714,7 @@ func (c *Checker) appBody(p *Package) {
 			pt := c.expr(d.Value, nil)
 			if n, ok := pt.(*Named); !ok || n.Obj.Kind != StoreType {
 				if !IsInvalid(pt) {
-					c.errorf(d.Value, "provide takes a store, for use in the components below: this is %s", aType(pt))
+					c.errorf(d.Value, diag.TypeMismatch, "provide takes a store, for use in the components below: this is %s", aType(pt))
 				}
 			}
 			continue
@@ -736,7 +744,7 @@ func (c *Checker) appBody(p *Package) {
 // it.
 func (c *Checker) checkImplements(at syntax.Node, t Type, i *TypeName) {
 	if why := c.implements(t, &Named{Obj: i}); why != "" {
-		c.errorf(at, "%s declares %s but %s", typeString(t), i.name, why)
+		c.errorf(at, diag.InterfaceNotSatisfied, "%s declares %s but %s", typeString(t), i.name, why)
 	}
 }
 
@@ -874,7 +882,7 @@ func (c *Checker) nativeComponent(t *TypeName) {
 			switch it.(type) {
 			case *syntax.PropDecl, *syntax.EventDecl, *syntax.BadItem:
 			default:
-				c.errorf(it, "a native component declares props and events only: its platforms' code shows it")
+				c.errorf(it, diag.MisplacedDeclaration, "a native component declares props and events only: its platforms' code shows it")
 			}
 		}
 	}
@@ -885,12 +893,12 @@ func (c *Checker) nativeComponent(t *TypeName) {
 				c.memberValue(m)
 			}
 			if why := c.nativeValue(m.Type); why != "" {
-				c.errorf(m.Decl, "%s can't cross to the platform's view: %s", m.name, why)
+				c.errorf(m.Decl, diag.NativeType, "%s can't cross to the platform's view: %s", m.name, why)
 			}
 		case EventMember:
 			for _, p := range m.Params {
 				if why := c.nativeValue(p.Type); why != "" {
-					c.errorf(m.Decl, "event %s's %s can't come from the platform's view: %s", m.name, p.Name, why)
+					c.errorf(m.Decl, diag.NativeType, "event %s's %s can't come from the platform's view: %s", m.name, p.Name, why)
 				}
 			}
 		}
@@ -1006,7 +1014,7 @@ func (c *Checker) structCycles(p *Package) {
 				}
 			}
 			f := t.Fields[t.fieldIndex[strings.TrimPrefix(path[0], t.name+".")]]
-			c.errorPos(f.Pos, "struct %s holds itself (%s): a value can't hold a whole copy of itself, so none can be made; make a field on the way optional (%s: %s?), or an array", t.name, strings.Join(path, " → "), f.Name, typeString(f.Type))
+			c.errorPos(f.Pos, diag.RecursiveType, "struct %s holds itself (%s): a value can't hold a whole copy of itself, so none can be made; make a field on the way optional (%s: %s?), or an array", t.name, strings.Join(path, " → "), f.Name, typeString(f.Type))
 		}
 	}
 }

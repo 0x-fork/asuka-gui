@@ -1,12 +1,12 @@
 package compile
 
 import (
-	"fmt"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/egoist/asuka/lang/check"
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 	"github.com/egoist/asuka/lang/target"
 )
@@ -148,9 +148,9 @@ func (l *loader) dupNames(u *unit) {
 					if b.active {
 						l.twice[l.fset.Position(db.pos)] = true
 					}
-					l.diags = append(l.diags, check.Diagnostic{Pos: pos, End: pos, Msg: fmt.Sprintf(
+					l.diags = append(l.diags, check.NewDiagnostic(pos, pos, diag.DuplicateDeclaration,
 						"%s is declared twice for %s: here and in %s (a name is declared once on each platform: in a file every platform has, or in a file for each platform)",
-						da.what, target.List(both), filepath.Base(b.name))})
+						da.what, target.List(both), filepath.Base(b.name)))
 				}
 			}
 		}

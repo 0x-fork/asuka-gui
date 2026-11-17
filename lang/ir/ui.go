@@ -6,6 +6,7 @@ import (
 
 	bc "github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/lang/check"
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/prelude"
 	"github.com/egoist/asuka/lang/syntax"
 )
@@ -755,7 +756,7 @@ func (b *fb) viewItem(it syntax.Item) (int, bool) {
 	case *syntax.MatchStmt:
 		return b.matchView(s), false
 	}
-	b.l.errorf(it, "can't lower this view item")
+	b.l.errorf(it, diag.NotSupported, "can't lower this view item")
 	return -1, false
 }
 
@@ -1219,7 +1220,7 @@ func (b *fb) builtinElement(ec *check.ElementCall) int {
 	name := ec.Comp.Name()
 	el := prelude.ElementID(name)
 	if el == 0 {
-		b.l.errorf(ec.Comp.Decl, "%s isn't an element the runtime has", name)
+		b.l.errorf(ec.Comp.Decl, diag.InternalError, "%s isn't an element the runtime has", name)
 		return b.valueReg(-1, bc.KRef)
 	}
 	v := b.local(bc.KRef)
@@ -1332,7 +1333,7 @@ func (b *fb) setProp(v int, el string, m *check.Member, x syntax.Expr) {
 	defer b.release(mark)
 	key := prelude.KeyID(el, m.Name())
 	if key == 0 {
-		b.l.errorf(x, "%s has no key %s in the runtime", el, m.Name())
+		b.l.errorf(x, diag.InternalError, "%s has no key %s in the runtime", el, m.Name())
 		return
 	}
 	k := b.konst(int64(key))
@@ -1647,7 +1648,7 @@ func (b *fb) outerStyle(v int, ec *check.ElementCall) {
 		mark := b.mark()
 		key := prelude.KeyID("", p.Member.Name())
 		if key == 0 {
-			b.l.errorf(p.Value, "%s isn't a style key the runtime has", p.Member.Name())
+			b.l.errorf(p.Value, diag.InternalError, "%s isn't a style key the runtime has", p.Member.Name())
 			b.release(mark)
 			continue
 		}

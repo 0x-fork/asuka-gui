@@ -8,6 +8,7 @@ import (
 	"unicode"
 
 	"github.com/egoist/asuka/lang/check"
+	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
 
@@ -262,7 +263,7 @@ func (b *fb) flagSpecArg(t check.Type) int {
 		if pe, ok := err.(*posError); ok && pe.pos.IsValid() {
 			pos = b.l.fset.Position(pe.pos)
 		}
-		b.l.errs = append(b.l.errs, check.Diagnostic{Pos: pos, End: pos, Msg: err.Error()})
+		b.l.errs = append(b.l.errs, check.NewDiagnostic(pos, pos, diag.InvalidFlagSpec, "%s", err.Error()))
 	}
 	return b.kstr(s)
 }

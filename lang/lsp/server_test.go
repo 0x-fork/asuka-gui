@@ -47,6 +47,10 @@ func TestDiagnostics(t *testing.T) {
 	if len(ds) != 1 || !strings.Contains(ds[0].Message, "did you mean title?") {
 		t.Fatalf("got %+v", ds)
 	}
+	// Its code, and the code's page (LSP 3.16).
+	if ds[0].Code != "unknown-member" || ds[0].CodeDescription == nil || ds[0].CodeDescription.Href != "https://asuka.dev/docs/errors/unknown-member" {
+		t.Errorf("code %q, description %+v", ds[0].Code, ds[0].CodeDescription)
+	}
 	want := posAt(t, broken, "Text(todo.|titel)")
 	if ds[0].Range.Start != want || ds[0].Range.End.Character != want.Character+5 {
 		t.Errorf("range %+v, want from %+v, 5 long", ds[0].Range, want)
@@ -67,7 +71,10 @@ func TestDiagnostics(t *testing.T) {
 
 	// A syntax error, and the checker's errors after it.
 	c.change(uri, 4, text+"\ncomponent {\n")
-	c.waitDiags(uri, func(d []Diagnostic) bool { return len(d) > 0 })
+	ds = c.waitDiags(uri, func(d []Diagnostic) bool { return len(d) > 0 })
+	if ds[0].Code != "syntax-error" {
+		t.Errorf("a syntax error's code: %+v", ds[0])
+	}
 
 	// Closing the package's files clears its diagnostics.
 	c.notify("textDocument/didClose", map[string]any{"textDocument": TextDocumentIdentifier{URI: uri}})
