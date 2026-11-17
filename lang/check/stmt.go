@@ -326,7 +326,9 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 				if o.Bound && o.Kind == LocalVar {
 					hint = "it's a pattern's name, a copy of what it matched (a for's element, an if let's value): copy it into a var, or change what it came from"
 				}
-				if o.Kind == RowItem {
+				if o.Kind == StateSelf {
+					hint = "in its own initializer, a state's name is its current value: the initializer's value is what it becomes"
+				} else if o.Kind == RowItem {
 					hint = "it's a row's item: change the state it comes from"
 				} else if o.Kind == SelfVar {
 					hint = "self is a value"

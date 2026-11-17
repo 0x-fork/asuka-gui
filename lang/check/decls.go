@@ -358,7 +358,7 @@ func (c *Checker) globalType(g *Global) Type {
 		if d.Type != nil {
 			want = c.typeExpr(d.Type)
 		}
-		self = c.stateSelf(g.name, want)
+		self = c.stateSelf(g.name, g.pos, want)
 	case *syntax.LetDecl:
 		if d.Type != nil {
 			want = c.typeExpr(d.Type)

@@ -147,6 +147,9 @@ const (
 	// StyleLocal is a style's parameter or use: each application of the
 	// style gives it a register, or a memo (lang/ir/style.go).
 	StyleLocal
+	// StateSelf is a state's own name in its initializer (rfcs/0012):
+	// its current value, an optional, none the first time.
+	StateSelf
 )
 
 // A Var is a local: a parameter, let, var, or a pattern's binding.

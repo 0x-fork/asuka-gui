@@ -447,7 +447,20 @@ func memberDecl(m *check.Member) string {
 	case check.EventMember:
 		return "event " + eventSig(m)
 	case check.StateMember:
-		return pub + "state " + m.Name() + ": " + typeStr(m.Type)
+		s := pub + "state " + m.Name()
+		if d, ok := m.Decl.(*syntax.StateDecl); ok && len(d.Deps) > 0 {
+			var deps []string
+			for _, x := range d.Deps {
+				deps = append(deps, exprString(x))
+			}
+			s += "(" + strings.Join(deps, ", ") + ")"
+		}
+		s += ": " + typeStr(m.Type)
+		if m.Follows && m.Default != nil {
+			// A state that follows (rfcs/0012) says what.
+			s += " = " + exprString(m.Default)
+		}
+		return s
 	case check.LetMember:
 		return pub + "let " + m.Name() + ": " + typeStr(m.Type)
 	case check.UseMember:
@@ -513,6 +526,7 @@ func globalDecl(g *check.Global) string {
 // write them, and what they do.
 var builtinDocs = map[string][2]string{
 	"print":       {"fn print(value)", "Prints a value (a string, a number, or anything shown as text) on a line of the log."},
+	"peek":        {"fn peek(value: T) -> T", "The value, read without following it: a binding, a let, a state or an effect that reads it under peek doesn't run again when it changes (`state first = peek(title)`: a seed). Handlers, tasks, an effect(…)'s body and tests follow nothing, so peek there is an error."},
 	"expect":      {"fn expect(condition: bool, message: string = \"\")", "Fails the test unless the condition holds."},
 	"sleep":       {"async fn sleep(duration: Duration)", "Waits for the duration, without blocking anything."},
 	"all":         {"async fn all(tasks…) -> (…)", "Waits for every task and gives their results; the first error cancels the rest."},
@@ -614,6 +628,9 @@ func (fc *fileCtx) describe(r *ref) (code, doc string) {
 	case *check.Var:
 		if o.Fn != nil {
 			return localFnSig(o.Fn), docOf(o.Fn.Decl)
+		}
+		if o.Kind == check.StateSelf {
+			return "state " + o.Name() + ": " + typeStr(o.Type), "In its own initializer, the state's current value: none the first time, then its last value, written or not. Not followed."
 		}
 		return fc.varDecl(o), ""
 	case *check.Global:

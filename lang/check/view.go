@@ -211,7 +211,7 @@ func (c *Checker) memberValue(m *Member) {
 	}
 	var self *Var
 	if m.Kind == StateMember {
-		self = c.stateSelf(m.name, m.Type)
+		self = c.stateSelf(m.name, m.pos, m.Type)
 	}
 	var t Type
 	if m.Type != nil {

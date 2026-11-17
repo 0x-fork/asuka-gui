@@ -321,7 +321,7 @@ func (c *Checker) isPeek(n syntax.Node) bool {
 // is optional already is that type), not followed. Without a written
 // type it isn't declared: the name is the state, which reads itself, an
 // error.
-func (c *Checker) stateSelf(name string, t Type) *Var {
+func (c *Checker) stateSelf(name string, pos syntax.Pos, t Type) *Var {
 	if t == nil || c.scope == nil {
 		return nil
 	}
@@ -329,7 +329,7 @@ func (c *Checker) stateSelf(name string, t Type) *Var {
 	if _, ok := t.(*Optional); !ok && !IsInvalid(t) {
 		st = &Optional{Elem: t}
 	}
-	v := &Var{object: object{name, syntax.NoPos}, Type: st, Ctx: c.ctx}
+	v := &Var{object: object{name, pos}, Type: st, Kind: StateSelf, Ctx: c.ctx}
 	c.scope.Insert(v)
 	return v
 }
