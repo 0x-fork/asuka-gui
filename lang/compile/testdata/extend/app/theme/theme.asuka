@@ -1,0 +1,16 @@
+extend Color {
+  pub let brand = #7c3aed
+  pub let brandSoft = #7c3aed.opacity(0.15)
+}
+
+extend Font {
+  pub let display = Font(size: 34, weight: .bold)
+}
+
+extend Money {
+  pub static fn of(dollars: int) -> Money = Money(cents: dollars * 100)
+}
+
+pub struct Money {
+  cents: int
+}

@@ -307,9 +307,12 @@ func (c *Checker) funcSig(f *Function) {
 		return
 	}
 	savedScope := c.scope
-	if f.Recv != nil {
+	switch {
+	case f.Recv != nil:
 		c.scope = c.typeScope(f.Recv)
-	} else {
+	case f.Ext != nil:
+		c.scope = c.extScope(f.Ext)
+	default:
 		c.scope = NewScope(c.declScope(f.Decl))
 	}
 	f.TypeParams = c.typeParams(f.Decl.TypeParams)
@@ -336,7 +339,7 @@ func (c *Checker) mutDecl(f *Function) {
 		c.errorf(d.Name, "a store's fns change its state as they are: drop mut")
 	case f.Recv != nil && f.Recv.Kind == ComponentType:
 		c.errorf(d.Name, "a component's fns change its state as they are: drop mut")
-	case f.Recv == nil:
+	case f.Recv == nil && !f.IsExtMethod():
 		c.errorf(d.Name, "mut fn is a method that changes its value: declare it in a struct, an enum or an extend")
 	case d.Native.IsValid() || d.Extern.IsValid():
 		c.errorf(d.Name, "a native fn can't be mut")
@@ -526,6 +529,17 @@ func (c *Checker) funcBody(f *Function) {
 				c.scope.Insert(&selfMember{object: object{m.name, m.pos}, method: m, owner: f.Recv})
 			}
 		}
+	} else if f.IsExtMethod() {
+		// self's fields by their bare names, as the type's own methods
+		// see them; its methods are self's (implicitSelf).
+		c.scope = NewScope(c.extScope(f.Ext))
+		if n, ok := f.Ext.Target.(*Named); ok && n.Obj.Kind == StructType {
+			for _, fl := range n.Obj.Fields {
+				c.scope.Insert(&selfMember{object: object{fl.Name, fl.Pos}, field: fl, owner: n.Obj, subst: n.Subst()})
+			}
+		}
+	} else if f.Ext != nil {
+		c.scope = c.extScope(f.Ext)
 	} else {
 		c.scope = c.declScope(d)
 	}
@@ -539,6 +553,9 @@ func (c *Checker) funcBody(f *Function) {
 	if f.Recv != nil {
 		kind = CtxMethod
 		name = f.Recv.name + "." + f.name
+	} else if f.IsExtMethod() {
+		kind = CtxMethod
+		name = f.Ext.Name() + "." + f.name
 	}
 	ctx := c.enter(kind, d, name)
 	ctx.Func = f
@@ -557,6 +574,8 @@ func (c *Checker) funcBody(f *Function) {
 		case StoreType, ComponentType:
 			ctx.Comp = f.Recv
 		}
+	} else if f.IsExtMethod() {
+		ctx.Self = &Var{object: object{"self", d.Name.Start}, Type: f.Ext.Target, Kind: SelfVar, Ctx: ctx}
 	}
 	for i, p := range f.Sig.Params {
 		v := c.declareVar(d.Params.List[i].Name, p.Type, false)
@@ -716,14 +735,20 @@ func (c *Checker) implementsMembers(t Type, iface *Named) string {
 	}
 	s, is := n.Subst(), iface.Subst()
 	for _, m := range it.Iface.Methods {
-		f := n.Obj.Methods[m.Name]
+		f, fs := n.Obj.Methods[m.Name], s
 		if f == nil {
-			return "it has no method " + m.Name
+			// An extension's, where the package sees it.
+			hit, _ := c.extLookup(t, m.Name, "method", nil)
+			if hit.f == nil {
+				return "it has no method " + m.Name
+			}
+			f, fs = hit.f, hit.s
+			c.extImpl(n, m.Name, f)
 		}
 		c.funcSig(f)
-		got, want := s.Apply(f.Sig.Type()), is.Apply(m.Sig.Type())
+		got, want := fs.Apply(f.Sig.Type()), is.Apply(m.Sig.Type())
 		if !Identical(got, want) {
-			if why := extraParams(s.applySig(f.Sig), is.applySig(m.Sig), m.Name); why != "" {
+			if why := extraParams(fs.applySig(f.Sig), is.applySig(m.Sig), m.Name); why != "" {
 				return why
 			}
 			return "its " + m.Name + " is " + typeString(got) + ", not " + typeString(want)
@@ -743,12 +768,18 @@ func (c *Checker) implementsMembers(t Type, iface *Named) string {
 				return "its field " + fl.Name + " is " + typeString(s.Apply(f.Type)) + ", not " + typeString(want)
 			}
 		} else {
-			f := n.Obj.Methods[fl.Name]
+			f, fs := n.Obj.Methods[fl.Name], s
+			if f == nil {
+				if hit, _ := c.extLookup(t, fl.Name, "method", nil); hit.f != nil {
+					f, fs = hit.f, hit.s
+					c.extImpl(n, fl.Name, f)
+				}
+			}
 			if f == nil {
 				return "it has no " + fl.Name + " (an enum has it as a method: fn " + fl.Name + "() -> " + typeString(want) + ")"
 			}
 			c.funcSig(f)
-			if len(f.Sig.Params) != 0 || !Identical(s.Apply(f.Sig.Result), want) {
+			if len(f.Sig.Params) != 0 || !Identical(fs.Apply(f.Sig.Result), want) {
 				return "its " + fl.Name + " isn't fn " + fl.Name + "() -> " + typeString(want)
 			}
 		}

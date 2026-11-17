@@ -1,0 +1,30 @@
+import ./model.{Message, Address, Unit}
+import ./text.{Named}
+import ./theme.{Money}
+
+interface Shape {
+  fn area() -> float
+}
+
+fn describe(s: Shape) -> string = "area {s.area()}"
+
+fn unitName<N: Named>(n: N) -> string = n.name()
+
+test "extensions from packages" {
+  print("Hello Big World".slug())
+  print("abc".twice())
+  var m = Message(from: Address(address: "ann@x"), subject: "Hi there")
+  print(m.isFromVIP(Set(["ann@x"])))
+  m.archive()
+  print(m.folder)
+  print(describe(m))
+  let n: Named = Unit.inches
+  print(n.name())
+  print(unitName(Unit.points))
+  let c: Color = .brand
+  print(c == Color.brand)
+  let f: Font = .display
+  print(f.size)
+  let price: Money = .of(dollars: 3)
+  print(Money.of(dollars: 2).cents + price.cents)
+}

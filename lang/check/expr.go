@@ -17,6 +17,9 @@ type selfMember struct {
 	field  *Field
 	method *Function
 	owner  *TypeName
+	// subst: the type's parameters, an extension's arguments for them
+	// (extend<T> Box<T>: Box's T is the extension's).
+	subst Subst
 }
 
 func (c *Checker) record(e syntax.Expr, t Type) Type {
@@ -178,6 +181,10 @@ func (c *Checker) ident(e *syntax.Ident) Type {
 		c.errorf(e, "_ isn't a value")
 		return Invalid
 	}
+	if x := c.implicitSelf(e, false); x != nil {
+		c.info.ImplicitSelf[e] = x
+		return c.expr(x, nil)
+	}
 	o := c.lookup(e.Name)
 	if o == nil && e.Name == "shader" {
 		c.errorf(e, shaderMoved)
@@ -206,7 +213,7 @@ func (c *Checker) ident(e *syntax.Ident) Type {
 		}
 		c.useVar(c.ctx.Self, e)
 		if o.field != nil {
-			return o.field.Type
+			return o.subst.Apply(o.field.Type)
 		}
 		c.errorf(e, "%s is a method: call it, %s()", e.Name, e.Name)
 		return Invalid
@@ -1009,7 +1016,19 @@ func (c *Checker) staticMember(e syntax.Expr, tn *TypeName, name string, want Ty
 		c.info.Selections[e] = &Selection{Kind: SelConst, Global: g, Recv: t}
 		return c.useGlobal(g, e)
 	}
-	if f := tn.Statics[name]; f != nil {
+	if hit, _ := c.extLookup(t, name, "const", e); hit.g != nil {
+		c.info.Selections[e] = &Selection{Kind: SelConst, Global: hit.g, Recv: t}
+		if m, ok := e.(*syntax.MemberExpr); ok {
+			c.info.Uses[m.Name] = hit.g
+		}
+		return c.useGlobal(hit.g, e)
+	}
+	f := tn.Statics[name]
+	if f == nil {
+		hit, _ := c.extLookup(t, name, "static", e)
+		f = hit.f
+	}
+	if f != nil {
 		// A static fn as a value: Money.of.
 		c.info.Selections[e] = &Selection{Kind: SelPkg, Obj: f}
 		if m, ok := e.(*syntax.MemberExpr); ok {
@@ -1244,6 +1263,14 @@ func (c *Checker) implicitMember(e *syntax.ImplicitMember, want Type) Type {
 		return Invalid // what's expected is invalid, and said why
 	}
 	w := Unopt(want)
+	if w != nil && !IsInvalid(w) {
+		// An extension's constant: .brand where a Color is expected.
+		if hit, _ := c.extLookup(w, name, "const", e); hit.g != nil {
+			c.info.Selections[e] = &Selection{Kind: SelConst, Global: hit.g, Recv: w}
+			c.info.Uses[e.Name] = hit.g
+			return c.useGlobal(hit.g, e)
+		}
+	}
 	switch w {
 	case nil:
 		c.errorf(e, "can't tell what .%s is here: write its type, Type.%s", name, name)

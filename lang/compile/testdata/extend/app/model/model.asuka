@@ -1,0 +1,21 @@
+pub enum Folder {
+  inbox
+  archive
+}
+
+pub enum Unit {
+  points
+  inches
+}
+
+pub struct Address {
+  address: string
+}
+
+pub struct Message {
+  from: Address
+  subject: string
+  folder: Folder = .inbox
+
+  pub fn summary() -> string = "{from.address}: {subject}"
+}

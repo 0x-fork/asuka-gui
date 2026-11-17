@@ -1,0 +1,135 @@
+// Extensions: fns, mut fns, static fns and constants added to a type,
+// built in or the package's own.
+
+extend string {
+  fn slug() -> string = lower().fields().joined(separator: "-")
+  mut fn shout() { self = upper() + "!" }
+  fn words() -> int = fields().count()
+}
+
+extend Color {
+  let brand = #7c3aed
+  static fn faded(by: float) -> Color = #7c3aed.opacity(by)
+}
+
+extend<T: Comparable> [T] {
+  fn median() -> T? = if isEmpty() { none } else { sorted()[count() / 2] }
+}
+
+extend<K: Hashable, V> [K: V] {
+  fn hasKey(k: K) -> bool = self[k].isSome()
+}
+
+extend<T: Hashable> Set<T> {
+  fn lacks(x: T) -> bool = !contains(x)
+}
+
+struct Box<T> {
+  value: T
+}
+
+extend<T> Box<T> {
+  fn get() -> T = value
+  mut fn put(v: T) { value = v }
+}
+
+struct Money {
+  cents: int
+
+  fn plus(o: Money) -> Money = Money(cents: cents + o.cents)
+  // An extension's method, by its bare name, in the type's own.
+  fn twice() -> Money = doubled()
+}
+
+extend Money {
+  static fn of(dollars: int) -> Money = Money(cents: dollars * 100)
+  let zero = Money(cents: 0)
+  fn doubled() -> Money = plus(self)
+  mut fn add(n: int) { cents += n }
+  fn area() -> float = float(cents)
+}
+
+enum Unit {
+  pt
+  inch
+}
+
+extend Unit: Named {
+  fn name() -> string = match self {
+    .pt => "points"
+    .inch => "inches"
+  }
+}
+
+interface Shape {
+  fn area() -> float
+}
+
+interface Named {
+  fn name() -> string
+}
+
+fn areas<S: Shape>(xs: [S]) -> float {
+  var t = 0.0
+  for x in xs { t += x.area() }
+  return t
+}
+
+state wallet = Money(cents: 1)
+
+test "built-in types" {
+  print("Hello Big World".slug())
+  var s = "hi"
+  s.shout()
+  print(s)
+  print("ada lovelace".words())
+  print([3, 1, 2].median())
+  print(["b", "a", "c"].median())
+  print(["a": 1].hasKey("a"))
+  print(Set([1, 2, 3]).lacks(4))
+  let c: Color = .brand
+  print(c == Color.brand)
+  print(Color.faded(by: 0.5) == .faded(by: 0.5))
+}
+
+test "the package's types" {
+  var b = Box(value: 1)
+  b.put(b.get() + 1)
+  print(b.get())
+  var m = Money.of(dollars: 2)
+  m.add(5)
+  print(m.twice().cents)
+  let z: Money = .zero
+  print(z.cents)
+  wallet.add(9)
+  print(wallet.cents)
+}
+
+test "interfaces" {
+  let sh: Shape = Money(cents: 3)
+  print(sh.area())
+  print(areas([Money(cents: 1), Money(cents: 2)]))
+  let n: Named = Unit.inch
+  print(n.name())
+}
+
+// Output:
+// hello-big-world
+// HI!
+// 2
+// 2
+// b
+// true
+// true
+// true
+// true
+// ok built-in types
+// 2
+// 410
+// 0
+// 10
+// ok the package's types
+// 3
+// 3
+// inches
+// ok interfaces

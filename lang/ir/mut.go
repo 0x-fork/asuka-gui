@@ -105,7 +105,7 @@ func (b *fb) mutTarget(call *check.Call) (mutFunc, bc.Kind, bool) {
 	if call.Kind == check.CallIface {
 		k := b.l.kind(b.typ(call.Result))
 		if n, ok := b.typ(check.Unopt(call.RecvType)).(*check.Named); ok && (n.Obj.Kind == check.StructType || n.Obj.Kind == check.EnumType) {
-			if f := n.Obj.Methods[call.Name]; f != nil {
+			if f := b.l.method(n, call.Name); f != nil {
 				return mutFunc{b.l.funcIndex(f, nil, n), n.Subst()}, k, readsState(f)
 			}
 		}

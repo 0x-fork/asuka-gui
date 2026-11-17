@@ -21,6 +21,10 @@ func (b *fb) call1(e *syntax.CallExpr, dst int, discard bool) int {
 	if h := b.l.info.Hrefs[e]; h != nil {
 		return b.href(h, dst)
 	}
+	if x, ok := b.l.info.ImplicitSelf[e].(*syntax.CallExpr); ok {
+		// self's method by its bare name: self.name(…).
+		return b.call1(x, dst, discard)
+	}
 	call := b.l.info.Calls[e]
 	if call == nil {
 		b.l.errorf(e, "internal: no call info")
@@ -189,7 +193,7 @@ func (b *fb) invoke(idx int, vals []int, k bc.Kind, dst int, discard bool) int {
 
 func (b *fb) funcCall(e *syntax.CallExpr, call *check.Call, dst int, discard bool) int {
 	f := call.Func
-	if f.Recv == nil {
+	if f.Recv == nil && !f.IsExtMethod() {
 		var targs []check.Type
 		for _, t := range call.TypeArgs {
 			targs = append(targs, b.typ(t))
@@ -215,7 +219,9 @@ func (b *fb) funcCall(e *syntax.CallExpr, call *check.Call, dst int, discard boo
 func (b *fb) funcCallRecv(e *syntax.CallExpr, call *check.Call, recv int, dst int, discard bool) int {
 	f := call.Func
 	var rt check.Type
-	if f.Recv.Kind == check.StructType || f.Recv.Kind == check.EnumType {
+	if f.IsExtMethod() {
+		rt = b.typ(check.Unopt(call.RecvType))
+	} else if f.Recv.Kind == check.StructType || f.Recv.Kind == check.EnumType {
 		if call.RecvType != nil {
 			rt = b.typ(check.Unopt(call.RecvType))
 		} else if b.ctx.Self != nil {
@@ -242,7 +248,9 @@ func (b *fb) funcCallRecv(e *syntax.CallExpr, call *check.Call, recv int, dst in
 // calleeSubst is the substitution a callee's signature is read with.
 func (b *fb) calleeSubst(f *check.Function, targs []check.Type, recv check.Type) check.Subst {
 	s := check.Subst{}
-	if n, ok := recv.(*check.Named); ok {
+	if f.IsExtMethod() {
+		s = check.ExtSubst(f, recv)
+	} else if n, ok := recv.(*check.Named); ok {
 		for k, v := range n.Subst() {
 			s[k] = v
 		}
@@ -302,7 +310,7 @@ func (b *fb) ifaceCall(e *syntax.CallExpr, call *check.Call, recv *int, dst int)
 func (b *fb) ifaceInvoke(name string, call *check.Call, vals []int, dst int) int {
 	k := b.l.kind(b.typ(call.Result))
 	if n, ok := b.typ(check.Unopt(call.RecvType)).(*check.Named); ok && (n.Obj.Kind == check.StructType || n.Obj.Kind == check.EnumType) {
-		if f := n.Obj.Methods[name]; f != nil {
+		if f := b.l.method(n, name); f != nil {
 			r := b.invoke(b.l.funcIndex(f, nil, n), vals, k, dst, false)
 			if k == bc.KVoid {
 				return -1

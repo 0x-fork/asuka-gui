@@ -330,6 +330,9 @@ func (c *Checker) checkFiles(p *Package, files []*syntax.SourceFile, imports map
 	for _, t := range p.Types {
 		c.typeMembers(t)
 	}
+	for _, e := range p.Exts {
+		c.extMembers(e)
+	}
 	c.structCycles(p)
 	for _, f := range p.Funcs {
 		c.funcSig(f)
@@ -340,6 +343,9 @@ func (c *Checker) checkFiles(p *Package, files []*syntax.SourceFile, imports map
 	c.checkStyles(p)
 	for _, t := range p.Types {
 		c.typeBodies(t)
+	}
+	for _, e := range p.Exts {
+		c.extBodies(e)
 	}
 	for _, f := range p.Funcs {
 		c.funcBody(f)
@@ -553,6 +559,8 @@ func (c *Checker) collect(p *Package, d syntax.Decl) {
 		p.App = d
 	case *syntax.TestDecl:
 		p.Tests = append(p.Tests, &Test{Name: unquoteSimple(d.Name), Decl: d, Pkg: p})
+	case *syntax.ExtendDecl:
+		c.collectExtend(p, d)
 	}
 }
 

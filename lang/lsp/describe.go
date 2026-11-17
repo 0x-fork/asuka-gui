@@ -95,6 +95,8 @@ func funcSig(f *check.Function) string {
 	b.WriteString("fn ")
 	if f.Recv != nil {
 		b.WriteString(f.Recv.Name() + ".")
+	} else if f.Ext != nil {
+		b.WriteString(f.Ext.Name() + ".")
 	}
 	b.WriteString(f.Name())
 	b.WriteString(typeParamsString(f.TypeParams))

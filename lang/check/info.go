@@ -82,6 +82,14 @@ type Info struct {
 	// Shaders: shader declarations' programs, compiled (shaderlang.go).
 	Shaders map[*syntax.CallExpr][]byte
 
+	// ImplicitSelf: a bare call or name in a method's body that's self's
+	// method or property (a built-in one, or an extension's): the
+	// self.name it's checked and lowered as.
+	ImplicitSelf map[syntax.Expr]syntax.Expr
+	// ExtImpls: the extensions' methods that give types interfaces where
+	// they're converted to one, by ExtImplKey.
+	ExtImpls map[string]*Function
+
 	// For editors (lang/lsp).
 	//
 	// Imports: the package each import names (absent: it failed).
@@ -117,6 +125,8 @@ func newInfo() *Info {
 		Trailing:       map[*syntax.CallExpr]*syntax.LambdaExpr{},
 		Shaders:        map[*syntax.CallExpr][]byte{},
 		SlotCalls:      map[*syntax.SlotItem]*syntax.CallExpr{},
+		ImplicitSelf:   map[syntax.Expr]syntax.Expr{},
+		ExtImpls:       map[string]*Function{},
 		BodyCalls:      map[syntax.Item]bool{},
 		ScreenRoots:    map[*TypeName]*syntax.CallExpr{},
 		RouteBuilders:  map[*ElementCall]*RouteBuilder{},

@@ -444,6 +444,10 @@ func (b *fb) throwMsg(msg string) {
 // Names
 
 func (b *fb) ident(e *syntax.Ident, dst int) int {
+	if x := b.l.info.ImplicitSelf[e]; x != nil {
+		// self's property by its bare name.
+		return b.value(x, dst)
+	}
 	switch o := b.l.info.Uses[e].(type) {
 	case *check.Var:
 		if o.Fn != nil {

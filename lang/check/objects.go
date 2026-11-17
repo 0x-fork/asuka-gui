@@ -41,6 +41,7 @@ type Package struct {
 	Funcs   []*Function // top-level functions
 	Types   []*TypeName // declared types
 	Tests   []*Test
+	Exts    []*Extension // its extend declarations
 	App     *syntax.AppDecl
 	Imports []*Package
 
@@ -210,7 +211,10 @@ type Function struct {
 	TypeParams []*TypeParam
 	Recv       *TypeName // a method's type (struct, enum, store, component); nil for a function
 	Static     *TypeName // a static fn's type (Money.of), which has no receiver
-	Ctx        *FuncCtx  // its body's
+	// Ext: an extension's fn (a method, with its receiver first, or a
+	// static fn, Static set too).
+	Ext *Extension
+	Ctx *FuncCtx // its body's
 	// Extern: an extern fn's C side (nil for the rest).
 	Extern *Extern
 
@@ -497,8 +501,9 @@ type Global struct {
 	Type  Type
 	Decl  syntax.Node
 	Value syntax.Expr
-	Owner *TypeName // a type's constant
-	Ctx   *FuncCtx  // its initializer's
+	Owner *TypeName  // a type's constant
+	Ext   *Extension // an extension's constant
+	Ctx   *FuncCtx   // its initializer's
 	deps  []*Global
 	Pub   bool
 }

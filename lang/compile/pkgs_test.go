@@ -308,3 +308,54 @@ app {
 		t.Errorf("a pub variant is the caller's to style:\n%v", got)
 	}
 }
+
+// Extensions across packages: an import's pub members, its interfaces
+// given to another package's types, and its constants and static fns
+// found where their type is expected (testdata/extend).
+func TestExtensionPackages(t *testing.T) {
+	res, err := Dir("testdata/extend/app", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := res.Err(); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runBoth(t, res.Module)
+	want := "hello-big-world\n10\ntrue\narchive\narea 8\nin\npt\ntrue\n34\n500\nok extensions from packages"
+	if strings.TrimSpace(out) != want || err != nil {
+		t.Fatalf("got (%v):\n%s\nwant:\n%s", err, out, want)
+	}
+}
+
+// What an extension's importers see: its pub members only, and two of
+// one name an error where it's used, naming both packages; two that give
+// one type an interface's method, an error where the second does.
+func TestExtensionConflicts(t *testing.T) {
+	root := t.TempDir()
+	write := func(p, s string) {
+		p = filepath.Join(root, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(s), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("app/text/text.asuka", "extend string {\n  pub fn slug() -> string = lower()\n  fn hidden() -> string = self\n}\n\npub struct Item { n: int }\n\nextend Item {\n  pub fn area() -> float = 1.0\n}\n\npub interface Shape { fn area() -> float }\n\npub fn shape(i: Item) -> Shape = i\n")
+	write("app/words/words.asuka", "import ../text\n\nextend string {\n  pub fn slug() -> string = upper()\n}\n\nextend text.Item {\n  pub fn area() -> float = 2.0\n}\n\npub fn shape(i: text.Item) -> text.Shape = i\n")
+	write("app/main.asuka", "import ./text\nimport ./words\n\ntest \"t\" {\n  print(\"A\".slug())\n  print(\"A\".hidden())\n  print(text.shape(text.Item(n: 1)).area() + words.shape(text.Item(n: 1)).area())\n}\n")
+	res, err := Dir(filepath.Join(root, "app"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := res.Err()
+	for _, want := range []string{
+		"slug is extended by ./text and ./words; import one",
+		"string has no method hidden",
+		"area is extended by ./text and ./words, and both make text.Item an interface's: a type has one area in a program",
+	} {
+		if got == nil || !strings.Contains(got.Error(), want) {
+			t.Errorf("want %q in:\n%v", want, got)
+		}
+	}
+}
