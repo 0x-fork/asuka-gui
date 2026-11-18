@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/lang/bytecode"
@@ -65,7 +66,12 @@ type TestResult struct {
 	OK      bool   `json:"ok"`
 	Message string `json:"message,omitempty"` // what failed
 	Pos     string `json:"pos"`               // file:line of the test block
+	// Property is a property test's failing input (testing.go).
+	Property *PropertyFailure `json:"property,omitempty"`
 }
+
+// WriteJSON writes v to out as a line of JSON (asuka test --json's).
+func WriteJSON(out io.Writer, v any) { writeJSON(out, v) }
 
 // writeJSON writes v to out as a line of JSON.
 func writeJSON(out io.Writer, v any) {
@@ -82,6 +88,15 @@ type TestSummary struct {
 	// Diags are the run-time diagnostics the core reported as the tests
 	// ran (rfcs/0015: load-waterfall, long-hold...), in order.
 	Diags []RunDiag
+	// Benches are the benches' results (with Bench), in order.
+	Benches []BenchResult
+	// Snapshots are what the snapshots saw, in order.
+	Snapshots []Snapshot
+	// Fuzz is the fuzzing's progress (with Fuzz).
+	Fuzz []FuzzProgress
+	// properties: the failing inputs asuka-run said, until their tests'
+	// results come.
+	properties map[string]*PropertyFailure
 }
 
 // A RunDiag is a diagnostic the core reported as the app ran: its code,
@@ -165,6 +180,32 @@ type TestOptions struct {
 	// own ({"test", "ok", "message", "pos"}), and what the tests print as
 	// {"output"}.
 	JSON bool
+
+	// Bench runs the benches instead of the tests: compiled to C, as a
+	// release build is, unless VM. Each's samples take BenchTime
+	// together, or each sample is BenchN iterations. Baseline: the
+	// results of a run to compare with (by name).
+	Bench     bool
+	VM        bool
+	BenchTime time.Duration
+	BenchN    uint64
+	Baseline  map[string]BenchResult
+	// Seed and Cases are the property tests' (Cases 0: 100). Fuzz fuzzes
+	// them instead, for FuzzTime or FuzzCases each. Corpus is a file of
+	// "test\tpath" lines: the inputs each test runs first.
+	Seed      uint64
+	Cases     int
+	Fuzz      bool
+	FuzzTime  time.Duration
+	FuzzCases uint64
+	Corpus    string
+	// Snapshots is a file of the stored snapshots ("key\0value\0"
+	// records); Update takes what differs; CI fails on a missing one.
+	Snapshots  string
+	Update, CI bool
+	// Cover is the file asuka-run writes the coverage counters' counts
+	// to, for a module compiled with them.
+	Cover string
 }
 
 // RunTests runs m's test blocks on the fake host, with asuka-run, writing
@@ -177,19 +218,28 @@ func RunTests(m *bytecode.Module, o TestOptions, out io.Writer) (*TestSummary, e
 		return nil, err
 	}
 	defer os.RemoveAll(work)
-	exe, err := RunnerFor(m, work)
-	if err != nil {
-		return nil, err
+	aot := o.Bench && !o.VM
+	var exe, p string
+	if aot {
+		if exe, err = cRunner(m, work); err != nil {
+			return nil, err
+		}
+		p = "-aot"
+	} else {
+		if exe, err = RunnerFor(m, work); err != nil {
+			return nil, err
+		}
+		var cleanup func()
+		if p, cleanup, err = writeModule(m); err != nil {
+			return nil, err
+		}
+		defer cleanup()
 	}
-	p, cleanup, err := writeModule(m)
-	if err != nil {
-		return nil, err
-	}
-	defer cleanup()
 	var args []string
 	if o.Platform != "" {
 		args = append(args, "-platform", o.Platform)
 	}
+	args = append(args, testFlags(o)...)
 	args = append(args, "-diag-json", "-test")
 	if pattern != "" {
 		args = append(args, pattern)
@@ -211,10 +261,14 @@ func RunTests(m *bytecode.Module, o TestOptions, out io.Writer) (*TestSummary, e
 	// Longest first: a name that starts another's is matched last.
 	sort.Slice(names, func(i, j int) bool { return len(names[i]) > len(names[j]) })
 	s := &TestSummary{}
+	width := benchWidth(m)
 	sc := bufio.NewScanner(stdout)
-	sc.Buffer(make([]byte, 64<<10), 16<<20)
+	sc.Buffer(make([]byte, 64<<10), 64<<20)
 	for sc.Scan() {
 		line := sc.Text()
+		if strings.HasPrefix(line, "{") && s.testLine(line, o, m, out, width) {
+			continue
+		}
 		if strings.HasPrefix(line, `{"diag":`) {
 			var d RunDiag
 			if err := json.Unmarshal([]byte(line), &d); err == nil {
@@ -238,6 +292,9 @@ func RunTests(m *bytecode.Module, o TestOptions, out io.Writer) (*TestSummary, e
 			continue
 		}
 		r.Pos = testPos(m, r.Name, dir)
+		if !r.OK {
+			s.failed(&r)
+		}
 		s.Results = append(s.Results, r)
 		if o.JSON {
 			writeJSON(out, r)
@@ -346,4 +403,47 @@ func writeModule(m *bytecode.Module) (string, func(), error) {
 	}
 	f.Close()
 	return f.Name(), func() { os.Remove(f.Name()) }, nil
+}
+
+// testFlags are asuka-run's flags for what o asks of the tests.
+func testFlags(o TestOptions) []string {
+	var args []string
+	if o.Bench {
+		args = append(args, "-bench", "-no-diag")
+		if o.BenchN > 0 {
+			args = append(args, "-benchn", strconv.FormatUint(o.BenchN, 10))
+		} else if o.BenchTime > 0 {
+			args = append(args, "-benchtime", strconv.FormatInt(int64(o.BenchTime), 10))
+		}
+	}
+	if o.Seed != 0 {
+		args = append(args, "-seed", strconv.FormatUint(o.Seed, 10))
+	}
+	if o.Cases > 0 {
+		args = append(args, "-cases", strconv.Itoa(o.Cases))
+	}
+	if o.Fuzz {
+		args = append(args, "-fuzz")
+		if o.FuzzCases > 0 {
+			args = append(args, "-fuzzcases", strconv.FormatUint(o.FuzzCases, 10))
+		} else if o.FuzzTime > 0 {
+			args = append(args, "-fuzztime", strconv.FormatInt(int64(o.FuzzTime), 10))
+		}
+	}
+	if o.Corpus != "" {
+		args = append(args, "-corpus", o.Corpus)
+	}
+	if o.Snapshots != "" {
+		args = append(args, "-snapshots", o.Snapshots)
+	}
+	if o.Update {
+		args = append(args, "-update")
+	}
+	if o.CI {
+		args = append(args, "-ci")
+	}
+	if o.Cover != "" {
+		args = append(args, "-cover", o.Cover)
+	}
+	return args
 }

@@ -27,3 +27,31 @@ action:)`, `refresh`, `scrollTo`, `back`, `dismiss`, `pickDate`,
 `nextTo(label)` narrow what a text names; with a router, `mount(…, at:
 "/inbox/1")`, `href`, `history()`, `goBack()`, `goForward()`. See
 [Testing](../testing.md).
+
+A test with parameters is a property test, run with values `asuka test`
+generates for them; a failing input is shrunk to the simplest that still
+fails. `bench "name" { … }` is a benchmark, timed by `asuka test
+--bench`; its `measure { … }` is the part timed, after what sets it up,
+and `keep(x)` keeps a result from being optimized out.
+`expectSnapshot(value)` and `expectInlineSnapshot(value, "…")` compare
+what a value prints as with its snapshot, which `asuka test` writes.
+
+```asuka check
+fn fib(n: int) -> int {
+  if n < 2 { return n }
+  return fib(n - 1) + fib(n - 2)
+}
+
+test "fib grows" (n: int) {
+  if n < 2 || n > 30 { return }
+  expect(fib(n) >= fib(n - 1))
+}
+
+test "the first ones" {
+  expectInlineSnapshot([fib(1), fib(2), fib(3), fib(10)], "[1, 1, 2, 55]")
+}
+
+bench "fib 20" {
+  keep(fib(20))
+}
+```

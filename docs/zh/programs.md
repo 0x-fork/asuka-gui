@@ -971,6 +971,8 @@ test "reads git's branch" {
 }
 ```
 
+属性测试、快照、基准测试和覆盖率在命令行程序里的用法和应用一样：`asuka test --bench` 测量的是 `asuka build` 发布出去的、编译成 C 的代码，`asuka test --cover` 统计的是程序自己的代码（见[测试](testing.md#属性测试)）。
+
 ## 各平台支持情况
 
 | | macOS | Windows | Linux | 手机、Web |

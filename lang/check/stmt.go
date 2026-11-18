@@ -64,6 +64,8 @@ func (c *Checker) stmt(it syntax.Item) {
 		c.matchStmt(s)
 	case *syntax.DoStmt:
 		c.doStmt(s)
+	case *syntax.MeasureStmt:
+		c.measureStmt(s)
 	case *syntax.ReturnStmt:
 		c.returnStmt(s)
 	case *syntax.ThrowStmt:

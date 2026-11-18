@@ -196,6 +196,7 @@ type parser struct {
 	// items being parsed are one's, where cleanup { … } is a slot named
 	// cleanup (or a variant's block), not a cleanup (rfcs/0016).
 	wantCall, inCall bool
+	inBench          bool // in a bench's body: measure { … } is its statement
 	// letPat: parsing a let's pattern, whose name: is the let's type,
 	// not a type test's (TypedPat).
 	letPat bool
@@ -607,6 +608,16 @@ func (p *parser) endItem(n Node, what string) {
 	}
 }
 
+// benchAhead reports whether bench "name" starts here: "bench" is a
+// keyword only before a string, at a file's top level.
+func (p *parser) benchAhead() bool {
+	if p.tok != IDENT || p.lit != "bench" {
+		return false
+	}
+	next := p.peek(1)
+	return next == STRING || next == STRING_HEAD
+}
+
 // declAhead reports whether a declaration that can't be in a block
 // starts here, at the start of a line: a component, a struct, … in
 // column 1 inside a block means the block's } is missing, and the
@@ -636,6 +647,8 @@ func (p *parser) declAhead() bool {
 		return next == STRING || next == STRING_HEAD
 	case TYPE:
 		return isIdentTok(next)
+	case IDENT:
+		return tok == p.tok && p.benchAhead()
 	}
 	return false
 }
@@ -724,6 +737,10 @@ func describeNode(n Node) string {
 		return "app"
 	case *TestDecl:
 		return "test"
+	case *BenchDecl:
+		return "bench"
+	case *MeasureStmt:
+		return "measure"
 	case *Field:
 		return "field"
 	case *EnumCase:
@@ -873,6 +890,20 @@ func (p *parser) parseDecl() Decl {
 		p.next()
 	}
 	var d Decl
+	if p.benchAhead() {
+		// bench "name" { … }: "bench" is a keyword only here.
+		if pub.IsValid() {
+			p.error(pub, diag.InvalidModifier, "a bench can't be pub")
+		}
+		p.next()
+		b := &BenchDecl{Name: p.parseString()}
+		in := p.inBench
+		p.inBench = true
+		b.Body = p.parseBlock()
+		p.inBench = in
+		setSpan(b, p.span(start))
+		return b
+	}
 	if p.tok == IDENT && p.lit == "shader" && p.peek(1) == IDENT {
 		// shader Name { … }: "shader" is a keyword only here.
 		d = p.parseShader(start)
@@ -973,6 +1004,10 @@ func (p *parser) parseDecl() Decl {
 		} else {
 			p.errorExpected("the test's name, a string")
 			t.Name = &StringLit{Span: Span{p.pos, p.pos}, Segments: []string{""}}
+		}
+		if p.tok == LPAREN {
+			// A property test's parameters: test "name" (a: int) { … }.
+			t.Params = p.parseParams(false)
 		}
 		t.Body = p.parseBlock()
 		d = t
@@ -1079,6 +1114,8 @@ func setSpan(n Node, s Span) {
 	case *AppDecl:
 		n.Span = s
 	case *TestDecl:
+		n.Span = s
+	case *BenchDecl:
 		n.Span = s
 	case *PropDecl:
 		n.Span = s
@@ -1880,6 +1917,14 @@ func (p *parser) itemAfterPub(start Pos) Item {
 			return &BadItem{Span: p.span(start)}
 		}
 	case IDENT:
+		if p.inBench && p.lit == "measure" && next == LBRACE {
+			// measure { … }: the part of a bench it times; contextual, in
+			// a bench's body.
+			p.next()
+			d := &MeasureStmt{Body: p.parseBlock()}
+			d.Span = p.span(start)
+			return d
+		}
 		// variant name = condition: contextual, since variant is also a
 		// name (a Button's variant: prop).
 		if p.lit == "variant" && isIdentTok(next) && p.peek(2) == ASSIGN {

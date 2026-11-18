@@ -346,7 +346,7 @@ func (fc *fileCtx) enclosingElement(path []syntax.Node) (tn *check.TypeName, sty
 			return nil, false
 		case *syntax.StyleDecl:
 			return fc.styleType(), true
-		case *syntax.LambdaExpr, *syntax.FuncDecl, *syntax.ComponentDecl, *syntax.ScreenDecl, *syntax.StoreDecl, *syntax.WorkerDecl, *syntax.AppDecl, *syntax.TestDecl:
+		case *syntax.LambdaExpr, *syntax.FuncDecl, *syntax.ComponentDecl, *syntax.ScreenDecl, *syntax.StoreDecl, *syntax.WorkerDecl, *syntax.AppDecl, *syntax.TestDecl, *syntax.BenchDecl:
 			return nil, false
 		}
 	}

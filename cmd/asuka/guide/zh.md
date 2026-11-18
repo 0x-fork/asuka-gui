@@ -574,7 +574,7 @@ match line {
 }
 ```
 
-结构体和枚举可以从它们的方法获得运算符：`fn add(o: T) -> R` 就是 `a + b`，`fn sub(o: T) -> R`（或 `minus`）就是 `a - b`，`fn mul(o: T) -> R`（或 `times`）就是 `a * b`，`fn div(o: T) -> R`（或 `quo`）就是 `a / b`，`fn rem(o: T) -> R` 就是 `a % b`，`fn neg() -> R` 就是 `-a`，`fn compare(o: T) -> int`（负数、零或正数）就是 `<`、`<=`、`>` 和 `>=`，也让 `sorted()` 和 `T: Comparable` 可用（见[函数](https://asuka.egoist.dev/zh/docs/language/functions#接口与泛型)）。`T` 可以和值本身的类型不同（`Money * int`）；一个运算符有两个方法名时，两个方法各接受一种 `T`：`Decimal` 的 `mul(o: Decimal)` 和 `times(n: int)` 分别对应 `price * rate` 和 `price * 3`。反过来的顺序（`3 * price`）不会自动推出。只要方法返回的还是 `a` 的类型，`a += b` 就是借助这些方法的 `a = a + b`（`-=`、`*=`、`/=`、`%=` 也一样），可以用在 var、状态、字段和元素上（状态只改变一次）。`std/time` 的 `Time` 就是这样加上一个 `Duration`、减去另一个 `Time` 的：
+结构体和枚举可以从它们的方法获得运算符：`fn add(o: T) -> R`（或 `plus`）就是 `a + b`，`fn sub(o: T) -> R`（或 `minus`）就是 `a - b`，`fn mul(o: T) -> R`（或 `times`）就是 `a * b`，`fn div(o: T) -> R`（或 `quo`）就是 `a / b`，`fn rem(o: T) -> R` 就是 `a % b`，`fn neg() -> R` 就是 `-a`，`fn compare(o: T) -> int`（负数、零或正数）就是 `<`、`<=`、`>` 和 `>=`，也让 `sorted()` 和 `T: Comparable` 可用（见[函数](https://asuka.egoist.dev/zh/docs/language/functions#接口与泛型)）。`T` 可以和值本身的类型不同（`Money * int`）；一个运算符有两个方法名时，两个方法各接受一种 `T`：`Decimal` 的 `mul(o: Decimal)` 和 `times(n: int)` 分别对应 `price * rate` 和 `price * 3`。反过来的顺序（`3 * price`）不会自动推出。只要方法返回的还是 `a` 的类型，`a += b` 就是借助这些方法的 `a = a + b`（`-=`、`*=`、`/=`、`%=` 也一样），可以用在 var、状态、字段和元素上（状态只改变一次）。`std/time` 的 `Time` 就是这样加上一个 `Duration`、减去另一个 `Time` 的：
 
 ```asuka
 struct Money {
@@ -2007,6 +2007,28 @@ test "archiving removes the row" {
 
 `asuka test` 不需要设备就能运行包里的测试：它会像各平台那样对视图进行布局，按每个字符固定宽度来测量文字，而且只有在没有其他东西可以运行时，时间才会前进（测试里的 `sleep(5s)` 不花任何时间）。`mount` 返回应用，供你驱动和检查：`tap`、`longPress`、`type(_, into:)`、`submit`、`toggle`、`slide`、`select`、`swipe(_, action:)`、`refresh`、`scrollTo`、`back`、`dismiss`、`pickDate`、`pickColor`、`expect`、`expectNo`、`texts()`、`disabled(text)`、`until`、`waitFor`、`idle`；`in(.navigationBar)`、`in(.sidebar)` 和 `nextTo(label)` 缩小文字所指的范围；有路由器时，还有 `mount(…, at: "/inbox/1")`、`href`、`history()`、`goBack()`、`goForward()`。详见[测试](https://asuka.egoist.dev/zh/docs/testing)。
 
+带参数的测试是属性测试，`asuka test` 会为参数生成值来运行它；失败的输入会被缩减成仍然失败的最简单的那组。`bench "name" { … }` 是基准测试，由 `asuka test --bench` 计时；其中的 `measure { … }` 是要计时的部分，写在准备工作之后；`keep(x)` 防止计算结果被编译器优化掉。`expectSnapshot(value)` 和 `expectInlineSnapshot(value, "…")` 把一个值打印出来的样子和它的快照比较，快照由 `asuka test` 写入。
+
+```asuka
+fn fib(n: int) -> int {
+  if n < 2 { return n }
+  return fib(n - 1) + fib(n - 2)
+}
+
+test "fib grows" (n: int) {
+  if n < 2 || n > 30 { return }
+  expect(fib(n) >= fib(n - 1))
+}
+
+test "the first ones" {
+  expectInlineSnapshot([fib(1), fib(2), fib(3), fib(10)], "[1, 1, 2, 55]")
+}
+
+bench "fib 20" {
+  keep(fib(20))
+}
+```
+
 ## 诊断代码
 
 - argument-count: 调用时参数太多或太少. 按函数的声明传参；只有带默认值的参数可以省略。
@@ -2031,6 +2053,7 @@ test "archiving removes the row" {
 - format-spec: 插值的格式和它的值对不上. 按值的类型写格式，参照消息的说明：`{n:>6}`、`{x:.2f}`、`{n:#x}`、`{name:<12}`。
 - group-not-calls: `load (…)` 里的元素不都是调用. 只把调用放进组里（`load (api.user(id), api.posts(id))`），把值传给这些调用，或者放在 load 旁边。
 - import-cycle: 相互导入的包. 把两者都需要的部分移到第三个包里，让它们都导入它。
+- inline-snapshot: 内联快照不是直接写在调用里的字符串. 把快照写成字符串字面量，或者干脆省略（`expectInlineSnapshot(value)`），让 `asuka test` 在第一次运行时写上。
 - int-overflow: 超出 64 位范围的整数字面量. 换一个更小的数，或者使用 `float`；需要超出 64 位的精确整数时，用 `std/bigint` 的 `BigInt`（`BigInt.parse("9223372036854775808")!`）。
 - interface-not-satisfied: 类型声明了某个 interface，却没有实现它. 按 interface 的签名补上缺少的方法（消息里列出了它们）。
 - internal-error: 编译器自身的错误. 请到 https://github.com/egoist/asuka/issues 报告（附上程序，或者能重现问题的最小程序）。
@@ -2108,6 +2131,7 @@ test "archiving removes the row" {
 - spawn-captures-state: `spawn` 读取或修改了状态，或者用了不是值的东西. 先把状态读进一个 `let` 再传进去；把 `spawn` 的返回值赋给状态。
 - statement-in-view: 组件的视图之间写了语句. 把语句放进处理函数（`on press { … }`）、fn、task 或 effect；派生的值用 `let`。
 - syntax-error: 解析器在这里期望的是别的内容. 看消息里的“expected …, found …”：补上它期望的内容，或在它指出的位置闭合未闭合的部分。
+- test-parameter: 测试参数的类型是 asuka test 无法生成的. 让测试接收它所关心的数据（一个 id、一个由字段组成的 struct），其余的东西在测试体里用这些数据构造出来。
 - too-large: 函数太大，字节码装不下. 拆分函数，或者把数据放进文件（`embed.json`）而不是写成字面量。
 - tr-in-package: 在不是应用的包里使用了 `tr`. 把文本作为参数接收，由应用传入 `tr.key()`。
 - type-arguments: 类型参数的个数不对. 按声明给出相同个数的类型：`Set<int>`、`Page<Item>`。

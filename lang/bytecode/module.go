@@ -10,7 +10,7 @@ import (
 // Magic starts every module; Version changes with the format.
 const (
 	Magic   = "AKBC"
-	Version = 5
+	Version = 6
 )
 
 // Kind is how a value is stored (core/src/rt/rt.h's ak_kind).
@@ -96,10 +96,23 @@ type FuncDef struct {
 	Lines    []Line
 }
 
-// Test is a test block.
+// Test is a test block, or a bench.
 type Test struct {
 	Name string
 	Func uint32
+	// Bench: a benchmark, whose function takes how many times to run
+	// what it measures (an int).
+	Bench bool
+	// Params are a property test's parameters, which its function takes
+	// in order: values the runner generates, of their descriptors' types
+	// (core/src/rt/json.h).
+	Params []Param
+}
+
+// Param is a property test's parameter: its name and its type's JSON
+// descriptor.
+type Param struct {
+	Name, Desc string
 }
 
 // Module is a compiled program.
@@ -246,6 +259,16 @@ func (m *Module) Encode() []byte {
 	for _, t := range m.Tests {
 		w.str(t.Name)
 		w.u32(t.Func)
+		var flags uint8
+		if t.Bench {
+			flags |= 1
+		}
+		w.u8(flags)
+		w.u32(uint32(len(t.Params)))
+		for _, p := range t.Params {
+			w.str(p.Name)
+			w.str(p.Desc)
+		}
 	}
 	return w.b
 }
@@ -305,7 +328,12 @@ func Decode(b []byte) (*Module, error) {
 	m.App = int32(r.u32())
 	m.Main = int32(r.u32())
 	for n := r.u32(); n > 0 && r.err == nil; n-- {
-		m.Tests = append(m.Tests, Test{r.str(), r.u32()})
+		t := Test{Name: r.str(), Func: r.u32()}
+		t.Bench = r.u8()&1 != 0
+		for k := r.u32(); k > 0 && r.err == nil; k-- {
+			t.Params = append(t.Params, Param{r.str(), r.str()})
+		}
+		m.Tests = append(m.Tests, t)
 	}
 	if r.err != nil {
 		return nil, r.err

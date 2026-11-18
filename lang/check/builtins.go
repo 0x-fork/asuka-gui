@@ -76,6 +76,8 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		c.errorf(e.Block, diag.UnexpectedBlock, "%s takes no block", b.name)
 	}
 	switch b.ID {
+	case BKeep, BSnapshot, BInline:
+		c.testingBuiltin(e, b, call, positional(-1, ""))
 	case BPeek:
 		args := positional(1, "one value: peek(count)")
 		call.Args = args

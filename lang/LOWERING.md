@@ -1299,6 +1299,35 @@ returns an app handle. `app.tap(text)`, `app.type(text, into:)`,
 on it (`test.tap`, ...); a failed expectation throws, and the runner
 reports the error with its line.
 
+A test with parameters (a property test) is a function of them: its
+entry in Module.Tests lists each parameter's name and JSON descriptor
+(core/src/rt/json.h), and the runner (core/runner/prop.c) generates
+their values from the descriptors, calls the function with them, and
+shrinks a failing input. A `bench` is in Module.Tests too, flagged: its
+function takes an int, how many times to run what it measures. That's
+its `measure { … }` block, or its whole body: lowered in a loop of that
+many turns between CALLB `bench.start` and `bench.stop`, which read the
+clock and the allocation counters. `keep(x)` is CALLB `keep` (`keep.ref`
+for a reference: it retains it), a call the C compiler can't see
+through, so a result nothing reads is still computed.
+
+`expectSnapshot(x)` is CALLB `test.snapshot(text, where)` and
+`expectInlineSnapshot(x, "…")` is `test.inline_snapshot(text, want,
+has, file, line, col)`, text being x itself for a string and otherwise
+CALLB `test.show(x, desc)`, desc x's descriptor with `d` for a duration
+and `c` for a color where they aren't a struct's or an enum's fields.
+
+With coverage (ir.Options.Cover, lang/ir/cover.go), each statement of
+the files it names, and each value that ends a block, a match's arm, a
+closure or an `fn … = value`, is preceded by CALLB `cover.hit(i)`, i the
+site's counter: the first time a node is lowered it gets one (a generic
+function's instantiations share it). Tests' and benches' bodies aren't
+counted. Once everything is lowered, the statements of the functions
+nothing reached get counters nothing counts, and each if's and match's
+arms are said in counters (an arm's first statement's; an else left out
+is the if's count less its other arms'): Program.Cover. Without the
+option nothing is emitted.
+
 ## Programs
 
 The root package's `fn main` (check.Program.Main) is lowered as any

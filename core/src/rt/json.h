@@ -45,6 +45,10 @@ typedef struct {
 	// and callbacks): hold(ctx, true) as it starts keeping them,
 	// hold(ctx, false), on the main thread, as it lets go.
 	void (*hold)(void *ctx, bool keep);
+	// nonfinite reads and writes floats JSON can't hold as NaN, Infinity
+	// and -Infinity, as JavaScript's and Python's do (asuka test's
+	// corpus); without it they're written null, and read as errors.
+	bool nonfinite;
 } ak_json_types;
 
 // ak_json_decode parses text into a value of the descriptor's type. On
