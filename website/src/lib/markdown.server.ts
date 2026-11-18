@@ -56,7 +56,7 @@ let highlighter: Promise<Highlighter> | undefined
 export function getHighlighter() {
   highlighter ??= createHighlighter({
     themes: Object.values(themes),
-    langs: [asukaGrammar(), "c", "go", "ts", "tsx", "js", "json", "toml", "sh", "css", "html", "xml", "yaml", "swift", "kotlin"],
+    langs: [asukaGrammar(), "c", "go", "ts", "tsx", "js", "json", "toml", "sh", "css", "html", "xml", "yaml", "swift", "kotlin", "powershell"],
   })
   return highlighter
 }
@@ -183,7 +183,7 @@ function codeBlock(pre: Element, shiki: Highlighter, labels: PageLabels): Elemen
 
 /** A code block's language, as its header names it. */
 function langName(lang: string) {
-  const names: Record<string, string> = { sh: "Shell", bash: "Shell", text: "Text", ts: "TypeScript", tsx: "TSX", js: "JavaScript", kotlin: "Kotlin", swift: "Swift", go: "Go", json: "JSON", toml: "TOML", yaml: "YAML", xml: "XML", html: "HTML", css: "CSS" }
+  const names: Record<string, string> = { sh: "Shell", bash: "Shell", text: "Text", ts: "TypeScript", tsx: "TSX", js: "JavaScript", kotlin: "Kotlin", swift: "Swift", go: "Go", json: "JSON", toml: "TOML", yaml: "YAML", xml: "XML", html: "HTML", css: "CSS", powershell: "PowerShell" }
   return names[lang] ?? lang
 }
 
