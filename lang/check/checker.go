@@ -15,7 +15,7 @@ import (
 type Checker struct {
 	// measure is the bench's measure block being checked, the one place
 	// a measure statement may be (testing.go).
-	measure *syntax.MeasureStmt
+	measure []*syntax.MeasureStmt
 	// accVars: the vars the lowering reads as accessors (SetAccessorVar).
 	accVars map[*Var]bool
 	// shaderDecls are the shader declarations by their components'

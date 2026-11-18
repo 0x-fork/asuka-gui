@@ -709,9 +709,15 @@ static bool run_corpus(prop *p, const char *list) {
 				}
 				release_args(p, args);
 			} else if (failure[0]) {
-				char msg[sizeof failure];
-				snprintf(msg, sizeof msg, "%s", failure);
-				snprintf(failure, sizeof failure, "%s: %s", path, msg);
+				// The file's path, before what's wrong with it.
+				size_t pl = strlen(path), fl = strlen(failure);
+				if (pl + 2 + fl >= sizeof failure) fl = pl + 2 < sizeof failure ? sizeof failure - pl - 3 : 0;
+				if (pl + 2 < sizeof failure) {
+					memmove(failure + pl + 2, failure, fl);
+					memcpy(failure, path, pl);
+					memcpy(failure + pl, ": ", 2);
+					failure[pl + 2 + fl] = 0;
+				}
 				ok = false;
 			}
 			ak_free(text);
@@ -782,7 +788,7 @@ static choices mutate(fuzzer *z, uint64_t *rng) {
 	choices *from = &z->pool.data[splitmix(rng) % z->pool.len];
 	uint32_t cap = from->n * 2 + 16;
 	choices out = {ak_alloc(sizeof(uint64_t) * cap), from->n};
-	memcpy(out.v, from->v, sizeof(uint64_t) * from->n);
+	if (from->n) memcpy(out.v, from->v, sizeof(uint64_t) * from->n);
 	uint32_t times = 1 + (uint32_t)(splitmix(rng) % 4);
 	for (uint32_t k = 0; k < times; k++) {
 		uint32_t n = out.n;
@@ -798,7 +804,7 @@ static choices mutate(fuzzer *z, uint64_t *rng) {
 			if (n) {
 				uint32_t i = (uint32_t)(splitmix(rng) % n), len = 1 + (uint32_t)(splitmix(rng) % 8);
 				if (i + len > n) len = n - i;
-				memmove(out.v + i, out.v + i + len, sizeof(uint64_t) * (n - i - len));
+				if (n - i - len) memmove(out.v + i, out.v + i + len, sizeof(uint64_t) * (n - i - len));
 				out.n -= len;
 			}
 			break;
@@ -815,7 +821,7 @@ static choices mutate(fuzzer *z, uint64_t *rng) {
 			uint32_t i = n ? (uint32_t)(splitmix(rng) % n) : 0, j = other->n ? (uint32_t)(splitmix(rng) % other->n) : 0;
 			uint32_t len = other->n - j;
 			if (i + len > cap) len = cap - i;
-			memcpy(out.v + i, other->v + j, sizeof(uint64_t) * len);
+			if (len) memcpy(out.v + i, other->v + j, sizeof(uint64_t) * len);
 			out.n = i + len;
 			break;
 		}

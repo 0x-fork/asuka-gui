@@ -2762,6 +2762,34 @@ action:)`, `refresh`, `scrollTo`, `back`, `dismiss`, `pickDate`,
 "/inbox/1")`, `href`, `history()`, `goBack()`, `goForward()`. See
 [Testing](https://asuka.egoist.dev/docs/testing).
 
+A test with parameters is a property test, run with values `asuka test`
+generates for them; a failing input is shrunk to the simplest that still
+fails. `bench "name" { … }` is a benchmark, timed by `asuka test
+--bench`; its `measure { … }` is the part timed, after what sets it up,
+and `keep(x)` keeps a result from being optimized out.
+`expectSnapshot(value)` and `expectInlineSnapshot(value, "…")` compare
+what a value prints as with its snapshot, which `asuka test` writes.
+
+```asuka
+fn fib(n: int) -> int {
+  if n < 2 { return n }
+  return fib(n - 1) + fib(n - 2)
+}
+
+test "fib grows" (n: int) {
+  if n < 2 || n > 30 { return }
+  expect(fib(n) >= fib(n - 1))
+}
+
+test "the first ones" {
+  expectInlineSnapshot([fib(1), fib(2), fib(3), fib(10)], "[1, 1, 2, 55]")
+}
+
+bench "fib 20" {
+  keep(fib(20))
+}
+```
+
 ## Diagnostic codes
 
 - argument-count: a call with too many or too few arguments. Pass what the function declares; leave out only parameters with defaults.
@@ -2786,6 +2814,7 @@ action:)`, `refresh`, `scrollTo`, `back`, `dismiss`, `pickDate`,
 - format-spec: an interpolation's format that doesn't fit its value. Write the format for the value's type, as the message says: `{n:>6}`, `{x:.2f}`, `{n:#x}`, `{name:<12}`.
 - group-not-calls: `load (…)` of what isn't each a call. Group the calls only (`load (api.user(id), api.posts(id))`), and pass the values to them, or beside the load.
 - import-cycle: packages that import each other. Move what both need into a third package they both import.
+- inline-snapshot: an inline snapshot that isn't a string written in the call. Write the snapshot as a string literal, or leave it out (`expectInlineSnapshot(value)`) and let `asuka test` write it on its first run.
 - int-overflow: an integer literal that doesn't fit in 64 bits. Use a smaller number, a `float`, or a `std/decimal` value for exact large numbers.
 - interface-not-satisfied: a type that declares an interface it doesn't implement. Add the missing methods (the message lists them), with the interface's signatures.
 - internal-error: a mistake of the compiler's own. Report it (with the program, or the smallest one that shows it) at https://github.com/egoist/asuka/issues.
@@ -2863,6 +2892,7 @@ action:)`, `refresh`, `scrollTo`, `back`, `dismiss`, `pickDate`,
 - spawn-captures-state: `spawn` that reads or changes state, or what isn't a value. Read the state into a `let` first, and pass that; assign what `spawn` returns.
 - statement-in-view: a statement among a component's views. Put statements in a handler (`on press { … }`), a fn, a task or an effect; a derived value is a `let`.
 - syntax-error: the parser expected something else here. Read the message's "expected …, found …": write what it expected, or close what's open where it says.
+- test-parameter: a test's parameter of a type asuka test can't generate. Take what the test is about as data (an id, a struct of fields), and make the rest from it in the test's body.
 - too-large: a function too large for the bytecode. Split the function, or keep the data in a file (`embed.json`) instead of a literal.
 - tr-in-package: `tr` in a package that isn't the app. Take the text as a parameter, and let the app pass `tr.key()`.
 - type-arguments: the wrong number of type arguments. Give as many types as it declares: `Set<int>`, `Page<Item>`.

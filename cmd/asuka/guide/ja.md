@@ -1985,6 +1985,28 @@ test "archiving removes the row" {
 
 `asuka test` は、パッケージのテストをデバイスなしで実行します。プラットフォームと同じようにビューをレイアウトし、テキストは 1 文字あたり固定の幅で測ります。また、時間はほかに実行できるものが何もないときにしか進みません（テストの中の `sleep(5s)` には時間がかかりません）。`mount` はアプリを返すので、それを操作して確かめます（`tap`、`longPress`、`type(_, into:)`、`submit`、`toggle`、`slide`、`select`、`swipe(_, action:)`、`refresh`、`scrollTo`、`back`、`dismiss`、`pickDate`、`pickColor`、`expect`、`expectNo`、`texts()`、`disabled(text)`、`until`、`waitFor`、`idle`）。`in(.navigationBar)`、`in(.sidebar)`、`nextTo(label)` で、テキストが指すものを絞り込めます。ルーターがあれば、`mount(…, at: "/inbox/1")`、`href`、`history()`、`goBack()`、`goForward()` も使えます。詳しくは[テスト](https://asuka.egoist.dev/ja/docs/testing)を参照してください。
 
+パラメーターのあるテストはプロパティテストで、`asuka test` がパラメーターの値を生成して実行します。失敗した入力は、まだ失敗するいちばん単純なものに縮小されます。`bench "name" { … }` はベンチマークで、`asuka test --bench` が計測します。その中の `measure { … }` が計測される部分で、準備のあとに書きます。`keep(x)` は、結果が最適化で省かれないようにします。`expectSnapshot(value)` と `expectInlineSnapshot(value, "…")` は、値を出力したものをスナップショットと比べます。スナップショットは `asuka test` が書き込みます。
+
+```asuka
+fn fib(n: int) -> int {
+  if n < 2 { return n }
+  return fib(n - 1) + fib(n - 2)
+}
+
+test "fib grows" (n: int) {
+  if n < 2 || n > 30 { return }
+  expect(fib(n) >= fib(n - 1))
+}
+
+test "the first ones" {
+  expectInlineSnapshot([fib(1), fib(2), fib(3), fib(10)], "[1, 1, 2, 55]")
+}
+
+bench "fib 20" {
+  keep(fib(20))
+}
+```
+
 ## 診断コード
 
 - argument-count: 呼び出しの引数が多すぎる、または少なすぎる. 関数の宣言どおりに渡します。
@@ -2009,6 +2031,7 @@ test "archiving removes the row" {
 - format-spec: 値に合わない補間の書式. メッセージのとおり、値の型に合った書式を書きます：`{n:>6}`、`{x:.2f}`、`{n:#x}`、`{name:<12}`。
 - group-not-calls: `load (…)` の要素が、どれも呼び出しというわけではない. 呼び出しだけをまとめ（`load (api.user(id), api.posts(id))`）、値はそれらの呼び出しに渡すか、load の横に置きます。
 - import-cycle: 互いにインポートし合うパッケージ. 両方が必要とするものを 3 つ目のパッケージに移し、両方からそれをインポートします。
+- inline-snapshot: 呼び出しに直接書かれた文字列ではないインラインスナップショット. スナップショットを文字列リテラルとして書くか、省略して（`expectInlineSnapshot(value)`）最初の実行で `asuka test` に書かせます。
 - int-overflow: 64 ビットに収まらない整数リテラル. 小さい数にするか、`float` を使います。
 - interface-not-satisfied: 宣言した interface を実装していない型. 足りないメソッド（メッセージに一覧があります）を interface のシグネチャーで追加します。
 - internal-error: コンパイラー自身の誤り. https://github.com/egoist/asuka/issues に報告してください（プログラム、またはそれを再現する最小のプログラムを添えて）。
@@ -2086,6 +2109,7 @@ test "archiving removes the row" {
 - spawn-captures-state: 状態や値でないものを読み書きする `spawn`. 先に状態を `let` に読み込んでから渡し、`spawn` が返したものを代入します。
 - statement-in-view: コンポーネントのビューのあいだにある文. 文はハンドラー（`on press { … }`）、fn、タスク、エフェクトに書きます。
 - syntax-error: パーサーがここで別のものを期待している. メッセージの「expected …, found …」を読み、期待されているものを書くか、指摘された位置で開いているものを閉じます。
+- test-parameter: asuka test が生成できない型のテストのパラメーター. テストが扱うものをデータ（ID、フィールドからなる struct）として受け取り、残りはテストの本体でそこから作ります。
 - too-large: バイトコードに収まらないほど大きい関数. 関数を分けるか、データをリテラルではなくファイル（`embed.json`）に置きます。
 - tr-in-package: アプリではないパッケージでの `tr`. テキストをパラメーターとして受け取り、アプリから `tr.key()` を渡してもらいます。
 - type-arguments: 型引数の数が違う. 宣言のとおりの数だけ型を渡します（`Set<int>`、`Page<Item>`）。

@@ -49,7 +49,8 @@ func usage() {
                                             macOS, Windows and Linux: this computer
   asuka build [-p platform] [flags] [dir]   a release build for platform, likewise; a program's
                                             executable (--bin name, --target os-arch)
-  asuka test [-run pattern] [dir]           run the test blocks of an app or a package on the fake host
+  asuka test [-run pattern] [dir]           run the test blocks of an app or a package on the fake host;
+                                            --bench times its benches, --fuzz fuzzes, --cover measures
   asuka run [--bin name] [dir] [-- args]    run a program's main, with its arguments; a file without
                                             one: its test blocks, and what its app shows
   asuka publish -p platform [flags] [dir]

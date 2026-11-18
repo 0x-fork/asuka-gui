@@ -43,7 +43,7 @@ func cmdTest(args []string) error {
 	fs.String(&compare, "compare", 0, "", "compare the benches with a run that asuka test --bench --json wrote to `file`")
 	fs.Bool(&tr.vm, "vm", 0, "time the benches on the VM, not compiled to C")
 	fs.String(&seed, "seed", 0, "", "the `seed` property tests' inputs are generated from (default 0, the same every run; random: a new one, said)")
-	fs.Int(&tr.cases, "cases", 0, 100, "how many generated inputs each property test tries")
+	fs.Int(&tr.cases, "cases", 0, 100, "how many generated inputs (`n`) each property test tries")
 	fs.Bool(&tr.fuzz, "fuzz", 0, "fuzz the property tests instead of running the tests: new inputs until --fuzztime, those that reach new code kept and changed; a failing one is shrunk and saved in testdata/fuzz, which every run then tries")
 	fs.String(&fuzztime, "fuzztime", 0, "10s", "how long to fuzz each property test (`time`), or how many inputs (10000x)")
 	fs.Bool(&tr.update, "update", 'u', "write the snapshots that differ from what the tests show, and remove those no test takes")

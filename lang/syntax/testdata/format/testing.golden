@@ -1,0 +1,22 @@
+bench "sorted, 1000 ints" {
+  let xs = shuffled(1000)
+  measure {
+    keep(xs.sorted())
+  }
+}
+
+bench "fib" { keep(fib(20)) }
+
+test "reverses twice" (xs: [int], s: string) {
+  expect(xs.reversed().reversed() == xs)
+}
+
+test "snapshots" {
+  expectSnapshot(todos())
+  expectInlineSnapshot(total(), "42")
+}
+
+fn bench(measure: int) -> int {
+  let bench = measure
+  return bench
+}

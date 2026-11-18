@@ -53,10 +53,10 @@ test "show" {
 // FAIL structs: expected p.x < 100 (testing.asuka:26): got 100 and 100
 // ok passes
 // ok sorted
-// {"inline":"testdata/leaks/testing.asuka","test":"show","line":41,"col":3,"where":"testing.asuka:41","status":"ok"}
-// {"inline":"testdata/leaks/testing.asuka","test":"show","line":42,"col":3,"where":"testing.asuka:42","status":"ok"}
-// {"inline":"testdata/leaks/testing.asuka","test":"show","line":43,"col":3,"where":"testing.asuka:43","status":"ok"}
-// {"inline":"testdata/leaks/testing.asuka","test":"show","line":44,"col":3,"where":"testing.asuka:44","status":"ok"}
-// {"inline":"testdata/leaks/testing.asuka","test":"show","line":45,"col":3,"where":"testing.asuka:45","status":"ok"}
+// {"inline":"testdata/run/testing.asuka","test":"show","line":41,"col":3,"where":"testing.asuka:41","status":"ok"}
+// {"inline":"testdata/run/testing.asuka","test":"show","line":42,"col":3,"where":"testing.asuka:42","status":"ok"}
+// {"inline":"testdata/run/testing.asuka","test":"show","line":43,"col":3,"where":"testing.asuka:43","status":"ok"}
+// {"inline":"testdata/run/testing.asuka","test":"show","line":44,"col":3,"where":"testing.asuka:44","status":"ok"}
+// {"inline":"testdata/run/testing.asuka","test":"show","line":45,"col":3,"where":"testing.asuka:45","status":"ok"}
 // {"snapshot":"show 1","test":"show","where":"testing.asuka:46","status":"new","value":"(1, \"x\")"}
 // ok show

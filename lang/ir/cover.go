@@ -120,6 +120,7 @@ func (b *fb) cover(n syntax.Node) {
 // arm's count by the counters (once everything is lowered: what wasn't,
 // a branch @platform folded, has none and isn't reported).
 func (c *coverer) branches(l *Lowerer) {
+	c.dead(l)
 	for _, p := range l.prog.Packages {
 		for _, f := range p.Files {
 			if f.File == nil || !c.files[f.File.Name()] {
@@ -252,4 +253,62 @@ func (c *coverer) addAt(l *Lowerer, n syntax.Node, arms []CoverArm) {
 		return
 	}
 	c.out.Branches = append(c.out.Branches, CoverBranch{File: f.Name(), Line: l.fset.Position(start).Line, Arms: arms})
+}
+
+// dead counts the statements of the functions nothing calls, which
+// weren't lowered (a fn is lowered as it's reached): they never run, so
+// their counters, which nothing counts, say 0.
+func (c *coverer) dead(l *Lowerer) {
+	for _, p := range l.prog.Packages {
+		for _, f := range p.Files {
+			if f.File == nil || !c.files[f.File.Name()] {
+				continue
+			}
+			syntax.Inspect(f, func(n syntax.Node) bool {
+				d, ok := n.(*syntax.FuncDecl)
+				if !ok || d.Body == nil && d.Value == nil || returnsView(d) || c.reached(d) {
+					return true
+				}
+				if d.Value != nil {
+					c.site(l, d.Value)
+				}
+				syntax.Inspect(d, func(n syntax.Node) bool {
+					switch n := n.(type) {
+					case *syntax.Block:
+						for _, it := range n.Items {
+							c.site(l, it)
+						}
+					case *syntax.LambdaExpr:
+						if e, ok := n.Body.(syntax.Expr); ok {
+							c.site(l, e)
+						}
+					case *syntax.MatchArm:
+						if e, ok := n.Body.(syntax.Expr); ok {
+							c.site(l, e)
+						}
+					}
+					return true
+				})
+				return false
+			})
+		}
+	}
+}
+
+// reached reports whether any of d's statements has a counter: d was
+// lowered.
+func (c *coverer) reached(d *syntax.FuncDecl) bool {
+	for n := range c.byNode {
+		if r := n.Range(); r.Start >= d.Range().Start && r.Start < d.Range().End {
+			return true
+		}
+	}
+	return false
+}
+
+// returnsView: a fn that builds views, whose body is views, not
+// statements.
+func returnsView(d *syntax.FuncDecl) bool {
+	t, ok := d.Result.(*syntax.NamedType)
+	return ok && len(t.Path) == 1 && t.Path[0].Name == "View"
 }

@@ -1,6 +1,8 @@
 package check
 
 import (
+	"slices"
+
 	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
 )
@@ -24,7 +26,11 @@ func (c *Checker) testParams(t *Test) {
 			c.errorf(p.Default, diag.TestParameter, "a test's parameter has no default: asuka test gives it every value it generates")
 		}
 		if why := Generable(pt); why != "" {
-			c.errorf(p.Type, diag.TestParameter, "asuka test can't generate %s for %s: %s", aType(pt), p.Name.Name, why)
+			if why == noValues {
+				c.errorf(p.Type, diag.TestParameter, "asuka test can't generate %s for %s: it makes values of data (numbers, strings, collections, structs, enums)", aType(pt), p.Name.Name)
+			} else {
+				c.errorf(p.Type, diag.TestParameter, "asuka test can't generate %s for %s: %s", aType(pt), p.Name.Name, why)
+			}
 		}
 		v := c.declareVar(p.Name, pt, false)
 		t.Params = append(t.Params, v)
@@ -36,7 +42,17 @@ func (c *Checker) testParams(t *Test) {
 // can): ints, floats, bools, strings, bytes, durations, and the arrays,
 // maps from strings, sets, optionals, structs and enums of those, which
 // it also reads back from a fuzzing corpus's JSON.
-func Generable(t Type) string { return generable(t, map[*TypeName]bool{}) }
+func Generable(t Type) string {
+	why := generable(t, map[*TypeName]bool{})
+	if why == noValues {
+		return noValues
+	}
+	return why
+}
+
+// noValues is generable's why for a type that isn't data at all (a view,
+// a closure, a store), which needs no more said.
+const noValues = "it has no values to generate"
 
 func generable(t Type, seen map[*TypeName]bool) string {
 	switch x := t.(type) {
@@ -45,18 +61,18 @@ func generable(t Type, seen map[*TypeName]bool) string {
 		case Int, Float, Bool, String, Bytes, Duration, Invalid:
 			return ""
 		}
-		return "it's a " + x.name
+		return noValues
 	case *Array:
-		return generable(x.Elem, seen)
+		return elemWhy(generable(x.Elem, seen), x.Elem)
 	case *Optional:
-		return generable(x.Elem, seen)
+		return elemWhy(generable(x.Elem, seen), x.Elem)
 	case *Set:
-		return generable(x.Elem, seen)
+		return elemWhy(generable(x.Elem, seen), x.Elem)
 	case *Map:
 		if x.Key != String {
 			return "a map's keys are strings, as JSON's are"
 		}
-		return generable(x.Elem, seen)
+		return elemWhy(generable(x.Elem, seen), x.Elem)
 	case *Named:
 		if seen[x.Obj] {
 			return "" // recursive: the generator stops it deep enough
@@ -74,7 +90,7 @@ func generable(t Type, seen map[*TypeName]bool) string {
 		case StructType:
 			for _, f := range x.Obj.Fields {
 				if why := generable(s.Apply(f.Type), seen); why != "" {
-					return "its field " + f.Name + ": " + why
+					return "its field " + f.Name + ": " + elemWhy(why, s.Apply(f.Type))
 				}
 			}
 			return ""
@@ -85,40 +101,53 @@ func generable(t Type, seen map[*TypeName]bool) string {
 			for _, k := range x.Obj.Cases {
 				for _, p := range k.Params {
 					if why := generable(s.Apply(p), seen); why != "" {
-						return "its case " + k.Name + ": " + why
+						return "its case " + k.Name + ": " + elemWhy(why, s.Apply(p))
 					}
 				}
 			}
 			return ""
 		}
-		return "it's a " + x.Obj.name
+		return noValues
 	case *Tuple:
 		return "a tuple: take its parts as parameters of their own"
 	}
-	return "it's " + aType(t)
+	return noValues
 }
 
-// benchMeasure is a bench's measure block: one, at the top of its body
-// (others are reported where measureStmt checks them).
-func (c *Checker) benchMeasure(t *Test) *syntax.MeasureStmt {
+// elemWhy says why a part of type t can't be generated.
+func elemWhy(why string, t Type) string {
+	if why == noValues {
+		return "it's " + aType(t)
+	}
+	return why
+}
+
+// benchMeasure is a bench's measure blocks at the top of its body: the
+// first is what it times (measureStmt reports the others).
+func (c *Checker) benchMeasure(t *Test) []*syntax.MeasureStmt {
 	if t.Bench == nil {
 		return nil
 	}
+	var ms []*syntax.MeasureStmt
 	for _, it := range t.Bench.Body.Items {
 		if m, ok := it.(*syntax.MeasureStmt); ok {
-			if t.Measure != nil {
-				c.errorf(m, diag.MisplacedStatement, "a bench measures one part: it has a measure block already")
-				continue
-			}
-			t.Measure = m
+			ms = append(ms, m)
 		}
 	}
-	return t.Measure
+	if len(ms) > 0 {
+		t.Measure = ms[0]
+	}
+	return ms
 }
 
-// measureStmt checks measure { … }: its bench's, at the top of its body.
+// measureStmt checks measure { … }: its bench's, at the top of its body,
+// once.
 func (c *Checker) measureStmt(s *syntax.MeasureStmt) {
-	if s != c.measure || c.ctx == nil || c.ctx.Kind != CtxTest {
+	switch {
+	case len(c.measure) > 0 && s == c.measure[0] && c.ctx != nil && c.ctx.Kind == CtxTest:
+	case slices.Contains(c.measure, s):
+		c.errorf(s, diag.MisplacedStatement, "a bench measures one part: it has a measure block already")
+	default:
 		c.errorf(s, diag.MisplacedStatement, "measure { … } is a bench's: at the top of its body, after what sets it up")
 	}
 	c.block(s.Body)

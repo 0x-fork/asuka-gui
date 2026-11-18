@@ -1,0 +1,79 @@
+// Property tests' parameters, benches' measure blocks, keep and
+// snapshots.
+
+component Badge {
+  Text("hi")
+}
+
+struct Holder {
+  run: fn() -> int
+}
+
+struct Tree {
+  label: string
+  children: [Tree]
+}
+
+enum Op {
+  push(n: int)
+  pop
+}
+
+test "generated" (n: int, f: float, s: string, b: bytes, d: Duration, xs: [int?], m: [string: [bool]], t: Tree, ops: Set<Op>) {
+  expect(n == n)
+}
+
+test "closure" (f: fn() -> int) { // ERROR "asuka test can't generate a fn\(\) -> int for f: it makes values of data"
+  expect(f() == f())
+}
+
+test "view" (v: View) { // ERROR "can't generate a View for v"
+}
+
+test "field" (h: Holder) { // ERROR "can't generate a Holder for h: its field run"
+}
+
+test "keys" (m: [int: string]) { // ERROR "a map's keys are strings"
+}
+
+test "tuple" (p: (int, int)) { // ERROR "a tuple: take its parts as parameters"
+}
+
+test "default" (n: int = 3) { // ERROR "a test's parameter has no default"
+}
+
+bench "two measures" {
+  measure { keep(1) }
+  measure { keep(2) } // ERROR "a bench measures one part"
+}
+
+bench "nested" {
+  if true {
+    measure { keep(1) } // ERROR "measure \{ … \} is a bench's: at the top of its body"
+  }
+}
+
+bench "measured" {
+  let xs = [3, 1, 2]
+  measure {
+    let ys: [int] = keep(xs.sorted())
+    expect(ys.count() == 3)
+  }
+}
+
+fn nothing() {}
+
+test "keeps" {
+  keep(nothing()) // ERROR "keep keeps a value, and this has none"
+}
+
+test "snapshots" {
+  let want = "1"
+  expectSnapshot(1)
+  expectSnapshot(Badge()) // ERROR "expectSnapshot can't write a View down"
+  expectInlineSnapshot(1, want) // ERROR "an inline snapshot is a string written in the call"
+  expectInlineSnapshot(1, "{want}") // ERROR "an inline snapshot is a string written in the call"
+  expectInlineSnapshot(1)
+  expectInlineSnapshot(1, "1")
+  expectSnapshot(1, "1") // ERROR "expectSnapshot takes one value"
+}

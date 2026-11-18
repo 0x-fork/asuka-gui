@@ -24,6 +24,7 @@ Asuka が報告するエラーと警告には、すべてコードがありま�
 - [format-spec](format-spec.md): 値に合わない補間の書式。
 - [group-not-calls](group-not-calls.md): `load (…)` の要素が、どれも呼び出しというわけではない。
 - [import-cycle](import-cycle.md): 互いにインポートし合うパッケージ。
+- [inline-snapshot](inline-snapshot.md): 呼び出しに直接書かれた文字列ではないインラインスナップショット。
 - [int-overflow](int-overflow.md): 64 ビットに収まらない整数リテラル。
 - [interface-not-satisfied](interface-not-satisfied.md): 宣言した interface を実装していない型。
 - [internal-error](internal-error.md): コンパイラー自身の誤り。
@@ -97,6 +98,7 @@ Asuka が報告するエラーと警告には、すべてコードがありま�
 - [spawn-captures-state](spawn-captures-state.md): 状態や値でないものを読み書きする `spawn`。
 - [statement-in-view](statement-in-view.md): コンポーネントのビューのあいだにある文。
 - [syntax-error](syntax-error.md): パーサーがここで別のものを期待している。
+- [test-parameter](test-parameter.md): asuka test が生成できない型のテストのパラメーター。
 - [too-large](too-large.md): バイトコードに収まらないほど大きい関数。
 - [tr-in-package](tr-in-package.md): アプリではないパッケージでの `tr`。
 - [type-arguments](type-arguments.md): 型引数の数が違う。
