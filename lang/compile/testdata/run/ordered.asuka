@@ -1,0 +1,177 @@
+// Order: an array as a double-ended queue, sorting by a key, and
+// std/collections' Heap, SortedMap and SortedSet: changed in a var, in
+// state and in a mut fn, copied, gone over with for, and big.
+
+import std/collections.{Heap, SortedMap, SortedSet, heapOf}
+
+struct P {
+  name: string
+  age: int
+}
+
+struct Version {
+  major: int
+  minor: int
+
+  fn compare(o: Version) -> int = if major != o.major { major - o.major } else { minor - o.minor }
+}
+
+// A scheduler: its queue changed by its mut fns.
+struct Scheduler {
+  due: Heap<P> = Heap(by: (a, b) => a.age < b.age)
+  log: [string] = []
+
+  mut fn add(p: P) {
+    due.push(p)
+  }
+
+  mut fn runOne() -> bool {
+    let p = due.pop() else { return false }
+    log.pushFirst(p.name)
+    return true
+  }
+}
+
+state queue: [int] = []
+state book = SortedMap<string, int>()
+
+fn rank(s: string) throws -> int = s.toInt() ?? throw Error("no rank: {s}")
+
+test "an array at both ends" {
+  var d: [int] = []
+  d.push(2)
+  d.pushFirst(1)
+  d.push(3)
+  d.pushFirst(0)
+  print("{d} {d.popFirst()} {d.pop()} {d}")
+  let copy = d
+  d.pushFirst(9)
+  print("{copy} {d}")
+  var empty: [string] = []
+  print(empty.popFirst())
+  let opts: [int?] = [none, 1]
+  var o = opts
+  print("{o.popFirst()} {o}")
+  for i in 0..<100000 { d.pushFirst(i) }
+  var n = 0
+  while let x = d.popFirst() { n += x }
+  print(n)
+  for i in 0..<5 { queue.push(i) }
+  let head = queue.popFirst()
+  queue.pushFirst(-1)
+  print("{head} {queue}")
+}
+
+test "sorting by a key" {
+  let ps = [P(name: "a", age: 30), P(name: "b", age: 20), P(name: "c", age: 30), P(name: "d", age: 20)]
+  print(ps.sorted(key: p => p.age).map(p => p.name))
+  print(ps.sorted(key: p => p.age, descending: true).map(p => p.name))
+  print(ps.sorted(key: p => p.name, descending: true).map(p => p.name))
+  print("{ps.min(key: p => p.age)!.name} {ps.max(key: p => p.age)!.name}")
+  let vs = [Version(major: 2, minor: 0), Version(major: 1, minor: 5), Version(major: 1, minor: 2)]
+  print(vs.sorted(key: v => v).map(v => "{v.major}.{v.minor}"))
+  print(ps.sorted(key: p => Version(major: p.age, minor: 0)).map(p => p.name))
+  var qs = ps
+  qs.sort(key: p => p.name.count() * 0 + p.age)
+  print("{qs.map(p => p.name)} {ps.map(p => p.name)}")
+  let nums = ["3", "1", "2"]
+  print(try nums.sorted(key: s => try rank(s)))
+  let bad = try nums.sorted(key: s => try rank(s + "x")) catch e { print(e.message); nums }
+  print(bad)
+  var kept = nums
+  do { try kept.sort(key: s => try rank(s + "x")) } catch e { print("kept {kept}") }
+  let nobody: [P] = []
+  print(nobody.max(key: p => p.age))
+}
+
+test "a heap" {
+  var s = Scheduler()
+  s.add(P(name: "late", age: 9))
+  s.add(P(name: "soon", age: 1))
+  s.add(P(name: "mid", age: 5))
+  let before = s
+  while s.runOne() {}
+  print("{s.log} {before.due.count()} {s.due.count()}")
+  var h = heapOf([5, 3, 8, 1], by: (a, b) => a > b)
+  var seen: [int] = []
+  for x in h { seen.push(x) }
+  print("{seen} {h.peek()} {h.pushPop(10)} {h.replace(0)} {h.sorted()}")
+  var big = Heap<int>(by: (a, b) => a < b)
+  var x = 1
+  for _ in 0..<100000 {
+    x = x &* 1103515245 &+ 12345
+    big.push((x >> 16) & 0xffff)
+  }
+  var last = -1
+  var count = 0
+  var sorted = true
+  while let y = big.pop() {
+    if y < last { sorted = false }
+    last = y
+    count += 1
+  }
+  print("{count} {sorted}")
+}
+
+test "a sorted map and set" {
+  book.set("c", 3)
+  book.set("a", 1)
+  book.set("b", 2)
+  let snap = book
+  let _ = book.remove("a")
+  book.set("d", 4)
+  print("{snap.keys()} {book.keys()}")
+  for (k, v) in book { print("{k}={v}") }
+  print("{book.floor("bb")} {book.ceiling("bb")} {book.lower("b")} {book.higher("d")}")
+  print(book.range(from: "b", to: "d").map(e => e.1).toArray())
+  var m = SortedMap<int, string>()
+  for k in 0..<100000 { m.set(99999 - k, "{k}") }
+  var removed = 0
+  for k in 0..<100000 {
+    if k % 3 == 0 {
+      let _ = m.remove(k)
+      removed += 1
+    }
+  }
+  print("{m.count()} {100000 - removed} {m.first()!.0} {m.last()!.0}")
+  print(m.range(from: 50000).take(3).map(e => e.0).toArray())
+  var s = SortedSet<Version>()
+  for v in [Version(major: 1, minor: 2), Version(major: 0, minor: 9), Version(major: 1, minor: 2)] { let _ = s.insert(v) }
+  print("{s.count()} {s.first()!.minor} {s.toArray().map(v => v.minor)}")
+}
+
+// Output:
+// [0,1,2,3] 0 3 [1,2]
+// [1,2] [9,1,2]
+// none
+// none [1]
+// 4999950012
+// 0 [-1,1,2,3,4]
+// ok an array at both ends
+// ["b","d","a","c"]
+// ["a","c","b","d"]
+// ["d","c","b","a"]
+// b a
+// ["1.2","1.5","2.0"]
+// ["b","d","a","c"]
+// ["b","d","a","c"] ["a","b","c","d"]
+// ["1","2","3"]
+// no rank: 3x
+// ["3","1","2"]
+// kept ["3","1","2"]
+// none
+// ok sorting by a key
+// ["late","mid","soon"] 3 0
+// [8,5,3,1] 8 10 8 [5,3,1,0]
+// 100000 true
+// ok a heap
+// ["a","b","c"] ["b","c","d"]
+// b=2
+// c=3
+// d=4
+// ("b",2) ("c",3) none none
+// [2,3]
+// 66666 66666 1 99998
+// [50000,50002,50003]
+// 2 9 [9,2]
+// ok a sorted map and set
