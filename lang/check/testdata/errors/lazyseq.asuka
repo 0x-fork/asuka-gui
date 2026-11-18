@@ -1,0 +1,44 @@
+// Lazy sequences: a step's closure runs later, so it can't throw; what
+// reads one may throw; what isn't ordered isn't a key; a Seq isn't a
+// value to compare, show or loop over among views.
+
+struct Spot {
+  x: float
+}
+
+fn parse(s: string) throws -> int = s.toInt() ?? throw Error("bad")
+
+fn steps(xs: [string]) throws {
+  let a = xs.lazy().map(x => try parse(x)) // ERROR "throw"
+  let b = try xs.lazy().reduce(0, (n, x) => n + try parse(x))
+  let c = xs.lazy().reduce(0, (n, x) => n + try parse(x)) // ERROR "try"
+}
+
+fn keys(xs: [Spot], ys: [int]) {
+  let a = xs.sorted(key: s => s) // ERROR "key:\) orders by what key gives, and Spot isn't Comparable"
+  let b = ys.lazy().toMap() // ERROR "toMap makes a map of \(key, value\) pairs, and these are ints"
+  let c = xs.lazy().map(s => (s.x, 1)).toMap() // ERROR "toMap makes a map's keys, and float isn't Hashable"
+  let d = ys.sorted(key: y => -y, descending: true)
+  let e = ys.sorted((a, b) => a > b)
+}
+
+fn compared(xs: [int]) -> bool = xs.lazy() == xs.lazy() // ERROR "Seq<int> can't be compared with ==: a lazy sequence is computed as it's read"
+
+fn shown(xs: [int]) -> string = "{xs.lazy()}" // ERROR "can't be put in a string"
+
+fn gens() {
+  let a = Seq(first: 1, next: n => n * 2)
+  let b = Seq(state: 0, next: n => (n, n + 1))
+  let c = Seq(state: 0, next: n => n + 1) // ERROR "next gives an int: it gives the next element and the next state"
+  let d = Seq(count: 3) // ERROR "Seq's arguments are first and next"
+}
+
+component List {
+  prop xs: [int]
+
+  Column {
+    for x in xs.lazy() { // ERROR "a for in a view goes over an array"
+      Text("{x}")
+    }
+  }
+}

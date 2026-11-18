@@ -598,6 +598,7 @@ const (
 	BRange       // arr.range
 	BWithTimeout // withTimeout(d) { … }
 	BStream      // Stream<T>(send => { … })
+	BSeq         // Seq(first: x, next: f), Seq(state:next:), Seq(repeating:), Seq(from:)
 	BSet         // Set(xs), Set<T>(): a set of an array's elements, an empty one
 	BEnvironment // environment(): what the platform says about where the app shows (tracked)
 	BLive        // live(initial, source): a tracked value a stream keeps current while it's read

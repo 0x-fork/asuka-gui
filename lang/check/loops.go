@@ -73,9 +73,9 @@ func (c *Checker) branchLabel(tok syntax.Token, id *syntax.Ident) {
 
 // forIter checks for x in v over a value of the program's types: an
 // iterator, whose type has next() -> T? (a mut fn, as Iterator<T>
-// asks), or a sequence, whose iter() returns one. The loop changes a
-// copy of the iterator, a hidden var, as a mut fn's call: false when t
-// is neither.
+// asks), or a sequence, whose iter() returns one, or a Seq<T> (read as
+// a Seq is: its elements may be none). The loop changes a copy of the
+// iterator, a hidden var, as a mut fn's call: false when t is neither.
 func (c *Checker) forIter(s *syntax.ForStmt, fi *ForInfo, t Type) bool {
 	elem, ok := c.iteratorElem(t)
 	var iter Type
@@ -85,8 +85,10 @@ func (c *Checker) forIter(s *syntax.ForStmt, fi *ForInfo, t Type) bool {
 			return false
 		}
 		iter = s.Apply(sig.Result)
-		if elem, ok = c.iteratorElem(iter); !ok {
-			return false
+		if _, isSeq := iter.(*Seq); !isSeq {
+			if elem, ok = c.iteratorElem(iter); !ok {
+				return false
+			}
 		}
 	}
 	// The hidden vars: the sequence (for iter()), and the iterator.
@@ -94,6 +96,15 @@ func (c *Checker) forIter(s *syntax.ForStmt, fi *ForInfo, t Type) bool {
 		id := &syntax.Ident{Span: s.Seq.Range(), Name: name}
 		v := c.declareVar(id, t, true)
 		return v, id
+	}
+	if st, ok := iter.(*Seq); ok {
+		// iter() gives a Seq: the loop reads it (lang/ir's forSeq).
+		v, id := hidden("\x00seq", t)
+		fi.SeqVar = v
+		fi.IterCall = &syntax.CallExpr{Span: s.Seq.Range(), Fun: &syntax.MemberExpr{Span: s.Seq.Range(), X: id, Name: &syntax.Ident{Span: s.Seq.Range(), Name: "iter"}}}
+		c.expr(fi.IterCall, nil)
+		fi.Kind, fi.Elem = ForSeq, st.Elem
+		return true
 	}
 	fi.Kind, fi.Elem = ForIter, elem
 	if iter != nil {

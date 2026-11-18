@@ -187,7 +187,11 @@ ak_bytes *ak_bytes_new(const void *p, size_t n);  // p NULL: n bytes, uninitiali
 
 typedef struct ak_arr {
 	ak_obj h;  // h.aux: the element kind; h.flags: 1 when elements are strings (for equality)
-	uint32_t len, cap;
+	// Its buffer: front free slots, then cap slots from data (its len
+	// elements, then free ones). Changes at the start move data within
+	// it, so an array is a double-ended queue: pushing and popping at
+	// either end is O(1), amortized (arr.c).
+	uint32_t len, cap, front;
 	const ak_shape *shape;  // the elements' shape when they're structs or enums
 	ak_val *data;
 } ak_arr;
@@ -200,6 +204,7 @@ void ak_arr_push(ak_arr **a, ak_val v);              // takes v's reference
 void ak_arr_insert(ak_arr **a, int64_t i, ak_val v); // takes v's reference
 ak_val ak_arr_remove_at(ak_arr **a, int64_t i);      // returns the reference
 void ak_arr_set(ak_arr **a, int64_t i, ak_val v);    // takes v's reference
+static inline ak_val *ak_arr_base(const ak_arr *a) { return a->data - a->front; }  // what's allocated
 bool ak_arr_check(const ak_arr *a, int64_t i);       // in range
 ak_arr *ak_arr_slice(ak_arr *a, int64_t from, int64_t to);
 ak_arr *ak_arr_concat(ak_arr *a, ak_arr *b);

@@ -1,0 +1,27 @@
+// x?.member in a generic function: the member's type is the
+// instantiation's (an int boxed into its optional, a string as it is).
+
+fn pair<K, V>(k: K, v: V) -> (K, V)? = (k, v)
+fn nothing<K>() -> (K, int)? = none
+
+fn firstOf<K, V>(k: K, v: V) -> K? = pair(k, v)?.0
+fn secondOf<K, V>(k: K, v: V) -> V? = pair(k, v)?.1
+
+struct Holder<T> {
+  item: T
+  fn get(other: T?) -> T? = pair(item, other)?.0
+}
+
+test "a ?. read of a type parameter" {
+  let missing: int? = none
+  print("{firstOf(4, true)} {firstOf("a", 1)} {secondOf(1, 2.5)} {secondOf(1, missing)}")
+  let n: int? = nothing<int>()?.0
+  print(n)
+  print(Holder(item: 7).get(none))
+}
+
+// Output:
+// 4 a 2.5 none
+// none
+// 7
+// ok a ?. read of a type parameter

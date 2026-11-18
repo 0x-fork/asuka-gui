@@ -64,11 +64,13 @@ func (b *fb) optionalMutCall(e *syntax.CallExpr, call *check.Call, dst int, disc
 func (b *fb) mutCallOn(lv *lvalue, e *syntax.CallExpr, call *check.Call, dst int, discard bool, after func(int)) int {
 	target, k, reads := b.mutTarget(call)
 	var vals []int
+	mark := b.mark()
 	if call.Kind == check.CallIface {
 		vals = b.args(call, nil)
 	} else {
 		vals = b.args(call, target.subst)
 	}
+	b.dropTemps(mark, vals...)
 	r := bc.None
 	if k != bc.KVoid && !discard {
 		r = b.out(dst, k)

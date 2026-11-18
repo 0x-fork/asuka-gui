@@ -25,6 +25,8 @@ extern const ak_lib_entry ak_lib[];
 extern const ak_lib_entry ak_lib_unicode[];
 // Streams' (stream.c).
 extern const ak_lib_entry ak_stream_lib[];
+// Lazy sequences' and ordering by a key's (seq.c).
+extern const ak_lib_entry ak_seq_lib[];
 
 // ak_spawn_elsewhere, when set, runs a spawn's closure c elsewhere (the
 // web's workers: abi/web.c) and settles f (of kind k) once it's done;

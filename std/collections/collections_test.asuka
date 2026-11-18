@@ -1,0 +1,161 @@
+struct Job {
+  name: string
+  due: int
+}
+
+// A random number generator of our own: the same numbers every run.
+struct Rand {
+  state: int
+
+  mut fn next(below: int) -> int {
+    state = state &* 6364136223846793005 &+ 1442695040888963407
+    return ((state >> 33) & 0x7fffffff) % below
+  }
+}
+
+test "a heap pops in its order" {
+  var h = Heap<int>(by: (a, b) => a < b)
+  for x in [5, 1, 4, 1, 9, 2] { h.push(x) }
+  expect(h.count() == 6 && h.peek() == 1)
+  var out: [int] = []
+  while let x = h.pop() { out.push(x) }
+  expect(out == [1, 1, 2, 4, 5, 9])
+  expect(h.isEmpty() && h.pop() == none && h.peek() == none)
+
+  var jobs = Heap<Job>(by: (a, b) => a.due > b.due)
+  jobs.push(Job(name: "a", due: 3))
+  jobs.push(Job(name: "b", due: 7))
+  jobs.push(Job(name: "c", due: 5))
+  expect(jobs.pop()!.name == "b" && jobs.sorted().map(j => j.name) == ["c", "a"])
+}
+
+test "a heap of many, and heapOf" {
+  var r = Rand(state: 1)
+  var xs: [int] = []
+  for _ in 0..<20000 { xs.push(r.next(1000000)) }
+  var h = Heap<int>(by: (a, b) => a < b)
+  for x in xs { h.push(x) }
+  let built = heapOf(xs, by: (a, b) => a < b)
+  expect(built.count() == 20000)
+  var out: [int] = []
+  while let x = h.pop() { out.push(x) }
+  expect(out == xs.sorted())
+  expect(built.sorted() == out && built.lazy().toArray() == out)
+  var b = built
+  var again: [int] = []
+  for x in b { again.push(x) }
+  expect(again == out)
+  expect(b.pop() == out[0] && built.count() == 20000)
+}
+
+test "pushPop keeps the k greatest" {
+  var top = Heap<int>(by: (a, b) => a < b)
+  for x in [4, 9, 1, 7, 3, 8, 2] {
+    if top.count() < 3 { top.push(x) } else { let _ = top.pushPop(x) }
+  }
+  expect(top.sorted() == [7, 8, 9])
+  expect(top.replace(1) == 7 && top.sorted() == [1, 8, 9])
+}
+
+test "a sorted map against a model" {
+  var m = SortedMap<int, int>()
+  var model: [int: int] = [:]
+  var r = Rand(state: 7)
+  for step in 0..<30000 {
+    let k = r.next(3000)
+    if r.next(3) == 0 {
+      expect(m.remove(k) == model[k])
+      let _ = model.remove(k)
+    } else {
+      m.set(k, step)
+      model[k] = step
+    }
+  }
+  let keys = model.keys().sorted()
+  expect(m.count() == keys.count())
+  expect(m.keys() == keys)
+  expect(m.values() == keys.map(k => model[k]!))
+  for k in 0..<3000 { expect(m.get(k) == model[k]) }
+  expect(m.first()!.0 == keys[0] && m.last()!.0 == keys[keys.count() - 1])
+}
+
+test "nearest keys and ranges" {
+  var m = SortedMap<int, string>()
+  for k in [10, 20, 30, 40] { m.set(k, "{k}") }
+  expect(m.floor(25)!.0 == 20 && m.floor(20)!.0 == 20 && m.floor(5) == none)
+  expect(m.ceiling(25)!.0 == 30 && m.ceiling(30)!.0 == 30 && m.ceiling(45) == none)
+  expect(m.lower(20)!.0 == 10 && m.higher(20)!.0 == 30 && m.higher(40) == none)
+  expect(m.range(from: 15, to: 40).map(e => e.0).toArray() == [20, 30])
+  expect(m.range(from: 30).map(e => e.1).toArray() == ["30", "40"])
+  expect(m.range(to: 20).count() == 1)
+  var seen: [int] = []
+  for (k, _) in m { seen.push(k) }
+  expect(seen == [10, 20, 30, 40])
+
+  var big = SortedMap<int, int>()
+  for k in 0..<100000 { big.set(k * 2, k) }
+  expect(big.count() == 100000)
+  expect(big.range(from: 1001, to: 1011).map(e => e.0).toArray() == [1002, 1004, 1006, 1008, 1010])
+  expect(big.floor(77777)!.0 == 77776 && big.ceiling(77777)!.0 == 77778)
+  var read = 0
+  let firstOdd = big.range(from: 500).onEach(e => { read += 1 }).find(where: e => e.1 % 7 == 3)
+  expect(firstOdd!.0 == 510 && read == 6)
+  for k in 0..<50000 { let _ = big.remove(k * 4) }
+  expect(big.count() == 50000 && big.first()!.0 == 2 && big.last()!.0 == 199998)
+  expect(big.lazy().map(e => e.0).windows(2).all(where: w => w[0] < w[1]))
+}
+
+test "copies are values" {
+  var a = SortedMap<string, int>()
+  a.set("x", 1)
+  var b = a
+  b.set("y", 2)
+  b.set("x", 9)
+  expect(a.entries().count() == 1 && a.get("x") == 1)
+  expect(b.get("x") == 9 && b.count() == 2)
+  var big = SortedMap<int, int>()
+  for k in 0..<1000 { big.set(k, k) }
+  var copy = big
+  for k in 0..<500 { let _ = copy.remove(k) }
+  expect(big.count() == 1000 && big.get(10) == 10 && copy.count() == 500 && copy.get(10) == none)
+  expect(a.popFirst()!.0 == "x" && a.isEmpty() && b.count() == 2)
+}
+
+test "a custom order" {
+  var m = SortedMap<string, int>(by: (a, b) => a.lower() < b.lower())
+  m.set("b", 1)
+  m.set("A", 2)
+  m.set("B", 3)
+  expect(m.keys() == ["A", "b"] && m.get("a") == 2 && m.get("b") == 3)
+  var desc = SortedSet<int>(by: (a, b) => a > b)
+  for x in [3, 1, 2] { let _ = desc.insert(x) }
+  expect(desc.toArray() == [3, 2, 1] && desc.first() == 3)
+}
+
+test "a sorted set" {
+  var s = SortedSet<int>()
+  expect(s.insert(5) && s.insert(1) && !s.insert(5) && s.insert(9))
+  expect(s.toArray() == [1, 5, 9] && s.contains(5) && !s.contains(4))
+  expect(s.floor(4) == 1 && s.ceiling(6) == 9 && s.lower(1) == none && s.higher(9) == none)
+  expect(s.range(from: 2, to: 9).toArray() == [5])
+  var t = SortedSet<int>()
+  for x in [9, 10] { let _ = t.insert(x) }
+  expect(s.union(t).toArray() == [1, 5, 9, 10])
+  expect(s.intersection(t).toArray() == [9] && s.subtracting(t).toArray() == [1, 5])
+  expect(s.remove(5) && !s.remove(5) && s.count() == 2)
+  expect(s.popLast() == 9 && s.popFirst() == 1 && s.isEmpty())
+  var r = Rand(state: 3)
+  var many = SortedSet<int>()
+  var model: Set<int> = []
+  for _ in 0..<20000 {
+    let x = r.next(5000)
+    if r.next(2) == 0 {
+      expect(many.insert(x) == model.insert(x))
+    } else {
+      expect(many.remove(x) == model.remove(x))
+    }
+  }
+  var sorted: [int] = []
+  for x in model { sorted.push(x) }
+  expect(many.toArray() == sorted.sorted())
+}

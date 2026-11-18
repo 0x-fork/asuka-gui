@@ -57,6 +57,7 @@ func (b *fb) stmt(it syntax.Item) {
 	case *syntax.LetDecl:
 		t := b.typ(b.l.info.Lets[s])
 		v := b.value(s.Value, -1)
+		b.dropTemps(mark, v)
 		if s.Else != nil {
 			b.letElse(s, v, t)
 			return
@@ -196,7 +197,9 @@ func (b *fb) condJump(c syntax.Expr, els Label) {
 			}
 			return
 		}
+		mark := b.mark()
 		r := b.value(c, -1)
+		b.dropTemps(mark) // the body may change what the condition read
 		b.emitJump(op("JF"), r, els)
 		return
 	}
@@ -411,6 +414,10 @@ func (b *fb) forStmt(s *syntax.ForStmt) {
 	}
 	if fi.Kind == check.ForIter {
 		b.forIter(s, fi)
+		return
+	}
+	if fi.Kind == check.ForSeq {
+		b.forSeq(s, fi)
 		return
 	}
 	b.openScope()
@@ -1180,12 +1187,16 @@ func (b *fb) assignStmt(s *syntax.AssignStmt) {
 	}
 	switch s.Op {
 	case syntax.ASSIGN:
+		mark := b.mark()
 		v := b.value(s.Value, -1)
+		b.dropTemps(mark, v)
 		b.set(b.prepare(s.Target), v)
 	case syntax.COALESCE_ASSIGN:
 		b.assign(s, b.prepare(s.Target), -1)
 	default:
+		mark := b.mark()
 		v := b.value(s.Value, -1)
+		b.dropTemps(mark, v)
 		b.assign(s, b.prepare(s.Target), v)
 	}
 }

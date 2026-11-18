@@ -762,6 +762,29 @@ static ak_val arr_pop(ak_val *args, uint32_t n) {
 	RET_P(ak_box_new(ek(a), v));
 }
 
+// arr.push_first(a, x) and arr.pop_first(a): an array's start, as push
+// and pop are its end; O(1), amortized (arr.c keeps room at the front).
+static ak_val arr_push_first(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_retain_val(A(1), ek(ARR(0)));
+	ak_change_range(0, -1, true);
+	ak_arr_insert((ak_arr **)&args[0].p, 0, A(1));
+	RET_VOID;
+}
+
+static ak_val arr_pop_first(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_kind k = ek(ARR(0));
+	if (ARR(0)->len == 0) {
+		ak_change_none();
+		RET_P(NULL);
+	}
+	ak_change_range(0, -1, true);
+	ak_val v = ak_arr_remove_at((ak_arr **)&args[0].p, 0);
+	if (k == AK_K_REF) RET_P(v.p);
+	RET_P(ak_box_new(k, v));
+}
+
 static ak_val opt(ak_kind k, ak_val v) {
 	// An optional of kind k: references as they are (retained), scalars
 	// boxed.
@@ -1904,6 +1927,8 @@ const ak_lib_entry ak_lib[] = {
 	{"arr.remove_where", arr_remove_where},
 	{"arr.clear", arr_clear},
 	{"arr.pop", arr_pop},
+	{"arr.push_first", arr_push_first},
+	{"arr.pop_first", arr_pop_first},
 	{"arr.first", arr_first},
 	{"arr.last", arr_last},
 	{"arr.get", arr_get},
