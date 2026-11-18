@@ -1,0 +1,96 @@
+import std/decimal.{Decimal}
+import std/json
+
+test "arithmetic past int's range" {
+  let big = BigInt.of(9223372036854775807)
+  expect((big + BigInt.one).string() == "9223372036854775808")
+  expect((big * big).string() == "85070591730234615847396907784232501249")
+  expect((big * 2 - 1).string() == "18446744073709551613")
+  expect((-big).minus(1).toInt() == -9223372036854775807 - 1)
+  expect((big.plus(1)).toInt() == none)
+  expect(BigInt.of(2).pow(100).string() == "1267650600228229401496703205376")
+}
+
+test "division truncates; floorDiv and mod floor" {
+  let a = BigInt.of(-7)
+  let b = BigInt.of(2)
+  expect((a / b).string() == "-3" && (a % b).string() == "-1")
+  expect(a.floorDiv(b).string() == "-4" && a.mod(b).string() == "1")
+  let (q, r) = a.divMod(b)
+  expect(q == BigInt.of(-4) && r == BigInt.of(1))
+  let z = try (a / BigInt.zero).string() catch e { e.message }
+  expect(z == "division by zero")
+}
+
+test "text, bytes and floats" {
+  expect(BigInt.parse("-1_000_000")!.string() == "-1000000")
+  expect(BigInt.parse("ff", radix: 16)!.toInt() == 255)
+  expect(BigInt.parse("0b1010", radix: 0)!.toInt() == 10)
+  expect(BigInt.parse("1 000") == none)
+  expect(BigInt.of(255).string(radix: 16) == "ff")
+  expect(BigInt.of(-129).toBytes(signed: true).hex() == "ff7f")
+  expect(BigInt.of(4660).toBytes(size: 4).hex() == "00001234")
+  expect(BigInt.fromBytes(bytes([0xff, 0x7f]), signed: true) == BigInt.of(-129))
+  expect(BigInt.fromFloat(1e30)!.string() == "1000000000000000019884624838656")
+  expect(BigInt.of(3).float() == 3.0)
+}
+
+test "ordered, hashed and printed" {
+  let xs = [BigInt.of(3), BigInt.parse("-100000000000000000000")!, BigInt.of(2).pow(70)]
+  expect(xs.sorted().map(x => x.string()) == ["-100000000000000000000", "3", "1180591620717411303424"])
+  expect(BigInt.of(2).pow(64) > BigInt.of(9223372036854775807))
+  let seen: Set<BigInt> = [BigInt.of(10).pow(20), BigInt.parse("100000000000000000000")!]
+  expect(seen.count() == 1)
+  expect("{BigInt.of(2).pow(64)}" == "18446744073709551616")
+  expect("{[BigInt.of(-1), BigInt.one]}" == "[-1,1]")
+}
+
+test "number theory" {
+  let p = BigInt.of(2).pow(127).minus(1)
+  expect(p.isProbablePrime())
+  expect(!(p * BigInt.of(3)).isProbablePrime())
+  expect(BigInt.of(3).modPow(BigInt.of(200), BigInt.of(1000)) == BigInt.of(1))
+  expect(BigInt.of(3).modInverse(BigInt.of(7)) == BigInt.of(5))
+  expect(BigInt.of(2).modInverse(BigInt.of(4)) == none)
+  expect(BigInt.of(12).gcd(BigInt.of(-18)) == BigInt.of(6))
+  expect(BigInt.of(4).lcm(BigInt.of(6)) == BigInt.of(12))
+  expect(BigInt.of(10).pow(40).sqrt() == BigInt.of(10).pow(20))
+  expect(BigInt.factorial(25).string() == "15511210043330985984000000")
+}
+
+test "bits, two's complement" {
+  expect(BigInt.of(-6).and(BigInt.of(13)) == BigInt.of(8))
+  expect(BigInt.of(-6).or(BigInt.of(13)) == BigInt.of(-1))
+  expect(BigInt.of(0).not() == BigInt.of(-1))
+  expect(BigInt.of(-5).shiftRight(1) == BigInt.of(-3))
+  expect(BigInt.one.shiftLeft(100).bitLength() == 101)
+  expect(BigInt.of(-2).bit(1000))
+  expect(BigInt.zero.setBit(70) == BigInt.of(2).pow(70))
+  expect(BigInt.of(-1).clearBit(0) == BigInt.of(-2))
+  expect(BigInt.of(40).trailingZeros() == 3)
+}
+
+struct Account {
+  id: BigInt
+  balance: BigInt?
+}
+
+test "JSON: a number of all its digits" {
+  let a = Account(id: BigInt.of(10).pow(30), balance: BigInt.of(-5))
+  let text = json.encode(a)
+  expect(text == r#"{"id":1000000000000000000000000000000,"balance":-5}"#)
+  let back: Account = try json.decode(text)
+  expect(back == a)
+  let quoted: Account = try json.decode(r#"{"id": "123456789012345678901234567890", "balance": null}"#)
+  expect(quoted.id.string() == "123456789012345678901234567890" && quoted.balance == none)
+  let bad = try json.decode<Account>(r#"{"id": 1.5}"#).id.string() catch e { e.message }
+  expect(bad.contains("expected an integer"))
+}
+
+test "formatted and decimals" {
+  expect(BigInt.of(1234567).formatted() == "1,234,567")
+  expect(BigInt.of(10).pow(30).decimal()!.string() == "1000000000000000000000000000000")
+  expect(BigInt.of(3).pow(40).decimal() == none)
+  expect(BigInt.fromDecimal(Decimal.parse("-2.7")!) == BigInt.of(-2))
+  expect(BigInt.fromDecimal(Decimal.parse("1.5e40")!).string() == "15" + "0".repeat(39))
+}

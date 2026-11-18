@@ -1,4 +1,5 @@
 #include "rt/json.h"
+#include "std/std.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -291,6 +292,43 @@ static bool skip_nested(parser *ps, char c) {
 }
 
 static ak_val value(parser *ps, const char *d);
+
+// json_bigint reads std/bigint's BigInt (of shape s): an integer of any
+// size, or a string of one (as APIs send what a double can't hold).
+static ak_val json_bigint(parser *ps, const ak_shape *s) {
+	ws(ps);
+	ak_str *q = NULL;
+	const char *st = ps->s, *end;
+	if (ps->s < ps->end && *ps->s == '"') {
+		q = str(ps);
+		if (!q) return (ak_val){0};
+		st = q->data;
+		end = q->data + q->len;
+	} else {
+		if (ps->s < ps->end && *ps->s == '-') ps->s++;
+		while (ps->s < ps->end && *ps->s >= '0' && *ps->s <= '9') ps->s++;
+		end = ps->s;
+	}
+	const char *p = st < end && *st == '-' ? st + 1 : st;
+	bool ok = p < end && (p[0] != '0' || end - p == 1 || q);
+	for (const char *c = p; ok && c < end; c++) ok = *c >= '0' && *c <= '9';
+	if (!q && ok && ps->s < ps->end && (*ps->s == '.' || *ps->s == 'e' || *ps->s == 'E')) ok = false;
+	ak_bytes *b = ok ? ak_bigint_read(st, (size_t)(end - st)) : NULL;
+	ak_release(q);
+	if (!b) {
+		if (ak_error_pending()) {
+			void *err = ak_error_take();
+			fail(ps, "%s", ak_error_message(err)->data);
+			ak_release(err);
+		} else {
+			fail(ps, "expected an integer%s", "");
+		}
+		return (ak_val){0};
+	}
+	ak_struct *v = ak_struct_new(s);
+	v->f[0].p = b;
+	return (ak_val){.p = v};
+}
 
 // number reads a number, whole; with iv (an int's), an integral one is
 // read as an integer too, which must be in int's range.
@@ -745,6 +783,7 @@ static ak_val value_of(parser *ps, const char *d) {
 			fail(ps, "no type %s", d + 1);
 			return (ak_val){0};
 		}
+		if (ak_bigint_is(d + 1, name_len(d))) return json_bigint(ps, s);
 		return object_struct(ps, s, d);
 	}
 	case 'e': {
@@ -1033,6 +1072,11 @@ static void enc_value(encoder *e, ak_val v, const char *d) {
 	case '{':
 	case 'S':
 	case 'm':
+		if (*d == 'S' && ak_bigint_is(d + 1, name_len(d))) {
+			// std/bigint's BigInt: a number of all its digits.
+			ak_bigint_write(b, ((ak_struct *)v.p)->f[0].p);
+			return;
+		}
 		open_(e, d, v.p, "{", 1);
 		return;
 	case '(':

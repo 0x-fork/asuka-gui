@@ -34,6 +34,7 @@ extern const ak_lib_entry ak_std_csv[];
 extern const ak_lib_entry ak_std_compress[];
 extern const ak_lib_entry ak_std_archive[];
 extern const ak_lib_entry ak_std_http[];  // httpserver.c: std/http's server
+extern const ak_lib_entry ak_std_bigint[];
 
 // Every package's table, NULL-terminated.
 extern const ak_lib_entry *const ak_std_libs[];
@@ -160,6 +161,16 @@ void ak_os_fake_end(int code);
 // tables' keys sorted, its scalars tagged and normalized: core/test's
 // toml_test.c), or false and why in err (line:column: why).
 bool ak_toml_tagged(const char *text, size_t n, ak_buf *out, char *err, size_t errn);
+
+// std/bigint (bigint.c), for json.c: whether a struct's type is
+// std/bigint's BigInt, which JSON and print write as an integer of any
+// size (its digits), and reads from one or from a string of one; a
+// BigInt's bytes written in decimal; and decimal digits (an optional
+// '-', no underscores) as a BigInt's bytes (NULL: not such digits, or
+// an error pending).
+bool ak_bigint_is(const char *name, size_t n);
+void ak_bigint_write(ak_strb *b, const ak_bytes *data);
+ak_bytes *ak_bigint_read(const char *s, size_t n);
 
 // For tests (core/runner): a new empty directory in the system's
 // temporary one (ak_free the path; NULL when it can't be made), and

@@ -10,7 +10,7 @@ An `int` is 64 bits, from −9223372036854775808 to 9223372036854775807. A liter
 
 ## How to fix
 
-Use a smaller number, a `float`, or a `std/decimal` value for exact large numbers.
+Use a smaller number, a `float`, or, for an exact integer past 64 bits, `std/bigint`'s `BigInt` (`BigInt.parse("9223372036854775808")!`).
 
 ## Wrong
 

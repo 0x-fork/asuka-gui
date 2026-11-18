@@ -277,7 +277,7 @@ its fields do; a closure has none.`,
 		Name:    "int-overflow",
 		Summary: "an integer literal that doesn't fit in 64 bits",
 		Why:     "An `int` is 64 bits, from −9223372036854775808 to 9223372036854775807. A literal outside that can't be one.",
-		Fix:     "Use a smaller number, a `float`, or a `std/decimal` value for exact large numbers.",
+		Fix:     "Use a smaller number, a `float`, or, for an exact integer past 64 bits, `std/bigint`'s `BigInt` (`BigInt.parse(\"9223372036854775808\")!`).",
 		Wrong:   "let big = 9223372036854775808\n",
 		Right:   "let big = 9223372036854775807\n",
 	})

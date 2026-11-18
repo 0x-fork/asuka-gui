@@ -1,0 +1,294 @@
+// std/bigint: integers of any size on the VM and compiled to C
+// (core/src/std/bigint.c). The values agree with Python's ints: its //
+// and % are floorDiv and mod, its pow(a, e, m) modPow.
+
+import std/bigint.{BigInt}
+import std/json
+
+fn b(s: string) -> BigInt = BigInt.parse(s, radix: 0)!
+
+// text is f's result as text, or its error's message.
+fn text(f: fn() -> BigInt) -> string = try f().string() catch e { e.message }
+
+struct Ledger {
+  id: BigInt
+  totals: [BigInt]
+  owed: BigInt?
+}
+
+test "arithmetic" {
+  let x = b("123456789012345678901234567890")
+  let y = b("-987654321098765432109876543210")
+  print("{x + y} {x - y} {x * y}")
+  print("{x * 3} {x - 1} {x / 7} {x.plus(10)}")
+  print("{y / x} {y % x} {y.floorDiv(x)} {y.mod(x)}")
+  let (q, r) = y.quoRem(BigInt.of(1000))
+  print("{q} {r} {y.divMod(BigInt.of(1000))}")
+  for (a, d) in [(7, 2), (-7, 2), (7, -2), (-7, -2)] {
+    let p = BigInt.of(a)
+    let o = BigInt.of(d)
+    print("{a} {d}: {p / o} {p % o} {p.floorDiv(o)} {p.mod(o)}")
+  }
+  var acc = BigInt.one
+  for i in 1..30 {
+    acc *= i
+  }
+  acc += BigInt.of(1)
+  acc -= 2
+  print(acc)
+  print("{-x} {x.abs()} {y.abs()} {y.sign()} {BigInt.zero.sign()} {x.sign()}")
+  print(text(() => x / BigInt.zero))
+  print(text(() => x % BigInt.zero))
+  print(text(() => BigInt.of(2).pow(1 << 31)))
+  print(text(() => BigInt.of(2).pow(-1)))
+}
+
+test "big numbers" {
+  let f = BigInt.factorial(100)
+  print(f)
+  print(f.string().count())
+  var a = BigInt.zero
+  var c = BigInt.one
+  for _ in 0..<300 {
+    let t = a + c
+    a = c
+    c = t
+  }
+  print(a)
+  print(BigInt.of(2).pow(256))
+  print(BigInt.of(2).pow(256).string(radix: 16))
+  print(BigInt.of(-255).string(radix: 2))
+  print(BigInt.of(10).pow(50).sqrt())
+  print(BigInt.of(10).pow(51).sqrt())
+  let m = BigInt.factorial(2000)
+  print(m / BigInt.factorial(1998) == BigInt.of(2000 * 1999))
+  print((m * m).sqrt() == m)
+}
+
+test "order, equality and hashing" {
+  let xs = [b("3"), b("-100000000000000000000"), BigInt.of(2).pow(70), b("0"), b("-3")]
+  print(xs.sorted())
+  print(xs.max()!)
+  print(xs.min()!)
+  print(b("0x10") == BigInt.of(16))
+  print(BigInt.of(2).pow(64) > BigInt.of(9223372036854775807))
+  print(BigInt.of(-1) < BigInt.zero && BigInt.zero <= BigInt.zero)
+  var seen: Set<BigInt> = []
+  seen.insert(BigInt.of(10).pow(20))
+  seen.insert(b("100_000_000_000_000_000_000"))
+  seen.insert(BigInt.of(-1))
+  print(seen.count())
+  var names: [BigInt: string] = [:]
+  names[BigInt.of(2).pow(100)] = "huge"
+  names[BigInt.one] = "one"
+  print(names[b("1267650600228229401496703205376")] ?? "none")
+  print(names)
+}
+
+test "conversions" {
+  for s in ["0", "-0", "+42", "1_000", "0xff", "-0x_dead_beef", "0o17", "0b1010", "007"] {
+    print("{s}: {b(s)}")
+  }
+  for s in ["", "-", "1_", "_1", "1__0", "12a", " 1", "0x", "1.5"] {
+    print("{s}: {BigInt.parse(s, radix: 0) == none}")
+  }
+  print(BigInt.parse("zz", radix: 36)!)
+  print(BigInt.parse("ZZ", radix: 36)!.string(radix: 36))
+  print(BigInt.of(9223372036854775807).toInt()!)
+  print(BigInt.of(2).pow(63).toInt() == none)
+  print(BigInt.of(2).pow(63).neg().toInt()!)
+  print(b("9007199254740993").float())
+  print(BigInt.of(2).pow(1024).float())
+  print(BigInt.fromFloat(-2.9)!)
+  print(BigInt.fromFloat(1e30)!)
+  print(BigInt.fromFloat(0.0 / 0.0) == none)
+  print(BigInt.of(-129).toBytes(signed: true).hex())
+  print(BigInt.of(255).toBytes().hex())
+  print(BigInt.of(255).toBytes(signed: true).hex())
+  print(BigInt.of(4660).toBytes(size: 4).hex())
+  print(BigInt.of(-2).toBytes(size: 4, signed: true).hex())
+  print(BigInt.zero.toBytes().count())
+  print(BigInt.fromBytes(bytes([0xff, 0x7f]), signed: true))
+  print(BigInt.fromBytes(bytes([0xff, 0x7f])))
+  print(try BigInt.of(-1).toBytes().hex() catch e { e.message })
+  print(try BigInt.of(65536).toBytes(size: 2).hex() catch e { e.message })
+  print(BigInt.of(1234567890).formatted())
+  print(BigInt.of(10).pow(20).decimal()!.string())
+  print(BigInt.of(3).pow(50).decimal() == none)
+}
+
+test "number theory and bits" {
+  let p = BigInt.of(2).pow(127).minus(1)
+  print(p.isProbablePrime())
+  print((p * BigInt.of(2).pow(89).minus(1)).isProbablePrime())
+  var primes: [string] = []
+  for n in 1_000_000_000_000..<1_000_000_000_100 {
+    if BigInt.of(n).isProbablePrime() {
+      primes.push("{n}")
+    }
+  }
+  print(primes)
+  print(b("25326001").isProbablePrime())
+  let n = BigInt.of(2).pow(127).minus(1) * BigInt.of(2).pow(61).minus(1)
+  let msg = b("0x48656c6c6f")
+  let c = msg.modPow(BigInt.of(65537), n)
+  print(c)
+  let phi = BigInt.of(2).pow(127).minus(2) * BigInt.of(2).pow(61).minus(2)
+  let d = BigInt.of(65537).modInverse(phi)!
+  print(d)
+  print(c.modPow(d, n) == msg)
+  print(BigInt.of(3).modPow(BigInt.of(-1), BigInt.of(7)))
+  print(BigInt.of(2).modInverse(BigInt.of(4)) == none)
+  print(text(() => BigInt.of(2).modPow(BigInt.of(3), BigInt.zero)))
+  print("{BigInt.of(-12).gcd(BigInt.of(18))} {BigInt.of(-4).lcm(BigInt.of(6))} {BigInt.zero.gcd(BigInt.zero)}")
+  let six = BigInt.of(-6)
+  let thirteen = BigInt.of(13)
+  print("{six.and(thirteen)} {six.or(thirteen)} {six.xor(thirteen)} {six.not()} {thirteen.not()}")
+  print("{six.shiftRight(1)} {six.shiftLeft(70)} {BigInt.of(-1).shiftRight(1000)} {six.bitLength()}")
+  print("{six.bit(0)} {six.bit(1)} {six.bit(500)} {thirteen.bit(500)} {BigInt.zero.setBit(64)} {BigInt.of(-1).clearBit(3)}")
+  print(BigInt.of(2).pow(100).times(3).trailingZeros())
+  print(text(() => BigInt.one.shiftLeft(-1)))
+  let r = BigInt.random(below: BigInt.of(10).pow(30))
+  print(r >= BigInt.zero && r < BigInt.of(10).pow(30))
+}
+
+test "printing and JSON" {
+  let big = BigInt.of(2).pow(100)
+  print("[{big:>35}]")
+  print("[{big:<35}]")
+  print("[{BigInt.of(-5):*^9}]")
+  print([big, BigInt.of(-1)])
+  let missing: BigInt? = none
+  let some: BigInt? = BigInt.of(7)
+  print("{missing} {some}")
+  let l = Ledger(id: big, totals: [BigInt.of(-3), BigInt.factorial(25)], owed: none)
+  let text = json.encode(l)
+  print(text)
+  let back: Ledger = try json.decode(text)
+  print(back == l)
+  let quoted: Ledger = try json.decode(r#"{"id": "-123456789012345678901234567890", "totals": [], "owed": 5}"#)
+  print(quoted)
+  for bad in [r#"{"id": 1.5, "totals": []}"#, r#"{"id": "x", "totals": []}"#, r#"{"id": 01, "totals": []}"#, r#"{"id": 1e3, "totals": []}"#] {
+    print(try json.decode<Ledger>(bad).id.string() catch e { e.message })
+  }
+  print(json.encode(l, indent: 2))
+}
+
+// Output:
+// -864197532086419753208641975320 1111111110111111111011111111100 -121932631137021795226185032733622923332237463801111263526900
+// 370370367037037036703703703670 123456789012345678901234567889 17636684144620811271604938270 123456789012345678901234567900
+// -8 -9000000000900000000090 -9 123456780012345678001234567800
+// -987654321098765432109876543 -210 (-987654321098765432109876544,790)
+// 7 2: 3 1 3 1
+// -7 2: -3 -1 -4 1
+// 7 -2: -3 1 -4 -1
+// -7 -2: 3 -1 3 -1
+// 265252859812191058636308479999999
+// -123456789012345678901234567890 123456789012345678901234567890 987654321098765432109876543210 -1 0 1
+// division by zero
+// division by zero
+// bigint: too large: more than 2^30 bits
+// bigint: pow of a negative exponent (-1): modPow takes one, with a modulus
+// ok arithmetic
+// 93326215443944152681699238856266700490715968264381621468592963895217599993229915608941463976156518286253697920827223758251185210916864000000000000000000000000
+// 158
+// 222232244629420445529739893461909967206666939096499764990979600
+// 115792089237316195423570985008687907853269984665640564039457584007913129639936
+// 10000000000000000000000000000000000000000000000000000000000000000
+// -11111111
+// 10000000000000000000000000
+// 31622776601683793319988935
+// true
+// true
+// ok big numbers
+// [-100000000000000000000,-3,0,3,1180591620717411303424]
+// 1180591620717411303424
+// -100000000000000000000
+// true
+// true
+// true
+// 2
+// huge
+// {1267650600228229401496703205376:"huge",1:"one"}
+// ok order, equality and hashing
+// 0: 0
+// -0: 0
+// +42: 42
+// 1_000: 1000
+// 0xff: 255
+// -0x_dead_beef: -3735928559
+// 0o17: 15
+// 0b1010: 10
+// 007: 7
+// : true
+// -: true
+// 1_: true
+// _1: true
+// 1__0: true
+// 12a: true
+//  1: true
+// 0x: true
+// 1.5: true
+// 1295
+// zz
+// 9223372036854775807
+// true
+// -9223372036854775808
+// 9007199254740992
+// Infinity
+// -2
+// 1000000000000000019884624838656
+// true
+// ff7f
+// ff
+// 00ff
+// 00001234
+// fffffffe
+// 0
+// -129
+// 65407
+// bigint: a negative number has no unsigned bytes: signed: true writes its two's complement
+// bigint: the number doesn't fit in 2 bytes
+// 1,234,567,890
+// 100000000000000000000
+// true
+// ok conversions
+// true
+// false
+// ["1000000000039","1000000000061","1000000000063","1000000000091"]
+// false
+// 199047023722510486599347402808793158619233127358478753149
+// 331289352045189822667815270626651215797957447485387071673
+// true
+// 5
+// true
+// division by zero
+// 6 12 0
+// 8 -1 -9 5 -14
+// -3 -7083549724304467820544 -1 3
+// false true true false 18446744073709551616 -9
+// 100
+// bigint: a shift by a negative count (-1)
+// true
+// ok number theory and bits
+// [    1267650600228229401496703205376]
+// [1267650600228229401496703205376    ]
+// [***-5****]
+// [1267650600228229401496703205376,-1]
+// none 7
+// {"id":1267650600228229401496703205376,"totals":[-3,15511210043330985984000000],"owed":null}
+// true
+// {"id":-123456789012345678901234567890,"totals":[],"owed":5}
+// json: 1:9: expected an integer
+// json: 1:11: expected an integer
+// json: 1:10: expected an integer
+// json: 1:9: expected an integer
+// {
+//   "id": 1267650600228229401496703205376,
+//   "totals": [
+//     -3,
+//     15511210043330985984000000
+//   ],
+//   "owed": null
+// }
+// ok printing and JSON

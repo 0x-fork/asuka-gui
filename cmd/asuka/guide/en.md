@@ -506,6 +506,18 @@ let n = try big + 1 catch { 0 }               // 0: it threw
 let next = big.addingChecked(1) ?? big          // none on overflow: big
 ```
 
+For numbers past int's range, `std/bigint`'s `BigInt` is an integer of
+any size, with the arithmetic operators and the comparisons
+([Standard library](https://asuka.egoist.dev/docs/stdlib)):
+
+```asuka
+import std/bigint.{BigInt}
+
+let big = BigInt.of(9223372036854775807)
+let past = big * big + BigInt.one           // 85070591730234615847396907784232501250
+let digits = "{BigInt.factorial(30)}"       // 265252859812191058636308480000000
+```
+
 `&+`, `&-` and `&*` wrap instead: past the largest `int` they go on from
 the smallest, as 64-bit two's complement does (`9223372036854775807 &+
 1` is `-9223372036854775808`). That's what hashes, checksums and binary
@@ -2786,7 +2798,7 @@ action:)`, `refresh`, `scrollTo`, `back`, `dismiss`, `pickDate`,
 - format-spec: an interpolation's format that doesn't fit its value. Write the format for the value's type, as the message says: `{n:>6}`, `{x:.2f}`, `{n:#x}`, `{name:<12}`.
 - group-not-calls: `load (…)` of what isn't each a call. Group the calls only (`load (api.user(id), api.posts(id))`), and pass the values to them, or beside the load.
 - import-cycle: packages that import each other. Move what both need into a third package they both import.
-- int-overflow: an integer literal that doesn't fit in 64 bits. Use a smaller number, a `float`, or a `std/decimal` value for exact large numbers.
+- int-overflow: an integer literal that doesn't fit in 64 bits. Use a smaller number, a `float`, or, for an exact integer past 64 bits, `std/bigint`'s `BigInt` (`BigInt.parse("9223372036854775808")!`).
 - interface-not-satisfied: a type that declares an interface it doesn't implement. Add the missing methods (the message lists them), with the interface's signatures.
 - internal-error: a mistake of the compiler's own. Report it (with the program, or the smallest one that shows it) at https://github.com/egoist/asuka/issues.
 - invalid-catalog: a catalog that isn't a valid file of messages. Fix the file where the message points: a string for each key, its placeholders as the source's.
