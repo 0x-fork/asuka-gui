@@ -25,6 +25,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -47,7 +48,7 @@ func main() {
 	pre := flag.String("prebuilt", "", "a directory of asuka prebuilt build's output, a directory per target")
 	manifest := flag.String("manifest", filepath.Join("internal", "prebuilt", "manifest.json"), "where -prebuilt writes the CLI's manifest")
 	only := flag.Bool("prebuilt-only", false, "only pack the prebuilt packages and write their manifest")
-	wait := flag.Duration("wait", 30*time.Minute, "how long -publish waits for the registry to serve the packages before it publishes the launcher")
+	wait := flag.Duration("wait", 60*time.Minute, "how long -publish waits for the registry to serve the packages before it publishes the launcher")
 	flag.Parse()
 	if *version == "" {
 		fail("npm: -version is required")
@@ -126,13 +127,32 @@ func main() {
 		fmt.Println("packages in", *out, "(add -publish to publish them)")
 		return
 	}
+	// A release run again (its job re-run after the registry was slow)
+	// publishes only what isn't out yet: npm refuses a version twice.
 	for _, t := range tarballs {
-		npmPublish("", t.path, *tag)
+		switch err := prebuilt.Check(t.pkg); {
+		case err == nil:
+			fmt.Printf("already published: %s@%s\n", t.pkg.Name, t.pkg.Version)
+		case errors.Is(err, prebuilt.ErrIntegrity):
+			fail(fmt.Sprintf("%s@%s is published with other contents than these: release another version", t.pkg.Name, t.pkg.Version))
+		default:
+			npmPublish("", t.path, *tag)
+		}
 	}
 	if err := waitServed(tarballs, *wait); err != nil {
 		fail(err.Error())
 	}
+	if published("@egoist/asuka", *version) {
+		fmt.Printf("already published: @egoist/asuka@%s\n", *version)
+		return
+	}
 	npmPublish(main, "", *tag)
+}
+
+// published reports whether the registry has name@version.
+func published(name, version string) bool {
+	out, err := exec.Command("npm", "view", name+"@"+version, "version").Output()
+	return err == nil && strings.TrimSpace(string(out)) == version
 }
 
 // npmPublish publishes a package: a tarball, or the directory dir.
