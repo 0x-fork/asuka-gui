@@ -257,7 +257,8 @@ static l_output grid(ak_lnode *n, const l_input *in, ak_lpass *p) {
 		return (l_output){.size = {l_maxf(size.w, pbs.w), l_maxf(size.h, pbs.h)}, .baseline = LNAN};
 	}
 	ak_lsize inner = {LNAN, LNAN};
-	ak_lsize avail;
+	// Both axes are set below; initialized for GCC, which can't tell.
+	ak_lsize avail = {LNAN, LNAN};
 	for (int a = 0; a < 2; a++) {
 		float s = l_get(size, a);
 		if (l_isdef(s)) l_set(&inner, a, l_maxf(0, s - l_get(pbs, a)));

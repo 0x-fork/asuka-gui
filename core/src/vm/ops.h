@@ -24,8 +24,10 @@ static inline void ak_op_store(const uint8_t *kinds, ak_val *R, uint16_t a, ak_v
 
 // ak_op_overflow throws the error an int's +, -, * or - of the smallest
 // int (or its / -1) gives when the result doesn't fit: as dividing by
-// zero, a catch takes it. Out of line: the checks' paths stay short.
-__attribute__((cold, noinline)) static inline bool ak_op_overflow(void) {
+// zero, a catch takes it. Out of line: the checks' paths stay short (not
+// inline as well: GCC rejects noinline on an inline function; unused: a
+// file may include this without an int operation).
+__attribute__((cold, noinline, unused)) static bool ak_op_overflow(void) {
 	ak_throw_msg("integer overflow");
 	return false;
 }
