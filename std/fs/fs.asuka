@@ -1,11 +1,12 @@
-// Package std/fs has paths, and the app's files: its own directory
-// (appDir) and the calls that read and write there. The calls block
-// while the system works, so call them in spawn { }, which runs them on
-// another thread:
+// Package std/fs has paths, the directories files go in (the app's
+// own, the user's home, the temporary one), and the calls that read and
+// write files. The calls block while the system works, so call them in
+// spawn { }, which runs them on another thread:
 //
-//   let path = fs.join([fs.appDir(), "notes", "today.md"])
-//   let text = try await spawn { try fs.readText(path) }
-//   try await spawn { try fs.writeText(path, text: draft) }
+//   let notes = fs.join([fs.appDir(), "notes", "today.md"])
+//   let text = try await spawn { try fs.readText(notes) }
+//   try await spawn { try fs.writeText(notes, text: draft) }
+//   let sources = try await spawn { try fs.walk("src", skip: [".git"]) }
 //
 // Paths use the system's separator (\ on Windows, which takes / too).
 // On the web the app's directory is the page's, kept in the browser's
@@ -45,6 +46,9 @@ pub enum FsError: Error {
 
 /// What's at a path.
 pub struct Entry {
+  /// Where it is: the directory's path joined with name (readDir,
+  /// walk), or the path stat was given.
+  path: string
   /// Its last name: "today.md".
   name: string
   isDir: bool
@@ -52,6 +56,12 @@ pub struct Entry {
   size: int
   /// When its content last changed.
   modified: time.Time
+  /// Whether the path is a symbolic link: the rest is what it links to.
+  isLink: bool = false
+  /// Its permissions, as Unix's: 0o644 is rw-r--r--. On Windows, which
+  /// keeps only whether a file may be written: 0o666 or 0o444 (and the
+  /// x's for a directory).
+  mode: int = 0
 }
 
 /// The app's own directory, kept across launches (and in backups) and
@@ -59,6 +69,30 @@ pub struct Entry {
 /// app's files on Android, the user's data directory on Windows and
 /// Linux. It may not exist yet: mkdirAll makes it.
 pub native fn appDir() -> string
+
+/// The user's home directory: HOME on macOS and Linux, USERPROFILE on
+/// Windows (else the system's record of the user). An app on a phone or
+/// the web has no user's home to see: there it's appDir. In a test,
+/// os.fake's env: HOME (USERPROFILE) is the home.
+pub native fn home() -> string
+
+/// The directory for temporary files: TMPDIR on macOS and Linux (else
+/// /tmp), GetTempPath's on Windows (TMP, TEMP), the app's own temporary
+/// directory on a phone, the page's /tmp on the web. What's put there may
+/// go when the system needs the room.
+pub native fn tempDir() -> string
+
+/// path made absolute, against the working directory, and cleaned:
+/// abs("notes/../a.md") in /home/ann is "/home/ann/a.md". An absolute
+/// path is only cleaned (on Windows, one without a drive takes the
+/// working directory's). It throws only when the working directory is
+/// gone.
+pub fn abs(path: string) throws -> string {
+  if let p = absolute(path) {
+    return p
+  }
+  throw failure(path)
+}
 
 /// The parts joined by the separator, cleaned; empty parts are left
 /// out: join([dir, "notes", "a.md"]).
@@ -86,9 +120,10 @@ pub fn readDir(path: string) throws -> [Entry] {
   if let names = listNames(path) {
     var out: [Entry] = []
     for name in names {
+      let p = join([path, name])
       // One that went since the listing is left out.
-      if let info = statInfo(join([path, name])) {
-        out.push(entry(name, info))
+      if let info = statInfo(p) {
+        out.push(entry(p, name, info))
       }
     }
     return out
@@ -96,10 +131,64 @@ pub fn readDir(path: string) throws -> [Entry] {
   throw failure(path)
 }
 
+/// Everything under the directory at dir, at every depth: each entry,
+/// then, for a directory, what's in it, in name order (dir itself isn't
+/// in the list). Each Entry's path is dir joined with the names down to
+/// it ("src/ui/list.asuka" for walk("src")).
+///
+/// skip names directories not to go into (".git", "node_modules"): one
+/// is still in the list, without what's in it.
+///
+///   let all = try await spawn { try fs.walk(".", skip: [".git", "node_modules"]) }
+///   let sources = all.filter(e => !e.isDir && fs.ext(e.name) == ".asuka")
+///
+/// A link is listed as what it links to, but a link to a directory isn't
+/// gone into (so a link can't make it go round). What can't be read
+/// throws its FsError (a directory it may not list: .denied(path)), as
+/// readDir does; what goes while it walks is left out. It blocks until
+/// it has it all: walk a large tree in spawn { }.
+pub fn walk(dir: string, skip: [string] = []) throws -> [Entry] {
+  var out: [Entry] = []
+  // What's still to list, the next last.
+  var todo = (try listed(dir, top: true)).reversed()
+  while let e = todo.pop() {
+    out.push(e.entry)
+    if e.entry.isDir && !e.link && !skip.contains(e.entry.name) {
+      for c in (try listed(e.entry.path, top: false)).reversed() {
+        todo.push(c)
+      }
+    }
+  }
+  return out
+}
+
+struct Walked {
+  entry: Entry
+  link: bool
+}
+
+// listed is what's in the directory d, for walk: none of it when d went
+// since its own listing (top: it's walk's dir, which must be there).
+fn listed(d: string, top: bool) throws -> [Walked] {
+  var out: [Walked] = []
+  if let names = listNames(d) {
+    for name in names {
+      let p = join([d, name])
+      // One that went since the listing is left out.
+      if let info = walkInfo(p) {
+        out.push(Walked(entry: entry(p, name, info), link: info[3] != 0))
+      }
+    }
+  } else if top || failureKind() != 2 {
+    throw failure(d)
+  }
+  return out
+}
+
 /// What's at path (a link: what it links to).
 pub fn stat(path: string) throws -> Entry {
   if let info = statInfo(path) {
-    return entry(base(path), info)
+    return entry(path, base(path), info)
   }
   throw failure(path)
 }
@@ -176,7 +265,345 @@ pub fn removeAll(path: string) throws {
   }
 }
 
-fn entry(name: string, info: [int]) -> Entry = Entry(name: name, isDir: info[0] != 0, size: info[1], modified: time.unixNano(info[2]))
+fn entry(path: string, name: string, info: [int]) -> Entry = Entry(path: path, name: name, isDir: info[0] != 0, size: info[1], modified: time.unixNano(info[2]), isLink: info[3] != 0, mode: info[4])
+
+// ---------------------------------------------------------------------
+// Open files
+
+/// How open opens a file.
+pub enum OpenMode {
+  /// To read what's there; it must exist.
+  read
+  /// To write, from the start: made, or emptied when it's there.
+  write
+  /// To write after what's there: made when it isn't.
+  append
+  /// To read and write, from the start, keeping what's there: made when
+  /// it isn't.
+  readWrite
+}
+
+/// Where seek counts from.
+pub enum SeekFrom {
+  /// The file's start.
+  start
+  /// Where the file is read or written to now.
+  current
+  /// The file's end.
+  end
+}
+
+/// A file open to read or write a part at a time: a log too large to
+/// read whole, lines as they're needed, a file written as it's made.
+/// Each call waits for the system on another thread (on the web, where
+/// files are in the page's memory, in place), and a file's calls happen
+/// in the order they're made. Close it when it's done:
+///
+///   let f = try await fs.open("access.log")
+///   defer { try? await f.close() }
+///   while let line = try await f.readLine() {
+///     if line.contains(" 500 ") { print(line) }
+///   }
+///
+/// Reading and writing go through a buffer of 64 KB, so many small calls
+/// cost little: what's written reaches the file as the buffer fills, on
+/// flush() and on close(), and an error writing it may come from one of
+/// those. A File is a value: a copy is the same open file.
+pub struct File {
+  id: int
+  /// The path it was opened at.
+  path: string
+
+  /// Up to count bytes from where it's read to, fewer near the end;
+  /// empty at the end.
+  async fn read(count: int = 65536) throws -> bytes {
+    if fileReadReady(id) || @platform == .web {
+      return try readOf(id, path, count)
+    }
+    let i = id
+    let p = path
+    return try await spawn { try readOf(i, p, count) }
+  }
+
+  /// The next line, without its line ending (\n or \r\n), as UTF-8 text;
+  /// none at the end. The last line needn't end in one.
+  async fn readLine() throws -> string? {
+    if fileLineReady(id) || @platform == .web {
+      return try lineOf(id, path)
+    }
+    let i = id
+    let p = path
+    return try await spawn { try lineOf(i, p) }
+  }
+
+  /// The rest of the file, from where it's read to.
+  async fn readAll() throws -> bytes {
+    let i = id
+    let p = path
+    if @platform == .web {
+      return try allOf(i, p)
+    }
+    return try await spawn { try allOf(i, p) }
+  }
+
+  /// The lines from where it's read to, as they're read: the file stays
+  /// open after them (fs.lines(path) opens one and closes it).
+  fn lines() -> Stream<string> = Stream(send => {
+    while let line = try await readLine() {
+      send(line)
+    }
+  })
+
+  /// Writes data after what's written (in append mode, at the end).
+  async fn write(data: bytes) throws {
+    if fileBuffer(id, data) {
+      try await flush()
+    }
+  }
+
+  /// Writes text as UTF-8.
+  async fn writeText(text: string) throws {
+    try await write(text.bytes())
+  }
+
+  /// Puts what's written so far into the file.
+  async fn flush() throws {
+    let i = id
+    let p = path
+    if @platform == .web {
+      try flushOf(i, p)
+    } else {
+      try await spawn { try flushOf(i, p) }
+    }
+  }
+
+  /// Moves where it's read and written to: offset bytes from the start,
+  /// from where it is now, or from the end (offset negative to go back).
+  /// The position after, from the start.
+  async fn seek(offset: int, from: SeekFrom = .start) throws -> int {
+    let i = id
+    let p = path
+    let whence = match from {
+      .start => 0
+      .current => 1
+      .end => 2
+    }
+    if @platform == .web {
+      return try seekOf(i, p, offset, whence)
+    }
+    return try await spawn { try seekOf(i, p, offset, whence) }
+  }
+
+  /// Its size in bytes, what's written included.
+  async fn size() throws -> int {
+    let i = id
+    let p = path
+    if @platform == .web {
+      return try sizeOf(i, p)
+    }
+    return try await spawn { try sizeOf(i, p) }
+  }
+
+  /// Writes what's left and closes it: its calls after this fail. Closing
+  /// one that's closed does nothing.
+  async fn close() throws {
+    let i = id
+    let p = path
+    if @platform == .web {
+      try closeOf(i, p)
+    } else {
+      try await spawn { try closeOf(i, p) }
+    }
+  }
+}
+
+/// Opens the file at path to read (mode .read: it must be there), write,
+/// append, or both: a File, whose calls read and write it a part at a
+/// time. Close it when it's done (defer { try? await f.close() }).
+pub async fn open(path: string, mode: OpenMode = .read) throws -> File {
+  let m = match mode {
+    .read => 0
+    .write => 1
+    .append => 2
+    .readWrite => 3
+  }
+  if @platform == .web {
+    return try openOf(path, m)
+  }
+  return try await spawn { try openOf(path, m) }
+}
+
+/// The lines of the file at path as they're read, a part at a time,
+/// without their line endings: a file of any size, in little memory. The
+/// file is closed after its last line, or when the reader stops.
+///
+///   var errors = 0
+///   for await line in fs.lines("server.log") {
+///     if line.contains("ERROR") { errors += 1 }
+///   }
+pub fn lines(path: string) -> Stream<string> = Stream(send => {
+  let f = try await open(path)
+  defer { closeQuietly(f.id) }
+  while let line = try await f.readLine() {
+    send(line)
+  }
+})
+
+fn openOf(path: string, mode: int) throws -> File {
+  let id = fileOpen(path, mode)
+  if id == 0 {
+    throw failure(path)
+  }
+  return File(id: id, path: path)
+}
+
+fn lineOf(id: int, path: string) throws -> string? {
+  let l = fileReadLine(id)
+  if l == none && fileFailed(id) {
+    throw failure(path)
+  }
+  return l
+}
+
+fn readOf(id: int, path: string, count: int) throws -> bytes {
+  if let b = fileRead(id, count) {
+    return b
+  }
+  throw failure(path)
+}
+
+fn allOf(id: int, path: string) throws -> bytes {
+  if let b = fileReadAll(id) {
+    return b
+  }
+  throw failure(path)
+}
+
+fn flushOf(id: int, path: string) throws {
+  if !fileFlush(id) {
+    throw failure(path)
+  }
+}
+
+fn seekOf(id: int, path: string, offset: int, whence: int) throws -> int {
+  let at = fileSeek(id, offset, whence)
+  if at < 0 {
+    throw failure(path)
+  }
+  return at
+}
+
+fn sizeOf(id: int, path: string) throws -> int {
+  let n = fileSize(id)
+  if n < 0 {
+    throw failure(path)
+  }
+  return n
+}
+
+fn closeOf(id: int, path: string) throws {
+  if !fileClose(id) {
+    throw failure(path)
+  }
+}
+
+// closeQuietly closes a file lines opened, as its reader goes: what fails
+// there has no one to tell (it was only read).
+fn closeQuietly(id: int) {
+  fileClose(id)
+}
+
+native fn fileOpen(path: string, mode: int) -> int
+native fn fileLineReady(id: int) -> bool
+native fn fileReadLine(id: int) -> string?
+native fn fileReadReady(id: int) -> bool
+native fn fileRead(id: int, count: int) -> bytes?
+native fn fileReadAll(id: int) -> bytes?
+native fn fileBuffer(id: int, data: bytes) -> bool
+native fn fileFlush(id: int) -> bool
+native fn fileSeek(id: int, offset: int, whence: int) -> int
+native fn fileSize(id: int) -> int
+native fn fileClose(id: int) -> bool
+native fn fileFailed(id: int) -> bool
+
+// ---------------------------------------------------------------------
+// Patterns, permissions, links
+
+/// Whether path matches pattern, a glob: * any run of characters in a
+/// name, ? one, [abc] and [a-z] one of a set ([!a]: not), {a,b} either,
+/// and ** any run of directories, none included. A name that starts with
+/// a dot is matched only by a part of the pattern that starts with one
+/// too, as shells match: * doesn't take .git.
+///
+///   fs.matches(r"src/**/*.{ts,tsx}", "src/ui/app.tsx")   // true
+///
+/// (A pattern with braces is a raw string, r"…", where { isn't an
+/// interpolation.)
+pub native fn matches(pattern: string, path: string) -> bool
+
+/// The paths that match pattern (as matches reads it), sorted: the tree
+/// under the pattern's part without wildcards is walked, so a pattern that
+/// starts with one walks the working directory. It blocks until it has
+/// them all: glob a large tree in spawn { }.
+///
+///   let tests = try await spawn { try fs.glob("**/*_test.asuka") }
+pub fn glob(pattern: string) throws -> [string] {
+  // Where to start: the names before the first with a wildcard.
+  var cut = 0
+  var i = 0
+  for c in pattern.chars() {
+    if c == "*" || c == "?" || c == "[" || c == "\{" {
+      break
+    }
+    i += c.byteCount()
+    if c == "/" || (@platform == .windows && c == "\\") {
+      cut = i
+    }
+  }
+  if i == pattern.byteCount() {
+    return if exists(pattern) { [pattern] } else { [] }
+  }
+  let root = if cut == 0 { "." } else { pattern.byteSlice(0, cut) }
+  var out: [string] = []
+  for e in try walk(root) {
+    // walk(".") gives "src/a.ts"; walk("src/") "src/a.ts" too.
+    if matches(pattern, e.path) {
+      out.push(e.path)
+    }
+  }
+  return out.sorted()
+}
+
+/// Sets the permissions of what's at path, as Unix's chmod: 0o755,
+/// 0o600. On Windows, which keeps only whether a file may be written,
+/// mode's owner write bit (0o200) says that; the web has no permissions.
+pub fn chmod(path: string, mode: int) throws {
+  if !chmodPath(path, mode) {
+    throw failure(path)
+  }
+}
+
+/// Makes a symbolic link at at, to target (a path, absolute or relative
+/// to the link's directory). On Windows that takes Developer Mode or an
+/// administrator: .denied otherwise.
+pub fn symlink(target: string, at: string) throws {
+  if !symlinkPath(target, at) {
+    throw failure(at)
+  }
+}
+
+/// What the symbolic link at path links to, as the link says it (on
+/// Windows, where links hold no text: the full path it resolves to).
+pub fn readLink(path: string) throws -> string {
+  if let to = readLinkPath(path) {
+    return to
+  }
+  throw failure(path)
+}
+
+native fn chmodPath(path: string, mode: int) -> bool
+native fn symlinkPath(target: string, path: string) -> bool
+native fn readLinkPath(path: string) -> string?
 
 // failure is the error of the last call that failed on this thread.
 fn failure(path: string) -> FsError = match failureKind() {
@@ -191,6 +618,8 @@ fn failure(path: string) -> FsError = match failureKind() {
 
 native fn listNames(path: string) -> [string]?
 native fn statInfo(path: string) -> [int]?
+native fn walkInfo(path: string) -> [int]?
+native fn absolute(path: string) -> string?
 native fn readFile(path: string) -> bytes?
 native fn writeFile(path: string, data: bytes, append: bool) -> bool
 native fn copyFile(from: string, to: string) -> bool

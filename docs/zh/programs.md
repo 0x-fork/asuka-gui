@@ -49,6 +49,7 @@ async fn main() throws {
   ```
 
 - `os.exit(code)` 立即以 `code` 结束程序：stdout 和 stderr 会被刷新，但 `defer` 和其他 task 不会执行。
+- Ctrl-C 会像 `main` 自己结束那样，以取消的方式结束异步的 `main`：先执行它的 `defer`，再执行其他所有 task 的，退出码是 130（128 加上信号的编号：终止信号，也就是 `kill` 默认发送的信号，是 143；挂断信号是 129）。再按一次 Ctrl-C 会立即结束程序；不是异步的 `main` 也是这样立即结束，因为不 await 的代码无法取消。用 `os.signals()` 可以把这些信号交给程序自己处理（见[信号](#信号)）。
 - `print` 向 stdout 写一行；`os.eprint` 写到 stderr。
 
 ## 进程：std/os
@@ -67,6 +68,25 @@ async fn main() throws {
 | `os.eprint(text)` | 向 stderr 写一行 |
 | `os.writeTo(.stdout, text)`、`writeBytesTo` | 原样写出文本或字节，不加行尾，目标是 `.stdout` 或 `.stderr` |
 | `os.terminal(.stdout)` | 某个流是否是终端（有人在看），而不是管道或文件：只在终端上输出颜色和提示 |
+| `os.signals(kinds)` | 按到达顺序给出这些种类的信号（一个 `Stream<os.Signal>`：`.interrupt`、`.term`、`.hangup`），被读取的信号不再结束程序 |
+
+### 信号
+
+如果程序有要先收尾的事情（写了一半的文件、服务器上还在处理的请求），可以自己读取信号：只要有流在读某一种信号，这种信号就不会结束程序，由程序决定怎么处理。`os.signals()` 读取 Ctrl-C 和终止信号；`os.signals([.hangup])` 读取挂断信号，守护进程通常把它当作“重新读取配置”。
+
+```asuka check
+import std/os
+
+async fn main() throws {
+  let jobs = ["a", "b", "c"]
+  for await s in os.signals() {
+    os.eprint("{s}: finishing {jobs.count()} jobs first")
+    break
+  }
+}
+```
+
+在 Windows 上，Ctrl-C 和 Ctrl-Break 是 `.interrupt`；控制台关闭、用户注销或系统关机是 `.term`，这时 Windows 会等待几秒钟。手机和 Web 上没有信号，这个流不会给出任何信号。
 
 ```asuka
 import std/os
@@ -229,6 +249,302 @@ async fn main() throws {
 
 它可以在程序和桌面应用（macOS、Windows、Linux）里使用；手机和 Web 上的应用不能运行其他程序（`CommandError.unsupported`）。
 
+## 终端：std/term
+
+`std/term` 负责给程序的输出加上样式，以及向终端前的人提问。下面这个程序用来创建项目：它会询问项目名，覆盖已有目录前先确认，输出的颜色可以用 `--color` 参数打开或关闭。
+
+```asuka check
+import std/flag
+import std/fs
+import std/os
+import std/term
+
+/// Makes a project.
+struct Options {
+  /// When to use colors.
+  color: term.ColorMode = .auto
+  /// Where to make it (the name asked for, if not given).
+  dir: string?
+}
+
+async fn main() throws {
+  let o = flag.parse<Options>(os.args())
+  term.setColors(o.color)
+  let name = await term.prompt("Project name:", default: "demo") ?? "demo"
+  let target = try fs.abs(o.dir ?? name)
+  if fs.exists(target) && !(await term.confirm("{target} exists. Overwrite?")) {
+    os.eprint("{term.red("error:", stream: .stderr)} nothing was made")
+    os.exit(1)
+  }
+  try await spawn { try fs.mkdirAll(target) }
+  print("{term.green("✓")} made {term.bold(target)}")
+}
+```
+
+```text
+$ new
+Project name: [demo] notes
+✓ made /home/ann/notes
+```
+
+- **样式。** `term.bold(text)`、`dim`、`italic`、`underline` 以及八种颜色（`red`、`green`、`yellow`、`blue`、`magenta`、`cyan`、`white`、`black`）会用终端的控制码把文本包起来。要同时设置好几项，就用 `term.Style`，它也是一个可以保存下来反复使用的值：`let warn = term.Style(color: .yellow, bold: true)`，然后调用 `warn.paint(text)`。`Style` 还提供亮色（`.brightRed`）和 `background`。带样式的文本嵌在另一段带样式的文本里时，内层保持自己的样式，结束后外层的样式会接着生效。
+- **什么时候显示样式。** 只有当输出流是终端、没有设置 `NO_COLOR`（[no-color.org](https://no-color.org)）并且 `TERM` 不是 `dumb` 时才会显示；设置了 `FORCE_COLOR` 时，即使输出到管道也会显示（值为 `0` 或 `false` 则关闭）。每个样式函数都接受 `stream:` 参数，指明文本要打印到哪个流（默认是 `.stdout`）。`term.colors(.stderr)` 返回当前的判断结果，`term.setColors(.always)`、`.never` 或 `.auto` 可以覆盖它，作用于两个流，或用 `stream:` 只作用于其中一个。在选项结构体里写一个 `color: term.ColorMode = .auto` 字段，就得到了 `--color always|never|auto` 参数。在 Windows 上，第一次输出样式时会让控制台开始解析这些控制码（开启它的虚拟终端处理）。
+- **提问。** `term.prompt(question, default:)` 提出问题，返回输入的那一行，去掉首尾空白：直接回车得到 `default`（显示为 `[demo]`），返回 `none` 表示 stdin 已经结束（按了 Ctrl-D，或管道已关闭）。`term.confirm(question, default: false)` 显示 `[y/N]`（默认值为 true 时是 `[Y/n]`），直到得到 y、yes、n、no 或空回答为止。`term.secret(question)` 在关闭终端回显的状态下读取一行，适合输入密码或 token；读完这一行、task 被取消、或者用 Ctrl-C 结束程序时，回显都会恢复。问题写到 stderr，和 git、gh 的做法一样，这样程序的输出通过管道传出去时（`new | tee log`），stdout 里只有程序真正的输出。这几个函数都是 `async` 的：这一行在另一个线程上读取，程序里的其他 task 照常运行。
+- **尺寸。** `term.width()` 和 `term.height()` 是终端的列数和行数（如果 `COLUMNS` 和 `LINES` 是数字，优先使用它们）；没有任何一个流是终端时为 `none`：`term.width() ?? 80`。
+
+在测试里，用 `os.fake(stdin:)` 回答这些问题，问题本身可以在 `o.stderr()` 里找到。测试的流都不是终端，所以不会输出样式，除非测试用 `os.fake(env: ["FORCE_COLOR": "1"])` 或 `term.setColors(.always)` 明确要求；这里只看 `os.fake` 的 `env:`，所以运行测试时的环境变量不会影响测试的输出。手机和 Web 上没有终端：没有样式，`prompt` 返回 `none`，`width` 也是 `none`。
+
+## 文件和目录：std/fs
+
+程序和应用一样，用 `std/fs` 读写文件（[数据](data.md)），另外还提供了命令行工具查找文件时需要的几个函数：
+
+- `fs.home()`：用户的主目录（`HOME`，Windows 上是 `USERPROFILE`；在测试里，如果 `os.fake` 的 `env:` 提供了它们，就用其中的值）。
+- `fs.tempDir()`：存放临时文件的目录（`TMPDIR`，没有时是 `/tmp`；Windows 上是 `GetTempPath` 返回的目录）。
+- `fs.abs(path)`：把 `path` 相对于工作目录转成绝对路径，并做规范化。
+- `fs.walk(dir, skip:)`：目录下所有层级的全部内容，以 `Entry`（`path`、`name`、`isDir`、`size`、`modified`）的列表返回：先是每个目录本身，再是它里面的内容，按名字排序。`skip:` 列出不进入的目录名；指向目录的链接也不会进入。
+
+```asuka check
+import std/fs
+
+async fn main() throws {
+  let root = try fs.abs(".")
+  let entries = try await spawn { try fs.walk(root, skip: [".git", "node_modules"]) }
+  let sources = entries.filter(e => !e.isDir && fs.ext(e.name) == ".asuka")
+  print("{sources.count()} files in {root}")
+  let config = fs.join([fs.home(), ".config", "count", "config.toml"])
+  if fs.exists(config) {
+    print("using {config}")
+  }
+}
+```
+
+会访问磁盘的调用（`walk`、`readText`、`exists`……）要等系统返回结果才会继续：遍历很大的目录树时放在 `spawn { }` 里，程序的其他 task 就能照常运行。失败时和 `std/fs` 的其他调用一样抛出 `FsError`：没有权限列出的目录是 `.denied(path)`。
+
+### 大文件，分段读写
+
+`readText` 会一次读入整个文件。太大的文件（日志、导出数据）要分段读：`fs.lines(path)` 以流的形式给出文件的每一行，每次读 64 KB，读完最后一行后关闭文件。`fs.open(path, mode:)` 返回一个 `File`，让程序边处理边读写：`readLine()`、`read(count:)`、`readAll()`、`write(data)`、`writeText(text)`、`seek(offset, from:)`、`size()`、`flush()` 和 `close()`，它们都在另一个线程上等待系统。打开方式有 `.read`、`.write`（从空文件开始）、`.append` 和 `.readWrite`。
+
+```asuka check
+import std/fs
+
+/// 逐行把日志里的错误行复制到另一个文件。
+async fn main() throws {
+  let out = try await fs.open("errors.log", mode: .write)
+  defer { try? await out.close() }
+  var kept = 0
+  for await line in fs.lines("server.log") {
+    if line.contains("ERROR") {
+      try await out.writeText(line + "\n")
+      kept += 1
+    }
+  }
+  print("{kept} errors")
+}
+```
+
+写入的内容在缓冲区写满时、调用 `flush()` 时以及 `close()` 时才会真正写进文件；用完 `File` 要关闭它，就像上面用 `defer` 那样。
+
+`fs.glob(pattern)` 按排序列出匹配模式的路径：`*`、`?`、`[a-z]`、`{a,b}`（写在原始字符串 `r"…"` 里，这样 `{` 不会被当作插值）以及表示任意层目录的 `**`。`fs.matches(pattern, path)` 检查单个路径。`fs.chmod(path, 0o755)` 设置权限，`fs.symlink(target, at:)` 和 `fs.readLink(path)` 创建和读取符号链接，`Entry` 里也有 `mode` 和 `isLink`。
+
+```asuka check
+import std/fs
+
+async fn testFiles() throws -> [string] = try await spawn { try fs.glob(r"src/**/*_{test,spec}.asuka") }
+```
+
+## 归档与压缩：std/archive、std/compress
+
+`std/archive` 用来列出、读取、解压和创建 zip 与 tar 归档（`.zip`、`.tar`、`.tar.gz`）；`std/compress` 用 gzip（也可以是 zlib 或原始 DEFLATE）压缩字节和文件，例如 `compress.encodeFile(from: log, to: log + ".gz")`。文件是逐块读写的，所以再大的归档也只占用很少的内存；不过这些调用在工作时会阻塞，要放在 `spawn { }` 里调用。
+
+来自别处的归档也可以放心解压：如果某个条目会落到目标目录之外（`../../.profile`、绝对路径、经过链接的路径），就会抛出 `unsafePath`，那里不会写入任何东西；`limit:` 限制解压出的总量（默认 1 GB），所以 zip 炸弹没法把磁盘写满。
+
+```asuka check
+import std/archive
+import std/os
+
+/// pack DIR OUT.zip：把 DIR 打包成归档。unpack ARCHIVE DIR：把归档解压出来。
+async fn main() throws {
+  let a = os.args()
+  if a.count() == 3 && a[0] == "pack" {
+    try await spawn { try archive.create(a[2], from: a[1]) }
+  } else if a.count() == 3 && a[0] == "unpack" {
+    let entries = try await spawn { try archive.list(a[1]) }
+    print("{entries.count()} entries")
+    try await spawn { try archive.extract(a[1], to: a[2], limit: 8 << 30) }
+  } else {
+    os.eprint("usage: pack DIR OUT.zip | unpack ARCHIVE DIR")
+    os.exit(2)
+  }
+}
+```
+
+## 同时处理多项
+
+`all(items, f, limit:)` 用每一项同时调用一个异步函数，并按各项的顺序给出结果：适合并行下载、发请求、同时运行其他程序。`limit:` 指定同一时刻最多运行几个；第一个出错的会取消其余的，等它们都停下后 `all` 再抛出这个错误（见[异步](language/async.md#异步)）。
+
+```asuka check
+import std/flag
+import std/http
+import std/os
+
+/// Downloads pages, a few at a time.
+struct Options {
+  /// -j How many at once.
+  jobs: int = 4
+  /// The pages' URLs.
+  urls: [string]
+}
+
+async fn main() throws {
+  let o = flag.parse<Options>(os.args())
+  let sizes = try await all(o.urls, u => try await http.get(u).body.count(), limit: o.jobs)
+  for (u, n) in o.urls.zip(sizes) {
+    print("{n}\t{u}")
+  }
+}
+```
+
+## 任意结构的 JSON
+
+程序知道结构的 JSON，用结构体来读（`json.decode<T>`，见[数据](data.md)）。结构无法预知的，比如工具的配置文件或者从管道传进来的任意内容，就用 `json.Value`：`json.parse(text)` 原样读入任意 JSON，用 `get(key)`、`at(i)` 以及 `asString()`、`asInt()` ……查看里面的内容，也可以用 `match` 匹配它的各个 case（`.object(members)`、`.array(elements)`、`.string(s)` ……）。打印它或者用 `json.encode` 写出它，得到的都是 JSON。
+
+```asuka check
+import std/json
+import std/os
+
+/// 打印 stdin 中 JSON 在某个路径上的值：pick user.emails.0
+async fn main() throws {
+  var v = try json.parse(os.readAll().string())
+  for step in (os.args().first() ?? "").split(".") {
+    if step.isEmpty() { continue }
+    let next = if let i = step.toInt() { v.at(i) } else { v.get(step) }
+    v = next ?? json.Value.null
+  }
+  match v {
+    .string(s) => print(s)       // 作为文本输出，不带引号
+    _ => print(json.encode(v, indent: 2))
+  }
+}
+```
+
+## 配置文件和数据：TOML 与 CSV
+
+`std/toml` 读取配置文件的方式和 `std/json` 读取 JSON 一样：`toml.decode<Config>(text)` 按字段名把配置读进结构体（写成 `min-qty` 或 `min_qty` 的键都会读进 `minQty`），文件里没有的可选字段为 `none`；`toml.encode(config)` 把它写回去，`toml.parse(text)` 则把任意文档读成 `json.Value`。和 JSON 一样，文件里没写的字段取空值（0、`""`、none），而不是结构体里的默认值：可能缺省的设置就声明为可选类型，或者先用默认值创建结构体，只在文件存在时才去读它。出错时会指出位置：`toml: 2:11: min-qty: expected an integer, not a string`。
+
+`std/csv` 按行读取：`csv.parse(text)` 得到 `[[string]]`，`csv.decode<T>(text)` 按表头一行把每行读进结构体（单元格按字段的类型读取：int、float、bool、枚举的 case；可选字段遇到空单元格为 `none`），`csv.encode(rows)` 再连同表头一起写回去。文件太大、不便整个读进内存时，可以从它各行组成的流里一次读一行：`csv.stream<T>(fs.lines("sales.csv"))`，标准输入则用 `csv.stream<T>(os.lines())`。下面的例子读取从管道传进来的销售数据，并按 `~/.config/sales/config.toml` 的设置汇总：
+
+```toml
+currency = "USD"
+min-qty = 2
+```
+
+```
+item,qty,price
+"Tea, green",2,3.5
+Cake,1,4.25
+```
+
+```asuka check
+import std/csv
+import std/fs
+import std/os
+import std/toml
+
+/// 汇总从管道传进来的 CSV 销售数据。
+struct Config {
+  currency: string = "EUR"
+  /// 件数少于它的行不计入。
+  minQty: int? = none
+}
+
+struct Sale {
+  item: string
+  qty: int
+  price: float
+}
+
+async fn main() throws {
+  let path = fs.join([fs.home(), ".config", "sales", "config.toml"])
+  var config = Config()
+  if fs.exists(path) {
+    config = try toml.decode<Config>(try await spawn { try fs.readText(path) })
+  }
+  var total = 0.0
+  for await sale in csv.stream<Sale>(os.lines()) {
+    if sale.qty >= (config.minQty ?? 1) {
+      total += sale.price * float(sale.qty)
+    }
+  }
+  print("{total} {config.currency}")
+}
+```
+
+`separator: "\t"` 读取用制表符分隔的数据；`comment: "#"` 跳过以它开头的行；`flexible: true` 允许各行的字段数不同。
+
+## Web 服务：std/http
+
+`http.serve` 能把程序变成一个 HTTP/1.1 服务器，用法和 Go 的 `net/http`、`Bun.serve` 类似：每个请求交给一个处理函数，它是一个返回 `Reply` 的 async 函数。`Router` 按方法和路径把请求分发给各个处理函数，`:name` 匹配路径中的一段。
+
+```asuka check
+import std/http
+import std/os
+
+struct Note {
+  id: int
+  text: string
+}
+
+struct Draft {
+  text: string
+}
+
+async fn main() throws {
+  var notes: [Note] = []
+  let api = http.Router()
+    .get("/notes", req => .json(notes))
+    .get("/notes/:id", req => {
+      if let n = notes.find(n => n.id == req.param("id").toInt()) {
+        return .json(n)
+      }
+      return .text("no such note", status: 404)
+    })
+    .post("/notes", req => {
+      let draft = try req.json<Draft>()
+      let note = Note(id: notes.count() + 1, text: draft.text)
+      notes.push(note)
+      return .json(note, status: 201)
+    })
+  let port = (os.env("PORT") ?? "8080").toInt() ?? 8080
+  let server = try await http.serve(port, api.handler(), host: "0.0.0.0")
+  print("listening on {server.url}")
+  // Ctrl-C 或终止信号：先把正在处理的请求答复完。
+  for await _ in os.signals() {
+    break
+  }
+  await server.close(grace: 10s)
+}
+```
+
+```sh
+$ curl -d '{"text":"milk"}' localhost:8080/notes
+{"id":1,"text":"milk"}
+$ curl localhost:8080/notes/1
+{"id":1,"text":"milk"}
+```
+
+- `http.serve(port, handler, host:, limits:, onError:)` 在 `port` 上监听（传 0 时由系统挑一个端口，实际端口见 `server.port`），开始监听后返回 `Server`。`host` 默认是 `127.0.0.1`，只有本机的客户端能连上。`"0.0.0.0"` 接受所有 IPv4 网卡上的连接（容器、其他机器），`"::"` 还包括 IPv6。无法监听的地址（比如端口已被占用）会抛出 `ServerError.listen`。
+- 每个请求的处理函数都在主线程上作为一个独立的 task 运行，所以它可以 await 任何 task 能等的东西（数据库、`http.get`、其他程序），其他请求同时照常处理。读取和解析请求、写出回复都在服务器自己的线程上完成；它能同时服务很多连接，请求之间连接保持打开。
+- `Request` 有 `method`、`path`（按客户端发来的原样，保留转义）、`rawQuery` 和 `query(name)`、按小写名字存放的 `headers` 和不区分大小写的 `header(name)`、`body`（会先完整读入）、`text()` 和 `json<T>()`、客户端地址 `remote`，以及路由匹配到的 `params`（`param(name)`）。
+- `Reply` 用 `.text`、`.json`、`.html`、`.data`、`.redirect` 创建，或者直接写 `Reply(status: 204)`；头部的值如果有多行，每行作为一个单独的头部发送（比如多个 Set-Cookie）。`.stream(body)` 边生成边分块发送响应体，`.events(stream)` 发送服务器发送事件，`http.events` 和浏览器的 EventSource 都能读；发送过程中客户端断开，处理函数会被取消。
+- 路由的模式由普通文本、`:name`（一段）和 `*name`（路径的剩余部分）组成。路由按添加顺序依次尝试；没有路由匹配的路径返回 404，路径匹配但方法不对的返回 405（带 `Allow`），GET 路由也会响应 HEAD。
+- 抛出错误的处理函数会得到 500 Internal Server Error，错误交给 `onError`（没传时写到 stderr）。
+- `http.Limits(headerSize:, bodySize:, connections:, headerTimeout:, readTimeout:, idleTimeout:)` 规定服务器接受多少数据、等待多久：头部 64 KiB，请求体 16 MiB，10000 个连接，请求头部 30 秒内要发完，请求体每次等待最多 30 秒，两次请求之间最多空闲 60 秒。超出限制时会返回相应状态（431、413、408）并关闭连接。
+- `server.close(grace: 10s)` 关闭服务器：立即停止接受新连接，让正在处理的请求完成回复，超过 `grace` 后取消仍在运行的处理函数（它们的 `defer` 会执行）。`server.wait()` 一直等到服务器关闭。服务器属于启动它的 task，`main` 返回时它也会关闭，所以 `main` 要 await `server.wait()`，或者像上面那样等待结束它的信号。没有流读取信号时，Ctrl-C 会结束 `main`，服务器也随之立即关闭：仍在运行的处理函数会被取消。读取 `os.signals()` 再关闭服务器，就能先让它们答复完（见[信号](#信号)）。
+
+HTTPS 交给反向代理（Caddy、nginx）：由它终止 TLS，再通过 HTTP 把请求转给监听在 `127.0.0.1` 上的服务器，客户端地址放在 `X-Forwarded-For` 里。桌面应用也可以用同样的方式在一个 task 里提供本地 API，手机应用在运行期间也可以；网页不能监听（`ServerError.unsupported`）。
+
+处理函数就是一个函数，所以测试可以直接用一个 `Request` 调用它或者路由，中间不经过 socket：`let r = try await api.handle(http.Request(method: "GET", path: "/notes/1"))`。
+
 ## 运行
 
 `asuka run` 直接运行程序的 `main`，不需要等待构建：`--` 之后的参数都交给程序，退出时带上程序的退出码。
@@ -348,7 +664,7 @@ test "greets whom it's given" {
 }
 ```
 
-`o.run(main)` 返回程序本该结束时的退出码：0；抛出错误时为 1（消息在 `o.stderr()` 里）；或者 `os.exit` 给出的值，这时 `os.exit` 只结束测试里的 `main`，而不是整个进程。没有 fake 时，测试里的 `os.args()` 和 stdin 都是空的。`command.fake()` 替其他程序作答，这样它们就不会真的运行：
+`o.run(main)` 返回程序本该结束时的退出码：0；抛出错误时为 1（消息在 `o.stderr()` 里）；或者 `os.exit` 给出的值，这时 `os.exit` 只结束测试里的 `main`，而不是整个进程。`o.signal(.interrupt)` 像按下 Ctrl-C 那样，给它正在运行的 `main` 发送信号：如果有 `os.signals` 流在读，流会收到它；否则 `main` 会被取消，`run` 返回 130。没有 fake 时，测试里的 `os.args()` 和 stdin 都是空的。`command.fake()` 替其他程序作答，这样它们就不会真的运行：
 
 ```asuka
 import std/command
@@ -370,3 +686,5 @@ test "reads git's branch" {
 | `os.args`、`os.exit`、stdin | 支持 | 支持 | 支持 | 应用里为空，`exit` 会抛出错误 |
 | `std/command` | 支持 | 支持 | 支持 | `unsupported` |
 | `std/flag` | 支持 | 支持 | 支持 | 支持（它能解析任何列表） |
+| `std/term` | 支持 | 支持 | 支持 | 没有终端：没有样式，`prompt` 返回 `none` |
+| `http.serve` | 支持 | 支持 | 支持 | 手机应用：运行期间可用；Web：`unsupported` |

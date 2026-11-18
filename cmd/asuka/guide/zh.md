@@ -299,6 +299,19 @@ fn main() {
 
 字符串的花括号里可以放任意表达式：`"{count} items"`、`"Total: {price * qty}"`。`\{` 表示一个花括号字符；`r"…"` 是原始字符串，没有转义也没有插值；要在原始字符串里写 `"`，用 `r#"…"#`：它在一个 `"` 后面跟着与开头同样多的 `#` 时才结束（`r#"say "hi""#`、`r##"a "# b"##`）。`"""…"""` 可以跨多行（第一行为空时不算在内，结束引号所在那一行的缩进也会去掉），里面的 `"` 和 `""` 照原样保留；`r"""…"""` 是跨多行的原始字符串。不是数字、布尔值或字符串的值，显示为文本时是这样的：枚举成员显示为它的名字，可选值显示为 `none` 或其中的值，错误显示为它的消息，颜色按写法显示（`#0a84ff`、`.accent`），时长以毫秒显示（`1500ms`），其他值显示为 JSON。JSON 表示不了的值也按同样的方式写出：元组写成括号里的各个元素，每个元素的写法和数组元素一样（`(1,"a","red")`）；键不是字符串的 map，每个键按它自己的写法写出（`{1:"a"}`）；函数没有文本形式，显示为它的类型（`<fn(int) -> int>`）。
 
+插值可以像 Python 和 Rust 那样，在冒号后面说明值怎么写出来：`"{price:>8.2f}"`。格式是 `[[fill]align][sign][#][0][width][,|_][.precision][type]`：`<`、`>`、`^` 表示在宽度内左对齐、右对齐、居中，前面可以写填充字符（默认是空格）；`+` 让正数也带上加号；`0` 在符号之后用 0 补足宽度；`,` 或 `_` 给整数（以及浮点数的整数部分）分组；`.2` 是浮点数小数点后的位数，对文本来说是最多保留的字符数。类型可以是 `x`、`X`、`o`、`b`，把整数写成十六进制、八进制或二进制（加上 `#` 会在前面写出 `0x`、`0o`、`0b`），也可以是 `f`、`e`、`%`，把数字写成定点小数、指数形式或百分比。数字默认右对齐，其他值按它的文本左对齐，只能指定填充字符、对齐、宽度和精度。格式由编译器读取：和值对不上的格式会在写的地方报错（[format-spec](https://asuka.egoist.dev/zh/docs/errors/format-spec)）。
+
+```asuka
+fn row(name: string, count: int, share: float) -> string = "{name:<10}{count:>6,}{share:>8.1%}"
+
+let price = "{1234.5:,.2f}"          // 1,234.50
+let hex = "{255:#06x}"               // 0x00ff
+let title = "{"Total":*^11}"         // ***Total***
+let table = row("asuka", 12500, 0.4) // asuka     12,500   40.0%
+```
+
+宽度按字符（码位）计算，而不是按终端里显示的宽度。
+
 元组的元素可以按位置读取：`pair.0`、`pair.1`；如果元组存在 `var` 里，也可以就地修改（`pair.0 += 1`）。写一个元组没有的位置（对一对值写 `pair.2`）是编译错误。也可以把元组拆开：`let (count, label) = pair`、`for (i, x) in xs.enumerated()`，或者在 `match` 里用元组模式（见[控制流](https://asuka.egoist.dev/zh/docs/language/control-flow#控制流)）。
 
 map 的键和集合的元素必须满足 `Hashable`：整数、字符串、布尔值、字节串、时长、颜色，以及由它们组成的枚举、结构体、元组、可选值、数组、map 和集合（包含自身的结构体或枚举，只要其余部分满足，也满足；map 要求键和值都满足）。浮点数不满足，因为 NaN 不等于它自己；函数也不满足：
@@ -368,17 +381,51 @@ fn fnv1a(data: bytes) -> int {
 
 | 类型 | 方法 |
 |---|---|
-| `[T]` | `count()`、`count(where)`、`isEmpty()`、`first()`、`last()`、`get(i)`（返回 `T?`）、`push(x)`、`insert(x, at: i)`、`removeAt(i)`、`removeWhere(p)`、`pop()`、`clear()`、`map(f)`、`filter(p)`、`any(p)`、`all(p)`、`index(p)`（返回 `int?`）、`find(p)`、`contains(x)`、`sum()`、`reversed()`、`slice(from, to)`（省略 `to` 时到末尾）、`prefix(n)`、`suffix(n)`、`sorted()`、`sorted(by)`、`sort()`、`sort(by)`、`enumerated()`、`joined(separator:)`（用于字符串数组）、`+` |
+| `[T]` | `count()`、`count(where)`、`isEmpty()`、`first()`、`last()`、`get(i)`（返回 `T?`）、`push(x)`、`insert(x, at: i)`、`removeAt(i)`、`removeWhere(p)`、`pop()`、`clear()`、`map(f)`、`flatMap(f)`（把 `f` 返回的数组依次接起来）、`compactMap(f)`（`f` 的结果中去掉 none）、`filter(p)`、`reduce(initial, f)`、`any(p)`、`all(p)`、`index(p)`（返回 `int?`）、`find(p)`、`contains(x)`、`sum()`、`min()`、`max()`（返回 `T?`；`min(by:)`、`max(by:)` 接受一个“小于”比较）、`unique()`、`grouped(by: f)`（返回 `[K: [T]]`）、`chunked(n)`、`zip(other)`（两两配对，长度取较短的一方）、`reversed()`、`slice(from, to)`（省略 `to` 时到末尾）、`prefix(n)`、`suffix(n)`、`sorted()`、`sorted(by)`、`sort()`、`sort(by)`、`enumerated()`、`joined(separator:)`（用于字符串数组）、`+` |
 | `Set<T>` | `count()`、`isEmpty()`、`contains(x)`、`insert(x)`（返回是否新加入）、`remove(x)`（返回原本是否存在）、`union(s)`、`intersection(s)`、`subtracting(s)`、`isSubset(of: s)`、`isSuperset(of: s)`；`Set(xs)` 是数组中互不相同的元素，`Set<T>()` 是空集合 |
-| `[K: V]` | `m[k]`（返回 `V?`）、`m[k] = v`、`count()`、`isEmpty()`、`has(k)`、`get(k)`、`remove(k)`、`keys()`、`values()`（按插入顺序） |
-| `string` | `count()`（字符数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s)`、`hasPrefix(s)`、`hasSuffix(s)`、`replace(old, new, count:)`（默认替换全部，count 指定次数）、`split(sep, count:)`、`fields()`（按空白分出的词）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（字节偏移，找不到时为 none）、`slice(from, to)`（按字符）、`byteSlice(from, to)`（按字节：即 find 给出的偏移）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toFloat()`、`repeat(n)`、`chars()`、`bytes()`、`+` |
+| `[K: V]` | `m[k]`（返回 `V?`）、`m[k] = v`、`count()`、`isEmpty()`、`has(k)`、`get(k)`、`remove(k)`、`keys()`、`values()`（按插入顺序）、`mapValues(f)`、`filter((k, v) => …)` |
+| `string` | `count()`（字符数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s)`、`hasPrefix(s)`、`hasSuffix(s)`、`replace(old, new, count:)`（默认替换全部，count 指定次数）、`split(sep, count:)`、`fields()`（按空白分出的词）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（字节偏移，找不到时为 none）、`slice(from, to)`（按字符）、`byteSlice(from, to)`（按字节：即 find 给出的偏移）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toInt(radix:)`、`toFloat()`、`repeat(n)`、`chars()`、`reversed()`、`bytes()`、`+` |
 | `bytes` | `b[i]`（返回 `int`，取值 0 到 255；越界是一个错误）、`count()`、`isEmpty()`、`get(i)`（返回 `int?`）、`slice(from, to)`、`concat(b)`、`string()`（按 UTF-8 解码，无效的部分变成 U+FFFD）、`hex()` 和 `hex(separator)`（`"04 a1"`）；`bytes()` 是空的字节序列，`bytes([0x04, 0xa1])` 是这些字节，`s.bytes()` 是字符串的 UTF-8 字节 |
-| `int` | `float()`、`abs()`、`padded(width)`（`7.padded(2)` 是 `"07"`）、`addingChecked(o)`、`subtractingChecked(o)`、`multipliedChecked(o)`（返回 `int?`：溢出时为 none） |
+| `int` | `float()`、`abs()`、`toString(radix:)`（`255.toString(radix: 16)` 是 `"ff"`）、`padded(width)`（`7.padded(2)` 是 `"07"`）、`addingChecked(o)`、`subtractingChecked(o)`、`multipliedChecked(o)`（返回 `int?`：溢出时为 none） |
 | `float` | `fixed(digits)`、`rounded()`、`floor()`、`ceil()`、`int()`（向零取整）、`abs()` |
 | `Color` | `opacity(a)`：以原本不透明度的 a 倍绘制（语义颜色仍然是语义颜色）；`hex()`（`"#0a84ff"`；语义颜色则是它的名字：`".accent"`） |
 | `Duration` | `nanoseconds()`、`milliseconds()`（整数）、`seconds()`、`minutes()`、`hours()`（浮点数）、`rounded(to:)`、`truncated(to:)`、`+`、`-`、`* n`（整数或浮点数：`1.5 * 1h`）、`/ n`、`/ d`（另一个 Duration：它能容纳几个，一个浮点数） |
 | `Length` | `* n`（`width: 50% * 2`：缩放一个长度） |
 | `T?` | `isNone()`、`isSome()` |
+
+会调用你传入的函数的方法（`map`、`filter`、`reduce`、`sorted(by:)`、`grouped(by:)`、map 的 `mapValues` ……）都接受会抛出错误的函数，这时它们会把函数抛出的错误原样抛出，所以调用要加 `try`。传入的函数不会抛出错误时，它们也不会。
+
+```asuka
+fn port(text: string) throws -> int = text.toInt() ?? throw Error("not a port: {text}")
+
+fn ports(lines: [string]) throws -> [int] = try lines.map(l => try port(l))
+```
+
+下面是其中几个方法的实际用法：
+
+```asuka
+struct Sale {
+  region: string
+  amount: int
+}
+
+fn report(sales: [Sale]) -> [string] {
+  let byRegion = sales.grouped(by: s => s.region)
+  let totals = byRegion.mapValues(ss => ss.map(s => s.amount).sum())
+  let best = sales.max(by: (a, b) => a.amount < b.amount)
+  let codes = ["7", "x", "42"].compactMap(c => c.toInt())    // [7, 42]
+  let pages = sales.chunked(50)                               // [[Sale]]，每组 50 个
+  var out = ["{best?.region ?? "none"} sold the most"]
+  for (region, total) in totals { out.push("{region}: {total}") }
+  for (i, page) in pages.enumerated() { out.push("page {i + 1}: {page.count()}") }
+  out.push("{codes.reduce(0, (sum, c) => sum + c)}")
+  return out
+}
+```
+
+`unique()` 让每个元素只保留一次，留在它第一次出现的位置；`grouped(by:)` 的键也按第一次出现的顺序排列。两者都要求值是 `Hashable` 的（`grouped` 要求的是键）。`min()` 和 `max()` 的排序方式与 `sorted()` 相同，遇到相等的元素时取第一个。`chunked(n)` 的 `n` 小于 1 时会报错，就像 `xs[i]` 越界一样。
+
+`toInt(radix:)` 按 2 到 36 之间的进制读取整个字符串，字母大小写均可，前面可以带正负号（`"ff".toInt(radix: 16)` 是 255，`"-101".toInt(radix: 2)` 是 -5），读不出来时返回 none；`toString(radix:)` 则把整数按进制写出来，字母用小写。进制不在 2 到 36 之间时会报错。
 
 `min`、`max`、`abs`、`float(n)` 和 `int(x)` 是函数；其余的（`math.sqrt`、`math.pow`、`math.pi` ……）在 `std/math` 里。
 
@@ -483,7 +530,7 @@ struct Money {
 let price: Money = .of(dollars: 4, cents: 50)
 ```
 
-结构体可以带类型参数，创建时会自动推断：
+结构体可以带类型参数，创建时会自动推断；也可以像泛型函数那样，把类型参数写在名字后面（store 也一样）：
 
 ```asuka
 struct Page<T> {
@@ -492,6 +539,7 @@ struct Page<T> {
 }
 
 let page = Page(items: [1, 2, 3])     // 一个 Page<int>
+let empty = Page<string>(items: [])   // 没有别的信息可推断时，直接写出来
 ```
 
 在 `match` 和 `if let` 里，结构体模式按字段名匹配结构体的字段：单写一个 `y` 会绑定字段 `y`，`y: py` 把它绑定为 `py`，`x: 0` 匹配一个值，没有写出的字段匹配任何值。模式可以嵌套：
@@ -646,6 +694,13 @@ await refresh()
 ```
 
 如果某个调用因为闭包主体里的代码而缺少 `await` 或 `try`，错误信息会指出是主体里的哪一处。
+
+那些会当场调用闭包的内置方法，比如数组的 `map`、`filter`、`reduce`、`sorted(by:)` 等，都可以接受会抛出错误的闭包：这时调用本身也会抛出闭包抛出的错误，需要加 `try`，和 Swift 的 `rethrows` 一样。闭包不会抛出错误时，调用也不会。
+
+```asuka
+let counts = try lines.map(l => try parse(l))
+let sorted = try names.sorted(by: (a, b) => try rank(a) < try rank(b))
+```
 
 函数、处理函数、闭包和方法的主体里也可以声明 `fn`。它像闭包一样能看到周围的东西，可以调用自己，也可以调用同一个代码块里紧挨着它声明的其他 `fn`（它们也能调用它）：
 
@@ -1247,6 +1302,14 @@ async fn loadThread(id: string) throws -> Thread {
 - 调用异步函数需要 `await`。处理函数、task 和测试里可以使用 `await`；组件的主体及其中的 `let` 不行。闭包被传作异步函数，或者主体里有 `await` 时，就是异步的；写成 `async () => …` 可以明确标出（[函数与闭包](https://asuka.egoist.dev/zh/docs/language/functions)）。
 - **主线程。** 所有代码都在主线程上运行；`await` 让你的代码在等待时，其他工作可以先运行。状态可以在主线程上修改，而且只能在主线程上修改。
 - `all(a, b)` 同时发起多个调用，并等待全部结果；`race(a, b)` 取第一个完成的结果，并取消其余的；此外还有 `sleep(300ms)` 和 `withTimeout(5s) { … }`，后者的值就是代码块的值（`let page = try await withTimeout(5s) { return try await fetch(url) }`），超时就抛出错误。它们是结构化的：被它们取消的工作会先停下、执行完自己的 `defer`，它们才返回或抛出错误。`await never()` 什么都不等，只等任务结束：适合只在读者离开时才结束的流，或者先要 await 才能持有某样东西的 task（`try await register(); defer { release() }; await never()`）。组件不需要 await 就能持有的东西，用 `cleanup { }` 撤销（见 [cleanup](https://asuka.egoist.dev/zh/docs/language/components#cleanup)）。
+- `all(items, f, limit:)` 用 `items` 里的每一项同时调用异步函数 `f`，并按各项的顺序给出结果：`let pages = try await all(urls, u => try await http.get(u))`。写上 `limit: 8` 时，同一时刻最多运行 8 个，一个结束了才开始下一个；省略（或为 0）时全部同时开始。它和 `all(a, b)` 一样是结构化的：第一个抛出错误的调用会取消其余的、不再开始新的，等它们都停下后再抛出这个错误；等待它的任务结束时，它们也全部被取消。每一项都作为一个独立的任务在主线程上运行，所以可以等待网络或文件，也可以修改状态；要放到其他线程上的工作交给 `spawn`，`f` 可以 await 它。
+
+  ```asuka
+  async fn fetchAll(urls: [string]) throws -> [string] {
+    let pages = try await all(urls, u => try await http.get(u), limit: 4)
+    return pages.map(p => p.text())
+  }
+  ```
 - `spawn { … }` 在另一个线程上运行一段代码，用于会拖住主线程的工作（解析、图片处理）。这段代码只能使用值，不能使用状态、store、视图、原生对象或 C 指针，也不能使用保存着它们的文件级 `let`（比如一个数据库）：如果用了，编译器会报错。在 Web 上，它运行在页面的一个 Web Worker 里；Worker 只会自己生成文件里的值，不会生成其他东西。如果工作需要在多次调用之间保留某样东西（一个索引、一个它打开的数据库），就用 [worker](#worker)。
 - `for await message in socket.messages { … }` 读取一个流，也就是 `Stream<T>`：随时间陆续到来的值。`Stream(send => { … })` 创建一个流：流第一次被读取时，这个代码块作为 task 开始运行，每次 `send(x)` 就是一个值；代码块返回时流结束，代码块抛出错误时流也以这个错误失败。离开循环（`break`、出错、owner 被销毁）会取消这个代码块。一个流只能有一个读取者。
 
@@ -1943,6 +2006,7 @@ test "archiving removes the row" {
 - extension-conflict: 扩展添加了类型已有的名称，或者另一个扩展也添加了同样的名称. 给方法换个名字，或者只保留其中一个扩展。
 - fn-body: 函数缺少函数体，或者有了不该有的函数体. 写出函数体（`{ … }` 或 `= 表达式`），或者从 native、extern 声明里去掉它。
 - follows-nothing: `state x()` 没有可跟随的东西. 写出要跟随的东西（`state x(a) = …`），或者写成 `state x = peek(…)`。
+- format-spec: 插值的格式和它的值对不上. 按值的类型写格式，参照消息的说明：`{n:>6}`、`{x:.2f}`、`{n:#x}`、`{name:<12}`。
 - group-not-calls: `load (…)` 里的元素不都是调用. 只把调用放进组里（`load (api.user(id), api.posts(id))`），把值传给这些调用，或者放在 load 旁边。
 - import-cycle: 相互导入的包. 把两者都需要的部分移到第三个包里，让它们都导入它。
 - int-overflow: 超出 64 位范围的整数字面量. 换一个更小的数，或者使用 `float`；需要精确的大数时用 `std/decimal`。

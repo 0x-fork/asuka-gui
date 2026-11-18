@@ -68,6 +68,12 @@ The program runs as follows:
 
 - `os.exit(code)` ends it at once with `code`: stdout and stderr are
   flushed, but `defer`s and other tasks don't run.
+- Ctrl-C ends an async `main` as its cancellation, as its own end
+  would: its `defer`s run, then every task's, and the exit code is 130
+  (128 and the signal's number: a terminate, `kill`'s default, is 143;
+  a hangup 129). A second Ctrl-C ends it at once, as one ends a `main`
+  that isn't async, since code that doesn't await can't be cancelled.
+  `os.signals()` hands them to the program instead ([Signals](#signals)).
 - `print` writes a line to stdout; `os.eprint` to stderr.
 
 ## The process: std/os
@@ -86,6 +92,32 @@ The program runs as follows:
 | `os.eprint(text)` | a line on stderr |
 | `os.writeTo(.stdout, text)`, `writeBytesTo` | text or bytes as they are, without a line ending, to `.stdout` or `.stderr` |
 | `os.terminal(.stdout)` | whether a stream is a terminal (a person), not a pipe or a file: colors and prompts only for one |
+| `os.signals(kinds)` | the signals of kinds as they come (a `Stream<os.Signal>`: `.interrupt`, `.term`, `.hangup`), which then don't end the program |
+
+### Signals
+
+A program that has something to finish first (a file half written, a
+server's requests in flight) reads the signals itself: while a stream
+reads a kind, that kind doesn't end the program, and the program decides
+what to do. `os.signals()` reads Ctrl-C and a terminate; `os.signals([.hangup])`
+the hangup a daemon takes to mean "read the config again".
+
+```asuka check
+import std/os
+
+async fn main() throws {
+  let jobs = ["a", "b", "c"]
+  for await s in os.signals() {
+    os.eprint("{s}: finishing {jobs.count()} jobs first")
+    break
+  }
+}
+```
+
+On Windows, Ctrl-C and Ctrl-Break are `.interrupt`, and the console
+closing, the user logging off or the system shutting down `.term`, for
+which Windows waits a few seconds. Phones and the web have no signals:
+the stream gives none.
 
 ```asuka
 import std/os
@@ -296,6 +328,440 @@ It runs in programs and in desktop apps (macOS, Windows, Linux); an app
 on a phone or the web can't run other programs
 (`CommandError.unsupported`).
 
+## The terminal: std/term
+
+`std/term` styles what a program prints and asks the person at the
+terminal. This one makes a project: a name asked for, a question before
+it overwrites, and colors a `--color` flag can turn on or off.
+
+```asuka check
+import std/flag
+import std/fs
+import std/os
+import std/term
+
+/// Makes a project.
+struct Options {
+  /// When to use colors.
+  color: term.ColorMode = .auto
+  /// Where to make it (the name asked for, if not given).
+  dir: string?
+}
+
+async fn main() throws {
+  let o = flag.parse<Options>(os.args())
+  term.setColors(o.color)
+  let name = await term.prompt("Project name:", default: "demo") ?? "demo"
+  let target = try fs.abs(o.dir ?? name)
+  if fs.exists(target) && !(await term.confirm("{target} exists. Overwrite?")) {
+    os.eprint("{term.red("error:", stream: .stderr)} nothing was made")
+    os.exit(1)
+  }
+  try await spawn { try fs.mkdirAll(target) }
+  print("{term.green("✓")} made {term.bold(target)}")
+}
+```
+
+```text
+$ new
+Project name: [demo] notes
+✓ made /home/ann/notes
+```
+
+- **Style.** `term.bold(text)`, `dim`, `italic`, `underline` and the
+  eight colors (`red`, `green`, `yellow`, `blue`, `magenta`, `cyan`,
+  `white`, `black`) wrap text in the terminal's codes. `term.Style`
+  says several at once and is a value to keep: `let warn =
+  term.Style(color: .yellow, bold: true)`, then `warn.paint(text)`. It
+  has the bright colors (`.brightRed`) and a `background`. Styled text
+  inside styled text keeps its own style, and the outer one goes on
+  after it.
+- **When styles show.** Only when the stream is a terminal, `NO_COLOR`
+  isn't set ([no-color.org](https://no-color.org)) and `TERM` isn't
+  `dumb`; `FORCE_COLOR` turns them on even into a pipe (`0` or `false`:
+  off). Each style function takes `stream:` (`.stdout` unless said),
+  the stream it's printed to. `term.colors(.stderr)` says what was
+  decided, and `term.setColors(.always)`, `.never` or `.auto` overrides
+  it, for both streams or for one (`stream:`). A field `color:
+  term.ColorMode = .auto` is a `--color always|never|auto` flag. On
+  Windows, the console is set to show the codes (its virtual terminal
+  processing) the first time.
+- **Questions.** `term.prompt(question, default:)` asks and returns the
+  line typed, without spaces around it: an empty answer is `default`
+  (shown as `[demo]`), and `none` means stdin ended (Ctrl-D, a closed
+  pipe). `term.confirm(question, default: false)` asks `[y/N]` (`[Y/n]`
+  when the default is true) until it gets y, yes, n, no or nothing.
+  `term.secret(question)` reads a line with the terminal's echo off, for
+  a password or a token; the echo comes back when the line is read, when
+  the task is cancelled and when Ctrl-C ends the program. The questions
+  go to stderr, as git's and gh's do, so stdout stays the program's
+  output when it's piped (`new | tee log`). They're `async`: the line is
+  read on another thread, and the program's other tasks go on.
+- **Size.** `term.width()` and `term.height()` are the terminal's
+  columns and rows (`COLUMNS` and `LINES` first, when they're numbers),
+  `none` when no stream is a terminal: `term.width() ?? 80`.
+
+A test answers the questions with `os.fake(stdin:)`, and finds them in
+`o.stderr()`. Its streams aren't terminals, so nothing is styled, unless
+the test says otherwise with `os.fake(env: ["FORCE_COLOR": "1"])` or
+`term.setColors(.always)`; only `os.fake`'s `env:` counts, so the
+environment the tests run in doesn't change what they print. On a phone
+and the web there's no terminal: no styles, `prompt` gives `none` and
+`width` is `none`.
+
+## Files and directories: std/fs
+
+A program reads and writes files with `std/fs`, as an app does
+([Data](data.md)), and finds them with what a command-line tool needs:
+
+- `fs.home()`: the user's home directory (`HOME`, `USERPROFILE` on
+  Windows; in a test, `os.fake`'s `env:` when it has them).
+- `fs.tempDir()`: the directory for temporary files (`TMPDIR`, else
+  `/tmp`; on Windows, `GetTempPath`'s).
+- `fs.abs(path)`: `path` made absolute against the working directory,
+  and cleaned.
+- `fs.walk(dir, skip:)`: everything under a directory, at every depth,
+  as `Entry`s (`path`, `name`, `isDir`, `size`, `modified`): each
+  directory, then what's in it, in name order. `skip:` names directories
+  it doesn't go into; it doesn't go into links to directories either.
+
+```asuka check
+import std/fs
+
+async fn main() throws {
+  let root = try fs.abs(".")
+  let entries = try await spawn { try fs.walk(root, skip: [".git", "node_modules"]) }
+  let sources = entries.filter(e => !e.isDir && fs.ext(e.name) == ".asuka")
+  print("{sources.count()} files in {root}")
+  let config = fs.join([fs.home(), ".config", "count", "config.toml"])
+  if fs.exists(config) {
+    print("using {config}")
+  }
+}
+```
+
+The calls that touch the disk (`walk`, `readText`, `exists`...) block
+until the system answers: a large tree is walked in `spawn { }`, so
+the program's other tasks go on. A failure is an `FsError`, as for every
+call of `std/fs`: a directory it may not list is `.denied(path)`.
+
+### Large files, a part at a time
+
+`readText` reads a file whole. One too large for that (a log, an
+export) is read a part at a time: `fs.lines(path)` gives its lines as a
+stream, reading 64 KB at a time and closing the file after the last.
+`fs.open(path, mode:)` gives a `File` to read or write as the program
+goes: `readLine()`, `read(count:)`, `readAll()`, `write(data)`,
+`writeText(text)`, `seek(offset, from:)`, `size()`, `flush()` and
+`close()`, each waiting on another thread. Its modes are `.read`,
+`.write` (from empty), `.append` and `.readWrite`.
+
+```asuka check
+import std/fs
+
+/// Copies a log's error lines to another file, a line at a time.
+async fn main() throws {
+  let out = try await fs.open("errors.log", mode: .write)
+  defer { try? await out.close() }
+  var kept = 0
+  for await line in fs.lines("server.log") {
+    if line.contains("ERROR") {
+      try await out.writeText(line + "\n")
+      kept += 1
+    }
+  }
+  print("{kept} errors")
+}
+```
+
+What's written reaches the file as the buffer fills, on `flush()` and
+on `close()`; close a `File` when it's done, as `defer` does above.
+
+`fs.glob(pattern)` lists the paths a pattern matches, sorted: `*`, `?`,
+`[a-z]`, `{a,b}` (in a raw string, `r"…"`, where `{` isn't an
+interpolation) and `**` for any directories. `fs.matches(pattern, path)`
+tests one path. `fs.chmod(path, 0o755)` sets permissions, `fs.symlink(target, at:)`
+and `fs.readLink(path)` make and read symbolic links, and an `Entry` says
+`mode` and `isLink`.
+
+```asuka check
+import std/fs
+
+async fn testFiles() throws -> [string] = try await spawn { try fs.glob(r"src/**/*_{test,spec}.asuka") }
+```
+
+## Archives and compression: std/archive, std/compress
+
+`std/archive` lists, reads, extracts and makes zip and tar archives
+(`.zip`, `.tar`, `.tar.gz`), and `std/compress` compresses bytes and
+files with gzip (or zlib, or raw DEFLATE): `compress.encodeFile(from:
+log, to: log + ".gz")`. A file is read and written a piece at a time,
+so an archive of any size takes little memory, and the calls block
+while they work: make them in `spawn { }`.
+
+An archive from elsewhere is safe to extract: an entry that would land
+outside the directory (`../../.profile`, an absolute path, a path
+through a link) throws `unsafePath` and nothing is written there, and
+`limit:` bounds what it may decompress to (1 GB unless it says), so a
+zip bomb can't fill the disk.
+
+```asuka check
+import std/archive
+import std/os
+
+/// pack DIR OUT.zip: archives DIR. unpack ARCHIVE DIR: extracts it.
+async fn main() throws {
+  let a = os.args()
+  if a.count() == 3 && a[0] == "pack" {
+    try await spawn { try archive.create(a[2], from: a[1]) }
+  } else if a.count() == 3 && a[0] == "unpack" {
+    let entries = try await spawn { try archive.list(a[1]) }
+    print("{entries.count()} entries")
+    try await spawn { try archive.extract(a[1], to: a[2], limit: 8 << 30) }
+  } else {
+    os.eprint("usage: pack DIR OUT.zip | unpack ARCHIVE DIR")
+    os.exit(2)
+  }
+}
+```
+
+## Many at once
+
+`all(items, f, limit:)` calls an async function with each item at once
+and gives the results in the items' order: downloads, requests, other
+programs run side by side. `limit:` says how many run at a time; the
+first error cancels the rest, and `all` throws it once they've stopped
+([Async](language/async.md#async)).
+
+```asuka check
+import std/flag
+import std/http
+import std/os
+
+/// Downloads pages, a few at a time.
+struct Options {
+  /// -j How many at once.
+  jobs: int = 4
+  /// The pages' URLs.
+  urls: [string]
+}
+
+async fn main() throws {
+  let o = flag.parse<Options>(os.args())
+  let sizes = try await all(o.urls, u => try await http.get(u).body.count(), limit: o.jobs)
+  for (u, n) in o.urls.zip(sizes) {
+    print("{n}\t{u}")
+  }
+}
+```
+
+## JSON of any shape
+
+A struct reads JSON whose shape the program knows (`json.decode<T>`,
+[Data](data.md)). What it can't know, a tool's config or whatever is
+piped in, is a `json.Value`: `json.parse(text)` reads any JSON as it is,
+`get(key)`, `at(i)` and `asString()`, `asInt()`... look inside, and a
+`match` takes its cases (`.object(members)`, `.array(elements)`,
+`.string(s)`...). It prints, and `json.encode` writes it, as JSON.
+
+```asuka check
+import std/json
+import std/os
+
+/// Prints what's at a path in the JSON on stdin: pick user.emails.0
+async fn main() throws {
+  var v = try json.parse(os.readAll().string())
+  for step in (os.args().first() ?? "").split(".") {
+    if step.isEmpty() { continue }
+    let next = if let i = step.toInt() { v.at(i) } else { v.get(step) }
+    v = next ?? json.Value.null
+  }
+  match v {
+    .string(s) => print(s)       // as text, not quoted
+    _ => print(json.encode(v, indent: 2))
+  }
+}
+```
+
+## Config files and data: TOML and CSV
+
+`std/toml` reads a config file into a struct as `std/json` reads JSON:
+`toml.decode<Config>(text)`, its fields by their names (a key written
+`min-qty` or `min_qty` reads into `minQty`), an optional left out of the
+file `none`; `toml.encode(config)` writes one back, and `toml.parse(text)`
+reads any document as a `json.Value`. A field the file leaves out is
+empty, as with JSON (0, `""`, none), not the struct's default: a setting
+that may be missing is an optional, or the struct is made with its
+defaults and read only when the file is there. A mistake says where:
+`toml: 2:11: min-qty: expected an integer, not a string`.
+
+`std/csv` reads rows: `csv.parse(text)` as `[[string]]`, `csv.decode<T>(text)`
+into structs by the header row (a cell read as the field's type: an int,
+a float, a bool, an enum's case; an empty one `none` for an optional),
+and `csv.encode(rows)` writes them back with the header. A file too big
+to hold is read a row at a time from a stream of its lines,
+`csv.stream<T>(fs.lines("sales.csv"))`, or `csv.stream<T>(os.lines())`
+for stdin's: here a sales file piped in, totalled with
+what `~/.config/sales/config.toml` sets.
+
+```toml
+currency = "USD"
+min-qty = 2
+```
+
+```
+item,qty,price
+"Tea, green",2,3.5
+Cake,1,4.25
+```
+
+```asuka check
+import std/csv
+import std/fs
+import std/os
+import std/toml
+
+/// Totals the sales piped in, as a CSV.
+struct Config {
+  currency: string = "EUR"
+  /// Rows of fewer units are left out.
+  minQty: int? = none
+}
+
+struct Sale {
+  item: string
+  qty: int
+  price: float
+}
+
+async fn main() throws {
+  let path = fs.join([fs.home(), ".config", "sales", "config.toml"])
+  var config = Config()
+  if fs.exists(path) {
+    config = try toml.decode<Config>(try await spawn { try fs.readText(path) })
+  }
+  var total = 0.0
+  for await sale in csv.stream<Sale>(os.lines()) {
+    if sale.qty >= (config.minQty ?? 1) {
+      total += sale.price * float(sale.qty)
+    }
+  }
+  print("{total} {config.currency}")
+}
+```
+
+`separator: "\t"` reads tab-separated values; `comment: "#"` skips the
+lines that start with it, `flexible: true` lets rows have different
+numbers of fields.
+
+## A web service: std/http
+
+`http.serve` makes a program an HTTP/1.1 server, as Go's `net/http`
+and `Bun.serve` do: each request goes to a handler, an async function
+that returns a `Reply`. A `Router` sends requests to handlers by
+method and path, `:name` taking a segment of the path.
+
+```asuka check
+import std/http
+import std/os
+
+struct Note {
+  id: int
+  text: string
+}
+
+struct Draft {
+  text: string
+}
+
+async fn main() throws {
+  var notes: [Note] = []
+  let api = http.Router()
+    .get("/notes", req => .json(notes))
+    .get("/notes/:id", req => {
+      if let n = notes.find(n => n.id == req.param("id").toInt()) {
+        return .json(n)
+      }
+      return .text("no such note", status: 404)
+    })
+    .post("/notes", req => {
+      let draft = try req.json<Draft>()
+      let note = Note(id: notes.count() + 1, text: draft.text)
+      notes.push(note)
+      return .json(note, status: 201)
+    })
+  let port = (os.env("PORT") ?? "8080").toInt() ?? 8080
+  let server = try await http.serve(port, api.handler(), host: "0.0.0.0")
+  print("listening on {server.url}")
+  // Ctrl-C or a terminate: the requests in flight are answered first.
+  for await _ in os.signals() {
+    break
+  }
+  await server.close(grace: 10s)
+}
+```
+
+```sh
+$ curl -d '{"text":"milk"}' localhost:8080/notes
+{"id":1,"text":"milk"}
+$ curl localhost:8080/notes/1
+{"id":1,"text":"milk"}
+```
+
+- `http.serve(port, handler, host:, limits:, onError:)` listens at
+  `port` (0: one the system picks, which `server.port` says) and
+  returns the `Server` once it does. `host` is `127.0.0.1` unless said:
+  only this computer's clients reach it. `"0.0.0.0"` takes every IPv4
+  interface's (a container, another machine), `"::"` IPv6's too. An
+  address it can't listen at (a port in use) is `ServerError.listen`.
+- Each request's handler runs on the main thread as a task of its own,
+  so it may await what any task does (a database, `http.get`, another
+  program) while the others go on. Reading and parsing requests and
+  writing replies happen on the server's own thread; many connections
+  are served at once, and kept open between requests.
+- A `Request` has its `method`, `path` (as sent, escapes kept),
+  `rawQuery` and `query(name)`, `headers` by lower-case name and
+  `header(name)` in any case, its `body` (read whole first), `text()`
+  and `json<T>()`, the client's `remote` address, and the `params` a
+  route matched (`param(name)`).
+- A `Reply` is made by `.text`, `.json`, `.html`, `.data` and
+  `.redirect`, or as `Reply(status: 204)`; a header's value with lines
+  in it is sent once per line (several Set-Cookie). `.stream(body)`
+  sends a body as it's made, in chunks, and `.events(stream)`
+  server-sent events, which `http.events` and a browser's EventSource
+  read; a client that goes away while they're sent cancels the handler.
+- A route's pattern has text, `:name` (one segment) and `*name` (the
+  rest of the path). Routes are tried in the order they were added; a
+  path none has is answered 404, one whose routes take other methods 405
+  (with `Allow`), and a GET route answers HEAD too.
+- A handler that throws is answered 500 Internal Server Error, and its
+  error goes to `onError` (stderr when there's none).
+- `http.Limits(headerSize:, bodySize:, connections:, headerTimeout:,
+  readTimeout:, idleTimeout:)` says how much it takes and how long it
+  waits: 64 KiB of headers, a 16 MiB body, 10000 connections, 30 s for
+  a request's headers and for each wait in its body, 60 s between
+  requests. What goes past is answered (431, 413, 408) and its
+  connection closed.
+- `server.close(grace: 10s)` stops it: it stops accepting at once, lets
+  the requests in flight be answered, and after `grace` cancels the
+  handlers still running (their `defer`s run). `server.wait()` waits
+  until it's closed. The server belongs to the task that started it,
+  so when `main` returns it closes: `main` awaits `server.wait()`, or,
+  as above, the signals that end it. Ctrl-C without a stream reading it
+  ends `main`, and with it the server at once: the handlers still
+  running are cancelled. Reading `os.signals()` and closing lets them
+  answer first ([Signals](#signals)).
+
+HTTPS is a reverse proxy's (Caddy, nginx): it terminates TLS and passes
+the requests on over HTTP to a server on `127.0.0.1`, the client's
+address in `X-Forwarded-For`. A desktop app serves a local API the same
+way, from a task, and a phone's app while it runs; a web page can't
+listen (`ServerError.unsupported`).
+
+A handler is a function, so a test calls it, or the router, with a
+`Request`, no socket between: `let r = try await
+api.handle(http.Request(method: "GET", path: "/notes/1"))`.
+
 ## Running
 
 `asuka run` runs a program's `main` at once, with no build to wait for: the arguments after `--` are its own, and it exits with the
@@ -468,8 +934,11 @@ test "greets whom it's given" {
 
 `o.run(main)` returns the exit code the program would end with: 0, 1
 for an error it throws (its message in `o.stderr()`), or what `os.exit`
-said, which ends the test's `main` there instead of the process. Without
-a fake, a test's `os.args()` and stdin are empty. `command.fake()`
+said, which ends the test's `main` there instead of the process.
+`o.signal(.interrupt)` sends the `main` it runs a signal, as Ctrl-C
+would: an `os.signals` stream gets it, else `main` is cancelled and
+`run` returns 130. Without a fake, a test's `os.args()` and stdin are
+empty. `command.fake()`
 answers for other programs, which then don't run:
 
 ```asuka
@@ -492,3 +961,5 @@ test "reads git's branch" {
 | `os.args`, `os.exit`, stdin | yes | yes | yes | an app: empty, `exit` throws |
 | `std/command` | yes | yes | yes | `unsupported` |
 | `std/flag` | yes | yes | yes | yes (it parses any list) |
+| `std/term` | yes | yes | yes | no terminal: no styles, `prompt` gives `none` |
+| `http.serve` | yes | yes | yes | a phone's app: while it runs; the web: `unsupported` |

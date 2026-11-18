@@ -1413,6 +1413,18 @@ has none has no reference to them: an app that doesn't import
 std/sqlite carries no SQLite. A player (`asuka dev`) is built with the C
 of the app's last compile and again when it changes, as for externs.
 
+The std packages' C in the core (`core/src/std`: std/fs's, std/toml's
+parser, std/compress's DEFLATE, std/http's server, ...) registers its
+builtins as tables (`ak_std_libs`), which `core/link/link.c` lists. A
+build with an app compiled in lists only the tables of the builtins its
+module calls (`bytecode.Module.Builtins`: `fs.join` is `AK_USES_FS`,
+cbuild's `usesDefines`), so a table it doesn't call is no root of the
+link, and the linker leaves out its C and what only it reaches: a
+program that prints carries no TOML parser, no zip, no HTTP server. A
+player (`asuka dev`, which loads any bytecode) lists every table, and
+so does a build whose module isn't known (`Builtins` nil). Each table's builtins share its
+name's prefix (`TestLinkRegistersEveryTable`).
+
 **A vendor's prebuilt libraries** are `[c.prebuilt]`'s: a static
 library per target (`ios-arm64`, `ios-simulator-x64`, `macos-arm64`,
 `android-arm`, `linux-x64`, `windows-arm64`, `web`; a universal one for
@@ -1555,8 +1567,9 @@ variable) or a host's (`asuka_program_start`: macOS's dispatch queue);
 as main ends, what's left is cancelled and the process exits 0, 1 with
 `error: <message>` and the trace (the VM's frames, and compiled
 functions' noted on the error's path only: `ak_frame_hook`), or what
-`os.exit` said. std/os, std/command (fork and exec; CreateProcess)
-and std/flag (lang/ir/flag.go writes `flag.spec<T>()`'s description
+`os.exit` said. std/os, std/command (fork and exec; CreateProcess),
+std/term (termios and TIOCGWINSZ; the console's modes on Windows) and
+std/flag (lang/ir/flag.go writes `flag.spec<T>()`'s description
 of T) are the core's C and Asuka. A program whose packages have
 platform code runs on a headless host: platform/desktop/program on
 Windows and Linux (asuka_desktop.h's host half, GLib's loop when it's
@@ -1565,6 +1578,24 @@ packages' Swift is what URLSession is reached through). asuka.toml's
 `[bin.<name>] path = "dir"` names a project's programs; a desktop build
 puts them in the app (Contents/Helpers, bin/, beside the .exe), built
 with the app's data folder (`Module.Data`) so they share its data.
+
+**std/http's server** (`http.serve`) is the core's C, the same on every
+system that can listen (core/src/std/httpserver.c; the web's core says
+it can't): a thread per server runs one poll() loop (WSAPoll on
+Windows) over its listener and its non-blocking connections, reads and
+parses HTTP/1.1 (its own strict parser: framing a proxy could read
+otherwise is refused), and posts each request, read whole within the
+limits, to the main thread. There std/http's dispatch closure runs the
+handler as a task under the server's owner (a child of the task that
+called serve), and the reply goes back as bytes on a queue the thread
+is woken for (a pipe; a loopback UDP socket on Windows). One request at
+a time per connection, so pipelined ones wait their turn; a streamed
+reply's next piece is asked for once what's queued drops below 64 KiB;
+a client gone while its reply streams cancels the task. Closing stops
+accepting, lets requests in flight answer, then disposes the owner. An
+open connection holds the scheduler, so a test's loop waits for what
+it posts. TLS is a reverse proxy's; it would sit between the socket and
+the connection's buffers.
 
 **An app's metadata** is `asuka.toml` beside its Asuka code (TOML 1.0, read
 by `internal/toml`), all optional:
@@ -2067,6 +2098,23 @@ behavior.
   incremental reading, as a line can turn the paragraph above it into a
   heading), but the blocks are a keyed `for`: a streamed reply changes
   its last block or two a frame, and only their RichTexts typeset again.
+- `std/time`'s named zones (`time.zone("America/New_York")`) are read
+  once, in the core, from its own copy of the IANA tz database: the
+  systems' copies differ in version (an Android or iOS not updated keeps
+  last year's rules), and Windows and the browser don't give a zone's
+  transitions at all, only an offset at a time. `internal/tzgen` builds a
+  pinned release's zic, compiles the zones slim (transitions until a
+  zone's rules last changed, then its POSIX TZ string) and packs them
+  into `core/src/std/tzdata_gen.c`: a transition is a minute and a type,
+  packed (each minute a zigzag varint of its difference from the one
+  before) and DEFLATEd, 12 KB of its 85, which the first lookup inflates
+  (miniz's, std/compress's) under a lock, once for the process; the
+  names and zones, which `time.zone` and `zones()` read, stay as they
+  are. About 30 KB in every app that imports std/time; lookups are
+  binary searches of the inflated arrays.
+  `.local` stays the system's (its clock is the device's), and the
+  device's zone's name is the system's (TZ, /etc/localtime, Android's
+  persist.sys.timezone, Windows's ICU, the browser's Intl).
 
 **Not yet:** selection for screen reader users (VoiceOver and TalkBack
 read the texts and links but don't select across them).

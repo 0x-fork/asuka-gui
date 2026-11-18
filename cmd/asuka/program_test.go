@@ -80,6 +80,25 @@ fn main() throws {
 		t.Fatalf("asuka run -- 3: %v", err)
 	}
 
+	// One file, run as it is: an error's trace names it, not the copy
+	// it's compiled from.
+	one := filepath.Join(t.TempDir(), "one.asuka")
+	if err := os.WriteFile(one, []byte("fn main() throws {\n  throw Error(\"no\")\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	op, err := appbuild.Load(one)
+	if err != nil {
+		t.Fatal(err)
+	}
+	om, err := compileProject(op, target.Host())
+	if err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if code, err := appbuild.RunProgram(om, appbuild.ProgramOptions{Name: "one", Trim: filepath.Dir(one), Stdout: &out, Stderr: &out}); err != nil || code != 1 || !strings.Contains(out.String(), "    main (one.asuka:2)") {
+		t.Fatalf("asuka run one.asuka: %d %v %q", code, err, out.String())
+	}
+
 	// The executable.
 	o := buildOptions{out: filepath.Join(t.TempDir(), "dist")}
 	if err := cmdBuildProgram(p, &o); err != nil {
@@ -100,6 +119,20 @@ fn main() throws {
 		}
 		if got != wantCode || !strings.Contains(so.String(), wantOut) || !strings.Contains(se.String(), wantErr) {
 			t.Errorf("%s: exit %d (want %d)\nstdout: %q (want %q)\nstderr: %q (want %q)", name, got, wantCode, so.String(), wantOut, se.String(), wantErr)
+		}
+	}
+	// Only the std packages' C it calls is in it: the tables of
+	// std/toml, std/archive, std/compress, std/http's server aren't.
+	if data, err := os.ReadFile(exe); err != nil {
+		t.Fatal(err)
+	} else {
+		for _, name := range []string{"toml.decode", "archive.scanBytes", "compress.encodeBytes", "http.srvOpen"} {
+			if bytes.Contains(data, []byte(name)) {
+				t.Errorf("the executable has %s's builtin: a std package's C it doesn't call is linked", name)
+			}
+		}
+		if !bytes.Contains(data, []byte("os.args")) {
+			t.Error("the executable lacks std/os's os.args")
 		}
 	}
 	check("a b", exec.Command(exe, "a", "b"), 0, `args: ["a","b"]`, "")

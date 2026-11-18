@@ -27,6 +27,13 @@ extern const ak_lib_entry ak_std_markdown[];
 extern const ak_lib_entry ak_std_os[];
 extern const ak_lib_entry ak_std_flag[];
 extern const ak_lib_entry ak_std_command[];
+extern const ak_lib_entry ak_std_term[];
+extern const ak_lib_entry ak_std_signals[];
+extern const ak_lib_entry ak_std_toml[];
+extern const ak_lib_entry ak_std_csv[];
+extern const ak_lib_entry ak_std_compress[];
+extern const ak_lib_entry ak_std_archive[];
+extern const ak_lib_entry ak_std_http[];  // httpserver.c: std/http's server
 
 // Every package's table, NULL-terminated.
 extern const ak_lib_entry *const ak_std_libs[];
@@ -127,6 +134,32 @@ void ak_os_set_args(int argc, char **argv);
 void ak_os_testing(bool on);
 void ak_os_reset(void);
 bool ak_os_test_exit(int64_t *code);
+// ak_os_getenv is an environment variable's value as os.env sees it
+// (os.fake's env: in a test that gave one), NULL when it isn't set
+// (ak_free it). In a test without a fake environment, real says whether
+// the real one counts: false for what makes a test's output vary
+// (FORCE_COLOR, COLUMNS).
+char *ak_os_getenv(const char *name, bool real);
+// ak_os_test_process reports whether the process is a test's (the
+// runner's tests, os.fake): its streams are never terminals.
+bool ak_os_test_process(void);
+// std/term (term.c): the color choices setColors made, forgotten after
+// each test (ak_os_reset calls it).
+void ak_term_reset(void);
+// Signals (signals.c). ak_os_signals_program makes the process's
+// signals a program's: end(128 + the signal's number) ends it for one no
+// os.signals stream reads, as its main's cancellation when main_is_task,
+// else at once. ak_os_signals_ended tells Windows' close handler the
+// program has ended. ak_os_signals_reset drops a test's streams.
+// ak_os_fake_end ends the main FakeOS.run runs with code (os.c).
+void ak_os_signals_program(void (*end)(int code), bool main_is_task);
+void ak_os_signals_ended(void);
+void ak_os_signals_reset(void);
+void ak_os_fake_end(int code);
+// std/toml (toml.c): text's TOML as the toml-test suite's JSON (its
+// tables' keys sorted, its scalars tagged and normalized: core/test's
+// toml_test.c), or false and why in err (line:column: why).
+bool ak_toml_tagged(const char *text, size_t n, ak_buf *out, char *err, size_t errn);
 
 // For tests (core/runner): a new empty directory in the system's
 // temporary one (ak_free the path; NULL when it can't be made), and

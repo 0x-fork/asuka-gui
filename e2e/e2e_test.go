@@ -518,7 +518,80 @@ func (s *androidScreen) foreground() {
 			}
 		}
 		return false
-	}, func() string { return "the focus is on " + focus + ", not " + s.pkg })
+	}, func() string { return "the focus is on " + focus + ", not " + s.pkg + s.crashLog() })
+}
+
+// crashLog is what the device logged of a crash, for a test that failed:
+// the crash buffer (a native crash's backtrace, an uncaught exception's
+// trace) and the last warnings and errors, which say why an app that
+// started went away (a library that didn't load, the system killing it).
+func (s *androidScreen) crashLog() string {
+	var b strings.Builder
+	if out, _ := s.adb("logcat", "-d", "-b", "crash"); strings.TrimSpace(out) != "" {
+		b.WriteString("\nthe crash buffer:\n" + lastLines(out, 150))
+	}
+	if out, _ := s.adb("logcat", "-d", "-t", "400", "*:W"); strings.TrimSpace(out) != "" {
+		b.WriteString("\nthe last warnings and errors:\n" + lastLines(out, 120))
+	}
+	// What the system and the app said of the app at any level: its
+	// process started and died, its activity finished, the host's own
+	// lines (asuka), and whatever its process logged.
+	if out, _ := s.adb("logcat", "-d", "-t", "4000"); strings.TrimSpace(out) != "" {
+		pids := map[string]bool{}
+		for _, m := range regexp.MustCompile(`Start proc (\d+):`+regexp.QuoteMeta(s.pkg)).FindAllStringSubmatch(out, -1) {
+			pids[m[1]] = true
+		}
+		var kept []string
+		for _, l := range strings.Split(out, "\n") {
+			f := strings.Fields(l)
+			own := len(f) > 2 && pids[f[2]]
+			if own || strings.Contains(l, s.pkg) || strings.Contains(l, " asuka") || strings.Contains(l, " Asuka") ||
+				strings.Contains(l, "ActivityTaskManager") || strings.Contains(l, "ActivityManager") {
+				kept = append(kept, l)
+			}
+		}
+		b.WriteString("\nthe app's lines and the system's of it:\n" + lastLines(strings.Join(kept, "\n"), 200))
+	}
+	// Where the window manager has the focus, and, while the app runs,
+	// what its threads are doing (a main thread that never returns to its
+	// loop takes no focus): native backtraces, then Java's.
+	if out, _ := s.adb("shell", "dumpsys", "window"); out != "" {
+		var focus []string
+		for _, l := range strings.Split(out, "\n") {
+			if strings.Contains(l, "mCurrentFocus") || strings.Contains(l, "mFocusedApp") || strings.Contains(l, "mFocusedWindow") || strings.Contains(l, "mInputMethodTarget") {
+				focus = append(focus, strings.TrimSpace(l))
+			}
+		}
+		b.WriteString("\nthe focus:\n" + strings.Join(focus, "\n"))
+	}
+	if pid, _ := s.adb("shell", "pidof", s.pkg); strings.TrimSpace(pid) != "" {
+		p := strings.Fields(pid)[0]
+		if out, _ := s.adb("shell", "debuggerd", "-b", p); strings.TrimSpace(out) != "" {
+			b.WriteString("\nits threads (native):\n" + firstLines(out, 160))
+		}
+		if out, _ := s.adb("shell", "debuggerd", "-j", p); strings.TrimSpace(out) != "" {
+			b.WriteString("\nits threads (Java):\n" + firstLines(out, 120))
+		}
+	}
+	return b.String()
+}
+
+// firstLines is text's first n lines.
+func firstLines(text string, n int) string {
+	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
+	if len(lines) > n {
+		lines = lines[:n]
+	}
+	return strings.Join(lines, "\n")
+}
+
+// lastLines is text's last n lines.
+func lastLines(text string, n int) string {
+	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
 }
 
 func TestCounterAndroid(t *testing.T) { counter(t, androidApp(t, "counter", "dev.asuka.counter")) }

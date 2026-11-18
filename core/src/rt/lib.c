@@ -305,6 +305,275 @@ static ak_val str_to_float(ak_val *args, uint32_t n) {
 	RET_P(ak_box_new(AK_K_FLOAT, (ak_val){.f = v}));
 }
 
+static int digit_of(char c) {
+	if (c >= '0' && c <= '9') return c - '0';
+	if (c >= 'a' && c <= 'z') return c - 'a' + 10;
+	if (c >= 'A' && c <= 'Z') return c - 'A' + 10;
+	return 99;
+}
+
+static bool radix_ok(int64_t radix, const char *what) {
+	if (radix >= 2 && radix <= 36) return true;
+	ak_throw_msg("%s's radix is %lld: it must be 2 to 36", what, (long long)radix);
+	return false;
+}
+
+// str.to_int_radix(s, radix): the whole string as an int in radix, an
+// optional sign first; none when it isn't one, or it's past an int.
+static ak_val str_to_int_radix(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_str *s = STR(0);
+	int64_t radix = A(1).i;
+	if (!radix_ok(radix, "toInt")) RET_VOID;
+	uint32_t i = 0;
+	bool neg = false;
+	if (i < s->len && (s->data[i] == '+' || s->data[i] == '-')) neg = s->data[i++] == '-';
+	if (i == s->len) RET_P(NULL);
+	uint64_t v = 0, limit = neg ? (uint64_t)INT64_MAX + 1 : (uint64_t)INT64_MAX;
+	for (; i < s->len; i++) {
+		int d = digit_of(s->data[i]);
+		if (d >= radix) RET_P(NULL);
+		if (v > (limit - (uint64_t)d) / (uint64_t)radix) RET_P(NULL);
+		v = v * (uint64_t)radix + (uint64_t)d;
+	}
+	int64_t out = neg ? (int64_t)(0 - v) : (int64_t)v;
+	RET_P(ak_box_new(AK_K_INT, (ak_val){.i = out}));
+}
+
+// int.to_string(v, radix): v's digits in radix, lowercase, with a - when
+// it's negative.
+static ak_val int_to_string(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	int64_t radix = A(1).i;
+	if (!radix_ok(radix, "toString")) RET_VOID;
+	int64_t v = A(0).i;
+	uint64_t u = v < 0 ? 0 - (uint64_t)v : (uint64_t)v;
+	char buf[72];
+	int i = sizeof buf;
+	do {
+		buf[--i] = "0123456789abcdefghijklmnopqrstuvwxyz"[u % (uint64_t)radix];
+		u /= (uint64_t)radix;
+	} while (u);
+	if (v < 0) buf[--i] = '-';
+	RET_P(ak_str_new(buf + i, sizeof buf - (size_t)i));
+}
+
+// str.reversed(s): its characters (code points) in the other order.
+static ak_val str_reversed(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_str *s = STR(0);
+	ak_str *out = ak_str_new(NULL, s->len);
+	uint32_t w = s->len;
+	for (uint32_t i = 0; i < s->len;) {
+		uint32_t j = i + 1;
+		while (j < s->len && ((unsigned char)s->data[j] & 0xc0) == 0x80) j++;
+		w -= j - i;
+		memcpy(out->data + w, s->data + i, j - i);
+		i = j;
+	}
+	RET_P(out);
+}
+
+// ---- Formats ----
+//
+// An interpolation's format, "{price:>8.2f}": [[fill]align][sign][#][0]
+// [width][,|_][.precision][type], as lang/check's ParseFormatSpec reads
+// it (which said what's wrong as the app compiled: here a format is one
+// it took). str.fmt_int(n, spec), str.fmt_float(x, spec) and
+// str.fmt_text(s, spec) write a value by it.
+
+typedef struct {
+	const char *fill;
+	uint32_t filln;  // its bytes: one character
+	char align;      // '<', '>', '^', '=' (after the sign: 0's), or 0
+	char sign;       // '+', ' ', or 0
+	bool alt, zero;
+	int64_t width, prec;  // -1: none
+	char group, type;
+} fspec;
+
+static int64_t fspec_num(const char **p, const char *end) {
+	int64_t n = -1;
+	while (*p < end && **p >= '0' && **p <= '9') {
+		if (n < 0) n = 0;
+		if (n < 100000) n = n * 10 + (**p - '0');
+		(*p)++;
+	}
+	return n;
+}
+
+static void fspec_parse(const ak_str *s, fspec *f) {
+	*f = (fspec){.fill = " ", .filln = 1, .width = -1, .prec = -1};
+	const char *p = s->data, *end = s->data + s->len;
+	uint32_t c1 = 1;
+	while (p + c1 < end && ((unsigned char)p[c1] & 0xc0) == 0x80) c1++;
+	if (p + c1 < end && (p[c1] == '<' || p[c1] == '>' || p[c1] == '^')) {
+		f->fill = p, f->filln = c1, f->align = p[c1];
+		p += c1 + 1;
+	} else if (p < end && (*p == '<' || *p == '>' || *p == '^')) {
+		f->align = *p++;
+	}
+	if (p < end && (*p == '+' || *p == '-' || *p == ' ')) {
+		if (*p != '-') f->sign = *p;
+		p++;
+	}
+	if (p < end && *p == '#') f->alt = true, p++;
+	if (p < end && *p == '0') f->zero = true, p++;
+	f->width = fspec_num(&p, end);
+	if (p < end && (*p == ',' || *p == '_')) f->group = *p++;
+	if (p < end && *p == '.') {
+		p++;
+		f->prec = fspec_num(&p, end);
+	}
+	if (p < end) f->type = *p;
+	if (f->zero && !f->align) f->fill = "0", f->filln = 1, f->align = '=';
+}
+
+static size_t code_points(const char *s, size_t n) {
+	size_t c = 0;
+	for (size_t i = 0; i < n; i++) c += ((unsigned char)s[i] & 0xc0) != 0x80;
+	return c;
+}
+
+static void fill_n(ak_strb *b, const fspec *f, int64_t n) {
+	for (int64_t i = 0; i < n; i++) ak_strb_cstr(b, f->fill, f->filln);
+}
+
+// fspec_out writes head (a sign, a 0x) and body padded to the width:
+// aligned as f says, else as def ('>' a number's, '<' text's).
+static ak_val fspec_out(const fspec *f, const char *head, size_t headn, const char *body, size_t bodyn, char def) {
+	ak_strb b = {0};
+	int64_t pad = f->width - (int64_t)(code_points(head, headn) + code_points(body, bodyn));
+	char align = f->align ? f->align : def;
+	if (pad <= 0) align = 0;
+	switch (align) {
+	case '<':
+		ak_strb_cstr(&b, head, headn), ak_strb_cstr(&b, body, bodyn), fill_n(&b, f, pad);
+		break;
+	case '>':
+		fill_n(&b, f, pad), ak_strb_cstr(&b, head, headn), ak_strb_cstr(&b, body, bodyn);
+		break;
+	case '^':
+		fill_n(&b, f, pad / 2), ak_strb_cstr(&b, head, headn), ak_strb_cstr(&b, body, bodyn), fill_n(&b, f, pad - pad / 2);
+		break;
+	case '=':
+		ak_strb_cstr(&b, head, headn), fill_n(&b, f, pad), ak_strb_cstr(&b, body, bodyn);
+		break;
+	default:
+		ak_strb_cstr(&b, head, headn), ak_strb_cstr(&b, body, bodyn);
+	}
+	RET_P(ak_strb_finish(&b));
+}
+
+// grouped writes digits (n of them, the integer part) with sep between
+// groups of every digits, then the rest as it is.
+static void grouped(ak_strb *b, const char *digits, size_t n, char sep, int every, const char *rest, size_t restn) {
+	for (size_t i = 0; i < n; i++) {
+		if (sep && i && (n - i) % (size_t)every == 0) ak_strb_cstr(b, &sep, 1);
+		ak_strb_cstr(b, digits + i, 1);
+	}
+	ak_strb_cstr(b, rest, restn);
+}
+
+static ak_val fmt_float(double x, const fspec *f) {
+	char head[2] = {0};
+	size_t headn = 0;
+	bool neg = signbit(x) && x == x;
+	if (neg) head[headn++] = '-';
+	else if (f->sign && x == x) head[headn++] = f->sign;
+	double a = fabs(x);
+	char buf[400];
+	int n;
+	if (x != x || a == INFINITY) {
+		n = snprintf(buf, sizeof buf, "%s", x != x ? "NaN" : "Infinity");
+		fspec g = *f;
+		if (g.align == '=') g.align = 0, g.fill = " ";  // no zeros before Infinity
+		return fspec_out(&g, head, headn, buf, (size_t)n, '>');
+	}
+	int prec = f->prec >= 0 ? (int)f->prec : 6;
+	if (f->type == 'e') {
+		n = snprintf(buf, sizeof buf, "%.*e", prec, a);
+	} else if (f->type == '%') {
+		n = snprintf(buf, sizeof buf, "%.*f%%", prec, a * 100);
+	} else if (f->type == 'f' || f->prec >= 0) {
+		n = snprintf(buf, sizeof buf, "%.*f", prec, a);
+	} else {
+		ak_str *s = ak_str_from_float(a);  // the shortest, as "{x}" writes it
+		n = (int)(s->len < sizeof buf ? s->len : sizeof buf - 1);
+		memcpy(buf, s->data, (size_t)n);
+		ak_release(s);
+	}
+	if (n < 0 || (size_t)n >= sizeof buf) n = (int)strlen(buf);
+	if (!f->group) return fspec_out(f, head, headn, buf, (size_t)n, '>');
+	size_t whole = strcspn(buf, ".e%");
+	ak_strb g = {0};
+	grouped(&g, buf, whole, f->group, 3, buf + whole, (size_t)n - whole);
+	ak_str *body = ak_strb_finish(&g);
+	ak_val out = fspec_out(f, head, headn, body->data, body->len, '>');
+	ak_release(body);
+	return out;
+}
+
+static ak_val str_fmt_float(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	fspec f;
+	fspec_parse(STR(1), &f);
+	return fmt_float(A(0).f, &f);
+}
+
+static ak_val str_fmt_int(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	fspec f;
+	fspec_parse(STR(1), &f);
+	int64_t v = A(0).i;
+	if (f.type == 'f' || f.type == 'e' || f.type == '%') return fmt_float((double)v, &f);
+	int radix = 10, every = 3;
+	const char *ds = "0123456789abcdef", *prefix = "";
+	switch (f.type) {
+	case 'x': radix = 16, every = 4, prefix = "0x"; break;
+	case 'X': radix = 16, every = 4, prefix = "0X", ds = "0123456789ABCDEF"; break;
+	case 'o': radix = 8, every = 4, prefix = "0o"; break;
+	case 'b': radix = 2, every = 4, prefix = "0b"; break;
+	}
+	uint64_t u = v < 0 ? 0 - (uint64_t)v : (uint64_t)v;
+	char digits[72];
+	int i = sizeof digits;
+	do {
+		digits[--i] = ds[u % (uint64_t)radix];
+		u /= (uint64_t)radix;
+	} while (u);
+	char head[4];
+	size_t headn = 0;
+	if (v < 0) head[headn++] = '-';
+	else if (f.sign) head[headn++] = f.sign;
+	if (f.alt && *prefix) head[headn++] = prefix[0], head[headn++] = prefix[1];
+	ak_strb g = {0};
+	grouped(&g, digits + i, sizeof digits - (size_t)i, f.group, every, "", 0);
+	ak_str *body = ak_strb_finish(&g);
+	ak_val out = fspec_out(&f, head, headn, body->data, body->len, '>');
+	ak_release(body);
+	return out;
+}
+
+// str.fmt_text(s, spec): text by its fill, alignment, width and
+// precision (the most characters it keeps).
+static ak_val str_fmt_text(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	fspec f;
+	fspec_parse(STR(1), &f);
+	ak_str *s = STR(0);
+	size_t len = s->len;
+	if (f.prec >= 0) {
+		int64_t kept = 0;
+		size_t i = 0;
+		for (; i < s->len; i++) {
+			if (((unsigned char)s->data[i] & 0xc0) != 0x80 && kept++ == f.prec) break;
+		}
+		len = i;
+	}
+	return fspec_out(&f, "", 0, s->data, len, '<');
+}
+
 static ak_val str_repeat(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	ak_strb b = {0};
@@ -627,6 +896,156 @@ static ak_val arr_suffix(ak_val *args, uint32_t n) {
 }
 static ak_val arr_concat(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_arr_concat(ARR(0), ARR(1))); }
 
+// arr.flat_map(a, f, kind): the arrays f gives, one after another.
+static ak_val arr_flat_map(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_arr *a = ARR(0);
+	ak_kind k = (ak_kind)A(2).i;
+	ak_arr *out = NULL;
+	for (uint32_t i = 0; i < a->len; i++) {
+		ak_arr *r = ak_call(CLOS(1), &a->data[i], 1).p;
+		if (ak_error_pending()) {
+			ak_release(out);
+			RET_VOID;
+		}
+		if (!out) {
+			out = ak_arr_new(k, r ? r->shape : NULL, r ? r->len : 0);
+		}
+		if (r) {
+			out->h.flags |= r->h.flags;
+			if (!out->shape) out->shape = r->shape;
+			for (uint32_t j = 0; j < r->len; j++) {
+				ak_retain_val(r->data[j], k);
+				ak_arr_push(&out, r->data[j]);
+			}
+			ak_release(r);
+		}
+	}
+	RET_P(out ? out : ak_arr_new(k, NULL, 0));
+}
+
+// arr.compact_map(a, f, kind): what f gives, without its nones (an
+// optional: a reference as it is, a scalar boxed).
+static ak_val arr_compact_map(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_arr *a = ARR(0);
+	ak_kind k = (ak_kind)A(2).i;
+	ak_arr *out = ak_arr_new(k, NULL, 0);
+	for (uint32_t i = 0; i < a->len; i++) {
+		ak_val r = ak_call(CLOS(1), &a->data[i], 1);
+		if (ak_error_pending()) {
+			ak_release(out);
+			RET_VOID;
+		}
+		if (!r.p) continue;
+		if (k == AK_K_REF) {
+			if (((ak_obj *)r.p)->tag == AK_TAG_STR) out->h.flags = 1;
+			if (!out->shape && ((ak_obj *)r.p)->tag == AK_TAG_STRUCT) out->shape = ((ak_struct *)r.p)->shape;
+			ak_arr_push(&out, r);
+		} else {
+			ak_arr_push(&out, ((ak_box *)r.p)->v);
+			ak_release(r.p);
+		}
+	}
+	RET_P(out);
+}
+
+// arr.reduce(a, initial, f, kind): f of initial and the first element,
+// then of that and the next, ...
+static ak_val arr_reduce(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_arr *a = ARR(0);
+	ak_kind k = (ak_kind)A(3).i;
+	ak_val acc = A(1);
+	ak_retain_val(acc, k);
+	for (uint32_t i = 0; i < a->len; i++) {
+		ak_val pair[2] = {acc, a->data[i]};
+		ak_val r = ak_call(CLOS(2), pair, 2);
+		ak_release_val(acc, k);
+		if (ak_error_pending()) RET_VOID;
+		acc = r;
+	}
+	return acc;
+}
+
+// arr.unique(a): each element once, where it first comes.
+static ak_val arr_unique(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_arr *a = ARR(0);
+	ak_kind k = ek(a);
+	ak_map *seen = ak_set_new(k, k == AK_K_REF);
+	ak_arr *out = ak_arr_new(k, a->shape, a->len);
+	out->h.flags = a->h.flags;
+	for (uint32_t i = 0; i < a->len; i++) {
+		ak_retain_val(a->data[i], k);
+		if (ak_set_insert(&seen, a->data[i])) {
+			ak_retain_val(a->data[i], k);
+			out->data[out->len++] = a->data[i];
+		}
+	}
+	ak_release(seen);
+	RET_P(out);
+}
+
+// arr.grouped(a, f, kind): the elements by the key f gives them, the keys
+// in the order they first come, each one's elements in theirs.
+static ak_val arr_grouped(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_arr *a = ARR(0);
+	ak_kind k = ek(a), kk = (ak_kind)A(2).i;
+	ak_map *index = ak_map_new(kk, kk == AK_K_REF, AK_K_INT, NULL);  // key -> its group
+	ak_arr *groups = ak_arr_new(AK_K_REF, NULL, 0);
+	for (uint32_t i = 0; i < a->len; i++) {
+		ak_val key = ak_call(CLOS(1), &a->data[i], 1);
+		if (ak_error_pending()) {
+			ak_release(index);
+			ak_release(groups);
+			RET_VOID;
+		}
+		ak_val at;
+		if (ak_map_get(index, key, &at)) {
+			ak_release_val(key, kk);
+		} else {
+			at.i = groups->len;
+			ak_map_set(&index, key, at);
+			ak_arr *g = ak_arr_new(k, a->shape, 1);
+			g->h.flags = a->h.flags;
+			ak_arr_push(&groups, (ak_val){.p = g});
+		}
+		ak_retain_val(a->data[i], k);
+		ak_arr_push((ak_arr **)&groups->data[at.i].p, a->data[i]);
+	}
+	ak_map *out = ak_map_new(kk, kk == AK_K_REF, AK_K_REF, NULL);
+	ak_arr *keys = ak_map_keys(index);
+	for (uint32_t j = 0; j < keys->len; j++) {
+		ak_retain_val(keys->data[j], kk);
+		ak_map_set(&out, keys->data[j], (ak_val){.p = ak_retain(groups->data[j].p)});
+	}
+	ak_release(keys);
+	ak_release(index);
+	ak_release(groups);
+	RET_P(out);
+}
+
+// arr.chunked(a, size): the elements in arrays of size, the last holding
+// what's left.
+static ak_val arr_chunked(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_arr *a = ARR(0);
+	int64_t size = A(1).i;
+	if (size < 1) {
+		ak_throw_msg("chunked's size is %lld: it must be 1 or more", (long long)size);
+		RET_VOID;
+	}
+	uint32_t len = a ? a->len : 0;
+	ak_arr *out = ak_arr_new(AK_K_REF, NULL, (uint32_t)((len + (uint64_t)size - 1) / (uint64_t)size));
+	for (uint64_t i = 0; i < len; i += (uint64_t)size) {
+		uint64_t end = i + (uint64_t)size < len ? i + (uint64_t)size : len;
+		out->data[out->len++].p = ak_arr_slice(a, (int64_t)i, (int64_t)end);
+	}
+	RET_P(out);
+}
+
 // Sorting: a stable merge sort, by a "less" closure, a type's compare
 // method (a closure whose int is negative for less), or, without one, by
 // the elements' natural order (numbers, strings, an enum's cases in
@@ -706,6 +1125,24 @@ static ak_val arr_sort(ak_val *args, uint32_t n) {
 	RET_VOID;
 }
 
+// arr.min(a, less?, compare?) and arr.max: the least (greatest) element,
+// the first of equal ones; none when there's none. Ordered as sorted
+// orders.
+static ak_val extreme(ak_val *args, uint32_t n, bool greatest) {
+	ak_arr *a = ARR(0);
+	if (!a || !a->len) RET_P(NULL);
+	sort_ctx c = {n > 1 ? CLOS(1) : NULL, n > 2 && A(2).i, ek(a), false};
+	uint32_t best = 0;
+	for (uint32_t i = 1; i < a->len; i++) {
+		if (greatest ? lt(&c, a->data[best], a->data[i]) : lt(&c, a->data[i], a->data[best])) best = i;
+		if (c.failed) RET_VOID;
+	}
+	return opt(ek(a), a->data[best]);
+}
+
+static ak_val arr_min(ak_val *args, uint32_t n) { return extreme(args, n, false); }
+static ak_val arr_max(ak_val *args, uint32_t n) { return extreme(args, n, true); }
+
 // arr.range(from, to): [from, to). One longer than an array holds (its
 // length is a u32) throws.
 // arr.range(from, to) is from..<to; arr.range(from, to, 1) is from..to,
@@ -752,6 +1189,51 @@ static ak_val map_delete(ak_val *args, uint32_t n) {
 static ak_val map_keys(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_map_keys(MAP(0))); }
 static ak_val map_values(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_map_values(MAP(0))); }
 static ak_val map_is_empty(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(MAP(0)->live == 0); }
+
+static ak_kind map_key_kind(const ak_map *m) { return (ak_kind)(m->h.aux & 0xf); }
+static ak_kind map_val_kind(const ak_map *m) { return (ak_kind)(m->h.aux >> 4); }
+
+// map.map_values(m, f, kind): the same keys, in their order, each with f
+// of its value.
+static ak_val map_map_values(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_map *m = MAP(0);
+	ak_kind kk = map_key_kind(m), vk = (ak_kind)A(2).i;
+	ak_map *out = ak_map_new(kk, m->h.flags & AK_MAP_STRKEYS, vk, NULL);
+	for (uint32_t i = 0; i < m->len; i++) {
+		if (m->dead[i]) continue;
+		ak_val v = ak_call(CLOS(1), &m->vals[i], 1);
+		if (ak_error_pending()) {
+			ak_release(out);
+			RET_VOID;
+		}
+		ak_retain_val(m->keys[i], kk);
+		ak_map_set(&out, m->keys[i], v);
+	}
+	RET_P(out);
+}
+
+// map.filter(m, pred): the entries pred(key, value) is true of.
+static ak_val map_filter(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_map *m = MAP(0);
+	ak_kind kk = map_key_kind(m), vk = map_val_kind(m);
+	ak_map *out = ak_map_new(kk, m->h.flags & AK_MAP_STRKEYS, vk, m->vshape);
+	for (uint32_t i = 0; i < m->len; i++) {
+		if (m->dead[i]) continue;
+		ak_val pair[2] = {m->keys[i], m->vals[i]};
+		ak_val r = ak_call(CLOS(1), pair, 2);
+		if (ak_error_pending()) {
+			ak_release(out);
+			RET_VOID;
+		}
+		if (!r.i) continue;
+		ak_retain_val(m->keys[i], kk);
+		ak_retain_val(m->vals[i], vk);
+		ak_map_set(&out, m->keys[i], m->vals[i]);
+	}
+	RET_P(out);
+}
 
 // ---- Sets (rt.h's ak_set_*) ----
 
@@ -1363,6 +1845,12 @@ const ak_lib_entry ak_lib[] = {
 	{"bytes.concat", bytes_concat},
 	{"bytes.str", bytes_str},
 	{"str.fixed", str_from_float_digits},
+	{"str.to_int_radix", str_to_int_radix},
+	{"str.reversed", str_reversed},
+	{"str.fmt_int", str_fmt_int},
+	{"str.fmt_float", str_fmt_float},
+	{"str.fmt_text", str_fmt_text},
+	{"int.to_string", int_to_string},
 
 	{"arr.push", arr_push},
 	{"arr.insert", arr_insert},
@@ -1389,12 +1877,22 @@ const ak_lib_entry ak_lib[] = {
 	{"arr.sorted", arr_sorted},
 	{"arr.sort", arr_sort},
 	{"arr.range", arr_range},
+	{"arr.flat_map", arr_flat_map},
+	{"arr.compact_map", arr_compact_map},
+	{"arr.reduce", arr_reduce},
+	{"arr.unique", arr_unique},
+	{"arr.grouped", arr_grouped},
+	{"arr.chunked", arr_chunked},
+	{"arr.min", arr_min},
+	{"arr.max", arr_max},
 
 	{"map.has", map_has},
 	{"map.delete", map_delete},
 	{"map.keys", map_keys},
 	{"map.values", map_values},
 	{"map.is_empty", map_is_empty},
+	{"map.map_values", map_map_values},
+	{"map.filter", map_filter},
 	{"set.of", set_of},
 	{"set.from", set_from},
 	{"set.has", set_has},

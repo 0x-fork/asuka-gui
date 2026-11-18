@@ -196,6 +196,8 @@ void ak_os_testing(bool on) {
 
 void ak_os_reset(void) {
 	stdin_reset();
+	ak_term_reset();
+	ak_os_signals_reset();
 	ak_mutex_lock(&mu);
 	if (ak_lib_print_hook == print_hook) ak_lib_print_hook = NULL;
 	fake_clear();
@@ -297,39 +299,64 @@ static ak_val program_fn(ak_val *args, uint32_t n) {
 	return (ak_val){.p = s};
 }
 
-static ak_val env_fn(ak_val *args, uint32_t n) {
-	AK_UNUSED(n);
-	const ak_str *name = STR(0);
+// env_get is name's value in the program's environment (a fake's under
+// os.fake with env:), NULL when it isn't set (ak_free it). In a test
+// without one, real says whether the real environment counts.
+static char *env_get(const char *name, size_t len, bool real) {
 	ak_mutex_lock(&mu);
 	if (fake.faked && fake.has_env) {
-		ak_str *v = NULL;
+		char *v = NULL;
 		for (int i = 0; i + 1 < fake.nenv; i += 2)
-			if (strcmp(fake.env[i], name->data) == 0) v = ak_str_c(fake.env[i + 1]);
+			if (strcmp(fake.env[i], name) == 0) {
+				ak_free(v);
+				size_t k = strlen(fake.env[i + 1]);
+				v = memcpy(ak_alloc(k + 1), fake.env[i + 1], k + 1);
+			}
 		ak_mutex_unlock(&mu);
-		return (ak_val){.p = v};
+		return v;
 	}
+	bool test = fake.faked || fake.testing;
 	ak_mutex_unlock(&mu);
-	if (!name->len || memchr(name->data, '=', name->len)) return (ak_val){.p = NULL};
+	if (test && !real) return NULL;
+	if (!len || memchr(name, '=', len) || memchr(name, 0, len)) return NULL;
 #if defined(_WIN32)
-	wchar_t *w = wide(name->data);
+	wchar_t *w = wide(name);
 	DWORD k = GetEnvironmentVariableW(w, NULL, 0);
-	ak_str *v = NULL;
+	char *v = NULL;
 	if (k > 0) {
 		wchar_t *val = ak_alloc(sizeof(wchar_t) * k);
 		DWORD got = GetEnvironmentVariableW(w, val, k);
-		char *s = utf8(val, (int)got);
-		v = ak_str_c(s);
-		ak_free(s);
+		v = utf8(val, (int)got);
 		ak_free(val);
 	} else if (GetLastError() != ERROR_ENVVAR_NOT_FOUND) {
-		v = ak_str_c("");
+		v = memcpy(ak_alloc(1), "", 1);
 	}
 	ak_free(w);
-	return (ak_val){.p = v};
+	return v;
 #else
-	const char *v = getenv(name->data);
-	return (ak_val){.p = v ? ak_str_c(v) : NULL};
+	const char *v = getenv(name);
+	if (!v) return NULL;
+	size_t k = strlen(v);
+	return memcpy(ak_alloc(k + 1), v, k + 1);
 #endif
+}
+
+char *ak_os_getenv(const char *name, bool real) { return env_get(name, strlen(name), real); }
+
+bool ak_os_test_process(void) {
+	ak_mutex_lock(&mu);
+	bool test = fake.faked || fake.testing;
+	ak_mutex_unlock(&mu);
+	return test;
+}
+
+static ak_val env_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	const ak_str *name = STR(0);
+	char *v = env_get(name->data, name->len, true);
+	ak_str *s = v ? ak_str_c(v) : NULL;
+	ak_free(v);
+	return (ak_val){.p = s};
 }
 
 static ak_val environ_fn(ak_val *args, uint32_t n) {
@@ -580,6 +607,8 @@ typedef struct {
 	ak_future *out, *main;
 } run_t;
 
+static run_t *running;  // the main FakeOS.run runs, while it does
+
 // run_end settles out as the program's end would: exit's code, 1 with
 // the error (written to stderr) for one main threw, else 0.
 // capture starts (on) or ends keeping what's written: print's, os's.
@@ -616,6 +645,7 @@ static void run_end(ak_future *out, void *err) {
 
 static void run_done(void *ctx) {
 	run_t *r = ctx;
+	if (running == r) running = NULL;
 	void *err = NULL;
 	if (r->main->state == AK_FUT_FAILED) {
 		err = r->main->error;
@@ -632,6 +662,17 @@ static void run_done(void *ctx) {
 static void run_cancel(ak_future *f) {
 	run_t *r = f->ctx;
 	if (r) ak_future_cancel(r->main);
+}
+
+// ak_os_fake_end ends the main FakeOS.run runs as a signal would: its
+// cancellation, the run's code code.
+void ak_os_fake_end(int code) {
+	run_t *r = running;
+	if (!r) return;
+	ak_mutex_lock(&mu);
+	if (fake.exit < 0) fake.exit = code;
+	ak_mutex_unlock(&mu);
+	ak_future_cancel(r->main);
 }
 
 static ak_val run_main_fn(ak_val *args, uint32_t n) {
@@ -659,6 +700,7 @@ static ak_val run_main_fn(ak_val *args, uint32_t n) {
 	ak_retain(out);
 	out->ctx = r;
 	out->cancel = run_cancel;
+	running = r;
 	ak_future_wait(r->main, run_done, r);
 	return (ak_val){.p = out};
 }

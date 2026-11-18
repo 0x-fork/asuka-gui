@@ -49,6 +49,7 @@ async fn main() throws {
   ```
 
 - `os.exit(code)` はその場で `code` を終了コードとして終了します。stdout と stderr はフラッシュされますが、`defer` やほかの task は実行されません。
+- Ctrl-C は、非同期の `main` を、`main` 自身が終わるときと同じくキャンセルとして終わらせます。まずその `defer` が、続いてほかのすべての task のものが実行され、終了コードは 130 です（128 とシグナルの番号。`kill` が既定で送る終了シグナルは 143、ハングアップは 129）。もう一度 Ctrl-C を押すとその場で終了します。非同期でない `main` も同じくその場で終了します。await しないコードはキャンセルできないためです。`os.signals()` を使うと、シグナルをプログラム自身で扱えます（[シグナル](#シグナル)を参照）。
 - `print` は stdout に 1 行書き、`os.eprint` は stderr に書きます。
 
 ## プロセス：std/os
@@ -67,6 +68,25 @@ async fn main() throws {
 | `os.eprint(text)` | stderr に 1 行書く |
 | `os.writeTo(.stdout, text)`、`writeBytesTo` | テキストやバイト列を、行末を付けずにそのまま `.stdout` か `.stderr` に書く |
 | `os.terminal(.stdout)` | ストリームがパイプやファイルではなく端末（人が見ている）かどうか。色やプロンプトは端末のときだけ出す |
+| `os.signals(kinds)` | 指定した種類のシグナルを届いた順に返す（`Stream<os.Signal>`：`.interrupt`、`.term`、`.hangup`）。読まれている種類ではプログラムは終了しない |
+
+### シグナル
+
+先に片付けておくこと（書きかけのファイル、サーバーで処理中のリクエスト）があるプログラムは、シグナルを自分で読みます。ある種類をストリームが読んでいる間は、その種類でプログラムは終了せず、どうするかはプログラムが決めます。`os.signals()` は Ctrl-C と終了シグナルを、`os.signals([.hangup])` はデーモンが「設定を読み直す」合図に使うハングアップを読みます。
+
+```asuka check
+import std/os
+
+async fn main() throws {
+  let jobs = ["a", "b", "c"]
+  for await s in os.signals() {
+    os.eprint("{s}: finishing {jobs.count()} jobs first")
+    break
+  }
+}
+```
+
+Windows では、Ctrl-C と Ctrl-Break が `.interrupt`、コンソールを閉じたとき、ログオフ、システムのシャットダウンが `.term` で、Windows は数秒待ってくれます。スマートフォンと Web にはシグナルがなく、このストリームは何も返しません。
 
 ```asuka
 import std/os
@@ -229,6 +249,302 @@ async fn main() throws {
 
 プログラムとデスクトップアプリ（macOS、Windows、Linux）で使えます。スマートフォンと Web のアプリはほかのプログラムを実行できません（`CommandError.unsupported`）。
 
+## 端末：std/term
+
+`std/term` は、プログラムの出力にスタイルを付けたり、端末の前にいる人に質問したりするためのパッケージです。次のプログラムはプロジェクトを作ります。プロジェクト名を尋ね、既存のディレクトリを上書きする前に確認し、出力の色は `--color` フラグでオンにもオフにもできます。
+
+```asuka check
+import std/flag
+import std/fs
+import std/os
+import std/term
+
+/// Makes a project.
+struct Options {
+  /// When to use colors.
+  color: term.ColorMode = .auto
+  /// Where to make it (the name asked for, if not given).
+  dir: string?
+}
+
+async fn main() throws {
+  let o = flag.parse<Options>(os.args())
+  term.setColors(o.color)
+  let name = await term.prompt("Project name:", default: "demo") ?? "demo"
+  let target = try fs.abs(o.dir ?? name)
+  if fs.exists(target) && !(await term.confirm("{target} exists. Overwrite?")) {
+    os.eprint("{term.red("error:", stream: .stderr)} nothing was made")
+    os.exit(1)
+  }
+  try await spawn { try fs.mkdirAll(target) }
+  print("{term.green("✓")} made {term.bold(target)}")
+}
+```
+
+```text
+$ new
+Project name: [demo] notes
+✓ made /home/ann/notes
+```
+
+- **スタイル。** `term.bold(text)`、`dim`、`italic`、`underline` と 8 つの色（`red`、`green`、`yellow`、`blue`、`magenta`、`cyan`、`white`、`black`）は、テキストを端末の制御コードで囲みます。いくつかを同時に指定するには `term.Style` を使います。値として保存して使い回すこともできます：`let warn = term.Style(color: .yellow, bold: true)` としておき、`warn.paint(text)` を呼びます。`Style` には明るい色（`.brightRed`）と `background` もあります。スタイル付きのテキストを別のスタイル付きテキストの中に入れると、内側は自分のスタイルを保ち、その後ろでは外側のスタイルが続きます。
+- **スタイルが表示される条件。** 出力先のストリームが端末で、`NO_COLOR` が設定されておらず（[no-color.org](https://no-color.org)）、`TERM` が `dumb` でないときだけ表示されます。`FORCE_COLOR` が設定されていれば、パイプへの出力でも表示されます（`0` か `false` ならオフ）。スタイルの関数はどれも、テキストを書き出すストリームを `stream:` で受け取ります（省略すると `.stdout`）。`term.colors(.stderr)` で判断の結果がわかり、`term.setColors(.always)`、`.never`、`.auto` でそれを上書きできます。対象は両方のストリーム、または `stream:` で指定した一方です。オプションの構造体に `color: term.ColorMode = .auto` というフィールドを書けば、`--color always|never|auto` フラグになります。Windows では、最初に出力するときにコンソールが制御コードを解釈するように設定されます（仮想ターミナル処理を有効にします）。
+- **質問。** `term.prompt(question, default:)` は質問をして、入力された行を前後の空白を除いて返します。何も入力しなければ `default`（`[demo]` のように表示されます）、`none` は stdin が終わったこと（Ctrl-D、閉じたパイプ）を表します。`term.confirm(question, default: false)` は `[y/N]`（デフォルトが true なら `[Y/n]`）と尋ね、y、yes、n、no か空の答えが返るまで繰り返します。`term.secret(question)` は端末のエコーを切って 1 行読みます。パスワードやトークンの入力向けです。行を読み終えたとき、task がキャンセルされたとき、Ctrl-C でプログラムが終了したときのいずれでも、エコーは元に戻ります。質問は git や gh と同じく stderr に書かれるので、出力をパイプに流しても（`new | tee log`）stdout にはプログラム本来の出力だけが残ります。これらは `async` です。行は別のスレッドで読まれ、そのあいだもプログラムのほかの task は動き続けます。
+- **サイズ。** `term.width()` と `term.height()` は端末の列数と行数です（`COLUMNS` と `LINES` が数値ならそちらが優先）。どのストリームも端末でなければ `none` になります：`term.width() ?? 80`。
+
+テストでは `os.fake(stdin:)` で質問に答え、質問そのものは `o.stderr()` で確認できます。テストのストリームは端末ではないのでスタイルは付きませんが、`os.fake(env: ["FORCE_COLOR": "1"])` や `term.setColors(.always)` で指定すれば付きます。見るのは `os.fake` の `env:` だけなので、テストを実行する環境の変数がテストの出力を変えることはありません。スマートフォンと Web には端末がありません。スタイルは付かず、`prompt` は `none` を返し、`width` も `none` です。
+
+## ファイルとディレクトリ：std/fs
+
+プログラムもアプリと同じく `std/fs` でファイルを読み書きします（[データ](data.md)）。さらに、コマンドラインツールがファイルを探すのに必要な関数があります。
+
+- `fs.home()`：ユーザーのホームディレクトリ（`HOME`、Windows では `USERPROFILE`。テストでは、`os.fake` の `env:` にあればその値）。
+- `fs.tempDir()`：一時ファイル用のディレクトリ（`TMPDIR`、なければ `/tmp`。Windows では `GetTempPath` が返すもの）。
+- `fs.abs(path)`：`path` を作業ディレクトリを基準に絶対パスにし、正規化したもの。
+- `fs.walk(dir, skip:)`：ディレクトリの下にあるものすべてを、深さを問わず `Entry`（`path`、`name`、`isDir`、`size`、`modified`）のリストで返します。ディレクトリごとに、まずそれ自身、続いてその中身が名前順に並びます。`skip:` には中に入らないディレクトリの名前を書きます。ディレクトリへのリンクの中にも入りません。
+
+```asuka check
+import std/fs
+
+async fn main() throws {
+  let root = try fs.abs(".")
+  let entries = try await spawn { try fs.walk(root, skip: [".git", "node_modules"]) }
+  let sources = entries.filter(e => !e.isDir && fs.ext(e.name) == ".asuka")
+  print("{sources.count()} files in {root}")
+  let config = fs.join([fs.home(), ".config", "count", "config.toml"])
+  if fs.exists(config) {
+    print("using {config}")
+  }
+}
+```
+
+ディスクにアクセスする呼び出し（`walk`、`readText`、`exists` など）は、システムが答えるまでブロックします。大きなディレクトリツリーをたどるときは `spawn { }` の中で呼べば、プログラムのほかの task は動き続けます。失敗すると、`std/fs` のほかの呼び出しと同じく `FsError` を投げます。一覧を読む権限のないディレクトリは `.denied(path)` です。
+
+### 大きなファイルを少しずつ
+
+`readText` はファイルを丸ごと読みます。それには大きすぎるファイル（ログ、エクスポートしたデータ）は少しずつ読みます。`fs.lines(path)` はファイルの行をストリームで返し、64 KB ずつ読んで、最後の行の後でファイルを閉じます。`fs.open(path, mode:)` が返す `File` を使うと、処理しながら読み書きできます：`readLine()`、`read(count:)`、`readAll()`、`write(data)`、`writeText(text)`、`seek(offset, from:)`、`size()`、`flush()`、`close()`。どれも別のスレッドでシステムを待ちます。開き方は `.read`、`.write`（空から書く）、`.append`、`.readWrite` です。
+
+```asuka check
+import std/fs
+
+/// ログのエラー行を、1 行ずつ別のファイルにコピーする。
+async fn main() throws {
+  let out = try await fs.open("errors.log", mode: .write)
+  defer { try? await out.close() }
+  var kept = 0
+  for await line in fs.lines("server.log") {
+    if line.contains("ERROR") {
+      try await out.writeText(line + "\n")
+      kept += 1
+    }
+  }
+  print("{kept} errors")
+}
+```
+
+書いた内容がファイルに入るのは、バッファーがいっぱいになったとき、`flush()` のとき、`close()` のときです。使い終わった `File` は、上の `defer` のように閉じます。
+
+`fs.glob(pattern)` はパターンに合うパスを並べ替えて返します。使えるのは `*`、`?`、`[a-z]`、`{a,b}`（`{` が補間にならないよう raw 文字列 `r"…"` に書きます）、任意の深さのディレクトリを表す `**` です。`fs.matches(pattern, path)` は 1 つのパスを調べます。`fs.chmod(path, 0o755)` は権限を設定し、`fs.symlink(target, at:)` と `fs.readLink(path)` はシンボリックリンクを作って読みます。`Entry` には `mode` と `isLink` もあります。
+
+```asuka check
+import std/fs
+
+async fn testFiles() throws -> [string] = try await spawn { try fs.glob(r"src/**/*_{test,spec}.asuka") }
+```
+
+## アーカイブと圧縮：std/archive、std/compress
+
+`std/archive` は zip と tar のアーカイブ（`.zip`、`.tar`、`.tar.gz`）の一覧、読み取り、展開、作成を行い、`std/compress` はバイト列やファイルを gzip（または zlib、生の DEFLATE）で圧縮します（`compress.encodeFile(from: log, to: log + ".gz")`）。ファイルは少しずつ読み書きするので、どんなに大きなアーカイブでもメモリはわずかしか使いません。ただし処理のあいだ呼び出しはブロックするので、`spawn { }` の中で呼びます。
+
+よそから来たアーカイブも安全に展開できます。ディレクトリの外に出てしまうエントリ（`../../.profile`、絶対パス、リンクを経由するパス）があると `unsafePath` を投げ、そこには何も書きません。展開する量は `limit:`（指定がなければ 1 GB）で制限されるので、zip 爆弾でディスクがいっぱいになることもありません。
+
+```asuka check
+import std/archive
+import std/os
+
+/// pack DIR OUT.zip：DIR をアーカイブにする。unpack ARCHIVE DIR：アーカイブを展開する。
+async fn main() throws {
+  let a = os.args()
+  if a.count() == 3 && a[0] == "pack" {
+    try await spawn { try archive.create(a[2], from: a[1]) }
+  } else if a.count() == 3 && a[0] == "unpack" {
+    let entries = try await spawn { try archive.list(a[1]) }
+    print("{entries.count()} entries")
+    try await spawn { try archive.extract(a[1], to: a[2], limit: 8 << 30) }
+  } else {
+    os.eprint("usage: pack DIR OUT.zip | unpack ARCHIVE DIR")
+    os.exit(2)
+  }
+}
+```
+
+## 複数を同時に
+
+`all(items, f, limit:)` は、各要素で非同期関数を同時に呼び出し、結果を要素の順に返します。ダウンロード、リクエスト、ほかのプログラムの実行を並べて行えます。`limit:` は同時に動かす数です。最初のエラーが残りをキャンセルし、それらが止まってから `all` がそのエラーを投げます（[非同期処理](language/async.md#非同期処理)を参照）。
+
+```asuka check
+import std/flag
+import std/http
+import std/os
+
+/// Downloads pages, a few at a time.
+struct Options {
+  /// -j How many at once.
+  jobs: int = 4
+  /// The pages' URLs.
+  urls: [string]
+}
+
+async fn main() throws {
+  let o = flag.parse<Options>(os.args())
+  let sizes = try await all(o.urls, u => try await http.get(u).body.count(), limit: o.jobs)
+  for (u, n) in o.urls.zip(sizes) {
+    print("{n}\t{u}")
+  }
+}
+```
+
+## 形の決まっていない JSON
+
+形がわかっている JSON は構造体で読みます（`json.decode<T>`、[データ](data.md)を参照）。ツールの設定ファイルやパイプで渡される任意の内容のように形がわからないものは `json.Value` で扱います。`json.parse(text)` はどんな JSON もそのまま読み込み、`get(key)`、`at(i)`、`asString()`、`asInt()` などで中身を見たり、`match` でケース（`.object(members)`、`.array(elements)`、`.string(s)` など）を取り出したりできます。表示しても `json.encode` で書き出しても JSON になります。
+
+```asuka check
+import std/json
+import std/os
+
+/// stdin の JSON のうち、パスの位置にある値を表示する：pick user.emails.0
+async fn main() throws {
+  var v = try json.parse(os.readAll().string())
+  for step in (os.args().first() ?? "").split(".") {
+    if step.isEmpty() { continue }
+    let next = if let i = step.toInt() { v.at(i) } else { v.get(step) }
+    v = next ?? json.Value.null
+  }
+  match v {
+    .string(s) => print(s)       // 引用符なしのテキストとして
+    _ => print(json.encode(v, indent: 2))
+  }
+}
+```
+
+## 設定ファイルとデータ：TOML と CSV
+
+`std/toml` は、`std/json` が JSON を読むのと同じように設定ファイルを構造体に読み込みます。`toml.decode<Config>(text)` はフィールド名で値を読み（`min-qty` や `min_qty` と書かれたキーも `minQty` に入ります）、ファイルにないオプショナルは `none` になります。`toml.encode(config)` で書き戻し、`toml.parse(text)` はどんなドキュメントも `json.Value` として読みます。ファイルにないフィールドは JSON と同じく空の値（0、`""`、none）になり、構造体のデフォルト値にはなりません。省略されうる設定はオプショナルにするか、デフォルト値で構造体を作っておき、ファイルがあるときだけ読み込みます。間違いがあれば場所を示します：`toml: 2:11: min-qty: expected an integer, not a string`。
+
+`std/csv` は行を読みます。`csv.parse(text)` は `[[string]]` として、`csv.decode<T>(text)` はヘッダー行にもとづいて構造体として読み（セルはフィールドの型で読まれます：int、float、bool、列挙型のケース。オプショナルの空のセルは `none`）、`csv.encode(rows)` はヘッダーとともに書き戻します。メモリーに収まらないほど大きいファイルは、行のストリームから 1 行ずつ読めます：`csv.stream<T>(fs.lines("sales.csv"))`、標準入力なら `csv.stream<T>(os.lines())` です。次の例は、パイプで渡された売上データを `~/.config/sales/config.toml` の設定に従って集計します。
+
+```toml
+currency = "USD"
+min-qty = 2
+```
+
+```
+item,qty,price
+"Tea, green",2,3.5
+Cake,1,4.25
+```
+
+```asuka check
+import std/csv
+import std/fs
+import std/os
+import std/toml
+
+/// パイプで渡された CSV の売上を集計します。
+struct Config {
+  currency: string = "EUR"
+  /// 個数がこれより少ない行は数えません。
+  minQty: int? = none
+}
+
+struct Sale {
+  item: string
+  qty: int
+  price: float
+}
+
+async fn main() throws {
+  let path = fs.join([fs.home(), ".config", "sales", "config.toml"])
+  var config = Config()
+  if fs.exists(path) {
+    config = try toml.decode<Config>(try await spawn { try fs.readText(path) })
+  }
+  var total = 0.0
+  for await sale in csv.stream<Sale>(os.lines()) {
+    if sale.qty >= (config.minQty ?? 1) {
+      total += sale.price * float(sale.qty)
+    }
+  }
+  print("{total} {config.currency}")
+}
+```
+
+`separator: "\t"` でタブ区切りのデータを読めます。`comment: "#"` はその文字で始まる行を飛ばし、`flexible: true` は行ごとにフィールド数が違ってもよいことにします。
+
+## Web サービス：std/http
+
+`http.serve` を使うと、Go の `net/http` や `Bun.serve` と同じようにプログラムを HTTP/1.1 サーバーにできます。リクエストはそれぞれハンドラーに渡されます。ハンドラーは `Reply` を返す async 関数です。`Router` はメソッドとパスでリクエストを振り分け、`:name` はパスの 1 セグメントに一致します。
+
+```asuka check
+import std/http
+import std/os
+
+struct Note {
+  id: int
+  text: string
+}
+
+struct Draft {
+  text: string
+}
+
+async fn main() throws {
+  var notes: [Note] = []
+  let api = http.Router()
+    .get("/notes", req => .json(notes))
+    .get("/notes/:id", req => {
+      if let n = notes.find(n => n.id == req.param("id").toInt()) {
+        return .json(n)
+      }
+      return .text("no such note", status: 404)
+    })
+    .post("/notes", req => {
+      let draft = try req.json<Draft>()
+      let note = Note(id: notes.count() + 1, text: draft.text)
+      notes.push(note)
+      return .json(note, status: 201)
+    })
+  let port = (os.env("PORT") ?? "8080").toInt() ?? 8080
+  let server = try await http.serve(port, api.handler(), host: "0.0.0.0")
+  print("listening on {server.url}")
+  // Ctrl-C か終了シグナル：処理中のリクエストに先に答える。
+  for await _ in os.signals() {
+    break
+  }
+  await server.close(grace: 10s)
+}
+```
+
+```sh
+$ curl -d '{"text":"milk"}' localhost:8080/notes
+{"id":1,"text":"milk"}
+$ curl localhost:8080/notes/1
+{"id":1,"text":"milk"}
+```
+
+- `http.serve(port, handler, host:, limits:, onError:)` は `port` で待ち受けを始め（0 ならシステムが選び、実際のポートは `server.port` でわかります）、待ち受けが始まると `Server` を返します。`host` を指定しなければ `127.0.0.1` で、このコンピューターのクライアントしか接続できません。`"0.0.0.0"` ならすべての IPv4 インターフェース（コンテナーやほかのマシン）から、`"::"` なら IPv6 からも受け付けます。待ち受けられないアドレス（使用中のポートなど）は `ServerError.listen` になります。
+- 各リクエストのハンドラーは、メインスレッドでそれぞれ独立したタスクとして動きます。そのため、タスクが待てるものなら何でも await でき（データベース、`http.get`、ほかのプログラム）、そのあいだもほかのリクエストは処理されます。リクエストの読み込みと解析、返信の書き出しはサーバー専用のスレッドで行われます。多くの接続を同時に扱え、接続はリクエストのあいだも開いたままです。
+- `Request` には `method`、`path`（送られたまま。エスケープも残る）、`rawQuery` と `query(name)`、小文字の名前で引ける `headers` と大文字小文字を区別しない `header(name)`、先に全部読み込まれる `body`、`text()` と `json<T>()`、クライアントのアドレス `remote`、ルートが一致させた `params`（`param(name)`）があります。
+- `Reply` は `.text`、`.json`、`.html`、`.data`、`.redirect` で作るか、`Reply(status: 204)` のように書きます。ヘッダーの値に複数の行があると、1 行ずつ別のヘッダーとして送られます（複数の Set-Cookie など）。`.stream(body)` はボディを作るそばからチャンクで送り、`.events(stream)` はサーバー送信イベントを送ります。これは `http.events` でもブラウザーの EventSource でも読めます。送っている途中でクライアントが去ると、ハンドラーはキャンセルされます。
+- ルートのパターンは、そのままの文字列、`:name`（1 セグメント）、`*name`（パスの残り全部）でできています。ルートは追加した順に試されます。どのルートにも一致しないパスには 404、パスは一致してもメソッドが違うものには 405（`Allow` 付き）を返します。GET のルートは HEAD にも応えます。
+- エラーを投げたハンドラーには 500 Internal Server Error を返し、そのエラーは `onError` に渡されます（指定がなければ stderr に書かれます）。
+- `http.Limits(headerSize:, bodySize:, connections:, headerTimeout:, readTimeout:, idleTimeout:)` で、受け付ける量と待つ時間を決めます。既定ではヘッダー 64 KiB、ボディ 16 MiB、接続 10000、リクエストのヘッダーが届くまで 30 秒、ボディの途中で待つのは毎回 30 秒まで、次のリクエストまでは 60 秒です。上限を超えたものにはステータス（431、413、408）を返して接続を閉じます。
+- `server.close(grace: 10s)` でサーバーを止めます。すぐに新しい接続の受け付けをやめ、処理中のリクエストには返信させ、`grace` を過ぎてもまだ動いているハンドラーはキャンセルします（`defer` は実行されます）。`server.wait()` は閉じるまで待ちます。サーバーはそれを始めたタスクに属するので、`main` が戻ると閉じます。そのため `main` は `server.wait()` を await するか、上の例のように終了のシグナルを待ちます。シグナルを読むストリームがないと、Ctrl-C で `main` が終わり、サーバーもすぐに閉じて、まだ動いているハンドラーはキャンセルされます。`os.signals()` を読んでから閉じれば、先に答えさせられます（[シグナル](#シグナル)を参照）。
+
+HTTPS はリバースプロキシー（Caddy、nginx）に任せます。プロキシーが TLS を終端し、`127.0.0.1` で待ち受けるサーバーに HTTP でリクエストを渡します。クライアントのアドレスは `X-Forwarded-For` に入ります。デスクトップアプリも同じようにタスクからローカル API を提供でき、スマートフォンのアプリも動いているあいだは同じです。Web ページは待ち受けられません（`ServerError.unsupported`）。
+
+ハンドラーはただの関数なので、テストでは `Request` を渡してハンドラーやルーターを直接呼べます。ソケットは介しません：`let r = try await api.handle(http.Request(method: "GET", path: "/notes/1"))`。
+
 ## 実行
 
 `asuka run` はプログラムの `main` をすぐに実行するので、ビルドを待つ必要がありません。`--` の後ろの引数はプログラムに渡され、プログラムの終了コードでそのまま終了します。
@@ -348,7 +664,7 @@ test "greets whom it's given" {
 }
 ```
 
-`o.run(main)` は、プログラムが終わるはずの終了コードを返します。0、エラーを投げたときの 1（メッセージは `o.stderr()` に入ります）、または `os.exit` が指定した値です。このときの `os.exit` は、プロセスではなくテスト内の `main` をそこで終わらせます。fake がなければ、テストの `os.args()` と stdin は空です。`command.fake()` はほかのプログラムの代わりに応答するので、それらは実際には実行されません。
+`o.run(main)` は、プログラムが終わるはずの終了コードを返します。0、エラーを投げたときの 1（メッセージは `o.stderr()` に入ります）、または `os.exit` が指定した値です。このときの `os.exit` は、プロセスではなくテスト内の `main` をそこで終わらせます。`o.signal(.interrupt)` は、Ctrl-C を押したときのように、実行中の `main` にシグナルを送ります。`os.signals` のストリームが読んでいればそれが受け取り、そうでなければ `main` がキャンセルされて、`run` は 130 を返します。fake がなければ、テストの `os.args()` と stdin は空です。`command.fake()` はほかのプログラムの代わりに応答するので、それらは実際には実行されません。
 
 ```asuka
 import std/command
@@ -370,3 +686,5 @@ test "reads git's branch" {
 | `os.args`、`os.exit`、stdin | ○ | ○ | ○ | アプリでは空、`exit` はエラーを投げる |
 | `std/command` | ○ | ○ | ○ | `unsupported` |
 | `std/flag` | ○ | ○ | ○ | ○（どんなリストでも解析できる） |
+| `std/term` | ○ | ○ | ○ | 端末がない（スタイルなし、`prompt` は `none`） |
+| `http.serve` | ○ | ○ | ○ | スマートフォンのアプリは動いているあいだ ○、Web は `unsupported` |
