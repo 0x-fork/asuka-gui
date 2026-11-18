@@ -46,9 +46,29 @@ any system, and a Mac app from a Mac.
 
 ## Install the CLI
 
+On macOS and Linux:
+
 ```sh
-npm install -g @egoist/asuka     # or: npx @egoist/asuka new hello
+curl -fsSL https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.sh | sh
 ```
+
+On Windows, in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.ps1 | iex
+```
+
+The script downloads the CLI from its GitHub release, checks it against
+the release's checksums, and installs it in `~/.asuka/bin` (on Windows,
+`%LOCALAPPDATA%\Programs\asuka\bin`, which it adds to your PATH).
+`ASUKA_VERSION=0.3.0` installs that version instead of the latest, and
+`ASUKA_INSTALL` another directory.
+
+`asuka upgrade` updates the CLI to the latest release (`asuka upgrade
+0.3.0`: to that one). Once a day, asuka looks in the background for a
+newer release and, if there is one, says so when a command ends; it
+never makes a command wait. `ASUKA_NO_UPDATE_CHECK=1` turns that off,
+and it's off in CI.
 
 ## Make an app
 

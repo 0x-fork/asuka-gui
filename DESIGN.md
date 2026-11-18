@@ -1750,26 +1750,25 @@ library (iOS, the Mac) is the core's with the build's objects and the
 std packages' C it imports added; a shared library or the web's module
 links the core's whole, its exports its roots.
 
-**Prebuilt, from npm.** A release builds every unit for every target
-(`asuka prebuilt build`, the release workflow; Zig, Xcode and the NDK as
-a local build would) and publishes them with the CLI as npm packages, one
-per target, versioned as the CLI: `@egoist/asuka-prebuilt-<target>`
-(ios-arm64, ios-sim-arm64, darwin-arm64, darwin-x64,
-android-arm64-v8a, android-armeabi-v7a, android-x86_64, wasm32,
-linux-x64, linux-arm64, windows-x64, windows-arm64) and
-`@egoist/asuka-prebuilt-android-aar` (Kotlin is the same for every ABI,
-and the dev player needs one ABI's C, not three). They aren't the CLI's
-optional dependencies: those install the host's platform only, and a
-build cross-compiles. The CLI embeds only their manifest
-(`internal/prebuilt/manifest.json`: each package's exact version and
-tarball integrity, each library's path and SHA-256, what compiler built
-it); the first build that needs a target's fetches its package from the
-npm registry (`npm_config_registry`, the project's `.npmrc` beside its
-`asuka.toml` or `package.json`, the user's: `registry`,
-`@egoist:registry`, `//host/:_authToken` or `_auth`, `${VAR}`
-expanded), checks the tarball against the pinned `sha512` (a registry
-or mirror can't give another), unpacks it into the cache (`prebuilt/`)
-and checks each library's hash as it's first used. A prebuilt library
+**Prebuilt, from the release.** A release builds every unit for every
+target (`asuka prebuilt build`, the release workflow; Zig, Xcode and the
+NDK as a local build would) and attaches them to the CLI's GitHub
+release, an archive per target, versioned as the CLI:
+`asuka-prebuilt-<target>-<version>.tar.gz` (ios-arm64, ios-sim-arm64,
+darwin-arm64, darwin-x64, android-arm64-v8a, android-armeabi-v7a,
+android-x86_64, wasm32, linux-x64, linux-arm64, windows-x64,
+windows-arm64) and `asuka-prebuilt-android-aar` (Kotlin is the same for
+every ABI, and the dev player needs one ABI's C, not three). The CLI
+embeds only their manifest (`internal/prebuilt/manifest.json`: each
+archive's name and SHA-256, each library's path and SHA-256, what
+compiler built it); the first build that needs a target's fetches its
+archive from the release (`releases/download/v<version>/`, redirects
+and the environment's proxy followed), or from `ASUKA_PREBUILT_URL`'s
+mirror (a URL, `{version}` replaced, its requests carrying
+`ASUKA_PREBUILT_TOKEN`; or a local directory of the archives, for a
+machine without the network), checks it against the pinned SHA-256 (a
+mirror can't give another), unpacks it into the cache (`prebuilt/`) and
+checks each library's hash as it's first used. A prebuilt library
 is used only when its sources are the CLI's own (not a checkout's, not
 `ASUKA_CORE`'s) and the build's compiler is the family that built it
 (Zig's, Xcode's, the NDK's), or, for Linux, any compiler for glibc
@@ -1777,11 +1776,12 @@ is used only when its sources are the CLI's own (not a checkout's, not
 (`cbuild.LinuxGlibc`, 2.28), and they need nothing of Zig's runtime.
 (Windows' are MinGW's, which a compiler for MSVC's runtime can't link.)
 A CLI run from a checkout has an empty manifest and builds the same
-units into the cache. A release publishes `@egoist/asuka`, the
-launcher, last: after the prebuilt and platform packages, once the
-registry serves each of their tarballs, fetched and checked as the CLI
-fetches them (npm accepts a package before it serves it, a new
-package's tarball for minutes after).
+units into the cache. A release (`scripts/release`) is made as a draft,
+its assets (the CLI for each platform, the archives, the install
+scripts, `SHA256SUMS`) uploaded, each one again only if it isn't there
+as this run made it, then published: the latest release, which
+installers and `asuka upgrade` take, never lacks an asset, and a run
+again after a failed upload finishes it.
 
 **Swift: modules with library evolution.** The host's Swift (the module
 `Asuka`, with its compilation conditions) and each native package's

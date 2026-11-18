@@ -517,10 +517,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
       - name: the asuka CLI, at the app's version of Asuka
-        run: npm install -g @egoist/asuka@$ASUKA_VERSION
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.sh | sh
+          echo "$HOME/.asuka/bin" >> "$GITHUB_PATH"
       - name: the distribution certificate and the profile
         env:
           CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
@@ -561,8 +561,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 17 }
       - uses: android-actions/setup-android@v3
@@ -570,7 +568,9 @@ jobs:
       - name: an NDK
         run: sdkmanager "ndk;27.1.12297006"
       - name: the asuka CLI, at the app's version of Asuka
-        run: npm install -g @egoist/asuka@$ASUKA_VERSION
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.sh | sh
+          echo "$HOME/.asuka/bin" >> "$GITHUB_PATH"
       - name: the upload key
         env:
           KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
@@ -601,7 +601,7 @@ jobs:
 - `ANDROID_KEYSTORE`：上传密钥的 `.jks` 文件；`ANDROID_KEYSTORE_PASSWORD` 是它的密码（如果密钥的密码与之不同，再加上 `ASUKA_KEY_PASSWORD`）。
 - `PLAY_SERVICE_ACCOUNT`：Google Cloud 服务账号的 JSON 密钥，该账号需要在 Play Console 的 Users and permissions 中受邀，并拥有发布到测试轨道的权限。
 
-CLI 用它自带的那个版本的 Asuka 构建应用，所以安装的 CLI 版本必须是应用所用的 Asuka 版本，也就是 `ASUKA_VERSION`；把应用迁移到更新的 Asuka 时，记得同时调高它。每个构建的编号都是商店中现有最大编号加一，所以打标签之前不需要手动递增任何东西；`--no-wait` 让 iOS 任务在 Apple 收到上传后就结束，而不必等到处理完成。App Store 只接受用较新版本 Xcode 构建的包；如果 runner 默认的 Xcode 太旧，可以用 `sudo xcode-select -s /Applications/Xcode_<version>.app` 切换版本。
+CLI 用它自带的那个版本的 Asuka 构建应用，所以安装的 CLI 版本必须是应用所用的 Asuka 版本，也就是安装脚本读取的 `ASUKA_VERSION`；把应用迁移到更新的 Asuka 时，记得同时调高它。每个构建的编号都是商店中现有最大编号加一，所以打标签之前不需要手动递增任何东西；`--no-wait` 让 iOS 任务在 Apple 收到上传后就结束，而不必等到处理完成。App Store 只接受用较新版本 Xcode 构建的包；如果 runner 默认的 Xcode 太旧，可以用 `sudo xcode-select -s /Applications/Xcode_<version>.app` 切换版本。
 
 ### 桌面端
 
@@ -613,10 +613,10 @@ CLI 用它自带的那个版本的 Asuka 构建应用，所以安装的 CLI 版�
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
       - name: the asuka CLI, at the app's version of Asuka
-        run: npm install -g @egoist/asuka@$ASUKA_VERSION
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.sh | sh
+          echo "$HOME/.asuka/bin" >> "$GITHUB_PATH"
       - name: the Developer ID certificate
         env:
           CERTIFICATE: ${{ secrets.MAC_CERTIFICATE }}
@@ -650,11 +650,11 @@ CLI 用它自带的那个版本的 Asuka 构建应用，所以安装的 CLI 版�
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
       - uses: mlugg/setup-zig@v2 # 交叉编译应用
       - name: the asuka CLI, at the app's version of Asuka
-        run: npm install -g @egoist/asuka@$ASUKA_VERSION
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.sh | sh
+          echo "$HOME/.asuka/bin" >> "$GITHUB_PATH"
       - name: osslsigncode, and the code signing certificate
         env:
           CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}

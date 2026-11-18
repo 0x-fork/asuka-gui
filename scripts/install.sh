@@ -1,10 +1,11 @@
 #!/bin/sh
-# Installs the asuka CLI from its GitHub release:
+# Installs the asuka CLI on macOS and Linux from its GitHub release:
 #
 #	curl -fsSL https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.sh | sh
 #
 # ASUKA_VERSION picks a release (default: the latest); ASUKA_INSTALL the
-# directory (default: ~/.asuka/bin).
+# directory (default: ~/.asuka/bin). On Windows: scripts/install.ps1.
+# Once installed, asuka upgrade updates it.
 set -eu
 
 repo="egoist/asuka"
@@ -13,7 +14,11 @@ dir="${ASUKA_INSTALL:-$HOME/.asuka/bin}"
 case "$(uname -s)" in
 Darwin) os=darwin ;;
 Linux) os=linux ;;
-*) echo "asuka: this script installs on macOS and Linux; on Windows: npm i -g @egoist/asuka" >&2; exit 1 ;;
+*)
+	echo "asuka: this script installs on macOS and Linux; on Windows, in PowerShell:" >&2
+	echo "  irm https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.ps1 | iex" >&2
+	exit 1
+	;;
 esac
 case "$(uname -m)" in
 arm64 | aarch64) cpu=arm64 ;;
@@ -36,7 +41,11 @@ trap 'rm -rf "$tmp"' EXIT
 echo "asuka: downloading asuka-$os-$cpu"
 curl -fsSL -o "$tmp/asuka" "$base/asuka-$os-$cpu"
 curl -fsSL -o "$tmp/SHA256SUMS" "$base/SHA256SUMS"
-want=$(grep " asuka-$os-$cpu\$" "$tmp/SHA256SUMS" | cut -d' ' -f1)
+want=$(grep " \*\{0,1\}asuka-$os-$cpu\$" "$tmp/SHA256SUMS" | cut -d' ' -f1)
+if [ -z "$want" ]; then
+	echo "asuka: SHA256SUMS has no asuka-$os-$cpu" >&2
+	exit 1
+fi
 if command -v sha256sum >/dev/null; then got=$(sha256sum "$tmp/asuka" | cut -d' ' -f1); else got=$(shasum -a 256 "$tmp/asuka" | cut -d' ' -f1); fi
 if [ "$want" != "$got" ]; then
 	echo "asuka: the download doesn't match its checksum" >&2

@@ -25,9 +25,21 @@ Zig をインストールしておけば、`asuka build` で Windows や Linux �
 
 ## CLI のインストール
 
+macOS と Linux では：
+
 ```sh
-npm install -g @egoist/asuka     # または：npx @egoist/asuka new hello
+curl -fsSL https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.sh | sh
 ```
+
+Windows では、PowerShell で：
+
+```powershell
+irm https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.ps1 | iex
+```
+
+このスクリプトは CLI を GitHub のリリースからダウンロードし、リリースのチェックサムと照合したうえで `~/.asuka/bin` にインストールします（Windows では `%LOCALAPPDATA%\Programs\asuka\bin` にインストールし、PATH に追加します）。`ASUKA_VERSION=0.3.0` を指定すると最新版ではなくそのバージョンを、`ASUKA_INSTALL` を指定すると別のディレクトリにインストールします。
+
+`asuka upgrade` は CLI を最新のリリースに更新します（`asuka upgrade 0.3.0` ならそのバージョンに）。また asuka は 1 日に 1 回、新しいリリースが出ていないかをバックグラウンドで確認し、出ていればコマンドの終わりにそれを知らせます。この確認のためにコマンドが待たされることはありません。`ASUKA_NO_UPDATE_CHECK=1` で無効にでき、CI では動きません。
 
 ## アプリの作成
 

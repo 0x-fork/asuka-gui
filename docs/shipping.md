@@ -961,10 +961,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
       - name: the asuka CLI, at the app's version of Asuka
-        run: npm install -g @egoist/asuka@$ASUKA_VERSION
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.sh | sh
+          echo "$HOME/.asuka/bin" >> "$GITHUB_PATH"
       - name: the distribution certificate and the profile
         env:
           CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
@@ -1005,8 +1005,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 17 }
       - uses: android-actions/setup-android@v3
@@ -1014,7 +1012,9 @@ jobs:
       - name: an NDK
         run: sdkmanager "ndk;27.1.12297006"
       - name: the asuka CLI, at the app's version of Asuka
-        run: npm install -g @egoist/asuka@$ASUKA_VERSION
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.sh | sh
+          echo "$HOME/.asuka/bin" >> "$GITHUB_PATH"
       - name: the upload key
         env:
           KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
@@ -1056,8 +1056,8 @@ base64 (`base64 -i file | pbcopy`):
   release to testing tracks.
 
 The CLI builds the app with its own version of Asuka, so it's installed
-at the version the app is made with: `ASUKA_VERSION`, which you
-raise as you move the app to a newer Asuka. Each build is numbered after the
+at the version the app is made with: `ASUKA_VERSION`, which the install
+script reads and you raise as you move the app to a newer Asuka. Each build is numbered after the
 store's highest, so nothing is bumped before you tag; `--no-wait` ends
 the iOS job once Apple has the upload, not once it's processed. The App Store takes builds
 made with a recent Xcode only; if the runner's default is older, pick
@@ -1079,10 +1079,10 @@ are named after `asuka.toml`'s `name`.)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
       - name: the asuka CLI, at the app's version of Asuka
-        run: npm install -g @egoist/asuka@$ASUKA_VERSION
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.sh | sh
+          echo "$HOME/.asuka/bin" >> "$GITHUB_PATH"
       - name: the Developer ID certificate
         env:
           CERTIFICATE: ${{ secrets.MAC_CERTIFICATE }}
@@ -1116,11 +1116,11 @@ are named after `asuka.toml`'s `name`.)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
       - uses: mlugg/setup-zig@v2 # cross-compiles the app
       - name: the asuka CLI, at the app's version of Asuka
-        run: npm install -g @egoist/asuka@$ASUKA_VERSION
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.sh | sh
+          echo "$HOME/.asuka/bin" >> "$GITHUB_PATH"
       - name: osslsigncode, and the code signing certificate
         env:
           CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}

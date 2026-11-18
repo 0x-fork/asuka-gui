@@ -21,8 +21,8 @@ import (
 // The Android host's Kotlin and the std and sdk packages' as AARs
 // (DESIGN.md, "The build cache"): an app's build depends on them, from a
 // local Maven repository, rather than compiling their modules. A release
-// of the CLI carries them (internal/prebuilt: @egoist/asuka-prebuilt-
-// android-aar, its maven/), versioned as the CLI; else the CLI publishes
+// of the CLI carries them (internal/prebuilt: the release's
+// asuka-prebuilt-android-aar archive, its maven/), versioned as the CLI; else the CLI publishes
 // them once into the build cache's (maven/), each versioned by a hash of
 // its sources. An app's own native packages' modules are compiled with
 // the app, as before.

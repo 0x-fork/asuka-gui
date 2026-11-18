@@ -17,6 +17,7 @@
 //	asuka guide                              the language on one page, for coding agents
 //	asuka lsp                                the language server, for editors
 //	asuka cache stats|clean                  the build cache's size and hits; empty it
+//	asuka upgrade [version]                  replace this asuka with its latest release
 package main
 
 import (
@@ -27,12 +28,14 @@ import (
 	"runtime"
 	"slices"
 	"syscall"
+	"time"
 
 	"github.com/egoist/asuka/internal/ccache"
+	"github.com/egoist/asuka/internal/selfupdate"
 )
 
-// version is the CLI's release (-ldflags -X main.version=…; scripts/npm
-// sets it), "dev" for a build from source.
+// version is the CLI's release (-ldflags -X main.version=…;
+// scripts/release sets it), "dev" for a build from source.
 var version = "dev"
 
 func usage() {
@@ -64,6 +67,7 @@ func usage() {
   asuka pkg pack|publish [dir]              pack, or publish to the npm registry, a package
   asuka cache stats|clean                   the build cache's size and hits; empty it
   asuka version                             print the CLI's version
+  asuka upgrade [version]                   replace this asuka with its latest release (or version)
   asuka check [--json] [dir]                report an Asuka package's problems (file:line:col: error[code]: message)
   asuka explain [code]                      print a diagnostic code's page: why, how to fix, a wrong and a right program
   asuka guide                               print the language on one page, the workflow and every code, for coding agents
@@ -82,6 +86,7 @@ func main() {
 		usage()
 		os.Exit(2)
 	}
+	checker := startUpdateCheck(os.Args[1])
 	var err error
 	switch os.Args[1] {
 	case "new":
@@ -118,6 +123,13 @@ func main() {
 		err = cmdPkg(os.Args[2:])
 	case "version", "--version":
 		fmt.Println("asuka", version)
+		sayUpdate(checker)
+		return
+	case "upgrade":
+		err = cmdUpgrade(os.Args[2:])
+	case "_update-check":
+		// The day's check, started by another asuka (startUpdateCheck).
+		selfupdate.Check(updateCheckFile(), time.Now())
 		return
 	case "check":
 		err = cmdCheck(os.Args[2:])
@@ -128,7 +140,7 @@ func main() {
 	case "cache":
 		err = cmdCache(os.Args[2:])
 	case "prebuilt":
-		// A release's: what it carries prebuilt (scripts/npm).
+		// A release's: what it carries prebuilt (scripts/release).
 		err = cmdPrebuilt(os.Args[2:])
 	case "lsp":
 		err = cmdLSP(os.Args[2:])
@@ -140,6 +152,7 @@ func main() {
 		os.Exit(2)
 	}
 	ccache.Flush() // the build cache's counts; it's trimmed to its cap
+	sayUpdate(checker)
 	if errors.Is(err, errHelp) {
 		return
 	}
