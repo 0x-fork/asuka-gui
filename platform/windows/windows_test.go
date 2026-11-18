@@ -332,7 +332,7 @@ func buildExample(t *testing.T, w *windows, name, dir string) string {
 	}
 	m, diags, err := p.Compile("windows")
 	if err != nil || m == nil {
-		t.Fatalf("%s doesn't compile: %v\n%s", name, err, strings.Join(diags, "\n"))
+		t.Fatalf("%s doesn't compile: %v\n%s", name, err, diags)
 	}
 	c, err := appbuild.AppC(appbuild.StripTests(m))
 	if err != nil {
