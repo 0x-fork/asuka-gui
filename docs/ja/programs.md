@@ -749,12 +749,29 @@ async fn main() throws {
 
 RS256、PS256、ES256、EdDSA で署名された JWT は、発行元の公開鍵で検証します。公開鍵は PEM でも、発行元の JWK Set からでも読めます。どの方式で検証できるかは鍵の種類で決まるので、トークンの `alg` でもっと弱い方式を選ばせることはできません：
 
-```asuka
-let keys = try crypto.publicKeys((try await http.get(jwksURL)).text())
-let parts = token.split(".")
-let header = try json.decode<Header>((try encoding.base64Decode(parts[0])).string())
-if let key = keys[header.kid], let scheme = crypto.SignatureScheme.jws(header.alg) {
-  let ok = try crypto.verify(key, "{parts[0]}.{parts[1]}".bytes(), try encoding.base64Decode(parts[2]), scheme: scheme)
+```asuka check
+import std/crypto
+import std/encoding
+import std/http
+import std/json
+
+struct Header {
+  alg: string
+  kid: string = ""
+}
+
+/// JWT の token が発行元の鍵のどれかで署名されているか。
+async fn verified(token: string, jwksURL: string) throws -> bool {
+  let keys = try crypto.publicKeys((try await http.get(jwksURL)).text())
+  let parts = token.split(".")
+  if parts.count() != 3 {
+    return false
+  }
+  let header = try json.decode<Header>((try encoding.base64Decode(parts[0])).string())
+  if let key = keys[header.kid], let scheme = crypto.SignatureScheme.jws(header.alg) {
+    return try crypto.verify(key, "{parts[0]}.{parts[1]}".bytes(), try encoding.base64Decode(parts[2]), scheme: scheme)
+  }
+  return false
 }
 ```
 

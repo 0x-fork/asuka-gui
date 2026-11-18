@@ -749,12 +749,29 @@ async fn main() throws {
 
 用 RS256、PS256、ES256 或 EdDSA 签名的 JWT，用签发方的公钥验证，公钥可以来自 PEM 或它的 JWK Set。能用哪些签名方案验证由密钥的类型决定，所以令牌里的 `alg` 无法换成更弱的方案：
 
-```asuka
-let keys = try crypto.publicKeys((try await http.get(jwksURL)).text())
-let parts = token.split(".")
-let header = try json.decode<Header>((try encoding.base64Decode(parts[0])).string())
-if let key = keys[header.kid], let scheme = crypto.SignatureScheme.jws(header.alg) {
-  let ok = try crypto.verify(key, "{parts[0]}.{parts[1]}".bytes(), try encoding.base64Decode(parts[2]), scheme: scheme)
+```asuka check
+import std/crypto
+import std/encoding
+import std/http
+import std/json
+
+struct Header {
+  alg: string
+  kid: string = ""
+}
+
+/// token 这个 JWT 是否由签发方的某个密钥签名。
+async fn verified(token: string, jwksURL: string) throws -> bool {
+  let keys = try crypto.publicKeys((try await http.get(jwksURL)).text())
+  let parts = token.split(".")
+  if parts.count() != 3 {
+    return false
+  }
+  let header = try json.decode<Header>((try encoding.base64Decode(parts[0])).string())
+  if let key = keys[header.kid], let scheme = crypto.SignatureScheme.jws(header.alg) {
+    return try crypto.verify(key, "{parts[0]}.{parts[1]}".bytes(), try encoding.base64Decode(parts[2]), scheme: scheme)
+  }
+  return false
 }
 ```
 

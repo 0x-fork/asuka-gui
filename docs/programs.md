@@ -1032,12 +1032,29 @@ A JWT signed with RS256, PS256, ES256 or EdDSA is checked with the
 issuer's public key, from PEM or its JWK Set; the key's kind decides
 which schemes may check it, so a token's `alg` can't pick a weaker one:
 
-```asuka
-let keys = try crypto.publicKeys((try await http.get(jwksURL)).text())
-let parts = token.split(".")
-let header = try json.decode<Header>((try encoding.base64Decode(parts[0])).string())
-if let key = keys[header.kid], let scheme = crypto.SignatureScheme.jws(header.alg) {
-  let ok = try crypto.verify(key, "{parts[0]}.{parts[1]}".bytes(), try encoding.base64Decode(parts[2]), scheme: scheme)
+```asuka check
+import std/crypto
+import std/encoding
+import std/http
+import std/json
+
+struct Header {
+  alg: string
+  kid: string = ""
+}
+
+/// Whether token, a JWT, was signed with one of the issuer's keys.
+async fn verified(token: string, jwksURL: string) throws -> bool {
+  let keys = try crypto.publicKeys((try await http.get(jwksURL)).text())
+  let parts = token.split(".")
+  if parts.count() != 3 {
+    return false
+  }
+  let header = try json.decode<Header>((try encoding.base64Decode(parts[0])).string())
+  if let key = keys[header.kid], let scheme = crypto.SignatureScheme.jws(header.alg) {
+    return try crypto.verify(key, "{parts[0]}.{parts[1]}".bytes(), try encoding.base64Decode(parts[2]), scheme: scheme)
+  }
+  return false
 }
 ```
 
