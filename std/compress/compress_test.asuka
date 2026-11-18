@@ -146,3 +146,19 @@ test "files" {
   expect(try fs.read(plain) == data)
   try fs.removeAll(dir)
 }
+
+test "checksums" {
+  // The check values of the CRC catalogue (reveng's): of "123456789".
+  let digits = "123456789".bytes()
+  expect(crc32(digits) == 0xcbf43926)
+  expect(crc32c(digits) == 0xe3069283)
+  expect(crc32(bytes()) == 0 && crc32c(bytes()) == 0)
+  // In pieces, continued with previous: the same.
+  expect(crc32("6789".bytes(), previous: crc32("12345".bytes())) == 0xcbf43926)
+  expect(crc32c("6789".bytes(), previous: crc32c("12345".bytes())) == 0xe3069283)
+  // gzip's trailer holds the CRC-32 of what it decompresses to.
+  let data = sample()
+  let g = encode(data)
+  let n = g.count()
+  expect(crc32(data) == g[n - 8] | g[n - 7] << 8 | g[n - 6] << 16 | g[n - 5] << 24)
+}

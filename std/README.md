@@ -20,7 +20,12 @@ three kinds:
 - **Plain Asuka**, with functions the runtime implements declared as
   `native fn` (no body: the builtin `<name>.<fn>`, implemented in C in
   core/src; see lang/LOWERING.md, "The standard library's native fns"):
-  time, url, regex, encoding, crypto, fs, ...
+  time, url, regex, encoding, crypto, fs, ... A build links a table of
+  builtins only when its app calls one of them, so what's large and not
+  always needed goes in a table of its own, its functions `native(prefix)
+  fn` (the builtins `prefix.<fn>`, a table in core/src/std/std.h and
+  core/link/link.c under `AK_USES_<PREFIX>`): std/crypto's
+  `crypto_aead`, `crypto_password` and `crypto_pk`.
 - **A native package** (docs/native.md), for what only the platform can
   do: its `native interface`s (modules) and `native component`s (views),
   implemented by each platform in its own language. `sdk/network` is the

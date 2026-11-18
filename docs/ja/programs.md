@@ -698,6 +698,72 @@ HTTPS はリバースプロキシー（Caddy、nginx）に任せます。プロ�
 
 ハンドラーはただの関数なので、テストでは `Request` を渡してハンドラーやルーターを直接呼べます。ソケットは介しません：`let r = try await api.handle(http.Request(method: "GET", path: "/notes/1"))`。
 
+## 秘密、パスワード、署名：std/crypto
+
+std/crypto はどのプラットフォームでも同じ C のコードで動き、Web も同じです。あるプラットフォームで暗号化、ハッシュ、署名したものは、ほかのどのプラットフォームでも復号して検証できます。サービスで webhook の HMAC を確かめるときは `crypto.equal` で比べます。これはバイト列がどこで違っても同じ時間で比較します。パスワードの保存には `hashPassword`（argon2id。ほかのシステムも読める PHC 形式で出力）を使います。これは別のスレッドで動きます：
+
+```asuka check
+import std/crypto
+import std/encoding
+import std/http
+import std/os
+
+struct Login {
+  name: string
+  password: string
+}
+
+async fn main() throws {
+  let secret = (os.env("WEBHOOK_SECRET") ?? "").bytes()
+  var users: [string: string] = [:]  // 実際のサービスではデータベースに置く
+  let api = http.Router()
+    .post("/hooks/github", req => {
+      // GitHub はボディに署名する：X-Hub-Signature-256 は sha256=<HMAC の 16 進>。
+      let sent = (req.header("X-Hub-Signature-256") ?? "").trimPrefix("sha256=")
+      let mac = encoding.hexEncode(crypto.hmacSHA256(secret, req.body))
+      if !crypto.equal(mac.bytes(), sent.bytes()) {
+        return .text("bad signature", status: 401)
+      }
+      return .text("ok")
+    })
+    .post("/signup", req => {
+      let login = try req.json<Login>()
+      users[login.name] = try await crypto.hashPassword(login.password)
+      return .text("welcome", status: 201)
+    })
+    .post("/login", req => {
+      let login = try req.json<Login>()
+      let stored = users[login.name] ?? ""
+      if stored != "" && (try await crypto.verifyPassword(login.password, hash: stored)) {
+        return .text("hello, {login.name}")
+      }
+      return .text("wrong name or password", status: 401)
+    })
+  let server = try await http.serve(8080, api.handler())
+  for await _ in os.signals() {
+    break
+  }
+  await server.close(grace: 10s)
+}
+```
+
+RS256、PS256、ES256、EdDSA で署名された JWT は、発行元の公開鍵で検証します。公開鍵は PEM でも、発行元の JWK Set からでも読めます。どの方式で検証できるかは鍵の種類で決まるので、トークンの `alg` でもっと弱い方式を選ばせることはできません：
+
+```asuka
+let keys = try crypto.publicKeys((try await http.get(jwksURL)).text())
+let parts = token.split(".")
+let header = try json.decode<Header>((try encoding.base64Decode(parts[0])).string())
+if let key = keys[header.kid], let scheme = crypto.SignatureScheme.jws(header.alg) {
+  let ok = try crypto.verify(key, "{parts[0]}.{parts[1]}".bytes(), try encoding.base64Decode(parts[2]), scheme: scheme)
+}
+```
+
+- `crypto.seal(key, plaintext, additionalData:)` は XChaCha20-Poly1305 とランダムな nonce で暗号化と認証を行い、nonce を先頭に置きます。`open` は平文を返し、何かが変えられていれば `CryptoError.notAuthentic` を投げます。ほかのシステムと読み書きするなら `cipher: .aes256GCM`（または `.aes128GCM`、`.chaCha20Poly1305`）を、プロトコルが nonce を決める場合は `sealWithNonce` と `openWithNonce` を使います。
+- `hkdf` は秘密から、`pbkdf2` と `argon2id` はパスワードから鍵を導出します。`hmac`、`hmacSHA256`、`hmacSHA512` は共有鍵で署名します。
+- `hashPasswordBcrypt` と `verifyPassword` は bcrypt の `$2b$`、`$2a$`、`$2y$` も読めるので、ほかのシステムが作ったデータベースにも使えます。
+- `newPrivateKey()` は ECDSA P-256 の鍵を作ります（`kind: .ed25519`、P-384、P-521 も可）。`sign` と `verify` は PEM（`publicKey`、`privateKey`）、DER、JWK から読んだ RSA（PKCS#1 v1.5 と PSS）、ECDSA、Ed25519 の鍵を受け取り、`pem()` と `jwk()` で書き出せます。
+- `md5` はプロトコルが求めるチェックサム用で、セキュリティには使いません。CRC は std/compress の `crc32` と `crc32c` です。
+
 ## 実行
 
 `asuka run` はプログラムの `main` をすぐに実行するので、ビルドを待つ必要がありません。`--` の後ろの引数はプログラムに渡され、プログラムの終了コードでそのまま終了します。

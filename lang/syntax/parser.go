@@ -922,6 +922,19 @@ func (p *parser) parseDecl() Decl {
 			f := p.parseFunc(start)
 			f.Native = native
 			d = f
+		case LPAREN:
+			// native(prefix) fn: the builtin prefix.f, a table of its own.
+			p.next()
+			prefix := p.ident()
+			p.expect(RPAREN)
+			if p.tok != FN && p.tok != ASYNC {
+				p.errorExpected("'fn' after 'native(" + prefix.Name + ")'")
+				p.sync()
+				return &BadDecl{Span: p.span(start)}
+			}
+			f := p.parseFunc(start)
+			f.Native, f.NativePrefix = native, prefix
+			d = f
 		default:
 			p.errorExpected("'interface', 'component' or 'fn' after 'native'")
 			p.sync()

@@ -1423,7 +1423,12 @@ link, and the linker leaves out its C and what only it reaches: a
 program that prints carries no TOML parser, no zip, no HTTP server. A
 player (`asuka dev`, which loads any bytecode) lists every table, and
 so does a build whose module isn't known (`Builtins` nil). Each table's builtins share its
-name's prefix (`TestLinkRegistersEveryTable`).
+name's prefix (`TestLinkRegistersEveryTable`). What one package has
+that costs more than the rest is a table of its own, its `native fn`s
+`native(prefix) fn` (lang/LOWERING.md): std/crypto's AES-GCM and
+ChaCha20-Poly1305 (`crypto_aead`), Argon2 and bcrypt
+(`crypto_password`), RSA, ECDSA and keys (`crypto_pk`), so an app that
+only hashes links none of them.
 
 **A vendor's prebuilt libraries** are `[c.prebuilt]`'s: a static
 library per target (`ios-arm64`, `ios-simulator-x64`, `macos-arm64`,

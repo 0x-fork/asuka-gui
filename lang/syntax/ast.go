@@ -389,8 +389,12 @@ type FuncDecl struct {
 	Body       *Block
 	Value      Expr // fn f() -> T = expr
 	// Native: native fn f(…) -> T, with no body: the runtime implements
-	// it (the standard library's).
-	Native Pos
+	// it (the standard library's). NativePrefix: native(prefix) fn f,
+	// the builtin prefix.f rather than the package's (<package>.f), so
+	// its C is a table of its own, which only an app that calls one of
+	// its builtins links (lang/LOWERING.md).
+	Native       Pos
+	NativePrefix *Ident
 	// Extern: extern fn f(…) -> T, with no body: a C function of that
 	// name (RFC 0008, docs/c.md).
 	Extern Pos

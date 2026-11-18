@@ -143,6 +143,9 @@ func Walk(v Visitor, n Node) {
 			walk(m)
 		}
 	case *FuncDecl:
+		if n.NativePrefix != nil {
+			walk(n.NativePrefix)
+		}
 		walk(n.Name)
 		walkTypeParams(v, n.TypeParams)
 		walk(n.Params)

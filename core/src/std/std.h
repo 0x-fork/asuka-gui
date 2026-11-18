@@ -19,6 +19,9 @@ extern const ak_lib_entry ak_std_url[];
 extern const ak_lib_entry ak_std_regex[];
 extern const ak_lib_entry ak_std_encoding[];
 extern const ak_lib_entry ak_std_crypto[];
+extern const ak_lib_entry ak_std_crypto_aead[];      // aead.c
+extern const ak_lib_entry ak_std_crypto_password[];  // password.c
+extern const ak_lib_entry ak_std_crypto_pk[];        // pubkey.c
 extern const ak_lib_entry ak_std_html[];
 extern const ak_lib_entry ak_std_random[];
 extern const ak_lib_entry ak_std_fs[];
@@ -33,6 +36,7 @@ extern const ak_lib_entry ak_std_signals[];
 extern const ak_lib_entry ak_std_toml[];
 extern const ak_lib_entry ak_std_csv[];
 extern const ak_lib_entry ak_std_compress[];
+extern const ak_lib_entry ak_std_compress_checksum[];  // checksum.c
 extern const ak_lib_entry ak_std_archive[];
 extern const ak_lib_entry ak_std_http[];  // httpserver.c: std/http's server
 extern const ak_lib_entry ak_std_log[];
@@ -81,6 +85,31 @@ typedef struct {
 void ak_sha512_init(ak_sha512_ctx *c);
 void ak_sha512_update(ak_sha512_ctx *c, const void *p, size_t n);
 void ak_sha512_final(ak_sha512_ctx *c, uint8_t out[64]);
+
+typedef struct {
+	uint32_t h[5];
+	uint8_t buf[64];
+	size_t n;
+	uint64_t len;
+} ak_sha1_ctx;
+void ak_sha1_init(ak_sha1_ctx *c);
+void ak_sha1_update(ak_sha1_ctx *c, const void *p, size_t n);
+void ak_sha1_final(ak_sha1_ctx *c, uint8_t out[20]);
+// SHA-384 is SHA-512's context from its own start: final's first 48 bytes.
+void ak_sha384_init(ak_sha512_ctx *c);
+void ak_sha384(const void *p, size_t n, uint8_t out[48]);
+void ak_md5(const void *p, size_t n, uint8_t out[16]);
+
+// Hashes by kind (std/crypto's Hash, its code), HMAC over them, HKDF's
+// expand and PBKDF2 (crypto.c); ak_hash_size is 0 for no kind.
+enum { AK_HASH_SHA1 = 1, AK_HASH_SHA256, AK_HASH_SHA384, AK_HASH_SHA512 };
+size_t ak_hash_size(int kind);
+void ak_hash(int kind, const void *p, size_t n, uint8_t *out);
+void ak_hmac(int kind, const uint8_t *key, size_t kn, const uint8_t *m, size_t mn, uint8_t *out);
+void ak_hkdf_expand(int kind, const uint8_t *prk, size_t pn, const uint8_t *info, size_t in, uint8_t *out, size_t n);
+void ak_pbkdf2(int kind, const uint8_t *pw, size_t pn, const uint8_t *salt, size_t sn, uint64_t iterations, uint8_t *out, size_t n);
+// ak_wipe zeroes a secret where the compiler can't leave it out.
+void ak_wipe(void *p, size_t n);
 
 // Ed25519 (RFC 8032, ed25519.c): a key pair is a 32-byte seed (the
 // private key; Go's and the CLI's 64-byte private keys are the seed and

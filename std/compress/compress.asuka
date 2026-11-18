@@ -14,6 +14,8 @@
 // What a decoding makes is bounded: past limit bytes (1 GB unless the
 // call says), it throws tooLarge, so data made to expand without end (a
 // "zip bomb") can't fill the memory or the disk.
+//
+// It has the checksums these formats use, too: crc32 (and crc32c).
 
 import std/fs
 
@@ -112,6 +114,20 @@ fn failure(limit: int) -> Error {
     _ => fs.FsError.failed(path: p, reason: failureReason())
   }
 }
+
+/// The CRC-32 of data (IEEE 802.3's, as zlib, gzip, zip and PNG have
+/// it), 0 to 2^32 - 1: a checksum against accidents (a file cut short, a
+/// bit flipped), not against someone changing it on purpose, for which
+/// crypto.sha256 or an HMAC is. previous continues one: crc32(b,
+/// previous: crc32(a)) is the CRC of a then b, for data that comes in
+/// pieces.
+///
+///   let crc = compress.crc32(data)   // 0xcbf43926 for "123456789"
+pub native(compress_checksum) fn crc32(data: bytes, previous: int = 0) -> int
+
+/// The CRC-32C of data (Castagnoli's polynomial: iSCSI's, ext4's,
+/// Google Cloud Storage's), as crc32 is otherwise.
+pub native(compress_checksum) fn crc32c(data: bytes, previous: int = 0) -> int
 
 native fn encodeBytes(data: bytes, format: int, level: int) -> bytes
 native fn decodeBytes(data: bytes, format: int, limit: int) -> bytes?

@@ -698,6 +698,72 @@ HTTPS 交给反向代理（Caddy、nginx）：由它终止 TLS，再通过 HTTP 
 
 处理函数就是一个函数，所以测试可以直接用一个 `Request` 调用它或者路由，中间不经过 socket：`let r = try await api.handle(http.Request(method: "GET", path: "/notes/1"))`。
 
+## 密钥、密码与签名：std/crypto
+
+std/crypto 在所有平台上都是同一份 C 代码，Web 也一样：一个平台加密、哈希或签名的数据，其他任何平台都能解开和验证。服务验证 webhook 的 HMAC 时用 `crypto.equal` 比较，它的耗时与字节在哪里不同无关；保存密码用 `hashPassword`（argon2id，输出其他系统也能读的 PHC 格式），它会在另一个线程上运行：
+
+```asuka check
+import std/crypto
+import std/encoding
+import std/http
+import std/os
+
+struct Login {
+  name: string
+  password: string
+}
+
+async fn main() throws {
+  let secret = (os.env("WEBHOOK_SECRET") ?? "").bytes()
+  var users: [string: string] = [:]  // 真实的服务里放在数据库中
+  let api = http.Router()
+    .post("/hooks/github", req => {
+      // GitHub 会对请求体签名：X-Hub-Signature-256 是 sha256=<十六进制的 HMAC>。
+      let sent = (req.header("X-Hub-Signature-256") ?? "").trimPrefix("sha256=")
+      let mac = encoding.hexEncode(crypto.hmacSHA256(secret, req.body))
+      if !crypto.equal(mac.bytes(), sent.bytes()) {
+        return .text("bad signature", status: 401)
+      }
+      return .text("ok")
+    })
+    .post("/signup", req => {
+      let login = try req.json<Login>()
+      users[login.name] = try await crypto.hashPassword(login.password)
+      return .text("welcome", status: 201)
+    })
+    .post("/login", req => {
+      let login = try req.json<Login>()
+      let stored = users[login.name] ?? ""
+      if stored != "" && (try await crypto.verifyPassword(login.password, hash: stored)) {
+        return .text("hello, {login.name}")
+      }
+      return .text("wrong name or password", status: 401)
+    })
+  let server = try await http.serve(8080, api.handler())
+  for await _ in os.signals() {
+    break
+  }
+  await server.close(grace: 10s)
+}
+```
+
+用 RS256、PS256、ES256 或 EdDSA 签名的 JWT，用签发方的公钥验证，公钥可以来自 PEM 或它的 JWK Set。能用哪些签名方案验证由密钥的类型决定，所以令牌里的 `alg` 无法换成更弱的方案：
+
+```asuka
+let keys = try crypto.publicKeys((try await http.get(jwksURL)).text())
+let parts = token.split(".")
+let header = try json.decode<Header>((try encoding.base64Decode(parts[0])).string())
+if let key = keys[header.kid], let scheme = crypto.SignatureScheme.jws(header.alg) {
+  let ok = try crypto.verify(key, "{parts[0]}.{parts[1]}".bytes(), try encoding.base64Decode(parts[2]), scheme: scheme)
+}
+```
+
+- `crypto.seal(key, plaintext, additionalData:)` 用 XChaCha20-Poly1305 和一个随机 nonce 加密并认证，nonce 放在结果最前面；`open` 还原明文，数据有任何改动时抛出 `CryptoError.notAuthentic`。需要和其他系统互通时用 `cipher: .aes256GCM`（或 `.aes128GCM`、`.chaCha20Poly1305`）；协议自己规定 nonce 时用 `sealWithNonce` 和 `openWithNonce`。
+- `hkdf` 从密钥材料派生密钥，`pbkdf2` 和 `argon2id` 从密码派生；`hmac`、`hmacSHA256` 和 `hmacSHA512` 用共享密钥签名。
+- `hashPasswordBcrypt` 和 `verifyPassword` 也能读 bcrypt 的 `$2b$`、`$2a$` 和 `$2y$`，适合由其他系统填好的数据库。
+- `newPrivateKey()` 生成 ECDSA P-256 密钥（`kind: .ed25519`、P-384、P-521 也可以）；`sign` 和 `verify` 接受从 PEM（`publicKey`、`privateKey`）、DER 或 JWK 读入的 RSA（PKCS#1 v1.5 和 PSS）、ECDSA 和 Ed25519 密钥，并能用 `pem()` 和 `jwk()` 再导出。
+- `md5` 只用于协议要求的校验和，不用于安全；CRC 在 std/compress 里：`crc32` 和 `crc32c`。
+
 ## 运行
 
 `asuka run` 直接运行程序的 `main`，不需要等待构建：`--` 之后的参数都交给程序，退出时带上程序的退出码。
