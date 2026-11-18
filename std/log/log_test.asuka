@@ -1,0 +1,123 @@
+import std/os
+
+let esc = "\u{1b}"
+
+fn some() {
+  info("started", ["port": "8080"])
+  debug("not shown")
+  warn("slow", ["path": "/a b", "empty": "", "q": "say \"hi\"", "eq": "a=b"])
+  error("failed")
+}
+
+test "text on stderr: the time, the level, the message, its fields" {
+  let o = os.fake()
+  expect(await o.run(some) == 0)
+  let t = "2026-01-01 00:00:00.000"
+  expect(o.stderr() == """
+    {t} INFO  started                                  port=8080
+    {t} WARN  slow                                     path="/a b" empty="" q="say \\\"hi\\\"" eq="a=b"
+    {t} ERROR failed
+
+    """)
+  expect(o.stdout() == "")
+}
+
+test "a test's clock stamps the lines" {
+  let o = os.fake()
+  expect(await o.run(() => {
+    info("one")
+  }) == 0)
+  expect(o.stderr() == "2026-01-01 00:00:00.000 INFO  one\n")
+}
+
+test "setLevel: the least level written" {
+  setLevel(.debug)
+  expect(enabled(.debug))
+  let o = os.fake()
+  expect(await o.run(some) == 0)
+  expect(o.stderr().contains("DEBUG not shown"))
+  setLevel(.error)
+  expect(!enabled(.warn))
+  expect(enabled(.error))
+}
+
+test "each test starts at info" {
+  expect(!enabled(.debug))
+  expect(enabled(.info))
+}
+
+test "ASUKA_LOG: the level, unless the program sets one" {
+  let _ = os.fake(env: ["ASUKA_LOG": "debug"])
+  expect(enabled(.debug))
+  let _ = os.fake(env: ["ASUKA_LOG": "WARN"])
+  expect(!enabled(.info))
+  expect(enabled(.warn))
+  let _ = os.fake(env: ["ASUKA_LOG": "off"])
+  expect(!enabled(.error))
+  let _ = os.fake(env: ["ASUKA_LOG": "loud"])
+  expect(enabled(.info))
+  expect(!enabled(.debug))
+  let _ = os.fake(env: ["ASUKA_LOG": "error"])
+  setLevel(.debug)
+  expect(enabled(.debug))
+}
+
+test "a Logger's fields, before each line's own" {
+  let o = os.fake()
+  let req = with(["request": "7", "user": "ann"])
+  let db = req.with(["component": "db"])
+  expect(db.fields == ["request": "7", "user": "ann", "component": "db"])
+  expect(await o.run(() => {
+    setFormat(.text, time: false)
+    req.info("started")
+    db.warn("slow", ["user": "bob", "ms": "912"])
+    req.log(.error, "failed", ["error": "disk full"])
+    log(.info, "plain")
+  }) == 0)
+  // A line's own user replaces the Logger's, where the line's fields are.
+  expect(o.stderr() == """
+    INFO  started                                  request=7 user=ann
+    WARN  slow                                     request=7 component=db user=bob ms=912
+    ERROR failed                                   request=7 user=ann error="disk full"
+    INFO  plain
+
+    """)
+}
+
+test "JSON lines" {
+  let o = os.fake()
+  expect(await o.run(() => {
+    setFormat(.json)
+    with(["request": "7"]).info("saved \"a\"", ["path": "/tmp/a\nb", "tab": "\t"])
+    setFormat(.json, time: false)
+    error("failed")
+  }) == 0)
+  expect(o.stderr() == r"""
+    {"time":"2026-01-01T00:00:00.000Z","level":"INFO","msg":"saved \"a\"","request":"7","path":"/tmp/a\nb","tab":"\t"}
+    {"level":"ERROR","msg":"failed"}
+
+    """)
+}
+
+test "colors when std/term says stderr shows them" {
+  let o = os.fake(env: ["FORCE_COLOR": "1"])
+  expect(await o.run(() => {
+    setFormat(.text, time: false)
+    info("ok", ["k": "v"])
+  }) == 0)
+  expect(o.stderr().replace(esc, "^") == "^[32mINFO ^[39m ok                                       ^[2mk=^[22mv\n")
+}
+
+test "a message's width: characters, not bytes" {
+  let o = os.fake()
+  expect(await o.run(() => {
+    setFormat(.text, time: false)
+    info("héllo wörld", ["k": "v"])
+    info("a message longer than the forty characters it's padded to", ["k": "v"])
+  }) == 0)
+  expect(o.stderr() == """
+    INFO  héllo wörld                              k=v
+    INFO  a message longer than the forty characters it's padded to k=v
+
+    """)
+}

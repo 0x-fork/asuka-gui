@@ -1,0 +1,58 @@
+// std/log: lines at a level with their fields, as text and as JSON, on
+// the VM and compiled to C (core/src/std/log.c); in a test, on the
+// process's stderr, stamped by the test's clock.
+
+import std/log
+import std/os
+
+fn serve() {
+  log.info("listening", ["port": "8080"])
+  log.debug("not written")
+  let req = log.with(["request": "7"])
+  req.warn("slow", ["path": "/notes a", "ms": "912"])
+  req.with(["user": "ann"]).error("failed", ["error": "disk \"full\""])
+}
+
+test "text" {
+  let o = os.fake()
+  print(await o.run(serve))
+  print(o.stderr())
+}
+
+test "the least level: the program's, else ASUKA_LOG's" {
+  let o = os.fake(env: ["ASUKA_LOG": "debug"])
+  print(log.enabled(.debug))
+  expect(await o.run(() => {
+    log.setFormat(.text, time: false)
+    log.debug("now written")
+    log.setLevel(.error)
+    log.warn("not written")
+    log.log(.error, "written")
+  }) == 0)
+  print(o.stderr())
+}
+
+test "json" {
+  let o = os.fake()
+  expect(await o.run(() => {
+    log.setFormat(.json)
+    log.with(["a": "1"]).info("saved", ["path": "/tmp/x\ny"])
+  }) == 0)
+  print(o.stderr())
+}
+
+// Output:
+// 0
+// 2026-01-01 00:00:00.000 INFO  listening                                port=8080
+// 2026-01-01 00:00:00.000 WARN  slow                                     request=7 path="/notes a" ms=912
+// 2026-01-01 00:00:00.000 ERROR failed                                   request=7 user=ann error="disk \"full\""
+//
+// ok text
+// true
+// DEBUG now written
+// ERROR written
+//
+// ok the least level: the program's, else ASUKA_LOG's
+// {"time":"2026-01-01T00:00:00.000Z","level":"INFO","msg":"saved","a":"1","path":"/tmp/x\ny"}
+//
+// ok json

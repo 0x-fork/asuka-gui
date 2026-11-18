@@ -834,16 +834,15 @@ static ak_val cleaned(char *p) {
 	return (ak_val){.p = s};
 }
 
-static ak_val home_fn(ak_val *args, uint32_t n) {
-	AK_UNUSED(args), AK_UNUSED(n);
+ak_str *ak_fs_home(void) {
 #if defined(AK_FS_SANDBOX)
-	return cleaned(ak_fs_app_dir());
+	return cleaned(ak_fs_app_dir()).p;
 #elif defined(_WIN32)
 	// The environment's, as Go's UserHomeDir: USERPROFILE, which every
 	// session sets, else HOMEDRIVE and HOMEPATH (the core links nothing
 	// but kernel32 and ws2_32, so not the shell's SHGetKnownFolderPath).
 	char *v = ak_os_getenv("USERPROFILE", true);
-	if (v && *v) return cleaned(v);
+	if (v && *v) return cleaned(v).p;
 	ak_free(v);
 	char *drive = ak_os_getenv("HOMEDRIVE", true), *dir = ak_os_getenv("HOMEPATH", true);
 	if (drive && dir && *drive && *dir) {
@@ -853,20 +852,25 @@ static ak_val home_fn(ak_val *args, uint32_t n) {
 		memcpy(both + a, dir, b + 1);
 		ak_free(drive);
 		ak_free(dir);
-		return cleaned(both);
+		return cleaned(both).p;
 	}
 	ak_free(drive);
 	ak_free(dir);
-	return cleaned(dup_path("C:\\"));
+	return cleaned(dup_path("C:\\")).p;
 #else
 	char *v = ak_os_getenv("HOME", true);
-	if (v && *v) return cleaned(v);
+	if (v && *v) return cleaned(v).p;
 	ak_free(v);
 	struct passwd pw, *found = NULL;
 	char buf[4096];
-	if (getpwuid_r(getuid(), &pw, buf, sizeof buf, &found) == 0 && found && found->pw_dir && *found->pw_dir) return cleaned(dup_path(found->pw_dir));
-	return cleaned(dup_path("/"));
+	if (getpwuid_r(getuid(), &pw, buf, sizeof buf, &found) == 0 && found && found->pw_dir && *found->pw_dir) return cleaned(dup_path(found->pw_dir)).p;
+	return cleaned(dup_path("/")).p;
 #endif
+}
+
+static ak_val home_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(args), AK_UNUSED(n);
+	return (ak_val){.p = ak_fs_home()};
 }
 
 static ak_val temp_fn(ak_val *args, uint32_t n) {

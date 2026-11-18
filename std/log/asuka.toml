@@ -1,0 +1,3 @@
+name = "std/log"
+version = "0.1.0"
+description = "Leveled, structured logging: lines with fields, as text or JSON, where the platform shows them"

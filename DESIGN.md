@@ -1579,6 +1579,18 @@ packages' Swift is what URLSession is reached through). asuka.toml's
 puts them in the app (Contents/Helpers, bin/, beside the .exe), built
 with the app's data folder (`Module.Data`) so they share its data.
 
+**std/log** is the core's C too (core/src/std/log.c): a level that's
+off costs an atomic load (the program's `setLevel`, else `ASUKA_LOG`'s,
+read once); a line on is formatted there, as aligned text (colored as
+std/term decides for stderr) or JSON lines, and written where the
+platform's developers look: stderr for a program and a test (through
+std/os's writes, so `FakeOS.run` keeps it), os_log on iOS and macOS,
+`__android_log_write` on Android, the page's console through the web
+core's `log_write` import, `OutputDebugString` on Windows. A desktop
+process whose stderr goes somewhere (a terminal, a pipe: asuka dev's
+player) writes there instead, Linux's always; a phone's dev player
+writes to stderr too, which it sends to the CLI.
+
 **std/http's server** (`http.serve`) is the core's C, the same on every
 system that can listen (core/src/std/httpserver.c; the web's core says
 it can't): a thread per server runs one poll() loop (WSAPoll on

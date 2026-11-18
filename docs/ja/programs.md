@@ -69,6 +69,10 @@ async fn main() throws {
 | `os.writeTo(.stdout, text)`、`writeBytesTo` | テキストやバイト列を、行末を付けずにそのまま `.stdout` か `.stderr` に書く |
 | `os.terminal(.stdout)` | ストリームがパイプやファイルではなく端末（人が見ている）かどうか。色やプロンプトは端末のときだけ出す |
 | `os.signals(kinds)` | 指定した種類のシグナルを届いた順に返す（`Stream<os.Signal>`：`.interrupt`、`.term`、`.hangup`）。読まれている種類ではプログラムは終了しない |
+| `os.hostname()`、`os.pid()`、`os.ppid()` | マシンの名前、プロセスの ID、親プロセスの ID |
+| `os.user()` | プロセスを実行しているユーザー。`name`、`home`、`uid`、`gid` を持つ `User`（Windows では `uid` と `gid` は `none`） |
+| `os.platform()`、`os.arch()` | 動いているシステムと CPU。`Platform`（`.macOS`、`.windows`、`.linux` など）と `os.Arch`（`.arm64`、`.amd64` など） |
+| `os.executable()` | プログラム自身の実行ファイル。リンクを解決した絶対パスです。一緒に配布したファイルは `fs.dir(os.executable() ?? ".")` にあります |
 
 ### シグナル
 
@@ -293,6 +297,64 @@ Project name: [demo] notes
 - **サイズ。** `term.width()` と `term.height()` は端末の列数と行数です（`COLUMNS` と `LINES` が数値ならそちらが優先）。どのストリームも端末でなければ `none` になります：`term.width() ?? 80`。
 
 テストでは `os.fake(stdin:)` で質問に答え、質問そのものは `o.stderr()` で確認できます。テストのストリームは端末ではないのでスタイルは付きませんが、`os.fake(env: ["FORCE_COLOR": "1"])` や `term.setColors(.always)` で指定すれば付きます。見るのは `os.fake` の `env:` だけなので、テストを実行する環境の変数がテストの出力を変えることはありません。スマートフォンと Web には端末がありません。スタイルは付かず、`prompt` は `none` を返し、`width` も `none` です。
+
+## ログ：std/log
+
+`std/log` は、プログラムがしていることをその場で書き残します。各行にはレベル（`debug`、`info`、`warn`、`error`）があり、メッセージと、それが何についてのことかを示すフィールドからなります。次のプログラムはファイルをバックアップします。`-v` を付けるとファイルごとに表示し、`--json` を付けると機械が読むための JSON の行を書きます。
+
+```asuka check
+import std/flag
+import std/fs
+import std/log
+import std/os
+
+/// ファイルをディレクトリにコピーします。
+struct Options {
+  /// -v ファイルごとに、していることを表示します。
+  verbose: bool = false
+  /// 機械が読むための JSON の行を書きます。
+  json: bool = false
+  /// コピー先。
+  to: string = "backup"
+  /// コピーするファイル。
+  files: [string]
+}
+
+async fn main() throws {
+  let o = flag.parse<Options>(os.args())
+  if o.verbose {
+    log.setLevel(.debug)
+  }
+  if o.json {
+    log.setFormat(.json)
+  }
+  let run = log.with(["to": o.to])
+  try await spawn { try fs.mkdirAll(o.to) }
+  for file in o.files {
+    run.debug("copying", ["file": file])
+    let target = fs.join([o.to, fs.base(file)])
+    try await spawn { try fs.copy(from: file, to: target) } catch e {
+      run.error("copy failed", ["file": file, "error": "{e}"])
+      os.exit(1)
+    }
+  }
+  run.info("copied", ["files": "{o.files.count()}"])
+}
+```
+
+```text
+$ backup -v notes.md todo.md
+2026-11-19 10:04:05.120 DEBUG copying                                  to=backup file=notes.md
+2026-11-19 10:04:05.123 DEBUG copying                                  to=backup file=todo.md
+2026-11-19 10:04:05.125 INFO  copied                                   to=backup files=2
+```
+
+- **フィールド。** 1 行のフィールドは `[string: string]` で、`["port": "{port}"]` のように書けばどんな値もテキストとして入れられます。空白、引用符、`=` を含む値は引用符で囲まれます（`path="my notes.md"`）。`log.with(fields)` は、書くすべての行にそれらのフィールドが付く `Logger` を返し、その `with` でさらに追加できます。行自身のフィールドが logger のフィールドと同じ名前なら、行のほうが優先されます。
+- **レベル。** 最低レベルより下の行は書かれません。最低レベルは info ですが、`ASUKA_LOG` で変えられます（`debug`、`info`、`warn`、`error`、`off`。Rust の `RUST_LOG` と同じ）。プログラムが `log.setLevel(.debug)` で指定することもでき、その場合はプログラムの指定が優先されます。上のプログラムが `-v` のときだけ設定しているのはそのためです。書かれない行のコストは判定 1 回だけですが、フィールドはほかの関数呼び出しの引数と同じく先に計算されます。作るのに手間がかかるフィールドは `if log.enabled(.debug) { … }` で囲みます。
+- **形式。** 端末では、時刻（ローカル時刻）が薄く、レベルが色付きで表示されます。色を付けるかどうかは `std/term` が stderr について判断したとおりです（`NO_COLOR`、`FORCE_COLOR`、`term.setColors`）。`log.setFormat(.json)` にすると、Go の `log/slog` と同じく 1 行に 1 つの JSON オブジェクトを書きます：`{"time":"2026-11-19T10:04:05.125+08:00","level":"INFO","msg":"copied","to":"backup","files":"2"}`。`time: false` にすると時刻を書きません。journald やコンテナのランタイムがすでにタイムスタンプを付けるサービス向けです。
+- **書き込み先。** プログラムの行は stderr に書かれるので、stdout はプログラムの出力のままです（`backup | tee list`）。アプリの行は、各プラットフォームの開発者がふだん見る場所に書かれます。iOS と macOS では統合ログ（Xcode のコンソール、コンソール App）、Android では logcat、Web ではブラウザのコンソール（レベルに応じて `console.debug` から `console.error`）、Windows ではデバッガの出力です。Linux では stderr に書かれ、デスクトップのアプリを端末から起動したときも stderr です。`asuka dev` は自分の端末にもそれらを表示します。
+
+テストでは、これらの行は `o.stderr()` で確認でき、時刻はテストの時計のもの（`2026-01-01 00:00:00.000` から）です。テストの中で `ASUKA_LOG` を設定できるのは `os.fake(env:)` だけです。
 
 ## ファイルとディレクトリ：std/fs
 
@@ -687,4 +749,5 @@ test "reads git's branch" {
 | `std/command` | ○ | ○ | ○ | `unsupported` |
 | `std/flag` | ○ | ○ | ○ | ○（どんなリストでも解析できる） |
 | `std/term` | ○ | ○ | ○ | 端末がない（スタイルなし、`prompt` は `none`） |
+| `std/log` | stderr（アプリは統合ログ） | stderr（アプリはデバッガの出力） | stderr | 統合ログ、logcat、ブラウザのコンソール |
 | `http.serve` | ○ | ○ | ○ | スマートフォンのアプリは動いているあいだ ○、Web は `unsupported` |

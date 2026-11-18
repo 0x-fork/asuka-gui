@@ -93,6 +93,10 @@ The program runs as follows:
 | `os.writeTo(.stdout, text)`, `writeBytesTo` | text or bytes as they are, without a line ending, to `.stdout` or `.stderr` |
 | `os.terminal(.stdout)` | whether a stream is a terminal (a person), not a pipe or a file: colors and prompts only for one |
 | `os.signals(kinds)` | the signals of kinds as they come (a `Stream<os.Signal>`: `.interrupt`, `.term`, `.hangup`), which then don't end the program |
+| `os.hostname()`, `os.pid()`, `os.ppid()` | the machine's name, the process's id and its parent's |
+| `os.user()` | who the process runs as: a `User` with `name`, `home`, `uid` and `gid` (`none` on Windows) |
+| `os.platform()`, `os.arch()` | the system and the CPU it runs on: a `Platform` (`.macOS`, `.windows`, `.linux`...) and an `os.Arch` (`.arm64`, `.amd64`...) |
+| `os.executable()` | the program's own file, an absolute path with its links resolved: what it ships beside itself is in `fs.dir(os.executable() ?? ".")` |
 
 ### Signals
 
@@ -408,6 +412,91 @@ the test says otherwise with `os.fake(env: ["FORCE_COLOR": "1"])` or
 environment the tests run in doesn't change what they print. On a phone
 and the web there's no terminal: no styles, `prompt` gives `none` and
 `width` is `none`.
+
+## Logging: std/log
+
+`std/log` writes what a program does as it does it: lines at a level
+(`debug`, `info`, `warn`, `error`), each a message and fields that say
+what it was about. This one backs files up: `-v` shows each file, and
+`--json` writes lines for a machine to read.
+
+```asuka check
+import std/flag
+import std/fs
+import std/log
+import std/os
+
+/// Copies files into a directory.
+struct Options {
+  /// -v Says what it does, file by file.
+  verbose: bool = false
+  /// Writes JSON lines, for a machine to read.
+  json: bool = false
+  /// Where to copy them.
+  to: string = "backup"
+  /// The files.
+  files: [string]
+}
+
+async fn main() throws {
+  let o = flag.parse<Options>(os.args())
+  if o.verbose {
+    log.setLevel(.debug)
+  }
+  if o.json {
+    log.setFormat(.json)
+  }
+  let run = log.with(["to": o.to])
+  try await spawn { try fs.mkdirAll(o.to) }
+  for file in o.files {
+    run.debug("copying", ["file": file])
+    let target = fs.join([o.to, fs.base(file)])
+    try await spawn { try fs.copy(from: file, to: target) } catch e {
+      run.error("copy failed", ["file": file, "error": "{e}"])
+      os.exit(1)
+    }
+  }
+  run.info("copied", ["files": "{o.files.count()}"])
+}
+```
+
+```text
+$ backup -v notes.md todo.md
+2026-11-19 10:04:05.120 DEBUG copying                                  to=backup file=notes.md
+2026-11-19 10:04:05.123 DEBUG copying                                  to=backup file=todo.md
+2026-11-19 10:04:05.125 INFO  copied                                   to=backup files=2
+```
+
+- **Fields.** A line's fields are a `[string: string]`, and
+  `["port": "{port}"]` puts any value in one as its text. A value with
+  spaces, quotes or `=` is quoted (`path="my notes.md"`). `log.with(fields)`
+  is a `Logger` whose lines all carry them, and its `with` adds more; a
+  line's own field of the same name replaces the logger's.
+- **Levels.** Lines below the least level aren't written. It's info,
+  unless `ASUKA_LOG` says otherwise (`debug`, `info`, `warn`, `error` or
+  `off`, as Rust's `RUST_LOG`), or the program does with
+  `log.setLevel(.debug)`, which counts over it: that's why the program
+  above sets it only when `-v` is given. A line that isn't written costs a
+  check, but its fields are still made, as any call's arguments are:
+  put `if log.enabled(.debug) { … }` around those that take work.
+- **Formats.** At a terminal, the time (local) is dimmed and the level
+  colored, as `std/term` decides for stderr (`NO_COLOR`, `FORCE_COLOR`,
+  `term.setColors`). `log.setFormat(.json)` writes a JSON object a line,
+  as Go's `log/slog` does:
+  `{"time":"2026-11-19T10:04:05.125+08:00","level":"INFO","msg":"copied","to":"backup","files":"2"}`;
+  `time: false` leaves the time out, for a service whose logs journald
+  or a container's runtime stamps already.
+- **Where they go.** A program's lines go to stderr, so stdout stays its
+  output (`backup | tee list`). An app's go where its platform's
+  developers look: unified logging on iOS and macOS (Xcode's console,
+  Console.app), logcat on Android, the browser's console on the web
+  (`console.debug` to `console.error`, by level), the debugger's output
+  on Windows; stderr on Linux, and on a desktop when the app was started
+  from a terminal. `asuka dev` prints them in its terminal too.
+
+A test finds the lines in `o.stderr()`, stamped by the test's clock
+(`2026-01-01 00:00:00.000` and on), and only `os.fake(env:)` sets
+`ASUKA_LOG` there.
 
 ## Files and directories: std/fs
 
@@ -962,4 +1051,5 @@ test "reads git's branch" {
 | `std/command` | yes | yes | yes | `unsupported` |
 | `std/flag` | yes | yes | yes | yes (it parses any list) |
 | `std/term` | yes | yes | yes | no terminal: no styles, `prompt` gives `none` |
+| `std/log` | stderr (an app: unified logging) | stderr (an app: the debugger's output) | stderr | unified logging, logcat, the browser's console |
 | `http.serve` | yes | yes | yes | a phone's app: while it runs; the web: `unsupported` |

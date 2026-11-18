@@ -1,0 +1,20 @@
+// std/log on the web, run by web_node_test.go under Node: an app's lines
+// go to the console by their level (console.debug and console.info to
+// stdout here, console.warn and console.error to stderr), each its
+// message and its fields: the console keeps its own time and level. The
+// page's log (asuka dev's terminal; run.mjs's here) gets them too.
+import std/log
+
+component Main {
+  task {
+    log.debug("not shown")
+    log.setLevel(.debug)
+    log.info("saved", ["path": "/a b"])
+    log.with(["k": "v"]).debug("cache")
+    log.warn("on stderr")
+    print("done")
+  }
+  Text("log")
+}
+
+app { Main() }
