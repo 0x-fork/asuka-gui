@@ -996,7 +996,8 @@ void ak_vm_acc_keys(void *p, const uint16_t *fields, uint16_t nf) {
 		apath *ap = a->v.p;
 		if (!acc_of(ap->root)) {
 			ak_val abuf[PATH_ARGS];
-			ak_val *all = ap->nargs <= PATH_ARGS ? abuf : ak_alloc(sizeof(ak_val) * ap->nargs);
+			// None when the path takes none (GCC would see abuf read unset).
+			ak_val *all = !ap->nargs ? NULL : ap->nargs <= PATH_ARGS ? abuf : ak_alloc(sizeof(ak_val) * ap->nargs);
 			for (uint32_t i = 0; i < ap->nargs; i++) all[i] = ap->kinds[i] == AK_K_VOID ? ak_vm_cell_get(ap->args[i].p, true) : ap->args[i];
 			ak_vm_cell_keys(ap->root, ap->steps, ap->n, all, fields, nf);
 			if (all != abuf) ak_free(all);
