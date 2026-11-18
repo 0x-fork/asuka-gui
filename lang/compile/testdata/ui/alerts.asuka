@@ -22,6 +22,14 @@ component Alerts {
       }
     }
     Button("Tell") { on press { alert("Saved") } }
+    Button("Leave") {
+      on press {
+        alert("Sign out", message: "Sure?", actions: [
+          .button(title: "Cancel", role: .cancel),
+          .button(title: "Sign out", role: .destructive, run: () => { said = "signed out" }),
+        ])
+      }
+    }
     Button("Undoable") {
       on press {
         dismiss = snackbar("Deleted", action: .button(title: "Undo", run: () => { said = "undone" }), duration: .indefinite)
@@ -95,6 +103,16 @@ test "alert now" {
   app.expect("Saved")
   app.tap("OK")
   app.expectNo("Saved")
+}
+
+test "an alert's button titled as the alert" {
+  let app = mount(Alerts())
+  app.tap("Leave")
+  app.expect("Sign out", "Sure?")
+  expect(!app.disabled("Sign out"))
+  app.tap("Sign out") // the button: an alert's title takes no tap
+  app.expect("Said: signed out")
+  app.expectNo("Sure?")
 }
 
 test "snackbars" {
