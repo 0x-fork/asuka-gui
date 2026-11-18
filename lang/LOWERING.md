@@ -1466,7 +1466,10 @@ builtins as the VM does) find the wrappers by name.
 In a standard library or platform SDK package (`std/<name>` in std/,
 `platform/<name>` in sdk/), `native fn f(…) ->
 R` has no body: the runtime implements it as the builtin `<name>.f` (a
-method's `native fn` in `struct T`: `<name>.T.f`, the receiver first). Its
+method's `native fn` in `struct T`: `<name>.T.f`, the receiver first;
+`native(prefix) fn f`: `prefix.f`, a table of its own, which a build
+links only when its app calls one of the table's builtins, for what costs
+more than the rest of its package: std/crypto's `crypto_pk.verifySignature`). Its
 function's body is CALLB of that builtin with the parameters (AWAIT of
 the future it returns when it's `async`), so it's called, passed and
 compiled as any function. A generic one (`native fn rows<T>(a: bytes) ->

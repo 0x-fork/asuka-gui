@@ -721,7 +721,11 @@ func (p *printer) funcDecl(d *FuncDecl) {
 		p.write("static ")
 	}
 	if d.Native.IsValid() {
-		p.write("native ")
+		if d.NativePrefix != nil {
+			p.write("native(" + d.NativePrefix.Name + ") ")
+		} else {
+			p.write("native ")
+		}
 	}
 	if d.Extern.IsValid() {
 		p.write("extern ")

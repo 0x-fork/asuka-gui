@@ -1,0 +1,155 @@
+// std/crypto beyond hashes: HMAC-SHA512, HKDF, PBKDF2, authenticated
+// encryption, password hashing and signatures, known answers (RFC 4231,
+// 5869, 7914, 8439, 9106's parameters through Go's x/crypto, 7515's
+// JWS), the same on the VM and compiled to C.
+
+import std/crypto
+import std/encoding
+
+fn hex(s: string) -> bytes = (try? encoding.hexDecode(s)) ?? bytes()
+
+test "MACs and key derivation" {
+  print(crypto.hmacSHA512("Jefe".bytes(), "what do ya want for nothing?".bytes()).hex().slice(0, 32))
+  print(crypto.hmac("Jefe".bytes(), "what do ya want for nothing?".bytes(), hash: .sha384).hex().slice(0, 32))
+  print((try crypto.hkdf(hex("0b".repeat(22)), salt: hex("000102030405060708090a0b0c"), info: hex("f0f1f2f3f4f5f6f7f8f9"), length: 42)).hex())
+  print((try crypto.pbkdf2("passwd".bytes(), salt: "salt".bytes(), iterations: 1, length: 16)).hex())
+  print(crypto.md5("abc".bytes()).hex())
+  print(crypto.sha384(bytes()).hex().slice(0, 32))
+  do {
+    let _ = try crypto.hkdf(bytes(), length: 9000)
+  } catch e {
+    print(e.message)
+  }
+}
+
+test "authenticated encryption" {
+  let key = hex("808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f")
+  let plain = "Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it.".bytes()
+  let ad = hex("50515253c0c1c2c3c4c5c6c7")
+  let sealed = try crypto.sealWithNonce(key, nonce: hex("070000004041424344454647"), plaintext: plain, additionalData: ad, cipher: .chaCha20Poly1305)
+  print(sealed.slice(0, 16).hex())
+  print(sealed.slice(sealed.count() - 16, sealed.count()).hex())
+  let x = try crypto.sealWithNonce(key, nonce: hex("404142434445464748494a4b4c4d4e4f5051525354555657"), plaintext: plain, additionalData: ad)
+  print(x.slice(x.count() - 16, x.count()).hex())
+  let g = try crypto.sealWithNonce(hex("feffe9928665731c6d6a8f9467308308"), nonce: hex("cafebabefacedbaddecaf888"), plaintext: bytes(), cipher: .aes128GCM)
+  print(g.hex())
+  for c in [crypto.Cipher.xChaCha20Poly1305, .chaCha20Poly1305, .aes256GCM, .aes128GCM] {
+    let k = crypto.newKey(cipher: c)
+    let s = try crypto.seal(k, "hi".bytes(), additionalData: "id".bytes(), cipher: c)
+    print("{s.count()} {(try crypto.open(k, s, additionalData: "id".bytes(), cipher: c)).string()}")
+    do {
+      let _ = try crypto.open(k, s, cipher: c)
+    } catch e {
+      print(e.message)
+    }
+  }
+  do {
+    let _ = try crypto.seal(bytes(), plain, cipher: .aes256GCM)
+  } catch e {
+    print(e.message)
+  }
+}
+
+test "passwords" {
+  let k = try await crypto.argon2id("password".bytes(), salt: "somesaltsomesalt".bytes(), memory: 256, iterations: 2, parallelism: 1)
+  print(k.hex())
+  print(try await crypto.verifyPassword("password", hash: "$argon2id$v=19$m=256,t=2,p=1$c29tZXNhbHRzb21lc2FsdA$yrdGtGIZk/3JHsUHh5gLQUqQppLwvGjf4Z+cJbPLqew"))
+  print(try await crypto.verifyPassword("U*U", hash: "$2a$05$CCCCCCCCCCCCCCCCCCCCC.E5YPO9kmyuRGyh0XouQYb4YMJKvyOeW"))
+  print(try await crypto.verifyPassword("U*V", hash: "$2a$05$CCCCCCCCCCCCCCCCCCCCC.E5YPO9kmyuRGyh0XouQYb4YMJKvyOeW"))
+  let h = try await crypto.hashPassword("hunter2", memory: 64, iterations: 1, parallelism: 1)
+  print("{h.slice(0, 28)} {try await crypto.verifyPassword("hunter2", hash: h)}")
+  let b = try await crypto.hashPasswordBcrypt("hunter2", cost: 4)
+  print("{b.slice(0, 7)} {b.count()} {try await crypto.verifyPassword("hunter2", hash: b)}")
+  do {
+    let _ = try await crypto.hashPasswordBcrypt("x".repeat(80))
+  } catch e {
+    print(e.message)
+  }
+}
+
+let rsaJWK = "\{\"kty\":\"RSA\",\"n\":\"ofgWCuLjybRlzo0tZWJjNiuSfb4p4fAkd_wWJcyQoTbji9k0l8W26mPddxHmfHQp-Vaw-4qPCJrcS2mJPMEzP1Pt0Bm4d4QlL-yRT-SFd2lZS-pCgNMsD1W_YpRPEwOWvG6b32690r2jZ47soMZo9wGzjb_7OMg0LOL-bSf63kpaSHSXndS5z5rexMdbBYUsLA9e-KXBdQOS-UTo7WTBEMa2R2CapHg665xsmtdVMTBQY4uDZlxvb3qCo5ZwKh9kG4LT6_I5IhlJH7aGhyxXFvUK-DWNmoudF8NAco9_h9iaGNj8q2ethFkMLs91kzk2PAcDTW9gb54h4FRWyuXpoQ\",\"e\":\"AQAB\",\"d\":\"Eq5xpGnNCivDflJsRQBXHx1hdR1k6Ulwe2JZD50LpXyWPEAeP88vLNO97IjlA7_GQ5sLKMgvfTeXZx9SE-7YwVol2NXOoAJe46sui395IW_GO-pWJ1O0BkTGoVEn2bKVRUCgu-GjBVaYLU6f3l9kJfFNS3E0QbVdxzubSu3Mkqzjkn439X0M_V51gfpRLI9JYanrC4D4qAdGcopV_0ZHHzQlBjudU2QvXt4ehNYTCBr6XCLQUShb1juUO1ZdiYoFaFQT5Tw8bGUl_x_jTj3ccPDVZFD9pIuhLhBOneufuBiB4cS98l2SR_RQyGWSeWjnczT0QU91p1DhOVRuOopznQ\",\"p\":\"4BzEEOtIpmVdVEZNCqS7baC4crd0pqnRH_5IB3jw3bcxGn6QLvnEtfdUdiYrqBdss1l58BQ3KhooKeQTa9AB0Hw_Py5PJdTJNPY8cQn7ouZ2KKDcmnPGBY5t7yLc1QlQ5xHdwW1VhvKn-nXqhJTBgIPgtldC-KDV5z-y2XDwGUc\",\"q\":\"uQPEfgmVtjL0Uyyx88GZFF1fOunH3-7cepKmtH4pxhtCoHqpWmT8YAmZxaewHgHAjLYsp1ZSe7zFYHj7C6ul7TjeLQeZD_YwD66t62wDmpe_HlB-TnBA-njbglfIsRLtXlnDzQkv5dTltRJ11BKBBypeeF6689rjcJIDEz9RWdc\",\"dp\":\"BwKfV3Akq5_MFZDFZCnW-wzl-CCo83WoZvnLQwCTeDv8uzluRSnm71I3QCLdhrqE2e9YkxvuxdBfpT_PI7Yz-FOKnu1R6HsJeDCjn12Sk3vmAktV2zb34MCdy7cpdTh_YVr7tss2u6vneTwrA86rZtu5Mbr1C1XsmvkxHQAdYo0\",\"dq\":\"h_96-mK1R_7glhsum81dZxjTnYynPbZpHziZjeeHcXYsXaaMwkOlODsWa7I9xXDoRwbKgB719rrmI2oKr6N3Do9U0ajaHF-NKJnwgjMd2w9cjz3_-kyNlxAr2v4IKhGNpmM5iIgOS1VZnOZ68m6_pbLBSp3nssTdlqvd0tIiTHU\",\"qi\":\"IYd7DHOhrWvxkwPQsRM2tOgrjbcrfvtQJipd-DlcxyVuuM9sQLdgjVk2oy26F0EmpScGLq2MowX7fhd_QJQ3ydy5cY7YIBi87w93IKLEdfnbJtoOPLUW0ITrJReOgo1cq9SbsxYawBgfp_gh6A5603k2-ZQwVK0JKSHuLFkuQ3U\"}"
+let rsaJWS = "eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJqb2UiLA0KICJleHAiOjEzMDA4MTkzODAsDQogImh0dHA6Ly9leGFtcGxlLmNvbS9pc19yb290Ijp0cnVlfQ.cC4hiUPoj9Eetdgtv3hF80EGrhuB__dzERat0XF9g2VtQgr9PJbu3XOiZj5RZmh7AAuHIm4Bh-0Qc_lF5YKt_O8W2Fp5jujGbds9uJdbF9CUAr7t1dnZcAcQjbKBYNX4BAynRFdiuB--f_nZLgrnbyTyWzO75vRK5h6xBArLIARNPvkSjtQBMHlb1L07Qe7K0GarZRmB_eSN9383LcOLn6_dO--xi12jzDwusC-eOkHWEsqtFZESc6BfI7noOPqvhJ1phCnvWh6IeYI2w9QOYEUipUTI8np6LbgGY9Fs98rqVt5AXLIhWkWywlVmtVrBp0igcN_IoypGlUPQGe77Rw"
+let ecJWK = "\{\"kty\":\"EC\",\"crv\":\"P-256\",\"x\":\"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU\",\"y\":\"x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0\",\"d\":\"jpsQnnGQmL-YBIffH1136cspYG6-0iY7X1fCE9-E9LI\"}"
+let ecJWS = "eyJhbGciOiJFUzI1NiJ9.eyJpc3MiOiJqb2UiLA0KICJleHAiOjEzMDA4MTkzODAsDQogImh0dHA6Ly9leGFtcGxlLmNvbS9pc19yb290Ijp0cnVlfQ.DtEhU3ljbEg8L38VWAfUAqOyKAM6-Xx-F4GawxaepmXFCgfTjDxw5djxLa8ISlSApmWQxfKTUJqPP3-Kg6NU1Q"
+
+fn checkJWS(token: string, key: crypto.PublicKey) throws -> bool {
+  let parts = token.split(".")
+  let header = (try encoding.base64Decode(parts[0])).string()
+  let alg = if header.contains("RS256") { "RS256" } else { "ES256" }
+  let scheme = crypto.SignatureScheme.jws(alg) ?? .ed25519
+  return try crypto.verify(key, "{parts[0]}.{parts[1]}".bytes(), try encoding.base64Decode(parts[2]), scheme: scheme)
+}
+
+test "signatures" {
+  let rsa = try crypto.publicKeyFromJWK(rsaJWK)
+  print("{rsa.kind} {rsa.bits} {try checkJWS(rsaJWS, rsa)}")
+  let priv = try crypto.privateKeyFromJWK(rsaJWK)
+  let parts = rsaJWS.split(".")
+  print(encoding.base64URLEncode(try crypto.sign(priv, "{parts[0]}.{parts[1]}".bytes(), scheme: .rsaPKCS1v15(.sha256))) == parts[2])
+  print(rsa.pem().split("\n")[0])
+  let ec = try crypto.publicKeyFromJWK(ecJWK)
+  print("{ec.kind} {ec.bits} {try checkJWS(ecJWS, ec)} {try checkJWS(ecJWS.replace(".eyJ", ".eyK"), ec)}")
+  print(try ec.jwk())
+  // RFC 6979: ECDSA signs the same message the same.
+  let ecPriv = try crypto.privateKeyFromJWK(ecJWK)
+  let s1 = try crypto.sign(ecPriv, "sample".bytes(), scheme: .ecdsa(.sha256))
+  print(s1 == try crypto.sign(ecPriv, "sample".bytes(), scheme: .ecdsa(.sha256)))
+  print(try crypto.verify(ec, "sample".bytes(), s1, scheme: .ecdsa(.sha256)))
+  print(try crypto.verify(ec, "sample".bytes(), try crypto.sign(ecPriv, "sample".bytes(), scheme: .ecdsaDER(.sha512)), scheme: .ecdsaDER(.sha512)))
+  for kind in [crypto.KeyKind.ecdsaP384, .ed25519] {
+    let key = try crypto.newPrivateKey(kind: kind)
+    let scheme = if kind == .ed25519 { crypto.SignatureScheme.ed25519 } else { crypto.SignatureScheme.ecdsa(.sha384) }
+    let sig = try crypto.sign(key, "m".bytes(), scheme: scheme)
+    let back = try crypto.publicKey((try key.publicKey()).pem())
+    print("{kind} {sig.count()} {try crypto.verify(back, "m".bytes(), sig, scheme: scheme)}")
+  }
+  do {
+    let _ = try crypto.verify(ec, "m".bytes(), s1, scheme: .rsaPSS(.sha256))
+  } catch e {
+    print(e.message)
+  }
+}
+
+// Output:
+// 164b7a7bfcf819e2e395fbe73b56e0a3
+// af45d2e376484031617f78d2b58a6b1b
+// 3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865
+// 55ac046e56e3089fec1691c22544b605
+// 900150983cd24fb0d6963f7d28e17f72
+// 38b060a751ac96384cd9327eb1b1e36a
+// invalid argument: HKDF gives 0 to 8160 bytes with this hash, not 9000
+// ok MACs and key derivation
+// d31a8d34648e60db7b86afbc53ef7ec2
+// 1ae10b594f09e26a7e902ecbd0600691
+// c0875924c1c7987947deafd8780acf49
+// 3247184b3c4f69a44dbcd22887bbb418
+// 42 hi
+// the sealed bytes aren't authentic: a wrong key, nonce or additional data, or they were changed
+// 30 hi
+// the sealed bytes aren't authentic: a wrong key, nonce or additional data, or they were changed
+// 30 hi
+// the sealed bytes aren't authentic: a wrong key, nonce or additional data, or they were changed
+// 30 hi
+// the sealed bytes aren't authentic: a wrong key, nonce or additional data, or they were changed
+// invalid key: AES-256-GCM takes a key of 32 bytes, not 0
+// ok authenticated encryption
+// cab746b4621993fdc91ec50787980b414a90a692f0bc68dfe19f9c25b3cba9ec
+// true
+// true
+// false
+// $argon2id$v=19$m=64,t=1,p=1$ true
+// $2b$04$ 60 true
+// invalid argument: bcrypt hashes 72 bytes of a password at most: this one is longer (argon2id hashes any length)
+// ok passwords
+// rsa 2048 true
+// true
+// -----BEGIN PUBLIC KEY-----
+// ecdsaP256 256 true false
+// {"kty":"EC","crv":"P-256","x":"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU","y":"x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"}
+// true
+// true
+// true
+// ecdsaP384 96 true
+// ed25519 64 true
+// invalid key: an ECDSA key signs with ecdsa or ecdsaDER
+// ok signatures

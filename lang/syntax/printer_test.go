@@ -231,6 +231,7 @@ func TestFormatCases(t *testing.T) {
 		{"import @acme/line-charts  as lc", "import @acme/line-charts as lc\n"},
 		{"pub  native  async fn  f( a:int )throws->int", "pub native async fn f(a: int) throws -> int\n"},
 		{"struct T { native fn  g()->int }", "struct T { native fn g() -> int }\n"},
+		{"pub native ( crypto_pk )fn  f( a:int )->int", "pub native(crypto_pk) fn f(a: int) -> int\n"},
 		// Items: a line each, but those the source had on one line stay
 		// so, and a block written on one line stays on one.
 		{"component C {\n  prop a = 1\n  event e; Text(\"x\")\n}", "component C {\n  prop a = 1\n  event e; Text(\"x\")\n}\n"},

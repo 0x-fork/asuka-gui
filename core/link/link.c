@@ -69,6 +69,15 @@ const ak_lib_entry *const ak_std_libs[] = {
 #if defined(AK_USES_EVERY) || defined(AK_USES_CRYPTO)
 	ak_std_crypto,
 #endif
+#if defined(AK_USES_EVERY) || defined(AK_USES_CRYPTO_AEAD)
+	ak_std_crypto_aead,
+#endif
+#if defined(AK_USES_EVERY) || defined(AK_USES_CRYPTO_PASSWORD)
+	ak_std_crypto_password,
+#endif
+#if defined(AK_USES_EVERY) || defined(AK_USES_CRYPTO_PK)
+	ak_std_crypto_pk,
+#endif
 #if defined(AK_USES_EVERY) || defined(AK_USES_HTML)
 	ak_std_html,
 #endif
@@ -110,6 +119,9 @@ const ak_lib_entry *const ak_std_libs[] = {
 #endif
 #if defined(AK_USES_EVERY) || defined(AK_USES_COMPRESS)
 	ak_std_compress,
+#endif
+#if defined(AK_USES_EVERY) || defined(AK_USES_COMPRESS_CHECKSUM)
+	ak_std_compress_checksum,
 #endif
 #if defined(AK_USES_EVERY) || defined(AK_USES_ARCHIVE)
 	ak_std_archive,

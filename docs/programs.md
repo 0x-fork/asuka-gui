@@ -762,6 +762,90 @@ A handler is a function, so a test calls it, or the router, with a
 `Request`, no socket between: `let r = try await
 api.handle(http.Request(method: "GET", path: "/notes/1"))`.
 
+## Secrets, passwords and signatures: std/crypto
+
+std/crypto is the same C on every platform, the web's too: what one
+seals, hashes or signs, any other opens and verifies. A service checks
+a webhook's HMAC with `crypto.equal`, which takes the same time wherever
+the bytes differ, and stores passwords with `hashPassword` (argon2id,
+in the PHC format other systems read), which runs on another thread:
+
+```asuka check
+import std/crypto
+import std/encoding
+import std/http
+import std/os
+
+struct Login {
+  name: string
+  password: string
+}
+
+async fn main() throws {
+  let secret = (os.env("WEBHOOK_SECRET") ?? "").bytes()
+  var users: [string: string] = [:]  // a database's, in a real service
+  let api = http.Router()
+    .post("/hooks/github", req => {
+      // GitHub signs the body: X-Hub-Signature-256 is sha256=<HMAC in hex>.
+      let sent = (req.header("X-Hub-Signature-256") ?? "").trimPrefix("sha256=")
+      let mac = encoding.hexEncode(crypto.hmacSHA256(secret, req.body))
+      if !crypto.equal(mac.bytes(), sent.bytes()) {
+        return .text("bad signature", status: 401)
+      }
+      return .text("ok")
+    })
+    .post("/signup", req => {
+      let login = try req.json<Login>()
+      users[login.name] = try await crypto.hashPassword(login.password)
+      return .text("welcome", status: 201)
+    })
+    .post("/login", req => {
+      let login = try req.json<Login>()
+      let stored = users[login.name] ?? ""
+      if stored != "" && (try await crypto.verifyPassword(login.password, hash: stored)) {
+        return .text("hello, {login.name}")
+      }
+      return .text("wrong name or password", status: 401)
+    })
+  let server = try await http.serve(8080, api.handler())
+  for await _ in os.signals() {
+    break
+  }
+  await server.close(grace: 10s)
+}
+```
+
+A JWT signed with RS256, PS256, ES256 or EdDSA is checked with the
+issuer's public key, from PEM or its JWK Set; the key's kind decides
+which schemes may check it, so a token's `alg` can't pick a weaker one:
+
+```asuka
+let keys = try crypto.publicKeys((try await http.get(jwksURL)).text())
+let parts = token.split(".")
+let header = try json.decode<Header>((try encoding.base64Decode(parts[0])).string())
+if let key = keys[header.kid], let scheme = crypto.SignatureScheme.jws(header.alg) {
+  let ok = try crypto.verify(key, "{parts[0]}.{parts[1]}".bytes(), try encoding.base64Decode(parts[2]), scheme: scheme)
+}
+```
+
+- `crypto.seal(key, plaintext, additionalData:)` encrypts and
+  authenticates with XChaCha20-Poly1305 and a random nonce, which it
+  puts first; `open` gives the plaintext back, or throws
+  `CryptoError.notAuthentic` when anything changed. `cipher:
+  .aes256GCM` (or `.aes128GCM`, `.chaCha20Poly1305`) is for what other
+  systems read; `sealWithNonce` and `openWithNonce` for a protocol that
+  gives the nonce.
+- `hkdf` derives keys from a secret, `pbkdf2` and `argon2id` from a
+  password; `hmac`, `hmacSHA256` and `hmacSHA512` sign with a shared key.
+- `hashPasswordBcrypt` and `verifyPassword` read bcrypt's `$2b$`, `$2a$`
+  and `$2y$` too, for a database another system filled.
+- `newPrivateKey()` makes an ECDSA P-256 key (`kind: .ed25519`, P-384,
+  P-521); `sign` and `verify` take RSA (PKCS#1 v1.5 and PSS), ECDSA and
+  Ed25519 keys read from PEM (`publicKey`, `privateKey`), DER or a JWK,
+  and give them back as `pem()` and `jwk()`.
+- `md5` is for checksums a protocol asks for, not security; a CRC is
+  std/compress's `crc32` and `crc32c`.
+
 ## Running
 
 `asuka run` runs a program's `main` at once, with no build to wait for: the arguments after `--` are its own, and it exits with the
