@@ -999,7 +999,8 @@ static bool sort_by_key(ak_arr *a, ak_closure *key, bool desc, ak_closure *cmp, 
 
 #define OPT_CLOS(i) (args[i].p ? (ak_closure *)args[i].p : NULL)
 
-// arr.sorted_key(a, key, descending, cmp, kindU) and arr.sort_key (inout).
+// seq.arr_sorted_key(a, key, descending, cmp, kindU) and seq.arr_sort_key
+// (inout).
 static ak_val arr_sorted_key(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	ak_arr *a = ak_arr_copy(ARR(0));
@@ -1077,7 +1078,8 @@ static bool cur_next(void *ctx, ak_val *x) {
 	return true;
 }
 
-// arr.min_key(a, key, cmp, kindU), arr.max_key; seq.min_key, seq.max_key.
+// seq.arr_min_key(a, key, cmp, kindU), seq.arr_max_key; seq.min_key,
+// seq.max_key.
 static ak_val arr_min_key(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	arr_walk w = {ARR(0), 0};
@@ -1149,9 +1151,9 @@ const ak_lib_entry ak_seq_lib[] = {
 	{"seq.max", seq_max},
 	{"seq.min_key", seq_min_key},
 	{"seq.max_key", seq_max_key},
-	{"arr.sorted_key", arr_sorted_key},
-	{"arr.sort_key", arr_sort_key},
-	{"arr.min_key", arr_min_key},
-	{"arr.max_key", arr_max_key},
+	{"seq.arr_sorted_key", arr_sorted_key},
+	{"seq.arr_sort_key", arr_sort_key},
+	{"seq.arr_min_key", arr_min_key},
+	{"seq.arr_max_key", arr_max_key},
 	{NULL, NULL},
 };

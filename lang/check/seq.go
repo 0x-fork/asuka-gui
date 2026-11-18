@@ -38,10 +38,10 @@ var seqMethods = []*Method{
 
 	// Ordering by a key: the key computed once per element, compared as
 	// sorted() compares (a type's compare too).
-	{Recv: "array", Name: "sorted", Sig: "(key: fn(T) throws -> U, descending: bool = false) -> [T]", Builtin: "arr.sorted_key", Extra: "kindU", Needs: "ComparableU", Rethrows: true, Doc: "sorted by what key gives each element, a Comparable (people.sorted(key: p => p.age)); descending: greatest first; stable"},
-	{Recv: "array", Name: "sort", Sig: "(key: fn(T) throws -> U, descending: bool = false)", Builtin: "arr.sort_key", Inout: true, Extra: "kindU", Needs: "ComparableU", Rethrows: true, Doc: "sorts by what key gives each element, as sorted(key:)"},
-	{Recv: "array", Name: "min", Sig: "(key: fn(T) throws -> U) -> T?", Builtin: "arr.min_key", Extra: "kindU", Needs: "ComparableU", Rethrows: true, Doc: "the element whose key is least (the first of equal ones): people.min(key: p => p.age)"},
-	{Recv: "array", Name: "max", Sig: "(key: fn(T) throws -> U) -> T?", Builtin: "arr.max_key", Extra: "kindU", Needs: "ComparableU", Rethrows: true, Doc: "the element whose key is greatest (the first of equal ones)"},
+	{Recv: "array", Name: "sorted", Sig: "(key: fn(T) throws -> U, descending: bool = false) -> [T]", Builtin: "seq.arr_sorted_key", Extra: "kindU", Needs: "ComparableU", Rethrows: true, Doc: "sorted by what key gives each element, a Comparable (people.sorted(key: p => p.age)); descending: greatest first; stable"},
+	{Recv: "array", Name: "sort", Sig: "(key: fn(T) throws -> U, descending: bool = false)", Builtin: "seq.arr_sort_key", Inout: true, Extra: "kindU", Needs: "ComparableU", Rethrows: true, Doc: "sorts by what key gives each element, as sorted(key:)"},
+	{Recv: "array", Name: "min", Sig: "(key: fn(T) throws -> U) -> T?", Builtin: "seq.arr_min_key", Extra: "kindU", Needs: "ComparableU", Rethrows: true, Doc: "the element whose key is least (the first of equal ones): people.min(key: p => p.age)"},
+	{Recv: "array", Name: "max", Sig: "(key: fn(T) throws -> U) -> T?", Builtin: "seq.arr_max_key", Extra: "kindU", Needs: "ComparableU", Rethrows: true, Doc: "the element whose key is greatest (the first of equal ones)"},
 
 	// Adapters: a new Seq, computed as it's read.
 	{Recv: "seq", Name: "map", Sig: "(transform: fn(T) -> U) -> Seq<U>", Builtin: "seq.map", Extra: "seqProto", Doc: "what transform makes of each element, as it's read"},
