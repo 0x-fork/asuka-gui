@@ -49,13 +49,13 @@ any system, and a Mac app from a Mac.
 On macOS and Linux:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.sh | sh
+curl -fsSL https://asuka.egoist.dev/install.sh | sh
 ```
 
 On Windows, in PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.ps1 | iex
+irm https://asuka.egoist.dev/install.ps1 | iex
 ```
 
 The script downloads the CLI from its GitHub release, checks it against

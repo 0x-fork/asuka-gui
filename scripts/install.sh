@@ -1,7 +1,7 @@
 #!/bin/sh
 # Installs the asuka CLI on macOS and Linux from its GitHub release:
 #
-#	curl -fsSL https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.sh | sh
+#	curl -fsSL https://asuka.egoist.dev/install.sh | sh
 #
 # ASUKA_VERSION picks a release (default: the latest); ASUKA_INSTALL the
 # directory (default: ~/.asuka/bin). On Windows: scripts/install.ps1.
@@ -16,7 +16,7 @@ Darwin) os=darwin ;;
 Linux) os=linux ;;
 *)
 	echo "asuka: this script installs on macOS and Linux; on Windows, in PowerShell:" >&2
-	echo "  irm https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.ps1 | iex" >&2
+	echo "  irm https://asuka.egoist.dev/install.ps1 | iex" >&2
 	exit 1
 	;;
 esac

@@ -1,6 +1,6 @@
 # Installs the asuka CLI on Windows from its GitHub release:
 #
-#	irm https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.ps1 | iex
+#	irm https://asuka.egoist.dev/install.ps1 | iex
 #
 # $env:ASUKA_VERSION picks a release (default: the latest);
 # $env:ASUKA_INSTALL the directory (default:

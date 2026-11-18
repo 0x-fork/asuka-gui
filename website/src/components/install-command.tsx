@@ -5,8 +5,8 @@ import { cn } from "@/lib/utils"
 
 /** The CLI's install scripts, from the repository (each release attaches them too). */
 const commands = {
-  unix: { prompt: "$", command: "curl -fsSL https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.sh | sh" },
-  windows: { prompt: "PS>", command: "irm https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.ps1 | iex" },
+  unix: { prompt: "$", command: "curl -fsSL https://asuka.egoist.dev/install.sh | sh" },
+  windows: { prompt: "PS>", command: "irm https://asuka.egoist.dev/install.ps1 | iex" },
 }
 
 /** The visitor's system's: macOS and Linux's command, or, in a browser on Windows, PowerShell's. Rendered as the former first (there's no navigator on the server). */

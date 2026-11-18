@@ -66,8 +66,8 @@ compiler and GTK 4.14 with libadwaita 1.5. See [Getting
 started](docs/getting-started.md).
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.sh | sh
-# Windows, in PowerShell: irm https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.ps1 | iex
+curl -fsSL https://asuka.egoist.dev/install.sh | sh
+# Windows, in PowerShell: irm https://asuka.egoist.dev/install.ps1 | iex
 asuka new hello
 cd hello
 asuka dev --platform ios     # or android, web; on a Mac, PC or Linux, asuka dev alone runs it there

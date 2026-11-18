@@ -28,13 +28,13 @@ Zig をインストールしておけば、`asuka build` で Windows や Linux �
 macOS と Linux では：
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.sh | sh
+curl -fsSL https://asuka.egoist.dev/install.sh | sh
 ```
 
 Windows では、PowerShell で：
 
 ```powershell
-irm https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.ps1 | iex
+irm https://asuka.egoist.dev/install.ps1 | iex
 ```
 
 このスクリプトは CLI を GitHub のリリースからダウンロードし、リリースのチェックサムと照合したうえで `~/.asuka/bin` にインストールします（Windows では `%LOCALAPPDATA%\Programs\asuka\bin` にインストールし、PATH に追加します）。`ASUKA_VERSION=0.3.0` を指定すると最新版ではなくそのバージョンを、`ASUKA_INSTALL` を指定すると別のディレクトリにインストールします。

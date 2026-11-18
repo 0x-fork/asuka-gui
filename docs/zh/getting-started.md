@@ -28,13 +28,13 @@
 在 macOS 和 Linux 上：
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.sh | sh
+curl -fsSL https://asuka.egoist.dev/install.sh | sh
 ```
 
 在 Windows 上，打开 PowerShell 运行：
 
 ```powershell
-irm https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.ps1 | iex
+irm https://asuka.egoist.dev/install.ps1 | iex
 ```
 
 安装脚本会从 GitHub release 下载命令行工具，用 release 中的校验和核对无误后，安装到 `~/.asuka/bin`（Windows 上是 `%LOCALAPPDATA%\Programs\asuka\bin`，脚本会把它加入你的 PATH）。设置 `ASUKA_VERSION=0.3.0` 可以安装指定版本而不是最新版，设置 `ASUKA_INSTALL` 可以换一个安装目录。

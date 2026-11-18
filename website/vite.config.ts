@@ -5,6 +5,7 @@ import tailwindcss from "@tailwindcss/vite"
 import { tanstackStart } from "@tanstack/react-start/plugin/vite"
 import viteReact from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
+import { installScripts } from "./install-scripts.ts"
 import { llmsDocs } from "./llms.ts"
 import { localeInfo, locales, localized } from "./src/lib/locales.ts"
 import { isPublished } from "./src/lib/markdown-source.ts"
@@ -50,6 +51,7 @@ export default defineConfig({
   resolve: { tsconfigPaths: true },
   plugins: [
     llmsDocs(path.resolve(import.meta.dirname, "..")),
+    installScripts(path.resolve(import.meta.dirname, "..")),
     tailwindcss(),
     tanstackStart({
       // A static site: every page is rendered to HTML at build time.

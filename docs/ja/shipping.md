@@ -519,7 +519,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: the asuka CLI, at the app's version of Asuka
         run: |
-          curl -fsSL https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.sh | sh
+          curl -fsSL https://asuka.egoist.dev/install.sh | sh
           echo "$HOME/.asuka/bin" >> "$GITHUB_PATH"
       - name: the distribution certificate and the profile
         env:
@@ -569,7 +569,7 @@ jobs:
         run: sdkmanager "ndk;27.1.12297006"
       - name: the asuka CLI, at the app's version of Asuka
         run: |
-          curl -fsSL https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.sh | sh
+          curl -fsSL https://asuka.egoist.dev/install.sh | sh
           echo "$HOME/.asuka/bin" >> "$GITHUB_PATH"
       - name: the upload key
         env:
@@ -615,7 +615,7 @@ CLI は自分のバージョンの Asuka でアプリをビルドするため、
       - uses: actions/checkout@v4
       - name: the asuka CLI, at the app's version of Asuka
         run: |
-          curl -fsSL https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.sh | sh
+          curl -fsSL https://asuka.egoist.dev/install.sh | sh
           echo "$HOME/.asuka/bin" >> "$GITHUB_PATH"
       - name: the Developer ID certificate
         env:
@@ -653,7 +653,7 @@ CLI は自分のバージョンの Asuka でアプリをビルドするため、
       - uses: mlugg/setup-zig@v2 # アプリをクロスコンパイル
       - name: the asuka CLI, at the app's version of Asuka
         run: |
-          curl -fsSL https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.sh | sh
+          curl -fsSL https://asuka.egoist.dev/install.sh | sh
           echo "$HOME/.asuka/bin" >> "$GITHUB_PATH"
       - name: osslsigncode, and the code signing certificate
         env:
