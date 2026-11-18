@@ -1,6 +1,6 @@
 # 0014: Loads hold what they show
 
-- **Status**: Draft
+- **Status**: Built
 - **Created**: 2026-11-18
 - **Related**: 0012 (what the UI follows), 0013 (per-path tracking),
   docs/language/async.md ("Data that loads"), core/src/ui/control.c

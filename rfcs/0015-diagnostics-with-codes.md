@@ -1,6 +1,6 @@
 # 0015: Diagnostics with codes, for people and agents
 
-- **Status**: Draft
+- **Status**: Built
 - **Created**: 2026-11-18
 - **Related**: 0005 (devtools), 0012, 0013, 0014, lang/check
   (`errorf`, `warnf`, `Diagnostic`), lang/lsp, core/src/signal

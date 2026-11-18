@@ -1,6 +1,6 @@
 # 0011: The everyday language
 
-- **Status**: Draft
+- **Status**: Built
 - **Created**: 2026-11-18
 - **Related**: 0007 (the Asuka language), lang/LOWERING.md,
   docs/language/

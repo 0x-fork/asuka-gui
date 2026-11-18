@@ -1,6 +1,6 @@
 # 0013: Per-path tracking
 
-- **Status**: Draft
+- **Status**: Built
 - **Created**: 2026-11-18
 - **Related**: 0007 (the Asuka language), 0012 (what the UI follows),
   lang/LOWERING.md (Reactivity, Components), core/src/signal,

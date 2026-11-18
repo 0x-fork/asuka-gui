@@ -1,6 +1,6 @@
 # 0012: What the UI follows, said and checked
 
-- **Status**: Draft
+- **Status**: Built
 - **Created**: 2026-11-18
 - **Related**: 0007 (the Asuka language), 0010 (headless components:
   props a component assigns), lang/LOWERING.md (Reactivity,
