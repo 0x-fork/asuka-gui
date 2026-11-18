@@ -137,6 +137,8 @@ static bool colors(int fd) {
 	return terminal(fd) && vt(fd);
 }
 
+bool ak_term_colors(int fd) { return colors(fd); }
+
 static ak_val colors_fn(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	return (ak_val){.i = colors((int)args[0].i)};

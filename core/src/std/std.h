@@ -34,6 +34,7 @@ extern const ak_lib_entry ak_std_csv[];
 extern const ak_lib_entry ak_std_compress[];
 extern const ak_lib_entry ak_std_archive[];
 extern const ak_lib_entry ak_std_http[];  // httpserver.c: std/http's server
+extern const ak_lib_entry ak_std_log[];
 
 // Every package's table, NULL-terminated.
 extern const ak_lib_entry *const ak_std_libs[];
@@ -146,6 +147,17 @@ bool ak_os_test_process(void);
 // std/term (term.c): the color choices setColors made, forgotten after
 // each test (ak_os_reset calls it).
 void ak_term_reset(void);
+// ak_term_colors reports whether styled text shows on fd (1 stdout, 2
+// stderr), as term.colors decides it.
+bool ak_term_colors(int fd);
+// ak_os_write writes to stdout (1) or stderr (2) as os.writeTo does:
+// kept by FakeOS.run while it runs main.
+void ak_os_write(int fd, const void *p, size_t n);
+// The user's home directory, as fs.home says it (os.user's too).
+ak_str *ak_fs_home(void);
+// std/log (log.c): its level, format and where lines go, forgotten after
+// each test (ak_os_reset calls it).
+void ak_log_reset(void);
 // Signals (signals.c). ak_os_signals_program makes the process's
 // signals a program's: end(128 + the signal's number) ends it for one no
 // os.signals stream reads, as its main's cancellation when main_is_task,

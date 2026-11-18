@@ -1,0 +1,173 @@
+// Package std/log writes what a program or an app does, as it does it:
+// lines at a level (debug, info, warn, error), each a message and its
+// fields, key-value pairs that say what it was about.
+//
+//   log.info("listening", ["port": "{port}"])
+//   log.warn("slow request", ["path": path, "ms": "{elapsed.ms}"])
+//
+// writes, in a program:
+//
+//   2026-11-19 10:04:05.123 INFO  listening                                port=8080
+//   2026-11-19 10:04:07.940 WARN  slow request                             path=/notes ms=912
+//
+// A Logger carries fields every line it writes has: log.with([...]) is
+// one, and its with adds more.
+//
+//   let req = log.with(["request": id])
+//   req.info("started")
+//   req.error("failed", ["error": "{e}"])
+//
+// The least level written is info, unless the environment's ASUKA_LOG
+// says (debug, info, warn, error, or off), or the program does with
+// log.setLevel(.debug), which counts over it. A line below it costs a
+// check: nothing is formatted or written. Its arguments are still
+// computed, as a call's are: for fields that take work, ask first,
+// if log.enabled(.debug) { … }.
+//
+// Lines go to stderr in a program, as text people read (the time, the
+// level, the message, then the fields; in colors when std/term says
+// stderr shows them) or, with log.setFormat(.json), a JSON object a line,
+// as Go's log/slog writes it, for a service whose logs a machine reads:
+//
+//   {"time":"2026-11-19T10:04:05.123+08:00","level":"INFO","msg":"listening","port":"8080"}
+//
+// An app's go where its platform's developers look: unified logging on
+// iOS and macOS (Xcode's console, Console.app), logcat on Android, the
+// browser's console on the web, the debugger's output on Windows; stderr
+// on Linux, and on a desktop whose stderr goes somewhere (a terminal, a
+// pipe). Under asuka dev they print in its terminal too.
+//
+// In a test they're the process's stderr (FakeOS.stderr), the time
+// the test's clock's, from 2026-01-01 00:00:00 UTC; only os.fake's env:
+// sets ASUKA_LOG there, so the tests' output doesn't follow the shell's.
+
+/// How much a line matters, from the least: .debug (what a developer
+/// looks for), .info (what happens), .warn (what may be wrong), .error
+/// (what failed).
+pub enum Level { debug, info, warn, error }
+
+/// How lines are written to stderr: .text, for people, or .json, a JSON
+/// object a line (time, level, msg, then the fields), for machines.
+pub enum Format { text, json }
+
+fn code(level: Level) -> int = match level {
+  .debug => 0
+  .info => 1
+  .warn => 2
+  .error => 3
+}
+
+native fn write(level: int, message: string, bound: [string: string], fields: [string: string])
+
+// The bound fields of the package's own lines: none, made once.
+let unbound: [string: string] = [:]
+native fn isEnabled(level: int) -> bool
+native fn setLeast(level: int)
+native fn setOutput(format: int, time: bool)
+
+/// Writes lines that carry fields: those it was made with, before each
+/// line's own (a line's field of the same name replaces its).
+///
+///   let db = log.with(["component": "db"])
+///   db.debug("query", ["sql": sql])
+pub struct Logger {
+  /// The fields every line it writes has.
+  fields: [string: string] = [:]
+
+  /// A Logger with these fields too, after its own (one of the same
+  /// name replaces its).
+  fn with(fields: [string: string]) -> Logger {
+    var all = self.fields
+    for (k, v) in fields {
+      all[k] = v
+    }
+    return Logger(fields: all)
+  }
+
+  /// A line at .debug: what a developer looks for.
+  fn debug(message: string, fields: [string: string] = [:]) {
+    write(0, message, self.fields, fields)
+  }
+
+  /// A line at .info: what happens.
+  fn info(message: string, fields: [string: string] = [:]) {
+    write(1, message, self.fields, fields)
+  }
+
+  /// A line at .warn: what may be wrong.
+  fn warn(message: string, fields: [string: string] = [:]) {
+    write(2, message, self.fields, fields)
+  }
+
+  /// A line at .error: what failed.
+  fn error(message: string, fields: [string: string] = [:]) {
+    write(3, message, self.fields, fields)
+  }
+
+  /// A line at level.
+  fn log(level: Level, message: string, fields: [string: string] = [:]) {
+    write(code(level), message, self.fields, fields)
+  }
+}
+
+/// A Logger whose lines carry fields.
+pub fn with(fields: [string: string]) -> Logger = Logger(fields: fields)
+
+/// A line at .debug: what a developer looks for, written when the level
+/// is on (ASUKA_LOG=debug, log.setLevel(.debug)).
+///
+///   log.debug("cache miss", ["key": key])
+pub fn debug(message: string, fields: [string: string] = [:]) {
+  write(0, message, unbound, fields)
+}
+
+/// A line at .info: what happens.
+///
+///   log.info("saved", ["path": path, "bytes": "{data.count()}"])
+pub fn info(message: string, fields: [string: string] = [:]) {
+  write(1, message, unbound, fields)
+}
+
+/// A line at .warn: what may be wrong.
+pub fn warn(message: string, fields: [string: string] = [:]) {
+  write(2, message, unbound, fields)
+}
+
+/// A line at .error: what failed.
+///
+///   log.error("upload failed", ["error": "{e}"])
+pub fn error(message: string, fields: [string: string] = [:]) {
+  write(3, message, unbound, fields)
+}
+
+/// A line at level, for a level the program decides.
+pub fn log(level: Level, message: string, fields: [string: string] = [:]) {
+  write(code(level), message, unbound, fields)
+}
+
+/// Whether lines at level are written: for fields that take work to
+/// make.
+///
+///   if log.enabled(.debug) {
+///     log.debug("state", ["items": "{items}"])
+///   }
+pub fn enabled(level: Level) -> bool = isEnabled(code(level))
+
+/// Says the least level written: lines below it aren't. It counts over
+/// ASUKA_LOG, so a program that has a flag for it sets it only when the
+/// flag is given:
+///
+///   if options.verbose {
+///     log.setLevel(.debug)
+///   }
+pub fn setLevel(level: Level) {
+  setLeast(code(level))
+}
+
+/// Says how lines are written to stderr: .text (the default) or .json,
+/// and with their time or without it (time: false, for a service whose
+/// logs the system stamps, as journald and a container's runtime do).
+/// The system's logs (an app's) keep their own format.
+pub fn setFormat(format: Format, time: bool = true) {
+  setOutput(if format == .json { 1 } else { 0 }, time)
+}

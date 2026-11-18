@@ -69,6 +69,10 @@ async fn main() throws {
 | `os.writeTo(.stdout, text)`、`writeBytesTo` | 原样写出文本或字节，不加行尾，目标是 `.stdout` 或 `.stderr` |
 | `os.terminal(.stdout)` | 某个流是否是终端（有人在看），而不是管道或文件：只在终端上输出颜色和提示 |
 | `os.signals(kinds)` | 按到达顺序给出这些种类的信号（一个 `Stream<os.Signal>`：`.interrupt`、`.term`、`.hangup`），被读取的信号不再结束程序 |
+| `os.hostname()`、`os.pid()`、`os.ppid()` | 机器名、本进程的 id 和父进程的 id |
+| `os.user()` | 进程以哪个用户身份运行：一个 `User`，包含 `name`、`home`、`uid` 和 `gid`（Windows 上 `uid`、`gid` 为 `none`） |
+| `os.platform()`、`os.arch()` | 运行所在的系统和 CPU：一个 `Platform`（`.macOS`、`.windows`、`.linux`……）和一个 `os.Arch`（`.arm64`、`.amd64`……） |
+| `os.executable()` | 程序自己的可执行文件，绝对路径，链接已解析：和程序一起发布的文件就在 `fs.dir(os.executable() ?? ".")` 里 |
 
 ### 信号
 
@@ -293,6 +297,64 @@ Project name: [demo] notes
 - **尺寸。** `term.width()` 和 `term.height()` 是终端的列数和行数（如果 `COLUMNS` 和 `LINES` 是数字，优先使用它们）；没有任何一个流是终端时为 `none`：`term.width() ?? 80`。
 
 在测试里，用 `os.fake(stdin:)` 回答这些问题，问题本身可以在 `o.stderr()` 里找到。测试的流都不是终端，所以不会输出样式，除非测试用 `os.fake(env: ["FORCE_COLOR": "1"])` 或 `term.setColors(.always)` 明确要求；这里只看 `os.fake` 的 `env:`，所以运行测试时的环境变量不会影响测试的输出。手机和 Web 上没有终端：没有样式，`prompt` 返回 `none`，`width` 也是 `none`。
+
+## 日志：std/log
+
+`std/log` 在程序运行的同时记录它做了什么：每一行有一个级别（`debug`、`info`、`warn`、`error`），由一条消息和若干字段组成，字段说明这件事和什么有关。下面这个程序用来备份文件：`-v` 会逐个显示文件，`--json` 则输出给机器读的 JSON 行。
+
+```asuka check
+import std/flag
+import std/fs
+import std/log
+import std/os
+
+/// 把文件复制到一个目录里。
+struct Options {
+  /// -v 逐个文件说明正在做什么。
+  verbose: bool = false
+  /// 输出 JSON 行，供机器读取。
+  json: bool = false
+  /// 复制到哪里。
+  to: string = "backup"
+  /// 要复制的文件。
+  files: [string]
+}
+
+async fn main() throws {
+  let o = flag.parse<Options>(os.args())
+  if o.verbose {
+    log.setLevel(.debug)
+  }
+  if o.json {
+    log.setFormat(.json)
+  }
+  let run = log.with(["to": o.to])
+  try await spawn { try fs.mkdirAll(o.to) }
+  for file in o.files {
+    run.debug("copying", ["file": file])
+    let target = fs.join([o.to, fs.base(file)])
+    try await spawn { try fs.copy(from: file, to: target) } catch e {
+      run.error("copy failed", ["file": file, "error": "{e}"])
+      os.exit(1)
+    }
+  }
+  run.info("copied", ["files": "{o.files.count()}"])
+}
+```
+
+```text
+$ backup -v notes.md todo.md
+2026-11-19 10:04:05.120 DEBUG copying                                  to=backup file=notes.md
+2026-11-19 10:04:05.123 DEBUG copying                                  to=backup file=todo.md
+2026-11-19 10:04:05.125 INFO  copied                                   to=backup files=2
+```
+
+- **字段。** 一行的字段是一个 `[string: string]`，`["port": "{port}"]` 这样写就能把任意值以文本形式放进去。含有空格、引号或 `=` 的值会加上引号（`path="my notes.md"`）。`log.with(fields)` 返回一个 `Logger`，它写出的每一行都带着这些字段；它的 `with` 还可以再添加字段。某一行自己的字段和 logger 的字段同名时，以这一行的为准。
+- **级别。** 低于最低级别的行不会写出。最低级别默认是 info；`ASUKA_LOG` 可以改变它（`debug`、`info`、`warn`、`error` 或 `off`，和 Rust 的 `RUST_LOG` 一样），程序也可以用 `log.setLevel(.debug)` 设置，并且程序的设置优先：所以上面的程序只在给了 `-v` 时才设置它。不写出的行只花一次判断的开销，但它的字段照样会先算出来，就像任何函数调用的参数一样：生成起来费事的字段，用 `if log.enabled(.debug) { … }` 包起来。
+- **格式。** 在终端上，时间（本地时间）会变暗，级别会带颜色，是否显示颜色由 `std/term` 对 stderr 的判断决定（`NO_COLOR`、`FORCE_COLOR`、`term.setColors`）。`log.setFormat(.json)` 每行写一个 JSON 对象，和 Go 的 `log/slog` 一样：`{"time":"2026-11-19T10:04:05.125+08:00","level":"INFO","msg":"copied","to":"backup","files":"2"}`；`time: false` 不写时间，适合日志已经由 journald 或容器运行时加上时间戳的服务。
+- **写到哪里。** 程序的日志写到 stderr，这样 stdout 仍然只有程序的输出（`backup | tee list`）。应用的日志写到各平台开发者习惯查看的地方：iOS 和 macOS 上是统一日志系统（Xcode 的控制台、“控制台” App），Android 上是 logcat，Web 上是浏览器的控制台（按级别分别用 `console.debug` 到 `console.error`），Windows 上是调试器的输出；Linux 上写到 stderr，桌面应用从终端启动时也写到 stderr。`asuka dev` 也会把它们打印在自己的终端里。
+
+在测试里，这些行可以在 `o.stderr()` 里找到，时间戳来自测试的时钟（从 `2026-01-01 00:00:00.000` 开始）；在测试中只有 `os.fake(env:)` 能设置 `ASUKA_LOG`。
 
 ## 文件和目录：std/fs
 
@@ -687,4 +749,5 @@ test "reads git's branch" {
 | `std/command` | 支持 | 支持 | 支持 | `unsupported` |
 | `std/flag` | 支持 | 支持 | 支持 | 支持（它能解析任何列表） |
 | `std/term` | 支持 | 支持 | 支持 | 没有终端：没有样式，`prompt` 返回 `none` |
+| `std/log` | stderr（应用：统一日志系统） | stderr（应用：调试器的输出） | stderr | 统一日志系统、logcat、浏览器控制台 |
 | `http.serve` | 支持 | 支持 | 支持 | 手机应用：运行期间可用；Web：`unsupported` |

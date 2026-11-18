@@ -1,0 +1,31 @@
+// std/os: the process and the machine it runs on, on the VM and compiled
+// to C (core/src/std/os.c): the same in a test as out of one.
+
+import std/os
+
+test "the process and the machine" {
+  print(!os.hostname().isEmpty())
+  print(os.pid() > 0 && os.ppid() > 0)
+  print(os.platform() != .unknown && os.arch() != .unknown)
+  let u = os.user()
+  print(!u.name.isEmpty() && !u.home.isEmpty())
+  print(u.uid != none || os.platform() == .windows)
+  print(os.executable() != none)
+}
+
+test "home: os.fake's HOME" {
+  let _ = os.fake(env: ["HOME": "/home/ann", "USERPROFILE": "C:\\Users\\ann"])
+  let h = os.user().home
+  print(h == "/home/ann" || h == "C:\\Users\\ann")
+}
+
+// Output:
+// true
+// true
+// true
+// true
+// true
+// true
+// ok the process and the machine
+// true
+// ok home: os.fake's HOME

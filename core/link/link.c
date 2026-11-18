@@ -117,5 +117,8 @@ const ak_lib_entry *const ak_std_libs[] = {
 #if defined(AK_USES_EVERY) || defined(AK_USES_HTTP)
 	ak_std_http,
 #endif
+#if defined(AK_USES_EVERY) || defined(AK_USES_LOG)
+	ak_std_log,
+#endif
 	NULL,
 };

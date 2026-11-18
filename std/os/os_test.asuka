@@ -1,0 +1,34 @@
+test "the process and the machine" {
+  expect(!hostname().isEmpty())
+  expect(pid() > 0)
+  expect(ppid() > 0)
+  expect(ppid() != pid())
+  expect(platform() != .unknown)
+  expect(arch() != .unknown)
+  let u = user()
+  expect(!u.name.isEmpty())
+  expect(!u.home.isEmpty())
+  if platform() == .windows {
+    expect(u.uid == none)
+  } else {
+    expect((u.uid ?? -1) >= 0)
+    expect((u.gid ?? -1) >= 0)
+  }
+}
+
+test "the executable: an absolute path" {
+  let path = executable() ?? ""
+  expect(path.hasPrefix("/") || path.contains(":\\"))
+}
+
+test "the home is os.fake's HOME" {
+  let _ = fake(env: ["HOME": "/home/ann", "USERPROFILE": "C:\\Users\\ann"])
+  let home = user().home
+  expect(home == "/home/ann" || home == "C:\\Users\\ann")
+}
+
+test "a fake doesn't change the process" {
+  let before = (pid(), hostname(), user().name)
+  let _ = fake(args: ["x"], env: [:])
+  expect((pid(), hostname(), user().name) == before)
+}
