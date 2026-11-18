@@ -1,0 +1,129 @@
+// std/net over real sockets on 127.0.0.1, on the VM and compiled to C:
+// a line server and its clients, a length-prefixed binary message, a
+// UDP round trip, a cancelled read whose bytes the next read gets, and
+// closing a server, which cancels its handlers (their defers run).
+
+import std/net
+
+test "a line server" {
+  let server = try await net.serve(0, c => {
+    try await c.write("hello {c.remoteAddress.ip.isLoopback()}\n")
+    for await line in c.lines() {
+      if line == "quit" {
+        return
+      }
+      try await c.write("{line.count()} {line.upper()}\n")
+    }
+  })
+  async fn client(words: [string]) throws -> [string] {
+    let c = try await net.connect("localhost", server.port)
+    var got = [(try await c.readLine()) ?? "-"]
+    for w in words {
+      try await c.write("{w}\r\n")
+      got.push((try await c.readLine()) ?? "-")
+    }
+    try await c.write("quit\n")
+    if try await c.readLine() == none {
+      got.push("closed")
+    }
+    return got
+  }
+  let (a, b) = try await all(client(["asuka", "net"]), client(["tcp"]))
+  print(a)
+  print(b)
+  await server.close()
+}
+
+test "a binary message" {
+  let l = try await net.listen(0)
+  let c = try await net.connect("127.0.0.1", l.port)
+  let s = try await l.accept()
+  let body = "a message".bytes()
+  try await c.writeBytes(bytes([0, body.count()]).concat(body))
+  let head = try await s.readExactly(2)
+  let n = head[0] << 8 | head[1]
+  print("{n}: {(try await s.readExactly(n)).string()}")
+  c.close()
+  print(try await s.read())
+}
+
+test "UDP" {
+  let a = try await net.udp(host: "127.0.0.1")
+  let b = try await net.udp(host: "127.0.0.1")
+  try await a.send("ping".bytes(), to: b.address)
+  let d = try await b.receive()
+  try await b.send("pong".bytes(), to: d.from)
+  print("{d.data.string()} {d.from.port == a.port} {(try await a.receive()).data.string()}")
+}
+
+test "a cancelled read" {
+  let l = try await net.listen(0)
+  let c1 = try await net.connect("127.0.0.1", l.port)
+  let s1 = try await l.accept()
+  let c2 = try await net.connect("127.0.0.1", l.port)
+  let s2 = try await l.accept()
+  var ran: [string] = []
+  async fn idle() throws -> string {
+    defer { ran.push("idle's defer") }
+    return (try await s1.readLine()) ?? "-"
+  }
+  async fn busy() throws -> string {
+    try await c2.write("busy\n")
+    return (try await s2.readLine()) ?? "-"
+  }
+  print(try await race(idle(), busy()))
+  print(ran)
+  try await c1.write("after\n")
+  print(try await s1.readLine())
+}
+
+test "closing a server cancels its handlers" {
+  var ran: [string] = []
+  let server = try await net.serve(0, c => {
+    defer { ran.push("the handler's defer") }
+    try await c.write("begun\n")
+    let _ = try await c.read()
+  })
+  let c = try await net.connect("127.0.0.1", server.port)
+  print(try await c.readLine())
+  await server.close()
+  print(ran)
+  print(try await c.read())
+}
+
+test "errors" {
+  let l = try await net.listen(0)
+  let port = l.port
+  l.close()
+  do {
+    let _ = try await net.connect("127.0.0.1", port)
+  } catch net.NetError.refused(address) {
+    print(address == "127.0.0.1:{port}")
+  }
+  do {
+    let _ = try await net.connect("127.0.0.1", 0)
+  } catch e {
+    print(e.message)
+  }
+}
+
+// Output:
+// ["hello true","5 ASUKA","3 NET","closed"]
+// ["hello true","3 TCP","closed"]
+// ok a line server
+// 9: a message
+// none
+// ok a binary message
+// ping true pong
+// ok UDP
+// busy
+// ["idle's defer"]
+// after
+// ok a cancelled read
+// begun
+// ["the handler's defer"]
+// none
+// ok closing a server cancels its handlers
+// true
+// a port to connect to is 1 to 65535
+// ok errors

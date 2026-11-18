@@ -1,0 +1,9 @@
+name = "std/net"
+version = "0.1.0"
+description = "TCP connections and servers, UDP datagrams, DNS lookups, IP addresses"
+
+# A connection to another device on the local network (not this one's
+# loopback) asks the user first, on iOS and on macOS 15: the prompt's
+# text, which an app's own asuka.toml can say better.
+[ios.usage]
+NSLocalNetworkUsageDescription = "To connect to devices and services on your local network."
