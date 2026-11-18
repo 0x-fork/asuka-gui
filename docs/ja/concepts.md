@@ -123,9 +123,22 @@ component Score {
 ```asuka
 effect { storage.set("draft", draft) }
 effect(selected) { analytics.log("selected", selected) }
+effect() { analytics.log("opened") }   // コンポーネントが作られるときに 1 回だけ
 ```
 
 エフェクトは自分が追従している状態には書き込めません（書き込むと、自分の書き込みのあとにもう一度実行されてしまいます）。コンパイラーはこれをエラーにし、代わりの書き方を示します。
+
+エフェクトが用意したものは、その本体に書いた `cleanup { … }` で元に戻します。cleanup は、エフェクトが次に実行される前と、エフェクトがコンポーネントと一緒になくなるときに実行されます。
+
+```asuka
+effect(roomId) {
+  let room = roomId
+  chat.join(room)
+  cleanup { chat.leave(room) }
+}
+```
+
+cleanup が読む状態は、cleanup が実行されたときの値です。そのときには、エフェクトが追従しているものはもう変わっています。ここでの `room` のように、その実行で使った値は `let` に取っておきます。cleanup がエフェクトの追従しているものを読むと、コンパイラーが警告します。
 
 `task` は、コンポーネントが表示されている間に行う非同期の処理です。コンポーネントが現れると始まり、なくなるとキャンセルされます。丸括弧の中に値を書くと、それが変わるたびに前回の実行をキャンセルしてやり直します。丸括弧の中身は比較されるので、`task(user.id)` は id が変わったときにやり直し、ユーザーの名前が変わってもやり直しません。
 
@@ -193,6 +206,21 @@ Boundary {
 - `match` のケースが変わったとき：古いケースのオーナー
 - 画面がポップされたとき（戻るボタン、スワイプ、`pop()`）：その画面のオーナー
 - シートが閉じたとき：シートの中身のオーナー
+
+コンポーネントの本体に書いた `cleanup { … }` は、そのオーナーが破棄されるときに実行されます。エフェクトの本体に書いたものもそのときに実行され、さらにエフェクトが次に実行されるたびに、その前にも実行されます。ストアと app の本体にも書けます。cleanup は登録されたのと逆の順番で、オーナーが作ったものが止まったあとに実行されます。先にエフェクトの cleanup、次に本体の cleanup です。エフェクトの cleanup はその実行で登録したものを取り消し、本体の cleanup はコンポーネントがなくなったことを伝えます。
+
+```asuka
+component Tab(value: string) {
+  use tabs: TabsContext
+  effect(value) {
+    let v = value
+    tabs.add(v)
+    cleanup { tabs.remove(v) }
+  }
+  cleanup { tabs.closed(value) }
+  Text(value)
+}
+```
 
 キャンセルされたタスクは、そのとき待っている `await` で終わり、その途中で `defer` を実行します。タスクが始めた処理は、そこで止めます。
 

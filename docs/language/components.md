@@ -331,7 +331,8 @@ An effect runs at once and again whenever what it read changes, through
 the functions it calls. What it read is as much as the code says:
 `effect { log(user.name) }` runs again when the name changes, not the
 avatar. `effect(a, b)` runs again when `a` or `b`
-changes, and its body follows nothing it reads. A task is async
+changes, and its body follows nothing it reads; `effect() { }` follows
+nothing at all, and runs once, as the component is built. A task is async
 ([Async](async.md#async)): it starts when the component appears, restarts
 when what's in its parentheses changes (cancelling the last run), and
 is cancelled when the component goes. What's in the parentheses of an
@@ -348,3 +349,42 @@ instead: a state that follows (`state n: int = min(n ?? 0, 3)`,
 `state selected(results) = 0`), an `effect(…)` that follows something
 else, or the handler that changes what it reads. A task may write what
 it follows: it restarts by cancelling, and ends.
+
+### Cleanups
+
+```asuka
+effect() {
+  let id = bus.listen("refresh", e => reload())
+  cleanup { bus.unlisten(id) }          // once: as the component goes
+}
+effect(roomId) {
+  let room = roomId
+  chat.join(room)
+  cleanup { chat.leave(room) }          // before the next run, and as it goes
+}
+cleanup { drafts.save(draft) }          // as the component goes
+```
+
+`cleanup { … }` in an effect's body runs before the effect's next run
+and when the effect goes: what the run set up, it undoes. What's set up
+once, while the component shows, is an `effect() { }`'s: what it calls
+may read and write what it registers with (a list of listeners) without
+the effect following it. It may be
+under an `if` (it undoes only what that branch did) or in a loop (once
+for each time it was reached), and several run last first. In a
+component's, a store's or the `app`'s body, beside its effects and
+tasks, it runs when the instance goes, after its effects' cleanups.
+
+A cleanup is a closure: it sees the run's locals, it doesn't await or
+throw (it runs as its owner goes, and the cleanups after it still have
+to: catch with `try?` or `do { } catch { }`), and what it reads isn't
+followed. It reads state as it is when it runs. Before the effect runs
+again, that's after what the effect follows has changed, so
+`cleanup { chat.leave(roomId) }` would leave the new room: keep the
+run's value in a `let`, and the compiler warns when you don't
+([cleanup-reads-what-it-follows](../errors/cleanup-reads-what-it-follows.md)).
+What it writes counts as its effect's writes.
+
+Handlers, functions, tasks and tests don't take one: a task undoes what
+it started with `defer`, which runs as it ends or is cancelled, and a
+handler or a function has no owner of its own to run it.

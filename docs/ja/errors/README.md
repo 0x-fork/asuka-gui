@@ -11,6 +11,7 @@ Asuka が報告するエラーと警告には、すべてコードがありま�
 - [bad-operand](bad-operand.md): 演算子が受け付けない値に使われている。
 - [brace-placement](brace-placement.md): ブロックの `{` は前の行の末尾に書く。
 - [cannot-infer-type](cannot-infer-type.md): 書かれた内容から値の型を判断できない。
+- [cleanup-reads-what-it-follows](cleanup-reads-what-it-follows.md): エフェクトが追従するものを読むエフェクトの cleanup。
 - [closure-keeps-itself](closure-keeps-itself.md): 自分を保存した変数を通して自分を呼ぶクロージャー。
 - [constraint-not-met](constraint-not-met.md): ジェネリックやメソッドが必要とするものを型が持っていない。
 - [deprecated-syntax](deprecated-syntax.md): 置き換えられた古い書き方（`asuka fmt` が書き直す）。
@@ -19,7 +20,7 @@ Asuka が報告するエラーと警告には、すべてコードがありま�
 - [embed-file](embed-file.md): パッケージにないファイルの `embed`。
 - [extension-conflict](extension-conflict.md): 型がすでに持つ名前、またはほかの拡張も追加する名前を追加する拡張。
 - [fn-body](fn-body.md): 本体のない関数、または持てない本体を持つ関数。
-- [follows-nothing](follows-nothing.md): 追従するもののない `state x()` や `effect()`。
+- [follows-nothing](follows-nothing.md): 追従するもののない `state x()`。
 - [import-cycle](import-cycle.md): 互いにインポートし合うパッケージ。
 - [int-overflow](int-overflow.md): 64 ビットに収まらない整数リテラル。
 - [interface-not-satisfied](interface-not-satisfied.md): 宣言した interface を実装していない型。

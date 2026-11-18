@@ -393,7 +393,7 @@ func (c *Checker) noteCall(f *Function, at syntax.Node) {
 		r.calls = append(r.calls, f)
 	}
 	if c.ctx != nil {
-		u := callUse{f, at}
+		u := callUse{f: f, at: at}
 		if c.ctx.peeks == 0 {
 			c.ctx.readCalls = append(c.ctx.readCalls, u)
 		}
@@ -1569,6 +1569,8 @@ func (c *Checker) throwHere(at syntax.Node) string {
 		return ""
 	case CtxBinding, CtxComponent, CtxStore, CtxBuilder:
 		return "what a component's body declares can't throw: give a fallback (try … catch { fallback }), or none on an error (try?)"
+	case CtxCleanup:
+		return "a cleanup can't throw: it runs as its owner goes, and the cleanups after it still have to; catch the error (try?, do { } catch { })"
 	}
 	return "this can't throw here: catch the error (try … catch { }, do { } catch { }, try?)"
 }
@@ -1594,6 +1596,8 @@ func (c *Checker) asyncHint() string {
 		return "a component's body is declarations; load data with let x = load f(), or in a task { }"
 	case CtxEffect:
 		return "an effect runs at once; start async work in a task { }"
+	case CtxCleanup:
+		return "a cleanup runs at once, as its owner goes; async teardown is a task's defer"
 	case CtxGlobal:
 		return "a value here is computed at once"
 	case CtxSpawn:

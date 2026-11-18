@@ -166,10 +166,27 @@ values in parentheses, when they change, and only then:
 ```asuka
 effect { storage.set("draft", draft) }
 effect(selected) { analytics.log("selected", selected) }
+effect() { analytics.log("opened") }   // once, as the component is built
 ```
 
 An effect can't write state it follows (it would run again after its
 own write): the compiler says so, and what says it instead.
+
+What an effect sets up, a `cleanup { … }` in its body undoes. It runs
+before the effect runs again, and when the effect goes with its
+component:
+
+```asuka
+effect(roomId) {
+  let room = roomId
+  chat.join(room)
+  cleanup { chat.leave(room) }
+}
+```
+
+A cleanup reads state as it is when it runs, after what the effect
+follows has changed. Keep the run's values in a `let`, as `room` is
+here; the compiler warns when a cleanup reads what its effect follows.
 
 A `task` is async work a component does while it's shown: it starts when
 the component appears, and is cancelled when it goes. With values in
@@ -262,6 +279,27 @@ Owners are disposed when:
 - a `match` changes case: the old case's;
 - a screen is popped (the back button, a swipe, `pop()`): the screen's;
 - a sheet closes: its content's.
+
+`cleanup { … }` in a component's body runs when its owner is disposed,
+and one in an effect's body runs then too, as well as before each of the
+effect's next runs. A store's and the app's body take one as well.
+Cleanups run last registered first, after what their owner made has
+stopped: the effects' cleanups first, then the body's. An effect's
+cleanup undoes what its run registered, and a body's says the component
+went:
+
+```asuka
+component Tab(value: string) {
+  use tabs: TabsContext
+  effect(value) {
+    let v = value
+    tabs.add(v)
+    cleanup { tabs.remove(v) }
+  }
+  cleanup { tabs.closed(value) }
+  Text(value)
+}
+```
 
 A task that's cancelled ends at the `await` it's waiting at, running
 its `defer`s on the way: that's where to stop what it started.

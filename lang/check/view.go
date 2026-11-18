@@ -299,15 +299,17 @@ func (c *Checker) componentBody(t *TypeName) {
 			c.taskDecl(d)
 		case *syntax.EffectDecl:
 			c.effectDecl(d, t.name+".effect")
+		case *syntax.CleanupStmt:
+			c.cleanupStmt(d, true)
 		}
 	}
 	if comp.Store {
 		for _, it := range comp.Body.Items {
 			switch it.(type) {
 			case *syntax.PropDecl, *syntax.EventDecl, *syntax.StateDecl, *syntax.LetDecl, *syntax.UseDecl,
-				*syntax.FuncDecl, *syntax.VariantDecl, *syntax.ProvideDecl, *syntax.TaskDecl, *syntax.EffectDecl, *syntax.BadItem:
+				*syntax.FuncDecl, *syntax.VariantDecl, *syntax.ProvideDecl, *syntax.TaskDecl, *syntax.EffectDecl, *syntax.CleanupStmt, *syntax.BadItem:
 			default:
-				c.errorf(it, diag.MisplacedDeclaration, "a store has no views or statements: it's state, lets, fns, tasks and effects")
+				c.errorf(it, diag.MisplacedDeclaration, "a store has no views or statements: it's state, lets, fns, tasks, effects and cleanups")
 			}
 		}
 		return
@@ -316,7 +318,7 @@ func (c *Checker) componentBody(t *TypeName) {
 	for _, it := range comp.Body.Items {
 		switch it.(type) {
 		case *syntax.PropDecl, *syntax.EventDecl, *syntax.StateDecl, *syntax.LetDecl, *syntax.UseDecl,
-			*syntax.FuncDecl, *syntax.VariantDecl, *syntax.ProvideDecl, *syntax.TaskDecl, *syntax.EffectDecl, *syntax.BadItem:
+			*syntax.FuncDecl, *syntax.VariantDecl, *syntax.ProvideDecl, *syntax.TaskDecl, *syntax.EffectDecl, *syntax.CleanupStmt, *syntax.BadItem:
 		default:
 			views = append(views, it)
 		}
@@ -369,9 +371,9 @@ func (c *Checker) effectDecl(d *syntax.EffectDecl, name string) {
 		for _, x := range d.Deps {
 			ec.deps = append(ec.deps, c.info.Ctxs[x])
 		}
-		if len(d.Deps) == 0 {
-			c.errorf(d, diag.FollowsNothing, "effect() follows nothing: an effect that runs once is effect { … } reading nothing, or a task { }")
-		}
+		// effect() { … } follows nothing: it runs once, as its component
+		// is built, and its cleanups as it goes (rfcs/0016).
+		ec.untracked = true
 		ctx = c.enter(CtxEffect, d.Body, name)
 		ctx.Untracked = true
 	} else {
@@ -495,6 +497,9 @@ func (c *Checker) viewItem(it syntax.Item, el *ElementCall) {
 	case *syntax.StateDecl, *syntax.PropDecl, *syntax.EventDecl, *syntax.VariantDecl, *syntax.UseDecl, *syntax.ProvideDecl,
 		*syntax.TaskDecl, *syntax.EffectDecl, *syntax.FuncDecl:
 		c.errorf(it, diag.StatementInView, "%s belongs in a component's body, not in an element's block", itemName(it))
+	case *syntax.CleanupStmt:
+		c.errorf(it, diag.StatementInView, "a cleanup in a view: it goes in a component's body (it runs when the component goes), or in an effect's")
+		c.cleanupStmt(s, true)
 	case *syntax.StyleDecl:
 		c.errorf(it, diag.MisplacedDeclaration, "a style is declared at the top of a file")
 	case *syntax.BadItem:
@@ -1179,6 +1184,11 @@ func (c *Checker) slotItem(s *syntax.SlotItem, ec *ElementCall) {
 	comp := ec.Comp.Comp
 	m := comp.Members[s.Name.Name]
 	if m == nil || !m.IsSlot() {
+		if m == nil && s.Name.Name == "cleanup" {
+			// In a call's block, cleanup { } names a slot (rfcs/0016).
+			c.errorf(s.Name, diag.StatementInView, "%s has no slot cleanup, and a cleanup in a view isn't one: it goes in a component's body (it runs when the component goes), or in an effect's", ec.Comp.name)
+			return
+		}
 		if !comp.Native && m == nil && c.variantNames(ec.Comp) != "none" {
 			c.errorf(s.Name, diag.UnknownProp, "%s has no slot or variant %s (a slot is a prop of type View; its variants: %s)", ec.Comp.name, s.Name.Name, c.variantNames(ec.Comp))
 			return
@@ -1228,7 +1238,7 @@ func (c *Checker) rootComponent(t *TypeName) *TypeName {
 	for _, it := range comp.Body.Items {
 		switch it := it.(type) {
 		case *syntax.PropDecl, *syntax.EventDecl, *syntax.StateDecl, *syntax.LetDecl, *syntax.UseDecl,
-			*syntax.FuncDecl, *syntax.VariantDecl, *syntax.ProvideDecl, *syntax.TaskDecl, *syntax.EffectDecl, *syntax.BadItem:
+			*syntax.FuncDecl, *syntax.VariantDecl, *syntax.ProvideDecl, *syntax.TaskDecl, *syntax.EffectDecl, *syntax.CleanupStmt, *syntax.BadItem:
 		case *syntax.ExprStmt:
 			if call != nil {
 				return nil

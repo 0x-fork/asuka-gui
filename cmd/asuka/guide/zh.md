@@ -1135,9 +1135,30 @@ task(query) { results = await search(query) } // query 变化时再运行一次
 task(user.id) { profile = try await load(user.id) } // id 变化时才重新运行，name 变化时不会
 ```
 
-effect 会立即运行，之后每当它读取过的内容（包括它调用的函数读取的内容）变化时再次运行。它读取的就是代码里写到的那部分：`effect { log(user.name) }` 在名字变化时重新运行，头像变化时不会。`effect(a, b)` 只在 `a` 或 `b` 变化时再次运行，它的主体读取的东西都不会被跟随。task 是异步的（见[异步](https://asuka.egoist.dev/zh/docs/language/async#异步)）：组件出现时启动；圆括号里的内容变化时重新启动（并取消上一次运行）；组件消失时被取消。effect 和 task 圆括号里的内容会被比较：变化后如果值仍然相等，就什么都不会发生，所以用户改名时 `task(user.id)` 会继续运行。`app` 代码块里也可以写它们：它们属于应用本身，在应用运行期间一直有效（比如一个刷新循环，或者一个跟随应用状态的设置：`effect { setColorScheme(scheme) }`）。
+effect 会立即运行，之后每当它读取过的内容（包括它调用的函数读取的内容）变化时再次运行。它读取的就是代码里写到的那部分：`effect { log(user.name) }` 在名字变化时重新运行，头像变化时不会。`effect(a, b)` 只在 `a` 或 `b` 变化时再次运行，它的主体读取的东西都不会被跟随；`effect() { }` 什么都不跟随，只在组件建立时运行一次。task 是异步的（见[异步](https://asuka.egoist.dev/zh/docs/language/async#异步)）：组件出现时启动；圆括号里的内容变化时重新启动（并取消上一次运行）；组件消失时被取消。effect 和 task 圆括号里的内容会被比较：变化后如果值仍然相等，就什么都不会发生，所以用户改名时 `task(user.id)` 会继续运行。`app` 代码块里也可以写它们：它们属于应用本身，在应用运行期间一直有效（比如一个刷新循环，或者一个跟随应用状态的设置：`effect { setColorScheme(scheme) }`）。
 
 effect 可以写入状态，但不能写入它跟随的状态：`effect { if n > 3 { n = 3 } }` 会在自己写入之后再运行一次，晚了一轮，而在那之前处理函数已经看到 `n` 是 4 了。编译器会报错，并给出替代的写法：跟随的状态（`state n: int = min(n ?? 0, 3)`、`state selected(results) = 0`），跟随别的内容的 `effect(…)`，或者在改变它读取内容的那个处理函数里直接写入。task 可以写入它跟随的状态：它通过取消来重新启动，最终会结束。
+
+##### cleanup
+
+```asuka
+effect() {
+  let id = bus.listen("refresh", e => reload())
+  cleanup { bus.unlisten(id) }          // 只运行一次：组件消失时
+}
+effect(roomId) {
+  let room = roomId
+  chat.join(room)
+  cleanup { chat.leave(room) }          // 下一次运行之前，以及 effect 消失时
+}
+cleanup { drafts.save(draft) }          // 组件消失时
+```
+
+effect 主体里的 `cleanup { … }` 会在 effect 下一次运行之前、以及 effect 消失时运行：这次运行建立了什么，它就撤销什么。组件显示期间只需建立一次的东西，写在 `effect() { }` 里：它调用的函数可以读写它所注册的地方（比如一个监听者列表），而 effect 不会去跟随这些东西。它可以写在 `if` 里（只撤销这个分支做过的事），也可以写在循环里（执行到几次就注册几次）；有多个时，后注册的先运行。写在组件、store 或 `app` 的主体里、和 effect 与 task 并列时，它会在这个实例消失时运行，排在 effect 的 cleanup 之后。
+
+cleanup 是一个闭包：它能看到这次运行的局部变量；它不能 await，也不能抛出错误（它在 owner 消失的过程中运行，后面的 cleanup 还得接着运行；用 `try?` 或 `do { } catch { }` 处理错误）；它读取的东西不会被跟随。它读到的状态是它运行那一刻的值。在 effect 再次运行之前，那已经是 effect 跟随的东西变化之后了，所以 `cleanup { chat.leave(roomId) }` 离开的会是新房间：要把这次运行的值存进 `let`，否则编译器会给出警告（[cleanup-reads-what-it-follows](https://asuka.egoist.dev/zh/docs/errors/cleanup-reads-what-it-follows)）。它写入的东西算作它所在 effect 的写入。
+
+处理函数、函数、task 和测试里不能写 cleanup：task 用 `defer` 撤销它启动的东西，`defer` 会在 task 结束或被取消时运行；处理函数和函数没有自己的 owner 来运行它。
 
 ### Store
 
@@ -1217,7 +1238,7 @@ async fn loadThread(id: string) throws -> Thread {
 
 - 调用异步函数需要 `await`。处理函数、task 和测试里可以使用 `await`；组件的主体及其中的 `let` 不行。闭包被传作异步函数，或者主体里有 `await` 时，就是异步的；写成 `async () => …` 可以明确标出（[函数与闭包](https://asuka.egoist.dev/zh/docs/language/functions)）。
 - **主线程。** 所有代码都在主线程上运行；`await` 让你的代码在等待时，其他工作可以先运行。状态可以在主线程上修改，而且只能在主线程上修改。
-- `all(a, b)` 同时发起多个调用，并等待全部结果；`race(a, b)` 取第一个完成的结果，并取消其余的；此外还有 `sleep(300ms)` 和 `withTimeout(5s) { … }`，后者的值就是代码块的值（`let page = try await withTimeout(5s) { return try await fetch(url) }`），超时就抛出错误。它们是结构化的：被它们取消的工作会先停下、执行完自己的 `defer`，它们才返回或抛出错误。`await never()` 什么都不等，只等任务结束：适合在组件显示期间一直持有某样东西的 task（`defer { release() }; await never()`），或只在读者离开时才结束的流。
+- `all(a, b)` 同时发起多个调用，并等待全部结果；`race(a, b)` 取第一个完成的结果，并取消其余的；此外还有 `sleep(300ms)` 和 `withTimeout(5s) { … }`，后者的值就是代码块的值（`let page = try await withTimeout(5s) { return try await fetch(url) }`），超时就抛出错误。它们是结构化的：被它们取消的工作会先停下、执行完自己的 `defer`，它们才返回或抛出错误。`await never()` 什么都不等，只等任务结束：适合只在读者离开时才结束的流，或者先要 await 才能持有某样东西的 task（`try await register(); defer { release() }; await never()`）。组件不需要 await 就能持有的东西，用 `cleanup { }` 撤销（见 [cleanup](https://asuka.egoist.dev/zh/docs/language/components#cleanup)）。
 - `spawn { … }` 在另一个线程上运行一段代码，用于会拖住主线程的工作（解析、图片处理）。这段代码只能使用值，不能使用状态、store、视图、原生对象或 C 指针，也不能使用保存着它们的文件级 `let`（比如一个数据库）：如果用了，编译器会报错。在 Web 上，它运行在页面的一个 Web Worker 里；Worker 只会自己生成文件里的值，不会生成其他东西。如果工作需要在多次调用之间保留某样东西（一个索引、一个它打开的数据库），就用 [worker](#worker)。
 - `for await message in socket.messages { … }` 读取一个流，也就是 `Stream<T>`：随时间陆续到来的值。`Stream(send => { … })` 创建一个流：流第一次被读取时，这个代码块作为 task 开始运行，每次 `send(x)` 就是一个值；代码块返回时流结束，代码块抛出错误时流也以这个错误失败。离开循环（`break`、出错、owner 被销毁）会取消这个代码块。一个流只能有一个读取者。
 
@@ -1715,6 +1736,7 @@ test "archiving removes the row" {
 - bad-operand: 运算符用在了它不接受的值上. 转换其中一边（`float(n)`），改用方法（`a.concat(b)`），或者给类型加上这个运算符对应的方法。
 - brace-placement: 代码块的 `{` 要写在上一行的末尾. 把 `{` 移到上一行末尾：`fn f() {`、`Row {`、`if x {`。
 - cannot-infer-type: 编译器无法从代码中推断出值的类型. 在值所在的地方写出类型：`let ids: [int] = []`、`Type.case`、`f<T>(…)`。
+- cleanup-reads-what-it-follows: effect 的 cleanup 读取了 effect 所跟随的东西. 把这次运行的值存进一个 `let`，在 cleanup 里读它：先 `let r = room`，再 `cleanup { leave(r) }`。
 - closure-keeps-itself: 闭包通过保存它的变量调用自己. 改为在代码块里声明函数 `fn name(…) { … }`：它可以调用自己。
 - constraint-not-met: 类型缺少泛型或方法对它的要求. 换成满足要求的类型（比如用 id 代替整个值），或者给类型补上缺少的部分。
 - deprecated-syntax: 已被替换的旧写法，`asuka fmt` 会自动改写. 运行 `asuka fmt -w`，或者写成 `style: name`。
@@ -1725,7 +1747,7 @@ test "archiving removes the row" {
 - embed-file: `embed` 的文件不在包里. 修正路径，或者把文件加到包里。
 - extension-conflict: 扩展添加了类型已有的名称，或者另一个扩展也添加了同样的名称. 给方法换个名字，或者只保留其中一个扩展。
 - fn-body: 函数缺少函数体，或者有了不该有的函数体. 写出函数体（`{ … }` 或 `= 表达式`），或者从 native、extern 声明里去掉它。
-- follows-nothing: `state x()` 或 `effect()` 没有可跟随的东西. 写出要跟随的东西，或者写成 `state x = peek(…)`、`effect { … }`、`task { }`。
+- follows-nothing: `state x()` 没有可跟随的东西. 写出要跟随的东西（`state x(a) = …`），或者写成 `state x = peek(…)`。
 - import-cycle: 相互导入的包. 把两者都需要的部分移到第三个包里，让它们都导入它。
 - int-overflow: 超出 64 位范围的整数字面量. 换一个更小的数，或者使用 `float`；需要精确的大数时用 `std/decimal`。
 - interface-not-satisfied: 类型声明了某个 interface，却没有实现它. 按 interface 的签名补上缺少的方法（消息里列出了它们）。

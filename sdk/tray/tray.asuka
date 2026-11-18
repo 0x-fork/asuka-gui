@@ -225,18 +225,18 @@ pub component Tray(id: string) {
   state number = 0
   state seen = 0
 
-  task(id) {
+  effect(id) {
     lastNumber += 1
     let mine = lastNumber
-    numbers[id] = mine
+    let name = id
+    numbers[name] = mine
     seen = 0
     number = mine
-    defer {
-      let _ = numbers.remove(id)
+    cleanup {
+      let _ = numbers.remove(name)
       let _ = happened.remove(mine)
       host.send("tray", "remove", host.u32(mine))
     }
-    await never()
   }
 
   // The icon whole, again whenever its encoding changes.
@@ -290,17 +290,16 @@ pub component DockMenu {
   state number = 0
   state seen = 0
 
-  task {
+  effect() {
     lastNumber += 1
     let mine = lastNumber
     docks.push(mine)
     seen = (happened[0] ?? []).count()
     number = mine
-    defer {
+    cleanup {
       let _ = docks.removeWhere(d => d == mine)
       if docks.isEmpty() { sendDock(encodeMenu([])) }
     }
-    await never()
   }
 
   // Its items, when it's the last shown, again as they change.

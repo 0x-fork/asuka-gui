@@ -847,11 +847,10 @@ view to name.`,
 
 	FollowsNothing = def(Code{
 		Name:    "follows-nothing",
-		Summary: "`state x()` or `effect()` with nothing to follow",
-		Why: `The parentheses of ` + "`state x(a, b)`" + ` and ` + "`effect(a, b)`" + ` say what to follow.
-Empty, they'd follow nothing, which is what a value read once (` + "`peek`" + `) or
-an effect that reads nothing already says.`,
-		Fix:   "Name what to follow, or write `state x = peek(…)`, `effect { … }`, `task { }`.",
+		Summary: "`state x()` with nothing to follow",
+		Why: `The parentheses of ` + "`state x(a, b)`" + ` say what the state follows. Empty, it
+would follow nothing, which is what a value read once (` + "`peek`" + `) already says.`,
+		Fix:   "Name what to follow, `state x(a) = …`, or write `state x = peek(…)`.",
 		Wrong: "component Counter {\n  state n() = 0\n  Text(\"{n}\")\n}\n",
 		Right: "component Counter {\n  state n = 0\n  Text(\"{n}\")\n}\n",
 	})
@@ -870,6 +869,20 @@ something else (` + "`effect(other) { … }`" + `, ` + "`state x(other) = …`" 
 the handler that changes what it reads.`,
 		Wrong: "component Counter {\n  state n = 0\n  effect {\n    if n > 3 { n = 3 }\n  }\n  Button(\"{n}\") { on press { n += 1 } }\n}\n",
 		Right: "component Counter {\n  state n = 0\n  Button(\"{n}\") { on press { n = min(n + 1, 3) } }\n}\n",
+	})
+
+	CleanupReadsWhatItFollows = def(Code{
+		Name:     "cleanup-reads-what-it-follows",
+		Severity: Warning,
+		Summary:  "an effect's cleanup that reads what the effect follows",
+		Why: `An effect's ` + "`cleanup { }`" + ` runs before the effect's next run, which
+happens because what it follows changed. Reading that in the cleanup
+reads the new value: ` + "`cleanup { leave(room) }`" + ` leaves the room being
+joined, not the one the run joined.`,
+		Fix: `Keep the run's value in a ` + "`let`" + ` and read that in the cleanup:
+` + "`let r = room`" + `, then ` + "`cleanup { leave(r) }`" + `.`,
+		Wrong: "component Room {\n  prop room = \"lobby\"\n  effect(room) {\n    print(\"join {room}\")\n    cleanup { print(\"leave {room}\") }\n  }\n  Text(room)\n}\n",
+		Right: "component Room {\n  prop room = \"lobby\"\n  effect(room) {\n    let r = room\n    print(\"join {r}\")\n    cleanup { print(\"leave {r}\") }\n  }\n  Text(room)\n}\n",
 	})
 
 	RowWithoutKey = def(Code{

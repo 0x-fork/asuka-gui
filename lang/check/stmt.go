@@ -70,6 +70,8 @@ func (c *Checker) stmt(it syntax.Item) {
 		c.throwValue(s, s.Value)
 	case *syntax.BranchStmt:
 		c.branch(s, s.Tok, s.Label)
+	case *syntax.CleanupStmt:
+		c.cleanupStmt(s, false)
 	case *syntax.DeferStmt:
 		if c.inDefer > 0 {
 			c.errorf(s, diag.MisplacedStatement, "a defer inside a defer: put the code in the first one")
@@ -128,6 +130,8 @@ func itemName(it syntax.Item) string {
 		return "task"
 	case *syntax.EffectDecl:
 		return "effect"
+	case *syntax.CleanupStmt:
+		return "cleanup"
 	case *syntax.StyleDecl:
 		return "a style"
 	case *syntax.PropSet:
@@ -794,6 +798,8 @@ func ctxLabel(ctx *FuncCtx) string {
 		return "a task"
 	case CtxEffect:
 		return "an effect"
+	case CtxCleanup:
+		return "a cleanup"
 	case CtxTest:
 		return "a test"
 	}
@@ -1727,10 +1733,7 @@ func (c *Checker) localFns(items []syntax.Item) {
 func (c *Checker) localFnBody(lf *LocalFn) {
 	d := lf.Decl
 	saved := c.ctx
-	savedTry, savedAwait, savedHandled, savedLoops, savedView, savedInDefer := c.inTry, c.inAwait, c.handled, c.loops, c.view, c.inDefer
-	c.inTry, c.inAwait, c.handled, c.loops, c.view, c.inDefer = 0, 0, 0, 0, false, 0
-	savedPartial := c.partial
-	c.partial = nil
+	where := c.enterBody()
 	ctx := c.enter(CtxLocalFn, d, d.Name.Name)
 	lf.Ctx = ctx
 	c.invalidTypeParams(d.TypeParams)
@@ -1754,8 +1757,28 @@ func (c *Checker) localFnBody(lf *LocalFn) {
 		}
 	}
 	c.leave(saved)
-	c.inTry, c.inAwait, c.handled, c.loops, c.view, c.inDefer = savedTry, savedAwait, savedHandled, savedLoops, savedView, savedInDefer
-	c.partial = savedPartial
+	c.leaveBody(where)
+}
+
+// bodyWhere is where the checker is in the code around a body of its own
+// (a local fn's, a cleanup's): in a try, an await, a do's catch, loops, a
+// view, a defer, none of which reach into that body.
+type bodyWhere struct {
+	inTry, inAwait, handled, loops, inDefer int
+	view                                    bool
+	partial                                 *partialCatch
+}
+
+// enterBody starts a body of its own, returning where it was for
+// leaveBody.
+func (c *Checker) enterBody() bodyWhere {
+	w := bodyWhere{c.inTry, c.inAwait, c.handled, c.loops, c.inDefer, c.view, c.partial}
+	c.inTry, c.inAwait, c.handled, c.loops, c.inDefer, c.view, c.partial = 0, 0, 0, 0, 0, false, nil
+	return w
+}
+
+func (c *Checker) leaveBody(w bodyWhere) {
+	c.inTry, c.inAwait, c.handled, c.loops, c.inDefer, c.view, c.partial = w.inTry, w.inAwait, w.handled, w.loops, w.inDefer, w.view, w.partial
 }
 
 // invalidTypeParams declares the type parameters a local fn can't have
