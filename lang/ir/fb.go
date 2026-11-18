@@ -1,6 +1,7 @@
 package ir
 
 import (
+	"slices"
 	"strings"
 
 	bc "github.com/egoist/asuka/lang/bytecode"
@@ -182,6 +183,19 @@ func (b *fb) release(mark int) {
 		b.free[k] = append(b.free[k], r)
 	}
 	b.temps = b.temps[:mark]
+}
+
+// dropTemps clears the reference temps made since mark, but keep's:
+// what computing a change's value or arguments read on its way (a
+// struct's field, for xs[i] = xs[j] in a mut fn). Held to the
+// statement's end, each would be another reference to the place about
+// to change, which would then be copied, not changed in place.
+func (b *fb) dropTemps(mark int, keep ...int) {
+	for _, r := range b.temps[mark:] {
+		if b.f.Kinds[r] == bc.KRef && !slices.Contains(keep, r) {
+			b.emit(op("CLR"), r)
+		}
+	}
 }
 
 // local is a register that lives until its block ends.

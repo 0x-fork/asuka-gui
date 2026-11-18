@@ -418,7 +418,11 @@ func (b *fb) builtinMethod(e *syntax.CallExpr, call *check.Call, recv *int, dst 
 	}
 	// Arguments first (before the receiver is taken out, when it's
 	// changed in place), in the builtin's order.
+	mark := b.mark()
 	vals := b.args(call, nil)
+	if m.Inout && recv == nil {
+		b.dropTemps(mark, vals...)
+	}
 	if m.Variadic {
 		// The variadic parameter's arguments, as one array.
 		k := len(m.Params) - 1

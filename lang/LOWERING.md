@@ -121,7 +121,11 @@ call for the same reason.
 
 An expression's value may be a local's own register, borrowed: whoever
 changes a value copies it first, or changes it in place through its
-owner (see "Changing values in place").
+owner (see "Changing values in place"). What a change's value, its
+arguments, a `let`'s value or a condition read on the way (a struct's
+field, for `items[i] = items[j]` in a mut fn) is cleared (CLR) once the
+value is computed, not at the statement's end: held, it would be a
+second reference to the place about to change, which would be copied.
 
 ## Changing values in place
 
