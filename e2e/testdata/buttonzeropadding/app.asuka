@@ -1,0 +1,38 @@
+// Button Zero Padding shows a button whose padding of 0 replaces the
+// platform's own (e2e's TestButtonZeroPadding*): red, border and title
+// too, 48 points high under a magenta square as high. With the
+// platform's padding kept, Android's Material insets draw it shorter.
+
+component ButtonZeroPadding {
+  View {
+    grow: 1
+    justify: .center
+    align: .center
+    gap: 24
+    background: #ffffff
+
+    View {
+      width: 48
+      height: 48
+      background: #ff00ff
+    }
+    Button("+") {
+      variant: .plain
+      width: 48
+      height: 48
+      padding: 0
+      border: 1
+      borderColor: #ff0000
+      background: #ff0000
+      color: #ff0000
+      font: Font(size: 20, weight: .bold)
+    }
+  }
+}
+
+app { ButtonZeroPadding() }
+
+test "a button under the square" {
+  let app = mount(ButtonZeroPadding())
+  app.expect("+")
+}

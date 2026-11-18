@@ -1,0 +1,3 @@
+name = "Button Zero Padding"
+id = "dev.asuka.buttonzeropadding"
+orientations = ["portrait"]

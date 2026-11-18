@@ -1332,7 +1332,7 @@ TEST(snapping_never_shrinks_measured_content) {
 }
 
 static void *pad;
-static float seen_padded[4], seen_plain[4], seen_bordered[4];
+static float seen_padded[4], seen_plain[4], seen_bordered[4], seen_zero[4];
 
 static void measure_seen(void *ctx, ak_fake_view *v, float w, float h, float aw, float ah, float *ow, float *oh) {
 	AK_UNUSED(ctx), AK_UNUSED(w), AK_UNUSED(h), AK_UNUSED(aw), AK_UNUSED(ah);
@@ -1343,6 +1343,7 @@ static void measure_seen(void *ctx, ak_fake_view *v, float w, float h, float aw,
 	if (ak_span_eqc(t, "Padded")) memcpy(seen_padded, e, sizeof e);
 	if (ak_span_eqc(t, "Plain")) memcpy(seen_plain, e, sizeof e);
 	if (ak_span_eqc(t, "Bordered")) memcpy(seen_bordered, e, sizeof e);
+	if (ak_span_eqc(t, "Zero")) memcpy(seen_zero, e, sizeof e);
 	*ow = 60, *oh = 20;
 }
 
@@ -1366,6 +1367,11 @@ static ak_val buttons_app(ak_closure *c, ak_val *a, uint32_t n) {
 	b = ak_ui_new(AK_EL_BUTTON);
 	set_str(b, AK_KEY_BUTTON_TITLE, "Bordered");
 	set_f(b, AK_KEY_BORDER, 2);
+	add(col, b);
+	b = ak_ui_new(AK_EL_BUTTON);
+	set_str(b, AK_KEY_BUTTON_TITLE, "Zero");
+	set(b, AK_KEY_PADDING, edges4(0, 0, 0, 0));
+	set_f(b, AK_KEY_BORDER, 1);
 	add(col, b);
 	return (ak_val){.p = col};
 }
@@ -1399,6 +1405,9 @@ TEST(padded_button_gets_its_inset_before_its_measured) {
 	CHECK(seen_plain[0] == 0 && seen_plain[1] == 0);
 	// A border alone keeps the platform's padding, as CSS's does.
 	CHECK(seen_bordered[0] == 0 && seen_bordered[1] == 0);
+	// A padding of 0 is a padding: it replaces the platform's, and the
+	// inset is the border.
+	CHECK(seen_zero[0] == 1 && seen_zero[1] == 1 && seen_zero[2] == 1 && seen_zero[3] == 1);
 	CHECK_EQ_F(ak_fake_one(seen_host, AK_KIND_BUTTON, "Bordered")->frame[3], 24);  // its measure and its border
 	CHECK_EQ_F(ak_fake_one(seen_host, AK_KIND_BUTTON, "Padded")->frame[3], 40);    // its content and its padding
 	ak_vm_cell_set(pad, (ak_val){.f = 4});

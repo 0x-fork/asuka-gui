@@ -380,13 +380,11 @@ void ak_view_emit_frame(ak_view *e) {
 void ak_view_send_insets(ak_view *e) {
 	if (!e->measured || !e->real) return;
 	ak_ledges in = ak_lnode_content_insets(e->box);
-	if (e->kind == AK_KIND_BUTTON) {
-		const ak_lstyle *st = ak_lnode_style(e->box);
-		if (st->padding.top.v == 0 && st->padding.right.v == 0 && st->padding.bottom.v == 0 && st->padding.left.v == 0) {
-			// A button's inset replaces its own padding; a border alone
-			// leaves that padding, as CSS's does, and its title is centered.
-			in = (ak_ledges){0};
-		}
+	if (e->kind == AK_KIND_BUTTON && !ak_style_get(e, AK_KEY_PADDING)) {
+		// A button's inset replaces its own padding, a padding of 0
+		// included; a border alone leaves that padding, as CSS's does,
+		// and its title is centered.
+		in = (ak_ledges){0};
 	}
 	float c[4] = {in.top, in.right, in.bottom, in.left};
 	if (memcmp(c, e->insets, sizeof c) != 0) {
