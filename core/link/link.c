@@ -125,6 +125,9 @@ const ak_lib_entry *const ak_std_libs[] = {
 #if defined(AK_USES_EVERY) || defined(AK_USES_BIGINT)
 	ak_std_bigint,
 #endif
+#if defined(AK_USES_EVERY) || defined(AK_USES_UNICODE)
+	ak_lib_unicode,
+#endif
 	NULL,
 };
 

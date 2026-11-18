@@ -242,14 +242,14 @@ TEST(without_case) {
 }
 
 static ak_lib_fn builtin(const char *name) {
-	for (const ak_lib_entry *e = ak_lib; e->name; e++)
+	for (const ak_lib_entry *e = ak_lib_unicode; e->name; e++)
 		if (strcmp(e->name, name) == 0) return e->fn;
 	abort();
 }
 
 TEST(graphemes_builtin) {
 	ak_val args[1] = {{.p = ak_str_c("e\xcc\x81🇯🇵👨‍👩‍👧a\r\n")}};
-	ak_arr *a = builtin("str.graphemes")(args, 1).p;
+	ak_arr *a = builtin("unicode.graphemes")(args, 1).p;
 	REQUIRE(a->len == 5);
 	CHECK_EQ_STR(((ak_str *)a->data[0].p)->data, "e\xcc\x81");
 	CHECK_EQ_STR(((ak_str *)a->data[1].p)->data, "🇯🇵");

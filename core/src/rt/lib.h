@@ -20,6 +20,9 @@ typedef struct {
 
 // The standard library's functions, NULL-terminated.
 extern const ak_lib_entry ak_lib[];
+// Strings by Unicode's tables (upper, graphemes, ignoreCase: lib.c),
+// registered when a build names them (link.c's AK_USES_UNICODE).
+extern const ak_lib_entry ak_lib_unicode[];
 // Streams' (stream.c).
 extern const ak_lib_entry ak_stream_lib[];
 

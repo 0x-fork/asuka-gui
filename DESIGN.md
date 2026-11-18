@@ -2140,7 +2140,10 @@ behavior.
   Width, by grapheme cluster, escape codes skipped). Each code point's
   properties are a uint16 in ranges (4,187 of them, binary searched,
   ASCII on a fast path), the mappings runs of equal deltas and a table
-  of those to several code points: 36 KB in every app.
+  of those to several code points: about 32 KB, in an app that calls
+  one of them only (their builtins are rt/lib.c's `ak_lib_unicode`,
+  named `unicode.…`, which link.c registers under AK_USES_UNICODE; a
+  `contains` without `ignoreCase:` is another builtin, `str.contains`).
 
 **Not yet:** selection for screen reader users (VoiceOver and TalkBack
 read the texts and links but don't select across them).

@@ -55,18 +55,57 @@ static ak_val lib_error_message(ak_val *args, uint32_t n) {
 
 static ak_val str_len(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(ak_str_count(STR(0))); }
 static ak_val str_bytes_len(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(STR(0)->len); }
-static ak_val str_upper(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_str_upper(STR(0))); }
-static ak_val str_lower(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_str_lower(STR(0))); }
 static ak_val str_trim(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_str_trim(STR(0))); }
-// contains, hasPrefix and hasSuffix take ignoreCase third (full case
-// folding: rt/unicode.h).
+static ak_val str_contains(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(ak_str_contains(STR(0), STR(1))); }
+static ak_val str_has_prefix(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(ak_str_has_prefix(STR(0), STR(1))); }
+static ak_val str_has_suffix(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(ak_str_has_suffix(STR(0), STR(1))); }
+static ak_val str_equals(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(ak_str_eq(STR(0), STR(1))); }
+static ak_val str_compare(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(ak_str_cmp(STR(0), STR(1))); }
+
+// ---- Strings by Unicode's tables (rt/unicode.h): ak_lib_unicode, a
+// table of its own, which a build registers only when the app calls
+// one (link.c's AK_USES_UNICODE), so an app that doesn't links none of
+// the tables. contains, hasPrefix, hasSuffix, equals and compare are
+// here when the call gives ignoreCase (full case folding), third. ----
+
+static ak_val uni_upper(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_str_upper(STR(0))); }
+static ak_val uni_lower(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_str_lower(STR(0))); }
+static ak_val uni_fold(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_str_fold(STR(0))); }
 #define IGNORE_CASE (n > 2 && A(2).i)
-static ak_val str_contains(ak_val *args, uint32_t n) { RET_I(IGNORE_CASE ? ak_str_contains_fold(STR(0), STR(1)) : ak_str_contains(STR(0), STR(1))); }
-static ak_val str_has_prefix(ak_val *args, uint32_t n) { RET_I(IGNORE_CASE ? ak_str_has_prefix_fold(STR(0), STR(1)) : ak_str_has_prefix(STR(0), STR(1))); }
-static ak_val str_has_suffix(ak_val *args, uint32_t n) { RET_I(IGNORE_CASE ? ak_str_has_suffix_fold(STR(0), STR(1)) : ak_str_has_suffix(STR(0), STR(1))); }
-static ak_val str_equals(ak_val *args, uint32_t n) { RET_I(IGNORE_CASE ? ak_str_eq_fold(STR(0), STR(1)) : ak_str_eq(STR(0), STR(1))); }
-static ak_val str_compare(ak_val *args, uint32_t n) { RET_I(IGNORE_CASE ? ak_str_cmp_fold(STR(0), STR(1)) : ak_str_cmp(STR(0), STR(1))); }
-static ak_val str_fold(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(ak_str_fold(STR(0))); }
+static ak_val uni_contains(ak_val *args, uint32_t n) { RET_I(IGNORE_CASE ? ak_str_contains_fold(STR(0), STR(1)) : ak_str_contains(STR(0), STR(1))); }
+static ak_val uni_has_prefix(ak_val *args, uint32_t n) { RET_I(IGNORE_CASE ? ak_str_has_prefix_fold(STR(0), STR(1)) : ak_str_has_prefix(STR(0), STR(1))); }
+static ak_val uni_has_suffix(ak_val *args, uint32_t n) { RET_I(IGNORE_CASE ? ak_str_has_suffix_fold(STR(0), STR(1)) : ak_str_has_suffix(STR(0), STR(1))); }
+static ak_val uni_equals(ak_val *args, uint32_t n) { RET_I(IGNORE_CASE ? ak_str_eq_fold(STR(0), STR(1)) : ak_str_eq(STR(0), STR(1))); }
+static ak_val uni_compare(ak_val *args, uint32_t n) { RET_I(IGNORE_CASE ? ak_str_cmp_fold(STR(0), STR(1)) : ak_str_cmp(STR(0), STR(1))); }
+
+// unicode.graphemes: an array of the grapheme clusters (UAX #29's
+// extended ones).
+static ak_val uni_graphemes(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_str *s = STR(0);
+	ak_arr *a = ak_arr_new(AK_K_REF, NULL, s->len < 16 ? s->len : 16);
+	a->h.flags = 1;
+	for (size_t i = 0; i < s->len;) {
+		size_t j = ak_grapheme_end(s->data, s->len, i);
+		ak_arr_push(&a, (ak_val){.p = ak_str_new(s->data + i, j - i)});
+		i = j;
+	}
+	RET_P(a);
+}
+
+const ak_lib_entry ak_lib_unicode[] = {
+	{"unicode.upper", uni_upper},
+	{"unicode.lower", uni_lower},
+	{"unicode.foldCase", uni_fold},
+	{"unicode.graphemes", uni_graphemes},
+	{"unicode.contains", uni_contains},
+	{"unicode.hasPrefix", uni_has_prefix},
+	{"unicode.hasSuffix", uni_has_suffix},
+	{"unicode.equals", uni_equals},
+	{"unicode.compare", uni_compare},
+	{NULL, NULL},
+};
+
 static bool space(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f'; }
 
 // str.replace(s, old, new, count): the first count olds (all when count
@@ -597,21 +636,6 @@ static ak_val str_join(ak_val *args, uint32_t n) {
 		if (a->data[i].p) ak_strb_str(&b, a->data[i].p);
 	}
 	RET_P(ak_strb_finish(&b));
-}
-
-// str.graphemes: an array of the grapheme clusters (UAX #29's extended
-// ones: rt/unicode.h).
-static ak_val str_graphemes(ak_val *args, uint32_t n) {
-	AK_UNUSED(n);
-	ak_str *s = STR(0);
-	ak_arr *a = ak_arr_new(AK_K_REF, NULL, s->len < 16 ? s->len : 16);
-	a->h.flags = 1;
-	for (size_t i = 0; i < s->len;) {
-		size_t j = ak_grapheme_end(s->data, s->len, i);
-		ak_arr_push(&a, (ak_val){.p = ak_str_new(s->data + i, j - i)});
-		i = j;
-	}
-	RET_P(a);
 }
 
 // str.chars: an array of one-character strings.
@@ -1809,8 +1833,6 @@ const ak_lib_entry ak_lib[] = {
 
 	{"str.len", str_len},
 	{"str.bytes_len", str_bytes_len},
-	{"str.upper", str_upper},
-	{"str.lower", str_lower},
 	{"str.trim", str_trim},
 	{"str.contains", str_contains},
 	{"str.has_prefix", str_has_prefix},
@@ -1825,8 +1847,6 @@ const ak_lib_entry ak_lib[] = {
 	{"str.repeat", str_repeat},
 	{"str.join", str_join},
 	{"str.chars", str_chars},
-	{"str.graphemes", str_graphemes},
-	{"str.fold", str_fold},
 	{"str.equals", str_equals},
 	{"str.compare", str_compare},
 	{"str.to_bytes", str_to_bytes},
