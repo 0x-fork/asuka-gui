@@ -62,4 +62,8 @@ test "following states, dependencies and peeks go with their component" {
 }
 
 // Output:
+// warning[effect-in-effect-pass]: Picker's effect at testdata/leaks/follows.asuka:32 wrote runs, which Picker's text binding at testdata/leaks/follows.asuka:37 reads: the binding ran twice in one flush, a pass late; a let or a following state settles in one pass
+//   --> Picker's effect at testdata/leaks/follows.asuka:32
+//   --> Picker's text binding at testdata/leaks/follows.asuka:37
+//   = see https://asuka.egoist.dev/docs/errors/effect-in-effect-pass
 // ok following states, dependencies and peeks go with their component
