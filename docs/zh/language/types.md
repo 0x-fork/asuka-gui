@@ -30,7 +30,7 @@ let title = "{"Total":*^11}"         // ***Total***
 let table = row("asuka", 12500, 0.4) // asuka     12,500   40.0%
 ```
 
-宽度按字符（码位）计算，而不是按终端里显示的宽度。
+宽度按字符（码位）计算，而不是按终端里显示的宽度。要按终端的列数算（中日韩文字和 emoji 占两列），用 `std/term` 的 `textWidth`、`padEnd` 和 `fit`，见[程序](../programs.md#对齐的表格)。
 
 元组的元素可以按位置读取：`pair.0`、`pair.1`；如果元组存在 `var` 里，也可以就地修改（`pair.0 += 1`）。写一个元组没有的位置（对一对值写 `pair.2`）是编译错误。也可以把元组拆开：`let (count, label) = pair`、`for (i, x) in xs.enumerated()`，或者在 `match` 里用元组模式（见[控制流](control-flow.md#控制流)）。
 
@@ -104,7 +104,7 @@ fn fnv1a(data: bytes) -> int {
 | `[T]` | `count()`、`count(where)`、`isEmpty()`、`first()`、`last()`、`get(i)`（返回 `T?`）、`push(x)`、`insert(x, at: i)`、`removeAt(i)`、`removeWhere(p)`、`pop()`、`clear()`、`map(f)`、`flatMap(f)`（把 `f` 返回的数组依次接起来）、`compactMap(f)`（`f` 的结果中去掉 none）、`filter(p)`、`reduce(initial, f)`、`any(p)`、`all(p)`、`index(p)`（返回 `int?`）、`find(p)`、`contains(x)`、`sum()`、`min()`、`max()`（返回 `T?`；`min(by:)`、`max(by:)` 接受一个“小于”比较）、`unique()`、`grouped(by: f)`（返回 `[K: [T]]`）、`chunked(n)`、`zip(other)`（两两配对，长度取较短的一方）、`reversed()`、`slice(from, to)`（省略 `to` 时到末尾）、`prefix(n)`、`suffix(n)`、`sorted()`、`sorted(by)`、`sort()`、`sort(by)`、`enumerated()`、`joined(separator:)`（用于字符串数组）、`+` |
 | `Set<T>` | `count()`、`isEmpty()`、`contains(x)`、`insert(x)`（返回是否新加入）、`remove(x)`（返回原本是否存在）、`union(s)`、`intersection(s)`、`subtracting(s)`、`isSubset(of: s)`、`isSuperset(of: s)`；`Set(xs)` 是数组中互不相同的元素，`Set<T>()` 是空集合 |
 | `[K: V]` | `m[k]`（返回 `V?`）、`m[k] = v`、`count()`、`isEmpty()`、`has(k)`、`get(k)`、`remove(k)`、`keys()`、`values()`（按插入顺序）、`mapValues(f)`、`filter((k, v) => …)` |
-| `string` | `count()`（字符数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s)`、`hasPrefix(s)`、`hasSuffix(s)`、`replace(old, new, count:)`（默认替换全部，count 指定次数）、`split(sep, count:)`、`fields()`（按空白分出的词）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（字节偏移，找不到时为 none）、`slice(from, to)`（按字符）、`byteSlice(from, to)`（按字节：即 find 给出的偏移）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toInt(radix:)`、`toFloat()`、`repeat(n)`、`chars()`、`reversed()`、`bytes()`、`+` |
+| `string` | `count()`（字符数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s, ignoreCase:)`、`hasPrefix(s, ignoreCase:)`、`hasSuffix(s, ignoreCase:)`、`equals(s, ignoreCase:)`、`compare(s, ignoreCase:)`（负数、零或正数）、`foldCase()`、`replace(old, new, count:)`（默认替换全部，count 指定次数）、`split(sep, count:)`、`fields()`（按空白分出的词）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（字节偏移，找不到时为 none）、`slice(from, to)`（按字符）、`byteSlice(from, to)`（按字节：即 find 给出的偏移）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toInt(radix:)`、`toFloat()`、`repeat(n)`、`chars()`、`graphemes()`、`reversed()`、`bytes()`、`+` |
 | `bytes` | `b[i]`（返回 `int`，取值 0 到 255；越界是一个错误）、`count()`、`isEmpty()`、`get(i)`（返回 `int?`）、`slice(from, to)`、`concat(b)`、`string()`（按 UTF-8 解码，无效的部分变成 U+FFFD）、`hex()` 和 `hex(separator)`（`"04 a1"`）；`bytes()` 是空的字节序列，`bytes([0x04, 0xa1])` 是这些字节，`s.bytes()` 是字符串的 UTF-8 字节 |
 | `int` | `float()`、`abs()`、`toString(radix:)`（`255.toString(radix: 16)` 是 `"ff"`）、`padded(width)`（`7.padded(2)` 是 `"07"`）、`addingChecked(o)`、`subtractingChecked(o)`、`multipliedChecked(o)`（返回 `int?`：溢出时为 none） |
 | `float` | `fixed(digits)`、`rounded()`、`floor()`、`ceil()`、`int()`（向零取整）、`abs()` |
@@ -148,6 +148,18 @@ fn report(sales: [Sale]) -> [string] {
 `toInt(radix:)` 按 2 到 36 之间的进制读取整个字符串，字母大小写均可，前面可以带正负号（`"ff".toInt(radix: 16)` 是 255，`"-101".toInt(radix: 2)` 是 -5），读不出来时返回 none；`toString(radix:)` 则把整数按进制写出来，字母用小写。进制不在 2 到 36 之间时会报错。
 
 `min`、`max`、`abs`、`float(n)` 和 `int(x)` 是函数；其余的（`math.sqrt`、`math.pow`、`math.pi` ……）在 `std/math` 里。
+
+`upper()` 和 `lower()` 按 Unicode 的规则转换每个字母，在任何语言下结果都一样：`"straße".upper()` 是 `"STRASSE"`，单词末尾的 `Σ` 转成小写是 `ς`。`ignoreCase: true` 比较的是两个字符串的大小写折叠（`foldCase()`：`"Straße"` 和 `"STRASSE"` 都折叠成 `"strasse"`），和 Go 的 `strings.EqualFold`、Python 的 `casefold` 一样；匹配必须从完整的字符开始、在完整的字符结束，所以 `"ß"` 并不以 `"s"` 开头。这些方法都不遵循某种语言自己的规则：土耳其语的无点 ı 和带点 İ 和其他地方一样转换（`"İ".lower()` 是 `i` 加一个组合用的点），文本也不会做规范化（`"é"` 和 `e` 加组合重音符是不同的）。不区分大小写地给名字排序，可以把 `compare` 交给 `sorted(by:)`；`foldCase()` 能生成忽略大小写的键：
+
+```asuka check
+fn byName(names: [string]) -> [string] = names.sorted(by: (a, b) => a.compare(b, ignoreCase: true) < 0)
+
+fn sameUser(a: string, b: string) -> bool = a.trim().equals(b.trim(), ignoreCase: true)
+
+fn isMarkdown(path: string) -> bool = path.hasSuffix(".md", ignoreCase: true)
+```
+
+`count()` 和 `chars()` 按码位计数；`graphemes()` 给出读者眼中的一个个字符，依据的是 Unicode 的文本分段规则（UAX #29）：`"e\u{301}"`、一面国旗（`"🇯🇵"`）、用 ZWJ 连起来的家庭 emoji 都各算一个。
 
 `toInt()` 和 `toFloat()` 读的是整个字符串，读不出来就是 none：可选的正负号，接着是数字，前后不能有别的东西（`" 12"` 是 none，先 `trim()`）。`toInt()` 只认整数（`"+7"`、`"-42"`）；`toFloat()` 还认小数和指数（`"2.5"`、`".5"`、`"1e-3"`），以及浮点数打印出来的样子（`"Infinity"`、`"NaN"`）。无论用户的语言是什么，小数点都是 `.`。
 

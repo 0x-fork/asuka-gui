@@ -294,6 +294,38 @@ Project name: [demo] notes
 
 テストでは `os.fake(stdin:)` で質問に答え、質問そのものは `o.stderr()` で確認できます。テストのストリームは端末ではないのでスタイルは付きませんが、`os.fake(env: ["FORCE_COLOR": "1"])` や `term.setColors(.always)` で指定すれば付きます。見るのは `os.fake` の `env:` だけなので、テストを実行する環境の変数がテストの出力を変えることはありません。スマートフォンと Web には端末がありません。スタイルは付かず、`prompt` は `none` を返し、`width` も `none` です。
 
+### 揃った表
+
+列を揃えるには、どのセルも端末上で同じ桁数を占める必要があります。これは `count()` の値とは別物です。漢字・かな・ハングル、全角文字、たいていの絵文字は 2 桁を占め、結合用のアクセント記号やゼロ幅接合子（ZWJ）は桁を占めません。`term.textWidth(text)` は端末が表示するとおりに桁数を数えます。書記素クラスターごとに数え（Rust の unicode-width や `Bun.stringWidth` と同じです）、制御コードは数に入れないので、スタイル付きのテキストも見た目どおりの幅になります。`term.padEnd`、`padStart`、`center`、`truncate`（切ったところに `…` を付け、文字を途中で切ることはありません）、`fit`（ちょうどその幅にします。はみ出せば切り、足りなければ埋めます。数値には `align: .end`）はこの幅で動き、`term.table(rows)` は表全体を並べます。
+
+```asuka check
+import std/term
+
+struct Row {
+  name: string
+  city: string
+  score: int
+}
+
+fn main() {
+  let rows = [Row(name: "王小明", city: "北京", score: 98), Row(name: "Ana", city: "Lisboa 🇵🇹", score: 7), Row(name: "佐藤花子", city: "東京", score: 85)]
+  var cells = [["Name", "City", "Score"]]
+  for r in rows {
+    cells.push([r.name, r.city, "{r.score}"])
+  }
+  print(term.table(cells, align: [.start, .start, .end], width: term.width()))
+}
+```
+
+```text
+Name      City       Score
+王小明    北京          98
+Ana       Lisboa 🇵🇹      7
+佐藤花子  東京          85
+```
+
+各列の幅はその列でいちばん広いセルに合わせ、列のあいだは `gap:` 個の空白（既定は 2）です。`width:` を指定すると、各行が収まるまでいちばん広い列から幅を譲り、収まらないセルは切り詰めます（この例では端末の幅で、パイプに出力するときは none なので制限しません）。東アジアの文字幅が「曖昧」な文字（`±`、`…`）は 1 桁です。特に設定しなければ端末もそう表示します。タブなどの制御文字は 0 桁なので、必要ならタブを先に展開してください。`std/flag` のヘルプも同じ方法でオプションを揃えています。
+
 ## ファイルとディレクトリ：std/fs
 
 プログラムもアプリと同じく `std/fs` でファイルを読み書きします（[データ](data.md)）。さらに、コマンドラインツールがファイルを探すのに必要な関数があります。
@@ -480,6 +512,65 @@ async fn main() throws {
 ```
 
 `separator: "\t"` でタブ区切りのデータを読めます。`comment: "#"` はその文字で始まる行を飛ばし、`flexible: true` は行ごとにフィールド数が違ってもよいことにします。
+
+## テンプレートからのテキスト：std/template
+
+`std/template` はテンプレートと値からテキストを作ります。設定ファイル、リリースノート、メール、コード、サービスが返すページなどです。構文は Jinja のもので（MiniJinja、Nunjucks、Twig も同じ書き方です）、`{{ value }}`、`|` の後ろのフィルター、`{% if %}`、`{% for %}`、`{% include %}`、`{% extends %}`、`{% block %}` を使います。データは構造体か map で、`json.encode` が書き出すとおりに読まれるので、テンプレートで使う名前はそのフィールドです。テンプレートは raw 文字列に書けばそのまま保てます（普通の文字列では `{` が埋め込みの始まりになります）。
+
+```asuka check
+import std/template
+
+struct Change {
+  kind: string
+  text: string
+  issue: int? = none
+}
+
+struct Release {
+  version: string
+  date: string
+  changes: [Change]
+}
+
+fn main() throws {
+  let notes = try template.parse(r"""
+    # {{ version }} ({{ date }})
+
+    {% for c in changes %}
+    - **{{ c.kind | capitalize }}**: {{ c.text }}{% if c.issue %} (#{{ c.issue }}){% endif %}
+    {% else %}
+    Nothing changed.
+    {% endfor %}
+    """)
+  let release = Release(version: "1.4.0", date: "2026-11-19", changes: [Change(kind: "added", text: "term.table", issue: 412), Change(kind: "fixed", text: "a crash on empty input")])
+  print(try notes.render(release))
+}
+```
+
+```text
+# 1.4.0 (2026-11-19)
+
+- **Added**: term.table (#412)
+- **Fixed**: a crash on empty input
+```
+
+1 行に単独で書いた文は、その行ごと取り除かれます。そのため、テンプレートでロジックを書いた場所が出力に空行として残りません。`{{-` と `-}}` はタグの前後の空白を取り除きます。データにないフィールドは「未定義」です。`if` では false になり、`| default("…")` で置き換えられ、表示しようとするとエラーになります。未知のフィルターも同じで、エラーには場所が示されます（`template: notes.md:4:9: c.title is undefined`）。テンプレートは一度解析すれば、何度でもレンダリングできます。
+
+HTML を出力するときはエスケープされます。表示する値の `&`、`<`、`>`、`"`、`'` は文字参照として書かれ、`| safe` を付けたものだけがそのまま出ます。`| json` は `<script>` の中に置ける形で値を書きます。`template.parseAll` でまとめて読んだテンプレート（`std/embed` が組み込むファイルなど）は名前で互いに include や extend ができ、名前が `.html` で終わるものはエスケープされます。
+
+```asuka
+import std/http
+import std/template
+
+struct Note {
+  id: int
+  text: string
+}
+
+// pages：try template.parseAll(embed.texts("templates/*.html"))。組み込まれたファイル
+fn site(pages: template.Templates, notes: [Note]) -> http.Router = http.Router()
+  .get("/notes", req => .html(try pages.render("templates/notes.html", ["notes": notes])))
+```
 
 ## Web サービス：std/http
 

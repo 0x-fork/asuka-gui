@@ -1,0 +1,60 @@
+// std/semver: SemVer 2.0.0 versions, their precedence, and npm's ranges.
+
+import std/semver
+
+test "versions" {
+  let v = try semver.parse("v1.4.0-beta.2+build.7")
+  print("{v.major}.{v.minor}.{v.patch} {v.prerelease} {v.build} {v.string()} {v.isPrerelease()}")
+  let tags = ["1.0.0", "1.0.0-rc.1", "0.9.12", "1.0.0-alpha", "1.0.0-alpha.1", "1.0.0-beta.11", "1.0.0-beta.2", "2.0.0", "1.10.0", "1.9.0"]
+  print(tags.compactMap(t => try? semver.parse(t)).sorted().map(x => x.string()))
+  print("{v.next(.major).string()} {v.next(.minor).string()} {v.next(.patch).string()}")
+  for bad in ["1.2", "01.2.3", "1.2.3-", "1.2.3+a..b", "1.2.3-ß"] {
+    do {
+      let _ = try semver.parse(bad)
+    } catch e {
+      print(e.message)
+    }
+  }
+}
+
+test "ranges" {
+  for text in ["^1.2.3", "~1.2", "1.x || >=3 <3.5.0-0", "1.2.3 - 2.3", "^0.0.3", ">=1.0, <2", "*", "<0"] {
+    print("{text}: {(try semver.parseRange(text)).string()}")
+  }
+  let r = try semver.parseRange("^1.2")
+  let vs = ["1.1.9", "1.2.0", "1.9.3", "1.10.0-rc.1", "2.0.0"].compactMap(t => try? semver.parse(t))
+  print(vs.filter(x => r.matches(x)).map(x => x.string()))
+  print("{r.highest(vs)?.string()} {r.lowest(vs)?.string()}")
+  print(semver.maxSatisfying(["v1.2.3", "v1.3.0", "v2.0.0", "junk"], "~1.2 || ~1.3"))
+  print((semver.satisfies("1.3.0-rc.1", "^1.2"), semver.satisfies("1.3.0-rc.1", "^1.2", includePrerelease: true), semver.satisfies("1.2.4-rc.1", ">=1.2.4-beta")))
+  do {
+    let _ = try semver.parseRange("^1.x.2")
+  } catch e {
+    print(e.message)
+  }
+}
+
+// Output:
+// 1.4.0 ["beta","2"] ["build","7"] 1.4.0-beta.2+build.7 true
+// ["0.9.12","1.0.0-alpha","1.0.0-alpha.1","1.0.0-beta.2","1.0.0-beta.11","1.0.0-rc.1","1.0.0","1.9.0","1.10.0","2.0.0"]
+// 2.0.0 1.4.0 1.4.0
+// semver: "1.2" isn't a version: a version is major.minor.patch
+// semver: "01.2.3" isn't a version: 01 has a leading zero
+// semver: "1.2.3-" isn't a version: an empty pre-release identifier
+// semver: "1.2.3+a..b" isn't a version: an empty build metadata identifier
+// semver: "1.2.3-ß" isn't a version: pre-release "ß" has a character other than 0-9, A-Z, a-z and -
+// ok versions
+// ^1.2.3: >=1.2.3 <2.0.0-0
+// ~1.2: >=1.2.0 <1.3.0-0
+// 1.x || >=3 <3.5.0-0: >=1.0.0 <2.0.0-0||>=3.0.0 <3.5.0-0
+// 1.2.3 - 2.3: >=1.2.3 <2.4.0-0
+// ^0.0.3: >=0.0.3 <0.0.4-0
+// >=1.0, <2: >=1.0.0 <2.0.0-0
+// *: *
+// <0: <0.0.0-0
+// ["1.2.0","1.9.3"]
+// 1.9.3 1.2.0
+// v1.3.0
+// (false,true,true)
+// semver: "^1.x.2" isn't a range: "1.x.2": a number after an x
+// ok ranges

@@ -409,6 +409,53 @@ environment the tests run in doesn't change what they print. On a phone
 and the web there's no terminal: no styles, `prompt` gives `none` and
 `width` is `none`.
 
+### An aligned table
+
+A column lines up when each of its cells takes as many of the
+terminal's columns, which isn't what `count()` says: a Chinese,
+Japanese or Korean character, a fullwidth form and most emoji take two,
+a combining accent and a zero-width joiner none. `term.textWidth(text)`
+counts columns as terminals draw them, a grapheme cluster at a time
+(as Rust's unicode-width and `Bun.stringWidth` do), its escape codes
+none, so styled text measures as it shows. `term.padEnd`, `padStart`,
+`center`, `truncate` (an `…` where it's cut, never half a character)
+and `fit` (exactly a width: truncated, then padded, `align: .end` for
+numbers) work by it, and `term.table(rows)` lays a whole table out:
+
+```asuka check
+import std/term
+
+struct Row {
+  name: string
+  city: string
+  score: int
+}
+
+fn main() {
+  let rows = [Row(name: "王小明", city: "北京", score: 98), Row(name: "Ana", city: "Lisboa 🇵🇹", score: 7), Row(name: "佐藤花子", city: "東京", score: 85)]
+  var cells = [["Name", "City", "Score"]]
+  for r in rows {
+    cells.push([r.name, r.city, "{r.score}"])
+  }
+  print(term.table(cells, align: [.start, .start, .end], width: term.width()))
+}
+```
+
+```text
+Name      City       Score
+王小明    北京          98
+Ana       Lisboa 🇵🇹      7
+佐藤花子  東京          85
+```
+
+Each column is as wide as its widest cell, `gap:` spaces apart (2);
+with `width:`, the widest columns give way until the lines fit, their
+cells truncated (here: the terminal's width, none when the output is
+piped). East Asian Ambiguous characters (`±`, `…`) take one column, as
+terminals show them unless they're set otherwise, and a tab or another
+control character none: expand tabs first. `std/flag`'s help lines its
+options up the same way.
+
 ## Files and directories: std/fs
 
 A program reads and writes files with `std/fs`, as an app does
@@ -653,6 +700,83 @@ async fn main() throws {
 `separator: "\t"` reads tab-separated values; `comment: "#"` skips the
 lines that start with it, `flexible: true` lets rows have different
 numbers of fields.
+
+## Text from templates: std/template
+
+`std/template` makes text from a template and a value: a config file,
+release notes, an email, code, a page a service returns. Its syntax is
+Jinja's (as MiniJinja, Nunjucks and Twig write it): `{{ value }}`, a
+filter after a `|`, `{% if %}`, `{% for %}`, `{% include %}`,
+`{% extends %}` and `{% block %}`. The data is a struct or a map, read
+as `json.encode` writes it, so a template's names are its fields. A raw
+string holds a template as it is (in a plain one, `{` starts an
+interpolation):
+
+```asuka check
+import std/template
+
+struct Change {
+  kind: string
+  text: string
+  issue: int? = none
+}
+
+struct Release {
+  version: string
+  date: string
+  changes: [Change]
+}
+
+fn main() throws {
+  let notes = try template.parse(r"""
+    # {{ version }} ({{ date }})
+
+    {% for c in changes %}
+    - **{{ c.kind | capitalize }}**: {{ c.text }}{% if c.issue %} (#{{ c.issue }}){% endif %}
+    {% else %}
+    Nothing changed.
+    {% endfor %}
+    """)
+  let release = Release(version: "1.4.0", date: "2026-11-19", changes: [Change(kind: "added", text: "term.table", issue: 412), Change(kind: "fixed", text: "a crash on empty input")])
+  print(try notes.render(release))
+}
+```
+
+```text
+# 1.4.0 (2026-11-19)
+
+- **Added**: term.table (#412)
+- **Fixed**: a crash on empty input
+```
+
+A statement alone on its line takes the line with it, so the output
+has no blank lines where the template's logic is; `{{-` and `-}}` strip
+the white space before or after a tag. A field the data hasn't is
+undefined: false in an `if`, what `| default("…")` replaces, an error
+when it's printed, as an unknown filter is, the error saying where
+(`template: notes.md:4:9: c.title is undefined`). A template is parsed
+once and rendered as often as asked.
+
+For HTML, the output is escaped: what's printed has its `&`, `<`, `>`,
+`"` and `'` written as character references, unless it's marked
+`| safe`; `| json` writes a value for a `<script>`. Templates read
+together with `template.parseAll`, from the files `std/embed` compiles
+in, include and extend each other by name, and those whose names end in
+`.html` are escaped:
+
+```asuka
+import std/http
+import std/template
+
+struct Note {
+  id: int
+  text: string
+}
+
+// pages: try template.parseAll(embed.texts("templates/*.html")), the files compiled in
+fn site(pages: template.Templates, notes: [Note]) -> http.Router = http.Router()
+  .get("/notes", req => .html(try pages.render("templates/notes.html", ["notes": notes])))
+```
 
 ## A web service: std/http
 

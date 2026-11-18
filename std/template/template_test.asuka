@@ -1,0 +1,239 @@
+import std/json
+
+struct Item {
+  name: string
+  price: float
+  tags: [string]
+  note: string? = none
+}
+
+struct Page {
+  title: string
+  items: [Item]
+  user: string
+}
+
+let items = [Item(name: "green tea", price: 3.5, tags: ["hot", "drink"]), Item(name: "mochi", price: 2, tags: [], note: "fresh")]
+
+fn r(source: string, data: json.Value, escape: Escape = .none) -> string = try render(source, data, escape: escape) catch e { "ERROR {e.message}" }
+
+fn obj(m: [string: json.Value]) -> json.Value = .object(m)
+
+test "values, fields, operators" {
+  let d = obj(["name": .string("Ana"), "n": .int(7), "xs": .array([.int(1), .int(2), .int(3)]), "user": obj(["city": .string("Lisboa")])])
+  expect(r(r"Hello, {{ name }}!", d) == "Hello, Ana!")
+  expect(r(r"{{ user.city }} {{ user['city'] }} {{ xs[0] }} {{ xs[-1] }} {{ xs.1 }}", d) == "Lisboa Lisboa 1 3 2")
+  expect(r(r"{{ n + 1 }} {{ n - 10 }} {{ n * 2 }} {{ n / 2 }} {{ n // 2 }} {{ n % 3 }} {{ -n }} {{ 2.5 * 2 }}", d) == "8 -3 14 3.5 3 1 -7 5")
+  expect(r(r"{{ name ~ '/' ~ n }} {{ 'a' + 'b' }} {{ [1, 2] + [3] }} {{ '=' * 3 }}", d) == "Ana/7 ab [1,2,3] ===")
+  expect(r(r"{{ n > 5 and n < 10 }} {{ not n }} {{ n == 7.0 }} {{ 'na' in name | lower }} {{ 4 in xs }} {{ 'city' in user }} {{ 5 not in xs }}", d) == "true false true true false true true")
+  expect(r(r"{{ 'big' if n > 5 else 'small' }} {{ none }}|{{ missing or 'fallback' }}", d) == "big |fallback")
+  expect(r(r"{{ xs }} {{ user }} {{ true }} {{ 1.0 }}", d) == r#"[1,2,3] {"city":"Lisboa"} true 1"#)
+  expect(r(r#"{{ "say \"hi\"\n" }}"#, d) == "say \"hi\"\n")
+}
+
+test "a struct's data: render<T>" {
+  let t = try parse(r"{{ title }}: {% for i in items %}{{ i.name }} {{ i.price | fixed(2) }}{{ ', ' if not loop.last }}{% endfor %} for {{ user }}")
+  expect(try t.render(Page(title: "Menu", items: items, user: "Bo")) == "Menu: green tea 3.50, mochi 2.00 for Bo")
+  // A map too, and an optional left none.
+  expect(try render(r"{{ a }}-{{ b | default('none') }}", ["a": "x", "b": ""]) == "x-")
+  expect(try render(r"{% for i in items %}{{ i.note | default('-') }} {% endfor %}", ["items": items]) == "- fresh ")
+}
+
+test "if, for, set, loop" {
+  let d = obj(["xs": .array([.string("a"), .string("b"), .string("c")]), "m": obj(["one": .int(1), "two": .int(2)]), "empty": .array([])])
+  expect(r(r"{% if xs %}yes{% elif m %}m{% else %}no{% endif %}", d) == "yes")
+  expect(r(r"{% if nothing %}yes{% elif nothing is defined %}x{% else %}no{% endif %}", d) == "no")
+  // A field of what's undefined is an error, as in Jinja.
+  expect(r(r"{% if nothing.at.all is defined %}x{% endif %}", d) == "ERROR template: 1:7: nothing is undefined")
+  expect(r(r"{% for x in xs %}{{ loop.index }}{{ x }}{% if loop.first %}^{% endif %}{% if loop.last %}${% endif %} {% endfor %}", d) == "1a^ 2b 3c$ ")
+  expect(r(r"{% for k, v in m %}{{ k }}={{ v }};{% endfor %}", d) == "one=1;two=2;")
+  expect(r(r"{% for k in m %}{{ k }} {% endfor %}", d) == "one two ")
+  expect(r(r"{% for k, v in m | items %}{{ k }}:{{ v }} {% endfor %}", d) == "one:1 two:2 ")
+  expect(r(r"{% for x in empty %}x{% else %}none{% endfor %}", d) == "none")
+  expect(r(r"{% for i in range(3) %}{{ i }}{% endfor %} {% for i in range(1, 7, 2) %}{{ i }}{% endfor %}", d) == "012 135")
+  expect(r(r"{% set total = 0 %}{% for x in [1, 2, 3] %}{% set total = total + x %}{{ total }}{% endfor %} {{ total }}", d) == "136 0")
+  expect(r(r"{% for row in [[1, 2], [3, 4]] %}{% for x in row %}{{ loop.revindex }}{{ x }}{% endfor %};{% endfor %}", d) == "2112;2314;")
+  expect(r(r"{{ 3 is odd }} {{ 4 is even }} {{ 9 is divisibleby(3) }} {{ x is defined }} {{ xs is sequence }} {{ m is mapping }} {{ none is none }} {{ 'a' is string }} {{ 1 is not number }}", d) == "true true true false true true true true false")
+}
+
+test "filters" {
+  let d = obj(["s": .string("  hello wORLD  "), "xs": .array([.int(3), .int(1), .int(2)]), "people": .array([obj(["name": .string("bo"), "age": .int(30), "admin": .bool(true)]), obj(["name": .string("ana"), "age": .int(25), "admin": .bool(false)])])])
+  expect(r(r"[{{ s | trim }}] {{ s | trim | upper }} {{ s | trim | capitalize }} {{ s | trim | title }}", d) == "[hello wORLD] HELLO WORLD Hello world Hello World")
+  expect(r(r"{{ 'straße' | upper }} {{ 'ΣΑΣ' | lower }}", d) == "STRASSE σας")
+  expect(r(r"{{ xs | sort }} {{ xs | sort(none, true) }} {{ xs | reverse }} {{ xs | first }} {{ xs | last }} {{ xs | length }} {{ xs | sum }} {{ xs | min }} {{ xs | max }}", d) == "[1,2,3] [3,2,1] [2,1,3] 3 2 3 6 1 3")
+  expect(r(r"{{ people | map('name') | join(', ') }} | {{ people | sort('age') | map('name') | join }} | {{ people | selectattr('admin') | map('name') | first }} | {{ people | join(' ', 'age') }}", d) == "bo, ana | anabo | bo | 30 25")
+  expect(r(r"{{ 'a,b,,c' | split(',') | length }} {{ 'a b  c' | split | join('-') }} {{ [1, 1, 2, 1] | unique }} {{ [1, 2, 3, 4, 5] | batch(2) }}", d) == "4 a-b-c [1,2] [[1,2],[3,4],[5]]")
+  expect(r(r"{{ 'hello world' | replace('o', '0') }} {{ 'aaa' | replace('a', 'b', 2) }} {{ 'a long sentence' | truncate(8) }} {{ '日本語のテキスト' | truncate(5) }} {{ 'short' | truncate(10) }}", d) == "hell0 w0rld bba a long… 日本語の… short")
+  expect(r(r"{{ 3.14159 | round(2) }} {{ 2.5 | round }} {{ -2.5 | round }} {{ 2 | fixed(1) }} {{ '42' | int + 1 }} {{ 'x' | int }} {{ '1.5' | float }} {{ -3 | abs }}", d) == "3.14 3 -3 2.0 43 0 1.5 3")
+  expect(r(r"{{ {'a': 1} }}", d).hasPrefix("ERROR"))
+  expect(r(r"{{ people[0] | json }} {{ 'x y&z' | urlencode }} {{ ['a', 1] | json(2) }}", d) == "\{\"name\":\"bo\",\"age\":30,\"admin\":true} x+y%26z [\n  \"a\",\n  1\n]")
+  expect(r(r"{{ 'line1\nline2\n\nline4' | indent(2) }}", d) == "line1\n  line2\n\n  line4")
+  expect(r(r"{{ 'a\nb' | indent('\t', true) }}", d) == "\ta\n\tb")
+  expect(r(r"{{ m | default({}) }}", d).hasPrefix("ERROR"))
+  expect(r(r"{{ missing | default('d') }} {{ '' | default('e', true) }} {{ 0 | d(5) }}", d) == "d e 0")
+  expect(r(r"{{ '<b>bold</b> &amp; more' | striptags }}", d) == "bold & more")
+  expect(r(r"{{ {'a': 1} | keys }}", d).hasPrefix("ERROR"))
+  expect(r(r"{{ people[0] | keys }} {{ people[1] | values }}", d) == "[\"name\",\"age\",\"admin\"] [\"ana\",25,false]")
+}
+
+test "the program's own filters" {
+  let money = (v: json.Value, args: [json.Value]) => json.Value.string("€" + (v.asFloat() ?? 0).fixed(2))
+  let shout = (v: json.Value, args: [json.Value]) => json.Value.string((v.asString() ?? "").upper() + "!".repeat(args.first()?.asInt() ?? 1))
+  let t = try parse(r"{{ price | money }} {{ 'hey' | shout(3) }} {{ 'x' | upper }}", filters: ["money": money, "shout": shout, "upper": (v: json.Value, a: [json.Value]) => json.Value.string("UP")])
+  expect(try t.renderValue(obj(["price": .float(9.5)])) == "€9.50 HEY!!! UP")
+  let failing = try parse(r"{{ 1 | boom }}", filters: ["boom": (v: json.Value, a: [json.Value]) => throw Error("no")])
+  expect((try? failing.renderValue(obj([:]))) == none)
+  do {
+    let _ = try failing.renderValue(obj([:]))
+  } catch e {
+    expect(e.message == "template: 1:8: boom: no")
+  }
+}
+
+test "a statement alone on its line takes the line" {
+  let t = r"""
+    [server]
+    {% for s in servers %}
+    {# each one #}
+    host = "{{ s.host }}"
+      {% if s.port %}
+    port = {{ s.port }}
+      {% endif %}
+    {% endfor %}
+    end
+    """
+  let d = obj(["servers": .array([obj(["host": .string("a"), "port": .int(80)]), obj(["host": .string("b"), "port": .null])])])
+  expect(r(t, d) == "[server]\nhost = \"a\"\nport = 80\nhost = \"b\"\nend")
+  // Two on a line, or one with text: as they are.
+  expect(r("a\n\{% if true %}\{% endif %}\nb", d) == "a\n\nb")
+  expect(r("a \{% if true %}x\{% endif %}\nb", d) == "a x\nb")
+  // CRLF lines, and at the end of the template.
+  expect(r("x\r\n  \{% if true %}\r\ny\r\n\{% endif %}", d) == "x\r\ny\r\n")
+  // \{\{ }} isn't standalone.
+  expect(r("a\n  \{\{ 1 }}\nb", d) == "a\n  1\nb")
+}
+
+test "whitespace control with -" {
+  let d = obj(["xs": .array([.int(1), .int(2)])])
+  expect(r("a   \{\{- 1 -}}   b", d) == "a1b")
+  expect(r("<\{%- for x in xs -%}\n  \{\{ x }}\n\{%- endfor -%}>", d) == "<12>")
+  expect(r("a \{#- c -#} b", d) == "ab")
+  expect(r("\{\{ 5 - 1 }}|\{\{ 5 -1 }}|\{\{5-1}}", d) == "4|4|4")
+}
+
+test "raw" {
+  let d = obj([:])
+  expect(r(r"{% raw %}{{ not parsed }} {% if %}{% endraw %}!", d) == r"{{ not parsed }} {% if %}!")
+  expect(r("\{% raw %}\n  \{\{ x }}\n\{% endraw %}\nafter", d) == "  \{\{ x }}\nafter")
+  expect(r(r"{% raw %}never ends", d).hasPrefix("ERROR"))
+}
+
+test "HTML: escaped unless it's markup" {
+  let d = obj(["name": .string("<script>alert('x') & \"y\"</script>"), "bold": .string("<b>hi</b>"), "xs": .array([.string("<a>"), .string("b")]), "url": .string("a b&c=d")])
+  expect(r(r#"<p title="{{ name }}">{{ name }}</p>"#, d, escape: .html) == "<p title=\"&lt;script&gt;alert(&#39;x&#39;) &amp; &quot;y&quot;&lt;/script&gt;\">&lt;script&gt;alert(&#39;x&#39;) &amp; &quot;y&quot;&lt;/script&gt;</p>")
+  expect(r(r"{{ bold | safe }} {{ bold | escape }} {{ bold | e | e }}", d, escape: .html) == "<b>hi</b> &lt;b&gt;hi&lt;/b&gt; &lt;b&gt;hi&lt;/b&gt;")
+  // Markup joined with text escapes the text; a filter keeps it markup.
+  expect(r(r"{{ (bold | safe) ~ name }}|{{ bold | safe | upper }}", d, escape: .html) == "<b>hi</b>&lt;script&gt;alert(&#39;x&#39;) &amp; &quot;y&quot;&lt;/script&gt;|<B>HI</B>")
+  expect(r(r"{{ xs }} {{ xs | join(', ') }}", d, escape: .html) == "[&quot;&lt;a&gt;&quot;,&quot;b&quot;] &lt;a&gt;, b")
+  // JSON in a script: nothing that ends it, nor a quote.
+  expect(r(r"<script>let d = {{ name | json }}</script>", d, escape: .html) == "<script>let d = \"\\u003cscript\\u003ealert(\\u0027x\\u0027) \\u0026 \\\"y\\\"\\u003c/script\\u003e\"</script>")
+  expect(r(r#"<a href="/q?s={{ url | urlencode }}">"#, d, escape: .html) == "<a href=\"/q?s=a+b%26c%3Dd\">")
+  // Not HTML: as it is.
+  expect(r(r"{{ bold }}", d) == "<b>hi</b>")
+  // By the name.
+  let t = try parse(r"{{ bold }}", name: "page.HTML")
+  expect(t.escape == .html)
+  expect(try t.renderValue(d) == "&lt;b&gt;hi&lt;/b&gt;")
+  expect((try parse("", name: "notes.txt")).escape == .none)
+  expect((try parse("", name: "page.html", escape: .none)).escape == .none)
+}
+
+test "include, extends, blocks and super" {
+  let ts = try parseAll([
+    "base.html": r"""
+      <title>{% block title %}Site{% endblock %}</title>
+      <main>{% block body %}{% endblock %}</main>
+      {% include 'footer.html' %}
+      """,
+    "page.html": r"""
+      {% extends "base.html" %}
+      {% block title %}{{ title }} · {{ super() }}{% endblock %}
+      {% block body %}
+      {% for i in items %}
+      {% include "item.html" %}
+      {% endfor %}
+      {% endblock %}
+      ignored
+      """,
+    "item.html": "<li>\{\{ i.name }}</li>\n",
+    "list.yaml": r"""
+      services:
+        {% include "svc.yaml" %}
+      """,
+    "svc.yaml": "web:\n  image: nginx\n",
+    "footer.html": r"<footer>{{ user }}</footer>",
+    "loop.html": r"{% include 'loop.html' %}",
+    "deep.html": r"{% extends 'page.html' %}{% block title %}Deep{% endblock %}",
+  ])
+  let page = Page(title: "Menu & more", items: items, user: "<bo>")
+  expect(try ts.render("page.html", page) == "<title>Menu &amp; more · Site</title>\n<main><li>green tea</li>\n<li>mochi</li>\n</main>\n<footer>&lt;bo&gt;</footer>")
+  expect(try ts.render("deep.html", page) == "<title>Deep</title>\n<main><li>green tea</li>\n<li>mochi</li>\n</main>\n<footer>&lt;bo&gt;</footer>")
+  expect(ts.get("item.html").isSome())
+  // An include alone on its line: each line indented as it is.
+  expect(try ts.render("list.yaml", page) == "services:\n  web:\n    image: nginx\n")
+  expect((try? ts.render("nope.html", page)) == none)
+  do {
+    let _ = try ts.render("loop.html", page)
+  } catch e {
+    expect(e.message.contains("64 deep"))
+  }
+  // A template alone has no others to include.
+  expect(r(r"{% include 'x' %}", obj([:])) == "ERROR template: 1:1: no template named x to include")
+}
+
+test "errors say where" {
+  let d = obj(["user": obj(["name": .string("Ana")]), "n": .int(1)])
+  let cases = [
+    (r"{{ nickname }}", "template: 1:4: nickname is undefined (| default(…) gives it a value)"),
+    ("line\n  \{\{ user.nick }}", "template: 2:6: user.nick is undefined (| default(…) gives it a value)"),
+    (r"{{ user.nick.first }}", "template: 1:4: user.nick is undefined"),
+    (r"{{ n.x }}", "template: 1:6: n is an int: it has no field x"),
+    (r"{{ n | uper }}", "template: 1:8: unknown filter uper"),
+    (r"{{ n | join }}", "template: 1:8: join needs an array, not an int"),
+    (r"{{ n + 'a' }}", "template: 1:6: + needs numbers, strings or arrays, not an int and a string"),
+    (r"{{ n / 0 }}", "template: 1:6: division by zero"),
+    (r"{% if n %}x", "template: 1:12: \{% if %} without its \{% endif %}"),
+    (r"{% endif %}", "template: 1:1: \{% endif %} without what it ends"),
+    (r"{% frobnicate %}", "template: 1:1: unknown statement frobnicate"),
+    (r"{{ n ", "template: 1:1: \{\{ without its }}"),
+    (r"{{ 'open }}", "template: 1:4: a string that doesn't end"),
+    (r"{{ n n }}", "template: 1:6: unexpected n"),
+    (r"{{ }}", "template: 1:1: an empty \{\{ }}"),
+    (r"{# never", "template: 1:1: a comment that doesn't end: \{# needs its #}"),
+    (r"{% for x in n %}{% endfor %}", "template: 1:13: a loop goes over an array or a map, not an int"),
+    ("日本語 \{\{ x }}", "template: 1:8: x is undefined (| default(…) gives it a value)"),
+    (r"{% block a %}{% endblock %}{% block a %}{% endblock %}", "template: 1:28: a second block named a"),
+  ]
+  for (source, want) in cases {
+    let got = r(source, d)
+    if got != "ERROR {want}" {
+      print("{json.encode(source)}: {got}")
+    }
+    expect(got == "ERROR {want}")
+  }
+  do {
+    let _ = try parse("a\nb \{\{ x | }}", name: "mail.txt")
+  } catch e: TemplateError {
+    expect(e.name == "mail.txt" && e.line == 2 && e.column == 10)
+    expect(e.message == "template: mail.txt:2:10: expected a name: a filter")
+  }
+  // The data must be a struct or a map.
+  expect((try? render(r"{{ x }}", [1, 2])) == none)
+}
+
+test "parse once, render many times" {
+  let t = try parse(r"{% for i in range(n) %}{{ i }}{% endfor %}")
+  for n in 0..<5 {
+    expect(try t.renderValue(obj(["n": .int(n)])).count() == n)
+  }
+}

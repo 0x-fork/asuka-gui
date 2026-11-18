@@ -1,4 +1,5 @@
 #include "rt/rt.h"
+#include "rt/unicode.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -181,10 +182,159 @@ static ak_str *map_ascii(ak_str *s, bool upper) {
 	return o;
 }
 
-// Case mapping beyond ASCII needs the locale's rules (Turkish i, German
-// ß), which the platform has: the i18n runtime overrides these.
-ak_str *ak_str_lower(ak_str *s) { return map_ascii(s, false); }
-ak_str *ak_str_upper(ak_str *s) { return map_ascii(s, true); }
+static bool ascii_only(const ak_str *s) {
+	for (uint32_t i = 0; i < s->len; i++)
+		if ((uint8_t)s->data[i] & 0x80) return false;
+	return true;
+}
+
+// final_sigma: whether the Σ at s[i:j] ends a word (SpecialCasing's
+// Final_Sigma): a cased letter before it, case-ignorables aside, and
+// none after it.
+static bool final_sigma(const char *s, size_t n, size_t i, size_t j) {
+	bool before = false;
+	for (size_t k = i; k > 0;) {
+		size_t b = k - 1;
+		while (b > 0 && ((uint8_t)s[b] & 0xc0) == 0x80) b--;
+		size_t t = b;
+		uint16_t p = ak_uprops(ak_utf8_decode(s, n, &t));
+		k = b;
+		if (p & AK_UP_CASE_IGNORABLE) continue;
+		before = (p & AK_UP_CASED) != 0;
+		break;
+	}
+	if (!before) return false;
+	for (size_t k = j; k < n;) {
+		uint16_t p = ak_uprops(ak_utf8_decode(s, n, &k));
+		if (p & AK_UP_CASE_IGNORABLE) continue;
+		return !(p & AK_UP_CASED);
+	}
+	return true;
+}
+
+// map_case maps each code point as the Unicode's full mappings without
+// a language's rules say (Rust's to_lowercase, JavaScript's
+// toLowerCase): ß is SS in upper case, a word's last Σ is ς in lower.
+static ak_str *map_case(ak_str *s, ak_case_kind k) {
+	if (ascii_only(s)) {
+		if (k == AK_CASE_UPPER) return map_ascii(s, true);
+		return map_ascii(s, false);  // folding ASCII is lowering it
+	}
+	ak_strb b = {0};
+	bool changed = false;
+	for (size_t i = 0; i < s->len;) {
+		size_t from = i;
+		uint32_t c = ak_utf8_decode(s->data, s->len, &i);
+		uint32_t out[3];
+		int m;
+		if (k == AK_CASE_LOWER && c == 0x3a3 && final_sigma(s->data, s->len, from, i)) out[0] = 0x3c2, m = 1;
+		else m = ak_case_map(c, k, out);
+		if (m == 1 && out[0] == c) {
+			ak_strb_cstr(&b, s->data + from, i - from);  // as it was (what isn't UTF-8 too)
+			continue;
+		}
+		changed = true;
+		for (int q = 0; q < m; q++) {
+			char u[4];
+			ak_strb_cstr(&b, u, ak_utf8_encode(out[q], u));
+		}
+	}
+	if (!changed) {
+		ak_buf_free(&b.b);
+		return ak_retain(s);
+	}
+	return ak_strb_finish(&b);
+}
+
+ak_str *ak_str_lower(ak_str *s) { return map_case(s, AK_CASE_LOWER); }
+ak_str *ak_str_upper(ak_str *s) { return map_case(s, AK_CASE_UPPER); }
+ak_str *ak_str_fold(ak_str *s) { return map_case(s, AK_CASE_FOLD); }
+
+// ---- Comparing without case: full case folding, code point by code
+// point (Go's strings.EqualFold, but with ß equal to ss) ----
+
+// A fold_it gives a string's folded code points one at a time.
+typedef struct {
+	const char *s;
+	size_t n, i;
+	uint32_t buf[3];
+	int k, m;  // buf[k:m]: what's left of the last code point's folding
+} fold_it;
+
+// fold_next: the next folded code point, or -1 at the end.
+static int64_t fold_next(fold_it *it) {
+	if (it->k < it->m) return it->buf[it->k++];
+	if (it->i >= it->n) return -1;
+	uint32_t c = ak_utf8_decode(it->s, it->n, &it->i);
+	it->m = ak_case_map(c, AK_CASE_FOLD, it->buf);
+	it->k = 1;
+	return it->buf[0];
+}
+
+static fold_it folding(const ak_str *s) { return (fold_it){.s = s->data, .n = s->len}; }
+
+int ak_str_cmp_fold(const ak_str *a, const ak_str *b) {
+	fold_it x = folding(a), y = folding(b);
+	for (;;) {
+		int64_t p = fold_next(&x), q = fold_next(&y);
+		if (p != q) return p < q ? -1 : 1;
+		if (p < 0) return 0;
+	}
+}
+
+bool ak_str_eq_fold(const ak_str *a, const ak_str *b) { return ak_str_eq(a, b) || ak_str_cmp_fold(a, b) == 0; }
+
+bool ak_str_has_prefix_fold(const ak_str *s, const ak_str *p) {
+	fold_it x = folding(s), y = folding(p);
+	for (int64_t q; (q = fold_next(&y)) >= 0;)
+		if (fold_next(&x) != q) return false;
+	return x.k == x.m;  // not in the middle of a code point's folding: ß isn't s...
+}
+
+// fold_all: s's folded code points, each one that starts a code point's
+// folding marked with bit 31 (a match starts and ends at them).
+#define FOLD_START 0x80000000u
+static uint32_t *fold_all(const ak_str *s, uint32_t *stack, size_t cap, size_t *len) {
+	uint32_t *out = stack;
+	size_t n = 0;
+	for (size_t i = 0; i < s->len;) {
+		uint32_t c = ak_utf8_decode(s->data, s->len, &i), m3[3];
+		int m = ak_case_map(c, AK_CASE_FOLD, m3);
+		if (n + 3 > cap) {
+			uint32_t *o = ak_alloc((cap * 2 + 3) * sizeof *o);
+			memcpy(o, out, n * sizeof *o);
+			if (out != stack) ak_free(out);
+			out = o;
+			cap = cap * 2 + 3;
+		}
+		for (int q = 0; q < m; q++) out[n++] = m3[q] | (q == 0 ? FOLD_START : 0);
+	}
+	*len = n;
+	return out;
+}
+
+// find_fold: whether sub's folding is in s's at a code point's start
+// (where is anywhere, or 1: at the start, 2: at the end), ending at one.
+static bool find_fold(const ak_str *s, const ak_str *sub, int where) {
+	if (sub->len == 0) return true;
+	uint32_t sa[256], sb[64];
+	size_t n, m;
+	uint32_t *a = fold_all(s, sa, AK_LEN(sa), &n), *b = fold_all(sub, sb, AK_LEN(sb), &m);
+	bool found = false;
+	for (size_t i = where == 2 ? (n >= m ? n - m : n + 1) : 0; !found && i + m <= n; i++) {
+		if (!(a[i] & FOLD_START)) continue;
+		size_t k = 0;
+		while (k < m && (a[i + k] & ~FOLD_START) == (b[k] & ~FOLD_START)) k++;
+		found = k == m && (i + m == n || (a[i + m] & FOLD_START));
+		if (where == 1) break;
+	}
+	if (a != sa) ak_free(a);
+	if (b != sb) ak_free(b);
+	return found;
+}
+
+bool ak_str_has_suffix_fold(const ak_str *s, const ak_str *p) { return find_fold(s, p, 2); }
+bool ak_str_contains_fold(const ak_str *s, const ak_str *sub) { return find_fold(s, sub, 0); }
 
 static bool is_space(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f'; }
 

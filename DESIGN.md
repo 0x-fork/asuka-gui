@@ -2115,6 +2115,20 @@ behavior.
   `.local` stays the system's (its clock is the device's), and the
   device's zone's name is the system's (TZ, /etc/localtime, Android's
   persist.sys.timezone, Windows's ICU, the browser's Intl).
+- Strings' Unicode is the core's, from a pinned release of the character
+  database (`internal/ucdgen` writes `core/src/rt/unicode_gen.c`): C's
+  library has none of it, and the platforms' differ in version and in
+  what they have (JavaScript has no case folding, Win32 no grapheme
+  clusters), so a string compares and measures alike everywhere:
+  `graphemes()` (UAX #29's extended clusters, checked against every case
+  of Unicode's GraphemeBreakTest), `upper()`, `lower()` and `foldCase()`
+  (the full mappings in no language's way, Final_Sigma; no Turkish
+  rules), `ignoreCase:`'s comparisons over the folding, and `std/term`'s
+  terminal widths (wcwidth's and unicode-width's rules over East Asian
+  Width, by grapheme cluster, escape codes skipped). Each code point's
+  properties are a uint16 in ranges (4,187 of them, binary searched,
+  ASCII on a fast path), the mappings runs of equal deltas and a table
+  of those to several code points: 36 KB in every app.
 
 **Not yet:** selection for screen reader users (VoiceOver and TalkBack
 read the texts and links but don't select across them).

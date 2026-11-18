@@ -1,0 +1,55 @@
+// Unicode in strings: grapheme clusters, case mapping and folding in no
+// language's way, and comparisons that ignore case (core/src/rt/
+// unicode.c, its tables from Unicode's character database).
+
+test "grapheme clusters" {
+  let s = "e\u{301}🇯🇵👨‍👩‍👧한\r\n"
+  print((s.count(), s.chars().count(), s.graphemes().count()))
+  print(s.graphemes().map(g => g.byteCount()))
+
+  print("".graphemes())
+}
+
+test "upper and lower case" {
+  print(("straße".upper(), "ǆ".upper(), "ﬁ".upper()))
+  print("ΣΑΣ ΚΑΙ ΟΔΟΣ.".lower())
+
+  print("ÀÉÎÕÜ İ".lower().count())
+
+  print(("Hello, 世界".upper(), "Hello, 世界".lower()))
+}
+
+test "without case" {
+  print(("Straße".foldCase(), "ΣΑΣ".foldCase(), "ﬃ".foldCase()))
+  print(("Go".equals("GO", ignoreCase: true), "Go".equals("GO"), "straße".equals("STRASSE", ignoreCase: true)))
+  // STRAS ends inside ß's folding (ss): not a prefix.
+  print(("README.MD".hasSuffix(".md", ignoreCase: true), "Straße".hasPrefix("STRAS", ignoreCase: true), "ß".hasPrefix("s", ignoreCase: true)))
+  print(("Die Straße".contains("STRASSE", ignoreCase: true), "abc".contains("B"), "abc".contains("B", ignoreCase: true)))
+  print(("apple".compare("Banana"), "apple".compare("Banana", ignoreCase: true), "a".compare("A", ignoreCase: true)))
+  let names = ["bob", "Alice", "émile", "Émile", "alice", "Zoë", "zoe"]
+  print(names.sorted())
+
+  print(names.sorted(by: (a, b) => a.compare(b, ignoreCase: true) < 0))
+
+  print(names.map(n => n.foldCase()).unique())
+}
+
+// Output:
+// (12,12,5)
+// [3,8,18,3,2]
+// []
+// ok grapheme clusters
+// ("STRASSE","Ǆ","FI")
+// σας και οδος.
+// 8
+// ("HELLO, 世界","hello, 世界")
+// ok upper and lower case
+// ("strasse","σασ","ffi")
+// (true,false,true)
+// (true,false,false)
+// (true,false,true)
+// (1,-1,0)
+// ["Alice","Zoë","alice","bob","zoe","Émile","émile"]
+// ["Alice","alice","bob","zoe","Zoë","émile","Émile"]
+// ["bob","alice","émile","zoë","zoe"]
+// ok without case

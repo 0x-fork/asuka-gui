@@ -149,6 +149,13 @@ bool ak_str_has_suffix(const ak_str *s, const ak_str *p);
 bool ak_str_contains(const ak_str *s, const ak_str *sub);
 ak_str *ak_str_lower(ak_str *s);
 ak_str *ak_str_upper(ak_str *s);
+ak_str *ak_str_fold(ak_str *s);  // Unicode's full case folding
+// Without case (full case folding, rt/unicode.h; no normalization):
+int ak_str_cmp_fold(const ak_str *a, const ak_str *b);
+bool ak_str_eq_fold(const ak_str *a, const ak_str *b);
+bool ak_str_has_prefix_fold(const ak_str *s, const ak_str *p);
+bool ak_str_has_suffix_fold(const ak_str *s, const ak_str *p);
+bool ak_str_contains_fold(const ak_str *s, const ak_str *sub);
 ak_str *ak_str_trim(ak_str *s);
 ak_str *ak_str_replace(ak_str *s, const ak_str *old, const ak_str *new_);
 struct ak_arr *ak_str_split(ak_str *s, const ak_str *sep);

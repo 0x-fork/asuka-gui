@@ -162,7 +162,7 @@ app {
 screen Notes {
   state query = ""
 
-  let shown = notes.filter(n => n.lower().contains(query.lower()))
+  let shown = notes.filter(n => n.contains(query, ignoreCase: true))
 
   title: "Notes"
   bind search: query

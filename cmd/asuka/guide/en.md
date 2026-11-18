@@ -434,7 +434,9 @@ let table = row("asuka", 12500, 0.4) // asuka     12,500   40.0%
 ```
 
 A width counts characters (code points), not how wide a terminal draws
-them.
+them: `std/term`'s `textWidth`, `padEnd` and `fit` count its columns
+(Chinese, Japanese and Korean characters and emoji take two),
+[Programs](https://asuka.egoist.dev/docs/programs#an-aligned-table).
 
 A tuple's elements are read by their place, `pair.0` and `pair.1`, and
 a `var`'s change in place (`pair.0 += 1`); a place the tuple doesn't
@@ -538,7 +540,7 @@ that change their value (`push`, `insert`, `removeAt`, `removeWhere`,
 | `[T]` | `count()`, `count(where)`, `isEmpty()`, `first()`, `last()`, `get(i)` (a `T?`), `push(x)`, `insert(x, at: i)`, `removeAt(i)`, `removeWhere(p)`, `pop()`, `clear()`, `map(f)`, `flatMap(f)` (the arrays `f` gives, one after another), `compactMap(f)` (what `f` gives, without its nones), `filter(p)`, `reduce(initial, f)`, `any(p)`, `all(p)`, `index(p)` (an `int?`), `find(p)`, `contains(x)`, `sum()`, `min()`, `max()` (a `T?`; `min(by:)`, `max(by:)` with a less-than), `unique()`, `grouped(by: f)` (a `[K: [T]]`), `chunked(n)`, `zip(other)` (pairs, as long as the shorter), `reversed()`, `slice(from, to)` (`to` left out: the end), `prefix(n)`, `suffix(n)`, `sorted()`, `sorted(by)`, `sort()`, `sort(by)`, `enumerated()`, `joined(separator:)` (of strings), `+` |
 | `Set<T>` | `count()`, `isEmpty()`, `contains(x)`, `insert(x)` (whether it was new), `remove(x)` (whether it was there), `union(s)`, `intersection(s)`, `subtracting(s)`, `isSubset(of: s)`, `isSuperset(of: s)`; `Set(xs)` is an array's distinct elements, `Set<T>()` none |
 | `[K: V]` | `m[k]` (a `V?`), `m[k] = v`, `count()`, `isEmpty()`, `has(k)`, `get(k)`, `remove(k)`, `keys()`, `values()` (in insertion order), `mapValues(f)`, `filter((k, v) => …)` |
-| `string` | `count()` (characters), `byteCount()`, `isEmpty()`, `upper()`, `lower()`, `trim()`, `trimStart()`, `trimEnd()`, `trimPrefix(s)`, `trimSuffix(s)`, `contains(s)`, `hasPrefix(s)`, `hasSuffix(s)`, `replace(old, new, count:)` (every one unless count says), `split(sep, count:)`, `fields()` (the words), `lines()`, `find(s)`, `findLast(s)`, `findAny(chars)` (byte offsets, or none), `slice(from, to)` (characters), `byteSlice(from, to)` (bytes: the offsets find gives), `padStart(width, with:)`, `padEnd(width, with:)`, `toInt()`, `toInt(radix:)`, `toFloat()`, `repeat(n)`, `chars()`, `reversed()`, `bytes()`, `+` |
+| `string` | `count()` (characters), `byteCount()`, `isEmpty()`, `upper()`, `lower()`, `trim()`, `trimStart()`, `trimEnd()`, `trimPrefix(s)`, `trimSuffix(s)`, `contains(s, ignoreCase:)`, `hasPrefix(s, ignoreCase:)`, `hasSuffix(s, ignoreCase:)`, `equals(s, ignoreCase:)`, `compare(s, ignoreCase:)` (negative, zero or positive), `foldCase()`, `replace(old, new, count:)` (every one unless count says), `split(sep, count:)`, `fields()` (the words), `lines()`, `find(s)`, `findLast(s)`, `findAny(chars)` (byte offsets, or none), `slice(from, to)` (characters), `byteSlice(from, to)` (bytes: the offsets find gives), `padStart(width, with:)`, `padEnd(width, with:)`, `toInt()`, `toInt(radix:)`, `toFloat()`, `repeat(n)`, `chars()`, `graphemes()`, `reversed()`, `bytes()`, `+` |
 | `bytes` | `b[i]` (an `int`, 0 to 255; out of range is an error), `count()`, `isEmpty()`, `get(i)` (an `int?`), `slice(from, to)`, `concat(b)`, `string()` (UTF-8; what isn't becomes U+FFFD), `hex()` and `hex(separator)` (`"04 a1"`); `bytes()` is none, `bytes([0x04, 0xa1])` those, `s.bytes()` a string's UTF-8 |
 | `int` | `float()`, `abs()`, `toString(radix:)` (`255.toString(radix: 16)` is `"ff"`), `padded(width)` (`7.padded(2)` is `"07"`), `addingChecked(o)`, `subtractingChecked(o)`, `multipliedChecked(o)` (an `int?`: none on overflow) |
 | `float` | `fixed(digits)`, `rounded()`, `floor()`, `ceil()`, `int()` (toward zero), `abs()` |
@@ -593,6 +595,31 @@ writes one, lowercase. A radix outside 2 to 36 is an error.
 
 `min`, `max`, `abs`, `float(n)` and `int(x)` are functions;
 `std/math` has the rest (`math.sqrt`, `math.pow`, `math.pi`, ...).
+
+`upper()` and `lower()` map every letter by Unicode's rules, the same
+in every language: `"straße".upper()` is `"STRASSE"`, and a word's last
+`Σ` is `ς` in lower case. `ignoreCase: true` compares two strings'
+case foldings (`foldCase()`: `"Straße"` and `"STRASSE"` both fold to
+`"strasse"`), as Go's `strings.EqualFold` and Python's `casefold` do; a
+match starts and ends on whole characters, so `"ß"` doesn't start with
+`"s"`. Neither follows a language's own rules: the Turkish dotless ı
+and dotted İ map as everywhere else (`"İ".lower()` is `i` with a
+combining dot), and text isn't normalized (`"é"` and `e` with a
+combining accent differ). For sorting names without their case,
+`compare` with `sorted(by:)`; `foldCase()` makes a key that ignores it:
+
+```asuka
+fn byName(names: [string]) -> [string] = names.sorted(by: (a, b) => a.compare(b, ignoreCase: true) < 0)
+
+fn sameUser(a: string, b: string) -> bool = a.trim().equals(b.trim(), ignoreCase: true)
+
+fn isMarkdown(path: string) -> bool = path.hasSuffix(".md", ignoreCase: true)
+```
+
+`count()` and `chars()` count code points; `graphemes()` gives what a
+reader takes for one character, as Unicode's text segmentation (UAX
+#29) says: `"e\u{301}"`, a flag (`"🇯🇵"`) and a family emoji joined with
+ZWJs are one each.
 
 `toInt()` and `toFloat()` read the whole string, or give none: an
 optional sign, then the number, with nothing around it (`" 12"` is
