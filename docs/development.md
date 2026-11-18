@@ -310,9 +310,14 @@ ASUKA_SCRIPT="tap:Add;tap:Add" ASUKA_SNAPSHOT=shot.png asuka dev    # steps firs
 What builds compile and download is kept in Asuka's cache and shared by
 every app on your computer: a second app, or a build after a small
 change, compiles only what's new. The first build for a platform
-downloads Asuka's prebuilt libraries for it, once, from the npm
-registry: the registry and token in your `.npmrc` (or
-`npm_config_registry`) apply, for a mirror or a proxy. Its Swift
+downloads Asuka's prebuilt libraries for it, once, from the CLI's
+GitHub release, checked against the checksums the CLI carries; your
+proxy (`HTTPS_PROXY`, `NO_PROXY`) applies. For a mirror, set
+`ASUKA_PREBUILT_URL` to where the release's `asuka-prebuilt-*.tar.gz`
+files are: a URL, in which `{version}` stands for the CLI's version
+(`ASUKA_PREBUILT_TOKEN`, if set, is sent to it as a bearer token), or,
+on a computer without the network, a directory you copied them into.
+Its Swift
 libraries are used with the Xcode they were built with or a newer one;
 with an older Xcode, they're compiled once on your computer instead.
 

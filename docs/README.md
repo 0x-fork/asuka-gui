@@ -72,8 +72,8 @@ check and do without.
 
 Apps run on iOS 16, Android 13 (API 33), macOS 11, Windows 10 and Linux
 with GTK 4.14 and libadwaita 1.5, and later; and in current browsers.
-The `asuka` CLI is one program (`npm i -g @egoist/asuka`, or the install
-script); building for a platform needs that platform's tools (Xcode,
+The `asuka` CLI is one program, installed with one command ([Getting
+started](getting-started.md#install-the-cli)); building for a platform needs that platform's tools (Xcode,
 the Android SDK and NDK) and a C compiler (the system's, or Zig).
 
 ## Guides

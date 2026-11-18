@@ -517,10 +517,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
       - name: the asuka CLI, at the app's version of Asuka
-        run: npm install -g @egoist/asuka@$ASUKA_VERSION
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.sh | sh
+          echo "$HOME/.asuka/bin" >> "$GITHUB_PATH"
       - name: the distribution certificate and the profile
         env:
           CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
@@ -561,8 +561,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 17 }
       - uses: android-actions/setup-android@v3
@@ -570,7 +568,9 @@ jobs:
       - name: an NDK
         run: sdkmanager "ndk;27.1.12297006"
       - name: the asuka CLI, at the app's version of Asuka
-        run: npm install -g @egoist/asuka@$ASUKA_VERSION
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.sh | sh
+          echo "$HOME/.asuka/bin" >> "$GITHUB_PATH"
       - name: the upload key
         env:
           KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
@@ -601,7 +601,7 @@ jobs:
 - `ANDROID_KEYSTORE`：アップロード鍵の `.jks`。`ANDROID_KEYSTORE_PASSWORD` はそのパスワードです（鍵のパスワードが異なる場合は `ASUKA_KEY_PASSWORD` も追加します）。
 - `PLAY_SERVICE_ACCOUNT`：Google Cloud のサービス アカウントの JSON キー。このアカウントは、Play Console の「ユーザーと権限」で、テストトラックにリリースする権限を付けて招待しておきます。
 
-CLI は自分のバージョンの Asuka でアプリをビルドするため、アプリが使う Asuka のバージョン（`ASUKA_VERSION`）に合わせてインストールします。アプリを新しい Asuka に移すときは、この値も上げてください。各ビルドの番号はストア上の最大の番号の次になるので、タグを付ける前に番号を上げる必要はありません。`--no-wait` を付けているので、iOS のジョブは Apple の処理が終わるのを待たず、Apple がアップロードを受け取った時点で終わります。App Store は最近の Xcode で作ったビルドしか受け付けません。ランナーのデフォルトの Xcode が古い場合は、`sudo xcode-select -s /Applications/Xcode_<version>.app` で選んでください。
+CLI は自分のバージョンの Asuka でアプリをビルドするため、アプリが使う Asuka のバージョン（インストールスクリプトが読む `ASUKA_VERSION`）に合わせてインストールします。アプリを新しい Asuka に移すときは、この値も上げてください。各ビルドの番号はストア上の最大の番号の次になるので、タグを付ける前に番号を上げる必要はありません。`--no-wait` を付けているので、iOS のジョブは Apple の処理が終わるのを待たず、Apple がアップロードを受け取った時点で終わります。App Store は最近の Xcode で作ったビルドしか受け付けません。ランナーのデフォルトの Xcode が古い場合は、`sudo xcode-select -s /Applications/Xcode_<version>.app` で選んでください。
 
 ### デスクトップ
 
@@ -613,10 +613,10 @@ CLI は自分のバージョンの Asuka でアプリをビルドするため、
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
       - name: the asuka CLI, at the app's version of Asuka
-        run: npm install -g @egoist/asuka@$ASUKA_VERSION
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.sh | sh
+          echo "$HOME/.asuka/bin" >> "$GITHUB_PATH"
       - name: the Developer ID certificate
         env:
           CERTIFICATE: ${{ secrets.MAC_CERTIFICATE }}
@@ -650,11 +650,11 @@ CLI は自分のバージョンの Asuka でアプリをビルドするため、
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
       - uses: mlugg/setup-zig@v2 # アプリをクロスコンパイル
       - name: the asuka CLI, at the app's version of Asuka
-        run: npm install -g @egoist/asuka@$ASUKA_VERSION
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.sh | sh
+          echo "$HOME/.asuka/bin" >> "$GITHUB_PATH"
       - name: osslsigncode, and the code signing certificate
         env:
           CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}

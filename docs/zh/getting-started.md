@@ -25,9 +25,21 @@
 
 ## 安装命令行工具
 
+在 macOS 和 Linux 上：
+
 ```sh
-npm install -g @egoist/asuka     # 或者：npx @egoist/asuka new hello
+curl -fsSL https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.sh | sh
 ```
+
+在 Windows 上，打开 PowerShell 运行：
+
+```powershell
+irm https://raw.githubusercontent.com/egoist/asuka/main/scripts/install.ps1 | iex
+```
+
+安装脚本会从 GitHub release 下载命令行工具，用 release 中的校验和核对无误后，安装到 `~/.asuka/bin`（Windows 上是 `%LOCALAPPDATA%\Programs\asuka\bin`，脚本会把它加入你的 PATH）。设置 `ASUKA_VERSION=0.3.0` 可以安装指定版本而不是最新版，设置 `ASUKA_INSTALL` 可以换一个安装目录。
+
+`asuka upgrade` 把命令行工具更新到最新的 release（`asuka upgrade 0.3.0` 则更新到这个版本）。asuka 每天会在后台检查一次有没有更新的 release，如果有，就在命令结束时提示你；这个检查从不让命令等待。设置 `ASUKA_NO_UPDATE_CHECK=1` 可以关掉它，在 CI 中它也不会运行。
 
 ## 创建应用
 
