@@ -237,12 +237,13 @@ component Main {
 func TestLoadingProperties(t *testing.T) {
 	root := t.TempDir()
 	c := newClient(t, root)
-	text := "async fn name(id: int) -> string = \"user {id}\"\n\ncomponent A {\n  state id = 1\n  let user = load name(id)\n  Column {\n    Text(user.value ?? \"\")\n    if user.loading { Text(\"…\") }\n  }\n}\n"
+	text := "async fn name(id: int) -> string = \"user {id}\"\n\ncomponent A {\n  state id = 1\n  let user = load name(id)\n  Column {\n    Text(user.value ?? \"\")\n    if user.loading { Text(\"…\") }\n    Button(\"x\") { on press { user.optimistic(n => n + \"!\") } }\n  }\n}\n"
 	uri := c.openText(filepath.Join(root, "a.asuka"), text)
 	c.waitDiags(uri, noDiags)
 	for at, want := range map[string]string{
-		"user.val|ue":   "value: string?",
-		"user.load|ing": "loading: bool",
+		"user.val|ue":      "value: string?",
+		"user.load|ing":    "loading: bool",
+		"user.optim|istic": "optimistic(change: fn(string) -> string)",
 	} {
 		var h *Hover
 		p := tdp(uri, posAt(t, text, at))
@@ -253,7 +254,43 @@ func TestLoadingProperties(t *testing.T) {
 	version := 1
 	text2 := strings.Replace(text, "if user.loading", "if user.", 1)
 	items := complete(t, c, uri, &version, text2, text2[:strings.Index(text2, "if user.")+len("if user.")]+"|")
-	if got := labels(items); !contains(got, "loading") || !contains(got, "value") || !contains(got, "reload") {
+	if got := labels(items); !contains(got, "loading") || !contains(got, "value") || !contains(got, "reload") || !contains(got, "optimistic") {
 		t.Errorf("user.: %v", got)
+	}
+}
+
+// reload's operand (rfcs/0017) is the function a load calls: hover says
+// what it is, definition goes to it, by its name or its call, a store's
+// method or a function; after reload, completion offers what loads call.
+func TestReloadOperands(t *testing.T) {
+	root := t.TempDir()
+	c := newClient(t, root)
+	text := "async fn fetchNotes() -> [string] = []\n\nstore Api {\n  async fn list() -> [string] = []\n}\n\ncomponent A {\n  use api: Api\n  let notes = load fetchNotes()\n  let items = load api.list()\n  Button(\"x\") {\n    on press {\n      await reload fetchNotes()\n      reload api.list\n    }\n  }\n}\n"
+	uri := c.openText(filepath.Join(root, "a.asuka"), text)
+	c.waitDiags(uri, noDiags)
+	for _, tc := range []struct{ at, hover, to string }{
+		{"reload fetchNo|tes()", "fn fetchNotes() -> [string]", "fn |fetchNotes"},
+		{"reload api.li|st", "async fn Api.list() -> [string]", "fn |list"},
+	} {
+		if got := hoverAt(t, c, uri, text, tc.at); !strings.Contains(got, tc.hover) {
+			t.Errorf("hover at %s: %q lacks %q", tc.at, got, tc.hover)
+		}
+		var locs []Location
+		p := tdp(uri, posAt(t, text, tc.at))
+		if err := c.call("textDocument/definition", &p, &locs); err != nil {
+			t.Fatal(err)
+		}
+		if want := posAt(t, text, tc.to); len(locs) != 1 || locs[0].Range.Start != want {
+			t.Errorf("definition at %s: %+v, want %+v", tc.at, locs, want)
+		}
+	}
+	version := 1
+	at := strings.Index(text, "reload api.list") + len("reload api.")
+	if got := labels(complete(t, c, uri, &version, text, text[:at]+"|")); !contains(got, "list") {
+		t.Errorf("after reload api.: %v", got)
+	}
+	at = strings.Index(text, "await reload ") + len("await reload ")
+	if got := labels(complete(t, c, uri, &version, text, text[:at]+"|")); !contains(got, "fetchNotes") {
+		t.Errorf("after reload: %v", got)
 	}
 }

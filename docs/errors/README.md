@@ -21,6 +21,7 @@ Every error and warning Asuka reports has a code: a stable name, said in the ter
 - [extension-conflict](extension-conflict.md): An extension that adds a name the type already has, or another extension adds.
 - [fn-body](fn-body.md): A function without its body, or with one it can't have.
 - [follows-nothing](follows-nothing.md): `state x()` with nothing to follow.
+- [group-not-calls](group-not-calls.md): `load (…)` of what isn't each a call.
 - [import-cycle](import-cycle.md): Packages that import each other.
 - [int-overflow](int-overflow.md): An integer literal that doesn't fit in 64 bits.
 - [interface-not-satisfied](interface-not-satisfied.md): A type that declares an interface it doesn't implement.
@@ -78,6 +79,8 @@ Every error and warning Asuka reports has a code: a stable name, said in the ter
 - [not-pub](not-pub.md): A declaration another package (or a store, a worker) keeps to itself.
 - [not-sendable](not-sendable.md): A value that can't cross to another thread.
 - [not-supported](not-supported.md): Something the language doesn't do yet.
+- [optimistic-impure](optimistic-impure.md): An optimistic change that reads state, awaits or writes.
+- [optimistic-not-loading](optimistic-not-loading.md): `optimistic` on what isn't a load.
 - [pattern-type](pattern-type.md): A pattern that can't match the value's type.
 - [peek-untracked](peek-untracked.md): `peek` where nothing is followed.
 - [plural-categories](plural-categories.md): A plural or select message whose categories don't match its language's.
@@ -85,6 +88,8 @@ Every error and warning Asuka reports has a code: a stable name, said in the ter
 - [prop-or-argument](prop-or-argument.md): A parameter, a prop, an event or children given in the wrong place.
 - [recursive-definition](recursive-definition.md): A value or a style defined in terms of itself.
 - [recursive-type](recursive-type.md): A type that holds a whole copy of itself.
+- [reload-arguments](reload-arguments.md): `reload f(…)` with arguments `f` doesn't take.
+- [reload-not-loaded](reload-not-loaded.md): `reload` of what no load calls.
 - [reserved-name](reserved-name.md): A name the language uses itself.
 - [return-value](return-value.md): A `return` with a value the function doesn't give, or without one it does.
 - [row-without-key](row-without-key.md): A `for` in a view over items that change, without a `key`.
@@ -116,5 +121,7 @@ Every error and warning Asuka reports has a code: a stable name, said in the ter
 - [effect-loop](effect-loop.md): Effects that keep dirtying each other in one flush.
 - [load-waterfall](load-waterfall.md): A load that waited for another one it doesn't use.
 - [long-hold](long-hold.md): A load has held old content for seconds with nothing saying so.
+- [optimistic-not-ready](optimistic-not-ready.md): `optimistic` on a load that isn't ready.
+- [optimistic-unconfirmed](optimistic-unconfirmed.md): An optimistic change went with its task, with no run of its load to confirm it.
 - [wide-fanout](wide-fanout.md): One write ran more than 1,000 bindings and lets, more than once.
 - [write-in-memo](write-in-memo.md): State written while a `let` is computed.

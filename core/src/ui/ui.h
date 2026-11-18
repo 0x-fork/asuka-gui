@@ -220,13 +220,41 @@ void ak_ui_task(ak_closure *c);
 // pending only before the first answer: a run after that keeps the state
 // until it answers, and an answer equal to the last changes nothing.
 // ak_ui_load_loading reports a run in flight, tracked apart from the
-// state.
+// state. What it shows (the value) is a cell of its own, written only
+// when it changes, compared path by path (rfcs/0013).
 ak_val ak_ui_load(ak_closure *thunk);  // owned
+// ak_ui_load_group makes a loader of several calls (let x = load (f(…),
+// g(…)), RFC 0017): thunks[i] starts call i, each run only when what it
+// read changes (or a reload of it, or of the load); answers are held
+// until no call is running, then shown together: combine(answers…), a
+// value of kind k. Ready once each answered once; failed while one's last
+// run failed (the first), its value kept.
+ak_val ak_ui_load_group(ak_closure *combine, ak_kind k, ak_closure *const *thunks, uint32_t n);  // owned
 int64_t ak_ui_load_state(ak_val loader);
 bool ak_ui_load_loading(ak_val loader);
 ak_val ak_ui_load_value(ak_val loader);  // owned
 ak_val ak_ui_load_error(ak_val loader);  // owned
 void ak_ui_load_reload(ak_val loader);
+// ak_ui_load_shown is an accessor of what a loader shows (its answer,
+// layered), once it has answered: a .ready arm's payload, read by paths.
+ak_val ak_ui_load_shown(ak_val loader);  // owned
+// ak_ui_load_optimistic shows f (T -> T, a value function) applied to
+// what the loader shows, at once, until the loader's next answer, a
+// throw out of the task running now, or that task's end with no run to
+// confirm it (RFC 0017). Nothing on a loader that isn't ready
+// (optimistic-not-ready). f's throw is the caller's: no layer is made.
+void ak_ui_load_optimistic(ak_val loader, ak_closure *f);
+uint32_t ak_ui_load_layers(ak_val loader);  // tests
+// ak_ui_load_key, called by a loader's thunk (load.key), says the key of
+// the function its operand calls and its arguments (borrowed; kinds a
+// digit each, ak_kind's): the loader is in that key's list for reload.
+void ak_ui_load_key(int64_t key, const ak_str *kinds, const ak_val *args, uint32_t n);
+// ak_ui_load_reload_all runs again, as ak_ui_load_reload, every live
+// loader of key (with arguments equal to args when given), and returns a
+// future (owned, void) that resolves once each has answered or failed,
+// or gone (RFC 0017's reload f(…)).
+ak_val ak_ui_load_reload_all(int64_t key, bool given, const ak_str *kinds, const ak_val *args, uint32_t n);
+uint32_t ak_ui_load_registered(void);  // tests: the registry's loaders
 
 // Instance paths. A state cell kept across reloads (CELLK) is found by
 // its key (Component.x) and the place of the component instance that

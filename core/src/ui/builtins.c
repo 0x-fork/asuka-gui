@@ -36,11 +36,16 @@
 //	ui.provide     key: string, value: ref                            -
 //	ui.task        body: async fn()                                   -
 //	ui.load        thunk: fn() -> Task<T>                             Loader
+//	ui.load_group  combine, kind: int, thunks…                       Loader (RFC 0017)
 //	load.state     l: Loader                    int (0 pending, 1 ready, 2 failed)
 //	load.loading   l: Loader                    bool (a run is in flight)
 //	load.value     l: Loader                    T? (boxed when a scalar)
 //	load.error     l: Loader                                          Error?
 //	load.reload    l: Loader                                          -
+//	load.shown     l: Loader                    an accessor of what it shows (a .ready arm's payload)
+//	load.optimistic l: Loader, f: fn(T) -> T                          - (RFC 0017)
+//	load.key       key: int, kinds: string, args…                     - (the running loader's thunk's)
+//	load.reload_all key: int, given: bool, kinds: string, args…       Task<void>
 //	ui.enter       name: string (the component's)                     -
 //	ui.leave       -                                                  -
 //	ui.focus       v: View                                            -
@@ -217,6 +222,14 @@ static ak_val b_load(ak_val *a, uint32_t n) {
 	return ak_ui_load(a[0].p);
 }
 
+static ak_val b_load_group(ak_val *a, uint32_t n) {
+	ak_closure *thunks[64], **t = n - 2 <= 64 ? thunks : ak_alloc(sizeof(ak_closure *) * (n - 2));
+	for (uint32_t i = 2; i < n; i++) t[i - 2] = a[i].p;
+	ak_val l = ak_ui_load_group(a[0].p, (ak_kind)a[1].i, t, n - 2);
+	if (t != thunks) ak_free(t);
+	return l;
+}
+
 static ak_val b_load_state(ak_val *a, uint32_t n) {
 	AK_UNUSED(n);
 	return (ak_val){.i = ak_ui_load_state(a[0])};
@@ -241,6 +254,26 @@ static ak_val b_load_reload(ak_val *a, uint32_t n) {
 	AK_UNUSED(n);
 	ak_ui_load_reload(a[0]);
 	return none();
+}
+
+static ak_val b_load_shown(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	return ak_ui_load_shown(a[0]);
+}
+
+static ak_val b_load_optimistic(ak_val *a, uint32_t n) {
+	AK_UNUSED(n);
+	ak_ui_load_optimistic(a[0], a[1].p);
+	return none();
+}
+
+static ak_val b_load_key(ak_val *a, uint32_t n) {
+	ak_ui_load_key(a[0].i, a[1].p, a + 2, n - 2);
+	return none();
+}
+
+static ak_val b_load_reload_all(ak_val *a, uint32_t n) {
+	return ak_ui_load_reload_all(a[0].i, a[1].i != 0, a[2].p, a + 3, n - 3);
 }
 
 static ak_val b_enter(ak_val *a, uint32_t n) {
@@ -489,11 +522,16 @@ void ak_ui_builtins_init(void) {
 		{"ui.provide", b_provide},
 		{"ui.task", b_task},
 		{"ui.load", b_load},
+		{"ui.load_group", b_load_group},
 		{"load.state", b_load_state},
 		{"load.loading", b_load_loading},
 		{"load.value", b_load_value},
 		{"load.error", b_load_error},
 		{"load.reload", b_load_reload},
+		{"load.shown", b_load_shown},
+		{"load.optimistic", b_load_optimistic},
+		{"load.key", b_load_key},
+		{"load.reload_all", b_load_reload_all},
 		{"ui.enter", b_enter},
 		{"ui.leave", b_leave},
 		{"ui.focus", b_focus},

@@ -166,6 +166,8 @@ component Badge {
 
 `async` 的工作不会卡住界面，`task { }` 属于启动它的组件：组件消失时它就被取消。可能失败的函数要写 `throws`，调用它时要用 `try`（出错时想得到 none 就用 `try?`）。见[异步](https://asuka.egoist.dev/zh/docs/language/async)和[错误](https://asuka.egoist.dev/zh/docs/language/errors)。
 
+组件显示这种调用的结果时用 `load`：`let n = load fetchCount(online: true)` 的值是 `.pending`、`.ready(count)` 或 `.failed(e)`，再次请求时会保留它显示的内容。`n.optimistic(f)` 立刻显示一个改动，`reload fetchCount` 让它的每一个 load 再请求一次，不管它们在哪里，而 `load (a(), b())` 让几个调用的结果一起到达。见[需要加载的数据](https://asuka.egoist.dev/zh/docs/language/async#需要加载的数据)。
+
 #### 包
 
 ```asuka
@@ -1305,7 +1307,7 @@ screen Profile(id: string) {
 
 `Loading<T>` 的值是 `.pending`、`.ready(value)` 或 `.failed(error)` 之一，而且只有在第一次得到结果之前才是 `.pending`。当它的参数所读取的内容变化，或者 `.reload()` 让它再运行一次时，它会保持当前所处的情况，直到新的结果到来：`ProfileCard` 留在屏幕上，它的状态和滚动位置也都还在；那次即将过时的运行则会被取消。如果新结果和上一次相等，什么都不会变。
 
-- `.value` 是最近一次得到的值，第一次之前为 none。某次运行失败时它也会保留，所以 `.failed` 可以在错误旁边继续显示旧内容。
+- `.value` 是它所显示的内容，第一次得到结果之前为 none。某次运行失败时它也会保留，所以 `.failed` 可以在错误旁边继续显示旧内容。
 - `.loading` 在有一次运行正在进行时为 true，第一次也算在内：可以用它把内容调暗，或者在角落里显示一个转圈。读取它不会跟随值的变化，`match` 也不会跟随它。
 
 ```asuka
@@ -1337,6 +1339,173 @@ if user.loading {
 ```
 
 不过更常见的情况是，内容本来就各自独立：每个 id 推入一个页面，每个 key 一行，各自有自己的 `load`。
+
+##### 立刻显示的改动
+
+勾选、重命名、点赞：画面应该在服务器确认之前就显示改动，保存失败时再收回。`x.optimistic(f)` 会立刻显示经 `f` 改动后的 `x` 的内容：
+
+```asuka
+struct Todo {
+  id: int
+  title: string
+  done: bool = false
+}
+
+async fn fetchTodos() -> [Todo] {
+  await sleep(100ms)
+  return [Todo(id: 1, title: "Milk"), Todo(id: 2, title: "Bread")]
+}
+
+async fn saveDone(id: int, done: bool) throws {
+  await sleep(100ms)
+}
+
+fn marked(t: Todo, done: bool) -> Todo {
+  var c = t
+  c.done = done
+  return c
+}
+
+screen Todos {
+  let todos = load fetchTodos()
+
+  match todos {
+    .pending => ProgressRing()
+    .failed(e) => Text(e.message)
+    .ready(ts) => List {
+      for t in ts key t.id {
+        Toggle {
+          on: t.done
+          title: t.title
+          on change(done) {
+            let id = t.id
+            todos.optimistic(ts => ts.map(x => if x.id == id { marked(x, done) } else { x }))
+            try await saveDone(id, done)   // 抛出错误会撤销它
+            await reload fetchTodos()      // 它的结果会替换它
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+- 这个改动是叠在 load 结果之上的一层。`match`、`.value` 和各行看到的都是它；只有读取了它改动过的路径的东西会重新运行，别的都不会：上面的勾选只会让它自己那一行重新运行。
+- 它会在以下情况中最先发生的那一刻撤下：load 的下一个结果到来（来自创建它时正在进行的运行，或之后开始的运行：`reload()`、参数所读内容的变化），并在同一帧里显示，所以旧值不会闪回；创建它的处理函数、`fn` 或 `task` 抛出错误，这时它先被撤销，错误再继续传递；那段代码结束时既没有正在进行的运行，也没有请求运行。最后这种情况是个错误，开发构建会指出来（optimistic-unconfirmed）：在结束之前再请求一次这个 load。
+- 多个改动按创建的顺序叠起来，各自独立地撤下：两个勾选同时进行、第一个失败时，只有第一个被撤销。
+- `f` 是所显示内容的函数：它下面的内容变化时它会重新运行，所以它不读取也不写入状态（[optimistic-impure](https://asuka.egoist.dev/zh/docs/errors/optimistic-impure)）。先把它需要的东西读进一个 `let`，就像上面的 `id`。
+- 对还没有 `.ready` 的 load，没有可以改动的内容，它什么也不做。
+
+##### 重新加载改动影响到的数据
+
+在编辑页面上重命名一条笔记：它下面的列表页面有自己的 load，`note.reload()` 管不到它。`reload` 用读取数据的那个调用来指明改动影响到了什么，于是这个调用的每一个 load 都会再请求一次，不管它在哪里：任何组件、任何栈里的任何页面、任何窗口。
+
+```asuka
+struct Note {
+  id: int
+  title: string
+}
+
+store Api {
+  state notes = [Note(id: 1, title: "Milk")]
+
+  async fn list() -> [Note] {
+    await sleep(100ms)
+    return notes
+  }
+
+  async fn note(id: int) -> Note {
+    await sleep(100ms)
+    return notes.find(n => n.id == id) ?? Note(id: id, title: "")
+  }
+
+  async fn rename(id: int, title: string) {
+    await sleep(100ms)
+    if let i = notes.index(n => n.id == id) { notes[i].title = title }
+  }
+}
+
+screen Notes {
+  use api: Api
+  let notes = load api.list()
+
+  List {
+    for n in notes.value ?? [] key n.id {
+      Button(n.title) { on press { push(EditNote(n.id)) } }
+    }
+  }
+}
+
+screen EditNote(id: int) {
+  use api: Api
+  let note = load api.note(id)
+
+  Button("Rename") {
+    on press {
+      await api.rename(id, "Oat milk")
+      await reload api.list       // 这个页面下面的列表
+      await reload api.note(id)   // 这条笔记的 load，不包括其他笔记的
+      pop()
+    }
+  }
+}
+
+app {
+  provide Api()
+  Stack { Notes() }
+}
+```
+
+- `reload f(args)` 会触及参数等于 `args` 的那些 `f` 的 load（用 `==` 比较，和依赖的比较方式一样）；`reload f` 则触及 `f` 的每一个 load，不管参数是什么。store 的方法会触及每一个实例的 load。
+- 每一个都像 `x.reload()` 那样运行：保持它显示的内容，在得到结果之前 `.loading` 为 true。
+- `await reload …` 会一直等到它触及的每一个 load 都得到结果或者失败（期间消失的 load 也算）：失败由各个 load 自己显示，只有在等待被取消时它才会抛出错误。不写 `await` 时，这些 load 照样运行，代码继续往下走。
+- 调用就是键：一个函数或 store 方法的 load。闭包调用的 load，或者某个值的方法的 load，用它自己的 `x.reload()`。
+
+##### 一起到达的 load
+
+个人资料和它的帖子并排加载时，`id` 一变，它们的结果会一个接一个地换上：有那么一刻，新的人显示在上一个人的帖子上面。`load (a(…), b(…))` 是由几个调用组成的一个 load，它们的结果会一起显示：
+
+```asuka
+struct User {
+  name: string
+}
+
+async fn fetchUser(id: string) -> User {
+  await sleep(100ms)
+  return User(name: "Ana")
+}
+
+async fn fetchPosts(id: string, page: int) -> [string] {
+  await sleep(300ms)
+  return ["Hello"]
+}
+
+screen Profile(id: string) {
+  state n = 1
+  let page = load (fetchUser(id), fetchPosts(id, page: n))   // 一起显示
+
+  Column {
+    match page {
+      .pending => ProgressRing()
+      .failed(e) => Text(e.message)
+      .ready((u, posts)) => Column {
+        Text(u.name) { font: .title }
+        for p in posts key p { Text(p) }
+      }
+    }
+    Button("More") {
+      disabled: page.loading
+      on press { n += 1 }
+    }
+  }
+}
+```
+
+- 它是一个 `Loading<(A, B, …)>`，和别的 load 一样匹配：`.ready((u, posts))`。
+- 每个调用保留各自的依赖：上面的 `n` 只会让 `fetchPosts` 重新运行，用户资料保持不变。`id` 变化时两个都会运行，新的用户资料会一直留着，等新的帖子到来。
+- 在每个调用都得到过一次结果之前是 `.pending`；有一个失败时是 `.failed(e)`，取源码顺序里的第一个，`.value` 保留上一个完整的元组；任何一个调用在运行时 `.loading` 都为 true。
+- `page.reload()` 会让每个调用都运行；`reload fetchPosts(id, page: n)` 只运行那一个；`page.optimistic(p => (p.0, p.1 + [draft]))` 改动的是整个元组。
+- 每个元素都是一个调用：一个值没有什么可等待的（[group-not-calls](https://asuka.egoist.dev/zh/docs/errors/group-not-calls)）。
 
 ### 错误
 
@@ -1748,6 +1917,7 @@ test "archiving removes the row" {
 - extension-conflict: 扩展添加了类型已有的名称，或者另一个扩展也添加了同样的名称. 给方法换个名字，或者只保留其中一个扩展。
 - fn-body: 函数缺少函数体，或者有了不该有的函数体. 写出函数体（`{ … }` 或 `= 表达式`），或者从 native、extern 声明里去掉它。
 - follows-nothing: `state x()` 没有可跟随的东西. 写出要跟随的东西（`state x(a) = …`），或者写成 `state x = peek(…)`。
+- group-not-calls: `load (…)` 里的元素不都是调用. 只把调用放进组里（`load (api.user(id), api.posts(id))`），把值传给这些调用，或者放在 load 旁边。
 - import-cycle: 相互导入的包. 把两者都需要的部分移到第三个包里，让它们都导入它。
 - int-overflow: 超出 64 位范围的整数字面量. 换一个更小的数，或者使用 `float`；需要精确的大数时用 `std/decimal`。
 - interface-not-satisfied: 类型声明了某个 interface，却没有实现它. 按 interface 的签名补上缺少的方法（消息里列出了它们）。
@@ -1807,6 +1977,10 @@ test "archiving removes the row" {
 - not-pub: 其他包（或 store、worker）没有公开的声明. 在声明处加上 `pub`，或者改用这个包公开的内容。
 - not-sendable: 无法传到另一个线程的值. 传入另一个线程需要的数据，而不是持有这些数据的对象。
 - not-supported: 语言暂时还不支持的写法. 改用消息里给出的替代写法：泛型组件可以改为接收 `View` 或闭包作为 prop。
+- optimistic-impure: 乐观改动读取了状态、await 了或者写入了. 先把需要的东西读进一个 `let`，在闭包里用它；写入放在处理函数里，不要放在改动里。
+- optimistic-not-loading: 对不是 load 的东西调用了 `optimistic`. 直接修改状态（`notes.push(n)`），或者对 load 的 `let` 调用 `optimistic`。
+- optimistic-not-ready: 对还没有就绪的 load 调用了 `optimistic`. 等它 `.ready` 之后再改动它显示的内容：把这个操作放在 `.ready` 分支里，或者先检查 `x.value`。
+- optimistic-unconfirmed: 乐观改动随它的任务一起撤销了：它的 load 没有一次运行来确认它. 在任务结束之前再次请求这个 load：`await reload f(…)`，或者 `x.reload()`。
 - pattern-type: 与值的类型不可能匹配的模式. 写出与值同类型的模式：对 int 用 `1`，而不是 `"one"`。
 - peek-untracked: 在不跟随任何东西的地方使用了 `peek`. 直接读取这个值。
 - plural-categories: 复数或选择消息的类别与语言的类别不符. 按消息列出的类别写出这种语言的类别。
@@ -1814,6 +1988,8 @@ test "archiving removes the row" {
 - prop-or-argument: 参数、属性、事件或子视图放错了位置. 把它移到该在的位置：`Badge(3) { compact: true; on tap { … } }`。
 - recursive-definition: 用自己来定义自己的值或样式. 打破循环：让其中一个从不会反过来读取它的值计算出来。
 - recursive-type: 包含自身完整副本的类型. 把路径上的某个字段改成可选（`next: Node?`）或数组（`children: [Node]`）。
+- reload-arguments: `reload f(…)` 给出了 `f` 不接受的参数. 给出 `f` 接受的参数，和它的 load 调用它的方式一致；或者不给参数：`reload f` 会触及 `f` 的每一个 load。
+- reload-not-loaded: `reload` 的对象没有被任何 load 调用. 重新加载某个 `load` 调用的函数（`reload api.notes`），或者通过句柄重新加载一个 load（`x.reload()`）。
 - reserved-name: 语言本身在用的名称. 换一个名字。
 - return-value: `return` 带了函数不返回的值，或者在需要值时没有带. 去掉这个值，或者声明返回类型（`-> T`）并在每个地方都返回值。
 - row-without-key: 视图里的 `for` 遍历会变化的数据，却没有 `key`. 写出用什么标识一项：`for t in todos key t.id`。

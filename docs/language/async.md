@@ -138,8 +138,9 @@ until the new answer comes: `ProfileCard` stays on screen with its state
 and its scroll position, and the run that's going stale is cancelled.
 An answer equal to the last changes nothing.
 
-- `.value` is the latest value, none before the first. A run that fails
-  keeps it, so `.failed` can show the old content beside the error.
+- `.value` is what it shows, none before the first answer. A run that
+  fails keeps it, so `.failed` can show the old content beside the
+  error.
 - `.loading` is true while a run is in flight, the first one included:
   dim the content, or show a ring in a corner. Reading it doesn't follow
   the value, and a `match` doesn't follow it.
@@ -177,3 +178,208 @@ if user.loading {
 
 More often the content is its own already: a screen pushed per id, a
 row per key, each with a `load` of its own.
+
+### Changes shown at once
+
+A toggle, a rename, a like: the screen should show the change before
+the server says so, and take it back if the save fails.
+`x.optimistic(f)` shows what `x` shows, changed by `f`, at once:
+
+```asuka check
+struct Todo {
+  id: int
+  title: string
+  done: bool = false
+}
+
+async fn fetchTodos() -> [Todo] {
+  await sleep(100ms)
+  return [Todo(id: 1, title: "Milk"), Todo(id: 2, title: "Bread")]
+}
+
+async fn saveDone(id: int, done: bool) throws {
+  await sleep(100ms)
+}
+
+fn marked(t: Todo, done: bool) -> Todo {
+  var c = t
+  c.done = done
+  return c
+}
+
+screen Todos {
+  let todos = load fetchTodos()
+
+  match todos {
+    .pending => ProgressRing()
+    .failed(e) => Text(e.message)
+    .ready(ts) => List {
+      for t in ts key t.id {
+        Toggle {
+          on: t.done
+          title: t.title
+          on change(done) {
+            let id = t.id
+            todos.optimistic(ts => ts.map(x => if x.id == id { marked(x, done) } else { x }))
+            try await saveDone(id, done)   // a throw undoes it
+            await reload fetchTodos()      // its answer replaces it
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+- The change is a layer over the load's answer. `match`, `.value` and
+  the rows see it; what reads the paths it changed runs again, nothing
+  else: the toggle above runs its own row.
+- It goes at the first of: the load's next answer, from a run that was
+  in flight or started after it (a `reload()`, a change of what its
+  arguments read), shown in the same frame, so the old value never
+  flashes back; a throw out of the handler, the `fn` or the `task` that
+  made it, undone before the error goes on; and the end of that code
+  with no run in flight or asked for. That last one is a mistake, which
+  a development build says (optimistic-unconfirmed): ask the load again
+  before it ends.
+- Several stack in the order they were made, and each goes on its own:
+  two toggles in flight, the first one failing, undo only the first.
+- `f` is a function of what's shown: it runs again when what's under it
+  changes, so it reads no state and writes none
+  ([optimistic-impure](../errors/optimistic-impure.md)). Read what it
+  needs into a `let` first, as `id` above.
+- On a load that isn't `.ready` there's nothing to change, and it does
+  nothing.
+
+### Reloading what a change touched
+
+A note renamed on its edit screen: the list screen under it has a load
+of its own, which `note.reload()` doesn't reach. `reload` names what a
+change touched by the call that reads it, and every load of that call
+asks again, wherever it is: any component, any screen in any stack,
+any window.
+
+```asuka check
+struct Note {
+  id: int
+  title: string
+}
+
+store Api {
+  state notes = [Note(id: 1, title: "Milk")]
+
+  async fn list() -> [Note] {
+    await sleep(100ms)
+    return notes
+  }
+
+  async fn note(id: int) -> Note {
+    await sleep(100ms)
+    return notes.find(n => n.id == id) ?? Note(id: id, title: "")
+  }
+
+  async fn rename(id: int, title: string) {
+    await sleep(100ms)
+    if let i = notes.index(n => n.id == id) { notes[i].title = title }
+  }
+}
+
+screen Notes {
+  use api: Api
+  let notes = load api.list()
+
+  List {
+    for n in notes.value ?? [] key n.id {
+      Button(n.title) { on press { push(EditNote(n.id)) } }
+    }
+  }
+}
+
+screen EditNote(id: int) {
+  use api: Api
+  let note = load api.note(id)
+
+  Button("Rename") {
+    on press {
+      await api.rename(id, "Oat milk")
+      await reload api.list       // the list under this screen
+      await reload api.note(id)   // this note's loads, not the others'
+      pop()
+    }
+  }
+}
+
+app {
+  provide Api()
+  Stack { Notes() }
+}
+```
+
+- `reload f(args)` reaches the loads of `f` whose arguments are equal
+  to `args` (`==`, as dependencies are compared); `reload f`, every
+  load of `f`, whatever its arguments. A store's method reaches the
+  loads of every instance's.
+- Each one runs as `x.reload()` does: it holds what it shows, and its
+  `.loading` is true until it answers.
+- `await reload …` waits until every load it reached has answered or
+  failed (one that goes meanwhile counts): their failures are each
+  load's to show, and it throws only when the waiting is cancelled.
+  Without `await`, the loads run and the code goes on.
+- The call is the key: a load of a function or a store's method. One
+  of a closure's call, or of a value's method, has its `x.reload()`.
+
+### Loads that land together
+
+A profile and its posts, loaded side by side, swap in their answers one
+at a time when `id` changes: for a moment the new person shows over the
+last one's posts. `load (a(…), b(…))` is one load of several calls,
+whose answers are shown together:
+
+```asuka check
+struct User {
+  name: string
+}
+
+async fn fetchUser(id: string) -> User {
+  await sleep(100ms)
+  return User(name: "Ana")
+}
+
+async fn fetchPosts(id: string, page: int) -> [string] {
+  await sleep(300ms)
+  return ["Hello"]
+}
+
+screen Profile(id: string) {
+  state n = 1
+  let page = load (fetchUser(id), fetchPosts(id, page: n))   // shown together
+
+  Column {
+    match page {
+      .pending => ProgressRing()
+      .failed(e) => Text(e.message)
+      .ready((u, posts)) => Column {
+        Text(u.name) { font: .title }
+        for p in posts key p { Text(p) }
+      }
+    }
+    Button("More") {
+      disabled: page.loading
+      on press { n += 1 }
+    }
+  }
+}
+```
+
+- It's a `Loading<(A, B, …)>`, matched as any other: `.ready((u, posts))`.
+- Each call keeps its own dependencies: `n` above runs `fetchPosts`
+  alone, and the user stays. A change of `id` runs both, and the new
+  user is held until the new posts land.
+- `.pending` until every call answered once; `.failed(e)` when one
+  failed, the first in source order, `.value` keeping the last whole
+  tuple; `.loading` while any call runs.
+- `page.reload()` runs every call; `reload fetchPosts(id, page: n)` runs
+  that one; `page.optimistic(p => (p.0, p.1 + [draft]))` changes the
+  tuple.
+- Each element is a call: a value has nothing to wait for
+  ([group-not-calls](../errors/group-not-calls.md)).

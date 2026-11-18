@@ -1301,7 +1301,7 @@ func (c *Checker) memberSuggest(t Type, name string) string {
 	}
 	loading := IsLoading(t)
 	if loading {
-		names = append(names, "value", "loading", "reload")
+		names = append(names, "value", "loading", "reload", "optimistic")
 	}
 	best, bestD := "", 3
 	for _, n := range names {
@@ -1313,7 +1313,7 @@ func (c *Checker) memberSuggest(t Type, name string) string {
 		return " (did you mean " + best + "?)"
 	}
 	if loading {
-		return ": it has value (the latest), loading (a run is in flight) and reload(); match it for its case"
+		return ": it has value (what it shows), loading (a run is in flight), reload() and optimistic(change); match it for its case"
 	}
 	return ""
 }
@@ -1512,6 +1512,8 @@ func (c *Checker) unary(e *syntax.UnaryExpr, want Type) Type {
 		return t
 	case syntax.LOAD:
 		return c.load(e)
+	case syntax.RELOAD:
+		return c.reload(e)
 	}
 	c.errorf(e, diag.InternalError, "unexpected operator %s", e.Op)
 	return Invalid

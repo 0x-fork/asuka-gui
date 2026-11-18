@@ -970,6 +970,116 @@ running again when its arguments change: a component's or a store's
 		Wrong: "async fn fetchName() -> string {\n  await sleep(1ms)\n  return \"Ana\"\n}\n\nfn name() {\n  let n = load fetchName()\n}\n",
 		Right: "async fn fetchName() -> string {\n  await sleep(1ms)\n  return \"Ana\"\n}\n\ncomponent Name {\n  let n = load fetchName()\n  Text(n.value ?? \"…\")\n}\n",
 	})
+
+	OptimisticNotLoading = def(Code{
+		Name:    "optimistic-not-loading",
+		Summary: "`optimistic` on what isn't a load",
+		Why: `` + "`x.optimistic(f)`" + ` shows a change of what a load shows until the load's next
+answer replaces it: it's a layer over the source of truth. A state is
+its own source of truth, with nothing coming to replace a change.`,
+		Fix:   "Change the state itself (`notes.push(n)`), or call `optimistic` on the load's `let`.",
+		Wrong: "struct Note {\n  title: string\n}\n\ncomponent Notes {\n  state notes: [Note] = []\n  Column {\n    for n in notes key n.title {\n      Text(n.title)\n    }\n    Button(\"Add\") {\n      on press { notes.optimistic(ns => ns + [Note(title: \"new\")]) }\n    }\n  }\n}\n",
+		Right: "struct Note {\n  title: string\n}\n\ncomponent Notes {\n  state notes: [Note] = []\n  Column {\n    for n in notes key n.title {\n      Text(n.title)\n    }\n    Button(\"Add\") {\n      on press { notes.push(Note(title: \"new\")) }\n    }\n  }\n}\n",
+	})
+
+	ReloadNotLoaded = def(Code{
+		Name:    "reload-not-loaded",
+		Summary: "`reload` of what no load calls",
+		Why: `` + "`reload f(…)`" + ` asks again the loads whose operand is a call of ` + "`f`" + `: the
+call is the key, by the function it calls. A function no ` + "`load`" + ` in the
+program calls, or what isn't a function (a closure, a value's method),
+reaches nothing.`,
+		Fix:   "Reload the function a `load` calls (`reload api.notes`), or a load by its handle (`x.reload()`).",
+		Wrong: "async fn fetchNotes() -> [string] {\n  await sleep(1ms)\n  return []\n}\n\nasync fn fetchTags() -> [string] {\n  await sleep(1ms)\n  return []\n}\n\ncomponent Notes {\n  let notes = load fetchNotes()\n  Button(\"Refresh\") {\n    on press { await reload fetchTags() }\n  }\n}\n",
+		Right: "async fn fetchNotes() -> [string] {\n  await sleep(1ms)\n  return []\n}\n\ncomponent Notes {\n  let notes = load fetchNotes()\n  Button(\"Refresh\") {\n    on press { await reload fetchNotes() }\n  }\n}\n",
+	})
+
+	ReloadArguments = def(Code{
+		Name:    "reload-arguments",
+		Summary: "`reload f(…)` with arguments `f` doesn't take",
+		Why: `` + "`reload f(a)`" + ` reaches the loads of ` + "`f`" + ` whose arguments equal ` + "`a`" + `: they're
+compared as ` + "`f`" + `'s parameters, so they're checked as a call of ` + "`f`" + ` is.`,
+		Fix:   "Give the arguments `f` takes, as its loads call it, or none: `reload f` reaches every load of `f`.",
+		Wrong: "async fn fetchNote(id: int) -> string {\n  await sleep(1ms)\n  return \"note {id}\"\n}\n\ncomponent Note(id: int) {\n  let note = load fetchNote(id)\n  Button(\"Refresh\") {\n    on press { await reload fetchNote(\"{id}\") }\n  }\n}\n",
+		Right: "async fn fetchNote(id: int) -> string {\n  await sleep(1ms)\n  return \"note {id}\"\n}\n\ncomponent Note(id: int) {\n  let note = load fetchNote(id)\n  Button(\"Refresh\") {\n    on press { await reload fetchNote(id) }\n  }\n}\n",
+	})
+
+	GroupNotCalls = def(Code{
+		Name:    "group-not-calls",
+		Summary: "`load (…)` of what isn't each a call",
+		Why: `` + "`load (a(), b())`" + ` is one load of several calls, each run again only when
+what its arguments read changes, their answers shown together. A value
+in it has nothing to run or to wait for.`,
+		Fix:   "Group the calls only (`load (api.user(id), api.posts(id))`), and pass the values to them, or beside the load.",
+		Wrong: "async fn fetchUser(id: int) -> string {\n  await sleep(1ms)\n  return \"user {id}\"\n}\n\ncomponent Profile(id: int) {\n  let page = load (fetchUser(id), id)\n  Text(\"{page.loading}\")\n}\n",
+		Right: "async fn fetchUser(id: int) -> string {\n  await sleep(1ms)\n  return \"user {id}\"\n}\n\nasync fn fetchPosts(id: int) -> [string] {\n  await sleep(1ms)\n  return []\n}\n\ncomponent Profile(id: int) {\n  let page = load (fetchUser(id), fetchPosts(id))\n  Text(\"{page.loading}\")\n}\n",
+	})
+
+	OptimisticImpure = def(Code{
+		Name:    "optimistic-impure",
+		Summary: "an optimistic change that reads state, awaits or writes",
+		Why: `An optimistic change runs again whenever what's under it changes: the
+load's next answer, a change below it that goes. It must give the same
+change each time, from what it's given: a function of the value shown,
+as a binding is. What it reads of state may be different by then, and
+what it writes would be written again.`,
+		Fix: "Read what it needs before, into a `let`, and use that in the closure; write in the handler, not in the change.",
+		Wrong: `struct Todo {
+  id: int
+  done: bool
+}
+
+async fn fetchTodos() -> [Todo] {
+  await sleep(1ms)
+  return [Todo(id: 1, done: false)]
+}
+
+fn marked(t: Todo) -> Todo {
+  var c = t
+  c.done = true
+  return c
+}
+
+component Todos {
+  state picked = 1
+  let todos = load fetchTodos()
+  Button("Done") {
+    on press {
+      todos.optimistic(ts => ts.map(t => if t.id == picked { marked(t) } else { t }))
+      todos.reload()
+    }
+  }
+}
+`,
+		Right: `struct Todo {
+  id: int
+  done: bool
+}
+
+async fn fetchTodos() -> [Todo] {
+  await sleep(1ms)
+  return [Todo(id: 1, done: false)]
+}
+
+fn marked(t: Todo) -> Todo {
+  var c = t
+  c.done = true
+  return c
+}
+
+component Todos {
+  state picked = 1
+  let todos = load fetchTodos()
+  Button("Done") {
+    on press {
+      let id = picked
+      todos.optimistic(ts => ts.map(t => if t.id == id { marked(t) } else { t }))
+      todos.reload()
+    }
+  }
+}
+`,
+	})
 )
 
 // Data, platforms and packages.

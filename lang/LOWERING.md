@@ -1140,6 +1140,58 @@ signals: the state, value and error, which a `match` and `.value` read
 and only an answer that changes them writes; and `busy`, which
 `.loading` (`SelLoading`, as `.value` is) reads and a run writes as it
 starts and ends. Both are tracked reads; neither follows the other.
+What it shows (`.value`) is a cell of its own, made with the first
+answer and written (compared, path by path: rfcs/0013) only when what it
+shows changes; a match doesn't follow it. A view's `match x { .ready(p)
+=> … }` over a load's `let` binds what `p` names to accessors of that
+cell (`load.shown`, then ACCP for a tuple's elements) instead of memos:
+reads through them are paths, so a `for t in p key t.id` follows its
+keys and a row its fields.
+
+`x.optimistic(f)` (RFC 0017) is CALLB `load.optimistic(x, f)`. The
+loader keeps a stack of layers, each `f`, its result over what's under
+it, the run whose answer takes it out (the run in flight, or the next)
+and the task that made it (the running task's future, `ak_vm_task_
+current`): a cleanup on that task's owner takes it out when the task
+failed (its future isn't done as the owner goes) or ended with no run
+in flight or due (`optimistic-unconfirmed`); synchronous code's is
+checked from the ready queue. What it shows is the answer with the
+layers applied, written once per change: a layer added applies itself
+on top, one that goes re-applies those above it, an answer re-applies
+all that stay, in the batch that writes it, so nothing flashes. The
+checker keeps `f` a value function (`optimistic-impure`: the state it
+reads, through what it calls, and what it writes).
+
+`reload f(args)` and `reload f` (RFC 0017) are CALLB
+`load.reload_all(key, given, kinds, args…)`, whose result is a future
+(a `Task<void>`, which `await` waits for). The key is the lowering's
+number for the function the loads call (`check.Reload.Func`: a declared
+function, or a store's method, so every instance's loads share it),
+from 1 by declaration. A load of such a call says its key from its
+thunk, after it computes the arguments and before it starts the task:
+`load.key(key, kinds, args…)` (the arguments as the call takes them,
+defaults filled, the receiver aside; kinds a digit each). The core keeps
+every such loader in the app's registry (control.c), a hash of lists by
+key, with its arguments' latest values; `reload_all` runs each one of
+the key, whose arguments are `ak_val_eq` to `args` when it's given
+them, as `x.reload()` does, in one batch, and its future resolves once
+each has answered, failed, or gone. A loader leaves the registry as its
+owner disposes it. The checker reports a `reload` of a function no
+`load` in the program calls (`reload-not-loaded`, once the program is
+whole) and a call's errors as `reload-arguments`.
+
+`let x = load (c₁, c₂, …)` (RFC 0017) is CALLB `ui.load_group(combine,
+kind, thunk₁, thunk₂, …)`: a thunk per call, as a single load's (its
+own reads, its own key), and `combine`, a closure of the calls' results
+that makes the tuple (NEWS). The checker types it `Loading<(A, B, …)>`
+and keeps each element a call (`group-not-calls`). The core's loader has
+a slot per call, each an effect with its own run, ticket and answer, its
+own `again` (`x.reload()` writes all, `reload f(…)` the slots of `f`'s
+key): a slot's answer is held until no slot runs, then the loader lands
+them in one batch, `combine`d only when one changed. It's `.pending`
+until each slot answered once, `.failed` while one's last run failed
+(the first in source order), its value kept; `.loading` while a slot
+runs. A single load is a loader of one slot, no `combine`.
 
 ## Navigation and commands
 

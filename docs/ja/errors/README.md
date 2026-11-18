@@ -21,6 +21,7 @@ Asuka が報告するエラーと警告には、すべてコードがありま�
 - [extension-conflict](extension-conflict.md): 型がすでに持つ名前、またはほかの拡張も追加する名前を追加する拡張。
 - [fn-body](fn-body.md): 本体のない関数、または持てない本体を持つ関数。
 - [follows-nothing](follows-nothing.md): 追従するもののない `state x()`。
+- [group-not-calls](group-not-calls.md): `load (…)` の要素が、どれも呼び出しというわけではない。
 - [import-cycle](import-cycle.md): 互いにインポートし合うパッケージ。
 - [int-overflow](int-overflow.md): 64 ビットに収まらない整数リテラル。
 - [interface-not-satisfied](interface-not-satisfied.md): 宣言した interface を実装していない型。
@@ -78,6 +79,8 @@ Asuka が報告するエラーと警告には、すべてコードがありま�
 - [not-pub](not-pub.md): ほかのパッケージ（またはストア、ワーカー）が公開していない宣言。
 - [not-sendable](not-sendable.md): 別のスレッドに渡せない値。
 - [not-supported](not-supported.md): 言語がまだ対応していないもの。
+- [optimistic-impure](optimistic-impure.md): 状態を読む、await する、または書き込む楽観的な変更。
+- [optimistic-not-loading](optimistic-not-loading.md): load でないものに `optimistic` を呼んだ。
 - [pattern-type](pattern-type.md): 値の型に一致しえないパターン。
 - [peek-untracked](peek-untracked.md): 何も追従しない場所での `peek`。
 - [plural-categories](plural-categories.md): 複数形や select のカテゴリーが言語のものと合わないメッセージ。
@@ -85,6 +88,8 @@ Asuka が報告するエラーと警告には、すべてコードがありま�
 - [prop-or-argument](prop-or-argument.md): パラメーター、プロパティ、イベント、子が置き場所を間違えている。
 - [recursive-definition](recursive-definition.md): 自分自身で定義された値やスタイル。
 - [recursive-type](recursive-type.md): 自分自身の完全なコピーを含む型。
+- [reload-arguments](reload-arguments.md): `f` が受け取らない引数で `reload f(…)` した。
+- [reload-not-loaded](reload-not-loaded.md): どの load も呼んでいないものを `reload` した。
 - [reserved-name](reserved-name.md): 言語自身が使っている名前。
 - [return-value](return-value.md): 関数が返さない値を持つ `return`、または値が必要なのに値のない `return`。
 - [row-without-key](row-without-key.md): 変わるデータをたどる、`key` のないビューの `for`。
@@ -116,5 +121,7 @@ Asuka が報告するエラーと警告には、すべてコードがありま�
 - [effect-loop](effect-loop.md): 1 回のフラッシュの中で互いを汚し続けるエフェクト。
 - [load-waterfall](load-waterfall.md): 使ってもいない別の load を待った load。
 - [long-hold](long-hold.md): load が数秒間、何も示さずに古いコンテンツを保っている。
+- [optimistic-not-ready](optimistic-not-ready.md): 準備ができていない load に `optimistic` を呼んだ。
+- [optimistic-unconfirmed](optimistic-unconfirmed.md): 楽観的な変更が、load の確認する実行がないままタスクとともに外れた。
 - [wide-fanout](wide-fanout.md): 1 回の書き込みが 1,000 を超えるバインディングと let を、2 回以上実行した。
 - [write-in-memo](write-in-memo.md): `let` の計算中に状態に書き込んでいる。
