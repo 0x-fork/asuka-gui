@@ -3,6 +3,7 @@
 | 类型 | 值 |
 |---|---|
 | `int` | 64 位整数：`42`、`1_000`、`0xff`、`0b1010`、`0o17` |
+| `i8`、`i16`、`i32`、`u8`、`u16`、`u32`、`u64` | 8、16、32 和 64 位整数，分有符号（`i`）和无符号（`u`）两种：见[整数类型](#整数类型) |
 | `float` | 64 位浮点数：`3.14`、`1e-3` |
 | `bool` | `true`、`false` |
 | `string` | UTF-8 文本：`"Hello, {name}"` |
@@ -48,12 +49,13 @@ let seen: Set<(int, int)> = [(0, 0), (1, 2)]
 
 ## 运算符
 
-下表按结合从紧到松排列；同一行的运算符优先级相同，从左往右结合（`??` 从右往左）：
+下表按结合从紧到松排列；同一行的运算符优先级相同，从左往右结合（`**` 和 `??` 从右往左）：
 
 | 运算符 | 作用 |
 |---|---|
+| `**` | 乘方：`2 ** 10` 是 1024 |
 | `!x`、`-x`、`~x` | 取反、取负、把整数的每一位取反 |
-| `<<`、`>>` | 把整数的位左移、右移（右移保留符号） |
+| `<<`、`>>` | 把整数的位左移、右移（有符号整数右移时保留符号） |
 | `*`、`/`、`%`、`&`、`&*` | 乘、除、取余、按位与、回绕乘法 |
 | `+`、`-`、<code>&#124;</code>、`^`、`&+`、`&-` | 加（也用于拼接字符串和数组）、减、按位或、按位异或、回绕加法和减法 |
 | `..`、`..<` | 范围：`1..3`、`0..<n` |
@@ -62,9 +64,11 @@ let seen: Set<(int, int)> = [(0, 0), (1, 2)]
 | <code>&#124;&#124;</code> | 或 |
 | `??` | 可选值里的值，为 none 时取默认值 |
 
-`<`、`<=`、`>` 和 `>=` 可以比较整数、浮点数、字符串、时长、成员不携带值的枚举（按成员声明的顺序），以及带有 `compare` 方法的类型；结构体和枚举也能从自己的方法 `add`、`sub`、`mul`、`div`、`rem` 和 `neg` 获得算术运算符（见[声明](declarations.md#结构体)）。
+`<`、`<=`、`>` 和 `>=` 可以比较整数、浮点数、字符串、时长、成员不携带值的枚举（按成员声明的顺序），以及带有 `compare` 方法的类型；结构体和枚举也能从自己的方法 `add`、`sub`、`mul`、`div`、`rem`、`pow` 和 `neg` 获得算术运算符（见[声明](declarations.md#结构体)）。
 
-按位运算符只接受整数。移位 64 位或更多时，所有位都会被移出（负数右移得到 -1）；移位数为负数则是一个错误。有了这些运算符和 `b[i]`（以整数形式读出一个字节），程序就能读写二进制数据，比如蓝牙特征值或 NFC 记录：
+`**` 比上表里的其他运算符结合得都紧，`-` 也不例外，而且从右往左结合，和 Python 以及数学里一样：`-2 ** 2` 是 `-(2 ** 2)`，即 -4；`2 ** 3 ** 2` 是 `2 ** 9`；`(-2) ** 2` 是 4。整数的乘方和底数是同一类型，指数可以是任意类型的整数，但必须大于或等于 0（负指数是一个错误：`2 ** -1` 不是整数）；浮点数的乘方，指数可以是浮点数，也可以是整数（`2.0 ** 0.5`、`x ** 2`）。`**=` 是对应的赋值写法。
+
+按位运算符只接受整数，而且两边必须是同一类型。移位数可以是任意类型的整数；移位数达到或超过该类型的位宽时，所有位都会被移出（负数右移得到 -1），移位数为负数则是一个错误。`>>` 对有符号整数保留符号，对无符号整数在高位补 0。有了这些运算符和 `b[i]`（以整数形式读出一个字节），程序就能读写二进制数据，比如蓝牙特征值或 NFC 记录（[`std/encoding`](../std/encoding.md) 能按任一字节序读写整个整数）：
 
 ```asuka
 let raw = b[1] | b[2] << 8                         // 小端序的 uint16
@@ -72,7 +76,7 @@ let celsius = if raw & 0x8000 != 0 { raw - 0x10000 } else { raw }
 let out = bytes([flags, value & 0xff, value >> 8])
 ```
 
-`int` 的取值范围是 −2⁶³ 到 2⁶³ − 1。`+`、`-`、`*` 的结果超出这个范围时，会像除以零（`/`、`%`）一样抛出错误 “integer overflow”：`catch` 可以捕获它；没有地方捕获时，它会交给最近的 `Boundary`（见[错误](errors.md#错误)）。对最小的 `int` 取负（`-x`）、取绝对值（`abs(x)`）、除以 `-1`，以及数组的 `sum()` 超出范围，也都一样。计数、大小或价格一旦溢出，就是一个在出错的地方暴露出来的 bug，而不是一个被悄悄存下来的错误数字。
+`int` 的取值范围是 −2⁶³ 到 2⁶³ − 1。`+`、`-`、`*`、`**` 的结果超出这个范围时，会像除以零（`/`、`%`）一样抛出错误 “integer overflow”：`catch` 可以捕获它；没有地方捕获时，它会交给最近的 `Boundary`（见[错误](errors.md#错误)）。对最小的 `int` 取负（`-x`）、取绝对值（`abs(x)`）、除以 `-1`，以及数组的 `sum()` 超出范围，也都一样。计数、大小或价格一旦溢出，就是一个在出错的地方暴露出来的 bug，而不是一个被悄悄存下来的错误数字。每种整数类型都按同样的方式检查，只是用各自的范围：`u8` 的 `255 + 1` 会抛出错误。
 
 ```asuka
 let big = 9223372036854775807
@@ -80,7 +84,7 @@ let n = try big + 1 catch { 0 }               // 0：抛出了错误
 let next = big.addingChecked(1) ?? big          // 溢出时为 none：得到 big
 ```
 
-`&+`、`&-` 和 `&*` 则会回绕：结果超过最大的 `int` 时，按 64 位二进制补码的规则从最小值接着算下去（`9223372036854775807 &+ 1` 等于 `-9223372036854775808`）。哈希、校验和以及二进制协议需要的正是这种行为；`&+=`、`&-=` 和 `&*=` 是对应的赋值写法：
+`&+`、`&-` 和 `&*` 则会回绕：结果超过最大的 `int` 时，按 64 位二进制补码的规则从最小值接着算下去（`9223372036854775807 &+ 1` 等于 `-9223372036854775808`）；固定位宽的类型则在各自的位宽处回绕（`u8` 的 `255 &+ 1` 是 0）。哈希、校验和以及二进制协议需要的正是这种行为；`&+=`、`&-=` 和 `&*=` 是对应的赋值写法：
 
 ```asuka
 fn fnv1a(data: bytes) -> int {
@@ -93,7 +97,41 @@ fn fnv1a(data: bytes) -> int {
 }
 ```
 
-想把溢出当作一个值来处理时，用 `a.addingChecked(b)`、`subtractingChecked` 和 `multipliedChecked`：它们返回 `int?`，溢出时为 none。移位和按位运算符不会因为结果而抛出错误；对超出范围的浮点数调用 `int(x)`，得到离它最近的 `int`（NaN 得到 `0`）。
+想把溢出当作一个值来处理时，用 `a.addingChecked(b)`、`subtractingChecked` 和 `multipliedChecked`：它们返回 `int?`（对 `u8` 返回 `u8?`，依此类推），溢出时为 none。移位和按位运算符不会因为结果而抛出错误；对超出范围的浮点数调用 `int(x)`，得到离它最近的 `int`（NaN 得到 `0`）。
+
+## 整数类型
+
+除了 `int`，还有固定位宽的整数，分有符号和无符号两种：
+
+| 类型 | 值 |
+|---|---|
+| `i8`、`i16`、`i32` | −2⁷ 到 2⁷ − 1、−2¹⁵ 到 2¹⁵ − 1、−2³¹ 到 2³¹ − 1 |
+| `int` | −2⁶³ 到 2⁶³ − 1（没有 `i64`：它就是 `int`） |
+| `u8`、`u16`、`u32`、`u64` | 0 到 2⁸ − 1（255）、2¹⁶ − 1、2³² − 1、2⁶⁴ − 1 |
+
+计数、索引、大小以及以分为单位的金额都用 `int`；其他类型留给本身就有固定位宽的东西：一个字节（`u8`）、像素的一个通道、文件格式或协议里的字段、哈希值、超出 `int` 范围的 ID（`u64`），以及 C 函数用到的值（`Int32` 就是 `i32`，见[在 Asuka 中调用 C](../c.md)）。每种类型都严格保持自己的范围：和 `int` 一样，算术结果超出范围就会抛出错误；JSON、CSV、TOML 和 SQLite 读进这种类型的值，也会经过同样的检查。
+
+整数字面量的类型由此处期望的类型决定，而且必须放得下：`let level: u8 = 200`、`level + 1`、`let big: u64 = 18446744073709551615`；`let x: u8 = 256` 和 `let y: u8 = -1` 会在写的地方报错。没有期望的类型时，它就是 `int`。
+
+类型不同的两个整数不能放在同一个运算符两边：`int` 和 `u8` 不行，就像 `int` 和 `float` 不行一样。`level` 是 `u8`、`offset` 是 `int` 时，`level + offset` 是一个错误（[mixed-numbers](../errors/mixed-numbers.md)），在需要 `int` 的地方传入 `u8` 也是。要用转换写明想要哪种：
+
+```asuka check
+fn conversions(n: int, level: u8, ratio: float) -> [u8] {
+  let total = int(level) + n        // 扩宽：总是放得下
+  let a = u8(n)                     // n 放不下时是一个错误（"integer overflow"）
+  let b = u8(exactly: n) ?? 0       // 一个 u8?：放不下时为 none
+  let c = u8(truncating: n)         // 取低 8 位：u8(truncating: 300) 是 44，-1 得到 255
+  let d = u8(clamping: n)           // 取最接近的值：低于范围得 0，高于范围得 255
+  let e = u8(ratio)                 // 浮点数：向零取整，超出范围时取最接近的值
+  return [a, b, c, d, e, u8(clamping: total)]
+}
+```
+
+`u8.min` 和 `u8.max` 是类型的范围（`int.max` 是 9223372036854775807）；`u64.parse(text)` 从文本读出一个值，就像 `toInt()` 读出 `int` 一样（也支持 `radix:`），文本不是整数或放不下时返回 none。超过 `int` 最大值的 `u64`，在打印、解析、比较、除法和写入 JSON 时都按它本来的数值处理（`18446744073709551615`）。
+
+`-x` 和 `abs(x)` 只接受有符号整数：无符号整数没有负数（`0 &- x` 会回绕）。各种整数类型都有 `int` 的方法：`toString(radix:)`、`padded(width)`、`float()`、`abs()` 以及那几个 checked 方法；它们都能使用格式说明（`"{id:x}"`），按数值排序和哈希（可以作 map 和集合的键，在泛型里满足 `Comparable` 和 `Hashable`），也能构成范围：`for i in u16(0)..<count`。
+
+从 `bytes` 读出的字节是 `int`（`b[i]`，0 到 255），所以对它做算术不会在 8 位处回绕；`b.toArray()` 把这些字节作为 `[u8]` 返回，`bytes(xs)` 能从 `[u8]` 构造字节串，和从 `[int]` 构造一样。
 
 ## 内置方法
 
@@ -105,8 +143,8 @@ fn fnv1a(data: bytes) -> int {
 | `Set<T>` | `count()`、`isEmpty()`、`contains(x)`、`insert(x)`（返回是否新加入）、`remove(x)`（返回原本是否存在）、`union(s)`、`intersection(s)`、`subtracting(s)`、`isSubset(of: s)`、`isSuperset(of: s)`；`Set(xs)` 是数组中互不相同的元素，`Set<T>()` 是空集合 |
 | `[K: V]` | `m[k]`（返回 `V?`）、`m[k] = v`、`count()`、`isEmpty()`、`has(k)`、`get(k)`、`remove(k)`、`keys()`、`values()`（按插入顺序）、`mapValues(f)`、`filter((k, v) => …)` |
 | `string` | `count()`（字符数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s)`、`hasPrefix(s)`、`hasSuffix(s)`、`replace(old, new, count:)`（默认替换全部，count 指定次数）、`split(sep, count:)`、`fields()`（按空白分出的词）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（字节偏移，找不到时为 none）、`slice(from, to)`（按字符）、`byteSlice(from, to)`（按字节：即 find 给出的偏移）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toInt(radix:)`、`toFloat()`、`repeat(n)`、`chars()`、`reversed()`、`bytes()`、`+` |
-| `bytes` | `b[i]`（返回 `int`，取值 0 到 255；越界是一个错误）、`count()`、`isEmpty()`、`get(i)`（返回 `int?`）、`slice(from, to)`、`concat(b)`、`string()`（按 UTF-8 解码，无效的部分变成 U+FFFD）、`hex()` 和 `hex(separator)`（`"04 a1"`）；`bytes()` 是空的字节序列，`bytes([0x04, 0xa1])` 是这些字节，`s.bytes()` 是字符串的 UTF-8 字节 |
-| `int` | `float()`、`abs()`、`toString(radix:)`（`255.toString(radix: 16)` 是 `"ff"`）、`padded(width)`（`7.padded(2)` 是 `"07"`）、`addingChecked(o)`、`subtractingChecked(o)`、`multipliedChecked(o)`（返回 `int?`：溢出时为 none） |
+| `bytes` | `b[i]`（返回 `int`，取值 0 到 255；越界是一个错误）、`count()`、`isEmpty()`、`get(i)`（返回 `int?`）、`slice(from, to)`、`concat(b)`、`string()`（按 UTF-8 解码，无效的部分变成 U+FFFD）、`hex()` 和 `hex(separator)`（`"04 a1"`）、`toArray()`（返回 `[u8]`）；`bytes()` 是空的字节序列，`bytes([0x04, 0xa1])` 是这些字节，`bytes(xs)` 是一个 `[u8]` 里的字节，`s.bytes()` 是字符串的 UTF-8 字节 |
+| `int`、`i8` … `u64` | `float()`、`abs()`（用于有符号整数）、`toString(radix:)`（`255.toString(radix: 16)` 是 `"ff"`）、`padded(width)`（`7.padded(2)` 是 `"07"`）、`addingChecked(o)`、`subtractingChecked(o)`、`multipliedChecked(o)`（返回 `int?`，对 `u8` 返回 `u8?`：溢出时为 none）；`T.min`、`T.max`、`T.parse(text, radix:)`（返回 `T?`） |
 | `float` | `fixed(digits)`、`rounded()`、`floor()`、`ceil()`、`int()`（向零取整）、`abs()` |
 | `Color` | `opacity(a)`：以原本不透明度的 a 倍绘制（语义颜色仍然是语义颜色）；`hex()`（`"#0a84ff"`；语义颜色则是它的名字：`".accent"`） |
 | `Duration` | `nanoseconds()`、`milliseconds()`（整数）、`seconds()`、`minutes()`、`hours()`（浮点数）、`rounded(to:)`、`truncated(to:)`、`+`、`-`、`* n`（整数或浮点数：`1.5 * 1h`）、`/ n`、`/ d`（另一个 Duration：它能容纳几个，一个浮点数） |
@@ -147,7 +185,7 @@ fn report(sales: [Sale]) -> [string] {
 
 `toInt(radix:)` 按 2 到 36 之间的进制读取整个字符串，字母大小写均可，前面可以带正负号（`"ff".toInt(radix: 16)` 是 255，`"-101".toInt(radix: 2)` 是 -5），读不出来时返回 none；`toString(radix:)` 则把整数按进制写出来，字母用小写。进制不在 2 到 36 之间时会报错。
 
-`min`、`max`、`abs`、`float(n)` 和 `int(x)` 是函数；其余的（`math.sqrt`、`math.pow`、`math.pi` ……）在 `std/math` 里。
+`min`、`max`、`abs`、`float(n)`、`int(x)` 以及其他整数类型的转换（`u8(x)`）都是函数；其余的（`math.sqrt`、`math.pow`、`math.pi` ……）在 `std/math` 里。
 
 `toInt()` 和 `toFloat()` 读的是整个字符串，读不出来就是 none：可选的正负号，接着是数字，前后不能有别的东西（`" 12"` 是 none，先 `trim()`）。`toInt()` 只认整数（`"+7"`、`"-42"`）；`toFloat()` 还认小数和指数（`"2.5"`、`".5"`、`"1e-3"`），以及浮点数打印出来的样子（`"Infinity"`、`"NaN"`）。无论用户的语言是什么，小数点都是 `.`。
 

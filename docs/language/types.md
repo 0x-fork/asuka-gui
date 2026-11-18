@@ -3,6 +3,7 @@
 | Type | Values |
 |---|---|
 | `int` | 64-bit integers: `42`, `1_000`, `0xff`, `0b1010`, `0o17` |
+| `i8`, `i16`, `i32`, `u8`, `u16`, `u32`, `u64` | integers of 8, 16, 32 and 64 bits, signed (`i`) or not (`u`): [Integer types](#integer-types) |
 | `float` | 64-bit floating point: `3.14`, `1e-3` |
 | `bool` | `true`, `false` |
 | `string` | UTF-8 text: `"Hello, {name}"` |
@@ -68,7 +69,7 @@ have (`pair.2` of a pair) is a compile error. A tuple is also taken
 apart: `let (count, label) = pair`, `for (i, x) in xs.enumerated()`, or
 a tuple pattern in a `match` ([Control flow](control-flow.md#control-flow)).
 
-A map's keys, and a set's elements, are `Hashable`: ints, strings,
+A map's keys, and a set's elements, are `Hashable`: integers, strings,
 bools, bytes, durations, colors, and the enums, structs, tuples,
 optionals, arrays, maps and sets made of them (a struct or an enum that
 holds itself is when its other parts are; a map's keys and values both).
@@ -87,12 +88,13 @@ let seen: Set<(int, int)> = [(0, 0), (1, 2)]
 ## Operators
 
 From the tightest to the loosest; the operators on a line bind alike,
-and go left to right (`??` right to left):
+and go left to right (`**` and `??` right to left):
 
 | Operators | What they do |
 |---|---|
-| `!x`, `-x`, `~x` | not, negation, an int's bits flipped |
-| `<<`, `>>` | an int's bits shifted left, and right (keeping its sign) |
+| `**` | a power: `2 ** 10` is 1024 |
+| `!x`, `-x`, `~x` | not, negation, an integer's bits flipped |
+| `<<`, `>>` | an integer's bits shifted left, and right (keeping a signed one's sign) |
 | `*`, `/`, `%`, `&`, `&*` | multiplication, division, remainder, bitwise and, wrapping multiplication |
 | `+`, `-`, <code>&#124;</code>, `^`, `&+`, `&-` | addition (and strings, arrays joined), subtraction, bitwise or, exclusive or, wrapping addition and subtraction |
 | `..`, `..<` | ranges: `1..3`, `0..<n` |
@@ -101,16 +103,27 @@ and go left to right (`??` right to left):
 | <code>&#124;&#124;</code> | or |
 | `??` | an optional's value, or the default |
 
-`<`, `<=`, `>` and `>=` order ints, floats, strings, durations, enums
+`<`, `<=`, `>` and `>=` order integers, floats, strings, durations, enums
 without payloads (by the order their cases are declared) and types
 with a `compare` method; a struct or an enum takes the arithmetic
-operators from its methods too, `add`, `sub`, `mul`, `div`, `rem` and
-`neg` ([Declarations](declarations.md#structs)).
+operators from its methods too, `add`, `sub`, `mul`, `div`, `rem`,
+`pow` and `neg` ([Declarations](declarations.md#structs)).
 
-The bitwise operators take ints. A shift by 64 or more shifts every bit
-out (`>>` of a negative gives -1); a shift by a negative count is an
-error. With them and `b[i]` (a byte as an int), a program reads and
-writes binary data, a Bluetooth characteristic or an NFC record:
+`**` binds tighter than the operators before it, `-` too, and to its
+right, as in Python and in mathematics: `-2 ** 2` is `-(2 ** 2)`, -4,
+and `2 ** 3 ** 2` is `2 ** 9`; `(-2) ** 2` is 4. An integer's power is of
+its own type, its exponent an integer of any type, 0 or more (a
+negative one is an error: `2 ** -1` isn't an integer); a float's power
+takes a float or an integer (`2.0 ** 0.5`, `x ** 2`). `**=` assigns one.
+
+The bitwise operators take integers, both of one type. A shift's count
+is an integer of any type; a shift by the type's width or more shifts
+every bit out (`>>` of a negative gives -1), and one by a negative
+count is an error. `>>` keeps a signed integer's sign and fills an
+unsigned one with zeros. With them and `b[i]` (a byte as an int), a
+program reads and writes binary data, a Bluetooth characteristic or an
+NFC record ([`std/encoding`](../std/encoding.md) reads and writes whole
+numbers in either byte order):
 
 ```asuka
 let raw = b[1] | b[2] << 8                         // a little-endian uint16
@@ -118,13 +131,14 @@ let celsius = if raw & 0x8000 != 0 { raw - 0x10000 } else { raw }
 let out = bytes([flags, value & 0xff, value >> 8])
 ```
 
-An `int` holds −2⁶³ to 2⁶³ − 1. `+`, `-` and `*` whose result is past
+An `int` holds −2⁶³ to 2⁶³ − 1. `+`, `-`, `*` and `**` whose result is past
 that range throw an error, "integer overflow", as dividing by zero (`/`,
 `%`) does: a `catch` takes it, and when nothing does it goes to the
 nearest `Boundary` ([Errors](errors.md#errors)). So do `-x` and `abs(x)`
 of the smallest `int`, its `/ -1`, and an array's `sum()` past the
 range. A count, a size or a price that overflows is a bug shown where it
-happens, not a wrong number saved.
+happens, not a wrong number saved. Every integer type is checked the
+same way, at its own range: a `u8`'s `255 + 1` throws.
 
 ```asuka
 let big = 9223372036854775807
@@ -134,7 +148,8 @@ let next = big.addingChecked(1) ?? big          // none on overflow: big
 
 `&+`, `&-` and `&*` wrap instead: past the largest `int` they go on from
 the smallest, as 64-bit two's complement does (`9223372036854775807 &+
-1` is `-9223372036854775808`). That's what hashes, checksums and binary
+1` is `-9223372036854775808`), and a sized type's wrap at its width (a
+`u8`'s `255 &+ 1` is 0). That's what hashes, checksums and binary
 protocols want; `&+=`, `&-=` and `&*=` assign them:
 
 ```asuka
@@ -149,9 +164,67 @@ fn fnv1a(data: bytes) -> int {
 ```
 
 `a.addingChecked(b)`, `subtractingChecked` and `multipliedChecked` give
-an `int?`, none on overflow, for code that handles it as a value. The
-shifts and the bitwise operators never throw for a result; `int(x)` of
-a float past the range gives the nearest `int` (`0` for NaN).
+an `int?` (a `u8?` of a `u8`...), none on overflow, for code that
+handles it as a value. The shifts and the bitwise operators never throw
+for a result; `int(x)` of a float past the range gives the nearest `int`
+(`0` for NaN).
+
+## Integer types
+
+Beside `int`, there are integers of a fixed width, signed and not:
+
+| Type | Values |
+|---|---|
+| `i8`, `i16`, `i32` | −2⁷ to 2⁷ − 1, −2¹⁵ to 2¹⁵ − 1, −2³¹ to 2³¹ − 1 |
+| `int` | −2⁶³ to 2⁶³ − 1 (there's no `i64`: it's `int`) |
+| `u8`, `u16`, `u32`, `u64` | 0 to 2⁸ − 1 (255), 2¹⁶ − 1, 2³² − 1, 2⁶⁴ − 1 |
+
+`int` is what to use for counts, indexes, sizes and money in cents; the
+others are for what has a width of its own: a byte (`u8`), a pixel's
+channel, a file format's or a protocol's fields, a hash, an id past
+`int`'s range (`u64`), a C function's (`Int32` is an `i32`:
+[C](../c.md)). Each holds its range exactly: its arithmetic throws past
+it, as `int`'s does, and it's what JSON, CSV, TOML and SQLite read into
+it, checked.
+
+An integer literal is of the type that's expected, and must fit it: `let
+level: u8 = 200`, `level + 1`, `let big: u64 = 18446744073709551615`;
+`let x: u8 = 256` and `let y: u8 = -1` are errors where they're
+written. Without one expected, it's an `int`.
+
+Two integers of different types don't meet in an operator, an `int` and
+a `u8` no more than an `int` and a `float`: `level + offset` of a `u8`
+and an `int` is an error ([mixed-numbers](../errors/mixed-numbers.md)),
+and so is passing a `u8` where an `int` goes. Converting says which:
+
+```asuka check
+fn conversions(n: int, level: u8, ratio: float) -> [u8] {
+  let total = int(level) + n        // widening: always fits
+  let a = u8(n)                     // an error ("integer overflow") when n doesn't fit
+  let b = u8(exactly: n) ?? 0       // a u8?: none when it doesn't fit
+  let c = u8(truncating: n)         // its low 8 bits: u8(truncating: 300) is 44, of -1 255
+  let d = u8(clamping: n)           // the nearest: 0 below, 255 above
+  let e = u8(ratio)                 // a float: toward zero, the nearest past the range
+  return [a, b, c, d, e, u8(clamping: total)]
+}
+```
+
+`u8.min` and `u8.max` are a type's range (`int.max` is
+9223372036854775807), and `u64.parse(text)` reads one from text, as
+`toInt()` does an `int` (`radix:` too), or gives none when it isn't one
+or doesn't fit. A `u64` past `int`'s largest prints, parses, compares,
+divides and goes into JSON as the number it is (`18446744073709551615`).
+
+`-x` and `abs(x)` take a signed integer: an unsigned one has no
+negatives (`0 &- x` wraps). The integer types have `int`'s methods,
+`toString(radix:)`, `padded(width)`, `float()`, `abs()` and the checked
+ones, take format specs (`"{id:x}"`), order and hash as numbers (keys of
+maps and sets, `Comparable` and `Hashable` in generics), and make
+ranges: `for i in u16(0)..<count`.
+
+A byte read from `bytes` is an `int` (`b[i]`, 0 to 255), so arithmetic
+on it doesn't wrap at 8 bits; `b.toArray()` is them as a `[u8]`, and
+`bytes(xs)` makes bytes of a `[u8]` as of an `[int]`.
 
 ## Built-in methods
 
@@ -165,8 +238,8 @@ that change their value (`push`, `insert`, `removeAt`, `removeWhere`,
 | `Set<T>` | `count()`, `isEmpty()`, `contains(x)`, `insert(x)` (whether it was new), `remove(x)` (whether it was there), `union(s)`, `intersection(s)`, `subtracting(s)`, `isSubset(of: s)`, `isSuperset(of: s)`; `Set(xs)` is an array's distinct elements, `Set<T>()` none |
 | `[K: V]` | `m[k]` (a `V?`), `m[k] = v`, `count()`, `isEmpty()`, `has(k)`, `get(k)`, `remove(k)`, `keys()`, `values()` (in insertion order), `mapValues(f)`, `filter((k, v) => …)` |
 | `string` | `count()` (characters), `byteCount()`, `isEmpty()`, `upper()`, `lower()`, `trim()`, `trimStart()`, `trimEnd()`, `trimPrefix(s)`, `trimSuffix(s)`, `contains(s)`, `hasPrefix(s)`, `hasSuffix(s)`, `replace(old, new, count:)` (every one unless count says), `split(sep, count:)`, `fields()` (the words), `lines()`, `find(s)`, `findLast(s)`, `findAny(chars)` (byte offsets, or none), `slice(from, to)` (characters), `byteSlice(from, to)` (bytes: the offsets find gives), `padStart(width, with:)`, `padEnd(width, with:)`, `toInt()`, `toInt(radix:)`, `toFloat()`, `repeat(n)`, `chars()`, `reversed()`, `bytes()`, `+` |
-| `bytes` | `b[i]` (an `int`, 0 to 255; out of range is an error), `count()`, `isEmpty()`, `get(i)` (an `int?`), `slice(from, to)`, `concat(b)`, `string()` (UTF-8; what isn't becomes U+FFFD), `hex()` and `hex(separator)` (`"04 a1"`); `bytes()` is none, `bytes([0x04, 0xa1])` those, `s.bytes()` a string's UTF-8 |
-| `int` | `float()`, `abs()`, `toString(radix:)` (`255.toString(radix: 16)` is `"ff"`), `padded(width)` (`7.padded(2)` is `"07"`), `addingChecked(o)`, `subtractingChecked(o)`, `multipliedChecked(o)` (an `int?`: none on overflow) |
+| `bytes` | `b[i]` (an `int`, 0 to 255; out of range is an error), `count()`, `isEmpty()`, `get(i)` (an `int?`), `slice(from, to)`, `concat(b)`, `string()` (UTF-8; what isn't becomes U+FFFD), `hex()` and `hex(separator)` (`"04 a1"`), `toArray()` (a `[u8]`); `bytes()` is none, `bytes([0x04, 0xa1])` those, `bytes(xs)` a `[u8]`'s, `s.bytes()` a string's UTF-8 |
+| `int`, `i8` … `u64` | `float()`, `abs()` (of a signed one), `toString(radix:)` (`255.toString(radix: 16)` is `"ff"`), `padded(width)` (`7.padded(2)` is `"07"`), `addingChecked(o)`, `subtractingChecked(o)`, `multipliedChecked(o)` (an `int?`, a `u8?` of a `u8`: none on overflow); `T.min`, `T.max`, `T.parse(text, radix:)` (a `T?`) |
 | `float` | `fixed(digits)`, `rounded()`, `floor()`, `ceil()`, `int()` (toward zero), `abs()` |
 | `Color` | `opacity(a)`: drawn at a times its opacity (a semantic color stays semantic); `hex()` (`"#0a84ff"`; a semantic color, its name: `".accent"`) |
 | `Duration` | `nanoseconds()`, `milliseconds()` (ints), `seconds()`, `minutes()`, `hours()` (floats), `rounded(to:)`, `truncated(to:)`, `+`, `-`, `* n` (an int or a float: `1.5 * 1h`), `/ n`, `/ d` (another Duration: how many times it goes in, a float) |
@@ -217,7 +290,8 @@ in either case and an optional sign first (`"ff".toInt(radix: 16)` is
 255, `"-101".toInt(radix: 2)` is -5), or gives none; `toString(radix:)`
 writes one, lowercase. A radix outside 2 to 36 is an error.
 
-`min`, `max`, `abs`, `float(n)` and `int(x)` are functions;
+`min`, `max`, `abs`, `float(n)`, `int(x)` and the other integer types'
+conversions (`u8(x)`) are functions;
 `std/math` has the rest (`math.sqrt`, `math.pow`, `math.pi`, ...).
 
 `toInt()` and `toFloat()` read the whole string, or give none: an

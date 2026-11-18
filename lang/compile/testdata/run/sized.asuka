@@ -172,6 +172,21 @@ test "powers" {
   var f = 1.5
   f **= 2
   print("{p} {f}")
+  // A struct's ** is its pow method.
+  var m = Modular(v: 3)
+  print((m ** 4).v)
+  m **= 5
+  print(m.v)
+}
+
+struct Modular {
+  v: int
+
+  fn pow(n: int) -> Modular {
+    var r = 1
+    for _ in 0..<n { r = r * v % 7 }
+    return Modular(v: r)
+  }
 }
 
 // Output:
@@ -245,4 +260,6 @@ test "powers" {
 // 128 128 9223372036854775808
 // u8 2 ** 8: integer overflow
 // 81 2.25
+// 4
+// 5
 // ok powers
