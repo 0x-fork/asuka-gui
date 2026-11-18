@@ -995,6 +995,7 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
     override fun destroy(id: Int) {
         val n = nodes.remove(id) ?: return
         keyed.remove(id)
+        blurLeaving(n)
         (n.view as? AsukaVideo)?.release()
         stacks.remove(n)
         if (n.kind == AsukaKind.OVERLAY) { destroyOverlay(n); return }

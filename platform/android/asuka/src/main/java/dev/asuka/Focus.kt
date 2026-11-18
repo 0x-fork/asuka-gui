@@ -105,6 +105,20 @@ fun AsukaRuntime.blurNode(n: AsukaNode) {
     if (v is EditText) app.getSystemService(android.view.inputmethod.InputMethodManager::class.java)?.hideSoftInputFromWindow(v.windowToken, 0)
 }
 
+/**
+ * A field being edited that goes away takes the keyboard with it, as on
+ * iOS: the focus it leaves may go to a view that keeps the keyboard up (a
+ * WebView). As the Blur command does, before its view leaves the window.
+ */
+fun AsukaRuntime.blurLeaving(n: AsukaNode) {
+    val f = activity?.currentFocus as? EditText ?: return
+    var x: View? = f
+    while (x != null && x !== n.outer && x !== n.view) x = x.parent as? View
+    if (x == null) return
+    f.clearFocus()
+    app.getSystemService(android.view.inputmethod.InputMethodManager::class.java)?.hideSoftInputFromWindow(f.windowToken, 0)
+}
+
 /** The focus props: Focusable, NoFocusOnPress, NoFocusRing, FocusTrap. False: not one of them. */
 fun AsukaRuntime.setFocusProp(n: AsukaNode, prop: Int, on: Boolean): Boolean {
     val v = n.view

@@ -1,0 +1,41 @@
+// Removed field is an e2e's app (e2e/removedfield_test.go): a field being
+// edited goes away (Done), with a WebView that can take the focus still
+// on the screen. Blur, then done: the field gives the focus up first.
+
+component RemovedField {
+  state editing = true
+  state text = ""
+  let field = Ref()
+
+  SafeArea {
+    padding: 16
+    gap: 12
+
+    if editing {
+      TextField {
+        ref: field
+        bind text: text
+        placeholder: "Name"
+      }
+      Button("Done") { on press { editing = false } }
+      Button("Blur, then done") {
+        on press {
+          field.blur()
+          editing = false
+        }
+      }
+    } else {
+      Text("saved")
+      Button("Edit") { on press { editing = true } }
+    }
+    WebView("about:blank") {
+      absolute: true
+      width: 1
+      height: 1
+      opacity: 0
+      a11yHidden: true
+    }
+  }
+}
+
+app { RemovedField() }
