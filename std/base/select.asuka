@@ -4,14 +4,14 @@
 
 // ---- Select ----
 
-store SelectContext(value: string, open: bool, disabled: bool, pick: fn(string), setOpen: fn(bool)) {
+store SelectContext(value: string, open: bool, disabled: bool, given: [string: string], pick: fn(string), setOpen: fn(bool)) {
   pub let items = Items()
   pub let trigger = Ref()
   pub state labels: [string: string] = [:]
 
   /// What shows for a value: its item's label (remembered once it's been
-  /// shown), else the value.
-  pub fn label(v: string) -> string = labels[v] ?? v
+  /// shown), else the Select's labels', else the value.
+  pub fn label(v: string) -> string = labels[v] ?? given[v] ?? v
 }
 
 /// A choice of one value from options in a popup over the window: a
@@ -41,17 +41,13 @@ pub component Select {
   /// Its SelectPopup.
   prop popup: View? = none
 
-  let ctx = SelectContext(value: value, open: open, disabled: disabled, pick: v => {
+  let ctx = SelectContext(value: value, open: open, disabled: disabled, given: labels, pick: v => {
     value = v
     open = false
   }, setOpen: o => { if !disabled || !o { open = o } })
   let placement = Placement()
   provide ctx
   provide placement
-
-  effect {
-    for (k, v) in labels { ctx.labels[k] = v }
-  }
 
   /// While open.
   pub variant open = open
@@ -581,6 +577,34 @@ test "a select shows its placeholder, opens, and chooses" {
   app.tap("Banana")
   app.tap("Pear")
   app.expect("fruit pear")
+}
+
+component GivenLabel {
+  state fruit = "pear"
+
+  Select {
+    bind value: fruit
+    labels: ["pear": "Pear, given"]
+    SelectTrigger { SelectValue { placeholder: "Pick a fruit" } }
+    popup {
+      SelectPopup {
+        SelectItem("pear") {
+          label: "Pear"
+          Text("Pear")
+        }
+      }
+    }
+  }
+}
+
+// A value its items haven't shown yet shows the Select's labels' label;
+// once its item has shown, the item's.
+test "a select's labels, before its items show" {
+  let app = mount(GivenLabel())
+  app.expect("Pear, given")
+  app.tap("Pear, given")
+  // Open, its item has shown: the trigger says the item's label too.
+  app.expectNo("Pear, given")
 }
 
 test "a select by the keyboard" {
