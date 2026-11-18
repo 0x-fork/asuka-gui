@@ -75,10 +75,11 @@ go run ./eval -agent 'claude -p --model claude-haiku-5-5 --no-session-persistenc
 explain`. The codes it hit were the type checker's: `type-mismatch` most
 (8 times, 6 in signup), then `bad-operand` and `not-optional` once each,
 and it fixed them all: none is left in any project. None of the reactive
-codes came up, and no run-time diagnostic. The round trips past two or
-three were mostly the agents' own tests failing as they learned the test
-driver (signup's: that `type(_, into:)` replaces a field's text rather
-than adding to it; votes' took the most).
+codes came up, and no run-time diagnostic. Round trips that reported no
+code were the agents' own tests failing and being fixed: signup's
+transcript says one taught it that `type(_, into:)` replaces a field's
+text rather than adding to it. Votes took the most (13) with no code at
+all; its log doesn't say what each failing test was.
 
 The run used this machine's Claude Code settings, so its global
 instructions were in the agent's context; only `AGENTS.md` and `asuka
