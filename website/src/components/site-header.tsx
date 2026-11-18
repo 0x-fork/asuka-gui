@@ -7,7 +7,7 @@ import { LanguageMenu } from "@/components/language-menu"
 import { Mark, Wordmark } from "@/components/logo"
 import { Search } from "@/components/search"
 import { Button, buttonVariants } from "@/components/ui/button"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { messages, routes, useLocale } from "@/lib/i18n"
 import { site } from "@/lib/site"
 
@@ -67,12 +67,14 @@ export function SiteHeader() {
               {t.docs}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel>{t.references}</DropdownMenuLabel>
-            {referenceGroups.map((group) => (
-              <DropdownMenuItem key={group} className={mobileNavLink} render={<DocLink slug={group} />}>
-                {words[group]}
-              </DropdownMenuItem>
-            ))}
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>{t.references}</DropdownMenuLabel>
+              {referenceGroups.map((group) => (
+                <DropdownMenuItem key={group} className={mobileNavLink} render={<DocLink slug={group} />}>
+                  {words[group]}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem className={mobileNavLink} render={<a href={`${site.repo}/tree/main/examples`} />}>
               {t.examples}
