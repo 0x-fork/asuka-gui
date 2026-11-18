@@ -194,6 +194,48 @@ func TestTextFieldPadding(t *testing.T) {
 	}
 }
 
+// A field keeps what the app set before a prop made it another view:
+// secure's field keeps the background, border, corners and opacity; a
+// multiline field's scroll view the corners and opacity (a scroll view
+// draws its own background and border, whenever the app sets them).
+func TestTextFieldStyleBeforeItsView(t *testing.T) {
+	a := Run(t, `
+		style box {
+		  width: 200
+		  height: 56
+		  background: #ffffff
+		  radius: 12
+		  border: 2
+		  borderColor: #ccd8e0
+		  opacity: 0.5
+		}
+		component F {
+		  Column {
+		    align: .start
+		    Text("styled")
+		    TextField { style: box; plain: true; placeholder: "One line" }
+		    TextField { style: box; plain: true; multiline: true; placeholder: "Multiline" }
+		    TextField { style: box; plain: true; secure: true; placeholder: "Secure" }
+		  }
+		}
+		app { F() }
+	`)
+	tr := a.UntilText("styled")
+	for _, c := range []struct {
+		placeholder string
+		layer       bool // background and border too
+	}{{"One line", true}, {"Multiline", false}, {"Secure", true}} {
+		n, _ := fieldOf(t, tr, c.placeholder)
+		bg := n.Str("layerBackground")
+		if n.Num("layerCornerRadius") != 12 || n.Num("alpha") != 0.5 {
+			t.Errorf("%s (a %s): corner radius %v, opacity %v; want 12, 0.5", c.placeholder, n.Class, n.Num("layerCornerRadius"), n.Num("alpha"))
+		}
+		if c.layer && (!strings.HasPrefix(bg, "#ffffff") || n.Num("layerBorderWidth") != 2) {
+			t.Errorf("%s (a %s): background %q, border %v; want #ffffff, 2", c.placeholder, n.Class, bg, n.Num("layerBorderWidth"))
+		}
+	}
+}
+
 // A multiline field is a text view in a scroll view: its placeholder, its
 // plain look, its autocorrection, and its height following its text up to
 // its lines.

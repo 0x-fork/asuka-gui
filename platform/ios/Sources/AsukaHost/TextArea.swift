@@ -179,6 +179,20 @@ final class AsukaTextView: UITextView {
         t.textContentType = old.textContentType
         t.inputAccessoryView = old.inputAccessoryView
         t.plain = old.plain
+        // What props set on the field before multiline came (they go in
+        // the order the app wrote them): its padding, and the app's own
+        // background, corners and border in place of the text view's.
+        t.contentInset_ = old.contentInset_
+        t.isHidden = old.isHidden
+        t.alpha = old.alpha
+        t.transform = old.transform
+        if let c = old.backgroundColor { t.backgroundColor = c }
+        if n.cornerRadius != 0 {
+            t.layer.cornerCurve = old.layer.cornerCurve
+            t.layer.cornerRadius = old.layer.cornerRadius
+        }
+        if old.layer.borderWidth != 0 { t.layer.borderWidth = old.layer.borderWidth }
+        if n.borderColor != 0 { t.layer.borderColor = old.layer.borderColor }
         if let p = old.superview {
             p.insertSubview(t, aboveSubview: old)
             t.frame = old.frame

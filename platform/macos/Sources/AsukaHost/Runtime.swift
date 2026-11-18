@@ -319,6 +319,16 @@ import AsukaOps
         applyFont(n)
         applyColor(n)
         applyDirection(n)
+        // The app's background, border, corners and opacity go with it
+        // too: they may have come before what made the new view.
+        v.isHidden = old.isHidden
+        v.alphaValue = old.alphaValue
+        if n.borderWidth != 0 { layer(n)?.borderWidth = n.borderWidth }
+        if n.cornerRadius != 0 { applyCorner(n) }
+        withAppearance(n) {
+            if n.background != 0 { layer(n)?.backgroundColor = asukaColor(n.background)?.cgColor }
+            if n.borderColor != 0 { layer(n)?.borderColor = asukaColor(n.borderColor)?.cgColor }
+        }
         // What VoiceOver reads of it goes with it: its Label may have come
         // before what made the new view (a checkbox, a multiline field).
         if !n.a11yLabel.isEmpty { (n.textView ?? v).setAccessibilityLabel(n.a11yLabel) }
