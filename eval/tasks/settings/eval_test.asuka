@@ -1,0 +1,10 @@
+test "eval: the summary follows the toggles" {
+  let app = mount(Settings())
+  app.expect("Notifications on, dark mode off")
+  app.tap("Dark mode")
+  app.expect("Notifications on, dark mode on")
+  app.tap("Notifications")
+  app.expect("Notifications off, dark mode on")
+  app.tap("Dark mode")
+  app.expect("Notifications off, dark mode off")
+}

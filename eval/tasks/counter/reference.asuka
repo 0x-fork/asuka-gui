@@ -1,0 +1,11 @@
+component Counter {
+  state count = 0
+
+  Column {
+    Text("Count: {count}")
+    Button("Add") { on press { count += 1 } }
+    Button("Remove") { on press { count = max(count - 1, 0) } }
+  }
+}
+
+app { Counter() }

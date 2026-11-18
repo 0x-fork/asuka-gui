@@ -1,0 +1,11 @@
+component Converter {
+  state celsius = ""
+  let shown = if let c = celsius.trim().toInt() { "F: {c * 9 / 5 + 32}" } else { "Enter a number" }
+
+  Column {
+    TextField { bind text: celsius; placeholder: "Celsius" }
+    Text(shown)
+  }
+}
+
+app { Converter() }

@@ -1,0 +1,19 @@
+component Tips {
+  state bill = ""
+  state percent = 15
+  let amount = bill.trim().toInt() ?? 0
+  let tip = amount * percent / 100
+
+  Column {
+    TextField { bind text: bill; placeholder: "Bill" }
+    Row {
+      for p in [10, 15, 20] {
+        Button("{p}%") { on press { percent = p } }
+      }
+    }
+    Text("Tip: ${tip}")
+    Text("Total: ${amount + tip}")
+  }
+}
+
+app { Tips() }

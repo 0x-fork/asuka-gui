@@ -1,0 +1,12 @@
+test "eval: fails, retries, shows the messages" {
+  let app = mount(Inbox())
+  app.expect("Loading")
+  await app.idle()
+  app.expect("Couldn't load: offline")
+  app.tap("Retry")
+  await app.idle()
+  app.expect("Hello")
+  app.expect("Invoice")
+  app.expect("3 messages")
+  app.expectNo("Retry")
+}

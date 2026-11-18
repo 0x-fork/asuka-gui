@@ -1,0 +1,16 @@
+test "eval: validates, then signs up" {
+  let app = mount(Signup())
+  expect(app.disabled("Sign up"))
+  app.expectNo("Enter a valid email")
+  app.type("ada", into: "Email")
+  app.expect("Enter a valid email")
+  app.type("ada@example.com", into: "Email")
+  app.expectNo("Enter a valid email")
+  app.type("short", into: "Password")
+  expect(app.disabled("Sign up"))
+  app.type("long enough", into: "Password")
+  expect(!app.disabled("Sign up"))
+  app.tap("Sign up")
+  app.expect("Welcome, ada@example.com!")
+  app.expectNo("Email")
+}

@@ -1,0 +1,11 @@
+test "eval: counts up and down, not below zero" {
+  let app = mount(Counter())
+  app.expect("Count: 0")
+  app.tap("Remove")
+  app.expect("Count: 0")
+  app.tap("Add")
+  app.tap("Add")
+  app.expect("Count: 2")
+  app.tap("Remove")
+  app.expect("Count: 1")
+}

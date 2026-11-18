@@ -1,0 +1,13 @@
+test "eval: counts seconds while running" {
+  let app = mount(Stopwatch())
+  app.expect("Elapsed: 0 s")
+  app.tap("Start")
+  await sleep(3500ms)
+  app.expect("Elapsed: 3 s")
+  app.tap("Stop")
+  await sleep(5s)
+  app.expect("Elapsed: 3 s")
+  app.expect("Start")
+  app.tap("Reset")
+  app.expect("Elapsed: 0 s")
+}

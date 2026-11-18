@@ -1,0 +1,38 @@
+struct Option {
+  name: string
+  votes: int = 0
+}
+
+fn leader(options: [Option]) -> string {
+  var best: Option? = none
+  for o in options {
+    if o.votes > (best?.votes ?? 0) { best = o }
+  }
+  if let b = best { return "Leading: {b.name}" }
+  return "No votes yet"
+}
+
+component Poll {
+  state options: [Option] = []
+  state draft = ""
+
+  Column {
+    TextField { bind text: draft; placeholder: "Option" }
+    Button("Add option") {
+      on press {
+        let name = draft.trim()
+        if !name.isEmpty() && !options.any(o => o.name == name) { options.push(Option(name: name)) }
+        draft = ""
+      }
+    }
+    for (i, o) in options.enumerated() key o.name {
+      Row {
+        Text("{o.name}: {o.votes}")
+        Button("Vote {o.name}") { on press { options[i].votes += 1 } }
+      }
+    }
+    Text(leader(options))
+  }
+}
+
+app { Poll() }

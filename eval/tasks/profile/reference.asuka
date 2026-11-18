@@ -1,0 +1,22 @@
+async fn fetchName(id: int) throws -> string {
+  await sleep(500ms)
+  if id == 3 { throw Error("no such user") }
+  return "User {id}"
+}
+
+component Profile {
+  state id = 1
+  let user = load fetchName(id)
+
+  Column {
+    match user {
+      .pending => Text("Loading")
+      .failed(e) => Text("Couldn't load")
+      .ready(name) => Text(name)
+    }
+    if user.loading && user.value != none { Text("Updating") }
+    Button("Next") { on press { id += 1 } }
+  }
+}
+
+app { Profile() }

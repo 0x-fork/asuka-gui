@@ -1,0 +1,43 @@
+struct Product {
+  name: string
+  price: int
+}
+
+struct Line {
+  name: string
+  price: int
+  qty: int
+}
+
+let products = [Product(name: "Tea", price: 4), Product(name: "Cake", price: 6), Product(name: "Jam", price: 3)]
+
+component Shop {
+  state lines: [Line] = []
+  let total = lines.map(l => l.price * l.qty).sum()
+
+  Column {
+    for p in products {
+      Row {
+        Text("{p.name} ${p.price}")
+        Button("Add {p.name}") {
+          on press {
+            if let i = lines.index(l => l.name == p.name) { lines[i].qty += 1 } else { lines.push(Line(name: p.name, price: p.price, qty: 1)) }
+          }
+        }
+      }
+    }
+    for (i, l) in lines.enumerated() key l.name {
+      Row {
+        Text("{l.name} × {l.qty}")
+        Button("Remove {l.name}") {
+          on press {
+            if lines[i].qty > 1 { lines[i].qty -= 1 } else { lines.removeAt(i) }
+          }
+        }
+      }
+    }
+    Text("Total: ${total}")
+  }
+}
+
+app { Shop() }

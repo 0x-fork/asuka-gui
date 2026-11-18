@@ -1,0 +1,16 @@
+test "eval: adds, counts and removes" {
+  let app = mount(Shop())
+  app.expect("Total: $0")
+  app.tap("Add Tea")
+  app.tap("Add Cake")
+  app.tap("Add Tea")
+  app.expect("Tea × 2")
+  app.expect("Cake × 1")
+  app.expect("Total: $14")
+  app.tap("Remove Tea")
+  app.expect("Tea × 1")
+  app.expect("Total: $10")
+  app.tap("Remove Cake")
+  app.expectNo("Cake × 1")
+  app.expect("Total: $4")
+}

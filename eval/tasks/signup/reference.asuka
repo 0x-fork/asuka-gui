@@ -1,0 +1,26 @@
+fn validEmail(s: string) -> bool {
+  let parts = s.split("@")
+  return parts.count() == 2 && !parts[0].isEmpty() && !parts[1].isEmpty()
+}
+
+component Signup {
+  state email = ""
+  state password = ""
+  state done = false
+
+  if done {
+    Text("Welcome, {email}!")
+  } else {
+    Column {
+      TextField { bind text: email; placeholder: "Email" }
+      if !email.isEmpty() && !validEmail(email) { Text("Enter a valid email") }
+      TextField { bind text: password; placeholder: "Password" }
+      Button("Sign up") {
+        disabled: !validEmail(email) || password.count() < 8
+        on press { done = true }
+      }
+    }
+  }
+}
+
+app { Signup() }

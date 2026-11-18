@@ -1,0 +1,12 @@
+test "eval: converts whole degrees" {
+  let app = mount(Converter())
+  app.expect("Enter a number")
+  app.type("100", into: "Celsius")
+  app.expect("F: 212")
+  app.type("-40", into: "Celsius")
+  app.expect("F: -40")
+  app.type("hot", into: "Celsius")
+  app.expect("Enter a number")
+  app.type("0", into: "Celsius")
+  app.expect("F: 32")
+}

@@ -1,0 +1,14 @@
+let fruits = ["Apple", "Banana", "Cherry", "Date", "Elderberry"]
+
+component Fruits {
+  state query = ""
+  let shown = fruits.filter(f => f.lower().contains(query.lower()))
+
+  Column {
+    TextField { bind text: query; placeholder: "Search" }
+    for f in shown key f { Text(f) }
+    if shown.isEmpty() { Text("No results") }
+  }
+}
+
+app { Fruits() }

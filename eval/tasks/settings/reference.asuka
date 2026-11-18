@@ -1,0 +1,14 @@
+fn word(on: bool) -> string = if on { "on" } else { "off" }
+
+component Settings {
+  state notify = true
+  state dark = false
+
+  Column {
+    Toggle { bind on: notify; title: "Notifications" }
+    Toggle { bind on: dark; title: "Dark mode" }
+    Text("Notifications {word(notify)}, dark mode {word(dark)}")
+  }
+}
+
+app { Settings() }

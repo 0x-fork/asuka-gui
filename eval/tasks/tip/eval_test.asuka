@@ -1,0 +1,15 @@
+test "eval: tips and totals" {
+  let app = mount(Tips())
+  app.expect("Tip: $0")
+  app.expect("Total: $0")
+  app.type("100", into: "Bill")
+  app.expect("Tip: $15")
+  app.expect("Total: $115")
+  app.tap("20%")
+  app.expect("Tip: $20")
+  app.expect("Total: $120")
+  app.type("45", into: "Bill")
+  app.tap("10%")
+  app.expect("Tip: $4")
+  app.expect("Total: $49")
+}

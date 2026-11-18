@@ -1,0 +1,24 @@
+async fn fetchMessages(attempt: int) throws -> [string] {
+  await sleep(300ms)
+  if attempt == 1 { throw Error("offline") }
+  return ["Hello", "Lunch?", "Invoice"]
+}
+
+component Inbox {
+  state attempt = 1
+  let messages = load fetchMessages(attempt)
+
+  match messages {
+    .pending => Text("Loading")
+    .failed(e) => Column {
+      Text("Couldn't load: {e.message}")
+      Button("Retry") { on press { attempt += 1 } }
+    }
+    .ready(list) => Column {
+      for m in list key m { Text(m) }
+      Text("{list.count()} messages")
+    }
+  }
+}
+
+app { Inbox() }

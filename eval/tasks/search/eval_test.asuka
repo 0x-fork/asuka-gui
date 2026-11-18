@@ -1,0 +1,18 @@
+test "eval: filters as you type" {
+  let app = mount(Fruits())
+  app.expect("Apple")
+  app.expect("Elderberry")
+  app.expectNo("No results")
+  app.type("an", into: "Search")
+  app.expect("Banana")
+  app.expectNo("Apple")
+  app.expectNo("Cherry")
+  app.type("E", into: "Search")
+  app.expect("Apple")
+  app.expect("Cherry")
+  app.expect("Date")
+  app.expect("Elderberry")
+  app.expectNo("Banana")
+  app.type("zz", into: "Search")
+  app.expect("No results")
+}

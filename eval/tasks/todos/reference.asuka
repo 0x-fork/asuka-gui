@@ -1,0 +1,34 @@
+struct Todo {
+  id: int
+  title: string
+  done: bool = false
+}
+
+component Todos {
+  state todos: [Todo] = []
+  state draft = ""
+  state next = 0
+  let left = todos.filter(t => !t.done).count()
+
+  Column {
+    TextField { bind text: draft; placeholder: "New todo" }
+    Button("Add") {
+      on press {
+        if !draft.trim().isEmpty() {
+          todos.push(Todo(id: next, title: draft))
+          next += 1
+          draft = ""
+        }
+      }
+    }
+    for (i, t) in todos.enumerated() key t.id {
+      Button(if t.done { "Done: {t.title}" } else { t.title }) {
+        on press { todos[i].done = !todos[i].done }
+      }
+    }
+    Text("{left} left")
+    Button("Clear done") { on press { todos = todos.filter(t => !t.done) } }
+  }
+}
+
+app { Todos() }

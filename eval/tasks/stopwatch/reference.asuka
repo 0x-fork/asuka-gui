@@ -1,0 +1,19 @@
+component Stopwatch {
+  state seconds = 0
+  state running = false
+
+  task(running) {
+    while running {
+      await sleep(1s)
+      seconds += 1
+    }
+  }
+
+  Column {
+    Text("Elapsed: {seconds} s")
+    Button(if running { "Stop" } else { "Start" }) { on press { running = !running } }
+    Button("Reset") { on press { seconds = 0 } }
+  }
+}
+
+app { Stopwatch() }
