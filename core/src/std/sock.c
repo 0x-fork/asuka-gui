@@ -9,11 +9,15 @@
 #if !defined(__wasm__)
 
 #include "std/sock.h"
+#include "std/tls.h"
 #include "base/thread.h"
 
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
+
+// tls.h's layer: set by tls.c once a TLS configuration is made.
+const ak_tls_ops *ak_tls_layer = NULL;
 
 #if defined(_WIN32)
 static ak_mutex startup_mu = AK_MUTEX_INIT;

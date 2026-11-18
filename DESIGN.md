@@ -1611,8 +1611,9 @@ reply's next piece is asked for once what's queued drops below 64 KiB;
 a client gone while its reply streams cancels the task. Closing stops
 accepting, lets requests in flight answer, then disposes the owner. An
 open connection holds the scheduler, so a test's loop waits for what
-it posts. TLS is a reverse proxy's; it would sit between the socket and
-the connection's buffers.
+it posts. With TLS (HTTPS), each connection has a session of std/net's
+TLS between its socket and its buffers, on the server's thread, its
+handshake within the header timeout.
 
 **std/net** (TCP, UDP, DNS) is the core's C too (core/src/std/net.c,
 dns.c; the socket shims it shares with the HTTP server in sock.c): one
@@ -1633,8 +1634,27 @@ closes it); `net.serve` runs a task per connection, as the HTTP
 server does. The net thread holds the scheduler only while it has work
 of its own (a command, a connect, a write, a deadline), and a moment
 after for what loopback is still delivering: a test's clock moves on
-while a read waits for a peer that's idle. TLS would be a layer on the
-net thread between a connection's socket and its buffers.
+while a read waits for a peer that's idle.
+
+**TLS** (std/net's, and HTTPS's) is Mbed TLS 4.1 (TLS 1.2 and 1.3,
+vendored in core/third_party/mbedtls, its exported names renamed to the core's) on
+every system, one implementation, as Go's and rustls are: Apple's
+Network.framework owns its socket, SChannel and OpenSSL differ in what
+they take and say, and Android's NDK has none. A session sits on the
+thread that owns its socket (the net thread, an HTTP server's), between
+the socket and the connection's buffers, the reads and writes above it
+the same (core/src/std/tls.h; nettls.c on the net thread). A
+configuration (net.clientTLS, net.serverTLS) is made once and kept, the
+same inputs giving the same one. A client checks the server's
+certificate once the handshake is done, before a byte of the app's
+goes: against the authorities a configuration gives, with Mbed TLS; by
+default as the system does, Apple's SecTrust and Windows'
+CertGetCertificateChain (loaded as first needed, run on a thread of
+their own: they may fetch), or against the system's authorities read
+once (Linux's bundle as Go finds it, Android's store) with Mbed TLS.
+net.c and httpserver.c reach TLS through a pointer tls.c sets as a
+configuration is made, so an app that never calls std/net's TLS
+builtins (their own table, `tls`) links none of it.
 
 **An app's metadata** is `asuka.toml` beside its Asuka code (TOML 1.0, read
 by `internal/toml`), all optional:

@@ -1,6 +1,6 @@
 // Package std/net speaks protocols other than HTTP: TCP connections and
-// servers, UDP datagrams, DNS lookups, and IP addresses. Redis, SMTP, a
-// game's server, a protocol of your own:
+// servers, TLS over them, UDP datagrams, DNS lookups, and IP addresses.
+// Redis, SMTP, a game's server, a protocol of your own:
 //
 //   let c = try await net.connect("localhost", 6379)
 //   try await c.write("PING\r\n")
@@ -11,6 +11,11 @@
 //       try await c.write("{line.upper()}\n")
 //     }
 //   })
+//
+//   let tls = try await net.connectTLS("example.com", 443)
+//
+// TLS (1.2 and 1.3) checks the server's certificate against the
+// authorities the system trusts unless told otherwise (clientTLS).
 //
 // Every wait is async and runs off the main thread: a connect, a read,
 // a write, a lookup. Cancelling the task that waits (or its owner going)
@@ -58,6 +63,13 @@ pub enum NetError: Error {
   unsupported
   /// Another failure: the system's reason.
   failed(reason: string)
+  /// TLS failed: the handshake (no version, cipher suite or ALPN
+  /// protocol in common, the other side's alert, a server that doesn't
+  /// speak TLS), or a record that doesn't check out.
+  tls(reason: string)
+  /// The other side's certificate isn't trusted: why, and the reason in
+  /// words ("example.com's certificate expired on 2025-03-01").
+  untrustedCertificate(problem: CertificateProblem, reason: string)
 
   /// The error's text: what failed, and where.
   fn message() -> string {
@@ -77,6 +89,8 @@ pub enum NetError: Error {
       .invalid(reason) => return reason
       .unsupported => return "a web page has no sockets (a program, a desktop app and a phone's app have)"
       .failed(reason) => return reason
+      .tls(reason) => return "TLS failed: {reason}"
+      .untrustedCertificate(_, reason) => return reason
     }
   }
 }
@@ -109,6 +123,11 @@ fn typed(e: Error) -> Error {
     "tooLarge" => return NetError.tooLarge(limit: detail.toInt() ?? 0)
     "invalid" => return NetError.invalid(reason: detail)
     "unsupported" => return NetError.unsupported
+    "tls" => return NetError.tls(reason: detail)
+    "untrustedCertificate" => {
+      let p = detail.split(":", count: 2)
+      return NetError.untrustedCertificate(problem: problemNamed(p[0]), reason: if p.count() > 1 { p[1] } else { "the certificate isn't trusted" })
+    }
     _ => return NetError.failed(reason: detail)
   }
 }
@@ -466,6 +485,47 @@ pub struct Conn {
   fn setKeepAlive(period: Duration) throws {
     try setOption(handle, 2, period.nanoseconds())
   }
+
+  /// Upgrades the connection to TLS, in place, as its client: after a
+  /// STARTTLS (SMTP's, IMAP's), Postgres's SSLRequest. The server's
+  /// certificate is checked for serverName (a host's name, which goes in
+  /// SNI, or an IP address) as tls says (clientTLS's; by default, against
+  /// the authorities the system trusts). From then on what's read and
+  /// written goes through TLS. It returns what the handshake agreed;
+  /// timeout (0s: none) gives up with NetError.timedOut. It throws
+  /// NetError: tls, untrustedCertificate...
+  async fn startTLS(serverName: string, tls: ClientTLS? = none, timeout: Duration = 0s) throws -> TLSState {
+    let config = tls ?? (try clientTLS())
+    do {
+      return stateOf(try await upgrade(handle, config.handle, serverName, false, timeout.nanoseconds()))
+    } catch e {
+      throw typed(e)
+    }
+  }
+
+  /// Upgrades the connection to TLS, in place, as its server (a STARTTLS
+  /// server's), with tls's certificates. It returns what the handshake
+  /// agreed.
+  async fn startServerTLS(tls: ServerTLS, timeout: Duration = 0s) throws -> TLSState {
+    do {
+      return stateOf(try await upgrade(handle, tls.handle, "", true, timeout.nanoseconds()))
+    } catch e {
+      throw typed(e)
+    }
+  }
+
+  /// What the connection's TLS handshake agreed, once it's done: the
+  /// version, the cipher suite, the ALPN protocol, the other side's
+  /// certificates. A TLS server's connection (listen's and serve's with
+  /// tls:) does its handshake as its first read or write waits on it, or
+  /// as this does. NetError.invalid for a connection without TLS.
+  async fn handshake(timeout: Duration = 0s) throws -> TLSState {
+    do {
+      return stateOf(try await awaitHandshake(handle, timeout.nanoseconds()))
+    } catch e {
+      throw typed(e)
+    }
+  }
 }
 
 fn checked() throws {
@@ -546,12 +606,14 @@ pub struct Listener {
 /// Listens for TCP connections at port (0: one the system picks,
 /// Listener.port) on host: "127.0.0.1" (the default) takes only this
 /// computer's clients; "0.0.0.0" every IPv4 interface's; "::" or ""
-/// every interface's, IPv6's and IPv4's. It throws NetError:
-/// addressInUse, addressUnavailable, denied...
-pub async fn listen(port: int, host: string = "127.0.0.1") throws -> Listener {
+/// every interface's, IPv6's and IPv4's. With tls (serverTLS's), each
+/// connection speaks TLS, its handshake done as its first read or write
+/// waits on it. It throws NetError: addressInUse, addressUnavailable,
+/// denied...
+pub async fn listen(port: int, host: string = "127.0.0.1", tls: ServerTLS? = none) throws -> Listener {
   try checked()
   do {
-    let h = try await tcpListen(host, port)
+    let h = try await tcpListen(host, port, if let t = tls { t.handle } else { 0 })
     let a = addressOf(addresses(h), 0)
     return Listener(address: a, port: a.port, handle: h)
   } catch e {
@@ -588,15 +650,17 @@ pub struct Server {
 /// the handler returns). A handler that throws has its error given to
 /// onError (written to stderr when there's none). The server belongs to the task
 /// that started it: when that ends, the server stops, its handlers
-/// cancelled.
+/// cancelled. With tls (serverTLS's), each connection speaks TLS: a
+/// client whose handshake fails has its handler's first read or write
+/// throw, which onError hears.
 ///
 ///   let server = try await net.serve(7000, c => {
 ///     while let line = try await c.readLine() {
 ///       try await c.write("{line}\n")
 ///     }
 ///   })
-pub async fn serve(port: int, handler: async fn(Conn) throws, host: string = "127.0.0.1", onError: (fn(Conn, Error))? = none) throws -> Server {
-  let l = try await listen(port, host: host)
+pub async fn serve(port: int, handler: async fn(Conn) throws, host: string = "127.0.0.1", onError: (fn(Conn, Error))? = none, tls: ServerTLS? = none) throws -> Server {
+  let l = try await listen(port, host: host, tls: tls)
   return try l.serve(handler, onError: onError)
 }
 
@@ -609,6 +673,172 @@ fn dispatcher(handler: async fn(Conn) throws, report: fn(Conn, Error)) -> async 
   } catch e {
     report(c, typed(e))
   }
+}
+
+// ---- TLS ----
+
+/// A version of TLS.
+pub enum TLSVersion {
+  /// TLS 1.2 (RFC 5246).
+  tls12
+  /// TLS 1.3 (RFC 8446).
+  tls13
+}
+
+fn versionNumber(v: TLSVersion) -> int = if v == TLSVersion.tls13 { 13 } else { 12 }
+
+/// Why a certificate isn't trusted: NetError.untrustedCertificate's.
+pub enum CertificateProblem {
+  /// It has expired.
+  expired
+  /// It isn't valid yet.
+  notYetValid
+  /// It's for other names than the host's.
+  wrongHost
+  /// No authority this side trusts signed it (or it signed itself).
+  unknownIssuer
+  /// Its authority has revoked it.
+  revoked
+  /// The other side showed none: a client, to a server that requires one.
+  missing
+  /// Anything else: a use it isn't for, a weak key or signature.
+  invalid
+}
+
+fn problemNamed(name: string) -> CertificateProblem {
+  match name {
+    "expired" => return CertificateProblem.expired
+    "notYetValid" => return CertificateProblem.notYetValid
+    "wrongHost" => return CertificateProblem.wrongHost
+    "unknownIssuer" => return CertificateProblem.unknownIssuer
+    "revoked" => return CertificateProblem.revoked
+    "missing" => return CertificateProblem.missing
+    _ => return CertificateProblem.invalid
+  }
+}
+
+/// What a TLS handshake agreed.
+pub struct TLSState {
+  /// The version: TLS 1.2 or 1.3.
+  version: TLSVersion
+  /// The cipher suite, by its IANA name: "TLS_AES_128_GCM_SHA256".
+  cipherSuite: string
+  /// The application protocol ALPN chose ("h2", "http/1.1"); "" for
+  /// none.
+  protocol: string
+  /// The server's name: the one a client connected to, or the one it
+  /// asked a server for (SNI; "" for none).
+  serverName: string
+  /// The other side's certificates as it sent them (DER), its own first,
+  /// then the authorities' that signed it; [] when it showed none (a
+  /// client, mostly). crypto.publicKeyFromDER reads the first's key.
+  peerCertificates: [bytes]
+}
+
+fn stateOf(fields: [bytes]) -> TLSState {
+  var certs: [bytes] = []
+  for i in 4..<fields.count() {
+    certs.push(fields[i])
+  }
+  return TLSState(version: if fields[0].string() == "13" { TLSVersion.tls13 } else { TLSVersion.tls12 }, cipherSuite: fields[1].string(), protocol: fields[2].string(), serverName: fields[3].string(), peerCertificates: certs)
+}
+
+/// How a client's TLS connections are made: whom they trust, what they
+/// show. clientTLS makes it.
+pub struct ClientTLS {
+  handle: int = 0
+}
+
+/// How a TLS server's connections are made: its certificates, and whom
+/// it asks for theirs. serverTLS makes it.
+pub struct ServerTLS {
+  handle: int = 0
+}
+
+/// A certificate chain and its private key, PEM: what a server shows for
+/// the names the certificate has (serverTLS's others).
+pub struct KeyPair {
+  /// The certificate, then the authorities' that signed it, up to (not
+  /// with) the root: PEM's CERTIFICATE blocks.
+  certificate: string
+  /// Its private key: PEM's PRIVATE KEY (PKCS#8), RSA PRIVATE KEY or EC
+  /// PRIVATE KEY, not encrypted.
+  key: string
+}
+
+/// A client's TLS configuration. By default it trusts the authorities
+/// the system trusts: Apple's and Windows' own checks (what the user and
+/// their administrator trust, intermediates fetched, revocation); on
+/// Linux the system's CA bundle (SSL_CERT_FILE, else
+/// /etc/ssl/certs/ca-certificates.crt and the like; SSL_CERT_DIR);
+/// Android's system store. ca (PEM certificates) is trusted instead: a
+/// private authority's, a self-signed server's. certificate and key
+/// (PEM) are the client's own, for a server that asks for one (mutual
+/// TLS). alpn is the application protocols offered, most wanted first
+/// ("h2", "http/1.1"). minVersion and maxVersion bound the versions.
+/// insecureSkipVerify checks no certificate at all: anyone can pretend
+/// to be the server, so it's for tests. It throws NetError.invalid for
+/// what can't be read.
+///
+///   let tls = try net.clientTLS(ca: try fs.readText("ca.pem"))
+///   let c = try await net.connectTLS("db.internal", 5433, tls: tls)
+pub fn clientTLS(ca: string = "", certificate: string = "", key: string = "", alpn: [string] = [], minVersion: TLSVersion = .tls12, maxVersion: TLSVersion = .tls13, insecureSkipVerify: bool = false) throws -> ClientTLS {
+  try checked()
+  do {
+    return ClientTLS(handle: try clientConfig(ca, certificate, key, alpn, versionNumber(minVersion), versionNumber(maxVersion), insecureSkipVerify))
+  } catch e {
+    throw typed(e)
+  }
+}
+
+/// A TLS server's configuration: certificate (PEM: the server's, then
+/// the authorities' that signed it) and its key (PEM, not encrypted).
+/// others are more, for other names: a client's is shown the one whose
+/// names match the name it asks for (SNI), the first when none does.
+/// alpn is the application protocols the server speaks, most wanted
+/// first. clientCA (PEM) asks each client for a certificate an authority
+/// of it signed (mutual TLS): required unless requireClientCertificate
+/// is false, when one that's shown is checked. It throws
+/// NetError.invalid for what can't be read, or a key that isn't its
+/// certificate's.
+///
+///   let tls = try net.serverTLS(certificate: try fs.readText("cert.pem"), key: try fs.readText("key.pem"))
+///   let server = try await http.serve(8443, handler, tls: tls)
+pub fn serverTLS(certificate: string, key: string, others: [KeyPair] = [], alpn: [string] = [], clientCA: string = "", requireClientCertificate: bool = true, minVersion: TLSVersion = .tls12, maxVersion: TLSVersion = .tls13) throws -> ServerTLS {
+  try checked()
+  var pairs = [certificate, key]
+  for p in others {
+    pairs.push(p.certificate)
+    pairs.push(p.key)
+  }
+  do {
+    return ServerTLS(handle: try serverConfig(pairs, alpn, clientCA, requireClientCertificate, versionNumber(minVersion), versionNumber(maxVersion)))
+  } catch e {
+    throw typed(e)
+  }
+}
+
+/// Connects to port at host over TCP, as connect does, then speaks TLS
+/// as its client: the server's certificate checked for serverName (host
+/// when it's ""), as tls says (clientTLS's; by default, against the
+/// authorities the system trusts). timeout is the longest the lookup and
+/// the connecting take, and the longest the handshake takes after. It
+/// throws NetError: refused, notFound, timedOut, tls,
+/// untrustedCertificate...
+///
+///   let c = try await net.connectTLS("example.com", 443)
+///   try await c.write("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n")
+///   let reply = try await c.readAll()
+pub async fn connectTLS(host: string, port: int, tls: ClientTLS? = none, serverName: string = "", timeout: Duration = 0s, noDelay: bool = true, keepAlive: Duration = 15s) throws -> Conn {
+  let config = tls ?? (try clientTLS())
+  let c = try await connect(host, port, timeout: timeout, noDelay: noDelay, keepAlive: keepAlive)
+  do {
+    let _ = try await c.startTLS(if serverName.isEmpty() { host } else { serverName }, tls: config, timeout: timeout)
+  } catch e {
+    c.close()
+    throw e
+  }
+  return c
 }
 
 // ---- UDP ----
@@ -852,7 +1082,7 @@ native fn available() -> bool
 native fn ipParse(text: string) -> bytes?
 native fn ipText(octets: bytes) -> string
 native async fn tcpConnect(host: string, port: int, timeoutNs: int, noDelay: bool, keepAliveNs: int) throws -> int
-native async fn tcpListen(host: string, port: int) throws -> int
+native async fn tcpListen(host: string, port: int, tls: int) throws -> int
 native async fn tcpAccept(listener: int, timeoutNs: int) throws -> int
 native fn addresses(h: int) -> [string]
 native async fn tcpRead(h: int, mode: int, n: int, delimiter: bytes, timeoutNs: int) throws -> bytes?
@@ -872,3 +1102,11 @@ native async fn lookupCanonical(host: string) throws -> string
 native fn serveStart(listener: int, dispatch: async fn(int)) -> int
 native async fn serveClose(server: int, graceNs: int)
 native async fn serveWait(server: int)
+
+// ---- What tls.c does: TLS, a table of its own (an app without TLS
+// doesn't link it, or Mbed TLS under it) ----
+
+native(tls) fn clientConfig(ca: string, certificate: string, key: string, alpn: [string], minVersion: int, maxVersion: int, insecure: bool) throws -> int
+native(tls) fn serverConfig(pairs: [string], alpn: [string], clientCA: string, requireClient: bool, minVersion: int, maxVersion: int) throws -> int
+native(tls) async fn upgrade(h: int, config: int, serverName: string, server: bool, timeoutNs: int) throws -> [bytes]
+native(tls) async fn awaitHandshake(h: int, timeoutNs: int) throws -> [bytes]

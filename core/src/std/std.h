@@ -42,6 +42,7 @@ extern const ak_lib_entry ak_std_http[];  // httpserver.c: std/http's server
 extern const ak_lib_entry ak_std_log[];
 extern const ak_lib_entry ak_std_bigint[];
 extern const ak_lib_entry ak_std_net[];
+extern const ak_lib_entry ak_std_tls[];  // tls.c: std/net's TLS
 
 // Every package's table, NULL-terminated.
 extern const ak_lib_entry *const ak_std_libs[];

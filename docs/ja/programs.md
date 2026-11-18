@@ -694,7 +694,22 @@ $ curl localhost:8080/notes/1
 - `http.Limits(headerSize:, bodySize:, connections:, headerTimeout:, readTimeout:, idleTimeout:)` で、受け付ける量と待つ時間を決めます。既定ではヘッダー 64 KiB、ボディ 16 MiB、接続 10000、リクエストのヘッダーが届くまで 30 秒、ボディの途中で待つのは毎回 30 秒まで、次のリクエストまでは 60 秒です。上限を超えたものにはステータス（431、413、408）を返して接続を閉じます。
 - `server.close(grace: 10s)` でサーバーを止めます。すぐに新しい接続の受け付けをやめ、処理中のリクエストには返信させ、`grace` を過ぎてもまだ動いているハンドラーはキャンセルします（`defer` は実行されます）。`server.wait()` は閉じるまで待ちます。サーバーはそれを始めたタスクに属するので、`main` が戻ると閉じます。そのため `main` は `server.wait()` を await するか、上の例のように終了のシグナルを待ちます。シグナルを読むストリームがないと、Ctrl-C で `main` が終わり、サーバーもすぐに閉じて、まだ動いているハンドラーはキャンセルされます。`os.signals()` を読んでから閉じれば、先に答えさせられます（[シグナル](#シグナル)を参照）。
 
-HTTPS はリバースプロキシー（Caddy、nginx）に任せます。プロキシーが TLS を終端し、`127.0.0.1` で待ち受けるサーバーに HTTP でリクエストを渡します。クライアントのアドレスは `X-Forwarded-For` に入ります。デスクトップアプリも同じようにタスクからローカル API を提供でき、スマートフォンのアプリも動いているあいだは同じです。Web ページは待ち受けられません（`ServerError.unsupported`）。
+`tls:` を渡せば、そのまま HTTPS を提供できます。`net.serverTLS` には証明書とその秘密鍵を PEM で渡します（Let's Encrypt や `mkcert` が書き出す形式です）。各接続は TLS 1.2 か 1.3 で通信します（[TLS](#tls) を参照）。
+
+```asuka check
+import std/fs
+import std/http
+import std/net
+
+async fn main() throws {
+  let tls = try net.serverTLS(certificate: try fs.readText("cert.pem"), key: try fs.readText("key.pem"))
+  let server = try await http.serve(8443, req => .text("hello over TLS"), host: "0.0.0.0", tls: tls)
+  print("listening on {server.url}")
+  await server.wait()
+}
+```
+
+TLS をリバースプロキシー（Caddy、nginx）に任せることもでき、その場合は証明書の更新もプロキシーが行います。プロキシーは `127.0.0.1` で待ち受けるサーバーに HTTP でリクエストを渡し、クライアントのアドレスは `X-Forwarded-For` に入ります。デスクトップアプリも同じようにタスクからローカル API を提供でき、スマートフォンのアプリも動いているあいだは同じです。Web ページは待ち受けられません（`ServerError.unsupported`）。
 
 ハンドラーはただの関数なので、テストでは `Request` を渡してハンドラーやルーターを直接呼べます。ソケットは介しません：`let r = try await api.handle(http.Request(method: "GET", path: "/notes/1"))`。
 
@@ -753,7 +768,46 @@ async fn main() throws {
 - 待っているタスクをキャンセルすると（`race` で負けた、`withTimeout` の時間切れ、オーナーがなくなった）、その待ちは止まります。それまでに届いたデータは失われず、次の読み込みが受け取ります。書き始めた書き込みは最後まで書かれます。ソケットはそれを作ったタスクに属し、そのタスクが終わると閉じます。
 - 失敗は `NetError` になります：`refused`、`reset`、`timedOut`、`unreachable`、`notFound`、`lookupFailed`、`closed`、`ended`、`addressInUse`、`addressUnavailable`、`denied`、`tooLarge`、`invalid`、`unsupported`、`failed`。
 
-`std/net` にはまだ TLS がありません。HTTPS や `wss:` には、各プラットフォーム自身のクライアントを通る `std/http` と `std/websocket` を使ってください。デスクトップアプリとスマートフォンのアプリ（動いているあいだ）は、プログラムと同じようにソケットを使えます。Web ページにはソケットがありません（`NetError.unsupported`）が、IP アドレスと host:port の補助関数は使えます。
+デスクトップアプリとスマートフォンのアプリ（動いているあいだ）は、プログラムと同じようにソケットを使えます。Web ページにはソケットがありません（`NetError.unsupported`）が、IP アドレスと host:port の補助関数は使えます。
+
+### TLS
+
+`net.connectTLS` は接続してから、その上で TLS 1.2 か 1.3 で通信します。Go の `tls.Dial` や Node の `tls.connect` と同じです。こちらのデータを送る前に、サーバーの証明書がホスト名に対して検証されます。そのあとの読み書きは、上の `Conn` とまったく同じです。
+
+```asuka check
+import std/net
+
+async fn main() throws {
+  let c = try await net.connectTLS("example.com", 443, timeout: 10s)
+  try await c.write("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n")
+  print(try await c.readLine())   // HTTP/1.1 200 OK
+  c.close()
+}
+```
+
+平文で始めて途中で切り替えるプロトコル（SMTP や IMAP の STARTTLS、PostgreSQL の SSLRequest）では、その接続の上で `startTLS` を呼びます：
+
+```asuka check
+import std/net
+
+async fn main() throws {
+  let c = try await net.connect("mail.example.com", 587)
+  let _ = try await c.readLine()   // 220 mail.example.com ESMTP
+  try await c.write("STARTTLS\r\n")
+  let _ = try await c.readLine()   // 220 Ready to start TLS
+  let state = try await c.startTLS("mail.example.com")
+  print("{state.version} {state.cipherSuite}")
+  try await c.write("EHLO me.example.com\r\n")
+}
+```
+
+- サーバーの証明書は、システムが信頼する認証局に照らして検証されます。macOS、iOS、Windows では、Safari や Edge と同じくシステム自身が検証します。ユーザーや管理者が信頼する・しないとした設定に従い、足りない中間証明書を取得し、失効も確かめます。Linux では、Go と同じようにシステムの CA バンドルを読みます。`SSL_CERT_FILE` があればそれを、なければ `/etc/ssl/certs/ca-certificates.crt`（Debian、Ubuntu）、`/etc/pki/tls/certs/ca-bundle.crt`（Fedora、RHEL）、`/etc/ssl/ca-bundle.pem`（openSUSE）、`/etc/ssl/cert.pem`（Alpine）などから最初に見つかったものを読み、続けて `SSL_CERT_DIR` のファイルを読みます。静的ビルドも同じ場所を読むので、コンテナーイメージには `ca-certificates` パッケージが必要です。Android では、システムの証明書ストアを使います。
+- `net.clientTLS(ca:, certificate:, key:, alpn:, minVersion:, maxVersion:, insecureSkipVerify:)` はクライアントの設定を作り、`connectTLS` と `startTLS` は `tls:` でそれを受け取ります。`ca`（PEM）は、システムの認証局の代わりに信頼されます。プライベートな認証局や、自己署名のサーバーの証明書に使います。`certificate` と `key` はこちら側の証明書と秘密鍵で、クライアント証明書を求めるサーバー（相互 TLS）向けです。`alpn` は提示するアプリケーションプロトコルです（`["h2", "http/1.1"]`）。`insecureSkipVerify` は何も検証しないので、だれでもサーバーになりすませます。テスト専用です。
+- `net.serverTLS(certificate:, key:, others:, alpn:, clientCA:, requireClientCertificate:)` はサーバーの設定を作ります。`net.listen`、`net.serve`、`http.serve` は `tls:` でそれを受け取り、`conn.startServerTLS(tls)` は既存の接続をその場で切り替えます。`others` は追加の証明書（`KeyPair`）で、クライアントが求めた名前（SNI）に名前が一致するものが提示されます。`clientCA` を渡すと、各クライアントに、その認証局のどれかが署名した証明書を求めます。
+- `conn.handshake()` はハンドシェイクで合意した内容を `TLSState` で返します。`version`、`cipherSuite`、ALPN の `protocol`、`serverName`、相手の証明書 `peerCertificates`（DER）です。TLS サーバーの接続は、最初の読み込みか書き込みが待つときにハンドシェイクを行います。クライアントがハンドシェイクに失敗すると、その読み込みか書き込みが例外を投げます。
+- 信頼できない証明書は `NetError.untrustedCertificate(problem, reason)` になります。`problem` は `expired`、`notYetValid`、`wrongHost`、`unknownIssuer`、`revoked`、`missing`、`invalid` のどれかで、`reason` は何が見つかったかを説明します（"example.com's certificate expired on 2025-03-01"）。それ以外の失敗は `NetError.tls(reason)` です。共通するバージョン、暗号スイート、ALPN プロトコルがない、相手からアラートが届いた、サーバーが TLS を話さない、といった場合です。
+
+TLS はどのプラットフォームでも同じ実装（Mbed TLS）で、一度も呼ばないアプリには含まれません。Web ページにはそのためのソケットがありません。Web ページでも、ほかのすべてのプラットフォームと同じく、`std/http` と `std/websocket` が各プラットフォーム自身のクライアントを通して HTTPS と `wss:` を扱います。
 
 ## 秘密、パスワード、署名：std/crypto
 
