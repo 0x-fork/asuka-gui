@@ -716,7 +716,22 @@ $ curl localhost:8080/notes/1
 - `http.Limits(headerSize:, bodySize:, connections:, headerTimeout:, readTimeout:, idleTimeout:)` 规定服务器接受多少数据、等待多久：头部 64 KiB，请求体 16 MiB，10000 个连接，请求头部 30 秒内要发完，请求体每次等待最多 30 秒，两次请求之间最多空闲 60 秒。超出限制时会返回相应状态（431、413、408）并关闭连接。
 - `server.close(grace: 10s)` 关闭服务器：立即停止接受新连接，让正在处理的请求完成回复，超过 `grace` 后取消仍在运行的处理函数（它们的 `defer` 会执行）。`server.wait()` 一直等到服务器关闭。服务器属于启动它的 task，`main` 返回时它也会关闭，所以 `main` 要 await `server.wait()`，或者像上面那样等待结束它的信号。没有流读取信号时，Ctrl-C 会结束 `main`，服务器也随之立即关闭：仍在运行的处理函数会被取消。读取 `os.signals()` 再关闭服务器，就能先让它们答复完（见[信号](#信号)）。
 
-HTTPS 交给反向代理（Caddy、nginx）：由它终止 TLS，再通过 HTTP 把请求转给监听在 `127.0.0.1` 上的服务器，客户端地址放在 `X-Forwarded-For` 里。桌面应用也可以用同样的方式在一个 task 里提供本地 API，手机应用在运行期间也可以；网页不能监听（`ServerError.unsupported`）。
+传入 `tls:` 就能直接提供 HTTPS：`net.serverTLS` 接收证书和对应的私钥，都是 PEM 格式（Let's Encrypt 和 `mkcert` 生成的就是这种），之后每个连接都使用 TLS 1.2 或 1.3 通信（见 [TLS](#tls)）。
+
+```asuka check
+import std/fs
+import std/http
+import std/net
+
+async fn main() throws {
+  let tls = try net.serverTLS(certificate: try fs.readText("cert.pem"), key: try fs.readText("key.pem"))
+  let server = try await http.serve(8443, req => .text("hello over TLS"), host: "0.0.0.0", tls: tls)
+  print("listening on {server.url}")
+  await server.wait()
+}
+```
+
+也可以把 TLS 交给反向代理（Caddy、nginx），证书由它自己续期：它通过 HTTP 把请求转给监听在 `127.0.0.1` 上的服务器，客户端地址放在 `X-Forwarded-For` 里。桌面应用也可以用同样的方式在一个 task 里提供本地 API，手机应用在运行期间也可以；网页不能监听（`ServerError.unsupported`）。
 
 处理函数就是一个函数，所以测试可以直接用一个 `Request` 调用它或者路由，中间不经过 socket：`let r = try await api.handle(http.Request(method: "GET", path: "/notes/1"))`。
 
@@ -775,7 +790,46 @@ async fn main() throws {
 - 取消正在等待的 task（输掉了一次 `race`、`withTimeout` 到时、它的 owner 被销毁）会停止这次等待，而且此前已经到达的数据不会丢失：下一次读取会拿到它们。已经开始的写入会继续写完。socket 属于创建它的 task：那个 task 结束时 socket 随之关闭。
 - 失败时抛出 `NetError`：`refused`、`reset`、`timedOut`、`unreachable`、`notFound`、`lookupFailed`、`closed`、`ended`、`addressInUse`、`addressUnavailable`、`denied`、`tooLarge`、`invalid`、`unsupported`、`failed`。
 
-`std/net` 暂时还没有 TLS：需要 HTTPS 和 `wss:` 时，用 `std/http` 和 `std/websocket`，它们通过各平台自己的客户端通信。桌面应用和手机应用（运行期间）可以像程序一样使用 socket；网页没有 socket（`NetError.unsupported`），不过 IP 地址和 host:port 相关的辅助函数照样可用。
+桌面应用和手机应用（运行期间）可以像程序一样使用 socket；网页没有 socket（`NetError.unsupported`），不过 IP 地址和 host:port 相关的辅助函数照样可用。
+
+### TLS
+
+`net.connectTLS` 先建立连接，再在这个连接上使用 TLS 1.2 或 1.3 通信，和 Go 的 `tls.Dial`、Node 的 `tls.connect` 一样。在你发送任何数据之前，它会先按主机名检查服务器的证书；之后的读写和上面的 `Conn` 完全相同。
+
+```asuka check
+import std/net
+
+async fn main() throws {
+  let c = try await net.connectTLS("example.com", 443, timeout: 10s)
+  try await c.write("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n")
+  print(try await c.readLine())   // HTTP/1.1 200 OK
+  c.close()
+}
+```
+
+有些协议先用明文通信、之后再升级（SMTP 和 IMAP 的 STARTTLS、PostgreSQL 的 SSLRequest），这时在原来的连接上调用 `startTLS` 即可：
+
+```asuka check
+import std/net
+
+async fn main() throws {
+  let c = try await net.connect("mail.example.com", 587)
+  let _ = try await c.readLine()   // 220 mail.example.com ESMTP
+  try await c.write("STARTTLS\r\n")
+  let _ = try await c.readLine()   // 220 Ready to start TLS
+  let state = try await c.startTLS("mail.example.com")
+  print("{state.version} {state.cipherSuite}")
+  try await c.write("EHLO me.example.com\r\n")
+}
+```
+
+- 服务器的证书会按系统信任的证书颁发机构来检查。在 macOS、iOS 和 Windows 上由系统自己检查，和 Safari、Edge 一样：会遵循用户和管理员信任或不信任的设置，自动获取缺失的中间证书，并检查吊销状态。在 Linux 上，会像 Go 一样读取系统的 CA 证书包：优先用 `SSL_CERT_FILE`，否则依次查找 `/etc/ssl/certs/ca-certificates.crt`（Debian、Ubuntu）、`/etc/pki/tls/certs/ca-bundle.crt`（Fedora、RHEL）、`/etc/ssl/ca-bundle.pem`（openSUSE）、`/etc/ssl/cert.pem`（Alpine）等位置，然后再读 `SSL_CERT_DIR` 里的文件。静态构建读的也是这些位置，所以容器镜像里要装上 `ca-certificates` 包。在 Android 上，用的是系统的证书存储。
+- `net.clientTLS(ca:, certificate:, key:, alpn:, minVersion:, maxVersion:, insecureSkipVerify:)` 创建客户端配置，`connectTLS` 和 `startTLS` 通过 `tls:` 接收它。`ca`（PEM）会代替系统的证书颁发机构被信任，比如私有 CA，或者自签名的服务器。`certificate` 和 `key` 是本端自己的证书和私钥，用于要求客户端出示证书的服务器（双向 TLS）。`alpn` 是本端提供的应用层协议（`["h2", "http/1.1"]`）。`insecureSkipVerify` 什么都不检查，谁都能冒充服务器，所以只适合测试。
+- `net.serverTLS(certificate:, key:, others:, alpn:, clientCA:, requireClientCertificate:)` 创建服务器配置：`net.listen`、`net.serve` 和 `http.serve` 通过 `tls:` 接收它，`conn.startServerTLS(tls)` 则在原来的连接上升级。`others` 是更多的证书（`KeyPair`）：客户端请求的名字（SNI）和哪张证书的名字匹配，就出示哪张。`clientCA` 要求每个客户端出示由其中某个机构签发的证书。
+- `conn.handshake()` 返回握手协商出的结果，即一个 `TLSState`：`version`、`cipherSuite`、ALPN 选定的 `protocol`、`serverName`，以及对端的证书 `peerCertificates`（DER）。TLS 服务器上的连接会在第一次读或写需要等待时完成握手；客户端握手失败时，这次读或写会抛出错误。
+- 证书不受信任时抛出 `NetError.untrustedCertificate(problem, reason)`：`problem` 是 `expired`、`notYetValid`、`wrongHost`、`unknownIssuer`、`revoked`、`missing`、`invalid` 之一，`reason` 说明具体发现了什么（"example.com's certificate expired on 2025-03-01"）。其他失败都是 `NetError.tls(reason)`：双方没有共同支持的版本、密码套件或 ALPN 协议，对端发来了警报（alert），或者服务器根本不说 TLS。
+
+TLS 在所有平台上都是同一份实现（Mbed TLS），从不调用它的应用不会包含它。网页没有可供它使用的 socket：在网页上，`std/http` 和 `std/websocket` 照样能使用 HTTPS 和 `wss:`，其他平台也一样，都是通过各平台自己的客户端。
 
 ## 密钥、密码与签名：std/crypto
 

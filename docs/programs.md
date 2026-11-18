@@ -991,11 +991,28 @@ $ curl localhost:8080/notes/1
   running are cancelled. Reading `os.signals()` and closing lets them
   answer first ([Signals](#signals)).
 
-HTTPS is a reverse proxy's (Caddy, nginx): it terminates TLS and passes
-the requests on over HTTP to a server on `127.0.0.1`, the client's
-address in `X-Forwarded-For`. A desktop app serves a local API the same
-way, from a task, and a phone's app while it runs; a web page can't
-listen (`ServerError.unsupported`).
+With `tls:` it serves HTTPS: `net.serverTLS` takes a certificate and
+its key, PEM, as Let's Encrypt and `mkcert` write them, and each
+connection speaks TLS 1.2 or 1.3 ([TLS](#tls)).
+
+```asuka check
+import std/fs
+import std/http
+import std/net
+
+async fn main() throws {
+  let tls = try net.serverTLS(certificate: try fs.readText("cert.pem"), key: try fs.readText("key.pem"))
+  let server = try await http.serve(8443, req => .text("hello over TLS"), host: "0.0.0.0", tls: tls)
+  print("listening on {server.url}")
+  await server.wait()
+}
+```
+
+A reverse proxy (Caddy, nginx) can do TLS instead, renewing its
+certificates itself: it passes the requests on over HTTP to a server on
+`127.0.0.1`, the client's address in `X-Forwarded-For`. A desktop app
+serves a local API the same way, from a task, and a phone's app while
+it runs; a web page can't listen (`ServerError.unsupported`).
 
 A handler is a function, so a test calls it, or the router, with a
 `Request`, no socket between: `let r = try await
@@ -1099,11 +1116,91 @@ async fn main() throws {
   `addressInUse`, `addressUnavailable`, `denied`, `tooLarge`,
   `invalid`, `unsupported`, `failed`.
 
-TLS isn't in `std/net` yet: `std/http` and `std/websocket` speak HTTPS
-and `wss:` through each platform's own client. A desktop app and a
-phone's app (while it runs) use sockets as a program does; a web page
-has none (`NetError.unsupported`), though its IP addresses and
-host:port helpers work.
+A desktop app and a phone's app (while it runs) use sockets as a
+program does; a web page has none (`NetError.unsupported`), though its
+IP addresses and host:port helpers work.
+
+### TLS
+
+`net.connectTLS` connects and speaks TLS 1.2 or 1.3 over the
+connection, as Go's `tls.Dial` and Node's `tls.connect` do: the
+server's certificate is checked for the host before anything of yours
+is sent, and what's read and written from then on is a `Conn`'s, as
+above.
+
+```asuka check
+import std/net
+
+async fn main() throws {
+  let c = try await net.connectTLS("example.com", 443, timeout: 10s)
+  try await c.write("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n")
+  print(try await c.readLine())   // HTTP/1.1 200 OK
+  c.close()
+}
+```
+
+A protocol that starts in plaintext and then upgrades (SMTP's and
+IMAP's STARTTLS, PostgreSQL's SSLRequest) calls `startTLS` on its
+connection, in place:
+
+```asuka check
+import std/net
+
+async fn main() throws {
+  let c = try await net.connect("mail.example.com", 587)
+  let _ = try await c.readLine()   // 220 mail.example.com ESMTP
+  try await c.write("STARTTLS\r\n")
+  let _ = try await c.readLine()   // 220 Ready to start TLS
+  let state = try await c.startTLS("mail.example.com")
+  print("{state.version} {state.cipherSuite}")
+  try await c.write("EHLO me.example.com\r\n")
+}
+```
+
+- The server's certificate is checked against the authorities the
+  system trusts. On macOS, iOS and Windows the system checks it, as
+  Safari and Edge do: what the user and their administrator trust or
+  don't, missing intermediates fetched, revocation. On Linux the
+  system's CA bundle is read, as Go reads it: `SSL_CERT_FILE`, else the
+  first of `/etc/ssl/certs/ca-certificates.crt` (Debian, Ubuntu),
+  `/etc/pki/tls/certs/ca-bundle.crt` (Fedora, RHEL),
+  `/etc/ssl/ca-bundle.pem` (openSUSE), `/etc/ssl/cert.pem` (Alpine) and
+  the like, then `SSL_CERT_DIR`'s files; a static build reads the same,
+  so a container image needs its `ca-certificates` package. On Android,
+  the system's store.
+- `net.clientTLS(ca:, certificate:, key:, alpn:, minVersion:,
+  maxVersion:, insecureSkipVerify:)` makes a client's configuration,
+  which `connectTLS` and `startTLS` take as `tls:`. `ca` (PEM) is
+  trusted instead of the system's authorities: a private one's, a
+  self-signed server's. `certificate` and `key` are this side's, for a
+  server that asks for one (mutual TLS). `alpn` is the application
+  protocols offered (`["h2", "http/1.1"]`). `insecureSkipVerify` checks
+  nothing, so anyone can pretend to be the server: it's for tests.
+- `net.serverTLS(certificate:, key:, others:, alpn:, clientCA:,
+  requireClientCertificate:)` makes a server's: `net.listen`,
+  `net.serve` and `http.serve` take it as `tls:`, and
+  `conn.startServerTLS(tls)` upgrades a connection in place. `others`
+  are more certificates (`KeyPair`s): a client is shown the one whose
+  names match the name it asks for (SNI). `clientCA` asks each client
+  for a certificate one of its authorities signed.
+- `conn.handshake()` says what the handshake agreed: a `TLSState`, its
+  `version`, `cipherSuite`, ALPN's `protocol`, `serverName`, and the
+  other side's `peerCertificates` (DER). A TLS server's connection does
+  its handshake as its first read or write waits on it; a client that
+  fails it makes that read or write throw.
+- A certificate that isn't trusted is
+  `NetError.untrustedCertificate(problem, reason)`, `problem` one of
+  `expired`, `notYetValid`, `wrongHost`, `unknownIssuer`, `revoked`,
+  `missing`, `invalid`, and `reason` what was found ("example.com's
+  certificate expired on 2025-03-01"). Any other failure is
+  `NetError.tls(reason)`: no version, cipher suite or ALPN protocol in
+  common, an alert from the other side, a server that doesn't speak
+  TLS.
+
+TLS is the same implementation on every platform (Mbed TLS), and an
+app that never calls it doesn't carry it. A web page has no sockets for
+it: `std/http` and `std/websocket` speak HTTPS and `wss:` there, and
+everywhere else through each platform's own client.
 
 ## Secrets, passwords and signatures: std/crypto
 

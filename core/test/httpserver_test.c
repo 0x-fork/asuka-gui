@@ -175,8 +175,10 @@ TEST(http_date_reason_fields) {
 // ---- The server, over sockets ----
 
 static ak_lib_fn lib(const char *name) {
-	for (const ak_lib_entry *e = ak_std_http; e->name; e++)
-		if (strcmp(e->name, name) == 0) return e->fn;
+	const ak_lib_entry *tables[] = {ak_std_http, ak_std_net, ak_std_tls};
+	for (int t = 0; t < 3; t++)
+		for (const ak_lib_entry *e = tables[t]; e->name; e++)
+			if (strcmp(e->name, name) == 0) return e->fn;
 	return NULL;
 }
 
@@ -274,13 +276,15 @@ static void pump(void) {
 	ak_sched_run();
 }
 
+static int64_t server_tls;  // the next server's TLS configuration (0: none)
+
 static int64_t server(int64_t *limits, int nlimits, int *port) {
 	ak_signal_bind_thread();
 	ak_closure *d = ak_closure_new(dispatch, NULL, 0, NULL);
 	ak_arr *lim = ak_arr_new(AK_K_INT, NULL, 6);
 	for (int i = 0; i < nlimits; i++) ak_arr_push(&lim, (ak_val){.i = limits[i]});
-	ak_val args[4] = {{.p = d}, {.p = ak_str_c("127.0.0.1")}, {.i = 0}, {.p = lim}};
-	int64_t h = lib("http.srvOpen")(args, 4).i;
+	ak_val args[5] = {{.p = d}, {.p = ak_str_c("127.0.0.1")}, {.i = 0}, {.p = lim}, {.i = server_tls}};
+	int64_t h = lib("http.srvOpen")(args, 5).i;
 	ak_release(d);
 	ak_release(args[1].p);
 	ak_release(lim);
@@ -640,6 +644,93 @@ TEST(http_server_many) {
 	CHECK_EQ_INT(atomic_load(&handled) - before, 3 * N);
 	close_server(h, 1000);
 	ak_buf_free(&seen_remote);
+}
+
+// ---- HTTPS ----
+
+static ak_str *pem(const char *name) {
+	char path[256];
+	snprintf(path, sizeof path, "testdata/tls/%s", name);
+	FILE *f = fopen(path, "rb");
+	char b[8192];
+	size_t n = f ? fread(b, 1, sizeof b, f) : 0;
+	if (f) fclose(f);
+	else T_FAIL("no %s", path);
+	return ak_str_new(b, n);
+}
+
+static bool settle_f(ak_future *f) {
+	for (int i = 0; i < 100000 && f->state == AK_FUT_PENDING; i++) pump();
+	return f->state != AK_FUT_PENDING;
+}
+
+static const char *fail_text(ak_future *f) { return f->state == AK_FUT_FAILED ? ak_error_message(f->error)->data : ""; }
+
+// The server with TLS (std/net's configuration): a request over std/net's
+// TLS client is answered; one in plaintext isn't.
+TEST(http_server_tls) {
+	ak_signal_bind_thread();
+	ak_arr *pairs = ak_str_arr(2);
+	ak_str *cert = pem("server.pem"), *key = pem("server.key");
+	ak_str_arr_push(&pairs, cert->data, cert->len);
+	ak_str_arr_push(&pairs, key->data, key->len);
+	ak_val sa[6] = {{.p = pairs}, {.p = ak_str_arr(0)}, {.p = ak_str_c("")}, {.i = 0}, {.i = 12}, {.i = 13}};
+	server_tls = lib("tls.serverConfig")(sa, 6).i;
+	REQUIRE(!ak_error_pending() && server_tls > 0);
+	ak_val ca[7] = {{.p = pem("ca.pem")}, {.p = ak_str_c("")}, {.p = ak_str_c("")}, {.p = ak_str_arr(0)}, {.i = 12}, {.i = 13}, {.i = 0}};
+	int64_t client_tls = lib("tls.clientConfig")(ca, 7).i;
+	REQUIRE(!ak_error_pending() && client_tls > 0);
+	int port;
+	int64_t h = server(NULL, 0, &port);
+	server_tls = 0;
+	REQUIRE(port > 0);
+
+	ak_val conn[5] = {{.p = ak_str_c("127.0.0.1")}, {.i = port}, {.i = 0}, {.i = 1}, {.i = 0}};
+	ak_future *cf = lib("net.tcpConnect")(conn, 5).p;
+	REQUIRE(settle_f(cf) && cf->state == AK_FUT_DONE);
+	int64_t c = cf->result.i;
+	ak_release(cf);
+	ak_val up[5] = {{.i = c}, {.i = client_tls}, {.p = ak_str_c("localhost")}, {.i = 0}, {.i = 0}};
+	ak_future *uf = lib("tls.upgrade")(up, 5).p;
+	REQUIRE(settle_f(uf));
+	CHECK_EQ_STR(fail_text(uf), "");
+	ak_release(uf);
+	const char *req = "GET /text HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
+	ak_val wa[3] = {{.i = c}, {.p = ak_bytes_new(req, strlen(req))}, {.i = 0}};
+	ak_future *wf = lib("net.tcpWrite")(wa, 3).p;
+	REQUIRE(settle_f(wf));
+	CHECK_EQ_STR(fail_text(wf), "");
+	ak_release(wf);
+	ak_val ra[5] = {{.i = c}, {.i = 3}, {.i = 65536}, {.p = ak_bytes_new(NULL, 0)}, {.i = 0}};
+	ak_future *rf = lib("net.tcpRead")(ra, 5).p;
+	REQUIRE(settle_f(rf));
+	CHECK_EQ_STR(fail_text(rf), "");
+	if (rf->state == AK_FUT_DONE) {
+		ak_bytes *b = rf->result.p;
+		char text[1024];
+		snprintf(text, sizeof text, "%.*s", (int)b->len, (const char *)b->data);
+		CHECK(strncmp(text, "HTTP/1.1 200 OK\r\n", 17) == 0);
+		CHECK(strstr(text, "\r\n\r\nhello"));
+	}
+	ak_release(rf);
+	ak_val cl = {.i = c};
+	lib("net.sockClose")(&cl, 1);
+
+	// Plaintext HTTP to it: no answer, the connection let go.
+	client p;
+	run(port, &p, "GET /text HTTP/1.1\r\nHost: x\r\n\r\n", "hello");
+	CHECK_EQ_STR(got(&p), "");
+	ak_buf_free(&p.got);
+	close_server(h, 0);
+	for (int i = 0; i < 4; i++) ak_release(ca[i].p);
+	for (int i = 0; i < 3; i++) ak_release(sa[i].p);
+	ak_release(up[2].p);
+	ak_release(conn[0].p);
+	ak_release(wa[1].p);
+	ak_release(ra[3].p);
+	ak_release(cert);
+	ak_release(key);
+	while (ak_sched_held()) pump();
 }
 
 T_MAIN()

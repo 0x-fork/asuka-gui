@@ -4,6 +4,30 @@ description = "TCP connections and servers, UDP datagrams, DNS lookups, IP addre
 
 # A connection to another device on the local network (not this one's
 # loopback) asks the user first, on iOS and on macOS 15: the prompt's
-# text, which an app's own asuka.toml can say better.
-[ios.usage]
+# text, which an app's own asuka.toml can say better. An app that makes
+# sockets or looks names up has it; one that only names std/net's types
+# (std/http's server takes its TLS configuration) doesn't.
+[uses.connect.ios.usage]
+NSLocalNetworkUsageDescription = "To connect to devices and services on your local network."
+[uses.connectTLS.ios.usage]
+NSLocalNetworkUsageDescription = "To connect to devices and services on your local network."
+[uses.listen.ios.usage]
+NSLocalNetworkUsageDescription = "To connect to devices and services on your local network."
+[uses.serve.ios.usage]
+NSLocalNetworkUsageDescription = "To connect to devices and services on your local network."
+[uses.udp.ios.usage]
+NSLocalNetworkUsageDescription = "To connect to devices and services on your local network."
+[uses.lookup.ios.usage]
+NSLocalNetworkUsageDescription = "To connect to devices and services on your local network."
+[uses.reverseLookup.ios.usage]
+NSLocalNetworkUsageDescription = "To connect to devices and services on your local network."
+[uses.lookupCNAME.ios.usage]
+NSLocalNetworkUsageDescription = "To connect to devices and services on your local network."
+[uses.lookupMX.ios.usage]
+NSLocalNetworkUsageDescription = "To connect to devices and services on your local network."
+[uses.lookupTXT.ios.usage]
+NSLocalNetworkUsageDescription = "To connect to devices and services on your local network."
+[uses.lookupSRV.ios.usage]
+NSLocalNetworkUsageDescription = "To connect to devices and services on your local network."
+[uses.lookupNS.ios.usage]
 NSLocalNetworkUsageDescription = "To connect to devices and services on your local network."

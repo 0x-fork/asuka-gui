@@ -146,6 +146,9 @@ const ak_lib_entry *const ak_std_libs[] = {
 #if defined(AK_USES_EVERY) || defined(AK_USES_NET)
 	ak_std_net,
 #endif
+#if defined(AK_USES_EVERY) || defined(AK_USES_TLS)
+	ak_std_tls,
+#endif
 	NULL,
 };
 

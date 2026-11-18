@@ -463,8 +463,8 @@ static void close_h(int64_t h) {
 
 TEST(net_tcp) {
 	ak_signal_bind_thread();
-	ak_val la[2] = {str("127.0.0.1"), {.i = 0}};
-	int64_t l = call_int("net.tcpListen", la, 2);
+	ak_val la[3] = {str("127.0.0.1"), {.i = 0}, {.i = 0}};
+	int64_t l = call_int("net.tcpListen", la, 3);
 	ak_release(la[0].p);
 	REQUIRE(l > 0);
 	ak_val ha = {.i = l};

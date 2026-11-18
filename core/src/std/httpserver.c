@@ -14,7 +14,7 @@
 // written. A client that goes away while its reply streams cancels the
 // handler's task.
 //
-//	http.srvOpen(dispatch, host, port, limits) -> int    a server's handle; 0 where none can listen
+//	http.srvOpen(dispatch, host, port, limits, tls) -> int    a server's handle; 0 where none can listen
 //	http.srvListen(h) -> Task<string>        "" once it listens, else why it can't
 //	http.srvPort(h) -> int                   the port it listens at
 //	http.srvClose(h, graceMs) -> Task<void>  it stops: once everything has
@@ -27,11 +27,14 @@
 //	http.srvEnd(id)
 //
 // limits: header bytes, body bytes, connections, and the header, read
-// and idle timeouts in milliseconds.
+// and idle timeouts in milliseconds. tls: a TLS configuration (std/net's
+// net.serverTLS, tls.c's), 0 for none.
 //
-// TLS isn't here: a reverse proxy terminates it. When it comes, it's a
-// layer between the socket and the buffers (conn's in and out), the
-// parser and the protocol above it the same.
+// TLS (HTTPS) is a layer between the socket and the buffers (conn's in
+// and out), on the server's thread, the parser and the protocol above it
+// the same: tls.h's, reached through ak_tls_layer, so a server without
+// TLS doesn't link it. A connection's handshake goes as it's accepted,
+// within the header timeout; one that fails closes it.
 #if defined(__APPLE__)
 #define _DARWIN_C_SOURCE
 #elif !defined(_WIN32)
@@ -40,6 +43,7 @@
 #endif
 #if !defined(__wasm__)
 #include "std/sock.h"  // before windows.h (base/thread.h's)
+#include "std/tls.h"
 #endif
 #include "std/std.h"
 #include "std/httpserver.h"
@@ -572,6 +576,10 @@ typedef struct {
 	ak_buf body;
 	bool close_after, ending, streaming, notify, peer_eof, shut;
 	int64_t linger_until;
+	// TLS: the session, whether its handshake is done, what it wants.
+	ak_tls *tls;
+	bool tls_open;
+	int twant;
 } conn;
 
 enum { CMD_OUT, CMD_CLOSE, CMD_ABORT };
@@ -594,6 +602,7 @@ typedef struct {
 	int port;
 	size_t max_header, max_body, max_conns;
 	int64_t header_ns, read_ns, idle_ns;
+	int64_t tls_conf;
 	// The queue the main thread fills (under mu), and what wakes the
 	// thread for it.
 	ak_mutex mu;
@@ -648,6 +657,7 @@ static void conn_buf_trim(ak_buf *b) {
 static void close_conn(io *x, conn *c) {
 	if (c->state == C_BUSY && c->id) post(x, M_GONE, c->id, 0, NULL, NULL);
 	if (c->id) ak_idmap_del(&x->byid, c->id);
+	if (c->tls) ak_tls_layer->close(c->tls);
 	ak_sock_close(c->fd);
 	ak_buf_free(&c->in);
 	ak_buf_free(&c->out);
@@ -669,6 +679,7 @@ static void linger(conn *c, int64_t now) {
 	c->in.len = 0;
 	c->linger_until = now + LINGER_NS;
 	if (c->out_off >= c->out.len) {
+		if (c->tls && c->tls_open) ak_tls_layer->shutdown(c->tls);
 		shutdown(c->fd, AK_SHUT_WR);
 		c->shut = true;
 	}
@@ -900,6 +911,18 @@ static bool finish(io *x, conn *c, int64_t now) {
 static bool flush(io *x, conn *c, int64_t now) {
 	while (c->out_off < c->out.len) {
 		size_t left = c->out.len - c->out_off;
+		if (c->tls) {
+			if (!c->tls_open) return true;  // after the handshake
+			int w = ak_tls_layer->write(c->tls, c->out.data + c->out_off, left);
+			if (w == AK_TLS_FAIL) {
+				close_conn(x, c);
+				return false;
+			}
+			if (w <= 0) break;
+			c->out_off += (size_t)w;
+			c->wsince = now;
+			continue;
+		}
 		int chunk = left > (1u << 30) ? (1 << 30) : (int)left;
 		int w = (int)send(c->fd, (const char *)c->out.data + c->out_off, chunk, AK_SEND_FLAGS);
 		if (w < 0) {
@@ -927,6 +950,7 @@ static bool flush(io *x, conn *c, int64_t now) {
 	if (pending) return true;
 	if (c->state == C_BUSY && c->ending) return finish(x, c, now);
 	if (c->state == C_LINGER && !c->shut) {
+		if (c->tls && c->tls_open) ak_tls_layer->shutdown(c->tls);
 		shutdown(c->fd, AK_SHUT_WR);
 		c->shut = true;
 		c->linger_until = now + LINGER_NS;
@@ -945,7 +969,29 @@ static bool readable(io *x, conn *c, int64_t now) {
 		if (want == 0) return true;
 	}
 	ak_buf_reserve(&c->in, want);
-	int r = (int)recv(c->fd, (char *)c->in.data + c->in.len, (int)want, 0);
+	int r;
+	if (c->tls) {
+		if (!c->tls_open) {
+			// The handshake first: a client that fails it is let go.
+			c->twant = ak_tls_layer->handshake(c->tls);
+			if (c->twant == AK_TLS_FAIL) {
+				close_conn(x, c);
+				return false;
+			}
+			if (c->twant != AK_TLS_DONE) return true;
+			c->tls_open = true;
+			if (c->out_off < c->out.len && !flush(x, c, now)) return false;
+		}
+		r = ak_tls_layer->read(c->tls, c->in.data + c->in.len, want);
+		if (r == AK_TLS_WANT_READ || r == AK_TLS_WANT_WRITE) return true;
+		if (r == AK_TLS_FAIL) {
+			close_conn(x, c);
+			return false;
+		}
+		if (r == AK_TLS_EOF) r = 0;
+	} else {
+		r = (int)recv(c->fd, (char *)c->in.data + c->in.len, (int)want, 0);
+	}
 	if (r < 0) {
 		int e = ak_sock_err();
 		if (AK_SOCK_INTR(e) || AK_SOCK_AGAIN(e)) return true;
@@ -1036,6 +1082,11 @@ static void accept_all(io *x, int64_t now) {
 		}
 		x->slots[c->slot] = c;
 		x->nconns++;
+		if (x->tls_conf) {
+			char err[300];
+			c->tls = ak_tls_layer->open(x->tls_conf, true, NULL, s, NULL, NULL, err, sizeof err);
+			c->twant = AK_TLS_WANT_READ;
+		}
 		// An open connection is work that posts back (its requests): a
 		// test's loop waits for it rather than deciding nothing's left.
 		ak_sched_hold();
@@ -1192,8 +1243,14 @@ static void io_main(void *p) {
 			if (!c) continue;
 			short ev = 0;
 			bool reading = !c->peer_eof && (c->state != C_BUSY || c->in.len <= x->max_header) && (c->state != C_LINGER || c->shut);
-			if (reading) ev |= POLLIN;
-			if (c->out_off < c->out.len) ev |= POLLOUT;
+			if (c->tls && !c->tls_open) {
+				// The handshake, as it wants.
+				ev |= c->twant == AK_TLS_WANT_WRITE ? POLLOUT : POLLIN;
+			} else {
+				if (reading && c->tls && ak_tls_layer->pending(c->tls)) soonest = now;  // what it holds is read without waiting
+				if (reading) ev |= POLLIN;
+				if (c->out_off < c->out.len) ev |= POLLOUT;
+			}
 			int64_t d = deadline(x, c);
 			if (d && (!soonest || d < soonest)) soonest = d;
 			if (!ev) continue;
@@ -1228,7 +1285,11 @@ static void io_main(void *p) {
 				// A command may have closed it, and an accept put another in
 				// its slot: the slot's connection is checked by serial.
 				conn *c = x->slots[who.data[i]];
-				if (!rv || !c || c->serial != serials.data[i]) continue;
+				if (!c || c->serial != serials.data[i]) continue;
+				// TLS: the handshake goes on whichever way the socket's
+				// ready; plaintext the session holds is read without it.
+				if (c->tls && ((!c->tls_open && rv) || (c->tls_open && !c->peer_eof && ak_tls_layer->pending(c->tls)))) rv |= POLLIN;
+				if (!rv) continue;
 				if (rv & (POLLIN | POLLHUP | POLLERR | POLLNVAL)) {
 					if (c->peer_eof) {
 						// Only a hangup is left to say, and nothing reads: it's
@@ -1541,6 +1602,7 @@ static ak_val open_fn(ak_val *args, uint32_t n) {
 	x->read_ns = l[4] * 1000000;
 	x->idle_ns = l[5] * 1000000;
 	x->listener = AK_BAD_SOCK;
+	x->tls_conf = n > 4 ? args[4].i : 0;
 	ak_mutex_init(&x->mu);
 	bool ok = ak_waker_open(&x->wake);
 	srv *s = ak_alloc(sizeof *s);

@@ -122,11 +122,12 @@ fn main() throws {
 		}
 	}
 	// Only the std packages' C it calls is in it: the tables of
-	// std/toml, std/archive, std/compress, std/http's server aren't.
+	// std/toml, std/archive, std/compress, std/http's server, std/net's TLS
+	// (Mbed TLS) aren't.
 	if data, err := os.ReadFile(exe); err != nil {
 		t.Fatal(err)
 	} else {
-		for _, name := range []string{"toml.decode", "archive.scanBytes", "compress.encodeBytes", "http.srvOpen"} {
+		for _, name := range []string{"toml.decode", "archive.scanBytes", "compress.encodeBytes", "http.srvOpen", "tls.clientConfig"} {
 			if bytes.Contains(data, []byte(name)) {
 				t.Errorf("the executable has %s's builtin: a std package's C it doesn't call is linked", name)
 			}

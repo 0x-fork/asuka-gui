@@ -1,0 +1,69 @@
+// std/net's TLS and std/http's HTTPS over real sockets on 127.0.0.1, on
+// the VM and compiled to C: a TLS echo server and its client (ALPN, what
+// the handshake agreed), a certificate for another host refused, and
+// http.serve with TLS answering std/net's client and curl, another TLS
+// implementation that checks the certificate against the test's root.
+// (The certificates: core/test/testdata/tls's, gen.go's.)
+
+import std/command
+import std/fs
+import std/http
+import std/net
+import std/random
+
+let caCert = "-----BEGIN CERTIFICATE-----\nMIIBjTCCATOgAwIBAgIBATAKBggqhkjOPQQDAjAtMQ4wDAYDVQQKEwVBc3VrYTEb\nMBkGA1UEAxMSQXN1a2EgVGVzdCBSb290IENBMCAXDTIwMDEwMTAwMDAwMFoYDzIx\nMDAwMTAxMDAwMDAwWjAtMQ4wDAYDVQQKEwVBc3VrYTEbMBkGA1UEAxMSQXN1a2Eg\nVGVzdCBSb290IENBMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAECyRmvRYi7QOm\neQIRdtNOnlzZHyy1n7uq5T8WL2gd42+Y7Uctp/KlGv7Zvu9QuTx8hgTvf7jiUnKx\nmz/gUrAn16NCMEAwDgYDVR0PAQH/BAQDAgEGMA8GA1UdEwEB/wQFMAMBAf8wHQYD\nVR0OBBYEFLWT2I2jCfD1aYgoj3ezAEjE7TzcMAoGCCqGSM49BAMCA0gAMEUCIFbi\nuG+NA3Jsajv2GraiA6bpLipNYkGJwn5pQrcGsIu3AiEAnXjsiSzN4pygxGmtb/15\nl7v04cVdxJW/EfgSTolak0Q=\n-----END CERTIFICATE-----\n"
+let serverCert = "-----BEGIN CERTIFICATE-----\nMIIBwDCCAWagAwIBAgIBCjAKBggqhkjOPQQDAjA1MQ4wDAYDVQQKEwVBc3VrYTEj\nMCEGA1UEAxMaQXN1a2EgVGVzdCBJbnRlcm1lZGlhdGUgQ0EwIBcNMjAwMTAxMDAw\nMDAwWhgPMjEwMDAxMDEwMDAwMDBaMBQxEjAQBgNVBAMTCWxvY2FsaG9zdDBZMBMG\nByqGSM49AgEGCCqGSM49AwEHA0IABPyfsmAgj6VaabWGl4l0/xwp7YzZAz+3uxtz\n0EumKbR+DwG4jBqvy03O+j64zUT0QHwDLB/oFtl73vnkjrXzxa6jgYUwgYIwDgYD\nVR0PAQH/BAQDAgeAMBMGA1UdJQQMMAoGCCsGAQUFBwMBMB8GA1UdIwQYMBaAFLGZ\nd6pjZAvb4+UF0L8iI7zMyVwBMDoGA1UdEQQzMDGCCWxvY2FsaG9zdIIMdGVzdC5l\neGFtcGxlhwR/AAABhxAAAAAAAAAAAAAAAAAAAAABMAoGCCqGSM49BAMCA0gAMEUC\nICo/7le7q1Yi74YaiVFlkaXOQSDDP4Tv3htnmJ21TF/QAiEAjspArnXHHP6Sty2m\nujsmotrOy+V0+SPlTHBzqCmYsVs=\n-----END CERTIFICATE-----\n-----BEGIN CERTIFICATE-----\nMIIBtjCCAVygAwIBAgIBAjAKBggqhkjOPQQDAjAtMQ4wDAYDVQQKEwVBc3VrYTEb\nMBkGA1UEAxMSQXN1a2EgVGVzdCBSb290IENBMCAXDTIwMDEwMTAwMDAwMFoYDzIx\nMDAwMTAxMDAwMDAwWjA1MQ4wDAYDVQQKEwVBc3VrYTEjMCEGA1UEAxMaQXN1a2Eg\nVGVzdCBJbnRlcm1lZGlhdGUgQ0EwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAR3\n9btvwcSSICx3nswg7kHH17LdxcYIH4aoMOaNBke+liRaY576tZQC2cNn1zcBw3mN\n6qI9UoZHUABZY/uu/ce8o2MwYTAOBgNVHQ8BAf8EBAMCAQYwDwYDVR0TAQH/BAUw\nAwEB/zAdBgNVHQ4EFgQUsZl3qmNkC9vj5QXQvyIjvMzJXAEwHwYDVR0jBBgwFoAU\ntZPYjaMJ8PVpiCiPd7MASMTtPNwwCgYIKoZIzj0EAwIDSAAwRQIgCTB3za83/X6h\nRz8HkNdVJZHvGjxktCrFjb+9zwsW5FQCIQD7l/RWgQAFpso8AyBsi5gfAa32ISjD\nPWEnoqkCySd42g==\n-----END CERTIFICATE-----\n"
+let serverKey = "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgDxk5TysBt5+tdBFg\n/f8DWRlU84ugOLyGjiRrE7wA74OhRANCAAT8n7JgII+lWmm1hpeJdP8cKe2M2QM/\nt7sbc9BLpim0fg8BuIwar8tNzvo+uM1E9EB8Aywf6BbZe9755I6188Wu\n-----END PRIVATE KEY-----\n"
+
+test "a TLS echo" {
+  let tls = try net.serverTLS(certificate: serverCert, key: serverKey, alpn: ["echo/1"])
+  let server = try await net.serve(0, c => {
+    for await line in c.lines() {
+      try await c.write("{line.upper()}\n")
+    }
+  }, tls: tls)
+  let c = try await net.connectTLS("localhost", server.port, tls: try net.clientTLS(ca: caCert, alpn: ["echo/1"]))
+  let st = try await c.handshake()
+  print("{st.version == net.TLSVersion.tls13} {st.protocol} {st.serverName} {st.peerCertificates.count()}")
+  try await c.write("hello\nsecure world\n")
+  print(try await c.readLine())
+  print(try await c.readLine())
+  c.close()
+  do {
+    let _ = try await net.connectTLS("localhost", server.port, tls: try net.clientTLS(ca: caCert), serverName: "elsewhere.example")
+  } catch net.NetError.untrustedCertificate(problem, reason) {
+    print("{problem == net.CertificateProblem.wrongHost}: {reason}")
+  }
+  await server.close()
+}
+
+test "HTTPS" {
+  let tls = try net.serverTLS(certificate: serverCert, key: serverKey)
+  let server = try await http.serve(0, req => .text("hello over {req.method} {req.path}"), tls: tls)
+  print(server.url.hasPrefix("https://127.0.0.1:"))
+  let c = try await net.connectTLS("localhost", server.port, tls: try net.clientTLS(ca: caCert))
+  try await c.write("GET /tls HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+  let reply = (try await c.readAll()).string()
+  print("{reply.hasPrefix("HTTP/1.1 200 OK\r\n")} {reply.hasSuffix("hello over GET /tls")}")
+  let dir = fs.join([fs.tempDir(), "asuka-tls-test-{random.int(0, 1000000000)}"])
+  try await spawn { try fs.mkdirAll(dir) }
+  defer {
+    try? await spawn { try fs.removeAll(dir) }
+  }
+  let ca = fs.join([dir, "ca.pem"])
+  try await spawn { try fs.writeText(ca, caCert) }
+  let out = try await command.run("curl", ["-s", "-S", "--no-progress-meter", "--cacert", ca, "https://localhost:{server.port}/curl"])
+  print(out.text())
+  await server.close()
+}
+
+// Output:
+// true echo/1 localhost 2
+// HELLO
+// SECURE WORLD
+// true: elsewhere.example's certificate is for localhost, test.example, 127.0.0.1, ::1, not elsewhere.example
+// ok a TLS echo
+// true
+// true true
+// hello over GET /curl
+// ok HTTPS

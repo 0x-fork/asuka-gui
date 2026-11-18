@@ -50,7 +50,7 @@
 //	net.ipParse(text) -> bytes?                           4 or 16 bytes
 //	net.ipText(octets) -> string
 //	net.tcpConnect(host, port, timeoutNs, noDelay, keepAliveNs) -> Task<int>
-//	net.tcpListen(host, port) -> Task<int>
+//	net.tcpListen(host, port, tls) -> Task<int>           tls: a TLS configuration (tls.server's), 0 none
 //	net.tcpAccept(listener, timeoutNs) -> Task<int>
 //	net.addresses(h) -> [string]                          local ip, port, remote ip, port
 //	net.tcpRead(h, mode, n, delimiter, timeoutNs) -> Task<bytes?>
@@ -74,9 +74,17 @@
 // A failure rejects with "std/net:<case>:<detail>" (net.h's ak_net_err),
 // which std/net's Asuka throws as its NetError.
 //
-// TLS isn't here yet. When it comes, it's a layer between a connection's
-// socket and its buffers (lsock's in, and what a write sends), on the net
-// thread: the reads and writes above it the same.
+// TLS is a layer between a connection's socket and its buffers (lsock's
+// in, and what a write sends), on the net thread: the reads and writes
+// above it the same (tls.h; tls.c's builtins start it). A client's
+// starts on a connection that's open (net.connectTLS, conn.startTLS: a
+// STARTTLS's bytes read before it are the handshake's); a TLS
+// listener's connections start theirs as they're accepted, the
+// handshake done as their first read or write waits on it, as Go's are.
+// A read or a write waits for the handshake; one that fails fails them.
+// That's nettls.c's, which net.c reaches only through ak_net_tls
+// (netint.h's), set by tls.c once a configuration exists: an app without
+// TLS links neither, nor Mbed TLS.
 #if defined(__APPLE__)
 #define _DARWIN_C_SOURCE
 #elif !defined(_WIN32)
@@ -86,8 +94,15 @@
 
 #if !defined(__wasm__)
 #include "std/sock.h"  // before windows.h (base/thread.h's)
+#include "std/tls.h"
 #endif
 #include "std/net.h"
+#if !defined(__wasm__)
+#include "std/netint.h"
+#define set_err ak_net_set_err
+#define post_op ak_net_post_op
+#define dup_c ak_net_dup
+#endif
 #include "std/std.h"
 #include "rt/sched.h"
 #include "base/thread.h"
@@ -232,7 +247,7 @@ void ak_ip_format(const uint8_t *b, int len, char out[46]) {
 }
 
 const char *ak_net_err_name(ak_net_err e) {
-	static const char *const names[] = {"", "cancelled", "refused", "reset", "timedOut", "unreachable", "notFound", "lookupFailed", "closed", "ended", "addressInUse", "addressUnavailable", "denied", "tooLarge", "invalid", "unsupported", "failed"};
+	static const char *const names[] = {"", "cancelled", "refused", "reset", "timedOut", "unreachable", "notFound", "lookupFailed", "closed", "ended", "addressInUse", "addressUnavailable", "denied", "tooLarge", "invalid", "unsupported", "failed", "tls", "untrustedCertificate"};
 	return (unsigned)e < sizeof names / sizeof names[0] ? names[e] : "failed";
 }
 
@@ -324,68 +339,9 @@ const ak_lib_entry ak_std_net[] = {
 // as an async fn, returns its task's future.
 ak_val ak_vm_closure_invoke(ak_closure *c, ak_val *args, uint32_t nargs);
 
-#define READ_CHUNK 65536
 #define ATTEMPT_DELAY_NS INT64_C(250000000)  // RFC 8305's Connection Attempt Delay
 #define ACCEPT_PAUSE_NS INT64_C(100000000)   // out of descriptors: accepting again after
 #define LINGER_MS 10                         // busy a moment longer: what loopback delivers
-
-enum { K_CONN = 1, K_LISTEN, K_UDP };
-enum { OP_CONNECT, OP_LISTEN, OP_UDP, OP_ACCEPT, OP_READ, OP_WRITE, OP_SEND, OP_RECV };
-enum { RD_SOME, RD_EXACT, RD_UNTIL, RD_ALL };
-enum { OPT_NODELAY = 1, OPT_KEEPALIVE, OPT_BROADCAST };
-
-typedef struct srv srv;
-
-typedef struct {
-	ak_sock fd;
-	uint32_t idx;  // its address's
-} attempt;
-
-// An operation, made on the main thread, done on the net thread, posted
-// back. The fields after "Main's" are the main thread's alone.
-typedef struct op {
-	struct op *next;  // in a socket's queue, or the net thread's waiting list
-	uint64_t id;
-	uint8_t kind;
-	int64_t handle;    // the socket's (an accept's: its listener's)
-	int64_t deadline;  // ak_now_ns() when it gives up; 0: never
-	// What it's asked.
-	char *host;  // connect, listen, udp: as given ("" none)
-	int port;
-	bool nodelay, reuse;
-	int64_t keepalive_ns;
-	uint8_t mode;  // a read's
-	size_t n;      // a read's: exactly n, or at most n
-	uint8_t *data;  // a write's, a send's: what goes; a read's: its delimiter
-	size_t len, off;
-	struct sockaddr_storage to;  // a send's (tolen 0: the connected peer)
-	socklen_t tolen;
-	// A connect's, a listen's, a UDP socket's addresses, and a connect's
-	// attempts.
-	bool resolving;
-	struct sockaddr_storage *addrs;
-	socklen_t *lens;
-	uint32_t naddrs, next_addr;
-	AK_VEC(attempt) tries;
-	int64_t next_at;
-	int first_err;
-	// The answer.
-	ak_net_err err;
-	char *detail;
-	int64_t got;  // the socket it made (connect, listen, udp, accept)
-	ak_sock got_fd;
-	int got_family;
-	ak_buf out;  // what a read, a receive got
-	bool none;   // a read: the connection's end, nothing more
-	char from[64];
-	int from_port;
-	// Main's.
-	ak_future *fut;
-	ak_owner *owner;
-	bool cancelled;
-	bool queued;  // in its socket's rq: not sent yet
-	srv *server;  // a server's own accept (no future)
-} op;
 
 static void op_free(op *o) {
 	ak_free(o->host);
@@ -399,15 +355,14 @@ static void op_free(op *o) {
 	ak_free(o);
 }
 
-static char *dup_c(const char *s) {
+char *ak_net_dup(const char *s) {
 	size_t n = strlen(s);
 	char *d = ak_alloc(n + 1);
 	memcpy(d, s, n + 1);
 	return d;
 }
 
-static void set_err(op *o, ak_net_err e, const char *fmt, ...) AK_PRINTF(3, 4);
-static void set_err(op *o, ak_net_err e, const char *fmt, ...) {
+void ak_net_set_err(op *o, ak_net_err e, const char *fmt, ...) {
 	o->err = e;
 	ak_free(o->detail);
 	o->detail = NULL;
@@ -585,63 +540,7 @@ static void new_socket_flags(ak_sock s) {
 
 // ---- The net thread ----
 
-typedef struct {
-	op *head, *tail;
-} opq;
-
-static void opq_push(opq *q, op *o) {
-	o->next = NULL;
-	if (q->tail) q->tail->next = o;
-	else q->head = o;
-	q->tail = o;
-}
-
-static op *opq_pop(opq *q) {
-	op *o = q->head;
-	if (!o) return NULL;
-	q->head = o->next;
-	if (!q->head) q->tail = NULL;
-	o->next = NULL;
-	return o;
-}
-
-static bool opq_remove(opq *q, op *o) {
-	op *prev = NULL;
-	for (op *p = q->head; p; prev = p, p = p->next) {
-		if (p != o) continue;
-		if (prev) prev->next = p->next;
-		else q->head = p->next;
-		if (q->tail == p) q->tail = prev;
-		p->next = NULL;
-		return true;
-	}
-	return false;
-}
-
-static op *opq_find(opq *q, uint64_t id) {
-	for (op *p = q->head; p; p = p->next)
-		if (p->id == id) return p;
-	return NULL;
-}
-
-// A socket, as the net thread holds it.
-typedef struct {
-	int64_t handle;
-	ak_sock fd;
-	uint8_t kind;
-	uint32_t slot;
-	ak_buf in;    // a connection's: read, not yet taken
-	size_t scan;  // where a read up to a delimiter looks on from
-	bool eof;     // the other side's end came
-	ak_net_err rerr;  // a read's failure, which the reads after it get too
-	char *rdetail;
-	bool shut_wanted, shut;
-	opq reads;   // a connection's reads, a listener's accepts, a UDP socket's receives
-	opq writes;  // a connection's writes, a UDP socket's sends
-	int64_t pause_until;  // a listener's: accepting again after running out of descriptors
-} lsock;
-
-enum { C_OP, C_CANCEL, C_CLOSE, C_SHUT, C_UNREAD, C_RESOLVED };
+enum { C_OP, C_CANCEL, C_CLOSE, C_SHUT, C_UNREAD, C_RESOLVED, C_TLS };
 
 typedef struct cmd {
 	struct cmd *next;
@@ -685,7 +584,7 @@ static struct {
 
 static void op_done(void *p);
 
-static void post_op(op *o) {
+void ak_net_post_op(op *o) {
 	ak_post(op_done, o);
 }
 
@@ -717,6 +616,7 @@ static void fail_all(opq *q, ak_net_err e) {
 static void lsock_close(lsock *s) {
 	fail_all(&s->reads, AK_NE_CLOSED);
 	fail_all(&s->writes, AK_NE_CLOSED);
+	if (s->tls) ak_net_tls->close(s);
 	ak_idmap_del(&L.byhandle, s->handle);
 	ak_sock_close(s->fd);
 	L.slots[s->slot] = NULL;
@@ -803,11 +703,22 @@ static bool read_done(lsock *s, op *o) {
 }
 
 static void conn_reads(lsock *s) {
-	while (s->reads.head && read_done(s, s->reads.head)) post_op(opq_pop(&s->reads));
+	op *o;
+	while ((o = s->reads.head)) {
+		if (o->kind == OP_TLS || s->tls) {
+			// A TLS start, or a read of a TLS connection: TLS's (nettls.c).
+			int r = ak_net_tls->gate(s, o);
+			if (r < 0) return;
+			if (r == 0 && !read_done(s, o)) return;
+		} else if (!read_done(s, o)) {
+			return;
+		}
+		post_op(opq_pop(&s->reads));
+	}
 }
 
 // wants_data: s's next read needs more than its buffer has.
-static bool wants_data(lsock *s) { return s->reads.head && !s->eof && !s->rerr; }
+static bool wants_data(lsock *s) { return s->reads.head && s->reads.head->kind != OP_TLS && !s->eof && !s->rerr && (!s->tls || s->tphase == T_OPEN); }
 
 static void conn_fill(lsock *s) {
 	op *o = s->reads.head;
@@ -815,6 +726,10 @@ static void conn_fill(lsock *s) {
 	if (o && o->mode == RD_EXACT && o->n > s->in.len) {
 		size_t need = o->n - s->in.len;
 		want = need > (1u << 20) ? (1u << 20) : need < READ_CHUNK ? READ_CHUNK : need;
+	}
+	if (s->tls) {
+		ak_net_tls->fill(s, want);
+		return;
 	}
 	for (;;) {
 		ak_buf_reserve(&s->in, want);
@@ -840,6 +755,10 @@ static void conn_fill(lsock *s) {
 
 static void conn_writes(lsock *s) {
 	op *o;
+	if (s->tls) {
+		ak_net_tls->writes(s);
+		return;
+	}
 	while ((o = s->writes.head)) {
 		while (o->off < o->len) {
 			size_t left = o->len - o->off;
@@ -891,6 +810,7 @@ static void accepts(lsock *s, int64_t now) {
 		setsockopt(c, IPPROTO_TCP, TCP_NODELAY, (const char *)&one, sizeof one);
 		set_keepalive(c, INT64_C(15000000000));
 		lsock *n = lsock_new(c, K_CONN);
+		if (s->tls_conf) ak_net_tls->accepted(s, n);
 		o->got = n->handle;
 		o->got_fd = c;
 		o->got_family = a.ss_family;
@@ -950,6 +870,8 @@ static void sends(lsock *s) {
 static void progress(lsock *s, int64_t now) {
 	switch (s->kind) {
 	case K_CONN:
+		// A handshake goes on while something waits on it.
+		if (s->tls && s->tphase == T_HS && (s->reads.head || s->writes.head)) ak_net_tls->drive(s);
 		conn_reads(s);
 		conn_writes(s);
 		break;
@@ -1129,6 +1051,7 @@ static void bind_now(op *o) {
 				continue;
 			}
 			lsock *l = lsock_new(s, listener ? K_LISTEN : K_UDP);
+			if (listener) l->tls_conf = o->config;
 			o->got = l->handle;
 			o->got_fd = s;
 			o->got_family = a->ss_family;
@@ -1234,6 +1157,11 @@ static void handle_op(op *o, int64_t now) {
 		return;
 	}
 	if (o->kind == OP_READ) s->scan = 0;  // its delimiter's own search
+	if (o->kind == OP_TLS && s->kind != K_CONN) {
+		set_err(o, AK_NE_INVALID, "TLS is a connection's");
+		post_op(o);
+		return;
+	}
 	opq_push(o->kind == OP_WRITE || o->kind == OP_SEND ? &s->writes : &s->reads, o);
 	progress(s, now);
 }
@@ -1304,6 +1232,15 @@ static void commands(int64_t now) {
 			}
 			break;
 		}
+		case C_TLS: {
+			// A certificate checked on another thread: the handshake goes on.
+			lsock *s = ak_idmap_get(&L.byhandle, k->handle);
+			if (s && s->tls) {
+				ak_net_tls->drive(s);
+				progress(s, now);
+			}
+			break;
+		}
 		case C_RESOLVED: {
 			op *o = opq_find(&L.waiting, k->id);
 			if (o && o->resolving) {
@@ -1361,11 +1298,12 @@ static void loop_main(void *p) {
 	AK_UNUSED(p);
 	AK_VEC(ak_pollfd) pfd = {0};
 	AK_VEC(who_t) who = {0};
+	AK_VEC(int64_t) ready = {0};  // TLS connections with plaintext for a read already
 	int64_t now = ak_now_ns();
 	bool busy = true;
 	ak_sched_hold();
 	for (;;) {
-		pfd.len = who.len = 0;
+		pfd.len = who.len = ready.len = 0;
 		ak_vec_push(&pfd, ((ak_pollfd){.fd = ak_waker_fd(&L.wake), .events = POLLIN}));
 		ak_vec_push(&who, ((who_t){0}));
 		int64_t soonest = soonest_of(&L.waiting, 0);
@@ -1384,6 +1322,12 @@ static void loop_main(void *p) {
 			soonest = soonest_of(&s->reads, soonest_of(&s->writes, soonest));
 			switch (s->kind) {
 			case K_CONN:
+				if (s->tls) {
+					bool now_ready = false;
+					ev = ak_net_tls->events(s, &working, &now_ready);
+					if (now_ready) ak_vec_push(&ready, s->handle);
+					break;
+				}
 				if (wants_data(s)) ev |= POLLIN;
 				if (s->writes.head) ev |= POLLOUT, working = true;
 				break;
@@ -1407,6 +1351,7 @@ static void loop_main(void *p) {
 			int64_t ms = (soonest - now + 999999) / 1000000;
 			timeout = ms < 0 ? 0 : ms > 3600000 ? 3600000 : (int)ms;
 		}
+		if (ready.len) timeout = 0;
 		int r;
 		if (busy && !working && !soonest) {
 			// Idle: a moment for what's on its way, then the scheduler's
@@ -1456,9 +1401,20 @@ static void loop_main(void *p) {
 				// A command may have closed it, and another taken its slot.
 				lsock *s = ak_idmap_get(&L.byhandle, w.handle);
 				if (!s) continue;
-				if (s->kind == K_CONN && (rv & (POLLIN | POLLHUP | POLLERR | POLLNVAL)) && wants_data(s)) conn_fill(s);
+				if (s->kind == K_CONN && s->tls) {
+					ak_net_tls->ready(s);
+					if (wants_data(s)) conn_fill(s);
+				} else if (s->kind == K_CONN && (rv & (POLLIN | POLLHUP | POLLERR | POLLNVAL)) && wants_data(s)) {
+					conn_fill(s);
+				}
 				progress(s, now);
 			}
+		}
+		for (uint32_t i = 0; i < ready.len; i++) {
+			lsock *s = ak_idmap_get(&L.byhandle, ready.data[i]);
+			if (!s || !s->tls) continue;
+			if (wants_data(s)) conn_fill(s);
+			progress(s, now);
 		}
 		// Connects whose next attempt is due, and deadlines.
 		for (op *o = L.waiting.head; o;) {
@@ -1532,6 +1488,20 @@ static void resolve_main(void *p) {
 	ak_waker_wake(&L.wake);
 	ak_free(j->host);
 	ak_free(j);
+}
+
+// The TLS glue's hooks (nettls.c's, set by tls.c once a configuration
+// is made): NULL in an app without TLS, which never has a TLS socket.
+const ak_net_tls_hooks *ak_net_tls = NULL;
+
+void ak_net_tls_notify(void *ctx) {
+	cmd *k = cmd_new(C_TLS, (int64_t)(intptr_t)ctx);
+	ak_mutex_lock(&L.mu);
+	if (L.tail) L.tail->next = k;
+	else L.head = k;
+	L.tail = k;
+	ak_mutex_unlock(&L.mu);
+	ak_waker_wake(&L.wake);
 }
 
 // ---- The main thread's sockets ----
@@ -1865,6 +1835,9 @@ static void op_done(void *p) {
 		}
 		case OP_READ:
 			ak_future_resolve(f, (ak_val){.p = o->none ? NULL : ak_bytes_new(o->out.data, o->out.len)});
+			break;
+		case OP_TLS:
+			ak_future_resolve(f, (ak_val){.p = ak_net_tls->answer(o)});
 			break;
 		case OP_RECV: {
 			ak_arr *a = ak_arr_new(AK_K_REF, NULL, 3);
@@ -2229,7 +2202,7 @@ static ak_val connect_fn(ak_val *args, uint32_t n) {
 }
 
 // bind_op is a listen's or a UDP socket's: host and port to bind.
-static ak_val bind_op(uint8_t kind, ak_val *args, bool reuse) {
+static ak_val bind_op(uint8_t kind, ak_val *args, uint32_t nargs, bool reuse) {
 	const ak_str *host = STR(0);
 	int64_t port = args[1].i;
 	if (!port_ok(port)) return (ak_val){.p = failed_future(AK_K_INT, AK_NE_INVALID, "a port is 0 to 65535")};
@@ -2238,18 +2211,17 @@ static ak_val bind_op(uint8_t kind, ak_val *args, bool reuse) {
 	o->host = dup_c(host->data);
 	o->port = (int)port;
 	o->reuse = reuse;
+	if (kind == OP_LISTEN && nargs > 2) o->config = args[2].i;  // a TLS listener's configuration
 	o->resolving = !is_numeric(o->host);
 	return (ak_val){.p = begin(o, host->data, (int)port)};
 }
 
 static ak_val listen_fn(ak_val *args, uint32_t n) {
-	AK_UNUSED(n);
-	return bind_op(OP_LISTEN, args, false);
+	return bind_op(OP_LISTEN, args, n, false);
 }
 
 static ak_val udp_open_fn(ak_val *args, uint32_t n) {
-	AK_UNUSED(n);
-	return bind_op(OP_UDP, args, args[2].i != 0);
+	return bind_op(OP_UDP, args, n, args[2].i != 0);
 }
 
 static ak_val accept_fn(ak_val *args, uint32_t n) {
@@ -2529,6 +2501,18 @@ static ak_val lookup_records_fn(ak_val *args, uint32_t n) {
 static ak_val lookup_canonical_fn(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	return lookup_start(LK_CANON, STR(0), 0);
+}
+
+ak_future *ak_net_tls_start(int64_t h, int64_t config, const char *server_name, bool server, int64_t timeout_ns) {
+	msock *m = find(h);
+	if (!m || m->kind != K_CONN) return failed_future(AK_K_REF, AK_NE_CLOSED, "");
+	bool busy = (m->rop && !m->rop->cancelled) || m->rq.len;
+	if (busy) return failed_future(AK_K_REF, AK_NE_INVALID, "TLS starts on a connection with no read waiting");
+	op *o = op_new(OP_TLS, m->handle, timeout_ns);
+	o->config = config;
+	o->tls_server = server;
+	o->host = dup_c(server_name);
+	return serial(m, o, AK_K_REF);
 }
 
 static ak_val serve_start_fn(ak_val *args, uint32_t n) {

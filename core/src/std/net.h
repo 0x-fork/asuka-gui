@@ -42,6 +42,8 @@ typedef enum {
 	AK_NE_INVALID,
 	AK_NE_UNSUPPORTED,
 	AK_NE_FAILED,
+	AK_NE_TLS,        // TLS failed: the handshake, a record (tls.c)
+	AK_NE_UNTRUSTED,  // a certificate isn't trusted: "<problem>:<why>"
 } ak_net_err;
 
 // ak_net_err_name is the NetError case's name of e ("refused").
