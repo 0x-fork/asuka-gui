@@ -528,11 +528,17 @@ TEST(http_server_streams) {
 	cancelled = 0;
 	start(&c);
 	while (!pending_id) pump();
-	// One piece at a time: the next once the last is written.
-	ak_future *w = write_piece(pending_id, "piece2");
-	CHECK(w->state == AK_FUT_DONE && w->result.i == 0);  // the first's in flight
-	ak_release(w);
-	while (first_write->state == AK_FUT_PENDING) pump();
+	// One piece at a time: the next once the last is written. The main
+	// thread learns the first is written only as it pumps, so while its
+	// future is pending here, another write is refused (when the machine
+	// is slow, the pump that started the handler may have settled it).
+	ak_future *w;
+	if (first_write->state == AK_FUT_PENDING) {
+		w = write_piece(pending_id, "piece2");
+		CHECK(w->state == AK_FUT_DONE && w->result.i == 0);  // the first's in flight
+		ak_release(w);
+		while (first_write->state == AK_FUT_PENDING) pump();
+	}
 	CHECK(first_write->result.i == 1);
 	ak_release(first_write);
 	w = write_piece(pending_id, "piece2");
