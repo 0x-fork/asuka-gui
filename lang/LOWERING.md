@@ -1362,8 +1362,11 @@ writes gets a shape of its name whose cases name its values.
 std/bigint's `BigInt` (its descriptor `Sstd/bigint.BigInt;`, as any
 struct's) is the runtime's to write: json.c writes it as a number of
 all its digits, which print and interpolation show too, and reads one
-from such a number or a string of digits (std.h's `ak_bigint_*`, in
-core/src/std/bigint.c, which every link has for it).
+from such a number or a string of digits, through link.c's
+`ak_link_bigint` (std.h's `ak_bigint_json`, in core/src/std/bigint.c).
+It's NULL in a build without std/bigint, so lowering a BigInt's
+descriptor names one of the package's builtins (`bigint.bigText`): a
+program that only decodes one links its C too.
 
 ## Native packages
 
