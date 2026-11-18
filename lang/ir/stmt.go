@@ -413,6 +413,10 @@ func (b *fb) forStmt(s *syntax.ForStmt) {
 		b.forIter(s, fi)
 		return
 	}
+	if fi.Kind == check.ForSeq {
+		b.forSeq(s, fi)
+		return
+	}
 	b.openScope()
 	defer b.closeScope()
 	top, cont, end := b.f.NewLabel(), b.f.NewLabel(), b.f.NewLabel()

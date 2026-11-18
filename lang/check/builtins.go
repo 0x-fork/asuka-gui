@@ -393,6 +393,8 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		call.Args = args
 		call.Params = []*Param{{Name: "produce", Type: prod}}
 		call.Result = &Stream{elem}
+	case BSeq:
+		c.seqCall(e, call, want)
 	case BRuntime:
 		c.runtimeCall(e, call, b.Fn)
 	case BAnimate:

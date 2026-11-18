@@ -189,7 +189,7 @@ static void walk_done(walk *w) {
 static void free_mem(ak_obj *o) {
 	switch ((ak_tag)o->tag) {
 	case AK_TAG_ARR:
-		ak_free(((ak_arr *)o)->data);
+		ak_free(ak_arr_base((ak_arr *)o));
 		break;
 	case AK_TAG_MAP: {
 		ak_map *m = (ak_map *)o;

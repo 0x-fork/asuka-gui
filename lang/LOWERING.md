@@ -67,6 +67,7 @@ every branch's types are the same on every platform.
 | `[T]` | ref | ak_arr, element kind T's, shape T's |
 | `[K: V]` | ref | ak_map |
 | `Set<T>` | ref | ak_map of T's keys to void values, flagged AK_MAP_SET (core/src/rt/set.c) |
+| `Seq<T>` | ref | an ak_seq, the runtime's immutable description of a lazy sequence (core/src/rt/seq.c) |
 | struct, tuple | ref | ak_struct with its shape |
 | enum with payloads, or declared `: Error` or having an interface | ref | ak_enum (payloadless cases: shared immortals) |
 | `T?`, T a reference | ref | NULL for none |
@@ -1628,6 +1629,35 @@ reloads as a map is.
 | `for x in s { … }` | s into a local (a change in the body copies it), then i = 0 and, at the top, i = CALLB `set.next(s, i)` (the first live entry from i, -1 past the last), x = CALLB `set.elem(s, i)`: no allocation |
 | `for x in s key x { … }` in a view | `ui.for` of a thunk returning `map.keys(s)` |
 | JSON, `<T` | an array of the elements; decoding one, an element written twice is one |
+
+## Lazy sequences
+
+A `Seq<T>` (check.Seq) is the runtime's: each source and step is a
+builtin making an ak_seq that holds the one before (core/src/rt/seq.c),
+and nothing is computed until something reads it.
+
+| Source | Lowered |
+|---|---|
+| `xs.lazy()`, a map's, a set's, a string's | CALLB `seq.of_array`, `seq.of_map`, `seq.of_set`, `seq.of_string` |
+| `(a..<b).lazy()`, `(a..b).lazy()` | CALLB `seq.range(a, b, through)`: no array (lang/ir/seq.go's lazyRange) |
+| `Seq(first:next:)`, `Seq(state:next:)`, `Seq(repeating:count:)`, `Seq(from:by:)` | CALLB `seq.successors`, `seq.unfold` (the state's kind passed), `seq.repeat` (count -1: no end), `seq.from` |
+| a step, `s.map(f)`... | CALLB `seq.map(s, f, …)`: a new ak_seq |
+| `for x in s { … }` | CALLB `seq.iter(s)` into a local (a cursor, let go of as the loop's scope ends), then at the top `seq.next(it)` (a bool; false at the end, and it raises what a step raised), JF to the end, `seq.value(it)` for x; a type's `iter()` that gives a `Seq` likewise, the value held in a hidden var (check.ForInfo.SeqVar) and `iter()` called once |
+
+Every method whose result holds a `Seq<X>` (Method.Extra "seqProto")
+gets, last, an empty `[X]`: the runtime reads the elements' kind and
+shape from it (a tuple's, to make the pairs `enumerated`, `zip` and a
+map's source give). A consumer that makes a collection (Extra "proto":
+`toArray`, `toSet`, `toMap`) gets an empty one of its result, which it
+fills. A read opens a cursor over the chain, a tree of nodes mirroring
+it, each holding its current element: an element goes through every
+step before the next is pulled, and a node that has its answer (`take`,
+`find`, `any`) stops pulling. A step's closure doesn't throw (the
+checker says so: it runs later); a consumer's may, and the consumer is a
+Rethrows method. Ordering by a key (Needs "ComparableU": `sorted(key:)`,
+`min(key:)`, a Seq's too) passes, before U's kind, U's compare method as
+a closure, or none when U is ordered as it is; the keys are computed
+once each, and sorted with their indexes (stable).
 
 ## Built-in methods
 

@@ -375,6 +375,7 @@ var (
 
 var methodIndex = func() map[string][]*Method {
 	idx := map[string][]*Method{}
+	Methods = append(Methods, seqMethods...)
 	for _, m := range Methods {
 		m.parse()
 		idx[m.Recv+"."+m.Name] = append(idx[m.Recv+"."+m.Name], m)
@@ -440,6 +441,8 @@ func recvKind(t Type) string {
 		return "task"
 	case *Stream:
 		return "stream"
+	case *Seq:
+		return "seq"
 	case *Named:
 		if x.Obj == loadingT {
 			return "loading"
@@ -550,6 +553,8 @@ func (m *Method) bind(recv Type) Subst {
 		s[tvT] = x.Elem
 	case *Stream:
 		s[tvT] = x.Elem
+	case *Seq:
+		seqBind(s, x)
 	case *Named:
 		if len(x.Args) > 0 {
 			s[tvT] = x.Args[0]
@@ -588,6 +593,8 @@ func (m *Method) requires(s Subst) string {
 		if t != String {
 			return "joins strings, and these are " + typeString(t) + "s"
 		}
+	default:
+		return m.seqRequires(s)
 	}
 	return ""
 }
@@ -754,15 +761,18 @@ func (p *sigParser) typ() Type {
 			t = Path
 		case "Ref":
 			t = Ref
-		case "Stream", "Set":
+		case "Stream", "Set", "Seq":
 			if !p.eat("<") {
 				p.err = true
 				return Invalid
 			}
 			e := p.typ()
-			if n == "Set" {
+			switch n {
+			case "Set":
 				t = &Set{e}
-			} else {
+			case "Seq":
+				t = &Seq{e}
+			default:
 				t = &Stream{e}
 			}
 			if !p.eat(">") {

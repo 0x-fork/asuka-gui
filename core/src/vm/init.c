@@ -12,6 +12,7 @@ extern const ak_lib_entry ak_live_lib;
 void ak_vm_builtins_init(void) {
 	for (const ak_lib_entry *e = ak_lib; e->name; e++) ak_builtin_register(e->name, e->fn);
 	for (const ak_lib_entry *e = ak_stream_lib; e->name; e++) ak_builtin_register(e->name, e->fn);
+	for (const ak_lib_entry *e = ak_seq_lib; e->name; e++) ak_builtin_register(e->name, e->fn);
 	for (const ak_lib_entry *const *t = ak_std_libs; *t; t++)
 		for (const ak_lib_entry *e = *t; e->name; e++) ak_builtin_register(e->name, e->fn);
 	ak_builtin_register(ak_lib_spawn.name, ak_lib_spawn.fn);

@@ -288,7 +288,7 @@ func (c *Checker) initUniverse() {
 		{"print", BPrint}, {"expect", BExpect}, {"sleep", BSleep}, {"all", BAll}, {"race", BRace},
 		{"mount", BMount}, {"idle", BIdle}, {"push", BPush}, {"pop", BPop}, {"present", BPresent},
 		{"dismiss", BDismiss}, {"min", BMin}, {"max", BMax}, {"abs", BAbs}, {"float", BFloat},
-		{"int", BInt}, {"panic", BPanic}, {"withTimeout", BWithTimeout}, {"Stream", BStream}, {"Set", BSet},
+		{"int", BInt}, {"panic", BPanic}, {"withTimeout", BWithTimeout}, {"Stream", BStream}, {"Set", BSet}, {"Seq", BSeq},
 		{"environment", BEnvironment}, {"live", BLive}, {"animate", BAnimate}, {shaderProgram, BShader},
 		{"never", BNever}, {"navigate", BNavigate}, {"replace", BReplace}, {"peek", BPeek},
 	} {
@@ -804,6 +804,14 @@ func (c *Checker) namedType(t *syntax.NamedType) Type {
 					return Invalid
 				}
 				return c.setOf(c.typeExpr(t.Args[0]), t.Args[0], true)
+			}
+		case "Seq":
+			if o, _ := c.lookup(name).(*Builtin); o != nil && o.ID == BSeq {
+				if len(t.Args) != 1 {
+					c.errorf(t, diag.TypeArguments, "Seq takes one type: Seq<T>")
+					return Invalid
+				}
+				return &Seq{c.typeExpr(t.Args[0])}
 			}
 		case "never":
 			// What a function that never returns gives (os.exit): the

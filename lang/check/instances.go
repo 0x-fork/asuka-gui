@@ -174,6 +174,8 @@ func namedIn(t Type, f func(*Named)) {
 		namedIn(x.Elem, f)
 	case *Stream:
 		namedIn(x.Elem, f)
+	case *Seq:
+		namedIn(x.Elem, f)
 	case *Named:
 		f(x)
 		for _, a := range x.Args {
@@ -211,6 +213,8 @@ func occurs(p *TypeParam, t Type) bool {
 	case *Task:
 		return occurs(p, x.Elem)
 	case *Stream:
+		return occurs(p, x.Elem)
+	case *Seq:
 		return occurs(p, x.Elem)
 	case *Named:
 		for _, a := range x.Args {

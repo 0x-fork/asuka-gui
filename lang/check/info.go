@@ -285,6 +285,7 @@ const (
 	ForStream             // for await x in a stream
 	ForIter               // a value of the program's type: an iterator (next) or a sequence (iter)
 	ForSet                // x in a set, in insertion order
+	ForSeq                // x in a lazy sequence (Seq<T>)
 )
 
 // ForInfo is a for loop's iteration.

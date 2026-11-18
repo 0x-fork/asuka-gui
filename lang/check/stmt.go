@@ -589,6 +589,12 @@ func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
 		fi.Kind, fi.Seq = ForEnumerated, call.Fun.(*syntax.MemberExpr).X
 		if a, ok := c.info.Types[fi.Seq].(*Array); ok {
 			fi.Elem = a.Elem
+		} else if st, ok := c.info.Types[call].(*Seq); ok {
+			// A Seq's enumerated(): a Seq of (index, element) pairs.
+			fi.Kind, fi.Seq, fi.Elem = ForSeq, call, st.Elem
+			if view {
+				c.errorf(s.Seq, diag.InvalidFor, "a for in a view goes over an array: the sequence's toArray()")
+			}
 		} else {
 			fi.Elem = Invalid
 		}
@@ -605,6 +611,11 @@ func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
 			}
 		case *Set:
 			fi.Kind, fi.Elem = ForSet, u.Elem
+		case *Seq:
+			fi.Kind, fi.Elem = ForSeq, u.Elem
+			if view {
+				c.errorf(s.Seq, diag.InvalidFor, "a for in a view goes over an array: the sequence's toArray()")
+			}
 		default:
 			if !view && !IsInvalid(t) {
 				c.openScope() // closed after the loop
@@ -628,7 +639,7 @@ func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
 		if s.Key == nil && (fi.Kind == ForSet || isRange(seq)) {
 			fi.KeyItem = true
 		}
-		if s.Key == nil && !fi.KeyItem {
+		if s.Key == nil && !fi.KeyItem && fi.Kind != ForSeq {
 			c.viewFors = append(c.viewFors, s)
 		}
 	}
@@ -664,7 +675,7 @@ func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
 	c.forBindings(fi, s.Pattern, LocalVar, nil)
 	c.loopBody(s, s.Label, func() { c.block(s.Body) })
 	c.closeScope()
-	if fi.Kind == ForIter {
+	if fi.Kind == ForIter || fi.Kind == ForSeq && fi.SeqVar != nil {
 		c.closeScope() // its hidden vars'
 	}
 }
