@@ -1,15 +1,16 @@
 name: release
-# A tag v1.2.3 publishes the CLI: its npm packages (@egoist/asuka and a
-# prebuilt binary per platform), the libraries it carries prebuilt (an
-# @egoist/asuka-prebuilt-<target> package per target, which the CLI
-# fetches from npm when a build first needs one), and a GitHub release
-# with the binaries, for the shell installer.
+# A tag v1.2.3 releases the CLI on GitHub: one release with everything it
+# ships as its assets: the CLI for each platform (asuka-<os>-<cpu>, which
+# scripts/install.sh and install.ps1 install and asuka upgrade updates),
+# the libraries it carries prebuilt (an archive per target,
+# asuka-prebuilt-<target>-<version>.tar.gz, which the CLI fetches from the
+# release when a build first needs one), the install scripts and
+# SHA256SUMS. Re-running the release job finishes the same release.
 on:
   push:
     tags: ["v*"]
 permissions:
   contents: write
-  id-token: write # npm provenance
 jobs:
   # What the CLI carries prebuilt, one target each (asuka prebuilt
   # targets): the core's, the desktop hosts' and the std and sdk packages'
@@ -65,40 +66,23 @@ jobs:
           name: prebuilt-${{ matrix.target }}
           path: dist/prebuilt/${{ matrix.target }}
           if-no-files-found: error
-  cli:
+  release:
     needs: prebuilt
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with: { go-version: stable }
-      - uses: actions/setup-node@v4
-        with: { node-version: 22, registry-url: "https://registry.npmjs.org" }
       - uses: actions/download-artifact@v4
         with:
           pattern: prebuilt-*
           path: dist/prebuilt
-      # The prebuilt packages packed, their manifest (each tarball's
-      # integrity) embedded in the CLI, which is built for each platform;
-      # then, once everything is built, the prebuilt and platform packages
-      # published, and the launcher (@egoist/asuka) last, once the
-      # registry serves each of them (fetched and checked as the CLI
-      # does): npm accepts a package minutes before it serves a new one's
-      # tarball, and a launcher out first installs a CLI whose builds
-      # can't fetch their libraries.
-      - name: npm
-        run: go run ./scripts/npm -version "${GITHUB_REF_NAME#v}" -prebuilt dist/prebuilt -out dist/npm -publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # The prebuilt archives packed, their manifest (each archive's
+      # SHA-256) embedded in the CLI, which is built for each platform;
+      # then the release: a draft if there's none, every asset uploaded
+      # that isn't there as this run made it, then published (a run again
+      # after a failed upload uploads only what's missing).
       - name: the GitHub release
-        run: |
-          mkdir -p dist/bin
-          for d in dist/npm/cli-*; do
-            p=${d#dist/npm/cli-}
-            f=$(ls $d/bin/asuka*)
-            case "$f" in *.exe) cp "$f" "dist/bin/asuka-$p.exe" ;; *) cp "$f" "dist/bin/asuka-$p" ;; esac
-          done
-          (cd dist/bin && sha256sum * > SHA256SUMS)
-          gh release create "$GITHUB_REF_NAME" dist/bin/* --generate-notes
+        run: go run ./scripts/release -version "${GITHUB_REF_NAME#v}" -prebuilt dist/prebuilt -out dist/release -repo "$GITHUB_REPOSITORY" -upload
         env:
           GH_TOKEN: ${{ github.token }}

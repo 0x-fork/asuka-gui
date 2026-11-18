@@ -29,3 +29,6 @@ node_modules/
 # Objects from compiling C by hand (zig cc -c without -o)
 *.o
 *.obj
+
+# scripts/release's dry run, and the prebuilt libraries it packs
+/dist/
