@@ -1,0 +1,19 @@
+// A Scroll made horizontal: Android's view is replaced by another class,
+// which an accessibility query (TalkBack, uiautomator) then reads.
+
+app {
+  Column {
+    padding: 24
+    gap: 12
+    Text("Horizontal scroll")
+    Scroll {
+      horizontal: true
+      Row {
+        gap: 8
+        Text("one")
+        Text("two")
+        Text("three")
+      }
+    }
+  }
+}

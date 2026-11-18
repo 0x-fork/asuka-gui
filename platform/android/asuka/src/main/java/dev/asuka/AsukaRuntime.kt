@@ -842,12 +842,11 @@ class AsukaRuntime private constructor(val app: Application) : AsukaOpHandler {
     private fun carryViewProps(old: View, v: View) {
         v.contentDescription = old.contentDescription
         androidx.core.view.ViewCompat.setStateDescription(v, androidx.core.view.ViewCompat.getStateDescription(old))
-        when (val d = old.accessibilityDelegate) {
-            // Its node's, over the new view's own.
-            is AsukaA11yDelegate -> v.accessibilityDelegate = AsukaA11yDelegate(this, d.id, v.accessibilityDelegate)
-            null -> {}
-            else -> v.accessibilityDelegate = d
-        }
+        // Its node's, over the new view's own. Any other is the old view's
+        // own (NestedScrollView's casts its host to one): the new view keeps
+        // its own.
+        val d = old.accessibilityDelegate
+        if (d is AsukaA11yDelegate) v.accessibilityDelegate = AsukaA11yDelegate(this, d.id, v.accessibilityDelegate)
         v.accessibilityLiveRegion = old.accessibilityLiveRegion
         v.defaultFocusHighlightEnabled = old.defaultFocusHighlightEnabled
         v.tooltipText = old.tooltipText

@@ -1,0 +1,3 @@
+name = "Horizontal Scroll"
+id = "dev.asuka.hscroll"
+orientations = ["portrait"]
