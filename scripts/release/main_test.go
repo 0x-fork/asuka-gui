@@ -90,3 +90,35 @@ func TestPackPrebuilt(t *testing.T) {
 		t.Fatal("packing the same files again made other archives")
 	}
 }
+
+// Each CLI is released packed beside itself, and SHA256SUMS has both.
+func TestPackCLI(t *testing.T) {
+	out := t.TempDir()
+	exe := strings.Repeat("asuka ", 10000)
+	for _, c := range [][3]string{{"asuka-linux-x64", "linux", "amd64"}, {"asuka-windows-arm64.exe", "windows", "arm64"}} {
+		if err := os.WriteFile(filepath.Join(out, c[0]), []byte(exe), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := packCLI(out, c[0], c[1], c[2]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writeSums(out); err != nil {
+		t.Fatal(err)
+	}
+	sums, _ := os.ReadFile(filepath.Join(out, "SHA256SUMS"))
+	for _, name := range []string{"asuka-linux-x64", "asuka-linux-x64.tar.gz", "asuka-windows-arm64.exe", "asuka-windows-arm64.zip"} {
+		st, err := os.Stat(filepath.Join(out, name))
+		if err != nil || st.Size() == 0 {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if strings.HasSuffix(name, ".gz") || strings.HasSuffix(name, ".zip") {
+			if st.Size() >= int64(len(exe))/10 {
+				t.Errorf("%s: %d bytes from %d", name, st.Size(), len(exe))
+			}
+		}
+		if !strings.Contains(string(sums), "  "+name+"\n") {
+			t.Errorf("SHA256SUMS has no %s:\n%s", name, sums)
+		}
+	}
+}

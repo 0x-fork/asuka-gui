@@ -38,21 +38,37 @@ fi
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-echo "asuka: downloading asuka-$os-$cpu"
-curl -fsSL -o "$tmp/asuka" "$base/asuka-$os-$cpu"
 curl -fsSL -o "$tmp/SHA256SUMS" "$base/SHA256SUMS"
-want=$(grep " \*\{0,1\}asuka-$os-$cpu\$" "$tmp/SHA256SUMS" | cut -d' ' -f1)
+# sum_of prints SHA256SUMS' line's hash for the file $1, if it has one.
+sum_of() { awk -v n="$1" '$2 == n || $2 == "*" n { print $1 }' "$tmp/SHA256SUMS"; }
+# Packed, a third of its size; a release before those (0.2.9 and
+# earlier) has the executable as it is.
+asset="asuka-$os-$cpu.tar.gz"
+want=$(sum_of "$asset")
+if [ -z "$want" ]; then
+	asset="asuka-$os-$cpu"
+	want=$(sum_of "$asset")
+fi
 if [ -z "$want" ]; then
 	echo "asuka: SHA256SUMS has no asuka-$os-$cpu" >&2
 	exit 1
 fi
-if command -v sha256sum >/dev/null; then got=$(sha256sum "$tmp/asuka" | cut -d' ' -f1); else got=$(shasum -a 256 "$tmp/asuka" | cut -d' ' -f1); fi
+echo "asuka: downloading $asset"
+curl -fsSL -o "$tmp/$asset" "$base/$asset"
+if command -v sha256sum >/dev/null; then got=$(sha256sum "$tmp/$asset" | cut -d' ' -f1); else got=$(shasum -a 256 "$tmp/$asset" | cut -d' ' -f1); fi
 if [ "$want" != "$got" ]; then
 	echo "asuka: the download doesn't match its checksum" >&2
 	exit 1
 fi
+case "$asset" in
+*.tar.gz)
+	tar -xzf "$tmp/$asset" -C "$tmp" asuka
+	exe="$tmp/asuka"
+	;;
+*) exe="$tmp/$asset" ;;
+esac
 mkdir -p "$dir"
-install -m 0755 "$tmp/asuka" "$dir/asuka"
+install -m 0755 "$exe" "$dir/asuka"
 echo "asuka: installed $dir/asuka ($("$dir/asuka" version))"
 case ":$PATH:" in
 *":$dir:"*) ;;

@@ -1,11 +1,13 @@
 package selfupdate
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -225,89 +227,167 @@ func sums(files map[string][]byte) []byte {
 	return []byte(b.String())
 }
 
+func TestArchiveAsset(t *testing.T) {
+	for _, c := range []struct{ goos, goarch, want string }{
+		{"darwin", "arm64", "asuka-darwin-arm64.tar.gz"},
+		{"linux", "amd64", "asuka-linux-x64.tar.gz"},
+		{"windows", "amd64", "asuka-windows-x64.zip"},
+		{"windows", "arm64", "asuka-windows-arm64.zip"},
+	} {
+		if got, err := ArchiveAsset(c.goos, c.goarch); err != nil || got != c.want {
+			t.Errorf("ArchiveAsset(%s, %s) = %s, %v", c.goos, c.goarch, got, err)
+		}
+	}
+	if _, err := ArchiveAsset("darwin", "amd64"); err == nil {
+		t.Error("an Intel Mac's archive")
+	}
+}
+
+func packBytes(t *testing.T, goos string, exe []byte) []byte {
+	t.Helper()
+	var b bytes.Buffer
+	if err := Pack(&b, goos, exe); err != nil {
+		t.Fatal(err)
+	}
+	return b.Bytes()
+}
+
+// Pack's archive unpacks to the executable, packs to the same bytes each
+// time (a release run again uploads nothing new), and is smaller.
+func TestPackUnpack(t *testing.T) {
+	exe := bytes.Repeat([]byte("an executable, much like asuka's own. "), 4096)
+	for _, goos := range []string{"darwin", "linux", "windows"} {
+		a := packBytes(t, goos, exe)
+		if !bytes.Equal(a, packBytes(t, goos, exe)) {
+			t.Errorf("%s: packed twice, two archives", goos)
+		}
+		if len(a) >= len(exe)/4 {
+			t.Errorf("%s: %d bytes packed to %d", goos, len(exe), len(a))
+		}
+		path := filepath.Join(t.TempDir(), "a")
+		os.WriteFile(path, a, 0o644)
+		var out bytes.Buffer
+		if err := unpack(path, goos, &out); err != nil || !bytes.Equal(out.Bytes(), exe) {
+			t.Errorf("%s: unpacked %d bytes, %v", goos, out.Len(), err)
+		}
+		// Another archive's (the other platforms') has no such file.
+		other := "windows"
+		if goos == "windows" {
+			other = "linux"
+		}
+		os.WriteFile(path, packBytes(t, other, exe), 0o644)
+		if err := unpack(path, goos, io.Discard); err == nil {
+			t.Errorf("%s: unpacked %s's archive", goos, other)
+		}
+	}
+}
+
 func TestUpgrade(t *testing.T) {
 	for _, goos := range []string{"linux", "windows"} {
-		t.Run(goos, func(t *testing.T) {
-			asset := "asuka-linux-x64"
-			if goos == "windows" {
-				asset = "asuka-windows-x64.exe"
-			}
-			newExe := []byte("the new asuka")
-			newReleases(t, "v0.3.0", map[string][]byte{
-				"v0.3.0/" + asset:   newExe,
-				"v0.3.0/SHA256SUMS": sums(map[string][]byte{asset: newExe, "asuka-other": []byte("x")}),
-				"v0.3.1/" + asset:   []byte("not what SHA256SUMS says"),
-				"v0.3.1/SHA256SUMS": sums(map[string][]byte{asset: newExe}),
-				"v0.3.2/SHA256SUMS": sums(map[string][]byte{"asuka-other": newExe}),
-				"v0.3.3/" + asset:   newExe,
-				"v0.3.3/SHA256SUMS": sums(map[string][]byte{asset: newExe}),
-			})
-			dir := t.TempDir()
-			exe := filepath.Join(dir, "asuka")
-			os.WriteFile(exe, []byte("the old asuka"), 0o755)
-			ctx := context.Background()
-			checked := ""
-			check := func(p string) error {
-				checked = p
-				return nil
-			}
-			left := func() []string {
-				es, _ := os.ReadDir(dir)
-				var names []string
-				for _, e := range es {
-					names = append(names, e.Name())
+		for _, released := range []string{"packed", "raw"} {
+			t.Run(goos+"/"+released, func(t *testing.T) {
+				raw, packed := "asuka-linux-x64", "asuka-linux-x64.tar.gz"
+				if goos == "windows" {
+					raw, packed = "asuka-windows-x64.exe", "asuka-windows-x64.zip"
 				}
-				return names
-			}
-			unchanged := func() {
-				t.Helper()
-				if b, _ := os.ReadFile(exe); string(b) != "the old asuka" {
-					t.Fatalf("the executable was replaced: %q", b)
+				newExe := []byte("the new asuka")
+				// What a release has: the archive and the executable (from
+				// 0.2.10), or the executable alone (up to 0.2.9).
+				asset, file := packed, packBytes(t, goos, newExe)
+				if released == "raw" {
+					asset, file = raw, newExe
 				}
+				newReleases(t, "v0.3.0", map[string][]byte{
+					"v0.3.0/" + asset:   file,
+					"v0.3.0/SHA256SUMS": sums(map[string][]byte{asset: file, "asuka-other": []byte("x")}),
+					"v0.3.1/" + asset:   []byte("not what SHA256SUMS says"),
+					"v0.3.1/SHA256SUMS": sums(map[string][]byte{asset: file}),
+					"v0.3.2/SHA256SUMS": sums(map[string][]byte{"asuka-other": newExe}),
+					"v0.3.3/" + asset:   file,
+					"v0.3.3/SHA256SUMS": sums(map[string][]byte{asset: file}),
+					"v0.3.4/" + asset:   []byte("packed wrong"),
+					"v0.3.4/SHA256SUMS": sums(map[string][]byte{asset: []byte("packed wrong")}),
+				})
+				dir := t.TempDir()
+				exe := filepath.Join(dir, "asuka")
+				os.WriteFile(exe, []byte("the old asuka"), 0o755)
+				ctx := context.Background()
+				checked := ""
+				check := func(p string) error {
+					checked = p
+					if b, _ := os.ReadFile(p); !bytes.Equal(b, newExe) {
+						return fmt.Errorf("checked %q", b)
+					}
+					return nil
+				}
+				left := func() []string {
+					es, _ := os.ReadDir(dir)
+					var names []string
+					for _, e := range es {
+						names = append(names, e.Name())
+					}
+					return names
+				}
+				unchanged := func() {
+					t.Helper()
+					if b, _ := os.ReadFile(exe); string(b) != "the old asuka" {
+						t.Fatalf("the executable was replaced: %q", b)
+					}
+					if l := left(); len(l) != 1 {
+						t.Fatalf("left beside it: %v", l)
+					}
+				}
+				up := func(version string, check func(string) error) error {
+					return upgrade(ctx, exe, version, packed, raw, goos, check)
+				}
+
+				// A download that isn't what SHA256SUMS says isn't installed.
+				if err := up("0.3.1", check); err == nil || !strings.Contains(err.Error(), "SHA256SUMS") {
+					t.Fatalf("a download with another checksum: %v", err)
+				}
+				unchanged()
+				// Nor one SHA256SUMS doesn't name.
+				if err := up("0.3.2", check); err == nil || !strings.Contains(err.Error(), "no "+packed+" or "+raw) {
+					t.Fatalf("an asset SHA256SUMS hasn't: %v", err)
+				}
+				unchanged()
+				// Nor one that doesn't run here.
+				if err := up("0.3.3", func(string) error { return errors.New("exec format error") }); err == nil || !strings.Contains(err.Error(), "doesn't run") {
+					t.Fatalf("a download that doesn't run: %v", err)
+				}
+				unchanged()
+				// Nor a release that isn't there.
+				if err := up("9.9.9", check); err == nil || !strings.Contains(err.Error(), "404") {
+					t.Fatalf("a missing release: %v", err)
+				}
+				unchanged()
+				if released == "packed" {
+					// Nor an archive that doesn't unpack.
+					if err := up("0.3.4", check); err == nil || !strings.Contains(err.Error(), "unpacking") {
+						t.Fatalf("an archive that doesn't unpack: %v", err)
+					}
+					unchanged()
+				}
+
+				if err := up("0.3.0", check); err != nil {
+					t.Fatal(err)
+				}
+				if b, _ := os.ReadFile(exe); string(b) != string(newExe) {
+					t.Fatalf("the executable is %q", b)
+				}
+				if checked == "" || filepath.Dir(checked) != dir {
+					t.Fatalf("checked %q, not the download beside the executable", checked)
+				}
+				if st, _ := os.Stat(exe); st.Mode()&0o100 == 0 && goos != "windows" {
+					t.Fatalf("the executable's mode is %v", st.Mode())
+				}
+				// Nothing left beside it (on Windows the old one is removed when
+				// it isn't running, as here).
 				if l := left(); len(l) != 1 {
 					t.Fatalf("left beside it: %v", l)
 				}
-			}
-
-			// A download that isn't what SHA256SUMS says isn't installed.
-			if err := upgrade(ctx, exe, "0.3.1", asset, goos, check); err == nil || !strings.Contains(err.Error(), "SHA256SUMS") {
-				t.Fatalf("a download with another checksum: %v", err)
-			}
-			unchanged()
-			// Nor one SHA256SUMS doesn't name.
-			if err := upgrade(ctx, exe, "0.3.2", asset, goos, check); err == nil || !strings.Contains(err.Error(), "no "+asset) {
-				t.Fatalf("an asset SHA256SUMS hasn't: %v", err)
-			}
-			unchanged()
-			// Nor one that doesn't run here.
-			if err := upgrade(ctx, exe, "0.3.3", asset, goos, func(string) error { return errors.New("exec format error") }); err == nil || !strings.Contains(err.Error(), "doesn't run") {
-				t.Fatalf("a download that doesn't run: %v", err)
-			}
-			unchanged()
-			// Nor a release that isn't there.
-			if err := upgrade(ctx, exe, "9.9.9", asset, goos, check); err == nil || !strings.Contains(err.Error(), "404") {
-				t.Fatalf("a missing release: %v", err)
-			}
-			unchanged()
-
-			if err := upgrade(ctx, exe, "0.3.0", asset, goos, check); err != nil {
-				t.Fatal(err)
-			}
-			if b, _ := os.ReadFile(exe); string(b) != string(newExe) {
-				t.Fatalf("the executable is %q", b)
-			}
-			if checked == "" || filepath.Dir(checked) != dir {
-				t.Fatalf("checked %q, not the download beside the executable", checked)
-			}
-			if st, _ := os.Stat(exe); st.Mode()&0o100 == 0 && goos != "windows" {
-				t.Fatalf("the executable's mode is %v", st.Mode())
-			}
-			// Nothing left beside it (on Windows the old one is removed when
-			// it isn't running, as here).
-			if l := left(); len(l) != 1 {
-				t.Fatalf("left beside it: %v", l)
-			}
-		})
+			})
+		}
 	}
 }
 

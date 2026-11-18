@@ -94,33 +94,50 @@ func Asset(goos, goarch string) (string, error) {
 }
 
 // Upgrade replaces the executable exe with the release version's for
-// this computer: downloaded beside it, checked against the release's
-// SHA256SUMS, then check (its run, asuka version), then put in exe's
-// place. On Windows, where a running executable can't be replaced but can
-// be renamed, exe is moved aside to exe.old first (removed by
+// this computer: downloaded beside it (packed, ArchiveAsset, or for a
+// release before those, as it is, Asset), checked against the release's
+// SHA256SUMS, unpacked, then check (its run, asuka version), then put in
+// exe's place. On Windows, where a running executable can't be replaced
+// but can be renamed, exe is moved aside to exe.old first (removed by
 // RemoveOld, the next run).
 func Upgrade(ctx context.Context, exe, version string, check func(path string) error) error {
-	asset, err := Asset(runtime.GOOS, runtime.GOARCH)
+	raw, err := Asset(runtime.GOOS, runtime.GOARCH)
 	if err != nil {
 		return err
 	}
-	return upgrade(ctx, exe, version, asset, runtime.GOOS, check)
+	packed, err := ArchiveAsset(runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		return err
+	}
+	return upgrade(ctx, exe, version, packed, raw, runtime.GOOS, check)
 }
 
-func upgrade(ctx context.Context, exe, version, asset, goos string, check func(string) error) error {
+func upgrade(ctx context.Context, exe, version, packed, raw, goos string, check func(string) error) error {
 	base := Releases + "/download/v" + url.PathEscape(version) + "/"
 	sums, err := get(ctx, base+"SHA256SUMS", 1<<20)
 	if err != nil {
 		return err
 	}
-	want, err := sumOf(sums, asset)
+	asset := packed
+	want, err := sumOf(sums, packed)
 	if err != nil {
-		return fmt.Errorf("v%s's SHA256SUMS: %v", version, err)
+		// A release from before the packed ones: the executable as it is.
+		asset = raw
+		if want, err = sumOf(sums, raw); err != nil {
+			return fmt.Errorf("v%s's SHA256SUMS: no %s or %s in it", version, packed, raw)
+		}
 	}
 	dir := filepath.Dir(exe)
-	f, err := os.CreateTemp(dir, ".asuka-upgrade-*")
+	tmpFile := func() (*os.File, error) {
+		f, err := os.CreateTemp(dir, ".asuka-upgrade-*")
+		if err != nil {
+			return nil, fmt.Errorf("can't write beside %s (%v): reinstall asuka where you can, or with the permissions it was installed with", exe, err)
+		}
+		return f, nil
+	}
+	f, err := tmpFile()
 	if err != nil {
-		return fmt.Errorf("can't write beside %s (%v): reinstall asuka where you can, or with the permissions it was installed with", exe, err)
+		return err
 	}
 	tmp := f.Name()
 	defer os.Remove(tmp)
@@ -133,6 +150,22 @@ func upgrade(ctx context.Context, exe, version, asset, goos string, check func(s
 	}
 	if got != want {
 		return fmt.Errorf("the download of %s doesn't match v%s's SHA256SUMS: not installed", asset, version)
+	}
+	if asset == packed {
+		x, err := tmpFile()
+		if err != nil {
+			return err
+		}
+		exeTmp := x.Name()
+		defer os.Remove(exeTmp)
+		err = unpack(tmp, goos, x)
+		if cerr := x.Close(); err == nil {
+			err = cerr
+		}
+		if err != nil {
+			return fmt.Errorf("unpacking %s: %v: not installed", asset, err)
+		}
+		tmp = exeTmp
 	}
 	if err := os.Chmod(tmp, 0o755); err != nil {
 		return err

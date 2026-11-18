@@ -6,8 +6,11 @@
 //     packed as one archive, asuka-prebuilt-<target>-<version>.tar.gz,
 //     and their manifest (internal/prebuilt: each archive's SHA-256, each
 //     library's path and SHA-256) embedded in the CLI.
-//   - The CLI built for every platform it runs on, asuka-<os>-<cpu>
-//     (.exe on Windows), with that manifest.
+//   - The CLI built for every platform it runs on, with that manifest,
+//     packed (asuka-<os>-<cpu>.tar.gz; asuka-windows-<cpu>.zip), a third
+//     of its size, which the install scripts and asuka upgrade fetch, and
+//     as it is (asuka-<os>-<cpu>, .exe on Windows), which asuka upgrade
+//     before 0.2.10 fetches.
 //   - The install scripts (scripts/install.sh, scripts/install.ps1).
 //   - SHA256SUMS, of all of them.
 //
@@ -37,6 +40,7 @@ import (
 	"strings"
 
 	"github.com/egoist/asuka/internal/prebuilt"
+	"github.com/egoist/asuka/internal/selfupdate"
 )
 
 // platforms are what the CLI is built for: os and cpu name its asset.
@@ -241,8 +245,37 @@ func buildCLI(out, version, manifest string, m *prebuilt.Manifest) error {
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("building %s: %v", name, err)
 		}
+		if err := packCLI(out, name, p.goos, p.goarch); err != nil {
+			return fmt.Errorf("packing %s: %v", name, err)
+		}
 	}
 	return nil
+}
+
+// packCLI writes the archive of out/name, the CLI built for goos and
+// goarch, beside it.
+func packCLI(out, name, goos, goarch string) error {
+	exe, err := os.ReadFile(filepath.Join(out, name))
+	if err != nil {
+		return err
+	}
+	archive, err := selfupdate.ArchiveAsset(goos, goarch)
+	if err != nil {
+		return err
+	}
+	f, err := os.Create(filepath.Join(out, archive))
+	if err != nil {
+		return err
+	}
+	err = selfupdate.Pack(f, goos, exe)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		st, _ := os.Stat(filepath.Join(out, archive))
+		fmt.Printf("packed %s (%d MB, from %d MB)\n", archive, st.Size()>>20, len(exe)>>20)
+	}
+	return err
 }
 
 // cliAsset is the CLI's asset for os and cpu.

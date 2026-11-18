@@ -34,7 +34,8 @@ function Install-Asuka {
 		'^(X64|AMD64)$' { $cpu = 'x64' }
 		default { throw "asuka: no build for $arch (x64 and arm64 only)" }
 	}
-	$asset = "asuka-windows-$cpu.exe"
+	$zip = "asuka-windows-$cpu.zip"
+	$raw = "asuka-windows-$cpu.exe"
 
 	if ($env:ASUKA_VERSION) {
 		$base = "https://github.com/$repo/releases/download/v$($env:ASUKA_VERSION -replace '^v', '')"
@@ -45,19 +46,30 @@ function Install-Asuka {
 	$tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("asuka-" + [guid]::NewGuid())
 	New-Item -ItemType Directory -Path $tmp | Out-Null
 	try {
-		Write-Host "asuka: downloading $asset"
-		$exe = Join-Path $tmp 'asuka.exe'
 		$sums = Join-Path $tmp 'SHA256SUMS'
-		Invoke-WebRequest -UseBasicParsing -Uri "$base/$asset" -OutFile $exe
 		Invoke-WebRequest -UseBasicParsing -Uri "$base/SHA256SUMS" -OutFile $sums
-		$want = $null
+		$hashes = @{}
 		foreach ($line in Get-Content $sums) {
 			$f = $line -split '\s+', 2
-			if ($f.Count -eq 2 -and $f[1].TrimStart('*') -eq $asset) { $want = $f[0].ToLower() }
+			if ($f.Count -eq 2) { $hashes[$f[1].TrimStart('*')] = $f[0].ToLower() }
 		}
-		if (-not $want) { throw "asuka: SHA256SUMS has no $asset" }
-		$got = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLower()
-		if ($want -ne $got) { throw "asuka: the download doesn't match its checksum" }
+		# Zipped, a third of its size; a release before those (0.2.9 and
+		# earlier) has the executable as it is.
+		$asset = $zip
+		if (-not $hashes.ContainsKey($asset)) { $asset = $raw }
+		if (-not $hashes.ContainsKey($asset)) { throw "asuka: SHA256SUMS has no $zip or $raw" }
+		Write-Host "asuka: downloading $asset"
+		$download = Join-Path $tmp $asset
+		Invoke-WebRequest -UseBasicParsing -Uri "$base/$asset" -OutFile $download
+		$got = (Get-FileHash -Algorithm SHA256 $download).Hash.ToLower()
+		if ($hashes[$asset] -ne $got) { throw "asuka: the download doesn't match its checksum" }
+		$exe = Join-Path $tmp 'asuka.exe'
+		if ($asset -eq $zip) {
+			Expand-Archive -Path $download -DestinationPath (Join-Path $tmp 'unzipped')
+			Move-Item -Force (Join-Path $tmp 'unzipped\asuka.exe') $exe
+		} else {
+			Move-Item -Force $download $exe
+		}
 
 		New-Item -ItemType Directory -Force -Path $dir | Out-Null
 		$dest = Join-Path $dir 'asuka.exe'
