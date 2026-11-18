@@ -855,6 +855,10 @@ func (b *fb) selection(e syntax.Expr, x syntax.Expr, dst int) int {
 		mt := sel.MemberType
 		if mt == nil {
 			mt = check.Unopt(resT)
+		} else {
+			// In a generic function, its type in this instantiation: a
+			// T that's an int is boxed.
+			mt = b.typ(mt)
 		}
 		if check.IsOptional(mt) {
 			b.move(r, v)
