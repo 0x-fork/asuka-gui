@@ -1042,6 +1042,11 @@ test "reads git's branch" {
 }
 ```
 
+A program's property tests, snapshots, benches and coverage are an
+app's too: `asuka test --bench` times what `asuka build` ships,
+compiled to C, and `asuka test --cover` measures the program's code
+([Testing](testing.md#property-tests)).
+
 ## What runs where
 
 | | macOS | Windows | Linux | Phones, the web |

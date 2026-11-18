@@ -740,6 +740,8 @@ test "reads git's branch" {
 }
 ```
 
+プロパティテスト、スナップショット、ベンチマーク、カバレッジも、アプリと同じようにプログラムで使えます。`asuka test --bench` は `asuka build` が出荷する、C にコンパイルしたコードを計測し、`asuka test --cover` はプログラム自身のコードを計測します（[テスト](testing.md#プロパティテスト)を参照）。
+
 ## プラットフォームごとの対応
 
 | | macOS | Windows | Linux | スマートフォン、Web |

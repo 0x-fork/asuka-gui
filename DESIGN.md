@@ -1933,6 +1933,11 @@ asuka/
   drive them by what the screen shows (`tap`, `type`, `expect`), as a
   user would; the clock moves only when nothing else can run, so a
   `sleep(5s)` takes no time and nothing waits on wall-clock time.
+  A test with parameters runs with generated inputs from a seed (a
+  failing one shrunk), `--fuzz` generates more guided by coverage's
+  counters, snapshots are compared with what's committed, and benches
+  are the one place wall-clock time is measured: never pass or fail on
+  it (docs/testing.md).
 - The macOS host (`go test ./platform/macos/mactest`): each test's
   Asuka app runs on the Mac player (the Swift host and the core, built
   once by the CLI), sent as asuka dev sends it; the test drives it
