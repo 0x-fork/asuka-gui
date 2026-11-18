@@ -94,7 +94,7 @@ match line {
 }
 ```
 
-结构体和枚举可以从它们的方法获得运算符：`fn add(o: T) -> R` 就是 `a + b`，`fn sub(o: T) -> R`（或 `minus`）就是 `a - b`，`fn mul(o: T) -> R`（或 `times`）就是 `a * b`，`fn div(o: T) -> R`（或 `quo`）就是 `a / b`，`fn rem(o: T) -> R` 就是 `a % b`，`fn neg() -> R` 就是 `-a`，`fn compare(o: T) -> int`（负数、零或正数）就是 `<`、`<=`、`>` 和 `>=`，也让 `sorted()` 和 `T: Comparable` 可用（见[函数](functions.md#接口与泛型)）。`T` 可以和值本身的类型不同（`Money * int`）；一个运算符有两个方法名时，两个方法各接受一种 `T`：`Decimal` 的 `mul(o: Decimal)` 和 `times(n: int)` 分别对应 `price * rate` 和 `price * 3`。反过来的顺序（`3 * price`）不会自动推出。只要方法返回的还是 `a` 的类型，`a += b` 就是借助这些方法的 `a = a + b`（`-=`、`*=`、`/=`、`%=` 也一样），可以用在 var、状态、字段和元素上（状态只改变一次）。`std/time` 的 `Time` 就是这样加上一个 `Duration`、减去另一个 `Time` 的：
+结构体和枚举可以从它们的方法获得运算符：`fn add(o: T) -> R`（或 `plus`）就是 `a + b`，`fn sub(o: T) -> R`（或 `minus`）就是 `a - b`，`fn mul(o: T) -> R`（或 `times`）就是 `a * b`，`fn div(o: T) -> R`（或 `quo`）就是 `a / b`，`fn rem(o: T) -> R` 就是 `a % b`，`fn neg() -> R` 就是 `-a`，`fn compare(o: T) -> int`（负数、零或正数）就是 `<`、`<=`、`>` 和 `>=`，也让 `sorted()` 和 `T: Comparable` 可用（见[函数](functions.md#接口与泛型)）。`T` 可以和值本身的类型不同（`Money * int`）；一个运算符有两个方法名时，两个方法各接受一种 `T`：`Decimal` 的 `mul(o: Decimal)` 和 `times(n: int)` 分别对应 `price * rate` 和 `price * 3`。反过来的顺序（`3 * price`）不会自动推出。只要方法返回的还是 `a` 的类型，`a += b` 就是借助这些方法的 `a = a + b`（`-=`、`*=`、`/=`、`%=` 也一样），可以用在 var、状态、字段和元素上（状态只改变一次）。`std/time` 的 `Time` 就是这样加上一个 `Duration`、减去另一个 `Time` 的：
 
 ```asuka check
 struct Money {

@@ -132,6 +132,18 @@ let n = try big + 1 catch { 0 }               // 0: it threw
 let next = big.addingChecked(1) ?? big          // none on overflow: big
 ```
 
+For numbers past int's range, `std/bigint`'s `BigInt` is an integer of
+any size, with the arithmetic operators and the comparisons
+([Standard library](../stdlib.md)):
+
+```asuka check
+import std/bigint.{BigInt}
+
+let big = BigInt.of(9223372036854775807)
+let past = big * big + BigInt.one           // 85070591730234615847396907784232501250
+let digits = "{BigInt.factorial(30)}"       // 265252859812191058636308480000000
+```
+
 `&+`, `&-` and `&*` wrap instead: past the largest `int` they go on from
 the smallest, as 64-bit two's complement does (`9223372036854775807 &+
 1` is `-9223372036854775808`). That's what hashes, checksums and binary

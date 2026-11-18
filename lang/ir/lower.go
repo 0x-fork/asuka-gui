@@ -390,7 +390,14 @@ func (l *Lowerer) desc(t check.Type) string {
 				return "-"
 			}
 			l.shape(t)
-			return "S" + l.typeKey(t) + ";"
+			key := l.typeKey(t)
+			if key == "std/bigint.BigInt" {
+				// JSON and print read and write it with std/bigint's C
+				// (json.c's ak_link_bigint): a program that only decodes
+				// one links that C too.
+				l.builtin("bigint.bigText")
+			}
+			return "S" + key + ";"
 		case check.EnumType:
 			if x.Obj.RefEnum() {
 				l.shape(t)

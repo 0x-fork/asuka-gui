@@ -360,6 +360,16 @@ let n = try big + 1 catch { 0 }               // 0：抛出了错误
 let next = big.addingChecked(1) ?? big          // 溢出时为 none：得到 big
 ```
 
+超出 `int` 范围的数，可以用 `std/bigint` 的 `BigInt`：它是任意大小的整数，同样支持算术运算符和比较（见[标准库](https://asuka.egoist.dev/zh/docs/stdlib)）：
+
+```asuka
+import std/bigint.{BigInt}
+
+let big = BigInt.of(9223372036854775807)
+let past = big * big + BigInt.one           // 85070591730234615847396907784232501250
+let digits = "{BigInt.factorial(30)}"       // 265252859812191058636308480000000
+```
+
 `&+`、`&-` 和 `&*` 则会回绕：结果超过最大的 `int` 时，按 64 位二进制补码的规则从最小值接着算下去（`9223372036854775807 &+ 1` 等于 `-9223372036854775808`）。哈希、校验和以及二进制协议需要的正是这种行为；`&+=`、`&-=` 和 `&*=` 是对应的赋值写法：
 
 ```asuka
@@ -2009,7 +2019,7 @@ test "archiving removes the row" {
 - format-spec: 插值的格式和它的值对不上. 按值的类型写格式，参照消息的说明：`{n:>6}`、`{x:.2f}`、`{n:#x}`、`{name:<12}`。
 - group-not-calls: `load (…)` 里的元素不都是调用. 只把调用放进组里（`load (api.user(id), api.posts(id))`），把值传给这些调用，或者放在 load 旁边。
 - import-cycle: 相互导入的包. 把两者都需要的部分移到第三个包里，让它们都导入它。
-- int-overflow: 超出 64 位范围的整数字面量. 换一个更小的数，或者使用 `float`；需要精确的大数时用 `std/decimal`。
+- int-overflow: 超出 64 位范围的整数字面量. 换一个更小的数，或者使用 `float`；需要超出 64 位的精确整数时，用 `std/bigint` 的 `BigInt`（`BigInt.parse("9223372036854775808")!`）。
 - interface-not-satisfied: 类型声明了某个 interface，却没有实现它. 按 interface 的签名补上缺少的方法（消息里列出了它们）。
 - internal-error: 编译器自身的错误. 请到 https://github.com/egoist/asuka/issues 报告（附上程序，或者能重现问题的最小程序）。
 - invalid-catalog: 不是有效消息文件的目录. 在消息指出的位置修正文件：每个键对应一个字符串，占位符与源语言一致。

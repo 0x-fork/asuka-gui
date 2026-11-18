@@ -118,7 +118,7 @@ match line {
 ```
 
 A struct or an enum takes operators from its methods: `fn add(o: T) ->
-R` is `a + b`, `fn sub(o: T) -> R` (or `minus`) is `a - b`, `fn mul(o:
+R` (or `plus`) is `a + b`, `fn sub(o: T) -> R` (or `minus`) is `a - b`, `fn mul(o:
 T) -> R` (or `times`) is `a * b`, `fn div(o: T) -> R` (or `quo`) is `a /
 b`, `fn rem(o: T) -> R` is `a % b`, `fn neg() -> R` is `-a`, and `fn
 compare(o: T) -> int` (negative, zero or positive) is `<`, `<=`, `>`

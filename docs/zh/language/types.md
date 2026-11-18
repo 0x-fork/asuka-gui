@@ -80,6 +80,16 @@ let n = try big + 1 catch { 0 }               // 0：抛出了错误
 let next = big.addingChecked(1) ?? big          // 溢出时为 none：得到 big
 ```
 
+超出 `int` 范围的数，可以用 `std/bigint` 的 `BigInt`：它是任意大小的整数，同样支持算术运算符和比较（见[标准库](../stdlib.md)）：
+
+```asuka check
+import std/bigint.{BigInt}
+
+let big = BigInt.of(9223372036854775807)
+let past = big * big + BigInt.one           // 85070591730234615847396907784232501250
+let digits = "{BigInt.factorial(30)}"       // 265252859812191058636308480000000
+```
+
 `&+`、`&-` 和 `&*` 则会回绕：结果超过最大的 `int` 时，按 64 位二进制补码的规则从最小值接着算下去（`9223372036854775807 &+ 1` 等于 `-9223372036854775808`）。哈希、校验和以及二进制协议需要的正是这种行为；`&+=`、`&-=` 和 `&*=` 是对应的赋值写法：
 
 ```asuka

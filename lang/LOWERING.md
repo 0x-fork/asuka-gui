@@ -1359,6 +1359,12 @@ its descriptor after a NUL (`"title\x00s"`, `"tags\x00[s"`), and the same
 for enum cases' labelled payloads; a payloadless enum JSON reads or
 writes gets a shape of its name whose cases name its values.
 
+std/bigint's `BigInt` (its descriptor `Sstd/bigint.BigInt;`, as any
+struct's) is the runtime's to write: json.c writes it as a number of
+all its digits, which print and interpolation show too, and reads one
+from such a number or a string of digits (std.h's `ak_bigint_*`, in
+core/src/std/bigint.c, which every link has for it).
+
 ## Native packages
 
 A `native interface X { fn m(a: A) -> R }` (docs/native.md) lowers to an

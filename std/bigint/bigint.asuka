@@ -1,0 +1,295 @@
+// Package std/bigint is integers of any size, for what's past int's 64
+// bits: cryptography's numbers, exact factorials and combinatorics, ids
+// and amounts a protocol sends as long digit strings.
+//
+//   import std/bigint.{BigInt}
+//
+//   let n = BigInt.factorial(30)                    // 265252859812191058636308480000000
+//   let m: BigInt = .parse("123456789012345678901234567890")!
+//   let k = n * m - 7
+//   print("{k}")                                    // its digits
+//   let key = m.modPow(.of(65537), n + 1)           // pow(m, 65537, n + 1)
+//
+// A BigInt is a value, as an int is: the operators make new ones, and
+// two equal numbers are == and hash alike, so they're map keys and set
+// elements. +, -, *, / and % work between two BigInts, and +, -, * and
+// / take an int on the right too (n + 1, n * 3, n - 1, n / 2);
+// comparisons are <, <=, > and >=. / and % truncate toward zero as int's do (-7 / 2 is
+// -3, -7 % 2 is -1); floorDiv and mod round toward negative infinity
+// instead, as Python's // and % (-4 and 1). The bit operations are on
+// two's complement, a negative number having ones to the left without
+// end, as Go's and Python's are.
+//
+// It prints and goes in a string as its digits ("{n}"), and json.encode
+// writes it as a JSON number of all its digits; json.decode reads one
+// from a number or from a string of digits (as APIs send numbers a
+// double can't hold). For a JSON string, store string() in a string
+// field.
+//
+// It's the same on every platform: C in the core, the web's through its
+// WebAssembly. Multiplying, dividing and converting to and from text are
+// subquadratic (Karatsuba's multiplication, Burnikel and Ziegler's
+// division, radix conversion that divides and conquers), so a million
+// digits print in about a second. A number past 2^30 bits (about 323
+// million digits) throws, as an int's overflow does: a pow or a shift
+// that would take gigabytes is a bug shown where it happens. Dividing by
+// zero throws "division by zero".
+
+import std/decimal.{Decimal}
+import std/i18n
+
+/// An integer of any size. Make one with of, parse, fromBytes or the
+/// operators; compare them with <, <=, > and >=.
+pub struct BigInt {
+  /// How the number is kept, which only this package makes and reads:
+  /// empty for 0, else a sign byte (1 when negative) and the magnitude's
+  /// bytes, least significant first, the last not 0. Use toBytes for
+  /// bytes to send or store.
+  data: bytes
+
+  /// 0.
+  let zero = BigInt(data: bytes())
+  /// 1.
+  let one = BigInt(data: bytes([0, 1]))
+
+  /// The int n as a BigInt: BigInt.of(42).
+  static fn of(n: int) -> BigInt = BigInt(data: bigFromInt(n))
+
+  /// The integer text says in radix (2 to 36, letters in either case):
+  /// an optional sign, then digits, an underscore allowed between two
+  /// of them as in a literal ("1_000_000"). Radix 16, 8 or 2 also take
+  /// the literal's prefix ("0xff"); radix 0 reads the prefix to know it
+  /// (0x, 0o, 0b, else 10). None for anything else, spaces too (trim()
+  /// first). A radix outside these is an error.
+  static fn parse(text: string, radix: int = 10) -> BigInt? = if let d = bigParse(text, radix) { BigInt(data: d) } else { none }
+
+  /// The number data's bytes say, most significant first (big-endian):
+  /// unsigned, or with signed true two's complement, the first byte's
+  /// top bit the sign (as cryptography and binary protocols write them).
+  /// No bytes is 0.
+  static fn fromBytes(data: bytes, signed: bool = false) -> BigInt = BigInt(data: bigFromBytes(data, signed))
+
+  /// The float x's whole part, toward zero (2.9 is 2, -2.9 is -2),
+  /// exactly: 1e30 is 1000000000000000019884624838656. None for NaN and
+  /// the infinities.
+  static fn fromFloat(x: float) -> BigInt? = if let d = bigFromFloat(x) { BigInt(data: d) } else { none }
+
+  /// The decimal d's whole part, toward zero (2.7 is 2, -2.7 is -2),
+  /// exactly: 1.5e40 is 15 followed by 39 zeros.
+  static fn fromDecimal(d: Decimal) -> BigInt {
+    let c = BigInt.of(d.coefficient)
+    if d.exponent >= 0 {
+      return c * BigInt.of(10).pow(d.exponent)
+    }
+    if d.exponent < -18 {
+      // Past an int's 19 digits: the whole part is 0.
+      return BigInt.zero
+    }
+    return c / BigInt.of(10).pow(-d.exponent)
+  }
+
+  /// n! (1·2·…·n), by a product tree; 0! is 1. A negative n is an error.
+  static fn factorial(n: int) -> BigInt = BigInt(data: bigFactorial(n))
+
+  /// A number in [0, below), each as likely, from the system's secure
+  /// randomness (std/crypto's): for keys and nonces. below must be
+  /// positive.
+  static fn random(below: BigInt) -> BigInt = BigInt(data: bigRandom(below.data))
+
+  /// The sum.
+  fn add(o: BigInt) -> BigInt = BigInt(data: bigAdd(data, o.data))
+
+  /// The sum with an int: x + 1.
+  fn plus(n: int) -> BigInt = BigInt(data: bigAdd(data, bigFromInt(n)))
+
+  /// The difference.
+  fn sub(o: BigInt) -> BigInt = BigInt(data: bigSub(data, o.data))
+
+  /// The difference with an int, as - of a BigInt (n - 1).
+  fn minus(n: int) -> BigInt = BigInt(data: bigSub(data, bigFromInt(n)))
+
+  /// The product.
+  fn mul(o: BigInt) -> BigInt = BigInt(data: bigMul(data, o.data))
+
+  /// The product with an int, as * of a BigInt (n * 3).
+  fn times(n: int) -> BigInt = BigInt(data: bigMul(data, bigFromInt(n)))
+
+  /// The quotient toward zero, as int's /: -7 / 2 is -3. floorDiv
+  /// rounds toward negative infinity.
+  fn div(o: BigInt) -> BigInt = BigInt(data: bigDiv(data, o.data, 0))
+
+  /// The quotient by an int, as / of a BigInt (n / 2).
+  fn quo(n: int) -> BigInt = BigInt(data: bigDiv(data, bigFromInt(n), 0))
+
+  /// The remainder of the quotient toward zero, with this number's sign,
+  /// as int's %: -7 % 2 is -1. mod's has the divisor's.
+  fn rem(o: BigInt) -> BigInt = BigInt(data: bigDiv(data, o.data, 1))
+
+  /// The number negated.
+  fn neg() -> BigInt = BigInt(data: bigNeg(data))
+
+  /// Negative, zero or positive as this is less than, equal to or more
+  /// than o: what <, <=, > and >= compare, and sorted() orders by.
+  fn compare(o: BigInt) -> int = bigCmp(data, o.data)
+
+  /// The quotient toward zero and its remainder at once: x / o and x %
+  /// o.
+  fn quoRem(o: BigInt) -> (BigInt, BigInt) {
+    let qr = bigDivBoth(data, o.data, false)
+    return (BigInt(data: qr[0]), BigInt(data: qr[1]))
+  }
+
+  /// The quotient toward negative infinity, as Python's //: -7 floorDiv
+  /// 2 is -4.
+  fn floorDiv(o: BigInt) -> BigInt = BigInt(data: bigDiv(data, o.data, 2))
+
+  /// The remainder of floorDiv, with the divisor's sign, as Python's %:
+  /// -7 mod 2 is 1. Modulo a positive m, it's always in [0, m).
+  fn mod(o: BigInt) -> BigInt = BigInt(data: bigDiv(data, o.data, 3))
+
+  /// floorDiv and mod at once, as Python's divmod.
+  fn divMod(o: BigInt) -> (BigInt, BigInt) {
+    let qr = bigDivBoth(data, o.data, true)
+    return (BigInt(data: qr[0]), BigInt(data: qr[1]))
+  }
+
+  /// This number to the power exponent (0 or more; x.pow(0) is 1).
+  fn pow(exponent: int) -> BigInt = BigInt(data: bigPow(data, exponent))
+
+  /// This number to the power exponent, modulo modulus (positive): in [0,
+  /// modulus), computed without the whole power (Montgomery's
+  /// multiplication for an odd modulus). A negative exponent is the
+  /// modular inverse's power, an error when there's no inverse.
+  fn modPow(exponent: BigInt, modulus: BigInt) -> BigInt = BigInt(data: bigModPow(data, exponent.data, modulus.data))
+
+  /// The x in [0, modulus) with this·x ≡ 1 (mod modulus), modulus
+  /// positive; none when there's none (they share a factor).
+  fn modInverse(modulus: BigInt) -> BigInt? = if let d = bigModInverse(data, modulus.data) { BigInt(data: d) } else { none }
+
+  /// The greatest common divisor of the two, 0 or more; gcd(0, 0) is 0.
+  fn gcd(o: BigInt) -> BigInt = BigInt(data: bigGcd(data, o.data))
+
+  /// The least common multiple of the two, 0 or more; 0 when either is.
+  fn lcm(o: BigInt) -> BigInt = BigInt(data: bigLcm(data, o.data))
+
+  /// The integer square root: the largest r with r·r <= this. A
+  /// negative number is an error.
+  fn sqrt() -> BigInt = BigInt(data: bigSqrt(data))
+
+  /// The number without its sign.
+  fn abs() -> BigInt = BigInt(data: bigAbs(data))
+
+  /// -1, 0 or 1: the number's sign.
+  fn sign() -> int = if data.isEmpty() { 0 } else if data[0] != 0 { -1 } else { 1 }
+
+  /// Whether it's 0.
+  fn isZero() -> bool = data.isEmpty()
+
+  /// The bits both have, two's complement: -6.and(13) is 8.
+  fn and(o: BigInt) -> BigInt = BigInt(data: bigAnd(data, o.data))
+
+  /// The bits either has, two's complement.
+  fn or(o: BigInt) -> BigInt = BigInt(data: bigOr(data, o.data))
+
+  /// The bits one has and the other hasn't, two's complement.
+  fn xor(o: BigInt) -> BigInt = BigInt(data: bigXor(data, o.data))
+
+  /// Every bit flipped, two's complement: -x - 1.
+  fn not() -> BigInt = BigInt(data: bigNot(data))
+
+  /// The number times 2^n (n 0 or more), as int's <<.
+  fn shiftLeft(n: int) -> BigInt = BigInt(data: bigShl(data, n))
+
+  /// The number divided by 2^n (n 0 or more), toward negative infinity
+  /// as int's >> (-5 shifted right by 1 is -3; -1 by any count, -1).
+  fn shiftRight(n: int) -> BigInt = BigInt(data: bigShr(data, n))
+
+  /// How many bits the magnitude takes: 255's 8, -256's 9, 0's 0.
+  fn bitLength() -> int = bigBitLength(data)
+
+  /// Whether bit i (0 the least significant) is set, two's complement:
+  /// a negative number's bits past its length are all set.
+  fn bit(i: int) -> bool = bigBit(data, i)
+
+  /// The number with bit i set, two's complement.
+  fn setBit(i: int) -> BigInt = or(BigInt.one.shiftLeft(i))
+
+  /// The number with bit i cleared, two's complement.
+  fn clearBit(i: int) -> BigInt = and(BigInt.one.shiftLeft(i).not())
+
+  /// How many zero bits end the number: 2^k·odd's k (0's 0).
+  fn trailingZeros() -> int = bigTrailingZeros(data)
+
+  /// Whether the number is probably prime: certainly when it's under
+  /// 2^64, and past that, wrong with no known number. It divides by the
+  /// primes under 1000, runs the Baillie-PSW test (Miller-Rabin to base
+  /// 2 and a strong Lucas test), then rounds more Miller-Rabin tests,
+  /// each to a base of its own (each a quarter's chance at most of
+  /// passing a composite). Negative numbers, 0 and 1 aren't prime. The
+  /// answer is the same each time it's asked.
+  fn isProbablePrime(rounds: int = 20) -> bool = bigIsPrime(data, rounds)
+
+  /// The number as an int; none when it's outside int's range.
+  fn toInt() -> int? = bigToInt(data)
+
+  /// The nearest float (half to even); past a float's range, an
+  /// infinity.
+  fn float() -> float = bigToFloat(data)
+
+  /// The number as a Decimal; none when its digits, its trailing zeros
+  /// aside, are more than a Decimal holds (18).
+  fn decimal() -> Decimal? = Decimal.parse(string())
+
+  /// The number in radix (2 to 36), lowercase, a minus first when it's
+  /// negative: what parse reads. The digits are what it prints as.
+  fn string(radix: int = 10) -> string = bigText(data, radix)
+
+  /// The number's bytes, most significant first (big-endian): unsigned
+  /// (a negative number then is an error), or with signed true two's
+  /// complement. As few as hold it (0 unsigned is none; signed, one),
+  /// or with size more than 0 exactly size, zeros (or a negative's
+  /// ones) first: a key's 32 bytes. One that doesn't fit is an error.
+  fn toBytes(size: int = 0, signed: bool = false) -> bytes = bigToBytes(data, size, signed)
+
+  /// The number in the language shown's way, its digits grouped
+  /// (1,234,567; 1.234.567), as std/i18n's formatDecimal.
+  fn formatted() -> string = i18n.formatDecimal(string())
+}
+
+// The runtime's side (core/src/std/bigint.c), over BigInt's data.
+native fn bigFromInt(n: int) -> bytes
+native fn bigParse(text: string, radix: int) -> bytes?
+native fn bigText(a: bytes, radix: int) -> string
+native fn bigToInt(a: bytes) -> int?
+native fn bigToFloat(a: bytes) -> float
+native fn bigFromFloat(x: float) -> bytes?
+native fn bigFromBytes(b: bytes, signed: bool) -> bytes
+native fn bigToBytes(a: bytes, size: int, signed: bool) -> bytes
+native fn bigAdd(a: bytes, b: bytes) -> bytes
+native fn bigSub(a: bytes, b: bytes) -> bytes
+native fn bigMul(a: bytes, b: bytes) -> bytes
+// which: 0 the quotient toward zero, 1 its remainder, 2 the quotient
+// toward negative infinity, 3 its remainder.
+native fn bigDiv(a: bytes, b: bytes, which: int) -> bytes
+native fn bigDivBoth(a: bytes, b: bytes, floor: bool) -> [bytes]
+native fn bigNeg(a: bytes) -> bytes
+native fn bigAbs(a: bytes) -> bytes
+native fn bigCmp(a: bytes, b: bytes) -> int
+native fn bigPow(a: bytes, e: int) -> bytes
+native fn bigModPow(a: bytes, e: bytes, m: bytes) -> bytes
+native fn bigModInverse(a: bytes, m: bytes) -> bytes?
+native fn bigGcd(a: bytes, b: bytes) -> bytes
+native fn bigLcm(a: bytes, b: bytes) -> bytes
+native fn bigSqrt(a: bytes) -> bytes
+native fn bigAnd(a: bytes, b: bytes) -> bytes
+native fn bigOr(a: bytes, b: bytes) -> bytes
+native fn bigXor(a: bytes, b: bytes) -> bytes
+native fn bigNot(a: bytes) -> bytes
+native fn bigShl(a: bytes, n: int) -> bytes
+native fn bigShr(a: bytes, n: int) -> bytes
+native fn bigBitLength(a: bytes) -> int
+native fn bigBit(a: bytes, i: int) -> bool
+native fn bigTrailingZeros(a: bytes) -> int
+native fn bigIsPrime(a: bytes, rounds: int) -> bool
+native fn bigRandom(below: bytes) -> bytes
+native fn bigFactorial(n: int) -> bytes

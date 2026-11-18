@@ -15,7 +15,9 @@
 //                    AK_USES_ALL, or no app (a player, which loads any
 //                    bytecode): every table. A table no build names is no
 //                    root of the link, and the linker leaves its C out
-//                    (std/compress's DEFLATE, std/toml's parser, ...)
+//                    (std/compress's DEFLATE, std/toml's parser, ...);
+//                    with BIGINT, json.c reads and writes std/bigint's
+//                    BigInt through ak_link_bigint
 //
 // Naming them keeps their objects in a static library's link.
 #include <stddef.h>
@@ -120,5 +122,14 @@ const ak_lib_entry *const ak_std_libs[] = {
 #if defined(AK_USES_EVERY) || defined(AK_USES_LOG)
 	ak_std_log,
 #endif
+#if defined(AK_USES_EVERY) || defined(AK_USES_BIGINT)
+	ak_std_bigint,
+#endif
 	NULL,
 };
+
+#if defined(AK_USES_EVERY) || defined(AK_USES_BIGINT)
+const ak_bigint_json *const ak_link_bigint = &ak_bigint_json_impl;
+#else
+const ak_bigint_json *const ak_link_bigint = NULL;
+#endif

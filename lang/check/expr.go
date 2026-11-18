@@ -1802,7 +1802,7 @@ func (c *Checker) operatorMethod(e *syntax.BinaryExpr, xt, yt Type) (Type, bool)
 func operatorNames(op syntax.Token) (names []string, compare bool) {
 	switch op {
 	case syntax.ADD:
-		return []string{"add"}, false
+		return []string{"add", "plus"}, false
 	case syntax.SUB:
 		return []string{"sub", "minus"}, false
 	case syntax.MUL:
