@@ -471,15 +471,28 @@ func ParseDuration(s string) (int64, error) {
 	s = strings.ReplaceAll(s, "_", "")
 	units := []struct {
 		suffix string
-		ns     float64
+		ns     int64
 	}{{"ns", 1}, {"us", 1e3}, {"ms", 1e6}, {"min", 60e9}, {"s", 1e9}, {"h", 3600e9}}
 	for _, u := range units {
 		if strings.HasSuffix(s, u.suffix) {
-			n, err := strconv.ParseFloat(strings.TrimSuffix(s, u.suffix), 64)
-			if err != nil || n*u.ns > math.MaxInt64 {
-				return 0, errorString("the duration " + s + " is out of range")
+			num := strings.TrimSuffix(s, u.suffix)
+			outOfRange := errorString("the duration " + s + " is out of range")
+			// A whole number exactly: a float64 can't hold the largest int.
+			if n, err := strconv.ParseInt(num, 10, 64); err == nil {
+				if n > math.MaxInt64/u.ns {
+					return 0, outOfRange
+				}
+				return n * u.ns, nil
+			} else if !strings.ContainsAny(num, ".eE") {
+				return 0, outOfRange
 			}
-			return int64(math.Round(n * u.ns)), nil
+			// 2^63 is past the largest int: converting it to int64 gives
+			// a different int on each architecture.
+			n, err := strconv.ParseFloat(num, 64)
+			if err != nil || n*float64(u.ns) >= 1<<63 {
+				return 0, outOfRange
+			}
+			return int64(math.Round(n * float64(u.ns))), nil
 		}
 	}
 	return 0, errorString("unknown duration " + s)

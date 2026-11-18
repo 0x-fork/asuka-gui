@@ -188,3 +188,33 @@ func TestDiagnosticsCoded(t *testing.T) {
 		t.Errorf("Format:\n%s\nwant\n%s", got, want)
 	}
 }
+
+// TestParseDuration: a literal up to the largest int is exact, and one
+// past it is out of range, on every architecture (a float64 can't hold
+// them, and Go's float-to-int conversion past the range differs).
+func TestParseDuration(t *testing.T) {
+	for _, c := range []struct {
+		lit  string
+		want int64
+		ok   bool
+	}{
+		{"9223372036854775807ns", 9223372036854775807, true},
+		{"9_223_372_036_854_775_807ns", 9223372036854775807, true},
+		{"9223372036854775808ns", 0, false},
+		{"9223372036s", 9223372036000000000, true},
+		{"9223372037s", 0, false},
+		{"2562047h", 2562047 * 3600e9, true},
+		{"2562048h", 0, false},
+		{"300ms", 300e6, true},
+		{"1.5s", 1.5e9, true},
+		{"0.5ns", 1, true},
+		{"9223372036.9s", 0, false},
+		{"1e3ms", 1e9, true},
+		{"1e30ns", 0, false},
+	} {
+		got, err := ParseDuration(c.lit)
+		if (err == nil) != c.ok || got != c.want {
+			t.Errorf("ParseDuration(%q) = %d, %v; want %d, ok %v", c.lit, got, err, c.want, c.ok)
+		}
+	}
+}
