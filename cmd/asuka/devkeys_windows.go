@@ -22,3 +22,9 @@ func rawKeys(f *os.File) (restore func(), ok bool) {
 	}
 	return func() { windows.SetConsoleMode(h, old) }, true
 }
+
+// isTerminal reports whether f is a console.
+func isTerminal(f *os.File) bool {
+	var mode uint32
+	return windows.GetConsoleMode(windows.Handle(f.Fd()), &mode) == nil
+}

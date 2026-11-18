@@ -25,3 +25,9 @@ func rawKeys(f *os.File) (restore func(), ok bool) {
 	}
 	return func() { unix.IoctlSetTermios(fd, ioctlSetTermios, old) }, true
 }
+
+// isTerminal reports whether f is a terminal.
+func isTerminal(f *os.File) bool {
+	_, err := unix.IoctlGetTermios(int(f.Fd()), ioctlGetTermios)
+	return err == nil
+}
