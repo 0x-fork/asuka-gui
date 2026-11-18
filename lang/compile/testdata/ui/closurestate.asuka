@@ -1,0 +1,39 @@
+// A function whose closure reads module state (through a call) reads
+// state: a binding of it follows the state, as one of a loop does.
+
+state lang = "zh"
+
+fn say(k: string) -> string = if lang == "en" { "en:" + k } else { k }
+
+fn viaMap(keys: [string]) -> [string] = keys.map(k => say(k))
+
+fn viaLoop(keys: [string]) -> [string] {
+  var out: [string] = []
+  for k in keys { out.push(say(k)) }
+  return out
+}
+
+// The closure's callee comes after it, and reads state through another.
+fn viaLater(keys: [string]) -> [string] = keys.map(k => later(k))
+
+fn later(k: string) -> string = say(k)
+
+component ClosureState {
+  Column {
+    Button("English") { on press { lang = "en" } }
+    Text("map {viaMap(["a", "b"]).joined(",")}")
+    Text("loop {viaLoop(["a"]).joined(",")}")
+    Text("later {viaLater(["a"]).joined(",")}")
+    Text("inline {["a"].map(k => say(k)).joined(",")}")
+  }
+}
+
+app { ClosureState() }
+
+test "a closure's read of module state is its function's" {
+  let app = mount(ClosureState())
+  app.expect("map a,b", "loop a", "later a", "inline a")
+  app.tap("English")
+  app.expect("loop en:a", "inline en:a")
+  app.expect("map en:a,en:b", "later en:a")
+}
