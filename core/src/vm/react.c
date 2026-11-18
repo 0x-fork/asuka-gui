@@ -1063,10 +1063,19 @@ static void effect_describe(void *ctx, char *buf, size_t n) {
 
 static const void *effect_site(void *ctx) { return ak_vm_where_site(((effect_ctx *)ctx)->c); }
 
+// declared_effect reports whether c is an effect the source declares,
+// effect { … } (its function Picker/effect), not a task's that restarts
+// it (Picker/task deps): its writes are what effect-in-effect-pass names.
+static bool declared_effect(const ak_closure *c) {
+	if (c->invoke != ak_vm_closure_invoke) return false;
+	const char *name = ak_func_name(c->fn), *last = strrchr(name, '/');
+	return strcmp(last ? last + 1 : name, "effect") == 0;
+}
+
 void ak_vm_effect(ak_closure *c, bool render) {
 	effect_ctx *e = ak_alloc(sizeof *e);
 	e->c = ak_retain(c);
-	e->info = (ak_comp_info){.drop = effect_drop, .label = label_of(c), .describe = render ? NULL : effect_describe, .site = effect_site, .app = !render};
+	e->info = (ak_comp_info){.drop = effect_drop, .label = label_of(c), .describe = render ? NULL : effect_describe, .site = effect_site, .app = !render && ak_diag_enabled && declared_effect(c)};
 	ak_effect_new(effect_run, e, render ? AK_EFFECT_RENDER : AK_EFFECT_USER, &e->info);
 }
 

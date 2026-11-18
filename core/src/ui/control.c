@@ -116,6 +116,15 @@ static void branch_drop(void *ctx) {
 	ak_free(s);
 }
 
+// branch_describe names an if or a match in a view as its source says
+// it: "Card's if at card.asuka:12".
+static void branch_describe(void *ctx, char *buf, size_t n) {
+	branch_t *s = ctx;
+	ak_vm_where(s->sel, s->is_switch ? "match" : "if", buf, n);
+}
+
+static const void *branch_site(void *ctx) { return ak_vm_where_site(((branch_t *)ctx)->sel); }
+
 static ak_view *branch_new(ak_closure *sel, ak_closure *a, ak_closure *b, bool is_switch, const char *label) {
 	ak_view *f = ak_frag_new();
 	branch_t *s = ak_alloc(sizeof *s);
@@ -126,7 +135,7 @@ static ak_view *branch_new(ak_closure *sel, ak_closure *a, ak_closure *b, bool i
 	s->is_switch = is_switch;
 	s->owner = creator();
 	s->path = ak_path_capture();
-	s->info = (ak_comp_info){.drop = branch_drop, .label = label};
+	s->info = (ak_comp_info){.drop = branch_drop, .label = label, .describe = branch_describe, .site = branch_site};
 	ak_effect_new(branch_run, s, AK_EFFECT_RENDER, &s->info);
 	return f;
 }

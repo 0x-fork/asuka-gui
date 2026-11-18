@@ -118,7 +118,13 @@ typedef struct ak_graph {
 	// Diagnostics (ak_diag_enabled): the number of flushes ended, and the
 	// user effect that wrote last in the pass running (effect-in-effect-pass).
 	uint32_t flush_id;
-	ak_comp *diag_writer;
+	// The app's effects' last writes in the pass running (a ring of
+	// AK_DIAG_WRITES): each writer, held, and the node it wrote.
+	struct ak_diag_write {
+		ak_comp *w;
+		const ak_node *n;
+	} diag_writes[8];
+	uint32_t ndiag_writes;
 	uint64_t enqueued;  // effects ever queued (ak_signal_enqueued)
 } ak_graph;
 

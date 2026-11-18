@@ -57,12 +57,40 @@ static bool own_scratch(const ak_node *n) {
 	return !n->subs || (n->subs == n->subs_tail && n->subs->sub == g->active);
 }
 
-// diag_wrote notes e, a user effect, as the last to write (NULL: none),
-// held while it's noted.
-static void diag_wrote(ak_comp *e) {
-	if (g->diag_writer) ak_owner_release(&g->diag_writer->owner);
-	if (e) ak_owner_retain(&e->owner);
-	g->diag_writer = e;
+// diag_wrote notes that e, an effect the app declares, wrote n, among
+// the pass's last writes (held while noted). diag_take moves them out,
+// for the pass that runs what they dirtied; diag_release lets go of them.
+#define AK_DIAG_WRITES 8
+typedef struct ak_diag_write diag_write;
+
+static void diag_wrote(ak_comp *e, const ak_node *n) {
+	diag_write *slot = &g->diag_writes[g->ndiag_writes++ % AK_DIAG_WRITES];
+	if (slot->w) ak_owner_release(&slot->w->owner);
+	ak_owner_retain(&e->owner);
+	*slot = (diag_write){e, n};
+}
+
+static uint32_t diag_take(diag_write *out) {
+	uint32_t n = g->ndiag_writes < AK_DIAG_WRITES ? g->ndiag_writes : AK_DIAG_WRITES;
+	for (uint32_t i = 0; i < AK_DIAG_WRITES; i++) {
+		out[i] = g->diag_writes[i];
+		g->diag_writes[i] = (diag_write){0};
+	}
+	g->ndiag_writes = 0;
+	return n;
+}
+
+static void diag_release(diag_write *ws) {
+	for (uint32_t i = 0; i < AK_DIAG_WRITES; i++)
+		if (ws[i].w) ak_owner_release(&ws[i].w->owner);
+}
+
+// diag_clear lets go of the writes noted: a flush starts, or it ended.
+static void diag_clear(void) {
+	if (!g->ndiag_writes) return;
+	diag_write ws[AK_DIAG_WRITES];
+	diag_take(ws);
+	diag_release(ws);
 }
 
 void ak_signal_write(ak_node *n) {
@@ -80,7 +108,7 @@ void ak_signal_write(ak_node *n) {
 	if (n->subs) {
 		// An app's effect's write, which may run a binding again in the
 		// flush it ran in (effect-in-effect-pass).
-		if (AK_UNLIKELY(ak_diag_enabled) && g->effect && g->effect->info && g->effect->info->app && g->diag_writer != g->effect) diag_wrote(g->effect);
+		if (AK_UNLIKELY(ak_diag_enabled) && g->effect && g->effect->info && g->effect->info->app) diag_wrote(g->effect, n);
 		ak_sig_propagate(n->subs, AK_F_DIRTY);
 		if (g->batch_depth == 0 && !g->flushing) ak_sig_flush();
 	}
@@ -387,19 +415,27 @@ static void drop_queue(void) {
 }
 
 // diag_render_run checks a render effect about to run: one that ran in
-// this flush already runs again because a user effect (w) wrote what it
-// reads in the pass before, a pass late (effect-in-effect-pass).
-static void diag_render_run(ak_comp *e, ak_comp *w) {
-	if (e->diag_flush == g->flush_id + 1 && w) {
-		// Once per pair: the binding's site, under the effect's code.
-		if (ak_diag_first(ak_comp_site(e), "effect-in-effect-pass") && ak_diag_first(ak_comp_site(w), "effect-in-effect-pass")) {
-			char wn[512], en[512], msg[1536];
-			ak_comp_name(w, wn, sizeof wn);
-			ak_comp_name(e, en, sizeof en);
-			if (w->wrote) snprintf(msg, sizeof msg, "%s wrote %.*s, which %s reads: the binding ran twice in one flush, a pass late; a let or a following state settles in one pass", wn, (int)w->wrote_len, w->wrote, en);
-			else snprintf(msg, sizeof msg, "%s wrote what %s reads: the binding ran twice in one flush, a pass late; a let or a following state settles in one pass", wn, en);
-			const char *where[2] = {wn, en};
-			ak_diag("effect-in-effect-pass", msg, where, 2);
+// this flush already (or was made in it) runs again because an effect of
+// the app's wrote what it reads in the pass before (ws, n of them): a
+// pass late (effect-in-effect-pass). The writer is the one whose node
+// it read.
+static void diag_render_run(ak_comp *e, const diag_write *ws, uint32_t nw) {
+	if (e->diag_flush == g->flush_id + 1) {
+		for (uint32_t i = 0; i < AK_DIAG_WRITES && nw; i++) {
+			const diag_write *d = &ws[i];
+			if (!d->w || !ak_comp_reads(e, d->n)) continue;
+			ak_comp *w = d->w;
+			// Once per binding's site.
+			if (ak_diag_first(ak_comp_site(e), "effect-in-effect-pass")) {
+				char wn[512], en[512], msg[1536];
+				ak_comp_name(w, wn, sizeof wn);
+				ak_comp_name(e, en, sizeof en);
+				if (w->wrote) snprintf(msg, sizeof msg, "%s wrote %.*s, which %s reads: the binding ran twice in one flush, a pass late; a let or a following state settles in one pass", wn, (int)w->wrote_len, w->wrote, en);
+				else snprintf(msg, sizeof msg, "%s wrote what %s reads: the binding ran twice in one flush, a pass late; a let or a following state settles in one pass", wn, en);
+				const char *where[2] = {wn, en};
+				ak_diag("effect-in-effect-pass", msg, where, 2);
+			}
+			break;
 		}
 	}
 	e->diag_flush = g->flush_id + 1;
@@ -408,14 +444,14 @@ static void diag_render_run(ak_comp *e, ak_comp *w) {
 // run_pass runs the effects of a pass, in g->running's order; with diag,
 // it checks each binding as it runs (inlined twice: the check costs the
 // pass without it nothing).
-static AK_ALWAYS_INLINE void run_pass(bool diag, ak_comp *writer) {
+static AK_ALWAYS_INLINE void run_pass(bool diag, const diag_write *ws, uint32_t nw) {
 	for (uint32_t i = 0; i < g->running.len; i++) {
 		ak_comp *e = g->running.data[i];
 		g->running.data[i] = NULL;
 		uint32_t f = e->node.flags &= ~(uint32_t)AK_F_QUEUED;
 		if (!(f & AK_F_DISPOSED)) {
 			if ((f & AK_F_DIRTY) || ((f & AK_F_PENDING) && ak_sig_check_dirty(e))) {
-				if (diag && (f & AK_F_RENDER)) diag_render_run(e, writer);
+				if (diag && (f & AK_F_RENDER)) diag_render_run(e, ws, nw);
 				effect_update(e);
 			} else {
 				e->node.flags &= ~(uint32_t)AK_F_PENDING;
@@ -427,7 +463,7 @@ static AK_ALWAYS_INLINE void run_pass(bool diag, ak_comp *writer) {
 
 void ak_sig_flush(void) {
 	g->flushing = true;
-	diag_wrote(NULL);
+	diag_clear();
 	for (int round = 0;; round++) {
 		for (int pass = 0; g->queue.len; pass++) {
 			if (pass == AK_MAX_PASSES) {
@@ -459,12 +495,12 @@ void ak_sig_flush(void) {
 			if (AK_UNLIKELY(ak_diag_enabled)) {
 				// The bindings this pass runs again were dirtied by the
 				// last pass's writes: the user effect that made them.
-				ak_comp *w = g->diag_writer;
-				g->diag_writer = NULL;
-				run_pass(true, w);
-				if (w) ak_owner_release(&w->owner);
+				diag_write ws[AK_DIAG_WRITES];
+				uint32_t nw = diag_take(ws);
+				run_pass(true, ws, nw);
+				diag_release(ws);
 			} else {
-				run_pass(false, NULL);
+				run_pass(false, NULL, 0);
 			}
 			g->running.len = 0;
 		}
@@ -478,7 +514,7 @@ void ak_sig_flush(void) {
 		g->after_flush(g->after_flush_ctx);
 		if (!g->queue.len) break;
 	}
-	diag_wrote(NULL);
+	diag_clear();
 	// What runs from now on (a batch's new bindings, at once) is the next
 	// flush's: diag_flush is flush_id + 1 for this one's.
 	g->flush_id++;
