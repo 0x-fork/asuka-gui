@@ -78,9 +78,9 @@ void ak_signal_write(ak_node *n) {
 		return;
 	}
 	if (n->subs) {
-		// A user effect's write, which may run a binding again in the
+		// An app's effect's write, which may run a binding again in the
 		// flush it ran in (effect-in-effect-pass).
-		if (AK_UNLIKELY(ak_diag_enabled) && g->effect && !(g->effect->node.flags & AK_F_RENDER) && g->diag_writer != g->effect) diag_wrote(g->effect);
+		if (AK_UNLIKELY(ak_diag_enabled) && g->effect && g->effect->info && g->effect->info->app && g->diag_writer != g->effect) diag_wrote(g->effect);
 		ak_sig_propagate(n->subs, AK_F_DIRTY);
 		if (g->batch_depth == 0 && !g->flushing) ak_sig_flush();
 	}

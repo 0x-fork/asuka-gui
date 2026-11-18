@@ -1066,7 +1066,7 @@ static const void *effect_site(void *ctx) { return ak_vm_where_site(((effect_ctx
 void ak_vm_effect(ak_closure *c, bool render) {
 	effect_ctx *e = ak_alloc(sizeof *e);
 	e->c = ak_retain(c);
-	e->info = (ak_comp_info){.drop = effect_drop, .label = label_of(c), .describe = render ? NULL : effect_describe, .site = effect_site};
+	e->info = (ak_comp_info){.drop = effect_drop, .label = label_of(c), .describe = render ? NULL : effect_describe, .site = effect_site, .app = !render};
 	ak_effect_new(effect_run, e, render ? AK_EFFECT_RENDER : AK_EFFECT_USER, &e->info);
 }
 

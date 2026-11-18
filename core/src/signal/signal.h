@@ -95,6 +95,10 @@ typedef struct ak_comp_info {
 	// static address: its function): what a run-time diagnostic is
 	// reported once by (ak_diag_first). Unset: the computation itself.
 	const void *(*site)(void *ctx);
+	// app: an effect the app's source declares (effect { … }), whose
+	// writes are the app's: what effect-in-effect-pass names. The
+	// runtime's own (a load's run, a list's rows) aren't.
+	bool app;
 } ak_comp_info;
 
 // ak_memo_new makes a memo owned by the current owner (by the caller

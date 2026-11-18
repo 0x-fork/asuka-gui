@@ -153,7 +153,10 @@ static const void *effect_site(void *ctx) {
 	return &name;
 }
 static const ak_comp_info binding_info = {.label = "text", .describe = binding_describe, .site = binding_site};
-static const ak_comp_info effect_info = {.label = "effect", .describe = effect_describe, .site = effect_site};
+static const ak_comp_info effect_info = {.label = "effect", .describe = effect_describe, .site = effect_site, .app = true};
+// The runtime's own effect (a load's run writing its busy signal): its
+// writes aren't the app's.
+static const ak_comp_info runtime_info = {.label = "load", .describe = effect_describe, .site = effect_site};
 
 static void binding_run(void *ctx) {
 	(void)ctx;
@@ -200,6 +203,22 @@ TEST(effect_in_effect_pass) {
 		ak_owner_dispose(r);
 		diag_restore();
 	}
+}
+
+static void runtime_build(void *ctx, ak_owner *root) {
+	(void)ctx, (void)root;
+	ak_effect_new(binding_run, NULL, AK_EFFECT_RENDER, &binding_info);
+	ak_effect_new(copy_effect, NULL, AK_EFFECT_USER, &runtime_info);
+}
+
+TEST(effect_in_effect_pass_not_the_runtimes) {
+	diag_on(true);
+	name.v = 1, shown.v = 0, binding_runs = 0;
+	ak_owner *r = ak_root(runtime_build, NULL);
+	CHECK_EQ_INT(binding_runs, 2);
+	CHECK_EQ_INT(got.n, 0);
+	ak_owner_dispose(r);
+	diag_restore();
 }
 
 // A binding alone, and an effect that writes what no binding read: no
