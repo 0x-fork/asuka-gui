@@ -100,6 +100,15 @@ func TestButtonPaddingAndroid(t *testing.T) {
 	})
 }
 
+// A padding of 0 is a padding (e2e/testdata/buttonzeropadding): a 48
+// point button with a border keeps none of Material's insets.
+func TestButtonZeroPaddingAndroid(t *testing.T) {
+	s := androidApp(t, "e2e/testdata/buttonzeropadding", "dev.asuka.buttonzeropadding")
+	checkButtonHeight(t, func() ([]byte, error) {
+		return exec.Command(adb(), "-s", s.serial, "exec-out", "screencap", "-p").Output()
+	})
+}
+
 func TestButtonPaddingWeb(t *testing.T) {
 	browser := chrome()
 	if browser == "" {
