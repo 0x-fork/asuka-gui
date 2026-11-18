@@ -13,8 +13,13 @@ import AsukaOps
     weak var runtime: AsukaRuntime?
     let vc = AVPlayerViewController()
     let player = AVPlayer()
-    var autoPlay = false
+    /// It plays what's loaded, and what comes: the props go in the order
+    /// the app wrote them, so Source may be applied before AutoPlay.
+    var autoPlay = false {
+        didSet { if autoPlay && !oldValue { startWhenSettled() } }
+    }
     var loop = false
+    private var starting = false
     private var observations: [NSKeyValueObservation] = []
     private var reported = CGSize.zero
     private var endObserver: NSObjectProtocol?
@@ -86,7 +91,19 @@ import AsukaOps
             }
         }
         player.replaceCurrentItem(with: item)
-        if autoPlay { play() }
+        if autoPlay { startWhenSettled() }
+    }
+
+    /// Plays once the props that came with autoPlay are applied: Muted may
+    /// come after it, and a muted video takes no audio session.
+    private func startWhenSettled() {
+        guard player.currentItem != nil, !starting else { return }
+        starting = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.starting = false
+            if self.autoPlay { self.play() }
+        }
     }
 
     func seek(_ seconds: Double) {

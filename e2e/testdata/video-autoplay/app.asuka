@@ -1,0 +1,25 @@
+// A Video that says autoPlay (and muted) plays at once, however its
+// props come: the clip is a second long, and the app shows its events.
+component VideoAutoPlay {
+  state log = ""
+
+  Column {
+    grow: 1
+    justify: .center
+    align: .center
+    gap: 16
+
+    Text("Video autoplay")
+    Video("clip.mp4") {
+      width: 128
+      height: 96
+      autoPlay: true
+      muted: true
+      hideControls: true
+      on end { log = log + "ended " }
+    }
+    Text("log: {log}")
+  }
+}
+
+app { VideoAutoPlay() }
