@@ -223,10 +223,15 @@ static ak_val b_load(ak_val *a, uint32_t n) {
 }
 
 static ak_val b_load_group(ak_val *a, uint32_t n) {
-	ak_closure *thunks[64], **t = n - 2 <= 64 ? thunks : ak_alloc(sizeof(ak_closure *) * (n - 2));
-	for (uint32_t i = 2; i < n; i++) t[i - 2] = a[i].p;
-	ak_val l = ak_ui_load_group(a[0].p, (ak_kind)a[1].i, t, n - 2);
-	if (t != thunks) ak_free(t);
+	// The loader, the tuple's kind, then a thunk per call: at least one
+	// (the checker's group-not-calls), none passed as NULL (GCC would
+	// see thunks read unset).
+	AK_ASSERT(n >= 2);
+	uint32_t calls = n - 2;
+	ak_closure *thunks[64], **t = !calls ? NULL : calls <= 64 ? thunks : ak_alloc(sizeof(ak_closure *) * calls);
+	for (uint32_t i = 0; i < calls; i++) t[i] = a[i + 2].p;
+	ak_val l = ak_ui_load_group(a[0].p, (ak_kind)a[1].i, t, calls);
+	if (t && t != thunks) ak_free(t);
 	return l;
 }
 

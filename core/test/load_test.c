@@ -13,11 +13,26 @@ static ak_future *runs[16]; // each run's future (the test's reference)
 static int nruns;
 static int state_reads, busy_reads, value_reads, builds;
 
+// A run's call is cancelled with the owner it was made under (the run's
+// effect's, cleaned when the run is replaced or the load goes), as an
+// async fn's task or a native call is: its waiter, which holds the
+// loader, goes then.
+static void cancel_run(void *f) {
+	ak_future_cancel(f);
+	ak_release(f);
+}
+
+static ak_future *run_future(void) {
+	ak_future *f = ak_future_new(AK_K_INT);
+	ak_on_cleanup(cancel_run, ak_retain(f));
+	return f;
+}
+
 // The thunk: a run is a future the test settles.
 static ak_val thunk(ak_closure *c, ak_val *a, uint32_t n) {
 	AK_UNUSED(c), AK_UNUSED(a), AK_UNUSED(n);
 	(void)ak_vm_cell_get(id, true);
-	ak_future *f = ak_future_new(AK_K_INT);
+	ak_future *f = run_future();
 	runs[nruns++] = ak_retain(f);
 	return (ak_val){.p = f};
 }
@@ -616,7 +631,7 @@ static ak_val keyed_thunk(ak_closure *c, ak_val *a, uint32_t n) {
 	ak_str *kinds = ak_str_c("1");
 	ak_ui_load_key(k->key, kinds, &arg, 1);
 	ak_release(kinds);
-	ak_future *f = ak_future_new(AK_K_INT);
+	ak_future *f = run_future();
 	k->runs[k->nruns++] = ak_retain(f);
 	return (ak_val){.p = f};
 }
