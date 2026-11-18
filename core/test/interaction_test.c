@@ -472,12 +472,13 @@ TEST(models) {
 	ak_vm_cell_set(src.p, (ak_val){.i = 2});
 	CHECK_EQ_INT(ak_vm_acc_get(m.p).i, 2);  // the caller's changed: it wins
 	CHECK_EQ_INT(ak_vm_acc_get(b.p).i, 2);
-	// A constant's model has no effect to follow it, and keeps its own.
-	ak_val k = ak_vm_acc_value((ak_val){.i = 3}, AK_K_INT);
-	ak_val mk = ak_vm_model_new(k.p, false);
-	ak_vm_model_set(mk.p, (ak_val){.i = 4});
-	CHECK_EQ_INT(ak_vm_acc_get(mk.p).i, 4);
-	ak_release(mk.p), ak_release(k.p);
+	// A constant's model keeps its own. It's a follow too, made under
+	// the owner as well: only its owner lets go of what follows.
+	models_ctx y = {ak_vm_acc_value((ak_val){.i = 3}, AK_K_INT).p, {0}, {0}};
+	ak_with_owner(o, make_models, &y);
+	ak_vm_model_set(y.m.p, (ak_val){.i = 4});
+	CHECK_EQ_INT(ak_vm_acc_get(y.m.p).i, 4);
+	ak_release(y.m.p), ak_release(y.b.p), ak_release(y.inner);
 	// Disposed (its component gone), it no longer follows.
 	ak_owner_dispose(o);
 	ak_vm_cell_set(src.p, (ak_val){.i = 9});
