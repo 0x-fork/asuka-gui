@@ -2,6 +2,7 @@
 #include "rt/lib.h"
 #include "std/std.h"
 #include "vm/ffi.h"
+#include "base/thread.h"
 
 
 extern const ak_lib_entry ak_lib_spawn;
@@ -41,4 +42,6 @@ void ak_vm_init(void) {
 	extern void ak_sqlite_init(void);
 	ak_sqlite_init();
 	ak_vm_react_init();
+	extern void ak_vm_thread_end(void);
+	ak_thread_end = ak_vm_thread_end;
 }

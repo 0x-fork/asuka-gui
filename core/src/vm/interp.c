@@ -14,6 +14,19 @@ static inline ak_co *cur_co(void) {
 	return ak_vm_cur;
 }
 
+// ak_vm_thread_end lets go of this thread's coroutine for calls from C
+// (ak_thread_end's, on a thread that ends: a worker's): the main thread's
+// lives as long as the process.
+void ak_vm_thread_end(void) {
+	ak_co *co = &ak_vm_main;
+	AK_ASSERT(co->nframes == 0);
+	ak_free(co->regs);
+	ak_free(co->frames);
+	ak_free(co->untracks);
+	*co = (ak_co){0};
+	ak_vm_cur = NULL;
+}
+
 #define MAX_FRAMES 10000
 
 // ---- Frames ----

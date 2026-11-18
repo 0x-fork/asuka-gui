@@ -40,6 +40,10 @@ void ak_cond_broadcast(ak_cond *c);
 // ak_thread_start runs fn(arg) on a new thread; false when threads
 // aren't available (wasm).
 bool ak_thread_start(void (*fn)(void *), void *arg);
+// ak_thread_end, when set, runs on a thread ak_thread_start started, as
+// its fn returns: what the thread kept for itself (the VM's registers for
+// calls from C) goes with it. Set once, before threads start.
+extern void (*ak_thread_end)(void);
 // ak_now_ns is a monotonic clock in nanoseconds.
 int64_t ak_now_ns(void);
 // ak_wall_ns is the time since the Unix epoch in nanoseconds.

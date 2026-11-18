@@ -1,6 +1,8 @@
 #define _POSIX_C_SOURCE 200809L  // clock_gettime under -std=c17
 #include "base/thread.h"
 
+void (*ak_thread_end)(void);
+
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -28,6 +30,7 @@ static DWORD WINAPI trampoline(LPVOID p) {
 	start_t s = *(start_t *)p;
 	ak_free(p);
 	s.fn(s.arg);
+	if (ak_thread_end) ak_thread_end();
 	return 0;
 }
 bool ak_thread_start(void (*fn)(void *), void *arg) {
@@ -113,6 +116,7 @@ static void *trampoline(void *p) {
 	start_t s = *(start_t *)p;
 	ak_free(p);
 	s.fn(s.arg);
+	if (ak_thread_end) ak_thread_end();
 	return NULL;
 }
 bool ak_thread_start(void (*fn)(void *), void *arg) {
