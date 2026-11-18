@@ -1,0 +1,129 @@
+import std/json
+
+fn v(text: string) -> Version = try parse(text) catch { Version(major: -1) }
+
+fn r(text: string) -> Range = try parseRange(text) catch { Range(sets: [[Comparator(op: .lt, version: Version(major: 0, prerelease: ["0"]))]]) }
+
+test "parse: SemVer 2.0.0" {
+  let x = v("1.2.3-beta.2+build.5")
+  expect(x.major == 1 && x.minor == 2 && x.patch == 3)
+  expect(x.prerelease == ["beta", "2"])
+  expect(x.build == ["build", "5"])
+  expect(x.string() == "1.2.3-beta.2+build.5")
+  expect(v("v2.0.0").string() == "2.0.0")
+  expect(v(" 1.0.0 ").string() == "1.0.0")
+  expect(v("1.0.0-x-y-z.--").prerelease == ["x-y-z", "--"])
+  expect(v("1.0.0+0017").build == ["0017"])
+  expect(v("1.0.0-0A.is.legal").prerelease == ["0A", "is", "legal"])
+  expect(v("0.0.0").isPrerelease() == false)
+  expect(v("1.0.0-rc.1").isPrerelease())
+  // semver.org's invalid versions, and some more.
+  for bad in ["1", "1.2", "1.2.3.4", "01.1.1", "1.01.1", "1.1.01", "1.2.3-0123", "1.2.3-0123.0123", "1.1.2+.123", "+invalid", "-invalid", "-invalid+invalid", "alpha", "1.2.3.DEV", "1.2-SNAPSHOT", "1.2.31.2.3----RC-SNAPSHOT.12.09.1--..12+788", "1.0.0-", "1.0.0+", "1.0.0-a..b", "1.0.0-é", "a.b.c", "1.2.x", "99999999999999999999.0.0", "", "v"] {
+    expect((try? parse(bad)) == none)
+  }
+  do {
+    let _ = try parse("1.02.3")
+  } catch e {
+    expect(e.message == "semver: \"1.02.3\" isn't a version: 02 has a leading zero")
+  }
+}
+
+test "precedence, as semver.org orders it" {
+  let order = ["1.0.0-alpha", "1.0.0-alpha.1", "1.0.0-alpha.beta", "1.0.0-beta", "1.0.0-beta.2", "1.0.0-beta.11", "1.0.0-rc.1", "1.0.0", "1.0.1", "1.1.0", "2.0.0", "10.0.0"]
+  for i in 0..<order.count() - 1 {
+    expect(v(order[i]) < v(order[i + 1]))
+    expect((try? compare(order[i + 1], order[i])) == 1)
+  }
+  let shuffled = ["2.0.0", "1.0.0-beta.11", "1.0.0", "10.0.0", "1.0.0-alpha", "1.1.0", "1.0.0-rc.1", "1.0.0-beta.2", "1.0.1", "1.0.0-alpha.beta", "1.0.0-beta", "1.0.0-alpha.1"]
+  expect(shuffled.map(v).sorted().map(x => x.string()) == order)
+  // Build metadata doesn't count.
+  expect(v("1.0.0+a").compare(v("1.0.0+b")) == 0)
+  expect(v("1.0.0+a") != v("1.0.0+b"))
+  // node-semver's: the first is greater.
+  for (a, b) in greater {
+    expect(v(a) > v(b))
+    expect(v(b) < v(a))
+  }
+  for (a, b) in equal {
+    expect(v(a).compare(v(b)) == 0)
+  }
+}
+
+test "next" {
+  expect(v("1.2.3").next(.major).string() == "2.0.0")
+  expect(v("1.2.3").next(.minor).string() == "1.3.0")
+  expect(v("1.2.3").next(.patch).string() == "1.2.4")
+  expect(v("1.2.3-rc.1+b").next(.patch).string() == "1.2.3")
+  expect(v("1.3.0-rc.1").next(.minor).string() == "1.3.0")
+  expect(v("1.3.1-rc.1").next(.minor).string() == "1.4.0")
+  expect(v("2.0.0-beta").next(.major).string() == "2.0.0")
+  expect(v("2.1.0-beta").next(.major).string() == "3.0.0")
+}
+
+test "ranges as npm writes them" {
+  expect(r("^1.2.3").string() == ">=1.2.3 <2.0.0-0")
+  expect(r("~1.2.3").string() == ">=1.2.3 <1.3.0-0")
+  expect(r("^0.2.3").string() == ">=0.2.3 <0.3.0-0")
+  expect(r("^0.0.3").string() == ">=0.0.3 <0.0.4-0")
+  expect(r("1.x").string() == ">=1.0.0 <2.0.0-0")
+  expect(r(">=1.0 <2.0").string() == ">=1.0.0 <2.0.0-0")
+  expect(r("1.2 - 2.3").string() == ">=1.2.0 <2.4.0-0")
+  expect(r("*").string() == "*")
+  // Cargo's commas.
+  expect(r(">=1.2, <1.5").string() == ">=1.2.0 <1.5.0-0")
+  expect(r("^1.2 || ^2").matches(v("2.5.0")))
+  expect(!r("^1.2 || ^2").matches(v("3.0.0")))
+  // node-semver's cases.
+  for (text, want, pre) in rangeParses {
+    if text.contains(",") {
+      continue // npm has no commas; std/semver reads Cargo's
+    }
+    let got = (try? parseRange(text, includePrerelease: pre))?.string()
+    if got != want {
+      print("range {json.encode(text)} (includePrerelease {pre}): {got} != {want}")
+    }
+    expect(got == want)
+  }
+  do {
+    let _ = try parseRange("^1.2 || >=x.1")
+  } catch e {
+    expect(e.message == "semver: \"^1.2 || >=x.1\" isn't a range: \"x.1\": a number after an x")
+  }
+}
+
+test "matches, and pre-releases" {
+  for (range, version, pre) in rangeIncludes {
+    let ok = satisfies(version, range, includePrerelease: pre)
+    if !ok {
+      print("{json.encode(range)} should include {version}")
+    }
+    expect(ok)
+  }
+  for (range, version, pre) in rangeExcludes {
+    let ok = !satisfies(version, range, includePrerelease: pre)
+    if !ok {
+      print("{json.encode(range)} should exclude {version}")
+    }
+    expect(ok)
+  }
+  // A pre-release only where the range names one of its version.
+  expect(r(">=1.2.3-beta.1").matches(v("1.2.3-beta.2")))
+  expect(!r(">=1.2.3-beta.1").matches(v("1.2.4-beta.1")))
+  expect((try? parseRange(">=1.2.3-beta.1", includePrerelease: true))?.matches(v("1.2.4-beta.1")) == true)
+  expect((try? parseRange("1.2.x", includePrerelease: true))?.string() == ">=1.2.0-0 <1.3.0-0")
+  expect(!r("^1.0.0").matches(v("1.5.0-rc.1")))
+  expect(!satisfies("not a version", "^1"))
+  expect(!satisfies("1.0.0", "not a range"))
+}
+
+test "the highest and the lowest in a range" {
+  let tags = ["v1.2.3", "v1.10.0", "v1.9.9", "v2.0.0", "v1.11.0-rc.1", "nightly"]
+  let versions = tags.compactMap(t => try? parse(t))
+  expect(r("^1.2").highest(versions)?.string() == "1.10.0")
+  expect((try? parseRange("^1.2", includePrerelease: true))?.highest(versions)?.string() == "1.11.0-rc.1")
+  expect(r("^1.2").lowest(versions)?.string() == "1.2.3")
+  expect(r("^3").highest(versions) == none)
+  expect(maxSatisfying(tags, "~1.9") == "v1.9.9")
+  expect(maxSatisfying(["1.2.3", "1.3.0", "2.0.0"], "^1.2") == "1.3.0")
+  expect(maxSatisfying(["1.2.3"], "nonsense") == none)
+}

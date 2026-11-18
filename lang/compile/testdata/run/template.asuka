@@ -1,0 +1,118 @@
+// std/template: Jinja's syntax rendered with a struct's data: a config
+// file, an HTML page escaped, layouts, and mistakes with their place.
+
+import std/json
+import std/template
+
+struct Server {
+  name: string
+  host: string
+  port: int? = none
+  tags: [string] = []
+}
+
+struct Config {
+  env: string
+  servers: [Server]
+}
+
+struct Comment {
+  author: string
+  text: string
+  stars: int
+}
+
+struct Page {
+  title: string
+  comments: [Comment]
+}
+
+test "a config file" {
+  let t = try template.parse(r"""
+    # {{ env | upper }}
+    {% for s in servers %}
+    [server.{{ s.name }}]
+    host = "{{ s.host }}"
+      {% if s.port %}
+    port = {{ s.port }}
+      {% endif %}
+    tags = {{ s.tags | json }}
+    {% endfor %}
+    """)
+  let cfg = Config(env: "prod", servers: [Server(name: "web", host: "10.0.0.1", port: 8080, tags: ["a"]), Server(name: "db", host: "10.0.0.2")])
+  print(try t.render(cfg))
+  print(try t.render(Config(env: "dev", servers: [])))
+}
+
+test "an HTML page" {
+  let pages = try template.parseAll([
+    "base.html": r"""
+      <!doctype html>
+      <title>{% block title %}Shop{% endblock %}</title>
+      {% block body %}{% endblock %}
+      """,
+    "comments.html": r"""
+      {% extends "base.html" %}
+      {% block title %}{{ title }} · {{ super() }}{% endblock %}
+      {% block body %}
+      <ul>
+        {% for c in comments %}
+        <li class="{{ 'top' if c.stars >= 4 else 'other' }}">{{ c.author }}: {{ c.text | truncate(24) }} {{ '★' * c.stars }}</li>
+        {% else %}
+        <li>No comments yet</li>
+        {% endfor %}
+      </ul>
+      <script>const data = {{ comments | map("author") | json }};</script>
+      {% endblock %}
+      """,
+  ])
+  let page = Page(title: "Tea & Cakes", comments: [Comment(author: "Ana", text: "Lovely <b>tea</b>, \"really\"", stars: 5), Comment(author: "</script><script>x()", text: "A rather long comment about cakes", stars: 2)])
+  print(try pages.render("comments.html", page))
+  print(try pages.render("comments.html", Page(title: "Empty", comments: [])))
+}
+
+test "mistakes say where" {
+  let sources = [r"{{ title | uper }}", "a\n  \{% for x in %}", r"{{ nope.field }}", r"{% if title %}x"]
+  for s in sources {
+    do {
+      let _ = try template.render(s, Page(title: "x", comments: []))
+    } catch e: template.TemplateError {
+      print("{e.line}:{e.column} {e.message}")
+    }
+  }
+}
+
+// Output:
+// # PROD
+// [server.web]
+// host = "10.0.0.1"
+// port = 8080
+// tags = ["a"]
+// [server.db]
+// host = "10.0.0.2"
+// tags = []
+//
+// # DEV
+//
+// ok a config file
+// <!doctype html>
+// <title>Tea &amp; Cakes · Shop</title>
+// <ul>
+//   <li class="top">Ana: Lovely &lt;b&gt;tea&lt;/b&gt;, &quot;rea… ★★★★★</li>
+//   <li class="other">&lt;/script&gt;&lt;script&gt;x(): A rather long comment a… ★★</li>
+// </ul>
+// <script>const data = ["Ana","\u003c/script\u003e\u003cscript\u003ex()"];</script>
+//
+// <!doctype html>
+// <title>Empty · Shop</title>
+// <ul>
+//   <li>No comments yet</li>
+// </ul>
+// <script>const data = [];</script>
+//
+// ok an HTML page
+// 1:12 template: 1:12: unknown filter uper
+// 2:15 template: 2:15: an expression is missing
+// 1:4 template: 1:4: nope is undefined
+// 1:16 template: 1:16: {% if %} without its {% endif %}
+// ok mistakes say where

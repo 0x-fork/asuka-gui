@@ -1,0 +1,51 @@
+// std/term's text widths: the columns a terminal gives CJK text, emoji
+// and marks (escape codes none), and padding, truncating and tables by
+// them (core/src/std/term.c over core/src/rt/unicode.c).
+
+import std/term
+
+test "widths" {
+  for s in ["abc", "日本語", "한국어", "ｶﾀｶﾅ", "e\u{301}", "👍🏽", "👨‍👩‍👧", "🇯🇵", "❤", "❤\u{fe0f}", "\u{1b}[31mred\u{1b}[39m", "a\tb"] {
+    print("{term.textWidth(s)} {s.count()} {s.graphemes().count()}")
+  }
+  term.setColors(.always)
+  print(term.unstyled(term.bold(term.red("中文"))))
+}
+
+test "pad, truncate, fit" {
+  print("[{term.padEnd("中文", 6)}] [{term.padStart("中文", 6)}] [{term.center("中", 5)}]")
+  print("[{term.truncate("東京都千代田区", 9)}] [{term.truncate("hello world", 8)}] [{term.truncate("東京", 3, ellipsis: "")}]")
+  print("[{term.fit("東京都千代田区", 6)}] [{term.fit("42", 5, align: .end)}]")
+}
+
+test "a table" {
+  print(term.table([["Name", "City", "Score"], ["王小明", "北京", "98"], ["Ana", "Lisboa 🇵🇹", "7"], ["佐藤", "東京"]], align: [.start, .start, .end]))
+  print(term.table([["id", "description"], ["1", "一个很长很长的描述"]], width: 14))
+}
+
+// Output:
+// 3 3 3
+// 6 3 3
+// 6 3 3
+// 4 4 4
+// 1 2 1
+// 2 2 1
+// 2 5 1
+// 2 2 1
+// 1 1 1
+// 2 2 1
+// 3 13 13
+// 2 3 3
+// 中文
+// ok widths
+// [中文  ] [  中文] [ 中  ]
+// [東京都千…] [hello w…] [東]
+// [東京… ] [   42]
+// ok pad, truncate, fit
+// Name    City       Score
+// 王小明  北京          98
+// Ana     Lisboa 🇵🇹      7
+// 佐藤    東京
+// id  descripti…
+// 1   一个很长…
+// ok a table

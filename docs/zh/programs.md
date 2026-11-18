@@ -298,6 +298,38 @@ Project name: [demo] notes
 
 在测试里，用 `os.fake(stdin:)` 回答这些问题，问题本身可以在 `o.stderr()` 里找到。测试的流都不是终端，所以不会输出样式，除非测试用 `os.fake(env: ["FORCE_COLOR": "1"])` 或 `term.setColors(.always)` 明确要求；这里只看 `os.fake` 的 `env:`，所以运行测试时的环境变量不会影响测试的输出。手机和 Web 上没有终端：没有样式，`prompt` 返回 `none`，`width` 也是 `none`。
 
+### 对齐的表格
+
+一列要对齐，每个单元格在终端里占的列数就得一样，而这和 `count()` 的结果不是一回事：中文、日文、韩文字符，全角字符，还有大多数 emoji 都占两列；组合用的重音符号和零宽连接符（ZWJ）不占列。`term.textWidth(text)` 按终端的显示方式数列数，一次数一个字素簇（和 Rust 的 unicode-width、`Bun.stringWidth` 一样），控制码不占列，所以带样式的文本量出来的宽度就是它显示的宽度。`term.padEnd`、`padStart`、`center`、`truncate`（在截断处加 `…`，不会把一个字符切成两半）和 `fit`（正好占满给定宽度：先截断再补齐，数字用 `align: .end` 右对齐）都按这个宽度计算，`term.table(rows)` 则能直接排好一整张表：
+
+```asuka check
+import std/term
+
+struct Row {
+  name: string
+  city: string
+  score: int
+}
+
+fn main() {
+  let rows = [Row(name: "王小明", city: "北京", score: 98), Row(name: "Ana", city: "Lisboa 🇵🇹", score: 7), Row(name: "佐藤花子", city: "東京", score: 85)]
+  var cells = [["Name", "City", "Score"]]
+  for r in rows {
+    cells.push([r.name, r.city, "{r.score}"])
+  }
+  print(term.table(cells, align: [.start, .start, .end], width: term.width()))
+}
+```
+
+```text
+Name      City       Score
+王小明    北京          98
+Ana       Lisboa 🇵🇹      7
+佐藤花子  東京          85
+```
+
+每一列和它最宽的单元格一样宽，列与列之间隔 `gap:` 个空格（默认 2 个）；给了 `width:` 时，最宽的列会先让出空间，直到每行都放得下，放不下的单元格会被截断（这里用的是终端的宽度，输出到管道时为 none，不做限制）。东亚宽度为“模糊”的字符（`±`、`…`）占一列，这也是终端在没有特别设置时的显示方式；制表符和其他控制字符不占列，需要的话先把制表符展开。`std/flag` 生成的帮助也是这样对齐选项的。
+
 ## 日志：std/log
 
 `std/log` 在程序运行的同时记录它做了什么：每一行有一个级别（`debug`、`info`、`warn`、`error`），由一条消息和若干字段组成，字段说明这件事和什么有关。下面这个程序用来备份文件：`-v` 会逐个显示文件，`--json` 则输出给机器读的 JSON 行。
@@ -542,6 +574,65 @@ async fn main() throws {
 ```
 
 `separator: "\t"` 读取用制表符分隔的数据；`comment: "#"` 跳过以它开头的行；`flexible: true` 允许各行的字段数不同。
+
+## 用模板生成文本：std/template
+
+`std/template` 用一个模板和一个值生成文本：配置文件、发布说明、邮件、代码，或者服务返回的页面。语法采用 Jinja 的写法（MiniJinja、Nunjucks、Twig 也是这样写的）：`{{ value }}`、写在 `|` 后面的过滤器、`{% if %}`、`{% for %}`、`{% include %}`、`{% extends %}` 和 `{% block %}`。数据是一个结构体或 map，按 `json.encode` 写出的样子读取，所以模板里用的名字就是它的字段。模板最好写在原始字符串里，这样能原样保留（在普通字符串里，`{` 会开始一个插值）：
+
+```asuka check
+import std/template
+
+struct Change {
+  kind: string
+  text: string
+  issue: int? = none
+}
+
+struct Release {
+  version: string
+  date: string
+  changes: [Change]
+}
+
+fn main() throws {
+  let notes = try template.parse(r"""
+    # {{ version }} ({{ date }})
+
+    {% for c in changes %}
+    - **{{ c.kind | capitalize }}**: {{ c.text }}{% if c.issue %} (#{{ c.issue }}){% endif %}
+    {% else %}
+    Nothing changed.
+    {% endfor %}
+    """)
+  let release = Release(version: "1.4.0", date: "2026-11-19", changes: [Change(kind: "added", text: "term.table", issue: 412), Change(kind: "fixed", text: "a crash on empty input")])
+  print(try notes.render(release))
+}
+```
+
+```text
+# 1.4.0 (2026-11-19)
+
+- **Added**: term.table (#412)
+- **Fixed**: a crash on empty input
+```
+
+单独占一行的语句会连同这一行一起去掉，所以模板里写逻辑的地方不会在输出里留下空行；`{{-` 和 `-}}` 会去掉标签前面或后面的空白。数据里没有的字段是“未定义”：在 `if` 里当作 false，可以用 `| default("…")` 替换，打印出来则是错误，未知的过滤器也一样，错误信息会说明位置（`template: notes.md:4:9: c.title is undefined`）。模板只需解析一次，之后想渲染多少次都可以。
+
+生成 HTML 时，输出会被转义：打印出来的 `&`、`<`、`>`、`"` 和 `'` 都写成字符引用，除非标记了 `| safe`；`| json` 输出的值可以直接放进 `<script>`。用 `template.parseAll` 一起读进来的模板（比如 `std/embed` 编译进来的文件）可以按名字互相 include 和 extend，名字以 `.html` 结尾的会自动转义：
+
+```asuka
+import std/http
+import std/template
+
+struct Note {
+  id: int
+  text: string
+}
+
+// pages：try template.parseAll(embed.texts("templates/*.html"))，即编译进来的文件
+fn site(pages: template.Templates, notes: [Note]) -> http.Router = http.Router()
+  .get("/notes", req => .html(try pages.render("templates/notes.html", ["notes": notes])))
+```
 
 ## Web 服务：std/http
 

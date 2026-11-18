@@ -1,0 +1,75 @@
+// esc: term_test.asuka's.
+
+test "textWidth: CJK, emoji, marks, escape codes" {
+  expect(textWidth("") == 0)
+  expect(textWidth("hello") == 5)
+  expect(textWidth("日本語") == 6)
+  expect(textWidth("한국어 ok") == 9)
+  expect(textWidth("ｱｲｳ") == 3)
+  expect(textWidth("e\u{301}") == 1)
+  expect(textWidth("👍🏽") == 2)
+  expect(textWidth("👨‍👩‍👧") == 2)
+  expect(textWidth("🇨🇳") == 2)
+  expect(textWidth("❤") == 1)
+  expect(textWidth("❤\u{fe0f}") == 2)
+  expect(textWidth("a\tb") == 2)
+  expect(textWidth("{esc}[1m{esc}[31m红色{esc}[39m{esc}[22m") == 4)
+  setColors(.always)
+  expect(textWidth(red("中文")) == 4)
+  expect(unstyled(Style(color: .red, bold: true).paint("中文")) == "中文")
+  expect(unstyled("plain") == "plain")
+  expect(unstyled("{esc}]8;;https://asuka.dev{esc}\\link{esc}]8;;{esc}\\") == "link")
+}
+
+test "truncate: by columns, never half a character" {
+  expect(truncate("hello", 5) == "hello")
+  expect(truncate("hello world", 8) == "hello w…")
+  expect(truncate("東京都千代田区", 9) == "東京都千…")
+  expect(truncate("東京都千代田区", 8) == "東京都…")
+  expect(truncate("東京都千代田区", 8, ellipsis: "") == "東京都千")
+  expect(truncate("東京都千代田区", 7, ellipsis: "...") == "東京...")
+  expect(truncate("abc", 0) == "")
+  expect(truncate("abc", -1) == "")
+  expect(truncate("abcdef", 2, ellipsis: "...") == "ab")
+  expect(truncate("e\u{301}e\u{301}e\u{301}", 2) == "e\u{301}…")
+  expect(truncate("👨‍👩‍👧👨‍👩‍👧", 3) == "👨‍👩‍👧…")
+  // A style cut still ends.
+  expect(truncate("{esc}[31mred text{esc}[39m", 4) == "{esc}[31mred…{esc}[39m")
+}
+
+test "padding and fitting by columns" {
+  expect(padEnd("中文", 6) == "中文  ")
+  expect(padStart("中文", 6) == "  中文")
+  expect(padEnd("ab", 5, with: ".") == "ab...")
+  expect(padEnd("ab", 5, with: "・") == "ab・ ")
+  expect(padEnd("long", 2) == "long")
+  expect(center("中", 5) == " 中  ")
+  expect(fit("東京都千代田区", 6) == "東京… ")
+  expect(fit("東京都千代田区", 6, ellipsis: "") == "東京都")
+  expect(fit("東", 4, align: .end) == "  東")
+  expect(fit("東", 4, align: .center) == " 東 ")
+  expect(fit("東京", 3) == "東…")
+  expect(textWidth(fit("東京都", 5, ellipsis: "")) == 5)
+}
+
+test "a table lines up with CJK text and emoji" {
+  let rows = [["Name", "City", "Score"], ["王小明", "北京", "98"], ["Ana", "Lisboa 🇵🇹", "7"], ["田中", "東京"]]
+  let t = table(rows, align: [.start, .start, .end])
+  expect(t == """
+    Name    City       Score
+    王小明  北京          98
+    Ana     Lisboa 🇵🇹      7
+    田中    東京
+    """)
+  for line in t.lines().prefix(3) {
+    expect(textWidth(line) == 24)
+  }
+  // Too wide: the widest column gives way first.
+  let narrow = table([["id", "description"], ["1", "一个很长很长的描述"]], width: 14)
+  expect(narrow == """
+    id  descripti…
+    1   一个很长…
+    """)
+  expect(table([]) == "")
+  expect(table([["a"], ["bb", "c"]], gap: 1) == "a\nbb c")
+}

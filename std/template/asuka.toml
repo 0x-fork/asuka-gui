@@ -1,0 +1,3 @@
+name = "std/template"
+version = "0.1.0"
+description = "Text from templates: Jinja's syntax over typed data, HTML escaped where the output is HTML"

@@ -1,0 +1,615 @@
+// Package std/semver is semantic versions (semver.org, 2.0.0): parsed,
+// ordered by their precedence, and matched against ranges written as
+// npm writes them (Bun.semver's syntax too), for a tool's updates, a
+// registry's packages, a minimum version.
+//
+//   let v = try semver.parse("1.4.0-beta.2+build.7")
+//   print("{v.major} {v.prerelease}")                // 1 ["beta","2"]
+//   let r = try semver.parseRange("^1.2 || >=2.0.0 <2.5")
+//   if r.matches(v) { … }
+//   let best = r.highest(tags.compactMap(t => try? semver.parse(t)))
+//
+//   semver.satisfies("1.2.3", "~1.2")               // true
+//   semver.maxSatisfying(["1.2.3", "1.3.0", "2.0.0"], "^1.2")   // "1.3.0"
+//
+// A version is major.minor.patch, then an optional pre-release after a
+// hyphen and build metadata after a plus (1.0.0-rc.1+sha.5114f85), as
+// SemVer 2.0.0 writes it; a "v" before it (git's tags: v1.2.3) is read
+// too. Versions order by precedence: major, minor and patch as numbers,
+// then a pre-release before its release (1.0.0-rc.1 < 1.0.0), its
+// identifiers compared one by one (numbers as numbers, before words,
+// words by their ASCII); the build metadata doesn't count, so v.compare(w)
+// is 0 for 1.0.0+a and 1.0.0+b though they're not ==.
+//
+// A range is comparators that a version must all pass, with || between
+// alternatives:
+//
+//   1.2.3, =1.2.3       exactly that version
+//   >1.2.3, >=1.2.3, <2.0.0, <=2.0.0
+//   >=1.2.0 <2.0.0      both (a comma between them too, as Cargo writes them)
+//   1.2.x, 1.2.*, 1.2   any 1.2 (>=1.2.0 <1.3.0); 1.x, 1: any 1; *, x, "": any
+//   ~1.2.3              patches: >=1.2.3 <1.3.0 (~1.2, ~1 as 1.2.x and 1.x)
+//   ^1.2.3              what's compatible: >=1.2.3 <2.0.0; below 1.0.0 the
+//                       first number that isn't 0 is kept: ^0.2.3 is
+//                       >=0.2.3 <0.3.0, ^0.0.3 is >=0.0.3 <0.0.4
+//   1.2.3 - 2.3.4       inclusive: >=1.2.3 <=2.3.4 (2.3 as its end: <2.4.0)
+//   ^1.2 || ^2          either
+//
+// A bare version is that version alone, as npm reads it (Cargo reads
+// 1.2.3 as ^1.2.3: write the ^). A pre-release matches only a range that
+// names a pre-release of the same major.minor.patch (>=1.2.3-beta.1
+// matches 1.2.3-beta.2 but not 1.2.4-beta.1), so a range of releases
+// never picks one, unless includePrerelease says so. Mistakes throw,
+// their message saying what isn't a version and why.
+
+import std/json
+
+/// A semantic version: major.minor.patch, its pre-release identifiers
+/// and its build metadata. Compared with <, <= and the rest, and
+/// sorted(), by their precedence (compare).
+pub struct Version {
+  /// The major version: what changes when what's compatible doesn't.
+  major: int
+  /// The minor version: what's added, still compatible.
+  minor: int = 0
+  /// The patch version: what's fixed.
+  patch: int = 0
+  /// The pre-release identifiers: ["beta", "2"] of 1.0.0-beta.2; empty
+  /// for a release.
+  prerelease: [string] = []
+  /// The build metadata: ["sha", "5114f85"] of 1.0.0+sha.5114f85.
+  /// Precedence ignores it.
+  build: [string] = []
+
+  /// The version as SemVer writes it: 1.0.0-beta.2+sha.5114f85.
+  fn string() -> string {
+    var s = "{major}.{minor}.{patch}"
+    if !prerelease.isEmpty() {
+      s += "-" + prerelease.joined(separator: ".")
+    }
+    if !build.isEmpty() {
+      s += "+" + build.joined(separator: ".")
+    }
+    return s
+  }
+
+  /// Negative, zero or positive as this version has a lower precedence
+  /// than o, the same or a higher one: the numbers, then a pre-release
+  /// before its release, identifier by identifier. The build metadata
+  /// isn't compared.
+  fn compare(o: Version) -> int {
+    if major != o.major {
+      return if major < o.major { -1 } else { 1 }
+    }
+    if minor != o.minor {
+      return if minor < o.minor { -1 } else { 1 }
+    }
+    if patch != o.patch {
+      return if patch < o.patch { -1 } else { 1 }
+    }
+    return comparePrerelease(prerelease, o.prerelease)
+  }
+
+  /// Whether it's a pre-release (1.0.0-rc.1).
+  fn isPrerelease() -> bool = !prerelease.isEmpty()
+
+  /// The next version of a part, as npm version major, minor and patch
+  /// make it: the part one more and the ones after it 0 (1.2.3's next
+  /// minor is 1.3.0), without a pre-release or build metadata. A
+  /// pre-release's next is its release when that's the part's next
+  /// (1.3.0-rc.1's next minor is 1.3.0, 2.0.0-beta's next major 2.0.0).
+  fn next(part: Part) -> Version = match part {
+    .major => if minor == 0 && patch == 0 && isPrerelease() { Version(major: major) } else { Version(major: major + 1) }
+    .minor => if patch == 0 && isPrerelease() { Version(major: major, minor: minor) } else { Version(major: major, minor: minor + 1) }
+    .patch => if isPrerelease() { Version(major: major, minor: minor, patch: patch) } else { Version(major: major, minor: minor, patch: patch + 1) }
+  }
+}
+
+/// A part of a version, for Version.next.
+pub enum Part { major, minor, patch }
+
+/// How a comparator compares a version with its own.
+pub enum Op {
+  /// =: the same precedence.
+  eq
+  /// <
+  lt
+  /// <=
+  le
+  /// >
+  gt
+  /// >=
+  ge
+}
+
+/// A version compared with one of the range's: >=1.2.0, <2.0.0-0.
+pub struct Comparator {
+  /// How it compares.
+  op: Op
+  /// What with.
+  version: Version
+
+  /// Whether v passes it.
+  fn test(v: Version) -> bool {
+    let c = v.compare(version)
+    return match op {
+      .eq => c == 0
+      .lt => c < 0
+      .le => c <= 0
+      .gt => c > 0
+      .ge => c >= 0
+    }
+  }
+
+  /// As a range writes it: >=1.2.0.
+  fn string() -> string {
+    let o = match op {
+      .eq => ""
+      .lt => "<"
+      .le => "<="
+      .gt => ">"
+      .ge => ">="
+    }
+    return o + Version(major: version.major, minor: version.minor, patch: version.patch, prerelease: version.prerelease).string()
+  }
+}
+
+/// A range of versions: alternatives (what || separates), each the
+/// comparators a version must all pass (an empty one passes any). Made
+/// by parseRange, which writes ^, ~, x and hyphen ranges as
+/// comparators: ^1.2.3 is [[>=1.2.3, <2.0.0-0]].
+pub struct Range {
+  /// The alternatives, each its comparators.
+  sets: [[Comparator]]
+  /// Whether a pre-release may match any comparator, not only one that
+  /// names a pre-release of its major.minor.patch (parseRange's).
+  includePrerelease: bool = false
+
+  /// Whether v is in the range: it passes each comparator of one of its
+  /// alternatives. A pre-release must also have the major.minor.patch
+  /// of a pre-release that alternative names, unless the range was
+  /// parsed with includePrerelease.
+  fn matches(v: Version) -> bool {
+    for set in sets {
+      if set.all(c => c.test(v)) && (includePrerelease || !v.isPrerelease() || set.any(c => c.version.isPrerelease() && c.version.major == v.major && c.version.minor == v.minor && c.version.patch == v.patch)) {
+        return true
+      }
+    }
+    return false
+  }
+
+  /// The highest of versions in the range (npm's maxSatisfying), none
+  /// when none is.
+  fn highest(versions: [Version]) -> Version? {
+    var best: Version? = none
+    for v in versions {
+      if matches(v) {
+        if let b = best, v <= b {
+          continue
+        }
+        best = v
+      }
+    }
+    return best
+  }
+
+  /// The lowest of versions in the range, none when none is.
+  fn lowest(versions: [Version]) -> Version? {
+    var best: Version? = none
+    for v in versions {
+      if matches(v) {
+        if let b = best, v >= b {
+          continue
+        }
+        best = v
+      }
+    }
+    return best
+  }
+
+  /// The range as comparators, as npm writes it: ">=1.2.3
+  /// <2.0.0-0||>=3.0.0"; "*" for any version.
+  fn string() -> string {
+    let parts = sets.map(s => if s.isEmpty() { "*" } else { s.map(c => c.string()).joined(separator: " ") })
+    return parts.joined(separator: "||")
+  }
+}
+
+/// The version text says (SemVer 2.0.0, a "v" before it read too; the
+/// spaces around it ignored). It throws when text isn't one: a part
+/// missing or not a number, a number with a leading zero (01) or past an
+/// int, an empty identifier, a character SemVer doesn't allow.
+///
+///   let v = try semver.parse("v2.1.0-rc.1")
+pub fn parse(text: string) throws -> Version {
+  let fail = (why: string) => bad(text, why)
+  var s = text.trim()
+  if s.hasPrefix("v") {
+    s = s.byteSlice(1, s.byteCount())
+  }
+  var build: [string] = []
+  if let plus = s.find("+") {
+    build = try identifiers(s.byteSlice(plus + 1, s.byteCount()), "build metadata", false, fail)
+    s = s.byteSlice(0, plus)
+  }
+  var pre: [string] = []
+  if let dash = s.find("-") {
+    pre = try identifiers(s.byteSlice(dash + 1, s.byteCount()), "pre-release", true, fail)
+    s = s.byteSlice(0, dash)
+  }
+  let parts = s.split(".")
+  if parts.count() != 3 {
+    throw fail("a version is major.minor.patch")
+  }
+  return Version(major: try number(parts[0], fail), minor: try number(parts[1], fail), patch: try number(parts[2], fail), prerelease: pre, build: build)
+}
+
+/// The range text writes (npm's syntax: the package's comment). It
+/// throws when text isn't one, saying where. With includePrerelease, a
+/// pre-release matches as a release does, and the ranges that leave a
+/// part out start at its pre-releases (1.2.x is >=1.2.0-0 <1.3.0-0), as
+/// npm's option of the name makes them.
+///
+///   let r = try semver.parseRange(">=1.2.7 <1.3.0 || ^2")
+pub fn parseRange(text: string, includePrerelease: bool = false) throws -> Range {
+  var sets: [[Comparator]] = []
+  for alt in text.split("||") {
+    sets.push(try rangeSet(alt, text, includePrerelease))
+  }
+  // As npm's: alternatives that match nothing (<0.0.0-0) left out,
+  // unless all do; one that matches anything is the whole range.
+  if sets.count() > 1 {
+    let some = sets.filter(s => !isNone(s))
+    sets = if some.isEmpty() { [sets[0]] } else { some }
+    if sets.any(s => s.isEmpty()) {
+      sets = [[]]
+    }
+  }
+  return Range(sets: sets, includePrerelease: includePrerelease)
+}
+
+let nothing = Version(major: 0, prerelease: ["0"])
+
+fn isNone(set: [Comparator]) -> bool = set.count() == 1 && set[0].op == .lt && set[0].version == nothing
+
+/// Whether version is in range, both text (Bun.semver.satisfies,
+/// npm's semver.satisfies): false when either isn't valid.
+///
+///   semver.satisfies("1.4.2", "^1.2")       // true
+pub fn satisfies(version: string, range: string, includePrerelease: bool = false) -> bool {
+  if let v = try? parse(version), let r = try? parseRange(range, includePrerelease: includePrerelease) {
+    return r.matches(v)
+  }
+  return false
+}
+
+/// The highest of versions in range, as it's written there (npm's
+/// maxSatisfying); what isn't a version is skipped. none when none is
+/// in range, or range isn't one.
+pub fn maxSatisfying(versions: [string], range: string, includePrerelease: bool = false) -> string? {
+  let r = (try? parseRange(range, includePrerelease: includePrerelease)) ?? Range(sets: [])
+  var best: (Version, string)? = none
+  for text in versions {
+    if let v = try? parse(text), r.matches(v) {
+      if let b = best, v <= b.0 {
+        continue
+      }
+      best = (v, text)
+    }
+  }
+  return best?.1
+}
+
+/// a's precedence compared with b's, both text (Bun.semver.order):
+/// negative, zero or positive. It throws when either isn't a version.
+pub fn compare(a: string, b: string) throws -> int = (try parse(a)).compare(try parse(b))
+
+// ---------------------------------------------------------------------
+// Precedence
+
+fn isNumeric(s: string) -> bool = !s.isEmpty() && s.chars().all(c => c >= "0" && c <= "9")
+
+fn comparePrerelease(a: [string], b: [string]) -> int {
+  if a.isEmpty() || b.isEmpty() {
+    // A release after its pre-releases.
+    return if a.isEmpty() && b.isEmpty() { 0 } else if a.isEmpty() { 1 } else { -1 }
+  }
+  var i = 0
+  while i < a.count() && i < b.count() {
+    let x = a[i]
+    let y = b[i]
+    if x != y {
+      let nx = isNumeric(x)
+      let ny = isNumeric(y)
+      if nx && ny {
+        // Numbers as numbers: no leading zeros, so the longer is larger.
+        if x.count() != y.count() {
+          return if x.count() < y.count() { -1 } else { 1 }
+        }
+        return if x < y { -1 } else { 1 }
+      }
+      if nx != ny {
+        return if nx { -1 } else { 1 }
+      }
+      return if x < y { -1 } else { 1 }
+    }
+    i += 1
+  }
+  if a.count() == b.count() {
+    return 0
+  }
+  return if a.count() < b.count() { -1 } else { 1 }
+}
+
+// ---------------------------------------------------------------------
+// Versions
+
+fn bad(text: string, why: string) -> Error = Error("semver: {json.encode(text)} isn't a version: {why}")
+
+// number and identifiers throw what fail makes of why they can't.
+fn number(s: string, fail: fn(string) -> Error) throws -> int {
+  if !isNumeric(s) {
+    throw fail(if s.isEmpty() { "a number is missing" } else { "{json.encode(s)} isn't a number" })
+  }
+  if s.count() > 1 && s.hasPrefix("0") {
+    throw fail("{s} has a leading zero")
+  }
+  return s.toInt() ?? throw fail("{s} is too large")
+}
+
+fn identifierChar(c: string) -> bool = c >= "0" && c <= "9" || c >= "a" && c <= "z" || c >= "A" && c <= "Z" || c == "-"
+
+fn identifiers(s: string, what: string, numbers: bool, fail: fn(string) -> Error) throws -> [string] {
+  let ids = s.split(".")
+  for id in ids {
+    if id.isEmpty() {
+      throw fail("an empty {what} identifier")
+    }
+    if !id.chars().all(identifierChar) {
+      throw fail("{what} {json.encode(id)} has a character other than 0-9, A-Z, a-z and -")
+    }
+    if numbers && isNumeric(id) && id.count() > 1 && id.hasPrefix("0") {
+      throw fail("the pre-release number {id} has a leading zero")
+    }
+  }
+  return ids
+}
+
+// ---------------------------------------------------------------------
+// Ranges
+
+// A partial version, as a range writes it: its numbers up to the first
+// x, *, or missing one (none from there on).
+struct Partial {
+  major: int?
+  minor: int?
+  patch: int?
+  prerelease: [string]
+
+  fn full() -> Version = Version(major: major ?? 0, minor: minor ?? 0, patch: patch ?? 0, prerelease: prerelease)
+
+  // The least version it covers: with pre (includePrerelease) and a part
+  // left out, the first pre-release of it (1.2 is >=1.2.0-0).
+  fn low(pre: bool) -> Version {
+    if pre && patch == none {
+      return Version(major: major ?? 0, minor: minor ?? 0, prerelease: ["0"])
+    }
+    return full()
+  }
+
+  // The least version past every one it covers, its pre-releases too:
+  // <1.3.0-0 for 1.2.
+  fn ceiling() -> Version {
+    if let mi = minor {
+      return Version(major: major!, minor: mi + 1, prerelease: ["0"])
+    }
+    return Version(major: major! + 1, prerelease: ["0"])
+  }
+}
+
+fn badRange(text: string, why: string) -> Error = Error("semver: {json.encode(text.trim())} isn't a range: {why}")
+
+fn isWild(s: string) -> bool = s == "x" || s == "X" || s == "*"
+
+fn partial(word: string, text: string) throws -> Partial {
+  let fail = (why: string) => badRange(text, "{json.encode(word)}: {why}")
+  var s = word
+  if s.hasPrefix("v") {
+    s = s.byteSlice(1, s.byteCount())
+  }
+  if s.isEmpty() {
+    throw badRange(text, "a version is missing")
+  }
+  if let plus = s.find("+") {
+    // Build metadata: checked, and ignored.
+    let _ = try identifiers(s.byteSlice(plus + 1, s.byteCount()), "build metadata", false, fail)
+    s = s.byteSlice(0, plus)
+  }
+  var pre: [string] = []
+  if let dash = s.find("-") {
+    pre = try identifiers(s.byteSlice(dash + 1, s.byteCount()), "pre-release", true, fail)
+    s = s.byteSlice(0, dash)
+  }
+  let parts = s.split(".")
+  if parts.count() > 3 {
+    throw fail("more than three numbers")
+  }
+  var nums: [int?] = []
+  var wild = false
+  for p in parts {
+    if isWild(p) {
+      wild = true
+      nums.push(none)
+    } else if wild {
+      throw fail("a number after an x")
+    } else {
+      nums.push(try number(p, fail))
+    }
+  }
+  if !pre.isEmpty() && nums.count() < 3 {
+    throw fail("a pre-release needs the whole version")
+  }
+  if wild {
+    // 1.x.x-alpha is 1.x.x, as npm reads it.
+    pre = []
+  }
+  return Partial(major: nums.get(0) ?? none, minor: nums.get(1) ?? none, patch: nums.get(2) ?? none, prerelease: pre)
+}
+
+fn c(op: Op, v: Version) -> Comparator = Comparator(op: op, version: v)
+
+// What a partial is alone or after =: that version, or what it covers.
+fn exactly(p: Partial, pre: bool) -> [Comparator] {
+  if p.major == none {
+    return []
+  }
+  if p.patch != none {
+    return [c(.eq, p.full())]
+  }
+  return [c(.ge, p.low(pre)), c(.lt, p.ceiling())]
+}
+
+fn tilde(p: Partial, pre: bool) -> [Comparator] {
+  if p.major == none {
+    return []
+  }
+  if p.minor == none {
+    return exactly(p, pre)
+  }
+  return [c(.ge, p.low(pre)), c(.lt, Version(major: p.major!, minor: p.minor! + 1, prerelease: ["0"]))]
+}
+
+fn caret(p: Partial, pre: bool) -> [Comparator] {
+  if p.major == none {
+    return []
+  }
+  let major = p.major!
+  let lo = c(.ge, p.low(pre))
+  if major > 0 || p.minor == none {
+    return [lo, c(.lt, Version(major: major + 1, prerelease: ["0"]))]
+  }
+  let minor = p.minor!
+  if minor > 0 || p.patch == none {
+    return [lo, c(.lt, Version(major: 0, minor: minor + 1, prerelease: ["0"]))]
+  }
+  return [lo, c(.lt, Version(major: 0, minor: 0, patch: p.patch! + 1, prerelease: ["0"]))]
+}
+
+// An operator before a partial: >1.2 is >=1.3.0, <=1.2 <1.3.0-0.
+fn primitive(op: Op, p: Partial, pre: bool) -> [Comparator] {
+  if p.major == none {
+    // >=* is any; <*, >* none.
+    return match op {
+      .lt => [c(.lt, nothing)]
+      .gt => [c(.lt, nothing)]
+      _ => []
+    }
+  }
+  if p.patch != none {
+    return [c(op, p.full())]
+  }
+  let z: [string] = if pre { ["0"] } else { [] }
+  return match op {
+    .eq => exactly(p, pre)
+    .ge => [c(.ge, p.low(pre))]
+    .lt => [c(.lt, Version(major: p.major!, minor: p.minor ?? 0, prerelease: ["0"]))]
+    .gt => [c(.ge, Version(major: p.ceiling().major, minor: p.ceiling().minor, prerelease: z))]
+    .le => [c(.lt, p.ceiling())]
+  }
+}
+
+// A hyphen range: inclusive at both ends.
+fn hyphen(lo: Partial, hi: Partial, pre: bool) -> [Comparator] {
+  var out: [Comparator] = []
+  if lo.major != none {
+    if pre && lo.patch != none && lo.prerelease.isEmpty() {
+      out.push(c(.ge, Version(major: lo.major!, minor: lo.minor!, patch: lo.patch!, prerelease: ["0"])))
+    } else {
+      out.push(c(.ge, lo.low(pre)))
+    }
+  }
+  if hi.major != none {
+    if hi.patch == none {
+      out.push(c(.lt, hi.ceiling()))
+    } else if pre && hi.prerelease.isEmpty() {
+      out.push(c(.lt, Version(major: hi.major!, minor: hi.minor!, patch: hi.patch! + 1, prerelease: ["0"])))
+    } else {
+      out.push(c(.le, hi.full()))
+    }
+  }
+  return out
+}
+
+fn rangeSet(alt: string, text: string, pre: bool) throws -> [Comparator] {
+  // Words: an operator kept with the version after it (">= 1.2" is one).
+  var words: [string] = []
+  for w in alt.replace(",", " ").replace("\u{a0}", " ").replace("\u{feff}", " ").fields() {
+    if !words.isEmpty() && isOperator(words[words.count() - 1]) && startsVersion(w) {
+      words[words.count() - 1] += w
+    } else {
+      words.push(w)
+    }
+  }
+  if words.count() == 3 && words[1] == "-" {
+    return normalized(hyphen(try partial(words[0], text), try partial(words[2], text), pre), pre)
+  }
+  var out: [Comparator] = []
+  for w in words {
+    if w == "-" {
+      throw badRange(text, "a hyphen range is two versions: 1.2.3 - 2.3.4")
+    }
+    for x in try simple(w, text, pre) {
+      out.push(x)
+    }
+  }
+  return normalized(out, pre)
+}
+
+// normalized leaves out what changes nothing, as npm does: >=0.0.0
+// (>=0.0.0-0 with pre), a comparator twice; one that matches nothing is
+// all there is.
+fn normalized(set: [Comparator], pre: bool) -> [Comparator] {
+  if let empty = set.find(x => x.op == .lt && x.version == nothing) {
+    return [empty]
+  }
+  let least = if pre { nothing } else { Version(major: 0) }
+  var out: [Comparator] = []
+  var seen: Set<string> = []
+  for x in set {
+    if x.op == .ge && x.version == least {
+      continue
+    }
+    if seen.insert(x.string()) {
+      out.push(x)
+    }
+  }
+  return out
+}
+
+fn startsVersion(w: string) -> bool {
+  let first = w.slice(0, 1)
+  return first >= "0" && first <= "9" || first == "v" || isWild(first)
+}
+
+fn isOperator(w: string) -> bool = w == "<" || w == ">" || w == "<=" || w == ">=" || w == "=" || w == "~" || w == "~>" || w == "^"
+
+fn simple(w: string, text: string, pre: bool) throws -> [Comparator] {
+  for (prefix, op) in [("<=", Op.le), (">=", Op.ge), ("<", Op.lt), (">", Op.gt)] {
+    if w.hasPrefix(prefix) {
+      return primitive(op, try partial(w.byteSlice(prefix.byteCount(), w.byteCount()), text), pre)
+    }
+  }
+  if w.hasPrefix("~>") {
+    return tilde(try partial(w.byteSlice(2, w.byteCount()), text), pre)
+  }
+  if w.hasPrefix("~") {
+    return tilde(try partial(w.byteSlice(1, w.byteCount()), text), pre)
+  }
+  if w.hasPrefix("^") {
+    return caret(try partial(w.byteSlice(1, w.byteCount()), text), pre)
+  }
+  if w.hasPrefix("=") {
+    return primitive(.eq, try partial(w.byteSlice(1, w.byteCount()), text), pre)
+  }
+  return exactly(try partial(w, text), pre)
+}

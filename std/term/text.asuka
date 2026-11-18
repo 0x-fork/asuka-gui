@@ -1,0 +1,138 @@
+// Text's width: the columns a terminal gives it, for what lines up.
+
+/// Where text sits in the columns it's given: at their start (the
+/// left), their end, or centered.
+pub enum Align { start, end, center }
+
+/// The columns text takes in a terminal, as Rust's unicode-width,
+/// Go's go-runewidth and Bun.stringWidth count them: Chinese, Japanese
+/// and Korean characters, fullwidth forms and emoji two; an emoji with
+/// its modifier, a flag, a family joined with ZWJs, one with U+FE0F two
+/// (U+FE0E: one); combining marks, zero-width characters and controls
+/// (tabs too) none; the rest one, East Asian Ambiguous characters (±,
+/// …) included, as terminals show them unless they're told otherwise.
+/// Escape codes take none, so styled text measures as it shows. Each
+/// grapheme cluster counts once (an e and its accent: one).
+///
+///   term.textWidth("日本語")          // 6
+///   term.textWidth(term.red("ok"))   // 2
+pub native fn textWidth(text: string) -> int
+
+/// text without its escape codes: its styles (term.bold's, Style's)
+/// and links, what a terminal shows of it.
+pub native fn unstyled(text: string) -> string
+
+/// text in at most width columns: as it is when it fits, else its
+/// grapheme clusters while they fit with ellipsis after them (a wide
+/// character never cut in half). Its escape codes stay, so styled text
+/// cut still ends its style. An ellipsis wider than width is left out.
+///
+///   term.truncate("東京都千代田区", 9)   // 東京都千…
+pub fn truncate(text: string, width: int, ellipsis: string = "…") -> string = cut(text, max(width, 0), ellipsis)
+
+native fn cut(text: string, width: int, ellipsis: string) -> string
+
+// fill is n columns of with, then spaces where a with doesn't fit.
+fn fill(n: int, with: string) -> string {
+  if n <= 0 {
+    return ""
+  }
+  let w = textWidth(with)
+  if w <= 0 {
+    return " ".repeat(n)
+  }
+  return with.repeat(n / w) + " ".repeat(n % w)
+}
+
+/// text with copies of with after it, up to width columns (as the
+/// string's padEnd, by the columns textWidth counts): what aligns a
+/// column of CJK text or emoji. Text already that wide is as it is.
+pub fn padEnd(text: string, width: int, with: string = " ") -> string = text + fill(width - textWidth(text), with)
+
+/// text with copies of with before it, up to width columns: numbers
+/// aligned on their right.
+pub fn padStart(text: string, width: int, with: string = " ") -> string = fill(width - textWidth(text), with) + text
+
+/// text in the middle of width columns, the odd column after it.
+pub fn center(text: string, width: int, with: string = " ") -> string {
+  let n = width - textWidth(text)
+  if n <= 0 {
+    return text
+  }
+  return fill(n / 2, with) + text + fill(n - n / 2, with)
+}
+
+/// text in exactly width columns: truncated when it's wider (with
+/// ellipsis), then padded with spaces where align puts it. A table's
+/// cell.
+///
+///   print("{term.fit(name, 12)} {term.fit(size, 6, align: .end)}")
+pub fn fit(text: string, width: int, align: Align = .start, ellipsis: string = "…") -> string {
+  let t = truncate(text, width, ellipsis: ellipsis)
+  return match align {
+    .start => padEnd(t, width)
+    .end => padStart(t, width)
+    .center => center(t, width)
+  }
+}
+
+/// rows laid out in columns, each as wide as its widest cell (by
+/// textWidth), gap spaces between them: the lines, without a line break
+/// after the last. align says each column's alignment (.start for those
+/// it leaves out). With width, the widest columns are made narrower
+/// until the lines fit in it, their cells truncated with an ellipsis. A
+/// row may have fewer cells than the others; a line has no spaces at
+/// its end.
+///
+///   print(term.table([["Name", "City"], ["王小明", "北京"], ["Ana", "Lisboa"]]))
+///   // Name    City
+///   // 王小明  北京
+///   // Ana     Lisboa
+pub fn table(rows: [[string]], align: [Align] = [], gap: int = 2, width: int? = none) -> string {
+  var widths: [int] = []
+  for row in rows {
+    for (i, cell) in row.enumerated() {
+      let w = textWidth(cell)
+      if i < widths.count() {
+        widths[i] = max(widths[i], w)
+      } else {
+        widths.push(w)
+      }
+    }
+  }
+  let space = max(gap, 0)
+  if let most = width {
+    var total = widths.sum() + space * max(widths.count() - 1, 0)
+    while total > most {
+      // The widest column, the last of equal ones, a column narrower.
+      var widest = 0
+      for (i, w) in widths.enumerated() {
+        if w >= widths[widest] {
+          widest = i
+        }
+      }
+      if widths.isEmpty() || widths[widest] <= 1 {
+        break
+      }
+      widths[widest] -= 1
+      total -= 1
+    }
+  }
+  var lines: [string] = []
+  for row in rows {
+    var line = ""
+    for (i, cell) in row.enumerated() {
+      let a = align.get(i) ?? .start
+      if i > 0 {
+        line += " ".repeat(space)
+      }
+      if i == row.count() - 1 && a == .start {
+        line += truncate(cell, widths[i])
+      } else {
+        line += fit(cell, widths[i], align: a)
+      }
+    }
+    lines.push(line)
+  }
+  return lines.joined(separator: "\n")
+}

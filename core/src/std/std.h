@@ -10,6 +10,7 @@
 #define AK_STD_H
 
 #include "rt/lib.h"
+#include "rt/unicode.h"
 
 #include <stdio.h>
 
@@ -42,11 +43,7 @@ extern const ak_lib_entry *const ak_std_libs[];
 
 // ---- Shared helpers ----
 
-// ak_utf8_decode reads the code point at s[*i] (n bytes in all) and
-// moves *i past it; what isn't UTF-8 reads as U+FFFD, one byte.
-uint32_t ak_utf8_decode(const char *s, size_t n, size_t *i);
-// ak_utf8_encode writes c's UTF-8 into out (4 bytes room); its length.
-size_t ak_utf8_encode(uint32_t c, char *out);
+// ak_utf8_decode and ak_utf8_encode: rt/unicode.h.
 
 // ak_os_random fills p with n bytes of the system's randomness (any
 // thread); false if the system gave none.
