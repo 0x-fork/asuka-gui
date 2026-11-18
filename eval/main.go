@@ -29,6 +29,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/egoist/asuka/lang/diag"
 )
 
 // Result is how a task went.
@@ -57,7 +59,14 @@ func main() {
 	only := flag.String("tasks", "", "the `tasks` to run, comma-separated (default: every one)")
 	timeout := flag.Duration("timeout", 15*time.Minute, "how long the agent may take on a task")
 	out := flag.String("out", "", "the `directory` the projects and the results go in (default: a new temporary one)")
+	report := flag.String("report", "", "don't run the agent: read the results in `directory` again (a run's -out), recount from its logs, and print the table")
 	flag.Parse()
+	if *report != "" {
+		if err := reread(*report); err != nil {
+			fail(err)
+		}
+		return
+	}
 	if *agent == "" {
 		fmt.Fprintln(os.Stderr, "eval: -agent: the agent's command")
 		os.Exit(2)
@@ -95,6 +104,28 @@ func main() {
 	}
 	fmt.Print(table(results))
 	fmt.Fprintf(os.Stderr, "eval: the projects and results.json are in %s\n", work)
+}
+
+// reread recounts a run's results from its logs, and prints the table.
+func reread(dir string) error {
+	b, err := os.ReadFile(filepath.Join(dir, "results.json"))
+	if err != nil {
+		return err
+	}
+	var rs []Result
+	if err := json.Unmarshal(b, &rs); err != nil {
+		return err
+	}
+	for i := range rs {
+		rs[i].RoundTrips, rs[i].Codes = 0, map[string]int{}
+		calls(filepath.Join(dir, rs[i].Task+".calls.jsonl"), &rs[i])
+	}
+	b, _ = json.MarshalIndent(rs, "", "  ")
+	if err := os.WriteFile(filepath.Join(dir, "results.json"), b, 0o644); err != nil {
+		return err
+	}
+	fmt.Print(table(rs))
+	return nil
 }
 
 func fail(err error) {
@@ -244,9 +275,13 @@ func calls(log string, r *Result) {
 		switch c.Args[0] {
 		case "check", "test", "run", "build", "dev":
 			r.RoundTrips++
-		}
-		for _, code := range c.Codes {
-			r.Codes[code]++
+			// What a compile said; asuka guide's and explain's pages
+			// mention codes too, which aren't the agent's.
+			for _, code := range c.Codes {
+				if diag.Lookup(code) != nil {
+					r.Codes[code]++
+				}
+			}
 		}
 	}
 }
