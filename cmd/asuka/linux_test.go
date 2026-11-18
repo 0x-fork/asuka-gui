@@ -329,7 +329,8 @@ func TestLinuxPrebuiltFromZig(t *testing.T) {
 	}
 
 	// The package, as the release builds it, put where a fetch puts it.
-	pkg := prebuilt.Package{Name: prebuilt.Scope + "/asuka-prebuilt-" + name, Version: fmt.Sprintf("0.0.0-test.%d", time.Now().UnixNano()), Integrity: "sha512-test"}
+	version := fmt.Sprintf("0.0.0-test.%d", time.Now().UnixNano())
+	pkg := prebuilt.Package{Asset: prebuilt.AssetName(name, version), Version: version, SHA256: strings.Repeat("0", 64)}
 	dir := prebuilt.Dir(pkg)
 	t.Cleanup(func() { os.RemoveAll(dir) })
 	t.Setenv("ASUKA_CC", "zig")

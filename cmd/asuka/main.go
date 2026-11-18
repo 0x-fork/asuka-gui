@@ -31,8 +31,8 @@ import (
 	"github.com/egoist/asuka/internal/ccache"
 )
 
-// version is the CLI's release (-ldflags -X main.version=…; scripts/npm
-// sets it), "dev" for a build from source.
+// version is the CLI's release (-ldflags -X main.version=…;
+// scripts/release sets it), "dev" for a build from source.
 var version = "dev"
 
 func usage() {
@@ -128,7 +128,7 @@ func main() {
 	case "cache":
 		err = cmdCache(os.Args[2:])
 	case "prebuilt":
-		// A release's: what it carries prebuilt (scripts/npm).
+		// A release's: what it carries prebuilt (scripts/release).
 		err = cmdPrebuilt(os.Args[2:])
 	case "lsp":
 		err = cmdLSP(os.Args[2:])

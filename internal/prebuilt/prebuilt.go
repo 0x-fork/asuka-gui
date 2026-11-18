@@ -2,11 +2,11 @@
 // it (DESIGN.md, "The build cache"): the core's, the desktop hosts' and
 // the std and sdk packages' C as static libraries for every target and
 // configuration, and the Android host's and packages' Kotlin as AARs,
-// published to npm with the release, an npm package per target
-// (@egoist/asuka-prebuilt-<name>). The CLI embeds only their manifest
-// (manifest.json: each package's exact version and integrity, each
-// library's path and SHA-256), and fetches a target's package from the
-// npm registry the first time a build needs it, into the build cache.
+// attached to the release on GitHub, an archive per target
+// (asuka-prebuilt-<name>-<version>.tar.gz). The CLI embeds only their
+// manifest (manifest.json: each archive's name and SHA-256, each
+// library's path and SHA-256), and fetches a target's archive from the
+// release the first time a build needs it, into the build cache.
 // A CLI built from a checkout has none (an empty manifest): its builds
 // build the same libraries into the cache.
 package prebuilt
@@ -22,9 +22,6 @@ import (
 	"github.com/egoist/asuka/internal/ccache"
 )
 
-// Scope is the npm scope the packages are published under.
-const Scope = "@egoist"
-
 // Manifest is what the CLI knows of its prebuilt packages.
 type Manifest struct {
 	// Version is the CLI's, which its packages share.
@@ -38,11 +35,14 @@ type Manifest struct {
 	Maven *File `json:"maven,omitempty"`
 }
 
-// Package is one npm package.
+// Package is one target's prebuilt set: a release asset, a gzip
+// compressed tar archive.
 type Package struct {
-	Name      string `json:"name"`      // @egoist/asuka-prebuilt-darwin-arm64
-	Version   string `json:"version"`   // exact
-	Integrity string `json:"integrity"` // its tarball's (npm's dist.integrity: sha512-<base64>)
+	Asset   string `json:"asset"`   // asuka-prebuilt-darwin-arm64-0.3.0.tar.gz (AssetName)
+	Version string `json:"version"` // the release's
+	SHA256  string `json:"sha256"`  // the archive's, which the CLI pins
+	// Size is the archive's, in bytes (for what a fetch says).
+	Size int64 `json:"size,omitempty"`
 	// Compiler is what built its C (zig, apple, ndk): a build links a
 	// prebuilt library only with the same family's.
 	Compiler string `json:"compiler,omitempty"`
@@ -53,8 +53,8 @@ type Package struct {
 
 // File is a file (or a directory) in a package.
 type File struct {
-	Package string `json:"package"`          // its short name
-	Path    string `json:"path"`             // in the package (lib/release/libcore.a)
+	Package string `json:"package"`          // its target (darwin-arm64)
+	Path    string `json:"path"`             // in the archive (lib/release/libcore.a)
 	SHA256  string `json:"sha256,omitempty"` // a file's
 }
 
@@ -201,7 +201,7 @@ func (m Manifest) file(f File) (string, error) {
 	if sum != f.SHA256 {
 		// Damaged in the cache: fetched again next time.
 		os.RemoveAll(dir)
-		return "", fmt.Errorf("prebuilt: %s isn't the library %s names (SHA-256); it was removed, build again", p, pkg.Name)
+		return "", fmt.Errorf("prebuilt: %s isn't the library %s names (SHA-256); it was removed, build again", p, pkg.Asset)
 	}
 	verifiedMu.Lock()
 	verified[p] = true

@@ -23,17 +23,17 @@ import (
 	"github.com/egoist/asuka/std"
 )
 
-// asuka prebuilt (not in the usage: the release's, scripts/npm's) builds
-// what a release carries prebuilt for one of its npm packages
+// asuka prebuilt (not in the usage: the release's, scripts/release's)
+// builds what a release carries prebuilt for one of its archives
 // (internal/prebuilt): the C units' static libraries for its targets and
 // both configurations, the Swift modules (the host's variants and the std
 // and sdk packages', with library evolution: an XCFramework each, of the
 // package's slice), or the Android AARs, and prebuilt.json, what's in it:
 //
-//	asuka prebuilt targets                       the packages' names
+//	asuka prebuilt targets                       the archives' targets
 //	asuka prebuilt build --target name --version v --out dir
 
-// prebuiltTarget is one npm package's contents.
+// prebuiltTarget is one archive's contents.
 type prebuiltTarget struct {
 	name  string
 	c     []cbuild.Target // its C's target
@@ -60,8 +60,8 @@ var prebuiltTargets = []prebuiltTarget{
 	{name: "windows-arm64", c: []cbuild.Target{{OS: "windows", Arch: "arm64"}}},
 }
 
-// prebuiltContents is prebuilt.json: what a package holds, which
-// scripts/npm puts in the CLI's manifest.
+// prebuiltContents is prebuilt.json: what an archive holds, which
+// scripts/release puts in the CLI's manifest.
 type prebuiltContents struct {
 	Name     string                   `json:"name"`
 	Compiler string                   `json:"compiler,omitempty"`
