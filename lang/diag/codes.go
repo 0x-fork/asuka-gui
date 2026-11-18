@@ -275,11 +275,27 @@ its fields do; a closure has none.`,
 
 	IntOverflow = def(Code{
 		Name:    "int-overflow",
-		Summary: "an integer literal that doesn't fit in 64 bits",
-		Why:     "An `int` is 64 bits, from −9223372036854775808 to 9223372036854775807. A literal outside that can't be one.",
-		Fix:     "Use a smaller number, a `float`, or a `std/decimal` value for exact large numbers.",
-		Wrong:   "let big = 9223372036854775808\n",
-		Right:   "let big = 9223372036854775807\n",
+		Summary: "an integer literal that doesn't fit in its type",
+		Why: `Each integer type holds a range: an ` + "`int`" + ` is 64 bits, from
+−9223372036854775808 to 9223372036854775807, a ` + "`u8`" + ` 0 to 255, an ` + "`i8`" + `
+−128 to 127, a ` + "`u64`" + ` 0 to 18446744073709551615. A literal outside its
+type's range can't be one, and an unsigned type has no negatives.`,
+		Fix:   "Use a number in the range, a wider type (`u16`, `int`, `u64`), a `float`, or `std/decimal` for exact large numbers.",
+		Wrong: "let big = 9223372036854775808\nlet level: u8 = 300\n",
+		Right: "let big: u64 = 9223372036854775808\nlet level: u16 = 300\n",
+	})
+
+	MixedNumbers = def(Code{
+		Name:    "mixed-numbers",
+		Summary: "an operator on numbers of two types",
+		Why: `Asuka converts no number by itself: an ` + "`int`" + ` and a ` + "`float`" + `, or a
+` + "`u8`" + ` and an ` + "`int`" + `, don't meet in ` + "`+`" + `, ` + "`<`" + ` or ` + "`&`" + `. Widening one quietly
+would hide where a value can be truncated, wrap or lose its fraction.
+An int literal takes the other side's type, so ` + "`level + 1`" + ` is fine.`,
+		Fix: `Convert one side to the other's type: ` + "`int(level) + offset`" + `, ` + "`float(n) * 0.5`" + `,
+` + "`u8(n)`" + ` (which throws when n doesn't fit; ` + "`u8(truncating: n)`" + ` keeps its low bits).`,
+		Wrong: "fn total(level: u8, bonus: int) -> int = level + bonus\n",
+		Right: "fn total(level: u8, bonus: int) -> int = int(level) + bonus\n",
 	})
 
 	TypeArguments = def(Code{

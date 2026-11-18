@@ -217,6 +217,11 @@ func TestFormatCases(t *testing.T) {
 		{"let n = 0b1010_0101 | 0o17", "let n = 0b1010_0101 | 0o17\n"},
 		{"let h = (h^b)&*p&+1 &- -c", "let h = (h ^ b) &* p &+ 1 &- -c\n"},
 		{"fn f() {\n  h&+=1; h&-=2; h&*=3\n}", "fn f() {\n  h &+= 1; h &-= 2; h &*= 3\n}\n"},
+		{"let n = -a**2 + (-a)**2", "let n = -a ** 2 + (-a) ** 2\n"},
+		{"let n = (a**b)**c * a**(b**c) * 2**-1", "let n = (a ** b) ** c * a ** (b ** c) * 2 ** -1\n"},
+		{"let n = (a*b)**2 + -(a**2)", "let n = (a * b) ** 2 + -(a ** 2)\n"},
+		{"let n = try f()**2 + a ** b**c", "let n = try f() ** 2 + a ** b ** c\n"},
+		{"fn f() {\n  x**=2\n}", "fn f() {\n  x **= 2\n}\n"},
 		{"fn f() {\n  x>>=1; x<<=2; x&=3; x|=4; x^=5\n}", "fn f() {\n  x >>= 1; x <<= 2; x &= 3; x |= 4; x ^= 5\n}\n"},
 		// A break after a dot stays after it: a line that ends in . goes on
 		// where one that starts with .0 is a number, and .name alone on a

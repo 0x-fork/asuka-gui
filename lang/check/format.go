@@ -103,6 +103,9 @@ func (c *Checker) formatSpec(spec *syntax.FormatSpec, t Type) {
 		return
 	}
 	bad := func(format string, args ...any) { c.errorf(spec, diag.FormatSpec, format, args...) }
+	if IsSized(t) {
+		t = Int // written as an int's digits (a u64's unsigned)
+	}
 	switch t {
 	case Int:
 		switch {

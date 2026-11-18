@@ -2786,7 +2786,7 @@ action:)`, `refresh`, `scrollTo`, `back`, `dismiss`, `pickDate`,
 - format-spec: an interpolation's format that doesn't fit its value. Write the format for the value's type, as the message says: `{n:>6}`, `{x:.2f}`, `{n:#x}`, `{name:<12}`.
 - group-not-calls: `load (…)` of what isn't each a call. Group the calls only (`load (api.user(id), api.posts(id))`), and pass the values to them, or beside the load.
 - import-cycle: packages that import each other. Move what both need into a third package they both import.
-- int-overflow: an integer literal that doesn't fit in 64 bits. Use a smaller number, a `float`, or a `std/decimal` value for exact large numbers.
+- int-overflow: an integer literal that doesn't fit in its type. Use a number in the range, a wider type (`u16`, `int`, `u64`), a `float`, or `std/decimal` for exact large numbers.
 - interface-not-satisfied: a type that declares an interface it doesn't implement. Add the missing methods (the message lists them), with the interface's signatures.
 - internal-error: a mistake of the compiler's own. Report it (with the program, or the smallest one that shows it) at https://github.com/egoist/asuka/issues.
 - invalid-catalog: a catalog that isn't a valid file of messages. Fix the file where the message points: a string for each key, its placeholders as the source's.
@@ -2825,6 +2825,7 @@ action:)`, `refresh`, `scrollTo`, `back`, `dismiss`, `pickDate`,
 - missing-translation: a language's catalog without some of the source's messages. Translate the messages it lists, in that language's catalog.
 - missing-try: a call of a function that throws without `try`. Write `try f(…)`, `try? f(…)` for `none` on an error, or `try f(…) catch { fallback }`.
 - missing-type: a declaration whose type must be written. Write the type: `prop size: int`, `prop size = 12`, `state n: int = …`.
+- mixed-numbers: an operator on numbers of two types. Convert one side to the other's type: `int(level) + offset`, `float(n) * 0.5`, `u8(n)` (which throws when n doesn't fit; `u8(truncating: n)` keeps its low bits).
 - native-type: a native component's prop or event of a type the platform's view can't take. Use data the platform's code can read; report what happens with an event.
 - no-children: children given to an element that takes none, or not those. Put the views in a container (`Column`, `Row`), or beside the element.
 - no-such-operator: an operator other languages have and Asuka doesn't. Write `x += 1`, `if a { b } else { c }`, or `a < b && b < c`.

@@ -566,11 +566,36 @@ func (g *gen) insn(f *bc.FuncDef, in insn, h string) error {
 		w("R[%d].i = ~R[%d].i;", a[0], a[1])
 	case "SHL", "SHR":
 		w("if (!ak_op_shift(R, %d, %d, %d, %v)) goto %s;", a[0], a[1], a[2], name == "SHR", h)
+	case "POWI":
+		w("if (!ak_op_pown(R, %d, %d, %d, 0x33)) goto %s;", a[0], a[1], a[2], h)
+	case "ADDN", "SUBN", "MULN", "POWN":
+		fn := map[string]string{"ADDN": "ak_op_addn", "SUBN": "ak_op_subn", "MULN": "ak_op_muln", "POWN": "ak_op_pown"}[name]
+		w("if (!%s(R, %d, %d, %d, %d)) goto %s;", fn, a[0], a[1], a[2], a[3], h)
+	case "DIVN", "MODN":
+		w("if (!ak_op_divn(R, %d, %d, %d, %d, %v)) goto %s;", a[0], a[1], a[2], a[3], name == "MODN", h)
+	case "NEGN":
+		w("if (!ak_op_negn(R, %d, %d, %d)) goto %s;", a[0], a[1], a[2], h)
+	case "SHLN", "SHRN":
+		w("if (!ak_op_shiftn(R, %d, %d, %d, %d, %v)) goto %s;", a[0], a[1], a[2], a[3], name == "SHRN", h)
+	case "LTU", "LEU":
+		w("R[%d].i = (uint64_t)R[%d].i %s (uint64_t)R[%d].i;", a[0], a[1], map[bool]string{true: "<", false: "<="}[name == "LTU"], a[2])
+	case "WRAP":
+		w("R[%d].i = ak_int_wrap(R[%d].i, %d);", a[0], a[1], a[2])
+	case "CONVN":
+		w("if (!ak_op_convn(R, %d, %d, %d)) goto %s;", a[0], a[1], a[2], h)
+	case "CLAMPN":
+		w("R[%d].i = ak_int_clamp(R[%d].i, %d, %d);", a[0], a[1], a[2]>>4, a[2]&15)
+	case "F2N":
+		w("R[%d].i = ak_op_f2n(R[%d].f, %d);", a[0], a[1], a[2])
+	case "U2F":
+		w("R[%d].f = (double)(uint64_t)R[%d].i;", a[0], a[1])
 	case "ADDF", "SUBF", "MULF", "DIVF":
 		op := map[string]string{"ADDF": "+", "SUBF": "-", "MULF": "*", "DIVF": "/"}[name]
 		w("R[%d].f = R[%d].f %s R[%d].f;", a[0], a[1], op, a[2])
 	case "MODF":
 		w("R[%d].f = fmod(R[%d].f, R[%d].f);", a[0], a[1], a[2])
+	case "POWF":
+		w("R[%d].f = pow(R[%d].f, R[%d].f);", a[0], a[1], a[2])
 	case "NEGF":
 		w("R[%d].f = -R[%d].f;", a[0], a[1])
 	case "EQF", "NEF", "LTF", "LEF":

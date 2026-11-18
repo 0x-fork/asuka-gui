@@ -2009,7 +2009,7 @@ test "archiving removes the row" {
 - format-spec: 値に合わない補間の書式. メッセージのとおり、値の型に合った書式を書きます：`{n:>6}`、`{x:.2f}`、`{n:#x}`、`{name:<12}`。
 - group-not-calls: `load (…)` の要素が、どれも呼び出しというわけではない. 呼び出しだけをまとめ（`load (api.user(id), api.posts(id))`）、値はそれらの呼び出しに渡すか、load の横に置きます。
 - import-cycle: 互いにインポートし合うパッケージ. 両方が必要とするものを 3 つ目のパッケージに移し、両方からそれをインポートします。
-- int-overflow: 64 ビットに収まらない整数リテラル. 小さい数にするか、`float` を使います。
+- int-overflow: 型の範囲に収まらない整数リテラル. 範囲内の数にするか、より広い型（`u16`、`int`、`u64`）や `float` を使います。
 - interface-not-satisfied: 宣言した interface を実装していない型. 足りないメソッド（メッセージに一覧があります）を interface のシグネチャーで追加します。
 - internal-error: コンパイラー自身の誤り. https://github.com/egoist/asuka/issues に報告してください（プログラム、またはそれを再現する最小のプログラムを添えて）。
 - invalid-catalog: メッセージのファイルとして正しくないカタログ. メッセージが指す場所でファイルを直します。
@@ -2048,6 +2048,7 @@ test "archiving removes the row" {
 - missing-translation: ソース言語のメッセージの一部がない言語のカタログ. 一覧にあるメッセージを、その言語のカタログで翻訳します。
 - missing-try: throw する関数を `try` なしで呼び出している. `try f(…)` と書きます。
 - missing-type: 型を書かなければならない宣言. 型を書きます（`prop size: int`、`prop size = 12`、`state n: int = …`）。
+- mixed-numbers: 型の違う数値に演算子を使っている. 片方をもう片方の型に変換します：`int(level) + offset`、`float(n) * 0.5`、`u8(n)`（n が収まらなければエラーを投げます。
 - native-type: プラットフォームのビューが受け取れない型のネイティブコンポーネントのプロパティやイベント. プラットフォームのコードが読めるデータを使い、起きたことはイベントで伝えます。
 - no-children: 子を取らない要素に子を渡している、または渡す子が違う. ビューをコンテナー（`Column`、`Row`）に入れるか、要素の隣に置きます。
 - no-such-operator: ほかの言語にはあって Asuka にはない演算子. `x += 1`、`if a { b } else { c }`、`a < b && b < c` と書きます。

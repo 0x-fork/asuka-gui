@@ -2379,7 +2379,7 @@ func (p *parser) parseBinary(minPrec int) Expr {
 		}
 		p.next()
 		var y Expr
-		if op == COALESCE {
+		if op == COALESCE || op == POW {
 			y = p.parseBinary(prec) // right-associative
 		} else {
 			y = p.parseBinary(prec + 1)
@@ -2421,12 +2421,13 @@ func (p *parser) parseUnary() Expr {
 	start := p.pos
 	switch p.tok {
 	case NOT, SUB, TILDE, AWAIT:
+		// The operand takes a ** after it: -2 ** 2 is -(2 ** 2).
 		op := p.tok
 		p.next()
 		if !p.enter() {
 			return &BadExpr{Span: p.span(start)}
 		}
-		x := p.parseUnary()
+		x := p.parseBinary(PrecPow)
 		p.leave()
 		return &UnaryExpr{Op: op, X: x, Span: p.span(start)}
 	case TRY:
@@ -2439,7 +2440,7 @@ func (p *parser) parseUnary() Expr {
 		if !p.enter() {
 			return &BadExpr{Span: p.span(start)}
 		}
-		u.X = p.parseUnary()
+		u.X = p.parseBinary(PrecPow)
 		p.leave()
 		u.Span = p.span(start)
 		return u

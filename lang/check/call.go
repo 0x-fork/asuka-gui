@@ -114,6 +114,10 @@ func (c *Checker) call(e *syntax.CallExpr, want Type) Type {
 			if k := tn.Case(fn.Name.Name); k != nil {
 				return c.caseCall(e, tn, k, want)
 			}
+			if IsInteger(tn.Type) && fn.Name.Name == "parse" {
+				// u64.parse("18446744073709551615"), u8.parse("ff", radix: 16).
+				return c.builtinCall(e, &Builtin{object: object{name: tn.name}, ID: BIntParse}, want)
+			}
 			f := tn.Statics[fn.Name.Name]
 			if f == nil {
 				hit, _ := c.extLookup(tn.Type, fn.Name.Name, "static", fn.Name)
@@ -1641,13 +1645,17 @@ func (c *Checker) typeCall(e *syntax.CallExpr, tn *TypeName, want Type) Type {
 		c.errorf(e.Fun, diag.NotCallable, "%s is an extern type: C makes one, and an extern fn returns it", tn.name)
 	case BasicType:
 		switch tn.Type {
-		case Float, Int:
-			return c.builtinCall(e, &Builtin{object: object{name: tn.name}, ID: map[Type]BuiltinID{Float: BFloat, Int: BInt}[tn.Type]}, want)
+		case Float, Int, I8, I16, I32, U8, U16, U32, U64:
+			id := BInt
+			if tn.Type == Float {
+				id = BFloat
+			}
+			return c.builtinCall(e, &Builtin{object: object{name: tn.name}, ID: id}, want)
 		case Bytes:
 			// bytes(): none; bytes([0x04, 0xa1]): those (each 0 to 255,
 			// as a byte); s.bytes() makes them from text.
 			if e.Args != nil && len(e.Args.List) > 0 {
-				return c.builtinCall(e, &Builtin{object: object{name: tn.name}, ID: BMath, RT: "bytes.from", Sig: &FuncType{Params: []Type{&Array{Int}}, Result: Bytes}}, want)
+				return c.builtinCall(e, &Builtin{object: object{name: tn.name}, ID: BBytesFrom}, want)
 			}
 			return c.builtinCall(e, &Builtin{object: object{name: tn.name}, ID: BMath, RT: "bytes.empty", Sig: &FuncType{Result: Bytes}}, want)
 		case Ref:

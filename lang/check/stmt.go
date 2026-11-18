@@ -269,11 +269,21 @@ func (c *Checker) assignStmt(s *syntax.AssignStmt) {
 		}
 		c.assign(s.Value, lt, "the value")
 	default:
+		aop := s.Op.AssignOp()
 		want := numOnly(lt)
-		if s.Op.AssignOp().IsBitwise() {
-			want = Int
-		} else if p := c.operatorParam(s.Op.AssignOp(), lt); p != nil {
-			want = p
+		switch {
+		case aop == syntax.SHL || aop == syntax.SHR || aop == syntax.POW && IsInteger(lt):
+			want = nil // a count, an exponent: any integer type, a literal an int
+		case aop.IsBitwise():
+			if IsInteger(lt) {
+				want = lt
+			} else {
+				want = Int
+			}
+		default:
+			if p := c.operatorParam(aop, lt); p != nil {
+				want = p
+			}
 		}
 		vt := c.expr(s.Value, want)
 		if IsInvalid(lt) || IsInvalid(vt) {
@@ -290,12 +300,26 @@ func (c *Checker) assignStmt(s *syntax.AssignStmt) {
 			return
 		}
 		switch {
-		case s.Op.AssignOp().IsBitwise():
-			if lt != Int {
+		case aop == syntax.SHL || aop == syntax.SHR:
+			if !IsInteger(lt) {
 				c.errorf(s.Target, diag.BadOperand, "%s= takes ints, not %s", op, aType(lt))
-			} else if vt != Int {
+			} else if !IsInteger(vt) {
 				c.errorf(s.Value, diag.BadOperand, "%s= takes ints, not %s", op, aType(vt))
 			}
+		case aop.IsBitwise():
+			if !IsInteger(lt) {
+				c.errorf(s.Target, diag.BadOperand, "%s= takes ints, not %s", op, aType(lt))
+			} else if !IsInteger(vt) {
+				c.errorf(s.Value, diag.BadOperand, "%s= takes ints, not %s", op, aType(vt))
+			} else if !Identical(lt, vt) {
+				c.mixedNumbersAt(s, s.Op.String(), lt, vt)
+			}
+		case aop == syntax.POW && (IsInteger(lt) && IsInteger(vt) || lt == Float && (vt == Float || IsInteger(vt))):
+			if lit, neg := c.negativeLiteral(s.Value); neg && IsInteger(lt) {
+				c.errorf(s.Value, diag.BadOperand, "an integer's power takes an exponent of 0 or more: -%s gives a fraction", lit)
+			}
+		case IsNumeric(lt) && IsNumeric(vt) && !Identical(lt, vt):
+			c.mixedNumbersAt(s, s.Op.String(), lt, vt)
 		case IsNumeric(lt) && Identical(lt, vt):
 		case lt == String && vt == String && s.Op == syntax.ADD_ASSIGN:
 		case lt == Duration && vt == Duration && (s.Op == syntax.ADD_ASSIGN || s.Op == syntax.SUB_ASSIGN):
@@ -576,10 +600,8 @@ func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
 	switch {
 	case isRange(seq):
 		b := seq.(*syntax.BinaryExpr)
-		c.assign(b.X, Int, "a range's start")
-		c.assign(b.Y, Int, "a range's end")
-		c.record(seq, &Array{Int})
-		fi.Kind, fi.Seq, fi.End, fi.Incl, fi.Elem = ForRange, b.X, b.Y, b.Op == syntax.RANGE, Int
+		elem := c.expr(b, nil).(*Array).Elem // of ints, or of a sized integer type
+		fi.Kind, fi.Seq, fi.End, fi.Incl, fi.Elem = ForRange, b.X, b.Y, b.Op == syntax.RANGE, elem
 		if view {
 			fi.Kind, fi.Seq = ForArray, seq
 		}

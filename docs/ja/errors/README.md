@@ -24,7 +24,7 @@ Asuka が報告するエラーと警告には、すべてコードがありま�
 - [format-spec](format-spec.md): 値に合わない補間の書式。
 - [group-not-calls](group-not-calls.md): `load (…)` の要素が、どれも呼び出しというわけではない。
 - [import-cycle](import-cycle.md): 互いにインポートし合うパッケージ。
-- [int-overflow](int-overflow.md): 64 ビットに収まらない整数リテラル。
+- [int-overflow](int-overflow.md): 型の範囲に収まらない整数リテラル。
 - [interface-not-satisfied](interface-not-satisfied.md): 宣言した interface を実装していない型。
 - [internal-error](internal-error.md): コンパイラー自身の誤り。
 - [invalid-catalog](invalid-catalog.md): メッセージのファイルとして正しくないカタログ。
@@ -61,6 +61,7 @@ Asuka が報告するエラーと警告には、すべてコードがありま�
 - [missing-translation](missing-translation.md): ソース言語のメッセージの一部がない言語のカタログ。
 - [missing-try](missing-try.md): throw する関数を `try` なしで呼び出している。
 - [missing-type](missing-type.md): 型を書かなければならない宣言。
+- [mixed-numbers](mixed-numbers.md): 型の違う数値に演算子を使っている。
 - [native-type](native-type.md): プラットフォームのビューが受け取れない型のネイティブコンポーネントのプロパティやイベント。
 - [no-children](no-children.md): 子を取らない要素に子を渡している、または渡す子が違う。
 - [no-such-operator](no-such-operator.md): ほかの言語にはあって Asuka にはない演算子。

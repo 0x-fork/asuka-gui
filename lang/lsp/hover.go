@@ -45,12 +45,13 @@ func (s *server) hover(p *TextDocumentPositionParams) (*Hover, error) {
 // operatorDocs say what the int operators whose meaning isn't plain do:
 // the wrapping ones, and those that throw past int's range.
 var operatorDocs = map[syntax.Token]string{
-	syntax.WADD: "An int's sum, wrapping: past the largest int it goes on from the smallest, as 64-bit two's complement does (`+` throws instead). For hashes, checksums and binary protocols.",
+	syntax.WADD: "An int's sum, wrapping: past the largest int it goes on from the smallest, as two's complement does at the type's width (`+` throws instead). For hashes, checksums and binary protocols.",
 	syntax.WSUB: "An int's difference, wrapping: past the smallest int it goes on from the largest (`-` throws instead).",
-	syntax.WMUL: "An int's product, wrapping: its low 64 bits (`*` throws instead).",
+	syntax.WMUL: "An int's product, wrapping: its low bits, as many as the type has (`*` throws instead).",
 	syntax.ADD:  "On ints, throws an error (\"integer overflow\") past int's range: `&+` wraps, `addingChecked` gives none.",
 	syntax.SUB:  "On ints, throws an error (\"integer overflow\") past int's range: `&-` wraps, `subtractingChecked` gives none.",
 	syntax.MUL:  "On ints, throws an error (\"integer overflow\") past int's range: `&*` wraps, `multipliedChecked` gives none.",
+	syntax.POW:  "A power: `2 ** 10` is 1024. It binds tighter than `*` and than a `-` before it (`-2 ** 2` is -4), and to its right (`2 ** 3 ** 2` is 2 ** 9). On ints, a negative exponent or a result past the type's range throws an error.",
 }
 
 // operatorHover is the hover of the operator at pos: the method of a
@@ -66,10 +67,10 @@ func (fc *fileCtx) operatorHover(path []syntax.Node, pos syntax.Pos) *Hover {
 		switch n := path[i].(type) {
 		case *syntax.BinaryExpr:
 			op, at, o = n.Op, n.OpPos, fc.info.Operators[n]
-			ints = fc.info.Types[n.X] == check.Int
+			ints = check.IsInteger(fc.info.Types[n.X])
 		case *syntax.AssignStmt:
 			op, at, o = n.Op.AssignOp(), n.OpPos, fc.info.AssignOps[n]
-			ints = fc.info.Types[n.Target] == check.Int
+			ints = check.IsInteger(fc.info.Types[n.Target])
 		case *syntax.UnaryExpr:
 			if n.Op != syntax.SUB {
 				continue
@@ -90,7 +91,7 @@ func (fc *fileCtx) operatorHover(path []syntax.Node, pos syntax.Pos) *Hover {
 			return &Hover{Contents: markdown(funcSig(o.Func), docOf(o.Func.Decl)), Range: &rg}
 		}
 		doc, ok := operatorDocs[op]
-		if !ok || !ints && op != syntax.WADD && op != syntax.WSUB && op != syntax.WMUL {
+		if !ok || !ints && op != syntax.WADD && op != syntax.WSUB && op != syntax.WMUL && op != syntax.POW {
 			return nil
 		}
 		return &Hover{Contents: markdown("", doc), Range: &rg}

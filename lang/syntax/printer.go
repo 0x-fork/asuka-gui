@@ -1257,8 +1257,8 @@ func (p *printer) args(l *ArgList) {
 // Operands' precedences: what binds tighter than every binary operator.
 const (
 	precLambda  = 0
-	precUnary   = 9
-	precPostfix = 10
+	precUnary   = PrecUnary
+	precPostfix = PrecPow + 1
 )
 
 func exprPrec(x Expr) int {
@@ -1594,6 +1594,8 @@ func (p *printer) binary(b *BinaryExpr, cont *bool) {
 	switch {
 	case b.Op == COALESCE: // right-associative
 		lp, rp = prec+1, prec
+	case b.Op == POW: // right-associative, and a prefix operator on its right: 2 ** -1
+		lp, rp = prec+1, precUnary
 	case prec == 4 || prec == 5: // comparisons and ranges don't chain
 		lp = prec + 1
 	}

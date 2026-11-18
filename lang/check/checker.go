@@ -37,10 +37,11 @@ type Checker struct {
 	// While checking a body.
 	ctx     *FuncCtx
 	scope   *Scope
-	inTry   int           // inside try's operand
-	inAwait int           // inside await's operand
-	handled int           // inside a do block with a catch-all
-	partial *partialCatch // inside a do or a catch that doesn't take every error
+	inTry   int              // inside try's operand
+	inAwait int              // inside await's operand
+	negLit  *syntax.BasicLit // an int literal - negates: its range is the negation's, checked there
+	handled int              // inside a do block with a catch-all
+	partial *partialCatch    // inside a do or a catch that doesn't take every error
 	warns   []Diagnostic
 	// The local fns' groups, and where their fns are used (by name),
 	// for finishLocalFns.
@@ -271,7 +272,7 @@ func (c *Checker) errorAt(pos, end syntax.Position, code *diag.Code, format stri
 // The universe: the types and functions built into the compiler
 
 func (c *Checker) initUniverse() {
-	for _, t := range []*Basic{Int, Float, Bool, String, Bytes, Void, Duration, Color, Length, View, Graphics, Path, Ref, Pointer, TestApp} {
+	for _, t := range []*Basic{Int, Float, Bool, String, Bytes, Void, Duration, Color, Length, View, Graphics, Path, Ref, Pointer, TestApp, I8, I16, I32, U8, U16, U32, U64} {
 		c.universe.Insert(&TypeName{object: object{name: t.name}, Kind: BasicType, Type: t, resolved: true})
 	}
 	// Error: the interface every error has.
@@ -311,6 +312,16 @@ func (c *Checker) initUniverse() {
 		wp.Scope.Insert(&Builtin{object: object{name: f.Name}, ID: BRuntime, Fn: f})
 	}
 	c.universe.Insert(&PkgName{object: object{name: "window"}, Pkg: wp})
+}
+
+// otherIntNames are other languages' names of the integer types, and
+// what they are here.
+var otherIntNames = map[string]string{
+	"i64": "an int is 64 bits, signed: write int", "int64": "an int is 64 bits, signed: write int",
+	"isize": "write int (64 bits)", "usize": "write int (64 bits; indexes and counts are ints)", "uint": "write u64, or int",
+	"byte": "a byte is a u8", "int8": "write i8", "int16": "write i16", "int32": "write i32",
+	"uint8": "write u8", "uint16": "write u16", "uint32": "write u32", "uint64": "write u64",
+	"f64": "write float (64 bits)", "double": "write float (64 bits)", "f32": "write float (a float is 64 bits)",
 }
 
 // ErrorType is the Error interface.
@@ -827,7 +838,11 @@ func (c *Checker) namedType(t *syntax.NamedType) Type {
 		}
 		if o == nil {
 			if IsCTypeName(name) {
-				c.errorf(t, diag.NotCType, "%s is a C type: it's written in extern declarations, and Asuka sees it as %s", name, map[bool]string{true: "a string", false: map[bool]string{true: "a float", false: "an int"}[name == "Float32"]}[name == "CString"])
+				c.errorf(t, diag.NotCType, "%s is a C type: it's written in extern declarations, and Asuka sees it as %s", name, aType(CTypeAsuka(name)))
+				return Invalid
+			}
+			if alt, ok := otherIntNames[name]; ok {
+				c.errorf(t, diag.UndefinedName, "unknown type %s: %s", name, alt)
 				return Invalid
 			}
 			c.errorf(t, diag.UndefinedName, "unknown type %s%s", name, c.suggest(name))

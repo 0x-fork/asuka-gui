@@ -418,14 +418,21 @@ func (c *Checker) noteCall(f *Function, at syntax.Node) {
 func (c *Checker) basicLit(e *syntax.BasicLit, want Type) Type {
 	switch e.Kind {
 	case syntax.INT:
-		if _, err := ParseInt(e.Value); errors.Is(err, strconv.ErrRange) {
-			// (One that isn't a number at all, the scanner said so.)
-			c.errorf(e, diag.IntOverflow, "%s doesn't fit in an int (64 bits)", e.Value)
-		}
-		if w := Unopt(want); w == Float || w == Length {
+		w := Unopt(want)
+		if w == Float || w == Length {
+			if _, err := ParseUint(e.Value); errors.Is(err, strconv.ErrRange) {
+				c.errorf(e, diag.IntOverflow, "%s doesn't fit in 64 bits", e.Value)
+			}
 			return Float
 		}
-		return Int
+		t := Type(Int)
+		if IsSized(w) {
+			t = w
+		}
+		if c.negLit != e {
+			c.intLitFits(e, e.Value, t, false)
+		}
+		return t
 	case syntax.FLOAT:
 		return Float
 	case syntax.DURATION:
@@ -446,6 +453,90 @@ func (c *Checker) basicLit(e *syntax.BasicLit, want Type) Type {
 		return Color
 	}
 	return Invalid
+}
+
+// intLitFits reports, and says when it doesn't, whether an int
+// literal (negated when neg) fits t: a sized type's range, or an int's,
+// whose hexadecimal, binary and octal literals may be any 64 bits
+// (0xffff_ffff_ffff_ffff is -1).
+func (c *Checker) intLitFits(at syntax.Node, lit string, t Type, neg bool) bool {
+	v, err := ParseUint(lit)
+	if errors.Is(err, strconv.ErrRange) {
+		// (One that isn't a number at all, the scanner said so.)
+		c.errorf(at, diag.IntOverflow, "%s doesn't fit in %s (%s)", lit, aType(t), intRangeText(t))
+		return false
+	}
+	if err != nil {
+		return true
+	}
+	ok := IntFits(t, v, neg)
+	if t == Int && !neg && !isDecimal(lit) {
+		ok = true // its bits
+	}
+	if !ok {
+		sign := ""
+		if neg {
+			sign = "-"
+		}
+		if neg && !IsSigned(t) {
+			c.errorf(at, diag.IntOverflow, "%s%s doesn't fit in %s: it has no negatives (%s)", sign, lit, aType(t), intRangeText(t))
+		} else if t == Int && neg {
+			c.errorf(at, diag.IntOverflow, "-%s overflows: an int is %s", lit, intRangeText(t))
+		} else {
+			c.errorf(at, diag.IntOverflow, "%s%s doesn't fit in %s (%s)", sign, lit, aType(t), intRangeText(t))
+		}
+	}
+	return ok
+}
+
+// IsSigned reports a signed integer type (int, i8, i16, i32).
+func IsSigned(t Type) bool {
+	_, signed := IntBits(t)
+	return signed
+}
+
+// intRangeText is an integer type's range, as the errors say it.
+func intRangeText(t Type) string {
+	lo, hi := IntRange(t)
+	if t == U64 {
+		return "0 to 18446744073709551615"
+	}
+	return strconv.FormatInt(lo, 10) + " to " + strconv.FormatInt(hi, 10)
+}
+
+func isDecimal(lit string) bool {
+	return !(len(lit) > 2 && lit[0] == '0' && strings.ContainsRune("xXbBoO", rune(lit[1])))
+}
+
+// ParseUint reads an int literal's value: 42, 1_000, 0xff, 0b1010,
+// 0o17, up to 18446744073709551615 (a u64's largest).
+func ParseUint(s string) (uint64, error) {
+	s = strings.ReplaceAll(s, "_", "")
+	if len(s) > 2 && s[0] == '0' {
+		switch s[1] {
+		case 'x', 'X':
+			return strconv.ParseUint(s[2:], 16, 64)
+		case 'b', 'B':
+			return strconv.ParseUint(s[2:], 2, 64)
+		case 'o', 'O':
+			return strconv.ParseUint(s[2:], 8, 64)
+		}
+	}
+	return strconv.ParseUint(s, 10, 64)
+}
+
+// LitBits is an int literal's 64 bits, as the VM holds its value (a u64
+// past int's largest is negative there); negated when neg.
+func LitBits(s string, neg bool) int64 {
+	if strings.HasPrefix(s, "-") {
+		// A signature's default (count: int = -1).
+		s, neg = s[1:], !neg
+	}
+	v, _ := ParseUint(s)
+	if neg {
+		return int64(0 - v)
+	}
+	return int64(v)
 }
 
 // ParseInt reads an int literal: 42, 1_000, 0xff, 0b1010, 0o17. A
@@ -788,11 +879,18 @@ func (c *Checker) convHint(got, want Type) string {
 		// optional holds that it doesn't fit.
 		want = o.Elem
 	}
-	if got == Int && want == Float {
+	if IsInteger(got) && want == Float {
 		return " (make it one: float(x))"
 	}
-	if got == Float && want == Int {
-		return " (make it one: int(x), truncating)"
+	if got == Float && IsInteger(want) {
+		return " (make it one: " + typeString(want) + "(x), toward zero)"
+	}
+	if IsInteger(got) && IsInteger(want) {
+		w := typeString(want)
+		if IntWidens(got, want) {
+			return " (make it one: " + w + "(x))"
+		}
+		return " (make it one: " + w + "(x), an error when it doesn't fit; " + w + "(truncating: x) keeps its low bits)"
 	}
 	if IsOptional(got) && Identical(Unopt(got), want) {
 		return " (it may be none: unwrap it with if let, ?? or !)"
@@ -970,7 +1068,12 @@ func (c *Checker) join(a, b Type) Type {
 func (c *Checker) staticType(x syntax.Expr) *TypeName {
 	switch x := x.(type) {
 	case *syntax.Ident:
-		if tn, ok := c.lookup(x.Name).(*TypeName); ok {
+		o := c.lookup(x.Name)
+		if b, ok := o.(*Builtin); ok && (b.ID == BInt || b.ID == BFloat) {
+			// int.max: the type, not the conversion of its name.
+			o = c.lookupType(x.Name)
+		}
+		if tn, ok := o.(*TypeName); ok {
 			c.info.Uses[x] = tn
 			return tn
 		}
@@ -1104,6 +1207,16 @@ func (c *Checker) staticMember(e syntax.Expr, tn *TypeName, name string, want Ty
 		c.funcSig(f)
 		c.noteCall(f, e)
 		return f.Sig.Type()
+	}
+	if IsInteger(tn.Type) && (name == "min" || name == "max") {
+		// u8.max: 255, int.min: -9223372036854775808.
+		lo, hi := IntRange(tn.Type)
+		v := lo
+		if name == "max" {
+			v = hi
+		}
+		c.info.Selections[e] = &Selection{Kind: SelIntConst, Value: v, Recv: tn.Type}
+		return tn.Type
 	}
 	if tn.Type == Color {
 		// Color.accent: the semantic color, as .accent where a Color is
@@ -1443,33 +1556,63 @@ func (c *Checker) index1(e *syntax.IndexExpr, xt Type) Type {
 	return Invalid
 }
 
-// intOperand checks an operand of a bitwise operator, which takes ints:
-// whether it's one (an invalid one, said already, isn't).
-func (c *Checker) intOperand(x syntax.Expr, op syntax.Token) bool {
-	t := c.expr(x, Int)
+// intOperand checks an operand of a bitwise operator, which takes
+// integers: its type when it's one (an invalid one, said already,
+// isn't), else nil.
+func (c *Checker) intOperand(x syntax.Expr, op syntax.Token, want Type) Type {
+	t := c.expr(x, want)
 	switch {
-	case t == Int:
-		return true
+	case IsInteger(t):
+		return t
 	case IsInvalid(t):
 	case t == Bool && (op == syntax.AMP || op == syntax.PIPE):
 		c.errorf(x, diag.BadOperand, "%s takes ints, not a bool: write %s%s for bools", op, op, op)
 	default:
 		c.errorf(x, diag.BadOperand, "%s takes ints, not %s", op, aType(t))
 	}
-	return false
+	return nil
+}
+
+// intWant is the integer type an int literal takes from what's
+// expected (let m: u8 = 1 << 3), nil when that isn't one.
+func intWant(want Type) Type {
+	if w := Unopt(want); IsInteger(w) {
+		return w
+	}
+	return nil
+}
+
+// mixedNumbers says that op's operands are numbers of two types, and
+// how to make them one.
+func (c *Checker) mixedNumbers(e *syntax.BinaryExpr, xt, yt Type) {
+	c.mixedNumbersAt(e, e.Op.String(), xt, yt)
+}
+
+func (c *Checker) mixedNumbersAt(at syntax.Node, what string, xt, yt Type) {
+	conv := func(t Type) string { return typeString(t) + "(…)" }
+	c.errorf(at, diag.MixedNumbers, "%s on %s and %s: convert one, %s or %s", what, aType(xt), aType(yt), conv(xt), conv(yt))
 }
 
 func (c *Checker) unary(e *syntax.UnaryExpr, want Type) Type {
 	switch e.Op {
 	case syntax.TILDE:
-		if !c.intOperand(e.X, e.Op) {
+		t := c.intOperand(e.X, e.Op, intWant(want))
+		if t == nil {
 			return Invalid
 		}
-		return Int
+		return t
 	case syntax.NOT:
 		c.assign(e.X, Bool, "the operand of !")
 		return Bool
 	case syntax.SUB:
+		lit, _ := unparen(e.X).(*syntax.BasicLit)
+		if lit != nil && lit.Kind == syntax.INT {
+			// -128: the literal's range is its negation's (an i8's is -128
+			// to 127).
+			saved := c.negLit
+			c.negLit = lit
+			defer func() { c.negLit = saved }()
+		}
 		t := c.expr(e.X, want)
 		if o, res := c.negation(t); o != nil {
 			c.info.Negations[e] = o
@@ -1479,11 +1622,21 @@ func (c *Checker) unary(e *syntax.UnaryExpr, want Type) Type {
 			c.errorf(e, diag.BadOperand, "- negates numbers, not %s", aType(t))
 			return Invalid
 		}
-		if lit, ok := unparen(e.X).(*syntax.BasicLit); ok && lit.Kind == syntax.INT && t == Int {
-			// -0x8000_0000_0000_0000: the smallest int's bits, negated.
-			if v, err := ParseInt(lit.Value); err == nil && v == math.MinInt64 {
-				c.errorf(e, diag.IntOverflow, "-%s overflows: %s is the smallest int, which has no positive", lit.Value, lit.Value)
+		if lit != nil && lit.Kind == syntax.INT && IsInteger(t) {
+			if !c.intLitFits(e, lit.Value, t, true) {
+				return t
 			}
+			if t == Int && !isDecimal(lit.Value) {
+				// -0x8000_0000_0000_0000: the smallest int's bits, negated.
+				if v, err := ParseInt(lit.Value); err == nil && v == math.MinInt64 {
+					c.errorf(e, diag.IntOverflow, "-%s overflows: %s is the smallest int, which has no positive", lit.Value, lit.Value)
+				}
+			}
+			return t
+		}
+		if !IsSigned(t) && IsInteger(t) {
+			c.errorf(e, diag.BadOperand, "- negates signed numbers, and %s has no negatives: 0 &- x wraps, or convert it first (int(x))", aType(t))
+			return Invalid
 		}
 		return t
 	case syntax.AWAIT:
@@ -1662,17 +1815,53 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 		}
 		return el
 	case syntax.RANGE, syntax.RANGELT:
-		c.assign(e.X, Int, "a range's start")
-		c.assign(e.Y, Int, "a range's end")
-		return &Array{Int}
-	case syntax.AMP, syntax.PIPE, syntax.CARET, syntax.SHL, syntax.SHR, syntax.WADD, syntax.WSUB, syntax.WMUL:
-		// Not an int when an operand isn't one: what it's used as
-		// isn't asked again.
-		okX := c.intOperand(e.X, e.Op)
-		if !c.intOperand(e.Y, e.Op) || !okX {
+		// Of ints, or of a sized integer type: an int literal takes the
+		// other end's.
+		var elem Type = Int
+		if w, ok := Unopt(want).(*Array); ok && IsInteger(w.Elem) {
+			elem = w.Elem
+		}
+		switch {
+		case literalInt(e.X) && !literalInt(e.Y):
+			if t := c.expr(e.Y, elem); IsInteger(t) {
+				elem = t
+			}
+		case !literalInt(e.X):
+			if t := c.expr(e.X, elem); IsInteger(t) {
+				elem = t
+			}
+		}
+		c.assign(e.X, elem, "a range's start")
+		c.assign(e.Y, elem, "a range's end")
+		return &Array{elem}
+	case syntax.SHL, syntax.SHR:
+		// The count is any integer type; the result is the value's.
+		xt := c.intOperand(e.X, e.Op, intWant(want))
+		if yt := c.intOperand(e.Y, e.Op, nil); yt == nil || xt == nil {
 			return Invalid
 		}
-		return Int
+		return xt
+	case syntax.AMP, syntax.PIPE, syntax.CARET, syntax.WADD, syntax.WSUB, syntax.WMUL:
+		// Not an int when an operand isn't one: what it's used as
+		// isn't asked again. An int literal takes the other side's type.
+		var xt, yt Type
+		if literalInt(e.X) && !literalInt(e.Y) {
+			yt = c.intOperand(e.Y, e.Op, intWant(want))
+			xt = c.intOperand(e.X, e.Op, yt)
+		} else {
+			xt = c.intOperand(e.X, e.Op, intWant(want))
+			yt = c.intOperand(e.Y, e.Op, xt)
+		}
+		if xt == nil || yt == nil {
+			return Invalid
+		}
+		if !Identical(xt, yt) {
+			c.mixedNumbers(e, xt, yt)
+			return Invalid
+		}
+		return xt
+	case syntax.POW:
+		return c.power(e, want)
 	}
 	// Arithmetic and comparisons: an int literal on one side takes the
 	// other side's type.
@@ -1705,6 +1894,10 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 			return Bool
 		}
 		if !Identical(xt, yt) && !c.convert(e.Y, yt, xt) && !c.convert(e.X, xt, yt) {
+			if IsNumeric(Unopt(xt)) && IsNumeric(Unopt(yt)) {
+				c.mixedNumbers(e, Unopt(xt), Unopt(yt))
+				return Bool
+			}
 			c.errorf(e, diag.BadOperand, "can't compare %s with %s", aType(xt), aType(yt))
 			return Bool
 		}
@@ -1718,6 +1911,10 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 		return Bool
 	case syntax.LSS, syntax.LEQ, syntax.GTR, syntax.GEQ:
 		if !Identical(xt, yt) {
+			if IsNumeric(xt) && IsNumeric(yt) {
+				c.mixedNumbers(e, xt, yt)
+				return Bool
+			}
 			c.errorf(e, diag.BadOperand, "can't compare %s with %s", aType(xt), aType(yt))
 			return Bool
 		}
@@ -1764,7 +1961,7 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 			return xt
 		}
 		if IsNumeric(xt) && IsNumeric(yt) {
-			c.errorf(e, diag.BadOperand, "%s on an int and a float: make them the same, float(x) or int(x)", e.Op)
+			c.mixedNumbers(e, xt, yt)
 			return Invalid
 		}
 		c.errorf(e, diag.BadOperand, "%s doesn't take %s and %s", e.Op, aType(xt), aType(yt))
@@ -1811,6 +2008,8 @@ func operatorNames(op syntax.Token) (names []string, compare bool) {
 		return []string{"div", "quo"}, false
 	case syntax.REM:
 		return []string{"rem"}, false
+	case syntax.POW:
+		return []string{"pow"}, false
 	case syntax.LSS, syntax.LEQ, syntax.GTR, syntax.GEQ:
 		return []string{"compare"}, true
 	}
@@ -1920,15 +2119,73 @@ func numWant(want Type, op syntax.Token) Type {
 	}
 	if w := Unopt(want); w == Float || w == Length {
 		return Float
+	} else if IsSized(w) {
+		return w
 	}
 	return nil
 }
 
+// numOnly is what an int literal beside a t takes: a float or a sized
+// integer type (nil for anything else, which leaves it an int).
 func numOnly(t Type) Type {
-	if t == Float {
-		return Float
+	if t = Unopt(t); t == Float || IsSized(t) {
+		return t
 	}
 	return nil
+}
+
+// power checks x ** y: an integer type's power, an int exponent of any
+// integer type (0 or more), a float's of a float or of an integer type;
+// a struct's or an enum's pow method otherwise.
+func (c *Checker) power(e *syntax.BinaryExpr, want Type) Type {
+	var xt, yt Type
+	w := numWant(want, e.Op)
+	if literalInt(e.X) && w == nil {
+		// 2 ** 0.5: the literal is a float.
+		yt = c.expr(e.Y, nil)
+		if yt == Float {
+			xt = c.expr(e.X, Float)
+		} else {
+			xt = c.expr(e.X, nil)
+		}
+	} else {
+		// The exponent's literal is an int whatever the base is.
+		xt = c.expr(e.X, w)
+		yt = c.expr(e.Y, nil)
+	}
+	if IsInvalid(xt) || IsInvalid(yt) {
+		return Invalid
+	}
+	if t, ok := c.operatorMethod(e, xt, yt); ok {
+		return t
+	}
+	switch {
+	case xt == Float && (yt == Float || IsInteger(yt)):
+		return Float
+	case IsInteger(xt) && IsInteger(yt):
+		if lit, neg := c.negativeLiteral(e.Y); neg {
+			c.errorf(e.Y, diag.BadOperand, "an integer's power takes an exponent of 0 or more: -%s gives a fraction (float(x) ** -%s is one)", lit, lit)
+			return Invalid
+		}
+		return xt
+	case IsNumeric(xt) && IsNumeric(yt):
+		c.mixedNumbers(e, xt, yt)
+		return Invalid
+	}
+	c.errorf(e, diag.BadOperand, "** doesn't take %s and %s", aType(xt), aType(yt))
+	return Invalid
+}
+
+// negativeLiteral reports a negated int literal (-1), and its digits.
+func (c *Checker) negativeLiteral(x syntax.Expr) (string, bool) {
+	if u, ok := unparen(x).(*syntax.UnaryExpr); ok && u.Op == syntax.SUB {
+		if lit, ok := unparen(u.X).(*syntax.BasicLit); ok && lit.Kind == syntax.INT {
+			if v, err := ParseUint(lit.Value); err == nil && v != 0 {
+				return lit.Value, true
+			}
+		}
+	}
+	return "", false
 }
 
 // ---------------------------------------------------------------------

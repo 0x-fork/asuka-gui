@@ -87,6 +87,28 @@ var Ops = []OpDef{
 	{"BNOT", []Operand{Reg, Reg}, "a = ~b"},
 	{"SHL", []Operand{Reg, Reg, Reg}, "a = b << c (0 when c >= 64); throws on c < 0"},
 	{"SHR", []Operand{Reg, Reg, Reg}, "a = b >> c, arithmetic (0 or -1 when c >= 64); throws on c < 0"},
+	{"POWI", []Operand{Reg, Reg, Reg}, "a = b ** c; throws on c < 0 and on overflow"},
+
+	// The sized integers (i8 to u64): t, an immediate, is the type's code
+	// (core/src/rt/rt.h's ak_int_type: i8 0, i16 1, i32 2, int 3, u8 4, u16
+	// 5, u32 6, u64 7); a value is held as an int, sign- or zero-extended
+	// from its width (a u64's 64 bits as they are).
+	{"ADDN", []Operand{Reg, Reg, Reg, Imm}, "a = b + c at type t; throws on overflow"},
+	{"SUBN", []Operand{Reg, Reg, Reg, Imm}, "a = b - c at type t; throws on overflow"},
+	{"MULN", []Operand{Reg, Reg, Reg, Imm}, "a = b * c at type t; throws on overflow"},
+	{"DIVN", []Operand{Reg, Reg, Reg, Imm}, "a = b / c at type t, truncated (unsigned for an unsigned type); throws on c == 0 and on overflow (the smallest / -1)"},
+	{"MODN", []Operand{Reg, Reg, Reg, Imm}, "a = b % c at type t; throws on c == 0"},
+	{"NEGN", []Operand{Reg, Reg, Imm}, "a = -b at signed type t; throws on overflow"},
+	{"POWN", []Operand{Reg, Reg, Reg, Imm}, "a = b ** c, b of type t & 15, c of type t >> 4; throws on c < 0 and on overflow"},
+	{"SHLN", []Operand{Reg, Reg, Reg, Imm}, "a = b << c, b of type t & 15 (bits past its width shifted out), c of type t >> 4; throws on c < 0"},
+	{"SHRN", []Operand{Reg, Reg, Reg, Imm}, "a = b >> c, b of type t & 15 (arithmetic when it's signed, logical when it isn't), c of type t >> 4; throws on c < 0"},
+	{"LTU", []Operand{Reg, Reg, Reg}, "a = b < c, unsigned (u64)"},
+	{"LEU", []Operand{Reg, Reg, Reg}, "a = b <= c, unsigned (u64)"},
+	{"WRAP", []Operand{Reg, Reg, Imm}, "a = b's low bits at type t, sign- or zero-extended: what wraps (&+, ~, truncating:)"},
+	{"CONVN", []Operand{Reg, Reg, Imm}, "a = b, of type t >> 4, as type t & 15; throws when it doesn't fit"},
+	{"CLAMPN", []Operand{Reg, Reg, Imm}, "a = b, of type t >> 4, as type t & 15: the nearest value when it doesn't fit"},
+	{"F2N", []Operand{Reg, Reg, Imm}, "a = float b as type t, toward zero; the nearest value past its range, 0 for NaN"},
+	{"U2F", []Operand{Reg, Reg}, "a = float(b), b a u64"},
 
 	// Floats.
 	{"ADDF", []Operand{Reg, Reg, Reg}, "a = b + c"},
@@ -94,6 +116,7 @@ var Ops = []OpDef{
 	{"MULF", []Operand{Reg, Reg, Reg}, "a = b * c"},
 	{"DIVF", []Operand{Reg, Reg, Reg}, "a = b / c"},
 	{"MODF", []Operand{Reg, Reg, Reg}, "a = fmod(b, c)"},
+	{"POWF", []Operand{Reg, Reg, Reg}, "a = pow(b, c)"},
 	{"NEGF", []Operand{Reg, Reg}, "a = -b"},
 	{"EQF", []Operand{Reg, Reg, Reg}, "a = b == c"},
 	{"NEF", []Operand{Reg, Reg, Reg}, "a = b != c"},

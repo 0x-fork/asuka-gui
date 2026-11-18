@@ -32,6 +32,111 @@ typedef enum ak_kind {
 	AK_K_REF,  // a heap object or NULL
 } ak_kind;
 
+// AK_K_U64TEXT is never a slot's kind (a u64 is an int's 64 bits): what
+// TOSTR is told of a u64, which it writes unsigned.
+#define AK_K_U64TEXT 5
+
+// ---- Integers ----
+//
+// The integer types, by their code (lang/check's IntCode): log2 of their
+// bytes, 4 more when they're unsigned. A value of one is held as an int,
+// sign- or zero-extended from its width (canonical: a u8 is 0 to 255), a
+// u64 as its 64 bits (past int's largest, a negative int64).
+typedef enum ak_int_type {
+	AK_I8,
+	AK_I16,
+	AK_I32,
+	AK_I64,  // int
+	AK_U8,
+	AK_U16,
+	AK_U32,
+	AK_U64,
+} ak_int_type;
+
+extern const char *const ak_int_names[8];  // "i8" … "u64", "int" for AK_I64
+
+static inline bool ak_int_signed(int t) { return t < AK_U8; }
+
+// ak_int_wrap is v's low bits at type t, sign- or zero-extended.
+static inline int64_t ak_int_wrap(int64_t v, int t) {
+	switch (t) {
+	case AK_I8: return (int8_t)v;
+	case AK_I16: return (int16_t)v;
+	case AK_I32: return (int32_t)v;
+	case AK_U8: return (uint8_t)v;
+	case AK_U16: return (uint16_t)v;
+	case AK_U32: return (uint32_t)v;
+	default: return v;
+	}
+}
+
+// ak_int_min and ak_int_max are type t's range (a u64's largest as its
+// bits: -1).
+static inline int64_t ak_int_min(int t) { return ak_int_signed(t) ? (t == AK_I64 ? INT64_MIN : -((int64_t)1 << ((8 << t) - 1))) : 0; }
+static inline int64_t ak_int_max(int t) {
+	if (t == AK_U64 || t == AK_I64) return t == AK_U64 ? -1 : INT64_MAX;
+	return ak_int_signed(t) ? ((int64_t)1 << ((8 << t) - 1)) - 1 : ((int64_t)1 << (8 << (t & 3))) - 1;
+}
+
+// ak_int_fits reports whether v, a value of type from, is one of type to.
+static inline bool ak_int_fits(int64_t v, int from, int to) {
+	if (v < 0 && (from == AK_U64 || to == AK_U64)) return from == to;  // a u64 past int's largest, or a negative
+	return ak_int_wrap(v, to) == v;
+}
+
+// ak_int_clamp is v, of type from, as the nearest value of type to.
+static inline int64_t ak_int_clamp(int64_t v, int from, int to) {
+	if (ak_int_fits(v, from, to)) return v;
+	return v < 0 && from != AK_U64 ? ak_int_min(to) : ak_int_max(to);
+}
+
+// ak_int_lt orders two values of type t.
+static inline bool ak_int_lt(int64_t a, int64_t b, int t) { return t == AK_U64 ? (uint64_t)a < (uint64_t)b : a < b; }
+
+// ak_int_mul is a * b at type t, false when it overflows.
+static inline bool ak_int_mul(int64_t a, int64_t b, int t, int64_t *out) {
+	if (t == AK_U64) {
+		uint64_t u;
+		if (__builtin_mul_overflow((uint64_t)a, (uint64_t)b, &u)) return false;
+		*out = (int64_t)u;
+		return true;
+	}
+	return !__builtin_mul_overflow(a, b, out) && ak_int_wrap(*out, t) == *out;
+}
+
+// ak_int_pow is b ** e at type t (e as unsigned: a count), false when it
+// overflows. By squaring: one multiplication per bit of e, the last
+// square not taken (it would overflow where the result doesn't).
+static inline bool ak_int_pow(int64_t b, uint64_t e, int t, int64_t *out) {
+	int64_t r = 1;
+	if (b == 0 || b == 1) {
+		*out = e == 0 ? 1 : b;
+		return true;
+	}
+	if (b == -1 && t != AK_U64) {
+		*out = e & 1 ? -1 : 1;
+		return true;
+	}
+	for (;;) {
+		if ((e & 1) && !ak_int_mul(r, b, t, &r)) return false;
+		e >>= 1;
+		if (!e) break;
+		if (!ak_int_mul(b, b, t, &b)) return false;
+	}
+	*out = r;
+	return true;
+}
+
+// ak_int_parse reads text (n bytes) whole as an integer of type t in
+// radix (2 to 36, letters in either case), an optional sign first: false
+// when it isn't one, or doesn't fit.
+bool ak_int_parse(const char *text, size_t n, int radix, int t, int64_t *out);
+// ak_int_text writes v, of type t, in radix (2 to 36, lowercase) into
+// buf (66 bytes hold any): its length.
+int ak_int_text(char *buf, int64_t v, int t, int radix);
+// ak_int_throw_fit throws that v, of type from, doesn't fit type to.
+void ak_int_throw_fit(int64_t v, int from, int to);
+
 // A heap object's tag.
 typedef enum ak_tag {
 	AK_TAG_STR = 1,
@@ -136,6 +241,7 @@ static inline ak_str *ak_str_c(const char *s) { return ak_str_new(s, strlen(s));
 ak_str *ak_str_empty(void);  // immortal
 ak_str *ak_str_concat(ak_str *a, ak_str *b);
 ak_str *ak_str_from_int(int64_t v);
+ak_str *ak_str_from_uint(uint64_t v);
 ak_str *ak_str_from_float(double v);  // shortest round-trip form
 ak_str *ak_str_from_bool(bool v);
 bool ak_str_eq(const ak_str *a, const ak_str *b);
@@ -162,6 +268,7 @@ typedef struct ak_strb {
 void ak_strb_str(ak_strb *b, const ak_str *s);
 void ak_strb_cstr(ak_strb *b, const char *s, size_t n);
 void ak_strb_int(ak_strb *b, int64_t v);
+void ak_strb_uint(ak_strb *b, uint64_t v);
 void ak_strb_float(ak_strb *b, double v);
 void ak_strb_bool(ak_strb *b, bool v);
 ak_str *ak_strb_finish(ak_strb *b);  // frees the builder's buffer

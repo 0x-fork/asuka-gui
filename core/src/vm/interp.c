@@ -296,12 +296,49 @@ int ak_vm_interp(ak_co *co, ak_val *out) {
 		case AK_OP_SHR:
 			if (!ak_op_shift(R, a[0], a[1], a[2], op == AK_OP_SHR)) goto unwind;
 			break;
+		case AK_OP_POWI:
+			if (!ak_op_pown(R, a[0], a[1], a[2], AK_I64 | AK_I64 << 4)) goto unwind;
+			break;
+
+		case AK_OP_ADDN:
+			if (!ak_op_addn(R, a[0], a[1], a[2], a[3])) goto unwind;
+			break;
+		case AK_OP_SUBN:
+			if (!ak_op_subn(R, a[0], a[1], a[2], a[3])) goto unwind;
+			break;
+		case AK_OP_MULN:
+			if (!ak_op_muln(R, a[0], a[1], a[2], a[3])) goto unwind;
+			break;
+		case AK_OP_DIVN:
+		case AK_OP_MODN:
+			if (!ak_op_divn(R, a[0], a[1], a[2], a[3], op == AK_OP_MODN)) goto unwind;
+			break;
+		case AK_OP_NEGN:
+			if (!ak_op_negn(R, a[0], a[1], a[2])) goto unwind;
+			break;
+		case AK_OP_POWN:
+			if (!ak_op_pown(R, a[0], a[1], a[2], a[3])) goto unwind;
+			break;
+		case AK_OP_SHLN:
+		case AK_OP_SHRN:
+			if (!ak_op_shiftn(R, a[0], a[1], a[2], a[3], op == AK_OP_SHRN)) goto unwind;
+			break;
+		case AK_OP_LTU: R[a[0]].i = (uint64_t)R[a[1]].i < (uint64_t)R[a[2]].i; break;
+		case AK_OP_LEU: R[a[0]].i = (uint64_t)R[a[1]].i <= (uint64_t)R[a[2]].i; break;
+		case AK_OP_WRAP: R[a[0]].i = ak_int_wrap(R[a[1]].i, a[2]); break;
+		case AK_OP_CONVN:
+			if (!ak_op_convn(R, a[0], a[1], a[2])) goto unwind;
+			break;
+		case AK_OP_CLAMPN: R[a[0]].i = ak_int_clamp(R[a[1]].i, a[2] >> 4, a[2] & 15); break;
+		case AK_OP_F2N: R[a[0]].i = ak_op_f2n(R[a[1]].f, a[2]); break;
+		case AK_OP_U2F: R[a[0]].f = (double)(uint64_t)R[a[1]].i; break;
 
 		case AK_OP_ADDF: R[a[0]].f = R[a[1]].f + R[a[2]].f; break;
 		case AK_OP_SUBF: R[a[0]].f = R[a[1]].f - R[a[2]].f; break;
 		case AK_OP_MULF: R[a[0]].f = R[a[1]].f * R[a[2]].f; break;
 		case AK_OP_DIVF: R[a[0]].f = R[a[1]].f / R[a[2]].f; break;
 		case AK_OP_MODF: R[a[0]].f = fmod(R[a[1]].f, R[a[2]].f); break;
+		case AK_OP_POWF: R[a[0]].f = pow(R[a[1]].f, R[a[2]].f); break;
 		case AK_OP_NEGF: R[a[0]].f = -R[a[1]].f; break;
 		case AK_OP_EQF: R[a[0]].i = R[a[1]].f == R[a[2]].f; break;
 		case AK_OP_NEF: R[a[0]].i = R[a[1]].f != R[a[2]].f; break;

@@ -180,6 +180,7 @@ var Methods = []*Method{
 	{Recv: "bytes", Name: "get", Sig: "(index: int) -> int?", Builtin: "bytes.get", Doc: "the byte at index (0 to 255), or none when it's out of range"},
 	{Recv: "bytes", Name: "slice", Sig: "(from: int, to: int) -> bytes", Builtin: "bytes.slice", Doc: "the bytes from from up to to, clamped"},
 	{Recv: "bytes", Name: "concat", Sig: "(other: bytes) -> bytes", Builtin: "bytes.concat", Doc: "these bytes, then other's"},
+	{Recv: "bytes", Name: "toArray", Sig: "() -> [u8]", Builtin: "bytes.to_array", Doc: "the bytes as an array of u8s; bytes(xs) makes them back"},
 	{Recv: "bytes", Name: "string", Sig: "() -> string", Builtin: "bytes.str", Doc: "the bytes read as UTF-8 text; what isn't UTF-8 becomes U+FFFD"},
 	{Recv: "bytes", Name: "hex", Sig: "() -> string", Builtin: "bytes.hex", Doc: "the bytes in lowercase hexadecimal: \"04a1\""},
 	{Recv: "bytes", Name: "hex", Sig: "(separator: string) -> string", Builtin: "bytes.hex", Doc: "the bytes in lowercase hexadecimal, separator between them: \"04 a1\""},
@@ -192,6 +193,15 @@ var Methods = []*Method{
 	{Recv: "int", Name: "addingChecked", Sig: "(o: int) -> int?", Builtin: "int.add_checked", Doc: "the sum, or none when it overflows: as +, which throws then"},
 	{Recv: "int", Name: "subtractingChecked", Sig: "(o: int) -> int?", Builtin: "int.sub_checked", Doc: "the difference, or none when it overflows: as -, which throws then"},
 	{Recv: "int", Name: "multipliedChecked", Sig: "(o: int) -> int?", Builtin: "int.mul_checked", Doc: "the product, or none when it overflows: as *, which throws then"},
+	// The sized integers (i8 to u64): T is the receiver's type, and
+	// "intcode" appends its code (IntCode), which the builtins read it by.
+	{Recv: "sized", Name: "float", Sig: "() -> float", Special: "i2f", Doc: "the integer as a float, as float(n)"},
+	{Recv: "sized", Name: "abs", Sig: "() -> T", Builtin: "int.abs", Needs: "signed", Extra: "intcode", Fails: true, Doc: "the integer without its sign; the smallest one's would overflow, which throws"},
+	{Recv: "sized", Name: "toString", Sig: "(radix: int) -> string", Builtin: "int.to_string", Extra: "intcode", Fails: true, Doc: "in radix (2 to 36, lowercase letters), with a - when it's negative"},
+	{Recv: "sized", Name: "padded", Sig: "(width: int) -> string", Builtin: "int.padded", Extra: "intcode", Doc: "in decimal, zeros before it up to width digits"},
+	{Recv: "sized", Name: "addingChecked", Sig: "(o: T) -> T?", Builtin: "int.add_checked", Extra: "intcode", Doc: "the sum, or none when it overflows: as +, which throws then"},
+	{Recv: "sized", Name: "subtractingChecked", Sig: "(o: T) -> T?", Builtin: "int.sub_checked", Extra: "intcode", Doc: "the difference, or none when it overflows: as -, which throws then"},
+	{Recv: "sized", Name: "multipliedChecked", Sig: "(o: T) -> T?", Builtin: "int.mul_checked", Extra: "intcode", Doc: "the product, or none when it overflows: as *, which throws then"},
 	{Recv: "float", Name: "int", Sig: "() -> int", Special: "f2i", Doc: "toward zero, as int(x): x.rounded().int() is the nearest"},
 	{Recv: "float", Name: "abs", Sig: "() -> float", Builtin: "math.absf"},
 	{Recv: "float", Name: "fixed", Sig: "(digits: int) -> string", Builtin: "str.fixed", Doc: "with that many digits after the point: 3.14159.fixed(2) is 3.14"},
@@ -452,6 +462,8 @@ func recvKind(t Type) string {
 			return "float"
 		case Int:
 			return "int"
+		case I8, I16, I32, U8, U16, U32, U64:
+			return "sized"
 		case Duration:
 			return "duration"
 		case TestApp:
@@ -554,6 +566,10 @@ func (m *Method) bind(recv Type) Subst {
 		if len(x.Args) > 0 {
 			s[tvT] = x.Args[0]
 		}
+	case *Basic:
+		if IsSized(x) {
+			s[tvT] = x
+		}
 	}
 	return s
 }
@@ -581,8 +597,12 @@ func (m *Method) requires(s Subst) string {
 			}
 		}
 	case "number":
-		if t != Int && t != Float {
+		if !IsNumeric(t) {
 			return "adds numbers, and these are " + typeString(t) + "s"
+		}
+	case "signed":
+		if !IsSigned(t) {
+			return "takes a signed number: " + aType(t) + " has no negatives"
 		}
 	case "string":
 		if t != String {
@@ -726,6 +746,8 @@ func (p *sigParser) typ() Type {
 		switch n := p.ident(); n {
 		case "int":
 			t = Int
+		case "u8":
+			t = U8
 		case "float":
 			t = Float
 		case "bool":

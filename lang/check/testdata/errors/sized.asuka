@@ -1,0 +1,76 @@
+// The sized integers: literals take their type and its range, numbers
+// of two types don't mix, an unsigned type has no negatives, ** takes an
+// exponent of 0 or more, and other languages' names say what's here.
+
+fn literals() {
+  let a: u8 = 255
+  let b: u8 = 256 // ERROR "256 doesn't fit in a u8 \(0 to 255\)"
+  let c: i8 = -128
+  let d: i8 = -129 // ERROR "-129 doesn't fit in an i8 \(-128 to 127\)"
+  let e: u64 = 18446744073709551615
+  let f: u64 = 18446744073709551616 // ERROR "18446744073709551616 doesn't fit in a u64"
+  let g: u16 = -1 // ERROR "-1 doesn't fit in a u16: it has no negatives"
+  let h: i8 = 0xff // ERROR "0xff doesn't fit in an i8"
+  let big = 9223372036854775808 // ERROR "9223372036854775808 doesn't fit in an int"
+}
+
+fn mixing(level: u8, bonus: int, ratio: float, id: u64) {
+  let a = level + bonus // ERROR "\+ on a u8 and an int: convert one, u8\(…\) or int\(…\)"
+  let b = bonus * ratio // ERROR "\* on an int and a float: convert one, int\(…\) or float\(…\)"
+  let c = level < id // ERROR "< on a u8 and a u64"
+  let d = level & bonus // ERROR "& on a u8 and an int"
+  let e = id == bonus // ERROR "== on a u64 and an int"
+  var f = level
+  f += bonus // ERROR "\+= on a u8 and an int"
+  let g: int = level // ERROR "the value is a u8, not an int \(make it one: int\(x\)\)"
+  let h: u8 = bonus // ERROR "the value is an int, not a u8 \(make it one: u8\(x\), an error when it doesn't fit; u8\(truncating: x\) keeps its low bits\)"
+  let i = max(level, bonus) // ERROR "max\(…\) on a u8 and an int"
+}
+
+fn fine(level: u8, id: u64, n: int) -> u64 {
+  let a: u8 = level + 1
+  let b = level << n
+  let c = id >> level
+  let d = level ** 2
+  let e = 2.0 ** n
+  var f = id
+  f **= 3
+  f <<= n
+  return id + u64(a) + u64(b) + c + u64(d) + u64(e) + f
+}
+
+fn unsigned(x: u32) {
+  let a = -x // ERROR "- negates signed numbers, and a u32 has no negatives"
+  let b = abs(x) // ERROR "abs takes a signed number: a u32 has no negatives"
+  let c = x.abs() // ERROR "abs takes a signed number"
+}
+
+fn powers(n: int, x: float) {
+  let a = 2 ** -1 // ERROR "an integer's power takes an exponent of 0 or more"
+  let b = n ** x // ERROR "\*\* on an int and a float"
+  let c = "a" ** 2 // ERROR "\*\* doesn't take a string and an int"
+}
+
+fn conversions(n: int, s: string) {
+  let a = u8(300) // ERROR "300 doesn't fit in a u8"
+  let b = u8(s) // ERROR "u8\(…\) takes a number, not a string"
+  let c = u8(wrapping: n) // ERROR "u8\(…\) takes exactly:, truncating: or clamping:, not wrapping:"
+  let d = u8(truncating: 2.5) // ERROR "a float has no bits to truncate"
+  let e: u8 = u8(exactly: n) // ERROR "the value is a u8\?, not a u8"
+}
+
+fn names() {
+  let a: i64 = 0 // ERROR "unknown type i64: an int is 64 bits, signed: write int"
+  let b: byte = 0 // ERROR "unknown type byte: a byte is a u8"
+  let c: usize = 0 // ERROR "unknown type usize"
+}
+
+struct Pixel {
+  r: u8
+  g: u8
+  b: u8
+}
+
+native component Gauge {
+  prop level: u8 = 0 // ERROR "level can't cross to the platform's view: a u8 doesn't cross to the platform: pass an int"
+}

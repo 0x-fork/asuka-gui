@@ -94,6 +94,126 @@ static inline bool ak_op_shift(ak_val *R, uint16_t a, uint16_t b, uint16_t c, bo
 	return true;
 }
 
+// ---- The sized integers (ADDN … U2F): t is the type's code (rt.h's
+// ak_int_type; a u64's values its bits). ----
+
+static inline bool ak_op_addn(ak_val *R, uint16_t a, uint16_t b, uint16_t c, int t) {
+	int64_t r;
+	if (t == AK_U64) {
+		uint64_t u;
+		if (__builtin_expect(__builtin_add_overflow((uint64_t)R[b].i, (uint64_t)R[c].i, &u), 0)) return ak_op_overflow();
+		R[a].i = (int64_t)u;
+		return true;
+	}
+	if (__builtin_expect(__builtin_add_overflow(R[b].i, R[c].i, &r) || ak_int_wrap(r, t) != r, 0)) return ak_op_overflow();
+	R[a].i = r;
+	return true;
+}
+
+static inline bool ak_op_subn(ak_val *R, uint16_t a, uint16_t b, uint16_t c, int t) {
+	int64_t r;
+	if (t == AK_U64) {
+		uint64_t u;
+		if (__builtin_expect(__builtin_sub_overflow((uint64_t)R[b].i, (uint64_t)R[c].i, &u), 0)) return ak_op_overflow();
+		R[a].i = (int64_t)u;
+		return true;
+	}
+	if (__builtin_expect(__builtin_sub_overflow(R[b].i, R[c].i, &r) || ak_int_wrap(r, t) != r, 0)) return ak_op_overflow();
+	R[a].i = r;
+	return true;
+}
+
+static inline bool ak_op_muln(ak_val *R, uint16_t a, uint16_t b, uint16_t c, int t) {
+	int64_t r;
+	if (__builtin_expect(!ak_int_mul(R[b].i, R[c].i, t, &r), 0)) return ak_op_overflow();
+	R[a].i = r;
+	return true;
+}
+
+// ak_op_divn is DIVN, or MODN when mod: unsigned division for an
+// unsigned type (a u64's past int's largest are negative int64s).
+static inline bool ak_op_divn(ak_val *R, uint16_t a, uint16_t b, uint16_t c, int t, bool mod) {
+	int64_t x = R[b].i, y = R[c].i;
+	if (y == 0) {
+		ak_throw_msg("division by zero");
+		return false;
+	}
+	if (!ak_int_signed(t)) {
+		uint64_t ux = (uint64_t)x, uy = (uint64_t)y;
+		R[a].i = (int64_t)(mod ? ux % uy : ux / uy);
+	} else if (y == -1) {
+		if (mod) R[a].i = 0;
+		else if (x == ak_int_min(t)) return ak_op_overflow();
+		else R[a].i = -x;
+	} else {
+		R[a].i = mod ? x % y : x / y;
+	}
+	return true;
+}
+
+static inline bool ak_op_negn(ak_val *R, uint16_t a, uint16_t b, int t) {
+	if (__builtin_expect(R[b].i == ak_int_min(t), 0)) return ak_op_overflow();
+	R[a].i = -R[b].i;
+	return true;
+}
+
+// ak_op_count reads a shift's count or a power's exponent, c of type ct:
+// false (it threw) when it's negative; a u64's past int's largest is
+// past every width.
+static inline bool ak_op_count(int64_t c, int ct, uint64_t *n, const char *what) {
+	if (c < 0 && ct != AK_U64) {
+		ak_throw_msg("%s", what);
+		return false;
+	}
+	*n = (uint64_t)c;
+	return true;
+}
+
+// ak_op_pown is POWN (POWI's t is 0x33: int ** int).
+static inline bool ak_op_pown(ak_val *R, uint16_t a, uint16_t b, uint16_t c, int t) {
+	uint64_t e;
+	if (!ak_op_count(R[c].i, t >> 4, &e, "a negative exponent: an integer's negative power isn't an integer")) return false;
+	int64_t r;
+	if (__builtin_expect(!ak_int_pow(R[b].i, e, t & 15, &r), 0)) return ak_op_overflow();
+	R[a].i = r;
+	return true;
+}
+
+// ak_op_shiftn is SHLN, or SHRN when right: a count of 64 or more shifts
+// every bit out; << drops the bits past the type's width, >> is
+// arithmetic for a signed type and logical for an unsigned one.
+static inline bool ak_op_shiftn(ak_val *R, uint16_t a, uint16_t b, uint16_t c, int t, bool right) {
+	uint64_t n;
+	if (!ak_op_count(R[c].i, t >> 4, &n, "negative shift amount")) return false;
+	int64_t x = R[b].i;
+	int vt = t & 15;
+	if (!right) R[a].i = n >= 64 ? 0 : ak_int_wrap((int64_t)((uint64_t)x << n), vt);
+	else if (ak_int_signed(vt)) R[a].i = n >= 64 ? (x < 0 ? -1 : 0) : x >> n;
+	else R[a].i = n >= 64 ? 0 : (int64_t)((uint64_t)x >> n);
+	return true;
+}
+
+// ak_op_convn is CONVN: b, of type t >> 4, as type t & 15, which throws
+// when it doesn't fit.
+static inline bool ak_op_convn(ak_val *R, uint16_t a, uint16_t b, int t) {
+	int64_t v = R[b].i;
+	if (__builtin_expect(!ak_int_fits(v, t >> 4, t & 15), 0)) {
+		ak_int_throw_fit(v, t >> 4, t & 15);
+		return false;
+	}
+	R[a].i = v;
+	return true;
+}
+
+// ak_op_f2n is F2N: toward zero, the nearest value past type t's range,
+// 0 for NaN.
+static inline int64_t ak_op_f2n(double d, int t) {
+	if (d != d) return 0;
+	if (t == AK_U64) return d <= 0 ? 0 : d >= 18446744073709551616.0 ? -1 : (int64_t)(uint64_t)d;
+	int64_t v = d >= 9.2233720368547758e18 ? INT64_MAX : d <= -9.2233720368547758e18 ? INT64_MIN : (int64_t)d;
+	return ak_int_clamp(v, AK_I64, t);
+}
+
 static inline int64_t ak_op_f2i(double d) {
 	return d != d ? 0 : d >= 9.2233720368547758e18 ? INT64_MAX : d <= -9.2233720368547758e18 ? INT64_MIN : (int64_t)d;
 }
@@ -103,6 +223,7 @@ static inline ak_str *ak_op_tostr(ak_val v, uint16_t k) {
 	case AK_K_INT: return ak_str_from_int(v.i);
 	case AK_K_FLOAT: return ak_str_from_float(v.f);
 	case AK_K_BOOL: return ak_str_from_bool(v.i != 0);
+	case AK_K_U64TEXT: return ak_str_from_uint((uint64_t)v.i);
 	default: return ak_retain(v.p ? v.p : ak_str_empty());
 	}
 }

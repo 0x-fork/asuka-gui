@@ -1,0 +1,248 @@
+// The sized integers, i8 to u64, on the VM and compiled to C: overflow
+// at every width throws, the wrapping operators wrap at the type's
+// width, unsigned division, comparison and shifts, conversions,
+// printing and parsing a u64 past int's largest, maps and sets keyed by
+// them, generics, JSON; and **.
+import std/json
+
+fn tryIt(what: string, f: fn() -> string) {
+  let v = try f() catch e {
+    print("{what}: {e.message}")
+    return
+  }
+  print("{what}: {v}")
+}
+
+test "overflow at every width" {
+  let a: i8 = 127
+  let b: i16 = 32767
+  let c: i32 = 2147483647
+  let d: u8 = 255
+  let e: u16 = 65535
+  let f: u32 = 4294967295
+  let g: u64 = 18446744073709551615
+  tryIt("i8 + 1", () => "{a + 1}")
+  tryIt("i16 + 1", () => "{b + 1}")
+  tryIt("i32 + 1", () => "{c + 1}")
+  tryIt("u8 + 1", () => "{d + 1}")
+  tryIt("u16 + 1", () => "{e + 1}")
+  tryIt("u32 + 1", () => "{f + 1}")
+  tryIt("u64 + 1", () => "{g + 1}")
+  let zero: u8 = 0
+  tryIt("u8 0 - 1", () => "{zero - 1}")
+  let lo: i8 = -128
+  tryIt("i8 min - 1", () => "{lo - 1}")
+  tryIt("-i8 min", () => "{-lo}")
+  tryIt("i8 min / -1", () => "{lo / -1}")
+  tryIt("i8 min % -1", () => "{lo % -1}")
+  tryIt("i8 * 2", () => "{a * 2}")
+  tryIt("u32 * u32", () => "{f * f}")
+  tryIt("u64 * 2", () => "{g * 2}")
+  tryIt("i8 abs", () => "{lo.abs()}")
+  tryIt("u8 / 0", () => "{d / zero}")
+  let small: [u8] = [200, 55]
+  tryIt("sum", () => "{small.sum()}")
+  let big: [u8] = [200, 56]
+  tryIt("sum past", () => "{big.sum()}")
+}
+
+test "wrapping at the width" {
+  let a: i8 = 127
+  let d: u8 = 255
+  let g: u64 = 18446744073709551615
+  print("{a &+ 1} {d &+ 1} {d &* d} {g &+ 1} {g &* 3}")
+  let z: u16 = 0
+  print("{z &- 1} {~z} {~d} {~a}")
+  var h: u32 = 2166136261
+  for b in "ab".bytes().toArray() {
+    h ^= u32(b)
+    h &*= 16777619
+  }
+  print("fnv32 {h}")
+}
+
+test "unsigned edges" {
+  let m = u64.max
+  let half: u64 = 9223372036854775808
+  print("{m} {u64.min} {u8.max} {i8.min} {int.max} {int.min}")
+  print("{m / 3} {m % 10} {half / 2} {m / half}")
+  print("{m > half} {half > 1} {m < 1} {half >= half}")
+  print("{m >> 60} {half >> 63} {m << 63} {half << 1}")
+  let i: i8 = -64
+  print("{i >> 2} {i << 1} {u8(truncating: i) >> 1}")
+  print("{m.toString(radix: 16)} {m.toString(radix: 2).count()} {half.padded(22)}")
+  print("{"{m:x}"} {"{m:,}"} {"{half:>22}"} {"{u8.max:#010b}"}")
+  print("{u64.parse("18446744073709551615") ?? 0} {u64.parse("18446744073709551616") ?? 0}")
+  print("{u8.parse("255") ?? 0} {u8.parse("256") ?? 0} {u8.parse("-1") ?? 0} {i8.parse("-128") ?? 0}")
+  print("{u64.parse("ffffffffffffffff", radix: 16) ?? 0} {i16.parse("-8000", radix: 16) ?? 0}")
+  print("{float(m)} {m.float()} {half.float()}")
+  print("{min(m, half)} {max(m, half)} {abs(i)}")
+  print("{[m, 1, half, 0].sorted()} {[m, half].min()} {[m, half].max()}")
+  var xs: [u64] = [half, 3, m]
+  xs.sort()
+  print("{xs}")
+}
+
+test "conversions" {
+  let n = 300
+  tryIt("u8(300)", () => "{u8(n)}")
+  print("{u8(truncating: n)} {u8(clamping: n)} {u8(clamping: -n)} {u8(exactly: n) ?? 0}")
+  print("{i8(truncating: 200)} {u16(truncating: -1)} {u64(truncating: -1)} {int(truncating: u64.max)}")
+  tryIt("int(u64.max)", () => "{int(u64.max)}")
+  tryIt("u64(-1)", () => "{u64(-n)}")
+  print("{int(u64(n))} {i32(exactly: u64.max) ?? 7} {u32(clamping: u64.max)}")
+  print("{u8(3.9)} {u8(-3.9)} {u8(1000.0)} {i8(-1000.0)} {u64(1e30)} {u64(exactly: 2.0) ?? 0} {u8(exactly: 2.5) ?? 0}")
+  let b: u8 = 200
+  let w: u16 = u16(b) * 300
+  print("{w} {int(b) + 1000} {float(b) / 2}")
+  print("{bytes([b, 1, 255]).hex()} {"hé".bytes().toArray()} {bytes("hé".bytes().toArray()).string()}")
+}
+
+struct Packet {
+  kind: u8
+  length: u16
+  id: u64
+  delta: i32
+}
+
+fn largest<T: Comparable>(xs: [T]) -> T? {
+  var best: T? = none
+  for x in xs {
+    if let b = best {
+      if x > b { best = x }
+    } else {
+      best = x
+    }
+  }
+  return best
+}
+
+test "as types: structs, maps, sets, optionals, generics, JSON" {
+  let p = Packet(kind: 7, length: 65535, id: u64.max, delta: -5)
+  print("{p}")
+  let text = json.encode(p)
+  print(text)
+  let back: Packet = try json.decode(text)
+  print("{back == p} {back.id}")
+  do {
+    let bad: Packet = try json.decode("\{\"kind\":256,\"length\":1,\"id\":1,\"delta\":0}")
+    print(bad.kind)
+  } catch e {
+    print(e.message)
+  }
+  do {
+    let bad: [u64] = try json.decode("[-1]")
+    print(bad)
+  } catch e {
+    print(e.message)
+  }
+  let ids: [u64: string] = [u64.max: "max", 1: "one"]
+  print("{ids[u64.max] ?? "-"} {ids[2] ?? "-"} {ids}")
+  var seen = Set<i16>()
+  print("{seen.insert(-1)} {seen.insert(-1)} {seen.insert(1)} {seen.count()}")
+  let maybe: u32? = 4294967295
+  print("{maybe ?? 0} {maybe == 4294967295}")
+  let levels: [u8] = [3, 250, 7]
+  print("{largest(levels) ?? 0} {largest([u64.max, 1]) ?? 0}")
+  match p.kind {
+    0 => print("zero")
+    7 => print("seven")
+    _ => print("other")
+  }
+  var count: u16 = 0
+  for i in u16(0)..<4 { count += i }
+  for _ in u64.max..u64.max { count += 1 }
+  print("count {count}")
+}
+
+test "powers" {
+  print("{2 ** 10} {-2 ** 2} {(-2) ** 3} {2 ** 3 ** 2} {10 ** 0} {0 ** 0}")
+  print("{2.0 ** 0.5} {2.0 ** -1} {9.0 ** 2} {2 ** 0.5}")
+  tryIt("2 ** 63", () => "{2 ** 63}")
+  tryIt("(-2) ** 63", () => "{(-2) ** 63}")
+  let n = -1
+  tryIt("2 ** -1", () => "{2 ** n}")
+  print("{(-1) ** 1000001} {1 ** 1000000000}")
+  let b: u8 = 2
+  let e: u64 = 7
+  print("{b ** 7} {b ** e} {u64(2) ** 63}")
+  tryIt("u8 2 ** 8", () => "{b ** 8}")
+  var p = 3
+  p **= 4
+  var f = 1.5
+  f **= 2
+  print("{p} {f}")
+}
+
+// Output:
+// i8 + 1: integer overflow
+// i16 + 1: integer overflow
+// i32 + 1: integer overflow
+// u8 + 1: integer overflow
+// u16 + 1: integer overflow
+// u32 + 1: integer overflow
+// u64 + 1: integer overflow
+// u8 0 - 1: integer overflow
+// i8 min - 1: integer overflow
+// -i8 min: integer overflow
+// i8 min / -1: integer overflow
+// i8 min % -1: 0
+// i8 * 2: integer overflow
+// u32 * u32: integer overflow
+// u64 * 2: integer overflow
+// i8 abs: integer overflow
+// u8 / 0: division by zero
+// sum: 255
+// sum past: integer overflow
+// ok overflow at every width
+// -128 0 1 0 18446744073709551613
+// 65535 65535 0 -128
+// fnv32 1294271946
+// ok wrapping at the width
+// 18446744073709551615 0 255 -128 9223372036854775807 -9223372036854775808
+// 6148914691236517205 5 4611686018427387904 1
+// true true false true
+// 15 1 9223372036854775808 0
+// -16 -128 96
+// ffffffffffffffff 64 0009223372036854775808
+// ffffffffffffffff 18,446,744,073,709,551,615    9223372036854775808 0b11111111
+// 18446744073709551615 0
+// 255 0 0 -128
+// 18446744073709551615 -32768
+// 18446744073709552000 18446744073709552000 9223372036854776000
+// 9223372036854775808 18446744073709551615 64
+// [0,1,9223372036854775808,18446744073709551615] 9223372036854775808 18446744073709551615
+// [3,9223372036854775808,18446744073709551615]
+// ok unsigned edges
+// u8(300): integer overflow: 300 doesn't fit in a u8
+// 44 255 0 0
+// -56 65535 18446744073709551615 -1
+// int(u64.max): integer overflow: 18446744073709551615 doesn't fit in an int
+// u64(-1): integer overflow: -300 doesn't fit in a u64
+// 300 7 4294967295
+// 3 0 255 -128 18446744073709551615 2 0
+// 60000 1200 100
+// c801ff [104,195,169] hé
+// ok conversions
+// {"kind":7,"length":65535,"id":18446744073709551615,"delta":-5}
+// {"kind":7,"length":65535,"id":18446744073709551615,"delta":-5}
+// true 18446744073709551615
+// json: 1:12: an integer out of u8's range
+// json: 1:4: an integer out of u64's range
+// max - {18446744073709551615:"max",1:"one"}
+// true false true 2
+// 4294967295 true
+// 250 18446744073709551615
+// seven
+// count 7
+// ok as types: structs, maps, sets, optionals, generics, JSON
+// 1024 -4 -8 512 1 1
+// 1.4142135623730951 0.5 81 1.4142135623730951
+// 2 ** 63: integer overflow
+// (-2) ** 63: -9223372036854775808
+// 2 ** -1: a negative exponent: an integer's negative power isn't an integer
+// -1 1
+// 128 128 9223372036854775808
+// u8 2 ** 8: integer overflow
+// 81 2.25
+// ok powers

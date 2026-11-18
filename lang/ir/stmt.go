@@ -447,8 +447,12 @@ func (b *fb) forStmt(s *syntax.ForStmt) {
 	// a..b is tested once before the first turn, and ends after the turn
 	// of b: its counter never goes past b, so b may be Int.max.
 	through := fi.Kind == check.ForRange && fi.Incl
+	lt, le := "LTI", "LEI"
+	if fi.Kind == check.ForRange && b.typ(fi.Elem) == check.U64 {
+		lt, le = "LTU", "LEU" // a u64's range, ordered unsigned
+	}
 	if through {
-		b.emit(op("LEI"), cond, i, limit)
+		b.emit(op(le), cond, i, limit)
 		b.emitJump(op("JF"), cond, end)
 	}
 	b.f.Place(top)
@@ -459,7 +463,7 @@ func (b *fb) forStmt(s *syntax.ForStmt) {
 		zero := b.konst(0)
 		b.emit(op("LEI"), cond, zero, i)
 	default:
-		b.emit(op("LTI"), cond, i, limit)
+		b.emit(op(lt), cond, i, limit)
 	}
 	if !through {
 		b.emitJump(op("JF"), cond, end)

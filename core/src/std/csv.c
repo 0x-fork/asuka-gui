@@ -240,6 +240,7 @@ static bool cr_init(cr *r, ak_val *args) {
 static ak_kind kind_of(const char *d) {
 	switch (*d) {
 	case 'i':
+	case 'n':
 	case 'e':
 		return AK_K_INT;
 	case 'f':
@@ -329,6 +330,17 @@ static bool cell(const char *s, size_t n, const char *d, const ak_json_types *t,
 			return false;
 		}
 		out->i = neg ? (int64_t)(0 - v) : (int64_t)v;
+		return true;
+	}
+	case 'n': {
+		// A sized integer type's (its code after the n): its range.
+		trimmed(&s, &n);
+		int64_t v;
+		if (!ak_int_parse(s, n, 10, d[1] - '0', &v)) {
+			snprintf(why, whyn, "\"%.*s\" isn't %s %s", (int)(n < 60 ? n : 60), s, ak_int_names[(d[1] - '0') & 7][0] == 'i' ? "an" : "a", ak_int_names[(d[1] - '0') & 7]);
+			return false;
+		}
+		out->i = v;
 		return true;
 	}
 	case 'f': {
@@ -609,6 +621,11 @@ static void put_value(cw *w, bool first, ak_val v, const char *d, const ak_json_
 		return;
 	}
 	case 'i': s = ak_str_from_int(v.i); break;
+	case 'n': {
+		char buf[66];
+		s = ak_str_new(buf, (size_t)ak_int_text(buf, v.i, d[1] - '0', 10));
+		break;
+	}
 	case 'f': s = ak_str_from_float(v.f); break;
 	case 'b': s = ak_str_c(v.i ? "true" : "false"); break;
 	case 'E': {

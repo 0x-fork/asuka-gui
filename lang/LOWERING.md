@@ -59,6 +59,7 @@ every branch's types are the same on every platform.
 | Asuka type | Kind | Representation |
 |---|---|---|
 | `int`, `Duration` (ns), `Color` (ops.Color), `Length` | int | as is; a Length packs its unit (0 auto, 1 points, 2 percent) in bits 32-39 and its float32 value in bits 0-31 |
+| `i8` … `u64` | int | canonical: sign-extended (`i8`, `i16`, `i32`) or zero-extended (`u8`, `u16`, `u32`) from the type's width; a `u64` its 64 bits (past int's largest, a negative int64) |
 | payloadless enums | int | the case's index (a wire enum's value) |
 | `bool` | bool | 0 or 1 |
 | `float` | float | |
@@ -399,6 +400,41 @@ BOR, BXOR, `~x` BNOT, `<< >>` SHL and SHR (ops.h's `ak_op_shift`: a
 count of 64 or more shifts every bit out, `>>` keeping the sign; a
 negative count throws, as Go panics).
 
+`**` is POWI (by squaring, checked; a negative exponent throws) and,
+of floats, POWF (C's `pow`; a float's power of an integer converts it,
+I2F or U2F).
+
+The sized integers (`i8` … `u64`) are ints with a type's code, an
+immediate (check.IntCode, rt.h's ak_int_type: log2 of its bytes, 4 more
+when unsigned): `+ - * / %` ADDN, SUBN, MULN, DIVN, MODN (unsigned
+division for an unsigned type), `-x` NEGN, `**` POWN, `<< >>` SHLN and
+SHRN (logical for an unsigned type), which keep a value canonical and
+throw past the type's range as ADDI does past int's. A shift's count and
+a power's exponent may be of another integer type: SHLN, SHRN and POWN
+take both codes (the value's, and the count's in the high 4 bits; a
+u64's count past int's largest is past every width), and an int's
+`x << n` of a sized n is SHLN too. `& | ^` of two canonical values are
+canonical: BAND, BOR, BXOR. `~x` is BNOT, then WRAP (its low bits at
+the type, sign- or zero-extended) for `u8`, `u16` and `u32`; `&+ &- &*`
+are WADDI, WSUBI, WMULI then WRAP. `<` and `<=` of a u64 are LTU and LEU;
+the others' order is the int's (LTI), as are `==` and hashing (the same
+bits). A conversion is CONVN (to type t & 15 from t >> 4: throws when it
+doesn't fit), WRAP (`truncating:`), CLAMPN (`clamping:`), `int.exactly`
+(`exactly:`, a box or none), nothing at all when it widens; from a
+float F2N (toward zero, saturating) and `int.exactly_float`; `float(x)`
+of a u64 U2F. A literal is its type's: its bits (a u64 past int's largest
+too) in a KINT, checked against the type's range as it compiles. `T.min`
+and `T.max` are constants, `T.parse(text, radix:)` CALLB `int.parse(text,
+radix, code)`. The builtins that read a value's type (`toString(radix:)`,
+`padded`, the checked methods, `abs`, an array's `sum`, `str.fmt_int` of
+a u64) take the code after their arguments (check.Method's Extra
+"intcode"); `sorted()`, `sort()`, `min()` and `max()` of u64s pass none,
+0 and 1 (ordered unsigned), and `a..b` of u64s `arr.range(a, b,
+through, 1)`; `for i in a..<b` of u64s tests with LTU and LEU. A u64's
+text is TOSTR of kind 5 (bc.KU64Text, never a register's kind); its
+descriptor, as every sized type's, `n` and its code (`n7`), which JSON,
+CSV, TOML and SQLite read with its range.
+
 ADDI, SUBI, MULI and NEGI are checked: ops.h's `ak_op_addi` and its kin
 compute with `__builtin_add_overflow` (sub, mul: one branch on the CPU's
 overflow flag, predicted not taken) and on overflow throw "integer
@@ -418,14 +454,14 @@ or none. Nothing folds int arithmetic at compile time but a negated
 literal (`-5` is KSMALL -5); `-0x8000_0000_0000_0000`, the one that
 would overflow, is a checker error, as an out-of-range literal is.
 
-A compound assignment (`x <<= 1`, `xs[i] |= m`, `h &*= p`)
+A compound assignment (`x <<= 1`, `xs[i] |= m`, `h &*= p`, `n **= 2`)
 is its operator on the place's value, written back as `=` is; one a
 struct's or an enum's method does (`t += 1h`, check.Info.AssignOps)
 is that method's call (the place read, not taken out, for the method may
 read it: a state's cell is CPEEKed and put back once, CPUTP). The operators a
 struct's or an enum's methods do (check.Info.Operators) are calls of
 them: `+` add, `-` sub or minus, `*` mul or times, `/` div or quo, `%`
-rem, the one whose parameter's type is the right operand's
+rem, `**` pow, the one whose parameter's type is the right operand's
 (check.findOperator), and `-x` neg (check.Info.Negations); `x *= y` uses
 the one that gives x's type back. `<` and its kin
 on a struct or an enum call its `compare` and test the int against 0,
@@ -437,7 +473,10 @@ GETF of the tuple's field 0 (SelTupleElem), and a place as a field is.
 `b[i]` of
 bytes is CALLB `bytes.at` (an int; out of range throws, as IDX does).
 `>>` is two adjacent `>` tokens the parser joins, so types' `>>` close
-two generic argument lists.
+two generic argument lists. `**` binds tighter than a prefix operator
+before it: the parser reads a prefix operator's operand as a power
+(`-2 ** 2` is `-(2 ** 2)`), and `**`'s right side as a prefix
+expression (`2 ** -1`), right to left.
 
 `x ?? d` jumps over d when x isn't none (JSOME, or JNONE and UNBOX when
 the whole isn't optional). `m[k] ?? d` of a map whose values aren't
@@ -1436,14 +1475,14 @@ native/codec.go's wire format.
 ## C from Asuka
 
 `extern` declarations (RFC 0008, docs/c.md) are C's. The checker
-resolves their types twice: the Asuka type the program sees (`int` for
+resolves their types twice: the Asuka type the program sees (`i32` for
 an `Int32`, `string` for a `CString`) and its C side (check.CType), kept
 in Function.Extern, Field.C, and an extern type's TypeName (ExternType,
 its Release).
 
 | Source | Lowered |
 |---|---|
-| `extern fn f(a: Int32, s: CString) -> Int64` | a function whose body is CALLB `ffi.<package>.f(a, s)` (check.ExternBuiltin), the parameters as they are |
+| `extern fn f(a: Int32, s: CString) -> Int64` | a function whose body is CALLB `ffi.<package>.f(a, s)` (check.ExternBuiltin), the parameters as they are; C's integers are the integer types of their width and sign (an `Int32` an `i32`, a `UInt64` a `u64`), so the glue's `(int32_t)a.i` and `(int64_t)r` keep a value canonical |
 | a function returning an `extern struct S` | the same, with one more argument: GGET of S's template, a frozen zero `S` init makes (init.strings), whose shape the glue makes the result with |
 | `extern type T` | a reference (the runtime's ak_ffi_obj, core/src/vm/ffi.h): an opaque pointer, its release, its name |
 | `extern struct S { … }` | a struct, as any |

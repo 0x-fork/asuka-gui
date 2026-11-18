@@ -928,7 +928,52 @@ func (c *Checker) nativeValue(t Type) string {
 	if hasSet(t, map[*TypeName]bool{}) {
 		return "a Set doesn't cross to the platform: pass an array"
 	}
+	if s := sizedIn(t, map[*TypeName]bool{}); s != nil {
+		return aType(s) + " doesn't cross to the platform: pass an int"
+	}
 	return jsonable1(t, map[*TypeName]bool{}, func(*TypeParam) bool { return false })
+}
+
+// sizedIn is a sized integer type in t (its elements, fields,
+// payloads), nil when there's none: the platforms' views take ints.
+func sizedIn(t Type, seen map[*TypeName]bool) Type {
+	switch x := t.(type) {
+	case *Basic:
+		if IsSized(x) {
+			return x
+		}
+	case *Array:
+		return sizedIn(x.Elem, seen)
+	case *Map:
+		return sizedIn(x.Elem, seen)
+	case *Optional:
+		return sizedIn(x.Elem, seen)
+	case *Tuple:
+		for _, e := range x.Elems {
+			if s := sizedIn(e, seen); s != nil {
+				return s
+			}
+		}
+	case *Named:
+		if seen[x.Obj] {
+			return nil
+		}
+		seen[x.Obj] = true
+		s := x.Subst()
+		for _, f := range x.Obj.Fields {
+			if t := sizedIn(s.Apply(f.Type), seen); t != nil {
+				return t
+			}
+		}
+		for _, k := range x.Obj.Cases {
+			for _, p := range k.Params {
+				if t := sizedIn(s.Apply(p), seen); t != nil {
+					return t
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // hasSet reports a Set in t (its elements, fields, payloads).

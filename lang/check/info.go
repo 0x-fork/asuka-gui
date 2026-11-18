@@ -5,12 +5,12 @@ import "github.com/egoist/asuka/lang/syntax"
 // Info is what the checker found out about the program, by node, for
 // the lowering.
 type Info struct {
-	Types      map[syntax.Expr]Type       // every expression's type
-	Uses       map[*syntax.Ident]Object   // what each name used stands for
-	Defs       map[*syntax.Ident]Object   // what each name declared is
-	Calls      map[*syntax.CallExpr]*Call // what each call calls
+	Types map[syntax.Expr]Type       // every expression's type
+	Uses  map[*syntax.Ident]Object   // what each name used stands for
+	Defs  map[*syntax.Ident]Object   // what each name declared is
+	Calls map[*syntax.CallExpr]*Call // what each call calls
 	// Reloads: what each reload f(…) or reload f asks again (rfcs/0017).
-	Reloads map[*syntax.UnaryExpr]*Reload
+	Reloads    map[*syntax.UnaryExpr]*Reload
 	Selections map[syntax.Expr]*Selection // x.name and .name
 	StoreSelf  map[syntax.Expr]*TypeName  // self in a store: the store
 	// Convs: an expression whose value converts implicitly where it's
@@ -216,6 +216,9 @@ type Call struct {
 	Each bool
 	// TrKey is CallTr's message; Args are its arguments, by its Params.
 	TrKey *CatalogKey
+	// Conv: a conversion to an integer type's label (BInt: u8(exactly:
+	// x)): "exactly", "truncating", "clamping", or "" for u8(x).
+	Conv string
 }
 
 // SelKind is what x.name or .name is.
@@ -232,6 +235,7 @@ const (
 	SelErrorMessage                     // an error's message
 	SelBuiltinMethod                    // a built-in type's method, as a callee
 	SelColor                            // a semantic color: Value
+	SelIntConst                         // an integer type's min or max (u8.max): Value, its bits
 	SelLengthAuto                       // .auto, a Length
 	SelLoading                          // a Loading's value or loading (Name)
 	SelTupleElem                        // a tuple's element, t.0 (Field: its place and type)

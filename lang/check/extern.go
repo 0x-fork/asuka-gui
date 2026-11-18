@@ -10,8 +10,8 @@ import (
 // C from Asuka (RFC 0008, docs/c.md): extern fn, extern type and extern
 // struct declare what C implements. Their parameters, results and
 // fields are C types; Asuka sees each as one of its own (an Int32 is an
-// int, a CString a string), and the glue lang/cffi generates converts
-// between the two at the call.
+// i32, an Int64 an int, a CString a string), and the glue lang/cffi
+// generates converts between the two at the call.
 
 // CKind is a C type's kind.
 type CKind uint8
@@ -42,6 +42,28 @@ var cNames = map[string]CKind{
 	"Int8": CInt8, "Int16": CInt16, "Int32": CInt32, "Int64": CInt64,
 	"UInt8": CUInt8, "UInt16": CUInt16, "UInt32": CUInt32, "UInt64": CUInt64,
 	"Float32": CFloat32, "CString": CString,
+}
+
+// cIntTypes are the Asuka types C's integers are: exact, so a value C
+// gives back always fits (an Int32 is an i32, a UInt8 a u8).
+var cIntTypes = map[CKind]Type{
+	CInt8: I8, CInt16: I16, CInt32: I32, CInt64: Int,
+	CUInt8: U8, CUInt16: U16, CUInt32: U32, CUInt64: U64,
+}
+
+// CTypeAsuka is the Asuka type a C type's name (Int32, CString) is seen
+// as, nil when name isn't one.
+func CTypeAsuka(name string) Type {
+	switch k, ok := cNames[name]; {
+	case !ok:
+		return nil
+	case k == CString:
+		return String
+	case k == CFloat32:
+		return Float
+	default:
+		return cIntTypes[k]
+	}
 }
 
 // IsCTypeName reports whether name is one of the C types an extern
@@ -205,7 +227,7 @@ func (c *Checker) cType(t syntax.Type, at cPlace, what string) (Type, *CType) {
 				if k == CFloat32 {
 					return Float, ct
 				}
-				return Int, ct
+				return cIntTypes[k], ct
 			}
 		}
 		ty := c.typeExpr(t)
@@ -223,9 +245,12 @@ func (c *Checker) cOf(at syntax.Node, t Type, place cPlace, what string) (Type, 
 	if IsInvalid(t) {
 		return Invalid, nil
 	}
+	for k, it := range cIntTypes {
+		if t == it {
+			return t, &CType{Kind: k} // i32 is C's int32_t, as Int32 is
+		}
+	}
 	switch t {
-	case Int:
-		return t, &CType{Kind: CInt64}
 	case Float:
 		return t, &CType{Kind: CDouble}
 	case Bool:
@@ -274,7 +299,7 @@ func (c *Checker) cOf(at syntax.Node, t Type, place cPlace, what string) (Type, 
 			return Invalid, nil
 		}
 	}
-	c.errorf(at, diag.NotCType, "%s can't cross to C: %s isn't a C type (an extern declaration takes Int8…Int64, UInt8…UInt64, int, Float32, float, bool, CString, bytes, Pointer, an extern type or struct, or a function; https://asuka.egoist.dev/docs/c)", what, aType(t))
+	c.errorf(at, diag.NotCType, "%s can't cross to C: %s isn't a C type (an extern declaration takes Int8…Int64, UInt8…UInt64 or i8…u64, int, Float32, float, bool, CString, bytes, Pointer, an extern type or struct, or a function; https://asuka.egoist.dev/docs/c)", what, aType(t))
 	return Invalid, nil
 }
 

@@ -2009,7 +2009,7 @@ test "archiving removes the row" {
 - format-spec: 插值的格式和它的值对不上. 按值的类型写格式，参照消息的说明：`{n:>6}`、`{x:.2f}`、`{n:#x}`、`{name:<12}`。
 - group-not-calls: `load (…)` 里的元素不都是调用. 只把调用放进组里（`load (api.user(id), api.posts(id))`），把值传给这些调用，或者放在 load 旁边。
 - import-cycle: 相互导入的包. 把两者都需要的部分移到第三个包里，让它们都导入它。
-- int-overflow: 超出 64 位范围的整数字面量. 换一个更小的数，或者使用 `float`；需要精确的大数时用 `std/decimal`。
+- int-overflow: 超出所属类型范围的整数字面量. 换一个范围内的数，改用更宽的类型（`u16`、`int`、`u64`）或 `float`；需要精确的大数时用 `std/decimal`。
 - interface-not-satisfied: 类型声明了某个 interface，却没有实现它. 按 interface 的签名补上缺少的方法（消息里列出了它们）。
 - internal-error: 编译器自身的错误. 请到 https://github.com/egoist/asuka/issues 报告（附上程序，或者能重现问题的最小程序）。
 - invalid-catalog: 不是有效消息文件的目录. 在消息指出的位置修正文件：每个键对应一个字符串，占位符与源语言一致。
@@ -2048,6 +2048,7 @@ test "archiving removes the row" {
 - missing-translation: 某种语言的目录缺少源语言的部分消息. 在那种语言的目录里翻译列出的消息。
 - missing-try: 调用会抛错的函数时没有写 `try`. 写成 `try f(…)`；出错时想得到 `none` 就用 `try? f(…)`，想给出替代值就用 `try f(…) catch { fallback }`。
 - missing-type: 必须写出类型的声明. 写出类型：`prop size: int`、`prop size = 12`、`state n: int = …`。
+- mixed-numbers: 运算符两边是不同类型的数字. 把一边转换成另一边的类型：`int(level) + offset`、`float(n) * 0.5`、`u8(n)`（n 放不下时抛出错误；`u8(truncating: n)` 只保留低位）。
 - native-type: 原生组件的属性或事件使用了平台视图无法接收的类型. 使用平台代码能读取的数据；发生了什么用事件来报告。
 - no-children: 给不接受子视图的元素传了子视图，或者传的子视图不对. 把视图放进容器（`Column`、`Row`），或者放在这个元素旁边。
 - no-such-operator: 其他语言有、Asuka 没有的运算符. 写成 `x += 1`、`if a { b } else { c }` 或 `a < b && b < c`。

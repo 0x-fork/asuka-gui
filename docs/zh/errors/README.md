@@ -24,7 +24,7 @@ Asuka 报告的每个错误和警告都有一个代码：一个稳定的名称�
 - [format-spec](format-spec.md): 插值的格式和它的值对不上。
 - [group-not-calls](group-not-calls.md): `load (…)` 里的元素不都是调用。
 - [import-cycle](import-cycle.md): 相互导入的包。
-- [int-overflow](int-overflow.md): 超出 64 位范围的整数字面量。
+- [int-overflow](int-overflow.md): 超出所属类型范围的整数字面量。
 - [interface-not-satisfied](interface-not-satisfied.md): 类型声明了某个 interface，却没有实现它。
 - [internal-error](internal-error.md): 编译器自身的错误。
 - [invalid-catalog](invalid-catalog.md): 不是有效消息文件的目录。
@@ -61,6 +61,7 @@ Asuka 报告的每个错误和警告都有一个代码：一个稳定的名称�
 - [missing-translation](missing-translation.md): 某种语言的目录缺少源语言的部分消息。
 - [missing-try](missing-try.md): 调用会抛错的函数时没有写 `try`。
 - [missing-type](missing-type.md): 必须写出类型的声明。
+- [mixed-numbers](mixed-numbers.md): 运算符两边是不同类型的数字。
 - [native-type](native-type.md): 原生组件的属性或事件使用了平台视图无法接收的类型。
 - [no-children](no-children.md): 给不接受子视图的元素传了子视图，或者传的子视图不对。
 - [no-such-operator](no-such-operator.md): 其他语言有、Asuka 没有的运算符。
