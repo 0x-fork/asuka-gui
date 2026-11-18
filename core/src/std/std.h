@@ -41,6 +41,7 @@ extern const ak_lib_entry ak_std_archive[];
 extern const ak_lib_entry ak_std_http[];  // httpserver.c: std/http's server
 extern const ak_lib_entry ak_std_log[];
 extern const ak_lib_entry ak_std_bigint[];
+extern const ak_lib_entry ak_std_net[];
 
 // Every package's table, NULL-terminated.
 extern const ak_lib_entry *const ak_std_libs[];

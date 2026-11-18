@@ -1,0 +1,25 @@
+// exit: 0
+// A line server and its client in one program: the server is main's,
+// still serving as main returns, and the program ends all the same.
+import std/net
+
+async fn main() throws {
+  let server = try await net.serve(0, c => {
+    while let line = try await c.readLine() {
+      try await c.write("echo: {line}\n")
+    }
+  })
+  let c = try await net.connect("localhost", server.port)
+  try await c.write("one\ntwo\n")
+  print((try await c.readLine()) ?? "-")
+  print((try await c.readLine()) ?? "-")
+  let u = try await net.udp(host: "127.0.0.1")
+  try await u.send("to myself".bytes(), to: u.address)
+  print((try await u.receive()).data.string())
+}
+
+// Stdout:
+// echo: one
+// echo: two
+// to myself
+// Stderr:

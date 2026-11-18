@@ -975,6 +975,110 @@ A handler is a function, so a test calls it, or the router, with a
 `Request`, no socket between: `let r = try await
 api.handle(http.Request(method: "GET", path: "/notes/1"))`.
 
+## Other protocols: std/net
+
+`std/net` speaks what isn't HTTP: Redis, SMTP, a game's server, a
+protocol of your own. It has TCP connections and servers, UDP
+datagrams and DNS lookups, as Go's `net`, Rust's `std::net` and Node's
+`net` and `dgram` do; every wait is async, the sockets' work on a
+thread of the runtime's own. A line-based server keeps values a client
+sets:
+
+```asuka check
+import std/net
+import std/os
+
+async fn main() throws {
+  var values: [string: string] = [:]
+  let server = try await net.serve(7000, c => {
+    for await line in c.lines() {
+      let words = line.split(" ", count: 3)
+      if words.count() == 3 && words[0] == "SET" {
+        values[words[1]] = words[2]
+        try await c.write("OK\r\n")
+      } else if words.count() == 2 && words[0] == "GET" {
+        try await c.write("{values[words[1]] ?? "-"}\r\n")
+      } else {
+        try await c.write("ERR unknown command\r\n")
+      }
+    }
+  })
+  print("listening on {server.address.string()}")
+  for await _ in os.signals() {
+    break
+  }
+  await server.close()
+}
+```
+
+And a client of it:
+
+```asuka check
+import std/net
+
+async fn main() throws {
+  let c = try await net.connect("localhost", 7000, timeout: 5s)
+  try await c.write("SET greeting hello\r\n")
+  print(try await c.readLine())   // OK
+  try await c.write("GET greeting\r\n")
+  print(try await c.readLine())   // hello
+  c.close()
+}
+```
+
+- `net.connect(host, port, timeout:, noDelay:, keepAlive:)` gives a
+  `Conn`. A name is looked up, and its addresses tried as Happy
+  Eyeballs does (IPv6's and IPv4's in turn, the next started after
+  250 ms, the first to connect kept); `timeout` covers the lookup and
+  the connecting.
+- A `Conn` reads `read(max:)` (what has come, `none` at the end),
+  `readExactly(n)`, `readLine(max:)` (without its `\n` or `\r\n`),
+  `readUntil(delimiter, max:)` and `readAll(max:)`, or as a stream,
+  `lines()` and `chunks()`; it writes `write(text)` and
+  `writeBytes(data)`. `closeWrite()` closes this side's writing (the
+  other side reads its end, and may still answer), `close()` the
+  connection. `readTimeout` and `writeTimeout` limit each wait
+  (`NetError.timedOut`); `localAddress` and `remoteAddress` say where
+  the two sides are. One read waits at a time; writes queue, each sent
+  whole.
+- `net.serve(port, handler, host:, onError:)` handles each client's
+  connection with `handler`, a task of its own, many at once; the
+  connection closes as the handler returns. `net.listen(port, host:)`
+  gives a `Listener` to `accept()` from yourself. `host` is
+  `127.0.0.1` unless said; `"0.0.0.0"` takes every IPv4 interface's
+  clients, `""` or `"::"` every interface's. Port 0 is one the system
+  picks (`server.port`). `server.close(grace:)` stops accepting and
+  cancels the handlers still running after `grace` (none by default);
+  `server.wait()` waits until it has stopped.
+- `net.udp(port:, host:, reuse:)` gives a `UDPSocket`: `send(data,
+  to:)`, `sendTo(data, host:, port:)`, `receive(timeout:)` (a
+  `Datagram`, its `data` and who it's `from`), `datagrams()`,
+  `connect(host, port)`, `joinGroup(ip)` for multicast and
+  `setBroadcast(on)`.
+- `net.lookup(host)` gives a name's IP addresses, as the system looks
+  them up (the hosts file, DNS); `reverseLookup(ip)`, `lookupCNAME`,
+  and DNS's records: `lookupMX`, `lookupTXT`, `lookupSRV`, `lookupNS`.
+- `net.IP` is an address (`IP.parse("2001:db8::1")`, `isLoopback()`,
+  `isPrivate()`, `string()`), `net.Prefix` a network
+  (`Prefix.parse("10.0.0.0/8")!.contains(ip)`), `net.Address` an IP and
+  a port; `joinHostPort` and `splitHostPort` handle IPv6's brackets
+  (`"[::1]:80"`).
+- Cancelling the task that waits (a `race` it lost, `withTimeout`, its
+  owner going) stops the wait, and what had come by then isn't lost:
+  the next read gets it. A write that has begun goes on to its end. A
+  socket belongs to the task that made it: when that task ends, it
+  closes.
+- A failure is a `NetError`: `refused`, `reset`, `timedOut`,
+  `unreachable`, `notFound`, `lookupFailed`, `closed`, `ended`,
+  `addressInUse`, `addressUnavailable`, `denied`, `tooLarge`,
+  `invalid`, `unsupported`, `failed`.
+
+TLS isn't in `std/net` yet: `std/http` and `std/websocket` speak HTTPS
+and `wss:` through each platform's own client. A desktop app and a
+phone's app (while it runs) use sockets as a program does; a web page
+has none (`NetError.unsupported`), though its IP addresses and
+host:port helpers work.
+
 ## Secrets, passwords and signatures: std/crypto
 
 std/crypto is the same C on every platform, the web's too: what one
@@ -1278,3 +1382,4 @@ test "reads git's branch" {
 | `std/term` | yes | yes | yes | no terminal: no styles, `prompt` gives `none` |
 | `std/log` | stderr (an app: unified logging) | stderr (an app: the debugger's output) | stderr | unified logging, logcat, the browser's console |
 | `http.serve` | yes | yes | yes | a phone's app: while it runs; the web: `unsupported` |
+| `std/net` | yes | yes | yes | a phone's app: while it runs; the web: `unsupported` |

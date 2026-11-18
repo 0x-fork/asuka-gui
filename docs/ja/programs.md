@@ -698,6 +698,63 @@ HTTPS はリバースプロキシー（Caddy、nginx）に任せます。プロ�
 
 ハンドラーはただの関数なので、テストでは `Request` を渡してハンドラーやルーターを直接呼べます。ソケットは介しません：`let r = try await api.handle(http.Request(method: "GET", path: "/notes/1"))`。
 
+## ほかのプロトコル：std/net
+
+HTTP 以外のプロトコルは `std/net` で話します。Redis、SMTP、ゲームのサーバー、独自のプロトコルなどです。Go の `net`、Rust の `std::net`、Node の `net` や `dgram` と同じように、TCP の接続とサーバー、UDP のデータグラム、DNS の名前解決をそろえています。待ちはすべて async で、ソケットの読み書きはランタイム専用のスレッドで行われます。次の例は、クライアントが設定した値を覚えておく、行単位でやり取りするサーバーです。
+
+```asuka check
+import std/net
+import std/os
+
+async fn main() throws {
+  var values: [string: string] = [:]
+  let server = try await net.serve(7000, c => {
+    for await line in c.lines() {
+      let words = line.split(" ", count: 3)
+      if words.count() == 3 && words[0] == "SET" {
+        values[words[1]] = words[2]
+        try await c.write("OK\r\n")
+      } else if words.count() == 2 && words[0] == "GET" {
+        try await c.write("{values[words[1]] ?? "-"}\r\n")
+      } else {
+        try await c.write("ERR unknown command\r\n")
+      }
+    }
+  })
+  print("listening on {server.address.string()}")
+  for await _ in os.signals() {
+    break
+  }
+  await server.close()
+}
+```
+
+そのクライアントです。
+
+```asuka check
+import std/net
+
+async fn main() throws {
+  let c = try await net.connect("localhost", 7000, timeout: 5s)
+  try await c.write("SET greeting hello\r\n")
+  print(try await c.readLine())   // OK
+  try await c.write("GET greeting\r\n")
+  print(try await c.readLine())   // hello
+  c.close()
+}
+```
+
+- `net.connect(host, port, timeout:, noDelay:, keepAlive:)` は `Conn` を返します。ホスト名は名前解決され、そのアドレスを Happy Eyeballs のやり方で試します。IPv6 と IPv4 のアドレスを交互に、前の試行が 250 ミリ秒以内につながらなければ次を始め、最初につながったものを使います。`timeout` は名前解決と接続を合わせた時間の上限です。
+- `Conn` は `read(max:)`（届いた分。接続の終わりでは `none`）、`readExactly(n)`、`readLine(max:)`（`\n` や `\r\n` を除く）、`readUntil(delimiter, max:)`、`readAll(max:)` で読みます。ストリームとして `lines()`、`chunks()` でも読めます。書くのは `write(text)` と `writeBytes(data)` です。`closeWrite()` はこちら側の書き込みだけを閉じ（相手は終わりを読みますが、まだ返信できます）、`close()` は接続を閉じます。`readTimeout` と `writeTimeout` は 1 回ごとの待ちの上限です（超えると `NetError.timedOut`）。`localAddress` と `remoteAddress` で両端のアドレスがわかります。待てる読み込みは一度に一つで、書き込みは順番に並び、それぞれ全部が送られます。
+- `net.serve(port, handler, host:, onError:)` は、クライアントの接続ごとに `handler` を独立したタスクとして動かし、多くの接続を同時に扱います。ハンドラーが戻ると接続は閉じます。自分で `accept()` したいときは、`net.listen(port, host:)` で `Listener` を作ります。`host` を指定しなければ `127.0.0.1` です。`"0.0.0.0"` ならすべての IPv4 インターフェースのクライアントを、`""` か `"::"` ならすべてのインターフェースのクライアントを受け付けます。ポートを 0 にするとシステムが選びます（`server.port`）。`server.close(grace:)` は受け付けをやめ、`grace`（既定では待たない）を過ぎてもまだ動いているハンドラーをキャンセルします。`server.wait()` は止まるまで待ちます。
+- `net.udp(port:, host:, reuse:)` は `UDPSocket` を返します。`send(data, to:)`、`sendTo(data, host:, port:)`、`receive(timeout:)`（`data` と送り主の `from` を持つ `Datagram` を返す）、`datagrams()`、`connect(host, port)`、マルチキャストの `joinGroup(ip)`、`setBroadcast(on)` があります。
+- `net.lookup(host)` は、システムのやり方（hosts ファイル、DNS）でホスト名の IP アドレスを引きます。ほかに `reverseLookup(ip)`、`lookupCNAME`、DNS のレコードを引く `lookupMX`、`lookupTXT`、`lookupSRV`、`lookupNS` があります。
+- `net.IP` はアドレス（`IP.parse("2001:db8::1")`、`isLoopback()`、`isPrivate()`、`string()`）、`net.Prefix` はネットワーク（`Prefix.parse("10.0.0.0/8")!.contains(ip)`）、`net.Address` は IP とポートの組です。`joinHostPort` と `splitHostPort` は IPv6 の角かっこ（`"[::1]:80"`）を扱います。
+- 待っているタスクをキャンセルすると（`race` で負けた、`withTimeout` の時間切れ、オーナーがなくなった）、その待ちは止まります。それまでに届いたデータは失われず、次の読み込みが受け取ります。書き始めた書き込みは最後まで書かれます。ソケットはそれを作ったタスクに属し、そのタスクが終わると閉じます。
+- 失敗は `NetError` になります：`refused`、`reset`、`timedOut`、`unreachable`、`notFound`、`lookupFailed`、`closed`、`ended`、`addressInUse`、`addressUnavailable`、`denied`、`tooLarge`、`invalid`、`unsupported`、`failed`。
+
+`std/net` にはまだ TLS がありません。HTTPS や `wss:` には、各プラットフォーム自身のクライアントを通る `std/http` と `std/websocket` を使ってください。デスクトップアプリとスマートフォンのアプリ（動いているあいだ）は、プログラムと同じようにソケットを使えます。Web ページにはソケットがありません（`NetError.unsupported`）が、IP アドレスと host:port の補助関数は使えます。
+
 ## 秘密、パスワード、署名：std/crypto
 
 std/crypto はどのプラットフォームでも同じ C のコードで動き、Web も同じです。あるプラットフォームで暗号化、ハッシュ、署名したものは、ほかのどのプラットフォームでも復号して検証できます。サービスで webhook の HMAC を確かめるときは `crypto.equal` で比べます。これはバイト列がどこで違っても同じ時間で比較します。パスワードの保存には `hashPassword`（argon2id。ほかのシステムも読める PHC 形式で出力）を使います。これは別のスレッドで動きます：
@@ -925,3 +982,4 @@ test "reads git's branch" {
 | `std/term` | ○ | ○ | ○ | 端末がない（スタイルなし、`prompt` は `none`） |
 | `std/log` | stderr（アプリは統合ログ） | stderr（アプリはデバッガの出力） | stderr | 統合ログ、logcat、ブラウザのコンソール |
 | `http.serve` | ○ | ○ | ○ | スマートフォンのアプリは動いているあいだ ○、Web は `unsupported` |
+| `std/net` | ○ | ○ | ○ | スマートフォンのアプリは動いているあいだ ○、Web は `unsupported` |

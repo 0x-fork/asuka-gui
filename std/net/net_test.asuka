@@ -1,0 +1,335 @@
+// std/net over real sockets on 127.0.0.1: servers and clients in one
+// test, the net thread between them. (The C: core/test/net_test.c;
+// compiled to C: lang/compile/testdata/run/net.asuka.)
+
+test "IP addresses" {
+  expect(IP.parse("192.0.2.1")!.string() == "192.0.2.1")
+  expect(IP.parse("2001:DB8:0:0:0:0:0:1")!.string() == "2001:db8::1")
+  expect(IP.parse("::ffff:192.0.2.1")!.string() == "::ffff:192.0.2.1")
+  expect(IP.parse("::ffff:192.0.2.1")!.unmapped() == IP.v4(192, 0, 2, 1))
+  expect(IP.parse("fe80::1%en0")!.zone == "en0")
+  expect(IP.parse("fe80::1%en0")!.string() == "fe80::1%en0")
+  expect(IP.parse("1:0:0:2:0:0:0:3")!.string() == "1:0:0:2::3")
+  expect(IP.parse("::")!.string() == "::")
+  for bad in ["", "1.2.3", "1.2.3.4.5", "01.2.3.4", "256.1.1.1", "1.2.3.4%en0", "[::1]", "::1::", "1:2:3:4:5:6:7:8:9", "12345::", "fe80::1%"] {
+    expect(IP.parse(bad) == none)
+  }
+  expect(IP.loopback.isLoopback() && IP.loopbackV6.isLoopback() && IP.parse("127.8.0.1")!.isLoopback())
+  expect(IP.parse("10.1.2.3")!.isPrivate() && IP.parse("172.31.0.1")!.isPrivate() && !IP.parse("172.32.0.1")!.isPrivate())
+  expect(IP.parse("fd00::1")!.isPrivate() && IP.parse("fe80::1")!.isLinkLocal() && IP.parse("169.254.0.9")!.isLinkLocal())
+  expect(IP.parse("224.0.0.251")!.isMulticast() && IP.parse("ff02::fb")!.isMulticast() && !IP.loopback.isMulticast())
+  expect(IP.any.isUnspecified() && IP.anyV6.isUnspecified() && !IP.loopback.isUnspecified())
+  let seen: Set<IP> = [IP.parse("::1")!, IP.loopbackV6]
+  expect(seen.count() == 1)
+}
+
+test "networks" {
+  let p = Prefix.parse("192.168.1.77/16")!
+  expect(p.string() == "192.168.0.0/16")
+  expect(p.contains(IP.parse("192.168.200.1")!) && !p.contains(IP.parse("192.169.0.1")!))
+  expect(p.contains(IP.parse("::ffff:192.168.3.4")!))
+  let v6 = Prefix.parse("2001:db8::/32")!
+  expect(v6.contains(IP.parse("2001:db8:ffff::1")!) && !v6.contains(IP.parse("2001:db9::1")!))
+  expect(Prefix.parse("10.0.0.0/33") == none && Prefix.parse("10.0.0.0") == none && Prefix.parse("10.0.0.0/08") == none)
+  expect(Prefix.parse("0.0.0.0/0")!.contains(IP.v4(8, 8, 8, 8)))
+}
+
+test "host and port" {
+  expect(joinHostPort("example.com", 80) == "example.com:80")
+  expect(joinHostPort("::1", 80) == "[::1]:80")
+  let (h, p) = try splitHostPort("[fe80::1%en0]:8080")
+  expect(h == "fe80::1%en0" && p == 8080)
+  let (h2, p2) = try splitHostPort("example.com:443")
+  expect(h2 == "example.com" && p2 == 443)
+  for bad in ["example.com", "::1:80", "[::1]80", "[::1", "a:99999", "a:x", "a:+1"] {
+    do {
+      let _ = try splitHostPort(bad)
+      expect(false)
+    } catch NetError.invalid(_) {}
+  }
+  expect(Address.parse("[::1]:53")!.string() == "[::1]:53")
+  expect(Address.parse("127.0.0.1:9")!.port == 9 && Address.parse("localhost:9") == none)
+}
+
+test "an echo server and its client" {
+  let server = try await serve(0, c => {
+    for await line in c.lines() {
+      try await c.write("{line.upper()}\n")
+    }
+  })
+  expect(server.port > 0)
+  let c = try await connect("127.0.0.1", server.port)
+  expect(c.remoteAddress.port == server.port && c.remoteAddress.ip.isLoopback())
+  expect(c.localAddress.port > 0)
+  try await c.write("hello\nworld\n")
+  expect(try await c.readLine() == "HELLO")
+  expect(try await c.readLine() == "WORLD")
+  c.close()
+  await server.close()
+}
+
+test "reading lines, bytes and to the end" {
+  let l = try await listen(0)
+  let c = try await connect("localhost", l.port)
+  let s = try await l.accept()
+  expect(s.remoteAddress.port == c.localAddress.port)
+  try await c.write("one\r\ntwo\nlong line\n\u{0}\u{1}\u{2}rest")
+  expect(try await s.readLine() == "one")
+  expect(try await s.readLine() == "two")
+  do {
+    let _ = try await s.readLine(max: 4)
+    expect(false)
+  } catch NetError.tooLarge(limit) {
+    expect(limit == 4)
+  }
+  expect(try await s.readLine() == "long line")
+  expect(try await s.readExactly(3) == bytes([0, 1, 2]))
+  c.closeWrite()
+  // Its writing side closed, the client still reads what comes back.
+  expect(try await s.readAll() == "rest".bytes())
+  expect(try await s.read() == none)
+  expect(try await s.readLine() == none)
+  try await s.write("bye")
+  s.close()
+  expect(try await c.readAll() == "bye".bytes())
+  do {
+    let _ = try await s.read()
+    expect(false)
+  } catch NetError.closed {}
+  l.close()
+}
+
+test "a last line without its ending, and ending early" {
+  let l = try await listen(0)
+  let c = try await connect("127.0.0.1", l.port)
+  let s = try await l.accept()
+  try await c.write("a\nb")
+  c.close()
+  expect(try await s.readLine() == "a")
+  expect(try await s.readLine() == "b")
+  expect(try await s.readLine() == none)
+  let c2 = try await connect("127.0.0.1", l.port)
+  let s2 = try await l.accept()
+  try await c2.write("12")
+  c2.close()
+  do {
+    let _ = try await s2.readExactly(3)
+    expect(false)
+  } catch NetError.ended {}
+  // What came is kept.
+  expect(try await s2.read() == "12".bytes())
+}
+
+test "many clients at once" {
+  let server = try await serve(0, c => {
+    while let line = try await c.readLine() {
+      try await c.write("{line}!\n")
+    }
+  })
+  async fn client(i: int) throws -> string {
+    let c = try await connect("127.0.0.1", server.port)
+    try await c.write("client {i}\n")
+    return (try await c.readLine()) ?? ""
+  }
+  var ids: [int] = []
+  for i in 0..<20 {
+    ids.push(i)
+  }
+  let got = try await all(ids, i => try await client(i))
+  expect(got.count() == 20 && got[0] == "client 0!" && got[19] == "client 19!")
+  await server.close()
+}
+
+test "a handler that throws" {
+  var seen: [string] = []
+  let server = try await serve(0, c => {
+    throw Error("no database")
+  }, onError: (c, e) => seen.push(e.message))
+  let c = try await connect("127.0.0.1", server.port)
+  // The handler's end closes its connection.
+  expect(try await c.read() == none)
+  expect(seen == ["no database"])
+  await server.close()
+}
+
+test "UDP" {
+  let a = try await udp(host: "127.0.0.1")
+  let b = try await udp(host: "127.0.0.1")
+  expect(a.port > 0 && a.port != b.port)
+  try await a.send("ping".bytes(), to: b.address)
+  let d = try await b.receive()
+  expect(d.data.string() == "ping" && d.from.port == a.port)
+  try await b.send("pong".bytes(), to: d.from)
+  expect((try await a.receive()).data.string() == "pong")
+  let c = try await a.connect("127.0.0.1", b.port)
+  expect(c.remoteAddress!.port == b.port)
+  try await c.send("again".bytes())
+  expect((try await b.receive()).data.string() == "again")
+  do {
+    try await a.send("x".bytes(), to: b.address)
+    expect(false)
+  } catch NetError.invalid(_) {
+    // Connected: it sends to its peer alone.
+  }
+  let d2 = try await udp(host: "127.0.0.1")
+  try await d2.sendTo(bytes([1, 2, 3]), host: "localhost", port: b.port)
+  expect((try await b.receive()).data == bytes([1, 2, 3]))
+  // Every interface's, both families: an IPv4 sender's address is IPv4.
+  let any = try await udp()
+  try await d2.send("x".bytes(), to: Address(ip: IP.loopback, port: any.port))
+  let fromV4 = try await any.receive()
+  expect(fromV4.from.ip.isV4() && fromV4.from.port == d2.port)
+  do {
+    try await d2.send("x".repeat(65508).bytes(), to: b.address)
+    expect(false)
+  } catch NetError.tooLarge(_) {}
+}
+
+test "looking up localhost" {
+  let ips = try await lookup("localhost")
+  expect(!ips.isEmpty() && ips.all(ip => ip.isLoopback()))
+  expect(try await lookup("192.0.2.1") == [IP.v4(192, 0, 2, 1)])
+  expect(try await lookupCNAME("localhost") != "")
+  // (A name that doesn't exist depends on the network's DNS, which may
+  // answer any: core/test/net_test.c asks a DNS server of its own.)
+}
+
+test "cancelling a read keeps what comes after" {
+  let l = try await listen(0)
+  let c1 = try await connect("127.0.0.1", l.port)
+  let s1 = try await l.accept()
+  let c2 = try await connect("127.0.0.1", l.port)
+  let s2 = try await l.accept()
+  var ran: [string] = []
+  async fn idle() throws -> string {
+    defer { ran.push("the idle read's defer") }
+    let _ = try await s1.readLine()
+    return "idle"
+  }
+  async fn busy() throws -> string {
+    try await c2.write("go\n")
+    return (try await s2.readLine()) ?? ""
+  }
+  // The busy one wins; the idle read is cancelled, its defer run.
+  expect(try await race(idle(), busy()) == "go")
+  expect(ran == ["the idle read's defer"])
+  // What comes after is the next read's.
+  try await c1.write("later\n")
+  expect(try await s1.readLine() == "later")
+}
+
+test "cancelling an accept, and closing a listener" {
+  let l = try await listen(0)
+  let c = try await connect("127.0.0.1", l.port)
+  let s = try await l.accept()
+  var ran = false
+  async fn waiting() throws -> string {
+    defer { ran = true }
+    let _ = try await l.accept()
+    return "accepted"
+  }
+  async fn echo() throws -> string {
+    try await c.write("x")
+    return (try await s.read())!.string()
+  }
+  expect(try await race(waiting(), echo()) == "x")
+  expect(ran)
+  // The listener still accepts.
+  let _ = try await connect("127.0.0.1", l.port)
+  let _ = try await l.accept()
+  async fn closed() throws -> bool {
+    do {
+      let _ = try await l.accept()
+    } catch NetError.closed {
+      return true
+    }
+    return false
+  }
+  async fn closer() -> bool {
+    l.close()
+    return true
+  }
+  let (gotClosed, _) = try await all(closed(), closer())
+  expect(gotClosed)
+}
+
+test "a connection closes as its task ends" {
+  let l = try await listen(0)
+  async fn holder() throws -> string {
+    let c = try await connect("127.0.0.1", l.port)
+    try await c.write("hi\n")
+    await never()
+    return "never"
+  }
+  async fn server() throws -> string {
+    let s = try await l.accept()
+    let line = (try await s.readLine()) ?? ""
+    return line
+  }
+  // The server's read wins; holder's task is cancelled, and its
+  // connection closes with it.
+  expect(try await race(holder(), server()) == "hi")
+  let c = try await connect("127.0.0.1", l.port)
+  let s = try await l.accept()
+  c.close()
+  expect(try await s.read() == none)
+}
+
+test "a read's timeout, and withTimeout" {
+  let l = try await listen(0)
+  var c = try await connect("127.0.0.1", l.port)
+  let s = try await l.accept()
+  c.readTimeout = 30ms
+  do {
+    let _ = try await c.read()
+    expect(false)
+  } catch NetError.timedOut {}
+  // An idle read doesn't hold the test's clock: withTimeout's time runs
+  // out.
+  var timedOut = false
+  do {
+    let _ = try await withTimeout(5s) {
+      return try await s.read()
+    }
+  } catch e {
+    timedOut = true
+  }
+  expect(timedOut)
+  // Nothing was lost.
+  try await s.write("late")
+  expect(try await c.read() == "late".bytes())
+}
+
+test "errors" {
+  let l = try await listen(0)
+  let port = l.port
+  do {
+    let _ = try await listen(port)
+    expect(false)
+  } catch NetError.addressInUse(address) {
+    expect(address == "127.0.0.1:{port}")
+  }
+  l.close()
+  do {
+    let _ = try await connect("127.0.0.1", port)
+    expect(false)
+  } catch NetError.refused(address) {
+    expect(address == "127.0.0.1:{port}")
+  }
+  do {
+    let _ = try await connect("127.0.0.1", 0)
+    expect(false)
+  } catch NetError.invalid(reason) {
+    expect(reason == "a port to connect to is 1 to 65535")
+  }
+  do {
+    let _ = try await listen(70000)
+    expect(false)
+  } catch NetError.invalid(_) {}
+  do {
+    let _ = try await listen(0, host: "192.0.2.1")
+    expect(false)
+  } catch NetError.addressUnavailable(_) {}
+  expect(NetError.unsupported.message().hasPrefix("a web page has no sockets"))
+  expect(NetError.refused(address: "a:1").message() == "the connection to a:1 was refused: nothing accepts connections there")
+}

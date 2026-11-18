@@ -698,6 +698,63 @@ HTTPS 交给反向代理（Caddy、nginx）：由它终止 TLS，再通过 HTTP 
 
 处理函数就是一个函数，所以测试可以直接用一个 `Request` 调用它或者路由，中间不经过 socket：`let r = try await api.handle(http.Request(method: "GET", path: "/notes/1"))`。
 
+## 其他协议：std/net
+
+HTTP 以外的协议交给 `std/net`：Redis、SMTP、游戏服务器，或者你自己设计的协议。它提供 TCP 连接和服务器、UDP 数据报以及 DNS 查询，和 Go 的 `net`、Rust 的 `std::net`、Node 的 `net` 与 `dgram` 类似。所有等待都是 async 的，socket 的读写在运行时自己的线程上完成。下面是一个按行收发的服务器，保存客户端设置的值：
+
+```asuka check
+import std/net
+import std/os
+
+async fn main() throws {
+  var values: [string: string] = [:]
+  let server = try await net.serve(7000, c => {
+    for await line in c.lines() {
+      let words = line.split(" ", count: 3)
+      if words.count() == 3 && words[0] == "SET" {
+        values[words[1]] = words[2]
+        try await c.write("OK\r\n")
+      } else if words.count() == 2 && words[0] == "GET" {
+        try await c.write("{values[words[1]] ?? "-"}\r\n")
+      } else {
+        try await c.write("ERR unknown command\r\n")
+      }
+    }
+  })
+  print("listening on {server.address.string()}")
+  for await _ in os.signals() {
+    break
+  }
+  await server.close()
+}
+```
+
+它的客户端：
+
+```asuka check
+import std/net
+
+async fn main() throws {
+  let c = try await net.connect("localhost", 7000, timeout: 5s)
+  try await c.write("SET greeting hello\r\n")
+  print(try await c.readLine())   // OK
+  try await c.write("GET greeting\r\n")
+  print(try await c.readLine())   // hello
+  c.close()
+}
+```
+
+- `net.connect(host, port, timeout:, noDelay:, keepAlive:)` 返回一个 `Conn`。主机名会先解析，再按 Happy Eyeballs 的方式尝试它的各个地址：IPv6 和 IPv4 的地址交替尝试，上一个 250 毫秒内没连上就开始下一个，保留最先连上的那个。`timeout` 同时限制解析和连接的时间。
+- `Conn` 的读取方法有 `read(max:)`（已经到达的数据，连接结束时为 `none`）、`readExactly(n)`、`readLine(max:)`（不含 `\n` 或 `\r\n`）、`readUntil(delimiter, max:)` 和 `readAll(max:)`，也可以用流的方式读：`lines()` 和 `chunks()`；写入用 `write(text)` 和 `writeBytes(data)`。`closeWrite()` 关闭本端的写入（对端会读到结束，但仍然可以回复），`close()` 关闭整个连接。`readTimeout` 和 `writeTimeout` 限制每次等待的时间（超时抛出 `NetError.timedOut`）；`localAddress` 和 `remoteAddress` 是两端的地址。同一时间只能有一个读取在等待；写入会排队，每次都完整发送。
+- `net.serve(port, handler, host:, onError:)` 用 `handler` 处理每个客户端的连接：每个连接一个独立的 task，可以同时处理很多个；处理函数返回时连接随之关闭。`net.listen(port, host:)` 返回一个 `Listener`，可以自己调用 `accept()`。`host` 默认是 `127.0.0.1`；`"0.0.0.0"` 接受所有 IPv4 网卡上的客户端，`""` 或 `"::"` 接受所有网卡上的。端口传 0 时由系统挑选（见 `server.port`）。`server.close(grace:)` 停止接受连接，超过 `grace`（默认不等待）后取消仍在运行的处理函数；`server.wait()` 一直等到服务器停止。
+- `net.udp(port:, host:, reuse:)` 返回一个 `UDPSocket`：`send(data, to:)`、`sendTo(data, host:, port:)`、`receive(timeout:)`（得到一个 `Datagram`，包含 `data` 和发送方 `from`）、`datagrams()`、`connect(host, port)`，以及用于组播的 `joinGroup(ip)` 和 `setBroadcast(on)`。
+- `net.lookup(host)` 按系统的方式（hosts 文件、DNS）解析主机名的 IP 地址；还有 `reverseLookup(ip)`、`lookupCNAME`，以及查询 DNS 记录的 `lookupMX`、`lookupTXT`、`lookupSRV`、`lookupNS`。
+- `net.IP` 是一个地址（`IP.parse("2001:db8::1")`、`isLoopback()`、`isPrivate()`、`string()`），`net.Prefix` 是一个网段（`Prefix.parse("10.0.0.0/8")!.contains(ip)`），`net.Address` 是 IP 加端口；`joinHostPort` 和 `splitHostPort` 会处理 IPv6 的方括号（`"[::1]:80"`）。
+- 取消正在等待的 task（输掉了一次 `race`、`withTimeout` 到时、它的 owner 被销毁）会停止这次等待，而且此前已经到达的数据不会丢失：下一次读取会拿到它们。已经开始的写入会继续写完。socket 属于创建它的 task：那个 task 结束时 socket 随之关闭。
+- 失败时抛出 `NetError`：`refused`、`reset`、`timedOut`、`unreachable`、`notFound`、`lookupFailed`、`closed`、`ended`、`addressInUse`、`addressUnavailable`、`denied`、`tooLarge`、`invalid`、`unsupported`、`failed`。
+
+`std/net` 暂时还没有 TLS：需要 HTTPS 和 `wss:` 时，用 `std/http` 和 `std/websocket`，它们通过各平台自己的客户端通信。桌面应用和手机应用（运行期间）可以像程序一样使用 socket；网页没有 socket（`NetError.unsupported`），不过 IP 地址和 host:port 相关的辅助函数照样可用。
+
 ## 密钥、密码与签名：std/crypto
 
 std/crypto 在所有平台上都是同一份 C 代码，Web 也一样：一个平台加密、哈希或签名的数据，其他任何平台都能解开和验证。服务验证 webhook 的 HMAC 时用 `crypto.equal` 比较，它的耗时与字节在哪里不同无关；保存密码用 `hashPassword`（argon2id，输出其他系统也能读的 PHC 格式），它会在另一个线程上运行：
@@ -925,3 +982,4 @@ test "reads git's branch" {
 | `std/term` | 支持 | 支持 | 支持 | 没有终端：没有样式，`prompt` 返回 `none` |
 | `std/log` | stderr（应用：统一日志系统） | stderr（应用：调试器的输出） | stderr | 统一日志系统、logcat、浏览器控制台 |
 | `http.serve` | 支持 | 支持 | 支持 | 手机应用：运行期间可用；Web：`unsupported` |
+| `std/net` | 支持 | 支持 | 支持 | 手机应用：运行期间可用；Web：`unsupported` |

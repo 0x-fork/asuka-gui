@@ -1614,6 +1614,28 @@ open connection holds the scheduler, so a test's loop waits for what
 it posts. TLS is a reverse proxy's; it would sit between the socket and
 the connection's buffers.
 
+**std/net** (TCP, UDP, DNS) is the core's C too (core/src/std/net.c,
+dns.c; the socket shims it shares with the HTTP server in sock.c): one
+thread for every socket of the process runs a poll() loop (WSAPoll),
+the main thread's operations (a connect, a read of some bytes, of n, up
+to a delimiter, to the end; a write, an accept, a datagram) handed to
+it on a queue and posted back when done, so a read of any kind is one
+crossing. A cancelled operation is asked back, and what it got by then
+is put back (a read's bytes at its buffer's front, an accepted
+connection, a datagram) before the socket's next operation goes. Names
+are looked up on a thread per lookup (getaddrinfo, getnameinfo); a
+connect tries a name's addresses as Happy Eyeballs does (RFC 8305).
+DNS's records (MX, TXT, SRV, NS) come from the system's resolver:
+DNSService on Apple's, android_res_nquery, DnsQuery_W; on Linux a stub
+resolver of the core's own over /etc/resolv.conf's servers, as Go's.
+Every socket belongs to the task that made it (its owner's cleanup
+closes it); `net.serve` runs a task per connection, as the HTTP
+server does. The net thread holds the scheduler only while it has work
+of its own (a command, a connect, a write, a deadline), and a moment
+after for what loopback is still delivering: a test's clock moves on
+while a read waits for a peer that's idle. TLS would be a layer on the
+net thread between a connection's socket and its buffers.
+
 **An app's metadata** is `asuka.toml` beside its Asuka code (TOML 1.0, read
 by `internal/toml`), all optional:
 name, ID (bundle ID and application ID), version and build number, a
