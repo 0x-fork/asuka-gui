@@ -542,15 +542,16 @@ a float past the range gives the nearest `int` (`0` for NaN).
 #### Built-in methods
 
 Strings, bytes, arrays, sets, maps and optionals have methods; those
-that change their value (`push`, `insert`, `removeAt`, `removeWhere`,
-`pop`, `clear`, `sort`, `remove`) take a `var` or state:
+that change their value (`push`, `pushFirst`, `insert`, `removeAt`,
+`removeWhere`, `pop`, `popFirst`, `clear`, `sort`, `remove`) take a
+`var` or state:
 
 | Type | Methods |
 |---|---|
-| `[T]` | `count()`, `count(where)`, `isEmpty()`, `first()`, `last()`, `get(i)` (a `T?`), `push(x)`, `insert(x, at: i)`, `removeAt(i)`, `removeWhere(p)`, `pop()`, `clear()`, `map(f)`, `flatMap(f)` (the arrays `f` gives, one after another), `compactMap(f)` (what `f` gives, without its nones), `filter(p)`, `reduce(initial, f)`, `any(p)`, `all(p)`, `index(p)` (an `int?`), `find(p)`, `contains(x)`, `sum()`, `min()`, `max()` (a `T?`; `min(by:)`, `max(by:)` with a less-than), `unique()`, `grouped(by: f)` (a `[K: [T]]`), `chunked(n)`, `zip(other)` (pairs, as long as the shorter), `reversed()`, `slice(from, to)` (`to` left out: the end), `prefix(n)`, `suffix(n)`, `sorted()`, `sorted(by)`, `sort()`, `sort(by)`, `enumerated()`, `joined(separator:)` (of strings), `+` |
-| `Set<T>` | `count()`, `isEmpty()`, `contains(x)`, `insert(x)` (whether it was new), `remove(x)` (whether it was there), `union(s)`, `intersection(s)`, `subtracting(s)`, `isSubset(of: s)`, `isSuperset(of: s)`; `Set(xs)` is an array's distinct elements, `Set<T>()` none |
-| `[K: V]` | `m[k]` (a `V?`), `m[k] = v`, `count()`, `isEmpty()`, `has(k)`, `get(k)`, `remove(k)`, `keys()`, `values()` (in insertion order), `mapValues(f)`, `filter((k, v) => …)` |
-| `string` | `count()` (characters), `byteCount()`, `isEmpty()`, `upper()`, `lower()`, `trim()`, `trimStart()`, `trimEnd()`, `trimPrefix(s)`, `trimSuffix(s)`, `contains(s)`, `hasPrefix(s)`, `hasSuffix(s)`, `replace(old, new, count:)` (every one unless count says), `split(sep, count:)`, `fields()` (the words), `lines()`, `find(s)`, `findLast(s)`, `findAny(chars)` (byte offsets, or none), `slice(from, to)` (characters), `byteSlice(from, to)` (bytes: the offsets find gives), `padStart(width, with:)`, `padEnd(width, with:)`, `toInt()`, `toInt(radix:)`, `toFloat()`, `repeat(n)`, `chars()`, `reversed()`, `bytes()`, `+` |
+| `[T]` | `count()`, `count(where)`, `isEmpty()`, `first()`, `last()`, `get(i)` (a `T?`), `push(x)`, `pushFirst(x)`, `insert(x, at: i)`, `removeAt(i)`, `removeWhere(p)`, `pop()`, `popFirst()`, `clear()`, `map(f)`, `flatMap(f)` (the arrays `f` gives, one after another), `compactMap(f)` (what `f` gives, without its nones), `filter(p)`, `reduce(initial, f)`, `any(p)`, `all(p)`, `index(p)` (an `int?`), `find(p)`, `contains(x)`, `sum()`, `min()`, `max()` (a `T?`; `min(by:)`, `max(by:)` with a less-than, `min(key:)`, `max(key:)` by a key), `unique()`, `grouped(by: f)` (a `[K: [T]]`), `chunked(n)`, `zip(other)` (pairs, as long as the shorter), `reversed()`, `slice(from, to)` (`to` left out: the end), `prefix(n)`, `suffix(n)`, `sorted()`, `sorted(by)`, `sorted(key:, descending:)`, `sort()`, `sort(by)`, `sort(key:, descending:)`, `enumerated()`, `joined(separator:)` (of strings), `lazy()` (a `Seq<T>`), `+` |
+| `Set<T>` | `count()`, `isEmpty()`, `contains(x)`, `insert(x)` (whether it was new), `remove(x)` (whether it was there), `union(s)`, `intersection(s)`, `subtracting(s)`, `isSubset(of: s)`, `isSuperset(of: s)`, `lazy()`; `Set(xs)` is an array's distinct elements, `Set<T>()` none |
+| `[K: V]` | `m[k]` (a `V?`), `m[k] = v`, `count()`, `isEmpty()`, `has(k)`, `get(k)`, `remove(k)`, `keys()`, `values()` (in insertion order), `mapValues(f)`, `filter((k, v) => …)`, `lazy()` (its `(key, value)` pairs) |
+| `string` | `count()` (characters), `byteCount()`, `isEmpty()`, `upper()`, `lower()`, `trim()`, `trimStart()`, `trimEnd()`, `trimPrefix(s)`, `trimSuffix(s)`, `contains(s)`, `hasPrefix(s)`, `hasSuffix(s)`, `replace(old, new, count:)` (every one unless count says), `split(sep, count:)`, `fields()` (the words), `lines()`, `find(s)`, `findLast(s)`, `findAny(chars)` (byte offsets, or none), `slice(from, to)` (characters), `byteSlice(from, to)` (bytes: the offsets find gives), `padStart(width, with:)`, `padEnd(width, with:)`, `toInt()`, `toInt(radix:)`, `toFloat()`, `repeat(n)`, `chars()`, `lazy()` (its characters, a `Seq<string>`), `reversed()`, `bytes()`, `+` |
 | `bytes` | `b[i]` (an `int`, 0 to 255; out of range is an error), `count()`, `isEmpty()`, `get(i)` (an `int?`), `slice(from, to)`, `concat(b)`, `string()` (UTF-8; what isn't becomes U+FFFD), `hex()` and `hex(separator)` (`"04 a1"`); `bytes()` is none, `bytes([0x04, 0xa1])` those, `s.bytes()` a string's UTF-8 |
 | `int` | `float()`, `abs()`, `toString(radix:)` (`255.toString(radix: 16)` is `"ff"`), `padded(width)` (`7.padded(2)` is `"07"`), `addingChecked(o)`, `subtractingChecked(o)`, `multipliedChecked(o)` (an `int?`: none on overflow) |
 | `float` | `fixed(digits)`, `rounded()`, `floor()`, `ceil()`, `int()` (toward zero), `abs()` |
@@ -598,6 +599,35 @@ fn report(sales: [Sale]) -> [string] {
 as `sorted()` does, and give the first of equal elements. `chunked(n)`
 of an `n` under 1 is an error, as `xs[i]` out of range is.
 
+`sorted(key:)` orders the elements by what a function gives each, a
+`Comparable` computed once per element: `people.sorted(key: p =>
+p.age)`. `descending: true` puts the greatest first, and either way the
+sort is stable: elements with equal keys keep their order. `sort(key:)`
+sorts a `var` in place, and `min(key:)` and `max(key:)` give the element
+whose key is least or greatest (the first of equal ones). `sorted(by:)`
+takes a less-than instead, for an order no single key says.
+
+```asuka
+struct Player {
+  name: string
+  score: int
+  joined: int
+}
+
+fn ranking(players: [Player]) -> [string] {
+  let best = players.sorted(key: p => p.score, descending: true)
+  let newest = players.max(key: p => p.joined)
+  return best.map(p => p.name) + [newest?.name ?? ""]
+}
+```
+
+An array is a double-ended queue too: `pushFirst(x)` and `popFirst()`
+change its start as `push(x)` and `pop()` change its end, each in O(1)
+(amortized: an array keeps room at its start once it's changed there),
+and so do `insert(x, at: 0)` and `removeAt(0)`. An insertion or a
+removal elsewhere moves the elements on its shorter side. A queue is
+an array: `queue.push(job)`, then `queue.popFirst()`.
+
 `toInt(radix:)` reads a whole string in a radix from 2 to 36, letters
 in either case and an optional sign first (`"ff".toInt(radix: 16)` is
 255, `"-101".toInt(radix: 2)` is -5), or gives none; `toString(radix:)`
@@ -612,6 +642,56 @@ none: `trim()` it first). `toInt()` takes digits (`"+7"`, `"-42"`);
 `toFloat()` also a fraction and an exponent (`"2.5"`, `".5"`,
 `"1e-3"`) and what a float prints as (`"Infinity"`, `"NaN"`). Both
 read `.` as the decimal point in every language.
+
+#### Lazy sequences
+
+`xs.lazy()` is an array's elements as a `Seq<T>`, a lazy sequence. Its
+`map`, `filter`, `take` and the rest make another `Seq` and compute
+nothing; what reads it (a `for`, `toArray()`, `first()`, `reduce`...)
+computes its elements one at a time, each through every step, with no
+array in between. A chain over a million elements that keeps three
+computes those three and what it took to find them, and a sequence may
+have no end:
+
+```asuka
+fn squaresUnder(limit: int) -> [int] = Seq(from: 1).map(n => n * n).takeWhile(n => n < limit).toArray()
+
+fn firstLong(lines: [string]) -> string? = lines.lazy().map(l => l.trim()).find(where: l => l.count() > 80)
+
+fn fibonacci() -> Seq<int> = Seq(state: (0, 1), next: s => (s.0, (s.1, s.0 + s.1)))
+```
+
+A map's `lazy()` gives its `(key, value)` pairs, a set's its elements, a
+string's its characters, and a range's (`(0..<n).lazy()`) its numbers,
+without an array of them. `Seq(…)` makes one from a function:
+
+| Made with | Its elements |
+|---|---|
+| `Seq(from: n, by: step)` | `n`, `n + step`, ... without end; `by` is 1 unless it says |
+| `Seq(first: x, next: f)` | `x`, `f(x)`, `f(f(x))`, ... until `f` gives none |
+| `Seq(state: s, next: f)` | `f(s)` gives the next element and the next state, `(x, s2)`, or none at the end |
+| `Seq(repeating: x, count: n)` | `x`, `n` times; without `count`, without end |
+
+| | Methods |
+|---|---|
+| A new `Seq` | `map(f)`, `filter(p)`, `compactMap(f)`, `flatMap(f)` (the elements of the `Seq`s `f` gives, one after another), `enumerated()`, `zip(other)`, `take(n)`, `skip(n)`, `takeWhile(p)`, `skipWhile(p)`, `chunked(n)`, `windows(n)` (each `n` in a row: `[1, 2, 3]`'s `windows(2)` is `[1, 2]`, `[2, 3]`), `onEach(f)` (`f` called with each element as it's read), `unique()`, `concat(other)` |
+| Reading it | `toArray()`, `toSet()`, `toMap()` (of `(key, value)` pairs), `count()`, `count(where:)`, `first()`, `last()`, `find(where:)`, `any(where:)`, `all(where:)`, `contains(x)`, `reduce(initial, f)`, `sum()`, `min()`, `max()`, `min(by:)`, `max(by:)`, `min(key:)`, `max(key:)`, `joined(separator:)` |
+
+`take`, `find`, `first`, `any` and `all` stop pulling elements once
+they have their answer: what comes after is never computed. A `Seq` is
+read from its start each time (a `for` over it twice computes it
+twice). It holds its source's value as it was when it was made, as any
+value would: a change to the array after it doesn't change it.
+
+A step's function runs later, as the sequence is read, so it can't
+throw: do that in a `for`, or with an array's `map`. A function that
+reading calls at once (`reduce`, `find(where:)`, `any`, `count(where:)`,
+`min(key:)`...) may, and then the call throws what it throws, as an
+array's methods do.
+
+A priority queue, and maps and sets kept in their keys' order, are
+`std/collections`' `Heap`, `SortedMap` and `SortedSet` ([Standard
+library](https://asuka.egoist.dev/docs/stdlib)).
 
 #### Value semantics
 
@@ -765,7 +845,7 @@ match line {
 ```
 
 A struct or an enum takes operators from its methods: `fn add(o: T) ->
-R` is `a + b`, `fn sub(o: T) -> R` (or `minus`) is `a - b`, `fn mul(o:
+R` (or `plus`) is `a + b`, `fn sub(o: T) -> R` (or `minus`) is `a - b`, `fn mul(o:
 T) -> R` (or `times`) is `a * b`, `fn div(o: T) -> R` (or `quo`) is `a /
 b`, `fn rem(o: T) -> R` is `a % b`, `fn neg() -> R` is `-a`, and `fn
 compare(o: T) -> int` (negative, zero or positive) is `<`, `<=`, `>`
@@ -1158,7 +1238,8 @@ its type (`Unit.big(n)`) do: `if let c: Circle = shape { … }`,
 ends with `_`; see [Interfaces and
 generics](https://asuka.egoist.dev/docs/language/functions#interfaces-and-generics).
 
-`for` goes over an array, a set, a map's `(key, value)` pairs, or a
+`for` goes over an array, a set, a map's `(key, value)` pairs, a lazy
+sequence (a `Seq`: [Values and types](https://asuka.egoist.dev/docs/language/types#lazy-sequences)), or a
 range:
 `a..<b` is the ints from `a` up to `b`, without it, and `a..b` with it
 (`0..<3` is `[0, 1, 2]`, and a `for` over a range makes no array).
@@ -1167,9 +1248,11 @@ the loop, or go on to its next turn.
 
 `for` also goes over a value of your own types: an iterator, whose type
 has `mut fn next() -> T?` (`for` calls it on a copy, until it gives
-`none`), or a sequence, whose `fn iter()` gives one (`for` calls it
-once). The prelude's `Iterator<T>` names such a type, for constraints:
-`fn sum<I: Iterator<int>>(xs: I) -> int`.
+`none`), or a sequence, whose `fn iter()` gives an iterator or a `Seq`
+(`for` calls it once). The prelude's `Iterator<T>` names such a type,
+for constraints: `fn sum<I: Iterator<int>>(xs: I) -> int`. An
+iterator's `none` is its end, so one whose elements may be none (a
+`T?`) gives a `Seq` instead: `fn iter() -> Seq<int?> = slots.lazy()`.
 
 ```asuka
 struct Node {

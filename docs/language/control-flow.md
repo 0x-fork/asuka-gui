@@ -25,7 +25,8 @@ its type (`Unit.big(n)`) do: `if let c: Circle = shape { … }`,
 ends with `_`; see [Interfaces and
 generics](functions.md#interfaces-and-generics).
 
-`for` goes over an array, a set, a map's `(key, value)` pairs, or a
+`for` goes over an array, a set, a map's `(key, value)` pairs, a lazy
+sequence (a `Seq`: [Values and types](types.md#lazy-sequences)), or a
 range:
 `a..<b` is the ints from `a` up to `b`, without it, and `a..b` with it
 (`0..<3` is `[0, 1, 2]`, and a `for` over a range makes no array).
@@ -34,9 +35,11 @@ the loop, or go on to its next turn.
 
 `for` also goes over a value of your own types: an iterator, whose type
 has `mut fn next() -> T?` (`for` calls it on a copy, until it gives
-`none`), or a sequence, whose `fn iter()` gives one (`for` calls it
-once). The prelude's `Iterator<T>` names such a type, for constraints:
-`fn sum<I: Iterator<int>>(xs: I) -> int`.
+`none`), or a sequence, whose `fn iter()` gives an iterator or a `Seq`
+(`for` calls it once). The prelude's `Iterator<T>` names such a type,
+for constraints: `fn sum<I: Iterator<int>>(xs: I) -> int`. An
+iterator's `none` is its end, so one whose elements may be none (a
+`T?`) gives a `Seq` instead: `fn iter() -> Seq<int?> = slots.lazy()`.
 
 ```asuka check
 struct Node {

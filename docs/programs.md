@@ -644,6 +644,32 @@ async fn main() throws {
 }
 ```
 
+## The most of many: std/collections
+
+A priority queue keeps what comes next in order as items come and go:
+`std/collections`' `Heap`, by a less-than. Keeping the k greatest of
+many is a heap of k whose least is the first to go, so the whole input
+is never sorted: each item is one O(log k) step
+([Standard library](stdlib.md)).
+
+```asuka check
+import std/collections.{Heap}
+import std/os
+
+// The ten words said most often on stdin, with their counts.
+fn main() {
+  var counts: [string: int] = [:]
+  for line in os.readAll().string().lines() {
+    for w in line.lower().fields() { counts[w, default: 0] += 1 }
+  }
+  var top = Heap<(string, int)>(by: (a, b) => a.1 < b.1)
+  for (w, n) in counts {
+    if top.count() < 10 { top.push((w, n)) } else { let _ = top.pushPop((w, n)) }
+  }
+  for (w, n) in top.sorted().reversed() { print("{n}\t{w}") }
+}
+```
+
 ## JSON of any shape
 
 A struct reads JSON whose shape the program knows (`json.decode<T>`,

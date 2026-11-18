@@ -387,14 +387,14 @@ fn fnv1a(data: bytes) -> int {
 
 #### 組み込みメソッド
 
-文字列、バイト列、配列、セット、マップ、オプショナルにはメソッドがあります。値そのものを変更するメソッド（`push`、`insert`、`removeAt`、`removeWhere`、`pop`、`clear`、`sort`、`remove`）は、`var` か状態に対してだけ呼べます。
+文字列、バイト列、配列、セット、マップ、オプショナルにはメソッドがあります。値そのものを変更するメソッド（`push`、`pushFirst`、`insert`、`removeAt`、`removeWhere`、`pop`、`popFirst`、`clear`、`sort`、`remove`）は、`var` か状態に対してだけ呼べます。
 
 | 型 | メソッド |
 |---|---|
-| `[T]` | `count()`、`count(where)`、`isEmpty()`、`first()`、`last()`、`get(i)`（`T?` を返す）、`push(x)`、`insert(x, at: i)`、`removeAt(i)`、`removeWhere(p)`、`pop()`、`clear()`、`map(f)`、`flatMap(f)`（`f` が返す配列を順につなげる）、`compactMap(f)`（`f` の結果から none を除く）、`filter(p)`、`reduce(initial, f)`、`any(p)`、`all(p)`、`index(p)`（`int?` を返す）、`find(p)`、`contains(x)`、`sum()`、`min()`、`max()`（`T?` を返す。`min(by:)`、`max(by:)` は「より小さい」の比較を取る）、`unique()`、`grouped(by: f)`（`[K: [T]]` を返す）、`chunked(n)`、`zip(other)`（短いほうの長さまでペアにする）、`reversed()`、`slice(from, to)`（`to` を省くと末尾まで）、`prefix(n)`、`suffix(n)`、`sorted()`、`sorted(by)`、`sort()`、`sort(by)`、`enumerated()`、`joined(separator:)`（文字列の配列）、`+` |
-| `Set<T>` | `count()`、`isEmpty()`、`contains(x)`、`insert(x)`（新しく加わったかを返す）、`remove(x)`（あったかを返す）、`union(s)`、`intersection(s)`、`subtracting(s)`、`isSubset(of: s)`、`isSuperset(of: s)`。`Set(xs)` は配列の重複しない要素、`Set<T>()` は空のセット |
-| `[K: V]` | `m[k]`（`V?` を返す）、`m[k] = v`、`count()`、`isEmpty()`、`has(k)`、`get(k)`、`remove(k)`、`keys()`、`values()`（挿入した順）、`mapValues(f)`、`filter((k, v) => …)` |
-| `string` | `count()`（文字数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s)`、`hasPrefix(s)`、`hasSuffix(s)`、`replace(old, new, count:)`（count を指定しなければすべて置き換え）、`split(sep, count:)`、`fields()`（空白で区切った単語）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（バイト単位の位置。見つからなければ none）、`slice(from, to)`（文字単位）、`byteSlice(from, to)`（バイト単位：find が返す位置）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toInt(radix:)`、`toFloat()`、`repeat(n)`、`chars()`、`reversed()`、`bytes()`、`+` |
+| `[T]` | `count()`、`count(where)`、`isEmpty()`、`first()`、`last()`、`get(i)`（`T?` を返す）、`push(x)`、`pushFirst(x)`、`insert(x, at: i)`、`removeAt(i)`、`removeWhere(p)`、`pop()`、`popFirst()`、`clear()`、`map(f)`、`flatMap(f)`（`f` が返す配列を順につなげる）、`compactMap(f)`（`f` の結果から none を除く）、`filter(p)`、`reduce(initial, f)`、`any(p)`、`all(p)`、`index(p)`（`int?` を返す）、`find(p)`、`contains(x)`、`sum()`、`min()`、`max()`（`T?` を返す。`min(by:)`、`max(by:)` は「より小さい」の比較を、`min(key:)`、`max(key:)` はキーを取る）、`unique()`、`grouped(by: f)`（`[K: [T]]` を返す）、`chunked(n)`、`zip(other)`（短いほうの長さまでペアにする）、`reversed()`、`slice(from, to)`（`to` を省くと末尾まで）、`prefix(n)`、`suffix(n)`、`sorted()`、`sorted(by)`、`sorted(key:, descending:)`、`sort()`、`sort(by)`、`sort(key:, descending:)`、`enumerated()`、`joined(separator:)`（文字列の配列）、`lazy()`（`Seq<T>` を返す）、`+` |
+| `Set<T>` | `count()`、`isEmpty()`、`contains(x)`、`insert(x)`（新しく加わったかを返す）、`remove(x)`（あったかを返す）、`union(s)`、`intersection(s)`、`subtracting(s)`、`isSubset(of: s)`、`isSuperset(of: s)`、`lazy()`。`Set(xs)` は配列の重複しない要素、`Set<T>()` は空のセット |
+| `[K: V]` | `m[k]`（`V?` を返す）、`m[k] = v`、`count()`、`isEmpty()`、`has(k)`、`get(k)`、`remove(k)`、`keys()`、`values()`（挿入した順）、`mapValues(f)`、`filter((k, v) => …)`、`lazy()`（`(key, value)` の組） |
+| `string` | `count()`（文字数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s)`、`hasPrefix(s)`、`hasSuffix(s)`、`replace(old, new, count:)`（count を指定しなければすべて置き換え）、`split(sep, count:)`、`fields()`（空白で区切った単語）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（バイト単位の位置。見つからなければ none）、`slice(from, to)`（文字単位）、`byteSlice(from, to)`（バイト単位：find が返す位置）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toInt(radix:)`、`toFloat()`、`repeat(n)`、`chars()`、`lazy()`（文字の `Seq<string>`）、`reversed()`、`bytes()`、`+` |
 | `bytes` | `b[i]`（0 から 255 の `int`。範囲外はエラー）、`count()`、`isEmpty()`、`get(i)`（`int?` を返す）、`slice(from, to)`、`concat(b)`、`string()`（UTF-8 として読み、不正な部分は U+FFFD になる）、`hex()` と `hex(separator)`（`"04 a1"`）。`bytes()` は空のバイト列、`bytes([0x04, 0xa1])` はそのバイト列、`s.bytes()` は文字列の UTF-8 |
 | `int` | `float()`、`abs()`、`toString(radix:)`（`255.toString(radix: 16)` は `"ff"`）、`padded(width)`（`7.padded(2)` は `"07"`）、`addingChecked(o)`、`subtractingChecked(o)`、`multipliedChecked(o)`（`int?`：オーバーフローなら none） |
 | `float` | `fixed(digits)`、`rounded()`、`floor()`、`ceil()`、`int()`（0 の方向へ切り捨て）、`abs()` |
@@ -435,11 +435,61 @@ fn report(sales: [Sale]) -> [string] {
 
 `unique()` は各要素を最初に現れた位置に一度だけ残し、`grouped(by:)` もキーを最初に現れた順に並べます。どちらも値（`grouped` ではキー）が `Hashable` である必要があります。`min()` と `max()` は `sorted()` と同じ順序で比べ、等しい要素があれば最初のものを返します。`chunked(n)` の `n` が 1 未満だと、範囲外の `xs[i]` と同じくエラーになります。
 
+`sorted(key:)` は、関数が各要素から求めるキーの順に並べます。キーは `Comparable` で、要素ごとに一度だけ求められます（`people.sorted(key: p => p.age)`）。`descending: true` を付けると大きいものから並び、どちらの向きでも安定ソートなので、キーが等しい要素は元の順序を保ちます。`sort(key:)` は `var` をその場で並べ替え、`min(key:)` と `max(key:)` はキーが最小、最大の要素を返します（等しければ最初のもの）。一つのキーでは決まらない順序には、「より小さい」の比較を取る `sorted(by:)` を使います。
+
+```asuka
+struct Player {
+  name: string
+  score: int
+  joined: int
+}
+
+fn ranking(players: [Player]) -> [string] {
+  let best = players.sorted(key: p => p.score, descending: true)
+  let newest = players.max(key: p => p.joined)
+  return best.map(p => p.name) + [newest?.name ?? ""]
+}
+```
+
+配列は両端キューでもあります。`pushFirst(x)` と `popFirst()` は、`push(x)` と `pop()` が末尾を変えるのと同じように先頭を変え、どれも O(1)（償却。先頭を一度変えた配列は、先頭に余白を持ちます）です。`insert(x, at: 0)` と `removeAt(0)` も同じです。それ以外の位置での挿入や削除では、短い側の要素だけが動きます。つまりキューは配列そのもので、`queue.push(job)` で入れて `queue.popFirst()` で取り出します。
+
 `toInt(radix:)` は文字列全体を 2 から 36 までの基数で読みます。英字は大文字でも小文字でもよく、先頭に符号を付けられます（`"ff".toInt(radix: 16)` は 255、`"-101".toInt(radix: 2)` は -5）。読めなければ none です。逆に `toString(radix:)` は整数をその基数で、英字は小文字で書き出します。基数が 2 から 36 の範囲外ならエラーです。
 
 `min`、`max`、`abs`、`float(n)`、`int(x)` は関数です。それ以外（`math.sqrt`、`math.pow`、`math.pi` など）は `std/math` にあります。
 
 `toInt()` と `toFloat()` は文字列全体を読み、読めなければ none を返します。符号は付けても付けなくてもよく、その後に数字が続き、前後に余計なものがあってはいけません（`" 12"` は none なので、先に `trim()` します）。`toInt()` が読むのは整数（`"+7"`、`"-42"`）だけで、`toFloat()` は小数部と指数（`"2.5"`、`".5"`、`"1e-3"`）、それに浮動小数点数を表示したときの形（`"Infinity"`、`"NaN"`）も読みます。どちらも、ユーザーの言語にかかわらず小数点は `.` です。
+
+#### 遅延シーケンス
+
+`xs.lazy()` は配列の要素を `Seq<T>`、つまり遅延シーケンスにします。その `map`、`filter`、`take` などは別の `Seq` を作るだけで、何も計算しません。計算するのは、それを読むもの（`for`、`toArray()`、`first()`、`reduce` など）です。要素は一つずつ、すべての段階をまとめて通って求められ、途中で配列は作られません。そのため、百万個の要素に処理をつなげて最後に三つだけ残すなら、計算されるのはその三つと、それを見つけるまでに必要だった要素だけです。終わりのないシーケンスも作れます。
+
+```asuka
+fn squaresUnder(limit: int) -> [int] = Seq(from: 1).map(n => n * n).takeWhile(n => n < limit).toArray()
+
+fn firstLong(lines: [string]) -> string? = lines.lazy().map(l => l.trim()).find(where: l => l.count() > 80)
+
+fn fibonacci() -> Seq<int> = Seq(state: (0, 1), next: s => (s.0, (s.1, s.0 + s.1)))
+```
+
+マップの `lazy()` は `(key, value)` の組を、セットのものは要素を、文字列のものは文字を、範囲のもの（`(0..<n).lazy()`）は数を、配列を作らずに返します。`Seq(…)` は関数からシーケンスを作ります。
+
+| 作り方 | 要素 |
+|---|---|
+| `Seq(from: n, by: step)` | `n`、`n + step`、……と終わりなく続きます。`by` を省くと 1 です |
+| `Seq(first: x, next: f)` | `x`、`f(x)`、`f(f(x))`、……と、`f` が none を返すまで続きます |
+| `Seq(state: s, next: f)` | `f(s)` が次の要素と次の状態の組 `(x, s2)` を返し、終わりでは none を返します |
+| `Seq(repeating: x, count: n)` | `x` を `n` 回。`count` を省くと終わりなく続きます |
+
+| | メソッド |
+|---|---|
+| 新しい `Seq` を返す | `map(f)`、`filter(p)`、`compactMap(f)`、`flatMap(f)`（`f` が返す `Seq` の要素を順につなげる）、`enumerated()`、`zip(other)`、`take(n)`、`skip(n)`、`takeWhile(p)`、`skipWhile(p)`、`chunked(n)`、`windows(n)`（隣り合う `n` 個ずつ。`[1, 2, 3]` の `windows(2)` は `[1, 2]`、`[2, 3]`）、`onEach(f)`（要素が読まれるたびに `f` を呼ぶ）、`unique()`、`concat(other)` |
+| 読む | `toArray()`、`toSet()`、`toMap()`（`(key, value)` の組から）、`count()`、`count(where:)`、`first()`、`last()`、`find(where:)`、`any(where:)`、`all(where:)`、`contains(x)`、`reduce(initial, f)`、`sum()`、`min()`、`max()`、`min(by:)`、`max(by:)`、`min(key:)`、`max(key:)`、`joined(separator:)` |
+
+`take`、`find`、`first`、`any`、`all` は答えが出た時点で要素を取り出すのをやめ、その先の要素は一切計算しません。`Seq` は読むたびに先頭から計算されます（`for` で二回回せば二回計算します）。ほかの値と同じく、作った時点のデータ元の値を保持するので、あとで配列を変更しても `Seq` は変わりません。
+
+段階の関数はシーケンスが読まれるときに実行されるので、エラーを投げられません。投げる必要があるときは `for` の中で行うか、配列の `map` を使います。読むときにその場で呼ばれる関数（`reduce`、`find(where:)`、`any`、`count(where:)`、`min(key:)` など）は投げてもよく、その場合は配列のメソッドと同じく、呼び出しがそのエラーを投げます。
+
+優先度付きキューと、キーの順に保つマップとセットは、`std/collections` の `Heap`、`SortedMap`、`SortedSet` です（[標準ライブラリ](https://asuka.egoist.dev/ja/docs/stdlib)を参照）。
 
 #### 値のセマンティクス
 
@@ -562,7 +612,7 @@ match line {
 }
 ```
 
-構造体と列挙型は、メソッドから演算子を得ます。`fn add(o: T) -> R` は `a + b` に、`fn sub(o: T) -> R`（または `minus`）は `a - b` に、`fn mul(o: T) -> R`（または `times`）は `a * b` に、`fn div(o: T) -> R`（または `quo`）は `a / b` に、`fn rem(o: T) -> R` は `a % b` に、`fn neg() -> R` は `-a` に、`fn compare(o: T) -> int`（負、ゼロ、正）は `<`、`<=`、`>`、`>=` になり、`sorted()` や `T: Comparable` にも使われます（[関数](https://asuka.egoist.dev/ja/docs/language/functions#インターフェースとジェネリクス)を参照）。`T` は値そのものと違う型でもかまいません（`Money * int`）。名前が二つある演算子では、それぞれのメソッドが別の `T` を受け取ります。`Decimal` の `mul(o: Decimal)` と `times(n: int)` が、`price * rate` と `price * 3` になります。逆の順序（`3 * price`）は導かれません。メソッドが `a` と同じ型を返すなら、`a += b` はこれらのメソッドによる `a = a + b` で（`-=`、`*=`、`/=`、`%=` も同じ）、変数、状態、フィールド、要素に使えます（状態の変更は一度だけです）。`std/time` の `Time` が `Duration` を足し、別の `Time` を引けるのはこのためです。
+構造体と列挙型は、メソッドから演算子を得ます。`fn add(o: T) -> R`（または `plus`）は `a + b` に、`fn sub(o: T) -> R`（または `minus`）は `a - b` に、`fn mul(o: T) -> R`（または `times`）は `a * b` に、`fn div(o: T) -> R`（または `quo`）は `a / b` に、`fn rem(o: T) -> R` は `a % b` に、`fn neg() -> R` は `-a` に、`fn compare(o: T) -> int`（負、ゼロ、正）は `<`、`<=`、`>`、`>=` になり、`sorted()` や `T: Comparable` にも使われます（[関数](https://asuka.egoist.dev/ja/docs/language/functions#インターフェースとジェネリクス)を参照）。`T` は値そのものと違う型でもかまいません（`Money * int`）。名前が二つある演算子では、それぞれのメソッドが別の `T` を受け取ります。`Decimal` の `mul(o: Decimal)` と `times(n: int)` が、`price * rate` と `price * 3` になります。逆の順序（`3 * price`）は導かれません。メソッドが `a` と同じ型を返すなら、`a += b` はこれらのメソッドによる `a = a + b` で（`-=`、`*=`、`/=`、`%=` も同じ）、変数、状態、フィールド、要素に使えます（状態の変更は一度だけです）。`std/time` の `Time` が `Duration` を足し、別の `Time` を引けるのはこのためです。
 
 ```asuka
 struct Money {
@@ -833,9 +883,9 @@ let icon = match (online, unread) {
 
 型つきの名前（`c: Circle`）は、インターフェースの値が何の型なのかを調べます。値がその型のときにマッチし、その型として束縛します。構造体のパターン（`Circle(radius)`）や型を明記した列挙型のケース（`Unit.big(n)`）も同じです。インターフェースの値に対する `match` は `_` で終わらせます。詳しくは[インターフェースとジェネリクス](https://asuka.egoist.dev/ja/docs/language/functions#インターフェースとジェネリクス)を参照してください：`if let c: Circle = shape { … }`、`let sq: Square = shape else { return }`。
 
-`for` で回せるのは、配列、セット、マップの `(key, value)` の組、範囲です。`a..<b` は `a` から `b` の手前までの整数、`a..b` は `b` を含む整数です（`0..<3` は `[0, 1, 2]`。範囲を `for` で回しても配列は作られません）。`while cond { … }` は cond が成り立つあいだ繰り返します。`break` はループを抜け、`continue` は次の周回に進みます。
+`for` で回せるのは、配列、セット、マップの `(key, value)` の組、遅延シーケンス（`Seq`。[値と型](https://asuka.egoist.dev/ja/docs/language/types#遅延シーケンス)を参照）、範囲です。`a..<b` は `a` から `b` の手前までの整数、`a..b` は `b` を含む整数です（`0..<3` は `[0, 1, 2]`。範囲を `for` で回しても配列は作られません）。`while cond { … }` は cond が成り立つあいだ繰り返します。`break` はループを抜け、`continue` は次の周回に進みます。
 
-`for` では、自分で定義した型の値も回せます。一つはイテレーターで、型に `mut fn next() -> T?` があるものです（`for` はそのコピーに対して `none` が返るまで呼び出します）。もう一つはシーケンスで、`fn iter()` がイテレーターを返すものです（`for` は一度だけ呼び出します）。prelude の `Iterator<T>` はそのような型を表し、制約に使えます（`fn sum<I: Iterator<int>>(xs: I) -> int`）。
+`for` では、自分で定義した型の値も回せます。一つはイテレーターで、型に `mut fn next() -> T?` があるものです（`for` はそのコピーに対して `none` が返るまで呼び出します）。もう一つはシーケンスで、`fn iter()` がイテレーターか `Seq` を返すものです（`for` は一度だけ呼び出します）。prelude の `Iterator<T>` はそのような型を表し、制約に使えます（`fn sum<I: Iterator<int>>(xs: I) -> int`）。イテレーターは `none` で終わりを表すので、要素そのものが none になりうる（`T?` の）型は `Seq` を返します（`fn iter() -> Seq<int?> = slots.lazy()`）。
 
 ```asuka
 struct Node {

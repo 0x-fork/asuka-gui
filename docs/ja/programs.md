@@ -466,6 +466,28 @@ async fn main() throws {
 }
 ```
 
+## 大量のデータから上位を：std/collections
+
+優先度付きキューは、要素が出入りしても、次に扱うものを常に先頭に置いておけます。それが `std/collections` の `Heap` で、「より小さい」の比較で並べます。大量のデータから大きいものを k 個残すには、容量 k で最小のものから出ていくヒープを使えば十分で、入力全体を並べ替える必要はありません。要素一つにつき O(log k) の一手で済みます（[標準ライブラリ](stdlib.md)を参照）。
+
+```asuka check
+import std/collections.{Heap}
+import std/os
+
+// stdin に最も多く出てくる十個の単語と、その回数。
+fn main() {
+  var counts: [string: int] = [:]
+  for line in os.readAll().string().lines() {
+    for w in line.lower().fields() { counts[w, default: 0] += 1 }
+  }
+  var top = Heap<(string, int)>(by: (a, b) => a.1 < b.1)
+  for (w, n) in counts {
+    if top.count() < 10 { top.push((w, n)) } else { let _ = top.pushPop((w, n)) }
+  }
+  for (w, n) in top.sorted().reversed() { print("{n}\t{w}") }
+}
+```
+
 ## 形の決まっていない JSON
 
 形がわかっている JSON は構造体で読みます（`json.decode<T>`、[データ](data.md)を参照）。ツールの設定ファイルやパイプで渡される任意の内容のように形がわからないものは `json.Value` で扱います。`json.parse(text)` はどんな JSON もそのまま読み込み、`get(key)`、`at(i)`、`asString()`、`asInt()` などで中身を見たり、`match` でケース（`.object(members)`、`.array(elements)`、`.string(s)` など）を取り出したりできます。表示しても `json.encode` で書き出しても JSON になります。

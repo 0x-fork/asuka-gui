@@ -466,6 +466,28 @@ async fn main() throws {
 }
 ```
 
+## 从大量数据中取最大的几个：std/collections
+
+优先队列能在元素不断进出时，始终让下一个该处理的排在最前面：这就是 `std/collections` 的 `Heap`，按一个“小于”比较排序。要从大量数据中保留最大的 k 个，只需一个容量为 k、最小值最先出队的堆，完全不必对整个输入排序：每个元素只需一步 O(log k) 的操作（见[标准库](stdlib.md)）。
+
+```asuka check
+import std/collections.{Heap}
+import std/os
+
+// stdin 中出现次数最多的十个词，以及它们的次数。
+fn main() {
+  var counts: [string: int] = [:]
+  for line in os.readAll().string().lines() {
+    for w in line.lower().fields() { counts[w, default: 0] += 1 }
+  }
+  var top = Heap<(string, int)>(by: (a, b) => a.1 < b.1)
+  for (w, n) in counts {
+    if top.count() < 10 { top.push((w, n)) } else { let _ = top.pushPop((w, n)) }
+  }
+  for (w, n) in top.sorted().reversed() { print("{n}\t{w}") }
+}
+```
+
 ## 任意结构的 JSON
 
 程序知道结构的 JSON，用结构体来读（`json.decode<T>`，见[数据](data.md)）。结构无法预知的，比如工具的配置文件或者从管道传进来的任意内容，就用 `json.Value`：`json.parse(text)` 原样读入任意 JSON，用 `get(key)`、`at(i)` 以及 `asString()`、`asInt()` ……查看里面的内容，也可以用 `match` 匹配它的各个 case（`.object(members)`、`.array(elements)`、`.string(s)` ……）。打印它或者用 `json.encode` 写出它，得到的都是 JSON。
