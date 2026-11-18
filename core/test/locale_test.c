@@ -181,6 +181,29 @@ TEST(locale_matches_the_apps_languages) {
 	}
 }
 
+// setLanguages' tags are the app's constants, which go with its module on
+// a reload (asuka dev): the languages outlive them.
+TEST(languages_outlive_the_module) {
+	load();
+	ak_str *tags[] = {ak_str_c("zh-Hans"), ak_str_c("ja")};
+	ak_arr *a = ak_arr_new(AK_K_REF, NULL, 2);
+	a->h.flags = 1;
+	for (size_t i = 0; i < AK_LEN(tags); i++) {
+		ak_make_immortal(tags[i]);  // as a module's strings are
+		ak_arr_push(&a, (ak_val){.p = tags[i]});
+	}
+	ak_ui_set_languages(a);
+	REQUIRE(!ak_error_pending());
+	ak_release(a);
+	for (size_t i = 0; i < AK_LEN(tags); i++) ak_free(tags[i]);  // the module released
+	ak_arr *l = ak_ui_languages();
+	REQUIRE(l->len == 2);
+	CHECK_EQ_STR(((ak_str *)l->data[0].p)->data, "zh-Hans");
+	CHECK_EQ_STR(((ak_str *)l->data[1].p)->data, "ja");
+	ak_release(l);
+	unload();
+}
+
 // ---- Messages follow the language (TestMessagesFollowTheLanguage) ----
 
 static void *count;
