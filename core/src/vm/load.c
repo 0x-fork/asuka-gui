@@ -256,6 +256,11 @@ ak_module *ak_module_load(const uint8_t *p, size_t n, char *err, size_t errcap) 
 	for (uint32_t i = 0; i < m->ntests; i++) {
 		m->tests[i].name = rstr(l);
 		m->tests[i].func = ak_read_u32(&l->r);
+		m->tests[i].flags = ak_read_u8(&l->r);
+		uint32_t np = count(l, 8);
+		m->tests[i].nparams = np;
+		m->tests[i].params = ak_alloc(sizeof(ak_str *) * 2 * (np ? np : 1));
+		for (uint32_t k = 0; k < 2 * np; k++) m->tests[i].params[k] = rstr(l);
 	}
 	if (l->r.err) fail(l, "truncated module");
 	if (!l->failed && m->nfuncs && m->init >= m->nfuncs) fail(l, "bad init function");
@@ -342,7 +347,11 @@ static void module_free(void *ctx) {
 	ak_free(m->ints);
 	ak_free(m->floats);
 	ak_free(m->builtins);
-	for (uint32_t i = 0; i < m->ntests; i++) ak_release(m->tests[i].name);
+	for (uint32_t i = 0; i < m->ntests; i++) {
+		ak_release(m->tests[i].name);
+		for (uint32_t k = 0; k < 2 * m->tests[i].nparams; k++) ak_release(m->tests[i].params[k]);
+		ak_free(m->tests[i].params);
+	}
 	ak_free(m->tests);
 	ak_free(m);
 }
@@ -365,6 +374,16 @@ const char *ak_module_test(const ak_module *m, uint32_t i, uint32_t *func) {
 	if (i >= m->ntests) return NULL;
 	*func = m->tests[i].func;
 	return m->tests[i].name->data;
+}
+
+bool ak_module_test_bench(const ak_module *m, uint32_t i) { return i < m->ntests && (m->tests[i].flags & 1); }
+
+uint32_t ak_module_test_nparams(const ak_module *m, uint32_t i) { return i < m->ntests ? m->tests[i].nparams : 0; }
+
+const char *ak_module_test_param(const ak_module *m, uint32_t i, uint32_t k, const char **name) {
+	if (i >= m->ntests || k >= m->tests[i].nparams) return NULL;
+	*name = m->tests[i].params[2 * k]->data;
+	return m->tests[i].params[2 * k + 1]->data;
 }
 
 const ak_shape *ak_module_shape_named(const ak_module *m, const char *name) {

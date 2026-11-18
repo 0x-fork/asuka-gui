@@ -981,6 +981,15 @@ func (p *printer) node(n Node) {
 		p.write("test ")
 		p.expr(n.Name)
 		p.write(" ")
+		if n.Params != nil {
+			p.params(n.Params)
+			p.write(" ")
+		}
+		p.block(n.Body)
+	case *BenchDecl:
+		p.write("bench ")
+		p.expr(n.Name)
+		p.write(" ")
 		p.block(n.Body)
 	case *TypeParam:
 		p.typeParam(n)
@@ -1109,6 +1118,9 @@ func (p *printer) node(n Node) {
 			p.write(" => ")
 			p.node(n.Body)
 		}
+	case *MeasureStmt:
+		p.write("measure ")
+		p.block(n.Body)
 	case *DoStmt:
 		p.write("do ")
 		p.block(n.Body)

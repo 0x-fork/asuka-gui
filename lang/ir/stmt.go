@@ -52,6 +52,7 @@ func (b *fb) stmt(it syntax.Item) {
 	b.at(it)
 	mark := b.mark()
 	defer b.release(mark)
+	b.cover(it)
 	switch s := it.(type) {
 	case *syntax.LetDecl:
 		t := b.typ(b.l.info.Lets[s])
@@ -103,6 +104,8 @@ func (b *fb) stmt(it syntax.Item) {
 		b.f.Place(end)
 	case *syntax.DoStmt:
 		b.doStmt(s)
+	case *syntax.MeasureStmt:
+		b.measure(s)
 	case *syntax.ReturnStmt:
 		b.returnValue(s.Value)
 	case *syntax.ThrowStmt:

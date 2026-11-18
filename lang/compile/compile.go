@@ -58,6 +58,9 @@ type Options struct {
 	// target.Default): what @platform is, and which of each package's
 	// files are part of it (tray_linux.asuka only on Linux).
 	Platform target.Platform
+	// Cover counts the runs of the root package's statements (asuka
+	// test --cover): Result.IR.Cover says where its counters are.
+	Cover bool
 }
 
 // Result is a compilation's outcome.
@@ -420,7 +423,15 @@ func (l *loader) compile(root *unit) *Result {
 	if l.opts.Project != "" {
 		vdir = l.opts.Project
 	}
-	p, diags := ir.Lower(prog, &ir.Options{Platform: string(l.opts.Platform.Or()), Version: projectVersion(vdir), Lang: l.opts.Lang, Direction: l.opts.Direction, Accent: accent, AccentFlags: accentFlags})
+	var cover []string
+	if l.opts.Cover {
+		for _, f := range root.files {
+			if f.File != nil {
+				cover = append(cover, f.File.Name())
+			}
+		}
+	}
+	p, diags := ir.Lower(prog, &ir.Options{Platform: string(l.opts.Platform.Or()), Version: projectVersion(vdir), Lang: l.opts.Lang, Direction: l.opts.Direction, Accent: accent, AccentFlags: accentFlags, Cover: cover})
 	res.Diags = append(res.Diags, diags...)
 	if len(res.Diags) > 0 {
 		return res

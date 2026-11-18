@@ -97,7 +97,13 @@ struct ak_module {
 	uint32_t init;
 	int32_t app;
 	int32_t main;  // a program's fn main, -1: none
-	struct { ak_str *name; uint32_t func; } *tests;
+	struct {
+		ak_str *name;
+		uint32_t func;
+		uint8_t flags;  // 1: a bench
+		uint32_t nparams;
+		ak_str **params;  // a property test's: name, descriptor, name, ...
+	} *tests;
 	uint32_t ntests;
 	struct { ak_str **data; uint32_t len, cap; } names;  // what shapes' names point into
 	// How native calls find the module's types (native_lib.c): kept as
@@ -111,6 +117,10 @@ void ak_module_retain(ak_module *m);
 // frame's, else the one compiled into the build (what builtins that
 // look up the module's types, JSON's and native calls', ask).
 ak_module *ak_vm_running_module(void);
+// What decoding by descriptor needs (rt/json.h): the running module's
+// types, or m's.
+void ak_vm_json_types(ak_json_types *out);
+void ak_vm_module_json_types(ak_module *m, ak_json_types *out);
 
 // A call frame on a coroutine.
 typedef struct {

@@ -82,6 +82,8 @@ func (f *Func) Reg(k bytecode.Kind) int {
 type Program struct {
 	Mod   *bytecode.Module // Funcs filled by Encode
 	Funcs []*Func
+	// Cover is what the program counts, with Options.Cover (cover.go).
+	Cover *Cover
 }
 
 func itoa(i int) string {

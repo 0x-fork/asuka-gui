@@ -1,0 +1,62 @@
+// asuka test's property tests, benches, keep and snapshots: generated
+// values of every kind, a failing input shrunk, what it prints, a bench
+// run once, snapshots compared: nothing they make outlives them.
+
+struct P {
+  x: int
+  y: int
+}
+
+enum S {
+  a
+  b(n: int)
+  c(label: string, p: P?)
+}
+
+enum Size {
+  small
+  large
+}
+
+test "lists" (xs: [int], s: string, b: bytes) {
+  expect(xs.count() < 3)
+}
+
+test "structs" (p: P, s: S, m: [string: [float]], set: Set<string>, o: int?, size: Size) {
+  expect(p.x < 100)
+}
+
+test "passes" (xs: [S], d: Duration, f: float, z: bool, t: [string: P?]) {
+  expect(xs.count() >= 0)
+}
+
+bench "sorted" {
+  let xs = [3, 1, 2]
+  measure {
+    keep(xs.sorted())
+  }
+}
+
+test "show" {
+  expectInlineSnapshot([P(x: 1, y: 2)], "[P(x: 1, y: 2)]")
+  expectInlineSnapshot(S.c(label: "a", p: none), r#".c(label: "a", p: none)"#)
+  expectInlineSnapshot(["b": 1.5, "a": 2.0], r#"["a": 2.0, "b": 1.5]"#)
+  expectInlineSnapshot(Size.large, ".large")
+  expectInlineSnapshot(1500ms, "1500ms")
+  expectSnapshot((1, "x"))
+}
+
+// Output:
+// {"property":"lists","seed":0,"case":1,"shrinks":7,"input":"{\n  \"xs\": [0,0,0],\n  \"s\": \"\",\n  \"b\": \"\"\n}\n","shown":"xs = [0, 0, 0]\ns = \"\"\nb = <bytes>"}
+// FAIL lists: expected xs.count() < 3 (testing.asuka:22): got 3 and 3
+// {"property":"structs","seed":0,"case":2,"shrinks":195,"input":"{\n  \"p\": {\"x\":100,\"y\":0},\n  \"s\": \"a\",\n  \"m\": {},\n  \"set\": [],\n  \"o\": null,\n  \"size\": \"small\"\n}\n","shown":"p = P(x: 100, y: 0)\ns = .a\nm = [:]\nset = Set([])\no = none\nsize = .small"}
+// FAIL structs: expected p.x < 100 (testing.asuka:26): got 100 and 100
+// ok passes
+// ok sorted
+// {"inline":"testdata/leaks/testing.asuka","test":"show","line":41,"col":3,"where":"testing.asuka:41","status":"ok"}
+// {"inline":"testdata/leaks/testing.asuka","test":"show","line":42,"col":3,"where":"testing.asuka:42","status":"ok"}
+// {"inline":"testdata/leaks/testing.asuka","test":"show","line":43,"col":3,"where":"testing.asuka:43","status":"ok"}
+// {"inline":"testdata/leaks/testing.asuka","test":"show","line":44,"col":3,"where":"testing.asuka:44","status":"ok"}
+// {"inline":"testdata/leaks/testing.asuka","test":"show","line":45,"col":3,"where":"testing.asuka:45","status":"ok"}
+// {"snapshot":"show 1","test":"show","where":"testing.asuka:46","status":"new","value":"(1, \"x\")"}
+// ok show

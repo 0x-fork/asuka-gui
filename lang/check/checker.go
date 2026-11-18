@@ -13,6 +13,9 @@ import (
 // order: the prelude when it's made, then each package with the
 // packages it imports already checked.
 type Checker struct {
+	// measure is the bench's measure block being checked, the one place
+	// a measure statement may be (testing.go).
+	measure *syntax.MeasureStmt
 	// accVars: the vars the lowering reads as accessors (SetAccessorVar).
 	accVars map[*Var]bool
 	// shaderDecls are the shader declarations by their components'
@@ -291,6 +294,7 @@ func (c *Checker) initUniverse() {
 		{"int", BInt}, {"panic", BPanic}, {"withTimeout", BWithTimeout}, {"Stream", BStream}, {"Set", BSet},
 		{"environment", BEnvironment}, {"live", BLive}, {"animate", BAnimate}, {shaderProgram, BShader},
 		{"never", BNever}, {"navigate", BNavigate}, {"replace", BReplace}, {"peek", BPeek},
+		{"keep", BKeep}, {"expectSnapshot", BSnapshot}, {"expectInlineSnapshot", BInline},
 	} {
 		c.universe.Insert(&Builtin{object: object{name: b.name}, ID: b.id})
 	}
@@ -616,6 +620,8 @@ func (c *Checker) collect(p *Package, d syntax.Decl) {
 		p.App = d
 	case *syntax.TestDecl:
 		p.Tests = append(p.Tests, &Test{Name: unquoteSimple(d.Name), Decl: d, Pkg: p})
+	case *syntax.BenchDecl:
+		p.Tests = append(p.Tests, &Test{Name: unquoteSimple(d.Name), Bench: d, Pkg: p})
 	case *syntax.ExtendDecl:
 		c.collectExtend(p, d)
 	}

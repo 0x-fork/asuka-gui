@@ -76,6 +76,9 @@ void ak_free(void *p);
 // thread's own, so other threads (spawn's workers, the native side's)
 // neither race with it nor add to what a test counts.
 extern AK_TLS uint64_t ak_alloc_count;
+// ak_alloc_bytes counts the bytes those calls asked for (a realloc's
+// whole new size): a benchmark's bytes per op.
+extern AK_TLS uint64_t ak_alloc_bytes;
 
 // ak_panic reports a bug in the core or the app and aborts. Any thread:
 // the first to panic reports and aborts; one that panics as it does waits

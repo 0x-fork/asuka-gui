@@ -296,6 +296,11 @@ static ak_val value(parser *ps, const char *d);
 // read as an integer too, which must be in int's range.
 static bool number(parser *ps, double *out, bool *integral, int64_t *iv) {
 	ws(ps);
+	if (ps->t && ps->t->nonfinite && !iv) {
+		if (lit(ps, "NaN")) return *out = NAN, *integral = false, true;
+		if (lit(ps, "Infinity")) return *out = INFINITY, *integral = false, true;
+		if (lit(ps, "-Infinity")) return *out = -INFINITY, *integral = false, true;
+	}
 	const char *st = ps->s;
 	if (ps->s < ps->end && *ps->s == '-') ps->s++;
 	while (ps->s < ps->end && ((*ps->s >= '0' && *ps->s <= '9') || *ps->s == '.' || *ps->s == 'e' || *ps->s == 'E' || *ps->s == '+' || *ps->s == '-')) ps->s++;
@@ -1002,8 +1007,16 @@ static void enc_value(encoder *e, ak_val v, const char *d) {
 		ak_strb_int(b, v.i);
 		return;
 	case 'f':
-		if (v.f != v.f || v.f == INFINITY || v.f == -INFINITY) ak_strb_cstr(b, "null", 4);
-		else ak_strb_float(b, v.f);
+		if (v.f != v.f || v.f == INFINITY || v.f == -INFINITY) {
+			if (e->t && e->t->nonfinite) {
+				const char *w = v.f != v.f ? "NaN" : v.f > 0 ? "Infinity" : "-Infinity";
+				ak_strb_cstr(b, w, strlen(w));
+			} else {
+				ak_strb_cstr(b, "null", 4);
+			}
+		} else {
+			ak_strb_float(b, v.f);
+		}
 		return;
 	case 'b':
 		ak_strb_bool(b, v.i != 0);

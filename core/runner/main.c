@@ -15,6 +15,14 @@
 // "where", "test"}), which asuka test reads. -no-diag turns them off (a
 // release build's core: the allocation counts without the detectors).
 //
+// What asuka test adds (testing.h): a property test (a test with
+// parameters) runs with generated values (-seed, -cases), its corpus's
+// first (-corpus), or is fuzzed (-fuzz, -fuzztime ns or -fuzzcases n);
+// -bench runs the benches instead of the tests (-benchtime ns or -benchn
+// n); snapshots are compared with -snapshots' (-update writes what
+// differs, -ci fails on a missing one); -cover file writes the coverage
+// counters' counts as it ends. Their results are lines of JSON.
+//
 //	asuka-run [-leaks] [-count] [-no-diag] [-diag-json] [-test [pattern]] module.akb
 #include "vm/vm.h"
 #include "rt/sched.h"
@@ -23,6 +31,8 @@
 #include "fake/uitest.h"
 #include "std/std.h"
 #include "abi/program.h"
+#include "testing.h"
+#include "vm/vm_int.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -43,6 +53,8 @@ static uint8_t *read_file(const char *path, size_t *n) {
 typedef struct {
 	const ak_func *f;
 	ak_future *fut;
+	ak_val *args;
+	uint32_t nargs;
 } run_t;
 
 static void run_test(void *ctx);
@@ -50,9 +62,38 @@ static void run_init(void *ctx);
 static void show_app(ak_owner *o, const ak_func *f);
 
 static int failures;
-static const char *current;
-static char failure[2048];
+const char *current;
+char failure[2048];
 static bool diag_json;
+ak_module *ak_runner_module;
+
+void ak_runner_types(ak_json_types *t) { ak_vm_module_json_types(ak_runner_module, t); }
+
+void ak_jstr(ak_strb *b, const char *s, size_t n) {
+	ak_strb_cstr(b, "\"", 1);
+	size_t start = 0;
+	for (size_t i = 0; i < n; i++) {
+		unsigned char c = (unsigned char)s[i];
+		if (c != '"' && c != '\\' && c >= 0x20) continue;
+		ak_strb_cstr(b, s + start, i - start);
+		char esc[8];
+		if (c == '"' || c == '\\') snprintf(esc, sizeof esc, "\\%c", c);
+		else if (c == '\n') snprintf(esc, sizeof esc, "\\n");
+		else if (c == '\t') snprintf(esc, sizeof esc, "\\t");
+		else snprintf(esc, sizeof esc, "\\u%04x", c);
+		ak_strb_cstr(b, esc, strlen(esc));
+		start = i + 1;
+	}
+	ak_strb_cstr(b, s + start, n - start);
+	ak_strb_cstr(b, "\"", 1);
+}
+
+void ak_jline(ak_strb *b) {
+	fwrite(b->b.data, 1, b->b.len, stdout);
+	fputc('\n', stdout);
+	fflush(stdout);
+	ak_buf_free(&b->b);
+}
 
 static void json_str(const char *s) {
 	putchar('"');
@@ -121,8 +162,11 @@ static void settle(ak_future *fut) {
 }
 
 int main(int argc, char **argv) {
-	bool test = false, aot = false, app = false, leaks = false, count = false, program = false, diag = true;
-	const char *pattern = NULL, *path = NULL, *name = "main";
+	bool test = false, aot = false, app = false, leaks = false, count = false, program = false, diag = true, bench = false;
+	const char *pattern = NULL, *path = NULL, *name = "main", *cover = NULL;
+	ak_prop_options prop = {.cases = 100};
+	ak_bench_options bopts = {.time_ns = 1000000000LL, .samples = 10};
+	ak_snap_options snaps = {0};
 	int rest = argc;  // the program's arguments, after --
 	for (int i = 1; i < argc; i++) {
 		if (strcmp(argv[i], "--") == 0) {
@@ -146,6 +190,34 @@ int main(int argc, char **argv) {
 			diag = false;
 		} else if (strcmp(argv[i], "-diag-json") == 0) {
 			diag_json = true;
+		} else if (strcmp(argv[i], "-bench") == 0) {
+			bench = true;
+		} else if (strcmp(argv[i], "-benchtime") == 0 && i + 1 < argc) {
+			bopts.time_ns = strtoll(argv[++i], NULL, 10);
+		} else if (strcmp(argv[i], "-benchn") == 0 && i + 1 < argc) {
+			bopts.n = strtoull(argv[++i], NULL, 10);
+		} else if (strcmp(argv[i], "-samples") == 0 && i + 1 < argc) {
+			bopts.samples = (uint32_t)strtoul(argv[++i], NULL, 10);
+		} else if (strcmp(argv[i], "-seed") == 0 && i + 1 < argc) {
+			prop.seed = strtoull(argv[++i], NULL, 10);
+		} else if (strcmp(argv[i], "-cases") == 0 && i + 1 < argc) {
+			prop.cases = (uint32_t)strtoul(argv[++i], NULL, 10);
+		} else if (strcmp(argv[i], "-fuzz") == 0) {
+			prop.fuzz = true;
+		} else if (strcmp(argv[i], "-fuzztime") == 0 && i + 1 < argc) {
+			prop.fuzz_ns = strtoll(argv[++i], NULL, 10);
+		} else if (strcmp(argv[i], "-fuzzcases") == 0 && i + 1 < argc) {
+			prop.fuzz_cases = strtoull(argv[++i], NULL, 10);
+		} else if (strcmp(argv[i], "-corpus") == 0 && i + 1 < argc) {
+			prop.corpus = argv[++i];
+		} else if (strcmp(argv[i], "-snapshots") == 0 && i + 1 < argc) {
+			snaps.file = argv[++i];
+		} else if (strcmp(argv[i], "-update") == 0) {
+			snaps.update = true;
+		} else if (strcmp(argv[i], "-ci") == 0) {
+			snaps.ci = true;
+		} else if (strcmp(argv[i], "-cover") == 0 && i + 1 < argc) {
+			cover = argv[++i];
 		} else if (strcmp(argv[i], "-platform") == 0 && i + 1 < argc) {
 			static const char *names[] = {"", "ios", "android", "macos", "windows", "web", "linux"};
 			const char *want = argv[++i];
@@ -186,6 +258,13 @@ int main(int argc, char **argv) {
 	// The UI runtime, and tests' mount, tap, expect... on the fake host.
 	ak_ui_builtins_init();
 	ak_uitest_builtins_init();
+	// What asuka test adds: test.show, snapshots, benches' clock, coverage.
+	ak_show_builtins_init();
+	ak_snap_builtins_init();
+	ak_bench_builtins_init();
+	ak_cover_builtins_init();
+	ak_snap_init(&snaps);
+	if (!prop.fuzz_ns && !prop.fuzz_cases) prop.fuzz_ns = 10000000000LL;
 	ak_signal_set_error_handler(on_error, NULL);
 	ak_diag_enabled = diag;
 	ak_diag_set_handler(on_diag, NULL);
@@ -197,6 +276,7 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "asuka-run: %s\n", err);
 		return 2;
 	}
+	ak_runner_module = m;
 	if (program) {
 		// argv[0] the program's name, then what came after --.
 		int pargc = 1 + (argc - rest);
@@ -234,43 +314,31 @@ int main(int argc, char **argv) {
 			uint32_t fi;
 			const char *name = ak_module_test(m, i, &fi);
 			if (pattern && !strstr(name, pattern)) continue;
+			bool is_bench = ak_module_test_bench(m, i), is_prop = ak_module_test_nparams(m, i) > 0;
+			// -bench runs the benches; without it, each runs once, one
+			// iteration, as a test: what it checks holds, and it runs.
+			if ((bench && !is_bench) || (prop.fuzz && !is_prop)) continue;
 			current = name;
 			failure[0] = 0;
-			ak_diag_reset();  // each test's app is a run of its own
-			char *dir = ak_fs_temp_dir();
-			ak_fs_set_app_dir(dir);
-			const ak_func *f = ak_module_func(m, fi);
+			ak_snap_begin(name, is_prop);
 			int64_t live = ak_obj_live;
 			uint64_t allocs = ak_alloc_count;
-			ak_owner *o = ak_owner_new();
-			run_t r = {f, NULL};
-			ak_with_owner(o, run_test, &r);
-			ak_future *fut = r.fut;
-			settle(fut);
-			if (fut && fut->state == AK_FUT_FAILED && !failure[0]) snprintf(failure, sizeof failure, "%s", ak_error_message(fut->error)->data);
-			else if (fut && fut->state == AK_FUT_PENDING && !failure[0]) snprintf(failure, sizeof failure, "the test never finished (it awaits something that never completes)");
-			int64_t code;
-			if (ak_os_test_exit(&code)) {
-				failure[0] = 0;
-				snprintf(failure, sizeof failure, "it called os.exit(%lld), which ends a program: a test runs main with os.fake().run(main) to see its code", (long long)code);
+			if (is_bench && bench) {
+				ak_bench_run(m, i, &bopts);
+			} else if (is_bench) {
+				ak_val one = {.i = 1};
+				ak_runner_run(ak_module_func(m, fi), &one, 1);
+			} else if (is_prop) {
+				ak_prop_run(m, i, &prop);
 			}
-			ak_release(fut);
-			ak_owner_dispose(o);
-			settle(NULL);
-			ak_os_reset();
-			// What the test's app's mount set: the next test's app its own.
-			ak_locale_reset();
-			ak_ui_env_reset();
-			if (dir) {
-				ak_fs_remove_tree(dir);
-				ak_free(dir);
-			}
-			ak_fs_set_app_dir(NULL);
+			else ak_runner_run(ak_module_func(m, fi), NULL, 0);
 			if (leaks && !failure[0] && ak_obj_live > live)
 				snprintf(failure, sizeof failure, "%lld objects it made outlive it", (long long)(ak_obj_live - live));
 			if (failure[0]) {
 				failures++;
 				printf("FAIL %s: %s\n", name, failure);
+			} else if (is_bench && bench) {
+				// Its line of JSON said how it went.
 			} else if (count) {
 				printf("ok %s (%llu allocations)\n", name, (unsigned long long)(ak_alloc_count - allocs));
 			} else {
@@ -291,6 +359,10 @@ int main(int argc, char **argv) {
 			ak_owner_dispose(o);
 			settle(NULL);
 		}
+	}
+	if (cover && !ak_cover_write(cover)) {
+		fprintf(stderr, "asuka-run: can't write %s\n", cover);
+		failures++;
 	}
 	ak_uitest_set_app(NULL);
 	ak_owner_dispose(root);
@@ -338,16 +410,47 @@ static void run_test(void *ctx) {
 	run_t *r = ctx;
 	if (ak_func_async(r->f)) {
 		ak_closure *c = ak_vm_closure(r->f);
-		ak_val v = ak_call(c, NULL, 0);
+		ak_val v = ak_call(c, r->args, r->nargs);
 		ak_release(c);
 		r->fut = v.p;
 		return;
 	}
-	ak_val v = ak_vm_call(r->f, NULL, 0);
+	ak_val v = ak_vm_call(r->f, r->args, r->nargs);
 	AK_UNUSED(v);
 	if (ak_error_pending()) {
 		void *e = ak_error_take();
 		if (!failure[0]) snprintf(failure, sizeof failure, "%s", ak_error_message(e)->data);
 		ak_release(e);
 	}
+}
+
+void ak_runner_run(const ak_func *f, ak_val *args, uint32_t nargs) {
+	failure[0] = 0;
+	ak_diag_reset();  // each test's app is a run of its own
+	char *dir = ak_fs_temp_dir();
+	ak_fs_set_app_dir(dir);
+	ak_owner *o = ak_owner_new();
+	run_t r = {f, NULL, args, nargs};
+	ak_with_owner(o, run_test, &r);
+	ak_future *fut = r.fut;
+	settle(fut);
+	if (fut && fut->state == AK_FUT_FAILED && !failure[0]) snprintf(failure, sizeof failure, "%s", ak_error_message(fut->error)->data);
+	else if (fut && fut->state == AK_FUT_PENDING && !failure[0]) snprintf(failure, sizeof failure, "the test never finished (it awaits something that never completes)");
+	int64_t code;
+	if (ak_os_test_exit(&code)) {
+		failure[0] = 0;
+		snprintf(failure, sizeof failure, "it called os.exit(%lld), which ends a program: a test runs main with os.fake().run(main) to see its code", (long long)code);
+	}
+	ak_release(fut);
+	ak_owner_dispose(o);
+	settle(NULL);
+	ak_os_reset();
+	// What the test's app's mount set: the next test's app its own.
+	ak_locale_reset();
+	ak_ui_env_reset();
+	if (dir) {
+		ak_fs_remove_tree(dir);
+		ak_free(dir);
+	}
+	ak_fs_set_app_dir(NULL);
 }

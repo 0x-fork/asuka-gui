@@ -27,6 +27,11 @@ type fb struct {
 	// (registers, an operand), once.
 	tooBig bool
 
+	// bench: a bench's function, whose register benchN holds how many
+	// times to run what it measures (testing.go).
+	bench  bool
+	benchN int
+
 	// inout: the place an inout builtin's call changes, when it's x?.f's
 	// (places.go), and what's done with its result there.
 	inout      *lvalue

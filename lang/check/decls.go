@@ -701,12 +701,20 @@ func (c *Checker) funcBody(f *Function) {
 // testBody checks a test block: async, its errors fail it.
 func (c *Checker) testBody(t *Test) {
 	savedScope, savedCtx := c.scope, c.ctx
-	c.scope = c.declScope(t.Decl)
+	c.scope = c.declScope(t.Node())
 	c.ctx = nil
-	ctx := c.enter(CtxTest, t.Decl, "test "+t.Name)
+	what := "test "
+	if t.Bench != nil {
+		what = "bench "
+	}
+	ctx := c.enter(CtxTest, t.Node(), what+t.Name)
 	ctx.Async, ctx.Throws, ctx.Result = true, true, Void
 	t.Ctx = ctx
-	c.stmts(t.Decl.Body.Items)
+	c.testParams(t)
+	saved := c.measure
+	c.measure = c.benchMeasure(t)
+	c.stmts(t.Body().Items)
+	c.measure = saved
 	c.leave(nil)
 	c.scope, c.ctx = savedScope, savedCtx
 }

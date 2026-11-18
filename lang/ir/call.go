@@ -638,6 +638,8 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 		return -1
 	case check.BExpect:
 		return b.expect(e, call)
+	case check.BKeep, check.BSnapshot, check.BInline:
+		return b.testingBuiltin(e, call, dst)
 	case check.BPanic:
 		v := b.value(call.Args[0], -1)
 		b.callBTo("panic", bc.None, v)
@@ -1256,6 +1258,7 @@ func (b *fb) lambda(e *syntax.LambdaExpr) int {
 		c.ctx = ctx
 		switch body := e.Body.(type) {
 		case syntax.Expr:
+			c.cover(body)
 			if ret == bc.KVoid {
 				c.exprStmt(body)
 				c.emit(op("RET0"))
