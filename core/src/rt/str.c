@@ -87,10 +87,6 @@ ak_str *ak_piece(ak_pieces *p, const char *s, size_t n) {
 	return o;
 }
 
-void ak_piece_free(ak_str *s) {
-	char *slab = (char *)s - ((size_t)s->h.aux << 3);
-	if (--*(uint32_t *)slab == 0) ak_free(slab);
-}
 
 ak_str *ak_str_empty(void) {
 	static void *e;

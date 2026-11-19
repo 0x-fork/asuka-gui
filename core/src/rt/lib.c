@@ -172,16 +172,29 @@ static ak_val str_trim_end(ak_val *args, uint32_t n) {
 static ak_val str_fields(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	ak_str *s = STR(0);
-	ak_arr *a = ak_arr_new(AK_K_REF, NULL, 0);
+	ak_pieces pc = {.ascii = ak_str_ascii(s)};
+	// Written into the array as they're found, its room doubled as it
+	// fills (from a guess: a word of 7 and a space).
+	uint32_t len = 0, cap = s->len / 8 + 4;
+	ak_arr *a = ak_arr_new(AK_K_REF, NULL, cap);
 	a->h.flags = 1;
-	ak_pieces p = {.ascii = ak_str_ascii(s)};
-	for (uint32_t i = 0; i < s->len;) {
-		while (i < s->len && space(s->data[i])) i++;
-		uint32_t j = i;
-		while (j < s->len && !space(s->data[j])) j++;
-		if (j > i) ak_arr_push(&a, (ak_val){.p = ak_piece(&p, s->data + i, j - i)});
-		i = j;
+	ak_val *v = ak_arr_vals(a);
+	const char *p = s->data, *end = p + s->len;
+	for (;;) {
+		while (p < end && ak_space(*p)) p++;
+		if (p == end) break;
+		const char *q = p + 1;
+		while (q < end && !ak_space(*q)) q++;
+		if (AK_UNLIKELY(len == cap)) {
+			a->len = len;
+			ak_arr_reserve(&a, cap);
+			cap = a->cap;
+			v = ak_arr_vals(a);
+		}
+		v[len++].p = ak_piece(&pc, p, (size_t)(q - p));
+		p = q;
 	}
+	a->len = len;
 	RET_P(a);
 }
 

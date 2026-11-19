@@ -301,7 +301,10 @@ extern const bool ak_space_table[256];
 static inline bool ak_space(char c) { return ak_space_table[(uint8_t)c]; }
 // ak_piece_free frees a piece (its count released): its slab, when it
 // was the last.
-void ak_piece_free(ak_str *s);
+static inline void ak_piece_free(ak_str *s) {
+	char *slab = (char *)s - ((size_t)s->h.aux << 3);
+	if (--*(uint32_t *)slab == 0) ak_free(slab);
+}
 static inline ak_str *ak_str_c(const char *s) { return ak_str_new(s, strlen(s)); }
 ak_str *ak_str_empty(void);  // immortal
 ak_str *ak_str_concat(ak_str *a, ak_str *b);
