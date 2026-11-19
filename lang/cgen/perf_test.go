@@ -19,6 +19,7 @@ fn main() { print("{down(20)}") }
 		t.Errorf("not unwound through ak_cg_unwind:\n%s", c)
 	}
 }
+
 // A sum of two indexes (each less than 2^32, as an array's length is)
 // can't overflow: it isn't checked (and is opaque to the C compiler, as
 // the checked add was). One of ints that could be anything is.
@@ -59,6 +60,7 @@ fn main() { print("{add(1, 2)}") }
 		t.Errorf("an add of any ints not checked:\n%s", c)
 	}
 }
+
 // A file's let (a global only the module's init writes) is read borrowed,
 // not retained and released; a var, which a function may change, is
 // retained.
@@ -84,5 +86,20 @@ fn main() {
 	// byteCount is the string's length, read in place.
 	if !strings.Contains(c, "->len") || strings.Contains(c, "M->builtins[") {
 		t.Errorf("byteCount not read in place:\n%s", c)
+	}
+}
+
+// A parameter an inlined body only reads is the caller's register: the
+// argument isn't copied in (retained) nor let go of after.
+func TestInlinedParamsRead(t *testing.T) {
+	c := cOf(t, `
+fn first(xs: [int]) -> int = xs[0] + xs[xs.count() - 1]
+
+fn twice(ys: [int]) -> int = first(ys) + first(ys)
+
+fn main() { print("{twice([1, 2, 3])}") }
+`, "twice")
+	if strings.Contains(c, "ak_retain(") {
+		t.Errorf("an inlined argument retained:\n%s", c)
 	}
 }
