@@ -1907,9 +1907,11 @@ static ak_val bytes_from(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	ak_arr *a = ARR(0);
 	ak_bytes *r = ak_bytes_new(NULL, a->len);
-	if (a->elem == AK_E_U8) memcpy(r->data, a->items, a->len);
-	else
+	if (a->elem == AK_E_U8) {
+		if (a->len) memcpy(r->data, a->items, a->len);
+	} else {
 		for (uint32_t i = 0; i < a->len; i++) r->data[i] = (uint8_t)(ak_arr_get(a, i).i & 0xff);
+	}
 	RET_P(r);
 }
 

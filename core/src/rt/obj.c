@@ -494,7 +494,7 @@ static AK_ALWAYS_INLINE bool eq_enter(walk_frame *f, ak_obj *a, ak_obj *b) {
 				if (ak_arr_get(x, i).i != ak_arr_get(y, i).i) return false;
 			return true;
 		}
-		if (ak_arr_packed(x)) return memcmp(x->items, y->items, (size_t)x->len << x->shift) == 0;
+		if (ak_arr_packed(x)) return x->len == 0 || memcmp(x->items, y->items, (size_t)x->len << x->shift) == 0;
 		for (uint32_t i = 0; i < x->len; i++)
 			if (!scalar_eq(ak_arr_vals(x)[i], ak_arr_vals(y)[i], k)) return false;
 		return true;

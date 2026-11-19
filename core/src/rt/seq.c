@@ -675,11 +675,13 @@ static ak_val seq_to_array(ak_val *args, uint32_t n) {
 		// Filled as it is: one value n times, or a range's ints.
 		ak_arr *out = ak_arr_like(proto, (uint32_t)len);
 		ak_kind k = (ak_kind)s->kind;
-		if (s->op == S_REPEAT && out->elem == AK_E_BOOL) memset(out->items, s->a.i != 0, (size_t)len);
-		else if (s->op == S_REPEAT)
+		if (s->op == S_REPEAT && out->elem == AK_E_BOOL) {
+			if (len) memset(out->items, s->a.i != 0, (size_t)len);
+		} else if (s->op == S_REPEAT) {
 			for (uint32_t i = 0; i < (uint32_t)len; i++) ak_arr_put(out, i, s->a);
-		else
+		} else {
 			for (uint32_t i = 0; i < (uint32_t)len; i++) ak_arr_put(out, i, (ak_val){.i = s->n + (int64_t)i});
+		}
 		if (s->op == S_REPEAT && k == AK_K_REF) {
 			for (uint32_t i = 0; i < (uint32_t)len; i++) ak_retain(s->a.p);
 			if (s->a.p && ((ak_obj *)s->a.p)->tag == AK_TAG_STR) out->h.flags = 1;
