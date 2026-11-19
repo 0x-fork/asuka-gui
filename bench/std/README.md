@@ -437,16 +437,16 @@ is 5), and every reader of a string's bytes would follow a pointer.
 sortedops is new: a map of 200,000 keys, each one's floor and
 ceiling, a walk of it all, 2,000 ranges of about ten entries, and half
 its keys removed (Go: DescendLessOrEqual, AscendGreaterOrEqual, Ascend,
-AscendRange, Delete). The machine shared (load 10 to 100): cycles, the
+AscendRange, Delete). The machine shared (load 60 to 160): cycles, the
 median of three interleaved runs, and instructions retired, the median
 of three, the work alone (`-instr`'s), in millions; "before" is
 231ab00b.
 
 | benchmark | cycles before | now | Go | now / Go | instructions before | now | Go |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| sortedmap | 1,686 | 725 | 1,365 | 0.53× | 2,757 | 1,529 | 2,240 |
-| sortedops | – | 217 | 347 | 0.62× | – | 711 | 792 |
-| split | 410 | 305 | 429 | 0.71× | 2,053 | 1,346 | 1,909 |
+| sortedmap | 1,924 | 779 | 1,519 | 0.51× | 2,757 | 1,308 | 2,240 |
+| sortedops | – | 221 | 354 | 0.63× | – | 640 | 792 |
+| split | 397 | 306 | 465 | 0.66× | 2,053 | 1,346 | 1,909 |
 
 The other string benchmarks' instructions are as they were (interp,
 case, fmt, template, lines within 1%); the VM's benchmarks (bench/vm)
