@@ -28,18 +28,27 @@ ak_map *ak_map_new(ak_kind key, bool string_keys, ak_kind val, const ak_shape *v
 	return m;
 }
 
-// The key's hash, 32 bits of it: a string's own (cached in it), an int's
-// mixed, anything else's by ak_val_hash.
+static inline bool is_str(ak_val v) { return v.p && ((const ak_obj *)v.p)->tag == AK_TAG_STR; }
+
+// The key's hash, 32 bits of it: a string's own (cached in it, which is
+// what ak_val_hash gives for one), anything else's by ak_val_hash,
+// folded. (AK_MAP_STRKEYS isn't trusted here: a set of any references
+// has it.)
 static inline uint32_t hash_key(const ak_map *m, ak_val k) {
-	if (m->h.flags & AK_MAP_STRKEYS) return k.p ? ak_str_hash(k.p) : 0;
+	if (key_kind(m) == AK_K_REF && is_str(k)) return ak_str_hash(k.p);
 	uint64_t h = ak_val_hash(k, key_kind(m));
 	return (uint32_t)(h ^ h >> 32);
 }
 
 static inline bool key_eq(const ak_map *m, ak_val a, ak_val b) {
-	if (m->h.flags & AK_MAP_STRKEYS) return a.p == b.p || (a.p && b.p && ak_str_eq(a.p, b.p));
-	if (key_kind(m) == AK_K_INT) return a.i == b.i;
-	return ak_val_eq(a, b, key_kind(m));
+	switch (key_kind(m)) {
+	case AK_K_INT: return a.i == b.i;
+	case AK_K_REF:
+		if (a.p == b.p) return true;
+		if (is_str(a) && is_str(b)) return ak_str_eq(a.p, b.p);
+		return ak_val_eq(a, b, AK_K_REF);
+	default: return ak_val_eq(a, b, key_kind(m));
+	}
 }
 
 // probe finds key's slot (its index, or -1), and, when insert isn't

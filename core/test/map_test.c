@@ -143,6 +143,22 @@ TEST(map_string_keys) {
 	ak_release(m);
 }
 
+// A set of references other than strings, flagged as sets of any
+// references are: equal values that are different objects are one.
+TEST(set_of_values_not_strings) {
+	ak_map *s = ak_set_new(AK_K_REF, true);
+	for (int i = 0; i < 100; i++) {
+		ak_bytes *b = ak_bytes_new("\x00\x01\x02", 3);
+		b->data[0] = (uint8_t)(i % 10);
+		ak_set_insert(&s, (ak_val){.p = b});
+	}
+	CHECK_EQ_INT(s->live, 10);
+	ak_bytes *k = ak_bytes_new("\x07\x01\x02", 3);
+	CHECK(ak_set_has(s, (ak_val){.p = k}));
+	ak_release(k);
+	ak_release(s);
+}
+
 TEST(set_insert_once) {
 	ak_map *s = ak_set_new(AK_K_REF, true);
 	ak_str *a = ak_str_c("a"), *a2 = ak_str_c("a");

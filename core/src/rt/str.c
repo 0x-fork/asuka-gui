@@ -426,7 +426,7 @@ static inline uint64_t wyr4(const uint8_t *p) {
 
 static inline uint64_t wyr3(const uint8_t *p, size_t k) { return ((uint64_t)p[0] << 16) | ((uint64_t)p[k >> 1] << 8) | p[k - 1]; }
 
-uint64_t ak_hash_bytes(const void *key, size_t len) {
+AK_NOINLINE uint64_t ak_hash_bytes(const void *key, size_t len) {
 	static const uint64_t p0 = 0x2d358dccaa6c78a5ull, p1 = 0x8bb84b93962eacc9ull, p2 = 0x4b33a62ed433d4a3ull, p3 = 0x4d5a2da51de1aa47ull;
 	const uint8_t *p = key;
 	uint64_t seed = 0x9e3779b97f4a7c15ull;
@@ -501,7 +501,7 @@ static int64_t chars_in(const char *p, size_t n, bool *ascii) {
 	return (int64_t)n - cont;
 }
 
-bool ak_str_ascii(const ak_str *cs) {
+AK_NOINLINE bool ak_str_ascii(const ak_str *cs) {
 	if (cs->h.flags & AK_STR_KNOWN) return (cs->h.flags & AK_STR_ASCII) != 0;
 	uint64_t any = 0;
 	size_t i = 0;
@@ -576,7 +576,7 @@ static int byte_rank(uint8_t c) {
 // algorithm (Crochemore and Perrin), with a bad character shift on its
 // last byte, as musl's memmem has it: time linear in hn, whatever the
 // needle.
-static int64_t two_way(const uint8_t *h, size_t hn, const uint8_t *n, size_t l) {
+static AK_NOINLINE int64_t two_way(const uint8_t *h, size_t hn, const uint8_t *n, size_t l) {
 	size_t shift[256];
 	uint64_t byteset[4] = {0};
 	for (size_t i = 0; i < l; i++) {
