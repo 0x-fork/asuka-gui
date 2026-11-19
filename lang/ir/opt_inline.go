@@ -6,8 +6,9 @@ import (
 	bc "github.com/egoist/asuka/lang/bytecode"
 )
 
-// Inlining: a call of a small function (CALL), or of a closure made in
-// the same block (CLOS, then CALLC on it), is replaced with a copy of
+// Inlining: a call of a small function (CALL), or of a closure a CLOS
+// made (the last write of its register on every way to the call, as in
+// the same block, or before a loop it's called in), is replaced with a copy of
 // the function's body, in registers of the caller's own: its
 // parameters copied in as a call's frame takes them (references
 // retained), its returns a copy of the result and a jump past the body,
@@ -31,7 +32,7 @@ import (
 // until the caller ends).
 
 const (
-	inlineCode   = 24   // instructions
+	inlineCode   = 40   // instructions
 	inlineRegs   = 24   // registers
 	inlineBudget = 2048 // the registers a caller may grow to
 	inlineGrowth = 1024 // the instructions a caller may grow by, a round
@@ -133,6 +134,10 @@ func (p *Program) inlineAll() {
 type inlineSite struct {
 	g    int
 	caps int // a closure's captures' first register, -1: a CALL
+	// copied: the CLOS (its index) whose captures, scalars, are copied
+	// into registers of their own as it's made (their registers are
+	// written before the call), which the body reads; -1: none.
+	copied int
 }
 
 // sites finds the calls in f that inline may replace.
@@ -162,46 +167,88 @@ func (o *optimizer) sites(fi int, snaps map[int]*snapshot) map[int]inlineSite {
 		}
 		return true
 	}
-	opCLOS, opCALLC := op("CLOS"), op("CALLC")
+	opCALLC := op("CALLC")
+	var preds [][]int
 	for i := range code {
+		if code[i].Op == opCALLC && preds == nil {
+			preds = o.preds()
+		}
 		in := &code[i]
 		switch in.Op {
 		case opCALL:
 			g := int(in.Args[1])
 			if int(in.Args[3]) == o.p.Funcs[g].NParams && ok(i, g) {
-				out[i] = inlineSite{g: g, caps: -1}
+				out[i] = inlineSite{g: g, caps: -1, copied: -1}
 			}
 		case opCALLC:
-			// The closure made in this block, its captures' registers not
-			// written since.
+			// The closure a CLOS made, the last write of its register on
+			// every way here, its captures' registers not written since.
 			c := int(in.Args[1])
-			b := o.blockOf[i]
-			for j := i - 1; j >= o.blocks[b].start; j-- {
-				w := &code[j]
-				if w.Op == opCLOS && int(w.Args[0]) == c {
-					g := int(w.Args[1])
-					caps, n := int(w.Args[2]), int(w.Args[3])
-					clean := true
-					for k := j + 1; k < i && clean; k++ {
-						for r := caps; r < caps+n; r++ {
-							if o.writesReg(&code[k], r) {
-								clean = false
-							}
-						}
-					}
-					gf := o.p.Funcs[g]
-					if clean && int(in.Args[3]) == gf.NParams && len(gf.CapKinds) == n && ok(i, g) {
-						out[i] = inlineSite{g: g, caps: caps}
-					}
-					break
-				}
-				if o.writesReg(&code[j], c) {
-					break
-				}
+			j, clean := o.madeBy(i, c, preds)
+			if j < 0 {
+				continue
+			}
+			w := &code[j]
+			g := int(w.Args[1])
+			caps, n := int(w.Args[2]), int(w.Args[3])
+			gf := o.p.Funcs[g]
+			if int(in.Args[3]) != gf.NParams || len(gf.CapKinds) != n || !ok(i, g) {
+				continue
+			}
+			if clean {
+				out[i] = inlineSite{g: g, caps: caps, copied: -1}
+				continue
+			}
+			// Its captures' registers are written on the way (an argument
+			// block's, reused): scalars are copied as it's made.
+			scalars := true
+			for _, k := range gf.CapKinds {
+				scalars = scalars && k != bc.KRef
+			}
+			if scalars {
+				out[i] = inlineSite{g: g, caps: -1, copied: j}
 			}
 		}
 	}
 	return out
+}
+
+// preds are each block's predecessors (by jumps, falls and throws).
+func (o *optimizer) preds() [][]int {
+	ps := make([][]int, len(o.blocks))
+	for b := range o.blocks {
+		for _, s := range o.blocks[b].succ() {
+			ps[s] = append(ps[s], b)
+		}
+		for _, s := range o.blocks[b].exc {
+			ps[s] = append(ps[s], b)
+		}
+	}
+	return ps
+}
+
+// madeBy is the CLOS (its index) that made the closure in register c
+// that the instruction at i calls: on every way to i, the last write of
+// c is that one CLOS, and nothing on the way from it writes the
+// registers it captured from (which an inlined body reads in place of
+// its captures); -1 when there's no such CLOS. A closure made before a
+// loop and called in it is one: the loop's body, a filter's or a map's
+// step, then inlines it.
+func (o *optimizer) madeBy(i, c int, preds [][]int) (int, bool) {
+	clos, on := o.lastDef(i, c, preds)
+	if clos < 0 || o.f.Code[clos].Op != op("CLOS") {
+		return -1, false
+	}
+	code := o.f.Code
+	caps, n := int(code[clos].Args[2]), int(code[clos].Args[3])
+	for _, k := range on {
+		for r := caps; r < caps+n; r++ {
+			if o.writesReg(&code[k], r) {
+				return clos, false
+			}
+		}
+	}
+	return clos, true
 }
 
 // inline replaces f's calls that it may with their callees' bodies,
@@ -224,12 +271,30 @@ func (o *optimizer) inline(fi int, snaps map[int]*snapshot) bool {
 		places = append(places, placed{l, at})
 		return l
 	}
+	// The copies of closures' captures their inlined bodies read.
+	copies := map[int]int{} // a CLOS's index → its copies' first register
+	for _, s := range sites {
+		if s.copied >= 0 && copies[s.copied] == 0 {
+			copies[s.copied] = len(f.Kinds)
+			f.Kinds = append(f.Kinds, o.p.Funcs[s.g].CapKinds...)
+		}
+	}
 	newIdx := make([]int, len(f.Code)+1)
 	var out []Instr
 	inlined := false
 	for i, call := range f.Code {
 		newIdx[i] = len(out)
+		if c0, ok := copies[i]; ok {
+			out = append(out, call)
+			for k := range int(call.Args[3]) {
+				out = append(out, Instr{Op: opMOV, Args: [5]int32{int32(c0 + k), call.Args[2] + int32(k)}, Line: call.Line})
+			}
+			continue
+		}
 		site, ok := sites[i]
+		if ok && site.copied >= 0 {
+			site.caps = copies[site.copied]
+		}
 		if !ok || len(out)-i > inlineGrowth {
 			out = append(out, call)
 			continue

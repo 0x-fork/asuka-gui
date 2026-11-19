@@ -295,3 +295,21 @@ func TestFusedLoopsKeepBehavior(t *testing.T) {
 		})
 	}
 }
+
+// A small function's tuple of scalars, inlined and only read by its
+// fields, isn't made (scalar replacement); a closure made before a loop
+// and called in it is inlined there, and isn't made either.
+func TestScalarsAndLoopClosures(t *testing.T) {
+	src, err := os.ReadFile("testdata/opt/scalars.asuka")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := optimized(t, string(src), "total")
+	if n := ops(f); n["NEWS"] != 0 || n["CALL"] != 0 {
+		t.Errorf("find's tuple made or find called (%d NEWS, %d CALL)", n["NEWS"], n["CALL"])
+	}
+	f = optimized(t, string(src), "scaled")
+	if n := ops(f); n["CALLC"] != 0 || n["CLOS"] != 0 {
+		t.Errorf("the closure is made or called (%d CLOS, %d CALLC)", n["CLOS"], n["CALLC"])
+	}
+}

@@ -88,6 +88,11 @@ innermost handler, with the registers as they were before it):
 - Common subexpressions: a scalar computed again in a block from
   registers not written since (a field read twice: `b.vx * b.vx`) is a
   copy of the first.
+- Scalar replacement: a struct or a tuple of scalars only, made (NEWS)
+  and only read by its fields (GETF) before its register is written
+  again, isn't made: each GETF reads the register the field was made
+  from (none written on the way). A small function returning
+  `(int, bool)`, inlined, allocates nothing.
 - Coalescing: `OP t, ...; MOV d, t` is `OP d, ...` when nothing reads t
   after and nothing between reads or writes d (or throws to a handler
   that reads it); a reference only when t held none and is let go of
@@ -101,13 +106,16 @@ innermost handler, with the registers as they were before it):
   a new value (NEWS, NEWA, CLOS...) into a reference register that held
   none, likewise; CLR of a register known none; a reference's copy that
   nothing reads before it's cleared (`MOVR d, s ... CLR d`, s not
-  written between).
+  written between), in the block or on every way on (an inlined
+  argument's, cleared after its body).
 
 Then, once per program, inlining (opt_inline.go), callees first: a
-call of a small function (24 instructions, 24 registers at most; not
+call of a small function (40 instructions, 24 registers at most; not
 async, not a mut fn, no handlers or peeks, not calling itself or its
-caller), and a CALLC of a closure a CLOS made in the same block (its
-captures' registers not written since), is replaced with the body, in
+caller), and a CALLC of a closure a CLOS made (the last write of the
+closure's register on every way to the call: in the same block, or
+before a loop the call is in; its captures' registers not written on
+the way, or, scalars, copied as it's made), is replaced with the body, in
 registers of the caller's (one set per callee: its bodies never run at
 once): the arguments copied in as a frame takes them, each return a
 copy of the result and a jump past the body, the body's references

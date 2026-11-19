@@ -640,6 +640,7 @@ func (o *optimizer) passes() {
 		o.compact()
 		pass("elem", o.elemFields)
 		o.compact()
+		pass("sroa", o.scalarStructs)
 		pass("dead", o.deadCode)
 		o.compact()
 		pass("pairs", o.copyPairs)

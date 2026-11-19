@@ -1206,7 +1206,8 @@ func (o *optimizer) copyPairs() {
 			continue
 		}
 		end := o.blocks[o.blockOf[i]].end
-		for k := i + 1; k < end; k++ {
+		k := i + 1
+		for ; k < end; k++ {
 			c := &code[k]
 			if c.Op == opNOP {
 				continue
@@ -1223,7 +1224,50 @@ func (o *optimizer) copyPairs() {
 				break
 			}
 		}
+		if k == end && o.unreadAcross(i, d, s) {
+			// Let go of in other blocks (an inlined call's argument,
+			// cleared after its body): the copy goes, its clears clear
+			// none.
+			o.nop(i)
+		}
 	}
+}
+
+// unreadAcross reports whether nothing reads d on the ways on from i
+// (after it) before d is written again, nor writes s there (so s holds
+// d's value as long as d would have).
+func (o *optimizer) unreadAcross(i, d, s int) bool {
+	code := o.f.Code
+	seen := make([]bool, len(o.blocks))
+	type span struct{ b, from int }
+	work := []span{{o.blockOf[i], i + 1}}
+	for len(work) > 0 {
+		sp := work[len(work)-1]
+		work = work[:len(work)-1]
+		bl := &o.blocks[sp.b]
+		killed := false
+		for k := sp.from; k < bl.end; k++ {
+			c := &code[k]
+			if opInfos[c.Op].unknown || o.readsReg(c, d) || o.writesReg(c, s) {
+				return false
+			}
+			if o.writesReg(c, d) {
+				killed = true
+				break
+			}
+		}
+		next := append([]int(nil), bl.exc...)
+		if !killed {
+			next = append(next, bl.succ()...)
+		}
+		for _, b := range next {
+			if !seen[b] {
+				seen[b] = true
+				work = append(work, span{b, o.blocks[b].start})
+			}
+		}
+	}
+	return true
 }
 
 // compactRegs renumbers the registers the code still names into as few
