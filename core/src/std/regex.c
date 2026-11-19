@@ -1,7 +1,9 @@
 // regex.c: std/regex's builtins: regular expressions in RE2's syntax
-// (a subset: no \p classes), matched in time linear in the text by a
-// Pike VM (Thompson's construction, threads carrying their captures),
-// never by backtracking. Leftmost-first, as RE2 and Perl choose matches.
+// (a subset: no \p classes), matched in time linear in the text, never
+// by backtracking: a lazy DFA finds where a match ends and starts, and a
+// Pike VM (Thompson's construction, threads carrying their captures)
+// finds its groups, and anything the DFA gives up on. Leftmost-first, as
+// RE2 and Perl choose matches.
 //
 // A pattern compiles to a program kept in a bytes value (a Regex's
 // field), so it's a value: compared, copied into spawn, frozen in a
@@ -29,6 +31,13 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#elif !defined(__wasm__)
+#include <pthread.h>
+#endif
 
 #define STR(i) ((ak_str *)args[i].p)
 #define BYTES(i) ((ak_bytes *)args[i].p)
@@ -1178,6 +1187,598 @@ static bool load(const ak_bytes *b, prog *p) {
 	return false;
 }
 
+// ---- The lazy DFA ----
+//
+// Where a match ends, and then where it starts, are found by two
+// deterministic automata built as the text needs them (RE2's and the
+// regex crate's lazy DFAs): a state is the threads the Pike VM would
+// have, without their captures, so each character costs a table lookup,
+// not a step of every thread.
+//
+// Forward, a state is the ordered list of the threads waiting for the
+// next character (each the instruction after the one that consumed the
+// last), and its flags: the last character's kind (none, \n, a word's,
+// another), which ^, $, \b and \B look at, and whether a match ended
+// already (MATCHED: no more threads start, as exec adds none). Its
+// transition on a character follows the threads' empty transitions in
+// priority order, the search's new thread last; a thread that reaches
+// MATCH ends a match before the character and cuts the threads after
+// it, as exec does; the ones before it step. The last match recorded
+// before every thread is gone is exec's: leftmost-first.
+//
+// Backward, from that end, a state is the set of instructions the text
+// to its right matches through to MATCH (empty transitions followed
+// back, the program reversed), and its transition on the character to
+// its left says whether the start (instruction 0) is reached: the
+// leftmost place it is, from the search's start on, is where the match
+// starts (no match starts further left: that one would be leftmost).
+//
+// ASCII characters' transitions are kept, by class (bytes the program
+// can't tell apart); others are worked out each time. The states are
+// kept up to DFA_MEM bytes, then dropped and made again as they're
+// needed; a search that drops them every few characters goes on in the
+// Pike VM, which has the captures too: the DFA gives only where a match
+// is, and exec runs from its start when the pattern has groups.
+
+bool ak_regex_dfa_off;
+
+enum { DFA_MEM = 512 * 1024, DFA_MAX_INST = 10000 };
+// A state's flags (its key's first word): the kind of the character
+// before it (forward) or after it (backward), and MATCHED.
+enum { K_NONE, K_NL, K_WORD, K_OTHER, F_MATCHED = 4 };
+// A transition: the next state << 2 | a start state (forward: no
+// thread, none matched: the prefilter may skip) << 1 | a match ends
+// before the character (forward) or starts after it (backward); -1 not
+// worked out yet.
+enum { T_MATCH = 1, T_START = 2 };
+
+typedef struct {
+	const prog *p;
+	bool rev, ctx;         // backward; the program has assertions
+	uint8_t cls[128];      // an ASCII byte's class
+	uint8_t rep[129];      // a class's byte
+	uint32_t ncls, stride; // classes; a row's transitions (the classes, then the text's end)
+	AK_VEC(uint32_t) keys; // each state's: flags, count, instructions
+	AK_VEC(uint32_t) koff; // a state's key's offset
+	AK_VEC(int32_t) tr;    // a state's row of transitions
+	uint32_t *ht, hcap;    // the states by key: index + 1, 0 none
+	size_t mem;
+	uint32_t dead;
+	size_t flushed_at;     // where in the text the states were last dropped
+	uint32_t *sparse, *dense, ndense; // a set of instructions
+	uint32_t *stack, *list, nlist, *next;
+	uint32_t *pred_off, *pred;        // backward: each instruction's empty predecessors, u << 3 | assertion
+	uint32_t matches[8], nmatch;      // backward: the MATCH instructions (its first state)
+	uint32_t *key;                    // a key being made
+} dfa;
+
+static int kind_of(int64_t c) { return c < 0 ? K_NONE : c == '\n' ? K_NL : word((uint32_t)c) ? K_WORD : K_OTHER; }
+static int64_t rep_of(int k) { return k == K_NONE ? -1 : k == K_NL ? '\n' : k == K_WORD ? 'a' : ' '; }
+
+static bool consumes(const inst *i) { return i->op == I_CHAR || i->op == I_CLASS || i->op == I_ANY || i->op == I_ANYNL; }
+
+static bool accepts(const prog *p, const inst *i, int64_t c) {
+	switch (i->op) {
+	case I_CHAR: return c == (int64_t)i->x;
+	case I_CLASS: return c >= 0 && in_class(p, i, (uint32_t)c);
+	case I_ANY: return c >= 0;
+	case I_ANYNL: return c >= 0 && c != '\n';
+	}
+	return false;
+}
+
+static uint32_t key_hash(const uint32_t *k, uint32_t len) {
+	uint64_t h = 0x9e3779b97f4a7c15ull;
+	for (uint32_t i = 0; i < len; i++) h = (h ^ k[i]) * 0xff51afd7ed558ccdull;
+	return (uint32_t)(h ^ h >> 32);
+}
+
+static void dfa_rehash(dfa *d, uint32_t cap) {
+	ak_free(d->ht);
+	d->ht = ak_alloc(sizeof(uint32_t) * cap);
+	d->hcap = cap;
+	for (uint32_t s = 0; s < d->koff.len; s++) {
+		const uint32_t *k = d->keys.data + d->koff.data[s];
+		uint32_t h = key_hash(k, 2 + k[1]) & (cap - 1);
+		while (d->ht[h]) h = (h + 1) & (cap - 1);
+		d->ht[h] = s + 1;
+	}
+}
+
+// intern is the state of key (flags, count, instructions), made if new.
+static uint32_t intern(dfa *d, const uint32_t *k) {
+	uint32_t len = 2 + k[1], h = key_hash(k, len) & (d->hcap - 1);
+	for (; d->ht[h]; h = (h + 1) & (d->hcap - 1)) {
+		uint32_t s = d->ht[h] - 1;
+		const uint32_t *o = d->keys.data + d->koff.data[s];
+		if (o[1] == k[1] && memcmp(o, k, len * sizeof(uint32_t)) == 0) return s;
+	}
+	uint32_t s = d->koff.len;
+	ak_vec_push(&d->koff, d->keys.len);
+	for (uint32_t i = 0; i < len; i++) ak_vec_push(&d->keys, k[i]);
+	for (uint32_t i = 0; i < d->stride; i++) ak_vec_push(&d->tr, -1);
+	d->ht[h] = s + 1;
+	d->mem += (len + d->stride + 3) * sizeof(uint32_t);
+	if (2 * d->koff.len > d->hcap) dfa_rehash(d, d->hcap * 2);
+	return s;
+}
+
+// dfa_clear drops every state but the dead one (0).
+static void dfa_clear(dfa *d) {
+	d->keys.len = d->koff.len = d->tr.len = 0;
+	memset(d->ht, 0, sizeof(uint32_t) * d->hcap);
+	d->mem = 0;
+	uint32_t k[2] = {F_MATCHED, 0};
+	d->dead = intern(d, k);
+	for (uint32_t i = 0; i < d->stride; i++) d->tr.data[d->dead * d->stride + i] = (int32_t)(d->dead << 2);
+}
+
+static void dfa_free(dfa *d) {
+	if (!d) return;
+	ak_vec_free(&d->keys);
+	ak_vec_free(&d->koff);
+	ak_vec_free(&d->tr);
+	ak_free(d->ht);
+	ak_free(d->sparse);
+	ak_free(d->pred_off);
+	ak_free(d->pred);
+	ak_free(d);
+}
+
+static bool set_has(const dfa *d, uint32_t pc) { return d->sparse[pc] < d->ndense && d->dense[d->sparse[pc]] == pc; }
+static void set_add(dfa *d, uint32_t pc) { d->sparse[pc] = d->ndense, d->dense[d->ndense++] = pc; }
+
+// dfa_new is the automaton of p, forward or backward; NULL for a program
+// too large to be worth it.
+// compiled: whether p is as program() makes them: the match's start
+// saved first, its end then MATCH last, neither anywhere else (a program
+// made by hand can save anywhere: exec's captures say where its match is,
+// and throw when they make none).
+static bool compiled(const prog *p) {
+	uint32_t n = p->ninst;
+	if (n < 3 || p->code[0].op != I_SAVE || p->code[0].x != 0 || p->code[n - 2].op != I_SAVE || p->code[n - 2].x != 1 || p->code[n - 1].op != I_MATCH) return false;
+	for (uint32_t pc = 1; pc + 2 < n; pc++) {
+		const inst *i = &p->code[pc];
+		if (i->op == I_MATCH || (i->op == I_SAVE && i->x < 2)) return false;
+	}
+	return true;
+}
+
+static dfa *dfa_new(const prog *p, bool rev) {
+	if (p->ninst > DFA_MAX_INST || !compiled(p)) return NULL;
+	dfa *d = ak_alloc(sizeof *d);
+	d->p = p;
+	d->rev = rev;
+	uint32_t n = p->ninst;
+	for (uint32_t pc = 0; pc < n; pc++) d->ctx |= p->code[pc].op == I_ASSERT;
+	// Scratch: a set, a stack (two entries an instruction: a split
+	// pushes two), lists, a key.
+	d->sparse = ak_alloc(sizeof(uint32_t) * (8 * (size_t)n + 4));
+	d->dense = d->sparse + n;
+	d->stack = d->dense + n;
+	d->list = d->stack + 2 * (size_t)n;
+	d->next = d->list + n;
+	d->key = d->next + n;
+	// Classes: the bytes every consuming instruction (and the kinds the
+	// assertions see) treat alike.
+	uint64_t sig[128];
+	for (int b = 0; b < 128; b++) {
+		uint64_t h = d->ctx ? (uint64_t)kind_of(b) + 1 : 1;
+		for (uint32_t pc = 0; pc < n; pc++)
+			if (consumes(&p->code[pc])) h = (h * 0x100000001b3ull) ^ (accepts(p, &p->code[pc], b) ? pc + 1 : 0);
+		sig[b] = h;
+	}
+	for (int b = 0; b < 128; b++) {
+		uint32_t c = 0;
+		for (; c < d->ncls; c++) {
+			int r = d->rep[c];
+			if (sig[r] != sig[b] || (d->ctx && kind_of(r) != kind_of(b))) continue;
+			bool same = true;
+			for (uint32_t pc = 0; pc < n && same; pc++)
+				if (consumes(&p->code[pc]) && accepts(p, &p->code[pc], r) != accepts(p, &p->code[pc], b)) same = false;
+			if (same) break;
+		}
+		if (c == d->ncls) d->rep[d->ncls++] = (uint8_t)b;
+		d->cls[b] = (uint8_t)c;
+	}
+	d->stride = d->ncls + 1;
+	if (rev) {
+		// Each instruction's empty predecessors, u << 3 | the assertion
+		// its edge needs (0: none).
+		d->pred_off = ak_alloc(sizeof(uint32_t) * (n + 1));
+		for (uint32_t u = 0; u < n; u++) {
+			const inst *i = &p->code[u];
+			if (i->op == I_JMP) d->pred_off[i->x]++;
+			else if (i->op == I_SPLIT) d->pred_off[i->x]++, d->pred_off[i->y]++;
+			else if (i->op == I_SAVE || i->op == I_ASSERT) d->pred_off[u + 1]++;
+			else if (i->op == I_MATCH && d->nmatch < AK_LEN(d->matches)) d->matches[d->nmatch++] = u;
+		}
+		uint32_t at = 0;
+		for (uint32_t v = 0; v <= n; v++) {
+			uint32_t k = d->pred_off[v];
+			d->pred_off[v] = at;
+			at += k;
+		}
+		d->pred = ak_alloc(sizeof(uint32_t) * (at ? at : 1));
+		uint32_t *fill = ak_alloc(sizeof(uint32_t) * (n + 1));
+		memcpy(fill, d->pred_off, sizeof(uint32_t) * (n + 1));
+		for (uint32_t u = 0; u < n; u++) {
+			const inst *i = &p->code[u];
+			if (i->op == I_JMP) d->pred[fill[i->x]++] = u << 3;
+			else if (i->op == I_SPLIT) d->pred[fill[i->x]++] = u << 3, d->pred[fill[i->y]++] = u << 3;
+			else if (i->op == I_SAVE) d->pred[fill[u + 1]++] = u << 3;
+			else if (i->op == I_ASSERT) d->pred[fill[u + 1]++] = u << 3 | i->x;
+		}
+		ak_free(fill);
+		if (!d->nmatch) {
+			dfa_free(d);
+			return NULL;
+		}
+	}
+	dfa_rehash(d, 256);
+	dfa_clear(d);
+	return d;
+}
+
+// fwd_closure follows pc's empty transitions in priority order, the
+// consuming instructions into list; true when it reaches MATCH (what's
+// after it is cut).
+static bool fwd_closure(dfa *d, uint32_t pc0, around ctx) {
+	const inst *code = d->p->code;
+	uint32_t top = 0;
+	d->stack[top++] = pc0;
+	while (top) {
+		uint32_t pc = d->stack[--top];
+		if (set_has(d, pc)) continue;
+		set_add(d, pc);
+		const inst *i = &code[pc];
+		switch (i->op) {
+		case I_JMP: d->stack[top++] = i->x; break;
+		case I_SPLIT: d->stack[top++] = i->y, d->stack[top++] = i->x; break;
+		case I_SAVE: d->stack[top++] = pc + 1; break;
+		case I_ASSERT:
+			if (holds(i->x, ctx)) d->stack[top++] = pc + 1;
+			break;
+		case I_MATCH: return true;
+		default: d->list[d->nlist++] = pc;
+		}
+	}
+	return false;
+}
+
+static int cmp_u32(const void *a, const void *b) {
+	uint32_t x = *(const uint32_t *)a, y = *(const uint32_t *)b;
+	return x < y ? -1 : x > y;
+}
+
+// step works out state s's transition on c (a code point; -1 the text's
+// end, or start, backward).
+static int32_t step(dfa *d, uint32_t s, int64_t c) {
+	const prog *p = d->p;
+	const uint32_t *k = d->keys.data + d->koff.data[s];
+	uint32_t flags = k[0], n = k[1];
+	d->ndense = d->nlist = 0;
+	bool hit = false;
+	uint32_t nn = 0;
+	if (!d->rev) {
+		around ctx = {rep_of((int)(flags & 3)), c};
+		for (uint32_t i = 0; i <= n && !hit; i++) {
+			if (i == n && (flags & F_MATCHED)) break;
+			hit = fwd_closure(d, i < n ? k[2 + i] : 0, ctx);
+		}
+		if (c < 0) return (int32_t)(d->dead << 2) | hit;
+		for (uint32_t i = 0; i < d->nlist; i++)
+			if (accepts(p, &p->code[d->list[i]], c)) d->next[nn++] = d->list[i] + 1;
+		flags = (d->ctx ? (uint32_t)kind_of(c) : 0) | ((flags & F_MATCHED) || hit ? F_MATCHED : 0);
+		if (!nn && (flags & F_MATCHED)) return (int32_t)(d->dead << 2) | hit;
+	} else {
+		around ctx = {c, rep_of((int)(flags & 3))};
+		for (uint32_t i = 0; i < n; i++) {
+			uint32_t top = 0;
+			d->stack[top++] = k[2 + i];
+			while (top) {
+				uint32_t v = d->stack[--top];
+				if (set_has(d, v)) continue;
+				set_add(d, v);
+				for (uint32_t e = d->pred_off[v]; e < d->pred_off[v + 1]; e++) {
+					uint32_t u = d->pred[e] >> 3, a = d->pred[e] & 7;
+					if (!a || holds(a, ctx)) d->stack[top++] = u;
+				}
+			}
+		}
+		hit = set_has(d, 0);
+		if (c < 0) return (int32_t)(d->dead << 2) | hit;
+		for (uint32_t j = 0; j < d->ndense; j++) {
+			uint32_t v = d->dense[j];
+			if (v && consumes(&p->code[v - 1]) && accepts(p, &p->code[v - 1], c)) d->next[nn++] = v - 1;
+		}
+		if (!nn) return (int32_t)(d->dead << 2) | hit;
+		qsort(d->next, nn, sizeof(uint32_t), cmp_u32);
+		flags = d->ctx ? (uint32_t)kind_of(c) : 0;
+	}
+	d->key[0] = flags, d->key[1] = nn;
+	memcpy(d->key + 2, d->next, nn * sizeof(uint32_t));
+	uint32_t t = intern(d, d->key);
+	bool start = !d->rev && !nn && !(flags & F_MATCHED) && p->filter;
+	return (int32_t)(t << 2 | (uint32_t)start << 1 | hit);
+}
+
+// start_state: forward, no thread yet, after a character of kind k;
+// backward, the MATCH instructions, before one of kind k.
+static uint32_t start_state(dfa *d, int k) {
+	d->key[0] = d->ctx ? (uint32_t)k : 0;
+	d->key[1] = d->rev ? d->nmatch : 0;
+	if (d->rev) memcpy(d->key + 2, d->matches, d->nmatch * sizeof(uint32_t));
+	return intern(d, d->key);
+}
+
+// make_room drops the states when they've taken DFA_MEM, keeping s
+// (made again); false when the last drop was too few characters ago for
+// the DFA to be worth it here.
+static bool make_room(dfa *d, uint32_t *s, size_t at) {
+	if (d->mem < DFA_MEM) return true;
+	size_t since = at > d->flushed_at ? at - d->flushed_at : d->flushed_at - at;
+	if (since < 8 * (size_t)d->koff.len) return false;
+	d->flushed_at = at;
+	const uint32_t *k = d->keys.data + d->koff.data[*s];
+	uint32_t len = 2 + k[1];
+	memcpy(d->key, k, len * sizeof(uint32_t));
+	uint32_t *save = ak_alloc(len * sizeof(uint32_t));
+	memcpy(save, d->key, len * sizeof(uint32_t));
+	dfa_clear(d);
+	*s = intern(d, save);
+	ak_free(save);
+	return true;
+}
+
+// trans is s's transition on c, worked out (and kept, for ASCII and the
+// end) if it isn't yet; -2 when the DFA gives up.
+static int32_t trans(dfa *d, uint32_t *s, int64_t c, size_t at) {
+	uint32_t slot = c < 0 ? d->ncls : c < 128 ? d->cls[c] : UINT32_MAX;
+	if (slot != UINT32_MAX) {
+		int32_t t = d->tr.data[*s * d->stride + slot];
+		if (t >= 0) return t;
+	}
+	if (!make_room(d, s, at)) return -2;
+	int32_t t = step(d, *s, slot != UINT32_MAX && c >= 0 ? d->rep[slot] : c);
+	if (slot != UINT32_MAX) d->tr.data[*s * d->stride + slot] = t;
+	return t;
+}
+
+// dfa_end: where the leftmost-first match from start ends (exec's
+// search); -1 none; -2 the DFA gave up.
+static int64_t dfa_end(dfa *d, const char *s, size_t n, size_t start) {
+	const prog *p = d->p;
+	const uint8_t *u = (const uint8_t *)s;
+	uint32_t st = start_state(d, kind_of(prev_rune(s, start)));
+	bool at_start = true;
+	int64_t end = -1;
+	size_t pos = start;
+	d->flushed_at = start;
+	for (;;) {
+		if (at_start && p->filter) {
+			size_t q = skip(p, s, n, pos);
+			if (q >= n) return end;
+			if (q != pos) {
+				pos = q;
+				st = start_state(d, kind_of(prev_rune(s, pos)));
+			}
+		}
+		at_start = false;
+		// ASCII, by the transitions kept.
+		const int32_t *tr = d->tr.data;
+		const uint8_t *cls = d->cls;
+		uint32_t stride = d->stride;
+		while (pos < n && u[pos] < 0x80) {
+			int32_t t = tr[st * stride + cls[u[pos]]];
+			if (t < 0) break;
+			if (t & T_MATCH) end = (int64_t)pos;
+			st = (uint32_t)t >> 2;
+			pos++;
+			if (st == d->dead) return end;
+			if (t & T_START) {
+				at_start = true;
+				break;
+			}
+		}
+		if (at_start) continue;
+		if (pos >= n) {
+			int32_t t = trans(d, &st, -1, pos);
+			if (t == -2) return -2;
+			return t & T_MATCH ? (int64_t)n : end;
+		}
+		size_t at = pos;
+		int64_t c = u[pos] < 0x80 ? (int64_t)u[pos++] : (int64_t)ak_utf8_decode(s, n, &pos);
+		int32_t t = trans(d, &st, c, at);
+		if (t == -2) return -2;
+		if (t & T_MATCH) end = (int64_t)at;
+		st = (uint32_t)t >> 2;
+		if (st == d->dead) return end;
+		at_start = (t & T_START) != 0;
+	}
+}
+
+// prev_char is the code point that ends at s[pos] (pos > 0), as
+// prev_rune reads it, and its length.
+static int64_t prev_char(const char *s, size_t pos, size_t *len) {
+	if ((uint8_t)s[pos - 1] < 0x80) {
+		*len = 1;
+		return (uint8_t)s[pos - 1];
+	}
+	size_t k = pos - 1;
+	while (k > 0 && pos - k < 4 && ((uint8_t)s[k] & 0xc0) == 0x80) k--;
+	size_t j = k;
+	uint32_t c = ak_utf8_decode(s, pos, &j);
+	if (j != pos) {
+		*len = 1;
+		return 0xfffd;
+	}
+	*len = pos - k;
+	return c;
+}
+
+// dfa_start: where the match ending at end starts: the leftmost place
+// from pos on that the program, read backward from end, reaches its
+// start; -1 none (not a match's end); -2 the DFA gave up.
+static int64_t dfa_start(dfa *r, const char *s, size_t n, size_t pos, size_t end) {
+	size_t clen;
+	uint32_t st = start_state(r, end < n ? kind_of((int64_t)(size_t)ak_utf8_decode(s, n, &(size_t){end})) : K_NONE);
+	int64_t best = -1;
+	size_t p = end;
+	r->flushed_at = end;
+	for (;;) {
+		int64_t c = p ? prev_char(s, p, &clen) : -1;
+		int32_t t = trans(r, &st, c, p);
+		if (t == -2) return -2;
+		if (t & T_MATCH) best = (int64_t)p;
+		if (p == pos) return best;
+		st = (uint32_t)t >> 2;
+		if (st == r->dead) return best;
+		p -= clen;
+	}
+}
+
+// ---- Programs kept ----
+//
+// A pattern's program decoded, its matcher's memory and its automata are
+// kept for the thread (the last four used): a pattern matched line by
+// line (lines.count(where: l => re.matches(l))) decodes and builds once,
+// and its DFA's states carry from one line to the next. A program is
+// known by its bytes (a copy: the bytes value may go and another come at
+// its address).
+
+enum { KEPT = 4 };
+
+typedef struct {
+	uint8_t *bytes;  // the program's, a copy (NULL: an empty slot)
+	size_t len;
+	prog p;
+	bool filter;     // the prefilter, as it was made
+	vm m;
+	dfa *fwd, *rev;
+	bool tried;      // the automata were made (or can't be)
+	uint64_t used;
+} kept;
+
+typedef struct {
+	kept k[KEPT];
+	uint64_t tick;
+} kept_all;
+
+static void kept_drop(kept *e) {
+	if (!e->bytes) return;
+	ak_free(e->bytes);
+	ak_free(e->m.mem);
+	ak_free(e->p.code);
+	dfa_free(e->fwd);
+	dfa_free(e->rev);
+	memset(e, 0, sizeof *e);
+}
+
+static void kept_free(void *v) {
+	kept_all *a = v;
+	if (!a) return;
+	for (int i = 0; i < KEPT; i++) kept_drop(&a->k[i]);
+	ak_free(a);
+}
+
+#if defined(__wasm__)
+static kept_all *the_kept;  // one thread
+static kept_all *kept_get(void) { return the_kept ? the_kept : (the_kept = ak_alloc(sizeof(kept_all))); }
+#elif defined(_WIN32)
+static INIT_ONCE kept_once = INIT_ONCE_STATIC_INIT;
+static DWORD kept_fls = FLS_OUT_OF_INDEXES;
+static VOID WINAPI kept_fls_free(PVOID v) { kept_free(v); }
+static BOOL CALLBACK kept_init(PINIT_ONCE o, PVOID a, PVOID *c) {
+	AK_UNUSED(o), AK_UNUSED(a), AK_UNUSED(c);
+	kept_fls = FlsAlloc(kept_fls_free);
+	return TRUE;
+}
+static kept_all *kept_get(void) {
+	InitOnceExecuteOnce(&kept_once, kept_init, NULL, NULL);
+	if (kept_fls == FLS_OUT_OF_INDEXES) return NULL;
+	kept_all *a = FlsGetValue(kept_fls);
+	if (!a) {
+		a = ak_alloc(sizeof *a);
+		FlsSetValue(kept_fls, a);
+	}
+	return a;
+}
+#else
+static pthread_once_t kept_once = PTHREAD_ONCE_INIT;
+static pthread_key_t kept_key;
+static bool kept_ok;
+static void kept_init(void) { kept_ok = pthread_key_create(&kept_key, kept_free) == 0; }
+static kept_all *kept_get(void) {
+	pthread_once(&kept_once, kept_init);
+	if (!kept_ok) return NULL;
+	kept_all *a = pthread_getspecific(kept_key);
+	if (!a) {
+		a = ak_alloc(sizeof *a);
+		if (pthread_setspecific(kept_key, a) != 0) {
+			ak_free(a);
+			return NULL;
+		}
+	}
+	return a;
+}
+#endif
+
+// keep is b's program, kept (decoded, its prefilter and matcher made);
+// NULL (and thrown) when b isn't a program.
+static kept *keep(const ak_bytes *b) {
+	kept_all *a = kept_get();
+	if (!a) return NULL;
+	kept *lru = &a->k[0];
+	for (int i = 0; i < KEPT; i++) {
+		kept *e = &a->k[i];
+		if (e->bytes && b && e->len == b->len && memcmp(e->bytes, b->data, b->len) == 0) {
+			e->used = ++a->tick;
+			e->p.filter = e->filter && !ak_regex_prefilter_off;
+			return e;
+		}
+		if (!e->bytes || e->used < lru->used) lru = e;
+	}
+	kept_drop(lru);
+	if (!load(b, &lru->p)) return NULL;
+	lru->bytes = ak_alloc(b->len);
+	memcpy(lru->bytes, b->data, b->len);
+	lru->len = b->len;
+	lru->filter = lru->p.filter;
+	vm_init(&lru->m, &lru->p);
+	lru->used = ++a->tick;
+	return lru;
+}
+
+// find is exec by the DFA where it can: the match's end, then its
+// start; captures, when the pattern has groups, by exec from that start.
+static bool find(kept *e, const char *s, size_t n, size_t start, bool need_span) {
+	if (!ak_regex_dfa_off) {
+		if (!e->tried) {
+			e->tried = true;
+			e->fwd = dfa_new(&e->p, false);
+			e->rev = e->fwd ? dfa_new(&e->p, true) : NULL;
+			if (!e->rev) dfa_free(e->fwd), e->fwd = NULL;
+		}
+		if (e->fwd) {
+			int64_t end = dfa_end(e->fwd, s, n, start);
+			if (end == -1) return false;
+			if (end >= 0 && !need_span) return true;
+			if (end >= 0) {
+				int64_t from = dfa_start(e->rev, s, n, start, (size_t)end);
+				if (from >= 0) {
+					if (e->p.ncap == 1) {
+						e->m.match[0] = (int32_t)from, e->m.match[1] = (int32_t)end;
+						return true;
+					}
+					return exec(&e->m, s, n, (size_t)from);
+				}
+			}
+		}
+	}
+	return exec(&e->m, s, n, start);
+}
+
 // ---- The builtins ----
 
 static ak_val program_fn(ak_val *args, uint32_t n) {
@@ -1193,14 +1794,9 @@ static ak_val program_fn(ak_val *args, uint32_t n) {
 
 static ak_val test_fn(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
-	prog p;
-	if (!load(BYTES(0), &p)) return (ak_val){0};
-	vm m;
-	vm_init(&m, &p);
-	bool ok = exec(&m, STR(1)->data, STR(1)->len, 0);
-	ak_free(m.mem);
-	ak_free(p.code);
-	return (ak_val){.i = ok};
+	kept *e = keep(BYTES(0));
+	if (!e) return (ak_val){0};
+	return (ak_val){.i = find(e, STR(1)->data, STR(1)->len, 0, false)};
 }
 
 // placed is whether a match's captures are where a compiled pattern
@@ -1218,13 +1814,12 @@ static bool placed(const int32_t *caps, uint32_t ns, size_t pos, size_t len) {
 // each runs f on each match of p in s (up to limit, all when < 0):
 // successive matches that don't overlap, an empty one right after the
 // last skipped (as Go and RE2 do). A match no pattern makes throws.
-static void each(prog *p, const ak_str *s, int64_t limit, void (*f)(void *ctx, const int32_t *caps, uint32_t ns), void *ctx) {
-	vm m;
-	vm_init(&m, p);
+static void each(kept *e, const ak_str *s, int64_t limit, void (*f)(void *ctx, const int32_t *caps, uint32_t ns), void *ctx) {
+	vm m = e->m;
 	size_t pos = 0;
 	int64_t last = -1, count = 0;
 	while ((limit < 0 || count < limit) && pos <= s->len) {
-		if (!exec(&m, s->data, s->len, pos)) break;
+		if (!find(e, s->data, s->len, pos, true)) break;
 		if (!placed(m.match, m.nslot, pos, s->len)) {
 			ak_throw_msg("regex: not a compiled pattern (make a Regex with regex.compile)");
 			break;
@@ -1250,7 +1845,6 @@ static void each(prog *p, const ak_str *s, int64_t limit, void (*f)(void *ctx, c
 			pos = (size_t)b;
 		}
 	}
-	ak_free(m.mem);
 }
 
 static void collect(void *ctx, const int32_t *caps, uint32_t ns) {
@@ -1263,11 +1857,10 @@ static void collect(void *ctx, const int32_t *caps, uint32_t ns) {
 
 static ak_val search_fn(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
-	prog p;
-	if (!load(BYTES(0), &p)) return (ak_val){0};
+	kept *e = keep(BYTES(0));
+	if (!e) return (ak_val){0};
 	ak_arr *out = ak_arr_new(AK_K_REF, NULL, 0);
-	each(&p, STR(1), args[2].i, collect, &out);
-	ak_free(p.code);
+	each(e, STR(1), args[2].i, collect, &out);
 	if (ak_error_pending()) {
 		ak_release(out);
 		return (ak_val){0};
@@ -1343,19 +1936,17 @@ static void replace_one(void *ctx, const int32_t *caps, uint32_t ns) {
 
 static ak_val replace_fn(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
-	prog p;
-	if (!load(BYTES(0), &p)) return (ak_val){0};
-	repl r = {&p, STR(1), STR(2), {0}, 0};
-	each(&p, STR(1), args[3].i, replace_one, &r);
+	kept *e = keep(BYTES(0));
+	if (!e) return (ak_val){0};
+	repl r = {&e->p, STR(1), STR(2), {0}, 0};
+	each(e, STR(1), args[3].i, replace_one, &r);
 	if (ak_error_pending()) {
 		ak_buf_free(&r.out);
-		ak_free(p.code);
 		return (ak_val){0};
 	}
 	ak_buf_put(&r.out, r.s->data + r.pos, r.s->len - r.pos);
 	ak_str *s = ak_str_new((const char *)r.out.data, r.out.len);
 	ak_buf_free(&r.out);
-	ak_free(p.code);
 	return (ak_val){.p = s};
 }
 
