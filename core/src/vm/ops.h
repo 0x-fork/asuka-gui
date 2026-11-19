@@ -617,6 +617,16 @@ static inline bool ak_cg_pending(void *const **slot) {
 	return **slot != NULL;
 }
 
+// AK_CG_OPAQUE(x) hides what the int lvalue x holds from the C
+// compiler's analysis (it costs no instruction): an add lang/cgen knows
+// can't overflow is written unchecked and then this, so that the C
+// compiler sees no more of it than it did of the checked add's result.
+#if defined(__GNUC__) || defined(__clang__)
+#define AK_CG_OPAQUE(x) __asm__("" : "+r"(x))
+#else
+#define AK_CG_OPAQUE(x) ((void)0)
+#endif
+
 // ak_cg_overflow throws a stack overflow in fn and returns a body's
 // result for it: in another file (interp.c), so that a body's check
 // tail-calls it and the check's path needs no frame.

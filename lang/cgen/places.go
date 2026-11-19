@@ -80,7 +80,8 @@ type plan struct {
 	// hoists: what's made unique as a loop is entered (flow.go), by the
 	// loop's first instruction.
 	hoists map[int]*hoist
-	// noOverflow: an ADDIS that can't overflow (flow.go): unchecked.
+	// noOverflow: an ADDI, SUBI, MULI or their immediates' form that
+	// can't overflow (flow.go): unchecked.
 	noOverflow map[int]bool
 }
 

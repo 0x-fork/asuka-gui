@@ -1,6 +1,9 @@
 package cgen
 
 import (
+	"math"
+	"math/bits"
+
 	bc "github.com/egoist/asuka/lang/bytecode"
 )
 
@@ -17,6 +20,15 @@ import (
 //   - a < b, an int's test's: JLTI's taken way, JLEI's other;
 //   - n is the length of the array in c (LEN): it stays while neither is
 //     written (a SETIF or a SETIDX changes an element, not the length);
+//   - an int register's magnitude: |x| < 2^b. A length or an index an
+//     instruction took is less than 2^32 (ak_arr's len is a uint32), a
+//     constant its own; a sum or a difference of two known ones is less
+//     than 2^(the larger b + 1), a product 2^(their sum). An add, a
+//     subtract or a multiply whose result is known below 2^63 that way
+//     can't overflow: it's not checked (sieve's j += i, of two indexes).
+//     The fact stays until its register is written, whatever happens to
+//     the array; where ways in disagree it's dropped (rather than taken
+//     the larger, so a loop that grows it gets there at once);
 //
 // and i is in c's range when it's not negative and less than a length
 // of c. Each fact is dropped where a register it names is written (an
@@ -58,10 +70,12 @@ type facts struct {
 	// alike.
 	cmp map[int]pair
 	sum map[int]pair
+	// mag: an int register known |x| < 2^mag[x].
+	mag map[int]int
 }
 
 func newFacts() *facts {
-	return &facts{uniq: map[int]bool{}, rng: map[pair]bool{}, elem: map[pair]bool{}, nonneg: map[int]bool{}, lt: map[pair]bool{}, ln: map[pair]bool{}, eqlen: map[pair]bool{}, cmp: map[int]pair{}, sum: map[int]pair{}}
+	return &facts{uniq: map[int]bool{}, rng: map[pair]bool{}, elem: map[pair]bool{}, nonneg: map[int]bool{}, lt: map[pair]bool{}, ln: map[pair]bool{}, eqlen: map[pair]bool{}, cmp: map[int]pair{}, sum: map[int]pair{}, mag: map[int]int{}}
 }
 
 func (s *facts) copy() *facts {
@@ -92,6 +106,9 @@ func (s *facts) copy() *facts {
 	}
 	for k, v := range s.sum {
 		t.sum[k] = v
+	}
+	for k, v := range s.mag {
+		t.mag[k] = v
 	}
 	return t
 }
@@ -125,6 +142,21 @@ func (s *facts) meet(t *facts) bool {
 				delete(p.a, k)
 				changed = true
 			}
+		}
+	}
+	// A magnitude the other way has larger is widened: to an index's (a
+	// loop entered with a constant, whose counter is an index after), or
+	// past it, dropped; so a counter that grows takes two turns of the
+	// analysis, not one a bit.
+	for k, b := range s.mag {
+		c, ok := t.mag[k]
+		switch {
+		case !ok || c > idxMag:
+			delete(s.mag, k)
+			changed = true
+		case c > b:
+			s.mag[k] = idxMag
+			changed = true
 		}
 	}
 	return changed
@@ -169,6 +201,7 @@ func (s *facts) below(a int) bool {
 func (s *facts) forget(r int) {
 	delete(s.uniq, r)
 	delete(s.nonneg, r)
+	delete(s.mag, r)
 	for _, m := range []map[pair]bool{s.rng, s.elem, s.lt, s.ln, s.eqlen} {
 		for p := range m {
 			if p.c == r || p.i == r {
@@ -560,9 +593,13 @@ func (pl *plan) step(m *bc.Module, fd *bc.FuncDef, ins []insn, k int, s *facts, 
 			pl.uniqueElem[k] = s.elem[pair{a[0], a[1]}]
 		case "ADDIS":
 			// x + 1 of an x less than an int can't overflow.
-			pl.noOverflow[k] = imm(in, 2) == 1 && s.below(a[1])
+			pl.noOverflow[k] = imm(in, 2) == 1 && s.below(a[1]) || magOf(m, nm, s, in) >= 0
+		case "ADDI", "SUBI", "MULI", "SUBIS", "MULIS":
+			pl.noOverflow[k] = magOf(m, nm, s, in) >= 0
 		}
 	}
+	// Its result's magnitude, from its operands as they were.
+	mag := magOf(m, nm, s, in)
 	// What it computes, from its operands as they were.
 	nonneg := false
 	var lts []pair
@@ -656,6 +693,9 @@ func (pl *plan) step(m *bc.Module, fd *bc.FuncDef, ins []insn, k int, s *facts, 
 		}
 		s.forget(r)
 	}
+	if mag >= 0 && a[0] != bc.None && fd.Kinds[a[0]] == bc.KInt {
+		s.mag[a[0]] = mag
+	}
 	switch nm {
 	case "KSMALL", "KINT", "LEN", "MOV", "ADDIS", "ADDI", "ADDIK", "DIVIS", "MODIS", "MULI", "MULIS":
 		if a[0] == bc.None || fd.Kinds[a[0]] != bc.KInt {
@@ -700,6 +740,9 @@ func (pl *plan) step(m *bc.Module, fd *bc.FuncDef, ins []insn, k int, s *facts, 
 		}
 		for _, x := range same {
 			s.nonneg[x] = true
+			if b, ok := s.mag[x]; !ok || b > idxMag {
+				s.mag[x] = idxMag
+			}
 			for p := range s.ln {
 				if p.i == c {
 					s.lt[pair{x, p.c}] = true
@@ -785,4 +828,72 @@ func (pl *plan) pureRead(m *bc.Module, in insn, r int) bool {
 		}
 	}
 	return ops == len(filter(regs(m, in), r))
+}
+
+// idxMag is a length's and an index's magnitude: ak_arr's len is a
+// uint32.
+const idxMag = 32
+
+// magOf is the magnitude (|x| < 2^b) of what in computes, from what s
+// knows of its operands, or -1: unknown, or not below 2^63 (an add, a
+// subtract or a multiply that might overflow; one of a result known
+// that way can't).
+func magOf(m *bc.Module, nm string, s *facts, in insn) int {
+	a := in.args
+	of := func(r int) int {
+		if b, ok := s.mag[r]; ok {
+			return b
+		}
+		return -1
+	}
+	k := func(v int64) int {
+		if v == math.MinInt64 {
+			return -1
+		}
+		if v < 0 {
+			v = -v
+		}
+		return bits.Len64(uint64(v))
+	}
+	both := func(x, y int, f func(int, int) int) int {
+		if x < 0 || y < 0 {
+			return -1
+		}
+		if b := f(x, y); b <= 63 {
+			return b
+		}
+		return -1
+	}
+	sum := func(x, y int) int { return max(x, y) + 1 }
+	prod := func(x, y int) int { return x + y }
+	switch nm {
+	case "KSMALL":
+		return k(int64(int16(a[1])))
+	case "KINT":
+		return k(m.Ints[a[1]])
+	case "LEN":
+		return idxMag
+	case "MOV":
+		if a[0] != a[1] {
+			return of(a[1])
+		}
+	case "ADDI", "SUBI":
+		return both(of(a[1]), of(a[2]), sum)
+	case "MULI":
+		return both(of(a[1]), of(a[2]), prod)
+	case "ADDIS", "SUBIS", "ADDIK":
+		return both(of(a[1]), k(int64(imm(in, 2))), sum)
+	case "MULIS":
+		return both(of(a[1]), k(int64(imm(in, 2))), prod)
+	case "NEGI":
+		return of(a[1])
+	case "DIVIS":
+		return of(a[1]) // |x / k| <= |x|
+	case "MODIS":
+		if b := of(a[1]); b >= 0 {
+			return min(b, k(int64(imm(in, 2))))
+		}
+		return k(int64(imm(in, 2)))
+	}
+	return -1
 }

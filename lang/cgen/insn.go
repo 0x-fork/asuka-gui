@@ -108,6 +108,16 @@ func (g *gen) intOp(name string, in insn, h string) bool {
 	cmp := map[string]string{"EQI": "==", "NEI": "!=", "LTI": "<", "LEI": "<=", "BAND": "&", "BOR": "|", "BXOR": "^"}
 	switch name {
 	case "ADDI", "SUBI", "MULI":
+		if g.pl.noOverflow[g.k] {
+			// Known not to overflow (flow.go: of indexes, lengths...),
+			// and opaque to the C compiler's loop analysis as the check
+			// was (AK_CG_OPAQUE): a counter stepped by another register
+			// (sieve's j += i) would have it work out the inner loop's
+			// trip count, a 128-bit division, on each turn of the outer
+			// loop, and unroll by it.
+			g.w("%s = %s %s %s; AK_CG_OPAQUE(%s);", g.ri(a[0]), g.ri(a[1]), map[string]string{"ADDI": "+", "SUBI": "-", "MULI": "*"}[name], g.ri(a[2]), g.ri(a[0]))
+			break
+		}
 		fn := map[string]string{"ADDI": "ak_addi", "SUBI": "ak_subi", "MULI": "ak_muli"}[name]
 		g.w("if (AK_UNLIKELY(!%s(&%s, %s, %s))) %s", fn, g.ri(a[0]), g.ri(a[1]), g.ri(a[2]), g.fail(in, h))
 	case "WADDI", "WSUBI", "WMULI":
@@ -144,9 +154,10 @@ func (g *gen) intConstOp(name string, in insn, h string) bool {
 	a := in.args
 	switch name {
 	case "ADDIS", "SUBIS", "MULIS":
-		if name == "ADDIS" && g.pl.noOverflow[g.k] {
-			// Known not to overflow (flow.go): a loop's index + 1.
-			g.w("%s = %s + %d;", g.ri(a[0]), g.ri(a[1]), imm(in, 2))
+		if g.pl.noOverflow[g.k] {
+			// Known not to overflow (flow.go): a loop's index + 1, a
+			// sum of indexes.
+			g.w("%s = %s %s (%d);", g.ri(a[0]), g.ri(a[1]), map[string]string{"ADDIS": "+", "SUBIS": "-", "MULIS": "*"}[name], imm(in, 2))
 			break
 		}
 		fn := map[string]string{"ADDIS": "ak_addi", "SUBIS": "ak_subi", "MULIS": "ak_muli"}[name]
