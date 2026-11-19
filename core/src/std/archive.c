@@ -546,14 +546,26 @@ static bool zip_data(arc *a, const entry *e, ak_cz_src *src) {
 	return true;
 }
 
-// The data's destination: a file, or bytes in memory.
+// The data's destination: a file, bytes in memory, or (obj) the bytes
+// made for it at its size, filled from at.
 typedef struct {
 	ak_cz_file *f;
 	ak_buf *mem;
+	ak_bytes *obj;
+	size_t at;
 } dest;
 
 static bool put(dest *d, const uint8_t *p, size_t n) {
 	if (d->f) return ak_cz_write(d->f, p, n);
+	if (d->obj) {
+		if (n > d->obj->len - d->at) {
+			ak_cz_fail(AK_CZ_CORRUPT, "", "an entry is larger than its header says");
+			return false;
+		}
+		memcpy(d->obj->data + d->at, p, n);
+		d->at += n;
+		return true;
+	}
 	if (d->mem->len + n > UINT32_MAX) {
 		ak_cz_fail(AK_CZ_TOO_LARGE, "", "an entry is larger than 4 GB, more than bytes hold");
 		return false;
@@ -908,6 +920,12 @@ static void tar_close(tar_rd *r) {
 
 // tar_copy writes the entry's data (n bytes, then its padding) to d.
 static bool tar_copy(tar_rd *r, int64_t n, dest *d) {
+	if (d->obj && (uint64_t)n <= d->obj->len - d->at) {
+		// Read where it goes.
+		bool ok = tar_full(r, d->obj->data + d->at, (size_t)n);
+		d->at += (size_t)n;
+		return ok && tar_skip(r, pad(r->pos));
+	}
 	uint8_t *buf = ak_alloc(CHUNK);
 	bool ok = true;
 	while (ok && n > 0) {
@@ -990,6 +1008,30 @@ static void push_bytes(ak_arr **data, ak_buf *b) {
 	ak_buf_reset(b);
 }
 
+// Up to this size an entry's data is read into bytes made at its size
+// (its header's), once; past it the buffer grows as it comes, so a
+// header that lies costs no more than the data there is.
+enum { SIZED_MAX = 1 << 26 };
+
+// sized is d at an entry's bytes of size, or at b.
+static ak_bytes *sized(dest *d, ak_buf *b, int64_t size) {
+	*d = (dest){.mem = b};
+	if (size < 0 || size > SIZED_MAX) return NULL;
+	d->obj = ak_bytes_new(NULL, (size_t)size);
+	return d->obj;
+}
+
+// push_entry adds an entry's data: what it was read into, or b's.
+static void push_entry(ak_arr **data, dest *d, ak_buf *b) {
+	if (!d->obj) {
+		push_bytes(data, b);
+		return;
+	}
+	d->obj->len = (uint32_t)d->at;
+	ak_arr_push(data, (ak_val){.p = d->obj});
+	d->obj = NULL;
+}
+
 // scan lists a's entries into names and info; with data, their data too
 // (no more than limit bytes in all).
 static bool scan(arc *a, ak_arr **names, ak_arr **info, ak_arr **data, int64_t limit) {
@@ -1003,11 +1045,19 @@ static bool scan(arc *a, ak_arr **names, ak_arr **info, ak_arr **data, int64_t l
 		for (uint32_t i = 0; ok && i < es.len; i++) {
 			entry *e = &es.data[i];
 			if (e->kind == K_SYMLINK) ok = zip_target(a, e);
-			if (ok && data && e->kind == K_FILE) ok = !too_large(used, e->size, limit, e->name) && zip_copy(a, e, &d);
-			if (!ok) break;
+			d = (dest){.mem = &b};
+			if (ok && data && e->kind == K_FILE) {
+				ok = !too_large(used, e->size, limit, e->name);
+				if (ok) sized(&d, &b, e->size);
+				ok = ok && zip_copy(a, e, &d);
+			}
+			if (!ok) {
+				if (d.obj) ak_release(d.obj);
+				break;
+			}
 			used += e->size;
 			add(names, info, e);
-			if (data) push_bytes(data, &b);
+			if (data) push_entry(data, &d, &b);
 		}
 		entries_free(&es);
 	} else {
@@ -1022,12 +1072,15 @@ static bool scan(arc *a, ak_arr **names, ak_arr **info, ak_arr **data, int64_t l
 				entry_free(&e);
 				break;
 			}
+			d = (dest){.mem = &b};
 			if (data && e.kind == K_FILE) {
 				if (e.sparse) {
 					ok = false;
 					ak_cz_fail(AK_CZ_UNSUPPORTED, e.name, "it's a sparse file");
 				} else {
-					ok = !too_large(used, size, limit, e.name) && tar_copy(&r, size, &d);
+					ok = !too_large(used, size, limit, e.name);
+					if (ok) sized(&d, &b, size);
+					ok = ok && tar_copy(&r, size, &d);
 					used += size;
 				}
 			} else {
@@ -1035,8 +1088,9 @@ static bool scan(arc *a, ak_arr **names, ak_arr **info, ak_arr **data, int64_t l
 			}
 			if (ok && !(e.kind == K_DIR && !e.name[0])) {
 				add(names, info, &e);
-				if (data) push_bytes(data, &b);
+				if (data) push_entry(data, &d, &b);
 			}
+			if (d.obj) ak_release(d.obj);
 			entry_free(&e);
 		}
 		tar_close(&r);
@@ -1798,6 +1852,15 @@ static ak_val encode_fn(ak_val *args, uint32_t n) {
 	const ak_arr *names = ARR(2), *targets = ARR(3), *datas = ARR(4), *info = ARR(5);
 	if (!lengths(names->len, names, targets, datas, info)) return (ak_val){.p = NULL};
 	ak_cz_sink s = {0};
+	if (args[0].i == F_TAR) {
+		// A tar holds its files' data and a block or two of header each.
+		uint64_t size = 1024;
+		for (uint32_t i = 0; i < datas->len; i++) {
+			const ak_bytes *d = datas->data[i].p;
+			size += 1536 + (d ? (uint64_t)d->len + 511 : 0) / 512 * 512;
+		}
+		if (size < UINT32_MAX) ak_cz_sink_reserve(&s, (size_t)size);
+	}
 	wr w;
 	wr_init(&w, &s, args[0].i, args[1].i);
 	bool ok = true;
@@ -1812,9 +1875,11 @@ static ak_val encode_fn(ak_val *args, uint32_t n) {
 		ak_buf_free(&it.nb);
 	}
 	ok = wr_finish(&w, ok);
-	ak_val r = {.p = ok ? ak_bytes_new(s.mem.data, s.mem.len) : NULL};
-	ak_buf_free(&s.mem);
-	return r;
+	if (!ok) {
+		ak_cz_sink_free(&s);
+		return (ak_val){.p = NULL};
+	}
+	return (ak_val){.p = ak_cz_sink_bytes(&s)};
 }
 
 static ak_val create_fn(ak_val *args, uint32_t n) {

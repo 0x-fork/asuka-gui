@@ -750,15 +750,30 @@ static ak_bytes *inflate_whole(ak_cz_inflate *z, size_t in_len) {
 
 static const char *sink_path(const ak_cz_sink *s) { return s->f ? s->f->path : ""; }
 
+void ak_cz_sink_reserve(ak_cz_sink *s, size_t n) {
+	if (s->f || (s->obj && s->len + n <= s->obj->len)) return;
+	size_t cap = s->obj ? (size_t)s->obj->len * 2 : 4096;
+	if (cap < s->len + n) cap = s->len + n;
+	if (cap > UINT32_MAX) cap = UINT32_MAX;
+	if (!s->obj) {
+		s->obj = ak_bytes_new(NULL, cap);
+	} else {
+		s->obj = ak_realloc(s->obj, sizeof(ak_bytes) + cap);
+		s->obj->len = (uint32_t)cap;
+	}
+}
+
 bool ak_cz_sink_write(ak_cz_sink *s, const void *p, size_t n) {
 	if (s->f) {
 		if (!ak_cz_write(s->f, p, n)) return false;
 	} else {
-		if (s->mem.len + n > UINT32_MAX) {
+		if (s->len + n > UINT32_MAX) {
 			ak_cz_fail(AK_CZ_TOO_LARGE, "", "the result would be larger than 4 GB, more than bytes hold");
 			return false;
 		}
-		ak_buf_put(&s->mem, p, n);
+		ak_cz_sink_reserve(s, n);
+		if (n) memcpy(s->obj->data + s->len, p, n);
+		s->len += n;
 	}
 	s->pos += (int64_t)n;
 	return true;
@@ -766,7 +781,7 @@ bool ak_cz_sink_write(ak_cz_sink *s, const void *p, size_t n) {
 
 bool ak_cz_sink_patch(ak_cz_sink *s, int64_t off, const void *p, size_t n) {
 	if (!s->f) {
-		memcpy(s->mem.data + off, p, n);
+		memcpy(s->obj->data + off, p, n);
 		return true;
 	}
 	return ak_cz_seek(s->f, off) && ak_cz_write(s->f, p, n) && ak_cz_seek(s->f, s->pos);
@@ -774,9 +789,23 @@ bool ak_cz_sink_patch(ak_cz_sink *s, int64_t off, const void *p, size_t n) {
 
 bool ak_cz_sink_truncate(ak_cz_sink *s, int64_t len) {
 	if (s->f && !ak_cz_truncate(s->f, len)) return false;
-	if (!s->f) s->mem.len = (size_t)len;
+	if (!s->f) s->len = (size_t)len;
 	s->pos = len;
 	return true;
+}
+
+ak_bytes *ak_cz_sink_bytes(ak_cz_sink *s) {
+	ak_bytes *b = s->obj;
+	if (!b) return ak_bytes_new(NULL, 0);
+	if (s->len + s->len / 8 + 4096 < b->len) b = ak_realloc(b, sizeof(ak_bytes) + (s->len ? s->len : 1));
+	b->len = (uint32_t)s->len;
+	s->obj = NULL, s->len = 0;
+	return b;
+}
+
+void ak_cz_sink_free(ak_cz_sink *s) {
+	if (s->obj) ak_release(s->obj);
+	s->obj = NULL, s->len = 0;
 }
 
 // ---- Deflating ----
@@ -868,13 +897,11 @@ static ak_val encode_bytes(ak_val *args, uint32_t n) {
 	bool ok = ak_cz_deflate_write(z, data ? data->data : NULL, data ? data->len : 0) && ak_cz_deflate_finish(z);
 	ak_cz_deflate_free(z);
 	if (!ok) {
-		ak_buf_free(&s.mem);
+		ak_cz_sink_free(&s);
 		ak_throw_msg("compress: %s", fail_reason);
 		return (ak_val){.p = NULL};
 	}
-	ak_bytes *out = ak_bytes_new(s.mem.data, s.mem.len);
-	ak_buf_free(&s.mem);
-	return (ak_val){.p = out};
+	return (ak_val){.p = ak_cz_sink_bytes(&s)};
 }
 
 static int64_t mem_limit(int64_t limit) { return limit < 0 || limit > UINT32_MAX ? UINT32_MAX : limit; }

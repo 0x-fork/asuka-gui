@@ -105,15 +105,23 @@ void ak_cz_inflate_free(ak_cz_inflate *z);
 
 // ---- Writing: a sink, and a deflater into one ----
 
-// A sink is a file, or bytes in memory (mem, no more than 4 GB: what
-// bytes hold); pos is where the next byte goes.
+// A sink is a file, or bytes in memory: obj, the result itself (its len
+// its room as it's written), no more than 4 GB, what bytes hold; len what
+// it holds. pos is where the next byte goes.
 typedef struct {
 	ak_cz_file *f;
-	ak_buf mem;
+	ak_bytes *obj;
+	size_t len;
 	int64_t pos;
 } ak_cz_sink;
 
 bool ak_cz_sink_write(ak_cz_sink *s, const void *p, size_t n);
+// ak_cz_sink_reserve makes room in memory for n more bytes at once.
+void ak_cz_sink_reserve(ak_cz_sink *s, size_t n);
+// ak_cz_sink_bytes hands over what a sink in memory holds, as bytes (not
+// copied); ak_cz_sink_free lets go of it instead.
+ak_bytes *ak_cz_sink_bytes(ak_cz_sink *s);
+void ak_cz_sink_free(ak_cz_sink *s);
 // ak_cz_sink_patch writes p over what's at off, before pos.
 bool ak_cz_sink_patch(ak_cz_sink *s, int64_t off, const void *p, size_t n);
 // ak_cz_sink_truncate drops what's past len; pos is len.

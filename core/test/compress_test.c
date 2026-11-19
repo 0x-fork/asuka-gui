@@ -303,9 +303,10 @@ TEST(inflate_bomb_bounded) {
 	CHECK(ak_cz_deflate_finish(z));
 	ak_cz_deflate_free(z);
 	free(zeros);
-	CHECK(sk.mem.len < n / 500);
+	ak_bytes *packed = ak_cz_sink_bytes(&sk);
+	CHECK(packed->len < n / 500);
 	uint64_t before = ak_alloc_bytes;
-	ak_val r = call("compress.decodeBytes", (ak_val[]){B(sk.mem.data, sk.mem.len), I(AK_CZ_GZIP), I(1 << 20)}, 3, 1);
+	ak_val r = call("compress.decodeBytes", (ak_val[]){B(packed->data, packed->len), I(AK_CZ_GZIP), I(1 << 20)}, 3, 1);
 	CHECK(r.p == NULL);
 	CHECK_EQ_INT(call("compress.failureKind", NULL, 0, 0).i, AK_CZ_TOO_LARGE);
 #ifndef NDEBUG
@@ -313,11 +314,11 @@ TEST(inflate_bomb_bounded) {
 #endif
 	AK_UNUSED(before);
 	// Under the limit it decodes whole.
-	ak_bytes *out = call("compress.decodeBytes", (ak_val[]){B(sk.mem.data, sk.mem.len), I(AK_CZ_GZIP), I(n)}, 3, 1).p;
+	ak_bytes *out = call("compress.decodeBytes", (ak_val[]){B(packed->data, packed->len), I(AK_CZ_GZIP), I(n)}, 3, 1).p;
 	REQUIRE(out);
 	CHECK_EQ_INT(out->len, n);
 	ak_release(out);
-	ak_buf_free(&sk.mem);
+	ak_release(packed);
 }
 
 // Adler-32 at every length near its chunks' (5552), against the
@@ -532,8 +533,9 @@ TEST(sink_patch_truncate) {
 			CHECK(ak_cz_close(s.f));
 			CHECK_EQ_STR(read_text(p), "Jello!");
 		} else {
-			CHECK(s.mem.len == 6 && memcmp(s.mem.data, "Jello!", 6) == 0);
-			ak_buf_free(&s.mem);
+			ak_bytes *b = ak_cz_sink_bytes(&s);
+			CHECK(b->len == 6 && memcmp(b->data, "Jello!", 6) == 0);
+			ak_release(b);
 		}
 	}
 	free(p);
