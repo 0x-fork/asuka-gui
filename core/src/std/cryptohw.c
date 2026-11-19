@@ -9,13 +9,12 @@
 // for ARMv8 runs on phones with and without the extensions, an x86
 // build on CPUs from before AES-NI.
 //
-// GHASH multiplies as Intel's white paper does (Gueron and Kounavis,
-// "Intel Carry-Less Multiplication Instruction and its Usage for
-// Computing the GCM Mode", rev. 2.02, its gfmul): on blocks with their
-// bytes reversed, a 256-bit carry-less product shifted left one bit and
-// reduced by x^128 + x^7 + x^2 + x + 1; eight blocks' products summed
-// before one reduction (by H^8 … H^1), as it's linear. The ARMv8 code is
-// the same steps in NEON.
+// AES-GCM runs eight blocks at a time: their counters' AES, each round
+// across the eight, then their GHASH, the eight blocks' products (by H^8
+// … H^1) summed before one reduction, which is two carry-less
+// multiplies by a constant (as Go's and Linux's ARMv8 GHASH;
+// gh_reduce says how). x86's and ARMv8's are the same steps, by
+// AES-NI and PCLMULQDQ or AESE and PMULL.
 #include "std/std.h"
 #include "std/cryptohw.h"
 
@@ -331,74 +330,81 @@ T_AES static inline blk bswap(blk x) {
 	return vqtbl1q_u8(x, vld1q_u8(rev));
 }
 
-T_AES static inline blk clmul(blk a, blk b, int hi_a, int hi_b) {
-	uint64x2_t x = vreinterpretq_u64_u8(a), y = vreinterpretq_u64_u8(b);
-	poly64_t p = (poly64_t)(hi_a ? vgetq_lane_u64(x, 1) : vgetq_lane_u64(x, 0));
-	poly64_t q = (poly64_t)(hi_b ? vgetq_lane_u64(y, 1) : vgetq_lane_u64(y, 0));
-	return vreinterpretq_u8_p128(vmull_p64(p, q));
+// The carry-less products of the vectors' low words and of their high
+// ones (PMULL, PMULL2). In assembly where the compiler takes it: through
+// the intrinsics' lanes, clang keeps a loop's constant operands (the
+// powers of H) in general registers and moves each into a vector
+// before each multiply.
+#if defined(__GNUC__) || defined(__clang__)
+T_AES static inline blk clmul_lo(blk a, blk b) {
+	blk r;
+	__asm__("pmull %0.1q, %1.1d, %2.1d" : "=w"(r) : "w"(a), "w"(b));
+	return r;
 }
 
-// The byte shifts of a whole vector, as SSE's _mm_slli_si128 and
-// _mm_srli_si128 (toward the high bytes, and the low).
-#define SLL_BYTES(x, n) vextq_u8(ZERO(), x, 16 - (n))
-#define SRL_BYTES(x, n) vextq_u8(x, ZERO(), n)
-#define SRL32(x, n) vreinterpretq_u8_u32(vshrq_n_u32(vreinterpretq_u32_u8(x), n))
-#define SLL32(x, n) vreinterpretq_u8_u32(vshlq_n_u32(vreinterpretq_u32_u8(x), n))
-#define OR(a, b) vorrq_u8(a, b)
-
-// a × b, unreduced: the 256-bit product's halves added into *lo, *hi.
-T_AES static inline void mul_acc(blk a, blk b, blk *lo, blk *hi) {
-	blk t3 = clmul(a, b, 0, 0), t6 = clmul(a, b, 1, 1);
-	blk t4 = XOR(clmul(a, b, 0, 1), clmul(a, b, 1, 0));
-	*lo = XOR(*lo, XOR(t3, SLL_BYTES(t4, 8)));
-	*hi = XOR(*hi, XOR(t6, SRL_BYTES(t4, 8)));
+T_AES static inline blk clmul_hi(blk a, blk b) {
+	blk r;
+	__asm__("pmull2 %0.1q, %1.2d, %2.2d" : "=w"(r) : "w"(a), "w"(b));
+	return r;
+}
+#else
+T_AES static inline blk clmul_lo(blk a, blk b) {
+	return vreinterpretq_u8_p128(vmull_p64(vgetq_lane_p64(vreinterpretq_p64_u8(a), 0), vgetq_lane_p64(vreinterpretq_p64_u8(b), 0)));
 }
 
-// The product's shift by one bit and its reduction.
-T_AES static inline blk reduce(blk t3, blk t6) {
-	blk t7 = SRL32(t3, 31), t8 = SRL32(t6, 31);
-	t3 = SLL32(t3, 1);
-	t6 = SLL32(t6, 1);
-	blk t9 = SRL_BYTES(t7, 12);
-	t8 = SLL_BYTES(t8, 4);
-	t7 = SLL_BYTES(t7, 4);
-	t3 = OR(t3, t7);
-	t6 = OR(OR(t6, t8), t9);
-	t7 = XOR(XOR(SLL32(t3, 31), SLL32(t3, 30)), SLL32(t3, 25));
-	t8 = SRL_BYTES(t7, 4);
-	t7 = SLL_BYTES(t7, 12);
-	t3 = XOR(t3, t7);
-	blk t2 = XOR(XOR(XOR(SRL32(t3, 1), SRL32(t3, 2)), SRL32(t3, 7)), t8);
-	return XOR(t6, XOR(t3, t2));
+T_AES static inline blk clmul_hi(blk a, blk b) {
+	return vreinterpretq_u8_p128(vmull_high_p64(vreinterpretq_p64_u8(a), vreinterpretq_p64_u8(b)));
 }
+#endif
 
-T_AES static inline blk gfmul(blk a, blk b) {
-	blk lo = ZERO(), hi = ZERO();
-	mul_acc(a, b, &lo, &hi);
-	return reduce(lo, hi);
-}
+#define SWAP64(x) vextq_u8(x, x, 8)
+#define LO_TO_HI(x) vextq_u8(ZERO(), x, 8)  // the low word moved high, zeros below
+#define HI_TO_LO(x) vextq_u8(x, ZERO(), 8)
+#define WORDS(lo, hi) vreinterpretq_u8_u64(vcombine_u64(vcreate_u64(lo), vcreate_u64(hi)))
 
+// The counter: a vector of four native words (the nonce's, byte-swapped,
+// then the count), added to as numbers and byte-swapped back into a
+// block.
+#define CTR_BLOCK(c) vrev32q_u8(c)
+#define CTR_ADD(c, d) vreinterpretq_u8_u32(vaddq_u32(vreinterpretq_u32_u8(c), vreinterpretq_u32_u8(d)))
+
+// The round keys sit at the array's end (an AES-128 key's 11 at 4 … 14),
+// so every round's index is a constant and the rounds unroll.
 typedef struct {
 	blk rk[15];
 	int nr;
 } aes_key;
 
+#define AES_ROUND(s, key) s = vaesmcq_u8(vaeseq_u8(s, key))
+
 T_AES static inline blk aes_enc(const aes_key *k, blk s) {
-	for (int i = 0; i < k->nr - 1; i++) s = vaesmcq_u8(vaeseq_u8(s, k->rk[i]));
-	return XOR(vaeseq_u8(s, k->rk[k->nr - 1]), k->rk[k->nr]);
+	if (k->nr > 12) AES_ROUND(s, k->rk[0]), AES_ROUND(s, k->rk[1]);
+	if (k->nr > 10) AES_ROUND(s, k->rk[2]), AES_ROUND(s, k->rk[3]);
+	for (int i = 4; i < 13; i++) AES_ROUND(s, k->rk[i]);
+	return XOR(vaeseq_u8(s, k->rk[13]), k->rk[14]);
 }
 
 // Eight blocks at once, each round across them, so the AES unit's
-// pipeline stays full.
+// pipeline stays full; the last round key is the caller's to add (with
+// the data, in one three-way XOR).
 T_AES static inline void aes_enc8(const aes_key *k, blk s[8]) {
-	for (int i = 0; i < k->nr - 1; i++)
-		for (int j = 0; j < 8; j++) s[j] = vaesmcq_u8(vaeseq_u8(s[j], k->rk[i]));
-	for (int j = 0; j < 8; j++) s[j] = XOR(vaeseq_u8(s[j], k->rk[k->nr - 1]), k->rk[k->nr]);
+	if (k->nr > 12)
+		for (int i = 0; i < 2; i++)
+			for (int j = 0; j < 8; j++) AES_ROUND(s[j], k->rk[i]);
+	if (k->nr > 10)
+		for (int i = 2; i < 4; i++)
+			for (int j = 0; j < 8; j++) AES_ROUND(s[j], k->rk[i]);
+	for (int i = 4; i < 13; i++)
+		for (int j = 0; j < 8; j++) AES_ROUND(s[j], k->rk[i]);
+	for (int j = 0; j < 8; j++) s[j] = vaeseq_u8(s[j], k->rk[13]);
 }
 
-#define AES_ROUND_KEYS(k, sched) \
-	for (int i_ = 0; i_ <= (k)->nr; i_++) (k)->rk[i_] = vld1q_u8(sched[i_])
+// The last round's output XORed with the data: the last round key and
+// the data in one three-way XOR (EOR3, where the CPU has it).
+#define AES_LAST(k, s, d) XOR(XOR(s, (k)->rk[14]), d)
 
+#define AES_ROUND_KEYS(k, sched) \
+	for (int i_ = 0; i_ <= (k)->nr; i_++) (k)->rk[14 - (k)->nr + i_] = vld1q_u8(sched[i_])
 #elif HW_X86
 
 #define T_AES __attribute__((target("aes,pclmul,ssse3")))
@@ -432,35 +438,15 @@ typedef __m128i blk;
 
 T_AES static inline blk bswap(blk x) { return _mm_shuffle_epi8(x, _mm_set_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)); }
 
-T_AES static inline void mul_acc(blk a, blk b, blk *lo, blk *hi) {
-	blk t3 = _mm_clmulepi64_si128(a, b, 0x00), t6 = _mm_clmulepi64_si128(a, b, 0x11);
-	blk t4 = XOR(_mm_clmulepi64_si128(a, b, 0x10), _mm_clmulepi64_si128(a, b, 0x01));
-	*lo = XOR(*lo, XOR(t3, _mm_slli_si128(t4, 8)));
-	*hi = XOR(*hi, XOR(t6, _mm_srli_si128(t4, 8)));
-}
+#define clmul_lo(a, b) _mm_clmulepi64_si128(a, b, 0x00)
+#define clmul_hi(a, b) _mm_clmulepi64_si128(a, b, 0x11)
+#define SWAP64(x) _mm_shuffle_epi32(x, 0x4e)
+#define LO_TO_HI(x) _mm_slli_si128(x, 8)
+#define HI_TO_LO(x) _mm_srli_si128(x, 8)
+#define WORDS(lo, hi) _mm_set_epi64x((long long)(hi), (long long)(lo))
 
-T_AES static inline blk reduce(blk t3, blk t6) {
-	blk t7 = _mm_srli_epi32(t3, 31), t8 = _mm_srli_epi32(t6, 31);
-	t3 = _mm_slli_epi32(t3, 1);
-	t6 = _mm_slli_epi32(t6, 1);
-	blk t9 = _mm_srli_si128(t7, 12);
-	t8 = _mm_slli_si128(t8, 4);
-	t7 = _mm_slli_si128(t7, 4);
-	t3 = _mm_or_si128(t3, t7);
-	t6 = _mm_or_si128(_mm_or_si128(t6, t8), t9);
-	t7 = XOR(XOR(_mm_slli_epi32(t3, 31), _mm_slli_epi32(t3, 30)), _mm_slli_epi32(t3, 25));
-	t8 = _mm_srli_si128(t7, 4);
-	t7 = _mm_slli_si128(t7, 12);
-	t3 = XOR(t3, t7);
-	blk t2 = XOR(XOR(XOR(_mm_srli_epi32(t3, 1), _mm_srli_epi32(t3, 2)), _mm_srli_epi32(t3, 7)), t8);
-	return XOR(t6, XOR(t3, t2));
-}
-
-T_AES static inline blk gfmul(blk a, blk b) {
-	blk lo = ZERO(), hi = ZERO();
-	mul_acc(a, b, &lo, &hi);
-	return reduce(lo, hi);
-}
+#define CTR_BLOCK(c) _mm_shuffle_epi8(c, _mm_set_epi8(12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3))
+#define CTR_ADD(c, d) _mm_add_epi32(c, d)
 
 typedef struct {
 	blk rk[15];
@@ -468,21 +454,27 @@ typedef struct {
 } aes_key;
 
 T_AES static inline blk aes_enc(const aes_key *k, blk s) {
-	s = XOR(s, k->rk[0]);
-	for (int i = 1; i < k->nr; i++) s = _mm_aesenc_si128(s, k->rk[i]);
-	return _mm_aesenclast_si128(s, k->rk[k->nr]);
+	int first = 14 - k->nr;
+	s = XOR(s, k->rk[first]);
+	for (int i = first + 1; i < 14; i++) s = _mm_aesenc_si128(s, k->rk[i]);
+	return _mm_aesenclast_si128(s, k->rk[14]);
 }
 
+// All but the last round, which AESENCLAST takes with the data XORed
+// into its key.
 T_AES static inline void aes_enc8(const aes_key *k, blk s[8]) {
-	for (int j = 0; j < 8; j++) s[j] = XOR(s[j], k->rk[0]);
-	for (int i = 1; i < k->nr; i++)
+	int first = 14 - k->nr;
+	for (int j = 0; j < 8; j++) s[j] = XOR(s[j], k->rk[first]);
+	for (int i = first + 1; i < 5; i++)
 		for (int j = 0; j < 8; j++) s[j] = _mm_aesenc_si128(s[j], k->rk[i]);
-	for (int j = 0; j < 8; j++) s[j] = _mm_aesenclast_si128(s[j], k->rk[k->nr]);
+	for (int i = 5; i < 14; i++)
+		for (int j = 0; j < 8; j++) s[j] = _mm_aesenc_si128(s[j], k->rk[i]);
 }
+
+#define AES_LAST(k, s, d) _mm_aesenclast_si128(s, XOR((k)->rk[14], d))
 
 #define AES_ROUND_KEYS(k, sched) \
-	for (int i_ = 0; i_ <= (k)->nr; i_++) (k)->rk[i_] = LOAD(sched[i_])
-
+	for (int i_ = 0; i_ <= (k)->nr; i_++) (k)->rk[14 - (k)->nr + i_] = LOAD(sched[i_])
 #endif
 
 #if HW_ARM || HW_X86
@@ -510,29 +502,135 @@ static int key_schedule(const uint8_t *key, size_t kn, uint8_t rk[15][16]) {
 	return nr;
 }
 
+// GHASH works on blocks with their bytes reversed: a block is then the
+// number whose bit 127 - i is the field element's coefficient of x^i, so
+// the carry-less product of two is their product's coefficients in the
+// same order, one bit short of 256 (bit 254 - i is x^i's). Multiplying
+// by H·x^-1 (gh_twist) in place of H makes up the bit, and the 256-bit
+// product reduces by x^128 = x^7 + x^2 + x + 1 a word at a time, its low
+// word (the highest powers) carry-less multiplied by 0xc2 << 56 (x^7,
+// x^2 and x, reflected) and added a word up with itself, twice
+// (gh_reduce): no shifts, as Linux's and Go's arm64 GHASH do. A
+// block's product is four word products, the middle two by the key's
+// words swapped, precomputed (Karatsuba's three would take two more
+// instructions a block to fold the block's words); eight blocks'
+// products are summed (by H^8 … H^1) before one reduction, as GHASH is
+// linear.
+// An empty assembly statement the compiler must assume changes x: no
+// value it computed from x before carries past it.
+#if defined(__GNUC__) || defined(__clang__)
+#define OPAQUE_PTR(x) __asm__("" : "+r"(x))
+#if HW_ARM
+#define OPAQUE_BLK(x) __asm__("" : "+w"(x))
+#else
+#define OPAQUE_BLK(x) __asm__("" : "+x"(x))
+#endif
+#else
+#define OPAQUE_PTR(x) ((void)0)
+#define OPAQUE_BLK(x) ((void)0)
+#endif
+
+typedef struct {
+	blk hk[16];  // H^(i+1)·x^-1 at 2i, its words swapped at 2i + 1
+} gh_key;
+
+#define GH_H(g, i) (g)->hk[2 * (i)]
+#define GH_S(g, i) (g)->hk[2 * (i) + 1]
+
+T_AES static inline void gh_mul_acc(blk a, blk h, blk hs, blk *lo, blk *mid, blk *hi) {
+	*lo = XOR(*lo, clmul_lo(a, h));
+	*hi = XOR(*hi, clmul_hi(a, h));
+	*mid = XOR(*mid, XOR(clmul_lo(a, hs), clmul_hi(a, hs)));
+}
+
+T_AES static inline blk gh_reduce(blk lo, blk mid, blk hi) {
+	lo = XOR(lo, LO_TO_HI(mid));
+	hi = XOR(hi, HI_TO_LO(mid));
+	blk poly = WORDS(0xc200000000000000ull, 0);
+	blk m = XOR(SWAP64(lo), clmul_lo(lo, poly));
+	return XOR(XOR(hi, SWAP64(m)), clmul_lo(m, poly));
+}
+
+T_AES static inline blk gh_mul(blk a, blk h, blk hs) {
+	blk lo = ZERO(), mid = ZERO(), hi = ZERO();
+	gh_mul_acc(a, h, hs, &lo, &mid, &hi);
+	return gh_reduce(lo, mid, hi);
+}
+
+// x·x^-1: the number shifted up a bit, x^-1 = x^127 + x^6 + x + 1 added
+// when its x^0 (bit 127) shifts out. Constant time.
+T_AES static blk gh_twist(blk x) {
+	uint64_t w[2];
+	STORE((uint8_t *)w, x);
+	uint64_t carry = 0 - (w[1] >> 63);
+	return WORDS(w[0] << 1 ^ (carry & 1), (w[1] << 1 | w[0] >> 63) ^ (carry & 0xc200000000000000ull));
+}
+
+T_AES static void gh_init(gh_key *g, blk h) {
+	blk p = bswap(h);
+	GH_H(g, 0) = gh_twist(p);
+	GH_S(g, 0) = SWAP64(GH_H(g, 0));
+	for (int i = 1; i < 8; i++) {
+		p = gh_mul(p, GH_H(g, 0), GH_S(g, 0));
+		GH_H(g, i) = gh_twist(p);
+		GH_S(g, i) = SWAP64(GH_H(g, i));
+	}
+}
+
 // ghash: the GHASH of n bytes (a partial last block padded with
-// zeros) into *x, by hp (H^1 … H^8).
-T_AES static void ghash(blk *x, const blk hp[8], const uint8_t *p, size_t n) {
+// zeros) into *x.
+T_AES static void ghash(blk *x, const gh_key *g, const uint8_t *p, size_t n) {
 	blk acc = *x;
 	for (; n >= 128; p += 128, n -= 128) {
-		blk lo = ZERO(), hi = ZERO();
-		mul_acc(XOR(acc, bswap(LOAD(p))), hp[7], &lo, &hi);
-		for (int j = 1; j < 8; j++) mul_acc(bswap(LOAD(p + 16 * j)), hp[7 - j], &lo, &hi);
-		acc = reduce(lo, hi);
+		blk lo = ZERO(), mid = ZERO(), hi = ZERO();
+		gh_mul_acc(XOR(acc, bswap(LOAD(p))), GH_H(g, 7), GH_S(g, 7), &lo, &mid, &hi);
+#pragma GCC unroll 8
+		for (int j = 1; j < 8; j++) gh_mul_acc(bswap(LOAD(p + 16 * j)), GH_H(g, 7 - j), GH_S(g, 7 - j), &lo, &mid, &hi);
+		acc = gh_reduce(lo, mid, hi);
 	}
-	for (; n >= 16; p += 16, n -= 16) acc = gfmul(XOR(acc, bswap(LOAD(p))), hp[0]);
+	for (; n >= 16; p += 16, n -= 16) acc = gh_mul(XOR(acc, bswap(LOAD(p))), GH_H(g, 0), GH_S(g, 0));
 	if (n) {
 		uint8_t last[16] = {0};
 		memcpy(last, p, n);
-		acc = gfmul(XOR(acc, bswap(LOAD(last))), hp[0]);
+		acc = gh_mul(XOR(acc, bswap(LOAD(last))), GH_H(g, 0), GH_S(g, 0));
 	}
 	*x = acc;
 }
 
-// The counter block n: the nonce's words, then n big-endian.
-T_AES static inline blk ctr(const uint32_t nw[3], uint32_t n) {
-	uint32_t w[4] = {nw[0], nw[1], nw[2], __builtin_bswap32(n)};
-	return LOAD((const uint8_t *)w);
+// gcm8: the whole 128-byte stretches of in into out from counter *c,
+// GHASHed into *x: the eight blocks' keystream, then the ciphertext's
+// GHASH (what was written, or what's read), one reduction for the
+// eight. Its own loop for each direction (encrypt a constant), as
+// decrypting must read the ciphertext before out (which may be in) is
+// written. The bytes it did.
+T_AES static inline __attribute__((always_inline)) size_t gcm8(bool encrypt, const aes_key *k, const gh_key *g, blk *c, blk *x,
+	const uint8_t *in, uint8_t *out, size_t n) {
+	blk one = WORDS(0, 1ull << 32), ctr = *c, acc = *x;
+	const uint8_t *end = in + (n & ~(size_t)127);
+	for (; in < end; in += 128, out += 128) {
+		// What the compiler would otherwise keep in registers it hasn't
+		// got (the powers of H, the counter's eight sums), spilling the
+		// round keys: the powers read where they are, the counter
+		// counted up a block at a time.
+		const gh_key *gi = g;
+		OPAQUE_PTR(gi);
+		blk s[8], d[8];
+		for (int j = 0; j < 8; j++) {
+			s[j] = CTR_BLOCK(ctr), ctr = CTR_ADD(ctr, one);
+			OPAQUE_BLK(ctr);
+		}
+		aes_enc8(k, s);
+		for (int j = 0; j < 8; j++) d[j] = LOAD(in + 16 * j);
+		for (int j = 0; j < 8; j++) s[j] = AES_LAST(k, s[j], d[j]);
+		for (int j = 0; j < 8; j++) STORE(out + 16 * j, s[j]);
+		blk lo = ZERO(), mid = ZERO(), hi = ZERO();
+		gh_mul_acc(XOR(acc, bswap(encrypt ? s[0] : d[0])), GH_H(gi, 7), GH_S(gi, 7), &lo, &mid, &hi);
+#pragma GCC unroll 8
+		for (int j = 1; j < 8; j++) gh_mul_acc(bswap(encrypt ? s[j] : d[j]), GH_H(gi, 7 - j), GH_S(gi, 7 - j), &lo, &mid, &hi);
+		acc = gh_reduce(lo, mid, hi);
+	}
+	*c = ctr, *x = acc;
+	return n & ~(size_t)127;
 }
 
 T_AES bool ak_gcm_hw(bool encrypt, const uint8_t *key, size_t kn, const uint8_t nonce[12], const uint8_t *ad, size_t an,
@@ -543,54 +641,36 @@ T_AES bool ak_gcm_hw(bool encrypt, const uint8_t *key, size_t kn, const uint8_t 
 	k.nr = key_schedule(key, kn, sched);
 	AES_ROUND_KEYS(&k, sched);
 	ak_wipe(sched, sizeof sched);
-	blk hp[8];
-	hp[0] = bswap(aes_enc(&k, ZERO()));
-	for (int i = 1; i < 8; i++) hp[i] = gfmul(hp[i - 1], hp[0]);
-	uint32_t nw[3];
-	memcpy(nw, nonce, 12);
+	gh_key g;
+	gh_init(&g, aes_enc(&k, ZERO()));
 	blk x = ZERO();
-	ghash(&x, hp, ad, an);
-	// Counter 1 makes the tag's mask; the data's begin at 2. Eight blocks
-	// at a time: their keystream, then the ciphertext's GHASH (what was
-	// written, or what's read), one reduction for the eight.
-	uint32_t c = 2;
-	size_t i = 0;
-	for (; i + 128 <= n; i += 128, c += 8) {
-		blk s[8], d[8];
-		for (int j = 0; j < 8; j++) s[j] = ctr(nw, c + (uint32_t)j);
-		aes_enc8(&k, s);
-		for (int j = 0; j < 8; j++) {
-			d[j] = LOAD(in + i + 16 * j);
-			s[j] = XOR(s[j], d[j]);
-		}
-		for (int j = 0; j < 8; j++) STORE(out + i + 16 * j, s[j]);
-		const blk *ct = encrypt ? s : d;
-		blk lo = ZERO(), hi = ZERO();
-		mul_acc(XOR(x, bswap(ct[0])), hp[7], &lo, &hi);
-		for (int j = 1; j < 8; j++) mul_acc(bswap(ct[j]), hp[7 - j], &lo, &hi);
-		x = reduce(lo, hi);
-	}
-	if (!encrypt) ghash(&x, hp, in + i, n - i);
-	for (size_t t = i; t < n; t += 16, c++) {
+	ghash(&x, &g, ad, an);
+	// Counter 1 makes the tag's mask; the data's begin at 2.
+	uint8_t cb[16] = {0};
+	memcpy(cb, nonce, 12);
+	cb[15] = 1;
+	blk one = WORDS(0, 1ull << 32), c = CTR_BLOCK(LOAD(cb));
+	blk mask = aes_enc(&k, CTR_BLOCK(c));
+	c = CTR_ADD(c, one);
+	size_t i = encrypt ? gcm8(true, &k, &g, &c, &x, in, out, n) : gcm8(false, &k, &g, &c, &x, in, out, n);
+	if (!encrypt) ghash(&x, &g, in + i, n - i);
+	for (size_t t = i; t < n; t += 16, c = CTR_ADD(c, one)) {
 		uint8_t b[16] = {0}, e[16];
 		size_t m = n - t < 16 ? n - t : 16;
 		memcpy(b, in + t, m);
-		STORE(e, XOR(aes_enc(&k, ctr(nw, c)), LOAD(b)));
+		STORE(e, XOR(aes_enc(&k, CTR_BLOCK(c)), LOAD(b)));
 		memcpy(out + t, e, m);
 	}
-	if (encrypt) ghash(&x, hp, out + i, n - i);
+	if (encrypt) ghash(&x, &g, out + i, n - i);
 	// The lengths in bits, as GCM's last block: in reversed byte order,
 	// the ciphertext's in the low half.
-	uint64_t lens[2] = {(uint64_t)n * 8, (uint64_t)an * 8};
-	uint8_t lb[16];
-	memcpy(lb, lens, 16);
-	x = gfmul(XOR(x, LOAD(lb)), hp[0]);
-	STORE(tag, XOR(bswap(x), aes_enc(&k, ctr(nw, 1))));
+	x = gh_mul(XOR(x, WORDS((uint64_t)n * 8, (uint64_t)an * 8)), GH_H(&g, 0), GH_S(&g, 0));
+	STORE(tag, XOR(bswap(x), mask));
 	ak_wipe(&k, sizeof k);
-	ak_wipe(hp, sizeof hp);
+	ak_wipe(&g, sizeof g);
+	ak_wipe(&mask, sizeof mask);
 	return true;
 }
-
 #else
 
 bool ak_gcm_hw(bool encrypt, const uint8_t *key, size_t kn, const uint8_t nonce[12], const uint8_t *ad, size_t an,

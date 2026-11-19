@@ -179,13 +179,13 @@ TEST(sizes) {
 // The CPU's AES and carry-less multiply (cryptohw.c), where it has
 // them, seal and open as BearSSL's software does, at every length about
 // the eight blocks the hardware does at once, with additional data of
-// every length too.
+// every length too (past eight blocks: GHASH's eight at once).
 TEST(gcm_hardware_as_software) {
 	if (!ak_cpu_aes()) return;
 	uint64_t r = 0x2545f4914f6cdd1dull;
 	for (int round = 0; round < 600; round++) {
 		int c = round % 2 ? AES128 : AES256;
-		size_t pn = round < 300 ? (size_t)round : (size_t)(r % 5000), an = (size_t)(round % 37);
+		size_t pn = round < 300 ? (size_t)round : (size_t)(r % 5000), an = round % 3 ? (size_t)(round % 37) : (size_t)(r % 700);
 		ak_bytes *k = ak_bytes_new(NULL, c == AES128 ? 16 : 32), *n = ak_bytes_new(NULL, 12), *p = ak_bytes_new(NULL, pn), *a = ak_bytes_new(NULL, an);
 		ak_bytes *bs[] = {k, n, p, a};
 		for (size_t i = 0; i < AK_LEN(bs); i++)
