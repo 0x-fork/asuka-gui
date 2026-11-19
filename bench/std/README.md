@@ -193,3 +193,58 @@ generator on the same machine:
 | Asuka (std/http) | 105,291 | 456 µs | 937 µs | 107,126 | 460 µs | 750 µs |
 | Go (net/http) | 93,730 | 526 µs | 941 µs | 89,415 | 542 µs | 1.12 ms |
 | Bun (Bun.serve) | 110,819 | 396 µs | 877 µs | 114,095 | 383 µs | 847 µs |
+
+## Packed arrays and the pass on calls, loops and closures, merged (2026-11-19)
+
+The two branches measured alone and merged (the integration branch:
+main, mimalloc, packed arrays; then calls, loops and closures merged
+into it), the machine shared (load 50 to 300): cycles, the fewest of
+five interleaved runs, and instructions retired, the median, the whole
+process, in millions. "packed arrays" has no fused loops; "calls and
+loops" no packed arrays and the C library's malloc.
+
+| benchmark | packed arrays | calls and loops | merged | Go | merged / Go | instructions: packed, calls, merged, Go |
+|---|---:|---:|---:|---:|---:|---:|
+| interp | 416 | 443 | 418 | 899 | 0.46× | 2,406 / 2,811 / 2,405 / 5,381 |
+| concat | 154 | 569 | 156 | 140 | 1.11× | 1,103 / 4,182 / 1,107 / 934 |
+| split | 695 | 1,523 | 706 | 574 | 1.23× | 3,629 / 9,169 / 3,651 / 2,483 |
+| find | 730 | 864 | 732 | 763 | 0.96× | 2,285 / 3,015 / 2,281 / 2,121 |
+| case | 1,653 | 1,784 | 1,669 | 1,464 | 1.14× | 8,292 / 8,946 / 8,291 / 7,820 |
+| count | 298 | 378 | 294 | 437 | 0.67× | 1,578 / 2,260 / 1,575 / 2,699 |
+| num | 546 | 651 | 506 | 823 | 0.61× | 2,610 / 3,458 / 2,586 / 3,932 |
+| fmt | 610 | 2,140 | 624 | 970 | 0.64× | 3,226 / 10,272 / 3,228 / 4,579 |
+| mapint | 444 | 451 | 427 | 482 | 0.89× | 821 / 898 / 818 / 1,044 |
+| mapstr | 636 | 707 | 611 | 1,331 | 0.46× | 2,656 / 3,165 / 2,640 / 4,134 |
+| set | 495 | 546 | 486 | 525 | 0.93× | 840 / 914 / 835 / 995 |
+| sortint | 157 | 151 | 168 | 1,399 | 0.12× | 882 / 915 / 892 / 2,168 |
+| sortstr | 455 | 768 | 453 | 821 | 0.55× | 1,150 / 2,355 / 1,182 / 2,894 |
+| sortby | 1,225 | 1,174 | 1,062 | 6,897 | 0.15× | 3,708 / 3,435 / 3,225 / 32,685 |
+| regex | 4,455 | 4,444 | 4,440 | 5,834 | 0.76× | 22,672 / 23,838 / 22,625 / 35,770 |
+| files | 312 | 427 | 322 | 153 | 2.10× | 1,608 / 2,296 / 1,605 / 510 |
+| lines | 396 | 506 | 378 | 189 | 2.00× | 1,936 / 2,708 / 1,920 / 591 |
+| print | 2,947 | 2,935 | 2,960 | 3,033 | 0.98× | 12,845 / 13,068 / 12,847 / 13,187 |
+| csv | 544 | 729 | 598 | 817 | 0.73× | 2,777 / 3,899 / 2,788 / 3,685 |
+| toml | 247 | 273 | 257 | 1,396 | 0.18× | 1,146 / 1,417 / 1,141 / 5,088 |
+| sha256 | 1,901 | 2,514 | 1,946 | 881 | 2.21× | 8,203 / 11,579 / 8,228 / 2,557 |
+| sha512 | 2,154 | 2,866 | 2,257 | 1,131 | 2.00× | 8,660 / 12,030 / 8,680 / 3,049 |
+| hmac | 271 | 272 | 268 | 580 | 0.46× | 896 / 1,031 / 897 / 2,454 |
+| aesgcm | 1,700 | 2,338 | 1,824 | 804 | 2.27× | 8,714 / 12,088 / 8,730 / 2,933 |
+| chacha | 1,844 | 3,659 | 2,096 | 1,407 | 1.49× | 9,752 / 15,635 / 9,777 / 4,276 |
+| argon2 | 665 | 650 | 683 | 1,231 | 0.55× | 1,333 / 1,891 / 1,331 / 3,119 |
+| bcrypt | 763 | 760 | 760 | 778 | 0.98× | 1,236 / 1,233 / 1,235 / 1,216 |
+| gzip | 16,106 | 16,538 | 16,193 | 3,366 | 4.81× | 32,842 / 36,166 / 32,915 / 14,566 |
+| bigint | 93 | 95 | 93 | 46 | 2.02× | 401 / 418 / 398 / 186 |
+| modpow | 208 | 207 | 208 | 167 | 1.25× | 1,099 / 1,099 / 1,099 / 847 |
+| time | 179 | 219 | 180 | 64 | 2.81× | 1,280 / 1,581 / 1,255 / 434 |
+| template | 348 | 303 | 264 | 157 | 1.68× | 1,820 / 1,751 / 1,439 / 777 |
+| semver | 565 | 627 | 449 | 777 | 0.58× | 2,937 / 3,396 / 2,129 / 3,855 |
+| heap | 678 | 465 | 462 | 708 | 0.65× | 4,329 / 2,112 / 2,075 / 2,371 |
+| sortedmap | 2,808 | 1,927 | 1,668 | 1,333 | 1.25× | 10,258 / 5,204 / 3,995 / 2,343 |
+| seq | 409 | 109 | 82 | 91 | 0.90× | 3,171 / 568 / 440 / 316 |
+
+heap, sortedmap, seq, semver and template keep the calls branch's gains
+(B-tree degree 63, fused pipelines, std/template's loops), the string
+benchmarks the packed branch's (concat, split, fmt). seq is now faster
+than Go's (82 M cycles to 91 M): its fused map and filter append with
+cap read on its own (bench/compiled's README). The cycles that differ
+with the instructions the same (chacha, aesgcm, csv) are the load's.
