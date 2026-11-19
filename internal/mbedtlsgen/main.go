@@ -59,7 +59,7 @@ var files = []string{
 	"ssl_ciphersuites.c", "ssl_client.c", "ssl_msg.c", "ssl_tls.c",
 	"ssl_tls12_client.c", "ssl_tls12_server.c",
 	"ssl_tls13_client.c", "ssl_tls13_generic.c", "ssl_tls13_keys.c", "ssl_tls13_server.c",
-	"mps_reader.c",
+	"ssl_ticket.c", "mps_reader.c",
 	// X.509 (library/).
 	"x509.c", "x509_crt.c", "x509_oid.c",
 	// PSA's core.

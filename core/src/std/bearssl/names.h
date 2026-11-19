@@ -7,7 +7,15 @@
 #ifndef AK_BEARSSL_NAMES_H
 #define AK_BEARSSL_NAMES_H
 #define br_aes_ct64_bitslice_Sbox ak_br_aes_ct64_bitslice_Sbox
+#define br_aes_ct64_bitslice_decrypt ak_br_aes_ct64_bitslice_decrypt
 #define br_aes_ct64_bitslice_encrypt ak_br_aes_ct64_bitslice_encrypt
+#define br_aes_ct64_bitslice_invSbox ak_br_aes_ct64_bitslice_invSbox
+#define br_aes_ct64_cbcdec_init ak_br_aes_ct64_cbcdec_init
+#define br_aes_ct64_cbcdec_run ak_br_aes_ct64_cbcdec_run
+#define br_aes_ct64_cbcdec_vtable ak_br_aes_ct64_cbcdec_vtable
+#define br_aes_ct64_cbcenc_init ak_br_aes_ct64_cbcenc_init
+#define br_aes_ct64_cbcenc_run ak_br_aes_ct64_cbcenc_run
+#define br_aes_ct64_cbcenc_vtable ak_br_aes_ct64_cbcenc_vtable
 #define br_aes_ct64_ctr_init ak_br_aes_ct64_ctr_init
 #define br_aes_ct64_ctr_run ak_br_aes_ct64_ctr_run
 #define br_aes_ct64_ctr_vtable ak_br_aes_ct64_ctr_vtable
@@ -17,6 +25,16 @@
 #define br_aes_ct64_ortho ak_br_aes_ct64_ortho
 #define br_aes_ct64_skey_expand ak_br_aes_ct64_skey_expand
 #define br_ccopy ak_br_ccopy
+#define br_des_ct_cbcdec_init ak_br_des_ct_cbcdec_init
+#define br_des_ct_cbcdec_run ak_br_des_ct_cbcdec_run
+#define br_des_ct_cbcdec_vtable ak_br_des_ct_cbcdec_vtable
+#define br_des_ct_keysched ak_br_des_ct_keysched
+#define br_des_ct_process_block ak_br_des_ct_process_block
+#define br_des_ct_skey_expand ak_br_des_ct_skey_expand
+#define br_des_do_IP ak_br_des_do_IP
+#define br_des_do_invIP ak_br_des_do_invIP
+#define br_des_keysched_unit ak_br_des_keysched_unit
+#define br_des_rev_skey ak_br_des_rev_skey
 #define br_divrem ak_br_divrem
 #define br_ec_compute_pub ak_br_ec_compute_pub
 #define br_ec_keygen ak_br_ec_keygen

@@ -30,6 +30,7 @@ The C files:
 - `ssl_tls13_generic.c`
 - `ssl_tls13_keys.c`
 - `ssl_tls13_server.c`
+- `ssl_ticket.c`
 - `mps_reader.c`
 - `x509.c`
 - `x509_crt.c`

@@ -16,6 +16,10 @@ out flat (BearSSL's `inc/*.h`, `src/inner.h`, `src/config.h`, and the
   `ec_keygen.c`, `ecdsa_i31_*.c`, `ecdsa_rta.c`; signing
   is deterministic (RFC 6979) over `hmac_drbg.c`, `hmac.c`,
   `sha2small.c` and `sha2big.c`.
+- Private keys' encryption (keyfile.c: PKCS#8's PBES2, OpenSSL's and
+  OpenSSH's key files): `aes_ct64_dec.c`, `aes_ct64_cbcdec.c`,
+  `aes_ct64_cbcenc.c` (AES-CBC); `des_ct.c`, `des_support.c`,
+  `des_ct_cbcdec.c` (Triple DES's CBC, for older keys, decrypted only).
 - What those share: `ccopy.c`, `dec*.c`, `enc*.c`, `i32_div32.c`.
 
 BearSSL compiles each file on its own (they share macro and static
