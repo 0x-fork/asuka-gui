@@ -773,7 +773,7 @@ static ak_val b_migrate(ak_val *a, uint32_t n) {
 	ak_buf in = {0};
 	ak_buf_u32(&in, steps->len);
 	for (uint32_t i = 0; i < steps->len; i++) {
-		ak_str *step = steps->data[i].p;
+		ak_str *step = ak_arr_vals(steps)[i].p;
 		ak_buf_str(&in, step->data, step->len);
 	}
 	send_now(WEB_MIGRATE, a[0].i, &in);

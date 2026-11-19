@@ -532,7 +532,10 @@ static void fmt_float(ak_strb *b, double x, const fspec *f) {
 	} else {
 		n = ak_float_text(buf, a);  // the shortest, as "{x}" writes it
 	}
-	if (n < 0 || n > AK_FLOAT_FMT_MAX) n = (int)strnlen(buf, AK_FLOAT_FMT_MAX);
+	if (n < 0 || n > AK_FLOAT_FMT_MAX) {
+		const char *z = memchr(buf, 0, AK_FLOAT_FMT_MAX);  // what fit
+		n = z ? (int)(z - buf) : AK_FLOAT_FMT_MAX;
+	}
 	if (!f->group) {
 		fspec_put(b, f, head, headn, buf, (size_t)n, '>');
 		return;
