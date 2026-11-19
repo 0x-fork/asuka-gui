@@ -65,8 +65,14 @@ void ak_destroy(ak_obj *o);
 
 // ak_obj_live counts the objects made and not yet destroyed (immortal
 // ones aside: constants, never destroyed), so tests can tell that what code made is freed: a
-// runner's -leaks. Atomic: workers (spawn) make objects too.
+// runner's -leaks. Atomic: workers (spawn) make objects too. Counted in a
+// build with assertions (NDEBUG unset), as ak_alloc_count is.
 extern int64_t ak_obj_live;
+#ifndef NDEBUG
+#define ak_obj_count(d) __atomic_add_fetch(&ak_obj_live, (d), __ATOMIC_RELAXED)
+#else
+#define ak_obj_count(d) ((void)0)
+#endif
 
 static inline void *ak_retain(void *p) {
 	if (p) {
