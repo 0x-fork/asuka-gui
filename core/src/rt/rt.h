@@ -264,7 +264,7 @@ typedef struct ak_map {
 	uint32_t nslots;     // index slots (a power of 2)
 	ak_val *keys, *vals;
 	uint8_t *dead;
-	uint32_t *slots;     // entry index + 1, 0 empty
+	uint64_t *slots;     // map.c's index: the key's hash << 32 | entry + 1 (0 empty)
 	const ak_shape *vshape;
 } ak_map;
 
@@ -272,6 +272,9 @@ ak_map *ak_map_new(ak_kind key, bool string_keys, ak_kind val, const ak_shape *v
 ak_map *ak_map_mut(ak_map **m);
 bool ak_map_get(const ak_map *m, ak_val key, ak_val *out);  // borrowed
 void ak_map_set(ak_map **m, ak_val key, ak_val v);          // takes both references
+// ak_map_put_new sets key's value unless it has one (then releasing key
+// and v, the map as it was): whether it was new. One probe.
+bool ak_map_put_new(ak_map **m, ak_val key, ak_val v);
 bool ak_map_delete(ak_map **m, ak_val key);
 ak_arr *ak_map_keys(const ak_map *m);
 ak_arr *ak_map_values(const ak_map *m);

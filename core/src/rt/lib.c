@@ -1074,7 +1074,8 @@ static ak_val arr_chunked(ak_val *args, uint32_t n) {
 // Sorting: a stable merge sort, by a "less" closure, a type's compare
 // method (a closure whose int is negative for less), or, without one, by
 // the elements' natural order (numbers, strings, an enum's cases in
-// their order).
+// their order). Ints by a radix sort: equal ints can't be told apart, so
+// how it moves them is nobody's business, and it's linear.
 
 typedef struct {
 	ak_closure *less;
@@ -1103,36 +1104,84 @@ static bool lt(sort_ctx *c, ak_val a, ak_val b) {
 	}
 }
 
-static void msort(sort_ctx *c, ak_val *v, ak_val *tmp, uint32_t n) {
-	if (n < 2) return;
-	if (n <= 12) {
-		for (uint32_t i = 1; i < n; i++) {
-			ak_val x = v[i];
-			uint32_t j = i;
-			while (j > 0 && lt(c, x, v[j - 1])) {
-				v[j] = v[j - 1];
-				j--;
-			}
-			v[j] = x;
-		}
-		return;
+static inline bool lt_float(sort_ctx *c, ak_val a, ak_val b) { return AK_UNUSED(c), a.f < b.f; }
+
+// A merge sort for each way of comparing, LT inlined: runs of 12 by
+// insertion, then each half's left part merged back from tmp. When SKIP,
+// halves already in order aren't merged at all (not for floats: with a
+// NaN, < isn't an order, and merging anyway keeps how they always fell).
+#define MERGE_SORT(NAME, LT, SKIP) \
+	static void NAME(sort_ctx *c, ak_val *v, ak_val *tmp, uint32_t n) { \
+		if (n < 2) return; \
+		if (n <= 12) { \
+			for (uint32_t i = 1; i < n && !c->failed; i++) { \
+				ak_val x = v[i]; \
+				uint32_t j = i; \
+				while (j > 0 && LT(c, x, v[j - 1])) { \
+					v[j] = v[j - 1]; \
+					j--; \
+				} \
+				v[j] = x; \
+			} \
+			return; \
+		} \
+		uint32_t h = n / 2; \
+		NAME(c, v, tmp, h); \
+		NAME(c, v + h, tmp, n - h); \
+		if (c->failed || ((SKIP) && !LT(c, v[h], v[h - 1]))) return; /* in order already */ \
+		memcpy(tmp, v, sizeof(ak_val) * h); \
+		uint32_t i = 0, j = h, k = 0; \
+		while (i < h && j < n) v[k++] = LT(c, v[j], tmp[i]) ? v[j++] : tmp[i++]; \
+		while (i < h) v[k++] = tmp[i++]; \
 	}
-	uint32_t h = n / 2;
-	msort(c, v, tmp, h);
-	msort(c, v + h, tmp, n - h);
-	uint32_t i = 0, j = h, k = 0;
-	while (i < h && j < n) tmp[k++] = lt(c, v[j], v[i]) ? v[j++] : v[i++];
-	while (i < h) tmp[k++] = v[i++];
-	while (j < n) tmp[k++] = v[j++];
-	memcpy(v, tmp, sizeof(ak_val) * n);
+
+MERGE_SORT(msort, lt, c->less || c->k != AK_K_FLOAT)
+MERGE_SORT(msort_float, lt_float, false)
+
+// radix_sort orders ints ascending (signed), a byte a pass from the
+// lowest, passes where every int has the same byte skipped.
+static void radix_sort(ak_val *v, ak_val *tmp, uint32_t n) {
+	uint32_t (*count)[256] = ak_alloc(sizeof(uint32_t) * 8 * 256);
+	for (uint32_t i = 0; i < n; i++) {
+		uint64_t x = (uint64_t)v[i].i ^ (1ull << 63);
+		for (int b = 0; b < 8; b++) count[b][(x >> (8 * b)) & 0xff]++;
+	}
+	ak_val *from = v, *to = tmp;
+	for (int b = 0; b < 8; b++) {
+		uint32_t *c = count[b];
+		if (c[((uint64_t)v[0].i ^ (1ull << 63)) >> (8 * b) & 0xff] == n) continue;  // one byte for all
+		uint32_t sum = 0;
+		for (int d = 0; d < 256; d++) {
+			uint32_t t = c[d];
+			c[d] = sum;
+			sum += t;
+		}
+		for (uint32_t i = 0; i < n; i++) {
+			uint64_t x = (uint64_t)from[i].i ^ (1ull << 63);
+			to[c[(x >> (8 * b)) & 0xff]++] = from[i];
+		}
+		ak_val *t = from;
+		from = to, to = t;
+	}
+	if (from != v) memcpy(v, from, sizeof(ak_val) * n);
+	ak_free(count);
+}
+
+// sort_vals sorts v as c says, tmp n slots of room.
+static void sort_vals(sort_ctx *c, ak_val *v, uint32_t n) {
+	if (n < 2) return;
+	ak_val *tmp = ak_alloc(sizeof(ak_val) * n);
+	if (c->less) msort(c, v, tmp, n);
+	else if (c->k == AK_K_INT && n > 64) radix_sort(v, tmp, n);
+	else if (c->k == AK_K_FLOAT) msort_float(c, v, tmp, n);
+	else msort(c, v, tmp, n);
+	ak_free(tmp);
 }
 
 static ak_val arr_sorted(ak_val *args, uint32_t n) {
 	ak_arr *a = ak_arr_copy(ARR(0));
 	sort_ctx c = {n > 1 ? CLOS(1) : NULL, n > 2 && A(2).i, ek(a), false};
-	ak_val *tmp = ak_alloc(sizeof(ak_val) * (a->len ? a->len : 1));
-	msort(&c, a->data, tmp, a->len);
-	ak_free(tmp);
+	sort_vals(&c, a->data, a->len);
 	if (c.failed) {
 		ak_release(a);
 		RET_VOID;
@@ -1143,9 +1192,7 @@ static ak_val arr_sorted(ak_val *args, uint32_t n) {
 static ak_val arr_sort(ak_val *args, uint32_t n) {
 	ak_arr *a = ak_arr_mut((ak_arr **)&args[0].p);
 	sort_ctx c = {n > 1 ? CLOS(1) : NULL, n > 2 && A(2).i, ek(a), false};
-	ak_val *tmp = ak_alloc(sizeof(ak_val) * (a->len ? a->len : 1));
-	msort(&c, a->data, tmp, a->len);
-	ak_free(tmp);
+	sort_vals(&c, a->data, a->len);
 	ak_change_range(0, a->len, false);
 	RET_VOID;
 }
