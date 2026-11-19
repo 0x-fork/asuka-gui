@@ -10,8 +10,10 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/egoist/asuka/internal/cachedir"
 	"github.com/egoist/asuka/internal/ccache"
@@ -156,19 +158,85 @@ type fileSum struct {
 var (
 	sumMu   sync.Mutex
 	sumMemo = map[string]fileSum{}
+	// The sums kept in the cache (c/sums) from one process to the next,
+	// as Go's build cache keeps its files' hashes: a file whose size and
+	// modification time are what they were is taken to hold what it did,
+	// so a build doesn't read and hash the core's hundreds of files
+	// again. A file is kept only once it's older than sumSettle, so a
+	// later change shows in its time even where times are coarse.
+	sumsLoaded bool
+	sumsDirty  bool
+	diskSums   map[string]fileSum
 )
 
-// fileHash is the SHA-256 of a file's contents, hashed once per process
-// for each version of it (its size and modification time).
+const sumSettle = 2 * time.Second
+
+func sumsPath() string { return filepath.Join(ccache.Dir("c"), "sums") }
+
+// loadSums reads c/sums once (sumMu held): lines "<sha256> <size>
+// <mtime> <path>".
+func loadSums() {
+	if sumsLoaded {
+		return
+	}
+	sumsLoaded = true
+	diskSums = map[string]fileSum{}
+	b, err := os.ReadFile(sumsPath())
+	if err != nil {
+		return
+	}
+	for _, l := range strings.Split(string(b), "\n") {
+		f := strings.SplitN(l, " ", 4)
+		if len(f) != 4 || len(f[0]) != 64 {
+			continue
+		}
+		size, err1 := strconv.ParseInt(f[1], 10, 64)
+		mtime, err2 := strconv.ParseInt(f[2], 10, 64)
+		if err1 == nil && err2 == nil {
+			diskSums[f[3]] = fileSum{size, mtime, f[0]}
+		}
+	}
+}
+
+// saveSums writes c/sums when this process hashed files it didn't have.
+func saveSums() {
+	sumMu.Lock()
+	if !sumsDirty {
+		sumMu.Unlock()
+		return
+	}
+	sumsDirty = false
+	paths := make([]string, 0, len(diskSums))
+	for p := range diskSums {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+	var b bytes.Buffer
+	for _, p := range paths {
+		m := diskSums[p]
+		fmt.Fprintf(&b, "%s %d %d %s\n", m.sum, m.size, m.mtime, p)
+	}
+	sumMu.Unlock()
+	ccache.WriteFile(sumsPath(), b.Bytes())
+}
+
+// fileHash is the SHA-256 of a file's contents, hashed once for each
+// version of it (its size and modification time): in this process, or
+// in another (c/sums).
 func fileHash(p string) (string, error) {
 	st, err := os.Stat(p)
 	if err != nil {
 		return "", err
 	}
+	size, mtime := st.Size(), st.ModTime().UnixNano()
 	sumMu.Lock()
 	m, ok := sumMemo[p]
+	if !ok {
+		loadSums()
+		m, ok = diskSums[p]
+	}
 	sumMu.Unlock()
-	if ok && m.size == st.Size() && m.mtime == st.ModTime().UnixNano() {
+	if ok && m.size == size && m.mtime == mtime {
 		return m.sum, nil
 	}
 	b, err := os.ReadFile(p)
@@ -178,9 +246,40 @@ func fileHash(p string) (string, error) {
 	s := sha256.Sum256(b)
 	sum := hex.EncodeToString(s[:])
 	sumMu.Lock()
-	sumMemo[p] = fileSum{st.Size(), st.ModTime().UnixNano(), sum}
+	sumMemo[p] = fileSum{size, mtime, sum}
+	if time.Since(st.ModTime()) > sumSettle && !strings.ContainsAny(p, "\n") {
+		loadSums()
+		diskSums[p] = fileSum{size, mtime, sum}
+		sumsDirty = true
+	}
 	sumMu.Unlock()
 	return sum, nil
+}
+
+// hashes are the files' hashes one build found: a header that a hundred
+// sources include is looked at once, not a hundred times.
+type hashes struct {
+	mu sync.Mutex
+	m  map[string]hashResult
+}
+
+type hashResult struct {
+	sum string
+	err error
+}
+
+func (h *hashes) of(p string) (string, error) {
+	h.mu.Lock()
+	r, ok := h.m[p]
+	h.mu.Unlock()
+	if ok {
+		return r.sum, r.err
+	}
+	sum, err := fileHash(p)
+	h.mu.Lock()
+	h.m[p] = hashResult{sum, err}
+	h.mu.Unlock()
+	return sum, err
 }
 
 // ---- Objects ----
@@ -204,16 +303,28 @@ func (c Compiler) CompileCached(srcs, flags []string) ([]Object, error) {
 	}
 	objs := make([]Object, len(cs))
 	errs := make([]error, len(cs))
+	deps := make([][][2]string, len(cs))
 	sem := make(chan struct{}, runtime.NumCPU())
 	var wg sync.WaitGroup
 	id := c.Identity()
+	h := &hashes{m: map[string]hashResult{}}
+	defer saveSums()
+	set := c.setPath(id, cs, flags, h)
+	if set != "" {
+		if objs, ok := readSet(set, h); ok {
+			for range objs {
+				ccache.Hit("c")
+			}
+			return objs, nil
+		}
+	}
 	for i, src := range cs {
 		wg.Add(1)
 		go func(i int, src string) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			objs[i], errs[i] = c.object(id, src, flags)
+			objs[i], deps[i], errs[i] = c.object(id, src, flags, h)
 		}(i, src)
 	}
 	wg.Wait()
@@ -226,7 +337,87 @@ func (c Compiler) CompileCached(srcs, flags []string) ([]Object, error) {
 	if msgs != nil {
 		return nil, fmt.Errorf("%s", strings.Join(msgs, "\n"))
 	}
+	if set != "" {
+		writeSet(set, objs, deps)
+	}
 	return objs, nil
+}
+
+// ---- Sets of objects ----
+
+// A set is a build's objects as one entry (c/s): keyed by the compiler,
+// the flags and the sources (their paths and hashes), it lists the
+// objects and every header they included, with its hash. A build of the
+// same sources whose headers all hash the same takes its objects from it
+// at once, instead of finding each source's object in its manifest: the
+// core's hundreds of manifests aren't read for each test run and build.
+
+// setPath is the set's file for these sources, "" when one doesn't hash.
+func (c Compiler) setPath(id string, srcs, flags []string, h *hashes) string {
+	parts := []string{"c-objects-1", id}
+	for _, f := range flags {
+		parts = append(parts, keyPath(f))
+	}
+	parts = append(parts, "\x00")
+	for _, src := range srcs {
+		sum, err := h.of(src)
+		if err != nil {
+			return ""
+		}
+		abs, _ := filepath.Abs(src)
+		parts = append(parts, keyPath(abs), sum)
+	}
+	return ccache.Sharded("c", "s", ccache.Key(parts...), "")
+}
+
+// readSet is the set's objects, in its sources' order, when its headers
+// all hash the same and its objects are all there. A set written over an
+// hour ago isn't taken: the build finds each object in its manifest, as
+// without one, which marks them used (eviction takes what's unused
+// longest), and writes the set again.
+func readSet(p string, h *hashes) ([]Object, bool) {
+	st, err := os.Stat(p)
+	if err != nil || time.Since(st.ModTime()) > time.Hour {
+		return nil, false
+	}
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return nil, false
+	}
+	var objs []Object
+	for _, l := range strings.Split(string(b), "\n") {
+		switch {
+		case strings.HasPrefix(l, "obj "):
+			objs = append(objs, Object{Path: ccache.Sharded("c", "o", l[4:], ".o"), Key: l[4:]})
+		case strings.HasPrefix(l, "dep ") && len(l) > 4+64+1:
+			if sum, err := h.of(realPath(l[4+64+1:])); err != nil || sum != l[4:4+64] {
+				return nil, false
+			}
+		}
+	}
+	for _, o := range objs {
+		if _, err := os.Stat(o.Path); err != nil {
+			return nil, false
+		}
+	}
+	return objs, true
+}
+
+func writeSet(p string, objs []Object, deps [][][2]string) {
+	var b bytes.Buffer
+	for _, o := range objs {
+		fmt.Fprintf(&b, "obj %s\n", o.Key)
+	}
+	seen := map[string]bool{}
+	for _, ds := range deps {
+		for _, d := range ds {
+			if !seen[d[0]] {
+				seen[d[0]] = true
+				fmt.Fprintf(&b, "dep %s %s\n", d[1], d[0])
+			}
+		}
+	}
+	ccache.WriteFile(p, b.Bytes())
 }
 
 // Paths are the objects' files.
@@ -247,10 +438,16 @@ func Keys(objs []Object) []string {
 	return out
 }
 
-func (c Compiler) object(id, src string, flags []string) (Object, error) {
-	sum, err := fileHash(src)
+// object is src's object, and the headers it included with their hashes.
+func (c Compiler) object(id, src string, flags []string, h *hashes) (Object, [][2]string, error) {
+	obj, e, err := c.object1(id, src, flags, h)
+	return obj, e.deps, err
+}
+
+func (c Compiler) object1(id, src string, flags []string, h *hashes) (Object, manifestEntry, error) {
+	sum, err := h.of(src)
 	if err != nil {
-		return Object{}, err
+		return Object{}, manifestEntry{}, err
 	}
 	src, _ = filepath.Abs(src)
 	var nf []string
@@ -261,22 +458,26 @@ func (c Compiler) object(id, src string, flags []string) (Object, error) {
 	manifest := ccache.Sharded("c", "m", first, "")
 	entries := readManifest(manifest)
 	for _, e := range entries {
-		if !e.current() {
+		if !e.current(h) {
 			continue
 		}
 		p := ccache.Sharded("c", "o", e.obj, ".o")
-		if _, err := os.Stat(p); err != nil {
+		st, err := os.Stat(p)
+		if err != nil {
 			continue
 		}
-		ccache.Touch(p)
-		ccache.Touch(manifest)
+		// Marked used (and its manifest, which ages with it) when it's
+		// been a while.
+		if ccache.TouchStale(p, st.ModTime()) {
+			ccache.Touch(manifest)
+		}
 		ccache.Hit("c")
-		return Object{Path: p, Key: e.obj}, nil
+		return Object{Path: p, Key: e.obj}, e, nil
 	}
 	ccache.Miss("c")
 	tmpDir := filepath.Join(ccache.Dir("c"), "tmp")
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
-		return Object{}, err
+		return Object{}, manifestEntry{}, err
 	}
 	tmp := ccache.TmpName(filepath.Join(tmpDir, first[:16]+".o"))
 	dep := tmp + ".d"
@@ -285,12 +486,12 @@ func (c Compiler) object(id, src string, flags []string) (Object, error) {
 	args = append(args, "-MMD", "-MF", dep, "-c", src, "-o", tmp)
 	if err := c.run(args); err != nil {
 		os.Remove(tmp)
-		return Object{}, err
+		return Object{}, manifestEntry{}, err
 	}
 	data, err := os.ReadFile(dep)
 	if err != nil {
 		os.Remove(tmp)
-		return Object{}, fmt.Errorf("cbuild: %s's depfile: %v", src, err)
+		return Object{}, manifestEntry{}, fmt.Errorf("cbuild: %s's depfile: %v", src, err)
 	}
 	var e manifestEntry
 	for _, d := range parseDepfile(data) {
@@ -298,12 +499,12 @@ func (c Compiler) object(id, src string, flags []string) (Object, error) {
 		if d == src {
 			continue
 		}
-		h, err := fileHash(d)
+		sum, err := fileHash(d) // as it is now: not what the build saw before compiling
 		if err != nil {
 			os.Remove(tmp)
-			return Object{}, err
+			return Object{}, manifestEntry{}, err
 		}
-		e.deps = append(e.deps, [2]string{keyPath(d), h})
+		e.deps = append(e.deps, [2]string{keyPath(d), sum})
 	}
 	sort.Slice(e.deps, func(i, j int) bool { return e.deps[i][0] < e.deps[j][0] })
 	parts := []string{first}
@@ -313,10 +514,10 @@ func (c Compiler) object(id, src string, flags []string) (Object, error) {
 	e.obj = ccache.Key(parts...)
 	p := ccache.Sharded("c", "o", e.obj, ".o")
 	if err := ccache.Commit(tmp, p); err != nil {
-		return Object{}, err
+		return Object{}, manifestEntry{}, err
 	}
 	writeManifest(manifest, append([]manifestEntry{e}, entries...))
-	return Object{Path: p, Key: e.obj}, nil
+	return Object{Path: p, Key: e.obj}, e, nil
 }
 
 // manifestEntry is an object compiled from a source, and the headers
@@ -327,9 +528,9 @@ type manifestEntry struct {
 }
 
 // current reports whether e's headers all still hash the same.
-func (e manifestEntry) current() bool {
+func (e manifestEntry) current(h *hashes) bool {
 	for _, d := range e.deps {
-		if h, err := fileHash(realPath(d[0])); err != nil || h != d[1] {
+		if sum, err := h.of(realPath(d[0])); err != nil || sum != d[1] {
 			return false
 		}
 	}
@@ -433,8 +634,8 @@ func parseDepfile(b []byte) []string {
 func (tc *Toolchain) ArchiveCached(objs []Object) (string, error) {
 	key := ccache.Key(append([]string{"c-archive-1", tc.Target.String(), strings.Join(tc.AR, " ")}, Keys(objs)...)...)
 	p := ccache.Sharded("c", "a", key, ".a")
-	if _, err := os.Stat(p); err == nil {
-		ccache.Touch(p)
+	if st, err := os.Stat(p); err == nil {
+		ccache.TouchStale(p, st.ModTime())
 		return p, nil
 	}
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
