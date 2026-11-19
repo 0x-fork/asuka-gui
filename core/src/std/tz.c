@@ -3,6 +3,7 @@
 // a TZif file), a wall time's instant, and the device's zone's name.
 #define _POSIX_C_SOURCE 200809L  // readlink
 #include "std/tz.h"
+#include "std/flate.h"
 #include "base/thread.h"
 #include "rt/sched.h"
 
@@ -257,8 +258,6 @@ static ak_tz_at type_at(const ak_tz_zone *z, unsigned i) {
 
 // ---- The transitions, inflated as a zone is first read ----
 
-size_t ak_mz_tinfl_decompress_mem_to_mem(void *out, size_t out_len, const void *src, size_t src_len, int flags);
-
 static ak_mutex unpack_mu = AK_MUTEX_INIT;
 static _Atomic(const int32_t *) mins_;
 static const uint8_t *tidx_;
@@ -266,8 +265,8 @@ static const uint8_t *tidx_;
 static void unpack(void) {
 	ak_mutex_lock(&unpack_mu);
 	if (!atomic_load(&mins_)) {
-		uint8_t *raw = ak_alloc(ak_tz_packed_raw ? ak_tz_packed_raw : 1);
-		size_t n = ak_mz_tinfl_decompress_mem_to_mem(raw, ak_tz_packed_raw, ak_tz_packed, ak_tz_packed_len, 0);
+		uint8_t *raw = ak_alloc(ak_tz_packed_raw + AK_FL_OUT_SLACK);
+		size_t n = ak_inflate_mem(raw, ak_tz_packed_raw + AK_FL_OUT_SLACK, ak_tz_packed, ak_tz_packed_len);
 		if (n != ak_tz_packed_raw) ak_panic("tz: the packed transitions don't inflate (%zu of %u bytes)", n, (unsigned)ak_tz_packed_raw);
 		int32_t *mins = ak_alloc(sizeof(int32_t) * (ak_tz_ntrans ? ak_tz_ntrans : 1));
 		uint8_t *tidx = ak_alloc(ak_tz_ntrans ? ak_tz_ntrans : 1);

@@ -763,6 +763,16 @@ static ak_val str_from_float_digits(ak_val *args, uint32_t n) {
 	int64_t d = A(1).i;
 	if (d < 0) d = 0;
 	if (d > 20) d = 20;
+	double x = A(0).f;
+	if (x == x && x != INFINITY && x != -INFINITY) {
+		// printf's digits without printf (ak_float_fixed: exact integer
+		// arithmetic for what fits), its sign as printf writes it (-0.00).
+		char fb[AK_FLOAT_FMT_MAX + 2];
+		size_t k = 0;
+		if (signbit(x)) fb[k++] = '-';
+		int fw = ak_float_fixed(fb + k, fabs(x), (int)d);
+		if (fw >= 0 && fw < AK_FLOAT_FMT_MAX) RET_P(ak_str_new(fb, k + (size_t)fw));
+	}
 	int w = snprintf(buf, sizeof buf, "%.*f", (int)d, A(0).f);
 	if (w < 0) RET_P(ak_str_empty());
 	if ((size_t)w < sizeof buf) RET_P(ak_str_new(buf, (size_t)w));

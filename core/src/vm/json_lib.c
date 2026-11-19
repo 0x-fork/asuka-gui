@@ -44,17 +44,14 @@ static ak_val encode(ak_val *args, uint32_t n) {
 }
 
 // json.value(value, desc, vdesc): value (of desc's type) as std/json's
-// Value (of vdesc, J<name>;): what it's written as, read as any JSON.
-// A value converts to one where a Value is expected (log's fields).
+// Value (of vdesc, J<name>;): what it's written as, read as any JSON,
+// made directly (ak_json_value). A value converts to one where a Value
+// is expected (log's fields, std/template's data).
 static ak_val to_value(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	ak_str *desc = args[1].p, *vdesc = args[2].p;
 	ak_json_types t = {shape, cases, running()};
-	t.points = true;  // a float stays one
-	ak_str *text = ak_json_encode(args[0], desc->data, &t, 0);
-	ak_val v = ak_json_decode(text->data, text->len, vdesc->data, &t);
-	ak_release(text);
-	return v;
+	return ak_json_value(args[0], desc->data, vdesc->data, &t);
 }
 
 // ak_vm_json_types is what decoding by descriptor needs of the running

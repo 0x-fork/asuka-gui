@@ -1409,3 +1409,363 @@ ak_str *ak_json_encode(ak_val v, const char *d, const ak_json_types *t, int inde
 	ak_vec_free(&e.held);
 	return ak_strb_finish(&b);
 }
+
+// ---- A value as a json.Value, directly ----
+//
+// ak_json_value builds what ak_json_encode would write of v, read back
+// as a json.Value (ak_json_decode by J<name>;, with points: a float
+// stays one), without the text: each case as that round trip makes it.
+// It walks v by its descriptor as the encoder does, its open containers
+// on a stack of its own (a value however deep takes no C stack per
+// level), and builds the Value's arrays and objects bottom up. What it
+// can share it does: a string is the same string, a json.Value inside
+// v the same Value (unless it holds a float the round trip changes:
+// NaN and the infinities, which it makes null, or -0, 0). A struct's
+// field names are made once a conversion, each name's string shared by
+// every object of that struct's.
+
+typedef struct {
+	const char *d;   // the source container's descriptor ([T, <T, {T, S, E, J)
+	void *o;         // the source container (a J's: its array or map)
+	uint32_t i;      // its next item
+	bool obj;        // what's built: an object (map), else an array
+	ak_arr *arr;     // the array being built
+	ak_map *map;     // the object being built
+	ak_str *wrap;    // E: the case's name (the array built goes in {name: [...]})
+	ak_str *key;     // the key it goes in, in the object open below it
+} vframe;
+
+// A struct's field names as strings, made once a shape a conversion.
+typedef struct {
+	const ak_shape *s;
+	ak_str **names;
+} vnames;
+
+#define VNAMES 16
+
+typedef struct {
+	const ak_json_types *t;
+	const ak_shape *js;  // json.Value's shape
+	uint16_t cn, cb, ci, cf, cs, ca, co;  // its cases
+	AK_VEC(vframe) open;
+	AK_VEC(void *) held;  // what types' own toJSON gave, let go of at the end
+	vnames names[VNAMES];
+	ak_val result;
+	bool failed;
+} vconv;
+
+static ak_val vcase(vconv *c, uint16_t k, ak_val v) {
+	ak_enum *e = ak_enum_new(c->js, k);
+	e->f[0] = v;
+	return (ak_val){.p = e};
+}
+
+static ak_val vnull(vconv *c) { return (ak_val){.p = ak_enum_new(c->js, c->cn)}; }
+static ak_val vstr(vconv *c, ak_str *s) { return vcase(c, c->cs, (ak_val){.p = s}); }
+
+static ak_str *field_name(vconv *c, const ak_shape *s, uint32_t i) {
+	vnames *n = &c->names[((uintptr_t)s >> 4) % VNAMES];
+	if (n->s != s) {
+		if (n->names) {
+			for (uint32_t k = 0; k < n->s->nfields; k++) ak_release(n->names[k]);
+			ak_free(n->names);
+		}
+		n->s = s;
+		n->names = ak_alloc(sizeof(ak_str *) * (s->nfields ? s->nfields : 1));
+		for (uint32_t k = 0; k < s->nfields; k++) {
+			const char *name = s->names ? s->names[k] : "";
+			n->names[k] = ak_str_new(name, strlen(name));
+		}
+	}
+	return ak_retain(n->names[i]);
+}
+
+// jclean: whether the json.Value v holds no float the round trip
+// changes (NaN and the infinities, written null; -0, written 0): then
+// it's itself.
+static bool jclean(vconv *c, ak_enum *v) {
+	AK_VEC(ak_enum *) todo = {0};
+	ak_vec_push(&todo, v);
+	bool clean = true;
+	while (clean && todo.len) {
+		ak_enum *e = todo.data[--todo.len];
+		uint16_t k = ak_enum_case(e);
+		if (k == c->cf) {
+			double f = e->f[0].f;
+			clean = f == f && f != INFINITY && f != -INFINITY && !(f == 0 && signbit(f));
+		} else if (k == c->ca) {
+			ak_arr *a = e->f[0].p;
+			for (uint32_t i = 0; a && i < a->len; i++) ak_vec_push(&todo, (ak_enum *)ak_arr_get(a, i).p);
+		} else if (k == c->co) {
+			ak_map *m = e->f[0].p;
+			for (uint32_t i = 0; m && i < m->len; i++)
+				if (!m->dead[i]) ak_vec_push(&todo, (ak_enum *)m->vals[i].p);
+		}
+	}
+	ak_vec_free(&todo);
+	return clean;
+}
+
+static void vopen(vconv *c, const char *d, void *o, bool obj, ak_str *wrap) {
+	vframe f = {d, o, 0, obj, NULL, NULL, wrap, NULL};
+	if (obj) f.map = ak_map_new(AK_K_REF, true, AK_K_REF, c->js);
+	else f.arr = ak_arr_new(AK_K_REF, c->js, 0);
+	ak_vec_push(&c->open, f);
+}
+
+// vvalue converts v (of descriptor d, borrowed): true with *out (owned)
+// when it's done, false when it opened a container whose items come
+// next.
+static bool vvalue(vconv *c, ak_val v, const char *d, ak_val *out) {
+	while (*d == '?') {
+		if (!v.p) {
+			*out = vnull(c);
+			return true;
+		}
+		if (desc_kind(d + 1) != AK_K_REF) v = ((ak_box *)v.p)->v;
+		d++;
+	}
+	if ((*d == 'S' || *d == 'E') && v.p) {
+		// A type with its own JSON: what its toJSON gives, as that is.
+		const ak_obj *o = v.p;
+		const ak_shape *s = o->tag == AK_TAG_STRUCT ? ((const ak_struct *)o)->shape : o->tag == AK_TAG_ENUM ? ((const ak_enum *)o)->shape : NULL;
+		if (s && ak_shape_has(s, AK_HOOK_TOJSON)) {
+			ak_val j = ak_shape_call(s, AK_HOOK_TOJSON, &v, 1);
+			if (desc_kind(s->jdesc) == AK_K_REF && j.p) ak_vec_push(&c->held, j.p);
+			return vvalue(c, j, s->jdesc, out);
+		}
+	}
+	switch (*d) {
+	case 'i':
+		*out = vcase(c, c->ci, v);
+		return true;
+	case 'n':
+		// A u64 past int's range is written as its digits, which read
+		// back as a float.
+		if (d[1] - '0' == AK_U64 && v.i < 0) *out = vcase(c, c->cf, (ak_val){.f = (double)(uint64_t)v.i});
+		else *out = vcase(c, c->ci, v);
+		return true;
+	case 'f':
+		// NaN and the infinities are written null, -0 as 0; any other
+		// float as the shortest digits that read back as it.
+		if (v.f != v.f || v.f == INFINITY || v.f == -INFINITY) *out = vnull(c);
+		else *out = vcase(c, c->cf, (ak_val){.f = v.f == 0 ? 0.0 : v.f});
+		return true;
+	case 'b':
+		*out = vcase(c, c->cb, (ak_val){.i = v.i != 0});
+		return true;
+	case 's':
+		*out = vstr(c, v.p ? ak_retain(v.p) : ak_str_empty());
+		return true;
+	case 'r': {
+		char u[4];
+		*out = vstr(c, ak_str_new(u, ak_utf8_encode((uint32_t)v.i, u)));
+		return true;
+	}
+	case 'y': {
+		static const char *tab = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+		ak_bytes *by = v.p;
+		uint32_t n = by ? by->len : 0;
+		ak_str *s = ak_str_new(NULL, (size_t)(n + 2) / 3 * 4);
+		char *w = s->data;
+		for (uint32_t i = 0; i < n; i += 3) {
+			uint32_t x = (uint32_t)by->data[i] << 16 | (i + 1 < n ? (uint32_t)by->data[i + 1] << 8 : 0) | (i + 2 < n ? by->data[i + 2] : 0);
+			*w++ = tab[x >> 18 & 63];
+			*w++ = tab[x >> 12 & 63];
+			*w++ = i + 1 < n ? tab[x >> 6 & 63] : '=';
+			*w++ = i + 2 < n ? tab[x & 63] : '=';
+		}
+		*out = vstr(c, s);
+		return true;
+	}
+	case '[':
+	case '<':
+		vopen(c, d, v.p, false, NULL);
+		return false;
+	case '{':
+		vopen(c, d, v.p, true, NULL);
+		return false;
+	case 'S':
+		if (ak_link_bigint && ak_link_bigint->is(d + 1, name_len(d))) {
+			// std/bigint's BigInt is written as all its digits: an int
+			// when they fit, else the nearest float.
+			ak_strb b = {0};
+			ak_link_bigint->write(&b, ((ak_struct *)v.p)->f[0].p);
+			ak_str *digits = ak_strb_finish(&b);
+			int64_t iv;
+			if (json_int(digits->data, digits->data + digits->len, &iv)) {
+				*out = vcase(c, c->ci, (ak_val){.i = iv});
+			} else {
+				double f = strtod(digits->data, NULL);
+				if (isinf(f)) {
+					ak_throw_msg("json: a number out of range");
+					c->failed = true;
+					*out = vnull(c);
+				} else {
+					*out = vcase(c, c->cf, (ak_val){.f = f});
+				}
+			}
+			ak_release(digits);
+			return true;
+		}
+		vopen(c, d, v.p, true, NULL);
+		return false;
+	case 'e': {
+		const ak_json_types *t = c->t;
+		const char *const *cases;
+		uint32_t n;
+		if (t && t->cases && t->cases(t->ctx, d + 1, name_len(d), &cases, &n) && v.i >= 0 && (uint64_t)v.i < n) *out = vstr(c, ak_str_new(cases[v.i], strlen(cases[v.i])));
+		else *out = vcase(c, c->ci, v);
+		return true;
+	}
+	case 'J': {
+		ak_enum *en = v.p;
+		if (!en) {
+			*out = vnull(c);
+			return true;
+		}
+		if (jclean(c, en)) {
+			*out = (ak_val){.p = ak_retain(en)};
+			return true;
+		}
+		uint16_t k = ak_enum_case(en);
+		if (k == c->ca || k == c->co) {
+			vopen(c, d, en->f[0].p, k == c->co, NULL);
+			return false;
+		}
+		return vvalue(c, en->f[0], "f", out);  // a float the round trip changes
+	}
+	case 'E': {
+		ak_enum *en = v.p;
+		const ak_case *cs = &en->shape->cases[ak_enum_case(en)];
+		ak_str *name = ak_str_new(cs->name, strlen(cs->name));
+		if (cs->nfields == 0) {
+			*out = vstr(c, name);
+			return true;
+		}
+		// {"case": [its fields]}
+		vopen(c, d, en, false, name);
+		return false;
+	}
+	}
+	// What JSON writes as null (and what only print writes: a tuple, a
+	// map from other than strings, which JSON can't read back).
+	*out = vnull(c);
+	return true;
+}
+
+// vput puts a finished value (owned) in the innermost open container,
+// under key (owned) in an object; with none open, it's the result.
+static void vput(vconv *c, ak_str *key, ak_val v) {
+	if (!c->open.len) {
+		c->result = v;
+		return;
+	}
+	vframe *f = &c->open.data[c->open.len - 1];
+	if (f->obj) ak_map_set(&f->map, (ak_val){.p = key}, v);
+	else ak_arr_push(&f->arr, v);
+}
+
+// vstep converts the innermost open container's next item, or closes it.
+static void vstep(vconv *c) {
+	vframe *f = &c->open.data[c->open.len - 1];
+	ak_val item = {0};
+	const char *id = NULL;
+	ak_str *key = NULL;
+	bool done = false;
+	char kind = *f->d;
+	if (kind == 'J') kind = f->obj ? 'o' : 'a';
+	switch (kind) {
+	case 'a': {
+		ak_arr *a = f->o;
+		if (!a || f->i >= a->len) done = true;
+		else item = ak_arr_get(a, f->i++), id = f->d;
+		break;
+	}
+	case 'o': {
+		ak_map *m = f->o;
+		while (m && f->i < m->len && m->dead[f->i]) f->i++;
+		if (!m || f->i >= m->len) done = true;
+		else key = ak_retain(m->keys[f->i].p), item = m->vals[f->i++], id = f->d;
+		break;
+	}
+	case '[': {
+		ak_arr *a = f->o;
+		if (!a || f->i >= a->len) done = true;
+		else item = ak_arr_get(a, f->i++), id = f->d + 1;
+		break;
+	}
+	case '<':
+	case '{': {
+		ak_map *m = f->o;
+		while (m && f->i < m->len && m->dead[f->i]) f->i++;
+		if (!m || f->i >= m->len) done = true;
+		else if (kind == '<') item = m->keys[f->i++], id = f->d + 1;
+		else key = ak_retain(m->keys[f->i].p), item = m->vals[f->i++], id = f->d + 1;
+		break;
+	}
+	case 'S': {
+		ak_struct *s = f->o;
+		if (!s || f->i >= s->shape->nfields) {
+			done = true;
+		} else {
+			key = field_name(c, s->shape, f->i);
+			id = ak_json_field_desc(s->shape, (int)f->i);
+			item = s->f[f->i++];
+		}
+		break;
+	}
+	case 'E': {
+		ak_enum *en = f->o;
+		const ak_case *cs = &en->shape->cases[ak_enum_case(en)];
+		if (f->i >= cs->nfields) done = true;
+		else id = ak_json_case_desc(en->shape, ak_enum_case(en), (int)f->i), item = en->f[f->i++];
+		break;
+	}
+	default:
+		done = true;
+	}
+	if (done) {
+		vframe g = c->open.data[--c->open.len];
+		ak_val v = g.obj ? vcase(c, c->co, (ak_val){.p = g.map}) : vcase(c, c->ca, (ak_val){.p = g.arr});
+		if (g.wrap) {
+			ak_map *m = ak_map_new(AK_K_REF, true, AK_K_REF, c->js);
+			ak_map_set(&m, (ak_val){.p = g.wrap}, v);
+			v = vcase(c, c->co, (ak_val){.p = m});
+		}
+		vput(c, g.key, v);
+		return;
+	}
+	ak_val v;
+	if (vvalue(c, item, id, &v)) vput(c, key, v);
+	else c->open.data[c->open.len - 1].key = key;  // it opened: its key waits on it
+}
+
+ak_val ak_json_value(ak_val v, const char *d, const char *jd, const ak_json_types *t) {
+	const ak_shape *js = t && t->shape ? t->shape(t->ctx, jd + 1, name_len(jd)) : NULL;
+	if (!js || json_case(js, 'n') < 0) {
+		ak_throw_msg("json: no type %s", jd + 1);
+		return (ak_val){0};
+	}
+	vconv c = {.t = t, .js = js};
+	c.cn = (uint16_t)json_case(js, 'n'), c.cb = (uint16_t)json_case(js, 'b'), c.ci = (uint16_t)json_case(js, 'i');
+	c.cf = (uint16_t)json_case(js, 'f'), c.cs = (uint16_t)json_case(js, 's'), c.ca = (uint16_t)json_case(js, 'a');
+	c.co = (uint16_t)json_case(js, 'o');
+	ak_val out;
+	if (vvalue(&c, v, d, &out)) c.result = out;
+	while (c.open.len) vstep(&c);
+	ak_vec_free(&c.open);
+	for (uint32_t i = 0; i < c.held.len; i++) ak_release(c.held.data[i]);
+	ak_vec_free(&c.held);
+	for (int i = 0; i < VNAMES; i++) {
+		vnames *n = &c.names[i];
+		if (!n->names) continue;
+		for (uint32_t k = 0; k < n->s->nfields; k++) ak_release(n->names[k]);
+		ak_free(n->names);
+	}
+	if (c.failed) {
+		ak_release(c.result.p);
+		return (ak_val){0};
+	}
+	return c.result;
+}

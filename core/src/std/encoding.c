@@ -14,26 +14,55 @@
 static const char std_alpha[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 static const char url_alpha[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
+// Tables made once (any thread: racing threads make the same ones):
+// two Base64 digits for each 12 bits (each alphabet's), two hex digits
+// for each byte, and each character's Base64 value at each of a group's
+// four places (bit 31 set: not a digit).
+static uint16_t enc_std[4096], enc_url[4096], enc_hex[256];
+static uint32_t dec_b64[4][256];
+static uint8_t dec_hex[256];
+static int tables_made;
+
+static void make_tables(void) {
+	if (__atomic_load_n(&tables_made, __ATOMIC_ACQUIRE)) return;
+	for (int i = 0; i < 4096; i++) {
+		char a[2] = {std_alpha[i >> 6], std_alpha[i & 63]}, b[2] = {url_alpha[i >> 6], url_alpha[i & 63]};
+		memcpy(&enc_std[i], a, 2);
+		memcpy(&enc_url[i], b, 2);
+	}
+	static const char digits[] = "0123456789abcdef";
+	for (int i = 0; i < 256; i++) {
+		char h[2] = {digits[i >> 4], digits[i & 15]};
+		memcpy(&enc_hex[i], h, 2);
+		int v = i >= 'A' && i <= 'Z' ? i - 'A' : i >= 'a' && i <= 'z' ? i - 'a' + 26 : i >= '0' && i <= '9' ? i - '0' + 52 :
+		        i == '+' || i == '-' ? 62 : i == '/' || i == '_' ? 63 : -1;
+		for (int k = 0; k < 4; k++) dec_b64[k][i] = v < 0 ? 0x80000000u : (uint32_t)v << (18 - 6 * k);
+		dec_hex[i] = i >= '0' && i <= '9' ? (uint8_t)(i - '0') : i >= 'a' && i <= 'f' ? (uint8_t)(i - 'a' + 10) : i >= 'A' && i <= 'F' ? (uint8_t)(i - 'A' + 10) : 0xff;
+	}
+	__atomic_store_n(&tables_made, 1, __ATOMIC_RELEASE);
+}
+
 static ak_str *b64(const ak_bytes *b, const char *alpha, bool pad) {
+	make_tables();
+	const uint16_t *t = alpha == std_alpha ? enc_std : enc_url;
 	size_t n = b ? b->len : 0;
 	size_t out = pad ? (n + 2) / 3 * 4 : n / 3 * 4 + (n % 3 ? n % 3 + 1 : 0);
 	ak_str *s = ak_str_new(NULL, out);
 	char *o = s->data;
+	const uint8_t *p = n ? b->data : NULL;
 	size_t i = 0;
-	for (; i + 3 <= n; i += 3) {
-		uint32_t v = (uint32_t)b->data[i] << 16 | (uint32_t)b->data[i + 1] << 8 | b->data[i + 2];
-		*o++ = alpha[v >> 18 & 63];
-		*o++ = alpha[v >> 12 & 63];
-		*o++ = alpha[v >> 6 & 63];
-		*o++ = alpha[v & 63];
+	for (; i + 3 <= n; i += 3, o += 4) {
+		uint32_t v = (uint32_t)p[i] << 16 | (uint32_t)p[i + 1] << 8 | p[i + 2];
+		memcpy(o, &t[v >> 12], 2);
+		memcpy(o + 2, &t[v & 4095], 2);
 	}
 	if (n - i == 1) {
-		uint32_t v = (uint32_t)b->data[i] << 16;
+		uint32_t v = (uint32_t)p[i] << 16;
 		*o++ = alpha[v >> 18 & 63];
 		*o++ = alpha[v >> 12 & 63];
 		if (pad) *o++ = '=', *o++ = '=';
 	} else if (n - i == 2) {
-		uint32_t v = (uint32_t)b->data[i] << 16 | (uint32_t)b->data[i + 1] << 8;
+		uint32_t v = (uint32_t)p[i] << 16 | (uint32_t)p[i + 1] << 8;
 		*o++ = alpha[v >> 18 & 63];
 		*o++ = alpha[v >> 12 & 63];
 		*o++ = alpha[v >> 6 & 63];
@@ -66,12 +95,22 @@ static int b64_val(uint8_t c) {
 // throws.
 static ak_val b64_decode(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
+	make_tables();
 	const ak_str *s = STR(0);
 	ak_bytes *out = ak_bytes_new(NULL, (size_t)s->len / 4 * 3 + 3);
 	size_t o = 0;
-	uint32_t acc = 0;
+	uint32_t acc = 0, i = 0;
 	int bits = 0, pads = 0;
-	for (uint32_t i = 0; i < s->len; i++) {
+	// Four digits at a time while they're all digits; the rest (spaces,
+	// padding, what isn't Base64) a character at a time.
+	const uint8_t *in = (const uint8_t *)s->data;
+	uint8_t *dst = out->data;
+	for (; i + 4 <= s->len; i += 4, o += 3) {
+		uint32_t v = dec_b64[0][in[i]] | dec_b64[1][in[i + 1]] | dec_b64[2][in[i + 2]] | dec_b64[3][in[i + 3]];
+		if (v >> 31) break;
+		dst[o] = (uint8_t)(v >> 16), dst[o + 1] = (uint8_t)(v >> 8), dst[o + 2] = (uint8_t)v;
+	}
+	for (; i < s->len; i++) {
 		uint8_t c = (uint8_t)s->data[i];
 		if (c == '\r' || c == '\n' || c == ' ' || c == '\t') continue;
 		if (c == '=') {
@@ -105,11 +144,12 @@ static ak_val hex_encode(ak_val *args, uint32_t n) {
 	static const char digits[] = "0123456789abcdef";
 	const ak_bytes *b = BYTES(0);
 	size_t len = b ? b->len : 0;
+	AK_UNUSED(digits);
+	make_tables();
 	ak_str *s = ak_str_new(NULL, len * 2);
-	for (size_t i = 0; i < len; i++) {
-		s->data[2 * i] = digits[b->data[i] >> 4];
-		s->data[2 * i + 1] = digits[b->data[i] & 15];
-	}
+	const uint8_t *p = len ? b->data : NULL;
+	char *o = s->data;
+	for (size_t i = 0; i < len; i++) memcpy(o + 2 * i, &enc_hex[p[i]], 2);
 	return (ak_val){.p = s};
 }
 
@@ -127,8 +167,17 @@ static ak_val hex_decode(ak_val *args, uint32_t n) {
 		ak_throw_msg("hex: an odd number of digits (%u)", s->len);
 		return (ak_val){0};
 	}
+	make_tables();
 	ak_bytes *out = ak_bytes_new(NULL, s->len / 2);
-	for (uint32_t i = 0; i < s->len; i += 2) {
+	const uint8_t *in = (const uint8_t *)s->data;
+	uint8_t *dst = out->data;
+	uint32_t i = 0;
+	for (; i < s->len; i += 2) {
+		uint8_t h = dec_hex[in[i]], l = dec_hex[in[i + 1]];
+		if ((h | l) & 0x80) break;
+		dst[i / 2] = (uint8_t)(h << 4 | l);
+	}
+	for (; i < s->len; i += 2) {
 		int hi = hex_val((uint8_t)s->data[i]), lo = hex_val((uint8_t)s->data[i + 1]);
 		if (hi < 0 || lo < 0) {
 			ak_release(out);

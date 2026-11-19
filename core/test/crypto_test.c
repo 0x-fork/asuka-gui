@@ -93,8 +93,8 @@ static const struct { const char *seed, *pub, *msg, *sig; } rfc8032[] = {
 	 "dc2a4459e7369633a52b1bf277839a00201009a3efbf3ecb69bea2186c26b58909351fc9ac90b3ecfdfbc7c66431e0303dca179c138ac17ad9bef1177331a704"},
 };
 
-// The CPU's SHA-256 and SHA-512 (cryptohw.c), where it has them, hash
-// as the software does, whole and in pieces.
+// The CPU's SHA-1, SHA-256 and SHA-512 (cryptohw.c), where it has them,
+// hash as the software does, whole and in pieces.
 TEST(sha2_hardware_as_software) {
 	static uint8_t data[3000];
 	uint64_t r = 0x9e3779b97f4a7c15ull;
@@ -103,13 +103,16 @@ TEST(sha2_hardware_as_software) {
 		data[i] = (uint8_t)r;
 	}
 	for (size_t n = 0; n < sizeof data; n += n < 300 ? 1 : 97) {
-		uint8_t a[64], b[64], c[64], d[64];
+		uint8_t a[64], b[64], c[64], d[64], e[20], f[20];
 		ak_sha256(data, n, a);
 		ak_sha512(data, n, c);
+		ak_sha1(data, n, e);
 		ak_cryptohw_off = true;
 		ak_sha256(data, n, b);
 		ak_sha512(data, n, d);
+		ak_sha1(data, n, f);
 		ak_cryptohw_off = false;
+		if (memcmp(e, f, 20)) T_FAIL("sha1 of %zu bytes", n);
 		if (memcmp(a, b, 32)) T_FAIL("sha256 of %zu bytes", n);
 		if (memcmp(c, d, 64)) T_FAIL("sha512 of %zu bytes", n);
 		// In pieces: what's buffered, then whole blocks, then the rest.
@@ -270,6 +273,22 @@ TEST(sha384_md5) {
 		CHECK_HEX(fn("crypto.md5")((ak_val[]){{.p = m}}, 1).p, md5[i].want);
 		ak_release(m);
 	}
+	// FIPS 180's SHA-1 examples, by the CPU's instructions and by the
+	// software.
+	for (int sw = 0; sw < 2; sw++) {
+		ak_cryptohw_off = sw;
+		uint8_t s1[20];
+		ak_sha1("abc", 3, s1);
+		hex(s1, 20, h);
+		CHECK_EQ_STR(h, "a9993e364706816aba3e25717850c26c9cd0d89d");
+		ak_sha1(long448, strlen(long448), s1);
+		hex(s1, 20, h);
+		CHECK_EQ_STR(h, "84983e441c3bd26ebaae4aa1f95129e5e54670f1");
+		ak_sha1("", 0, s1);
+		hex(s1, 20, h);
+		CHECK_EQ_STR(h, "da39a3ee5e6b4b0d3255bfef95601890afd80709");
+	}
+	ak_cryptohw_off = false;
 	// Streamed SHA-1, in pieces of every size: the same as at once.
 	uint8_t *p = malloc(1000), one[20], pieces[20];
 	for (int i = 0; i < 1000; i++) p[i] = (uint8_t)(i * 7);

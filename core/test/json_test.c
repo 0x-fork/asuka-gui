@@ -448,3 +448,203 @@ TEST(json_value) {
 	decode_fails(deep, depth * 2, "JValue;", "nested too deeply");
 	free(deep);
 }
+
+// same_value: whether two json.Values are the same, case by case: an
+// int and a float that are equal differ, and floats compare by their
+// bits (-0 isn't 0), objects in their members' order.
+static bool same_value(const ak_enum *a, const ak_enum *b) {
+	if (!a || !b) return a == b;
+	if (ak_enum_case(a) != ak_enum_case(b)) return false;
+	switch (ak_enum_case(a)) {
+	case 0: return true;
+	case 1:
+	case 2: return a->f[0].i == b->f[0].i;
+	case 3: return memcmp(&a->f[0].f, &b->f[0].f, sizeof(double)) == 0;
+	case 4: return ak_str_eq(a->f[0].p, b->f[0].p);
+	case 5: {
+		const ak_arr *x = a->f[0].p, *y = b->f[0].p;
+		if (x->len != y->len) return false;
+		for (uint32_t i = 0; i < x->len; i++)
+			if (!same_value(ak_arr_get(x, i).p, ak_arr_get(y, i).p)) return false;
+		return true;
+	}
+	case 6: {
+		const ak_map *x = a->f[0].p, *y = b->f[0].p;
+		if (x->live != y->live) return false;
+		uint32_t j = 0;
+		for (uint32_t i = 0; i < x->len; i++) {
+			if (x->dead[i]) continue;
+			while (j < y->len && y->dead[j]) j++;
+			if (j >= y->len || !ak_str_eq(x->keys[i].p, y->keys[j].p) || !same_value(x->vals[i].p, y->vals[j].p)) return false;
+			j++;
+		}
+		return true;
+	}
+	}
+	return false;
+}
+
+// A type with its own JSON: struct Money { cents: int } whose toJSON
+// gives a string ("1.50"), and enum Level { low, high(n: int) } whose
+// toJSON gives an int.
+static const uint8_t money_kinds[] = {AK_K_INT};
+static const char *const money_names[] = {"cents\0i"};
+static const ak_shape money = {.name = "Money", .nfields = 1, .kinds = money_kinds, .names = money_names, .hooks = 1u << AK_HOOK_TOJSON, .jdesc = "s"};
+static const ak_shape own_list = {.name = "Own", .nfields = 1, .kinds = money_kinds, .names = money_names, .hooks = 1u << AK_HOOK_TOJSON, .jdesc = "[SMoney;"};
+
+static ak_val own_to_json(const ak_shape *s, int hook, ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	if (hook != AK_HOOK_TOJSON) return (ak_val){0};
+	int64_t cents = ((ak_struct *)args[0].p)->f[0].i;
+	if (s == &money) {
+		char buf[32];
+		int w = snprintf(buf, sizeof buf, "%lld.%02lld", (long long)(cents / 100), (long long)(cents % 100));
+		return (ak_val){.p = ak_str_new(buf, (size_t)w)};
+	}
+	// Own: [Money(cents), Money(cents * 2)]
+	ak_arr *a = ak_arr_new(AK_K_REF, &money, 2);
+	for (int i = 1; i <= 2; i++) {
+		ak_struct *m = ak_struct_new(&money);
+		m->f[0].i = cents * i;
+		ak_arr_push(&a, (ak_val){.p = m});
+	}
+	return (ak_val){.p = a};
+}
+
+static const ak_shape *shape_own(void *ctx, const char *name, size_t n) {
+	if (n == 5 && memcmp(name, "Money", 5) == 0) return &money;
+	if (n == 3 && memcmp(name, "Own", 3) == 0) return &own_list;
+	return shape(ctx, name, n);
+}
+
+// direct_is_round_trip converts the value src reads as (of desc) to a
+// json.Value directly, and as encoding it and decoding that as a Value
+// does, and wants the same Value of both.
+static void direct_is_round_trip(const char *src, const char *desc, bool nonfinite) {
+	ak_json_types t = {shape_own, cases, NULL};
+	t.nonfinite = nonfinite;
+	ak_val v = ak_json_decode(src, strlen(src), desc, &t);
+	if (ak_error_pending()) {
+		ak_obj *e = ak_error_take();
+		T_FAIL("decoding %s as %s: %s", src, desc, ak_error_message(e)->data);
+		ak_release(e);
+		return;
+	}
+	ak_json_types plain = {shape_own, cases, NULL};
+	ak_json_types points = plain;
+	points.points = true;
+	ak_str *text = ak_json_encode(v, desc, &points, 0);
+	ak_val ref = ak_json_decode(text->data, text->len, "JValue;", &plain);
+	REQUIRE(!ak_error_pending());
+	ak_val direct = ak_json_value(v, desc, "JValue;", &plain);
+	REQUIRE(!ak_error_pending());
+	if (!same_value(ref.p, direct.p)) {
+		ak_str *a = ak_json_encode(ref, "JValue;", &points, 0), *b = ak_json_encode(direct, "JValue;", &points, 0);
+		T_FAIL("%s as %s: the round trip gives %s, directly %s", src, desc, a->data, b->data);
+		ak_release(a);
+		ak_release(b);
+	}
+	ak_release(text);
+	ak_release(ref.p);
+	ak_release(direct.p);
+	ak_release_val(v, *desc == 'f' ? AK_K_FLOAT : *desc == 'b' ? AK_K_BOOL : strchr("inre", *desc) ? AK_K_INT : AK_K_REF);
+}
+
+TEST(json_value_direct) {
+	ak_val (*saved)(const ak_shape *, int, ak_val *, uint32_t) = ak_shape_call;
+	ak_shape_call = own_to_json;
+	int64_t live = ak_obj_live;
+	static const struct {
+		const char *src, *desc;
+		bool nonfinite;
+	} corpus[] = {
+		{"0", "i"}, {"-9223372036854775808", "i"}, {"9223372036854775807", "i"},
+		{"-128", "n0"}, {"65535", "n5"}, {"4294967295", "n6"}, {"-2147483648", "n2"},
+		{"9223372036854775807", "n7"}, {"9223372036854775808", "n7"}, {"18446744073709551615", "n7"}, {"12345678901234567890", "n7"},
+		{"0", "f"}, {"-0.0", "f"}, {"2", "f"}, {"2.5", "f"}, {"1e300", "f"}, {"-1e-300", "f"}, {"5e-324", "f"},
+		{"1e21", "f"}, {"123456789012345680000", "f"}, {"0.1", "f"}, {"9007199254740993", "f"}, {"1.7976931348623157e308", "f"},
+		{"NaN", "f", true}, {"Infinity", "f", true}, {"-Infinity", "f", true}, {"[1.5, NaN, 3]", "[f", true},
+		{"true", "b"}, {"false", "b"},
+		{"\"\"", "s"}, {"\"plain\"", "s"}, {"\"é ☃ 😀 \\u0000 \\u001f \\\" \\\\ \\n\\t\"", "s"},
+		{"\"a\"", "r"}, {"\"é\"", "r"}, {"\"😀\"", "r"},
+		{"\"\"", "y"}, {"\"AA==\"", "y"}, {"\"AAE=\"", "y"}, {"\"AAEC\"", "y"}, {"\"/+/+aGVsbG8=\"", "y"},
+		{"null", "?i"}, {"3", "?i"}, {"null", "?s"}, {"\"x\"", "?s"}, {"2", "?f"}, {"null", "??i"}, {"[1, null, 3]", "[?i"},
+		{"[]", "[i"}, {"[1, 2, 3]", "[i"}, {"[[1], [], [2, 3]]", "[[i"}, {"[200, 3]", "[n4"}, {"[true, false]", "[b"}, {"[-1, 7]", "[n0"},
+		{"{}", "{i"}, {"{\"b\": 1, \"a\": 2}", "{i"}, {"{\"x\": {\"y\": [\"z\"]}}", "{{[s"},
+		{"[3, 1, 3, 2]", "<i"}, {"[\"b\", \"a\"]", "<s"},
+		{"{\"title\": \"milk\", \"done\": true, \"tags\": [\"a\"], \"due\": 4}", "STodo;"},
+		{"[{\"title\": \"a\", \"done\": false}, {\"title\": \"b\", \"done\": true, \"due\": null}]", "[STodo;"},
+		{"{\"name\": \"a\", \"next\": {\"name\": \"b\", \"next\": {\"name\": \"c\"}}}", "SNode;"},
+		{"\"dot\"", "EShape;"}, {"{\"circle\": [2, \"r\", [\"t\"]]}", "EShape;"}, {"{\"at\": [{\"name\": \"n\"}]}", "EShape;"},
+		{"[\"dot\", {\"circle\": [0.5, \"\", []]}]", "[EShape;"},
+		{"\"unread\"", "eFilter;"}, {"[\"flagged\", \"all\"]", "[eFilter;"},
+		{"null", "JValue;"}, {"[1, 2.5, \"s\", true, null, {\"a\": [{}]}]", "JValue;"}, {"{\"b\": 1, \"a\": {\"c\": 2.0}}", "JValue;"},
+		{"{\"k\": [1, \"two\"]}", "{JValue;"}, {"[null, 3]", "[?JValue;"},
+		{"{\"cents\": 150}", "SMoney;"}, {"[{\"cents\": 5}, {\"cents\": 1999}]", "[SMoney;"}, {"{\"cents\": 7}", "SOwn;"},
+	};
+	for (size_t i = 0; i < sizeof corpus / sizeof corpus[0]; i++) direct_is_round_trip(corpus[i].src, corpus[i].desc, corpus[i].nonfinite);
+	// Values holding floats the round trip changes: NaN and the
+	// infinities null, -0 0. [NaN, {"x": Infinity, "y": [1, -0]}, 2.5]
+	{
+		ak_json_types t = {shape, cases, NULL}, points = t;
+		points.points = true;
+		ak_val fs[] = {{.f = NAN}, {.f = INFINITY}, {.f = -0.0}, {.f = 2.5}};
+		ak_enum *f[4];
+		for (int i = 0; i < 4; i++) f[i] = ak_enum_new(&value_enum, 3), f[i]->f[0] = fs[i];
+		ak_enum *one = ak_enum_new(&value_enum, 2);
+		one->f[0].i = 1;
+		ak_arr *y = ak_arr_new(AK_K_REF, &value_enum, 2);
+		ak_arr_push(&y, (ak_val){.p = one});
+		ak_arr_push(&y, (ak_val){.p = f[2]});
+		ak_enum *ya = ak_enum_new(&value_enum, 5);
+		ya->f[0].p = y;
+		ak_map *m = ak_map_new(AK_K_REF, true, AK_K_REF, &value_enum);
+		ak_map_set(&m, (ak_val){.p = ak_str_c("x")}, (ak_val){.p = f[1]});
+		ak_map_set(&m, (ak_val){.p = ak_str_c("y")}, (ak_val){.p = ya});
+		ak_enum *mo = ak_enum_new(&value_enum, 6);
+		mo->f[0].p = m;
+		ak_arr *top = ak_arr_new(AK_K_REF, &value_enum, 3);
+		ak_arr_push(&top, (ak_val){.p = f[0]});
+		ak_arr_push(&top, (ak_val){.p = mo});
+		ak_arr_push(&top, (ak_val){.p = f[3]});
+		ak_enum *v = ak_enum_new(&value_enum, 5);
+		v->f[0].p = top;
+		ak_val direct = ak_json_value((ak_val){.p = v}, "JValue;", "JValue;", &t);
+		ak_str *text = ak_json_encode(direct, "JValue;", &points, 0);
+		CHECK_EQ_STR(text->data, "[null,{\"x\":null,\"y\":[1,0.0]},2.5]");
+		ak_release(text);
+		text = ak_json_encode((ak_val){.p = v}, "JValue;", &points, 0);
+		ak_val ref = ak_json_decode(text->data, text->len, "JValue;", &t);
+		CHECK(same_value(ref.p, direct.p));
+		CHECK(((ak_enum *)ak_arr_get(((ak_enum *)direct.p)->f[0].p, 2).p) == f[3]);  // what's unchanged is shared
+		ak_release(ref.p);
+		ak_release(text);
+		ak_release(direct.p);
+		ak_release(v);
+	}
+	// Deep: past what decoding reads back, converted all the same (a
+	// list of Nodes 5000 long).
+	ak_json_types t = {shape, cases, NULL};
+	ak_val deep = {.p = NULL};
+	for (int i = 0; i < 5000; i++) {
+		ak_struct *n = ak_struct_new(&node);
+		n->f[0].p = ak_str_c("n");
+		n->f[1] = deep;
+		deep.p = n;
+	}
+	ak_val dv = ak_json_value(deep, "SNode;", "JValue;", &t);
+	REQUIRE(!ak_error_pending());
+	int depth = 0;
+	for (ak_enum *e = dv.p; ak_enum_case(e) == 6; depth++) {
+		ak_val next = {0};
+		ak_str *k = ak_str_c("next");
+		REQUIRE(ak_map_get(e->f[0].p, (ak_val){.p = k}, &next));
+		ak_release(k);
+		e = next.p;
+	}
+	CHECK_EQ_INT(depth, 5000);
+	ak_release(dv.p);
+	ak_release(deep.p);
+	CHECK_EQ_INT(ak_obj_live, live);
+	ak_shape_call = saved;
+}

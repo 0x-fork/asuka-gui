@@ -5,23 +5,32 @@
 package main
 
 import (
+	"archive/tar"
+	"archive/zip"
 	"bufio"
 	"bytes"
+	"compress/flate"
 	"compress/gzip"
 	"container/heap"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
+	"crypto/md5"
+	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/sha512"
+	"encoding/base64"
 	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"hash/crc32"
+	"html"
 	"io"
 	"math"
 	"math/big"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"slices"
@@ -292,6 +301,136 @@ func regexes(text string) string {
 	return strconv.Itoa(total)
 }
 
+func urls(n int) string {
+	total := 0
+	for i := 0; i < n; i++ {
+		w := syllables[i%10] + syllables[(i/10)%10]
+		s := fmt.Sprintf("https://user%d@host%d.example.com:%d/a/%s/%d?q=%s+x%d&page=%d#f%d", i%7, i%50, 8000+i%1000, w, i, w, i, i%10, i)
+		if u, err := url.Parse(s); err == nil {
+			port, _ := strconv.Atoi(u.Port())
+			total += len(u.Hostname()) + len(u.Path) + len(u.Query().Get("q")) + port
+		}
+		total += len(url.QueryEscape(w + " & " + strconv.Itoa(i) + "/é"))
+	}
+	return strconv.Itoa(total)
+}
+
+func base64s(data []byte) string {
+	total := 0
+	for range 4 {
+		s := base64.StdEncoding.EncodeToString(data)
+		b, _ := base64.StdEncoding.DecodeString(s)
+		total += len(s) + len(b)
+	}
+	return strconv.Itoa(total)
+}
+
+func hexes(data []byte) string {
+	total := 0
+	for range 2 {
+		s := hex.EncodeToString(data)
+		b, _ := hex.DecodeString(s)
+		total += len(s) + len(b)
+	}
+	return strconv.Itoa(total)
+}
+
+func htmls(text string) string {
+	total := 0
+	for range 3 {
+		e := html.EscapeString(text)
+		total += len(e) + len(html.UnescapeString(e))
+	}
+	return strconv.Itoa(total)
+}
+
+type afile struct {
+	name string
+	data []byte
+}
+
+func archiveFiles(text string) []afile {
+	b := []byte(text)
+	step := len(b) / 100
+	var files []afile
+	for i := 0; i < 100; i++ {
+		files = append(files, afile{fmt.Sprintf("dir/file%d.txt", i), b[i*step : (i+1)*step]})
+	}
+	return files
+}
+
+func zips(files []afile) string {
+	var buf bytes.Buffer
+	w := zip.NewWriter(&buf)
+	w.RegisterCompressor(zip.Deflate, func(out io.Writer) (io.WriteCloser, error) { return flate.NewWriter(out, 6) })
+	for _, f := range files {
+		fw, _ := w.CreateHeader(&zip.FileHeader{Name: f.name, Method: zip.Deflate, Modified: time.Now()})
+		fw.Write(f.data)
+	}
+	w.Close()
+	r, _ := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	total := 0
+	for _, f := range r.File {
+		rc, _ := f.Open()
+		b, _ := io.ReadAll(rc)
+		rc.Close()
+		total += len(b) + len(f.Name)
+	}
+	return fmt.Sprintf("%d %d", len(r.File), total)
+}
+
+func tars(files []afile) string {
+	var buf bytes.Buffer
+	w := tar.NewWriter(&buf)
+	for _, f := range files {
+		w.WriteHeader(&tar.Header{Name: f.name, Mode: 0o644, Size: int64(len(f.data)), ModTime: time.Now(), Typeflag: tar.TypeReg})
+		w.Write(f.data)
+	}
+	w.Close()
+	r := tar.NewReader(bytes.NewReader(buf.Bytes()))
+	n, total := 0, 0
+	for {
+		h, err := r.Next()
+		if err != nil {
+			break
+		}
+		b, _ := io.ReadAll(r)
+		n++
+		total += len(b) + len(h.Name)
+	}
+	return fmt.Sprintf("%d %d", n, total)
+}
+
+func hashes(data []byte, which int) string {
+	var out []byte
+	crc := uint32(0)
+	for range 4 {
+		switch which {
+		case 0:
+			s := sha1.Sum(data)
+			out = s[:]
+		case 1:
+			s := md5.Sum(data)
+			out = s[:]
+		default:
+			crc = crc32.Update(crc, crc32.IEEETable, data)
+		}
+	}
+	if which == 2 {
+		return strconv.FormatUint(uint64(crc), 10)
+	}
+	return hex.EncodeToString(out)
+}
+
+func buffered(n int) string {
+	w := bufio.NewWriter(os.Stdout)
+	for i := 0; i < n; i++ {
+		w.WriteString("line " + strconv.Itoa(i) + " of the output\n")
+	}
+	w.Flush()
+	return strconv.Itoa(n)
+}
+
 func csvText(n int) string {
 	rows := []string{"id,name,price,tags,note"}
 	for i := 0; i < n; i++ {
@@ -553,13 +692,25 @@ func main() {
 	var keys, strs []string
 	var xs []int
 	var scores []score
-	if in("split", "find", "case", "count", "regex", "files", "lines") {
+	if in("split", "find", "case", "count", "regex", "files", "lines", "zip", "tar") {
 		text = corpus(2000000)
+	}
+	var marked string
+	var small []byte
+	var toPack []afile
+	if name == "html" {
+		marked = strings.ReplaceAll(strings.ReplaceAll(corpus(2000000), "kato", "<k&o>"), "chi", "c>i")
+	}
+	if in("base64", "hex") {
+		small = []byte(corpus(2000000))
+	}
+	if in("zip", "tar") {
+		toPack = archiveFiles(text)
 	}
 	if name == "case" {
 		uni = strings.Repeat("Ärger über die Straße, ΣΟΦΟΣ λόγος — Ёлка и ЁЖ; ", 40000)
 	}
-	if in("sha256", "sha512", "aesgcm", "chacha", "gzip") {
+	if in("sha256", "sha512", "aesgcm", "chacha", "gzip", "sha1", "md5", "crc32") {
 		blob = []byte(corpus(10000000))
 	}
 	if name == "mapstr" {
@@ -590,143 +741,168 @@ func main() {
 	if name == "toml" {
 		tomlIn = tomlText(50000)
 	}
+	// STDBENCH_REPS: the work that many times (the runner's -instr).
+	reps, _ := strconv.Atoi(os.Getenv("STDBENCH_REPS"))
+	reps = max(reps, 1)
 	t0 := time.Now()
 	var out string
-	switch name {
-	case "interp":
-		out = interp(2000000)
-	case "concat":
-		out = concat(2000000)
-	case "split":
-		out = splitting(text)
-	case "find":
-		out = finding(text)
-	case "case":
-		out = casing(text, uni)
-	case "count":
-		out = counting(text)
-	case "num":
-		out = numbers(1000000)
-	case "fmt":
-		out = formats(1000000)
-	case "mapint":
-		out = mapInt(2000000)
-	case "mapstr":
-		out = mapStr(keys)
-	case "set":
-		out = sets(2000000)
-	case "sortint":
-		a := slices.Clone(xs)
-		slices.Sort(a)
-		out = strconv.Itoa(a[0] + a[len(a)/2] + a[len(a)-1])
-	case "sortstr":
-		a := slices.Clone(strs)
-		slices.Sort(a)
-		out = fmt.Sprintf("%s %s %s", a[0], a[len(a)/2], a[len(a)-1])
-	case "sortby":
-		a := slices.Clone(scores)
-		sort.SliceStable(a, func(i, j int) bool { return a[i].score < a[j].score })
-		b := slices.Clone(scores)
-		sort.SliceStable(b, func(i, j int) bool { return b[i].score > b[j].score })
-		out = fmt.Sprintf("%d %d %d", a[0].id, a[len(a)/2].id, b[0].id)
-	case "regex":
-		out = regexes(text)
-	case "files":
-		path := dir + "/stdbench.txt"
-		os.WriteFile(path, []byte(text), 0o644)
-		b1, _ := os.ReadFile(path)
-		b2, _ := os.ReadFile(path)
-		os.Remove(path)
-		out = strconv.Itoa(len(string(b1)) + len(b2))
-	case "lines":
-		path := dir + "/stdbench-lines.txt"
-		os.WriteFile(path, []byte(text), 0o644)
-		f, _ := os.Open(path)
-		sc := bufio.NewScanner(f)
-		total := 0
-		for sc.Scan() {
-			total += len(sc.Text())
+	for range reps {
+		switch name {
+		case "interp":
+			out = interp(2000000)
+		case "concat":
+			out = concat(2000000)
+		case "split":
+			out = splitting(text)
+		case "find":
+			out = finding(text)
+		case "case":
+			out = casing(text, uni)
+		case "count":
+			out = counting(text)
+		case "num":
+			out = numbers(1000000)
+		case "fmt":
+			out = formats(1000000)
+		case "mapint":
+			out = mapInt(2000000)
+		case "mapstr":
+			out = mapStr(keys)
+		case "set":
+			out = sets(2000000)
+		case "sortint":
+			a := slices.Clone(xs)
+			slices.Sort(a)
+			out = strconv.Itoa(a[0] + a[len(a)/2] + a[len(a)-1])
+		case "sortstr":
+			a := slices.Clone(strs)
+			slices.Sort(a)
+			out = fmt.Sprintf("%s %s %s", a[0], a[len(a)/2], a[len(a)-1])
+		case "sortby":
+			a := slices.Clone(scores)
+			sort.SliceStable(a, func(i, j int) bool { return a[i].score < a[j].score })
+			b := slices.Clone(scores)
+			sort.SliceStable(b, func(i, j int) bool { return b[i].score > b[j].score })
+			out = fmt.Sprintf("%d %d %d", a[0].id, a[len(a)/2].id, b[0].id)
+		case "regex":
+			out = regexes(text)
+		case "files":
+			path := dir + "/stdbench.txt"
+			os.WriteFile(path, []byte(text), 0o644)
+			b1, _ := os.ReadFile(path)
+			b2, _ := os.ReadFile(path)
+			os.Remove(path)
+			out = strconv.Itoa(len(string(b1)) + len(b2))
+		case "lines":
+			path := dir + "/stdbench-lines.txt"
+			os.WriteFile(path, []byte(text), 0o644)
+			f, _ := os.Open(path)
+			sc := bufio.NewScanner(f)
+			total := 0
+			for sc.Scan() {
+				total += len(sc.Text())
+			}
+			f.Close()
+			os.Remove(path)
+			out = strconv.Itoa(total)
+		case "print":
+			for i := 0; i < 1000000; i++ {
+				fmt.Println("line " + strconv.Itoa(i) + " of the output")
+			}
+			out = "1000000"
+		case "stdout":
+			out = buffered(1000000)
+		case "url":
+			out = urls(200000)
+		case "base64":
+			out = base64s(small)
+		case "hex":
+			out = hexes(small)
+		case "html":
+			out = htmls(marked)
+		case "zip":
+			out = zips(toPack)
+		case "tar":
+			out = tars(toPack)
+		case "sha1":
+			out = hashes(blob, 0)
+		case "md5":
+			out = hashes(blob, 1)
+		case "crc32":
+			out = hashes(blob, 2)
+		case "csv":
+			rows, _ := csv.NewReader(strings.NewReader(csvIn)).ReadAll()
+			total := 0
+			for _, r := range rows {
+				total += len(r) + len(r[1])
+			}
+			out = fmt.Sprintf("%d %d", len(rows), total)
+		case "sha256":
+			var s [32]byte
+			for range 4 {
+				s = sha256.Sum256(blob)
+			}
+			out = hex.EncodeToString(s[:])
+		case "sha512":
+			var s [64]byte
+			for range 4 {
+				s = sha512.Sum512(blob)
+			}
+			out = hex.EncodeToString(s[:])
+		case "hmac":
+			key := []byte("the key")
+			msg := []byte("a message of some sixty-four bytes, as a request's body might be")
+			for range 500000 {
+				h := hmac.New(sha256.New, key)
+				h.Write(msg)
+				msg = h.Sum(nil)
+			}
+			out = hex.EncodeToString(msg)
+		case "aesgcm":
+			k := sha256.Sum256([]byte("key"))
+			b, _ := aes.NewCipher(k[:])
+			g, _ := cipher.NewGCM(b)
+			out = aead(blob, g)
+		case "chacha":
+			k := sha256.Sum256([]byte("key"))
+			a, _ := chacha20poly1305.New(k[:])
+			out = aead(blob, a)
+		case "argon2":
+			var k []byte
+			for range 2 {
+				k = argon2.IDKey([]byte("password"), []byte("somesaltsomesalt"), 3, 65536, 4, 32)
+			}
+			out = hex.EncodeToString(k)
+		case "bcrypt":
+			total := 0
+			for range 4 {
+				h, _ := bcrypt.GenerateFromPassword([]byte("password"), 10)
+				total += len(h)
+			}
+			out = strconv.Itoa(total)
+		case "gzip":
+			out = gz(blob)
+		case "bigint":
+			out = bigints(10000)
+		case "modpow":
+			out = modpows(20)
+		case "time":
+			out = times(300000)
+		case "toml":
+			out = tomlParse(tomlIn)
+		case "template":
+			out = templates(200)
+		case "semver":
+			out = semvers(200000)
+		case "sortedmap":
+			out = sortedMaps(xs)
+		case "heap":
+			out = heaps(xs)
+		case "seq":
+			out = seqs(5000000)
+		default:
+			out = "unknown"
 		}
-		f.Close()
-		os.Remove(path)
-		out = strconv.Itoa(total)
-	case "print":
-		for i := 0; i < 1000000; i++ {
-			fmt.Println("line " + strconv.Itoa(i) + " of the output")
-		}
-		out = "1000000"
-	case "csv":
-		rows, _ := csv.NewReader(strings.NewReader(csvIn)).ReadAll()
-		total := 0
-		for _, r := range rows {
-			total += len(r) + len(r[1])
-		}
-		out = fmt.Sprintf("%d %d", len(rows), total)
-	case "sha256":
-		var s [32]byte
-		for range 4 {
-			s = sha256.Sum256(blob)
-		}
-		out = hex.EncodeToString(s[:])
-	case "sha512":
-		var s [64]byte
-		for range 4 {
-			s = sha512.Sum512(blob)
-		}
-		out = hex.EncodeToString(s[:])
-	case "hmac":
-		key := []byte("the key")
-		msg := []byte("a message of some sixty-four bytes, as a request's body might be")
-		for range 500000 {
-			h := hmac.New(sha256.New, key)
-			h.Write(msg)
-			msg = h.Sum(nil)
-		}
-		out = hex.EncodeToString(msg)
-	case "aesgcm":
-		k := sha256.Sum256([]byte("key"))
-		b, _ := aes.NewCipher(k[:])
-		g, _ := cipher.NewGCM(b)
-		out = aead(blob, g)
-	case "chacha":
-		k := sha256.Sum256([]byte("key"))
-		a, _ := chacha20poly1305.New(k[:])
-		out = aead(blob, a)
-	case "argon2":
-		var k []byte
-		for range 2 {
-			k = argon2.IDKey([]byte("password"), []byte("somesaltsomesalt"), 3, 65536, 4, 32)
-		}
-		out = hex.EncodeToString(k)
-	case "bcrypt":
-		total := 0
-		for range 4 {
-			h, _ := bcrypt.GenerateFromPassword([]byte("password"), 10)
-			total += len(h)
-		}
-		out = strconv.Itoa(total)
-	case "gzip":
-		out = gz(blob)
-	case "bigint":
-		out = bigints(10000)
-	case "modpow":
-		out = modpows(20)
-	case "time":
-		out = times(300000)
-	case "toml":
-		out = tomlParse(tomlIn)
-	case "template":
-		out = templates(200)
-	case "semver":
-		out = semvers(200000)
-	case "sortedmap":
-		out = sortedMaps(xs)
-	case "heap":
-		out = heaps(xs)
-	case "seq":
-		out = seqs(5000000)
-	default:
-		out = "unknown"
 	}
 	fmt.Fprintf(os.Stderr, "%s\t%d\n", out, time.Since(t0).Nanoseconds())
 }

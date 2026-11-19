@@ -47,6 +47,12 @@ test "escaping" {
   for (k, v) in url.parseQuery("a=1&b&c=x%3Dy&&d=%zz") {
     print("{k}={v};")
   }
+  // A name escaped, a value with a bad escape left out (the next one's
+  // the name's first), a name with no value.
+  // (A raw query parse wouldn't take, with its bad escape.)
+  let u = url.URL(scheme: "https", user: "", host: "e.x", port: none, path: "/", rawQuery: "f%6Fo=1&q=%zz&q=a+b%21&q=&flag&c%3D=eq", fragment: "")
+  print("{u.query("foo") ?? "none"}|{u.query("q") ?? "none"}|{u.queryAll("q")}|{u.query("flag") ?? "none"}|{u.query("c=") ?? "none"}")
+  print(url.escape("plain-ok_1.2~3") == "plain-ok_1.2~3")
 }
 
 // Output:
@@ -112,4 +118,6 @@ test "escaping" {
 // a=1;
 // b=;
 // c=x=y;
+// 1|a b!|["a b!",""]||eq
+// true
 // ok escaping

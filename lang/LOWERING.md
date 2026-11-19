@@ -1697,9 +1697,14 @@ writes gets a shape of its name whose cases name its values.
 
 A value where std/json's Value is expected converts to one (check's
 toJSONValue): an int, a float, a bool or a string is NEWE of its case,
-none `.null`, and anything else CALLB `json.value(v, desc, vdesc)`,
-which writes it by its descriptor (whole floats with their point) and
-reads that as a Value (lang/ir/jsonvalue.go).
+none `.null`, and anything else CALLB `json.value(v, desc, vdesc)`
+(lang/ir/jsonvalue.go): json.c's ak_json_value walks it by its
+descriptor as the encoder does and builds the Value directly, each case
+what writing it and reading that back as a Value would give (a whole
+float `.float`, a u64 or a BigInt past int's range `.float`, NaN and
+the infinities `.null`, a type's own toJSON what it gives), its strings
+and any Values in it shared. std/template's render converts its data
+the same way.
 
 A type's own JSON (check.Own: `fn toJSON() -> J`, `static fn
 fromJSON(json: J) throws -> T`) keeps its descriptor (`S<name>;`): its

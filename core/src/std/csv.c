@@ -21,6 +21,15 @@ extern const char *ak_json_field_desc(const ak_shape *s, int i);
 
 // ---- Reading ----
 
+// A field read: its text, src[at..at+n) (rec's when in_rec); where it
+// starts and its line's start (from src: its column is the characters
+// between, counted only for a failure's message); its line.
+typedef struct {
+	uint32_t at, n, start, ls;
+	int64_t line;
+	bool in_rec;
+} fld;
+
 typedef struct {
 	const char *src, *p, *end;
 	char sep[4];
@@ -29,18 +38,10 @@ typedef struct {
 	size_t comlen;
 	bool trim, lazy;
 	int64_t line;  // the line p is on
-	// The record read: its fields' text one after another, where each
-	// ends, and where each starts (its line and column).
+	// The record read: its fields, each its text in src (or, quoted with
+	// what's undone, in rec) and where it starts (its line and column).
 	ak_buf rec;
-	AK_VEC(uint32_t) ends;
-	AK_VEC(int64_t) lines;
-	// Where each field starts (from src), and its line: its column is the
-	// characters between, counted only for a failure's message.
-	AK_VEC(uint32_t) starts;
-	AK_VEC(uint32_t) line_starts;
-	// What ends a field that isn't quoted, for a one-byte separator: it,
-	// a line break, a quote.
-	bool stop[256];
+	AK_VEC(fld) flds;
 	int64_t rec_line;
 	bool open;  // the text ended in a quoted field
 	bool failed;
@@ -96,21 +97,40 @@ static bool space(const cr *r, const char *q, size_t *n) {
 	return cp == 0x85 || cp == 0xa0 || cp == 0x1680 || (cp >= 0x2000 && cp <= 0x200a) || cp == 0x2028 || cp == 0x2029 || cp == 0x202f || cp == 0x205f || cp == 0x3000;
 }
 
-static void end_field(cr *r, int64_t line, const char *ls, const char *st) {
-	ak_vec_push(&r->ends, (uint32_t)r->rec.len);
-	ak_vec_push(&r->lines, line);
-	ak_vec_push(&r->starts, (uint32_t)(st - r->src));
-	ak_vec_push(&r->line_starts, (uint32_t)(ls - r->src));
+static void end_field(cr *r, int64_t line, const char *ls, const char *st, size_t at, size_t n, bool in_rec) {
+	fld f = {(uint32_t)at, (uint32_t)n, (uint32_t)(st - r->src), (uint32_t)(ls - r->src), line, in_rec};
+	ak_vec_push(&r->flds, f);
 }
 
 // The column field i starts at.
-static int64_t col_of(const cr *r, uint32_t i) { return chars(r->src + r->line_starts.data[i], r->src + r->starts.data[i]) + 1; }
+static int64_t col_of(const cr *r, uint32_t i) { return chars(r->src + r->flds.data[i].ls, r->src + r->flds.data[i].start) + 1; }
+
+// stop_at: the first byte from q of a, b, c or d (the end if none), 8
+// bytes at a time.
+static inline uint64_t bytes_eq(uint64_t x, uint64_t b) {
+	uint64_t y = x ^ b;
+	return (y - 0x0101010101010101ull) & ~y & 0x8080808080808080ull;
+}
+
+static const char *stop_at(const char *q, const char *end, uint8_t a) {
+	const uint64_t ba = 0x0101010101010101ull * a, nl = 0x0101010101010101ull * '\n', cr = 0x0101010101010101ull * '\r',
+	               qu = 0x0101010101010101ull * '"';
+	while (end - q >= 8) {
+		uint64_t w;
+		memcpy(&w, q, 8);
+		uint64_t m = bytes_eq(w, ba) | bytes_eq(w, nl) | bytes_eq(w, cr) | bytes_eq(w, qu);
+		if (m) return q + (__builtin_ctzll(m) >> 3);
+		q += 8;
+	}
+	while (q < end && *q != (char)a && *q != '\n' && *q != '\r' && *q != '"') q++;
+	return q;
+}
 
 // record reads the next record into r->rec; false at the end of the
 // text, or on a failure (r->failed).
 static bool record(cr *r) {
 	ak_buf_reset(&r->rec);
-	r->ends.len = r->lines.len = r->starts.len = r->line_starts.len = 0;
+	r->flds.len = 0;
 	// Empty lines and comments are skipped.
 	for (;;) {
 		if (r->p >= r->end) return false;
@@ -137,7 +157,7 @@ static bool record(cr *r) {
 				// Past bytes that can't end it, then what it is.
 				const char *q = r->p;
 				for (;;) {
-					while (q < r->end && !r->stop[(uint8_t)*q]) q++;
+					q = stop_at(q, r->end, (uint8_t)r->sep[0]);
 					if (q < r->end && *q == '\r' && !eol(r, q)) {
 						q++;  // a lone CR is the field's
 						continue;
@@ -162,8 +182,7 @@ static bool record(cr *r) {
 					r->p++;
 				}
 			}
-			ak_buf_put(&r->rec, st, (size_t)(r->p - st));
-			end_field(r, r->line, fls, fstart);
+			end_field(r, r->line, fls, fstart, (size_t)(st - r->src), (size_t)(r->p - st), false);
 			if (at(r, r->p, r->sep, r->seplen)) {
 				r->p += r->seplen;
 				continue;
@@ -172,9 +191,15 @@ static bool record(cr *r) {
 			r->line++;
 			return true;
 		}
-		// A quoted field: to its closing quote, over lines.
+		// A quoted field: to its closing quote, over lines. One with
+		// nothing to undo (no "" or line break) is its text in src.
 		int64_t fline = r->line;
 		r->p++;
+		const char *qst = r->p;
+		size_t before = r->rec.len;
+		bool plain = true;
+#define END_QUOTED(q) (plain ? (r->rec.len = before, end_field(r, fline, fls, fstart, (size_t)(qst - r->src), (size_t)((q) - qst), false)) \
+                             : end_field(r, fline, fls, fstart, before, r->rec.len - before, true))
 		for (;;) {
 			const char *st = r->p;
 			while (r->p < r->end && *r->p != '"' && *r->p != '\n' && !(*r->p == '\r' && r->p + 1 < r->end && r->p[1] == '\n')) r->p++;
@@ -185,11 +210,13 @@ static bool record(cr *r) {
 					cfail(r, fline, chars(fls, fstart) + 1, "a quoted field that doesn't end");
 					return false;
 				}
-				end_field(r, fline, fls, fstart);
+				plain = false;
+				END_QUOTED(r->p);
 				return true;
 			}
 			if (*r->p != '"') {
 				// A line break in the field: kept, as \n.
+				plain = false;
 				ak_buf_u8(&r->rec, '\n');
 				r->p = past_eol(r, r->p);
 				r->line++;
@@ -198,18 +225,20 @@ static bool record(cr *r) {
 			}
 			const char *q = r->p++;
 			if (r->p < r->end && *r->p == '"') {
+				plain = false;
 				ak_buf_u8(&r->rec, '"');
 				r->p++;
 			} else if (at(r, r->p, r->sep, r->seplen)) {
+				END_QUOTED(q);
 				r->p += r->seplen;
-				end_field(r, fline, fls, fstart);
 				break;
 			} else if (eol(r, r->p)) {
-				end_field(r, fline, fls, fstart);
+				END_QUOTED(q);
 				r->p = past_eol(r, r->p);
 				r->line++;
 				return true;
 			} else if (r->lazy) {
+				plain = false;
 				ak_buf_u8(&r->rec, '"');
 			} else {
 				cfail(r, r->line, chars(ls, q) + 1, "a \" in a quoted field must be doubled (\"a\"\"b\")");
@@ -219,18 +248,73 @@ static bool record(cr *r) {
 	}
 }
 
+#undef END_QUOTED
+
 static const char *field(const cr *r, uint32_t i, size_t *n) {
-	uint32_t st = i ? r->ends.data[i - 1] : 0;
-	*n = r->ends.data[i] - st;
-	return (const char *)r->rec.data + st;
+	const fld *f = &r->flds.data[i];
+	*n = f->n;
+	return f->in_rec ? (const char *)r->rec.data + f->at : r->src + f->at;
 }
 
 static void cr_free(cr *r) {
 	ak_buf_free(&r->rec);
-	ak_vec_free(&r->ends);
-	ak_vec_free(&r->lines);
-	ak_vec_free(&r->starts);
-	ak_vec_free(&r->line_starts);
+	ak_vec_free(&r->flds);
+}
+
+// ---- Strings a column repeats ----
+//
+// A column's short strings that come again (a category, a flag, a unit)
+// are one string each, shared: a small table a column of the values it
+// read last, by hash. A column whose values don't repeat (an id, a
+// name) stops looking after its first 256.
+
+enum { CACHE_SLOTS = 16, CACHE_MAX = 32, CACHE_TRIAL = 256 };
+
+typedef struct {
+	ak_str *s[CACHE_SLOTS];
+	uint32_t tries, hits;
+	bool off;
+} colcache;
+
+static void cache_clear(colcache *c) {
+	for (int i = 0; i < CACHE_SLOTS; i++) {
+		if (c->s[i]) ak_release(c->s[i]);
+		c->s[i] = NULL;
+	}
+}
+
+static ak_str *cached_str(colcache *c, const char *s, size_t n) {
+	if (!c || c->off || n > CACHE_MAX) return ak_str_new(s, n);
+	uint64_t a = 0, b = 0;
+	memcpy(&a, s, n < 8 ? n : 8);
+	if (n > 8) memcpy(&b, s + n - 8, 8);
+	uint32_t h = (uint32_t)(((a ^ (b * 0x9E3779B97F4A7C15ull) ^ n) * 0xff51afd7ed558ccdull) >> 60);
+	ak_str *x = c->s[h];
+	c->tries++;
+	if (x && x->len == n && memcmp(x->data, s, n) == 0) {
+		c->hits++;
+		return ak_retain(x);
+	}
+	x = ak_str_new(s, n);
+	if (c->s[h]) ak_release(c->s[h]);
+	c->s[h] = ak_retain(x);
+	if (c->tries == CACHE_TRIAL && c->hits < CACHE_TRIAL / 4) {
+		c->off = true;
+		cache_clear(c);
+	}
+	return x;
+}
+
+// cache_for: column i's table, made as columns come.
+static colcache *cache_for(colcache **cs, uint32_t *ncs, uint32_t i) {
+	if (i >= 4096) return NULL;
+	if (i >= *ncs) {
+		uint32_t n = i + 8;
+		*cs = ak_realloc(*cs, sizeof(colcache) * n);
+		memset(*cs + *ncs, 0, sizeof(colcache) * (n - *ncs));
+		*ncs = n;
+	}
+	return &(*cs)[i];
 }
 
 // one_char takes a separator's or a comment's character: false when s
@@ -265,7 +349,6 @@ static bool cr_init(cr *r, ak_val *args) {
 	r->trim = args[3].i != 0;
 	r->lazy = args[4].i != 0;
 	r->line = args[6].i;
-	if (r->seplen == 1) r->stop[(uint8_t)r->sep[0]] = r->stop['\n'] = r->stop['\r'] = r->stop['"'] = true;
 	return true;
 }
 
@@ -509,8 +592,10 @@ static ak_val read_fn(ak_val *args, uint32_t nargs) {
 		}
 	}
 	char why[300];
+	colcache *caches = NULL;
+	uint32_t ncaches = 0;
 	while (record(&r)) {
-		uint32_t nf = r.ends.len;
+		uint32_t nf = r.flds.len;
 		if (!flexible) {
 			if (fields < 0) fields = nf;
 			else if (nf != fields) {
@@ -544,7 +629,8 @@ static ak_val read_fn(ak_val *args, uint32_t nargs) {
 				size_t n;
 				const char *s = field(&r, c, &n);
 				ak_val v;
-				if (!cell(s, n, ed, t, &v, why, sizeof why)) cfail(&r, r.lines.data[c], col_of(&r, c), "%s", why);
+				if (*ed == 's') ak_arr_push(&row, (ak_val){.p = cached_str(cache_for(&caches, &ncaches, c), s, n)});
+				else if (!cell(s, n, ed, t, &v, why, sizeof why)) cfail(&r, r.flds.data[c].line, col_of(&r, c), "%s", why);
 				else ak_arr_push(&row, v);
 			}
 			if (r.failed) {
@@ -563,7 +649,8 @@ static ak_val read_fn(ak_val *args, uint32_t nargs) {
 			}
 			size_t n;
 			const char *s = field(&r, (uint32_t)colof[i], &n);
-			if (!cell(s, n, fd, t, &o->f[i], why, sizeof why)) cfail(&r, r.lines.data[colof[i]], col_of(&r, (uint32_t)colof[i]), "%s: %s", sh->names[i], why);
+			if (*fd == 's') o->f[i].p = cached_str(cache_for(&caches, &ncaches, i), s, n);
+			else if (!cell(s, n, fd, t, &o->f[i], why, sizeof why)) cfail(&r, r.flds.data[colof[i]].line, col_of(&r, (uint32_t)colof[i]), "%s: %s", sh->names[i], why);
 		}
 		if (r.failed) {
 			ak_release(o);
@@ -572,6 +659,8 @@ static ak_val read_fn(ak_val *args, uint32_t nargs) {
 		ak_arr_push(&out, (ak_val){.p = o});
 	}
 	ak_free(colof);
+	for (uint32_t c = 0; c < ncaches; c++) cache_clear(&caches[c]);
+	ak_free(caches);
 	if (r.failed) {
 		ak_throw_msg("%s", r.msg);
 		ak_release(out);

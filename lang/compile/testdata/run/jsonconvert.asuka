@@ -1,7 +1,10 @@
 // A value JSON can say is a json.Value where one is expected: an int,
 // a float, a bool and a string their cases, none .null, anything else
 // what it's written as (a u64 past int's range a float, as a Value reads
-// such a number).
+// such a number), made directly (core/src/rt/json.c's ak_json_value):
+// what json.parse(json.encode(x)) gives, a whole float a .float.
+import std/bigint.{BigInt}
+import std/decimal.{Decimal}
 import std/json
 
 struct Peer {
@@ -12,6 +15,24 @@ struct Peer {
 enum Mode {
   fast
   safe
+}
+
+// Money writes itself as text.
+struct Money {
+  cents: int
+
+  fn toJSON() -> string = "{cents / 100}.{cents % 100}"
+}
+
+struct Row {
+  rate: float
+  whole: float
+  letter: char
+  n: BigInt
+  big: BigInt
+  price: Decimal
+  money: Money
+  maybe: Money?
 }
 
 fn fields(f: [string: json.Value]) -> string = json.encode(f)
@@ -35,8 +56,22 @@ test "values of mixed types" {
   print(json.encode(list), one(list[2].at(0)!))
 }
 
+test "every kind, as the round trip makes it" {
+  let r = Row(rate: 0.5, whole: 2.0, letter: 'é', n: BigInt.parse("-42", radix: 10)!, big: BigInt.parse("123456789012345678901234567890", radix: 10)!, price: Decimal.parse("19.990")!, money: Money(cents: 250), maybe: none)
+  let v: json.Value = r
+  print(one(v.get("whole")!), one(v.get("letter")!) == "string é", one(v.get("letter")!), one(v.get("n")!), one(v.get("big")!), one(v.get("price")!), one(v.get("money")!), one(v.get("maybe")!))
+  let odd: json.Value = [0.0 / 0.0, -0.0, 1.0 / 0.0]
+  print(json.encode(odd), one(odd.at(1)!))
+  let again: json.Value = v
+  print(again == v, json.encode(v) == json.encode(try json.parse(json.encode(r))))
+}
+
 // Output:
 // {"port":8080,"tls":true,"rate":0.25,"host":"a","peer":{"host":"b","port":1},"ids":[1,2],"mode":"safe","none":null,"missing":null,"u":200,"big":18446744073709552000}
 // int 3 float 2.5 string x object of 2 array of 1 bool false null
 // [1,"two",[3],{"k":4}] float 3
 // ok values of mixed types
+// float 2 true string é int -42 float 1.2345678901234568e+29 string 19.99 string 2.50 null
+// [null,0,null] float 0
+// true true
+// ok every kind, as the round trip makes it

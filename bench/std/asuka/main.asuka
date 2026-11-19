@@ -3,12 +3,15 @@
 // then times the work, and prints its result (which the runner checks
 // is every language's) and the nanoseconds it took.
 
+import std/archive
 import std/bigint
 import std/collections
 import std/compress
 import std/crypto
 import std/csv
+import std/encoding
 import std/fs
+import std/html
 import std/json
 import std/os
 import std/regex
@@ -16,6 +19,7 @@ import std/semver
 import std/template
 import std/time
 import std/toml
+import std/url
 
 let syllables = ["ka", "to", "ri", "su", "me", "no", "ha", "yu", "chi", "ra"]
 
@@ -222,6 +226,70 @@ fn regexes(text: string) -> string {
   return "{total}"
 }
 
+// ---- Text formats ----
+
+fn urls(n: int) -> string {
+  var total = 0
+  for i in 0..<n {
+    let w = syllables[i % 10] + syllables[(i / 10) % 10]
+    let s = "https://user{i % 7}@host{i % 50}.example.com:{8000 + i % 1000}/a/{w}/{i}?q={w}+x{i}&page={i % 10}#f{i}"
+    if let u = url.parse(s) {
+      total += u.host.byteCount() + u.path.byteCount() + (u.query("q") ?? "").byteCount() + (u.port ?? 0)
+    }
+    total += url.escape("{w} & {i}/é").byteCount()
+  }
+  return "{total}"
+}
+
+fn base64s(data: bytes) throws -> string {
+  var total = 0
+  for _ in 0..<4 {
+    let s = encoding.base64Encode(data)
+    total += s.byteCount() + (try encoding.base64Decode(s)).count()
+  }
+  return "{total}"
+}
+
+fn hexes(data: bytes) throws -> string {
+  var total = 0
+  for _ in 0..<2 {
+    let s = encoding.hexEncode(data)
+    total += s.byteCount() + (try encoding.hexDecode(s)).count()
+  }
+  return "{total}"
+}
+
+fn htmls(text: string) -> string {
+  var total = 0
+  for _ in 0..<3 {
+    let e = html.escape(text)
+    total += e.byteCount() + html.unescape(e).byteCount()
+  }
+  return "{total}"
+}
+
+// ---- Archives ----
+
+fn archiveFiles(text: string) -> [archive.File] {
+  var files: [archive.File] = []
+  let b = text.bytes()
+  let step = b.count() / 100
+  for i in 0..<100 {
+    files.push(archive.File(name: "dir/file{i}.txt", data: b.slice(i * step, (i + 1) * step)))
+  }
+  return files
+}
+
+fn archives(files: [archive.File], format: archive.Format) throws -> string {
+  let packed = try archive.encode(files, format: format, level: 6)
+  let back = try archive.decode(packed)
+  var total = 0
+  for f in back {
+    total += f.data.count() + f.name.byteCount()
+  }
+  return "{back.count()} {total}"
+}
+
 // ---- I/O ----
 
 fn files(dir: string, text: string) throws -> string {
@@ -249,6 +317,20 @@ fn printing(n: int) -> string {
   for i in 0..<n {
     print("line {i} of the output")
   }
+  return "{n}"
+}
+
+// stdout's lines through a buffer: a block of them written at a time.
+fn buffered(n: int) -> string {
+  var block: [string] = []
+  for i in 0..<n {
+    block.push("line {i} of the output\n")
+    if block.count() == 1024 {
+      os.writeTo(.stdout, block.joined(""))
+      block = []
+    }
+  }
+  os.writeTo(.stdout, block.joined(""))
   return "{n}"
 }
 
@@ -328,6 +410,21 @@ async fn bcrypts(n: int) throws -> string {
     ok += h.byteCount()
   }
   return "{ok}"
+}
+
+fn hashes(data: bytes, which: int) -> string {
+  var out = bytes()
+  var crc = 0
+  for _ in 0..<4 {
+    if which == 0 {
+      out = crypto.sha1(data)
+    } else if which == 1 {
+      out = crypto.md5(data)
+    } else {
+      crc = compress.crc32(data, previous: crc)
+    }
+  }
+  return if which == 2 { "{crc}" } else { out.hex() }
 }
 
 fn gzip(data: bytes) throws -> string {
@@ -443,9 +540,12 @@ async fn main() throws {
   let name = args.first() ?? ""
   let dir = args.get(1) ?? "/tmp"
   // Setting up: what's timed is after it.
-  let text = if ["split", "find", "case", "count", "regex", "files", "lines"].contains(name) { corpus(2000000) } else { "" }
+  let text = if ["split", "find", "case", "count", "regex", "files", "lines", "zip", "tar"].contains(name) { corpus(2000000) } else { "" }
+  let marked = if name == "html" { corpus(2000000).replace("kato", "<k&o>").replace("chi", "c>i") } else { "" }
+  let small = if ["base64", "hex"].contains(name) { data(2000000) } else { bytes() }
+  let toPack: [archive.File] = if ["zip", "tar"].contains(name) { archiveFiles(text) } else { [] }
   let uni = if name == "case" { "Ärger über die Straße, ΣΟΦΟΣ λόγος — Ёлка и ЁЖ; ".repeat(40000) } else { "" }
-  let blob = if ["sha256", "sha512", "aesgcm", "chacha", "gzip"].contains(name) { data(10000000) } else { bytes() }
+  let blob = if ["sha256", "sha512", "aesgcm", "chacha", "gzip", "sha1", "md5", "crc32"].contains(name) { data(10000000) } else { bytes() }
   let keys: [string] = if name == "mapstr" { (0..<2000000).lazy().toArray().map(i => "key{(i * 7919) % 500009}") } else { [] }
   let xs: [int] = if ["sortint", "heap", "sortedmap"].contains(name) { ints(if name == "sortint" { 5000000 } else { 1000000 }) } else { [] }
   let strs: [string] = if name == "sortstr" { ints(1000000).map(x => "w{x}") } else { [] }
@@ -453,45 +553,61 @@ async fn main() throws {
   let csvIn = if name == "csv" { csvText(500000) } else { "" }
   let tomlIn = if name == "toml" { tomlText(50000) } else { "" }
   let t0 = time.monotonic()
-  let out = match name {
-    "interp" => interp(2000000)
-    "concat" => concat(2000000)
-    "split" => splitting(text)
-    "find" => finding(text)
-    "case" => casing(text, uni)
-    "count" => counting(text)
-    "num" => numbers(1000000)
-    "fmt" => formats(1000000)
-    "mapint" => mapInt(2000000)
-    "mapstr" => mapStr(keys)
-    "set" => sets(2000000)
-    "sortint" => sortInts(xs)
-    "sortstr" => sortStrings(strs)
-    "sortby" => sortBy(scores)
-    "regex" => regexes(text)
-    "files" => try files(dir, text)
-    "lines" => try await fileLines(dir, text)
-    "print" => printing(1000000)
-    "csv" => try csvParse(csvIn)
-    "toml" => try tomlParse(tomlIn)
-    "sha256" => sha(blob, false)
-    "sha512" => sha(blob, true)
-    "hmac" => hmacs(500000)
-    "aesgcm" => try aead(blob, .aes256GCM)
-    "chacha" => try aead(blob, .chaCha20Poly1305)
-    "argon2" => try await argon(2)
-    "bcrypt" => try await bcrypts(4)
-    "gzip" => try gzip(blob)
-    "bigint" => bigints(10000)
-    "modpow" => modpows(20)
-    "time" => try times(300000)
-    "template" => try templates(200)
-    "semver" => try semvers(200000)
-    "heap" => heaps(xs)
-    "sortedmap" => sortedMaps(xs)
-    "seq" => seqs(5000000)
-    _ => "unknown"
+  // STDBENCH_REPS: the work that many times (the runner's -instr).
+  let reps = (os.env("STDBENCH_REPS") ?? "1").toInt() ?? 1
+  var out = ""
+  for _ in 0..<reps {
+    out = match name {
+      "interp" => interp(2000000)
+      "concat" => concat(2000000)
+      "split" => splitting(text)
+      "find" => finding(text)
+      "case" => casing(text, uni)
+      "count" => counting(text)
+      "num" => numbers(1000000)
+      "fmt" => formats(1000000)
+      "mapint" => mapInt(2000000)
+      "mapstr" => mapStr(keys)
+      "set" => sets(2000000)
+      "sortint" => sortInts(xs)
+      "sortstr" => sortStrings(strs)
+      "sortby" => sortBy(scores)
+      "regex" => regexes(text)
+      "files" => try files(dir, text)
+      "lines" => try await fileLines(dir, text)
+      "print" => printing(1000000)
+      "stdout" => buffered(1000000)
+      "url" => urls(200000)
+      "base64" => try base64s(small)
+      "hex" => try hexes(small)
+      "html" => htmls(marked)
+      "zip" => try archives(toPack, .zip)
+      "tar" => try archives(toPack, .tar)
+      "sha1" => hashes(blob, 0)
+      "md5" => hashes(blob, 1)
+      "crc32" => hashes(blob, 2)
+      "csv" => try csvParse(csvIn)
+      "toml" => try tomlParse(tomlIn)
+      "sha256" => sha(blob, false)
+      "sha512" => sha(blob, true)
+      "hmac" => hmacs(500000)
+      "aesgcm" => try aead(blob, .aes256GCM)
+      "chacha" => try aead(blob, .chaCha20Poly1305)
+      "argon2" => try await argon(2)
+      "bcrypt" => try await bcrypts(4)
+      "gzip" => try gzip(blob)
+      "bigint" => bigints(10000)
+      "modpow" => modpows(20)
+      "time" => try times(300000)
+      "template" => try templates(200)
+      "semver" => try semvers(200000)
+      "heap" => heaps(xs)
+      "sortedmap" => sortedMaps(xs)
+      "seq" => seqs(5000000)
+      _ => "unknown"
+    }
   }
+
   let ns = (time.monotonic() - t0).nanoseconds()
   os.writeTo(.stderr, "{out}\t{ns}\n")
 }
