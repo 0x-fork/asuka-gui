@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/asuka/internal/appbuild"
 	"github.com/egoist/asuka/internal/cbuild"
@@ -123,6 +124,54 @@ closed
 `
 	if got != want {
 		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// A program whose packages have platform code (std/http: Swift on the
+// Mac, which runs it on the main queue's loop) and whose async main ends
+// without awaiting anything exits: its end was ready, not
+// posted, and the host's loop calls back only for what's posted.
+func TestProgramAsyncMainEndsAtOnce(t *testing.T) {
+	if _, err := cbuild.Find(); err != nil {
+		t.Skip(err)
+	}
+	dir := filepath.Join(t.TempDir(), "quick")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte("name = \"quick\"\nversion = \"0.1.0\"\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "main.asuka"), []byte(`import std/http
+import std/os
+
+async fn main() throws {
+  if os.args().count() > 5 {
+    let _ = try await http.get("http://127.0.0.1:1/")
+  }
+  print("done")
+}
+`), 0o644)
+	p, err := appbuild.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := buildOptions{out: filepath.Join(t.TempDir(), "dist")}
+	if err := cmdBuildProgram(p, &o); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	cmd := exec.Command(filepath.Join(o.out, programExeName("quick", cbuild.Host())))
+	cmd.Stdout, cmd.Stderr = &out, &out
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case err := <-done:
+		if code := cmd.ProcessState.ExitCode(); code != 0 || strings.TrimSpace(out.String()) != "done" {
+			t.Fatalf("exit %d (%v), output %q", code, err, out.String())
+		}
+	case <-time.After(60 * time.Second):
+		cmd.Process.Kill()
+		t.Fatalf("it didn't exit; output %q", out.String())
 	}
 }
 
