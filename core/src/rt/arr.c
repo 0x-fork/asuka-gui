@@ -73,6 +73,17 @@ static void grow_front(ak_arr *a) {
 	if (!a->cap) a->cap = 4;
 }
 
+// ak_arr_reserve makes room for exactly n more at the end (a buffer of
+// that size, not twice): what's known to come.
+void ak_arr_reserve(ak_arr **ap, uint32_t n) {
+	ak_arr *a = ak_arr_mut(ap);
+	if (n > UINT32_MAX - a->len) ak_panic("out of memory (an array of %u + %u elements)", a->len, n);
+	if (a->len + n <= a->cap) return;
+	ak_val *b = ak_realloc(a->data ? ak_arr_base(a) : NULL, sizeof(ak_val) * ((size_t)a->front + a->len + n));
+	a->data = b + a->front;
+	a->cap = a->len + n;
+}
+
 void ak_arr_push(ak_arr **ap, ak_val v) {
 	ak_arr *a = ak_arr_mut(ap);
 	grow(a, 1);

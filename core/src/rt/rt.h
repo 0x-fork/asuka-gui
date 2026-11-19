@@ -207,6 +207,7 @@ static inline ak_kind ak_arr_kind(const ak_arr *a) { return (ak_kind)a->h.aux; }
 // ak_arr_mut makes *a unique (copying it if it's shared) and returns it.
 ak_arr *ak_arr_mut(ak_arr **a);
 void ak_arr_push(ak_arr **a, ak_val v);              // takes v's reference
+void ak_arr_reserve(ak_arr **a, uint32_t n);         // room for n more, made unique
 void ak_arr_insert(ak_arr **a, int64_t i, ak_val v); // takes v's reference
 ak_val ak_arr_remove_at(ak_arr **a, int64_t i);      // returns the reference
 void ak_arr_set(ak_arr **a, int64_t i, ak_val v);    // takes v's reference
