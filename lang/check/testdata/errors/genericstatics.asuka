@@ -9,6 +9,6 @@ struct Box<T> {
 
 fn f() {
   let a = Box.none() // ERROR "can't tell"
-  let g = Box.of // ERROR "Box.of is generic"
+  let g = Box.of     // ERROR "Box.of is generic"
   let ok = Box.limit + Box.of([1]).items.count()
 }
