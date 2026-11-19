@@ -347,6 +347,11 @@ func Walk(v Visitor, n Node) {
 	case *MemberExpr:
 		walk(n.X)
 		walk(n.Name)
+	case *TypeApp:
+		walk(n.X)
+		for _, t := range n.TypeArgs {
+			walk(t)
+		}
 	case *ArgList:
 		for _, a := range n.List {
 			walk(a)

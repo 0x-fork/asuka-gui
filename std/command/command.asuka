@@ -111,7 +111,7 @@ fn pairs(env: [string: string]) -> [string] {
 pub struct Process {
   pid: int
   program: string
-  handle: int = 0
+  private handle: int = 0
   fake: Answer? = none
 
   /// What it writes to stdout as it comes. One reader.

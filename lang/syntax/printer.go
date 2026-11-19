@@ -670,6 +670,12 @@ func (p *printer) pub(pos Pos) {
 	}
 }
 
+func (p *printer) private(pos Pos) {
+	if pos.IsValid() {
+		p.write("private ")
+	}
+}
+
 func (p *printer) typeParams(list []*TypeParam, a Angles) {
 	if len(list) == 0 {
 		return
@@ -717,6 +723,7 @@ func (p *printer) conforms(list []Type) {
 
 func (p *printer) funcDecl(d *FuncDecl) {
 	p.pub(d.Pub)
+	p.private(d.Private)
 	if d.Static.IsValid() {
 		p.write("static ")
 	}
@@ -863,6 +870,7 @@ func (p *printer) node(n Node) {
 		p.block(n.Body)
 	case *StructDecl:
 		p.pub(n.Pub)
+		p.private(n.Private)
 		if n.Extern.IsValid() {
 			p.write("extern ")
 		}
@@ -873,6 +881,7 @@ func (p *printer) node(n Node) {
 		p.body(n.Lbrace, nil, n.Members, n.Dangling, n.Rbrace, true, "; ")
 	case *Field:
 		p.pub(n.Pub)
+		p.private(n.Private)
 		p.write(n.Name.Name + ": ")
 		p.typ(n.Type)
 		if n.Default != nil {
@@ -880,6 +889,7 @@ func (p *printer) node(n Node) {
 		}
 	case *EnumDecl:
 		p.pub(n.Pub)
+		p.private(n.Private)
 		p.write("enum " + n.Name.Name)
 		p.typeParams(n.TypeParams, n.TypeAngles)
 		p.conforms(n.Conforms)
@@ -915,6 +925,7 @@ func (p *printer) node(n Node) {
 		p.body(n.Lbrace, nil, n.Members, n.Dangling, n.Rbrace, true, "; ")
 	case *InterfaceDecl:
 		p.pub(n.Pub)
+		p.private(n.Private)
 		if n.Native.IsValid() {
 			p.write("native ")
 		}
@@ -932,6 +943,7 @@ func (p *printer) node(n Node) {
 		}
 	case *TypeAliasDecl:
 		p.pub(n.Pub)
+		p.private(n.Private)
 		p.write("type " + n.Name.Name)
 		p.typeParams(n.TypeParams, n.TypeAngles)
 		p.write(" = ")
@@ -962,6 +974,7 @@ func (p *printer) node(n Node) {
 		}
 	case *LetDecl:
 		p.pub(n.Pub)
+		p.private(n.Private)
 		p.write(n.Keyword.String() + " ")
 		p.pattern(n.Pattern)
 		after := end(n.Pattern)
@@ -1331,7 +1344,7 @@ func (p *printer) expr1(x Expr) {
 		p.write("@" + x.Name)
 	case *ImplicitMember:
 		p.write("." + x.Name.Name)
-	case *MemberExpr, *CallExpr, *IndexExpr, *UnwrapExpr:
+	case *MemberExpr, *CallExpr, *IndexExpr, *UnwrapExpr, *TypeApp:
 		p.postfix(x)
 	case *UnaryExpr:
 		switch x.Op {
@@ -1495,6 +1508,8 @@ func postfixOperand(x Expr) Expr {
 	switch e := x.(type) {
 	case *MemberExpr:
 		return e.X
+	case *TypeApp:
+		return e.X
 	case *CallExpr:
 		return e.Fun
 	case *IndexExpr:
@@ -1565,6 +1580,8 @@ func (p *printer) postfix(x Expr) {
 				p.newline()
 			}
 			p.write(e.Name.Name)
+		case *TypeApp:
+			p.list("<", ">", e.Angles.Lt, e.Angles.Gt, typeNodes(e.TypeArgs))
 		case *CallExpr:
 			if len(e.TypeArgs) > 0 {
 				p.list("<", ">", e.Angles.Lt, e.Angles.Gt, typeNodes(e.TypeArgs))

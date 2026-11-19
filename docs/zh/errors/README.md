@@ -79,7 +79,7 @@ Asuka 报告的每个错误和警告都有一个代码：一个稳定的名称�
 - [not-callable](not-callable.md): 调用了不是函数的东西。
 - [not-json](not-json.md): JSON 无法读写的类型。
 - [not-optional](not-optional.md): 对一定有值的值使用了可选类型的运算符。
-- [not-pub](not-pub.md): 其他包（或 store、worker）没有公开的声明。
+- [not-pub](not-pub.md): 其他包、其他文件（private）、store 或 worker 没有公开的声明。
 - [not-sendable](not-sendable.md): 无法传到另一个线程的值。
 - [not-supported](not-supported.md): 语言暂时还不支持的写法。
 - [optimistic-impure](optimistic-impure.md): 乐观改动读取了状态、await 了或者写入了。

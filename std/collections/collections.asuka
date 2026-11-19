@@ -30,7 +30,8 @@
 // same function makes printing one show its storage: print its
 // entries().
 //
-// Heap: push, pop and pushPop are O(log n), peek O(1), heapOf O(n).
+// Heap: push, pop and pushPop are O(log n), peek O(1), Heap.of (and
+// Heap.min and Heap.max, by T's own <) O(n).
 // SortedMap and SortedSet are B-trees: get, set, remove, floor and the
 // rest O(log n); range(from:to:) O(log n) to its first entry, then O(1)
 // each (amortized); first() and last() O(log n). Their lazy() and range
@@ -47,9 +48,22 @@
 pub struct Heap<T> {
   /// The order: a less-than. pop gives the least by it first.
   by: fn(T, T) -> bool
-  /// The elements as a binary heap keeps them, the least first. Leave
-  /// it out; heapOf makes a heap of an array's elements.
-  items: [T] = []
+  // The elements as a binary heap keeps them, the least first.
+  private items: [T] = []
+
+  /// A heap of items' elements, ordered by by (a less-than): O(n), where
+  /// pushing them one by one is O(n log n).
+  ///
+  ///   var jobs = Heap.of(pending, by: (a, b) => a.due < b.due)
+  static fn of(items: [T], by: fn(T, T) -> bool) -> Heap<T> {
+    var h = Heap(by: by, items: items)
+    var i = items.count() / 2 - 1
+    while i >= 0 {
+      h.items.siftDown(i, by)
+      i -= 1
+    }
+    return h
+  }
 
   /// The number of elements.
   fn count() -> int = items.count()
@@ -146,16 +160,16 @@ extend<T> [T] {
   }
 }
 
-/// A heap of items' elements, ordered by by (a less-than): O(n), where
-/// pushing them one by one is O(n log n).
-pub fn heapOf<T>(items: [T], by: fn(T, T) -> bool) -> Heap<T> {
-  var h = Heap(by: by, items: items)
-  var i = items.count() / 2 - 1
-  while i >= 0 {
-    h.items.siftDown(i, by)
-    i -= 1
-  }
-  return h
+extend<T: Comparable> Heap<T> {
+  /// A heap that pops the least first, by T's own <, of items'
+  /// elements (none: an empty one): O(n).
+  ///
+  ///   var due = Heap.min([5, 1, 4])
+  ///   due.pop()                                   // 1
+  pub static fn min(items: [T] = []) -> Heap<T> = Heap.of(items, by: (a, b) => a < b)
+
+  /// A heap that pops the greatest first, by T's own <: O(n).
+  pub static fn max(items: [T] = []) -> Heap<T> = Heap.of(items, by: (a, b) => a > b)
 }
 
 // ---- SortedMap and SortedSet: a B-tree ----
@@ -166,7 +180,7 @@ pub fn heapOf<T>(items: [T], by: fn(T, T) -> bool) -> Heap<T> {
 let minKeys = 15
 let maxKeys = 31
 
-struct Node<K, V> {
+private struct Node<K, V> {
   keys: [K] = []
   vals: [V] = []
   kids: [Node<K, V>] = []
@@ -352,7 +366,7 @@ fn treeNear<K, V>(root: Node<K, V>, k: K, by: fn(K, K) -> bool, below: bool, equ
 // A Walk is where an in-order walk of a tree is: the nodes from the root
 // down, and in each the index of the next key (an internal node's
 // kids[at] has been walked).
-struct Walk<K, V> {
+private struct Walk<K, V> {
   path: [Node<K, V>] = []
   at: [int] = []
 }
@@ -426,10 +440,9 @@ pub struct SortedMap<K: Comparable, V> {
   /// The keys' order, a less-than: their own < unless it's given
   /// ((a, b) => a > b: the greatest first).
   by: fn(K, K) -> bool = (a, b) => a < b
-  /// The entries, in a B-tree. Leave it out.
-  root: Node<K, V> = Node()
-  /// How many entries. Leave it out.
-  size: int = 0
+  // The entries, in a B-tree, and how many.
+  private root: Node<K, V> = Node()
+  private size: int = 0
 
   /// The number of entries.
   fn count() -> int = size
@@ -533,10 +546,9 @@ pub struct SortedMap<K: Comparable, V> {
 pub struct SortedSet<T: Comparable> {
   /// The order, a less-than: the elements' own < unless it's given.
   by: fn(T, T) -> bool = (a, b) => a < b
-  /// The elements, in a B-tree. Leave it out.
-  root: Node<T, bool> = Node()
-  /// How many elements. Leave it out.
-  size: int = 0
+  // The elements, in a B-tree, and how many.
+  private root: Node<T, bool> = Node()
+  private size: int = 0
 
   /// The number of elements.
   fn count() -> int = size

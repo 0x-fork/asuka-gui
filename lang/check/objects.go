@@ -391,6 +391,9 @@ type Field struct {
 	Index   int
 	Pos     syntax.Pos
 	C       *CType // an extern struct's field: its C type
+	// Private: its file's only (private items: [T]); its struct is made
+	// elsewhere only without it (it has a default, left out).
+	Private bool
 }
 
 // A Case is an enum's case.

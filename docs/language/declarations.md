@@ -141,7 +141,8 @@ let empty = Page<string>(items: [])   // written out, where nothing else says it
 A generic struct's `static fn` takes the struct's type parameters, then
 its own: they're inferred from its arguments (`Stack.of([1, 2])`), or
 from what's expected (`let s: Stack<string> = .empty()`), or written
-after its name (`Stack.empty<int>()`, the struct's first). Its `let` is
+with the struct's name (`Stack<int>.empty()`) or after the function's
+(`Stack.empty<int>()`, the struct's first). Its `let` is
 one constant for every type it's made with, so its type can't name
 them: a constant that would (an empty `Stack<T>`) is a `static fn`.
 
@@ -212,6 +213,40 @@ fn withTip(bill: Money) -> Money {
 
 A struct isn't ordered field by field: what its order means is its
 `compare`'s to say.
+
+## What's private
+
+`private` makes a declaration its file's: a file's `fn`, `let`, `var`,
+struct, enum, interface or type, and a struct's or an enum's field,
+method, `static fn` or constant. The file uses it as any other (its
+types' methods, its functions, its extensions); other files can't name
+it, but the package's test files (`name_test.asuka`), which test its
+insides. What isn't `pub` is its package's; what's `private`, its
+file's.
+
+```asuka check
+pub struct Counter {
+  private hits: [string: int] = [:]
+
+  mut fn add(word: string) { hits[word, default: 0] += 1 }
+  fn top() -> string? = best(hits)
+}
+
+private fn best(counts: [string: int]) -> string? {
+  var found: (string, int)? = none
+  for (w, n) in counts {
+    if found == none || n > found!.1 { found = (w, n) }
+  }
+  return found?.0
+}
+```
+
+Elsewhere, a struct is made without its private fields, so each needs a
+default (`Counter()`); one with a private field that has none is made
+in its file only, by its static fns, which keep its rules (a
+`Decimal`'s coefficient without trailing zeros). A private method is
+no operator (`add`, `compare`), nor does it give its type an interface,
+since those are used from anywhere.
 
 ## Extensions
 

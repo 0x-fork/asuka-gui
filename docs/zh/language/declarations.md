@@ -104,7 +104,7 @@ let page = Page(items: [1, 2, 3])     // 一个 Page<int>
 let empty = Page<string>(items: [])   // 没有别的信息可推断时，直接写出来
 ```
 
-泛型结构体的 `static fn` 先接受结构体的类型参数，再接受它自己的：可以从参数推断（`Stack.of([1, 2])`），可以从期望的类型推断（`let s: Stack<string> = .empty()`），也可以写在函数名后面（`Stack.empty<int>()`，结构体的类型参数在前）。泛型结构体的 `let` 是所有类型共用的一个常量，所以它的类型不能提到类型参数：需要提到的常量（比如一个空的 `Stack<T>`）就写成 `static fn`。
+泛型结构体的 `static fn` 先接受结构体的类型参数，再接受它自己的：可以从参数推断（`Stack.of([1, 2])`），可以从期望的类型推断（`let s: Stack<string> = .empty()`），也可以和结构体的名字写在一起（`Stack<int>.empty()`），或者写在函数名后面（`Stack.empty<int>()`，结构体的类型参数在前）。泛型结构体的 `let` 是所有类型共用的一个常量，所以它的类型不能提到类型参数：需要提到的常量（比如一个空的 `Stack<T>`）就写成 `static fn`。
 
 ```asuka check
 struct Stack<T> {
@@ -155,6 +155,29 @@ fn withTip(bill: Money) -> Money {
 ```
 
 结构体不会逐个字段地排序：它的顺序是什么意思，由它的 `compare` 来决定。
+
+## 私有的声明
+
+`private` 让一个声明只属于它所在的文件：文件里的 `fn`、`let`、`var`、struct、enum、interface 或 type，以及结构体或枚举的字段、方法、`static fn` 和常量。这个文件里的代码（它的类型的方法、它的函数、它的扩展）可以照常使用它；其他文件不能用它的名字，只有这个包的测试文件（`name_test.asuka`）例外，因为它们要测试内部的东西。没写 `pub` 的属于整个包；写了 `private` 的只属于这个文件。
+
+```asuka check
+pub struct Counter {
+  private hits: [string: int] = [:]
+
+  mut fn add(word: string) { hits[word, default: 0] += 1 }
+  fn top() -> string? = best(hits)
+}
+
+private fn best(counts: [string: int]) -> string? {
+  var found: (string, int)? = none
+  for (w, n) in counts {
+    if found == none || n > found!.1 { found = (w, n) }
+  }
+  return found?.0
+}
+```
+
+在别的文件里创建结构体时，私有字段不能给出，所以每个私有字段都需要默认值（`Counter()`）；有私有字段没有默认值的结构体只能在它自己的文件里创建，也就是通过它的 static fn，由它们来维护结构体的规则（比如 `Decimal` 的系数没有末尾的零）。私有方法不会成为运算符（`add`、`compare`），也不会让它的类型具备某个接口，因为这些在哪里都会被用到。
 
 ## 扩展
 

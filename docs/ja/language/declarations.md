@@ -104,7 +104,7 @@ let page = Page(items: [1, 2, 3])     // Page<int>
 let empty = Page<string>(items: [])   // ほかに手がかりがないときは書き出す
 ```
 
-ジェネリックな構造体の `static fn` は、構造体の型パラメーター、続いて自分の型パラメーターを取ります。引数から推論されるか（`Stack.of([1, 2])`）、求められている型から推論されるか（`let s: Stack<string> = .empty()`）、名前のあとに書きます（`Stack.empty<int>()`。構造体のものが先）。ジェネリックな構造体の `let` は、どの型で作っても共通の 1 つの定数なので、その型に型パラメーターは使えません。使う必要がある定数（空の `Stack<T>` など）は `static fn` にします。
+ジェネリックな構造体の `static fn` は、構造体の型パラメーター、続いて自分の型パラメーターを取ります。引数から推論されるか（`Stack.of([1, 2])`）、求められている型から推論されるか（`let s: Stack<string> = .empty()`）、構造体の名前と一緒に書くか（`Stack<int>.empty()`）、関数名のあとに書きます（`Stack.empty<int>()`。構造体のものが先）。ジェネリックな構造体の `let` は、どの型で作っても共通の 1 つの定数なので、その型に型パラメーターは使えません。使う必要がある定数（空の `Stack<T>` など）は `static fn` にします。
 
 ```asuka check
 struct Stack<T> {
@@ -155,6 +155,29 @@ fn withTip(bill: Money) -> Money {
 ```
 
 構造体がフィールドごとに順序づけられることはありません。その順序が何を意味するかは、`compare` が決めます。
+
+## 非公開の宣言
+
+`private` は宣言をそのファイルだけのものにします。ファイルの `fn`、`let`、`var`、struct、enum、interface、type、そして構造体や列挙型のフィールド、メソッド、`static fn`、定数に付けられます。そのファイルのコード（その型のメソッド、関数、拡張）からはほかと同じように使えますが、ほかのファイルからは名前で参照できません。例外はパッケージのテストファイル（`name_test.asuka`）で、内部をテストするために使えます。`pub` を付けないものはパッケージのもの、`private` を付けたものはファイルのものです。
+
+```asuka check
+pub struct Counter {
+  private hits: [string: int] = [:]
+
+  mut fn add(word: string) { hits[word, default: 0] += 1 }
+  fn top() -> string? = best(hits)
+}
+
+private fn best(counts: [string: int]) -> string? {
+  var found: (string, int)? = none
+  for (w, n) in counts {
+    if found == none || n > found!.1 { found = (w, n) }
+  }
+  return found?.0
+}
+```
+
+ほかのファイルでは、構造体は private なフィールドなしで作られるので、それぞれに既定値が要ります（`Counter()`）。既定値のない private なフィールドを持つ構造体は、そのファイルの中でだけ、つまり static fn で作られ、それらが構造体の規則（`Decimal` の係数に末尾のゼロがないことなど）を守ります。private なメソッドは演算子（`add`、`compare`）にならず、型にインターフェイスを与えることもありません。それらはどこからでも使われるからです。
 
 ## 拡張
 

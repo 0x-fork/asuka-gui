@@ -125,7 +125,7 @@ func (c *Checker) typeMembers(t *TypeName) {
 				} else {
 					ft = c.typeExpr(m.Type)
 				}
-				f := &Field{Name: m.Name.Name, Type: ft, Default: m.Default, Index: len(t.Fields), Pos: m.Name.Start, C: fc}
+				f := &Field{Name: m.Name.Name, Type: ft, Default: m.Default, Index: len(t.Fields), Pos: m.Name.Start, C: fc, Private: m.Private.IsValid()}
 				t.fieldIndex[f.Name] = f.Index
 				t.Fields = append(t.Fields, f)
 			case *syntax.LetDecl:
@@ -858,6 +858,9 @@ func (c *Checker) implementsMembers(t Type, iface *Named) string {
 			continue
 		}
 		f, fs := n.Obj.Methods[m.Name], s
+		if privateFn(f) {
+			return "its " + m.Name + " is private (its file's only)"
+		}
 		if f == nil {
 			// An extension's, where the package sees it.
 			hit, _ := c.extLookup(t, m.Name, "method", nil)
@@ -885,6 +888,9 @@ func (c *Checker) implementsMembers(t Type, iface *Named) string {
 			f := n.Obj.Field(fl.Name)
 			if f == nil {
 				return "it has no field " + fl.Name
+			}
+			if f.Private {
+				return "its field " + fl.Name + " is private (its file's only)"
 			}
 			if !Identical(s.Apply(f.Type), want) {
 				return "its field " + fl.Name + " is " + typeString(s.Apply(f.Type)) + ", not " + typeString(want)

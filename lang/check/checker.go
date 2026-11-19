@@ -83,6 +83,9 @@ type Checker struct {
 	// Generic calls, for the type parameters read or written as JSON
 	// (checked once every body has said which: jsonGenerics).
 	genericCalls []genericCall
+	// typeApps are the generic types written with their arguments before
+	// a static member (Box<int> of Box<int>.empty()): the type they make.
+	typeApps map[*syntax.TypeApp]*Named
 	instances    []instance   // where generics get their type arguments (instances.go)
 	laterChecks  []func()     // checks for when the package's declarations are whole
 	lvalueWhole  syntax.Expr  // the target of the = (or bind) lvalue checks: a prop assigned whole
@@ -862,6 +865,7 @@ func (c *Checker) namedType(t *syntax.NamedType) Type {
 			return Invalid
 		}
 		c.info.Uses[t.Path[0]] = o
+		c.hiddenObj(t, name, o)
 	} else {
 		pn, ok := c.lookup(t.Path[0].Name).(*PkgName)
 		if !ok {

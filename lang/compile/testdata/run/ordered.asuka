@@ -2,7 +2,7 @@
 // std/collections' Heap, SortedMap and SortedSet: changed in a var, in
 // state and in a mut fn, copied, gone over with for, and big.
 
-import std/collections.{Heap, SortedMap, SortedSet, heapOf}
+import std/collections.{Heap, SortedMap, SortedSet}
 
 struct P {
   name: string
@@ -92,7 +92,7 @@ test "a heap" {
   let before = s
   while s.runOne() {}
   print("{s.log} {before.due.count()} {s.due.count()}")
-  var h = heapOf([5, 3, 8, 1], by: (a, b) => a > b)
+  var h = Heap.of([5, 3, 8, 1], by: (a, b) => a > b)
   var seen: [int] = []
   for x in h { seen.push(x) }
   print("{seen} {h.peek()} {h.pushPop(10)} {h.replace(0)} {h.sorted()}")

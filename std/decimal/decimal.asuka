@@ -44,10 +44,16 @@ pub enum RoundingMode {
 /// numbers are == and hash alike. Make one with parse, of, or the
 /// operators; compare them with <, <=, > and >=.
 pub struct Decimal {
-  /// The digits, signed, without trailing zeros: 1999 of 19.99.
-  coefficient: int
-  /// The power of ten the coefficient is multiplied by: -2 of 19.99.
-  exponent: int
+  // The digits, signed, without trailing zeros: 1999 of 19.99; and
+  // the power of ten they're multiplied by: -2 of 19.99. Private: a
+  // coefficient with a trailing zero would be a Decimal that isn't ==
+  // to its equal.
+  private coefficient: int
+  private exponent: int
+
+  /// Its coefficient and exponent, as it keeps them (the coefficient
+  /// without trailing zeros): (1999, -2) of 19.99, (15, -1) of 1.50.
+  fn parts() -> (int, int) = (coefficient, exponent)
 
   /// 0.
   let zero = Decimal(coefficient: 0, exponent: 0)

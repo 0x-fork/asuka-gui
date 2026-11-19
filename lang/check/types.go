@@ -802,7 +802,7 @@ func CompareMethod(x *Named) *Function {
 		return nil
 	}
 	f := x.Obj.Methods["compare"]
-	if f == nil || f.Sig == nil || len(f.Sig.Params) != 1 || f.Sig.Async || f.Sig.Throws {
+	if f == nil || f.Sig == nil || len(f.Sig.Params) != 1 || f.Sig.Async || f.Sig.Throws || privateFn(f) {
 		return nil
 	}
 	s := x.Subst()

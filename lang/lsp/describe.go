@@ -195,6 +195,9 @@ func typeDecl(tn *check.TypeName) string {
 	if pubDecl(tn.Decl) {
 		pub = "pub "
 	}
+	if _, ok := check.IsPrivate(tn); ok {
+		pub = "private "
+	}
 	tps := ""
 	if len(tn.TypeParams) > 0 {
 		var ns []string
@@ -521,6 +524,9 @@ func globalDecl(g *check.Global) string {
 	if g.Pub && g.Owner == nil {
 		pub = "pub "
 	}
+	if _, ok := check.IsPrivate(g); ok {
+		pub = "private "
+	}
 	kw := "let"
 	switch g.Kind {
 	case check.StateGlobal:
@@ -687,6 +693,9 @@ func (fc *fileCtx) describe(r *ref) (code, doc string) {
 		code = funcSig(o)
 		if o.Decl != nil && o.Decl.Pub.IsValid() {
 			code = "pub " + code
+		}
+		if o.Decl != nil && o.Decl.Private.IsValid() {
+			code = "private " + code
 		}
 		return code, docOf(o.Decl)
 	case *check.TypeName:

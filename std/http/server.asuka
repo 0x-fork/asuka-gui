@@ -159,7 +159,7 @@ pub struct Server {
   /// Its URL: "http://127.0.0.1:8080", "https://..." with TLS
   /// (localhost's address for a server on every interface).
   url: string
-  handle: int = 0
+  private handle: int = 0
 
   /// Stops it. It stops accepting at once, and closes the connections
   /// that wait for a request; the requests in flight have grace to be

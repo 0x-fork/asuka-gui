@@ -137,11 +137,13 @@ renamed, can't be read.`,
 
 	NotPub = def(Code{
 		Name:    "not-pub",
-		Summary: "a declaration another package (or a store, a worker) keeps to itself",
+		Summary: "a declaration another package, another file (private), a store or a worker keeps to itself",
 		Why: `What a package declares is its own unless it says ` + "`pub`" + `; a store's and a
-worker's members likewise. That keeps a package free to change what
-others don't use.`,
-		Fix:   "Mark it `pub` where it's declared, or use what the package makes public.",
+worker's members likewise; and what's ` + "`private`" + ` (a declaration, a type's
+field or method) is its file's, and its package's tests'. That keeps a
+package free to change what others don't use, and a type's invariants
+its own.`,
+		Fix:   "Mark it `pub` (or drop `private`) where it's declared, or use what's public: a type whose private fields have no default is made by its static fns.",
 		Wrong: "-- app.asuka --\nimport ./util\n\nlet answer = util.secret()\n-- util/util.asuka --\nfn secret() -> int = 42\n",
 		Right: "-- app.asuka --\nimport ./util\n\nlet answer = util.secret()\n-- util/util.asuka --\npub fn secret() -> int = 42\n",
 	})

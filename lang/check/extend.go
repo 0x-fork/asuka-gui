@@ -459,6 +459,9 @@ func (c *Checker) extLookup(t Type, name, kind string, at syntax.Node) (extHit, 
 		if !c.visible(e, pub) {
 			continue
 		}
+		if f != nil && privateFn(f) && !c.sameFile(f.pos, at) || g != nil && privateConst(g) && !c.sameFile(g.pos, at) {
+			continue // the extension's file's only
+		}
 		s, w, ok := c.extMatch(e, t)
 		if !ok && kind != "method" && openGeneric(t) {
 			// Box.of(…) of extend<T: Comparable> Box<T>: the type's

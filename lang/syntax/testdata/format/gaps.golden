@@ -12,3 +12,20 @@ fn f() {
   eprint()
   let b = Box.of<int>([1])
 }
+
+pub struct Heap<T> {
+  by: fn(T, T) -> bool
+  private items: [T] = []
+  private fn up(i: int) {}
+  private static fn make() -> int = 1
+  private let limit = 3
+  private: bool = false
+}
+
+private fn helper() -> int = 1
+private let secret = 2
+private struct Node {}
+private enum E {
+  a
+  private fn f() -> int = 1
+}

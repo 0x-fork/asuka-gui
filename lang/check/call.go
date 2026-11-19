@@ -36,6 +36,7 @@ func (c *Checker) call(e *syntax.CallExpr, want Type) Type {
 			return Invalid
 		}
 		c.info.Uses[fn] = o
+		c.hiddenObj(fn, fn.Name, o)
 		switch o := o.(type) {
 		case *Function:
 			return c.funcCall(e, o, nil, nil, want)
@@ -65,6 +66,7 @@ func (c *Checker) call(e *syntax.CallExpr, want Type) Type {
 				return Invalid
 			}
 			c.useVar(c.ctx.Self, fn)
+			c.hiddenFn(fn, o.owner.name, o.method)
 			call := c.funcCallInfo(e, o.method, nil, c.ctx.Self.Type, want)
 			call.SelfCall = true
 			return call.Result
@@ -111,7 +113,11 @@ func (c *Checker) call(e *syntax.CallExpr, want Type) Type {
 		if tn := c.staticType(fn.X); tn != nil {
 			c.record(fn.X, Invalid)
 			c.resolveType(tn)
+			app := c.typeAppOf(fn.X)
 			if k := tn.Case(fn.Name.Name); k != nil {
+				if app != nil {
+					want = app // Result<int, Error>.ok(1)
+				}
 				return c.caseCall(e, tn, k, want)
 			}
 			if IsInteger(tn.Type) && fn.Name.Name == "parse" {
@@ -119,15 +125,27 @@ func (c *Checker) call(e *syntax.CallExpr, want Type) Type {
 				return c.builtinCall(e, &Builtin{object: object{name: tn.name}, ID: BIntParse}, want)
 			}
 			f := tn.Statics[fn.Name.Name]
+			var pre Subst
+			if app != nil {
+				pre = app.Subst() // Box<int>.empty(): the type's parameters given
+			}
 			if f == nil {
-				hit, _ := c.extLookup(tn.Type, fn.Name.Name, "static", fn.Name)
+				target := tn.Type
+				if app != nil {
+					target = app
+				}
+				hit, _ := c.extLookup(target, fn.Name.Name, "static", fn.Name)
 				f = hit.f
+				if app != nil {
+					pre = hit.s // the extension's parameters, by the type's
+				}
 			}
 			if f != nil {
 				// A static fn: Money.of(dollars: 2).
+				c.hiddenFn(fn.Name, tn.name, f)
 				c.info.Uses[fn.Name] = f
 				c.info.Selections[fn] = &Selection{Kind: SelPkg, Obj: f}
-				return c.funcCall(e, f, nil, nil, want)
+				return c.funcCallPre(e, f, nil, nil, want, false, pre).Result
 			}
 			if g := tn.Consts[fn.Name.Name]; g != nil {
 				// A constant that's a function: Shortcut.cmd("k").
@@ -163,6 +181,7 @@ func (c *Checker) call(e *syntax.CallExpr, want Type) Type {
 			// A static fn making one: .of(dollars: 2) where a Money is
 			// expected.
 			f := n.Obj.Statics[fn.Name.Name]
+			c.hiddenFn(fn.Name, n.Obj.name, f)
 			c.info.Uses[fn.Name] = f
 			return c.funcCall(e, f, nil, nil, want)
 		}
@@ -191,6 +210,8 @@ func exprName(e syntax.Expr) string {
 	switch e := e.(type) {
 	case *syntax.Ident:
 		return e.Name
+	case *syntax.TypeApp:
+		return exprName(e.X) + "<…>"
 	case *syntax.MemberExpr:
 		if e.Optional {
 			return exprName(e.X) + "?." + e.Name.Name
@@ -873,6 +894,12 @@ func (c *Checker) funcCallInfo(e *syntax.CallExpr, f *Function, recv syntax.Expr
 // funcCallAs is funcCallInfo; async says the call is async whatever f is
 // (a worker's pub fn, called from outside).
 func (c *Checker) funcCallAs(e *syntax.CallExpr, f *Function, recv syntax.Expr, recvType Type, want Type, async bool) *Call {
+	return c.funcCallPre(e, f, recv, recvType, want, async, nil)
+}
+
+// funcCallPre is funcCallAs with some of f's type parameters given (pre):
+// a generic type's static fn called as Box<int>.empty().
+func (c *Checker) funcCallPre(e *syntax.CallExpr, f *Function, recv syntax.Expr, recvType Type, want Type, async bool, pre Subst) *Call {
 	c.funcSig(f)
 	c.noteCall(f, e)
 	what := f.name
@@ -880,6 +907,9 @@ func (c *Checker) funcCallAs(e *syntax.CallExpr, f *Function, recv syntax.Expr, 
 	args := c.matchArgs(e, params, what)
 	c.trailingClosure(e, params, args)
 	s := Subst{}
+	for k, v := range pre {
+		s[k] = v
+	}
 	if f.IsExtMethod() {
 		s = ExtSubst(f, recvType)
 	} else if n, ok := recvType.(*Named); ok {
@@ -1390,10 +1420,12 @@ func (c *Checker) methodCall1(e *syntax.CallExpr, fn *syntax.MemberExpr, xt Type
 		switch n.Obj.Kind {
 		case StructType, EnumType:
 			if f := n.Obj.Methods[name]; f != nil {
+				c.hiddenFn(fn.Name, n.Obj.name, f)
 				return c.funcCall(e, f, fn.X, xt, want)
 			}
 			if n.Obj.Kind == StructType {
 				if fl := n.Obj.Field(name); fl != nil {
+					c.hiddenField(fn.Name, n.Obj.name, fl)
 					if ft, ok := n.Subst().Apply(fl.Type).(*FuncType); ok {
 						c.info.Selections[fn] = &Selection{Kind: SelField, Field: fl, Recv: xt}
 						c.record(fn, ft)
@@ -1718,7 +1750,21 @@ func (c *Checker) structCall(e *syntax.CallExpr, tn *TypeName, want Type) Type {
 		c.errorf(e.Block, diag.UnexpectedBlock, "%s is a struct: its fields go in parentheses, %s(name: value)", tn.name, tn.name)
 	}
 	params := fieldParams(tn)
+	for _, f := range tn.Fields {
+		// Its private fields are its file's: elsewhere it's made without
+		// them, so each needs a default.
+		if f.Private && f.Default == nil && !c.sameFile(f.Pos, e) {
+			c.errorf(e.Fun, diag.NotPub, "%s is made in %s only: its field %s is private there, with no default; make one with what it gives (its static fns)", tn.name, c.fileName(f.Pos), f.Name)
+			c.checkArgsLoosely(e)
+			return tn.Type
+		}
+	}
 	args := c.matchArgs(e, params, tn.name)
+	for i, f := range tn.Fields {
+		if args[i] != nil {
+			c.hiddenField(args[i], tn.name, f)
+		}
+	}
 	s := Subst{}
 	free := map[*TypeParam]bool{}
 	for _, tp := range tn.TypeParams {

@@ -26,18 +26,21 @@ test "statics of a generic struct" {
   print(make("x").items, make(true).count())
   let f: fn([string]) -> Box<string> = xs => Box.of(xs)
   print(f(["p"]).items)
+  let g = Box<float>.empty()
+  print(g.count(), Box<bool>.limit, Box<int>.of([7]).items)
 }
 
 test "a generic extension's static fn" {
   let s = Box.sorted(["b", "a"])
   let t: Box<int> = .sorted([3, 1, 2])
-  print(s.items, t.items)
+  print(s.items, t.items, Box<string>.sorted(["z", "y"]).items)
 }
 
 // Output:
 // [1,2] 0 0 10 [1.5] u
 // ["x","x"] 2
 // ["p"]
+// 0 10 [7]
 // ok statics of a generic struct
-// ["a","b"] [1,2,3]
+// ["a","b"] [1,2,3] ["y","z"]
 // ok a generic extension's static fn

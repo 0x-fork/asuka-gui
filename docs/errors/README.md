@@ -79,7 +79,7 @@ Every error and warning Asuka reports has a code: a stable name, said in the ter
 - [not-callable](not-callable.md): A call of something that isn't a function.
 - [not-json](not-json.md): A type JSON can't read or write.
 - [not-optional](not-optional.md): An optional's operator on a value that's always there.
-- [not-pub](not-pub.md): A declaration another package (or a store, a worker) keeps to itself.
+- [not-pub](not-pub.md): A declaration another package, another file (private), a store or a worker keeps to itself.
 - [not-sendable](not-sendable.md): A value that can't cross to another thread.
 - [not-supported](not-supported.md): Something the language doesn't do yet.
 - [optimistic-impure](optimistic-impure.md): An optimistic change that reads state, awaits or writes.

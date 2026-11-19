@@ -29,13 +29,13 @@ test "a heap pops in its order" {
   expect(jobs.pop()!.name == "b" && jobs.sorted().map(j => j.name) == ["c", "a"])
 }
 
-test "a heap of many, and heapOf" {
+test "a heap of many, and Heap.of" {
   var r = Rand(state: 1)
   var xs: [int] = []
   for _ in 0..<20000 { xs.push(r.next(1000000)) }
   var h = Heap<int>(by: (a, b) => a < b)
   for x in xs { h.push(x) }
-  let built = heapOf(xs, by: (a, b) => a < b)
+  let built = Heap.of(xs, by: (a, b) => a < b)
   expect(built.count() == 20000)
   var out: [int] = []
   while let x = h.pop() { out.push(x) }
@@ -158,4 +158,13 @@ test "a sorted set" {
   var sorted: [int] = []
   for x in model { sorted.push(x) }
   expect(many.toArray() == sorted.sorted())
+}
+
+test "Heap.min and Heap.max" {
+  var lo = Heap.min([5, 1, 4])
+  var hi = Heap.max(["b", "c", "a"])
+  let empty = Heap<float>.min()
+  expect(lo.pop() == 1 && hi.pop() == "c" && empty.isEmpty())
+  // A test file sees the package's insides.
+  expect(lo.items.count() == 2)
 }

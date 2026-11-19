@@ -155,6 +155,9 @@ func (c *Checker) expr1(e syntax.Expr, want Type) Type {
 		return c.jumpExpr(e)
 	case *syntax.CatchExpr:
 		return c.catchExpr(e, want)
+	case *syntax.TypeApp:
+		c.errorf(e, diag.NotAValue, "%s is a type, not a value: use one of its static members (%s.name)", exprName(e), exprName(e))
+		return Invalid
 	}
 	c.errorf(e, diag.InternalError, "unexpected expression")
 	return Invalid
@@ -201,6 +204,7 @@ func (c *Checker) ident(e *syntax.Ident) Type {
 		return Invalid
 	}
 	c.info.Uses[e] = o
+	c.hiddenObj(e, e.Name, o)
 	switch o := o.(type) {
 	case *Var:
 		c.useVar(o, e)
@@ -219,6 +223,7 @@ func (c *Checker) ident(e *syntax.Ident) Type {
 		}
 		c.useVar(c.ctx.Self, e)
 		if o.field != nil {
+			c.hiddenField(e, o.owner.name, o.field)
 			return o.subst.Apply(o.field.Type)
 		}
 		c.errorf(e, diag.NotAValue, "%s is a method: call it, %s()", e.Name, e.Name)
@@ -1084,8 +1089,41 @@ func (c *Checker) join(a, b Type) Type {
 
 // staticType resolves x (an identifier or pkg.Name) as a type, without
 // reporting anything when it isn't one.
+// typeAppOf is the type a TypeApp prefix makes (Box<int> of
+// Box<int>.empty()), nil for a type's bare name.
+func (c *Checker) typeAppOf(x syntax.Expr) *Named {
+	if a, ok := unparen(x).(*syntax.TypeApp); ok {
+		return c.typeApps[a]
+	}
+	return nil
+}
+
 func (c *Checker) staticType(x syntax.Expr) *TypeName {
 	switch x := x.(type) {
+	case *syntax.TypeApp:
+		// Box<int>: the generic type, its arguments kept for the static
+		// member after it.
+		tn := c.staticType(x.X)
+		if tn == nil {
+			return nil
+		}
+		c.resolveType(tn)
+		n := &Named{Obj: tn}
+		for _, a := range x.TypeArgs {
+			n.Args = append(n.Args, c.typeExpr(a))
+		}
+		if len(n.Args) != len(tn.TypeParams) {
+			c.errorf(x, diag.TypeArguments, "%s takes %s", tn.name, plural(len(tn.TypeParams), "type argument", "type arguments"))
+			return tn
+		}
+		for i, tp := range tn.TypeParams {
+			c.checkConstraints(x.TypeArgs[i], tn.name, tp, n.Args[i])
+		}
+		if c.typeApps == nil {
+			c.typeApps = map[*syntax.TypeApp]*Named{}
+		}
+		c.typeApps[x] = n
+		return tn
 	case *syntax.Ident:
 		o := c.lookup(x.Name)
 		if b, ok := o.(*Builtin); ok && (b.ID == BInt || b.ID == BFloat) {
@@ -1146,6 +1184,9 @@ func (c *Checker) member(e *syntax.MemberExpr, want Type) Type {
 	// A type's case or constant.
 	if tn := c.staticType(e.X); tn != nil {
 		c.record(e.X, Invalid)
+		if app := c.typeAppOf(e.X); app != nil {
+			want = app // Box<int>.none: the type as written
+		}
 		return c.staticMember(e, tn, name, want)
 	}
 	var xt Type
@@ -1218,6 +1259,7 @@ func (c *Checker) staticMember(e syntax.Expr, tn *TypeName, name string, want Ty
 		return t
 	}
 	if g := tn.Consts[name]; g != nil {
+		c.hiddenConst(e, tn.name, g)
 		c.info.Selections[e] = &Selection{Kind: SelConst, Global: g, Recv: t}
 		return c.useGlobal(g, e)
 	}
@@ -1235,6 +1277,7 @@ func (c *Checker) staticMember(e syntax.Expr, tn *TypeName, name string, want Ty
 	}
 	if f != nil {
 		// A static fn as a value: Money.of.
+		c.hiddenFn(e, tn.name, f)
 		c.info.Selections[e] = &Selection{Kind: SelPkg, Obj: f}
 		if m, ok := e.(*syntax.MemberExpr); ok {
 			c.info.Uses[m.Name] = f
@@ -1299,6 +1342,7 @@ func (c *Checker) valueMember(e *syntax.MemberExpr, t Type, name string) Type {
 		switch u.Obj.Kind {
 		case StructType:
 			if f := u.Obj.Field(name); f != nil {
+				c.hiddenField(e.Name, u.Obj.name, f)
 				c.info.Selections[e] = &Selection{Kind: SelField, Field: f, Recv: t}
 				return s.Apply(f.Type)
 			}
@@ -1541,6 +1585,7 @@ func (c *Checker) implicitMember(e *syntax.ImplicitMember, want Type) Type {
 			return n
 		}
 		if g := n.Obj.Consts[name]; g != nil {
+			c.hiddenConst(e, n.Obj.name, g)
 			c.info.Selections[e] = &Selection{Kind: SelConst, Global: g, Recv: n}
 			return c.useGlobal(g, e)
 		}
@@ -2063,7 +2108,7 @@ func (c *Checker) negation(t Type) (*Operator, Type) {
 		return nil, nil
 	}
 	f := n.Obj.Methods["neg"]
-	if f == nil {
+	if f == nil || privateFn(f) {
 		return nil, nil
 	}
 	c.funcSig(f)
@@ -2084,8 +2129,8 @@ func (c *Checker) operatorCandidates(op syntax.Token, xt Type) (fs []*Function, 
 	names, compare := operatorNames(op)
 	for _, name := range names {
 		f := n.Obj.Methods[name]
-		if f == nil {
-			continue
+		if f == nil || privateFn(f) {
+			continue // a private method isn't an operator
 		}
 		c.funcSig(f)
 		if f.Sig == nil || len(f.Sig.Params) != 1 || f.Sig.Async || f.Sig.Throws {
