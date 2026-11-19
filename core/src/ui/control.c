@@ -236,6 +236,7 @@ typedef struct {
 	AK_VEC(int64_t) tails, prev;
 	AK_VEC(uint8_t) stay;
 	AK_VEC(ak_val) keys;  // the new items' keys
+	AK_VEC(ak_view *) gone;  // the removed rows' views (scratch)
 	ak_owner *owner;      // what made it, retained: its rows' owners' parent
 	ak_path *path;
 	ak_comp_info info;
@@ -503,13 +504,20 @@ static void reconcile(for_t *s, ak_arr *list) {
 	}
 	s->keys.len = 0;  // released, or the new rows'
 
-	// Removed rows.
+	// Removed rows: each destroyed and its row freed, in order; then out
+	// of the fragment's kids and their boxes' parent, all at once.
+	s->gone.len = 0;
 	for (uint32_t i = 0; i < s->rows.len; i++) {
 		if (s->taken.data[i]) continue;
 		ak_row *rw = &s->rows.data[i];
-		if (rw->el) ak_view_remove(f, rw->el, true);
+		if (rw->el) {
+			ak_view_take_out(rw->el, true);
+			ak_vec_push(&s->gone, rw->el);
+		}
 		ak_row_free(rw, s->key_kind);
 	}
+	ak_view_unlink_many(f, s->gone.data, s->gone.len);
+	s->gone.len = 0;
 	// Kept rows on the longest increasing run of old positions stay put;
 	// the others move.
 	lis(s);
@@ -531,9 +539,19 @@ static void reconcile(for_t *s, ak_arr *list) {
 		}
 	}
 	ak_view_mark_kids(f);
+	// In order, so each row's views go after the row before's: where the
+	// first goes is found once, then counted on (not walked for each,
+	// which made n new rows cost n²).
+	bool counting = false;
+	uint32_t at = 0;
 	for (uint32_t i = 0; i < s->next.len; i++) {
 		ak_row *rw = &s->next.data[i];
-		if (rw->el && (rw->old < 0 || !s->stay.data[i])) ak_view_attach_native(rw->el);
+		if (!rw->el) continue;
+		if (rw->old < 0 || !s->stay.data[i]) {
+			if (!counting) at = ak_view_native_start(rw->el), counting = true;
+			ak_view_attach_native_at(rw->el, at);
+		}
+		if (counting) at += ak_view_native_count(rw->el);
 	}
 	// next is the rows now.
 	ak_vec_free(&s->rows);
@@ -601,6 +619,7 @@ static void for_drop(void *ctx) {
 	ak_vec_free(&s->tails);
 	ak_vec_free(&s->prev);
 	ak_vec_free(&s->stay);
+	ak_vec_free(&s->gone);
 	ak_vec_free(&s->keys);
 	ak_free(s->table);
 	if (s->over_path) ak_fsrc_free(&s->src);
