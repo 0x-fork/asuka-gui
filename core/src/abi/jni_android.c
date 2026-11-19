@@ -179,7 +179,7 @@ JNIEXPORT jbyteArray JNICALL Java_dev_asuka_AsukaModules_invoke(JNIEnv *e, jclas
 	(*e)->ReleaseByteArrayElements(e, a, p, JNI_ABORT);
 	if (out == NULL) return NULL;
 	jbyteArray r = bytes(e, out, m);
-	free(out);
+	asuka_free(out);
 	return r;
 }
 

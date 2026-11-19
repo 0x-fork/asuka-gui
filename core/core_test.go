@@ -86,10 +86,10 @@ func TestC(t *testing.T) {
 	}
 }
 
-// threadTests are the C tests that run threads of their own (workers,
-// std/http's server, std/net), which TestCThreads runs again under
-// ThreadSanitizer.
-var threadTests = []string{"worker", "httpserver", "net", "tls"}
+// threadTests are the C tests that run threads of their own (the
+// allocator's blocks freed across threads, workers, std/http's server,
+// std/net), which TestCThreads runs again under ThreadSanitizer.
+var threadTests = []string{"alloc", "worker", "httpserver", "net", "tls"}
 
 // TestCThreads builds the core and each of threadTests under
 // ThreadSanitizer (which ASan excludes) and runs them: the workers'

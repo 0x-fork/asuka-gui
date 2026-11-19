@@ -102,6 +102,7 @@ go run platform/web/gen_symbols.go  # the web host's symbols, from the Android h
 go generate ./i18n                  # CLDR's tables, from the pinned release
 go generate ./internal/tzgen        # std/time's tz database (core/src/std/tzdata_gen.c) and its C test's cases, from the pinned tzdb release
 go generate ./internal/ucdgen       # strings' Unicode tables (core/src/rt/unicode_gen.c: graphemes, widths, case) and their C test's data, from the pinned UCD release
+go generate ./internal/mimallocgen  # the core's allocator, mimalloc (core/third_party/mimalloc), from the pinned release, and its names renamed (core/src/base/mimalloc_names.h)
 go test ./i18n -run 'CTables|CompileCases' -update-c  # the C core's CLDR tables (core/src/ui/i18n_gen.c) and its catalog test data
 go run platform/web/testing/asqlite.go  # std/sqlite's C (its [c], SQLite vendored in third_party) as the web's SQLite module, asqlite.wasm, into the build cache (Zig); node --test platform/web runs it
 go run ./cmd/asuka i18n check examples/i18n  # an app's catalogs, checked (the compiler reads them: dev and build check them too)
