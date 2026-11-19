@@ -2,8 +2,9 @@
 
 The same work in Asuka (`asuka/main.asuka`), Go (`go/main.go`) and Bun
 (`bun/main.js`), on the same inputs: strings, maps and sets, sorting,
-regex, files and stdout, CSV and TOML, crypto and compression, bigint,
-time, template, semver, collections, Seq pipelines. Each program sets up
+regex, files and stdout, CSV and TOML, URLs, Base64 and hex, HTML
+escaping, zip and tar archives, hashes and checksums, crypto and
+compression, bigint, time, template, semver, collections, Seq pipelines. Each program sets up
 its inputs, then times the work and prints its result and the
 nanoseconds it took on stderr; the runner checks that every language's
 result is the same, so each did the same work (gzip's compressed size
@@ -13,6 +14,7 @@ aside: every deflate makes its own).
 go run ./bench/std/run                           # every benchmark, 5 runs each
 go run ./bench/std/run -only sha256,gzip -runs 9
 go run ./bench/std/run -asuka before=/path/to/an/older/stdbench   # another build beside
+go run ./bench/std/run -instr -runs 3            # cycles and instructions a run, not time
 ```
 
 It builds `asuka/` (`asuka build`, compiled to C) and `go/` (its own
@@ -22,6 +24,13 @@ no standard package for), runs each benchmark once in each language to
 warm up, then `-runs` times interleaved, and prints the median and the
 median absolute deviation, in milliseconds, and Asuka's median over Go's.
 What Bun has no equivalent of is n/a.
+
+A busy machine moves wall time a lot (the more a benchmark allocates,
+the more), so `-instr` counts cycles and instructions retired instead
+(macOS's `/usr/bin/time -l`, Linux's `perf stat`): each program does its
+work `STDBENCH_REPS` times, and a benchmark's count is a process doing it
+k times less one doing it once, over k − 1, its setup cancelled out (k
+is `-reps`, more where the setup is long beside the work).
 
 The HTTP servers are timed apart: `asuka-http/` (its own program, so
 the benchmarks above don't link std/http), and Go's and Bun's `serve
@@ -36,74 +45,116 @@ go run ./cmd/asuka build bench/std/asuka-http && bench/std/asuka-http/dist/stdbe
 
 ## Results
 
-An Apple M5 (10 cores, 32 GB), macOS 27, idle, on 2026-11-19: Go 1.27.3,
-Bun 1.4.4, Asuka compiled to C (`asuka build`). "asuka before" is the
-same program built from the commit before this pass (f9bf57d2). files
-runs after the first run cached the file, so it's memory's speed; files,
-lines and print write to a temporary directory and /dev/null.
+An Apple M5 (10 cores, 32 GB), macOS 27, on 2026-11-19: Go 1.27.3,
+Asuka compiled to C (`asuka build`). The machine was shared and loaded
+(load average 50 to 400), which moves wall time by tens of percent, so
+these are counted: `go run ./bench/std/run -instr -runs 3 -reps 4 -langs
+asuka,go`, millions of CPU cycles a run (the median of three
+interleaved runs; summed over threads for argon2) and the ratio of
+instructions retired, which load hardly moves. Cycles still vary by
+5–15% between passes for the benchmarks that allocate most (time,
+heap, csv); instructions by under 2%. "asuka before" is the same work
+built from cd564cc2, before this pass, counted the same way; – is a
+benchmark that's new since, or (print) one whose earlier count wrote
+somewhere else. files runs after the first run cached the file, so
+it's memory's speed; files, lines and print write to a temporary
+directory and /dev/null.
 
-Apple M5, darwin/arm64, 5 runs (median ± median absolute deviation, ms)
-
-| benchmark | asuka | go | bun | asuka before | asuka/go |
+| benchmark | asuka | go | asuka before | asuka/go | instructions asuka/go |
 |---|---:|---:|---:|---:|---:|
-| interp | 116 ± 1.31 | 166 ± 1.61 | 115 ± 0.84 | 253 ± 3.62 | 0.70× |
-| concat | 148 ± 2.84 | 29.6 ± 0.56 | 13.2 ± 0.22 | 149 ± 2.99 | 4.98× |
-| split | 287 ± 6.13 | 95.6 ± 0.60 | 276 ± 10.1 | 340 ± 3.36 | 3.00× |
-| find | 103 ± 0.07 | 139 ± 0.34 | 57.8 ± 0.76 | 343 ± 4.99 | 0.74× |
-| case | 312 ± 2.09 | 310 ± 1.82 | 93.9 ± 0.65 | 339 ± 1.24 | 1.00× |
-| count | 0.69 ± 0.06 | 59.9 ± 0.28 | 165 ± 1.83 | 6709 ± 8.88 | 0.01× |
-| num | 159 ± 3.78 | 125 ± 0.42 | 94.1 ± 0.31 | 1761 ± 9.28 | 1.27× |
-| fmt | 451 ± 6.65 | 167 ± 0.97 | 465 ± 2.49 | 563 ± 1.93 | 2.69× |
-| mapint | 81.1 ± 0.27 | 90.6 ± 1.64 | 102 ± 2.48 | 79.8 ± 1.91 | 0.89× |
-| mapstr | 76.1 ± 0.63 | 93.4 ± 1.98 | 189 ± 2.43 | 134 ± 2.12 | 0.82× |
-| set | 95.5 ± 7.06 | 74.9 ± 0.60 | 84.5 ± 4.34 | 93.1 ± 0.69 | 1.27× |
-| sortint | 21.5 ± 0.36 | 285 ± 0.87 | 40.9 ± 0.11 | 358 ± 0.74 | 0.08× |
-| sortstr | 136 ± 0.74 | 118 ± 4.47 | 66.6 ± 4.71 | 134 ± 1.47 | 1.15× |
-| sortby | 246 ± 1.00 | 1421 ± 21.6 | 293 ± 2.82 | 281 ± 1.69 | 0.17× |
-| regex | 787 ± 7.19 | 1260 ± 141 | 103 ± 2.09 | 1416 ± 49.6 | 0.62× |
-| files | 5.47 ± 0.29¹ | 3.59 ± 0.02 | 6.68 ± 0.22 | 32.6 ± 0.27 | 1.52× |
-| lines | 22.1 ± 0.69 | 6.93 ± 0.55 | 13.7 ± 1.44 | 23.6 ± 0.72 | 3.19× |
-| print | 431 ± 2.40 | 207 ± 1.02 | 200 ± 1.93 | 477 ± 2.72 | 2.08× |
-| csv | 113 ± 1.58 | 47.2 ± 0.86 | n/a | 159 ± 2.11 | 2.38× |
-| toml | 58.3 ± 0.24 | 200 ± 2.28 | 5861 ± 71.1 | 77.3 ± 0.51 | 0.29× |
-| sha256 | 66.1 ± 0.54 | 66.2 ± 0.06 | 69.9 ± 0.59 | 544 ± 13.0 | 1.00× |
-| sha512 | 115 ± 0.54 | 117 ± 2.62 | 124 ± 0.50 | 334 ± 2.43 | 0.99× |
-| hmac | 57.5 ± 0.07 | 98.3 ± 0.24 | 113 ± 0.42 | 451 ± 0.72 | 0.59× |
-| aesgcm | 30.4 ± 0.77 | 31.6 ± 1.10 | 57.2 ± 8.58 | 1281 ± 4.99 | 0.96× |
-| chacha | ≈108² | 164 ± 1.52 | n/a | 293 ± 3.38 | 0.66×² |
-| argon2 | ≈29² | 53.0 ± 0.95 | n/a | 125 ± 0.81 | 0.55×² |
-| bcrypt | 176 ± 0.48 | 183 ± 0.37 | 171 ± 0.62 | 176 ± 0.25 | 0.96× |
-| gzip | 3460 ± 4.95 | 673 ± 1.68 | 863 ± 5.68 | 3781 ± 7.39 | 5.15× |
-| bigint | 20.5 ± 0.09 | 7.40 ± 0.02 | 14.7 ± 0.06 | 20.5 ± 0.05 | 2.77× |
-| modpow | 46.4 ± 0.09 | 35.7 ± 0.05 | 33.3 ± 0.23 | 46.2 ± 0.15 | 1.30× |
-| time | 138 ± 1.73 | 11.3 ± 0.10 | 66.9 ± 1.33 | 225 ± 1.75 | 12.22× |
-| template | 188 ± 1.99 | 32.9 ± 0.72 | n/a | 198 ± 0.50 | 5.71× |
-| semver | 269 ± 2.34 | 160 ± 3.82 | 241 ± 1.99 | 291 ± 3.00 | 1.68× |
-| heap | 371 ± 2.01 | 151 ± 0.62 | n/a | 373 ± 3.57 | 2.45× |
-| sortedmap | 1221 ± 20.7 | 301 ± 2.70 | n/a | 1219 ± 17.0 | 4.06× |
-| seq | 130 ± 1.85 | 2.37 ± 0.00 | 4.16 ± 0.18 | 130 ± 4.46 | 54.85× |
+| interp | 531 | 1105 | 514 | 0.48× | 0.53× |
+| concat | 771 | 164 | 805 | 4.70× | 4.64× |
+| split | 1440 | 535 | 1454 | 2.69× | 3.27× |
+| find | 438 | 651 | 467 | 0.67× | 0.45× |
+| case | 1854 | 1510 | 1910 | 1.23× | 0.90× |
+| count | ≈0 | 322 | ≈0 | ≈0 | ≈0 |
+| num | 715 | 785 | 775 | 0.91× | 0.93× |
+| fmt | 2313 | 1014 | 2315 | 2.28× | 2.26× |
+| mapint | 590 | 496 | 658 | 1.19× | 0.86× |
+| mapstr | 593 | 689 | 564 | 0.86× | 0.93× |
+| set | 627 | 485 | 600 | 1.29× | 0.93× |
+| sortint | 110 | 1233 | 94.2 | 0.09× | 0.26× |
+| sortstr | 840 | 718 | 764 | 1.17× | 1.05× |
+| sortby | 1247 | 6941 | 1254 | 0.18× | 0.10× |
+| regex | 622 | 6673 | 4397 | 0.09× | 0.07× |
+| files | 8.83 | 13.0 | 9.50 | 0.68× | 0.98× |
+| lines | 64.9 | 32.4 | 91.9 | 2.00× | 2.85× |
+| print | 2081 | 1117 | – | 1.86× | 1.70× |
+| stdout | 203 | 161 | – | 1.26× | 1.50× |
+| csv | 370 | 321 | 510 | 1.15× | 1.22× |
+| toml | 258 | 1352 | 277 | 0.19× | 0.25× |
+| url | 500 | 783 | – | 0.64× | 0.86× |
+| base64 | 120 | 169 | – | 0.71× | 0.71× |
+| hex | 86.3 | 141 | – | 0.61× | 0.49× |
+| html | 268 | 311 | – | 0.86× | 0.57× |
+| zip | 263 | 443 | – | 0.59× | 0.35× |
+| tar | 4.55 | 14.3 | – | 0.32× | 0.45× |
+| sha256 | 294 | 291 | 357 | 1.01× | 0.97× |
+| sha512 | 499 | 504 | 509 | 0.99× | 0.97× |
+| sha1 | 305 | 286 | – | 1.07× | 0.80× |
+| md5 | 1052 | 1036 | – | 1.02× | 0.81× |
+| crc32 | 83.5 | 83.0 | – | 1.01× | 0.72× |
+| hmac | 274 | 711 | 283 | 0.39× | 0.41× |
+| aesgcm | 139 | 147 | 152 | 0.95× | 1.22× |
+| chacha | 413 | 775 | 1558¹ | 0.53× | 0.92× |
+| argon2 | 657 | 1202 | 717¹ | 0.55× | 0.42× |
+| bcrypt | 751 | 775 | 744 | 0.97× | 1.03× |
+| gzip | 1536 | 3414 | 18023 | 0.45× | 0.27× |
+| bigint | 43.1 | 52.9 | 88.2 | 0.81× | 1.30× |
+| modpow | 152 | 226 | 246 | 0.67× | 0.85× |
+| time | 148 | 64.2 | 224 | 2.31× | 2.36× |
+| template | 504 | 204 | 606 | 2.47× | 2.95× |
+| semver | 900 | 898 | 1218 | 1.00× | 1.12× |
+| heap | 941 | 851 | 1340 | 1.11× | 1.76× |
+| sortedmap | 5524 | 1907 | 5575 | 2.90× | 4.88× |
+| seq | 455 | 10.8 | 482 | 42.13× | 76.08× |
 
-¹ After the table's run: fs.read reads at the file's size now (aaae01aa);
-three runs.
+¹ Before main's ChaCha20 and Argon2 on the vector unit (chacha.c,
+argon2.c), argon2 on one thread.
 
-² After the table's run: ChaCha20-Poly1305 and Argon2 on the vector unit,
-Argon2's lanes on threads (core/src/std/chacha.c, argon2.c). The machine
-was loaded then (load average 60 to 210), so these are counted rather
-than timed: CPU cycles for the same work, five interleaved runs each,
-Asuka's over Go's (chacha 0.58 G cycles to Go's 0.88 G, 1.9 G
-instructions to 2.2 G; argon2 0.69 G cycles across its four threads to
-Go's 1.25 G, 1.34 G instructions to 3.1 G), times Go's idle median.
-Before, chacha took 1.53 G cycles and argon2 0.74 G on one thread.
+What this pass changed, by benchmark:
 
-What's still slow is mostly what the compiled code does around the
-library, not the library: concat, split and fmt allocate a string a
-piece (Go's substrings share their bytes; Asuka's strings own theirs);
-seq, heap, sortedmap, template, time and semver are Asuka code (closure
-calls a step, structs copied); gzip at level 6 is miniz's matcher, as
-slow as zlib's on this repetitive text (zlib took 4.5 s), where Go's
-compressor is far faster; regex patterns that start with `\w` still run
-the Pike VM a character at a time (Go's regexp does too; Rust's regex
-crate has a lazy DFA).
+- gzip: std/compress's own DEFLATE (core/src/std/flate.c) in place of
+  miniz: levels 1 to 6 Go's compress/flate (its hash tables and match
+  skipping), 7 to 9 zlib's lazy hash chains, Huffman lengths by
+  package-merge; decoding through 11-bit tables and a 64-bit bit
+  buffer, a symbol consumed by one shift, 16 bytes a copy. The bytes
+  differ from miniz's (and from Go's and zlib's: each makes its own)
+  but every stream is valid DEFLATE, and each level keeps its meaning.
+  On the benchmark's 54 MB of text, levels 1 to 6 come within 0.3% of
+  Go's sizes (level 4 2.6% smaller), levels 7, 8 and 9 0.4%, 1.5% and
+  1.8% larger than Go's (level 9 1.6% larger than zlib's). A decode of
+  it takes 159M cycles, Go's about four times that, macOS's zlib
+  (1.2.12, Apple's build) 124M.
+- regex: a lazy DFA (core/src/std/regex.c) finds the leftmost-first
+  match's span, forward then backward, in time linear in the text; the
+  Pike VM then runs over the span alone, for captures. Patterns the DFA
+  can't take (over 10,000 instructions, a cache that keeps flushing)
+  stay on the VM.
+- bigint: carries in two chains, division by a reciprocal and by a
+  single limb, squaring detected, decimal printing by a cached table of
+  powers, and an Int operand without making a BigInt.
+- csv, time, files, lines: fields located in C and repeated short
+  values interned; RFC 3339 formatted in C; fs's readText and
+  writeText native; lines read a megabyte at a time.
+- url, base64, hex, html, zip, tar, sha1, md5, crc32 (new here): tables
+  in place of branches, outputs sized before they're filled, url's
+  query looked up without a map, zip's entries inflated straight into
+  their bytes, SHA-1 on the CPU's SHA instructions, MD5 and SHA-1's
+  rounds unrolled.
+
+What's still slower than Go is what the compiled code does around the
+library: concat, split, fmt and csv make a string a piece (Go's
+substrings share their bytes; Asuka's strings own theirs: csv makes a
+string a field, where Go's reader makes one a record and slices it);
+lines spends its time handing each line through a Stream, not reading
+(2.9 times Go's instructions); time's Time is a struct of Asuka
+arithmetic and allocations a call; stdout and print build each line as
+a new string before writing it; seq,
+heap, sortedmap, template and semver are Asuka code (a closure call a
+step, structs copied). sha1, md5 and crc32 are even with Go: each is
+one dependency chain through the CPU's instructions, run with fewer
+instructions than Go's.
 
 HTTP, 50 keep-alive connections, 5 s after 1 s of warm-up, the load
 generator on the same machine:
