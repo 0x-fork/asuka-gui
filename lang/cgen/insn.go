@@ -1043,10 +1043,12 @@ func (g *gen) intrinsic(in insn, h string) bool {
 // int or a float, or a reference, through ops.h's helpers: arr.append's
 // array back from ak_op_append, not through its address (which kept it
 // in memory, stored and loaded again a turn), and arr.append_room's
-// (an array's map's, into the room it reserved) a store and a count.
+// (an array's map's, into the room it reserved) a store and a count,
+// arr.append_own's (a filter's, into the array the loop made) a room
+// check, a store and a count.
 // A bool, packed, is the generic path's.
 func (g *gen) appendOp(name string, a []int) bool {
-	if name != "arr.append" && name != "arr.append_room" || a[3] != 2 || a[0] != bc.None || g.f.Kinds[a[2]] != bc.KRef {
+	if name != "arr.append" && name != "arr.append_room" && name != "arr.append_own" || a[3] != 2 || a[0] != bc.None || g.f.Kinds[a[2]] != bc.KRef {
 		return false
 	}
 	k := g.f.Kinds[a[2]+1]
@@ -1062,9 +1064,12 @@ func (g *gen) appendOp(name string, a []int) bool {
 	if suffix == "" {
 		return false
 	}
-	if name == "arr.append_room" {
+	switch name {
+	case "arr.append_room":
 		g.w("{ %sak_op_append_room_%s(%s, %s); }", retain, suffix, arr, v)
-	} else {
+	case "arr.append_own":
+		g.w("{ %s%s = ak_op_append_own_%s(%s, %s); }", retain, arr, suffix, arr, v)
+	default:
 		g.w("{ %s%s = ak_op_append_%s(%s, %s); }", retain, arr, suffix, arr, v)
 	}
 	return true

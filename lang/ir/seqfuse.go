@@ -341,9 +341,23 @@ func (b *fb) consume(name string, r, x int, t, res check.Type, vals []int, cond 
 		b.emitJump(op("JF"), cond, next)
 		b.toOptional(x, t, res, r)
 		b.jmp(end)
-	case "seq.to_array", "arr.filter":
+	case "seq.to_array":
 		b.appendReg(r, x, "arr.append")
+	case "arr.filter":
+		// Into the array the loop made (arrayLoop's NEWA): its own, so
+		// only its room is checked when its elements are values.
+		b.appendReg(r, x, b.ownAppend(t))
 	}
+}
+
+// ownAppend is the append into an array a loop made (NEWA) of elements
+// of type t: arr.append_own when they're values (not bools or sized
+// integers, packed), else arr.append.
+func (b *fb) ownAppend(t check.Type) string {
+	if k := b.l.arrKind(t); k>>4 == 0 && bc.Kind(k) != bc.KBool {
+		return "arr.append_own"
+	}
+	return "arr.append"
 }
 
 // arrayLoop lowers call, an array's method with a closure (arrayLoops),
@@ -424,7 +438,8 @@ func (b *fb) arrayLoop(e *syntax.CallExpr, call *check.Call, recv *int, dst int)
 		y := b.temp(bc.KRef)
 		b.callClosure(y, fn, x)
 		b.emitJump(op("JNONE"), y, next)
-		b.appendReg(r, b.unbox(y, b.typ(res.(*check.Array).Elem), -1), "arr.append")
+		ut := b.typ(res.(*check.Array).Elem)
+		b.appendReg(r, b.unbox(y, ut, -1), b.ownAppend(ut))
 	case "arr.filter":
 		b.callClosure(cond, fn, x)
 		b.emitJump(op("JF"), cond, next)

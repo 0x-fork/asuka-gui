@@ -882,6 +882,11 @@ static ak_val arr_append(ak_val *args, uint32_t n) {
 // length and appends at most that (compiled: a store and a count).
 static ak_val arr_append_room(ak_val *args, uint32_t n) { return arr_append(args, n); }
 
+// arr.append_own(a, x) is append to an array the loop made and alone
+// holds, of values (not packed): a filter's or a compactMap's, so
+// compiled only its room is checked.
+static ak_val arr_append_own(ak_val *args, uint32_t n) { return arr_append(args, n); }
+
 static ak_val arr_reserve(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	if (A(1).i > 0) ak_arr_reserve((ak_arr **)&args[0].p, A(1).i > UINT32_MAX ? UINT32_MAX : (uint32_t)A(1).i);
@@ -2342,6 +2347,7 @@ const ak_lib_entry ak_lib[] = {
 	{"arr.push", arr_push},
 	{"arr.append", arr_append},
 	{"arr.append_room", arr_append_room},
+	{"arr.append_own", arr_append_own},
 	{"arr.reserve", arr_reserve},
 	{"arr.insert", arr_insert},
 	{"arr.remove_at", arr_remove_at},

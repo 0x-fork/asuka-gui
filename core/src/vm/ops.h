@@ -772,11 +772,23 @@ __attribute__((noinline, cold, unused)) static ak_arr *ak_op_append_slow(ak_arr 
 	static inline void ak_op_append_room_##name(ak_arr *a, T v) { \
 		AK_OP_ROOM_CHECK(a); \
 		((ak_val *)a->items)[a->len++] = (ak_val){.member = v}; \
+	} \
+	/* arr.append_own's: the array is the loop's own and holds values \
+	   (a filter's), so only its room is checked. */ \
+	static inline ak_arr *ak_op_append_own_##name(ak_arr *a, T v) { \
+		if (AK_LIKELY(ak_arr_room(a))) { \
+			AK_OP_OWN_CHECK(a); \
+			((ak_val *)a->items)[a->len++] = (ak_val){.member = v}; \
+			return a; \
+		} \
+		return ak_op_append_slow(a, (ak_val){.member = v}); \
 	}
 #ifndef NDEBUG
 #define AK_OP_ROOM_CHECK(a) AK_ASSERT(ak_unique(a) && ak_arr_room(a) && (a)->elem == AK_E_VAL)
+#define AK_OP_OWN_CHECK(a) AK_ASSERT(ak_unique(a) && (a)->elem == AK_E_VAL)
 #else
 #define AK_OP_ROOM_CHECK(a) ((void)(a))
+#define AK_OP_OWN_CHECK(a) ((void)(a))
 #endif
 AK_OP_APPEND(i, int64_t, i)
 AK_OP_APPEND(f, double, f)

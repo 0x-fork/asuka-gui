@@ -2097,7 +2097,10 @@ appended to with `arr.append` (push without recording a change: no
 state holds it; `arr.reserve` makes map's room once, and a map whose
 elements are values, not packed, appends with `arr.append_room`: the
 room is there and the array is the loop's own, so compiled it's a
-store and a count, ops.h's ak_op_append_room_*). The result is
+store and a count, ops.h's ak_op_append_room_*; a filter's and a
+compactMap's, into the array the loop made, append with
+`arr.append_own`: compiled, only its room is checked, the array known
+to be unique and of values, ak_op_append_own_*). The result is
 made as the method's would be (its element type's storage: a map to
 `[u8]` packed); compiled, a bool is appended as its byte
 (ak_arr_push_bool), an int, a float or a reference by ops.h's
