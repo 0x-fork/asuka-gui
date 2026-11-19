@@ -117,11 +117,28 @@ static inline ak_str *ak_op_tostr(ak_val v, uint16_t k) {
 	}
 }
 
+// ak_op_interp is INTERP: n registers from b one after another, as
+// kinds says: a byte each, the register's kind, or AK_INTERP_FMT | its
+// kind, then its format's length and its format (a part written by
+// "{x:>8.2f}"'s spec: ak_strb_fmt), so a formatted part takes no
+// string of its own. Past kinds' end, parts are strings: no kinds at
+// all, all strings (a + b + c), joined at their size (ak_strs_join).
+#define AK_INTERP_FMT 0x80
 static inline ak_str *ak_op_interp(const ak_val *R, uint16_t b, uint16_t n, const ak_str *kinds) {
+	if (kinds->len == 0) return ak_strs_join(R + b, n);
 	ak_strb sb = {0};
+	const uint8_t *k = (const uint8_t *)kinds->data, *kend = k + kinds->len;
 	for (uint16_t i = 0; i < n; i++) {
 		ak_val v = R[b + i];
-		switch (i < kinds->len ? kinds->data[i] : AK_K_REF) {
+		uint8_t kd = k < kend ? *k++ : AK_K_REF;
+		if (kd & AK_INTERP_FMT) {
+			uint8_t len = k < kend ? *k++ : 0;
+			if (len > kend - k) len = (uint8_t)(kend - k);
+			ak_strb_fmt(&sb, v, (ak_kind)(kd & ~AK_INTERP_FMT), (const char *)k, len);
+			k += len;
+			continue;
+		}
+		switch (kd) {
 		case AK_K_INT: ak_strb_int(&sb, v.i); break;
 		case AK_K_FLOAT: ak_strb_float(&sb, v.f); break;
 		case AK_K_BOOL: ak_strb_bool(&sb, v.i != 0); break;

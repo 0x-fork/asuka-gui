@@ -211,6 +211,14 @@ ak_str *ak_str_from_float(double v);  // shortest round-trip form
 // ak_float_text writes v as ak_str_from_float does into buf (32 bytes
 // room); its length. No allocation.
 int ak_float_text(char *buf, double v);
+// ak_float_fixed and ak_float_exp write v as printf's "%.*f" and "%.*e"
+// do, digit for digit (rounded half to even, as printf rounds the exact
+// binary value), into buf (AK_FLOAT_FMT_MAX bytes room): its length.
+// Without snprintf for what's printed (a precision to 19, digits that
+// fit 64 bits): exact integer arithmetic.
+#define AK_FLOAT_FMT_MAX 400
+int ak_float_fixed(char *buf, double v, int prec);
+int ak_float_exp(char *buf, double v, int prec);
 ak_str *ak_str_from_bool(bool v);
 bool ak_str_eq(const ak_str *a, const ak_str *b);
 int ak_str_cmp(const ak_str *a, const ak_str *b);

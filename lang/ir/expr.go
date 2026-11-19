@@ -1,6 +1,7 @@
 package ir
 
 import (
+	"slices"
 	"strings"
 
 	bc "github.com/egoist/asuka/lang/bytecode"
@@ -640,23 +641,32 @@ func (b *fb) stringLit(e *syntax.StringLit, dst int) int {
 	interp := func(parts []part, r int) {
 		var ks []bc.Kind
 		var vals []int
+		var kinds []byte
 		for _, p := range parts {
 			if p.x == nil {
 				ks = append(ks, bc.KRef)
 				vals = append(vals, b.kstr(p.text))
+				kinds = append(kinds, byte(bc.KRef))
 				continue
 			}
-			v, k := b.stringPart(p.x, p.spec)
+			v, k, spec := b.stringPart(p.x, p.spec)
 			ks = append(ks, k)
 			vals = append(vals, v)
+			if spec != "" {
+				// Formatted where it's written (core/src/vm/ops.h's
+				// ak_op_interp): its kind flagged, then its format.
+				kinds = append(kinds, byte(k)|interpFmt, byte(len(spec)))
+				kinds = append(kinds, spec...)
+			} else {
+				kinds = append(kinds, byte(k))
+			}
 		}
 		blk := b.regs(ks)
 		for i, v := range vals {
 			b.move(blk+i, v)
 		}
-		kinds := make([]byte, len(ks))
-		for i, k := range ks {
-			kinds[i] = byte(k)
+		if !slices.ContainsFunc(kinds, func(k byte) bool { return k != byte(bc.KRef) }) {
+			kinds = nil // all strings: joined at their size
 		}
 		b.emit(op("INTERP"), r, blk, len(ks), b.l.str(string(kinds)))
 		b.releaseRegs(blk, ks)
@@ -687,28 +697,43 @@ func (b *fb) stringLit(e *syntax.StringLit, dst int) int {
 	return b.copyTo(acc, dst)
 }
 
+// interpFmt flags an INTERP part written by its format (ak_op_interp's
+// AK_INTERP_FMT).
+const interpFmt = 0x80
+
 // stringPart is an interpolated value: a scalar INTERP prints itself, or
-// a string.
-func (b *fb) stringPart(x syntax.Expr, spec string) (int, bc.Kind) {
+// a string; with its format (spec, "" none) when INTERP writes it by
+// one.
+func (b *fb) stringPart(x syntax.Expr, spec string) (int, bc.Kind, string) {
 	t := b.typeOf(x)
 	v := b.value(x, -1)
 	if spec != "" {
 		// Formatted ({x:>8.2f}): a number by its digits, anything else by
-		// its text (core/src/rt/lib.c's str.fmt_*).
-		f := b.kstr(spec)
+		// its text (core/src/rt/lib.c's ak_strb_fmt), written by INTERP;
+		// a format too long for its length byte, by str.fmt_*.
+		if len(spec) > 255 {
+			f := b.kstr(spec)
+			switch t {
+			case check.Int:
+				return b.callB("str.fmt_int", bc.KRef, v, f), bc.KRef, ""
+			case check.Float:
+				return b.callB("str.fmt_float", bc.KRef, v, f), bc.KRef, ""
+			}
+			return b.callB("str.fmt_text", bc.KRef, b.describe(v, t), f), bc.KRef, ""
+		}
 		switch t {
 		case check.Int:
-			return b.callB("str.fmt_int", bc.KRef, v, f), bc.KRef
+			return v, bc.KInt, spec
 		case check.Float:
-			return b.callB("str.fmt_float", bc.KRef, v, f), bc.KRef
+			return v, bc.KFloat, spec
 		}
-		return b.callB("str.fmt_text", bc.KRef, b.describe(v, t), f), bc.KRef
+		return b.describe(v, t), bc.KRef, spec
 	}
 	switch t {
 	case check.Int, check.Float, check.Bool:
-		return v, b.l.kind(t)
+		return v, b.l.kind(t), ""
 	}
-	return b.describe(v, t), bc.KRef
+	return b.describe(v, t), bc.KRef, ""
 }
 
 // describe is the text of v, a t: what interpolation and print show.

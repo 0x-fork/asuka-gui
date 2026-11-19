@@ -495,6 +495,222 @@ static int fmt_float(char *buf, double v) {
 
 int ak_float_text(char *buf, double v) { return fmt_float(buf, v); }
 
+// ---- Reading floats: Eisel and Lemire's algorithm ----
+//
+// A decimal of at most 19 digits, m × 10^q, is m times 10^q's 128 top
+// bits (ryu_gen.c's, rounded down): the product's top bits are the
+// float's, unless they fall too near a halfway point to tell, which it
+// leaves to strtod (Daniel Lemire, "Number Parsing at a Gigabyte per
+// Second", 2021; as Go's strconv.eiselLemire64 has it).
+
+extern const uint64_t ak_pow10_base[26][2];
+extern const uint64_t ak_pow5_norm[27];
+extern const uint8_t ak_pow10_offsets[696];
+
+#define P10_MIN (-348)
+#define P10_MAX 347
+#define P10_BASE (-351)
+
+// pow10_128 is 10^q's top 128 bits, rounded down (P10_MIN <= q <= P10_MAX):
+// its step's times 5^off, corrected.
+static void pow10_128(int q, uint64_t *hi, uint64_t *lo) {
+	int k = (q - P10_BASE) / 27, off = q - P10_BASE - 27 * k;
+	const uint64_t *b = ak_pow10_base[k];
+	uint64_t f = ak_pow5_norm[off];
+	uint64_t p1h, p1l = umul128(b[0], f, &p1h);
+	uint64_t p2h, p2l = umul128(b[1], f, &p2h);
+	uint64_t mid = p2l + p1h, top = p2h + (mid < p2l);
+	if (!(top >> 63)) {
+		top = top << 1 | mid >> 63;
+		mid = mid << 1 | p1l >> 63;
+	}
+	*hi = top;
+	*lo = mid + ak_pow10_offsets[q - P10_MIN];
+}
+
+// eisel_lemire is m × 10^q (m not 0) as a double, into *out: false when
+// it can't tell (strtod's to decide), or it's past a double's range.
+static bool eisel_lemire(uint64_t m, int q, bool neg, double *out) {
+	if (q < P10_MIN || q > P10_MAX) return false;
+	int clz = __builtin_clzll(m);
+	m <<= clz;
+	uint64_t exp2 = (uint64_t)(((217706 * q) >> 16) + 64 + 1023) - (uint64_t)clz;
+	uint64_t phi, plo;
+	pow10_128(q, &phi, &plo);
+	uint64_t xhi, xlo = umul128(m, phi, &xhi);
+	if ((xhi & 0x1ff) == 0x1ff && xlo + m < m) {
+		// The wider product: with 10^q's low word too.
+		uint64_t yhi, ylo = umul128(m, plo, &yhi);
+		uint64_t mhi = xhi, mlo = xlo + yhi;
+		if (mlo < xlo) mhi++;
+		if ((mhi & 0x1ff) == 0x1ff && mlo + 1 == 0 && ylo + m < m) return false;
+		xhi = mhi, xlo = mlo;
+	}
+	uint64_t msb = xhi >> 63, mant = xhi >> (msb + 9);
+	exp2 -= 1 ^ msb;
+	if (xlo == 0 && (xhi & 0x1ff) == 0 && (mant & 3) == 1) return false;  // halfway: can't tell
+	mant += mant & 1;
+	mant >>= 1;
+	if (mant >> 53) {
+		mant >>= 1;
+		exp2++;
+	}
+	if (exp2 - 1 >= 0x7ff - 1) return false;  // subnormal, or past the largest
+	uint64_t bits = exp2 << 52 | (mant & ((1ull << 52) - 1));
+	if (neg) bits |= 1ull << 63;
+	memcpy(out, &bits, 8);
+	return true;
+}
+
+// ---- A precision's digits: printf's %.*f and %.*e ----
+//
+// v is m × 2^e exactly (m below 2^53), so its digits to a precision are
+// an integer's, N = v × 10^k rounded half to even (as printf rounds the
+// exact binary value: 0.125 to 0.12, 2.675 to 2.67), computed in 128
+// bits: m × 10^k shifted or divided, its remainder deciding the
+// rounding. That covers what's printed (precisions to 19, numbers whose
+// digits fit); the rest goes to snprintf, as before.
+
+#ifdef __SIZEOF_INT128__
+__extension__ typedef unsigned __int128 u128;
+
+static const uint64_t pow10_u64[20] = {
+	1ull, 10ull, 100ull, 1000ull, 10000ull, 100000ull, 1000000ull, 10000000ull, 100000000ull, 1000000000ull,
+	10000000000ull, 100000000000ull, 1000000000000ull, 10000000000000ull, 100000000000000ull,
+	1000000000000000ull, 10000000000000000ull, 100000000000000000ull, 1000000000000000000ull,
+	10000000000000000000ull,
+};
+
+// split_double is v (finite, >= 0) as m × 2^e.
+static void split_double(double v, uint64_t *m, int *e) {
+	uint64_t bits;
+	memcpy(&bits, &v, 8);
+	int be = (int)((bits >> 52) & 0x7ff);
+	*m = bits & ((1ull << 52) - 1);
+	if (be == 0) {
+		*e = -1074;
+	} else {
+		*m |= 1ull << 52;
+		*e = be - 1075;
+	}
+}
+
+// scaled is v × 10^k rounded half to even (v = m × 2^e, |k| <= 19),
+// into *out: false when it doesn't fit 64 bits or the arithmetic 128.
+static bool scaled(uint64_t m, int e, int k, uint64_t *out) {
+	u128 num = m, den = 1;
+	if (k >= 0) num *= pow10_u64[k];  // below 2^117
+	else den = pow10_u64[-k];
+	if (e >= 0) {
+		if (e >= 128 || (num >> (127 - e)) != 0) return false;
+		num <<= e;
+	} else {
+		int s = -e;
+		if (den == 1) {
+			// num / 2^s: a shift, its remainder the bits shifted out.
+			if (s >= 128) {
+				*out = 0;  // num is below 2^117: under half of 2^128
+				return true;
+			}
+			u128 q = num >> s, r = num - (q << s), half = (u128)1 << (s - 1);
+			if (r > half || (r == half && (q & 1))) q++;
+			if (q >> 64) return false;
+			*out = (uint64_t)q;
+			return true;
+		}
+		if (s >= 64 || (den >> (127 - s)) != 0) return false;
+		den <<= s;
+	}
+	u128 q = num / den, r = num - q * den;
+	if (r > den - r || (r == den - r && (q & 1))) q++;
+	if (q >> 64) return false;
+	*out = (uint64_t)q;
+	return true;
+}
+
+// put_digits writes u's decimal digits, at least w of them (0s before),
+// at p; how many.
+static int put_digits(char *p, uint64_t u, int w) {
+	char d[24], *end = d + sizeof d, *s;
+	if (u <= INT64_MAX) {
+		s = int_digits((int64_t)u, end);
+	} else {
+		// Past int64's: the last digit apart, the rest as one.
+		s = int_digits((int64_t)(u / 10), end - 1);
+		end[-1] = (char)('0' + u % 10);
+	}
+	int n = (int)(end - s), k = 0;
+	for (int i = n; i < w; i++) p[k++] = '0';
+	memcpy(p + k, s, (size_t)n);
+	return k + n;
+}
+
+int ak_float_fixed(char *buf, double v, int prec) {
+	if (prec >= 0 && prec <= 19 && v >= 0 && v < 1e19) {
+		uint64_t m, n;
+		int e;
+		split_double(v, &m, &e);
+		if (scaled(m, e, prec, &n)) {
+			uint64_t ip = n / pow10_u64[prec], fp = n % pow10_u64[prec];
+			int k = put_digits(buf, ip, 1);
+			if (prec) {
+				buf[k++] = '.';
+				k += put_digits(buf + k, fp, prec);
+			}
+			buf[k] = 0;
+			return k;
+		}
+	}
+	return snprintf(buf, AK_FLOAT_FMT_MAX, "%.*f", prec, v);
+}
+
+int ak_float_exp(char *buf, double v, int prec) {
+	if (prec >= 0 && prec <= 17 && v >= 0 && v == v && v != INFINITY) {
+		uint64_t m, n = 0;
+		int e;
+		split_double(v, &m, &e);
+		int E = 0;
+		bool ok = m == 0;
+		if (!ok) {
+			// Its leading digit's place, near enough: log10 of its top
+			// bit's; one off at most, which the loop corrects.
+			int top = e + 63 - __builtin_clzll(m);
+			E = (int)floor(top * 0.30102999566398120);
+			for (int tries = 0; tries < 3; tries++) {
+				int k = prec - E;
+				if (k > 19 || k < -19 || !scaled(m, e, k, &n)) break;
+				if (n >= pow10_u64[prec + 1]) E++;
+				else if (n < pow10_u64[prec]) E--;
+				else {
+					ok = true;
+					break;
+				}
+			}
+		}
+		if (ok) {
+			char d[24];
+			put_digits(d, n, prec + 1);
+			int k = 0;
+			buf[k++] = d[0];
+			if (prec) {
+				buf[k++] = '.';
+				memcpy(buf + k, d + 1, (size_t)prec);
+				k += prec;
+			}
+			buf[k++] = 'e';
+			buf[k++] = E < 0 ? '-' : '+';
+			k += put_digits(buf + k, (uint64_t)(E < 0 ? -E : E), 2);
+			buf[k] = 0;
+			return k;
+		}
+	}
+	return snprintf(buf, AK_FLOAT_FMT_MAX, "%.*e", prec, v);
+}
+#else
+int ak_float_fixed(char *buf, double v, int prec) { return snprintf(buf, AK_FLOAT_FMT_MAX, "%.*f", prec, v); }
+int ak_float_exp(char *buf, double v, int prec) { return snprintf(buf, AK_FLOAT_FMT_MAX, "%.*e", prec, v); }
+#endif
+
 ak_str *ak_str_from_float(double v) {
 	char buf[48];
 	int n = fmt_float(buf, v);
@@ -1147,13 +1363,20 @@ static bool word_is(const char *p, const char *end, const char *word) {
 // the decimal form, so they read it the same way everywhere.
 bool ak_str_to_int(const ak_str *s, int64_t *out) {
 	const char *p = s->data, *end = s->data + s->len;
+	bool neg = p < end && *p == '-';
 	if (p < end && (*p == '+' || *p == '-')) p++;
-	if (p == end || digits(p, end) != end) return false;
-	char *e;
-	errno = 0;
-	long long v = strtoll(s->data, &e, 10);
-	if (errno || e != end) return false;
-	*out = v;
+	if (p == end) return false;
+	// Its magnitude, as an unsigned: one past int's largest is -int's
+	// least.
+	uint64_t u = 0;
+	for (; p < end; p++) {
+		unsigned d = (unsigned)(uint8_t)*p - '0';
+		if (d > 9) return false;
+		if (u > (UINT64_MAX - d) / 10) return false;
+		u = u * 10 + d;
+	}
+	if (u > (uint64_t)INT64_MAX + neg) return false;
+	*out = neg ? (int64_t)(0 - u) : (int64_t)u;
 	return true;
 }
 
@@ -1188,6 +1411,49 @@ bool ak_str_to_float(const ak_str *s, double *out) {
 		q = x;
 	}
 	if (q != end) return false;
+	// Its digits, at most 19 (m: exact in 64 bits), and its exponent.
+	uint64_t m = 0;
+	int nd = 0, e10 = 0;
+	const char *c = p;
+	for (; c < end && *c >= '0' && *c <= '9'; c++) {
+		if (m || *c != '0') nd++;
+		m = m * 10 + (uint64_t)(*c - '0');
+		if (nd > 19) break;
+	}
+	if (nd <= 19 && c < end && *c == '.') {
+		for (c++; c < end && *c >= '0' && *c <= '9'; c++) {
+			if (m || *c != '0') nd++;
+			m = m * 10 + (uint64_t)(*c - '0');
+			e10--;
+			if (nd > 19) break;
+		}
+	}
+	if (nd <= 19 && c < end && (*c == 'e' || *c == 'E')) {
+		c++;
+		bool eneg = c < end && *c == '-';
+		if (c < end && (*c == '+' || *c == '-')) c++;
+		int x = 0;
+		for (; c < end && x < 10000; c++) x = x * 10 + (*c - '0');
+		if (c == end) e10 += eneg ? -x : x;
+	}
+	if (nd <= 19 && c == end) {
+		if (m == 0) {
+			*out = neg ? -0.0 : 0.0;
+			return true;
+		}
+		// Clinger's fast path: a mantissa exact in a double times or over
+		// a power of ten that is too (10^22 at most) is one correctly
+		// rounded operation.
+		if (m < (1ull << 53) && e10 >= -22 && e10 <= 22) {
+			static const double pow10[] = {1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11,
+			                               1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18, 1e19, 1e20, 1e21, 1e22};
+			double v = (double)m;
+			v = e10 < 0 ? v / pow10[-e10] : v * pow10[e10];
+			*out = neg ? -v : v;
+			return true;
+		}
+		if (eisel_lemire(m, e10, neg, out)) return true;
+	}
 	char *e;
 	double v = strtod(s->data, &e);
 	if (e != end) return false;

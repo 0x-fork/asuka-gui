@@ -424,9 +424,9 @@ static int64_t fspec_num(const char **p, const char *end) {
 	return n;
 }
 
-static void fspec_parse(const ak_str *s, fspec *f) {
+static void fspec_parse(const char *spec, size_t len, fspec *f) {
 	*f = (fspec){.fill = " ", .filln = 1, .width = -1, .prec = -1};
-	const char *p = s->data, *end = s->data + s->len;
+	const char *p = spec, *end = spec + len;
 	uint32_t c1 = 1;
 	while (p + c1 < end && ((unsigned char)p[c1] & 0xc0) == 0x80) c1++;
 	if (p + c1 < end && (p[c1] == '<' || p[c1] == '>' || p[c1] == '^')) {
@@ -461,94 +461,87 @@ static void fill_n(ak_strb *b, const fspec *f, int64_t n) {
 	for (int64_t i = 0; i < n; i++) ak_strb_cstr(b, f->fill, f->filln);
 }
 
-// fspec_out writes head (a sign, a 0x) and body padded to the width:
-// aligned as f says, else as def ('>' a number's, '<' text's).
-static ak_val fspec_out(const fspec *f, const char *head, size_t headn, const char *body, size_t bodyn, char def) {
-	ak_strb b = {0};
+// fspec_put writes head (a sign, a 0x) and body padded to the width
+// into b: aligned as f says, else as def ('>' a number's, '<' text's).
+static void fspec_put(ak_strb *b, const fspec *f, const char *head, size_t headn, const char *body, size_t bodyn, char def) {
 	int64_t pad = f->width - (int64_t)(code_points(head, headn) + code_points(body, bodyn));
 	char align = f->align ? f->align : def;
 	if (pad <= 0) align = 0;
 	switch (align) {
 	case '<':
-		ak_strb_cstr(&b, head, headn), ak_strb_cstr(&b, body, bodyn), fill_n(&b, f, pad);
+		ak_strb_cstr(b, head, headn), ak_strb_cstr(b, body, bodyn), fill_n(b, f, pad);
 		break;
 	case '>':
-		fill_n(&b, f, pad), ak_strb_cstr(&b, head, headn), ak_strb_cstr(&b, body, bodyn);
+		fill_n(b, f, pad), ak_strb_cstr(b, head, headn), ak_strb_cstr(b, body, bodyn);
 		break;
 	case '^':
-		fill_n(&b, f, pad / 2), ak_strb_cstr(&b, head, headn), ak_strb_cstr(&b, body, bodyn), fill_n(&b, f, pad - pad / 2);
+		fill_n(b, f, pad / 2), ak_strb_cstr(b, head, headn), ak_strb_cstr(b, body, bodyn), fill_n(b, f, pad - pad / 2);
 		break;
 	case '=':
-		ak_strb_cstr(&b, head, headn), fill_n(&b, f, pad), ak_strb_cstr(&b, body, bodyn);
+		ak_strb_cstr(b, head, headn), fill_n(b, f, pad), ak_strb_cstr(b, body, bodyn);
 		break;
 	default:
-		ak_strb_cstr(&b, head, headn), ak_strb_cstr(&b, body, bodyn);
+		ak_strb_cstr(b, head, headn), ak_strb_cstr(b, body, bodyn);
 	}
-	RET_P(ak_strb_finish(&b));
 }
 
 // grouped writes digits (n of them, the integer part) with sep between
-// groups of every digits, then the rest as it is.
-static void grouped(ak_strb *b, const char *digits, size_t n, char sep, int every, const char *rest, size_t restn) {
+// groups of every digits, then the rest as it is, into out (room for
+// n + n / every + restn): its length.
+static size_t grouped(char *out, const char *digits, size_t n, char sep, int every, const char *rest, size_t restn) {
+	size_t k = 0;
 	for (size_t i = 0; i < n; i++) {
-		if (sep && i && (n - i) % (size_t)every == 0) ak_strb_cstr(b, &sep, 1);
-		ak_strb_cstr(b, digits + i, 1);
+		if (sep && i && (n - i) % (size_t)every == 0) out[k++] = sep;
+		out[k++] = digits[i];
 	}
-	ak_strb_cstr(b, rest, restn);
+	memcpy(out + k, rest, restn);
+	return k + restn;
 }
 
-static ak_val fmt_float(double x, const fspec *f) {
+static void fmt_float(ak_strb *b, double x, const fspec *f) {
 	char head[2] = {0};
 	size_t headn = 0;
 	bool neg = signbit(x) && x == x;
 	if (neg) head[headn++] = '-';
 	else if (f->sign && x == x) head[headn++] = f->sign;
 	double a = fabs(x);
-	char buf[400];
+	char buf[AK_FLOAT_FMT_MAX + 2];
 	int n;
 	if (x != x || a == INFINITY) {
-		n = snprintf(buf, sizeof buf, "%s", x != x ? "NaN" : "Infinity");
+		const char *word = x != x ? "NaN" : "Infinity";
 		fspec g = *f;
 		if (g.align == '=') g.align = 0, g.fill = " ";  // no zeros before Infinity
-		return fspec_out(&g, head, headn, buf, (size_t)n, '>');
+		fspec_put(b, &g, head, headn, word, strlen(word), '>');
+		return;
 	}
-	int prec = f->prec >= 0 ? (int)f->prec : 6;
+	int prec = f->prec >= 0 ? (int)(f->prec < 300 ? f->prec : 300) : 6;
 	if (f->type == 'e') {
-		n = snprintf(buf, sizeof buf, "%.*e", prec, a);
+		n = ak_float_exp(buf, a, prec);
 	} else if (f->type == '%') {
-		n = snprintf(buf, sizeof buf, "%.*f%%", prec, a * 100);
+		n = ak_float_fixed(buf, a * 100, prec);
+		buf[n++] = '%';
 	} else if (f->type == 'f' || f->prec >= 0) {
-		n = snprintf(buf, sizeof buf, "%.*f", prec, a);
+		n = ak_float_fixed(buf, a, prec);
 	} else {
-		ak_str *s = ak_str_from_float(a);  // the shortest, as "{x}" writes it
-		n = (int)(s->len < sizeof buf ? s->len : sizeof buf - 1);
-		memcpy(buf, s->data, (size_t)n);
-		ak_release(s);
+		n = ak_float_text(buf, a);  // the shortest, as "{x}" writes it
 	}
-	if (n < 0 || (size_t)n >= sizeof buf) n = (int)strlen(buf);
-	if (!f->group) return fspec_out(f, head, headn, buf, (size_t)n, '>');
+	if (n < 0 || n > AK_FLOAT_FMT_MAX) n = (int)strnlen(buf, AK_FLOAT_FMT_MAX);
+	if (!f->group) {
+		fspec_put(b, f, head, headn, buf, (size_t)n, '>');
+		return;
+	}
 	size_t whole = strcspn(buf, ".e%");
-	ak_strb g = {0};
-	grouped(&g, buf, whole, f->group, 3, buf + whole, (size_t)n - whole);
-	ak_str *body = ak_strb_finish(&g);
-	ak_val out = fspec_out(f, head, headn, body->data, body->len, '>');
-	ak_release(body);
-	return out;
+	char g[AK_FLOAT_FMT_MAX * 4 / 3 + 4];
+	size_t gn = grouped(g, buf, whole, f->group, 3, buf + whole, (size_t)n - whole);
+	fspec_put(b, f, head, headn, g, gn, '>');
 }
 
-static ak_val str_fmt_float(ak_val *args, uint32_t n) {
-	AK_UNUSED(n);
-	fspec f;
-	fspec_parse(STR(1), &f);
-	return fmt_float(A(0).f, &f);
-}
-
-static ak_val str_fmt_int(ak_val *args, uint32_t n) {
-	AK_UNUSED(n);
-	fspec f;
-	fspec_parse(STR(1), &f);
-	int64_t v = A(0).i;
-	if (f.type == 'f' || f.type == 'e' || f.type == '%') return fmt_float((double)v, &f);
+static void fmt_int(ak_strb *b, int64_t v, const fspec *fp) {
+	fspec f = *fp;
+	if (f.type == 'f' || f.type == 'e' || f.type == '%') {
+		fmt_float(b, (double)v, &f);
+		return;
+	}
 	int radix = 10, every = 3;
 	const char *ds = "0123456789abcdef", *prefix = "";
 	switch (f.type) {
@@ -569,32 +562,50 @@ static ak_val str_fmt_int(ak_val *args, uint32_t n) {
 	if (v < 0) head[headn++] = '-';
 	else if (f.sign) head[headn++] = f.sign;
 	if (f.alt && *prefix) head[headn++] = prefix[0], head[headn++] = prefix[1];
-	ak_strb g = {0};
-	grouped(&g, digits + i, sizeof digits - (size_t)i, f.group, every, "", 0);
-	ak_str *body = ak_strb_finish(&g);
-	ak_val out = fspec_out(&f, head, headn, body->data, body->len, '>');
-	ak_release(body);
-	return out;
+	char g[sizeof digits * 2];
+	size_t gn = grouped(g, digits + i, sizeof digits - (size_t)i, f.group, every, "", 0);
+	fspec_put(b, &f, head, headn, g, gn, '>');
 }
 
-// str.fmt_text(s, spec): text by its fill, alignment, width and
-// precision (the most characters it keeps).
-static ak_val str_fmt_text(ak_val *args, uint32_t n) {
-	AK_UNUSED(n);
-	fspec f;
-	fspec_parse(STR(1), &f);
-	ak_str *s = STR(0);
-	size_t len = s->len;
-	if (f.prec >= 0) {
+// fmt_text writes text by its fill, alignment, width and precision (the
+// most characters it keeps).
+static void fmt_text(ak_strb *b, const char *s, size_t len, const fspec *f) {
+	if (f->prec >= 0) {
 		int64_t kept = 0;
 		size_t i = 0;
-		for (; i < s->len; i++) {
-			if (((unsigned char)s->data[i] & 0xc0) != 0x80 && kept++ == f.prec) break;
+		for (; i < len; i++) {
+			if (((unsigned char)s[i] & 0xc0) != 0x80 && kept++ == f->prec) break;
 		}
 		len = i;
 	}
-	return fspec_out(&f, "", 0, s->data, len, '<');
+	fspec_put(b, f, "", 0, s, len, '<');
 }
+
+void ak_strb_fmt(ak_strb *b, ak_val v, ak_kind k, const char *spec, size_t n) {
+	fspec f;
+	fspec_parse(spec, n, &f);
+	switch (k) {
+	case AK_K_INT: fmt_int(b, v.i, &f); break;
+	case AK_K_FLOAT: fmt_float(b, v.f, &f); break;
+	default: {
+		const ak_str *s = v.p;
+		fmt_text(b, s ? s->data : "", s ? s->len : 0, &f);
+		break;
+	}
+	}
+}
+
+// str.fmt_int(n, spec), str.fmt_float(x, spec) and str.fmt_text(s,
+// spec): a value by a format, as a string.
+static ak_val fmt_one(ak_val v, ak_kind k, const ak_str *spec) {
+	ak_strb b = {0};
+	ak_strb_fmt(&b, v, k, spec->data, spec->len);
+	RET_P(ak_strb_finish(&b));
+}
+
+static ak_val str_fmt_int(ak_val *args, uint32_t n) { AK_UNUSED(n); return fmt_one(A(0), AK_K_INT, STR(1)); }
+static ak_val str_fmt_float(ak_val *args, uint32_t n) { AK_UNUSED(n); return fmt_one(A(0), AK_K_FLOAT, STR(1)); }
+static ak_val str_fmt_text(ak_val *args, uint32_t n) { AK_UNUSED(n); return fmt_one(A(0), AK_K_REF, STR(1)); }
 
 static ak_val str_repeat(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
