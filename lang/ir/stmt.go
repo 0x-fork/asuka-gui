@@ -1223,6 +1223,14 @@ func (b *fb) assignStmt(s *syntax.AssignStmt) {
 		v := b.value(s.Value, -1)
 		b.dropTemps(mark, v)
 		b.set(b.prepare(s.Target), v)
+		if b.f.Kinds[v] == bc.KRef && slices.Contains(b.temps[mark:], v) {
+			// The value's temp let go of once the place holds it, as a
+			// let's is: kept, it's a second reference until the
+			// register's next use (n = n.kids[i] going down a tree: each
+			// node held twice), and the optimizer can't make the copy a
+			// move (the temp's computation writing the place itself).
+			b.emit(op("CLR"), v)
+		}
 	case syntax.COALESCE_ASSIGN:
 		b.assign(s, b.prepare(s.Target), -1)
 	default:

@@ -78,6 +78,11 @@ func (g *gen) moveOp(name string, in insn) bool {
 	case "KSTR":
 		g.w("%s", g.setref(a[0], fmt.Sprintf("M->strings[%d]", a[1])))
 	case "GGET":
+		if g.pl.borrow[g.k] {
+			// A stable global's (places.go): borrowed.
+			g.w("%s v%d = M->globals[%d].p;", g.setref(a[0], "NULL"), a[0], a[1])
+			break
+		}
 		if bc.Kind(a[2]) == bc.KRef {
 			g.w("%s", g.setref(a[0], fmt.Sprintf("ak_retain(M->globals[%d].p)", a[1])))
 		} else {
@@ -108,6 +113,16 @@ func (g *gen) intOp(name string, in insn, h string) bool {
 	cmp := map[string]string{"EQI": "==", "NEI": "!=", "LTI": "<", "LEI": "<=", "BAND": "&", "BOR": "|", "BXOR": "^"}
 	switch name {
 	case "ADDI", "SUBI", "MULI":
+		if g.pl.noOverflow[g.k] {
+			// Known not to overflow (flow.go: of indexes, lengths...),
+			// and opaque to the C compiler's loop analysis as the check
+			// was (AK_CG_OPAQUE): a counter stepped by another register
+			// (sieve's j += i) would have it work out the inner loop's
+			// trip count, a 128-bit division, on each turn of the outer
+			// loop, and unroll by it.
+			g.w("%s = %s %s %s; AK_CG_OPAQUE(%s);", g.ri(a[0]), g.ri(a[1]), map[string]string{"ADDI": "+", "SUBI": "-", "MULI": "*"}[name], g.ri(a[2]), g.ri(a[0]))
+			break
+		}
 		fn := map[string]string{"ADDI": "ak_addi", "SUBI": "ak_subi", "MULI": "ak_muli"}[name]
 		g.w("if (AK_UNLIKELY(!%s(&%s, %s, %s))) %s", fn, g.ri(a[0]), g.ri(a[1]), g.ri(a[2]), g.fail(in, h))
 	case "WADDI", "WSUBI", "WMULI":
@@ -144,9 +159,10 @@ func (g *gen) intConstOp(name string, in insn, h string) bool {
 	a := in.args
 	switch name {
 	case "ADDIS", "SUBIS", "MULIS":
-		if name == "ADDIS" && g.pl.noOverflow[g.k] {
-			// Known not to overflow (flow.go): a loop's index + 1.
-			g.w("%s = %s + %d;", g.ri(a[0]), g.ri(a[1]), imm(in, 2))
+		if g.pl.noOverflow[g.k] {
+			// Known not to overflow (flow.go): a loop's index + 1, a
+			// sum of indexes.
+			g.w("%s = %s %s (%d);", g.ri(a[0]), g.ri(a[1]), map[string]string{"ADDIS": "+", "SUBIS": "-", "MULIS": "*"}[name], imm(in, 2))
 			break
 		}
 		fn := map[string]string{"ADDIS": "ak_addi", "SUBIS": "ak_subi", "MULIS": "ak_muli"}[name]
@@ -314,7 +330,7 @@ func (g *gen) callOp(f *bc.FuncDef, name string, in insn, h string) bool {
 			} else if mut {
 				fmt.Fprintf(&s, "ak_val s_ = %s; ", g.r(a[2]))
 			}
-			fmt.Fprintf(&s, "ak_ret v_ = f%d_(NULL, lim_%s); ", a[1], g.directArgs(a[1], a[2], a[3], "s_"))
+			fmt.Fprintf(&s, "ak_ret v_ = f%d_(%sNULL AK_CG_LIM_A); ", a[1], g.directArgs(a[1], a[2], a[3], "s_"))
 			if int(callee.NParams) > maxValueParams {
 				s.WriteString(g.back(a[2], a[3]))
 			} else if mut {
@@ -341,7 +357,7 @@ func (g *gen) callOp(f *bc.FuncDef, name string, in insn, h string) bool {
 		// Of one whose parameters' kinds are the arguments' (and not a mut
 		// fn's), its direct body itself, the arguments in registers
 		// (sigCall).
-		g.w("{ ak_closure *c_ = %s; if (!c_) ak_panic(\"calling none\"); const ak_func *g_ = c_->invoke == ak_vm_closure_invoke ? c_->fn : NULL; ak_ret v_; %s{ %s if (AK_LIKELY(g_ && g_->direct)) v_ = g_->direct(c_, lim_, B_); else { v_.v = c_->invoke(c_, B_, %d); v_.e = ak_cg_pending(&E_); } %s} if (AK_UNLIKELY(v_.e)) %s %s }",
+		g.w("{ ak_closure *c_ = %s; if (!c_) ak_panic(\"calling none\"); ak_ret v_; %s{ const ak_func *g_ = c_->invoke == ak_vm_closure_invoke ? c_->fn : NULL; %s if (AK_LIKELY(g_ && g_->direct)) v_ = g_->direct(c_, AK_CG_LIM, B_); else { v_.v = c_->invoke(c_, B_, %d); v_.e = ak_cg_pending(&E_); } %s} if (AK_UNLIKELY(v_.e)) %s %s }",
 			g.rp(a[1]), g.sigCall("c_", a[2], a[3]), g.block(a[2], a[3]), a[3], g.back(a[2], a[3]), g.fail(in, h), g.put(a[0], "v_.v", bc.KVoid))
 	case "CALLB":
 		if g.intrinsic(in, h) {
@@ -359,7 +375,7 @@ func (g *gen) callOp(f *bc.FuncDef, name string, in insn, h string) bool {
 			g.acall(f, in, h, fmt.Sprintf("ak_vm_method(%s, M->strings[%d])", g.rp(a[2]), a[1]), "NULL")
 			break
 		}
-		g.w("{ const ak_func *g_ = ak_vm_method(%s, M->strings[%d]); if (!g_) ak_panic(\"no method %%s\", M->strings[%d]->data); ak_ret v_; %s{ %s if (AK_LIKELY(g_->direct)) v_ = g_->direct(NULL, lim_, B_); else { v_.v = ak_vm_call(g_, B_, %d); v_.e = ak_cg_pending(&E_); } %s} if (AK_UNLIKELY(v_.e)) %s %s }",
+		g.w("{ const ak_func *g_ = ak_vm_method(%s, M->strings[%d]); if (!g_) ak_panic(\"no method %%s\", M->strings[%d]->data); ak_ret v_; %s{ %s if (AK_LIKELY(g_->direct)) v_ = g_->direct(NULL, AK_CG_LIM, B_); else { v_.v = ak_vm_call(g_, B_, %d); v_.e = ak_cg_pending(&E_); } %s} if (AK_UNLIKELY(v_.e)) %s %s }",
 			g.rp(a[2]), a[1], a[1], g.sigCall("NULL", a[2], a[3]), g.block(a[2], a[3]), a[3], g.back(a[2], a[3]), g.fail(in, h), g.putKind(a[0], "v_.v", "g_->ret"))
 	case "CALLU":
 		g.w("{ %s ak_val v_ = ak_vm_call_untracked(%s, B_, %d); %s%s %s }", g.block(a[2], a[3]), g.rp(a[1]), a[3], g.back(a[2], a[3]), g.thrown(in, h), g.put(a[0], "v_", bc.KVoid))
@@ -417,8 +433,7 @@ func (g *gen) sigCall(clos string, b, n int) string {
 		return ""
 	}
 	sig := uint32(0x80000000) | uint32(n)<<16
-	ts := []string{"ak_closure *", "uintptr_t"}
-	args := []string{clos, "lim_"}
+	var ts, args []string
 	for p := 0; p < n; p++ {
 		k := g.f.Kinds[b+p]
 		cls := uint32(0)
@@ -431,6 +446,16 @@ func (g *gen) sigCall(clos string, b, n int) string {
 		sig |= cls << (2 * p)
 		ts = append(ts, strings.TrimSpace(ctype(k)))
 		args = append(args, g.r(b+p)+"."+member(k))
+	}
+	// After the arguments, the closure and the stack limit (ops.h's
+	// AK_CG_LIM_T and AK_CG_LIM_A: none on arm64, where it's in x28).
+	ts = append(ts, "ak_closure * AK_CG_LIM_T")
+	args = append(args, clos+" AK_CG_LIM_A")
+	if clos == "c_" {
+		// A closure's: its own copy of the signature (ak_closure.sig, 0
+		// unless it's a compiled function's), then the body from its
+		// function, so the test reads the closure only.
+		return fmt.Sprintf("if (AK_LIKELY(c_->sig == %#xu)) v_ = ((ak_ret (*)(%s))((const ak_func *)c_->fn)->body)(%s); else ", sig, strings.Join(ts, ", "), strings.Join(args, ", "))
 	}
 	return fmt.Sprintf("if (AK_LIKELY(g_ && g_->sig == %#xu)) v_ = ((ak_ret (*)(%s))g_->body)(%s); else ", sig, strings.Join(ts, ", "), strings.Join(args, ", "))
 }
@@ -941,6 +966,15 @@ var intrinsics = map[string]intrinsic{
 	"math.clampf": {[]bc.Kind{bc.KFloat, bc.KFloat, bc.KFloat}, bc.KFloat, "fmin(fmax(%[1]s, %[2]s), %[3]s)"},
 	"math.mini":   {[]bc.Kind{bc.KInt, bc.KInt}, bc.KInt, "(%[1]s < %[2]s ? %[1]s : %[2]s)"},
 	"math.maxi":   {[]bc.Kind{bc.KInt, bc.KInt}, bc.KInt, "(%[1]s > %[2]s ? %[1]s : %[2]s)"},
+	// Strings' that throw nothing: their length a field, the others the
+	// runtime's own functions called directly, without an argument block
+	// or a test of the thread's pending error after.
+	"str.bytes_len":  {[]bc.Kind{bc.KRef}, bc.KInt, "(int64_t)((const ak_str *)%[1]s)->len"},
+	"str.equals":     {[]bc.Kind{bc.KRef, bc.KRef}, bc.KBool, "ak_str_eq(%[1]s, %[2]s)"},
+	"str.compare":    {[]bc.Kind{bc.KRef, bc.KRef}, bc.KInt, "(int64_t)ak_str_cmp(%[1]s, %[2]s)"},
+	"str.contains":   {[]bc.Kind{bc.KRef, bc.KRef}, bc.KBool, "ak_str_contains(%[1]s, %[2]s)"},
+	"str.has_prefix": {[]bc.Kind{bc.KRef, bc.KRef}, bc.KBool, "ak_str_has_prefix(%[1]s, %[2]s)"},
+	"str.has_suffix": {[]bc.Kind{bc.KRef, bc.KRef}, bc.KBool, "ak_str_has_suffix(%[1]s, %[2]s)"},
 }
 
 // intrinsic writes a CALLB of an intrinsic as its C, true when it is

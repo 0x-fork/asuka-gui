@@ -282,6 +282,7 @@ void ak_vm_closure_drop(ak_closure *c);
 
 static inline ak_closure *ak_op_clos(const ak_func *g, const ak_val *caps) {
 	ak_closure *c = ak_closure_new(ak_vm_closure_invoke, g, g->ncap, g->capkinds);
+	c->sig = g->sig;
 	for (uint16_t i = 0; i < g->ncap; i++) {
 		c->caps[i] = caps[i];
 		ak_retain_val(c->caps[i], (ak_kind)g->capkinds[i]);
@@ -572,13 +573,13 @@ static inline void ak_op_exit(ak_val *R, const uint8_t *kinds, uint16_t n, int k
 
 // ---- Functions compiled to C (lang/cgen) ----
 //
-// A synchronous function's direct body takes its arguments as C values
+// A synchronous function's direct body takes its arguments as C values,
+// then its closure (and, but on arm64, the thread's stack limit: below),
 // and returns its result with whether it threw: ak_ret, two machine
 // registers on the ABIs' calls (x0 and x1, rax and rdx), so a compiled
 // caller tests a register for the error rather than the thread's
-// pending one. It also takes the thread's stack limit, so that its check
-// of the stack costs no thread-local read: one compare of the stack
-// pointer, as Go's prologue is.
+// pending one. Its check of the stack costs no thread-local read: one
+// compare of the stack pointer, as Go's prologue is.
 // ak_cg_sp is the C stack's pointer, read without making a frame (so
 // that a body's check comes before its frame is set up, and a path that
 // needs none, a recursion's base case, makes none).
@@ -608,6 +609,54 @@ static inline bool ak_cg_stack_low(uintptr_t lim) {
 #endif
 }
 
+// The thread's stack limit in compiled code. On arm64 the app's C is
+// compiled with x28 reserved (-ffixed-x28 -DAK_CG_X28: cbuild.AppFlags),
+// as Go keeps its g in a register of its own: every way into the app's C
+// from the core (fN, fN_c, an async body's fN) sets x28 to the thread's
+// limit and puts back the core's (x28 is callee-saved: the core keeps
+// its own across its calls into the app, and the app's across the
+// core's), so a check is one compare of the stack pointer with it (cmp
+// sp, x28) and a direct body takes no limit: no register of a recursing
+// function's holds it, and no call passes it on. Elsewhere (amd64, the
+// web, a C compiler without the flag) the limit is a direct body's
+// parameter, lim_: the C cgen writes is the same either way.
+//
+//   AK_CG_LIM_P   a direct body's parameter after its closure: ", uintptr_t lim_", or none
+//   AK_CG_LIM_T   its type, in a pointer to a body's type: ", uintptr_t", or none
+//   AK_CG_LIM_A   the argument a call passes it: ", lim_", or none
+//   AK_CG_LIM     the limit's value (for an ak_direct_body, which takes it)
+//   AK_CG_CHECK(l)   goes to label l when the stack is past the limit
+//   AK_CG_ENTER(lim), AK_CG_LEAVE()   a way in from the core: the limit set, and the core's put back
+#if defined(__aarch64__) && defined(AK_CG_X28) && (defined(__GNUC__) || defined(__clang__))
+#define AK_CG_LIM_P
+#define AK_CG_LIM_T
+#define AK_CG_LIM_A
+static inline uintptr_t ak_cg_x28(void) {
+	uintptr_t v;
+	__asm__("mov %0, x28" : "=r"(v));
+	return v;
+}
+#define AK_CG_LIM ak_cg_x28()
+// A compare and a branch (asm goto: a flag output would be set into a
+// register, then tested).
+#define AK_CG_CHECK(l) __asm__ goto("cmp sp, x28\n\tb.lo %l0" : : : "cc" : l)
+#define AK_CG_ENTER(lim) \
+	uintptr_t x28_; \
+	__asm__ volatile("mov %0, x28\n\tmov x28, %1" : "=&r"(x28_) : "r"((uintptr_t)(lim)) : "memory")
+#define AK_CG_LEAVE() __asm__ volatile("mov x28, %0" : : "r"(x28_) : "memory")
+#else
+#define AK_CG_LIM_P , uintptr_t lim_
+#define AK_CG_LIM_T , uintptr_t
+#define AK_CG_LIM_A , lim_
+#define AK_CG_LIM lim_
+#define AK_CG_CHECK(l) \
+	do { \
+		if (AK_UNLIKELY(ak_cg_stack_low(lim_))) goto l; \
+	} while (0)
+#define AK_CG_ENTER(lim) uintptr_t lim_ = (lim)
+#define AK_CG_LEAVE() AK_UNUSED(lim_)
+#endif
+
 // ak_cg_pending is ak_error_pending() for compiled code: the thread's
 // error slot found once in a function (*slot, NULL until then), then
 // read as memory. A thread-local's read is a call on some systems
@@ -617,10 +666,29 @@ static inline bool ak_cg_pending(void *const **slot) {
 	return **slot != NULL;
 }
 
+// AK_CG_OPAQUE(x) hides what the int lvalue x holds from the C
+// compiler's analysis (it costs no instruction): an add lang/cgen knows
+// can't overflow is written unchecked and then this, so that the C
+// compiler sees no more of it than it did of the checked add's result.
+#if defined(__GNUC__) || defined(__clang__)
+#define AK_CG_OPAQUE(x) __asm__("" : "+r"(x))
+#else
+#define AK_CG_OPAQUE(x) ((void)0)
+#endif
+
 // ak_cg_overflow throws a stack overflow in fn and returns a body's
 // result for it: in another file (interp.c), so that a body's check
 // tail-calls it and the check's path needs no frame.
 ak_ret ak_cg_overflow(const char *fn) __attribute__((cold));
+
+// ak_cg_unwind tells ak_frame_hook (if set) of a compiled function's
+// frame an error leaves, at line. It's cold and in another file, so the
+// C compiler takes every way to it as unlikely and lays the error's
+// paths out of the way: a call's test of the error it returns falls
+// through to what follows when it didn't throw, and the function's
+// returns aren't jumped to (the hook's own test would read as an even
+// branch, and the error's block would sit in the way).
+void ak_cg_unwind(const char *fn, const char *file, uint32_t line) __attribute__((cold));
 
 // ---- Functions that may suspend, compiled to C (ak_async_body) ----
 //

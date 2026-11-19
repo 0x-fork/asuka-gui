@@ -241,7 +241,7 @@ func (tc *Toolchain) LibWith(core string, kind LibKind, o LibOptions, out string
 		return err
 	}
 	objs := Paths(link)
-	more, err := tc.CC.CompileCached(o.Extra, flags)
+	more, err := tc.CC.CompileCached(o.Extra, append(append([]string{}, flags...), AppFlags(tc.Target)...))
 	if err != nil {
 		return err
 	}
@@ -427,7 +427,7 @@ func (tc *Toolchain) ExeWith(core string, o ExeOptions, out string) error {
 		srcs = append(srcs, o.Foreign.Glue)
 	}
 	if len(srcs) > 0 {
-		app, err := tc.CC.CompileCached(srcs, flags)
+		app, err := tc.CC.CompileCached(srcs, append(append([]string{}, flags...), AppFlags(tc.Target)...))
 		if err != nil {
 			return err
 		}

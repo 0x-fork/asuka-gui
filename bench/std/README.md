@@ -370,3 +370,45 @@ Of what's left, about a sixth is making the data's json.Value and
 freeing it again (an object a struct, its map's index and arrays, a
 Value a member), which text/template, reading the struct by
 reflection, doesn't do.
+
+## Calls, bounded ints, case mapping, SortedMap's own order (2026-11-19)
+
+The machine shared (load 90 to 280): cycles, the fewest of five
+interleaved runs, and instructions retired, the median, the whole
+process, in millions; "before" is c43394e1. The benchmarks this pass
+changed (the others' instructions are within 2% of before):
+
+| benchmark | cycles before | now | Go | now / Go | instructions before | now | Go |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| case | 2,172 | 1,262 | 1,621 | 0.78× | 8,314 | 4,846 | 7,839 |
+| concat | 168 | 152 | 157 | 0.97× | 1,106 | 1,013 | 936 |
+| split | 833 | 808 | 645 | 1.25× | 3,669 | 3,613 | 2,567 |
+| heap | 641 | 554 | 925 | 0.60× | 2,081 | 1,824 | 2,371 |
+| sortedmap | 2,856 | 2,588 | 1,870 | 1.38× | 4,015 | 2,847 | 2,352 |
+| mapstr | 860 | 596 | 1,369 | 0.44× | 2,642 | 2,666 | 4,094 |
+
+- case: lower, upper and foldCase copy what doesn't change a run at a
+  time and map ASCII stretches in one loop; a case-insensitive contains
+  or hasSuffix of ASCII compares bytes in place (it folded the whole
+  text into an array of code points, 48 MB for the 12 MB text), and a
+  suffix folds only the text's end.
+- concat: a file's let (syllables) is read borrowed, not retained and
+  released three times a string; byteCount is the string's length read
+  in place.
+- sortedmap: its order is optional, none the keys' own <: the B-tree's
+  search compares in place, branch-free, in a loop that calls nothing
+  (the closure a comparison made clang read the node's keys again after
+  each call). An inlined parameter the body only reads isn't copied
+  (each node retained twice less a level), and `n = n.kids[i]` reads
+  into n (the temp it went through kept a second reference). Still
+  behind Go's B-tree in cycles: each node is a struct of three arrays,
+  each a header and a buffer, so a level is two more dependent loads
+  (the keys' and the children's headers) than Go's two slices in the
+  node, and the leaf's insert is two array inserts (keys, values) to
+  Go's one of key-value pairs.
+- split: still a string object a piece (pieces in slabs), where Go's
+  substrings are two words in the slice: what's left is that
+  representation, not the code around it.
+
+Hello world (`asuka new --bin`, `asuka build`, macOS arm64): 886,400
+bytes before, 886,416 now.

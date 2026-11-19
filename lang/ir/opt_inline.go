@@ -14,7 +14,12 @@ import (
 // retained), its returns a copy of the result and a jump past the body,
 // and its reference registers let go of after it, as its frame's are as
 // it returns. The closure the call was made on is then often never read:
-// it isn't made at all.
+// it isn't made at all. A parameter the body never writes isn't copied:
+// the body reads the caller's argument register, or the register that
+// argument was itself just copied from (in the call's block, neither
+// written since), so passing a value to an inlined function retains and
+// releases nothing (a node of a tree a search goes down: neither its
+// argument's copy nor the parameter's).
 //
 // An error thrown in the body, or a call made there, is in the inlined
 // function as far as traces and diagnostics go: the caller's Inlines
@@ -279,6 +284,13 @@ func (o *optimizer) inline(fi int, snaps map[int]*snapshot) bool {
 			f.Kinds = append(f.Kinds, o.p.Funcs[s.g].CapKinds...)
 		}
 	}
+	// The instructions labels are at: a block starts there.
+	targets := map[int]bool{}
+	for _, at := range f.labels {
+		if at >= 0 {
+			targets[at] = true
+		}
+	}
 	newIdx := make([]int, len(f.Code)+1)
 	var out []Instr
 	inlined := false
@@ -321,9 +333,19 @@ func (o *optimizer) inline(fi int, snaps map[int]*snapshot) bool {
 			return Instr{Op: opMOV, Args: [5]int32{d, s}, Line: line}
 		}
 		start := label(len(out))
-		// The arguments, as a frame takes them.
+		// The arguments, as a frame takes them: copied in, but those the
+		// body only reads (argSrc).
+		src := o.argSrc(i, call, s, g.NParams, targets)
 		for p := 0; p < g.NParams; p++ {
-			out = append(out, mov(s.kinds[p], int32(r0+p), call.Args[2]+int32(p)))
+			if src[p] < 0 {
+				out = append(out, mov(s.kinds[p], int32(r0+p), call.Args[2]+int32(p)))
+			}
+		}
+		reg := func(x int32) int32 {
+			if int(x) < len(src) && src[x] >= 0 {
+				return src[x]
+			}
+			return x + int32(r0)
 		}
 		// The body, its labels its own.
 		gl := map[int]Label{}
@@ -350,7 +372,7 @@ func (o *optimizer) inline(fi int, snaps map[int]*snapshot) bool {
 			case "RET", "RET0":
 				if dst != bc.None {
 					if name == "RET" {
-						out = append(out, mov(f.Kinds[dst], dst, in.Args[0]+int32(r0)))
+						out = append(out, mov(f.Kinds[dst], dst, reg(in.Args[0])))
 					} else if f.Kinds[dst] == bc.KRef {
 						out = append(out, Instr{Op: opKNONE, Args: [5]int32{dst}, Line: line})
 					} else {
@@ -367,7 +389,7 @@ func (o *optimizer) inline(fi int, snaps map[int]*snapshot) bool {
 			for k, kind := range bc.Ops[in.Op].Operands {
 				switch {
 				case kind == bc.Reg && c.Args[k] != bc.None:
-					c.Args[k] += int32(r0)
+					c.Args[k] = reg(c.Args[k])
 				case kind == bc.Off:
 					c.Args[k] = int32(gl[int(c.Args[k])])
 				}
@@ -383,9 +405,10 @@ func (o *optimizer) inline(fi int, snaps map[int]*snapshot) bool {
 		for _, in := range s.inlines {
 			f.Inlines = append(f.Inlines, Inline{Start: label(posOf[in.start]), End: label(posOf[in.end]), Func: in.fn, Line: in.line})
 		}
-		// Its frame's references let go of, as it returns.
+		// Its frame's references let go of, as it returns (a parameter
+		// read in place isn't its).
 		for r, k := range s.kinds {
-			if k == bc.KRef {
+			if k == bc.KRef && (r >= len(src) || src[r] < 0) {
 				out = append(out, Instr{Op: opCLR, Args: [5]int32{int32(r0 + r)}, Line: line})
 			}
 		}
@@ -414,4 +437,78 @@ func (o *optimizer) inline(fi int, snaps map[int]*snapshot) bool {
 		return ea-sa < eb-sb
 	})
 	return true
+}
+
+// argSrc is, for each parameter of the function whose snapshot s the
+// call at i (in f) calls, the caller's register its inlined body reads
+// in its place, or -1 when it's copied in. A parameter the body never
+// writes (nothing it does sets, moves out of, or changes in place its
+// register: o.writes) needn't be its own: it reads the call's argument
+// register, which the body can't write either (its registers are its
+// own). And when that argument is a copy (MOVR, MOV) of another register
+// made in the call's block, with that one not written between, it reads
+// that one: the argument's copy is then read by nothing, and goes (the
+// dead code pass), with the release that cleared it.
+//
+// A register in a block of the body's own instructions (an argument it
+// passes on, a struct's field it makes) is copied there first by the
+// lowering, so a parameter read in place is only ever read.
+func (o *optimizer) argSrc(i int, call Instr, s *snapshot, nparams int, targets map[int]bool) []int32 {
+	src := make([]int32, nparams)
+	written := make([]bool, nparams)
+	for j := range s.code {
+		in := &s.code[j]
+		if bc.Ops[in.Op].Name == "CAP" {
+			continue
+		}
+		if opInfos[in.Op].unknown {
+			return fillNeg(src)
+		}
+		o.writes(in, func(r int) {
+			if r < nparams {
+				written[r] = true
+			}
+		})
+		// A block's start is passed whole, not read alone: a parameter
+		// in a block (an argument passed on, a struct's field) is
+		// copied in.
+		if b, n := o.blockRange(in); n > 0 && b < nparams {
+			for r := b; r < b+n && r < nparams; r++ {
+				written[r] = true
+			}
+		}
+	}
+	for p := range src {
+		src[p] = -1
+		if written[p] {
+			continue
+		}
+		a := call.Args[2] + int32(p)
+		src[p] = a
+		for j := i - 1; j >= 0; j-- {
+			in := &o.f.Code[j]
+			if (in.Op == opMOVR || in.Op == opMOV) && in.Args[0] == a {
+				from := in.Args[1]
+				ok := from != a
+				for k := j + 1; k < i && ok; k++ {
+					ok = !o.writesReg(&o.f.Code[k], int(from))
+				}
+				if ok {
+					src[p] = from
+				}
+				break
+			}
+			if o.writesReg(in, int(a)) || targets[j] || opInfos[in.Op].term {
+				break
+			}
+		}
+	}
+	return src
+}
+
+func fillNeg(xs []int32) []int32 {
+	for i := range xs {
+		xs[i] = -1
+	}
+	return xs
 }

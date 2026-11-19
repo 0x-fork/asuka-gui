@@ -21,7 +21,9 @@ import (
 //     on a straight path that calls nothing and changes nothing the
 //     value is in, is a C pointer borrowed from its container (v<r>):
 //     no retain, no release, and the register stays none, so an error
-//     on the way releases nothing it doesn't own;
+//     on the way releases nothing it doesn't own. A global only the
+//     module's init writes (a file's let: stableGlobals) is borrowed
+//     likewise, calls on the way or not: nothing changes it;
 //   - a change in place: an element taken out, changed by SETFs and
 //     put back with nothing on the way that can throw (so the handler
 //     that puts it back is never reached) is changed where it is: the
@@ -80,7 +82,8 @@ type plan struct {
 	// hoists: what's made unique as a loop is entered (flow.go), by the
 	// loop's first instruction.
 	hoists map[int]*hoist
-	// noOverflow: an ADDIS that can't overflow (flow.go): unchecked.
+	// noOverflow: an ADDI, SUBI, MULI or their immediates' form that
+	// can't overflow (flow.go): unchecked.
 	noOverflow map[int]bool
 }
 
@@ -210,7 +213,7 @@ func has(rs []int, r int) bool {
 
 // analyze plans f's places (ins, decoded; entries: the pcs control may
 // come in at besides falling or jumping there: handlers, resumptions).
-func analyze(m *bc.Module, f *bc.FuncDef, ins []insn, entries map[int]bool) *plan {
+func analyze(m *bc.Module, f *bc.FuncDef, ins []insn, entries map[int]bool, stable []bool) *plan {
 	pl := &plan{borrow: map[int]bool{}, inplace: map[int]bool{}, active: map[int][]int{}, skip: map[int]bool{},
 		direct: map[int]bool{}, moveOut: map[int]bool{}, moveIn: map[int]bool{}, virt: map[int]bool{},
 		unique: map[int]bool{}, inRange: map[int]bool{}, uniqueElem: map[int]bool{}, changes: map[int]bool{}, noOverflow: map[int]bool{}}
@@ -420,7 +423,7 @@ func analyze(m *bc.Module, f *bc.FuncDef, ins []insn, entries map[int]bool) *pla
 	borrowable := make([]bool, len(f.Kinds))
 	for _, in := range ins {
 		switch bc.Ops[in.op].Name {
-		case "IDX", "GETF", "GETP", "IDXF":
+		case "IDX", "GETF", "GETP", "IDXF", "GGET":
 			if in.args[0] != bc.None {
 				borrowable[in.args[0]] = true
 			}
@@ -431,11 +434,19 @@ func analyze(m *bc.Module, f *bc.FuncDef, ins []insn, entries map[int]bool) *pla
 			continue
 		}
 		nm := name(k)
-		if nm != "IDX" && nm != "GETF" && nm != "GETP" && nm != "IDXF" {
+		if nm != "IDX" && nm != "GETF" && nm != "GETP" && nm != "IDXF" && nm != "GGET" {
 			continue
 		}
 		in := ins[k]
 		t, c := in.args[0], in.args[1]
+		if nm == "GGET" {
+			// A stable global's: no register it's in (c, none) that the
+			// way could write, and no call that could change it.
+			if g := in.args[1]; g >= len(stable) || !stable[g] || bc.Kind(in.args[2]) != bc.KRef {
+				continue
+			}
+			c = bc.None
+		}
 		if t == bc.None || f.Kinds[t] != bc.KRef || t == c || ((nm == "IDX" || nm == "IDXF") && t == in.args[2]) {
 			continue
 		}
@@ -447,7 +458,10 @@ func analyze(m *bc.Module, f *bc.FuncDef, ins []insn, entries map[int]bool) *pla
 				end = j
 				break
 			}
-			if !(pathOps[nj] || callOps[nj] && !borrowable[c]) || taken[j] {
+			// A stable global's way may have anything (c none): nothing
+			// changes or frees it; what reads its register is checked
+			// below.
+			if !(c == bc.None || pathOps[nj] || callOps[nj] && !borrowable[c]) || taken[j] {
 				break
 			}
 			ws := writes(m, ins[j])
@@ -456,6 +470,12 @@ func analyze(m *bc.Module, f *bc.FuncDef, ins []insn, entries map[int]bool) *pla
 				break
 			}
 			if has(rs, t) && !src(j, t) {
+				break
+			}
+			if c == bc.None && (nj == "RET" || nj == "RET0") {
+				// A stable global's, to the function's end: its register,
+				// none, is let go of there as nothing.
+				end = j
 				break
 			}
 			if has(ws, t) {

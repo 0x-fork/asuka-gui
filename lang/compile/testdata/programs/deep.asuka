@@ -1,0 +1,24 @@
+// exit: 1
+// Recursing past the thread's stack is an error, stack overflow, in the
+// VM (its frames are counted) and compiled to C (the C stack's pointer
+// against the thread's limit, checked where a function calls), and its
+// trace names the frames it left from, the deepest first: the base case
+// is a branch that makes no frame, the error a call's result.
+
+fn down(n: int) -> int {
+  if n == 0 { return 0 }
+  return down(n - 1) + 1
+}
+
+fn main() {
+  print(down(10))
+  print(down(100000000))
+}
+
+// Stdout:
+// 10
+// Stderr:
+// error: stack overflow in down
+//     down (testdata/programs/deep.asuka:10)
+//     down (testdata/programs/deep.asuka:10)
+// …
