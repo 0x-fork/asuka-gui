@@ -51,7 +51,7 @@ func imm(in insn, j int) int16 { return int16(uint16(in.args[j])) }
 // thrown is C that goes to h when the last call threw (an error is
 // pending), from the source line of in.
 func (g *gen) thrown(in insn, h string) string {
-	return fmt.Sprintf("if (AK_UNLIKELY(ak_error_pending())) { at_ = %d; %s }", lineAt(g.f, in.pc), g.to(h))
+	return fmt.Sprintf("if (AK_UNLIKELY(ak_cg_pending(&E_))) { at_ = %d; %s }", lineAt(g.f, in.pc), g.to(h))
 }
 
 func (g *gen) moveOp(name string, in insn) bool {
@@ -260,7 +260,7 @@ func (g *gen) callOp(f *bc.FuncDef, name string, in insn, h string) bool {
 			} else if mut {
 				fmt.Fprintf(&s, "ak_val s_ = %s; ", g.r(a[2]))
 			}
-			fmt.Fprintf(&s, "ak_ret v_ = f%d_(NULL, lim_, d_ + 1%s); ", a[1], g.directArgs(a[1], a[2], a[3], "s_"))
+			fmt.Fprintf(&s, "ak_ret v_ = f%d_(NULL, lim_%s); ", a[1], g.directArgs(a[1], a[2], a[3], "s_"))
 			if int(callee.NParams) > maxValueParams {
 				s.WriteString(g.back(a[2], a[3]))
 			} else if mut {
@@ -280,7 +280,15 @@ func (g *gen) callOp(f *bc.FuncDef, name string, in insn, h string) bool {
 			g.acall(f, in, h, fmt.Sprintf("(const ak_func *)((ak_closure *)%s)->fn", g.rp(a[1])), fmt.Sprintf("(ak_closure *)%s", g.rp(a[1])))
 			break
 		}
-		g.w("{ ak_closure *c_ = %s; if (!c_) ak_panic(\"calling none\"); %s ak_val v_ = c_->invoke(c_, B_, %d); %s%s %s }", g.rp(a[1]), g.block(a[2], a[3]), a[3], g.back(a[2], a[3]), g.thrown(in, h), g.put(a[0], "v_", bc.KVoid))
+		// A closure of a compiled function is called as a CALL calls one
+		// (its direct body, the stack limit passed, its error in the
+		// result), through its function's direct entry; another (a
+		// builtin's, C code's, an interpreted one's) through its invoke.
+		// Of one whose parameters' kinds are the arguments' (and not a mut
+		// fn's), its direct body itself, the arguments in registers
+		// (sigCall).
+		g.w("{ ak_closure *c_ = %s; if (!c_) ak_panic(\"calling none\"); const ak_func *g_ = c_->invoke == ak_vm_closure_invoke ? c_->fn : NULL; ak_ret v_; %s{ %s if (AK_LIKELY(g_ && g_->direct)) v_ = g_->direct(c_, lim_, B_); else { v_.v = c_->invoke(c_, B_, %d); v_.e = ak_cg_pending(&E_); } %s} if (AK_UNLIKELY(v_.e)) %s %s }",
+			g.rp(a[1]), g.sigCall("c_", a[2], a[3]), g.block(a[2], a[3]), a[3], g.back(a[2], a[3]), g.fail(in, h), g.put(a[0], "v_.v", bc.KVoid))
 	case "CALLB":
 		if g.intrinsic(in, h) {
 			break
@@ -297,8 +305,8 @@ func (g *gen) callOp(f *bc.FuncDef, name string, in insn, h string) bool {
 			g.acall(f, in, h, fmt.Sprintf("ak_vm_method(%s, M->strings[%d])", g.rp(a[2]), a[1]), "NULL")
 			break
 		}
-		g.w("{ const ak_func *g_ = ak_vm_method(%s, M->strings[%d]); if (!g_) ak_panic(\"no method %%s\", M->strings[%d]->data); %s ak_val v_ = g_->native ? g_->native(B_, NULL) : ak_vm_call(g_, B_, %d); %s%s %s }",
-			g.rp(a[2]), a[1], a[1], g.block(a[2], a[3]), a[3], g.back(a[2], a[3]), g.thrown(in, h), g.putKind(a[0], "v_", "g_->ret"))
+		g.w("{ const ak_func *g_ = ak_vm_method(%s, M->strings[%d]); if (!g_) ak_panic(\"no method %%s\", M->strings[%d]->data); ak_ret v_; %s{ %s if (AK_LIKELY(g_->direct)) v_ = g_->direct(NULL, lim_, B_); else { v_.v = ak_vm_call(g_, B_, %d); v_.e = ak_cg_pending(&E_); } %s} if (AK_UNLIKELY(v_.e)) %s %s }",
+			g.rp(a[2]), a[1], a[1], g.sigCall("NULL", a[2], a[3]), g.block(a[2], a[3]), a[3], g.back(a[2], a[3]), g.fail(in, h), g.putKind(a[0], "v_.v", "g_->ret"))
 	case "CALLU":
 		g.w("{ %s ak_val v_ = ak_vm_call_untracked(%s, B_, %d); %s%s %s }", g.block(a[2], a[3]), g.rp(a[1]), a[3], g.back(a[2], a[3]), g.thrown(in, h), g.put(a[0], "v_", bc.KVoid))
 	case "RET":
@@ -327,6 +335,34 @@ func (g *gen) callOp(f *bc.FuncDef, name string, in insn, h string) bool {
 		return false
 	}
 	return true
+}
+
+// sigCall is C calling g_ (an ak_func, possibly NULL) through its direct
+// body when its signature (ak_func's sig, vm.h's ak_cg_sig_kind) is the
+// one n arguments from register b make, then going on with "else": the
+// arguments as C values in registers, no block, nothing copied back (a
+// mut fn's sig is 0). "" when there are too many arguments.
+func (g *gen) sigCall(clos string, b, n int) string {
+	if n > 8 || n > 0 && b == bc.None {
+		return ""
+	}
+	sig := uint32(0x80000000) | uint32(n)<<16
+	ts := []string{"ak_closure *", "uintptr_t"}
+	args := []string{clos, "lim_"}
+	for p := 0; p < n; p++ {
+		k := g.f.Kinds[b+p]
+		cls := uint32(0)
+		switch k {
+		case bc.KFloat:
+			cls = 1
+		case bc.KRef:
+			cls = 2
+		}
+		sig |= cls << (2 * p)
+		ts = append(ts, strings.TrimSpace(ctype(k)))
+		args = append(args, g.r(b+p)+"."+member(k))
+	}
+	return fmt.Sprintf("if (AK_LIKELY(g_ && g_->sig == %#xu)) v_ = ((ak_ret (*)(%s))g_->body)(%s); else ", sig, strings.Join(ts, ", "), strings.Join(args, ", "))
 }
 
 func (g *gen) errorOp(f *bc.FuncDef, name string, in insn, h string) bool {

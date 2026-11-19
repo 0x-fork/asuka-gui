@@ -390,17 +390,25 @@ static inline void ak_op_exit(ak_val *R, const uint8_t *kinds, uint16_t n, int k
 // and returns its result with whether it threw: ak_ret, two machine
 // registers on the ABIs' calls (x0 and x1, rax and rdx), so a compiled
 // caller tests a register for the error rather than the thread's
-// pending one. It also takes the depth of the direct calls it's in and
-// the thread's stack limit, so that its check of both costs no
-// thread-local read.
-typedef struct {
-	ak_val v;
-	uintptr_t e;  // it threw (the error is pending)
-} ak_ret;
-
-// AK_CG_DEPTH is how deep compiled calls go before a stack overflow:
-// as deep as the VM's frames go (interp.c's MAX_FRAMES).
-#define AK_CG_DEPTH 10000
+// pending one. It also takes the thread's stack limit, so that its check
+// of the stack costs no thread-local read: one compare of the stack
+// pointer, as Go's prologue is.
+// ak_cg_sp is the C stack's pointer, read without making a frame (so
+// that a body's check comes before its frame is set up, and a path that
+// needs none, a recursion's base case, makes none).
+static inline uintptr_t ak_cg_sp(void) {
+#if defined(__aarch64__) && (defined(__GNUC__) || defined(__clang__))
+	uintptr_t sp;
+	__asm__("mov %0, sp" : "=r"(sp));
+	return sp;
+#elif defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
+	uintptr_t sp;
+	__asm__("mov %%rsp, %0" : "=r"(sp));
+	return sp;
+#else
+	return (uintptr_t)__builtin_frame_address(0);
+#endif
+}
 
 // ak_cg_stack_low is ak_stack_low with the thread's limit given: the C
 // stack's pointer below it. On the web, the engine's stack is asked too
@@ -410,9 +418,23 @@ static inline bool ak_cg_stack_low(uintptr_t lim) {
 	AK_UNUSED(lim);
 	return ak_stack_low();
 #else
-	return (uintptr_t)__builtin_frame_address(0) < lim;
+	return ak_cg_sp() < lim;
 #endif
 }
+
+// ak_cg_pending is ak_error_pending() for compiled code: the thread's
+// error slot found once in a function (*slot, NULL until then), then
+// read as memory. A thread-local's read is a call on some systems
+// (Apple's), and every call to a builtin is followed by this test.
+static inline bool ak_cg_pending(void *const **slot) {
+	if (AK_UNLIKELY(!*slot)) *slot = ak_error_slot();
+	return **slot != NULL;
+}
+
+// ak_cg_overflow throws a stack overflow in fn and returns a body's
+// result for it: in another file (interp.c), so that a body's check
+// tail-calls it and the check's path needs no frame.
+ak_ret ak_cg_overflow(const char *fn) __attribute__((cold));
 
 // ---- Functions that may suspend, compiled to C (ak_async_body) ----
 //

@@ -424,16 +424,27 @@ the C is written, from the bytecode's kinds.
   register's address, so none is kept in memory. A function of more
   than 384 registers (a big module's init) has them as an array, as the
   VM's frame: C compilers take too long to allocate thousands of locals.
-- Calls. A synchronous function is two C functions: its body
+- Calls. A synchronous function is three C functions: its body
   (`fN_`), which takes its arguments as C values of their kinds (a mut
-  fn's receiver by its address), the depth of the calls it's in and the
-  thread's stack limit, and returns `ak_ret` (its result, and whether it
-  threw) in two machine registers; and its VM entry (`fN`, an
-  `ak_native_body`), which the interpreter, closures and builtins call.
-  A CALL of a compiled function calls its body: the depth past
-  AK_CG_DEPTH (the VM's frames' bound) or the C stack past its limit is
-  a stack overflow, the error a register's test. Other calls test the
-  thread's pending error (inline).
+  fn's receiver by its address) and the thread's stack limit, and
+  returns `ak_ret` (its result, and whether it threw) in two machine
+  registers; its entry with the arguments in an array (`fN_c`, an
+  `ak_direct_body`); and its VM entry (`fN`, an `ak_native_body`), which
+  the interpreter and builtins call. A CALL of a compiled function calls
+  its body. The body's first instruction compares the stack pointer
+  with the limit, as Go's prologue does, before its frame is made (a
+  base case that calls nothing makes none); the C stack past its limit
+  is a stack overflow (ak_cg_overflow, tail-called), the error a
+  register's test. A function that calls nothing doesn't check: it can't
+  recurse, and its frame fits in what the limit leaves. The depth of
+  compiled calls isn't counted: they go as deep as the thread's stack,
+  as Go's and Swift's do (the VM's frames stop at 10,000). A CALLC of a
+  compiled function's closure, or a CALLI of a compiled method, whose
+  arguments' kinds are its parameters' (`ak_func.sig`: their count and
+  C types, one compare) calls its body too, the arguments in registers;
+  else its array entry; else the closure's invoke. Other calls test the
+  thread's pending error, its slot found once a function
+  (ak_cg_pending: a thread-local's read is a call on Apple's systems).
 - Instructions. Checked int arithmetic, comparisons, an index's range
   and a value's uniqueness are tested inline (ops.h's value-based
   bodies, the interpreter's too); a scalar element or field is read and

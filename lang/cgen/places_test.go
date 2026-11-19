@@ -173,7 +173,7 @@ fn main() { print("{fib(10)}") }
 	if !strings.Contains(c, "ak_ret v_ = f") || !strings.Contains(c, "if (AK_UNLIKELY(v_.e))") {
 		t.Errorf("not a direct call:\n%s", c)
 	}
-	if strings.Contains(c, "ak_error_pending") {
+	if strings.Contains(c, "ak_error_pending") || strings.Contains(c, "ak_cg_pending") {
 		t.Errorf("a direct call tests the pending error:\n%s", c)
 	}
 }

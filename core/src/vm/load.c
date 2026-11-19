@@ -456,9 +456,18 @@ bool ak_func_async(const ak_func *f) { return f->flags & AK_F_ASYNC; }
 // VM frame to say which module it's in.
 static ak_module *compiled;
 
-void ak_module_attach(ak_module *m, ak_val (*const *bodies)(ak_val *args, ak_closure *clos), int (*const *resumes)(struct ak_co *co, ak_val *out), uint32_t n) {
+void ak_module_attach(ak_module *m, ak_val (*const *bodies)(ak_val *args, ak_closure *clos), ak_ret (*const *directs)(ak_closure *clos, uintptr_t lim, ak_val *args), void (*const *direct_bodies)(void), int (*const *resumes)(struct ak_co *co, ak_val *out), uint32_t n) {
 	for (uint32_t i = 0; i < n && i < m->nfuncs; i++) {
-		m->funcs[i].native = bodies[i];
+		ak_func *f = &m->funcs[i];
+		f->native = bodies[i];
+		f->direct = directs[i];
+		f->body = direct_bodies[i];
+		f->sig = 0;
+		if (f->body && !(f->flags & (AK_F_MUT | AK_F_ASYNC)) && f->nparams <= AK_CG_SIG_MAX) {
+			uint32_t sig = 0x80000000u | (uint32_t)f->nparams << 16;
+			for (uint16_t p = 0; p < f->nparams; p++) sig |= ak_cg_sig_kind(f->kinds[p]) << (2 * p);
+			f->sig = sig;
+		}
 		m->funcs[i].resume = resumes[i];
 	}
 	compiled = m;
