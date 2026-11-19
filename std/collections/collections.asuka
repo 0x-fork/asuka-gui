@@ -163,8 +163,8 @@ pub fn heapOf<T>(items: [T], by: fn(T, T) -> bool) -> Heap<T> {
 // A node holds from minKeys to maxKeys keys (the root fewer), sorted,
 // their values, and, unless it's a leaf, a child more than its keys: the
 // keys of kids[i] come between keys[i - 1] and keys[i].
-let minKeys = 15
-let maxKeys = 31
+let minKeys = 31
+let maxKeys = 63
 
 struct Node<K, V> {
   keys: [K] = []
