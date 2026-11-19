@@ -32,67 +32,77 @@ __attribute__((cold, noinline, unused)) static bool ak_op_overflow(void) {
 	return false;
 }
 
-// ak_op_addi, ak_op_subi, ak_op_muli and ak_op_negi are ADDI, SUBI, MULI
-// and NEGI: the operation, checked (the CPU's overflow flag, one
-// predicted branch); false when it overflowed and threw.
-static inline bool ak_op_addi(ak_val *R, uint16_t a, uint16_t b, uint16_t c) {
-	int64_t r;
-	if (__builtin_expect(__builtin_add_overflow(R[b].i, R[c].i, &r), 0)) return ak_op_overflow();
-	R[a].i = r;
+// ak_addi, ak_subi, ak_muli and ak_negi are ADDI, SUBI, MULI and NEGI
+// on values: the operation, checked (the CPU's overflow flag, one
+// predicted branch), its result in *r; false (*r as it was) when it
+// overflowed and threw. ak_op_addi... are the same on a frame's
+// registers, the interpreter's.
+static inline bool ak_addi(int64_t *r, int64_t b, int64_t c) {
+	int64_t v;
+	if (__builtin_expect(__builtin_add_overflow(b, c, &v), 0)) return ak_op_overflow();
+	*r = v;
 	return true;
 }
 
-static inline bool ak_op_subi(ak_val *R, uint16_t a, uint16_t b, uint16_t c) {
-	int64_t r;
-	if (__builtin_expect(__builtin_sub_overflow(R[b].i, R[c].i, &r), 0)) return ak_op_overflow();
-	R[a].i = r;
+static inline bool ak_subi(int64_t *r, int64_t b, int64_t c) {
+	int64_t v;
+	if (__builtin_expect(__builtin_sub_overflow(b, c, &v), 0)) return ak_op_overflow();
+	*r = v;
 	return true;
 }
 
-static inline bool ak_op_muli(ak_val *R, uint16_t a, uint16_t b, uint16_t c) {
-	int64_t r;
-	if (__builtin_expect(__builtin_mul_overflow(R[b].i, R[c].i, &r), 0)) return ak_op_overflow();
-	R[a].i = r;
+static inline bool ak_muli(int64_t *r, int64_t b, int64_t c) {
+	int64_t v;
+	if (__builtin_expect(__builtin_mul_overflow(b, c, &v), 0)) return ak_op_overflow();
+	*r = v;
 	return true;
 }
 
-static inline bool ak_op_negi(ak_val *R, uint16_t a, uint16_t b) {
-	int64_t r;
-	if (__builtin_expect(__builtin_sub_overflow((int64_t)0, R[b].i, &r), 0)) return ak_op_overflow();
-	R[a].i = r;
+static inline bool ak_negi(int64_t *r, int64_t b) {
+	int64_t v;
+	if (__builtin_expect(__builtin_sub_overflow((int64_t)0, b, &v), 0)) return ak_op_overflow();
+	*r = v;
 	return true;
 }
 
-static inline bool ak_op_divi(ak_val *R, uint16_t a, uint16_t b, uint16_t c, bool mod) {
-	int64_t x = R[b].i, y = R[c].i;
-	if (y == 0) {
-		ak_throw_msg("division by zero");
-		return false;
-	}
+// ak_op_division throws division by zero (cold, as ak_op_overflow).
+__attribute__((cold, noinline, unused)) static bool ak_op_division(void) {
+	ak_throw_msg("division by zero");
+	return false;
+}
+
+static inline bool ak_divi(int64_t *r, int64_t x, int64_t y, bool mod) {
+	if (__builtin_expect(y == 0, 0)) return ak_op_division();
 	if (y == -1) {
 		// x % -1 is 0; x / -1 is -x, which the smallest int hasn't.
-		if (mod) R[a].i = 0;
+		if (mod) *r = 0;
 		else if (x == INT64_MIN) return ak_op_overflow();
-		else R[a].i = -x;
+		else *r = -x;
 	} else {
-		R[a].i = mod ? x % y : x / y;
+		*r = mod ? x % y : x / y;
 	}
 	return true;
 }
 
-// ak_op_shift is b << c, or b >> c (arithmetic) when right: a count of
-// 64 or more shifts every bit out (0, or -1 for >> of a negative), as
-// Go's do; a negative count throws.
-static inline bool ak_op_shift(ak_val *R, uint16_t a, uint16_t b, uint16_t c, bool right) {
-	int64_t x = R[b].i, n = R[c].i;
-	if (n < 0) {
+// ak_shift is x << n, or x >> n (arithmetic) when right: a count of 64
+// or more shifts every bit out (0, or -1 for >> of a negative), as Go's
+// do; a negative count throws.
+static inline bool ak_shift(int64_t *r, int64_t x, int64_t n, bool right) {
+	if (__builtin_expect(n < 0, 0)) {
 		ak_throw_msg("negative shift amount");
 		return false;
 	}
-	if (right) R[a].i = n >= 64 ? (x < 0 ? -1 : 0) : x >> n;
-	else R[a].i = n >= 64 ? 0 : (int64_t)((uint64_t)x << n);
+	if (right) *r = n >= 64 ? (x < 0 ? -1 : 0) : x >> n;
+	else *r = n >= 64 ? 0 : (int64_t)((uint64_t)x << n);
 	return true;
 }
+
+static inline bool ak_op_addi(ak_val *R, uint16_t a, uint16_t b, uint16_t c) { return ak_addi(&R[a].i, R[b].i, R[c].i); }
+static inline bool ak_op_subi(ak_val *R, uint16_t a, uint16_t b, uint16_t c) { return ak_subi(&R[a].i, R[b].i, R[c].i); }
+static inline bool ak_op_muli(ak_val *R, uint16_t a, uint16_t b, uint16_t c) { return ak_muli(&R[a].i, R[b].i, R[c].i); }
+static inline bool ak_op_negi(ak_val *R, uint16_t a, uint16_t b) { return ak_negi(&R[a].i, R[b].i); }
+static inline bool ak_op_divi(ak_val *R, uint16_t a, uint16_t b, uint16_t c, bool mod) { return ak_divi(&R[a].i, R[b].i, R[c].i, mod); }
+static inline bool ak_op_shift(ak_val *R, uint16_t a, uint16_t b, uint16_t c, bool right) { return ak_shift(&R[a].i, R[b].i, R[c].i, right); }
 
 static inline int64_t ak_op_f2i(double d) {
 	return d != d ? 0 : d >= 9.2233720368547758e18 ? INT64_MAX : d <= -9.2233720368547758e18 ? INT64_MIN : (int64_t)d;
@@ -142,12 +152,15 @@ static inline void ak_op_cap(ak_val *R, uint16_t a, const ak_closure *c, uint16_
 	else R[a] = v;
 }
 
-static inline void ak_op_vbox(ak_val *R, uint16_t a, ak_val v, uint16_t k) {
-	ak_box *b = ak_box_new((ak_kind)k, v);
-	ak_retain_val(b->v, (ak_kind)k);
+// ak_vbox_new is VBOX's box: a var's, holding v (retained).
+static inline ak_box *ak_vbox_new(ak_val v, ak_kind k) {
+	ak_box *b = ak_box_new(k, v);
+	ak_retain_val(b->v, k);
 	b->h.flags = 1;
-	ak_op_setref(R, a, b);
+	return b;
 }
+
+static inline void ak_op_vbox(ak_val *R, uint16_t a, ak_val v, uint16_t k) { ak_op_setref(R, a, ak_vbox_new(v, (ak_kind)k)); }
 
 static inline void ak_op_vget(ak_val *R, uint16_t a, const ak_box *b) {
 	if (b->h.aux == AK_K_REF) ak_op_setref(R, a, ak_retain(b->v.p));
@@ -234,11 +247,15 @@ static inline ak_arr *ak_op_newa(ak_kind k, const ak_shape *s, const ak_val *ite
 	return arr;
 }
 
+// ak_op_range throws an index out of arr's range (cold: the checks'
+// paths stay short).
+__attribute__((cold, noinline, unused)) static bool ak_op_range(const ak_arr *arr, int64_t i) {
+	ak_throw_msg("index %lld out of range (length %u)", (long long)i, arr->len);
+	return false;
+}
+
 static inline bool ak_op_idx(ak_val *R, uint16_t a, const ak_arr *arr, int64_t i) {
-	if (!ak_arr_check(arr, i)) {
-		ak_throw_msg("index %lld out of range (length %u)", (long long)i, arr->len);
-		return false;
-	}
+	if (AK_UNLIKELY(!ak_arr_check(arr, i))) return ak_op_range(arr, i);
 	ak_val v = arr->data[i];
 	if (ak_arr_kind(arr) == AK_K_REF) ak_op_setref(R, a, ak_retain(v.p));
 	else R[a] = v;
@@ -247,10 +264,7 @@ static inline bool ak_op_idx(ak_val *R, uint16_t a, const ak_arr *arr, int64_t i
 
 static inline bool ak_op_setidx(ak_val *R, uint16_t a, int64_t i, ak_val v) {
 	ak_arr **ap = (ak_arr **)&R[a].p;
-	if (!ak_arr_check(*ap, i)) {
-		ak_throw_msg("index %lld out of range (length %u)", (long long)i, (*ap)->len);
-		return false;
-	}
+	if (AK_UNLIKELY(!ak_arr_check(*ap, i))) return ak_op_range(*ap, i);
 	ak_retain_val(v, ak_arr_kind(*ap));
 	ak_arr_set(ap, i, v);
 	return true;
@@ -295,13 +309,15 @@ static inline bool ak_op_mgetj(ak_val *R, uint16_t a, const ak_map *m, ak_val ke
 	return true;
 }
 
-static inline void ak_op_mset(ak_val *R, uint16_t a, ak_val k, ak_val v) {
-	ak_map **mp = (ak_map **)&R[a].p;
+// ak_mset is MSET on the map *mp: k and v retained as its kinds say.
+static inline void ak_mset(ak_map **mp, ak_val k, ak_val v) {
 	ak_kind kk = (ak_kind)((*mp)->h.aux & 0xf), vk = (ak_kind)((*mp)->h.aux >> 4);
 	ak_retain_val(k, kk);
 	ak_retain_val(v, vk);
 	ak_map_set(mp, k, v);
 }
+
+static inline void ak_op_mset(ak_val *R, uint16_t a, ak_val k, ak_val v) { ak_mset((ak_map **)&R[a].p, k, v); }
 
 // ak_op_task starts the closure as a task (or, a C closure, takes the
 // future it returns).
@@ -314,6 +330,36 @@ static inline ak_val ak_op_task(ak_closure *c) {
 static inline void ak_op_exit(ak_val *R, const uint8_t *kinds, uint16_t n, int keep) {
 	for (uint16_t i = 0; i < n; i++)
 		if (kinds[i] == AK_K_REF && (int)i != keep) ak_release(R[i].p);
+}
+
+// ---- Functions compiled to C (lang/cgen) ----
+//
+// A synchronous function's direct body takes its arguments as C values
+// and returns its result with whether it threw: ak_ret, two machine
+// registers on the ABIs' calls (x0 and x1, rax and rdx), so a compiled
+// caller tests a register for the error rather than the thread's
+// pending one. It also takes the depth of the direct calls it's in and
+// the thread's stack limit, so that its check of both costs no
+// thread-local read.
+typedef struct {
+	ak_val v;
+	uintptr_t e;  // it threw (the error is pending)
+} ak_ret;
+
+// AK_CG_DEPTH is how deep compiled calls go before a stack overflow:
+// as deep as the VM's frames go (interp.c's MAX_FRAMES).
+#define AK_CG_DEPTH 10000
+
+// ak_cg_stack_low is ak_stack_low with the thread's limit given: the C
+// stack's pointer below it. On the web, the engine's stack is asked too
+// (base.h).
+static inline bool ak_cg_stack_low(uintptr_t lim) {
+#if defined(__wasm__)
+	AK_UNUSED(lim);
+	return ak_stack_low();
+#else
+	return (uintptr_t)__builtin_frame_address(0) < lim;
+#endif
 }
 
 // ---- Functions that may suspend, compiled to C (ak_async_body) ----

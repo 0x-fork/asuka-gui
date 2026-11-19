@@ -5,9 +5,49 @@
 
 int64_t ak_obj_live;
 
+// small reports whether an object of tag is a small block (ak_alloc_small):
+// one whose size is fixed as it's made, and known from it as it's freed
+// (obj_size).
+static inline bool small(ak_tag tag, size_t size) {
+	switch (tag) {
+	case AK_TAG_ARR:
+	case AK_TAG_MAP:
+	case AK_TAG_STRUCT:
+	case AK_TAG_ENUM:
+	case AK_TAG_BOX:
+	case AK_TAG_CLOSURE:
+		return size <= AK_SMALL_MAX;
+	default:
+		return false;
+	}
+}
+
+// obj_size is what o was made with, for those of its tags small says.
+static inline size_t obj_size(const ak_obj *o) {
+	switch ((ak_tag)o->tag) {
+	case AK_TAG_ARR: return sizeof(ak_arr);
+	case AK_TAG_MAP: return sizeof(ak_map);
+	case AK_TAG_STRUCT: return sizeof(ak_struct) + sizeof(ak_val) * ((const ak_struct *)o)->shape->nfields;
+	case AK_TAG_ENUM: {
+		const ak_enum *e = (const ak_enum *)o;
+		return sizeof(ak_enum) + sizeof(ak_val) * e->shape->cases[e->h.aux].nfields;
+	}
+	case AK_TAG_BOX: return sizeof(ak_box);
+	case AK_TAG_CLOSURE: return sizeof(ak_closure) + sizeof(ak_val) * ((const ak_closure *)o)->ncap;
+	default: return SIZE_MAX;
+	}
+}
+
+// obj_free frees o's own memory.
+static inline void obj_free(ak_obj *o) {
+	size_t n = obj_size(o);
+	if (n <= AK_SMALL_MAX) ak_free_small(o, n);
+	else ak_free(o);
+}
+
 void *ak_obj_new(ak_tag tag, size_t size) {
-	__atomic_add_fetch(&ak_obj_live, 1, __ATOMIC_RELAXED);
-	ak_obj *o = ak_alloc(size);
+	ak_obj_count(1);
+	ak_obj *o = small(tag, size) ? ak_alloc_small(size) : ak_alloc(size);
 	o->rc = 1;
 	o->tag = (uint8_t)tag;
 	return o;
@@ -20,7 +60,7 @@ void ak_make_immortal(void *p) {
 	if (o->tag == AK_TAG_STR) ak_str_hash((ak_str *)o);
 	o->rc = AK_RC_IMMORTAL;
 	// A constant, never destroyed: not one ak_obj_live counts.
-	__atomic_sub_fetch(&ak_obj_live, 1, __ATOMIC_RELAXED);
+	ak_obj_count(-1);
 }
 
 // ---- Walking values ----
@@ -202,7 +242,7 @@ static void free_mem(ak_obj *o) {
 	default:
 		break;
 	}
-	ak_free(o);
+	obj_free(o);
 }
 
 // finish destroys o, whose values are released: its map's keys, its
@@ -234,7 +274,7 @@ static void finish(ak_obj *o) {
 		break;
 	}
 	}
-	__atomic_sub_fetch(&ak_obj_live, 1, __ATOMIC_RELAXED);
+	ak_obj_count(-1);
 	free_mem(o);
 }
 
@@ -242,7 +282,7 @@ static inline bool is_leaf(const ak_obj *o) { return o->tag == AK_TAG_STR || o->
 
 // free_leaf destroys a string or bytes, which hold nothing.
 static inline void free_leaf(ak_obj *o) {
-	__atomic_sub_fetch(&ak_obj_live, 1, __ATOMIC_RELAXED);
+	ak_obj_count(-1);
 	ak_free(o);
 }
 
@@ -932,7 +972,7 @@ void *ak_constant_put(void **slot, void *v) {
 
 // ---- Errors ----
 
-static AK_TLS void *pending_error;
+AK_TLS void *ak_pending_error;
 
 static const uint8_t error_kinds[] = {AK_K_REF};
 // Names carry their field's JSON descriptor after the NUL, as the
@@ -959,8 +999,8 @@ void (*ak_frame_hook)(const char *fn, const char *file, uint32_t line);
 
 void ak_throw(void *err) {
 	if (ak_throw_hook && err) ak_throw_hook(err);
-	if (pending_error) ak_release(pending_error);
-	pending_error = err;
+	if (ak_pending_error) ak_release(ak_pending_error);
+	ak_pending_error = err;
 }
 
 void ak_throw_msg(const char *fmt, ...) {
@@ -996,11 +1036,9 @@ void ak_throw_cancel(void) {
 	ak_throw(c);
 }
 
-bool ak_error_pending(void) { return pending_error != NULL; }
-
 void *ak_error_take(void) {
-	void *e = pending_error;
-	pending_error = NULL;
+	void *e = ak_pending_error;
+	ak_pending_error = NULL;
 	return e;
 }
 
