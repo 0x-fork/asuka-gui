@@ -421,6 +421,24 @@ func (b *fb) builtinMethod(e *syntax.CallExpr, call *check.Call, recv *int, dst 
 			return r
 		}
 	}
+	switch m.Builtin {
+	case "arr.is_empty", "map.is_empty", "set.is_empty", "str.is_empty", "bytes.is_empty":
+		// Its length's test: no call.
+		x := b.recvValue(call, recv)
+		n := b.temp(bc.KInt)
+		b.emit(op("LEN"), n, x)
+		r := b.out(dst, bc.KBool)
+		b.emit(op("EQI"), r, n, b.konst(0))
+		return r
+	}
+	if !m.Inout && !b.l.noFuse {
+		if r, ok := b.fuseSeq(e, call, dst); ok {
+			return r
+		}
+		if r, ok := b.arrayLoop(e, call, recv, dst); ok {
+			return r
+		}
+	}
 	// Arguments first (before the receiver is taken out, when it's
 	// changed in place), in the builtin's order.
 	mark := b.mark()

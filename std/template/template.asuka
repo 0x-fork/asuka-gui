@@ -218,8 +218,9 @@ enum Node {
   out(Expr)
   /// {% if %}: the first branch whose condition holds, else otherwise.
   branch(conds: [(Expr, [Node])], otherwise: [Node])
-  /// {% for %}.
-  each(key: string, value: string, items: Expr, body: [Node], otherwise: [Node], pos: int)
+  /// {% for %}; loop: whether the body may read loop (loop.index...),
+  /// which is made only then.
+  each(key: string, value: string, items: Expr, body: [Node], otherwise: [Node], pos: int, loop: bool)
   /// {% set %}.
   assign(name: string, value: Expr)
   /// {% include %}, and the indentation of its line when it's alone
@@ -670,7 +671,7 @@ struct Parser {
         let _ = ending()
       }
       try done()
-      return .each(key: key, value: value, items: items, body: body, otherwise: otherwise, pos: pos)
+      return .each(key: key, value: value, items: items, body: body, otherwise: otherwise, pos: pos, loop: readsName(body, "loop"))
     }
     if word == "set" {
       let n = try ident("the variable")
@@ -1099,7 +1100,7 @@ struct Renderer {
             try nodes(t, otherwise)
           }
         }
-        .each(key, value, items, body, otherwise, at) => try loop(t, key, value, try eval(t, items), body, otherwise, pos(items))
+        .each(key, value, items, body, otherwise, at, usesLoop) => try loop(t, key, value, try eval(t, items), body, otherwise, pos(items), usesLoop)
         .assign(name, value) => {
           let v = try eval(t, value)
           scopes[scopes.count() - 1][name] = v
@@ -1149,7 +1150,7 @@ struct Renderer {
     let _ = blocks.pop()
   }
 
-  mut fn loop(t: Template, key: string, value: string, items: V, body: [Node], otherwise: [Node], at: int) throws {
+  mut fn loop(t: Template, key: string, value: string, items: V, body: [Node], otherwise: [Node], at: int, usesLoop: bool) throws {
     var pairs: [(V, V)] = []
     match items {
       .val(.array(xs)) => {
@@ -1187,7 +1188,9 @@ struct Renderer {
     let top = scopes.count() - 1
     for (i, (k, v)) in pairs.enumerated() {
       var vars: [string: V] = [:]
-      vars["loop"] = .val(.object(["index": .int(i + 1), "index0": .int(i), "revindex": .int(n - i), "revindex0": .int(n - i - 1), "first": .bool(i == 0), "last": .bool(i == n - 1), "length": .int(n)]))
+      if usesLoop {
+        vars["loop"] = .val(.object(["index": .int(i + 1), "index0": .int(i), "revindex": .int(n - i), "revindex0": .int(n - i - 1), "first": .bool(i == 0), "last": .bool(i == n - 1), "length": .int(n)]))
+      }
       if key.isEmpty() {
         vars[value] = if isMap { k } else { v }
       } else if isMap {
@@ -1498,21 +1501,22 @@ struct Renderer {
   }
 
   fn builtin(t: Template, name: string, v: V, args: [V], at: int) throws -> V {
+    let which = filterNames[name] ?? .unknown
     // What takes text and gives text: markup stays markup.
-    if ["upper", "lower", "capitalize", "title", "trim", "indent", "truncate", "replace", "striptags"].contains(name) {
+    if [Filter.upper, Filter.lower, Filter.capitalize, Filter.title, Filter.trim, Filter.indent, Filter.truncate, Filter.replace, Filter.striptags].contains(which) {
       let s = try str(t, v, at)
       var out = s
-      if name == "upper" {
+      if which == .upper {
         out = s.upper()
-      } else if name == "lower" {
+      } else if which == .lower {
         out = s.lower()
-      } else if name == "capitalize" {
+      } else if which == .capitalize {
         out = capitalize(s)
-      } else if name == "title" {
+      } else if which == .title {
         out = s.split(" ").map(w => w.split("-").map(capitalize).joined(separator: "-")).joined(separator: " ")
-      } else if name == "trim" {
+      } else if which == .trim {
         out = s.trim()
-      } else if name == "indent" {
+      } else if which == .indent {
         // indent(width = 4, first = false): the lines after the first
         // (and the first, if first), the blank ones left as they are.
         let pad = match args.get(0) {
@@ -1525,7 +1529,7 @@ struct Renderer {
           lines.push(if (i > 0 || first) && !l.trim().isEmpty() { pad + l } else { l })
         }
         out = lines.joined(separator: "\n")
-      } else if name == "truncate" {
+      } else if which == .truncate {
         // truncate(length = 255, end = "…"): in grapheme clusters.
         let n = try iArg(t, args, 0, "truncate", 255)
         let end = try sArg(t, args, 1, "truncate", "…")
@@ -1533,27 +1537,27 @@ struct Renderer {
         if gs.count() > n {
           out = gs.prefix(max(n - end.graphemes().count(), 0)).joined().trimEnd() + end
         }
-      } else if name == "replace" {
+      } else if which == .replace {
         if args.count() < 2 {
           throw fail(t, at, "replace takes what to replace and with what: replace(\"a\", \"b\")")
         }
         out = s.replace(try sArg(t, args, 0, name, ""), try sArg(t, args, 1, name, ""), count: try iArg(t, args, 2, name, -1))
-      } else if name == "striptags" {
+      } else if which == .striptags {
         out = stripTags(s)
         return .val(.string(out))
       }
       return if isSafe(v) { .safe(out) } else { .val(.string(out)) }
     }
-    if name == "safe" {
+    if which == .safe {
       return .safe(try str(t, v, at))
     }
-    if name == "escape" || name == "e" {
+    if which == .escape || which == .e {
       return if isSafe(v) { v } else { .safe(html.escape(try str(t, v, at))) }
     }
-    if name == "urlencode" {
+    if which == .urlencode {
       return .val(.string(url.escape(try str(t, v, at))))
     }
-    if name == "json" || name == "tojson" {
+    if which == .json || which == .tojson {
       let j = try plain(t, v, at)
       var s = if let n = args.get(0) { try encodeIndented(j, try intOf(t, n, at, "json")) } else { json.encode(j) }
       if t.escape == .html {
@@ -1563,10 +1567,10 @@ struct Renderer {
       }
       return .val(.string(s))
     }
-    if name == "string" {
+    if which == .string {
       return .val(.string(try str(t, v, at)))
     }
-    if name == "int" {
+    if which == .int {
       return .val(.int(match v {
         .val(.int(n)) => n
         .val(.float(f)) => int(f)
@@ -1574,24 +1578,24 @@ struct Renderer {
         _ => if let text = textOf(v) { text.trim().toInt() ?? (if let f = text.trim().toFloat() { int(f) } else { try iArg(t, args, 0, name, 0) }) } else { try iArg(t, args, 0, name, 0) }
       }))
     }
-    if name == "float" {
+    if which == .float {
       return .val(.float(match v {
         .val(.int(n)) => float(n)
         .val(.float(f)) => f
         _ => if let text = textOf(v) { text.trim().toFloat() ?? 0 } else { 0 }
       }))
     }
-    if name == "abs" {
+    if which == .abs {
       return match v {
         .val(.int(n)) => V.val(.int(n.multipliedChecked(if n < 0 { -1 } else { 1 }) ?? throw fail(t, at, "integer overflow")))
         .val(.float(f)) => V.val(.float(f.abs()))
         _ => throw fail(t, at, "abs needs a number, not {kind(v)}")
       }
     }
-    if name == "round" || name == "fixed" {
+    if which == .round || which == .fixed {
       let x = number(v) ?? throw fail(t, at, "{name} needs a number, not {kind(v)}")
-      let digits = try iArg(t, args, 0, name, if name == "round" { 0 } else { 2 })
-      if name == "fixed" {
+      let digits = try iArg(t, args, 0, name, if which == .round { 0 } else { 2 })
+      if which == .fixed {
         return .val(.string(x.fixed(max(digits, 0))))
       }
       var scale = 1.0
@@ -1601,7 +1605,7 @@ struct Renderer {
       let r = if x < 0 { -((-x * scale + 0.5).floor()) / scale } else { (x * scale + 0.5).floor() / scale }
       return .val(.float(r))
     }
-    if name == "length" || name == "count" {
+    if which == .length || which == .count {
       return .val(.int(match v {
         .val(.string(s)) => s.count()
         .safe(s) => s.count()
@@ -1610,51 +1614,51 @@ struct Renderer {
         _ => throw fail(t, at, "length needs a string, an array or a map, not {kind(v)}")
       }))
     }
-    if name == "first" || name == "last" {
-      let first = name == "first"
+    if which == .first || which == .last {
+      let first = which == .first
       return match v {
         .val(.array(xs)) => if let x = (if first { xs.first() } else { xs.last() }) { V.val(x) } else { V.missing("the {name} of an empty array") }
         .val(.string(s)) => V.val(.string(if s.isEmpty() { "" } else if first { s.graphemes()[0] } else { s.graphemes().last() ?? "" }))
         _ => throw fail(t, at, "{name} needs an array or a string, not {kind(v)}")
       }
     }
-    if name == "reverse" {
+    if which == .reverse {
       return match v {
         .val(.array(xs)) => V.val(.array(xs.reversed()))
         .val(.string(s)) => V.val(.string(s.graphemes().reversed().joined()))
         _ => throw fail(t, at, "reverse needs an array or a string, not {kind(v)}")
       }
     }
-    if name == "keys" || name == "values" || name == "items" {
+    if which == .keys || which == .values || which == .items {
       let m = match v {
         .val(.object(m)) => m
         _ => throw fail(t, at, "{name} needs a map, not {kind(v)}")
       }
-      if name == "keys" {
+      if which == .keys {
         return .val(.array(m.keys().map(k => json.Value.string(k))))
       }
-      if name == "values" {
+      if which == .values {
         return .val(.array(m.values()))
       }
       return .val(.array(m.keys().map(k => json.Value.array([.string(k), m[k] ?? .null]))))
     }
-    if name == "split" {
+    if which == .split {
       let s = try str(t, v, at)
       let parts = if let sep = args.get(0) { s.split(try str(t, sep, at)) } else { s.fields() }
       return .val(.array(parts.map(p => json.Value.string(p))))
     }
-    if name == "lines" {
+    if which == .lines {
       return .val(.array((try str(t, v, at)).lines().map(p => json.Value.string(p))))
     }
     // What takes an array.
-    if !["join", "map", "selectattr", "rejectattr", "sort", "unique", "sum", "min", "max", "batch"].contains(name) {
+    if ![Filter.join, Filter.map, Filter.selectattr, Filter.rejectattr, Filter.sort, Filter.unique, Filter.sum, Filter.min, Filter.max, Filter.batch].contains(which) {
       throw fail(t, at, "unknown filter {name}")
     }
     let xs = match v {
       .val(.array(xs)) => xs
       _ => throw fail(t, at, "{name} needs an array, not {kind(v)}")
     }
-    if name == "join" {
+    if which == .join {
       let sep = try sArg(t, args, 0, name, "")
       var parts: [string] = []
       var markup = isSafe(v)
@@ -1668,7 +1672,7 @@ struct Renderer {
       }
       return .val(.string(joined))
     }
-    if name == "map" {
+    if which == .map {
       let f = try sArg(t, args, 0, name, "")
       var out: [json.Value] = []
       for x in xs {
@@ -1679,12 +1683,12 @@ struct Renderer {
       }
       return .val(.array(out))
     }
-    if name == "selectattr" || name == "rejectattr" {
+    if which == .selectattr || which == .rejectattr {
       let f = try sArg(t, args, 0, name, "")
-      let keepTrue = name == "selectattr"
+      let keepTrue = which == .selectattr
       return .val(.array(xs.filter(x => truthy(field(x, f)) == keepTrue)))
     }
-    if name == "sort" {
+    if which == .sort {
       // sort(attribute = none, reverse = false)
       let f: string? = if let a = args.get(0), !(if let .val(.null) = a { true } else { false }) { try str(t, a, at) } else { none }
       let down = if let .val(.bool(true)) = args.get(1) { true } else { false }
@@ -1702,7 +1706,7 @@ struct Renderer {
       }
       return .val(.array(sorted.map(p => p.0)))
     }
-    if name == "unique" {
+    if which == .unique {
       var out: [json.Value] = []
       for x in xs {
         if !out.any(y => same(V.val(x), V.val(y))) {
@@ -1711,19 +1715,19 @@ struct Renderer {
       }
       return .val(.array(out))
     }
-    if name == "sum" {
+    if which == .sum {
       var total: V = .val(.int(0))
       for x in xs {
         total = try binary(t, "+", total, V.val(x), at, .lit(.null), .lit(.null))
       }
       return total
     }
-    if name == "min" || name == "max" {
+    if which == .min || which == .max {
       var best: json.Value? = none
       for x in xs {
         if let b = best {
           let c = order(V.val(x), V.val(b)) ?? throw fail(t, at, "{name} compares numbers or strings")
-          if name == "min" && c < 0 || name == "max" && c > 0 {
+          if which == .min && c < 0 || which == .max && c > 0 {
             best = x
           }
         } else {
@@ -1732,7 +1736,7 @@ struct Renderer {
       }
       return if let b = best { V.val(b) } else { V.missing("the {name} of an empty array") }
     }
-    if name == "batch" {
+    if which == .batch {
       let n = try iArg(t, args, 0, name, 1)
       if n < 1 {
         throw fail(t, at, "batch's size is at least 1")
@@ -1781,6 +1785,97 @@ struct Renderer {
     }
   }
 }
+
+// The built-in filters, by name: builtin goes by them (a lookup, not a
+// comparison of the name with each).
+enum Filter {
+  unknown
+  abs
+  batch
+  capitalize
+  count
+  e
+  escape
+  first
+  fixed
+  float
+  indent
+  int
+  items
+  join
+  json
+  keys
+  last
+  length
+  lines
+  lower
+  map
+  max
+  min
+  rejectattr
+  replace
+  reverse
+  round
+  safe
+  selectattr
+  sort
+  split
+  string
+  striptags
+  sum
+  title
+  tojson
+  trim
+  truncate
+  unique
+  upper
+  urlencode
+  values
+}
+
+let filterNames: [string: Filter] = [
+  "abs": .abs,
+  "batch": .batch,
+  "capitalize": .capitalize,
+  "count": .count,
+  "e": .e,
+  "escape": .escape,
+  "first": .first,
+  "fixed": .fixed,
+  "float": .float,
+  "indent": .indent,
+  "int": .int,
+  "items": .items,
+  "join": .join,
+  "json": .json,
+  "keys": .keys,
+  "last": .last,
+  "length": .length,
+  "lines": .lines,
+  "lower": .lower,
+  "map": .map,
+  "max": .max,
+  "min": .min,
+  "rejectattr": .rejectattr,
+  "replace": .replace,
+  "reverse": .reverse,
+  "round": .round,
+  "safe": .safe,
+  "selectattr": .selectattr,
+  "sort": .sort,
+  "split": .split,
+  "string": .string,
+  "striptags": .striptags,
+  "sum": .sum,
+  "title": .title,
+  "tojson": .tojson,
+  "trim": .trim,
+  "truncate": .truncate,
+  "unique": .unique,
+  "upper": .upper,
+  "urlencode": .urlencode,
+  "values": .values,
+]
 
 // ---------------------------------------------------------------------
 // Values
@@ -1901,6 +1996,43 @@ fn stripTags(s: string) -> string {
     }
   }
   return html.unescape(out.fields().joined(separator: " "))
+}
+
+// readsName reports whether nodes may read the variable name: they name
+// it, or include, extend or render a block (what those read isn't
+// known here).
+fn readsName(ns: [Node], name: string) -> bool {
+  for n in ns {
+    let reads = match n {
+      .text(_) => false
+      .out(e) => exprReads(e, name)
+      .branch(conds, otherwise) => conds.any(where: c => exprReads(c.0, name) || readsName(c.1, name)) || readsName(otherwise, name)
+      .each(_, _, items, body, otherwise, _, _) => exprReads(items, name) || readsName(body, name) || readsName(otherwise, name)
+      .assign(_, value) => exprReads(value, name)
+      .include(_, _, _) => true
+      .block(_, _) => true
+      .extends(_) => true
+    }
+    if reads {
+      return true
+    }
+  }
+  return false
+}
+
+fn exprReads(e: Expr, name: string) -> bool = match e {
+  .lit(_) => false
+  .list(xs) => xs.any(where: x => exprReads(x, name))
+  .name(n, _) => n == name
+  .attr(x, _, _) => exprReads(x, name)
+  .item(x, k, _) => exprReads(x, name) || exprReads(k, name)
+  .neg(x, _) => exprReads(x, name)
+  .negation(x) => exprReads(x, name)
+  .op(_, a, b, _) => exprReads(a, name) || exprReads(b, name)
+  .filter(x, _, args, _) => exprReads(x, name) || args.any(where: a => exprReads(a, name))
+  .test(x, _, args, _, _) => exprReads(x, name) || args.any(where: a => exprReads(a, name))
+  .cond(a, c, b) => exprReads(a, name) || exprReads(c, name) || exprReads(b, name)
+  .call(n, args, _) => n == "super" || args.any(where: a => exprReads(a, name))
 }
 
 fn encodeIndented(j: json.Value, n: int) throws -> string = json.encode(j, indent: max(n, 0))

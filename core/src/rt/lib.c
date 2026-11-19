@@ -677,6 +677,22 @@ static ak_val arr_push(ak_val *args, uint32_t n) {
 	RET_VOID;
 }
 
+// arr.append and arr.reserve are push and a capacity, for an array the
+// compiled code makes and fills itself (a fused loop's result: lang/ir's
+// seqfuse.go), which no state holds: nothing is recorded (ak_change).
+static ak_val arr_append(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_retain_val(A(1), ek(ARR(0)));
+	ak_arr_push((ak_arr **)&args[0].p, A(1));
+	RET_VOID;
+}
+
+static ak_val arr_reserve(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	if (A(1).i > 0) ak_arr_reserve((ak_arr **)&args[0].p, A(1).i > UINT32_MAX ? UINT32_MAX : (uint32_t)A(1).i);
+	RET_VOID;
+}
+
 static ak_val arr_insert(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	ak_retain_val(A(2), ek(ARR(0)));
@@ -2114,6 +2130,8 @@ const ak_lib_entry ak_lib[] = {
 	{"int.to_string", int_to_string},
 
 	{"arr.push", arr_push},
+	{"arr.append", arr_append},
+	{"arr.reserve", arr_reserve},
 	{"arr.insert", arr_insert},
 	{"arr.remove_at", arr_remove_at},
 	{"arr.remove_where", arr_remove_where},

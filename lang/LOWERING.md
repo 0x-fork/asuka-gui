@@ -88,6 +88,11 @@ innermost handler, with the registers as they were before it):
 - Common subexpressions: a scalar computed again in a block from
   registers not written since (a field read twice: `b.vx * b.vx`) is a
   copy of the first.
+- Scalar replacement: a struct or a tuple of scalars only, made (NEWS)
+  and only read by its fields (GETF) before its register is written
+  again, isn't made: each GETF reads the register the field was made
+  from (none written on the way). A small function returning
+  `(int, bool)`, inlined, allocates nothing.
 - Coalescing: `OP t, ...; MOV d, t` is `OP d, ...` when nothing reads t
   after and nothing between reads or writes d (or throws to a handler
   that reads it); a reference only when t held none and is let go of
@@ -101,13 +106,16 @@ innermost handler, with the registers as they were before it):
   a new value (NEWS, NEWA, CLOS...) into a reference register that held
   none, likewise; CLR of a register known none; a reference's copy that
   nothing reads before it's cleared (`MOVR d, s ... CLR d`, s not
-  written between).
+  written between), in the block or on every way on (an inlined
+  argument's, cleared after its body).
 
 Then, once per program, inlining (opt_inline.go), callees first: a
-call of a small function (24 instructions, 24 registers at most; not
+call of a small function (40 instructions, 24 registers at most; not
 async, not a mut fn, no handlers or peeks, not calling itself or its
-caller), and a CALLC of a closure a CLOS made in the same block (its
-captures' registers not written since), is replaced with the body, in
+caller), and a CALLC of a closure a CLOS made (the last write of the
+closure's register on every way to the call: in the same block, or
+before a loop the call is in; its captures' registers not written on
+the way, or, scalars, copied as it's made), is replaced with the body, in
 registers of the caller's (one set per callee: its bodies never run at
 once): the arguments copied in as a frame takes them, each return a
 copy of the result and a jump past the body, the body's references
@@ -158,7 +166,7 @@ every branch's types are the same on every platform.
 | `float` | float | |
 | `string` | ref | ak_str: its bytes after its header; appended to in place when its holder's alone (`s += x`: a buffer that doubles), a split's pieces made in shared slabs (core/src/rt/str.c) |
 | `bytes` | ref | ak_bytes |
-| `[T]` | ref | ak_arr, element kind T's, shape T's; its elements 8-byte values, but a `[bool]`'s a byte each (ak_elem: packed, holding no references) |
+| `[T]` | ref | ak_arr, element kind T's, shape T's; its elements 8-byte values, but a `[bool]`'s a byte each and a sized integer's below 64 bits (`[u8]`, `[i32]`...) its own width (ak_elem: packed, holding no references; a map's keys or values of a sized type are values) |
 | `[K: V]` | ref | ak_map |
 | `Set<T>` | ref | ak_map of T's keys to void values, flagged AK_MAP_SET (core/src/rt/set.c) |
 | `Seq<T>` | ref | an ak_seq, the runtime's immutable description of a lazy sequence (core/src/rt/seq.c) |
@@ -425,16 +433,27 @@ the C is written, from the bytecode's kinds.
   register's address, so none is kept in memory. A function of more
   than 384 registers (a big module's init) has them as an array, as the
   VM's frame: C compilers take too long to allocate thousands of locals.
-- Calls. A synchronous function is two C functions: its body
+- Calls. A synchronous function is three C functions: its body
   (`fN_`), which takes its arguments as C values of their kinds (a mut
-  fn's receiver by its address), the depth of the calls it's in and the
-  thread's stack limit, and returns `ak_ret` (its result, and whether it
-  threw) in two machine registers; and its VM entry (`fN`, an
-  `ak_native_body`), which the interpreter, closures and builtins call.
-  A CALL of a compiled function calls its body: the depth past
-  AK_CG_DEPTH (the VM's frames' bound) or the C stack past its limit is
-  a stack overflow, the error a register's test. Other calls test the
-  thread's pending error (inline).
+  fn's receiver by its address) and the thread's stack limit, and
+  returns `ak_ret` (its result, and whether it threw) in two machine
+  registers; its entry with the arguments in an array (`fN_c`, an
+  `ak_direct_body`); and its VM entry (`fN`, an `ak_native_body`), which
+  the interpreter and builtins call. A CALL of a compiled function calls
+  its body. The body's first instruction compares the stack pointer
+  with the limit, as Go's prologue does, before its frame is made (a
+  base case that calls nothing makes none); the C stack past its limit
+  is a stack overflow (ak_cg_overflow, tail-called), the error a
+  register's test. A function that calls nothing doesn't check: it can't
+  recurse, and its frame fits in what the limit leaves. The depth of
+  compiled calls isn't counted: they go as deep as the thread's stack,
+  as Go's and Swift's do (the VM's frames stop at 10,000). A CALLC of a
+  compiled function's closure, or a CALLI of a compiled method, whose
+  arguments' kinds are its parameters' (`ak_func.sig`: their count and
+  C types, one compare) calls its body too, the arguments in registers;
+  else its array entry; else the closure's invoke. Other calls test the
+  thread's pending error, its slot found once a function
+  (ak_cg_pending: a thread-local's read is a call on Apple's systems).
 - Instructions. Checked int arithmetic, comparisons, an index's range
   and a value's uniqueness are tested inline (ops.h's value-based
   bodies, the interpreter's too); a scalar element or field is read and
@@ -443,7 +462,9 @@ the C is written, from the bytecode's kinds.
 - Places (lang/cgen/places.go). Along a straight path (each instruction
   the only way into the next): an element or a field read into a
   register that only reads it before it's cleared, with nothing on the
-  way that calls or changes what it's in, is a borrowed C pointer (no
+  way that changes what it's in (a call isn't given it; what it's read
+  from is a register of its own, which holds a reference to it, so no
+  call changes it in place or frees it), is a borrowed C pointer (no
   retain, no release; the register stays none, so an error on the way
   releases nothing); an element taken out, changed by SETFs and put back
   (Changing values in place) with nothing on the way that can throw is
@@ -456,6 +477,35 @@ the C is written, from the bytecode's kinds.
   field's read is, when only read), and SETIF makes the array and the
   element unique and checks the index only where nothing before on the
   path has, so `b.vx += ...; b.vy += ...` on one element checks once.
+  Every element is read and written as its array stores it, through
+  one set of helpers (insn.go's elemRef, elemSlot, loadElem, storeElem):
+  a reference (a struct...) as a pointer (AK_REFS), not through the
+  ak_val union (a C compiler takes a union's member for a char's, which
+  every store of a field may change, so the element's pointer would be
+  read again after each); a float as a double; a bool as a [bool]'s
+  byte (AK_BOOLS: a [bool] is always packed); an int as a value, or,
+  in a function whose code has sized integers (bytecode.FSized: the
+  lowering sets it where a type it sees is one or an array of them, and
+  an inlined body brings it), the array's storage asked (only a kind is
+  known: an [u8]'s elements are ints too), a sized integer's at its
+  width. Elsewhere every array of ints holds values, read and written
+  as them (ak_arr_vals, which panics on a packed array in a build with
+  assertions, the tests').
+- Facts across the control flow (lang/cgen/flow.go): what a check made
+  known holds where every way in has it, and a loop's tests make indexes
+  known in range: an int known not negative (a constant, a length, a
+  checked sum, +1 of one less than an int), `i < n` from a jump's test
+  (JLTI's way, JLEI's other, JT and JF on an LTI's register), `n` an
+  array's length (LEN, which an element's change keeps), an index an
+  instruction took; so `for i in 0..<xs.count()`, `(i + 1)..<n` and
+  `c + 1 < n && xs[c + 1]` check no index, and `i + 1` of an index is an
+  unchecked add. A loop whose first path (what runs every turn) changes
+  an array's element in place has the array made unique as it's entered,
+  and the element at an index it doesn't change (in range there): one
+  check before the loop, not one a turn. None of it depends on how the
+  elements are stored: a packed array is made unique as a copy just as
+  packed (ak_arr_mut), and the elements made unique are structs, which
+  are values.
 - The optimizer's other instructions are C of their own: an immediate
   (ADDIS, DIVIS...) a literal, a division by a constant the C
   compiler's multiply, a fused comparison (JLTI, JGEIS...) one `if`.
@@ -1874,6 +1924,7 @@ and nothing is computed until something reads it.
 | `Seq(first:next:)`, `Seq(state:next:)`, `Seq(repeating:count:)`, `Seq(from:by:)` | CALLB `seq.successors`, `seq.unfold` (the state's kind passed), `seq.repeat` (count -1: no end), `seq.from` |
 | a step, `s.map(f)`... | CALLB `seq.map(s, f, …)`: a new ak_seq |
 | `for x in s { … }` | CALLB `seq.iter(s)` into a local (a cursor, let go of as the loop's scope ends), then at the top `seq.next(it)` (a bool; false at the end, and it raises what a step raised), JF to the end, `seq.value(it)` for x; a type's `iter()` that gives a `Seq` likewise, the value held in a hidden var (check.ForInfo.SeqVar) and `iter()` called once |
+| a pipeline the lowering sees, read by a consumer: `(a..<b).lazy()` or `xs.lazy()`, then `map`, `filter`, `compactMap`, `take`, `skip`, `takeWhile`, `skipWhile`, `onEach`, then `reduce`, `sum`, `count`, `toArray`, `first`, `find`, `any` or `all` | a loop (lang/ir/seqfuse.go), no ak_seq: each element through every step, in order, before the next is taken; a take that has its count ends the loop before the source is read again; the closures made once before the loop (their captures held to its end) and called in it, which the optimizer inlines; the consumer's result in a register of its own until the end |
 
 Every method whose result holds a `Seq<X>` (Method.Extra "seqProto")
 gets, last, an empty `[X]`: the runtime reads the elements' kind and
@@ -1908,11 +1959,24 @@ and share its arity with overloads the checker picks by an argument's
 type (g.fill's color or gradient). The receivers are arrays, maps,
 strings, bytes, floats, colors, optionals, mount's app, a Loading, a
 Graphics, a Path and a Ref. A few the lowering does itself: `count()`
-of an array or a map is LEN,
+of an array or a map is LEN, `isEmpty()` of an array, a map, a set, a
+string or bytes LEN and a test of 0,
 `isNone()` ISNONE, a map's `get(k)` MGET, `enumerated()` a loop making
 `(index, element)` tuples (and `for (i, x) in xs.enumerated()` makes
-none: it's a loop over the indexes). Closures passed to them don't
-throw and don't await.
+none: it's a loop over the indexes), and an array's `map`, `filter`,
+`compactMap`, `reduce`, `count(where:)`, `any`, `all`, `find` and
+`index(where:)` loops over it (lang/ir/seqfuse.go), the closure made
+once and called in the loop (inlined by the optimizer), the result
+appended to with `arr.append` (push without recording a change: no
+state holds it; `arr.reserve` makes map's room once). The result is
+made as the method's would be (its element type's storage: a map to
+`[u8]` packed); compiled, a bool is appended as its byte
+(ak_arr_push_bool), anything else as ak_arr_push puts it. Each push
+reads the array's cap on its own (ak_arr_room): read with len as one
+8-byte word right after the last push stored len's 4 bytes, the load
+can't be forwarded from that store and waits for it (3× a map's
+cycles). Closures passed to
+them don't throw and don't await.
 
 ## Notes
 

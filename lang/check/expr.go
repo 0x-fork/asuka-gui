@@ -2297,7 +2297,49 @@ func (c *Checker) ifValue(n syntax.Node, cond syntax.Expr, then *syntax.Block, e
 		c.errorf(n, diag.TypeMismatch, "the branches are %s and %s: make them the same type", aType(a), aType(b))
 		return Invalid
 	}
+	c.convertBranch(then, t)
+	c.convertBranch(els, t)
 	return t
+}
+
+// convertBranch records the conversion of a branch's value (an if's or
+// a match's, n: an expression, a block, an else-if) to t, the type the
+// branches joined to when nothing was expected of them: an int beside
+// none is made the int? (boxed) the if's value is, as an assigned one is.
+func (c *Checker) convertBranch(n syntax.Node, t Type) {
+	switch x := n.(type) {
+	case *syntax.Block:
+		if x == nil || len(x.Items) == 0 {
+			return
+		}
+		switch s := x.Items[len(x.Items)-1].(type) {
+		case *syntax.ExprStmt:
+			c.convertBranch(s.X, t)
+		case *syntax.IfStmt:
+			if c.info.ValueItems[s] {
+				c.convertBranch(s, t)
+			}
+		case *syntax.MatchStmt:
+			if c.info.ValueItems[s] {
+				for _, a := range s.Arms {
+					c.convertBranch(a.Body, t)
+				}
+			}
+		}
+	case *syntax.IfStmt:
+		c.convertBranch(x.Then, t)
+		c.convertBranch(x.Else, t)
+	case *syntax.ExprStmt:
+		c.convertBranch(x.X, t)
+	case syntax.Expr:
+		got := c.info.Types[x]
+		if got == nil || IsInvalid(got) || got == Never || got == NoneType || Identical(got, t) {
+			return
+		}
+		if _, done := c.info.Convs[x]; !done {
+			c.convert(x, got, t)
+		}
+	}
 }
 
 // implicitRoot reports a chain that starts with an implicit member

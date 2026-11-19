@@ -52,7 +52,7 @@ func imm(in insn, j int) int16 { return int16(uint16(in.args[j])) }
 // thrown is C that goes to h when the last call threw (an error is
 // pending), from the source line of in.
 func (g *gen) thrown(in insn, h string) string {
-	return fmt.Sprintf("if (AK_UNLIKELY(ak_error_pending())) { at_ = %d; %s }", lineAt(g.f, in.pc), g.to(h))
+	return fmt.Sprintf("if (AK_UNLIKELY(ak_cg_pending(&E_))) { at_ = %d; %s }", lineAt(g.f, in.pc), g.to(h))
 }
 
 func (g *gen) moveOp(name string, in insn) bool {
@@ -140,6 +140,11 @@ func (g *gen) intConstOp(name string, in insn, h string) bool {
 	a := in.args
 	switch name {
 	case "ADDIS", "SUBIS", "MULIS":
+		if name == "ADDIS" && g.pl.noOverflow[g.k] {
+			// Known not to overflow (flow.go): a loop's index + 1.
+			g.w("%s = %s + %d;", g.ri(a[0]), g.ri(a[1]), imm(in, 2))
+			break
+		}
 		fn := map[string]string{"ADDIS": "ak_addi", "SUBIS": "ak_subi", "MULIS": "ak_muli"}[name]
 		g.w("if (AK_UNLIKELY(!%s(&%s, %s, %d))) %s", fn, g.ri(a[0]), g.ri(a[1]), imm(in, 2), g.fail(in, h))
 	case "DIVIS", "MODIS":
@@ -305,7 +310,7 @@ func (g *gen) callOp(f *bc.FuncDef, name string, in insn, h string) bool {
 			} else if mut {
 				fmt.Fprintf(&s, "ak_val s_ = %s; ", g.r(a[2]))
 			}
-			fmt.Fprintf(&s, "ak_ret v_ = f%d_(NULL, lim_, d_ + 1%s); ", a[1], g.directArgs(a[1], a[2], a[3], "s_"))
+			fmt.Fprintf(&s, "ak_ret v_ = f%d_(NULL, lim_%s); ", a[1], g.directArgs(a[1], a[2], a[3], "s_"))
 			if int(callee.NParams) > maxValueParams {
 				s.WriteString(g.back(a[2], a[3]))
 			} else if mut {
@@ -325,7 +330,15 @@ func (g *gen) callOp(f *bc.FuncDef, name string, in insn, h string) bool {
 			g.acall(f, in, h, fmt.Sprintf("(const ak_func *)((ak_closure *)%s)->fn", g.rp(a[1])), fmt.Sprintf("(ak_closure *)%s", g.rp(a[1])))
 			break
 		}
-		g.w("{ ak_closure *c_ = %s; if (!c_) ak_panic(\"calling none\"); %s ak_val v_ = c_->invoke(c_, B_, %d); %s%s %s }", g.rp(a[1]), g.block(a[2], a[3]), a[3], g.back(a[2], a[3]), g.thrown(in, h), g.put(a[0], "v_", bc.KVoid))
+		// A closure of a compiled function is called as a CALL calls one
+		// (its direct body, the stack limit passed, its error in the
+		// result), through its function's direct entry; another (a
+		// builtin's, C code's, an interpreted one's) through its invoke.
+		// Of one whose parameters' kinds are the arguments' (and not a mut
+		// fn's), its direct body itself, the arguments in registers
+		// (sigCall).
+		g.w("{ ak_closure *c_ = %s; if (!c_) ak_panic(\"calling none\"); const ak_func *g_ = c_->invoke == ak_vm_closure_invoke ? c_->fn : NULL; ak_ret v_; %s{ %s if (AK_LIKELY(g_ && g_->direct)) v_ = g_->direct(c_, lim_, B_); else { v_.v = c_->invoke(c_, B_, %d); v_.e = ak_cg_pending(&E_); } %s} if (AK_UNLIKELY(v_.e)) %s %s }",
+			g.rp(a[1]), g.sigCall("c_", a[2], a[3]), g.block(a[2], a[3]), a[3], g.back(a[2], a[3]), g.fail(in, h), g.put(a[0], "v_.v", bc.KVoid))
 	case "CALLB":
 		if g.intrinsic(in, h) {
 			break
@@ -342,8 +355,8 @@ func (g *gen) callOp(f *bc.FuncDef, name string, in insn, h string) bool {
 			g.acall(f, in, h, fmt.Sprintf("ak_vm_method(%s, M->strings[%d])", g.rp(a[2]), a[1]), "NULL")
 			break
 		}
-		g.w("{ const ak_func *g_ = ak_vm_method(%s, M->strings[%d]); if (!g_) ak_panic(\"no method %%s\", M->strings[%d]->data); %s ak_val v_ = g_->native ? g_->native(B_, NULL) : ak_vm_call(g_, B_, %d); %s%s %s }",
-			g.rp(a[2]), a[1], a[1], g.block(a[2], a[3]), a[3], g.back(a[2], a[3]), g.thrown(in, h), g.putKind(a[0], "v_", "g_->ret"))
+		g.w("{ const ak_func *g_ = ak_vm_method(%s, M->strings[%d]); if (!g_) ak_panic(\"no method %%s\", M->strings[%d]->data); ak_ret v_; %s{ %s if (AK_LIKELY(g_->direct)) v_ = g_->direct(NULL, lim_, B_); else { v_.v = ak_vm_call(g_, B_, %d); v_.e = ak_cg_pending(&E_); } %s} if (AK_UNLIKELY(v_.e)) %s %s }",
+			g.rp(a[2]), a[1], a[1], g.sigCall("NULL", a[2], a[3]), g.block(a[2], a[3]), a[3], g.back(a[2], a[3]), g.fail(in, h), g.putKind(a[0], "v_.v", "g_->ret"))
 	case "CALLU":
 		g.w("{ %s ak_val v_ = ak_vm_call_untracked(%s, B_, %d); %s%s %s }", g.block(a[2], a[3]), g.rp(a[1]), a[3], g.back(a[2], a[3]), g.thrown(in, h), g.put(a[0], "v_", bc.KVoid))
 	case "RET":
@@ -353,6 +366,18 @@ func (g *gen) callOp(f *bc.FuncDef, name string, in insn, h string) bool {
 				g.w("{ ak_val v_ = %s; %s.p = NULL; %s*out = v_; return AK_RUN_RET; }", g.r(r), g.r(r), strings.ReplaceAll(g.releases(r), "\n", " "))
 			} else {
 				g.w("{ ak_val v_ = %s; %s*out = v_; return AK_RUN_RET; }", g.r(r), strings.ReplaceAll(g.releases(-1), "\n", " "))
+			}
+			break
+		}
+		if g.maybe != nil {
+			// Released here, only what may hold a reference (live.go).
+			switch {
+			case !g.isRef(r):
+				g.w("{ ak_val v_ = %s; %sreturn (ak_ret){v_, 0}; }", g.r(r), g.retRelease(g.k, -1))
+			case g.borrowed[r]:
+				g.w("{ ak_val v_ = %s; ak_retain(v_.p); %sreturn (ak_ret){v_, 0}; }", g.r(r), g.retRelease(g.k, -1))
+			default:
+				g.w("{ ak_val v_ = %s; %s.p = NULL; %sreturn (ak_ret){v_, 0}; }", g.r(r), g.r(r), g.retRelease(g.k, r))
 			}
 			break
 		}
@@ -367,11 +392,43 @@ func (g *gen) callOp(f *bc.FuncDef, name string, in insn, h string) bool {
 			g.w("ret_ = %s; %s.p = NULL; goto out_;", g.r(r), g.r(r))
 		}
 	case "RET0":
+		if g.maybe != nil {
+			g.w("{ %sreturn (ak_ret){{0}, 0}; }", g.retRelease(g.k, -1))
+			break
+		}
 		g.w("goto out_;")
 	default:
 		return false
 	}
 	return true
+}
+
+// sigCall is C calling g_ (an ak_func, possibly NULL) through its direct
+// body when its signature (ak_func's sig, vm.h's ak_cg_sig_kind) is the
+// one n arguments from register b make, then going on with "else": the
+// arguments as C values in registers, no block, nothing copied back (a
+// mut fn's sig is 0). "" when there are too many arguments.
+func (g *gen) sigCall(clos string, b, n int) string {
+	if n > 8 || n > 0 && b == bc.None {
+		return ""
+	}
+	sig := uint32(0x80000000) | uint32(n)<<16
+	ts := []string{"ak_closure *", "uintptr_t"}
+	args := []string{clos, "lim_"}
+	for p := 0; p < n; p++ {
+		k := g.f.Kinds[b+p]
+		cls := uint32(0)
+		switch k {
+		case bc.KFloat:
+			cls = 1
+		case bc.KRef:
+			cls = 2
+		}
+		sig |= cls << (2 * p)
+		ts = append(ts, strings.TrimSpace(ctype(k)))
+		args = append(args, g.r(b+p)+"."+member(k))
+	}
+	return fmt.Sprintf("if (AK_LIKELY(g_ && g_->sig == %#xu)) v_ = ((ak_ret (*)(%s))g_->body)(%s); else ", sig, strings.Join(ts, ", "), strings.Join(args, ", "))
 }
 
 func (g *gen) errorOp(f *bc.FuncDef, name string, in insn, h string) bool {
@@ -540,19 +597,28 @@ func (g *gen) check(in insn, i int, h string) string {
 	return fmt.Sprintf("int64_t i_ = %s; if (AK_UNLIKELY((uint64_t)i_ >= x_->len)) { ak_op_range(x_, i_); %s }", g.ri(i), g.fail(in, h))
 }
 
-// uniqueElem is C declaring s_, the struct at x_'s index i_, made unique
-// in the array (copied first if it's shared); not copied when it's known
-// to be unique (plan.uniqueElem).
-func (g *gen) uniqueElem() string {
-	if g.pl.uniqueElem[g.k] {
-		return "ak_struct *s_ = AK_VALS(x_)[i_].p;"
-	}
-	return "ak_struct *s_ = AK_VALS(x_)[i_].p; if (AK_UNLIKELY(!ak_unique(s_))) { ak_struct *t_ = s_; s_ = ak_struct_mut(&t_); AK_VALS(x_)[i_].p = s_; }"
-}
+// Elements. Every read and write of an element of the array x_ at i_
+// goes through these, which know how it's stored (rt.h's ak_elem): a
+// reference (a struct, a string, an array...) and a float as an 8-byte
+// value, a bool as a byte (a packed [bool]: always), an int as an
+// 8-byte value or, a sized integer's below 64 bits (an [u8]'s), packed
+// at its width. Only the array says which (an int register reads
+// both), so a function whose code has sized integers (bc.FSized) asks
+// it; in one that has none, every array of ints holds values, read and
+// written as them (through ak_arr_vals, which a build with assertions,
+// the tests', checks).
+
+// elemRef is the C lvalue of x_'s reference at i_, as a pointer rather
+// than through the ak_val union (ops.h's AK_REFS): C compilers take a
+// union's member for a char's, which every store may change, so the
+// element's pointer would be read again after each store of a field (a
+// double, an int) through it; read as a pointer, it isn't. A packed
+// array holds no references: this is always a value's slot.
+const elemRef = "AK_REFS(x_)[i_]"
 
 // elemSlot is the C lvalue of element i_ of the array x_, whose
-// elements are of register r's kind: a bool's byte in a packed [bool]
-// (rt.h's ak_elem), else an ak_val.
+// elements are of register r's kind, in an array of values or a packed
+// [bool]; an int's is a value's (loadElem and storeElem ask first).
 func (g *gen) elemSlot(r int) string {
 	if g.f.Kinds[r] == bc.KBool {
 		return "AK_BOOLS(x_)[i_]"
@@ -560,30 +626,63 @@ func (g *gen) elemSlot(r int) string {
 	return "AK_VALS(x_)[i_]"
 }
 
+// packedInts reports whether an int element of an array the function
+// reads or writes may be packed (bc.FSized).
+func (g *gen) packedInts() bool { return g.f.Flags&bc.FSized != 0 }
+
 // loadElem is C reading element i_ of the array x_ into register r
-// (loadSlot's, for a packed element its byte). An int may be a sized
-// integer's packed at its width (an [u8]'s): its storage asked, the
-// values' read inline.
+// (loadSlot's, for a packed element its byte or width).
 func (g *gen) loadElem(r int) string {
 	switch g.f.Kinds[r] {
 	case bc.KBool:
 		return fmt.Sprintf("%s = AK_BOOLS(x_)[i_];", g.ri(r))
 	case bc.KInt:
-		return fmt.Sprintf("if (AK_LIKELY(x_->elem == AK_E_VAL)) %s else %s = ak_arr_get_packed(x_, (uint32_t)i_).i;", g.loadSlot(r, g.elemSlot(r)), g.ri(r))
+		if !g.packedInts() {
+			return g.loadSlot(r, "ak_arr_vals(x_)[i_]")
+		}
+		return fmt.Sprintf("if (AK_LIKELY(x_->elem == AK_E_VAL)) %s else %s = ak_elem_get(ak_arr_at(x_, (uint32_t)i_), (ak_elem)x_->elem).i;", g.loadSlot(r, g.elemSlot(r)), g.ri(r))
 	}
 	return g.loadSlot(r, g.elemSlot(r))
 }
 
-// storeElem is C putting register v in element i_ of the array x_
-// (storeSlot's, for a packed element its byte or width).
+// storeElem is C putting register v's scalar in element i_ of the array
+// x_ (storeSlot's, for a packed element its byte or width).
 func (g *gen) storeElem(v int) string {
 	switch g.f.Kinds[v] {
 	case bc.KBool:
 		return fmt.Sprintf("AK_BOOLS(x_)[i_] = %s != 0;", g.ri(v))
 	case bc.KInt:
-		return fmt.Sprintf("if (AK_LIKELY(x_->elem == AK_E_VAL)) %s else ak_arr_put_packed(x_, (uint32_t)i_, %s);", g.storeSlot(g.elemSlot(v), v), g.r(v))
+		if !g.packedInts() {
+			return g.storeSlot("ak_arr_vals(x_)[i_]", v)
+		}
+		return fmt.Sprintf("if (AK_LIKELY(x_->elem == AK_E_VAL)) %s else ak_elem_put(ak_arr_at(x_, (uint32_t)i_), (ak_elem)x_->elem, %s);", g.storeSlot(g.elemSlot(v), v), g.r(v))
 	}
 	return g.storeSlot(g.elemSlot(v), v)
+}
+
+// makeElemUnique is C declaring s_, the struct at x_'s index i_, made
+// unique in the array (copied first if it's shared).
+const makeElemUnique = "ak_struct *s_ = " + elemRef + "; if (AK_UNLIKELY(!ak_unique(s_))) { ak_struct *t_ = s_; s_ = ak_struct_mut(&t_); " + elemRef + " = s_; }"
+
+// uniqueElem is makeElemUnique, but not copied when the element's known
+// to be unique (plan.uniqueElem).
+func (g *gen) uniqueElem() string {
+	if g.pl.uniqueElem[g.k] {
+		return "ak_struct *s_ = " + elemRef + ";"
+	}
+	return makeElemUnique
+}
+
+// hoistC is the C of a loop's hoist (flow.go): its arrays made unique
+// (of any storage: ak_arr_mut copies a packed one packed), then its
+// elements (structs, at indexes known in range) in them.
+func (g *gen) hoistC(h *hoist) {
+	for _, c := range h.arrs {
+		g.w("{ ak_arr *x_ = %s; if (AK_UNLIKELY(!ak_unique(x_))) { ak_arr *t_ = x_; x_ = ak_arr_mut(&t_); %s = x_; } }", g.rp(c), g.rp(c))
+	}
+	for _, e := range h.elems {
+		g.w("{ ak_arr *x_ = %s; int64_t i_ = %s; %s }", g.rp(e.c), g.ri(e.i), makeElemUnique)
+	}
 }
 
 // arrayOp writes the arrays' operations: an index checked inline, an
@@ -621,7 +720,7 @@ func (g *gen) arrayOp(name string, in insn, h string) bool {
 		check := g.check(in, a[2], h)
 		switch {
 		case g.pl.borrow[g.k]:
-			g.w("%s { const ak_arr *x_ = %s; %s v%d = AK_VALS(x_)[i_].p; }", g.setref(a[0], "NULL"), g.src(a[1]), check, a[0])
+			g.w("%s { const ak_arr *x_ = %s; %s v%d = %s; }", g.setref(a[0], "NULL"), g.src(a[1]), check, a[0], elemRef)
 		case g.pl.inplace[g.k]:
 			// A change in place: the array unique, its element unique in
 			// it, borrowed while SETFs change it.
@@ -629,7 +728,7 @@ func (g *gen) arrayOp(name string, in insn, h string) bool {
 				g.setref(a[0], "NULL"), g.rp(a[1]), check, g.uniqueArr(a[1]), g.uniqueElem(), a[0])
 		case g.pl.moveOut[g.k]:
 			// Taken out (the next instruction puts none there): moved.
-			g.w("{ ak_arr *x_ = %s; %s %s void *o_ = %s; %s = AK_VALS(x_)[i_].p; AK_VALS(x_)[i_].p = NULL; ak_release(o_); }",
+			g.w("{ ak_arr *x_ = %s; %s %s void *o_ = %s; %s = AK_REFS(x_)[i_]; AK_REFS(x_)[i_] = NULL; ak_release(o_); }",
 				g.rp(a[1]), check, g.uniqueArr(a[1]), g.rp(a[0]), g.rp(a[0]))
 		default:
 			g.w("{ const ak_arr *x_ = %s; %s %s }", g.src(a[1]), check, g.loadElem(a[0]))
@@ -639,16 +738,16 @@ func (g *gen) arrayOp(name string, in insn, h string) bool {
 		switch {
 		case g.pl.moveIn[g.k]:
 			// Put back and cleared (the next instruction): moved in.
-			set = fmt.Sprintf("void *o_ = AK_VALS(x_)[i_].p; AK_VALS(x_)[i_].p = %s; %s = NULL; ak_release(o_);", g.rp(a[2]), g.rp(a[2]))
+			set = fmt.Sprintf("void *o_ = AK_REFS(x_)[i_]; AK_REFS(x_)[i_] = %s; %s = NULL; ak_release(o_);", g.rp(a[2]), g.rp(a[2]))
 		case g.isRef(a[2]):
-			set = fmt.Sprintf("void *o_ = AK_VALS(x_)[i_].p; AK_VALS(x_)[i_].p = ak_retain(%s); ak_release(o_);", g.rp(a[2]))
+			set = fmt.Sprintf("void *o_ = AK_REFS(x_)[i_]; AK_REFS(x_)[i_] = ak_retain(%s); ak_release(o_);", g.rp(a[2]))
 		}
 		g.w("{ ak_arr *x_ = %s; %s %s %s }", g.rp(a[0]), g.check(in, a[1], h), g.uniqueArr(a[0]), set)
 	case "IDXF":
 		// The optimizer's read of an array's struct element's field
 		// (IDX, GETF): the element borrowed, its field read as GETF reads
 		// one (a reference retained, or borrowed itself as v<r>).
-		field := fmt.Sprintf("((ak_struct *)AK_VALS(x_)[i_].p)->f[%d]", a[3])
+		field := fmt.Sprintf("((ak_struct *)%s)->f[%d]", elemRef, a[3])
 		if g.pl.changes[g.k] {
 			// A SETIF changes the element further on: made unique here,
 			// then read.
@@ -850,6 +949,28 @@ func (g *gen) intrinsic(in insn, h string) bool {
 		x := g.ri(a[2])
 		v := fmt.Sprintf("(ak_val){.i = %s < 0 ? -%s : %s}", x, x, x)
 		g.w("if (AK_UNLIKELY(%s == INT64_MIN)) { ak_op_overflow(); %s } %s", x, g.fail(in, h), g.put(a[0], v, bc.KInt))
+		return true
+	}
+	if (name == "arr.append" || name == "arr.reserve") && a[3] == 2 && a[0] == bc.None && g.f.Kinds[a[2]] == bc.KRef {
+		// A fused loop's array (lang/ir's seqfuse.go), which no state
+		// holds: the runtime's push and reserve, called directly (they
+		// throw nothing; out of memory ends the program).
+		arr, v := g.rp(a[2]), g.r(a[2]+1)
+		if name == "arr.reserve" {
+			g.w("{ ak_arr *x_ = %s; int64_t n_ = %s.i; if (n_ > 0) ak_arr_reserve(&x_, n_ > UINT32_MAX ? UINT32_MAX : (uint32_t)n_); %s = x_; }", arr, v, arr)
+			return true
+		}
+		switch g.f.Kinds[a[2]+1] {
+		case bc.KBool:
+			// A [bool]'s: packed, its byte.
+			g.w("{ ak_arr *x_ = %s; ak_arr_push_bool(&x_, %s != 0); %s = x_; }", arr, g.ri(a[2]+1), arr)
+		case bc.KRef:
+			g.w("{ ak_arr *x_ = %s; ak_retain(%s.p); ak_arr_push(&x_, %s); %s = x_; }", arr, v, v, arr)
+		default:
+			// A value, or a sized integer packed at its width (ak_arr_push
+			// puts it as its array stores it).
+			g.w("{ ak_arr *x_ = %s; ak_arr_push(&x_, %s); %s = x_; }", arr, v, arr)
+		}
 		return true
 	}
 	it, ok := intrinsics[name]

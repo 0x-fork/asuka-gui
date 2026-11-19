@@ -81,7 +81,7 @@ Apple M5, darwin/arm64, 5 runs (median ± median absolute deviation, ms)
 | semver | 269 ± 2.34 | 160 ± 3.82 | 241 ± 1.99 | 291 ± 3.00 | 1.68× |
 | heap | 371 ± 2.01 | 151 ± 0.62 | n/a | 373 ± 3.57 | 2.45× |
 | sortedmap | 1221 ± 20.7 | 301 ± 2.70 | n/a | 1219 ± 17.0 | 4.06× |
-| seq | 130 ± 1.85 | 2.37 ± 0.00 | 4.16 ± 0.18 | 130 ± 4.46 | 54.85× |
+| seq² | 130 ± 1.85 | 2.37 ± 0.00 | 4.16 ± 0.18 | 130 ± 4.46 | 54.85× |
 
 ¹ After the table's run: fs.read reads at the file's size now (aaae01aa);
 three runs.
@@ -153,6 +153,37 @@ On the Mac (the fewest ms of seven, at load 50 to 200) concat went from
 split's peak memory went from 161 to 223 MB (its arrays of millions of
 strings copied as they double: bench/compiled/README.md, sort). What's
 behind Go there is still allocating a string a piece.
+
+² Go's and Bun's seq computed the lazy pipeline once and printed it
+twice; they now do the eager pipeline's work too (an array of the
+numbers, then map, filter, map and reduce, a step at a time), as
+Asuka's does. The numbers below are of that.
+
+Then the compiler's pass on calls, loops and closures (lang/LOWERING.md:
+Seq pipelines and arrays' closure methods lowered as loops, closures
+inlined there, typed closure calls, facts across loops, scalar
+replacement, a return releasing only what it holds), with std/template
+and std/collections' own changes, measured with the machine shared (load
+50 to 300, so in cycles, the fewest of five interleaved runs, and
+instructions retired, the median; the whole process, setup included,
+in millions):
+
+| benchmark | cycles before | now | Go | now / Go | instructions before | now | Go |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| heap | 1,495 | 1,046 | 1,139 | 0.92× | 4,101 | 2,140 | 2,401 |
+| sortedmap | 5,428 | 3,790 | 2,344 | 1.62× | 11,106 | 5,309 | 2,467 |
+| seq | 472 | 117 | 121 | 0.97× | 3,125 | 583 | 335 |
+| semver | 1,010 | 872 | 1,033 | 0.84× | 4,258 | 3,412 | 3,891 |
+| template | 521 | 370 | 191 | 1.94× | 2,209 | 1,757 | 800 |
+
+The other benchmarks' instructions are as they were (within 1%).
+What's still slower than Go: sortedmap, whose nodes' arrays are a
+header and a buffer apart (one more dependent load a level than Go's
+slices), whose binary search branches where Go's selects, and whose
+order is a closure called a comparison; template, a tree-walking
+interpreter over json.Value data that renders its data through
+json.encode and json.parse (a fifth of its time), where Go's
+text/template reads the struct by reflection.
 
 HTTP, 50 keep-alive connections, 5 s after 1 s of warm-up, the load
 generator on the same machine:

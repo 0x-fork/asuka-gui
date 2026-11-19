@@ -1285,6 +1285,9 @@ func (c *Checker) matchValue(n syntax.Node, subject syntax.Expr, arms []*syntax.
 	if res == nil {
 		return Invalid
 	}
+	for _, a := range arms {
+		c.convertBranch(a.Body, res)
+	}
 	return res
 }
 

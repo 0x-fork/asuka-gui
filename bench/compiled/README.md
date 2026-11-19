@@ -72,6 +72,32 @@ five, in millions):
 | json | 4,224 | 4,198 | 2,758 | 1.52× |
 | sort | 1,594 | 1,607 | 1,383 | 1.16× |
 
+Then calls, loops and closures (2026-11-19, the machine shared, load
+50 to 300; each the fewest cycles of five interleaved runs, in millions,
+with the median of the instructions retired):
+
+| benchmark | before | now | Go | now / Go (cycles) | instructions: before, now, Go |
+|---|---:|---:|---:|---:|---:|
+| fib | 547 | 502 | 445 | 1.13× | 3,187 / 2,619 / 1,989 |
+| sieve | 1,580 | 1,367 | 645 | 2.12× | 3,523 / 2,938 / 1,510 |
+| nbody | 1,143 | 883 | 902 | 0.98× | 4,615 / 3,153 / 3,154 |
+| trees | 3,229 | 3,187 | 6,807 | 0.47× | 15,495 / 14,764 / 31,277 |
+| words | 815 | 815 | 894 | 0.91× | 3,963 / 3,932 / 3,909 |
+| json | 2,691 | 2,644 | 3,593 | 0.74× | 13,200 / 13,178 / 18,258 |
+| sort | 187 | 192 | 1,379 | 0.14× | 903 / 897 / 2,081 |
+
+What changed (lang/LOWERING.md, Release builds: C): a compiled call's
+check of the stack is one compare of the stack pointer, before the
+frame is made, the depth no longer counted and passed (fib: a register
+and an argument less a call); facts across the control flow, so a
+counted loop over an array's indexes checks none and its array (and an
+element it changes) is made unique as it's entered (nbody's inner loop:
+no index or array checks, one element check a turn); an element's
+pointer read as a pointer, not through the union C compilers alias with
+every store. fib's remaining 13%: its frame saves three callee-saved
+registers (the stack limit among them, which Go keeps in a register of
+its own) and each call tests the error it returns.
+
 "Before" is the C cgen wrote before release builds' C kept registers in
 C locals and called compiled functions directly (lang/LOWERING.md,
 Release builds: C). On an idle machine, before, in ms: fib 925, sieve

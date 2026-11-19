@@ -19,6 +19,11 @@ typedef struct { uint32_t start, end, func, line; } ak_inline;
 // (borrowed; it retains what it keeps) and the running closure, and
 // returns its result (owned), throwing as builtins do.
 typedef ak_val (*ak_native_body)(ak_val *args, ak_closure *clos);
+// The same body as compiled code calls a closure of it (lang/cgen's
+// fN_c): the closure, the thread's stack limit, the arguments (a mut
+// fn's receiver moved in and back through args[0]); its result with
+// whether it threw, no thread-local read on the way.
+typedef ak_ret (*ak_direct_body)(ak_closure *clos, uintptr_t lim, ak_val *args);
 
 struct ak_co;
 // A function that may suspend (async, or one that awaits), compiled to C
@@ -36,6 +41,14 @@ enum { AK_RUN_RET, AK_RUN_THROW, AK_RUN_PUSHED, AK_RUN_SUSPEND };
 struct ak_func {
 	ak_module *mod;
 	ak_native_body native;  // set when the function was compiled to C
+	ak_direct_body direct;  // likewise, as a compiled closure call calls it
+	// body is its direct body itself (lang/cgen's fN_: the closure, the
+	// stack limit, its arguments as C values), which a compiled call
+	// whose arguments' kinds make sig (ak_cg_sig) calls; sig is 0 when
+	// it can't be called so (a mut fn, one that may suspend, one of more
+	// than AK_CG_SIG_MAX parameters).
+	void (*body)(void);
+	uint32_t sig;
 	ak_async_body resume;   // likewise, for one that may suspend
 	ak_str *name;
 	ak_str *file;
@@ -65,6 +78,7 @@ struct ak_func {
 // call moves it in from the caller's argument register, not retained,
 // and the frame moves it back there as it ends, returned or thrown.
 #define AK_F_MUT 4
+// (bytecode.FSized, 8, is lang/cgen's: the VM doesn't read it.)
 
 typedef struct {
 	ak_str *name;

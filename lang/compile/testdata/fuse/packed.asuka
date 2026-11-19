@@ -1,0 +1,41 @@
+// Fused loops over arrays whose elements are packed ([bool] a byte
+// each, i8 to u32 their widths) and of 64-bit values (u64), and over a
+// map's keys of a sized integer (values, not packed): each element read
+// as its array stores it, each result appended as its type's array
+// stores it, the same as the runtime's methods.
+
+fn main() {
+  let bits = [true, false, true, true]
+  print(bits.map(b => !b))
+  print(bits.filter(b => b))
+  print(bits.count(where: b => !b))
+  print(bits.all(where: b => b))
+  print(bits.lazy().map(b => if b { 1 } else { 0 }).sum())
+  print(bits.lazy().filter(b => b).map(b => !b).toArray())
+  let bytes: [u8] = [1, 200, 3, 255]
+  print(bytes.map(x => x / 2))
+  print(bytes.map(x => x / 2) == [u8(0), 100, 1, 127])
+  print(bytes.map(x => x > 100))
+  print(bytes.filter(x => x > 2))
+  print(bytes.lazy().filter(x => x > 2).map(x => int(x) * 2).toArray())
+  print(bytes.lazy().map(x => x &+ 1).toArray())
+  print(bytes.compactMap(x => if x > 100 { x } else { none }))
+  print(bytes.find(where: x => x > 100))
+  print(bytes.index(where: x => x == 255))
+  print(bytes.reduce(0, (s: int, x: u8) => s + int(x)))
+  let ws: [i32] = [-1, 70000, -70000]
+  print(ws.map(x => x / 2))
+  print(ws.filter(x => x < 0) + [i32(5)])
+  let small: [i8] = [-3, 4, -128]
+  print(small.map(x => i16(x) * 100))
+  print(small.lazy().map(x => int(x)).filter(x => x < 0).toArray())
+  let hs: [u16] = [65535, 1]
+  print(hs.map(x => u32(x) * 2))
+  let ls: [u64] = [18446744073709551615, 2]
+  print(ls.map(x => x / 3))
+  print(ls.lazy().filter(x => x > 2).toArray())
+  let m: [u8: bool] = [7: true, 250: false]
+  print(m.keys().map(x => x &+ 10))
+  print(m.keys().filter(x => x > 7) == [u8(250)])
+  print(m.values().map(b => !b))
+}

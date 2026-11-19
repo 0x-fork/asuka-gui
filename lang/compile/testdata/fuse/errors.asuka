@@ -1,0 +1,44 @@
+// Errors out of a fused loop: a consumer's closure that throws, a step
+// that overflows, sum past int's range, an index out of range in a
+// step; caught, then one uncaught, its trace through the closure.
+
+fn parse(s: string) throws -> int = s.toInt() ?? throw Error("not a number: {s}")
+
+fn big(x: int) -> int = x * 4611686018427387904
+
+fn steps(xs: [int]) -> int = xs.lazy().map(x => big(x)).reduce(0, (s, x) => s + x)
+
+fn main() throws {
+  do {
+    print(try ["1", "2", "x"].lazy().map(s => s.upper()).reduce(0, (n, s) => n + (try parse(s))))
+  } catch e {
+    print("caught: {e.message}")
+  }
+  do {
+    print(try ["1", "y"].map(s => try parse(s)))
+  } catch e {
+    print("caught: {e.message}")
+  }
+  do {
+    print(steps([0, 1, 2]))
+  } catch e {
+    print("caught: {e.message}")
+  }
+  do {
+    print((0..<3).lazy().map(x => x + 9223372036854775806).sum())
+  } catch e {
+    print("caught: {e.message}")
+  }
+  let xs = [1, 2]
+  do {
+    print((0..<3).lazy().map(i => xs[i]).toArray())
+  } catch e {
+    print("caught: {e.message}")
+  }
+  do {
+    print(try [1, 2, 3].filter(x => try parse("{x}z") > 0))
+  } catch e {
+    print("caught: {e.message}")
+  }
+  print(steps([3, 4]))
+}

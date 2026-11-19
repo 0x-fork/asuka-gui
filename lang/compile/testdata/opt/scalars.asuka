@@ -1,0 +1,49 @@
+// Tuples of scalars returned by small functions, inlined, and only read
+// by their fields: never made (scalar replacement). Closures made before
+// a loop and called in it, inlined there (their captures read in place),
+// one of which throws: its error's trace through the closure.
+
+fn find(xs: [int], k: int) -> (int, bool) {
+  var lo = 0
+  var hi = xs.count()
+  while lo < hi {
+    let mid = (lo + hi) / 2
+    if xs[mid] < k { lo = mid + 1 } else { hi = mid }
+  }
+  return (lo, lo < xs.count() && xs[lo] == k)
+}
+
+fn minMax(xs: [float]) -> (float, float) {
+  var lo = xs[0]
+  var hi = xs[0]
+  for x in xs {
+    if x < lo { lo = x }
+    if x > hi { hi = x }
+  }
+  return (lo, hi)
+}
+
+fn total(xs: [int], ks: [int]) -> int {
+  var t = 0
+  for k in ks {
+    let (at, found) = find(xs, k)
+    if found { t += at } else { t -= 1 }
+  }
+  return t
+}
+
+fn scaled(xs: [int], by: int) -> int {
+  let f = (x: int) => x * by + 1
+  var t = 0
+  for x in xs { t += f(x) }
+  return t
+}
+
+fn main() throws {
+  let xs = [1, 3, 5, 7, 9, 11]
+  print(total(xs, [0, 1, 4, 5, 11, 12]))
+  let (lo, hi) = minMax([2.5, -1.0, 7.25])
+  print("{lo} {hi}")
+  print(scaled(xs, 3))
+  print(scaled(xs, 4611686018427387904))
+}

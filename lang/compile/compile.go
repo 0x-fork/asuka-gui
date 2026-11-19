@@ -68,6 +68,10 @@ type Options struct {
 	// optimized (its counters are its statements'), and ASUKA_OPT=0 in
 	// the environment turns them off too.
 	NoOptimize bool
+	// NoFuse lowers Seq pipelines and arrays' closure methods as the
+	// runtime's calls rather than as loops (lang/ir's seqfuse.go): what
+	// the tests compare the loops with. ASUKA_OPT_SKIP=fuse too.
+	NoFuse bool
 
 	// disk keeps what the compilations of one DirPlatforms read: each
 	// platform's reads the same directories and files.
@@ -503,7 +507,7 @@ func (l *loader) compile(root *unit) *Result {
 			}
 		}
 	}
-	p, diags := ir.Lower(prog, &ir.Options{Platform: string(l.opts.Platform.Or()), Version: projectVersion(vdir), Lang: l.opts.Lang, Direction: l.opts.Direction, Accent: accent, AccentFlags: accentFlags, Cover: cover})
+	p, diags := ir.Lower(prog, &ir.Options{Platform: string(l.opts.Platform.Or()), Version: projectVersion(vdir), Lang: l.opts.Lang, Direction: l.opts.Direction, Accent: accent, AccentFlags: accentFlags, Cover: cover, NoFuse: l.opts.NoFuse})
 	res.Diags = append(res.Diags, diags...)
 	if len(res.Diags) > 0 {
 		return res

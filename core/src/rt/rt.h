@@ -553,15 +553,35 @@ static inline void ak_arr_put(ak_arr *a, uint32_t i, ak_val v) {
 // ak_arr_mut makes *a unique (copying it if it's shared) and returns it.
 ak_arr *ak_arr_mut(ak_arr **a);
 void ak_arr_push_slow(ak_arr **a, ak_val v);
+// ak_arr_room reports whether a has room for one more at its end. Its
+// cap is read on its own (a relaxed atomic load is a plain one), so
+// that the C compiler doesn't read len and cap as one 8-byte word: in a
+// loop of pushes that read would follow the store of len's 4 bytes, a
+// store it can't take its bytes from (a load forwarded from a store
+// must lie within it), and each push would wait for the one before it
+// to reach the cache (a fused map's loop: 3× the cycles).
+static inline bool ak_arr_room(const ak_arr *a) {
+	return a->len < __atomic_load_n(&a->cap, __ATOMIC_RELAXED);
+}
 // ak_arr_push appends v, taking its reference: inline when the array is
 // its holder's alone, has room, and holds values.
 static inline void ak_arr_push(ak_arr **ap, ak_val v) {
 	ak_arr *a = *ap;
-	if (AK_LIKELY(ak_unique(a) && a->len < a->cap && a->elem == AK_E_VAL)) {
+	if (AK_LIKELY(ak_unique(a) && ak_arr_room(a) && a->elem == AK_E_VAL)) {
 		((ak_val *)a->items)[a->len++] = v;
 		return;
 	}
 	ak_arr_push_slow(ap, v);
+}
+// ak_arr_push_bool is ak_arr_push of a bool to a [bool] (packed: its
+// byte), inline likewise.
+static inline void ak_arr_push_bool(ak_arr **ap, bool v) {
+	ak_arr *a = *ap;
+	if (AK_LIKELY(ak_unique(a) && ak_arr_room(a) && a->elem == AK_E_BOOL)) {
+		((bool *)a->items)[a->len++] = v;
+		return;
+	}
+	ak_arr_push_slow(ap, (ak_val){.i = v});
 }
 void ak_arr_reserve(ak_arr **a, uint32_t n);         // room for n more, made unique
 void ak_arr_insert(ak_arr **a, int64_t i, ak_val v); // takes v's reference

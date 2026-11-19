@@ -921,6 +921,11 @@ void ak_vm_yield(ak_co *co) {
 
 // ---- Calls from C ----
 
+ak_ret ak_cg_overflow(const char *fn) {
+	ak_throw_msg("stack overflow in %s", fn);
+	return (ak_ret){.e = 1};
+}
+
 void ak_vm_closure_drop(ak_closure *c) { ak_module_release(((const ak_func *)c->fn)->mod); }
 
 static ak_val call_sync(const ak_func *f, ak_closure *clos, ak_val *args, uint32_t nargs) {
