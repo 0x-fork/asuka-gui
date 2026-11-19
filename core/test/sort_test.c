@@ -84,8 +84,19 @@ TEST(sorted_as_insertion) {
 				break;
 			}
 			case 2: {
-				char s[24];
+				// Numbers, and strings that share 8 bytes or more (the
+				// prefixes sorting compares first), are prefixes of each
+				// other, or hold 0 bytes.
+				char s[40];
 				int len = snprintf(s, sizeof s, "w%llu", (unsigned long long)(next() % (n + 5)));
+				if (round % 3 == 1) {
+					static const char *heads[] = {"", "a", "ab", "abcdefg", "abcdefgh", "abcdefghij", "abcdefgh\0", "ab\0"};
+					int h = (int)(next() % 8);
+					size_t hl = h == 6 ? 9 : h == 7 ? 3 : strlen(heads[h]);
+					memcpy(s, heads[h], hl);
+					len = (int)hl + (int)(next() % 3);
+					for (int k = (int)hl; k < len; k++) s[k] = (char)("a\0z"[next() % 3]);
+				}
 				v.p = ak_str_new(s, (size_t)len);
 				break;
 			}

@@ -1199,9 +1199,69 @@ static void radix_sort(ak_val *v, ak_val *tmp, uint32_t n) {
 	ak_free(count);
 }
 
+// Strings, in their natural order, sorted by their first 8 bytes (a
+// big-endian integer, 0s past the end) held beside them: most
+// comparisons are of two integers in the array being sorted, not of
+// two strings each somewhere else in memory, a cache miss each; equal
+// keys compare the strings. (The keys order as the strings do: bytes,
+// then length, a shorter string's 0s first.)
+typedef struct {
+	uint64_t key;
+	const ak_str *s;
+} str_key;
+
+static inline uint64_t prefix_key(const ak_str *s) {
+	uint8_t b[8] = {0};
+	memcpy(b, s->data, s->len < 8 ? s->len : 8);
+	uint64_t k = 0;
+	for (int i = 0; i < 8; i++) k = k << 8 | b[i];
+	return k;
+}
+
+static inline bool str_key_lt(sort_ctx *c, str_key a, str_key b) {
+	AK_UNUSED(c);
+	return a.key != b.key ? a.key < b.key : ak_str_cmp(a.s, b.s) < 0;
+}
+
+static void msort_str(sort_ctx *c, str_key *v, str_key *tmp, uint32_t n) {
+	if (n < 2) return;
+	if (n <= 12) {
+		for (uint32_t i = 1; i < n; i++) {
+			str_key x = v[i];
+			uint32_t j = i;
+			while (j > 0 && str_key_lt(c, x, v[j - 1])) {
+				v[j] = v[j - 1];
+				j--;
+			}
+			v[j] = x;
+		}
+		return;
+	}
+	uint32_t h = n / 2;
+	msort_str(c, v, tmp, h);
+	msort_str(c, v + h, tmp, n - h);
+	if (!str_key_lt(c, v[h], v[h - 1])) return;  // in order already
+	memcpy(tmp, v, sizeof(str_key) * h);
+	uint32_t i = 0, j = h, k = 0;
+	while (i < h && j < n) v[k++] = str_key_lt(c, v[j], tmp[i]) ? v[j++] : tmp[i++];
+	while (i < h) v[k++] = tmp[i++];
+}
+
+static void sort_strs(sort_ctx *c, ak_val *v, uint32_t n) {
+	str_key *keys = ak_alloc(sizeof(str_key) * n * 2);
+	for (uint32_t i = 0; i < n; i++) keys[i] = (str_key){prefix_key(v[i].p), v[i].p};
+	msort_str(c, keys, keys + n, n);
+	for (uint32_t i = 0; i < n; i++) v[i].p = (void *)keys[i].s;
+	ak_free(keys);
+}
+
 // sort_vals sorts v as c says, tmp n slots of room.
 static void sort_vals(sort_ctx *c, ak_val *v, uint32_t n) {
 	if (n < 2) return;
+	if (!c->less && c->k == AK_K_REF && v[0].p && ((ak_obj *)v[0].p)->tag == AK_TAG_STR) {
+		sort_strs(c, v, n);
+		return;
+	}
 	ak_val *tmp = ak_alloc(sizeof(ak_val) * n);
 	if (c->less) msort(c, v, tmp, n);
 	else if (c->k == AK_K_INT && n > 64) radix_sort(v, tmp, n);
