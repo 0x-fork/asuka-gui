@@ -152,7 +152,8 @@ void ak_str_append(ak_str **sp, const ak_str *t) {
 	else s->h.flags = 0;
 }
 
-ak_str *ak_strs_join(const ak_val *v, uint32_t n) {
+// strs_join is ak_strs_join, in buf when it's given and the result fits.
+static AK_ALWAYS_INLINE ak_str *strs_join(ak_strbuf *buf, const ak_val *v, uint32_t n) {
 	uint64_t total = 0;
 	uint8_t known = AK_STR_KNOWN | AK_STR_ASCII;
 	for (uint32_t i = 0; i < n; i++) {
@@ -163,7 +164,7 @@ ak_str *ak_strs_join(const ak_val *v, uint32_t n) {
 	}
 	if (total == 0) return ak_str_empty();
 	if (total >= UINT32_MAX) ak_panic("out of memory (a string of %llu bytes)", (unsigned long long)total);
-	ak_str *o = ak_str_new(NULL, (size_t)total);
+	ak_str *o = buf && total <= AK_STRBUF_ROOM ? ak_strbuf_str(buf, (size_t)total) : ak_str_new(NULL, (size_t)total);
 	char *w = o->data;
 	for (uint32_t i = 0; i < n; i++) {
 		const ak_str *s = v[i].p;
@@ -172,7 +173,19 @@ ak_str *ak_strs_join(const ak_val *v, uint32_t n) {
 		else memcpy(w, s->data, s->len);
 		w += s->len;
 	}
-	if (known & AK_STR_KNOWN) o->h.flags = known & (AK_STR_KNOWN | AK_STR_ASCII);
+	if (known & AK_STR_KNOWN) o->h.flags |= known & (AK_STR_KNOWN | AK_STR_ASCII);
+	return o;
+}
+
+ak_str *ak_strs_join(const ak_val *v, uint32_t n) { return strs_join(NULL, v, n); }
+ak_str *ak_strs_join_in(ak_strbuf *buf, const ak_val *v, uint32_t n) { return strs_join(buf, v, n); }
+
+ak_str *ak_str_concat_in(ak_strbuf *buf, ak_str *a, ak_str *b) {
+	size_t n = (size_t)a->len + b->len;
+	if (a->len == 0 || b->len == 0 || n > AK_STRBUF_ROOM) return ak_str_concat(a, b);
+	ak_str *o = ak_strbuf_str(buf, n);
+	memcpy(o->data, a->data, a->len);
+	memcpy(o->data + a->len, b->data, b->len);
 	return o;
 }
 
@@ -1711,6 +1724,15 @@ ak_str *ak_strb_finish(ak_strb *b) {
 	ak_str *s;
 	if (b->b.data) s = b->b.len ? ak_str_new((const char *)b->b.data, b->b.len) : ak_str_empty();
 	else s = b->n ? ak_str_new(b->small, b->n) : ak_str_empty();
+	ak_strb_free(b);
+	return s;
+}
+
+ak_str *ak_strb_finish_in(ak_strb *b, ak_strbuf *buf) {
+	size_t n = ak_strb_len(b);
+	if (n == 0 || n > AK_STRBUF_ROOM) return ak_strb_finish(b);
+	ak_str *s = ak_strbuf_str(buf, n);
+	memcpy(s->data, b->b.data ? (const char *)b->b.data : b->small, n);
 	ak_strb_free(b);
 	return s;
 }

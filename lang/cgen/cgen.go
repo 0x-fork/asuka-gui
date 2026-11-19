@@ -257,6 +257,17 @@ type gen struct {
 	tramp bool // the instruction's code goes to its trampoline (inlined)
 	// stable: the module's globals only its init writes (stableGlobals).
 	stable []bool
+	// stack: the INTERPs and CONCATs whose string is made in the frame
+	// (S<k>_) when it fits; stackCopy: the MOVRs that may copy one
+	// (stackstr.go).
+	stack, stackCopy map[int]bool
+	// The fused loops' write cursors (cursor.go): the cursors, the
+	// appends' CALLBs that write through one (by index), the ways out of
+	// their loops' code, and the instructions' indexes by pc.
+	curs     []*cursor
+	curDance map[int]*cursor
+	stubs    []stub
+	at       map[int]int
 }
 
 // stableGlobals reports, by index, the module's globals that no function
@@ -346,7 +357,14 @@ func (g *gen) isRef(i int) bool { return i != bc.None && g.f.Kinds[i] == bc.KRef
 // label is the C label of the instruction at pc, noted as jumped to.
 func (g *gen) label(pc int) string {
 	g.jumped[pc] = true
-	return fmt.Sprintf("L%d", pc)
+	l := fmt.Sprintf("L%d", pc)
+	if t, ok := g.at[pc]; ok && len(g.curs) > 0 {
+		if cs := g.leaving(t); len(cs) > 0 {
+			// Out of loops with write cursors: through code closing them.
+			return g.stubTo(cs, "goto "+l+";")
+		}
+	}
+	return l
 }
 
 // to is a jump to h (handlerAt's: a label, or "unwind"; inlined's: an
@@ -354,6 +372,9 @@ func (g *gen) label(pc int) string {
 func (g *gen) to(h string) string {
 	if h == "unwind" {
 		g.unwinds = true
+		if cs := g.leaving(-1); len(cs) > 0 {
+			return "goto " + g.stubTo(cs, "goto unwind_;") + ";"
+		}
 		return "goto unwind_;"
 	}
 	if strings.HasPrefix(h, "I") {
@@ -561,6 +582,8 @@ func (g *gen) fn(i int) error {
 	if !g.async && !g.array && f.Flags&bc.FMut == 0 && untracksIn(ins) == 0 {
 		g.maybe = g.maybeRefs(ins)
 	}
+	g.stack, g.stackCopy = g.stackStrs(ins)
+	g.cursors(ins, targets)
 	untracks := 0
 	for _, in := range ins {
 		if bc.Ops[in.op].Name == "UNTRACK" {
@@ -574,6 +597,8 @@ func (g *gen) fn(i int) error {
 			// once, here, not a turn.
 			g.hoistC(h)
 		}
+		// Falling into a loop that appends through a cursor: it's opened.
+		g.curOpen(k)
 		if r, ok := resume[in.pc]; ok {
 			// Where the frame resumes; after a call the run loop went on
 			// with, the call's error (it threw) goes to its handler.
@@ -600,9 +625,13 @@ func (g *gen) fn(i int) error {
 		if g.tramp {
 			tramp()
 		}
+		// Falling out of a loop's end: its cursors closed.
+		g.curLast(k, in)
 	}
 	// What falls off the end (code after a return the lowering left).
 	g.w("goto out_;")
+	// The ways out of cursors' loops (cursor.go).
+	g.stubsC()
 	code := g.out.String()
 	// Labels nobody jumps to are left out (-Wunused-label).
 	for pc := range targets {
@@ -856,6 +885,16 @@ func (g *gen) virtDecls() {
 	sort.Ints(rs)
 	for _, r := range rs {
 		g.p("\tvoid *v%d = NULL; (void)v%d;\n", r, r)
+	}
+	g.curDecls()
+	// The strings made in the frame (stackstr.go).
+	var ks []int
+	for k := range g.stack {
+		ks = append(ks, k)
+	}
+	sort.Ints(ks)
+	for _, k := range ks {
+		g.p("\tak_strbuf S%d_;\n", k)
 	}
 }
 

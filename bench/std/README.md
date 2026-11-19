@@ -516,3 +516,56 @@ interleaved runs, in millions, and instructions' ratio to Go's;
 The VM's benchmarks (bench/vm -instr) retire the instructions they did
 (within 0.05%). Hello world (`asuka new --bin`, macOS arm64): 902,992
 bytes.
+
+## Strings in the frame, fused loops' write cursors (2026-11-20)
+
+The last two benchmarks behind Go. A quiet machine (load 3 to 10):
+`go run ./bench/std/run -instr -langs asuka,go -only concat,seq -runs
+5`, the work alone: cycles, the median of five interleaved runs, in
+millions, and instructions' ratio to Go's; "before" is 5d9e7dfd, run
+beside.
+
+| benchmark | cycles before | now | Go | now / Go | instructions / Go before | now |
+|---|---:|---:|---:|---:|---:|---:|
+| concat | 138 | 94.1 | 126 | 0.75× | 1.01× | 0.66× |
+| seq | 64.8 | 45.3 | 57.1 | 0.79× | 1.13× | 0.91× |
+
+- concat: `let k = a + "-" + b + "/" + c; total += k.byteCount()`
+  allocated and freed k a turn, where Go's concatstrings writes a
+  result that doesn't escape into a 32-byte buffer in its caller's
+  frame. The compiled C now does that analysis (lang/cgen/stackstr.go,
+  lang/LOWERING.md "Strings in the frame"): a string an INTERP or a
+  CONCAT makes whose value is only read in place (its length,
+  comparisons, searches, a map's lookup, another string's part, print)
+  and never stored, returned, captured, passed on or carried into the
+  loop's next turn is built in an 80-byte buffer in the function's
+  frame when it's 63 bytes or fewer: no allocation, no free. It's
+  immortal, so its releases do nothing, and flagged, so that a retain
+  of one (a keep the analysis missed) panics in the tests' builds. The
+  joining is a direct call now (ak_strs_join, not ak_op_interp's test
+  of its kinds). 1,831 M instructions to 2,759 M for four repetitions
+  with the setup.
+- seq: a fused map's and filter's appends into the array their loop
+  made store through a cursor the loop keeps in C locals (where the
+  next element goes, and the room's end; lang/cgen/cursor.go), its
+  count written back on every way out of the loop (its end, a jump out,
+  an error, through a stub after the function's code), where each
+  append read the array's buffer and count and stored the count back.
+  A filter's append compares the cursor with the end; when it's full
+  the count is written back and the array grown by the runtime. What's
+  left above Go's instructions is elsewhere: the maps' overflow checks
+  (Go's x * 3 wraps; Asuka's throws) and toArray of the range.
+
+The whole suite (`-instr -runs 3`, the same "before" beside: load 6 to
+19): every other benchmark's instructions are within 0.4% of before
+(print, time, mapstr, stdout, lines and files measured again alone with
+`/usr/bin/time -l`, interleaved: their cycles too). Both changes are
+the compiled C's; the VM's benchmarks (`go run ./bench/vm -instr`)
+retire the instructions they did, within 0.34% (the check that a stack
+string isn't retained is in the tests' builds alone: in every build
+with assertions, as the VM's runner is, it changed how the
+interpreter's loop compiled, by up to 6% either way). Still behind Go in cycles:
+time (1.02× to 1.16× across passes, at 0.99× its instructions: its
+Asuka arithmetic, a struct and a call a step), lines and stdout
+(1.03×, each 1.01× and 1.04× its instructions: a Stream handing each
+line on, and the writes' system calls).

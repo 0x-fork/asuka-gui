@@ -65,7 +65,12 @@ func (g *gen) moveOp(name string, in insn) bool {
 		}
 	case "MOVR":
 		if a[0] != a[1] {
-			g.w("%s", g.setref(a[0], "ak_retain("+g.src(a[1])+")"))
+			retain := "ak_retain("
+			if g.stackCopy[g.k] {
+				// A copy of what may be a string in the frame (stackstr.go).
+				retain = "ak_retain_local("
+			}
+			g.w("%s", g.setref(a[0], retain+g.src(a[1])+")"))
 		}
 	case "CLR", "KNONE":
 		g.w("%s", g.setref(a[0], "NULL"))
@@ -263,11 +268,32 @@ func (g *gen) valueOp(name string, in insn) bool {
 			g.w("{ ak_str *s_ = %s; ak_str_append(&s_, %s); %s = s_; }", g.rp(a[0]), g.rp(a[2]), g.rp(a[0]))
 			break
 		}
+		if g.stack[g.k] {
+			// Into the frame's buffer when it fits (stackstr.go).
+			g.w("%s", g.setref(a[0], fmt.Sprintf("ak_str_concat_in(&S%d_, %s, %s)", g.k, g.rp(a[1]), g.rp(a[2]))))
+			break
+		}
 		g.w("%s", g.setref(a[0], fmt.Sprintf("ak_str_concat(%s, %s)", g.rp(a[1]), g.rp(a[2]))))
 	case "TOSTR":
 		g.w("%s", g.setref(a[0], fmt.Sprintf("ak_op_tostr(%s, %d)", g.r(a[1]), a[2])))
 	case "INTERP":
-		g.w("{ %s %s }", g.block(a[1], a[2]), g.setref(a[0], fmt.Sprintf("ak_op_interp(B_, 0, %d, M->strings[%d])", a[2], a[3])))
+		// Strings alone (a + b + c) are joined at once; a string the
+		// function keeps to itself is made in its frame's buffer when it
+		// fits (stackstr.go).
+		buf := "NULL"
+		if g.stack[g.k] {
+			buf = fmt.Sprintf("&S%d_", g.k)
+		}
+		var v string
+		switch {
+		case g.m.Strings[a[3]] == "" && buf == "NULL":
+			v = fmt.Sprintf("ak_strs_join(B_, %d)", a[2])
+		case g.m.Strings[a[3]] == "":
+			v = fmt.Sprintf("ak_strs_join_in(%s, B_, %d)", buf, a[2])
+		default:
+			v = fmt.Sprintf("ak_op_interp_in(%s, B_, 0, %d, M->strings[%d])", buf, a[2], a[3])
+		}
+		g.w("{ %s %s }", g.block(a[1], a[2]), g.setref(a[0], v))
 	case "LTS":
 		g.w("%s = ak_str_cmp(%s, %s) < 0;", g.ri(a[0]), g.rp(a[1]), g.rp(a[2]))
 	case "ISSHAPE":
@@ -1008,6 +1034,11 @@ func (g *gen) intrinsic(in insn, h string) bool {
 		x := g.ri(a[2])
 		v := fmt.Sprintf("(ak_val){.i = %s < 0 ? -%s : %s}", x, x, x)
 		g.w("if (AK_UNLIKELY(%s == INT64_MIN)) { ak_op_overflow(); %s } %s", x, g.fail(in, h), g.put(a[0], v, bc.KInt))
+		return true
+	}
+	if c := g.curDance[g.k]; c != nil {
+		// Into a fused loop's array through its cursor (cursor.go).
+		g.curAppend(c, name, a)
 		return true
 	}
 	if g.appendOp(name, a) {
