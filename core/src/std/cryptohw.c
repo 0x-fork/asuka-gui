@@ -35,7 +35,7 @@
 #include <immintrin.h>
 #endif
 
-enum { CPU_KNOWN = 1, CPU_AES = 2, CPU_SHA256 = 4, CPU_SHA512 = 8 };
+enum { CPU_KNOWN = 1, CPU_AES = 2, CPU_SHA256 = 4, CPU_SHA512 = 8, CPU_AVX2 = 16, CPU_SHA3 = 32 };
 
 static int cpu_features(void) {
 	static int known;  // racing threads each work out the same answer
@@ -48,27 +48,43 @@ static int cpu_features(void) {
 	int v = 0;
 	size_t n = sizeof v;
 	if (sysctlbyname("hw.optional.armv8_2_sha512", &v, &n, NULL, 0) == 0 && v) f |= CPU_SHA512;
+	v = 0, n = sizeof v;
+	if (sysctlbyname("hw.optional.armv8_2_sha3", &v, &n, NULL, 0) == 0 && v) f |= CPU_SHA3;
 #elif defined(_WIN32)
 	if (IsProcessorFeaturePresent(PF_ARM_V8_CRYPTO_INSTRUCTIONS_AVAILABLE)) f |= CPU_AES | CPU_SHA256;
+#ifdef PF_ARM_SHA3_INSTRUCTIONS_AVAILABLE
+	if (IsProcessorFeaturePresent(PF_ARM_SHA3_INSTRUCTIONS_AVAILABLE)) f |= CPU_SHA3;
+#endif
 #elif defined(__linux__)
 	unsigned long hw = getauxval(AT_HWCAP);
 	if ((hw & (1ul << 3)) && (hw & (1ul << 4))) f |= CPU_AES;  // HWCAP_AES, HWCAP_PMULL
 	if (hw & (1ul << 6)) f |= CPU_SHA256;                        // HWCAP_SHA2
 	if (hw & (1ul << 21)) f |= CPU_SHA512;                       // HWCAP_SHA512
+	if (hw & (1ul << 17)) f |= CPU_SHA3;                         // HWCAP_SHA3
 #endif
 #elif HW_X86
 	unsigned a, b, c, d;
 	if (__get_cpuid(1, &a, &b, &c, &d) && (c & bit_AES) && (c & bit_PCLMUL) && (c & bit_SSSE3)) f |= CPU_AES;
+	// AVX2: the CPU's (leaf 7), and the OS saving the YMM registers
+	// (OSXSAVE, then XCR0's SSE and AVX state).
+	if (__get_cpuid(1, &a, &b, &c, &d) && (c & bit_OSXSAVE) && (c & bit_AVX)) {
+		unsigned lo, hi;
+		__asm__("xgetbv" : "=a"(lo), "=d"(hi) : "c"(0));
+		if ((lo & 6) == 6 && __get_cpuid_count(7, 0, &a, &b, &c, &d) && (b & bit_AVX2)) f |= CPU_AVX2;
+	}
 #endif
 	__atomic_store_n(&known, f, __ATOMIC_RELAXED);
 	return f;
 }
 
 bool ak_cryptohw_off;
+bool ak_cryptohw_sse2;
 
 bool ak_cpu_aes(void) { return !ak_cryptohw_off && cpu_features() & CPU_AES; }
 bool ak_cpu_sha256(void) { return !ak_cryptohw_off && cpu_features() & CPU_SHA256; }
 bool ak_cpu_sha512(void) { return !ak_cryptohw_off && cpu_features() & CPU_SHA512; }
+bool ak_cpu_avx2(void) { return !ak_cryptohw_off && cpu_features() & CPU_AVX2; }
+bool ak_cpu_sha3(void) { return !ak_cryptohw_off && !ak_cryptohw_sse2 && cpu_features() & CPU_SHA3; }
 
 // ---- ARMv8 ----
 #if HW_ARM

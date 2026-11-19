@@ -1,10 +1,11 @@
 // std/crypto's password hashing (core/src/std/password.c): Argon2 (RFC
-// 9106's vectors, through Monocypher; PHC strings Go's x/crypto/argon2
-// made), bcrypt (crypt_blowfish's own vectors, and one Go's
+// 9106's vectors, through argon2.c and Monocypher, and the two compared
+// over many parameters; PHC strings Go's x/crypto/argon2 made), bcrypt (crypt_blowfish's own vectors, and one Go's
 // x/crypto/bcrypt made), and what they refuse.
 #include "t.h"
 #include "std/std.h"
-#include "std/monocypher.h"
+#include "std/argon2.h"
+#include "std/cryptohw.h"
 
 static ak_lib_fn fn(const char *name) {
 	for (const ak_lib_entry *const *t = ak_std_libs; *t; t++)
@@ -33,12 +34,61 @@ TEST(argon2_rfc9106) {
 		crypto_argon2_config cfg = {.algorithm = cases[i].alg, .nb_blocks = 32, .nb_passes = 3, .nb_lanes = 4};
 		crypto_argon2_inputs in = {.pass = pw, .salt = salt, .pass_size = sizeof pw, .salt_size = sizeof salt};
 		crypto_argon2_extras ex = {.key = secret, .ad = ad, .key_size = sizeof secret, .ad_size = sizeof ad};
-		crypto_argon2(tag, sizeof tag, work, cfg, in, ex);
 		char h[65];
+		crypto_argon2(tag, sizeof tag, work, cfg, in, ex);
 		hex(tag, 32, h);
 		CHECK_EQ_STR(h, cases[i].want);
+		for (int mode = 0; mode < 4; mode++) {
+			ak_cryptohw_off = mode & 1;
+			ak_argon2_threads = mode & 2 ? 1 : 0;
+			memset(tag, 0, sizeof tag);
+			ak_argon2(tag, sizeof tag, work, cfg, in, ex);
+			hex(tag, 32, h);
+			CHECK_EQ_STR(h, cases[i].want);
+		}
+		ak_cryptohw_off = false;
+		ak_argon2_threads = 0;
 	}
 	free(work);
+}
+
+// argon2.c makes Monocypher's bytes: each variant, lanes 1 to 9 (on
+// threads and not), memory not a multiple of four lanes, passes 1 to 3,
+// the address blocks' refresh (past 128 blocks a segment), tags short and
+// long (H' past 64 bytes), with a secret and associated data or without;
+// the vector unit's rounds (on x86-64 AVX2's and SSE2's) and the C's.
+TEST(argon2_as_monocypher) {
+	uint64_t r = 0x853c49e6748fea9bull;
+	static const struct { uint32_t m, t, p; } shapes[] = {
+		{8, 1, 1}, {16, 2, 2}, {33, 3, 3}, {64, 1, 4}, {72, 2, 9}, {600, 2, 1}, {1100, 1, 2}, {1024, 3, 4}, {2048, 1, 8},
+	};
+	uint8_t pw[40], salt[24], key[16], ad[20], want[200], got[200];
+	for (size_t i = 0; i < sizeof pw; i++) r ^= r << 13, r ^= r >> 7, r ^= r << 17, pw[i] = (uint8_t)r;
+	memcpy(salt, pw + 3, sizeof salt), memcpy(key, pw + 7, sizeof key), memcpy(ad, pw + 11, sizeof ad);
+	for (size_t s = 0; s < AK_LEN(shapes); s++)
+		for (uint32_t alg = 0; alg < 3; alg++) {
+			uint32_t n = s % 3 == 0 ? 32 : s % 3 == 1 ? 4 + (uint32_t)s * 3 : 100 + (uint32_t)s * 11;
+			crypto_argon2_config cfg = {.algorithm = alg, .nb_blocks = shapes[s].m, .nb_passes = shapes[s].t, .nb_lanes = shapes[s].p};
+			crypto_argon2_inputs in = {.pass = pw, .salt = salt, .pass_size = (uint32_t)(s * 4), .salt_size = 8 + (uint32_t)s};
+			crypto_argon2_extras ex = {.key = key, .ad = ad, .key_size = s % 2 ? 16 : 0, .ad_size = s % 2 ? 0 : 20};
+			void *work = malloc((size_t)shapes[s].m * 1024);
+			crypto_argon2(want, n, work, cfg, in, ex);
+			for (int mode = 0; mode < 6; mode++) {
+				ak_cryptohw_off = mode == 4;
+				ak_cryptohw_sse2 = mode == 5;
+				ak_argon2_threads = mode & 1 ? 1 : 0;
+				memset(got, 0, sizeof got);
+				ak_argon2(got, n, work, cfg, in, ex);
+				if (memcmp(got, want, n) != 0) T_FAIL("m %u, t %u, p %u, argon2 %u, mode %d: other bytes", shapes[s].m, shapes[s].t, shapes[s].p, alg, mode);
+			}
+			// The work area is wiped after.
+			bool zero = true;
+			for (size_t k = 0; k < (size_t)shapes[s].m * 1024; k++) zero &= ((uint8_t *)work)[k] == 0;
+			CHECK(zero);
+			free(work);
+		}
+	ak_cryptohw_off = ak_cryptohw_sse2 = false;
+	ak_argon2_threads = 0;
 }
 
 static int verify(const char *pw, size_t pn, const char *hash) {

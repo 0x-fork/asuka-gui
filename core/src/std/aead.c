@@ -3,7 +3,8 @@
 // it): AES-GCM (NIST SP 800-38D) with 128- and 256-bit keys, over
 // BearSSL's constant-time AES (bitsliced) and GHASH (third_party/bearssl);
 // ChaCha20-Poly1305 (RFC 8439) and XChaCha20-Poly1305 (its 24-byte
-// nonce, draft-irtf-cfrg-xchacha), over Monocypher (third_party/monocypher).
+// nonce, draft-irtf-cfrg-xchacha), by the CPU's vector unit (chacha.c)
+// or over Monocypher (third_party/monocypher).
 // The same C on every platform, the web's WebAssembly too, so what one
 // seals any other opens.
 //
@@ -63,6 +64,30 @@ static bool gcm(bool encrypt, const uint8_t *key, size_t kn, const uint8_t nonce
 	return ok;
 }
 
+// chacha runs (X)ChaCha20-Poly1305 as gcm runs AES-GCM: by the vector
+// unit (chacha.c), or Monocypher's where it can't. Opening, Monocypher
+// checks the tag before it decrypts; chacha.c decrypts as it reads, and
+// what it decrypted is wiped when the tag doesn't match.
+static bool chacha(bool encrypt, int64_t c, const uint8_t key[32], const uint8_t *nonce, const uint8_t *ad, size_t an,
+	const uint8_t *in, uint8_t *out, size_t n, uint8_t tag[16]) {
+	uint8_t mine[16];
+	if (ak_chacha_poly_hw(encrypt, key, nonce, c == XCHACHA ? 24 : 12, ad, an, in, out, n, encrypt ? tag : mine)) {
+		if (encrypt) return true;
+		bool ok = crypto_verify16(mine, tag) == 0;
+		ak_wipe(mine, sizeof mine);
+		if (!ok) ak_wipe(out, n);
+		return ok;
+	}
+	crypto_aead_ctx x;
+	if (c == XCHACHA) crypto_aead_init_x(&x, key, nonce);
+	else crypto_aead_init_ietf(&x, key, nonce);
+	bool ok = true;
+	if (encrypt) crypto_aead_write(&x, out, tag, ad, an, in, n);
+	else ok = crypto_aead_read(&x, out, tag, ad, an, in, n) == 0;
+	crypto_wipe(&x, sizeof x);
+	return ok;
+}
+
 // sealBytes(cipher, key, nonce, plaintext, additionalData): the ciphertext
 // and its tag; none for a key or a nonce of the wrong size (which the
 // Asuka side checks first). Past those checks, key and nonce aren't NULL:
@@ -77,15 +102,9 @@ static ak_val seal(ak_val *args, uint32_t n) {
 	uint8_t *tag = out->data + m;
 	switch (c) {
 	case XCHACHA:
-		crypto_aead_lock(out->data, tag, key->data, nonce->data, data(ad), len(ad), data(pt), m);
+	case CHACHA:
+		chacha(true, c, key->data, nonce->data, data(ad), len(ad), data(pt), out->data, m, tag);
 		break;
-	case CHACHA: {
-		crypto_aead_ctx x;
-		crypto_aead_init_ietf(&x, key->data, nonce->data);
-		crypto_aead_write(&x, out->data, tag, data(ad), len(ad), data(pt), m);
-		crypto_wipe(&x, sizeof x);
-		break;
-	}
 	default:
 		gcm(true, key->data, len(key), nonce->data, data(ad), len(ad), data(pt), out->data, m, tag);
 	}
@@ -107,15 +126,9 @@ static ak_val open_fn(ak_val *args, uint32_t n) {
 	bool ok;
 	switch (c) {
 	case XCHACHA:
-		ok = crypto_aead_unlock(out->data, tag, key->data, nonce->data, data(ad), len(ad), data(ct), m) == 0;
+	case CHACHA:
+		ok = chacha(false, c, key->data, nonce->data, data(ad), len(ad), data(ct), out->data, m, tag);
 		break;
-	case CHACHA: {
-		crypto_aead_ctx x;
-		crypto_aead_init_ietf(&x, key->data, nonce->data);
-		ok = crypto_aead_read(&x, out->data, tag, data(ad), len(ad), data(ct), m) == 0;
-		crypto_wipe(&x, sizeof x);
-		break;
-	}
 	default:
 		ok = gcm(false, key->data, len(key), nonce->data, data(ad), len(ad), data(ct), out->data, m, tag);
 	}
