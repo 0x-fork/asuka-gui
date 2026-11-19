@@ -105,6 +105,28 @@ compressor is far faster; regex patterns that start with `\w` still run
 the Pike VM a character at a time (Go's regexp does too; Rust's regex
 crate has a lazy DFA).
 
+The core's allocator is mimalloc now (bench/compiled/README.md: why,
+and what it costs). The benchmarks that allocate most, Linux arm64
+(OrbStack on the M5, glibc 2.41, Go 1.27.3), the fewest ms of seven
+interleaved runs (the VM loaded: they're slower than on the Mac, and
+noisy; concat, mapstr and csv again from five runs at load 3 in
+brackets), and peak RSS in MB:
+
+| benchmark | glibc's malloc | mimalloc | musl's | mimalloc, musl | Go | RSS glibc → mimalloc |
+|---|---:|---:|---:|---:|---:|---:|
+| split | 1,098 | 350 | 654 | 379 | 211 | 183 → 225 |
+| concat | 219 (134) | 166 (116) | 304 | 120 | 65 (45) | 3.9 → 4.7 |
+| mapstr | 296 (135) | 299 (135) | 436 | 417 | 493 (206) | 134 → 111 |
+| csv | 302 (190) | 173 (127) | 317 | 173 | 116 (81) | 180 → 158 |
+| template | 243 | 198 | 263 | 195 | 79 | 4.8 → 5.6 |
+| fmt | 1,212 | 1,176 | 1,237 | 1,027 | 442 | 3.9 → 4.7 |
+
+On the Mac (the fewest ms of seven, at load 50 to 200) concat went from
+1,068 to 368, csv 885 to 569, fmt 3,279 to 2,728, template 269 to 217;
+split's peak memory went from 161 to 223 MB (its arrays of millions of
+strings copied as they double: bench/compiled/README.md, sort). What's
+behind Go there is still allocating a string a piece.
+
 HTTP, 50 keep-alive connections, 5 s after 1 s of warm-up, the load
 generator on the same machine:
 

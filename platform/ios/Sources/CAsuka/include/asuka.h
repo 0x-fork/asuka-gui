@@ -107,7 +107,8 @@ ASUKA_API int asuka_dev_restart(const uint8_t *module, size_t len, uint32_t *mic
 // what they say. kind is the frame's, p its payload.
 ASUKA_API void asuka_dev_frame(int kind, const uint8_t *p, size_t len);
 // Memory for bytes a host passes in (the web's JavaScript), and for what
-// the core hands out (asuka_native_invoke's answer): asuka_free frees it.
+// the core hands out (asuka_native_invoke's answer): asuka_free frees it,
+// never the C library's free (it's the core's allocator's).
 ASUKA_API void *asuka_alloc(size_t n);
 ASUKA_API void asuka_free(void *p);
 // Frees a string the core returned.
