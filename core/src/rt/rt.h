@@ -196,12 +196,31 @@ static inline void ak_release(void *p) {
 	}
 }
 
+// AK_HIDE_PTR(p) hides what the pointer lvalue p holds from the C
+// compiler's analysis, at no cost: a value whose kind is known only at
+// run time may be an int the compiler sees as a constant (0, 1, ...),
+// and GCC then reads ak_retain's ->rc on that path as a read at that
+// address (-Warray-bounds, an error at -O2), though it never runs.
+#if defined(__GNUC__) || defined(__clang__)
+#define AK_HIDE_PTR(p) __asm__("" : "+r"(p))
+#else
+#define AK_HIDE_PTR(p) ((void)0)
+#endif
+
 static inline void ak_release_val(ak_val v, ak_kind k) {
-	if (k == AK_K_REF) ak_release(v.p);
+	if (k == AK_K_REF) {
+		void *p = v.p;
+		AK_HIDE_PTR(p);
+		ak_release(p);
+	}
 }
 
 static inline void ak_retain_val(ak_val v, ak_kind k) {
-	if (k == AK_K_REF) ak_retain(v.p);
+	if (k == AK_K_REF) {
+		void *p = v.p;
+		AK_HIDE_PTR(p);
+		ak_retain(p);
+	}
 }
 
 // ak_unique reports whether the caller holds the only reference, so it

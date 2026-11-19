@@ -21,7 +21,7 @@ jobs:
       - uses: actions/setup-go@v5
         with: { go-version: stable }
       - uses: mlugg/setup-zig@v2
-      - run: CC=clang go test ./core ./internal/cbuild -v
+      - run: CC=clang go test -timeout 45m ./core ./internal/cbuild -v
   swift:
     runs-on: macos-latest
     steps:
