@@ -1,0 +1,255 @@
+import std/json
+import std/math
+import std/os
+
+fn fib(n: int) -> int = if n < 2 { n } else { fib(n - 1) + fib(n - 2) }
+
+fn sieve(n: int) -> int {
+  var composite = Seq(repeating: false, count: n + 1).toArray()
+  var count = 0
+  var i = 2
+  while i <= n {
+    if !composite[i] {
+      count += 1
+      var j = i * i
+      while j <= n {
+        composite[j] = true
+        j += i
+      }
+    }
+    i += 1
+  }
+  return count
+}
+
+struct Body {
+  x: float
+  y: float
+  z: float
+  vx: float
+  vy: float
+  vz: float
+  mass: float
+}
+
+fn energy(bodies: [Body]) -> float {
+  var e = 0.0
+  for i in 0..<bodies.count() {
+    let b = bodies[i]
+    e += 0.5 * b.mass * (b.vx * b.vx + b.vy * b.vy + b.vz * b.vz)
+    for j in (i + 1)..<bodies.count() {
+      let c = bodies[j]
+      let dx = b.x - c.x
+      let dy = b.y - c.y
+      let dz = b.z - c.z
+      e -= b.mass * c.mass / math.sqrt(dx * dx + dy * dy + dz * dz)
+    }
+  }
+  return e
+}
+
+fn nbody(steps: int) -> string {
+  let pi = 3.141592653589793
+  let solar = 4.0 * pi * pi
+  let days = 365.24
+  var bodies = [
+    Body(x: 0.0, y: 0.0, z: 0.0, vx: 0.0, vy: 0.0, vz: 0.0, mass: solar),
+    Body(x: 4.84143144246472090e+00, y: -1.16032004402742839e+00, z: -1.03622044471123109e-01, vx: 1.66007664274403694e-03 * days, vy: 7.69901118419740425e-03 * days, vz: -6.90460016972063023e-05 * days, mass: 9.54791938424326609e-04 * solar),
+    Body(x: 8.34336671824457987e+00, y: 4.12479856412430479e+00, z: -4.03523417114321381e-01, vx: -2.76742510726862411e-03 * days, vy: 4.99852801234917238e-03 * days, vz: 2.30417297573763929e-05 * days, mass: 2.85885980666130812e-04 * solar),
+    Body(x: 1.28943695621391310e+01, y: -1.51111514016986312e+01, z: -2.23307578892655734e-01, vx: 2.96460137564761618e-03 * days, vy: 2.37847173959480950e-03 * days, vz: -2.96589568540237556e-05 * days, mass: 4.36624404335156298e-05 * solar),
+    Body(x: 1.53796971148509165e+01, y: -2.59193146099879641e+01, z: 1.79258772950371181e-01, vx: 2.68067772490389322e-03 * days, vy: 1.62824170038242295e-03 * days, vz: -9.51592254519715870e-05 * days, mass: 5.15138902046611451e-05 * solar),
+  ]
+  var px = 0.0
+  var py = 0.0
+  var pz = 0.0
+  for b in bodies {
+    px += b.vx * b.mass
+    py += b.vy * b.mass
+    pz += b.vz * b.mass
+  }
+  bodies[0].vx = -px / solar
+  bodies[0].vy = -py / solar
+  bodies[0].vz = -pz / solar
+  let before = energy(bodies)
+  let n = bodies.count()
+  let dt = 0.01
+  for _ in 0..<steps {
+    for i in 0..<n {
+      for j in (i + 1)..<n {
+        let dx = bodies[i].x - bodies[j].x
+        let dy = bodies[i].y - bodies[j].y
+        let dz = bodies[i].z - bodies[j].z
+        let d2 = dx * dx + dy * dy + dz * dz
+        let mag = dt / (d2 * math.sqrt(d2))
+        let mi = bodies[i].mass * mag
+        let mj = bodies[j].mass * mag
+        bodies[i].vx -= dx * mj
+        bodies[i].vy -= dy * mj
+        bodies[i].vz -= dz * mj
+        bodies[j].vx += dx * mi
+        bodies[j].vy += dy * mi
+        bodies[j].vz += dz * mi
+      }
+    }
+    for i in 0..<n {
+      bodies[i].x += dt * bodies[i].vx
+      bodies[i].y += dt * bodies[i].vy
+      bodies[i].z += dt * bodies[i].vz
+    }
+  }
+  return "{before.fixed(9)} {energy(bodies).fixed(9)}"
+}
+
+struct Tree {
+  left: Tree?
+  right: Tree?
+}
+
+fn make(depth: int) -> Tree = if depth == 0 { Tree(left: none, right: none) } else { Tree(left: make(depth - 1), right: make(depth - 1)) }
+
+fn check(t: Tree) -> int {
+  var n = 1
+  if let l = t.left { n += check(l) }
+  if let r = t.right { n += check(r) }
+  return n
+}
+
+fn trees(maxDepth: int) -> int {
+  var total = check(make(maxDepth + 1))
+  let long = make(maxDepth)
+  var d = 4
+  while d <= maxDepth {
+    let iterations = 1 << (maxDepth - d + 4)
+    for _ in 0..<iterations { total += check(make(d)) }
+    d += 2
+  }
+  return total + check(long)
+}
+
+fn words(n: int) -> string {
+  let syllables = ["ka", "to", "ri", "su", "me", "no", "ha", "yu", "chi", "ra"]
+  var seed = 42
+  var text = ""
+  var parts: [string] = []
+  for _ in 0..<n {
+    seed = (seed * 1103515245 + 12345) % 2147483648
+    let a = syllables[seed % 10]
+    seed = (seed * 1103515245 + 12345) % 2147483648
+    let b = syllables[seed % 10]
+    parts.push(a + b)
+  }
+  text = parts.joined(" ")
+  var counts: [string: int] = [:]
+  for w in text.split(" ") {
+    counts[w] = (counts[w] ?? 0) + 1
+  }
+  var top = counts.keys().sorted(by: (a, b) => counts[a]! > counts[b]! || (counts[a]! == counts[b]! && a < b))
+  return "{counts.count()} {top[0]} {counts[top[0]]!}"
+}
+
+struct Item {
+  id: int
+  name: string
+  price: float
+  tags: [string]
+  active: bool
+}
+
+fn jsonRound(n: int) throws -> int {
+  var items: [Item] = []
+  for i in 0..<n {
+    items.push(Item(id: i, name: "item {i}", price: i.float() * 1.5, tags: ["a", "b{i % 7}"], active: i % 2 == 0))
+  }
+  var total = 0
+  for _ in 0..<5 {
+    let text = try json.encode(items)
+    let back: [Item] = try json.decode(text)
+    total += back.count() + text.byteCount() % 7
+  }
+  return total
+}
+
+fn sortInts(n: int) -> int {
+  var seed = 7
+  var xs: [int] = []
+  for _ in 0..<n {
+    seed = (seed * 1103515245 + 12345) % 2147483648
+    xs.push(seed)
+  }
+  xs.sort()
+  return xs[0] + xs[n / 2] + xs[n - 1]
+}
+
+// loop: a counted loop of int arithmetic and compare-and-branch.
+fn loop(n: int) -> int {
+  var s = 0
+  var i = 0
+  while i < n {
+    s = (s + i * 3) % 1000003
+    i += 1
+  }
+  return s
+}
+
+// closures: a closure made and called in a loop, and one passed in.
+fn apply(f: fn(int) -> int, x: int) -> int = f(x)
+
+fn closures(n: int) -> int {
+  var s = 0
+  for i in 0..<n {
+    let k = i % 7
+    s = apply(x => x + k, s) % 1000003
+  }
+  return s
+}
+
+// iface: interface method calls over an array of two types.
+interface Shape { fn area() -> float }
+struct Square {
+  side: float
+  fn area() -> float = side * side
+}
+struct Circle {
+  radius: float
+  fn area() -> float = 3.0 * radius * radius
+}
+
+fn iface(n: int) -> int {
+  let shapes: [Shape] = [Square(side: 1.5), Circle(radius: 2.0), Square(side: 3.0), Circle(radius: 0.5)]
+  var total = 0.0
+  for i in 0..<n { total += shapes[i % 4].area() }
+  return total.int()
+}
+
+// strings: concatenation, interpolation and comparison.
+fn strings(n: int) -> int {
+  var total = 0
+  var last = ""
+  for i in 0..<n {
+    let s = "k{i % 100}" + "-" + "v"
+    if s < last { total += 1 }
+    total += s.byteCount()
+    last = s
+  }
+  return total
+}
+
+fn main() throws {
+  let args = os.args()
+  let name = args.first() ?? "fib"
+  let out = match name {
+    "fib" => "{fib(32)}"
+    "loop" => "{loop(20000000)}"
+    "sieve" => "{sieve(20000000)}"
+    "nbody" => nbody(300000)
+    "trees" => "{trees(16)}"
+    "words" => words(2000000)
+    "json" => "{try jsonRound(100000)}"
+    "sort" => "{sortInts(4000000)}"
+    "closures" => "{closures(8000000)}"
+    "iface" => "{iface(12000000)}"
+    "strings" => "{strings(4000000)}"
+    _ => "unknown"
+  }
+  print(out)
+}
