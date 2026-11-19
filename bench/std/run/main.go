@@ -6,6 +6,7 @@
 //	go run ./bench/std/run                     # every benchmark
 //	go run ./bench/std/run -only sha256,gzip -runs 9
 //	go run ./bench/std/run -asuka old=/path/to/stdbench   # another build too
+//	go run ./bench/std/run -instr                # cycles and instructions, not time
 //
 // Each program times its work itself (after setting up its inputs) and
 // prints its result and the nanoseconds on stderr; the runner checks
@@ -52,6 +53,8 @@ func main() {
 	langs := flag.String("langs", "asuka,go,bun", "which of asuka, go, bun to run")
 	var extra multi
 	flag.Var(&extra, "asuka", "another Asuka build to time too: label=path (repeatable)")
+	instr := flag.Bool("instr", false, "each benchmark's cycles and instructions retired, not its time (macOS's /usr/bin/time -l, Linux's perf stat): what a busy machine changes little")
+	reps := flag.Int("reps", 4, "-instr: a run's work this many times, less a run's once, over reps-1 (the setup cancels out)")
 	flag.Parse()
 
 	root, err := repoRoot()
@@ -91,6 +94,10 @@ func main() {
 	selected := names
 	if *only != "" {
 		selected = strings.Split(*only, ",")
+	}
+	if *instr {
+		counted(progs, selected, tmp, *runs, *reps)
+		return
 	}
 	fmt.Printf("%s, %s/%s, %d runs (median ± median absolute deviation, ms)\n\n", cpuName(), runtime.GOOS, runtime.GOARCH, *runs)
 	header := "| benchmark |"
@@ -143,6 +150,128 @@ func main() {
 		fmt.Println(row)
 		agree(name, progs, results)
 	}
+}
+
+// counted prints each benchmark's millions of cycles and instructions
+// retired a run of its work, in each language: the medians over runs of
+// (a process doing it k times - one doing it once) / (k - 1), so a
+// program's setup (its inputs made) and start cancel out; k is reps, or
+// more where the setup takes long beside the work (its cycles vary by
+// more than a short benchmark's), up to 64.
+func counted(progs []prog, selected []string, dir string, runs, reps int) {
+	fmt.Printf("%s, %s/%s, %d runs of at least %d less 1 (median, millions of cycles a run; instructions' ratio)\n\n", cpuName(), runtime.GOOS, runtime.GOARCH, runs, reps)
+	header, rule := "| benchmark |", "|---|"
+	for _, p := range progs {
+		header += " " + p.label + " |"
+		rule += "---:|"
+	}
+	pair := has(progs, "asuka") && has(progs, "go")
+	if pair {
+		header += " asuka/go | instructions asuka/go |"
+		rule += "---:|---:|"
+	}
+	fmt.Println(header)
+	fmt.Println(rule)
+	for _, name := range selected {
+		cys := map[string]float64{}
+		ins := map[string]float64{}
+		results := make([]string, len(progs))
+		row := "| " + name + " |"
+		for i, p := range progs {
+			var cs, is []float64
+			k := 0 // the repetitions: enough that the work outweighs the setup's noise
+			for r := 0; r < runs; r++ {
+				out, c1, i1, setup, work, err := count(p, name, dir, 1)
+				if err == nil && out != "n/a" {
+					if k == 0 {
+						k = reps
+						if work > 0 && setup > 0 {
+							k = max(k, min(64, 1+int(4*setup/work)))
+						}
+					}
+					var ck, ik int64
+					_, ck, ik, _, _, err = count(p, name, dir, k)
+					cs = append(cs, float64(ck-c1)/float64(k-1)/1e6)
+					is = append(is, float64(ik-i1)/float64(k-1)/1e6)
+				}
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "%s %s: %v\n", p.label, name, err)
+					out = "error"
+				}
+				results[i] = out
+				if out == "n/a" || err != nil {
+					break
+				}
+			}
+			if len(cs) == 0 {
+				row += " n/a |"
+				continue
+			}
+			c, _ := medianMAD(cs)
+			n, _ := medianMAD(is)
+			cys[p.label], ins[p.label] = c, n
+			row += fmt.Sprintf(" %s |", ms(c))
+		}
+		if pair {
+			if a, ok := cys["asuka"]; ok && cys["go"] > 0 {
+				row += fmt.Sprintf(" %.2f× | %.2f× |", a/cys["go"], ins["asuka"]/ins["go"])
+			} else {
+				row += " | |"
+			}
+		}
+		fmt.Println(row)
+		agree(name, progs, results)
+	}
+}
+
+// count runs p's name, its work reps times (STDBENCH_REPS), and returns
+// its result, the process's cycles and instructions retired, and how
+// long its setup and its work took (s).
+func count(p prog, name, dir string, reps int) (string, int64, int64, float64, float64, error) {
+	words := append(append([]string{}, p.cmd...), name, dir)
+	var cmd *exec.Cmd
+	if runtime.GOOS == "darwin" {
+		cmd = exec.Command("/usr/bin/time", append([]string{"-l"}, words...)...)
+	} else {
+		cmd = exec.Command("perf", append([]string{"stat", "-x,", "-e", "instructions:u,cycles:u"}, words...)...)
+	}
+	cmd.Env = append(os.Environ(), "STDBENCH_REPS="+strconv.Itoa(reps))
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	devnull, err := os.Open(os.DevNull)
+	if err != nil {
+		return "", 0, 0, 0, 0, err
+	}
+	defer devnull.Close()
+	cmd.Stdout = devnull
+	t0 := time.Now()
+	if err := cmd.Run(); err != nil {
+		return "", 0, 0, 0, 0, fmt.Errorf("%v: %s", err, stderr.String())
+	}
+	wall := time.Since(t0).Seconds()
+	var out string
+	var cy, in int64
+	var work float64
+	for _, l := range strings.Split(stderr.String(), "\n") {
+		if a, ns, ok := strings.Cut(l, "\t"); ok {
+			out = a
+			if v, err := strconv.ParseFloat(strings.TrimSpace(ns), 64); err == nil {
+				work = v / 1e9
+			}
+		}
+		f := strings.Fields(strings.ReplaceAll(l, ",", " "))
+		switch {
+		case len(f) >= 3 && f[1] == "instructions" && f[2] == "retired":
+			in, _ = strconv.ParseInt(f[0], 10, 64)
+		case len(f) >= 3 && f[1] == "cycles" && f[2] == "elapsed":
+			cy, _ = strconv.ParseInt(f[0], 10, 64)
+		case len(f) >= 2 && strings.HasPrefix(f[1], "instructions"):
+			in, _ = strconv.ParseInt(f[0], 10, 64)
+		case len(f) >= 2 && strings.HasPrefix(f[1], "cycles"):
+			cy, _ = strconv.ParseInt(f[0], 10, 64)
+		}
+	}
+	return out, cy, in, max(wall-work, 0), work, nil
 }
 
 func once(p prog, name, dir string) (string, float64, error) {
