@@ -1328,11 +1328,23 @@ bool ak_deflater_finish(ak_deflater *d) {
 // Decompressing
 // ============================================================================
 
-// A table entry: bits 0-3 the code's length (a subtable's pointer: the
-// main table's bits), 4-7 its extra bits (a pointer: the subtable's
-// bits), 8-11 what it is, 16-31 its value (a literal, a length's or a
-// distance's base, a code length; a pointer: the subtable's index).
+// A table entry: bits 0-7 the bits a symbol takes, its code's and its
+// extra bits together, so a symbol is consumed by one shift (the decoding
+// loop's dependency chain: a table read, a shift, the next read;
+// libdeflate's layout), 8-11 what it is, 12-15 the code's length alone
+// (a pointer: the subtable's bits), 16-31 its value (a literal, a
+// length's or a distance's base, a code length; a pointer: the
+// subtable's index).
 enum { E_LIT = 0x100, E_EOB = 0x200, E_SUB = 0x400, E_BAD = 0x800 };
+
+// e_sub: the entry a pointer e leads to, after the root's bits of bb.
+#define e_sub(t, e, bb, root) ((t)[((e) >> 16) + (((bb) >> (root)) & ((1u << (((e) >> 12) & 15)) - 1))])
+
+// e_extra: e's extra bits, from saved (bb before e was consumed).
+static inline uint32_t e_extra(uint64_t saved, uint32_t e) {
+	return (uint32_t)((saved & ((UINT64_C(1) << (uint8_t)e) - 1)) >> ((e >> 12) & 15));
+}
+
 enum {
 	LBITS = 11,
 	DBITS = 8,
@@ -1410,7 +1422,7 @@ static bool build(uint32_t *t, unsigned size, const uint8_t *lens, unsigned n, u
 	uint32_t code = 0, cur = ~0u, mask = (1u << root) - 1;
 	for (unsigned len = 1; len <= max; len++, code <<= 1) {
 		for (unsigned k = 0; k < count[len]; k++, idx++, code++) {
-			uint32_t e = vals[sorted[idx]] | len, rev = reverse(code, len);
+			uint32_t e = (vals[sorted[idx]] + len) | len << 12, rev = reverse(code, len);
 			if (len <= root) {
 				for (uint32_t j = rev; j <= mask; j += 1u << len) t[j] = e;
 			} else {
@@ -1426,7 +1438,7 @@ static bool build(uint32_t *t, unsigned size, const uint8_t *lens, unsigned n, u
 					if (used + (1u << bits) > size) return false;
 					sub_base = used, sub_bits = bits;
 					used += 1u << bits;
-					t[cur] = E_SUB | sub_base << 16 | bits << 4 | root;
+					t[cur] = E_SUB | sub_base << 16 | bits << 12;
 				}
 				for (uint32_t j = rev >> root; j < (1u << sub_bits); j += 1u << (len - root)) t[sub_base + j] = e;
 			}
@@ -1448,9 +1460,9 @@ static void make_vals(void) {
 	}
 	for (unsigned s = 0; s < 256; s++) lvals[s] = E_LIT | s << 16;
 	lvals[256] = E_EOB;
-	for (unsigned c = 0; c < 29; c++) lvals[257 + c] = (uint32_t)len_base[c] << 16 | (uint32_t)len_extra[c] << 4;
+	for (unsigned c = 0; c < 29; c++) lvals[257 + c] = (uint32_t)len_base[c] << 16 | (uint32_t)len_extra[c];
 	lvals[286] = lvals[287] = E_BAD;
-	for (unsigned c = 0; c < 30; c++) dvals[c] = (uint32_t)dist_base[c] << 16 | (uint32_t)dist_extra[c] << 4;
+	for (unsigned c = 0; c < 30; c++) dvals[c] = (uint32_t)dist_base[c] << 16 | (uint32_t)dist_extra[c];
 	dvals[30] = dvals[31] = E_BAD;
 	for (unsigned s = 0; s < 19; s++) pvals[s] = s << 16;
 	__atomic_store_n(&vals_made, 2, __ATOMIC_RELEASE);
@@ -1549,7 +1561,7 @@ static bool header(ak_inflater *d, run_st *r) {
 	for (unsigned i = 0; i < n;) {
 		fill(r);
 		uint32_t e = d->pt[r->bb & ((1u << PBITS) - 1)];
-		take(r, e & 15);
+		take(r, (uint8_t)e);
 		unsigned sym = e >> 16, rep, v = 0;
 		if (sym < 16) {
 			lens[i++] = (uint8_t)sym;
@@ -1623,19 +1635,19 @@ static int huff(ak_inflater *d, run_st *r) {
 			in += (63 - nb) >> 3;
 			nb |= 56;
 			uint32_t e = lt[bb & ((1u << LBITS) - 1)];
-			if (AK_UNLIKELY(e & E_SUB)) e = lt[(e >> 16) + ((bb >> LBITS) & ((1u << ((e >> 4) & 15)) - 1))];
+			if (AK_UNLIKELY(e & E_SUB)) e = e_sub(lt, e, bb, LBITS);
 			if (e & E_LIT) {
-				bb >>= e & 15, nb -= e & 15;
+				bb >>= (uint8_t)e, nb -= (uint8_t)e;
 				*out++ = (uint8_t)(e >> 16);
 				e = lt[bb & ((1u << LBITS) - 1)];
-				if (AK_UNLIKELY(e & E_SUB)) e = lt[(e >> 16) + ((bb >> LBITS) & ((1u << ((e >> 4) & 15)) - 1))];
+				if (AK_UNLIKELY(e & E_SUB)) e = e_sub(lt, e, bb, LBITS);
 				if (e & E_LIT) {
-					bb >>= e & 15, nb -= e & 15;
+					bb >>= (uint8_t)e, nb -= (uint8_t)e;
 					*out++ = (uint8_t)(e >> 16);
 					e = lt[bb & ((1u << LBITS) - 1)];
-					if (AK_UNLIKELY(e & E_SUB)) e = lt[(e >> 16) + ((bb >> LBITS) & ((1u << ((e >> 4) & 15)) - 1))];
+					if (AK_UNLIKELY(e & E_SUB)) e = e_sub(lt, e, bb, LBITS);
 					if (e & E_LIT) {
-						bb >>= e & 15, nb -= e & 15;
+						bb >>= (uint8_t)e, nb -= (uint8_t)e;
 						*out++ = (uint8_t)(e >> 16);
 						continue;
 					}
@@ -1644,25 +1656,23 @@ static int huff(ak_inflater *d, run_st *r) {
 			// nb >= 26 here: a length's code and extra bits (20) fit.
 			if (AK_UNLIKELY(e & (E_EOB | E_BAD))) {
 				if (e & E_BAD) goto bad_code;
-				bb >>= e & 15, nb -= e & 15;
+				bb >>= (uint8_t)e, nb -= (uint8_t)e;
 				goto eob;
 			}
-			bb >>= e & 15, nb -= e & 15;
-			uint32_t extra = (e >> 4) & 15;
-			uint32_t len = (e >> 16) + (uint32_t)(bb & ((1u << extra) - 1));
-			bb >>= extra, nb -= extra;
+			uint64_t saved = bb;
+			bb >>= (uint8_t)e, nb -= (uint8_t)e;
+			uint32_t len = (e >> 16) + e_extra(saved, e);
 			if (nb < 28) {
 				bb |= load64(in) << nb;
 				in += (63 - nb) >> 3;
 				nb |= 56;
 			}
 			e = dt[bb & ((1u << DBITS) - 1)];
-			if (AK_UNLIKELY(e & E_SUB)) e = dt[(e >> 16) + ((bb >> DBITS) & ((1u << ((e >> 4) & 15)) - 1))];
+			if (AK_UNLIKELY(e & E_SUB)) e = e_sub(dt, e, bb, DBITS);
 			if (AK_UNLIKELY(e & E_BAD)) goto bad_dist;
-			bb >>= e & 15, nb -= e & 15;
-			extra = (e >> 4) & 15;
-			uint32_t dist = (e >> 16) + (uint32_t)(bb & ((1u << extra) - 1));
-			bb >>= extra, nb -= extra;
+			saved = bb;
+			bb >>= (uint8_t)e, nb -= (uint8_t)e;
+			uint32_t dist = (e >> 16) + e_extra(saved, e);
 			if (AK_UNLIKELY(dist > (size_t)(out - out_lo))) goto too_far;
 			out = copy_match(out, dist, len);
 		}
@@ -1673,24 +1683,22 @@ static int huff(ak_inflater *d, run_st *r) {
 		in = r->in, bb = r->bb, nb = r->nb;
 		if (nb < 48 && !r->eof) goto more;
 		uint32_t e = lt[bb & ((1u << LBITS) - 1)];
-		if (e & E_SUB) e = lt[(e >> 16) + ((bb >> LBITS) & ((1u << ((e >> 4) & 15)) - 1))];
+		if (e & E_SUB) e = e_sub(lt, e, bb, LBITS);
 		if (e & E_BAD) goto bad_code;
-		bb >>= e & 15, nb -= e & 15;
+		uint64_t saved = bb;
+		bb >>= (uint8_t)e, nb -= (uint8_t)e;
 		if (e & E_LIT) {
 			*out++ = (uint8_t)(e >> 16);
 		} else if (e & E_EOB) {
 			goto eob;
 		} else {
-			uint32_t extra = (e >> 4) & 15;
-			uint32_t len = (e >> 16) + (uint32_t)(bb & ((1u << extra) - 1));
-			bb >>= extra, nb -= extra;
+			uint32_t len = (e >> 16) + e_extra(saved, e);
 			e = dt[bb & ((1u << DBITS) - 1)];
-			if (e & E_SUB) e = dt[(e >> 16) + ((bb >> DBITS) & ((1u << ((e >> 4) & 15)) - 1))];
+			if (e & E_SUB) e = e_sub(dt, e, bb, DBITS);
 			if (e & E_BAD) goto bad_dist;
-			bb >>= e & 15, nb -= e & 15;
-			extra = (e >> 4) & 15;
-			uint32_t dist = (e >> 16) + (uint32_t)(bb & ((1u << extra) - 1));
-			bb >>= extra, nb -= extra;
+			saved = bb;
+			bb >>= (uint8_t)e, nb -= (uint8_t)e;
+			uint32_t dist = (e >> 16) + e_extra(saved, e);
 			if (dist > (size_t)(out - out_lo)) goto too_far;
 			if (r->over * 8 > nb) goto short_in;
 			const uint8_t *src = out - dist;
