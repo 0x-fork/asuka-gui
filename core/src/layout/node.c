@@ -68,6 +68,8 @@ void ak_lpass_free(ak_lpass *p) {
 	memset(p, 0, sizeof *p);
 }
 
+uint64_t ak_lnode_computed;
+
 // The cache.
 
 static bool same_f(float a, float b) { return a == b || (a != a && b != b); }
@@ -87,14 +89,25 @@ static bool entry_matches(const l_cache_entry *e, const l_input *in) {
 		(l_isdef(in->known.h) || same_avail(e->avail.h, in->avail.h));
 }
 
-static bool cache_get(const l_cache *c, const l_input *in, l_output *out) {
+static bool same_output(const l_output *a, const l_output *b) {
+	return same_f(a->size.w, b->size.w) && same_f(a->size.h, b->size.h) && same_f(a->baseline, b->baseline) &&
+		same_f(a->top.pos, b->top.pos) && same_f(a->top.neg, b->top.neg) && same_f(a->bottom.pos, b->bottom.pos) &&
+		same_f(a->bottom.neg, b->bottom.neg) && a->collapses_through == b->collapses_through;
+}
+
+// cache_get answers in from the cache, noting the generation of the
+// parent's cache that got the answer (pgen).
+static bool cache_get(l_cache *c, const l_input *in, l_output *out, uint32_t pgen) {
 	if (c->has_final && entry_matches(&c->final, in)) {
+		if (in->mode == MODE_SIZE) c->final_shared = true;
+		c->final.pgen = pgen;
 		*out = c->final.out;
 		return true;
 	}
 	if (in->mode == MODE_LAYOUT) return false;
 	for (uint8_t i = 0; i < c->n; i++) {
 		if (entry_matches(&c->slots[i], in)) {
+			c->slots[i].pgen = pgen;
 			*out = c->slots[i].out;
 			return true;
 		}
@@ -102,20 +115,34 @@ static bool cache_get(const l_cache *c, const l_input *in, l_output *out) {
 	return false;
 }
 
-static void cache_put(l_cache *c, const l_input *in, l_output out) {
-	l_cache_entry e = {in->mode, in->sizing, {in->collapse[0], in->collapse[1]}, in->known, in->avail, out};
+// cache_put keeps what n answered, asked by the computation caller (0:
+// none, a layout's root) in caller_mode (MODE_SIZE + 1, MODE_LAYOUT + 1;
+// 0: none). A final the parent may still depend on, replaced, is an
+// answer lost: one that answered its measuring, or that its measuring
+// asked for (a baseline), or that the same computation of it asked for
+// before.
+static void cache_put(l_cache *c, const l_input *in, l_output out, uint64_t caller, uint8_t caller_mode, uint32_t pgen) {
+	l_cache_entry e = {in->mode, in->sizing, {in->collapse[0], in->collapse[1]}, in->known, in->parent, in->avail, out, pgen, c->seq++};
 	if (in->mode == MODE_LAYOUT) {
+		if (c->has_final && (c->final_shared || caller_mode == MODE_SIZE + 1 || (caller && c->final_by == caller))) c->lossy = true;
 		c->final = e;
 		c->has_final = true;
+		c->final_shared = false;
+		c->final_by = caller;
 		return;
 	}
+	if (c->n == L_MEASURE_SLOTS) c->lossy = true;
 	c->slots[c->next] = e;
 	c->next = (uint8_t)((c->next + 1) % L_MEASURE_SLOTS);
 	if (c->n < L_MEASURE_SLOTS) c->n++;
 }
 
 static void cache_clear(l_cache *c) {
+	c->gen++;
 	c->has_final = false;
+	c->lossy = false;
+	c->final_shared = false;
+	c->seq = 0;
 	c->n = 0;
 	c->next = 0;
 }
@@ -167,7 +194,7 @@ void ak_lnode_set_context(ak_lnode *n, void *ctx) { n->context = ctx; }
 void ak_lnode_set_measure(ak_lnode *n, ak_lmeasure_fn fn, void *ctx) {
 	n->measure = fn;
 	n->measure_ctx = ctx;
-	ak_lnode_mark_dirty(n);
+	ak_lnode_mark_content_dirty(n);
 }
 
 void ak_lnode_set_baseline(ak_lnode *n, ak_lbaseline_fn fn, void *ctx) {
@@ -194,7 +221,17 @@ void ak_lnode_mark_subtree_dirty(ak_lnode *n) {
 	for (uint32_t i = 0; i < n->nchildren; i++) mark_below(n->children[i]);
 }
 
-bool ak_lnode_dirty(const ak_lnode *n) { return n->dirty; }
+void ak_lnode_mark_content_dirty(ak_lnode *n) {
+	if (n->dirty || n->stale) return;
+	if (!n->parent) {
+		ak_lnode_mark_dirty(n);
+		return;
+	}
+	n->stale = true;
+	for (ak_lnode *a = n; a && !a->revalidate; a = a->parent) a->revalidate = true;
+}
+
+bool ak_lnode_dirty(const ak_lnode *n) { return n->dirty || n->revalidate; }
 ak_lnode *ak_lnode_parent(const ak_lnode *n) { return n->parent; }
 
 ak_lnode *const *ak_lnode_children(const ak_lnode *n, uint32_t *count) {
@@ -237,7 +274,7 @@ void ak_lnode_set_children(ak_lnode *n, ak_lnode *const *children, uint32_t coun
 		c->parent = n;
 		ak_lnode_force_report(c);
 	}
-	ak_lnode_mark_dirty(n);
+	ak_lnode_mark_content_dirty(n);
 }
 
 void ak_lnode_append_child(ak_lnode *n, ak_lnode *c) {
@@ -246,7 +283,7 @@ void ak_lnode_append_child(ak_lnode *n, ak_lnode *c) {
 	ak_lnode_force_report(c);
 	reserve_children(n, n->nchildren + 1);
 	n->children[n->nchildren++] = c;
-	ak_lnode_mark_dirty(n);
+	ak_lnode_mark_content_dirty(n);
 }
 
 void ak_lnode_insert_child(ak_lnode *n, ak_lnode *c, uint32_t index) {
@@ -258,7 +295,7 @@ void ak_lnode_insert_child(ak_lnode *n, ak_lnode *c, uint32_t index) {
 	memmove(n->children + index + 1, n->children + index, sizeof(ak_lnode *) * (n->nchildren - index));
 	n->children[index] = c;
 	n->nchildren++;
-	ak_lnode_mark_dirty(n);
+	ak_lnode_mark_content_dirty(n);
 }
 
 void ak_lnode_remove_child(ak_lnode *n, ak_lnode *c) {
@@ -268,12 +305,33 @@ void ak_lnode_remove_child(ak_lnode *n, ak_lnode *c) {
 	}
 }
 
+void ak_lnode_detach(ak_lnode *const *nodes, uint32_t count) {
+	for (uint32_t i = 0; i < count; i++)
+		if (nodes[i]->parent) nodes[i]->detaching = true;
+	for (uint32_t i = 0; i < count; i++) {
+		ak_lnode *p = nodes[i]->parent;
+		if (!p || !nodes[i]->detaching) continue;  // its parent's done
+		uint32_t k = 0;
+		for (uint32_t j = 0; j < p->nchildren; j++) {
+			ak_lnode *c = p->children[j];
+			if (c->detaching && c->parent == p) {
+				c->detaching = false;
+				c->parent = NULL;
+			} else {
+				p->children[k++] = c;
+			}
+		}
+		p->nchildren = k;
+		ak_lnode_mark_content_dirty(p);
+	}
+}
+
 static void remove_child(ak_lnode *n, ak_lnode *c) {
 	for (uint32_t i = 0; i < n->nchildren; i++) {
 		if (n->children[i] == c) {
 			memmove(n->children + i, n->children + i + 1, sizeof(ak_lnode *) * (n->nchildren - i - 1));
 			n->nchildren--;
-			ak_lnode_mark_dirty(n);
+			ak_lnode_mark_content_dirty(n);
 			return;
 		}
 	}
@@ -283,9 +341,72 @@ void ak_lnode_force_report(ak_lnode *n) { n->reported[0] = LNAN; }
 
 ak_lframe ak_lnode_frame(const ak_lnode *n) { return (ak_lframe){n->x, n->y, n->w, n->h}; }
 
+// Relayout boundaries.
+
+// revalidate asks stale n again what its cache says it was asked, in the
+// order its answers were stored (the final layout among them, which
+// places its children), and says whether every answer is the same: then
+// its parent's layout stands. Replayed in order, each question that
+// found an answer stored before finds the same one, as when it was first
+// asked, so the cache ends as a layout from clean caches would leave it.
+// Answers the parent got before its cache was last cleared aren't asked
+// again (none of its answers rest on them: a host's measurement saved).
+// It can't tell when an answer was dropped from the cache (lossy) or n
+// wasn't laid out since: those count as changed.
+static bool revalidate(ak_lnode *n, ak_lpass *p) {
+	l_cache old = n->cache;
+	cache_clear(&n->cache);
+	n->dirty = true;
+	uint32_t pgen = n->parent->cache.gen;
+	if (old.lossy || !old.has_final || old.final.pgen != pgen) return false;
+	const l_cache_entry *es[L_MEASURE_SLOTS + 1];
+	uint32_t ne = 0;
+	for (uint8_t k = 0; k < old.n; k++)
+		if (old.slots[k].pgen == pgen) es[ne++] = &old.slots[k];
+	es[ne++] = &old.final;
+	for (uint32_t i = 1; i < ne; i++)  // by seq: at most nine
+		for (uint32_t j = i; j > 0 && es[j - 1]->seq > es[j]->seq; j--) {
+			const l_cache_entry *t = es[j];
+			es[j] = es[j - 1];
+			es[j - 1] = t;
+		}
+	for (uint32_t i = 0; i < ne; i++) {
+		const l_cache_entry *e = es[i];
+		l_input in = {.mode = e->mode, .sizing = e->sizing, .collapse = {e->coll[0], e->coll[1]}, .known = e->known, .parent = e->parent, .avail = e->avail};
+		l_output out = l_compute(n, in, p);
+		if (!same_output(&out, &e->out)) return false;
+	}
+	return true;
+}
+
+// resolve settles the stale nodes at and below n, deepest first, before
+// top (n's tree's layout root) is laid out: each is revalidated, and
+// where an answer changed its parent is stale in turn. A stale top is
+// laid out afresh (its ancestors' caches dropped, as ak_lnode_mark_dirty
+// does).
+static void resolve(ak_lnode *n, ak_lnode *top, ak_lpass *p) {
+	n->revalidate = false;
+	for (uint32_t i = 0; i < n->nchildren; i++) {
+		ak_lnode *c = n->children[i];
+		if (c->revalidate) resolve(c, top, p);
+	}
+	if (!n->stale) return;
+	n->stale = false;
+	if (n->dirty) return;  // dropped already, and its ancestors
+	if (n == top || !n->parent) {
+		ak_lnode_mark_dirty(n);
+		return;
+	}
+	if (!revalidate(n, p)) {
+		ak_lnode *parent = n->parent;
+		if (!parent->dirty) parent->stale = true;
+	}
+}
+
 // Layout.
 
 ak_lsize ak_lnode_layout(ak_lnode *n, ak_lsize avail, ak_lpass *p) {
+	if (n->revalidate) resolve(n, n, p);
 	ak_lsize parent = {LNAN, LNAN};
 	if (l_definite(avail.w)) parent.w = avail.w;
 	if (l_definite(avail.h)) parent.h = avail.h;
@@ -353,8 +474,21 @@ static l_output compute_dir(ak_lnode *n, l_input in, bool rtl, ak_lpass *p) {
 		n->rtl = rtl;
 		cache_clear(&n->cache);
 	}
+	if (n->stale) {
+		// Asked before a layout from its root resolved it (a layout of a
+		// subtree beside it): its answers are dropped, as before.
+		n->stale = false;
+		ak_lnode_mark_dirty(n);
+	}
 	l_output out;
-	if (cache_get(&n->cache, &in, &out)) return out;
+	uint32_t pgen = n->parent ? n->parent->cache.gen : 0;
+	if (cache_get(&n->cache, &in, &out, pgen)) return out;
+	ak_lnode_computed++;
+	static uint64_t seq;  // computations, numbered (main thread only)
+	uint64_t caller = p->comp_;
+	uint8_t caller_mode = p->mode_;
+	p->comp_ = ++seq;
+	p->mode_ = (uint8_t)(in.mode + 1);
 	if (n->style.display == AK_LDISPLAY_NONE) {
 		out = (l_output){.baseline = LNAN};
 		if (in.mode == MODE_LAYOUT) l_hide(n, p);
@@ -367,7 +501,9 @@ static l_output compute_dir(ak_lnode *n, l_input in, bool rtl, ak_lpass *p) {
 	} else {
 		out = l_flex(n, &in, p);
 	}
-	cache_put(&n->cache, &in, out);
+	p->comp_ = caller;
+	p->mode_ = caller_mode;
+	cache_put(&n->cache, &in, out, caller, caller_mode, n->parent ? n->parent->cache.gen : 0);
 	if (in.mode == MODE_LAYOUT) n->dirty = false;
 	return out;
 }
@@ -400,10 +536,16 @@ static bool zero_rect(const ak_lrect *r) {
 	return zero_length(r->top) && zero_length(r->right) && zero_length(r->bottom) && zero_length(r->left);
 }
 
+static bool pct_rect(const ak_lrect *r) {
+	return r->top.u == AK_LUNIT_PERCENT || r->right.u == AK_LUNIT_PERCENT || r->bottom.u == AK_LUNIT_PERCENT || r->left.u == AK_LUNIT_PERCENT;
+}
+
 ak_ledges ak_lnode_content_insets(const ak_lnode *n) {
 	if (zero_rect(&n->style.padding) && zero_rect(&n->style.border)) return (ak_ledges){0, 0, 0, 0};
 	float cw = 0;
-	if (n->parent) {
+	// The parent's content width is a percentage's basis; points don't
+	// read it (and finding it climbs the ancestors).
+	if (n->parent && (pct_rect(&n->style.padding) || pct_rect(&n->style.border))) {
 		const ak_lnode *p = n->parent;
 		ak_ledges pi = ak_lnode_content_insets(p);
 		cw = p->w - pi.left - pi.right;

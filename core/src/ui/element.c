@@ -139,8 +139,10 @@ void ak_view_finalize(ak_view *e) {
 
 // ---- Layout children ----
 
+// ak_view_remeasure: what e shows changed (its text, its image), not its
+// style: its ancestors are laid out again only if its size does.
 void ak_view_remeasure(ak_view *e) {
-	if (e->box) ak_lnode_mark_dirty(e->box);
+	if (e->box) ak_lnode_mark_content_dirty(e->box);
 }
 
 void ak_view_mark_kids(ak_view *e) {

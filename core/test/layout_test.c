@@ -628,6 +628,7 @@ typedef struct {
 	ak_lgrid_track *tpl[2];
 	ak_ltrack_size *sizes;
 	ak_ltrack_size *autos[2];
+	float shadow[4];  // incremental_relayout's: its frame, as layouts reported it
 } fnode;
 
 // ahem measures text in the Ahem font: 10×10 glyphs, breaking only at
@@ -1087,6 +1088,254 @@ TEST(grid_repeat_beyond_its_lines) {
 		ak_lnode_free_tree(root);
 		ak_lpass_free(&p);
 	}
+}
+
+
+// Relayout boundaries (ak_lnode_mark_content_dirty): every fixture's tree,
+// each leaf showing text, changed at random (its text, a node's style, a
+// child moved, the space it's laid out in) and laid out three ways: with
+// relayout boundaries; with each change dropping its ancestors' caches
+// (ak_lnode_mark_dirty, what every change did before); and from clean
+// caches. Where dropping the ancestors' caches gives clean caches'
+// frames, relayout boundaries do too (the caches' looser matches, which
+// both keep, can differ from clean caches' in a few corners); and every
+// layout reports each frame that changed.
+
+static uint64_t rng_state;
+static uint32_t rnd(uint32_t n) {
+	rng_state = rng_state * 6364136223846793005ULL + 1442695040888963407ULL;
+	return n ? (uint32_t)((rng_state >> 33) % n) : 0;
+}
+
+static void preorder(ak_lnode *n, ak_lnode **out, int *k, int cap) {
+	if (*k < cap) out[(*k)++] = n;
+	for (uint32_t i = 0; i < ak_lnode_child_count(n); i++) preorder(ak_lnode_child(n, i), out, k, cap);
+}
+
+// set_words gives f's text count words of the given lengths.
+static void set_words(fnode *f, const int *lens, int count) {
+	free(f->words);
+	f->words = calloc((size_t)count + 1, sizeof(int));
+	f->nwords = count;
+	f->minw = f->maxw = 0;
+	for (int i = 0; i < count; i++) {
+		f->words[i] = lens[i];
+		if (lens[i] > f->minw) f->minw = lens[i];
+		f->maxw += lens[i];
+	}
+}
+
+static void record_reported(const ak_lpass *p) {
+	for (uint32_t i = 0; i < p->nchanged; i++) {
+		ak_lframe fr = ak_lnode_frame(p->changed[i]);
+		fnode *f = ak_lnode_context(p->changed[i]);
+		f->shadow[0] = fr.x, f->shadow[1] = fr.y, f->shadow[2] = fr.w, f->shadow[3] = fr.h;
+	}
+}
+
+static bool same_or_nan(ak_lframe x, ak_lframe y) { return same_frame(x, y) || (x.w != x.w && y.w != y.w); }
+
+// all_reported: each node's frame is what the layouts reported of it.
+static bool all_reported(ak_lnode **ns, int n, int *bad) {
+	for (int k = 0; k < n; k++) {
+		const fnode *f = ak_lnode_context(ns[k]);
+		if (!same_or_nan(ak_lnode_frame(ns[k]), (ak_lframe){f->shadow[0], f->shadow[1], f->shadow[2], f->shadow[3]})) {
+			*bad = k;
+			return false;
+		}
+	}
+	return true;
+}
+
+#define DIFF_NODES 512
+
+TEST(incremental_relayout_matches_a_fresh_one) {
+	char *data = testdata("layout_fixtures.txt");
+	REQUIRE(data != NULL);
+	char *texts[3] = {data, strdup(data), strdup(data)};  // the scanner writes into its text
+	scanner s[3] = {{texts[0]}, {texts[1]}, {texts[2]}};
+	float defaults[NFIXED];
+	for (int t = 0; t < 3; t++) {
+		expect_tag(&s[t], "D");
+		REQUIRE(tok_i(&s[t]) == NFIXED);
+		for (int i = 0; i < NFIXED; i++) defaults[i] = tok_f(&s[t]);
+	}
+	frame_rec *skip = calloc(MAX_FRAMES, sizeof(frame_rec));
+	ak_lnode **ns[3];
+	for (int t = 0; t < 3; t++) ns[t] = calloc(DIFF_NODES, sizeof(ak_lnode *));
+	ak_lpass ps[3] = {{0}, {0}, {0}};
+	int trees = 0, steps = 0, fails = 0, boundaries = 0, old_off = 0;
+	while (next_token(&s[0]) != NULL && fails < 5) {
+		const char *name = next_token(&s[0]);
+		tok_i(&s[0]);
+		float vw = tok_f(&s[0]), vh = tok_f(&s[0]);
+		ak_lnode *root[3];
+		root[0] = read_node(&s[0], defaults);
+		for (int t = 1; t < 3; t++) {
+			next_token(&s[t]), next_token(&s[t]), tok_i(&s[t]), tok_f(&s[t]), tok_f(&s[t]);
+			root[t] = read_node(&s[t], defaults);
+		}
+		int n = 0;
+		for (int t = 0; t < 3; t++) {
+			read_frames(&s[t], "E", skip, MAX_FRAMES, 0);
+			expect_tag(&s[t], ".");
+			n = 0;
+			preorder(root[t], ns[t], &n, DIFF_NODES);
+		}
+		trees++;
+		rng_state = (uint64_t)trees * 0x9e3779b97f4a7c15ULL;
+		// Every leaf shows text.
+		for (int i = 0; i < n; i++) {
+			if (ak_lnode_child_count(ns[0][i]) > 0) continue;
+			for (int t = 0; t < 3; t++) {
+				ak_lnode_set_measure(ns[t][i], ahem, ak_lnode_context(ns[t][i]));
+				ak_lnode_set_baseline(ns[t][i], ahem_baseline, ns[t][i]);
+			}
+		}
+		for (int t = 0; t < 3; t++) {
+			ak_lpass_reset(&ps[t]);
+			ak_lnode_layout(root[t], (ak_lsize){vw, vh}, &ps[t]);
+			record_reported(&ps[t]);
+		}
+		for (int step = 0; step < 5 && fails < 5; step++) {
+			steps++;
+			uint32_t what = rnd(10);
+			int i = (int)rnd((uint32_t)n);
+			if (what < 6) {
+				// A leaf's text.
+				int lens[6], count = (int)rnd(6);
+				for (int w = 0; w < count; w++) lens[w] = 1 + (int)rnd(8);
+				int leaf = i;
+				while (leaf < n && ak_lnode_child_count(ns[0][leaf]) > 0) leaf++;
+				if (leaf == n) continue;
+				for (int t = 0; t < 3; t++) set_words(ak_lnode_context(ns[t][leaf]), lens, count);
+				ak_lnode_mark_content_dirty(ns[0][leaf]);
+				ak_lnode_mark_dirty(ns[1][leaf]);
+			} else if (what == 6) {
+				// A node's style.
+				float w = rnd(3) == 0 ? -1 : (float)(10 * rnd(30));
+				float grow = (float)rnd(2);
+				for (int t = 0; t < 3; t++) {
+					ak_lnode_style(ns[t][i])->width = w < 0 ? AK_LAUTO : ak_lpt(w);
+					ak_lnode_style(ns[t][i])->flex_grow = grow;
+				}
+				ak_lnode_mark_dirty(ns[0][i]);
+				ak_lnode_mark_dirty(ns[1][i]);
+			} else if (what == 7) {
+				// A child moved within its parent.
+				uint32_t nk = ak_lnode_child_count(ns[0][i]);
+				if (nk == 0) continue;
+				uint32_t from = rnd(nk), to = rnd(nk);
+				for (int t = 0; t < 3; t++) {
+					ak_lnode *x = ns[t][i], *c = ak_lnode_child(x, from);
+					ak_lnode_remove_child(x, c);
+					ak_lnode_insert_child(x, c, to);
+					if (t == 1) ak_lnode_mark_dirty(x);
+				}
+				for (int t = 0; t < 3; t++) {
+					n = 0;
+					preorder(root[t], ns[t], &n, DIFF_NODES);
+				}
+			} else {
+				// The space it's laid out in.
+				vw = vw + (float)rnd(41) - 20;
+				if (vw < 0) vw = 0;
+			}
+			ak_lnode_mark_subtree_dirty(root[2]);
+			uint64_t before = 0;
+			for (int t = 0; t < 3; t++) {
+				ak_lpass_reset(&ps[t]);
+				if (t == 0) before = ak_lnode_computed;
+				ak_lnode_layout(root[t], (ak_lsize){vw, vh}, &ps[t]);
+				if (t == 0 && what < 6 && ak_lnode_computed - before < (uint64_t)n) boundaries++;
+				record_reported(&ps[t]);
+			}
+			int bad = -1;
+			if (!all_reported(ns[0], n, &bad)) {
+				ak_lframe x = ak_lnode_frame(ns[0][bad]);
+				T_FAIL("%s, step %d (change %u at node %d): node %d's frame %g,%g %gx%g wasn't reported", name, step, what, i, bad, x.x, x.y, x.w, x.h);
+				fails++;
+				break;
+			}
+			bool old_right = true;
+			for (int k = 0; k < n && old_right; k++) old_right = same_or_nan(ak_lnode_frame(ns[1][k]), ak_lnode_frame(ns[2][k]));
+			if (!old_right) {
+				// The caches' looser matches: start again from clean caches.
+				old_off++;
+				for (int t = 0; t < 2; t++) {
+					ak_lnode_mark_subtree_dirty(root[t]);
+					ak_lpass_reset(&ps[t]);
+					ak_lnode_layout(root[t], (ak_lsize){vw, vh}, &ps[t]);
+					record_reported(&ps[t]);
+				}
+				continue;
+			}
+			for (int k = 0; k < n; k++) {
+				ak_lframe x = ak_lnode_frame(ns[0][k]), y = ak_lnode_frame(ns[2][k]);
+				if (!same_or_nan(x, y)) {
+					T_FAIL("%s, step %d (change %u at node %d): node %d: %g,%g %gx%g; from clean caches %g,%g %gx%g", name, step, what, i, k, x.x, x.y, x.w,
+						x.h, y.x, y.y, y.w, y.h);
+					fails++;
+					break;
+				}
+			}
+		}
+		for (int t = 0; t < 3; t++) {
+			free_fixture(root[t]);
+			ak_lnode_free_tree(root[t]);
+		}
+	}
+	fprintf(stderr, "incremental relayout: %d trees, %d changes, %d text changes stopped below the root, %d where the old way differs from clean caches\n",
+		trees, steps, boundaries, old_off);
+	CHECK(trees > 1900);
+	CHECK(boundaries > 500);
+	for (int t = 0; t < 3; t++) {
+		ak_lpass_free(&ps[t]);
+		free(ns[t]);
+		free(texts[t]);
+	}
+	free(skip);
+}
+
+// A text that changes in a long list re-lays out its row, not the list:
+// what the list's other rows answered stands.
+TEST(a_text_in_a_long_list_relays_out_its_row) {
+	int n[1000];
+	ak_lnode *rows[1000], *texts[1000];
+	for (int i = 0; i < 1000; i++) {
+		n[i] = 5;
+		texts[i] = label(&n[i]);
+		ak_lnode_style(texts[i])->flex_grow = 1;
+		ak_lnode *icon = sized(40, 20);
+		ak_lnode_style(icon)->flex_shrink = 0;
+		rows[i] = row(icon, texts[i]);
+	}
+	ak_lnode *root = colv(rows, 1000);
+	ak_lpass p = {0};
+	screen(root, 320, 20000, &p);
+	n[500] = 7;  // wider, the same height
+	ak_lnode_mark_content_dirty(texts[500]);
+	CHECK(ak_lnode_dirty(root));
+	ak_lpass_reset(&p);
+	uint64_t before = ak_lnode_computed;
+	screen(root, 320, 20000, &p);
+	uint64_t computed = ak_lnode_computed - before;
+	CHECK(computed <= 8);  // the text's answers, its row's: none of the other rows'
+	CHECK_EQ_INT(p.nchanged, 0);
+	CHECK(!ak_lnode_dirty(root));
+	n[500] = 100;  // taller: the rows below move
+	ak_lnode_mark_content_dirty(texts[500]);
+	ak_lpass_reset(&p);
+	screen(root, 320, 20000, &p);
+	CHECK_EQ_INT(p.nchanged, 1 + 1 + 499);  // the text, its row, the rows below
+	for (uint32_t i = 0; i < p.nchanged; i++) {
+		ak_lnode *c = p.changed[i];
+		bool known = c == texts[500] || c == rows[500];
+		for (int r = 501; r < 1000 && !known; r++) known = c == rows[r];
+		if (!known) T_FAIL("reported %p (%g wide)", (void *)c, (double)ak_lnode_frame(c).w);
+	}
+	ak_lnode_free_tree(root);
+	ak_lpass_free(&p);
 }
 
 T_MAIN()
