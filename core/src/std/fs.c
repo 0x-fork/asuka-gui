@@ -510,10 +510,51 @@ static ak_val read_fn(ak_val *args, uint32_t n) {
 		return (ak_val){.p = NULL};
 	}
 	struct stat st;
-	if (fstat(fd, &st) == 0 && S_ISDIR(st.st_mode)) {
+	bool sized = fstat(fd, &st) == 0;
+	if (sized && S_ISDIR(st.st_mode)) {
 		close(fd);
 		failed(FAIL_IS_DIR, "is a directory");
 		return (ak_val){.p = NULL};
+	}
+	if (sized && S_ISREG(st.st_mode) && st.st_size > 0 && (uint64_t)st.st_size < UINT32_MAX) {
+		// A file of a known size: read into the bytes made at it, not
+		// through a buffer copied as it grows and then again.
+		size_t want = (size_t)st.st_size, got = 0;
+		ak_bytes *o = ak_bytes_new(NULL, want);
+		while (got < want) {
+			ssize_t r = read(fd, o->data + got, want - got);
+			if (r < 0) {
+				if (errno == EINTR) continue;
+				failed_os();
+				close(fd);
+				ak_release(o);
+				return (ak_val){.p = NULL};
+			}
+			if (r == 0) break;
+			got += (size_t)r;
+		}
+		if (got < want) {
+			o->len = (uint32_t)got;  // it shrank as it was read
+			close(fd);
+			return (ak_val){.p = o};
+		}
+		// It may have grown: what's past its size is read as any file's.
+		uint8_t more;
+		ssize_t r;
+		while ((r = read(fd, &more, 1)) < 0 && errno == EINTR) {}
+		if (r == 0) {
+			close(fd);
+			return (ak_val){.p = o};
+		}
+		if (r < 0) {
+			failed_os();
+			close(fd);
+			ak_release(o);
+			return (ak_val){.p = NULL};
+		}
+		ak_buf_put(&b, o->data, got);
+		ak_buf_put(&b, &more, 1);
+		ak_release(o);
 	}
 	for (;;) {
 		ak_buf_reserve(&b, 65536);

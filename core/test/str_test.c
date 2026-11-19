@@ -4,6 +4,7 @@
 #include "t.h"
 #include "rt/rt.h"
 #include "rt/lib.h"
+#include "rt/unicode.h"
 
 #include <float.h>
 #include <stdint.h>
@@ -405,6 +406,33 @@ TEST(find_any_as_naive) {
 		CHECK_EQ_INT(got ? got->v.i : -1, want_at);
 		if (got) ak_release(got);
 		ak_release(a), ak_release(b);
+	}
+}
+
+// bytes' string(): what's UTF-8 as it is, each byte that isn't one
+// U+FFFD, as ak_utf8_decode reads it a code point at a time.
+TEST(bytes_string_as_decoded) {
+	static const char *pieces[] = {"abcdefgh", "a", "é", "€", "😀", "\x80", "\xc3", "\xe2\x82", "\xff", "\xed\xa0\x80", "\xc0\xaf"};
+	char s[300];
+	for (int round = 0; round < 3000; round++) {
+		size_t n = 0, want = next() % 200;
+		while (n < want) {
+			const char *p = pieces[next() % AK_LEN(pieces)];
+			memcpy(s + n, p, strlen(p));
+			n += strlen(p);
+		}
+		ak_strb ref = {0};
+		for (size_t i = 0; i < n;) {
+			size_t from = i;
+			uint32_t c = ak_utf8_decode(s, n, &i);
+			if (c == 0xfffd && !(i - from == 3 && memcmp(s + from, "\xef\xbf\xbd", 3) == 0)) ak_strb_cstr(&ref, "\xef\xbf\xbd", 3);
+			else ak_strb_cstr(&ref, s + from, i - from);
+		}
+		ak_str *want_s = ak_strb_finish(&ref);
+		ak_bytes *b = ak_bytes_new(s, n);
+		ak_str *got = lib("bytes.str")((ak_val[]){{.p = b}}, 1).p;
+		CHECK(ak_str_eq(got, want_s));
+		ak_release(got), ak_release(want_s), ak_release(b);
 	}
 }
 

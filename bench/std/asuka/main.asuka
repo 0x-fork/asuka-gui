@@ -9,7 +9,6 @@ import std/compress
 import std/crypto
 import std/csv
 import std/fs
-import std/http
 import std/json
 import std/os
 import std/regex
@@ -439,31 +438,9 @@ fn seqs(n: int) -> string {
   return "{a} {b}"
 }
 
-struct Hello {
-  message: string
-  id: int
-  tags: [string]
-}
-
-// serve answers GET /hello with text and /json with JSON until it's
-// stopped: what ../load drives, against Go's and Bun's.
-async fn serve(port: int) throws {
-  let s = try await http.serve(port, async req => {
-    if req.path == "/json" {
-      return http.Reply.json(Hello(message: "Hello, world!", id: 42, tags: ["a", "b"]))
-    }
-    return http.Reply.text("Hello, world!")
-  })
-  await s.wait()
-}
-
 async fn main() throws {
   let args = os.args()
   let name = args.first() ?? ""
-  if name == "serve" {
-    try await serve((args.get(1) ?? "8080").toInt() ?? 8080)
-    return
-  }
   let dir = args.get(1) ?? "/tmp"
   // Setting up: what's timed is after it.
   let text = if ["split", "find", "case", "count", "regex", "files", "lines"].contains(name) { corpus(2000000) } else { "" }

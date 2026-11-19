@@ -1844,17 +1844,40 @@ static size_t utf8_seq(const uint8_t *p, size_t n) {
 	return len;
 }
 
+// valid_run: how many bytes from p on are whole UTF-8 sequences, eight
+// ASCII bytes at a time where they are.
+static size_t valid_run(const uint8_t *p, size_t n) {
+	size_t i = 0;
+	while (i < n) {
+		if (i + 8 <= n) {
+			uint64_t w;
+			memcpy(&w, p + i, 8);
+			if (!(w & 0x8080808080808080ull)) {
+				i += 8;
+				continue;
+			}
+		}
+		size_t k = utf8_seq(p + i, n - i);
+		if (!k) break;
+		i += k;
+	}
+	return i;
+}
+
 static ak_val bytes_str(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	const ak_bytes *b = BYTES(0);
 	size_t len = blen(b);
+	size_t ok = valid_run(len ? b->data : NULL, len);
+	if (ok == len) RET_P(len ? ak_str_new((const char *)b->data, len) : ak_str_empty());  // all of it UTF-8: as it is
+	// What isn't UTF-8 is U+FFFD, a byte each; the runs that are go whole.
 	ak_buf out = {0};
+	ak_buf_reserve(&out, len + 16);
 	for (size_t i = 0; i < len;) {
-		size_t k = utf8_seq(b->data + i, len - i);
-		if (k) {
-			ak_buf_put(&out, b->data + i, k);
-			i += k;
-		} else {
+		size_t k = valid_run(b->data + i, len - i);
+		ak_buf_put(&out, b->data + i, k);
+		i += k;
+		if (i < len) {
 			ak_buf_put(&out, "\xef\xbf\xbd", 3);  // U+FFFD
 			i++;
 		}
