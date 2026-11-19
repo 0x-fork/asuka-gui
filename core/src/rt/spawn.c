@@ -45,8 +45,16 @@ static void worker(void *arg) {
 		ak_mutex_lock(&mu);
 		while (!head) {
 			idle++;
-			ak_cond_wait(&cond, &mu);
+			// A worker quiet a while after a job that grew its heap gives
+			// what it freed back to the system (base.h: ak_alloc_trim).
+			bool trim = ak_alloc_grown() && !ak_cond_wait_ns(&cond, &mu, (int64_t)2000000000) && !head;
+			if (!trim && !head) ak_cond_wait(&cond, &mu);
 			idle--;
+			if (trim) {
+				ak_mutex_unlock(&mu);
+				ak_alloc_trim();
+				ak_mutex_lock(&mu);
+			}
 		}
 		job *j = head;
 		head = j->next;

@@ -26,6 +26,8 @@ void ak_ready(ak_cb cb, void *ctx) {
 
 bool ak_sched_has_ready(void) { return ready.len > 0; }
 
+static void arm_trim(void);
+
 bool ak_sched_run(void) {
 	bool ran = false;
 	while (ready.len) {
@@ -35,6 +37,7 @@ bool ak_sched_run(void) {
 		it.cb(it.ctx);
 		ran = true;
 	}
+	if (ran) arm_trim();
 	return ran;
 }
 
@@ -314,6 +317,32 @@ void ak_timer_fire(uint64_t id) {
 	bool found = heap_remove(id, &t);
 	ak_mutex_unlock(&timer_mu);
 	if (found) t.cb(t.ctx);
+}
+
+// ---- Giving memory back ----
+//
+// A turn of the main thread's work that grew its allocator's heap (a
+// spike: a big file parsed, a long list built) has what it freed given
+// back to the system a while later (ak_alloc_trim), as the app goes quiet
+// or, if it's still busy, then: an app that stops allocating doesn't keep
+// the spike's memory. One timer at a time, armed only when the heap grew
+// again, so an idle app isn't woken; none under a test's clock.
+#define TRIM_AFTER ((int64_t)2000000000)
+static bool trim_armed;
+
+static void trim(void *ctx) {
+	AK_UNUSED(ctx);
+	trim_armed = false;
+	ak_alloc_trim();
+}
+
+static void arm_trim(void) {
+	if (trim_armed || manual || !ak_alloc_grown()) return;
+	trim_armed = true;
+	// The scheduler's own allocation (a timer), not what a test counts.
+	uint64_t count = ak_alloc_count, bytes = ak_alloc_bytes;
+	ak_after(TRIM_AFTER, trim, NULL);
+	ak_alloc_count = count, ak_alloc_bytes = bytes;
 }
 
 bool ak_sched_next_timer(int64_t *at) {

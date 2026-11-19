@@ -48,6 +48,7 @@ int asuka_dev_listen(int port, const char *hello, char **err) {
 	return 0;
 }
 void asuka_free_string(char *s) { free(s); }
+void asuka_free(void *p) { free(p); }
 void asuka_list_bind(uint32_t list, int64_t index, uint32_t cell) { (void)list, (void)index, (void)cell; }
 void asuka_run_posted(void) {}
 void asuka_setenv(const char *key, const char *value) { (void)key, (void)value; }

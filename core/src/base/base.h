@@ -78,12 +78,19 @@ void *ak_alloc(size_t n);  // zeroed
 void *ak_realloc(void *p, size_t n);
 void ak_free(void *p);
 // ak_alloc_small and ak_free_small are for blocks of at most
-// AK_SMALL_MAX bytes whose size never changes: a thread's freed ones are
-// kept by size class and reused (small.c), and a block is freed with the
-// size it was made with.
+// AK_SMALL_MAX bytes whose size never changes (a struct, a closure, an
+// array's header): the allocator's small blocks (alloc.c), and a block is
+// freed with the size it was made with.
 #define AK_SMALL_MAX 256
 void *ak_alloc_small(size_t n);  // zeroed
 void ak_free_small(void *p, size_t n);
+// ak_alloc_grown reports whether the calling thread's allocator holds
+// much more than when it last trimmed; ak_alloc_trim gives back to the
+// system what it holds that's free. A thread that goes quiet after work
+// trims (the main thread on a timer after a turn of work, sched.c; an
+// idle spawn worker), so a spike's memory goes back.
+bool ak_alloc_grown(void);
+void ak_alloc_trim(void);
 // ak_alloc_count counts the calling thread's calls to ak_alloc,
 // ak_alloc_small and ak_realloc, so tests can assert that a hot path
 // allocates nothing (in a build with assertions, NDEBUG unset: tests',
