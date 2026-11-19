@@ -25,7 +25,8 @@
 //
 // Each keeps the order it was made with, by: a less-than, as sorted(by:)
 // takes; a SortedMap's and a SortedSet's are their keys' own (<) unless
-// one is given. They're compared (==), hashed (a map's keys, a Set's
+// one is given (by is none then: the keys are compared in place, no
+// closure called). They're compared (==), hashed (a map's keys, a Set's
 // elements), printed and written as JSON by their contents, whatever
 // their orders: a Heap and a SortedSet as an array of their elements in
 // their order, a SortedMap as an object when its keys are strings, else
@@ -182,27 +183,58 @@ extend<T: Comparable> Heap<T> {
 let minKeys = 31
 let maxKeys = 63
 
-private struct Node<K, V> {
+// The tree's order is by, a less-than, or, none, the keys' own <: what a
+// SortedMap or a SortedSet is made with unless it's given one. Compared
+// in place, the keys' own needs no call a comparison, so a search's loop
+// keeps its node's keys in registers (a closure, which could change what
+// it likes, makes the C compiler read them again after each call).
+
+// less is whether a comes before b in the order by.
+fn less<K: Comparable>(a: K, b: K, by: (fn(K, K) -> bool)?) -> bool {
+  if let f = by { return f(a, b) }
+  return a < b
+}
+
+private struct Node<K: Comparable, V> {
   keys: [K] = []
   vals: [V] = []
   kids: [Node<K, V>] = []
 
-  // where k is or would go: the first key not less than k, and whether
-  // it's k.
-  fn find(k: K, by: fn(K, K) -> bool) -> (int, bool) {
+  // holds is whether the key at i, where search put k, is k.
+  fn holds(i: int, k: K, by: (fn(K, K) -> bool)?) -> bool = i < keys.count() && !less(k, keys[i], by)
+
+  // search is where k is or would go: the first key not less than k
+  // (holds says whether it's k; an int, not a tuple, so a search that
+  // isn't inlined makes none). The order is tested once: each way's loop
+  // has only its own comparisons in it, and the keys' own calls nothing.
+  fn search(k: K, by: (fn(K, K) -> bool)?) -> int {
     var lo = 0
     var hi = keys.count()
-    while lo < hi {
-      let mid = (lo + hi) / 2
-      if by(keys[mid], k) { lo = mid + 1 } else { hi = mid }
+    if let f = by {
+      while lo < hi {
+        let mid = (lo + hi) / 2
+        if f(keys[mid], k) { lo = mid + 1 } else { hi = mid }
+      }
+      return lo
     }
-    return (lo, lo < keys.count() && !by(k, keys[lo]))
+    // No branch on the comparison (a search goes either way as often: a
+    // branch would be mispredicted half the time): it chooses the
+    // bounds. lo and hi are at most the keys' count, so their sum and
+    // mid + 1 can't wrap.
+    while lo < hi {
+      let mid = (lo &+ hi) / 2
+      let before = keys[mid] < k
+      lo = if before { mid &+ 1 } else { lo }
+      hi = if before { hi } else { mid }
+    }
+    return lo
   }
 
   // insert puts k in a node that isn't full, splitting the full child
   // it goes down into first: whether k is new (else its value changed).
-  mut fn insert(k: K, v: V, by: fn(K, K) -> bool) -> bool {
-    let (at, found) = find(k, by)
+  mut fn insert(k: K, v: V, by: (fn(K, K) -> bool)?) -> bool {
+    let at = search(k, by)
+    let found = holds(at, k, by)
     if found {
       vals[at] = v
       return false
@@ -215,9 +247,9 @@ private struct Node<K, V> {
     var i = at
     if kids[i].keys.count() == maxKeys {
       split(i)
-      if by(keys[i], k) {
+      if less(keys[i], k, by) {
         i += 1
-      } else if !by(k, keys[i]) {
+      } else if !less(k, keys[i], by) {
         vals[i] = v
         return false
       }
@@ -239,8 +271,9 @@ private struct Node<K, V> {
   // remove takes k out of a node with more than minKeys keys (or the
   // root), making each child it goes down into have more too: its
   // entry, or none when it isn't there.
-  mut fn remove(k: K, by: fn(K, K) -> bool) -> (K, V)? {
-    let (i, found) = find(k, by)
+  mut fn remove(k: K, by: (fn(K, K) -> bool)?) -> (K, V)? {
+    let i = search(k, by)
+    let found = holds(i, k, by)
     if kids.isEmpty() {
       if !found { return none }
       return (keys.removeAt(i), vals.removeAt(i))
@@ -332,10 +365,11 @@ private struct Node<K, V> {
 }
 
 // get is k's value under root, or none.
-fn treeGet<K, V>(root: Node<K, V>, k: K, by: fn(K, K) -> bool) -> (K, V)? {
+fn treeGet<K: Comparable, V>(root: Node<K, V>, k: K, by: (fn(K, K) -> bool)?) -> (K, V)? {
   var n = root
   while true {
-    let (i, found) = n.find(k, by)
+    let i = n.search(k, by)
+    let found = n.holds(i, k, by)
     if found { return (n.keys[i], n.vals[i]) }
     if n.kids.isEmpty() { return none }
     n = n.kids[i]
@@ -345,11 +379,12 @@ fn treeGet<K, V>(root: Node<K, V>, k: K, by: fn(K, K) -> bool) -> (K, V)? {
 
 // treeNear is the entry nearest k: below, the greatest less than k (or
 // equal, with equal), else the least greater than k (or equal).
-fn treeNear<K, V>(root: Node<K, V>, k: K, by: fn(K, K) -> bool, below: bool, equal: bool) -> (K, V)? {
+fn treeNear<K: Comparable, V>(root: Node<K, V>, k: K, by: (fn(K, K) -> bool)?, below: bool, equal: bool) -> (K, V)? {
   var best: (K, V)? = none
   var n = root
   while true {
-    let (i, found) = n.find(k, by)
+    let i = n.search(k, by)
+    let found = n.holds(i, k, by)
     if found && equal { return (n.keys[i], n.vals[i]) }
     // below: the keys before i are less than k; else those from j on
     // are greater. kids[i] (kids[j]) holds the keys between: nearer.
@@ -368,7 +403,7 @@ fn treeNear<K, V>(root: Node<K, V>, k: K, by: fn(K, K) -> bool, below: bool, equ
 // A Walk is where an in-order walk of a tree is: the nodes from the root
 // down, and in each the index of the next key (an internal node's
 // kids[at] has been walked).
-private struct Walk<K, V> {
+private struct Walk<K: Comparable, V> {
   path: [Node<K, V>] = []
   at: [int] = []
 }
@@ -376,12 +411,12 @@ private struct Walk<K, V> {
 // treeWalk is the entries under root from the first not less than from
 // (all, without), up to the first not less than to, in order: a leaf's
 // entries at a time.
-fn treeWalk<K, V>(root: Node<K, V>, from: K?, to: K?, by: fn(K, K) -> bool) -> Seq<(K, V)> {
+fn treeWalk<K: Comparable, V>(root: Node<K, V>, from: K?, to: K?, by: (fn(K, K) -> bool)?) -> Seq<(K, V)> {
   var w = Walk<K, V>()
   var n = root
   while true {
     var i = 0
-    if let f = from { i = n.find(f, by).0 }
+    if let f = from { i = n.search(f, by) }
     w.path.push(n)
     w.at.push(i)
     if n.kids.isEmpty() { break }
@@ -392,7 +427,7 @@ fn treeWalk<K, V>(root: Node<K, V>, from: K?, to: K?, by: fn(K, K) -> bool) -> S
 
 // walkStep is a walk's next entries (a leaf's, or an internal node's
 // one), and where it is after them; none at the end.
-fn walkStep<K, V>(w: Walk<K, V>, to: K?, by: fn(K, K) -> bool) -> ([(K, V)], Walk<K, V>)? {
+fn walkStep<K: Comparable, V>(w: Walk<K, V>, to: K?, by: (fn(K, K) -> bool)?) -> ([(K, V)], Walk<K, V>)? {
   var x = w
   while !x.path.isEmpty() {
     let top = x.path.count() - 1
@@ -406,14 +441,14 @@ fn walkStep<K, V>(w: Walk<K, V>, to: K?, by: fn(K, K) -> bool) -> ([(K, V)], Wal
     if n.kids.isEmpty() {
       var out: [(K, V)] = []
       for j in i..<n.keys.count() {
-        if let t = to, !by(n.keys[j], t) { return (out, Walk<K, V>()) }
+        if let t = to, !less(n.keys[j], t, by) { return (out, Walk<K, V>()) }
         out.push((n.keys[j], n.vals[j]))
       }
       let _ = x.path.pop()
       let _ = x.at.pop()
       return (out, x)
     }
-    if let t = to, !by(n.keys[i], t) { return none }
+    if let t = to, !less(n.keys[i], t, by) { return none }
     x.at[top] = i + 1
     var c = n.kids[i + 1]
     while true {
@@ -439,9 +474,9 @@ fn walkStep<K, V>(w: Walk<K, V>, to: K?, by: fn(K, K) -> bool) -> ([(K, V)], Wal
 ///   scores.first()                                  // ("al", 7)
 ///   for (name, score) in scores { … }               // al, then bo
 pub struct SortedMap<K: Comparable, V> {
-  /// The keys' order, a less-than: their own < unless it's given
-  /// ((a, b) => a > b: the greatest first).
-  by: fn(K, K) -> bool = (a, b) => a < b
+  /// The keys' order, a less-than ((a, b) => a > b: the greatest
+  /// first); none, the default, is their own <.
+  by: (fn(K, K) -> bool)? = none
   // The entries, in a B-tree, and how many.
   private root: Node<K, V> = Node()
   private size: int = 0
@@ -546,8 +581,8 @@ pub struct SortedMap<K: Comparable, V> {
 ///   seen.insert(10)
 ///   seen.ceiling(15)                                // 30
 pub struct SortedSet<T: Comparable> {
-  /// The order, a less-than: the elements' own < unless it's given.
-  by: fn(T, T) -> bool = (a, b) => a < b
+  /// The order, a less-than; none, the default, is the elements' own <.
+  by: (fn(T, T) -> bool)? = none
   // The elements, in a B-tree, and how many.
   private root: Node<T, bool> = Node()
   private size: int = 0

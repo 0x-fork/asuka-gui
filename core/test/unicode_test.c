@@ -186,6 +186,13 @@ TEST(string_case) {
 	check_map(ak_str_upper, "日本", "日本");
 	check_map(ak_str_fold, "Straße ΣΑΣ", "strasse σασ");
 	check_map(ak_str_fold, "ﬁ ẞ", "fi ss");
+	// ASCII among the rest, mapped a stretch at a time; what doesn't
+	// change copied a run at a time; what isn't UTF-8 kept as it was.
+	check_map(ak_str_upper, "abc Straße def ghi", "ABC STRASSE DEF GHI");
+	check_map(ak_str_lower, "Ärger ÜBER die Straße, ΣΟΦΟΣ λόγος", "ärger über die straße, σοφος λόγος");
+	check_map(ak_str_upper, "a\xff" "b\xc3", "A\xff" "B\xc3");
+	check_map(ak_str_lower, "日本ABC日本", "日本abc日本");
+	check_map(ak_str_upper, "é", "É");
 	// Unchanged: the same string, not a copy.
 	ak_str *s = ak_str_c("日本 abc");
 	ak_str *l = ak_str_lower(s);
@@ -233,6 +240,21 @@ TEST(without_case) {
 	CHECK(cmp(ak_str_contains_fold, "Die Straße", "e s"));
 	CHECK(!cmp(ak_str_contains_fold, "Straße", "as"));
 	CHECK(cmp(ak_str_contains_fold, "x", ""));
+	// All ASCII: a byte at a time.
+	CHECK(cmp(ak_str_contains_fold, "Hello World", "wORLD"));
+	CHECK(!cmp(ak_str_contains_fold, "Hello", "hellos"));
+	CHECK(cmp(ak_str_has_prefix_fold, "Hello", "hELL"));
+	CHECK(!cmp(ak_str_has_suffix_fold, "Hello", "hELL"));
+	// A suffix: s's end folded backwards, a code point at a time.
+	CHECK(cmp(ak_str_has_suffix_fold, "Die Straße", "STRASSE"));
+	CHECK(cmp(ak_str_has_suffix_fold, "Straße", "SSE"));
+	CHECK(!cmp(ak_str_has_suffix_fold, "Straße", "SE"));  // inside ß's folding
+	CHECK(cmp(ak_str_has_suffix_fold, "ΣΟΦΟΣ", "σοφος"));
+	CHECK(cmp(ak_str_has_suffix_fold, "x日本", "日本"));
+	CHECK(!cmp(ak_str_has_suffix_fold, "日本", "x日本"));
+	CHECK(cmp(ak_str_has_suffix_fold, "ab\xff", "\xff"));
+	CHECK(cmp(ak_str_has_suffix_fold, "ab\xe3\x81", "B\xe3\x81"));  // a cut code point: its bytes
+	CHECK(cmp(ak_str_has_suffix_fold, "ﬃ", "FFI"));
 	// Past the stack's buffers.
 	char big[2000];
 	for (int i = 0; i < 1990; i++) big[i] = (char)('a' + i % 26);
