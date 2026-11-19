@@ -114,6 +114,21 @@ func (c Compiler) TargetsGlibc() bool {
 // know, and -Werror would make a guess an error.
 var GCCFlags = []string{"-Wno-format-truncation"}
 
+// AppFlags are what the C an app compiles to (lang/cgen's app.c, and
+// what's compiled with it) is compiled with for t beyond the core's: on
+// arm64, x28 reserved for the thread's stack limit (core/src/vm/ops.h's
+// AK_CG_X28), which compiled code compares the stack pointer with, as Go
+// keeps its g in R28. The core needn't be: x28 is callee-saved, so it
+// keeps its own across its calls into the app, and the app's ways in set
+// and restore it. Without them the app's C passes the limit as an
+// argument, as on amd64.
+func AppFlags(t Target) []string {
+	if t.Arch == "arm64" {
+		return []string{"-ffixed-x28", "-DAK_CG_X28"}
+	}
+	return nil
+}
+
 // Flags are the flags every file of the core is compiled with.
 var Flags = []string{"-std=c17", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter", "-Wno-missing-field-initializers"}
 
@@ -327,6 +342,9 @@ func RunnerFor(core string, o RunnerOptions) (string, error) {
 		return "", fmt.Errorf("cbuild: a runner with extra sources needs a directory of the caller's")
 	}
 	lflags := append(append([]string{}, flags...), linkDefines(len(o.Extra) > 0, f.glue(), f.libs(), o.Builtins)...)
+	if len(o.Extra) > 0 {
+		lflags = append(lflags, AppFlags(Host())...)
+	}
 	if f != nil {
 		link = append(link, f.Link...)
 	}

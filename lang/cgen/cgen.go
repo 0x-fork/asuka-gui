@@ -69,6 +69,7 @@ func GenerateMixed(m *bc.Module, interpret func(i int) bool) ([]byte, error) {
 			g.p("static ak_ret f%d_c(ak_closure *C, uintptr_t lim_, ak_val *A);\n", i)
 		case asyncBody:
 			g.p("static int f%d(ak_co *co, ak_val *out);\n", i)
+			g.p("static int f%d_a(ak_co *co, ak_val *out);\n", i)
 		}
 	}
 	g.p("\n")
@@ -243,6 +244,7 @@ type gen struct {
 	jumped   map[int]bool // the labels code jumps to
 	borrowed []bool       // its parameters it borrows: never retained, never released
 	unwinds  bool         // the code goes to unwind_
+	low      bool         // it checks the stack (low_)
 	// array: its registers are an array (R), not locals: a function with
 	// more than maxLocals of them (a module's init, a large view), which
 	// a C compiler takes too long to keep in machine registers.
@@ -468,44 +470,49 @@ func decode(f *bc.FuncDef) ([]insn, map[int]bool, error) {
 	return out, targets, nil
 }
 
-// direct is the declaration of function i's direct body: its closure
-// (NULL for a CALL), the thread's stack limit and the call's depth, then
-// its parameters as C values (a mut fn's receiver by its address), or an
-// array of them past maxValueParams.
+// direct is the declaration of function i's direct body: its parameters
+// as C values (a mut fn's receiver by its address), or an array of them
+// past maxValueParams, then its closure (NULL for a CALL) and the
+// thread's stack limit (ops.h's AK_CG_LIM_P: none on arm64). The
+// parameters first: the first is in the register the result goes back
+// in, and the second's isn't the one the error flag does (ak_ret's e), so
+// a function returning what it's given (a recursion's base case) moves
+// nothing.
 func (g *gen) direct(i int) string {
 	f := &g.m.Funcs[i]
 	var b strings.Builder
-	fmt.Fprintf(&b, "static ak_ret f%d_(ak_closure *C, uintptr_t lim_", i)
+	fmt.Fprintf(&b, "static ak_ret f%d_(", i)
 	if int(f.NParams) > maxValueParams {
-		b.WriteString(", ak_val *A")
+		b.WriteString("ak_val *A, ")
 	} else {
 		for p := 0; p < int(f.NParams); p++ {
 			if p == 0 && f.Flags&bc.FMut != 0 {
-				b.WriteString(", ak_val *self_")
+				b.WriteString("ak_val *self_, ")
 				continue
 			}
-			fmt.Fprintf(&b, ", %sp%d", ctype(f.Kinds[p]), p)
+			fmt.Fprintf(&b, "%sp%d, ", ctype(f.Kinds[p]), p)
 		}
 	}
-	b.WriteString(")")
+	b.WriteString("ak_closure *C AK_CG_LIM_P)")
 	return b.String()
 }
 
 // directArgs is the C arguments of a direct call of function i with its
-// n arguments from register b (after C, the limit and the depth): self
-// is the C lvalue a mut fn's receiver is moved through.
+// n arguments from register b, each followed by ", " (the closure and the
+// limit come after them): self is the C lvalue a mut fn's receiver is
+// moved through.
 func (g *gen) directArgs(i, b, n int, self string) string {
 	f := &g.m.Funcs[i]
 	var s strings.Builder
 	if int(f.NParams) > maxValueParams {
-		return ", B_"
+		return "B_, "
 	}
 	for p := 0; p < n; p++ {
 		if p == 0 && f.Flags&bc.FMut != 0 {
-			fmt.Fprintf(&s, ", &%s", self)
+			fmt.Fprintf(&s, "&%s, ", self)
 			continue
 		}
-		fmt.Fprintf(&s, ", %s", g.r(b+p)+"."+member(f.Kinds[p]))
+		fmt.Fprintf(&s, "%s, ", g.r(b+p)+"."+member(f.Kinds[p]))
 	}
 	return s.String()
 }
@@ -526,6 +533,7 @@ func (g *gen) fn(i int) error {
 	g.used = make([]bool, n)
 	g.jumped = map[int]bool{}
 	g.unwinds = false
+	g.low = false
 	g.array = n > maxLocals
 	g.borrowed = make([]bool, n)
 	if !g.async && !g.array {
@@ -621,10 +629,12 @@ func (g *gen) fn(i int) error {
 		g.p("};\n")
 	}
 	if g.async {
-		g.p("static int f%d(ak_co *co, ak_val *out) {\n", i)
+		// Its body (fN_a), and its way in (fN, after it): the
+		// thread's stack limit set (ops.h's AK_CG_ENTER).
+		g.p("static int f%d_a(ak_co *co, ak_val *out) {\n", i)
 		g.p("\tconst uint32_t fi_ = co->nframes - 1;\n")
 		g.p("\tak_closure *C = co->frames[fi_].clos; AK_UNUSED(C);\n")
-		g.p("\tuintptr_t lim_ = ak_stack_limit(); AK_UNUSED(lim_);\n")
+		g.p("\tAK_CG_ENTER(ak_stack_limit()); AK_CG_LEAVE();\n")
 		g.decls()
 		// Its frame is the coroutine's top: its registers move into the
 		// locals (the frame's left empty: nothing else releases them),
@@ -667,7 +677,8 @@ func (g *gen) fn(i int) error {
 		// nothing can't recurse, and its frame fits in what the limit
 		// leaves (base/stack.c's margin): it needn't check.
 		if calls(ins) {
-			g.p("\tif (AK_UNLIKELY(ak_cg_stack_low(lim_))) return ak_cg_overflow(%s);\n", cbytes(f.Name))
+			g.p("\tAK_CG_CHECK(low_);\n")
+			g.low = true
 		}
 		for p := 0; p < int(f.NParams); p++ {
 			var v string
@@ -707,6 +718,10 @@ func (g *gen) fn(i int) error {
 		g.p("\tvoid *U_[%d]; uint32_t un_ = 0;\n", untracks)
 	}
 	g.b.WriteString(code)
+	if g.low {
+		// Past the stack's limit, as the body starts: nothing's held yet.
+		g.p("low_:\n\treturn ak_cg_overflow(%s);\n", cbytes(f.Name))
+	}
 	if g.unwinds {
 		g.p("unwind_:\n\tak_cg_unwind(%s, %s, at_);\n", cbytes(f.Name), cbytes(f.File))
 		if untracks > 0 {
@@ -748,6 +763,8 @@ func (g *gen) fn(i int) error {
 	g.p("}\n\n")
 	if !g.async {
 		g.entry(i)
+	} else {
+		g.p("static int f%d(ak_co *co, ak_val *out) { AK_CG_ENTER(ak_stack_limit()); int s_ = f%d_a(co, out); AK_CG_LEAVE(); return s_; }\n\n", i, i)
 	}
 	return nil
 }
@@ -758,21 +775,22 @@ func (g *gen) fn(i int) error {
 // thread's stack limit).
 func (g *gen) entry(i int) {
 	f := &g.m.Funcs[i]
-	g.p("static ak_ret f%d_c(ak_closure *C, uintptr_t lim_, ak_val *A) {\n", i)
+	g.p("static ak_ret f%d_c(ak_closure *C, uintptr_t lim, ak_val *A) {\n", i)
 	g.p("\tAK_UNUSED(A);\n")
-	g.p("\treturn f%d_(C, lim_", i)
+	g.p("\tAK_CG_ENTER(lim);\n")
+	g.p("\tak_ret r_ = f%d_(", i)
 	if int(f.NParams) > maxValueParams {
-		g.p(", A")
+		g.p("A, ")
 	} else {
 		for p := 0; p < int(f.NParams); p++ {
 			if p == 0 && f.Flags&bc.FMut != 0 {
-				g.p(", &A[0]")
+				g.p("&A[0], ")
 				continue
 			}
-			g.p(", A[%d].%s", p, member(f.Kinds[p]))
+			g.p("A[%d].%s, ", p, member(f.Kinds[p]))
 		}
 	}
-	g.p(");\n}\n\n")
+	g.p("C AK_CG_LIM_A);\n\tAK_CG_LEAVE();\n\treturn r_;\n}\n\n")
 	g.p("static ak_val f%d(ak_val *A, ak_closure *C) { return f%d_c(C, ak_stack_limit(), A).v; }\n\n", i, i)
 }
 

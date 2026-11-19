@@ -42,8 +42,9 @@ struct ak_func {
 	ak_module *mod;
 	ak_native_body native;  // set when the function was compiled to C
 	ak_direct_body direct;  // likewise, as a compiled closure call calls it
-	// body is its direct body itself (lang/cgen's fN_: the closure, the
-	// stack limit, its arguments as C values), which a compiled call
+	// body is its direct body itself (lang/cgen's fN_: its arguments as C
+	// values, the closure, the stack limit but on arm64: ops.h's
+	// AK_CG_LIM_P), which a compiled call
 	// whose arguments' kinds make sig (ak_cg_sig) calls; sig is 0 when
 	// it can't be called so (a mut fn, one that may suspend, one of more
 	// than AK_CG_SIG_MAX parameters).

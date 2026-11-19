@@ -573,13 +573,13 @@ static inline void ak_op_exit(ak_val *R, const uint8_t *kinds, uint16_t n, int k
 
 // ---- Functions compiled to C (lang/cgen) ----
 //
-// A synchronous function's direct body takes its arguments as C values
+// A synchronous function's direct body takes its arguments as C values,
+// then its closure (and, but on arm64, the thread's stack limit: below),
 // and returns its result with whether it threw: ak_ret, two machine
 // registers on the ABIs' calls (x0 and x1, rax and rdx), so a compiled
 // caller tests a register for the error rather than the thread's
-// pending one. It also takes the thread's stack limit, so that its check
-// of the stack costs no thread-local read: one compare of the stack
-// pointer, as Go's prologue is.
+// pending one. Its check of the stack costs no thread-local read: one
+// compare of the stack pointer, as Go's prologue is.
 // ak_cg_sp is the C stack's pointer, read without making a frame (so
 // that a body's check comes before its frame is set up, and a path that
 // needs none, a recursion's base case, makes none).
@@ -608,6 +608,54 @@ static inline bool ak_cg_stack_low(uintptr_t lim) {
 	return ak_cg_sp() < lim;
 #endif
 }
+
+// The thread's stack limit in compiled code. On arm64 the app's C is
+// compiled with x28 reserved (-ffixed-x28 -DAK_CG_X28: cbuild.AppFlags),
+// as Go keeps its g in a register of its own: every way into the app's C
+// from the core (fN, fN_c, an async body's fN) sets x28 to the thread's
+// limit and puts back the core's (x28 is callee-saved: the core keeps
+// its own across its calls into the app, and the app's across the
+// core's), so a check is one compare of the stack pointer with it (cmp
+// sp, x28) and a direct body takes no limit: no register of a recursing
+// function's holds it, and no call passes it on. Elsewhere (amd64, the
+// web, a C compiler without the flag) the limit is a direct body's
+// parameter, lim_: the C cgen writes is the same either way.
+//
+//   AK_CG_LIM_P   a direct body's parameter after its closure: ", uintptr_t lim_", or none
+//   AK_CG_LIM_T   its type, in a pointer to a body's type: ", uintptr_t", or none
+//   AK_CG_LIM_A   the argument a call passes it: ", lim_", or none
+//   AK_CG_LIM     the limit's value (for an ak_direct_body, which takes it)
+//   AK_CG_CHECK(l)   goes to label l when the stack is past the limit
+//   AK_CG_ENTER(lim), AK_CG_LEAVE()   a way in from the core: the limit set, and the core's put back
+#if defined(__aarch64__) && defined(AK_CG_X28) && (defined(__GNUC__) || defined(__clang__))
+#define AK_CG_LIM_P
+#define AK_CG_LIM_T
+#define AK_CG_LIM_A
+static inline uintptr_t ak_cg_x28(void) {
+	uintptr_t v;
+	__asm__("mov %0, x28" : "=r"(v));
+	return v;
+}
+#define AK_CG_LIM ak_cg_x28()
+// A compare and a branch (asm goto: a flag output would be set into a
+// register, then tested).
+#define AK_CG_CHECK(l) __asm__ goto("cmp sp, x28\n\tb.lo %l0" : : : "cc" : l)
+#define AK_CG_ENTER(lim) \
+	uintptr_t x28_; \
+	__asm__ volatile("mov %0, x28\n\tmov x28, %1" : "=&r"(x28_) : "r"((uintptr_t)(lim)) : "memory")
+#define AK_CG_LEAVE() __asm__ volatile("mov x28, %0" : : "r"(x28_) : "memory")
+#else
+#define AK_CG_LIM_P , uintptr_t lim_
+#define AK_CG_LIM_T , uintptr_t
+#define AK_CG_LIM_A , lim_
+#define AK_CG_LIM lim_
+#define AK_CG_CHECK(l) \
+	do { \
+		if (AK_UNLIKELY(ak_cg_stack_low(lim_))) goto l; \
+	} while (0)
+#define AK_CG_ENTER(lim) uintptr_t lim_ = (lim)
+#define AK_CG_LEAVE() AK_UNUSED(lim_)
+#endif
 
 // ak_cg_pending is ak_error_pending() for compiled code: the thread's
 // error slot found once in a function (*slot, NULL until then), then

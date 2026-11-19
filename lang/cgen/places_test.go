@@ -324,7 +324,7 @@ fn apply(f: fn(int, float) -> bool, a: int, b: float) -> bool = f(a, b)
 
 fn main() { print("{apply((x, y) => x.float() < y, 1, 2.0)}") }
 `, "apply")
-	if !strings.Contains(c, "c_->sig == 0x80020004u") || !strings.Contains(c, "(ak_closure *, uintptr_t, int64_t, double))((const ak_func *)c_->fn)->body)(c_, lim_, ") {
+	if !strings.Contains(c, "c_->sig == 0x80020004u") || !strings.Contains(c, "(int64_t, double, ak_closure * AK_CG_LIM_T))((const ak_func *)c_->fn)->body)(") {
 		t.Errorf("not a typed call:\n%s", c)
 	}
 }
