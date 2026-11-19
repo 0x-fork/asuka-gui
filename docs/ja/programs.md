@@ -831,6 +831,30 @@ async fn main() throws {
 
 TLS はどのプラットフォームでも同じ実装（Mbed TLS）で、一度も呼ばないアプリには含まれません。Web ページにはそのためのソケットがありません。Web ページでも、ほかのすべてのプラットフォームと同じく、`std/http` と `std/websocket` が各プラットフォーム自身のクライアントを通して HTTPS と `wss:` を扱います。
 
+### プライベートな認証局とクライアント証明書
+
+`std/http` のリクエストと `std/websocket` の接続は、各プラットフォーム自身のクライアントを通り、システムと同じようにサーバーを検証します。システムが信頼しないサーバー（社内の認証局が署名した社内サービスや、テスト用のサーバー）や、クライアント証明書を求めるサーバーには、リクエストごとの TLS 設定 `http.TLS` を `tls:` で渡します。`http.get`、`post`、`request`、`download`、`stream`、`events`、`websocket.connect` が受け取ります。
+
+```asuka check
+import std/fs
+import std/http
+
+async fn main() throws {
+  let tls = http.TLS(ca: try fs.readText("ca.pem"), certificate: try fs.readText("client.pem"), key: try fs.readText("client.key"))
+  let r = try await http.get("https://orders.internal/health", tls: tls)
+  print(r.status)
+}
+```
+
+- `ca`（PEM）は、システムの認証局の代わりに信頼されます。`trustSystem: true` を付けると、システムの認証局に加えて信頼されます。どちらの場合も、サーバーの名前は検証されます。
+- `certificate`（PEM。クライアント自身の証明書と、それに続けて署名した認証局の証明書）と `key`（PEM。PKCS#8、RSA、EC のいずれかで、暗号化されていないもの）は、証明書を求めるサーバーに提示されます（相互 TLS）。
+- `insecureSkipVerify` は証明書をまったく検証しません。だれでもサーバーになりすませるので、自分のサーバーに対するテスト専用です。
+- 設定が同じリクエストは接続を共有します。設定が違うリクエストや設定のないリクエストが、その接続を使うことはありません。
+- 読み取れない設定は `HTTPError.tls(reason)` を投げます。設定が信頼しないサーバーへのリクエストは、理由を添えて失敗します（"orders.internal's certificate isn't trusted: ..."）。
+- iOS と macOS では、`ca` で認証局を信頼していても、サーバー証明書は Apple の要件を満たす必要があります。有効期間が 825 日以内、サーバーの名前が subjectAltName にあること、SHA-256 以上で署名されていること、RSA 鍵なら 2048 ビット以上、extendedKeyUsage があるならサーバー用途を含むこと、です。
+- Windows では、クライアント証明書の秘密鍵はプログラムの実行中だけシステムの鍵ストレージに置かれ、終了時に削除されます。また、証明書とルートのあいだの認証局の証明書は、ユーザーの中間証明機関ストアに追加されます。Windows は送る証明書チェーンをそこから組み立てるためです。
+- Web ページではできません。だれを信頼し、どの証明書を提示するかはブラウザーが決めるので、Web ページで `tls:` を付けたリクエストは例外を投げます。
+
 ## 秘密、パスワード、署名：std/crypto
 
 std/crypto はどのプラットフォームでも同じ C のコードで動き、Web も同じです。あるプラットフォームで暗号化、ハッシュ、署名したものは、ほかのどのプラットフォームでも復号して検証できます。サービスで webhook の HMAC を確かめるときは `crypto.equal` で比べます。これはバイト列がどこで違っても同じ時間で比較します。パスワードの保存には `hashPassword`（argon2id。ほかのシステムも読める PHC 形式で出力）を使います。これは別のスレッドで動きます：

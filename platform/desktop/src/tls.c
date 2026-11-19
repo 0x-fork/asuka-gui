@@ -13,7 +13,8 @@
 // server that isn't trusted has its request closed, unsent. The client's
 // certificate is a CERT_CONTEXT whose key CNG holds: Schannel signs in
 // LSA's process, which can't use an ephemeral key, so the key is
-// persisted under a name of the process's own and deleted as it exits;
+// persisted under a name of the process's own and deleted as it exits
+// (or, if it ended without, by the next process that makes one: sweep);
 // and it sends the chain it builds from the system's stores, so the
 // chain's intermediates are added to the user's (intermediates).
 //
@@ -192,6 +193,50 @@ static void delete_keys(void) {
 	NCryptFreeObject(prov);
 }
 
+// started is when process h started (FILETIME's 100 ns since 1601), 0
+// when that can't be said.
+static unsigned long long started(HANDLE h) {
+	FILETIME c, e, k, u;
+	if (!GetProcessTimes(h, &c, &e, &k, &u)) return 0;
+	return (unsigned long long)c.dwHighDateTime << 32 | c.dwLowDateTime;
+}
+
+// running is whether the process pid that started at created still runs.
+// One the user's keys came from is the user's, which can always be asked:
+// one that can't (another user's, the system's) took a pid that's free.
+static bool running(DWORD pid, unsigned long long created) {
+	HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+	if (!h) return false;
+	DWORD code = 0;
+	bool alive = GetExitCodeProcess(h, &code) && code == STILL_ACTIVE && started(h) == created;
+	CloseHandle(h);
+	return alive;
+}
+
+// sweep deletes the keys processes that no longer run left (a process
+// ended without its atexit: killed, crashed), by their names: "Asuka TLS
+// <pid>-<started>-<n>".
+static void sweep(NCRYPT_PROV_HANDLE prov) {
+	NCryptKeyName *name = NULL;
+	void *state = NULL;
+	wchar_t stale[64][96];
+	int n = 0;
+	while (n < 64 && NCryptEnumKeys(prov, NULL, &name, &state, NCRYPT_SILENT_FLAG) == ERROR_SUCCESS) {
+		unsigned long pid = 0;
+		unsigned long long created = 0;
+		if (name->pszName && swscanf(name->pszName, L"Asuka TLS %lu-%llu-", &pid, &created) == 2 && !running(pid, created) &&
+		    wcslen(name->pszName) < 96)
+			wcscpy(stale[n++], name->pszName);
+		NCryptFreeBuffer(name);
+		name = NULL;
+	}
+	if (state) NCryptFreeBuffer(state);
+	for (int i = 0; i < n; i++) {
+		NCRYPT_KEY_HANDLE k = 0;
+		if (NCryptOpenKey(prov, &k, stale[i], 0, NCRYPT_SILENT_FLAG) == ERROR_SUCCESS) NCryptDeleteKey(k, NCRYPT_SILENT_FLAG);
+	}
+}
+
 // client_key has t's client certificate's key in CNG, persisted under a
 // name of the process's own, and names it on the certificate.
 static bool client_key(asuka_tls *t, const char *key, asuka_error *err) {
@@ -200,13 +245,14 @@ static bool client_key(asuka_tls *t, const char *key, asuka_error *err) {
 	if (!der) return false;
 	static LONG count;
 	wchar_t name[96];
-	_snwprintf(name, sizeof name / sizeof *name, L"Asuka TLS %lu-%ld-%llu", GetCurrentProcessId(), InterlockedIncrement(&count),
-	           (unsigned long long)GetTickCount64());
+	_snwprintf(name, sizeof name / sizeof *name, L"Asuka TLS %lu-%llu-%ld", GetCurrentProcessId(), started(GetCurrentProcess()),
+	           InterlockedIncrement(&count));
 	NCRYPT_PROV_HANDLE prov = 0;
 	NCRYPT_KEY_HANDLE k = 0;
 	NCryptBuffer b = {(ULONG)((wcslen(name) + 1) * sizeof(wchar_t)), NCRYPTBUFFER_PKCS_KEY_NAME, name};
 	NCryptBufferDesc d = {NCRYPTBUFFER_VERSION, 1, &b};
 	SECURITY_STATUS st = NCryptOpenStorageProvider(&prov, MS_KEY_STORAGE_PROVIDER, 0);
+	if (st == ERROR_SUCCESS) sweep(prov);
 	if (st == ERROR_SUCCESS) st = NCryptImportKey(prov, 0, NCRYPT_PKCS8_PRIVATE_KEY_BLOB, &d, &k, der, n, NCRYPT_OVERWRITE_KEY_FLAG | NCRYPT_SILENT_FLAG);
 	SecureZeroMemory(der, n);
 	LocalFree(der);
