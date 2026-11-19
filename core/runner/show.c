@@ -33,6 +33,18 @@ ak_kind ak_desc_kind(const char *d) {
 	}
 }
 
+// own_show writes v's own description, when its type (shape sh) has
+// one: how it says it prints.
+static bool own_show(ak_strb *b, const ak_shape *sh, ak_val v) {
+	if (!ak_shape_has(sh, AK_HOOK_SHOW)) return false;
+	ak_val t = ak_shape_call(sh, AK_HOOK_SHOW, &v, 1);
+	if (t.p) {
+		ak_strb_str(b, t.p);
+		ak_release(t.p);
+	}
+	return true;
+}
+
 const char *ak_desc_end(const char *p) {
 	for (;;) {
 		switch (*p) {
@@ -416,6 +428,7 @@ static void show(shower *s, ak_strb *b, ak_val v, const char *d, int indent) {
 			ak_strb_cstr(b, "none", 4);
 			break;
 		}
+		if (own_show(b, sh, v)) break;
 		items l = {0};
 		fields(s, &l, o->f, sh->nfields, sh->names, sh, -1, indent);
 		ak_strb open = {0};
@@ -434,6 +447,7 @@ static void show(shower *s, ak_strb *b, ak_val v, const char *d, int indent) {
 			break;
 		}
 		const ak_shape *sh = en->shape;
+		if (own_show(b, sh, v)) break;
 		uint16_t ci = ak_enum_case(en);
 		const ak_case *c = &sh->cases[ci];
 		if (!c->nfields) {

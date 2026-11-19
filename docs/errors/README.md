@@ -97,6 +97,7 @@ Every error and warning Asuka reports has a code: a stable name, said in the ter
 - [return-value](return-value.md): A `return` with a value the function doesn't give, or without one it does.
 - [row-without-key](row-without-key.md): A `for` in a view over items that change, without a `key`.
 - [spawn-captures-state](spawn-captures-state.md): `spawn` that reads or changes state, or what isn't a value.
+- [special-method](special-method.md): A method the language calls (equals, hash, description, toJSON, fromJSON) with a signature it can't call.
 - [statement-in-view](statement-in-view.md): A statement among a component's views.
 - [syntax-error](syntax-error.md): The parser expected something else here.
 - [test-parameter](test-parameter.md): A test's parameter of a type asuka test can't generate.

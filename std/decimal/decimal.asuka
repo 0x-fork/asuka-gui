@@ -316,6 +316,19 @@ pub struct Decimal {
     return sign + "0." + "0".repeat(-point) + digits
   }
 
+  /// How it prints, and goes in a string: string()'s digits ("19.99").
+  fn description() -> string = string()
+
+  /// How it's written as JSON: a string of its digits ("19.99"), which
+  /// keeps every one (a JSON number is a double to most readers).
+  fn toJSON() -> string = string()
+
+  /// How json.decode reads one: from its digits, as parse does; a
+  /// string that isn't a number is an error.
+  static fn fromJSON(json: string) throws -> Decimal {
+    return parseDecimal(json) ?? throw Error("not a decimal number: \"{json}\"")
+  }
+
   /// The number in the language shown's way, exactly (1,234.5;
   /// 1.234,5), or with currency (an ISO 4217 code) as an amount of it:
   /// its symbol, its fraction digits (€1,234.50; 1.234,50 €; ¥1,235),

@@ -97,6 +97,7 @@ Asuka 报告的每个错误和警告都有一个代码：一个稳定的名称�
 - [return-value](return-value.md): `return` 带了函数不返回的值，或者在需要值时没有带。
 - [row-without-key](row-without-key.md): 视图里的 `for` 遍历会变化的数据，却没有 `key`。
 - [spawn-captures-state](spawn-captures-state.md): `spawn` 读取或修改了状态，或者用了不是值的东西。
+- [special-method](special-method.md): 语言会调用的方法（equals、hash、description、toJSON、fromJSON）签名不对，语言无法调用。
 - [statement-in-view](statement-in-view.md): 组件的视图之间写了语句。
 - [syntax-error](syntax-error.md): 解析器在这里期望的是别的内容。
 - [test-parameter](test-parameter.md): 测试参数的类型是 asuka test 无法生成的。

@@ -1594,6 +1594,25 @@ its descriptor after a NUL (`"title\x00s"`, `"tags\x00[s"`), and the same
 for enum cases' labelled payloads; a payloadless enum JSON reads or
 writes gets a shape of its name whose cases name its values.
 
+A type's own JSON (check.Own: `fn toJSON() -> J`, `static fn
+fromJSON(json: J) throws -> T`) keeps its descriptor (`S<name>;`): its
+shape carries the functions (lang/ir/own.go's `#json` and `#fromjson`
+methods, their names followed by a NUL and J's descriptor, which the
+loader reads as the shape's hooks and `jdesc`), and json.c, meeting a
+value of such a shape, writes what its toJSON gives as J (held until
+it's written), or reads a J and makes it one by fromJSON (whose error
+is the decode's). Its own `equals` and `hash` (`#eq`, `#hash`) are what
+ak_val_eq and ak_val_hash call for its values wherever they are (an
+array's ==, a map's keys); `==` of two values of the type, known as it
+compiles, CALLs equals itself. Its `description` (`#show`) is what
+interpolation and print CALL, and what a snapshot shows (show.c). The
+runtime calls them through `ak_shape_call` (core/src/vm/load.c's): the
+function of the module that loaded the shape. A generic type's come
+from extensions of its package constrained by Equatable, Hashable and
+Comparable only (check.OwnOf merges those an instantiation meets).
+std/bigint's BigInt keeps json.c's own case below: no type a toJSON
+gives writes a number of any size.
+
 std/bigint's `BigInt` (its descriptor `Sstd/bigint.BigInt;`, as any
 struct's) is the runtime's to write: json.c writes it as a number of
 all its digits, which print and interpolation show too, and reads one

@@ -123,6 +123,9 @@ func (b *fb) snapshotText(x syntax.Expr) int {
 	if t == check.String {
 		return v
 	}
+	if r, ok := b.ownDescription(v, t); ok {
+		return r // its own text
+	}
 	return b.callB("test.show", bc.KRef, v, b.kstr(b.showDesc(t)))
 }
 

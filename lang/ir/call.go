@@ -671,6 +671,9 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 	case check.BPrint, check.BEprint:
 		b.printCall(call, bi.ID == check.BEprint)
 		return -1
+	case check.BHashOf:
+		v := b.value(call.Args[0], -1)
+		return b.copyTo(b.callB("hash", bc.KInt, v, b.konst(int64(b.f.Kinds[v]))), dst)
 	case check.BExpect:
 		return b.expect(e, call)
 	case check.BKeep, check.BSnapshot, check.BInline:

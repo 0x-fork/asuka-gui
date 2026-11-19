@@ -138,6 +138,30 @@ static ak_str *intern(ak_module *m, ak_str *s) {
 	return s;
 }
 
+// own_hook notes a method of a type's own ==, hash, text or JSON (its
+// reserved name: lang/ir's own.go) as the shape's hook.
+static void own_hook(ak_vm_shape *vs, const ak_method *mt) {
+	static const char *const names[AK_NHOOKS] = {"#eq", "#hash", "#show", "#json", "#fromjson"};
+	const ak_str *n = mt->name;
+	if (n->len == 0 || n->data[0] != '#') return;
+	for (int h = 0; h < AK_NHOOKS; h++) {
+		size_t k = strlen(names[h]);
+		if (n->len < k || strncmp(n->data, names[h], k) != 0 || n->data[k] != 0) continue;
+		vs->s.hooks |= (uint8_t)(1u << h);
+		vs->hook[h] = mt->func;
+		if (k < n->len) vs->s.jdesc = n->data + k + 1;  // #json, a NUL, its descriptor
+		return;
+	}
+}
+
+// shape_call is rt's ak_shape_call: the hook's function of the module
+// that loaded the shape.
+static ak_val shape_call(const ak_shape *s, int hook, ak_val *args, uint32_t n) {
+	const ak_vm_shape *vs = (const ak_vm_shape *)s;
+	const ak_func *f = &vs->mod->funcs[vs->hook[hook]];
+	return f->native ? f->native(args, NULL) : ak_vm_call(f, args, n);
+}
+
 static void fill_fields(ak_module *m, loader *l, rfield *rf, uint32_t n, uint8_t *kinds, const ak_shape **shapes, const char **names) {
 	for (uint32_t i = 0; i < n; i++) {
 		kinds[i] = rf[i].kind;
@@ -184,6 +208,7 @@ ak_module *ak_module_load(const uint8_t *p, size_t n, char *err, size_t errcap) 
 	m->nshapes = count(l, 4);
 	m->shapes = ak_alloc(sizeof(ak_vm_shape) * (m->nshapes ? m->nshapes : 1));
 	__typeof__(m->names) *names = &m->names;
+	ak_shape_call = shape_call;  // what rt calls a type's own ==, hash and JSON through
 	for (uint32_t i = 0; i < m->nshapes && !l->failed; i++) {
 		ak_vm_shape *vs = &m->shapes[i];
 		vs->mod = m;
@@ -225,6 +250,7 @@ ak_module *ak_module_load(const uint8_t *p, size_t n, char *err, size_t errcap) 
 		for (uint32_t k = 0; k < vs->nmethods; k++) {
 			vs->methods[k].name = intern(m, rstr(l));
 			vs->methods[k].func = ak_read_u32(&l->r);
+			own_hook(vs, &vs->methods[k]);
 		}
 	}
 

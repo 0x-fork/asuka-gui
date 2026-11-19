@@ -316,6 +316,7 @@ func (l *Lowerer) shape(t check.Type) int {
 			} else {
 				l.mod.Shapes[i].Fields = fs
 			}
+			l.ownHooks(i, x)
 			return i
 		case check.EnumType:
 			if !x.Obj.RefEnum() {
@@ -342,6 +343,7 @@ func (l *Lowerer) shape(t check.Type) int {
 			if x.Obj.IsError {
 				l.errorMethods(i, x)
 			}
+			l.ownHooks(i, x)
 			return i
 		case check.StoreType:
 			return l.envShapeOf(x.Obj, x)

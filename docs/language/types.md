@@ -26,7 +26,9 @@ ends at a `"` followed by as many `#`s as it starts with (`r#"say
 line when that's blank, and without the indentation of its closing
 quotes' line) and holds `"` and `""` as they are; `r"""…"""` is a raw
 one.
-A value that isn't a number, a bool or a string shows as text: an enum's
+A value that isn't a number, a bool or a string shows as text: its
+type's own `description()` when it has one
+([Declarations](declarations.md#equality-hashing-text-and-json)), an enum's
 case by its name, an optional as `none` or its value, an error as its
 message, a color as it's written (`#0a84ff`, `.accent`), a duration in
 milliseconds (`1500ms`), the rest as JSON. What JSON can't hold is

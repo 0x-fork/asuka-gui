@@ -346,6 +346,11 @@ type TypeName struct {
 	Release *Function
 	// Stores, workers and components.
 	Comp *Component
+	// Own: what a struct or an enum says itself of its ==, hash, text
+	// and JSON (own.go); nil when it says nothing. OwnExts: what its
+	// package's extensions say, for the types they extend (OwnOf).
+	Own     *Own
+	OwnExts []*Own
 
 	resolved bool
 }
@@ -626,6 +631,7 @@ const (
 	BSnapshot    // expectSnapshot(x): x as its stored snapshot says (testing.go)
 	BInline      // expectInlineSnapshot(x, "…"): likewise, the snapshot in the call
 	BEprint      // eprint(values…): print's, on stderr
+	BHashOf      // hashOf(x): a Hashable value's hash, as a map's keys hash
 )
 
 // A Builtin is a function the compiler provides (the prelude's print,

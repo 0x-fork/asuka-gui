@@ -1,3 +1,4 @@
+import std/json
 test "exact where floats aren't" {
   let a = Decimal.parse("0.1")!
   let b = Decimal.parse("0.2")!
@@ -61,4 +62,13 @@ test "formatted" {
   expect(x.formatted() == "1,234.5")
   expect(x.formatted(currency: "EUR") == "€1,234.50")
   expect(x.formatted(currency: "JPY") == "¥1,235")
+}
+
+test "printed and written as JSON by its digits" {
+  let price = Decimal.parse("19.990")!
+  expect("{price}" == "19.99" && json.encode([price]) == r#"["19.99"]"#)
+  let back: [Decimal] = try json.decode(r#"["0.10", "-3"]"#)
+  expect(back == [Decimal.parse("0.1")!, Decimal.of(-3)])
+  expect((try? json.decode<Decimal>(r#""x""#)) == none)
+  expectInlineSnapshot([price], "[19.99]")
 }

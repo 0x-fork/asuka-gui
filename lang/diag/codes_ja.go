@@ -299,6 +299,11 @@ var ja = map[string]Text{
 		"関数には本体がありますが、プラットフォームが実装するものは別です。native interface のメソッド、native fn、extern fn（C が実装）には本体がありません。",
 		"本体（`{ … }` か `= 式`）を書くか、native や extern の宣言から外します。",
 	},
+	"special-method": {
+		"言語が呼ぶメソッド（equals、hash、description、toJSON、fromJSON）が、言語の呼べないシグネチャーになっている",
+		"構造体と列挙型は、自分のものを宣言しない限り、フィールドによって等しいかを比べ、ハッシュし、出力し、JSON に書かれます。自分のものは `fn equals(other: T) -> bool`、`fn hash() -> int`、`fn description() -> string`、`fn toJSON() -> J`、`static fn fromJSON(json: J) throws -> T` です。言語はこれらを ==、マップとセット、補間、JSON から呼ぶので、そこで渡すものを受け取り、期待するものを返さなければならず、async、mut、private にはできません。自分のやり方でハッシュする型は、比較も自分のやり方で行います（等しい値は同じハッシュになります）。",
+		"メッセージが示すシグネチャーにするか、その用途でなければ別の名前にします。",
+	},
 	"interface-not-satisfied": {
 		"宣言した interface を実装していない型",
 		"`struct T: Shape` は、`Shape` が挙げるすべてのメソッドを同じシグネチャーで持つという約束です。そのおかげで、具体的な型を知らなくても `Shape` を通して呼び出せます。",

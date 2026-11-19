@@ -51,6 +51,13 @@ static ak_val lib_print_text(ak_val *args, uint32_t n) {
 	RET_VOID;
 }
 
+// hash(value, kind): a Hashable value's hash, as a map's keys hash
+// (hashOf; a type's own hash() combines its parts' with it).
+static ak_val lib_hash(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	RET_I((int64_t)ak_val_hash(args[0], (ak_kind)args[1].i));
+}
+
 static ak_val lib_panic(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	ak_panic("%s", STR(0)->data);
@@ -1940,6 +1947,7 @@ static ak_val bytes_str(ak_val *args, uint32_t n) {
 const ak_lib_entry ak_lib[] = {
 	{"print", lib_print},
 	{"print.text", lib_print_text},
+	{"hash", lib_hash},
 	{"panic", lib_panic},
 	{"error", lib_error},
 	{"error.message", lib_error_message},

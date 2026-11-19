@@ -156,6 +156,39 @@ fn withTip(bill: Money) -> Money {
 
 構造体がフィールドごとに順序づけられることはありません。その順序が何を意味するかは、`compare` が決めます。
 
+## 等しさ、ハッシュ、テキスト、JSON
+
+構造体は、フィールドによって等しいかを比べ（`==`）、マップのキーとしてハッシュし、出力し、JSON に書かれます。列挙型はケースとペイロードによります。型は、`compare` が `<` になるのと同じく、言語が呼ぶメソッドでこれを変えられます。
+
+| メソッド | 呼ぶもの |
+|---|---|
+| `fn equals(other: T) -> bool` | `==` と `!=`、マップのキー、セットの要素、`contains`、配列の `==` |
+| `fn hash() -> int` | マップのキーとセットの要素。等しい値は同じハッシュになるので、自分の `equals` を持つ型は自分の `hash` も持ちます（`hashOf(x)` は値のハッシュで、組み合わせるのに使います） |
+| `fn description() -> string` | 補間、`print`、スナップショット |
+| `fn toJSON() -> J` | `json.encode`、そしてその値を含む値のテキスト。`J` は JSON で表せる任意の型です |
+| `static fn fromJSON(json: J) throws -> T` | `json.decode`。投げたエラーがデコードのエラーになります |
+
+```asuka check
+import std/json
+
+struct Tag {
+  name: string
+  color: string = "gray"
+
+  fn equals(other: Tag) -> bool = name.lower() == other.name.lower()
+  fn hash() -> int = hashOf(name.lower())
+  fn description() -> string = "#{name}"
+  fn toJSON() -> string = name
+  static fn fromJSON(json: string) throws -> Tag = Tag(name: json)
+}
+
+let same = Tag(name: "Work") == Tag(name: "work", color: "red")  // true
+let label = "{Tag(name: "home")}"                                 // #home
+let text = json.encode([Tag(name: "a")])                          // ["a"]
+```
+
+これらは値がどこにあっても使われます。配列、マップ、ほかの構造体の中でもそうです。これで、フィールドの意味で等しい型（大文字小文字を区別しない名前、順序を問わない集合）をマップのキーにでき、関数（順序など）を持つ型も、持っている中身で比較、ハッシュ、JSON 化できます。ジェネリックな型は、そのパッケージの拡張でこれらを与え、型引数が拡張の制約（`Equatable`、`Hashable`、`Comparable`）を満たす型にだけ効きます。std/collections の `Heap<T>` は、`T` が Hashable なら比較でき、Comparable なら JSON から読めます。これらは `async`、`mut`、private にはできず、ペイロードのない列挙型が持てるのは自分の `description` だけです（等しさと書き出しはケースによります）。シグネチャーが言語の呼ぶものと違えば、コンパイラーが知らせます（[special-method](../errors/special-method.md)）。
+
 ## 非公開の宣言
 
 `private` は宣言をそのファイルだけのものにします。ファイルの `fn`、`let`、`var`、struct、enum、interface、type、そして構造体や列挙型のフィールド、メソッド、`static fn`、定数に付けられます。そのファイルのコード（その型のメソッド、関数、拡張）からはほかと同じように使えますが、ほかのファイルからは名前で参照できません。例外はパッケージのテストファイル（`name_test.asuka`）で、内部をテストするために使えます。`pub` を付けないものはパッケージのもの、`private` を付けたものはファイルのものです。

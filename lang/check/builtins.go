@@ -132,6 +132,14 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		}
 	case BPrint, BEprint:
 		c.printArgs(b, list, call)
+	case BHashOf:
+		args := positional(1, "one value: hashOf(x)")
+		call.Args = args
+		call.Result = Int
+		if len(args) == 1 {
+			t := c.valueType(c.expr(args[0], nil), args[0])
+			c.checkHashable(t, args[0], "hashOf's value", false)
+		}
 	case BExpect:
 		args := positional(-1, "a condition: expect(count == 2)")
 		if len(args) < 1 || len(args) > 2 {
@@ -317,6 +325,8 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 			t = Invalid
 		} else if why := c.jsonable(t); why != "" {
 			c.errorf(e, diag.NotJSON, "json can't read %s: %s", aType(t), why)
+		} else if why := missingJSON(t, true); why != "" {
+			c.errorf(e, diag.NotJSON, "json can't read %s: %s", aType(t), why)
 		}
 		call.Result = t
 		c.callEffects(e, "json.decode", false, true)
@@ -327,6 +337,8 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 			t := c.valueType(c.expr(args[0], nil), args[0])
 			ps[0].Type = t
 			if why := c.jsonable(t); why != "" && !IsInvalid(t) {
+				c.errorf(args[0], diag.NotJSON, "json can't write %s: %s", aType(t), why)
+			} else if why := missingJSON(t, false); why != "" {
 				c.errorf(args[0], diag.NotJSON, "json can't write %s: %s", aType(t), why)
 			}
 		}
@@ -961,6 +973,12 @@ func jsonable1(t Type, seen map[*TypeName]bool, param func(*TypeParam) bool) str
 	case *Named:
 		if seen[x.Obj] {
 			return ""
+		}
+		if o := OwnOf(x); o != nil && (o.ToJSON != nil || o.FromJSON != nil) {
+			// Its own JSON: what its toJSON gives (missingJSON says
+			// which way it's missing).
+			seen[x.Obj] = true
+			return jsonable1(OwnSubst(o, x).Apply(o.JSON), seen, param)
 		}
 		seen[x.Obj] = true
 		s := x.Subst()

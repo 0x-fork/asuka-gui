@@ -214,6 +214,53 @@ fn withTip(bill: Money) -> Money {
 A struct isn't ordered field by field: what its order means is its
 `compare`'s to say.
 
+## Equality, hashing, text and JSON
+
+A struct is equal to another (`==`), hashes as a map's key, prints and
+is written as JSON by its fields, an enum by its case and payload. A
+type says otherwise with methods the language calls, as `compare` is
+`<`:
+
+| Method | What calls it |
+|---|---|
+| `fn equals(other: T) -> bool` | `==` and `!=`, a map's keys, a set's elements, `contains`, an array's `==` |
+| `fn hash() -> int` | a map's keys and a set's elements: equal values hash alike, so a type with its own `equals` has its own `hash` (`hashOf(x)` is a value's hash, to combine) |
+| `fn description() -> string` | interpolation, `print`, a snapshot |
+| `fn toJSON() -> J` | `json.encode`, and the text of a value it's inside: `J` is any type JSON can say |
+| `static fn fromJSON(json: J) throws -> T` | `json.decode`; what it throws is the decode's error |
+
+```asuka check
+import std/json
+
+struct Tag {
+  name: string
+  color: string = "gray"
+
+  fn equals(other: Tag) -> bool = name.lower() == other.name.lower()
+  fn hash() -> int = hashOf(name.lower())
+  fn description() -> string = "#{name}"
+  fn toJSON() -> string = name
+  static fn fromJSON(json: string) throws -> Tag = Tag(name: json)
+}
+
+let same = Tag(name: "Work") == Tag(name: "work", color: "red")  // true
+let label = "{Tag(name: "home")}"                                 // #home
+let text = json.encode([Tag(name: "a")])                          // ["a"]
+```
+
+They're used wherever the values go, inside arrays, maps and other
+structs too. With them, a type equal by what its fields mean (a name
+without case, a set in any order) is a map's key, and one that holds a
+function (an order) is equal, hashed and JSON by what it holds. A
+generic type gives them in an extension of its package, for the types
+whose arguments meet its constraints (`Equatable`, `Hashable`,
+`Comparable`): std/collections' `Heap<T>` is equal when `T` is
+Hashable, and read from JSON when it's Comparable. They can't be
+`async`, `mut` or private, and an enum without payloads has only its
+own `description` (it's equal and written by its case). The compiler
+says when one's signature isn't what the language calls
+([special-method](../errors/special-method.md)).
+
 ## What's private
 
 `private` makes a declaration its file's: a file's `fn`, `let`, `var`,

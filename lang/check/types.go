@@ -619,6 +619,9 @@ func whyNotEquatable1(t Type, seen map[*TypeName]bool) string {
 	case *TypeParam:
 		return "constrain it, <" + x.Name + ": Equatable>"
 	case *Named:
+		if o := OwnOf(x); o != nil && o.Equals != nil {
+			return ""
+		}
 		if seen[x.Obj] {
 			return "it holds itself" // the reason is the other part's, said on its way
 		}
@@ -710,6 +713,9 @@ func isEquatable(t Type, seen map[*TypeName]bool) bool {
 	case *TypeParam:
 		return len(x.Builtins) > 0
 	case *Named:
+		if o := OwnOf(x); o != nil && o.Equals != nil {
+			return true // its equals says
+		}
 		if seen[x.Obj] {
 			return true // as it is, if the rest is (checked on the way here)
 		}
@@ -868,6 +874,12 @@ func whyNotHashable1(t Type, seen map[*TypeName]bool) string {
 	case *FuncType:
 		return "functions aren't"
 	case *Named:
+		if o := OwnOf(x); o != nil && (o.Equals != nil || o.Hash != nil) {
+			if o.Hash == nil {
+				return "it has its own equals, and no hash to agree with it: declare fn hash() -> int"
+			}
+			return ""
+		}
 		if seen[x.Obj] {
 			return "" // as it is, if the rest is (checked on the way here)
 		}

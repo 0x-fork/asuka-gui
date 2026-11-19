@@ -299,6 +299,11 @@ var zh = map[string]Text{
 		"函数都有函数体，除非由平台来实现：native interface 的方法、native fn 和 extern fn（由 C 实现）都没有函数体。",
 		"写出函数体（`{ … }` 或 `= 表达式`），或者从 native、extern 声明里去掉它。",
 	},
+	"special-method": {
+		"语言会调用的方法（equals、hash、description、toJSON、fromJSON）签名不对，语言无法调用",
+		"结构体和枚举默认按字段判断相等、计算哈希、打印和写成 JSON，除非它声明了自己的：`fn equals(other: T) -> bool`、`fn hash() -> int`、`fn description() -> string`、`fn toJSON() -> J` 和 `static fn fromJSON(json: J) throws -> T`。语言会在 ==、map 和 set、插值和 JSON 里调用它们，所以它们接收和返回的必须正是这些地方传入和期待的，也不能是 async、mut 或 private 的。用自己的方式计算哈希的类型，也要用自己的方式判断相等（相等的值哈希必须相同）。",
+		"按消息里说的签名来写这个方法；如果它不是为此而写的，就换个名字。",
+	},
 	"interface-not-satisfied": {
 		"类型声明了某个 interface，却没有实现它",
 		"`struct T: Shape` 承诺实现 `Shape` 列出的每个方法，并且签名一致，这样就可以在不知道具体类型的情况下通过 `Shape` 调用。",

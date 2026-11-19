@@ -718,6 +718,9 @@ func (b *fb) stringPart(x syntax.Expr, spec string) (int, bc.Kind) {
 
 // describe is the text of v, a t: what interpolation and print show.
 func (b *fb) describe(v int, t check.Type) int {
+	if r, ok := b.ownDescription(v, t); ok {
+		return r
+	}
 	switch t {
 	case check.String:
 		return v
@@ -1177,6 +1180,11 @@ var intOps = map[syntax.Token]string{
 func (b *fb) binop(o syntax.Token, x, y int, xt, yt, res check.Type, dst int) int {
 	switch o {
 	case syntax.EQL, syntax.NEQ:
+		if check.Identical(xt, yt) {
+			if r, ok := b.ownEquals(x, y, xt, o == syntax.NEQ, dst); ok {
+				return r
+			}
+		}
 		r := b.out(dst, bc.KBool)
 		if xt == check.NoneType || yt == check.NoneType {
 			v := x

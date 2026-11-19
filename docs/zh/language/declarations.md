@@ -156,6 +156,39 @@ fn withTip(bill: Money) -> Money {
 
 结构体不会逐个字段地排序：它的顺序是什么意思，由它的 `compare` 来决定。
 
+## 相等、哈希、文本和 JSON
+
+结构体默认按字段判断相等（`==`）、作为 map 的键计算哈希、打印和写成 JSON；枚举则按它的 case 和负载。类型可以用语言会调用的方法来改变这些行为，就像 `compare` 定义了 `<` 一样：
+
+| 方法 | 谁会调用它 |
+|---|---|
+| `fn equals(other: T) -> bool` | `==` 和 `!=`、map 的键、set 的元素、`contains`、数组的 `==` |
+| `fn hash() -> int` | map 的键和 set 的元素：相等的值哈希必须相同，所以有自己的 `equals` 的类型也要有自己的 `hash`（`hashOf(x)` 给出一个值的哈希，用来组合） |
+| `fn description() -> string` | 插值、`print`、快照 |
+| `fn toJSON() -> J` | `json.encode`，以及它所在的值的文本：`J` 是 JSON 能表示的任何类型 |
+| `static fn fromJSON(json: J) throws -> T` | `json.decode`；它抛出的错误就是解码的错误 |
+
+```asuka check
+import std/json
+
+struct Tag {
+  name: string
+  color: string = "gray"
+
+  fn equals(other: Tag) -> bool = name.lower() == other.name.lower()
+  fn hash() -> int = hashOf(name.lower())
+  fn description() -> string = "#{name}"
+  fn toJSON() -> string = name
+  static fn fromJSON(json: string) throws -> Tag = Tag(name: json)
+}
+
+let same = Tag(name: "Work") == Tag(name: "work", color: "red")  // true
+let label = "{Tag(name: "home")}"                                 // #home
+let text = json.encode([Tag(name: "a")])                          // ["a"]
+```
+
+无论值放在哪里，这些方法都会被用到，包括在数组、map 和其他结构体里面。有了它们，一个按字段含义判断相等的类型（不区分大小写的名字、不计顺序的集合）就可以做 map 的键；一个持有函数（比如排序方式）的类型，也能按它持有的内容判断相等、计算哈希和写成 JSON。泛型类型可以在它所在包的扩展里提供这些方法，只对类型参数满足扩展约束（`Equatable`、`Hashable`、`Comparable`）的那些类型生效：std/collections 的 `Heap<T>` 在 `T` 是 Hashable 时可以比较相等，在 `T` 是 Comparable 时可以从 JSON 读取。这些方法不能是 `async`、`mut` 或 private 的；没有负载的枚举只能有自己的 `description`（它按 case 判断相等和写出）。方法的签名不是语言所调用的那样时，编译器会指出（[special-method](../errors/special-method.md)）。
+
 ## 私有的声明
 
 `private` 让一个声明只属于它所在的文件：文件里的 `fn`、`let`、`var`、struct、enum、interface 或 type，以及结构体或枚举的字段、方法、`static fn` 和常量。这个文件里的代码（它的类型的方法、它的函数、它的扩展）可以照常使用它；其他文件不能用它的名字，只有这个包的测试文件（`name_test.asuka`）例外，因为它们要测试内部的东西。没写 `pub` 的属于整个包；写了 `private` 的只属于这个文件。

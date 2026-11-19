@@ -231,7 +231,22 @@ struct ak_shape {
 	const ak_case *cases;
 	bool is_error;     // declared `: Error`; field 0 is message when it has one
 	void *singletons;  // runtime: payloadless cases of a payload enum (ak_enum **)
+	// What the type says itself (lang/check's Own): 1 << AK_HOOK_* for
+	// each of its own ==, hash, text and JSON, which ak_shape_call calls;
+	// jdesc is the descriptor of what its toJSON gives (fromJSON takes).
+	uint8_t hooks;
+	const char *jdesc;
 };
+
+// A type's own methods the runtime calls (a shape's hooks): equals(a, b)
+// -> bool, hash(a) -> int, description(a) -> string, toJSON(a) -> J,
+// fromJSON(j) -> T (it may throw).
+enum { AK_HOOK_EQ, AK_HOOK_HASH, AK_HOOK_SHOW, AK_HOOK_TOJSON, AK_HOOK_FROMJSON, AK_NHOOKS };
+// ak_shape_call calls the shape's hook with args (borrowed), returning
+// its result (owned); an error it raises is pending. The VM's, set as it
+// loads a module.
+extern ak_val (*ak_shape_call)(const ak_shape *s, int hook, ak_val *args, uint32_t n);
+static inline bool ak_shape_has(const ak_shape *s, int hook) { return s->hooks & (1u << hook); }
 
 // ---- Strings ----
 

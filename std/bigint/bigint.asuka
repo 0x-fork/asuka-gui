@@ -244,6 +244,11 @@ pub struct BigInt {
   /// negative: what parse reads. The digits are what it prints as.
   fn string(radix: int = 10) -> string = bigText(data, radix)
 
+  /// How it prints, and goes in a string: its decimal digits. (JSON
+  /// writes it as a number of all its digits, which no type a toJSON
+  /// could give says.)
+  fn description() -> string = bigText(data, 10)
+
   /// The number's bytes, most significant first (big-endian): unsigned
   /// (a negative number then is an error), or with signed true two's
   /// complement. As few as hold it (0 unsigned is none; signed, one),

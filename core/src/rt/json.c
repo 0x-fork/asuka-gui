@@ -66,6 +66,7 @@ typedef struct {
 	const ak_shape *jshape;  // and its shape
 	bool failed;
 	char msg[200];
+	void *err;  // what a type's own fromJSON threw: the decode's error
 } parser;
 
 static void pos_of(parser *ps, const char *at, int *line, int *col) {
@@ -295,6 +296,22 @@ static bool skip_nested(parser *ps, char c) {
 }
 
 static ak_val value(parser *ps, const char *d);
+
+// own_json reads a value of a type with its own JSON (shape s): what its
+// fromJSON takes (s->jdesc), made one by it. What fromJSON throws is the
+// decode's error.
+static ak_val own_json(parser *ps, const ak_shape *s) {
+	ak_val j = value(ps, s->jdesc);
+	if (ps->failed) return (ak_val){0};
+	ak_val v = ak_shape_call(s, AK_HOOK_FROMJSON, &j, 1);
+	ak_release_val(j, desc_kind(s->jdesc));
+	if (ak_error_pending()) {
+		ps->err = ak_error_take();
+		fail(ps, "%s", s->name);
+		return (ak_val){0};
+	}
+	return v;
+}
 
 // json_bigint reads std/bigint's BigInt (of shape s): an integer of any
 // size, or a string of one (as APIs send what a double can't hold).
@@ -859,6 +876,7 @@ static ak_val value_of(parser *ps, const char *d) {
 			fail(ps, "no type %s", d + 1);
 			return (ak_val){0};
 		}
+		if (ak_shape_has(s, AK_HOOK_FROMJSON)) return own_json(ps, s);
 		if (ak_link_bigint && ak_link_bigint->is(d + 1, name_len(d))) return json_bigint(ps, s);
 		return object_struct(ps, s, d);
 	}
@@ -887,6 +905,7 @@ static ak_val value_of(parser *ps, const char *d) {
 			fail(ps, "no type %s", d + 1);
 			return (ak_val){0};
 		}
+		if (ak_shape_has(s, AK_HOOK_FROMJSON)) return own_json(ps, s);
 		if (ps->s < ps->end && *ps->s == '"') {
 			ak_str *cn = str(ps);
 			if (!cn) return (ak_val){0};
@@ -1009,9 +1028,13 @@ ak_val ak_json_decode(const char *text, size_t len, const char *d, const ak_json
 	ws(&ps);
 	if (!ps.failed && ps.s != ps.end) fail(&ps, "more after the value%s", "");
 	if (ps.failed) {
+		ak_release_val(v, desc_kind(d));
+		if (ps.err) {
+			ak_throw(ps.err);  // as the type's fromJSON threw it
+			return (ak_val){0};
+		}
 		int line, col;
 		pos_of(&(parser){.s = text, .end = text + len}, ps.s, &line, &col);
-		ak_release_val(v, desc_kind(d));
 		ak_throw_msg("json: %d:%d: %s", line, col, ps.msg);
 		return (ak_val){0};
 	}
@@ -1093,6 +1116,7 @@ typedef struct {
 	const ak_json_types *t;
 	int indent;
 	AK_VEC(enc_open) open;
+	AK_VEC(void *) held;  // what types' own toJSON gave, written as their frames go, let go of at the end
 } encoder;
 
 static void open_(encoder *e, const char *d, void *o, const char *text, size_t n) {
@@ -1111,6 +1135,18 @@ static void enc_value(encoder *e, ak_val v, const char *d) {
 		}
 		if (desc_kind(d + 1) != AK_K_REF) v = ((ak_box *)v.p)->v;
 		d++;
+	}
+	if ((*d == 'S' || *d == 'E') && v.p) {
+		// A type with its own JSON: what its toJSON gives, written as that
+		// is (kept until it's written).
+		const ak_obj *o = v.p;
+		const ak_shape *s = o->tag == AK_TAG_STRUCT ? ((const ak_struct *)o)->shape : o->tag == AK_TAG_ENUM ? ((const ak_enum *)o)->shape : NULL;
+		if (s && ak_shape_has(s, AK_HOOK_TOJSON)) {
+			ak_val j = ak_shape_call(s, AK_HOOK_TOJSON, &v, 1);
+			if (desc_kind(s->jdesc) == AK_K_REF && j.p) ak_vec_push(&e->held, j.p);
+			enc_value(e, j, s->jdesc);
+			return;
+		}
 	}
 	switch (*d) {
 	case 'i':
@@ -1335,9 +1371,11 @@ static void enc_step(encoder *e) {
 
 ak_str *ak_json_encode(ak_val v, const char *d, const ak_json_types *t, int indent) {
 	ak_strb b = {0};
-	encoder e = {&b, t, indent, {0}};
+	encoder e = {&b, t, indent, {0}, {0}};
 	enc_value(&e, v, d);
 	while (e.open.len) enc_step(&e);
 	ak_vec_free(&e.open);
+	for (uint32_t i = 0; i < e.held.len; i++) ak_release(e.held.data[i]);
+	ak_vec_free(&e.held);
 	return ak_strb_finish(&b);
 }
