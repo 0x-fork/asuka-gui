@@ -736,7 +736,14 @@ static inline bool ak_op_apush(ak_co *co, const ak_func *f, ak_closure *clos, ak
 	const uint8_t *k = f->kinds;
 	for (uint32_t i = 0; i < nargs; i++) {
 		R[i] = args[i];
-		ak_retain_val(R[i], (ak_kind)k[i]);
+		if (k[i] == AK_K_REF) {
+			// Opaque to the compiler: an argument the caller made a constant
+			// int (its kind known only here, at run time) would otherwise
+			// read to GCC as a retain at that address (-Warray-bounds).
+			void *p = R[i].p;
+			AK_CG_OPAQUE(p);
+			ak_retain(p);
+		}
 	}
 	for (uint32_t i = nargs; i < f->nregs; i++) R[i] = (ak_val){0};
 	co->top = base + f->nregs;
