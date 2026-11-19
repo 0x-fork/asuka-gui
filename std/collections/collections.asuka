@@ -1,0 +1,643 @@
+// Package std/collections is the collections past arrays, maps and sets,
+// for what's done by order: a priority queue (Heap), for the next job
+// due or the k largest, and a map and a set kept in their keys' order
+// (SortedMap, SortedSet), for ranges, the first and the last, and the
+// nearest key to one.
+//
+//   import std/collections.{Heap, SortedMap}
+//
+//   var jobs = Heap<Job>(by: (a, b) => a.due < b.due)   // the earliest due first
+//   jobs.push(job)
+//   let next = jobs.pop()
+//
+//   var prices = SortedMap<int, float>()
+//   prices.set(at, 101.5)
+//   for (t, p) in prices.range(from: start, to: end) { … }
+//   let before = prices.floor(at)                       // the last at or before
+//
+// An array is the double-ended queue: push and pop at its end, pushFirst
+// and popFirst at its start, each O(1) (amortized).
+//
+// They're values, as arrays and maps are: a copy doesn't see the
+// original's later changes. A copy is cheap: copies share their storage
+// until one changes, and then a Heap copies its array, a SortedMap only
+// the nodes on its path from the root (O(log n)).
+//
+// Each keeps the order it was made with, by: a less-than, as sorted(by:)
+// takes; a SortedMap's and a SortedSet's are their keys' own (<) unless
+// one is given. A function isn't compared or written as JSON, so neither
+// are they: compare their entries() or toArray(), and write those. The
+// same function makes printing one show its storage: print its
+// entries().
+//
+// Heap: push, pop and pushPop are O(log n), peek O(1), heapOf O(n).
+// SortedMap and SortedSet are B-trees: get, set, remove, floor and the
+// rest O(log n); range(from:to:) O(log n) to its first entry, then O(1)
+// each (amortized); first() and last() O(log n). Their lazy() and range
+// are Seqs: for goes over them, and their map, filter and take compute
+// only what's read.
+
+/// A priority queue: pop gives the least element by its order, by, a
+/// less-than: (a, b) => a.due < b.due gives the earliest due first,
+/// (a, b) => a > b the greatest. push and pop are O(log n), peek O(1).
+///
+///   var top = Heap<int>(by: (a, b) => a < b)
+///   for x in [5, 1, 4] { top.push(x) }
+///   top.pop()                                   // 1
+pub struct Heap<T> {
+  /// The order: a less-than. pop gives the least by it first.
+  by: fn(T, T) -> bool
+  /// The elements as a binary heap keeps them, the least first. Leave
+  /// it out; heapOf makes a heap of an array's elements.
+  items: [T] = []
+
+  /// The number of elements.
+  fn count() -> int = items.count()
+
+  /// Whether there are none.
+  fn isEmpty() -> bool = items.isEmpty()
+
+  /// The least element, which pop would give, or none when it's empty.
+  fn peek() -> T? = if items.isEmpty() { none } else { items[0] }
+
+  /// Adds x: O(log n).
+  mut fn push(x: T) {
+    items.push(x)
+    items.siftUp(items.count() - 1, by)
+  }
+
+  /// Removes and returns the least element, none when it's empty:
+  /// O(log n).
+  mut fn pop() -> T? {
+    if items.isEmpty() { return none }
+    let last = items.removeAt(items.count() - 1)
+    if items.isEmpty() { return last }
+    let top = items[0]
+    items[0] = last
+    items.siftDown(0, by)
+    return top
+  }
+
+  /// Adds x and removes the least, which may be x itself: one O(log n)
+  /// step, as push then pop. Keeping the k greatest of many is pushPop
+  /// once there are k, by (a, b) => a < b.
+  mut fn pushPop(x: T) -> T {
+    if items.isEmpty() || !by(items[0], x) { return x }
+    let top = items[0]
+    items[0] = x
+    items.siftDown(0, by)
+    return top
+  }
+
+  /// Removes the least and adds x, as pop then push: one O(log n) step.
+  /// None, with x added, when it was empty.
+  mut fn replace(x: T) -> T? {
+    if items.isEmpty() {
+      items.push(x)
+      return none
+    }
+    let top = items[0]
+    items[0] = x
+    items.siftDown(0, by)
+    return top
+  }
+
+  /// Removes every element.
+  mut fn clear() { items.clear() }
+
+  /// The elements in pop's order, the least first: O(n log n). The heap
+  /// stays as it is.
+  fn sorted() -> [T] = items.sorted(by: by)
+
+  /// The elements in pop's order, as a Seq: sorted when it's made.
+  fn lazy() -> Seq<T> = sorted().lazy()
+
+  /// What for goes over: the elements in pop's order, as lazy() gives.
+  fn iter() -> Seq<T> = lazy()
+}
+
+// A binary heap's steps, on its array (Heap's items), by its less-than.
+extend<T> [T] {
+  mut fn siftUp(from: int, by: fn(T, T) -> bool) {
+    var i = from
+    let x = self[i]
+    while i > 0 {
+      let p = (i - 1) / 2
+      if !by(x, self[p]) { break }
+      self[i] = self[p]
+      i = p
+    }
+    self[i] = x
+  }
+
+  mut fn siftDown(from: int, by: fn(T, T) -> bool) {
+    let n = count()
+    var i = from
+    let x = self[i]
+    var c = 2 * i + 1
+    while c < n {
+      if c + 1 < n && by(self[c + 1], self[c]) { c += 1 }
+      if !by(self[c], x) { break }
+      self[i] = self[c]
+      i = c
+      c = 2 * i + 1
+    }
+    self[i] = x
+  }
+}
+
+/// A heap of items' elements, ordered by by (a less-than): O(n), where
+/// pushing them one by one is O(n log n).
+pub fn heapOf<T>(items: [T], by: fn(T, T) -> bool) -> Heap<T> {
+  var h = Heap(by: by, items: items)
+  var i = items.count() / 2 - 1
+  while i >= 0 {
+    h.items.siftDown(i, by)
+    i -= 1
+  }
+  return h
+}
+
+// ---- SortedMap and SortedSet: a B-tree ----
+
+// A node holds from minKeys to maxKeys keys (the root fewer), sorted,
+// their values, and, unless it's a leaf, a child more than its keys: the
+// keys of kids[i] come between keys[i - 1] and keys[i].
+let minKeys = 15
+let maxKeys = 31
+
+struct Node<K, V> {
+  keys: [K] = []
+  vals: [V] = []
+  kids: [Node<K, V>] = []
+
+  // where k is or would go: the first key not less than k, and whether
+  // it's k.
+  fn find(k: K, by: fn(K, K) -> bool) -> (int, bool) {
+    var lo = 0
+    var hi = keys.count()
+    while lo < hi {
+      let mid = (lo + hi) / 2
+      if by(keys[mid], k) { lo = mid + 1 } else { hi = mid }
+    }
+    return (lo, lo < keys.count() && !by(k, keys[lo]))
+  }
+
+  // insert puts k in a node that isn't full, splitting the full child
+  // it goes down into first: whether k is new (else its value changed).
+  mut fn insert(k: K, v: V, by: fn(K, K) -> bool) -> bool {
+    let (at, found) = find(k, by)
+    if found {
+      vals[at] = v
+      return false
+    }
+    if kids.isEmpty() {
+      keys.insert(k, at: at)
+      vals.insert(v, at: at)
+      return true
+    }
+    var i = at
+    if kids[i].keys.count() == maxKeys {
+      split(i)
+      if by(keys[i], k) {
+        i += 1
+      } else if !by(k, keys[i]) {
+        vals[i] = v
+        return false
+      }
+    }
+    return kids[i].insert(k, v, by)
+  }
+
+  // split makes kids[i], full, two, its middle key coming up here.
+  mut fn split(i: int) {
+    let c = kids[i]
+    let t = minKeys + 1
+    let right = Node(keys: c.keys.slice(from: t), vals: c.vals.slice(from: t), kids: c.kids.slice(from: t))
+    keys.insert(c.keys[t - 1], at: i)
+    vals.insert(c.vals[t - 1], at: i)
+    kids[i] = Node(keys: c.keys.prefix(t - 1), vals: c.vals.prefix(t - 1), kids: c.kids.prefix(t))
+    kids.insert(right, at: i + 1)
+  }
+
+  // remove takes k out of a node with more than minKeys keys (or the
+  // root), making each child it goes down into have more too: its
+  // entry, or none when it isn't there.
+  mut fn remove(k: K, by: fn(K, K) -> bool) -> (K, V)? {
+    let (i, found) = find(k, by)
+    if kids.isEmpty() {
+      if !found { return none }
+      return (keys.removeAt(i), vals.removeAt(i))
+    }
+    if found {
+      let out = (keys[i], vals[i])
+      if kids[i].keys.count() > minKeys {
+        let (pk, pv) = kids[i].last()
+        keys[i] = pk
+        vals[i] = pv
+        let _ = kids[i].remove(pk, by)
+        return out
+      }
+      if kids[i + 1].keys.count() > minKeys {
+        let (sk, sv) = kids[i + 1].first()
+        keys[i] = sk
+        vals[i] = sv
+        let _ = kids[i + 1].remove(sk, by)
+        return out
+      }
+      merge(i)
+      return kids[i].remove(k, by)
+    }
+    let j = fill(i)
+    return kids[j].remove(k, by)
+  }
+
+  // fill gives kids[i] more than minKeys keys, from a sibling or by
+  // merging it with one: where it is then.
+  mut fn fill(i: int) -> int {
+    if kids[i].keys.count() > minKeys { return i }
+    if i > 0 && kids[i - 1].keys.count() > minKeys {
+      // The separator down to its start, the left sibling's last up.
+      let l = kids[i - 1].keys.count() - 1
+      kids[i].keys.pushFirst(keys[i - 1])
+      kids[i].vals.pushFirst(vals[i - 1])
+      keys[i - 1] = kids[i - 1].keys.removeAt(l)
+      vals[i - 1] = kids[i - 1].vals.removeAt(l)
+      if !kids[i - 1].kids.isEmpty() {
+        let c = kids[i - 1].kids.removeAt(l + 1)
+        kids[i].kids.pushFirst(c)
+      }
+      return i
+    }
+    if i + 1 < kids.count() && kids[i + 1].keys.count() > minKeys {
+      // The separator down to its end, the right sibling's first up.
+      kids[i].keys.push(keys[i])
+      kids[i].vals.push(vals[i])
+      keys[i] = kids[i + 1].keys.removeAt(0)
+      vals[i] = kids[i + 1].vals.removeAt(0)
+      if !kids[i + 1].kids.isEmpty() {
+        let c = kids[i + 1].kids.removeAt(0)
+        kids[i].kids.push(c)
+      }
+      return i
+    }
+    if i + 1 < kids.count() {
+      merge(i)
+      return i
+    }
+    merge(i - 1)
+    return i - 1
+  }
+
+  // merge makes kids[i], keys[i] and kids[i + 1] one child.
+  mut fn merge(i: int) {
+    let right = kids.removeAt(i + 1)
+    kids[i].keys.push(keys.removeAt(i))
+    kids[i].vals.push(vals.removeAt(i))
+    kids[i].keys = kids[i].keys + right.keys
+    kids[i].vals = kids[i].vals + right.vals
+    kids[i].kids = kids[i].kids + right.kids
+  }
+
+  // first and last are the least and the greatest entry of a node that
+  // has one.
+  fn first() -> (K, V) {
+    var n = self
+    while !n.kids.isEmpty() { n = n.kids[0] }
+    return (n.keys[0], n.vals[0])
+  }
+
+  fn last() -> (K, V) {
+    var n = self
+    while !n.kids.isEmpty() { n = n.kids[n.kids.count() - 1] }
+    let i = n.keys.count() - 1
+    return (n.keys[i], n.vals[i])
+  }
+}
+
+// get is k's value under root, or none.
+fn treeGet<K, V>(root: Node<K, V>, k: K, by: fn(K, K) -> bool) -> (K, V)? {
+  var n = root
+  while true {
+    let (i, found) = n.find(k, by)
+    if found { return (n.keys[i], n.vals[i]) }
+    if n.kids.isEmpty() { return none }
+    n = n.kids[i]
+  }
+  return none
+}
+
+// treeNear is the entry nearest k: below, the greatest less than k (or
+// equal, with equal), else the least greater than k (or equal).
+fn treeNear<K, V>(root: Node<K, V>, k: K, by: fn(K, K) -> bool, below: bool, equal: bool) -> (K, V)? {
+  var best: (K, V)? = none
+  var n = root
+  while true {
+    let (i, found) = n.find(k, by)
+    if found && equal { return (n.keys[i], n.vals[i]) }
+    // below: the keys before i are less than k; else those from j on
+    // are greater. kids[i] (kids[j]) holds the keys between: nearer.
+    let j = if below || !found { i } else { i + 1 }
+    if below && i > 0 {
+      best = (n.keys[i - 1], n.vals[i - 1])
+    } else if !below && j < n.keys.count() {
+      best = (n.keys[j], n.vals[j])
+    }
+    if n.kids.isEmpty() { return best }
+    n = n.kids[j]
+  }
+  return best
+}
+
+// A Walk is where an in-order walk of a tree is: the nodes from the root
+// down, and in each the index of the next key (an internal node's
+// kids[at] has been walked).
+struct Walk<K, V> {
+  path: [Node<K, V>] = []
+  at: [int] = []
+}
+
+// treeWalk is the entries under root from the first not less than from
+// (all, without), up to the first not less than to, in order: a leaf's
+// entries at a time.
+fn treeWalk<K, V>(root: Node<K, V>, from: K?, to: K?, by: fn(K, K) -> bool) -> Seq<(K, V)> {
+  var w = Walk<K, V>()
+  var n = root
+  while true {
+    var i = 0
+    if let f = from { i = n.find(f, by).0 }
+    w.path.push(n)
+    w.at.push(i)
+    if n.kids.isEmpty() { break }
+    n = n.kids[i]
+  }
+  return Seq(state: w, next: s => walkStep(s, to, by)).flatMap(c => c.lazy())
+}
+
+// walkStep is a walk's next entries (a leaf's, or an internal node's
+// one), and where it is after them; none at the end.
+fn walkStep<K, V>(w: Walk<K, V>, to: K?, by: fn(K, K) -> bool) -> ([(K, V)], Walk<K, V>)? {
+  var x = w
+  while !x.path.isEmpty() {
+    let top = x.path.count() - 1
+    let n = x.path[top]
+    let i = x.at[top]
+    if i >= n.keys.count() {
+      let _ = x.path.pop()
+      let _ = x.at.pop()
+      continue
+    }
+    if n.kids.isEmpty() {
+      var out: [(K, V)] = []
+      for j in i..<n.keys.count() {
+        if let t = to, !by(n.keys[j], t) { return (out, Walk<K, V>()) }
+        out.push((n.keys[j], n.vals[j]))
+      }
+      let _ = x.path.pop()
+      let _ = x.at.pop()
+      return (out, x)
+    }
+    if let t = to, !by(n.keys[i], t) { return none }
+    x.at[top] = i + 1
+    var c = n.kids[i + 1]
+    while true {
+      x.path.push(c)
+      x.at.push(0)
+      if c.kids.isEmpty() { break }
+      c = c.kids[0]
+    }
+    return ([(n.keys[i], n.vals[i])], x)
+  }
+  return none
+}
+
+/// Entries kept in their keys' order: a map whose keys are sorted, for
+/// ranges (range(from:to:)), the least and the greatest (first, last),
+/// and the nearest key to one (floor, ceiling, lower, higher). The keys
+/// are ordered by by, their own < unless it's given. get, set and remove
+/// are O(log n).
+///
+///   var scores = SortedMap<string, int>()
+///   scores.set("bo", 3)
+///   scores.set("al", 7)
+///   scores.first()                                  // ("al", 7)
+///   for (name, score) in scores { … }               // al, then bo
+pub struct SortedMap<K: Comparable, V> {
+  /// The keys' order, a less-than: their own < unless it's given
+  /// ((a, b) => a > b: the greatest first).
+  by: fn(K, K) -> bool = (a, b) => a < b
+  /// The entries, in a B-tree. Leave it out.
+  root: Node<K, V> = Node()
+  /// How many entries. Leave it out.
+  size: int = 0
+
+  /// The number of entries.
+  fn count() -> int = size
+
+  /// Whether there are none.
+  fn isEmpty() -> bool = size == 0
+
+  /// key's value, none when it has none: O(log n).
+  fn get(key: K) -> V? = if let e = treeGet(root, key, by) { e.1 } else { none }
+
+  /// Whether key has a value.
+  fn has(key: K) -> bool = treeGet(root, key, by).isSome()
+
+  /// Gives key value, in its place by its order: O(log n).
+  mut fn set(key: K, value: V) {
+    if root.keys.count() == maxKeys {
+      let old = root
+      root = Node(kids: [old])
+      root.split(0)
+    }
+    if root.insert(key, value, by) { size += 1 }
+  }
+
+  /// Removes key and returns its value, none when it had none: O(log n).
+  mut fn remove(key: K) -> V? {
+    let e = root.remove(key, by) else { return none }
+    size -= 1
+    if root.keys.isEmpty() && !root.kids.isEmpty() { root = root.kids[0] }
+    return e.1
+  }
+
+  /// Removes every entry.
+  mut fn clear() {
+    root = Node()
+    size = 0
+  }
+
+  /// The entry with the least key, none when it's empty.
+  fn first() -> (K, V)? = if size == 0 { none } else { root.first() }
+
+  /// The entry with the greatest key, none when it's empty.
+  fn last() -> (K, V)? = if size == 0 { none } else { root.last() }
+
+  /// Removes and returns the entry with the least key.
+  mut fn popFirst() -> (K, V)? {
+    let e = first() else { return none }
+    let _ = remove(e.0)
+    return e
+  }
+
+  /// Removes and returns the entry with the greatest key.
+  mut fn popLast() -> (K, V)? {
+    let e = last() else { return none }
+    let _ = remove(e.0)
+    return e
+  }
+
+  /// The entry with the greatest key at or before key (by the order):
+  /// key's own when it has one.
+  fn floor(key: K) -> (K, V)? = treeNear(root, key, by, true, true)
+
+  /// The entry with the least key at or after key.
+  fn ceiling(key: K) -> (K, V)? = treeNear(root, key, by, false, true)
+
+  /// The entry with the greatest key before key.
+  fn lower(key: K) -> (K, V)? = treeNear(root, key, by, true, false)
+
+  /// The entry with the least key after key.
+  fn higher(key: K) -> (K, V)? = treeNear(root, key, by, false, false)
+
+  /// The entries from the key from, with it, up to the key to, without
+  /// it, in order, as a Seq: either left out, from the start or to the
+  /// end. O(log n) to the first, then O(1) each (amortized).
+  fn range(from: K? = none, to: K? = none) -> Seq<(K, V)> = treeWalk(root, from, to, by)
+
+  /// The entries in their keys' order, as a Seq.
+  fn lazy() -> Seq<(K, V)> = treeWalk(root, none, none, by)
+
+  /// What for goes over: the (key, value) entries in order.
+  fn iter() -> Seq<(K, V)> = lazy()
+
+  /// The entries in order, in an array.
+  fn entries() -> [(K, V)] = lazy().toArray()
+
+  /// The keys in order.
+  fn keys() -> [K] = lazy().map(e => e.0).toArray()
+
+  /// The values, in their keys' order.
+  fn values() -> [V] = lazy().map(e => e.1).toArray()
+}
+
+/// Elements kept in their order: a set whose elements are sorted, for
+/// ranges, the least and the greatest, and the nearest to a value. They
+/// are ordered by by, their own < unless it's given. insert, remove and
+/// contains are O(log n).
+///
+///   var seen = SortedSet<int>()
+///   seen.insert(30)
+///   seen.insert(10)
+///   seen.ceiling(15)                                // 30
+pub struct SortedSet<T: Comparable> {
+  /// The order, a less-than: the elements' own < unless it's given.
+  by: fn(T, T) -> bool = (a, b) => a < b
+  /// The elements, in a B-tree. Leave it out.
+  root: Node<T, bool> = Node()
+  /// How many elements. Leave it out.
+  size: int = 0
+
+  /// The number of elements.
+  fn count() -> int = size
+
+  /// Whether there are none.
+  fn isEmpty() -> bool = size == 0
+
+  /// Whether x is an element: O(log n).
+  fn contains(x: T) -> bool = treeGet(root, x, by).isSome()
+
+  /// Adds x, in its place by the order: whether it's new. O(log n).
+  mut fn insert(x: T) -> bool {
+    if root.keys.count() == maxKeys {
+      let old = root
+      root = Node(kids: [old])
+      root.split(0)
+    }
+    let added = root.insert(x, true, by)
+    if added { size += 1 }
+    return added
+  }
+
+  /// Removes x: whether it was an element. O(log n).
+  mut fn remove(x: T) -> bool {
+    if root.remove(x, by).isNone() { return false }
+    size -= 1
+    if root.keys.isEmpty() && !root.kids.isEmpty() { root = root.kids[0] }
+    return true
+  }
+
+  /// Removes every element.
+  mut fn clear() {
+    root = Node()
+    size = 0
+  }
+
+  /// The least element, none when it's empty.
+  fn first() -> T? = if size == 0 { none } else { root.first().0 }
+
+  /// The greatest element, none when it's empty.
+  fn last() -> T? = if size == 0 { none } else { root.last().0 }
+
+  /// Removes and returns the least element.
+  mut fn popFirst() -> T? {
+    let x = first() else { return none }
+    let _ = remove(x)
+    return x
+  }
+
+  /// Removes and returns the greatest element.
+  mut fn popLast() -> T? {
+    let x = last() else { return none }
+    let _ = remove(x)
+    return x
+  }
+
+  /// The greatest element at or before x (by the order): x when it's one.
+  fn floor(x: T) -> T? = treeNear(root, x, by, true, true)?.0
+
+  /// The least element at or after x.
+  fn ceiling(x: T) -> T? = treeNear(root, x, by, false, true)?.0
+
+  /// The greatest element before x.
+  fn lower(x: T) -> T? = treeNear(root, x, by, true, false)?.0
+
+  /// The least element after x.
+  fn higher(x: T) -> T? = treeNear(root, x, by, false, false)?.0
+
+  /// The elements from from, with it, up to to, without it, in order, as
+  /// a Seq: either left out, from the start or to the end.
+  fn range(from: T? = none, to: T? = none) -> Seq<T> = treeWalk(root, from, to, by).map(e => e.0)
+
+  /// The elements in order, as a Seq.
+  fn lazy() -> Seq<T> = treeWalk(root, none, none, by).map(e => e.0)
+
+  /// What for goes over: the elements in order.
+  fn iter() -> Seq<T> = lazy()
+
+  /// The elements in order, in an array.
+  fn toArray() -> [T] = lazy().toArray()
+
+  /// The elements of both, in this set's order.
+  fn union(other: SortedSet<T>) -> SortedSet<T> {
+    var out = self
+    for x in other { let _ = out.insert(x) }
+    return out
+  }
+
+  /// The elements other has too.
+  fn intersection(other: SortedSet<T>) -> SortedSet<T> {
+    var out = SortedSet<T>(by: by)
+    for x in self {
+      if other.contains(x) { let _ = out.insert(x) }
+    }
+    return out
+  }
+
+  /// The elements other hasn't.
+  fn subtracting(other: SortedSet<T>) -> SortedSet<T> {
+    var out = self
+    for x in other { let _ = out.remove(x) }
+    return out
+  }
+}

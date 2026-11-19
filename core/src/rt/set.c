@@ -22,20 +22,19 @@ bool ak_set_has(const ak_map *s, ak_val x) {
 }
 
 bool ak_set_insert(ak_map **s, ak_val x) {
-	if (ak_set_has(*s, x)) {
+	if (!ak_unique(*s) && ak_set_has(*s, x)) {  // what a shared set has: no copy
 		ak_release_val(x, elem_kind(*s));
 		return false;
 	}
-	ak_map_set(s, x, (ak_val){0});
-	return true;
+	return ak_map_put_new(s, x, (ak_val){0});
 }
 
 bool ak_set_remove(ak_map **s, ak_val x) { return ak_map_delete(s, x); }
 
-// add puts a borrowed element of a set in r.
+// add puts a borrowed element in r, unless it has it.
 static void add(ak_map **r, ak_val x) {
 	ak_retain_val(x, elem_kind(*r));
-	ak_map_set(r, x, (ak_val){0});
+	ak_map_put_new(r, x, (ak_val){0});
 }
 
 ak_map *ak_set_union(const ak_map *a, const ak_map *b) {
@@ -43,7 +42,7 @@ ak_map *ak_set_union(const ak_map *a, const ak_map *b) {
 	for (uint32_t i = 0; i < a->len; i++)
 		if (!a->dead[i]) add(&r, a->keys[i]);
 	for (uint32_t i = 0; i < b->len; i++)
-		if (!b->dead[i] && !ak_set_has(r, b->keys[i])) add(&r, b->keys[i]);
+		if (!b->dead[i]) add(&r, b->keys[i]);
 	return r;
 }
 
@@ -70,7 +69,6 @@ bool ak_set_is_subset(const ak_map *a, const ak_map *b) {
 
 ak_map *ak_set_from_arr(const ak_arr *a) {
 	ak_map *r = ak_set_new(ak_arr_kind(a), a->h.flags & 1);
-	for (uint32_t i = 0; i < a->len; i++)
-		if (!ak_set_has(r, a->data[i])) add(&r, a->data[i]);
+	for (uint32_t i = 0; i < a->len; i++) add(&r, a->data[i]);
 	return r;
 }

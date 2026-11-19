@@ -10,6 +10,9 @@
 //	term.setChoice(fd, choice)      0 auto, 1 always, 2 never; fd -1: both streams
 //	term.dimension(which) -> int    0 columns, 1 rows; 0 when unknown
 //	term.setEcho(on) -> bool        stdin's echo off, or back; whether it changed
+//	term.textWidth(text) -> int     the columns text takes (rt/unicode.h), escape codes none
+//	term.unstyled(text) -> string   text without its escape codes
+//	term.cut(text, width, ellipsis) -> string  text in width columns, ellipsis where it's cut
 #if defined(__APPLE__)
 #define _DARWIN_C_SOURCE
 #elif !defined(_WIN32)
@@ -136,6 +139,8 @@ static bool colors(int fd) {
 	}
 	return terminal(fd) && vt(fd);
 }
+
+bool ak_term_colors(int fd) { return colors(fd); }
 
 static ak_val colors_fn(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
@@ -293,7 +298,78 @@ static ak_val set_echo_fn(ak_val *args, uint32_t n) {
 	return (ak_val){.i = changed};
 }
 
+// ---- Text's width ----
+
+static ak_val text_width_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_str *s = args[0].p;
+	return (ak_val){.i = ak_text_width(s->data, s->len)};
+}
+
+static ak_val unstyled_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_str *s = args[0].p;
+	ak_strb b = {0};
+	size_t from = 0;
+	for (size_t i = 0; i < s->len;) {
+		size_t e = ak_escape_len(s->data, s->len, i);
+		if (!e) {
+			i++;
+			continue;
+		}
+		ak_strb_cstr(&b, s->data + from, i - from);
+		i += e;
+		from = i;
+	}
+	if (from == 0) {
+		ak_buf_free(&b.b);
+		return (ak_val){.p = ak_retain(s)};
+	}
+	ak_strb_cstr(&b, s->data + from, s->len - from);
+	return (ak_val){.p = ak_strb_finish(&b)};
+}
+
+// cut keeps text's grapheme clusters while they fit in width columns
+// with the ellipsis after them, and the ellipsis where the rest was. Its
+// escape codes stay, all of them: a style that ends after the cut still
+// ends.
+static ak_val cut_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_str *s = args[0].p, *ell = args[2].p;
+	int64_t width = args[1].i;
+	if (ak_text_width(s->data, s->len) <= width) return (ak_val){.p = ak_retain(s)};
+	int64_t ew = ak_text_width(ell->data, ell->len);
+	if (ew > width) ew = 0, ell = NULL;  // no room for it
+	int64_t room = width - ew, used = 0;
+	bool cut = false;
+	ak_strb b = {0};
+	for (size_t i = 0; i < s->len;) {
+		size_t e = ak_escape_len(s->data, s->len, i);
+		if (e) {
+			ak_strb_cstr(&b, s->data + i, e);
+			i += e;
+			continue;
+		}
+		size_t j = ak_grapheme_end(s->data, s->len, i);
+		if (!cut) {
+			int64_t w = ak_cluster_width(s->data + i, j - i);
+			if (used + w <= room) {
+				ak_strb_cstr(&b, s->data + i, j - i);
+				used += w;
+			} else {
+				cut = true;
+				if (ell) ak_strb_str(&b, ell);
+			}
+		}
+		i = j;
+	}
+	return (ak_val){.p = ak_strb_finish(&b)};
+}
+
 const ak_lib_entry ak_std_term[] = {
+	{"term.textWidth", text_width_fn},
+	{"term.unstyled", unstyled_fn},
+	{"term.cut", cut_fn},
 	{"term.colorsAt", colors_fn},
 	{"term.setChoice", set_choice_fn},
 	{"term.dimension", dimension_fn},

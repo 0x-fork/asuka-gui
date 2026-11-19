@@ -1,6 +1,9 @@
-// crypto.c: std/crypto's builtins: SHA-256, SHA-512 and SHA-1 (FIPS
-// 180-4), HMAC (RFC 2104), Ed25519 (RFC 8032, ed25519.c), the system's
-// randomness and version 4 UUIDs.
+// crypto.c: std/crypto's builtins: SHA-256, SHA-384, SHA-512 and SHA-1
+// (FIPS 180-4), MD5 (RFC 1321), HMAC (RFC 2104), HKDF (RFC 5869), PBKDF2
+// (RFC 8018), Ed25519 (RFC 8032, ed25519.c), the system's randomness and
+// version 4 UUIDs. What costs more has tables of its own, which only an
+// app that calls them links: aead.c (AES-GCM, ChaCha20-Poly1305),
+// password.c (Argon2, bcrypt), pubkey.c (RSA, ECDSA, keys).
 #if !defined(_WIN32) && !defined(__APPLE__) && !defined(__wasm__)
 #define _DEFAULT_SOURCE  // syscall
 #endif
@@ -8,6 +11,7 @@
 #define _CRT_RAND_S  // rand_s
 #endif
 #include "std/std.h"
+#include "std/cryptohw.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -82,6 +86,16 @@ static void sha256_block(uint32_t h[8], const uint8_t *b) {
 	h[0] += a, h[1] += bb, h[2] += c, h[3] += d, h[4] += e, h[5] += f, h[6] += g, h[7] += hh;
 }
 
+// sha256_blocks: the compression function over n 64-byte blocks, by
+// the CPU's SHA-256 instructions when it has them.
+static void sha256_blocks(uint32_t h[8], const uint8_t *p, size_t n) {
+	if (ak_cpu_sha256()) {
+		ak_sha256_blocks_hw(h, p, n);
+		return;
+	}
+	for (; n--; p += 64) sha256_block(h, p);
+}
+
 void ak_sha256_init(ak_sha256_ctx *c) {
 	static const uint32_t iv[8] = {0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
 	memcpy(c->h, iv, sizeof iv);
@@ -97,10 +111,14 @@ void ak_sha256_update(ak_sha256_ctx *c, const void *data, size_t n) {
 		memcpy(c->buf + c->n, p, k);
 		c->n += k, p += k, n -= k;
 		if (c->n < 64) return;
-		sha256_block(c->h, c->buf);
+		sha256_blocks(c->h, c->buf, 1);
 		c->n = 0;
 	}
-	for (; n >= 64; p += 64, n -= 64) sha256_block(c->h, p);
+	if (n >= 64) {
+		sha256_blocks(c->h, p, n / 64);
+		p += n & ~(size_t)63;
+		n &= 63;
+	}
 	if (n) memcpy(c->buf, p, n);
 	c->n = n;
 }
@@ -167,6 +185,14 @@ static void sha512_block(uint64_t h[8], const uint8_t *b) {
 	h[0] += a, h[1] += bb, h[2] += c, h[3] += d, h[4] += e, h[5] += f, h[6] += g, h[7] += hh;
 }
 
+static void sha512_blocks(uint64_t h[8], const uint8_t *p, size_t n) {
+	if (ak_cpu_sha512()) {
+		ak_sha512_blocks_hw(h, p, n);
+		return;
+	}
+	for (; n--; p += 128) sha512_block(h, p);
+}
+
 void ak_sha512_init(ak_sha512_ctx *c) {
 	static const uint64_t iv[8] = {0x6a09e667f3bcc908, 0xbb67ae8584caa73b, 0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1,
 	                               0x510e527fade682d1, 0x9b05688c2b3e6c1f, 0x1f83d9abfb41bd6b, 0x5be0cd19137e2179};
@@ -183,10 +209,14 @@ void ak_sha512_update(ak_sha512_ctx *c, const void *data, size_t n) {
 		memcpy(c->buf + c->n, p, k);
 		c->n += k, p += k, n -= k;
 		if (c->n < 128) return;
-		sha512_block(c->h, c->buf);
+		sha512_blocks(c->h, c->buf, 1);
 		c->n = 0;
 	}
-	for (; n >= 128; p += 128, n -= 128) sha512_block(c->h, p);
+	if (n >= 128) {
+		sha512_blocks(c->h, p, n / 128);
+		p += n & ~(size_t)127;
+		n &= 127;
+	}
 	if (n) memcpy(c->buf, p, n);
 	c->n = n;
 }
@@ -233,6 +263,275 @@ void ak_sha1(const void *p, size_t n, uint8_t out[20]) {
 	uint32_t h[5] = {0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0};
 	md_pad(p, n, h, sha1_block);
 	for (int i = 0; i < 5; i++) put_be32(out + 4 * i, h[i]);
+}
+
+// The same in pieces, for HMAC over SHA-1 (PBKDF2's RFC 6070 vectors,
+// what old protocols sign with).
+void ak_sha1_init(ak_sha1_ctx *c) {
+	static const uint32_t iv[5] = {0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0};
+	memcpy(c->h, iv, sizeof iv);
+	c->n = 0;
+	c->len = 0;
+}
+
+// md_update feeds p to a hash of 64-byte blocks (SHA-1's, MD5's).
+static void md_update(uint8_t buf[64], size_t *bn, uint64_t *total, void *state, void (*block)(void *, const uint8_t *), const void *data, size_t n) {
+	const uint8_t *p = data;
+	*total += n;
+	if (*bn) {
+		size_t k = 64 - *bn < n ? 64 - *bn : n;
+		memcpy(buf + *bn, p, k);
+		*bn += k, p += k, n -= k;
+		if (*bn < 64) return;
+		block(state, buf);
+		*bn = 0;
+	}
+	for (; n >= 64; p += 64, n -= 64) block(state, p);
+	if (n) memcpy(buf, p, n);
+	*bn = n;
+}
+
+void ak_sha1_update(ak_sha1_ctx *c, const void *p, size_t n) { md_update(c->buf, &c->n, &c->len, c->h, sha1_block, p, n); }
+
+void ak_sha1_final(ak_sha1_ctx *c, uint8_t out[20]) {
+	uint64_t bits = c->len * 8;
+	uint8_t pad[72] = {0x80};
+	size_t k = c->n < 56 ? 56 - c->n : 120 - c->n;
+	for (int i = 0; i < 8; i++) pad[k + (size_t)i] = (uint8_t)(bits >> (56 - 8 * i));
+	ak_sha1_update(c, pad, k + 8);
+	for (int i = 0; i < 5; i++) put_be32(out + 4 * i, c->h[i]);
+}
+
+// ---- SHA-384 (FIPS 180-4): SHA-512 from its own start, cut to 48 bytes ----
+
+void ak_sha384_init(ak_sha512_ctx *c) {
+	static const uint64_t iv[8] = {0xcbbb9d5dc1059ed8, 0x629a292a367cd507, 0x9159015a3070dd17, 0x152fecd8f70e5939,
+	                               0x67332667ffc00b31, 0x8eb44a8768581511, 0xdb0c2e0d64f98fa7, 0x47b5481dbefa4fa4};
+	memcpy(c->h, iv, sizeof iv);
+	c->n = 0;
+	c->len = 0;
+}
+
+void ak_sha384(const void *p, size_t n, uint8_t out[48]) {
+	ak_sha512_ctx c;
+	uint8_t full[64];
+	ak_sha384_init(&c);
+	ak_sha512_update(&c, p, n);
+	ak_sha512_final(&c, full);
+	memcpy(out, full, 48);
+}
+
+// ---- MD5 (RFC 1321): for checksums and old protocols, not security ----
+
+static uint32_t le32(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
+
+static void md5_block(void *state, const uint8_t *b) {
+	static const uint32_t K[64] = {
+		0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee, 0xf57c0faf, 0x4787c62a, 0xa8304613, 0xfd469501,
+		0x698098d8, 0x8b44f7af, 0xffff5bb1, 0x895cd7be, 0x6b901122, 0xfd987193, 0xa679438e, 0x49b40821,
+		0xf61e2562, 0xc040b340, 0x265e5a51, 0xe9b6c7aa, 0xd62f105d, 0x02441453, 0xd8a1e681, 0xe7d3fbc8,
+		0x21e1cde6, 0xc33707d6, 0xf4d50d87, 0x455a14ed, 0xa9e3e905, 0xfcefa3f8, 0x676f02d9, 0x8d2a4c8a,
+		0xfffa3942, 0x8771f681, 0x6d9d6122, 0xfde5380c, 0xa4beea44, 0x4bdecfa9, 0xf6bb4b60, 0xbebfbc70,
+		0x289b7ec6, 0xeaa127fa, 0xd4ef3085, 0x04881d05, 0xd9d4d039, 0xe6db99e5, 0x1fa27cf8, 0xc4ac5665,
+		0xf4292244, 0x432aff97, 0xab9423a7, 0xfc93a039, 0x655b59c3, 0x8f0ccc92, 0xffeff47d, 0x85845dd1,
+		0x6fa87e4f, 0xfe2ce6e0, 0xa3014314, 0x4e0811a1, 0xf7537e82, 0xbd3af235, 0x2ad7d2bb, 0xeb86d391,
+	};
+	static const uint8_t S[16] = {7, 12, 17, 22, 5, 9, 14, 20, 4, 11, 16, 23, 6, 10, 15, 21};
+	uint32_t *h = state, m[16];
+	for (int i = 0; i < 16; i++) m[i] = le32(b + 4 * i);
+	uint32_t a = h[0], bb = h[1], c = h[2], d = h[3];
+	for (int i = 0; i < 64; i++) {
+		uint32_t f;
+		int g;
+		if (i < 16) f = (bb & c) | (~bb & d), g = i;
+		else if (i < 32) f = (d & bb) | (~d & c), g = (5 * i + 1) & 15;
+		else if (i < 48) f = bb ^ c ^ d, g = (3 * i + 5) & 15;
+		else f = c ^ (bb | ~d), g = (7 * i) & 15;
+		uint32_t t = d;
+		d = c, c = bb;
+		bb = bb + rotl(a + f + K[i] + m[g], S[(i >> 4) * 4 + (i & 3)]);
+		a = t;
+	}
+	h[0] += a, h[1] += bb, h[2] += c, h[3] += d;
+}
+
+void ak_md5(const void *p, size_t n, uint8_t out[16]) {
+	uint32_t h[4] = {0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476};
+	uint8_t buf[64];
+	size_t bn = 0;
+	uint64_t total = 0;
+	md_update(buf, &bn, &total, h, md5_block, p, n);
+	uint64_t bits = total * 8;
+	uint8_t pad[72] = {0x80};
+	size_t k = bn < 56 ? 56 - bn : 120 - bn;
+	for (int i = 0; i < 8; i++) pad[k + (size_t)i] = (uint8_t)(bits >> (8 * i));
+	md_update(buf, &bn, &total, h, md5_block, pad, k + 8);
+	for (int i = 0; i < 4; i++)
+		for (int j = 0; j < 4; j++) out[4 * i + j] = (uint8_t)(h[i] >> (8 * j));
+}
+
+// ---- Hashes by kind, and HMAC (RFC 2104) over them ----
+
+size_t ak_hash_size(int kind) {
+	switch (kind) {
+	case AK_HASH_SHA1: return 20;
+	case AK_HASH_SHA256: return 32;
+	case AK_HASH_SHA384: return 48;
+	case AK_HASH_SHA512: return 64;
+	}
+	return 0;
+}
+
+static size_t block_size(int kind) { return kind == AK_HASH_SHA384 || kind == AK_HASH_SHA512 ? 128 : 64; }
+
+typedef struct {
+	int kind;
+	union {
+		ak_sha1_ctx s1;
+		ak_sha256_ctx s256;
+		ak_sha512_ctx s512;
+	} u;
+} hash_ctx;
+
+static void hash_init(hash_ctx *c, int kind) {
+	c->kind = kind;
+	switch (kind) {
+	case AK_HASH_SHA1: ak_sha1_init(&c->u.s1); break;
+	case AK_HASH_SHA256: ak_sha256_init(&c->u.s256); break;
+	case AK_HASH_SHA384: ak_sha384_init(&c->u.s512); break;
+	default: ak_sha512_init(&c->u.s512); break;
+	}
+}
+
+static void hash_update(hash_ctx *c, const void *p, size_t n) {
+	switch (c->kind) {
+	case AK_HASH_SHA1: ak_sha1_update(&c->u.s1, p, n); break;
+	case AK_HASH_SHA256: ak_sha256_update(&c->u.s256, p, n); break;
+	default: ak_sha512_update(&c->u.s512, p, n); break;
+	}
+}
+
+// hash_final writes the digest (ak_hash_size bytes) into out.
+static void hash_final(hash_ctx *c, uint8_t *out) {
+	uint8_t full[64];
+	switch (c->kind) {
+	case AK_HASH_SHA1: ak_sha1_final(&c->u.s1, out); return;
+	case AK_HASH_SHA256: ak_sha256_final(&c->u.s256, out); return;
+	case AK_HASH_SHA384:
+		ak_sha512_final(&c->u.s512, full);
+		memcpy(out, full, 48);
+		return;
+	default: ak_sha512_final(&c->u.s512, out); return;
+	}
+}
+
+void ak_hash(int kind, const void *p, size_t n, uint8_t *out) {
+	hash_ctx c;
+	hash_init(&c, kind);
+	hash_update(&c, p, n);
+	hash_final(&c, out);
+}
+
+// An HMAC key's two states: the hash having taken key ^ ipad, and key ^
+// opad. Each message then costs what it is plus two blocks, which
+// PBKDF2's iterations need.
+typedef struct {
+	hash_ctx inner, outer;
+} hmac_key;
+
+static void hmac_key_init(hmac_key *k, int kind, const uint8_t *key, size_t n) {
+	uint8_t b[128] = {0}, pad[128];
+	size_t bs = block_size(kind);
+	if (n > bs) ak_hash(kind, key, n, b);
+	else if (n) memcpy(b, key, n);
+	for (size_t i = 0; i < bs; i++) pad[i] = b[i] ^ 0x36;
+	hash_init(&k->inner, kind);
+	hash_update(&k->inner, pad, bs);
+	for (size_t i = 0; i < bs; i++) pad[i] = b[i] ^ 0x5c;
+	hash_init(&k->outer, kind);
+	hash_update(&k->outer, pad, bs);
+	ak_wipe(b, sizeof b);
+	ak_wipe(pad, sizeof pad);
+}
+
+// hmac_run: HMAC of the n pieces (p[i], lens[i]) under k, into out.
+static void hmac_run(const hmac_key *k, const uint8_t *const *p, const size_t *lens, int n, uint8_t *out) {
+	hash_ctx c = k->inner;
+	for (int i = 0; i < n; i++) hash_update(&c, p[i], lens[i]);
+	uint8_t inner[64];
+	hash_final(&c, inner);
+	c = k->outer;
+	hash_update(&c, inner, ak_hash_size(k->inner.kind));
+	hash_final(&c, out);
+	ak_wipe(&c, sizeof c);
+}
+
+void ak_hmac(int kind, const uint8_t *key, size_t kn, const uint8_t *m, size_t mn, uint8_t *out) {
+	hmac_key k;
+	hmac_key_init(&k, kind, key, kn);
+	hmac_run(&k, &m, &mn, 1, out);
+	ak_wipe(&k, sizeof k);
+}
+
+void ak_wipe(void *p, size_t n) {
+	if (!n) return;
+#if defined(__GNUC__) || defined(__clang__)
+	// memset at its speed, then a barrier that says the zeros are read,
+	// so the compiler keeps them (as explicit_bzero does).
+	memset(p, 0, n);
+	__asm__ __volatile__("" : : "r"(p) : "memory");
+#else
+	volatile uint8_t *b = p;
+	while (n--) *b++ = 0;
+#endif
+}
+
+// ---- HKDF (RFC 5869) and PBKDF2 (RFC 8018) ----
+
+// ak_hkdf_expand writes n bytes (at most 255 digests) of HKDF-Expand of
+// prk and info.
+void ak_hkdf_expand(int kind, const uint8_t *prk, size_t pn, const uint8_t *info, size_t in, uint8_t *out, size_t n) {
+	hmac_key k;
+	hmac_key_init(&k, kind, prk, pn);
+	size_t hs = ak_hash_size(kind), tn = 0;
+	uint8_t t[64];
+	for (uint8_t i = 1; n; i++) {
+		const uint8_t *p[3] = {t, info, &i};
+		size_t lens[3] = {tn, in, 1};
+		hmac_run(&k, p, lens, 3, t);
+		tn = hs;
+		size_t m = n < hs ? n : hs;
+		memcpy(out, t, m);
+		out += m, n -= m;
+	}
+	ak_wipe(t, sizeof t);
+	ak_wipe(&k, sizeof k);
+}
+
+void ak_pbkdf2(int kind, const uint8_t *pw, size_t pn, const uint8_t *salt, size_t sn, uint64_t iterations, uint8_t *out, size_t n) {
+	hmac_key k;
+	hmac_key_init(&k, kind, pw, pn);
+	size_t hs = ak_hash_size(kind);
+	uint8_t u[64], t[64];
+	for (uint32_t block = 1; n; block++) {
+		uint8_t be[4];
+		put_be32(be, block);
+		const uint8_t *p[2] = {salt, be};
+		size_t lens[2] = {sn, 4};
+		hmac_run(&k, p, lens, 2, u);
+		memcpy(t, u, hs);
+		for (uint64_t i = 1; i < iterations; i++) {
+			const uint8_t *q = u;
+			hmac_run(&k, &q, &hs, 1, u);
+			for (size_t j = 0; j < hs; j++) t[j] ^= u[j];
+		}
+		size_t m = n < hs ? n : hs;
+		memcpy(out, t, m);
+		out += m, n -= m;
+	}
+	ak_wipe(u, sizeof u);
+	ak_wipe(t, sizeof t);
+	ak_wipe(&k, sizeof k);
 }
 
 static const uint8_t *data(const ak_bytes *b) { return b ? b->data : (const uint8_t *)""; }
@@ -315,22 +614,84 @@ static ak_val ed25519_new_fn(ak_val *args, uint32_t n) {
 	return (ak_val){.p = out};
 }
 
-// hmacSHA256(key, data): SHA-256(key' ^ opad, SHA-256(key' ^ ipad, data)).
+// hmacSHA256(key, data): HMAC-SHA256 (32 bytes).
 static ak_val hmac_sha256(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
-	uint8_t k[64] = {0};
-	if (len(BYTES(0)) > 64) ak_sha256(data(BYTES(0)), len(BYTES(0)), k);
-	else if (len(BYTES(0))) memcpy(k, data(BYTES(0)), len(BYTES(0)));
-	size_t dn = len(BYTES(1));
-	uint8_t *inner = ak_alloc(64 + dn);
-	for (int i = 0; i < 64; i++) inner[i] = k[i] ^ 0x36;
-	if (dn) memcpy(inner + 64, data(BYTES(1)), dn);
-	uint8_t outer[64 + 32];
-	for (int i = 0; i < 64; i++) outer[i] = k[i] ^ 0x5c;
-	ak_sha256(inner, 64 + dn, outer + 64);
-	ak_free(inner);
 	ak_bytes *out = ak_bytes_new(NULL, 32);
-	ak_sha256(outer, sizeof outer, out->data);
+	ak_hmac(AK_HASH_SHA256, data(BYTES(0)), len(BYTES(0)), data(BYTES(1)), len(BYTES(1)), out->data);
+	return (ak_val){.p = out};
+}
+
+// hash_of is a Hash's code (std/crypto's hashCode), or a throw.
+static int hash_of(int64_t k) {
+	if (ak_hash_size((int)k) && k >= AK_HASH_SHA1 && k <= AK_HASH_SHA512) return (int)k;
+	ak_throw_msg("crypto: no hash %lld", (long long)k);
+	return 0;
+}
+
+// hmacWith(hash, key, data): HMAC of data under key, a digest long.
+static ak_val hmac_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	int k = hash_of(args[0].i);
+	if (!k) return (ak_val){.p = NULL};
+	ak_bytes *out = ak_bytes_new(NULL, ak_hash_size(k));
+	ak_hmac(k, data(BYTES(1)), len(BYTES(1)), data(BYTES(2)), len(BYTES(2)), out->data);
+	return (ak_val){.p = out};
+}
+
+static ak_val sha384_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_bytes *out = ak_bytes_new(NULL, 48);
+	ak_sha384(data(BYTES(0)), len(BYTES(0)), out->data);
+	return (ak_val){.p = out};
+}
+
+static ak_val md5_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_bytes *out = ak_bytes_new(NULL, 16);
+	ak_md5(data(BYTES(0)), len(BYTES(0)), out->data);
+	return (ak_val){.p = out};
+}
+
+// hkdfExtractWith(hash, salt, secret): the pseudorandom key, HMAC(salt,
+// secret); no salt is a digest of zeros (RFC 5869's).
+static ak_val hkdf_extract_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	int k = hash_of(args[0].i);
+	if (!k) return (ak_val){.p = NULL};
+	ak_bytes *out = ak_bytes_new(NULL, ak_hash_size(k));
+	ak_hmac(k, data(BYTES(1)), len(BYTES(1)), data(BYTES(2)), len(BYTES(2)), out->data);
+	return (ak_val){.p = out};
+}
+
+// hkdfExpandWith(hash, key, info, length): length bytes (the Asuka side
+// keeps it within 255 digests).
+static ak_val hkdf_expand_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	int k = hash_of(args[0].i);
+	if (!k) return (ak_val){.p = NULL};
+	int64_t want = args[3].i;
+	if (want < 0 || (uint64_t)want > 255 * ak_hash_size(k)) {
+		ak_throw_msg("crypto: HKDF gives 0 to %zu bytes, not %lld", 255 * ak_hash_size(k), (long long)want);
+		return (ak_val){.p = NULL};
+	}
+	ak_bytes *out = ak_bytes_new(NULL, (size_t)want);
+	ak_hkdf_expand(k, data(BYTES(1)), len(BYTES(1)), data(BYTES(2)), len(BYTES(2)), out->data, (size_t)want);
+	return (ak_val){.p = out};
+}
+
+// pbkdf2With(hash, password, salt, iterations, length).
+static ak_val pbkdf2_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	int k = hash_of(args[0].i);
+	if (!k) return (ak_val){.p = NULL};
+	int64_t it = args[3].i, want = args[4].i;
+	if (it < 1 || want < 0 || want > INT32_MAX) {
+		ak_throw_msg("crypto: pbkdf2 takes 1 or more iterations and a length of 0 or more");
+		return (ak_val){.p = NULL};
+	}
+	ak_bytes *out = ak_bytes_new(NULL, (size_t)want);
+	ak_pbkdf2(k, data(BYTES(1)), len(BYTES(1)), data(BYTES(2)), len(BYTES(2)), (uint64_t)it, out->data, (size_t)want);
 	return (ak_val){.p = out};
 }
 
@@ -428,6 +789,12 @@ const ak_lib_entry ak_std_crypto[] = {
 	{"crypto.ed25519Verify", ed25519_verify_fn},
 	{"crypto.ed25519NewKey", ed25519_new_fn},
 	{"crypto.hmacSHA256", hmac_sha256},
+	{"crypto.sha384", sha384_fn},
+	{"crypto.md5", md5_fn},
+	{"crypto.hmacWith", hmac_fn},
+	{"crypto.hkdfExtractWith", hkdf_extract_fn},
+	{"crypto.hkdfExpandWith", hkdf_expand_fn},
+	{"crypto.pbkdf2With", pbkdf2_fn},
 	{"crypto.randomBytes", random_bytes},
 	{"crypto.uuid", uuid},
 	{"crypto.equal", equal},

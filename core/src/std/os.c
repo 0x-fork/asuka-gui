@@ -25,6 +25,12 @@
 //	os.fakeOutput(fd) -> string      what the test wrote to fd
 //	os.fakeExit() -> int             the code exit was called with (-1: none)
 //	os.runMain(main) -> Task<int>    main run as a program is
+//	os.hostname() -> string          the machine's name ("localhost": the web)
+//	os.pid() -> int, os.ppid() -> int  the process's and its parent's (0: none)
+//	os.userInfo() -> [string]        name, home, uid, gid ("" where there's none)
+//	os.platformCode() -> int         the prelude's Platform: 1 iOS … 6 linux
+//	os.archCode() -> int             os.Arch's case: 1 arm64 … 6 riscv64, 0 unknown
+//	os.executable() -> string?       the running executable, links resolved
 #if defined(__APPLE__)
 #define _DARWIN_C_SOURCE
 #elif !defined(_WIN32)
@@ -51,11 +57,17 @@
 #include <io.h>
 #include <fcntl.h>
 #include <shellapi.h>
+#include <tlhelp32.h>
 #else
+#include <limits.h>
 #include <unistd.h>
+#if !defined(__wasm__)
+#include <pwd.h>
+#endif
 #endif
 #if defined(__APPLE__)
 #include <crt_externs.h>
+#include <mach-o/dyld.h>
 #endif
 
 #define STR(i) ((ak_str *)args[i].p)
@@ -197,6 +209,7 @@ void ak_os_testing(bool on) {
 void ak_os_reset(void) {
 	stdin_reset();
 	ak_term_reset();
+	ak_log_reset();
 	ak_os_signals_reset();
 	ak_mutex_lock(&mu);
 	if (ak_lib_print_hook == print_hook) ak_lib_print_hook = NULL;
@@ -573,6 +586,8 @@ static void write_fd(int64_t fd, const void *p, size_t len) {
 	fflush(f);
 }
 
+void ak_os_write(int fd, const void *p, size_t len) { write_fd(fd, p, len); }
+
 static ak_val write_fn(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	write_fd(args[0].i, STR(1)->data, STR(1)->len);
@@ -705,6 +720,251 @@ static ak_val run_main_fn(ak_val *args, uint32_t n) {
 	return (ak_val){.p = out};
 }
 
+// ---- The process and the machine ----
+
+static ak_val hostname_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(args), AK_UNUSED(n);
+#if defined(_WIN32)
+	wchar_t buf[256];
+	DWORD k = 256;
+	if (!GetComputerNameExW(ComputerNamePhysicalDnsHostname, buf, &k) || k == 0) return (ak_val){.p = ak_str_c("localhost")};
+	char *s = utf8(buf, (int)k);
+	ak_str *out = ak_str_c(s);
+	ak_free(s);
+	return (ak_val){.p = out};
+#elif defined(__wasm__)
+	return (ak_val){.p = ak_str_c("localhost")};
+#else
+	char buf[256];
+	if (gethostname(buf, sizeof buf) != 0 || !buf[0]) return (ak_val){.p = ak_str_c("localhost")};
+	buf[sizeof buf - 1] = 0;
+	return (ak_val){.p = ak_str_c(buf)};
+#endif
+}
+
+static ak_val pid_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(args), AK_UNUSED(n);
+#if defined(_WIN32)
+	return (ak_val){.i = (int64_t)GetCurrentProcessId()};
+#elif defined(__wasm__)
+	return (ak_val){.i = 0};
+#else
+	return (ak_val){.i = (int64_t)getpid()};
+#endif
+}
+
+static ak_val ppid_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(args), AK_UNUSED(n);
+#if defined(_WIN32)
+	// Windows keeps no parent but in the processes' snapshot (as Go's
+	// os.Getppid reads it).
+	int64_t parent = 0;
+	HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+	if (snap != INVALID_HANDLE_VALUE) {
+		DWORD self = GetCurrentProcessId();
+		PROCESSENTRY32W e;
+		e.dwSize = sizeof e;
+		for (BOOL ok = Process32FirstW(snap, &e); ok; ok = Process32NextW(snap, &e))
+			if (e.th32ProcessID == self) {
+				parent = (int64_t)e.th32ParentProcessID;
+				break;
+			}
+		CloseHandle(snap);
+	}
+	return (ak_val){.i = parent};
+#elif defined(__wasm__)
+	return (ak_val){.i = 0};
+#else
+	return (ak_val){.i = (int64_t)getppid()};
+#endif
+}
+
+// real_env is the process's own environment variable (not os.fake's: what
+// the machine is doesn't change in a test), NULL when it isn't set (ak_free
+// it).
+#if !defined(__wasm__)
+static char *real_env(const char *name) {
+#if defined(_WIN32)
+	wchar_t *w = wide(name);
+	DWORD k = GetEnvironmentVariableW(w, NULL, 0);
+	char *v = NULL;
+	if (k > 0) {
+		wchar_t *val = ak_alloc(sizeof(wchar_t) * k);
+		DWORD got = GetEnvironmentVariableW(w, val, k);
+		v = utf8(val, (int)got);
+		ak_free(val);
+	}
+	ak_free(w);
+	return v;
+#else
+	const char *v = getenv(name);
+	if (!v) return NULL;
+	size_t k = strlen(v);
+	return memcpy(ak_alloc(k + 1), v, k + 1);
+#endif
+}
+#endif
+
+// user_info: the user's name, home, uid and gid ("" where the system has
+// none: Windows' ids, the web's everything but home).
+static ak_val user_info_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(args), AK_UNUSED(n);
+	ak_arr *out = ak_str_arr(4);
+	char *name = NULL;
+	char uid[24] = "", gid[24] = "";
+#if defined(_WIN32)
+	// GetUserNameW is advapi32's, which the core doesn't link: found as
+	// it's needed, else the session's USERNAME.
+	HMODULE adv = LoadLibraryW(L"advapi32.dll");
+	typedef BOOL(WINAPI * get_user_fn)(LPWSTR, LPDWORD);
+	get_user_fn get = adv ? (get_user_fn)(void (*)(void))GetProcAddress(adv, "GetUserNameW") : NULL;
+	wchar_t buf[257];
+	DWORD k = 257;
+	if (get && get(buf, &k) && k > 1) name = utf8(buf, (int)k - 1);
+	if (adv) FreeLibrary(adv);
+	if (!name) name = real_env("USERNAME");
+#elif !defined(__wasm__)
+	uid_t u = getuid();
+	gid_t g = getgid();
+	snprintf(uid, sizeof uid, "%lld", (long long)u);
+	snprintf(gid, sizeof gid, "%lld", (long long)g);
+	struct passwd pw, *found = NULL;
+	char buf[4096];
+	if (getpwuid_r(u, &pw, buf, sizeof buf, &found) == 0 && found && found->pw_name && *found->pw_name) {
+		size_t k = strlen(found->pw_name);
+		name = memcpy(ak_alloc(k + 1), found->pw_name, k + 1);
+	}
+	// A user the system has no record of (a container's): who the
+	// session says, else the id.
+	if (!name) name = real_env("USER");
+	if (!name || !*name) {
+		ak_free(name);
+		name = real_env("LOGNAME");
+	}
+	if (!name || !*name) {
+		ak_free(name);
+		size_t k = strlen(uid);
+		name = memcpy(ak_alloc(k + 1), uid, k + 1);
+	}
+#endif
+	ak_str_arr_push(&out, name ? name : "", name ? strlen(name) : 0);
+	ak_free(name);
+	ak_str *home = ak_fs_home();
+	ak_str_arr_push(&out, home->data, home->len);
+	ak_release(home);
+	ak_str_arr_push(&out, uid, strlen(uid));
+	ak_str_arr_push(&out, gid, strlen(gid));
+	return (ak_val){.p = out};
+}
+
+// platform_code is the prelude's Platform's case the core was built for:
+// what it runs on.
+static ak_val platform_code_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(args), AK_UNUSED(n);
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+	return (ak_val){.i = 1};
+#elif defined(__ANDROID__)
+	return (ak_val){.i = 2};
+#elif defined(__APPLE__)
+	return (ak_val){.i = 3};
+#elif defined(_WIN32)
+	return (ak_val){.i = 4};
+#elif defined(__wasm__)
+	return (ak_val){.i = 5};
+#elif defined(__linux__)
+	return (ak_val){.i = 6};
+#else
+	return (ak_val){.i = 0};
+#endif
+}
+
+// arch_code is os.Arch's case of the CPU the core was built for.
+static ak_val arch_code_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(args), AK_UNUSED(n);
+#if defined(__aarch64__) || defined(_M_ARM64)
+	return (ak_val){.i = 1};
+#elif defined(__x86_64__) || defined(_M_X64)
+	return (ak_val){.i = 2};
+#elif defined(__i386__) || defined(_M_IX86)
+	return (ak_val){.i = 3};
+#elif defined(__arm__) || defined(_M_ARM)
+	return (ak_val){.i = 4};
+#elif defined(__wasm32__)
+	return (ak_val){.i = 5};
+#elif defined(__riscv) && __riscv_xlen == 64
+	return (ak_val){.i = 6};
+#else
+	return (ak_val){.i = 0};
+#endif
+}
+
+// executable is the path of the file the process runs, absolute, its
+// links resolved; NULL where there's none of the app's own (Android's
+// apps run in app_process, the zygote's; the web has no files).
+static ak_val executable_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(args), AK_UNUSED(n);
+#if defined(_WIN32)
+	wchar_t *w = ak_alloc(sizeof(wchar_t) * 32768);
+	DWORD k = GetModuleFileNameW(NULL, w, 32768);
+	if (k == 0 || k >= 32768) {
+		ak_free(w);
+		return (ak_val){.p = NULL};
+	}
+	// Its links and junctions resolved: the final path, \\?\ taken off
+	// (\\?\UNC\server\share is \\server\share).
+	HANDLE h = CreateFileW(w, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+	if (h != INVALID_HANDLE_VALUE) {
+		wchar_t *f = ak_alloc(sizeof(wchar_t) * 32768);
+		DWORD got = GetFinalPathNameByHandleW(h, f, 32768, FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+		CloseHandle(h);
+		if (got > 0 && got < 32768) {
+			const wchar_t *p = f;
+			if (wcsncmp(p, L"\\\\?\\UNC\\", 8) == 0) {
+				p += 6;
+				f[6] = L'\\';
+			} else if (wcsncmp(p, L"\\\\?\\", 4) == 0) {
+				p += 4;
+			}
+			ak_free(w);
+			w = ak_alloc(sizeof(wchar_t) * (wcslen(p) + 1));
+			wcscpy(w, p);
+		}
+		ak_free(f);
+	}
+	char *s = utf8(w, -1);
+	ak_free(w);
+	ak_str *out = ak_str_c(s);
+	ak_free(s);
+	return (ak_val){.p = out};
+#elif defined(__APPLE__)
+	uint32_t size = 0;
+	_NSGetExecutablePath(NULL, &size);
+	char *raw = ak_alloc(size + 1);
+	if (_NSGetExecutablePath(raw, &size) != 0) {
+		ak_free(raw);
+		return (ak_val){.p = NULL};
+	}
+	char *real = realpath(raw, NULL);
+	ak_str *out = ak_str_c(real ? real : raw);
+	free(real);
+	ak_free(raw);
+	return (ak_val){.p = out};
+#elif defined(__linux__) && !defined(__ANDROID__)
+	char buf[PATH_MAX + 1];
+	ssize_t k = readlink("/proc/self/exe", buf, PATH_MAX);
+	if (k <= 0) return (ak_val){.p = NULL};
+	buf[k] = 0;
+	// A file replaced or deleted as it ran reads "… (deleted)": the path
+	// it had is still its.
+	const char *gone = " (deleted)";
+	size_t g = strlen(gone);
+	if ((size_t)k > g && strcmp(buf + k - g, gone) == 0) buf[k - g] = 0;
+	return (ak_val){.p = ak_str_c(buf)};
+#else
+	return (ak_val){.p = NULL};
+#endif
+}
+
 const ak_lib_entry ak_std_os[] = {
 	{"os.args", args_fn},
 	{"os.program", program_fn},
@@ -722,6 +982,13 @@ const ak_lib_entry ak_std_os[] = {
 	{"os.fakeOutput", fake_output_fn},
 	{"os.fakeExit", fake_exit_fn},
 	{"os.runMain", run_main_fn},
+	{"os.hostname", hostname_fn},
+	{"os.pid", pid_fn},
+	{"os.ppid", ppid_fn},
+	{"os.userInfo", user_info_fn},
+	{"os.platformCode", platform_code_fn},
+	{"os.archCode", arch_code_fn},
+	{"os.executable", executable_fn},
 	{NULL, NULL},
 };
 

@@ -3,6 +3,7 @@ package diag
 import (
 	"fmt"
 	"strings"
+	"sync"
 )
 
 // The compiler's codes, by what they're about. Each one's Wrong is
@@ -280,7 +281,7 @@ its fields do; a closure has none.`,
 −9223372036854775808 to 9223372036854775807, a ` + "`u8`" + ` 0 to 255, an ` + "`i8`" + `
 −128 to 127, a ` + "`u64`" + ` 0 to 18446744073709551615. A literal outside its
 type's range can't be one, and an unsigned type has no negatives.`,
-		Fix:   "Use a number in the range, a wider type (`u16`, `int`, `u64`), a `float`, or `std/decimal` for exact large numbers.",
+		Fix:   "Use a number in the range, a wider type (`u16`, `int`, `u64`), a `float`, or, for an exact integer past 64 bits, `std/bigint`'s `BigInt` (`BigInt.parse(\"9223372036854775808\")!`).",
 		Wrong: "let big = 9223372036854775808\nlet level: u8 = 300\n",
 		Right: "let big: u64 = 9223372036854775808\nlet level: u16 = 300\n",
 	})
@@ -1126,6 +1127,30 @@ a view or a store has no JSON.`,
 		Right: "import std/json\n\nstruct Settings {\n  theme: string\n}\n\nfn read(text: string) throws -> Settings = try json.decode<Settings>(text)\n",
 	})
 
+	TestParameter = def(Code{
+		Name:    "test-parameter",
+		Summary: "a test's parameter of a type asuka test can't generate",
+		Why: `A test with parameters is a property test: ` + "`asuka test`" + ` runs it with values it
+generates for them, shrinks a failing one to the simplest it can find, and
+` + "`--fuzz`" + ` saves it as JSON, which every later run reads back. It generates
+ints, floats, bools, strings, bytes and durations, and the arrays, maps
+from strings, sets, optionals, structs and enums made of them. A view, a
+closure or a store has no values to generate, and a parameter takes no
+default: it gets each generated value.`,
+		Fix:   "Take what the test is about as data (an id, a struct of fields), and make the rest from it in the test's body.",
+		Wrong: "test \"runs anything\" (f: fn() -> int) {\n  expect(f() == f())\n}\n",
+		Right: "test \"reversing twice\" (xs: [int]) {\n  expect(xs.reversed().reversed() == xs)\n}\n",
+	})
+
+	InlineSnapshot = def(Code{
+		Name:    "inline-snapshot",
+		Summary: "an inline snapshot that isn't a string written in the call",
+		Why:     "`expectInlineSnapshot(value, \"…\")` compares what the value prints as with the string in the call, and `asuka test --update` rewrites that string in the source when the value changes. A string the program computes, or one with interpolations, isn't text the update can rewrite.",
+		Fix:     "Write the snapshot as a string literal, or leave it out (`expectInlineSnapshot(value)`) and let `asuka test` write it on its first run.",
+		Wrong:   "fn total() -> int = 42\n\ntest \"total\" {\n  let want = \"42\"\n  expectInlineSnapshot(total(), want)\n}\n",
+		Right:   "fn total() -> int = 42\n\ntest \"total\" {\n  expectInlineSnapshot(total(), \"42\")\n}\n",
+	})
+
 	NotCType = def(Code{
 		Name:    "not-c-type",
 		Summary: "a type that can't cross to C",
@@ -1307,8 +1332,9 @@ at run time can't be, and markup that doesn't parse has nothing to make.`,
 		Summary: "a function too large for the bytecode",
 		Why: `An instruction names at most 65,535 values, and a function holds at most
 65,534 at once. A literal or a function past that can't be encoded.`,
-		Fix:   "Split the function, or keep the data in a file (`embed.json`) instead of a literal.",
-		Wrong: locals(70000),
+		Fix: "Split the function, or keep the data in a file (`embed.json`) instead of a literal.",
+		// Made when it's read, not as the CLI starts: 70,000 lines.
+		wrong: sync.OnceValue(func() string { return locals(70000) }),
 		Right: locals(3),
 	})
 

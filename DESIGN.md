@@ -105,6 +105,35 @@ to the new types by field names), and keeps the native views that are
 still there. For release, `asuka build` compiles the app to C and links
 it with the core.
 
+Release code is C a C compiler optimizes as it would hand-written C
+(lang/LOWERING.md, Release builds: C): registers are C locals, kinds
+and releases are decided as the C is written, compiled functions call
+each other's bodies directly with their arguments as C values and their
+error in a returned register, and elements and fields are read through
+borrowed pointers and changed in place without reference counting. The
+heap objects whose size never changes (structs, enums, boxes, closures,
+arrays' and maps' headers) come from a thread's cache of freed blocks
+before malloc (core/src/base/small.c), and a release counts no
+allocations or live objects (tests and development builds do).
+bench/compiled times plain computation against Go, Zig and Bun.
+
+Between lowering and encoding, lang/ir's optimizer rewrites each
+function (lang/LOWERING.md's Optimization: constants folded, copies
+coalesced, comparisons fused into their jumps, an array's struct
+elements changed where they are, small functions and closures inlined)
+for both backends; `asuka dev` leaves an app's code as lowered, for
+quick reloads. The VM (core/src/vm/interp.c) dispatches threaded where
+the C compiler has computed gotos (a switch elsewhere, or with
+`-DAK_VM_SWITCH`): each instruction's code ends with the jump to the
+next one's, its width a constant; a call between bytecode functions
+pushes its frame inline (the rare cases, the stacks' growth and a mut
+fn's receiver, out of the way), and a return lets go of the frame's
+reference registers by a list of them the loader makes. The loader
+checks every instruction is one the VM has, and resolves builtins by
+name through a hash. An error an instruction throws (an overflow, an
+index) saves its frame's pc first, so its trace names its line, as the
+C's does.
+
 ### Platforms
 
 A compile is for one platform (lang/target: ios, android, macos,
@@ -1423,7 +1452,14 @@ link, and the linker leaves out its C and what only it reaches: a
 program that prints carries no TOML parser, no zip, no HTTP server. A
 player (`asuka dev`, which loads any bytecode) lists every table, and
 so does a build whose module isn't known (`Builtins` nil). Each table's builtins share its
-name's prefix (`TestLinkRegistersEveryTable`).
+name's prefix (`TestLinkRegistersEveryTable`). What one package has
+that costs more than the rest is a table of its own, its `native fn`s
+`native(prefix) fn` (lang/LOWERING.md): std/crypto's AES-GCM and
+ChaCha20-Poly1305 (`crypto_aead`), Argon2 and bcrypt
+(`crypto_password`), RSA, ECDSA and keys (`crypto_pk`), private key
+files read, encrypted or OpenSSH's (`crypto_keyfile`, keyfile.c), and
+written encrypted (`crypto_keyenc`), so an app that only hashes links
+none of them.
 
 **A vendor's prebuilt libraries** are `[c.prebuilt]`'s: a static
 library per target (`ios-arm64`, `ios-simulator-x64`, `macos-arm64`,
@@ -1579,6 +1615,18 @@ packages' Swift is what URLSession is reached through). asuka.toml's
 puts them in the app (Contents/Helpers, bin/, beside the .exe), built
 with the app's data folder (`Module.Data`) so they share its data.
 
+**std/log** is the core's C too (core/src/std/log.c): a level that's
+off costs an atomic load (the program's `setLevel`, else `ASUKA_LOG`'s,
+read once); a line on is formatted there, as aligned text (colored as
+std/term decides for stderr) or JSON lines, and written where the
+platform's developers look: stderr for a program and a test (through
+std/os's writes, so `FakeOS.run` keeps it), os_log on iOS and macOS,
+`__android_log_write` on Android, the page's console through the web
+core's `log_write` import, `OutputDebugString` on Windows. A desktop
+process whose stderr goes somewhere (a terminal, a pipe: asuka dev's
+player) writes there instead, Linux's always; a phone's dev player
+writes to stderr too, which it sends to the CLI.
+
 **std/http's server** (`http.serve`) is the core's C, the same on every
 system that can listen (core/src/std/httpserver.c; the web's core says
 it can't): a thread per server runs one poll() loop (WSAPoll on
@@ -1594,8 +1642,75 @@ reply's next piece is asked for once what's queued drops below 64 KiB;
 a client gone while its reply streams cancels the task. Closing stops
 accepting, lets requests in flight answer, then disposes the owner. An
 open connection holds the scheduler, so a test's loop waits for what
-it posts. TLS is a reverse proxy's; it would sit between the socket and
-the connection's buffers.
+it posts. With TLS (HTTPS), each connection has a session of std/net's
+TLS between its socket and its buffers, on the server's thread, its
+handshake within the header timeout.
+
+**std/net** (TCP, UDP, DNS) is the core's C too (core/src/std/net.c,
+dns.c; the socket shims it shares with the HTTP server in sock.c): one
+thread for every socket of the process runs a poll() loop (WSAPoll),
+the main thread's operations (a connect, a read of some bytes, of n, up
+to a delimiter, to the end; a write, an accept, a datagram) handed to
+it on a queue and posted back when done, so a read of any kind is one
+crossing. A cancelled operation is asked back, and what it got by then
+is put back (a read's bytes at its buffer's front, an accepted
+connection, a datagram) before the socket's next operation goes. Names
+are looked up on a thread per lookup (getaddrinfo, getnameinfo); a
+connect tries a name's addresses as Happy Eyeballs does (RFC 8305).
+DNS's records (MX, TXT, SRV, NS) come from the system's resolver:
+DNSService on Apple's, android_res_nquery, DnsQuery_W; on Linux a stub
+resolver of the core's own over /etc/resolv.conf's servers, as Go's.
+Every socket belongs to the task that made it (its owner's cleanup
+closes it); `net.serve` runs a task per connection, as the HTTP
+server does. The net thread holds the scheduler only while it has work
+of its own (a command, a connect, a write, a deadline), and a moment
+after for what loopback is still delivering: a test's clock moves on
+while a read waits for a peer that's idle.
+
+**TLS** (std/net's, and HTTPS's) is Mbed TLS 4.1 (TLS 1.2 and 1.3,
+vendored in core/third_party/mbedtls, its exported names renamed to the core's) on
+every system, one implementation, as Go's and rustls are: Apple's
+Network.framework owns its socket, SChannel and OpenSSL differ in what
+they take and say, and Android's NDK has none. A session sits on the
+thread that owns its socket (the net thread, an HTTP server's), between
+the socket and the connection's buffers, the reads and writes above it
+the same (core/src/std/tls.h; nettls.c on the net thread). A
+configuration (net.clientTLS, net.serverTLS) is made once and kept, the
+same inputs giving the same one. A client checks the server's
+certificate once the handshake is done, before a byte of the app's
+goes: against the authorities a configuration gives, with Mbed TLS; by
+default as the system does, Apple's SecTrust and Windows'
+CertGetCertificateChain (loaded as first needed, run on a thread of
+their own: they may fetch), or against the system's authorities read
+once (Linux's bundle as Go finds it, Android's store) with Mbed TLS.
+A configuration's key is Mbed TLS's to read (PKCS#8, PKCS#1, SEC 1);
+an encrypted one, or OpenSSH's, std/crypto's keyfile.c reads first (the
+app's call, so a TLS app that reads neither links none of it). A client
+configuration keeps its sessions to resume (TLS 1.3's tickets, each
+used once; TLS 1.2's session), by server name and port, bounded and
+expired in it, offered only under the configuration that checked them,
+and checked again for the name and the dates when resumed; a server
+configuration issues tickets (Mbed TLS's ticket module, its keys in
+memory, made new daily). No early data. net.c and httpserver.c reach
+TLS through a pointer tls.c sets as a configuration is made, so an app
+that never calls std/net's TLS builtins (their own table, `tls`) links
+none of it.
+
+**std/http's and std/websocket's clients' TLS settings** (`http.TLS`, a
+request's `tls:`) are the platforms' own clients', not Mbed TLS's: each
+transport's `secured(tls)` gives the client of those settings, made once
+per settings, its connections and TLS sessions apart from the others'.
+Apple's: SecTrust's anchors set on the server's trust challenge, the
+client's SecIdentity a PKCS#12 made in memory (SecPKCS12Import; before
+macOS 15, into a keychain of the process's own). Android's: an
+SSLContext of a KeyStore's TrustManager (the system's tried first with
+`trustSystem`) and KeyManager. Windows': WinHTTP's own check off and the
+settings' in its SENDING_REQUEST callback (a chain engine whose
+exclusive roots are theirs), the client's key persisted in CNG under the
+process's name (Schannel signs in LSA). Linux's: a GTlsFileDatabase as
+the session's, session resumption off (GIO's cache is the process's).
+The web's throws: the browser decides (platform/desktop/src/tls.c, the
+packages' TLS.swift and TLS.kt).
 
 **An app's metadata** is `asuka.toml` beside its Asuka code (TOML 1.0, read
 by `internal/toml`), all optional:
@@ -1896,7 +2011,8 @@ asuka/
   template/          what `asuka new` copies
   examples/          apps in Asuka
   conformance/       what every host draws for the style props, measured
-  bench/             Asuka against SwiftUI and Compose
+  bench/             Asuka against SwiftUI and Compose; compiled/: plain
+                     computation compiled to C against Go, Zig and Bun
   e2e/               GUI tests on the simulator, the emulator, the
                      desktops and headless Chrome
 ```
@@ -1921,6 +2037,11 @@ asuka/
   drive them by what the screen shows (`tap`, `type`, `expect`), as a
   user would; the clock moves only when nothing else can run, so a
   `sleep(5s)` takes no time and nothing waits on wall-clock time.
+  A test with parameters runs with generated inputs from a seed (a
+  failing one shrunk), `--fuzz` generates more guided by coverage's
+  counters, snapshots are compared with what's committed, and benches
+  are the one place wall-clock time is measured: never pass or fail on
+  it (docs/testing.md).
 - The macOS host (`go test ./platform/macos/mactest`): each test's
   Asuka app runs on the Mac player (the Swift host and the core, built
   once by the CLI), sent as asuka dev sends it; the test drives it
@@ -2115,6 +2236,23 @@ behavior.
   `.local` stays the system's (its clock is the device's), and the
   device's zone's name is the system's (TZ, /etc/localtime, Android's
   persist.sys.timezone, Windows's ICU, the browser's Intl).
+- Strings' Unicode is the core's, from a pinned release of the character
+  database (`internal/ucdgen` writes `core/src/rt/unicode_gen.c`): C's
+  library has none of it, and the platforms' differ in version and in
+  what they have (JavaScript has no case folding, Win32 no grapheme
+  clusters), so a string compares and measures alike everywhere:
+  `graphemes()` (UAX #29's extended clusters, checked against every case
+  of Unicode's GraphemeBreakTest), `upper()`, `lower()` and `foldCase()`
+  (the full mappings in no language's way, Final_Sigma; no Turkish
+  rules), `ignoreCase:`'s comparisons over the folding, and `std/term`'s
+  terminal widths (wcwidth's and unicode-width's rules over East Asian
+  Width, by grapheme cluster, escape codes skipped). Each code point's
+  properties are a uint16 in ranges (4,187 of them, binary searched,
+  ASCII on a fast path), the mappings runs of equal deltas and a table
+  of those to several code points: about 32 KB, in an app that calls
+  one of them only (their builtins are rt/lib.c's `ak_lib_unicode`,
+  named `unicode.…`, which link.c registers under AK_USES_UNICODE; a
+  `contains` without `ignoreCase:` is another builtin, `str.contains`).
 
 **Not yet:** selection for screen reader users (VoiceOver and TalkBack
 read the texts and links but don't select across them).

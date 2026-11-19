@@ -24,6 +24,7 @@ Every error and warning Asuka reports has a code: a stable name, said in the ter
 - [format-spec](format-spec.md): An interpolation's format that doesn't fit its value.
 - [group-not-calls](group-not-calls.md): `load (…)` of what isn't each a call.
 - [import-cycle](import-cycle.md): Packages that import each other.
+- [inline-snapshot](inline-snapshot.md): An inline snapshot that isn't a string written in the call.
 - [int-overflow](int-overflow.md): An integer literal that doesn't fit in its type.
 - [interface-not-satisfied](interface-not-satisfied.md): A type that declares an interface it doesn't implement.
 - [internal-error](internal-error.md): A mistake of the compiler's own.
@@ -98,6 +99,7 @@ Every error and warning Asuka reports has a code: a stable name, said in the ter
 - [spawn-captures-state](spawn-captures-state.md): `spawn` that reads or changes state, or what isn't a value.
 - [statement-in-view](statement-in-view.md): A statement among a component's views.
 - [syntax-error](syntax-error.md): The parser expected something else here.
+- [test-parameter](test-parameter.md): A test's parameter of a type asuka test can't generate.
 - [too-large](too-large.md): A function too large for the bytecode.
 - [tr-in-package](tr-in-package.md): `tr` in a package that isn't the app.
 - [type-arguments](type-arguments.md): The wrong number of type arguments.

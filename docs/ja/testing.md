@@ -48,7 +48,9 @@ asuka: 1 of 2 tests failed
 
 時間が進むのは、ほかに実行できるものが何もないときだけです。テスト内の `sleep(5s)` やタスクのタイマーは時間を使いません。来ることのない何かを待つテストは、すぐに失敗します（「the test never finished」）。
 
-アプリの実行中にコアが報告するもの（意味もなく別の load を待った load、何も示さない長い保持など。[エラーとそのコード](development.md#エラーとそのコード)を参照）は、`asuka test` が起きた場所でコードと一緒に表示します。`asuka test --json` は、それと各テストの結果を 1 行ずつの JSON で書き出します。
+アプリの実行中にコアが報告するもの（意味もなく別の load を待った load、何も示さない長い保持など。[エラーとそのコード](development.md#エラーとそのコード)を参照）は、`asuka test` が起きた場所でコードと一緒に表示します。`asuka test --json` は、それと各テストの結果（プロパティテストが失敗したときはその入力も）、各ベンチマークの結果、各ファイルのカバレッジを 1 行ずつの JSON で書き出します。
+
+`asuka test` は例によるテストのほかにも、生成した入力で[プロパティテスト](#プロパティテスト)を実行し、それを[ファジング](#ファジング)し、値を[スナップショット](#スナップショット)と比べ、[ベンチマーク](#ベンチマーク)を計測し、[カバレッジ](#カバレッジ)を測ります。アプリでも、パッケージでも、コマンドラインのプログラムでも同じように使えます。
 
 ## 画面に表示されているもの
 
@@ -57,7 +59,7 @@ asuka: 1 of 2 tests failed
 ```asuka
 app.expect("Inbox")       // 表示されていなければテストを失敗させる
 app.expectNo("Message 1") // 表示されていればテストを失敗させる
-print(app.dump())         // 画面に表示されているもの（1 行に 1 ビュー）
+print(app.snapshot())     // 画面に表示されているもの（1 行に 1 ビュー）
 ```
 
 対象になるのは、ユーザーに見えるものだけです。
@@ -83,6 +85,201 @@ await app.idle()                    // 実行するものがなくなるまで�
 ```
 
 タップは、指が触れる場所に届きます。行の中のテキストをタップすると行が、ボタンの中のテキストをタップするとボタンがタップされます。メニューを持つビューをタップするとメニューが開き、次の `tap` でその中から選びます。
+
+## プロパティテスト
+
+パラメーターのあるテストはプロパティテストです。パラメーターの型のどんな値に対しても成り立つ性質を書き、`asuka test` が値を生成して実行します。
+
+```asuka check
+struct Span {
+  start: int
+  end: int
+}
+
+fn merge(a: Span, b: Span) -> Span {
+  return Span(start: min(a.start, b.start), end: max(a.end, b.end))
+}
+
+test "a merge covers both spans" (a: Span, b: Span) {
+  let m = merge(a, b)
+  expect(m.start <= a.start && m.start <= b.start)
+  expect(m.end >= a.end && m.end >= b.end)
+}
+
+test "reversing twice gives the list back" (xs: [int], s: string) {
+  expect(xs.reversed().reversed() == xs)
+  expect(s.reversed().reversed() == s)
+}
+```
+
+各プロパティテストは 100 個の入力で実行されます。失敗する入力が見つかると、`asuka test` はそれを縮小（shrink）します。より単純な入力（短いリストや文字列、小さな数、`none`、列挙型の最初のケース）を順に試し、まだ失敗するもののうちいちばん単純なものを、それを見つけたシードと一緒に表示します。
+
+```
+FAIL a page holds two rows at most (pages.asuka:9)
+     expected page.count() <= 2 (pages.asuka:10): got 3 and 2
+     input (case 4 of seed 0, shrunk in 3 steps):
+       rows = ["", "", ""]
+     rerun it: asuka test --run 'a page holds two rows at most' --seed 0
+```
+
+入力はシードから作られます。`--seed` で別のシードを指定しないかぎりシードは 0 なので、どの実行でも（CI でも）同じ入力が試され、失敗は再現します。`--seed random` は新しい入力を試し、使ったシードを表示します。`--cases 1000` でより多くの入力を試せます。生成される値は次のとおりです。
+
+| 型 | 値 |
+| --- | --- |
+| `int`、`Duration` | 小さな数がもっとも多く、次に ±1000 までの数、境界の値（0、±1、255、65535、32 ビットと 64 ビットの上限と下限）、任意の値 |
+| `float` | 整数、小数、任意の有限の値、そして ±0、正負の無限大、NaN |
+| `bool` | 両方 |
+| `string` | 英字がもっとも多く、次に ASCII の任意の文字、ほかの文字体系、絵文字、結合文字、NUL、改行、引用符、波かっこ。最大 64 文字 |
+| `bytes`、`[T]`、`Set<T>`、`[string: T]` | 最大 64 要素で、要素の少ないものがもっとも多い |
+| `T?` | `none` か `T` の値 |
+| struct、列挙型 | 各フィールドの値。各ケースとその値。自分自身を含む型は、ある深さで入れ子が止まる |
+
+パラメーターはデータでなければなりません。ビュー、クロージャー、ストアには生成できる値がありません（[test-parameter](errors/test-parameter.md)）。ほかに必要なものは、受け取った値からテストの中で作ります。性質の対象外の入力では、テストから早めに return します：`if xs.isEmpty() { return }`。
+
+## ファジング
+
+```sh
+asuka test --fuzz                       # 各プロパティテストを 10 秒ずつ
+asuka test --fuzz --run parse --fuzztime 5m
+asuka test --fuzz --fuzztime 100000x    # それぞれ 100,000 個の入力
+```
+
+`--fuzz` はプロパティテストだけを実行し、`--fuzztime`（時間、または入力の数）が尽きるまで、それぞれを新しい入力で実行し続けます。各入力がパッケージのどのコードに到達したかを見て、ほかの入力が到達しなかったコードに届いた入力を変化させ続けるので、ランダムな入力ではまず見つからないもの（パーサーの深い分岐、フォーマットの細かなケース）を見つけられます。失敗した入力は縮小して表示し、JSON として `testdata/fuzz/<test>/` に保存します。
+
+```json
+{
+  "s": "abcd"
+}
+```
+
+これはコミットしてください。`asuka test` は毎回、生成する入力の前に、テストの保存済みの入力を実行します。そのため、一度直したものは直ったままになります。このファイルは自分で書くこともできます。テストのパラメーターを名前で並べた JSON オブジェクトで、JSON に数として書けない浮動小数点数は `NaN`、`Infinity`、`-Infinity` と書きます。
+
+## スナップショット
+
+`expectSnapshot(value)` は、値を出力したものをその値のために保存されたスナップショットと比べ、異なればテストを失敗させます。最初の実行でスナップショットが `testdata/snapshots/`（ソースファイルのテストごとに 1 ファイル）に書き出されるので、それをコミットします。
+
+```asuka
+test "the list shows today's todos" {
+  expectSnapshot(store.today())
+  let app = mount(TodoList())
+  expectSnapshot(app.snapshot())   // 画面に表示されているもの
+}
+```
+
+```
+snapshot "the list shows today's todos 1"
+  [
+    Todo(title: "Buy milk", done: false, tags: ["errands"]),
+    Todo(title: "Call Ada", done: true, tags: []),
+  ]
+```
+
+`expectInlineSnapshot(value)` はスナップショットを呼び出しの中に置きます。最初の実行で、`asuka fmt` と同じ書式でそこに書き込まれます。
+
+```asuka
+expectInlineSnapshot(total(cart))
+// 最初の実行のあと：
+expectInlineSnapshot(total(cart), "42.5")
+```
+
+文字列はそのままがスナップショットになります。ほかの値は、言語での書き方で出力されます：`"a"`（エスケープ付き）、`1.0`、`1500ms`、`[1, 2]`、`["a": 1]`、`Set([1])`、`Todo(title: "Milk", done: false)`、`.circle(radius: 2.0)`、`none`。マップのエントリーとセットの要素は並べ替えられるので、追加した順番には左右されません。1 行に収まらないときは、要素ごとに 1 行になります。
+
+値がスナップショットと異なると、テストは失敗し、どう違うかを示します。
+
+```
+FAIL the list shows today's todos (todos.asuka:12)
+     expectSnapshot (todos.asuka:13): what it shows isn't its snapshot (asuka test --update writes what it shows)
+     - the snapshot
+     + what it shows
+       [
+     -   Todo(title: "Buy milk", done: false, tags: ["errands"]),
+     +   Todo(title: "Buy oat milk", done: false, tags: ["errands"]),
+         Todo(title: "Call Ada", done: true, tags: []),
+       ]
+```
+
+`asuka test --update`（`-u`）は、代わりにテストが示したものを書き込みます。すべてのテストが実行されて成功したときは、どのテストも使わなくなったスナップショットも削除します。CI（`CI` が設定されている環境）では、まだ保存されていないスナップショットは書き込まれず、テストが失敗します。プロパティテストではスナップショットを使えません。生成したすべての値で実行されるからです。
+
+## ベンチマーク
+
+`bench` はベンチマークで、その処理にかかる時間を計測します。
+
+```asuka check
+fn fib(n: int) -> int {
+  if n < 2 { return n }
+  return fib(n - 1) + fib(n - 2)
+}
+
+bench "fib 20" {
+  keep(fib(20))
+}
+
+bench "sorting 1,000 ints" {
+  var xs: [int] = []
+  for i in 0..<1000 {
+    xs.push(i * 7919 % 1000)
+  }
+  measure {
+    keep(xs.sorted())
+  }
+}
+```
+
+```sh
+asuka test --bench                 # すべてのベンチマーク
+asuka test --bench --run sort      # 名前に sort を含むもの
+```
+
+```
+bench fib 20                    109µs/op ±2%          0 allocs/op        0 B/op  (10 × 520)
+bench sorting 1,000 ints       14.7µs/op ±4%          3 allocs/op    15.7 KB/op  (10 × 3,964)
+```
+
+`--bench` は各ベンチマークの本体を何度も実行します。まず 1 回、そのあとは回ごとに回数を増やし、1 回の実行が `--benchtime`（1s）の 10 分の 1 に達するまで続けます。それからその回数で 10 回実行し、1 回あたりの時間の中央値、もっとも速い回と遅い回が中央値からどれだけ離れているか、1 回あたりに割り当てたオブジェクトの数とバイト数を表示します。`measure { … }` より前は準備で、時間に含まれません。`measure` がなければ本体全体を計測します。`keep(x)` の値は `x` です。計算の結果を渡してください。結果を誰も読まない処理は、コンパイラーが省いてしまうことがあります。
+
+ベンチマークはリリースビルドと同じく C にコンパイルして実行されるので、アプリが出荷するコードそのものを計測します。`--vm` を付けると、`asuka dev` が使う VM で実行します。時間は計測するだけで、チェックには使いません。ベンチマークが失敗するのは、それ自身のチェック（`expect`）やエラーのときだけです。また、通常の `asuka test` は各ベンチマークをテストとして 1 回だけ実行し、まだ動くことを確かめます。`--benchtime 100x` は、ちょうど 100 回の反復を 1 回だけ実行します。
+
+ビューをマウントするベンチマークは、反復ごとに画面まで届いたもの、つまり実機がこなすことになる処理も表示します。プラットフォームに送られた変更のバッチ、その操作の数とバイト数、プラットフォームが計測したビューの数、レイアウトし直したビューの数です。アプリはユーザーと同じように操作する（`app.tap`）か、フレームの中で動かします（`app.frame` と、アプリ側の `onFrame`）。そうすれば、タップのときと同じく 1 回の反復の変更が 1 つのバッチになります。
+
+```asuka
+bench "a new row" {
+  let app = mount(Inbox())
+  measure { app.tap("Add") }
+}
+```
+
+```
+bench a new row                 41.2µs/op ±3%         84 allocs/op     6.1 KB/op  (10 × 2,410)  host: 1 batches, 9 ops, 312 B, 2 measures; 6 nodes laid out
+```
+
+ベンチマークの中では、`app.ops()` に計測部分が送った操作は含まれません。
+
+変更の効果を見るには、ある実行の結果を残しておいて比べます。
+
+```sh
+asuka test --bench --json > before.json
+# … コードを変更する …
+asuka test --bench --compare before.json
+```
+
+すると各行の末尾に、変更前の時間と変化の割合（`was 24.1µs/op: -15.8%`）が付きます。2 回の実行のばらつきの範囲が重なるときは「within noise」と表示され、その差がノイズかもしれないことを示します。
+
+## カバレッジ
+
+```sh
+asuka test --cover                            # ファイルごとの要約
+asuka test --cover-lcov coverage/lcov.info    # エディターや CI 向け
+asuka test --cover-html coverage.html         # ファイルごとに、実行されたところ
+```
+
+```
+coverage: 85.7% of lines (12 of 14), 75.0% of branches (6 of 8)
+  todos.asuka   85.7%  lines 12/14  branches 6/8  not run: 31, 40-41
+```
+
+`--cover` は、テストの実行中にパッケージのコードのどの行が実行されたか（パッケージ自身のコードだけで、テストの本体やインポートしたものは含みません）と、各分岐を数えます。分岐とは `if` の各分岐（書かれていない `else` も含む）と `match` の各アームです。行の中で文が 1 つでも実行されれば、その行は実行されたことになります。その行の中で実行されなかった部分は、分岐のデータでわかります。どこからも呼ばれない関数は、一度も実行されなかったものとして数えます。プロジェクトのプログラム（`[bin.<name>]`）は、それぞれ自身のテストで計測します。
+
+`--cover-lcov` は lcov 形式で書き出します。エディター（VS Code の Coverage Gutters）や CI サービス（Codecov、Coveralls）が読み込めます。`--cover-html` は、ソースを表示し、実行されたところを緑、実行されなかったところを赤で示すページを書き出します。`--cover` を付けなければ、何も数えません。
 
 ## プラットフォームのサービスとネイティブパッケージ
 

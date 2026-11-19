@@ -177,6 +177,12 @@ func (sb *symbolBuilder) decl(d syntax.Node) (DocumentSymbol, bool) {
 			name = "test " + strings.Join(d.Name.Segments, "")
 		}
 		return sb.sym(name, symFunction, "", d, nil), true
+	case *syntax.BenchDecl:
+		name := "bench"
+		if d.Name != nil {
+			name = "bench " + strings.Join(d.Name.Segments, "")
+		}
+		return sb.sym(name, symFunction, "", d, nil), true
 	}
 	return DocumentSymbol{}, false
 }

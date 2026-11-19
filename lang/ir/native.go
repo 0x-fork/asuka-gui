@@ -186,6 +186,10 @@ func (l *Lowerer) finishNativeErrors() {
 // first), awaited when it's async.
 func (b *fb) nativeBody(f *check.Function, params []int) {
 	name := f.Pkg.Name + "." + f.Name()
+	if pre := f.Decl.NativePrefix; pre != nil {
+		// native(prefix) fn: a table of its own (LOWERING.md).
+		name = pre.Name + "." + f.Name()
+	}
 	args := params
 	if f.Recv != nil {
 		name = f.Pkg.Name + "." + f.Recv.Name() + "." + f.Name()

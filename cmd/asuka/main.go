@@ -26,10 +26,14 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"runtime/debug"
+	"runtime/pprof"
 	"slices"
+	"sync"
 	"syscall"
 	"time"
 
+	"github.com/egoist/asuka/internal/appbuild"
 	"github.com/egoist/asuka/internal/ccache"
 	"github.com/egoist/asuka/internal/selfupdate"
 )
@@ -49,7 +53,8 @@ func usage() {
                                             macOS, Windows and Linux: this computer
   asuka build [-p platform] [flags] [dir]   a release build for platform, likewise; a program's
                                             executable (--bin name, --target os-arch)
-  asuka test [-run pattern] [dir]           run the test blocks of an app or a package on the fake host
+  asuka test [-run pattern] [dir]           run the test blocks of an app or a package on the fake host;
+                                            --bench times its benches, --fuzz fuzzes, --cover measures
   asuka run [--bin name] [dir] [-- args]    run a program's main, with its arguments; a file without
                                             one: its test blocks, and what its app shows
   asuka publish -p platform [flags] [dir]
@@ -78,14 +83,20 @@ asuka <command> --help lists its flags.
 }
 
 func main() {
+	stopProfile := startProfile()
+	exit := func(code int) {
+		stopProfile()
+		os.Exit(code)
+	}
 	if runtime.GOOS == "darwin" && runtime.GOARCH == "amd64" {
 		fmt.Fprintln(os.Stderr, "asuka: Asuka develops on Macs with Apple silicon, not Intel Macs (the apps it builds run on both: asuka build --arch amd64)")
-		os.Exit(1)
+		exit(1)
 	}
 	if len(os.Args) < 2 {
 		usage()
-		os.Exit(2)
+		exit(2)
 	}
+	tuneGC(os.Args[1])
 	checker := startUpdateCheck(os.Args[1])
 	var err error
 	switch os.Args[1] {
@@ -146,26 +157,85 @@ func main() {
 		err = cmdLSP(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
+		stopProfile()
 		return
 	default:
 		usage()
-		os.Exit(2)
+		exit(2)
 	}
 	ccache.Flush() // the build cache's counts; it's trimmed to its cap
 	sayUpdate(checker)
 	if errors.Is(err, errHelp) {
+		stopProfile()
 		return
 	}
 	if errors.Is(err, errReported) {
-		os.Exit(1)
+		exit(1)
 	}
 	var code exitCode
 	if errors.As(err, &code) {
-		os.Exit(int(code))
+		exit(int(code))
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "asuka:", err)
-		os.Exit(1)
+		exit(1)
+	}
+	stopProfile()
+}
+
+// tuneGC lets a command that runs once and exits (check, build, test,
+// fmt, ...) leave its garbage: it collects only past a gigabyte of heap
+// (a compile's is tens of megabytes), where collecting as it goes cost a
+// check a third of its time. What runs on (dev, the language server)
+// keeps Go's default, as does a GOGC or GOMEMLIMIT the user sets.
+func tuneGC(cmd string) {
+	if os.Getenv("GOGC") != "" || os.Getenv("GOMEMLIMIT") != "" {
+		return
+	}
+	switch cmd {
+	case "dev", "lsp":
+		return
+	}
+	debug.SetMemoryLimit(1 << 30)
+	debug.SetGCPercent(-1)
+}
+
+// startProfile profiles the CLI as ASUKA_CPUPROFILE and ASUKA_MEMPROFILE
+// name files to write (go tool pprof reads them): where asuka check,
+// build, test and the language server spend their time and memory. What
+// it returns writes them.
+func startProfile() func() {
+	cpu, mem := os.Getenv("ASUKA_CPUPROFILE"), os.Getenv("ASUKA_MEMPROFILE")
+	if cpu == "" && mem == "" {
+		return func() {}
+	}
+	var f *os.File
+	if cpu != "" {
+		var err error
+		if f, err = os.Create(cpu); err == nil {
+			err = pprof.StartCPUProfile(f)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "asuka: ASUKA_CPUPROFILE:", err)
+		}
+	}
+	if mem != "" {
+		runtime.MemProfileRate = 4096
+	}
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			if f != nil {
+				pprof.StopCPUProfile()
+				f.Close()
+			}
+			if mem != "" {
+				if m, err := os.Create(mem); err == nil {
+					pprof.Lookup("allocs").WriteTo(m, 0)
+					m.Close()
+				}
+			}
+		})
 	}
 }
 
@@ -223,6 +293,8 @@ func cmdDev(args []string) error {
 	if o.bin != "" || (o.platform == "" && isProgramDir(dir)) {
 		return devProgram(dir, o.bin, progArgs, stop)
 	}
+	// An app reloads as it's saved: compiled as quickly as it can be.
+	appbuild.DevNoOptimize = true
 	if o.platform == "" {
 		if o.platform = thisComputer(); o.platform == "" {
 			return errors.New("pick a platform: asuka dev --platform ios|android|web <dir>")

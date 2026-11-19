@@ -7,7 +7,7 @@
 //
 //	const core = await startCore(host, { wasm: "asuka.wasm", module: "app.akb", dev: true, appDir: "/data/app" });
 
-import { wasi } from "./wasi.js";
+import { wasi, logLine, logLevels } from "./wasi.js";
 import { Pool } from "./spawn.js";
 import { Workers } from "./workers.js";
 import { stackRoom } from "./stack.js";
@@ -88,6 +88,13 @@ export async function startCore(host, options = {}) {
       // asuka dev's frames from the core (core/src/abi/dev.h): the page's
       // dev client sends them on (1), or there's none (0).
       dev_send: (kind, p, n) => (options.devSend ? (options.devSend(kind, new Uint8Array(memory().buffer, p, n).slice()), 1) : 0),
+      // std/log's lines (core/src/std/log.c): the console's method for
+      // their level (0 debug … 3 error), and asuka dev's terminal.
+      log_write: (level, p, n) => {
+        const line = new TextDecoder().decode(new Uint8Array(memory().buffer, p, n));
+        logLine(level, line);
+        if (options.log) options.log(level >= 2 ? 2 : 1, `${logLevels[level].toUpperCase().padEnd(5)} ${line}`);
+      },
       sqlite_available: () => (sqlite ? 1 : 0),
       sqlite_send: (id, op, conn, p, n) => {
         const input = new Uint8Array(memory().buffer, p, n).slice();

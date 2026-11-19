@@ -561,9 +561,15 @@ var builtinDocs = map[string][2]string{
 	"panic":       {"fn panic(message: string) -> never", "Stops the program with a message: for what can't happen."},
 	"withTimeout": {"async fn withTimeout(duration: Duration) { … } throws", "Runs the block, cancelling it with an error when it takes longer than the duration."},
 	"Stream":      {"fn Stream<T>(produce: async fn(send: fn(T)) throws) -> Stream<T>", "A stream whose values the block sends; read it with `for await`."},
+	"Seq":         {"fn Seq<T>(from: | first:, next: | state:, next: | repeating:, count:) -> Seq<T>", "A lazy sequence made by a function: `Seq(from: 0)` counts without end, `Seq(first: x, next: f)` gives x, f(x)... until f gives none, `Seq(state: s, next: f)` gives what f's (element, next state) say, `Seq(repeating: x)` x again. A collection's is `xs.lazy()`; its map, filter and take compute only what's read."},
 	"Set":         {"fn Set<T: Hashable>(elements: [T] = []) -> Set<T>", "A set of the array's distinct elements, in the order they first come (`Set<T>()`: none). Where a Set is expected, an array literal is one: `let tags: Set<string> = [\"a\", \"b\"]`."},
 	"decode":      {"fn decode<T>(text: string) throws -> T", "Reads JSON text as a T (json.decode<T>(text), or where a T is expected)."},
 	"encode":      {"fn encode(value: T, indent: int = 0) -> string", "Writes a value as JSON text, indented when indent > 0."},
+
+	// asuka test's (docs/testing.md).
+	"keep":                 {"fn keep(value: T) -> T", "The value, which the compiler can't leave uncomputed: a bench's work, kept from being optimized out though nothing reads it."},
+	"expectSnapshot":       {"fn expectSnapshot(value)", "Fails the test unless the value prints as its snapshot, stored in testdata/snapshots: written on the first run, and by `asuka test --update` when it changes."},
+	"expectInlineSnapshot": {"fn expectInlineSnapshot(value, snapshot: string = \"\")", "Fails the test unless the value prints as the snapshot, a string in the call: written there on the first run, and by `asuka test --update` when it changes."},
 }
 
 // builtinSig is a built-in function's signature and doc.

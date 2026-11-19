@@ -170,7 +170,7 @@ func (c *Checker) interpolated(x syntax.Expr, t Type) {
 		case View, TestApp:
 			c.errorf(x, diag.TypeMismatch, "%s can't be put in a string", aType(u))
 		}
-	case *FuncType, *Task, *Stream, *TypeParam:
+	case *FuncType, *Task, *Stream, *Seq, *TypeParam:
 		c.errorf(x, diag.TypeMismatch, "%s can't be put in a string", aType(t))
 	case *Named:
 		if u.Obj.Kind == StoreType || u.Obj.Kind == ComponentType {
@@ -1999,7 +1999,7 @@ func (c *Checker) operatorMethod(e *syntax.BinaryExpr, xt, yt Type) (Type, bool)
 func operatorNames(op syntax.Token) (names []string, compare bool) {
 	switch op {
 	case syntax.ADD:
-		return []string{"add"}, false
+		return []string{"add", "plus"}, false
 	case syntax.SUB:
 		return []string{"sub", "minus"}, false
 	case syntax.MUL:

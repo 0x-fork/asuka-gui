@@ -1,0 +1,38 @@
+// args: a.txt b.txt
+// env: ASUKA_LOG=debug
+// env: NO_COLOR=1
+// exit: 0
+import std/flag
+import std/log
+import std/os
+
+/// Counts files.
+struct Options {
+  /// Logs as JSON lines.
+  json: bool = false
+  /// The files.
+  files: [string]
+}
+
+fn main() {
+  let o = flag.parse<Options>(os.args())
+  log.setFormat(if o.json { .json } else { .text }, time: false)
+  let run = log.with(["run": "1"])
+  for f in o.files {
+    run.debug("counting", ["file": f])
+  }
+  run.info("done", ["files": "{o.files.count()}"])
+  log.setFormat(.json, time: false)
+  log.warn("as json")
+  log.setLevel(.error)
+  log.info("not written")
+  print(o.files.count())
+}
+
+// Stdout:
+// 2
+// Stderr:
+// DEBUG counting                                 run=1 file=a.txt
+// DEBUG counting                                 run=1 file=b.txt
+// INFO  done                                     run=1 files=2
+// {"level":"WARN","msg":"as json"}

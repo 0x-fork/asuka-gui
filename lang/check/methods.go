@@ -140,16 +140,19 @@ var Methods = []*Method{
 	{Recv: "string", Name: "count", Sig: "() -> int", Builtin: "str.len", Doc: "the number of characters (code points)"},
 	{Recv: "string", Name: "byteCount", Sig: "() -> int", Builtin: "str.bytes_len", Doc: "the number of bytes (UTF-8)"},
 	{Recv: "string", Name: "isEmpty", Sig: "() -> bool", Builtin: "str.is_empty"},
-	{Recv: "string", Name: "upper", Sig: "() -> string", Builtin: "str.upper"},
-	{Recv: "string", Name: "lower", Sig: "() -> string", Builtin: "str.lower"},
+	{Recv: "string", Name: "upper", Sig: "() -> string", Builtin: "unicode.upper", Doc: "in upper case, by Unicode's full mappings in no language's way: \"straße\".upper() is STRASSE"},
+	{Recv: "string", Name: "lower", Sig: "() -> string", Builtin: "unicode.lower", Doc: "in lower case, by Unicode's full mappings in no language's way (a word's last Σ is ς)"},
 	{Recv: "string", Name: "trim", Sig: "() -> string", Builtin: "str.trim", Doc: "without the white space around it"},
 	{Recv: "string", Name: "trimStart", Sig: "() -> string", Builtin: "str.trim_start", Doc: "without the white space before it"},
 	{Recv: "string", Name: "trimEnd", Sig: "() -> string", Builtin: "str.trim_end", Doc: "without the white space after it"},
 	{Recv: "string", Name: "trimPrefix", Sig: "(prefix: string) -> string", Builtin: "str.trim_prefix", Doc: "without prefix when it starts with it"},
 	{Recv: "string", Name: "trimSuffix", Sig: "(suffix: string) -> string", Builtin: "str.trim_suffix", Doc: "without suffix when it ends with it"},
-	{Recv: "string", Name: "contains", Sig: "(text: string) -> bool", Builtin: "str.contains"},
-	{Recv: "string", Name: "hasPrefix", Sig: "(prefix: string) -> bool", Builtin: "str.has_prefix"},
-	{Recv: "string", Name: "hasSuffix", Sig: "(suffix: string) -> bool", Builtin: "str.has_suffix"},
+	{Recv: "string", Name: "contains", Sig: "(text: string) -> bool", Builtin: "str.contains", Doc: "whether text is in it"},
+	{Recv: "string", Name: "contains", Sig: "(text: string, ignoreCase: bool) -> bool", Builtin: "unicode.contains", Doc: "whether text is in it; ignoreCase: their case foldings compared (foldCase)"},
+	{Recv: "string", Name: "hasPrefix", Sig: "(prefix: string) -> bool", Builtin: "str.has_prefix", Doc: "whether it starts with prefix"},
+	{Recv: "string", Name: "hasPrefix", Sig: "(prefix: string, ignoreCase: bool) -> bool", Builtin: "unicode.hasPrefix", Doc: "whether it starts with prefix; ignoreCase: their case foldings compared"},
+	{Recv: "string", Name: "hasSuffix", Sig: "(suffix: string) -> bool", Builtin: "str.has_suffix", Doc: "whether it ends with suffix"},
+	{Recv: "string", Name: "hasSuffix", Sig: "(suffix: string, ignoreCase: bool) -> bool", Builtin: "unicode.hasSuffix", Doc: "whether it ends with suffix; ignoreCase: their case foldings compared"},
 	{Recv: "string", Name: "replace", Sig: "(old: string, new: string, count: int = -1) -> string", Builtin: "str.replace", Doc: "old replaced with new: the first count of them, every one when count is negative"},
 	{Recv: "string", Name: "split", Sig: "(separator: string, count: int = -1) -> [string]", Builtin: "str.split", Doc: "the parts between separators: at most count, the last holding the rest, every one when count is negative"},
 	{Recv: "string", Name: "fields", Sig: "() -> [string]", Builtin: "str.fields", Doc: "the words: the runs of text between white space"},
@@ -167,6 +170,12 @@ var Methods = []*Method{
 	{Recv: "string", Name: "toFloat", Sig: "() -> float?", Builtin: "str.to_float"},
 	{Recv: "string", Name: "repeat", Sig: "(count: int) -> string", Builtin: "str.repeat"},
 	{Recv: "string", Name: "chars", Sig: "() -> [string]", Builtin: "str.chars", Doc: "its characters, each a string"},
+	{Recv: "string", Name: "graphemes", Sig: "() -> [string]", Builtin: "unicode.graphemes", Doc: "its grapheme clusters (Unicode's UAX #29), each a string: what a reader takes for one character, an e and its accent, a flag, a family emoji"},
+	{Recv: "string", Name: "foldCase", Sig: "() -> string", Builtin: "unicode.foldCase", Doc: "its case folding (Unicode's full one, in no language's way): what compares strings without their case, as a map's key; \"Straße\" and \"STRASSE\" both fold to strasse"},
+	{Recv: "string", Name: "equals", Sig: "(other: string) -> bool", Builtin: "str.equals", Doc: "whether it's other (==)"},
+	{Recv: "string", Name: "equals", Sig: "(other: string, ignoreCase: bool) -> bool", Builtin: "unicode.equals", Doc: "whether it's other (==); ignoreCase: their case foldings compared, as Go's strings.EqualFold: \"Go\".equals(\"GO\", ignoreCase: true)"},
+	{Recv: "string", Name: "compare", Sig: "(other: string) -> int", Builtin: "str.compare", Doc: "negative, zero or positive as it orders before other, with it or after it: by code point (as <)"},
+	{Recv: "string", Name: "compare", Sig: "(other: string, ignoreCase: bool) -> int", Builtin: "unicode.compare", Doc: "negative, zero or positive as it orders before other, with it or after it: by their case foldings with ignoreCase: names.sorted(by: (a, b) => a.compare(b, ignoreCase: true) < 0)"},
 	{Recv: "string", Name: "reversed", Sig: "() -> string", Builtin: "str.reversed", Doc: "its characters (code points) in the other order"},
 	{Recv: "string", Name: "bytes", Sig: "() -> bytes", Builtin: "str.to_bytes", Doc: "its UTF-8 bytes"},
 
@@ -385,6 +394,7 @@ var (
 
 var methodIndex = func() map[string][]*Method {
 	idx := map[string][]*Method{}
+	Methods = append(Methods, seqMethods...)
 	for _, m := range Methods {
 		m.parse()
 		idx[m.Recv+"."+m.Name] = append(idx[m.Recv+"."+m.Name], m)
@@ -450,6 +460,8 @@ func recvKind(t Type) string {
 		return "task"
 	case *Stream:
 		return "stream"
+	case *Seq:
+		return "seq"
 	case *Named:
 		if x.Obj == loadingT {
 			return "loading"
@@ -562,6 +574,8 @@ func (m *Method) bind(recv Type) Subst {
 		s[tvT] = x.Elem
 	case *Stream:
 		s[tvT] = x.Elem
+	case *Seq:
+		seqBind(s, x)
 	case *Named:
 		if len(x.Args) > 0 {
 			s[tvT] = x.Args[0]
@@ -608,6 +622,8 @@ func (m *Method) requires(s Subst) string {
 		if t != String {
 			return "joins strings, and these are " + typeString(t) + "s"
 		}
+	default:
+		return m.seqRequires(s)
 	}
 	return ""
 }
@@ -776,15 +792,18 @@ func (p *sigParser) typ() Type {
 			t = Path
 		case "Ref":
 			t = Ref
-		case "Stream", "Set":
+		case "Stream", "Set", "Seq":
 			if !p.eat("<") {
 				p.err = true
 				return Invalid
 			}
 			e := p.typ()
-			if n == "Set" {
+			switch n {
+			case "Set":
 				t = &Set{e}
-			} else {
+			case "Seq":
+				t = &Seq{e}
+			default:
 				t = &Stream{e}
 			}
 			if !p.eat(">") {

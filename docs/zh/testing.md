@@ -48,7 +48,9 @@ asuka: 1 of 2 tests failed
 
 时间只在没有其他东西可以运行时才会推进：测试里的 `sleep(5s)`，或者某个 task 的定时器，都不会真的花时间；而一个等待某件永远不会发生的事的测试会立即失败（“the test never finished”）。
 
-核心在应用运行时报告的问题（白白等待另一个 load 的 load、没有任何提示的长时间保留：见[错误及其代码](development.md#错误及其代码)），`asuka test` 会在发生的地方连同代码一起打印出来；`asuka test --json` 则把它们和每个测试的结果各写成一行 JSON。
+核心在应用运行时报告的问题（白白等待另一个 load 的 load、没有任何提示的长时间保留：见[错误及其代码](development.md#错误及其代码)），`asuka test` 会在发生的地方连同代码一起打印出来；`asuka test --json` 则把它们、每个测试的结果（属性测试失败时还包括失败的输入）、每个基准测试的结果以及每个文件的覆盖率，各写成一行 JSON。
+
+除了用例测试，`asuka test` 还会用它生成的输入运行[属性测试](#属性测试)，对它们做[模糊测试](#模糊测试)，把值和[快照](#快照)比较，测量[基准测试](#基准测试)，统计[覆盖率](#覆盖率)；应用、包和命令行程序都一样适用。
 
 ## 屏幕上显示什么
 
@@ -57,7 +59,7 @@ asuka: 1 of 2 tests failed
 ```asuka
 app.expect("Inbox")       // 不显示时测试失败
 app.expectNo("Message 1") // 显示时测试失败
-print(app.dump())         // 屏幕上显示的内容，每行一个视图
+print(app.snapshot())     // 屏幕上显示的内容，每行一个视图
 ```
 
 只有用户能看到的内容才算数：
@@ -83,6 +85,201 @@ await app.idle()                    // 直到没有任何东西要运行：task�
 ```
 
 点按会落在手指会落下的地方。行里的文字会点按这一行，按钮里的文字会点按这个按钮。带菜单的视图会打开菜单，下一次 `tap` 就从菜单中选择。
+
+## 属性测试
+
+带参数的测试就是属性测试：它描述的是对参数类型的任意值都成立的性质，`asuka test` 会自己生成参数值来运行它。
+
+```asuka check
+struct Span {
+  start: int
+  end: int
+}
+
+fn merge(a: Span, b: Span) -> Span {
+  return Span(start: min(a.start, b.start), end: max(a.end, b.end))
+}
+
+test "a merge covers both spans" (a: Span, b: Span) {
+  let m = merge(a, b)
+  expect(m.start <= a.start && m.start <= b.start)
+  expect(m.end >= a.end && m.end >= b.end)
+}
+
+test "reversing twice gives the list back" (xs: [int], s: string) {
+  expect(xs.reversed().reversed() == xs)
+  expect(s.reversed().reversed() == s)
+}
+```
+
+每个属性测试默认用 100 组输入运行。某组输入失败时，`asuka test` 会缩减（shrink）它：不断尝试更简单的输入（更短的列表和字符串、更小的数、`none`、枚举的第一个 case），留下仍然失败的最简单的那组，连同发现它的种子一起打印出来：
+
+```
+FAIL a page holds two rows at most (pages.asuka:9)
+     expected page.count() <= 2 (pages.asuka:10): got 3 and 2
+     input (case 4 of seed 0, shrunk in 3 steps):
+       rows = ["", "", ""]
+     rerun it: asuka test --run 'a page holds two rows at most' --seed 0
+```
+
+输入由种子决定，除非用 `--seed` 指定别的种子，否则种子就是 0。因此每次运行（包括 CI 里的）尝试的都是同一批输入，失败也能稳定复现。`--seed random` 会尝试一批新的输入并打印所用的种子；`--cases 1000` 则尝试更多组。各类型生成的值如下：
+
+| 类型 | 生成的值 |
+| --- | --- |
+| `int`、`Duration` | 小的数最常见，其次是 ±1000 以内的数、各种边界值（0、±1、255、65535、32 位和 64 位的极值），以及任意值 |
+| `float` | 整数、小数、任意有限值，以及 ±0、正负无穷和 NaN |
+| `bool` | 两个值都有 |
+| `string` | 字母最常见，其次是任意 ASCII 字符、其他文字、emoji、组合字符、NUL、换行、引号和花括号；最多 64 个字符 |
+| `bytes`、`[T]`、`Set<T>`、`[string: T]` | 最多 64 个元素，元素少的最常见 |
+| `T?` | `none` 或一个 `T` |
+| struct、枚举 | 各字段的值；每个 case 及其关联值；包含自身的类型嵌套到一定深度就会停止 |
+
+参数必须是数据：视图、闭包和 store 没有可以生成的值（[test-parameter](errors/test-parameter.md)）。其余需要的东西在测试里用参数构造出来；对于性质不涉及的输入，直接从测试里返回即可：`if xs.isEmpty() { return }`。
+
+## 模糊测试
+
+```sh
+asuka test --fuzz                       # 每个属性测试跑 10 秒
+asuka test --fuzz --run parse --fuzztime 5m
+asuka test --fuzz --fuzztime 100000x    # 每个跑 100,000 组输入
+```
+
+`--fuzz` 只运行属性测试，每个测试不断用新的输入运行，直到 `--fuzztime` 用完：可以是一段时间，也可以是输入的组数。它会观察每组输入执行到了包里的哪些代码，并持续变换那些到达了其他输入没到过的代码的输入，因此能找到随机输入很难碰到的问题：解析器深处的分支、某种格式的边角情况。失败的输入会被缩减、打印出来，并以 JSON 保存到 `testdata/fuzz/<test>/` 中：
+
+```json
+{
+  "s": "abcd"
+}
+```
+
+请把它提交到仓库：每次 `asuka test` 都会先运行测试保存下来的输入，再运行生成的输入，这样修好的问题就不会再出现。你也可以自己编写这些文件：一个按参数名列出参数值的 JSON 对象（JSON 无法表示的浮点数写作 `NaN`、`Infinity` 或 `-Infinity`）。
+
+## 快照
+
+`expectSnapshot(value)` 把一个值打印出来的样子和为它保存的快照比较，不一致时测试失败。第一次运行时会把快照写到 `testdata/snapshots/` 中（每个源文件的测试对应一个文件），请把它提交到仓库：
+
+```asuka
+test "the list shows today's todos" {
+  expectSnapshot(store.today())
+  let app = mount(TodoList())
+  expectSnapshot(app.snapshot())   // 屏幕上显示的内容
+}
+```
+
+```
+snapshot "the list shows today's todos 1"
+  [
+    Todo(title: "Buy milk", done: false, tags: ["errands"]),
+    Todo(title: "Call Ada", done: true, tags: []),
+  ]
+```
+
+`expectInlineSnapshot(value)` 则把快照直接保存在调用里：第一次运行时会按 `asuka fmt` 的格式写进去。
+
+```asuka
+expectInlineSnapshot(total(cart))
+// 第一次运行之后：
+expectInlineSnapshot(total(cart), "42.5")
+```
+
+字符串本身就是它的快照，原样保存。其他值按语言里的写法打印：`"a"`（带转义）、`1.0`、`1500ms`、`[1, 2]`、`["a": 1]`、`Set([1])`、`Todo(title: "Milk", done: false)`、`.circle(radius: 2.0)`、`none`；map 的条目和集合的元素会排序，所以与添加的先后顺序无关；一行放不下时，每个元素占一行。
+
+值和快照不一致时，测试失败并显示差异：
+
+```
+FAIL the list shows today's todos (todos.asuka:12)
+     expectSnapshot (todos.asuka:13): what it shows isn't its snapshot (asuka test --update writes what it shows)
+     - the snapshot
+     + what it shows
+       [
+     -   Todo(title: "Buy milk", done: false, tags: ["errands"]),
+     +   Todo(title: "Buy oat milk", done: false, tags: ["errands"]),
+         Todo(title: "Call Ada", done: true, tags: []),
+       ]
+```
+
+`asuka test --update`（`-u`）会改为写入测试当前显示的内容；如果所有测试都运行并通过了，还会删除不再被任何测试使用的快照。在 CI 中（设置了 `CI` 环境变量时），尚未保存的快照不会被写入，而是让测试失败。属性测试不能使用快照，因为它要用生成的每个值运行。
+
+## 基准测试
+
+`bench` 就是一个基准测试：测量它所做的事花了多少时间。
+
+```asuka check
+fn fib(n: int) -> int {
+  if n < 2 { return n }
+  return fib(n - 1) + fib(n - 2)
+}
+
+bench "fib 20" {
+  keep(fib(20))
+}
+
+bench "sorting 1,000 ints" {
+  var xs: [int] = []
+  for i in 0..<1000 {
+    xs.push(i * 7919 % 1000)
+  }
+  measure {
+    keep(xs.sorted())
+  }
+}
+```
+
+```sh
+asuka test --bench                 # 所有基准测试
+asuka test --bench --run sort      # 名称中包含 sort 的基准测试
+```
+
+```
+bench fib 20                    109µs/op ±2%          0 allocs/op        0 B/op  (10 × 520)
+bench sorting 1,000 ints       14.7µs/op ±4%          3 allocs/op    15.7 KB/op  (10 × 3,964)
+```
+
+`--bench` 会把每个基准测试的主体运行很多次：先运行一次，之后每轮运行更多次，直到一轮耗时达到 `--benchtime`（默认 1s）的十分之一；然后按这个次数再运行十轮，打印每次迭代耗时的中位数、最快和最慢的一轮与中位数相差多少，以及每次迭代分配了多少对象和字节。`measure { … }` 之前的代码用来做准备，不计入时间；没有 `measure` 时，整个主体都会计时。`keep(x)` 的值就是 `x`：把计算结果交给它，否则编译器可能会省掉那些结果没人读取的计算。
+
+基准测试会编译成 C 运行，和发布构建一样，所以测到的就是应用发布出去的代码；`--vm` 则让它们在 `asuka dev` 使用的虚拟机上运行。时间只是测量，从不作为检查条件：基准测试只会因为它自己的检查（`expect`）或错误而失败。普通的 `asuka test` 会把每个基准测试当作测试运行一次，确认它仍然能正常工作。`--benchtime 100x` 则只运行一轮，恰好 100 次迭代。
+
+挂载了视图的基准测试还会报告每次迭代有哪些改动到达了屏幕，也就是真机需要完成的工作：发给平台的改动批次，其中的操作数和字节数，平台测量过的视图数，以及布局计算过的视图数。像用户那样驱动应用（`app.tap`），或者在一帧里驱动它（`app.frame`，配合应用里的 `onFrame`），这样一次迭代的改动就会合成一批，就像一次点按那样：
+
+```asuka
+bench "a new row" {
+  let app = mount(Inbox())
+  measure { app.tap("Add") }
+}
+```
+
+```
+bench a new row                 41.2µs/op ±3%         84 allocs/op     6.1 KB/op  (10 × 2,410)  host: 1 batches, 9 ops, 312 B, 2 measures; 6 nodes laid out
+```
+
+在基准测试中，`app.ops()` 不会列出计时部分发送的操作。
+
+想知道一次改动的效果，可以先保存一次运行结果再做比较：
+
+```sh
+asuka test --bench --json > before.json
+# … 修改代码 …
+asuka test --bench --compare before.json
+```
+
+这样每一行末尾都会附上之前的耗时和变化幅度（`was 24.1µs/op: -15.8%`）；如果两次运行的波动范围有重叠，还会注明“within noise”，表示这个差异可能只是噪声。
+
+## 覆盖率
+
+```sh
+asuka test --cover                            # 每个文件一行摘要
+asuka test --cover-lcov coverage/lcov.info    # 给编辑器和 CI 用
+asuka test --cover-html coverage.html         # 每个文件中哪些代码运行过
+```
+
+```
+coverage: 85.7% of lines (12 of 14), 75.0% of branches (6 of 8)
+  todos.asuka   85.7%  lines 12/14  branches 6/8  not run: 31, 40-41
+```
+
+`--cover` 统计测试运行时，包里的代码有哪些行被执行了（只算包自己的代码，不包括测试本身的代码，也不包括它导入的包），以及每个分支的情况：`if` 的各个分支（包括没有写出来的 `else`）和 `match` 的各个分支。一行上有语句执行过，这一行就算执行过；这一行里没执行到的部分由分支数据体现。没有任何地方调用的函数算作从未执行。项目里的命令行程序（`[bin.<name>]`）由它们自己的测试来统计。
+
+`--cover-lcov` 以 lcov 格式写出结果，编辑器（VS Code 的 Coverage Gutters）和 CI 服务（Codecov、Coveralls）都能读取；`--cover-html` 则生成一个页面，显示源代码，执行过的部分标为绿色，没执行过的标为红色。不加 `--cover` 时，不会统计任何东西。
 
 ## 平台服务与原生包
 

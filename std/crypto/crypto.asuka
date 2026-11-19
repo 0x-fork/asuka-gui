@@ -1,12 +1,52 @@
-// Package std/crypto has hashes, HMAC, Ed25519 signatures, the
-// system's randomness and UUIDs.
+// Package std/crypto has hashes, MACs, key derivation, authenticated
+// encryption, password hashing, signatures, the system's randomness and
+// UUIDs. It's the same C on every platform, the web's too, so what one
+// platform seals, hashes or signs, every other opens and verifies.
 //
 //   let digest = encoding.hexEncode(crypto.sha256(data))
 //   let id = crypto.uuid()
-//   let ok = crypto.ed25519Verify(publicKey, message, signature)
+//   let sealed = try crypto.seal(key, plaintext)
+//   let stored = try await crypto.hashPassword(password)
+//   let ok = try crypto.verify(try crypto.publicKey(pem), message, signature, scheme: .rsaPKCS1v15(.sha256))
+//
+// What can fail throws a CryptoError: a key that isn't one, an argument
+// out of range, sealed bytes that don't open.
+
+import std/encoding
+import std/json
+
+/// Why a call failed.
+pub enum CryptoError: Error {
+  /// Sealed bytes didn't open: a wrong key, nonce or additional data, or
+  /// bytes that were changed (or cut short) since they were sealed.
+  notAuthentic
+  /// A key that isn't one this takes: the wrong size, PEM, DER or a JWK
+  /// that doesn't read, a kind or a curve it doesn't know, or one that
+  /// doesn't sign with the scheme asked for.
+  invalidKey(reason: string)
+  /// An argument out of range: a nonce of the wrong size, a length past
+  /// what can be made, parameters a hash doesn't take.
+  invalidArgument(reason: string)
+  /// The password doesn't decrypt the private key (decryptPrivateKey's):
+  /// it's wrong, or "" for a key that's encrypted.
+  wrongPassword
+
+  /// The error's text: "invalid key: an RSA key signs with rsaPKCS1v15 or rsaPSS".
+  fn message() -> string = match self {
+    .notAuthentic => "the sealed bytes aren't authentic: a wrong key, nonce or additional data, or they were changed"
+    .invalidKey(r) => "invalid key: {r}"
+    .invalidArgument(r) => "invalid argument: {r}"
+    .wrongPassword => "the password doesn't decrypt the private key"
+  }
+}
+
+// ---- Hashes ----
 
 /// SHA-256 of data (32 bytes).
 pub native fn sha256(data: bytes) -> bytes
+
+/// SHA-384 of data (48 bytes).
+pub native fn sha384(data: bytes) -> bytes
 
 /// SHA-512 of data (64 bytes).
 pub native fn sha512(data: bytes) -> bytes
@@ -15,8 +55,101 @@ pub native fn sha512(data: bytes) -> bytes
 /// it isn't safe against collisions.
 pub native fn sha1(data: bytes) -> bytes
 
+/// MD5 of data (16 bytes): a checksum for what asks for one (an S3
+/// object's ETag, Content-MD5), not for security: collisions are easy to
+/// make. For a checksum of your own, use sha256 (or compress.crc32 for
+/// one that's quick and short).
+pub native fn md5(data: bytes) -> bytes
+
+/// A hash function, for what's built on one: hmac, hkdf, pbkdf2 and the
+/// signatures.
+pub enum Hash {
+  /// SHA-256 (32 bytes), what's used unless a call says.
+  sha256
+  /// SHA-384 (48 bytes).
+  sha384
+  /// SHA-512 (64 bytes).
+  sha512
+  /// SHA-1 (20 bytes), for old protocols only.
+  sha1
+
+  /// The digest's size in bytes: 32 for sha256.
+  fn size() -> int = match self {
+    .sha256 => 32
+    .sha384 => 48
+    .sha512 => 64
+    .sha1 => 20
+  }
+}
+
+fn hashCode(h: Hash) -> int = match h {
+  .sha1 => 1
+  .sha256 => 2
+  .sha384 => 3
+  .sha512 => 4
+}
+
+// ---- MACs and key derivation ----
+
 /// HMAC-SHA256 of data under key (32 bytes).
 pub native fn hmacSHA256(key: bytes, data: bytes) -> bytes
+
+/// HMAC-SHA512 of data under key (64 bytes).
+pub fn hmacSHA512(key: bytes, data: bytes) -> bytes = hmacWith(4, key, data)
+
+/// HMAC (RFC 2104) of data under key with hash: a digest long. Check one
+/// you're given with equal, which takes the same time wherever it differs.
+///
+///   let mac = crypto.hmac(secret, body.bytes(), hash: .sha384)
+pub fn hmac(key: bytes, data: bytes, hash: Hash = .sha256) -> bytes = hmacWith(hashCode(hash), key, data)
+
+/// length bytes of key derived from secret (a shared secret, a key; not
+/// a password: that's pbkdf2's or argon2id's) by HKDF (RFC 5869): salt
+/// (none, or random bytes kept with what the key protects) and info (what
+/// the key is for, so keys for different uses differ). At most 255
+/// digests long (8160 bytes with SHA-256); longer throws invalidArgument.
+///
+///   let key = try crypto.hkdf(shared, info: "notes v1 encryption".bytes())
+pub fn hkdf(secret: bytes, salt: bytes = bytes(), info: bytes = bytes(), length: int = 32, hash: Hash = .sha256) throws -> bytes {
+  return try hkdfExpand(hkdfExtract(secret, salt: salt, hash: hash), info: info, length: length, hash: hash)
+}
+
+/// HKDF's first step: the pseudorandom key (a digest long) of secret and
+/// salt.
+pub fn hkdfExtract(secret: bytes, salt: bytes = bytes(), hash: Hash = .sha256) -> bytes = hkdfExtractWith(hashCode(hash), salt, secret)
+
+/// HKDF's second step: length bytes from a pseudorandom key (at least a
+/// digest long: hkdfExtract's) and info. At most 255 digests.
+pub fn hkdfExpand(key: bytes, info: bytes = bytes(), length: int = 32, hash: Hash = .sha256) throws -> bytes {
+  if length < 0 || length > 255 * hash.size() {
+    throw CryptoError.invalidArgument("HKDF gives 0 to {255 * hash.size()} bytes with this hash, not {length}")
+  }
+  return hkdfExpandWith(hashCode(hash), key, info, length)
+}
+
+/// length bytes of key derived from password and salt by PBKDF2 (RFC
+/// 8018) with HMAC over hash, iterations times: for a protocol that asks
+/// for PBKDF2; to store a password, hashPassword is better. OWASP asks for
+/// 600000 iterations of SHA-256. It takes time on purpose, so call it in
+/// spawn { }, which runs it on another thread:
+///
+///   let key = try await spawn { try crypto.pbkdf2(password.bytes(), salt: salt, iterations: 600000) }
+pub fn pbkdf2(password: bytes, salt: bytes, iterations: int, length: int = 32, hash: Hash = .sha256) throws -> bytes {
+  if iterations < 1 {
+    throw CryptoError.invalidArgument("PBKDF2 takes 1 iteration or more, not {iterations}")
+  }
+  if length < 1 || length > 1 << 30 {
+    throw CryptoError.invalidArgument("PBKDF2 makes 1 byte to 1 GiB, not {length}")
+  }
+  return pbkdf2With(hashCode(hash), password, salt, iterations, length)
+}
+
+native fn hmacWith(hash: int, key: bytes, data: bytes) -> bytes
+native fn hkdfExtractWith(hash: int, salt: bytes, secret: bytes) -> bytes
+native fn hkdfExpandWith(hash: int, key: bytes, info: bytes, length: int) -> bytes
+native fn pbkdf2With(hash: int, password: bytes, salt: bytes, iterations: int, length: int) -> bytes
+
+// ---- Randomness ----
 
 /// count bytes of the system's randomness: safe for keys and tokens.
 pub native fn randomBytes(count: int) -> bytes
@@ -27,6 +160,204 @@ pub native fn uuid() -> string
 /// Whether a and b are the same bytes, in time that doesn't depend on
 /// where they differ (for comparing MACs and tokens).
 pub native fn equal(a: bytes, b: bytes) -> bool
+
+// ---- Authenticated encryption ----
+
+/// An authenticated cipher (an AEAD): it encrypts, and opening checks
+/// that nothing was changed. Each takes a 32-byte key but aes128GCM (16
+/// bytes); its tag is 16 bytes.
+pub enum Cipher {
+  /// XChaCha20-Poly1305: a 24-byte nonce, so random nonces are safe for
+  /// any number of messages under one key. What's used unless a call says.
+  xChaCha20Poly1305
+  /// ChaCha20-Poly1305 (RFC 8439, TLS's, WireGuard's): a 12-byte nonce.
+  chaCha20Poly1305
+  /// AES-256-GCM (NIST SP 800-38D), what WebCrypto and most servers
+  /// have: a 12-byte nonce, so no more than 2^32 random nonces a key.
+  aes256GCM
+  /// AES-128-GCM: a 16-byte key, a 12-byte nonce.
+  aes128GCM
+
+  /// The key's size in bytes.
+  fn keySize() -> int = match self {
+    .aes128GCM => 16
+    _ => 32
+  }
+
+  /// The nonce's size in bytes.
+  fn nonceSize() -> int = match self {
+    .xChaCha20Poly1305 => 24
+    _ => 12
+  }
+}
+
+/// The size of a cipher's tag, in bytes: what sealing adds to the
+/// plaintext (and the nonce, for seal).
+pub let tagSize = 16
+
+fn cipherCode(c: Cipher) -> int = match c {
+  .xChaCha20Poly1305 => 1
+  .chaCha20Poly1305 => 2
+  .aes256GCM => 3
+  .aes128GCM => 4
+}
+
+fn cipherName(c: Cipher) -> string = match c {
+  .xChaCha20Poly1305 => "XChaCha20-Poly1305"
+  .chaCha20Poly1305 => "ChaCha20-Poly1305"
+  .aes256GCM => "AES-256-GCM"
+  .aes128GCM => "AES-128-GCM"
+}
+
+/// A new key for cipher, from the system's randomness.
+pub fn newKey(cipher: Cipher = .xChaCha20Poly1305) -> bytes = randomBytes(cipher.keySize())
+
+/// plaintext encrypted and authenticated under key with a nonce from the
+/// system's randomness: the nonce, then the ciphertext, then the tag
+/// (plaintext's size plus cipher.nonceSize() plus tagSize). additionalData
+/// is authenticated but not encrypted (what the message is about: an id,
+/// a header), and open must be given the same. A key of the wrong size
+/// throws invalidKey.
+///
+///   let key = crypto.newKey()
+///   let sealed = try crypto.seal(key, note.bytes(), additionalData: id.bytes())
+///   let note = (try crypto.open(key, sealed, additionalData: id.bytes())).string()
+pub fn seal(key: bytes, plaintext: bytes, additionalData: bytes = bytes(), cipher: Cipher = .xChaCha20Poly1305) throws -> bytes {
+  let nonce = randomBytes(cipher.nonceSize())
+  return nonce.concat(try sealWithNonce(key, nonce: nonce, plaintext: plaintext, additionalData: additionalData, cipher: cipher))
+}
+
+/// What seal sealed: the plaintext, once its tag shows that key sealed
+/// it with additionalData and nothing changed since. Otherwise it throws
+/// notAuthentic.
+pub fn open(key: bytes, sealed: bytes, additionalData: bytes = bytes(), cipher: Cipher = .xChaCha20Poly1305) throws -> bytes {
+  let n = cipher.nonceSize()
+  if sealed.count() < n + tagSize {
+    throw CryptoError.notAuthentic
+  }
+  return try openWithNonce(key, nonce: sealed.slice(0, n), ciphertext: sealed.slice(n, sealed.count()), additionalData: additionalData, cipher: cipher)
+}
+
+/// plaintext encrypted and authenticated under key and nonce: the
+/// ciphertext, then the tag. For a protocol that gives the nonce (a
+/// counter); a nonce must never be used twice with one key, which would
+/// give the key away, so seal, which makes one, is safer. A nonce of the
+/// wrong size throws invalidArgument.
+pub fn sealWithNonce(key: bytes, nonce: bytes, plaintext: bytes, additionalData: bytes = bytes(), cipher: Cipher = .xChaCha20Poly1305) throws -> bytes {
+  try checkCipher(key, nonce, cipher)
+  if let out = sealBytes(cipherCode(cipher), key, nonce, plaintext, additionalData) {
+    return out
+  }
+  throw CryptoError.invalidArgument("{cipherName(cipher)} didn't seal")
+}
+
+/// What sealWithNonce sealed (ciphertext is its ciphertext and tag): the
+/// plaintext, or notAuthentic.
+pub fn openWithNonce(key: bytes, nonce: bytes, ciphertext: bytes, additionalData: bytes = bytes(), cipher: Cipher = .xChaCha20Poly1305) throws -> bytes {
+  try checkCipher(key, nonce, cipher)
+  if let out = openBytes(cipherCode(cipher), key, nonce, ciphertext, additionalData) {
+    return out
+  }
+  throw CryptoError.notAuthentic
+}
+
+fn checkCipher(key: bytes, nonce: bytes, cipher: Cipher) throws {
+  if key.count() != cipher.keySize() {
+    throw CryptoError.invalidKey("{cipherName(cipher)} takes a key of {cipher.keySize()} bytes, not {key.count()}")
+  }
+  if nonce.count() != cipher.nonceSize() {
+    throw CryptoError.invalidArgument("{cipherName(cipher)} takes a nonce of {cipher.nonceSize()} bytes, not {nonce.count()}")
+  }
+}
+
+native(crypto_aead) fn sealBytes(cipher: int, key: bytes, nonce: bytes, plaintext: bytes, additionalData: bytes) -> bytes?
+native(crypto_aead) fn openBytes(cipher: int, key: bytes, nonce: bytes, ciphertext: bytes, additionalData: bytes) -> bytes?
+
+// ---- Passwords ----
+
+/// password hashed with argon2id (RFC 9106), for storing: a PHC string
+/// ($argon2id$v=19$m=65536,t=3,p=4$salt$hash) holding a 16-byte salt from
+/// the system's randomness, the parameters and the 32-byte hash, which
+/// verifyPassword reads. memory is in KiB (64 MiB unless the call says),
+/// iterations the passes over it, parallelism its lanes: RFC 9106's
+/// second recommendation, which takes a fraction of a second; OWASP's
+/// least is memory: 19456, iterations: 2, parallelism: 1. It runs on
+/// another thread, so the app doesn't wait. Parameters out of range throw
+/// invalidArgument, as does memory the device can't give.
+///
+///   let stored = try await crypto.hashPassword(password)
+///   if try await crypto.verifyPassword(attempt, hash: stored) { ... }
+pub async fn hashPassword(password: string, memory: int = 65536, iterations: int = 3, parallelism: int = 4) throws -> string {
+  return try await spawn { try argon2Now(password, memory, iterations, parallelism) }
+}
+
+/// password hashed with bcrypt ($2b$, cost a power of two: 10 unless the
+/// call says; 4 to 31), for a system that reads bcrypt; hashPassword's
+/// argon2id is better for one that doesn't. bcrypt reads only 72 bytes of
+/// a password, so a longer one (or one with a NUL character) throws
+/// invalidArgument rather than being cut short.
+pub async fn hashPasswordBcrypt(password: string, cost: int = 10) throws -> string {
+  return try await spawn { try bcryptNow(password, cost) }
+}
+
+/// Whether hash (hashPassword's or hashPasswordBcrypt's, or another
+/// system's: PHC's $argon2id$, $argon2i$ and $argon2d$, and bcrypt's $2b$,
+/// $2a$ and $2y$) is password's, compared in time that doesn't depend on
+/// where they differ. A hash in none of those forms throws invalidArgument.
+/// A bcrypt hash is checked against the password's first 72 bytes, as
+/// every bcrypt made it.
+pub async fn verifyPassword(password: string, hash: string) throws -> bool {
+  return try await spawn { try verifyNow(password, hash) }
+}
+
+/// length bytes of key derived from password and salt (16 random bytes,
+/// kept with what the key protects) by argon2id, with hashPassword's
+/// parameters: a key to encrypt with from what someone remembers.
+///
+///   let key = try await crypto.argon2id(password.bytes(), salt: salt)
+pub async fn argon2id(password: bytes, salt: bytes, length: int = 32, memory: int = 65536, iterations: int = 3, parallelism: int = 4) throws -> bytes {
+  if salt.count() < 8 || length < 4 {
+    throw CryptoError.invalidArgument("argon2id takes a salt of 8 bytes or more and makes 4 bytes or more")
+  }
+  return try await spawn { try argon2KeyNow(password, salt, length, memory, iterations, parallelism) }
+}
+
+fn argon2Now(password: string, memory: int, iterations: int, parallelism: int) throws -> string {
+  if let h = hashArgon2(password, memory, iterations, parallelism) {
+    return h
+  }
+  throw CryptoError.invalidArgument(passwordFailure())
+}
+
+fn bcryptNow(password: string, cost: int) throws -> string {
+  if let h = hashBcrypt(password, cost) {
+    return h
+  }
+  throw CryptoError.invalidArgument(passwordFailure())
+}
+
+fn verifyNow(password: string, hash: string) throws -> bool {
+  let r = verifyHash(password, hash)
+  if r < 0 {
+    throw CryptoError.invalidArgument(passwordFailure())
+  }
+  return r == 1
+}
+
+fn argon2KeyNow(password: bytes, salt: bytes, length: int, memory: int, iterations: int, parallelism: int) throws -> bytes {
+  if let k = argon2(2, password, salt, length, memory, iterations, parallelism) {
+    return k
+  }
+  throw CryptoError.invalidArgument(passwordFailure())
+}
+
+native(crypto_password) fn argon2(variant: int, password: bytes, salt: bytes, length: int, memory: int, iterations: int, parallelism: int) -> bytes?
+native(crypto_password) fn hashArgon2(password: string, memory: int, iterations: int, parallelism: int) -> string?
+native(crypto_password) fn hashBcrypt(password: string, cost: int) -> string?
+native(crypto_password) fn verifyHash(password: string, hash: string) -> int
+native(crypto_password) fn passwordFailure() -> string
+
+// ---- Signatures ----
 
 /// Whether signature (64 bytes) is the Ed25519 (RFC 8032) signature of
 /// message by the private key of publicKey (32 bytes). It's strict, as
@@ -45,3 +376,419 @@ pub native fn ed25519PublicKey(privateKey: bytes) -> bytes
 /// A new Ed25519 private key, from the system's randomness: 64 bytes, the
 /// seed then the public key, as Go keeps them.
 pub native fn ed25519NewKey() -> bytes
+
+// The same, and RSA's and ECDSA's, with keys read from PEM, DER or JWKs:
+
+/// What kind of key a PublicKey or a PrivateKey is.
+pub enum KeyKind {
+  /// RSA, 1024 to 4096 bits: signs with rsaPKCS1v15 and rsaPSS.
+  rsa
+  /// ECDSA over NIST P-256 (secp256r1, JWS's ES256): signs with ecdsa
+  /// and ecdsaDER.
+  ecdsaP256
+  /// ECDSA over P-384 (ES384).
+  ecdsaP384
+  /// ECDSA over P-521 (ES512).
+  ecdsaP521
+  /// Ed25519 (RFC 8032, JWS's EdDSA): signs with ed25519.
+  ed25519
+}
+
+fn kindOf(code: int) -> KeyKind = match code {
+  1 => .rsa
+  2 => .ecdsaP256
+  3 => .ecdsaP384
+  4 => .ecdsaP521
+  _ => .ed25519
+}
+
+fn kindCode(k: KeyKind) -> int = match k {
+  .rsa => 1
+  .ecdsaP256 => 2
+  .ecdsaP384 => 3
+  .ecdsaP521 => 4
+  .ed25519 => 5
+}
+
+/// How a signature is made from a message: the algorithm and the hash
+/// the message is hashed with.
+pub enum SignatureScheme {
+  /// RSA with PKCS#1 v1.5's padding (RFC 8017; JWS's RS256, RS384, RS512).
+  rsaPKCS1v15(hash: Hash)
+  /// RSA with PSS's padding (JWS's PS256, PS384, PS512): signing salts
+  /// with as many bytes as the hash makes; verifying takes any salt.
+  rsaPSS(hash: Hash)
+  /// ECDSA, the signature r then s, each as long as the curve's
+  /// coordinates (64 bytes for P-256): JWS's and WebCrypto's form.
+  ecdsa(hash: Hash)
+  /// ECDSA, the signature ASN.1 DER: X.509's, OpenSSL's and Go's
+  /// VerifyASN1's form.
+  ecdsaDER(hash: Hash)
+  /// Ed25519, which hashes the message itself.
+  ed25519
+
+  /// The scheme of a JWS's (a JWT's) alg: RS256, RS384, RS512, PS256,
+  /// PS384, PS512, ES256, ES384, ES512 or EdDSA; none for others (HS256 is
+  /// an HMAC: hmac).
+  ///
+  ///   let scheme = crypto.SignatureScheme.jws(header.alg)
+  static fn jws(alg: string) -> SignatureScheme? = match alg {
+    "RS256" => .rsaPKCS1v15(.sha256)
+    "RS384" => .rsaPKCS1v15(.sha384)
+    "RS512" => .rsaPKCS1v15(.sha512)
+    "PS256" => .rsaPSS(.sha256)
+    "PS384" => .rsaPSS(.sha384)
+    "PS512" => .rsaPSS(.sha512)
+    "ES256" => .ecdsa(.sha256)
+    "ES384" => .ecdsa(.sha384)
+    "ES512" => .ecdsa(.sha512)
+    "EdDSA" => .ed25519
+    _ => none
+  }
+}
+
+fn schemeCode(s: SignatureScheme) -> int = match s {
+  .rsaPKCS1v15(_) => 1
+  .rsaPSS(_) => 2
+  .ecdsa(_) => 3
+  .ecdsaDER(_) => 4
+  .ed25519 => 5
+}
+
+fn schemeHash(s: SignatureScheme) -> int = match s {
+  .rsaPKCS1v15(h) => hashCode(h)
+  .rsaPSS(h) => hashCode(h)
+  .ecdsa(h) => hashCode(h)
+  .ecdsaDER(h) => hashCode(h)
+  .ed25519 => 0
+}
+
+/// A public key, to verify signatures with: read with publicKey (PEM),
+/// publicKeyFromDER, publicKeyFromJWK or publicKeys (a JWK Set).
+pub struct PublicKey {
+  /// The key as DER: X.509's SubjectPublicKeyInfo, what a PEM's PUBLIC
+  /// KEY holds.
+  der: bytes
+  /// What kind of key it is.
+  kind: KeyKind
+  /// Its size in bits: RSA's modulus (2048), a curve's (256, 384, 521;
+  /// Ed25519's 256).
+  bits: int
+
+  /// The key as PEM: -----BEGIN PUBLIC KEY-----, what OpenSSL reads.
+  fn pem() -> string = pemOf(der, "PUBLIC KEY")
+
+  /// The key as a JWK (RFC 7517), JSON: {"kty":"EC","crv":"P-256","x":…,"y":…}.
+  fn jwk() throws -> string = try jwkOf(der, false)
+}
+
+/// A private key, to sign with: read with privateKey (PEM),
+/// privateKeyFromDER or privateKeyFromJWK, or made with newPrivateKey.
+/// Keep its der, pem() or jwk() secret.
+pub struct PrivateKey {
+  /// The key as DER: PKCS#8's PrivateKeyInfo, what a PEM's PRIVATE KEY
+  /// holds.
+  der: bytes
+  /// What kind of key it is.
+  kind: KeyKind
+  /// Its size in bits, as PublicKey's.
+  bits: int
+
+  /// Its public key, to give to whoever verifies what it signs.
+  fn publicKey() throws -> PublicKey = try publicFrom(publicOf(der))
+
+  /// The key as PEM: -----BEGIN PRIVATE KEY----- (PKCS#8).
+  fn pem() -> string = pemOf(der, "PRIVATE KEY")
+
+  /// The key as PEM, encrypted with password: -----BEGIN ENCRYPTED
+  /// PRIVATE KEY-----, PKCS#8's PBES2 as OpenSSL 3 writes it
+  /// (PBKDF2-HMAC-SHA256 of 600000 iterations, a random salt;
+  /// AES-256-CBC), what OpenSSL (openssl pkey) and decryptPrivateKey
+  /// read. The iterations take time on purpose (a guess at the password
+  /// takes as long): it runs on another thread.
+  ///
+  ///   try fs.writeText("key.pem", try await key.encryptedPEM(password: password))
+  async fn encryptedPEM(password: string) -> string {
+    let key = der
+    return await spawn { pemOf(encryptKey(key, password.bytes(), 600000), "ENCRYPTED PRIVATE KEY") }
+  }
+
+  /// The key as a JWK, JSON, its private parts too.
+  fn jwk() throws -> string = try jwkOf(der, true)
+}
+
+/// The public key in pem: a PUBLIC KEY (X.509's SubjectPublicKeyInfo:
+/// RSA, ECDSA over P-256, P-384 or P-521, Ed25519), an RSA PUBLIC KEY
+/// (PKCS#1), or a CERTIFICATE's (its subject's key: the certificate itself
+/// isn't checked). Other blocks around it are skipped. A key it doesn't
+/// read throws invalidKey, saying why.
+///
+///   let key = try crypto.publicKey(fs.readText("webhook.pem"))
+pub fn publicKey(pem: string) throws -> PublicKey = try publicFrom(readPublic(pem.bytes(), true))
+
+/// The public key in der: SubjectPublicKeyInfo, PKCS#1's RSAPublicKey or
+/// an X.509 certificate.
+pub fn publicKeyFromDER(der: bytes) throws -> PublicKey = try publicFrom(readPublic(der, false))
+
+/// The public key in jwk, a JWK (RFC 7517) as JSON: kty RSA (n, e), EC
+/// (crv P-256, P-384 or P-521; x, y) or OKP (crv Ed25519; x).
+pub fn publicKeyFromJWK(jwk: string) throws -> PublicKey {
+  if let j = try? json.decode<Jwk>(jwk) {
+    return try publicFromJwk(j)
+  }
+  throw CryptoError.invalidKey("it isn't a JWK: JSON with a kty")
+}
+
+/// The keys of a JWK Set (RFC 7517: {"keys": [...]}, what an identity
+/// provider publishes, its jwks_uri), by their kid ("" for one without);
+/// keys of kinds it doesn't read (an HMAC's "oct") are left out.
+///
+///   let keys = try crypto.publicKeys((try await http.get(jwksURL)).text())
+///   let key = keys[header.kid]
+pub fn publicKeys(jwks: string) throws -> [string: PublicKey] {
+  if let set = try? json.decode<JwkSet>(jwks) {
+    var out: [string: PublicKey] = [:]
+    for j in set.keys {
+      if j.kty == "RSA" || j.kty == "EC" || j.kty == "OKP" {
+        out[j.kid ?? ""] = try publicFromJwk(j)
+      }
+    }
+    return out
+  }
+  throw CryptoError.invalidKey("it isn't a JWK Set: JSON with keys")
+}
+
+/// The private key in pem, the first of its blocks that's one (others,
+/// a certificate's, are skipped): a PRIVATE KEY (PKCS#8), an RSA PRIVATE
+/// KEY (PKCS#1), an EC PRIVATE KEY (SEC 1, what openssl ecparam -genkey
+/// writes), or an OPENSSH PRIVATE KEY (what ssh-keygen writes: Ed25519,
+/// ECDSA or RSA). An encrypted one throws invalidKey: decryptPrivateKey
+/// reads it.
+pub fn privateKey(pem: string) throws -> PrivateKey = try privateFrom(try keyFile(readKeyFile(pem.bytes(), true)))
+
+/// The private key in der: PKCS#8, PKCS#1's RSAPrivateKey or SEC 1's
+/// ECPrivateKey.
+pub fn privateKeyFromDER(der: bytes) throws -> PrivateKey = try privateFrom(try keyFile(readKeyFile(der, false)))
+
+/// The private key in pem, decrypted with password: an ENCRYPTED PRIVATE
+/// KEY (PKCS#8's PBES2 with PBKDF2 or scrypt and AES or Triple DES, what
+/// OpenSSL writes; PKCS#12's Triple DES, older OpenSSL's and Java's),
+/// OpenSSL's older RSA and EC PRIVATE KEY with Proc-Type: 4,ENCRYPTED, or
+/// OpenSSH's (bcrypt with AES or ChaCha20-Poly1305); one that isn't
+/// encrypted is read as privateKey reads it. A password that doesn't
+/// decrypt it throws wrongPassword; a key it doesn't read throws
+/// invalidKey, saying why (single DES, RC2 and RC4 are weak, and aren't
+/// read). Deriving the key from the password takes time on purpose: it
+/// runs on another thread.
+///
+///   let key = try await crypto.decryptPrivateKey(try fs.readText("id_ed25519"), password: password)
+pub async fn decryptPrivateKey(pem: string, password: string) throws -> PrivateKey {
+  return try await spawn { try privateFrom(try keyFile(decryptKeyFile(pem.bytes(), true, password.bytes()))) }
+}
+
+/// The private key in der, decrypted with password: PKCS#8's
+/// EncryptedPrivateKeyInfo (as decryptPrivateKey's), or one that isn't
+/// encrypted (as privateKeyFromDER's).
+pub async fn decryptPrivateKeyFromDER(der: bytes, password: string) throws -> PrivateKey {
+  return try await spawn { try privateFrom(try keyFile(decryptKeyFile(der, false, password.bytes()))) }
+}
+
+// keyFile is what a key file read to (keyfile.c), as PKCS#8; none, or
+// why it read none.
+fn keyFile(der: bytes?) throws -> bytes? {
+  if let d = der {
+    return readPrivate(d)
+  }
+  match keyFileStatus() {
+    -2 => throw CryptoError.wrongPassword
+    -3 => throw CryptoError.invalidKey("the key is encrypted: read it with crypto.decryptPrivateKey(pem, password:)")
+    _ => throw CryptoError.invalidKey(keyFileFailure())
+  }
+}
+
+/// The private key in jwk, a JWK as JSON with its private parts: RSA's
+/// d, p, q, dp, dq and qi; EC's and OKP's d.
+pub fn privateKeyFromJWK(jwk: string) throws -> PrivateKey {
+  if let j = try? json.decode<Jwk>(jwk) {
+    let (kind, parts) = try jwkParts(j, true)
+    return try privateFrom(keyFromParts(kind, parts, true))
+  }
+  throw CryptoError.invalidKey("it isn't a JWK: JSON with a kty")
+}
+
+/// A new private key from the system's randomness: ECDSA over P-256
+/// unless the call says, P-384, P-521 or Ed25519. RSA keys aren't made
+/// here (.rsa throws invalidArgument): they take long to make and are
+/// larger; make one with OpenSSL and read it with privateKey.
+///
+///   let key = try crypto.newPrivateKey()
+///   let signature = try crypto.sign(key, message, scheme: .ecdsa(.sha256))
+pub fn newPrivateKey(kind: KeyKind = .ecdsaP256) throws -> PrivateKey {
+  if let der = generateKey(kindCode(kind)) {
+    return try privateFrom(der)
+  }
+  throw CryptoError.invalidArgument(keyFailure())
+}
+
+/// Whether signature is key's of message under scheme. A signature that
+/// isn't one (the wrong size, not DER) is false; a key that doesn't sign
+/// with scheme (an RSA key, .ecdsa) throws invalidKey, so a token can't
+/// choose how it's checked.
+///
+///   let key = try crypto.publicKey(pem)
+///   let ok = try crypto.verify(key, body.bytes(), signature, scheme: .rsaPKCS1v15(.sha256))
+pub fn verify(key: PublicKey, message: bytes, signature: bytes, scheme: SignatureScheme) throws -> bool {
+  let r = verifySignature(key.der, schemeCode(scheme), schemeHash(scheme), message, signature)
+  if r < 0 {
+    throw CryptoError.invalidKey(keyFailure())
+  }
+  return r == 1
+}
+
+/// key's signature of message under scheme. ECDSA's is deterministic
+/// (RFC 6979: the same message signs the same), RSA-PSS's salted with
+/// the system's randomness. A key that doesn't sign with scheme throws
+/// invalidKey.
+pub fn sign(key: PrivateKey, message: bytes, scheme: SignatureScheme) throws -> bytes {
+  if let s = signMessage(key.der, schemeCode(scheme), schemeHash(scheme), message) {
+    return s
+  }
+  throw CryptoError.invalidKey(keyFailure())
+}
+
+fn publicFrom(der: bytes?) throws -> PublicKey {
+  if let d = der {
+    if let info = keyInfo(d, false) {
+      return PublicKey(der: d, kind: kindOf(info[0]), bits: info[1])
+    }
+  }
+  throw CryptoError.invalidKey(keyFailure())
+}
+
+fn privateFrom(der: bytes?) throws -> PrivateKey {
+  if let d = der {
+    if let info = keyInfo(d, true) {
+      return PrivateKey(der: d, kind: kindOf(info[0]), bits: info[1])
+    }
+  }
+  throw CryptoError.invalidKey(keyFailure())
+}
+
+// A JWK's members (RFC 7518, section 6), each Base64URL.
+struct Jwk {
+  kty: string = ""
+  kid: string? = none
+  crv: string? = none
+  n: string? = none
+  e: string? = none
+  d: string? = none
+  p: string? = none
+  q: string? = none
+  dp: string? = none
+  dq: string? = none
+  qi: string? = none
+  x: string? = none
+  y: string? = none
+}
+
+struct JwkSet {
+  keys: [Jwk] = []
+}
+
+fn publicFromJwk(j: Jwk) throws -> PublicKey {
+  let (kind, parts) = try jwkParts(j, false)
+  return try publicFrom(keyFromParts(kind, parts, false))
+}
+
+// jwkParts: the key's kind and its parts in the order keyFromParts takes
+// them.
+fn jwkParts(j: Jwk, private: bool) throws -> (int, [bytes]) {
+  var names: [string] = []
+  var kind = 0
+  if j.kty == "RSA" {
+    kind = 1
+    names = if private { ["n", "e", "d", "p", "q", "dp", "dq", "qi"] } else { ["n", "e"] }
+  } else if j.kty == "EC" {
+    kind = match j.crv ?? "" {
+      "P-256" => 2
+      "P-384" => 3
+      "P-521" => 4
+      _ => 0
+    }
+    if kind == 0 {
+      throw CryptoError.invalidKey("the EC JWK's crv isn't P-256, P-384 or P-521")
+    }
+    names = if private { ["x", "y", "d"] } else { ["x", "y"] }
+  } else if j.kty == "OKP" {
+    if j.crv != "Ed25519" {
+      throw CryptoError.invalidKey("the OKP JWK's crv isn't Ed25519")
+    }
+    kind = 5
+    names = if private { ["x", "d"] } else { ["x"] }
+  } else {
+    throw CryptoError.invalidKey("the JWK's kty isn't RSA, EC or OKP")
+  }
+  var parts: [bytes] = []
+  for name in names {
+    let text = match name {
+      "n" => j.n
+      "e" => j.e
+      "d" => j.d
+      "p" => j.p
+      "q" => j.q
+      "dp" => j.dp
+      "dq" => j.dq
+      "qi" => j.qi
+      "x" => j.x
+      _ => j.y
+    }
+    if let t = text {
+      if let b = try? encoding.base64Decode(t) {
+        parts.push(b)
+        continue
+      }
+      throw CryptoError.invalidKey("the JWK's {name} isn't Base64URL")
+    }
+    throw CryptoError.invalidKey("the JWK has no {name}")
+  }
+  return (kind, parts)
+}
+
+fn jwkOf(der: bytes, private: bool) throws -> string {
+  if let info = keyInfo(der, private) {
+    if let parts = keyParts(der, private) {
+      let b = parts.map(p => encoding.base64URLEncode(p))
+      let crv = match kindOf(info[0]) {
+        .ecdsaP256 => "P-256"
+        .ecdsaP384 => "P-384"
+        _ => "P-521"
+      }
+      return match kindOf(info[0]) {
+        .rsa => if private { "\{\"kty\":\"RSA\",\"n\":\"{b[0]}\",\"e\":\"{b[1]}\",\"d\":\"{b[2]}\",\"p\":\"{b[3]}\",\"q\":\"{b[4]}\",\"dp\":\"{b[5]}\",\"dq\":\"{b[6]}\",\"qi\":\"{b[7]}\"}" } else { "\{\"kty\":\"RSA\",\"n\":\"{b[0]}\",\"e\":\"{b[1]}\"}" }
+        .ed25519 => if private { "\{\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"x\":\"{b[0]}\",\"d\":\"{b[1]}\"}" } else { "\{\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"x\":\"{b[0]}\"}" }
+        _ => if private { "\{\"kty\":\"EC\",\"crv\":\"{crv}\",\"x\":\"{b[0]}\",\"y\":\"{b[1]}\",\"d\":\"{b[2]}\"}" } else { "\{\"kty\":\"EC\",\"crv\":\"{crv}\",\"x\":\"{b[0]}\",\"y\":\"{b[1]}\"}" }
+      }
+    }
+  }
+  throw CryptoError.invalidKey(keyFailure())
+}
+
+native(crypto_pk) fn readPublic(data: bytes, pem: bool) -> bytes?
+native(crypto_pk) fn readPrivate(der: bytes) -> bytes?
+native(crypto_pk) fn keyInfo(der: bytes, private: bool) -> [int]?
+native(crypto_pk) fn publicOf(der: bytes) -> bytes?
+native(crypto_pk) fn keyParts(der: bytes, private: bool) -> [bytes]?
+native(crypto_pk) fn keyFromParts(kind: int, parts: [bytes], private: bool) -> bytes?
+native(crypto_pk) fn generateKey(kind: int) -> bytes?
+native(crypto_pk) fn pemOf(der: bytes, label: string) -> string
+native(crypto_pk) fn verifySignature(der: bytes, scheme: int, hash: int, message: bytes, signature: bytes) -> int
+native(crypto_pk) fn signMessage(der: bytes, scheme: int, hash: int, message: bytes) -> bytes?
+native(crypto_pk) fn keyFailure() -> string
+
+// Key files (keyfile.c): read, decrypted, written encrypted; tables of
+// their own.
+native(crypto_keyfile) fn readKeyFile(data: bytes, pem: bool) -> bytes?
+native(crypto_keyfile) fn keyFileFailure() -> string
+native(crypto_keyfile) fn keyFileStatus() -> int
+native(crypto_keydecrypt) fn decryptKeyFile(data: bytes, pem: bool, password: bytes) -> bytes?
+native(crypto_keyenc) fn encryptKey(der: bytes, password: bytes, iterations: int) -> bytes

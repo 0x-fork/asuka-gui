@@ -10,6 +10,7 @@
 #define AK_STD_H
 
 #include "rt/lib.h"
+#include "rt/unicode.h"
 
 #include <stdio.h>
 
@@ -18,6 +19,12 @@ extern const ak_lib_entry ak_std_url[];
 extern const ak_lib_entry ak_std_regex[];
 extern const ak_lib_entry ak_std_encoding[];
 extern const ak_lib_entry ak_std_crypto[];
+extern const ak_lib_entry ak_std_crypto_aead[];      // aead.c
+extern const ak_lib_entry ak_std_crypto_password[];  // password.c
+extern const ak_lib_entry ak_std_crypto_pk[];        // pubkey.c
+extern const ak_lib_entry ak_std_crypto_keyfile[];   // keyfile.c
+extern const ak_lib_entry ak_std_crypto_keydecrypt[]; // keyfile.c
+extern const ak_lib_entry ak_std_crypto_keyenc[];    // keyfile.c
 extern const ak_lib_entry ak_std_html[];
 extern const ak_lib_entry ak_std_random[];
 extern const ak_lib_entry ak_std_fs[];
@@ -32,19 +39,20 @@ extern const ak_lib_entry ak_std_signals[];
 extern const ak_lib_entry ak_std_toml[];
 extern const ak_lib_entry ak_std_csv[];
 extern const ak_lib_entry ak_std_compress[];
+extern const ak_lib_entry ak_std_compress_checksum[];  // checksum.c
 extern const ak_lib_entry ak_std_archive[];
 extern const ak_lib_entry ak_std_http[];  // httpserver.c: std/http's server
+extern const ak_lib_entry ak_std_log[];
+extern const ak_lib_entry ak_std_bigint[];
+extern const ak_lib_entry ak_std_net[];
+extern const ak_lib_entry ak_std_tls[];  // tls.c: std/net's TLS
 
 // Every package's table, NULL-terminated.
 extern const ak_lib_entry *const ak_std_libs[];
 
 // ---- Shared helpers ----
 
-// ak_utf8_decode reads the code point at s[*i] (n bytes in all) and
-// moves *i past it; what isn't UTF-8 reads as U+FFFD, one byte.
-uint32_t ak_utf8_decode(const char *s, size_t n, size_t *i);
-// ak_utf8_encode writes c's UTF-8 into out (4 bytes room); its length.
-size_t ak_utf8_encode(uint32_t c, char *out);
+// ak_utf8_decode and ak_utf8_encode: rt/unicode.h.
 
 // ak_os_random fills p with n bytes of the system's randomness (any
 // thread); false if the system gave none.
@@ -82,6 +90,38 @@ typedef struct {
 void ak_sha512_init(ak_sha512_ctx *c);
 void ak_sha512_update(ak_sha512_ctx *c, const void *p, size_t n);
 void ak_sha512_final(ak_sha512_ctx *c, uint8_t out[64]);
+
+typedef struct {
+	uint32_t h[5];
+	uint8_t buf[64];
+	size_t n;
+	uint64_t len;
+} ak_sha1_ctx;
+void ak_sha1_init(ak_sha1_ctx *c);
+void ak_sha1_update(ak_sha1_ctx *c, const void *p, size_t n);
+void ak_sha1_final(ak_sha1_ctx *c, uint8_t out[20]);
+// SHA-384 is SHA-512's context from its own start: final's first 48 bytes.
+void ak_sha384_init(ak_sha512_ctx *c);
+void ak_sha384(const void *p, size_t n, uint8_t out[48]);
+void ak_md5(const void *p, size_t n, uint8_t out[16]);
+
+// Hashes by kind (std/crypto's Hash, its code), HMAC over them, HKDF's
+// expand and PBKDF2 (crypto.c); ak_hash_size is 0 for no kind.
+enum { AK_HASH_SHA1 = 1, AK_HASH_SHA256, AK_HASH_SHA384, AK_HASH_SHA512 };
+size_t ak_hash_size(int kind);
+void ak_hash(int kind, const void *p, size_t n, uint8_t *out);
+void ak_hmac(int kind, const uint8_t *key, size_t kn, const uint8_t *m, size_t mn, uint8_t *out);
+void ak_hkdf_expand(int kind, const uint8_t *prk, size_t pn, const uint8_t *info, size_t in, uint8_t *out, size_t n);
+void ak_pbkdf2(int kind, const uint8_t *pw, size_t pn, const uint8_t *salt, size_t sn, uint64_t iterations, uint8_t *out, size_t n);
+// CRC-32 (IEEE's, gzip's) and CRC-32C (Castagnoli's), continuing crc
+// (0 to start), as zlib's crc32 (checksum.c). Any thread.
+uint32_t ak_crc32(uint32_t crc, const void *p, size_t n);
+uint32_t ak_crc32c(uint32_t crc, const void *p, size_t n);
+uint32_t ak_crc32_bytewise(uint32_t crc, const void *p, size_t n, bool castagnoli);
+extern bool ak_crc_hw_off;  // the tables alone (the tests check both)
+
+// ak_wipe zeroes a secret where the compiler can't leave it out.
+void ak_wipe(void *p, size_t n);
 
 // Ed25519 (RFC 8032, ed25519.c): a key pair is a 32-byte seed (the
 // private key; Go's and the CLI's 64-byte private keys are the seed and
@@ -146,6 +186,17 @@ bool ak_os_test_process(void);
 // std/term (term.c): the color choices setColors made, forgotten after
 // each test (ak_os_reset calls it).
 void ak_term_reset(void);
+// ak_term_colors reports whether styled text shows on fd (1 stdout, 2
+// stderr), as term.colors decides it.
+bool ak_term_colors(int fd);
+// ak_os_write writes to stdout (1) or stderr (2) as os.writeTo does:
+// kept by FakeOS.run while it runs main.
+void ak_os_write(int fd, const void *p, size_t n);
+// The user's home directory, as fs.home says it (os.user's too).
+ak_str *ak_fs_home(void);
+// std/log (log.c): its level, format and where lines go, forgotten after
+// each test (ak_os_reset calls it).
+void ak_log_reset(void);
 // Signals (signals.c). ak_os_signals_program makes the process's
 // signals a program's: end(128 + the signal's number) ends it for one no
 // os.signals stream reads, as its main's cancellation when main_is_task,
@@ -160,6 +211,22 @@ void ak_os_fake_end(int code);
 // tables' keys sorted, its scalars tagged and normalized: core/test's
 // toml_test.c), or false and why in err (line:column: why).
 bool ak_toml_tagged(const char *text, size_t n, ak_buf *out, char *err, size_t errn);
+
+// std/bigint (bigint.c), for json.c: whether a struct's type is
+// std/bigint's BigInt, which JSON and print write as an integer of any
+// size (its digits), and reads from one or from a string of one; a
+// BigInt's bytes written in decimal; and decimal digits (an optional
+// '-', no underscores) as a BigInt's bytes (NULL: not such digits, or
+// an error pending). json.c reaches them through ak_link_bigint
+// (link.c), NULL in an app without std/bigint, so their C stays out of
+// its link.
+typedef struct ak_bigint_json {
+	bool (*is)(const char *name, size_t n);
+	void (*write)(ak_strb *b, const ak_bytes *data);
+	ak_bytes *(*read)(const char *s, size_t n);
+} ak_bigint_json;
+extern const ak_bigint_json ak_bigint_json_impl;
+extern const ak_bigint_json *const ak_link_bigint;
 
 // For tests (core/runner): a new empty directory in the system's
 // temporary one (ak_free the path; NULL when it can't be made), and

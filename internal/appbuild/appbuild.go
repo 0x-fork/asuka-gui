@@ -24,6 +24,7 @@ import (
 	"github.com/egoist/asuka/lang/check"
 	"github.com/egoist/asuka/lang/compile"
 	"github.com/egoist/asuka/lang/diag"
+	"github.com/egoist/asuka/lang/ir"
 	"github.com/egoist/asuka/lang/syntax"
 	"github.com/egoist/asuka/lang/target"
 	"github.com/egoist/asuka/std"
@@ -43,16 +44,38 @@ var Compile = compileDir
 // platform runs it ("": the user's, the language's).
 var DevLang, DevDirection string
 
+// DevNoOptimize is asuka dev's for an app: its modules compiled without
+// the optimizer (lang/ir's Optimize), which costs about as much as the
+// rest of a compile, for reloads as quick as they can be. asuka run, test
+// and build optimize.
+var DevNoOptimize bool
+
 // Warnings receives what's worth saying that doesn't stop a build (the
 // catalogs' missing translations), "file:line:col: warning: message".
 var Warnings io.Writer = os.Stderr
 
 func compileDir(dir string, deps map[string]string, platform target.Platform) (*bytecode.Module, *Uses, []check.Diagnostic, error) {
+	m, _, u, diags, err := compileDirWith(dir, platform, false)
+	return m, u, diags, err
+}
+
+// CompileCover compiles p for platform as Compile does, its statements
+// counting their runs (asuka test --cover): the module, and where its
+// counters are. It isn't kept: the next Compile compiles without.
+func (p *Project) CompileCover(platform target.Platform) (*bytecode.Module, *ir.Cover, []check.Diagnostic, error) {
+	if p.File != "" {
+		return nil, nil, nil, fmt.Errorf("coverage is a package's: run asuka test in its directory")
+	}
+	m, cover, _, diags, err := compileDirWith(p.Dir, platform.Or(), true)
+	return m, cover, diags, err
+}
+
+func compileDirWith(dir string, platform target.Platform, cover bool) (*bytecode.Module, *ir.Cover, *Uses, []check.Diagnostic, error) {
 	// Imports resolve through the project's asuka.lock (compile.Dir's
 	// own), which Load made ready.
-	res, err := compile.Dir(dir, &compile.Options{Platform: platform, Lang: DevLang, Direction: DevDirection, Project: binRoot(dir)})
+	res, err := compile.Dir(dir, &compile.Options{Platform: platform, Lang: DevLang, Direction: DevDirection, Project: binRoot(dir), Cover: cover, NoOptimize: DevNoOptimize})
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	var u *Uses
 	if res.Program != nil {
@@ -68,9 +91,13 @@ func compileDir(dir string, deps map[string]string, platform target.Platform) (*
 		}
 	}
 	if len(res.Diags) > 0 {
-		return nil, u, res.Diags, nil
+		return nil, nil, u, res.Diags, nil
 	}
-	return res.Module, u, nil, nil
+	var c *ir.Cover
+	if res.IR != nil {
+		c = res.IR.Cover
+	}
+	return res.Module, c, u, nil, nil
 }
 
 // Project is an app or a package: its directory and its dependencies'.

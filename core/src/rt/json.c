@@ -1,4 +1,5 @@
 #include "rt/json.h"
+#include "std/std.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -295,10 +296,52 @@ static bool skip_nested(parser *ps, char c) {
 
 static ak_val value(parser *ps, const char *d);
 
+// json_bigint reads std/bigint's BigInt (of shape s): an integer of any
+// size, or a string of one (as APIs send what a double can't hold).
+static ak_val json_bigint(parser *ps, const ak_shape *s) {
+	ws(ps);
+	ak_str *q = NULL;
+	const char *st = ps->s, *end;
+	if (ps->s < ps->end && *ps->s == '"') {
+		q = str(ps);
+		if (!q) return (ak_val){0};
+		st = q->data;
+		end = q->data + q->len;
+	} else {
+		if (ps->s < ps->end && *ps->s == '-') ps->s++;
+		while (ps->s < ps->end && *ps->s >= '0' && *ps->s <= '9') ps->s++;
+		end = ps->s;
+	}
+	const char *p = st < end && *st == '-' ? st + 1 : st;
+	bool ok = p < end && (p[0] != '0' || end - p == 1 || q);
+	for (const char *c = p; ok && c < end; c++) ok = *c >= '0' && *c <= '9';
+	if (!q && ok && ps->s < ps->end && (*ps->s == '.' || *ps->s == 'e' || *ps->s == 'E')) ok = false;
+	ak_bytes *b = ok ? ak_link_bigint->read(st, (size_t)(end - st)) : NULL;
+	ak_release(q);
+	if (!b) {
+		if (ak_error_pending()) {
+			void *err = ak_error_take();
+			fail(ps, "%s", ak_error_message(err)->data);
+			ak_release(err);
+		} else {
+			fail(ps, "expected an integer%s", "");
+		}
+		return (ak_val){0};
+	}
+	ak_struct *v = ak_struct_new(s);
+	v->f[0].p = b;
+	return (ak_val){.p = v};
+}
+
 // number reads a number, whole; with iv (an int's), an integral one is
 // read as an integer too, which must be in int's range.
 static bool number(parser *ps, double *out, bool *integral, int64_t *iv) {
 	ws(ps);
+	if (ps->t && ps->t->nonfinite && !iv) {
+		if (lit(ps, "NaN")) return *out = NAN, *integral = false, true;
+		if (lit(ps, "Infinity")) return *out = INFINITY, *integral = false, true;
+		if (lit(ps, "-Infinity")) return *out = -INFINITY, *integral = false, true;
+	}
 	const char *st = ps->s;
 	if (ps->s < ps->end && *ps->s == '-') ps->s++;
 	while (ps->s < ps->end && ((*ps->s >= '0' && *ps->s <= '9') || *ps->s == '.' || *ps->s == 'e' || *ps->s == 'E' || *ps->s == '+' || *ps->s == '-')) ps->s++;
@@ -385,10 +428,48 @@ static bool zero_field(parser *ps, const char *fd, ak_val *out) {
 	return true;
 }
 
+// field_named is the field of s named by the n bytes at k, -1 when it
+// has none: the one after the last (hint) first, as an object's keys
+// usually come in its fields' order, then each.
+static int field_named(const ak_shape *s, const char *k, size_t n, int hint) {
+	if (!s->names) return -1;
+	for (int j = 0; j < s->nfields; j++) {
+		int i = (hint + j) % s->nfields;
+		const char *name = s->names[i];
+		if (name && strncmp(name, k, n) == 0 && name[n] == 0) return i;
+	}
+	return -1;
+}
+
+// key_field reads an object's key, a string, and is the field of s it
+// names (-1: none): without making the string when it has no escapes.
+static int key_field(parser *ps, const ak_shape *s, int hint) {
+	if (ps->s < ps->end && *ps->s == '"') {
+		const char *k = ps->s + 1, *e = k;
+		while (e < ps->end && *e != '"' && *e != '\\') e++;
+		if (e < ps->end && *e == '"') {
+			ps->s = e + 1;
+			return field_named(s, k, (size_t)(e - k), hint);
+		}
+	}
+	ak_str *k = str(ps);
+	if (ps->failed) {
+		ak_release(k);
+		return -1;
+	}
+	int i = field_named(s, k->data, k->len, hint);
+	ak_release(k);
+	return i;
+}
+
 static ak_val object_struct(parser *ps, const ak_shape *s, const char *d) {
 	AK_UNUSED(d);
 	ak_struct *o = ak_struct_new(s);
-	bool *set = s->nfields ? ak_alloc(s->nfields) : NULL;
+	// Which fields the object set: on the stack for most structs.
+	bool few[64];
+	bool *set = s->nfields <= 64 ? few : ak_alloc(s->nfields);
+	memset(set, 0, s->nfields);
+	int next = 0;
 	ws(ps);
 	if (!lit(ps, "{")) {
 		fail(ps, "expected an object for %s", s->name);
@@ -398,21 +479,14 @@ static ak_val object_struct(parser *ps, const ak_shape *s, const char *d) {
 	if (lit(ps, "}")) goto check;
 	for (;;) {
 		ws(ps);
-		ak_str *k = str(ps);
-		if (ps->failed) {
-			ak_release(k);
-			goto done;
-		}
+		int idx = key_field(ps, s, next);
+		if (ps->failed) goto done;
 		ws(ps);
 		if (!lit(ps, ":")) {
-			ak_release(k);
 			fail(ps, "expected ':'%s", "");
 			goto done;
 		}
-		int idx = -1;
-		for (uint16_t i = 0; i < s->nfields; i++)
-			if (s->names && strcmp(s->names[i], k->data) == 0) idx = i;
-		ak_release(k);
+		if (idx >= 0) next = idx + 1 < s->nfields ? idx + 1 : 0;
 		if (idx < 0) {
 			if (!skip_value(ps)) goto done;  // a field it doesn't have
 		} else {
@@ -443,7 +517,7 @@ check:
 		}
 	}
 done:
-	ak_free(set);
+	if (set != few) ak_free(set);
 	if (ps->failed) {
 		ak_release(o);
 		return (ak_val){0};
@@ -785,6 +859,7 @@ static ak_val value_of(parser *ps, const char *d) {
 			fail(ps, "no type %s", d + 1);
 			return (ak_val){0};
 		}
+		if (ak_link_bigint && ak_link_bigint->is(d + 1, name_len(d))) return json_bigint(ps, s);
 		return object_struct(ps, s, d);
 	}
 	case 'e': {
@@ -1046,8 +1121,16 @@ static void enc_value(encoder *e, ak_val v, const char *d) {
 		else ak_strb_int(b, v.i);
 		return;
 	case 'f':
-		if (v.f != v.f || v.f == INFINITY || v.f == -INFINITY) ak_strb_cstr(b, "null", 4);
-		else ak_strb_float(b, v.f);
+		if (v.f != v.f || v.f == INFINITY || v.f == -INFINITY) {
+			if (e->t && e->t->nonfinite) {
+				const char *w = v.f != v.f ? "NaN" : v.f > 0 ? "Infinity" : "-Infinity";
+				ak_strb_cstr(b, w, strlen(w));
+			} else {
+				ak_strb_cstr(b, "null", 4);
+			}
+		} else {
+			ak_strb_float(b, v.f);
+		}
 		return;
 	case 'b':
 		ak_strb_bool(b, v.i != 0);
@@ -1077,6 +1160,11 @@ static void enc_value(encoder *e, ak_val v, const char *d) {
 	case '{':
 	case 'S':
 	case 'm':
+		if (*d == 'S' && ak_link_bigint && ak_link_bigint->is(d + 1, name_len(d))) {
+			// std/bigint's BigInt: a number of all its digits.
+			ak_link_bigint->write(b, ((ak_struct *)v.p)->f[0].p);
+			return;
+		}
 		open_(e, d, v.p, "{", 1);
 		return;
 	case '(':

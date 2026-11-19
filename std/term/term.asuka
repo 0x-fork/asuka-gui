@@ -24,6 +24,13 @@
 // Windows the console is made to show them (its virtual terminal
 // processing) the first time.
 //
+// What lines up is measured in the terminal's columns, not characters:
+// textWidth("日本語") is 6, an emoji 2, an accent 0, escape codes none.
+// padEnd, padStart, center, truncate (with an ellipsis) and fit work by
+// them, and table lays out rows whose CJK text and emoji line up:
+//
+//   print(term.table([["Name", "City"], ["王小明", "北京"]]))
+//
 // prompt, confirm and secret write their question on stderr, as git, gh
 // and Rust's dialoguer do, so what a program prints on stdout stays its
 // output when it's piped (tool | jq). They read stdin's next line on

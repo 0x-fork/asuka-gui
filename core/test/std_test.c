@@ -570,6 +570,56 @@ TEST(regex_random) {
 	}
 }
 
+extern bool ak_regex_prefilter_off;
+
+// The prefilter (skipping to where a match can start) changes no match:
+// random patterns over random text (what isn't UTF-8 too) search, test
+// and substitute the same with it and without.
+TEST(regex_prefilter_changes_nothing) {
+	static const char *const pieces[] = {"a", "b", "ab", "chi", ".", "\\w", "\\d", "\\b", "\\B", "^", "$", "(", ")", "(?:", "|", "*", "+", "?",
+		"*?", "{2}", "{0,3}", "[a-c]", "[^b]", "[0-9]", "(?i)", "(?m)", "é", "€", "[é-ü]", "\\x{FFFD}", "\\s", "x", " "};
+	static const char *const bits[] = {"a", "b", "c", "x", " ", "\n", "1", "é", "€", "\xff", "\x80", "\xc3", "chi", "abab"};
+	for (int it = 0; it < 6000; it++) {
+		char pat[96], text[160];
+		size_t pl = 0, tl = 0;
+		int np = 1 + (int)(next_rand() % 6);
+		for (int k = 0; k < np; k++) {
+			const char *q = pieces[next_rand() % AK_LEN(pieces)];
+			size_t ql = strlen(q);
+			if (pl + ql >= sizeof pat) break;
+			memcpy(pat + pl, q, ql);
+			pl += ql;
+		}
+		pat[pl] = 0;
+		int nt = (int)(next_rand() % 40);
+		for (int k = 0; k < nt; k++) {
+			const char *q = bits[next_rand() % AK_LEN(bits)];
+			size_t ql = strlen(q);
+			if (tl + ql >= sizeof text) break;
+			memcpy(text + tl, q, ql);
+			tl += ql;
+		}
+		text[tl] = 0;
+		ak_val prog = call("regex.program", (ak_val[]){S(pat)}, 1, 1);
+		if (!prog.p) {
+			ak_release(ak_error_take());
+			continue;
+		}
+		ak_val res[2][3];
+		for (int off = 0; off < 2; off++) {
+			ak_regex_prefilter_off = off;
+			res[off][0] = call("regex.test", (ak_val[]){prog, {.p = ak_str_new(text, tl)}}, 2, 2);
+			res[off][1] = call("regex.search", (ak_val[]){prog, {.p = ak_str_new(text, tl)}, I(-1)}, 3, 2);
+			res[off][2] = call("regex.substitute", (ak_val[]){prog, {.p = ak_str_new(text, tl)}, S("<$0>"), I(-1)}, 4, 6);
+		}
+		ak_regex_prefilter_off = false;
+		if (res[0][0].i != res[1][0].i || !ak_val_eq(res[0][1], res[1][1], AK_K_REF) || !ak_val_eq(res[0][2], res[1][2], AK_K_REF))
+			T_FAIL("%s on %s: matched differently with the prefilter", pat, text);
+		for (int off = 0; off < 2; off++) ak_release(res[off][1].p), ak_release(res[off][2].p);
+		ak_release(prog.p);
+	}
+}
+
 static ak_val search(const char *pattern, const char *text) {
 	ak_val prog = call("regex.program", (ak_val[]){S(pattern)}, 1, 1);
 	if (!prog.p) return prog;

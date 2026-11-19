@@ -1,0 +1,82 @@
+// Signals: a deep chain of derived values, a wide fan-out of one state
+// to many bindings, and many states each read by one binding.
+
+/// A level passes its value plus one to the next, as a prop: a change
+/// at the top runs every level's binding, in order, once.
+component Level(depth: int, value: int) {
+  let v = value + 1
+  if depth == 0 {
+    Text("{v}")
+  } else {
+    Level(depth: depth - 1, value: v)
+  }
+}
+
+store Source {
+  pub state x = 0
+  pub state tick = 0
+  pub state all = false
+}
+
+component Deep(src: Source) {
+  Column { Level(depth: 500, value: src.x) }
+}
+
+/// A number of its own per row: a signal each.
+store Cell {
+  pub state value = 0
+}
+
+component Wide(src: Source, cells: [Cell]) {
+  // A frame's handler: its writes are one flush.
+  let stop = onFrame(_ => {
+    if src.all {
+      for c in cells { c.value += 1 }
+    }
+  })
+  Column {
+    for (i, c) in cells.enumerated() key i {
+      Row {
+        Text("{c.value}")
+        Text("{src.tick}")
+      }
+    }
+  }
+}
+
+bench "a chain of 500 derived props, the top changed" {
+  let src = Source()
+  let app = mount(Deep(src: src))
+  measure {
+    src.x += 1
+  }
+}
+
+bench "one state read by 1k rows, changed" {
+  let src = Source()
+  let cells = (0..<1000).map(_ => Cell())
+  let app = mount(Wide(src: src, cells: cells))
+  measure {
+    src.tick += 1
+  }
+}
+
+bench "1k states read by a row each, one changed" {
+  let src = Source()
+  let cells = (0..<1000).map(_ => Cell())
+  let app = mount(Wide(src: src, cells: cells))
+
+  var i = 0
+  measure {
+    cells[i % 1000].value += 1
+    i += 1
+  }
+}
+
+bench "1k states read by a row each, all changed in one batch" {
+  let src = Source()
+  let cells = (0..<1000).map(_ => Cell())
+  let app = mount(Wide(src: src, cells: cells))
+  src.all = true
+  measure { app.frame(16ms) }
+}

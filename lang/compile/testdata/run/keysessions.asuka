@@ -1,0 +1,68 @@
+// Encrypted private keys and TLS sessions resumed, on the VM and compiled
+// to C: keys OpenSSL and ssh-keygen encrypted (core/test/testdata/keys,
+// gen.sh's: the password "asuka") decrypted by std/crypto, written
+// encrypted and read back; an HTTPS server whose key was encrypted, its
+// client's second connection resumed (a TLS 1.3 ticket, then TLS 1.2's),
+// and a client that keeps no sessions. (The certificates:
+// core/test/testdata/tls's.)
+
+import std/crypto
+import std/http
+import std/net
+
+let caCert = "-----BEGIN CERTIFICATE-----\nMIIBjTCCATOgAwIBAgIBATAKBggqhkjOPQQDAjAtMQ4wDAYDVQQKEwVBc3VrYTEb\nMBkGA1UEAxMSQXN1a2EgVGVzdCBSb290IENBMCAXDTIwMDEwMTAwMDAwMFoYDzIx\nMDAwMTAxMDAwMDAwWjAtMQ4wDAYDVQQKEwVBc3VrYTEbMBkGA1UEAxMSQXN1a2Eg\nVGVzdCBSb290IENBMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAECyRmvRYi7QOm\neQIRdtNOnlzZHyy1n7uq5T8WL2gd42+Y7Uctp/KlGv7Zvu9QuTx8hgTvf7jiUnKx\nmz/gUrAn16NCMEAwDgYDVR0PAQH/BAQDAgEGMA8GA1UdEwEB/wQFMAMBAf8wHQYD\nVR0OBBYEFLWT2I2jCfD1aYgoj3ezAEjE7TzcMAoGCCqGSM49BAMCA0gAMEUCIFbi\nuG+NA3Jsajv2GraiA6bpLipNYkGJwn5pQrcGsIu3AiEAnXjsiSzN4pygxGmtb/15\nl7v04cVdxJW/EfgSTolak0Q=\n-----END CERTIFICATE-----\n"
+let serverCert = "-----BEGIN CERTIFICATE-----\nMIIBwDCCAWagAwIBAgIBCjAKBggqhkjOPQQDAjA1MQ4wDAYDVQQKEwVBc3VrYTEj\nMCEGA1UEAxMaQXN1a2EgVGVzdCBJbnRlcm1lZGlhdGUgQ0EwIBcNMjAwMTAxMDAw\nMDAwWhgPMjEwMDAxMDEwMDAwMDBaMBQxEjAQBgNVBAMTCWxvY2FsaG9zdDBZMBMG\nByqGSM49AgEGCCqGSM49AwEHA0IABPyfsmAgj6VaabWGl4l0/xwp7YzZAz+3uxtz\n0EumKbR+DwG4jBqvy03O+j64zUT0QHwDLB/oFtl73vnkjrXzxa6jgYUwgYIwDgYD\nVR0PAQH/BAQDAgeAMBMGA1UdJQQMMAoGCCsGAQUFBwMBMB8GA1UdIwQYMBaAFLGZ\nd6pjZAvb4+UF0L8iI7zMyVwBMDoGA1UdEQQzMDGCCWxvY2FsaG9zdIIMdGVzdC5l\neGFtcGxlhwR/AAABhxAAAAAAAAAAAAAAAAAAAAABMAoGCCqGSM49BAMCA0gAMEUC\nICo/7le7q1Yi74YaiVFlkaXOQSDDP4Tv3htnmJ21TF/QAiEAjspArnXHHP6Sty2m\nujsmotrOy+V0+SPlTHBzqCmYsVs=\n-----END CERTIFICATE-----\n-----BEGIN CERTIFICATE-----\nMIIBtjCCAVygAwIBAgIBAjAKBggqhkjOPQQDAjAtMQ4wDAYDVQQKEwVBc3VrYTEb\nMBkGA1UEAxMSQXN1a2EgVGVzdCBSb290IENBMCAXDTIwMDEwMTAwMDAwMFoYDzIx\nMDAwMTAxMDAwMDAwWjA1MQ4wDAYDVQQKEwVBc3VrYTEjMCEGA1UEAxMaQXN1a2Eg\nVGVzdCBJbnRlcm1lZGlhdGUgQ0EwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAR3\n9btvwcSSICx3nswg7kHH17LdxcYIH4aoMOaNBke+liRaY576tZQC2cNn1zcBw3mN\n6qI9UoZHUABZY/uu/ce8o2MwYTAOBgNVHQ8BAf8EBAMCAQYwDwYDVR0TAQH/BAUw\nAwEB/zAdBgNVHQ4EFgQUsZl3qmNkC9vj5QXQvyIjvMzJXAEwHwYDVR0jBBgwFoAU\ntZPYjaMJ8PVpiCiPd7MASMTtPNwwCgYIKoZIzj0EAwIDSAAwRQIgCTB3za83/X6h\nRz8HkNdVJZHvGjxktCrFjb+9zwsW5FQCIQD7l/RWgQAFpso8AyBsi5gfAa32ISjD\nPWEnoqkCySd42g==\n-----END CERTIFICATE-----\n"
+let serverKey = "-----BEGIN ENCRYPTED PRIVATE KEY-----\nMIH0MF8GCSqGSIb3DQEFDTBSMDEGCSqGSIb3DQEFDDAkBBBXJ6a58jHt1zfVRgUw\n1D8eAgIIADAMBggqhkiG9w0CCQUAMB0GCWCGSAFlAwQBKgQQF6z/SR0vZKqcgW0C\nj/aupgSBkObvjk0N3t52nTawADvPmnfFOatdYkC2QPLS0+Vcv4tp3gM0N3+Z11FY\nR0L5fxNFLT2ZKHyUL4NatyDoe1J9L0vjQMJLihr4OIZN55hJG1zxmo/RTO0iK0WJ\nU7MfP5y4a59BFvSvklrhaPfy/bu+qlOxmx2mSyItKOUc4hNBq0FMFrUP9P42Q5mT\nxY2Np7zx6A==\n-----END ENCRYPTED PRIVATE KEY-----\n"
+let sshKey = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABDOIISoqM\n95dsy+a54U/2JhAAAAGAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIHbcHpfBlWpBk7n+\nAChsmb5E3urQD3ODdTxnt9RY6ZFdAAAAkHvKGvUH8hzFkf4wO98JSAmpywTMdMW84gy+rt\ng9ervjTZ+2nb5zISR4kJ294tLWH00xP7OOJ3x/9fCf4bJg8URKMOjGgFBSZrsC4Zmq8f7l\npzIw/6wxr/rqu7L4oYORj0Z7wCnjO3EH7h6vKu8ontI0hKHD2iTVwxzc9JyuIw4G1EuVra\nDvyZ7PqwdUausEGw==\n-----END OPENSSH PRIVATE KEY-----\n"
+
+test "encrypted keys" {
+  let key = try await crypto.decryptPrivateKey(sshKey, password: "asuka")
+  print("{key.kind == crypto.KeyKind.ed25519} {key.bits}")
+  do {
+    let _ = try await crypto.decryptPrivateKey(sshKey, password: "nope")
+  } catch crypto.CryptoError.wrongPassword {
+    print("wrong password")
+  }
+  let tlsKey = try await crypto.decryptPrivateKey(serverKey, password: "asuka")
+  let text = await tlsKey.encryptedPEM(password: "another")
+  print(text.hasPrefix("-----BEGIN ENCRYPTED PRIVATE KEY-----\n"))
+  print((try await crypto.decryptPrivateKey(text, password: "another")) == tlsKey)
+  print((try? crypto.privateKey(text)) == none)
+}
+
+async fn get(port: int, tls: net.ClientTLS) throws -> string {
+  let c = try await net.connectTLS("localhost", port, tls: tls)
+  let state = try await c.handshake()
+  try await c.write("GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+  let reply = (try await c.readAll()).string()
+  c.close()
+  return "{state.version == net.TLSVersion.tls13} resumed {state.resumed} {state.peerCertificates.count()} {reply.hasSuffix("hi")}"
+}
+
+test "sessions resumed" {
+  let key = (try await crypto.decryptPrivateKey(serverKey, password: "asuka")).pem()
+  let tls = try net.serverTLS(certificate: serverCert, key: key)
+  let server = try await http.serve(0, req => .text("hi"), tls: tls)
+  let v13 = try net.clientTLS(ca: caCert, sessionCache: 3)
+  let v12 = try net.clientTLS(ca: caCert, maxVersion: .tls12, sessionCache: 3)
+  let keepsNone = try net.clientTLS(ca: caCert, sessionCache: 0)
+  for t in [v13, v13, v12, v12, keepsNone, keepsNone] {
+    print(try await get(server.port, t))
+  }
+  await server.close()
+}
+
+// Output:
+// true 256
+// wrong password
+// true
+// true
+// true
+// ok encrypted keys
+// true resumed false 2 true
+// true resumed true 2 true
+// false resumed false 2 true
+// false resumed true 2 true
+// true resumed false 2 true
+// true resumed false 2 true
+// ok sessions resumed

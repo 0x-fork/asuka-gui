@@ -445,6 +445,9 @@ func TestParseDecls(t *testing.T) {
 		{"native component MapView(region: Region) { prop pins: [Pin] = []; event moved(r: Region) }", "*syntax.ComponentDecl"},
 		{"app { Counter() }", "*syntax.AppDecl"},
 		{"test \"counts\" { await idle() }", "*syntax.TestDecl"},
+		{"test \"reverses\" (xs: [int], s: string) { expect(xs == xs) }", "*syntax.TestDecl"},
+		{"bench \"sorts\" { let xs = [2, 1]\n measure { keep(xs.sorted()) } }", "*syntax.BenchDecl"},
+		{"bench \"fib\" { keep(fib(20)) }", "*syntax.BenchDecl"},
 	}
 	for _, tt := range tests {
 		f := parseOK(t, tt.src)

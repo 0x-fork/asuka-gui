@@ -14,7 +14,7 @@
 // written. A client that goes away while its reply streams cancels the
 // handler's task.
 //
-//	http.srvOpen(dispatch, host, port, limits) -> int    a server's handle; 0 where none can listen
+//	http.srvOpen(dispatch, host, port, limits, tls) -> int    a server's handle; 0 where none can listen
 //	http.srvListen(h) -> Task<string>        "" once it listens, else why it can't
 //	http.srvPort(h) -> int                   the port it listens at
 //	http.srvClose(h, graceMs) -> Task<void>  it stops: once everything has
@@ -27,20 +27,23 @@
 //	http.srvEnd(id)
 //
 // limits: header bytes, body bytes, connections, and the header, read
-// and idle timeouts in milliseconds.
+// and idle timeouts in milliseconds. tls: a TLS configuration (std/net's
+// net.serverTLS, tls.c's), 0 for none.
 //
-// TLS isn't here: a reverse proxy terminates it. When it comes, it's a
-// layer between the socket and the buffers (conn's in and out), the
-// parser and the protocol above it the same.
+// TLS (HTTPS) is a layer between the socket and the buffers (conn's in
+// and out), on the server's thread, the parser and the protocol above it
+// the same: tls.h's, reached through ak_tls_layer, so a server without
+// TLS doesn't link it. A connection's handshake goes as it's accepted,
+// within the header timeout; one that fails closes it.
 #if defined(__APPLE__)
 #define _DARWIN_C_SOURCE
 #elif !defined(_WIN32)
 #define _POSIX_C_SOURCE 200809L
 #define _DEFAULT_SOURCE
 #endif
-#if defined(_WIN32) && !defined(__wasm__)
-#include <winsock2.h>  // before windows.h (base/thread.h's)
-#include <ws2tcpip.h>
+#if !defined(__wasm__)
+#include "std/sock.h"  // before windows.h (base/thread.h's)
+#include "std/tls.h"
 #endif
 #include "std/std.h"
 #include "std/httpserver.h"
@@ -455,83 +458,6 @@ bool ak_http_field_ok(const char *name, size_t nn, const char *value, size_t vn)
 	return true;
 }
 
-#if !defined(__wasm__)
-
-// ---- A map of ids (> 0) to pointers: open addressing ----
-
-typedef struct {
-	int64_t *keys;  // 0 empty, -1 removed
-	void **vals;
-	uint32_t cap, used;  // used: live and removed
-} idmap;
-
-static uint32_t id_hash(int64_t k) {
-	uint64_t x = (uint64_t)k * 0x9e3779b97f4a7c15ull;
-	return (uint32_t)(x >> 32);
-}
-
-static void *idmap_get(const idmap *m, int64_t k) {
-	if (!m->cap) return NULL;
-	for (uint32_t i = id_hash(k) & (m->cap - 1);; i = (i + 1) & (m->cap - 1)) {
-		if (m->keys[i] == k) return m->vals[i];
-		if (m->keys[i] == 0) return NULL;
-	}
-}
-
-static void idmap_put(idmap *m, int64_t k, void *v);
-
-static void idmap_grow(idmap *m) {
-	idmap n = {.cap = m->cap ? m->cap * 2 : 16};
-	// Removed entries take room too: a map that churns rehashes at its
-	// size, not larger.
-	uint32_t live = 0;
-	for (uint32_t i = 0; i < m->cap; i++) live += m->keys[i] > 0;
-	if (m->cap && live * 4 < m->cap) n.cap = m->cap;
-	n.keys = ak_alloc(sizeof(int64_t) * n.cap);
-	n.vals = ak_alloc(sizeof(void *) * n.cap);
-	for (uint32_t i = 0; i < m->cap; i++)
-		if (m->keys[i] > 0) idmap_put(&n, m->keys[i], m->vals[i]);
-	ak_free(m->keys);
-	ak_free(m->vals);
-	*m = n;
-}
-
-static void idmap_put(idmap *m, int64_t k, void *v) {
-	if ((m->used + 1) * 2 > m->cap) idmap_grow(m);
-	for (uint32_t i = id_hash(k) & (m->cap - 1);; i = (i + 1) & (m->cap - 1)) {
-		if (m->keys[i] == k) {
-			m->vals[i] = v;
-			return;
-		}
-		if (m->keys[i] == 0) {
-			m->keys[i] = k;
-			m->vals[i] = v;
-			m->used++;
-			return;
-		}
-	}
-}
-
-static void idmap_del(idmap *m, int64_t k) {
-	if (!m->cap) return;
-	for (uint32_t i = id_hash(k) & (m->cap - 1);; i = (i + 1) & (m->cap - 1)) {
-		if (m->keys[i] == k) {
-			m->keys[i] = -1;
-			m->vals[i] = NULL;
-			return;
-		}
-		if (m->keys[i] == 0) return;
-	}
-}
-
-static void idmap_free(idmap *m) {
-	ak_free(m->keys);
-	ak_free(m->vals);
-	*m = (idmap){0};
-}
-
-#endif
-
 #define STR(i) ((ak_str *)args[i].p)
 
 static ak_future *done_future(ak_kind k, ak_val v) {
@@ -589,45 +515,6 @@ const ak_lib_entry ak_std_http[] = {
 
 #else
 
-#if defined(_WIN32)
-typedef SOCKET sock_t;
-typedef WSAPOLLFD pollfd_t;
-#define BAD_SOCK INVALID_SOCKET
-#define close_sock closesocket
-#define poll_sock(p, n, t) WSAPoll(p, (ULONG)(n), t)
-#define SHUT_WRITE SD_SEND
-static int sock_err(void) { return WSAGetLastError(); }
-#define E_AGAIN(e) ((e) == WSAEWOULDBLOCK)
-#define E_INTR(e) ((e) == WSAEINTR)
-#else
-#include <arpa/inet.h>
-#include <fcntl.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <poll.h>
-#include <sys/socket.h>
-#include <unistd.h>
-typedef int sock_t;
-typedef struct pollfd pollfd_t;
-#define BAD_SOCK (-1)
-#define close_sock close
-#define poll_sock(p, n, t) poll(p, (nfds_t)(n), t)
-#define SHUT_WRITE SHUT_WR
-static int sock_err(void) { return errno; }
-#define E_AGAIN(e) ((e) == EAGAIN || (e) == EWOULDBLOCK)
-#define E_INTR(e) ((e) == EINTR)
-#endif
-#if defined(MSG_NOSIGNAL)
-#define SEND_FLAGS MSG_NOSIGNAL
-#else
-#define SEND_FLAGS 0
-#endif
-
-#if !defined(AI_NUMERICSERV)
-#define AI_NUMERICSERV 0
-#endif
-
 // The VM's closures' invoke (vm_int.h): a closure compiled to C, passed
 // as an async fn, returns its task's future.
 ak_val ak_vm_closure_invoke(ak_closure *c, ak_val *args, uint32_t nargs);
@@ -668,7 +555,7 @@ static void ireq_free(ireq *r) {
 typedef enum { C_IDLE, C_HEAD, C_BODY, C_BUSY, C_LINGER } cstate;
 
 typedef struct {
-	sock_t fd;
+	ak_sock fd;
 	uint32_t slot;
 	uint64_t serial;
 	cstate state;
@@ -689,6 +576,10 @@ typedef struct {
 	ak_buf body;
 	bool close_after, ending, streaming, notify, peer_eof, shut;
 	int64_t linger_until;
+	// TLS: the session, whether its handshake is done, what it wants.
+	ak_tls *tls;
+	bool tls_open;
+	int twant;
 } conn;
 
 enum { CMD_OUT, CMD_CLOSE, CMD_ABORT };
@@ -711,27 +602,23 @@ typedef struct {
 	int port;
 	size_t max_header, max_body, max_conns;
 	int64_t header_ns, read_ns, idle_ns;
+	int64_t tls_conf;
 	// The queue the main thread fills (under mu), and what wakes the
 	// thread for it.
 	ak_mutex mu;
 	cmd *head, *tail;
-#if defined(_WIN32)
-	sock_t wake;  // a UDP socket connected to itself
-#else
-	int wake_r, wake_w;
-#endif
+	ak_waker wake;
 	// The thread's own.
-	sock_t listener;
+	ak_sock listener;
 	conn **slots;
 	uint32_t nslots;
 	AK_VEC(uint32_t) free_slots;
 	uint32_t nconns;
 	uint64_t serial;
 	int64_t seq;
-	idmap byid;
+	ak_idmap byid;
 	bool closing;
 	int64_t accept_pause;  // ns: accepting again after running out of descriptors
-	bool wsa;              // the main thread's WSAStartup, for the wake socket
 	ak_http_field fields[MAX_FIELDS];
 } io;
 
@@ -769,8 +656,9 @@ static void conn_buf_trim(ak_buf *b) {
 
 static void close_conn(io *x, conn *c) {
 	if (c->state == C_BUSY && c->id) post(x, M_GONE, c->id, 0, NULL, NULL);
-	if (c->id) idmap_del(&x->byid, c->id);
-	close_sock(c->fd);
+	if (c->id) ak_idmap_del(&x->byid, c->id);
+	if (c->tls) ak_tls_layer->close(c->tls);
+	ak_sock_close(c->fd);
 	ak_buf_free(&c->in);
 	ak_buf_free(&c->out);
 	ak_buf_free(&c->body);
@@ -791,7 +679,8 @@ static void linger(conn *c, int64_t now) {
 	c->in.len = 0;
 	c->linger_until = now + LINGER_NS;
 	if (c->out_off >= c->out.len) {
-		shutdown(c->fd, SHUT_WRITE);
+		if (c->tls && c->tls_open) ak_tls_layer->shutdown(c->tls);
+		shutdown(c->fd, AK_SHUT_WR);
 		c->shut = true;
 	}
 }
@@ -985,7 +874,7 @@ static bool advance(io *x, conn *c, int64_t now) {
 			c->body = (ak_buf){0};
 			c->id = (x->handle << 40) | (++x->seq & ((INT64_C(1) << 40) - 1));
 			r->id = c->id;
-			idmap_put(&x->byid, c->id, c);
+			ak_idmap_put(&x->byid, c->id, c);
 			c->state = C_BUSY;
 			c->close_after = !r->keep_alive;
 			c->ending = c->streaming = c->notify = false;
@@ -1004,7 +893,7 @@ static bool advance(io *x, conn *c, int64_t now) {
 // finish follows a reply written whole: the connection's next request,
 // or its end.
 static bool finish(io *x, conn *c, int64_t now) {
-	idmap_del(&x->byid, c->id);
+	ak_idmap_del(&x->byid, c->id);
 	c->id = 0;
 	c->ending = c->streaming = c->notify = false;
 	if (c->close_after || x->closing) {
@@ -1022,12 +911,24 @@ static bool finish(io *x, conn *c, int64_t now) {
 static bool flush(io *x, conn *c, int64_t now) {
 	while (c->out_off < c->out.len) {
 		size_t left = c->out.len - c->out_off;
+		if (c->tls) {
+			if (!c->tls_open) return true;  // after the handshake
+			int w = ak_tls_layer->write(c->tls, c->out.data + c->out_off, left);
+			if (w == AK_TLS_FAIL) {
+				close_conn(x, c);
+				return false;
+			}
+			if (w <= 0) break;
+			c->out_off += (size_t)w;
+			c->wsince = now;
+			continue;
+		}
 		int chunk = left > (1u << 30) ? (1 << 30) : (int)left;
-		int w = (int)send(c->fd, (const char *)c->out.data + c->out_off, chunk, SEND_FLAGS);
+		int w = (int)send(c->fd, (const char *)c->out.data + c->out_off, chunk, AK_SEND_FLAGS);
 		if (w < 0) {
-			int e = sock_err();
-			if (E_INTR(e)) continue;
-			if (E_AGAIN(e)) break;
+			int e = ak_sock_err();
+			if (AK_SOCK_INTR(e)) continue;
+			if (AK_SOCK_AGAIN(e)) break;
 			close_conn(x, c);
 			return false;
 		}
@@ -1049,7 +950,8 @@ static bool flush(io *x, conn *c, int64_t now) {
 	if (pending) return true;
 	if (c->state == C_BUSY && c->ending) return finish(x, c, now);
 	if (c->state == C_LINGER && !c->shut) {
-		shutdown(c->fd, SHUT_WRITE);
+		if (c->tls && c->tls_open) ak_tls_layer->shutdown(c->tls);
+		shutdown(c->fd, AK_SHUT_WR);
 		c->shut = true;
 		c->linger_until = now + LINGER_NS;
 	}
@@ -1067,10 +969,32 @@ static bool readable(io *x, conn *c, int64_t now) {
 		if (want == 0) return true;
 	}
 	ak_buf_reserve(&c->in, want);
-	int r = (int)recv(c->fd, (char *)c->in.data + c->in.len, (int)want, 0);
+	int r;
+	if (c->tls) {
+		if (!c->tls_open) {
+			// The handshake first: a client that fails it is let go.
+			c->twant = ak_tls_layer->handshake(c->tls);
+			if (c->twant == AK_TLS_FAIL) {
+				close_conn(x, c);
+				return false;
+			}
+			if (c->twant != AK_TLS_DONE) return true;
+			c->tls_open = true;
+			if (c->out_off < c->out.len && !flush(x, c, now)) return false;
+		}
+		r = ak_tls_layer->read(c->tls, c->in.data + c->in.len, want);
+		if (r == AK_TLS_WANT_READ || r == AK_TLS_WANT_WRITE) return true;
+		if (r == AK_TLS_FAIL) {
+			close_conn(x, c);
+			return false;
+		}
+		if (r == AK_TLS_EOF) r = 0;
+	} else {
+		r = (int)recv(c->fd, (char *)c->in.data + c->in.len, (int)want, 0);
+	}
 	if (r < 0) {
-		int e = sock_err();
-		if (E_INTR(e) || E_AGAIN(e)) return true;
+		int e = ak_sock_err();
+		if (AK_SOCK_INTR(e) || AK_SOCK_AGAIN(e)) return true;
 		close_conn(x, c);
 		return false;
 	}
@@ -1119,82 +1043,16 @@ static bool timed_out(io *x, conn *c, int64_t now) {
 	return false;
 }
 
-static void wake(io *x) {
-#if defined(_WIN32)
-	char b = 1;
-	send(x->wake, &b, 1, 0);
-#else
-	char b = 1;
-	ssize_t w;
-	do {
-		w = write(x->wake_w, &b, 1);
-	} while (w < 0 && errno == EINTR);
-#endif
-}
-
-static void drain_wake(io *x) {
-	char buf[256];
-#if defined(_WIN32)
-	while (recv(x->wake, buf, sizeof buf, 0) > 0) {
-	}
-#else
-	while (read(x->wake_r, buf, sizeof buf) > 0) {
-	}
-#endif
-}
-
-static void no_inherit(sock_t s) {
-#if defined(_WIN32)
-	SetHandleInformation((HANDLE)s, HANDLE_FLAG_INHERIT, 0);
-#else
-	fcntl(s, F_SETFD, FD_CLOEXEC);
-#endif
-}
-
-static void set_nonblocking(sock_t s) {
-#if defined(_WIN32)
-	u_long nb = 1;
-	ioctlsocket(s, FIONBIO, &nb);
-#else
-	fcntl(s, F_SETFL, fcntl(s, F_GETFL) | O_NONBLOCK);
-#endif
-}
-
-static void address(const struct sockaddr *a, char *out, size_t cap) {
-	char ip[INET6_ADDRSTRLEN] = "";
-	int port = 0;
-	if (a->sa_family == AF_INET) {
-		const struct sockaddr_in *v4 = (const struct sockaddr_in *)a;
-		inet_ntop(AF_INET, (void *)&v4->sin_addr, ip, sizeof ip);
-		port = ntohs(v4->sin_port);
-		snprintf(out, cap, "%s:%d", ip, port);
-		return;
-	}
-	if (a->sa_family == AF_INET6) {
-		const struct sockaddr_in6 *v6 = (const struct sockaddr_in6 *)a;
-		port = ntohs(v6->sin6_port);
-		const uint8_t *b = (const uint8_t *)&v6->sin6_addr;
-		static const uint8_t mapped[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff};
-		if (memcmp(b, mapped, 12) == 0) {
-			// An IPv4 client of a dual-stack listener: as IPv4.
-			snprintf(out, cap, "%d.%d.%d.%d:%d", b[12], b[13], b[14], b[15], port);
-			return;
-		}
-		inet_ntop(AF_INET6, (void *)&v6->sin6_addr, ip, sizeof ip);
-		snprintf(out, cap, "[%s]:%d", ip, port);
-		return;
-	}
-	snprintf(out, cap, "?");
-}
+static void wake(io *x) { ak_waker_wake(&x->wake); }
 
 static void accept_all(io *x, int64_t now) {
 	while (x->nconns < x->max_conns) {
 		struct sockaddr_storage a;
 		socklen_t al = sizeof a;
-		sock_t s = accept(x->listener, (struct sockaddr *)&a, &al);
-		if (s == BAD_SOCK) {
-			int e = sock_err();
-			if (E_INTR(e)) continue;
+		ak_sock s = accept(x->listener, (struct sockaddr *)&a, &al);
+		if (s == AK_BAD_SOCK) {
+			int e = ak_sock_err();
+			if (AK_SOCK_INTR(e)) continue;
 #if defined(_WIN32)
 			if (e == WSAECONNRESET) continue;
 			if (e == WSAEMFILE || e == WSAENOBUFS) x->accept_pause = now + 100000000;
@@ -1204,20 +1062,18 @@ static void accept_all(io *x, int64_t now) {
 #endif
 			return;
 		}
-		no_inherit(s);
-		set_nonblocking(s);
+		ak_sock_no_inherit(s);
+		ak_sock_nonblocking(s);
 		int one = 1;
 		setsockopt(s, IPPROTO_TCP, TCP_NODELAY, (const char *)&one, sizeof one);
-#if defined(SO_NOSIGPIPE)
-		setsockopt(s, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one);
-#endif
+		ak_sock_nosigpipe(s);
 		conn *c = ak_alloc(sizeof *c);
 		c->fd = s;
 		c->state = C_IDLE;
 		c->first = true;
 		c->since = now;
 		c->serial = ++x->serial;
-		address((struct sockaddr *)&a, c->remote, sizeof c->remote);
+		ak_sock_address((struct sockaddr *)&a, c->remote, sizeof c->remote);
 		if (x->free_slots.len) {
 			c->slot = x->free_slots.data[--x->free_slots.len];
 		} else {
@@ -1226,6 +1082,11 @@ static void accept_all(io *x, int64_t now) {
 		}
 		x->slots[c->slot] = c;
 		x->nconns++;
+		if (x->tls_conf) {
+			char err[300];
+			c->tls = ak_tls_layer->open(x->tls_conf, true, NULL, s, NULL, NULL, err, sizeof err);
+			c->twant = AK_TLS_WANT_READ;
+		}
 		// An open connection is work that posts back (its requests): a
 		// test's loop waits for it rather than deciding nothing's left.
 		ak_sched_hold();
@@ -1243,9 +1104,9 @@ static void commands(io *x, int64_t now) {
 		q = q->next;
 		if (k->kind == CMD_CLOSE || k->kind == CMD_ABORT) {
 			x->closing = true;
-			if (x->listener != BAD_SOCK) {
-				close_sock(x->listener);
-				x->listener = BAD_SOCK;
+			if (x->listener != AK_BAD_SOCK) {
+				ak_sock_close(x->listener);
+				x->listener = AK_BAD_SOCK;
 			}
 			// Closing: what waits for a request goes now, what answers one
 			// once its reply is out. Aborting: everything now.
@@ -1256,7 +1117,7 @@ static void commands(io *x, int64_t now) {
 				else c->close_after = true;
 			}
 		} else {
-			conn *c = idmap_get(&x->byid, k->id);
+			conn *c = ak_idmap_get(&x->byid, k->id);
 			if (!c || c->state != C_BUSY) {
 				if (k->flags & OUT_NOTIFY) post(x, M_GONE, k->id, 0, NULL, NULL);
 			} else if (k->flags & OUT_ABORT) {
@@ -1279,8 +1140,7 @@ static void commands(io *x, int64_t now) {
 // listen_now opens the listening socket: NULL, or why it can't.
 static char *listen_now(io *x) {
 #if defined(_WIN32)
-	WSADATA wd;
-	if (WSAStartup(MAKEWORD(2, 2), &wd) != 0) return dup_n("no sockets (WSAStartup)", 23);
+	if (!ak_sock_startup()) return dup_n("no sockets (WSAStartup)", 23);
 #endif
 	struct addrinfo hints = {0}, *res = NULL;
 	hints.ai_family = AF_UNSPEC;
@@ -1296,15 +1156,15 @@ static char *listen_now(io *x) {
 	}
 	int last = 0;
 	// IPv4 first: "localhost" is 127.0.0.1 too, which every client tries.
-	for (int pass = 0; pass < 2 && x->listener == BAD_SOCK; pass++) {
+	for (int pass = 0; pass < 2 && x->listener == AK_BAD_SOCK; pass++) {
 		for (struct addrinfo *a = res; a; a = a->ai_next) {
 			if ((pass == 0) != (a->ai_family == AF_INET)) continue;
-			sock_t s = socket(a->ai_family, a->ai_socktype, a->ai_protocol);
-			if (s == BAD_SOCK) {
-				last = sock_err();
+			ak_sock s = socket(a->ai_family, a->ai_socktype, a->ai_protocol);
+			if (s == AK_BAD_SOCK) {
+				last = ak_sock_err();
 				continue;
 			}
-			no_inherit(s);
+			ak_sock_no_inherit(s);
 			int one = 1, zero = 0;
 #if !defined(_WIN32)
 			// A server started again binds while its last connections wait
@@ -1316,11 +1176,11 @@ static char *listen_now(io *x) {
 #endif
 			if (a->ai_family == AF_INET6) setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, (const char *)&zero, sizeof zero);
 			if (bind(s, a->ai_addr, (socklen_t)a->ai_addrlen) != 0 || listen(s, SOMAXCONN) != 0) {
-				last = sock_err();
-				close_sock(s);
+				last = ak_sock_err();
+				ak_sock_close(s);
 				continue;
 			}
-			set_nonblocking(s);
+			ak_sock_nonblocking(s);
 			struct sockaddr_storage got;
 			socklen_t gl = sizeof got;
 			getsockname(s, (struct sockaddr *)&got, &gl);
@@ -1330,7 +1190,7 @@ static char *listen_now(io *x) {
 		}
 	}
 	freeaddrinfo(res);
-	if (x->listener != BAD_SOCK) return NULL;
+	if (x->listener != AK_BAD_SOCK) return NULL;
 	const char *why;
 	char other[128];
 #if defined(_WIN32)
@@ -1357,45 +1217,44 @@ static void io_main(void *p) {
 	char *err = listen_now(x);
 	post(x, M_LISTEN, 0, x->port, err, NULL);
 	if (err) {
-#if defined(_WIN32)
-		WSACleanup();
-#endif
 		post(x, M_DONE, 0, 0, NULL, NULL);
 		return;
 	}
-	AK_VEC(pollfd_t) pfd = {0};
+	AK_VEC(ak_pollfd) pfd = {0};
 	AK_VEC(uint32_t) who = {0};  // the slot each pollfd's connection was in
 	AK_VEC(uint64_t) serials = {0};
 	int64_t now = ak_now_ns();
 	commands(x, now);
 	while (!(x->closing && x->nconns == 0)) {
 		pfd.len = who.len = serials.len = 0;
-#if defined(_WIN32)
-		sock_t wfd = x->wake;
-#else
-		int wfd = x->wake_r;
-#endif
-		ak_vec_push(&pfd, ((pollfd_t){.fd = wfd, .events = POLLIN}));
+		ak_sock wfd = ak_waker_fd(&x->wake);
+		ak_vec_push(&pfd, ((ak_pollfd){.fd = wfd, .events = POLLIN}));
 		ak_vec_push(&who, 0);
 		ak_vec_push(&serials, 0);
-		bool accepting = x->listener != BAD_SOCK && x->nconns < x->max_conns && now >= x->accept_pause;
+		bool accepting = x->listener != AK_BAD_SOCK && x->nconns < x->max_conns && now >= x->accept_pause;
 		if (accepting) {
-			ak_vec_push(&pfd, ((pollfd_t){.fd = x->listener, .events = POLLIN}));
+			ak_vec_push(&pfd, ((ak_pollfd){.fd = x->listener, .events = POLLIN}));
 			ak_vec_push(&who, 0);
 			ak_vec_push(&serials, 0);
 		}
-		int64_t soonest = x->listener != BAD_SOCK && !accepting && x->nconns < x->max_conns ? x->accept_pause : 0;
+		int64_t soonest = x->listener != AK_BAD_SOCK && !accepting && x->nconns < x->max_conns ? x->accept_pause : 0;
 		for (uint32_t i = 0; i < x->nslots; i++) {
 			conn *c = x->slots[i];
 			if (!c) continue;
 			short ev = 0;
 			bool reading = !c->peer_eof && (c->state != C_BUSY || c->in.len <= x->max_header) && (c->state != C_LINGER || c->shut);
-			if (reading) ev |= POLLIN;
-			if (c->out_off < c->out.len) ev |= POLLOUT;
+			if (c->tls && !c->tls_open) {
+				// The handshake, as it wants.
+				ev |= c->twant == AK_TLS_WANT_WRITE ? POLLOUT : POLLIN;
+			} else {
+				if (reading && c->tls && ak_tls_layer->pending(c->tls)) soonest = now;  // what it holds is read without waiting
+				if (reading) ev |= POLLIN;
+				if (c->out_off < c->out.len) ev |= POLLOUT;
+			}
 			int64_t d = deadline(x, c);
 			if (d && (!soonest || d < soonest)) soonest = d;
 			if (!ev) continue;
-			ak_vec_push(&pfd, ((pollfd_t){.fd = c->fd, .events = ev}));
+			ak_vec_push(&pfd, ((ak_pollfd){.fd = c->fd, .events = ev}));
 			ak_vec_push(&who, i);
 			ak_vec_push(&serials, c->serial);
 		}
@@ -1404,29 +1263,33 @@ static void io_main(void *p) {
 			int64_t ms = (soonest - now + 999999) / 1000000;
 			timeout = ms < 0 ? 0 : ms > 3600000 ? 3600000 : (int)ms;
 		}
-		int r = poll_sock(pfd.data, pfd.len, timeout);
+		int r = ak_sock_poll(pfd.data, pfd.len, timeout);
 		now = ak_now_ns();
-		if (r < 0 && !E_INTR(sock_err())) {
+		if (r < 0 && !AK_SOCK_INTR(ak_sock_err())) {
 			// A descriptor that went bad under it: start over with what's
 			// there (closed ones are gone from the slots).
 			continue;
 		}
 		if (r > 0) {
 			if (pfd.data[0].revents) {
-				drain_wake(x);
+				ak_waker_drain(&x->wake);
 				commands(x, now);
 			}
 			uint32_t first = 1;
 			if (accepting) {
 				first = 2;
-				if (pfd.data[1].revents && x->listener != BAD_SOCK) accept_all(x, now);
+				if (pfd.data[1].revents && x->listener != AK_BAD_SOCK) accept_all(x, now);
 			}
 			for (uint32_t i = first; i < pfd.len; i++) {
 				short rv = pfd.data[i].revents;
 				// A command may have closed it, and an accept put another in
 				// its slot: the slot's connection is checked by serial.
 				conn *c = x->slots[who.data[i]];
-				if (!rv || !c || c->serial != serials.data[i]) continue;
+				if (!c || c->serial != serials.data[i]) continue;
+				// TLS: the handshake goes on whichever way the socket's
+				// ready; plaintext the session holds is read without it.
+				if (c->tls && ((!c->tls_open && rv) || (c->tls_open && !c->peer_eof && ak_tls_layer->pending(c->tls)))) rv |= POLLIN;
+				if (!rv) continue;
 				if (rv & (POLLIN | POLLHUP | POLLERR | POLLNVAL)) {
 					if (c->peer_eof) {
 						// Only a hangup is left to say, and nothing reads: it's
@@ -1452,15 +1315,12 @@ static void io_main(void *p) {
 	ak_vec_free(&pfd);
 	ak_vec_free(&who);
 	ak_vec_free(&serials);
-	if (x->listener != BAD_SOCK) close_sock(x->listener);
-	x->listener = BAD_SOCK;
+	if (x->listener != AK_BAD_SOCK) ak_sock_close(x->listener);
+	x->listener = AK_BAD_SOCK;
 	ak_free(x->slots);
 	x->slots = NULL;
 	ak_vec_free(&x->free_slots);
-	idmap_free(&x->byid);
-#if defined(_WIN32)
-	WSACleanup();
-#endif
+	ak_idmap_free(&x->byid);
 	post(x, M_DONE, 0, 0, NULL, NULL);
 }
 
@@ -1486,7 +1346,7 @@ struct srv {
 	ak_future *listen;
 	AK_VEC(ak_future *) waiters;  // close's and wait's
 	uint64_t timer;
-	idmap reqs;
+	ak_idmap reqs;
 	uint32_t nreqs;
 };
 
@@ -1501,7 +1361,7 @@ static srv *find_srv(int64_t h) {
 
 static req *find_req(int64_t id) {
 	srv *s = find_srv(id >> 40);
-	return s ? idmap_get(&s->reqs, id) : NULL;
+	return s ? ak_idmap_get(&s->reqs, id) : NULL;
 }
 
 static void send_cmd(srv *s, int kind, int64_t id, ak_buf *data, unsigned flags) {
@@ -1535,13 +1395,7 @@ static void io_free(io *x) {
 		ak_free(q);
 		q = n;
 	}
-#if defined(_WIN32)
-	if (x->wake != BAD_SOCK) closesocket(x->wake);
-	if (x->wsa) WSACleanup();
-#else
-	if (x->wake_r >= 0) close(x->wake_r);
-	if (x->wake_w >= 0) close(x->wake_w);
-#endif
+	ak_waker_close(&x->wake);
 	ak_free(x->host);
 	ak_free(x);
 }
@@ -1563,7 +1417,7 @@ static void srv_maybe_free(srv *s) {
 		ak_release(f);
 	}
 	ak_vec_free(&s->waiters);
-	idmap_free(&s->reqs);
+	ak_idmap_free(&s->reqs);
 	io_free(s->io);
 	ak_release(s->dispatch);
 	ak_owner_release(s->owner);
@@ -1573,7 +1427,7 @@ static void srv_maybe_free(srv *s) {
 static void req_maybe_free(req *q) {
 	if (!q->done || q->write) return;
 	srv *s = q->s;
-	idmap_del(&s->reqs, q->id);
+	ak_idmap_del(&s->reqs, q->id);
 	ireq_free(q->r);
 	if (q->task) ak_release(q->task);
 	ak_free(q);
@@ -1675,14 +1529,14 @@ static void on_msg(void *p) {
 		q->id = r->id;
 		q->s = s;
 		q->r = r;
-		idmap_put(&s->reqs, q->id, q);
+		ak_idmap_put(&s->reqs, q->id, q);
 		s->nreqs++;
 		ak_with_owner(s->owner, start_task, q);
 		ak_future_wait(q->task, task_done, q);
 		break;
 	}
 	case M_WROTE: {
-		req *q = idmap_get(&s->reqs, m->id);
+		req *q = ak_idmap_get(&s->reqs, m->id);
 		if (q) {
 			settle_write(q, true);
 			req_maybe_free(q);  // its task may have ended meanwhile
@@ -1690,7 +1544,7 @@ static void on_msg(void *p) {
 		break;
 	}
 	case M_GONE: {
-		req *q = idmap_get(&s->reqs, m->id);
+		req *q = ak_idmap_get(&s->reqs, m->id);
 		if (!q) break;
 		q->gone = true;
 		settle_write(q, false);
@@ -1747,39 +1601,10 @@ static ak_val open_fn(ak_val *args, uint32_t n) {
 	x->header_ns = l[3] * 1000000;
 	x->read_ns = l[4] * 1000000;
 	x->idle_ns = l[5] * 1000000;
-	x->listener = BAD_SOCK;
+	x->listener = AK_BAD_SOCK;
+	x->tls_conf = n > 4 ? args[4].i : 0;
 	ak_mutex_init(&x->mu);
-#if defined(_WIN32)
-	x->wake = BAD_SOCK;
-	WSADATA wd;
-	if (WSAStartup(MAKEWORD(2, 2), &wd) == 0) {
-		x->wsa = true;
-		sock_t u = socket(AF_INET, SOCK_DGRAM, 0);
-		struct sockaddr_in a = {0};
-		a.sin_family = AF_INET;
-		a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-		int al = sizeof a;
-		if (u != INVALID_SOCKET && bind(u, (struct sockaddr *)&a, sizeof a) == 0 && getsockname(u, (struct sockaddr *)&a, &al) == 0 && connect(u, (struct sockaddr *)&a, sizeof a) == 0) {
-			no_inherit(u);
-			set_nonblocking(u);
-			x->wake = u;
-		} else if (u != INVALID_SOCKET) {
-			closesocket(u);
-		}
-	}
-	bool ok = x->wake != BAD_SOCK;
-#else
-	int fds[2];
-	bool ok = pipe(fds) == 0;
-	x->wake_r = ok ? fds[0] : -1;
-	x->wake_w = ok ? fds[1] : -1;
-	if (ok) {
-		for (int i = 0; i < 2; i++) {
-			fcntl(fds[i], F_SETFD, FD_CLOEXEC);
-			fcntl(fds[i], F_SETFL, fcntl(fds[i], F_GETFL) | O_NONBLOCK);
-		}
-	}
-#endif
+	bool ok = ak_waker_open(&x->wake);
 	srv *s = ak_alloc(sizeof *s);
 	s->handle = next_handle++;
 	x->s = s;

@@ -1,0 +1,29 @@
+// The HTTP server the benchmarks drive (../go/load), as ../go/main.go's
+// and ../bun/main.js's serve: GET /hello answers text, /json JSON.
+// `stdbench-http <port>`. A package of its own: a program that imports
+// std/http on the Mac links its Swift.
+
+import std/http
+import std/os
+
+struct Hello {
+  message: string
+  id: int
+  tags: [string]
+}
+
+// serve answers GET /hello with text and /json with JSON until it's
+// stopped: what ../load drives, against Go's and Bun's.
+async fn serve(port: int) throws {
+  let s = try await http.serve(port, async req => {
+    if req.path == "/json" {
+      return http.Reply.json(Hello(message: "Hello, world!", id: 42, tags: ["a", "b"]))
+    }
+    return http.Reply.text("Hello, world!")
+  })
+  await s.wait()
+}
+
+async fn main() throws {
+  try await serve((os.args().first() ?? "8080").toInt() ?? 8080)
+}

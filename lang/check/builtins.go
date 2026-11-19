@@ -8,6 +8,16 @@ import (
 	"github.com/egoist/asuka/lang/syntax"
 )
 
+// errorT is Error, the interface every error has. Like the basic types
+// it's one for every checker (none writes to it): checkers run at once
+// (asuka check's platforms, the language server's).
+var errorT = func() *TypeName {
+	t := &TypeName{object: object{name: "Error"}, Kind: InterfaceType, isErrorIface: true, resolved: true}
+	t.Iface = &Iface{Fields: []*Field{{Name: "message", Type: String}}}
+	t.Type = &Named{Obj: t}
+	return t
+}()
+
 // loadingT is Loading<T>: what load keeps, matched like an enum.
 var loadingT = func() *TypeName {
 	t := &TypeName{object: object{name: "Loading"}, Kind: EnumType, resolved: true}
@@ -17,7 +27,7 @@ var loadingT = func() *TypeName {
 	t.Cases = []*Case{
 		{Name: "pending", Index: 0, Owner: t},
 		{Name: "ready", Index: 1, Params: []Type{tp}, Labels: []string{""}, Owner: t},
-		{Name: "failed", Index: 2, Params: []Type{nil}, Labels: []string{""}, Owner: t},
+		{Name: "failed", Index: 2, Params: []Type{errorT.Type}, Labels: []string{""}, Owner: t},
 	}
 	t.caseIndex = map[string]int{"pending": 0, "ready": 1, "failed": 2}
 	t.Methods = map[string]*Function{}
@@ -76,6 +86,8 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		c.errorf(e.Block, diag.UnexpectedBlock, "%s takes no block", b.name)
 	}
 	switch b.ID {
+	case BKeep, BSnapshot, BInline:
+		c.testingBuiltin(e, b, call, positional(-1, ""))
 	case BPeek:
 		args := positional(1, "one value: peek(count)")
 		call.Args = args
@@ -416,6 +428,8 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		call.Args = args
 		call.Params = []*Param{{Name: "produce", Type: prod}}
 		call.Result = &Stream{elem}
+	case BSeq:
+		c.seqCall(e, call, want)
 	case BRuntime:
 		c.runtimeCall(e, call, b.Fn)
 	case BAnimate:

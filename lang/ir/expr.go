@@ -864,6 +864,10 @@ func (b *fb) selection(e syntax.Expr, x syntax.Expr, dst int) int {
 		mt := sel.MemberType
 		if mt == nil {
 			mt = check.Unopt(resT)
+		} else {
+			// In a generic function, its type in this instantiation: a
+			// T that's an int is boxed.
+			mt = b.typ(mt)
 		}
 		if check.IsOptional(mt) {
 			b.move(r, v)
@@ -1376,6 +1380,7 @@ func (b *fb) valueBlock(bl *syntax.Block, dst int) {
 			// An if or a match: the block's value is its.
 			b.stmtsThen(bl.Items[:n-1], func() {
 				b.at(last)
+				b.cover(last)
 				switch s := last.(type) {
 				case *syntax.IfStmt:
 					b.ifValue(s.Cond, s.Then, s.Else, dst)
@@ -1387,6 +1392,7 @@ func (b *fb) valueBlock(bl *syntax.Block, dst int) {
 			es := last.(*syntax.ExprStmt)
 			b.stmtsThen(bl.Items[:n-1], func() {
 				b.at(es)
+				b.cover(es)
 				b.value(es.X, dst)
 			})
 		default:
@@ -1480,8 +1486,10 @@ func (b *fb) matchValue(n syntax.Node, subject syntax.Expr, arms []*syntax.Match
 			b.valueBlock(body, r)
 		case *syntax.ExprStmt:
 			b.at(body)
+			b.cover(body)
 			b.value(body.X, r)
 		case syntax.Expr:
+			b.cover(body)
 			b.value(body, r)
 		case syntax.Item:
 			b.stmt(body)

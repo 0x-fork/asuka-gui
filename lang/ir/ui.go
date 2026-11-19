@@ -78,6 +78,7 @@ func (b *fb) lowerFunc(f *check.Function, recv check.Type) {
 		return
 	}
 	if d.Value != nil {
+		b.cover(d.Value)
 		k := b.f.Ret
 		if k == bc.KVoid {
 			b.exprStmt(d.Value)

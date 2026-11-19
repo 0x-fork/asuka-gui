@@ -13,6 +13,9 @@ import (
 // order: the prelude when it's made, then each package with the
 // packages it imports already checked.
 type Checker struct {
+	// measure is the bench's measure block being checked, the one place
+	// a measure statement may be (testing.go).
+	measure []*syntax.MeasureStmt
 	// accVars: the vars the lowering reads as accessors (SetAccessorVar).
 	accVars map[*Var]bool
 	// shaderDecls are the shader declarations by their components'
@@ -275,12 +278,10 @@ func (c *Checker) initUniverse() {
 	for _, t := range []*Basic{Int, Float, Bool, String, Bytes, Void, Duration, Color, Length, View, Graphics, Path, Ref, Pointer, TestApp, I8, I16, I32, U8, U16, U32, U64} {
 		c.universe.Insert(&TypeName{object: object{name: t.name}, Kind: BasicType, Type: t, resolved: true})
 	}
-	// Error: the interface every error has.
-	c.errT = &TypeName{object: object{name: "Error"}, Kind: InterfaceType, isErrorIface: true, resolved: true}
-	c.errT.Iface = &Iface{Fields: []*Field{{Name: "message", Type: String}}}
-	c.errT.Type = &Named{Obj: c.errT}
+	// Error: the interface every error has, one for every checker, as
+	// the basic types are (what Loading<T>'s failed case holds).
+	c.errT = errorT
 	c.universe.Insert(c.errT)
-	loadingT.Cases[2].Params[0] = c.errT.Type
 	c.universe.Insert(loadingT)
 	for _, b := range []struct {
 		name string
@@ -289,9 +290,10 @@ func (c *Checker) initUniverse() {
 		{"print", BPrint}, {"expect", BExpect}, {"sleep", BSleep}, {"all", BAll}, {"race", BRace},
 		{"mount", BMount}, {"idle", BIdle}, {"push", BPush}, {"pop", BPop}, {"present", BPresent},
 		{"dismiss", BDismiss}, {"min", BMin}, {"max", BMax}, {"abs", BAbs}, {"float", BFloat},
-		{"int", BInt}, {"panic", BPanic}, {"withTimeout", BWithTimeout}, {"Stream", BStream}, {"Set", BSet},
+		{"int", BInt}, {"panic", BPanic}, {"withTimeout", BWithTimeout}, {"Stream", BStream}, {"Set", BSet}, {"Seq", BSeq},
 		{"environment", BEnvironment}, {"live", BLive}, {"animate", BAnimate}, {shaderProgram, BShader},
 		{"never", BNever}, {"navigate", BNavigate}, {"replace", BReplace}, {"peek", BPeek},
+		{"keep", BKeep}, {"expectSnapshot", BSnapshot}, {"expectInlineSnapshot", BInline},
 	} {
 		c.universe.Insert(&Builtin{object: object{name: b.name}, ID: b.id})
 	}
@@ -627,6 +629,8 @@ func (c *Checker) collect(p *Package, d syntax.Decl) {
 		p.App = d
 	case *syntax.TestDecl:
 		p.Tests = append(p.Tests, &Test{Name: unquoteSimple(d.Name), Decl: d, Pkg: p})
+	case *syntax.BenchDecl:
+		p.Tests = append(p.Tests, &Test{Name: unquoteSimple(d.Name), Bench: d, Pkg: p})
 	case *syntax.ExtendDecl:
 		c.collectExtend(p, d)
 	}
@@ -815,6 +819,14 @@ func (c *Checker) namedType(t *syntax.NamedType) Type {
 					return Invalid
 				}
 				return c.setOf(c.typeExpr(t.Args[0]), t.Args[0], true)
+			}
+		case "Seq":
+			if o, _ := c.lookup(name).(*Builtin); o != nil && o.ID == BSeq {
+				if len(t.Args) != 1 {
+					c.errorf(t, diag.TypeArguments, "Seq takes one type: Seq<T>")
+					return Invalid
+				}
+				return &Seq{c.typeExpr(t.Args[0])}
 			}
 		case "never":
 			// What a function that never returns gives (os.exit): the

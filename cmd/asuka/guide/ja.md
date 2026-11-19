@@ -41,15 +41,17 @@ fn values() -> string {
   visits += 1
   let greeting = "Hello, {name}"   // {…} で値を文字列に埋め込む
   let ratio: float = 2.5
+  let level: u8 = 200              // 固定幅の整数：i8 … i32、u8 … u64（int は 64 ビット）
+  let area = 2 ** 10               // べき乗：1024
   let tags = ["new", "work"]       // 配列：[string]
   let ages = ["ana": 31, "bo": 28] // マップ：[string: int]
   let nickname: string? = none     // オプショナル：文字列か none
   let shown = nickname ?? name     // none のときの代わりの値
-  return "{greeting} {visits} {ratio} {tags.count()} {ages["ana"] ?? 0} {shown}"
+  return "{greeting} {visits} {ratio} {level} {area} {tags.count()} {ages["ana"] ?? 0} {shown}"
 }
 ```
 
-`var` は関数とハンドラーの中で使います。ファイルのトップレベルにあるものは、`state` でない限り変わりません。値は常にコピーされ、共有されることはありません。配列のコピーを変えても元の配列はそのままです。文字列、配列、マップには思いつくメソッドがそろっています（`count()`、`contains`、`map`、`filter`、`sorted`、`split` など）。[値と型](https://asuka.egoist.dev/ja/docs/language/types)を参照してください。
+`var` は関数とハンドラーの中で使います。ファイルのトップレベルにあるものは、`state` でない限り変わりません。型の違う数値は混ぜられません。`int(level) + visits` は先に `u8` を変換します。また、型の範囲を超える算術はエラーになり、ラップアラウンドした数にはなりません。値は常にコピーされ、共有されることはありません。配列のコピーを変えても元の配列はそのままです。文字列、配列、マップには思いつくメソッドがそろっています（`count()`、`contains`、`map`、`filter`、`sorted`、`split` など）。[値と型](https://asuka.egoist.dev/ja/docs/language/types)を参照してください。
 
 #### 関数
 
@@ -283,6 +285,7 @@ fn main() {
 | 型 | 値 |
 |---|---|
 | `int` | 64 ビット整数：`42`、`1_000`、`0xff`、`0b1010`、`0o17` |
+| `i8`、`i16`、`i32`、`u8`、`u16`、`u32`、`u64` | 8、16、32、64 ビットの整数。符号付き（`i`）と符号なし（`u`）があります：[整数型](#整数型) |
 | `float` | 64 ビット浮動小数点数：`3.14`、`1e-3` |
 | `bool` | `true`、`false` |
 | `string` | UTF-8 のテキスト：`"Hello, {name}"` |
@@ -310,7 +313,7 @@ let title = "{"Total":*^11}"         // ***Total***
 let table = row("asuka", 12500, 0.4) // asuka     12,500   40.0%
 ```
 
-幅は文字（コードポイント）の数で数え、ターミナルでの表示幅ではありません。
+幅は文字（コードポイント）の数で数え、ターミナルでの表示幅ではありません。ターミナルの桁数で数えるには（漢字・かな・ハングルや絵文字は 2 桁）、`std/term` の `textWidth`、`padEnd`、`fit` を使います（[プログラム](https://asuka.egoist.dev/ja/docs/programs#揃った表)を参照）。
 
 タプルの要素は位置で読めます（`pair.0`、`pair.1`）。`var` のタプルなら、その場で変更もできます（`pair.0 += 1`）。タプルにない位置（2 要素のタプルの `pair.2`）はコンパイルエラーです。分解して読むこともできます：`let (count, label) = pair`、`for (i, x) in xs.enumerated()`、あるいは `match` のタプルパターン（[制御フロー](https://asuka.egoist.dev/ja/docs/language/control-flow#制御フロー)を参照）。
 
@@ -328,12 +331,13 @@ let seen: Set<(int, int)> = [(0, 0), (1, 2)]
 
 #### 演算子
 
-結合の強いものから順に並べています。同じ行の演算子は優先順位が同じで、左から順に結合します（`??` だけは右から）。
+結合の強いものから順に並べています。同じ行の演算子は優先順位が同じで、左から順に結合します（`**` と `??` は右から）。
 
 | 演算子 | 意味 |
 |---|---|
+| `**` | べき乗：`2 ** 10` は 1024 |
 | `!x`、`-x`、`~x` | 否定、符号反転、整数のビット反転 |
-| `<<`、`>>` | 整数のビットを左へ、右へシフト（右シフトは符号を保つ） |
+| `<<`、`>>` | 整数のビットを左へ、右へシフト（右シフトは符号付き整数の符号を保つ） |
 | `*`、`/`、`%`、`&`、`&*` | 乗算、除算、剰余、ビット AND、ラップアラウンドする乗算 |
 | `+`、`-`、<code>&#124;</code>、`^`、`&+`、`&-` | 加算（文字列や配列の連結にも使う）、減算、ビット OR、ビット XOR、ラップアラウンドする加算と減算 |
 | `..`、`..<` | 範囲：`1..3`、`0..<n` |
@@ -342,9 +346,11 @@ let seen: Set<(int, int)> = [(0, 0), (1, 2)]
 | <code>&#124;&#124;</code> | または |
 | `??` | オプショナルの中の値。`none` ならデフォルト値 |
 
-`<`、`<=`、`>`、`>=` で順序づけられるのは、整数、浮動小数点数、文字列、`Duration`、値を持たないケースだけの列挙型（ケースを宣言した順）、それに `compare` メソッドを持つ型です。構造体と列挙型は、算術演算子もメソッド `add`、`sub`、`mul`、`div`、`rem`、`neg` から得られます（[宣言](https://asuka.egoist.dev/ja/docs/language/declarations#構造体)を参照）。
+`<`、`<=`、`>`、`>=` で順序づけられるのは、整数、浮動小数点数、文字列、`Duration`、値を持たないケースだけの列挙型（ケースを宣言した順）、それに `compare` メソッドを持つ型です。構造体と列挙型は、算術演算子もメソッド `add`、`sub`、`mul`、`div`、`rem`、`pow`、`neg` から得られます（[宣言](https://asuka.egoist.dev/ja/docs/language/declarations#構造体)を参照）。
 
-ビット演算子が取るのは整数だけです。64 ビット以上シフトするとすべてのビットが押し出されます（負の数の `>>` は -1 になります）。負の数でシフトするとエラーになります。これらの演算子と `b[i]`（バイトを整数として読む）を使えば、Bluetooth のキャラクタリスティックや NFC のレコードといったバイナリデータを読み書きできます。
+`**` は上の表のほかの演算子より強く結合し、`-` よりも強く結合します。また、右から結合します。Python や数学と同じです。`-2 ** 2` は `-(2 ** 2)` で -4、`2 ** 3 ** 2` は `2 ** 9` で、`(-2) ** 2` は 4 です。整数のべき乗は底と同じ型になり、指数には任意の型の 0 以上の整数を取ります（負の指数はエラーです。`2 ** -1` は整数になりません）。浮動小数点数のべき乗は、指数に浮動小数点数も整数も取れます（`2.0 ** 0.5`、`x ** 2`）。代入には `**=` を使います。
+
+ビット演算子が取るのは整数で、両辺は同じ型でなければなりません。シフト量は任意の型の整数です。型のビット幅以上シフトするとすべてのビットが押し出され（負の数の `>>` は -1 になります）、負の数でシフトするとエラーになります。`>>` は、符号付き整数では符号を保ち、符号なし整数では 0 で埋めます。これらの演算子と `b[i]`（バイトを整数として読む）を使えば、Bluetooth のキャラクタリスティックや NFC のレコードといったバイナリデータを読み書きできます（整数をまるごと、どちらのバイトオーダーでも読み書きするなら [`std/encoding`](https://asuka.egoist.dev/ja/docs/std/encoding)）。
 
 ```asuka
 let raw = b[1] | b[2] << 8                         // リトルエンディアンの uint16
@@ -352,7 +358,7 @@ let celsius = if raw & 0x8000 != 0 { raw - 0x10000 } else { raw }
 let out = bytes([flags, value & 0xff, value >> 8])
 ```
 
-`int` が表せるのは −2⁶³ から 2⁶³ − 1 までです。`+`、`-`、`*` の結果がこの範囲を超えると、ゼロ除算（`/`、`%`）と同じようにエラー “integer overflow” が投げられます。`catch` で受け取れ、どこでも受け取られなければいちばん近い `Boundary` に届きます（[エラー](https://asuka.egoist.dev/ja/docs/language/errors#エラー)を参照）。最小の `int` の `-x` と `abs(x)`、`/ -1`、範囲を超える配列の `sum()` も同じです。個数やサイズ、金額がオーバーフローしたら、それは起きたその場で見つかるバグであって、黙って保存される間違った数ではありません。
+`int` が表せるのは −2⁶³ から 2⁶³ − 1 までです。`+`、`-`、`*`、`**` の結果がこの範囲を超えると、ゼロ除算（`/`、`%`）と同じようにエラー “integer overflow” が投げられます。`catch` で受け取れ、どこでも受け取られなければいちばん近い `Boundary` に届きます（[エラー](https://asuka.egoist.dev/ja/docs/language/errors#エラー)を参照）。最小の `int` の `-x` と `abs(x)`、`/ -1`、範囲を超える配列の `sum()` も同じです。個数やサイズ、金額がオーバーフローしたら、それは起きたその場で見つかるバグであって、黙って保存される間違った数ではありません。どの整数型も同じように、それぞれの範囲で検査されます。`u8` の `255 + 1` はエラーを投げます。
 
 ```asuka
 let big = 9223372036854775807
@@ -360,7 +366,17 @@ let n = try big + 1 catch { 0 }               // 0：エラーが投げられた
 let next = big.addingChecked(1) ?? big          // オーバーフローなら none：big になる
 ```
 
-`&+`、`&-`、`&*` は代わりにラップアラウンドします。最大の `int` を超えると、64 ビットの 2 の補数どおりに最小値の側から続きます（`9223372036854775807 &+ 1` は `-9223372036854775808`）。ハッシュ、チェックサム、バイナリプロトコルが求めるのはこの動作です。代入には `&+=`、`&-=`、`&*=` を使います。
+`int` の範囲を超える数には、`std/bigint` の `BigInt` を使います。任意の大きさの整数で、算術演算子も比較もそのまま使えます（[標準ライブラリ](https://asuka.egoist.dev/ja/docs/stdlib)を参照）。
+
+```asuka
+import std/bigint.{BigInt}
+
+let big = BigInt.of(9223372036854775807)
+let past = big * big + BigInt.one           // 85070591730234615847396907784232501250
+let digits = "{BigInt.factorial(30)}"       // 265252859812191058636308480000000
+```
+
+`&+`、`&-`、`&*` は代わりにラップアラウンドします。最大の `int` を超えると、64 ビットの 2 の補数どおりに最小値の側から続きます（`9223372036854775807 &+ 1` は `-9223372036854775808`）。固定幅の型は、それぞれのビット幅でラップアラウンドします（`u8` の `255 &+ 1` は 0）。ハッシュ、チェックサム、バイナリプロトコルが求めるのはこの動作です。代入には `&+=`、`&-=`、`&*=` を使います。
 
 ```asuka
 fn fnv1a(data: bytes) -> int {
@@ -373,20 +389,54 @@ fn fnv1a(data: bytes) -> int {
 }
 ```
 
-オーバーフローを値として扱いたいときは、`a.addingChecked(b)`、`subtractingChecked`、`multipliedChecked` を使います。結果は `int?` で、オーバーフローすると none です。シフトとビット演算子が結果のせいでエラーを投げることはありません。範囲外の浮動小数点数に `int(x)` を使うと、いちばん近い `int` になります（NaN は `0`）。
+オーバーフローを値として扱いたいときは、`a.addingChecked(b)`、`subtractingChecked`、`multipliedChecked` を使います。結果は `int?`（`u8` なら `u8?`、ほかの型も同様）で、オーバーフローすると none です。シフトとビット演算子が結果のせいでエラーを投げることはありません。範囲外の浮動小数点数に `int(x)` を使うと、いちばん近い `int` になります（NaN は `0`）。
+
+#### 整数型
+
+`int` のほかに、ビット幅の決まった整数が、符号付きと符号なしの両方あります。
+
+| 型 | 値 |
+|---|---|
+| `i8`、`i16`、`i32` | −2⁷ から 2⁷ − 1、−2¹⁵ から 2¹⁵ − 1、−2³¹ から 2³¹ − 1 |
+| `int` | −2⁶³ から 2⁶³ − 1（`i64` はありません。`int` がそれにあたります） |
+| `u8`、`u16`、`u32`、`u64` | 0 から 2⁸ − 1（255）、2¹⁶ − 1、2³² − 1、2⁶⁴ − 1 |
+
+個数、インデックス、サイズ、セント単位の金額には `int` を使います。ほかの型は、それ自体に決まった幅があるもののためのものです。バイト（`u8`）、ピクセルのチャンネル、ファイル形式やプロトコルのフィールド、ハッシュ、`int` の範囲を超える ID（`u64`）、C の関数の値（`Int32` は `i32`：[Asuka から C を呼び出す](https://asuka.egoist.dev/ja/docs/c)）などです。どの型も自分の範囲をそのまま守ります。`int` と同じく範囲を超える算術はエラーを投げ、JSON、CSV、TOML、SQLite からその型に読み込む値も検査されます。
+
+整数リテラルは期待される型になり、その型に収まらなければなりません：`let level: u8 = 200`、`level + 1`、`let big: u64 = 18446744073709551615`。`let x: u8 = 256` や `let y: u8 = -1` は、書いた場所でエラーになります。期待される型がなければ `int` です。
+
+型の違う 2 つの整数を 1 つの演算子で組み合わせることはできません。`int` と `float` を混ぜられないのと同じで、`int` と `u8` も混ぜられません。`level` が `u8`、`offset` が `int` なら `level + offset` はエラーで（[mixed-numbers](https://asuka.egoist.dev/ja/docs/errors/mixed-numbers)）、`int` を取るところに `u8` を渡すのもエラーです。どちらにするかは変換で書きます。
+
+```asuka
+fn conversions(n: int, level: u8, ratio: float) -> [u8] {
+  let total = int(level) + n        // 拡大：必ず収まる
+  let a = u8(n)                     // n が収まらなければエラー（"integer overflow"）
+  let b = u8(exactly: n) ?? 0       // u8?：収まらなければ none
+  let c = u8(truncating: n)         // 下位 8 ビット：u8(truncating: 300) は 44、-1 なら 255
+  let d = u8(clamping: n)           // いちばん近い値：下回れば 0、上回れば 255
+  let e = u8(ratio)                 // 浮動小数点数：0 の方向へ切り捨て、範囲外ならいちばん近い値
+  return [a, b, c, d, e, u8(clamping: total)]
+}
+```
+
+`u8.min` と `u8.max` は型の範囲です（`int.max` は 9223372036854775807）。`u64.parse(text)` は、`toInt()` が `int` を読むのと同じようにテキストから値を読み（`radix:` も使えます）、整数でないときや収まらないときは none を返します。`int` の最大値を超える `u64` も、表示、解析、比較、除算、JSON への書き出しで、そのままの数として扱われます（`18446744073709551615`）。
+
+`-x` と `abs(x)` が取るのは符号付き整数です。符号なし整数には負の数がありません（`0 &- x` はラップアラウンドします）。整数型には `int` のメソッド（`toString(radix:)`、`padded(width)`、`float()`、`abs()`、チェック付きのメソッド）があり、書式指定（`"{id:x}"`）が使えます。数として順序づけとハッシュができ（マップやセットのキー、ジェネリクスでの `Comparable` と `Hashable`）、範囲も作れます：`for i in u16(0)..<count`。
+
+`bytes` から読んだバイトは `int` です（`b[i]`、0 から 255）。そのため、それに対する算術は 8 ビットでラップアラウンドしません。`b.toArray()` はバイト列を `[u8]` として返し、`bytes(xs)` は `[int]` からと同じように `[u8]` からもバイト列を作ります。
 
 #### 組み込みメソッド
 
-文字列、バイト列、配列、セット、マップ、オプショナルにはメソッドがあります。値そのものを変更するメソッド（`push`、`insert`、`removeAt`、`removeWhere`、`pop`、`clear`、`sort`、`remove`）は、`var` か状態に対してだけ呼べます。
+文字列、バイト列、配列、セット、マップ、オプショナルにはメソッドがあります。値そのものを変更するメソッド（`push`、`pushFirst`、`insert`、`removeAt`、`removeWhere`、`pop`、`popFirst`、`clear`、`sort`、`remove`）は、`var` か状態に対してだけ呼べます。
 
 | 型 | メソッド |
 |---|---|
-| `[T]` | `count()`、`count(where)`、`isEmpty()`、`first()`、`last()`、`get(i)`（`T?` を返す）、`push(x)`、`insert(x, at: i)`、`removeAt(i)`、`removeWhere(p)`、`pop()`、`clear()`、`map(f)`、`flatMap(f)`（`f` が返す配列を順につなげる）、`compactMap(f)`（`f` の結果から none を除く）、`filter(p)`、`reduce(initial, f)`、`any(p)`、`all(p)`、`index(p)`（`int?` を返す）、`find(p)`、`contains(x)`、`sum()`、`min()`、`max()`（`T?` を返す。`min(by:)`、`max(by:)` は「より小さい」の比較を取る）、`unique()`、`grouped(by: f)`（`[K: [T]]` を返す）、`chunked(n)`、`zip(other)`（短いほうの長さまでペアにする）、`reversed()`、`slice(from, to)`（`to` を省くと末尾まで）、`prefix(n)`、`suffix(n)`、`sorted()`、`sorted(by)`、`sort()`、`sort(by)`、`enumerated()`、`joined(separator:)`（文字列の配列）、`+` |
-| `Set<T>` | `count()`、`isEmpty()`、`contains(x)`、`insert(x)`（新しく加わったかを返す）、`remove(x)`（あったかを返す）、`union(s)`、`intersection(s)`、`subtracting(s)`、`isSubset(of: s)`、`isSuperset(of: s)`。`Set(xs)` は配列の重複しない要素、`Set<T>()` は空のセット |
-| `[K: V]` | `m[k]`（`V?` を返す）、`m[k] = v`、`count()`、`isEmpty()`、`has(k)`、`get(k)`、`remove(k)`、`keys()`、`values()`（挿入した順）、`mapValues(f)`、`filter((k, v) => …)` |
-| `string` | `count()`（文字数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s)`、`hasPrefix(s)`、`hasSuffix(s)`、`replace(old, new, count:)`（count を指定しなければすべて置き換え）、`split(sep, count:)`、`fields()`（空白で区切った単語）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（バイト単位の位置。見つからなければ none）、`slice(from, to)`（文字単位）、`byteSlice(from, to)`（バイト単位：find が返す位置）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toInt(radix:)`、`toFloat()`、`repeat(n)`、`chars()`、`reversed()`、`bytes()`、`+` |
-| `bytes` | `b[i]`（0 から 255 の `int`。範囲外はエラー）、`count()`、`isEmpty()`、`get(i)`（`int?` を返す）、`slice(from, to)`、`concat(b)`、`string()`（UTF-8 として読み、不正な部分は U+FFFD になる）、`hex()` と `hex(separator)`（`"04 a1"`）。`bytes()` は空のバイト列、`bytes([0x04, 0xa1])` はそのバイト列、`s.bytes()` は文字列の UTF-8 |
-| `int` | `float()`、`abs()`、`toString(radix:)`（`255.toString(radix: 16)` は `"ff"`）、`padded(width)`（`7.padded(2)` は `"07"`）、`addingChecked(o)`、`subtractingChecked(o)`、`multipliedChecked(o)`（`int?`：オーバーフローなら none） |
+| `[T]` | `count()`、`count(where)`、`isEmpty()`、`first()`、`last()`、`get(i)`（`T?` を返す）、`push(x)`、`pushFirst(x)`、`insert(x, at: i)`、`removeAt(i)`、`removeWhere(p)`、`pop()`、`popFirst()`、`clear()`、`map(f)`、`flatMap(f)`（`f` が返す配列を順につなげる）、`compactMap(f)`（`f` の結果から none を除く）、`filter(p)`、`reduce(initial, f)`、`any(p)`、`all(p)`、`index(p)`（`int?` を返す）、`find(p)`、`contains(x)`、`sum()`、`min()`、`max()`（`T?` を返す。`min(by:)`、`max(by:)` は「より小さい」の比較を、`min(key:)`、`max(key:)` はキーを取る）、`unique()`、`grouped(by: f)`（`[K: [T]]` を返す）、`chunked(n)`、`zip(other)`（短いほうの長さまでペアにする）、`reversed()`、`slice(from, to)`（`to` を省くと末尾まで）、`prefix(n)`、`suffix(n)`、`sorted()`、`sorted(by)`、`sorted(key:, descending:)`、`sort()`、`sort(by)`、`sort(key:, descending:)`、`enumerated()`、`joined(separator:)`（文字列の配列）、`lazy()`（`Seq<T>` を返す）、`+` |
+| `Set<T>` | `count()`、`isEmpty()`、`contains(x)`、`insert(x)`（新しく加わったかを返す）、`remove(x)`（あったかを返す）、`union(s)`、`intersection(s)`、`subtracting(s)`、`isSubset(of: s)`、`isSuperset(of: s)`、`lazy()`。`Set(xs)` は配列の重複しない要素、`Set<T>()` は空のセット |
+| `[K: V]` | `m[k]`（`V?` を返す）、`m[k] = v`、`count()`、`isEmpty()`、`has(k)`、`get(k)`、`remove(k)`、`keys()`、`values()`（挿入した順）、`mapValues(f)`、`filter((k, v) => …)`、`lazy()`（`(key, value)` の組） |
+| `string` | `count()`（文字数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s, ignoreCase:)`、`hasPrefix(s, ignoreCase:)`、`hasSuffix(s, ignoreCase:)`、`equals(s, ignoreCase:)`、`compare(s, ignoreCase:)`（負、ゼロ、正のいずれか）、`foldCase()`、`replace(old, new, count:)`（count を指定しなければすべて置き換え）、`split(sep, count:)`、`fields()`（空白で区切った単語）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（バイト単位の位置。見つからなければ none）、`slice(from, to)`（文字単位）、`byteSlice(from, to)`（バイト単位：find が返す位置）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toInt(radix:)`、`toFloat()`、`repeat(n)`、`chars()`、`graphemes()`、`lazy()`（文字の `Seq<string>`）、`reversed()`、`bytes()`、`+` |
+| `bytes` | `b[i]`（0 から 255 の `int`。範囲外はエラー）、`count()`、`isEmpty()`、`get(i)`（`int?` を返す）、`slice(from, to)`、`concat(b)`、`string()`（UTF-8 として読み、不正な部分は U+FFFD になる）、`hex()` と `hex(separator)`（`"04 a1"`）、`toArray()`（`[u8]` を返す）。`bytes()` は空のバイト列、`bytes([0x04, 0xa1])` はそのバイト列、`bytes(xs)` は `[u8]` のバイト列、`s.bytes()` は文字列の UTF-8 |
+| `int`、`i8` … `u64` | `float()`、`abs()`（符号付きの型）、`toString(radix:)`（`255.toString(radix: 16)` は `"ff"`）、`padded(width)`（`7.padded(2)` は `"07"`）、`addingChecked(o)`、`subtractingChecked(o)`、`multipliedChecked(o)`（`int?`、`u8` なら `u8?`：オーバーフローなら none）。`T.min`、`T.max`、`T.parse(text, radix:)`（`T?` を返す） |
 | `float` | `fixed(digits)`、`rounded()`、`floor()`、`ceil()`、`int()`（0 の方向へ切り捨て）、`abs()` |
 | `Color` | `opacity(a)`：元の不透明度の a 倍で描く（セマンティックカラーはセマンティックカラーのまま）。`hex()`（`"#0a84ff"`。セマンティックカラーはその名前：`".accent"`） |
 | `Duration` | `nanoseconds()`、`milliseconds()`（整数）、`seconds()`、`minutes()`、`hours()`（浮動小数点数）、`rounded(to:)`、`truncated(to:)`、`+`、`-`、`* n`（整数でも浮動小数点数でも：`1.5 * 1h`）、`/ n`、`/ d`（別の Duration：何個分か。浮動小数点数） |
@@ -425,11 +475,73 @@ fn report(sales: [Sale]) -> [string] {
 
 `unique()` は各要素を最初に現れた位置に一度だけ残し、`grouped(by:)` もキーを最初に現れた順に並べます。どちらも値（`grouped` ではキー）が `Hashable` である必要があります。`min()` と `max()` は `sorted()` と同じ順序で比べ、等しい要素があれば最初のものを返します。`chunked(n)` の `n` が 1 未満だと、範囲外の `xs[i]` と同じくエラーになります。
 
+`sorted(key:)` は、関数が各要素から求めるキーの順に並べます。キーは `Comparable` で、要素ごとに一度だけ求められます（`people.sorted(key: p => p.age)`）。`descending: true` を付けると大きいものから並び、どちらの向きでも安定ソートなので、キーが等しい要素は元の順序を保ちます。`sort(key:)` は `var` をその場で並べ替え、`min(key:)` と `max(key:)` はキーが最小、最大の要素を返します（等しければ最初のもの）。一つのキーでは決まらない順序には、「より小さい」の比較を取る `sorted(by:)` を使います。
+
+```asuka
+struct Player {
+  name: string
+  score: int
+  joined: int
+}
+
+fn ranking(players: [Player]) -> [string] {
+  let best = players.sorted(key: p => p.score, descending: true)
+  let newest = players.max(key: p => p.joined)
+  return best.map(p => p.name) + [newest?.name ?? ""]
+}
+```
+
+配列は両端キューでもあります。`pushFirst(x)` と `popFirst()` は、`push(x)` と `pop()` が末尾を変えるのと同じように先頭を変え、どれも O(1)（償却。先頭を一度変えた配列は、先頭に余白を持ちます）です。`insert(x, at: 0)` と `removeAt(0)` も同じです。それ以外の位置での挿入や削除では、短い側の要素だけが動きます。つまりキューは配列そのもので、`queue.push(job)` で入れて `queue.popFirst()` で取り出します。
+
 `toInt(radix:)` は文字列全体を 2 から 36 までの基数で読みます。英字は大文字でも小文字でもよく、先頭に符号を付けられます（`"ff".toInt(radix: 16)` は 255、`"-101".toInt(radix: 2)` は -5）。読めなければ none です。逆に `toString(radix:)` は整数をその基数で、英字は小文字で書き出します。基数が 2 から 36 の範囲外ならエラーです。
 
-`min`、`max`、`abs`、`float(n)`、`int(x)` は関数です。それ以外（`math.sqrt`、`math.pow`、`math.pi` など）は `std/math` にあります。
+`min`、`max`、`abs`、`float(n)`、`int(x)`、それにほかの整数型への変換（`u8(x)`）は関数です。それ以外（`math.sqrt`、`math.pow`、`math.pi` など）は `std/math` にあります。
+
+`upper()` と `lower()` は Unicode の規則で文字を変換し、どの言語でも結果は同じです。`"straße".upper()` は `"STRASSE"` になり、単語の末尾の `Σ` は小文字で `ς` になります。`ignoreCase: true` は二つの文字列のケースフォールディング（`foldCase()`。`"Straße"` も `"STRASSE"` も `"strasse"` になります）を比べます。Go の `strings.EqualFold` や Python の `casefold` と同じ考え方です。一致は文字の切れ目で始まって切れ目で終わる必要があるため、`"ß"` は `"s"` で始まるとはみなされません。どれも特定の言語の規則には従いません。トルコ語の点のない ı や点付きの İ もほかと同じように変換され（`"İ".lower()` は `i` と結合用の点）、文字列の正規化もしません（`"é"` と、`e` に結合アクセントを付けたものは別物です）。大文字小文字を区別せずに名前を並べ替えるには、`compare` を `sorted(by:)` に渡します。`foldCase()` は大文字小文字を無視するキーになります。
+
+```asuka
+fn byName(names: [string]) -> [string] = names.sorted(by: (a, b) => a.compare(b, ignoreCase: true) < 0)
+
+fn sameUser(a: string, b: string) -> bool = a.trim().equals(b.trim(), ignoreCase: true)
+
+fn isMarkdown(path: string) -> bool = path.hasSuffix(".md", ignoreCase: true)
+```
+
+`count()` と `chars()` はコードポイントを数えます。`graphemes()` は読み手が一文字と感じる単位を返します。Unicode のテキスト分割（UAX #29）に従うので、`"e\u{301}"`、国旗（`"🇯🇵"`）、ZWJ でつないだ家族の絵文字はそれぞれ一つです。
 
 `toInt()` と `toFloat()` は文字列全体を読み、読めなければ none を返します。符号は付けても付けなくてもよく、その後に数字が続き、前後に余計なものがあってはいけません（`" 12"` は none なので、先に `trim()` します）。`toInt()` が読むのは整数（`"+7"`、`"-42"`）だけで、`toFloat()` は小数部と指数（`"2.5"`、`".5"`、`"1e-3"`）、それに浮動小数点数を表示したときの形（`"Infinity"`、`"NaN"`）も読みます。どちらも、ユーザーの言語にかかわらず小数点は `.` です。
+
+#### 遅延シーケンス
+
+`xs.lazy()` は配列の要素を `Seq<T>`、つまり遅延シーケンスにします。その `map`、`filter`、`take` などは別の `Seq` を作るだけで、何も計算しません。計算するのは、それを読むもの（`for`、`toArray()`、`first()`、`reduce` など）です。要素は一つずつ、すべての段階をまとめて通って求められ、途中で配列は作られません。そのため、百万個の要素に処理をつなげて最後に三つだけ残すなら、計算されるのはその三つと、それを見つけるまでに必要だった要素だけです。終わりのないシーケンスも作れます。
+
+```asuka
+fn squaresUnder(limit: int) -> [int] = Seq(from: 1).map(n => n * n).takeWhile(n => n < limit).toArray()
+
+fn firstLong(lines: [string]) -> string? = lines.lazy().map(l => l.trim()).find(where: l => l.count() > 80)
+
+fn fibonacci() -> Seq<int> = Seq(state: (0, 1), next: s => (s.0, (s.1, s.0 + s.1)))
+```
+
+マップの `lazy()` は `(key, value)` の組を、セットのものは要素を、文字列のものは文字を、範囲のもの（`(0..<n).lazy()`）は数を、配列を作らずに返します。`Seq(…)` は関数からシーケンスを作ります。
+
+| 作り方 | 要素 |
+|---|---|
+| `Seq(from: n, by: step)` | `n`、`n + step`、……と終わりなく続きます。`by` を省くと 1 です |
+| `Seq(first: x, next: f)` | `x`、`f(x)`、`f(f(x))`、……と、`f` が none を返すまで続きます |
+| `Seq(state: s, next: f)` | `f(s)` が次の要素と次の状態の組 `(x, s2)` を返し、終わりでは none を返します |
+| `Seq(repeating: x, count: n)` | `x` を `n` 回。`count` を省くと終わりなく続きます |
+
+| | メソッド |
+|---|---|
+| 新しい `Seq` を返す | `map(f)`、`filter(p)`、`compactMap(f)`、`flatMap(f)`（`f` が返す `Seq` の要素を順につなげる）、`enumerated()`、`zip(other)`、`take(n)`、`skip(n)`、`takeWhile(p)`、`skipWhile(p)`、`chunked(n)`、`windows(n)`（隣り合う `n` 個ずつ。`[1, 2, 3]` の `windows(2)` は `[1, 2]`、`[2, 3]`）、`onEach(f)`（要素が読まれるたびに `f` を呼ぶ）、`unique()`、`concat(other)` |
+| 読む | `toArray()`、`toSet()`、`toMap()`（`(key, value)` の組から）、`count()`、`count(where:)`、`first()`、`last()`、`find(where:)`、`any(where:)`、`all(where:)`、`contains(x)`、`reduce(initial, f)`、`sum()`、`min()`、`max()`、`min(by:)`、`max(by:)`、`min(key:)`、`max(key:)`、`joined(separator:)` |
+
+`take`、`find`、`first`、`any`、`all` は答えが出た時点で要素を取り出すのをやめ、その先の要素は一切計算しません。`Seq` は読むたびに先頭から計算されます（`for` で二回回せば二回計算します）。ほかの値と同じく、作った時点のデータ元の値を保持するので、あとで配列を変更しても `Seq` は変わりません。
+
+段階の関数はシーケンスが読まれるときに実行されるので、エラーを投げられません。投げる必要があるときは `for` の中で行うか、配列の `map` を使います。読むときにその場で呼ばれる関数（`reduce`、`find(where:)`、`any`、`count(where:)`、`min(key:)` など）は投げてもよく、その場合は配列のメソッドと同じく、呼び出しがそのエラーを投げます。
+
+優先度付きキューと、キーの順に保つマップとセットは、`std/collections` の `Heap`、`SortedMap`、`SortedSet` です（[標準ライブラリ](https://asuka.egoist.dev/ja/docs/stdlib)を参照）。
 
 #### 値のセマンティクス
 
@@ -552,7 +664,7 @@ match line {
 }
 ```
 
-構造体と列挙型は、メソッドから演算子を得ます。`fn add(o: T) -> R` は `a + b` に、`fn sub(o: T) -> R`（または `minus`）は `a - b` に、`fn mul(o: T) -> R`（または `times`）は `a * b` に、`fn div(o: T) -> R`（または `quo`）は `a / b` に、`fn rem(o: T) -> R` は `a % b` に、`fn neg() -> R` は `-a` に、`fn compare(o: T) -> int`（負、ゼロ、正）は `<`、`<=`、`>`、`>=` になり、`sorted()` や `T: Comparable` にも使われます（[関数](https://asuka.egoist.dev/ja/docs/language/functions#インターフェースとジェネリクス)を参照）。`T` は値そのものと違う型でもかまいません（`Money * int`）。名前が二つある演算子では、それぞれのメソッドが別の `T` を受け取ります。`Decimal` の `mul(o: Decimal)` と `times(n: int)` が、`price * rate` と `price * 3` になります。逆の順序（`3 * price`）は導かれません。メソッドが `a` と同じ型を返すなら、`a += b` はこれらのメソッドによる `a = a + b` で（`-=`、`*=`、`/=`、`%=` も同じ）、変数、状態、フィールド、要素に使えます（状態の変更は一度だけです）。`std/time` の `Time` が `Duration` を足し、別の `Time` を引けるのはこのためです。
+構造体と列挙型は、メソッドから演算子を得ます。`fn add(o: T) -> R`（または `plus`）は `a + b` に、`fn sub(o: T) -> R`（または `minus`）は `a - b` に、`fn mul(o: T) -> R`（または `times`）は `a * b` に、`fn div(o: T) -> R`（または `quo`）は `a / b` に、`fn rem(o: T) -> R` は `a % b` に、`fn pow(o: T) -> R` は `a ** b` に、`fn neg() -> R` は `-a` に、`fn compare(o: T) -> int`（負、ゼロ、正）は `<`、`<=`、`>`、`>=` になり、`sorted()` や `T: Comparable` にも使われます（[関数](https://asuka.egoist.dev/ja/docs/language/functions#インターフェースとジェネリクス)を参照）。`T` は値そのものと違う型でもかまいません（`Money * int`）。名前が二つある演算子では、それぞれのメソッドが別の `T` を受け取ります。`Decimal` の `mul(o: Decimal)` と `times(n: int)` が、`price * rate` と `price * 3` になります。逆の順序（`3 * price`）は導かれません。メソッドが `a` と同じ型を返すなら、`a += b` はこれらのメソッドによる `a = a + b` で（`-=`、`*=`、`/=`、`%=`、`**=` も同じ）、変数、状態、フィールド、要素に使えます（状態の変更は一度だけです）。`std/time` の `Time` が `Duration` を足し、別の `Time` を引けるのはこのためです。
 
 ```asuka
 struct Money {
@@ -823,9 +935,9 @@ let icon = match (online, unread) {
 
 型つきの名前（`c: Circle`）は、インターフェースの値が何の型なのかを調べます。値がその型のときにマッチし、その型として束縛します。構造体のパターン（`Circle(radius)`）や型を明記した列挙型のケース（`Unit.big(n)`）も同じです。インターフェースの値に対する `match` は `_` で終わらせます。詳しくは[インターフェースとジェネリクス](https://asuka.egoist.dev/ja/docs/language/functions#インターフェースとジェネリクス)を参照してください：`if let c: Circle = shape { … }`、`let sq: Square = shape else { return }`。
 
-`for` で回せるのは、配列、セット、マップの `(key, value)` の組、範囲です。`a..<b` は `a` から `b` の手前までの整数、`a..b` は `b` を含む整数です（`0..<3` は `[0, 1, 2]`。範囲を `for` で回しても配列は作られません）。`while cond { … }` は cond が成り立つあいだ繰り返します。`break` はループを抜け、`continue` は次の周回に進みます。
+`for` で回せるのは、配列、セット、マップの `(key, value)` の組、遅延シーケンス（`Seq`。[値と型](https://asuka.egoist.dev/ja/docs/language/types#遅延シーケンス)を参照）、範囲です。`a..<b` は `a` から `b` の手前までの整数、`a..b` は `b` を含む整数です（`0..<3` は `[0, 1, 2]`。範囲を `for` で回しても配列は作られません）。`while cond { … }` は cond が成り立つあいだ繰り返します。`break` はループを抜け、`continue` は次の周回に進みます。
 
-`for` では、自分で定義した型の値も回せます。一つはイテレーターで、型に `mut fn next() -> T?` があるものです（`for` はそのコピーに対して `none` が返るまで呼び出します）。もう一つはシーケンスで、`fn iter()` がイテレーターを返すものです（`for` は一度だけ呼び出します）。prelude の `Iterator<T>` はそのような型を表し、制約に使えます（`fn sum<I: Iterator<int>>(xs: I) -> int`）。
+`for` では、自分で定義した型の値も回せます。一つはイテレーターで、型に `mut fn next() -> T?` があるものです（`for` はそのコピーに対して `none` が返るまで呼び出します）。もう一つはシーケンスで、`fn iter()` がイテレーターか `Seq` を返すものです（`for` は一度だけ呼び出します）。prelude の `Iterator<T>` はそのような型を表し、制約に使えます（`fn sum<I: Iterator<int>>(xs: I) -> int`）。イテレーターは `none` で終わりを表すので、要素そのものが none になりうる（`T?` の）型は `Seq` を返します（`fn iter() -> Seq<int?> = slots.lazy()`）。
 
 ```asuka
 struct Node {
@@ -1985,6 +2097,28 @@ test "archiving removes the row" {
 
 `asuka test` は、パッケージのテストをデバイスなしで実行します。プラットフォームと同じようにビューをレイアウトし、テキストは 1 文字あたり固定の幅で測ります。また、時間はほかに実行できるものが何もないときにしか進みません（テストの中の `sleep(5s)` には時間がかかりません）。`mount` はアプリを返すので、それを操作して確かめます（`tap`、`longPress`、`type(_, into:)`、`submit`、`toggle`、`slide`、`select`、`swipe(_, action:)`、`refresh`、`scrollTo`、`back`、`dismiss`、`pickDate`、`pickColor`、`expect`、`expectNo`、`texts()`、`disabled(text)`、`until`、`waitFor`、`idle`）。`in(.navigationBar)`、`in(.sidebar)`、`nextTo(label)` で、テキストが指すものを絞り込めます。ルーターがあれば、`mount(…, at: "/inbox/1")`、`href`、`history()`、`goBack()`、`goForward()` も使えます。詳しくは[テスト](https://asuka.egoist.dev/ja/docs/testing)を参照してください。
 
+パラメーターのあるテストはプロパティテストで、`asuka test` がパラメーターの値を生成して実行します。失敗した入力は、まだ失敗するいちばん単純なものに縮小されます。`bench "name" { … }` はベンチマークで、`asuka test --bench` が計測します。その中の `measure { … }` が計測される部分で、準備のあとに書きます。`keep(x)` は、結果が最適化で省かれないようにします。`expectSnapshot(value)` と `expectInlineSnapshot(value, "…")` は、値を出力したものをスナップショットと比べます。スナップショットは `asuka test` が書き込みます。
+
+```asuka
+fn fib(n: int) -> int {
+  if n < 2 { return n }
+  return fib(n - 1) + fib(n - 2)
+}
+
+test "fib grows" (n: int) {
+  if n < 2 || n > 30 { return }
+  expect(fib(n) >= fib(n - 1))
+}
+
+test "the first ones" {
+  expectInlineSnapshot([fib(1), fib(2), fib(3), fib(10)], "[1, 1, 2, 55]")
+}
+
+bench "fib 20" {
+  keep(fib(20))
+}
+```
+
 ## 診断コード
 
 - argument-count: 呼び出しの引数が多すぎる、または少なすぎる. 関数の宣言どおりに渡します。
@@ -2009,6 +2143,7 @@ test "archiving removes the row" {
 - format-spec: 値に合わない補間の書式. メッセージのとおり、値の型に合った書式を書きます：`{n:>6}`、`{x:.2f}`、`{n:#x}`、`{name:<12}`。
 - group-not-calls: `load (…)` の要素が、どれも呼び出しというわけではない. 呼び出しだけをまとめ（`load (api.user(id), api.posts(id))`）、値はそれらの呼び出しに渡すか、load の横に置きます。
 - import-cycle: 互いにインポートし合うパッケージ. 両方が必要とするものを 3 つ目のパッケージに移し、両方からそれをインポートします。
+- inline-snapshot: 呼び出しに直接書かれた文字列ではないインラインスナップショット. スナップショットを文字列リテラルとして書くか、省略して（`expectInlineSnapshot(value)`）最初の実行で `asuka test` に書かせます。
 - int-overflow: 型の範囲に収まらない整数リテラル. 範囲内の数にするか、より広い型（`u16`、`int`、`u64`）や `float` を使います。
 - interface-not-satisfied: 宣言した interface を実装していない型. 足りないメソッド（メッセージに一覧があります）を interface のシグネチャーで追加します。
 - internal-error: コンパイラー自身の誤り. https://github.com/egoist/asuka/issues に報告してください（プログラム、またはそれを再現する最小のプログラムを添えて）。
@@ -2087,6 +2222,7 @@ test "archiving removes the row" {
 - spawn-captures-state: 状態や値でないものを読み書きする `spawn`. 先に状態を `let` に読み込んでから渡し、`spawn` が返したものを代入します。
 - statement-in-view: コンポーネントのビューのあいだにある文. 文はハンドラー（`on press { … }`）、fn、タスク、エフェクトに書きます。
 - syntax-error: パーサーがここで別のものを期待している. メッセージの「expected …, found …」を読み、期待されているものを書くか、指摘された位置で開いているものを閉じます。
+- test-parameter: asuka test が生成できない型のテストのパラメーター. テストが扱うものをデータ（ID、フィールドからなる struct）として受け取り、残りはテストの本体でそこから作ります。
 - too-large: バイトコードに収まらないほど大きい関数. 関数を分けるか、データをリテラルではなくファイル（`embed.json`）に置きます。
 - tr-in-package: アプリではないパッケージでの `tr`. テキストをパラメーターとして受け取り、アプリから `tr.key()` を渡してもらいます。
 - type-arguments: 型引数の数が違う. 宣言のとおりの数だけ型を渡します（`Set<int>`、`Page<Item>`）。

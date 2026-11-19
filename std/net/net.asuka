@@ -1,0 +1,1139 @@
+// Package std/net speaks protocols other than HTTP: TCP connections and
+// servers, TLS over them, UDP datagrams, DNS lookups, and IP addresses.
+// Redis, SMTP, a game's server, a protocol of your own:
+//
+//   let c = try await net.connect("localhost", 6379)
+//   try await c.write("PING\r\n")
+//   let reply = try await c.readLine()        // "+PONG"
+//
+//   let server = try await net.serve(7000, c => {
+//     for await line in c.lines() {
+//       try await c.write("{line.upper()}\n")
+//     }
+//   })
+//
+//   let tls = try await net.connectTLS("example.com", 443)
+//
+// TLS (1.2 and 1.3) checks the server's certificate against the
+// authorities the system trusts unless told otherwise (clientTLS).
+//
+// Every wait is async and runs off the main thread: a connect, a read,
+// a write, a lookup. Cancelling the task that waits (or its owner going)
+// stops the wait; what had come by then isn't lost, and the next read
+// gets it. A socket belongs to the task that made it: when that task
+// ends, the socket closes. A web page has no sockets
+// (NetError.unsupported); its IP addresses and host:port helpers work.
+
+import std/os
+
+/// What can go wrong with a connection, a socket or a lookup.
+pub enum NetError: Error {
+  /// Nothing accepts connections at the address: the other side refused.
+  refused(address: string)
+  /// The other side reset the connection (or went away while this wrote).
+  reset
+  /// The time given (a timeout, a connection's readTimeout or
+  /// writeTimeout) ran out.
+  timedOut
+  /// The address can't be reached: no route to it, or to its network.
+  unreachable(address: string)
+  /// The name doesn't exist, or has no records of the kind asked for.
+  notFound(name: string)
+  /// The name couldn't be looked up: no DNS server answered, or it failed.
+  lookupFailed(name: string, reason: string)
+  /// The connection or socket is closed: by close(), or as its task ended.
+  closed
+  /// The connection ended before what was asked for came: readExactly's
+  /// bytes.
+  ended
+  /// Another socket listens or is bound at the address.
+  addressInUse(address: string)
+  /// The address to listen or bind at isn't this computer's.
+  addressUnavailable(address: string)
+  /// The system doesn't allow it: a port below 1024 without privileges,
+  /// a firewall.
+  denied(reason: string)
+  /// More came than the limit: a line past readLine's max, a datagram
+  /// past 65507 bytes.
+  tooLarge(limit: int)
+  /// An argument that can't be: a port out of range, an address that
+  /// isn't one.
+  invalid(reason: string)
+  /// A web page has no sockets.
+  unsupported
+  /// Another failure: the system's reason.
+  failed(reason: string)
+  /// TLS failed: the handshake (no version, cipher suite or ALPN
+  /// protocol in common, the other side's alert, a server that doesn't
+  /// speak TLS), or a record that doesn't check out.
+  tls(reason: string)
+  /// The other side's certificate isn't trusted: why, and the reason in
+  /// words ("example.com's certificate expired on 2025-03-01").
+  untrustedCertificate(problem: CertificateProblem, reason: string)
+
+  /// The error's text: what failed, and where.
+  fn message() -> string {
+    match self {
+      .refused(address) => return "the connection to {address} was refused: nothing accepts connections there"
+      .reset => return "the connection was reset by the other side"
+      .timedOut => return "the time ran out"
+      .unreachable(address) => return "{address} can't be reached: there's no route to it"
+      .notFound(name) => return "{name} wasn't found: no such host, or no records of the kind asked for"
+      .lookupFailed(name, reason) => return "{name} couldn't be looked up: {reason}"
+      .closed => return "the connection is closed"
+      .ended => return "the connection ended before what was asked for came"
+      .addressInUse(address) => return "{address} is in use: another socket listens or is bound there"
+      .addressUnavailable(address) => return "{address} isn't one of this computer's addresses"
+      .denied(reason) => return reason
+      .tooLarge(limit) => return "more than {limit} bytes came without what was asked for"
+      .invalid(reason) => return reason
+      .unsupported => return "a web page has no sockets (a program, a desktop app and a phone's app have)"
+      .failed(reason) => return reason
+      .tls(reason) => return "TLS failed: {reason}"
+      .untrustedCertificate(_, reason) => return reason
+    }
+  }
+}
+
+// typed is the NetError the builtins' "std/net:<case>:<detail>" says; any
+// other error as it is.
+fn typed(e: Error) -> Error {
+  let m = e.message
+  if !m.hasPrefix("std/net:") {
+    return e
+  }
+  let parts = m.trimPrefix("std/net:").split(":", count: 2)
+  let kind = parts[0]
+  let detail = if parts.count() > 1 { parts[1] } else { "" }
+  match kind {
+    "refused" => return NetError.refused(address: detail)
+    "reset" => return NetError.reset
+    "timedOut" => return NetError.timedOut
+    "unreachable" => return NetError.unreachable(address: detail)
+    "notFound" => return NetError.notFound(name: detail)
+    "lookupFailed" => {
+      let p = detail.split(":", count: 2)
+      return NetError.lookupFailed(name: p[0], reason: if p.count() > 1 { p[1] } else { "it failed" })
+    }
+    "closed" => return NetError.closed
+    "ended" => return NetError.ended
+    "addressInUse" => return NetError.addressInUse(address: detail)
+    "addressUnavailable" => return NetError.addressUnavailable(address: detail)
+    "denied" => return NetError.denied(reason: detail)
+    "tooLarge" => return NetError.tooLarge(limit: detail.toInt() ?? 0)
+    "invalid" => return NetError.invalid(reason: detail)
+    "unsupported" => return NetError.unsupported
+    "tls" => return NetError.tls(reason: detail)
+    "untrustedCertificate" => {
+      let p = detail.split(":", count: 2)
+      return NetError.untrustedCertificate(problem: problemNamed(p[0]), reason: if p.count() > 1 { p[1] } else { "the certificate isn't trusted" })
+    }
+    _ => return NetError.failed(reason: detail)
+  }
+}
+
+// ---- IP addresses ----
+
+/// An IP address: IPv4's 4 bytes or IPv6's 16, and an IPv6 address's
+/// zone (the interface a link-local address is on). parse reads one,
+/// string() writes it; equal addresses are ==, and hash alike.
+pub struct IP {
+  /// The address's bytes, in network order: 4 for IPv4, 16 for IPv6.
+  octets: bytes
+  /// The zone of a scoped IPv6 address: "en0", "eth1", or Windows'
+  /// interface number ("12"); "" for none.
+  zone: string = ""
+
+  /// 127.0.0.1.
+  let loopback = IP(octets: bytes([127, 0, 0, 1]))
+  /// ::1.
+  let loopbackV6 = IP(octets: bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]))
+  /// 0.0.0.0, every IPv4 interface's.
+  let any = IP(octets: bytes([0, 0, 0, 0]))
+  /// ::, every interface's.
+  let anyV6 = IP(octets: bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]))
+
+  /// The address text says: IPv4's four decimal parts ("192.0.2.1"),
+  /// IPv6's groups ("2001:db8::1", "::ffff:192.0.2.1"), with a zone after
+  /// a % ("fe80::1%en0"); none for anything else (brackets, a port,
+  /// leading zeros in IPv4).
+  static fn parse(text: string) -> IP? {
+    var addr = text
+    var zone = ""
+    if let i = text.find("%") {
+      addr = text.byteSlice(0, i)
+      zone = text.byteSlice(i + 1, text.byteCount())
+      if zone.isEmpty() {
+        return none
+      }
+    }
+    let b = ipParse(addr) else { return none }
+    if !zone.isEmpty() && b.count() != 16 {
+      return none
+    }
+    return IP(octets: b, zone: zone)
+  }
+
+  /// The IPv4 address a.b.c.d.
+  static fn v4(a: int, b: int, c: int, d: int) -> IP = IP(octets: bytes([a & 255, b & 255, c & 255, d & 255]))
+
+  /// Whether it's an IPv4 address.
+  fn isV4() -> bool = octets.count() == 4
+  /// Whether it's an IPv6 address (an IPv4 address mapped into IPv6
+  /// among them: unmapped() makes it IPv4).
+  fn isV6() -> bool = octets.count() == 16
+
+  /// The address an IPv4 address mapped into IPv6 (::ffff:192.0.2.1)
+  /// stands for, as IPv4; any other as it is.
+  fn unmapped() -> IP {
+    if isV6() && octets.slice(0, 12) == bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255]) {
+      return IP(octets: octets.slice(12, 16))
+    }
+    return self
+  }
+
+  /// Whether it's this computer's own: 127.0.0.0/8, ::1.
+  fn isLoopback() -> bool {
+    let u = unmapped()
+    return if u.isV4() { u.octets[0] == 127 } else { u == IP.loopbackV6 }
+  }
+  /// Whether it's every interface's: 0.0.0.0, ::.
+  fn isUnspecified() -> bool = self == IP.any || self == IP.anyV6
+  /// Whether it's a private network's (RFC 1918's 10/8, 172.16/12,
+  /// 192.168/16; IPv6's unique local fc00::/7).
+  fn isPrivate() -> bool {
+    let u = unmapped()
+    if u.isV4() {
+      let a = u.octets[0]
+      let b = u.octets[1]
+      return a == 10 || (a == 172 && b >= 16 && b < 32) || (a == 192 && b == 168)
+    }
+    return u.octets[0] & 0xfe == 0xfc
+  }
+  /// Whether it's link-local: 169.254/16, fe80::/10.
+  fn isLinkLocal() -> bool {
+    let u = unmapped()
+    if u.isV4() {
+      return u.octets[0] == 169 && u.octets[1] == 254
+    }
+    return u.octets[0] == 0xfe && u.octets[1] & 0xc0 == 0x80
+  }
+  /// Whether it's a multicast group's: 224.0.0.0/4, ff00::/8.
+  fn isMulticast() -> bool {
+    let u = unmapped()
+    return if u.isV4() { u.octets[0] & 0xf0 == 0xe0 } else { u.octets[0] == 0xff }
+  }
+
+  /// The address as text: "192.0.2.1"; IPv6 as RFC 5952 writes it
+  /// ("2001:db8::1", the longest run of zero groups as ::), its zone after
+  /// a %.
+  fn string() -> string {
+    let t = ipText(octets)
+    return if zone.isEmpty() { t } else { "{t}%{zone}" }
+  }
+}
+
+/// An IP network: an address and how many of its leading bits are the
+/// network's (CIDR: 192.168.0.0/16, 2001:db8::/32).
+pub struct Prefix {
+  /// The network's address (its bits past bits are 0).
+  ip: IP
+  /// How many leading bits name the network: 0 to 32 for IPv4, to 128
+  /// for IPv6.
+  bits: int
+
+  /// The network text says ("10.0.0.0/8", "2001:db8::/32"), its address
+  /// masked to its bits; none for anything else.
+  static fn parse(text: string) -> Prefix? {
+    let parts = text.split("/")
+    if parts.count() != 2 {
+      return none
+    }
+    let ip = IP.parse(parts[0]) else { return none }
+    let bits = parts[1].toInt() else { return none }
+    if ip.zone != "" || bits < 0 || bits > ip.octets.count() * 8 || parts[1] != "{bits}" {
+      return none
+    }
+    return Prefix(ip: IP(octets: masked(ip.octets, bits)), bits: bits)
+  }
+
+  /// Whether ip is in the network (an IPv4 address mapped into IPv6 is
+  /// in an IPv4 network).
+  fn contains(ip: IP) -> bool {
+    let a = if self.ip.isV4() { ip.unmapped() } else { ip }
+    if a.octets.count() != self.ip.octets.count() {
+      return false
+    }
+    return masked(a.octets, bits) == self.ip.octets
+  }
+
+  /// The network as text: "10.0.0.0/8".
+  fn string() -> string = "{ip.string()}/{bits}"
+}
+
+// masked is b with its bits past the first n 0.
+fn masked(b: bytes, n: int) -> bytes {
+  var out: [int] = []
+  for i in 0..<b.count() {
+    let keep = n - i * 8
+    if keep >= 8 {
+      out.push(b[i])
+    } else if keep <= 0 {
+      out.push(0)
+    } else {
+      out.push(b[i] & (0xff << (8 - keep)) & 0xff)
+    }
+  }
+  return bytes(out)
+}
+
+/// An IP address and a port: where a socket is, or what it talks to.
+pub struct Address {
+  ip: IP
+  port: int
+
+  /// The address "host:port" says, its host an IP address ("192.0.2.1:80",
+  /// "[2001:db8::1]:80"); none for anything else.
+  static fn parse(text: string) -> Address? {
+    let hp = try? splitHostPort(text) else { return none }
+    let ip = IP.parse(hp.0) else { return none }
+    return Address(ip: ip, port: hp.1)
+  }
+
+  /// The address as text: "192.0.2.1:80", "[2001:db8::1]:80".
+  fn string() -> string = joinHostPort(ip.string(), port)
+}
+
+/// host and port as an address's text: "example.com:80", "[::1]:80" (an
+/// IPv6 address in brackets).
+pub fn joinHostPort(host: string, port: int) -> string = if host.contains(":") { "[{host}]:{port}" } else { "{host}:{port}" }
+
+/// The host and the port of "host:port" ("example.com:80", "[::1]:80",
+/// "[fe80::1%en0]:80"): the host without brackets. It throws
+/// NetError.invalid for text that isn't that: no port, a port that isn't
+/// 0 to 65535, an IPv6 address without its brackets.
+pub fn splitHostPort(text: string) throws -> (string, int) {
+  var host = ""
+  var rest = ""
+  if text.hasPrefix("[") {
+    let end = text.find("]") else { throw NetError.invalid(reason: "{text}: a [ without its ]") }
+    host = text.byteSlice(1, end)
+    rest = text.byteSlice(end + 1, text.byteCount())
+    if !rest.hasPrefix(":") {
+      throw NetError.invalid(reason: "{text}: no port after the ]")
+    }
+  } else {
+    let i = text.findLast(":") else { throw NetError.invalid(reason: "{text}: no port") }
+    host = text.byteSlice(0, i)
+    rest = text.byteSlice(i, text.byteCount())
+    if host.contains(":") {
+      throw NetError.invalid(reason: "{text}: an IPv6 address with a port goes in brackets: [::1]:80")
+    }
+  }
+  let digits = rest.trimPrefix(":")
+  let port = digits.toInt() else { throw NetError.invalid(reason: "{text}: the port isn't a number") }
+  if port < 0 || port > 65535 || digits != "{port}" {
+    throw NetError.invalid(reason: "{text}: a port is 0 to 65535")
+  }
+  return (host, port)
+}
+
+// ---- TCP ----
+
+// The reads' modes (net.c's RD_*).
+let modeSome = 0
+let modeExact = 1
+let modeUntil = 2
+let modeAll = 3
+
+/// A TCP connection: what's read from it and written to it, in order.
+/// It closes with close(), or as the task that made it ends (a
+/// server's, as its handler returns). One read waits at a time; writes
+/// queue, each sent whole before the next.
+pub struct Conn {
+  /// Where this side is.
+  localAddress: Address
+  /// The other side.
+  remoteAddress: Address
+  /// The longest a read waits (0s: as long as it takes); past it, the
+  /// read throws NetError.timedOut, and what had come is kept for the
+  /// next.
+  readTimeout: Duration = 0s
+  /// The longest a write waits for the other side to take its bytes (0s:
+  /// as long as it takes); past it, NetError.timedOut, and part of them
+  /// may have gone.
+  writeTimeout: Duration = 0s
+  handle: int = 0
+
+  /// The bytes that have come, as soon as some have: at most max of
+  /// them. none at the connection's end (the other side closed, or
+  /// closed its writing side).
+  async fn read(max: int = 65536) throws -> bytes? {
+    if max < 1 {
+      throw NetError.invalid(reason: "read's max is 1 or more")
+    }
+    do {
+      return try await tcpRead(handle, modeSome, max, bytes(), readTimeout.nanoseconds())
+    } catch e {
+      throw typed(e)
+    }
+  }
+
+  /// Exactly n bytes, once they've come: a length-prefixed message's
+  /// body, a binary header. NetError.ended when the connection ends
+  /// first (what came is kept for a read).
+  async fn readExactly(n: int) throws -> bytes {
+    do {
+      return (try await tcpRead(handle, modeExact, n, bytes(), readTimeout.nanoseconds())) ?? bytes()
+    } catch e {
+      throw typed(e)
+    }
+  }
+
+  /// The next line, as text, without its line ending ("\n" or "\r\n"):
+  /// a last line without one, as the connection ends, too; none at the
+  /// end. A line past max bytes throws NetError.tooLarge (it's kept: a
+  /// read takes it).
+  async fn readLine(max: int = 65536) throws -> string? {
+    let b = try await readUntil("\n".bytes(), max: max) else { return none }
+    var line = b.string()
+    if line.hasSuffix("\n") {
+      line = line.trimSuffix("\n").trimSuffix("\r")
+    }
+    return line
+  }
+
+  /// The bytes up to and with delimiter ("\r\n\r\n", a 0 byte); what's
+  /// left, without it, as the connection ends; none at the end. Past max
+  /// bytes without it, NetError.tooLarge.
+  async fn readUntil(delimiter: bytes, max: int = 65536) throws -> bytes? {
+    if delimiter.isEmpty() || max < 1 {
+      throw NetError.invalid(reason: "readUntil's delimiter isn't empty, its max is 1 or more")
+    }
+    do {
+      return try await tcpRead(handle, modeUntil, max, delimiter, readTimeout.nanoseconds())
+    } catch e {
+      throw typed(e)
+    }
+  }
+
+  /// Everything to the connection's end; past max bytes,
+  /// NetError.tooLarge.
+  async fn readAll(max: int = 16777216) throws -> bytes {
+    do {
+      return (try await tcpRead(handle, modeAll, max, bytes(), readTimeout.nanoseconds())) ?? bytes()
+    } catch e {
+      throw typed(e)
+    }
+  }
+
+  /// Writes text (UTF-8): it returns once the system has taken all of
+  /// it.
+  async fn write(text: string) throws {
+    try await writeBytes(text.bytes())
+  }
+
+  /// Writes data: it returns once the system has taken all of it.
+  async fn writeBytes(data: bytes) throws {
+    do {
+      try await tcpWrite(handle, data, writeTimeout.nanoseconds())
+    } catch e {
+      throw typed(e)
+    }
+  }
+
+  /// The lines as they come (readLine's), until the connection's end.
+  fn lines(max: int = 65536) -> Stream<string> {
+    let c = self
+    return Stream(send => {
+      while let l = try await c.readLine(max: max) {
+        send(l)
+      }
+    })
+  }
+
+  /// The bytes as they come (read's), until the connection's end.
+  fn chunks(max: int = 65536) -> Stream<bytes> {
+    let c = self
+    return Stream(send => {
+      while let b = try await c.read(max: max) {
+        send(b)
+      }
+    })
+  }
+
+  /// Closes this side's writing, once what's written has gone: the other
+  /// side reads its end, and may still answer (a half close).
+  fn closeWrite() {
+    tcpCloseWrite(handle)
+  }
+
+  /// Closes the connection now: a read or a write waiting throws
+  /// NetError.closed.
+  fn close() {
+    sockClose(handle)
+  }
+
+  /// Sends small writes at once (on, the default) rather than holding
+  /// them a moment to join them (Nagle's algorithm).
+  fn setNoDelay(on: bool) throws {
+    try setOption(handle, 1, if on { 1 } else { 0 })
+  }
+
+  /// Probes a connection that's been idle for period, so one whose other
+  /// side has gone ends (15s by default; 0s: none).
+  fn setKeepAlive(period: Duration) throws {
+    try setOption(handle, 2, period.nanoseconds())
+  }
+
+  /// Upgrades the connection to TLS, in place, as its client: after a
+  /// STARTTLS (SMTP's, IMAP's), Postgres's SSLRequest. The server's
+  /// certificate is checked for serverName (a host's name, which goes in
+  /// SNI, or an IP address) as tls says (clientTLS's; by default, against
+  /// the authorities the system trusts). From then on what's read and
+  /// written goes through TLS. It returns what the handshake agreed;
+  /// timeout (0s: none) gives up with NetError.timedOut. It throws
+  /// NetError: tls, untrustedCertificate...
+  async fn startTLS(serverName: string, tls: ClientTLS? = none, timeout: Duration = 0s) throws -> TLSState {
+    let config = tls ?? (try clientTLS())
+    do {
+      return stateOf(try await upgrade(handle, config.handle, serverName, false, timeout.nanoseconds()))
+    } catch e {
+      throw typed(e)
+    }
+  }
+
+  /// Upgrades the connection to TLS, in place, as its server (a STARTTLS
+  /// server's), with tls's certificates. It returns what the handshake
+  /// agreed.
+  async fn startServerTLS(tls: ServerTLS, timeout: Duration = 0s) throws -> TLSState {
+    do {
+      return stateOf(try await upgrade(handle, tls.handle, "", true, timeout.nanoseconds()))
+    } catch e {
+      throw typed(e)
+    }
+  }
+
+  /// What the connection's TLS handshake agreed, once it's done: the
+  /// version, the cipher suite, the ALPN protocol, the other side's
+  /// certificates. A TLS server's connection (listen's and serve's with
+  /// tls:) does its handshake as its first read or write waits on it, or
+  /// as this does. NetError.invalid for a connection without TLS.
+  async fn handshake(timeout: Duration = 0s) throws -> TLSState {
+    do {
+      return stateOf(try await awaitHandshake(handle, timeout.nanoseconds()))
+    } catch e {
+      throw typed(e)
+    }
+  }
+}
+
+fn checked() throws {
+  if !available() {
+    throw NetError.unsupported
+  }
+}
+
+fn connOf(h: int, readTimeout: Duration = 0s, writeTimeout: Duration = 0s) -> Conn {
+  let a = addresses(h)
+  return Conn(localAddress: addressOf(a, 0), remoteAddress: addressOf(a, 2), readTimeout: readTimeout, writeTimeout: writeTimeout, handle: h)
+}
+
+fn addressOf(parts: [string], at: int) -> Address {
+  if parts.count() < at + 2 {
+    return Address(ip: IP.any, port: 0)
+  }
+  return Address(ip: IP.parse(parts[at]) ?? IP.any, port: parts[at + 1].toInt() ?? 0)
+}
+
+/// Connects to port at host (a name, which is looked up, or an IP
+/// address) over TCP. A name's addresses are tried as Happy Eyeballs
+/// does: IPv6's and IPv4's in turn, the next started if the last hasn't
+/// connected in 250ms, the first to connect kept. timeout is the
+/// longest the lookup and the connecting take together (0s: the
+/// system's own limit, a minute or two). noDelay sends small writes at
+/// once; keepAlive probes an idle connection (0s: none). It throws
+/// NetError: refused, notFound, unreachable, timedOut...
+pub async fn connect(host: string, port: int, timeout: Duration = 0s, noDelay: bool = true, keepAlive: Duration = 15s) throws -> Conn {
+  try checked()
+  do {
+    let h = try await tcpConnect(host, port, timeout.nanoseconds(), noDelay, keepAlive.nanoseconds())
+    return connOf(h)
+  } catch e {
+    throw typed(e)
+  }
+}
+
+/// A TCP listener: the connections clients make to it, accepted one at a
+/// time. It closes with close(), or as the task that made it ends.
+pub struct Listener {
+  /// Where it listens: its port the one asked for, or the one the system
+  /// picked for 0.
+  address: Address
+  /// Its port.
+  port: int
+  handle: int = 0
+
+  /// The next client's connection, once one connects: it belongs to the
+  /// task that accepts it. timeout (0s: none) gives up with
+  /// NetError.timedOut.
+  async fn accept(timeout: Duration = 0s) throws -> Conn {
+    do {
+      let h = try await tcpAccept(handle, timeout.nanoseconds())
+      return connOf(h)
+    } catch e {
+      throw typed(e)
+    }
+  }
+
+  /// Serves each client's connection with handler, as net.serve does,
+  /// accepting from now on: the listener is the server's.
+  fn serve(handler: async fn(Conn) throws, onError: (fn(Conn, Error))? = none) throws -> Server {
+    let report = onError ?? ((c: Conn, e: Error) => os.eprint("net: {c.remoteAddress.string()}: {e.message}"))
+    let s = serveStart(handle, dispatcher(handler, report))
+    if s == 0 {
+      throw NetError.closed
+    }
+    return Server(address: address, port: port, handle: s)
+  }
+
+  /// Stops listening: an accept waiting throws NetError.closed.
+  fn close() {
+    sockClose(handle)
+  }
+}
+
+/// Listens for TCP connections at port (0: one the system picks,
+/// Listener.port) on host: "127.0.0.1" (the default) takes only this
+/// computer's clients; "0.0.0.0" every IPv4 interface's; "::" or ""
+/// every interface's, IPv6's and IPv4's. With tls (serverTLS's), each
+/// connection speaks TLS, its handshake done as its first read or write
+/// waits on it. It throws NetError: addressInUse, addressUnavailable,
+/// denied...
+pub async fn listen(port: int, host: string = "127.0.0.1", tls: ServerTLS? = none) throws -> Listener {
+  try checked()
+  do {
+    let h = try await tcpListen(host, port, if let t = tls { t.handle } else { 0 })
+    let a = addressOf(addresses(h), 0)
+    return Listener(address: a, port: a.port, handle: h)
+  } catch e {
+    throw typed(e)
+  }
+}
+
+/// A server: its listener, and the tasks serving its clients.
+pub struct Server {
+  /// Where it listens.
+  address: Address
+  /// Its port: the one asked for, or the one the system picked for 0.
+  port: int
+  handle: int = 0
+
+  /// Stops it: it stops accepting, and the handlers still running have
+  /// grace to finish (0s, the default: none), then are cancelled, their
+  /// defers run, their connections closed. It returns once all of it has
+  /// stopped.
+  async fn close(grace: Duration = 0s) {
+    await serveClose(handle, grace.nanoseconds())
+  }
+
+  /// Waits until it has stopped: what a program's main awaits, so it
+  /// runs on while the server does.
+  async fn wait() {
+    await serveWait(handle)
+  }
+}
+
+/// Serves TCP at port (0: one the system picks, Server.port) on host
+/// (listen's), handling each client's connection with handler: a task
+/// of its own, many at once, which owns the connection (it closes as
+/// the handler returns). A handler that throws has its error given to
+/// onError (written to stderr when there's none). The server belongs to the task
+/// that started it: when that ends, the server stops, its handlers
+/// cancelled. With tls (serverTLS's), each connection speaks TLS: a
+/// client whose handshake fails has its handler's first read or write
+/// throw, which onError hears.
+///
+///   let server = try await net.serve(7000, c => {
+///     while let line = try await c.readLine() {
+///       try await c.write("{line}\n")
+///     }
+///   })
+pub async fn serve(port: int, handler: async fn(Conn) throws, host: string = "127.0.0.1", onError: (fn(Conn, Error))? = none, tls: ServerTLS? = none) throws -> Server {
+  let l = try await listen(port, host: host, tls: tls)
+  return try l.serve(handler, onError: onError)
+}
+
+// dispatcher is what the server's C hands each connection to: the
+// handler, its error reported.
+fn dispatcher(handler: async fn(Conn) throws, report: fn(Conn, Error)) -> async fn(int) = async (h: int) => {
+  let c = connOf(h)
+  do {
+    try await handler(c)
+  } catch e {
+    report(c, typed(e))
+  }
+}
+
+// ---- TLS ----
+
+/// A version of TLS.
+pub enum TLSVersion {
+  /// TLS 1.2 (RFC 5246).
+  tls12
+  /// TLS 1.3 (RFC 8446).
+  tls13
+}
+
+fn versionNumber(v: TLSVersion) -> int = if v == TLSVersion.tls13 { 13 } else { 12 }
+
+/// Why a certificate isn't trusted: NetError.untrustedCertificate's.
+pub enum CertificateProblem {
+  /// It has expired.
+  expired
+  /// It isn't valid yet.
+  notYetValid
+  /// It's for other names than the host's.
+  wrongHost
+  /// No authority this side trusts signed it (or it signed itself).
+  unknownIssuer
+  /// Its authority has revoked it.
+  revoked
+  /// The other side showed none: a client, to a server that requires one.
+  missing
+  /// Anything else: a use it isn't for, a weak key or signature.
+  invalid
+}
+
+fn problemNamed(name: string) -> CertificateProblem {
+  match name {
+    "expired" => return CertificateProblem.expired
+    "notYetValid" => return CertificateProblem.notYetValid
+    "wrongHost" => return CertificateProblem.wrongHost
+    "unknownIssuer" => return CertificateProblem.unknownIssuer
+    "revoked" => return CertificateProblem.revoked
+    "missing" => return CertificateProblem.missing
+    _ => return CertificateProblem.invalid
+  }
+}
+
+/// What a TLS handshake agreed.
+pub struct TLSState {
+  /// The version: TLS 1.2 or 1.3.
+  version: TLSVersion
+  /// The cipher suite, by its IANA name: "TLS_AES_128_GCM_SHA256".
+  cipherSuite: string
+  /// The application protocol ALPN chose ("h2", "http/1.1"); "" for
+  /// none.
+  protocol: string
+  /// The server's name: the one a client connected to, or the one it
+  /// asked a server for (SNI; "" for none).
+  serverName: string
+  /// Whether it resumed a session of an earlier handshake's (a shorter
+  /// handshake: the server sends no certificate; the one it sent then is
+  /// peerCertificates, its name and dates checked again).
+  resumed: bool
+  /// The other side's certificates as it sent them (DER), its own first,
+  /// then the authorities' that signed it; [] when it showed none (a
+  /// client, mostly). crypto.publicKeyFromDER reads the first's key.
+  peerCertificates: [bytes]
+}
+
+fn stateOf(fields: [bytes]) -> TLSState {
+  var certs: [bytes] = []
+  for i in 5..<fields.count() {
+    certs.push(fields[i])
+  }
+  return TLSState(version: if fields[0].string() == "13" { TLSVersion.tls13 } else { TLSVersion.tls12 }, cipherSuite: fields[1].string(), protocol: fields[2].string(), serverName: fields[3].string(), resumed: fields[4].string() == "1", peerCertificates: certs)
+}
+
+/// How a client's TLS connections are made: whom they trust, what they
+/// show. clientTLS makes it.
+pub struct ClientTLS {
+  handle: int = 0
+}
+
+/// How a TLS server's connections are made: its certificates, and whom
+/// it asks for theirs. serverTLS makes it.
+pub struct ServerTLS {
+  handle: int = 0
+}
+
+/// A certificate chain and its private key, PEM: what a server shows for
+/// the names the certificate has (serverTLS's others).
+pub struct KeyPair {
+  /// The certificate, then the authorities' that signed it, up to (not
+  /// with) the root: PEM's CERTIFICATE blocks.
+  certificate: string
+  /// Its private key: PEM's PRIVATE KEY (PKCS#8), RSA PRIVATE KEY or EC
+  /// PRIVATE KEY, not encrypted (serverTLS's key).
+  key: string
+}
+
+/// A client's TLS configuration. By default it trusts the authorities
+/// the system trusts: Apple's and Windows' own checks (what the user and
+/// their administrator trust, intermediates fetched, revocation); on
+/// Linux the system's CA bundle (SSL_CERT_FILE, else
+/// /etc/ssl/certs/ca-certificates.crt and the like; SSL_CERT_DIR);
+/// Android's system store. ca (PEM certificates) is trusted instead: a
+/// private authority's, a self-signed server's. certificate and key
+/// (PEM) are the client's own, for a server that asks for one (mutual
+/// TLS); the key as serverTLS's. alpn is the application protocols
+/// offered, most wanted first ("h2", "http/1.1"). minVersion and
+/// maxVersion bound the versions. insecureSkipVerify checks no
+/// certificate at all: anyone can pretend to be the server, so it's for
+/// tests.
+///
+/// The configuration keeps its connections' sessions, to resume them
+/// (TLSState.resumed): a shorter handshake, the server's certificate
+/// not sent again. It keeps them for sessionCache servers (by name and
+/// port; the least recently used go first), each as long as its server
+/// says, up to a week (TLS 1.3) or a day (TLS 1.2) after the handshake
+/// that checked its certificate, and no longer than the certificate is
+/// valid. sessionCache: 0 resumes none. No data goes early (TLS 1.3's
+/// 0-RTT: anyone who sees it can send it again).
+///
+/// It throws NetError.invalid for what can't be read.
+///
+///   let tls = try net.clientTLS(ca: try fs.readText("ca.pem"))
+///   let c = try await net.connectTLS("db.internal", 5433, tls: tls)
+pub fn clientTLS(ca: string = "", certificate: string = "", key: string = "", alpn: [string] = [], minVersion: TLSVersion = .tls12, maxVersion: TLSVersion = .tls13, insecureSkipVerify: bool = false, sessionCache: int = 64) throws -> ClientTLS {
+  try checked()
+  do {
+    return ClientTLS(handle: try clientConfig(ca, certificate, key, alpn, versionNumber(minVersion), versionNumber(maxVersion), insecureSkipVerify, sessionCache))
+  } catch e {
+    throw typed(e)
+  }
+}
+
+/// A TLS server's configuration: certificate (PEM: the server's, then
+/// the authorities' that signed it) and its key (PEM: PKCS#8, PKCS#1 or
+/// SEC 1). An encrypted key is decrypted first, by std/crypto, its
+/// pem() given: (try await crypto.decryptPrivateKey(text, password:
+/// password)).pem(); so is an OpenSSH key, crypto.privateKey(text).pem()
+/// (a TLS app that reads neither carries neither's code). others are
+/// more, for other names: a client's is shown the one whose names match
+/// the name it asks for (SNI), the first when none does. alpn is the
+/// application protocols the server speaks, most wanted first. clientCA
+/// (PEM) asks each client for a certificate an authority of it signed
+/// (mutual TLS): required unless requireClientCertificate is false, when
+/// one that's shown is checked.
+///
+/// It gives its clients session tickets, to resume their sessions with:
+/// sealed with keys of its own, made at random in memory (never written
+/// anywhere) and made new each day, good for a day. A resumed session is
+/// the one its ticket's full handshake made (with its client's
+/// certificate, under mutual TLS), its keys new. sessionTickets: false
+/// gives none. No data comes early (TLS 1.3's 0-RTT: it can be replayed).
+///
+/// It throws NetError.invalid for what can't be read (an encrypted key,
+/// saying how to decrypt it), or a key that isn't its certificate's.
+///
+///   let tls = try net.serverTLS(certificate: try fs.readText("cert.pem"), key: try fs.readText("key.pem"))
+///   let server = try await http.serve(8443, handler, tls: tls)
+pub fn serverTLS(certificate: string, key: string, others: [KeyPair] = [], alpn: [string] = [], clientCA: string = "", requireClientCertificate: bool = true, minVersion: TLSVersion = .tls12, maxVersion: TLSVersion = .tls13, sessionTickets: bool = true) throws -> ServerTLS {
+  try checked()
+  var pairs = [certificate, key]
+  for p in others {
+    pairs.push(p.certificate)
+    pairs.push(p.key)
+  }
+  do {
+    return ServerTLS(handle: try serverConfig(pairs, alpn, clientCA, requireClientCertificate, versionNumber(minVersion), versionNumber(maxVersion), sessionTickets))
+  } catch e {
+    throw typed(e)
+  }
+}
+
+/// Connects to port at host over TCP, as connect does, then speaks TLS
+/// as its client: the server's certificate checked for serverName (host
+/// when it's ""), as tls says (clientTLS's; by default, against the
+/// authorities the system trusts). timeout is the longest the lookup and
+/// the connecting take, and the longest the handshake takes after. It
+/// throws NetError: refused, notFound, timedOut, tls,
+/// untrustedCertificate...
+///
+///   let c = try await net.connectTLS("example.com", 443)
+///   try await c.write("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n")
+///   let reply = try await c.readAll()
+pub async fn connectTLS(host: string, port: int, tls: ClientTLS? = none, serverName: string = "", timeout: Duration = 0s, noDelay: bool = true, keepAlive: Duration = 15s) throws -> Conn {
+  let config = tls ?? (try clientTLS())
+  let c = try await connect(host, port, timeout: timeout, noDelay: noDelay, keepAlive: keepAlive)
+  do {
+    let _ = try await c.startTLS(if serverName.isEmpty() { host } else { serverName }, tls: config, timeout: timeout)
+  } catch e {
+    c.close()
+    throw e
+  }
+  return c
+}
+
+// ---- UDP ----
+
+/// A datagram that came: its bytes, and who sent it.
+pub struct Datagram {
+  data: bytes
+  /// The sender: where an answer goes (UDPSocket.send(answer, to: d.from)).
+  from: Address
+}
+
+/// A UDP socket: datagrams sent to addresses and received from them,
+/// each whole (up to 65507 bytes) or not at all, in no promised order.
+/// It closes with close(), or as the task that made it ends.
+pub struct UDPSocket {
+  /// Where it's bound: its port the one asked for, or the one the system
+  /// picked for 0.
+  address: Address
+  /// Its port.
+  port: int
+  /// The address connect() set: where send(data) goes, and the only one
+  /// it receives from; none until then.
+  remoteAddress: Address? = none
+  handle: int = 0
+
+  /// Sends data to to (an answer to a datagram: its from), or with no to,
+  /// to the address connect() set (a connected socket sends there
+  /// alone).
+  async fn send(data: bytes, to: Address? = none, timeout: Duration = 0s) throws {
+    let ip = if let a = to { a.ip.string() } else { "" }
+    let p = if let a = to { a.port } else { 0 }
+    do {
+      try await udpSend(handle, data, ip, p, timeout.nanoseconds())
+    } catch e {
+      throw typed(e)
+    }
+  }
+
+  /// Sends data to port at host: a name (looked up: its first address of
+  /// the socket's family) or an IP address.
+  async fn sendTo(data: bytes, host: string, port: int, timeout: Duration = 0s) throws {
+    let ip = try await addressFor(self, host)
+    try await send(data, to: Address(ip: ip, port: port), timeout: timeout)
+  }
+
+  /// The next datagram, once one comes. timeout (0s: none) gives up with
+  /// NetError.timedOut.
+  async fn receive(timeout: Duration = 0s) throws -> Datagram {
+    do {
+      let r = try await udpReceive(handle, timeout.nanoseconds())
+      return Datagram(data: r[0], from: Address(ip: IP.parse(r[1].string()) ?? IP.any, port: r[2].string().toInt() ?? 0))
+    } catch e {
+      throw typed(e)
+    }
+  }
+
+  /// The datagrams as they come.
+  fn datagrams() -> Stream<Datagram> {
+    let s = self
+    return Stream(send => {
+      while true {
+        send(try await s.receive())
+      }
+    })
+  }
+
+  /// Sets where send(data) goes, and takes datagrams only from there
+  /// (port at host, a name or an address): the socket, with its
+  /// remoteAddress. A datagram the other side refuses (nothing at its
+  /// port) makes the next receive throw NetError.refused.
+  async fn connect(host: string, port: int) throws -> UDPSocket {
+    let ip = try await addressFor(self, host)
+    try udpConnect(handle, ip.string(), port)
+    var s = self
+    s.remoteAddress = Address(ip: ip, port: port)
+    return s
+  }
+
+  /// Joins a multicast group (224.0.0.0/4, ff00::/8): its datagrams come
+  /// to the socket too, which binds its port (with reuse, for others to
+  /// bind it as well), at its family's every-interface address. On iOS a
+  /// multicast group needs Apple's multicast entitlement.
+  fn joinGroup(group: IP) throws {
+    try udpGroup(handle, group.string(), true)
+  }
+
+  /// Leaves a multicast group.
+  fn leaveGroup(group: IP) throws {
+    try udpGroup(handle, group.string(), false)
+  }
+
+  /// Lets it send to a broadcast address (255.255.255.255, a network's
+  /// last).
+  fn setBroadcast(on: bool) throws {
+    try setOption(handle, 3, if on { 1 } else { 0 })
+  }
+
+  /// Closes it: a receive waiting throws NetError.closed.
+  fn close() {
+    sockClose(handle)
+  }
+}
+
+// addressFor is host's address for socket s: an IP as it is, a name's
+// first of the socket's family.
+async fn addressFor(s: UDPSocket, host: string) throws -> IP {
+  if let ip = IP.parse(host) {
+    return ip
+  }
+  let all = try await lookup(host)
+  let v4 = s.address.ip.isV4()
+  for ip in all {
+    if ip.isV4() || !v4 {
+      return ip
+    }
+  }
+  throw NetError.notFound(name: host)
+}
+
+/// Opens a UDP socket bound at port (0: one the system picks) on host:
+/// "" (the default) every interface's, IPv6's and IPv4's; "0.0.0.0"
+/// every IPv4 interface's; "127.0.0.1" this computer's alone. reuse lets
+/// other sockets bind the same port (a multicast group's listeners).
+pub async fn udp(port: int = 0, host: string = "", reuse: bool = false) throws -> UDPSocket {
+  try checked()
+  do {
+    let h = try await udpOpen(host, port, reuse)
+    let a = addressOf(addresses(h), 0)
+    return UDPSocket(address: a, port: a.port, handle: h)
+  } catch e {
+    throw typed(e)
+  }
+}
+
+// ---- Lookups ----
+
+/// A mail server of a domain (its MX record).
+pub struct MX {
+  /// The server's name ("" for a domain that takes no mail: RFC 7505).
+  host: string
+  /// Its preference: the lower, the sooner it's tried.
+  preference: int
+}
+
+/// A service's server (an SRV record).
+pub struct SRV {
+  /// The server's name.
+  target: string
+  port: int
+  /// The lower, the sooner it's tried.
+  priority: int
+  /// Among those of a priority, how often it's chosen.
+  weight: int
+}
+
+/// host's IP addresses, as the system looks it up (its hosts file, DNS,
+/// mDNS's .local names where it does them), in the order the system
+/// prefers them; an IP address is itself. It throws NetError.notFound,
+/// lookupFailed.
+pub async fn lookup(host: string) throws -> [IP] {
+  if let ip = IP.parse(host) {
+    return [ip]
+  }
+  try checked()
+  do {
+    let all = try await lookupHost(host)
+    return all.map(t => IP.parse(t)).filter(ip => ip != none).map(ip => ip!)
+  } catch e {
+    throw typed(e)
+  }
+}
+
+/// The names ip's address has (a reverse lookup: its PTR record, or the
+/// hosts file's).
+pub async fn reverseLookup(ip: IP) throws -> [string] {
+  try checked()
+  do {
+    return try await lookupAddr(ip.string())
+  } catch e {
+    throw typed(e)
+  }
+}
+
+/// The canonical name of host, past its CNAMEs: host itself when it has
+/// none.
+pub async fn lookupCNAME(host: string) throws -> string {
+  try checked()
+  do {
+    return try await lookupCanonical(host)
+  } catch e {
+    throw typed(e)
+  }
+}
+
+/// The mail servers of domain (its MX records), by preference.
+pub async fn lookupMX(domain: string) throws -> [MX] {
+  let f = try await records(domain, 15)
+  var out: [MX] = []
+  var i = 0
+  while i + 1 < f.count() {
+    out.push(MX(host: f[i + 1], preference: f[i].toInt() ?? 0))
+    i += 2
+  }
+  return out.sorted(by: (a, b) => a.preference < b.preference)
+}
+
+/// The text of name's TXT records: each record's strings joined.
+pub async fn lookupTXT(name: string) throws -> [string] = try await records(name, 16)
+
+/// The servers of service over proto at name (its SRV records,
+/// _service._proto.name: lookupSRV("xmpp-client", "tcp", "example.com")),
+/// by priority, then by weight, the heaviest first. An empty service and
+/// proto look name up as it is.
+pub async fn lookupSRV(service: string, proto: string, name: string) throws -> [SRV] {
+  let target = if service.isEmpty() && proto.isEmpty() { name } else { "_{service}._{proto}.{name}" }
+  let f = try await records(target, 33)
+  var out: [SRV] = []
+  var i = 0
+  while i + 3 < f.count() {
+    out.push(SRV(target: f[i + 3], port: f[i + 2].toInt() ?? 0, priority: f[i].toInt() ?? 0, weight: f[i + 1].toInt() ?? 0))
+    i += 4
+  }
+  return out.sorted(by: (a, b) => a.priority < b.priority || (a.priority == b.priority && a.weight > b.weight))
+}
+
+/// The name servers of domain (its NS records).
+pub async fn lookupNS(domain: string) throws -> [string] = try await records(domain, 2)
+
+async fn records(name: string, type: int) throws -> [string] {
+  try checked()
+  do {
+    return try await lookupRecords(name, type)
+  } catch e {
+    throw typed(e)
+  }
+}
+
+// ---- What net.c does ----
+
+native fn available() -> bool
+native fn ipParse(text: string) -> bytes?
+native fn ipText(octets: bytes) -> string
+native async fn tcpConnect(host: string, port: int, timeoutNs: int, noDelay: bool, keepAliveNs: int) throws -> int
+native async fn tcpListen(host: string, port: int, tls: int) throws -> int
+native async fn tcpAccept(listener: int, timeoutNs: int) throws -> int
+native fn addresses(h: int) -> [string]
+native async fn tcpRead(h: int, mode: int, n: int, delimiter: bytes, timeoutNs: int) throws -> bytes?
+native async fn tcpWrite(h: int, data: bytes, timeoutNs: int) throws
+native fn tcpCloseWrite(h: int)
+native fn sockClose(h: int)
+native fn setOption(h: int, option: int, value: int) throws
+native async fn udpOpen(host: string, port: int, reuse: bool) throws -> int
+native fn udpConnect(h: int, ip: string, port: int) throws
+native async fn udpSend(h: int, data: bytes, ip: string, port: int, timeoutNs: int) throws
+native async fn udpReceive(h: int, timeoutNs: int) throws -> [bytes]
+native fn udpGroup(h: int, group: string, join: bool) throws
+native async fn lookupHost(host: string) throws -> [string]
+native async fn lookupAddr(ip: string) throws -> [string]
+native async fn lookupRecords(name: string, type: int) throws -> [string]
+native async fn lookupCanonical(host: string) throws -> string
+native fn serveStart(listener: int, dispatch: async fn(int)) -> int
+native async fn serveClose(server: int, graceNs: int)
+native async fn serveWait(server: int)
+
+// ---- What tls.c does: TLS, a table of its own (an app without TLS
+// doesn't link it, or Mbed TLS under it) ----
+
+native(tls) fn clientConfig(ca: string, certificate: string, key: string, alpn: [string], minVersion: int, maxVersion: int, insecure: bool, sessionCache: int) throws -> int
+native(tls) fn serverConfig(pairs: [string], alpn: [string], clientCA: string, requireClient: bool, minVersion: int, maxVersion: int, tickets: bool) throws -> int
+native(tls) async fn upgrade(h: int, config: int, serverName: string, server: bool, timeoutNs: int) throws -> [bytes]
+native(tls) async fn awaitHandshake(h: int, timeoutNs: int) throws -> [bytes]

@@ -46,16 +46,20 @@ fn values() -> string {
   visits += 1
   let greeting = "Hello, {name}"   // {…} puts a value in a string
   let ratio: float = 2.5
+  let level: u8 = 200              // sized integers: i8 … i32, u8 … u64 (int is 64 bits)
+  let area = 2 ** 10               // a power: 1024
   let tags = ["new", "work"]       // an array: [string]
   let ages = ["ana": 31, "bo": 28] // a map: [string: int]
   let nickname: string? = none     // an optional: a string or none
   let shown = nickname ?? name     // none's fallback
-  return "{greeting} {visits} {ratio} {tags.count()} {ages["ana"] ?? 0} {shown}"
+  return "{greeting} {visits} {ratio} {level} {area} {tags.count()} {ages["ana"] ?? 0} {shown}"
 }
 ```
 
 `var` is for functions and handlers: what's at a file's top level
-doesn't change, unless it's `state`. Values are copied, never shared:
+doesn't change, unless it's `state`. Numbers of different types don't
+mix: `int(level) + visits` converts the `u8` first, and arithmetic past
+a type's range is an error, not a wrapped number. Values are copied, never shared:
 changing a copy of an array leaves the original as it was. Strings, arrays and maps have the methods you'd
 expect (`count()`, `contains`, `map`, `filter`, `sorted`, `split`...):
 [Values and types](https://asuka.egoist.dev/docs/language/types).
@@ -377,6 +381,7 @@ fn main() {
 | Type | Values |
 |---|---|
 | `int` | 64-bit integers: `42`, `1_000`, `0xff`, `0b1010`, `0o17` |
+| `i8`, `i16`, `i32`, `u8`, `u16`, `u32`, `u64` | integers of 8, 16, 32 and 64 bits, signed (`i`) or not (`u`): [Integer types](#integer-types) |
 | `float` | 64-bit floating point: `3.14`, `1e-3` |
 | `bool` | `true`, `false` |
 | `string` | UTF-8 text: `"Hello, {name}"` |
@@ -434,7 +439,9 @@ let table = row("asuka", 12500, 0.4) // asuka     12,500   40.0%
 ```
 
 A width counts characters (code points), not how wide a terminal draws
-them.
+them: `std/term`'s `textWidth`, `padEnd` and `fit` count its columns
+(Chinese, Japanese and Korean characters and emoji take two),
+[Programs](https://asuka.egoist.dev/docs/programs#an-aligned-table).
 
 A tuple's elements are read by their place, `pair.0` and `pair.1`, and
 a `var`'s change in place (`pair.0 += 1`); a place the tuple doesn't
@@ -442,7 +449,7 @@ have (`pair.2` of a pair) is a compile error. A tuple is also taken
 apart: `let (count, label) = pair`, `for (i, x) in xs.enumerated()`, or
 a tuple pattern in a `match` ([Control flow](https://asuka.egoist.dev/docs/language/control-flow#control-flow)).
 
-A map's keys, and a set's elements, are `Hashable`: ints, strings,
+A map's keys, and a set's elements, are `Hashable`: integers, strings,
 bools, bytes, durations, colors, and the enums, structs, tuples,
 optionals, arrays, maps and sets made of them (a struct or an enum that
 holds itself is when its other parts are; a map's keys and values both).
@@ -461,12 +468,13 @@ let seen: Set<(int, int)> = [(0, 0), (1, 2)]
 #### Operators
 
 From the tightest to the loosest; the operators on a line bind alike,
-and go left to right (`??` right to left):
+and go left to right (`**` and `??` right to left):
 
 | Operators | What they do |
 |---|---|
-| `!x`, `-x`, `~x` | not, negation, an int's bits flipped |
-| `<<`, `>>` | an int's bits shifted left, and right (keeping its sign) |
+| `**` | a power: `2 ** 10` is 1024 |
+| `!x`, `-x`, `~x` | not, negation, an integer's bits flipped |
+| `<<`, `>>` | an integer's bits shifted left, and right (keeping a signed one's sign) |
 | `*`, `/`, `%`, `&`, `&*` | multiplication, division, remainder, bitwise and, wrapping multiplication |
 | `+`, `-`, <code>&#124;</code>, `^`, `&+`, `&-` | addition (and strings, arrays joined), subtraction, bitwise or, exclusive or, wrapping addition and subtraction |
 | `..`, `..<` | ranges: `1..3`, `0..<n` |
@@ -475,16 +483,27 @@ and go left to right (`??` right to left):
 | <code>&#124;&#124;</code> | or |
 | `??` | an optional's value, or the default |
 
-`<`, `<=`, `>` and `>=` order ints, floats, strings, durations, enums
+`<`, `<=`, `>` and `>=` order integers, floats, strings, durations, enums
 without payloads (by the order their cases are declared) and types
 with a `compare` method; a struct or an enum takes the arithmetic
-operators from its methods too, `add`, `sub`, `mul`, `div`, `rem` and
-`neg` ([Declarations](https://asuka.egoist.dev/docs/language/declarations#structs)).
+operators from its methods too, `add`, `sub`, `mul`, `div`, `rem`,
+`pow` and `neg` ([Declarations](https://asuka.egoist.dev/docs/language/declarations#structs)).
 
-The bitwise operators take ints. A shift by 64 or more shifts every bit
-out (`>>` of a negative gives -1); a shift by a negative count is an
-error. With them and `b[i]` (a byte as an int), a program reads and
-writes binary data, a Bluetooth characteristic or an NFC record:
+`**` binds tighter than the operators before it, `-` too, and to its
+right, as in Python and in mathematics: `-2 ** 2` is `-(2 ** 2)`, -4,
+and `2 ** 3 ** 2` is `2 ** 9`; `(-2) ** 2` is 4. An integer's power is of
+its own type, its exponent an integer of any type, 0 or more (a
+negative one is an error: `2 ** -1` isn't an integer); a float's power
+takes a float or an integer (`2.0 ** 0.5`, `x ** 2`). `**=` assigns one.
+
+The bitwise operators take integers, both of one type. A shift's count
+is an integer of any type; a shift by the type's width or more shifts
+every bit out (`>>` of a negative gives -1), and one by a negative
+count is an error. `>>` keeps a signed integer's sign and fills an
+unsigned one with zeros. With them and `b[i]` (a byte as an int), a
+program reads and writes binary data, a Bluetooth characteristic or an
+NFC record ([`std/encoding`](https://asuka.egoist.dev/docs/std/encoding) reads and writes whole
+numbers in either byte order):
 
 ```asuka
 let raw = b[1] | b[2] << 8                         // a little-endian uint16
@@ -492,13 +511,14 @@ let celsius = if raw & 0x8000 != 0 { raw - 0x10000 } else { raw }
 let out = bytes([flags, value & 0xff, value >> 8])
 ```
 
-An `int` holds −2⁶³ to 2⁶³ − 1. `+`, `-` and `*` whose result is past
+An `int` holds −2⁶³ to 2⁶³ − 1. `+`, `-`, `*` and `**` whose result is past
 that range throw an error, "integer overflow", as dividing by zero (`/`,
 `%`) does: a `catch` takes it, and when nothing does it goes to the
 nearest `Boundary` ([Errors](https://asuka.egoist.dev/docs/language/errors#errors)). So do `-x` and `abs(x)`
 of the smallest `int`, its `/ -1`, and an array's `sum()` past the
 range. A count, a size or a price that overflows is a bug shown where it
-happens, not a wrong number saved.
+happens, not a wrong number saved. Every integer type is checked the
+same way, at its own range: a `u8`'s `255 + 1` throws.
 
 ```asuka
 let big = 9223372036854775807
@@ -506,9 +526,22 @@ let n = try big + 1 catch { 0 }               // 0: it threw
 let next = big.addingChecked(1) ?? big          // none on overflow: big
 ```
 
+For numbers past int's range, `std/bigint`'s `BigInt` is an integer of
+any size, with the arithmetic operators and the comparisons
+([Standard library](https://asuka.egoist.dev/docs/stdlib)):
+
+```asuka
+import std/bigint.{BigInt}
+
+let big = BigInt.of(9223372036854775807)
+let past = big * big + BigInt.one           // 85070591730234615847396907784232501250
+let digits = "{BigInt.factorial(30)}"       // 265252859812191058636308480000000
+```
+
 `&+`, `&-` and `&*` wrap instead: past the largest `int` they go on from
 the smallest, as 64-bit two's complement does (`9223372036854775807 &+
-1` is `-9223372036854775808`). That's what hashes, checksums and binary
+1` is `-9223372036854775808`), and a sized type's wrap at its width (a
+`u8`'s `255 &+ 1` is 0). That's what hashes, checksums and binary
 protocols want; `&+=`, `&-=` and `&*=` assign them:
 
 ```asuka
@@ -523,24 +556,83 @@ fn fnv1a(data: bytes) -> int {
 ```
 
 `a.addingChecked(b)`, `subtractingChecked` and `multipliedChecked` give
-an `int?`, none on overflow, for code that handles it as a value. The
-shifts and the bitwise operators never throw for a result; `int(x)` of
-a float past the range gives the nearest `int` (`0` for NaN).
+an `int?` (a `u8?` of a `u8`...), none on overflow, for code that
+handles it as a value. The shifts and the bitwise operators never throw
+for a result; `int(x)` of a float past the range gives the nearest `int`
+(`0` for NaN).
+
+#### Integer types
+
+Beside `int`, there are integers of a fixed width, signed and not:
+
+| Type | Values |
+|---|---|
+| `i8`, `i16`, `i32` | −2⁷ to 2⁷ − 1, −2¹⁵ to 2¹⁵ − 1, −2³¹ to 2³¹ − 1 |
+| `int` | −2⁶³ to 2⁶³ − 1 (there's no `i64`: it's `int`) |
+| `u8`, `u16`, `u32`, `u64` | 0 to 2⁸ − 1 (255), 2¹⁶ − 1, 2³² − 1, 2⁶⁴ − 1 |
+
+`int` is what to use for counts, indexes, sizes and money in cents; the
+others are for what has a width of its own: a byte (`u8`), a pixel's
+channel, a file format's or a protocol's fields, a hash, an id past
+`int`'s range (`u64`), a C function's (`Int32` is an `i32`:
+[C](https://asuka.egoist.dev/docs/c)). Each holds its range exactly: its arithmetic throws past
+it, as `int`'s does, and it's what JSON, CSV, TOML and SQLite read into
+it, checked.
+
+An integer literal is of the type that's expected, and must fit it: `let
+level: u8 = 200`, `level + 1`, `let big: u64 = 18446744073709551615`;
+`let x: u8 = 256` and `let y: u8 = -1` are errors where they're
+written. Without one expected, it's an `int`.
+
+Two integers of different types don't meet in an operator, an `int` and
+a `u8` no more than an `int` and a `float`: `level + offset` of a `u8`
+and an `int` is an error ([mixed-numbers](https://asuka.egoist.dev/docs/errors/mixed-numbers)),
+and so is passing a `u8` where an `int` goes. Converting says which:
+
+```asuka
+fn conversions(n: int, level: u8, ratio: float) -> [u8] {
+  let total = int(level) + n        // widening: always fits
+  let a = u8(n)                     // an error ("integer overflow") when n doesn't fit
+  let b = u8(exactly: n) ?? 0       // a u8?: none when it doesn't fit
+  let c = u8(truncating: n)         // its low 8 bits: u8(truncating: 300) is 44, of -1 255
+  let d = u8(clamping: n)           // the nearest: 0 below, 255 above
+  let e = u8(ratio)                 // a float: toward zero, the nearest past the range
+  return [a, b, c, d, e, u8(clamping: total)]
+}
+```
+
+`u8.min` and `u8.max` are a type's range (`int.max` is
+9223372036854775807), and `u64.parse(text)` reads one from text, as
+`toInt()` does an `int` (`radix:` too), or gives none when it isn't one
+or doesn't fit. A `u64` past `int`'s largest prints, parses, compares,
+divides and goes into JSON as the number it is (`18446744073709551615`).
+
+`-x` and `abs(x)` take a signed integer: an unsigned one has no
+negatives (`0 &- x` wraps). The integer types have `int`'s methods,
+`toString(radix:)`, `padded(width)`, `float()`, `abs()` and the checked
+ones, take format specs (`"{id:x}"`), order and hash as numbers (keys of
+maps and sets, `Comparable` and `Hashable` in generics), and make
+ranges: `for i in u16(0)..<count`.
+
+A byte read from `bytes` is an `int` (`b[i]`, 0 to 255), so arithmetic
+on it doesn't wrap at 8 bits; `b.toArray()` is them as a `[u8]`, and
+`bytes(xs)` makes bytes of a `[u8]` as of an `[int]`.
 
 #### Built-in methods
 
 Strings, bytes, arrays, sets, maps and optionals have methods; those
-that change their value (`push`, `insert`, `removeAt`, `removeWhere`,
-`pop`, `clear`, `sort`, `remove`) take a `var` or state:
+that change their value (`push`, `pushFirst`, `insert`, `removeAt`,
+`removeWhere`, `pop`, `popFirst`, `clear`, `sort`, `remove`) take a
+`var` or state:
 
 | Type | Methods |
 |---|---|
-| `[T]` | `count()`, `count(where)`, `isEmpty()`, `first()`, `last()`, `get(i)` (a `T?`), `push(x)`, `insert(x, at: i)`, `removeAt(i)`, `removeWhere(p)`, `pop()`, `clear()`, `map(f)`, `flatMap(f)` (the arrays `f` gives, one after another), `compactMap(f)` (what `f` gives, without its nones), `filter(p)`, `reduce(initial, f)`, `any(p)`, `all(p)`, `index(p)` (an `int?`), `find(p)`, `contains(x)`, `sum()`, `min()`, `max()` (a `T?`; `min(by:)`, `max(by:)` with a less-than), `unique()`, `grouped(by: f)` (a `[K: [T]]`), `chunked(n)`, `zip(other)` (pairs, as long as the shorter), `reversed()`, `slice(from, to)` (`to` left out: the end), `prefix(n)`, `suffix(n)`, `sorted()`, `sorted(by)`, `sort()`, `sort(by)`, `enumerated()`, `joined(separator:)` (of strings), `+` |
-| `Set<T>` | `count()`, `isEmpty()`, `contains(x)`, `insert(x)` (whether it was new), `remove(x)` (whether it was there), `union(s)`, `intersection(s)`, `subtracting(s)`, `isSubset(of: s)`, `isSuperset(of: s)`; `Set(xs)` is an array's distinct elements, `Set<T>()` none |
-| `[K: V]` | `m[k]` (a `V?`), `m[k] = v`, `count()`, `isEmpty()`, `has(k)`, `get(k)`, `remove(k)`, `keys()`, `values()` (in insertion order), `mapValues(f)`, `filter((k, v) => …)` |
-| `string` | `count()` (characters), `byteCount()`, `isEmpty()`, `upper()`, `lower()`, `trim()`, `trimStart()`, `trimEnd()`, `trimPrefix(s)`, `trimSuffix(s)`, `contains(s)`, `hasPrefix(s)`, `hasSuffix(s)`, `replace(old, new, count:)` (every one unless count says), `split(sep, count:)`, `fields()` (the words), `lines()`, `find(s)`, `findLast(s)`, `findAny(chars)` (byte offsets, or none), `slice(from, to)` (characters), `byteSlice(from, to)` (bytes: the offsets find gives), `padStart(width, with:)`, `padEnd(width, with:)`, `toInt()`, `toInt(radix:)`, `toFloat()`, `repeat(n)`, `chars()`, `reversed()`, `bytes()`, `+` |
-| `bytes` | `b[i]` (an `int`, 0 to 255; out of range is an error), `count()`, `isEmpty()`, `get(i)` (an `int?`), `slice(from, to)`, `concat(b)`, `string()` (UTF-8; what isn't becomes U+FFFD), `hex()` and `hex(separator)` (`"04 a1"`); `bytes()` is none, `bytes([0x04, 0xa1])` those, `s.bytes()` a string's UTF-8 |
-| `int` | `float()`, `abs()`, `toString(radix:)` (`255.toString(radix: 16)` is `"ff"`), `padded(width)` (`7.padded(2)` is `"07"`), `addingChecked(o)`, `subtractingChecked(o)`, `multipliedChecked(o)` (an `int?`: none on overflow) |
+| `[T]` | `count()`, `count(where)`, `isEmpty()`, `first()`, `last()`, `get(i)` (a `T?`), `push(x)`, `pushFirst(x)`, `insert(x, at: i)`, `removeAt(i)`, `removeWhere(p)`, `pop()`, `popFirst()`, `clear()`, `map(f)`, `flatMap(f)` (the arrays `f` gives, one after another), `compactMap(f)` (what `f` gives, without its nones), `filter(p)`, `reduce(initial, f)`, `any(p)`, `all(p)`, `index(p)` (an `int?`), `find(p)`, `contains(x)`, `sum()`, `min()`, `max()` (a `T?`; `min(by:)`, `max(by:)` with a less-than, `min(key:)`, `max(key:)` by a key), `unique()`, `grouped(by: f)` (a `[K: [T]]`), `chunked(n)`, `zip(other)` (pairs, as long as the shorter), `reversed()`, `slice(from, to)` (`to` left out: the end), `prefix(n)`, `suffix(n)`, `sorted()`, `sorted(by)`, `sorted(key:, descending:)`, `sort()`, `sort(by)`, `sort(key:, descending:)`, `enumerated()`, `joined(separator:)` (of strings), `lazy()` (a `Seq<T>`), `+` |
+| `Set<T>` | `count()`, `isEmpty()`, `contains(x)`, `insert(x)` (whether it was new), `remove(x)` (whether it was there), `union(s)`, `intersection(s)`, `subtracting(s)`, `isSubset(of: s)`, `isSuperset(of: s)`, `lazy()`; `Set(xs)` is an array's distinct elements, `Set<T>()` none |
+| `[K: V]` | `m[k]` (a `V?`), `m[k] = v`, `count()`, `isEmpty()`, `has(k)`, `get(k)`, `remove(k)`, `keys()`, `values()` (in insertion order), `mapValues(f)`, `filter((k, v) => …)`, `lazy()` (its `(key, value)` pairs) |
+| `string` | `count()` (characters), `byteCount()`, `isEmpty()`, `upper()`, `lower()`, `trim()`, `trimStart()`, `trimEnd()`, `trimPrefix(s)`, `trimSuffix(s)`, `contains(s, ignoreCase:)`, `hasPrefix(s, ignoreCase:)`, `hasSuffix(s, ignoreCase:)`, `equals(s, ignoreCase:)`, `compare(s, ignoreCase:)` (negative, zero or positive), `foldCase()`, `replace(old, new, count:)` (every one unless count says), `split(sep, count:)`, `fields()` (the words), `lines()`, `find(s)`, `findLast(s)`, `findAny(chars)` (byte offsets, or none), `slice(from, to)` (characters), `byteSlice(from, to)` (bytes: the offsets find gives), `padStart(width, with:)`, `padEnd(width, with:)`, `toInt()`, `toInt(radix:)`, `toFloat()`, `repeat(n)`, `chars()`, `graphemes()`, `lazy()` (its characters, a `Seq<string>`), `reversed()`, `bytes()`, `+` |
+| `bytes` | `b[i]` (an `int`, 0 to 255; out of range is an error), `count()`, `isEmpty()`, `get(i)` (an `int?`), `slice(from, to)`, `concat(b)`, `string()` (UTF-8; what isn't becomes U+FFFD), `hex()` and `hex(separator)` (`"04 a1"`), `toArray()` (a `[u8]`); `bytes()` is none, `bytes([0x04, 0xa1])` those, `bytes(xs)` a `[u8]`'s, `s.bytes()` a string's UTF-8 |
+| `int`, `i8` … `u64` | `float()`, `abs()` (of a signed one), `toString(radix:)` (`255.toString(radix: 16)` is `"ff"`), `padded(width)` (`7.padded(2)` is `"07"`), `addingChecked(o)`, `subtractingChecked(o)`, `multipliedChecked(o)` (an `int?`, a `u8?` of a `u8`: none on overflow); `T.min`, `T.max`, `T.parse(text, radix:)` (a `T?`) |
 | `float` | `fixed(digits)`, `rounded()`, `floor()`, `ceil()`, `int()` (toward zero), `abs()` |
 | `Color` | `opacity(a)`: drawn at a times its opacity (a semantic color stays semantic); `hex()` (`"#0a84ff"`; a semantic color, its name: `".accent"`) |
 | `Duration` | `nanoseconds()`, `milliseconds()` (ints), `seconds()`, `minutes()`, `hours()` (floats), `rounded(to:)`, `truncated(to:)`, `+`, `-`, `* n` (an int or a float: `1.5 * 1h`), `/ n`, `/ d` (another Duration: how many times it goes in, a float) |
@@ -586,13 +678,68 @@ fn report(sales: [Sale]) -> [string] {
 as `sorted()` does, and give the first of equal elements. `chunked(n)`
 of an `n` under 1 is an error, as `xs[i]` out of range is.
 
+`sorted(key:)` orders the elements by what a function gives each, a
+`Comparable` computed once per element: `people.sorted(key: p =>
+p.age)`. `descending: true` puts the greatest first, and either way the
+sort is stable: elements with equal keys keep their order. `sort(key:)`
+sorts a `var` in place, and `min(key:)` and `max(key:)` give the element
+whose key is least or greatest (the first of equal ones). `sorted(by:)`
+takes a less-than instead, for an order no single key says.
+
+```asuka
+struct Player {
+  name: string
+  score: int
+  joined: int
+}
+
+fn ranking(players: [Player]) -> [string] {
+  let best = players.sorted(key: p => p.score, descending: true)
+  let newest = players.max(key: p => p.joined)
+  return best.map(p => p.name) + [newest?.name ?? ""]
+}
+```
+
+An array is a double-ended queue too: `pushFirst(x)` and `popFirst()`
+change its start as `push(x)` and `pop()` change its end, each in O(1)
+(amortized: an array keeps room at its start once it's changed there),
+and so do `insert(x, at: 0)` and `removeAt(0)`. An insertion or a
+removal elsewhere moves the elements on its shorter side. A queue is
+an array: `queue.push(job)`, then `queue.popFirst()`.
+
 `toInt(radix:)` reads a whole string in a radix from 2 to 36, letters
 in either case and an optional sign first (`"ff".toInt(radix: 16)` is
 255, `"-101".toInt(radix: 2)` is -5), or gives none; `toString(radix:)`
 writes one, lowercase. A radix outside 2 to 36 is an error.
 
-`min`, `max`, `abs`, `float(n)` and `int(x)` are functions;
+`min`, `max`, `abs`, `float(n)`, `int(x)` and the other integer types'
+conversions (`u8(x)`) are functions;
 `std/math` has the rest (`math.sqrt`, `math.pow`, `math.pi`, ...).
+
+`upper()` and `lower()` map every letter by Unicode's rules, the same
+in every language: `"straße".upper()` is `"STRASSE"`, and a word's last
+`Σ` is `ς` in lower case. `ignoreCase: true` compares two strings'
+case foldings (`foldCase()`: `"Straße"` and `"STRASSE"` both fold to
+`"strasse"`), as Go's `strings.EqualFold` and Python's `casefold` do; a
+match starts and ends on whole characters, so `"ß"` doesn't start with
+`"s"`. Neither follows a language's own rules: the Turkish dotless ı
+and dotted İ map as everywhere else (`"İ".lower()` is `i` with a
+combining dot), and text isn't normalized (`"é"` and `e` with a
+combining accent differ). For sorting names without their case,
+`compare` with `sorted(by:)`; `foldCase()` makes a key that ignores it:
+
+```asuka
+fn byName(names: [string]) -> [string] = names.sorted(by: (a, b) => a.compare(b, ignoreCase: true) < 0)
+
+fn sameUser(a: string, b: string) -> bool = a.trim().equals(b.trim(), ignoreCase: true)
+
+fn isMarkdown(path: string) -> bool = path.hasSuffix(".md", ignoreCase: true)
+```
+
+`count()` and `chars()` count code points; `graphemes()` gives what a
+reader takes for one character, as Unicode's text segmentation (UAX
+#29) says: `"e\u{301}"`, a flag (`"🇯🇵"`) and a family emoji joined with
+ZWJs are one each.
 
 `toInt()` and `toFloat()` read the whole string, or give none: an
 optional sign, then the number, with nothing around it (`" 12"` is
@@ -600,6 +747,56 @@ none: `trim()` it first). `toInt()` takes digits (`"+7"`, `"-42"`);
 `toFloat()` also a fraction and an exponent (`"2.5"`, `".5"`,
 `"1e-3"`) and what a float prints as (`"Infinity"`, `"NaN"`). Both
 read `.` as the decimal point in every language.
+
+#### Lazy sequences
+
+`xs.lazy()` is an array's elements as a `Seq<T>`, a lazy sequence. Its
+`map`, `filter`, `take` and the rest make another `Seq` and compute
+nothing; what reads it (a `for`, `toArray()`, `first()`, `reduce`...)
+computes its elements one at a time, each through every step, with no
+array in between. A chain over a million elements that keeps three
+computes those three and what it took to find them, and a sequence may
+have no end:
+
+```asuka
+fn squaresUnder(limit: int) -> [int] = Seq(from: 1).map(n => n * n).takeWhile(n => n < limit).toArray()
+
+fn firstLong(lines: [string]) -> string? = lines.lazy().map(l => l.trim()).find(where: l => l.count() > 80)
+
+fn fibonacci() -> Seq<int> = Seq(state: (0, 1), next: s => (s.0, (s.1, s.0 + s.1)))
+```
+
+A map's `lazy()` gives its `(key, value)` pairs, a set's its elements, a
+string's its characters, and a range's (`(0..<n).lazy()`) its numbers,
+without an array of them. `Seq(…)` makes one from a function:
+
+| Made with | Its elements |
+|---|---|
+| `Seq(from: n, by: step)` | `n`, `n + step`, ... without end; `by` is 1 unless it says |
+| `Seq(first: x, next: f)` | `x`, `f(x)`, `f(f(x))`, ... until `f` gives none |
+| `Seq(state: s, next: f)` | `f(s)` gives the next element and the next state, `(x, s2)`, or none at the end |
+| `Seq(repeating: x, count: n)` | `x`, `n` times; without `count`, without end |
+
+| | Methods |
+|---|---|
+| A new `Seq` | `map(f)`, `filter(p)`, `compactMap(f)`, `flatMap(f)` (the elements of the `Seq`s `f` gives, one after another), `enumerated()`, `zip(other)`, `take(n)`, `skip(n)`, `takeWhile(p)`, `skipWhile(p)`, `chunked(n)`, `windows(n)` (each `n` in a row: `[1, 2, 3]`'s `windows(2)` is `[1, 2]`, `[2, 3]`), `onEach(f)` (`f` called with each element as it's read), `unique()`, `concat(other)` |
+| Reading it | `toArray()`, `toSet()`, `toMap()` (of `(key, value)` pairs), `count()`, `count(where:)`, `first()`, `last()`, `find(where:)`, `any(where:)`, `all(where:)`, `contains(x)`, `reduce(initial, f)`, `sum()`, `min()`, `max()`, `min(by:)`, `max(by:)`, `min(key:)`, `max(key:)`, `joined(separator:)` |
+
+`take`, `find`, `first`, `any` and `all` stop pulling elements once
+they have their answer: what comes after is never computed. A `Seq` is
+read from its start each time (a `for` over it twice computes it
+twice). It holds its source's value as it was when it was made, as any
+value would: a change to the array after it doesn't change it.
+
+A step's function runs later, as the sequence is read, so it can't
+throw: do that in a `for`, or with an array's `map`. A function that
+reading calls at once (`reduce`, `find(where:)`, `any`, `count(where:)`,
+`min(key:)`...) may, and then the call throws what it throws, as an
+array's methods do.
+
+A priority queue, and maps and sets kept in their keys' order, are
+`std/collections`' `Heap`, `SortedMap` and `SortedSet` ([Standard
+library](https://asuka.egoist.dev/docs/stdlib)).
 
 #### Value semantics
 
@@ -753,16 +950,17 @@ match line {
 ```
 
 A struct or an enum takes operators from its methods: `fn add(o: T) ->
-R` is `a + b`, `fn sub(o: T) -> R` (or `minus`) is `a - b`, `fn mul(o:
+R` (or `plus`) is `a + b`, `fn sub(o: T) -> R` (or `minus`) is `a - b`, `fn mul(o:
 T) -> R` (or `times`) is `a * b`, `fn div(o: T) -> R` (or `quo`) is `a /
-b`, `fn rem(o: T) -> R` is `a % b`, `fn neg() -> R` is `-a`, and `fn
+b`, `fn rem(o: T) -> R` is `a % b`, `fn pow(o: T) -> R` is `a ** b`,
+`fn neg() -> R` is `-a`, and `fn
 compare(o: T) -> int` (negative, zero or positive) is `<`, `<=`, `>`
 and `>=`, `sorted()`, and `T: Comparable`
 ([Functions](https://asuka.egoist.dev/docs/language/functions#interfaces-and-generics)). `T` may be another
 type than the value's (`Money * int`), and an operator with two names
 takes one `T` each: a `Decimal`'s `mul(o: Decimal)` and `times(n: int)`
 are `price * rate` and `price * 3`. The other order (`3 * price`) isn't
-derived. `a += b` is `a = a + b` with them (and `-=`, `*=`, `/=`, `%=`),
+derived. `a += b` is `a = a + b` with them (and `-=`, `*=`, `/=`, `%=`, `**=`),
 when the method gives `a`'s type back, on a var, state, a field or an
 element (state changes once). That's how `std/time`'s `Time` adds a
 `Duration` and subtracts another `Time`:
@@ -1146,7 +1344,8 @@ its type (`Unit.big(n)`) do: `if let c: Circle = shape { … }`,
 ends with `_`; see [Interfaces and
 generics](https://asuka.egoist.dev/docs/language/functions#interfaces-and-generics).
 
-`for` goes over an array, a set, a map's `(key, value)` pairs, or a
+`for` goes over an array, a set, a map's `(key, value)` pairs, a lazy
+sequence (a `Seq`: [Values and types](https://asuka.egoist.dev/docs/language/types#lazy-sequences)), or a
 range:
 `a..<b` is the ints from `a` up to `b`, without it, and `a..b` with it
 (`0..<3` is `[0, 1, 2]`, and a `for` over a range makes no array).
@@ -1155,9 +1354,11 @@ the loop, or go on to its next turn.
 
 `for` also goes over a value of your own types: an iterator, whose type
 has `mut fn next() -> T?` (`for` calls it on a copy, until it gives
-`none`), or a sequence, whose `fn iter()` gives one (`for` calls it
-once). The prelude's `Iterator<T>` names such a type, for constraints:
-`fn sum<I: Iterator<int>>(xs: I) -> int`.
+`none`), or a sequence, whose `fn iter()` gives an iterator or a `Seq`
+(`for` calls it once). The prelude's `Iterator<T>` names such a type,
+for constraints: `fn sum<I: Iterator<int>>(xs: I) -> int`. An
+iterator's `none` is its end, so one whose elements may be none (a
+`T?`) gives a `Seq` instead: `fn iter() -> Seq<int?> = slots.lazy()`.
 
 ```asuka
 struct Node {
@@ -2762,6 +2963,34 @@ action:)`, `refresh`, `scrollTo`, `back`, `dismiss`, `pickDate`,
 "/inbox/1")`, `href`, `history()`, `goBack()`, `goForward()`. See
 [Testing](https://asuka.egoist.dev/docs/testing).
 
+A test with parameters is a property test, run with values `asuka test`
+generates for them; a failing input is shrunk to the simplest that still
+fails. `bench "name" { … }` is a benchmark, timed by `asuka test
+--bench`; its `measure { … }` is the part timed, after what sets it up,
+and `keep(x)` keeps a result from being optimized out.
+`expectSnapshot(value)` and `expectInlineSnapshot(value, "…")` compare
+what a value prints as with its snapshot, which `asuka test` writes.
+
+```asuka
+fn fib(n: int) -> int {
+  if n < 2 { return n }
+  return fib(n - 1) + fib(n - 2)
+}
+
+test "fib grows" (n: int) {
+  if n < 2 || n > 30 { return }
+  expect(fib(n) >= fib(n - 1))
+}
+
+test "the first ones" {
+  expectInlineSnapshot([fib(1), fib(2), fib(3), fib(10)], "[1, 1, 2, 55]")
+}
+
+bench "fib 20" {
+  keep(fib(20))
+}
+```
+
 ## Diagnostic codes
 
 - argument-count: a call with too many or too few arguments. Pass what the function declares; leave out only parameters with defaults.
@@ -2786,7 +3015,8 @@ action:)`, `refresh`, `scrollTo`, `back`, `dismiss`, `pickDate`,
 - format-spec: an interpolation's format that doesn't fit its value. Write the format for the value's type, as the message says: `{n:>6}`, `{x:.2f}`, `{n:#x}`, `{name:<12}`.
 - group-not-calls: `load (…)` of what isn't each a call. Group the calls only (`load (api.user(id), api.posts(id))`), and pass the values to them, or beside the load.
 - import-cycle: packages that import each other. Move what both need into a third package they both import.
-- int-overflow: an integer literal that doesn't fit in its type. Use a number in the range, a wider type (`u16`, `int`, `u64`), a `float`, or `std/decimal` for exact large numbers.
+- inline-snapshot: an inline snapshot that isn't a string written in the call. Write the snapshot as a string literal, or leave it out (`expectInlineSnapshot(value)`) and let `asuka test` write it on its first run.
+- int-overflow: an integer literal that doesn't fit in its type. Use a number in the range, a wider type (`u16`, `int`, `u64`), a `float`, or, for an exact integer past 64 bits, `std/bigint`'s `BigInt` (`BigInt.parse("9223372036854775808")!`).
 - interface-not-satisfied: a type that declares an interface it doesn't implement. Add the missing methods (the message lists them), with the interface's signatures.
 - internal-error: a mistake of the compiler's own. Report it (with the program, or the smallest one that shows it) at https://github.com/egoist/asuka/issues.
 - invalid-catalog: a catalog that isn't a valid file of messages. Fix the file where the message points: a string for each key, its placeholders as the source's.
@@ -2864,6 +3094,7 @@ action:)`, `refresh`, `scrollTo`, `back`, `dismiss`, `pickDate`,
 - spawn-captures-state: `spawn` that reads or changes state, or what isn't a value. Read the state into a `let` first, and pass that; assign what `spawn` returns.
 - statement-in-view: a statement among a component's views. Put statements in a handler (`on press { … }`), a fn, a task or an effect; a derived value is a `let`.
 - syntax-error: the parser expected something else here. Read the message's "expected …, found …": write what it expected, or close what's open where it says.
+- test-parameter: a test's parameter of a type asuka test can't generate. Take what the test is about as data (an id, a struct of fields), and make the rest from it in the test's body.
 - too-large: a function too large for the bytecode. Split the function, or keep the data in a file (`embed.json`) instead of a literal.
 - tr-in-package: `tr` in a package that isn't the app. Take the text as a parameter, and let the app pass `tr.key()`.
 - type-arguments: the wrong number of type arguments. Give as many types as it declares: `Set<int>`, `Page<Item>`.

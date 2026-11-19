@@ -496,6 +496,11 @@
           "match": "\\btest\\b(?=\\s*(?:r?\\\"))"
         },
         {
+          "comment": "bench is a keyword only before its name, a string; measure only before a block",
+          "name": "storage.type.asuka",
+          "match": "^\\s*bench\\b(?=\\s*(?:r?\\\"))|\\bmeasure\\b(?=\\s*\\{)"
+        },
+        {
           "name": "storage.modifier.asuka",
           "match": "\\b(pub|native|extern|async|throws)\\b"
         },
@@ -570,7 +575,7 @@
     "calls": {
       "patterns": [
         {
-          "match": "\\b(print|expect|sleep|all|race|mount|idle|push|pop|present|dismiss|min|max|abs|float|int|panic|withTimeout)(?=\\s*\\()",
+          "match": "\\b(print|expect|expectSnapshot|expectInlineSnapshot|keep|sleep|all|race|mount|idle|push|pop|present|dismiss|min|max|abs|float|int|panic|withTimeout)(?=\\s*\\()",
           "captures": {
             "1": {
               "name": "support.function.builtin.asuka"
@@ -632,7 +637,7 @@
       "patterns": [
         {
           "name": "support.type.builtin.asuka",
-          "match": "\\b(int|float|bool|string|bytes|void|never|Duration|Color|Length|View|Error|Task|Stream|Loading|Set)\\b"
+          "match": "\\b(int|float|bool|string|bytes|void|never|Duration|Color|Length|View|Error|Task|Stream|Seq|Loading|Set)\\b"
         },
         {
           "name": "entity.name.type.asuka",

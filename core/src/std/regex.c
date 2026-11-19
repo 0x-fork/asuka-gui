@@ -24,6 +24,7 @@
 //	regex.names(program) -> [string]
 //	regex.quote(s) -> string                   s, matched literally
 #include "std/std.h"
+#include "rt/unicode.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -820,6 +821,14 @@ typedef struct {
 	range *ranges;
 	const char *names;
 	uint32_t ninst, nranges, ncap, nnames;
+	// What a match can start with (prefilter): a literal every match
+	// starts with (lit, litn > 1), or the bytes one can (first); none
+	// when a match may be empty or start with what isn't UTF-8.
+	bool filter;
+	uint8_t first[32];  // a bit a byte
+	int single;         // the one byte first has, or -1
+	char lit[32];
+	size_t litn;
 } prog;
 
 // decode reads a program, checking it (a Regex can be made by hand).
@@ -996,6 +1005,108 @@ static int64_t prev_rune(const char *s, size_t pos) {
 	return c;
 }
 
+// ---- What a match starts with ----
+//
+// A match starts where a thread from the program's first instruction
+// consumes its first character: so the bytes that can begin one are the
+// first bytes of what the consuming instructions its empty transitions
+// reach take. Where no thread is alive, the matcher skips to the next
+// such byte (memchr, or memmem for a literal prefix), as RE2's and the
+// regex crate's prefilters do: the same matches, sooner.
+
+static void first_byte(prog *p, uint8_t b) { p->first[b >> 3] |= (uint8_t)(1u << (b & 7)); }
+
+// first_bytes adds the lead bytes of the code points lo to hi (none of
+// them U+FFFD, which any byte that isn't UTF-8 reads as).
+static void first_bytes(prog *p, uint32_t lo, uint32_t hi) {
+	static const uint32_t band_lo[4] = {0, 0x80, 0x800, 0x10000}, band_hi[4] = {0x7f, 0x7ff, 0xffff, 0x10ffff};
+	for (int k = 0; k < 4; k++) {
+		uint32_t a = lo > band_lo[k] ? lo : band_lo[k], z = hi < band_hi[k] ? hi : band_hi[k];
+		if (a > z) continue;
+		char ea[4], ez[4];
+		ak_utf8_encode(a, ea);
+		ak_utf8_encode(z, ez);
+		for (unsigned c = (uint8_t)ea[0]; c <= (uint8_t)ez[0]; c++) first_byte(p, (uint8_t)c);
+	}
+}
+
+bool ak_regex_prefilter_off;
+
+static void prefilter(prog *p) {
+	p->filter = false;
+	if (ak_regex_prefilter_off) return;
+	p->single = -1;
+	p->litn = 0;
+	memset(p->first, 0, sizeof p->first);
+	// The literal prefix: characters, past saves and assertions (they
+	// consume nothing), until anything else.
+	for (uint32_t pc = 0; pc < p->ninst;) {
+		const inst *i = &p->code[pc];
+		if (i->op == I_SAVE || i->op == I_ASSERT) {
+			pc++;
+			continue;
+		}
+		if (i->op != I_CHAR || i->x == 0xfffd || p->litn + 4 > sizeof p->lit) break;
+		p->litn += ak_utf8_encode(i->x, p->lit + p->litn);
+		pc++;
+	}
+	// The first bytes: the empty transitions from 0, depth first.
+	uint8_t *seen = ak_alloc(p->ninst);
+	uint32_t *stack = ak_alloc(sizeof(uint32_t) * (p->ninst + 1));
+	uint32_t top = 0;
+	bool ok = true;
+	stack[top++] = 0;
+	while (top && ok) {
+		uint32_t pc = stack[--top];
+		if (seen[pc]) continue;
+		seen[pc] = 1;
+		const inst *i = &p->code[pc];
+		switch (i->op) {
+		case I_JMP: stack[top++] = i->x; break;
+		case I_SPLIT: stack[top++] = i->y, stack[top++] = i->x; break;
+		case I_SAVE:
+		case I_ASSERT: stack[top++] = pc + 1; break;  // an assertion may fail: what's after it is a superset
+		case I_CHAR:
+			if (i->x == 0xfffd) ok = false;
+			else first_bytes(p, i->x, i->x);
+			break;
+		case I_CLASS:
+			for (uint32_t r = 0; r < i->y && ok; r++) {
+				const range *g = &p->ranges[i->x + r];
+				if (g->lo <= 0xfffd && 0xfffd <= g->hi) ok = false;
+				else first_bytes(p, g->lo, g->hi);
+			}
+			break;
+		default:  // ANY, ANYNL take any byte; MATCH: a match may be empty
+			ok = false;
+		}
+	}
+	ak_free(seen);
+	ak_free(stack);
+	if (!ok) return;
+	int count = 0;
+	for (int b = 0; b < 256; b++)
+		if (p->first[b >> 3] >> (b & 7) & 1) count++, p->single = b;
+	if (count == 0 || count == 256) return;
+	if (count > 1) p->single = -1;
+	p->filter = true;
+}
+
+// skip is the first position from pos where a match can start, n when
+// none can.
+static size_t skip(const prog *p, const char *s, size_t n, size_t pos) {
+	if (p->litn > 1) {
+		int64_t at = ak_mem_find(s + pos, n - pos, p->lit, p->litn);
+		return at < 0 ? n : pos + (size_t)at;
+	}
+	if (p->single >= 0) {
+		const char *q = memchr(s + pos, p->single, n - pos);
+		return q ? (size_t)(q - s) : n;
+	}
+	while (pos < n && !(p->first[(uint8_t)s[pos] >> 3] >> ((uint8_t)s[pos] & 7) & 1)) pos++;
+	return pos;
+}
+
 // exec finds the leftmost-first match in s[0:n] at or after start; its
 // captures in m->match.
 static bool exec(vm *m, const char *s, size_t n, size_t start) {
@@ -1007,6 +1118,16 @@ static bool exec(vm *m, const char *s, size_t n, size_t start) {
 	size_t pos = start;
 	int64_t before = prev_rune(s, start);
 	for (;;) {
+		if (!matched && cl->len == 0 && p->filter) {
+			// No thread alive: on to where a match can start (no match
+			// is empty, so none starts at the end).
+			size_t q = skip(p, s, n, pos);
+			if (q >= n) break;
+			if (q != pos) {
+				pos = q;
+				before = prev_rune(s, pos);
+			}
+		}
 		size_t next = pos;
 		int64_t at = pos < n ? (int64_t)ak_utf8_decode(s, n, &next) : -1;
 		around ctx = {before, at};
@@ -1049,7 +1170,10 @@ static bool exec(vm *m, const char *s, size_t n, size_t start) {
 }
 
 static bool load(const ak_bytes *b, prog *p) {
-	if (decode(b, p)) return true;
+	if (decode(b, p)) {
+		prefilter(p);
+		return true;
+	}
 	ak_throw_msg("regex: not a compiled pattern (make a Regex with regex.compile)");
 	return false;
 }

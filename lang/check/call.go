@@ -426,6 +426,9 @@ func (c *Checker) unify(p, a Type, s Subst, free map[*TypeParam]bool) bool {
 	case *Stream:
 		y, ok := a.(*Stream)
 		return ok && c.unify(x.Elem, y.Elem, s, free)
+	case *Seq:
+		y, ok := a.(*Seq)
+		return ok && c.unify(x.Elem, y.Elem, s, free)
 	case *Named:
 		y, ok := a.(*Named)
 		if !ok || y.Obj != x.Obj || len(y.Args) != len(x.Args) {
@@ -476,6 +479,8 @@ func mentionsFree(t Type, free map[*TypeParam]bool, s Subst) bool {
 		case *Task:
 			walk(x.Elem)
 		case *Stream:
+			walk(x.Elem)
+		case *Seq:
 			walk(x.Elem)
 		case *Named:
 			for _, a := range x.Args {
@@ -789,6 +794,9 @@ func optionalAt(p, a Type, tp *TypeParam) bool {
 		return ok && optionalAt(x.Elem, y.Elem, tp)
 	case *Stream:
 		y, ok := a.(*Stream)
+		return ok && optionalAt(x.Elem, y.Elem, tp)
+	case *Seq:
+		y, ok := a.(*Seq)
 		return ok && optionalAt(x.Elem, y.Elem, tp)
 	case *Named:
 		y, ok := a.(*Named)
@@ -1454,7 +1462,9 @@ func (c *Checker) methodCall1(e *syntax.CallExpr, fn *syntax.MemberExpr, xt Type
 	if ms := methodsArity(xt, name, argCount(e)); len(ms) > 0 {
 		m := ms[0]
 		if len(ms) > 1 {
-			m = c.overload(e, ms)
+			if m = c.overloadByLabel(e, ms); m == nil {
+				m = c.overload(e, ms)
+			}
 		}
 		return c.builtinMethodCall(e, fn, xt, m, want)
 	}
@@ -1504,6 +1514,9 @@ func (c *Checker) builtinMethodCall(e *syntax.CallExpr, fn *syntax.MemberExpr, x
 	c.typeDefaults(args, params)
 	if t := s[tvT]; m.Needs == "Comparable" && t != nil {
 		c.whyNotComparable(t) // its compare's signature read
+	}
+	if u := s[tvU]; m.Needs == "ComparableU" && u != nil {
+		c.whyNotComparable(u)
 	}
 	if why := m.requires(s); why != "" {
 		if !strings.HasPrefix(why, "(") {
@@ -2072,7 +2085,7 @@ func sendable1(t Type, seen map[*TypeName]bool) bool {
 			}
 		}
 		return true
-	case *FuncType, *Task, *Stream:
+	case *FuncType, *Task, *Stream, *Seq:
 		return false
 	case *TypeParam:
 		return true

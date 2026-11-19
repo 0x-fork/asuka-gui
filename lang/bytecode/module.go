@@ -10,7 +10,7 @@ import (
 // Magic starts every module; Version changes with the format.
 const (
 	Magic   = "AKBC"
-	Version = 6
+	Version = 8
 )
 
 // Kind is how a value is stored (core/src/rt/rt.h's ak_kind).
@@ -79,6 +79,17 @@ type Line struct {
 	PC, Line uint32
 }
 
+// Inline is a function's body the optimizer copied into another's in
+// place of a call to it (lang/ir's inlining): its code is [Start, End)
+// in words, and an error thrown there, or a call made there, is in the
+// function Func, called at line Line of the function it's in. Its
+// instructions' lines are Func's own.
+type Inline struct {
+	Start, End uint32
+	Func       uint32
+	Line       uint32
+}
+
 // Function flags.
 const (
 	FAsync  = 1 << iota // may suspend
@@ -101,12 +112,26 @@ type FuncDef struct {
 	Code     []uint16
 	Handlers []Handler
 	Lines    []Line
+	Inlines  []Inline // the functions inlined into it, none nested
 }
 
-// Test is a test block.
+// Test is a test block, or a bench.
 type Test struct {
 	Name string
 	Func uint32
+	// Bench: a benchmark, whose function takes how many times to run
+	// what it measures (an int).
+	Bench bool
+	// Params are a property test's parameters, which its function takes
+	// in order: values the runner generates, of their descriptors' types
+	// (core/src/rt/json.h).
+	Params []Param
+}
+
+// Param is a property test's parameter: its name and its type's JSON
+// descriptor.
+type Param struct {
+	Name, Desc string
 }
 
 // Module is a compiled program.
@@ -240,6 +265,13 @@ func (m *Module) Encode() []byte {
 			w.u32(l.PC)
 			w.u32(l.Line)
 		}
+		w.u32(uint32(len(f.Inlines)))
+		for _, in := range f.Inlines {
+			w.u32(in.Start)
+			w.u32(in.End)
+			w.u32(in.Func)
+			w.u32(in.Line)
+		}
 	}
 	w.u32(uint32(len(m.Builtins)))
 	for _, b := range m.Builtins {
@@ -253,6 +285,16 @@ func (m *Module) Encode() []byte {
 	for _, t := range m.Tests {
 		w.str(t.Name)
 		w.u32(t.Func)
+		var flags uint8
+		if t.Bench {
+			flags |= 1
+		}
+		w.u8(flags)
+		w.u32(uint32(len(t.Params)))
+		for _, p := range t.Params {
+			w.str(p.Name)
+			w.str(p.Desc)
+		}
 	}
 	return w.b
 }
@@ -302,6 +344,9 @@ func Decode(b []byte) (*Module, error) {
 		for c := r.u32(); c > 0 && r.err == nil; c-- {
 			f.Lines = append(f.Lines, Line{r.u32(), r.u32()})
 		}
+		for c := r.u32(); c > 0 && r.err == nil; c-- {
+			f.Inlines = append(f.Inlines, Inline{r.u32(), r.u32(), r.u32(), r.u32()})
+		}
 		m.Funcs = append(m.Funcs, f)
 	}
 	for n := r.u32(); n > 0 && r.err == nil; n-- {
@@ -312,7 +357,12 @@ func Decode(b []byte) (*Module, error) {
 	m.App = int32(r.u32())
 	m.Main = int32(r.u32())
 	for n := r.u32(); n > 0 && r.err == nil; n-- {
-		m.Tests = append(m.Tests, Test{r.str(), r.u32()})
+		t := Test{Name: r.str(), Func: r.u32()}
+		t.Bench = r.u8()&1 != 0
+		for k := r.u32(); k > 0 && r.err == nil; k-- {
+			t.Params = append(t.Params, Param{r.str(), r.str()})
+		}
+		m.Tests = append(m.Tests, t)
 	}
 	if r.err != nil {
 		return nil, r.err

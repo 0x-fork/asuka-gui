@@ -58,6 +58,8 @@ type Lowerer struct {
 	styleMemo map[*check.Var]bool
 	// variantIDs are the declared variants' ids (style.go's variantID).
 	variantIDs map[*check.VariantDef]int64
+	// cov counts statements' runs, with Options.Cover (cover.go).
+	cov *coverer
 }
 
 // Options say how to lower.
@@ -78,6 +80,9 @@ type Options struct {
 	// @platform is, which decides the branches it folds (fold.go).
 	// "": target.Default.
 	Platform string
+	// Cover names the files whose statements count their runs, for
+	// asuka test --cover (cover.go); none: nothing is counted.
+	Cover []string
 }
 
 // Lower lowers prog (checked without errors) to a program.
@@ -105,7 +110,14 @@ func Lower(prog *check.Program, opts *Options) (*Program, []check.Diagnostic) {
 	}
 	l.out = &Program{Mod: l.mod}
 	l.opts = opts
+	if len(opts.Cover) > 0 {
+		l.cov = newCoverer(l, opts.Cover)
+	}
 	l.lower()
+	if l.cov != nil {
+		l.cov.branches(l)
+		l.out.Cover = l.cov.out
+	}
 	return l.out, l.errs
 }
 
@@ -395,7 +407,14 @@ func (l *Lowerer) desc(t check.Type) string {
 				return "-"
 			}
 			l.shape(t)
-			return "S" + l.typeKey(t) + ";"
+			key := l.typeKey(t)
+			if key == "std/bigint.BigInt" {
+				// JSON and print read and write it with std/bigint's C
+				// (json.c's ak_link_bigint): a program that only decodes
+				// one links that C too.
+				l.builtin("bigint.bigText")
+			}
+			return "S" + key + ";"
 		case check.EnumType:
 			if x.Obj.RefEnum() {
 				l.shape(t)
@@ -810,20 +829,20 @@ func initKey(e syntax.Expr) string {
 // Tests
 
 func (l *Lowerer) lowerTest(t *check.Test) {
-	b := l.newFunc("test "+t.Name, l.fileOf(t.Decl), 0, bc.KVoid)
-	b.ctx = t.Ctx
-	l.mod.Tests = append(l.mod.Tests, bc.Test{Name: t.Name, Func: uint32(b.idx)})
+	b, entry := l.newTest(t)
+	l.mod.Tests = append(l.mod.Tests, entry)
 	l.work = append(l.work, func() {
 		b.f.Flags = bc.FThrows
 		if t.Ctx.Awaits {
 			b.f.Flags |= bc.FAsync
 		}
+		b.testParams(t)
 		// A user error that leaves the test fails it with its message:
 		// rethrown as a runtime error, whose message the runner reads.
 		start, end, target := b.f.NewLabel(), b.f.NewLabel(), b.f.NewLabel()
 		b.f.Place(start)
-		b.line = l.line(t.Decl)
-		b.stmts(t.Decl.Body.Items)
+		b.line = l.line(t.Node())
+		b.testBody(t)
 		b.f.Place(end)
 		b.emit(op("RET0"))
 		b.f.Place(target)

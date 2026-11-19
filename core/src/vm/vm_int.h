@@ -11,6 +11,9 @@
 
 typedef struct { uint32_t start, end, target; } ak_handler;
 typedef struct { uint32_t pc, line; } ak_line;
+// A function's body inlined in another's: its code [start, end), in
+// func, called at line (bytecode.Inline).
+typedef struct { uint32_t start, end, func, line; } ak_inline;
 
 // A function's body compiled to C (lang/cgen): it takes its arguments
 // (borrowed; it retains what it keeps) and the running closure, and
@@ -39,6 +42,8 @@ struct ak_func {
 	uint16_t nparams;
 	uint16_t nregs;
 	uint8_t *kinds;     // per register
+	uint16_t *refs;     // the reference registers, ascending: what leaving releases
+	uint16_t nrefs;
 	uint8_t *capkinds;  // per capture
 	uint16_t ncap;
 	uint8_t ret;        // the result's kind
@@ -49,6 +54,8 @@ struct ak_func {
 	uint32_t nhandlers;
 	ak_line *lines;
 	uint32_t nlines;
+	ak_inline *inlines;
+	uint32_t ninlines;
 	uint32_t index;
 };
 
@@ -97,7 +104,13 @@ struct ak_module {
 	uint32_t init;
 	int32_t app;
 	int32_t main;  // a program's fn main, -1: none
-	struct { ak_str *name; uint32_t func; } *tests;
+	struct {
+		ak_str *name;
+		uint32_t func;
+		uint8_t flags;  // 1: a bench
+		uint32_t nparams;
+		ak_str **params;  // a property test's: name, descriptor, name, ...
+	} *tests;
 	uint32_t ntests;
 	struct { ak_str **data; uint32_t len, cap; } names;  // what shapes' names point into
 	// How native calls find the module's types (native_lib.c): kept as
@@ -111,6 +124,10 @@ void ak_module_retain(ak_module *m);
 // frame's, else the one compiled into the build (what builtins that
 // look up the module's types, JSON's and native calls', ask).
 ak_module *ak_vm_running_module(void);
+// What decoding by descriptor needs (rt/json.h): the running module's
+// types, or m's.
+void ak_vm_json_types(ak_json_types *out);
+void ak_vm_module_json_types(ak_module *m, ak_json_types *out);
 
 // A call frame on a coroutine.
 typedef struct {

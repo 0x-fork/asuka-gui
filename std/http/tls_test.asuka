@@ -1,0 +1,35 @@
+// A request's TLS settings, as they're checked before a platform's
+// client reads them. (Requests with them, on each platform: std's
+// TestHTTPSwiftTLS, the Kotlin TLSTest, TestProgramHTTPSClient and
+// platform/desktop's testdata/streams/tls.asuka.)
+
+let cert = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n"
+let key = "-----BEGIN PRIVATE KEY-----\nMIGH\n-----END PRIVATE KEY-----\n"
+
+test "settings that change nothing are the system's" {
+  expect(!tlsGiven(TLS()))
+  expect(!tlsGiven(TLS(trustSystem: true)))
+  expect(tlsGiven(TLS(ca: cert)))
+  expect(tlsGiven(TLS(insecureSkipVerify: true)))
+}
+
+test "what's wrong with the PEM" {
+  expect(tlsProblem(TLS(ca: cert, certificate: cert, key: key)) == none)
+  expect(tlsProblem(TLS(ca: "not PEM")) == "ca has no PEM certificate (\"-----BEGIN CERTIFICATE-----\")")
+  expect(tlsProblem(TLS(certificate: key, key: key)) == "certificate has no PEM certificate (\"-----BEGIN CERTIFICATE-----\")")
+  expect(tlsProblem(TLS(certificate: cert)) == "a client certificate needs its key (key:)")
+  expect(tlsProblem(TLS(key: key)) == "a key needs its certificate (certificate:)")
+  expect(tlsProblem(TLS(certificate: cert, key: "-----BEGIN ENCRYPTED PRIVATE KEY-----\nMIGH\n-----END ENCRYPTED PRIVATE KEY-----\n")) == "the key is encrypted: give it decrypted (PKCS#8, RSA or EC, PEM)")
+  expect(tlsProblem(TLS(certificate: cert, key: cert)) == "key has no PEM private key (PRIVATE KEY, RSA PRIVATE KEY or EC PRIVATE KEY)")
+}
+
+test "a request throws before it's sent" {
+  do {
+    let _ = try await get("https://example.com/", tls: TLS(certificate: cert))
+    expect(false)
+  } catch HTTPError.tls(reason) {
+    expect(reason == "a client certificate needs its key (key:)")
+  }
+  expect(HTTPError.tls(reason: "x").message() == "tls: x")
+  expect(HTTPError.status(code: 503).message() == "the server answered with status 503")
+}

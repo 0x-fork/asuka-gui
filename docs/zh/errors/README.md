@@ -24,6 +24,7 @@ Asuka 报告的每个错误和警告都有一个代码：一个稳定的名称�
 - [format-spec](format-spec.md): 插值的格式和它的值对不上。
 - [group-not-calls](group-not-calls.md): `load (…)` 里的元素不都是调用。
 - [import-cycle](import-cycle.md): 相互导入的包。
+- [inline-snapshot](inline-snapshot.md): 内联快照不是直接写在调用里的字符串。
 - [int-overflow](int-overflow.md): 超出所属类型范围的整数字面量。
 - [interface-not-satisfied](interface-not-satisfied.md): 类型声明了某个 interface，却没有实现它。
 - [internal-error](internal-error.md): 编译器自身的错误。
@@ -98,6 +99,7 @@ Asuka 报告的每个错误和警告都有一个代码：一个稳定的名称�
 - [spawn-captures-state](spawn-captures-state.md): `spawn` 读取或修改了状态，或者用了不是值的东西。
 - [statement-in-view](statement-in-view.md): 组件的视图之间写了语句。
 - [syntax-error](syntax-error.md): 解析器在这里期望的是别的内容。
+- [test-parameter](test-parameter.md): 测试参数的类型是 asuka test 无法生成的。
 - [too-large](too-large.md): 函数太大，字节码装不下。
 - [tr-in-package](tr-in-package.md): 在不是应用的包里使用了 `tr`。
 - [type-arguments](type-arguments.md): 类型参数的个数不对。

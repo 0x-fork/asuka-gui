@@ -1,0 +1,45 @@
+// A mut fn's receiver goes back to its caller as it ends, returned or
+// thrown: what it wrote last is what the caller has.
+enum Light {
+  red
+  green
+  yellow
+
+  mut fn next() {
+    self = match self {
+      .red => .green
+      .green => .yellow
+      .yellow => .red
+    }
+  }
+
+  mut fn fail() throws {
+    self = .yellow
+    throw Error("broke")
+  }
+}
+
+struct Counter {
+  n: int
+  hits: [int] = []
+
+  mut fn add(k: int) throws {
+    n += k
+    hits.push(k)
+    if n > 10 { throw Error("over: {n}") }
+    n += 1
+  }
+}
+
+fn main() throws {
+  var l = Light.red
+  l.next()
+  l.next()
+  print(l)
+  do { try l.fail() } catch e { print("{e.message}: {l}") }
+  var c = Counter(n: 0)
+  for k in [1, 2, 3, 4, 5] {
+    do { try c.add(k) } catch e { print(e.message) }
+  }
+  print("{c.n} {c.hits}")
+}

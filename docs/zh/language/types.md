@@ -31,7 +31,7 @@ let title = "{"Total":*^11}"         // ***Total***
 let table = row("asuka", 12500, 0.4) // asuka     12,500   40.0%
 ```
 
-宽度按字符（码位）计算，而不是按终端里显示的宽度。
+宽度按字符（码位）计算，而不是按终端里显示的宽度。要按终端的列数算（中日韩文字和 emoji 占两列），用 `std/term` 的 `textWidth`、`padEnd` 和 `fit`，见[程序](../programs.md#对齐的表格)。
 
 元组的元素可以按位置读取：`pair.0`、`pair.1`；如果元组存在 `var` 里，也可以就地修改（`pair.0 += 1`）。写一个元组没有的位置（对一对值写 `pair.2`）是编译错误。也可以把元组拆开：`let (count, label) = pair`、`for (i, x) in xs.enumerated()`，或者在 `match` 里用元组模式（见[控制流](control-flow.md#控制流)）。
 
@@ -82,6 +82,16 @@ let out = bytes([flags, value & 0xff, value >> 8])
 let big = 9223372036854775807
 let n = try big + 1 catch { 0 }               // 0：抛出了错误
 let next = big.addingChecked(1) ?? big          // 溢出时为 none：得到 big
+```
+
+超出 `int` 范围的数，可以用 `std/bigint` 的 `BigInt`：它是任意大小的整数，同样支持算术运算符和比较（见[标准库](../stdlib.md)）：
+
+```asuka check
+import std/bigint.{BigInt}
+
+let big = BigInt.of(9223372036854775807)
+let past = big * big + BigInt.one           // 85070591730234615847396907784232501250
+let digits = "{BigInt.factorial(30)}"       // 265252859812191058636308480000000
 ```
 
 `&+`、`&-` 和 `&*` 则会回绕：结果超过最大的 `int` 时，按 64 位二进制补码的规则从最小值接着算下去（`9223372036854775807 &+ 1` 等于 `-9223372036854775808`）；固定位宽的类型则在各自的位宽处回绕（`u8` 的 `255 &+ 1` 是 0）。哈希、校验和以及二进制协议需要的正是这种行为；`&+=`、`&-=` 和 `&*=` 是对应的赋值写法：
@@ -135,14 +145,14 @@ fn conversions(n: int, level: u8, ratio: float) -> [u8] {
 
 ## 内置方法
 
-字符串、bytes、数组、集合、map 和可选值都有方法。其中会修改值本身的方法（`push`、`insert`、`removeAt`、`removeWhere`、`pop`、`clear`、`sort`、`remove`）只能用在 `var` 或状态上：
+字符串、bytes、数组、集合、map 和可选值都有方法。其中会修改值本身的方法（`push`、`pushFirst`、`insert`、`removeAt`、`removeWhere`、`pop`、`popFirst`、`clear`、`sort`、`remove`）只能用在 `var` 或状态上：
 
 | 类型 | 方法 |
 |---|---|
-| `[T]` | `count()`、`count(where)`、`isEmpty()`、`first()`、`last()`、`get(i)`（返回 `T?`）、`push(x)`、`insert(x, at: i)`、`removeAt(i)`、`removeWhere(p)`、`pop()`、`clear()`、`map(f)`、`flatMap(f)`（把 `f` 返回的数组依次接起来）、`compactMap(f)`（`f` 的结果中去掉 none）、`filter(p)`、`reduce(initial, f)`、`any(p)`、`all(p)`、`index(p)`（返回 `int?`）、`find(p)`、`contains(x)`、`sum()`、`min()`、`max()`（返回 `T?`；`min(by:)`、`max(by:)` 接受一个“小于”比较）、`unique()`、`grouped(by: f)`（返回 `[K: [T]]`）、`chunked(n)`、`zip(other)`（两两配对，长度取较短的一方）、`reversed()`、`slice(from, to)`（省略 `to` 时到末尾）、`prefix(n)`、`suffix(n)`、`sorted()`、`sorted(by)`、`sort()`、`sort(by)`、`enumerated()`、`joined(separator:)`（用于字符串数组）、`+` |
-| `Set<T>` | `count()`、`isEmpty()`、`contains(x)`、`insert(x)`（返回是否新加入）、`remove(x)`（返回原本是否存在）、`union(s)`、`intersection(s)`、`subtracting(s)`、`isSubset(of: s)`、`isSuperset(of: s)`；`Set(xs)` 是数组中互不相同的元素，`Set<T>()` 是空集合 |
-| `[K: V]` | `m[k]`（返回 `V?`）、`m[k] = v`、`count()`、`isEmpty()`、`has(k)`、`get(k)`、`remove(k)`、`keys()`、`values()`（按插入顺序）、`mapValues(f)`、`filter((k, v) => …)` |
-| `string` | `count()`（字符数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s)`、`hasPrefix(s)`、`hasSuffix(s)`、`replace(old, new, count:)`（默认替换全部，count 指定次数）、`split(sep, count:)`、`fields()`（按空白分出的词）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（字节偏移，找不到时为 none）、`slice(from, to)`（按字符）、`byteSlice(from, to)`（按字节：即 find 给出的偏移）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toInt(radix:)`、`toFloat()`、`repeat(n)`、`chars()`、`reversed()`、`bytes()`、`+` |
+| `[T]` | `count()`、`count(where)`、`isEmpty()`、`first()`、`last()`、`get(i)`（返回 `T?`）、`push(x)`、`pushFirst(x)`、`insert(x, at: i)`、`removeAt(i)`、`removeWhere(p)`、`pop()`、`popFirst()`、`clear()`、`map(f)`、`flatMap(f)`（把 `f` 返回的数组依次接起来）、`compactMap(f)`（`f` 的结果中去掉 none）、`filter(p)`、`reduce(initial, f)`、`any(p)`、`all(p)`、`index(p)`（返回 `int?`）、`find(p)`、`contains(x)`、`sum()`、`min()`、`max()`（返回 `T?`；`min(by:)`、`max(by:)` 接受一个“小于”比较，`min(key:)`、`max(key:)` 按键比较）、`unique()`、`grouped(by: f)`（返回 `[K: [T]]`）、`chunked(n)`、`zip(other)`（两两配对，长度取较短的一方）、`reversed()`、`slice(from, to)`（省略 `to` 时到末尾）、`prefix(n)`、`suffix(n)`、`sorted()`、`sorted(by)`、`sorted(key:, descending:)`、`sort()`、`sort(by)`、`sort(key:, descending:)`、`enumerated()`、`joined(separator:)`（用于字符串数组）、`lazy()`（得到 `Seq<T>`）、`+` |
+| `Set<T>` | `count()`、`isEmpty()`、`contains(x)`、`insert(x)`（返回是否新加入）、`remove(x)`（返回原本是否存在）、`union(s)`、`intersection(s)`、`subtracting(s)`、`isSubset(of: s)`、`isSuperset(of: s)`、`lazy()`；`Set(xs)` 是数组中互不相同的元素，`Set<T>()` 是空集合 |
+| `[K: V]` | `m[k]`（返回 `V?`）、`m[k] = v`、`count()`、`isEmpty()`、`has(k)`、`get(k)`、`remove(k)`、`keys()`、`values()`（按插入顺序）、`mapValues(f)`、`filter((k, v) => …)`、`lazy()`（它的 `(key, value)` 对） |
+| `string` | `count()`（字符数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s, ignoreCase:)`、`hasPrefix(s, ignoreCase:)`、`hasSuffix(s, ignoreCase:)`、`equals(s, ignoreCase:)`、`compare(s, ignoreCase:)`（负数、零或正数）、`foldCase()`、`replace(old, new, count:)`（默认替换全部，count 指定次数）、`split(sep, count:)`、`fields()`（按空白分出的词）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（字节偏移，找不到时为 none）、`slice(from, to)`（按字符）、`byteSlice(from, to)`（按字节：即 find 给出的偏移）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toInt(radix:)`、`toFloat()`、`repeat(n)`、`chars()`、`graphemes()`、`lazy()`（它的字符，一个 `Seq<string>`）、`reversed()`、`bytes()`、`+` |
 | `bytes` | `b[i]`（返回 `int`，取值 0 到 255；越界是一个错误）、`count()`、`isEmpty()`、`get(i)`（返回 `int?`）、`slice(from, to)`、`concat(b)`、`string()`（按 UTF-8 解码，无效的部分变成 U+FFFD）、`hex()` 和 `hex(separator)`（`"04 a1"`）、`toArray()`（返回 `[u8]`）；`bytes()` 是空的字节序列，`bytes([0x04, 0xa1])` 是这些字节，`bytes(xs)` 是一个 `[u8]` 里的字节，`s.bytes()` 是字符串的 UTF-8 字节 |
 | `int`、`i8` … `u64` | `float()`、`abs()`（用于有符号整数）、`toString(radix:)`（`255.toString(radix: 16)` 是 `"ff"`）、`padded(width)`（`7.padded(2)` 是 `"07"`）、`addingChecked(o)`、`subtractingChecked(o)`、`multipliedChecked(o)`（返回 `int?`，对 `u8` 返回 `u8?`：溢出时为 none）；`T.min`、`T.max`、`T.parse(text, radix:)`（返回 `T?`） |
 | `float` | `fixed(digits)`、`rounded()`、`floor()`、`ceil()`、`int()`（向零取整）、`abs()` |
@@ -183,11 +193,73 @@ fn report(sales: [Sale]) -> [string] {
 
 `unique()` 让每个元素只保留一次，留在它第一次出现的位置；`grouped(by:)` 的键也按第一次出现的顺序排列。两者都要求值是 `Hashable` 的（`grouped` 要求的是键）。`min()` 和 `max()` 的排序方式与 `sorted()` 相同，遇到相等的元素时取第一个。`chunked(n)` 的 `n` 小于 1 时会报错，就像 `xs[i]` 越界一样。
 
+`sorted(key:)` 按函数给每个元素算出的键排序，键必须是 `Comparable` 的，并且每个元素只算一次：`people.sorted(key: p => p.age)`。加上 `descending: true` 就从大到小排；无论哪个方向，排序都是稳定的，键相等的元素保持原来的先后顺序。`sort(key:)` 原地排序一个 `var`，`min(key:)` 和 `max(key:)` 则给出键最小或最大的那个元素（键相等时取第一个）。如果顺序不是由某一个键决定的，就用 `sorted(by:)`，传入一个“小于”比较。
+
+```asuka check
+struct Player {
+  name: string
+  score: int
+  joined: int
+}
+
+fn ranking(players: [Player]) -> [string] {
+  let best = players.sorted(key: p => p.score, descending: true)
+  let newest = players.max(key: p => p.joined)
+  return best.map(p => p.name) + [newest?.name ?? ""]
+}
+```
+
+数组同时也是双端队列：`pushFirst(x)` 和 `popFirst()` 修改数组的开头，就像 `push(x)` 和 `pop()` 修改末尾一样，每次都是 O(1)（均摊：数组在开头被修改过之后，会在开头预留空间）；`insert(x, at: 0)` 和 `removeAt(0)` 也一样。在其他位置插入或删除时，只移动较短一侧的元素。所以队列就是一个数组：`queue.push(job)`，再 `queue.popFirst()`。
+
 `toInt(radix:)` 按 2 到 36 之间的进制读取整个字符串，字母大小写均可，前面可以带正负号（`"ff".toInt(radix: 16)` 是 255，`"-101".toInt(radix: 2)` 是 -5），读不出来时返回 none；`toString(radix:)` 则把整数按进制写出来，字母用小写。进制不在 2 到 36 之间时会报错。
 
 `min`、`max`、`abs`、`float(n)`、`int(x)` 以及其他整数类型的转换（`u8(x)`）都是函数；其余的（`math.sqrt`、`math.pow`、`math.pi` ……）在 `std/math` 里。
 
+`upper()` 和 `lower()` 按 Unicode 的规则转换每个字母，在任何语言下结果都一样：`"straße".upper()` 是 `"STRASSE"`，单词末尾的 `Σ` 转成小写是 `ς`。`ignoreCase: true` 比较的是两个字符串的大小写折叠（`foldCase()`：`"Straße"` 和 `"STRASSE"` 都折叠成 `"strasse"`），和 Go 的 `strings.EqualFold`、Python 的 `casefold` 一样；匹配必须从完整的字符开始、在完整的字符结束，所以 `"ß"` 并不以 `"s"` 开头。这些方法都不遵循某种语言自己的规则：土耳其语的无点 ı 和带点 İ 和其他地方一样转换（`"İ".lower()` 是 `i` 加一个组合用的点），文本也不会做规范化（`"é"` 和 `e` 加组合重音符是不同的）。不区分大小写地给名字排序，可以把 `compare` 交给 `sorted(by:)`；`foldCase()` 能生成忽略大小写的键：
+
+```asuka check
+fn byName(names: [string]) -> [string] = names.sorted(by: (a, b) => a.compare(b, ignoreCase: true) < 0)
+
+fn sameUser(a: string, b: string) -> bool = a.trim().equals(b.trim(), ignoreCase: true)
+
+fn isMarkdown(path: string) -> bool = path.hasSuffix(".md", ignoreCase: true)
+```
+
+`count()` 和 `chars()` 按码位计数；`graphemes()` 给出读者眼中的一个个字符，依据的是 Unicode 的文本分段规则（UAX #29）：`"e\u{301}"`、一面国旗（`"🇯🇵"`）、用 ZWJ 连起来的家庭 emoji 都各算一个。
+
 `toInt()` 和 `toFloat()` 读的是整个字符串，读不出来就是 none：可选的正负号，接着是数字，前后不能有别的东西（`" 12"` 是 none，先 `trim()`）。`toInt()` 只认整数（`"+7"`、`"-42"`）；`toFloat()` 还认小数和指数（`"2.5"`、`".5"`、`"1e-3"`），以及浮点数打印出来的样子（`"Infinity"`、`"NaN"`）。无论用户的语言是什么，小数点都是 `.`。
+
+## 惰性序列
+
+`xs.lazy()` 把数组的元素变成一个 `Seq<T>`，也就是惰性序列。在它上面调用 `map`、`filter`、`take` 等方法，只会得到另一个 `Seq`，什么也不计算；等到有东西读取它时（`for`、`toArray()`、`first()`、`reduce` ……），才一个一个地算出元素，每个元素一次走完所有步骤，中间不产生数组。因此，对一百万个元素做一串操作、最后只留三个时，只会计算这三个以及找到它们所需的那些元素；序列也可以没有尽头：
+
+```asuka check
+fn squaresUnder(limit: int) -> [int] = Seq(from: 1).map(n => n * n).takeWhile(n => n < limit).toArray()
+
+fn firstLong(lines: [string]) -> string? = lines.lazy().map(l => l.trim()).find(where: l => l.count() > 80)
+
+fn fibonacci() -> Seq<int> = Seq(state: (0, 1), next: s => (s.0, (s.1, s.0 + s.1)))
+```
+
+map 的 `lazy()` 给出它的 `(key, value)` 对，集合的给出元素，字符串的给出字符，区间的（`(0..<n).lazy()`）给出其中的数字，而且不会先创建数组。`Seq(…)` 则用一个函数生成序列：
+
+| 写法 | 元素 |
+|---|---|
+| `Seq(from: n, by: step)` | `n`、`n + step`、……，没有尽头；不写 `by` 时步长是 1 |
+| `Seq(first: x, next: f)` | `x`、`f(x)`、`f(f(x))`、……，直到 `f` 返回 none |
+| `Seq(state: s, next: f)` | `f(s)` 返回下一个元素和下一个状态 `(x, s2)`，结束时返回 none |
+| `Seq(repeating: x, count: n)` | `x` 重复 `n` 次；不写 `count` 时没有尽头 |
+
+| | 方法 |
+|---|---|
+| 得到新的 `Seq` | `map(f)`、`filter(p)`、`compactMap(f)`、`flatMap(f)`（把 `f` 返回的各个 `Seq` 的元素依次接起来）、`enumerated()`、`zip(other)`、`take(n)`、`skip(n)`、`takeWhile(p)`、`skipWhile(p)`、`chunked(n)`、`windows(n)`（每相邻的 `n` 个：`[1, 2, 3]` 的 `windows(2)` 是 `[1, 2]`、`[2, 3]`）、`onEach(f)`（读到每个元素时调用 `f`）、`unique()`、`concat(other)` |
+| 读取它 | `toArray()`、`toSet()`、`toMap()`（由 `(key, value)` 对组成）、`count()`、`count(where:)`、`first()`、`last()`、`find(where:)`、`any(where:)`、`all(where:)`、`contains(x)`、`reduce(initial, f)`、`sum()`、`min()`、`max()`、`min(by:)`、`max(by:)`、`min(key:)`、`max(key:)`、`joined(separator:)` |
+
+`take`、`find`、`first`、`any` 和 `all` 一旦得到答案就不再往下取元素，后面的元素根本不会被计算。每次读取 `Seq` 都从头开始（用 `for` 遍历两次，就会计算两次）。它保存的是创建时数据源的值，和其他值一样：之后再修改那个数组，不会影响它。
+
+步骤里的函数要等到读取序列时才运行，因此不能抛出错误：需要抛出时，在 `for` 里做，或者用数组的 `map`。读取时立即调用的函数（`reduce`、`find(where:)`、`any`、`count(where:)`、`min(key:)` ……）可以抛出，这时调用会把它抛出的错误原样抛出，和数组的方法一样。
+
+优先队列，以及按键的顺序保存的 map 和集合，是 `std/collections` 的 `Heap`、`SortedMap` 和 `SortedSet`（见[标准库](../stdlib.md)）。
 
 ## 值语义
 

@@ -648,7 +648,7 @@ func (c *completer) context(path []syntax.Node) (blockKind, *check.TypeName) {
 		case *syntax.StyleDecl:
 			return elementBlock, c.fc.styleType()
 		case *syntax.FuncDecl, *syntax.LambdaExpr, *syntax.OnHandler, *syntax.TaskDecl, *syntax.EffectDecl,
-			*syntax.TestDecl, *syntax.DeferStmt, *syntax.CleanupStmt, *syntax.SpawnExpr, *syntax.DoStmt:
+			*syntax.TestDecl, *syntax.BenchDecl, *syntax.MeasureStmt, *syntax.DeferStmt, *syntax.CleanupStmt, *syntax.SpawnExpr, *syntax.DoStmt:
 			return stmtBlock, nil
 		case *syntax.StructDecl, *syntax.EnumDecl, *syntax.InterfaceDecl:
 			return typeBody, nil
@@ -664,7 +664,7 @@ func inEffect(path []syntax.Node) bool {
 		switch path[i].(type) {
 		case *syntax.EffectDecl:
 			return true
-		case *syntax.FuncDecl, *syntax.LambdaExpr, *syntax.OnHandler, *syntax.TaskDecl, *syntax.TestDecl,
+		case *syntax.FuncDecl, *syntax.LambdaExpr, *syntax.OnHandler, *syntax.TaskDecl, *syntax.TestDecl, *syntax.BenchDecl,
 			*syntax.DeferStmt, *syntax.CleanupStmt, *syntax.SpawnExpr, *syntax.ComponentDecl, *syntax.ScreenDecl, *syntax.StoreDecl, *syntax.AppDecl:
 			return false
 		}
@@ -680,7 +680,7 @@ func atItemStart(before string) bool {
 }
 
 var (
-	topKeywords       = []string{"component", "screen", "store", "worker", "struct", "enum", "interface", "fn", "async", "type", "style", "state", "let", "app", "test", "import", "pub", "native", "extern", "extend"}
+	topKeywords       = []string{"component", "screen", "store", "worker", "struct", "enum", "interface", "fn", "async", "type", "style", "state", "let", "app", "test", "bench", "import", "pub", "native", "extern", "extend"}
 	componentKeywords = []string{"prop", "event", "state", "let", "use", "provide", "fn", "async", "task", "effect", "cleanup", "pub"}
 	viewKeywords      = []string{"if", "for", "match"}
 	stmtKeywords      = []string{"let", "var", "if", "for", "while", "match", "return", "throw", "break", "continue", "defer", "do", "emit", "try", "await"}

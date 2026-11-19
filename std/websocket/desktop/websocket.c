@@ -93,6 +93,14 @@ typedef struct {
 
 static const websocket_Socket_vtable socket_vt;
 
+// A client: the system's TLS (tls NULL), or a secured one's settings.
+typedef struct {
+	websocket_Client base;
+	const asuka_tls *tls;
+} client;
+
+static const asuka_tls *tls_of(websocket_Client *self) { return ((client *)self)->tls; }
+
 static sock *new_sock(const char *url) {
 	sock *s = calloc(1, sizeof *s);
 	s->base.vt = &socket_vt;
@@ -438,12 +446,21 @@ typedef struct {
 	websocket_list_string protocols;
 	int timeout_ms;
 	asuka_call *call;
+	asuka_win_tls tls;  // the server's check, when the client's secured
 } connecting;
 
 static void cancel_connect(void *p) {
 	sock *s = p;
 	mu_lock(&s->mu);
 	s->cancelled = true;
+	if (s->request) WinHttpCloseHandle(s->request), s->request = NULL;
+	mu_unlock(&s->mu);
+}
+
+// untrusted closes the handshake's request: its server isn't trusted.
+static void untrusted(void *p) {
+	sock *s = p;
+	mu_lock(&s->mu);
 	if (s->request) WinHttpCloseHandle(s->request), s->request = NULL;
 	mu_unlock(&s->mu);
 }
@@ -461,6 +478,7 @@ static void connect_fail(connecting *c, asuka_error *e) {
 	if (s->session) WinHttpCloseHandle(s->session);
 	s->connection = s->session = NULL;
 	asuka_call_fail(c->call, e);
+	free(c->tls.untrusted);
 	free(c);
 	unref(s);
 }
@@ -510,6 +528,12 @@ static void run_connect(void *p) {
 		return;
 	}
 	if (!WinHttpSetOption(req, WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET, NULL, 0)) goto fail;
+	c->tls.close = untrusted;
+	c->tls.ctx = s;
+	if (!asuka_win_tls_begin(req, &c->tls, &e)) {
+		connect_fail(c, &e);
+		return;
+	}
 	for (size_t i = 0; i < c->headers.len; i++) {
 		char *line = asuka_sprintf("%s: %s", c->headers.keys[i], c->headers.values[i]);
 		wchar_t *w = asuka_wide(line);
@@ -571,6 +595,7 @@ static void run_connect(void *p) {
 	ref(s);  // the sender's
 	ref(s);  // the core's
 	asuka_call *call = c->call;
+	free(c->tls.untrusted);
 	free(c);
 	if (!asuka_desktop_spawn(run_send, s)) {
 		mu_lock(&s->mu);
@@ -585,17 +610,16 @@ fail:
 	code = GetLastError();
 	free(host);
 	free(object);
-	fail_win(&e, code, c->url);
+	if (!asuka_win_tls_failed(&c->tls, &e)) fail_win(&e, code, c->url);
 	connect_fail(c, &e);
 }
 
 static void connect_(websocket_Client *self, const char *url, websocket_map_string headers, websocket_list_string protocols, int64_t timeout,
                      asuka_call *call) {
-	(void)self;
 	sock *s = new_sock(url);
 	connecting *c = calloc(1, sizeof *c);
 	int64_t ms = timeout > 0 ? (timeout + 999999) / 1000000 : 0;
-	*c = (connecting){s, url, headers, protocols, ms > INT32_MAX ? INT32_MAX : (int)ms, call};
+	*c = (connecting){s, url, headers, protocols, ms > INT32_MAX ? INT32_MAX : (int)ms, call, {.tls = tls_of(self)}};
 	asuka_call_on_cancel(call, cancel_connect, s);
 	if (!asuka_desktop_spawn(run_connect, c)) {
 		asuka_error e = {0};
@@ -686,6 +710,7 @@ static void on_closed(SoupWebsocketConnection *conn, gpointer p) {
 typedef struct {
 	sock *s;
 	asuka_call *call;
+	SoupMessage *msg;  // the handshake's: why its server wasn't trusted
 } connecting;
 
 static gboolean connect_timed_out(gpointer p) {
@@ -703,13 +728,18 @@ static void connected(GObject *source, GAsyncResult *res, gpointer p) {
 	connecting *c = p;
 	sock *s = c->s;
 	asuka_call *call = c->call;
+	SoupMessage *msg = c->msg;
 	free(c);
 	if (s->timer) G(g_source_remove)(s->timer), s->timer = 0;
 	GError *ge = NULL;
 	SoupWebsocketConnection *conn = G(soup_session_websocket_connect_finish)(s->session, res, &ge);
+	const char *untrusted = conn ? NULL : asuka_soup_untrusted(msg);
 	if (!conn) {
 		asuka_error e = {0};
-		if (s->timed_out) {
+		if (untrusted) {
+			asuka_error_failed(&e, "tls", 0, "%s", untrusted);
+			if (ge) G(g_error_free)(ge);
+		} else if (s->timed_out) {
 			asuka_error_failed(&e, "websocket", 0, "%s: timed out", s->url);
 			if (ge) G(g_error_free)(ge);
 		} else if (asuka_call_cancelled(call)) {
@@ -719,9 +749,11 @@ static void connected(GObject *source, GAsyncResult *res, gpointer p) {
 			asuka_linux_fail(&e, ge, s->url);
 		}
 		asuka_call_fail(call, &e);
+		G(g_object_unref)(msg);
 		unref(s);
 		return;
 	}
+	G(g_object_unref)(msg);
 	s->conn = conn;
 	const char *proto = G(soup_websocket_connection_get_protocol) ? G(soup_websocket_connection_get_protocol)(conn) : NULL;
 	free(s->protocol);
@@ -736,7 +768,6 @@ static void connected(GObject *source, GAsyncResult *res, gpointer p) {
 
 static void connect_(websocket_Client *self, const char *url, websocket_map_string headers, websocket_list_string protocols, int64_t timeout,
                      asuka_call *call) {
-	(void)self;
 	asuka_error e = {0};
 	if (!load_soup()) {
 		asuka_error_unsupported(&e, "WebSockets need libsoup 3 (libsoup-3.0.so.0)");
@@ -760,16 +791,16 @@ static void connect_(websocket_Client *self, const char *url, websocket_map_stri
 	}
 	sock *s = new_sock(url);
 	s->session = G(soup_session_new)();
+	asuka_soup_tls(s->session, msg, tls_of(self));
 	if (G(soup_session_set_user_agent)) G(soup_session_set_user_agent)(s->session, "Asuka");
 	s->cancel = G(g_cancellable_new)();
 	int64_t ms = timeout > 0 ? (timeout + 999999) / 1000000 : 0;
 	if (ms > 0) s->timer = G(g_timeout_add)(ms > UINT32_MAX ? UINT32_MAX : (guint)ms, connect_timed_out, s);
 	asuka_call_on_cancel(call, cancel_connect, s);
 	connecting *c = malloc(sizeof *c);
-	*c = (connecting){s, call};
+	*c = (connecting){s, call, msg};  // connected lets msg go
 	G(soup_session_websocket_connect_async)(s->session, msg, NULL, protos, 0, s->cancel, connected, c);
 	free(protos);  // libsoup copied them into the request
-	G(g_object_unref)(msg);
 }
 
 static bool open_conn(sock *s) { return s->conn && !s->shut && G(soup_websocket_connection_get_state)(s->conn) == state_open; }
@@ -847,13 +878,49 @@ static void release(websocket_Socket *self) {
 static const websocket_Socket_vtable socket_vt = {
     .release = release, .protocol = protocol, .receive = receive, .sendText = send_text, .sendBinary = send_binary, .shutdown = shutdown_, .close = close_};
 
-static const websocket_Client_vtable client_vt = {.connect = connect_};
+// ---- Secured clients: TLS settings, read on a thread ----
+
+static const websocket_Client_vtable client_vt;
+
+typedef struct {
+	const char *ca, *certificate, *key;  // the call's: they go as it answers
+	bool trust_system, insecure;
+	asuka_call *call;
+} securing;
+
+static void run_secured(void *p) {
+	securing *q = p;
+	asuka_error e = {0};
+	asuka_tls *tls = asuka_tls_get(q->ca, q->trust_system, q->certificate, q->key, q->insecure, &e);
+	if (tls) {
+		client *c = malloc(sizeof *c);
+		*c = (client){{&client_vt}, tls};
+		websocket_Client_secured_done(q->call, &c->base);
+	} else {
+		asuka_call_fail(q->call, &e);
+	}
+	free(q);
+}
+
+static void secured_(websocket_Client *self, const char *ca, bool trust_system, const char *certificate, const char *key, bool insecure, asuka_call *call) {
+	(void)self;
+	securing *q = malloc(sizeof *q);
+	*q = (securing){ca, certificate, key, trust_system, insecure, call};
+	if (!asuka_desktop_spawn(run_secured, q)) {
+		free(q);
+		asuka_error e = {0};
+		asuka_error_failed(&e, "websocket", 0, "no thread for the TLS settings");
+		asuka_call_fail(call, &e);
+	}
+}
+
+static const websocket_Client_vtable client_vt = {.connect = connect_, .secured = secured_};
 
 websocket_Client *websocket_make_Client(asuka_error *err) {
 	(void)err;
-	websocket_Client *c = malloc(sizeof *c);
-	c->vt = &client_vt;
-	return c;
+	client *c = malloc(sizeof *c);
+	*c = (client){{&client_vt}, NULL};
+	return &c->base;
 }
 
 websocket_Socket *websocket_make_Socket(asuka_error *err) {

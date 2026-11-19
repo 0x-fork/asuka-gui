@@ -30,12 +30,58 @@ ak_arr *ak_arr_mut(ak_arr **ap) {
 	return c;
 }
 
+// grow makes room for n more elements at the end: the free slots at the
+// front, when they're as many as the elements and the n (a queue's,
+// popped at the front), slid to the end; else a buffer twice as big.
 static void grow(ak_arr *a, uint32_t n) {
 	if (a->len + n <= a->cap) return;
+	if (a->front && a->front >= a->len + n) {
+		ak_val *b = ak_arr_base(a);
+		memmove(b, a->data, sizeof(ak_val) * a->len);
+		a->data = b;
+		a->cap += a->front;
+		a->front = 0;
+		return;
+	}
 	uint32_t c = a->cap ? a->cap * 2 : 4;
 	while (c < a->len + n) c *= 2;
-	a->data = ak_realloc(a->data, sizeof(ak_val) * c);
+	ak_val *b = ak_realloc(a->data ? ak_arr_base(a) : NULL, sizeof(ak_val) * ((size_t)a->front + c));
+	a->data = b + a->front;
 	a->cap = c;
+}
+
+// grow_front makes room for one more element at the start: half the
+// free slots at the end, when they're as many as the elements; else a
+// buffer with as many free slots at the front as there are elements.
+static void grow_front(ak_arr *a) {
+	if (a->front) return;
+	uint32_t free = a->cap - a->len;
+	if (free >= 4 && free >= a->len) {
+		uint32_t k = (free + 1) / 2;
+		memmove(a->data + k, a->data, sizeof(ak_val) * a->len);
+		a->data += k;
+		a->front = k;
+		a->cap -= k;
+		return;
+	}
+	uint32_t k = a->len < 4 ? 4 : a->len;
+	ak_val *b = ak_alloc(sizeof(ak_val) * ((size_t)k + a->cap + (a->cap ? 0 : 4)));
+	if (a->len) memcpy(b + k, a->data, sizeof(ak_val) * a->len);
+	ak_free(a->data ? ak_arr_base(a) : NULL);
+	a->data = b + k;
+	a->front = k;
+	if (!a->cap) a->cap = 4;
+}
+
+// ak_arr_reserve makes room for exactly n more at the end (a buffer of
+// that size, not twice): what's known to come.
+void ak_arr_reserve(ak_arr **ap, uint32_t n) {
+	ak_arr *a = ak_arr_mut(ap);
+	if (n > UINT32_MAX - a->len) ak_panic("out of memory (an array of %u + %u elements)", a->len, n);
+	if (a->len + n <= a->cap) return;
+	ak_val *b = ak_realloc(a->data ? ak_arr_base(a) : NULL, sizeof(ak_val) * ((size_t)a->front + a->len + n));
+	a->data = b + a->front;
+	a->cap = a->len + n;
 }
 
 void ak_arr_push(ak_arr **ap, ak_val v) {
@@ -46,12 +92,22 @@ void ak_arr_push(ak_arr **ap, ak_val v) {
 
 bool ak_arr_check(const ak_arr *a, int64_t i) { return i >= 0 && i < (int64_t)a->len; }
 
+// An insertion or a removal moves the elements on its shorter side: at
+// either end, none.
 void ak_arr_insert(ak_arr **ap, int64_t i, ak_val v) {
 	ak_arr *a = ak_arr_mut(ap);
 	if (i < 0) i = 0;
 	if (i > a->len) i = a->len;
-	grow(a, 1);
-	memmove(a->data + i + 1, a->data + i, sizeof(ak_val) * (a->len - (uint32_t)i));
+	if ((uint32_t)i < a->len / 2 || (i == 0 && a->len)) {
+		grow_front(a);
+		a->data--;
+		a->front--;
+		a->cap++;
+		memmove(a->data, a->data + 1, sizeof(ak_val) * (uint32_t)i);
+	} else {
+		grow(a, 1);
+		memmove(a->data + i + 1, a->data + i, sizeof(ak_val) * (a->len - (uint32_t)i));
+	}
 	a->data[i] = v;
 	a->len++;
 }
@@ -60,7 +116,14 @@ ak_val ak_arr_remove_at(ak_arr **ap, int64_t i) {
 	ak_arr *a = ak_arr_mut(ap);
 	AK_ASSERT(ak_arr_check(a, i));
 	ak_val v = a->data[i];
-	memmove(a->data + i, a->data + i + 1, sizeof(ak_val) * (a->len - (uint32_t)i - 1));
+	if ((uint32_t)i < a->len / 2 || i == 0) {
+		memmove(a->data + 1, a->data, sizeof(ak_val) * (uint32_t)i);
+		a->data++;
+		a->front++;
+		a->cap--;
+	} else {
+		memmove(a->data + i, a->data + i + 1, sizeof(ak_val) * (a->len - (uint32_t)i - 1));
+	}
 	a->len--;
 	return v;
 }

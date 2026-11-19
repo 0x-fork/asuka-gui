@@ -384,6 +384,9 @@ func Identical(a, b Type) bool {
 	case *Stream:
 		y, ok := b.(*Stream)
 		return ok && Identical(x.Elem, y.Elem)
+	case *Seq:
+		y, ok := b.(*Seq)
+		return ok && Identical(x.Elem, y.Elem)
 	case *Named:
 		y, ok := b.(*Named)
 		if !ok || x.Obj != y.Obj || len(x.Args) != len(y.Args) {
@@ -461,6 +464,10 @@ func (s Subst) Apply(t Type) Type {
 		if e := s.Apply(x.Elem); e != x.Elem {
 			return &Stream{e}
 		}
+	case *Seq:
+		if e := s.Apply(x.Elem); e != x.Elem {
+			return &Seq{e}
+		}
 	case *Named:
 		var args []Type
 		for i, a := range x.Args {
@@ -533,6 +540,8 @@ func HasTypeParams(t Type) bool {
 		return HasTypeParams(x.Elem)
 	case *Stream:
 		return HasTypeParams(x.Elem)
+	case *Seq:
+		return HasTypeParams(x.Elem)
 	case *Named:
 		for _, a := range x.Args {
 			if HasTypeParams(a) {
@@ -593,6 +602,8 @@ func whyNotEquatable1(t Type, seen map[*TypeName]bool) string {
 	switch x := t.(type) {
 	case *FuncType:
 		return "functions can't be"
+	case *Seq:
+		return "a lazy sequence is computed as it's read: compare its toArray()"
 	case *Array:
 		return "its elements are " + typeString(x.Elem) + ", and " + whyNotEquatable1(x.Elem, seen)
 	case *Map:

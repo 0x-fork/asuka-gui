@@ -202,6 +202,7 @@ app { Probe() }
 `, []string{"host: redirect true 404 200 <p>Signed in</p>", "host: closed true", "host: done"}, nil},
 		{"stream", streamed.source(t, "http.asuka"), hostLines(streamsHTTP), streamed.stopped},
 		{"websocket", streamed.source(t, "websocket.asuka"), hostLines(streamsWebSocket), nil},
+		{"tls", streamed.source(t, "tls.asuka"), hostLines(streamsTLS), nil},
 		{"monitors", `import platform/network
 import platform/power
 import platform/appearance

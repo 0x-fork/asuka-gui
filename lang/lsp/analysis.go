@@ -75,33 +75,47 @@ func (s *server) check(dir string) *pkgState {
 	}
 	old := s.pkgs[dir]
 	ov := s.overlay()
-	st := s.checkFor(dir, target.Default, ov)
+	resolve := s.resolver(dir)
+	st := s.checkFor(dir, target.Default, ov, resolve)
 	if old != nil {
 		st.published = old.published
 	}
 	if st.res != nil && st.res.PlatformFiles {
+		// The other platforms' checks at once: each its own.
+		var others []target.Platform
 		for _, p := range target.All {
-			if p == target.Default {
-				continue
+			if p != target.Default {
+				others = append(others, p)
 			}
-			o := s.checkFor(dir, p, ov)
+		}
+		st.others = make([]*pkgState, len(others))
+		var wg sync.WaitGroup
+		for i, p := range others {
+			wg.Add(1)
+			go func(i int, p target.Platform) {
+				defer wg.Done()
+				st.others[i] = s.checkFor(dir, p, ov, resolve)
+			}(i, p)
+		}
+		wg.Wait()
+		for _, o := range st.others {
 			for d, g := range o.gens {
 				st.gens[d] = g
 			}
-			st.others = append(st.others, o)
 		}
 	}
 	s.pkgs[dir] = st
 	return st
 }
 
-// checkFor checks the package in dir for platform.
-func (s *server) checkFor(dir string, platform target.Platform, ov map[string][]byte) *pkgState {
+// checkFor checks the package in dir for platform. It reads the server's
+// state, not writes it: the platforms' checks run at once.
+func (s *server) checkFor(dir string, platform target.Platform, ov map[string][]byte, resolve func(from, path string) (string, string, error)) *pkgState {
 	st := &pkgState{dir: dir, platform: platform, gens: map[string]int{dir: s.gens[dir]}, files: map[string]*syntax.SourceFile{}, pkgOf: map[*syntax.SourceFile]*check.Package{}, srcs: map[string][]byte{}}
 	var res *compile.Result
 	var err error
 	if !s.safely("checking "+dir, func() {
-		res, err = compile.Dir(dir, &compile.Options{Platform: platform, Overlay: ov, CheckOnly: true, Resolve: s.resolver(dir)})
+		res, err = compile.Dir(dir, &compile.Options{Platform: platform, Overlay: ov, CheckOnly: true, Resolve: resolve})
 	}) {
 		res, err = nil, errors.New("the checker failed on this package (see the server's log)")
 	}

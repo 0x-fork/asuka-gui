@@ -189,6 +189,24 @@ struct Modular {
   }
 }
 
+struct Item {
+  id: u64
+  name: string
+}
+test "u64 order by key and in seqs" {
+  let items = [Item(id: u64.max, name: "max"), Item(id: 1, name: "one"), Item(id: 9223372036854775808, name: "half")]
+  print(items.sorted(key: i => i.id).map(i => i.name))
+  print(items.min(key: i => i.id)?.name ?? "-")
+  print(items.max(key: i => i.id)?.name ?? "-")
+  let xs: [u64] = [u64.max, 3, 9223372036854775808]
+  print(xs.lazy().min() ?? 0)
+  print(xs.lazy().max() ?? 0)
+  var big: [u64] = []
+  for i in 0..<100 { big.push(u64(truncating: i * 7919 - 400)) }
+  let s = big.sorted()
+  print("{s[0]} {s[99]} {s.count()}")
+}
+
 // Output:
 // i8 + 1: integer overflow
 // i16 + 1: integer overflow
@@ -263,3 +281,10 @@ struct Modular {
 // 4
 // 5
 // ok powers
+// ["one","half","max"]
+// one
+// max
+// 3
+// 18446744073709551615
+// 7519 18446744073709551216 100
+// ok u64 order by key and in seqs

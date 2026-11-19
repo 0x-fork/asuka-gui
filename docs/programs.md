@@ -93,6 +93,10 @@ The program runs as follows:
 | `os.writeTo(.stdout, text)`, `writeBytesTo` | text or bytes as they are, without a line ending, to `.stdout` or `.stderr` |
 | `os.terminal(.stdout)` | whether a stream is a terminal (a person), not a pipe or a file: colors and prompts only for one |
 | `os.signals(kinds)` | the signals of kinds as they come (a `Stream<os.Signal>`: `.interrupt`, `.term`, `.hangup`), which then don't end the program |
+| `os.hostname()`, `os.pid()`, `os.ppid()` | the machine's name, the process's id and its parent's |
+| `os.user()` | who the process runs as: a `User` with `name`, `home`, `uid` and `gid` (`none` on Windows) |
+| `os.platform()`, `os.arch()` | the system and the CPU it runs on: a `Platform` (`.macOS`, `.windows`, `.linux`...) and an `os.Arch` (`.arm64`, `.amd64`...) |
+| `os.executable()` | the program's own file, an absolute path with its links resolved: what it ships beside itself is in `fs.dir(os.executable() ?? ".")` |
 
 ### Signals
 
@@ -409,6 +413,138 @@ environment the tests run in doesn't change what they print. On a phone
 and the web there's no terminal: no styles, `prompt` gives `none` and
 `width` is `none`.
 
+### An aligned table
+
+A column lines up when each of its cells takes as many of the
+terminal's columns, which isn't what `count()` says: a Chinese,
+Japanese or Korean character, a fullwidth form and most emoji take two,
+a combining accent and a zero-width joiner none. `term.textWidth(text)`
+counts columns as terminals draw them, a grapheme cluster at a time
+(as Rust's unicode-width and `Bun.stringWidth` do), its escape codes
+none, so styled text measures as it shows. `term.padEnd`, `padStart`,
+`center`, `truncate` (an `…` where it's cut, never half a character)
+and `fit` (exactly a width: truncated, then padded, `align: .end` for
+numbers) work by it, and `term.table(rows)` lays a whole table out:
+
+```asuka check
+import std/term
+
+struct Row {
+  name: string
+  city: string
+  score: int
+}
+
+fn main() {
+  let rows = [Row(name: "王小明", city: "北京", score: 98), Row(name: "Ana", city: "Lisboa 🇵🇹", score: 7), Row(name: "佐藤花子", city: "東京", score: 85)]
+  var cells = [["Name", "City", "Score"]]
+  for r in rows {
+    cells.push([r.name, r.city, "{r.score}"])
+  }
+  print(term.table(cells, align: [.start, .start, .end], width: term.width()))
+}
+```
+
+```text
+Name      City       Score
+王小明    北京          98
+Ana       Lisboa 🇵🇹      7
+佐藤花子  東京          85
+```
+
+Each column is as wide as its widest cell, `gap:` spaces apart (2);
+with `width:`, the widest columns give way until the lines fit, their
+cells truncated (here: the terminal's width, none when the output is
+piped). East Asian Ambiguous characters (`±`, `…`) take one column, as
+terminals show them unless they're set otherwise, and a tab or another
+control character none: expand tabs first. `std/flag`'s help lines its
+options up the same way.
+
+## Logging: std/log
+
+`std/log` writes what a program does as it does it: lines at a level
+(`debug`, `info`, `warn`, `error`), each a message and fields that say
+what it was about. This one backs files up: `-v` shows each file, and
+`--json` writes lines for a machine to read.
+
+```asuka check
+import std/flag
+import std/fs
+import std/log
+import std/os
+
+/// Copies files into a directory.
+struct Options {
+  /// -v Says what it does, file by file.
+  verbose: bool = false
+  /// Writes JSON lines, for a machine to read.
+  json: bool = false
+  /// Where to copy them.
+  to: string = "backup"
+  /// The files.
+  files: [string]
+}
+
+async fn main() throws {
+  let o = flag.parse<Options>(os.args())
+  if o.verbose {
+    log.setLevel(.debug)
+  }
+  if o.json {
+    log.setFormat(.json)
+  }
+  let run = log.with(["to": o.to])
+  try await spawn { try fs.mkdirAll(o.to) }
+  for file in o.files {
+    run.debug("copying", ["file": file])
+    let target = fs.join([o.to, fs.base(file)])
+    try await spawn { try fs.copy(from: file, to: target) } catch e {
+      run.error("copy failed", ["file": file, "error": "{e}"])
+      os.exit(1)
+    }
+  }
+  run.info("copied", ["files": "{o.files.count()}"])
+}
+```
+
+```text
+$ backup -v notes.md todo.md
+2026-11-19 10:04:05.120 DEBUG copying                                  to=backup file=notes.md
+2026-11-19 10:04:05.123 DEBUG copying                                  to=backup file=todo.md
+2026-11-19 10:04:05.125 INFO  copied                                   to=backup files=2
+```
+
+- **Fields.** A line's fields are a `[string: string]`, and
+  `["port": "{port}"]` puts any value in one as its text. A value with
+  spaces, quotes or `=` is quoted (`path="my notes.md"`). `log.with(fields)`
+  is a `Logger` whose lines all carry them, and its `with` adds more; a
+  line's own field of the same name replaces the logger's.
+- **Levels.** Lines below the least level aren't written. It's info,
+  unless `ASUKA_LOG` says otherwise (`debug`, `info`, `warn`, `error` or
+  `off`, as Rust's `RUST_LOG`), or the program does with
+  `log.setLevel(.debug)`, which counts over it: that's why the program
+  above sets it only when `-v` is given. A line that isn't written costs a
+  check, but its fields are still made, as any call's arguments are:
+  put `if log.enabled(.debug) { … }` around those that take work.
+- **Formats.** At a terminal, the time (local) is dimmed and the level
+  colored, as `std/term` decides for stderr (`NO_COLOR`, `FORCE_COLOR`,
+  `term.setColors`). `log.setFormat(.json)` writes a JSON object a line,
+  as Go's `log/slog` does:
+  `{"time":"2026-11-19T10:04:05.125+08:00","level":"INFO","msg":"copied","to":"backup","files":"2"}`;
+  `time: false` leaves the time out, for a service whose logs journald
+  or a container's runtime stamps already.
+- **Where they go.** A program's lines go to stderr, so stdout stays its
+  output (`backup | tee list`). An app's go where its platform's
+  developers look: unified logging on iOS and macOS (Xcode's console,
+  Console.app), logcat on Android, the browser's console on the web
+  (`console.debug` to `console.error`, by level), the debugger's output
+  on Windows; stderr on Linux, and on a desktop when the app was started
+  from a terminal. `asuka dev` prints them in its terminal too.
+
+A test finds the lines in `o.stderr()`, stamped by the test's clock
+(`2026-01-01 00:00:00.000` and on), and only `os.fake(env:)` sets
+`ASUKA_LOG` there.
+
 ## Files and directories: std/fs
 
 A program reads and writes files with `std/fs`, as an app does
@@ -555,6 +691,32 @@ async fn main() throws {
 }
 ```
 
+## The most of many: std/collections
+
+A priority queue keeps what comes next in order as items come and go:
+`std/collections`' `Heap`, by a less-than. Keeping the k greatest of
+many is a heap of k whose least is the first to go, so the whole input
+is never sorted: each item is one O(log k) step
+([Standard library](stdlib.md)).
+
+```asuka check
+import std/collections.{Heap}
+import std/os
+
+// The ten words said most often on stdin, with their counts.
+fn main() {
+  var counts: [string: int] = [:]
+  for line in os.readAll().string().lines() {
+    for w in line.lower().fields() { counts[w, default: 0] += 1 }
+  }
+  var top = Heap<(string, int)>(by: (a, b) => a.1 < b.1)
+  for (w, n) in counts {
+    if top.count() < 10 { top.push((w, n)) } else { let _ = top.pushPop((w, n)) }
+  }
+  for (w, n) in top.sorted().reversed() { print("{n}\t{w}") }
+}
+```
+
 ## JSON of any shape
 
 A struct reads JSON whose shape the program knows (`json.decode<T>`,
@@ -654,6 +816,83 @@ async fn main() throws {
 lines that start with it, `flexible: true` lets rows have different
 numbers of fields.
 
+## Text from templates: std/template
+
+`std/template` makes text from a template and a value: a config file,
+release notes, an email, code, a page a service returns. Its syntax is
+Jinja's (as MiniJinja, Nunjucks and Twig write it): `{{ value }}`, a
+filter after a `|`, `{% if %}`, `{% for %}`, `{% include %}`,
+`{% extends %}` and `{% block %}`. The data is a struct or a map, read
+as `json.encode` writes it, so a template's names are its fields. A raw
+string holds a template as it is (in a plain one, `{` starts an
+interpolation):
+
+```asuka check
+import std/template
+
+struct Change {
+  kind: string
+  text: string
+  issue: int? = none
+}
+
+struct Release {
+  version: string
+  date: string
+  changes: [Change]
+}
+
+fn main() throws {
+  let notes = try template.parse(r"""
+    # {{ version }} ({{ date }})
+
+    {% for c in changes %}
+    - **{{ c.kind | capitalize }}**: {{ c.text }}{% if c.issue %} (#{{ c.issue }}){% endif %}
+    {% else %}
+    Nothing changed.
+    {% endfor %}
+    """)
+  let release = Release(version: "1.4.0", date: "2026-11-19", changes: [Change(kind: "added", text: "term.table", issue: 412), Change(kind: "fixed", text: "a crash on empty input")])
+  print(try notes.render(release))
+}
+```
+
+```text
+# 1.4.0 (2026-11-19)
+
+- **Added**: term.table (#412)
+- **Fixed**: a crash on empty input
+```
+
+A statement alone on its line takes the line with it, so the output
+has no blank lines where the template's logic is; `{{-` and `-}}` strip
+the white space before or after a tag. A field the data hasn't is
+undefined: false in an `if`, what `| default("…")` replaces, an error
+when it's printed, as an unknown filter is, the error saying where
+(`template: notes.md:4:9: c.title is undefined`). A template is parsed
+once and rendered as often as asked.
+
+For HTML, the output is escaped: what's printed has its `&`, `<`, `>`,
+`"` and `'` written as character references, unless it's marked
+`| safe`; `| json` writes a value for a `<script>`. Templates read
+together with `template.parseAll`, from the files `std/embed` compiles
+in, include and extend each other by name, and those whose names end in
+`.html` are escaped:
+
+```asuka
+import std/http
+import std/template
+
+struct Note {
+  id: int
+  text: string
+}
+
+// pages: try template.parseAll(embed.texts("templates/*.html")), the files compiled in
+fn site(pages: template.Templates, notes: [Note]) -> http.Router = http.Router()
+  .get("/notes", req => .html(try pages.render("templates/notes.html", ["notes": notes])))
+```
+
 ## A web service: std/http
 
 `http.serve` makes a program an HTTP/1.1 server, as Go's `net/http`
@@ -752,15 +991,407 @@ $ curl localhost:8080/notes/1
   running are cancelled. Reading `os.signals()` and closing lets them
   answer first ([Signals](#signals)).
 
-HTTPS is a reverse proxy's (Caddy, nginx): it terminates TLS and passes
-the requests on over HTTP to a server on `127.0.0.1`, the client's
-address in `X-Forwarded-For`. A desktop app serves a local API the same
-way, from a task, and a phone's app while it runs; a web page can't
-listen (`ServerError.unsupported`).
+With `tls:` it serves HTTPS: `net.serverTLS` takes a certificate and
+its key, PEM, as Let's Encrypt and `mkcert` write them, and each
+connection speaks TLS 1.2 or 1.3 ([TLS](#tls)).
+
+```asuka check
+import std/fs
+import std/http
+import std/net
+
+async fn main() throws {
+  let tls = try net.serverTLS(certificate: try fs.readText("cert.pem"), key: try fs.readText("key.pem"))
+  let server = try await http.serve(8443, req => .text("hello over TLS"), host: "0.0.0.0", tls: tls)
+  print("listening on {server.url}")
+  await server.wait()
+}
+```
+
+A reverse proxy (Caddy, nginx) can do TLS instead, renewing its
+certificates itself: it passes the requests on over HTTP to a server on
+`127.0.0.1`, the client's address in `X-Forwarded-For`. A desktop app
+serves a local API the same way, from a task, and a phone's app while
+it runs; a web page can't listen (`ServerError.unsupported`).
 
 A handler is a function, so a test calls it, or the router, with a
 `Request`, no socket between: `let r = try await
 api.handle(http.Request(method: "GET", path: "/notes/1"))`.
+
+## Other protocols: std/net
+
+`std/net` speaks what isn't HTTP: Redis, SMTP, a game's server, a
+protocol of your own. It has TCP connections and servers, UDP
+datagrams and DNS lookups, as Go's `net`, Rust's `std::net` and Node's
+`net` and `dgram` do; every wait is async, the sockets' work on a
+thread of the runtime's own. A line-based server keeps values a client
+sets:
+
+```asuka check
+import std/net
+import std/os
+
+async fn main() throws {
+  var values: [string: string] = [:]
+  let server = try await net.serve(7000, c => {
+    for await line in c.lines() {
+      let words = line.split(" ", count: 3)
+      if words.count() == 3 && words[0] == "SET" {
+        values[words[1]] = words[2]
+        try await c.write("OK\r\n")
+      } else if words.count() == 2 && words[0] == "GET" {
+        try await c.write("{values[words[1]] ?? "-"}\r\n")
+      } else {
+        try await c.write("ERR unknown command\r\n")
+      }
+    }
+  })
+  print("listening on {server.address.string()}")
+  for await _ in os.signals() {
+    break
+  }
+  await server.close()
+}
+```
+
+And a client of it:
+
+```asuka check
+import std/net
+
+async fn main() throws {
+  let c = try await net.connect("localhost", 7000, timeout: 5s)
+  try await c.write("SET greeting hello\r\n")
+  print(try await c.readLine())   // OK
+  try await c.write("GET greeting\r\n")
+  print(try await c.readLine())   // hello
+  c.close()
+}
+```
+
+- `net.connect(host, port, timeout:, noDelay:, keepAlive:)` gives a
+  `Conn`. A name is looked up, and its addresses tried as Happy
+  Eyeballs does (IPv6's and IPv4's in turn, the next started after
+  250 ms, the first to connect kept); `timeout` covers the lookup and
+  the connecting.
+- A `Conn` reads `read(max:)` (what has come, `none` at the end),
+  `readExactly(n)`, `readLine(max:)` (without its `\n` or `\r\n`),
+  `readUntil(delimiter, max:)` and `readAll(max:)`, or as a stream,
+  `lines()` and `chunks()`; it writes `write(text)` and
+  `writeBytes(data)`. `closeWrite()` closes this side's writing (the
+  other side reads its end, and may still answer), `close()` the
+  connection. `readTimeout` and `writeTimeout` limit each wait
+  (`NetError.timedOut`); `localAddress` and `remoteAddress` say where
+  the two sides are. One read waits at a time; writes queue, each sent
+  whole.
+- `net.serve(port, handler, host:, onError:)` handles each client's
+  connection with `handler`, a task of its own, many at once; the
+  connection closes as the handler returns. `net.listen(port, host:)`
+  gives a `Listener` to `accept()` from yourself. `host` is
+  `127.0.0.1` unless said; `"0.0.0.0"` takes every IPv4 interface's
+  clients, `""` or `"::"` every interface's. Port 0 is one the system
+  picks (`server.port`). `server.close(grace:)` stops accepting and
+  cancels the handlers still running after `grace` (none by default);
+  `server.wait()` waits until it has stopped.
+- `net.udp(port:, host:, reuse:)` gives a `UDPSocket`: `send(data,
+  to:)`, `sendTo(data, host:, port:)`, `receive(timeout:)` (a
+  `Datagram`, its `data` and who it's `from`), `datagrams()`,
+  `connect(host, port)`, `joinGroup(ip)` for multicast and
+  `setBroadcast(on)`.
+- `net.lookup(host)` gives a name's IP addresses, as the system looks
+  them up (the hosts file, DNS); `reverseLookup(ip)`, `lookupCNAME`,
+  and DNS's records: `lookupMX`, `lookupTXT`, `lookupSRV`, `lookupNS`.
+- `net.IP` is an address (`IP.parse("2001:db8::1")`, `isLoopback()`,
+  `isPrivate()`, `string()`), `net.Prefix` a network
+  (`Prefix.parse("10.0.0.0/8")!.contains(ip)`), `net.Address` an IP and
+  a port; `joinHostPort` and `splitHostPort` handle IPv6's brackets
+  (`"[::1]:80"`).
+- Cancelling the task that waits (a `race` it lost, `withTimeout`, its
+  owner going) stops the wait, and what had come by then isn't lost:
+  the next read gets it. A write that has begun goes on to its end. A
+  socket belongs to the task that made it: when that task ends, it
+  closes.
+- A failure is a `NetError`: `refused`, `reset`, `timedOut`,
+  `unreachable`, `notFound`, `lookupFailed`, `closed`, `ended`,
+  `addressInUse`, `addressUnavailable`, `denied`, `tooLarge`,
+  `invalid`, `unsupported`, `failed`.
+
+A desktop app and a phone's app (while it runs) use sockets as a
+program does; a web page has none (`NetError.unsupported`), though its
+IP addresses and host:port helpers work.
+
+### TLS
+
+`net.connectTLS` connects and speaks TLS 1.2 or 1.3 over the
+connection, as Go's `tls.Dial` and Node's `tls.connect` do: the
+server's certificate is checked for the host before anything of yours
+is sent, and what's read and written from then on is a `Conn`'s, as
+above.
+
+```asuka check
+import std/net
+
+async fn main() throws {
+  let c = try await net.connectTLS("example.com", 443, timeout: 10s)
+  try await c.write("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n")
+  print(try await c.readLine())   // HTTP/1.1 200 OK
+  c.close()
+}
+```
+
+A protocol that starts in plaintext and then upgrades (SMTP's and
+IMAP's STARTTLS, PostgreSQL's SSLRequest) calls `startTLS` on its
+connection, in place:
+
+```asuka check
+import std/net
+
+async fn main() throws {
+  let c = try await net.connect("mail.example.com", 587)
+  let _ = try await c.readLine()   // 220 mail.example.com ESMTP
+  try await c.write("STARTTLS\r\n")
+  let _ = try await c.readLine()   // 220 Ready to start TLS
+  let state = try await c.startTLS("mail.example.com")
+  print("{state.version} {state.cipherSuite}")
+  try await c.write("EHLO me.example.com\r\n")
+}
+```
+
+- The server's certificate is checked against the authorities the
+  system trusts. On macOS, iOS and Windows the system checks it, as
+  Safari and Edge do: what the user and their administrator trust or
+  don't, missing intermediates fetched, revocation. On Linux the
+  system's CA bundle is read, as Go reads it: `SSL_CERT_FILE`, else the
+  first of `/etc/ssl/certs/ca-certificates.crt` (Debian, Ubuntu),
+  `/etc/pki/tls/certs/ca-bundle.crt` (Fedora, RHEL),
+  `/etc/ssl/ca-bundle.pem` (openSUSE), `/etc/ssl/cert.pem` (Alpine) and
+  the like, then `SSL_CERT_DIR`'s files; a static build reads the same,
+  so a container image needs its `ca-certificates` package. On Android,
+  the system's store.
+- `net.clientTLS(ca:, certificate:, key:, alpn:, minVersion:,
+  maxVersion:, insecureSkipVerify:, sessionCache:)` makes
+  a client's configuration, which `connectTLS` and `startTLS` take as
+  `tls:`. `ca` (PEM) is trusted instead of the system's authorities: a
+  private one's, a self-signed server's. `certificate` and `key` are
+  this side's, for a server that asks for one (mutual TLS). `alpn` is
+  the application protocols offered (`["h2", "http/1.1"]`).
+  `insecureSkipVerify` checks nothing, so anyone can pretend to be the
+  server: it's for tests.
+- `net.serverTLS(certificate:, key:, others:, alpn:, clientCA:,
+  requireClientCertificate:, sessionTickets:)` makes a
+  server's: `net.listen`, `net.serve` and `http.serve` take it as
+  `tls:`, and `conn.startServerTLS(tls)` upgrades a connection in
+  place. `others` are more certificates (`KeyPair`s): a client is shown
+  the one whose names match the name it asks for (SNI). `clientCA` asks
+  each client for a certificate one of its authorities signed.
+- A `key` is PEM: PKCS#8, PKCS#1 or SEC 1. One that's encrypted, or
+  OpenSSH's, std/crypto reads, and its `pem()` is what TLS takes:
+  `key: (try await crypto.decryptPrivateKey(text, password: password)).pem()`.
+  (So a TLS app that reads neither carries neither's code.)
+- A client resumes its sessions, as browsers do: its configuration
+  keeps what each handshake agreed (TLS 1.3's tickets, TLS 1.2's
+  session) for the server's name and port, and the next connection
+  there makes a shorter handshake, the certificate not sent again (the
+  one checked before is still checked for its name and dates).
+  `sessionCache:` is how many servers' sessions it keeps (64; the
+  least recently used go first; `0` keeps none). A server gives its
+  clients tickets, sealed with keys it makes at random in memory, never
+  written anywhere, made new each day; `sessionTickets: false` gives
+  none. Nothing is sent early (TLS 1.3's 0-RTT): data sent before the
+  handshake ends can be replayed by anyone who saw it.
+- `conn.handshake()` says what the handshake agreed: a `TLSState`, its
+  `version`, `cipherSuite`, ALPN's `protocol`, `serverName`, whether it
+  `resumed` a session, and the other side's `peerCertificates` (DER). A
+  TLS server's connection does its handshake as its first read or write
+  waits on it; a client that fails it makes that read or write throw.
+- A certificate that isn't trusted is
+  `NetError.untrustedCertificate(problem, reason)`, `problem` one of
+  `expired`, `notYetValid`, `wrongHost`, `unknownIssuer`, `revoked`,
+  `missing`, `invalid`, and `reason` what was found ("example.com's
+  certificate expired on 2025-03-01"). Any other failure is
+  `NetError.tls(reason)`: no version, cipher suite or ALPN protocol in
+  common, an alert from the other side, a server that doesn't speak
+  TLS.
+
+TLS is the same implementation on every platform (Mbed TLS), and an
+app that never calls it doesn't carry it. A web page has no sockets for
+it: `std/http` and `std/websocket` speak HTTPS and `wss:` there, and
+everywhere else through each platform's own client.
+
+### Private authorities and client certificates
+
+`std/http`'s requests and `std/websocket`'s connections check the
+server as the system does, through each platform's own client. A server
+the system doesn't trust (an internal service whose certificate your
+company's authority signed, a test server) or one that asks for the
+client's certificate takes TLS settings of the request's own,
+`http.TLS`, as `tls:`: on `http.get`, `post`, `request`, `download`,
+`stream`, `events` and `websocket.connect`.
+
+```asuka check
+import std/fs
+import std/http
+
+async fn main() throws {
+  let tls = http.TLS(ca: try fs.readText("ca.pem"), certificate: try fs.readText("client.pem"), key: try fs.readText("client.key"))
+  let r = try await http.get("https://orders.internal/health", tls: tls)
+  print(r.status)
+}
+```
+
+- `ca` (PEM) is trusted instead of the system's authorities; with
+  `trustSystem: true`, besides them. The server's name is checked
+  either way.
+- `certificate` (PEM: the client's, then the authorities' that signed
+  it) and `key` (PEM: PKCS#8, RSA or EC, not encrypted) are shown to a
+  server that asks for a certificate (mutual TLS).
+- `insecureSkipVerify` checks no certificate at all: anyone can pretend
+  to be the server, so it's for a test against a server of your own.
+- Requests with the same settings share their connections; requests
+  with other settings, or none, never use them.
+- Settings that can't be read throw `HTTPError.tls(reason)`. A server
+  the settings don't trust fails the request, saying why
+  ("orders.internal's certificate isn't trusted: ...").
+- iOS and macOS hold a server's certificate to Apple's requirements even
+  when `ca` trusts its authority: valid for 825 days or fewer, the
+  server's names in its subjectAltName, signed with SHA-256 or better,
+  an RSA key of 2048 bits or more, and an extendedKeyUsage for a server
+  if it has one.
+- On Windows, the client certificate's key is kept in the system's key
+  storage while the program runs and removed as it exits, and the
+  authorities between the certificate and its root are added to the
+  user's intermediate certificates, where Windows finds the chain it
+  sends.
+- A web page can't: its browser decides whom to trust and which
+  certificate to show, so a request with `tls:` throws there.
+
+## Secrets, passwords and signatures: std/crypto
+
+std/crypto is the same C on every platform, the web's too: what one
+seals, hashes or signs, any other opens and verifies. A service checks
+a webhook's HMAC with `crypto.equal`, which takes the same time wherever
+the bytes differ, and stores passwords with `hashPassword` (argon2id,
+in the PHC format other systems read), which runs on another thread:
+
+```asuka check
+import std/crypto
+import std/encoding
+import std/http
+import std/os
+
+struct Login {
+  name: string
+  password: string
+}
+
+async fn main() throws {
+  let secret = (os.env("WEBHOOK_SECRET") ?? "").bytes()
+  var users: [string: string] = [:]  // a database's, in a real service
+  let api = http.Router()
+    .post("/hooks/github", req => {
+      // GitHub signs the body: X-Hub-Signature-256 is sha256=<HMAC in hex>.
+      let sent = (req.header("X-Hub-Signature-256") ?? "").trimPrefix("sha256=")
+      let mac = encoding.hexEncode(crypto.hmacSHA256(secret, req.body))
+      if !crypto.equal(mac.bytes(), sent.bytes()) {
+        return .text("bad signature", status: 401)
+      }
+      return .text("ok")
+    })
+    .post("/signup", req => {
+      let login = try req.json<Login>()
+      users[login.name] = try await crypto.hashPassword(login.password)
+      return .text("welcome", status: 201)
+    })
+    .post("/login", req => {
+      let login = try req.json<Login>()
+      let stored = users[login.name] ?? ""
+      if stored != "" && (try await crypto.verifyPassword(login.password, hash: stored)) {
+        return .text("hello, {login.name}")
+      }
+      return .text("wrong name or password", status: 401)
+    })
+  let server = try await http.serve(8080, api.handler())
+  for await _ in os.signals() {
+    break
+  }
+  await server.close(grace: 10s)
+}
+```
+
+A JWT signed with RS256, PS256, ES256 or EdDSA is checked with the
+issuer's public key, from PEM or its JWK Set; the key's kind decides
+which schemes may check it, so a token's `alg` can't pick a weaker one:
+
+```asuka check
+import std/crypto
+import std/encoding
+import std/http
+import std/json
+
+struct Header {
+  alg: string
+  kid: string = ""
+}
+
+/// Whether token, a JWT, was signed with one of the issuer's keys.
+async fn verified(token: string, jwksURL: string) throws -> bool {
+  let keys = try crypto.publicKeys((try await http.get(jwksURL)).text())
+  let parts = token.split(".")
+  if parts.count() != 3 {
+    return false
+  }
+  let header = try json.decode<Header>((try encoding.base64Decode(parts[0])).string())
+  if let key = keys[header.kid], let scheme = crypto.SignatureScheme.jws(header.alg) {
+    return try crypto.verify(key, "{parts[0]}.{parts[1]}".bytes(), try encoding.base64Decode(parts[2]), scheme: scheme)
+  }
+  return false
+}
+```
+
+- `crypto.seal(key, plaintext, additionalData:)` encrypts and
+  authenticates with XChaCha20-Poly1305 and a random nonce, which it
+  puts first; `open` gives the plaintext back, or throws
+  `CryptoError.notAuthentic` when anything changed. `cipher:
+  .aes256GCM` (or `.aes128GCM`, `.chaCha20Poly1305`) is for what other
+  systems read; `sealWithNonce` and `openWithNonce` for a protocol that
+  gives the nonce.
+- `hkdf` derives keys from a secret, `pbkdf2` and `argon2id` from a
+  password; `hmac`, `hmacSHA256` and `hmacSHA512` sign with a shared key.
+- `hashPasswordBcrypt` and `verifyPassword` read bcrypt's `$2b$`, `$2a$`
+  and `$2y$` too, for a database another system filled.
+- `newPrivateKey()` makes an ECDSA P-256 key (`kind: .ed25519`, P-384,
+  P-521); `sign` and `verify` take RSA (PKCS#1 v1.5 and PSS), ECDSA and
+  Ed25519 keys read from PEM (`publicKey`, `privateKey`), DER or a JWK,
+  and give them back as `pem()` and `jwk()`.
+- `privateKey` reads OpenSSH's keys too (what `ssh-keygen` writes).
+  `decryptPrivateKey(pem, password:)` reads encrypted ones: OpenSSL's
+  `ENCRYPTED PRIVATE KEY` (PBES2 with PBKDF2 or scrypt, AES or Triple
+  DES; older OpenSSL's and Java's PKCS#12 Triple DES), its older
+  `Proc-Type: 4,ENCRYPTED` keys, and OpenSSH's (bcrypt with AES or
+  ChaCha20-Poly1305). A password that doesn't decrypt the key is
+  `CryptoError.wrongPassword`; single DES, RC2 and RC4 are weak and
+  aren't read. `key.encryptedPEM(password:)` writes a key encrypted, as
+  OpenSSL 3 does (PBKDF2-HMAC-SHA256 of 600,000 iterations,
+  AES-256-CBC). Both take time on purpose, so a guess at the password
+  does too, and run on another thread. An app that reads no encrypted
+  key carries none of their ciphers.
+
+```asuka check
+import std/crypto
+import std/fs
+import std/os
+
+async fn main() throws {
+  let text = try fs.readText("deploy_key")  // ssh-keygen -t ed25519 -f deploy_key
+  let key = try await crypto.decryptPrivateKey(text, password: os.env("KEY_PASSWORD") ?? "")
+  let signature = try crypto.sign(key, "release 1.4.0".bytes(), scheme: .ed25519)
+  print(signature.count())  // 64
+  // -----BEGIN ENCRYPTED PRIVATE KEY-----, for OpenSSL and the like
+  try fs.writeText("deploy_key.pem", await key.encryptedPEM(password: os.env("KEY_PASSWORD") ?? ""))
+}
+```
+- `md5` is for checksums a protocol asks for, not security; a CRC is
+  std/compress's `crc32` and `crc32c`.
 
 ## Running
 
@@ -953,6 +1584,11 @@ test "reads git's branch" {
 }
 ```
 
+A program's property tests, snapshots, benches and coverage are an
+app's too: `asuka test --bench` times what `asuka build` ships,
+compiled to C, and `asuka test --cover` measures the program's code
+([Testing](testing.md#property-tests)).
+
 ## What runs where
 
 | | macOS | Windows | Linux | Phones, the web |
@@ -962,4 +1598,6 @@ test "reads git's branch" {
 | `std/command` | yes | yes | yes | `unsupported` |
 | `std/flag` | yes | yes | yes | yes (it parses any list) |
 | `std/term` | yes | yes | yes | no terminal: no styles, `prompt` gives `none` |
+| `std/log` | stderr (an app: unified logging) | stderr (an app: the debugger's output) | stderr | unified logging, logcat, the browser's console |
 | `http.serve` | yes | yes | yes | a phone's app: while it runs; the web: `unsupported` |
+| `std/net` | yes | yes | yes | a phone's app: while it runs; the web: `unsupported` |

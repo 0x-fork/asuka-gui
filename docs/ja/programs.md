@@ -69,6 +69,10 @@ async fn main() throws {
 | `os.writeTo(.stdout, text)`、`writeBytesTo` | テキストやバイト列を、行末を付けずにそのまま `.stdout` か `.stderr` に書く |
 | `os.terminal(.stdout)` | ストリームがパイプやファイルではなく端末（人が見ている）かどうか。色やプロンプトは端末のときだけ出す |
 | `os.signals(kinds)` | 指定した種類のシグナルを届いた順に返す（`Stream<os.Signal>`：`.interrupt`、`.term`、`.hangup`）。読まれている種類ではプログラムは終了しない |
+| `os.hostname()`、`os.pid()`、`os.ppid()` | マシンの名前、プロセスの ID、親プロセスの ID |
+| `os.user()` | プロセスを実行しているユーザー。`name`、`home`、`uid`、`gid` を持つ `User`（Windows では `uid` と `gid` は `none`） |
+| `os.platform()`、`os.arch()` | 動いているシステムと CPU。`Platform`（`.macOS`、`.windows`、`.linux` など）と `os.Arch`（`.arm64`、`.amd64` など） |
+| `os.executable()` | プログラム自身の実行ファイル。リンクを解決した絶対パスです。一緒に配布したファイルは `fs.dir(os.executable() ?? ".")` にあります |
 
 ### シグナル
 
@@ -294,6 +298,96 @@ Project name: [demo] notes
 
 テストでは `os.fake(stdin:)` で質問に答え、質問そのものは `o.stderr()` で確認できます。テストのストリームは端末ではないのでスタイルは付きませんが、`os.fake(env: ["FORCE_COLOR": "1"])` や `term.setColors(.always)` で指定すれば付きます。見るのは `os.fake` の `env:` だけなので、テストを実行する環境の変数がテストの出力を変えることはありません。スマートフォンと Web には端末がありません。スタイルは付かず、`prompt` は `none` を返し、`width` も `none` です。
 
+### 揃った表
+
+列を揃えるには、どのセルも端末上で同じ桁数を占める必要があります。これは `count()` の値とは別物です。漢字・かな・ハングル、全角文字、たいていの絵文字は 2 桁を占め、結合用のアクセント記号やゼロ幅接合子（ZWJ）は桁を占めません。`term.textWidth(text)` は端末が表示するとおりに桁数を数えます。書記素クラスターごとに数え（Rust の unicode-width や `Bun.stringWidth` と同じです）、制御コードは数に入れないので、スタイル付きのテキストも見た目どおりの幅になります。`term.padEnd`、`padStart`、`center`、`truncate`（切ったところに `…` を付け、文字を途中で切ることはありません）、`fit`（ちょうどその幅にします。はみ出せば切り、足りなければ埋めます。数値には `align: .end`）はこの幅で動き、`term.table(rows)` は表全体を並べます。
+
+```asuka check
+import std/term
+
+struct Row {
+  name: string
+  city: string
+  score: int
+}
+
+fn main() {
+  let rows = [Row(name: "王小明", city: "北京", score: 98), Row(name: "Ana", city: "Lisboa 🇵🇹", score: 7), Row(name: "佐藤花子", city: "東京", score: 85)]
+  var cells = [["Name", "City", "Score"]]
+  for r in rows {
+    cells.push([r.name, r.city, "{r.score}"])
+  }
+  print(term.table(cells, align: [.start, .start, .end], width: term.width()))
+}
+```
+
+```text
+Name      City       Score
+王小明    北京          98
+Ana       Lisboa 🇵🇹      7
+佐藤花子  東京          85
+```
+
+各列の幅はその列でいちばん広いセルに合わせ、列のあいだは `gap:` 個の空白（既定は 2）です。`width:` を指定すると、各行が収まるまでいちばん広い列から幅を譲り、収まらないセルは切り詰めます（この例では端末の幅で、パイプに出力するときは none なので制限しません）。東アジアの文字幅が「曖昧」な文字（`±`、`…`）は 1 桁です。特に設定しなければ端末もそう表示します。タブなどの制御文字は 0 桁なので、必要ならタブを先に展開してください。`std/flag` のヘルプも同じ方法でオプションを揃えています。
+
+## ログ：std/log
+
+`std/log` は、プログラムがしていることをその場で書き残します。各行にはレベル（`debug`、`info`、`warn`、`error`）があり、メッセージと、それが何についてのことかを示すフィールドからなります。次のプログラムはファイルをバックアップします。`-v` を付けるとファイルごとに表示し、`--json` を付けると機械が読むための JSON の行を書きます。
+
+```asuka check
+import std/flag
+import std/fs
+import std/log
+import std/os
+
+/// ファイルをディレクトリにコピーします。
+struct Options {
+  /// -v ファイルごとに、していることを表示します。
+  verbose: bool = false
+  /// 機械が読むための JSON の行を書きます。
+  json: bool = false
+  /// コピー先。
+  to: string = "backup"
+  /// コピーするファイル。
+  files: [string]
+}
+
+async fn main() throws {
+  let o = flag.parse<Options>(os.args())
+  if o.verbose {
+    log.setLevel(.debug)
+  }
+  if o.json {
+    log.setFormat(.json)
+  }
+  let run = log.with(["to": o.to])
+  try await spawn { try fs.mkdirAll(o.to) }
+  for file in o.files {
+    run.debug("copying", ["file": file])
+    let target = fs.join([o.to, fs.base(file)])
+    try await spawn { try fs.copy(from: file, to: target) } catch e {
+      run.error("copy failed", ["file": file, "error": "{e}"])
+      os.exit(1)
+    }
+  }
+  run.info("copied", ["files": "{o.files.count()}"])
+}
+```
+
+```text
+$ backup -v notes.md todo.md
+2026-11-19 10:04:05.120 DEBUG copying                                  to=backup file=notes.md
+2026-11-19 10:04:05.123 DEBUG copying                                  to=backup file=todo.md
+2026-11-19 10:04:05.125 INFO  copied                                   to=backup files=2
+```
+
+- **フィールド。** 1 行のフィールドは `[string: string]` で、`["port": "{port}"]` のように書けばどんな値もテキストとして入れられます。空白、引用符、`=` を含む値は引用符で囲まれます（`path="my notes.md"`）。`log.with(fields)` は、書くすべての行にそれらのフィールドが付く `Logger` を返し、その `with` でさらに追加できます。行自身のフィールドが logger のフィールドと同じ名前なら、行のほうが優先されます。
+- **レベル。** 最低レベルより下の行は書かれません。最低レベルは info ですが、`ASUKA_LOG` で変えられます（`debug`、`info`、`warn`、`error`、`off`。Rust の `RUST_LOG` と同じ）。プログラムが `log.setLevel(.debug)` で指定することもでき、その場合はプログラムの指定が優先されます。上のプログラムが `-v` のときだけ設定しているのはそのためです。書かれない行のコストは判定 1 回だけですが、フィールドはほかの関数呼び出しの引数と同じく先に計算されます。作るのに手間がかかるフィールドは `if log.enabled(.debug) { … }` で囲みます。
+- **形式。** 端末では、時刻（ローカル時刻）が薄く、レベルが色付きで表示されます。色を付けるかどうかは `std/term` が stderr について判断したとおりです（`NO_COLOR`、`FORCE_COLOR`、`term.setColors`）。`log.setFormat(.json)` にすると、Go の `log/slog` と同じく 1 行に 1 つの JSON オブジェクトを書きます：`{"time":"2026-11-19T10:04:05.125+08:00","level":"INFO","msg":"copied","to":"backup","files":"2"}`。`time: false` にすると時刻を書きません。journald やコンテナのランタイムがすでにタイムスタンプを付けるサービス向けです。
+- **書き込み先。** プログラムの行は stderr に書かれるので、stdout はプログラムの出力のままです（`backup | tee list`）。アプリの行は、各プラットフォームの開発者がふだん見る場所に書かれます。iOS と macOS では統合ログ（Xcode のコンソール、コンソール App）、Android では logcat、Web ではブラウザのコンソール（レベルに応じて `console.debug` から `console.error`）、Windows ではデバッガの出力です。Linux では stderr に書かれ、デスクトップのアプリを端末から起動したときも stderr です。`asuka dev` は自分の端末にもそれらを表示します。
+
+テストでは、これらの行は `o.stderr()` で確認でき、時刻はテストの時計のもの（`2026-01-01 00:00:00.000` から）です。テストの中で `ASUKA_LOG` を設定できるのは `os.fake(env:)` だけです。
+
 ## ファイルとディレクトリ：std/fs
 
 プログラムもアプリと同じく `std/fs` でファイルを読み書きします（[データ](data.md)）。さらに、コマンドラインツールがファイルを探すのに必要な関数があります。
@@ -404,6 +498,28 @@ async fn main() throws {
 }
 ```
 
+## 大量のデータから上位を：std/collections
+
+優先度付きキューは、要素が出入りしても、次に扱うものを常に先頭に置いておけます。それが `std/collections` の `Heap` で、「より小さい」の比較で並べます。大量のデータから大きいものを k 個残すには、容量 k で最小のものから出ていくヒープを使えば十分で、入力全体を並べ替える必要はありません。要素一つにつき O(log k) の一手で済みます（[標準ライブラリ](stdlib.md)を参照）。
+
+```asuka check
+import std/collections.{Heap}
+import std/os
+
+// stdin に最も多く出てくる十個の単語と、その回数。
+fn main() {
+  var counts: [string: int] = [:]
+  for line in os.readAll().string().lines() {
+    for w in line.lower().fields() { counts[w, default: 0] += 1 }
+  }
+  var top = Heap<(string, int)>(by: (a, b) => a.1 < b.1)
+  for (w, n) in counts {
+    if top.count() < 10 { top.push((w, n)) } else { let _ = top.pushPop((w, n)) }
+  }
+  for (w, n) in top.sorted().reversed() { print("{n}\t{w}") }
+}
+```
+
 ## 形の決まっていない JSON
 
 形がわかっている JSON は構造体で読みます（`json.decode<T>`、[データ](data.md)を参照）。ツールの設定ファイルやパイプで渡される任意の内容のように形がわからないものは `json.Value` で扱います。`json.parse(text)` はどんな JSON もそのまま読み込み、`get(key)`、`at(i)`、`asString()`、`asInt()` などで中身を見たり、`match` でケース（`.object(members)`、`.array(elements)`、`.string(s)` など）を取り出したりできます。表示しても `json.encode` で書き出しても JSON になります。
@@ -481,6 +597,65 @@ async fn main() throws {
 
 `separator: "\t"` でタブ区切りのデータを読めます。`comment: "#"` はその文字で始まる行を飛ばし、`flexible: true` は行ごとにフィールド数が違ってもよいことにします。
 
+## テンプレートからのテキスト：std/template
+
+`std/template` はテンプレートと値からテキストを作ります。設定ファイル、リリースノート、メール、コード、サービスが返すページなどです。構文は Jinja のもので（MiniJinja、Nunjucks、Twig も同じ書き方です）、`{{ value }}`、`|` の後ろのフィルター、`{% if %}`、`{% for %}`、`{% include %}`、`{% extends %}`、`{% block %}` を使います。データは構造体か map で、`json.encode` が書き出すとおりに読まれるので、テンプレートで使う名前はそのフィールドです。テンプレートは raw 文字列に書けばそのまま保てます（普通の文字列では `{` が埋め込みの始まりになります）。
+
+```asuka check
+import std/template
+
+struct Change {
+  kind: string
+  text: string
+  issue: int? = none
+}
+
+struct Release {
+  version: string
+  date: string
+  changes: [Change]
+}
+
+fn main() throws {
+  let notes = try template.parse(r"""
+    # {{ version }} ({{ date }})
+
+    {% for c in changes %}
+    - **{{ c.kind | capitalize }}**: {{ c.text }}{% if c.issue %} (#{{ c.issue }}){% endif %}
+    {% else %}
+    Nothing changed.
+    {% endfor %}
+    """)
+  let release = Release(version: "1.4.0", date: "2026-11-19", changes: [Change(kind: "added", text: "term.table", issue: 412), Change(kind: "fixed", text: "a crash on empty input")])
+  print(try notes.render(release))
+}
+```
+
+```text
+# 1.4.0 (2026-11-19)
+
+- **Added**: term.table (#412)
+- **Fixed**: a crash on empty input
+```
+
+1 行に単独で書いた文は、その行ごと取り除かれます。そのため、テンプレートでロジックを書いた場所が出力に空行として残りません。`{{-` と `-}}` はタグの前後の空白を取り除きます。データにないフィールドは「未定義」です。`if` では false になり、`| default("…")` で置き換えられ、表示しようとするとエラーになります。未知のフィルターも同じで、エラーには場所が示されます（`template: notes.md:4:9: c.title is undefined`）。テンプレートは一度解析すれば、何度でもレンダリングできます。
+
+HTML を出力するときはエスケープされます。表示する値の `&`、`<`、`>`、`"`、`'` は文字参照として書かれ、`| safe` を付けたものだけがそのまま出ます。`| json` は `<script>` の中に置ける形で値を書きます。`template.parseAll` でまとめて読んだテンプレート（`std/embed` が組み込むファイルなど）は名前で互いに include や extend ができ、名前が `.html` で終わるものはエスケープされます。
+
+```asuka
+import std/http
+import std/template
+
+struct Note {
+  id: int
+  text: string
+}
+
+// pages：try template.parseAll(embed.texts("templates/*.html"))。組み込まれたファイル
+fn site(pages: template.Templates, notes: [Note]) -> http.Router = http.Router()
+  .get("/notes", req => .html(try pages.render("templates/notes.html", ["notes": notes])))
+```
+
 ## Web サービス：std/http
 
 `http.serve` を使うと、Go の `net/http` や `Bun.serve` と同じようにプログラムを HTTP/1.1 サーバーにできます。リクエストはそれぞれハンドラーに渡されます。ハンドラーは `Reply` を返す async 関数です。`Router` はメソッドとパスでリクエストを振り分け、`:name` はパスの 1 セグメントに一致します。
@@ -541,9 +716,245 @@ $ curl localhost:8080/notes/1
 - `http.Limits(headerSize:, bodySize:, connections:, headerTimeout:, readTimeout:, idleTimeout:)` で、受け付ける量と待つ時間を決めます。既定ではヘッダー 64 KiB、ボディ 16 MiB、接続 10000、リクエストのヘッダーが届くまで 30 秒、ボディの途中で待つのは毎回 30 秒まで、次のリクエストまでは 60 秒です。上限を超えたものにはステータス（431、413、408）を返して接続を閉じます。
 - `server.close(grace: 10s)` でサーバーを止めます。すぐに新しい接続の受け付けをやめ、処理中のリクエストには返信させ、`grace` を過ぎてもまだ動いているハンドラーはキャンセルします（`defer` は実行されます）。`server.wait()` は閉じるまで待ちます。サーバーはそれを始めたタスクに属するので、`main` が戻ると閉じます。そのため `main` は `server.wait()` を await するか、上の例のように終了のシグナルを待ちます。シグナルを読むストリームがないと、Ctrl-C で `main` が終わり、サーバーもすぐに閉じて、まだ動いているハンドラーはキャンセルされます。`os.signals()` を読んでから閉じれば、先に答えさせられます（[シグナル](#シグナル)を参照）。
 
-HTTPS はリバースプロキシー（Caddy、nginx）に任せます。プロキシーが TLS を終端し、`127.0.0.1` で待ち受けるサーバーに HTTP でリクエストを渡します。クライアントのアドレスは `X-Forwarded-For` に入ります。デスクトップアプリも同じようにタスクからローカル API を提供でき、スマートフォンのアプリも動いているあいだは同じです。Web ページは待ち受けられません（`ServerError.unsupported`）。
+`tls:` を渡せば、そのまま HTTPS を提供できます。`net.serverTLS` には証明書とその秘密鍵を PEM で渡します（Let's Encrypt や `mkcert` が書き出す形式です）。各接続は TLS 1.2 か 1.3 で通信します（[TLS](#tls) を参照）。
+
+```asuka check
+import std/fs
+import std/http
+import std/net
+
+async fn main() throws {
+  let tls = try net.serverTLS(certificate: try fs.readText("cert.pem"), key: try fs.readText("key.pem"))
+  let server = try await http.serve(8443, req => .text("hello over TLS"), host: "0.0.0.0", tls: tls)
+  print("listening on {server.url}")
+  await server.wait()
+}
+```
+
+TLS をリバースプロキシー（Caddy、nginx）に任せることもでき、その場合は証明書の更新もプロキシーが行います。プロキシーは `127.0.0.1` で待ち受けるサーバーに HTTP でリクエストを渡し、クライアントのアドレスは `X-Forwarded-For` に入ります。デスクトップアプリも同じようにタスクからローカル API を提供でき、スマートフォンのアプリも動いているあいだは同じです。Web ページは待ち受けられません（`ServerError.unsupported`）。
 
 ハンドラーはただの関数なので、テストでは `Request` を渡してハンドラーやルーターを直接呼べます。ソケットは介しません：`let r = try await api.handle(http.Request(method: "GET", path: "/notes/1"))`。
+
+## ほかのプロトコル：std/net
+
+HTTP 以外のプロトコルは `std/net` で話します。Redis、SMTP、ゲームのサーバー、独自のプロトコルなどです。Go の `net`、Rust の `std::net`、Node の `net` や `dgram` と同じように、TCP の接続とサーバー、UDP のデータグラム、DNS の名前解決をそろえています。待ちはすべて async で、ソケットの読み書きはランタイム専用のスレッドで行われます。次の例は、クライアントが設定した値を覚えておく、行単位でやり取りするサーバーです。
+
+```asuka check
+import std/net
+import std/os
+
+async fn main() throws {
+  var values: [string: string] = [:]
+  let server = try await net.serve(7000, c => {
+    for await line in c.lines() {
+      let words = line.split(" ", count: 3)
+      if words.count() == 3 && words[0] == "SET" {
+        values[words[1]] = words[2]
+        try await c.write("OK\r\n")
+      } else if words.count() == 2 && words[0] == "GET" {
+        try await c.write("{values[words[1]] ?? "-"}\r\n")
+      } else {
+        try await c.write("ERR unknown command\r\n")
+      }
+    }
+  })
+  print("listening on {server.address.string()}")
+  for await _ in os.signals() {
+    break
+  }
+  await server.close()
+}
+```
+
+そのクライアントです。
+
+```asuka check
+import std/net
+
+async fn main() throws {
+  let c = try await net.connect("localhost", 7000, timeout: 5s)
+  try await c.write("SET greeting hello\r\n")
+  print(try await c.readLine())   // OK
+  try await c.write("GET greeting\r\n")
+  print(try await c.readLine())   // hello
+  c.close()
+}
+```
+
+- `net.connect(host, port, timeout:, noDelay:, keepAlive:)` は `Conn` を返します。ホスト名は名前解決され、そのアドレスを Happy Eyeballs のやり方で試します。IPv6 と IPv4 のアドレスを交互に、前の試行が 250 ミリ秒以内につながらなければ次を始め、最初につながったものを使います。`timeout` は名前解決と接続を合わせた時間の上限です。
+- `Conn` は `read(max:)`（届いた分。接続の終わりでは `none`）、`readExactly(n)`、`readLine(max:)`（`\n` や `\r\n` を除く）、`readUntil(delimiter, max:)`、`readAll(max:)` で読みます。ストリームとして `lines()`、`chunks()` でも読めます。書くのは `write(text)` と `writeBytes(data)` です。`closeWrite()` はこちら側の書き込みだけを閉じ（相手は終わりを読みますが、まだ返信できます）、`close()` は接続を閉じます。`readTimeout` と `writeTimeout` は 1 回ごとの待ちの上限です（超えると `NetError.timedOut`）。`localAddress` と `remoteAddress` で両端のアドレスがわかります。待てる読み込みは一度に一つで、書き込みは順番に並び、それぞれ全部が送られます。
+- `net.serve(port, handler, host:, onError:)` は、クライアントの接続ごとに `handler` を独立したタスクとして動かし、多くの接続を同時に扱います。ハンドラーが戻ると接続は閉じます。自分で `accept()` したいときは、`net.listen(port, host:)` で `Listener` を作ります。`host` を指定しなければ `127.0.0.1` です。`"0.0.0.0"` ならすべての IPv4 インターフェースのクライアントを、`""` か `"::"` ならすべてのインターフェースのクライアントを受け付けます。ポートを 0 にするとシステムが選びます（`server.port`）。`server.close(grace:)` は受け付けをやめ、`grace`（既定では待たない）を過ぎてもまだ動いているハンドラーをキャンセルします。`server.wait()` は止まるまで待ちます。
+- `net.udp(port:, host:, reuse:)` は `UDPSocket` を返します。`send(data, to:)`、`sendTo(data, host:, port:)`、`receive(timeout:)`（`data` と送り主の `from` を持つ `Datagram` を返す）、`datagrams()`、`connect(host, port)`、マルチキャストの `joinGroup(ip)`、`setBroadcast(on)` があります。
+- `net.lookup(host)` は、システムのやり方（hosts ファイル、DNS）でホスト名の IP アドレスを引きます。ほかに `reverseLookup(ip)`、`lookupCNAME`、DNS のレコードを引く `lookupMX`、`lookupTXT`、`lookupSRV`、`lookupNS` があります。
+- `net.IP` はアドレス（`IP.parse("2001:db8::1")`、`isLoopback()`、`isPrivate()`、`string()`）、`net.Prefix` はネットワーク（`Prefix.parse("10.0.0.0/8")!.contains(ip)`）、`net.Address` は IP とポートの組です。`joinHostPort` と `splitHostPort` は IPv6 の角かっこ（`"[::1]:80"`）を扱います。
+- 待っているタスクをキャンセルすると（`race` で負けた、`withTimeout` の時間切れ、オーナーがなくなった）、その待ちは止まります。それまでに届いたデータは失われず、次の読み込みが受け取ります。書き始めた書き込みは最後まで書かれます。ソケットはそれを作ったタスクに属し、そのタスクが終わると閉じます。
+- 失敗は `NetError` になります：`refused`、`reset`、`timedOut`、`unreachable`、`notFound`、`lookupFailed`、`closed`、`ended`、`addressInUse`、`addressUnavailable`、`denied`、`tooLarge`、`invalid`、`unsupported`、`failed`。
+
+デスクトップアプリとスマートフォンのアプリ（動いているあいだ）は、プログラムと同じようにソケットを使えます。Web ページにはソケットがありません（`NetError.unsupported`）が、IP アドレスと host:port の補助関数は使えます。
+
+### TLS
+
+`net.connectTLS` は接続してから、その上で TLS 1.2 か 1.3 で通信します。Go の `tls.Dial` や Node の `tls.connect` と同じです。こちらのデータを送る前に、サーバーの証明書がホスト名に対して検証されます。そのあとの読み書きは、上の `Conn` とまったく同じです。
+
+```asuka check
+import std/net
+
+async fn main() throws {
+  let c = try await net.connectTLS("example.com", 443, timeout: 10s)
+  try await c.write("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n")
+  print(try await c.readLine())   // HTTP/1.1 200 OK
+  c.close()
+}
+```
+
+平文で始めて途中で切り替えるプロトコル（SMTP や IMAP の STARTTLS、PostgreSQL の SSLRequest）では、その接続の上で `startTLS` を呼びます：
+
+```asuka check
+import std/net
+
+async fn main() throws {
+  let c = try await net.connect("mail.example.com", 587)
+  let _ = try await c.readLine()   // 220 mail.example.com ESMTP
+  try await c.write("STARTTLS\r\n")
+  let _ = try await c.readLine()   // 220 Ready to start TLS
+  let state = try await c.startTLS("mail.example.com")
+  print("{state.version} {state.cipherSuite}")
+  try await c.write("EHLO me.example.com\r\n")
+}
+```
+
+- サーバーの証明書は、システムが信頼する認証局に照らして検証されます。macOS、iOS、Windows では、Safari や Edge と同じくシステム自身が検証します。ユーザーや管理者が信頼する・しないとした設定に従い、足りない中間証明書を取得し、失効も確かめます。Linux では、Go と同じようにシステムの CA バンドルを読みます。`SSL_CERT_FILE` があればそれを、なければ `/etc/ssl/certs/ca-certificates.crt`（Debian、Ubuntu）、`/etc/pki/tls/certs/ca-bundle.crt`（Fedora、RHEL）、`/etc/ssl/ca-bundle.pem`（openSUSE）、`/etc/ssl/cert.pem`（Alpine）などから最初に見つかったものを読み、続けて `SSL_CERT_DIR` のファイルを読みます。静的ビルドも同じ場所を読むので、コンテナーイメージには `ca-certificates` パッケージが必要です。Android では、システムの証明書ストアを使います。
+- `net.clientTLS(ca:, certificate:, key:, alpn:, minVersion:, maxVersion:, insecureSkipVerify:, sessionCache:)` はクライアントの設定を作り、`connectTLS` と `startTLS` は `tls:` でそれを受け取ります。`ca`（PEM）は、システムの認証局の代わりに信頼されます。プライベートな認証局や、自己署名のサーバーの証明書に使います。`certificate` と `key` はこちら側の証明書と秘密鍵で、クライアント証明書を求めるサーバー（相互 TLS）向けです。`alpn` は提示するアプリケーションプロトコルです（`["h2", "http/1.1"]`）。`insecureSkipVerify` は何も検証しないので、だれでもサーバーになりすませます。テスト専用です。
+- `net.serverTLS(certificate:, key:, others:, alpn:, clientCA:, requireClientCertificate:, sessionTickets:)` はサーバーの設定を作ります。`net.listen`、`net.serve`、`http.serve` は `tls:` でそれを受け取り、`conn.startServerTLS(tls)` は既存の接続をその場で切り替えます。`others` は追加の証明書（`KeyPair`）で、クライアントが求めた名前（SNI）に名前が一致するものが提示されます。`clientCA` を渡すと、各クライアントに、その認証局のどれかが署名した証明書を求めます。
+- `key` は PEM で、PKCS#8、PKCS#1、SEC 1 のどれかです。暗号化された鍵や OpenSSH の形式の鍵は std/crypto で読み、その `pem()` を TLS に渡します：`key: (try await crypto.decryptPrivateKey(text, password: password)).pem()`。（こうすることで、どちらも読まない TLS アプリにはそのコードが含まれません。）
+- クライアントはブラウザーと同じようにセッションを再開します。設定は、ハンドシェイクごとに合意した内容（TLS 1.3 のチケット、TLS 1.2 のセッション）をサーバーの名前とポートごとに覚えておき、次にそこへ接続するときはハンドシェイクが短くなり、証明書も送り直されません（以前に検証した証明書は、名前と有効期限をもう一度確かめます）。`sessionCache:` はいくつのサーバーのセッションを覚えておくかです（既定は 64。最も長く使われていないものから捨てられ、`0` なら何も覚えません）。サーバーはクライアントにチケットを渡します。チケットはメモリ上でランダムに作る鍵で封をし、その鍵はどこにも書き出さず、毎日新しくします。`sessionTickets: false` ならチケットを渡しません。データの先送り（TLS 1.3 の 0-RTT）はしません。ハンドシェイクが終わる前に送ったデータは、それを見た人ならだれでも再送できてしまうからです。
+- `conn.handshake()` はハンドシェイクで合意した内容を `TLSState` で返します。`version`、`cipherSuite`、ALPN の `protocol`、`serverName`、セッションを再開したかどうかの `resumed`、相手の証明書 `peerCertificates`（DER）です。TLS サーバーの接続は、最初の読み込みか書き込みが待つときにハンドシェイクを行います。クライアントがハンドシェイクに失敗すると、その読み込みか書き込みが例外を投げます。
+- 信頼できない証明書は `NetError.untrustedCertificate(problem, reason)` になります。`problem` は `expired`、`notYetValid`、`wrongHost`、`unknownIssuer`、`revoked`、`missing`、`invalid` のどれかで、`reason` は何が見つかったかを説明します（"example.com's certificate expired on 2025-03-01"）。それ以外の失敗は `NetError.tls(reason)` です。共通するバージョン、暗号スイート、ALPN プロトコルがない、相手からアラートが届いた、サーバーが TLS を話さない、といった場合です。
+
+TLS はどのプラットフォームでも同じ実装（Mbed TLS）で、一度も呼ばないアプリには含まれません。Web ページにはそのためのソケットがありません。Web ページでも、ほかのすべてのプラットフォームと同じく、`std/http` と `std/websocket` が各プラットフォーム自身のクライアントを通して HTTPS と `wss:` を扱います。
+
+### プライベートな認証局とクライアント証明書
+
+`std/http` のリクエストと `std/websocket` の接続は、各プラットフォーム自身のクライアントを通り、システムと同じようにサーバーを検証します。システムが信頼しないサーバー（社内の認証局が署名した社内サービスや、テスト用のサーバー）や、クライアント証明書を求めるサーバーには、リクエストごとの TLS 設定 `http.TLS` を `tls:` で渡します。`http.get`、`post`、`request`、`download`、`stream`、`events`、`websocket.connect` が受け取ります。
+
+```asuka check
+import std/fs
+import std/http
+
+async fn main() throws {
+  let tls = http.TLS(ca: try fs.readText("ca.pem"), certificate: try fs.readText("client.pem"), key: try fs.readText("client.key"))
+  let r = try await http.get("https://orders.internal/health", tls: tls)
+  print(r.status)
+}
+```
+
+- `ca`（PEM）は、システムの認証局の代わりに信頼されます。`trustSystem: true` を付けると、システムの認証局に加えて信頼されます。どちらの場合も、サーバーの名前は検証されます。
+- `certificate`（PEM。クライアント自身の証明書と、それに続けて署名した認証局の証明書）と `key`（PEM。PKCS#8、RSA、EC のいずれかで、暗号化されていないもの）は、証明書を求めるサーバーに提示されます（相互 TLS）。
+- `insecureSkipVerify` は証明書をまったく検証しません。だれでもサーバーになりすませるので、自分のサーバーに対するテスト専用です。
+- 設定が同じリクエストは接続を共有します。設定が違うリクエストや設定のないリクエストが、その接続を使うことはありません。
+- 読み取れない設定は `HTTPError.tls(reason)` を投げます。設定が信頼しないサーバーへのリクエストは、理由を添えて失敗します（"orders.internal's certificate isn't trusted: ..."）。
+- iOS と macOS では、`ca` で認証局を信頼していても、サーバー証明書は Apple の要件を満たす必要があります。有効期間が 825 日以内、サーバーの名前が subjectAltName にあること、SHA-256 以上で署名されていること、RSA 鍵なら 2048 ビット以上、extendedKeyUsage があるならサーバー用途を含むこと、です。
+- Windows では、クライアント証明書の秘密鍵はプログラムの実行中だけシステムの鍵ストレージに置かれ、終了時に削除されます。また、証明書とルートのあいだの認証局の証明書は、ユーザーの中間証明機関ストアに追加されます。Windows は送る証明書チェーンをそこから組み立てるためです。
+- Web ページではできません。だれを信頼し、どの証明書を提示するかはブラウザーが決めるので、Web ページで `tls:` を付けたリクエストは例外を投げます。
+
+## 秘密、パスワード、署名：std/crypto
+
+std/crypto はどのプラットフォームでも同じ C のコードで動き、Web も同じです。あるプラットフォームで暗号化、ハッシュ、署名したものは、ほかのどのプラットフォームでも復号して検証できます。サービスで webhook の HMAC を確かめるときは `crypto.equal` で比べます。これはバイト列がどこで違っても同じ時間で比較します。パスワードの保存には `hashPassword`（argon2id。ほかのシステムも読める PHC 形式で出力）を使います。これは別のスレッドで動きます：
+
+```asuka check
+import std/crypto
+import std/encoding
+import std/http
+import std/os
+
+struct Login {
+  name: string
+  password: string
+}
+
+async fn main() throws {
+  let secret = (os.env("WEBHOOK_SECRET") ?? "").bytes()
+  var users: [string: string] = [:]  // 実際のサービスではデータベースに置く
+  let api = http.Router()
+    .post("/hooks/github", req => {
+      // GitHub はボディに署名する：X-Hub-Signature-256 は sha256=<HMAC の 16 進>。
+      let sent = (req.header("X-Hub-Signature-256") ?? "").trimPrefix("sha256=")
+      let mac = encoding.hexEncode(crypto.hmacSHA256(secret, req.body))
+      if !crypto.equal(mac.bytes(), sent.bytes()) {
+        return .text("bad signature", status: 401)
+      }
+      return .text("ok")
+    })
+    .post("/signup", req => {
+      let login = try req.json<Login>()
+      users[login.name] = try await crypto.hashPassword(login.password)
+      return .text("welcome", status: 201)
+    })
+    .post("/login", req => {
+      let login = try req.json<Login>()
+      let stored = users[login.name] ?? ""
+      if stored != "" && (try await crypto.verifyPassword(login.password, hash: stored)) {
+        return .text("hello, {login.name}")
+      }
+      return .text("wrong name or password", status: 401)
+    })
+  let server = try await http.serve(8080, api.handler())
+  for await _ in os.signals() {
+    break
+  }
+  await server.close(grace: 10s)
+}
+```
+
+RS256、PS256、ES256、EdDSA で署名された JWT は、発行元の公開鍵で検証します。公開鍵は PEM でも、発行元の JWK Set からでも読めます。どの方式で検証できるかは鍵の種類で決まるので、トークンの `alg` でもっと弱い方式を選ばせることはできません：
+
+```asuka check
+import std/crypto
+import std/encoding
+import std/http
+import std/json
+
+struct Header {
+  alg: string
+  kid: string = ""
+}
+
+/// JWT の token が発行元の鍵のどれかで署名されているか。
+async fn verified(token: string, jwksURL: string) throws -> bool {
+  let keys = try crypto.publicKeys((try await http.get(jwksURL)).text())
+  let parts = token.split(".")
+  if parts.count() != 3 {
+    return false
+  }
+  let header = try json.decode<Header>((try encoding.base64Decode(parts[0])).string())
+  if let key = keys[header.kid], let scheme = crypto.SignatureScheme.jws(header.alg) {
+    return try crypto.verify(key, "{parts[0]}.{parts[1]}".bytes(), try encoding.base64Decode(parts[2]), scheme: scheme)
+  }
+  return false
+}
+```
+
+- `crypto.seal(key, plaintext, additionalData:)` は XChaCha20-Poly1305 とランダムな nonce で暗号化と認証を行い、nonce を先頭に置きます。`open` は平文を返し、何かが変えられていれば `CryptoError.notAuthentic` を投げます。ほかのシステムと読み書きするなら `cipher: .aes256GCM`（または `.aes128GCM`、`.chaCha20Poly1305`）を、プロトコルが nonce を決める場合は `sealWithNonce` と `openWithNonce` を使います。
+- `hkdf` は秘密から、`pbkdf2` と `argon2id` はパスワードから鍵を導出します。`hmac`、`hmacSHA256`、`hmacSHA512` は共有鍵で署名します。
+- `hashPasswordBcrypt` と `verifyPassword` は bcrypt の `$2b$`、`$2a$`、`$2y$` も読めるので、ほかのシステムが作ったデータベースにも使えます。
+- `newPrivateKey()` は ECDSA P-256 の鍵を作ります（`kind: .ed25519`、P-384、P-521 も可）。`sign` と `verify` は PEM（`publicKey`、`privateKey`）、DER、JWK から読んだ RSA（PKCS#1 v1.5 と PSS）、ECDSA、Ed25519 の鍵を受け取り、`pem()` と `jwk()` で書き出せます。
+- `privateKey` は OpenSSH の鍵（`ssh-keygen` が書くもの）も読めます。暗号化された鍵は `decryptPrivateKey(pem, password:)` で読みます。OpenSSL の `ENCRYPTED PRIVATE KEY`（PBES2 で PBKDF2 か scrypt、AES かトリプル DES。古い OpenSSL や Java が使う PKCS#12 のトリプル DES も）、OpenSSL の古い `Proc-Type: 4,ENCRYPTED` の鍵、OpenSSH の暗号化された鍵（bcrypt と AES か ChaCha20-Poly1305）です。パスワードで鍵を復号できなければ `CryptoError.wrongPassword` になります。シングル DES、RC2、RC4 は弱いので読みません。`key.encryptedPEM(password:)` は OpenSSL 3 と同じ形式で鍵を暗号化して書き出します（PBKDF2-HMAC-SHA256 を 600,000 回、AES-256-CBC）。どちらも意図的に時間がかかり、パスワードを推測するのにも同じだけかかります。どちらも別のスレッドで動きます。暗号化された鍵を読まないアプリには、これらの暗号のコードは含まれません。
+
+```asuka check
+import std/crypto
+import std/fs
+import std/os
+
+async fn main() throws {
+  let text = try fs.readText("deploy_key")  // ssh-keygen -t ed25519 -f deploy_key
+  let key = try await crypto.decryptPrivateKey(text, password: os.env("KEY_PASSWORD") ?? "")
+  let signature = try crypto.sign(key, "release 1.4.0".bytes(), scheme: .ed25519)
+  print(signature.count())  // 64
+  // -----BEGIN ENCRYPTED PRIVATE KEY-----（OpenSSL などで読める）
+  try fs.writeText("deploy_key.pem", await key.encryptedPEM(password: os.env("KEY_PASSWORD") ?? ""))
+}
+```
+- `md5` はプロトコルが求めるチェックサム用で、セキュリティには使いません。CRC は std/compress の `crc32` と `crc32c` です。
 
 ## 実行
 
@@ -678,6 +1089,8 @@ test "reads git's branch" {
 }
 ```
 
+プロパティテスト、スナップショット、ベンチマーク、カバレッジも、アプリと同じようにプログラムで使えます。`asuka test --bench` は `asuka build` が出荷する、C にコンパイルしたコードを計測し、`asuka test --cover` はプログラム自身のコードを計測します（[テスト](testing.md#プロパティテスト)を参照）。
+
 ## プラットフォームごとの対応
 
 | | macOS | Windows | Linux | スマートフォン、Web |
@@ -687,4 +1100,6 @@ test "reads git's branch" {
 | `std/command` | ○ | ○ | ○ | `unsupported` |
 | `std/flag` | ○ | ○ | ○ | ○（どんなリストでも解析できる） |
 | `std/term` | ○ | ○ | ○ | 端末がない（スタイルなし、`prompt` は `none`） |
+| `std/log` | stderr（アプリは統合ログ） | stderr（アプリはデバッガの出力） | stderr | 統合ログ、logcat、ブラウザのコンソール |
 | `http.serve` | ○ | ○ | ○ | スマートフォンのアプリは動いているあいだ ○、Web は `unsupported` |
+| `std/net` | ○ | ○ | ○ | スマートフォンのアプリは動いているあいだ ○、Web は `unsupported` |

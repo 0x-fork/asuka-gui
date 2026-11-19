@@ -6,12 +6,14 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/egoist/asuka/internal/appbuild"
 	"github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/lang/diag"
+	"github.com/egoist/asuka/lang/ir"
 	"github.com/egoist/asuka/lang/target"
 )
 
@@ -23,17 +25,76 @@ var jsonOut bool
 // and run on the fake host (asuka-run: the VM, the core and the fake
 // host built for this computer).
 func cmdTest(args []string) error {
-	var pattern, platform string
+	var pattern, platform, benchtime, compare, seed, fuzztime string
+	tr := &testRun{}
+	jsonOut = false
 	fs := newFlagSet("test", "[dir]")
-	fs.Bool(&jsonOut, "json", 0, "write the diagnostics and each test's result as JSON, one object per line (a diagnostic: code, severity, file, range, message, help, url; a test: test, ok, message, pos)")
+	fs.Bool(&jsonOut, "json", 0, "write the diagnostics and each test's result as JSON, one object per line (a diagnostic: code, severity, file, range, message, help, url; a test: test, ok, message, pos, property; a bench: bench, nsPerOp, allocsPerOp, bytesPerOp, ...; coverage: cover, lines, branches)")
 	fs.about = "Runs the test blocks of the app or package in dir (default: the working directory) on the\n" +
 		"fake host: the app's views as a phone would show them, measured and laid out, driven by\n" +
-		"tap, type and expect; and those of its programs (asuka.toml's [bin.<name>])."
-	fs.String(&pattern, "run", 0, "", "run only the tests whose names contain `text`")
+		"tap, type and expect; and those of its programs (asuka.toml's [bin.<name>]). A test with\n" +
+		"parameters is a property test, run with generated inputs; a bench runs once here, and is\n" +
+		"timed with --bench."
+	fs.String(&pattern, "run", 0, "", "run only the tests (and benches) whose names contain `text`")
 	platformFlag(fs, &platform, []string{platformIOS, platformAndroid, platformMac, platformWindows, platformLinux, platformWeb},
 		"the `platform` the tests are compiled for (its packages' files for it, @platform) and the fake host says it is: ios (the default), android, mac, windows, linux or web")
+	fs.Bool(&tr.bench, "bench", 0, "time the benches (bench \"name\" { … }) instead of running the tests: compiled to C, as a release build is; each's time, allocations and bytes per iteration")
+	fs.String(&benchtime, "benchtime", 0, "1s", "how long each bench's samples take together (`time`: 500ms, 2s), or how many iterations each runs (100x)")
+	fs.String(&compare, "compare", 0, "", "compare the benches with a run that asuka test --bench --json wrote to `file`")
+	fs.Bool(&tr.vm, "vm", 0, "time the benches on the VM, not compiled to C")
+	fs.String(&seed, "seed", 0, "", "the `seed` property tests' inputs are generated from (default 0, the same every run; random: a new one, said)")
+	fs.Int(&tr.cases, "cases", 0, 100, "how many generated inputs (`n`) each property test tries")
+	fs.Bool(&tr.fuzz, "fuzz", 0, "fuzz the property tests instead of running the tests: new inputs until --fuzztime, those that reach new code kept and changed; a failing one is shrunk and saved in testdata/fuzz, which every run then tries")
+	fs.String(&fuzztime, "fuzztime", 0, "10s", "how long to fuzz each property test (`time`), or how many inputs (10000x)")
+	fs.Bool(&tr.update, "update", 'u', "write the snapshots that differ from what the tests show, and remove those no test takes")
+	fs.Bool(&tr.cover, "cover", 0, "measure the lines and branches of the package's code the tests run: a summary per file")
+	fs.String(&tr.lcov, "cover-lcov", 0, "", "write the coverage to `file` in lcov's format, for editors and CI (--cover)")
+	fs.String(&tr.html, "cover-html", 0, "", "write the coverage to `file` as a page: the source, what ran and what didn't (--cover)")
 	if err := fs.parse(args); err != nil {
 		return err
+	}
+	tr.pattern, tr.platform = pattern, platform
+	tr.ci = inCI()
+	if tr.lcov != "" || tr.html != "" {
+		tr.cover = true
+	}
+	var err error
+	if tr.benchTime, tr.benchN, err = parseCount("benchtime", benchtime); err != nil {
+		return err
+	}
+	if tr.fuzzTime, tr.fuzzCases, err = parseCount("fuzztime", fuzztime); err != nil {
+		return err
+	}
+	switch {
+	case tr.bench && tr.fuzz:
+		return errors.New("--bench times the benches and --fuzz fuzzes the property tests: one at a time")
+	case tr.bench && tr.cover:
+		return errors.New("--cover measures what the tests run, and --bench times the benches: one at a time")
+	case tr.vm && !tr.bench:
+		return errors.New("--vm says where --bench runs the benches")
+	case compare != "" && !tr.bench:
+		return errors.New("--compare compares the benches: with --bench")
+	}
+	if compare != "" {
+		if tr.baseline, err = appbuild.ReadBaseline(compare); err != nil {
+			return err
+		}
+	}
+	switch seed {
+	case "":
+	case "random":
+		tr.seed = uint64(time.Now().UnixNano())
+		if !jsonOut {
+			fmt.Printf("asuka: seed %d\n", tr.seed)
+		}
+	default:
+		if tr.seed, err = strconv.ParseUint(seed, 10, 64); err != nil {
+			return fmt.Errorf("--seed %s: a whole number, or random", seed)
+		}
+	}
+	if tr.fuzz && seed == "" {
+		// Fuzzing looks for what the seeded runs didn't try.
+		tr.seed = uint64(time.Now().UnixNano())
 	}
 	dir := fs.Arg(0)
 	if dir == "" {
@@ -70,22 +131,67 @@ func cmdTest(args []string) error {
 			}
 			fmt.Printf("asuka: %s (%s)\n", name, relToCwd(t.Dir))
 		}
-		m, err := compileProject(t, langPlatform(platform))
+		var m *bytecode.Module
+		var cov *ir.Cover
+		if tr.cover || tr.fuzz {
+			// Statements count their runs: coverage's, and what tells the
+			// fuzzer an input reached new code.
+			m, cov, err = compileCover(t, langPlatform(platform))
+		} else {
+			m, err = compileProject(t, langPlatform(platform))
+		}
 		if err != nil {
 			return err
 		}
 		if len(m.Tests) == 0 && len(targets) > 1 {
 			continue
 		}
+		if len(targets) > 1 && (tr.bench && !hasBenches(m, pattern) || tr.fuzz && !hasProperties(m, pattern)) {
+			continue
+		}
 		ran++
-		if err := runTests(m, t, pattern, platform); err != nil && failed == nil {
+		if err := tr.runPackage(m, cov, t); err != nil && failed == nil {
 			failed = err
 		}
 	}
 	if ran == 0 && len(targets) > 1 {
-		fmt.Println("asuka: no test blocks")
+		switch {
+		case tr.bench:
+			fmt.Println("asuka: no benches")
+		case tr.fuzz:
+			fmt.Println("asuka: no property tests")
+		default:
+			fmt.Println("asuka: no test blocks")
+		}
+	}
+	if tr.coverage != nil {
+		if err := tr.coverage.report(tr); err != nil && failed == nil {
+			failed = err
+		}
 	}
 	return failed
+}
+
+// compileCover compiles p as compileProject does, its statements
+// counting their runs.
+func compileCover(p *appbuild.Project, platform target.Platform) (*bytecode.Module, *ir.Cover, error) {
+	m, cov, diags, err := p.CompileCover(platform)
+	base := cwdOr(p.Dir)
+	for _, d := range diags {
+		d = relDiag(base, d)
+		if jsonOut {
+			fmt.Println(d.Record(diag.Error).JSON())
+		} else {
+			fmt.Fprintln(os.Stderr, d.Format(diag.Error, ""))
+		}
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	if m == nil {
+		return nil, nil, fmt.Errorf("%d %s", len(diags), plural(len(diags), "error", "errors"))
+	}
+	return m, cov, nil
 }
 
 // hasSources reports whether dir has .asuka files: a package.
@@ -102,31 +208,10 @@ func testPlatform(p string) string {
 	return p
 }
 
+// runTests runs m's tests, of the package p (asuka run's).
 func runTests(m *bytecode.Module, p *appbuild.Project, pattern, platform string) error {
-	if len(m.Tests) == 0 {
-		fmt.Println("asuka: no test blocks")
-		return nil
-	}
-	start := time.Now()
-	s, err := appbuild.RunTests(m, appbuild.TestOptions{Pattern: pattern, Platform: testPlatform(platform), Dir: cwdOr(p.Dir), JSON: jsonOut}, os.Stdout)
-	if err != nil {
-		return err
-	}
-	n, failed := len(s.Results), s.Failed()
-	if n == 0 {
-		return fmt.Errorf("no test's name contains %q", pattern)
-	}
-	if failed > 0 {
-		if jsonOut {
-			return errReported // each result says so
-		}
-		return fmt.Errorf("%d of %d %s failed", failed, n, plural(n, "test", "tests"))
-	}
-	if jsonOut {
-		return nil
-	}
-	fmt.Printf("ok   %d %s passed in %.2fs\n", n, plural(n, "test", "tests"), time.Since(start).Seconds())
-	return nil
+	tr := &testRun{pattern: pattern, platform: platform, ci: inCI()}
+	return tr.runPackage(m, nil, p)
 }
 
 // cwdOr is the working directory, what reports are relative to, when

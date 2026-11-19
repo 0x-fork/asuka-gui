@@ -1,0 +1,497 @@
+// The standard library's benchmarks: the same work as ../go/main.go and
+// ../bun/main.js, on the same inputs. `stdbench <name> [dir]` sets up,
+// then times the work, and prints its result (which the runner checks
+// is every language's) and the nanoseconds it took.
+
+import std/bigint
+import std/collections
+import std/compress
+import std/crypto
+import std/csv
+import std/fs
+import std/json
+import std/os
+import std/regex
+import std/semver
+import std/template
+import std/time
+import std/toml
+
+let syllables = ["ka", "to", "ri", "su", "me", "no", "ha", "yu", "chi", "ra"]
+
+fn next(seed: int) -> int = (seed * 1103515245 + 12345) % 2147483648
+
+// corpus is n words of two syllables (a number after one in 13), a line
+// break after every 12th.
+fn corpus(n: int) -> string {
+  var seed = 42
+  var parts: [string] = []
+  for i in 0..<n {
+    seed = next(seed)
+    var w = syllables[seed % 10] + syllables[(seed / 10) % 10]
+    if seed % 13 == 0 {
+      w = w + "{seed % 1000}"
+    }
+    parts.push(w)
+    parts.push(if i % 12 == 11 { "\n" } else { " " })
+  }
+  return parts.joined("")
+}
+
+fn data(n: int) -> bytes = corpus(n).bytes()
+
+// ---- Strings ----
+
+fn interp(n: int) -> string {
+  var parts: [string] = []
+  for i in 0..<n {
+    parts.push("item {i}: {i * 3} ok")
+  }
+  return "{parts.joined(",").byteCount()}"
+}
+
+fn concat(n: int) -> string {
+  var total = 0
+  for i in 0..<n {
+    let k = syllables[i % 10] + "-" + syllables[(i / 10) % 10] + "/" + syllables[(i / 100) % 10]
+    total += k.byteCount()
+  }
+  return "{total}"
+}
+
+fn splitting(text: string) -> string {
+  var total = 0
+  for _ in 0..<3 {
+    total += text.split(" ").count() + text.lines().count() + text.fields().count()
+  }
+  return "{total}"
+}
+
+fn finding(text: string) -> string {
+  var total = 0
+  for _ in 0..<5 {
+    total += text.replace("kato", "X").byteCount()
+    total += text.split("chira").count()
+    if text.contains("suyuq") { total += 1 }
+    if text.contains("ra\nka") { total += 1 }
+    total += (text.find("meme1") ?? -1) + (text.findLast("kaka") ?? -1)
+  }
+  return "{total}"
+}
+
+fn casing(text: string, uni: string) -> string {
+  var total = 0
+  for _ in 0..<3 {
+    total += text.upper().lower().byteCount()
+    total += uni.upper().byteCount() + uni.lower().byteCount() + uni.foldCase().byteCount()
+    if text.contains("KATO", ignoreCase: true) { total += 1 }
+    if uni.hasSuffix("STRASSE", ignoreCase: true) { total += 1 }
+  }
+  return "{total}"
+}
+
+fn counting(text: string) -> string {
+  var total = 0
+  for _ in 0..<20 {
+    total += text.count()
+  }
+  let step = text.count() / 2000
+  for i in 0..<2000 {
+    total += text.slice(i * step, i * step + 8).byteCount()
+  }
+  return "{total}"
+}
+
+fn numbers(n: int) -> string {
+  var ints: [string] = []
+  var floats: [string] = []
+  for i in 0..<n {
+    ints.push("{(i * 7919) % 1000003 - 500000}")
+  }
+  let t0 = time.monotonic()
+  var total = 0
+  for s in ints {
+    total += s.toInt() ?? 0
+  }
+  for i in 0..<n {
+    floats.push("{i.float() / 7.0 + 0.1}")
+  }
+  var sum = 0.0
+  for s in floats {
+    sum += s.toFloat() ?? 0.0
+  }
+  total += floats.joined("").byteCount()
+  return "{total} {sum.fixed(3)}"
+}
+
+fn formats(n: int) -> string {
+  var total = 0
+  for i in 0..<n {
+    let x = i.float() * 1.25
+    total += "{x:>12.3f}|{i:08}|{i:,}|{x:e}".byteCount()
+  }
+  return "{total}"
+}
+
+// ---- Maps, sets, sorting ----
+
+fn mapInt(n: int) -> string {
+  var m: [int: int] = [:]
+  for i in 0..<n {
+    let k = (i * 7919) % 1000003
+    m[k] = (m[k] ?? 0) + 1
+  }
+  var hits = 0
+  for i in 0..<n {
+    hits += m[i] ?? 0
+  }
+  return "{m.count()} {hits}"
+}
+
+fn mapStr(keys: [string]) -> string {
+  var m: [string: int] = [:]
+  for k in keys {
+    m[k] = (m[k] ?? 0) + 1
+  }
+  var hits = 0
+  for k in keys {
+    hits += m[k] ?? 0
+  }
+  return "{m.count()} {hits}"
+}
+
+fn sets(n: int) -> string {
+  var s = Set<int>()
+  for i in 0..<n {
+    s.insert((i * 7919) % 1000003)
+  }
+  var hits = 0
+  for i in 0..<n {
+    if s.contains(i) { hits += 1 }
+  }
+  return "{s.count()} {hits}"
+}
+
+fn ints(n: int) -> [int] {
+  var seed = 7
+  var xs: [int] = []
+  for _ in 0..<n {
+    seed = next(seed)
+    xs.push(seed)
+  }
+  return xs
+}
+
+fn sortInts(xs: [int]) -> string {
+  var a = xs
+  a.sort()
+  return "{a[0] + a[a.count() / 2] + a[a.count() - 1]}"
+}
+
+fn sortStrings(xs: [string]) -> string {
+  let a = xs.sorted()
+  return "{a[0]} {a[a.count() / 2]} {a[a.count() - 1]}"
+}
+
+struct Score {
+  id: int
+  score: int
+}
+
+fn sortBy(xs: [Score]) -> string {
+  let a = xs.sorted(by: (p, q) => p.score < q.score)
+  let b = xs.sorted(key: p => p.score, descending: true)
+  return "{a[0].id} {a[a.count() / 2].id} {b[0].id}"
+}
+
+// ---- Regex ----
+
+fn regexes(text: string) -> string {
+  let digits = regex.must(r"\d+")
+  let word = regex.must(r"\b\w+chi\w*\b")
+  let lit = regex.must("chira")
+  let mail = regex.must(r"(\w+)@(\w+)\.com")
+  let alt = regex.must("(?i)kato|meme|yuyu")
+  var total = digits.findAll(text).count()
+  total += word.findAll(text).count()
+  total += lit.findAll(text).count()
+  total += mail.findAll(text).count()
+  total += alt.findAll(text).count()
+  total += text.lines().count(where: l => digits.matches(l))
+  total += digits.replace(text, with: "#").byteCount()
+  return "{total}"
+}
+
+// ---- I/O ----
+
+fn files(dir: string, text: string) throws -> string {
+  let path = "{dir}/stdbench.txt"
+  try fs.writeText(path, text)
+  var total = (try fs.readText(path)).byteCount()
+  total += (try fs.read(path)).count()
+  try fs.remove(path)
+  return "{total}"
+}
+
+async fn fileLines(dir: string, text: string) throws -> string {
+  let path = "{dir}/stdbench-lines.txt"
+  try fs.writeText(path, text)
+  let t0 = time.monotonic()
+  var total = 0
+  for await l in fs.lines(path) {
+    total += l.byteCount()
+  }
+  try fs.remove(path)
+  return "{total}"
+}
+
+fn printing(n: int) -> string {
+  for i in 0..<n {
+    print("line {i} of the output")
+  }
+  return "{n}"
+}
+
+fn csvText(n: int) -> string {
+  var rows: [string] = ["id,name,price,tags,note"]
+  for i in 0..<n {
+    rows.push("{i},item {i},{i.float() * 0.25},\"a,b{i % 7}\",plain text here")
+  }
+  return rows.joined("\n") + "\n"
+}
+
+fn csvParse(text: string) throws -> string {
+  let rows = try csv.parse(text)
+  var total = 0
+  for r in rows {
+    total += r.count() + r[1].byteCount()
+  }
+  return "{rows.count()} {total}"
+}
+
+fn tomlText(n: int) -> string {
+  var parts: [string] = ["title = \"bench\"\n"]
+  for i in 0..<n {
+    parts.push("[server{i}]\nhost = \"10.0.{i % 256}.{i % 100}\"\nport = {8000 + i}\nenabled = {i % 2 == 0}\nweights = [1.5, 2.5, {i}]\n\n")
+  }
+  return parts.joined("")
+}
+
+fn tomlParse(text: string) throws -> string {
+  let v = try toml.parse(text)
+  return "{(try json.encode(v)).byteCount()}"
+}
+
+// ---- Crypto and compression ----
+
+fn sha(data: bytes, wide: bool) -> string {
+  var out = bytes()
+  for _ in 0..<4 {
+    out = if wide { crypto.sha512(data) } else { crypto.sha256(data) }
+  }
+  return out.hex()
+}
+
+fn hmacs(n: int) -> string {
+  let key = "the key".bytes()
+  var msg = "a message of some sixty-four bytes, as a request's body might be".bytes()
+  for _ in 0..<n {
+    msg = crypto.hmacSHA256(key, msg)
+  }
+  return msg.hex()
+}
+
+fn aead(data: bytes, cipher: crypto.Cipher) throws -> string {
+  let key = crypto.sha256("key".bytes())
+  let nonce = crypto.sha256("nonce".bytes()).slice(0, cipher.nonceSize())
+  var total = 0
+  for _ in 0..<2 {
+    let sealed = try crypto.sealWithNonce(key, nonce, data, cipher: cipher)
+    let back = try crypto.openWithNonce(key, nonce, sealed, cipher: cipher)
+    total += back.count() + sealed[sealed.count() - 1]
+  }
+  return "{total}"
+}
+
+async fn argon(n: int) throws -> string {
+  var out = bytes()
+  for _ in 0..<n {
+    out = try await crypto.argon2id("password".bytes(), "somesaltsomesalt".bytes(), memory: 65536, iterations: 3, parallelism: 4)
+  }
+  return out.hex()
+}
+
+async fn bcrypts(n: int) throws -> string {
+  var ok = 0
+  for _ in 0..<n {
+    let h = try await crypto.hashPasswordBcrypt("password", cost: 10)
+    ok += h.byteCount()
+  }
+  return "{ok}"
+}
+
+fn gzip(data: bytes) throws -> string {
+  let packed = compress.encode(data, format: .gzip, level: 6)
+  var total = packed.count()
+  for _ in 0..<3 {
+    total += (try compress.decode(packed, format: .gzip)).count()
+  }
+  return "{total}"
+}
+
+// ---- The rest ----
+
+fn bigints(n: int) -> string {
+  var f = bigint.BigInt.one
+  for i in 1..n {
+    f = f.times(i)
+  }
+  let s = f.string()
+  let p = bigint.BigInt.of(3).pow(200000)
+  let q = p.div(f.quo(7))
+  return "{s.byteCount()} {p.string().byteCount()} {q.bitLength()}"
+}
+
+fn modpows(n: int) -> string {
+  let m = bigint.BigInt.one.shiftLeft(2048).minus(1942289)
+  var b = bigint.BigInt.of(65537)
+  let e = m.minus(2)
+  for _ in 0..<n {
+    b = b.modPow(e, m).plus(1)
+  }
+  return "{b.bitLength()}"
+}
+
+fn times(n: int) throws -> string {
+  var total = 0
+  var t = time.unix(1700000000, zone: .utc)
+  for i in 0..<n {
+    let s = t.add(1s * (i * 7919)).rfc3339()
+    total += (try time.parse(s)).unix() % 1000 + s.byteCount()
+  }
+  return "{total}"
+}
+
+struct Item {
+  name: string
+  price: float
+  tags: [string]
+}
+
+fn templates(n: int) throws -> string {
+  let t = try template.parse(r"""
+    {% for item in items %}
+    - {{ item.name | upper }}: {{ item.price | fixed(2) }}{% if item.tags %} ({{ item.tags | join(", ") }}){% endif %}
+    {% endfor %}
+    """)
+  var items: [Item] = []
+  for i in 0..<200 {
+    items.push(Item(name: "item {i}", price: i.float() * 1.5, tags: ["a", "b{i % 7}"]))
+  }
+  var total = 0
+  for _ in 0..<n {
+    total += (try t.render(["items": items])).byteCount()
+  }
+  return "{total}"
+}
+
+fn semvers(n: int) throws -> string {
+  var vs: [semver.Version] = []
+  var seed = 3
+  for _ in 0..<n {
+    seed = next(seed)
+    let pre = if seed % 5 == 0 { "-beta.{seed % 4}" } else { "" }
+    vs.push(try semver.parse("{seed % 20}.{(seed / 20) % 30}.{(seed / 600) % 40}{pre}"))
+  }
+  let sorted = vs.sorted(by: (a, b) => a.compare(b) < 0)
+  let r = try semver.parseRange(">=3.1.0 <12.0.0 || ^15.2")
+  return "{sorted[0].string()} {sorted[sorted.count() - 1].string()} {vs.count(where: v => r.matches(v))}"
+}
+
+fn heaps(xs: [int]) -> string {
+  var h = collections.Heap<int>(by: (a, b) => a < b)
+  for x in xs {
+    h.push(x)
+  }
+  var total = 0
+  while let x = h.pop() {
+    total = (total + x) % 1000000007
+  }
+  return "{total}"
+}
+
+fn sortedMaps(xs: [int]) -> string {
+  var m = collections.SortedMap<int, int>()
+  for x in xs {
+    m.set(x, x % 1000)
+  }
+  var total = 0
+  for x in xs {
+    total += m.get(x) ?? 0
+  }
+  return "{m.count()} {total} {m.first()!.0}"
+}
+
+fn seqs(n: int) -> string {
+  let a = (0..<n).lazy().map(x => x * 3).filter(x => x % 2 == 0).map(x => x + 1).reduce(0, (s, x) => s + x)
+  let b = (0..<n).lazy().toArray().map(x => x * 3).filter(x => x % 2 == 0).map(x => x + 1).reduce(0, (s, x) => s + x)
+  return "{a} {b}"
+}
+
+async fn main() throws {
+  let args = os.args()
+  let name = args.first() ?? ""
+  let dir = args.get(1) ?? "/tmp"
+  // Setting up: what's timed is after it.
+  let text = if ["split", "find", "case", "count", "regex", "files", "lines"].contains(name) { corpus(2000000) } else { "" }
+  let uni = if name == "case" { "Ärger über die Straße, ΣΟΦΟΣ λόγος — Ёлка и ЁЖ; ".repeat(40000) } else { "" }
+  let blob = if ["sha256", "sha512", "aesgcm", "chacha", "gzip"].contains(name) { data(10000000) } else { bytes() }
+  let keys: [string] = if name == "mapstr" { (0..<2000000).lazy().toArray().map(i => "key{(i * 7919) % 500009}") } else { [] }
+  let xs: [int] = if ["sortint", "heap", "sortedmap"].contains(name) { ints(if name == "sortint" { 5000000 } else { 1000000 }) } else { [] }
+  let strs: [string] = if name == "sortstr" { ints(1000000).map(x => "w{x}") } else { [] }
+  let scores: [Score] = if name == "sortby" { ints(1000000).map(x => Score(id: x, score: x % 100000)) } else { [] }
+  let csvIn = if name == "csv" { csvText(500000) } else { "" }
+  let tomlIn = if name == "toml" { tomlText(50000) } else { "" }
+  let t0 = time.monotonic()
+  let out = match name {
+    "interp" => interp(2000000)
+    "concat" => concat(2000000)
+    "split" => splitting(text)
+    "find" => finding(text)
+    "case" => casing(text, uni)
+    "count" => counting(text)
+    "num" => numbers(1000000)
+    "fmt" => formats(1000000)
+    "mapint" => mapInt(2000000)
+    "mapstr" => mapStr(keys)
+    "set" => sets(2000000)
+    "sortint" => sortInts(xs)
+    "sortstr" => sortStrings(strs)
+    "sortby" => sortBy(scores)
+    "regex" => regexes(text)
+    "files" => try files(dir, text)
+    "lines" => try await fileLines(dir, text)
+    "print" => printing(1000000)
+    "csv" => try csvParse(csvIn)
+    "toml" => try tomlParse(tomlIn)
+    "sha256" => sha(blob, false)
+    "sha512" => sha(blob, true)
+    "hmac" => hmacs(500000)
+    "aesgcm" => try aead(blob, .aes256GCM)
+    "chacha" => try aead(blob, .chaCha20Poly1305)
+    "argon2" => try await argon(2)
+    "bcrypt" => try await bcrypts(4)
+    "gzip" => try gzip(blob)
+    "bigint" => bigints(10000)
+    "modpow" => modpows(20)
+    "time" => try times(300000)
+    "template" => try templates(200)
+    "semver" => try semvers(200000)
+    "heap" => heaps(xs)
+    "sortedmap" => sortedMaps(xs)
+    "seq" => seqs(5000000)
+    _ => "unknown"
+  }
+  let ns = (time.monotonic() - t0).nanoseconds()
+  os.writeTo(.stderr, "{out}\t{ns}\n")
+}

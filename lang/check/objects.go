@@ -61,12 +61,36 @@ type Package struct {
 // a file that isn't the package's.
 func (p *Package) FileScope(f *syntax.SourceFile) *Scope { return p.fileScopes[f] }
 
-// A Test is a test block.
+// A Test is a test block, or a bench (Bench set, Decl nil).
 type Test struct {
 	Name string
 	Decl *syntax.TestDecl
-	Ctx  *FuncCtx
-	Pkg  *Package
+	// Bench is a bench "name" { … }: a benchmark (testing.go).
+	Bench *syntax.BenchDecl
+	// Params are a property test's parameters, whose values asuka test
+	// generates (testing.go); none for a test without.
+	Params []*Var
+	// Measure is a bench's measure { … }, the part it times; nil: the
+	// whole body.
+	Measure *syntax.MeasureStmt
+	Ctx     *FuncCtx
+	Pkg     *Package
+}
+
+// Node is the test's declaration: its test block, or its bench.
+func (t *Test) Node() syntax.Decl {
+	if t.Bench != nil {
+		return t.Bench
+	}
+	return t.Decl
+}
+
+// Body is the test's statements.
+func (t *Test) Body() *syntax.Block {
+	if t.Bench != nil {
+		return t.Bench.Body
+	}
+	return t.Decl.Body
 }
 
 // A Scope maps names to objects.
@@ -574,6 +598,7 @@ const (
 	BRange       // arr.range
 	BWithTimeout // withTimeout(d) { … }
 	BStream      // Stream<T>(send => { … })
+	BSeq         // Seq(first: x, next: f), Seq(state:next:), Seq(repeating:), Seq(from:)
 	BSet         // Set(xs), Set<T>(): a set of an array's elements, an empty one
 	BEnvironment // environment(): what the platform says about where the app shows (tracked)
 	BLive        // live(initial, source): a tracked value a stream keeps current while it's read
@@ -593,6 +618,9 @@ const (
 	BPeek        // peek(e): e, read without following it (rfcs/0012)
 	BIntParse    // u8.parse(text, radix:): an integer type's from text (the Builtin's name is the type's)
 	BBytesFrom   // bytes(xs): an [int]'s (each modulo 256) or a [u8]'s bytes
+	BKeep        // keep(x): x, which the compiler can't leave uncomputed (testing.go)
+	BSnapshot    // expectSnapshot(x): x as its stored snapshot says (testing.go)
+	BInline      // expectInlineSnapshot(x, "…"): likewise, the snapshot in the call
 )
 
 // A Builtin is a function the compiler provides (the prelude's print,

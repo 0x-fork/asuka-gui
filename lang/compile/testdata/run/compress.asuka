@@ -62,6 +62,12 @@ test "files" {
   try fs.removeAll(dir)
 }
 
+test "checksums" {
+  print(compress.crc32("123456789".bytes()))
+  print(compress.crc32c("123456789".bytes()))
+  print(compress.crc32("6789".bytes(), previous: compress.crc32("12345".bytes())))
+}
+
 // Output:
 // gzip 0 false true
 // gzip 1 true true
@@ -94,3 +100,7 @@ test "files" {
 // true
 // corrupt data: not gzip: its first bytes aren't 1f 8b false
 // ok files
+// 3421780262
+// 3808858755
+// 3421780262
+// ok checksums

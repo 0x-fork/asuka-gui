@@ -76,6 +76,10 @@ go run ./cmd/asuka fmt -w [paths]   # format .asuka files
 go run ./cmd/asuka check [dir]      # a package checked for every platform's files (tray_linux.asuka: Linux's); --platform ios: one's
 go run ./cmd/asuka doc std/time     # a package's documentation, as Markdown (lang/doc); --all -o dir: the website's reference pages, /docs/std and /docs/platform
 go test ./lang/doc                  # every std and platform package's pub declarations have their /// comment
+go run ./cmd/asuka test --bench bench/ui   # the UI runtime's benches on the fake host (js-framework-benchmark's operations, signals, layout): time, allocations, what reached the host
+bench/ui/instr.sh ./asuka [core]    # the same benches as instructions retired per iteration (a loaded machine doesn't move them); bench/ui/run.sh: timed runs, tabulated
+go test ./bench/tools -bench . -benchmem   # asuka check's Go side on the biggest packages; bench/tools/instr.sh N ./asuka-old ./asuka-new: whole commands, as instructions
+ASUKA_CPUPROFILE=cpu.out go run ./cmd/asuka check std/base  # the CLI's CPU profile (ASUKA_MEMPROFILE: its allocations), for go tool pprof
 go generate ./lang/bytecode ./lang/prelude  # the VM's opcodes header; the prelude and the UI's element constants
 go test ./lang/diag                 # every diagnostic code's wrong and right program, for every platform (the run time's on the fake host)
 go generate ./lang/diag             # the codes' pages: docs/errors/<code>.md, and docs/zh/errors, docs/ja/errors
@@ -97,6 +101,7 @@ go generate ./ops                   # Go constants, Swift, Kotlin and JavaScript
 go run platform/web/gen_symbols.go  # the web host's symbols, from the Android host's
 go generate ./i18n                  # CLDR's tables, from the pinned release
 go generate ./internal/tzgen        # std/time's tz database (core/src/std/tzdata_gen.c) and its C test's cases, from the pinned tzdb release
+go generate ./internal/ucdgen       # strings' Unicode tables (core/src/rt/unicode_gen.c: graphemes, widths, case) and their C test's data, from the pinned UCD release
 go test ./i18n -run 'CTables|CompileCases' -update-c  # the C core's CLDR tables (core/src/ui/i18n_gen.c) and its catalog test data
 go run platform/web/testing/asqlite.go  # std/sqlite's C (its [c], SQLite vendored in third_party) as the web's SQLite module, asqlite.wasm, into the build cache (Zig); node --test platform/web runs it
 go run ./cmd/asuka i18n check examples/i18n  # an app's catalogs, checked (the compiler reads them: dev and build check them too)

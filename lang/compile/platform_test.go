@@ -289,12 +289,12 @@ test "t" {
 			t.Errorf("Linux has %q", s)
 		}
 	}
-	for _, b := range []string{"str.upper", "str.count", "str.lower", "arr.sorted", "ui.show", "ui.switch"} {
+	for _, b := range []string{"unicode.upper", "str.count", "unicode.lower", "arr.sorted", "ui.show", "ui.switch"} {
 		if slices.Contains(ios.Builtins, b) {
 			t.Errorf("iOS calls %s", b)
 		}
 	}
-	for _, b := range []string{"str.upper", "arr.sorted"} {
+	for _, b := range []string{"unicode.upper", "arr.sorted"} {
 		if !slices.Contains(linux.Builtins, b) {
 			t.Errorf("Linux doesn't call %s", b)
 		}

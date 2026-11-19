@@ -1,0 +1,75 @@
+// std/http's and std/websocket's TLS settings on the desktops' C, against
+// internal/testserver over HTTPS (TLS_BASE; WSS_BASE its wss: URL) with a
+// test authority's certificate (TLS_CA; TLS_OTHER_CA another authority's;
+// TLS_CLIENT_CERT and TLS_CLIENT_KEY a client's): refused by the system's
+// trust and another authority's, trusted with the authority's (alone, and
+// with the system's) or with nothing checked, a client's certificate
+// shown when /mtls asks for one, and the same over wss:; and the system's
+// trust and the other authority's still refusing after the rest (no
+// session of theirs resumed without a check). Each step is a
+// Text of its own ("#..."); DONE_FILE, if it isn't empty, is written at
+// the end (what a Windows test waits for).
+import std/fs
+import std/http
+import std/websocket
+
+let base = "TLS_BASE"
+let wss = "WSS_BASE"
+let doneFile = "DONE_FILE"
+
+// Refused by the settings' check ("untrusted": it says why), or by the
+// system's (each says so its own way) or the server.
+fn why(e: Error, tls: http.TLS?) -> string = if tls != none && e.message.contains("certificate isn't trusted") { "untrusted" } else { "refused" }
+
+async fn get(path: string, tls: http.TLS?) -> string {
+  do {
+    let r = try await http.get("{base}{path}", tls: tls)
+    return if r.status == 200 { "{r.status} {r.text()}" } else { "{r.status}" }
+  } catch e {
+    return why(e, tls)
+  }
+}
+
+async fn echo(tls: http.TLS?) -> string {
+  do {
+    let ws = try await websocket.connect("{wss}/ws", tls: tls)
+    try await ws.send("hello")
+    for await m in ws.messages {
+      match m {
+        .text(t) => {
+          ws.close()
+          return t
+        }
+        .binary(_) => {}
+      }
+    }
+    return "ended"
+  } catch e {
+    return why(e, tls)
+  }
+}
+
+component Probe {
+  state log: [string] = []
+  Column {
+    for s in log key s {
+      Text("#{s}")
+    }
+  }
+  task {
+    let ca = http.TLS(ca: "TLS_CA")
+    let other = http.TLS(ca: "TLS_OTHER_CA")
+    let mine = http.TLS(ca: "TLS_CA", certificate: "TLS_CLIENT_CERT", key: "TLS_CLIENT_KEY")
+    log.push("http {await get("/mtls", none)} {await get("/mtls", ca)} {await get("/mtls", other)} {await get("/mtls", http.TLS(ca: "TLS_CA", trustSystem: true))} {await get("/mtls", http.TLS(insecureSkipVerify: true))}")
+    log.push("mutual {await get("/mtls", mine)}")
+    log.push("wss {await echo(none)} {await echo(ca)} {await echo(other)} {await echo(mine)}")
+    // After the others: no session they made lets these in.
+    log.push("again {await get("/mtls", none)} {await get("/mtls", other)} {await echo(none)}")
+    log.push("done")
+    if !doneFile.isEmpty() {
+      try? fs.writeText(doneFile, "done")
+    }
+  }
+}
+
+app { Probe() }

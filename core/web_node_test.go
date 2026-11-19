@@ -203,6 +203,25 @@ done
 	}
 }
 
+// std/log on the web: an app's lines to the console by level (debug and
+// info on Node's stdout; warn on its stderr), each its message and its
+// fields; and to the page's log (asuka dev's terminal; run.mjs's here),
+// with their level.
+func TestWebLog(t *testing.T) {
+	got := runWebNode(t, "log.asuka", nil)
+	want := `saved path="/a b"
+INFO  saved path="/a b"
+cache k=v
+DEBUG cache k=v
+stderr: WARN  on stderr
+(0 jobs on workers)
+done
+`
+	if strings.TrimSpace(got) != strings.TrimSpace(want) {
+		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
 // The same programs in headless Chrome, on the web host's page: spawn on
 // real Web Workers, the app's files in IndexedDB, SQLite's worker over
 // the origin private file system, the crash record.

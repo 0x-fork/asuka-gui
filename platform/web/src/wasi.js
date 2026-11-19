@@ -8,6 +8,11 @@
 
 import { fsys, clean, fsError } from "./fs.js";
 
+/** The levels of std/log's lines (core/src/std/log.c), and the console's method for each. */
+export const logLevels = ["debug", "info", "warn", "error"];
+/** logLine writes one of std/log's lines with the console's method for its level. */
+export const logLine = (level, line) => (console[logLevels[level]] ?? console.log)(line);
+
 // WASI's errno values.
 const E = {
   SUCCESS: 0, ACCES: 2, BADF: 8, BUSY: 10, EXIST: 20, INVAL: 28, IO: 29, ISDIR: 31, NOENT: 44,

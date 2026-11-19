@@ -145,9 +145,10 @@ func Sources(core string, fake bool) ([]string, error) {
 	return out, nil
 }
 
-// Includes are the include directories of the core.
+// Includes are the include directories of the core (with the public
+// headers of the Mbed TLS it vendors: mbedtls/, psa/).
 func Includes(core string) []string {
-	return []string{"-I" + filepath.Join(core, "include"), "-I" + filepath.Join(core, "src"), "-I" + filepath.Join(core, "host")}
+	return []string{"-I" + filepath.Join(core, "include"), "-I" + filepath.Join(core, "src"), "-I" + filepath.Join(core, "host"), "-I" + filepath.Join(core, "third_party", "mbedtls", "include")}
 }
 
 // Compile compiles each source to an object in out, in parallel, and

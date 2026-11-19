@@ -236,6 +236,11 @@ int ak_program_start(ak_module *m, int argc, char **argv, const asuka_host_callb
 	} else {
 		ak_future_wait(P.main, main_done, NULL);
 	}
+	// What main left ready runs now: a host's run loop calls back only for
+	// what's posted, and a main that never awaited is done already, its
+	// end (main_done) ready, not posted.
+	for (int i = 0; i < 1000 && !P.ended && ak_sched_run(); i++) {
+	}
 	return P.ended ? P.code : -1;
 }
 

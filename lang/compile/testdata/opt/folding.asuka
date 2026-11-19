@@ -1,0 +1,52 @@
+// Constants folded where they're known, and left to throw where they
+// overflow: the same results, and the same errors at the same lines.
+import std/os
+
+fn ints() -> string {
+  let a = 40
+  let b = 2
+  let c = a * b + a / b - a % 7
+  let big = 9223372036854775807
+  let small = -9223372036854775807 - 1
+  let wrapped = big &+ 1
+  return "{c} {big} {small} {wrapped} {small % -1} {(1 << 63) >> 63} {1 << 64} {-8 >> 70}"
+}
+
+fn floats() -> string {
+  let x = 1.5
+  let n = 0.0 / 0.0
+  let inf = 1.0 / 0.0
+  var s = "{x * 4.0} {-x} {n == n} {n != n} {n < 1.0} {n >= 1.0} {inf.int()} {(-inf).int()} {n.int()}"
+  if n < 1.0 { s += " lt" } else { s += " !lt" }
+  if !(n < 1.0) { s += " notlt" }
+  return s
+}
+
+fn overflow(k: int) throws -> int {
+  let big = 9223372036854775807
+  if k == 0 { return big + 1 }
+  if k == 1 { return big * 2 }
+  if k == 2 { return -(big + 0 - big - big - 1) }
+  if k == 3 {
+    let z = 0
+    return 1 / z
+  }
+  return 3 % 0
+}
+
+fn main() throws {
+  print(ints())
+  print(floats())
+  for k in 0..<5 {
+    do {
+      print(try overflow(k))
+    } catch e {
+      print("caught {e.message}")
+    }
+  }
+  let which = os.args().first() ?? "x"
+  if which == "x" {
+    print(try overflow(0))
+  }
+}
+

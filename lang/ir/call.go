@@ -416,9 +416,18 @@ func (b *fb) builtinMethod(e *syntax.CallExpr, call *check.Call, recv *int, dst 
 		b.emit(op("F2I"), r, x)
 		return r
 	}
+	if m.Builtin == "seq.of_array" {
+		if r, ok := b.lazyRange(call, dst); ok {
+			return r
+		}
+	}
 	// Arguments first (before the receiver is taken out, when it's
 	// changed in place), in the builtin's order.
+	mark := b.mark()
 	vals := b.args(call, nil)
+	if m.Inout && recv == nil {
+		b.dropTemps(mark, vals...)
+	}
 	if m.Variadic {
 		// The variadic parameter's arguments, as one array.
 		k := len(m.Params) - 1
@@ -445,8 +454,15 @@ func (b *fb) builtinMethod(e *syntax.CallExpr, call *check.Call, recv *int, dst 
 	if m.Needs == "Comparable" && len(vals) == 0 {
 		// sorted(), sort() of a type with a compare method: it, as a
 		// closure, and that it's a comparison rather than a less-than.
-		if a, ok := b.typ(b.l.info.Types[call.Recv]).(*check.Array); ok {
-			if n, ok := a.Elem.(*check.Named); ok {
+		if elem := orderedElem(b.typ(b.l.info.Types[call.Recv])); elem != nil {
+			if _, isSeq := b.typ(b.l.info.Types[call.Recv]).(*check.Seq); isSeq && elem == check.U64 {
+				// A Seq of u64s: ordered unsigned, by a comparison.
+				cl := b.temp(bc.KRef)
+				b.emit(op("CLOS"), cl, b.l.u64Compare(), 0, 0)
+				vals = append(vals, cl, b.konst(1))
+				inoutGuard = true
+			}
+			if n, ok := elem.(*check.Named); ok {
 				if f := check.CompareMethod(n); f != nil {
 					cl := b.temp(bc.KRef)
 					b.emit(op("CLOS"), cl, b.l.funcIndex(f, nil, n), 0, 0)
@@ -470,12 +486,17 @@ func (b *fb) builtinMethod(e *syntax.CallExpr, call *check.Call, recv *int, dst 
 		b.emit(op("KNONE"), none)
 		vals = append(vals, none, b.konst(0), b.konst(1))
 	}
+	if m.Needs == "ComparableU" {
+		vals = append(vals, b.keyCompare(call))
+	}
 	switch m.Extra {
 	case "intcode":
 		vals = append(vals, b.konst(int64(check.IntCode(b.typ(call.RecvType)))))
 	case "kindU":
 		u := b.typ(call.Bound["U"])
 		vals = append(vals, b.konst(int64(b.l.kind(u))))
+	case "seqProto", "proto":
+		vals = b.seqExtra(m, res, vals)
 	case "false":
 		vals = append(vals, b.konst(0))
 	case "true":
@@ -654,6 +675,8 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 		return -1
 	case check.BExpect:
 		return b.expect(e, call)
+	case check.BKeep, check.BSnapshot, check.BInline:
+		return b.testingBuiltin(e, call, dst)
 	case check.BPanic:
 		v := b.value(call.Args[0], -1)
 		b.callBTo("panic", bc.None, v)
@@ -683,6 +706,8 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 			return b.copyTo(b.callB("set.from", bc.KRef, xs), dst)
 		}
 		return b.copyTo(b.callB("set.of", bc.KRef, b.konst(int64(b.l.kind(st.Elem)))), dst)
+	case check.BSeq:
+		return b.copyTo(b.seqGen(call), dst)
 	case check.BStream:
 		// Stream<T>(produce): started when it's first read.
 		st := b.typ(call.Result).(*check.Stream)
@@ -1285,6 +1310,7 @@ func (b *fb) lambda(e *syntax.LambdaExpr) int {
 		c.ctx = ctx
 		switch body := e.Body.(type) {
 		case syntax.Expr:
+			c.cover(body)
 			if ret == bc.KVoid {
 				c.exprStmt(body)
 				c.emit(op("RET0"))

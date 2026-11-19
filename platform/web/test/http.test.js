@@ -53,3 +53,10 @@ test("download: cancelled, and a server that stalls past the timeout", async () 
   s.closeAllConnections();
   s.close();
 });
+
+// A page's requests are its browser's to trust: tls throws, saying so.
+test("secured: a page can't give TLS settings", async () => {
+  class UnsupportedError extends Error {}
+  globalThis.asuka = { native: { UnsupportedError } };
+  await assert.rejects(makeTransport().secured(new AbortController().signal, { ca: "x" }), (e) => e instanceof UnsupportedError && /its browser decides/.test(e.message));
+});

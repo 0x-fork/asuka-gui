@@ -170,8 +170,14 @@ void ak_destroy(ak_obj *o);
 
 // ak_obj_live counts the objects made and not yet destroyed (immortal
 // ones aside: constants, never destroyed), so tests can tell that what code made is freed: a
-// runner's -leaks. Atomic: workers (spawn) make objects too.
+// runner's -leaks. Atomic: workers (spawn) make objects too. Counted in a
+// build with assertions (NDEBUG unset), as ak_alloc_count is.
 extern int64_t ak_obj_live;
+#ifndef NDEBUG
+#define ak_obj_count(d) __atomic_add_fetch(&ak_obj_live, (d), __ATOMIC_RELAXED)
+#else
+#define ak_obj_count(d) ((void)0)
+#endif
 
 static inline void *ak_retain(void *p) {
 	if (p) {
@@ -230,11 +236,19 @@ struct ak_shape {
 // ---- Strings ----
 
 typedef struct ak_str {
-	ak_obj h;
+	ak_obj h;       // h.flags: AK_STR_* (what's known of its bytes)
 	uint32_t len;
 	uint32_t hash;  // 0: not computed yet
 	char data[];    // len bytes, then a NUL
 } ak_str;
+
+// What a string's h.flags cache of its bytes, as its hash is cached:
+// worked out when first asked for (ak_str_ascii), and before it becomes
+// immortal (ak_str_hash), so worker threads only read them. Code that
+// changes a string's bytes after it's made (it's the caller's, fresh
+// from ak_str_new(NULL, n)) does so before anything reads them.
+#define AK_STR_KNOWN 1  // AK_STR_ASCII says whether it's ASCII
+#define AK_STR_ASCII 2  // every byte below 0x80: a character a byte
 
 ak_str *ak_str_new(const char *s, size_t n);  // s NULL: n bytes the caller fills
 static inline ak_str *ak_str_c(const char *s) { return ak_str_new(s, strlen(s)); }
@@ -243,27 +257,58 @@ ak_str *ak_str_concat(ak_str *a, ak_str *b);
 ak_str *ak_str_from_int(int64_t v);
 ak_str *ak_str_from_uint(uint64_t v);
 ak_str *ak_str_from_float(double v);  // shortest round-trip form
+// ak_float_text writes v as ak_str_from_float does into buf (32 bytes
+// room); its length. No allocation.
+int ak_float_text(char *buf, double v);
 ak_str *ak_str_from_bool(bool v);
 bool ak_str_eq(const ak_str *a, const ak_str *b);
 int ak_str_cmp(const ak_str *a, const ak_str *b);
 uint32_t ak_str_hash(ak_str *s);
+// ak_hash_bytes: n bytes' hash, wyhash's (final version 4): eight bytes
+// a multiply, well mixed in every bit. Pure: any thread.
+uint64_t ak_hash_bytes(const void *p, size_t n);
 ak_str *ak_str_slice(ak_str *s, int64_t from, int64_t to);  // byte offsets, clamped
 int64_t ak_str_count(const ak_str *s);   // characters (code points)
+bool ak_str_ascii(const ak_str *s);      // whether every byte is ASCII (cached)
+// ak_str_char_offset: the byte offset of character c (code point), 0 for
+// c <= 0, len past the last.
+int64_t ak_str_char_offset(const ak_str *s, int64_t c);
 int64_t ak_str_find(const ak_str *s, const ak_str *sub);  // byte offset or -1
+int64_t ak_str_find_last(const ak_str *s, const ak_str *sub);  // byte offset or -1
+// ak_mem_find: where needle (nn bytes) first is in h (hn bytes), or -1:
+// in time linear in hn (a rare byte's memchr, the two-way algorithm
+// when that finds too many false starts).
+int64_t ak_mem_find(const void *h, size_t hn, const void *needle, size_t nn);
+int64_t ak_mem_find_last(const void *h, size_t hn, const void *needle, size_t nn);
 bool ak_str_has_prefix(const ak_str *s, const ak_str *p);
 bool ak_str_has_suffix(const ak_str *s, const ak_str *p);
 bool ak_str_contains(const ak_str *s, const ak_str *sub);
 ak_str *ak_str_lower(ak_str *s);
 ak_str *ak_str_upper(ak_str *s);
+ak_str *ak_str_fold(ak_str *s);  // Unicode's full case folding
+// Without case (full case folding, rt/unicode.h; no normalization):
+int ak_str_cmp_fold(const ak_str *a, const ak_str *b);
+bool ak_str_eq_fold(const ak_str *a, const ak_str *b);
+bool ak_str_has_prefix_fold(const ak_str *s, const ak_str *p);
+bool ak_str_has_suffix_fold(const ak_str *s, const ak_str *p);
+bool ak_str_contains_fold(const ak_str *s, const ak_str *sub);
 ak_str *ak_str_trim(ak_str *s);
 ak_str *ak_str_replace(ak_str *s, const ak_str *old, const ak_str *new_);
+ak_str *ak_str_replace_n(ak_str *s, const ak_str *old, const ak_str *new_, int64_t count);  // the first count (all: < 0)
 struct ak_arr *ak_str_split(ak_str *s, const ak_str *sep);
+// ak_str_split_n: at most count parts (all: < 0), the last the rest; an
+// empty sep, the characters (count aside: lib.c's split cuts them).
+struct ak_arr *ak_str_split_n(ak_str *s, const ak_str *sep, int64_t count);
 bool ak_str_to_int(const ak_str *s, int64_t *out);
 bool ak_str_to_float(const ak_str *s, double *out);
 
-// A builder for interpolated strings: no intermediate strings.
+// A builder for interpolated strings: no intermediate strings. Zero is
+// an empty one; what it holds is in small until it outgrows it, then in
+// b, so a short string costs one allocation, the result's.
 typedef struct ak_strb {
 	ak_buf b;
+	uint32_t n;      // bytes in small, while b.data is NULL
+	char small[116];
 } ak_strb;
 void ak_strb_str(ak_strb *b, const ak_str *s);
 void ak_strb_cstr(ak_strb *b, const char *s, size_t n);
@@ -271,7 +316,20 @@ void ak_strb_int(ak_strb *b, int64_t v);
 void ak_strb_uint(ak_strb *b, uint64_t v);
 void ak_strb_float(ak_strb *b, double v);
 void ak_strb_bool(ak_strb *b, bool v);
+void ak_strb_char(ak_strb *b, char c);
+// ak_strb_room: room for n more bytes at the returned pointer, which
+// ak_strb_wrote(b, k) then says k of were written.
+char *ak_strb_room(ak_strb *b, size_t n);
+static inline void ak_strb_wrote(ak_strb *b, size_t k) {
+	if (b->b.data) b->b.len += k;
+	else b->n += (uint32_t)k;
+}
+static inline size_t ak_strb_len(const ak_strb *b) { return b->b.data ? b->b.len : b->n; }
+// ak_strb_buf: what b holds, all of it in b->b (moved there from small),
+// for code that reads or takes the buffer itself; b goes on taking more.
+ak_buf *ak_strb_buf(ak_strb *b);
 ak_str *ak_strb_finish(ak_strb *b);  // frees the builder's buffer
+void ak_strb_free(ak_strb *b);       // drops what it holds
 
 // ---- Bytes ----
 
@@ -287,7 +345,11 @@ ak_bytes *ak_bytes_new(const void *p, size_t n);  // p NULL: n bytes, uninitiali
 
 typedef struct ak_arr {
 	ak_obj h;  // h.aux: the element kind; h.flags: 1 when elements are strings (for equality)
-	uint32_t len, cap;
+	// Its buffer: front free slots, then cap slots from data (its len
+	// elements, then free ones). Changes at the start move data within
+	// it, so an array is a double-ended queue: pushing and popping at
+	// either end is O(1), amortized (arr.c).
+	uint32_t len, cap, front;
 	const ak_shape *shape;  // the elements' shape when they're structs or enums
 	ak_val *data;
 } ak_arr;
@@ -297,9 +359,11 @@ static inline ak_kind ak_arr_kind(const ak_arr *a) { return (ak_kind)a->h.aux; }
 // ak_arr_mut makes *a unique (copying it if it's shared) and returns it.
 ak_arr *ak_arr_mut(ak_arr **a);
 void ak_arr_push(ak_arr **a, ak_val v);              // takes v's reference
+void ak_arr_reserve(ak_arr **a, uint32_t n);         // room for n more, made unique
 void ak_arr_insert(ak_arr **a, int64_t i, ak_val v); // takes v's reference
 ak_val ak_arr_remove_at(ak_arr **a, int64_t i);      // returns the reference
 void ak_arr_set(ak_arr **a, int64_t i, ak_val v);    // takes v's reference
+static inline ak_val *ak_arr_base(const ak_arr *a) { return a->data ? a->data - a->front : NULL; }  // what's allocated
 bool ak_arr_check(const ak_arr *a, int64_t i);       // in range
 ak_arr *ak_arr_slice(ak_arr *a, int64_t from, int64_t to);
 ak_arr *ak_arr_concat(ak_arr *a, ak_arr *b);
@@ -317,7 +381,7 @@ typedef struct ak_map {
 	uint32_t nslots;     // index slots (a power of 2)
 	ak_val *keys, *vals;
 	uint8_t *dead;
-	uint32_t *slots;     // entry index + 1, 0 empty
+	uint64_t *slots;     // map.c's index: the key's hash << 32 | entry + 1 (0 empty)
 	const ak_shape *vshape;
 } ak_map;
 
@@ -325,6 +389,9 @@ ak_map *ak_map_new(ak_kind key, bool string_keys, ak_kind val, const ak_shape *v
 ak_map *ak_map_mut(ak_map **m);
 bool ak_map_get(const ak_map *m, ak_val key, ak_val *out);  // borrowed
 void ak_map_set(ak_map **m, ak_val key, ak_val v);          // takes both references
+// ak_map_put_new sets key's value unless it has one (then releasing key
+// and v, the map as it was): whether it was new. One probe.
+bool ak_map_put_new(ak_map **m, ak_val key, ak_val v);
 bool ak_map_delete(ak_map **m, ak_val key);
 ak_arr *ak_map_keys(const ak_map *m);
 ak_arr *ak_map_values(const ak_map *m);
@@ -480,7 +547,14 @@ void ak_change_key(ak_val key, ak_kind kk, bool len);
 void ak_throw(void *err);  // takes the reference
 void ak_throw_msg(const char *fmt, ...) AK_PRINTF(1, 2);
 void ak_throw_cancel(void);
-bool ak_error_pending(void);
+// The thread's pending error (NULL: none): read inline, as every call
+// that may throw is followed by the test.
+extern AK_TLS void *ak_pending_error;
+static inline bool ak_error_pending(void) { return ak_pending_error != NULL; }
+// ak_error_slot is where this thread's pending error is: *slot is
+// ak_error_pending's, read without a call or a TLS lookup (the VM's
+// dispatch loop takes it once). It's valid as long as the thread is.
+void *const *ak_error_slot(void);
 void *ak_error_take(void);  // the pending error, cleared; the caller owns it
 bool ak_is_cancel(const void *err);
 // ak_throw_hook, when set, sees each error as it's thrown (a program
@@ -490,6 +564,11 @@ extern void (*ak_throw_hook)(void *err);
 // left by an error, from line: the frames a program's trace has that the
 // VM's stack doesn't. The error's path only.
 extern void (*ak_frame_hook)(const char *fn, const char *file, uint32_t line);
+// ak_retrace_hook, when set, hears that the error pending was thrown by
+// the instruction the VM's innermost frame now says (its pc saved after
+// the throw: an overflow's, an index's): a trace taken as it was thrown
+// is taken again.
+extern void (*ak_retrace_hook)(void);
 ak_str *ak_error_message(const void *err);  // borrowed
 
 extern const ak_shape ak_shape_error;  // the built-in Error(message: string)

@@ -15,6 +15,11 @@
 // Tests drive a fake process: os.fake(args:, env:, stdin:) gives main
 // its arguments, environment and input, keeps what it writes, and runs
 // it as the program would (its exit code).
+//
+// What the process and the machine are, os.hostname(), pid(), ppid(),
+// user(), platform(), arch() and executable(), is the same in a test as
+// out of one: the machine's (but user().home, which os.fake's env: HOME
+// says, as fs.home's).
 
 /// One of the process's standard streams.
 pub enum Stdio { stdin, stdout, stderr }
@@ -109,6 +114,109 @@ native fn isTerminal(fd: int) -> bool
 /// Whether a stream is a terminal (a person), not a file or a pipe: color
 /// and prompts only for one.
 pub fn terminal(stream: Stdio) -> bool = isTerminal(fd(stream))
+
+// ---------------------------------------------------------------------
+// The process and the machine
+
+/// The machine's name, as its network knows it (gethostname,
+/// GetComputerNameEx's DNS name). "localhost" on the web, which has
+/// none to see, and where the system gives none.
+pub native fn hostname() -> string
+
+/// The process's id (getpid, GetCurrentProcessId). 0 on the web, which
+/// has no processes.
+pub native fn pid() -> int
+
+/// The id of the process that started this one (getppid; on Windows,
+/// the one it was started by, as the system's snapshot of processes
+/// says). 0 on the web, and when it's gone (Windows).
+pub native fn ppid() -> int
+
+/// Who a process runs as: os.user().
+pub struct User {
+  /// The login name: "ann" (the system's record of the user; else USER
+  /// or LOGNAME, else the uid, for a user it has no record of, as in a
+  /// container; USERNAME on Windows if the system doesn't say). "mobile"
+  /// on iOS, the app's own user on Android (u0_a123), "" on the web.
+  name: string = ""
+  /// The user's home directory, as fs.home() says it: HOME (USERPROFILE
+  /// on Windows), else the system's record; an app's own directory on a
+  /// phone and the web.
+  home: string = ""
+  /// The user's id, on macOS, Linux, iOS and Android; none on Windows
+  /// and the web.
+  uid: int? = none
+  /// The user's primary group's id, where there's a uid.
+  gid: int? = none
+}
+
+native fn userInfo() -> [string]
+
+/// The user the process runs as.
+///
+///   let u = os.user()
+///   print("{u.name} on {os.hostname()}, home {u.home}")
+pub fn user() -> User {
+  let f = userInfo()
+  return User(name: f[0], home: f[1], uid: f[2].toInt(), gid: f[3].toInt())
+}
+
+native fn platformCode() -> int
+
+/// The system the process runs on: .macOS, .windows, .linux, .iOS,
+/// .android or .web (never .unknown). It's the one the program was built
+/// for, as @platform says as it compiles; under asuka run and asuka
+/// test, the computer's.
+///
+///   if os.platform() == .windows { … }
+pub fn platform() -> Platform = match platformCode() {
+  1 => .iOS
+  2 => .android
+  3 => .macOS
+  4 => .windows
+  5 => .web
+  6 => .linux
+  _ => .unknown
+}
+
+/// A CPU's architecture, as Go and the asuka build targets name them
+/// (linux-amd64, windows-arm64): .arm64 (Apple silicon, phones,
+/// Snapdragon PCs), .amd64 (x86-64), .x86 (32-bit x86), .arm (32-bit Arm),
+/// .wasm32 (the web), .riscv64. .unknown for any other.
+pub enum Arch {
+  unknown
+  arm64
+  amd64
+  x86
+  arm
+  wasm32
+  riscv64
+}
+
+native fn archCode() -> int
+
+/// The CPU architecture the process runs as.
+pub fn arch() -> Arch = match archCode() {
+  1 => .arm64
+  2 => .amd64
+  3 => .x86
+  4 => .arm
+  5 => .wasm32
+  6 => .riscv64
+  _ => .unknown
+}
+
+/// The file the process runs: an absolute path, its symbolic links
+/// resolved (Go's os.Executable, then filepath.EvalSymlinks). A program
+/// finds what it ships beside itself with it:
+///
+///   let dir = fs.dir(os.executable() ?? ".")
+///
+/// Under asuka run and asuka test, it's the executable they run the
+/// program with, as go run's is the one it builds. An iOS app's is its
+/// bundle's executable; none on Android (an app runs in the system's
+/// app_process) and the web.
+pub native fn executable() -> string?
 
 // ---------------------------------------------------------------------
 // Signals

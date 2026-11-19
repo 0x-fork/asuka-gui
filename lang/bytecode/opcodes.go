@@ -222,6 +222,30 @@ var Ops = []OpDef{
 	{"TASK", []Operand{Reg, Reg}, "a = a task running the async closure b (no arguments), owned by the current owner"},
 	{"AWAIT", []Operand{Reg, Reg}, "a = the result of task or future b, suspending until it has one; throws its error"},
 	{"YIELD", nil, "suspends until the next turn of the main loop"},
+
+	// What the optimizer (lang/ir's passes) makes of the instructions
+	// above: an operation with a constant operand, a comparison and the
+	// branch on it, an array element's field. Each means what the
+	// instructions it replaces did, errors and their messages included.
+	{"ADDIS", []Operand{Reg, Reg, Imm}, "a = b + a signed immediate; throws on overflow"},
+	{"SUBIS", []Operand{Reg, Reg, Imm}, "a = b - a signed immediate; throws on overflow"},
+	{"MULIS", []Operand{Reg, Reg, Imm}, "a = b * a signed immediate; throws on overflow"},
+	{"DIVIS", []Operand{Reg, Reg, Imm}, "a = b / a signed immediate, truncated (never 0 or -1)"},
+	{"MODIS", []Operand{Reg, Reg, Imm}, "a = b % a signed immediate (never 0)"},
+	{"JLTI", []Operand{Reg, Reg, Off}, "jumps when a < b (ints)"},
+	{"JLEI", []Operand{Reg, Reg, Off}, "jumps when a <= b"},
+	{"JEQI", []Operand{Reg, Reg, Off}, "jumps when a == b (ints, bools, payloadless enums)"},
+	{"JNEI", []Operand{Reg, Reg, Off}, "jumps when a != b"},
+	{"JLTIS", []Operand{Reg, Imm, Off}, "jumps when a < a signed immediate"},
+	{"JLEIS", []Operand{Reg, Imm, Off}, "jumps when a <= a signed immediate"},
+	{"JGTIS", []Operand{Reg, Imm, Off}, "jumps when a > a signed immediate"},
+	{"JGEIS", []Operand{Reg, Imm, Off}, "jumps when a >= a signed immediate"},
+	{"JEQIS", []Operand{Reg, Imm, Off}, "jumps when a == a signed immediate"},
+	{"JNEIS", []Operand{Reg, Imm, Off}, "jumps when a != a signed immediate"},
+	{"DIVIK", []Operand{Reg, Reg, Const}, "a = b / Ints[k], truncated (never 0 or -1)"},
+	{"MODIK", []Operand{Reg, Reg, Const}, "a = b % Ints[k] (never 0 or -1)"},
+	{"IDXF", []Operand{Reg, Reg, Reg, Imm}, "a = b[c].fields[i], b an array of structs; throws out of range (IDX, GETF)"},
+	{"SETIF", []Operand{Reg, Reg, Imm, Reg}, "a[b].fields[i] = c, a and its element copied first if shared; throws out of range (IDX, SETF, SETIDX)"},
 }
 
 // Byname maps an opcode's name to it.

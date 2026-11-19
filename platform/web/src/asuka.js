@@ -82,7 +82,8 @@ export async function start(options = {}) {
       wasm: options.core || "asuka.wasm",
       module: options.module,
       dev: !!dev,
-      log: dev?.log,
+      // The core's lines come without their line ending.
+      log: dev ? (fd, line) => dev.log(fd, line + "\n") : undefined,
       devSend: dev?.send,
       appDir: data,
       workers: options.workers,

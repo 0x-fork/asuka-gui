@@ -4,6 +4,7 @@
 // as a task of its own, owned by the server.
 
 import std/json as codec
+import std/net
 import std/os
 import std/url
 
@@ -156,8 +157,8 @@ pub struct Server {
   /// The port it listens at: the one asked for, or the one the system
   /// picked for 0.
   port: int
-  /// Its URL: "http://127.0.0.1:8080" (localhost's address for a server
-  /// on every interface).
+  /// Its URL: "http://127.0.0.1:8080", "https://..." with TLS
+  /// (localhost's address for a server on every interface).
   url: string
   handle: int = 0
 
@@ -181,7 +182,10 @@ pub struct Server {
 /// host, answering each request with what handler returns. host is the
 /// address listened at: 127.0.0.1 (the default) takes only this
 /// computer's clients; "0.0.0.0" every IPv4 interface's, "::" every
-/// interface's (IPv6 and IPv4). TLS is a reverse proxy's to terminate.
+/// interface's (IPv6 and IPv4). With tls (net.serverTLS's
+/// certificate and key) it serves HTTPS: each connection's TLS handshake
+/// goes as it's accepted, and one that fails is let go. (A reverse proxy
+/// in front can do TLS instead.)
 ///
 /// Each request's handler runs on the main thread as a task of its own,
 /// which may await what any task does (http.get, a database); requests
@@ -192,13 +196,13 @@ pub struct Server {
 /// that started it: when that ends (main returns, its component goes),
 /// the server closes at once, its handlers cancelled. It throws
 /// ServerError when it can't listen.
-pub async fn serve(port: int, handler: async fn(Request) throws -> Reply, host: string = "127.0.0.1", limits: Limits = Limits(), onError: (fn(Request, Error))? = none) throws -> Server {
+pub async fn serve(port: int, handler: async fn(Request) throws -> Reply, host: string = "127.0.0.1", limits: Limits = Limits(), onError: (fn(Request, Error))? = none, tls: net.ServerTLS? = none) throws -> Server {
   if port < 0 || port > 65535 {
     throw ServerError.listen(host: host, port: port, reason: "a port is 0 to 65535")
   }
   let report = onError ?? ((req: Request, e: Error) => os.eprint("http: {req.method} {req.path}: {e.message}"))
   let l = limits
-  let h = srvOpen(dispatcher(handler, report), host, port, [l.headerSize, l.bodySize, l.connections, l.headerTimeout.milliseconds(), l.readTimeout.milliseconds(), l.idleTimeout.milliseconds()])
+  let h = srvOpen(dispatcher(handler, report), host, port, [l.headerSize, l.bodySize, l.connections, l.headerTimeout.milliseconds(), l.readTimeout.milliseconds(), l.idleTimeout.milliseconds()], if let t = tls { t.handle } else { 0 })
   if h == 0 {
     throw ServerError.unsupported
   }
@@ -207,7 +211,8 @@ pub async fn serve(port: int, handler: async fn(Request) throws -> Reply, host: 
     throw ServerError.listen(host: host, port: port, reason: failure)
   }
   let p = srvPort(h)
-  return Server(port: p, url: "http://{urlHost(host)}:{p}", handle: h)
+  let scheme = if tls == none { "http" } else { "https" }
+  return Server(port: p, url: "{scheme}://{urlHost(host)}:{p}", handle: h)
 }
 
 /// A route: a method and a path's pattern, and the handler of what
@@ -290,7 +295,7 @@ pub struct Router {
 
 // ---- What the server's C does (core/src/std/httpserver.c) ----
 
-native fn srvOpen(dispatch: async fn(int), host: string, port: int, limits: [int]) -> int
+native fn srvOpen(dispatch: async fn(int), host: string, port: int, limits: [int], tls: int) -> int
 native async fn srvListen(server: int) -> string
 native fn srvPort(server: int) -> int
 native async fn srvClose(server: int, graceMs: int)

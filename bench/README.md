@@ -121,3 +121,36 @@ machine, so read Asuka against Compose of the same run):
 
 Where Asuka trails on Android: startup and idle memory, which the C
 core (no Go runtime) should win back; they're being looked into.
+
+# Benchmarks: the VM
+
+`vm/` measures the bytecode VM (what `asuka run`, `asuka test` and the
+players run) on one program, `vm/programs/bench`: the cross-language
+suite (`fib`, `sieve`, `nbody`, `trees`, `words`, `json`, `sort`), at
+sizes an interpreter finishes in about a second, and what an
+interpreter's own costs show in (`loop`: int arithmetic and a counted
+loop; `closures`: a closure made and called each turn; `iface`:
+interface calls; `strings`: concatenation, interpolation, comparison).
+The program is compiled once; what's timed is asuka-run loading and
+running it.
+
+```sh
+go run ./bench/vm                      # each benchmark, hyperfine's table (-runs, -warmup, -json file)
+go run ./bench/vm -instr -runs 3       # instructions and cycles retired (median): what a busy machine doesn't change
+go run ./bench/vm -ref                 # with CPython, LuaJIT's interpreter (luajit -joff) and Bun on vm/ref's programs
+go run ./bench/vm -noopt               # compiled without the optimizer (ASUKA_OPT=0)
+go run ./bench/vm -c                   # the program compiled to C, as asuka build makes it
+go run ./bench/vm -only fib,loop -disasm loop   # a function's bytecode
+go run ./bench/vm -emit /tmp/b         # the module and the runner's command lines, for a profiler
+```
+
+`vm/ref` has the interpreter-bound benchmarks in Python, Lua and
+JavaScript, the same algorithms at the same sizes (they print what
+Asuka's do): reference points, an interpreter's (CPython, LuaJIT's
+interpreter) and a JIT's (Bun's JavaScriptCore). `words`, `json`,
+`sort` and `strings` measure libraries (maps, the JSON codec, sorting,
+strings) more than the VM and have none.
+
+On a busy machine read `-instr`'s instructions: wall time and cycles
+move with the load, instructions retired don't (macOS's `time -l`,
+Linux's `perf stat`). `results/vm.md` has the last run.

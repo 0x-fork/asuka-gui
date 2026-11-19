@@ -19,7 +19,7 @@ func TestRoundTrip(t *testing.T) {
 		Globals:  []Kind{KRef, KInt},
 		App:      -1,
 		Main:     -1,
-		Tests:    []Test{{"t", 0}},
+		Tests:    []Test{{Name: "t", Func: 0}, {Name: "b", Func: 0, Bench: true}, {Name: "p", Func: 0, Params: []Param{{"xs", "[i"}, {"s", "s"}}}},
 	}
 	var a Asm
 	a.Emit(Byname["KSMALL"], 0, 5)

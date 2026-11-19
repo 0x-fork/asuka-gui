@@ -10,7 +10,7 @@ Each integer type holds a range: an `int` is 64 bits, from −922337203685477580
 
 ## How to fix
 
-Use a number in the range, a wider type (`u16`, `int`, `u64`), a `float`, or `std/decimal` for exact large numbers.
+Use a number in the range, a wider type (`u16`, `int`, `u64`), a `float`, or, for an exact integer past 64 bits, `std/bigint`'s `BigInt` (`BigInt.parse("9223372036854775808")!`).
 
 ## Wrong
 

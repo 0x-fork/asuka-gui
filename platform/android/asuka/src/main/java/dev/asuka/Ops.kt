@@ -921,16 +921,27 @@ private fun ByteBuffer.take(n: Int): ByteBuffer {
     return s
 }
 
-private fun ByteBuffer.string(): String {
-    val n = int
-    val a = ByteArray(n)
-    get(a)
-    return String(a, Charsets.UTF_8)
+/** A batch's strings, decoded through one buffer: none needs an array of its own. */
+private class AsukaStrings {
+    private var buf = ByteArray(64)
+
+    fun read(r: ByteBuffer): String {
+        val n = r.int
+        if (r.hasArray()) {
+            val s = String(r.array(), r.arrayOffset() + r.position(), n, Charsets.UTF_8)
+            r.position(r.position() + n)
+            return s
+        }
+        if (buf.size < n) buf = ByteArray(maxOf(n, buf.size * 2))
+        r.get(buf, 0, n)
+        return String(buf, 0, n, Charsets.UTF_8)
+    }
 }
 
 /** Decodes a batch of ops (see ops/ops.go) into [h]. */
 fun asukaDecode(data: ByteBuffer, h: AsukaOpHandler) {
     val r = data.order(ByteOrder.LITTLE_ENDIAN)
+    val strings = AsukaStrings()
     val n = r.int
     repeat(n) {
         val code = r.get().toInt() and 0xff
@@ -946,7 +957,7 @@ fun asukaDecode(data: ByteBuffer, h: AsukaOpHandler) {
                     1 -> h.setBool(id, prop, r.get().toInt() != 0)
                     2 -> h.setInt(id, prop, r.long)
                     3 -> h.setFloat(id, prop, r.double)
-                    4 -> h.setString(id, prop, r.string())
+                    4 -> h.setString(id, prop, strings.read(r))
                     5 -> h.setColor(id, prop, r.long)
                     6 -> h.setEdges(id, prop, r.float, r.float, r.float, r.float)
                     7 -> h.setEnum(id, prop, r.int)

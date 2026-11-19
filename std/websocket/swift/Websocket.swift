@@ -1,5 +1,6 @@
 // std/websocket on iOS and macOS: URLSessionWebSocketTask, the system's
-// own client (proxies, the certificates the user trusts, cookies).
+// own client (proxies, the certificates the user trusts, cookies); a
+// secured client's (TLS settings, TLS.swift) has a session of its own.
 //
 // The connections share one session, whose delegate hands each task's
 // events to its connection. A connection asks its task for one message at
@@ -16,6 +17,31 @@ func makeSocket() throws -> any Socket {
 }
 
 final class URLSessionClient: Client {
+    /// The connections' session: the system's, or a secured client's
+    /// own (TLS.swift), its delegate answering the server's trust.
+    private let sockets: Sockets
+
+    init(policy: TLSPolicy? = nil) {
+        sockets = policy.map { Sockets(policy: $0) } ?? Sockets.shared
+    }
+
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var secured: [ObjectIdentifier: URLSessionClient] = [:]
+
+    func secured(ca: String, trustSystem: Bool, certificate: String, key: String, insecureSkipVerify: Bool) async throws -> any Client {
+        URLSessionClient.of(try TLSPolicy.of(ca: ca, trustSystem: trustSystem, certificate: certificate, key: key, insecure: insecureSkipVerify))
+    }
+
+    /// The client of p: one per policy.
+    private static func of(_ p: TLSPolicy) -> URLSessionClient {
+        lock.lock()
+        defer { lock.unlock() }
+        if let c = secured[ObjectIdentifier(p)] { return c }
+        let c = URLSessionClient(policy: p)
+        secured[ObjectIdentifier(p)] = c
+        return c
+    }
+
     func connect(url: String, headers: [String: String], protocols: [String], timeout: TimeInterval) async throws -> any Socket {
         guard let u = URL(string: url), let scheme = u.scheme?.lowercased(), ["ws", "wss", "http", "https"].contains(scheme) else {
             throw URLError(.badURL)
@@ -31,11 +57,11 @@ final class URLSessionClient: Client {
         if !protocols.isEmpty {
             req.setValue(protocols.joined(separator: ", "), forHTTPHeaderField: "Sec-WebSocket-Protocol")
         }
-        let task = Sockets.shared.session.webSocketTask(with: req)
+        let task = sockets.session.webSocketTask(with: req)
         // As a browser's: no limit of URLSession's (1 MiB) on a message.
         task.maximumMessageSize = Int.max
         let c = Connection(task)
-        Sockets.shared.add(task, c)
+        sockets.add(task, c)
         return try await withTaskCancellationHandler {
             let p = try await withCheckedThrowingContinuation { (k: CheckedContinuation<String, Error>) in
                 c.waitOpen(k, timeout: timeout)
@@ -48,16 +74,20 @@ final class URLSessionClient: Client {
     }
 }
 
-/// The one session the connections share, and its delegate.
+/// The session the connections share, and its delegate: the system's,
+/// and one per secured client.
 private final class Sockets: NSObject, URLSessionWebSocketDelegate, @unchecked Sendable {
-    static let shared = Sockets()
+    static let shared = Sockets(policy: nil)
     static let forever: TimeInterval = 1_000_000_000
 
     private let lock = NSLock()
     private var connections: [Int: Connection] = [:]
     private(set) var session: URLSession!
+    private let policy: TLSPolicy?
+    private let failures = TrustFailures()
 
-    override init() {
+    init(policy: TLSPolicy?) {
+        self.policy = policy
         super.init()
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForResource = Sockets.forever
@@ -84,8 +114,13 @@ private final class Sockets: NSObject, URLSessionWebSocketDelegate, @unchecked S
         connection(webSocketTask)?.closed(code: code.rawValue, reason: reason)
     }
 
+    func urlSession(_ s: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        guard let policy else { return completionHandler(.performDefaultHandling, nil) }
+        if let why = policy.answer(challenge, completionHandler) { failures.record(task, why) }
+    }
+
     func urlSession(_ s: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        connection(task, remove: true)?.completed(error)
+        connection(task, remove: true)?.completed(failures.error(task, error))
     }
 }
 

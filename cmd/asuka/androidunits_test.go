@@ -18,8 +18,10 @@ import (
 // runs the instrumented ones but with no device: each module's
 // testDebugUnitTest, in the Android host's Gradle project an app
 // importing those packages writes. internal/testserver serves them
-// (std/http's bodies, std/websocket's echo), its URL the
-// asuka.testserver property.
+// (std/http's bodies, std/websocket's echo; over HTTPS too, with a test
+// authority's certificate), its URLs and the authority's files the
+// asuka.testserver, asuka.testserver.tls and asuka.testserver.pki
+// properties.
 func TestStdAndroidUnits(t *testing.T) {
 	if testing.Short() {
 		t.Skip("builds with Gradle")
@@ -73,13 +75,23 @@ func TestStdAndroidUnits(t *testing.T) {
 	}
 	server := httptest.NewServer(testserver.Handler())
 	defer server.Close()
+	pki, err := testserver.NewPKI()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkiDir := t.TempDir()
+	if err := pki.WriteFiles(pkiDir); err != nil {
+		t.Fatal(err)
+	}
+	tlsServer := testserver.StartTLS(testserver.Handler(), pki)
+	defer tlsServer.Close()
 	for _, m := range a.cfg.nativeModules {
 		pkg := filepath.Clean(filepath.Dir(m[1]))
 		if imports[pkg] == "" {
 			continue
 		}
 		t.Run(filepath.Base(pkg), func(t *testing.T) {
-			args := append([]string{":" + m[0] + ":testDebugUnitTest", "-PasukaTestServer=" + server.URL}, a.cfg.gradleProps()...)
+			args := append([]string{":" + m[0] + ":testDebugUnitTest", "-PasukaTestServer=" + server.URL, "-PasukaTestServerTLS=" + tlsServer.URL, "-PasukaTestPKI=" + pkiDir}, a.cfg.gradleProps()...)
 			if err := tc.gradle(host, args...); err != nil {
 				t.Fatalf("%v (the report: %s)", err, filepath.Join(host, "build", "native", m[0]+"-*", "reports", "tests"))
 			}

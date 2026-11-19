@@ -69,6 +69,10 @@ async fn main() throws {
 | `os.writeTo(.stdout, text)`、`writeBytesTo` | 原样写出文本或字节，不加行尾，目标是 `.stdout` 或 `.stderr` |
 | `os.terminal(.stdout)` | 某个流是否是终端（有人在看），而不是管道或文件：只在终端上输出颜色和提示 |
 | `os.signals(kinds)` | 按到达顺序给出这些种类的信号（一个 `Stream<os.Signal>`：`.interrupt`、`.term`、`.hangup`），被读取的信号不再结束程序 |
+| `os.hostname()`、`os.pid()`、`os.ppid()` | 机器名、本进程的 id 和父进程的 id |
+| `os.user()` | 进程以哪个用户身份运行：一个 `User`，包含 `name`、`home`、`uid` 和 `gid`（Windows 上 `uid`、`gid` 为 `none`） |
+| `os.platform()`、`os.arch()` | 运行所在的系统和 CPU：一个 `Platform`（`.macOS`、`.windows`、`.linux`……）和一个 `os.Arch`（`.arm64`、`.amd64`……） |
+| `os.executable()` | 程序自己的可执行文件，绝对路径，链接已解析：和程序一起发布的文件就在 `fs.dir(os.executable() ?? ".")` 里 |
 
 ### 信号
 
@@ -294,6 +298,96 @@ Project name: [demo] notes
 
 在测试里，用 `os.fake(stdin:)` 回答这些问题，问题本身可以在 `o.stderr()` 里找到。测试的流都不是终端，所以不会输出样式，除非测试用 `os.fake(env: ["FORCE_COLOR": "1"])` 或 `term.setColors(.always)` 明确要求；这里只看 `os.fake` 的 `env:`，所以运行测试时的环境变量不会影响测试的输出。手机和 Web 上没有终端：没有样式，`prompt` 返回 `none`，`width` 也是 `none`。
 
+### 对齐的表格
+
+一列要对齐，每个单元格在终端里占的列数就得一样，而这和 `count()` 的结果不是一回事：中文、日文、韩文字符，全角字符，还有大多数 emoji 都占两列；组合用的重音符号和零宽连接符（ZWJ）不占列。`term.textWidth(text)` 按终端的显示方式数列数，一次数一个字素簇（和 Rust 的 unicode-width、`Bun.stringWidth` 一样），控制码不占列，所以带样式的文本量出来的宽度就是它显示的宽度。`term.padEnd`、`padStart`、`center`、`truncate`（在截断处加 `…`，不会把一个字符切成两半）和 `fit`（正好占满给定宽度：先截断再补齐，数字用 `align: .end` 右对齐）都按这个宽度计算，`term.table(rows)` 则能直接排好一整张表：
+
+```asuka check
+import std/term
+
+struct Row {
+  name: string
+  city: string
+  score: int
+}
+
+fn main() {
+  let rows = [Row(name: "王小明", city: "北京", score: 98), Row(name: "Ana", city: "Lisboa 🇵🇹", score: 7), Row(name: "佐藤花子", city: "東京", score: 85)]
+  var cells = [["Name", "City", "Score"]]
+  for r in rows {
+    cells.push([r.name, r.city, "{r.score}"])
+  }
+  print(term.table(cells, align: [.start, .start, .end], width: term.width()))
+}
+```
+
+```text
+Name      City       Score
+王小明    北京          98
+Ana       Lisboa 🇵🇹      7
+佐藤花子  東京          85
+```
+
+每一列和它最宽的单元格一样宽，列与列之间隔 `gap:` 个空格（默认 2 个）；给了 `width:` 时，最宽的列会先让出空间，直到每行都放得下，放不下的单元格会被截断（这里用的是终端的宽度，输出到管道时为 none，不做限制）。东亚宽度为“模糊”的字符（`±`、`…`）占一列，这也是终端在没有特别设置时的显示方式；制表符和其他控制字符不占列，需要的话先把制表符展开。`std/flag` 生成的帮助也是这样对齐选项的。
+
+## 日志：std/log
+
+`std/log` 在程序运行的同时记录它做了什么：每一行有一个级别（`debug`、`info`、`warn`、`error`），由一条消息和若干字段组成，字段说明这件事和什么有关。下面这个程序用来备份文件：`-v` 会逐个显示文件，`--json` 则输出给机器读的 JSON 行。
+
+```asuka check
+import std/flag
+import std/fs
+import std/log
+import std/os
+
+/// 把文件复制到一个目录里。
+struct Options {
+  /// -v 逐个文件说明正在做什么。
+  verbose: bool = false
+  /// 输出 JSON 行，供机器读取。
+  json: bool = false
+  /// 复制到哪里。
+  to: string = "backup"
+  /// 要复制的文件。
+  files: [string]
+}
+
+async fn main() throws {
+  let o = flag.parse<Options>(os.args())
+  if o.verbose {
+    log.setLevel(.debug)
+  }
+  if o.json {
+    log.setFormat(.json)
+  }
+  let run = log.with(["to": o.to])
+  try await spawn { try fs.mkdirAll(o.to) }
+  for file in o.files {
+    run.debug("copying", ["file": file])
+    let target = fs.join([o.to, fs.base(file)])
+    try await spawn { try fs.copy(from: file, to: target) } catch e {
+      run.error("copy failed", ["file": file, "error": "{e}"])
+      os.exit(1)
+    }
+  }
+  run.info("copied", ["files": "{o.files.count()}"])
+}
+```
+
+```text
+$ backup -v notes.md todo.md
+2026-11-19 10:04:05.120 DEBUG copying                                  to=backup file=notes.md
+2026-11-19 10:04:05.123 DEBUG copying                                  to=backup file=todo.md
+2026-11-19 10:04:05.125 INFO  copied                                   to=backup files=2
+```
+
+- **字段。** 一行的字段是一个 `[string: string]`，`["port": "{port}"]` 这样写就能把任意值以文本形式放进去。含有空格、引号或 `=` 的值会加上引号（`path="my notes.md"`）。`log.with(fields)` 返回一个 `Logger`，它写出的每一行都带着这些字段；它的 `with` 还可以再添加字段。某一行自己的字段和 logger 的字段同名时，以这一行的为准。
+- **级别。** 低于最低级别的行不会写出。最低级别默认是 info；`ASUKA_LOG` 可以改变它（`debug`、`info`、`warn`、`error` 或 `off`，和 Rust 的 `RUST_LOG` 一样），程序也可以用 `log.setLevel(.debug)` 设置，并且程序的设置优先：所以上面的程序只在给了 `-v` 时才设置它。不写出的行只花一次判断的开销，但它的字段照样会先算出来，就像任何函数调用的参数一样：生成起来费事的字段，用 `if log.enabled(.debug) { … }` 包起来。
+- **格式。** 在终端上，时间（本地时间）会变暗，级别会带颜色，是否显示颜色由 `std/term` 对 stderr 的判断决定（`NO_COLOR`、`FORCE_COLOR`、`term.setColors`）。`log.setFormat(.json)` 每行写一个 JSON 对象，和 Go 的 `log/slog` 一样：`{"time":"2026-11-19T10:04:05.125+08:00","level":"INFO","msg":"copied","to":"backup","files":"2"}`；`time: false` 不写时间，适合日志已经由 journald 或容器运行时加上时间戳的服务。
+- **写到哪里。** 程序的日志写到 stderr，这样 stdout 仍然只有程序的输出（`backup | tee list`）。应用的日志写到各平台开发者习惯查看的地方：iOS 和 macOS 上是统一日志系统（Xcode 的控制台、“控制台” App），Android 上是 logcat，Web 上是浏览器的控制台（按级别分别用 `console.debug` 到 `console.error`），Windows 上是调试器的输出；Linux 上写到 stderr，桌面应用从终端启动时也写到 stderr。`asuka dev` 也会把它们打印在自己的终端里。
+
+在测试里，这些行可以在 `o.stderr()` 里找到，时间戳来自测试的时钟（从 `2026-01-01 00:00:00.000` 开始）；在测试中只有 `os.fake(env:)` 能设置 `ASUKA_LOG`。
+
 ## 文件和目录：std/fs
 
 程序和应用一样，用 `std/fs` 读写文件（[数据](data.md)），另外还提供了命令行工具查找文件时需要的几个函数：
@@ -404,6 +498,28 @@ async fn main() throws {
 }
 ```
 
+## 从大量数据中取最大的几个：std/collections
+
+优先队列能在元素不断进出时，始终让下一个该处理的排在最前面：这就是 `std/collections` 的 `Heap`，按一个“小于”比较排序。要从大量数据中保留最大的 k 个，只需一个容量为 k、最小值最先出队的堆，完全不必对整个输入排序：每个元素只需一步 O(log k) 的操作（见[标准库](stdlib.md)）。
+
+```asuka check
+import std/collections.{Heap}
+import std/os
+
+// stdin 中出现次数最多的十个词，以及它们的次数。
+fn main() {
+  var counts: [string: int] = [:]
+  for line in os.readAll().string().lines() {
+    for w in line.lower().fields() { counts[w, default: 0] += 1 }
+  }
+  var top = Heap<(string, int)>(by: (a, b) => a.1 < b.1)
+  for (w, n) in counts {
+    if top.count() < 10 { top.push((w, n)) } else { let _ = top.pushPop((w, n)) }
+  }
+  for (w, n) in top.sorted().reversed() { print("{n}\t{w}") }
+}
+```
+
 ## 任意结构的 JSON
 
 程序知道结构的 JSON，用结构体来读（`json.decode<T>`，见[数据](data.md)）。结构无法预知的，比如工具的配置文件或者从管道传进来的任意内容，就用 `json.Value`：`json.parse(text)` 原样读入任意 JSON，用 `get(key)`、`at(i)` 以及 `asString()`、`asInt()` ……查看里面的内容，也可以用 `match` 匹配它的各个 case（`.object(members)`、`.array(elements)`、`.string(s)` ……）。打印它或者用 `json.encode` 写出它，得到的都是 JSON。
@@ -481,6 +597,65 @@ async fn main() throws {
 
 `separator: "\t"` 读取用制表符分隔的数据；`comment: "#"` 跳过以它开头的行；`flexible: true` 允许各行的字段数不同。
 
+## 用模板生成文本：std/template
+
+`std/template` 用一个模板和一个值生成文本：配置文件、发布说明、邮件、代码，或者服务返回的页面。语法采用 Jinja 的写法（MiniJinja、Nunjucks、Twig 也是这样写的）：`{{ value }}`、写在 `|` 后面的过滤器、`{% if %}`、`{% for %}`、`{% include %}`、`{% extends %}` 和 `{% block %}`。数据是一个结构体或 map，按 `json.encode` 写出的样子读取，所以模板里用的名字就是它的字段。模板最好写在原始字符串里，这样能原样保留（在普通字符串里，`{` 会开始一个插值）：
+
+```asuka check
+import std/template
+
+struct Change {
+  kind: string
+  text: string
+  issue: int? = none
+}
+
+struct Release {
+  version: string
+  date: string
+  changes: [Change]
+}
+
+fn main() throws {
+  let notes = try template.parse(r"""
+    # {{ version }} ({{ date }})
+
+    {% for c in changes %}
+    - **{{ c.kind | capitalize }}**: {{ c.text }}{% if c.issue %} (#{{ c.issue }}){% endif %}
+    {% else %}
+    Nothing changed.
+    {% endfor %}
+    """)
+  let release = Release(version: "1.4.0", date: "2026-11-19", changes: [Change(kind: "added", text: "term.table", issue: 412), Change(kind: "fixed", text: "a crash on empty input")])
+  print(try notes.render(release))
+}
+```
+
+```text
+# 1.4.0 (2026-11-19)
+
+- **Added**: term.table (#412)
+- **Fixed**: a crash on empty input
+```
+
+单独占一行的语句会连同这一行一起去掉，所以模板里写逻辑的地方不会在输出里留下空行；`{{-` 和 `-}}` 会去掉标签前面或后面的空白。数据里没有的字段是“未定义”：在 `if` 里当作 false，可以用 `| default("…")` 替换，打印出来则是错误，未知的过滤器也一样，错误信息会说明位置（`template: notes.md:4:9: c.title is undefined`）。模板只需解析一次，之后想渲染多少次都可以。
+
+生成 HTML 时，输出会被转义：打印出来的 `&`、`<`、`>`、`"` 和 `'` 都写成字符引用，除非标记了 `| safe`；`| json` 输出的值可以直接放进 `<script>`。用 `template.parseAll` 一起读进来的模板（比如 `std/embed` 编译进来的文件）可以按名字互相 include 和 extend，名字以 `.html` 结尾的会自动转义：
+
+```asuka
+import std/http
+import std/template
+
+struct Note {
+  id: int
+  text: string
+}
+
+// pages：try template.parseAll(embed.texts("templates/*.html"))，即编译进来的文件
+fn site(pages: template.Templates, notes: [Note]) -> http.Router = http.Router()
+  .get("/notes", req => .html(try pages.render("templates/notes.html", ["notes": notes])))
+```
+
 ## Web 服务：std/http
 
 `http.serve` 能把程序变成一个 HTTP/1.1 服务器，用法和 Go 的 `net/http`、`Bun.serve` 类似：每个请求交给一个处理函数，它是一个返回 `Reply` 的 async 函数。`Router` 按方法和路径把请求分发给各个处理函数，`:name` 匹配路径中的一段。
@@ -541,9 +716,245 @@ $ curl localhost:8080/notes/1
 - `http.Limits(headerSize:, bodySize:, connections:, headerTimeout:, readTimeout:, idleTimeout:)` 规定服务器接受多少数据、等待多久：头部 64 KiB，请求体 16 MiB，10000 个连接，请求头部 30 秒内要发完，请求体每次等待最多 30 秒，两次请求之间最多空闲 60 秒。超出限制时会返回相应状态（431、413、408）并关闭连接。
 - `server.close(grace: 10s)` 关闭服务器：立即停止接受新连接，让正在处理的请求完成回复，超过 `grace` 后取消仍在运行的处理函数（它们的 `defer` 会执行）。`server.wait()` 一直等到服务器关闭。服务器属于启动它的 task，`main` 返回时它也会关闭，所以 `main` 要 await `server.wait()`，或者像上面那样等待结束它的信号。没有流读取信号时，Ctrl-C 会结束 `main`，服务器也随之立即关闭：仍在运行的处理函数会被取消。读取 `os.signals()` 再关闭服务器，就能先让它们答复完（见[信号](#信号)）。
 
-HTTPS 交给反向代理（Caddy、nginx）：由它终止 TLS，再通过 HTTP 把请求转给监听在 `127.0.0.1` 上的服务器，客户端地址放在 `X-Forwarded-For` 里。桌面应用也可以用同样的方式在一个 task 里提供本地 API，手机应用在运行期间也可以；网页不能监听（`ServerError.unsupported`）。
+传入 `tls:` 就能直接提供 HTTPS：`net.serverTLS` 接收证书和对应的私钥，都是 PEM 格式（Let's Encrypt 和 `mkcert` 生成的就是这种），之后每个连接都使用 TLS 1.2 或 1.3 通信（见 [TLS](#tls)）。
+
+```asuka check
+import std/fs
+import std/http
+import std/net
+
+async fn main() throws {
+  let tls = try net.serverTLS(certificate: try fs.readText("cert.pem"), key: try fs.readText("key.pem"))
+  let server = try await http.serve(8443, req => .text("hello over TLS"), host: "0.0.0.0", tls: tls)
+  print("listening on {server.url}")
+  await server.wait()
+}
+```
+
+也可以把 TLS 交给反向代理（Caddy、nginx），证书由它自己续期：它通过 HTTP 把请求转给监听在 `127.0.0.1` 上的服务器，客户端地址放在 `X-Forwarded-For` 里。桌面应用也可以用同样的方式在一个 task 里提供本地 API，手机应用在运行期间也可以；网页不能监听（`ServerError.unsupported`）。
 
 处理函数就是一个函数，所以测试可以直接用一个 `Request` 调用它或者路由，中间不经过 socket：`let r = try await api.handle(http.Request(method: "GET", path: "/notes/1"))`。
+
+## 其他协议：std/net
+
+HTTP 以外的协议交给 `std/net`：Redis、SMTP、游戏服务器，或者你自己设计的协议。它提供 TCP 连接和服务器、UDP 数据报以及 DNS 查询，和 Go 的 `net`、Rust 的 `std::net`、Node 的 `net` 与 `dgram` 类似。所有等待都是 async 的，socket 的读写在运行时自己的线程上完成。下面是一个按行收发的服务器，保存客户端设置的值：
+
+```asuka check
+import std/net
+import std/os
+
+async fn main() throws {
+  var values: [string: string] = [:]
+  let server = try await net.serve(7000, c => {
+    for await line in c.lines() {
+      let words = line.split(" ", count: 3)
+      if words.count() == 3 && words[0] == "SET" {
+        values[words[1]] = words[2]
+        try await c.write("OK\r\n")
+      } else if words.count() == 2 && words[0] == "GET" {
+        try await c.write("{values[words[1]] ?? "-"}\r\n")
+      } else {
+        try await c.write("ERR unknown command\r\n")
+      }
+    }
+  })
+  print("listening on {server.address.string()}")
+  for await _ in os.signals() {
+    break
+  }
+  await server.close()
+}
+```
+
+它的客户端：
+
+```asuka check
+import std/net
+
+async fn main() throws {
+  let c = try await net.connect("localhost", 7000, timeout: 5s)
+  try await c.write("SET greeting hello\r\n")
+  print(try await c.readLine())   // OK
+  try await c.write("GET greeting\r\n")
+  print(try await c.readLine())   // hello
+  c.close()
+}
+```
+
+- `net.connect(host, port, timeout:, noDelay:, keepAlive:)` 返回一个 `Conn`。主机名会先解析，再按 Happy Eyeballs 的方式尝试它的各个地址：IPv6 和 IPv4 的地址交替尝试，上一个 250 毫秒内没连上就开始下一个，保留最先连上的那个。`timeout` 同时限制解析和连接的时间。
+- `Conn` 的读取方法有 `read(max:)`（已经到达的数据，连接结束时为 `none`）、`readExactly(n)`、`readLine(max:)`（不含 `\n` 或 `\r\n`）、`readUntil(delimiter, max:)` 和 `readAll(max:)`，也可以用流的方式读：`lines()` 和 `chunks()`；写入用 `write(text)` 和 `writeBytes(data)`。`closeWrite()` 关闭本端的写入（对端会读到结束，但仍然可以回复），`close()` 关闭整个连接。`readTimeout` 和 `writeTimeout` 限制每次等待的时间（超时抛出 `NetError.timedOut`）；`localAddress` 和 `remoteAddress` 是两端的地址。同一时间只能有一个读取在等待；写入会排队，每次都完整发送。
+- `net.serve(port, handler, host:, onError:)` 用 `handler` 处理每个客户端的连接：每个连接一个独立的 task，可以同时处理很多个；处理函数返回时连接随之关闭。`net.listen(port, host:)` 返回一个 `Listener`，可以自己调用 `accept()`。`host` 默认是 `127.0.0.1`；`"0.0.0.0"` 接受所有 IPv4 网卡上的客户端，`""` 或 `"::"` 接受所有网卡上的。端口传 0 时由系统挑选（见 `server.port`）。`server.close(grace:)` 停止接受连接，超过 `grace`（默认不等待）后取消仍在运行的处理函数；`server.wait()` 一直等到服务器停止。
+- `net.udp(port:, host:, reuse:)` 返回一个 `UDPSocket`：`send(data, to:)`、`sendTo(data, host:, port:)`、`receive(timeout:)`（得到一个 `Datagram`，包含 `data` 和发送方 `from`）、`datagrams()`、`connect(host, port)`，以及用于组播的 `joinGroup(ip)` 和 `setBroadcast(on)`。
+- `net.lookup(host)` 按系统的方式（hosts 文件、DNS）解析主机名的 IP 地址；还有 `reverseLookup(ip)`、`lookupCNAME`，以及查询 DNS 记录的 `lookupMX`、`lookupTXT`、`lookupSRV`、`lookupNS`。
+- `net.IP` 是一个地址（`IP.parse("2001:db8::1")`、`isLoopback()`、`isPrivate()`、`string()`），`net.Prefix` 是一个网段（`Prefix.parse("10.0.0.0/8")!.contains(ip)`），`net.Address` 是 IP 加端口；`joinHostPort` 和 `splitHostPort` 会处理 IPv6 的方括号（`"[::1]:80"`）。
+- 取消正在等待的 task（输掉了一次 `race`、`withTimeout` 到时、它的 owner 被销毁）会停止这次等待，而且此前已经到达的数据不会丢失：下一次读取会拿到它们。已经开始的写入会继续写完。socket 属于创建它的 task：那个 task 结束时 socket 随之关闭。
+- 失败时抛出 `NetError`：`refused`、`reset`、`timedOut`、`unreachable`、`notFound`、`lookupFailed`、`closed`、`ended`、`addressInUse`、`addressUnavailable`、`denied`、`tooLarge`、`invalid`、`unsupported`、`failed`。
+
+桌面应用和手机应用（运行期间）可以像程序一样使用 socket；网页没有 socket（`NetError.unsupported`），不过 IP 地址和 host:port 相关的辅助函数照样可用。
+
+### TLS
+
+`net.connectTLS` 先建立连接，再在这个连接上使用 TLS 1.2 或 1.3 通信，和 Go 的 `tls.Dial`、Node 的 `tls.connect` 一样。在你发送任何数据之前，它会先按主机名检查服务器的证书；之后的读写和上面的 `Conn` 完全相同。
+
+```asuka check
+import std/net
+
+async fn main() throws {
+  let c = try await net.connectTLS("example.com", 443, timeout: 10s)
+  try await c.write("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n")
+  print(try await c.readLine())   // HTTP/1.1 200 OK
+  c.close()
+}
+```
+
+有些协议先用明文通信、之后再升级（SMTP 和 IMAP 的 STARTTLS、PostgreSQL 的 SSLRequest），这时在原来的连接上调用 `startTLS` 即可：
+
+```asuka check
+import std/net
+
+async fn main() throws {
+  let c = try await net.connect("mail.example.com", 587)
+  let _ = try await c.readLine()   // 220 mail.example.com ESMTP
+  try await c.write("STARTTLS\r\n")
+  let _ = try await c.readLine()   // 220 Ready to start TLS
+  let state = try await c.startTLS("mail.example.com")
+  print("{state.version} {state.cipherSuite}")
+  try await c.write("EHLO me.example.com\r\n")
+}
+```
+
+- 服务器的证书会按系统信任的证书颁发机构来检查。在 macOS、iOS 和 Windows 上由系统自己检查，和 Safari、Edge 一样：会遵循用户和管理员信任或不信任的设置，自动获取缺失的中间证书，并检查吊销状态。在 Linux 上，会像 Go 一样读取系统的 CA 证书包：优先用 `SSL_CERT_FILE`，否则依次查找 `/etc/ssl/certs/ca-certificates.crt`（Debian、Ubuntu）、`/etc/pki/tls/certs/ca-bundle.crt`（Fedora、RHEL）、`/etc/ssl/ca-bundle.pem`（openSUSE）、`/etc/ssl/cert.pem`（Alpine）等位置，然后再读 `SSL_CERT_DIR` 里的文件。静态构建读的也是这些位置，所以容器镜像里要装上 `ca-certificates` 包。在 Android 上，用的是系统的证书存储。
+- `net.clientTLS(ca:, certificate:, key:, alpn:, minVersion:, maxVersion:, insecureSkipVerify:, sessionCache:)` 创建客户端配置，`connectTLS` 和 `startTLS` 通过 `tls:` 接收它。`ca`（PEM）会代替系统的证书颁发机构被信任，比如私有 CA，或者自签名的服务器。`certificate` 和 `key` 是本端自己的证书和私钥，用于要求客户端出示证书的服务器（双向 TLS）。`alpn` 是本端提供的应用层协议（`["h2", "http/1.1"]`）。`insecureSkipVerify` 什么都不检查，谁都能冒充服务器，所以只适合测试。
+- `net.serverTLS(certificate:, key:, others:, alpn:, clientCA:, requireClientCertificate:, sessionTickets:)` 创建服务器配置：`net.listen`、`net.serve` 和 `http.serve` 通过 `tls:` 接收它，`conn.startServerTLS(tls)` 则在原来的连接上升级。`others` 是更多的证书（`KeyPair`）：客户端请求的名字（SNI）和哪张证书的名字匹配，就出示哪张。`clientCA` 要求每个客户端出示由其中某个机构签发的证书。
+- `key` 是 PEM 格式：PKCS#8、PKCS#1 或 SEC 1。加密过的私钥或 OpenSSH 格式的私钥交给 std/crypto 来读，再把它的 `pem()` 交给 TLS：`key: (try await crypto.decryptPrivateKey(text, password: password)).pem()`。（这样，两者都不读的 TLS 应用就不会带上它们的代码。）
+- 客户端会像浏览器一样恢复会话：配置会按服务器的名字和端口记下每次握手协商出的结果（TLS 1.3 的 ticket、TLS 1.2 的会话），下次再连到那里，握手就更短，服务器也不用再发一遍证书（之前检查过的那张证书仍会再检查名字和有效期）。`sessionCache:` 是最多为多少个服务器保留会话（默认 64；最久没用的先被丢掉；`0` 表示一个都不保留）。服务器会给客户端发 ticket，用它在内存里随机生成的密钥加密；这些密钥从不写到任何地方，并且每天换新。`sessionTickets: false` 表示不发 ticket。不提前发送数据（TLS 1.3 的 0-RTT）：握手结束前发出的数据，任何看到它的人都能重放。
+- `conn.handshake()` 返回握手协商出的结果，即一个 `TLSState`：`version`、`cipherSuite`、ALPN 选定的 `protocol`、`serverName`、是否恢复了会话 `resumed`，以及对端的证书 `peerCertificates`（DER）。TLS 服务器上的连接会在第一次读或写需要等待时完成握手；客户端握手失败时，这次读或写会抛出错误。
+- 证书不受信任时抛出 `NetError.untrustedCertificate(problem, reason)`：`problem` 是 `expired`、`notYetValid`、`wrongHost`、`unknownIssuer`、`revoked`、`missing`、`invalid` 之一，`reason` 说明具体发现了什么（"example.com's certificate expired on 2025-03-01"）。其他失败都是 `NetError.tls(reason)`：双方没有共同支持的版本、密码套件或 ALPN 协议，对端发来了警报（alert），或者服务器根本不说 TLS。
+
+TLS 在所有平台上都是同一份实现（Mbed TLS），从不调用它的应用不会包含它。网页没有可供它使用的 socket：在网页上，`std/http` 和 `std/websocket` 照样能使用 HTTPS 和 `wss:`，其他平台也一样，都是通过各平台自己的客户端。
+
+### 私有证书颁发机构与客户端证书
+
+`std/http` 的请求和 `std/websocket` 的连接都通过各平台自己的客户端发出，像系统一样检查服务器的证书。如果系统不信任这台服务器（比如证书由公司内部 CA 签发的内部服务，或者测试用的服务器），或者服务器要求客户端出示证书，就给请求单独配上 TLS 设置：`http.TLS`，通过 `tls:` 传给 `http.get`、`post`、`request`、`download`、`stream`、`events` 和 `websocket.connect`。
+
+```asuka check
+import std/fs
+import std/http
+
+async fn main() throws {
+  let tls = http.TLS(ca: try fs.readText("ca.pem"), certificate: try fs.readText("client.pem"), key: try fs.readText("client.key"))
+  let r = try await http.get("https://orders.internal/health", tls: tls)
+  print(r.status)
+}
+```
+
+- `ca`（PEM）会代替系统的证书颁发机构被信任；加上 `trustSystem: true` 则两者都信任。无论哪种情况，都会检查服务器的名字。
+- `certificate`（PEM：客户端自己的证书，后面跟着签发它的各级机构的证书）和 `key`（PEM：PKCS#8、RSA 或 EC 格式，不能加密）会出示给要求客户端证书的服务器（双向 TLS）。
+- `insecureSkipVerify` 完全不检查证书，谁都能冒充服务器，所以只适合测试你自己的服务器。
+- 设置相同的请求共用连接；设置不同或没有设置的请求，绝不会用到这些连接。
+- 读不了的设置会抛出 `HTTPError.tls(reason)`。设置不信任的服务器会让请求失败，并说明原因（"orders.internal's certificate isn't trusted: ..."）。
+- 在 iOS 和 macOS 上，即使 `ca` 信任了签发机构，服务器证书也必须满足 Apple 的要求：有效期不超过 825 天，服务器的名字写在 subjectAltName 里，用 SHA-256 或更强的算法签名，RSA 密钥至少 2048 位；如果有 extendedKeyUsage，必须包含服务器用途。
+- 在 Windows 上，客户端证书的私钥在程序运行期间存放在系统的密钥存储里，程序退出时删除；证书和根证书之间的各级机构证书会加入当前用户的中间证书颁发机构存储，因为 Windows 要从那里找出它发送的证书链。
+- 网页做不到：信任谁、出示哪张证书都由浏览器决定，所以在网页上带 `tls:` 的请求会抛出错误。
+
+## 密钥、密码与签名：std/crypto
+
+std/crypto 在所有平台上都是同一份 C 代码，Web 也一样：一个平台加密、哈希或签名的数据，其他任何平台都能解开和验证。服务验证 webhook 的 HMAC 时用 `crypto.equal` 比较，它的耗时与字节在哪里不同无关；保存密码用 `hashPassword`（argon2id，输出其他系统也能读的 PHC 格式），它会在另一个线程上运行：
+
+```asuka check
+import std/crypto
+import std/encoding
+import std/http
+import std/os
+
+struct Login {
+  name: string
+  password: string
+}
+
+async fn main() throws {
+  let secret = (os.env("WEBHOOK_SECRET") ?? "").bytes()
+  var users: [string: string] = [:]  // 真实的服务里放在数据库中
+  let api = http.Router()
+    .post("/hooks/github", req => {
+      // GitHub 会对请求体签名：X-Hub-Signature-256 是 sha256=<十六进制的 HMAC>。
+      let sent = (req.header("X-Hub-Signature-256") ?? "").trimPrefix("sha256=")
+      let mac = encoding.hexEncode(crypto.hmacSHA256(secret, req.body))
+      if !crypto.equal(mac.bytes(), sent.bytes()) {
+        return .text("bad signature", status: 401)
+      }
+      return .text("ok")
+    })
+    .post("/signup", req => {
+      let login = try req.json<Login>()
+      users[login.name] = try await crypto.hashPassword(login.password)
+      return .text("welcome", status: 201)
+    })
+    .post("/login", req => {
+      let login = try req.json<Login>()
+      let stored = users[login.name] ?? ""
+      if stored != "" && (try await crypto.verifyPassword(login.password, hash: stored)) {
+        return .text("hello, {login.name}")
+      }
+      return .text("wrong name or password", status: 401)
+    })
+  let server = try await http.serve(8080, api.handler())
+  for await _ in os.signals() {
+    break
+  }
+  await server.close(grace: 10s)
+}
+```
+
+用 RS256、PS256、ES256 或 EdDSA 签名的 JWT，用签发方的公钥验证，公钥可以来自 PEM 或它的 JWK Set。能用哪些签名方案验证由密钥的类型决定，所以令牌里的 `alg` 无法换成更弱的方案：
+
+```asuka check
+import std/crypto
+import std/encoding
+import std/http
+import std/json
+
+struct Header {
+  alg: string
+  kid: string = ""
+}
+
+/// token 这个 JWT 是否由签发方的某个密钥签名。
+async fn verified(token: string, jwksURL: string) throws -> bool {
+  let keys = try crypto.publicKeys((try await http.get(jwksURL)).text())
+  let parts = token.split(".")
+  if parts.count() != 3 {
+    return false
+  }
+  let header = try json.decode<Header>((try encoding.base64Decode(parts[0])).string())
+  if let key = keys[header.kid], let scheme = crypto.SignatureScheme.jws(header.alg) {
+    return try crypto.verify(key, "{parts[0]}.{parts[1]}".bytes(), try encoding.base64Decode(parts[2]), scheme: scheme)
+  }
+  return false
+}
+```
+
+- `crypto.seal(key, plaintext, additionalData:)` 用 XChaCha20-Poly1305 和一个随机 nonce 加密并认证，nonce 放在结果最前面；`open` 还原明文，数据有任何改动时抛出 `CryptoError.notAuthentic`。需要和其他系统互通时用 `cipher: .aes256GCM`（或 `.aes128GCM`、`.chaCha20Poly1305`）；协议自己规定 nonce 时用 `sealWithNonce` 和 `openWithNonce`。
+- `hkdf` 从密钥材料派生密钥，`pbkdf2` 和 `argon2id` 从密码派生；`hmac`、`hmacSHA256` 和 `hmacSHA512` 用共享密钥签名。
+- `hashPasswordBcrypt` 和 `verifyPassword` 也能读 bcrypt 的 `$2b$`、`$2a$` 和 `$2y$`，适合由其他系统填好的数据库。
+- `newPrivateKey()` 生成 ECDSA P-256 密钥（`kind: .ed25519`、P-384、P-521 也可以）；`sign` 和 `verify` 接受从 PEM（`publicKey`、`privateKey`）、DER 或 JWK 读入的 RSA（PKCS#1 v1.5 和 PSS）、ECDSA 和 Ed25519 密钥，并能用 `pem()` 和 `jwk()` 再导出。
+- `privateKey` 也能读 OpenSSH 的私钥（`ssh-keygen` 生成的）。加密的私钥用 `decryptPrivateKey(pem, password:)` 读：OpenSSL 的 `ENCRYPTED PRIVATE KEY`（PBES2，配合 PBKDF2 或 scrypt，以及 AES 或 3DES；还有旧版 OpenSSL 和 Java 用的 PKCS#12 3DES）、OpenSSL 旧式的 `Proc-Type: 4,ENCRYPTED` 私钥，以及 OpenSSH 加密的私钥（bcrypt 配合 AES 或 ChaCha20-Poly1305）。密码解不开私钥时抛出 `CryptoError.wrongPassword`；单 DES、RC2 和 RC4 太弱，不予读取。`key.encryptedPEM(password:)` 按 OpenSSL 3 的方式写出加密的私钥（PBKDF2-HMAC-SHA256 迭代 600,000 次，AES-256-CBC）。这两者都有意放慢，这样猜密码也同样慢，它们都在另一个线程上运行。不读加密私钥的应用不会带上这些加密算法的代码。
+
+```asuka check
+import std/crypto
+import std/fs
+import std/os
+
+async fn main() throws {
+  let text = try fs.readText("deploy_key")  // ssh-keygen -t ed25519 -f deploy_key
+  let key = try await crypto.decryptPrivateKey(text, password: os.env("KEY_PASSWORD") ?? "")
+  let signature = try crypto.sign(key, "release 1.4.0".bytes(), scheme: .ed25519)
+  print(signature.count())  // 64
+  // -----BEGIN ENCRYPTED PRIVATE KEY-----，OpenSSL 等工具都能读
+  try fs.writeText("deploy_key.pem", await key.encryptedPEM(password: os.env("KEY_PASSWORD") ?? ""))
+}
+```
+- `md5` 只用于协议要求的校验和，不用于安全；CRC 在 std/compress 里：`crc32` 和 `crc32c`。
 
 ## 运行
 
@@ -678,6 +1089,8 @@ test "reads git's branch" {
 }
 ```
 
+属性测试、快照、基准测试和覆盖率在命令行程序里的用法和应用一样：`asuka test --bench` 测量的是 `asuka build` 发布出去的、编译成 C 的代码，`asuka test --cover` 统计的是程序自己的代码（见[测试](testing.md#属性测试)）。
+
 ## 各平台支持情况
 
 | | macOS | Windows | Linux | 手机、Web |
@@ -687,4 +1100,6 @@ test "reads git's branch" {
 | `std/command` | 支持 | 支持 | 支持 | `unsupported` |
 | `std/flag` | 支持 | 支持 | 支持 | 支持（它能解析任何列表） |
 | `std/term` | 支持 | 支持 | 支持 | 没有终端：没有样式，`prompt` 返回 `none` |
+| `std/log` | stderr（应用：统一日志系统） | stderr（应用：调试器的输出） | stderr | 统一日志系统、logcat、浏览器控制台 |
 | `http.serve` | 支持 | 支持 | 支持 | 手机应用：运行期间可用；Web：`unsupported` |
+| `std/net` | 支持 | 支持 | 支持 | 手机应用：运行期间可用；Web：`unsupported` |

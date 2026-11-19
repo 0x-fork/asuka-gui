@@ -389,8 +389,12 @@ type FuncDecl struct {
 	Body       *Block
 	Value      Expr // fn f() -> T = expr
 	// Native: native fn f(…) -> T, with no body: the runtime implements
-	// it (the standard library's).
-	Native Pos
+	// it (the standard library's). NativePrefix: native(prefix) fn f,
+	// the builtin prefix.f rather than the package's (<package>.f), so
+	// its C is a table of its own, which only an app that calls one of
+	// its builtins links (lang/LOWERING.md).
+	Native       Pos
+	NativePrefix *Ident
 	// Extern: extern fn f(…) -> T, with no body: a C function of that
 	// name (RFC 0008, docs/c.md).
 	Extern Pos
@@ -477,8 +481,21 @@ type AppDecl struct {
 	Body *Block
 }
 
-// A TestDecl is test "name" { statements }.
+// A TestDecl is test "name" { statements }, or, with Params, a property
+// test: test "name" (a: int, s: string) { statements }, run with
+// generated values of its parameters' types.
 type TestDecl struct {
+	Span
+	Trivia
+	Name   *StringLit
+	Params *ParamList // nil: none
+	Body   *Block
+}
+
+// A BenchDecl is bench "name" { statements }: a benchmark, whose body (or
+// its measure block, when it has one) asuka test --bench runs and times.
+// "bench" is a keyword only here: before a string at a file's top level.
+type BenchDecl struct {
 	Span
 	Trivia
 	Name *StringLit
@@ -508,6 +525,7 @@ func (*StateDecl) declNode()      {}
 func (*LetDecl) declNode()        {}
 func (*AppDecl) declNode()        {}
 func (*TestDecl) declNode()       {}
+func (*BenchDecl) declNode()      {}
 func (*BadDecl) declNode()        {}
 
 // ---------------------------------------------------------------------
@@ -696,6 +714,14 @@ type DoStmt struct {
 	Catches []*CatchClause
 }
 
+// A MeasureStmt is measure { … } in a bench: the part it times, after
+// what sets it up. "measure" is a keyword only there.
+type MeasureStmt struct {
+	Span
+	Trivia
+	Body *Block
+}
+
 // A CatchClause is catch { … }, catch e { … }, catch e: Type { … } or
 // catch Case(…) { … }.
 type CatchClause struct {
@@ -796,6 +822,7 @@ func (*ForStmt) itemNode()     {}
 func (*WhileStmt) itemNode()   {}
 func (*MatchStmt) itemNode()   {}
 func (*DoStmt) itemNode()      {}
+func (*MeasureStmt) itemNode() {}
 func (*ReturnStmt) itemNode()  {}
 func (*ThrowStmt) itemNode()   {}
 func (*BranchStmt) itemNode()  {}

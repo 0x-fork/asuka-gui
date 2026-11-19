@@ -59,7 +59,7 @@ func Registry(dir string) string { return filepath.Join(dir, "src", "native.c") 
 // (asuka_barcode.h: barcode.c), built on every one.
 func Shared(dir string) []string {
 	src := filepath.Join(dir, "src")
-	return []string{filepath.Join(src, "native.c"), filepath.Join(src, "linux.c"), filepath.Join(src, "linux_syms.c"), filepath.Join(src, "windows.c"), filepath.Join(src, "fetch.c"), filepath.Join(src, "json.c"), filepath.Join(src, "webview2.c"),
+	return []string{filepath.Join(src, "native.c"), filepath.Join(src, "linux.c"), filepath.Join(src, "linux_syms.c"), filepath.Join(src, "windows.c"), filepath.Join(src, "fetch.c"), filepath.Join(src, "tls.c"), filepath.Join(src, "json.c"), filepath.Join(src, "webview2.c"),
 		filepath.Join(src, "barcode.c"), filepath.Join(src, "barcode_jis.c"),
 		filepath.Join(dir, "include", "asuka_linux.h"), filepath.Join(dir, "include", "asuka_linux.def"), filepath.Join(dir, "include", "asuka_windows.h"), filepath.Join(dir, "include", "asuka_barcode.h")}
 }
@@ -93,7 +93,7 @@ func MacShared(dir string) []string {
 // Libs are the system libraries the shared C links with on goos.
 func Libs(goos string) []string {
 	if goos == "windows" {
-		return []string{"-lwinhttp", "-lole32", "-loleaut32", "-luuid", "-lshell32", "-luser32", "-lgdi32", "-ladvapi32", "-lwindowscodecs"}
+		return []string{"-lwinhttp", "-lcrypt32", "-lncrypt", "-lole32", "-loleaut32", "-luuid", "-lshell32", "-luser32", "-lgdi32", "-ladvapi32", "-lwindowscodecs"}
 	}
 	return nil
 }

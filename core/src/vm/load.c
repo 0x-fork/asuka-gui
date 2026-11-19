@@ -6,17 +6,47 @@
 
 // ---- Builtins ----
 
-typedef struct { const char *name; ak_builtin_fn fn; } builtin_entry;
-static AK_VEC(builtin_entry) builtins;
+// The builtins by name: a hash table (open addressing, at most half
+// full), so registering the core's hundreds as it starts and finding a
+// module's as it loads cost a lookup each, not a search of them all.
+typedef struct {
+	const char *name;  // NULL: empty
+	ak_builtin_fn fn;
+	uint32_t hash;
+} builtin_entry;
+static builtin_entry *builtins;
+static uint32_t builtins_cap, builtins_len;
+
+static uint32_t name_hash(const char *s) {
+	uint32_t h = 2166136261u;  // FNV-1a
+	for (; *s; s++) {
+		h ^= (uint8_t)*s;
+		h *= 16777619u;
+	}
+	return h;
+}
+
+static builtin_entry *builtin_slot(const char *name, uint32_t h) {
+	for (uint32_t i = h & (builtins_cap - 1);; i = (i + 1) & (builtins_cap - 1)) {
+		builtin_entry *e = &builtins[i];
+		if (!e->name || (e->hash == h && strcmp(e->name, name) == 0)) return e;
+	}
+}
 
 void ak_builtin_register(const char *name, ak_builtin_fn fn) {
-	for (uint32_t i = 0; i < builtins.len; i++) {
-		if (strcmp(builtins.data[i].name, name) == 0) {
-			builtins.data[i].fn = fn;
-			return;
-		}
+	if ((builtins_len + 1) * 2 > builtins_cap) {
+		builtin_entry *old = builtins;
+		uint32_t n = builtins_cap;
+		builtins_cap = n ? n * 2 : 1024;
+		builtins = ak_alloc(sizeof(builtin_entry) * builtins_cap);
+		for (uint32_t i = 0; i < n; i++)
+			if (old[i].name) *builtin_slot(old[i].name, old[i].hash) = old[i];
+		ak_free(old);
 	}
-	ak_vec_push(&builtins, ((builtin_entry){name, fn}));
+	uint32_t h = name_hash(name);
+	builtin_entry *e = builtin_slot(name, h);
+	if (!e->name) builtins_len++;
+	*e = (builtin_entry){name, fn, h};  // a name registered again: the new fn
 }
 
 // rt.freeze(value, kind): the value, made a constant (rt.h's ak_freeze)
@@ -32,9 +62,9 @@ static ak_val rt_freeze(ak_val *args, uint32_t n) {
 void ak_vm_freeze_init(void) { ak_builtin_register("rt.freeze", rt_freeze); }
 
 ak_builtin_fn ak_builtin_find(const char *name) {
-	for (uint32_t i = 0; i < builtins.len; i++)
-		if (strcmp(builtins.data[i].name, name) == 0) return builtins.data[i].fn;
-	return NULL;
+	if (!builtins_cap) return NULL;
+	builtin_entry *e = builtin_slot(name, name_hash(name));
+	return e->name ? e->fn : NULL;
 }
 
 // ---- Loading ----
@@ -212,12 +242,25 @@ ak_module *ak_module_load(const uint8_t *p, size_t n, char *err, size_t errcap) 
 		f->nregs = (uint16_t)nk;
 		f->capkinds = rkinds(l, &nc);
 		f->ncap = (uint16_t)nc;
+		f->nrefs = 0;
+		for (uint32_t r = 0; r < nk; r++) f->nrefs += f->kinds[r] == AK_K_REF;
+		f->refs = ak_alloc(sizeof(uint16_t) * (f->nrefs ? f->nrefs : 1));
+		for (uint32_t r = 0, j = 0; r < nk; r++)
+			if (f->kinds[r] == AK_K_REF) f->refs[j++] = (uint16_t)r;
 		f->ret = ak_read_u8(&l->r);
 		f->flags = ak_read_u8(&l->r);
 		if (f->nparams > f->nregs) fail(l, "more parameters than registers");
 		f->ncode = count(l, 2);
 		f->code = ak_alloc(sizeof(uint16_t) * (f->ncode ? f->ncode : 1));
 		for (uint32_t c = 0; c < f->ncode; c++) f->code[c] = ak_read_u16(&l->r);
+		// Every instruction is one the interpreter has, whole: its
+		// dispatch indexes a table by the opcode, unchecked.
+		for (uint32_t pc = 0; pc < f->ncode && !l->failed;) {
+			uint16_t op = f->code[pc];
+			if (op >= AK_OP__COUNT) fail(l, "bad opcode");
+			else if (pc + ak_op_width[op] > f->ncode) fail(l, "truncated instruction");
+			else pc += ak_op_width[op];
+		}
 		f->nhandlers = count(l, 12);
 		f->handlers = ak_alloc(sizeof(ak_handler) * (f->nhandlers ? f->nhandlers : 1));
 		for (uint32_t h = 0; h < f->nhandlers; h++) {
@@ -230,6 +273,14 @@ ak_module *ak_module_load(const uint8_t *p, size_t n, char *err, size_t errcap) 
 		for (uint32_t h = 0; h < f->nlines; h++) {
 			f->lines[h].pc = ak_read_u32(&l->r);
 			f->lines[h].line = ak_read_u32(&l->r);
+		}
+		f->ninlines = count(l, 16);
+		f->inlines = ak_alloc(sizeof(ak_inline) * (f->ninlines ? f->ninlines : 1));
+		for (uint32_t h = 0; h < f->ninlines; h++) {
+			f->inlines[h].start = ak_read_u32(&l->r);
+			f->inlines[h].end = ak_read_u32(&l->r);
+			f->inlines[h].func = ak_read_u32(&l->r);
+			f->inlines[h].line = ak_read_u32(&l->r);
 		}
 	}
 
@@ -256,6 +307,11 @@ ak_module *ak_module_load(const uint8_t *p, size_t n, char *err, size_t errcap) 
 	for (uint32_t i = 0; i < m->ntests; i++) {
 		m->tests[i].name = rstr(l);
 		m->tests[i].func = ak_read_u32(&l->r);
+		m->tests[i].flags = ak_read_u8(&l->r);
+		uint32_t np = count(l, 8);
+		m->tests[i].nparams = np;
+		m->tests[i].params = ak_alloc(sizeof(ak_str *) * 2 * (np ? np : 1));
+		for (uint32_t k = 0; k < 2 * np; k++) m->tests[i].params[k] = rstr(l);
 	}
 	if (l->r.err) fail(l, "truncated module");
 	if (!l->failed && m->nfuncs && m->init >= m->nfuncs) fail(l, "bad init function");
@@ -266,6 +322,9 @@ ak_module *ak_module_load(const uint8_t *p, size_t n, char *err, size_t errcap) 
 	for (uint32_t i = 0; i < m->nshapes && !l->failed; i++)
 		for (uint32_t k = 0; k < m->shapes[i].nmethods; k++)
 			if (m->shapes[i].methods[k].func >= m->nfuncs) fail(l, "bad method function");
+	for (uint32_t i = 0; i < m->nfuncs && !l->failed; i++)
+		for (uint32_t k = 0; k < m->funcs[i].ninlines; k++)
+			if (m->funcs[i].inlines[k].func >= m->nfuncs) fail(l, "bad inlined function");
 	if (l->failed) {
 		ak_module_release(m);
 		return NULL;
@@ -302,10 +361,12 @@ static void module_free(void *ctx) {
 		ak_release(f->name);
 		ak_release(f->file);
 		ak_free(f->kinds);
+		ak_free(f->refs);
 		ak_free(f->capkinds);
 		ak_free(f->code);
 		ak_free(f->handlers);
 		ak_free(f->lines);
+		ak_free(f->inlines);
 	}
 	ak_free(m->funcs);
 	for (uint32_t i = 0; i < m->nshapes; i++) {
@@ -342,7 +403,11 @@ static void module_free(void *ctx) {
 	ak_free(m->ints);
 	ak_free(m->floats);
 	ak_free(m->builtins);
-	for (uint32_t i = 0; i < m->ntests; i++) ak_release(m->tests[i].name);
+	for (uint32_t i = 0; i < m->ntests; i++) {
+		ak_release(m->tests[i].name);
+		for (uint32_t k = 0; k < 2 * m->tests[i].nparams; k++) ak_release(m->tests[i].params[k]);
+		ak_free(m->tests[i].params);
+	}
 	ak_free(m->tests);
 	ak_free(m);
 }
@@ -365,6 +430,16 @@ const char *ak_module_test(const ak_module *m, uint32_t i, uint32_t *func) {
 	if (i >= m->ntests) return NULL;
 	*func = m->tests[i].func;
 	return m->tests[i].name->data;
+}
+
+bool ak_module_test_bench(const ak_module *m, uint32_t i) { return i < m->ntests && (m->tests[i].flags & 1); }
+
+uint32_t ak_module_test_nparams(const ak_module *m, uint32_t i) { return i < m->ntests ? m->tests[i].nparams : 0; }
+
+const char *ak_module_test_param(const ak_module *m, uint32_t i, uint32_t k, const char **name) {
+	if (i >= m->ntests || k >= m->tests[i].nparams) return NULL;
+	*name = m->tests[i].params[2 * k]->data;
+	return m->tests[i].params[2 * k + 1]->data;
 }
 
 const ak_shape *ak_module_shape_named(const ak_module *m, const char *name) {

@@ -41,15 +41,17 @@ fn values() -> string {
   visits += 1
   let greeting = "Hello, {name}"   // {…} 把值放进字符串
   let ratio: float = 2.5
+  let level: u8 = 200              // 固定位宽的整数：i8 … i32、u8 … u64（int 是 64 位）
+  let area = 2 ** 10               // 乘方：1024
   let tags = ["new", "work"]       // 数组：[string]
   let ages = ["ana": 31, "bo": 28] // 映射：[string: int]
   let nickname: string? = none     // 可选值：一个字符串或 none
   let shown = nickname ?? name     // none 时的后备值
-  return "{greeting} {visits} {ratio} {tags.count()} {ages["ana"] ?? 0} {shown}"
+  return "{greeting} {visits} {ratio} {level} {area} {tags.count()} {ages["ana"] ?? 0} {shown}"
 }
 ```
 
-`var` 用在函数和处理函数里：文件顶层的值不会改变，除非它是 `state`。值总是被复制，从不共享：修改数组的副本不会影响原来的数组。字符串、数组和映射都有你预期的方法（`count()`、`contains`、`map`、`filter`、`sorted`、`split` ……），见[值与类型](https://asuka.egoist.dev/zh/docs/language/types)。
+`var` 用在函数和处理函数里：文件顶层的值不会改变，除非它是 `state`。不同类型的数字不能混在一起运算：`int(level) + visits` 先把 `u8` 转换成 `int`；算术结果超出类型的范围是一个错误，而不会回绕成另一个数字。值总是被复制，从不共享：修改数组的副本不会影响原来的数组。字符串、数组和映射都有你预期的方法（`count()`、`contains`、`map`、`filter`、`sorted`、`split` ……），见[值与类型](https://asuka.egoist.dev/zh/docs/language/types)。
 
 #### 函数
 
@@ -283,6 +285,7 @@ fn main() {
 | 类型 | 值 |
 |---|---|
 | `int` | 64 位整数：`42`、`1_000`、`0xff`、`0b1010`、`0o17` |
+| `i8`、`i16`、`i32`、`u8`、`u16`、`u32`、`u64` | 8、16、32 和 64 位整数，分有符号（`i`）和无符号（`u`）两种：见[整数类型](#整数类型) |
 | `float` | 64 位浮点数：`3.14`、`1e-3` |
 | `bool` | `true`、`false` |
 | `string` | UTF-8 文本：`"Hello, {name}"` |
@@ -310,7 +313,7 @@ let title = "{"Total":*^11}"         // ***Total***
 let table = row("asuka", 12500, 0.4) // asuka     12,500   40.0%
 ```
 
-宽度按字符（码位）计算，而不是按终端里显示的宽度。
+宽度按字符（码位）计算，而不是按终端里显示的宽度。要按终端的列数算（中日韩文字和 emoji 占两列），用 `std/term` 的 `textWidth`、`padEnd` 和 `fit`，见[程序](https://asuka.egoist.dev/zh/docs/programs#对齐的表格)。
 
 元组的元素可以按位置读取：`pair.0`、`pair.1`；如果元组存在 `var` 里，也可以就地修改（`pair.0 += 1`）。写一个元组没有的位置（对一对值写 `pair.2`）是编译错误。也可以把元组拆开：`let (count, label) = pair`、`for (i, x) in xs.enumerated()`，或者在 `match` 里用元组模式（见[控制流](https://asuka.egoist.dev/zh/docs/language/control-flow#控制流)）。
 
@@ -328,12 +331,13 @@ let seen: Set<(int, int)> = [(0, 0), (1, 2)]
 
 #### 运算符
 
-下表按结合从紧到松排列；同一行的运算符优先级相同，从左往右结合（`??` 从右往左）：
+下表按结合从紧到松排列；同一行的运算符优先级相同，从左往右结合（`**` 和 `??` 从右往左）：
 
 | 运算符 | 作用 |
 |---|---|
+| `**` | 乘方：`2 ** 10` 是 1024 |
 | `!x`、`-x`、`~x` | 取反、取负、把整数的每一位取反 |
-| `<<`、`>>` | 把整数的位左移、右移（右移保留符号） |
+| `<<`、`>>` | 把整数的位左移、右移（有符号整数右移时保留符号） |
 | `*`、`/`、`%`、`&`、`&*` | 乘、除、取余、按位与、回绕乘法 |
 | `+`、`-`、<code>&#124;</code>、`^`、`&+`、`&-` | 加（也用于拼接字符串和数组）、减、按位或、按位异或、回绕加法和减法 |
 | `..`、`..<` | 范围：`1..3`、`0..<n` |
@@ -342,9 +346,11 @@ let seen: Set<(int, int)> = [(0, 0), (1, 2)]
 | <code>&#124;&#124;</code> | 或 |
 | `??` | 可选值里的值，为 none 时取默认值 |
 
-`<`、`<=`、`>` 和 `>=` 可以比较整数、浮点数、字符串、时长、成员不携带值的枚举（按成员声明的顺序），以及带有 `compare` 方法的类型；结构体和枚举也能从自己的方法 `add`、`sub`、`mul`、`div`、`rem` 和 `neg` 获得算术运算符（见[声明](https://asuka.egoist.dev/zh/docs/language/declarations#结构体)）。
+`<`、`<=`、`>` 和 `>=` 可以比较整数、浮点数、字符串、时长、成员不携带值的枚举（按成员声明的顺序），以及带有 `compare` 方法的类型；结构体和枚举也能从自己的方法 `add`、`sub`、`mul`、`div`、`rem`、`pow` 和 `neg` 获得算术运算符（见[声明](https://asuka.egoist.dev/zh/docs/language/declarations#结构体)）。
 
-按位运算符只接受整数。移位 64 位或更多时，所有位都会被移出（负数右移得到 -1）；移位数为负数则是一个错误。有了这些运算符和 `b[i]`（以整数形式读出一个字节），程序就能读写二进制数据，比如蓝牙特征值或 NFC 记录：
+`**` 比上表里的其他运算符结合得都紧，`-` 也不例外，而且从右往左结合，和 Python 以及数学里一样：`-2 ** 2` 是 `-(2 ** 2)`，即 -4；`2 ** 3 ** 2` 是 `2 ** 9`；`(-2) ** 2` 是 4。整数的乘方和底数是同一类型，指数可以是任意类型的整数，但必须大于或等于 0（负指数是一个错误：`2 ** -1` 不是整数）；浮点数的乘方，指数可以是浮点数，也可以是整数（`2.0 ** 0.5`、`x ** 2`）。`**=` 是对应的赋值写法。
+
+按位运算符只接受整数，而且两边必须是同一类型。移位数可以是任意类型的整数；移位数达到或超过该类型的位宽时，所有位都会被移出（负数右移得到 -1），移位数为负数则是一个错误。`>>` 对有符号整数保留符号，对无符号整数在高位补 0。有了这些运算符和 `b[i]`（以整数形式读出一个字节），程序就能读写二进制数据，比如蓝牙特征值或 NFC 记录（[`std/encoding`](https://asuka.egoist.dev/zh/docs/std/encoding) 能按任一字节序读写整个整数）：
 
 ```asuka
 let raw = b[1] | b[2] << 8                         // 小端序的 uint16
@@ -352,7 +358,7 @@ let celsius = if raw & 0x8000 != 0 { raw - 0x10000 } else { raw }
 let out = bytes([flags, value & 0xff, value >> 8])
 ```
 
-`int` 的取值范围是 −2⁶³ 到 2⁶³ − 1。`+`、`-`、`*` 的结果超出这个范围时，会像除以零（`/`、`%`）一样抛出错误 “integer overflow”：`catch` 可以捕获它；没有地方捕获时，它会交给最近的 `Boundary`（见[错误](https://asuka.egoist.dev/zh/docs/language/errors#错误)）。对最小的 `int` 取负（`-x`）、取绝对值（`abs(x)`）、除以 `-1`，以及数组的 `sum()` 超出范围，也都一样。计数、大小或价格一旦溢出，就是一个在出错的地方暴露出来的 bug，而不是一个被悄悄存下来的错误数字。
+`int` 的取值范围是 −2⁶³ 到 2⁶³ − 1。`+`、`-`、`*`、`**` 的结果超出这个范围时，会像除以零（`/`、`%`）一样抛出错误 “integer overflow”：`catch` 可以捕获它；没有地方捕获时，它会交给最近的 `Boundary`（见[错误](https://asuka.egoist.dev/zh/docs/language/errors#错误)）。对最小的 `int` 取负（`-x`）、取绝对值（`abs(x)`）、除以 `-1`，以及数组的 `sum()` 超出范围，也都一样。计数、大小或价格一旦溢出，就是一个在出错的地方暴露出来的 bug，而不是一个被悄悄存下来的错误数字。每种整数类型都按同样的方式检查，只是用各自的范围：`u8` 的 `255 + 1` 会抛出错误。
 
 ```asuka
 let big = 9223372036854775807
@@ -360,7 +366,17 @@ let n = try big + 1 catch { 0 }               // 0：抛出了错误
 let next = big.addingChecked(1) ?? big          // 溢出时为 none：得到 big
 ```
 
-`&+`、`&-` 和 `&*` 则会回绕：结果超过最大的 `int` 时，按 64 位二进制补码的规则从最小值接着算下去（`9223372036854775807 &+ 1` 等于 `-9223372036854775808`）。哈希、校验和以及二进制协议需要的正是这种行为；`&+=`、`&-=` 和 `&*=` 是对应的赋值写法：
+超出 `int` 范围的数，可以用 `std/bigint` 的 `BigInt`：它是任意大小的整数，同样支持算术运算符和比较（见[标准库](https://asuka.egoist.dev/zh/docs/stdlib)）：
+
+```asuka
+import std/bigint.{BigInt}
+
+let big = BigInt.of(9223372036854775807)
+let past = big * big + BigInt.one           // 85070591730234615847396907784232501250
+let digits = "{BigInt.factorial(30)}"       // 265252859812191058636308480000000
+```
+
+`&+`、`&-` 和 `&*` 则会回绕：结果超过最大的 `int` 时，按 64 位二进制补码的规则从最小值接着算下去（`9223372036854775807 &+ 1` 等于 `-9223372036854775808`）；固定位宽的类型则在各自的位宽处回绕（`u8` 的 `255 &+ 1` 是 0）。哈希、校验和以及二进制协议需要的正是这种行为；`&+=`、`&-=` 和 `&*=` 是对应的赋值写法：
 
 ```asuka
 fn fnv1a(data: bytes) -> int {
@@ -373,20 +389,54 @@ fn fnv1a(data: bytes) -> int {
 }
 ```
 
-想把溢出当作一个值来处理时，用 `a.addingChecked(b)`、`subtractingChecked` 和 `multipliedChecked`：它们返回 `int?`，溢出时为 none。移位和按位运算符不会因为结果而抛出错误；对超出范围的浮点数调用 `int(x)`，得到离它最近的 `int`（NaN 得到 `0`）。
+想把溢出当作一个值来处理时，用 `a.addingChecked(b)`、`subtractingChecked` 和 `multipliedChecked`：它们返回 `int?`（对 `u8` 返回 `u8?`，依此类推），溢出时为 none。移位和按位运算符不会因为结果而抛出错误；对超出范围的浮点数调用 `int(x)`，得到离它最近的 `int`（NaN 得到 `0`）。
+
+#### 整数类型
+
+除了 `int`，还有固定位宽的整数，分有符号和无符号两种：
+
+| 类型 | 值 |
+|---|---|
+| `i8`、`i16`、`i32` | −2⁷ 到 2⁷ − 1、−2¹⁵ 到 2¹⁵ − 1、−2³¹ 到 2³¹ − 1 |
+| `int` | −2⁶³ 到 2⁶³ − 1（没有 `i64`：它就是 `int`） |
+| `u8`、`u16`、`u32`、`u64` | 0 到 2⁸ − 1（255）、2¹⁶ − 1、2³² − 1、2⁶⁴ − 1 |
+
+计数、索引、大小以及以分为单位的金额都用 `int`；其他类型留给本身就有固定位宽的东西：一个字节（`u8`）、像素的一个通道、文件格式或协议里的字段、哈希值、超出 `int` 范围的 ID（`u64`），以及 C 函数用到的值（`Int32` 就是 `i32`，见[在 Asuka 中调用 C](https://asuka.egoist.dev/zh/docs/c)）。每种类型都严格保持自己的范围：和 `int` 一样，算术结果超出范围就会抛出错误；JSON、CSV、TOML 和 SQLite 读进这种类型的值，也会经过同样的检查。
+
+整数字面量的类型由此处期望的类型决定，而且必须放得下：`let level: u8 = 200`、`level + 1`、`let big: u64 = 18446744073709551615`；`let x: u8 = 256` 和 `let y: u8 = -1` 会在写的地方报错。没有期望的类型时，它就是 `int`。
+
+类型不同的两个整数不能放在同一个运算符两边：`int` 和 `u8` 不行，就像 `int` 和 `float` 不行一样。`level` 是 `u8`、`offset` 是 `int` 时，`level + offset` 是一个错误（[mixed-numbers](https://asuka.egoist.dev/zh/docs/errors/mixed-numbers)），在需要 `int` 的地方传入 `u8` 也是。要用转换写明想要哪种：
+
+```asuka
+fn conversions(n: int, level: u8, ratio: float) -> [u8] {
+  let total = int(level) + n        // 扩宽：总是放得下
+  let a = u8(n)                     // n 放不下时是一个错误（"integer overflow"）
+  let b = u8(exactly: n) ?? 0       // 一个 u8?：放不下时为 none
+  let c = u8(truncating: n)         // 取低 8 位：u8(truncating: 300) 是 44，-1 得到 255
+  let d = u8(clamping: n)           // 取最接近的值：低于范围得 0，高于范围得 255
+  let e = u8(ratio)                 // 浮点数：向零取整，超出范围时取最接近的值
+  return [a, b, c, d, e, u8(clamping: total)]
+}
+```
+
+`u8.min` 和 `u8.max` 是类型的范围（`int.max` 是 9223372036854775807）；`u64.parse(text)` 从文本读出一个值，就像 `toInt()` 读出 `int` 一样（也支持 `radix:`），文本不是整数或放不下时返回 none。超过 `int` 最大值的 `u64`，在打印、解析、比较、除法和写入 JSON 时都按它本来的数值处理（`18446744073709551615`）。
+
+`-x` 和 `abs(x)` 只接受有符号整数：无符号整数没有负数（`0 &- x` 会回绕）。各种整数类型都有 `int` 的方法：`toString(radix:)`、`padded(width)`、`float()`、`abs()` 以及那几个 checked 方法；它们都能使用格式说明（`"{id:x}"`），按数值排序和哈希（可以作 map 和集合的键，在泛型里满足 `Comparable` 和 `Hashable`），也能构成范围：`for i in u16(0)..<count`。
+
+从 `bytes` 读出的字节是 `int`（`b[i]`，0 到 255），所以对它做算术不会在 8 位处回绕；`b.toArray()` 把这些字节作为 `[u8]` 返回，`bytes(xs)` 能从 `[u8]` 构造字节串，和从 `[int]` 构造一样。
 
 #### 内置方法
 
-字符串、bytes、数组、集合、map 和可选值都有方法。其中会修改值本身的方法（`push`、`insert`、`removeAt`、`removeWhere`、`pop`、`clear`、`sort`、`remove`）只能用在 `var` 或状态上：
+字符串、bytes、数组、集合、map 和可选值都有方法。其中会修改值本身的方法（`push`、`pushFirst`、`insert`、`removeAt`、`removeWhere`、`pop`、`popFirst`、`clear`、`sort`、`remove`）只能用在 `var` 或状态上：
 
 | 类型 | 方法 |
 |---|---|
-| `[T]` | `count()`、`count(where)`、`isEmpty()`、`first()`、`last()`、`get(i)`（返回 `T?`）、`push(x)`、`insert(x, at: i)`、`removeAt(i)`、`removeWhere(p)`、`pop()`、`clear()`、`map(f)`、`flatMap(f)`（把 `f` 返回的数组依次接起来）、`compactMap(f)`（`f` 的结果中去掉 none）、`filter(p)`、`reduce(initial, f)`、`any(p)`、`all(p)`、`index(p)`（返回 `int?`）、`find(p)`、`contains(x)`、`sum()`、`min()`、`max()`（返回 `T?`；`min(by:)`、`max(by:)` 接受一个“小于”比较）、`unique()`、`grouped(by: f)`（返回 `[K: [T]]`）、`chunked(n)`、`zip(other)`（两两配对，长度取较短的一方）、`reversed()`、`slice(from, to)`（省略 `to` 时到末尾）、`prefix(n)`、`suffix(n)`、`sorted()`、`sorted(by)`、`sort()`、`sort(by)`、`enumerated()`、`joined(separator:)`（用于字符串数组）、`+` |
-| `Set<T>` | `count()`、`isEmpty()`、`contains(x)`、`insert(x)`（返回是否新加入）、`remove(x)`（返回原本是否存在）、`union(s)`、`intersection(s)`、`subtracting(s)`、`isSubset(of: s)`、`isSuperset(of: s)`；`Set(xs)` 是数组中互不相同的元素，`Set<T>()` 是空集合 |
-| `[K: V]` | `m[k]`（返回 `V?`）、`m[k] = v`、`count()`、`isEmpty()`、`has(k)`、`get(k)`、`remove(k)`、`keys()`、`values()`（按插入顺序）、`mapValues(f)`、`filter((k, v) => …)` |
-| `string` | `count()`（字符数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s)`、`hasPrefix(s)`、`hasSuffix(s)`、`replace(old, new, count:)`（默认替换全部，count 指定次数）、`split(sep, count:)`、`fields()`（按空白分出的词）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（字节偏移，找不到时为 none）、`slice(from, to)`（按字符）、`byteSlice(from, to)`（按字节：即 find 给出的偏移）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toInt(radix:)`、`toFloat()`、`repeat(n)`、`chars()`、`reversed()`、`bytes()`、`+` |
-| `bytes` | `b[i]`（返回 `int`，取值 0 到 255；越界是一个错误）、`count()`、`isEmpty()`、`get(i)`（返回 `int?`）、`slice(from, to)`、`concat(b)`、`string()`（按 UTF-8 解码，无效的部分变成 U+FFFD）、`hex()` 和 `hex(separator)`（`"04 a1"`）；`bytes()` 是空的字节序列，`bytes([0x04, 0xa1])` 是这些字节，`s.bytes()` 是字符串的 UTF-8 字节 |
-| `int` | `float()`、`abs()`、`toString(radix:)`（`255.toString(radix: 16)` 是 `"ff"`）、`padded(width)`（`7.padded(2)` 是 `"07"`）、`addingChecked(o)`、`subtractingChecked(o)`、`multipliedChecked(o)`（返回 `int?`：溢出时为 none） |
+| `[T]` | `count()`、`count(where)`、`isEmpty()`、`first()`、`last()`、`get(i)`（返回 `T?`）、`push(x)`、`pushFirst(x)`、`insert(x, at: i)`、`removeAt(i)`、`removeWhere(p)`、`pop()`、`popFirst()`、`clear()`、`map(f)`、`flatMap(f)`（把 `f` 返回的数组依次接起来）、`compactMap(f)`（`f` 的结果中去掉 none）、`filter(p)`、`reduce(initial, f)`、`any(p)`、`all(p)`、`index(p)`（返回 `int?`）、`find(p)`、`contains(x)`、`sum()`、`min()`、`max()`（返回 `T?`；`min(by:)`、`max(by:)` 接受一个“小于”比较，`min(key:)`、`max(key:)` 按键比较）、`unique()`、`grouped(by: f)`（返回 `[K: [T]]`）、`chunked(n)`、`zip(other)`（两两配对，长度取较短的一方）、`reversed()`、`slice(from, to)`（省略 `to` 时到末尾）、`prefix(n)`、`suffix(n)`、`sorted()`、`sorted(by)`、`sorted(key:, descending:)`、`sort()`、`sort(by)`、`sort(key:, descending:)`、`enumerated()`、`joined(separator:)`（用于字符串数组）、`lazy()`（得到 `Seq<T>`）、`+` |
+| `Set<T>` | `count()`、`isEmpty()`、`contains(x)`、`insert(x)`（返回是否新加入）、`remove(x)`（返回原本是否存在）、`union(s)`、`intersection(s)`、`subtracting(s)`、`isSubset(of: s)`、`isSuperset(of: s)`、`lazy()`；`Set(xs)` 是数组中互不相同的元素，`Set<T>()` 是空集合 |
+| `[K: V]` | `m[k]`（返回 `V?`）、`m[k] = v`、`count()`、`isEmpty()`、`has(k)`、`get(k)`、`remove(k)`、`keys()`、`values()`（按插入顺序）、`mapValues(f)`、`filter((k, v) => …)`、`lazy()`（它的 `(key, value)` 对） |
+| `string` | `count()`（字符数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s, ignoreCase:)`、`hasPrefix(s, ignoreCase:)`、`hasSuffix(s, ignoreCase:)`、`equals(s, ignoreCase:)`、`compare(s, ignoreCase:)`（负数、零或正数）、`foldCase()`、`replace(old, new, count:)`（默认替换全部，count 指定次数）、`split(sep, count:)`、`fields()`（按空白分出的词）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（字节偏移，找不到时为 none）、`slice(from, to)`（按字符）、`byteSlice(from, to)`（按字节：即 find 给出的偏移）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toInt(radix:)`、`toFloat()`、`repeat(n)`、`chars()`、`graphemes()`、`lazy()`（它的字符，一个 `Seq<string>`）、`reversed()`、`bytes()`、`+` |
+| `bytes` | `b[i]`（返回 `int`，取值 0 到 255；越界是一个错误）、`count()`、`isEmpty()`、`get(i)`（返回 `int?`）、`slice(from, to)`、`concat(b)`、`string()`（按 UTF-8 解码，无效的部分变成 U+FFFD）、`hex()` 和 `hex(separator)`（`"04 a1"`）、`toArray()`（返回 `[u8]`）；`bytes()` 是空的字节序列，`bytes([0x04, 0xa1])` 是这些字节，`bytes(xs)` 是一个 `[u8]` 里的字节，`s.bytes()` 是字符串的 UTF-8 字节 |
+| `int`、`i8` … `u64` | `float()`、`abs()`（用于有符号整数）、`toString(radix:)`（`255.toString(radix: 16)` 是 `"ff"`）、`padded(width)`（`7.padded(2)` 是 `"07"`）、`addingChecked(o)`、`subtractingChecked(o)`、`multipliedChecked(o)`（返回 `int?`，对 `u8` 返回 `u8?`：溢出时为 none）；`T.min`、`T.max`、`T.parse(text, radix:)`（返回 `T?`） |
 | `float` | `fixed(digits)`、`rounded()`、`floor()`、`ceil()`、`int()`（向零取整）、`abs()` |
 | `Color` | `opacity(a)`：以原本不透明度的 a 倍绘制（语义颜色仍然是语义颜色）；`hex()`（`"#0a84ff"`；语义颜色则是它的名字：`".accent"`） |
 | `Duration` | `nanoseconds()`、`milliseconds()`（整数）、`seconds()`、`minutes()`、`hours()`（浮点数）、`rounded(to:)`、`truncated(to:)`、`+`、`-`、`* n`（整数或浮点数：`1.5 * 1h`）、`/ n`、`/ d`（另一个 Duration：它能容纳几个，一个浮点数） |
@@ -425,11 +475,73 @@ fn report(sales: [Sale]) -> [string] {
 
 `unique()` 让每个元素只保留一次，留在它第一次出现的位置；`grouped(by:)` 的键也按第一次出现的顺序排列。两者都要求值是 `Hashable` 的（`grouped` 要求的是键）。`min()` 和 `max()` 的排序方式与 `sorted()` 相同，遇到相等的元素时取第一个。`chunked(n)` 的 `n` 小于 1 时会报错，就像 `xs[i]` 越界一样。
 
+`sorted(key:)` 按函数给每个元素算出的键排序，键必须是 `Comparable` 的，并且每个元素只算一次：`people.sorted(key: p => p.age)`。加上 `descending: true` 就从大到小排；无论哪个方向，排序都是稳定的，键相等的元素保持原来的先后顺序。`sort(key:)` 原地排序一个 `var`，`min(key:)` 和 `max(key:)` 则给出键最小或最大的那个元素（键相等时取第一个）。如果顺序不是由某一个键决定的，就用 `sorted(by:)`，传入一个“小于”比较。
+
+```asuka
+struct Player {
+  name: string
+  score: int
+  joined: int
+}
+
+fn ranking(players: [Player]) -> [string] {
+  let best = players.sorted(key: p => p.score, descending: true)
+  let newest = players.max(key: p => p.joined)
+  return best.map(p => p.name) + [newest?.name ?? ""]
+}
+```
+
+数组同时也是双端队列：`pushFirst(x)` 和 `popFirst()` 修改数组的开头，就像 `push(x)` 和 `pop()` 修改末尾一样，每次都是 O(1)（均摊：数组在开头被修改过之后，会在开头预留空间）；`insert(x, at: 0)` 和 `removeAt(0)` 也一样。在其他位置插入或删除时，只移动较短一侧的元素。所以队列就是一个数组：`queue.push(job)`，再 `queue.popFirst()`。
+
 `toInt(radix:)` 按 2 到 36 之间的进制读取整个字符串，字母大小写均可，前面可以带正负号（`"ff".toInt(radix: 16)` 是 255，`"-101".toInt(radix: 2)` 是 -5），读不出来时返回 none；`toString(radix:)` 则把整数按进制写出来，字母用小写。进制不在 2 到 36 之间时会报错。
 
-`min`、`max`、`abs`、`float(n)` 和 `int(x)` 是函数；其余的（`math.sqrt`、`math.pow`、`math.pi` ……）在 `std/math` 里。
+`min`、`max`、`abs`、`float(n)`、`int(x)` 以及其他整数类型的转换（`u8(x)`）都是函数；其余的（`math.sqrt`、`math.pow`、`math.pi` ……）在 `std/math` 里。
+
+`upper()` 和 `lower()` 按 Unicode 的规则转换每个字母，在任何语言下结果都一样：`"straße".upper()` 是 `"STRASSE"`，单词末尾的 `Σ` 转成小写是 `ς`。`ignoreCase: true` 比较的是两个字符串的大小写折叠（`foldCase()`：`"Straße"` 和 `"STRASSE"` 都折叠成 `"strasse"`），和 Go 的 `strings.EqualFold`、Python 的 `casefold` 一样；匹配必须从完整的字符开始、在完整的字符结束，所以 `"ß"` 并不以 `"s"` 开头。这些方法都不遵循某种语言自己的规则：土耳其语的无点 ı 和带点 İ 和其他地方一样转换（`"İ".lower()` 是 `i` 加一个组合用的点），文本也不会做规范化（`"é"` 和 `e` 加组合重音符是不同的）。不区分大小写地给名字排序，可以把 `compare` 交给 `sorted(by:)`；`foldCase()` 能生成忽略大小写的键：
+
+```asuka
+fn byName(names: [string]) -> [string] = names.sorted(by: (a, b) => a.compare(b, ignoreCase: true) < 0)
+
+fn sameUser(a: string, b: string) -> bool = a.trim().equals(b.trim(), ignoreCase: true)
+
+fn isMarkdown(path: string) -> bool = path.hasSuffix(".md", ignoreCase: true)
+```
+
+`count()` 和 `chars()` 按码位计数；`graphemes()` 给出读者眼中的一个个字符，依据的是 Unicode 的文本分段规则（UAX #29）：`"e\u{301}"`、一面国旗（`"🇯🇵"`）、用 ZWJ 连起来的家庭 emoji 都各算一个。
 
 `toInt()` 和 `toFloat()` 读的是整个字符串，读不出来就是 none：可选的正负号，接着是数字，前后不能有别的东西（`" 12"` 是 none，先 `trim()`）。`toInt()` 只认整数（`"+7"`、`"-42"`）；`toFloat()` 还认小数和指数（`"2.5"`、`".5"`、`"1e-3"`），以及浮点数打印出来的样子（`"Infinity"`、`"NaN"`）。无论用户的语言是什么，小数点都是 `.`。
+
+#### 惰性序列
+
+`xs.lazy()` 把数组的元素变成一个 `Seq<T>`，也就是惰性序列。在它上面调用 `map`、`filter`、`take` 等方法，只会得到另一个 `Seq`，什么也不计算；等到有东西读取它时（`for`、`toArray()`、`first()`、`reduce` ……），才一个一个地算出元素，每个元素一次走完所有步骤，中间不产生数组。因此，对一百万个元素做一串操作、最后只留三个时，只会计算这三个以及找到它们所需的那些元素；序列也可以没有尽头：
+
+```asuka
+fn squaresUnder(limit: int) -> [int] = Seq(from: 1).map(n => n * n).takeWhile(n => n < limit).toArray()
+
+fn firstLong(lines: [string]) -> string? = lines.lazy().map(l => l.trim()).find(where: l => l.count() > 80)
+
+fn fibonacci() -> Seq<int> = Seq(state: (0, 1), next: s => (s.0, (s.1, s.0 + s.1)))
+```
+
+map 的 `lazy()` 给出它的 `(key, value)` 对，集合的给出元素，字符串的给出字符，区间的（`(0..<n).lazy()`）给出其中的数字，而且不会先创建数组。`Seq(…)` 则用一个函数生成序列：
+
+| 写法 | 元素 |
+|---|---|
+| `Seq(from: n, by: step)` | `n`、`n + step`、……，没有尽头；不写 `by` 时步长是 1 |
+| `Seq(first: x, next: f)` | `x`、`f(x)`、`f(f(x))`、……，直到 `f` 返回 none |
+| `Seq(state: s, next: f)` | `f(s)` 返回下一个元素和下一个状态 `(x, s2)`，结束时返回 none |
+| `Seq(repeating: x, count: n)` | `x` 重复 `n` 次；不写 `count` 时没有尽头 |
+
+| | 方法 |
+|---|---|
+| 得到新的 `Seq` | `map(f)`、`filter(p)`、`compactMap(f)`、`flatMap(f)`（把 `f` 返回的各个 `Seq` 的元素依次接起来）、`enumerated()`、`zip(other)`、`take(n)`、`skip(n)`、`takeWhile(p)`、`skipWhile(p)`、`chunked(n)`、`windows(n)`（每相邻的 `n` 个：`[1, 2, 3]` 的 `windows(2)` 是 `[1, 2]`、`[2, 3]`）、`onEach(f)`（读到每个元素时调用 `f`）、`unique()`、`concat(other)` |
+| 读取它 | `toArray()`、`toSet()`、`toMap()`（由 `(key, value)` 对组成）、`count()`、`count(where:)`、`first()`、`last()`、`find(where:)`、`any(where:)`、`all(where:)`、`contains(x)`、`reduce(initial, f)`、`sum()`、`min()`、`max()`、`min(by:)`、`max(by:)`、`min(key:)`、`max(key:)`、`joined(separator:)` |
+
+`take`、`find`、`first`、`any` 和 `all` 一旦得到答案就不再往下取元素，后面的元素根本不会被计算。每次读取 `Seq` 都从头开始（用 `for` 遍历两次，就会计算两次）。它保存的是创建时数据源的值，和其他值一样：之后再修改那个数组，不会影响它。
+
+步骤里的函数要等到读取序列时才运行，因此不能抛出错误：需要抛出时，在 `for` 里做，或者用数组的 `map`。读取时立即调用的函数（`reduce`、`find(where:)`、`any`、`count(where:)`、`min(key:)` ……）可以抛出，这时调用会把它抛出的错误原样抛出，和数组的方法一样。
+
+优先队列，以及按键的顺序保存的 map 和集合，是 `std/collections` 的 `Heap`、`SortedMap` 和 `SortedSet`（见[标准库](https://asuka.egoist.dev/zh/docs/stdlib)）。
 
 #### 值语义
 
@@ -552,7 +664,7 @@ match line {
 }
 ```
 
-结构体和枚举可以从它们的方法获得运算符：`fn add(o: T) -> R` 就是 `a + b`，`fn sub(o: T) -> R`（或 `minus`）就是 `a - b`，`fn mul(o: T) -> R`（或 `times`）就是 `a * b`，`fn div(o: T) -> R`（或 `quo`）就是 `a / b`，`fn rem(o: T) -> R` 就是 `a % b`，`fn neg() -> R` 就是 `-a`，`fn compare(o: T) -> int`（负数、零或正数）就是 `<`、`<=`、`>` 和 `>=`，也让 `sorted()` 和 `T: Comparable` 可用（见[函数](https://asuka.egoist.dev/zh/docs/language/functions#接口与泛型)）。`T` 可以和值本身的类型不同（`Money * int`）；一个运算符有两个方法名时，两个方法各接受一种 `T`：`Decimal` 的 `mul(o: Decimal)` 和 `times(n: int)` 分别对应 `price * rate` 和 `price * 3`。反过来的顺序（`3 * price`）不会自动推出。只要方法返回的还是 `a` 的类型，`a += b` 就是借助这些方法的 `a = a + b`（`-=`、`*=`、`/=`、`%=` 也一样），可以用在 var、状态、字段和元素上（状态只改变一次）。`std/time` 的 `Time` 就是这样加上一个 `Duration`、减去另一个 `Time` 的：
+结构体和枚举可以从它们的方法获得运算符：`fn add(o: T) -> R`（或 `plus`）就是 `a + b`，`fn sub(o: T) -> R`（或 `minus`）就是 `a - b`，`fn mul(o: T) -> R`（或 `times`）就是 `a * b`，`fn div(o: T) -> R`（或 `quo`）就是 `a / b`，`fn rem(o: T) -> R` 就是 `a % b`，`fn pow(o: T) -> R` 就是 `a ** b`，`fn neg() -> R` 就是 `-a`，`fn compare(o: T) -> int`（负数、零或正数）就是 `<`、`<=`、`>` 和 `>=`，也让 `sorted()` 和 `T: Comparable` 可用（见[函数](https://asuka.egoist.dev/zh/docs/language/functions#接口与泛型)）。`T` 可以和值本身的类型不同（`Money * int`）；一个运算符有两个方法名时，两个方法各接受一种 `T`：`Decimal` 的 `mul(o: Decimal)` 和 `times(n: int)` 分别对应 `price * rate` 和 `price * 3`。反过来的顺序（`3 * price`）不会自动推出。只要方法返回的还是 `a` 的类型，`a += b` 就是借助这些方法的 `a = a + b`（`-=`、`*=`、`/=`、`%=`、`**=` 也一样），可以用在 var、状态、字段和元素上（状态只改变一次）。`std/time` 的 `Time` 就是这样加上一个 `Duration`、减去另一个 `Time` 的：
 
 ```asuka
 struct Money {
@@ -823,9 +935,9 @@ let icon = match (online, unread) {
 
 带类型的名字（`c: Circle`）用来判断接口值是什么类型：值是这个类型时才匹配，并以这个类型绑定它；结构体的模式（`Circle(radius)`）和写明类型的枚举成员（`Unit.big(n)`）也是这样。对接口值的 `match` 要以 `_` 结尾，详见[接口与泛型](https://asuka.egoist.dev/zh/docs/language/functions#接口与泛型)：`if let c: Circle = shape { … }`、`let sq: Square = shape else { return }`。
 
-`for` 可以遍历数组、集合、map 的 `(key, value)` 对，或者一个区间：`a..<b` 是从 `a` 到 `b` 但不包括 `b` 的整数，`a..b` 则包括 `b`（`0..<3` 就是 `[0, 1, 2]`；`for` 遍历区间时不会真的创建数组）。`while cond { … }` 在 cond 成立时一直循环；`break` 跳出循环，`continue` 直接进入下一轮。
+`for` 可以遍历数组、集合、map 的 `(key, value)` 对、惰性序列（`Seq`，见[值与类型](https://asuka.egoist.dev/zh/docs/language/types#惰性序列)），或者一个区间：`a..<b` 是从 `a` 到 `b` 但不包括 `b` 的整数，`a..b` 则包括 `b`（`0..<3` 就是 `[0, 1, 2]`；`for` 遍历区间时不会真的创建数组）。`while cond { … }` 在 cond 成立时一直循环；`break` 跳出循环，`continue` 直接进入下一轮。
 
-`for` 也可以遍历你自己定义的类型的值：一种是迭代器，它的类型有 `mut fn next() -> T?`（`for` 在它的一份副本上反复调用，直到得到 `none`）；另一种是序列，它的 `fn iter()` 返回一个迭代器（`for` 只调用一次）。prelude 里的 `Iterator<T>` 就表示这样的类型，可以用作约束：`fn sum<I: Iterator<int>>(xs: I) -> int`。
+`for` 也可以遍历你自己定义的类型的值：一种是迭代器，它的类型有 `mut fn next() -> T?`（`for` 在它的一份副本上反复调用，直到得到 `none`）；另一种是序列，它的 `fn iter()` 返回一个迭代器或一个 `Seq`（`for` 只调用一次）。prelude 里的 `Iterator<T>` 就表示这样的类型，可以用作约束：`fn sum<I: Iterator<int>>(xs: I) -> int`。迭代器返回 `none` 就表示结束，所以元素本身可能是 none（`T?`）的类型应当返回 `Seq`：`fn iter() -> Seq<int?> = slots.lazy()`。
 
 ```asuka
 struct Node {
@@ -1985,6 +2097,28 @@ test "archiving removes the row" {
 
 `asuka test` 不需要设备就能运行包里的测试：它会像各平台那样对视图进行布局，按每个字符固定宽度来测量文字，而且只有在没有其他东西可以运行时，时间才会前进（测试里的 `sleep(5s)` 不花任何时间）。`mount` 返回应用，供你驱动和检查：`tap`、`longPress`、`type(_, into:)`、`submit`、`toggle`、`slide`、`select`、`swipe(_, action:)`、`refresh`、`scrollTo`、`back`、`dismiss`、`pickDate`、`pickColor`、`expect`、`expectNo`、`texts()`、`disabled(text)`、`until`、`waitFor`、`idle`；`in(.navigationBar)`、`in(.sidebar)` 和 `nextTo(label)` 缩小文字所指的范围；有路由器时，还有 `mount(…, at: "/inbox/1")`、`href`、`history()`、`goBack()`、`goForward()`。详见[测试](https://asuka.egoist.dev/zh/docs/testing)。
 
+带参数的测试是属性测试，`asuka test` 会为参数生成值来运行它；失败的输入会被缩减成仍然失败的最简单的那组。`bench "name" { … }` 是基准测试，由 `asuka test --bench` 计时；其中的 `measure { … }` 是要计时的部分，写在准备工作之后；`keep(x)` 防止计算结果被编译器优化掉。`expectSnapshot(value)` 和 `expectInlineSnapshot(value, "…")` 把一个值打印出来的样子和它的快照比较，快照由 `asuka test` 写入。
+
+```asuka
+fn fib(n: int) -> int {
+  if n < 2 { return n }
+  return fib(n - 1) + fib(n - 2)
+}
+
+test "fib grows" (n: int) {
+  if n < 2 || n > 30 { return }
+  expect(fib(n) >= fib(n - 1))
+}
+
+test "the first ones" {
+  expectInlineSnapshot([fib(1), fib(2), fib(3), fib(10)], "[1, 1, 2, 55]")
+}
+
+bench "fib 20" {
+  keep(fib(20))
+}
+```
+
 ## 诊断代码
 
 - argument-count: 调用时参数太多或太少. 按函数的声明传参；只有带默认值的参数可以省略。
@@ -2009,7 +2143,8 @@ test "archiving removes the row" {
 - format-spec: 插值的格式和它的值对不上. 按值的类型写格式，参照消息的说明：`{n:>6}`、`{x:.2f}`、`{n:#x}`、`{name:<12}`。
 - group-not-calls: `load (…)` 里的元素不都是调用. 只把调用放进组里（`load (api.user(id), api.posts(id))`），把值传给这些调用，或者放在 load 旁边。
 - import-cycle: 相互导入的包. 把两者都需要的部分移到第三个包里，让它们都导入它。
-- int-overflow: 超出所属类型范围的整数字面量. 换一个范围内的数，改用更宽的类型（`u16`、`int`、`u64`）或 `float`；需要精确的大数时用 `std/decimal`。
+- inline-snapshot: 内联快照不是直接写在调用里的字符串. 把快照写成字符串字面量，或者干脆省略（`expectInlineSnapshot(value)`），让 `asuka test` 在第一次运行时写上。
+- int-overflow: 超出所属类型范围的整数字面量. 换一个范围内的数，改用更宽的类型（`u16`、`int`、`u64`）或 `float`；需要超出 64 位的精确整数时，用 `std/bigint` 的 `BigInt`（`BigInt.parse("9223372036854775808")!`）。
 - interface-not-satisfied: 类型声明了某个 interface，却没有实现它. 按 interface 的签名补上缺少的方法（消息里列出了它们）。
 - internal-error: 编译器自身的错误. 请到 https://github.com/egoist/asuka/issues 报告（附上程序，或者能重现问题的最小程序）。
 - invalid-catalog: 不是有效消息文件的目录. 在消息指出的位置修正文件：每个键对应一个字符串，占位符与源语言一致。
@@ -2087,6 +2222,7 @@ test "archiving removes the row" {
 - spawn-captures-state: `spawn` 读取或修改了状态，或者用了不是值的东西. 先把状态读进一个 `let` 再传进去；把 `spawn` 的返回值赋给状态。
 - statement-in-view: 组件的视图之间写了语句. 把语句放进处理函数（`on press { … }`）、fn、task 或 effect；派生的值用 `let`。
 - syntax-error: 解析器在这里期望的是别的内容. 看消息里的“expected …, found …”：补上它期望的内容，或在它指出的位置闭合未闭合的部分。
+- test-parameter: 测试参数的类型是 asuka test 无法生成的. 让测试接收它所关心的数据（一个 id、一个由字段组成的 struct），其余的东西在测试体里用这些数据构造出来。
 - too-large: 函数太大，字节码装不下. 拆分函数，或者把数据放进文件（`embed.json`）而不是写成字面量。
 - tr-in-package: 在不是应用的包里使用了 `tr`. 把文本作为参数接收，由应用传入 `tr.key()`。
 - type-arguments: 类型参数的个数不对. 按声明给出相同个数的类型：`Set<int>`、`Page<Item>`。

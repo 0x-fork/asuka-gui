@@ -13,7 +13,7 @@
 // core prints. files are the file system's changes (fs.js): the page's
 // in, the job's out.
 
-import { wasi } from "./wasi.js";
+import { wasi, logLine } from "./wasi.js";
 import { stackRoom } from "./stack.js";
 import { zoneName } from "./zone.js";
 import * as fs from "./fs.js";
@@ -84,6 +84,8 @@ export function serve(port) {
         crash_alive: (p, n) => (alive.has(new TextDecoder().decode(new Uint8Array(memory().buffer, p, n))) ? 1 : 0),
         // asuka dev's frames are the page's core's.
         dev_send: () => 0,
+        // std/log's lines: the worker's console.
+        log_write: (level, p, n) => logLine(level, new TextDecoder().decode(new Uint8Array(memory().buffer, p, n))),
         sqlite_available: () => (sqlite ? 1 : 0),
         sqlite_send(id) {
           if (!id) return;

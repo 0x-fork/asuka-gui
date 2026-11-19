@@ -1,6 +1,7 @@
 package ir
 
 import (
+	"slices"
 	"strings"
 
 	bc "github.com/egoist/asuka/lang/bytecode"
@@ -26,6 +27,11 @@ type fb struct {
 	// tooBig: the function was said to need more than the bytecode holds
 	// (registers, an operand), once.
 	tooBig bool
+
+	// bench: a bench's function, whose register benchN holds how many
+	// times to run what it measures (testing.go).
+	bench  bool
+	benchN int
 
 	// inout: the place an inout builtin's call changes, when it's x?.f's
 	// (places.go), and what's done with its result there.
@@ -182,6 +188,19 @@ func (b *fb) release(mark int) {
 		b.free[k] = append(b.free[k], r)
 	}
 	b.temps = b.temps[:mark]
+}
+
+// dropTemps clears the reference temps made since mark, but keep's:
+// what computing a change's value or arguments read on its way (a
+// struct's field, for xs[i] = xs[j] in a mut fn). Held to the
+// statement's end, each would be another reference to the place about
+// to change, which would then be copied, not changed in place.
+func (b *fb) dropTemps(mark int, keep ...int) {
+	for _, r := range b.temps[mark:] {
+		if b.f.Kinds[r] == bc.KRef && !slices.Contains(keep, r) {
+			b.emit(op("CLR"), r)
+		}
+	}
 }
 
 // local is a register that lives until its block ends.

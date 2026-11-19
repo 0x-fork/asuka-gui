@@ -1,0 +1,3 @@
+name = "std/semver"
+version = "0.1.0"
+description = "Semantic versions: parsed, ordered by precedence, and matched against npm's ranges"

@@ -47,6 +47,10 @@ static ak_val encode(ak_val *args, uint32_t n) {
 // module (std/sqlite's rows).
 void ak_vm_json_types(ak_json_types *out) { *out = (ak_json_types){shape, cases, running()}; }
 
+// ak_vm_module_json_types is likewise m's, whatever is running (asuka
+// test's generated values, made before a test's function runs).
+void ak_vm_module_json_types(ak_module *m, ak_json_types *out) { *out = (ak_json_types){shape, cases, m}; }
+
 void ak_vm_json_init(void) {
 	ak_builtin_register("json.decode", decode);
 	ak_builtin_register("json.encode", encode);

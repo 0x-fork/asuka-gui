@@ -37,7 +37,7 @@ func TestTable(t *testing.T) {
 				t.Errorf("%s: no %s text", c.Name, lang)
 			}
 		}
-		if c.Internal != (c.Wrong == "") || c.Internal != (c.Right == "") {
+		if c.Internal != (c.WrongSource() == "") || c.Internal != (c.Right == "") {
 			t.Errorf("%s: examples, unless it's internal", c.Name)
 		}
 	}
@@ -90,16 +90,16 @@ func TestExamples(t *testing.T) {
 			if c.RunTime {
 				// What the core reports as it runs: both compile clean
 				// (TestRunTimeExamples runs them).
-				for _, src := range []string{c.Wrong, c.Right} {
+				for _, src := range []string{c.WrongSource(), c.Right} {
 					for _, d := range check(t, src) {
 						t.Errorf("%s", d)
 					}
 				}
 				return
 			}
-			got := check(t, c.Wrong)
+			got := check(t, c.WrongSource())
 			if len(got) == 0 {
-				t.Errorf("the wrong example compiles:\n%.400s", c.Wrong)
+				t.Errorf("the wrong example compiles:\n%.400s", c.WrongSource())
 			}
 			for _, d := range got {
 				if !strings.HasPrefix(d, c.Name+": ") {
@@ -206,7 +206,7 @@ func TestRunTimeExamples(t *testing.T) {
 		}
 		t.Run(c.Name, func(t *testing.T) {
 			t.Parallel()
-			codes, out := runTime(t, runner, c.Wrong)
+			codes, out := runTime(t, runner, c.WrongSource())
 			if len(codes) != 1 || codes[0] != c.Name {
 				t.Errorf("the wrong example reported %v:\n%s", codes, out)
 			}

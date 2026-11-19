@@ -20,10 +20,16 @@ typedef struct {
 
 // The standard library's functions, NULL-terminated.
 extern const ak_lib_entry ak_lib[];
+// Strings by Unicode's tables (upper, graphemes, ignoreCase: lib.c),
+// registered when a build names them (link.c's AK_USES_UNICODE).
+extern const ak_lib_entry ak_lib_unicode[];
 // Streams' (stream.c).
 extern const ak_lib_entry ak_stream_lib[];
 // The sized integers' (int.c).
 extern const ak_lib_entry ak_int_lib[];
+// Lazy sequences' and ordering by a key's (seq.c), registered when a
+// build names them (link.c's AK_USES_SEQ).
+extern const ak_lib_entry ak_seq_lib[];
 
 // ak_spawn_elsewhere, when set, runs a spawn's closure c elsewhere (the
 // web's workers: abi/web.c) and settles f (of kind k) once it's done;
