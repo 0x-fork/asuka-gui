@@ -609,9 +609,7 @@ static AK_ALWAYS_INLINE uint64_t hash_enter(walk_frame *f, uint64_t h, ak_obj *o
 		return mix(h, ak_str_hash((ak_str *)o));
 	case AK_TAG_BYTES: {
 		const ak_bytes *b = (const ak_bytes *)o;
-		uint64_t x = 0xcbf29ce484222325ull;  // FNV-1a
-		for (uint32_t i = 0; i < b->len; i++) x = (x ^ b->data[i]) * 0x100000001b3ull;
-		return mix(h, x);
+		return mix(h, ak_hash_bytes(b->data, b->len));
 	}
 	case AK_TAG_BOX: {
 		ak_box *b = (ak_box *)o;

@@ -110,25 +110,7 @@ static bool space(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\
 
 // str.replace(s, old, new, count): the first count olds (all when count
 // < 0) replaced with new.
-static ak_val str_replace(ak_val *args, uint32_t n) {
-	int64_t count = n > 3 ? A(3).i : -1;
-	if (count < 0) RET_P(ak_str_replace(STR(0), STR(1), STR(2)));
-	ak_str *s = STR(0), *old = STR(1);
-	if (old->len == 0 || count == 0) RET_P(ak_retain(s));
-	ak_strb b = {0};
-	uint32_t i = 0;
-	while (i < s->len) {
-		if (count > 0 && i + old->len <= s->len && memcmp(s->data + i, old->data, old->len) == 0) {
-			ak_strb_str(&b, STR(2));
-			i += old->len;
-			count--;
-		} else {
-			ak_strb_cstr(&b, s->data + i, 1);
-			i++;
-		}
-	}
-	RET_P(ak_strb_finish(&b));
-}
+static ak_val str_replace(ak_val *args, uint32_t n) { RET_P(ak_str_replace_n(STR(0), STR(1), STR(2), n > 3 ? A(3).i : -1)); }
 
 // str.split(s, sep, count): at most count parts (all when count < 0), the
 // last holding the rest.
@@ -153,21 +135,7 @@ static ak_val str_split(ak_val *args, uint32_t n) {
 		}
 		RET_P(a);
 	}
-	ak_arr *a = ak_arr_new(AK_K_REF, NULL, 4);
-	a->h.flags = 1;
-	if (count == 0) RET_P(a);
-	uint32_t start = 0;
-	for (uint32_t i = 0; i + sep->len <= s->len && a->len + 1 < count;) {
-		if (memcmp(s->data + i, sep->data, sep->len) == 0) {
-			ak_arr_push(&a, (ak_val){.p = ak_str_new(s->data + start, i - start)});
-			i += sep->len;
-			start = i;
-		} else {
-			i++;
-		}
-	}
-	ak_arr_push(&a, (ak_val){.p = ak_str_new(s->data + start, s->len - start)});
-	RET_P(a);
+	RET_P(ak_str_split_n(s, sep, count));
 }
 
 static ak_val str_trim_prefix(ak_val *args, uint32_t n) {
@@ -224,8 +192,8 @@ static ak_val str_lines(ak_val *args, uint32_t n) {
 	ak_arr *a = ak_arr_new(AK_K_REF, NULL, 0);
 	a->h.flags = 1;
 	uint32_t start = 0;
-	for (uint32_t i = 0; i < s->len; i++) {
-		if (s->data[i] != '\n') continue;
+	for (const char *nl; start < s->len && (nl = memchr(s->data + start, '\n', s->len - start));) {
+		uint32_t i = (uint32_t)(nl - s->data);
 		uint32_t end = i > start && s->data[i - 1] == '\r' ? i - 1 : i;
 		ak_arr_push(&a, (ak_val){.p = ak_str_new(s->data + start, end - start)});
 		start = i + 1;
@@ -240,11 +208,9 @@ static ak_val str_lines(ak_val *args, uint32_t n) {
 
 static ak_val str_find_last(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
-	ak_str *s = STR(0), *sub = STR(1);
-	if (sub->len > s->len) RET_P(NULL);
-	for (uint32_t i = s->len - sub->len + 1; i-- > 0;)
-		if (memcmp(s->data + i, sub->data, sub->len) == 0) RET_P(ak_box_new(AK_K_INT, (ak_val){.i = i}));
-	RET_P(NULL);
+	int64_t i = ak_str_find_last(STR(0), STR(1));
+	if (i < 0) RET_P(NULL);
+	RET_P(ak_box_new(AK_K_INT, (ak_val){.i = i}));
 }
 
 // str.find_any(s, chars): the byte offset of the first character of s
@@ -319,17 +285,7 @@ static ak_val str_find(ak_val *args, uint32_t n) {
 }
 
 // str.slice(s, from, to): character offsets, clamped.
-static int64_t char_to_byte(const ak_str *s, int64_t c) {
-	if (c <= 0) return 0;
-	int64_t k = 0;
-	for (uint32_t i = 0; i < s->len; i++) {
-		if (((uint8_t)s->data[i] & 0xc0) != 0x80) {
-			if (k == c) return i;
-			k++;
-		}
-	}
-	return s->len;
-}
+static int64_t char_to_byte(const ak_str *s, int64_t c) { return ak_str_char_offset(s, c); }
 
 static ak_val str_slice(ak_val *args, uint32_t n) {
 	ak_str *s = STR(0);
