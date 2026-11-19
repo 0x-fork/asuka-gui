@@ -4,7 +4,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
+	"github.com/egoist/asuka/internal/pkgs"
 	"github.com/egoist/asuka/lang/check"
 	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/syntax"
@@ -215,6 +217,32 @@ func DirPlatforms(dir string, opts *Options, ps []target.Platform) (*Platforms, 
 	if opts == nil {
 		opts = &Options{}
 	}
+	// What each platform's compilation would find again: the
+	// dependencies, the catalogs, the files.
+	if len(ps) > 1 {
+		o := *opts
+		if o.Resolve == nil || (o.Catalogs == nil && !o.NoCatalogs) {
+			project, err := filepath.Abs(dir)
+			if err == nil && o.Project != "" {
+				project, err = filepath.Abs(o.Project)
+			}
+			if err != nil {
+				return nil, err
+			}
+			if o.Resolve == nil {
+				o.Resolve = pkgs.NewImports(project).Resolve
+			}
+			if o.Catalogs == nil && !o.NoCatalogs {
+				if o.Catalogs, err = CatalogsOf(project); err != nil {
+					return nil, err
+				}
+			}
+		}
+		if o.disk == nil {
+			o.disk = &diskCache{dirs: map[string]dirListing{}, files: map[string]fileRead{}}
+		}
+		opts = &o
+	}
 	out := &Platforms{Results: map[target.Platform]*Result{}}
 	type seen struct {
 		i  int
@@ -231,12 +259,35 @@ func DirPlatforms(dir string, opts *Options, ps []target.Platform) (*Platforms, 
 		idx[key] = &seen{len(*list), []target.Platform{p}}
 		*list = append(*list, PlatformDiagnostic{Diagnostic: d})
 	}
+	// The first platform's compilation says whether the program has
+	// platforms' files; then the rest compile at once, each on its own
+	// (a loader, a checker of its own), and are taken in order.
+	results := make([]*Result, len(ps))
+	errs := make([]error, len(ps))
+	compileFor := func(i int) {
+		o := *opts
+		o.Platform = ps[i]
+		results[i], errs[i] = Dir(dir, &o)
+	}
+	compileFor(0)
+	if len(ps) > 1 && (errs[0] != nil || results[0].PlatformFiles) {
+		var wg sync.WaitGroup
+		for i := 1; i < len(ps); i++ {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				compileFor(i)
+			}(i)
+		}
+		wg.Wait()
+	}
 	var checked []target.Platform
 	var firstErr error
-	for _, p := range ps {
-		o := *opts
-		o.Platform = p
-		res, err := Dir(dir, &o)
+	for i, p := range ps {
+		res, err := results[i], errs[i]
+		if res == nil && err == nil {
+			break // not compiled: the first's files are every platform's
+		}
 		if err != nil {
 			if firstErr == nil {
 				firstErr = err
