@@ -1173,29 +1173,58 @@ static ak_str *map_case(ak_str *s, ak_case_kind k) {
 		if (k == AK_CASE_UPPER) return map_ascii(s, true);
 		return map_ascii(s, false);  // folding ASCII is lowering it
 	}
+	// What a code point maps to is written as it's found; what doesn't
+	// change is copied a run at a time (as it was: what isn't UTF-8 too),
+	// and an ASCII byte is mapped where it is, without a decode.
 	ak_strb b = {0};
 	bool changed = false;
+	uint8_t lo = k == AK_CASE_UPPER ? 'a' : 'A';
+	size_t run = 0;  // the unchanged bytes not yet copied start here
 	for (size_t i = 0; i < s->len;) {
+		uint8_t a = (uint8_t)s->data[i];
+		if (a < 0x80) {
+			if ((uint8_t)(a - lo) >= 26) {
+				i++;
+				continue;
+			}
+			// A letter that changes: the run before it copied, then the
+			// ASCII from it on mapped in one go.
+			if (!changed) {
+				changed = true;
+				ak_strb_room(&b, s->len + s->len / 8);
+			}
+			ak_strb_cstr(&b, s->data + run, i - run);
+			size_t j = i;
+			while (j < s->len && (uint8_t)s->data[j] < 0x80) j++;
+			char *w = ak_strb_room(&b, j - i);
+			for (size_t q = i; q < j; q++) {
+				uint8_t c = (uint8_t)s->data[q];
+				w[q - i] = (char)((uint8_t)(c - lo) < 26 ? c ^ 0x20 : c);
+			}
+			ak_strb_wrote(&b, j - i);
+			i = run = j;
+			continue;
+		}
 		size_t from = i;
 		uint32_t c = ak_utf8_decode(s->data, s->len, &i);
 		uint32_t out[3];
 		int m;
 		if (k == AK_CASE_LOWER && c == 0x3a3 && final_sigma(s->data, s->len, from, i)) out[0] = 0x3c2, m = 1;
 		else m = ak_case_map(c, k, out);
-		if (m == 1 && out[0] == c) {
-			ak_strb_cstr(&b, s->data + from, i - from);  // as it was (what isn't UTF-8 too)
-			continue;
+		if (m == 1 && out[0] == c) continue;
+		if (!changed) {
+			changed = true;
+			ak_strb_room(&b, s->len + s->len / 8);
 		}
-		changed = true;
-		for (int q = 0; q < m; q++) {
-			char u[4];
-			ak_strb_cstr(&b, u, ak_utf8_encode(out[q], u));
-		}
+		ak_strb_cstr(&b, s->data + run, from - run);
+		char *w = ak_strb_room(&b, 12);
+		size_t n = 0;
+		for (int q = 0; q < m; q++) n += ak_utf8_encode(out[q], w + n);
+		ak_strb_wrote(&b, n);
+		run = i;
 	}
-	if (!changed) {
-		ak_buf_free(&b.b);
-		return ak_retain(s);
-	}
+	if (!changed) return ak_retain(s);
+	ak_strb_cstr(&b, s->data + run, s->len - run);
 	return ak_strb_finish(&b);
 }
 
@@ -1266,10 +1295,73 @@ static uint32_t *fold_all(const ak_str *s, uint32_t *stack, size_t cap, size_t *
 	return out;
 }
 
+// ascii_lower is c lowered if it's an ASCII letter: folding an ASCII
+// character (a string all ASCII has only those) is lowering it.
+static inline uint8_t ascii_lower(uint8_t c) { return (uint8_t)(c - 'A') < 26 ? c | 0x20 : c; }
+
+// find_ascii_fold is find_fold of two strings all ASCII: a byte each, no
+// folding made (a contains's text of megabytes would be four times that
+// as code points).
+static bool find_ascii_fold(const ak_str *s, const ak_str *sub, int where) {
+	size_t n = s->len, m = sub->len;
+	if (m > n) return false;
+	const uint8_t *a = (const uint8_t *)s->data, *b = (const uint8_t *)sub->data;
+	size_t from = where == 2 ? n - m : 0, to = where == 0 ? n - m : from;
+	uint8_t first = ascii_lower(b[0]);
+	for (size_t i = from; i <= to; i++) {
+		if (ascii_lower(a[i]) != first) continue;
+		size_t k = 1;
+		while (k < m && ascii_lower(a[i + k]) == ascii_lower(b[k])) k++;
+		if (k == m) return true;
+	}
+	return false;
+}
+
+// SUFFIX_MAX: the longest sub (in bytes) suffix_fold folds s's end for;
+// its folding is at most three code points a byte, and s's a code point
+// more's.
+#define SUFFIX_MAX 64
+
+// suffix_fold is find_fold at the end, for a sub shorter than SUFFIX_MAX:
+// only s's last code points folded, as many as sub's folding has (or a
+// code point's more), read backwards.
+static bool suffix_fold(const ak_str *s, const ak_str *sub) {
+	uint32_t sb[3 * SUFFIX_MAX + 3], sa[3 * SUFFIX_MAX + 6];
+	size_t m;
+	uint32_t *b = fold_all(sub, sb, AK_LEN(sb), &m);
+	bool found = false;
+	// s's foldings into sa's end, a code point at a time from s's.
+	size_t n = 0, end = s->len;
+	while (n < m && end > 0) {
+		size_t st = end - 1;
+		while (st > 0 && ((uint8_t)s->data[st] & 0xc0) == 0x80 && end - st < 4) st--;
+		size_t i = st;
+		uint32_t c = ak_utf8_decode(s->data, end, &i), m3[3];
+		if (i != end) {
+			// Not one code point (what isn't UTF-8): a byte.
+			st = end - 1;
+			i = st;
+			c = ak_utf8_decode(s->data, end, &i);
+		}
+		int k = ak_case_map(c, AK_CASE_FOLD, m3);
+		for (int q = k; q-- > 0;) sa[AK_LEN(sa) - ++n] = m3[q] | (q == 0 ? FOLD_START : 0);
+		end = st;
+	}
+	if (n >= m) {
+		const uint32_t *a = sa + AK_LEN(sa) - m;
+		size_t k = 0;
+		while (k < m && (a[k] & ~FOLD_START) == (b[k] & ~FOLD_START)) k++;
+		found = k == m && (a[0] & FOLD_START);
+	}
+	if (b != sb) ak_free(b);
+	return found;
+}
+
 // find_fold: whether sub's folding is in s's at a code point's start
 // (where is anywhere, or 1: at the start, 2: at the end), ending at one.
 static bool find_fold(const ak_str *s, const ak_str *sub, int where) {
 	if (sub->len == 0) return true;
+	if (ak_str_ascii(s) && ak_str_ascii(sub)) return find_ascii_fold(s, sub, where);
 	uint32_t sa[256], sb[64];
 	size_t n, m;
 	uint32_t *a = fold_all(s, sa, AK_LEN(sa), &n), *b = fold_all(sub, sb, AK_LEN(sb), &m);
@@ -1286,7 +1378,12 @@ static bool find_fold(const ak_str *s, const ak_str *sub, int where) {
 	return found;
 }
 
-bool ak_str_has_suffix_fold(const ak_str *s, const ak_str *p) { return find_fold(s, p, 2); }
+bool ak_str_has_suffix_fold(const ak_str *s, const ak_str *p) {
+	if (p->len == 0) return true;
+	if (ak_str_ascii(s) && ak_str_ascii(p)) return find_ascii_fold(s, p, 2);
+	if (p->len < SUFFIX_MAX) return suffix_fold(s, p);
+	return find_fold(s, p, 2);
+}
 bool ak_str_contains_fold(const ak_str *s, const ak_str *sub) { return find_fold(s, sub, 0); }
 
 static bool is_space(char c) { return ak_space(c); }
