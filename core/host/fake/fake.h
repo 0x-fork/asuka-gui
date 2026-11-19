@@ -162,6 +162,11 @@ struct ak_fake {
 	ak_buf pending;           // events waiting for run_posted: u32 length, bytes
 	uint32_t next_cell;
 	ak_id key;  // the window in use: 0 the root
+	// What the tests look for at every settle, kept as it changes rather
+	// than found by scanning every view: the root, how many views are
+	// presented, how many are lists.
+	ak_id root_id;
+	uint32_t npresented, nlists;
 	ak_buf ev;  // an event being sent
 	AK_VEC(ak_fake_history) histories;
 	bool popping;  // a Location event is being sent: the browser went there already
