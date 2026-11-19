@@ -205,7 +205,7 @@ test "adding counts" {
 
 ### 文件、包与导入
 
-源文件以 `.asuka` 结尾。一个目录里的源文件构成一个**包**：同一个包的文件不需要导入，就能看到彼此的声明。加上 `pub` 的声明才对其他包可见。
+源文件以 `.asuka` 结尾。一个目录里的源文件构成一个**包**：同一个包的文件不需要导入，就能看到彼此的声明。加上 `pub` 的声明才对其他包可见，而 `private` 让声明只属于它所在的文件（见[私有的声明](https://asuka.egoist.dev/zh/docs/language/declarations#私有的声明)）。
 
 ```asuka
 import std/http                 // 标准库
@@ -289,6 +289,7 @@ fn main() {
 | `float` | 64 位浮点数：`3.14`、`1e-3` |
 | `bool` | `true`、`false` |
 | `string` | UTF-8 文本：`"Hello, {name}"` |
+| `char` | 一个 Unicode 码位（标量值）：`'a'`、`'\n'`、`'\u{1F600}'` |
 | `bytes` | 原始字节 |
 | `[T]` | 数组：`[1, 2, 3]`、`[]` |
 | `[K: V]` | map，按插入顺序保存：`["a": 1]`、`[:]` |
@@ -300,7 +301,7 @@ fn main() {
 | `Length` | `100`（点）、`50%`、`.auto` |
 | `fn(A) -> B` | 函数和闭包 |
 
-字符串的花括号里可以放任意表达式：`"{count} items"`、`"Total: {price * qty}"`。`\{` 表示一个花括号字符；`r"…"` 是原始字符串，没有转义也没有插值；要在原始字符串里写 `"`，用 `r#"…"#`：它在一个 `"` 后面跟着与开头同样多的 `#` 时才结束（`r#"say "hi""#`、`r##"a "# b"##`）。`"""…"""` 可以跨多行（第一行为空时不算在内，结束引号所在那一行的缩进也会去掉），里面的 `"` 和 `""` 照原样保留；`r"""…"""` 是跨多行的原始字符串。不是数字、布尔值或字符串的值，显示为文本时是这样的：枚举成员显示为它的名字，可选值显示为 `none` 或其中的值，错误显示为它的消息，颜色按写法显示（`#0a84ff`、`.accent`），时长以毫秒显示（`1500ms`），其他值显示为 JSON。JSON 表示不了的值也按同样的方式写出：元组写成括号里的各个元素，每个元素的写法和数组元素一样（`(1,"a","red")`）；键不是字符串的 map，每个键按它自己的写法写出（`{1:"a"}`）；函数没有文本形式，显示为它的类型（`<fn(int) -> int>`）。
+字符串的花括号里可以放任意表达式：`"{count} items"`、`"Total: {price * qty}"`。`\{` 表示一个花括号字符；`r"…"` 是原始字符串，没有转义也没有插值；要在原始字符串里写 `"`，用 `r#"…"#`：它在一个 `"` 后面跟着与开头同样多的 `#` 时才结束（`r#"say "hi""#`、`r##"a "# b"##`）。`"""…"""` 可以跨多行（第一行为空时不算在内，结束引号所在那一行的缩进也会去掉），里面的 `"` 和 `""` 照原样保留；`r"""…"""` 是跨多行的原始字符串。不是数字、布尔值或字符串的值，显示为文本时是这样的：类型有自己的 `description()` 时用它（见[声明](https://asuka.egoist.dev/zh/docs/language/declarations#相等哈希文本和-json)），枚举成员显示为它的名字，可选值显示为 `none` 或其中的值，错误显示为它的消息，颜色按写法显示（`#0a84ff`、`.accent`），时长以毫秒显示（`1500ms`），其他值显示为 JSON。JSON 表示不了的值也按同样的方式写出：元组写成括号里的各个元素，每个元素的写法和数组元素一样（`(1,"a","red")`）；键不是字符串的 map，每个键按它自己的写法写出（`{1:"a"}`）；函数没有文本形式，显示为它的类型（`<fn(int) -> int>`）。
 
 插值可以像 Python 和 Rust 那样，在冒号后面说明值怎么写出来：`"{price:>8.2f}"`。格式是 `[[fill]align][sign][#][0][width][,|_][.precision][type]`：`<`、`>`、`^` 表示在宽度内左对齐、右对齐、居中，前面可以写填充字符（默认是空格）；`+` 让正数也带上加号；`0` 在符号之后用 0 补足宽度；`,` 或 `_` 给整数（以及浮点数的整数部分）分组；`.2` 是浮点数小数点后的位数，对文本来说是最多保留的字符数。类型可以是 `x`、`X`、`o`、`b`，把整数写成十六进制、八进制或二进制（加上 `#` 会在前面写出 `0x`、`0o`、`0b`），也可以是 `f`、`e`、`%`，把数字写成定点小数、指数形式或百分比。数字默认右对齐，其他值按它的文本左对齐，只能指定填充字符、对齐、宽度和精度。格式由编译器读取：和值对不上的格式会在写的地方报错（[format-spec](https://asuka.egoist.dev/zh/docs/errors/format-spec)）。
 
@@ -314,6 +315,8 @@ let table = row("asuka", 12500, 0.4) // asuka     12,500   40.0%
 ```
 
 宽度按字符（码位）计算，而不是按终端里显示的宽度。要按终端的列数算（中日韩文字和 emoji 占两列），用 `std/term` 的 `textWidth`、`padEnd` 和 `fit`，见[程序](https://asuka.egoist.dev/zh/docs/programs#对齐的表格)。
+
+`print(a, b, c)` 把各个值按插值显示的样子写成标准输出（应用的日志）上的一行，值之间用空格隔开；`eprint` 则写到标准错误。和 Swift 的 `print` 一样，值后面可以加 `separator:`（值之间写什么）和 `terminator:`（最后写什么，默认是换行）：`print(x, y, separator: ", ")`、`print("Saving…", terminator: "")`。
 
 元组的元素可以按位置读取：`pair.0`、`pair.1`；如果元组存在 `var` 里，也可以就地修改（`pair.0 += 1`）。写一个元组没有的位置（对一对值写 `pair.2`）是编译错误。也可以把元组拆开：`let (count, label) = pair`、`for (i, x) in xs.enumerated()`，或者在 `match` 里用元组模式（见[控制流](https://asuka.egoist.dev/zh/docs/language/control-flow#控制流)）。
 
@@ -434,7 +437,7 @@ fn conversions(n: int, level: u8, ratio: float) -> [u8] {
 | `[T]` | `count()`、`count(where)`、`isEmpty()`、`first()`、`last()`、`get(i)`（返回 `T?`）、`push(x)`、`pushFirst(x)`、`insert(x, at: i)`、`removeAt(i)`、`removeWhere(p)`、`pop()`、`popFirst()`、`clear()`、`map(f)`、`flatMap(f)`（把 `f` 返回的数组依次接起来）、`compactMap(f)`（`f` 的结果中去掉 none）、`filter(p)`、`reduce(initial, f)`、`any(p)`、`all(p)`、`index(p)`（返回 `int?`）、`find(p)`、`contains(x)`、`sum()`、`min()`、`max()`（返回 `T?`；`min(by:)`、`max(by:)` 接受一个“小于”比较，`min(key:)`、`max(key:)` 按键比较）、`unique()`、`grouped(by: f)`（返回 `[K: [T]]`）、`chunked(n)`、`zip(other)`（两两配对，长度取较短的一方）、`reversed()`、`slice(from, to)`（省略 `to` 时到末尾）、`prefix(n)`、`suffix(n)`、`sorted()`、`sorted(by)`、`sorted(key:, descending:)`、`sort()`、`sort(by)`、`sort(key:, descending:)`、`enumerated()`、`joined(separator:)`（用于字符串数组）、`lazy()`（得到 `Seq<T>`）、`+` |
 | `Set<T>` | `count()`、`isEmpty()`、`contains(x)`、`insert(x)`（返回是否新加入）、`remove(x)`（返回原本是否存在）、`union(s)`、`intersection(s)`、`subtracting(s)`、`isSubset(of: s)`、`isSuperset(of: s)`、`lazy()`；`Set(xs)` 是数组中互不相同的元素，`Set<T>()` 是空集合 |
 | `[K: V]` | `m[k]`（返回 `V?`）、`m[k] = v`、`count()`、`isEmpty()`、`has(k)`、`get(k)`、`remove(k)`、`keys()`、`values()`（按插入顺序）、`mapValues(f)`、`filter((k, v) => …)`、`lazy()`（它的 `(key, value)` 对） |
-| `string` | `count()`（字符数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s, ignoreCase:)`、`hasPrefix(s, ignoreCase:)`、`hasSuffix(s, ignoreCase:)`、`equals(s, ignoreCase:)`、`compare(s, ignoreCase:)`（负数、零或正数）、`foldCase()`、`replace(old, new, count:)`（默认替换全部，count 指定次数）、`split(sep, count:)`、`fields()`（按空白分出的词）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（字节偏移，找不到时为 none）、`slice(from, to)`（按字符）、`byteSlice(from, to)`（按字节：即 find 给出的偏移）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toInt(radix:)`、`toFloat()`、`repeat(n)`、`chars()`、`graphemes()`、`lazy()`（它的字符，一个 `Seq<string>`）、`reversed()`、`bytes()`、`+` |
+| `string` | `count()`（字符数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s, ignoreCase:)`、`hasPrefix(s, ignoreCase:)`、`hasSuffix(s, ignoreCase:)`、`equals(s, ignoreCase:)`、`compare(s, ignoreCase:)`（负数、零或正数）、`foldCase()`、`replace(old, new, count:)`（默认替换全部，count 指定次数）、`split(sep, count:)`、`fields()`（按空白分出的词）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（字节偏移，找不到时为 none）、`slice(from, to)`（按字符）、`byteSlice(from, to)`（按字节：即 find 给出的偏移）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toInt(radix:)`、`toFloat()`、`repeat(n)`、`chars()`、`graphemes()`、`lazy()`（它的 char，一个 `Seq<char>`）、`reversed()`、`bytes()`、`+` |
 | `bytes` | `b[i]`（返回 `int`，取值 0 到 255；越界是一个错误）、`count()`、`isEmpty()`、`get(i)`（返回 `int?`）、`slice(from, to)`、`concat(b)`、`string()`（按 UTF-8 解码，无效的部分变成 U+FFFD）、`hex()` 和 `hex(separator)`（`"04 a1"`）、`toArray()`（返回 `[u8]`）；`bytes()` 是空的字节序列，`bytes([0x04, 0xa1])` 是这些字节，`bytes(xs)` 是一个 `[u8]` 里的字节，`s.bytes()` 是字符串的 UTF-8 字节 |
 | `int`、`i8` … `u64` | `float()`、`abs()`（用于有符号整数）、`toString(radix:)`（`255.toString(radix: 16)` 是 `"ff"`）、`padded(width)`（`7.padded(2)` 是 `"07"`）、`addingChecked(o)`、`subtractingChecked(o)`、`multipliedChecked(o)`（返回 `int?`，对 `u8` 返回 `u8?`：溢出时为 none）；`T.min`、`T.max`、`T.parse(text, radix:)`（返回 `T?`） |
 | `float` | `fixed(digits)`、`rounded()`、`floor()`、`ceil()`、`int()`（向零取整）、`abs()` |
@@ -509,6 +512,32 @@ fn isMarkdown(path: string) -> bool = path.hasSuffix(".md", ignoreCase: true)
 
 `count()` 和 `chars()` 按码位计数；`graphemes()` 给出读者眼中的一个个字符，依据的是 Unicode 的文本分段规则（UAX #29）：`"e\u{301}"`、一面国旗（`"🇯🇵"`）、用 ZWJ 连起来的家庭 emoji 都各算一个。
 
+`char` 是一个码位，和 Rust 的 char 一样：`for c in s` 遍历的、`s.chars()` 按顺序给出的就是它（由几个码位组成的字素，比如 `e` 加重音符号，是字符串：用 `graphemes()`）。它写在单引号里（`'a'`、`'\''`、`'\u{301}'`），按码位比较和排序，可以做 map 的键；打印出来就是它自己，在 JSON 里是只有一个字符的字符串。`c.isLetter()`、`isDigit()`、`isNumber()`、`isWhitespace()`、`isUpper()`、`isLower()`、`isPunctuation()` 和 `isSymbol()` 读取 Unicode 的分类，适用于任何文字（`'٣'.isDigit()`）；`upper()` 和 `lower()` 在结果仍是一个 char 时做映射（`'ß'.upper()` 仍是 `'ß'`：`"ß".upper()` 才是 `"SS"`）；`code()` 是它的编号，`char(n)` 给出编号为 n 的 char（n 不是码位时是错误）。`s + c` 和 `s += c` 把一个 char 加到字符串上。
+
+```asuka
+fn initials(name: string) -> string {
+  var out = ""
+  var start = true
+  for c in name {
+    if c.isWhitespace() {
+      start = true
+    } else if start {
+      out += c.upper()
+      start = false
+    }
+  }
+  return out
+}
+
+fn digits(s: string) -> int = s.chars().filter(c => c.isDigit()).count()
+
+fn kind(c: char) -> string = match c {
+  'a' | 'e' | 'i' | 'o' | 'u' => "vowel"
+  _ => if c.isLetter() { "letter" } else { "other" }
+}
+```
+
+
 `toInt()` 和 `toFloat()` 读的是整个字符串，读不出来就是 none：可选的正负号，接着是数字，前后不能有别的东西（`" 12"` 是 none，先 `trim()`）。`toInt()` 只认整数（`"+7"`、`"-42"`）；`toFloat()` 还认小数和指数（`"2.5"`、`".5"`、`"1e-3"`），以及浮点数打印出来的样子（`"Infinity"`、`"NaN"`）。无论用户的语言是什么，小数点都是 `.`。
 
 #### 惰性序列
@@ -572,7 +601,7 @@ let first = items.first()!        // 为 none 时会崩溃：只在确定不可�
 
 ```asuka
 let pi = 3.14159             // 常量
-var total = 0                // 变量（在函数和处理函数中）
+var total = 0                // 变量
 state count = 0              // 状态：界面会跟随变化的值
 state shown = count          // 在被写入之前跟随 count：跟随的状态
 ```
@@ -580,6 +609,26 @@ state shown = count          // 在被写入之前跟随 count：跟随的状态
 类型会自动推断；在有助于阅读的地方可以写出来：`let ids: [int] = []`。
 
 `type` 在文件顶层给类型起一个名字：`type Pair<A, B> = (A, B)`、`type Check = fn(string) -> bool`。它只是同一个类型的别名：`Pair<int, string>` 就是 `(int, string)`。
+
+#### 文件里的值
+
+在文件顶层，`let` 是常量，`state` 是应用的状态（见 [Stores](https://asuka.egoist.dev/zh/docs/language/stores)），`var` 则是包里的变量：包里的任何代码都可以读取和修改它；如果是 `pub` 的，其他包也可以（`util.hits += 1`）。var 不是状态：读取它时拿到的是它当时的值，显示它的视图不会因为它改变而更新（那是 `state` 的用途）。它适合放视图不显示的东西：缓存、计数器、程序的设置。
+
+```asuka
+var cache: [int: int] = [:]
+var lookups = 0
+
+fn fib(n: int) -> int {
+  lookups += 1
+  if n < 2 { return n }
+  if let v = cache[n] { return v }
+  let v = fib(n - 1) + fib(n - 2)
+  cache[n] = v
+  return v
+}
+```
+
+文件里的值在其他任何代码运行之前创建：一个包的值先于导入它的包的值，每个值都在它的初始化表达式读取的那些值之后创建（直接或间接读取自己是错误）。var 和局部变量一样原地修改：`cache[n] = v` 不会复制任何东西。它和状态一样属于主线程：`spawn` 的代码块和 [worker](https://asuka.egoist.dev/zh/docs/language/async#worker) 都不能使用它，也不能调用使用它的函数（编译器会指出是哪个）；先把它读出来，再把值传进去。`asuka dev` 重新加载应用时，文件里的 var 会和 let 一样按初始化表达式重新创建；状态则保留原来的值。
 
 #### 结构体
 
@@ -654,6 +703,23 @@ let page = Page(items: [1, 2, 3])     // 一个 Page<int>
 let empty = Page<string>(items: [])   // 没有别的信息可推断时，直接写出来
 ```
 
+泛型结构体的 `static fn` 先接受结构体的类型参数，再接受它自己的：可以从参数推断（`Stack.of([1, 2])`），可以从期望的类型推断（`let s: Stack<string> = .empty()`），也可以和结构体的名字写在一起（`Stack<int>.empty()`），或者写在函数名后面（`Stack.empty<int>()`，结构体的类型参数在前）。泛型结构体的 `let` 是所有类型共用的一个常量，所以它的类型不能提到类型参数：需要提到的常量（比如一个空的 `Stack<T>`）就写成 `static fn`。
+
+```asuka
+struct Stack<T> {
+  items: [T] = []
+  let limit = 1000
+
+  static fn of(items: [T]) -> Stack<T> = Stack(items: items)
+  static fn empty() -> Stack<T> = Stack()
+}
+
+let numbers = Stack.of([1, 2, 3])       // 一个 Stack<int>
+let names: Stack<string> = .empty()     // 从期望的类型推断
+let flags = Stack.empty<bool>()         // 直接写出
+let most = Stack.limit
+```
+
 在 `match` 和 `if let` 里，结构体模式按字段名匹配结构体的字段：单写一个 `y` 会绑定字段 `y`，`y: py` 把它绑定为 `py`，`x: 0` 匹配一个值，没有写出的字段匹配任何值。模式可以嵌套：
 
 ```asuka
@@ -688,6 +754,62 @@ fn withTip(bill: Money) -> Money {
 ```
 
 结构体不会逐个字段地排序：它的顺序是什么意思，由它的 `compare` 来决定。
+
+#### 相等、哈希、文本和 JSON
+
+结构体默认按字段判断相等（`==`）、作为 map 的键计算哈希、打印和写成 JSON；枚举则按它的 case 和负载。类型可以用语言会调用的方法来改变这些行为，就像 `compare` 定义了 `<` 一样：
+
+| 方法 | 谁会调用它 |
+|---|---|
+| `fn equals(other: T) -> bool` | `==` 和 `!=`、map 的键、set 的元素、`contains`、数组的 `==` |
+| `fn hash() -> int` | map 的键和 set 的元素：相等的值哈希必须相同，所以有自己的 `equals` 的类型也要有自己的 `hash`（`hashOf(x)` 给出一个值的哈希，用来组合） |
+| `fn description() -> string` | 插值、`print`、快照 |
+| `fn toJSON() -> J` | `json.encode`，以及它所在的值的文本：`J` 是 JSON 能表示的任何类型 |
+| `static fn fromJSON(json: J) throws -> T` | `json.decode`；它抛出的错误就是解码的错误 |
+
+```asuka
+import std/json
+
+struct Tag {
+  name: string
+  color: string = "gray"
+
+  fn equals(other: Tag) -> bool = name.lower() == other.name.lower()
+  fn hash() -> int = hashOf(name.lower())
+  fn description() -> string = "#{name}"
+  fn toJSON() -> string = name
+  static fn fromJSON(json: string) throws -> Tag = Tag(name: json)
+}
+
+let same = Tag(name: "Work") == Tag(name: "work", color: "red")  // true
+let label = "{Tag(name: "home")}"                                 // #home
+let text = json.encode([Tag(name: "a")])                          // ["a"]
+```
+
+无论值放在哪里，这些方法都会被用到，包括在数组、map 和其他结构体里面。有了它们，一个按字段含义判断相等的类型（不区分大小写的名字、不计顺序的集合）就可以做 map 的键；一个持有函数（比如排序方式）的类型，也能按它持有的内容判断相等、计算哈希和写成 JSON。泛型类型可以在它所在包的扩展里提供这些方法，只对类型参数满足扩展约束（`Equatable`、`Hashable`、`Comparable`）的那些类型生效：std/collections 的 `Heap<T>` 在 `T` 是 Hashable 时可以比较相等，在 `T` 是 Comparable 时可以从 JSON 读取。这些方法不能是 `async`、`mut` 或 private 的；没有负载的枚举只能有自己的 `description`（它按 case 判断相等和写出）。方法的签名不是语言所调用的那样时，编译器会指出（[special-method](https://asuka.egoist.dev/zh/docs/errors/special-method)）。
+
+#### 私有的声明
+
+`private` 让一个声明只属于它所在的文件：文件里的 `fn`、`let`、`var`、struct、enum、interface 或 type，以及结构体或枚举的字段、方法、`static fn` 和常量。这个文件里的代码（它的类型的方法、它的函数、它的扩展）可以照常使用它；其他文件不能用它的名字，只有这个包的测试文件（`name_test.asuka`）例外，因为它们要测试内部的东西。没写 `pub` 的属于整个包；写了 `private` 的只属于这个文件。
+
+```asuka
+pub struct Counter {
+  private hits: [string: int] = [:]
+
+  mut fn add(word: string) { hits[word, default: 0] += 1 }
+  fn top() -> string? = best(hits)
+}
+
+private fn best(counts: [string: int]) -> string? {
+  var found: (string, int)? = none
+  for (w, n) in counts {
+    if found == none || n > found!.1 { found = (w, n) }
+  }
+  return found?.0
+}
+```
+
+在别的文件里创建结构体时，私有字段不能给出，所以每个私有字段都需要默认值（`Counter()`）；有私有字段没有默认值的结构体只能在它自己的文件里创建，也就是通过它的 static fn，由它们来维护结构体的规则（比如 `Decimal` 的系数没有末尾的零）。私有方法不会成为运算符（`add`、`compare`），也不会让它的类型具备某个接口，因为这些在哪里都会被用到。
 
 #### 扩展
 
@@ -857,7 +979,7 @@ let areas = shapes.map(s => s.area())
 
 接口可以要求一个 `mut fn`（比如 prelude 里的 `Iterator<T>` 要求的 `mut fn next() -> T?`）：类型的 `mut fn` 满足它，签名相同的 `fn` 也满足它。反过来，`mut fn` 不能满足接口里的普通 `fn`，因为后者可以在任何值上调用。类型也可以通过[扩展](https://asuka.egoist.dev/zh/docs/language/declarations#扩展)添加的方法获得接口，前提是这些扩展在当前位置可见。
 
-泛型函数和泛型类型可以接收类型参数。类型参数的约束可以是程序自己的接口，也可以是 `Equatable`（能用 `==` 比较的类型：内置的值，以及各部分都能比较的结构体、枚举、元组、数组、map 和可选值）、`Comparable`（能用 `<` 排序的类型：整数、浮点数、字符串、时长、按成员顺序排序的不携带值的枚举，以及带有 `fn compare(other: T) -> int` 的结构体和枚举；结构体不会逐个字段地排序）和 `Hashable`（能做 map 键的类型：除浮点数以外的内置值，以及由它们组成的结构体、枚举、元组、可选值、数组、map 和集合，见[值与类型](https://asuka.egoist.dev/zh/docs/language/types#值与类型)），多个约束用 `&` 连接。类型实参必须具备的东西，泛型代码里它的值也都能用：接口的方法和字段会针对每一个编译出的具体类型直接调用。
+泛型函数和泛型类型可以接收类型参数。类型参数的约束可以是程序自己的接口，也可以是 `Equatable`（能用 `==` 比较的类型：内置的值，以及各部分都能比较、或有自己的 `equals` 的结构体、枚举、元组、数组、map 和可选值）、`Comparable`（能用 `<` 排序的类型：整数、浮点数、字符串、时长、按成员顺序排序的不携带值的枚举，以及带有 `fn compare(other: T) -> int` 的结构体和枚举；结构体不会逐个字段地排序）和 `Hashable`（能做 map 键的类型：除浮点数以外的内置值，以及由它们组成、或有自己的 `hash` 的结构体、枚举、元组、可选值、数组、map 和集合，见[值与类型](https://asuka.egoist.dev/zh/docs/language/types#值与类型)和[相等、哈希、文本和 JSON](https://asuka.egoist.dev/zh/docs/language/declarations#相等哈希文本和-json)），多个约束用 `&` 连接。类型实参必须具备的东西，泛型代码里它的值也都能用：接口的方法和字段会针对每一个编译出的具体类型直接调用。
 
 接口的方法也可以带方法体，这样的方法由接口提供。一个类型只要具备那些没有方法体的方法，就实现了这个接口；对于接口提供的方法，如果类型自己声明了签名相同的方法，就用它自己的，否则用接口的。在接口提供的方法里，`self` 就是这个接口的值，接口的方法和字段可以直接用名字访问：
 
@@ -899,7 +1021,7 @@ let sq: Square = shape else { return }
 
 模式里的类型必须实现了这个接口（没有 `area()` 的 `Point` 不可能是 `Shape`），而不携带值的枚举只有在声明了这个接口时（`enum Unit: Shape`）才算实现了它。具体类型的值不需要判断：拿 `c: Circle` 去匹配一个 `Circle` 会报错。对类型参数的值做这种判断时，结果在函数针对每个类型编译时就确定了，不可能匹配的分支不会出现在程序里。`catch e: ParseError` 也是同样的判断，只不过判断的是 `Error`（见[错误](https://asuka.egoist.dev/zh/docs/language/errors)）。
 
-泛型函数和泛型类型可以接收类型参数。类型参数的约束可以是程序自己的接口，也可以是 `Equatable`（能用 `==` 比较的类型：内置的值，以及各部分都能比较的结构体、枚举、元组、数组、map 和可选值）、`Comparable`（能用 `<` 排序的类型：整数、浮点数、字符串、时长、按成员顺序排序的不携带值的枚举，以及带有 `fn compare(other: T) -> int` 的结构体和枚举；结构体不会逐个字段地排序）和 `Hashable`（能做 map 键的类型：除浮点数以外的内置值，以及由它们组成的结构体、枚举、元组和可选值，见[值与类型](https://asuka.egoist.dev/zh/docs/language/types#值与类型)），多个约束用 `&` 连接。类型实参必须具备的东西，泛型代码里它的值也都能用：接口的方法和字段会针对每一个编译出的具体类型直接调用。
+泛型函数和泛型类型可以接收类型参数。类型参数的约束可以是程序自己的接口，也可以是 `Equatable`（能用 `==` 比较的类型：内置的值，以及各部分都能比较、或有自己的 `equals` 的结构体、枚举、元组、数组、map 和可选值）、`Comparable`（能用 `<` 排序的类型：整数、浮点数、字符串、时长、按成员顺序排序的不携带值的枚举，以及带有 `fn compare(other: T) -> int` 的结构体和枚举；结构体不会逐个字段地排序）和 `Hashable`（能做 map 键的类型：除浮点数以外的内置值，以及由它们组成的结构体、枚举、元组和可选值，见[值与类型](https://asuka.egoist.dev/zh/docs/language/types#值与类型)），多个约束用 `&` 连接。类型实参必须具备的东西，泛型代码里它的值也都能用：接口的方法和字段会针对每一个编译出的具体类型直接调用。
 
 ```asuka
 fn sortByArea<T: Shape>(xs: [T]) -> [T] = xs.sorted((a, b) => a.area() < b.area())
@@ -935,7 +1057,7 @@ let icon = match (online, unread) {
 
 带类型的名字（`c: Circle`）用来判断接口值是什么类型：值是这个类型时才匹配，并以这个类型绑定它；结构体的模式（`Circle(radius)`）和写明类型的枚举成员（`Unit.big(n)`）也是这样。对接口值的 `match` 要以 `_` 结尾，详见[接口与泛型](https://asuka.egoist.dev/zh/docs/language/functions#接口与泛型)：`if let c: Circle = shape { … }`、`let sq: Square = shape else { return }`。
 
-`for` 可以遍历数组、集合、map 的 `(key, value)` 对、惰性序列（`Seq`，见[值与类型](https://asuka.egoist.dev/zh/docs/language/types#惰性序列)），或者一个区间：`a..<b` 是从 `a` 到 `b` 但不包括 `b` 的整数，`a..b` 则包括 `b`（`0..<3` 就是 `[0, 1, 2]`；`for` 遍历区间时不会真的创建数组）。`while cond { … }` 在 cond 成立时一直循环；`break` 跳出循环，`continue` 直接进入下一轮。
+`for` 可以遍历数组、集合、map 的 `(key, value)` 对、字符串的 char（`for c in name`）、惰性序列（`Seq`，见[值与类型](https://asuka.egoist.dev/zh/docs/language/types#惰性序列)），或者一个区间：`a..<b` 是从 `a` 到 `b` 但不包括 `b` 的整数，`a..b` 则包括 `b`（`0..<3` 就是 `[0, 1, 2]`；`for` 遍历区间时不会真的创建数组）。`while cond { … }` 在 cond 成立时一直循环；`break` 跳出循环，`continue` 直接进入下一轮。
 
 `for` 也可以遍历你自己定义的类型的值：一种是迭代器，它的类型有 `mut fn next() -> T?`（`for` 在它的一份副本上反复调用，直到得到 `none`）；另一种是序列，它的 `fn iter()` 返回一个迭代器或一个 `Seq`（`for` 只调用一次）。prelude 里的 `Iterator<T>` 就表示这样的类型，可以用作约束：`fn sum<I: Iterator<int>>(xs: I) -> int`。迭代器返回 `none` 就表示结束，所以元素本身可能是 none（`T?`）的类型应当返回 `Seq`：`fn iter() -> Seq<int?> = slots.lazy()`。
 
@@ -1422,7 +1544,7 @@ async fn loadThread(id: string) throws -> Thread {
     return pages.map(p => p.text())
   }
   ```
-- `spawn { … }` 在另一个线程上运行一段代码，用于会拖住主线程的工作（解析、图片处理）。这段代码只能使用值，不能使用状态、store、视图、原生对象或 C 指针，也不能使用保存着它们的文件级 `let`（比如一个数据库）：如果用了，编译器会报错。在 Web 上，它运行在页面的一个 Web Worker 里；Worker 只会自己生成文件里的值，不会生成其他东西。如果工作需要在多次调用之间保留某样东西（一个索引、一个它打开的数据库），就用 [worker](#worker)。
+- `spawn { … }` 在另一个线程上运行一段代码，用于会拖住主线程的工作（解析、图片处理）。这段代码只能使用值，不能使用状态、文件里的 var、store、视图、原生对象或 C 指针，也不能使用保存着它们的文件级 `let`（比如一个数据库）：如果用了，编译器会报错。在 Web 上，它运行在页面的一个 Web Worker 里；Worker 只会自己生成文件里的值，不会生成其他东西。如果工作需要在多次调用之间保留某样东西（一个索引、一个它打开的数据库），就用 [worker](#worker)。
 - `for await message in socket.messages { … }` 读取一个流，也就是 `Stream<T>`：随时间陆续到来的值。`Stream(send => { … })` 创建一个流：流第一次被读取时，这个代码块作为 task 开始运行，每次 `send(x)` 就是一个值；代码块返回时流结束，代码块抛出错误时流也以这个错误失败。离开循环（`break`、出错、owner 被销毁）会取消这个代码块。一个流只能有一个读取者。
 
   ```asuka
@@ -2093,9 +2215,11 @@ test "archiving removes the row" {
 }
 ```
 
-`expect(cond)` 在 cond 为 false 时让测试失败，并指出失败的是什么、在哪里（如果是比较，还会给出两边的值）。JSON 由 `std/json` 处理：`let notes: [Note] = try json.decode(text)` 按期望的类型读取 JSON（也可以写成 `json.decode<[Note]>(text)`），`json.encode(notes)` 把值写成 JSON。泛型函数也可以把它的 `T` 当作 JSON 读写；这样每次调用时，`T` 都必须是 JSON 能表示的类型，编译器会在调用处检查这一点。
+`expect(cond)` 在 cond 为 false 时让测试失败，并指出失败的是什么、在哪里（如果是比较，还会给出两边的值）。JSON 由 `std/json` 处理：`let notes: [Note] = try json.decode(text)` 按期望的类型读取 JSON（也可以写成 `json.decode<[Note]>(text)`），`json.encode(notes)` 把值写成 JSON。在需要 `json.Value`（任意 JSON）的地方，JSON 能表示的值会按它写出的样子自动成为 `json.Value`：混合类型的值组成的 map 就是一个 `[string: json.Value]`（`["port": port, "tls": true]`），其中的数字仍然是数字。泛型函数也可以把它的 `T` 当作 JSON 读写；这样每次调用时，`T` 都必须是 JSON 能表示的类型，编译器会在调用处检查这一点。
 
 `asuka test` 不需要设备就能运行包里的测试：它会像各平台那样对视图进行布局，按每个字符固定宽度来测量文字，而且只有在没有其他东西可以运行时，时间才会前进（测试里的 `sleep(5s)` 不花任何时间）。`mount` 返回应用，供你驱动和检查：`tap`、`longPress`、`type(_, into:)`、`submit`、`toggle`、`slide`、`select`、`swipe(_, action:)`、`refresh`、`scrollTo`、`back`、`dismiss`、`pickDate`、`pickColor`、`expect`、`expectNo`、`texts()`、`disabled(text)`、`until`、`waitFor`、`idle`；`in(.navigationBar)`、`in(.sidebar)` 和 `nextTo(label)` 缩小文字所指的范围；有路由器时，还有 `mount(…, at: "/inbox/1")`、`href`、`history()`、`goBack()`、`goForward()`。详见[测试](https://asuka.egoist.dev/zh/docs/testing)。
+
+测试可以写在任何文件里，也可以写在包的**测试文件**里：文件名以 `_test.asuka` 结尾（`parser_test.asuka`；只给一个平台的写成 `tray_linux_test.asuka`）。测试文件里的声明和导入（测试数据、辅助函数）只在运行这个包自己的测试时才属于这个包（`asuka test`、`asuka check`、编辑器）：构建出来的应用里没有它们，也没有任何测试块；导入这个包的其他包也永远看不到它们。所以测试文件可以放心导入只有测试才用得到的包，这些包不会被带进应用。
 
 带参数的测试是属性测试，`asuka test` 会为参数生成值来运行它；失败的输入会被缩减成仍然失败的最简单的那组。`bench "name" { … }` 是基准测试，由 `asuka test --bench` 计时；其中的 `measure { … }` 是要计时的部分，写在准备工作之后；`keep(x)` 防止计算结果被编译器优化掉。`expectSnapshot(value)` 和 `expectInlineSnapshot(value, "…")` 把一个值打印出来的样子和它的快照比较，快照由 `asuka test` 写入。
 
@@ -2152,12 +2276,12 @@ bench "fib 20" {
 - invalid-character: 在这里不属于这门语言的字符. 删掉这个字符，或者把这段文本放进字符串或注释里。
 - invalid-conformance: 类型声明的、或类型参数要求的东西不是 interface. 在那里写一个 interface，或者去掉它。
 - invalid-constant: 编译时生成的值不是字面量，或者无法解析. 直接传入字面量，并修正消息指出的无法解析的部分。
-- invalid-declaration: 声明的写法不被它所在的位置接受. 按这个位置的写法来写：会变的值用 `state x = …`，常量用 `let name = value`。
+- invalid-declaration: 声明的写法不被它所在的位置接受. 按这个位置的写法来写：类型的常量用 `let name = value`，需要类型参数的就写成 `static fn`。
 - invalid-entry: 程序的 `fn main` 声明方式与它的运行方式不符. 声明 `fn main() { … }`，并通过 std/os 读取参数。
 - invalid-extension: `extend` 了不能扩展的东西，或者写法不对. 扩展一个有名字的类型，或者改为声明一个函数。
 - invalid-extern: C 无法支撑的 extern 声明. 把释放函数声明为 `extern fn close(x: T)`，其余部分照 C 的样子声明。
 - invalid-flag-spec: `flag.parse` 无法把命令行读进的类型. 给每个开关一个默认值（`verbose: bool = false`），选项使用消息里列出的类型。
-- invalid-for: `for` 遍历了它不能遍历的东西. 按消息所说遍历对应的东西：`s.chars()`、`m.keys()`、`for await x in stream`。
+- invalid-for: `for` 遍历了它不能遍历的东西. 按消息所说遍历对应的东西：`0..<n`、`m.keys()`、`for await x in stream`。
 - invalid-literal: 写法不正确的数字、颜色、时长或转义. 按消息所说，用它的某种写法来写这个字面量。
 - invalid-modifier: 在不适用的地方写了 `pub`、`mut`、`async`、`throws` 或类型参数. 去掉消息里指出的那个修饰符。
 - invalid-pattern: 写法不被语言接受的模式. 按消息给出的写法来写：`.case(x)`、`if let`、`(k, v)`。
@@ -2200,7 +2324,7 @@ bench "fib 20" {
 - not-callable: 调用了不是函数的东西. 调用一个函数，直接使用这个值，或者创建枚举的某个 case（`Kind.name`）。
 - not-json: JSON 无法读写的类型. 解码成只包含数据的 struct，再从它构造其余的东西。
 - not-optional: 对一定有值的值使用了可选类型的运算符. 去掉这个运算符，或者在声明处把值改成可选类型（`int?`）。
-- not-pub: 其他包（或 store、worker）没有公开的声明. 在声明处加上 `pub`，或者改用这个包公开的内容。
+- not-pub: 其他包、其他文件（private）、store 或 worker 没有公开的声明. 在声明处加上 `pub`（或去掉 `private`），或者改用公开的内容：私有字段没有默认值的类型，用它的 static fn 来创建。
 - not-sendable: 无法传到另一个线程的值. 传入另一个线程需要的数据，而不是持有这些数据的对象。
 - not-supported: 语言暂时还不支持的写法. 改用消息里给出的替代写法：泛型组件可以改为接收 `View` 或闭包作为 prop。
 - optimistic-impure: 乐观改动读取了状态、await 了或者写入了. 先把需要的东西读进一个 `let`，在闭包里用它；写入放在处理函数里，不要放在改动里。
@@ -2220,6 +2344,7 @@ bench "fib 20" {
 - return-value: `return` 带了函数不返回的值，或者在需要值时没有带. 去掉这个值，或者声明返回类型（`-> T`）并在每个地方都返回值。
 - row-without-key: 视图里的 `for` 遍历会变化的数据，却没有 `key`. 写出用什么标识一项：`for t in todos key t.id`。
 - spawn-captures-state: `spawn` 读取或修改了状态，或者用了不是值的东西. 先把状态读进一个 `let` 再传进去；把 `spawn` 的返回值赋给状态。
+- special-method: 语言会调用的方法（equals、hash、description、toJSON、fromJSON）签名不对，语言无法调用. 按消息里说的签名来写这个方法；如果它不是为此而写的，就换个名字。
 - statement-in-view: 组件的视图之间写了语句. 把语句放进处理函数（`on press { … }`）、fn、task 或 effect；派生的值用 `let`。
 - syntax-error: 解析器在这里期望的是别的内容. 看消息里的“expected …, found …”：补上它期望的内容，或在它指出的位置闭合未闭合的部分。
 - test-parameter: 测试参数的类型是 asuka test 无法生成的. 让测试接收它所关心的数据（一个 id、一个由字段组成的 struct），其余的东西在测试体里用这些数据构造出来。
@@ -2239,7 +2364,7 @@ bench "fib 20" {
 - unused-catalog-entry: 目录里没有被使用的描述或参数. 删掉它，或者在消息里用上这个参数。
 - view-in-statement: 在会运行的代码里创建视图. 在主体里声明这个视图，放在一个由处理函数设置的状态控制的 `if` 下面。
 - wide-fanout: 一次写入让 1,000 多个绑定和 let 重新运行，而且不止一次. 让每行按路径读取它显示的内容（`todos[i].done`、`for t in todos key t.id`），或者使用 set 的 `contains`，这样一次写入只会让读取它的东西重新运行。
-- worker-captures-state: worker 读取了主线程的状态. 在主线程上读取状态，把它的值传给 `pub fn`。
+- worker-captures-state: worker 读取了主线程的状态. 在主线程上读取状态（或 var），把它的值传给 `pub fn`。
 - worker-misuse: 从外部读取了 worker 自己的值，或者在不能创建、调用 worker 的地方这么做了. 用 `pub fn` 返回这个值，并用 `await` 调用它。
 - write-in-binding: 在界面跟随的地方写入了状态. 在处理函数（`on press { … }`）、fn、task 或 effect 里写入状态。
 - write-in-memo: 在计算 `let` 时写入了状态. 在处理函数、fn、task 或 effect 里写入状态；`let` 只读取。

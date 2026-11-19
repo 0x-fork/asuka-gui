@@ -205,7 +205,7 @@ test "adding counts" {
 
 ### ファイル、パッケージ、インポート
 
-ソースファイルの拡張子は `.asuka` です。ソースファイルを入れたディレクトリが一つの**パッケージ**になります。同じパッケージのファイルどうしは、何もインポートしなくても互いの宣言が見えます。ほかのパッケージから見えるのは、`pub` を付けた宣言だけです。
+ソースファイルの拡張子は `.asuka` です。ソースファイルを入れたディレクトリが一つの**パッケージ**になります。同じパッケージのファイルどうしは、何もインポートしなくても互いの宣言が見えます。ほかのパッケージから見えるのは、`pub` を付けた宣言だけです。`private` を付けた宣言はそのファイルだけのものです（[非公開の宣言](https://asuka.egoist.dev/ja/docs/language/declarations#非公開の宣言)）。
 
 ```asuka
 import std/http                 // 標準ライブラリ
@@ -289,6 +289,7 @@ fn main() {
 | `float` | 64 ビット浮動小数点数：`3.14`、`1e-3` |
 | `bool` | `true`、`false` |
 | `string` | UTF-8 のテキスト：`"Hello, {name}"` |
+| `char` | 1 つの Unicode コードポイント（スカラー値）：`'a'`、`'\n'`、`'\u{1F600}'` |
 | `bytes` | 生のバイト列 |
 | `[T]` | 配列：`[1, 2, 3]`、`[]` |
 | `[K: V]` | マップ（挿入した順に保持）：`["a": 1]`、`[:]` |
@@ -300,7 +301,7 @@ fn main() {
 | `Length` | `100`（ポイント）、`50%`、`.auto` |
 | `fn(A) -> B` | 関数とクロージャ |
 
-文字列の波括弧の中には、任意の式を書けます（`"{count} items"`、`"Total: {price * qty}"`）。`\{` は波括弧そのものを表します。`r"…"` はエスケープも埋め込みもない raw 文字列です。`"` を含む raw 文字列は `r#"…"#` と書きます。これは、開始時と同じ数の `#` が続く `"` で終わります（`r#"say "hi""#`、`r##"a "# b"##`）。`"""…"""` は複数行にまたがる文字列で（1 行目が空ならその行は含まれず、閉じ引用符の行のインデントも取り除かれます）、中の `"` や `""` はそのまま書けます。`r"""…"""` は複数行の raw 文字列です。数値、ブール値、文字列以外の値は、テキストとして表示すると次のようになります。列挙型のケースはその名前、オプショナルは `none` か中の値、エラーはそのメッセージ、色は書いたとおり（`#0a84ff`、`.accent`）、`Duration` はミリ秒（`1500ms`）、それ以外は JSON です。JSON で表せないものも同じように書き出されます。タプルは要素を括弧で囲んだ形になり、各要素は配列の要素と同じように書かれます（`(1,"a","red")`）。キーが文字列でないマップは、各キーをそれ自身の書き方で書きます（`{1:"a"}`）。関数はテキストにならないので、その型になります（`<fn(int) -> int>`）。
+文字列の波括弧の中には、任意の式を書けます（`"{count} items"`、`"Total: {price * qty}"`）。`\{` は波括弧そのものを表します。`r"…"` はエスケープも埋め込みもない raw 文字列です。`"` を含む raw 文字列は `r#"…"#` と書きます。これは、開始時と同じ数の `#` が続く `"` で終わります（`r#"say "hi""#`、`r##"a "# b"##`）。`"""…"""` は複数行にまたがる文字列で（1 行目が空ならその行は含まれず、閉じ引用符の行のインデントも取り除かれます）、中の `"` や `""` はそのまま書けます。`r"""…"""` は複数行の raw 文字列です。数値、ブール値、文字列以外の値は、テキストとして表示すると次のようになります。型が自分の `description()` を持てばそれ（[宣言](https://asuka.egoist.dev/ja/docs/language/declarations#等しさハッシュテキストjson)）、列挙型のケースはその名前、オプショナルは `none` か中の値、エラーはそのメッセージ、色は書いたとおり（`#0a84ff`、`.accent`）、`Duration` はミリ秒（`1500ms`）、それ以外は JSON です。JSON で表せないものも同じように書き出されます。タプルは要素を括弧で囲んだ形になり、各要素は配列の要素と同じように書かれます（`(1,"a","red")`）。キーが文字列でないマップは、各キーをそれ自身の書き方で書きます（`{1:"a"}`）。関数はテキストにならないので、その型になります（`<fn(int) -> int>`）。
 
 補間では、Python や Rust と同じように、コロンの後ろに書き方を指定できます：`"{price:>8.2f}"`。書式は `[[fill]align][sign][#][0][width][,|_][.precision][type]` です。`<`、`>`、`^` は幅の中で左揃え、右揃え、中央揃えにし、その前に埋め文字を書けます（省略すると空白）。`+` は正の数にも符号を付け、`0` は符号の後ろを 0 で埋めます。`,` か `_` は整数（と浮動小数点数の整数部）の桁を区切ります。`.2` は浮動小数点数の小数点以下の桁数で、テキストでは残す最大の文字数です。型は、整数を 16 進、8 進、2 進で書く `x`、`X`、`o`、`b`（`#` を付けると前に `0x`、`0o`、`0b` を書きます）か、数値を固定小数点、指数、パーセントで書く `f`、`e`、`%` です。数値は右揃え、それ以外の値はテキストとして左揃えになり、埋め文字、揃え、幅、精度だけを指定できます。書式はコンパイラーが読むので、値に合わない書式は書いた場所でエラーになります（[format-spec](https://asuka.egoist.dev/ja/docs/errors/format-spec)）。
 
@@ -314,6 +315,8 @@ let table = row("asuka", 12500, 0.4) // asuka     12,500   40.0%
 ```
 
 幅は文字（コードポイント）の数で数え、ターミナルでの表示幅ではありません。ターミナルの桁数で数えるには（漢字・かな・ハングルや絵文字は 2 桁）、`std/term` の `textWidth`、`padEnd`、`fit` を使います（[プログラム](https://asuka.egoist.dev/ja/docs/programs#揃った表)を参照）。
+
+`print(a, b, c)` は、値を補間と同じ見た目で、スペースで区切って標準出力（アプリのログ）に 1 行書きます。`eprint` は標準エラーに書きます。Swift の `print` と同じく、値のあとに `separator:`（値のあいだに書くもの）と `terminator:`（最後に書くもの。指定しなければ改行）を渡せます：`print(x, y, separator: ", ")`、`print("Saving…", terminator: "")`。
 
 タプルの要素は位置で読めます（`pair.0`、`pair.1`）。`var` のタプルなら、その場で変更もできます（`pair.0 += 1`）。タプルにない位置（2 要素のタプルの `pair.2`）はコンパイルエラーです。分解して読むこともできます：`let (count, label) = pair`、`for (i, x) in xs.enumerated()`、あるいは `match` のタプルパターン（[制御フロー](https://asuka.egoist.dev/ja/docs/language/control-flow#制御フロー)を参照）。
 
@@ -434,7 +437,7 @@ fn conversions(n: int, level: u8, ratio: float) -> [u8] {
 | `[T]` | `count()`、`count(where)`、`isEmpty()`、`first()`、`last()`、`get(i)`（`T?` を返す）、`push(x)`、`pushFirst(x)`、`insert(x, at: i)`、`removeAt(i)`、`removeWhere(p)`、`pop()`、`popFirst()`、`clear()`、`map(f)`、`flatMap(f)`（`f` が返す配列を順につなげる）、`compactMap(f)`（`f` の結果から none を除く）、`filter(p)`、`reduce(initial, f)`、`any(p)`、`all(p)`、`index(p)`（`int?` を返す）、`find(p)`、`contains(x)`、`sum()`、`min()`、`max()`（`T?` を返す。`min(by:)`、`max(by:)` は「より小さい」の比較を、`min(key:)`、`max(key:)` はキーを取る）、`unique()`、`grouped(by: f)`（`[K: [T]]` を返す）、`chunked(n)`、`zip(other)`（短いほうの長さまでペアにする）、`reversed()`、`slice(from, to)`（`to` を省くと末尾まで）、`prefix(n)`、`suffix(n)`、`sorted()`、`sorted(by)`、`sorted(key:, descending:)`、`sort()`、`sort(by)`、`sort(key:, descending:)`、`enumerated()`、`joined(separator:)`（文字列の配列）、`lazy()`（`Seq<T>` を返す）、`+` |
 | `Set<T>` | `count()`、`isEmpty()`、`contains(x)`、`insert(x)`（新しく加わったかを返す）、`remove(x)`（あったかを返す）、`union(s)`、`intersection(s)`、`subtracting(s)`、`isSubset(of: s)`、`isSuperset(of: s)`、`lazy()`。`Set(xs)` は配列の重複しない要素、`Set<T>()` は空のセット |
 | `[K: V]` | `m[k]`（`V?` を返す）、`m[k] = v`、`count()`、`isEmpty()`、`has(k)`、`get(k)`、`remove(k)`、`keys()`、`values()`（挿入した順）、`mapValues(f)`、`filter((k, v) => …)`、`lazy()`（`(key, value)` の組） |
-| `string` | `count()`（文字数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s, ignoreCase:)`、`hasPrefix(s, ignoreCase:)`、`hasSuffix(s, ignoreCase:)`、`equals(s, ignoreCase:)`、`compare(s, ignoreCase:)`（負、ゼロ、正のいずれか）、`foldCase()`、`replace(old, new, count:)`（count を指定しなければすべて置き換え）、`split(sep, count:)`、`fields()`（空白で区切った単語）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（バイト単位の位置。見つからなければ none）、`slice(from, to)`（文字単位）、`byteSlice(from, to)`（バイト単位：find が返す位置）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toInt(radix:)`、`toFloat()`、`repeat(n)`、`chars()`、`graphemes()`、`lazy()`（文字の `Seq<string>`）、`reversed()`、`bytes()`、`+` |
+| `string` | `count()`（文字数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s, ignoreCase:)`、`hasPrefix(s, ignoreCase:)`、`hasSuffix(s, ignoreCase:)`、`equals(s, ignoreCase:)`、`compare(s, ignoreCase:)`（負、ゼロ、正のいずれか）、`foldCase()`、`replace(old, new, count:)`（count を指定しなければすべて置き換え）、`split(sep, count:)`、`fields()`（空白で区切った単語）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（バイト単位の位置。見つからなければ none）、`slice(from, to)`（文字単位）、`byteSlice(from, to)`（バイト単位：find が返す位置）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toInt(radix:)`、`toFloat()`、`repeat(n)`、`chars()`、`graphemes()`、`lazy()`（char の `Seq<char>`）、`reversed()`、`bytes()`、`+` |
 | `bytes` | `b[i]`（0 から 255 の `int`。範囲外はエラー）、`count()`、`isEmpty()`、`get(i)`（`int?` を返す）、`slice(from, to)`、`concat(b)`、`string()`（UTF-8 として読み、不正な部分は U+FFFD になる）、`hex()` と `hex(separator)`（`"04 a1"`）、`toArray()`（`[u8]` を返す）。`bytes()` は空のバイト列、`bytes([0x04, 0xa1])` はそのバイト列、`bytes(xs)` は `[u8]` のバイト列、`s.bytes()` は文字列の UTF-8 |
 | `int`、`i8` … `u64` | `float()`、`abs()`（符号付きの型）、`toString(radix:)`（`255.toString(radix: 16)` は `"ff"`）、`padded(width)`（`7.padded(2)` は `"07"`）、`addingChecked(o)`、`subtractingChecked(o)`、`multipliedChecked(o)`（`int?`、`u8` なら `u8?`：オーバーフローなら none）。`T.min`、`T.max`、`T.parse(text, radix:)`（`T?` を返す） |
 | `float` | `fixed(digits)`、`rounded()`、`floor()`、`ceil()`、`int()`（0 の方向へ切り捨て）、`abs()` |
@@ -509,6 +512,32 @@ fn isMarkdown(path: string) -> bool = path.hasSuffix(".md", ignoreCase: true)
 
 `count()` と `chars()` はコードポイントを数えます。`graphemes()` は読み手が一文字と感じる単位を返します。Unicode のテキスト分割（UAX #29）に従うので、`"e\u{301}"`、国旗（`"🇯🇵"`）、ZWJ でつないだ家族の絵文字はそれぞれ一つです。
 
+`char` は 1 つのコードポイントで、Rust の char と同じです。`for c in s` がたどり、`s.chars()` が順に返すのがこれです（`e` とアクセントのように複数のコードポイントからなる書記素は文字列で、`graphemes()` が返します）。単一引用符で書き（`'a'`、`'\''`、`'\u{301}'`）、コードポイントで比較・順序づけされ、マップのキーにもなります。出力するとそれ自身になり、JSON では 1 文字の文字列です。`c.isLetter()`、`isDigit()`、`isNumber()`、`isWhitespace()`、`isUpper()`、`isLower()`、`isPunctuation()`、`isSymbol()` は Unicode のカテゴリーを読み、どの文字体系にも使えます（`'٣'.isDigit()`）。`upper()` と `lower()` は結果が 1 つの char になるときに変換します（`'ß'.upper()` は `'ß'` のままで、`"ß".upper()` は `"SS"`）。`code()` はその番号で、`char(n)` は番号 n の char です（n がコードポイントでなければエラー）。`s + c` と `s += c` で文字列に char を足せます。
+
+```asuka
+fn initials(name: string) -> string {
+  var out = ""
+  var start = true
+  for c in name {
+    if c.isWhitespace() {
+      start = true
+    } else if start {
+      out += c.upper()
+      start = false
+    }
+  }
+  return out
+}
+
+fn digits(s: string) -> int = s.chars().filter(c => c.isDigit()).count()
+
+fn kind(c: char) -> string = match c {
+  'a' | 'e' | 'i' | 'o' | 'u' => "vowel"
+  _ => if c.isLetter() { "letter" } else { "other" }
+}
+```
+
+
 `toInt()` と `toFloat()` は文字列全体を読み、読めなければ none を返します。符号は付けても付けなくてもよく、その後に数字が続き、前後に余計なものがあってはいけません（`" 12"` は none なので、先に `trim()` します）。`toInt()` が読むのは整数（`"+7"`、`"-42"`）だけで、`toFloat()` は小数部と指数（`"2.5"`、`".5"`、`"1e-3"`）、それに浮動小数点数を表示したときの形（`"Infinity"`、`"NaN"`）も読みます。どちらも、ユーザーの言語にかかわらず小数点は `.` です。
 
 #### 遅延シーケンス
@@ -572,7 +601,7 @@ let first = items.first()!        // none ならクラッシュする。none に
 
 ```asuka
 let pi = 3.14159             // 定数
-var total = 0                // 変数（関数とハンドラーの中で）
+var total = 0                // 変数
 state count = 0              // 状態：UI が追従する値
 state shown = count          // 書き込まれるまで count に追従する状態
 ```
@@ -580,6 +609,26 @@ state shown = count          // 書き込まれるまで count に追従する�
 型は推論されます。書いたほうがわかりやすいところでは明示します（`let ids: [int] = []`）。
 
 `type` は、ファイルのトップレベルで型に名前を付けます（`type Pair<A, B> = (A, B)`、`type Check = fn(string) -> bool`）。これは同じ型の別名（エイリアス）なので、`Pair<int, string>` は `(int, string)` そのものです。
+
+#### ファイルの値
+
+ファイルのトップレベルでは、`let` は定数、`state` はアプリの状態（[ストア](https://asuka.egoist.dev/ja/docs/language/stores)）、`var` はパッケージの変数です。パッケージのどのコードからも読み書きでき、`pub` ならほかのパッケージからもできます（`util.hits += 1`）。var は状態ではありません。読むとその時点の値が得られ、それを表示するビューは値が変わっても更新されません（それは `state` の役目です）。キャッシュ、カウンター、プログラムの設定など、ビューに表示しないものに使います。
+
+```asuka
+var cache: [int: int] = [:]
+var lookups = 0
+
+fn fib(n: int) -> int {
+  lookups += 1
+  if n < 2 { return n }
+  if let v = cache[n] { return v }
+  let v = fib(n - 1) + fib(n - 2)
+  cache[n] = v
+  return v
+}
+```
+
+ファイルの値は、ほかのどのコードよりも先に作られます。パッケージの値はそれをインポートするパッケージの値より先に、それぞれの値は初期化式が読む値のあとに作られます（直接にせよ間接にせよ自分自身を読むのはエラーです）。var はローカル変数と同じくその場で変更され、`cache[n] = v` は何もコピーしません。状態と同じくメインスレッドのものなので、`spawn` のブロックと [ワーカー](https://asuka.egoist.dev/ja/docs/language/async#ワーカー) では使えず、それを使う関数も呼べません（コンパイラーがどれかを示します）。先に読み出して、その値を渡します。`asuka dev` がアプリを再読み込みすると、ファイルの var は let と同じく初期化式から作り直されます。状態は値を保ちます。
 
 #### 構造体
 
@@ -654,6 +703,23 @@ let page = Page(items: [1, 2, 3])     // Page<int>
 let empty = Page<string>(items: [])   // ほかに手がかりがないときは書き出す
 ```
 
+ジェネリックな構造体の `static fn` は、構造体の型パラメーター、続いて自分の型パラメーターを取ります。引数から推論されるか（`Stack.of([1, 2])`）、求められている型から推論されるか（`let s: Stack<string> = .empty()`）、構造体の名前と一緒に書くか（`Stack<int>.empty()`）、関数名のあとに書きます（`Stack.empty<int>()`。構造体のものが先）。ジェネリックな構造体の `let` は、どの型で作っても共通の 1 つの定数なので、その型に型パラメーターは使えません。使う必要がある定数（空の `Stack<T>` など）は `static fn` にします。
+
+```asuka
+struct Stack<T> {
+  items: [T] = []
+  let limit = 1000
+
+  static fn of(items: [T]) -> Stack<T> = Stack(items: items)
+  static fn empty() -> Stack<T> = Stack()
+}
+
+let numbers = Stack.of([1, 2, 3])       // Stack<int>
+let names: Stack<string> = .empty()     // 求められている型から
+let flags = Stack.empty<bool>()         // 書き出す
+let most = Stack.limit
+```
+
 `match` と `if let` では、構造体パターンで構造体のフィールドを名前でマッチさせられます。`y` とだけ書くとフィールド `y` を束縛し、`y: py` なら `py` という名前で束縛し、`x: 0` は値にマッチします。書かなかったフィールドは何にでもマッチします。パターンは入れ子にできます。
 
 ```asuka
@@ -688,6 +754,62 @@ fn withTip(bill: Money) -> Money {
 ```
 
 構造体がフィールドごとに順序づけられることはありません。その順序が何を意味するかは、`compare` が決めます。
+
+#### 等しさ、ハッシュ、テキスト、JSON
+
+構造体は、フィールドによって等しいかを比べ（`==`）、マップのキーとしてハッシュし、出力し、JSON に書かれます。列挙型はケースとペイロードによります。型は、`compare` が `<` になるのと同じく、言語が呼ぶメソッドでこれを変えられます。
+
+| メソッド | 呼ぶもの |
+|---|---|
+| `fn equals(other: T) -> bool` | `==` と `!=`、マップのキー、セットの要素、`contains`、配列の `==` |
+| `fn hash() -> int` | マップのキーとセットの要素。等しい値は同じハッシュになるので、自分の `equals` を持つ型は自分の `hash` も持ちます（`hashOf(x)` は値のハッシュで、組み合わせるのに使います） |
+| `fn description() -> string` | 補間、`print`、スナップショット |
+| `fn toJSON() -> J` | `json.encode`、そしてその値を含む値のテキスト。`J` は JSON で表せる任意の型です |
+| `static fn fromJSON(json: J) throws -> T` | `json.decode`。投げたエラーがデコードのエラーになります |
+
+```asuka
+import std/json
+
+struct Tag {
+  name: string
+  color: string = "gray"
+
+  fn equals(other: Tag) -> bool = name.lower() == other.name.lower()
+  fn hash() -> int = hashOf(name.lower())
+  fn description() -> string = "#{name}"
+  fn toJSON() -> string = name
+  static fn fromJSON(json: string) throws -> Tag = Tag(name: json)
+}
+
+let same = Tag(name: "Work") == Tag(name: "work", color: "red")  // true
+let label = "{Tag(name: "home")}"                                 // #home
+let text = json.encode([Tag(name: "a")])                          // ["a"]
+```
+
+これらは値がどこにあっても使われます。配列、マップ、ほかの構造体の中でもそうです。これで、フィールドの意味で等しい型（大文字小文字を区別しない名前、順序を問わない集合）をマップのキーにでき、関数（順序など）を持つ型も、持っている中身で比較、ハッシュ、JSON 化できます。ジェネリックな型は、そのパッケージの拡張でこれらを与え、型引数が拡張の制約（`Equatable`、`Hashable`、`Comparable`）を満たす型にだけ効きます。std/collections の `Heap<T>` は、`T` が Hashable なら比較でき、Comparable なら JSON から読めます。これらは `async`、`mut`、private にはできず、ペイロードのない列挙型が持てるのは自分の `description` だけです（等しさと書き出しはケースによります）。シグネチャーが言語の呼ぶものと違えば、コンパイラーが知らせます（[special-method](https://asuka.egoist.dev/ja/docs/errors/special-method)）。
+
+#### 非公開の宣言
+
+`private` は宣言をそのファイルだけのものにします。ファイルの `fn`、`let`、`var`、struct、enum、interface、type、そして構造体や列挙型のフィールド、メソッド、`static fn`、定数に付けられます。そのファイルのコード（その型のメソッド、関数、拡張）からはほかと同じように使えますが、ほかのファイルからは名前で参照できません。例外はパッケージのテストファイル（`name_test.asuka`）で、内部をテストするために使えます。`pub` を付けないものはパッケージのもの、`private` を付けたものはファイルのものです。
+
+```asuka
+pub struct Counter {
+  private hits: [string: int] = [:]
+
+  mut fn add(word: string) { hits[word, default: 0] += 1 }
+  fn top() -> string? = best(hits)
+}
+
+private fn best(counts: [string: int]) -> string? {
+  var found: (string, int)? = none
+  for (w, n) in counts {
+    if found == none || n > found!.1 { found = (w, n) }
+  }
+  return found?.0
+}
+```
+
+ほかのファイルでは、構造体は private なフィールドなしで作られるので、それぞれに既定値が要ります（`Counter()`）。既定値のない private なフィールドを持つ構造体は、そのファイルの中でだけ、つまり static fn で作られ、それらが構造体の規則（`Decimal` の係数に末尾のゼロがないことなど）を守ります。private なメソッドは演算子（`add`、`compare`）にならず、型にインターフェイスを与えることもありません。それらはどこからでも使われるからです。
 
 #### 拡張
 
@@ -857,7 +979,7 @@ let areas = shapes.map(s => s.area())
 
 インターフェースは `mut fn` を求めることもできます（prelude の `Iterator<T>` が求める `mut fn next() -> T?` など）。型の `mut fn` はそれを満たし、同じシグネチャーの `fn` も満たします。逆に、`mut fn` はインターフェースの普通の `fn` を満たしません。普通の `fn` はどんな値に対しても呼び出されるからです。型は、見えている[拡張](https://asuka.egoist.dev/ja/docs/language/declarations#拡張)が与えたメソッドによってインターフェースを持つこともできます。
 
-ジェネリックな関数と型は型パラメーターを取ります。型パラメーターの制約には、プログラム自身のインターフェースと、`Equatable`（`==` で比べられる型：組み込みの値と、各部分が比べられる構造体、列挙型、タプル、配列、マップ、オプショナル）、`Comparable`（`<` で順序づけられる型：整数、浮動小数点数、文字列、`Duration`、ケースの順に並ぶ値を持たないケースだけの列挙型、`fn compare(other: T) -> int` を持つ構造体と列挙型。構造体がフィールドごとに順序づけられることはありません）、`Hashable`（マップのキーにできる型：浮動小数点数以外の組み込みの値と、それらからなる構造体、列挙型、タプル、オプショナル、配列、マップ、セット。[値と型](https://asuka.egoist.dev/ja/docs/language/types#値と型)を参照）が使えます。複数の制約は `&` でつなぎます。型引数が持っていなければならないものは、ジェネリックなコードの中でその値から使えます。インターフェースのメソッドとフィールドは、コンパイルされる具体的な型ごとに直接呼び出されます。
+ジェネリックな関数と型は型パラメーターを取ります。型パラメーターの制約には、プログラム自身のインターフェースと、`Equatable`（`==` で比べられる型：組み込みの値と、各部分が比べられるか自分の `equals` を持つ構造体、列挙型、タプル、配列、マップ、オプショナル）、`Comparable`（`<` で順序づけられる型：整数、浮動小数点数、文字列、`Duration`、ケースの順に並ぶ値を持たないケースだけの列挙型、`fn compare(other: T) -> int` を持つ構造体と列挙型。構造体がフィールドごとに順序づけられることはありません）、`Hashable`（マップのキーにできる型：浮動小数点数以外の組み込みの値と、それらからなるか自分の `hash` を持つ構造体、列挙型、タプル、オプショナル、配列、マップ、セット。[値と型](https://asuka.egoist.dev/ja/docs/language/types#値と型)と[等しさ、ハッシュ、テキスト、JSON](https://asuka.egoist.dev/ja/docs/language/declarations#等しさハッシュテキストjson)を参照）が使えます。複数の制約は `&` でつなぎます。型引数が持っていなければならないものは、ジェネリックなコードの中でその値から使えます。インターフェースのメソッドとフィールドは、コンパイルされる具体的な型ごとに直接呼び出されます。
 
 インターフェースのメソッドには本体を書くこともでき、そのメソッドはインターフェースが提供するものになります。型がインターフェースを満たすのは、本体のないメソッドを持っているときです。提供されるメソッドについては、同じシグネチャのメソッドを型が自分で宣言していればそれが使われ、なければインターフェースのものが使われます。提供されるメソッドの中では `self` がそのインターフェースの値で、インターフェースのメソッドとフィールドは名前だけで使えます。
 
@@ -899,7 +1021,7 @@ let sq: Square = shape else { return }
 
 パターンの型はそのインターフェースを満たしていなければなりません（`area()` を持たない `Point` が `Shape` であることはありません）。値を持たないケースだけの列挙型は、そのインターフェースを宣言したとき（`enum Unit: Shape`）だけ満たします。具体的な型の値には調べる必要がなく、`Circle` に `c: Circle` をマッチさせるとエラーになります。型パラメーターの値に対しては、関数が型ごとにコンパイルされるときに結果が決まり、マッチしえないアームはプログラムに含まれません。`catch e: ParseError` も同じ判定で、`Error` に対して行うものです（[エラー](https://asuka.egoist.dev/ja/docs/language/errors)を参照）。
 
-ジェネリックな関数と型は型パラメーターを取ります。型パラメーターの制約には、プログラム自身のインターフェースと、`Equatable`（`==` で比べられる型：組み込みの値と、各部分が比べられる構造体、列挙型、タプル、配列、マップ、オプショナル）、`Comparable`（`<` で順序づけられる型：整数、浮動小数点数、文字列、`Duration`、ケースの順に並ぶ値を持たないケースだけの列挙型、`fn compare(other: T) -> int` を持つ構造体と列挙型。構造体がフィールドごとに順序づけられることはありません）、`Hashable`（マップのキーにできる型：浮動小数点数以外の組み込みの値と、それらからなる構造体、列挙型、タプル、オプショナル。[値と型](https://asuka.egoist.dev/ja/docs/language/types#値と型)を参照）が使えます。複数の制約は `&` でつなぎます。型引数が持っていなければならないものは、ジェネリックなコードの中でその値から使えます。インターフェースのメソッドとフィールドは、コンパイルされる具体的な型ごとに直接呼び出されます。
+ジェネリックな関数と型は型パラメーターを取ります。型パラメーターの制約には、プログラム自身のインターフェースと、`Equatable`（`==` で比べられる型：組み込みの値と、各部分が比べられるか自分の `equals` を持つ構造体、列挙型、タプル、配列、マップ、オプショナル）、`Comparable`（`<` で順序づけられる型：整数、浮動小数点数、文字列、`Duration`、ケースの順に並ぶ値を持たないケースだけの列挙型、`fn compare(other: T) -> int` を持つ構造体と列挙型。構造体がフィールドごとに順序づけられることはありません）、`Hashable`（マップのキーにできる型：浮動小数点数以外の組み込みの値と、それらからなるか自分の `hash` を持つ構造体、列挙型、タプル、オプショナル。[値と型](https://asuka.egoist.dev/ja/docs/language/types#値と型)を参照）が使えます。複数の制約は `&` でつなぎます。型引数が持っていなければならないものは、ジェネリックなコードの中でその値から使えます。インターフェースのメソッドとフィールドは、コンパイルされる具体的な型ごとに直接呼び出されます。
 
 ```asuka
 fn sortByArea<T: Shape>(xs: [T]) -> [T] = xs.sorted((a, b) => a.area() < b.area())
@@ -935,7 +1057,7 @@ let icon = match (online, unread) {
 
 型つきの名前（`c: Circle`）は、インターフェースの値が何の型なのかを調べます。値がその型のときにマッチし、その型として束縛します。構造体のパターン（`Circle(radius)`）や型を明記した列挙型のケース（`Unit.big(n)`）も同じです。インターフェースの値に対する `match` は `_` で終わらせます。詳しくは[インターフェースとジェネリクス](https://asuka.egoist.dev/ja/docs/language/functions#インターフェースとジェネリクス)を参照してください：`if let c: Circle = shape { … }`、`let sq: Square = shape else { return }`。
 
-`for` で回せるのは、配列、セット、マップの `(key, value)` の組、遅延シーケンス（`Seq`。[値と型](https://asuka.egoist.dev/ja/docs/language/types#遅延シーケンス)を参照）、範囲です。`a..<b` は `a` から `b` の手前までの整数、`a..b` は `b` を含む整数です（`0..<3` は `[0, 1, 2]`。範囲を `for` で回しても配列は作られません）。`while cond { … }` は cond が成り立つあいだ繰り返します。`break` はループを抜け、`continue` は次の周回に進みます。
+`for` で回せるのは、配列、セット、マップの `(key, value)` の組、文字列の char（`for c in name`）、遅延シーケンス（`Seq`。[値と型](https://asuka.egoist.dev/ja/docs/language/types#遅延シーケンス)を参照）、範囲です。`a..<b` は `a` から `b` の手前までの整数、`a..b` は `b` を含む整数です（`0..<3` は `[0, 1, 2]`。範囲を `for` で回しても配列は作られません）。`while cond { … }` は cond が成り立つあいだ繰り返します。`break` はループを抜け、`continue` は次の周回に進みます。
 
 `for` では、自分で定義した型の値も回せます。一つはイテレーターで、型に `mut fn next() -> T?` があるものです（`for` はそのコピーに対して `none` が返るまで呼び出します）。もう一つはシーケンスで、`fn iter()` がイテレーターか `Seq` を返すものです（`for` は一度だけ呼び出します）。prelude の `Iterator<T>` はそのような型を表し、制約に使えます（`fn sum<I: Iterator<int>>(xs: I) -> int`）。イテレーターは `none` で終わりを表すので、要素そのものが none になりうる（`T?` の）型は `Seq` を返します（`fn iter() -> Seq<int?> = slots.lazy()`）。
 
@@ -1422,7 +1544,7 @@ async fn loadThread(id: string) throws -> Thread {
     return pages.map(p => p.text())
   }
   ```
-- `spawn { … }` はブロックを別のスレッドで実行します。メインスレッドを止めてしまうような処理（パース、画像処理）に使います。中で使えるのは値だけで、状態、ストア、ビュー、ネイティブのオブジェクト、C のポインター、そしてそれらを持つファイルの `let`（データベースなど）は使えません。使っていればコンパイラーが教えてくれます。Web では、ページの Web Worker の一つで実行されます。Worker はファイルの値だけを自分で作り、それ以外は作りません。呼び出しの間で何かを持ち続ける処理（インデックス、自分で開くデータベースなど）には [ワーカー](#ワーカー) を使います。
+- `spawn { … }` はブロックを別のスレッドで実行します。メインスレッドを止めてしまうような処理（パース、画像処理）に使います。中で使えるのは値だけで、状態、ファイルの var、ストア、ビュー、ネイティブのオブジェクト、C のポインター、そしてそれらを持つファイルの `let`（データベースなど）は使えません。使っていればコンパイラーが教えてくれます。Web では、ページの Web Worker の一つで実行されます。Worker はファイルの値だけを自分で作り、それ以外は作りません。呼び出しの間で何かを持ち続ける処理（インデックス、自分で開くデータベースなど）には [ワーカー](#ワーカー) を使います。
 - `for await message in socket.messages { … }` はストリーム、つまり `Stream<T>` を読みます。時間とともに届く値です。`Stream(send => { … })` で作ります。ストリームが最初に読まれたときにブロックがタスクとして動き出し、`send(x)` のたびに値が一つ届きます。ブロックが戻るとストリームは終わり、ブロックが投げたエラーでストリームも失敗します。ループを抜けると（`break`、エラー、オーナーがなくなる）ブロックはキャンセルされます。ストリームの読み手は一つだけです。
 
   ```asuka
@@ -2093,9 +2215,11 @@ test "archiving removes the row" {
 }
 ```
 
-`expect(cond)` は cond が false ならテストを失敗させ、何がどこで失敗したかを示します（比較なら両辺の値も示します）。JSON は `std/json` で扱います。`let notes: [Note] = try json.decode(text)` は求められている型として読み込み（`json.decode<[Note]>(text)` とも書けます）、`json.encode(notes)` は JSON に書き出します。ジェネリック関数も自分の `T` を JSON として読み書きできます。その場合、呼び出しごとに `T` は JSON で表せる型でなければならず、コンパイラーが呼び出し箇所でそれをチェックします。
+`expect(cond)` は cond が false ならテストを失敗させ、何がどこで失敗したかを示します（比較なら両辺の値も示します）。JSON は `std/json` で扱います。`let notes: [Note] = try json.decode(text)` は求められている型として読み込み（`json.decode<[Note]>(text)` とも書けます）、`json.encode(notes)` は JSON に書き出します。`json.Value`（任意の JSON）が求められるところでは、JSON で表せる値は書き出したとおりの `json.Value` になります。型の混ざった値のマップは `[string: json.Value]` になり（`["port": port, "tls": true]`）、数値は数値のままです。ジェネリック関数も自分の `T` を JSON として読み書きできます。その場合、呼び出しごとに `T` は JSON で表せる型でなければならず、コンパイラーが呼び出し箇所でそれをチェックします。
 
 `asuka test` は、パッケージのテストをデバイスなしで実行します。プラットフォームと同じようにビューをレイアウトし、テキストは 1 文字あたり固定の幅で測ります。また、時間はほかに実行できるものが何もないときにしか進みません（テストの中の `sleep(5s)` には時間がかかりません）。`mount` はアプリを返すので、それを操作して確かめます（`tap`、`longPress`、`type(_, into:)`、`submit`、`toggle`、`slide`、`select`、`swipe(_, action:)`、`refresh`、`scrollTo`、`back`、`dismiss`、`pickDate`、`pickColor`、`expect`、`expectNo`、`texts()`、`disabled(text)`、`until`、`waitFor`、`idle`）。`in(.navigationBar)`、`in(.sidebar)`、`nextTo(label)` で、テキストが指すものを絞り込めます。ルーターがあれば、`mount(…, at: "/inbox/1")`、`href`、`history()`、`goBack()`、`goForward()` も使えます。詳しくは[テスト](https://asuka.egoist.dev/ja/docs/testing)を参照してください。
+
+テストはどのファイルにも書けますが、パッケージの**テストファイル**にも書けます。ファイル名が `_test.asuka` で終わるものです（`parser_test.asuka`。1 つのプラットフォーム用なら `tray_linux_test.asuka`）。テストファイルの宣言とインポート（テスト用のデータやヘルパー）は、そのパッケージ自身のテストを実行するとき（`asuka test`、`asuka check`、エディター）にだけパッケージの一部になります。ビルドにはそれらもテストブロックも含まれず、このパッケージをインポートするほかのパッケージからも見えません。そのため、テストにしか要らないパッケージをテストファイルでインポートしても、アプリには入りません。
 
 パラメーターのあるテストはプロパティテストで、`asuka test` がパラメーターの値を生成して実行します。失敗した入力は、まだ失敗するいちばん単純なものに縮小されます。`bench "name" { … }` はベンチマークで、`asuka test --bench` が計測します。その中の `measure { … }` が計測される部分で、準備のあとに書きます。`keep(x)` は、結果が最適化で省かれないようにします。`expectSnapshot(value)` と `expectInlineSnapshot(value, "…")` は、値を出力したものをスナップショットと比べます。スナップショットは `asuka test` が書き込みます。
 
@@ -2157,7 +2281,7 @@ bench "fib 20" {
 - invalid-extension: 拡張できないものの `extend`、または受け付けない形の `extend`. 名前のある型を拡張するか、代わりに関数を宣言します。
 - invalid-extern: C が裏付けられない extern 宣言. 解放する関数を `extern fn close(x: T)` と宣言し、ほかは C のとおりに宣言します。
 - invalid-flag-spec: `flag.parse` がコマンドラインを読み込めない型. スイッチには既定値を付け（`verbose: bool = false`）、オプションはメッセージが挙げる型にします。
-- invalid-for: `for` がたどれないものをたどっている. メッセージのとおりのものをたどります（`s.chars()`、`m.keys()`、`for await x in stream`）。
+- invalid-for: `for` がたどれないものをたどっている. メッセージのとおりのものをたどります（`0..<n`、`m.keys()`、`for await x in stream`）。
 - invalid-literal: 正しく書かれていない数値、色、時間、エスケープ. メッセージのとおり、決まった形のどれかで書きます。
 - invalid-modifier: 当てはまらない場所にある `pub`、`mut`、`async`、`throws`、型パラメーター. メッセージが示す修飾子を外します。
 - invalid-pattern: 言語が受け付けない形で書かれたパターン. メッセージが示す形で書きます（`.case(x)`、`if let`、`(k, v)`）。
@@ -2200,7 +2324,7 @@ bench "fib 20" {
 - not-callable: 関数ではないものの呼び出し. 関数を呼び出すか、値をそのまま使うか、列挙型の case を作ります（`Kind.name`）。
 - not-json: JSON で読み書きできない型. データだけの struct にデコードし、ほかのものはそこから作ります。
 - not-optional: 必ず値がある値に、オプショナル用の演算子を使っている. 演算子を外すか、宣言でその値をオプショナル（`int?`）にします。
-- not-pub: ほかのパッケージ（またはストア、ワーカー）が公開していない宣言. 宣言に `pub` を付けるか、パッケージが公開しているものを使います。
+- not-pub: ほかのパッケージ、ほかのファイル（private）、ストア、ワーカーが公開していない宣言. 宣言に `pub` を付ける（または `private` を外す）か、公開されているものを使います。
 - not-sendable: 別のスレッドに渡せない値. それを持つオブジェクトではなく、相手のスレッドが必要とするデータを渡します。
 - not-supported: 言語がまだ対応していないもの. メッセージが示す代わりの書き方を使います。
 - optimistic-impure: 状態を読む、await する、または書き込む楽観的な変更. 必要なものは先に `let` に読み込み、それをクロージャで使います。
@@ -2220,6 +2344,7 @@ bench "fib 20" {
 - return-value: 関数が返さない値を持つ `return`、または値が必要なのに値のない `return`. 値を外すか、結果の型（`-> T`）を宣言してすべての場所で値を返します。
 - row-without-key: 変わるデータをたどる、`key` のないビューの `for`. 項目を識別するものを書きます（`for t in todos key t.id`）。
 - spawn-captures-state: 状態や値でないものを読み書きする `spawn`. 先に状態を `let` に読み込んでから渡し、`spawn` が返したものを代入します。
+- special-method: 言語が呼ぶメソッド（equals、hash、description、toJSON、fromJSON）が、言語の呼べないシグネチャーになっている. メッセージが示すシグネチャーにするか、その用途でなければ別の名前にします。
 - statement-in-view: コンポーネントのビューのあいだにある文. 文はハンドラー（`on press { … }`）、fn、タスク、エフェクトに書きます。
 - syntax-error: パーサーがここで別のものを期待している. メッセージの「expected …, found …」を読み、期待されているものを書くか、指摘された位置で開いているものを閉じます。
 - test-parameter: asuka test が生成できない型のテストのパラメーター. テストが扱うものをデータ（ID、フィールドからなる struct）として受け取り、残りはテストの本体でそこから作ります。
@@ -2239,7 +2364,7 @@ bench "fib 20" {
 - unused-catalog-entry: 何にも使われていないカタログの説明や引数. 削除するか、メッセージの中で引数を使います。
 - view-in-statement: 実行されるコードの中で作られたビュー. ビューを本体で宣言し、ハンドラーが設定する状態の `if` の下に置きます。
 - wide-fanout: 1 回の書き込みが 1,000 を超えるバインディングと let を、2 回以上実行した. 行が表示するものをパスで読む（`todos[i].done`、`for t in todos key t.id`）か、セットの `contains` を使い、書き込みがそれを読むものだけを実行するようにします。
-- worker-captures-state: メインスレッドの状態を読むワーカー. メインスレッドで状態を読み、その値を `pub fn` に渡します。
+- worker-captures-state: メインスレッドの状態を読むワーカー. メインスレッドで状態（または var）を読み、その値を `pub fn` に渡します。
 - worker-misuse: ワーカー自身の値を外から読んでいる、または作れない・呼べない場所でワーカーを作ったり呼んだりしている. 値を `pub fn` から返し、`await` で呼び出します。
 - write-in-binding: UI が追従する場所で状態に書き込んでいる. 状態にはハンドラー（`on press { … }`）、fn、タスク、エフェクトの中で書き込みます。
 - write-in-memo: `let` の計算中に状態に書き込んでいる. 状態にはハンドラー、fn、タスク、エフェクトで書き込みます。

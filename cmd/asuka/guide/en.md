@@ -252,7 +252,8 @@ shows a view, and the test taps, types and checks what it shows.
 
 A source file ends in `.asuka`. A directory of them is a **package**:
 its files see each other's declarations without importing anything.
-`pub` makes a declaration visible to other packages.
+`pub` makes a declaration visible to other packages, and `private` keeps
+one to its file ([What's private](https://asuka.egoist.dev/docs/language/declarations#whats-private)).
 
 ```asuka
 import std/http                 // the standard library
@@ -385,6 +386,7 @@ fn main() {
 | `float` | 64-bit floating point: `3.14`, `1e-3` |
 | `bool` | `true`, `false` |
 | `string` | UTF-8 text: `"Hello, {name}"` |
+| `char` | one Unicode code point (a scalar value): `'a'`, `'\n'`, `'\u{1F600}'` |
 | `bytes` | raw bytes |
 | `[T]` | arrays: `[1, 2, 3]`, `[]` |
 | `[K: V]` | maps, kept in insertion order: `["a": 1]`, `[:]` |
@@ -404,7 +406,9 @@ ends at a `"` followed by as many `#`s as it starts with (`r#"say
 line when that's blank, and without the indentation of its closing
 quotes' line) and holds `"` and `""` as they are; `r"""…"""` is a raw
 one.
-A value that isn't a number, a bool or a string shows as text: an enum's
+A value that isn't a number, a bool or a string shows as text: its
+type's own `description()` when it has one
+([Declarations](https://asuka.egoist.dev/docs/language/declarations#equality-hashing-text-and-json)), an enum's
 case by its name, an optional as `none` or its value, an error as its
 message, a color as it's written (`#0a84ff`, `.accent`), a duration in
 milliseconds (`1500ms`), the rest as JSON. What JSON can't hold is
@@ -442,6 +446,13 @@ A width counts characters (code points), not how wide a terminal draws
 them: `std/term`'s `textWidth`, `padEnd` and `fit` count its columns
 (Chinese, Japanese and Korean characters and emoji take two),
 [Programs](https://asuka.egoist.dev/docs/programs#an-aligned-table).
+
+`print(a, b, c)` writes its values as interpolation shows them,
+separated by spaces, on a line of the standard output (an app's log);
+`eprint` writes them to standard error. After the values, as Swift's
+`print`, `separator:` goes between them and `terminator:` after the
+last (a line ending unless it says otherwise): `print(x, y, separator:
+", ")`, `print("Saving…", terminator: "")`.
 
 A tuple's elements are read by their place, `pair.0` and `pair.1`, and
 a `var`'s change in place (`pair.0 += 1`); a place the tuple doesn't
@@ -630,7 +641,7 @@ that change their value (`push`, `pushFirst`, `insert`, `removeAt`,
 | `[T]` | `count()`, `count(where)`, `isEmpty()`, `first()`, `last()`, `get(i)` (a `T?`), `push(x)`, `pushFirst(x)`, `insert(x, at: i)`, `removeAt(i)`, `removeWhere(p)`, `pop()`, `popFirst()`, `clear()`, `map(f)`, `flatMap(f)` (the arrays `f` gives, one after another), `compactMap(f)` (what `f` gives, without its nones), `filter(p)`, `reduce(initial, f)`, `any(p)`, `all(p)`, `index(p)` (an `int?`), `find(p)`, `contains(x)`, `sum()`, `min()`, `max()` (a `T?`; `min(by:)`, `max(by:)` with a less-than, `min(key:)`, `max(key:)` by a key), `unique()`, `grouped(by: f)` (a `[K: [T]]`), `chunked(n)`, `zip(other)` (pairs, as long as the shorter), `reversed()`, `slice(from, to)` (`to` left out: the end), `prefix(n)`, `suffix(n)`, `sorted()`, `sorted(by)`, `sorted(key:, descending:)`, `sort()`, `sort(by)`, `sort(key:, descending:)`, `enumerated()`, `joined(separator:)` (of strings), `lazy()` (a `Seq<T>`), `+` |
 | `Set<T>` | `count()`, `isEmpty()`, `contains(x)`, `insert(x)` (whether it was new), `remove(x)` (whether it was there), `union(s)`, `intersection(s)`, `subtracting(s)`, `isSubset(of: s)`, `isSuperset(of: s)`, `lazy()`; `Set(xs)` is an array's distinct elements, `Set<T>()` none |
 | `[K: V]` | `m[k]` (a `V?`), `m[k] = v`, `count()`, `isEmpty()`, `has(k)`, `get(k)`, `remove(k)`, `keys()`, `values()` (in insertion order), `mapValues(f)`, `filter((k, v) => …)`, `lazy()` (its `(key, value)` pairs) |
-| `string` | `count()` (characters), `byteCount()`, `isEmpty()`, `upper()`, `lower()`, `trim()`, `trimStart()`, `trimEnd()`, `trimPrefix(s)`, `trimSuffix(s)`, `contains(s, ignoreCase:)`, `hasPrefix(s, ignoreCase:)`, `hasSuffix(s, ignoreCase:)`, `equals(s, ignoreCase:)`, `compare(s, ignoreCase:)` (negative, zero or positive), `foldCase()`, `replace(old, new, count:)` (every one unless count says), `split(sep, count:)`, `fields()` (the words), `lines()`, `find(s)`, `findLast(s)`, `findAny(chars)` (byte offsets, or none), `slice(from, to)` (characters), `byteSlice(from, to)` (bytes: the offsets find gives), `padStart(width, with:)`, `padEnd(width, with:)`, `toInt()`, `toInt(radix:)`, `toFloat()`, `repeat(n)`, `chars()`, `graphemes()`, `lazy()` (its characters, a `Seq<string>`), `reversed()`, `bytes()`, `+` |
+| `string` | `count()` (characters), `byteCount()`, `isEmpty()`, `upper()`, `lower()`, `trim()`, `trimStart()`, `trimEnd()`, `trimPrefix(s)`, `trimSuffix(s)`, `contains(s, ignoreCase:)`, `hasPrefix(s, ignoreCase:)`, `hasSuffix(s, ignoreCase:)`, `equals(s, ignoreCase:)`, `compare(s, ignoreCase:)` (negative, zero or positive), `foldCase()`, `replace(old, new, count:)` (every one unless count says), `split(sep, count:)`, `fields()` (the words), `lines()`, `find(s)`, `findLast(s)`, `findAny(chars)` (byte offsets, or none), `slice(from, to)` (characters), `byteSlice(from, to)` (bytes: the offsets find gives), `padStart(width, with:)`, `padEnd(width, with:)`, `toInt()`, `toInt(radix:)`, `toFloat()`, `repeat(n)`, `chars()` (its `[char]`), `graphemes()`, `lazy()` (its chars, a `Seq<char>`), `reversed()`, `bytes()`, `+` |
 | `bytes` | `b[i]` (an `int`, 0 to 255; out of range is an error), `count()`, `isEmpty()`, `get(i)` (an `int?`), `slice(from, to)`, `concat(b)`, `string()` (UTF-8; what isn't becomes U+FFFD), `hex()` and `hex(separator)` (`"04 a1"`), `toArray()` (a `[u8]`); `bytes()` is none, `bytes([0x04, 0xa1])` those, `bytes(xs)` a `[u8]`'s, `s.bytes()` a string's UTF-8 |
 | `int`, `i8` … `u64` | `float()`, `abs()` (of a signed one), `toString(radix:)` (`255.toString(radix: 16)` is `"ff"`), `padded(width)` (`7.padded(2)` is `"07"`), `addingChecked(o)`, `subtractingChecked(o)`, `multipliedChecked(o)` (an `int?`, a `u8?` of a `u8`: none on overflow); `T.min`, `T.max`, `T.parse(text, radix:)` (a `T?`) |
 | `float` | `fixed(digits)`, `rounded()`, `floor()`, `ceil()`, `int()` (toward zero), `abs()` |
@@ -741,6 +752,43 @@ reader takes for one character, as Unicode's text segmentation (UAX
 #29) says: `"e\u{301}"`, a flag (`"🇯🇵"`) and a family emoji joined with
 ZWJs are one each.
 
+A `char` is one code point, as Rust's is: what `for c in s` goes over
+and `s.chars()` gives, in order (a grapheme of several, an `e` and its
+accent, is a string: `graphemes()`). It's written between single quotes
+(`'a'`, `'\''`, `'\u{301}'`), compared and ordered by its code point,
+and is a map's key; it prints as itself and is JSON's one-character
+string. `c.isLetter()`, `isDigit()`, `isNumber()`, `isWhitespace()`,
+`isUpper()`, `isLower()`, `isPunctuation()` and `isSymbol()` read
+Unicode's categories, any script's (`'٣'.isDigit()`); `upper()` and
+`lower()` map it where the result is one char (`'ß'.upper()` stays
+`'ß'`: `"ß".upper()` is `"SS"`); `code()` is its number, and `char(n)`
+the char of one (an error when `n` isn't a code point). `s + c` and `s
++= c` add one to a string.
+
+```asuka
+fn initials(name: string) -> string {
+  var out = ""
+  var start = true
+  for c in name {
+    if c.isWhitespace() {
+      start = true
+    } else if start {
+      out += c.upper()
+      start = false
+    }
+  }
+  return out
+}
+
+fn digits(s: string) -> int = s.chars().filter(c => c.isDigit()).count()
+
+fn kind(c: char) -> string = match c {
+  'a' | 'e' | 'i' | 'o' | 'u' => "vowel"
+  _ => if c.isLetter() { "letter" } else { "other" }
+}
+```
+
+
 `toInt()` and `toFloat()` read the whole string, or give none: an
 optional sign, then the number, with nothing around it (`" 12"` is
 none: `trim()` it first). `toInt()` takes digits (`"+7"`, `"-42"`);
@@ -834,7 +882,7 @@ is that `T`.
 
 ```asuka
 let pi = 3.14159             // a constant
-var total = 0                // a variable (in functions and handlers)
+var total = 0                // a variable
 state count = 0              // state: a value the UI follows
 state shown = count          // count, until it's written: state that follows
 ```
@@ -844,6 +892,40 @@ Types are inferred; write one where it helps: `let ids: [int] = []`.
 `type` names a type, at the top of a file: `type Pair<A, B> = (A, B)`,
 `type Check = fn(string) -> bool`. It's another name for the same type
 (an alias): a `Pair<int, string>` is an `(int, string)`.
+
+#### A file's values
+
+At the top of a file, `let` is a constant, `state` the app's state
+([Stores](https://asuka.egoist.dev/docs/language/stores)), and `var` a variable of the package's: any of its
+code may read and change it, and other packages too when it's `pub`
+(`util.hits += 1`). A var isn't state: what reads it gets its value as
+it is then, and a view that shows it doesn't change when it does (that's
+what `state` is for). It's for what views don't show: a cache, a
+counter, a program's settings.
+
+```asuka
+var cache: [int: int] = [:]
+var lookups = 0
+
+fn fib(n: int) -> int {
+  lookups += 1
+  if n < 2 { return n }
+  if let v = cache[n] { return v }
+  let v = fib(n - 1) + fib(n - 2)
+  cache[n] = v
+  return v
+}
+```
+
+A file's values are made before anything else runs, a package's before
+those of the packages that import it, and each after the ones its
+initializer reads (one that reads itself, directly or not, is an error).
+A var is changed in place, as a local is: `cache[n] = v` copies
+nothing. It's the main thread's, as state is: `spawn`'s block and a
+[worker](https://asuka.egoist.dev/docs/language/async#workers) can't use one, nor call a function that does
+(the compiler says which); read it first and pass the value. When
+`asuka dev` reloads the app, a file's vars are made again from their
+initializers, as its lets are; state keeps its values.
 
 #### Structs
 
@@ -936,6 +1018,29 @@ let page = Page(items: [1, 2, 3])     // a Page<int>
 let empty = Page<string>(items: [])   // written out, where nothing else says it
 ```
 
+A generic struct's `static fn` takes the struct's type parameters, then
+its own: they're inferred from its arguments (`Stack.of([1, 2])`), or
+from what's expected (`let s: Stack<string> = .empty()`), or written
+with the struct's name (`Stack<int>.empty()`) or after the function's
+(`Stack.empty<int>()`, the struct's first). Its `let` is
+one constant for every type it's made with, so its type can't name
+them: a constant that would (an empty `Stack<T>`) is a `static fn`.
+
+```asuka
+struct Stack<T> {
+  items: [T] = []
+  let limit = 1000
+
+  static fn of(items: [T]) -> Stack<T> = Stack(items: items)
+  static fn empty() -> Stack<T> = Stack()
+}
+
+let numbers = Stack.of([1, 2, 3])       // a Stack<int>
+let names: Stack<string> = .empty()     // from what's expected
+let flags = Stack.empty<bool>()         // written out
+let most = Stack.limit
+```
+
 A struct pattern matches a struct's fields by their names, in `match`
 and `if let`: `y` alone binds the field `y`, `y: py` binds it as `py`,
 `x: 0` matches a value, and the fields it leaves out match anything.
@@ -988,6 +1093,87 @@ fn withTip(bill: Money) -> Money {
 
 A struct isn't ordered field by field: what its order means is its
 `compare`'s to say.
+
+#### Equality, hashing, text and JSON
+
+A struct is equal to another (`==`), hashes as a map's key, prints and
+is written as JSON by its fields, an enum by its case and payload. A
+type says otherwise with methods the language calls, as `compare` is
+`<`:
+
+| Method | What calls it |
+|---|---|
+| `fn equals(other: T) -> bool` | `==` and `!=`, a map's keys, a set's elements, `contains`, an array's `==` |
+| `fn hash() -> int` | a map's keys and a set's elements: equal values hash alike, so a type with its own `equals` has its own `hash` (`hashOf(x)` is a value's hash, to combine) |
+| `fn description() -> string` | interpolation, `print`, a snapshot |
+| `fn toJSON() -> J` | `json.encode`, and the text of a value it's inside: `J` is any type JSON can say |
+| `static fn fromJSON(json: J) throws -> T` | `json.decode`; what it throws is the decode's error |
+
+```asuka
+import std/json
+
+struct Tag {
+  name: string
+  color: string = "gray"
+
+  fn equals(other: Tag) -> bool = name.lower() == other.name.lower()
+  fn hash() -> int = hashOf(name.lower())
+  fn description() -> string = "#{name}"
+  fn toJSON() -> string = name
+  static fn fromJSON(json: string) throws -> Tag = Tag(name: json)
+}
+
+let same = Tag(name: "Work") == Tag(name: "work", color: "red")  // true
+let label = "{Tag(name: "home")}"                                 // #home
+let text = json.encode([Tag(name: "a")])                          // ["a"]
+```
+
+They're used wherever the values go, inside arrays, maps and other
+structs too. With them, a type equal by what its fields mean (a name
+without case, a set in any order) is a map's key, and one that holds a
+function (an order) is equal, hashed and JSON by what it holds. A
+generic type gives them in an extension of its package, for the types
+whose arguments meet its constraints (`Equatable`, `Hashable`,
+`Comparable`): std/collections' `Heap<T>` is equal when `T` is
+Hashable, and read from JSON when it's Comparable. They can't be
+`async`, `mut` or private, and an enum without payloads has only its
+own `description` (it's equal and written by its case). The compiler
+says when one's signature isn't what the language calls
+([special-method](https://asuka.egoist.dev/docs/errors/special-method)).
+
+#### What's private
+
+`private` makes a declaration its file's: a file's `fn`, `let`, `var`,
+struct, enum, interface or type, and a struct's or an enum's field,
+method, `static fn` or constant. The file uses it as any other (its
+types' methods, its functions, its extensions); other files can't name
+it, but the package's test files (`name_test.asuka`), which test its
+insides. What isn't `pub` is its package's; what's `private`, its
+file's.
+
+```asuka
+pub struct Counter {
+  private hits: [string: int] = [:]
+
+  mut fn add(word: string) { hits[word, default: 0] += 1 }
+  fn top() -> string? = best(hits)
+}
+
+private fn best(counts: [string: int]) -> string? {
+  var found: (string, int)? = none
+  for (w, n) in counts {
+    if found == none || n > found!.1 { found = (w, n) }
+  }
+  return found?.0
+}
+```
+
+Elsewhere, a struct is made without its private fields, so each needs a
+default (`Counter()`); one with a private field that has none is made
+in its file only, by its static fns, which keep its rules (a
+`Decimal`'s coefficient without trailing zeros). A private method is
+no operator (`add`, `compare`), nor does it give its type an interface,
+since those are used from anywhere.
 
 #### Extensions
 
@@ -1277,13 +1463,16 @@ same test, of an `Error` ([Errors](https://asuka.egoist.dev/docs/language/errors
 Generic functions and types take type parameters. A parameter's
 constraints are the program's interfaces and `Equatable` (what `==`
 compares: the built-in values, and structs, enums, tuples, arrays, maps
-and optionals whose parts are), `Comparable` (what `<` orders: ints,
+and optionals whose parts are, or that have their own `equals`),
+`Comparable` (what `<` orders: ints,
 floats, strings, durations, enums without payloads by the order of
 their cases, and structs and enums with `fn compare(other: T) -> int`;
 a struct isn't ordered field by field) and `Hashable` (what a map's key
 can be: the built-in values but floats, and the structs, enums, tuples,
-optionals, arrays, maps and sets made of them; see [Values and
-types](https://asuka.egoist.dev/docs/language/types#values-and-types)), several joined by `&`. What a type argument must have, its values in
+optionals, arrays, maps and sets made of them, or that have their own
+`hash`; see [Values and types](https://asuka.egoist.dev/docs/language/types#values-and-types) and [Equality,
+hashing, text and JSON](https://asuka.egoist.dev/docs/language/declarations#equality-hashing-text-and-json)),
+several joined by `&`. What a type argument must have, its values in
 the generic code have: the interfaces' methods and fields, called
 directly on each type it's compiled for.
 
@@ -1344,8 +1533,9 @@ its type (`Unit.big(n)`) do: `if let c: Circle = shape { … }`,
 ends with `_`; see [Interfaces and
 generics](https://asuka.egoist.dev/docs/language/functions#interfaces-and-generics).
 
-`for` goes over an array, a set, a map's `(key, value)` pairs, a lazy
-sequence (a `Seq`: [Values and types](https://asuka.egoist.dev/docs/language/types#lazy-sequences)), or a
+`for` goes over an array, a set, a map's `(key, value)` pairs, a
+string's chars (`for c in name`: [Values and types](https://asuka.egoist.dev/docs/language/types#values-and-types)), a
+lazy sequence (a `Seq`: [Values and types](https://asuka.egoist.dev/docs/language/types#lazy-sequences)), or a
 range:
 `a..<b` is the ints from `a` up to `b`, without it, and `a..b` with it
 (`0..<3` is `[0, 1, 2]`, and a `for` over a range makes no array).
@@ -2038,8 +2228,9 @@ async fn loadThread(id: string) throws -> Thread {
   ```
 - `spawn { … }` runs a block on another thread, for work that would hold
   the main thread up (parsing, image processing). It may use values only,
-  not state, stores, views, native objects or C pointers, nor a file's
-  `let` that holds one (a database): the compiler says so if it does. On
+  not state, a file's vars, stores, views, native objects or C pointers,
+  nor a file's `let` that holds one (a database): the compiler says so
+  if it does. On
   the web it runs on one of the page's Web Workers, which make the
   file's values for themselves, and nothing else. Work that keeps
   something between calls (an index, a database it opens) is a
@@ -2947,7 +3138,10 @@ test "archiving removes the row" {
 `expect(cond)` fails a test when cond is false, saying what failed and
 where (with a comparison's two sides). JSON comes from `std/json`:
 `let notes: [Note] = try json.decode(text)` reads what's expected of it
-(or `json.decode<[Note]>(text)`), `json.encode(notes)` writes it. A
+(or `json.decode<[Note]>(text)`), `json.encode(notes)` writes it. Where a `json.Value` (any JSON) is
+expected, a value JSON can say is one, as it's written: a map of values
+of mixed types is a `[string: json.Value]` (`["port": port, "tls":
+true]`), whose numbers stay numbers. A
 generic function may read or write its `T` as JSON; each call then
 needs a `T` JSON can say, which the compiler checks where it's called.
 
@@ -2962,6 +3156,15 @@ action:)`, `refresh`, `scrollTo`, `back`, `dismiss`, `pickDate`,
 `nextTo(label)` narrow what a text names; with a router, `mount(…, at:
 "/inbox/1")`, `href`, `history()`, `goBack()`, `goForward()`. See
 [Testing](https://asuka.egoist.dev/docs/testing).
+
+Tests go in any file, and in a package's **test files**, whose names
+end in `_test.asuka` (`parser_test.asuka`; `tray_linux_test.asuka` for
+one platform). A test file's declarations and imports, its fixtures and
+helpers, are part of the package only when its own tests run (`asuka
+test`, `asuka check`, an editor): a build has none of them, nor any
+test block, and a package that imports this one never sees them. So a
+test file may import what only its tests need without that coming with
+the app.
 
 A test with parameters is a property test, run with values `asuka test`
 generates for them; a failing input is shrunk to the simplest that still
@@ -3024,12 +3227,12 @@ bench "fib 20" {
 - invalid-character: a character that isn't part of the language here. Remove the character, or put the text in a string or a comment.
 - invalid-conformance: a type declares, or a type parameter needs, what isn't an interface. Name an interface there, or drop it.
 - invalid-constant: a value made when the app compiles that isn't a literal, or doesn't parse. Pass the literal itself, and fix what the message says doesn't parse.
-- invalid-declaration: a declaration written in a form its place doesn't take. Write it in the place's form: `state x = …` for a value that changes, `let name = value`.
+- invalid-declaration: a declaration written in a form its place doesn't take. Write it in the place's form: `let name = value` for a type's constant, a `static fn` for one that needs the type's parameters.
 - invalid-entry: a program's `fn main` declared otherwise than it runs. Declare `fn main() { … }`, and read the arguments with std/os.
 - invalid-extension: an `extend` of what can't be extended, or in a form it doesn't take. Extend a named type, or declare a function instead.
 - invalid-extern: an extern declaration C can't stand behind. Declare the release function `extern fn close(x: T)`, and the rest as C has it.
 - invalid-flag-spec: a type `flag.parse` can't read a command line into. Give each switch a default (`verbose: bool = false`), and options the types the message lists.
-- invalid-for: a `for` over something it doesn't go over. Go over what the message says: `s.chars()`, `m.keys()`, `for await x in stream`.
+- invalid-for: a `for` over something it doesn't go over. Go over what the message says: `0..<n`, `m.keys()`, `for await x in stream`.
 - invalid-literal: a number, a color, a duration or an escape that isn't written right. Write the literal in one of its forms, as the message says.
 - invalid-modifier: `pub`, `mut`, `async`, `throws` or type parameters where they don't apply. Drop the modifier the message names.
 - invalid-pattern: a pattern written in a form the language doesn't take. Write the pattern in its form, as the message shows: `.case(x)`, `if let`, `(k, v)`.
@@ -3072,7 +3275,7 @@ bench "fib 20" {
 - not-callable: a call of something that isn't a function. Call a function, use the value as it is, or make one of the enum's cases (`Kind.name`).
 - not-json: a type JSON can't read or write. Decode into a struct of data, and make the rest from it.
 - not-optional: an optional's operator on a value that's always there. Drop the operator, or make the value optional where it's declared (`int?`).
-- not-pub: a declaration another package (or a store, a worker) keeps to itself. Mark it `pub` where it's declared, or use what the package makes public.
+- not-pub: a declaration another package, another file (private), a store or a worker keeps to itself. Mark it `pub` (or drop `private`) where it's declared, or use what's public: a type whose private fields have no default is made by its static fns.
 - not-sendable: a value that can't cross to another thread. Pass the data the other thread needs, not the object that has it.
 - not-supported: something the language doesn't do yet. Use the alternative the message names: a `View` or a closure prop for a generic component.
 - optimistic-impure: an optimistic change that reads state, awaits or writes. Read what it needs before, into a `let`, and use that in the closure; write in the handler, not in the change.
@@ -3092,6 +3295,7 @@ bench "fib 20" {
 - return-value: a `return` with a value the function doesn't give, or without one it does. Drop the value, or declare the result (`-> T`) and return one everywhere.
 - row-without-key: a `for` in a view over items that change, without a `key`. Say what identifies an item: `for t in todos key t.id`.
 - spawn-captures-state: `spawn` that reads or changes state, or what isn't a value. Read the state into a `let` first, and pass that; assign what `spawn` returns.
+- special-method: a method the language calls (equals, hash, description, toJSON, fromJSON) with a signature it can't call. Give the method the signature the message says, or another name if it isn't meant for that.
 - statement-in-view: a statement among a component's views. Put statements in a handler (`on press { … }`), a fn, a task or an effect; a derived value is a `let`.
 - syntax-error: the parser expected something else here. Read the message's "expected …, found …": write what it expected, or close what's open where it says.
 - test-parameter: a test's parameter of a type asuka test can't generate. Take what the test is about as data (an id, a struct of fields), and make the rest from it in the test's body.
@@ -3111,7 +3315,7 @@ bench "fib 20" {
 - unused-catalog-entry: a catalog's description or argument that nothing uses. Remove it, or use the argument in the message.
 - view-in-statement: a view made in code that runs. Declare the view in the body, under an `if` on state the handler sets.
 - wide-fanout: one write ran more than 1,000 bindings and lets, more than once. Read what a row shows by its path (`todos[i].done`, `for t in todos key t.id`), or a set's `contains`, so a write runs only what reads it.
-- worker-captures-state: a worker that reads the main thread's state. Read the state on the main thread and pass its value to a `pub fn`.
+- worker-captures-state: a worker that reads the main thread's state. Read the state (or the var) on the main thread and pass its value to a `pub fn`.
 - worker-misuse: a worker's own values read from outside, or a worker made or called where it can't be. Return the value from a `pub fn`, and call it with `await`.
 - write-in-binding: state written where the UI follows it. Write state in a handler (`on press { … }`), a fn, a task or an effect.
 - write-in-memo: state written while a `let` is computed. Write state in a handler, a fn, a task or an effect; a `let` only reads.
