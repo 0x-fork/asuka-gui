@@ -1,6 +1,8 @@
 package ir
 
 import (
+	"slices"
+
 	bc "github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/lang/check"
 )
@@ -20,10 +22,12 @@ func (b *fb) printCall(call *check.Call, stderr bool) {
 	}
 	var vals []int
 	var ks []bc.Kind
+	var ds [][]byte
 	for _, a := range call.Args {
-		v, k := b.stringPart(a, "")
+		v, k, d := b.stringPart(a, "")
 		vals = append(vals, v)
 		ks = append(ks, k)
+		ds = append(ds, d)
 	}
 	sep := -1
 	if call.Separator != nil {
@@ -33,36 +37,38 @@ func (b *fb) printCall(call *check.Call, stderr bool) {
 	if call.Terminator != nil {
 		term = b.value(call.Terminator, -1)
 	}
+	str := []byte{byte(bc.KRef)}
 	var pv []int
 	var pk []bc.Kind
+	var pd [][]byte
 	for i, v := range vals {
 		if i > 0 {
 			if sep < 0 {
 				sep = b.kstr(" ")
 			}
-			pv, pk = append(pv, sep), append(pk, bc.KRef)
+			pv, pk, pd = append(pv, sep), append(pk, bc.KRef), append(pd, str)
 		}
-		pv, pk = append(pv, v), append(pk, ks[i])
+		pv, pk, pd = append(pv, v), append(pk, ks[i]), append(pd, ds[i])
 	}
 	if !stderr && term < 0 {
-		b.callBTo("print", bc.None, b.joinParts(pv, pk))
+		b.callBTo("print", bc.None, b.joinParts(pv, pk, pd))
 		return
 	}
 	if term < 0 {
 		term = b.kstr("\n")
 	}
-	pv, pk = append(pv, term), append(pk, bc.KRef)
+	pv, pk, pd = append(pv, term), append(pk, bc.KRef), append(pd, str)
 	fd := int64(1)
 	if stderr {
 		fd = 2
 	}
-	b.callBTo("print.text", bc.None, b.konst(fd), b.joinParts(pv, pk))
+	b.callBTo("print.text", bc.None, b.konst(fd), b.joinParts(pv, pk, pd))
 }
 
 // joinParts is the string of parts (registers of their kinds: strings,
 // and the scalars INTERP prints), INTERP over literalChunk of them at a
 // time.
-func (b *fb) joinParts(vals []int, ks []bc.Kind) int {
+func (b *fb) joinParts(vals []int, ks []bc.Kind, ds [][]byte) int {
 	switch {
 	case len(vals) == 0:
 		return b.kstr("")
@@ -76,14 +82,19 @@ func (b *fb) joinParts(vals []int, ks []bc.Kind) int {
 		for i, v := range vals[:n] {
 			b.move(blk+i, v)
 		}
-		kinds := make([]byte, n)
-		for i, k := range ks[:n] {
-			kinds[i] = byte(k)
+		// INTERP's kinds: each part's descriptor (stringPart's), none when
+		// every part is a string (joined at their size).
+		var kinds []byte
+		for _, d := range ds[:n] {
+			kinds = append(kinds, d...)
+		}
+		if !slices.ContainsFunc(kinds, func(k byte) bool { return k != byte(bc.KRef) }) {
+			kinds = nil
 		}
 		r := b.temp(bc.KRef)
 		b.emit(op("INTERP"), r, blk, n, b.l.str(string(kinds)))
 		b.releaseRegs(blk, ks[:n])
-		vals, ks = vals[n:], ks[n:]
+		vals, ks, ds = vals[n:], ks[n:], ds[n:]
 		if acc >= 0 {
 			t := b.temp(bc.KRef)
 			b.emit(op("CONCAT"), t, acc, r)

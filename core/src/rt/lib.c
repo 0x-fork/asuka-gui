@@ -679,7 +679,7 @@ static ak_val str_codepoints(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	const ak_str *s = STR(0);
 	ak_arr *a = ak_arr_new(AK_K_INT, NULL, s->len);
-	for (size_t i = 0; i < s->len;) a->data[a->len++].i = ak_utf8_decode(s->data, s->len, &i);
+	for (size_t i = 0; i < s->len;) ak_arr_vals(a)[a->len++].i = ak_utf8_decode(s->data, s->len, &i);
 	RET_P(a);
 }
 
