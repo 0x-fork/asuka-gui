@@ -86,15 +86,42 @@ Apple M5, darwin/arm64, 5 runs (median ± median absolute deviation, ms)
 ¹ After the table's run: fs.read reads at the file's size now (aaae01aa);
 three runs.
 
+Strings, arrays and number formatting were then taken further (packed
+arrays, strings appended in place, joined at once and cut into slabs,
+formats written in place, floats printed and read without libc, string
+sorts by prefix keys; 2026-11-19). The machine was shared with other
+builds (load 90 to 450), so wall time said more about the scheduler
+than the programs; this table is each program's CPU cycles (`time
+-l`'s, Apple's counters; the median of five interleaved runs, in
+millions, the setup included). Go's cycles count its collector's
+threads too, so on what allocates a lot they flatter Asuka a little.
+"main" is the commit before (72f20c7b).
+
+| benchmark | main | now | go | now/go |
+|---|---:|---:|---:|---:|
+| concat | 784 | 209 | 184 | 1.14× |
+| split | 2,061 | 987 | 723 | 1.37× |
+| fmt | 2,322 | 663 | 1,057 | 0.63× |
+| set | 648 | 561 | 576 | 0.97× |
+| sortstr | 1,091 | 548 | 1,147 | 0.48× |
+| num | 704 | 684 | 888 | 0.77× |
+| interp | 569 | 616 | 1,218 | 0.51× |
+| find | 931 | 885 | 810 | 1.09× |
+| mapint | 667 | 566 | 585 | 0.97× |
+| mapstr | 1,020 | 1,071 | 1,469 | 0.73× |
+| semver | 1,010 | 915 | 1,078 | 0.85× |
+| time | 315 | 262 | 96 | 2.73× |
+
 What's still slow is mostly what the compiled code does around the
-library, not the library: concat, split and fmt allocate a string a
-piece (Go's substrings share their bytes; Asuka's strings own theirs);
-seq, heap, sortedmap, template, time and semver are Asuka code (closure
-calls a step, structs copied); gzip at level 6 is miniz's matcher, as
-slow as zlib's on this repetitive text (zlib took 4.5 s), where Go's
-compressor is far faster; regex patterns that start with `\w` still run
-the Pike VM a character at a time (Go's regexp does too; Rust's regex
-crate has a lazy DFA).
+library, not the library: split makes a string object a piece (in
+slabs now, a bump and a count each, where Go's substrings are two words
+in the array), and its arrays live to the end of the statement's
+registers' next use; seq, heap, sortedmap, template, time and semver
+are Asuka code (closure calls a step, structs copied); gzip at level 6
+is miniz's matcher, as slow as zlib's on this repetitive text (zlib
+took 4.5 s), where Go's compressor is far faster; regex patterns that
+start with `\w` still run the Pike VM a character at a time (Go's
+regexp does too; Rust's regex crate has a lazy DFA).
 
 HTTP, 50 keep-alive connections, 5 s after 1 s of warm-up, the load
 generator on the same machine:

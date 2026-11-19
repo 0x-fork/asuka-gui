@@ -78,12 +78,22 @@ Release builds: C). On an idle machine, before, in ms: fib 925, sieve
 655, nbody 4,955, trees 1,575, words 191, json 1,277, sort 396 (Go: 92,
 156, 152, 640, 129, 611, 323).
 
-What's left: sieve's `[bool]` elements are 8 bytes each (400 MB for
-50M, Go's 50 MB): the same loop in C with 8-byte elements takes as long
-as Asuka's, with bytes as long as Go's. json's time is mostly formatting
-floats with the C library's `snprintf`; with the shortest-form
-formatter of the standard library's performance work it's 2,606 (0.76×
-Go).
+Arrays then stored their elements by type (a `[bool]` a byte each) and
+strings were appended in place and joined at once (2026-11-19, load 90
+to 450; cycles, the median of five interleaved runs, in millions; "main"
+is 72f20c7b):
+
+| benchmark | main | now | Go | now / Go |
+|---|---:|---:|---:|---:|
+| sieve | 1,473 | 688 | 624 | 1.10× |
+| words | 785 | 585 | 970 | 0.60× |
+| json | 2,738 | 2,689 | 3,760 | 0.72× |
+| sort | 217 | 200 | 1,427 | 0.14× |
+
+sieve's array is 50 MB now (it was 400 MB, and copied once more by its
+first write: 765 MB at its peak; Go's: 52). What's left of it is the
+loop: each write checks the array is unique and the index's add for
+overflow, which Go's doesn't.
 
 `go run ./bench/compiled/run` prints the wall times; under that load
 they said more about the scheduler than the programs (a single-threaded
