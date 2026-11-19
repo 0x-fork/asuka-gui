@@ -94,7 +94,7 @@ match line {
 }
 ```
 
-構造体と列挙型は、メソッドから演算子を得ます。`fn add(o: T) -> R`（または `plus`）は `a + b` に、`fn sub(o: T) -> R`（または `minus`）は `a - b` に、`fn mul(o: T) -> R`（または `times`）は `a * b` に、`fn div(o: T) -> R`（または `quo`）は `a / b` に、`fn rem(o: T) -> R` は `a % b` に、`fn neg() -> R` は `-a` に、`fn compare(o: T) -> int`（負、ゼロ、正）は `<`、`<=`、`>`、`>=` になり、`sorted()` や `T: Comparable` にも使われます（[関数](functions.md#インターフェースとジェネリクス)を参照）。`T` は値そのものと違う型でもかまいません（`Money * int`）。名前が二つある演算子では、それぞれのメソッドが別の `T` を受け取ります。`Decimal` の `mul(o: Decimal)` と `times(n: int)` が、`price * rate` と `price * 3` になります。逆の順序（`3 * price`）は導かれません。メソッドが `a` と同じ型を返すなら、`a += b` はこれらのメソッドによる `a = a + b` で（`-=`、`*=`、`/=`、`%=` も同じ）、変数、状態、フィールド、要素に使えます（状態の変更は一度だけです）。`std/time` の `Time` が `Duration` を足し、別の `Time` を引けるのはこのためです。
+構造体と列挙型は、メソッドから演算子を得ます。`fn add(o: T) -> R`（または `plus`）は `a + b` に、`fn sub(o: T) -> R`（または `minus`）は `a - b` に、`fn mul(o: T) -> R`（または `times`）は `a * b` に、`fn div(o: T) -> R`（または `quo`）は `a / b` に、`fn rem(o: T) -> R` は `a % b` に、`fn pow(o: T) -> R` は `a ** b` に、`fn neg() -> R` は `-a` に、`fn compare(o: T) -> int`（負、ゼロ、正）は `<`、`<=`、`>`、`>=` になり、`sorted()` や `T: Comparable` にも使われます（[関数](functions.md#インターフェースとジェネリクス)を参照）。`T` は値そのものと違う型でもかまいません（`Money * int`）。名前が二つある演算子では、それぞれのメソッドが別の `T` を受け取ります。`Decimal` の `mul(o: Decimal)` と `times(n: int)` が、`price * rate` と `price * 3` になります。逆の順序（`3 * price`）は導かれません。メソッドが `a` と同じ型を返すなら、`a += b` はこれらのメソッドによる `a = a + b` で（`-=`、`*=`、`/=`、`%=`、`**=` も同じ）、変数、状態、フィールド、要素に使えます（状態の変更は一度だけです）。`std/time` の `Time` が `Duration` を足し、別の `Time` を引けるのはこのためです。
 
 ```asuka check
 struct Money {

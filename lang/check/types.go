@@ -12,6 +12,7 @@
 package check
 
 import (
+	"math"
 	"strconv"
 	"strings"
 
@@ -46,6 +47,13 @@ const (
 	KRef                       // a view's handle (ref: r, X as r): a cell holding the view, or none
 	KNever                     // what never returns (throw, panic)
 	KPointer                   // C's void *, opaque (RFC 0008)
+	KI8                        // the sized integers: i8 to u64, stored as ints (canonical: sign- or zero-extended)
+	KI16
+	KI32
+	KU8
+	KU16
+	KU32
+	KU64 // its 64 bits in an int's
 )
 
 // Basic is a built-in type without parameters.
@@ -76,7 +84,109 @@ var (
 	Ref      = &Basic{KRef, "Ref"}
 	Never    = &Basic{KNever, "never"}
 	Pointer  = &Basic{KPointer, "Pointer"}
+	I8       = &Basic{KI8, "i8"}
+	I16      = &Basic{KI16, "i16"}
+	I32      = &Basic{KI32, "i32"}
+	U8       = &Basic{KU8, "u8"}
+	U16      = &Basic{KU16, "u16"}
+	U32      = &Basic{KU32, "u32"}
+	U64      = &Basic{KU64, "u64"}
 )
+
+// IntTypes are the integer types: int (64 bits, signed) and the sized
+// ones.
+var IntTypes = []*Basic{I8, I16, I32, Int, U8, U16, U32, U64}
+
+// IsInteger reports an integer type: int or a sized one.
+func IsInteger(t Type) bool {
+	b, ok := t.(*Basic)
+	return ok && (b == Int || b.Kind >= KI8 && b.Kind <= KU64)
+}
+
+// IsSized reports a sized integer type (i8 to u64; not int).
+func IsSized(t Type) bool {
+	b, ok := t.(*Basic)
+	return ok && b.Kind >= KI8 && b.Kind <= KU64
+}
+
+// IntBits is an integer type's width and whether it's signed.
+func IntBits(t Type) (bits int, signed bool) {
+	switch t {
+	case I8:
+		return 8, true
+	case I16:
+		return 16, true
+	case I32:
+		return 32, true
+	case U8:
+		return 8, false
+	case U16:
+		return 16, false
+	case U32:
+		return 32, false
+	case U64:
+		return 64, false
+	}
+	return 64, true
+}
+
+// IntCode is an integer type's code, which the VM's instructions for
+// the sized types take (core/src/vm/ops.h's ak_int_type): log2 of its
+// bytes, 4 more when it's unsigned (i8 0, i16 1, i32 2, int 3, u8 4,
+// u16 5, u32 6, u64 7).
+func IntCode(t Type) int {
+	bits, signed := IntBits(t)
+	c := map[int]int{8: 0, 16: 1, 32: 2, 64: 3}[bits]
+	if !signed {
+		c += 4
+	}
+	return c
+}
+
+// IntWidens reports whether every value of the integer type from fits
+// the integer type to (u8 in int, i16 in i32; not i8 in u8).
+func IntWidens(from, to Type) bool {
+	fb, fs := IntBits(from)
+	tb, ts := IntBits(to)
+	if fs == ts {
+		return tb >= fb
+	}
+	return !fs && ts && tb > fb
+}
+
+// IntRange is an integer type's smallest and largest values; a u64's
+// largest is its bits as an int64 (-1), so the caller compares its own
+// values as unsigned.
+func IntRange(t Type) (lo, hi int64) {
+	bits, signed := IntBits(t)
+	if !signed {
+		if bits == 64 {
+			return 0, -1
+		}
+		return 0, 1<<bits - 1
+	}
+	if bits == 64 {
+		return math.MinInt64, math.MaxInt64
+	}
+	return -1 << (bits - 1), 1<<(bits-1) - 1
+}
+
+// IntFits reports whether v fits an integer type (a u64 when it's the
+// value's bits: neg says it's negative, not past int64's largest).
+func IntFits(t Type, v uint64, neg bool) bool {
+	bits, signed := IntBits(t)
+	if !signed {
+		if neg {
+			return v == 0
+		}
+		return bits == 64 || v <= uint64(1)<<bits-1
+	}
+	max := uint64(1)<<(bits-1) - 1
+	if neg {
+		return v <= max+1
+	}
+	return v <= max
+}
 
 // Array is [Elem].
 type Array struct{ Elem Type }
@@ -459,8 +569,8 @@ func (n *Named) Subst() Subst {
 // ---------------------------------------------------------------------
 // What types are
 
-// IsNumeric reports int or float.
-func IsNumeric(t Type) bool { return t == Int || t == Float }
+// IsNumeric reports a number: an integer type or float.
+func IsNumeric(t Type) bool { return t == Float || IsInteger(t) }
 
 // IsInvalid reports a type an error already explained.
 func IsInvalid(t Type) bool { return t == Invalid || t == nil }
@@ -647,6 +757,9 @@ func whyNotComparable(t Type) string {
 	case Int, Float, String, Duration, Invalid:
 		return ""
 	}
+	if IsSized(t) {
+		return ""
+	}
 	switch x := t.(type) {
 	case *TypeParam:
 		if x.Has("Comparable") {
@@ -717,7 +830,7 @@ func whyNotHashable1(t Type, seen map[*TypeName]bool) string {
 	switch x := t.(type) {
 	case *Basic:
 		switch x {
-		case Int, Bool, String, Bytes, Duration, Color, Invalid:
+		case Int, Bool, String, Bytes, Duration, Color, Invalid, I8, I16, I32, U8, U16, U32, U64:
 			return ""
 		case Float:
 			return "floats aren't (NaN isn't equal to itself): key by an int or a string"

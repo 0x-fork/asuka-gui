@@ -10,6 +10,7 @@
 static ak_kind desc_kind(const char *p) {
 	switch (*p) {
 	case 'i':
+	case 'n':
 	case 'e':
 		return AK_K_INT;
 	case 'f':
@@ -40,6 +41,8 @@ static const char *desc_end(const char *p) {
 		}
 		case 'm':
 			return desc_end(desc_end(p + 1));
+		case 'n':
+			return p[1] ? p + 2 : p + 1;  // n and a sized integer type's code
 		case '\0':
 			return p;
 		default:
@@ -369,6 +372,41 @@ static bool number(parser *ps, double *out, bool *integral, int64_t *iv) {
 	return ok;
 }
 
+// sized reads an integer of a sized type (its code t): an integer's
+// digits, or a number with a fraction or an exponent that's a whole
+// number, in the type's range.
+static ak_val sized(parser *ps, int t) {
+	ws(ps);
+	const char *st = ps->s;
+	if (ps->s < ps->end && *ps->s == '-') ps->s++;
+	while (ps->s < ps->end && ((*ps->s >= '0' && *ps->s <= '9') || *ps->s == '.' || *ps->s == 'e' || *ps->s == 'E' || *ps->s == '+' || *ps->s == '-')) ps->s++;
+	size_t n = (size_t)(ps->s - st);
+	if (!n) {
+		fail(ps, "expected a number%s", "");
+		return (ak_val){0};
+	}
+	int64_t v = 0;
+	if (!memchr(st, '.', n) && !memchr(st, 'e', n) && !memchr(st, 'E', n)) {
+		if (!ak_int_parse(st, n, 10, t, &v)) fail(ps, "an integer out of %s's range", ak_int_names[t & 7]);
+		return (ak_val){.i = v};
+	}
+	ps->s = st;
+	double f;
+	bool integral;
+	if (!number(ps, &f, &integral, NULL)) return (ak_val){0};
+	if (f != floor(f)) {
+		fail(ps, "expected an integer%s", "");
+	} else if (t == AK_U64) {
+		if (f >= 0 && f < 0x1p64) v = (int64_t)(uint64_t)f;
+		else fail(ps, "an integer out of %s's range", ak_int_names[t & 7]);
+	} else if (!(f >= -0x1p63 && f < 0x1p63) || !ak_int_fits((int64_t)f, AK_I64, t)) {
+		fail(ps, "an integer out of %s's range", ak_int_names[t & 7]);
+	} else {
+		v = (int64_t)f;
+	}
+	return (ak_val){.i = v};
+}
+
 // zero_field starts a field the JSON leaves out, of descriptor fd: none,
 // a scalar's zero, an empty string or collection; false for one it can't
 // leave out (a struct, an enum, bytes).
@@ -671,6 +709,8 @@ static ak_val value_of(parser *ps, const char *d) {
 		}
 		return (ak_val){.i = iv};
 	}
+	case 'n':
+		return sized(ps, d[1] - '0');
 	case 'f': {
 		double f;
 		bool integral;
@@ -1075,6 +1115,10 @@ static void enc_value(encoder *e, ak_val v, const char *d) {
 	switch (*d) {
 	case 'i':
 		ak_strb_int(b, v.i);
+		return;
+	case 'n':
+		if (d[1] - '0' == AK_U64) ak_strb_uint(b, (uint64_t)v.i);
+		else ak_strb_int(b, v.i);
 		return;
 	case 'f':
 		if (v.f != v.f || v.f == INFINITY || v.f == -INFINITY) {
