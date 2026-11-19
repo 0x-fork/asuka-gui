@@ -258,3 +258,39 @@ from an array asked the array how it stores its elements (an [u8]'s
 are packed): a function with no sized integers in it doesn't any more
 (bytecode.FSized), so a reduce over [int] is the calls branch's loop
 again (35 M cycles to 42 M).
+
+## Calls, unchecked bounded ints, the stack limit in x28 (2026-11-19)
+
+The machine shared (load 90 to 280): cycles, the fewest of five
+interleaved runs, and instructions retired, the median, the whole
+process, in millions. "Before" is c43394e1 (the merge above).
+
+| benchmark | cycles before | now | Go | now / Go | instructions before | now | Go |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| fib | 487 | 422 | 446 | 0.95× | 2,616 | 1,982 | 1,985 |
+| sieve | 628 | 604 | 614 | 0.98× | 1,705 | 1,366 | 1,505 |
+| nbody | 807 | 856 | 817 | 1.05× | 3,145 | 3,145 | 3,140 |
+| trees | 2,701 | 2,548 | 6,605 | 0.39× | 13,384 | 12,959 | 30,792 |
+| words | 491 | 475 | 856 | 0.55× | 2,385 | 2,402 | 3,826 |
+| json | 2,273 | 2,236 | 3,494 | 0.64× | 11,137 | 11,151 | 18,329 |
+| sort | 206 | 172 | 1,389 | 0.12× | 879 | 880 | 2,144 |
+
+nbody's instructions are as they were (and as Go's): its cycles differ
+with the load. What changed (lang/LOWERING.md, Release builds: C):
+
+- fib. An error leaves a compiled function through a cold call
+  (ak_cg_unwind), so clang lays the error's paths out of the way: each
+  call's test of the error it returned fell through to the error's block
+  and jumped back (422 M cycles from 487 M with the same instructions).
+  On arm64 the thread's stack limit is in x28 (the app's C compiled with
+  -ffixed-x28, as Go keeps its g in R28; each way in from the core sets
+  and restores it), so the check is `cmp sp, x28; b.lo` and no register
+  of a recursing function holds the limit; a direct body's arguments
+  come before its closure, so its first is in x0, where its result goes:
+  11 instructions a base case and 20 a recursive call, as Go's.
+- sieve. The facts across the control flow know an int's magnitude: an
+  index or a length is below 2^32, so `j += i` of two indexes can't
+  overflow and isn't checked (it's opaque to clang's loop analysis, as
+  the checked add was: as a plain add, clang worked out the inner loop's
+  trip count with a 128-bit division on every turn of the outer one).
+  1,366 M instructions to Go's 1,505 M.
