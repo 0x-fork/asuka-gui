@@ -10,13 +10,13 @@ extern fn checksum_wait()
 
 struct Line {
   index: int
-  crc: int
+  crc: u32
 }
 
 component Checksum {
   state text = "hello\nworld"
   state lines: [Line] = []
-  state later = 0
+  state later: u32 = 0
 
   Column {
     Text("zlib {zlibVersion()}")
