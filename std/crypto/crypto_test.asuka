@@ -180,3 +180,49 @@ test "keys in PEM and JWK, made and read back" {
     expect(e.message.hasPrefix("invalid key: "))
   }
 }
+
+test "encrypted private keys" {
+  // PKCS#8's PBES2 (OpenSSL 3's: PBKDF2-HMAC-SHA256, AES-256-CBC) and
+  // the key it holds.
+  let plain = try privateKey("-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgARonHlKxBVl7NNyG\n3sYIVz6b6ARTWrYbSsFbkyTCocyhRANCAAQ/CRjBhZPKlDw5ULaa/nSZvlfnN1CU\nvoDaWibX7yrl49+ZfsaRiU6gPAmbZ10RGfah+1IyiwSLpA1c975ouPeU\n-----END PRIVATE KEY-----\n")
+  let encrypted = "-----BEGIN ENCRYPTED PRIVATE KEY-----\nMIH0MF8GCSqGSIb3DQEFDTBSMDEGCSqGSIb3DQEFDDAkBBAGso6tQLh+f/CDfCKK\nB+jrAgIIADAMBggqhkiG9w0CCQUAMB0GCWCGSAFlAwQBKgQQe6KbkS5Wc+y+5HlZ\nJOw1/wSBkNrfyoCu+XScOJZoWdhCsPwLfgZTenjKiIVh2HG1OEJYs2JqFUpE/Rk9\ntexdK1ost1+O7UE+hsbBt24qGnGRq8LspaAPj3aEJAJCdyGuob+f7QWNf9QA0NAg\nnJ8wT65TTRU0tYp7Iz7ymB+l//u9FIvyW7rDXjjzXG1DZ5Uuc/UecFA9GYUPcnrN\nEPmQJhy2OA==\n-----END ENCRYPTED PRIVATE KEY-----\n"
+  expect((try await decryptPrivateKey(encrypted, password: "asuka")) == plain)
+  // A wrong password, and none, aren't a key that's broken.
+  do {
+    let _ = try await decryptPrivateKey(encrypted, password: "wrong")
+    expect(false)
+  } catch CryptoError.wrongPassword {}
+  do {
+    let _ = try await decryptPrivateKey(encrypted, password: "")
+    expect(false)
+  } catch CryptoError.wrongPassword {}
+  do {
+    let _ = try await decryptPrivateKey("-----BEGIN ENCRYPTED PRIVATE KEY-----\nMIIB\n-----END ENCRYPTED PRIVATE KEY-----\n", password: "asuka")
+    expect(false)
+  } catch CryptoError.invalidKey(_) {}
+  // privateKey reads no encrypted key, and says what does.
+  do {
+    let _ = try privateKey(encrypted)
+    expect(false)
+  } catch CryptoError.invalidKey(reason) {
+    expect(reason == "the key is encrypted: read it with crypto.decryptPrivateKey(pem, password:)")
+  }
+  // decryptPrivateKey reads one that isn't encrypted as it is.
+  expect((try await decryptPrivateKey(plain.pem(), password: "unused")) == plain)
+  // ssh-keygen's (bcrypt_pbkdf, aes256-ctr): its public key the .pub's.
+  let ssh = try await decryptPrivateKey("-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABDOIISoqM\n95dsy+a54U/2JhAAAAGAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIHbcHpfBlWpBk7n+\nAChsmb5E3urQD3ODdTxnt9RY6ZFdAAAAkHvKGvUH8hzFkf4wO98JSAmpywTMdMW84gy+rt\ng9ervjTZ+2nb5zISR4kJ294tLWH00xP7OOJ3x/9fCf4bJg8URKMOjGgFBSZrsC4Zmq8f7l\npzIw/6wxr/rqu7L4oYORj0Z7wCnjO3EH7h6vKu8ontI0hKHD2iTVwxzc9JyuIw4G1EuVra\nDvyZ7PqwdUausEGw==\n-----END OPENSSH PRIVATE KEY-----\n", password: "asuka")
+  expect(ssh.kind == .ed25519)
+  let raw = (try ssh.publicKey()).der
+  expect(encoding.hexEncode(raw.slice(raw.count() - 32, raw.count())) == "76dc1e97c1956a4193b9fe00286c99be44deead00f7383753c67b7d458e9915d")
+  // ssh-keygen's, not encrypted: privateKey reads it.
+  let sshPlain = try privateKey("-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW\nQyNTUxOQAAACBXdCC30PlCYf1UBMbHQFblSRYx3Zh0c7CJ9T+Otsra5QAAAIgB7eDuAe3g\n7gAAAAtzc2gtZWQyNTUxOQAAACBXdCC30PlCYf1UBMbHQFblSRYx3Zh0c7CJ9T+Otsra5Q\nAAAEDRmCxx12rDsCp0xynLwE1QNu/b8Fjb5zyOxs6eXKr+iVd0ILfQ+UJh/VQExsdAVuVJ\nFjHdmHRzsIn1P462ytrlAAAABXBsYWlu\n-----END OPENSSH PRIVATE KEY-----\n")
+  let sshRaw = (try sshPlain.publicKey()).der
+  expect(encoding.hexEncode(sshRaw.slice(sshRaw.count() - 32, sshRaw.count())) == "577420b7d0f94261fd5404c6c74056e5491631dd987473b089f53f8eb6cadae5")
+  // Written encrypted, and read back.
+  for key in [plain, try newPrivateKey(kind: .ed25519)] {
+    let text = await key.encryptedPEM(password: "s3cret")
+    expect(text.hasPrefix("-----BEGIN ENCRYPTED PRIVATE KEY-----\n"))
+    expect((try await decryptPrivateKey(text, password: "s3cret")) == key)
+    expect((try? await decryptPrivateKey(text, password: "s3cre")) == none)
+  }
+}

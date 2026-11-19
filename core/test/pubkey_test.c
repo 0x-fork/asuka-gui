@@ -130,16 +130,31 @@ static ak_bytes *text(const char *s) { return keep(ak_bytes_new(s, strlen(s))); 
 
 static bool same(const ak_bytes *a, const ak_bytes *b) { return a && b && a->len == b->len && memcmp(a->data, b->data, a->len) == 0; }
 
+// Set when the last read_private's key file didn't read (keyfile.c's).
+static bool keyfile_failed;
+
 static const char *failure(void) {
-	static char why[200];
-	ak_str *s = fn("crypto_pk.keyFailure")(NULL, 0).p;
+	static char why[300];
+	ak_str *s = fn(keyfile_failed ? "crypto_keyfile.keyFileFailure" : "crypto_pk.keyFailure")(NULL, 0).p;
 	snprintf(why, sizeof why, "%s", s->data);
 	ak_release(s);
 	return why;
 }
 
-static ak_bytes *read_public(ak_bytes *in, bool pem) { return keep(fn("crypto_pk.readPublic")((ak_val[]){{.p = in}, {.i = pem}}, 2).p); }
-static ak_bytes *read_private(ak_bytes *in, bool pem) { return keep(fn("crypto_pk.readPrivate")((ak_val[]){{.p = in}, {.i = pem}}, 2).p); }
+static ak_bytes *read_public(ak_bytes *in, bool pem) { keyfile_failed = false; return keep(fn("crypto_pk.readPublic")((ak_val[]){{.p = in}, {.i = pem}}, 2).p); }
+// read_private reads a private key as std/crypto's privateKey does (PEM:
+// keyfile.c's, then PKCS#8 of it) or privateKeyFromDER's DER.
+static ak_bytes *read_private(ak_bytes *in, bool pem) {
+	keyfile_failed = false;
+	if (pem) {
+		in = keep(fn("crypto_keyfile.readKeyFile")((ak_val[]){{.p = in}, {.i = 1}}, 2).p);
+		if (!in) {
+			keyfile_failed = true;
+			return NULL;
+		}
+	}
+	return keep(fn("crypto_pk.readPrivate")((ak_val[]){{.p = in}}, 1).p);
+}
 static ak_bytes *public_of(ak_bytes *k) { return keep(fn("crypto_pk.publicOf")((ak_val[]){{.p = k}}, 1).p); }
 
 enum { KIND_RSA = 1, KIND_P256, KIND_P384, KIND_P521, KIND_ED25519 };
@@ -195,9 +210,11 @@ TEST(not_keys) {
 	struct { const char *in; bool pem, private; const char *why; } cases[] = {
 		{"", false, false, "SubjectPublicKeyInfo"},
 		{"-----BEGIN PUBLIC KEY-----\nMFkw\n-----END PUBLIC KEY-----\n", true, false, "SubjectPublicKeyInfo"},
-		{"-----BEGIN ENCRYPTED PRIVATE KEY-----\nMIIB\n-----END ENCRYPTED PRIVATE KEY-----\n", true, true, "encrypted"},
-		{"-----BEGIN RSA PRIVATE KEY-----\nProc-Type: 4,ENCRYPTED\nDEK-Info: AES-128-CBC,00\n\nMIIB\n-----END RSA PRIVATE KEY-----\n", true, true, "encrypted"},
-		{"-----BEGIN OPENSSH PRIVATE KEY-----\nb3Bl\n-----END OPENSSH PRIVATE KEY-----\n", true, true, "OpenSSH"},
+		{"-----BEGIN ENCRYPTED PRIVATE KEY-----\nMIIB\n-----END ENCRYPTED PRIVATE KEY-----\n", true, true, "the key is encrypted"},
+		{"-----BEGIN RSA PRIVATE KEY-----\nProc-Type: 4,ENCRYPTED\nDEK-Info: AES-128-CBC,00\n\nMIIB\n-----END RSA PRIVATE KEY-----\n", true, true, "the key is encrypted"},
+		{"-----BEGIN OPENSSH PRIVATE KEY-----\nb3Bl\n-----END OPENSSH PRIVATE KEY-----\n", true, true, "isn't an OpenSSH private key"},
+		{"-----BEGIN DSA PRIVATE KEY-----\nMIIB\n-----END DSA PRIVATE KEY-----\n", true, true, "DSA keys aren't read"},
+		{"-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n", true, true, "no private key in it"},
 		{"-----BEGIN PUBLIC KEY-----\nMFkw", true, false, "END"},
 		{"-----BEGIN PUBLIC KEY-----\nM!kw\n-----END PUBLIC KEY-----\n", true, false, "Base64"},
 		{"-----BEGIN CERTIFICATE REQUEST-----\nMFkw\n-----END CERTIFICATE REQUEST-----\n", true, false, "no PUBLIC KEY"},

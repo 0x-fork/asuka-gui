@@ -6,13 +6,15 @@
 // Base64 without padding); bcrypt ($2b$, and $2a$ and $2y$ to verify)
 // over Solar Designer's crypt_blowfish (third_party/crypt_blowfish), for
 // the hashes databases already hold. Both take time and memory on purpose,
-// so the Asuka side runs them in spawn's workers.
+// so the Asuka side runs them in spawn's workers. And bcrypt_pbkdf, over
+// the same Blowfish, for OpenSSH's encrypted keys (keyfile.c).
 #include "std/std.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 
 #include "std/monocypher.h"
+#include "std/keyfile.h"
 
 // crypt_blowfish, compiled in here, its exported names the core's.
 #define _crypt_output_magic ak_bf_output_magic
@@ -280,6 +282,116 @@ static ak_val verify(ak_val *args, uint32_t n) {
 static ak_val failure_fn(ak_val *args, uint32_t n) {
 	AK_UNUSED(args), AK_UNUSED(n);
 	return (ak_val){.p = ak_str_c(failure)};
+}
+
+// ---- bcrypt_pbkdf (OpenBSD's, what OpenSSH's key files are encrypted
+// with) over crypt_blowfish's Blowfish ----
+//
+// bcrypt's hash of SHA-512 digests, then PBKDF2's shape over it
+// (OpenBSD's bcrypt_pbkdf.c): keyfile.c's (std/keyfile.h).
+
+typedef struct {
+	BF_word S[4][0x100];
+	BF_word P[BF_N + 2];
+} bf_state;
+
+static BF_word bf_f(const bf_state *c, BF_word x) {
+	return ((c->S[0][x >> 24] + c->S[1][(x >> 16) & 0xff]) ^ c->S[2][(x >> 8) & 0xff]) + c->S[3][x & 0xff];
+}
+
+static void bf_encipher(const bf_state *c, BF_word *l, BF_word *r) {
+	BF_word L = *l ^ c->P[0], R = *r;
+	for (int i = 1; i <= BF_N; i += 2) {
+		R ^= bf_f(c, L) ^ c->P[i];
+		L ^= bf_f(c, R) ^ c->P[i + 1];
+	}
+	*l = R ^ c->P[BF_N + 1];
+	*r = L;
+}
+
+// bf_word reads data's next 4 bytes (big-endian), cycling through it.
+static BF_word bf_word(const uint8_t *data, size_t n, size_t *at) {
+	BF_word w = 0;
+	for (int i = 0; i < 4; i++) {
+		if (*at >= n) *at = 0;
+		w = w << 8 | data[(*at)++];
+	}
+	return w;
+}
+
+// bf_expand is Blowfish_expandstate (data given) and Blowfish_expand0state
+// (data NULL): key into P, then the state encrypted over itself.
+static void bf_expand(bf_state *c, const uint8_t *data, size_t dn, const uint8_t *key, size_t kn) {
+	size_t j = 0;
+	for (int i = 0; i < BF_N + 2; i++) c->P[i] ^= bf_word(key, kn, &j);
+	j = 0;
+	BF_word l = 0, r = 0;
+	for (int i = 0; i < BF_N + 2; i += 2) {
+		if (data) l ^= bf_word(data, dn, &j), r ^= bf_word(data, dn, &j);
+		bf_encipher(c, &l, &r);
+		c->P[i] = l, c->P[i + 1] = r;
+	}
+	for (int i = 0; i < 4; i++)
+		for (int k = 0; k < 0x100; k += 2) {
+			if (data) l ^= bf_word(data, dn, &j), r ^= bf_word(data, dn, &j);
+			bf_encipher(c, &l, &r);
+			c->S[i][k] = l, c->S[i][k + 1] = r;
+		}
+}
+
+static void bcrypt_hash(const uint8_t pass[64], const uint8_t salt[64], uint8_t out[32], bf_state *c) {
+	static const char text[] = "OxychromaticBlowfishSwatDynamite";
+	memcpy(c->S, BF_init_state.S, sizeof c->S);
+	memcpy(c->P, BF_init_state.P, sizeof c->P);
+	bf_expand(c, salt, 64, pass, 64);
+	for (int i = 0; i < 64; i++) {
+		bf_expand(c, NULL, 0, salt, 64);
+		bf_expand(c, NULL, 0, pass, 64);
+	}
+	BF_word w[8];
+	size_t j = 0;
+	for (int i = 0; i < 8; i++) w[i] = bf_word((const uint8_t *)text, sizeof text - 1, &j);
+	for (int i = 0; i < 64; i++)
+		for (int k = 0; k < 8; k += 2) bf_encipher(c, &w[k], &w[k + 1]);
+	// Each word little-endian, as OpenBSD's writes them.
+	for (int i = 0; i < 8; i++)
+		out[4 * i] = (uint8_t)w[i], out[4 * i + 1] = (uint8_t)(w[i] >> 8), out[4 * i + 2] = (uint8_t)(w[i] >> 16), out[4 * i + 3] = (uint8_t)(w[i] >> 24);
+	ak_wipe(w, sizeof w);
+}
+
+void ak_bcrypt_pbkdf(const uint8_t *pw, size_t pn, const uint8_t *salt, size_t sn, uint32_t rounds, uint8_t *key, size_t kn) {
+	enum { HASH = 32 };
+	size_t stride = (kn + HASH - 1) / HASH, amt = (kn + stride - 1) / stride, left = kn;
+	uint8_t pass[64], sh[64], tmp[HASH], out[HASH];
+	bf_state *c = ak_alloc(sizeof *c);
+	ak_hash(AK_HASH_SHA512, pw, pn, pass);
+	uint8_t *cs = ak_alloc(sn + 4);
+	if (sn) memcpy(cs, salt, sn);
+	for (uint32_t count = 1; left > 0; count++) {
+		cs[sn] = (uint8_t)(count >> 24), cs[sn + 1] = (uint8_t)(count >> 16), cs[sn + 2] = (uint8_t)(count >> 8), cs[sn + 3] = (uint8_t)count;
+		ak_hash(AK_HASH_SHA512, cs, sn + 4, sh);
+		bcrypt_hash(pass, sh, tmp, c);
+		memcpy(out, tmp, HASH);
+		for (uint32_t i = 1; i < rounds; i++) {
+			ak_hash(AK_HASH_SHA512, tmp, HASH, sh);
+			bcrypt_hash(pass, sh, tmp, c);
+			for (int k = 0; k < HASH; k++) out[k] ^= tmp[k];
+		}
+		size_t m = amt < left ? amt : left, i = 0;
+		for (; i < m; i++) {
+			size_t dest = i * stride + (count - 1);
+			if (dest >= kn) break;
+			key[dest] = out[i];
+		}
+		left -= i;
+	}
+	ak_wipe(c, sizeof *c);
+	ak_free(c);
+	ak_free(cs);
+	ak_wipe(pass, sizeof pass);
+	ak_wipe(sh, sizeof sh);
+	ak_wipe(tmp, sizeof tmp);
+	ak_wipe(out, sizeof out);
 }
 
 const ak_lib_entry ak_std_crypto_password[] = {
