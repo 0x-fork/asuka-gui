@@ -522,6 +522,10 @@ func (b *fb) builtinMethod(e *syntax.CallExpr, call *check.Call, recv *int, dst 
 		}
 	case "seqProto", "proto":
 		vals = b.seqExtra(m, res, vals)
+	case "entryProto":
+		// An empty [(K, V)], made once: the tree's entries' shape.
+		tt := b.typ(call.RecvType).(*check.Tree)
+		vals = append(vals, b.emptyConst(&check.Array{Elem: &check.Tuple{Elems: []check.Type{tt.Key, tt.Elem}}}))
 	case "false":
 		vals = append(vals, b.konst(0))
 	case "true":

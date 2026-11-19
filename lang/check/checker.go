@@ -838,6 +838,17 @@ func (c *Checker) namedType(t *syntax.NamedType) Type {
 				}
 				return &Seq{c.typeExpr(t.Args[0])}
 			}
+		case "BTree":
+			// The runtime's B-tree (Tree): the standard library's own
+			// (std/collections'), unless a package declares a type of the
+			// name.
+			if c.pkg != nil && StdPath(c.pkg.Path) && c.lookupType(name) == nil {
+				if len(t.Args) != 2 {
+					c.errorf(t, diag.TypeArguments, "BTree takes two types: BTree<K, V>")
+					return Invalid
+				}
+				return &Tree{c.typeExpr(t.Args[0]), c.typeExpr(t.Args[1])}
+			}
 		case "never":
 			// What a function that never returns gives (os.exit): the
 			// builtin never()'s name, as a type.

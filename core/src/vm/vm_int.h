@@ -91,10 +91,10 @@ typedef struct {
 	struct ak_module *mod;
 	ak_method *methods;
 	uint32_t nmethods;
-	// hook: the functions of the type's own ==, hash, text and JSON
-	// (rt.h's AK_HOOK_*, s.hooks saying which), from its methods named
-	// #eq, #hash, #show, #json and #fromjson (the last two followed by a
-	// NUL and the descriptor s.jdesc).
+	// hook: the functions of the type's own ==, hash, text, JSON and
+	// order (rt.h's AK_HOOK_*, s.hooks saying which), from its methods
+	// named #eq, #hash, #show, #json, #fromjson (those two followed by a
+	// NUL and the descriptor s.jdesc) and #cmp (its compare).
 	uint32_t hook[AK_NHOOKS];
 	// Storage the shape's arrays point into.
 	uint8_t *kinds;

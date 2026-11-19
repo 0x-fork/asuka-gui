@@ -30,6 +30,9 @@ extern const ak_lib_entry ak_int_lib[];
 // Lazy sequences' and ordering by a key's (seq.c), registered when a
 // build names them (link.c's AK_USES_SEQ).
 extern const ak_lib_entry ak_seq_lib[];
+// B-trees' (tree.c: std/collections' BTree), registered when a build
+// names them (link.c's AK_USES_TREE).
+extern const ak_lib_entry ak_tree_lib[];
 
 // ak_spawn_elsewhere, when set, runs a spawn's closure c elsewhere (the
 // web's workers: abi/web.c) and settles f (of kind k) once it's done;

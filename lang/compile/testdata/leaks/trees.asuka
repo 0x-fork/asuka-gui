@@ -1,0 +1,101 @@
+// Run with the runner's -leaks: std/collections' B-trees (the runtime's
+// nodes, copied on write and shared by copies), changed in a var, a
+// field, a store's state and through a mut fn, walked part of the way,
+// with an order that raises an error; and a split's pieces (slabs of
+// them), kept past the array they came in. Nothing a test makes
+// outlives it.
+
+import std/collections.{SortedMap, SortedSet}
+
+struct Job {
+  name: string
+  due: int
+}
+
+struct Version {
+  major: int
+  minor: int
+
+  fn compare(o: Version) -> int = if major != o.major { major - o.major } else { minor - o.minor }
+}
+
+struct Board {
+  jobs: SortedMap<string, Job> = SortedMap()
+
+  mut fn add(j: Job) { jobs.set(j.name, j) }
+}
+
+state book = SortedMap<string, [string]>()
+
+test "maps of every kind, copied and walked" {
+  var m = SortedMap<string, Job>()
+  for i in 0..<3000 { m.set("job {i % 1000}", Job(name: "j{i}", due: i)) }
+  let snap = m
+  for i in 0..<900 { let _ = m.remove("job {i}") }
+  var seen = 0
+  for (k, j) in snap {
+    seen += j.due
+    if seen > 100000 { break }
+  }
+  let firstFew = m.range(from: "job 95").take(4).map(e => e.1.name).toArray()
+  print("{m.count()} {snap.count()} {firstFew} {m.floor("job 9555")!.0} {m.entries().count()}")
+  var vs = SortedSet<Version>()
+  for i in 0..<500 { let _ = vs.insert(Version(major: i % 7, minor: i)) }
+  let copy = vs
+  for i in 0..<250 { let _ = vs.remove(Version(major: i % 7, minor: i)) }
+  print("{vs.count()} {copy.count()} {vs.first()!.minor} {copy.toArray().count()}")
+  var nested = SortedMap<int, SortedSet<string>>()
+  for i in 0..<200 {
+    var s = nested.get(i % 9) ?? SortedSet<string>()
+    let _ = s.insert("x{i}")
+    nested.set(i % 9, s)
+  }
+  print("{nested.count()} {nested.get(0)!.count()}")
+}
+
+test "a field, a mut fn and state, left as they were" {
+  var b = Board()
+  for i in 0..<100 { b.add(Job(name: "n{i}", due: i)) }
+  let before = b
+  b.add(Job(name: "n5", due: 99))
+  print("{b.jobs.get("n5")!.due} {before.jobs.get("n5")!.due} {b.jobs.count()}")
+  book.set("a", ["x", "y"])
+  book.set("b", ["z"])
+  let had = book
+  let _ = book.remove("a")
+  let _ = book.remove("b")
+  print("{had.count()} {book.count()}")
+}
+
+test "an order that raises" {
+  var m = SortedMap<int, string>(by: (a, b) => a * 1000000000000 < b * 1000000000000)
+  for k in 0..<300 { m.set(k, "{k}") }
+  var raised = 0
+  try m.set(30000000, "big") catch { raised += 1 }
+  let gone = try m.remove(30000000) catch { "?" }
+  let near = (try m.floor(30000000) catch { (0, "?") }) ?? (0, "none")
+  print("{raised} {gone} {near.1} {m.count()}")
+}
+
+test "a split's pieces, kept and let go of" {
+  var text = ""
+  for i in 0..<3000 { text += "w{i % 37} " }
+  let words = text.split(" ")
+  let kept = [words[5], words[2000], words[words.count() - 2]]
+  let fields = text.fields()
+  let lines = "a\nbb\r\nccc\n".lines()
+  print("{words.count()} {kept} {fields.count()} {lines}")
+}
+
+// Output:
+// 100 1000 ["j2950","j2951","j2952","j2953"] job 955 100
+// 250 500 252 500
+// 9 23
+// ok maps of every kind, copied and walked
+// 99 5 100
+// 2 0
+// ok a field, a mut fn and state, left as they were
+// 1 ? ? 300
+// ok an order that raises
+// 3001 ["w5","w2","w2"] 3000 ["a","bb","ccc"]
+// ok a split's pieces, kept and let go of

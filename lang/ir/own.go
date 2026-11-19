@@ -11,13 +11,25 @@ import (
 // writes values without knowing their types (arrays', maps' and sets'
 // ==, a map's keys, json.c) calls them: #eq, #hash, #show, and #json
 // and #fromjson followed by a NUL and the descriptor of what toJSON gives
-// (fromJSON takes). Where the type is known as the code is compiled, ==
+// (fromJSON takes); and its compare, #cmp, which orders it. Where the type is known as the code is compiled, ==
 // and a value's text call its methods directly (ownEquals, describe).
 
-// ownHooks puts n's own methods in its shape's.
+// ownHooks puts n's own methods in its shape's, and its compare, which
+// orders it (#cmp: what std/collections' B-tree orders its keys by,
+// core/src/rt/tree.c).
 func (l *Lowerer) ownHooks(shape int, n *check.Named) {
+	if shape < 0 {
+		return
+	}
+	if f := check.CompareMethod(n); f != nil {
+		sd := &l.mod.Shapes[shape]
+		if sd.Methods == nil {
+			sd.Methods = map[string]uint32{}
+		}
+		sd.Methods["#cmp"] = uint32(l.funcIndex(f, nil, n))
+	}
 	o := check.OwnOf(n)
-	if o == nil || shape < 0 {
+	if o == nil {
 		return
 	}
 	sd := &l.mod.Shapes[shape]

@@ -935,6 +935,8 @@ func mentionsParam(t Type, tp *TypeParam) bool {
 		return mentionsParam(x.Key, tp) || mentionsParam(x.Elem, tp)
 	case *Set:
 		return mentionsParam(x.Elem, tp)
+	case *Tree:
+		return mentionsParam(x.Key, tp) || mentionsParam(x.Elem, tp)
 	case *Named:
 		for _, a := range x.Args {
 			if mentionsParam(a, tp) {

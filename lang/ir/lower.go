@@ -545,6 +545,7 @@ type pendingConst struct {
 	global int
 	e      syntax.Expr
 	subst  check.Subst
+	zero   check.Type // e nil: t's zero value (emptyConst)
 }
 
 type pendingStrings struct {
@@ -754,7 +755,12 @@ func (l *Lowerer) finishConsts() {
 		mark := b.mark()
 		b.subst = p.subst
 		b.hoisting = true
-		v := b.expr(p.e, -1)
+		var v int
+		if p.e == nil {
+			v = b.zeroValue(p.zero)
+		} else {
+			v = b.expr(p.e, -1)
+		}
 		b.hoisting = false
 		v = b.freeze(v, bc.KRef)
 		b.emit(op("GSET"), p.global, v, int(bc.KRef))
@@ -1077,11 +1083,33 @@ func (b *fb) hoist(e syntax.Expr, dst int) (int, bool) {
 		g = len(l.mod.Globals)
 		l.mod.Globals = append(l.mod.Globals, bc.KRef)
 		l.consts[key] = g
-		l.pendingConsts = append(l.pendingConsts, pendingConst{g, e, b.subst})
+		l.pendingConsts = append(l.pendingConsts, pendingConst{global: g, e: e, subst: b.subst})
 	}
 	r := b.out(dst, bc.KRef)
 	b.emit(op("GGET"), r, g, int(bc.KRef))
 	return r, true
+}
+
+// emptyConst is a frozen zero value of t (concrete: an empty array), a
+// global init.strings makes once: what a builtin reads its elements'
+// kind and shape from (a B-tree's entries, Extra "entryProto") without
+// one made each call.
+func (b *fb) emptyConst(t check.Type) int {
+	l := b.l
+	key := "zero|" + l.typeKey(t)
+	if l.consts == nil {
+		l.consts = map[string]int{}
+	}
+	g, ok := l.consts[key]
+	if !ok {
+		g = len(l.mod.Globals)
+		l.mod.Globals = append(l.mod.Globals, bc.KRef)
+		l.consts[key] = g
+		l.pendingConsts = append(l.pendingConsts, pendingConst{global: g, zero: t})
+	}
+	r := b.temp(bc.KRef)
+	b.emit(op("GGET"), r, g, int(bc.KRef))
+	return r
 }
 
 // constLiteral reports a value made of literals only (top: a container
