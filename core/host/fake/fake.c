@@ -807,17 +807,24 @@ bool ak_fake_go(ak_fake *f, ak_fake_view *win, int32_t n) {
 	return true;
 }
 
+ak_fake_work ak_fake_totals;
+
 void ak_fake_apply(ak_fake *f, const uint8_t *buf, size_t len) {
 	f->applies++;
+	ak_fake_totals.applies++;
+	ak_fake_totals.bytes += len;
 	ak_batch_reader br;
 	ak_batch_reader_init(&br, buf, len);
 	ak_op op;
 	while (ak_batch_next(&br, &op)) {
 		// The batch's bytes die with it.
-		ak_fake_record r = {op, f->arena.len};
-		ak_buf_put(&f->arena, op.value.s.p, op.value.s.len);
-		r.op.value.s.p = NULL;
-		ak_vec_push(&f->ops, r);
+		if (!f->unlogged) {
+			ak_fake_record r = {op, f->arena.len};
+			ak_buf_put(&f->arena, op.value.s.p, op.value.s.len);
+			r.op.value.s.p = NULL;
+			ak_vec_push(&f->ops, r);
+		}
+		ak_fake_totals.ops++;
 		apply_op(f, &op);
 	}
 	if (br.err != AK_OK) fail(f, "a bad batch: %s", ak_err_string(br.err));
@@ -918,6 +925,7 @@ static void rich_size(const ak_fake_view *v, float width, float avail_w, float *
 
 void ak_fake_measure(ak_fake *f, ak_id id, float width, float height, float avail_w, float avail_h, float *out_w, float *out_h) {
 	f->measures++;
+	ak_fake_totals.measures++;
 	*out_w = *out_h = 0;
 	ak_fake_view *v = view(f, id, "Measure");
 	if (!v) return;

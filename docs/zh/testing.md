@@ -239,6 +239,21 @@ bench sorting 1,000 ints       14.7µs/op ±4%          3 allocs/op    15.7 KB/o
 
 基准测试会编译成 C 运行，和发布构建一样，所以测到的就是应用发布出去的代码；`--vm` 则让它们在 `asuka dev` 使用的虚拟机上运行。时间只是测量，从不作为检查条件：基准测试只会因为它自己的检查（`expect`）或错误而失败。普通的 `asuka test` 会把每个基准测试当作测试运行一次，确认它仍然能正常工作。`--benchtime 100x` 则只运行一轮，恰好 100 次迭代。
 
+挂载了视图的基准测试还会报告每次迭代有哪些改动到达了屏幕，也就是真机需要完成的工作：发给平台的改动批次，其中的操作数和字节数，平台测量过的视图数，以及布局计算过的视图数。像用户那样驱动应用（`app.tap`），或者在一帧里驱动它（`app.frame`，配合应用里的 `onFrame`），这样一次迭代的改动就会合成一批，就像一次点按那样：
+
+```asuka
+bench "a new row" {
+  let app = mount(Inbox())
+  measure { app.tap("Add") }
+}
+```
+
+```
+bench a new row                 41.2µs/op ±3%         84 allocs/op     6.1 KB/op  (10 × 2,410)  host: 1 batches, 9 ops, 312 B, 2 measures; 6 nodes laid out
+```
+
+在基准测试中，`app.ops()` 不会列出计时部分发送的操作。
+
 想知道一次改动的效果，可以先保存一次运行结果再做比较：
 
 ```sh

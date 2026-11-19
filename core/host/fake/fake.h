@@ -138,8 +138,10 @@ struct ak_fake {
 	// The views, by ID (ak_fake_view_of).
 	ak_fake_view **slots;
 	uint32_t slots_cap, nviews;
-	// The ops applied since the last reset.
+	// The ops applied since the last reset (none while unlogged: a
+	// bench's measured part).
 	AK_VEC(ak_fake_record) ops;
+	bool unlogged;
 	ak_buf arena;
 	// Apply and measure calls since the last reset.
 	int applies, measures;
@@ -196,6 +198,13 @@ void ak_fake_run_posted(ak_fake *f);
 
 // Recorded ops.
 void ak_fake_reset(ak_fake *f);  // forget the ops and counts
+
+// What every fake host in the process was sent and asked, since it
+// started (never reset): what a bench reports per iteration.
+typedef struct {
+	uint64_t applies, ops, bytes, measures;
+} ak_fake_work;
+extern ak_fake_work ak_fake_totals;
 static inline uint32_t ak_fake_op_count(const ak_fake *f) { return f->ops.len; }
 ak_op ak_fake_op_at(const ak_fake *f, uint32_t i);  // valid until the next apply or reset
 uint32_t ak_fake_count(const ak_fake *f, uint8_t code);

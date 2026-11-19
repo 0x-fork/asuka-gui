@@ -54,6 +54,11 @@ void ak_uitest_idle(ak_uitest *a);
 // settle calls it, so an await of the host's answer outside app.idle()
 // completes. It reports whether there was any.
 bool ak_uitest_pump(void);
+// ak_uitest_log_ops says whether the mounted app's fake host keeps a log
+// of the ops it applies (test.ops'). A bench's measured part runs
+// without (what's timed isn't keeping every iteration's ops), and the
+// log starts again after it.
+void ak_uitest_log_ops(bool on);
 
 // Actions and expectations: true, or false with what went wrong and what
 // the screen shows in err.

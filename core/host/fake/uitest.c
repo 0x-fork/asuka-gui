@@ -1115,6 +1115,17 @@ static void settle(ak_uitest *a) {
 	ak_buf_printf(&a->fails, "the app never settles (it posts or rebinds forever)\n");
 }
 
+void ak_uitest_log_ops(bool on) {
+	if (!active || !active->f) return;
+	ak_fake *f = active->f;
+	if (!on) {
+		f->ops.len = 0;
+		ak_buf_reset(&f->arena);
+		active->ops_seen = 0;
+	}
+	f->unlogged = !on;
+}
+
 bool ak_uitest_pump(void) {
 	if (!active || !active->mounted) return false;
 	ak_ui_flush();  // a call waits in the batch until it's sent
