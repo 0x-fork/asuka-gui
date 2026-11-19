@@ -1,6 +1,8 @@
 package ir
 
 import (
+	"slices"
+
 	bc "github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/lang/check"
 	"github.com/egoist/asuka/lang/diag"
@@ -63,6 +65,13 @@ func (b *fb) stmt(it syntax.Item) {
 			return
 		}
 		b.bindLet(s.Pattern, v, t)
+		if b.f.Kinds[v] == bc.KRef && slices.Contains(b.temps[mark:], v) {
+			// The value's temp let go of once the names hold it: kept to
+			// the statement's end, it would be a second reference until
+			// the register's next use, and the local's first change in
+			// place would copy it (a [bool] of 50 million, its 50 MB).
+			b.emit(op("CLR"), v)
+		}
 	case *syntax.AssignStmt:
 		b.assignStmt(s)
 	case *syntax.IfStmt:

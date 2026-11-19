@@ -491,7 +491,7 @@ static ak_val read_fn(ak_val *args, uint32_t nargs) {
 			colof[i] = -1;
 			for (uint32_t pass = 0; pass < 2 && colof[i] < 0; pass++)
 				for (uint32_t c = 0; c < given->len && colof[i] < 0; c++) {
-					ak_str *h = given->data[c].p;
+					ak_str *h = ak_arr_vals(given)[c].p;
 					if (pass == 0 ? strcmp(h->data, sh->names[i]) == 0 : loose_eq(sh->names[i], h->data, h->len)) colof[i] = (int32_t)c;
 				}
 		}
@@ -688,14 +688,14 @@ static ak_val write_fn(ak_val *args, uint32_t nargs) {
 			row_end(&w);
 		}
 		for (uint32_t r = 0; rows && r < rows->len; r++) {
-			ak_struct *o = rows->data[r].p;
+			ak_struct *o = ak_arr_vals(rows)[r].p;
 			for (uint16_t i = 0; i < sh->nfields; i++) put_value(&w, i == 0, o->f[i], ak_json_field_desc(sh, i), t);
 			row_end(&w);
 		}
 	} else if (*d == '[') {
 		for (uint32_t r = 0; rows && r < rows->len; r++) {
-			ak_arr *row = rows->data[r].p;
-			for (uint32_t i = 0; row && i < row->len; i++) put_value(&w, i == 0, row->data[i], d + 1, t);
+			ak_arr *row = ak_arr_vals(rows)[r].p;
+			for (uint32_t i = 0; row && i < row->len; i++) put_value(&w, i == 0, ak_arr_get(row, i), d + 1, t);
 			row_end(&w);
 		}
 	} else {

@@ -142,7 +142,7 @@ static int64_t listen_on(int64_t tls, int64_t *port) {
 	ak_release(la[0].p);
 	ak_val ha = {.i = l};
 	ak_arr *addrs = lib("net.addresses")(&ha, 1).p;
-	ak_str_to_int(addrs->data[1].p, port);
+	ak_str_to_int(ak_arr_vals(addrs)[1].p, port);
 	ak_release(addrs);
 	return l;
 }
@@ -185,7 +185,7 @@ static const char *field(ak_future *f, uint32_t i) {
 	if (f->state != AK_FUT_DONE) return "<failed>";
 	ak_arr *a = f->result.p;
 	if (i >= a->len) return "<none>";
-	ak_bytes *x = a->data[i].p;
+	ak_bytes *x = ak_arr_vals(a)[i].p;
 	char *out = b[k++ % 4];
 	snprintf(out, 256, "%.*s", (int)x->len, (const char *)x->data);
 	return out;

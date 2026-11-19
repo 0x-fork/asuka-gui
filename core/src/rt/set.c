@@ -69,6 +69,6 @@ bool ak_set_is_subset(const ak_map *a, const ak_map *b) {
 
 ak_map *ak_set_from_arr(const ak_arr *a) {
 	ak_map *r = ak_set_new(ak_arr_kind(a), a->h.flags & 1);
-	for (uint32_t i = 0; i < a->len; i++) add(&r, a->data[i]);
+	for (uint32_t i = 0; i < a->len; i++) add(&r, ak_arr_get(a, i));
 	return r;
 }

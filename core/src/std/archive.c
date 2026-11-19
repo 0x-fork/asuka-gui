@@ -1740,8 +1740,8 @@ static bool zip_finish(wr *w) {
 
 // item_at reads the i'th entry of what Asuka gave.
 static bool item_at(item *it, uint32_t i, const ak_arr *names, const ak_arr *targets, const ak_arr *info, bool w_zip) {
-	const ak_str *name = names->data[i].p, *target = targets->data[i].p;
-	const ak_val *v = info->data + (size_t)i * INFO_IN;
+	const ak_str *name = ak_arr_vals(names)[i].p, *target = ak_arr_vals(targets)[i].p;
+	const ak_val *v = ak_arr_vals(info) + (size_t)i * INFO_IN;
 	*it = (item){.target = target->data, .target_len = target->len, .kind = (int)v[0].i, .mode = v[1].i, .time = v[2].i, .dos = (uint32_t)v[3].i};
 	if (it->kind < K_FILE || it->kind > K_OTHER) it->kind = K_OTHER;
 	// Names with / between them; what extracting would refuse anywhere
@@ -1805,7 +1805,7 @@ static ak_val encode_fn(ak_val *args, uint32_t n) {
 		item it;
 		ok = item_at(&it, i, names, targets, info, w.format == F_ZIP);
 		if (ok) {
-			it.data = datas->data[i].p;
+			it.data = ak_arr_vals(datas)[i].p;
 			feed src = {.mem = it.data};
 			ok = wr_item(&w, &it, &src, it.kind == K_FILE && it.data ? it.data->len : 0);
 		}
@@ -1830,7 +1830,7 @@ static ak_val create_fn(ak_val *args, uint32_t n) {
 	bool ok = true;
 	for (uint32_t i = 0; ok && i < names->len; i++) {
 		item it;
-		const ak_str *source = sources->data[i].p;
+		const ak_str *source = ak_arr_vals(sources)[i].p;
 		feed src = {0};
 		int64_t size = 0;
 		ok = item_at(&it, i, names, targets, info, w.format == F_ZIP);

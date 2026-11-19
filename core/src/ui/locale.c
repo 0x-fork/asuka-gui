@@ -86,7 +86,7 @@ static ak_arr *preferred_of(void) {
 		while (end < list.len && list.p[end] != ',') end++;
 		ak_str *n = ak_i18n_normalize((ak_span){list.p + at, end - at});
 		bool dup = false;
-		for (uint32_t i = 0; n && i < out->len && !dup; i++) dup = ak_str_eq(out->data[i].p, n);
+		for (uint32_t i = 0; n && i < out->len && !dup; i++) dup = ak_str_eq(ak_arr_vals(out)[i].p, n);
 		if (n && n->len && !dup) ak_arr_push(&out, (ak_val){.p = n});
 		else ak_release(n);
 		at = end + 1;
@@ -135,12 +135,12 @@ static void update(void) {
 	ak_str *rl = ak_i18n_region_locale(ak_span_str(L.env_locale));
 	if (!rl->len && pref->len) {
 		ak_release(rl);
-		rl = ak_retain(pref->data[0].p);
+		rl = ak_retain(ak_arr_vals(pref)[0].p);
 	}
 	int fw = L.env_fw >= 1 && L.env_fw <= 7 ? L.env_fw : ak_i18n_first_weekday(ak_span_str(rl));
 	int hc = L.env_hc == 12 || L.env_hc == 24 ? L.env_hc : ak_i18n_hour_cycle(ak_span_str(rl));
 	bool same_pref = L.preferred && L.preferred->len == pref->len;
-	for (uint32_t i = 0; same_pref && i < pref->len; i++) same_pref = ak_str_eq(L.preferred->data[i].p, pref->data[i].p);
+	for (uint32_t i = 0; same_pref && i < pref->len; i++) same_pref = ak_str_eq(ak_arr_vals(L.preferred)[i].p, ak_arr_vals(pref)[i].p);
 	bool lang_changed = !L.shown || !ak_str_eq(L.locale, loc) || L.rtl != rtl;
 	bool dir_changed = !L.shown || L.rtl != rtl;
 	bool changed = lang_changed || !same_pref || !ak_str_eq(L.region_locale, rl) || L.first_weekday != fw || L.hour_cycle != hc;
@@ -266,11 +266,11 @@ void ak_ui_force_locale(ak_str *lang, ak_str *dir) {
 // first (for an app that translates itself, without catalogs).
 void ak_ui_set_languages(ak_arr *tags) {
 	for (uint32_t i = 0; tags && i < tags->len; i++) {
-		ak_str *n = ak_i18n_normalize(ak_span_str(tags->data[i].p));
+		ak_str *n = ak_i18n_normalize(ak_span_str(ak_arr_vals(tags)[i].p));
 		bool ok = n && n->len;
 		ak_release(n);
 		if (!ok) {
-			const ak_str *t = tags->data[i].p;
+			const ak_str *t = ak_arr_vals(tags)[i].p;
 			ak_throw_msg("setLanguages: %.*s is not a language tag", t ? (int)t->len : 0, t ? t->data : "");
 			return;
 		}
@@ -280,7 +280,7 @@ void ak_ui_set_languages(ak_arr *tags) {
 	ak_arr *own = ak_arr_new(AK_K_REF, NULL, tags ? tags->len : 0);
 	own->h.flags = 1;
 	for (uint32_t i = 0; tags && i < tags->len; i++) {
-		const ak_str *t = tags->data[i].p;
+		const ak_str *t = ak_arr_vals(tags)[i].p;
 		ak_arr_push(&own, (ak_val){.p = ak_str_new(t->data, t->len)});
 	}
 	ak_release(L.app_langs);

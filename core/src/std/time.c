@@ -519,10 +519,10 @@ static ak_val parse_fn(ak_val *args, uint32_t n) {
 		i = e + 1;
 	}
 	ak_arr *r = ak_arr_new(AK_K_INT, NULL, 4);
-	r->data[0].i = instant;
-	r->data[1].i = offset;
-	r->data[2].i = zs;
-	r->data[3].i = ze;
+	ak_arr_vals(r)[0].i = instant;
+	ak_arr_vals(r)[1].i = offset;
+	ak_arr_vals(r)[2].i = zs;
+	ak_arr_vals(r)[3].i = ze;
 	r->len = 4;
 	return (ak_val){.p = r};
 }

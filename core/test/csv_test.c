@@ -30,10 +30,10 @@ static void show(ak_val v, char *out, size_t n) {
 	}
 	ak_arr *rows = v.p;
 	for (uint32_t r = 0; r < rows->len; r++) {
-		ak_arr *row = rows->data[r].p;
+		ak_arr *row = ak_arr_vals(rows)[r].p;
 		o += (size_t)snprintf(out + o, n - o, "[");
 		for (uint32_t i = 0; i < row->len; i++) {
-			ak_str *s = row->data[i].p;
+			ak_str *s = ak_arr_vals(row)[i].p;
 			if (i) o += (size_t)snprintf(out + o, n - o, "|");
 			for (uint32_t k = 0; k < s->len && o + 4 < n; k++) {
 				char c = s->data[k];

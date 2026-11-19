@@ -34,7 +34,7 @@ static ak_arr *todos(int n) {
 	char title[16];
 	for (int i = 0; i < n; i++) {
 		snprintf(title, sizeof title, "t%d", i);
-		a->data[i].p = todo(i, title, false);
+		ak_arr_vals(a)[i].p = todo(i, title, false);
 	}
 	a->len = (uint32_t)n;
 	return a;
@@ -91,7 +91,7 @@ static void set_field(void *cell, const char *p, uint32_t n, int64_t idx, uint16
 	if (item) {
 		// todos[idx].f: the element taken out of the array.
 		ak_arr *a = ak_arr_mut((ak_arr **)&now.p);
-		s = ak_struct_mut((ak_struct **)&a->data[idx].p);
+		s = ak_struct_mut((ak_struct **)&ak_arr_vals(a)[idx].p);
 	} else {
 		s = ak_struct_mut((ak_struct **)&now.p);
 	}
@@ -175,14 +175,14 @@ TEST(a_whole_write_compares_path_by_path) {
 	ak_owner *o = ak_root(todo_readers, c);
 	// A refetched list, equal: no one, the whole's readers neither.
 	ak_arr *b = ak_arr_copy(a);
-	ak_release(b->data[1].p);
-	b->data[1].p = todo(1, "t1", false);
+	ak_release(ak_arr_vals(b)[1].p);
+	ak_arr_vals(b)[1].p = todo(1, "t1", false);
 	ak_vm_cell_set(c, (ak_val){.p = b});
 	CHECK_EQ_INT(r1.runs + r2.runs + r3.runs + r4.runs + r5.runs, 5);
 	// Item 1's title changes; items 0 and 2 are shared.
 	ak_arr *d = ak_arr_copy(a);
-	ak_release(d->data[1].p);
-	d->data[1].p = todo(1, "new", false);
+	ak_release(ak_arr_vals(d)[1].p);
+	ak_arr_vals(d)[1].p = todo(1, "new", false);
 	ak_vm_cell_set(c, (ak_val){.p = d});
 	CHECK_EQ_INT(r1.runs, 1);
 	CHECK_EQ_INT(r2.runs, 1);
@@ -222,9 +222,9 @@ static void do_remove1(ak_val *v, void *ctx) {
 static void do_swap_last(ak_val *v, void *ctx) {
 	AK_UNUSED(ctx);
 	ak_arr *a = ak_arr_mut((ak_arr **)&v->p);
-	ak_val t = a->data[1];
-	a->data[1] = a->data[2];
-	a->data[2] = t;
+	ak_val t = ak_arr_vals(a)[1];
+	ak_arr_vals(a)[1] = ak_arr_vals(a)[2];
+	ak_arr_vals(a)[2] = t;
 	ak_change_range(1, 3, false);  // as a sort that moved 1 and 2
 }
 
@@ -381,7 +381,7 @@ TEST(a_for_follows_its_keys) {
 	// A change it can't compare (a mut fn's on an item: anything below
 	// it) tells the for only when the keys differ from those it saw.
 	ak_val now = ak_vm_cell_take(c);
-	ak_struct *s = ak_struct_mut((ak_struct **)&ak_arr_mut((ak_arr **)&now.p)->data[2].p);
+	ak_struct *s = ak_struct_mut((ak_struct **)&ak_arr_vals(ak_arr_mut((ak_arr **)&now.p))[2].p);
 	s->f[2].i = !s->f[2].i;
 	ak_val at = {.i = 2};
 	put(c, now, P("ia"), &at);
@@ -430,7 +430,7 @@ TEST(a_loop_follows_a_column) {
 	ak_val cur = ak_vm_cell_get(c, false);
 	ak_arr *a = ak_arr_copy(cur.p);
 	ak_release(cur.p);
-	ak_struct *t = ak_struct_mut((ak_struct **)&a->data[3].p);
+	ak_struct *t = ak_struct_mut((ak_struct **)&ak_arr_vals(a)[3].p);
 	ak_release(t->f[1].p);
 	t->f[1].p = str("renamed");
 	ak_vm_cell_set(c, (ak_val){.p = a});
@@ -453,7 +453,7 @@ TEST(steady_state_allocates_nothing) {
 	uint64_t before = ak_alloc_count;
 	for (int i = 0; i < 100; i++) {
 		ak_val now = ak_vm_cell_take(c);
-		ak_struct *s = ((ak_arr *)now.p)->data[1].p;
+		ak_struct *s = ak_arr_vals(((ak_arr *)now.p))[1].p;
 		ak_val old = s->f[2];
 		s->f[2].i = !old.i;
 		ak_val args[2] = {{.i = 1}, old};

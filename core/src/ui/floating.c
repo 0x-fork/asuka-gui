@@ -150,7 +150,7 @@ static bool dismisses_on(const ov *o, int reason) {
 	if (!d) return true;  // the default: all of them
 	const ak_arr *a = d->p;
 	for (uint32_t i = 0; a && i < a->len; i++)
-		if (a->data[i].i == reason) return true;
+		if (ak_arr_vals(a)[i].i == reason) return true;
 	return false;
 }
 

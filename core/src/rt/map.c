@@ -229,7 +229,7 @@ ak_arr *ak_map_keys(const ak_map *m) {
 	for (uint32_t i = 0; i < m->len; i++) {
 		if (m->dead[i]) continue;
 		ak_retain_val(m->keys[i], key_kind(m));
-		a->data[a->len++] = m->keys[i];
+		ak_arr_put(a, a->len++, m->keys[i]);
 	}
 	return a;
 }
@@ -239,7 +239,7 @@ ak_arr *ak_map_values(const ak_map *m) {
 	for (uint32_t i = 0; i < m->len; i++) {
 		if (m->dead[i]) continue;
 		ak_retain_val(m->vals[i], val_kind(m));
-		a->data[a->len++] = m->vals[i];
+		ak_arr_put(a, a->len++, m->vals[i]);
 	}
 	return a;
 }

@@ -682,7 +682,7 @@ static wired wire_items(const ak_arr *a, bool drag) {
 	if (!w.n) return w;
 	w.items = ak_alloc(w.n * sizeof(ak_item));
 	w.abs = ak_alloc(w.n * sizeof(ak_str *));
-	for (uint32_t i = 0; i < w.n; i++) ak_item_wire(a->data[i].p, drag, &w.items[i], &w.abs[i]);
+	for (uint32_t i = 0; i < w.n; i++) ak_item_wire(ak_arr_vals(a)[i].p, drag, &w.items[i], &w.abs[i]);
 	return w;
 }
 
@@ -763,7 +763,7 @@ static bool accepts(const ak_view *e, ak_span mime) {
 	if (!a) return false;
 	ak_span pats[32];
 	uint32_t n = 0;
-	for (uint32_t i = 0; i < a->len && n < AK_LEN(pats); i++) pats[n++] = ak_span_str(a->data[i].p);
+	for (uint32_t i = 0; i < a->len && n < AK_LEN(pats); i++) pats[n++] = ak_span_str(ak_arr_vals(a)[i].p);
 	return ak_match_mime(pats, n, mime);
 }
 
@@ -789,8 +789,8 @@ static void dropped(ak_view *e, ak_span payload) {
 		for (uint32_t i = 0; i < w.n; i++) {
 			if (!accepts(e, w.items[i].mime)) continue;
 			ak_arr *one = ak_items_value(&w.items[i], 1, true);
-			ak_struct *it = one->data[0].p;
-			const ak_struct *orig = src->data[i].p;
+			ak_struct *it = ak_arr_vals(one)[0].p;
+			const ak_struct *orig = ak_arr_vals(src)[i].p;
 			ak_release(it->f[6].p);
 			it->f[6].p = ak_retain(orig->f[6].p ? orig->f[6].p : ak_str_empty());
 			ak_arr_push(&out, (ak_val){.p = ak_retain(it)});
@@ -801,7 +801,7 @@ static void dropped(ak_view *e, ak_span payload) {
 		for (uint32_t i = 0; i < items.len; i++) {
 			if (!accepts(e, items.data[i].mime)) continue;
 			ak_arr *one = ak_items_value(&items.data[i], 1, true);
-			ak_arr_push(&out, (ak_val){.p = ak_retain(one->data[0].p)});
+			ak_arr_push(&out, (ak_val){.p = ak_retain(ak_arr_vals(one)[0].p)});
 			ak_release(one);
 		}
 	}
@@ -828,7 +828,7 @@ static void set_actions(ak_view *e, const ak_arr *a) {
 	uint32_t n = a ? a->len : 0;
 	ak_buf_u32(&enc, n);
 	for (uint32_t i = 0; i < n; i++) {
-		const ak_struct *s = a->data[i].p;
+		const ak_struct *s = ak_arr_vals(a)[i].p;
 		ak_buf_wstr(&enc, ak_span_str(s ? s->f[0].p : NULL));
 	}
 	if (!(ix->actions_known && ix->actions_sent.len == enc.len && memcmp(ix->actions_sent.data, enc.data, enc.len) == 0)) {
@@ -884,7 +884,7 @@ static void run_action(ak_view *e, int64_t i) {
 	const ak_val *v = ak_style_get(e, AK_KEY_ACTIONS);
 	const ak_arr *a = v ? v->p : NULL;
 	if (!a || i < 0 || i >= a->len) return;
-	const ak_struct *s = a->data[i].p;
+	const ak_struct *s = ak_arr_vals(a)[i].p;
 	if (s) ak_call_closure(s->f[1].p, e->owner, NULL, 0);
 }
 

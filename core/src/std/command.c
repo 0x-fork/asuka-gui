@@ -365,7 +365,7 @@ static int64_t spawn(proc *p, const ak_str *prog, const ak_arr *argv, const ak_s
 	AK_VEC(char *) envp = {0};
 	const char *path_env = NULL;
 	for (uint32_t i = 0; env && i + 1 < env->len; i += 2) {
-		const ak_str *k = env->data[i].p, *v = env->data[i + 1].p;
+		const ak_str *k = ak_arr_vals(env)[i].p, *v = ak_arr_vals(env)[i + 1].p;
 		char *kv = ak_alloc(k->len + v->len + 2);
 		snprintf(kv, k->len + v->len + 2, "%s=%s", k->data, v->data);
 		ak_vec_push(&envp, kv);
@@ -377,7 +377,7 @@ static int64_t spawn(proc *p, const ak_str *prog, const ak_arr *argv, const ak_s
 			if (!eq) continue;
 			bool over = false;
 			for (uint32_t i = 0; env && i + 1 < env->len; i += 2) {
-				const ak_str *k = env->data[i].p;
+				const ak_str *k = ak_arr_vals(env)[i].p;
 				if ((size_t)(eq - *e) == k->len && memcmp(*e, k->data, k->len) == 0) over = true;
 			}
 			if (over) continue;
@@ -390,7 +390,7 @@ static int64_t spawn(proc *p, const ak_str *prog, const ak_arr *argv, const ak_s
 	int64_t rc = 0;
 	char **av = ak_alloc(sizeof(char *) * (argv->len + 2));
 	av[0] = (char *)prog->data;
-	for (uint32_t i = 0; i < argv->len; i++) av[i + 1] = ((ak_str *)argv->data[i].p)->data;
+	for (uint32_t i = 0; i < argv->len; i++) av[i + 1] = ((ak_str *)ak_arr_vals(argv)[i].p)->data;
 	av[argv->len + 1] = NULL;
 	int pipes[3][2] = {{-1, -1}, {-1, -1}, {-1, -1}};
 	int report[2] = {-1, -1};

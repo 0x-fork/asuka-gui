@@ -739,7 +739,7 @@ static ak_val log_drop(ak_closure *c, ak_val *a, uint32_t n) {
 	char s[160];
 	int k = snprintf(s, sizeof s, "drop:%g,%g:%s%s:", d->f[1].f, d->f[2].f, d->f[3].i ? "local" : "other", d->f[4].i ? ",copied" : "");
 	for (uint32_t i = 0; i < items->len && k < (int)sizeof s; i++) {
-		const ak_struct *it = items->data[i].p;
+		const ak_struct *it = ak_arr_vals(items)[i].p;
 		k += snprintf(s + k, sizeof s - (size_t)k, "[%lld %s %s %s %s %lld %s]", (long long)it->f[0].i, ((ak_str *)it->f[1].p)->data,
 		              ((ak_str *)it->f[2].p)->data, ((ak_str *)it->f[3].p)->data, ((ak_str *)it->f[4].p)->data, (long long)it->f[5].i,
 		              ((ak_str *)it->f[6].p)->data);

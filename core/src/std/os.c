@@ -238,7 +238,7 @@ static char **str_list(const ak_arr *a, int *n) {
 	*n = a ? (int)a->len : 0;
 	char **l = ak_alloc(sizeof(char *) * (size_t)(*n + 1));
 	for (int i = 0; i < *n; i++) {
-		const ak_str *s = a->data[i].p;
+		const ak_str *s = ak_arr_vals(a)[i].p;
 		l[i] = memcpy(ak_alloc(s->len + 1), s->data, s->len + 1);
 	}
 	return l;

@@ -277,7 +277,7 @@ static ak_val set_rich(ak_closure *c, ak_val *a, uint32_t n) {
 	char s[128] = "";
 	const ak_arr *spans = a[0].p;
 	for (uint32_t i = 0; i < spans->len; i++) {
-		const ak_struct *sp = spans->data[i].p;
+		const ak_struct *sp = ak_arr_vals(spans)[i].p;
 		size_t k = strlen(s);
 		snprintf(s + k, sizeof s - k, "%s[%s%s]", i ? "," : "", ((ak_str *)sp->f[0].p)->data,
 		         ((ak_struct *)sp->f[1].p)->f[2].i == AK_FONT_WEIGHT_BOLD ? ":bold" : "");
@@ -307,7 +307,7 @@ static ak_val log_paste(ak_closure *c, ak_val *a, uint32_t n) {
 	AK_UNUSED(c), AK_UNUSED(n);
 	const ak_arr *items = a[0].p;
 	char s[128];
-	const ak_struct *it = items->data[0].p;
+	const ak_struct *it = ak_arr_vals(items)[0].p;
 	snprintf(s, sizeof s, "paste:%u:%lld:%s:%s", items->len, (long long)it->f[0].i, ((ak_str *)it->f[2].p)->data, ((ak_str *)it->f[4].p)->data);
 	logs(s);
 	return noval();

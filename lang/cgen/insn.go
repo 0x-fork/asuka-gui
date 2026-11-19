@@ -500,9 +500,37 @@ func (g *gen) check(in insn, i int, h string) string {
 // to be unique (plan.uniqueElem).
 func (g *gen) uniqueElem() string {
 	if g.pl.uniqueElem[g.k] {
-		return "ak_struct *s_ = x_->data[i_].p;"
+		return "ak_struct *s_ = AK_VALS(x_)[i_].p;"
 	}
-	return "ak_struct *s_ = x_->data[i_].p; if (AK_UNLIKELY(!ak_unique(s_))) { ak_struct *t_ = s_; s_ = ak_struct_mut(&t_); x_->data[i_].p = s_; }"
+	return "ak_struct *s_ = AK_VALS(x_)[i_].p; if (AK_UNLIKELY(!ak_unique(s_))) { ak_struct *t_ = s_; s_ = ak_struct_mut(&t_); AK_VALS(x_)[i_].p = s_; }"
+}
+
+// elemSlot is the C lvalue of element i_ of the array x_, whose
+// elements are of register r's kind: a bool's byte in a packed [bool]
+// (rt.h's ak_elem), else an ak_val.
+func (g *gen) elemSlot(r int) string {
+	if g.f.Kinds[r] == bc.KBool {
+		return "AK_BOOLS(x_)[i_]"
+	}
+	return "AK_VALS(x_)[i_]"
+}
+
+// loadElem is C reading element i_ of the array x_ into register r
+// (loadSlot's, for a packed element its byte).
+func (g *gen) loadElem(r int) string {
+	if g.f.Kinds[r] == bc.KBool {
+		return fmt.Sprintf("%s = AK_BOOLS(x_)[i_];", g.ri(r))
+	}
+	return g.loadSlot(r, g.elemSlot(r))
+}
+
+// storeElem is C putting register v in element i_ of the array x_
+// (storeSlot's, for a packed element its byte).
+func (g *gen) storeElem(v int) string {
+	if g.f.Kinds[v] == bc.KBool {
+		return fmt.Sprintf("AK_BOOLS(x_)[i_] = %s != 0;", g.ri(v))
+	}
+	return g.storeSlot(g.elemSlot(v), v)
 }
 
 // arrayOp writes the arrays' operations: an index checked inline, an
@@ -520,12 +548,20 @@ func (g *gen) arrayOp(name string, in insn, h string) bool {
 		for i := range kinds {
 			kinds[i] = bc.Kind(a[1])
 		}
-		g.w("{ ak_arr *a_ = ak_arr_new((ak_kind)%d, %s, %d);%s a_->len = %d; %s }", a[1], shape, a[4], g.fill("a_->data", a[3], kinds), a[4], g.setref(a[0], "a_"))
+		fill := g.fill("AK_VALS(a_)", a[3], kinds)
+		if bc.Kind(a[1]) == bc.KBool {
+			var s strings.Builder
+			for i := range kinds {
+				fmt.Fprintf(&s, " AK_BOOLS(a_)[%d] = %s != 0;", i, g.ri(a[3]+i))
+			}
+			fill = s.String()
+		}
+		g.w("{ ak_arr *a_ = ak_arr_new((ak_kind)%d, %s, %d);%s a_->len = %d; %s }", a[1], shape, a[4], fill, a[4], g.setref(a[0], "a_"))
 	case "IDX":
 		check := g.check(in, a[2], h)
 		switch {
 		case g.pl.borrow[g.k]:
-			g.w("%s { const ak_arr *x_ = %s; %s v%d = x_->data[i_].p; }", g.setref(a[0], "NULL"), g.src(a[1]), check, a[0])
+			g.w("%s { const ak_arr *x_ = %s; %s v%d = AK_VALS(x_)[i_].p; }", g.setref(a[0], "NULL"), g.src(a[1]), check, a[0])
 		case g.pl.inplace[g.k]:
 			// A change in place: the array unique, its element unique in
 			// it, borrowed while SETFs change it.
@@ -533,26 +569,26 @@ func (g *gen) arrayOp(name string, in insn, h string) bool {
 				g.setref(a[0], "NULL"), g.rp(a[1]), check, g.uniqueArr(a[1]), g.uniqueElem(), a[0])
 		case g.pl.moveOut[g.k]:
 			// Taken out (the next instruction puts none there): moved.
-			g.w("{ ak_arr *x_ = %s; %s %s void *o_ = %s; %s = x_->data[i_].p; x_->data[i_].p = NULL; ak_release(o_); }",
+			g.w("{ ak_arr *x_ = %s; %s %s void *o_ = %s; %s = AK_VALS(x_)[i_].p; AK_VALS(x_)[i_].p = NULL; ak_release(o_); }",
 				g.rp(a[1]), check, g.uniqueArr(a[1]), g.rp(a[0]), g.rp(a[0]))
 		default:
-			g.w("{ const ak_arr *x_ = %s; %s %s }", g.src(a[1]), check, g.loadSlot(a[0], "x_->data[i_]"))
+			g.w("{ const ak_arr *x_ = %s; %s %s }", g.src(a[1]), check, g.loadElem(a[0]))
 		}
 	case "SETIDX":
-		set := g.storeSlot("x_->data[i_]", a[2])
+		set := g.storeElem(a[2])
 		switch {
 		case g.pl.moveIn[g.k]:
 			// Put back and cleared (the next instruction): moved in.
-			set = fmt.Sprintf("void *o_ = x_->data[i_].p; x_->data[i_].p = %s; %s = NULL; ak_release(o_);", g.rp(a[2]), g.rp(a[2]))
+			set = fmt.Sprintf("void *o_ = AK_VALS(x_)[i_].p; AK_VALS(x_)[i_].p = %s; %s = NULL; ak_release(o_);", g.rp(a[2]), g.rp(a[2]))
 		case g.isRef(a[2]):
-			set = fmt.Sprintf("void *o_ = x_->data[i_].p; x_->data[i_].p = ak_retain(%s); ak_release(o_);", g.rp(a[2]))
+			set = fmt.Sprintf("void *o_ = AK_VALS(x_)[i_].p; AK_VALS(x_)[i_].p = ak_retain(%s); ak_release(o_);", g.rp(a[2]))
 		}
 		g.w("{ ak_arr *x_ = %s; %s %s %s }", g.rp(a[0]), g.check(in, a[1], h), g.uniqueArr(a[0]), set)
 	case "IDXF":
 		// The optimizer's read of an array's struct element's field
 		// (IDX, GETF): the element borrowed, its field read as GETF reads
 		// one (a reference retained, or borrowed itself as v<r>).
-		field := fmt.Sprintf("((ak_struct *)x_->data[i_].p)->f[%d]", a[3])
+		field := fmt.Sprintf("((ak_struct *)AK_VALS(x_)[i_].p)->f[%d]", a[3])
 		if g.pl.changes[g.k] {
 			// A SETIF changes the element further on: made unique here,
 			// then read.

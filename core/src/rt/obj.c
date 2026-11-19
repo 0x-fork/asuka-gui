@@ -113,7 +113,7 @@ static AK_ALWAYS_INLINE uint32_t frame_at(walk_frame *f, ak_obj *a) {
 		return f->end = a->aux == AK_K_REF;
 	case AK_TAG_ARR: {
 		ak_arr *r = (ak_arr *)a;
-		f->x = r->data;
+		f->x = r->elem == AK_E_VAL ? r->items : NULL;
 		return f->end = ak_arr_kind(r) == AK_K_REF ? r->len : 0;
 	}
 	case AK_TAG_MAP: {
@@ -151,7 +151,7 @@ static AK_ALWAYS_INLINE uint32_t frame_at(walk_frame *f, ak_obj *a) {
 static ak_val *values(ak_obj *o) {
 	switch ((ak_tag)o->tag) {
 	case AK_TAG_BOX: return &((ak_box *)o)->v;
-	case AK_TAG_ARR: return ((ak_arr *)o)->data;
+	case AK_TAG_ARR: return ((ak_arr *)o)->elem == AK_E_VAL ? ((ak_arr *)o)->items : NULL;
 	case AK_TAG_STRUCT: return ((ak_struct *)o)->f;
 	case AK_TAG_ENUM: return ((ak_enum *)o)->f;
 	default: return NULL;
@@ -468,13 +468,14 @@ static AK_ALWAYS_INLINE bool eq_enter(walk_frame *f, ak_obj *a, ak_obj *b) {
 		if (x->len != y->len) return false;
 		ak_kind k = ak_arr_kind(x);
 		if (k == AK_K_REF) {
-			f->x = x->data;
-			f->y = y->data;
+			f->x = ak_arr_vals(x);
+			f->y = ak_arr_vals(y);
 			f->end = x->len;
 			return true;
 		}
+		if (ak_arr_packed(x)) return x->elem == y->elem && memcmp(x->items, y->items, (size_t)x->len << x->shift) == 0;
 		for (uint32_t i = 0; i < x->len; i++)
-			if (!scalar_eq(x->data[i], y->data[i], k)) return false;
+			if (!scalar_eq(ak_arr_vals(x)[i], ak_arr_vals(y)[i], k)) return false;
 		return true;
 	}
 	case AK_TAG_MAP: {
@@ -663,11 +664,11 @@ static AK_ALWAYS_INLINE uint64_t hash_enter(walk_frame *f, uint64_t h, ak_obj *o
 		h = mix(mix(h, 13), a->len);
 		ak_kind k = ak_arr_kind(a);
 		if (k == AK_K_REF) {
-			f->x = a->data;
-				f->end = a->len;
+			f->x = ak_arr_vals(a);
+			f->end = a->len;
 			return h;
 		}
-		for (uint32_t i = 0; i < a->len; i++) h = mix(h, hash_scalar(a->data[i], k));
+		for (uint32_t i = 0; i < a->len; i++) h = mix(h, hash_scalar(ak_arr_get(a, i), k));
 		return h;
 	}
 	case AK_TAG_MAP: {
@@ -772,10 +773,9 @@ static ak_obj *shell(ak_obj *o) {
 	}
 	case AK_TAG_ARR: {
 		ak_arr *a = (ak_arr *)o;
-		ak_arr *c = ak_arr_new(ak_arr_kind(a), a->shape, a->len);
-		c->h.flags = a->h.flags;
+		ak_arr *c = ak_arr_like(a, a->len);
 		c->len = a->len;
-		if (ak_arr_kind(a) != AK_K_REF && a->len) memcpy(c->data, a->data, sizeof(ak_val) * a->len);
+		if (ak_arr_kind(a) != AK_K_REF && a->len) memcpy(c->items, a->items, (size_t)a->len << a->shift);
 		return &c->h;
 	}
 	case AK_TAG_MAP: {

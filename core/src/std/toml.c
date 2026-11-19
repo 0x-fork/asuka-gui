@@ -1828,7 +1828,7 @@ static tnode *tree_of(ex *x, ak_val v, const char *d) {
 		ak_arr *items = src ? src : keys;
 		for (uint32_t i = 0; items && i < items->len && !x->failed; i++) {
 			size_t old = epath(x, "[%u]", NULL, 0, i);
-			tnode *e = tree_of(x, items->data[i], d + 1);
+			tnode *e = tree_of(x, ak_arr_get(items, i), d + 1);
 			if (!e && !x->failed) efail(x, "TOML has no null: an array's element can't be none");
 			x->plen = old;
 			if (e) arr_add(&x->ar, a, e);
@@ -1849,9 +1849,9 @@ static tnode *tree_of(ex *x, ak_val v, const char *d) {
 			ak_arr *ks = m ? ak_map_keys(m) : NULL;
 			ak_arr *vs = m ? ak_map_values(m) : NULL;
 			for (uint32_t i = 0; ks && i < ks->len && !x->failed; i++) {
-				ak_str *k = ks->data[i].p;
+				ak_str *k = ak_arr_vals(ks)[i].p;
 				size_t old = epath(x, NULL, k->data, k->len, 0);
-				tnode *e = tree_of(x, vs->data[i], d + 1);
+				tnode *e = tree_of(x, ak_arr_get(vs, i), d + 1);
 				x->plen = old;
 				if (e) tab_add(&x->ar, t, acopy(&x->ar, k->data, k->len), k->len, e);
 			}
@@ -1888,7 +1888,7 @@ static tnode *tree_of(ex *x, ak_val v, const char *d) {
 			ak_arr *items = en->f[0].p;
 			for (uint32_t i = 0; items && i < items->len && !x->failed; i++) {
 				size_t old = epath(x, "[%u]", NULL, 0, i);
-				tnode *e = tree_of(x, items->data[i], d);
+				tnode *e = tree_of(x, ak_arr_get(items, i), d);
 				if (!e && !x->failed) efail(x, "TOML has no null: an array's element can't be null");
 				x->plen = old;
 				if (e) arr_add(&x->ar, a, e);
@@ -1906,9 +1906,9 @@ static tnode *tree_of(ex *x, ak_val v, const char *d) {
 			ak_arr *ks = m ? ak_map_keys(m) : NULL;
 			ak_arr *vs = m ? ak_map_values(m) : NULL;
 			for (uint32_t i = 0; ks && i < ks->len && !x->failed; i++) {
-				ak_str *k = ks->data[i].p;
+				ak_str *k = ak_arr_vals(ks)[i].p;
 				size_t old = epath(x, NULL, k->data, k->len, 0);
-				tnode *e = tree_of(x, vs->data[i], d);
+				tnode *e = tree_of(x, ak_arr_get(vs, i), d);
 				x->plen = old;
 				if (e) tab_add(&x->ar, t, acopy(&x->ar, k->data, k->len), k->len, e);
 			}

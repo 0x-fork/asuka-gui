@@ -51,7 +51,7 @@ TEST(struct_by_field_names) {
 	REQUIRE(ak_keep_decode(&r, AK_K_REF, find, NULL, &out));
 	ak_arr *n = out.p;
 	REQUIRE(n->len == 2);
-	ak_struct *t0 = n->data[0].p;
+	ak_struct *t0 = ak_arr_vals(n)[0].p;
 	CHECK(t0->shape == &new_todo);
 	CHECK_EQ_INT(t0->f[0].i, 1);
 	CHECK_EQ_INT(t0->f[1].i, 0);

@@ -1185,7 +1185,7 @@ static void enc_step(encoder *e) {
 		if (kind == 'a') {
 			ak_arr *a = o->o;
 			if (!a || o->i >= a->len) done = true;
-			else item = a->data[o->i++], id = o->d;
+			else item = ak_arr_get(a, o->i++), id = o->d;
 		} else {
 			ak_map *m = o->o;
 			while (m && o->i < m->len && m->dead[o->i]) o->i++;
@@ -1201,7 +1201,7 @@ static void enc_step(encoder *e) {
 	case '[': {
 		ak_arr *a = o->o;
 		if (!a || o->i >= a->len) done = true;
-		else item = a->data[o->i++], id = o->d + 1;
+		else item = ak_arr_get(a, o->i++), id = o->d + 1;
 		break;
 	}
 	case '<':

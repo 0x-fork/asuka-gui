@@ -562,7 +562,7 @@ static ak_val b_migrate(ak_val *a, uint32_t n) {
 		snprintf(why, sizeof why, "%s", msg);
 	}
 	for (; ok && v < (int64_t)steps->len; v++) {
-		ak_str *step = steps->data[v].p;
+		ak_str *step = ak_arr_vals(steps)[v].p;
 		char sql[64];
 		if (!exec_sql(f, conn, "begin immediate", &tmp, &names, &count, msg, sizeof msg)) {
 			snprintf(why, sizeof why, "sqlite: migration %lld: %s", (long long)v + 1, msg);
@@ -863,7 +863,7 @@ static ak_val b_args(ak_val *a, uint32_t n) {
 		ak_buf_u32(&b, arr->len);
 		for (uint32_t i = 0; ok && i < arr->len; i++) {
 			ak_buf_str(&b, "", 0);
-			ok = put_arg(&b, arr->data[i], ak_arr_kind(arr));
+			ok = put_arg(&b, ak_arr_get(arr, i), ak_arr_kind(arr));
 		}
 	} else if (o && o->tag == AK_TAG_STRUCT) {
 		ak_struct *s = v.p;

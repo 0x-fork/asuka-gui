@@ -63,7 +63,7 @@ static ak_val call_low(ak_closure *c, ak_val *args, uint32_t n) {
 
 static bool same_bits(const ak_arr *a, const ak_val *want) {
 	for (uint32_t i = 0; i < a->len; i++)
-		if (a->data[i].i != want[i].i) return false;
+		if (ak_arr_vals(a)[i].i != want[i].i) return false;
 	return true;
 }
 
@@ -94,7 +94,7 @@ TEST(sorted_as_insertion) {
 				// radix sort, and most passes are skipped for some rounds.
 				v.i = round % 8 < 4 ? (int64_t)next() : (int64_t)(next() % 100) - 50;
 			}
-			a->data[i] = v;
+			ak_arr_vals(a)[i] = v;
 			want[i] = v;
 		}
 		a->len = n;

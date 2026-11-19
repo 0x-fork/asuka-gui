@@ -66,7 +66,7 @@ static pv index_of(pv x, int64_t i) {
 	if (x.none || x.k != AK_K_REF || !is_tag(x.v, AK_TAG_ARR)) return pv_none;
 	ak_arr *a = x.v.p;
 	if (i < 0 || i >= a->len) return pv_none;
-	return (pv){a->data[i], ak_arr_kind(a), false};
+	return (pv){ak_arr_get(a, i), ak_arr_kind(a), false};
 }
 
 // key_of is a map's value at key, or a set's member's presence.

@@ -83,7 +83,7 @@ static ak_str *S(const char *s) { return ak_str_c(s); }
 static bool arr_is(ak_arr *a, const char *const *want, uint32_t n) {
 	if (a->len != n) return false;
 	for (uint32_t i = 0; i < n; i++) {
-		ak_str *s = a->data[i].p;
+		ak_str *s = ak_arr_vals(a)[i].p;
 		if (s->len != strlen(want[i]) || memcmp(s->data, want[i], s->len)) return false;
 	}
 	return true;

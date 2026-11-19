@@ -470,9 +470,9 @@ TEST(net_tcp) {
 	ak_val ha = {.i = l};
 	ak_arr *addrs = lib("net.addresses")(&ha, 1).p;
 	REQUIRE(addrs->len == 4);
-	CHECK_EQ_STR(((ak_str *)addrs->data[0].p)->data, "127.0.0.1");
+	CHECK_EQ_STR(((ak_str *)ak_arr_vals(addrs)[0].p)->data, "127.0.0.1");
 	int64_t port = 0;
-	ak_str_to_int(addrs->data[1].p, &port);
+	ak_str_to_int(ak_arr_vals(addrs)[1].p, &port);
 	ak_release(addrs);
 	REQUIRE(port > 0);
 
@@ -562,7 +562,7 @@ TEST(net_udp) {
 	ak_val ha = {.i = b};
 	ak_arr *addrs = lib("net.addresses")(&ha, 1).p;
 	int64_t port = 0;
-	ak_str_to_int(addrs->data[1].p, &port);
+	ak_str_to_int(ak_arr_vals(addrs)[1].p, &port);
 	ak_release(addrs);
 	ak_val ra[2] = {{.i = b}, {.i = 0}};
 	ak_future *rf = lib("net.udpReceive")(ra, 2).p;
@@ -575,8 +575,8 @@ TEST(net_udp) {
 	REQUIRE(rf->state == AK_FUT_DONE);
 	ak_arr *got = rf->result.p;
 	REQUIRE(got->len == 3);
-	CHECK(((ak_bytes *)got->data[0].p)->len == 4 && memcmp(((ak_bytes *)got->data[0].p)->data, "ping", 4) == 0);
-	CHECK(((ak_bytes *)got->data[1].p)->len == 9 && memcmp(((ak_bytes *)got->data[1].p)->data, "127.0.0.1", 9) == 0);
+	CHECK(((ak_bytes *)ak_arr_vals(got)[0].p)->len == 4 && memcmp(((ak_bytes *)ak_arr_vals(got)[0].p)->data, "ping", 4) == 0);
+	CHECK(((ak_bytes *)ak_arr_vals(got)[1].p)->len == 9 && memcmp(((ak_bytes *)ak_arr_vals(got)[1].p)->data, "127.0.0.1", 9) == 0);
 	ak_release(sf);
 	ak_release(rf);
 	close_h(a);
@@ -594,7 +594,7 @@ TEST(net_lookup) {
 	ak_arr *ips = f->result.p;
 	CHECK(ips->len >= 1);
 	for (uint32_t i = 0; i < ips->len; i++) {
-		const char *ip = ((ak_str *)ips->data[i].p)->data;
+		const char *ip = ((ak_str *)ak_arr_vals(ips)[i].p)->data;
 		CHECK(strcmp(ip, "127.0.0.1") == 0 || strcmp(ip, "::1") == 0);
 	}
 	ak_release(f);

@@ -173,7 +173,7 @@ static bool encode(ak_buf *b, ak_val v, const char *d, const ak_json_types *t, c
 		ak_arr *a = v.p;
 		ak_buf_u32(b, a ? a->len : 0);
 		for (uint32_t i = 0; a && i < a->len; i++)
-			if (!encode(b, a->data[i], d + 1, t, owner)) return false;
+			if (!encode(b, ak_arr_get(a, i), d + 1, t, owner)) return false;
 		return true;
 	}
 	case '{': {
@@ -254,7 +254,7 @@ static ak_val decode(ak_reader *r, const char *d, const ak_json_types *t) {
 		ak_kind k = kind_of(d + 1);
 		ak_arr *a = ak_arr_new(k, NULL, n);
 		if (d[1] == 's') a->h.flags = 1;
-		for (uint32_t i = 0; i < n && !r->err && !ak_error_pending(); i++) a->data[a->len++] = ak_native_decode(r, d + 1, t);
+		for (uint32_t i = 0; i < n && !r->err && !ak_error_pending(); i++) ak_arr_put(a, a->len++, ak_native_decode(r, d + 1, t));
 		v.p = a;
 		break;
 	}
@@ -319,7 +319,7 @@ static bool status(ak_reader *r, ak_arr *errors) {
 		return true;
 	case 1: {
 		uint32_t i = ak_read_u32(r);
-		if (errors && i < errors->len) ak_throw(ak_retain(errors->data[i].p));
+		if (errors && i < errors->len) ak_throw(ak_retain(ak_arr_vals(errors)[i].p));
 		else ak_throw_msg("native: an error (%u) the package doesn't declare", i);
 		return false;
 	}

@@ -140,7 +140,7 @@ static void *cancel_error(void) {
 static void each_call(void *p) {
 	each_item *it = p;
 	each_ctx *c = it->c;
-	ak_val arg = c->items->data[it->i];
+	ak_val arg = ak_arr_get(c->items, it->i);
 	ak_closure *f = c->f;
 	ak_future *fut;
 	bool async = f->invoke != ak_vm_closure_invoke || ak_closure_async(f);
@@ -190,7 +190,7 @@ static void each_settle(each_ctx *c) {
 			ak_retain_val(v, k);
 			if (k == AK_K_REF && v.p && ((ak_obj *)v.p)->tag == AK_TAG_STR) res->h.flags = 1;
 		}
-		res->data[res->len++] = v;
+		ak_arr_put(res, res->len++, v);
 	}
 	ak_future_resolve(out, (ak_val){.p = res});
 }

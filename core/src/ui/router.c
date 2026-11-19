@@ -299,7 +299,7 @@ ak_str *ak_ui_href_of(ak_str *pattern, ak_arr *values) {
 			path_escape(&b, s->text->data, s->text->len);
 			continue;
 		}
-		ak_str *v = values->data[n++].p;
+		ak_str *v = ak_arr_vals(values)[n++].p;
 		if (!v) continue;
 		if (s->kind == SEG_PARAM) path_escape(&b, v->data, v->len);
 		else escape_rest(&b, v);
@@ -1317,7 +1317,7 @@ static void present(router_t *rt, inst *in, entry *e, const edesc *d) {
 	const ak_val *dv = key_of(e->member->route, AK_KEY_ROUTE_DETENTS);
 	int64_t detents = 0;
 	const ak_arr *da = dv ? dv->p : NULL;
-	for (uint32_t i = 0; da && i < da->len; i++) detents |= INT64_C(1) << da->data[i].i;
+	for (uint32_t i = 0; da && i < da->len; i++) detents |= INT64_C(1) << ak_arr_vals(da)[i].i;
 	content_ctx cc = {rt, in, e, d, NULL};
 	ak_closure *c = ak_closure_new(sheet_content, NULL, 1, int_cap);
 	c->caps[0].i = (int64_t)(uintptr_t)&cc;

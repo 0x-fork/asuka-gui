@@ -400,7 +400,7 @@ static tls_conf *conf_new(bool server, const ak_arr *alpn, int64_t minv, int64_t
 	if (alpn->len) {
 		c->alpn = ak_alloc(sizeof(char *) * (alpn->len + 1));
 		for (uint32_t i = 0; i < alpn->len; i++) {
-			const ak_str *p = alpn->data[i].p;
+			const ak_str *p = ak_arr_vals(alpn)[i].p;
 			if (p->len == 0 || p->len > 255 || strlen(p->data) != p->len) {
 				c->alpn[i] = NULL;
 				snprintf(why, cap, "an ALPN protocol is 1 to 255 bytes: \"h2\", \"http/1.1\"");
@@ -426,7 +426,7 @@ static void digest_common(ak_sha256_ctx *h, bool server, const ak_arr *alpn, int
 	digest_int(h, minv);
 	digest_int(h, maxv);
 	digest_int(h, alpn->len);
-	for (uint32_t i = 0; i < alpn->len; i++) digest_str(h, ((ak_str *)alpn->data[i].p)->data, ((ak_str *)alpn->data[i].p)->len);
+	for (uint32_t i = 0; i < alpn->len; i++) digest_str(h, ((ak_str *)ak_arr_vals(alpn)[i].p)->data, ((ak_str *)ak_arr_vals(alpn)[i].p)->len);
 }
 
 static ak_val client_fn(ak_val *args, uint32_t n) {
@@ -515,7 +515,7 @@ static ak_val server_fn(ak_val *args, uint32_t n) {
 	ak_sha256_init(&h);
 	digest_common(&h, true, alpn, minv, maxv);
 	digest_int(&h, pairs->len);
-	for (uint32_t i = 0; i < pairs->len; i++) digest_str(&h, ((ak_str *)pairs->data[i].p)->data, ((ak_str *)pairs->data[i].p)->len);
+	for (uint32_t i = 0; i < pairs->len; i++) digest_str(&h, ((ak_str *)ak_arr_vals(pairs)[i].p)->data, ((ak_str *)ak_arr_vals(pairs)[i].p)->len);
 	digest_str(&h, client_ca->data, client_ca->len);
 	digest_int(&h, require);
 	digest_int(&h, tickets);
@@ -536,7 +536,7 @@ static ak_val server_fn(ak_val *args, uint32_t n) {
 	for (uint32_t i = 0; i < c->npairs; i++) {
 		char which[24] = "";
 		if (i > 0) snprintf(which, sizeof which, "others[%u]: ", i - 1);
-		if (!pem_pair(pairs->data[2 * i].p, pairs->data[2 * i + 1].p, &c->pairs[i], which, why, sizeof why)) goto fail;
+		if (!pem_pair(ak_arr_vals(pairs)[2 * i].p, ak_arr_vals(pairs)[2 * i + 1].p, &c->pairs[i], which, why, sizeof why)) goto fail;
 	}
 	// The first is shown when the client asks for no name, or one no
 	// certificate has (sni adds those that match).

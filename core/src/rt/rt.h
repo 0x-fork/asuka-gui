@@ -236,19 +236,113 @@ ak_bytes *ak_bytes_new(const void *p, size_t n);  // p NULL: n bytes, uninitiali
 
 // ---- Arrays ----
 
+// How an array stores its elements. An int, a float or a reference is
+// a value of 8 bytes (ak_val, untagged: its type is the array's); a
+// bool is a byte, and a sized integer (i8 to u32) its own width,
+// packed as Go's []bool and []uint8 and Swift's [Bool] and [UInt8] are:
+// a [bool] of 50 million takes 50 MB, not 400. Packed elements are
+// scalars: a packed array holds no references. Code that reads or
+// writes elements of any array goes through ak_arr_get and ak_arr_put;
+// code that knows its array holds values takes them as ak_arr_vals.
+typedef enum ak_elem {
+	AK_E_VAL = 0,  // ak_val
+	AK_E_BOOL,     // bool, a byte
+	AK_E_I8,
+	AK_E_I16,
+	AK_E_I32,
+	AK_E_U8,
+	AK_E_U16,
+	AK_E_U32,
+} ak_elem;
+
+// ak_elem_shift is log2 of an element's bytes.
+static inline uint8_t ak_elem_shift(ak_elem e) {
+	static const uint8_t s[] = {3, 0, 0, 1, 2, 0, 1, 2};
+	return s[e];
+}
+
 typedef struct ak_arr {
 	ak_obj h;  // h.aux: the element kind; h.flags: 1 when elements are strings (for equality)
-	// Its buffer: front free slots, then cap slots from data (its len
-	// elements, then free ones). Changes at the start move data within
+	// Its buffer: front free slots, then cap slots from items (its len
+	// elements, then free ones). Changes at the start move items within
 	// it, so an array is a double-ended queue: pushing and popping at
 	// either end is O(1), amortized (arr.c).
 	uint32_t len, cap, front;
+	uint8_t elem;   // ak_elem: how its elements are stored
+	uint8_t shift;  // log2 of an element's bytes (ak_elem_shift)
 	const ak_shape *shape;  // the elements' shape when they're structs or enums
-	ak_val *data;
+	void *items;
 } ak_arr;
 
+// ak_arr_new makes an empty array of elements of kind elem: bools
+// packed, a byte each; others values (ak_arr_new_packed packs sized
+// integers).
 ak_arr *ak_arr_new(ak_kind elem, const ak_shape *shape, uint32_t cap);
+ak_arr *ak_arr_new_packed(ak_kind kind, ak_elem elem, uint32_t cap);
 static inline ak_kind ak_arr_kind(const ak_arr *a) { return (ak_kind)a->h.aux; }
+static inline bool ak_arr_packed(const ak_arr *a) { return a->elem != AK_E_VAL; }
+// ak_arr_vals is the elements of an array of values (not packed).
+static inline ak_val *ak_arr_vals(const ak_arr *a) {
+#ifndef NDEBUG
+	if (AK_UNLIKELY(a->elem != AK_E_VAL)) ak_panic("ak_arr_vals of a packed array (elements of type %d)", a->elem);
+#endif
+	return (ak_val *)a->items;
+}
+// ak_arr_bools is the elements of a [bool], a byte each: C's bool, not
+// a character type, so that a write of one isn't taken to change
+// anything else (C's aliasing: a char may be any object's byte), and
+// compiled code keeps the array's length and buffer in registers
+// across a loop of writes.
+static inline bool *ak_arr_bools(const ak_arr *a) {
+#ifndef NDEBUG
+	if (AK_UNLIKELY(a->elem != AK_E_BOOL)) ak_panic("ak_arr_bools of an array of elements of type %d", a->elem);
+#endif
+	return (bool *)a->items;
+}
+// ak_elem_get reads an element of type e at p, as a value (a sized
+// integer sign- or zero-extended); ak_elem_put writes v there,
+// narrowed. Neither counts references.
+static inline ak_val ak_elem_get(const void *p, ak_elem e) {
+	switch (e) {
+	case AK_E_VAL: return *(const ak_val *)p;
+	case AK_E_BOOL: return (ak_val){.i = *(const bool *)p};
+	case AK_E_U8: return (ak_val){.i = *(const uint8_t *)p};
+	case AK_E_I8: return (ak_val){.i = *(const int8_t *)p};
+	case AK_E_I16: return (ak_val){.i = *(const int16_t *)p};
+	case AK_E_U16: return (ak_val){.i = *(const uint16_t *)p};
+	case AK_E_I32: return (ak_val){.i = *(const int32_t *)p};
+	case AK_E_U32: return (ak_val){.i = *(const uint32_t *)p};
+	}
+	return (ak_val){0};
+}
+static inline void ak_elem_put(void *p, ak_elem e, ak_val v) {
+	switch (e) {
+	case AK_E_VAL: *(ak_val *)p = v; break;
+	case AK_E_BOOL: *(bool *)p = v.i != 0; break;
+	case AK_E_I8:
+	case AK_E_U8: *(uint8_t *)p = (uint8_t)v.i; break;
+	case AK_E_I16:
+	case AK_E_U16: *(uint16_t *)p = (uint16_t)v.i; break;
+	case AK_E_I32:
+	case AK_E_U32: *(uint32_t *)p = (uint32_t)v.i; break;
+	}
+}
+// ak_arr_at is where element i is.
+static inline void *ak_arr_at(const ak_arr *a, uint32_t i) { return (char *)a->items + ((size_t)i << a->shift); }
+// ak_arr_get is element i (in range) as a value, borrowed; ak_arr_put
+// stores v as element i, neither releasing what was there nor
+// retaining v (ak_arr_set does both). A value's inline, a packed one's
+// a call (ak_arr_get_packed, ak_arr_put_packed).
+ak_val ak_arr_get_packed(const ak_arr *a, uint32_t i);
+void ak_arr_put_packed(ak_arr *a, uint32_t i, ak_val v);
+static inline ak_val ak_arr_get(const ak_arr *a, uint32_t i) {
+	if (AK_LIKELY(a->elem == AK_E_VAL)) return ((const ak_val *)a->items)[i];
+	return ak_arr_get_packed(a, i);
+}
+static inline void ak_arr_put(ak_arr *a, uint32_t i, ak_val v) {
+	if (AK_LIKELY(a->elem == AK_E_VAL)) ((ak_val *)a->items)[i] = v;
+	else ak_arr_put_packed(a, i, v);
+}
 // ak_arr_mut makes *a unique (copying it if it's shared) and returns it.
 ak_arr *ak_arr_mut(ak_arr **a);
 void ak_arr_push(ak_arr **a, ak_val v);              // takes v's reference
@@ -256,11 +350,15 @@ void ak_arr_reserve(ak_arr **a, uint32_t n);         // room for n more, made un
 void ak_arr_insert(ak_arr **a, int64_t i, ak_val v); // takes v's reference
 ak_val ak_arr_remove_at(ak_arr **a, int64_t i);      // returns the reference
 void ak_arr_set(ak_arr **a, int64_t i, ak_val v);    // takes v's reference
-static inline ak_val *ak_arr_base(const ak_arr *a) { return a->data ? a->data - a->front : NULL; }  // what's allocated
+// ak_arr_base is what's allocated: the front free slots' start.
+static inline void *ak_arr_base(const ak_arr *a) { return a->items ? (char *)a->items - ((size_t)a->front << a->shift) : NULL; }
 bool ak_arr_check(const ak_arr *a, int64_t i);       // in range
 ak_arr *ak_arr_slice(ak_arr *a, int64_t from, int64_t to);
 ak_arr *ak_arr_concat(ak_arr *a, ak_arr *b);
 ak_arr *ak_arr_copy(const ak_arr *a);
+// ak_arr_like is an empty array of a's elements (their kind, storage
+// and shape) with room for cap.
+ak_arr *ak_arr_like(const ak_arr *a, uint32_t cap);
 
 // ---- Maps: insertion ordered, keys int or string ----
 

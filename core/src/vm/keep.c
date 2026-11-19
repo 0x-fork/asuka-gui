@@ -69,7 +69,7 @@ bool ak_keep_encode(ak_buf *b, ak_val v, ak_kind k) {
 		wstr(b, a->shape ? a->shape->name : NULL);
 		ak_buf_u32(b, a->len);
 		for (uint32_t i = 0; i < a->len; i++)
-			if (!ak_keep_encode(b, a->data[i], ak_arr_kind(a))) return false;
+			if (!ak_keep_encode(b, ak_arr_get(a, i), ak_arr_kind(a))) return false;
 		return true;
 	}
 	case AK_TAG_MAP: {
@@ -260,7 +260,7 @@ bool ak_keep_decode(ak_reader *r, ak_kind k, ak_keep_shape_fn find, void *ctx, a
 				ok = false;
 				break;
 			}
-			a->data[a->len++] = v;
+			ak_arr_put(a, a->len++, v);
 			if (ek == AK_K_REF && v.p) {
 				ak_obj *eo = v.p;
 				if (eo->tag == AK_TAG_STR) a->h.flags = 1;

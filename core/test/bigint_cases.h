@@ -239,8 +239,8 @@ TEST(division_signs) {
 	CHECK_EQ_STR(bt_thrown(), "division by zero");
 	ak_arr *both = bt_keep(bt_call("bigDivBoth", V(bt_num("-7")), V(bt_num("2")), I(1)).p);
 	CHECK_EQ_INT(both->len, 2);
-	CHECK_TEXT(both->data[0].p, "-4");
-	CHECK_TEXT(both->data[1].p, "1");
+	CHECK_TEXT(ak_arr_vals(both)[0].p, "-4");
+	CHECK_TEXT(ak_arr_vals(both)[1].p, "1");
 	bi_done();
 }
 

@@ -305,7 +305,7 @@ static void incoming(ak_span s) {
 		at = end + 1;
 	}
 	if (paths->len) open_files(paths);
-	for (uint32_t i = 0; i < urls->len; i++) open_url(urls->data[i].p);
+	for (uint32_t i = 0; i < urls->len; i++) open_url(ak_arr_vals(urls)[i].p);
 	ak_release(paths);
 	ak_release(urls);
 }
@@ -412,7 +412,7 @@ ak_future *ak_ui_share_files(ak_arr *paths, ak_str *mime, ak_str *uti, ak_str *t
 	if (!m.len) {
 		// The first file's type, by its name.
 		ak_struct *it = ak_struct_new(&ak_ui_shape_shared_item);
-		it->f[2].p = ak_retain(paths->data[0].p);
+		it->f[2].p = ak_retain(ak_arr_vals(paths)[0].p);
 		ak_item w;
 		ak_item_wire(it, false, &w, &first_abs);
 		m = w.mime;
@@ -428,7 +428,7 @@ ak_future *ak_ui_share_files(ak_arr *paths, ak_str *mime, ak_str *uti, ak_str *t
 	ak_buf_u32(&b, paths->len);
 	for (uint32_t i = 0; i < paths->len; i++) {
 		ak_struct *it = ak_struct_new(&ak_ui_shape_shared_item);
-		it->f[2].p = ak_retain(paths->data[i].p);
+		it->f[2].p = ak_retain(ak_arr_vals(paths)[i].p);
 		ak_item w;
 		ak_str *abs;
 		ak_item_wire(it, false, &w, &abs);
