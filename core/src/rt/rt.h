@@ -155,6 +155,8 @@ typedef enum ak_tag {
 	AK_TAG_VIEW,
 	AK_TAG_NATIVE,   // native/native.h's objects
 	AK_TAG_OPAQUE,   // runtime objects with their own destructor
+	AK_TAG_TREE,     // a B-tree: std/collections' SortedMap's and SortedSet's (tree.c)
+	AK_TAG_TNODE,    // one of its nodes
 } ak_tag;
 
 typedef struct ak_obj {
@@ -240,8 +242,9 @@ struct ak_shape {
 
 // A type's own methods the runtime calls (a shape's hooks): equals(a, b)
 // -> bool, hash(a) -> int, description(a) -> string, toJSON(a) -> J,
-// fromJSON(j) -> T (it may throw).
-enum { AK_HOOK_EQ, AK_HOOK_HASH, AK_HOOK_SHOW, AK_HOOK_TOJSON, AK_HOOK_FROMJSON, AK_NHOOKS };
+// fromJSON(j) -> T (it may throw), compare(a, b) -> int (what orders a
+// type that says its own <: a B-tree's keys, tree.c).
+enum { AK_HOOK_EQ, AK_HOOK_HASH, AK_HOOK_SHOW, AK_HOOK_TOJSON, AK_HOOK_FROMJSON, AK_HOOK_CMP, AK_NHOOKS };
 // ak_shape_call calls the shape's hook with args (borrowed), returning
 // its result (owned); an error it raises is pending. The VM's, set as it
 // loads a module.
@@ -285,18 +288,53 @@ ak_str *ak_str_new(const char *s, size_t n);  // s NULL: n bytes the caller fill
 // 16 KB at most, not the string it was cut from (Go's substrings keep
 // all of it); a slab is no bigger than what the pieces still to come
 // can need (left, a bound: what cutting "1.2.3" takes, not 16 KB). A
-// piece over AK_PIECE_MAX is a string of its own. Zero is an empty
-// builder (left unknown: slabs of 16 KB); ak_piece makes the next
-// piece, of n bytes from s. AK_PIECES_LEFT bounds what n pieces of
-// bytes bytes in all need.
+// piece over AK_PIECE_MAX is a string of its own.
+//
+// ak_pieces_start begins cutting from (the pieces' bytes are its), left
+// a bound of what they'll need (AK_PIECES_LEFT of n pieces of bytes
+// bytes in all; 0: unknown, slabs of 16 KB); ak_piece makes the next
+// piece, of n bytes from s; ak_pieces_end ends it, before any piece is
+// let go of. A piece of 16 bytes or fewer is a header and one 16-byte
+// copy, inline (the bytes past it that it copies are written over or
+// past its end): a split's are words. A slab's count of its pieces is
+// written as it's left, not one by one (each a store a load waits for).
 typedef struct ak_pieces {
-	char *slab, *at, *end;
-	size_t left;  // what the pieces to come need at most (0: unknown)
-	bool ascii;   // the string cut is ASCII: its pieces are
+	char *slab, *at, *end;  // the slab being filled: at its next piece's place, end less 16 bytes of room
+	const char *from_end;   // past the string cut's NUL: what a copy may read up to
+	uint32_t count;         // the pieces made in the slab
+	uint8_t flags;          // what each piece's h.flags are
+	size_t left;            // what the pieces to come need at most (0: unknown)
 } ak_pieces;
 #define AK_PIECES_LEFT(n, bytes) ((size_t)(n) * (sizeof(ak_str) + 8) + (size_t)(bytes))
 #define AK_PIECE_MAX 240
-ak_str *ak_piece(ak_pieces *p, const char *s, size_t n);
+#if defined(__SANITIZE_ADDRESS__)
+#define AK_NO_SLABS 1  // each piece a string of its own, so a use after its free is caught
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer) || __has_feature(memory_sanitizer)
+#define AK_NO_SLABS 1
+#endif
+#endif
+void ak_pieces_start(ak_pieces *p, const ak_str *from, size_t left);
+ak_str *ak_piece_slow(ak_pieces *p, const char *s, size_t n);
+static AK_ALWAYS_INLINE ak_str *ak_piece(ak_pieces *p, const char *s, size_t n) {
+#if !defined(AK_NO_SLABS)
+	size_t need = (sizeof(ak_str) + n + 1 + 7) & ~(size_t)7;
+	if (AK_LIKELY(n - 1 < 16 && need <= (size_t)(p->end - p->at) && s + 16 <= p->from_end)) {
+		ak_str *o = (ak_str *)p->at;
+		o->h = (ak_obj){.rc = 1, .tag = AK_TAG_STR, .flags = p->flags, .aux = (uint16_t)((size_t)(p->at - p->slab) >> 3)};
+		o->len = (uint32_t)n;
+		o->hash = 0;
+		memcpy(o->data, s, 16);
+		o->data[n] = 0;
+		p->at += need;
+		p->count++;
+		ak_obj_count(1);
+		return o;
+	}
+#endif
+	return ak_piece_slow(p, s, n);
+}
+void ak_pieces_end(ak_pieces *p);
 // ak_find_byte is where c first is in [p, end), or NULL: a word at a
 // time, inline, which for the short runs between separators is what a
 // call to memchr costs several times over.
@@ -319,11 +357,14 @@ static inline const char *ak_find_byte(const char *p, const char *end, char c) {
 // ak_space is the white space fields and trim cut at: ASCII's.
 extern const bool ak_space_table[256];
 static inline bool ak_space(char c) { return ak_space_table[(uint8_t)c]; }
+// ak_piece_slab is the slab a piece is in: its count of live pieces
+// first.
+static inline uint32_t *ak_piece_slab(const ak_str *s) { return (uint32_t *)((char *)s - ((size_t)s->h.aux << 3)); }
 // ak_piece_free frees a piece (its count released): its slab, when it
 // was the last.
 static inline void ak_piece_free(ak_str *s) {
-	char *slab = (char *)s - ((size_t)s->h.aux << 3);
-	if (--*(uint32_t *)slab == 0) ak_free(slab);
+	uint32_t *slab = ak_piece_slab(s);
+	if (--*slab == 0) ak_free(slab);
 }
 static inline ak_str *ak_str_c(const char *s) { return ak_str_new(s, strlen(s)); }
 ak_str *ak_str_empty(void);  // immortal
@@ -656,6 +697,126 @@ ak_map *ak_set_intersection(const ak_map *a, const ak_map *b);  // a's that b ha
 ak_map *ak_set_subtracting(const ak_map *a, const ak_map *b);   // a's that b hasn't
 bool ak_set_is_subset(const ak_map *a, const ak_map *b);        // every element of a is b's
 ak_map *ak_set_from_arr(const ak_arr *a);  // its distinct elements, first occurrence first
+
+// ---- B-trees: std/collections' SortedMap and SortedSet (tree.c) ----
+//
+// A tree (ak_tree, AK_TAG_TREE) holds its entries' count, how its keys
+// are ordered, and its root, a node (ak_tnode, AK_TAG_TNODE): a value
+// whose keys, values (none in a set's) and children are in it, one
+// allocation, as Rust's BTreeMap's are (Go's google/btree's node is two
+// slices more). Nodes are counted, and shared by the trees copied from
+// one another until one changes: a change copies the nodes on its path
+// from the root that are shared (path copying, as Swift's collections
+// copy on write), so a copy of a tree is O(1) and a change O(log n).
+//
+// Keys are ordered by the tree's mode: an int's, a u64's, a float's or a
+// string's own < in C, or a type's own compare (its shape's
+// AK_HOOK_CMP); a SortedMap's by, a closure, is passed to each call that
+// orders (none: the mode's), as the tree doesn't keep it.
+//
+// A node's slots are its keys, its values and its children, each group
+// AK_TREE_MAX long (children one more), scalars' groups first: what
+// holds references is one run of slots, s[from, to), whose unused slots
+// are NULL, so a walk (obj.c's destroying, freezing, copying) goes
+// through a node as through an array of references.
+#define AK_TREE_MAX 63  // a node's keys at most
+#define AK_TREE_MIN 31  // and at least, but the root's
+#define AK_TREE_DEPTH 24  // levels at most (31^12 entries is past any memory)
+
+typedef enum ak_tree_mode {
+	AK_TM_INT,    // int64's < (int, Duration, char, i8 … u32, a payloadless enum's case)
+	AK_TM_U64,    // uint64's
+	AK_TM_FLOAT,  // double's
+	AK_TM_STR,    // strings', bytewise (ak_str_cmp)
+	AK_TM_CMP,    // the keys' type's own compare (their shape's AK_HOOK_CMP; an enum's without one, its cases' order)
+} ak_tree_mode;
+
+#define AK_TNODE_LEAF 1  // h.flags: it has no children
+
+typedef struct ak_tnode {
+	ak_obj h;                 // h.aux: its keys' count; h.flags: AK_TNODE_LEAF
+	uint16_t ko, vo, co;      // where its keys, values and children start in s
+	uint16_t from, to;        // its references: s[from, to)
+	ak_val s[];
+} ak_tnode;
+
+typedef struct ak_tree {
+	ak_obj h;
+	uint8_t mode;     // ak_tree_mode
+	uint8_t kk, vk;   // its keys' and values' kinds; vk AK_K_VOID: a set's
+	uint8_t height;   // the levels below its root
+	int64_t count;
+	ak_val root;      // an ak_tnode, NULL when it's empty
+	// kshape: AK_TM_CMP's keys' shape when they're ints (an enum without
+	// payloads that has a compare); a struct's or an enum's is its own.
+	const ak_shape *kshape;
+} ak_tree;
+
+static inline uint32_t ak_tnode_len(const ak_tnode *n) { return n->h.aux; }
+static inline bool ak_tnode_leaf(const ak_tnode *n) { return n->h.flags & AK_TNODE_LEAF; }
+static inline ak_val *ak_tnode_keys(const ak_tnode *n) { return (ak_val *)n->s + n->ko; }
+static inline ak_val *ak_tnode_vals(const ak_tnode *n) { return (ak_val *)n->s + n->vo; }
+static inline ak_tnode *ak_tnode_kid(const ak_tnode *n, uint32_t i) { return n->s[n->co + i].p; }
+static inline bool ak_tree_is_set(const ak_tree *t) { return t->vk == AK_K_VOID; }
+// ak_tree_desc_mode is how keys of the type of JSON's descriptor d
+// (json.h's) are ordered; ak_tree_desc_kind, a value's kind by it.
+ak_tree_mode ak_tree_desc_mode(const char *d);
+ak_kind ak_tree_desc_kind(const char *d);
+ak_tree *ak_tree_new(ak_tree_mode mode, ak_kind kk, ak_kind vk);  // empty
+// ak_tnode_shell is a copy of n but for what it references (NULL, which
+// obj.c's walk fills in): for another thread (ak_deep_copy).
+ak_tnode *ak_tnode_shell(const ak_tnode *n);
+
+// What orders a tree's keys in a call: by, a less-than closure, when
+// it's given, else the tree's mode.
+typedef struct ak_tree_order {
+	uint8_t mode;
+	struct ak_closure *by;
+	const ak_shape *kshape;  // the tree's
+} ak_tree_order;
+
+// ak_tree_mut makes *t unique (a copy sharing its nodes, when it's
+// shared) and returns it.
+ak_tree *ak_tree_mut(ak_tree **t);
+
+// Finding and changing (keys and values borrowed; what's stored is
+// retained). A by that raises an error leaves the tree whole (as it was,
+// or with nodes merged or split on the way), the error pending. What
+// changes a tree takes a unique one (ak_tree_mut's), and copies the
+// nodes it changes that are shared.
+// ak_tree_find is where key is: its node and index (false: it isn't).
+bool ak_tree_find(const ak_tree *t, ak_tree_order o, ak_val key, const ak_tnode **at, uint32_t *i);
+// ak_tree_put gives key value v (a set's: none): whether it's new.
+bool ak_tree_put(ak_tree *t, ak_tree_order o, ak_val key, ak_val v);
+// ak_tree_delete removes key: whether it was there; its value (its
+// reference) in *out, unless out is NULL.
+bool ak_tree_delete(ak_tree *t, ak_tree_order o, ak_val key, ak_val *out);
+// ak_tree_near is the entry nearest key: below, the greatest less than
+// key (or equal, with equal); else the least greater (or equal). false:
+// none.
+bool ak_tree_near(const ak_tree *t, ak_tree_order o, ak_val key, bool below, bool equal, const ak_tnode **at, uint32_t *i);
+// ak_tree_end is the first entry (last: the last).
+bool ak_tree_end(const ak_tree *t, bool last, const ak_tnode **at, uint32_t *i);
+// ak_tree_append puts key and v (references taken) after every entry:
+// a tree built in its order (a kept value read back), no comparison.
+void ak_tree_append(ak_tree *t, ak_val key, ak_val v);
+
+// An in-order walk: from the first entry, or from the first at or after
+// a key (after: past it), its entries one by one (borrowed). A tree a
+// walk is over doesn't change while it's walked.
+typedef struct ak_titer {
+	const ak_tnode *n[AK_TREE_DEPTH];
+	uint32_t i[AK_TREE_DEPTH];
+	int top;
+} ak_titer;
+void ak_titer_start(ak_titer *it, const ak_tree *t);
+void ak_titer_seek(ak_titer *it, const ak_tree *t, ak_tree_order o, ak_val from, bool after);
+bool ak_titer_next(ak_titer *it, const ak_tnode **at, uint32_t *i);
+
+// ak_tree_eq compares two trees' entries in order (same count, keys and
+// values ak_val_eq); ak_tree_hash hashes them as it compares.
+bool ak_tree_eq(const ak_tree *a, const ak_tree *b);
+uint64_t ak_tree_hash(const ak_tree *t);
 
 // ---- Structs, tuples and enums ----
 

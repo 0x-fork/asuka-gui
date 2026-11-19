@@ -393,6 +393,27 @@ var Methods = []*Method{
 	{Recv: "ref", Name: "position", Sig: "() -> (float, float)", Builtin: "ui.window_pair", Field: true, Consts: []int64{0}, Doc: "its frame's top left on the screen, in points (tracked)"},
 	{Recv: "ref", Name: "size", Sig: "() -> (float, float)", Builtin: "ui.window_pair", Field: true, Consts: []int64{1}, Doc: "its content's size, in points (tracked)"},
 	{Recv: "ref", Name: "windowState", Sig: "() -> WindowState", Builtin: "ui.window_state", Field: true, Doc: "all of its state at once (tracked)"},
+
+	// The runtime's B-tree (Tree, BTree<K, V>: core/src/rt/tree.c), which
+	// only the standard library names: std/collections' SortedMap's and
+	// SortedSet's. by is the keys' order, a less-than (none: their own);
+	// a set's tree (collections.newSet) has keys only. Extra "entryProto":
+	// a frozen empty [(K, V)], whose elements' shape the runtime makes
+	// entries by.
+	{Recv: "tree", Name: "count", Sig: "() -> int", Builtin: "tree.count"},
+	{Recv: "tree", Name: "get", Sig: "(key: K, by: (fn(K, K) -> bool)?) -> V?", Builtin: "tree.get", Fails: true},
+	{Recv: "tree", Name: "has", Sig: "(key: K, by: (fn(K, K) -> bool)?) -> bool", Builtin: "tree.has", Fails: true},
+	{Recv: "tree", Name: "put", Sig: "(key: K, value: V, by: (fn(K, K) -> bool)?) -> bool", Builtin: "tree.put", Inout: true, Fails: true, Doc: "gives key value: whether it's new"},
+	{Recv: "tree", Name: "add", Sig: "(key: K, by: (fn(K, K) -> bool)?) -> bool", Builtin: "tree.add", Inout: true, Fails: true, Doc: "a set's: adds key, whether it's new"},
+	{Recv: "tree", Name: "take", Sig: "(key: K, by: (fn(K, K) -> bool)?) -> V?", Builtin: "tree.take", Inout: true, Fails: true, Doc: "removes key: its value, none when it had none"},
+	{Recv: "tree", Name: "delete", Sig: "(key: K, by: (fn(K, K) -> bool)?) -> bool", Builtin: "tree.delete", Inout: true, Fails: true, Doc: "removes key: whether it was there"},
+	{Recv: "tree", Name: "near", Sig: "(key: K, by: (fn(K, K) -> bool)?, below: bool, equal: bool) -> (K, V)?", Builtin: "tree.near", Extra: "entryProto", Fails: true, Doc: "below: the entry with the greatest key less than key (or equal, with equal); else the least greater"},
+	{Recv: "tree", Name: "nearKey", Sig: "(key: K, by: (fn(K, K) -> bool)?, below: bool, equal: bool) -> K?", Builtin: "tree.near_key", Fails: true},
+	{Recv: "tree", Name: "end", Sig: "(last: bool) -> (K, V)?", Builtin: "tree.end", Extra: "entryProto", Doc: "the first entry (last: the last)"},
+	{Recv: "tree", Name: "endKey", Sig: "(last: bool) -> K?", Builtin: "tree.end_key"},
+	{Recv: "tree", Name: "entries", Sig: "(from: K?, after: bool, to: K?, by: (fn(K, K) -> bool)?, limit: int) -> [(K, V)]", Builtin: "tree.range", Extra: "proto", Consts: []int64{0}, Fails: true, Doc: "the entries from the first key not less than from (after: greater; none: the first) up to the first not less than to (none: the end), limit at most (negative: all)"},
+	{Recv: "tree", Name: "keys", Sig: "(from: K?, after: bool, to: K?, by: (fn(K, K) -> bool)?, limit: int) -> [K]", Builtin: "tree.range", Extra: "proto", Consts: []int64{1}, Fails: true},
+	{Recv: "tree", Name: "values", Sig: "(from: K?, after: bool, to: K?, by: (fn(K, K) -> bool)?, limit: int) -> [V]", Builtin: "tree.range", Extra: "proto", Consts: []int64{2}, Fails: true},
 }
 
 // The receivers' type variables.
@@ -473,6 +494,8 @@ func recvKind(t Type) string {
 		return "stream"
 	case *Seq:
 		return "seq"
+	case *Tree:
+		return "tree"
 	case *Named:
 		if x.Obj == loadingT {
 			return "loading"
@@ -589,6 +612,8 @@ func (m *Method) bind(recv Type) Subst {
 		s[tvT] = x.Elem
 	case *Seq:
 		seqBind(s, x)
+	case *Tree:
+		s[tvK], s[tvV] = x.Key, x.Elem
 	case *Named:
 		if len(x.Args) > 0 {
 			s[tvT] = x.Args[0]
@@ -751,7 +776,11 @@ func (p *sigParser) typ() Type {
 			}
 			es = append(es, p.typ())
 		}
-		t = &Tuple{es}
+		if len(es) == 1 {
+			t = es[0] // a type in parentheses: (fn(K, K) -> bool)?
+		} else {
+			t = &Tuple{es}
+		}
 	case p.eat("fn"):
 		var ps []Type
 		if !p.eat("(") {

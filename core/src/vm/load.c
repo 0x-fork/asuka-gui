@@ -138,10 +138,10 @@ static ak_str *intern(ak_module *m, ak_str *s) {
 	return s;
 }
 
-// own_hook notes a method of a type's own ==, hash, text or JSON (its
-// reserved name: lang/ir's own.go) as the shape's hook.
+// own_hook notes a method of a type's own ==, hash, text, JSON or order
+// (its reserved name: lang/ir's own.go) as the shape's hook.
 static void own_hook(ak_vm_shape *vs, const ak_method *mt) {
-	static const char *const names[AK_NHOOKS] = {"#eq", "#hash", "#show", "#json", "#fromjson"};
+	static const char *const names[AK_NHOOKS] = {"#eq", "#hash", "#show", "#json", "#fromjson", "#cmp"};
 	const ak_str *n = mt->name;
 	if (n->len == 0 || n->data[0] != '#') return;
 	for (int h = 0; h < AK_NHOOKS; h++) {

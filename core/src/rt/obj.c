@@ -149,6 +149,15 @@ static AK_ALWAYS_INLINE uint32_t frame_at(walk_frame *f, ak_obj *a) {
 		f->kinds = c->capkinds;
 		return f->end = c->capkinds ? last_ref(c->capkinds, c->ncap) : 0;
 	}
+	case AK_TAG_TREE:
+		f->x = &((ak_tree *)a)->root;
+		return f->end = 1;
+	case AK_TAG_TNODE: {
+		// Its references, side by side, NULL past what's used (rt.h).
+		ak_tnode *n = (ak_tnode *)a;
+		f->x = n->s + n->from;
+		return f->end = (uint32_t)(n->to - n->from);
+	}
 	default:
 		return 0;
 	}
@@ -162,6 +171,8 @@ static ak_val *values(ak_obj *o) {
 	case AK_TAG_ARR: return ((ak_arr *)o)->elem == AK_E_VAL ? ((ak_arr *)o)->items : NULL;
 	case AK_TAG_STRUCT: return ((ak_struct *)o)->f;
 	case AK_TAG_ENUM: return ((ak_enum *)o)->f;
+	case AK_TAG_TREE: return &((ak_tree *)o)->root;
+	case AK_TAG_TNODE: return ((ak_tnode *)o)->s + ((ak_tnode *)o)->from;
 	default: return NULL;
 	}
 }
@@ -173,8 +184,10 @@ static inline bool skip(const walk_frame *f, uint32_t i) {
 
 // holds_values reports whether o is a value a walk goes into
 // (comparing, hashing, copying, freezing): an array, a map, a struct,
-// an enum or a box. A closure or a runtime object is compared and
-// hashed by identity, never copied, and frozen without what it holds.
+// an enum, a box, or a B-tree or its node (a tree is compared and hashed
+// by its entries, in order: tree.c). A closure or a runtime object is
+// compared and hashed by identity, never copied, and frozen without what
+// it holds.
 static bool holds_values(const ak_obj *o) {
 	switch ((ak_tag)o->tag) {
 	case AK_TAG_BOX:
@@ -182,6 +195,8 @@ static bool holds_values(const ak_obj *o) {
 	case AK_TAG_MAP:
 	case AK_TAG_STRUCT:
 	case AK_TAG_ENUM:
+	case AK_TAG_TREE:
+	case AK_TAG_TNODE:
 		return true;
 	default:
 		return false;
@@ -269,6 +284,8 @@ static void finish(ak_obj *o) {
 	case AK_TAG_ARR:
 	case AK_TAG_STRUCT:
 	case AK_TAG_ENUM:
+	case AK_TAG_TREE:
+	case AK_TAG_TNODE:
 		break;
 	case AK_TAG_MAP: {
 		ak_map *m = (ak_map *)o;
@@ -294,6 +311,39 @@ static void finish(ak_obj *o) {
 
 static inline bool is_leaf(const ak_obj *o) { return o->tag == AK_TAG_STR || o->tag == AK_TAG_BYTES; }
 
+// is_strs reports an array of strings (its flags say so: a split's,
+// mostly), whose elements free_strs lets go of.
+static inline bool is_strs(const ak_obj *o) {
+	return o->tag == AK_TAG_ARR && (o->flags & 1) && ((const ak_arr *)o)->elem == AK_E_VAL && ak_arr_kind((const ak_arr *)o) == AK_K_REF;
+}
+
+// free_strs releases an array of strings' elements: the pieces of a
+// slab (ak_pieces) that die one after another let go of its count of
+// them once, not each (each a store the next one's load would wait
+// for), and of the slab with the last.
+static void free_strs(ak_arr *a) {
+	ak_val *v = a->items;
+	uint32_t *slab = NULL, dead = 0;
+	for (uint32_t i = 0; i < a->len; i++) {
+		ak_obj *c = v[i].p;
+		if (!c || c->rc == AK_RC_IMMORTAL || --c->rc != 0) continue;
+		if (AK_LIKELY(c->tag == AK_TAG_STR && (c->flags & AK_STR_SLAB))) {
+			uint32_t *in = ak_piece_slab((ak_str *)c);
+			ak_obj_count(-1);
+			if (in != slab) {
+				if (slab && (*slab -= dead) == 0) ak_free(slab);
+				slab = in;
+				dead = 0;
+			}
+			dead++;
+			continue;
+		}
+		ak_destroy(c);
+	}
+	if (slab && (*slab -= dead) == 0) ak_free(slab);
+	a->len = 0;
+}
+
 // free_leaf destroys a string or bytes, which hold nothing.
 static inline void free_leaf(ak_obj *o) {
 	ak_obj_count(-1);
@@ -313,6 +363,11 @@ void ak_destroy(ak_obj *o) {
 		free_leaf(o);
 		return;
 	}
+	if (is_strs(o)) {
+		free_strs((ak_arr *)o);
+		finish(o);
+		return;
+	}
 	ak_obj *up = NULL;
 	walk_frame f;
 	frame_at(&f, o);
@@ -324,6 +379,11 @@ void ak_destroy(ak_obj *o) {
 			if (skip(&f, at) || !c || c->rc == AK_RC_IMMORTAL || --c->rc != 0) continue;
 			if (is_leaf(c)) {
 				free_leaf(c);
+				continue;
+			}
+			if (is_strs(c)) {
+				free_strs((ak_arr *)c);
+				finish(c);
 				continue;
 			}
 			walk_frame g;
@@ -547,6 +607,8 @@ static AK_ALWAYS_INLINE bool eq_enter(walk_frame *f, ak_obj *a, ak_obj *b) {
 		const ak_case *c = &x->shape->cases[x->h.aux];
 		return fields_eq(f, x->f, y->f, c->nfields, c->kinds);
 	}
+	case AK_TAG_TREE:
+		return ak_tree_eq((const ak_tree *)a, (const ak_tree *)b);  // by its entries, in order
 	default:
 		return false;  // identity, which isn't
 	}
@@ -731,6 +793,8 @@ static AK_ALWAYS_INLINE uint64_t hash_enter(walk_frame *f, uint64_t h, ak_obj *o
 		const ak_case *c = &e->shape->cases[e->h.aux];
 		return fields_hash(f, mix(mix(h, 31), e->h.aux), e->f, c->nfields, c->kinds);
 	}
+	case AK_TAG_TREE:
+		return mix(mix(h, 37), ak_tree_hash((const ak_tree *)o));
 	default:
 		return mix(h, (uint64_t)(uintptr_t)o);
 	}
@@ -849,6 +913,16 @@ static ak_obj *shell(ak_obj *o) {
 			if (cs->kinds[i] != AK_K_REF) c->f[i] = e->f[i];
 		return &c->h;
 	}
+	case AK_TAG_TREE: {
+		ak_tree *t = (ak_tree *)o;
+		ak_tree *c = ak_tree_new((ak_tree_mode)t->mode, (ak_kind)t->kk, (ak_kind)t->vk);
+		c->height = t->height;
+		c->count = t->count;
+		c->kshape = t->kshape;
+		return &c->h;
+	}
+	case AK_TAG_TNODE:
+		return &ak_tnode_shell((const ak_tnode *)o)->h;
 	default:
 		ak_panic("ak_deep_copy: a %d object can't cross threads", o->tag);
 	}

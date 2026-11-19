@@ -294,3 +294,8 @@ with the load. What changed (lang/LOWERING.md, Release builds: C):
   the checked add was: as a plain add, clang worked out the inner loop's
   trip count with a 128-bit division on every turn of the outer one).
   1,366 M instructions to Go's 1,505 M.
+
+Then split's pieces made and let go of in batches (bench/std/README.md,
+2026-11-20): words, which splits its 2,000,000 words, retires 2,291 M
+instructions to 2,405 M before (the fewest of three runs' cycles 479 M
+to 513 M); the others are as they were.

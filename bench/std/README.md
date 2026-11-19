@@ -4,7 +4,9 @@ The same work in Asuka (`asuka/main.asuka`), Go (`go/main.go`) and Bun
 (`bun/main.js`), on the same inputs: strings, maps and sets, sorting,
 regex, files and stdout, CSV and TOML, URLs, Base64 and hex, HTML
 escaping, zip and tar archives, hashes and checksums, crypto and
-compression, bigint, time, template, semver, collections, Seq pipelines. Each program sets up
+compression, bigint, time, template, semver, collections (a heap, a
+sorted map's sets and gets, and its nearest keys, walks, ranges and
+removals: sortedops), Seq pipelines. Each program sets up
 its inputs, then times the work and prints its result and the
 nanoseconds it took on stderr; the runner checks that every language's
 result is the same, so each did the same work (gzip's compressed size
@@ -412,3 +414,44 @@ changed (the others' instructions are within 2% of before):
 
 Hello world (`asuka new --bin`, `asuka build`, macOS arm64): 886,400
 bytes before, 886,416 now.
+
+## SortedMap on a B-tree in C, split's pieces in batches (2026-11-20)
+
+std/collections' SortedMap and SortedSet keep their entries in the
+runtime's B-tree (core/src/rt/tree.c; lang/LOWERING.md, "B-trees"): a
+node of up to 63 keys holds its keys, values and children in one
+allocation (Go's google/btree node holds two slices; the Asuka node it
+replaces was a struct of three arrays, each a header and a buffer), the
+keys ordered in C by their kind (a branch-free search for ints, one
+comparison a probe for strings) or their type's compare, a by closure
+only when one's given; nodes are counted and path-copied when shared,
+and a change takes the tree out of its map and changes it in place, as
+an array's push does. split, lines and fields make a piece of up to 16
+bytes as a header and one 16-byte copy (inline), count a slab's pieces
+once as it's filled, and an array of strings lets go of a slab's
+pieces together: each of those counts was a store the next one's load
+waited for. A piece is still a string of its own: a view into the
+string it was cut from would need its own header too (16 bytes; a word
+is 5), and every reader of a string's bytes would follow a pointer.
+
+sortedops is new: a map of 200,000 keys, each one's floor and
+ceiling, a walk of it all, 2,000 ranges of about ten entries, and half
+its keys removed (Go: DescendLessOrEqual, AscendGreaterOrEqual, Ascend,
+AscendRange, Delete). The machine shared (load 60 to 160): cycles, the
+median of three interleaved runs, and instructions retired, the median
+of three, the work alone (`-instr`'s), in millions; "before" is
+231ab00b.
+
+| benchmark | cycles before | now | Go | now / Go | instructions before | now | Go |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| sortedmap | 1,924 | 779 | 1,519 | 0.51× | 2,757 | 1,308 | 2,240 |
+| sortedops | – | 221 | 354 | 0.63× | – | 640 | 792 |
+| split | 397 | 306 | 465 | 0.66× | 2,053 | 1,346 | 1,909 |
+
+The other string benchmarks' instructions are as they were (interp,
+case, fmt, template, lines within 1%); the VM's benchmarks (bench/vm)
+too, words 4% fewer. sortedmap's peak memory went from 48 to 39 MB (Go:
+41); split's is as it was (191 MB to Go's 98: a piece is a string
+object, 24 bytes for a word, and the three splits' arrays live to the
+end of their statement). Hello world: 902,928 bytes before, 902,944
+now.

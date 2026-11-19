@@ -411,6 +411,9 @@ func (c *Checker) unify(p, a Type, s Subst, free map[*TypeParam]bool) bool {
 	case *Set:
 		y, ok := a.(*Set)
 		return ok && c.unify(x.Elem, y.Elem, s, free)
+	case *Tree:
+		y, ok := a.(*Tree)
+		return ok && c.unify(x.Key, y.Key, s, free) && c.unify(x.Elem, y.Elem, s, free)
 	case *Optional:
 		if a == NoneType {
 			return true
@@ -485,6 +488,9 @@ func mentionsFree(t Type, free map[*TypeParam]bool, s Subst) bool {
 			walk(x.Key)
 			walk(x.Elem)
 		case *Set:
+			walk(x.Elem)
+		case *Tree:
+			walk(x.Key)
 			walk(x.Elem)
 		case *Optional:
 			walk(x.Elem)
@@ -794,6 +800,9 @@ func optionalAt(p, a Type, tp *TypeParam) bool {
 	case *Set:
 		y, ok := a.(*Set)
 		return ok && optionalAt(x.Elem, y.Elem, tp)
+	case *Tree:
+		y, ok := a.(*Tree)
+		return ok && (optionalAt(x.Key, y.Key, tp) || optionalAt(x.Elem, y.Elem, tp))
 	case *Optional:
 		y, ok := a.(*Optional)
 		return ok && optionalAt(x.Elem, y.Elem, tp)
@@ -2133,7 +2142,7 @@ func sendable1(t Type, seen map[*TypeName]bool) bool {
 			}
 		}
 		return true
-	case *FuncType, *Task, *Stream, *Seq:
+	case *FuncType, *Task, *Stream, *Seq, *Tree:
 		return false
 	case *TypeParam:
 		return true

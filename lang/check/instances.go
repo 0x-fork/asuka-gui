@@ -161,6 +161,9 @@ func namedIn(t Type, f func(*Named)) {
 		namedIn(x.Elem, f)
 	case *Set:
 		namedIn(x.Elem, f)
+	case *Tree:
+		namedIn(x.Key, f)
+		namedIn(x.Elem, f)
 	case *Tuple:
 		for _, e := range x.Elems {
 			namedIn(e, f)
@@ -197,6 +200,8 @@ func occurs(p *TypeParam, t Type) bool {
 		return occurs(p, x.Key) || occurs(p, x.Elem)
 	case *Set:
 		return occurs(p, x.Elem)
+	case *Tree:
+		return occurs(p, x.Key) || occurs(p, x.Elem)
 	case *Tuple:
 		for _, e := range x.Elems {
 			if occurs(p, e) {
