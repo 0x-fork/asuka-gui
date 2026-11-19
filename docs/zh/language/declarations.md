@@ -2,7 +2,7 @@
 
 ```asuka
 let pi = 3.14159             // 常量
-var total = 0                // 变量（在函数和处理函数中）
+var total = 0                // 变量
 state count = 0              // 状态：界面会跟随变化的值
 state shown = count          // 在被写入之前跟随 count：跟随的状态
 ```
@@ -10,6 +10,26 @@ state shown = count          // 在被写入之前跟随 count：跟随的状态
 类型会自动推断；在有助于阅读的地方可以写出来：`let ids: [int] = []`。
 
 `type` 在文件顶层给类型起一个名字：`type Pair<A, B> = (A, B)`、`type Check = fn(string) -> bool`。它只是同一个类型的别名：`Pair<int, string>` 就是 `(int, string)`。
+
+## 文件里的值
+
+在文件顶层，`let` 是常量，`state` 是应用的状态（见 [Stores](stores.md)），`var` 则是包里的变量：包里的任何代码都可以读取和修改它；如果是 `pub` 的，其他包也可以（`util.hits += 1`）。var 不是状态：读取它时拿到的是它当时的值，显示它的视图不会因为它改变而更新（那是 `state` 的用途）。它适合放视图不显示的东西：缓存、计数器、程序的设置。
+
+```asuka check
+var cache: [int: int] = [:]
+var lookups = 0
+
+fn fib(n: int) -> int {
+  lookups += 1
+  if n < 2 { return n }
+  if let v = cache[n] { return v }
+  let v = fib(n - 1) + fib(n - 2)
+  cache[n] = v
+  return v
+}
+```
+
+文件里的值在其他任何代码运行之前创建：一个包的值先于导入它的包的值，每个值都在它的初始化表达式读取的那些值之后创建（直接或间接读取自己是错误）。var 和局部变量一样原地修改：`cache[n] = v` 不会复制任何东西。它和状态一样属于主线程：`spawn` 的代码块和 [worker](async.md#worker) 都不能使用它，也不能调用使用它的函数（编译器会指出是哪个）；先把它读出来，再把值传进去。`asuka dev` 重新加载应用时，文件里的 var 会和 let 一样按初始化表达式重新创建；状态则保留原来的值。
 
 ## 结构体
 
@@ -84,6 +104,23 @@ let page = Page(items: [1, 2, 3])     // 一个 Page<int>
 let empty = Page<string>(items: [])   // 没有别的信息可推断时，直接写出来
 ```
 
+泛型结构体的 `static fn` 先接受结构体的类型参数，再接受它自己的：可以从参数推断（`Stack.of([1, 2])`），可以从期望的类型推断（`let s: Stack<string> = .empty()`），也可以和结构体的名字写在一起（`Stack<int>.empty()`），或者写在函数名后面（`Stack.empty<int>()`，结构体的类型参数在前）。泛型结构体的 `let` 是所有类型共用的一个常量，所以它的类型不能提到类型参数：需要提到的常量（比如一个空的 `Stack<T>`）就写成 `static fn`。
+
+```asuka check
+struct Stack<T> {
+  items: [T] = []
+  let limit = 1000
+
+  static fn of(items: [T]) -> Stack<T> = Stack(items: items)
+  static fn empty() -> Stack<T> = Stack()
+}
+
+let numbers = Stack.of([1, 2, 3])       // 一个 Stack<int>
+let names: Stack<string> = .empty()     // 从期望的类型推断
+let flags = Stack.empty<bool>()         // 直接写出
+let most = Stack.limit
+```
+
 在 `match` 和 `if let` 里，结构体模式按字段名匹配结构体的字段：单写一个 `y` 会绑定字段 `y`，`y: py` 把它绑定为 `py`，`x: 0` 匹配一个值，没有写出的字段匹配任何值。模式可以嵌套：
 
 ```asuka
@@ -118,6 +155,62 @@ fn withTip(bill: Money) -> Money {
 ```
 
 结构体不会逐个字段地排序：它的顺序是什么意思，由它的 `compare` 来决定。
+
+## 相等、哈希、文本和 JSON
+
+结构体默认按字段判断相等（`==`）、作为 map 的键计算哈希、打印和写成 JSON；枚举则按它的 case 和负载。类型可以用语言会调用的方法来改变这些行为，就像 `compare` 定义了 `<` 一样：
+
+| 方法 | 谁会调用它 |
+|---|---|
+| `fn equals(other: T) -> bool` | `==` 和 `!=`、map 的键、set 的元素、`contains`、数组的 `==` |
+| `fn hash() -> int` | map 的键和 set 的元素：相等的值哈希必须相同，所以有自己的 `equals` 的类型也要有自己的 `hash`（`hashOf(x)` 给出一个值的哈希，用来组合） |
+| `fn description() -> string` | 插值、`print`、快照 |
+| `fn toJSON() -> J` | `json.encode`，以及它所在的值的文本：`J` 是 JSON 能表示的任何类型 |
+| `static fn fromJSON(json: J) throws -> T` | `json.decode`；它抛出的错误就是解码的错误 |
+
+```asuka check
+import std/json
+
+struct Tag {
+  name: string
+  color: string = "gray"
+
+  fn equals(other: Tag) -> bool = name.lower() == other.name.lower()
+  fn hash() -> int = hashOf(name.lower())
+  fn description() -> string = "#{name}"
+  fn toJSON() -> string = name
+  static fn fromJSON(json: string) throws -> Tag = Tag(name: json)
+}
+
+let same = Tag(name: "Work") == Tag(name: "work", color: "red")  // true
+let label = "{Tag(name: "home")}"                                 // #home
+let text = json.encode([Tag(name: "a")])                          // ["a"]
+```
+
+无论值放在哪里，这些方法都会被用到，包括在数组、map 和其他结构体里面。有了它们，一个按字段含义判断相等的类型（不区分大小写的名字、不计顺序的集合）就可以做 map 的键；一个持有函数（比如排序方式）的类型，也能按它持有的内容判断相等、计算哈希和写成 JSON。泛型类型可以在它所在包的扩展里提供这些方法，只对类型参数满足扩展约束（`Equatable`、`Hashable`、`Comparable`）的那些类型生效：std/collections 的 `Heap<T>` 在 `T` 是 Hashable 时可以比较相等，在 `T` 是 Comparable 时可以从 JSON 读取。这些方法不能是 `async`、`mut` 或 private 的；没有负载的枚举只能有自己的 `description`（它按 case 判断相等和写出）。方法的签名不是语言所调用的那样时，编译器会指出（[special-method](../errors/special-method.md)）。
+
+## 私有的声明
+
+`private` 让一个声明只属于它所在的文件：文件里的 `fn`、`let`、`var`、struct、enum、interface 或 type，以及结构体或枚举的字段、方法、`static fn` 和常量。这个文件里的代码（它的类型的方法、它的函数、它的扩展）可以照常使用它；其他文件不能用它的名字，只有这个包的测试文件（`name_test.asuka`）例外，因为它们要测试内部的东西。没写 `pub` 的属于整个包；写了 `private` 的只属于这个文件。
+
+```asuka check
+pub struct Counter {
+  private hits: [string: int] = [:]
+
+  mut fn add(word: string) { hits[word, default: 0] += 1 }
+  fn top() -> string? = best(hits)
+}
+
+private fn best(counts: [string: int]) -> string? {
+  var found: (string, int)? = none
+  for (w, n) in counts {
+    if found == none || n > found!.1 { found = (w, n) }
+  }
+  return found?.0
+}
+```
+
+在别的文件里创建结构体时，私有字段不能给出，所以每个私有字段都需要默认值（`Counter()`）；有私有字段没有默认值的结构体只能在它自己的文件里创建，也就是通过它的 static fn，由它们来维护结构体的规则（比如 `Decimal` 的系数没有末尾的零）。私有方法不会成为运算符（`add`、`compare`），也不会让它的类型具备某个接口，因为这些在哪里都会被用到。
 
 ## 扩展
 

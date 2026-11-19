@@ -1,0 +1,98 @@
+// A type's own ==, hash, text and JSON (fn equals, fn hash, fn
+// description, fn toJSON, static fn fromJSON): used by ==, maps and
+// sets, arrays' ==, interpolation, print, snapshots and JSON, nested
+// too.
+import std/json
+
+struct Money {
+  cents: int
+  note: string = ""
+
+  fn equals(other: Money) -> bool = cents == other.cents
+  fn hash() -> int = cents
+  fn description() -> string = "${cents / 100}.{cents % 100:02}"
+  fn toJSON() -> int = cents
+  static fn fromJSON(json: int) throws -> Money {
+    if json < 0 { throw Error("negative: {json}") }
+    return Money(cents: json)
+  }
+}
+
+struct Bag {
+  items: [int]
+  by: fn(int, int) -> bool
+
+  fn equals(other: Bag) -> bool = items.sorted() == other.items.sorted()
+  fn hash() -> int = hashOf(items.sorted())
+  fn toJSON() -> [int] = items.sorted()
+}
+
+enum Shape {
+  circle(r: float)
+  square(side: float)
+
+  fn description() -> string = match self {
+    .circle(r) => "○{r}"
+    .square(side) => "□{side}"
+  }
+}
+
+struct Order {
+  total: Money
+  bags: [Bag] = []
+}
+
+struct Receipt {
+  total: Money
+  lines: [Money] = []
+}
+
+test "equality and hashing" {
+  let a = Money(cents: 150, note: "x")
+  let b = Money(cents: 150, note: "y")
+  print(a == b, a != b, [a] == [b], [Order(total: a)] == [Order(total: b)])
+  var m: [Money: string] = [:]
+  m[a] = "first"
+  print(m[b] ?? "none", Set([a, b]).count(), [a, b].contains(Money(cents: 150)))
+  let x = Bag(items: [3, 1], by: (p, q) => p < q)
+  let y = Bag(items: [1, 3], by: (p, q) => p > q)
+  print(x == y, Set([x, y]).count(), hashOf([1, 3]) == hashOf([1, 3]))
+}
+
+test "text" {
+  let a = Money(cents: 1205)
+  print("{a}", a, Shape.circle(r: 1.5))
+  print([Shape.square(side: 2)])
+  expectInlineSnapshot(a, "$12.05")
+  expectInlineSnapshot([Shape.circle(r: 1)], "[○1]")
+}
+
+test "JSON" {
+  let a = Money(cents: 150)
+  print(json.encode([a, a]), json.encode(["k": a]), json.encode(Order(total: a, bags: [Bag(items: [2, 1], by: (p, q) => p < q)])))
+  let back: [Money] = try json.decode("[1, 2]")
+  print(back.map(x => x.cents))
+  let o = try json.decode<Receipt>("\{\"total\": 99, \"lines\": [1]}")
+  print(o.total.cents, o.lines)
+  do {
+    let _ = try json.decode<[Money]>("[1, -5]")
+  } catch e {
+    print(e.message)
+  }
+}
+
+// Output:
+// true false true true
+// first 1 true
+// true 1 true
+// ok equality and hashing
+// $12.05 $12.05 ○1.5
+// [{"square":[2]}]
+// {"inline":"testdata/run/ownmethods.asuka","test":"text","line":66,"col":3,"where":"ownmethods.asuka:66","status":"ok"}
+// {"inline":"testdata/run/ownmethods.asuka","test":"text","line":67,"col":3,"where":"ownmethods.asuka:67","status":"ok"}
+// ok text
+// [150,150] {"k":150} {"total":150,"bags":[[1,2]]}
+// [1,2]
+// 99 [1]
+// negative: -5
+// ok JSON

@@ -190,6 +190,7 @@ const (
 	DURATION    // 300ms, 5s, 2min, 1h, 1.5s
 	LENGTH      // 50%, 1fr
 	COLOR       // #rgb, #rgba, #rrggbb, #rrggbbaa
+	CHAR        // 'a', '\n', '\u{1F600}': a char, one code point
 	STRING      // "…", r"…", """…""": a string with no interpolation
 	STRING_HEAD // "…{: a string up to its first interpolation
 	STRING_MID  // }…{: between two interpolations
@@ -335,6 +336,7 @@ var tokens = [...]string{
 	DURATION:    "duration",
 	LENGTH:      "length",
 	COLOR:       "color",
+	CHAR:        "char",
 	STRING:      "string",
 	STRING_HEAD: "string",
 	STRING_MID:  "string",

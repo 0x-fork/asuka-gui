@@ -1,6 +1,7 @@
 package check
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/egoist/asuka/lang/diag"
@@ -124,7 +125,7 @@ func (c *Checker) typeMembers(t *TypeName) {
 				} else {
 					ft = c.typeExpr(m.Type)
 				}
-				f := &Field{Name: m.Name.Name, Type: ft, Default: m.Default, Index: len(t.Fields), Pos: m.Name.Start, C: fc}
+				f := &Field{Name: m.Name.Name, Type: ft, Default: m.Default, Index: len(t.Fields), Pos: m.Name.Start, C: fc, Private: m.Private.IsValid()}
 				t.fieldIndex[f.Name] = f.Index
 				t.Fields = append(t.Fields, f)
 			case *syntax.LetDecl:
@@ -321,11 +322,12 @@ func (c *Checker) inTypeFile(t *TypeName, d syntax.Node) {
 // staticFunc declares a static fn of t's: a function in t's namespace
 // (Money.of(dollars: 2), .of(…) where a Money is expected), checked and
 // lowered as any of the package's functions, with no self.
+//
+// A generic type's static fn is generic in the type's parameters, then
+// its own: Box.of([1, 2]) infers Box<int>'s from its arguments, .empty()
+// where a Box<string> is expected from that, and Box.empty<int>() is
+// given them.
 func (c *Checker) staticFunc(t *TypeName, d *syntax.FuncDecl) {
-	if len(t.TypeParams) > 0 {
-		c.errorf(d.Name, diag.MisplacedDeclaration, "%s is generic: its static functions would need its type parameters; declare a function outside it", t.name)
-		return
-	}
 	if t.Statics == nil {
 		t.Statics = map[string]*Function{}
 	}
@@ -372,15 +374,23 @@ func (c *Checker) funcSig(f *Function) {
 		return
 	}
 	savedScope := c.scope
+	var outer []*TypeParam
 	switch {
 	case f.Recv != nil:
 		c.scope = c.typeScope(f.Recv)
 	case f.Ext != nil:
 		c.scope = c.extScope(f.Ext)
+		if f.Static != nil {
+			outer = f.Ext.TypeParams // extend<T> Box<T> { static fn … }
+		}
+	case f.Static != nil:
+		c.resolveType(f.Static)
+		c.scope = NewScope(c.typeScope(f.Static))
+		outer = f.Static.TypeParams
 	default:
 		c.scope = NewScope(c.declScope(f.Decl))
 	}
-	f.TypeParams = c.typeParams(f.Decl.TypeParams)
+	f.TypeParams = append(slices.Clip(outer), c.typeParams(f.Decl.TypeParams)...)
 	if f.Decl.Mut.IsValid() {
 		c.mutDecl(f)
 	}
@@ -466,6 +476,11 @@ func (c *Checker) globalType(g *Global) Type {
 	}
 	if g.Owner != nil && ctx.readsState {
 		c.errorf(g.Value, diag.InvalidDeclaration, "a type's constant can't read state: compute it where it's used")
+	}
+	if g.Owner != nil && len(g.Owner.TypeParams) > 0 && HasTypeParams(t) {
+		// One constant for every Box<T>: its type can't be any one's.
+		c.errorf(g.Decl, diag.InvalidDeclaration, "%s is one constant for every %s<…>, so its type can't name its type parameters: make it a static fn (static fn %s() -> %s = …)", g.name, g.Owner.name, g.name, typeString(t))
+		t = Invalid
 	}
 	g.Self = c.selfUsed(self, g.Value)
 	c.leave(nil)
@@ -843,6 +858,9 @@ func (c *Checker) implementsMembers(t Type, iface *Named) string {
 			continue
 		}
 		f, fs := n.Obj.Methods[m.Name], s
+		if privateFn(f) {
+			return "its " + m.Name + " is private (its file's only)"
+		}
 		if f == nil {
 			// An extension's, where the package sees it.
 			hit, _ := c.extLookup(t, m.Name, "method", nil)
@@ -870,6 +888,9 @@ func (c *Checker) implementsMembers(t Type, iface *Named) string {
 			f := n.Obj.Field(fl.Name)
 			if f == nil {
 				return "it has no field " + fl.Name
+			}
+			if f.Private {
+				return "its field " + fl.Name + " is private (its file's only)"
 			}
 			if !Identical(s.Apply(f.Type), want) {
 				return "its field " + fl.Name + " is " + typeString(s.Apply(f.Type)) + ", not " + typeString(want)

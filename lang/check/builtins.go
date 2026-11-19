@@ -61,6 +61,41 @@ func SemanticColor(name string) (int64, bool) {
 
 func semanticColorNames() []string { return semanticColors[1:] }
 
+// printArgs checks print's and eprint's arguments: any number of values
+// a string can show, then maybe separator: and terminator: (strings), as
+// Swift's print.
+func (c *Checker) printArgs(b *Builtin, list []*syntax.Arg, call *Call) {
+	call.Result = Void
+	labeled := false
+	for _, a := range list {
+		if a.Label == nil {
+			if labeled {
+				c.errorf(a.Value, diag.ArgumentLabel, "%s's values come before separator: and terminator:", b.name)
+			}
+			c.interpolated(a.Value, c.expr(a.Value, nil))
+			call.Args = append(call.Args, a.Value)
+			continue
+		}
+		labeled = true
+		var slot *syntax.Expr
+		switch a.Label.Name {
+		case "separator":
+			slot = &call.Separator
+		case "terminator":
+			slot = &call.Terminator
+		default:
+			c.errorf(a.Label, diag.ArgumentLabel, "%s takes values, then separator: and terminator:, not %s:", b.name, a.Label.Name)
+			c.expr(a.Value, nil)
+			continue
+		}
+		if *slot != nil {
+			c.errorf(a.Label, diag.ArgumentLabel, "%s: is given twice", a.Label.Name)
+		}
+		*slot = a.Value
+		c.assign(a.Value, String, a.Label.Name)
+	}
+}
+
 // builtinCall checks a call of a function the compiler provides.
 func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 	call := &Call{Kind: CallBuiltin, Builtin: b}
@@ -95,13 +130,23 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		if len(args) == 1 {
 			call.Result = c.peek(e, args[0], want)
 		}
-	case BPrint:
-		args := positional(1, "one value: print(\"…\")")
-		for _, a := range args {
-			c.interpolated(a, c.expr(a, nil))
-		}
+	case BPrint, BEprint:
+		c.printArgs(b, list, call)
+	case BChar:
+		args := positional(1, "a code point: char(65)")
 		call.Args = args
-		call.Result = Void
+		call.Result = Char
+		if len(args) == 1 {
+			c.assign(args[0], Int, "a char's code point")
+		}
+	case BHashOf:
+		args := positional(1, "one value: hashOf(x)")
+		call.Args = args
+		call.Result = Int
+		if len(args) == 1 {
+			t := c.valueType(c.expr(args[0], nil), args[0])
+			c.checkHashable(t, args[0], "hashOf's value", false)
+		}
 	case BExpect:
 		args := positional(-1, "a condition: expect(count == 2)")
 		if len(args) < 1 || len(args) > 2 {
@@ -287,6 +332,8 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 			t = Invalid
 		} else if why := c.jsonable(t); why != "" {
 			c.errorf(e, diag.NotJSON, "json can't read %s: %s", aType(t), why)
+		} else if why := missingJSON(t, true); why != "" {
+			c.errorf(e, diag.NotJSON, "json can't read %s: %s", aType(t), why)
 		}
 		call.Result = t
 		c.callEffects(e, "json.decode", false, true)
@@ -297,6 +344,8 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 			t := c.valueType(c.expr(args[0], nil), args[0])
 			ps[0].Type = t
 			if why := c.jsonable(t); why != "" && !IsInvalid(t) {
+				c.errorf(args[0], diag.NotJSON, "json can't write %s: %s", aType(t), why)
+			} else if why := missingJSON(t, false); why != "" {
 				c.errorf(args[0], diag.NotJSON, "json can't write %s: %s", aType(t), why)
 			}
 		}
@@ -910,7 +959,7 @@ func jsonable1(t Type, seen map[*TypeName]bool, param func(*TypeParam) bool) str
 		}
 	case *Basic:
 		switch x {
-		case Int, Float, Bool, String, Bytes, Duration, Color, Invalid, I8, I16, I32, U8, U16, U32, U64:
+		case Int, Float, Bool, String, Bytes, Duration, Color, Char, Invalid, I8, I16, I32, U8, U16, U32, U64:
 			// Invalid: a type that isn't one, which is said where it's
 			// written.
 			return ""
@@ -931,6 +980,12 @@ func jsonable1(t Type, seen map[*TypeName]bool, param func(*TypeParam) bool) str
 	case *Named:
 		if seen[x.Obj] {
 			return ""
+		}
+		if o := OwnOf(x); o != nil && (o.ToJSON != nil || o.FromJSON != nil) {
+			// Its own JSON: what its toJSON gives (missingJSON says
+			// which way it's missing).
+			seen[x.Obj] = true
+			return jsonable1(OwnSubst(o, x).Apply(o.JSON), seen, param)
 		}
 		seen[x.Obj] = true
 		s := x.Subst()

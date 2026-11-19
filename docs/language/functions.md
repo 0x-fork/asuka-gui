@@ -176,13 +176,16 @@ same test, of an `Error` ([Errors](errors.md)).
 Generic functions and types take type parameters. A parameter's
 constraints are the program's interfaces and `Equatable` (what `==`
 compares: the built-in values, and structs, enums, tuples, arrays, maps
-and optionals whose parts are), `Comparable` (what `<` orders: ints,
+and optionals whose parts are, or that have their own `equals`),
+`Comparable` (what `<` orders: ints,
 floats, strings, durations, enums without payloads by the order of
 their cases, and structs and enums with `fn compare(other: T) -> int`;
 a struct isn't ordered field by field) and `Hashable` (what a map's key
 can be: the built-in values but floats, and the structs, enums, tuples,
-optionals, arrays, maps and sets made of them; see [Values and
-types](types.md#values-and-types)), several joined by `&`. What a type argument must have, its values in
+optionals, arrays, maps and sets made of them, or that have their own
+`hash`; see [Values and types](types.md#values-and-types) and [Equality,
+hashing, text and JSON](declarations.md#equality-hashing-text-and-json)),
+several joined by `&`. What a type argument must have, its values in
 the generic code have: the interfaces' methods and fields, called
 directly on each type it's compiled for.
 

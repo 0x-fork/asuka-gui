@@ -68,6 +68,12 @@ type Options struct {
 	// optimized (its counters are its statements'), and ASUKA_OPT=0 in
 	// the environment turns them off too.
 	NoOptimize bool
+	// NoTests compiles a build, not a test build: the root package's test
+	// files (name_test.asuka) and its test and bench blocks are left out,
+	// unchecked, as they are of every package it imports. Without it, the
+	// root package's are part of it (asuka test, asuka check, an
+	// editor's); an imported package's never are.
+	NoTests bool
 
 	// disk keeps what the compilations of one DirPlatforms read: each
 	// platform's reads the same directories and files.
@@ -310,6 +316,8 @@ func (l *loader) loadSources(path, id, dir string, files map[string][]byte) *uni
 	if u, ok := l.units[key]; ok {
 		return u
 	}
+	// The first package loaded is the root: the one its tests are of.
+	tests := len(l.units) == 0 && !l.opts.NoTests
 	u := &unit{path: path, id: id, dir: dir, imports: map[string]*unit{}, std: map[string]bool{}}
 	l.units[key] = u
 	names := make([]string, 0, len(files))
@@ -319,6 +327,9 @@ func (l *loader) loadSources(path, id, dir string, files map[string][]byte) *uni
 	sort.Strings(names)
 	platform := l.opts.Platform.Or()
 	for _, n := range names {
+		if !tests && IsTestFile(n) {
+			continue // a test build's only, and only its root package's
+		}
 		if ps, _ := target.FileSuffix(n); ps != nil {
 			l.platformFiles = true
 			if !target.Includes(n, platform) {
@@ -332,6 +343,9 @@ func (l *loader) loadSources(path, id, dir string, files map[string][]byte) *uni
 		f, errs := syntax.ParseFile(l.fset, n, files[n])
 		for _, e := range errs {
 			l.diags = append(l.diags, check.FromSyntax(e))
+		}
+		if !tests {
+			dropTests(f)
 		}
 		u.files = append(u.files, f)
 	}
@@ -402,6 +416,32 @@ func (l *loader) loadSources(path, id, dir string, files map[string][]byte) *uni
 		}
 	}
 	return u
+}
+
+// IsTestFile reports whether a file is a test file (name_test.asuka,
+// name_linux_test.asuka): part of its package in a test build of it
+// only, not when it's built or imported.
+func IsTestFile(name string) bool {
+	return strings.HasSuffix(name, "_test.asuka")
+}
+
+// dropTests takes a file's test and bench blocks out of it: a build's
+// packages have none, nor what only they use.
+func dropTests(f *syntax.SourceFile) {
+	if f == nil {
+		return
+	}
+	n := 0
+	for _, d := range f.Decls {
+		switch d.(type) {
+		case *syntax.TestDecl, *syntax.BenchDecl:
+			continue
+		}
+		f.Decls[n] = d
+		n++
+	}
+	clear(f.Decls[n:])
+	f.Decls = f.Decls[:n]
 }
 
 // retired says what an import of the retired asuka/ prefix is now: the

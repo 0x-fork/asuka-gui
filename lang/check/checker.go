@@ -83,6 +83,9 @@ type Checker struct {
 	// Generic calls, for the type parameters read or written as JSON
 	// (checked once every body has said which: jsonGenerics).
 	genericCalls []genericCall
+	// typeApps are the generic types written with their arguments before
+	// a static member (Box<int> of Box<int>.empty()): the type they make.
+	typeApps map[*syntax.TypeApp]*Named
 	instances    []instance   // where generics get their type arguments (instances.go)
 	laterChecks  []func()     // checks for when the package's declarations are whole
 	lvalueWhole  syntax.Expr  // the target of the = (or bind) lvalue checks: a prop assigned whole
@@ -275,7 +278,7 @@ func (c *Checker) errorAt(pos, end syntax.Position, code *diag.Code, format stri
 // The universe: the types and functions built into the compiler
 
 func (c *Checker) initUniverse() {
-	for _, t := range []*Basic{Int, Float, Bool, String, Bytes, Void, Duration, Color, Length, View, Graphics, Path, Ref, Pointer, TestApp, I8, I16, I32, U8, U16, U32, U64} {
+	for _, t := range []*Basic{Int, Float, Bool, String, Bytes, Void, Duration, Color, Length, View, Graphics, Path, Ref, Pointer, TestApp, I8, I16, I32, U8, U16, U32, U64, Char} {
 		c.universe.Insert(&TypeName{object: object{name: t.name}, Kind: BasicType, Type: t, resolved: true})
 	}
 	// Error: the interface every error has, one for every checker, as
@@ -287,7 +290,7 @@ func (c *Checker) initUniverse() {
 		name string
 		id   BuiltinID
 	}{
-		{"print", BPrint}, {"expect", BExpect}, {"sleep", BSleep}, {"all", BAll}, {"race", BRace},
+		{"print", BPrint}, {"eprint", BEprint}, {"hashOf", BHashOf}, {"expect", BExpect}, {"sleep", BSleep}, {"all", BAll}, {"race", BRace},
 		{"mount", BMount}, {"idle", BIdle}, {"push", BPush}, {"pop", BPop}, {"present", BPresent},
 		{"dismiss", BDismiss}, {"min", BMin}, {"max", BMax}, {"abs", BAbs}, {"float", BFloat},
 		{"int", BInt}, {"panic", BPanic}, {"withTimeout", BWithTimeout}, {"Stream", BStream}, {"Set", BSet}, {"Seq", BSeq},
@@ -376,6 +379,12 @@ func (c *Checker) checkFiles(p *Package, files []*syntax.SourceFile, imports map
 	c.structCycles(p)
 	for _, f := range p.Funcs {
 		c.funcSig(f)
+	}
+	for _, t := range p.Types {
+		c.resolveOwn(t)
+	}
+	for _, e := range p.Exts {
+		c.resolveOwnExt(e)
 	}
 	for _, g := range p.Globals {
 		c.globalType(g)
@@ -614,10 +623,11 @@ func (c *Checker) collect(p *Package, d syntax.Decl) {
 			c.errorf(d.Pattern, diag.InvalidDeclaration, "a let at the top of a file names one value: let name = …")
 			return
 		}
+		kind := ConstGlobal
 		if d.Keyword == syntax.VAR {
-			c.errorf(d, diag.InvalidDeclaration, "a file's values don't change: a value that changes is state (state %s = …)", bp.Name.Name)
+			kind = VarGlobal
 		}
-		g := &Global{object: object{bp.Name.Name, bp.Name.Start}, Pkg: p, Kind: ConstGlobal, Decl: d, Value: d.Value, Pub: d.Pub.IsValid()}
+		g := &Global{object: object{bp.Name.Name, bp.Name.Start}, Pkg: p, Kind: kind, Decl: d, Value: d.Value, Pub: d.Pub.IsValid()}
 		p.Globals = append(p.Globals, g)
 		declare(bp.Name, g)
 	case *syntax.StyleDecl:
@@ -861,6 +871,7 @@ func (c *Checker) namedType(t *syntax.NamedType) Type {
 			return Invalid
 		}
 		c.info.Uses[t.Path[0]] = o
+		c.hiddenObj(t, name, o)
 	} else {
 		pn, ok := c.lookup(t.Path[0].Name).(*PkgName)
 		if !ok {

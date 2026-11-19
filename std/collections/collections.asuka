@@ -25,12 +25,15 @@
 //
 // Each keeps the order it was made with, by: a less-than, as sorted(by:)
 // takes; a SortedMap's and a SortedSet's are their keys' own (<) unless
-// one is given. A function isn't compared or written as JSON, so neither
-// are they: compare their entries() or toArray(), and write those. The
-// same function makes printing one show its storage: print its
-// entries().
+// one is given. They're compared (==), hashed (a map's keys, a Set's
+// elements), printed and written as JSON by their contents, whatever
+// their orders: a Heap and a SortedSet as an array of their elements in
+// their order, a SortedMap as an object when its keys are strings, else
+// as an array of {"key", "value"} objects (Entry). json.decode reads them
+// back, ordered by their elements' (keys') own <.
 //
-// Heap: push, pop and pushPop are O(log n), peek O(1), heapOf O(n).
+// Heap: push, pop and pushPop are O(log n), peek O(1), Heap.of (and
+// Heap.min and Heap.max, by T's own <) O(n).
 // SortedMap and SortedSet are B-trees: get, set, remove, floor and the
 // rest O(log n); range(from:to:) O(log n) to its first entry, then O(1)
 // each (amortized); first() and last() O(log n). Their lazy() and range
@@ -47,9 +50,22 @@
 pub struct Heap<T> {
   /// The order: a less-than. pop gives the least by it first.
   by: fn(T, T) -> bool
-  /// The elements as a binary heap keeps them, the least first. Leave
-  /// it out; heapOf makes a heap of an array's elements.
-  items: [T] = []
+  // The elements as a binary heap keeps them, the least first.
+  private items: [T] = []
+
+  /// A heap of items' elements, ordered by by (a less-than): O(n), where
+  /// pushing them one by one is O(n log n).
+  ///
+  ///   var jobs = Heap.of(pending, by: (a, b) => a.due < b.due)
+  static fn of(items: [T], by: fn(T, T) -> bool) -> Heap<T> {
+    var h = Heap(by: by, items: items)
+    var i = items.count() / 2 - 1
+    while i >= 0 {
+      h.items.siftDown(i, by)
+      i -= 1
+    }
+    return h
+  }
 
   /// The number of elements.
   fn count() -> int = items.count()
@@ -146,16 +162,16 @@ extend<T> [T] {
   }
 }
 
-/// A heap of items' elements, ordered by by (a less-than): O(n), where
-/// pushing them one by one is O(n log n).
-pub fn heapOf<T>(items: [T], by: fn(T, T) -> bool) -> Heap<T> {
-  var h = Heap(by: by, items: items)
-  var i = items.count() / 2 - 1
-  while i >= 0 {
-    h.items.siftDown(i, by)
-    i -= 1
-  }
-  return h
+extend<T: Comparable> Heap<T> {
+  /// A heap that pops the least first, by T's own <, of items'
+  /// elements (none: an empty one): O(n).
+  ///
+  ///   var due = Heap.min([5, 1, 4])
+  ///   due.pop()                                   // 1
+  pub static fn min(items: [T] = []) -> Heap<T> = Heap.of(items, by: (a, b) => a < b)
+
+  /// A heap that pops the greatest first, by T's own <: O(n).
+  pub static fn max(items: [T] = []) -> Heap<T> = Heap.of(items, by: (a, b) => a > b)
 }
 
 // ---- SortedMap and SortedSet: a B-tree ----
@@ -166,7 +182,7 @@ pub fn heapOf<T>(items: [T], by: fn(T, T) -> bool) -> Heap<T> {
 let minKeys = 15
 let maxKeys = 31
 
-struct Node<K, V> {
+private struct Node<K, V> {
   keys: [K] = []
   vals: [V] = []
   kids: [Node<K, V>] = []
@@ -352,7 +368,7 @@ fn treeNear<K, V>(root: Node<K, V>, k: K, by: fn(K, K) -> bool, below: bool, equ
 // A Walk is where an in-order walk of a tree is: the nodes from the root
 // down, and in each the index of the next key (an internal node's
 // kids[at] has been walked).
-struct Walk<K, V> {
+private struct Walk<K, V> {
   path: [Node<K, V>] = []
   at: [int] = []
 }
@@ -426,10 +442,9 @@ pub struct SortedMap<K: Comparable, V> {
   /// The keys' order, a less-than: their own < unless it's given
   /// ((a, b) => a > b: the greatest first).
   by: fn(K, K) -> bool = (a, b) => a < b
-  /// The entries, in a B-tree. Leave it out.
-  root: Node<K, V> = Node()
-  /// How many entries. Leave it out.
-  size: int = 0
+  // The entries, in a B-tree, and how many.
+  private root: Node<K, V> = Node()
+  private size: int = 0
 
   /// The number of entries.
   fn count() -> int = size
@@ -533,10 +548,9 @@ pub struct SortedMap<K: Comparable, V> {
 pub struct SortedSet<T: Comparable> {
   /// The order, a less-than: the elements' own < unless it's given.
   by: fn(T, T) -> bool = (a, b) => a < b
-  /// The elements, in a B-tree. Leave it out.
-  root: Node<T, bool> = Node()
-  /// How many elements. Leave it out.
-  size: int = 0
+  // The elements, in a B-tree, and how many.
+  private root: Node<T, bool> = Node()
+  private size: int = 0
 
   /// The number of elements.
   fn count() -> int = size
@@ -639,5 +653,118 @@ pub struct SortedSet<T: Comparable> {
     var out = self
     for x in other { let _ = out.remove(x) }
     return out
+  }
+}
+
+// ---- Equality, hashing, text and JSON ----
+//
+// A collection is equal to another of the same type with the same
+// contents, whatever their orders (by), hashes by them, prints and is
+// written as JSON as them: a Heap and a SortedSet as an array of their
+// elements in their order, a SortedMap as an object when its keys are
+// strings and as an array of {"key", "value"} objects when they aren't.
+// Read back, a Heap and a SortedSet are ordered by their elements' own <,
+// a SortedMap by its keys'.
+
+extend<T: Hashable> Heap<T> {
+  /// Whether other holds the same elements, as many times each,
+  /// whatever its order: ==.
+  pub fn equals(other: Heap<T>) -> bool = self.counts() == other.counts()
+
+  /// What equal heaps hash alike by: their elements.
+  pub fn hash() -> int = hashOf(self.counts())
+
+  private fn counts() -> [T: int] {
+    var c: [T: int] = [:]
+    for x in items { c[x, default: 0] += 1 }
+    return c
+  }
+}
+
+extend<T> Heap<T> {
+  /// Its elements in pop's order: how a heap is written as JSON, and
+  /// printed.
+  pub fn toJSON() -> [T] = sorted()
+}
+
+extend<T: Comparable> Heap<T> {
+  /// A heap of json's elements, popping the least first by their own <:
+  /// how json.decode reads one.
+  pub static fn fromJSON(json: [T]) throws -> Heap<T> = Heap.min(json)
+}
+
+extend<K: Comparable & Hashable, V: Hashable> SortedMap<K, V> {
+  /// Whether other has the same entries, whatever its order: ==.
+  pub fn equals(other: SortedMap<K, V>) -> bool {
+    if size != other.size { return false }
+    for (k, v) in self {
+      if other.get(k) != v { return false }
+    }
+    return true
+  }
+
+  /// What equal maps hash alike by: their entries.
+  pub fn hash() -> int {
+    var m: [K: V] = [:]
+    for (k, v) in self { m[k] = v }
+    return hashOf(m)
+  }
+}
+
+extend<V> SortedMap<string, V> {
+  /// Its entries as a JSON object, in its keys' order: how it's written
+  /// and printed.
+  pub fn toJSON() -> [string: V] {
+    var m: [string: V] = [:]
+    for (k, v) in self { m[k] = v }
+    return m
+  }
+
+  /// A map of json's entries, ordered by its keys' own <.
+  pub static fn fromJSON(json: [string: V]) throws -> SortedMap<string, V> {
+    var m = SortedMap<string, V>()
+    for (k, v) in json { m.set(k, v) }
+    return m
+  }
+}
+
+/// An entry of a SortedMap whose keys aren't strings, as JSON writes it.
+pub struct Entry<K, V> {
+  /// Its key.
+  key: K
+  /// Its value.
+  value: V
+}
+
+extend<K: Comparable, V> SortedMap<K, V> {
+  /// Its entries in its keys' order, as {"key", "value"} objects: how a
+  /// map whose keys aren't strings is written as JSON, and printed.
+  pub fn toJSON() -> [Entry<K, V>] = lazy().map(e => Entry(key: e.0, value: e.1)).toArray()
+
+  /// A map of json's entries, ordered by its keys' own <.
+  pub static fn fromJSON(json: [Entry<K, V>]) throws -> SortedMap<K, V> {
+    var m = SortedMap<K, V>()
+    for e in json { m.set(e.key, e.value) }
+    return m
+  }
+}
+
+extend<T: Comparable & Hashable> SortedSet<T> {
+  /// Whether other has the same elements, whatever its order: ==.
+  pub fn equals(other: SortedSet<T>) -> bool = size == other.size && lazy().all(x => other.contains(x))
+
+  /// What equal sets hash alike by: their elements.
+  pub fn hash() -> int = hashOf(Set(toArray()))
+}
+
+extend<T: Comparable> SortedSet<T> {
+  /// Its elements in order: how it's written as JSON, and printed.
+  pub fn toJSON() -> [T] = toArray()
+
+  /// A set of json's elements, ordered by their own <.
+  pub static fn fromJSON(json: [T]) throws -> SortedSet<T> {
+    var s = SortedSet<T>()
+    for x in json { let _ = s.insert(x) }
+    return s
   }
 }

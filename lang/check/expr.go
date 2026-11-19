@@ -155,6 +155,9 @@ func (c *Checker) expr1(e syntax.Expr, want Type) Type {
 		return c.jumpExpr(e)
 	case *syntax.CatchExpr:
 		return c.catchExpr(e, want)
+	case *syntax.TypeApp:
+		c.errorf(e, diag.NotAValue, "%s is a type, not a value: use one of its static members (%s.name)", exprName(e), exprName(e))
+		return Invalid
 	}
 	c.errorf(e, diag.InternalError, "unexpected expression")
 	return Invalid
@@ -201,6 +204,7 @@ func (c *Checker) ident(e *syntax.Ident) Type {
 		return Invalid
 	}
 	c.info.Uses[e] = o
+	c.hiddenObj(e, e.Name, o)
 	switch o := o.(type) {
 	case *Var:
 		c.useVar(o, e)
@@ -219,6 +223,7 @@ func (c *Checker) ident(e *syntax.Ident) Type {
 		}
 		c.useVar(c.ctx.Self, e)
 		if o.field != nil {
+			c.hiddenField(e, o.owner.name, o.field)
 			return o.subst.Apply(o.field.Type)
 		}
 		c.errorf(e, diag.NotAValue, "%s is a method: call it, %s()", e.Name, e.Name)
@@ -308,7 +313,11 @@ func (c *Checker) useGlobal(g *Global, at syntax.Node) Type {
 		c.curGlobal.deps = append(c.curGlobal.deps, g)
 	}
 	if c.ctx != nil {
-		if g.Kind == StateGlobal || g.Kind == MemoGlobal || g.Ctx != nil && g.Ctx.readsState {
+		if g.Kind == VarGlobal {
+			// Not followed: what reads it reads it as it is. The main
+			// thread's: spawn and workers can't reach it.
+			c.spawnVar(at, g.name)
+		} else if g.Kind == StateGlobal || g.Kind == MemoGlobal || g.Ctx != nil && g.Ctx.readsState {
 			c.ctx.readsState = true
 			c.spawnState(at, g.name)
 		} else if !IsInvalid(t) && !sendable(t) {
@@ -329,6 +338,21 @@ func (c *Checker) spawnState(at syntax.Node, name string) {
 	for cc := c.ctx; cc != nil; cc = cc.Parent {
 		if cc.Kind == CtxSpawn {
 			c.errorf(at, diag.SpawnCapturesState, "spawn can't use %s: it's state, and spawn runs on another thread (read it into a let first)", name)
+			return
+		}
+	}
+}
+
+// spawnVar reports a use inside spawn or a worker of a file's var: the
+// main thread's, which another thread can't read or change.
+func (c *Checker) spawnVar(at syntax.Node, name string) {
+	if w := c.workerOf(); w != nil {
+		c.errorf(at, diag.WorkerCapturesState, "worker %s can't use %s: it's a file's var, the main thread's, and the worker runs on a thread of its own (pass its value to a pub fn)", w.name, name)
+		return
+	}
+	for cc := c.ctx; cc != nil; cc = cc.Parent {
+		if cc.Kind == CtxSpawn {
+			c.errorf(at, diag.SpawnCapturesState, "spawn can't use %s: it's a file's var, the main thread's, and spawn runs on another thread (read it into a let first)", name)
 			return
 		}
 	}
@@ -451,8 +475,28 @@ func (c *Checker) basicLit(e *syntax.BasicLit, want Type) Type {
 			c.errorf(e, diag.InvalidLiteral, "%v", err)
 		}
 		return Color
+	case syntax.CHAR:
+		// The scanner says what isn't one code point.
+		return Char
 	}
 	return Invalid
+}
+
+// CharValue is a char literal's code point: 'a', '\n', '\u{1F600}' (the
+// scanner has checked it's one); -1 for one that isn't.
+func CharValue(lit string) rune {
+	if len(lit) < 3 {
+		return -1
+	}
+	s, err := Unescape(lit[1:len(lit)-1], false)
+	if err != nil {
+		return -1
+	}
+	r := []rune(s)
+	if len(r) != 1 {
+		return -1
+	}
+	return r[0]
 }
 
 // intLitFits reports, and says when it doesn't, whether an int
@@ -866,6 +910,18 @@ func (c *Checker) assigned(e syntax.Expr, got, want Type, what string) Type {
 	return want
 }
 
+// toJSONValue reports whether a value of got converts to std/json's
+// Value: none (null), and what JSON writes.
+func (c *Checker) toJSONValue(got Type) bool {
+	if got == NoneType {
+		return true
+	}
+	if IsJSONValue(Unopt(got)) {
+		return false // a Value? isn't one: unwrap it (?? .null)
+	}
+	return c.jsonable(got) == "" && missingJSON(got, false) == ""
+}
+
 func describe(what string) string {
 	if what == "" {
 		return "the value"
@@ -916,6 +972,12 @@ func (c *Checker) convert(e syntax.Expr, got, want Type) bool {
 		return true
 	}
 	if Identical(got, want) {
+		return true
+	}
+	if IsJSONValue(want) && c.toJSONValue(got) {
+		// Any value JSON can say is a json.Value where one is
+		// expected: what it's written as, read as any JSON.
+		c.info.Convs[e] = want
 		return true
 	}
 	if got == NoneType {
@@ -1065,8 +1127,41 @@ func (c *Checker) join(a, b Type) Type {
 
 // staticType resolves x (an identifier or pkg.Name) as a type, without
 // reporting anything when it isn't one.
+// typeAppOf is the type a TypeApp prefix makes (Box<int> of
+// Box<int>.empty()), nil for a type's bare name.
+func (c *Checker) typeAppOf(x syntax.Expr) *Named {
+	if a, ok := unparen(x).(*syntax.TypeApp); ok {
+		return c.typeApps[a]
+	}
+	return nil
+}
+
 func (c *Checker) staticType(x syntax.Expr) *TypeName {
 	switch x := x.(type) {
+	case *syntax.TypeApp:
+		// Box<int>: the generic type, its arguments kept for the static
+		// member after it.
+		tn := c.staticType(x.X)
+		if tn == nil {
+			return nil
+		}
+		c.resolveType(tn)
+		n := &Named{Obj: tn}
+		for _, a := range x.TypeArgs {
+			n.Args = append(n.Args, c.typeExpr(a))
+		}
+		if len(n.Args) != len(tn.TypeParams) {
+			c.errorf(x, diag.TypeArguments, "%s takes %s", tn.name, plural(len(tn.TypeParams), "type argument", "type arguments"))
+			return tn
+		}
+		for i, tp := range tn.TypeParams {
+			c.checkConstraints(x.TypeArgs[i], tn.name, tp, n.Args[i])
+		}
+		if c.typeApps == nil {
+			c.typeApps = map[*syntax.TypeApp]*Named{}
+		}
+		c.typeApps[x] = n
+		return tn
 	case *syntax.Ident:
 		o := c.lookup(x.Name)
 		if b, ok := o.(*Builtin); ok && (b.ID == BInt || b.ID == BFloat) {
@@ -1127,6 +1222,9 @@ func (c *Checker) member(e *syntax.MemberExpr, want Type) Type {
 	// A type's case or constant.
 	if tn := c.staticType(e.X); tn != nil {
 		c.record(e.X, Invalid)
+		if app := c.typeAppOf(e.X); app != nil {
+			want = app // Box<int>.none: the type as written
+		}
 		return c.staticMember(e, tn, name, want)
 	}
 	var xt Type
@@ -1162,6 +1260,22 @@ func (c *Checker) member(e *syntax.MemberExpr, want Type) Type {
 	return c.valueMember(e, xt, name)
 }
 
+// genericStatic reports whether name is a generic type's constant or
+// static fn (its own or an extension's), which Box.name reaches without
+// the type's arguments: a constant is one for all of them, and a static
+// fn's call infers them.
+func (c *Checker) genericStatic(tn *TypeName, name string) bool {
+	if tn.Consts[name] != nil || tn.Statics[name] != nil {
+		return true
+	}
+	for _, kind := range []string{"const", "static"} {
+		if hit, _ := c.extLookup(tn.Type, name, kind, nil); hit.f != nil || hit.g != nil {
+			return true
+		}
+	}
+	return false
+}
+
 // staticMember is Type.name: a case or a constant.
 func (c *Checker) staticMember(e syntax.Expr, tn *TypeName, name string, want Type) Type {
 	c.resolveType(tn)
@@ -1170,7 +1284,7 @@ func (c *Checker) staticMember(e syntax.Expr, tn *TypeName, name string, want Ty
 		// Enum<T>.case: the type's arguments come from what's expected.
 		if n, ok := Unopt(want).(*Named); ok && n.Obj == tn {
 			t = n
-		} else {
+		} else if !c.genericStatic(tn, name) {
 			c.errorf(e, diag.CannotInferType, "%s is generic: write the type where it's expected (let x: %s<…> = .%s)", tn.name, tn.name, name)
 			return Invalid
 		}
@@ -1183,6 +1297,7 @@ func (c *Checker) staticMember(e syntax.Expr, tn *TypeName, name string, want Ty
 		return t
 	}
 	if g := tn.Consts[name]; g != nil {
+		c.hiddenConst(e, tn.name, g)
 		c.info.Selections[e] = &Selection{Kind: SelConst, Global: g, Recv: t}
 		return c.useGlobal(g, e)
 	}
@@ -1200,11 +1315,16 @@ func (c *Checker) staticMember(e syntax.Expr, tn *TypeName, name string, want Ty
 	}
 	if f != nil {
 		// A static fn as a value: Money.of.
+		c.hiddenFn(e, tn.name, f)
 		c.info.Selections[e] = &Selection{Kind: SelPkg, Obj: f}
 		if m, ok := e.(*syntax.MemberExpr); ok {
 			c.info.Uses[m.Name] = f
 		}
 		c.funcSig(f)
+		if len(f.TypeParams) > 0 {
+			c.errorf(e, diag.CannotInferType, "%s.%s is generic: call it, or wrap the call in a closure where its types are known", tn.name, name)
+			return Invalid
+		}
 		c.noteCall(f, e)
 		return f.Sig.Type()
 	}
@@ -1260,6 +1380,7 @@ func (c *Checker) valueMember(e *syntax.MemberExpr, t Type, name string) Type {
 		switch u.Obj.Kind {
 		case StructType:
 			if f := u.Obj.Field(name); f != nil {
+				c.hiddenField(e.Name, u.Obj.name, f)
 				c.info.Selections[e] = &Selection{Kind: SelField, Field: f, Recv: t}
 				return s.Apply(f.Type)
 			}
@@ -1502,6 +1623,7 @@ func (c *Checker) implicitMember(e *syntax.ImplicitMember, want Type) Type {
 			return n
 		}
 		if g := n.Obj.Consts[name]; g != nil {
+			c.hiddenConst(e, n.Obj.name, g)
 			c.info.Selections[e] = &Selection{Kind: SelConst, Global: g, Recv: n}
 			return c.useGlobal(g, e)
 		}
@@ -1923,7 +2045,8 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 		}
 		return Bool
 	case syntax.ADD:
-		if xt == String && yt == String {
+		if xt == String && (yt == String || yt == Char) || xt == Char && yt == String {
+			// A string and a char: the string with it (s += c builds one).
 			return String
 		}
 		if a, ok := xt.(*Array); ok && Identical(xt, yt) {
@@ -2024,7 +2147,7 @@ func (c *Checker) negation(t Type) (*Operator, Type) {
 		return nil, nil
 	}
 	f := n.Obj.Methods["neg"]
-	if f == nil {
+	if f == nil || privateFn(f) {
 		return nil, nil
 	}
 	c.funcSig(f)
@@ -2045,8 +2168,8 @@ func (c *Checker) operatorCandidates(op syntax.Token, xt Type) (fs []*Function, 
 	names, compare := operatorNames(op)
 	for _, name := range names {
 		f := n.Obj.Methods[name]
-		if f == nil {
-			continue
+		if f == nil || privateFn(f) {
+			continue // a private method isn't an operator
 		}
 		c.funcSig(f)
 		if f.Sig == nil || len(f.Sig.Params) != 1 || f.Sig.Async || f.Sig.Throws {

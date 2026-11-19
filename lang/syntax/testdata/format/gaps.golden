@@ -1,0 +1,40 @@
+var hits = 0
+pub var cache: [string: int] = [:]
+let limit = 3
+
+struct Box<T> {
+  items: [T]
+  static fn of(xs: [T]) -> Box<T> = Box(items: xs)
+}
+
+fn f() {
+  print("a", 1, separator: ", ", terminator: "")
+  eprint()
+  let b = Box.of<int>([1])
+}
+
+pub struct Heap<T> {
+  by: fn(T, T) -> bool
+  private items: [T] = []
+  private fn up(i: int) {}
+  private static fn make() -> int = 1
+  private let limit = 3
+  private: bool = false
+}
+
+private fn helper() -> int = 1
+private let secret = 2
+private struct Node {}
+private enum E {
+  a
+  private fn f() -> int = 1
+}
+
+fn chars(s: string) -> int {
+  var n = 0
+  for c in s { if c == 'a' || c == '\n' || c == '\u{1F600}' { n += 1 } }
+  return match 'x' {
+    'x' => 1
+    _ => n
+  }
+}

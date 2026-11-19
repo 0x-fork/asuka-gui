@@ -1,0 +1,14 @@
+struct Box<T> {
+  items: [T]
+  let empty: Box<T> = Box(items: []) // ERROR "one constant for every Box<…>"
+  let limit = 3
+
+  static fn of(xs: [T]) -> Box<T> = Box(items: xs)
+  static fn none() -> Box<T> = Box(items: [])
+}
+
+fn f() {
+  let a = Box.none() // ERROR "can't tell"
+  let g = Box.of     // ERROR "Box.of is generic"
+  let ok = Box.limit + Box.of([1]).items.count()
+}

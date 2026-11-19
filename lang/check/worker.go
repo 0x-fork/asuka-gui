@@ -250,7 +250,7 @@ func (c *Checker) workerMethodCall(e *syntax.CallExpr, fn *syntax.MemberExpr, n 
 
 // workerCalls reports what a worker's body and fns call that reads the
 // main thread's state (as spawn's check does, reactive.go's finalize).
-func (c *Checker) workerCalls() {
+func (c *Checker) workerCalls(vars map[*FuncCtx]*Global) {
 	for _, p := range c.pkgs {
 		for _, t := range p.Types {
 			if t.Kind != WorkerType || t.Comp == nil {
@@ -267,10 +267,14 @@ func (c *Checker) workerCalls() {
 					continue
 				}
 				for _, f := range r.calls {
-					if f.Recv == t || f.Ctx == nil || !f.Ctx.readsState {
+					if f.Recv == t || f.Ctx == nil {
 						continue
 					}
-					c.errorf(r.Node, diag.WorkerCapturesState, "worker %s calls %s, which reads state: the worker runs on a thread of its own; read the state on the main thread and pass its value to a pub fn", t.name, f.name)
+					if f.Ctx.readsState {
+						c.errorf(r.Node, diag.WorkerCapturesState, "worker %s calls %s, which reads state: the worker runs on a thread of its own; read the state on the main thread and pass its value to a pub fn", t.name, f.name)
+					} else if g := vars[f.Ctx]; g != nil {
+						c.errorf(r.Node, diag.WorkerCapturesState, "worker %s calls %s, which uses %s, a file's var: the main thread's, and the worker runs on a thread of its own; pass its value to a pub fn", t.name, f.name, g.name)
+					}
 				}
 			}
 		}

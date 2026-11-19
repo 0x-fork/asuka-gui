@@ -317,6 +317,9 @@ func (c *completer) valueMembers(t check.Type, optional bool, dot int) {
 		switch tn.Kind {
 		case check.StructType:
 			for _, f := range tn.Fields {
+				if f.Private && c.elsewhere(f.Pos) {
+					continue
+				}
 				addItem(CompletionItem{Label: f.Name, Kind: kindField, Detail: typeStr(s.Apply(f.Type)), Documentation: c.doc(c.fc.declDoc(f.Pos))})
 			}
 			c.typeMethods(tn, addItem)
@@ -425,9 +428,19 @@ func (c *completer) typeMethods(tn *check.TypeName, add func(CompletionItem)) {
 		if tn.Pkg != c.fc.pkg && (f.Decl == nil || !f.Decl.Pub.IsValid()) && !tn.Pkg.Prelude {
 			continue
 		}
+		if f.Decl != nil && f.Decl.Private.IsValid() && c.elsewhere(f.Pos()) {
+			continue
+		}
 		hasParams := f.Sig != nil && len(f.Sig.Params) > 0
 		add(c.callItem(n, kindMethod, funcSig(f), docOf(f.Decl), hasParams))
 	}
+}
+
+// elsewhere reports whether pos, a private declaration's, is in another
+// file than the one completed: its file's only.
+func (c *completer) elsewhere(pos syntax.Pos) bool {
+	f := c.fc.fset.File(pos)
+	return f == nil || f.Name() != c.fc.name
 }
 
 // callItem is a function's or a method's item: name(), with the cursor
@@ -485,6 +498,9 @@ func (c *completer) consts(tn *check.TypeName) {
 	sort.Strings(names)
 	for _, n := range names {
 		g := tn.Consts[n]
+		if pos, ok := check.IsPrivate(g); ok && c.elsewhere(pos) {
+			continue
+		}
 		c.add(CompletionItem{Label: n, Kind: kindConstant, Detail: typeStr(g.Type), Documentation: c.doc(docOf(g.Decl))}, prioMember)
 	}
 }
@@ -792,6 +808,9 @@ func (c *completer) names(path []syntax.Node, pos syntax.Pos, view bool) {
 		}
 		if m, ok := sc.obj.(*check.Member); ok && m.Kind == check.EventMember {
 			continue // not a value: emit it
+		}
+		if p, ok := check.IsPrivate(sc.obj); ok && c.elsewhere(p) {
+			continue // another file's
 		}
 		if tn, ok := sc.obj.(*check.TypeName); ok && view {
 			// A view starts with an element or a component; a type

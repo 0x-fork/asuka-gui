@@ -57,9 +57,9 @@ var zh = map[string]Text{
 		"修正路径，添加依赖（`asuka add`），或者改用包的新名称。",
 	},
 	"not-pub": {
-		"其他包（或 store、worker）没有公开的声明",
-		"包里的声明默认只属于这个包，除非写了 `pub`；store 和 worker 的成员也是如此。这样包就可以自由修改别人没有用到的部分。",
-		"在声明处加上 `pub`，或者改用这个包公开的内容。",
+		"其他包、其他文件（private）、store 或 worker 没有公开的声明",
+		"包里的声明默认只属于这个包，除非写了 `pub`；store 和 worker 的成员也是如此；而 `private` 的东西（声明，或类型的字段和方法）只属于它所在的文件，以及这个包的测试。这样包就可以自由修改别人没有用到的部分，类型的不变式也只由它自己维护。",
+		"在声明处加上 `pub`（或去掉 `private`），或者改用公开的内容：私有字段没有默认值的类型，用它的 static fn 来创建。",
 	},
 	"duplicate-declaration": {
 		"同一个地方声明了两次的名称",
@@ -182,7 +182,7 @@ var zh = map[string]Text{
 	},
 	"argument-label": {
 		"具名参数在函数里没有对应的形参",
-		"参数先按顺序给出，再按名字给出：名字必须是某个形参的名字，只能出现一次，并且写在按顺序给出的参数之后。闭包和内置函数的参数没有名字。",
+		"参数先按顺序给出，再按名字给出：名字必须是某个形参的名字，只能出现一次，并且写在按顺序给出的参数之后。闭包的参数没有名字，大多数内置函数的参数也没有（print 的 `separator:` 和 `terminator:` 例外）。",
 		"使用形参的名字（消息会给出建议），或者按顺序传参。",
 	},
 	"unexpected-block": {
@@ -259,8 +259,8 @@ var zh = map[string]Text{
 	},
 	"invalid-for": {
 		"`for` 遍历了它不能遍历的东西",
-		"`for` 可以遍历数组、set、map、范围或迭代器；stream 的值是随时间到来的（用 `for await`）；字符串的字符是 `s.chars()`。`key` 只用于视图里的 `for`。",
-		"按消息所说遍历对应的东西：`s.chars()`、`m.keys()`、`for await x in stream`。",
+		"`for` 可以遍历数组、set、map、范围、字符串的字符或迭代器；stream 的值是随时间到来的（用 `for await`）；数字不是列表（它的范围是 `0..<n`）。`key` 只用于视图里的 `for`。",
+		"按消息所说遍历对应的东西：`0..<n`、`m.keys()`、`for await x in stream`。",
 	},
 	"loop-label": {
 		"循环名没有被使用，或者不存在",
@@ -286,8 +286,8 @@ var zh = map[string]Text{
 	},
 	"invalid-declaration": {
 		"声明的写法不被它所在的位置接受",
-		"文件里的值不会改变（会变的值是 `state`），类型的常量写成 `let name = value`，组件的 `let` 只能命名一个值，默认值也不能读取还没创建出来的字段。",
-		"按这个位置的写法来写：会变的值用 `state x = …`，常量用 `let name = value`。",
+		"类型的常量写成 `let name = value`，它不会改变；泛型类型的常量是它所有类型共用的一个，所以它的类型不能提到类型参数。组件的 `let` 只能命名一个值，默认值也不能读取还没创建出来的字段。",
+		"按这个位置的写法来写：类型的常量用 `let name = value`，需要类型参数的就写成 `static fn`。",
 	},
 	"invalid-modifier": {
 		"在不适用的地方写了 `pub`、`mut`、`async`、`throws` 或类型参数",
@@ -298,6 +298,11 @@ var zh = map[string]Text{
 		"函数缺少函数体，或者有了不该有的函数体",
 		"函数都有函数体，除非由平台来实现：native interface 的方法、native fn 和 extern fn（由 C 实现）都没有函数体。",
 		"写出函数体（`{ … }` 或 `= 表达式`），或者从 native、extern 声明里去掉它。",
+	},
+	"special-method": {
+		"语言会调用的方法（equals、hash、description、toJSON、fromJSON）签名不对，语言无法调用",
+		"结构体和枚举默认按字段判断相等、计算哈希、打印和写成 JSON，除非它声明了自己的：`fn equals(other: T) -> bool`、`fn hash() -> int`、`fn description() -> string`、`fn toJSON() -> J` 和 `static fn fromJSON(json: J) throws -> T`。语言会在 ==、map 和 set、插值和 JSON 里调用它们，所以它们接收和返回的必须正是这些地方传入和期待的，也不能是 async、mut 或 private 的。用自己的方式计算哈希的类型，也要用自己的方式判断相等（相等的值哈希必须相同）。",
+		"按消息里说的签名来写这个方法；如果它不是为此而写的，就换个名字。",
 	},
 	"interface-not-satisfied": {
 		"类型声明了某个 interface，却没有实现它",
@@ -430,13 +435,13 @@ var zh = map[string]Text{
 	},
 	"spawn-captures-state": {
 		"`spawn` 读取或修改了状态，或者用了不是值的东西",
-		"`spawn` 在另一个线程上运行它的代码块，而主线程会继续修改状态；它只接收值（开始时复制一份），并返回一个值。",
+		"`spawn` 在另一个线程上运行它的代码块，而主线程会继续修改状态和文件里的 var；它只接收值（开始时复制一份），并返回一个值。",
 		"先把状态读进一个 `let` 再传进去；把 `spawn` 的返回值赋给状态。",
 	},
 	"worker-captures-state": {
 		"worker 读取了主线程的状态",
-		"worker 运行在自己的线程上，而状态在主线程上，也只在主线程上变化。worker 的 fn 需要什么，就以值的形式接收什么。",
-		"在主线程上读取状态，把它的值传给 `pub fn`。",
+		"worker 运行在自己的线程上，而状态和文件里的 var 在主线程上，也只在主线程上变化。worker 的 fn 需要什么，就以值的形式接收什么。",
+		"在主线程上读取状态（或 var），把它的值传给 `pub fn`。",
 	},
 	"not-sendable": {
 		"无法传到另一个线程的值",

@@ -103,10 +103,10 @@ pub fn parse<T>(args: [string]) -> T {
     print(text)
     os.exit(0)
   } catch FlagError.usage(problem, usage, program) {
-    os.eprint("error: {problem}\n\n{usage}\n\nFor more, try '{program} --help'.")
+    eprint("error: {problem}\n\n{usage}\n\nFor more, try '{program} --help'.")
     os.exit(2)
   } catch e {
-    os.eprint("error: {e.message}")
+    eprint("error: {e.message}")
     os.exit(2)
   }
 }
@@ -235,7 +235,7 @@ fn parseWith(s: Spec, args: [string], prog: string) throws -> string {
       continue
     }
     // -v, -abc (switches grouped), -j8 or -j 8 (a value).
-    let cs = a.byteSlice(1, a.byteCount()).chars()
+    let cs = a.byteSlice(1, a.byteCount()).chars().map(c => "{c}")
     var k = 0
     while k < cs.count() {
       let c = cs[k]

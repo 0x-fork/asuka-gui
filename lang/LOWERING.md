@@ -152,6 +152,7 @@ every branch's types are the same on every platform.
 | Asuka type | Kind | Representation |
 |---|---|---|
 | `int`, `Duration` (ns), `Color` (ops.Color), `Length` | int | as is; a Length packs its unit (0 auto, 1 points, 2 percent) in bits 32-39 and its float32 value in bits 0-31 |
+| `char` | int | its code point (a Unicode scalar value); `'a'` a constant, `char(n)` CALLB `char.of` (an error for what isn't one), its methods `char.*` builtins over rt's Unicode tables (unicode.h's ak_ucat: the general category and White_Space); JSON's descriptor `r`, a string of one code point |
 | `i8` … `u64` | int | canonical: sign-extended (`i8`, `i16`, `i32`) or zero-extended (`u8`, `u16`, `u32`) from the type's width; a `u64` its 64 bits (past int's largest, a negative int64) |
 | payloadless enums | int | the case's index (a wire enum's value) |
 | `bool` | bool | 0 or 1 |
@@ -354,7 +355,10 @@ first, as a `return` runs a function's.
 - A function is a FuncDef; its parameters are its first registers.
   Methods take `self` first. A `static fn` of a struct or an enum is a
   function of the package's (check.Function.Static its type), called as
-  any (`Money.of(…)`, `.of(…)` where the type is expected): no `self`. A closure captures a value as it is when
+  any (`Money.of(…)`, `.of(…)` where the type is expected): no `self`.
+  A generic type's (or a generic extension's) takes the type's
+  parameters before its own (check.Function.TypeParams), so it's
+  compiled per call's type arguments as a generic function is. A closure captures a value as it is when
   the closure is made; a `var` it captures that anything changes (the
   closure, or the code around it) is a box (VBOX, VGET, VSET), so they
   share one variable. A `spawn` copies a box's value instead (VGET as
@@ -747,6 +751,19 @@ the indentation of its closing quotes' line from every line.
   Hot reload).
 - A top-level `let` that reads state is a memo global, made in init; one
   that doesn't is a constant.
+- `for c in s` over a string is the array loop over `str.codepoints(s)`
+  (check.ForInfo.Chars); `s.chars()` is that array, `s.lazy()` a Seq of
+  them; `s + c` CONCATs the char's text.
+- A top-level `var` (check.VarGlobal) is a global of its kind, made in
+  init (not frozen) and read with GGET, written with GSET; changed in
+  place (`log.push(x)`, `cache[k] = v`, a mut fn) by GTAKE (the reference
+  moved out, none left), the change, GSET back, with a handler that puts
+  it back if the change throws, as a boxed var's VTAKE. A scalar, or a
+  change whose code may read the var, is GGET, change, GSET. It isn't
+  reactive (no cell), and the checker keeps spawn and workers from it
+  (check.touchesVars). On the web's spawn workers, a var a spawn could
+  never read is still made when it's a value, so the lets made from it
+  are the same there.
 - Constants of reference kind (string literals aside, which are already
   in the string table): a struct literal with constant fields, an array
   of constants, a struct's `let` (Font.title), are built once in init
@@ -1592,6 +1609,31 @@ its descriptor after a NUL (`"title\x00s"`, `"tags\x00[s"`), and the same
 for enum cases' labelled payloads; a payloadless enum JSON reads or
 writes gets a shape of its name whose cases name its values.
 
+A value where std/json's Value is expected converts to one (check's
+toJSONValue): an int, a float, a bool or a string is NEWE of its case,
+none `.null`, and anything else CALLB `json.value(v, desc, vdesc)`,
+which writes it by its descriptor (whole floats with their point) and
+reads that as a Value (lang/ir/jsonvalue.go).
+
+A type's own JSON (check.Own: `fn toJSON() -> J`, `static fn
+fromJSON(json: J) throws -> T`) keeps its descriptor (`S<name>;`): its
+shape carries the functions (lang/ir/own.go's `#json` and `#fromjson`
+methods, their names followed by a NUL and J's descriptor, which the
+loader reads as the shape's hooks and `jdesc`), and json.c, meeting a
+value of such a shape, writes what its toJSON gives as J (held until
+it's written), or reads a J and makes it one by fromJSON (whose error
+is the decode's). Its own `equals` and `hash` (`#eq`, `#hash`) are what
+ak_val_eq and ak_val_hash call for its values wherever they are (an
+array's ==, a map's keys); `==` of two values of the type, known as it
+compiles, CALLs equals itself. Its `description` (`#show`) is what
+interpolation and print CALL, and what a snapshot shows (show.c). The
+runtime calls them through `ak_shape_call` (core/src/vm/load.c's): the
+function of the module that loaded the shape. A generic type's come
+from extensions of its package constrained by Equatable, Hashable and
+Comparable only (check.OwnOf merges those an instantiation meets).
+std/bigint's BigInt keeps json.c's own case below: no type a toJSON
+gives writes a number of any size.
+
 std/bigint's `BigInt` (its descriptor `Sstd/bigint.BigInt;`, as any
 struct's) is the runtime's to write: json.c writes it as a number of
 all its digits, which print and interpolation show too, and reads one
@@ -1843,7 +1885,9 @@ packages.
 | `never()` | CALLB `async.never` (a future nothing resolves; cancelling its task rejects it), AWAIT |
 | `all(a, b, …)`, `race(…)` | the calls as tasks (TASK), CALLB `async.all`/`async.race` over an array of them, AWAIT |
 | `spawn { … }` | CALLB `async.spawn(closure, kind)`, a Task |
-| `print(s)` | CALLB `print` |
+| `print(x)` | CALLB `print` of x's text (a line) |
+| `print(a, b, separator:, terminator:)`, `eprint(…)` | one INTERP of the values' texts and the separators: CALLB `print` (print's default terminator: a line), else CALLB `print.text(fd, text)` with the terminator (eprint's fd 2), which a test's FakeOS captures (lang/ir/print.go) |
+| `hashOf(x)` | CALLB `hash(x, kind)`: ak_val_hash, a map's keys' |
 ## Sets
 
 A set is the runtime's insertion-ordered map with void values, flagged

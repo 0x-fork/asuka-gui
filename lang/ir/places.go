@@ -85,6 +85,8 @@ func (b *fb) readPlace(lv *lvalue, skip Label) int {
 	switch lv.kind {
 	case lvVar, lvBoxed:
 		return b.readVar(lv.v, lv.x)
+	case lvGlobal:
+		return b.readGlobal(lv.g, -1)
 	case lvCell:
 		t := b.temp(b.cellKind(lv))
 		b.emit(op("CPEEK"), t, lv.cell)

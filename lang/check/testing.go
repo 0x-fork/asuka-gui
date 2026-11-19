@@ -207,7 +207,7 @@ func printable(t Type, seen map[*TypeName]bool) string {
 	switch x := t.(type) {
 	case *Basic:
 		switch x {
-		case Int, Float, Bool, String, Bytes, Duration, Color, Invalid:
+		case Int, Float, Bool, String, Bytes, Duration, Color, Char, Invalid:
 			return ""
 		}
 		return "it's a " + x.name

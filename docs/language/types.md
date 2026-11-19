@@ -7,6 +7,7 @@
 | `float` | 64-bit floating point: `3.14`, `1e-3` |
 | `bool` | `true`, `false` |
 | `string` | UTF-8 text: `"Hello, {name}"` |
+| `char` | one Unicode code point (a scalar value): `'a'`, `'\n'`, `'\u{1F600}'` |
 | `bytes` | raw bytes |
 | `[T]` | arrays: `[1, 2, 3]`, `[]` |
 | `[K: V]` | maps, kept in insertion order: `["a": 1]`, `[:]` |
@@ -26,7 +27,9 @@ ends at a `"` followed by as many `#`s as it starts with (`r#"say
 line when that's blank, and without the indentation of its closing
 quotes' line) and holds `"` and `""` as they are; `r"""…"""` is a raw
 one.
-A value that isn't a number, a bool or a string shows as text: an enum's
+A value that isn't a number, a bool or a string shows as text: its
+type's own `description()` when it has one
+([Declarations](declarations.md#equality-hashing-text-and-json)), an enum's
 case by its name, an optional as `none` or its value, an error as its
 message, a color as it's written (`#0a84ff`, `.accent`), a duration in
 milliseconds (`1500ms`), the rest as JSON. What JSON can't hold is
@@ -64,6 +67,13 @@ A width counts characters (code points), not how wide a terminal draws
 them: `std/term`'s `textWidth`, `padEnd` and `fit` count its columns
 (Chinese, Japanese and Korean characters and emoji take two),
 [Programs](../programs.md#an-aligned-table).
+
+`print(a, b, c)` writes its values as interpolation shows them,
+separated by spaces, on a line of the standard output (an app's log);
+`eprint` writes them to standard error. After the values, as Swift's
+`print`, `separator:` goes between them and `terminator:` after the
+last (a line ending unless it says otherwise): `print(x, y, separator:
+", ")`, `print("Saving…", terminator: "")`.
 
 A tuple's elements are read by their place, `pair.0` and `pair.1`, and
 a `var`'s change in place (`pair.0 += 1`); a place the tuple doesn't
@@ -252,7 +262,7 @@ that change their value (`push`, `pushFirst`, `insert`, `removeAt`,
 | `[T]` | `count()`, `count(where)`, `isEmpty()`, `first()`, `last()`, `get(i)` (a `T?`), `push(x)`, `pushFirst(x)`, `insert(x, at: i)`, `removeAt(i)`, `removeWhere(p)`, `pop()`, `popFirst()`, `clear()`, `map(f)`, `flatMap(f)` (the arrays `f` gives, one after another), `compactMap(f)` (what `f` gives, without its nones), `filter(p)`, `reduce(initial, f)`, `any(p)`, `all(p)`, `index(p)` (an `int?`), `find(p)`, `contains(x)`, `sum()`, `min()`, `max()` (a `T?`; `min(by:)`, `max(by:)` with a less-than, `min(key:)`, `max(key:)` by a key), `unique()`, `grouped(by: f)` (a `[K: [T]]`), `chunked(n)`, `zip(other)` (pairs, as long as the shorter), `reversed()`, `slice(from, to)` (`to` left out: the end), `prefix(n)`, `suffix(n)`, `sorted()`, `sorted(by)`, `sorted(key:, descending:)`, `sort()`, `sort(by)`, `sort(key:, descending:)`, `enumerated()`, `joined(separator:)` (of strings), `lazy()` (a `Seq<T>`), `+` |
 | `Set<T>` | `count()`, `isEmpty()`, `contains(x)`, `insert(x)` (whether it was new), `remove(x)` (whether it was there), `union(s)`, `intersection(s)`, `subtracting(s)`, `isSubset(of: s)`, `isSuperset(of: s)`, `lazy()`; `Set(xs)` is an array's distinct elements, `Set<T>()` none |
 | `[K: V]` | `m[k]` (a `V?`), `m[k] = v`, `count()`, `isEmpty()`, `has(k)`, `get(k)`, `remove(k)`, `keys()`, `values()` (in insertion order), `mapValues(f)`, `filter((k, v) => …)`, `lazy()` (its `(key, value)` pairs) |
-| `string` | `count()` (characters), `byteCount()`, `isEmpty()`, `upper()`, `lower()`, `trim()`, `trimStart()`, `trimEnd()`, `trimPrefix(s)`, `trimSuffix(s)`, `contains(s, ignoreCase:)`, `hasPrefix(s, ignoreCase:)`, `hasSuffix(s, ignoreCase:)`, `equals(s, ignoreCase:)`, `compare(s, ignoreCase:)` (negative, zero or positive), `foldCase()`, `replace(old, new, count:)` (every one unless count says), `split(sep, count:)`, `fields()` (the words), `lines()`, `find(s)`, `findLast(s)`, `findAny(chars)` (byte offsets, or none), `slice(from, to)` (characters), `byteSlice(from, to)` (bytes: the offsets find gives), `padStart(width, with:)`, `padEnd(width, with:)`, `toInt()`, `toInt(radix:)`, `toFloat()`, `repeat(n)`, `chars()`, `graphemes()`, `lazy()` (its characters, a `Seq<string>`), `reversed()`, `bytes()`, `+` |
+| `string` | `count()` (characters), `byteCount()`, `isEmpty()`, `upper()`, `lower()`, `trim()`, `trimStart()`, `trimEnd()`, `trimPrefix(s)`, `trimSuffix(s)`, `contains(s, ignoreCase:)`, `hasPrefix(s, ignoreCase:)`, `hasSuffix(s, ignoreCase:)`, `equals(s, ignoreCase:)`, `compare(s, ignoreCase:)` (negative, zero or positive), `foldCase()`, `replace(old, new, count:)` (every one unless count says), `split(sep, count:)`, `fields()` (the words), `lines()`, `find(s)`, `findLast(s)`, `findAny(chars)` (byte offsets, or none), `slice(from, to)` (characters), `byteSlice(from, to)` (bytes: the offsets find gives), `padStart(width, with:)`, `padEnd(width, with:)`, `toInt()`, `toInt(radix:)`, `toFloat()`, `repeat(n)`, `chars()` (its `[char]`), `graphemes()`, `lazy()` (its chars, a `Seq<char>`), `reversed()`, `bytes()`, `+` |
 | `bytes` | `b[i]` (an `int`, 0 to 255; out of range is an error), `count()`, `isEmpty()`, `get(i)` (an `int?`), `slice(from, to)`, `concat(b)`, `string()` (UTF-8; what isn't becomes U+FFFD), `hex()` and `hex(separator)` (`"04 a1"`), `toArray()` (a `[u8]`); `bytes()` is none, `bytes([0x04, 0xa1])` those, `bytes(xs)` a `[u8]`'s, `s.bytes()` a string's UTF-8 |
 | `int`, `i8` … `u64` | `float()`, `abs()` (of a signed one), `toString(radix:)` (`255.toString(radix: 16)` is `"ff"`), `padded(width)` (`7.padded(2)` is `"07"`), `addingChecked(o)`, `subtractingChecked(o)`, `multipliedChecked(o)` (an `int?`, a `u8?` of a `u8`: none on overflow); `T.min`, `T.max`, `T.parse(text, radix:)` (a `T?`) |
 | `float` | `fixed(digits)`, `rounded()`, `floor()`, `ceil()`, `int()` (toward zero), `abs()` |
@@ -362,6 +372,43 @@ fn isMarkdown(path: string) -> bool = path.hasSuffix(".md", ignoreCase: true)
 reader takes for one character, as Unicode's text segmentation (UAX
 #29) says: `"e\u{301}"`, a flag (`"🇯🇵"`) and a family emoji joined with
 ZWJs are one each.
+
+A `char` is one code point, as Rust's is: what `for c in s` goes over
+and `s.chars()` gives, in order (a grapheme of several, an `e` and its
+accent, is a string: `graphemes()`). It's written between single quotes
+(`'a'`, `'\''`, `'\u{301}'`), compared and ordered by its code point,
+and is a map's key; it prints as itself and is JSON's one-character
+string. `c.isLetter()`, `isDigit()`, `isNumber()`, `isWhitespace()`,
+`isUpper()`, `isLower()`, `isPunctuation()` and `isSymbol()` read
+Unicode's categories, any script's (`'٣'.isDigit()`); `upper()` and
+`lower()` map it where the result is one char (`'ß'.upper()` stays
+`'ß'`: `"ß".upper()` is `"SS"`); `code()` is its number, and `char(n)`
+the char of one (an error when `n` isn't a code point). `s + c` and `s
++= c` add one to a string.
+
+```asuka check
+fn initials(name: string) -> string {
+  var out = ""
+  var start = true
+  for c in name {
+    if c.isWhitespace() {
+      start = true
+    } else if start {
+      out += c.upper()
+      start = false
+    }
+  }
+  return out
+}
+
+fn digits(s: string) -> int = s.chars().filter(c => c.isDigit()).count()
+
+fn kind(c: char) -> string = match c {
+  'a' | 'e' | 'i' | 'o' | 'u' => "vowel"
+  _ => if c.isLetter() { "letter" } else { "other" }
+}
+```
+
 
 `toInt()` and `toFloat()` read the whole string, or give none: an
 optional sign, then the number, with nothing around it (`" 12"` is

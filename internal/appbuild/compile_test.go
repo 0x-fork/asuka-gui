@@ -3,6 +3,7 @@ package appbuild
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/egoist/asuka/lang/bytecode"
@@ -24,9 +25,9 @@ func TestUsesFromCompile(t *testing.T) {
 	old := Compile
 	defer func() { Compile = old }()
 	compiles := 0
-	Compile = func(dir string, deps map[string]string, platform target.Platform) (*bytecode.Module, *Uses, []check.Diagnostic, error) {
+	Compile = func(dir string, deps map[string]string, platform target.Platform, tests bool) (*bytecode.Module, *Uses, []check.Diagnostic, error) {
 		compiles++
-		return old(dir, deps, platform)
+		return old(dir, deps, platform, tests)
 	}
 	p := &Project{Dir: dir}
 	if u := p.Uses(""); !u.Ref("platform/location", "current") || compiles != 1 {
@@ -43,11 +44,45 @@ func TestUsesFromCompile(t *testing.T) {
 		t.Fatalf("after a save: %v, %d compiles", u.Refs, compiles)
 	}
 	// A test's compile, which doesn't say: checked.
-	Compile = func(string, map[string]string, target.Platform) (*bytecode.Module, *Uses, []check.Diagnostic, error) {
+	Compile = func(string, map[string]string, target.Platform, bool) (*bytecode.Module, *Uses, []check.Diagnostic, error) {
 		return nil, nil, nil, nil
 	}
 	q := &Project{Dir: dir}
 	if u := q.Uses(""); !u.Ref("platform/location", "requestAlways") {
 		t.Fatalf("checked: %v", u.Refs)
+	}
+}
+
+// A build has none of the package's test files and test blocks, nor what
+// only they import (its uses: the native code an app links); its test
+// build has them.
+func TestBuildWithoutTests(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"app.asuka":      "app { Text(\"a\") }\n\ntest \"shown\" { expect(fixture == \"FIXTURE\") }\n",
+		"app_test.asuka": "import platform/location\n\nlet fixture = \"FIXTURE\"\n\ntest \"here\" { let _ = try? await location.current() }\n",
+	}
+	for n, s := range files {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte(s), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p := &Project{Dir: dir}
+	m, diags, err := p.Compile("")
+	if err != nil || len(diags) > 0 {
+		t.Fatal(err, diags)
+	}
+	if len(m.Tests) != 0 || slices.Contains(m.Strings, "FIXTURE") {
+		t.Errorf("a build has tests: %d, %q", len(m.Tests), m.Strings)
+	}
+	if u := p.Uses(""); u.Imports["platform/location"] {
+		t.Errorf("a build uses what only a test file imports: %v", u.Imports)
+	}
+	m, diags, err = p.CompileTests("")
+	if err != nil || len(diags) > 0 {
+		t.Fatal(err, diags)
+	}
+	if len(m.Tests) != 2 || !slices.Contains(m.Strings, "FIXTURE") {
+		t.Errorf("a test build: %d tests, %q", len(m.Tests), m.Strings)
 	}
 }

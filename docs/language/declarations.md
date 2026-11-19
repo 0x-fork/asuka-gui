@@ -2,7 +2,7 @@
 
 ```asuka
 let pi = 3.14159             // a constant
-var total = 0                // a variable (in functions and handlers)
+var total = 0                // a variable
 state count = 0              // state: a value the UI follows
 state shown = count          // count, until it's written: state that follows
 ```
@@ -12,6 +12,40 @@ Types are inferred; write one where it helps: `let ids: [int] = []`.
 `type` names a type, at the top of a file: `type Pair<A, B> = (A, B)`,
 `type Check = fn(string) -> bool`. It's another name for the same type
 (an alias): a `Pair<int, string>` is an `(int, string)`.
+
+## A file's values
+
+At the top of a file, `let` is a constant, `state` the app's state
+([Stores](stores.md)), and `var` a variable of the package's: any of its
+code may read and change it, and other packages too when it's `pub`
+(`util.hits += 1`). A var isn't state: what reads it gets its value as
+it is then, and a view that shows it doesn't change when it does (that's
+what `state` is for). It's for what views don't show: a cache, a
+counter, a program's settings.
+
+```asuka check
+var cache: [int: int] = [:]
+var lookups = 0
+
+fn fib(n: int) -> int {
+  lookups += 1
+  if n < 2 { return n }
+  if let v = cache[n] { return v }
+  let v = fib(n - 1) + fib(n - 2)
+  cache[n] = v
+  return v
+}
+```
+
+A file's values are made before anything else runs, a package's before
+those of the packages that import it, and each after the ones its
+initializer reads (one that reads itself, directly or not, is an error).
+A var is changed in place, as a local is: `cache[n] = v` copies
+nothing. It's the main thread's, as state is: `spawn`'s block and a
+[worker](async.md#workers) can't use one, nor call a function that does
+(the compiler says which); read it first and pass the value. When
+`asuka dev` reloads the app, a file's vars are made again from their
+initializers, as its lets are; state keeps its values.
 
 ## Structs
 
@@ -104,6 +138,29 @@ let page = Page(items: [1, 2, 3])     // a Page<int>
 let empty = Page<string>(items: [])   // written out, where nothing else says it
 ```
 
+A generic struct's `static fn` takes the struct's type parameters, then
+its own: they're inferred from its arguments (`Stack.of([1, 2])`), or
+from what's expected (`let s: Stack<string> = .empty()`), or written
+with the struct's name (`Stack<int>.empty()`) or after the function's
+(`Stack.empty<int>()`, the struct's first). Its `let` is
+one constant for every type it's made with, so its type can't name
+them: a constant that would (an empty `Stack<T>`) is a `static fn`.
+
+```asuka check
+struct Stack<T> {
+  items: [T] = []
+  let limit = 1000
+
+  static fn of(items: [T]) -> Stack<T> = Stack(items: items)
+  static fn empty() -> Stack<T> = Stack()
+}
+
+let numbers = Stack.of([1, 2, 3])       // a Stack<int>
+let names: Stack<string> = .empty()     // from what's expected
+let flags = Stack.empty<bool>()         // written out
+let most = Stack.limit
+```
+
 A struct pattern matches a struct's fields by their names, in `match`
 and `if let`: `y` alone binds the field `y`, `y: py` binds it as `py`,
 `x: 0` matches a value, and the fields it leaves out match anything.
@@ -156,6 +213,87 @@ fn withTip(bill: Money) -> Money {
 
 A struct isn't ordered field by field: what its order means is its
 `compare`'s to say.
+
+## Equality, hashing, text and JSON
+
+A struct is equal to another (`==`), hashes as a map's key, prints and
+is written as JSON by its fields, an enum by its case and payload. A
+type says otherwise with methods the language calls, as `compare` is
+`<`:
+
+| Method | What calls it |
+|---|---|
+| `fn equals(other: T) -> bool` | `==` and `!=`, a map's keys, a set's elements, `contains`, an array's `==` |
+| `fn hash() -> int` | a map's keys and a set's elements: equal values hash alike, so a type with its own `equals` has its own `hash` (`hashOf(x)` is a value's hash, to combine) |
+| `fn description() -> string` | interpolation, `print`, a snapshot |
+| `fn toJSON() -> J` | `json.encode`, and the text of a value it's inside: `J` is any type JSON can say |
+| `static fn fromJSON(json: J) throws -> T` | `json.decode`; what it throws is the decode's error |
+
+```asuka check
+import std/json
+
+struct Tag {
+  name: string
+  color: string = "gray"
+
+  fn equals(other: Tag) -> bool = name.lower() == other.name.lower()
+  fn hash() -> int = hashOf(name.lower())
+  fn description() -> string = "#{name}"
+  fn toJSON() -> string = name
+  static fn fromJSON(json: string) throws -> Tag = Tag(name: json)
+}
+
+let same = Tag(name: "Work") == Tag(name: "work", color: "red")  // true
+let label = "{Tag(name: "home")}"                                 // #home
+let text = json.encode([Tag(name: "a")])                          // ["a"]
+```
+
+They're used wherever the values go, inside arrays, maps and other
+structs too. With them, a type equal by what its fields mean (a name
+without case, a set in any order) is a map's key, and one that holds a
+function (an order) is equal, hashed and JSON by what it holds. A
+generic type gives them in an extension of its package, for the types
+whose arguments meet its constraints (`Equatable`, `Hashable`,
+`Comparable`): std/collections' `Heap<T>` is equal when `T` is
+Hashable, and read from JSON when it's Comparable. They can't be
+`async`, `mut` or private, and an enum without payloads has only its
+own `description` (it's equal and written by its case). The compiler
+says when one's signature isn't what the language calls
+([special-method](../errors/special-method.md)).
+
+## What's private
+
+`private` makes a declaration its file's: a file's `fn`, `let`, `var`,
+struct, enum, interface or type, and a struct's or an enum's field,
+method, `static fn` or constant. The file uses it as any other (its
+types' methods, its functions, its extensions); other files can't name
+it, but the package's test files (`name_test.asuka`), which test its
+insides. What isn't `pub` is its package's; what's `private`, its
+file's.
+
+```asuka check
+pub struct Counter {
+  private hits: [string: int] = [:]
+
+  mut fn add(word: string) { hits[word, default: 0] += 1 }
+  fn top() -> string? = best(hits)
+}
+
+private fn best(counts: [string: int]) -> string? {
+  var found: (string, int)? = none
+  for (w, n) in counts {
+    if found == none || n > found!.1 { found = (w, n) }
+  }
+  return found?.0
+}
+```
+
+Elsewhere, a struct is made without its private fields, so each needs a
+default (`Counter()`); one with a private field that has none is made
+in its file only, by its static fns, which keep its rules (a
+`Decimal`'s coefficient without trailing zeros). A private method is
+no operator (`add`, `compare`), nor does it give its type an interface,
+since those are used from anywhere.
 
 ## Extensions
 

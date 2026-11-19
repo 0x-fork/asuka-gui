@@ -281,6 +281,7 @@ type StructDecl struct {
 	Span
 	Trivia
 	Pub        Pos
+	Private    Pos // the private modifier: its file's only; NoPos if not
 	Extern     Pos // the extern keyword; NoPos for an Asuka struct
 	Name       *Ident
 	TypeParams []*TypeParam
@@ -297,6 +298,7 @@ type Field struct {
 	Span
 	Trivia
 	Pub     Pos
+	Private Pos // the private modifier: its file's only; NoPos if not
 	Name    *Ident
 	Type    Type
 	Default Expr // nil for none
@@ -307,6 +309,7 @@ type EnumDecl struct {
 	Span
 	Trivia
 	Pub        Pos
+	Private    Pos // the private modifier: its file's only; NoPos if not
 	Name       *Ident
 	TypeParams []*TypeParam
 	TypeAngles Angles // the <…> around TypeParams
@@ -345,6 +348,7 @@ type InterfaceDecl struct {
 	Span
 	Trivia
 	Pub        Pos
+	Private    Pos // the private modifier: its file's only; NoPos if not
 	Native     Pos
 	Name       *Ident
 	TypeParams []*TypeParam
@@ -379,6 +383,7 @@ type FuncDecl struct {
 	Span
 	Trivia
 	Pub        Pos
+	Private    Pos // the private modifier: its file's only; NoPos if not
 	Async      Pos // NoPos if not async
 	Name       *Ident
 	TypeParams []*TypeParam
@@ -423,6 +428,7 @@ type TypeAliasDecl struct {
 	Span
 	Trivia
 	Pub        Pos
+	Private    Pos // the private modifier: its file's only; NoPos if not
 	Name       *Ident
 	TypeParams []*TypeParam
 	TypeAngles Angles // the <…> around TypeParams
@@ -466,6 +472,7 @@ type LetDecl struct {
 	Span
 	Trivia
 	Pub     Pos
+	Private Pos   // the private modifier: its file's only; NoPos if not
 	Keyword Token // LET or VAR
 	Pattern Pattern
 	Type    Type   // nil: inferred
@@ -845,7 +852,7 @@ type Ident struct {
 // A BasicLit is a number, a duration, a length or a color, as written.
 type BasicLit struct {
 	Span
-	Kind  Token // INT, FLOAT, DURATION, LENGTH or COLOR
+	Kind  Token // INT, FLOAT, DURATION, LENGTH, COLOR or CHAR (as written, quotes and all)
 	Value string
 }
 
@@ -900,6 +907,17 @@ type AtExpr struct {
 type ImplicitMember struct {
 	Span
 	Name *Ident
+}
+
+// A TypeApp is a generic type with its arguments written out, before
+// one of its static members: Box<int> in Box<int>.empty(), Heap<float>.min().
+// The parser makes one only after a type's name (capitalized) and before
+// a .name.
+type TypeApp struct {
+	Span
+	X        Expr // the type's name: an Ident, or pkg.Name
+	TypeArgs []Type
+	Angles   Angles
 }
 
 // A MemberExpr is x.name, or with Optional, x?.name.
@@ -1086,6 +1104,7 @@ type BadExpr struct {
 }
 
 func (*Ident) exprNode()          {}
+func (*TypeApp) exprNode()        {}
 func (*BasicLit) exprNode()       {}
 func (*StringLit) exprNode()      {}
 func (*BoolLit) exprNode()        {}

@@ -44,10 +44,16 @@ pub enum RoundingMode {
 /// numbers are == and hash alike. Make one with parse, of, or the
 /// operators; compare them with <, <=, > and >=.
 pub struct Decimal {
-  /// The digits, signed, without trailing zeros: 1999 of 19.99.
-  coefficient: int
-  /// The power of ten the coefficient is multiplied by: -2 of 19.99.
-  exponent: int
+  // The digits, signed, without trailing zeros: 1999 of 19.99; and
+  // the power of ten they're multiplied by: -2 of 19.99. Private: a
+  // coefficient with a trailing zero would be a Decimal that isn't ==
+  // to its equal.
+  private coefficient: int
+  private exponent: int
+
+  /// Its coefficient and exponent, as it keeps them (the coefficient
+  /// without trailing zeros): (1999, -2) of 19.99, (15, -1) of 1.50.
+  fn parts() -> (int, int) = (coefficient, exponent)
 
   /// 0.
   let zero = Decimal(coefficient: 0, exponent: 0)
@@ -308,6 +314,19 @@ pub struct Decimal {
       return sign + digits.slice(0, point) + "." + digits.slice(point)
     }
     return sign + "0." + "0".repeat(-point) + digits
+  }
+
+  /// How it prints, and goes in a string: string()'s digits ("19.99").
+  fn description() -> string = string()
+
+  /// How it's written as JSON: a string of its digits ("19.99"), which
+  /// keeps every one (a JSON number is a double to most readers).
+  fn toJSON() -> string = string()
+
+  /// How json.decode reads one: from its digits, as parse does; a
+  /// string that isn't a number is an error.
+  static fn fromJSON(json: string) throws -> Decimal {
+    return parseDecimal(json) ?? throw Error("not a decimal number: \"{json}\"")
   }
 
   /// The number in the language shown's way, exactly (1,234.5;

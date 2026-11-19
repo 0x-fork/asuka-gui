@@ -50,7 +50,7 @@ async fn main() throws {
 
 - `os.exit(code)` 立即以 `code` 结束程序：stdout 和 stderr 会被刷新，但 `defer` 和其他 task 不会执行。
 - Ctrl-C 会像 `main` 自己结束那样，以取消的方式结束异步的 `main`：先执行它的 `defer`，再执行其他所有 task 的，退出码是 130（128 加上信号的编号：终止信号，也就是 `kill` 默认发送的信号，是 143；挂断信号是 129）。再按一次 Ctrl-C 会立即结束程序；不是异步的 `main` 也是这样立即结束，因为不 await 的代码无法取消。用 `os.signals()` 可以把这些信号交给程序自己处理（见[信号](#信号)）。
-- `print` 向 stdout 写一行；`os.eprint` 写到 stderr。
+- `print(a, b)` 向 stdout 写一行，各个值之间用空格隔开；`eprint` 则写到 stderr。两者都接受 `separator:` 和 `terminator:`（`print("…", terminator: "")` 写完不换行）。
 
 ## 进程：std/os
 
@@ -65,7 +65,6 @@ async fn main() throws {
 | `os.readLine()` | 读取 stdin 的一行（不含行尾），读到末尾时为 `none`；会等待这一行 |
 | `os.readAll()` | stdin 剩下的全部内容，`bytes` |
 | `os.lines()` | 逐行读取 stdin（一个 `Stream<string>`），在另一个线程上读，程序可以同时做别的事 |
-| `os.eprint(text)` | 向 stderr 写一行 |
 | `os.writeTo(.stdout, text)`、`writeBytesTo` | 原样写出文本或字节，不加行尾，目标是 `.stdout` 或 `.stderr` |
 | `os.terminal(.stdout)` | 某个流是否是终端（有人在看），而不是管道或文件：只在终端上输出颜色和提示 |
 | `os.signals(kinds)` | 按到达顺序给出这些种类的信号（一个 `Stream<os.Signal>`：`.interrupt`、`.term`、`.hangup`），被读取的信号不再结束程序 |
@@ -84,7 +83,7 @@ import std/os
 async fn main() throws {
   let jobs = ["a", "b", "c"]
   for await s in os.signals() {
-    os.eprint("{s}: finishing {jobs.count()} jobs first")
+    eprint("{s}: finishing {jobs.count()} jobs first")
     break
   }
 }
@@ -102,7 +101,7 @@ async fn main() throws {
   }
   print(total)
   if os.env("DEBUG") != none {
-    os.eprint("summed stdin")
+    eprint("summed stdin")
   }
 }
 ```
@@ -277,7 +276,7 @@ async fn main() throws {
   let name = await term.prompt("Project name:", default: "demo") ?? "demo"
   let target = try fs.abs(o.dir ?? name)
   if fs.exists(target) && !(await term.confirm("{target} exists. Overwrite?")) {
-    os.eprint("{term.red("error:", stream: .stderr)} nothing was made")
+    eprint("{term.red("error:", stream: .stderr)} nothing was made")
     os.exit(1)
   }
   try await spawn { try fs.mkdirAll(target) }
@@ -370,7 +369,7 @@ async fn main() throws {
       os.exit(1)
     }
   }
-  run.info("copied", ["files": "{o.files.count()}"])
+  run.info("copied", ["files": o.files.count()])
 }
 ```
 
@@ -381,9 +380,9 @@ $ backup -v notes.md todo.md
 2026-11-19 10:04:05.125 INFO  copied                                   to=backup files=2
 ```
 
-- **字段。** 一行的字段是一个 `[string: string]`，`["port": "{port}"]` 这样写就能把任意值以文本形式放进去。含有空格、引号或 `=` 的值会加上引号（`path="my notes.md"`）。`log.with(fields)` 返回一个 `Logger`，它写出的每一行都带着这些字段；它的 `with` 还可以再添加字段。某一行自己的字段和 logger 的字段同名时，以这一行的为准。
+- **字段。** 一行的字段是一个 `[string: json.Value]`：任何 JSON 能表示的值都可以原样放进去（`["port": port, "tls": true, "peer": peer]`；在需要 `json.Value` 的地方，值会自动转换成它），所以 JSON 行会把数字写成数字。写成文本时，字符串就是它的文本，其他值写成 JSON；含有空格、引号或 `=` 的值会加上引号（`path="my notes.md"`）。`log.with(fields)` 返回一个 `Logger`，它写出的每一行都带着这些字段；它的 `with` 还可以再添加字段。某一行自己的字段和 logger 的字段同名时，以这一行的为准。
 - **级别。** 低于最低级别的行不会写出。最低级别默认是 info；`ASUKA_LOG` 可以改变它（`debug`、`info`、`warn`、`error` 或 `off`，和 Rust 的 `RUST_LOG` 一样），程序也可以用 `log.setLevel(.debug)` 设置，并且程序的设置优先：所以上面的程序只在给了 `-v` 时才设置它。不写出的行只花一次判断的开销，但它的字段照样会先算出来，就像任何函数调用的参数一样：生成起来费事的字段，用 `if log.enabled(.debug) { … }` 包起来。
-- **格式。** 在终端上，时间（本地时间）会变暗，级别会带颜色，是否显示颜色由 `std/term` 对 stderr 的判断决定（`NO_COLOR`、`FORCE_COLOR`、`term.setColors`）。`log.setFormat(.json)` 每行写一个 JSON 对象，和 Go 的 `log/slog` 一样：`{"time":"2026-11-19T10:04:05.125+08:00","level":"INFO","msg":"copied","to":"backup","files":"2"}`；`time: false` 不写时间，适合日志已经由 journald 或容器运行时加上时间戳的服务。
+- **格式。** 在终端上，时间（本地时间）会变暗，级别会带颜色，是否显示颜色由 `std/term` 对 stderr 的判断决定（`NO_COLOR`、`FORCE_COLOR`、`term.setColors`）。`log.setFormat(.json)` 每行写一个 JSON 对象，和 Go 的 `log/slog` 一样：`{"time":"2026-11-19T10:04:05.125+08:00","level":"INFO","msg":"copied","to":"backup","files":2}`；`time: false` 不写时间，适合日志已经由 journald 或容器运行时加上时间戳的服务。
 - **写到哪里。** 程序的日志写到 stderr，这样 stdout 仍然只有程序的输出（`backup | tee list`）。应用的日志写到各平台开发者习惯查看的地方：iOS 和 macOS 上是统一日志系统（Xcode 的控制台、“控制台” App），Android 上是 logcat，Web 上是浏览器的控制台（按级别分别用 `console.debug` 到 `console.error`），Windows 上是调试器的输出；Linux 上写到 stderr，桌面应用从终端启动时也写到 stderr。`asuka dev` 也会把它们打印在自己的终端里。
 
 在测试里，这些行可以在 `o.stderr()` 里找到，时间戳来自测试的时钟（从 `2026-01-01 00:00:00.000` 开始）；在测试中只有 `os.fake(env:)` 能设置 `ASUKA_LOG`。
@@ -466,7 +465,7 @@ async fn main() throws {
     print("{entries.count()} entries")
     try await spawn { try archive.extract(a[1], to: a[2], limit: 8 << 30) }
   } else {
-    os.eprint("usage: pack DIR OUT.zip | unpack ARCHIVE DIR")
+    eprint("usage: pack DIR OUT.zip | unpack ARCHIVE DIR")
     os.exit(2)
   }
 }

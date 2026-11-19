@@ -1,0 +1,42 @@
+// A value JSON can say is a json.Value where one is expected: an int,
+// a float, a bool and a string their cases, none .null, anything else
+// what it's written as (a u64 past int's range a float, as a Value reads
+// such a number).
+import std/json
+
+struct Peer {
+  host: string
+  port: int
+}
+
+enum Mode {
+  fast
+  safe
+}
+
+fn fields(f: [string: json.Value]) -> string = json.encode(f)
+
+fn one(v: json.Value) -> string = match v {
+  .int(n) => "int {n}"
+  .float(x) => "float {x}"
+  .string(s) => "string {s}"
+  .object(m) => "object of {m.count()}"
+  .array(a) => "array of {a.count()}"
+  .bool(b) => "bool {b}"
+  .null => "null"
+}
+
+test "values of mixed types" {
+  let port = 8080
+  let missing: string? = none
+  print(fields(["port": port, "tls": true, "rate": 0.25, "host": "a", "peer": Peer(host: "b", port: 1), "ids": [1, 2], "mode": Mode.safe, "none": none, "missing": missing, "u": u8(200), "big": u64(18446744073709551615)]))
+  print(one(3), one(2.5), one("x"), one(Peer(host: "c", port: 2)), one([true]), one(false), one(none))
+  let list: [json.Value] = [1, "two", [3.0], ["k": 4]]
+  print(json.encode(list), one(list[2].at(0)!))
+}
+
+// Output:
+// {"port":8080,"tls":true,"rate":0.25,"host":"a","peer":{"host":"b","port":1},"ids":[1,2],"mode":"safe","none":null,"missing":null,"u":200,"big":18446744073709552000}
+// int 3 float 2.5 string x object of 2 array of 1 bool false null
+// [1,"two",[3],{"k":4}] float 3
+// ok values of mixed types

@@ -125,7 +125,7 @@ store Items {
     typed = t
     let cs = t.chars()
     let same = cs.count() > 1 && cs.all(c => c == cs[0])
-    let prefix = if same { cs[0] } else { t }
+    let prefix = if same { "{cs[0]}" } else { t }
     let n = all.count()
     if n == 0 { return }
     let start = all.index(x => x.value == active) ?? -1

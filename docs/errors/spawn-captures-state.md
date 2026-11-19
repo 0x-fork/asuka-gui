@@ -6,7 +6,7 @@ An error the compiler reports: the program doesn't build until it's fixed.
 
 ## Why
 
-`spawn` runs its block on another thread, while the main thread goes on changing state; it takes values only, copied as it starts, and gives a value back.
+`spawn` runs its block on another thread, while the main thread goes on changing state and a file's vars; it takes values only, copied as it starts, and gives a value back.
 
 ## How to fix
 

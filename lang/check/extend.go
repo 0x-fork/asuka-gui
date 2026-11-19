@@ -221,10 +221,6 @@ func (c *Checker) extFunc(e *Extension, tn *TypeName, d *syntax.FuncDecl) {
 			c.errorf(d.Name, diag.InvalidExtension, "a static fn of %s can't be named (%s.%s): extend a type with a name for it", typeString(e.Target), typeString(e.Target), d.Name.Name)
 			return
 		}
-		if len(e.TypeParams) > 0 {
-			c.errorf(d.Name, diag.MisplacedDeclaration, "a generic extension's static fns would need its type parameters; declare a function outside it")
-			return
-		}
 		f.Static = tn
 		e.Statics[f.name] = f
 		e.Pkg.Funcs = append(e.Pkg.Funcs, f)
@@ -326,6 +322,22 @@ func (c *Checker) extMatch(e *Extension, t Type) (s Subst, why string, ok bool) 
 		}
 	}
 	return s, "", true
+}
+
+// openGeneric reports whether t is a generic type as it's declared, its
+// own parameters its arguments (Box<T> in Box): Box.name, before its
+// arguments are known.
+func openGeneric(t Type) bool {
+	n, ok := t.(*Named)
+	if !ok || len(n.Args) == 0 || len(n.Args) != len(n.Obj.TypeParams) {
+		return false
+	}
+	for i, a := range n.Args {
+		if a != Type(n.Obj.TypeParams[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 func optColon(why string) string {
@@ -447,7 +459,18 @@ func (c *Checker) extLookup(t Type, name, kind string, at syntax.Node) (extHit, 
 		if !c.visible(e, pub) {
 			continue
 		}
+		if f != nil && privateFn(f) && !c.sameFile(f.pos, at) || g != nil && privateConst(g) && !c.sameFile(g.pos, at) {
+			continue // the extension's file's only
+		}
 		s, w, ok := c.extMatch(e, t)
+		if !ok && kind != "method" && openGeneric(t) {
+			// Box.of(…) of extend<T: Comparable> Box<T>: the type's
+			// arguments aren't known yet; the call infers them, and
+			// checks the extension's constraints.
+			if n, isN := e.Target.(*Named); isN && n.Obj == t.(*Named).Obj {
+				s, w, ok = Subst{}, "", true
+			}
+		}
 		if !ok {
 			if w != "" {
 				why = name + " is " + e.Name() + "'s, and " + w

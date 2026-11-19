@@ -1,0 +1,14 @@
+import std/json
+
+struct NotJSON {
+  f: fn() -> int
+}
+
+fn log(fields: [string: json.Value]) {}
+
+fn f(x: NotJSON, v: json.Value?) {
+  log(["ok": 1, "s": "a", "n": none])
+  log(["bad": x])             // ERROR "is a NotJSON, not a json.Value"
+  let w: json.Value = v       // ERROR "is a json.Value\\?, not a json.Value"
+  let c: json.Value = () => 1 // ERROR "fn"
+}

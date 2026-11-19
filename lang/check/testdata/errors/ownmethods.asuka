@@ -1,0 +1,48 @@
+import std/json
+
+struct A {
+  x: int
+  fn equals(other: int) -> bool = x == other // ERROR "equals is ==: fn equals\\(other: A\\) -> bool"
+  fn hash() -> string = ""                   // ERROR "hash is how A hashes"
+  fn description() throws -> string = ""     // ERROR "neither async, throws nor mut"
+}
+
+struct B {
+  f: fn() -> int
+  fn hash() -> int = 1 // ERROR "B hashes, and isn't Equatable"
+}
+
+struct C {
+  x: int
+  fn equals(other: C) -> bool = x == other.x
+  private fn toJSON() -> int = x // ERROR "can't be private"
+}
+
+enum Light {
+  red
+  green
+  fn equals(other: Light) -> bool = true // ERROR "an enum without payloads"
+  fn description() -> string = "light"
+}
+
+struct D {
+  x: int
+  fn toJSON() -> fn() -> int = () => x // ERROR "toJSON gives a fn\\(\\) -> int, which JSON can't say"
+}
+
+struct D2 {
+  x: int
+  fn toJSON() -> int = x
+  static fn fromJSON(json: string) throws -> D2 = D2(x: 0) // ERROR "fromJSON takes what toJSON gives"
+}
+
+struct E {
+  x: int
+  fn toJSON() -> int = x
+}
+
+fn f() {
+  var m: [C: int] = [:]            // ERROR "it has its own equals, and no hash"
+  let e = try? json.decode<E>("1") // ERROR "E is written by its toJSON, and has no static fn fromJSON"
+  print(json.encode(E(x: 1)), hashOf(1), Light.red)
+}

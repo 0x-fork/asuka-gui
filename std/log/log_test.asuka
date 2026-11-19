@@ -99,6 +99,28 @@ test "JSON lines" {
     """)
 }
 
+struct Peer {
+  host: string
+  port: int
+}
+
+test "fields of any type JSON can say: numbers as numbers" {
+  let o = os.fake()
+  let port = 8080
+  let peer = Peer(host: "a.example", port: 443)
+  expect(await o.run(() => {
+    setFormat(.json, time: false)
+    info("listening", ["port": port, "tls": true, "host": "x y", "rate": 0.5, "none": none, "peer": peer, "ids": [1, 2]])
+    setFormat(.text, time: false)
+    with(["attempt": 2]).warn("retry", ["port": port, "tls": false, "host": "x y", "ids": [1, 2]])
+  }) == 0)
+  expect(o.stderr() == r"""
+    {"level":"INFO","msg":"listening","port":8080,"tls":true,"host":"x y","rate":0.5,"none":null,"peer":{"host":"a.example","port":443},"ids":[1,2]}
+    WARN  retry                                    attempt=2 port=8080 tls=false host="x y" ids=[1,2]
+
+    """)
+}
+
 test "colors when std/term says stderr shows them" {
   let o = os.fake(env: ["FORCE_COLOR": "1"])
   expect(await o.run(() => {

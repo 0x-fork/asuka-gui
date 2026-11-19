@@ -66,6 +66,17 @@ uint16_t ak_uprops(uint32_t cp) {
 	return ak_uprop_values[lo];
 }
 
+uint8_t ak_ucat(uint32_t cp) {
+	if (cp > 0x10ffff) return AK_GC_CN;
+	uint32_t lo = 0, hi = ak_ucat_count;
+	while (hi - lo > 1) {
+		uint32_t mid = lo + (hi - lo) / 2;
+		if (ak_ucat_starts[mid] <= cp) lo = mid;
+		else hi = mid;
+	}
+	return ak_ucat_values[lo];
+}
+
 // ---- Grapheme clusters (UAX #29) ----
 
 size_t ak_grapheme_end(const char *s, size_t n, size_t i) {

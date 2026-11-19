@@ -456,6 +456,22 @@ static bool fields_eq(walk_frame *f, ak_val *a, ak_val *b, uint32_t n, const uin
 	return true;
 }
 
+ak_val (*ak_shape_call)(const ak_shape *s, int hook, ak_val *args, uint32_t n);
+
+// own_eq is a == b by their type's own equals (its shape's hook); an
+// error it raised (it can't throw: an overflow, an index) leaves them
+// unequal, and is the caller's to see.
+static AK_NOINLINE bool own_eq(const ak_shape *s, ak_obj *a, ak_obj *b) {
+	ak_val args[2] = {{.p = a}, {.p = b}};
+	return ak_shape_call(s, AK_HOOK_EQ, args, 2).i != 0 && !ak_error_pending();
+}
+
+// own_hash is a's hash by its type's own hash.
+static AK_NOINLINE uint64_t own_hash(const ak_shape *s, ak_obj *a) {
+	ak_val arg = {.p = a};
+	return (uint64_t)ak_shape_call(s, AK_HOOK_HASH, &arg, 1).i;
+}
+
 // eq_enter compares a and b (neither NULL, nor the same object) but for
 // the references they hold, and sets f at those for the walk to
 // compare: whether they're the same kind of object, of the same length,
@@ -519,11 +535,15 @@ static AK_ALWAYS_INLINE bool eq_enter(walk_frame *f, ak_obj *a, ak_obj *b) {
 	}
 	case AK_TAG_STRUCT: {
 		ak_struct *x = (ak_struct *)a, *y = (ak_struct *)b;
-		return x->shape == y->shape && fields_eq(f, x->f, y->f, x->shape->nfields, x->shape->kinds);
+		if (x->shape != y->shape) return false;
+		if (ak_shape_has(x->shape, AK_HOOK_EQ)) return own_eq(x->shape, a, b);
+		return fields_eq(f, x->f, y->f, x->shape->nfields, x->shape->kinds);
 	}
 	case AK_TAG_ENUM: {
 		ak_enum *x = (ak_enum *)a, *y = (ak_enum *)b;
-		if (x->shape != y->shape || x->h.aux != y->h.aux) return false;
+		if (x->shape != y->shape) return false;
+		if (ak_shape_has(x->shape, AK_HOOK_EQ)) return own_eq(x->shape, a, b);
+		if (x->h.aux != y->h.aux) return false;
 		const ak_case *c = &x->shape->cases[x->h.aux];
 		return fields_eq(f, x->f, y->f, c->nfields, c->kinds);
 	}
@@ -702,10 +722,12 @@ static AK_ALWAYS_INLINE uint64_t hash_enter(walk_frame *f, uint64_t h, ak_obj *o
 	}
 	case AK_TAG_STRUCT: {
 		ak_struct *s = (ak_struct *)o;
+		if (ak_shape_has(s->shape, AK_HOOK_HASH)) return mix(mix(h, 17), hash_int(own_hash(s->shape, o)));
 		return fields_hash(f, mix(h, 17), s->f, s->shape->nfields, s->shape->kinds);
 	}
 	case AK_TAG_ENUM: {
 		ak_enum *e = (ak_enum *)o;
+		if (ak_shape_has(e->shape, AK_HOOK_HASH)) return mix(mix(h, 31), hash_int(own_hash(e->shape, o)));
 		const ak_case *c = &e->shape->cases[e->h.aux];
 		return fields_hash(f, mix(mix(h, 31), e->h.aux), e->f, c->nfields, c->kinds);
 	}

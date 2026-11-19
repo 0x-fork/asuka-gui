@@ -24,8 +24,6 @@
 // ends, the socket closes. A web page has no sockets
 // (NetError.unsupported); its IP addresses and host:port helpers work.
 
-import std/os
-
 /// What can go wrong with a connection, a socket or a lookup.
 pub enum NetError: Error {
   /// Nothing accepts connections at the address: the other side refused.
@@ -363,7 +361,7 @@ pub struct Conn {
   /// as long as it takes); past it, NetError.timedOut, and part of them
   /// may have gone.
   writeTimeout: Duration = 0s
-  handle: int = 0
+  private handle: int = 0
 
   /// The bytes that have come, as soon as some have: at most max of
   /// them. none at the connection's end (the other side closed, or
@@ -572,7 +570,7 @@ pub struct Listener {
   address: Address
   /// Its port.
   port: int
-  handle: int = 0
+  private handle: int = 0
 
   /// The next client's connection, once one connects: it belongs to the
   /// task that accepts it. timeout (0s: none) gives up with
@@ -589,7 +587,7 @@ pub struct Listener {
   /// Serves each client's connection with handler, as net.serve does,
   /// accepting from now on: the listener is the server's.
   fn serve(handler: async fn(Conn) throws, onError: (fn(Conn, Error))? = none) throws -> Server {
-    let report = onError ?? ((c: Conn, e: Error) => os.eprint("net: {c.remoteAddress.string()}: {e.message}"))
+    let report = onError ?? ((c: Conn, e: Error) => eprint("net: {c.remoteAddress.string()}: {e.message}"))
     let s = serveStart(handle, dispatcher(handler, report))
     if s == 0 {
       throw NetError.closed
@@ -627,7 +625,7 @@ pub struct Server {
   address: Address
   /// Its port: the one asked for, or the one the system picked for 0.
   port: int
-  handle: int = 0
+  private handle: int = 0
 
   /// Stops it: it stops accepting, and the handlers still running have
   /// grace to finish (0s, the default: none), then are cancelled, their
@@ -750,7 +748,7 @@ fn stateOf(fields: [bytes]) -> TLSState {
 /// How a client's TLS connections are made: whom they trust, what they
 /// show. clientTLS makes it.
 pub struct ClientTLS {
-  handle: int = 0
+  private handle: int = 0
 }
 
 /// How a TLS server's connections are made: its certificates, and whom
@@ -889,7 +887,7 @@ pub struct UDPSocket {
   /// The address connect() set: where send(data) goes, and the only one
   /// it receives from; none until then.
   remoteAddress: Address? = none
-  handle: int = 0
+  private handle: int = 0
 
   /// Sends data to to (an answer to a datagram: its from), or with no to,
   /// to the address connect() set (a connected socket sends there

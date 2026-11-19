@@ -137,11 +137,13 @@ renamed, can't be read.`,
 
 	NotPub = def(Code{
 		Name:    "not-pub",
-		Summary: "a declaration another package (or a store, a worker) keeps to itself",
+		Summary: "a declaration another package, another file (private), a store or a worker keeps to itself",
 		Why: `What a package declares is its own unless it says ` + "`pub`" + `; a store's and a
-worker's members likewise. That keeps a package free to change what
-others don't use.`,
-		Fix:   "Mark it `pub` where it's declared, or use what the package makes public.",
+worker's members likewise; and what's ` + "`private`" + ` (a declaration, a type's
+field or method) is its file's, and its package's tests'. That keeps a
+package free to change what others don't use, and a type's invariants
+its own.`,
+		Fix:   "Mark it `pub` (or drop `private`) where it's declared, or use what's public: a type whose private fields have no default is made by its static fns.",
 		Wrong: "-- app.asuka --\nimport ./util\n\nlet answer = util.secret()\n-- util/util.asuka --\nfn secret() -> int = 42\n",
 		Right: "-- app.asuka --\nimport ./util\n\nlet answer = util.secret()\n-- util/util.asuka --\npub fn secret() -> int = 42\n",
 	})
@@ -418,8 +420,9 @@ parameters are counted the same way.`,
 		Name:    "argument-label",
 		Summary: "a named argument the function has no parameter for",
 		Why: `Arguments come in order, then by name: a name is one of the
-parameters', given once, after the ones in order. A closure's and a
-built-in's arguments have no names.`,
+parameters', given once, after the ones in order. A closure's
+arguments have no names, nor have most built-ins' (print's
+` + "`separator:`" + ` and ` + "`terminator:`" + ` are named).`,
 		Fix:   "Use the parameter's name (the message suggests it), or pass the argument in order.",
 		Wrong: "fn area(width: int, height: int) -> int = width * height\n\nlet a = area(width: 2, hieght: 3)\n",
 		Right: "fn area(width: int, height: int) -> int = width * height\n\nlet a = area(width: 2, height: 3)\n",
@@ -579,12 +582,12 @@ the change, with ` + "`event <prop>Change`" + `, so that a caller that binds it
 	InvalidFor = def(Code{
 		Name:    "invalid-for",
 		Summary: "a `for` over something it doesn't go over",
-		Why: `A ` + "`for`" + ` goes over an array, a set, a map, a range or an iterator; a
-stream's values come over time (` + "`for await`" + `); a string's characters are
-` + "`s.chars()`" + `. ` + "`key`" + ` is a ` + "`for`" + `'s in a view.`,
-		Fix:   "Go over what the message says: `s.chars()`, `m.keys()`, `for await x in stream`.",
-		Wrong: "fn letters(s: string) -> int {\n  var n = 0\n  for c in s { n += 1 }\n  return n\n}\n",
-		Right: "fn letters(s: string) -> int {\n  var n = 0\n  for c in s.chars() { n += 1 }\n  return n\n}\n",
+		Why: `A ` + "`for`" + ` goes over an array, a set, a map, a range, a string's chars or
+an iterator; a stream's values come over time (` + "`for await`" + `); a number
+isn't a list (` + "`0..<n`" + ` is its range). ` + "`key`" + ` is a ` + "`for`" + `'s in a view.`,
+		Fix:   "Go over what the message says: `0..<n`, `m.keys()`, `for await x in stream`.",
+		Wrong: "fn total(n: int) -> int {\n  var sum = 0\n  for i in n { sum += i }\n  return sum\n}\n",
+		Right: "fn total(n: int) -> int {\n  var sum = 0\n  for i in 0..<n { sum += i }\n  return sum\n}\n",
 	})
 
 	LoopLabel = def(Code{
@@ -639,12 +642,13 @@ and constants.`,
 	InvalidDeclaration = def(Code{
 		Name:    "invalid-declaration",
 		Summary: "a declaration written in a form its place doesn't take",
-		Why: `A file's values don't change (what changes is ` + "`state`" + `), a type's
-constant is ` + "`let name = value`" + `, a component's ` + "`let`" + ` names one value, and a
-default can't read fields that aren't made yet.`,
-		Fix:   "Write it in the place's form: `state x = …` for a value that changes, `let name = value`.",
-		Wrong: "var visits = 0\n",
-		Right: "state visits = 0\n",
+		Why: `A type's constant is ` + "`let name = value`" + `, which doesn't change, and a
+generic type's is one for all its types, so its type can't name their
+parameters; a component's ` + "`let`" + ` names one value, and a default can't read
+fields that aren't made yet.`,
+		Fix:   "Write it in the place's form: `let name = value` for a type's constant, a `static fn` for one that needs the type's parameters.",
+		Wrong: "struct Money {\n  cents: int\n\n  var zero = 0\n}\n",
+		Right: "struct Money {\n  cents: int\n\n  let zero = 0\n}\n",
 	})
 
 	InvalidModifier = def(Code{
@@ -667,6 +671,21 @@ interface's methods, a native fn and an extern fn (C's) have none.`,
 		Fix:   "Write the body (`{ … }` or `= expression`), or drop it from a native or extern declaration.",
 		Wrong: "fn greeting() -> string\n",
 		Right: "fn greeting() -> string = \"Hello\"\n",
+	})
+
+	SpecialMethod = def(Code{
+		Name:    "special-method",
+		Summary: "a method the language calls (equals, hash, description, toJSON, fromJSON) with a signature it can't call",
+		Why: `A struct or an enum is equal, hashes, prints and is written as JSON
+by its fields unless it declares its own: ` + "`fn equals(other: T) -> bool`" + `,
+` + "`fn hash() -> int`" + `, ` + "`fn description() -> string`" + `, ` + "`fn toJSON() -> J`" + ` and
+` + "`static fn fromJSON(json: J) throws -> T`" + `. The language calls them from
+==, maps and sets, interpolation and JSON, so each takes and gives what
+those pass and expect, and can't be async, mut or private. A type that
+hashes its own way compares its own way too (equal values hash alike).`,
+		Fix:   "Give the method the signature the message says, or another name if it isn't meant for that.",
+		Wrong: "struct Money {\n  cents: int\n\n  fn equals(other: int) -> bool = cents == other\n}\n",
+		Right: "struct Money {\n  cents: int\n\n  fn equals(other: Money) -> bool = cents == other.cents\n}\n",
 	})
 
 	InterfaceNotSatisfied = def(Code{
@@ -954,8 +973,8 @@ cycle of references, which is never freed.`,
 		Name:    "spawn-captures-state",
 		Summary: "`spawn` that reads or changes state, or what isn't a value",
 		Why: `` + "`spawn`" + ` runs its block on another thread, while the main thread goes on
-changing state; it takes values only, copied as it starts, and gives a
-value back.`,
+changing state and a file's vars; it takes values only, copied as it
+starts, and gives a value back.`,
 		Fix:   "Read the state into a `let` first, and pass that; assign what `spawn` returns.",
 		Wrong: "component Total {\n  state items: [int] = []\n  state sum = 0\n  task {\n    sum = await spawn { items.count() }\n  }\n  Text(\"{sum}\")\n}\n",
 		Right: "component Total {\n  state items: [int] = []\n  state sum = 0\n  task {\n    let xs = items\n    sum = await spawn { xs.count() }\n  }\n  Text(\"{sum}\")\n}\n",
@@ -964,9 +983,10 @@ value back.`,
 	WorkerCapturesState = def(Code{
 		Name:    "worker-captures-state",
 		Summary: "a worker that reads the main thread's state",
-		Why: `A worker runs on a thread of its own; state lives on the main thread
-and changes there. Its fns take what they need as values.`,
-		Fix:   "Read the state on the main thread and pass its value to a `pub fn`.",
+		Why: `A worker runs on a thread of its own; state and a file's vars live on
+the main thread and change there. Its fns take what they need as
+values.`,
+		Fix:   "Read the state (or the var) on the main thread and pass its value to a `pub fn`.",
 		Wrong: "state limit = 10\n\nworker Clamp {\n  pub fn cap(n: int) -> int = min(n, limit)\n}\n",
 		Right: "worker Clamp {\n  pub fn cap(n: int, limit: int) -> int = min(n, limit)\n}\n",
 	})

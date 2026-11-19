@@ -217,7 +217,7 @@ func (l *Lowerer) kind(t check.Type) bc.Kind {
 	switch x := t.(type) {
 	case *check.Basic:
 		switch x {
-		case check.Int, check.Duration, check.Color, check.Length, check.Pointer:
+		case check.Int, check.Duration, check.Color, check.Length, check.Pointer, check.Char:
 			return bc.KInt
 		case check.I8, check.I16, check.I32, check.U8, check.U16, check.U32, check.U64:
 			return bc.KInt // canonical: sign- or zero-extended, a u64's bits
@@ -328,6 +328,7 @@ func (l *Lowerer) shape(t check.Type) int {
 			} else {
 				l.mod.Shapes[i].Fields = fs
 			}
+			l.ownHooks(i, x)
 			return i
 		case check.EnumType:
 			if !x.Obj.RefEnum() {
@@ -354,6 +355,7 @@ func (l *Lowerer) shape(t check.Type) int {
 			if x.Obj.IsError {
 				l.errorMethods(i, x)
 			}
+			l.ownHooks(i, x)
 			return i
 		case check.StoreType:
 			return l.envShapeOf(x.Obj, x)
@@ -383,6 +385,8 @@ func (l *Lowerer) desc(t check.Type) string {
 		switch x {
 		case check.Int, check.Duration, check.Color, check.Length, check.Pointer:
 			return "i"
+		case check.Char:
+			return "r" // a string of one code point
 		case check.I8, check.I16, check.I32, check.U8, check.U16, check.U32, check.U64:
 			// n and the type's code: n0 an i8 … n7 a u64.
 			return "n" + string(rune('0'+check.IntCode(x)))
@@ -648,7 +652,7 @@ func (l *Lowerer) global(g *check.Global) int {
 	}
 	i := len(l.mod.Globals)
 	k := bc.KRef
-	if g.Kind == check.ConstGlobal {
+	if g.Kind == check.ConstGlobal || g.Kind == check.VarGlobal {
 		k = l.kind(g.Type)
 	}
 	l.mod.Globals = append(l.mod.Globals, k)
@@ -684,7 +688,10 @@ func (l *Lowerer) initBody(b *fb) {
 			return v
 		}
 		mainOnly[g] = false // a cycle is the checker's error
-		v := g.Kind != check.ConstGlobal || !check.Sendable(g.Type)
+		// A file's var a spawn never reaches (the checker's), but one a
+		// let is made from is made in a worker as it is on the main
+		// thread, so the let is the same there.
+		v := g.Kind != check.ConstGlobal && g.Kind != check.VarGlobal || !check.Sendable(g.Type)
 		for _, d := range g.Deps() {
 			v = v || isMainOnly(d)
 		}
@@ -802,6 +809,10 @@ func (l *Lowerer) initGlobal(b *fb, g *check.Global) {
 		m := b.temp(bc.KRef)
 		b.emit(op("MEMO"), m, clos, int(l.kind(g.Type)))
 		b.emit(op("GSET"), slot, m, int(bc.KRef))
+	case check.VarGlobal:
+		// Not frozen: it's changed in place, as a local is.
+		k := l.kind(g.Type)
+		b.emit(op("GSET"), slot, b.valueReg(b.value(g.Value, -1), k), int(k))
 	default:
 		k := l.kind(g.Type)
 		v := b.valueReg(b.value(g.Value, -1), k)

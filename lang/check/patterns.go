@@ -91,6 +91,7 @@ func (c *Checker) structPattern(p *syntax.CasePat, tn *TypeName, t Type) {
 			c.errorf(at, diag.InvalidPattern, "%s is matched twice in this pattern", name)
 		}
 		seen[name] = true
+		c.hiddenField(at, tn.name, f)
 		fields[i] = f
 		c.pattern(a, s.Apply(f.Type), kind)
 	}

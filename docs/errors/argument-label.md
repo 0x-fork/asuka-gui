@@ -6,7 +6,7 @@ An error the compiler reports: the program doesn't build until it's fixed.
 
 ## Why
 
-Arguments come in order, then by name: a name is one of the parameters', given once, after the ones in order. A closure's and a built-in's arguments have no names.
+Arguments come in order, then by name: a name is one of the parameters', given once, after the ones in order. A closure's arguments have no names, nor have most built-ins' (print's `separator:` and `terminator:` are named).
 
 ## How to fix
 

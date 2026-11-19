@@ -41,11 +41,10 @@ import std/i18n
 /// An integer of any size. Make one with of, parse, fromBytes or the
 /// operators; compare them with <, <=, > and >=.
 pub struct BigInt {
-  /// How the number is kept, which only this package makes and reads:
-  /// empty for 0, else a sign byte (1 when negative) and the magnitude's
-  /// bytes, least significant first, the last not 0. Use toBytes for
-  /// bytes to send or store.
-  data: bytes
+  // How the number is kept: empty for 0, else a sign byte (1 when
+  // negative) and the magnitude's bytes, least significant first, the
+  // last not 0. toBytes gives bytes to send or store.
+  private data: bytes
 
   /// 0.
   let zero = BigInt(data: bytes())
@@ -77,15 +76,16 @@ pub struct BigInt {
   /// The decimal d's whole part, toward zero (2.7 is 2, -2.7 is -2),
   /// exactly: 1.5e40 is 15 followed by 39 zeros.
   static fn fromDecimal(d: Decimal) -> BigInt {
-    let c = BigInt.of(d.coefficient)
-    if d.exponent >= 0 {
-      return c * BigInt.of(10).pow(d.exponent)
+    let (coefficient, exponent) = d.parts()
+    let c = BigInt.of(coefficient)
+    if exponent >= 0 {
+      return c * BigInt.of(10).pow(exponent)
     }
-    if d.exponent < -18 {
+    if exponent < -18 {
       // Past an int's 19 digits: the whole part is 0.
       return BigInt.zero
     }
-    return c / BigInt.of(10).pow(-d.exponent)
+    return c / BigInt.of(10).pow(-exponent)
   }
 
   /// n! (1·2·…·n), by a product tree; 0! is 1. A negative n is an error.
@@ -243,6 +243,11 @@ pub struct BigInt {
   /// The number in radix (2 to 36), lowercase, a minus first when it's
   /// negative: what parse reads. The digits are what it prints as.
   fn string(radix: int = 10) -> string = bigText(data, radix)
+
+  /// How it prints, and goes in a string: its decimal digits. (JSON
+  /// writes it as a number of all its digits, which no type a toJSON
+  /// could give says.)
+  fn description() -> string = bigText(data, 10)
 
   /// The number's bytes, most significant first (big-endian): unsigned
   /// (a negative number then is an error), or with signed true two's

@@ -79,7 +79,7 @@ Asuka が報告するエラーと警告には、すべてコードがありま�
 - [not-callable](not-callable.md): 関数ではないものの呼び出し。
 - [not-json](not-json.md): JSON で読み書きできない型。
 - [not-optional](not-optional.md): 必ず値がある値に、オプショナル用の演算子を使っている。
-- [not-pub](not-pub.md): ほかのパッケージ（またはストア、ワーカー）が公開していない宣言。
+- [not-pub](not-pub.md): ほかのパッケージ、ほかのファイル（private）、ストア、ワーカーが公開していない宣言。
 - [not-sendable](not-sendable.md): 別のスレッドに渡せない値。
 - [not-supported](not-supported.md): 言語がまだ対応していないもの。
 - [optimistic-impure](optimistic-impure.md): 状態を読む、await する、または書き込む楽観的な変更。
@@ -97,6 +97,7 @@ Asuka が報告するエラーと警告には、すべてコードがありま�
 - [return-value](return-value.md): 関数が返さない値を持つ `return`、または値が必要なのに値のない `return`。
 - [row-without-key](row-without-key.md): 変わるデータをたどる、`key` のないビューの `for`。
 - [spawn-captures-state](spawn-captures-state.md): 状態や値でないものを読み書きする `spawn`。
+- [special-method](special-method.md): 言語が呼ぶメソッド（equals、hash、description、toJSON、fromJSON）が、言語の呼べないシグネチャーになっている。
 - [statement-in-view](statement-in-view.md): コンポーネントのビューのあいだにある文。
 - [syntax-error](syntax-error.md): パーサーがここで別のものを期待している。
 - [test-parameter](test-parameter.md): asuka test が生成できない型のテストのパラメーター。

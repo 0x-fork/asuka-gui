@@ -35,7 +35,9 @@ import (
 // files, @platform; "": target.Default), to a module, and
 // says what its program uses (nil: not known: Uses checks it then); its
 // diagnostics are "file:line:col: message". An error with no diagnostics
-// is one that isn't the source's (a file that can't be read). It's
+// is one that isn't the source's (a file that can't be read). With
+// tests, it's a test build: the package's test files (name_test.asuka)
+// and test blocks are part of it; without, they aren't. It's
 // lang/compile; tests replace it.
 var Compile = compileDir
 
@@ -54,8 +56,8 @@ var DevNoOptimize bool
 // catalogs' missing translations), "file:line:col: warning: message".
 var Warnings io.Writer = os.Stderr
 
-func compileDir(dir string, deps map[string]string, platform target.Platform) (*bytecode.Module, *Uses, []check.Diagnostic, error) {
-	m, _, u, diags, err := compileDirWith(dir, platform, false)
+func compileDir(dir string, deps map[string]string, platform target.Platform, tests bool) (*bytecode.Module, *Uses, []check.Diagnostic, error) {
+	m, _, u, diags, err := compileDirWith(dir, platform, false, tests)
 	return m, u, diags, err
 }
 
@@ -66,14 +68,14 @@ func (p *Project) CompileCover(platform target.Platform) (*bytecode.Module, *ir.
 	if p.File != "" {
 		return nil, nil, nil, fmt.Errorf("coverage is a package's: run asuka test in its directory")
 	}
-	m, cover, _, diags, err := compileDirWith(p.Dir, platform.Or(), true)
+	m, cover, _, diags, err := compileDirWith(p.Dir, platform.Or(), true, true)
 	return m, cover, diags, err
 }
 
-func compileDirWith(dir string, platform target.Platform, cover bool) (*bytecode.Module, *ir.Cover, *Uses, []check.Diagnostic, error) {
+func compileDirWith(dir string, platform target.Platform, cover, tests bool) (*bytecode.Module, *ir.Cover, *Uses, []check.Diagnostic, error) {
 	// Imports resolve through the project's asuka.lock (compile.Dir's
 	// own), which Load made ready.
-	res, err := compile.Dir(dir, &compile.Options{Platform: platform, Lang: DevLang, Direction: DevDirection, Project: binRoot(dir), Cover: cover, NoOptimize: DevNoOptimize})
+	res, err := compile.Dir(dir, &compile.Options{Platform: platform, Lang: DevLang, Direction: DevDirection, Project: binRoot(dir), Cover: cover, NoOptimize: DevNoOptimize, NoTests: !tests})
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -120,6 +122,8 @@ type Project struct {
 	// platforms are its compiles, by the platform they're for: a
 	// package's files and @platform's branches are a platform's.
 	platforms map[target.Platform]*forPlatform
+	// tests are its test builds' (CompileTests), likewise.
+	tests map[target.Platform]*forPlatform
 }
 
 // forPlatform is a project's compiles for a platform: uses is what the
@@ -131,16 +135,20 @@ type forPlatform struct {
 	last      *compiled
 }
 
-// on is p's compiles for platform.
+// on is p's builds for platform.
 func (p *Project) on(platform target.Platform) *forPlatform {
+	return forOf(&p.platforms, platform)
+}
+
+func forOf(m *map[target.Platform]*forPlatform, platform target.Platform) *forPlatform {
 	platform = platform.Or()
-	if p.platforms == nil {
-		p.platforms = map[target.Platform]*forPlatform{}
+	if *m == nil {
+		*m = map[target.Platform]*forPlatform{}
 	}
-	f := p.platforms[platform]
+	f := (*m)[platform]
 	if f == nil {
 		f = &forPlatform{}
-		p.platforms[platform] = f
+		(*m)[platform] = f
 	}
 	return f
 }
@@ -201,18 +209,28 @@ func Load(dir string) (*Project, error) {
 	return p, nil
 }
 
-// Compile compiles the project for platform (Compile; "":
-// target.Default), and notes what its program uses there (Uses). A
-// project whose files haven't changed since its last compile for the
-// platform (stamp) isn't compiled again: loading an app and building it
-// is one compile.
+// Compile builds the project for platform (Compile; "":
+// target.Default): no test files, no test blocks. It notes what its
+// program uses there (Uses). A project whose files haven't changed since
+// its last compile for the platform (stamp) isn't compiled again: loading
+// an app and building it is one compile.
 func (p *Project) Compile(platform target.Platform) (*bytecode.Module, []check.Diagnostic, error) {
-	f := p.on(platform)
+	return p.compileFor(p.on(platform), platform, false)
+}
+
+// CompileTests is Compile's test build: the package's test files
+// (name_test.asuka) and its test and bench blocks are part of it (asuka
+// test's, asuka run's of what isn't a program).
+func (p *Project) CompileTests(platform target.Platform) (*bytecode.Module, []check.Diagnostic, error) {
+	return p.compileFor(forOf(&p.tests, platform), platform, true)
+}
+
+func (p *Project) compileFor(f *forPlatform, platform target.Platform, tests bool) (*bytecode.Module, []check.Diagnostic, error) {
 	stamp := p.stamp()
 	if l := f.last; l != nil && l.stamp == stamp {
 		return l.m, l.diags, l.err
 	}
-	m, u, diags, err := p.compile(platform.Or())
+	m, u, diags, err := p.compile(platform.Or(), tests)
 	if u != nil {
 		f.uses, f.usesStamp = u, stamp
 	}
@@ -224,6 +242,9 @@ func (p *Project) Compile(platform target.Platform) (*bytecode.Module, []check.D
 // for a save, which a file's time may not tell from the last).
 func (p *Project) Forget() {
 	for _, f := range p.platforms {
+		f.last = nil
+	}
+	for _, f := range p.tests {
 		f.last = nil
 	}
 }
@@ -273,7 +294,7 @@ func (p *Project) stamp() string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func (p *Project) compile(platform target.Platform) (*bytecode.Module, *Uses, []check.Diagnostic, error) {
+func (p *Project) compile(platform target.Platform, tests bool) (*bytecode.Module, *Uses, []check.Diagnostic, error) {
 	if p.File != "" {
 		// One file: a directory of its own, so that what's beside it
 		// isn't compiled with it.
@@ -289,7 +310,7 @@ func (p *Project) compile(platform target.Platform) (*bytecode.Module, *Uses, []
 		if err := os.WriteFile(filepath.Join(tmp, filepath.Base(p.File)), b, 0o644); err != nil {
 			return nil, nil, nil, err
 		}
-		m, u, diags, err := Compile(tmp, p.Deps, platform)
+		m, u, diags, err := Compile(tmp, p.Deps, platform, tests)
 		copied := filepath.Join(tmp, filepath.Base(p.File))
 		if m != nil {
 			// Where a function is, as an error's trace says it: the file,
@@ -315,7 +336,7 @@ func (p *Project) compile(platform target.Platform) (*bytecode.Module, *Uses, []
 		}
 		return m, u, diags, err
 	}
-	return Compile(p.Dir, p.Deps, platform)
+	return Compile(p.Dir, p.Deps, platform, tests)
 }
 
 // WatchRoots are the directories whose .asuka files make the app: its
@@ -449,7 +470,7 @@ func (p *Project) check(platform target.Platform) *Uses {
 		}
 		dir = tmp
 	}
-	res, err := compile.Dir(dir, &compile.Options{Platform: platform, CheckOnly: true, NoCatalogs: true})
+	res, err := compile.Dir(dir, &compile.Options{Platform: platform, CheckOnly: true, NoCatalogs: true, NoTests: true})
 	if err != nil || res.Program == nil {
 		return u
 	}

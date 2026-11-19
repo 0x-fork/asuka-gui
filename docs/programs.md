@@ -74,7 +74,10 @@ The program runs as follows:
   a hangup 129). A second Ctrl-C ends it at once, as one ends a `main`
   that isn't async, since code that doesn't await can't be cancelled.
   `os.signals()` hands them to the program instead ([Signals](#signals)).
-- `print` writes a line to stdout; `os.eprint` to stderr.
+- `print(a, b)` writes a line to stdout, its values separated by spaces;
+  `eprint` writes one to stderr. Both take `separator:` and
+  `terminator:` (`print("…", terminator: "")` ends without a line
+  ending).
 
 ## The process: std/os
 
@@ -89,7 +92,6 @@ The program runs as follows:
 | `os.readLine()` | a line of stdin without its line ending, `none` at its end; it waits for the line |
 | `os.readAll()` | the rest of stdin, as `bytes` |
 | `os.lines()` | stdin's lines as they come (a `Stream<string>`), read on another thread: the program goes on meanwhile |
-| `os.eprint(text)` | a line on stderr |
 | `os.writeTo(.stdout, text)`, `writeBytesTo` | text or bytes as they are, without a line ending, to `.stdout` or `.stderr` |
 | `os.terminal(.stdout)` | whether a stream is a terminal (a person), not a pipe or a file: colors and prompts only for one |
 | `os.signals(kinds)` | the signals of kinds as they come (a `Stream<os.Signal>`: `.interrupt`, `.term`, `.hangup`), which then don't end the program |
@@ -112,7 +114,7 @@ import std/os
 async fn main() throws {
   let jobs = ["a", "b", "c"]
   for await s in os.signals() {
-    os.eprint("{s}: finishing {jobs.count()} jobs first")
+    eprint("{s}: finishing {jobs.count()} jobs first")
     break
   }
 }
@@ -133,7 +135,7 @@ async fn main() throws {
   }
   print(total)
   if os.env("DEBUG") != none {
-    os.eprint("summed stdin")
+    eprint("summed stdin")
   }
 }
 ```
@@ -358,7 +360,7 @@ async fn main() throws {
   let name = await term.prompt("Project name:", default: "demo") ?? "demo"
   let target = try fs.abs(o.dir ?? name)
   if fs.exists(target) && !(await term.confirm("{target} exists. Overwrite?")) {
-    os.eprint("{term.red("error:", stream: .stderr)} nothing was made")
+    eprint("{term.red("error:", stream: .stderr)} nothing was made")
     os.exit(1)
   }
   try await spawn { try fs.mkdirAll(target) }
@@ -503,7 +505,7 @@ async fn main() throws {
       os.exit(1)
     }
   }
-  run.info("copied", ["files": "{o.files.count()}"])
+  run.info("copied", ["files": o.files.count()])
 }
 ```
 
@@ -514,9 +516,12 @@ $ backup -v notes.md todo.md
 2026-11-19 10:04:05.125 INFO  copied                                   to=backup files=2
 ```
 
-- **Fields.** A line's fields are a `[string: string]`, and
-  `["port": "{port}"]` puts any value in one as its text. A value with
-  spaces, quotes or `=` is quoted (`path="my notes.md"`). `log.with(fields)`
+- **Fields.** A line's fields are a `[string: json.Value]`: any value
+  JSON can say goes in one as it is (`["port": port, "tls": true,
+  "peer": peer]`; a value converts to a `json.Value` where one is
+  expected), so a JSON line writes a number as a number. As text, a
+  string is its text and anything else its JSON; a value with spaces,
+  quotes or `=` is quoted (`path="my notes.md"`). `log.with(fields)`
   is a `Logger` whose lines all carry them, and its `with` adds more; a
   line's own field of the same name replaces the logger's.
 - **Levels.** Lines below the least level aren't written. It's info,
@@ -530,7 +535,7 @@ $ backup -v notes.md todo.md
   colored, as `std/term` decides for stderr (`NO_COLOR`, `FORCE_COLOR`,
   `term.setColors`). `log.setFormat(.json)` writes a JSON object a line,
   as Go's `log/slog` does:
-  `{"time":"2026-11-19T10:04:05.125+08:00","level":"INFO","msg":"copied","to":"backup","files":"2"}`;
+  `{"time":"2026-11-19T10:04:05.125+08:00","level":"INFO","msg":"copied","to":"backup","files":2}`;
   `time: false` leaves the time out, for a service whose logs journald
   or a container's runtime stamps already.
 - **Where they go.** A program's lines go to stderr, so stdout stays its
@@ -655,7 +660,7 @@ async fn main() throws {
     print("{entries.count()} entries")
     try await spawn { try archive.extract(a[1], to: a[2], limit: 8 << 30) }
   } else {
-    os.eprint("usage: pack DIR OUT.zip | unpack ARCHIVE DIR")
+    eprint("usage: pack DIR OUT.zip | unpack ARCHIVE DIR")
     os.exit(2)
   }
 }

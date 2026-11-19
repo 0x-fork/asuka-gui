@@ -458,7 +458,7 @@ fn eventsOf(lines: Stream<string>) -> Stream<Event> = Stream(send => {
         id = value
       }
     } else if field == "retry" {
-      if !value.isEmpty() && value.chars().all(c => c >= "0" && c <= "9") {
+      if !value.isEmpty() && value.chars().all(c => c >= '0' && c <= '9') {
         if let ms = value.toInt() {
           retry = 1ms * ms
         }

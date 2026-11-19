@@ -62,7 +62,7 @@ func (c *Checker) finalize() {
 				}
 			}
 			for _, g := range x.globals {
-				if g.Kind == StateGlobal || g.Ctx != nil && g.Ctx.readsState {
+				if g.Kind == StateGlobal || g.Kind != VarGlobal && g.Ctx != nil && g.Ctx.readsState {
 					x.readsState = true
 				}
 			}
@@ -100,7 +100,8 @@ func (c *Checker) finalize() {
 			}
 		}
 	}
-	c.workerCalls()
+	vars := touchesVars(ctxs)
+	c.workerCalls(vars)
 	c.checkEffectWrites()
 	c.checkCleanupReads()
 	c.checkKeys()
@@ -109,9 +110,49 @@ func (c *Checker) finalize() {
 		for _, f := range append(s.calls, s.peekCalls...) {
 			if f.Ctx != nil && touches[f.Ctx] {
 				c.errorf(s.Node, diag.SpawnCapturesState, "spawn calls %s, which reads state: spawn runs on another thread; read the state first and pass its value", f.name)
+			} else if f.Ctx != nil && vars[f.Ctx] != nil {
+				c.errorf(s.Node, diag.SpawnCapturesState, "spawn calls %s, which uses %s, a file's var: the main thread's, and spawn runs on another thread; read it first and pass its value", f.name, vars[f.Ctx].name)
 			}
 		}
 	}
+}
+
+// touchesVars is which contexts use a file's var (VarGlobal), themselves,
+// through a closure they make, or through what they call: the var each
+// reaches first. Spawn and workers can't call those.
+func touchesVars(ctxs []*FuncCtx) map[*FuncCtx]*Global {
+	t := map[*FuncCtx]*Global{}
+	for _, x := range ctxs {
+		for _, g := range append(x.globals, x.peekGlobals...) {
+			if g.Kind == VarGlobal {
+				t[x] = g
+				break
+			}
+		}
+	}
+	for changed := true; changed; {
+		changed = false
+		for _, x := range ctxs {
+			g := t[x]
+			if g == nil {
+				for _, f := range append(x.calls, x.peekCalls...) {
+					if f.Ctx != nil && t[f.Ctx] != nil {
+						g = t[f.Ctx]
+						break
+					}
+				}
+				if g != nil {
+					t[x] = g
+					changed = true
+				}
+			}
+			if p := x.Parent; g != nil && p != nil && t[p] == nil && x.IsClosure() {
+				t[p] = g
+				changed = true
+			}
+		}
+	}
+	return t
 }
 
 // touchesState is which contexts read state, followed or under peek,
@@ -217,7 +258,7 @@ func (c *Checker) reactive(e syntax.Expr) bool {
 					}
 				}
 			case *Global:
-				if o.Kind == StateGlobal || o.Kind == MemoGlobal || o.Ctx != nil && o.Ctx.readsState {
+				if o.Kind == StateGlobal || o.Kind == MemoGlobal || o.Kind != VarGlobal && o.Ctx != nil && o.Ctx.readsState {
 					found = true
 				}
 			case *Var:
@@ -235,7 +276,7 @@ func (c *Checker) reactive(e syntax.Expr) bool {
 						found = true // a view's interaction state
 					}
 				case SelPkg:
-					if g, ok := sel.Obj.(*Global); ok && (g.Kind != ConstGlobal || g.Ctx != nil && g.Ctx.readsState) {
+					if g, ok := sel.Obj.(*Global); ok && (g.Kind == StateGlobal || g.Kind == MemoGlobal || g.Kind == ConstGlobal && g.Ctx != nil && g.Ctx.readsState) {
 						found = true
 					}
 				}

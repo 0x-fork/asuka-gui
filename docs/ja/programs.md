@@ -50,7 +50,7 @@ async fn main() throws {
 
 - `os.exit(code)` はその場で `code` を終了コードとして終了します。stdout と stderr はフラッシュされますが、`defer` やほかの task は実行されません。
 - Ctrl-C は、非同期の `main` を、`main` 自身が終わるときと同じくキャンセルとして終わらせます。まずその `defer` が、続いてほかのすべての task のものが実行され、終了コードは 130 です（128 とシグナルの番号。`kill` が既定で送る終了シグナルは 143、ハングアップは 129）。もう一度 Ctrl-C を押すとその場で終了します。非同期でない `main` も同じくその場で終了します。await しないコードはキャンセルできないためです。`os.signals()` を使うと、シグナルをプログラム自身で扱えます（[シグナル](#シグナル)を参照）。
-- `print` は stdout に 1 行書き、`os.eprint` は stderr に書きます。
+- `print(a, b)` は値をスペースで区切って stdout に 1 行書き、`eprint` は stderr に書きます。どちらも `separator:` と `terminator:` を取ります（`print("…", terminator: "")` は改行せずに終わります）。
 
 ## プロセス：std/os
 
@@ -65,7 +65,6 @@ async fn main() throws {
 | `os.readLine()` | stdin から行末を除いた 1 行。終わりに達すると `none`。行が来るまで待つ |
 | `os.readAll()` | stdin の残り全部（`bytes`） |
 | `os.lines()` | 届いた順の stdin の行（`Stream<string>`）。別のスレッドで読むので、そのあいだもプログラムは進む |
-| `os.eprint(text)` | stderr に 1 行書く |
 | `os.writeTo(.stdout, text)`、`writeBytesTo` | テキストやバイト列を、行末を付けずにそのまま `.stdout` か `.stderr` に書く |
 | `os.terminal(.stdout)` | ストリームがパイプやファイルではなく端末（人が見ている）かどうか。色やプロンプトは端末のときだけ出す |
 | `os.signals(kinds)` | 指定した種類のシグナルを届いた順に返す（`Stream<os.Signal>`：`.interrupt`、`.term`、`.hangup`）。読まれている種類ではプログラムは終了しない |
@@ -84,7 +83,7 @@ import std/os
 async fn main() throws {
   let jobs = ["a", "b", "c"]
   for await s in os.signals() {
-    os.eprint("{s}: finishing {jobs.count()} jobs first")
+    eprint("{s}: finishing {jobs.count()} jobs first")
     break
   }
 }
@@ -102,7 +101,7 @@ async fn main() throws {
   }
   print(total)
   if os.env("DEBUG") != none {
-    os.eprint("summed stdin")
+    eprint("summed stdin")
   }
 }
 ```
@@ -277,7 +276,7 @@ async fn main() throws {
   let name = await term.prompt("Project name:", default: "demo") ?? "demo"
   let target = try fs.abs(o.dir ?? name)
   if fs.exists(target) && !(await term.confirm("{target} exists. Overwrite?")) {
-    os.eprint("{term.red("error:", stream: .stderr)} nothing was made")
+    eprint("{term.red("error:", stream: .stderr)} nothing was made")
     os.exit(1)
   }
   try await spawn { try fs.mkdirAll(target) }
@@ -370,7 +369,7 @@ async fn main() throws {
       os.exit(1)
     }
   }
-  run.info("copied", ["files": "{o.files.count()}"])
+  run.info("copied", ["files": o.files.count()])
 }
 ```
 
@@ -381,9 +380,9 @@ $ backup -v notes.md todo.md
 2026-11-19 10:04:05.125 INFO  copied                                   to=backup files=2
 ```
 
-- **フィールド。** 1 行のフィールドは `[string: string]` で、`["port": "{port}"]` のように書けばどんな値もテキストとして入れられます。空白、引用符、`=` を含む値は引用符で囲まれます（`path="my notes.md"`）。`log.with(fields)` は、書くすべての行にそれらのフィールドが付く `Logger` を返し、その `with` でさらに追加できます。行自身のフィールドが logger のフィールドと同じ名前なら、行のほうが優先されます。
+- **フィールド。** 1 行のフィールドは `[string: json.Value]` で、JSON で表せる値ならそのまま入れられます（`["port": port, "tls": true, "peer": peer]`。`json.Value` が求められるところでは、値は自動でそれに変換されます）。そのため JSON の行では数値が数値として書かれます。テキストでは、文字列はそのテキスト、それ以外は JSON になり、空白、引用符、`=` を含む値は引用符で囲まれます（`path="my notes.md"`）。`log.with(fields)` は、書くすべての行にそれらのフィールドが付く `Logger` を返し、その `with` でさらに追加できます。行自身のフィールドが logger のフィールドと同じ名前なら、行のほうが優先されます。
 - **レベル。** 最低レベルより下の行は書かれません。最低レベルは info ですが、`ASUKA_LOG` で変えられます（`debug`、`info`、`warn`、`error`、`off`。Rust の `RUST_LOG` と同じ）。プログラムが `log.setLevel(.debug)` で指定することもでき、その場合はプログラムの指定が優先されます。上のプログラムが `-v` のときだけ設定しているのはそのためです。書かれない行のコストは判定 1 回だけですが、フィールドはほかの関数呼び出しの引数と同じく先に計算されます。作るのに手間がかかるフィールドは `if log.enabled(.debug) { … }` で囲みます。
-- **形式。** 端末では、時刻（ローカル時刻）が薄く、レベルが色付きで表示されます。色を付けるかどうかは `std/term` が stderr について判断したとおりです（`NO_COLOR`、`FORCE_COLOR`、`term.setColors`）。`log.setFormat(.json)` にすると、Go の `log/slog` と同じく 1 行に 1 つの JSON オブジェクトを書きます：`{"time":"2026-11-19T10:04:05.125+08:00","level":"INFO","msg":"copied","to":"backup","files":"2"}`。`time: false` にすると時刻を書きません。journald やコンテナのランタイムがすでにタイムスタンプを付けるサービス向けです。
+- **形式。** 端末では、時刻（ローカル時刻）が薄く、レベルが色付きで表示されます。色を付けるかどうかは `std/term` が stderr について判断したとおりです（`NO_COLOR`、`FORCE_COLOR`、`term.setColors`）。`log.setFormat(.json)` にすると、Go の `log/slog` と同じく 1 行に 1 つの JSON オブジェクトを書きます：`{"time":"2026-11-19T10:04:05.125+08:00","level":"INFO","msg":"copied","to":"backup","files":2}`。`time: false` にすると時刻を書きません。journald やコンテナのランタイムがすでにタイムスタンプを付けるサービス向けです。
 - **書き込み先。** プログラムの行は stderr に書かれるので、stdout はプログラムの出力のままです（`backup | tee list`）。アプリの行は、各プラットフォームの開発者がふだん見る場所に書かれます。iOS と macOS では統合ログ（Xcode のコンソール、コンソール App）、Android では logcat、Web ではブラウザのコンソール（レベルに応じて `console.debug` から `console.error`）、Windows ではデバッガの出力です。Linux では stderr に書かれ、デスクトップのアプリを端末から起動したときも stderr です。`asuka dev` は自分の端末にもそれらを表示します。
 
 テストでは、これらの行は `o.stderr()` で確認でき、時刻はテストの時計のもの（`2026-01-01 00:00:00.000` から）です。テストの中で `ASUKA_LOG` を設定できるのは `os.fake(env:)` だけです。
@@ -466,7 +465,7 @@ async fn main() throws {
     print("{entries.count()} entries")
     try await spawn { try archive.extract(a[1], to: a[2], limit: 8 << 30) }
   } else {
-    os.eprint("usage: pack DIR OUT.zip | unpack ARCHIVE DIR")
+    eprint("usage: pack DIR OUT.zip | unpack ARCHIVE DIR")
     os.exit(2)
   }
 }

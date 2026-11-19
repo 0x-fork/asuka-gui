@@ -1164,12 +1164,12 @@ struct Renderer {
       }
       .val(.string(s)) => {
         for ch in s.chars() {
-          pairs.push((V.val(.null), V.val(.string(ch))))
+          pairs.push((V.val(.null), V.val(.string("{ch}"))))
         }
       }
       .safe(s) => {
         for ch in s.chars() {
-          pairs.push((V.val(.null), V.val(.string(ch))))
+          pairs.push((V.val(.null), V.val(.string("{ch}"))))
         }
       }
       .val(.null) => {}
@@ -1892,9 +1892,9 @@ fn stripTags(s: string) -> string {
   var out = ""
   var inTag = false
   for c in s.chars() {
-    if c == "<" {
+    if c == '<' {
       inTag = true
-    } else if c == ">" && inTag {
+    } else if c == '>' && inTag {
       inTag = false
     } else if !inTag {
       out += c

@@ -7,6 +7,7 @@
 | `float` | 64 ビット浮動小数点数：`3.14`、`1e-3` |
 | `bool` | `true`、`false` |
 | `string` | UTF-8 のテキスト：`"Hello, {name}"` |
+| `char` | 1 つの Unicode コードポイント（スカラー値）：`'a'`、`'\n'`、`'\u{1F600}'` |
 | `bytes` | 生のバイト列 |
 | `[T]` | 配列：`[1, 2, 3]`、`[]` |
 | `[K: V]` | マップ（挿入した順に保持）：`["a": 1]`、`[:]` |
@@ -18,7 +19,7 @@
 | `Length` | `100`（ポイント）、`50%`、`.auto` |
 | `fn(A) -> B` | 関数とクロージャ |
 
-文字列の波括弧の中には、任意の式を書けます（`"{count} items"`、`"Total: {price * qty}"`）。`\{` は波括弧そのものを表します。`r"…"` はエスケープも埋め込みもない raw 文字列です。`"` を含む raw 文字列は `r#"…"#` と書きます。これは、開始時と同じ数の `#` が続く `"` で終わります（`r#"say "hi""#`、`r##"a "# b"##`）。`"""…"""` は複数行にまたがる文字列で（1 行目が空ならその行は含まれず、閉じ引用符の行のインデントも取り除かれます）、中の `"` や `""` はそのまま書けます。`r"""…"""` は複数行の raw 文字列です。数値、ブール値、文字列以外の値は、テキストとして表示すると次のようになります。列挙型のケースはその名前、オプショナルは `none` か中の値、エラーはそのメッセージ、色は書いたとおり（`#0a84ff`、`.accent`）、`Duration` はミリ秒（`1500ms`）、それ以外は JSON です。JSON で表せないものも同じように書き出されます。タプルは要素を括弧で囲んだ形になり、各要素は配列の要素と同じように書かれます（`(1,"a","red")`）。キーが文字列でないマップは、各キーをそれ自身の書き方で書きます（`{1:"a"}`）。関数はテキストにならないので、その型になります（`<fn(int) -> int>`）。
+文字列の波括弧の中には、任意の式を書けます（`"{count} items"`、`"Total: {price * qty}"`）。`\{` は波括弧そのものを表します。`r"…"` はエスケープも埋め込みもない raw 文字列です。`"` を含む raw 文字列は `r#"…"#` と書きます。これは、開始時と同じ数の `#` が続く `"` で終わります（`r#"say "hi""#`、`r##"a "# b"##`）。`"""…"""` は複数行にまたがる文字列で（1 行目が空ならその行は含まれず、閉じ引用符の行のインデントも取り除かれます）、中の `"` や `""` はそのまま書けます。`r"""…"""` は複数行の raw 文字列です。数値、ブール値、文字列以外の値は、テキストとして表示すると次のようになります。型が自分の `description()` を持てばそれ（[宣言](declarations.md#等しさハッシュテキストjson)）、列挙型のケースはその名前、オプショナルは `none` か中の値、エラーはそのメッセージ、色は書いたとおり（`#0a84ff`、`.accent`）、`Duration` はミリ秒（`1500ms`）、それ以外は JSON です。JSON で表せないものも同じように書き出されます。タプルは要素を括弧で囲んだ形になり、各要素は配列の要素と同じように書かれます（`(1,"a","red")`）。キーが文字列でないマップは、各キーをそれ自身の書き方で書きます（`{1:"a"}`）。関数はテキストにならないので、その型になります（`<fn(int) -> int>`）。
 
 補間では、Python や Rust と同じように、コロンの後ろに書き方を指定できます：`"{price:>8.2f}"`。書式は `[[fill]align][sign][#][0][width][,|_][.precision][type]` です。`<`、`>`、`^` は幅の中で左揃え、右揃え、中央揃えにし、その前に埋め文字を書けます（省略すると空白）。`+` は正の数にも符号を付け、`0` は符号の後ろを 0 で埋めます。`,` か `_` は整数（と浮動小数点数の整数部）の桁を区切ります。`.2` は浮動小数点数の小数点以下の桁数で、テキストでは残す最大の文字数です。型は、整数を 16 進、8 進、2 進で書く `x`、`X`、`o`、`b`（`#` を付けると前に `0x`、`0o`、`0b` を書きます）か、数値を固定小数点、指数、パーセントで書く `f`、`e`、`%` です。数値は右揃え、それ以外の値はテキストとして左揃えになり、埋め文字、揃え、幅、精度だけを指定できます。書式はコンパイラーが読むので、値に合わない書式は書いた場所でエラーになります（[format-spec](../errors/format-spec.md)）。
 
@@ -32,6 +33,8 @@ let table = row("asuka", 12500, 0.4) // asuka     12,500   40.0%
 ```
 
 幅は文字（コードポイント）の数で数え、ターミナルでの表示幅ではありません。ターミナルの桁数で数えるには（漢字・かな・ハングルや絵文字は 2 桁）、`std/term` の `textWidth`、`padEnd`、`fit` を使います（[プログラム](../programs.md#揃った表)を参照）。
+
+`print(a, b, c)` は、値を補間と同じ見た目で、スペースで区切って標準出力（アプリのログ）に 1 行書きます。`eprint` は標準エラーに書きます。Swift の `print` と同じく、値のあとに `separator:`（値のあいだに書くもの）と `terminator:`（最後に書くもの。指定しなければ改行）を渡せます：`print(x, y, separator: ", ")`、`print("Saving…", terminator: "")`。
 
 タプルの要素は位置で読めます（`pair.0`、`pair.1`）。`var` のタプルなら、その場で変更もできます（`pair.0 += 1`）。タプルにない位置（2 要素のタプルの `pair.2`）はコンパイルエラーです。分解して読むこともできます：`let (count, label) = pair`、`for (i, x) in xs.enumerated()`、あるいは `match` のタプルパターン（[制御フロー](control-flow.md#制御フロー)を参照）。
 
@@ -152,7 +155,7 @@ fn conversions(n: int, level: u8, ratio: float) -> [u8] {
 | `[T]` | `count()`、`count(where)`、`isEmpty()`、`first()`、`last()`、`get(i)`（`T?` を返す）、`push(x)`、`pushFirst(x)`、`insert(x, at: i)`、`removeAt(i)`、`removeWhere(p)`、`pop()`、`popFirst()`、`clear()`、`map(f)`、`flatMap(f)`（`f` が返す配列を順につなげる）、`compactMap(f)`（`f` の結果から none を除く）、`filter(p)`、`reduce(initial, f)`、`any(p)`、`all(p)`、`index(p)`（`int?` を返す）、`find(p)`、`contains(x)`、`sum()`、`min()`、`max()`（`T?` を返す。`min(by:)`、`max(by:)` は「より小さい」の比較を、`min(key:)`、`max(key:)` はキーを取る）、`unique()`、`grouped(by: f)`（`[K: [T]]` を返す）、`chunked(n)`、`zip(other)`（短いほうの長さまでペアにする）、`reversed()`、`slice(from, to)`（`to` を省くと末尾まで）、`prefix(n)`、`suffix(n)`、`sorted()`、`sorted(by)`、`sorted(key:, descending:)`、`sort()`、`sort(by)`、`sort(key:, descending:)`、`enumerated()`、`joined(separator:)`（文字列の配列）、`lazy()`（`Seq<T>` を返す）、`+` |
 | `Set<T>` | `count()`、`isEmpty()`、`contains(x)`、`insert(x)`（新しく加わったかを返す）、`remove(x)`（あったかを返す）、`union(s)`、`intersection(s)`、`subtracting(s)`、`isSubset(of: s)`、`isSuperset(of: s)`、`lazy()`。`Set(xs)` は配列の重複しない要素、`Set<T>()` は空のセット |
 | `[K: V]` | `m[k]`（`V?` を返す）、`m[k] = v`、`count()`、`isEmpty()`、`has(k)`、`get(k)`、`remove(k)`、`keys()`、`values()`（挿入した順）、`mapValues(f)`、`filter((k, v) => …)`、`lazy()`（`(key, value)` の組） |
-| `string` | `count()`（文字数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s, ignoreCase:)`、`hasPrefix(s, ignoreCase:)`、`hasSuffix(s, ignoreCase:)`、`equals(s, ignoreCase:)`、`compare(s, ignoreCase:)`（負、ゼロ、正のいずれか）、`foldCase()`、`replace(old, new, count:)`（count を指定しなければすべて置き換え）、`split(sep, count:)`、`fields()`（空白で区切った単語）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（バイト単位の位置。見つからなければ none）、`slice(from, to)`（文字単位）、`byteSlice(from, to)`（バイト単位：find が返す位置）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toInt(radix:)`、`toFloat()`、`repeat(n)`、`chars()`、`graphemes()`、`lazy()`（文字の `Seq<string>`）、`reversed()`、`bytes()`、`+` |
+| `string` | `count()`（文字数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s, ignoreCase:)`、`hasPrefix(s, ignoreCase:)`、`hasSuffix(s, ignoreCase:)`、`equals(s, ignoreCase:)`、`compare(s, ignoreCase:)`（負、ゼロ、正のいずれか）、`foldCase()`、`replace(old, new, count:)`（count を指定しなければすべて置き換え）、`split(sep, count:)`、`fields()`（空白で区切った単語）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（バイト単位の位置。見つからなければ none）、`slice(from, to)`（文字単位）、`byteSlice(from, to)`（バイト単位：find が返す位置）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toInt(radix:)`、`toFloat()`、`repeat(n)`、`chars()`、`graphemes()`、`lazy()`（char の `Seq<char>`）、`reversed()`、`bytes()`、`+` |
 | `bytes` | `b[i]`（0 から 255 の `int`。範囲外はエラー）、`count()`、`isEmpty()`、`get(i)`（`int?` を返す）、`slice(from, to)`、`concat(b)`、`string()`（UTF-8 として読み、不正な部分は U+FFFD になる）、`hex()` と `hex(separator)`（`"04 a1"`）、`toArray()`（`[u8]` を返す）。`bytes()` は空のバイト列、`bytes([0x04, 0xa1])` はそのバイト列、`bytes(xs)` は `[u8]` のバイト列、`s.bytes()` は文字列の UTF-8 |
 | `int`、`i8` … `u64` | `float()`、`abs()`（符号付きの型）、`toString(radix:)`（`255.toString(radix: 16)` は `"ff"`）、`padded(width)`（`7.padded(2)` は `"07"`）、`addingChecked(o)`、`subtractingChecked(o)`、`multipliedChecked(o)`（`int?`、`u8` なら `u8?`：オーバーフローなら none）。`T.min`、`T.max`、`T.parse(text, radix:)`（`T?` を返す） |
 | `float` | `fixed(digits)`、`rounded()`、`floor()`、`ceil()`、`int()`（0 の方向へ切り捨て）、`abs()` |
@@ -226,6 +229,32 @@ fn isMarkdown(path: string) -> bool = path.hasSuffix(".md", ignoreCase: true)
 ```
 
 `count()` と `chars()` はコードポイントを数えます。`graphemes()` は読み手が一文字と感じる単位を返します。Unicode のテキスト分割（UAX #29）に従うので、`"e\u{301}"`、国旗（`"🇯🇵"`）、ZWJ でつないだ家族の絵文字はそれぞれ一つです。
+
+`char` は 1 つのコードポイントで、Rust の char と同じです。`for c in s` がたどり、`s.chars()` が順に返すのがこれです（`e` とアクセントのように複数のコードポイントからなる書記素は文字列で、`graphemes()` が返します）。単一引用符で書き（`'a'`、`'\''`、`'\u{301}'`）、コードポイントで比較・順序づけされ、マップのキーにもなります。出力するとそれ自身になり、JSON では 1 文字の文字列です。`c.isLetter()`、`isDigit()`、`isNumber()`、`isWhitespace()`、`isUpper()`、`isLower()`、`isPunctuation()`、`isSymbol()` は Unicode のカテゴリーを読み、どの文字体系にも使えます（`'٣'.isDigit()`）。`upper()` と `lower()` は結果が 1 つの char になるときに変換します（`'ß'.upper()` は `'ß'` のままで、`"ß".upper()` は `"SS"`）。`code()` はその番号で、`char(n)` は番号 n の char です（n がコードポイントでなければエラー）。`s + c` と `s += c` で文字列に char を足せます。
+
+```asuka check
+fn initials(name: string) -> string {
+  var out = ""
+  var start = true
+  for c in name {
+    if c.isWhitespace() {
+      start = true
+    } else if start {
+      out += c.upper()
+      start = false
+    }
+  }
+  return out
+}
+
+fn digits(s: string) -> int = s.chars().filter(c => c.isDigit()).count()
+
+fn kind(c: char) -> string = match c {
+  'a' | 'e' | 'i' | 'o' | 'u' => "vowel"
+  _ => if c.isLetter() { "letter" } else { "other" }
+}
+```
+
 
 `toInt()` と `toFloat()` は文字列全体を読み、読めなければ none を返します。符号は付けても付けなくてもよく、その後に数字が続き、前後に余計なものがあってはいけません（`" 12"` は none なので、先に `trim()` します）。`toInt()` が読むのは整数（`"+7"`、`"-42"`）だけで、`toFloat()` は小数部と指数（`"2.5"`、`".5"`、`"1e-3"`）、それに浮動小数点数を表示したときの形（`"Infinity"`、`"NaN"`）も読みます。どちらも、ユーザーの言語にかかわらず小数点は `.` です。
 

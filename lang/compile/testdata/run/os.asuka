@@ -7,7 +7,7 @@ fn greet() {
   let name = os.args().first() ?? "world"
   print("Hello, {name}!")
   if let v = os.env("VERBOSE") {
-    os.eprint("verbose: {v}")
+    eprint("verbose: {v}")
   }
 }
 

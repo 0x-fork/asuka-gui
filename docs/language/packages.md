@@ -2,7 +2,8 @@
 
 A source file ends in `.asuka`. A directory of them is a **package**:
 its files see each other's declarations without importing anything.
-`pub` makes a declaration visible to other packages.
+`pub` makes a declaration visible to other packages, and `private` keeps
+one to its file ([What's private](declarations.md#whats-private)).
 
 ```asuka
 import std/http                 // the standard library

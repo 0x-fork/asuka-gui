@@ -42,6 +42,10 @@ func (b *fb) value(e syntax.Expr, dst int) int {
 	if n, ok := inner.(*check.Named); ok && n.Obj.Kind == check.InterfaceType {
 		b.l.implement(check.Unopt(from), n, e)
 	}
+	if n, ok := inner.(*check.Named); ok && check.IsJSONValue(n) && !check.IsJSONValue(check.Unopt(from)) {
+		r := b.jsonValue(e, from, n, -1)
+		return b.toOptional(r, inner, to, dst)
+	}
 	// What's converted when compiling: lengths and edges.
 	if inner == check.Length && from != check.Length {
 		r := b.temp(bc.KInt)
@@ -596,6 +600,10 @@ func (b *fb) basicLit(e *syntax.BasicLit, dst int) int {
 		r := b.out(dst, bc.KInt)
 		b.loadInt(r, v)
 		return r
+	case syntax.CHAR:
+		r := b.out(dst, bc.KInt)
+		b.loadInt(r, int64(check.CharValue(e.Value)))
+		return r
 	}
 	return b.valueReg(-1, bc.KInt)
 }
@@ -741,12 +749,17 @@ func (b *fb) stringPart(x syntax.Expr, spec string) (int, bc.Kind, []byte) {
 
 // describe is the text of v, a t: what interpolation and print show.
 func (b *fb) describe(v int, t check.Type) int {
+	if r, ok := b.ownDescription(v, t); ok {
+		return r
+	}
 	switch t {
 	case check.String:
 		return v
 	case check.Color:
 		// As it's written: #rrggbb, .accent.
 		return b.callB("color.hex", bc.KRef, v)
+	case check.Char:
+		return b.callB("char.string", bc.KRef, v) // its one code point
 	case check.Int, check.Float, check.Bool, check.Length, check.I8, check.I16, check.I32, check.U8, check.U16, check.U32:
 		r := b.temp(bc.KRef)
 		b.emit(op("TOSTR"), r, v, int(b.l.kind(t)))
@@ -1292,6 +1305,11 @@ var intOps = map[syntax.Token]string{
 func (b *fb) binop(o syntax.Token, x, y int, xt, yt, res check.Type, dst int) int {
 	switch o {
 	case syntax.EQL, syntax.NEQ:
+		if check.Identical(xt, yt) {
+			if r, ok := b.ownEquals(x, y, xt, o == syntax.NEQ, dst); ok {
+				return r
+			}
+		}
 		r := b.out(dst, bc.KBool)
 		if xt == check.NoneType || yt == check.NoneType {
 			v := x
@@ -1366,6 +1384,12 @@ func (b *fb) binop(o syntax.Token, x, y int, xt, yt, res check.Type, dst int) in
 	k := b.l.kind(res)
 	switch {
 	case res == check.String:
+		if xt == check.Char {
+			x = b.describe(x, xt) // its one code point
+		}
+		if yt == check.Char {
+			y = b.describe(y, yt)
+		}
 		r := b.out(dst, bc.KRef)
 		b.emit(op("CONCAT"), r, x, y)
 		return r

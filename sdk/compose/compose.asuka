@@ -82,11 +82,11 @@ let hexDigits = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C"
 pub fn escape(s: string) -> string {
   var out = ""
   for ch in s.chars() {
-    if unreserved.contains(ch) && ch != "&" && ch != "=" && ch != "%" {
+    if unreserved.contains("{ch}") && ch != '&' && ch != '=' && ch != '%' {
       out = out + ch
       continue
     }
-    let b = ch.bytes()
+    let b = "{ch}".bytes()
     var i = 0
     while i < b.count() {
       let v = b.get(i) ?? 0
@@ -126,7 +126,7 @@ pub fn plainText(html: string) -> string {
   var tag = ""
   for ch in html.chars() {
     if inTag {
-      if ch == ">" {
+      if ch == '>' {
         inTag = false
         let t = tag.lower()
         if t.hasPrefix("br") || t.hasPrefix("/p") || t.hasPrefix("/div") || t.hasPrefix("/li") || t.hasPrefix("/h") {
@@ -135,7 +135,7 @@ pub fn plainText(html: string) -> string {
       } else {
         tag = tag + ch
       }
-    } else if ch == "<" {
+    } else if ch == '<' {
       inTag = true
       tag = ""
     } else {

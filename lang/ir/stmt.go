@@ -458,7 +458,12 @@ func (b *fb) forStmt(s *syntax.ForStmt) {
 		b.loadInt(i, 0)
 	default:
 		seq = b.local(bc.KRef)
-		b.value(fi.Seq, seq)
+		if fi.Chars {
+			// A string's chars: its code points, an [char].
+			b.callBTo("str.codepoints", seq, b.value(fi.Seq, -1))
+		} else {
+			b.value(fi.Seq, seq)
+		}
 		limit = b.local(bc.KInt)
 		b.emit(op("LEN"), limit, seq)
 		b.loadInt(i, 0)
@@ -917,6 +922,7 @@ const (
 	lvIndex
 	lvModel // a prop its component assigns: set whole only (the checker's)
 	lvSome  // inner's value when it isn't none: x?.f's x (places.go)
+	lvGlobal // a file's var: its global's slot in cell
 )
 
 // prepare computes an lvalue's indexes and store values, before any
@@ -943,6 +949,9 @@ func (b *fb) prepare(x syntax.Expr) *lvalue {
 			}
 			return &lvalue{x: x, kind: lvCell, cell: b.memberRef(o, x), m: o}
 		case *check.Global:
+			if o.Kind == check.VarGlobal {
+				return &lvalue{x: x, kind: lvGlobal, cell: b.l.global(o), g: o}
+			}
 			return &lvalue{x: x, kind: lvCell, cell: b.globalCell(o), g: o}
 		}
 		if lv := b.selfPlace(x); lv != nil {
@@ -958,6 +967,9 @@ func (b *fb) prepare(x syntax.Expr) *lvalue {
 		sel := b.l.info.Selections[x]
 		if sel != nil && sel.Kind == check.SelPkg {
 			if g, ok := sel.Obj.(*check.Global); ok {
+				if g.Kind == check.VarGlobal {
+					return &lvalue{x: x, kind: lvGlobal, cell: b.l.global(g), g: g}
+				}
 				return &lvalue{x: x, kind: lvCell, cell: b.globalCell(g), g: g}
 			}
 		}
@@ -1026,6 +1038,8 @@ func (b *fb) updatePut(lv *lvalue, reads bool, fn func(cur int), p *put) {
 		b.emit(op("VTAKE"), cur, box)
 		b.protect(func() { fn(cur) }, func(int) { b.emit(op("VSET"), box, cur) })
 		b.emit(op("VSET"), box, cur)
+	case lvGlobal:
+		b.updateGlobal(lv, reads, fn)
 	case lvCell:
 		k := b.cellKind(lv)
 		cur := b.temp(k)
@@ -1111,6 +1125,8 @@ func (b *fb) set(lv *lvalue, val int) {
 		b.writeVar(lv.v, val, lv.x)
 	case lvCell:
 		b.emit(op("CSET"), lv.cell, val)
+	case lvGlobal:
+		b.emit(op("GSET"), lv.cell, val, int(b.kind(lv.g.Type)))
 	case lvModel:
 		// Bound, the change goes to the caller (its bind writes its state,
 		// which the prop reads); unbound, the value is the component's own,

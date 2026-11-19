@@ -259,6 +259,20 @@ func funcCode(f *syntax.FuncDecl) string {
 	return print(&c)
 }
 
+// privateMember reports whether a type's member is private: its file's,
+// which another package's documentation doesn't show.
+func privateMember(m syntax.Node) bool {
+	switch m := m.(type) {
+	case *syntax.Field:
+		return m.Private.IsValid()
+	case *syntax.LetDecl:
+		return m.Private.IsValid()
+	case *syntax.FuncDecl:
+		return m.Private.IsValid()
+	}
+	return false
+}
+
 // decl is d's documentation, or nil when another package can't use it.
 func decl(d syntax.Decl) *Decl {
 	switch x := d.(type) {
@@ -276,6 +290,9 @@ func decl(d syntax.Decl) *Decl {
 		out := &Decl{Kind: Struct, Name: x.Name.Name, Doc: x.Doc()}
 		c.Members = nil
 		for _, m := range x.Members {
+			if privateMember(m) {
+				continue // its file's: no part of what others use
+			}
 			switch m := m.(type) {
 			case *syntax.Field:
 				f := *m
@@ -305,6 +322,9 @@ func decl(d syntax.Decl) *Decl {
 			c.Cases = append(c.Cases, &k2)
 		}
 		for _, m := range x.Members {
+			if privateMember(m) {
+				continue
+			}
 			switch m := m.(type) {
 			case *syntax.LetDecl:
 				l := *m

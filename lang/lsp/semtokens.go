@@ -158,7 +158,7 @@ func classify(r *ref) (int, int) {
 		if o.Owner != nil {
 			return tokenType("property"), modReadonly
 		}
-		if o.Kind == check.StateGlobal {
+		if o.Kind == check.StateGlobal || o.Kind == check.VarGlobal {
 			return tokenType("variable"), 0
 		}
 		return tokenType("variable"), modReadonly

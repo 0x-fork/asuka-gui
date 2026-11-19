@@ -552,11 +552,11 @@ pub fn glob(pattern: string) throws -> [string] {
   var cut = 0
   var i = 0
   for c in pattern.chars() {
-    if c == "*" || c == "?" || c == "[" || c == "\{" {
+    if c == '*' || c == '?' || c == '[' || c == '{' {
       break
     }
-    i += c.byteCount()
-    if c == "/" || (@platform == .windows && c == "\\") {
+    i += "{c}".byteCount()
+    if c == '/' || (@platform == .windows && c == '\\') {
       cut = i
     }
   }

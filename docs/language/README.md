@@ -34,7 +34,7 @@ These pages cover the whole language, a topic each. For a first look, read [A to
 
 - [Files, packages and imports](packages.md): files, packages and imports; files for one platform; apps, programs and libraries
 - [Values and types](types.md): values and types, operators, built-in methods, value semantics
-- [Declarations](declarations.md): let, var, state and the rest; structs and enums
+- [Declarations](declarations.md): let, var, state and the rest; structs and enums; what's private
 - [Functions and closures](functions.md): functions and closures; interfaces and generics
 - [Control flow](control-flow.md): if, match, loops and patterns; code for one platform (@platform)
 - [Components](components.md): components: their bodies, handlers, two-way bindings, lists of views, effects and tasks

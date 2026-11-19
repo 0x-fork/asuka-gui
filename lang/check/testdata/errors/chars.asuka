@@ -1,0 +1,9 @@
+fn f(s: string) {
+  let c = 'a'
+  let x = c == "a" // ERROR "can't compare a char with a string"
+  let y = c + 1 // ERROR "char"
+  let n: int = c // ERROR "is a char, not an int"
+  for i in 10 {} // ERROR "its range, 0..<n"
+  for ch in s { print(ch.isLetter(), ch.code()) }
+  print(x, y, n, char(65), s + c, c < 'b')
+}

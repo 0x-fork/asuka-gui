@@ -12,6 +12,7 @@ import (
 
 	"github.com/egoist/asuka/internal/appbuild"
 	"github.com/egoist/asuka/lang/bytecode"
+	"github.com/egoist/asuka/lang/check"
 	"github.com/egoist/asuka/lang/diag"
 	"github.com/egoist/asuka/lang/ir"
 	"github.com/egoist/asuka/lang/target"
@@ -138,7 +139,7 @@ func cmdTest(args []string) error {
 			// fuzzer an input reached new code.
 			m, cov, err = compileCover(t, langPlatform(platform))
 		} else {
-			m, err = compileProject(t, langPlatform(platform))
+			m, err = compileTests(t, langPlatform(platform))
 		}
 		if err != nil {
 			return err
@@ -227,10 +228,21 @@ func cwdOr(dir string) string {
 	return dir
 }
 
-// compileProject compiles p for platform, printing its diagnostics
-// relative to the working directory.
+// compileProject builds p for platform (no tests), printing its
+// diagnostics relative to the working directory.
 func compileProject(p *appbuild.Project, platform target.Platform) (*bytecode.Module, error) {
 	m, diags, err := p.Compile(platform)
+	return reportCompile(p, m, diags, err)
+}
+
+// compileTests is compileProject's test build: its test files and test
+// blocks are part of it.
+func compileTests(p *appbuild.Project, platform target.Platform) (*bytecode.Module, error) {
+	m, diags, err := p.CompileTests(platform)
+	return reportCompile(p, m, diags, err)
+}
+
+func reportCompile(p *appbuild.Project, m *bytecode.Module, diags []check.Diagnostic, err error) (*bytecode.Module, error) {
 	base := cwdOr(p.Dir)
 	for _, d := range diags {
 		d = relDiag(base, d)
@@ -311,6 +323,10 @@ func cmdRun(args []string) error {
 			return exitCode(code)
 		}
 		return nil
+	}
+	// Not a program: its tests, then its app, from a test build.
+	if m, err = compileTests(p, target.Default); err != nil {
+		return err
 	}
 	if len(m.Tests) == 0 && m.App < 0 {
 		return errors.New("nothing to run: no fn main, no test blocks, and no app block")

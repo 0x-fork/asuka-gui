@@ -6,20 +6,28 @@
 
 ## 理由
 
-ファイルの値は変わりません（変わる値は `state`）。型の定数は `let name = value`、コンポーネントの `let` は 1 つの値に名前を付け、既定値はまだ作られていないフィールドを読めません。
+型の定数は `let name = value` で、変わりません。ジェネリックな型の定数はすべての型に共通の 1 つなので、その型に型パラメーターは使えません。コンポーネントの `let` は 1 つの値に名前を付け、既定値はまだ作られていないフィールドを読めません。
 
 ## 直し方
 
-その場所の形で書きます。変わる値は `state x = …`、定数は `let name = value` です。
+その場所の形で書きます。型の定数は `let name = value`、型パラメーターが要るものは `static fn` にします。
 
 ## 誤った例
 
 ```asuka
-var visits = 0
+struct Money {
+  cents: int
+
+  var zero = 0
+}
 ```
 
 ## 正しい例
 
 ```asuka
-state visits = 0
+struct Money {
+  cents: int
+
+  let zero = 0
+}
 ```

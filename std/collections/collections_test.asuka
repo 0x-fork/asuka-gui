@@ -1,3 +1,5 @@
+import std/json
+
 struct Job {
   name: string
   due: int
@@ -29,13 +31,13 @@ test "a heap pops in its order" {
   expect(jobs.pop()!.name == "b" && jobs.sorted().map(j => j.name) == ["c", "a"])
 }
 
-test "a heap of many, and heapOf" {
+test "a heap of many, and Heap.of" {
   var r = Rand(state: 1)
   var xs: [int] = []
   for _ in 0..<20000 { xs.push(r.next(1000000)) }
   var h = Heap<int>(by: (a, b) => a < b)
   for x in xs { h.push(x) }
-  let built = heapOf(xs, by: (a, b) => a < b)
+  let built = Heap.of(xs, by: (a, b) => a < b)
   expect(built.count() == 20000)
   var out: [int] = []
   while let x = h.pop() { out.push(x) }
@@ -158,4 +160,45 @@ test "a sorted set" {
   var sorted: [int] = []
   for x in model { sorted.push(x) }
   expect(many.toArray() == sorted.sorted())
+}
+
+test "Heap.min and Heap.max" {
+  var lo = Heap.min([5, 1, 4])
+  var hi = Heap.max(["b", "c", "a"])
+  let empty = Heap<float>.min()
+  expect(lo.pop() == 1 && hi.pop() == "c" && empty.isEmpty())
+  // A test file sees the package's insides.
+  expect(lo.items.count() == 2)
+}
+
+test "compared, hashed, printed and written by their contents" {
+  let a = Heap.of([3, 1, 2], by: (x, y) => x < y)
+  let b = Heap.max([2, 3, 1])
+  expect(a == b && Set([a, b]).count() == 1 && a != Heap.min([1, 2]))
+  expect("{a}" == "[1,2,3]" && json.encode(b) == "[3,2,1]")
+  let h: Heap<int> = try json.decode("[5, 1, 4]")
+  expect(h.peek() == 1 && h.count() == 3)
+
+  var m = SortedMap<string, int>()
+  m.set("bo", 3)
+  m.set("al", 7)
+  var n = SortedMap<string, int>(by: (x, y) => x > y)
+  n.set("al", 7)
+  n.set("bo", 3)
+  expect(m == n && [m: 1][n] == 1)
+  expect(json.encode(m) == r#"{"al":7,"bo":3}"# && "{m}" == r#"{"al":7,"bo":3}"#)
+  let back: SortedMap<string, int> = try json.decode(r#"{"b": 2, "a": 1}"#)
+  expect(back.first()! == ("a", 1))
+
+  var byInt = SortedMap<int, string>()
+  byInt.set(2, "b")
+  byInt.set(1, "a")
+  expect(json.encode(byInt) == r#"[{"key":1,"value":"a"},{"key":2,"value":"b"}]"#)
+  let again = try json.decode<SortedMap<int, string>>(json.encode(byInt))
+  expect(again == byInt)
+
+  var s = SortedSet<int>()
+  for x in [3, 1, 2] { let _ = s.insert(x) }
+  let t = try json.decode<SortedSet<int>>("[2, 3, 1, 3]")
+  expect(s == t && json.encode(t) == "[1,2,3]" && Set([s, t]).count() == 1)
 }

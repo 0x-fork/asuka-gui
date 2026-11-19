@@ -79,7 +79,7 @@ Every error and warning Asuka reports has a code: a stable name, said in the ter
 - [not-callable](not-callable.md): A call of something that isn't a function.
 - [not-json](not-json.md): A type JSON can't read or write.
 - [not-optional](not-optional.md): An optional's operator on a value that's always there.
-- [not-pub](not-pub.md): A declaration another package (or a store, a worker) keeps to itself.
+- [not-pub](not-pub.md): A declaration another package, another file (private), a store or a worker keeps to itself.
 - [not-sendable](not-sendable.md): A value that can't cross to another thread.
 - [not-supported](not-supported.md): Something the language doesn't do yet.
 - [optimistic-impure](optimistic-impure.md): An optimistic change that reads state, awaits or writes.
@@ -97,6 +97,7 @@ Every error and warning Asuka reports has a code: a stable name, said in the ter
 - [return-value](return-value.md): A `return` with a value the function doesn't give, or without one it does.
 - [row-without-key](row-without-key.md): A `for` in a view over items that change, without a `key`.
 - [spawn-captures-state](spawn-captures-state.md): `spawn` that reads or changes state, or what isn't a value.
+- [special-method](special-method.md): A method the language calls (equals, hash, description, toJSON, fromJSON) with a signature it can't call.
 - [statement-in-view](statement-in-view.md): A statement among a component's views.
 - [syntax-error](syntax-error.md): The parser expected something else here.
 - [test-parameter](test-parameter.md): A test's parameter of a type asuka test can't generate.

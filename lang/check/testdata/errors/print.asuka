@@ -1,0 +1,13 @@
+component V {
+  Text("a")
+}
+
+fn f() {
+  print("a", separator: ", ", "b") // ERROR "values come before separator"
+  print("a", sep: ", ") // ERROR "not sep:"
+  print("a", terminator: "", terminator: "") // ERROR "terminator: is given twice"
+  print("a", separator: 1) // ERROR "separator"
+  eprint(V()) // ERROR "can't be put in a string"
+  print()
+  eprint("x", 1, terminator: "")
+}

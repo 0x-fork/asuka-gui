@@ -8,7 +8,7 @@
 //     let name = os.args().first() ?? "world"
 //     print("Hello, {name}!")
 //     if os.env("DEBUG") != none {
-//       os.eprint("debugging")
+//       eprint("debugging")
 //     }
 //   }
 //
@@ -102,11 +102,6 @@ pub fn writeTo(stream: Stdio, text: string) {
 /// Writes bytes to stdout or stderr.
 pub fn writeBytesTo(stream: Stdio, data: bytes) {
   writeBytes(fd(stream), data)
-}
-
-/// A line on stderr (print's is stdout): what goes wrong, progress.
-pub fn eprint(text: string) {
-  write(2, text + "\n")
 }
 
 native fn isTerminal(fd: int) -> bool
@@ -253,7 +248,7 @@ native fn fakeSignal(kind: int)
 ///   async fn main() throws {
 ///     let server = try await serve()
 ///     for await _ in os.signals() {
-///       os.eprint("shutting down…")
+///       eprint("shutting down…")
 ///       break
 ///     }
 ///     await server.close()
@@ -290,7 +285,7 @@ native async fn runMain(main: async fn() throws) -> int
 pub struct FakeOS {
   /// What main printed as run ran it (print, os.writeTo(.stdout, …)).
   fn stdout() -> string = fakeOutput(1)
-  /// What was written to stderr (os.eprint, an uncaught error's report).
+  /// What was written to stderr (eprint, os.writeTo(.stderr, …), an uncaught error's report).
   fn stderr() -> string = fakeOutput(2)
   /// The code os.exit was called with, none if it wasn't.
   fn exitCode() -> int? {

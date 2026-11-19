@@ -8,6 +8,7 @@
 // A type's name is said without its package's path.
 #include "testing.h"
 #include "vm/vm_int.h"
+#include "rt/unicode.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -23,6 +24,7 @@ ak_kind ak_desc_kind(const char *d) {
 	case 'e':
 	case 'd':
 	case 'c':
+	case 'r':
 		return AK_K_INT;
 	case 'f':
 		return AK_K_FLOAT;
@@ -31,6 +33,18 @@ ak_kind ak_desc_kind(const char *d) {
 	default:
 		return AK_K_REF;
 	}
+}
+
+// own_show writes v's own description, when its type (shape sh) has
+// one: how it says it prints.
+static bool own_show(ak_strb *b, const ak_shape *sh, ak_val v) {
+	if (!ak_shape_has(sh, AK_HOOK_SHOW)) return false;
+	ak_val t = ak_shape_call(sh, AK_HOOK_SHOW, &v, 1);
+	if (t.p) {
+		ak_strb_str(b, t.p);
+		ak_release(t.p);
+	}
+	return true;
 }
 
 const char *ak_desc_end(const char *p) {
@@ -333,6 +347,19 @@ static void show(shower *s, ak_strb *b, ak_val v, const char *d, int indent) {
 		else ak_strb_cstr(b, "\"\"", 2);
 		break;
 	}
+	case 'r': {
+		// A char as it's written: 'a', '\n', '\''.
+		char u[4];
+		size_t k = ak_utf8_encode((uint32_t)v.i, u);
+		ak_strb_cstr(b, "'", 1);
+		if (v.i == '\'' || v.i == '\\') ak_strb_cstr(b, "\\", 1);
+		if (v.i == '\n') ak_strb_cstr(b, "\\n", 2);
+		else if (v.i == '\t') ak_strb_cstr(b, "\\t", 2);
+		else if (v.i == '\r') ak_strb_cstr(b, "\\r", 2);
+		else ak_strb_cstr(b, u, k);
+		ak_strb_cstr(b, "'", 1);
+		break;
+	}
 	case 'y': {
 		ak_bytes *by = v.p;
 		ak_strb_cstr(b, "<bytes", 6);
@@ -416,6 +443,7 @@ static void show(shower *s, ak_strb *b, ak_val v, const char *d, int indent) {
 			ak_strb_cstr(b, "none", 4);
 			break;
 		}
+		if (own_show(b, sh, v)) break;
 		items l = {0};
 		fields(s, &l, o->f, sh->nfields, sh->names, sh, -1, indent);
 		ak_strb open = {0};
@@ -434,6 +462,7 @@ static void show(shower *s, ak_strb *b, ak_val v, const char *d, int indent) {
 			break;
 		}
 		const ak_shape *sh = en->shape;
+		if (own_show(b, sh, v)) break;
 		uint16_t ci = ak_enum_case(en);
 		const ak_case *c = &sh->cases[ci];
 		if (!c->nfields) {

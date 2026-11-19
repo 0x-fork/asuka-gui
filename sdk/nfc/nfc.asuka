@@ -169,7 +169,7 @@ pub struct Tag {
   /// Its NDEF message, read as it was found (none: no NDEF, or skipNDEF).
   message: Message? = none
   ndef: NDEFInfo = NDEFInfo()
-  handle: int = 0
+  private handle: int = 0
 
   /// Reads its NDEF message again.
   async fn read() throws -> Message? {
@@ -228,7 +228,7 @@ pub struct Session {
 
 /// A tag as it crosses: its message encoded.
 struct Found {
-  handle: int = 0
+  private handle: int = 0
   id: bytes = bytes()
   techs: [string] = []
   /// Its NDEF message's bytes, if it was read.

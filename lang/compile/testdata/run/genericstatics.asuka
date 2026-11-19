@@ -1,0 +1,46 @@
+// A generic struct's static fns and constants, and a generic extension's
+// static fns: their type arguments inferred from the arguments, from
+// what's expected, or written out.
+struct Box<T> {
+  items: [T]
+  let limit = 10
+
+  static fn of(xs: [T]) -> Box<T> = Box(items: xs)
+  static fn empty() -> Box<T> = Box(items: [])
+  static fn pair<U>(a: T, b: U) -> (Box<T>, U) = (Box(items: [a]), b)
+  fn count() -> int = items.count()
+}
+
+extend<T: Comparable> Box<T> {
+  static fn sorted(xs: [T]) -> Box<T> = Box(items: xs.sorted())
+}
+
+fn make<T>(x: T) -> Box<T> = Box.of([x, x])
+
+test "statics of a generic struct" {
+  let b = Box.of([1, 2])
+  let c: Box<string> = .empty()
+  let d = Box.empty<int>()
+  let (e, u) = Box.pair(1.5, "u")
+  print(b.items, c.count(), d.count(), Box.limit, e.items, u)
+  print(make("x").items, make(true).count())
+  let f: fn([string]) -> Box<string> = xs => Box.of(xs)
+  print(f(["p"]).items)
+  let g = Box<float>.empty()
+  print(g.count(), Box<bool>.limit, Box<int>.of([7]).items)
+}
+
+test "a generic extension's static fn" {
+  let s = Box.sorted(["b", "a"])
+  let t: Box<int> = .sorted([3, 1, 2])
+  print(s.items, t.items, Box<string>.sorted(["z", "y"]).items)
+}
+
+// Output:
+// [1,2] 0 0 10 [1.5] u
+// ["x","x"] 2
+// ["p"]
+// 0 10 [7]
+// ok statics of a generic struct
+// ["a","b"] [1,2,3] ["y","z"]
+// ok a generic extension's static fn

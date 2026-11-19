@@ -2,20 +2,24 @@
 // lines at a level (debug, info, warn, error), each a message and its
 // fields, key-value pairs that say what it was about.
 //
-//   log.info("listening", ["port": "{port}"])
-//   log.warn("slow request", ["path": path, "ms": "{elapsed.ms}"])
+//   log.info("listening", ["port": port, "tls": true])
+//   log.warn("slow request", ["path": path, "ms": elapsed.milliseconds()])
 //
 // writes, in a program:
 //
-//   2026-11-19 10:04:05.123 INFO  listening                                port=8080
+//   2026-11-19 10:04:05.123 INFO  listening                                port=8080 tls=true
 //   2026-11-19 10:04:07.940 WARN  slow request                             path=/notes ms=912
+//
+// A field's value is any value JSON can say (a number, a bool, a string,
+// an array, a struct: a json.Value where the fields are written), so a
+// JSON line writes a number as a number.
 //
 // A Logger carries fields every line it writes has: log.with([...]) is
 // one, and its with adds more.
 //
 //   let req = log.with(["request": id])
 //   req.info("started")
-//   req.error("failed", ["error": "{e}"])
+//   req.error("failed", ["error": e.message])
 //
 // The least level written is info, unless the environment's ASUKA_LOG
 // says (debug, info, warn, error, or off), or the program does with
@@ -29,7 +33,7 @@
 // stderr shows them) or, with log.setFormat(.json), a JSON object a line,
 // as Go's log/slog writes it, for a service whose logs a machine reads:
 //
-//   {"time":"2026-11-19T10:04:05.123+08:00","level":"INFO","msg":"listening","port":"8080"}
+//   {"time":"2026-11-19T10:04:05.123+08:00","level":"INFO","msg":"listening","port":8080,"tls":true}
 //
 // An app's go where its platform's developers look: unified logging on
 // iOS and macOS (Xcode's console, Console.app), logcat on Android, the
@@ -40,6 +44,8 @@
 // In a test they're the process's stderr (FakeOS.stderr), the time
 // the test's clock's, from 2026-01-01 00:00:00 UTC; only os.fake's env:
 // sets ASUKA_LOG there, so the tests' output doesn't follow the shell's.
+
+import std/json
 
 /// How much a line matters, from the least: .debug (what a developer
 /// looks for), .info (what happens), .warn (what may be wrong), .error
@@ -59,8 +65,25 @@ fn code(level: Level) -> int = match level {
 
 native fn write(level: int, message: string, bound: [string: string], fields: [string: string])
 
+// line writes a line at level, when it's on: each field as its JSON
+// (a string's quoted), which the runtime writes as JSON's or as text.
+fn line(level: int, message: string, bound: [string: json.Value], fields: [string: json.Value]) {
+  if !isEnabled(level) {
+    return
+  }
+  write(level, message, texts(bound), texts(fields))
+}
+
+fn texts(fields: [string: json.Value]) -> [string: string] {
+  var out: [string: string] = [:]
+  for (k, v) in fields {
+    out[k] = json.encode(v)
+  }
+  return out
+}
+
 // The bound fields of the package's own lines: none, made once.
-let unbound: [string: string] = [:]
+let unbound: [string: json.Value] = [:]
 native fn isEnabled(level: int) -> bool
 native fn setLeast(level: int)
 native fn setOutput(format: int, time: bool)
@@ -72,11 +95,11 @@ native fn setOutput(format: int, time: bool)
 ///   db.debug("query", ["sql": sql])
 pub struct Logger {
   /// The fields every line it writes has.
-  fields: [string: string] = [:]
+  fields: [string: json.Value] = [:]
 
   /// A Logger with these fields too, after its own (one of the same
   /// name replaces its).
-  fn with(fields: [string: string]) -> Logger {
+  fn with(fields: [string: json.Value]) -> Logger {
     var all = self.fields
     for (k, v) in fields {
       all[k] = v
@@ -85,71 +108,71 @@ pub struct Logger {
   }
 
   /// A line at .debug: what a developer looks for.
-  fn debug(message: string, fields: [string: string] = [:]) {
-    write(0, message, self.fields, fields)
+  fn debug(message: string, fields: [string: json.Value] = [:]) {
+    line(0, message, self.fields, fields)
   }
 
   /// A line at .info: what happens.
-  fn info(message: string, fields: [string: string] = [:]) {
-    write(1, message, self.fields, fields)
+  fn info(message: string, fields: [string: json.Value] = [:]) {
+    line(1, message, self.fields, fields)
   }
 
   /// A line at .warn: what may be wrong.
-  fn warn(message: string, fields: [string: string] = [:]) {
-    write(2, message, self.fields, fields)
+  fn warn(message: string, fields: [string: json.Value] = [:]) {
+    line(2, message, self.fields, fields)
   }
 
   /// A line at .error: what failed.
-  fn error(message: string, fields: [string: string] = [:]) {
-    write(3, message, self.fields, fields)
+  fn error(message: string, fields: [string: json.Value] = [:]) {
+    line(3, message, self.fields, fields)
   }
 
   /// A line at level.
-  fn log(level: Level, message: string, fields: [string: string] = [:]) {
-    write(code(level), message, self.fields, fields)
+  fn log(level: Level, message: string, fields: [string: json.Value] = [:]) {
+    line(code(level), message, self.fields, fields)
   }
 }
 
 /// A Logger whose lines carry fields.
-pub fn with(fields: [string: string]) -> Logger = Logger(fields: fields)
+pub fn with(fields: [string: json.Value]) -> Logger = Logger(fields: fields)
 
 /// A line at .debug: what a developer looks for, written when the level
 /// is on (ASUKA_LOG=debug, log.setLevel(.debug)).
 ///
 ///   log.debug("cache miss", ["key": key])
-pub fn debug(message: string, fields: [string: string] = [:]) {
-  write(0, message, unbound, fields)
+pub fn debug(message: string, fields: [string: json.Value] = [:]) {
+  line(0, message, unbound, fields)
 }
 
 /// A line at .info: what happens.
 ///
-///   log.info("saved", ["path": path, "bytes": "{data.count()}"])
-pub fn info(message: string, fields: [string: string] = [:]) {
-  write(1, message, unbound, fields)
+///   log.info("saved", ["path": path, "bytes": data.count()])
+pub fn info(message: string, fields: [string: json.Value] = [:]) {
+  line(1, message, unbound, fields)
 }
 
 /// A line at .warn: what may be wrong.
-pub fn warn(message: string, fields: [string: string] = [:]) {
-  write(2, message, unbound, fields)
+pub fn warn(message: string, fields: [string: json.Value] = [:]) {
+  line(2, message, unbound, fields)
 }
 
 /// A line at .error: what failed.
 ///
-///   log.error("upload failed", ["error": "{e}"])
-pub fn error(message: string, fields: [string: string] = [:]) {
-  write(3, message, unbound, fields)
+///   log.error("upload failed", ["error": e.message])
+pub fn error(message: string, fields: [string: json.Value] = [:]) {
+  line(3, message, unbound, fields)
 }
 
 /// A line at level, for a level the program decides.
-pub fn log(level: Level, message: string, fields: [string: string] = [:]) {
-  write(code(level), message, unbound, fields)
+pub fn log(level: Level, message: string, fields: [string: json.Value] = [:]) {
+  line(code(level), message, unbound, fields)
 }
 
 /// Whether lines at level are written: for fields that take work to
 /// make.
 ///
 ///   if log.enabled(.debug) {
-///     log.debug("state", ["items": "{items}"])
+///     log.debug("state", ["items": items])
 ///   }
 pub fn enabled(level: Level) -> bool = isEnabled(code(level))
 

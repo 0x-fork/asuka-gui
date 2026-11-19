@@ -22,7 +22,7 @@ async fn main() throws {
   print(term.width() ?? -1)
   print(fs.home())
   print(try fs.abs(".") == fs.clean(os.cwd()))
-  os.eprint("|")
+  eprint("|")
 }
 
 // Stdout:

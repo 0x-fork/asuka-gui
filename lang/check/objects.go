@@ -346,6 +346,11 @@ type TypeName struct {
 	Release *Function
 	// Stores, workers and components.
 	Comp *Component
+	// Own: what a struct or an enum says itself of its ==, hash, text
+	// and JSON (own.go); nil when it says nothing. OwnExts: what its
+	// package's extensions say, for the types they extend (OwnOf).
+	Own     *Own
+	OwnExts []*Own
 
 	resolved bool
 }
@@ -391,6 +396,9 @@ type Field struct {
 	Index   int
 	Pos     syntax.Pos
 	C       *CType // an extern struct's field: its C type
+	// Private: its file's only (private items: [T]); its struct is made
+	// elsewhere only without it (it has a default, left out).
+	Private bool
 }
 
 // A Case is an enum's case.
@@ -539,6 +547,7 @@ const (
 	StateGlobal GlobalKind = iota // top-level state: a cell
 	MemoGlobal                    // a top-level let that reads state
 	ConstGlobal                   // a top-level let that doesn't, or a type's let
+	VarGlobal                     // a top-level var: a value that changes, not followed (the main thread's)
 )
 
 // A Global is a package-level state or let, or a struct's or an enum's
@@ -621,6 +630,9 @@ const (
 	BKeep        // keep(x): x, which the compiler can't leave uncomputed (testing.go)
 	BSnapshot    // expectSnapshot(x): x as its stored snapshot says (testing.go)
 	BInline      // expectInlineSnapshot(x, "…"): likewise, the snapshot in the call
+	BEprint      // eprint(values…): print's, on stderr
+	BHashOf      // hashOf(x): a Hashable value's hash, as a map's keys hash
+	BChar        // char(n): the char of a code point (an error when it isn't one)
 )
 
 // A Builtin is a function the compiler provides (the prelude's print,

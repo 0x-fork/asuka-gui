@@ -675,11 +675,14 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 	switch bi.ID {
 	case check.BPeek:
 		return b.peek(call.Args[0], dst)
-	case check.BPrint:
-		v := b.value(call.Args[0], -1)
-		s := b.describe(v, b.typeOf(call.Args[0]))
-		b.callBTo("print", bc.None, s)
+	case check.BPrint, check.BEprint:
+		b.printCall(call, bi.ID == check.BEprint)
 		return -1
+	case check.BChar:
+		return b.copyTo(b.callB("char.of", bc.KInt, b.value(call.Args[0], -1)), dst)
+	case check.BHashOf:
+		v := b.value(call.Args[0], -1)
+		return b.copyTo(b.callB("hash", bc.KInt, v, b.konst(int64(b.f.Kinds[v]))), dst)
 	case check.BExpect:
 		return b.expect(e, call)
 	case check.BKeep, check.BSnapshot, check.BInline:

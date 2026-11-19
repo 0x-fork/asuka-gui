@@ -258,6 +258,15 @@ static ak_val gen(tape *t, const char *d, const ak_json_types *ty, int depth) {
 	switch (*d) {
 	case 'i':
 		return (ak_val){.i = gen_int(t)};
+	case 'r': {
+		// A char: mostly ASCII's printable ones (small, shrinking toward
+		// 'a'), else any scalar value but the surrogates.
+		int64_t c = gen_int(t);
+		uint64_t u = (uint64_t)(c < 0 ? -(c + 1) : c);
+		if (u < 95) return (ak_val){.i = (int64_t)((u + 'a' - 32) % 95 + 32)};
+		u %= 0x110000 - 0x800;
+		return (ak_val){.i = (int64_t)(u >= 0xd800 ? u + 0x800 : u)};
+	}
 	case 'f':
 		return (ak_val){.f = gen_float(t)};
 	case 'b':
@@ -379,6 +388,11 @@ static bool make(prop *p, tape *t, ak_val *args) {
 static void quiet(const char *s, size_t n) {
 	AK_UNUSED(s);
 	AK_UNUSED(n);
+}
+
+static void quiet_write(int fd, const char *s, size_t n) {
+	AK_UNUSED(fd);
+	quiet(s, n);
 }
 
 // run_tape runs a case of the test with t's values: whether it failed
@@ -565,11 +579,14 @@ static void report(prop *p, choices *c, uint64_t seed, int64_t index, uint32_t s
 	ak_buf_free(&sh.b);
 	// Its run again, what it prints said: the failure's message is its.
 	void (*hook)(const char *, size_t) = ak_lib_print_hook;
+	void (*whook)(int, const char *, size_t) = ak_lib_write_hook;
 	ak_lib_print_hook = NULL;
+	ak_lib_write_hook = NULL;
 	tape r = {.in = c->v, .nin = c->n};
 	run_tape(p, &r);
 	ak_free(r.c.data);
 	ak_lib_print_hook = hook;
+	ak_lib_write_hook = whook;
 	if (!failure[0]) snprintf(failure, sizeof failure, "it failed, then passed with the same input: it depends on more than its parameters");
 	ak_strb_cstr(&b, "}", 1);
 	ak_jline(&b);
@@ -925,7 +942,9 @@ void ak_prop_run(ak_module *m, uint32_t i, const ak_prop_options *o) {
 	// What the cases print isn't said: a case that fails is run again,
 	// and its output is.
 	void (*hook)(const char *, size_t) = ak_lib_print_hook;
+	void (*whook)(int, const char *, size_t) = ak_lib_write_hook;
 	ak_lib_print_hook = quiet;
+	ak_lib_write_hook = quiet_write;
 	bool diags = ak_diag_enabled;
 	uint64_t s = o->seed ^ fnv(p.name);
 	uint64_t seed = splitmix(&s);
@@ -953,6 +972,7 @@ void ak_prop_run(ak_module *m, uint32_t i, const ak_prop_options *o) {
 	}
 	ak_diag_enabled = diags;
 	ak_lib_print_hook = hook;
+	ak_lib_write_hook = whook;
 	ak_free(p.names);
 	ak_free(p.descs);
 }

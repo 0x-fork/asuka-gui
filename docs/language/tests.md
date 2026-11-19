@@ -12,7 +12,10 @@ test "archiving removes the row" {
 `expect(cond)` fails a test when cond is false, saying what failed and
 where (with a comparison's two sides). JSON comes from `std/json`:
 `let notes: [Note] = try json.decode(text)` reads what's expected of it
-(or `json.decode<[Note]>(text)`), `json.encode(notes)` writes it. A
+(or `json.decode<[Note]>(text)`), `json.encode(notes)` writes it. Where a `json.Value` (any JSON) is
+expected, a value JSON can say is one, as it's written: a map of values
+of mixed types is a `[string: json.Value]` (`["port": port, "tls":
+true]`), whose numbers stay numbers. A
 generic function may read or write its `T` as JSON; each call then
 needs a `T` JSON can say, which the compiler checks where it's called.
 
@@ -27,6 +30,15 @@ action:)`, `refresh`, `scrollTo`, `back`, `dismiss`, `pickDate`,
 `nextTo(label)` narrow what a text names; with a router, `mount(…, at:
 "/inbox/1")`, `href`, `history()`, `goBack()`, `goForward()`. See
 [Testing](../testing.md).
+
+Tests go in any file, and in a package's **test files**, whose names
+end in `_test.asuka` (`parser_test.asuka`; `tray_linux_test.asuka` for
+one platform). A test file's declarations and imports, its fixtures and
+helpers, are part of the package only when its own tests run (`asuka
+test`, `asuka check`, an editor): a build has none of them, nor any
+test block, and a package that imports this one never sees them. So a
+test file may import what only its tests need without that coming with
+the app.
 
 A test with parameters is a property test, run with values `asuka test`
 generates for them; a failing input is shrunk to the simplest that still

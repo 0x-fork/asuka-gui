@@ -2,7 +2,7 @@
 
 ```asuka
 let pi = 3.14159             // 定数
-var total = 0                // 変数（関数とハンドラーの中で）
+var total = 0                // 変数
 state count = 0              // 状態：UI が追従する値
 state shown = count          // 書き込まれるまで count に追従する状態
 ```
@@ -10,6 +10,26 @@ state shown = count          // 書き込まれるまで count に追従する�
 型は推論されます。書いたほうがわかりやすいところでは明示します（`let ids: [int] = []`）。
 
 `type` は、ファイルのトップレベルで型に名前を付けます（`type Pair<A, B> = (A, B)`、`type Check = fn(string) -> bool`）。これは同じ型の別名（エイリアス）なので、`Pair<int, string>` は `(int, string)` そのものです。
+
+## ファイルの値
+
+ファイルのトップレベルでは、`let` は定数、`state` はアプリの状態（[ストア](stores.md)）、`var` はパッケージの変数です。パッケージのどのコードからも読み書きでき、`pub` ならほかのパッケージからもできます（`util.hits += 1`）。var は状態ではありません。読むとその時点の値が得られ、それを表示するビューは値が変わっても更新されません（それは `state` の役目です）。キャッシュ、カウンター、プログラムの設定など、ビューに表示しないものに使います。
+
+```asuka check
+var cache: [int: int] = [:]
+var lookups = 0
+
+fn fib(n: int) -> int {
+  lookups += 1
+  if n < 2 { return n }
+  if let v = cache[n] { return v }
+  let v = fib(n - 1) + fib(n - 2)
+  cache[n] = v
+  return v
+}
+```
+
+ファイルの値は、ほかのどのコードよりも先に作られます。パッケージの値はそれをインポートするパッケージの値より先に、それぞれの値は初期化式が読む値のあとに作られます（直接にせよ間接にせよ自分自身を読むのはエラーです）。var はローカル変数と同じくその場で変更され、`cache[n] = v` は何もコピーしません。状態と同じくメインスレッドのものなので、`spawn` のブロックと [ワーカー](async.md#ワーカー) では使えず、それを使う関数も呼べません（コンパイラーがどれかを示します）。先に読み出して、その値を渡します。`asuka dev` がアプリを再読み込みすると、ファイルの var は let と同じく初期化式から作り直されます。状態は値を保ちます。
 
 ## 構造体
 
@@ -84,6 +104,23 @@ let page = Page(items: [1, 2, 3])     // Page<int>
 let empty = Page<string>(items: [])   // ほかに手がかりがないときは書き出す
 ```
 
+ジェネリックな構造体の `static fn` は、構造体の型パラメーター、続いて自分の型パラメーターを取ります。引数から推論されるか（`Stack.of([1, 2])`）、求められている型から推論されるか（`let s: Stack<string> = .empty()`）、構造体の名前と一緒に書くか（`Stack<int>.empty()`）、関数名のあとに書きます（`Stack.empty<int>()`。構造体のものが先）。ジェネリックな構造体の `let` は、どの型で作っても共通の 1 つの定数なので、その型に型パラメーターは使えません。使う必要がある定数（空の `Stack<T>` など）は `static fn` にします。
+
+```asuka check
+struct Stack<T> {
+  items: [T] = []
+  let limit = 1000
+
+  static fn of(items: [T]) -> Stack<T> = Stack(items: items)
+  static fn empty() -> Stack<T> = Stack()
+}
+
+let numbers = Stack.of([1, 2, 3])       // Stack<int>
+let names: Stack<string> = .empty()     // 求められている型から
+let flags = Stack.empty<bool>()         // 書き出す
+let most = Stack.limit
+```
+
 `match` と `if let` では、構造体パターンで構造体のフィールドを名前でマッチさせられます。`y` とだけ書くとフィールド `y` を束縛し、`y: py` なら `py` という名前で束縛し、`x: 0` は値にマッチします。書かなかったフィールドは何にでもマッチします。パターンは入れ子にできます。
 
 ```asuka
@@ -118,6 +155,62 @@ fn withTip(bill: Money) -> Money {
 ```
 
 構造体がフィールドごとに順序づけられることはありません。その順序が何を意味するかは、`compare` が決めます。
+
+## 等しさ、ハッシュ、テキスト、JSON
+
+構造体は、フィールドによって等しいかを比べ（`==`）、マップのキーとしてハッシュし、出力し、JSON に書かれます。列挙型はケースとペイロードによります。型は、`compare` が `<` になるのと同じく、言語が呼ぶメソッドでこれを変えられます。
+
+| メソッド | 呼ぶもの |
+|---|---|
+| `fn equals(other: T) -> bool` | `==` と `!=`、マップのキー、セットの要素、`contains`、配列の `==` |
+| `fn hash() -> int` | マップのキーとセットの要素。等しい値は同じハッシュになるので、自分の `equals` を持つ型は自分の `hash` も持ちます（`hashOf(x)` は値のハッシュで、組み合わせるのに使います） |
+| `fn description() -> string` | 補間、`print`、スナップショット |
+| `fn toJSON() -> J` | `json.encode`、そしてその値を含む値のテキスト。`J` は JSON で表せる任意の型です |
+| `static fn fromJSON(json: J) throws -> T` | `json.decode`。投げたエラーがデコードのエラーになります |
+
+```asuka check
+import std/json
+
+struct Tag {
+  name: string
+  color: string = "gray"
+
+  fn equals(other: Tag) -> bool = name.lower() == other.name.lower()
+  fn hash() -> int = hashOf(name.lower())
+  fn description() -> string = "#{name}"
+  fn toJSON() -> string = name
+  static fn fromJSON(json: string) throws -> Tag = Tag(name: json)
+}
+
+let same = Tag(name: "Work") == Tag(name: "work", color: "red")  // true
+let label = "{Tag(name: "home")}"                                 // #home
+let text = json.encode([Tag(name: "a")])                          // ["a"]
+```
+
+これらは値がどこにあっても使われます。配列、マップ、ほかの構造体の中でもそうです。これで、フィールドの意味で等しい型（大文字小文字を区別しない名前、順序を問わない集合）をマップのキーにでき、関数（順序など）を持つ型も、持っている中身で比較、ハッシュ、JSON 化できます。ジェネリックな型は、そのパッケージの拡張でこれらを与え、型引数が拡張の制約（`Equatable`、`Hashable`、`Comparable`）を満たす型にだけ効きます。std/collections の `Heap<T>` は、`T` が Hashable なら比較でき、Comparable なら JSON から読めます。これらは `async`、`mut`、private にはできず、ペイロードのない列挙型が持てるのは自分の `description` だけです（等しさと書き出しはケースによります）。シグネチャーが言語の呼ぶものと違えば、コンパイラーが知らせます（[special-method](../errors/special-method.md)）。
+
+## 非公開の宣言
+
+`private` は宣言をそのファイルだけのものにします。ファイルの `fn`、`let`、`var`、struct、enum、interface、type、そして構造体や列挙型のフィールド、メソッド、`static fn`、定数に付けられます。そのファイルのコード（その型のメソッド、関数、拡張）からはほかと同じように使えますが、ほかのファイルからは名前で参照できません。例外はパッケージのテストファイル（`name_test.asuka`）で、内部をテストするために使えます。`pub` を付けないものはパッケージのもの、`private` を付けたものはファイルのものです。
+
+```asuka check
+pub struct Counter {
+  private hits: [string: int] = [:]
+
+  mut fn add(word: string) { hits[word, default: 0] += 1 }
+  fn top() -> string? = best(hits)
+}
+
+private fn best(counts: [string: int]) -> string? {
+  var found: (string, int)? = none
+  for (w, n) in counts {
+    if found == none || n > found!.1 { found = (w, n) }
+  }
+  return found?.0
+}
+```
+
+ほかのファイルでは、構造体は private なフィールドなしで作られるので、それぞれに既定値が要ります（`Counter()`）。既定値のない private なフィールドを持つ構造体は、そのファイルの中でだけ、つまり static fn で作られ、それらが構造体の規則（`Decimal` の係数に末尾のゼロがないことなど）を守ります。private なメソッドは演算子（`add`、`compare`）にならず、型にインターフェイスを与えることもありません。それらはどこからでも使われるからです。
 
 ## 拡張
 

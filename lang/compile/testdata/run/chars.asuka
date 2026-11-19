@@ -1,0 +1,69 @@
+// char: a Unicode scalar value, what a string's for and chars() give
+// (count() of them), with its literal, methods, conversions, patterns,
+// keys and JSON.
+import std/json
+
+struct Key {
+  c: char
+  more: [char] = []
+}
+
+fn kind(c: char) -> string = match c {
+  'a' | 'e' | 'i' | 'o' | 'u' => "vowel"
+  ' ' | '\t' | '\n' => "space"
+  _ => if c.isDigit() { "digit" } else if c.isLetter() { "letter" } else { "other" }
+}
+
+test "a string's chars" {
+  let s = "héllo, 世界 1"
+  var n = 0
+  var letters = ""
+  for c in s {
+    n += 1
+    if c.isLetter() { letters += c }
+  }
+  print(n, s.count(), s.chars().count(), letters)
+  print(s.chars().filter(c => c.isWhitespace()).count(), "e\u{301}".chars().count(), "e\u{301}".graphemes().count())
+}
+
+test "literals, methods and conversions" {
+  let a = 'a'
+  print(a, a.upper(), 'Ж'.lower(), a.code(), char(0x4E16), '\u{1F600}', '\'', '\\')
+  print(a < 'b', a == 'a', 'Z' < 'a', ['c', 'a', 'b'].sorted())
+  print('9'.isDigit(), '٣'.isDigit(), '½'.isNumber(), '\u{A0}'.isWhitespace(), ','.isPunctuation(), '$'.isSymbol())
+  print('A'.isUpper(), 'a'.isLower(), 'ß'.upper(), "ß".upper(), 'x' + "y" + 'z')
+  print(kind('e'), kind('7'), kind('q'), kind(' '), kind('!'))
+  let bad = try? check(0xD800)
+  print(bad == none)
+}
+
+fn check(n: int) throws -> char = char(n)
+
+test "keys, sets and JSON" {
+  var counts: [char: int] = [:]
+  for c in "banana" { counts[c, default: 0] += 1 }
+  print(counts, Set("hello".chars()).count())
+  print(json.encode(Key(c: 'é', more: ['x', '\n'])))
+  let k = try json.decode<Key>(r#"{"c": "z", "more": ["1", "🙂"]}"#)
+  print(k.c, k.more)
+  print((try? json.decode<Key>(r#"{"c": "zz"}"#)) == none)
+  expectInlineSnapshot(['a', '\''], "['a', '\\'']")
+}
+
+// Output:
+// 11 11 11 héllo世界
+// 2 2 1
+// ok a string's chars
+// a A ж 97 世 😀 ' \
+// true true true ["a","b","c"]
+// true true true true true true
+// true true ß SS xyz
+// vowel digit letter space other
+// true
+// ok literals, methods and conversions
+// {"b":1,"a":3,"n":2} 4
+// {"c":"é","more":["x","\n"]}
+// z ["1","🙂"]
+// true
+// {"inline":"testdata/run/chars.asuka","test":"keys, sets and JSON","line":50,"col":3,"where":"chars.asuka:50","status":"ok"}
+// ok keys, sets and JSON

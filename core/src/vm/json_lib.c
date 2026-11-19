@@ -43,6 +43,20 @@ static ak_val encode(ak_val *args, uint32_t n) {
 	return (ak_val){.p = ak_json_encode(args[0], desc->data, &t, n > 2 ? (int)args[2].i : 0)};
 }
 
+// json.value(value, desc, vdesc): value (of desc's type) as std/json's
+// Value (of vdesc, J<name>;): what it's written as, read as any JSON.
+// A value converts to one where a Value is expected (log's fields).
+static ak_val to_value(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_str *desc = args[1].p, *vdesc = args[2].p;
+	ak_json_types t = {shape, cases, running()};
+	t.points = true;  // a float stays one
+	ak_str *text = ak_json_encode(args[0], desc->data, &t, 0);
+	ak_val v = ak_json_decode(text->data, text->len, vdesc->data, &t);
+	ak_release(text);
+	return v;
+}
+
 // ak_vm_json_types is what decoding by descriptor needs of the running
 // module (std/sqlite's rows).
 void ak_vm_json_types(ak_json_types *out) { *out = (ak_json_types){shape, cases, running()}; }
@@ -54,4 +68,5 @@ void ak_vm_module_json_types(ak_module *m, ak_json_types *out) { *out = (ak_json
 void ak_vm_json_init(void) {
 	ak_builtin_register("json.decode", decode);
 	ak_builtin_register("json.encode", encode);
+	ak_builtin_register("json.value", to_value);
 }

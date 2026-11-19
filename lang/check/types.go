@@ -53,7 +53,8 @@ const (
 	KU8
 	KU16
 	KU32
-	KU64 // its 64 bits in an int's
+	KU64  // its 64 bits in an int's
+	KChar // a Unicode scalar value (a code point but a surrogate), stored as an int
 )
 
 // Basic is a built-in type without parameters.
@@ -91,6 +92,7 @@ var (
 	U16      = &Basic{KU16, "u16"}
 	U32      = &Basic{KU32, "u32"}
 	U64      = &Basic{KU64, "u64"}
+	Char     = &Basic{KChar, "char"}
 )
 
 // IntTypes are the integer types: int (64 bits, signed) and the sized
@@ -619,6 +621,9 @@ func whyNotEquatable1(t Type, seen map[*TypeName]bool) string {
 	case *TypeParam:
 		return "constrain it, <" + x.Name + ": Equatable>"
 	case *Named:
+		if o := OwnOf(x); o != nil && o.Equals != nil {
+			return ""
+		}
 		if seen[x.Obj] {
 			return "it holds itself" // the reason is the other part's, said on its way
 		}
@@ -710,6 +715,9 @@ func isEquatable(t Type, seen map[*TypeName]bool) bool {
 	case *TypeParam:
 		return len(x.Builtins) > 0
 	case *Named:
+		if o := OwnOf(x); o != nil && o.Equals != nil {
+			return true // its equals says
+		}
 		if seen[x.Obj] {
 			return true // as it is, if the rest is (checked on the way here)
 		}
@@ -754,7 +762,7 @@ func IsComparable(t Type) bool {
 // whyNotComparable says why t can't be ordered ("" when it can).
 func whyNotComparable(t Type) string {
 	switch t {
-	case Int, Float, String, Duration, Invalid:
+	case Int, Float, String, Duration, Char, Invalid:
 		return ""
 	}
 	if IsSized(t) {
@@ -802,7 +810,7 @@ func CompareMethod(x *Named) *Function {
 		return nil
 	}
 	f := x.Obj.Methods["compare"]
-	if f == nil || f.Sig == nil || len(f.Sig.Params) != 1 || f.Sig.Async || f.Sig.Throws {
+	if f == nil || f.Sig == nil || len(f.Sig.Params) != 1 || f.Sig.Async || f.Sig.Throws || privateFn(f) {
 		return nil
 	}
 	s := x.Subst()
@@ -830,7 +838,7 @@ func whyNotHashable1(t Type, seen map[*TypeName]bool) string {
 	switch x := t.(type) {
 	case *Basic:
 		switch x {
-		case Int, Bool, String, Bytes, Duration, Color, Invalid, I8, I16, I32, U8, U16, U32, U64:
+		case Int, Bool, String, Bytes, Duration, Color, Char, Invalid, I8, I16, I32, U8, U16, U32, U64:
 			return ""
 		case Float:
 			return "floats aren't (NaN isn't equal to itself): key by an int or a string"
@@ -868,6 +876,12 @@ func whyNotHashable1(t Type, seen map[*TypeName]bool) string {
 	case *FuncType:
 		return "functions aren't"
 	case *Named:
+		if o := OwnOf(x); o != nil && (o.Equals != nil || o.Hash != nil) {
+			if o.Hash == nil {
+				return "it has its own equals, and no hash to agree with it: declare fn hash() -> int"
+			}
+			return ""
+		}
 		if seen[x.Obj] {
 			return "" // as it is, if the rest is (checked on the way here)
 		}

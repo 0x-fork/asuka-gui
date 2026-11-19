@@ -5,7 +5,7 @@ import std/os
 fn main() {
   print("Hello, {os.args().joined(separator: " and ")}!")
   print("program: {os.program()}")
-  os.eprint("to stderr")
+  eprint("to stderr")
 }
 
 // Stdout:

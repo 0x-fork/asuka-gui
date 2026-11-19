@@ -340,7 +340,7 @@ component InlineImage(source: string) {
   }
 }
 
-fn alignOf(c: string) -> TextAlign = if c == "c" { .center } else if c == "r" { .end } else { .start }
+fn alignOf(c: char) -> TextAlign = if c == 'c' { .center } else if c == 'r' { .end } else { .start }
 
 /// The blocks paragraphs make: a table's rows one table, an image alone
 /// in its paragraph an image, the rest a block each.

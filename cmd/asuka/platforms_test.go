@@ -31,7 +31,7 @@ import (
 func useModule(t *testing.T, m func() *bytecode.Module) {
 	t.Helper()
 	old := appbuild.Compile
-	appbuild.Compile = func(dir string, deps map[string]string, _ target.Platform) (*bytecode.Module, *appbuild.Uses, []check.Diagnostic, error) {
+	appbuild.Compile = func(dir string, deps map[string]string, _ target.Platform, _ bool) (*bytecode.Module, *appbuild.Uses, []check.Diagnostic, error) {
 		return m(), nil, nil, nil
 	}
 	t.Cleanup(func() { appbuild.Compile = old })
@@ -60,7 +60,7 @@ func TestCmdTest(t *testing.T) {
 		t.Errorf("-run nothing: %v", err)
 	}
 	old := appbuild.Compile
-	appbuild.Compile = func(dir string, deps map[string]string, _ target.Platform) (*bytecode.Module, *appbuild.Uses, []check.Diagnostic, error) {
+	appbuild.Compile = func(dir string, deps map[string]string, _ target.Platform, _ bool) (*bytecode.Module, *appbuild.Uses, []check.Diagnostic, error) {
 		pos := syntax.Position{Filename: filepath.Join(dir, "app.asuka"), Line: 1, Column: 7}
 		return nil, nil, []check.Diagnostic{{Pos: pos, Code: "undefined-name", Msg: "unknown name Txt"}}, nil
 	}

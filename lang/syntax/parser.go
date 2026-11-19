@@ -327,7 +327,7 @@ func (p *parser) describe() string {
 		return "a newline"
 	case IDENT:
 		return "'" + p.lit + "'"
-	case INT, FLOAT, DURATION, LENGTH, COLOR:
+	case INT, FLOAT, DURATION, LENGTH, COLOR, CHAR:
 		return "'" + p.lit + "'"
 	case STRING, STRING_HEAD:
 		return "a string"
@@ -889,6 +889,7 @@ func (p *parser) parseDecl() Decl {
 		pub = p.pos
 		p.next()
 	}
+	priv := p.parsePrivate(pub)
 	var d Decl
 	if p.benchAhead() {
 		// bench "name" { … }: "bench" is a keyword only here.
@@ -936,10 +937,7 @@ func (p *parser) parseDecl() Decl {
 		d = p.parseStyleDecl(start)
 	case STATE:
 		d = p.parseState(start)
-	case LET:
-		d = p.parseLet(start)
-	case VAR:
-		p.error(p.pos, diag.InvalidDeclaration, "a file has no variables: its mutable values are state (state x = …)")
+	case LET, VAR:
 		d = p.parseLet(start)
 	case NATIVE:
 		native := p.pos
@@ -1021,8 +1019,67 @@ func (p *parser) parseDecl() Decl {
 		return &BadDecl{Span: p.span(start)}
 	}
 	setPub(d, pub)
+	p.setPrivate(d, priv)
 	setSpan(d, p.span(start))
 	return d
+}
+
+// privateAhead reports whether a private modifier is here: "private" is
+// a keyword only before a declaration (fn, let, var, static fn, struct,
+// enum, interface, type) or a field (private items: [T]), so a field or
+// a value named private is one still.
+func (p *parser) privateAhead() bool {
+	if p.tok != IDENT || p.lit != "private" {
+		return false
+	}
+	switch p.peek(1) {
+	case FN, ASYNC, MUT, LET, VAR, STRUCT, ENUM, INTERFACE, TYPE, NATIVE:
+		return true
+	case IDENT:
+		next := p.toks[p.i+1].lit
+		return next == "static" || p.peek(2) == COLON
+	}
+	return false
+}
+
+// parsePrivate parses a private modifier, if there's one, after pub's
+// (which it can't go with).
+func (p *parser) parsePrivate(pub Pos) Pos {
+	if !p.privateAhead() {
+		return NoPos
+	}
+	priv := p.pos
+	if pub.IsValid() {
+		p.error(priv, diag.InvalidModifier, "pub and private: a declaration is one or the other")
+	}
+	p.next()
+	return priv
+}
+
+// setPrivate records a private modifier on what it makes its file's,
+// and says where it can't go.
+func (p *parser) setPrivate(n Node, priv Pos) {
+	if !priv.IsValid() {
+		return
+	}
+	switch n := n.(type) {
+	case *StructDecl:
+		n.Private = priv
+	case *EnumDecl:
+		n.Private = priv
+	case *InterfaceDecl:
+		n.Private = priv
+	case *TypeAliasDecl:
+		n.Private = priv
+	case *FuncDecl:
+		n.Private = priv
+	case *LetDecl:
+		n.Private = priv
+	case *Field:
+		n.Private = priv
+	default:
+		p.error(priv, diag.InvalidModifier, "private goes on a struct's, an enum's or a file's fn, let, var, field or type")
+	}
 }
 
 // setPub records a pub keyword on the declaration or member it exports.
@@ -1351,6 +1408,7 @@ func (p *parser) parseFieldOrMethod(what string, constants bool) Node {
 		pub = p.pos
 		p.next()
 	}
+	priv := p.parsePrivate(pub)
 	var n Node
 	switch {
 	case p.funcAhead():
@@ -1386,6 +1444,7 @@ func (p *parser) parseFieldOrMethod(what string, constants bool) Node {
 		return nil
 	}
 	setPub(n, pub)
+	p.setPrivate(n, priv)
 	setSpan(n, p.span(start))
 	return n
 }
@@ -1411,7 +1470,7 @@ func (p *parser) parseEnum(start Pos) *EnumDecl {
 		i := p.i
 		t := p.leading(p.pos)
 		static := p.tok == IDENT && p.lit == "static" && (p.peek(1) == FN || p.peek(1) == ASYNC || p.peek(1) == MUT)
-		if p.funcAhead() || p.tok == PUB || p.tok == LET || static {
+		if p.funcAhead() || p.tok == PUB || p.tok == LET || static || p.privateAhead() {
 			m := p.parseFieldOrMethod("a method or a constant", true)
 			switch f := m.(type) {
 			case *FuncDecl:
@@ -2673,6 +2732,11 @@ func (p *parser) postfixFrom(start Pos, x Expr) Expr {
 		case LSS:
 			// f<T>(…): explicit type arguments, when what follows the < is
 			// types up to a > right before a (; else it's a comparison.
+			// Box<int>.empty(): a generic type's, before a static member.
+			if targs, angles, ok := p.tryTypeApp(x); ok {
+				x = &TypeApp{X: x, TypeArgs: targs, Angles: angles, Span: p.span(start)}
+				continue
+			}
 			targs, angles, ok := p.tryTypeArgs(x)
 			if !ok {
 				return x
@@ -2773,9 +2837,17 @@ func (p *parser) tryTypeArgs(x Expr) ([]Type, Angles, bool) {
 	}
 	// Types are what's between: names, brackets, ?, commas, colons, fn,
 	// arrows. A quick look rejects most comparisons without parsing.
-	if end := p.angleEnd(); end < 0 || end+1 >= len(p.toks) || p.toks[end+1].tok != LPAREN {
+	end := p.angleEnd()
+	if end < 0 || end+1 >= len(p.toks) || p.toks[end+1].tok != LPAREN {
 		return nil, Angles{}, false
 	}
+	return p.typeArgsTo(end)
+}
+
+// typeArgsTo parses the types between the < here and its > (at the
+// token end), or leaves the < untouched when they aren't types.
+func (p *parser) typeArgsTo(end int) ([]Type, Angles, bool) {
+	_ = end
 	saved, savedEnd := p.i, p.prevEnd
 	nerr := len(p.errors)
 	lt := p.pos
@@ -2803,6 +2875,29 @@ func (p *parser) tryTypeArgs(x Expr) ([]Type, Angles, bool) {
 	gt := p.pos
 	p.next() // >
 	return ts, Angles{lt, gt}, true
+}
+
+// tryTypeApp parses <T, U> after a type's name (capitalized: Box,
+// pkg.Box) when a .name follows the >: Box<int>.empty(). Anything else
+// it leaves untouched.
+func (p *parser) tryTypeApp(x Expr) ([]Type, Angles, bool) {
+	var name string
+	switch x := x.(type) {
+	case *Ident:
+		name = x.Name
+	case *MemberExpr:
+		if _, ok := x.X.(*Ident); ok && !x.Optional {
+			name = x.Name.Name
+		}
+	}
+	if name == "" || name[0] < 'A' || name[0] > 'Z' {
+		return nil, Angles{}, false
+	}
+	end := p.angleEnd()
+	if end < 0 || end+2 >= len(p.toks) || p.toks[end+1].tok != PERIOD || p.toks[end+2].tok != IDENT {
+		return nil, Angles{}, false
+	}
+	return p.typeArgsTo(end)
 }
 
 // angleEnd is the index of the > that closes the < here, with only
@@ -2899,7 +2994,7 @@ func (p *parser) parsePrimary() Expr {
 	switch p.tok {
 	case IDENT:
 		return p.ident()
-	case INT, FLOAT, DURATION, LENGTH, COLOR:
+	case INT, FLOAT, DURATION, LENGTH, COLOR, CHAR:
 		x := &BasicLit{Kind: p.tok, Value: p.lit}
 		p.next()
 		x.Span = p.span(start)
@@ -3314,7 +3409,7 @@ func (p *parser) parsePrimaryPattern() Pattern {
 		p.caseArgs(c)
 		c.Span = p.span(start)
 		return c
-	case INT, FLOAT, DURATION, LENGTH, COLOR, STRING, STRING_HEAD, TRUE, FALSE, NONE:
+	case INT, FLOAT, DURATION, LENGTH, COLOR, CHAR, STRING, STRING_HEAD, TRUE, FALSE, NONE:
 		return &LitPat{Value: p.parsePrimary(), Span: p.span(start)}
 	case SUB:
 		if t := p.peek(1); t == INT || t == FLOAT || t == DURATION || t == LENGTH {
