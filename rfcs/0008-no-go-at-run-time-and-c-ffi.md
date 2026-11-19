@@ -222,7 +222,9 @@ guide, lang/LOWERING.md's "C from Asuka" the lowering):
 
 - **The C types are written in extern declarations only.** `Int32`,
   `UInt8`, `Float32`, `CString` name C's side; Asuka sees `int`, `float`,
-  `string` (`let n: Int32` is an error that says so). `Pointer` is an
+  `string` (`let n: Int32` is an error that says so). (Since the sized
+  integer types, C's integers are those of their width and sign: an
+  `Int32` is an `i32`, a `UInt8` a `u8`; docs/c.md.) `Pointer` is an
   Asuka type of its own (an int-sized value Asuka compares and passes
   back, never reads). `string` in a declaration is an error that says to
   write `CString`.

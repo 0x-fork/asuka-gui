@@ -409,7 +409,7 @@ func (b *fb) builtinMethod(e *syntax.CallExpr, call *check.Call, recv *int, dst 
 		x := b.recvValue(call, recv)
 		if m.Special == "i2f" {
 			r := b.out(dst, bc.KFloat)
-			b.emit(op("I2F"), r, x)
+			b.emit(op(map[bool]string{true: "U2F", false: "I2F"}[b.typ(call.RecvType) == check.U64]), r, x)
 			return r
 		}
 		r := b.out(dst, bc.KInt)
@@ -473,6 +473,13 @@ func (b *fb) builtinMethod(e *syntax.CallExpr, call *check.Call, recv *int, dst 
 		// sorted(), sort() of a type with a compare method: it, as a
 		// closure, and that it's a comparison rather than a less-than.
 		if elem := orderedElem(b.typ(b.l.info.Types[call.Recv])); elem != nil {
+			if _, isSeq := b.typ(b.l.info.Types[call.Recv]).(*check.Seq); isSeq && elem == check.U64 {
+				// A Seq of u64s: ordered unsigned, by a comparison.
+				cl := b.temp(bc.KRef)
+				b.emit(op("CLOS"), cl, b.l.u64Compare(), 0, 0)
+				vals = append(vals, cl, b.konst(1))
+				inoutGuard = true
+			}
 			if n, ok := elem.(*check.Named); ok {
 				if f := check.CompareMethod(n); f != nil {
 					cl := b.temp(bc.KRef)
@@ -483,10 +490,26 @@ func (b *fb) builtinMethod(e *syntax.CallExpr, call *check.Call, recv *int, dst 
 			}
 		}
 	}
+	var elem check.Type // an array's elements, when they're of a sized integer type
+	if a, ok := b.typ(call.RecvType).(*check.Array); ok && check.IsSized(a.Elem) {
+		elem = a.Elem
+	}
+	switch {
+	case elem != nil && m.Builtin == "arr.sum":
+		// The sum, checked at the elements' type.
+		vals = append(vals, b.konst(int64(check.IntCode(elem))))
+	case elem == check.U64 && len(vals) == 0 && (m.Builtin == "arr.sorted" || m.Builtin == "arr.sort" || m.Builtin == "arr.min" || m.Builtin == "arr.max"):
+		// Ordered as unsigned: no less-than, not a comparison, unsigned.
+		none := b.temp(bc.KRef)
+		b.emit(op("KNONE"), none)
+		vals = append(vals, none, b.konst(0), b.konst(1))
+	}
 	if m.Needs == "ComparableU" {
 		vals = append(vals, b.keyCompare(call))
 	}
 	switch m.Extra {
+	case "intcode":
+		vals = append(vals, b.konst(int64(check.IntCode(b.typ(call.RecvType)))))
 	case "kindU":
 		u := b.typ(call.Bound["U"])
 		vals = append(vals, b.konst(int64(b.l.kind(u))))
@@ -798,9 +821,12 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 		y := b.value(call.Args[1], -1)
 		t := b.typeOf(call.Args[0])
 		name := map[bool]string{true: "math.min", false: "math.max"}[bi.ID == check.BMin]
-		if t == check.Float {
+		switch t {
+		case check.Float:
 			name += "f"
-		} else {
+		case check.U64:
+			name += "u"
+		default:
 			name += "i"
 		}
 		return b.copyTo(b.callB(name, b.l.kind(t), x, y), dst)
@@ -810,6 +836,9 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 		if t == check.Float {
 			return b.copyTo(b.callB("math.absf", bc.KFloat, x), dst)
 		}
+		if check.IsSized(t) {
+			return b.copyTo(b.callB("int.abs", bc.KInt, x, b.konst(int64(check.IntCode(t)))), dst)
+		}
 		return b.copyTo(b.callB("math.absi", bc.KInt, x), dst)
 	case check.BFloat:
 		x := b.value(call.Args[0], -1)
@@ -817,16 +846,10 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 			return b.copyTo(x, dst)
 		}
 		r := b.out(dst, bc.KFloat)
-		b.emit(op("I2F"), r, x)
+		b.emit(op(map[bool]string{true: "U2F", false: "I2F"}[b.typeOf(call.Args[0]) == check.U64]), r, x)
 		return r
 	case check.BInt:
-		x := b.value(call.Args[0], -1)
-		if b.f.Kinds[x] == bc.KInt {
-			return b.copyTo(x, dst)
-		}
-		r := b.out(dst, bc.KInt)
-		b.emit(op("F2I"), r, x)
-		return r
+		return b.intConversion(call, dst)
 	case check.BError:
 		m := b.value(call.Args[0], -1)
 		return b.copyTo(b.callB("error", bc.KRef, m), dst)
@@ -856,6 +879,16 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 		return b.copyTo(b.callB(pathNew, bc.KRef), dst)
 	case check.BShader:
 		return b.shaderProgram(e, dst)
+	case check.BBytesFrom:
+		return b.copyTo(b.callB("bytes.from", bc.KRef, b.value(call.Args[0], -1)), dst)
+	case check.BIntParse:
+		text := b.value(call.Args[0], -1)
+		radix := b.konst(10)
+		if call.Args[1] != nil {
+			radix = b.value(call.Args[1], -1)
+		}
+		t := check.Unopt(b.typ(call.Result))
+		return b.copyTo(b.callB("int.parse", bc.KRef, text, radix, b.konst(int64(check.IntCode(t)))), dst)
 	case check.BMath:
 		var vals []int
 		for _, a := range call.Args {
@@ -917,6 +950,9 @@ func isComparison(t syntax.Token) bool {
 func describable(t check.Type) bool {
 	switch check.Unopt(t) {
 	case check.Int, check.Float, check.Bool, check.String, check.Duration:
+		return true
+	}
+	if check.IsSized(check.Unopt(t)) {
 		return true
 	}
 	if t == check.NoneType {
@@ -1437,4 +1473,55 @@ func (b *fb) structHook(hook func(string) (map[string]any, error), t *check.Name
 			vals[i] = r
 		}
 	}
+}
+
+// intConversion is int(x), u8(x) and their labels' forms (check's
+// intConversion): from a float F2N (F2I to an int), from an integer
+// type CONVN (an error when it doesn't fit), WRAP (truncating:), CLAMPN
+// (clamping:), int.exactly (exactly:: an optional).
+func (b *fb) intConversion(call *check.Call, dst int) int {
+	to := b.typ(call.Result)
+	if call.Conv == "exactly" {
+		to = check.Unopt(to)
+	}
+	from := b.typeOf(call.Args[0])
+	x := b.value(call.Args[0], -1)
+	code := check.IntCode(to)
+	if from == check.Float {
+		if call.Conv == "exactly" {
+			return b.copyTo(b.callB("int.exactly_float", bc.KRef, x, b.konst(int64(code))), dst)
+		}
+		r := b.out(dst, bc.KInt)
+		if to == check.Int {
+			b.emit(op("F2I"), r, x)
+		} else {
+			b.emit(op("F2N"), r, x, code)
+		}
+		return r
+	}
+	conv := code | check.IntCode(from)<<4
+	switch call.Conv {
+	case "exactly":
+		return b.copyTo(b.callB("int.exactly", bc.KRef, x, b.konst(int64(conv))), dst)
+	case "truncating":
+		if to == check.Int || to == check.U64 {
+			return b.copyTo(x, dst) // the same 64 bits
+		}
+		r := b.out(dst, bc.KInt)
+		b.emit(op("WRAP"), r, x, code)
+		return r
+	case "clamping":
+		if check.IntWidens(from, to) {
+			return b.copyTo(x, dst)
+		}
+		r := b.out(dst, bc.KInt)
+		b.emit(op("CLAMPN"), r, x, conv)
+		return r
+	}
+	if check.IntWidens(from, to) {
+		return b.copyTo(x, dst)
+	}
+	r := b.out(dst, bc.KInt)
+	b.emit(op("CONVN"), r, x, conv)
+	return r
 }

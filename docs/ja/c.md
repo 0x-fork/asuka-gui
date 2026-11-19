@@ -6,7 +6,7 @@
 extern fn zlibVersion() -> CString
 extern fn crc32_of(data: bytes) -> UInt32
 
-fn checksum(text: string) -> int = crc32_of(text.bytes())
+fn checksum(text: string) -> u32 = crc32_of(text.bytes())
 ```
 
 C は、すべてのプラットフォームでアプリに組み込まれ（Web では WebAssembly モジュールに）、`asuka test` のランナーにも組み込まれます。何をコンパイルし、何をリンクするかは `asuka.toml` の `[c]` に書きます。
@@ -55,7 +55,7 @@ component Total {
   Column {
     TextField { bind text: text }
     Text("Sum: {stats_sum(text.bytes())}")
-    Text("Clamped: {stats_clamp(text.count(), 0, 3)}")
+    Text("Clamped: {stats_clamp(i32(clamping: text.count()), 0, 3)}")
   }
 }
 
@@ -105,7 +105,7 @@ extern fn db_changes(db: Db) -> Int32
 
 fn changes(path: string) -> int {
   if let db = db_open(path) {
-    return db_changes(db)
+    return int(db_changes(db))
   } // 最後の参照がなくなるので db_close(db) が呼ばれる
   return -1
 }
@@ -172,9 +172,9 @@ C が extern の呼び出しの最中に、その呼び出しを行ったスレ�
 
 | 宣言での書き方 | C | Asuka での見え方 |
 |---|---|---|
-| `Int8`、`Int16`、`Int32`、`Int64` | `int8_t` … `int64_t` | `int` |
-| `UInt8`、`UInt16`、`UInt32`、`UInt64` | `uint8_t` … `uint64_t` | `int` |
-| `int` | `int64_t` | `int` |
+| `Int8`、`Int16`、`Int32`、`Int64` | `int8_t` … `int64_t` | `i8`、`i16`、`i32`、`int` |
+| `UInt8`、`UInt16`、`UInt32`、`UInt64` | `uint8_t` … `uint64_t` | `u8`、`u16`、`u32`、`u64` |
+| `i8` … `u64`、`int` | 対応する C の名前と同じ | そのまま |
 | `Float32` | `float` | `float` |
 | `float` | `double` | `float` |
 | `bool` | `bool` | `bool` |
@@ -185,7 +185,7 @@ C が extern の呼び出しの最中に、その呼び出しを行ったスレ�
 | `extern struct S` | 構造体（値渡し） | `S`（構造体） |
 | `fn(…) -> R`、`(fn(…) -> R)?`（パラメーターのみ） | `R (*)(void *ctx, …), void *ctx` | 関数 |
 
-`int` をより狭い型に変換するときは、C と同じように変換されます。値は折り返され（`300` を `Int8` にすると `44`）、`int` の範囲を超える `UInt64` は負の値として返ってきます。`Int32` などの型を書けるのは extern 宣言の中だけで、それ以外の場所では `int` です（`let n: Int32` は、その旨を伝えるエラーになります）。`Pointer` はそれ自体が独立した Asuka の型で、C から渡された値を表します。Asuka はそれを保持し、比較し、C に渡し返しますが、中身を読むことはありません。
+C の整数は、幅と符号が同じ Asuka の整数になるので、値はどちらの向きにも欠けずに渡ります。`UInt64` は `u64` としてそのまま返り、`Int32` のパラメーターは `i32` を受け取ります。`int` を `Int32` のパラメーターに渡すときは、渡す場所で変換します。`i32(n)`（収まらなければエラー）、`i32(truncating: n)`、`i32(clamping: n)` のどれかなので、収まらない値が気づかれないまま切り詰められることはありません。`Int32` などの名前を書けるのは extern 宣言の中だけで、それ以外の場所では `i32` などの型です（`let n: Int32` は、その旨を伝えるエラーになります）。`Pointer` はそれ自体が独立した Asuka の型で、C から渡された値を表します。Asuka はそれを保持し、比較し、C に渡し返しますが、中身を読むことはありません。
 
 ## 文字列、バイト列、メモリ
 
@@ -201,7 +201,7 @@ extern の呼び出しは、それを行ったスレッドで実行されます�
 ```asuka
 extern fn hash_file(path: CString) -> UInt64
 
-async fn hashed(path: string) -> int {
+async fn hashed(path: string) -> u64 {
   return await spawn { hash_file(path) }
 }
 ```

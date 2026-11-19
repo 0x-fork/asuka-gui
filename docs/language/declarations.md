@@ -120,14 +120,15 @@ match line {
 A struct or an enum takes operators from its methods: `fn add(o: T) ->
 R` (or `plus`) is `a + b`, `fn sub(o: T) -> R` (or `minus`) is `a - b`, `fn mul(o:
 T) -> R` (or `times`) is `a * b`, `fn div(o: T) -> R` (or `quo`) is `a /
-b`, `fn rem(o: T) -> R` is `a % b`, `fn neg() -> R` is `-a`, and `fn
+b`, `fn rem(o: T) -> R` is `a % b`, `fn pow(o: T) -> R` is `a ** b`,
+`fn neg() -> R` is `-a`, and `fn
 compare(o: T) -> int` (negative, zero or positive) is `<`, `<=`, `>`
 and `>=`, `sorted()`, and `T: Comparable`
 ([Functions](functions.md#interfaces-and-generics)). `T` may be another
 type than the value's (`Money * int`), and an operator with two names
 takes one `T` each: a `Decimal`'s `mul(o: Decimal)` and `times(n: int)`
 are `price * rate` and `price * 3`. The other order (`3 * price`) isn't
-derived. `a += b` is `a = a + b` with them (and `-=`, `*=`, `/=`, `%=`),
+derived. `a += b` is `a = a + b` with them (and `-=`, `*=`, `/=`, `%=`, `**=`),
 when the method gives `a`'s type back, on a var, state, a field or an
 element (state changes once). That's how `std/time`'s `Time` adds a
 `Duration` and subtracts another `Time`:

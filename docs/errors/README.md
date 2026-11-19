@@ -25,7 +25,7 @@ Every error and warning Asuka reports has a code: a stable name, said in the ter
 - [group-not-calls](group-not-calls.md): `load (…)` of what isn't each a call.
 - [import-cycle](import-cycle.md): Packages that import each other.
 - [inline-snapshot](inline-snapshot.md): An inline snapshot that isn't a string written in the call.
-- [int-overflow](int-overflow.md): An integer literal that doesn't fit in 64 bits.
+- [int-overflow](int-overflow.md): An integer literal that doesn't fit in its type.
 - [interface-not-satisfied](interface-not-satisfied.md): A type that declares an interface it doesn't implement.
 - [internal-error](internal-error.md): A mistake of the compiler's own.
 - [invalid-catalog](invalid-catalog.md): A catalog that isn't a valid file of messages.
@@ -62,6 +62,7 @@ Every error and warning Asuka reports has a code: a stable name, said in the ter
 - [missing-translation](missing-translation.md): A language's catalog without some of the source's messages.
 - [missing-try](missing-try.md): A call of a function that throws without `try`.
 - [missing-type](missing-type.md): A declaration whose type must be written.
+- [mixed-numbers](mixed-numbers.md): An operator on numbers of two types.
 - [native-type](native-type.md): A native component's prop or event of a type the platform's view can't take.
 - [no-children](no-children.md): Children given to an element that takes none, or not those.
 - [no-such-operator](no-such-operator.md): An operator other languages have and Asuka doesn't.

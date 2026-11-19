@@ -147,6 +147,13 @@ var opInfos = func() []opInfo {
 	set("MOV ADDI SUBI MULI DIVI MODI NEGI WADDI WSUBI WMULI ADDIK EQI NEI LTI LEI BAND BOR BXOR BNOT SHL SHR "+
 		"ADDF SUBF MULF DIVF MODF NEGF EQF NEF LTF LEF I2F F2I NOT ISNONE LTS EQ NE LEN ECASE "+
 		"ADDIS SUBIS MULIS DIVIS MODIS DIVIK MODIK GETF IDX IDXF CONCAT", func(o *opInfo) { o.alias = true })
+	// The sized integers' (i8 … u64) and powers: as the int's, their type
+	// an immediate.
+	set("ADDN SUBN MULN DIVN MODN POWN POWI SHLN SHRN LTU LEU POWF", func(o *opInfo) { o.def = 0; o.uses = []int8{1, 2} })
+	set("NEGN WRAP CONVN CLAMPN F2N U2F", func(o *opInfo) { o.def = 0; o.uses = []int8{1} })
+	set("ADDN SUBN MULN DIVN MODN NEGN POWN POWI SHLN SHRN CONVN", func(o *opInfo) { o.throws = true })
+	set("LTU LEU WRAP CLAMPN F2N U2F POWF", func(o *opInfo) { o.pure = true })
+	set("ADDN SUBN MULN DIVN MODN NEGN POWN POWI SHLN SHRN LTU LEU WRAP CONVN CLAMPN F2N U2F POWF", func(o *opInfo) { o.alias = true })
 	set("NOP RET0 UNTRACK RETRACK BATCH YIELD CATCH", func(*opInfo) {})
 	for i := range t {
 		if !described[i] {

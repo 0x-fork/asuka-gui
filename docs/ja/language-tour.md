@@ -27,15 +27,17 @@ fn values() -> string {
   visits += 1
   let greeting = "Hello, {name}"   // {…} で値を文字列に埋め込む
   let ratio: float = 2.5
+  let level: u8 = 200              // 固定幅の整数：i8 … i32、u8 … u64（int は 64 ビット）
+  let area = 2 ** 10               // べき乗：1024
   let tags = ["new", "work"]       // 配列：[string]
   let ages = ["ana": 31, "bo": 28] // マップ：[string: int]
   let nickname: string? = none     // オプショナル：文字列か none
   let shown = nickname ?? name     // none のときの代わりの値
-  return "{greeting} {visits} {ratio} {tags.count()} {ages["ana"] ?? 0} {shown}"
+  return "{greeting} {visits} {ratio} {level} {area} {tags.count()} {ages["ana"] ?? 0} {shown}"
 }
 ```
 
-`var` は関数とハンドラーの中で使います。ファイルのトップレベルにあるものは、`state` でない限り変わりません。値は常にコピーされ、共有されることはありません。配列のコピーを変えても元の配列はそのままです。文字列、配列、マップには思いつくメソッドがそろっています（`count()`、`contains`、`map`、`filter`、`sorted`、`split` など）。[値と型](language/types.md)を参照してください。
+`var` は関数とハンドラーの中で使います。ファイルのトップレベルにあるものは、`state` でない限り変わりません。型の違う数値は混ぜられません。`int(level) + visits` は先に `u8` を変換します。また、型の範囲を超える算術はエラーになり、ラップアラウンドした数にはなりません。値は常にコピーされ、共有されることはありません。配列のコピーを変えても元の配列はそのままです。文字列、配列、マップには思いつくメソッドがそろっています（`count()`、`contains`、`map`、`filter`、`sorted`、`split` など）。[値と型](language/types.md)を参照してください。
 
 ## 関数
 

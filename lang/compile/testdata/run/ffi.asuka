@@ -2,7 +2,7 @@
 // ffi.c (compiled into the runner).
 
 extern fn ffi_add(a: int, b: int) -> int
-extern fn ffi_wrap8(x: Int8) -> Int8
+extern fn ffi_wrap8(x: Int8) -> Int8 // an i8, as Asuka sees it
 extern fn ffi_wrapu8(x: UInt8) -> UInt8
 extern fn ffi_big() -> UInt64
 extern fn ffi_neg16(x: Int16) -> Int16
@@ -60,8 +60,8 @@ extern fn join_thread()
 
 test "numbers" {
   print(ffi_add(40, 2))
-  print(ffi_wrap8(300))
-  print(ffi_wrapu8(-1))
+  print(ffi_wrap8(i8(truncating: 300)))
+  print(ffi_wrapu8(u8(truncating: -1)))
   print(ffi_big())
   print(ffi_neg16(5))
   print(ffi_u32(41))
@@ -194,7 +194,7 @@ test "kept callbacks" {
 // 42
 // 44
 // 255
-// -1
+// 18446744073709551615
 // -5
 // 42
 // 1.5

@@ -103,6 +103,10 @@ var pathOps = map[string]bool{
 	"GETF": true, "GETP": true, "IDX": true, "LEN": true, "ECASE": true, "ISNONE": true, "UNBOX": true, "JMP": true,
 	// The optimizer's (lang/ir).
 	"ADDIS": true, "SUBIS": true, "MULIS": true, "DIVIS": true, "MODIS": true, "DIVIK": true, "MODIK": true, "IDXF": true,
+	// The sized integers' and powers.
+	"ADDN": true, "SUBN": true, "MULN": true, "DIVN": true, "MODN": true, "NEGN": true, "POWN": true, "POWI": true,
+	"SHLN": true, "SHRN": true, "LTU": true, "LEU": true, "WRAP": true, "CONVN": true, "CLAMPN": true, "F2N": true,
+	"U2F": true, "POWF": true,
 }
 
 // callOps are the calls a borrowed read's way may have when what it's
@@ -120,6 +124,8 @@ var quiet = map[string]bool{
 	"GETF": true, "JMP": true,
 	// The optimizer's divisions by a constant, never 0 or -1.
 	"DIVIS": true, "MODIS": true, "DIVIK": true, "MODIK": true,
+	// The sized integers' that can't throw.
+	"LTU": true, "LEU": true, "WRAP": true, "CLAMPN": true, "F2N": true, "U2F": true, "POWF": true,
 }
 
 // branches are the instructions that jump or go on: a straight path

@@ -810,6 +810,29 @@ func (o *optimizer) eval(in *Instr, c map[int32]konst) (konst, bool) {
 	case "I2F":
 		x, ok := get(1)
 		return konst{f: float64(x.i)}, ok
+	case "ADDN", "SUBN", "MULN", "DIVN", "MODN", "POWN", "POWI", "SHLN", "SHRN", "LTU", "LEU":
+		// The sized integers': folded only when they don't throw (an
+		// overflow at the type's width throws as it runs).
+		x, y, ok := b2()
+		if !ok {
+			return konst{}, false
+		}
+		t := int(a[3])
+		if name == "POWI" {
+			t = 0x33
+		}
+		r, ok := sizedEval(name, x.i, y.i, t)
+		return konst{i: r}, ok
+	case "NEGN", "WRAP", "CONVN", "CLAMPN":
+		x, ok := get(1)
+		if !ok {
+			return konst{}, false
+		}
+		r, ok := sizedEval(name, x.i, 0, int(a[2]))
+		return konst{i: r}, ok
+	case "U2F":
+		x, ok := get(1)
+		return konst{f: float64(uint64(x.i))}, ok
 	case "F2I":
 		x, ok := get(1)
 		if !ok {
