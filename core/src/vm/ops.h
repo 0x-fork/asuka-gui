@@ -234,25 +234,36 @@ static inline ak_arr *ak_op_newa(ak_kind k, const ak_shape *s, const ak_val *ite
 	return arr;
 }
 
+// ak_op_range_error throws IDX's error for an index out of range.
+__attribute__((cold, noinline, unused)) static bool ak_op_range_error(int64_t i, uint32_t len) {
+	ak_throw_msg("index %lld out of range (length %u)", (long long)i, len);
+	return false;
+}
+
+// (The range check is ak_arr_check's, inline: one unsigned compare.)
 static inline bool ak_op_idx(ak_val *R, uint16_t a, const ak_arr *arr, int64_t i) {
-	if (!ak_arr_check(arr, i)) {
-		ak_throw_msg("index %lld out of range (length %u)", (long long)i, arr->len);
-		return false;
-	}
+	if (__builtin_expect((uint64_t)i >= (uint64_t)arr->len, 0)) return ak_op_range_error(i, arr->len);
 	ak_val v = arr->data[i];
 	if (ak_arr_kind(arr) == AK_K_REF) ak_op_setref(R, a, ak_retain(v.p));
 	else R[a] = v;
 	return true;
 }
 
+// SETIDX of an array this register holds alone changes it in place
+// here (ak_arr_set's work for a unique array: the old element let go
+// of); a shared one is copied first by ak_arr_set.
 static inline bool ak_op_setidx(ak_val *R, uint16_t a, int64_t i, ak_val v) {
 	ak_arr **ap = (ak_arr **)&R[a].p;
-	if (!ak_arr_check(*ap, i)) {
-		ak_throw_msg("index %lld out of range (length %u)", (long long)i, (*ap)->len);
-		return false;
+	ak_arr *arr = *ap;
+	if (__builtin_expect((uint64_t)i >= (uint64_t)arr->len, 0)) return ak_op_range_error(i, arr->len);
+	ak_kind k = ak_arr_kind(arr);
+	ak_retain_val(v, k);
+	if (__builtin_expect(ak_unique(arr), 1)) {
+		ak_release_val(arr->data[i], k);
+		arr->data[i] = v;
+	} else {
+		ak_arr_set(ap, i, v);
 	}
-	ak_retain_val(v, ak_arr_kind(*ap));
-	ak_arr_set(ap, i, v);
 	return true;
 }
 
@@ -308,6 +319,61 @@ static inline void ak_op_mset(ak_val *R, uint16_t a, ak_val k, ak_val v) {
 static inline ak_val ak_op_task(ak_closure *c) {
 	if (c->invoke == ak_vm_closure_invoke) return (ak_val){.p = ak_vm_task_start(c->fn, c, NULL, 0)};
 	return c->invoke(c, NULL, 0);
+}
+
+// ---- What the optimizer makes (lang/ir's passes) ----
+//
+// Each is what the instructions it replaces did: the same results, the
+// same errors with the same messages.
+
+// ak_op_addk, ak_op_subk and ak_op_mulk are ADDIS, SUBIS and MULIS: an
+// int and a constant, checked as ADDI, SUBI and MULI are.
+static inline bool ak_op_addk(ak_val *R, uint16_t a, int64_t x, int64_t k) {
+	int64_t r;
+	if (__builtin_expect(__builtin_add_overflow(x, k, &r), 0)) return ak_op_overflow();
+	R[a].i = r;
+	return true;
+}
+
+static inline bool ak_op_subk(ak_val *R, uint16_t a, int64_t x, int64_t k) {
+	int64_t r;
+	if (__builtin_expect(__builtin_sub_overflow(x, k, &r), 0)) return ak_op_overflow();
+	R[a].i = r;
+	return true;
+}
+
+static inline bool ak_op_mulk(ak_val *R, uint16_t a, int64_t x, int64_t k) {
+	int64_t r;
+	if (__builtin_expect(__builtin_mul_overflow(x, k, &r), 0)) return ak_op_overflow();
+	R[a].i = r;
+	return true;
+}
+
+// ak_op_idxf is IDXF: the field f of the struct at index i of arr (IDX,
+// then GETF, with no reference to the element taken).
+static inline bool ak_op_idxf(ak_val *R, uint16_t a, const ak_arr *arr, int64_t i, uint16_t f) {
+	if (__builtin_expect((uint64_t)i >= (uint64_t)arr->len, 0)) return ak_op_range_error(i, arr->len);
+	ak_op_getf(R, a, arr->data[i].p, f);
+	return true;
+}
+
+// ak_op_setif is SETIF: the field f of the struct at index i of the
+// array in register a set to v, the array and then the struct copied
+// first if they're shared (what IDX, SETIDX of none, SETF and SETIDX
+// back did, with no reference to the element taken).
+static inline bool ak_op_setif(ak_val *R, uint16_t a, int64_t i, uint16_t f, ak_val v) {
+	ak_arr **ap = (ak_arr **)&R[a].p;
+	if (__builtin_expect((uint64_t)i >= (uint64_t)(*ap)->len, 0)) return ak_op_range_error(i, (*ap)->len);
+	ak_arr *arr = ak_arr_mut(ap);
+	ak_struct *o = ak_struct_mut((ak_struct **)&arr->data[i].p);
+	if (o->shape->kinds[f] == AK_K_REF) {
+		void *old = o->f[f].p;
+		o->f[f].p = ak_retain(v.p);
+		ak_release(old);
+	} else {
+		o->f[f] = v;
+	}
+	return true;
 }
 
 // ak_op_exit releases a frame's reference registers but keep (-1: none).

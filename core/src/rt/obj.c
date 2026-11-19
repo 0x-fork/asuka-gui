@@ -956,6 +956,7 @@ static const ak_shape cancel_shape = {
 
 void (*ak_throw_hook)(void *err);
 void (*ak_frame_hook)(const char *fn, const char *file, uint32_t line);
+void (*ak_retrace_hook)(void);
 
 void ak_throw(void *err) {
 	if (ak_throw_hook && err) ak_throw_hook(err);
@@ -997,6 +998,8 @@ void ak_throw_cancel(void) {
 }
 
 bool ak_error_pending(void) { return pending_error != NULL; }
+
+void *const *ak_error_slot(void) { return &pending_error; }
 
 void *ak_error_take(void) {
 	void *e = pending_error;

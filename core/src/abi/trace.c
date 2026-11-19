@@ -26,6 +26,14 @@ static void on_throw(void *err) {
 	T.c[0] = 0;
 }
 
+// on_retrace takes the VM's part of the trace again: the error was
+// thrown by an instruction, whose frame's pc is now where.
+static void on_retrace(void) {
+	if (ak_thread_id() != T.thread || !T.traced || T.c[0]) return;
+	void *const *err = ak_error_slot();
+	if (*err == T.traced) ak_vm_traceback(T.vm, sizeof T.vm);
+}
+
 static void on_frame(const char *fn, const char *file, uint32_t line) {
 	if (ak_thread_id() != T.thread || !T.traced || !ak_error_pending()) return;
 	size_t n = strlen(T.c);
@@ -36,11 +44,13 @@ void ak_trace_start(void) {
 	T.thread = ak_thread_id();
 	ak_throw_hook = on_throw;
 	ak_frame_hook = on_frame;
+	ak_retrace_hook = on_retrace;
 }
 
 void ak_trace_stop(void) {
 	ak_throw_hook = NULL;
 	ak_frame_hook = NULL;
+	ak_retrace_hook = NULL;
 	if (T.traced) ak_release(T.traced);
 	T.traced = NULL;
 }

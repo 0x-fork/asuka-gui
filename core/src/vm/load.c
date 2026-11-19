@@ -8,15 +8,45 @@
 
 typedef struct { const char *name; ak_builtin_fn fn; } builtin_entry;
 static AK_VEC(builtin_entry) builtins;
+// An index of builtins by name: open addressing, each slot an entry's
+// index + 1 (0: empty), at most half full. Registering every table and
+// resolving a module's builtins are then a hash apiece, not a scan of
+// the thousands registered.
+static uint32_t *bslots;
+static uint32_t nbslots;
+
+static uint32_t name_hash(const char *s) {
+	uint32_t h = 2166136261u;  // FNV-1a
+	for (; *s; s++) h = (h ^ (uint8_t)*s) * 16777619u;
+	return h;
+}
+
+// builtin_slot is the slot name is in, or the empty one it would go in.
+static uint32_t builtin_slot(const char *name) {
+	uint32_t mask = nbslots - 1;
+	for (uint32_t i = name_hash(name) & mask;; i = (i + 1) & mask) {
+		uint32_t e = bslots[i];
+		if (!e || strcmp(builtins.data[e - 1].name, name) == 0) return i;
+	}
+}
+
+static void builtins_reindex(uint32_t n) {
+	ak_free(bslots);
+	nbslots = n;
+	bslots = ak_alloc(sizeof(uint32_t) * n);
+	memset(bslots, 0, sizeof(uint32_t) * n);
+	for (uint32_t i = 0; i < builtins.len; i++) bslots[builtin_slot(builtins.data[i].name)] = i + 1;
+}
 
 void ak_builtin_register(const char *name, ak_builtin_fn fn) {
-	for (uint32_t i = 0; i < builtins.len; i++) {
-		if (strcmp(builtins.data[i].name, name) == 0) {
-			builtins.data[i].fn = fn;
-			return;
-		}
+	if (2 * (builtins.len + 1) > nbslots) builtins_reindex(nbslots ? 2 * nbslots : 1024);
+	uint32_t i = builtin_slot(name);
+	if (bslots[i]) {
+		builtins.data[bslots[i] - 1].fn = fn;
+		return;
 	}
 	ak_vec_push(&builtins, ((builtin_entry){name, fn}));
+	bslots[i] = builtins.len;
 }
 
 // rt.freeze(value, kind): the value, made a constant (rt.h's ak_freeze)
@@ -32,9 +62,9 @@ static ak_val rt_freeze(ak_val *args, uint32_t n) {
 void ak_vm_freeze_init(void) { ak_builtin_register("rt.freeze", rt_freeze); }
 
 ak_builtin_fn ak_builtin_find(const char *name) {
-	for (uint32_t i = 0; i < builtins.len; i++)
-		if (strcmp(builtins.data[i].name, name) == 0) return builtins.data[i].fn;
-	return NULL;
+	if (!nbslots) return NULL;
+	uint32_t e = bslots[builtin_slot(name)];
+	return e ? builtins.data[e - 1].fn : NULL;
 }
 
 // ---- Loading ----
@@ -212,12 +242,25 @@ ak_module *ak_module_load(const uint8_t *p, size_t n, char *err, size_t errcap) 
 		f->nregs = (uint16_t)nk;
 		f->capkinds = rkinds(l, &nc);
 		f->ncap = (uint16_t)nc;
+		f->nrefs = 0;
+		for (uint32_t r = 0; r < nk; r++) f->nrefs += f->kinds[r] == AK_K_REF;
+		f->refs = ak_alloc(sizeof(uint16_t) * (f->nrefs ? f->nrefs : 1));
+		for (uint32_t r = 0, j = 0; r < nk; r++)
+			if (f->kinds[r] == AK_K_REF) f->refs[j++] = (uint16_t)r;
 		f->ret = ak_read_u8(&l->r);
 		f->flags = ak_read_u8(&l->r);
 		if (f->nparams > f->nregs) fail(l, "more parameters than registers");
 		f->ncode = count(l, 2);
 		f->code = ak_alloc(sizeof(uint16_t) * (f->ncode ? f->ncode : 1));
 		for (uint32_t c = 0; c < f->ncode; c++) f->code[c] = ak_read_u16(&l->r);
+		// Every instruction is one the interpreter has, whole: its
+		// dispatch indexes a table by the opcode, unchecked.
+		for (uint32_t pc = 0; pc < f->ncode && !l->failed;) {
+			uint16_t op = f->code[pc];
+			if (op >= AK_OP__COUNT) fail(l, "bad opcode");
+			else if (pc + ak_op_width[op] > f->ncode) fail(l, "truncated instruction");
+			else pc += ak_op_width[op];
+		}
 		f->nhandlers = count(l, 12);
 		f->handlers = ak_alloc(sizeof(ak_handler) * (f->nhandlers ? f->nhandlers : 1));
 		for (uint32_t h = 0; h < f->nhandlers; h++) {
@@ -230,6 +273,14 @@ ak_module *ak_module_load(const uint8_t *p, size_t n, char *err, size_t errcap) 
 		for (uint32_t h = 0; h < f->nlines; h++) {
 			f->lines[h].pc = ak_read_u32(&l->r);
 			f->lines[h].line = ak_read_u32(&l->r);
+		}
+		f->ninlines = count(l, 16);
+		f->inlines = ak_alloc(sizeof(ak_inline) * (f->ninlines ? f->ninlines : 1));
+		for (uint32_t h = 0; h < f->ninlines; h++) {
+			f->inlines[h].start = ak_read_u32(&l->r);
+			f->inlines[h].end = ak_read_u32(&l->r);
+			f->inlines[h].func = ak_read_u32(&l->r);
+			f->inlines[h].line = ak_read_u32(&l->r);
 		}
 	}
 
@@ -271,6 +322,9 @@ ak_module *ak_module_load(const uint8_t *p, size_t n, char *err, size_t errcap) 
 	for (uint32_t i = 0; i < m->nshapes && !l->failed; i++)
 		for (uint32_t k = 0; k < m->shapes[i].nmethods; k++)
 			if (m->shapes[i].methods[k].func >= m->nfuncs) fail(l, "bad method function");
+	for (uint32_t i = 0; i < m->nfuncs && !l->failed; i++)
+		for (uint32_t k = 0; k < m->funcs[i].ninlines; k++)
+			if (m->funcs[i].inlines[k].func >= m->nfuncs) fail(l, "bad inlined function");
 	if (l->failed) {
 		ak_module_release(m);
 		return NULL;
@@ -307,10 +361,12 @@ static void module_free(void *ctx) {
 		ak_release(f->name);
 		ak_release(f->file);
 		ak_free(f->kinds);
+		ak_free(f->refs);
 		ak_free(f->capkinds);
 		ak_free(f->code);
 		ak_free(f->handlers);
 		ak_free(f->lines);
+		ak_free(f->inlines);
 	}
 	ak_free(m->funcs);
 	for (uint32_t i = 0; i < m->nshapes; i++) {

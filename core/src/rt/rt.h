@@ -386,6 +386,10 @@ void ak_throw(void *err);  // takes the reference
 void ak_throw_msg(const char *fmt, ...) AK_PRINTF(1, 2);
 void ak_throw_cancel(void);
 bool ak_error_pending(void);
+// ak_error_slot is where this thread's pending error is: *slot is
+// ak_error_pending's, read without a call (the VM's dispatch loop takes
+// it once). It's valid as long as the thread is.
+void *const *ak_error_slot(void);
 void *ak_error_take(void);  // the pending error, cleared; the caller owns it
 bool ak_is_cancel(const void *err);
 // ak_throw_hook, when set, sees each error as it's thrown (a program
@@ -395,6 +399,11 @@ extern void (*ak_throw_hook)(void *err);
 // left by an error, from line: the frames a program's trace has that the
 // VM's stack doesn't. The error's path only.
 extern void (*ak_frame_hook)(const char *fn, const char *file, uint32_t line);
+// ak_retrace_hook, when set, hears that the error pending was thrown by
+// the instruction the VM's innermost frame now says (its pc saved after
+// the throw: an overflow's, an index's): a trace taken as it was thrown
+// is taken again.
+extern void (*ak_retrace_hook)(void);
 ak_str *ak_error_message(const void *err);  // borrowed
 
 extern const ak_shape ak_shape_error;  // the built-in Error(message: string)

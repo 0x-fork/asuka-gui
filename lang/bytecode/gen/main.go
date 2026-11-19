@@ -35,7 +35,20 @@ func main() {
 		}
 		fmt.Fprintf(&b, "%d,", bytecode.Op(i).Width())
 	}
-	b.WriteString("\n};\n\nstatic const char *const ak_op_names[] = {")
+	b.WriteString("\n};\n\n// Each opcode's width as a constant, for an instruction's own code\n// (the interpreter's threaded dispatch), and the opcodes in order, as\n// an X macro: X(name).\n")
+	for i, d := range bytecode.Ops {
+		fmt.Fprintf(&b, "#define AK_OPW_%s %d\n", d.Name, bytecode.Op(i).Width())
+	}
+	b.WriteString("\n#define AK_OP_LIST(X)")
+	for i, d := range bytecode.Ops {
+		if i%8 == 0 {
+			b.WriteString(" \\\n\t")
+		} else {
+			b.WriteString(" ")
+		}
+		fmt.Fprintf(&b, "X(%s)", d.Name)
+	}
+	b.WriteString("\n\nstatic const char *const ak_op_names[] = {")
 	for i, d := range bytecode.Ops {
 		if i%8 == 0 {
 			b.WriteString("\n\t")

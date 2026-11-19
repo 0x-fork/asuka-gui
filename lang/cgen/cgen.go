@@ -334,9 +334,11 @@ func (g *gen) fn(i int) error {
 			// range to jump to it: used either way.
 			g.p("L%d:; if (0) goto L%d;\n", in.pc, in.pc)
 		}
-		if err := g.insn(f, in, handlerAt(f, in.pc)); err != nil {
+		h, tramp := g.inlined(f, in.pc, handlerAt(f, in.pc))
+		if err := g.insn(f, in, h); err != nil {
 			return err
 		}
+		tramp()
 	}
 	g.p("unwind:\n\tif (ak_frame_hook) ak_frame_hook(%s, %s, at_);\n", cbytes(f.Name), cbytes(f.File))
 	if untracks > 0 {
@@ -549,14 +551,14 @@ func (g *gen) insn(f *bc.FuncDef, in insn, h string) error {
 		}
 	case "ADDI", "SUBI", "MULI":
 		fn := map[string]string{"ADDI": "ak_op_addi", "SUBI": "ak_op_subi", "MULI": "ak_op_muli"}[name]
-		w("if (!%s(R, %d, %d, %d)) goto %s;", fn, a[0], a[1], a[2], h)
+		w("if (!%s(R, %d, %d, %d)) { at_ = %d; goto %s; }", fn, a[0], a[1], a[2], at, h)
 	case "WADDI", "WSUBI", "WMULI":
 		op := map[string]string{"WADDI": "+", "WSUBI": "-", "WMULI": "*"}[name]
 		w("R[%d].i = (int64_t)((uint64_t)R[%d].i %s (uint64_t)R[%d].i);", a[0], a[1], op, a[2])
 	case "DIVI", "MODI":
-		w("if (!ak_op_divi(R, %d, %d, %d, %v)) goto %s;", a[0], a[1], a[2], name == "MODI", h)
+		w("if (!ak_op_divi(R, %d, %d, %d, %v)) { at_ = %d; goto %s; }", a[0], a[1], a[2], name == "MODI", at, h)
 	case "NEGI":
-		w("if (!ak_op_negi(R, %d, %d)) goto %s;", a[0], a[1], h)
+		w("if (!ak_op_negi(R, %d, %d)) { at_ = %d; goto %s; }", a[0], a[1], at, h)
 	case "ADDIK":
 		w("R[%d].i = (int64_t)((uint64_t)R[%d].i + (uint64_t)(int64_t)%d);", a[0], a[1], int16(a[2]))
 	case "EQI", "NEI", "LTI", "LEI", "BAND", "BOR", "BXOR":
@@ -565,7 +567,7 @@ func (g *gen) insn(f *bc.FuncDef, in insn, h string) error {
 	case "BNOT":
 		w("R[%d].i = ~R[%d].i;", a[0], a[1])
 	case "SHL", "SHR":
-		w("if (!ak_op_shift(R, %d, %d, %d, %v)) goto %s;", a[0], a[1], a[2], name == "SHR", h)
+		w("if (!ak_op_shift(R, %d, %d, %d, %v)) { at_ = %d; goto %s; }", a[0], a[1], a[2], name == "SHR", at, h)
 	case "ADDF", "SUBF", "MULF", "DIVF":
 		op := map[string]string{"ADDF": "+", "SUBF": "-", "MULF": "*", "DIVF": "/"}[name]
 		w("R[%d].f = R[%d].f %s R[%d].f;", a[0], a[1], op, a[2])
@@ -707,9 +709,9 @@ func (g *gen) insn(f *bc.FuncDef, in insn, h string) error {
 		}
 		w("ak_op_setref(R, %d, ak_op_newa((ak_kind)%d, %s, &R[%d], %d));", a[0], a[1], shape, a[3], a[4])
 	case "IDX":
-		w("if (!ak_op_idx(R, %d, R[%d].p, R[%d].i)) goto %s;", a[0], a[1], a[2], h)
+		w("if (!ak_op_idx(R, %d, R[%d].p, R[%d].i)) { at_ = %d; goto %s; }", a[0], a[1], a[2], at, h)
 	case "SETIDX":
-		w("if (!ak_op_setidx(R, %d, R[%d].i, R[%d])) goto %s;", a[0], a[1], a[2], h)
+		w("if (!ak_op_setidx(R, %d, R[%d].i, R[%d])) { at_ = %d; goto %s; }", a[0], a[1], a[2], at, h)
 	case "LEN":
 		w("R[%d].i = ak_op_len(R[%d].p);", a[0], a[1])
 	case "NEWM":
@@ -796,7 +798,9 @@ func (g *gen) insn(f *bc.FuncDef, in insn, h string) error {
 		}
 		w("ak_vm_yield(co); ak_op_leave(co, fi_, R, N, %d); depth--; return AK_RUN_SUSPEND;", in.pc+in.op.Width())
 	default:
-		return fmt.Errorf("no C for %s", name)
+		if !g.optInsn(f, in, h) {
+			return fmt.Errorf("no C for %s", name)
+		}
 	}
 	return nil
 }
