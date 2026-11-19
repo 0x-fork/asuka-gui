@@ -119,8 +119,13 @@ the way, or, scalars, copied as it's made), is replaced with the body, in
 registers of the caller's (one set per callee: its bodies never run at
 once): the arguments copied in as a frame takes them, each return a
 copy of the result and a jump past the body, the body's references
-cleared after it as its frame's are as it returns. A closure the call
-was on is then often never read, and isn't made. Not into a function
+cleared after it as its frame's are as it returns. A parameter the body
+never writes (sets, moves out of, changes in place, passes in a block)
+isn't copied in: the body reads the caller's argument register, or the
+register that argument was just copied from in the call's block (not
+written since), so passing a value to an inlined function retains and
+releases nothing. A closure the call was on is then often never read,
+and isn't made. Not into a function
 that may suspend, nor in a handler's range when the callee has
 reference registers (an error caught there would keep them until the
 caller ends). The callee's line numbers stay on its instructions, and
@@ -230,6 +235,8 @@ arguments, a `let`'s value or a condition read on the way (a struct's
 field, for `items[i] = items[j]` in a mut fn) is cleared (CLR) once the
 value is computed, not at the statement's end: held, it would be a
 second reference to the place about to change, which would be copied.
+A let's or an assignment's value, a temp, is cleared once the names or
+the place hold it (so `n = n.kids[i]` coalesces into one IDX into n).
 
 ## Changing values in place
 
@@ -439,30 +446,46 @@ the C is written, from the bytecode's kinds.
   VM's frame: C compilers take too long to allocate thousands of locals.
 - Calls. A synchronous function is three C functions: its body
   (`fN_`), which takes its arguments as C values of their kinds (a mut
-  fn's receiver by its address) and the thread's stack limit, and
-  returns `ak_ret` (its result, and whether it threw) in two machine
-  registers; its entry with the arguments in an array (`fN_c`, an
-  `ak_direct_body`); and its VM entry (`fN`, an `ak_native_body`), which
-  the interpreter and builtins call. A CALL of a compiled function calls
-  its body. The body's first instruction compares the stack pointer
-  with the limit, as Go's prologue does, before its frame is made (a
-  base case that calls nothing makes none); the C stack past its limit
-  is a stack overflow (ak_cg_overflow, tail-called), the error a
-  register's test. A function that calls nothing doesn't check: it can't
-  recurse, and its frame fits in what the limit leaves. The depth of
-  compiled calls isn't counted: they go as deep as the thread's stack,
-  as Go's and Swift's do (the VM's frames stop at 10,000). A CALLC of a
-  compiled function's closure, or a CALLI of a compiled method, whose
-  arguments' kinds are its parameters' (`ak_func.sig`: their count and
-  C types, one compare) calls its body too, the arguments in registers;
-  else its array entry; else the closure's invoke. Other calls test the
-  thread's pending error, its slot found once a function
-  (ak_cg_pending: a thread-local's read is a call on Apple's systems).
+  fn's receiver by its address), then its closure, and returns `ak_ret`
+  (its result, and whether it threw) in two machine registers (the
+  arguments first: the first is in the register the result goes back
+  in, so returning it moves nothing); its entry with the arguments in an
+  array (`fN_c`, an `ak_direct_body`); and its VM entry (`fN`, an
+  `ak_native_body`), which the interpreter and builtins call. A CALL of a
+  compiled function calls its body. The body checks the stack as it
+  starts, as Go's prologue does: the C stack past the thread's limit is
+  a stack overflow (ak_cg_overflow), the error a register's test. On
+  arm64 the limit is in x28, which the app's C is compiled without
+  (cbuild.AppFlags: `-ffixed-x28`), as Go keeps its g in R28: the check
+  is `cmp sp, x28; b.lo`, and no register of a recursing function's
+  holds the limit, no call passes it; each way in from the core (fN,
+  fN_c, an async body's fN) sets x28 and puts the core's back (it's
+  callee-saved: the core keeps its own across calls into the app).
+  Elsewhere the limit is the body's argument after its closure (ops.h's
+  AK_CG_*: the C is the same). A function that calls nothing doesn't
+  check: it can't recurse, and its frame fits in what the limit leaves.
+  The depth of compiled calls isn't counted: they go as deep as the
+  thread's stack, as Go's and Swift's do (the VM's frames stop at
+  10,000). A CALLC of a compiled function's closure, or a CALLI of a
+  compiled method, whose arguments' kinds are its parameters'
+  (`ak_func.sig`: their count and C types, one compare; a closure keeps
+  a copy of its function's, `ak_closure.sig`, so the test reads the
+  closure only) calls its body too, the arguments in registers; else its
+  array entry; else the closure's invoke. Other calls test the thread's
+  pending error, its slot found once a function (ak_cg_pending: a
+  thread-local's read is a call on Apple's systems). An error leaves a
+  function through ak_cg_unwind, a cold function (it tells
+  ak_frame_hook of the frame): the C compiler takes every way to an
+  error as unlikely, so a call's test of its result falls through when
+  it didn't throw.
 - Instructions. Checked int arithmetic, comparisons, an index's range
   and a value's uniqueness are tested inline (ops.h's value-based
   bodies, the interpreter's too); a scalar element or field is read and
   written as its C type. The pure math builtins (`math.sqrt`, `floor`,
-  `abs`...) are C expressions, not calls through the module's table.
+  `abs`...) are C expressions, not calls through the module's table; a
+  string's `byteCount` is its length, and its `equals`, `compare`,
+  `contains`, `hasPrefix` and `hasSuffix` call the runtime's functions
+  directly (no argument block, no test of the pending error).
 - Places (lang/cgen/places.go). Along a straight path (each instruction
   the only way into the next): an element or a field read into a
   register that only reads it before it's cleared, with nothing on the
@@ -470,7 +493,9 @@ the C is written, from the bytecode's kinds.
   from is a register of its own, which holds a reference to it, so no
   call changes it in place or frees it), is a borrowed C pointer (no
   retain, no release; the register stays none, so an error on the way
-  releases nothing); an element taken out, changed by SETFs and put back
+  releases nothing); likewise a global no function but the module's
+  init writes (a file's let), whatever runs on its way, to its CLR or
+  the function's return; an element taken out, changed by SETFs and put back
   (Changing values in place) with nothing on the way that can throw is
   changed where it is, the array and the element made unique there; a
   take-out or a put-back is a move; and an array made unique, an index
@@ -503,7 +528,17 @@ the C is written, from the bytecode's kinds.
   array's length (LEN, which an element's change keeps), an index an
   instruction took; so `for i in 0..<xs.count()`, `(i + 1)..<n` and
   `c + 1 < n && xs[c + 1]` check no index, and `i + 1` of an index is an
-  unchecked add. A loop whose first path (what runs every turn) changes
+  unchecked add. And an int's magnitude (|x| < 2^b): a length or an
+  index an instruction took below 2^32 (ak_arr's len is a uint32), a
+  constant its own, a sum or a difference of known ones below 2^(the
+  larger b + 1), a product 2^(their sum); an ADDI, SUBI or MULI (or
+  immediate form) known below 2^63 so can't overflow and isn't checked
+  (sieve's `j += i`, of two indexes). Where the ways in disagree it's
+  widened to an index's, then dropped. Unchecked, an op of two registers
+  is opaque to the C compiler's loop analysis (AK_CG_OPAQUE, an empty
+  asm), as the checked op's result was: given a counter stepped by
+  another register as a plain add, clang works out the inner loop's
+  trip count (a 128-bit division) on each turn of the outer loop. A loop whose first path (what runs every turn) changes
   an array's element in place has the array made unique as it's entered,
   and the element at an index it doesn't change (in range there): one
   check before the loop, not one a turn. None of it depends on how the
@@ -514,9 +549,10 @@ the C is written, from the bytecode's kinds.
   (ADDIS, DIVIS...) a literal, a division by a constant the C
   compiler's multiply, a fused comparison (JLTI, JGEIS...) one `if`.
   An error in a body inlined into the function goes first through a
-  trampoline (`I<pc>`) that tells `ak_frame_hook` of the inlined
-  function's frame, then on with the call's line, so a trace reads as
-  the VM's does; every error's path sets the line it left from (`at_`).
+  trampoline (`I<pc>`) that tells `ak_frame_hook` (ak_cg_unwind) of
+  the inlined function's frame, then on with the call's line, so a
+  trace reads as the VM's does; every error's path sets the line it
+  left from (`at_`).
 
 ## Functions that suspend, in C
 
