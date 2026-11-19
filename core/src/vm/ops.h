@@ -392,6 +392,16 @@ static inline ak_arr *ak_op_newa(ak_kind k, const ak_shape *s, const ak_val *ite
 	return arr;
 }
 
+// ak_op_concat is CONCAT: a = b + c; a = a + c (s += x) appends in
+// place when a's string is its alone (out of the interpreter's loop).
+__attribute__((noinline, unused)) static void ak_op_concat(ak_val *R, uint16_t a, uint16_t b, uint16_t c) {
+	if (a == b) {
+		ak_str_append((ak_str **)&R[a].p, R[c].p);
+		return;
+	}
+	ak_op_setref(R, a, ak_str_concat(R[b].p, R[c].p));
+}
+
 // AK_VALS and AK_BOOLS are an array's elements as compiled code reads
 // and writes them in place (lang/cgen): an array of values', a packed
 // [bool]'s bools (ak_arr_bools).
@@ -407,10 +417,22 @@ __attribute__((cold, noinline, unused)) static bool ak_op_range(const ak_arr *ar
 	return false;
 }
 
+// A packed array's element read and written out of the interpreter's
+// loop (its handlers small: the registers it keeps are every
+// instruction's).
+__attribute__((noinline, unused)) static void ak_op_idx_packed(ak_val *R, uint16_t a, const ak_arr *arr, int64_t i) {
+	R[a].i = arr->elem == AK_E_BOOL ? AK_BOOLS(arr)[i] : ak_arr_get_packed(arr, (uint32_t)i).i;
+}
+
+__attribute__((noinline, unused)) static void ak_op_setidx_packed(ak_arr *arr, int64_t i, ak_val v) {
+	if (arr->elem == AK_E_BOOL) AK_BOOLS(arr)[i] = v.i != 0;
+	else ak_arr_put_packed(arr, (uint32_t)i, v);
+}
+
 static inline bool ak_op_idx(ak_val *R, uint16_t a, const ak_arr *arr, int64_t i) {
 	if (AK_UNLIKELY((uint64_t)i >= (uint64_t)arr->len)) return ak_op_range(arr, i);
 	if (AK_UNLIKELY(arr->elem != AK_E_VAL)) {
-		R[a].i = arr->elem == AK_E_BOOL ? AK_BOOLS(arr)[i] : ak_arr_get_packed(arr, (uint32_t)i).i;
+		ak_op_idx_packed(R, a, arr, i);
 		return true;
 	}
 	ak_val v = AK_VALS(arr)[i];
@@ -432,10 +454,8 @@ static inline bool ak_op_setidx(ak_val *R, uint16_t a, int64_t i, ak_val v) {
 		if (AK_LIKELY(arr->elem == AK_E_VAL)) {
 			if (k == AK_K_REF) ak_release(AK_VALS(arr)[i].p);
 			AK_VALS(arr)[i] = v;
-		} else if (arr->elem == AK_E_BOOL) {
-			AK_BOOLS(arr)[i] = v.i != 0;
 		} else {
-			ak_arr_put_packed(arr, (uint32_t)i, v);
+			ak_op_setidx_packed(arr, i, v);
 		}
 	} else {
 		ak_arr_set(ap, i, v);
