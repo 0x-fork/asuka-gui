@@ -622,6 +622,15 @@ static inline bool ak_cg_pending(void *const **slot) {
 // tail-calls it and the check's path needs no frame.
 ak_ret ak_cg_overflow(const char *fn) __attribute__((cold));
 
+// ak_cg_unwind tells ak_frame_hook (if set) of a compiled function's
+// frame an error leaves, at line. It's cold and in another file, so the
+// C compiler takes every way to it as unlikely and lays the error's
+// paths out of the way: a call's test of the error it returns falls
+// through to what follows when it didn't throw, and the function's
+// returns aren't jumped to (the hook's own test would read as an even
+// branch, and the error's block would sit in the way).
+void ak_cg_unwind(const char *fn, const char *file, uint32_t line) __attribute__((cold));
+
 // ---- Functions that may suspend, compiled to C (ak_async_body) ----
 //
 // Such a function's frame is on the coroutine, as the interpreter's is,

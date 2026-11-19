@@ -669,7 +669,7 @@ func (g *gen) fn(i int) error {
 	}
 	g.b.WriteString(code)
 	if g.unwinds {
-		g.p("unwind_:\n\tif (ak_frame_hook) ak_frame_hook(%s, %s, at_);\n", cbytes(f.Name), cbytes(f.File))
+		g.p("unwind_:\n\tak_cg_unwind(%s, %s, at_);\n", cbytes(f.Name), cbytes(f.File))
 		if untracks > 0 {
 			// Out of a peek the error left: what it untracked tracks again.
 			if g.async {
@@ -952,7 +952,7 @@ func (g *gen) inlined(f *bc.FuncDef, pc int, h string) (string, func()) {
 			if i > 0 {
 				g.w("\tat_ = %d;", ins[i-1].Line)
 			}
-			g.w("\tif (ak_frame_hook) ak_frame_hook(%s, %s, at_);", cbytes(callee.Name), cbytes(callee.File))
+			g.w("\tak_cg_unwind(%s, %s, at_);", cbytes(callee.Name), cbytes(callee.File))
 		}
 		g.w("\tat_ = %d; %s\n\t}", ins[len(ins)-1].Line, g.to(h))
 	}

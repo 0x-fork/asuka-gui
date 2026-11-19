@@ -932,6 +932,10 @@ ak_ret ak_cg_overflow(const char *fn) {
 	return (ak_ret){.e = 1};
 }
 
+void ak_cg_unwind(const char *fn, const char *file, uint32_t line) {
+	if (ak_frame_hook) ak_frame_hook(fn, file, line);
+}
+
 void ak_vm_closure_drop(ak_closure *c) { ak_module_release(((const ak_func *)c->fn)->mod); }
 
 static ak_val call_sync(const ak_func *f, ak_closure *clos, ak_val *args, uint32_t nargs) {
