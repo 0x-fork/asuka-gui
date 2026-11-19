@@ -2229,7 +2229,7 @@ behavior.
   into `core/src/std/tzdata_gen.c`: a transition is a minute and a type,
   packed (each minute a zigzag varint of its difference from the one
   before) and DEFLATEd, 12 KB of its 85, which the first lookup inflates
-  (miniz's, std/compress's) under a lock, once for the process; the
+  (std/compress's, flate.c) under a lock, once for the process; the
   names and zones, which `time.zone` and `zones()` read, stay as they
   are. About 30 KB in every app that imports std/time; lookups are
   binary searches of the inflated arrays.

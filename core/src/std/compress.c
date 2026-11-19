@@ -1,6 +1,6 @@
 // compress.c: std/compress's builtins, and what std/archive shares with
-// it (compress.h): failures, files, and DEFLATE streams over miniz's
-// compressor and decompressor (core/third_party/miniz), read and written
+// it (compress.h): failures, files, and DEFLATE streams (flate.c's
+// compressor and decompressor) framed as gzip and zlib, read and written
 // a piece at a time.
 //
 //	compress.encodeBytes(data, format, level) -> bytes
@@ -35,37 +35,7 @@
 #include <unistd.h>
 #endif
 
-// miniz, compiled in without what the core doesn't use; its exported
-// names the core's own.
-#define MINIZ_NO_STDIO
-#define MINIZ_NO_TIME
-#define MINIZ_NO_ARCHIVE_APIS
-#define MINIZ_NO_ZLIB_APIS
-#define MINIZ_NO_ZLIB_COMPATIBLE_NAMES
-#define MINIZ_NO_MALLOC
-#define miniz_def_alloc_func ak_mz_def_alloc_func
-#define miniz_def_free_func ak_mz_def_free_func
-#define miniz_def_realloc_func ak_mz_def_realloc_func
-#define mz_adler32 ak_mz_adler32
-#define mz_crc32 ak_mz_crc32
-#define mz_free ak_mz_free
-#define mz_version ak_mz_version
-#define tdefl_compress ak_mz_tdefl_compress
-#define tdefl_compress_buffer ak_mz_tdefl_compress_buffer
-#define tdefl_compress_mem_to_heap ak_mz_tdefl_compress_mem_to_heap
-#define tdefl_compress_mem_to_mem ak_mz_tdefl_compress_mem_to_mem
-#define tdefl_compress_mem_to_output ak_mz_tdefl_compress_mem_to_output
-#define tdefl_create_comp_flags_from_zip_params ak_mz_tdefl_create_comp_flags_from_zip_params
-#define tdefl_get_adler32 ak_mz_tdefl_get_adler32
-#define tdefl_get_prev_return_status ak_mz_tdefl_get_prev_return_status
-#define tdefl_init ak_mz_tdefl_init
-#define tdefl_write_image_to_png_file_in_memory ak_mz_tdefl_write_image_to_png_file_in_memory
-#define tdefl_write_image_to_png_file_in_memory_ex ak_mz_tdefl_write_image_to_png_file_in_memory_ex
-#define tinfl_decompress ak_mz_tinfl_decompress
-#define tinfl_decompress_mem_to_callback ak_mz_tinfl_decompress_mem_to_callback
-#define tinfl_decompress_mem_to_heap ak_mz_tinfl_decompress_mem_to_heap
-#define tinfl_decompress_mem_to_mem ak_mz_tinfl_decompress_mem_to_mem
-#include "../../third_party/miniz/miniz.c"
+#include "std/flate.h"
 
 #define STR(i) ((ak_str *)args[i].p)
 #define BYTES(i) ((ak_bytes *)args[i].p)
@@ -457,24 +427,31 @@ size_t ak_cz_src_read(ak_cz_src *s, uint8_t *p, size_t n) {
 }
 
 // ---- Inflating ----
+//
+// The stream's framing (gzip's members, zlib's header and checksum) is
+// here; DEFLATE is flate.c's. A source in memory is read where it is; a
+// file's through a buffer. What it decompresses to goes into a window
+// (32 KB of history and room after it) that reads empty, or, decoding
+// bytes whole, into the result itself, grown as it fills.
 
-enum { IN_SIZE = 65536, DICT = TINFL_LZ_DICT_SIZE };
+enum { IN_SIZE = 65536, OB_SIZE = 256 * 1024, HIST = 32768 };
 enum { Z_HEADER, Z_BODY, Z_TRAILER, Z_END, Z_FAILED };
 
 struct ak_cz_inflate {
-	tinfl_decompressor d;
+	ak_inflater *d;
 	ak_cz_src *src;
 	int format, state;
 	int64_t limit;
 	uint64_t total;   // bytes made
-	uint32_t crc;     // gzip: the member's CRC-32 so far
+	uint32_t check;   // the member's CRC-32 (gzip) or the stream's Adler-32 (zlib) so far
 	uint32_t member;  // gzip: the member's bytes (mod 2^32)
-	bool eof;         // src has nothing more
-	size_t in_pos, in_len;
-	size_t dict_ofs;           // where tinfl writes next
-	size_t pend_at, pend_len;  // what it wrote that isn't read yet
-	uint8_t in[IN_SIZE];
-	uint8_t dict[DICT];
+	const uint8_t *in;  // the input: in[in_pos..in_len) not read yet
+	size_t in_len, in_pos;
+	bool eof;           // the source has nothing more
+	uint8_t *inbuf;     // a file's: IN_SIZE bytes
+	uint8_t *ob;        // the output: ob[ob_start..ob_pos) this stream's, ob[ob_read..ob_pos) not read yet
+	size_t ob_cap, ob_pos, ob_start, ob_read;
+	ak_bytes *whole;    // decoding whole: ob is its data
 };
 
 static const char *where(const ak_cz_inflate *z) { return z->src->f ? z->src->f->path : ""; }
@@ -486,21 +463,38 @@ static bool z_fail(ak_cz_inflate *z, const char *msg) {
 	return false;
 }
 
+// refill reads more of a file into the input, keeping what's unread and
+// the AK_FL_IN_KEEP bytes before it.
 static void refill(ak_cz_inflate *z) {
-	if (z->in_pos < z->in_len || z->eof) return;
-	z->in_pos = 0;
-	z->in_len = ak_cz_src_read(z->src, z->in, IN_SIZE);
-	if (z->in_len == 0) z->eof = true;
+	if (z->eof) return;
+	if (!z->inbuf) {
+		z->eof = true;
+		return;
+	}
+	size_t keep = z->in_pos < AK_FL_IN_KEEP ? z->in_pos : AK_FL_IN_KEEP, from = z->in_pos - keep;
+	if (from) {
+		memmove(z->inbuf, z->inbuf + from, z->in_len - from);
+		z->in_len -= from, z->in_pos -= from;
+	}
+	size_t got = ak_cz_src_read(z->src, z->inbuf + z->in_len, IN_SIZE - z->in_len);
+	z->in_len += got;
+	if (got == 0) z->eof = true;
 }
 
-// in_byte is src's next byte; -1 at its end.
+// in_byte is the input's next byte; -1 at its end.
 static int in_byte(ak_cz_inflate *z) {
-	refill(z);
+	if (z->in_pos == z->in_len) refill(z);
 	if (z->in_pos == z->in_len) return -1;
 	return z->in[z->in_pos++];
 }
 
 static const char *const too_soon = "the data ends too soon";
+
+static void begin_body(ak_cz_inflate *z) {
+	ak_inflater_reset(z->d);
+	z->ob_start = z->ob_pos;
+	z->state = Z_BODY;
+}
 
 // gzip_header reads a member's header (RFC 1952 2.3), its magic read;
 // false (failed) when it's broken.
@@ -529,10 +523,9 @@ static bool gzip_header(ak_cz_inflate *z) {
 	if (flg & 2)  // FHCRC
 		for (int i = 0; i < 2; i++)
 			if (in_byte(z) < 0) return z_fail(z, too_soon);
-	z->crc = 0;
+	z->check = 0;
 	z->member = 0;
-	tinfl_init(&z->d);
-	z->state = Z_BODY;
+	begin_body(z);
 	return true;
 }
 
@@ -542,9 +535,33 @@ static bool magic(ak_cz_inflate *z) {
 	return z_fail(z, a < 0 || b < 0 ? too_soon : "not gzip: its first bytes aren't 1f 8b");
 }
 
-// gzip_trailer checks a member's CRC-32 and size, then reads the next
-// member if one follows (zeros after the last are padding).
-static bool gzip_trailer(ak_cz_inflate *z) {
+// zlib_header reads zlib's two bytes (RFC 1950 2.2): DEFLATE, a window
+// of at most 32 KB, no preset dictionary.
+static bool zlib_header(ak_cz_inflate *z) {
+	int cmf = in_byte(z), flg = in_byte(z);
+	if (cmf < 0 || flg < 0) return z_fail(z, too_soon);
+	if ((cmf & 15) != 8 || cmf >> 4 > 7 || (cmf << 8 | flg) % 31 != 0) return z_fail(z, "not zlib, or not DEFLATE");
+	if (flg & 0x20) return z_fail(z, "zlib with a preset dictionary");
+	z->check = 1;
+	begin_body(z);
+	return true;
+}
+
+// trailer checks a gzip member's CRC-32 and size, then reads the next
+// member if one follows (zeros after the last are padding); or zlib's
+// Adler-32.
+static bool trailer(ak_cz_inflate *z) {
+	if (z->format == AK_CZ_ZLIB) {
+		uint32_t a = 0;
+		for (int i = 0; i < 4; i++) {
+			int c = in_byte(z);
+			if (c < 0) return z_fail(z, too_soon);
+			a = a << 8 | (uint32_t)c;
+		}
+		if (a != z->check) return z_fail(z, "zlib's checksum doesn't match");
+		z->state = Z_END;
+		return true;
+	}
 	uint8_t t[8];
 	for (int i = 0; i < 8; i++) {
 		int c = in_byte(z);
@@ -553,7 +570,7 @@ static bool gzip_trailer(ak_cz_inflate *z) {
 	}
 	uint32_t crc = (uint32_t)t[0] | (uint32_t)t[1] << 8 | (uint32_t)t[2] << 16 | (uint32_t)t[3] << 24;
 	uint32_t size = (uint32_t)t[4] | (uint32_t)t[5] << 8 | (uint32_t)t[6] << 16 | (uint32_t)t[7] << 24;
-	if (crc != z->crc) return z_fail(z, "gzip's checksum doesn't match");
+	if (crc != z->check) return z_fail(z, "gzip's checksum doesn't match");
 	if (size != z->member) return z_fail(z, "gzip's size doesn't match");
 	int c = in_byte(z);
 	if (c == 0x1f) {
@@ -569,84 +586,164 @@ static bool gzip_trailer(ak_cz_inflate *z) {
 
 ak_cz_inflate *ak_cz_inflate_new(ak_cz_src *src, int format, int64_t limit) {
 	ak_cz_inflate *z = ak_alloc(sizeof *z);
+	z->d = ak_inflater_new();
 	z->src = src;
 	z->format = format;
 	z->limit = limit;
-	tinfl_init(&z->d);
+	if (src->f) {
+		z->inbuf = ak_alloc(IN_SIZE);
+		z->in = z->inbuf;
+	} else {
+		z->in = src->mem;
+		z->in_len = src->len;
+		z->in_pos = src->pos;
+		z->eof = true;
+	}
 	if (format == AK_CZ_GZIP) {
 		if (magic(z)) z->state = Z_HEADER;
+	} else if (format == AK_CZ_ZLIB) {
+		z->state = Z_HEADER;
 	} else {
-		z->state = Z_BODY;
+		begin_body(z);
 	}
 	return z;
 }
 
-void ak_cz_inflate_free(ak_cz_inflate *z) { ak_free(z); }
-bool ak_cz_inflate_done(const ak_cz_inflate *z) { return z->state == Z_END && z->pend_len == 0; }
+void ak_cz_inflate_free(ak_cz_inflate *z) {
+	if (!z) return;
+	ak_inflater_free(z->d);
+	ak_free(z->inbuf);
+	if (z->whole) ak_release(z->whole);
+	else ak_free(z->ob);
+	ak_free(z);
+}
+
+bool ak_cz_inflate_done(const ak_cz_inflate *z) { return z->state == Z_END && z->ob_read == z->ob_pos; }
 uint64_t ak_cz_inflate_total(const ak_cz_inflate *z) { return z->total; }
 
-static void body(ak_cz_inflate *z) {
-	refill(z);
-	if (ak_cz_failed()) {
-		z_fail(z, "");
-		return;
+// room makes room in the output for the decoder to go on: the window
+// moved down to its last 32 KB (all of it read), or the result grown
+// (up to the limit, and a little past it to see it's passed).
+static bool room(ak_cz_inflate *z) {
+	if (z->ob_cap - z->ob_pos >= AK_FL_OUT_SLACK) return true;
+	if (z->whole) {
+		uint64_t want = z->ob_cap, left = z->limit >= 0 ? (uint64_t)z->limit - z->total + 1 : UINT64_MAX;
+		if (want > left) want = left;
+		if (want < AK_FL_OUT_SLACK) want = AK_FL_OUT_SLACK;
+		uint64_t cap = (uint64_t)z->ob_pos + want;
+		if (cap > SIZE_MAX - sizeof(ak_bytes)) return z_fail(z, "too large");
+		z->whole = ak_realloc(z->whole, sizeof(ak_bytes) + (size_t)cap);
+		z->ob = z->whole->data;
+		z->ob_cap = (size_t)cap;
+		return true;
 	}
-	size_t in_n = z->in_len - z->in_pos, out_n = DICT - z->dict_ofs;
-	mz_uint32 flags = z->eof ? 0 : TINFL_FLAG_HAS_MORE_INPUT;
-	if (z->format == AK_CZ_ZLIB) flags |= TINFL_FLAG_PARSE_ZLIB_HEADER | TINFL_FLAG_COMPUTE_ADLER32;
-	tinfl_status st = tinfl_decompress(&z->d, z->in + z->in_pos, &in_n, z->dict, z->dict + z->dict_ofs, &out_n, flags);
-	z->in_pos += in_n;
-	z->pend_at = z->dict_ofs;
-	z->pend_len = out_n;
-	z->dict_ofs = (z->dict_ofs + out_n) & (DICT - 1);
-	if (out_n) {
-		z->total += out_n;
+	if (!z->ob) {
+		z->ob = ak_alloc(OB_SIZE);
+		z->ob_cap = OB_SIZE;
+		return true;
+	}
+	size_t shift = z->ob_pos > HIST ? z->ob_pos - HIST : 0;
+	memmove(z->ob, z->ob + shift, z->ob_pos - shift);
+	z->ob_pos -= shift, z->ob_read -= shift;
+	z->ob_start = z->ob_start > shift ? z->ob_start - shift : 0;
+	return true;
+}
+
+static void body(ak_cz_inflate *z) {
+	if (!room(z)) return;
+	ak_fl_io io = {
+		.in = z->in, .in_len = z->in_len, .in_pos = z->in_pos, .eof = z->eof,
+		.out = z->ob, .start = z->ob_start, .pos = z->ob_pos, .cap = z->ob_cap,
+	};
+	size_t before = z->ob_pos;
+	int r = ak_inflater_run(z->d, &io);
+	z->in_pos = io.in_pos;
+	z->ob_pos = io.pos;
+	size_t made = z->ob_pos - before;
+	if (made) {
+		z->total += made;
 		if (z->limit >= 0 && z->total > (uint64_t)z->limit) {
 			ak_cz_fail(AK_CZ_TOO_LARGE, where(z), "it decompresses to more than %lld bytes", (long long)z->limit);
 			z->state = Z_FAILED;
-			z->pend_len = 0;
+			z->ob_pos = z->ob_read = before;
 			return;
 		}
 		if (z->format == AK_CZ_GZIP) {
-			z->crc = ak_cz_crc32(z->crc, z->dict + z->pend_at, out_n);
-			z->member += (uint32_t)out_n;
+			z->check = ak_cz_crc32(z->check, z->ob + before, made);
+			z->member += (uint32_t)made;
+		} else if (z->format == AK_CZ_ZLIB) {
+			z->check = ak_adler32(z->check, z->ob + before, made);
 		}
 	}
-	switch (st) {
-	case TINFL_STATUS_DONE:
-		z->state = z->format == AK_CZ_GZIP ? Z_TRAILER : Z_END;
+	switch (r) {
+	case AK_FL_NEED_INPUT:
+		refill(z);
+		if (ak_cz_failed()) z_fail(z, "");
 		break;
-	case TINFL_STATUS_NEEDS_MORE_INPUT:
-		if (z->eof) z_fail(z, too_soon);
+	case AK_FL_NEED_OUTPUT:
 		break;
-	case TINFL_STATUS_HAS_MORE_OUTPUT:
-		break;
-	case TINFL_STATUS_ADLER32_MISMATCH:
-		z_fail(z, "zlib's checksum doesn't match");
-		break;
-	case TINFL_STATUS_FAILED_CANNOT_MAKE_PROGRESS:
-		z_fail(z, too_soon);
+	case AK_FL_DONE:
+		z->state = z->format == AK_CZ_RAW ? Z_END : Z_TRAILER;
 		break;
 	default:
-		z_fail(z, z->format == AK_CZ_ZLIB && z->total == 0 ? "not zlib, or not DEFLATE" : "not DEFLATE: a block is broken");
+		z_fail(z, ak_inflater_error(z->d));
+	}
+}
+
+// step moves z on: a header, the body (some of it), a trailer.
+static bool step(ak_cz_inflate *z) {
+	switch (z->state) {
+	case Z_HEADER:
+		if (z->format == AK_CZ_GZIP) gzip_header(z);
+		else zlib_header(z);
+		return true;
+	case Z_BODY: body(z); return true;
+	case Z_TRAILER: trailer(z); return true;
+	default: return false;
 	}
 }
 
 size_t ak_cz_inflate_read(ak_cz_inflate *z, uint8_t *p, size_t n) {
 	size_t k = 0;
 	while (k < n) {
-		if (z->pend_len) {
-			size_t m = z->pend_len < n - k ? z->pend_len : n - k;
-			memcpy(p + k, z->dict + z->pend_at, m);
-			z->pend_at += m, z->pend_len -= m, k += m;
+		if (z->ob_read < z->ob_pos) {
+			size_t m = z->ob_pos - z->ob_read < n - k ? z->ob_pos - z->ob_read : n - k;
+			memcpy(p + k, z->ob + z->ob_read, m);
+			z->ob_read += m, k += m;
 			continue;
 		}
-		if (z->state == Z_HEADER) gzip_header(z);
-		else if (z->state == Z_BODY) body(z);
-		else if (z->state == Z_TRAILER) gzip_trailer(z);
-		else break;
+		if (!step(z)) break;
 	}
 	return k;
+}
+
+// inflate_whole decodes all of z's source into bytes (its size guessed
+// from gzip's trailer, or the input's); NULL when it failed.
+static ak_bytes *inflate_whole(ak_cz_inflate *z, size_t in_len) {
+	uint64_t guess = (uint64_t)in_len * 4;
+	if (z->format == AK_CZ_GZIP && in_len >= 18) {
+		const uint8_t *t = z->in + z->in_len - 4;
+		// The last member's size: a hint only, at most what DEFLATE can
+		// make of the input (1032 to 1).
+		uint64_t isize = (uint32_t)t[0] | (uint32_t)t[1] << 8 | (uint32_t)t[2] << 16 | (uint32_t)t[3] << 24;
+		if (isize <= (uint64_t)in_len * 1032) guess = isize;
+	}
+	if (z->limit >= 0 && guess > (uint64_t)z->limit) guess = (uint64_t)z->limit;
+	if (guess > (1u << 30)) guess = 1u << 30;
+	size_t cap = (size_t)guess + AK_FL_OUT_SLACK + 1;
+	z->whole = ak_bytes_new(NULL, cap);
+	z->ob = z->whole->data;
+	z->ob_cap = cap;
+	while (z->state != Z_END && z->state != Z_FAILED) {
+		step(z);
+		z->ob_read = z->ob_pos;
+	}
+	if (z->state != Z_END) return NULL;
+	ak_bytes *out = z->whole;
+	z->whole = NULL, z->ob = NULL;
+	out = ak_realloc(out, sizeof(ak_bytes) + (z->ob_pos ? z->ob_pos : 1));
+	out->len = (uint32_t)z->ob_pos;
+	return out;
 }
 
 // ---- Sinks ----
@@ -685,16 +782,16 @@ bool ak_cz_sink_truncate(ak_cz_sink *s, int64_t len) {
 // ---- Deflating ----
 
 struct ak_cz_deflate {
-	tdefl_compressor c;
+	ak_deflater *d;
 	ak_cz_sink *to;
 	int format;
-	uint32_t crc, size;
+	uint32_t check, size;
 	bool ok;
 };
 
-static mz_bool put(const void *p, int len, void *user) {
+static bool put(void *user, const uint8_t *p, size_t len) {
 	ak_cz_deflate *z = user;
-	z->ok = z->ok && ak_cz_sink_write(z->to, p, (size_t)len);
+	z->ok = z->ok && ak_cz_sink_write(z->to, p, len);
 	return z->ok;
 }
 
@@ -705,12 +802,19 @@ ak_cz_deflate *ak_cz_deflate_new(ak_cz_sink *to, int format, int level) {
 	z->to = to;
 	z->format = format;
 	z->ok = true;
-	int flags = (int)tdefl_create_comp_flags_from_zip_params(level, format == AK_CZ_ZLIB ? 15 : -15, 0);
-	tdefl_init(&z->c, put, z, flags);
+	z->d = ak_deflater_new(level, put, z);
 	if (format == AK_CZ_GZIP) {
 		// No name and no time (gzip -n's), so the same bytes make the
 		// same file; XFL says the level, OS "unknown" (RFC 1952).
 		uint8_t h[10] = {0x1f, 0x8b, 8, 0, 0, 0, 0, 0, level == 9 ? 2 : level == 1 ? 4 : 0, 255};
+		z->ok = ak_cz_sink_write(to, h, sizeof h);
+	} else if (format == AK_CZ_ZLIB) {
+		// A 32 KB window; FLEVEL as zlib's: fastest, fast, default, best.
+		unsigned cmf = 0x78, flevel = level < 2 ? 0 : level < 6 ? 1 : level == 6 ? 2 : 3;
+		unsigned flg = flevel << 6;
+		flg += 31 - (cmf << 8 | flg) % 31;
+		uint8_t h[2] = {(uint8_t)cmf, (uint8_t)flg};
+		z->check = 1;
 		z->ok = ak_cz_sink_write(to, h, sizeof h);
 	}
 	return z;
@@ -719,31 +823,35 @@ ak_cz_deflate *ak_cz_deflate_new(ak_cz_sink *to, int format, int level) {
 bool ak_cz_deflate_write(ak_cz_deflate *z, const void *p, size_t n) {
 	if (!z->ok || n == 0) return z->ok;
 	if (z->format == AK_CZ_GZIP) {
-		z->crc = ak_cz_crc32(z->crc, p, n);
+		z->check = ak_cz_crc32(z->check, p, n);
 		z->size += (uint32_t)n;
+	} else if (z->format == AK_CZ_ZLIB) {
+		z->check = ak_adler32(z->check, p, n);
 	}
-	const uint8_t *b = p;
-	while (n > 0 && z->ok) {
-		size_t chunk = n > (1u << 30) ? (1u << 30) : n;
-		if (tdefl_compress_buffer(&z->c, b, chunk, TDEFL_NO_FLUSH) != TDEFL_STATUS_OKAY) z->ok = false;
-		b += chunk, n -= chunk;
-	}
+	ak_deflater_write(z->d, p, n);
 	if (!z->ok && !ak_cz_failed()) ak_cz_fail(AK_CZ_OTHER, sink_path(z->to), "compressing failed");
 	return z->ok;
 }
 
 bool ak_cz_deflate_finish(ak_cz_deflate *z) {
-	if (z->ok && tdefl_compress_buffer(&z->c, NULL, 0, TDEFL_FINISH) != TDEFL_STATUS_DONE) z->ok = false;
+	if (z->ok) ak_deflater_finish(z->d);
 	if (z->ok && z->format == AK_CZ_GZIP) {
-		uint8_t t[8] = {(uint8_t)z->crc, (uint8_t)(z->crc >> 8), (uint8_t)(z->crc >> 16), (uint8_t)(z->crc >> 24),
+		uint8_t t[8] = {(uint8_t)z->check, (uint8_t)(z->check >> 8), (uint8_t)(z->check >> 16), (uint8_t)(z->check >> 24),
 		                (uint8_t)z->size, (uint8_t)(z->size >> 8), (uint8_t)(z->size >> 16), (uint8_t)(z->size >> 24)};
+		z->ok = ak_cz_sink_write(z->to, t, sizeof t);
+	} else if (z->ok && z->format == AK_CZ_ZLIB) {
+		uint8_t t[4] = {(uint8_t)(z->check >> 24), (uint8_t)(z->check >> 16), (uint8_t)(z->check >> 8), (uint8_t)z->check};
 		z->ok = ak_cz_sink_write(z->to, t, sizeof t);
 	}
 	if (!z->ok && !ak_cz_failed()) ak_cz_fail(AK_CZ_OTHER, sink_path(z->to), "compressing failed");
 	return z->ok;
 }
 
-void ak_cz_deflate_free(ak_cz_deflate *z) { ak_free(z); }
+void ak_cz_deflate_free(ak_cz_deflate *z) {
+	if (!z) return;
+	ak_deflater_free(z->d);
+	ak_free(z);
+}
 
 uint32_t ak_cz_crc32(uint32_t crc, const void *p, size_t n) { return ak_crc32(crc, p, n); }
 
@@ -777,21 +885,8 @@ static ak_val decode_bytes(ak_val *args, uint32_t n) {
 	const ak_bytes *data = BYTES(0);
 	ak_cz_src src = {.mem = data ? data->data : NULL, .len = data ? data->len : 0};
 	ak_cz_inflate *z = ak_cz_inflate_new(&src, format_of(args[1].i), mem_limit(args[2].i));
-	ak_buf b = {0};
-	for (;;) {
-		ak_buf_reserve(&b, 65536);
-		size_t got = ak_cz_inflate_read(z, b.data + b.len, b.cap - b.len);
-		if (got == 0) break;
-		b.len += got;
-	}
-	bool ok = ak_cz_inflate_done(z);
+	ak_bytes *out = z->state == Z_FAILED ? NULL : inflate_whole(z, src.len);
 	ak_cz_inflate_free(z);
-	if (!ok) {
-		ak_buf_free(&b);
-		return (ak_val){.p = NULL};
-	}
-	ak_bytes *out = ak_bytes_new(b.data, b.len);
-	ak_buf_free(&b);
 	return (ak_val){.p = out};
 }
 

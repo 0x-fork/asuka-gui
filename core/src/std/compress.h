@@ -1,6 +1,6 @@
 // compress.h: what std/compress (compress.c) and std/archive (archive.c)
 // share: their failures, files read and written with 64-bit offsets, and
-// DEFLATE streams (miniz's, compiled into compress.c) read and written a
+// DEFLATE streams (flate.c's) read and written a
 // piece at a time, so a file's archive never needs all of it in memory.
 // Everything here is safe on any thread: the builtins run in spawn { }.
 #ifndef AK_STD_COMPRESS_H
