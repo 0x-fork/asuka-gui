@@ -81,7 +81,7 @@ test "checksums" {
 // deflate 1 true true
 // deflate 6 true true
 // deflate 9 true true
-// 1f 8b 08 00 00 00 00 00 00 ff 01 02 00 fd ff 68 69 ac 2a 93 d8 02 00 00 00
+// 1f 8b 08 00 00 00 00 00 00 ff cb c8 04 00 ac 2a 93 d8 02 00 00 00
 // ok round trips
 // hello, world
 // one
@@ -92,7 +92,7 @@ test "checksums" {
 // corrupt data: gzip's size doesn't match
 // corrupt data: not gzip: its first bytes aren't 1f 8b
 // corrupt data: zlib's checksum doesn't match
-// corrupt data: not DEFLATE: a block is broken
+// corrupt data: not DEFLATE: a block's type is 3
 // 2
 // too large: 1
 // ok failures
