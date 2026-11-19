@@ -1,10 +1,43 @@
 // std/http on iOS and macOS: URLSession, the system's own client
-// (proxies, trusted certificates, the shared cache and cookies).
+// (proxies, trusted certificates, the shared cache and cookies). A
+// transport secured with TLS settings (TLS.swift) has sessions of its own,
+// so its connections aren't another's: their delegates answer the
+// server's trust, and a client certificate when one's asked for.
 import Foundation
 import Network
 import Asuka
 
 final class URLSessionTransport: Transport {
+    /// The TLS settings, none for the system's.
+    let policy: TLSPolicy?
+    /// send's session when secured: its delegate the policy's.
+    private let trusted: TrustedSession?
+    /// open's session.
+    private let streams: Streams
+
+    init(policy: TLSPolicy? = nil) {
+        self.policy = policy
+        trusted = policy.map { TrustedSession($0) }
+        streams = policy.map { Streams(policy: $0) } ?? Streams.shared
+    }
+
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var secured: [ObjectIdentifier: URLSessionTransport] = [:]
+
+    func secured(tls: TLS) async throws -> any Transport {
+        URLSessionTransport.of(try TLSPolicy.of(ca: tls.ca, trustSystem: tls.trustSystem, certificate: tls.certificate, key: tls.key, insecure: tls.insecureSkipVerify))
+    }
+
+    /// The transport of p: one per policy.
+    private static func of(_ p: TLSPolicy) -> URLSessionTransport {
+        lock.lock()
+        defer { lock.unlock() }
+        if let t = secured[ObjectIdentifier(p)] { return t }
+        let t = URLSessionTransport(policy: p)
+        secured[ObjectIdentifier(p)] = t
+        return t
+    }
+
     func send(method: String, url: String, headers: [String: String], body: Data, timeout: TimeInterval) async throws -> Response {
         guard let u = URL(string: url) else {
             throw URLError(.badURL)
@@ -20,7 +53,7 @@ final class URLSessionTransport: Transport {
         if !body.isEmpty {
             req.httpBody = body
         }
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = if let trusted { try await trusted.data(for: req) } else { try await URLSession.shared.data(for: req) }
         let http = resp as? HTTPURLResponse
         var out: [String: String] = [:]
         for (k, v) in http?.allHeaderFields ?? [:] {
@@ -46,7 +79,7 @@ extension URLSessionTransport {
         if !body.isEmpty {
             req.httpBody = body
         }
-        let d = Download(path: path, progress: progress)
+        let d = Download(path: path, progress: progress, policy: policy)
         // A session of its own, for its delegate: the shared cookies and
         // cache (the default configuration's), as URLSession.shared has.
         let session = URLSession(configuration: .default, delegate: d, delegateQueue: nil)
@@ -66,18 +99,27 @@ extension URLSessionTransport {
 }
 
 /// A download's delegate: progress as it comes (a few times a second),
-/// the file moved to its path once it's all in, the answer.
+/// the file moved to its path once it's all in, the answer; the server's
+/// trust as the policy says.
 private final class Download: NSObject, URLSessionDownloadDelegate {
     let path: String
     let progress: (Int, Int) -> Void
+    let policy: TLSPolicy?
+    let failures = TrustFailures()
     let lock = NSLock()
     var continuation: CheckedContinuation<Response, Error>?
     var answer: Result<Response, Error>?
     var reported = Date.distantPast
 
-    init(path: String, progress: @escaping (Int, Int) -> Void) {
+    init(path: String, progress: @escaping (Int, Int) -> Void, policy: TLSPolicy?) {
         self.path = path
         self.progress = progress
+        self.policy = policy
+    }
+
+    func urlSession(_ s: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        guard let policy else { return completionHandler(.performDefaultHandling, nil) }
+        if let why = policy.answer(challenge, completionHandler) { failures.record(task, why) }
     }
 
     func urlSession(_ s: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytes: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
@@ -116,7 +158,7 @@ private final class Download: NSObject, URLSessionDownloadDelegate {
         let k = continuation
         continuation = nil
         lock.unlock()
-        if let e = error {
+        if let e = failures.error(task, error) {
             k?.resume(throwing: e)
         } else {
             k?.resume(with: answer ?? .failure(URLError(.cannotWriteToFile)))
@@ -156,9 +198,9 @@ extension URLSessionTransport {
         // property, through the public URLProtocol).
         let m = (req as NSURLRequest).mutableCopy() as! NSMutableURLRequest
         URLProtocol.setProperty(false, forKey: "_kCFURLConnectionPropertyShouldSniff", in: m)
-        let task = Streams.shared.session.dataTask(with: m as URLRequest)
+        let task = streams.session.dataTask(with: m as URLRequest)
         let s = StreamState(task: task, url: url)
-        Streams.shared.add(task, s)
+        streams.add(task, s)
         return try await withTaskCancellationHandler {
             _ = try await withCheckedThrowingContinuation { (k: CheckedContinuation<Response, Error>) in
                 s.waitHead(k)
@@ -171,19 +213,23 @@ extension URLSessionTransport {
     }
 }
 
-/// The one session the streamed requests share (its connections reused
-/// from one to the next), with the default configuration's cookies and
-/// cache, and its delegate, which hands each task's events to its state.
+/// The session the streamed requests share (its connections reused from
+/// one to the next), with the default configuration's cookies and cache,
+/// and its delegate, which hands each task's events to its state: the
+/// system's, and one per secured transport.
 private final class Streams: NSObject, URLSessionDataDelegate, @unchecked Sendable {
-    static let shared = Streams()
+    static let shared = Streams(policy: nil)
     /// No timeout: a stream may run as long as it's read.
     static let forever: TimeInterval = 1_000_000_000
 
     private let lock = NSLock()
     private var states: [Int: StreamState] = [:]
     private(set) var session: URLSession!
+    private let policy: TLSPolicy?
+    private let failures = TrustFailures()
 
-    override init() {
+    init(policy: TLSPolicy?) {
+        self.policy = policy
         super.init()
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForResource = Streams.forever
@@ -215,8 +261,87 @@ private final class Streams: NSObject, URLSessionDataDelegate, @unchecked Sendab
         completionHandler(nil)  // read once, as it came
     }
 
+    func urlSession(_ s: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        guard let policy else { return completionHandler(.performDefaultHandling, nil) }
+        if let why = policy.answer(challenge, completionHandler) { failures.record(task, why) }
+    }
+
     func urlSession(_ s: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        state(task, remove: true)?.completed(task, error)
+        state(task, remove: true)?.completed(task, failures.error(task, error))
+    }
+}
+
+/// A secured transport's session for send: a task's data at its end, its
+/// challenges the policy's.
+private final class TrustedSession: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    let policy: TLSPolicy
+    private let failures = TrustFailures()
+    private(set) var session: URLSession!
+
+    init(_ policy: TLSPolicy) {
+        self.policy = policy
+        super.init()
+        session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
+    }
+
+    func urlSession(_ s: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        if let why = policy.answer(challenge, completionHandler) { failures.record(task, why) }
+    }
+
+    /// URLSession.data(for:), on this session: cancelling the task
+    /// cancels the request.
+    func data(for req: URLRequest) async throws -> (Data, URLResponse) {
+        let box = TaskBox()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (k: CheckedContinuation<(Data, URLResponse), Error>) in
+                let failures = self.failures
+                let task = session.dataTask(with: req) { data, resp, error in
+                    if let e = box.ended(error, failures) {
+                        k.resume(throwing: e)
+                    } else if let resp {
+                        k.resume(returning: (data ?? Data(), resp))
+                    } else {
+                        k.resume(throwing: URLError(.badServerResponse))
+                    }
+                }
+                box.set(task)
+                task.resume()
+            }
+        } onCancel: {
+            box.cancel()
+        }
+    }
+}
+
+/// A task a cancel may come for before it's made.
+private final class TaskBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var task: URLSessionTask?
+    private var cancelled = false
+
+    func set(_ t: URLSessionTask) {
+        lock.lock()
+        task = t
+        let c = cancelled
+        lock.unlock()
+        if c { t.cancel() }
+    }
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        let t = task
+        lock.unlock()
+        t?.cancel()
+    }
+
+    /// The task's error as it ended (failures' say).
+    func ended(_ error: Error?, _ failures: TrustFailures) -> Error? {
+        lock.lock()
+        let t = task
+        lock.unlock()
+        guard let t else { return error }
+        return failures.error(t, error)
     }
 }
 

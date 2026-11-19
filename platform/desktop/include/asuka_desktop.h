@@ -332,6 +332,17 @@ typedef struct {
 	asuka_bytes body;
 } asuka_response;
 
+// A client's TLS settings (std/http's and std/websocket's tls, src/tls.c):
+// the authorities to trust instead of the system's (or besides, with
+// trust_system), the client's certificate and key for a server that asks
+// for one, or no check at all (insecure). asuka_tls_get reads them once
+// (the same settings, the same one, kept until the process ends): NULL
+// with err set for what can't be read. It may take a moment (a key
+// imported): never on the main thread. A request with NULL is the
+// system's.
+typedef struct asuka_tls asuka_tls;
+asuka_tls *asuka_tls_get(const char *ca, bool trust_system, const char *certificate, const char *key, bool insecure, asuka_error *err);
+
 // asuka_fetch makes an HTTP(S) request with the system's proxy settings
 // and certificates (WinHTTP; libsoup 3 on Linux), following redirects,
 // and blocks until the whole response is in: never on the main thread.
@@ -364,6 +375,7 @@ typedef struct {
 	const char *agent;   // User-Agent (NULL: "Asuka")
 	asuka_call *cancel;  // a started call whose task going stops it, or NULL
 	asuka_abort *abort;  // an abort that stops it, or NULL
+	const asuka_tls *tls;  // its TLS settings (NULL: the system's)
 	// head hears the response's status, URL and headers (no body), once;
 	// data each piece of its body, in order. Either may return false to
 	// stop: the request fails with what it set in err, or, if it set

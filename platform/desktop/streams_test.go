@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -13,17 +14,27 @@ import (
 	"github.com/egoist/asuka/internal/testserver"
 )
 
-// streams serves internal/testserver for TestStdLinux's std/http stream
-// and std/websocket cases (testdata/streams), counting the /stall
+// streams serves internal/testserver for TestStdLinux's std/http stream,
+// std/websocket and TLS cases (testdata/streams; over HTTPS too, with a
+// test authority's certificate), counting the /stall
 // requests still being served: a body that timed out, or whose read was
 // cancelled, has its request stopped.
 type streams struct {
 	srv    *httptest.Server
+	tls    *httptest.Server // the same paths over HTTPS, pki's certificate
+	pki    *testserver.PKI
 	stalls atomic.Int32
 }
 
 func newStreams(t *testing.T) *streams {
 	s := &streams{}
+	pki, err := testserver.NewPKI()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.pki = pki
+	s.tls = testserver.StartTLS(testserver.Handler(), pki)
+	t.Cleanup(s.tls.Close)
 	h := testserver.Handler()
 	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/stall" {
@@ -42,7 +53,17 @@ func (s *streams) source(t *testing.T, name string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return strings.NewReplacer(`"BASE"`, `"`+s.srv.URL+`"`, `"WSBASE"`, `"ws`+strings.TrimPrefix(s.srv.URL, "http")+`"`, `"DONE_FILE"`, `""`).Replace(string(b))
+	return strings.NewReplacer(append([]string{`"BASE"`, `"` + s.srv.URL + `"`, `"WSBASE"`, `"ws` + strings.TrimPrefix(s.srv.URL, "http") + `"`, `"DONE_FILE"`, `""`},
+		tlsPlaceholders(s.tls.URL, s.pki)...)...).Replace(string(b))
+}
+
+// tlsPlaceholders are testdata/streams/tls.asuka's placeholders and what
+// they become for a server at base (https://...) with pki's certificate:
+// pairs for strings.NewReplacer.
+func tlsPlaceholders(base string, pki *testserver.PKI) []string {
+	return []string{`"TLS_BASE"`, strconv.Quote(base), `"WSS_BASE"`, strconv.Quote("wss" + strings.TrimPrefix(base, "https")),
+		`"TLS_CA"`, strconv.Quote(pki.CA), `"TLS_OTHER_CA"`, strconv.Quote(pki.OtherCA),
+		`"TLS_CLIENT_CERT"`, strconv.Quote(pki.ClientCert), `"TLS_CLIENT_KEY"`, strconv.Quote(pki.ClientKey)}
 }
 
 // stopped checks, once the app says it cancelled a read of /stall, that
@@ -72,6 +93,13 @@ var (
 		"stall timed out true",
 		"cancelled 200",
 		"again one|two|three|",
+		"done",
+	}
+	streamsTLS = []string{
+		"http refused 403 untrusted 403 403",
+		"mutual 200 client: Asuka Test Client",
+		"wss refused hello untrusted hello",
+		"again refused untrusted refused",
 		"done",
 	}
 	streamsWebSocket = []string{

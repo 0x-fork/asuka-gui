@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -16,10 +17,11 @@ import (
 	"github.com/egoist/asuka/std"
 )
 
-// std/http's streamed bodies and std/websocket on Windows (their
-// desktop/'s C: WinHTTP), as platform/desktop's TestStdLinux runs them on
-// Linux: its testdata/streams apps against internal/testserver, served
-// from this computer, each step a Text the dump shows. A body that timed
+// std/http's streamed bodies, std/websocket and their TLS settings on
+// Windows (their desktop/'s C: WinHTTP), as platform/desktop's
+// TestStdLinux runs them on Linux: its testdata/streams apps against
+// internal/testserver (over HTTPS too, a test authority's certificate),
+// served from this computer, each step a Text the dump shows. A body that timed
 // out, or whose read was cancelled, has its request stopped.
 func TestStreams(t *testing.T) {
 	w := onWindows(t)
@@ -39,7 +41,22 @@ func TestStreams(t *testing.T) {
 	})}
 	go srv.Serve(ln)
 	defer srv.Close()
-	host := hostAddress(t, w) + ":" + itoa(ln.Addr().(*net.TCPAddr).Port)
+	ip := hostAddress(t, w)
+	host := ip + ":" + itoa(ln.Addr().(*net.TCPAddr).Port)
+	// The same paths over HTTPS, a test authority's certificate for the
+	// address the VM reaches this computer at.
+	pki, err := testserver.NewPKI(ip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tln, err := net.Listen("tcp", ":0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tsrv := &http.Server{Handler: h, TLSConfig: pki.ServerConfig()}
+	go tsrv.ServeTLS(tln, "", "")
+	defer tsrv.Close()
+	tlsBase := "https://" + ip + ":" + itoa(tln.Addr().(*net.TCPAddr).Port)
 	for _, c := range []struct {
 		name string
 		want []string
@@ -63,6 +80,13 @@ func TestStreams(t *testing.T) {
 			"refused yes",
 			"done",
 		}},
+		{"tls", []string{
+			"http refused 403 untrusted 403 403",
+			"mutual 200 client: Asuka Test Client",
+			"wss refused hello untrusted hello",
+			"again refused untrusted refused",
+			"done",
+		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			local, guest := w.job(t)
@@ -72,7 +96,10 @@ func TestStreams(t *testing.T) {
 			}
 			done := guest + `\done.txt`
 			src := strings.NewReplacer(`"BASE"`, `"http://`+host+`"`, `"WSBASE"`, `"ws://`+host+`"`,
-				`"DONE_FILE"`, `"`+strings.ReplaceAll(done, `\`, `\\`)+`"`).Replace(string(b))
+				`"DONE_FILE"`, `"`+strings.ReplaceAll(done, `\`, `\\`)+`"`,
+				`"TLS_BASE"`, strconv.Quote(tlsBase), `"WSS_BASE"`, strconv.Quote("wss"+strings.TrimPrefix(tlsBase, "https")),
+				`"TLS_CA"`, strconv.Quote(pki.CA), `"TLS_OTHER_CA"`, strconv.Quote(pki.OtherCA),
+				`"TLS_CLIENT_CERT"`, strconv.Quote(pki.ClientCert), `"TLS_CLIENT_KEY"`, strconv.Quote(pki.ClientKey)).Replace(string(b))
 			buildStdApp(t, w, src, local, "http", "websocket")
 			d := script(t, w, local, guest, "app.exe", "waitfor:"+done, "snap:done")
 			t.Logf("%s", d["done"])

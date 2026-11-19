@@ -119,20 +119,30 @@ class BodyTest {
     }
 }
 
-// internal/testserver: the URL the CLI's test gives (asuka.testserver),
-// else go run in the repository this module is in, until the JVM ends.
+// internal/testserver: the URLs and the test authority's files the CLI's
+// test gives (asuka.testserver, asuka.testserver.tls, asuka.testserver.pki),
+// else go run in the repository this module is in (its three lines), until
+// the JVM ends.
 object TestServer {
-    val url: String by lazy {
-        System.getProperty("asuka.testserver")?.takeIf { it.isNotEmpty() } ?: start()
-    }
+    private fun given(name: String): String? = System.getProperty(name)?.takeIf { it.isNotEmpty() }
+    private val started: List<String> by lazy { start() }
 
-    private fun start(): String {
+    val url: String by lazy { given("asuka.testserver") ?: started[0] }
+    /** The same paths over HTTPS, the certificate the PKI's authority's. */
+    val tlsUrl: String by lazy { given("asuka.testserver.tls") ?: started[1] }
+    /** The PKI's PEM files (testserver.PKI.WriteFiles'): ca.pem, client.pem, client.key... */
+    val pki: File by lazy { File(given("asuka.testserver.pki") ?: started[2]) }
+
+    fun pem(name: String): String = File(pki, name).readText()
+
+    private fun start(): List<String> {
         var dir: File? = File(System.getProperty("user.dir")).absoluteFile
         while (dir != null && !File(dir, "internal/testserver/cmd").isDirectory) dir = dir.parentFile
         if (dir == null) error("no Asuka repository above ${System.getProperty("user.dir")}: set asuka.testserver")
         val p = ProcessBuilder("go", "run", "./internal/testserver/cmd").directory(dir)
             .redirectError(ProcessBuilder.Redirect.INHERIT).start()
         Runtime.getRuntime().addShutdownHook(Thread { p.outputStream.close(); p.destroy() })
-        return p.inputStream.bufferedReader().readLine() ?: error("the test server didn't start")
+        val r = p.inputStream.bufferedReader()
+        return List(3) { r.readLine() ?: error("the test server didn't start") }
     }
 }

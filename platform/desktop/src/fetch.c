@@ -1,6 +1,7 @@
 // fetch.c (platform/desktop/src): asuka_desktop.h's asuka_fetch (WinHTTP
 // on Windows, libsoup 3 on Linux, both with the system's proxies and
-// certificates) and asuka_desktop_local_file.
+// certificates, or a request's TLS settings: tls.c) and
+// asuka_desktop_local_file.
 #ifdef _WIN32
 #include "asuka_windows.h"
 #include <winhttp.h>
@@ -161,6 +162,7 @@ bool asuka_fetch_stream(const asuka_request *rq, asuka_response *out, asuka_erro
 	HINTERNET session = NULL, conn = NULL, req = NULL;
 	bool ok = false, https = false;
 	cancel_ctx *cc = NULL;
+	asuka_win_tls check = {0};
 	uint8_t *buf = NULL;
 	wchar_t *host = NULL, *object = NULL;
 	unsigned short port = 0;
@@ -187,10 +189,13 @@ bool asuka_fetch_stream(const asuka_request *rq, asuka_response *out, asuka_erro
 		free(w);
 		free(line);
 	}
-	// A cancel or an abort closes the request, which ends what waits on it.
+	// A cancel or an abort closes the request, which ends what waits on it;
+	// so does a server its TLS settings don't trust, before it's sent.
 	cc = calloc(1, sizeof *cc);
 	InitializeSRWLock(&cc->mu);
 	cc->request = req;
+	check = (asuka_win_tls){.tls = rq->tls, .close = on_cancel, .ctx = cc};
+	if (!asuka_win_tls_begin(req, &check, err)) goto done;
 	if (rq->cancel) asuka_call_on_cancel(rq->cancel, on_cancel, cc);
 	if (!hook(rq->abort, on_cancel, cc)) {
 		asuka_error_cancelled(err);
@@ -250,7 +255,9 @@ bool asuka_fetch_stream(const asuka_request *rq, asuka_response *out, asuka_erro
 	goto done;
 fail:;
 	DWORD code = GetLastError();
-	if (stopped(rq)) asuka_error_cancelled(err);
+	if (asuka_win_tls_failed(&check, err)) {
+		// The server wasn't trusted: err says why.
+	} else if (stopped(rq)) asuka_error_cancelled(err);
 	else if (code == ERROR_WINHTTP_TIMEOUT) asuka_error_failed(err, "http", 0, "%s: timed out", url);
 	else asuka_win_fail(err, HRESULT_FROM_WIN32(code), url);
 done:
@@ -262,6 +269,7 @@ done:
 		req = cc->request;  // NULL if a cancel closed it
 		free(cc);
 	}
+	free(check.untrusted);
 	if (req) WinHttpCloseHandle(req);
 	if (conn) WinHttpCloseHandle(conn);
 	if (session) WinHttpCloseHandle(session);
@@ -303,6 +311,7 @@ bool asuka_fetch_stream(const asuka_request *rq, asuka_response *out, asuka_erro
 		return false;
 	}
 	SoupSession *s = G(soup_session_new)();
+	asuka_soup_tls(s, msg, rq->tls);
 	if (rq->timeout_ms > 0 && G(soup_session_set_timeout)) G(soup_session_set_timeout)(s, (guint)((rq->timeout_ms + 999) / 1000));
 	if (G(soup_session_set_user_agent)) G(soup_session_set_user_agent)(s, rq->agent && *rq->agent ? rq->agent : "Asuka");
 	SoupMessageHeaders *h = G(soup_message_get_request_headers)(msg);
@@ -353,7 +362,10 @@ bool asuka_fetch_stream(const asuka_request *rq, asuka_response *out, asuka_erro
 	ok = true;
 	goto done;
 fail:
-	if (stopped(rq)) {
+	if (rq->tls && asuka_soup_untrusted(msg)) {
+		asuka_error_failed(err, "tls", 0, "%s", asuka_soup_untrusted(msg));
+		if (e) G(g_error_free)(e);
+	} else if (stopped(rq)) {
 		asuka_error_cancelled(err);
 		if (e) G(g_error_free)(e);
 	} else {

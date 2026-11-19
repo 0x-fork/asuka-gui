@@ -1656,6 +1656,22 @@ net.c and httpserver.c reach TLS through a pointer tls.c sets as a
 configuration is made, so an app that never calls std/net's TLS
 builtins (their own table, `tls`) links none of it.
 
+**std/http's and std/websocket's clients' TLS settings** (`http.TLS`, a
+request's `tls:`) are the platforms' own clients', not Mbed TLS's: each
+transport's `secured(tls)` gives the client of those settings, made once
+per settings, its connections and TLS sessions apart from the others'.
+Apple's: SecTrust's anchors set on the server's trust challenge, the
+client's SecIdentity a PKCS#12 made in memory (SecPKCS12Import; before
+macOS 15, into a keychain of the process's own). Android's: an
+SSLContext of a KeyStore's TrustManager (the system's tried first with
+`trustSystem`) and KeyManager. Windows': WinHTTP's own check off and the
+settings' in its SENDING_REQUEST callback (a chain engine whose
+exclusive roots are theirs), the client's key persisted in CNG under the
+process's name (Schannel signs in LSA). Linux's: a GTlsFileDatabase as
+the session's, session resumption off (GIO's cache is the process's).
+The web's throws: the browser decides (platform/desktop/src/tls.c, the
+packages' TLS.swift and TLS.kt).
+
 **An app's metadata** is `asuka.toml` beside its Asuka code (TOML 1.0, read
 by `internal/toml`), all optional:
 name, ID (bundle ID and application ID), version and build number, a

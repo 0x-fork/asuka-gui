@@ -831,6 +831,30 @@ async fn main() throws {
 
 TLS 在所有平台上都是同一份实现（Mbed TLS），从不调用它的应用不会包含它。网页没有可供它使用的 socket：在网页上，`std/http` 和 `std/websocket` 照样能使用 HTTPS 和 `wss:`，其他平台也一样，都是通过各平台自己的客户端。
 
+### 私有证书颁发机构与客户端证书
+
+`std/http` 的请求和 `std/websocket` 的连接都通过各平台自己的客户端发出，像系统一样检查服务器的证书。如果系统不信任这台服务器（比如证书由公司内部 CA 签发的内部服务，或者测试用的服务器），或者服务器要求客户端出示证书，就给请求单独配上 TLS 设置：`http.TLS`，通过 `tls:` 传给 `http.get`、`post`、`request`、`download`、`stream`、`events` 和 `websocket.connect`。
+
+```asuka check
+import std/fs
+import std/http
+
+async fn main() throws {
+  let tls = http.TLS(ca: try fs.readText("ca.pem"), certificate: try fs.readText("client.pem"), key: try fs.readText("client.key"))
+  let r = try await http.get("https://orders.internal/health", tls: tls)
+  print(r.status)
+}
+```
+
+- `ca`（PEM）会代替系统的证书颁发机构被信任；加上 `trustSystem: true` 则两者都信任。无论哪种情况，都会检查服务器的名字。
+- `certificate`（PEM：客户端自己的证书，后面跟着签发它的各级机构的证书）和 `key`（PEM：PKCS#8、RSA 或 EC 格式，不能加密）会出示给要求客户端证书的服务器（双向 TLS）。
+- `insecureSkipVerify` 完全不检查证书，谁都能冒充服务器，所以只适合测试你自己的服务器。
+- 设置相同的请求共用连接；设置不同或没有设置的请求，绝不会用到这些连接。
+- 读不了的设置会抛出 `HTTPError.tls(reason)`。设置不信任的服务器会让请求失败，并说明原因（"orders.internal's certificate isn't trusted: ..."）。
+- 在 iOS 和 macOS 上，即使 `ca` 信任了签发机构，服务器证书也必须满足 Apple 的要求：有效期不超过 825 天，服务器的名字写在 subjectAltName 里，用 SHA-256 或更强的算法签名，RSA 密钥至少 2048 位；如果有 extendedKeyUsage，必须包含服务器用途。
+- 在 Windows 上，客户端证书的私钥在程序运行期间存放在系统的密钥存储里，程序退出时删除；证书和根证书之间的各级机构证书会加入当前用户的中间证书颁发机构存储，因为 Windows 要从那里找出它发送的证书链。
+- 网页做不到：信任谁、出示哪张证书都由浏览器决定，所以在网页上带 `tls:` 的请求会抛出错误。
+
 ## 密钥、密码与签名：std/crypto
 
 std/crypto 在所有平台上都是同一份 C 代码，Web 也一样：一个平台加密、哈希或签名的数据，其他任何平台都能解开和验证。服务验证 webhook 的 HMAC 时用 `crypto.equal` 比较，它的耗时与字节在哪里不同无关；保存密码用 `hashPassword`（argon2id，输出其他系统也能读的 PHC 格式），它会在另一个线程上运行：

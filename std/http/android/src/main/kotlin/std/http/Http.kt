@@ -1,6 +1,8 @@
 // std/http on Android: HttpURLConnection, the platform's own client,
 // on the IO dispatcher; cancelling the call disconnects it. open answers
-// with the head, its body read as it comes (ConnectionBody).
+// with the head, its body read as it comes (ConnectionBody). A transport
+// secured with TLS settings (TLS.kt) gives its HTTPS connections its
+// policy's socket factory, which the connection pool keeps apart.
 package std.http
 
 import dev.asuka.AsukaReleasing
@@ -19,13 +21,29 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.time.Duration
 
-class ConnectionTransport : Transport {
+class ConnectionTransport(private val policy: TLSPolicy? = null) : Transport {
+    // A connection to url, its TLS the policy's.
+    private fun connection(url: String): HttpURLConnection {
+        val c = URL(url).openConnection() as HttpURLConnection
+        policy?.apply(c)
+        return c
+    }
+
+    override suspend fun secured(tls: TLS): Transport = withContext(Dispatchers.IO) {
+        val p = TLSPolicy.of(tls.ca, tls.trustSystem, tls.certificate, tls.key, tls.insecureSkipVerify)
+        synchronized(secured) { secured.getOrPut(p) { ConnectionTransport(p) } }
+    }
+
+    companion object {
+        private val secured = HashMap<TLSPolicy, ConnectionTransport>()
+    }
+
     override suspend fun download(method: String, url: String, headers: Map<String, String>, body: ByteArray, timeout: Duration, path: String, progress: (Long, Long) -> kotlin.Unit): Response =
-        fetchToFile(method, url, headers, body, timeout, path, progress)
+        fetchToFile(connection(url), method, headers, body, timeout, path, progress)
 
     override suspend fun send(method: String, url: String, headers: Map<String, String>, body: ByteArray, timeout: Duration): Response =
         withContext(Dispatchers.IO) {
-            val c = URL(url).openConnection() as HttpURLConnection
+            val c = connection(url)
             suspendCancellableCoroutine { k ->
                 k.invokeOnCancellation { c.disconnect() }
                 try {
@@ -60,7 +78,7 @@ class ConnectionTransport : Transport {
     // (off the canceller's thread), or closes the body it got after all.
     override suspend fun open(method: String, url: String, headers: Map<String, String>, body: ByteArray, timeout: Duration): Body =
         suspendCancellableCoroutine { k ->
-            val c = URL(url).openConnection() as HttpURLConnection
+            val c = connection(url)
             k.invokeOnCancellation { io.execute { c.disconnect() } }
             io.execute {
                 try {
@@ -168,9 +186,8 @@ fun makeBody(): Body = throw dev.asuka.AsukaUnsupportedException("http: a Body c
 // download, on the IO dispatcher: the body read in chunks into a file
 // beside path, renamed once it's all in; cancelling disconnects it and
 // leaves no file.
-suspend fun ConnectionTransport.fetchToFile(method: String, url: String, headers: Map<String, String>, body: ByteArray, timeout: Duration, path: String, progress: (Long, Long) -> kotlin.Unit): Response =
+private suspend fun fetchToFile(c: HttpURLConnection, method: String, headers: Map<String, String>, body: ByteArray, timeout: Duration, path: String, progress: (Long, Long) -> kotlin.Unit): Response =
     withContext(Dispatchers.IO) {
-        val c = URL(url).openConnection() as HttpURLConnection
         val to = File(path)
         val part = File(path + ".download")
         suspendCancellableCoroutine { k ->

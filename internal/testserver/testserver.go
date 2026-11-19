@@ -16,6 +16,12 @@
 //	                  had X-Token, chooses "chat" from the protocols
 //	                  asked for, closes with 4000 "bye" on the text
 //	                  "close please", with 1000 on "close normally"
+//	GET  /mtls        over TLS (StartTLS, a PKI's certificate): "client:
+//	                  <its name>" for the client's certificate, 403
+//	                  without one
+//
+// Over HTTPS (StartTLS), the same paths with a test authority's
+// certificate (NewPKI); cmd serves both.
 package testserver
 
 import (
@@ -80,6 +86,7 @@ func Handler() http.Handler {
 		json.NewEncoder(w).Encode(map[string]any{"method": r.Method, "uri": r.RequestURI, "body": string(body), "headers": h})
 	})
 	mux.HandleFunc("/ws", serveWebSocket)
+	mux.HandleFunc("/mtls", mtls)
 	return mux
 }
 

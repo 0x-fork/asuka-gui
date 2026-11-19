@@ -1202,6 +1202,53 @@ app that never calls it doesn't carry it. A web page has no sockets for
 it: `std/http` and `std/websocket` speak HTTPS and `wss:` there, and
 everywhere else through each platform's own client.
 
+### Private authorities and client certificates
+
+`std/http`'s requests and `std/websocket`'s connections check the
+server as the system does, through each platform's own client. A server
+the system doesn't trust (an internal service whose certificate your
+company's authority signed, a test server) or one that asks for the
+client's certificate takes TLS settings of the request's own,
+`http.TLS`, as `tls:`: on `http.get`, `post`, `request`, `download`,
+`stream`, `events` and `websocket.connect`.
+
+```asuka check
+import std/fs
+import std/http
+
+async fn main() throws {
+  let tls = http.TLS(ca: try fs.readText("ca.pem"), certificate: try fs.readText("client.pem"), key: try fs.readText("client.key"))
+  let r = try await http.get("https://orders.internal/health", tls: tls)
+  print(r.status)
+}
+```
+
+- `ca` (PEM) is trusted instead of the system's authorities; with
+  `trustSystem: true`, besides them. The server's name is checked
+  either way.
+- `certificate` (PEM: the client's, then the authorities' that signed
+  it) and `key` (PEM: PKCS#8, RSA or EC, not encrypted) are shown to a
+  server that asks for a certificate (mutual TLS).
+- `insecureSkipVerify` checks no certificate at all: anyone can pretend
+  to be the server, so it's for a test against a server of your own.
+- Requests with the same settings share their connections; requests
+  with other settings, or none, never use them.
+- Settings that can't be read throw `HTTPError.tls(reason)`. A server
+  the settings don't trust fails the request, saying why
+  ("orders.internal's certificate isn't trusted: ...").
+- iOS and macOS hold a server's certificate to Apple's requirements even
+  when `ca` trusts its authority: valid for 825 days or fewer, the
+  server's names in its subjectAltName, signed with SHA-256 or better,
+  an RSA key of 2048 bits or more, and an extendedKeyUsage for a server
+  if it has one.
+- On Windows, the client certificate's key is kept in the system's key
+  storage while the program runs and removed as it exits, and the
+  authorities between the certificate and its root are added to the
+  user's intermediate certificates, where Windows finds the chain it
+  sends.
+- A web page can't: its browser decides whom to trust and which
+  certificate to show, so a request with `tls:` throws there.
+
 ## Secrets, passwords and signatures: std/crypto
 
 std/crypto is the same C on every platform, the web's too: what one
