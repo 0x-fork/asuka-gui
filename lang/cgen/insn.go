@@ -324,6 +324,18 @@ func (g *gen) callOp(f *bc.FuncDef, name string, in insn, h string) bool {
 			}
 			break
 		}
+		if g.maybe != nil {
+			// Released here, only what may hold a reference (live.go).
+			switch {
+			case !g.isRef(r):
+				g.w("{ ak_val v_ = %s; %sreturn (ak_ret){v_, 0}; }", g.r(r), g.retRelease(g.k, -1))
+			case g.borrowed[r]:
+				g.w("{ ak_val v_ = %s; ak_retain(v_.p); %sreturn (ak_ret){v_, 0}; }", g.r(r), g.retRelease(g.k, -1))
+			default:
+				g.w("{ ak_val v_ = %s; %s.p = NULL; %sreturn (ak_ret){v_, 0}; }", g.r(r), g.r(r), g.retRelease(g.k, r))
+			}
+			break
+		}
 		switch {
 		case !g.isRef(r):
 			g.w("ret_ = %s; goto out_;", g.r(r))
@@ -335,6 +347,10 @@ func (g *gen) callOp(f *bc.FuncDef, name string, in insn, h string) bool {
 			g.w("ret_ = %s; %s.p = NULL; goto out_;", g.r(r), g.r(r))
 		}
 	case "RET0":
+		if g.maybe != nil {
+			g.w("{ %sreturn (ak_ret){{0}, 0}; }", g.retRelease(g.k, -1))
+			break
+		}
 		g.w("goto out_;")
 	default:
 		return false

@@ -248,6 +248,9 @@ type gen struct {
 	// a C compiler takes too long to keep in machine registers.
 	array bool
 	pl    *plan // its places (places.go)
+	// maybe: before each instruction, the reference registers that may
+	// hold one (live.go), for its returns; nil: they go through out_.
+	maybe []regset
 	k     int   // the instruction being written, by index
 	tramp bool  // the instruction's code goes to its trampoline (inlined)
 }
@@ -507,6 +510,10 @@ func (g *gen) fn(i int) error {
 		entries[pc] = true
 	}
 	g.pl = analyze(g.m, f, ins, entries)
+	g.maybe = nil
+	if !g.async && !g.array && f.Flags&bc.FMut == 0 && untracksIn(ins) == 0 {
+		g.maybe = g.maybeRefs(ins)
+	}
 	untracks := 0
 	for _, in := range ins {
 		if bc.Ops[in.op].Name == "UNTRACK" {
@@ -728,6 +735,17 @@ func (g *gen) entry(i int) {
 	}
 	g.p(");\n}\n\n")
 	g.p("static ak_val f%d(ak_val *A, ak_closure *C) { return f%d_c(C, ak_stack_limit(), A).v; }\n\n", i, i)
+}
+
+// untracksIn counts ins' UNTRACKs (a function's peeks).
+func untracksIn(ins []insn) int {
+	n := 0
+	for _, in := range ins {
+		if bc.Ops[in.op].Name == "UNTRACK" {
+			n++
+		}
+	}
+	return n
 }
 
 // calls reports whether code calls anything: a function, a closure, a

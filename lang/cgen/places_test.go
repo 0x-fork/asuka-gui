@@ -235,3 +235,31 @@ fn main() { print("{apply((x, y) => x.float() < y, 1, 2.0)}") }
 		t.Errorf("not a typed call:\n%s", c)
 	}
 }
+
+// A return releases what may hold a reference there (live.go), not
+// every reference register: the base case's, nothing; the other, what
+// its way made.
+func TestReturnReleases(t *testing.T) {
+	c := cOf(t, `
+struct Node {
+  name: string
+  children: [Node] = []
+}
+
+fn build(depth: int) -> Node {
+  if depth == 0 { return Node(name: "leaf") }
+  return Node(name: "n{depth}", children: [build(depth - 1), build(depth - 1)])
+}
+
+fn main() { print(build(3).children.count()) }
+`, "build")
+	var rets []string
+	for _, l := range strings.Split(c, "\n") {
+		if strings.Contains(l, "return (ak_ret){v_, 0}") {
+			rets = append(rets, l)
+		}
+	}
+	if len(rets) != 2 || strings.Contains(rets[0], "ak_release") || !strings.Contains(rets[1], "ak_release") {
+		t.Errorf("returns:\n%s\nin:\n%s", strings.Join(rets, "\n"), c)
+	}
+}
