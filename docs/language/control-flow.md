@@ -25,8 +25,9 @@ its type (`Unit.big(n)`) do: `if let c: Circle = shape { … }`,
 ends with `_`; see [Interfaces and
 generics](functions.md#interfaces-and-generics).
 
-`for` goes over an array, a set, a map's `(key, value)` pairs, a lazy
-sequence (a `Seq`: [Values and types](types.md#lazy-sequences)), or a
+`for` goes over an array, a set, a map's `(key, value)` pairs, a
+string's chars (`for c in name`: [Values and types](types.md#values-and-types)), a
+lazy sequence (a `Seq`: [Values and types](types.md#lazy-sequences)), or a
 range:
 `a..<b` is the ints from `a` up to `b`, without it, and `a..b` with it
 (`0..<3` is `[0, 1, 2]`, and a `for` over a range makes no array).

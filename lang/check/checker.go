@@ -278,7 +278,7 @@ func (c *Checker) errorAt(pos, end syntax.Position, code *diag.Code, format stri
 // The universe: the types and functions built into the compiler
 
 func (c *Checker) initUniverse() {
-	for _, t := range []*Basic{Int, Float, Bool, String, Bytes, Void, Duration, Color, Length, View, Graphics, Path, Ref, Pointer, TestApp, I8, I16, I32, U8, U16, U32, U64} {
+	for _, t := range []*Basic{Int, Float, Bool, String, Bytes, Void, Duration, Color, Length, View, Graphics, Path, Ref, Pointer, TestApp, I8, I16, I32, U8, U16, U32, U64, Char} {
 		c.universe.Insert(&TypeName{object: object{name: t.name}, Kind: BasicType, Type: t, resolved: true})
 	}
 	// Error: the interface every error has, one for every checker, as

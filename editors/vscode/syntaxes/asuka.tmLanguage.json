@@ -97,6 +97,10 @@
     "strings": {
       "patterns": [
         {
+          "name": "string.quoted.single.char.asuka",
+          "match": "'(?:\\\\u\\{[0-9A-Fa-f]{1,6}\\}|\\\\.|[^'\\\\\\n])'"
+        },
+        {
           "name": "string.quoted.triple.raw.asuka",
           "begin": "\\br(#+)\"\"\"",
           "end": "\"\"\"\\1",

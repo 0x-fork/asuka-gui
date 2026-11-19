@@ -475,8 +475,28 @@ func (c *Checker) basicLit(e *syntax.BasicLit, want Type) Type {
 			c.errorf(e, diag.InvalidLiteral, "%v", err)
 		}
 		return Color
+	case syntax.CHAR:
+		// The scanner says what isn't one code point.
+		return Char
 	}
 	return Invalid
+}
+
+// CharValue is a char literal's code point: 'a', '\n', '\u{1F600}' (the
+// scanner has checked it's one); -1 for one that isn't.
+func CharValue(lit string) rune {
+	if len(lit) < 3 {
+		return -1
+	}
+	s, err := Unescape(lit[1:len(lit)-1], false)
+	if err != nil {
+		return -1
+	}
+	r := []rune(s)
+	if len(r) != 1 {
+		return -1
+	}
+	return r[0]
 }
 
 // intLitFits reports, and says when it doesn't, whether an int
@@ -2007,7 +2027,8 @@ func (c *Checker) binary(e *syntax.BinaryExpr, want Type) Type {
 		}
 		return Bool
 	case syntax.ADD:
-		if xt == String && yt == String {
+		if xt == String && (yt == String || yt == Char) || xt == Char && yt == String {
+			// A string and a char: the string with it (s += c builds one).
 			return String
 		}
 		if a, ok := xt.(*Array); ok && Identical(xt, yt) {

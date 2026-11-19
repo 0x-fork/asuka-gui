@@ -235,7 +235,7 @@ fn parseWith(s: Spec, args: [string], prog: string) throws -> string {
       continue
     }
     // -v, -abc (switches grouped), -j8 or -j 8 (a value).
-    let cs = a.byteSlice(1, a.byteCount()).chars()
+    let cs = a.byteSlice(1, a.byteCount()).chars().map(c => "{c}")
     var k = 0
     while k < cs.count() {
       let c = cs[k]

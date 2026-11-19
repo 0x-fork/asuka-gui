@@ -29,7 +29,7 @@ var seqMethods = []*Method{
 	{Recv: "array", Name: "lazy", Sig: "() -> Seq<T>", Builtin: "seq.of_array", Extra: "seqProto", Doc: "the elements as a lazy sequence: its map, filter, take and the rest compute nothing until it's read, one element at a time, with no array in between"},
 	{Recv: "map", Name: "lazy", Sig: "() -> Seq<(K, V)>", Builtin: "seq.of_map", Extra: "seqProto", Doc: "the (key, value) pairs as a lazy sequence, in insertion order"},
 	{Recv: "set", Name: "lazy", Sig: "() -> Seq<T>", Builtin: "seq.of_set", Extra: "seqProto", Doc: "the elements as a lazy sequence, in insertion order"},
-	{Recv: "string", Name: "lazy", Sig: "() -> Seq<string>", Builtin: "seq.of_string", Extra: "seqProto", Doc: "the characters as a lazy sequence, each a string"},
+	{Recv: "string", Name: "lazy", Sig: "() -> Seq<char>", Builtin: "seq.of_string", Extra: "seqProto", Doc: "its chars as a lazy sequence, as for goes over them"},
 
 	// An array is a double-ended queue too: its start changes in O(1),
 	// amortized, as its end does.

@@ -327,7 +327,7 @@ func (p *parser) describe() string {
 		return "a newline"
 	case IDENT:
 		return "'" + p.lit + "'"
-	case INT, FLOAT, DURATION, LENGTH, COLOR:
+	case INT, FLOAT, DURATION, LENGTH, COLOR, CHAR:
 		return "'" + p.lit + "'"
 	case STRING, STRING_HEAD:
 		return "a string"
@@ -2994,7 +2994,7 @@ func (p *parser) parsePrimary() Expr {
 	switch p.tok {
 	case IDENT:
 		return p.ident()
-	case INT, FLOAT, DURATION, LENGTH, COLOR:
+	case INT, FLOAT, DURATION, LENGTH, COLOR, CHAR:
 		x := &BasicLit{Kind: p.tok, Value: p.lit}
 		p.next()
 		x.Span = p.span(start)
@@ -3409,7 +3409,7 @@ func (p *parser) parsePrimaryPattern() Pattern {
 		p.caseArgs(c)
 		c.Span = p.span(start)
 		return c
-	case INT, FLOAT, DURATION, LENGTH, COLOR, STRING, STRING_HEAD, TRUE, FALSE, NONE:
+	case INT, FLOAT, DURATION, LENGTH, COLOR, CHAR, STRING, STRING_HEAD, TRUE, FALSE, NONE:
 		return &LitPat{Value: p.parsePrimary(), Span: p.span(start)}
 	case SUB:
 		if t := p.peek(1); t == INT || t == FLOAT || t == DURATION || t == LENGTH {

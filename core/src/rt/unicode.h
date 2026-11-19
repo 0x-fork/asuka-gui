@@ -74,6 +74,17 @@ int64_t ak_text_width(const char *s, size_t n);
 typedef enum { AK_CASE_LOWER, AK_CASE_UPPER, AK_CASE_FOLD } ak_case_kind;
 int ak_case_map(uint32_t cp, ak_case_kind k, uint32_t out[3]);
 
+// A code point's general category (Unicode's two letters: Lu, Nd…),
+// and whether it's White_Space: ak_ucat's.
+enum {
+	AK_GC_CN, AK_GC_LU, AK_GC_LL, AK_GC_LT, AK_GC_LM, AK_GC_LO, AK_GC_MN, AK_GC_MC, AK_GC_ME, AK_GC_ND,
+	AK_GC_NL, AK_GC_NO, AK_GC_PC, AK_GC_PD, AK_GC_PS, AK_GC_PE, AK_GC_PI, AK_GC_PF, AK_GC_PO, AK_GC_SM,
+	AK_GC_SC, AK_GC_SK, AK_GC_SO, AK_GC_ZS, AK_GC_ZL, AK_GC_ZP, AK_GC_CC, AK_GC_CF, AK_GC_CS, AK_GC_CO,
+};
+#define AK_UCAT_GC(c) ((c) & 0x1f)
+#define AK_UCAT_SPACE 0x80  // White_Space
+uint8_t ak_ucat(uint32_t cp);
+
 // The tables (unicode_gen.c).
 typedef struct {
 	uint32_t start;
@@ -86,6 +97,9 @@ typedef struct {
 	uint32_t to[3];
 } ak_case_full;
 
+extern const uint32_t ak_ucat_count;
+extern const uint32_t ak_ucat_starts[];
+extern const uint8_t ak_ucat_values[];
 extern const uint32_t ak_uprop_count;
 extern const uint32_t ak_uprop_starts[];
 extern const uint16_t ak_uprop_values[];

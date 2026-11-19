@@ -342,6 +342,8 @@ redo:
 		return pos, tok, s.src[start:s.offset]
 	case ch == '"':
 		return s.string(start, false, 0)
+	case ch == '\'':
+		return s.char(start)
 	}
 
 	s.next() // past ch
@@ -602,6 +604,36 @@ func (s *Scanner) digits(ok func(rune) bool) {
 		}
 		s.next()
 	}
+}
+
+// char scans a char literal at s.ch == '\'': one code point, or an
+// escape (\n, \', \u{1F600}), between single quotes. What's more is an
+// error, as is an empty one: a string holds more (or none).
+func (s *Scanner) char(start int) (Pos, Token, string) {
+	pos := s.file.Pos(start)
+	s.next() // past '
+	n := 0
+	for s.ch != '\'' {
+		switch s.ch {
+		case eof, '\n':
+			s.error(start, diag.Unterminated, "char not terminated: it's one code point between single quotes, 'a'")
+			return pos, CHAR, s.src[start:s.offset]
+		case '\\':
+			s.escape()
+		default:
+			s.next()
+		}
+		n++
+	}
+	s.next() // past '
+	lit := s.src[start:s.offset]
+	switch {
+	case n == 0:
+		s.error(start, diag.InvalidLiteral, "'' holds no char: a char is one code point ('a'), an empty text a string (\"\")")
+	case n > 1:
+		s.error(start, diag.InvalidLiteral, lit+" holds "+strconv.Itoa(n)+" code points, and a char is one: a string holds more (\""+lit[1:len(lit)-1]+"\"), its graphemes() what a reader takes for one character")
+	}
+	return pos, CHAR, lit
 }
 
 // unitAfterDigits reports a unit (a letter or %) right after src's

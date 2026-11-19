@@ -323,7 +323,7 @@ func (c *Checker) assignStmt(s *syntax.AssignStmt) {
 		case IsNumeric(lt) && IsNumeric(vt) && !Identical(lt, vt):
 			c.mixedNumbersAt(s, s.Op.String(), lt, vt)
 		case IsNumeric(lt) && Identical(lt, vt):
-		case lt == String && vt == String && s.Op == syntax.ADD_ASSIGN:
+		case lt == String && (vt == String || vt == Char) && s.Op == syntax.ADD_ASSIGN:
 		case lt == Duration && vt == Duration && (s.Op == syntax.ADD_ASSIGN || s.Op == syntax.SUB_ASSIGN):
 		case lt == Duration && vt == Int && (s.Op == syntax.MUL_ASSIGN || s.Op == syntax.QUO_ASSIGN):
 		default:
@@ -641,6 +641,14 @@ func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
 				c.errorf(s.Seq, diag.InvalidFor, "a for in a view goes over an array: the sequence's toArray()")
 			}
 		default:
+			if t == String {
+				// Its chars, the code points count() counts.
+				fi.Kind, fi.Elem, fi.Chars = ForArray, Char, true
+				if view {
+					c.errorf(s.Seq, diag.InvalidFor, "a for in a view goes over an array: the string's chars()")
+				}
+				break
+			}
 			if !view && !IsInvalid(t) {
 				c.openScope() // closed after the loop
 				if c.forIter(s, fi, t) {
@@ -648,12 +656,14 @@ func (c *Checker) forStmt(s *syntax.ForStmt, view bool) {
 				}
 				c.closeScope()
 			}
-			if t == String {
-				c.errorf(s.Seq, diag.InvalidFor, "a string isn't a list: go over its characters, s.chars()")
-			} else if _, ok := t.(*Stream); ok {
+			if _, ok := t.(*Stream); ok {
 				c.errorf(s.Seq, diag.InvalidFor, "a stream's values come over time: for await x in it (in an async fn, a task or a handler)")
 			} else if !IsInvalid(t) {
-				c.errorf(s.Seq, diag.InvalidFor, "for goes over an array, a set, a map, a range or an iterator (a type with mut fn next() -> T?, or fn iter() that gives one), not %s", aType(t))
+				hint := ""
+				if IsInteger(t) {
+					hint = ": its range, 0..<n"
+				}
+				c.errorf(s.Seq, diag.InvalidFor, "for goes over an array, a set, a map, a range, a string's chars or an iterator (a type with mut fn next() -> T?, or fn iter() that gives one), not %s%s", aType(t), hint)
 			}
 			fi.Kind, fi.Elem = ForArray, Invalid
 		}

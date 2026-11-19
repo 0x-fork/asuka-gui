@@ -852,7 +852,7 @@ type Ident struct {
 // A BasicLit is a number, a duration, a length or a color, as written.
 type BasicLit struct {
 	Span
-	Kind  Token // INT, FLOAT, DURATION, LENGTH or COLOR
+	Kind  Token // INT, FLOAT, DURATION, LENGTH, COLOR or CHAR (as written, quotes and all)
 	Value string
 }
 

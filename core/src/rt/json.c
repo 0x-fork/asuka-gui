@@ -1,4 +1,5 @@
 #include "rt/json.h"
+#include "rt/unicode.h"
 #include "std/std.h"
 
 #include <errno.h>
@@ -12,6 +13,7 @@ static ak_kind desc_kind(const char *p) {
 	case 'i':
 	case 'n':
 	case 'e':
+	case 'r':
 		return AK_K_INT;
 	case 'f':
 		return AK_K_FLOAT;
@@ -741,6 +743,17 @@ static ak_val value_of(parser *ps, const char *d) {
 		return (ak_val){0};
 	case 's':
 		return (ak_val){.p = str(ps)};
+	case 'r': {
+		// A char: a string of one code point.
+		ak_str *s = str(ps);
+		if (!s) return (ak_val){0};
+		size_t i = 0;
+		uint32_t c = s->len ? ak_utf8_decode(s->data, s->len, &i) : 0;
+		bool one = s->len && i == s->len;
+		ak_release(s);
+		if (!one) fail(ps, "expected a char: a string of one code point%s", "");
+		return (ak_val){.i = one ? (int64_t)c : 0};
+	}
 	case 'y': {
 		ak_str *s = str(ps);
 		if (!s) return (ak_val){0};
@@ -1175,6 +1188,11 @@ static void enc_value(encoder *e, ak_val v, const char *d) {
 		ak_str *s = v.p;
 		if (s) enc_str(b, s->data, s->len);
 		else ak_strb_cstr(b, "\"\"", 2);
+		return;
+	}
+	case 'r': {
+		char u[4];
+		enc_str(b, u, ak_utf8_encode((uint32_t)v.i, u));
 		return;
 	}
 	case 'y': {

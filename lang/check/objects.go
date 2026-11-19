@@ -632,6 +632,7 @@ const (
 	BInline      // expectInlineSnapshot(x, "…"): likewise, the snapshot in the call
 	BEprint      // eprint(values…): print's, on stderr
 	BHashOf      // hashOf(x): a Hashable value's hash, as a map's keys hash
+	BChar        // char(n): the char of a code point (an error when it isn't one)
 )
 
 // A Builtin is a function the compiler provides (the prelude's print,

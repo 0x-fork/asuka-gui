@@ -8,6 +8,7 @@
 // A type's name is said without its package's path.
 #include "testing.h"
 #include "vm/vm_int.h"
+#include "rt/unicode.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -23,6 +24,7 @@ ak_kind ak_desc_kind(const char *d) {
 	case 'e':
 	case 'd':
 	case 'c':
+	case 'r':
 		return AK_K_INT;
 	case 'f':
 		return AK_K_FLOAT;
@@ -343,6 +345,19 @@ static void show(shower *s, ak_strb *b, ak_val v, const char *d, int indent) {
 		ak_str *str = v.p;
 		if (str) show_str(b, str->data, str->len);
 		else ak_strb_cstr(b, "\"\"", 2);
+		break;
+	}
+	case 'r': {
+		// A char as it's written: 'a', '\n', '\''.
+		char u[4];
+		size_t k = ak_utf8_encode((uint32_t)v.i, u);
+		ak_strb_cstr(b, "'", 1);
+		if (v.i == '\'' || v.i == '\\') ak_strb_cstr(b, "\\", 1);
+		if (v.i == '\n') ak_strb_cstr(b, "\\n", 2);
+		else if (v.i == '\t') ak_strb_cstr(b, "\\t", 2);
+		else if (v.i == '\r') ak_strb_cstr(b, "\\r", 2);
+		else ak_strb_cstr(b, u, k);
+		ak_strb_cstr(b, "'", 1);
 		break;
 	}
 	case 'y': {

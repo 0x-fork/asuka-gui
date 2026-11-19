@@ -595,6 +595,10 @@ func (b *fb) basicLit(e *syntax.BasicLit, dst int) int {
 		r := b.out(dst, bc.KInt)
 		b.loadInt(r, v)
 		return r
+	case syntax.CHAR:
+		r := b.out(dst, bc.KInt)
+		b.loadInt(r, int64(check.CharValue(e.Value)))
+		return r
 	}
 	return b.valueReg(-1, bc.KInt)
 }
@@ -727,6 +731,8 @@ func (b *fb) describe(v int, t check.Type) int {
 	case check.Color:
 		// As it's written: #rrggbb, .accent.
 		return b.callB("color.hex", bc.KRef, v)
+	case check.Char:
+		return b.callB("char.string", bc.KRef, v) // its one code point
 	case check.Int, check.Float, check.Bool, check.Length, check.I8, check.I16, check.I32, check.U8, check.U16, check.U32:
 		r := b.temp(bc.KRef)
 		b.emit(op("TOSTR"), r, v, int(b.l.kind(t)))
@@ -1259,6 +1265,12 @@ func (b *fb) binop(o syntax.Token, x, y int, xt, yt, res check.Type, dst int) in
 	k := b.l.kind(res)
 	switch {
 	case res == check.String:
+		if xt == check.Char {
+			x = b.describe(x, xt) // its one code point
+		}
+		if yt == check.Char {
+			y = b.describe(y, yt)
+		}
 		r := b.out(dst, bc.KRef)
 		b.emit(op("CONCAT"), r, x, y)
 		return r

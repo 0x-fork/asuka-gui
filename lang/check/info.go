@@ -306,6 +306,9 @@ type ForInfo struct {
 	Index *Var // the index (enumerated), the key (a map)
 	Pat   syntax.Pattern
 	View  bool // in a view: Item and Index are accessors
+	// Chars: a string's chars (ForArray of its code points: the
+	// lowering's str.codepoints of Seq).
+	Chars bool
 	Key   syntax.Expr
 	Lazy  bool // directly in an element that builds rows lazily (a List)
 	// ForIter's: the hidden vars of the sequence (when it's iter()'s)

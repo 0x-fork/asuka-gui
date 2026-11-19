@@ -7,6 +7,7 @@
 | `float` | 64 位浮点数：`3.14`、`1e-3` |
 | `bool` | `true`、`false` |
 | `string` | UTF-8 文本：`"Hello, {name}"` |
+| `char` | 一个 Unicode 码位（标量值）：`'a'`、`'\n'`、`'\u{1F600}'` |
 | `bytes` | 原始字节 |
 | `[T]` | 数组：`[1, 2, 3]`、`[]` |
 | `[K: V]` | map，按插入顺序保存：`["a": 1]`、`[:]` |
@@ -154,7 +155,7 @@ fn conversions(n: int, level: u8, ratio: float) -> [u8] {
 | `[T]` | `count()`、`count(where)`、`isEmpty()`、`first()`、`last()`、`get(i)`（返回 `T?`）、`push(x)`、`pushFirst(x)`、`insert(x, at: i)`、`removeAt(i)`、`removeWhere(p)`、`pop()`、`popFirst()`、`clear()`、`map(f)`、`flatMap(f)`（把 `f` 返回的数组依次接起来）、`compactMap(f)`（`f` 的结果中去掉 none）、`filter(p)`、`reduce(initial, f)`、`any(p)`、`all(p)`、`index(p)`（返回 `int?`）、`find(p)`、`contains(x)`、`sum()`、`min()`、`max()`（返回 `T?`；`min(by:)`、`max(by:)` 接受一个“小于”比较，`min(key:)`、`max(key:)` 按键比较）、`unique()`、`grouped(by: f)`（返回 `[K: [T]]`）、`chunked(n)`、`zip(other)`（两两配对，长度取较短的一方）、`reversed()`、`slice(from, to)`（省略 `to` 时到末尾）、`prefix(n)`、`suffix(n)`、`sorted()`、`sorted(by)`、`sorted(key:, descending:)`、`sort()`、`sort(by)`、`sort(key:, descending:)`、`enumerated()`、`joined(separator:)`（用于字符串数组）、`lazy()`（得到 `Seq<T>`）、`+` |
 | `Set<T>` | `count()`、`isEmpty()`、`contains(x)`、`insert(x)`（返回是否新加入）、`remove(x)`（返回原本是否存在）、`union(s)`、`intersection(s)`、`subtracting(s)`、`isSubset(of: s)`、`isSuperset(of: s)`、`lazy()`；`Set(xs)` 是数组中互不相同的元素，`Set<T>()` 是空集合 |
 | `[K: V]` | `m[k]`（返回 `V?`）、`m[k] = v`、`count()`、`isEmpty()`、`has(k)`、`get(k)`、`remove(k)`、`keys()`、`values()`（按插入顺序）、`mapValues(f)`、`filter((k, v) => …)`、`lazy()`（它的 `(key, value)` 对） |
-| `string` | `count()`（字符数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s, ignoreCase:)`、`hasPrefix(s, ignoreCase:)`、`hasSuffix(s, ignoreCase:)`、`equals(s, ignoreCase:)`、`compare(s, ignoreCase:)`（负数、零或正数）、`foldCase()`、`replace(old, new, count:)`（默认替换全部，count 指定次数）、`split(sep, count:)`、`fields()`（按空白分出的词）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（字节偏移，找不到时为 none）、`slice(from, to)`（按字符）、`byteSlice(from, to)`（按字节：即 find 给出的偏移）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toInt(radix:)`、`toFloat()`、`repeat(n)`、`chars()`、`graphemes()`、`lazy()`（它的字符，一个 `Seq<string>`）、`reversed()`、`bytes()`、`+` |
+| `string` | `count()`（字符数）、`byteCount()`、`isEmpty()`、`upper()`、`lower()`、`trim()`、`trimStart()`、`trimEnd()`、`trimPrefix(s)`、`trimSuffix(s)`、`contains(s, ignoreCase:)`、`hasPrefix(s, ignoreCase:)`、`hasSuffix(s, ignoreCase:)`、`equals(s, ignoreCase:)`、`compare(s, ignoreCase:)`（负数、零或正数）、`foldCase()`、`replace(old, new, count:)`（默认替换全部，count 指定次数）、`split(sep, count:)`、`fields()`（按空白分出的词）、`lines()`、`find(s)`、`findLast(s)`、`findAny(chars)`（字节偏移，找不到时为 none）、`slice(from, to)`（按字符）、`byteSlice(from, to)`（按字节：即 find 给出的偏移）、`padStart(width, with:)`、`padEnd(width, with:)`、`toInt()`、`toInt(radix:)`、`toFloat()`、`repeat(n)`、`chars()`、`graphemes()`、`lazy()`（它的 char，一个 `Seq<char>`）、`reversed()`、`bytes()`、`+` |
 | `bytes` | `b[i]`（返回 `int`，取值 0 到 255；越界是一个错误）、`count()`、`isEmpty()`、`get(i)`（返回 `int?`）、`slice(from, to)`、`concat(b)`、`string()`（按 UTF-8 解码，无效的部分变成 U+FFFD）、`hex()` 和 `hex(separator)`（`"04 a1"`）、`toArray()`（返回 `[u8]`）；`bytes()` 是空的字节序列，`bytes([0x04, 0xa1])` 是这些字节，`bytes(xs)` 是一个 `[u8]` 里的字节，`s.bytes()` 是字符串的 UTF-8 字节 |
 | `int`、`i8` … `u64` | `float()`、`abs()`（用于有符号整数）、`toString(radix:)`（`255.toString(radix: 16)` 是 `"ff"`）、`padded(width)`（`7.padded(2)` 是 `"07"`）、`addingChecked(o)`、`subtractingChecked(o)`、`multipliedChecked(o)`（返回 `int?`，对 `u8` 返回 `u8?`：溢出时为 none）；`T.min`、`T.max`、`T.parse(text, radix:)`（返回 `T?`） |
 | `float` | `fixed(digits)`、`rounded()`、`floor()`、`ceil()`、`int()`（向零取整）、`abs()` |
@@ -228,6 +229,32 @@ fn isMarkdown(path: string) -> bool = path.hasSuffix(".md", ignoreCase: true)
 ```
 
 `count()` 和 `chars()` 按码位计数；`graphemes()` 给出读者眼中的一个个字符，依据的是 Unicode 的文本分段规则（UAX #29）：`"e\u{301}"`、一面国旗（`"🇯🇵"`）、用 ZWJ 连起来的家庭 emoji 都各算一个。
+
+`char` 是一个码位，和 Rust 的 char 一样：`for c in s` 遍历的、`s.chars()` 按顺序给出的就是它（由几个码位组成的字素，比如 `e` 加重音符号，是字符串：用 `graphemes()`）。它写在单引号里（`'a'`、`'\''`、`'\u{301}'`），按码位比较和排序，可以做 map 的键；打印出来就是它自己，在 JSON 里是只有一个字符的字符串。`c.isLetter()`、`isDigit()`、`isNumber()`、`isWhitespace()`、`isUpper()`、`isLower()`、`isPunctuation()` 和 `isSymbol()` 读取 Unicode 的分类，适用于任何文字（`'٣'.isDigit()`）；`upper()` 和 `lower()` 在结果仍是一个 char 时做映射（`'ß'.upper()` 仍是 `'ß'`：`"ß".upper()` 才是 `"SS"`）；`code()` 是它的编号，`char(n)` 给出编号为 n 的 char（n 不是码位时是错误）。`s + c` 和 `s += c` 把一个 char 加到字符串上。
+
+```asuka check
+fn initials(name: string) -> string {
+  var out = ""
+  var start = true
+  for c in name {
+    if c.isWhitespace() {
+      start = true
+    } else if start {
+      out += c.upper()
+      start = false
+    }
+  }
+  return out
+}
+
+fn digits(s: string) -> int = s.chars().filter(c => c.isDigit()).count()
+
+fn kind(c: char) -> string = match c {
+  'a' | 'e' | 'i' | 'o' | 'u' => "vowel"
+  _ => if c.isLetter() { "letter" } else { "other" }
+}
+```
+
 
 `toInt()` 和 `toFloat()` 读的是整个字符串，读不出来就是 none：可选的正负号，接着是数字，前后不能有别的东西（`" 12"` 是 none，先 `trim()`）。`toInt()` 只认整数（`"+7"`、`"-42"`）；`toFloat()` 还认小数和指数（`"2.5"`、`".5"`、`"1e-3"`），以及浮点数打印出来的样子（`"Infinity"`、`"NaN"`）。无论用户的语言是什么，小数点都是 `.`。
 

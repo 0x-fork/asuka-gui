@@ -28,6 +28,7 @@
 // the tuples a stage makes), or for a consumer an empty value of what it
 // returns ([T], Set<T>, [K: V]), which it fills.
 #include "rt/lib.h"
+#include "rt/unicode.h"
 
 #define A(i) (args[i])
 #define CLOS(i) ((ak_closure *)args[i].p)
@@ -42,7 +43,7 @@ enum {
 	S_ARR,      // a: the array
 	S_MAP,      // a: the map; elements (key, value)
 	S_SET,      // a: the set
-	S_STR,      // a: the string; elements its characters
+	S_STR,      // a: the string; elements its chars (code points, ints)
 	S_RANGE,    // n to m; incl: m too
 	S_FROM,     // n, n + m, n + 2m, ... without end
 	S_REPEAT,   // a, n times (n < 0: without end)
@@ -243,12 +244,13 @@ static bool adv(cur *c) {
 		return true;
 	}
 	case S_STR: {
+		// Its chars: each code point, an int.
 		const ak_str *str = s->a.p;
 		if (c->i >= str->len) return false;
-		uint32_t i = (uint32_t)c->i, j = i + 1;
-		while (j < str->len && ((uint8_t)str->data[j] & 0xc0) == 0x80) j++;
-		c->i = j;
-		put(c, (ak_val){.p = ak_str_new(str->data + i, j - i)});
+		size_t i = (size_t)c->i;
+		uint32_t cp = ak_utf8_decode(str->data, str->len, &i);
+		c->i = (int64_t)i;
+		put(c, (ak_val){.i = cp});
 		return true;
 	}
 	case S_RANGE:
@@ -493,7 +495,7 @@ static ak_seq *source(int op, ak_val a, ak_kind ak, const ak_arr *proto) {
 static ak_val seq_of_array(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(source(S_ARR, A(0), AK_K_REF, PROTO(1))); }
 static ak_val seq_of_map(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(source(S_MAP, A(0), AK_K_REF, PROTO(1))); }
 static ak_val seq_of_set(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(source(S_SET, A(0), AK_K_REF, PROTO(1))); }
-static ak_val seq_of_string(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(source(S_STR, A(0), AK_K_REF, PROTO(1))); }
+static ak_val seq_of_string(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_P(source(S_STR, A(0), AK_K_INT, PROTO(1))); }
 
 // seq.range(from, to, through, proto): from..<to, or from..to.
 static ak_val seq_range(ak_val *args, uint32_t n) {

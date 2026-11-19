@@ -258,6 +258,15 @@ static ak_val gen(tape *t, const char *d, const ak_json_types *ty, int depth) {
 	switch (*d) {
 	case 'i':
 		return (ak_val){.i = gen_int(t)};
+	case 'r': {
+		// A char: mostly ASCII's printable ones (small, shrinking toward
+		// 'a'), else any scalar value but the surrogates.
+		int64_t c = gen_int(t);
+		uint64_t u = (uint64_t)(c < 0 ? -(c + 1) : c);
+		if (u < 95) return (ak_val){.i = (int64_t)((u + 'a' - 32) % 95 + 32)};
+		u %= 0x110000 - 0x800;
+		return (ak_val){.i = (int64_t)(u >= 0xd800 ? u + 0x800 : u)};
+	}
 	case 'f':
 		return (ak_val){.f = gen_float(t)};
 	case 'b':

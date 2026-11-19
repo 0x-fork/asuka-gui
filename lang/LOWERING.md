@@ -152,6 +152,7 @@ every branch's types are the same on every platform.
 | Asuka type | Kind | Representation |
 |---|---|---|
 | `int`, `Duration` (ns), `Color` (ops.Color), `Length` | int | as is; a Length packs its unit (0 auto, 1 points, 2 percent) in bits 32-39 and its float32 value in bits 0-31 |
+| `char` | int | its code point (a Unicode scalar value); `'a'` a constant, `char(n)` CALLB `char.of` (an error for what isn't one), its methods `char.*` builtins over rt's Unicode tables (unicode.h's ak_ucat: the general category and White_Space); JSON's descriptor `r`, a string of one code point |
 | `i8` … `u64` | int | canonical: sign-extended (`i8`, `i16`, `i32`) or zero-extended (`u8`, `u16`, `u32`) from the type's width; a `u64` its 64 bits (past int's largest, a negative int64) |
 | payloadless enums | int | the case's index (a wire enum's value) |
 | `bool` | bool | 0 or 1 |
@@ -739,6 +740,9 @@ the indentation of its closing quotes' line from every line.
   Hot reload).
 - A top-level `let` that reads state is a memo global, made in init; one
   that doesn't is a constant.
+- `for c in s` over a string is the array loop over `str.codepoints(s)`
+  (check.ForInfo.Chars); `s.chars()` is that array, `s.lazy()` a Seq of
+  them; `s + c` CONCATs the char's text.
 - A top-level `var` (check.VarGlobal) is a global of its kind, made in
   init (not frozen) and read with GGET, written with GSET; changed in
   place (`log.push(x)`, `cache[k] = v`, a mut fn) by GTAKE (the reference

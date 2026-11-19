@@ -27,3 +27,10 @@ private let secret = 2
 private struct Node {}
 private enum E { a
   private fn f() -> int = 1 }
+
+fn chars(s: string) -> int {
+  var n = 0
+  for c in s { if c == 'a' || c == '\n' || c == '\u{1F600}' { n += 1 } }
+  return match 'x' { 'x'=>1
+    _ => n }
+}

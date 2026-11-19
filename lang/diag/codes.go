@@ -582,12 +582,12 @@ the change, with ` + "`event <prop>Change`" + `, so that a caller that binds it
 	InvalidFor = def(Code{
 		Name:    "invalid-for",
 		Summary: "a `for` over something it doesn't go over",
-		Why: `A ` + "`for`" + ` goes over an array, a set, a map, a range or an iterator; a
-stream's values come over time (` + "`for await`" + `); a string's characters are
-` + "`s.chars()`" + `. ` + "`key`" + ` is a ` + "`for`" + `'s in a view.`,
-		Fix:   "Go over what the message says: `s.chars()`, `m.keys()`, `for await x in stream`.",
-		Wrong: "fn letters(s: string) -> int {\n  var n = 0\n  for c in s { n += 1 }\n  return n\n}\n",
-		Right: "fn letters(s: string) -> int {\n  var n = 0\n  for c in s.chars() { n += 1 }\n  return n\n}\n",
+		Why: `A ` + "`for`" + ` goes over an array, a set, a map, a range, a string's chars or
+an iterator; a stream's values come over time (` + "`for await`" + `); a number
+isn't a list (` + "`0..<n`" + ` is its range). ` + "`key`" + ` is a ` + "`for`" + `'s in a view.`,
+		Fix:   "Go over what the message says: `0..<n`, `m.keys()`, `for await x in stream`.",
+		Wrong: "fn total(n: int) -> int {\n  var sum = 0\n  for i in n { sum += i }\n  return sum\n}\n",
+		Right: "fn total(n: int) -> int {\n  var sum = 0\n  for i in 0..<n { sum += i }\n  return sum\n}\n",
 	})
 
 	LoopLabel = def(Code{

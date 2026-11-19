@@ -33,7 +33,7 @@ struct Seq {
 }
 
 fn iterate() {
-  for x in Plain() {} // ERROR "for goes over an array, a set, a map, a range or an iterator \(a type with mut fn next\(\) -> T\?, or fn iter\(\) that gives one\), not a Plain"
+  for x in Plain() {} // ERROR "for goes over an array, a set, a map, a range, a string.s chars or an iterator \(a type with mut fn next\(\) -> T\?, or fn iter\(\) that gives one\), not a Plain"
   for x in Bad() {} // ERROR "not a Bad"
   for x in Seq() {} // ERROR "not a Seq"
 }

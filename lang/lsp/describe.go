@@ -551,6 +551,7 @@ func globalDecl(g *check.Global) string {
 // write them, and what they do.
 var builtinDocs = map[string][2]string{
 	"print":       {"fn print(_ values…, separator: string = \" \", terminator: string = \"\\n\")", "Prints its values (strings, numbers, anything shown as text) separated by spaces, on a line of the standard output (an app's log)."},
+	"char":        {"fn char(_ code: int) -> char", "The char of a Unicode code point: char(65) is 'A'. A number that isn't one (past 0x10FFFF, negative, a surrogate) is an error."},
 	"hashOf":      {"fn hashOf(value) -> int", "A Hashable value's hash, as a map's keys hash it: what a type's own `fn hash() -> int` combines its parts with (`hashOf((x, y))`)."},
 	"eprint":      {"fn eprint(_ values…, separator: string = \" \", terminator: string = \"\\n\")", "Prints its values as print does, on standard error."},
 	"peek":        {"fn peek(value: T) -> T", "The value, read without following it: a binding, a let, a state or an effect that reads it under peek doesn't run again when it changes (`state first = peek(title)`: a seed). Handlers, tasks, an effect(…)'s body and tests follow nothing, so peek there is an error."},

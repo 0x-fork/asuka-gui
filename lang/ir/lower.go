@@ -205,7 +205,7 @@ func (l *Lowerer) kind(t check.Type) bc.Kind {
 	switch x := t.(type) {
 	case *check.Basic:
 		switch x {
-		case check.Int, check.Duration, check.Color, check.Length, check.Pointer:
+		case check.Int, check.Duration, check.Color, check.Length, check.Pointer, check.Char:
 			return bc.KInt
 		case check.I8, check.I16, check.I32, check.U8, check.U16, check.U32, check.U64:
 			return bc.KInt // canonical: sign- or zero-extended, a u64's bits
@@ -373,6 +373,8 @@ func (l *Lowerer) desc(t check.Type) string {
 		switch x {
 		case check.Int, check.Duration, check.Color, check.Length, check.Pointer:
 			return "i"
+		case check.Char:
+			return "r" // a string of one code point
 		case check.I8, check.I16, check.I32, check.U8, check.U16, check.U32, check.U64:
 			// n and the type's code: n0 an i8 … n7 a u64.
 			return "n" + string(rune('0'+check.IntCode(x)))

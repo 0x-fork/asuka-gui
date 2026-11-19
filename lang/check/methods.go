@@ -169,7 +169,18 @@ var Methods = []*Method{
 	{Recv: "string", Name: "toInt", Sig: "(radix: int) -> int?", Builtin: "str.to_int_radix", Fails: true, Doc: "the whole string as an int in radix (2 to 36; letters either case): \"ff\".toInt(radix: 16); none when it isn't one"},
 	{Recv: "string", Name: "toFloat", Sig: "() -> float?", Builtin: "str.to_float"},
 	{Recv: "string", Name: "repeat", Sig: "(count: int) -> string", Builtin: "str.repeat"},
-	{Recv: "string", Name: "chars", Sig: "() -> [string]", Builtin: "str.chars", Doc: "its characters, each a string"},
+	{Recv: "string", Name: "chars", Sig: "() -> [char]", Builtin: "str.codepoints", Doc: "its chars, the code points for goes over (count() of them), in order"},
+	{Recv: "char", Name: "code", Sig: "() -> int", Builtin: "char.of", Doc: "its code point: 'A'.code() is 65"},
+	{Recv: "char", Name: "isLetter", Sig: "() -> bool", Builtin: "char.is_letter", Doc: "whether it's a letter of any script (Unicode's L categories): a, Ж, 字"},
+	{Recv: "char", Name: "isDigit", Sig: "() -> bool", Builtin: "char.is_digit", Doc: "whether it's a decimal digit of any script (Nd): 0 to 9, ٣"},
+	{Recv: "char", Name: "isNumber", Sig: "() -> bool", Builtin: "char.is_number", Doc: "whether it's a number (N): a digit, a Roman numeral Ⅻ, a fraction ½"},
+	{Recv: "char", Name: "isWhitespace", Sig: "() -> bool", Builtin: "char.is_whitespace", Doc: "whether it's white space (Unicode's White_Space): a space, a tab, a line ending, a no-break space"},
+	{Recv: "char", Name: "isUpper", Sig: "() -> bool", Builtin: "char.is_upper", Doc: "whether it's an upper-case (or title-case) letter"},
+	{Recv: "char", Name: "isLower", Sig: "() -> bool", Builtin: "char.is_lower", Doc: "whether it's a lower-case letter"},
+	{Recv: "char", Name: "isPunctuation", Sig: "() -> bool", Builtin: "char.is_punctuation", Doc: "whether it's punctuation (P): . , ! ? 「」"},
+	{Recv: "char", Name: "isSymbol", Sig: "() -> bool", Builtin: "char.is_symbol", Doc: "whether it's a symbol (S): + $ © and emoji"},
+	{Recv: "char", Name: "upper", Sig: "() -> char", Builtin: "char.upper", Doc: "its upper case, where that's one char ('ß' stays 'ß': its upper case, SS, is a string's: \"ß\".upper())"},
+	{Recv: "char", Name: "lower", Sig: "() -> char", Builtin: "char.lower", Doc: "its lower case, where that's one char"},
 	{Recv: "string", Name: "graphemes", Sig: "() -> [string]", Builtin: "unicode.graphemes", Doc: "its grapheme clusters (Unicode's UAX #29), each a string: what a reader takes for one character, an e and its accent, a flag, a family emoji"},
 	{Recv: "string", Name: "foldCase", Sig: "() -> string", Builtin: "unicode.foldCase", Doc: "its case folding (Unicode's full one, in no language's way): what compares strings without their case, as a map's key; \"Straße\" and \"STRASSE\" both fold to strasse"},
 	{Recv: "string", Name: "equals", Sig: "(other: string) -> bool", Builtin: "str.equals", Doc: "whether it's other (==)"},
@@ -470,6 +481,8 @@ func recvKind(t Type) string {
 		switch x {
 		case String:
 			return "string"
+		case Char:
+			return "char"
 		case Float:
 			return "float"
 		case Int:

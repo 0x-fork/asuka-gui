@@ -449,7 +449,12 @@ func (b *fb) forStmt(s *syntax.ForStmt) {
 		b.loadInt(i, 0)
 	default:
 		seq = b.local(bc.KRef)
-		b.value(fi.Seq, seq)
+		if fi.Chars {
+			// A string's chars: its code points, an [char].
+			b.callBTo("str.codepoints", seq, b.value(fi.Seq, -1))
+		} else {
+			b.value(fi.Seq, seq)
+		}
 		limit = b.local(bc.KInt)
 		b.emit(op("LEN"), limit, seq)
 		b.loadInt(i, 0)

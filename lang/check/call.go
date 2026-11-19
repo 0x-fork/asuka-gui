@@ -1703,6 +1703,8 @@ func (c *Checker) typeCall(e *syntax.CallExpr, tn *TypeName, want Type) Type {
 				return c.builtinCall(e, &Builtin{object: object{name: tn.name}, ID: BBytesFrom}, want)
 			}
 			return c.builtinCall(e, &Builtin{object: object{name: tn.name}, ID: BMath, RT: "bytes.empty", Sig: &FuncType{Result: Bytes}}, want)
+		case Char:
+			return c.builtinCall(e, &Builtin{object: object{name: tn.name}, ID: BChar}, want)
 		case Ref:
 			return c.builtinCall(e, &Builtin{object: object{name: tn.name}, ID: BRefNew}, want)
 		case Path:

@@ -132,6 +132,13 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		}
 	case BPrint, BEprint:
 		c.printArgs(b, list, call)
+	case BChar:
+		args := positional(1, "a code point: char(65)")
+		call.Args = args
+		call.Result = Char
+		if len(args) == 1 {
+			c.assign(args[0], Int, "a char's code point")
+		}
 	case BHashOf:
 		args := positional(1, "one value: hashOf(x)")
 		call.Args = args
@@ -952,7 +959,7 @@ func jsonable1(t Type, seen map[*TypeName]bool, param func(*TypeParam) bool) str
 		}
 	case *Basic:
 		switch x {
-		case Int, Float, Bool, String, Bytes, Duration, Color, Invalid, I8, I16, I32, U8, U16, U32, U64:
+		case Int, Float, Bool, String, Bytes, Duration, Color, Char, Invalid, I8, I16, I32, U8, U16, U32, U64:
 			// Invalid: a type that isn't one, which is said where it's
 			// written.
 			return ""

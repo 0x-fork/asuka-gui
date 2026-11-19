@@ -307,7 +307,7 @@ pub fn compare(a: string, b: string) throws -> int = (try parse(a)).compare(try 
 // ---------------------------------------------------------------------
 // Precedence
 
-fn isNumeric(s: string) -> bool = !s.isEmpty() && s.chars().all(c => c >= "0" && c <= "9")
+fn isNumeric(s: string) -> bool = !s.isEmpty() && s.chars().all(c => c >= '0' && c <= '9')
 
 fn comparePrerelease(a: [string], b: [string]) -> int {
   if a.isEmpty() || b.isEmpty() {
@@ -357,7 +357,7 @@ fn number(s: string, fail: fn(string) -> Error) throws -> int {
   return s.toInt() ?? throw fail("{s} is too large")
 }
 
-fn identifierChar(c: string) -> bool = c >= "0" && c <= "9" || c >= "a" && c <= "z" || c >= "A" && c <= "Z" || c == "-"
+fn identifierChar(c: char) -> bool = c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '-'
 
 fn identifiers(s: string, what: string, numbers: bool, fail: fn(string) -> Error) throws -> [string] {
   let ids = s.split(".")

@@ -245,6 +245,12 @@ struct S
 			decls: 2,
 		},
 		{
+			name:  "a char of no code point, and of two",
+			src:   "let a = ''\nlet b = 'ab'\nlet c = 'x\n",
+			errs:  []string{"1:9: '' holds no char: a char is one code point ('a'), an empty text a string (\"\")", "2:9: 'ab' holds 2 code points, and a char is one: a string holds more (\"ab\"), its graphemes() what a reader takes for one character", "3:9: char not terminated: it's one code point between single quotes, 'a'"},
+			decls: 3,
+		},
+		{
 			name:  "var at the top level",
 			src:   "var n = 0\npub var m: [int] = []\n",
 			decls: 2,

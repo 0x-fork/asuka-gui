@@ -635,6 +635,91 @@ static ak_val str_chars(ak_val *args, uint32_t n) {
 	RET_P(ak_str_split(STR(0), empty));
 }
 
+// ---- Chars: a Unicode scalar value, in an int ----
+
+// str.codepoints(s): its chars, an [char] (ints).
+static ak_val str_codepoints(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	const ak_str *s = STR(0);
+	ak_arr *a = ak_arr_new(AK_K_INT, NULL, s->len);
+	for (size_t i = 0; i < s->len;) a->data[a->len++].i = ak_utf8_decode(s->data, s->len, &i);
+	RET_P(a);
+}
+
+static ak_val char_string(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	char b[4];
+	size_t k = ak_utf8_encode((uint32_t)A(0).i, b);
+	RET_P(ak_str_new(b, k));
+}
+
+// char.of(n): n as a char; n not a Unicode scalar value (past
+// U+10FFFF, negative, a surrogate) is an error, as an int's that
+// doesn't fit a u8 is.
+static ak_val char_of(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	int64_t c = A(0).i;
+	if (c < 0 || c > 0x10ffff || (c >= 0xd800 && c < 0xe000)) {
+		ak_throw_msg("%lld isn't a Unicode scalar value: a char is 0 to 0x10FFFF, but the surrogates 0xD800 to 0xDFFF", (long long)c);
+		RET_I(0);
+	}
+	RET_I(c);
+}
+
+static int char_gc(ak_val *args) { return AK_UCAT_GC(ak_ucat((uint32_t)A(0).i)); }
+static ak_val char_is_letter(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	int g = char_gc(args);
+	RET_I(g >= AK_GC_LU && g <= AK_GC_LO);
+}
+static ak_val char_is_digit(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	RET_I(char_gc(args) == AK_GC_ND);
+}
+static ak_val char_is_number(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	int g = char_gc(args);
+	RET_I(g >= AK_GC_ND && g <= AK_GC_NO);
+}
+static ak_val char_is_whitespace(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	RET_I((ak_ucat((uint32_t)A(0).i) & AK_UCAT_SPACE) != 0);
+}
+static ak_val char_is_upper(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	int g = char_gc(args);
+	RET_I(g == AK_GC_LU || g == AK_GC_LT);
+}
+static ak_val char_is_lower(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	RET_I(char_gc(args) == AK_GC_LL);
+}
+static ak_val char_is_punctuation(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	int g = char_gc(args);
+	RET_I(g >= AK_GC_PC && g <= AK_GC_PO);
+}
+static ak_val char_is_symbol(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	int g = char_gc(args);
+	RET_I(g >= AK_GC_SM && g <= AK_GC_SO);
+}
+
+// char_case is c by a case mapping that gives one char: itself when the
+// mapping gives more (ß's upper case, SS, is a string's: "ß".upper()).
+static int64_t char_case(int64_t c, ak_case_kind k) {
+	uint32_t out[3];
+	return ak_case_map((uint32_t)c, k, out) == 1 ? out[0] : c;
+}
+static ak_val char_upper(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	RET_I(char_case(A(0).i, AK_CASE_UPPER));
+}
+static ak_val char_lower(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	RET_I(char_case(A(0).i, AK_CASE_LOWER));
+}
+
 static ak_val str_from_float_digits(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	char buf[64];
@@ -1968,6 +2053,19 @@ const ak_lib_entry ak_lib[] = {
 	{"str.repeat", str_repeat},
 	{"str.join", str_join},
 	{"str.chars", str_chars},
+	{"str.codepoints", str_codepoints},
+	{"char.string", char_string},
+	{"char.of", char_of},
+	{"char.is_letter", char_is_letter},
+	{"char.is_digit", char_is_digit},
+	{"char.is_number", char_is_number},
+	{"char.is_whitespace", char_is_whitespace},
+	{"char.is_upper", char_is_upper},
+	{"char.is_lower", char_is_lower},
+	{"char.is_punctuation", char_is_punctuation},
+	{"char.is_symbol", char_is_symbol},
+	{"char.upper", char_upper},
+	{"char.lower", char_lower},
 	{"str.equals", str_equals},
 	{"str.compare", str_compare},
 	{"str.to_bytes", str_to_bytes},

@@ -259,8 +259,8 @@ var zh = map[string]Text{
 	},
 	"invalid-for": {
 		"`for` 遍历了它不能遍历的东西",
-		"`for` 可以遍历数组、set、map、范围或迭代器；stream 的值是随时间到来的（用 `for await`）；字符串的字符是 `s.chars()`。`key` 只用于视图里的 `for`。",
-		"按消息所说遍历对应的东西：`s.chars()`、`m.keys()`、`for await x in stream`。",
+		"`for` 可以遍历数组、set、map、范围、字符串的字符或迭代器；stream 的值是随时间到来的（用 `for await`）；数字不是列表（它的范围是 `0..<n`）。`key` 只用于视图里的 `for`。",
+		"按消息所说遍历对应的东西：`0..<n`、`m.keys()`、`for await x in stream`。",
 	},
 	"loop-label": {
 		"循环名没有被使用，或者不存在",
