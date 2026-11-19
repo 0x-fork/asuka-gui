@@ -5,8 +5,10 @@
 // (testdata/wycheproof): what's valid opens to its message and seals to
 // its ciphertext, what isn't doesn't open.
 #include "t.h"
+#include "std/chacha.h"
 #include "std/std.h"
 #include "std/cryptohw.h"
+#include "std/monocypher.h"
 
 static ak_lib_fn fn(const char *name) {
 	for (const ak_lib_entry *const *t = ak_std_libs; *t; t++)
@@ -145,6 +147,41 @@ static void wycheproof(const char *file, int c, int c128) {
 TEST(wycheproof_aes_gcm) { wycheproof("aes_gcm_test.txt", AES256, AES128); }
 TEST(wycheproof_chacha20_poly1305) { wycheproof("chacha20_poly1305_test.txt", CHACHA, CHACHA); }
 TEST(wycheproof_xchacha20_poly1305) { wycheproof("xchacha20_poly1305_test.txt", XCHACHA, XCHACHA); }
+
+#if AK_CHACHA_FAST
+// chacha.c's ChaCha20-Poly1305 and XChaCha20-Poly1305 seal what
+// Monocypher's do, byte for byte, at every length to 1100 (across NEON's
+// 256-byte blocks), and open what they seal; a flipped bit fails.
+TEST(chacha_as_monocypher) {
+	uint8_t key[32], nonce[24], ad[40], pt[1100], a[1100], b[1100], ta[16], tb[16];
+	uint32_t x = 9;
+	for (size_t i = 0; i < sizeof pt; i++) pt[i] = (uint8_t)((x = x * 1103515245 + 12345) >> 16);
+	for (size_t n = 0; n <= sizeof pt; n += n < 300 ? 1 : 37) {
+		for (int i = 0; i < 32; i++) key[i] = (uint8_t)(n + (size_t)i * 7);
+		for (int i = 0; i < 24; i++) nonce[i] = (uint8_t)(n * 3 + (size_t)i);
+		for (int i = 0; i < 40; i++) ad[i] = (uint8_t)(i ^ n);
+		size_t an = n % 41;
+		for (int xc = 0; xc < 2; xc++) {
+			ak_chacha_seal(xc, key, nonce, ad, an, pt, a, n, ta);
+			if (xc) {
+				crypto_aead_lock(b, tb, key, nonce, ad, an, pt, n);
+			} else {
+				crypto_aead_ctx c;
+				crypto_aead_init_ietf(&c, key, nonce);
+				crypto_aead_write(&c, b, tb, ad, an, pt, n);
+			}
+			if (memcmp(a, b, n) || memcmp(ta, tb, 16)) T_FAIL("%s of %zu bytes differs", xc ? "xchacha" : "chacha", n);
+			uint8_t back[1100];
+			CHECK(ak_chacha_open(xc, key, nonce, ad, an, a, back, n, ta));
+			CHECK(memcmp(back, pt, n) == 0);
+			if (n) {
+				a[n / 2] ^= 4;
+				CHECK(!ak_chacha_open(xc, key, nonce, ad, an, a, back, n, ta));
+			}
+		}
+	}
+}
+#endif
 
 TEST(sizes) {
 	// A key or a nonce of the wrong size, or sealed bytes shorter than a

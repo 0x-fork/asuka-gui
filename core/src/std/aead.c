@@ -3,7 +3,9 @@
 // it): AES-GCM (NIST SP 800-38D) with 128- and 256-bit keys, over
 // BearSSL's constant-time AES (bitsliced) and GHASH (third_party/bearssl);
 // ChaCha20-Poly1305 (RFC 8439) and XChaCha20-Poly1305 (its 24-byte
-// nonce, draft-irtf-cfrg-xchacha), over Monocypher (third_party/monocypher).
+// nonce, draft-irtf-cfrg-xchacha), chacha.c's on 64-bit targets (NEON's
+// four blocks at a time on ARMv8), Monocypher's elsewhere
+// (third_party/monocypher): the same bytes.
 // The same C on every platform, the web's WebAssembly too, so what one
 // seals any other opens.
 //
@@ -14,6 +16,7 @@
 #include "std/std.h"
 
 #include "std/bearssl/bearssl.h"
+#include "std/chacha.h"
 #include "std/cryptohw.h"
 #include "std/monocypher.h"
 
@@ -76,6 +79,12 @@ static ak_val seal(ak_val *args, uint32_t n) {
 	ak_bytes *out = ak_bytes_new(NULL, m + 16);
 	uint8_t *tag = out->data + m;
 	switch (c) {
+#if AK_CHACHA_FAST
+	case XCHACHA:
+	case CHACHA:
+		ak_chacha_seal(c == XCHACHA, key->data, nonce->data, data(ad), len(ad), data(pt), out->data, m, tag);
+		break;
+#else
 	case XCHACHA:
 		crypto_aead_lock(out->data, tag, key->data, nonce->data, data(ad), len(ad), data(pt), m);
 		break;
@@ -86,6 +95,7 @@ static ak_val seal(ak_val *args, uint32_t n) {
 		crypto_wipe(&x, sizeof x);
 		break;
 	}
+#endif
 	default:
 		gcm(true, key->data, len(key), nonce->data, data(ad), len(ad), data(pt), out->data, m, tag);
 	}
@@ -106,6 +116,12 @@ static ak_val open_fn(ak_val *args, uint32_t n) {
 	ak_bytes *out = ak_bytes_new(NULL, m);
 	bool ok;
 	switch (c) {
+#if AK_CHACHA_FAST
+	case XCHACHA:
+	case CHACHA:
+		ok = ak_chacha_open(c == XCHACHA, key->data, nonce->data, data(ad), len(ad), data(ct), out->data, m, tag);
+		break;
+#else
 	case XCHACHA:
 		ok = crypto_aead_unlock(out->data, tag, key->data, nonce->data, data(ad), len(ad), data(ct), m) == 0;
 		break;
@@ -116,6 +132,7 @@ static ak_val open_fn(ak_val *args, uint32_t n) {
 		crypto_wipe(&x, sizeof x);
 		break;
 	}
+#endif
 	default:
 		ok = gcm(false, key->data, len(key), nonce->data, data(ad), len(ad), data(ct), out->data, m, tag);
 	}
