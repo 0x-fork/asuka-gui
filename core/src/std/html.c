@@ -6,27 +6,35 @@
 #define STR(i) ((ak_str *)args[i].p)
 
 // escape: & < > " ' as references, so the text is safe in an element's
-// content and in a quoted attribute.
+// content and in a quoted attribute. The result is sized first (each
+// character's reference's extra length), then the runs between them
+// copied whole.
+static const uint8_t extra[256] = {['&'] = 4, ['<'] = 3, ['>'] = 3, ['"'] = 5, ['\''] = 4};
+
 static ak_val escape(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	ak_str *s = STR(0);
-	uint32_t i = 0;
-	while (i < s->len && (!s->data[i] || !strchr("&<>\"'", s->data[i]))) i++;
-	if (i == s->len) return (ak_val){.p = ak_retain(s)};
-	ak_buf b = {0};
-	ak_buf_put(&b, s->data, i);
-	for (; i < s->len; i++) {
-		switch (s->data[i]) {
-		case '&': ak_buf_put(&b, "&amp;", 5); break;
-		case '<': ak_buf_put(&b, "&lt;", 4); break;
-		case '>': ak_buf_put(&b, "&gt;", 4); break;
-		case '"': ak_buf_put(&b, "&quot;", 6); break;
-		case '\'': ak_buf_put(&b, "&#39;", 5); break;
-		default: ak_buf_u8(&b, (uint8_t)s->data[i]);
+	const uint8_t *p = (const uint8_t *)s->data;
+	size_t len = s->len, more = 0;
+	for (size_t i = 0; i < len; i++) more += extra[p[i]];
+	if (!more) return (ak_val){.p = ak_retain(s)};
+	ak_str *r = ak_str_new(NULL, len + more);
+	char *o = r->data;
+	size_t run = 0;
+	for (size_t i = 0; i < len; i++) {
+		if (!extra[p[i]]) continue;
+		memcpy(o, p + run, i - run);
+		o += i - run;
+		run = i + 1;
+		switch (p[i]) {
+		case '&': memcpy(o, "&amp;", 5), o += 5; break;
+		case '<': memcpy(o, "&lt;", 4), o += 4; break;
+		case '>': memcpy(o, "&gt;", 4), o += 4; break;
+		case '"': memcpy(o, "&quot;", 6), o += 6; break;
+		default: memcpy(o, "&#39;", 5), o += 5; break;
 		}
 	}
-	ak_str *r = ak_str_new((const char *)b.data, b.len);
-	ak_buf_free(&b);
+	memcpy(o, p + run, len - run);
 	return (ak_val){.p = r};
 }
 
@@ -67,6 +75,11 @@ static const struct {
 };
 
 static bool named(const char *s, size_t len, uint32_t *cp) {
+	// XML's five first: most of what text has.
+	if (len == 2 && s[1] == 't' && (s[0] == 'l' || s[0] == 'g')) return *cp = s[0] == 'l' ? '<' : '>', true;
+	if (len == 3 && memcmp(s, "amp", 3) == 0) return *cp = '&', true;
+	if (len == 4 && memcmp(s, "quot", 4) == 0) return *cp = '"', true;
+	if (len == 4 && memcmp(s, "apos", 4) == 0) return *cp = '\'', true;
 	for (size_t i = 0; i < AK_LEN(latin1); i++)
 		if (strlen(latin1[i]) == len && memcmp(latin1[i], s, len) == 0) return *cp = 0xa0 + (uint32_t)i, true;
 	for (size_t i = 0; i < AK_LEN(others); i++)
@@ -107,22 +120,30 @@ static ak_val unescape(ak_val *args, uint32_t n) {
 	ak_str *s = STR(0);
 	const char *amp = memchr(s->data, '&', s->len);
 	if (!amp) return (ak_val){.p = ak_retain(s)};
-	ak_buf b = {0};
-	size_t i = (size_t)(amp - s->data);
-	ak_buf_put(&b, s->data, i);
-	while (i < s->len) {
+	// A reference is never shorter than what it stands for (&#0; is
+	// U+FFFD's 3 bytes in 4): the text's length is room enough.
+	ak_str *r = ak_str_new(NULL, s->len);
+	char *o = r->data;
+	size_t i = 0, len = s->len;
+	while (amp) {
+		size_t at = (size_t)(amp - s->data);
+		memcpy(o, s->data + i, at - i);
+		o += at - i;
 		uint32_t cp;
-		size_t k = s->data[i] == '&' ? reference(s->data, s->len, i, &cp) : 0;
+		size_t k = reference(s->data, len, at, &cp);
 		if (k) {
-			char u[4];
-			ak_buf_put(&b, u, ak_utf8_encode(cp, u));
-			i += k;
+			o += ak_utf8_encode(cp, o);
+			i = at + k;
 		} else {
-			ak_buf_u8(&b, (uint8_t)s->data[i++]);
+			*o++ = '&';
+			i = at + 1;
 		}
+		amp = i < len ? memchr(s->data + i, '&', len - i) : NULL;
 	}
-	ak_str *r = ak_str_new((const char *)b.data, b.len);
-	ak_buf_free(&b);
+	memcpy(o, s->data + i, len - i);
+	o += len - i;
+	r->len = (uint32_t)(o - r->data);
+	r->data[r->len] = 0;
 	return (ak_val){.p = r};
 }
 

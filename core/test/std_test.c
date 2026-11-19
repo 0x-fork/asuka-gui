@@ -178,6 +178,59 @@ TEST(base64_padding) {
 	}
 }
 
+// Base64 and hex round-trip bytes of every length to 300 (each
+// alphabet's, with spaces and line breaks among the digits); html's
+// escape is read back by unescape, and the references text has most
+// read at once.
+TEST(encodings_round_trip) {
+	uint32_t x = 5;
+	uint8_t data[300];
+	for (size_t n = 0; n <= sizeof data; n++) {
+		for (size_t i = 0; i < n; i++) data[i] = (uint8_t)((x = x * 1103515245 + 12345) >> 16);
+		ak_bytes *b = ak_bytes_new(data, n);
+		const char *encs[] = {"encoding.base64Encode", "encoding.base64URLEncode", "encoding.hexEncode"};
+		for (int e = 0; e < 3; e++) {
+			ak_retain(b);
+			ak_str *t = call(encs[e], (ak_val[]){{.p = b}}, 1, 1).p;
+			// Spaces and line breaks every 7 digits (Base64 skips them).
+			ak_str *u = t;
+			if (e < 2) {
+				ak_buf w = {0};
+				for (uint32_t i = 0; i < t->len; i++) {
+					ak_buf_u8(&w, (uint8_t)t->data[i]);
+					if (i % 7 == 6) ak_buf_put(&w, i % 2 ? "\n" : " ", 1);
+				}
+				u = ak_str_new((const char *)w.data, w.len);
+				ak_buf_free(&w);
+			}
+			ak_retain(t);
+			ak_bytes *back = call(e < 2 ? "encoding.base64Decode" : "encoding.hexDecode", (ak_val[]){{.p = t}}, 1, 1).p;
+			REQUIRE(back);
+			if (back->len != n || memcmp(back->data, data, n) != 0) T_FAIL("%s of %zu bytes", encs[e], n);
+			ak_release(back);
+			if (u != t) {
+				back = call("encoding.base64Decode", (ak_val[]){{.p = u}}, 1, 1).p;
+				REQUIRE(back);
+				if (back->len != n || memcmp(back->data, data, n) != 0) T_FAIL("%s of %zu bytes, spaced", encs[e], n);
+				ak_release(back);
+			}
+			ak_release(t);
+		}
+		ak_release(b);
+		// ASCII text with what html escapes in it, back from its escape.
+		char text[301];
+		for (size_t i = 0; i < n; i++) text[i] = "ab<>&\"'c d;#x1"[data[i] % 14];
+		text[n] = 0;
+		ak_str *esc = call("html.escape", (ak_val[]){S(text)}, 1, 1).p;
+		ak_str *un = call("html.unescape", (ak_val[]){{.p = esc}}, 1, 1).p;
+		CHECK_EQ_STR(un->data, text);
+		ak_release(un);
+	}
+	ak_str *u = call("html.unescape", (ak_val[]){S("&lt;a&gt; &amp;amp; &quot;&apos; &eacute;&#233;&#xE9; &bogus; &amp &#0; &")}, 1, 1).p;
+	CHECK_EQ_STR(u->data, "<a> &amp; \"' \xc3\xa9\xc3\xa9\xc3\xa9 &bogus; &amp \xef\xbf\xbd &");
+	ak_release(u);
+}
+
 TEST(regex_programs) {
 	ak_val prog = call("regex.program", (ak_val[]){S("(a+)b")}, 1, 1);
 	REQUIRE(prog.p);
