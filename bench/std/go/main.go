@@ -619,6 +619,34 @@ func sortedMaps(xs []int) string {
 	return fmt.Sprintf("%d %d %d", m.Len(), total, first.k)
 }
 
+// sortedOps is what else a sorted map does: the nearest keys, a walk of
+// it all and of ranges, and removals.
+func sortedOps(xs []int) string {
+	type kv struct{ k, v int }
+	const n = 200000
+	m := btree.NewG(32, func(a, b kv) bool { return a.k < b.k })
+	for _, x := range xs[:n] {
+		m.ReplaceOrInsert(kv{x, x % 1000})
+	}
+	total := 0
+	for _, x := range xs[:n] {
+		m.DescendLessOrEqual(kv{k: x + 1}, func(e kv) bool { total += e.v; return false })
+		m.AscendGreaterOrEqual(kv{k: x - 1}, func(e kv) bool { total += e.v; return false })
+	}
+	m.Ascend(func(e kv) bool { total += e.v; return true })
+	for _, x := range xs[:2000] {
+		m.AscendRange(kv{k: x}, kv{k: x + 100000}, func(e kv) bool { total += e.v; return true })
+	}
+	for i, x := range xs[:n] {
+		if i%2 == 0 {
+			if e, ok := m.Delete(kv{k: x}); ok {
+				total += e.v
+			}
+		}
+	}
+	return fmt.Sprintf("%d %d", m.Len(), total)
+}
+
 func seqs(n int) string {
 	// The lazy pipeline: Go has no lazy map and filter (iter.Seq's
 	// adapters are user code); this is the loop it would be.
@@ -718,7 +746,7 @@ func main() {
 			keys = append(keys, "key"+strconv.Itoa((i*7919)%500009))
 		}
 	}
-	if in("sortint", "heap", "sortedmap") {
+	if in("sortint", "heap", "sortedmap", "sortedops") {
 		if name == "sortint" {
 			xs = ints(5000000)
 		} else {
@@ -896,6 +924,8 @@ func main() {
 			out = semvers(200000)
 		case "sortedmap":
 			out = sortedMaps(xs)
+		case "sortedops":
+			out = sortedOps(xs)
 		case "heap":
 			out = heaps(xs)
 		case "seq":

@@ -364,6 +364,9 @@ func matchType(p, t Type, params []*TypeParam, s Subst) bool {
 	case *Set:
 		y, ok := t.(*Set)
 		return ok && matchType(x.Elem, y.Elem, params, s)
+	case *Tree:
+		y, ok := t.(*Tree)
+		return ok && matchType(x.Key, y.Key, params, s) && matchType(x.Elem, y.Elem, params, s)
 	case *Map:
 		y, ok := t.(*Map)
 		return ok && matchType(x.Key, y.Key, params, s) && matchType(x.Elem, y.Elem, params, s)

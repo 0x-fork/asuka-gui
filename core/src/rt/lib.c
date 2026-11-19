@@ -263,7 +263,8 @@ static ak_val str_trim_end(ak_val *args, uint32_t n) {
 static ak_val str_fields(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	ak_str *s = STR(0);
-	ak_pieces pc = {.left = AK_PIECES_LEFT((s->len + 1) / 2, s->len), .ascii = ak_str_ascii(s)};
+	ak_pieces pc;
+	ak_pieces_start(&pc, s, AK_PIECES_LEFT((s->len + 1) / 2, s->len));
 	// Written into the array as they're found, its room doubled as it
 	// fills (from a guess: a word of 7 and a space).
 	uint32_t len = 0, cap = s->len / 8 + 4;
@@ -285,6 +286,7 @@ static ak_val str_fields(ak_val *args, uint32_t n) {
 		v[len++].p = ak_piece(&pc, p, (size_t)(q - p));
 		p = q;
 	}
+	ak_pieces_end(&pc);
 	a->len = len;
 	RET_P(a);
 }
@@ -301,7 +303,8 @@ static ak_val str_lines(ak_val *args, uint32_t n) {
 	ak_arr *a = ak_arr_new(AK_K_REF, NULL, lines);
 	a->h.flags = 1;
 	ak_val *v = ak_arr_vals(a);
-	ak_pieces p = {.left = AK_PIECES_LEFT(lines, s->len), .ascii = ak_str_ascii(s)};
+	ak_pieces p;
+	ak_pieces_start(&p, s, AK_PIECES_LEFT(lines, s->len));
 	uint32_t start = 0;
 	for (const char *nl; start < s->len && (nl = memchr(s->data + start, '\n', s->len - start));) {
 		uint32_t i = (uint32_t)(nl - s->data);
@@ -314,6 +317,7 @@ static ak_val str_lines(ak_val *args, uint32_t n) {
 		if (s->data[end - 1] == '\r') end--;
 		v[a->len++].p = ak_piece(&p, s->data + start, end - start);
 	}
+	ak_pieces_end(&p);
 	RET_P(a);
 }
 

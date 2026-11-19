@@ -200,6 +200,17 @@ type Set struct{ Elem Type }
 
 func (s *Set) String() string { return "Set<" + s.Elem.String() + ">" }
 
+// Tree is BTree<Key, Elem>, the runtime's B-tree (core/src/rt/tree.c):
+// what std/collections' SortedMap and SortedSet keep their entries in,
+// through its methods (methods.go's "tree"); only the standard library
+// names it (namedType). A value, copied on write, whose changes copy
+// the nodes they change that are shared; neither compared nor hashed
+// (its owner is, by its own equals and hash), nor sent to another
+// thread.
+type Tree struct{ Key, Elem Type }
+
+func (t *Tree) String() string { return "BTree<" + t.Key.String() + ", " + t.Elem.String() + ">" }
+
 // Map is [Key: Elem].
 type Map struct{ Key, Elem Type }
 
@@ -355,6 +366,9 @@ func Identical(a, b Type) bool {
 	case *Set:
 		y, ok := b.(*Set)
 		return ok && Identical(x.Elem, y.Elem)
+	case *Tree:
+		y, ok := b.(*Tree)
+		return ok && Identical(x.Key, y.Key) && Identical(x.Elem, y.Elem)
 	case *Optional:
 		y, ok := b.(*Optional)
 		return ok && Identical(x.Elem, y.Elem)
@@ -429,6 +443,11 @@ func (s Subst) Apply(t Type) Type {
 	case *Set:
 		if e := s.Apply(x.Elem); e != x.Elem {
 			return &Set{e}
+		}
+	case *Tree:
+		k, e := s.Apply(x.Key), s.Apply(x.Elem)
+		if k != x.Key || e != x.Elem {
+			return &Tree{k, e}
 		}
 	case *Optional:
 		if e := s.Apply(x.Elem); e != x.Elem {
@@ -523,6 +542,8 @@ func HasTypeParams(t Type) bool {
 		return HasTypeParams(x.Key) || HasTypeParams(x.Elem)
 	case *Set:
 		return HasTypeParams(x.Elem)
+	case *Tree:
+		return HasTypeParams(x.Key) || HasTypeParams(x.Elem)
 	case *Optional:
 		return HasTypeParams(x.Elem)
 	case *Tuple:
@@ -667,6 +688,8 @@ func mentions(t Type, o *TypeName) bool {
 		return mentions(x.Key, o) || mentions(x.Elem, o)
 	case *Set:
 		return mentions(x.Elem, o)
+	case *Tree:
+		return mentions(x.Key, o) || mentions(x.Elem, o)
 	case *Tuple:
 		for _, e := range x.Elems {
 			if mentions(e, o) {
@@ -873,6 +896,8 @@ func whyNotHashable1(t Type, seen map[*TypeName]bool) string {
 		return whyNotHashable1(x.Key, seen)
 	case *Set:
 		return whyNotHashable1(x.Elem, seen)
+	case *Tree:
+		return "a BTree isn't"
 	case *FuncType:
 		return "functions aren't"
 	case *Named:

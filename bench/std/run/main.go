@@ -34,7 +34,7 @@ var names = []string{
 	"regex", "files", "lines", "print", "stdout", "csv", "toml",
 	"url", "base64", "hex", "html", "zip", "tar",
 	"sha256", "sha512", "sha1", "md5", "crc32", "hmac", "aesgcm", "chacha", "argon2", "bcrypt", "gzip",
-	"bigint", "modpow", "time", "template", "semver", "heap", "sortedmap", "seq",
+	"bigint", "modpow", "time", "template", "semver", "heap", "sortedmap", "sortedops", "seq",
 }
 
 // Results whose bytes legitimately differ between implementations

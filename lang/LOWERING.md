@@ -170,11 +170,12 @@ every branch's types are the same on every platform.
 | payloadless enums | int | the case's index (a wire enum's value) |
 | `bool` | bool | 0 or 1 |
 | `float` | float | |
-| `string` | ref | ak_str: its bytes after its header; appended to in place when its holder's alone (`s += x`: a buffer that doubles), a split's pieces made in shared slabs (core/src/rt/str.c) |
+| `string` | ref | ak_str: its bytes after its header; appended to in place when its holder's alone (`s += x`: a buffer that doubles), a split's pieces made in shared slabs, a short one a header and one 16-byte copy, its slab's count of them kept as it's filled and let go of together by the array that dies with them (rt.h's ak_pieces, core/src/rt/str.c, obj.c's free_strs) |
 | `bytes` | ref | ak_bytes |
 | `[T]` | ref | ak_arr, element kind T's, shape T's; its elements 8-byte values, but a `[bool]`'s a byte each and a sized integer's below 64 bits (`[u8]`, `[i32]`...) its own width (ak_elem: packed, holding no references; a map's keys or values of a sized type are values) |
 | `[K: V]` | ref | ak_map |
 | `Set<T>` | ref | ak_map of T's keys to void values, flagged AK_MAP_SET (core/src/rt/set.c) |
+| `BTree<K, V>` (the standard library's only) | ref | ak_tree: a B-tree of ak_tnode nodes, its keys ordered in C (core/src/rt/tree.c; see "B-trees") |
 | `Seq<T>` | ref | an ak_seq, the runtime's immutable description of a lazy sequence (core/src/rt/seq.c) |
 | struct, tuple | ref | ak_struct with its shape |
 | enum with payloads, or declared `: Error` or having an interface | ref | ak_enum (payloadless cases: shared immortals) |
@@ -1727,7 +1728,9 @@ is the decode's). Its own `equals` and `hash` (`#eq`, `#hash`) are what
 ak_val_eq and ak_val_hash call for its values wherever they are (an
 array's ==, a map's keys); `==` of two values of the type, known as it
 compiles, CALLs equals itself. Its `description` (`#show`) is what
-interpolation and print CALL, and what a snapshot shows (show.c). The
+interpolation and print CALL, and what a snapshot shows (show.c). A
+type with a compare (check.CompareMethod) has it as `#cmp`, what a
+B-tree orders its keys of the type by (core/src/rt/tree.c). The
 runtime calls them through `ak_shape_call` (core/src/vm/load.c's): the
 function of the module that loaded the shape. A generic type's come
 from extensions of its package constrained by Equatable, Hashable and
@@ -2010,6 +2013,28 @@ reloads as a map is.
 | `for x in s key x { … }` in a view | `ui.for` of a thunk returning `map.keys(s)` |
 | JSON, `<T` | an array of the elements; decoding one, an element written twice is one |
 
+## B-trees
+
+std/collections' SortedMap and SortedSet keep their entries in a
+`BTree<K, V>` (check.Tree), a type only the standard library names: the
+runtime's ak_tree (core/src/rt/tree.c), a header (its count, how its
+keys are ordered, its root) over nodes that hold their keys, values and
+children in one allocation (63 keys at most), a set's tree keys only.
+Nodes are counted, shared by the trees copied from one another, and a
+change copies the shared ones on its path (path copying), so a copy is
+O(1) and a change O(log n). A node's references are one run of its
+slots, NULL past what's used, which obj.c's walks (destroying,
+copying, freezing) go through as an array's; a tree compares, hashes
+and is kept across a reload (keep.c's 'T': its entries in order, read
+back appended, not compared) by its entries.
+
+| Source | Lowered |
+|---|---|
+| `newTree<K, V>()`, `newSet<T>()` (std/collections' native fns) | CALLB `collections.newTree(K's descriptor, V's)`, `collections.newSet(T's)`: an empty tree whose keys are ordered by their descriptor (rt.h's ak_tree_mode: an int's, a u64's, a float's, a string's <, in C; a struct's or an enum's own compare, its shape's #cmp hook, an enum's without one by its cases; a payloadless enum's with one by the shape its descriptor names, found as the tree's made, kept with it) |
+| `t.get(key, by)`, `has`, `near`, `nearKey`, `end`, `endKey`, `count` | CALLB `tree.get`... (Methods' "tree"); by, a less-than or none, orders the keys when it's given; `near` and `end` get, last, a frozen empty `[(K, V)]` (Extra "entryProto", fb.emptyConst: made once in init.strings), whose elements' shape they make the entry by |
+| `t.put(key, value, by)`, `add`, `take`, `delete` | inout, as an array's push: the tree moved out of its place (a SortedMap's field), changed in place when it's unique, put back |
+| `t.entries(from, after, to, by, limit)`, `keys`, `values` | CALLB `tree.range(…, proto, what)`: an array like proto (Extra "proto") of the entries from the first key at or after from (after: past it) before to, limit at most; SortedMap's range and lazy are a Seq of runs of them, each from the last one's key on, twice as long as the one before up to 1024 |
+
 ## Lazy sequences
 
 A `Seq<T>` (check.Seq) is the runtime's: each source and step is a
@@ -2057,7 +2082,9 @@ Extra: `map`'s result's element kind, last, or a bool: `padStart` and
 and share its arity with overloads the checker picks by an argument's
 type (g.fill's color or gradient). The receivers are arrays, maps,
 strings, bytes, floats, colors, optionals, mount's app, a Loading, a
-Graphics, a Path and a Ref. A few the lowering does itself: `count()`
+Graphics, a Path, a Ref and a BTree (std/collections'). A method's
+signature takes a type in parentheses as itself (`(fn(K, K) -> bool)?`),
+two or more as a tuple. A few the lowering does itself: `count()`
 of an array or a map is LEN, `isEmpty()` of an array, a map, a set, a
 string or bytes LEN and a test of 0,
 `isNone()` ISNONE, a map's `get(k)` MGET, `enumerated()` a loop making

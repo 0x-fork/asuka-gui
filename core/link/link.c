@@ -152,11 +152,17 @@ const ak_lib_entry *const ak_std_libs[] = {
 #if defined(AK_USES_EVERY) || defined(AK_USES_SEQ)
 	ak_seq_lib,
 #endif
+#if defined(AK_USES_EVERY) || defined(AK_USES_TREE)
+	ak_tree_lib,
+#endif
 #if defined(AK_USES_EVERY) || defined(AK_USES_NET)
 	ak_std_net,
 #endif
 #if defined(AK_USES_EVERY) || defined(AK_USES_TLS)
 	ak_std_tls,
+#endif
+#if defined(AK_USES_EVERY) || defined(AK_USES_COLLECTIONS)
+	ak_std_collections,
 #endif
 	NULL,
 };

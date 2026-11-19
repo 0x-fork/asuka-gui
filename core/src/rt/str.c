@@ -13,83 +13,94 @@ ak_str *ak_str_new(const char *s, size_t n) {
 	return o;
 }
 
-// ---- Pieces (rt.h) ----
-//
-// A slab: its count of live pieces, then pieces, 8-byte aligned, each
-// one's h.aux its offset from the slab's start in 8 bytes (a slab is
-// 16 KB: 11 bits). Under AddressSanitizer each piece is a string of its
-// own, so a use after its free is still caught.
-
-#if defined(__SANITIZE_ADDRESS__)
-#define NO_SLABS 1
-#elif defined(__has_feature)
-#if __has_feature(address_sanitizer) || __has_feature(memory_sanitizer)
-#define NO_SLABS 1
-#endif
-#endif
-
-#define SLAB (16 << 10)
-
-const bool ak_space_table[256] = {[' '] = true, ['\t'] = true, ['\n'] = true, ['\r'] = true, ['\v'] = true, ['\f'] = true};
-
-// copy_small copies n bytes (n <= AK_PIECE_MAX) without a call for the
-// few a word or two holds: two overlapping loads and stores, as
-// memcpy's own small cases do, reading and writing nothing outside.
+// copy_small copies n bytes (n <= 16) without a call for the few a word
+// or two holds: two overlapping loads and stores, as memcpy's own small
+// cases do, reading and writing nothing outside.
 static inline void copy_small(char *d, const char *s, size_t n) {
-	if (n >= 8 && n <= 16) {
+	if (n >= 8) {
 		uint64_t a, b;
 		memcpy(&a, s, 8);
 		memcpy(&b, s + n - 8, 8);
 		memcpy(d, &a, 8);
 		memcpy(d + n - 8, &b, 8);
-	} else if (n >= 4 && n < 8) {
+	} else if (n >= 4) {
 		uint32_t a, b;
 		memcpy(&a, s, 4);
 		memcpy(&b, s + n - 4, 4);
 		memcpy(d, &a, 4);
 		memcpy(d + n - 4, &b, 4);
-	} else if (n < 4) {
-		for (size_t i = 0; i < n; i++) d[i] = s[i];
 	} else {
-		memcpy(d, s, n);
+		for (size_t i = 0; i < n; i++) d[i] = s[i];
 	}
 }
 
-ak_str *ak_piece(ak_pieces *p, const char *s, size_t n) {
+// ---- Pieces (rt.h) ----
+//
+// A slab: its count of live pieces, then pieces, 8-byte aligned, each
+// one's h.aux its offset from the slab's start in 8 bytes (a slab is
+// 16 KB: 11 bits), then 16 bytes of room past its end for ak_piece's
+// copies. Under AddressSanitizer each piece is a string of its own, so a
+// use after its free is still caught.
+
+#define SLAB (16 << 10)
+
+const bool ak_space_table[256] = {[' '] = true, ['\t'] = true, ['\n'] = true, ['\r'] = true, ['\v'] = true, ['\f'] = true};
+
+void ak_pieces_start(ak_pieces *p, const ak_str *from, size_t left) {
+	bool ascii = ak_str_ascii(from);
+	*p = (ak_pieces){
+		.from_end = from->data + from->len + 1,
+		.flags = (uint8_t)(AK_STR_SLAB | (ascii ? AK_STR_KNOWN | AK_STR_ASCII : 0)),
+		.left = left,
+	};
+}
+
+void ak_pieces_end(ak_pieces *p) {
+	if (p->slab) *(uint32_t *)p->slab = p->count;
+}
+
+// new_slab gives p a slab with room for need bytes: no bigger than what
+// the pieces to come need at most.
+static void new_slab(ak_pieces *p, size_t need) {
+	if (p->slab) {
+		*(uint32_t *)p->slab = p->count;
+		size_t used = (size_t)(p->at - p->slab) - 8;
+		p->left = p->left > used ? p->left - used : 0;
+	}
+	size_t size = p->left && p->left + 8 < SLAB ? p->left + 8 : SLAB;
+	if (size < need + 8) size = need + 8;
+	p->slab = ak_realloc(NULL, size + 16);  // not zeroed: each piece is written whole
+	p->count = 0;
+	p->at = p->slab + 8;
+	p->end = p->slab + size;
+}
+
+ak_str *ak_piece_slow(ak_pieces *p, const char *s, size_t n) {
 	if (n == 0) return ak_str_empty();
-#if NO_SLABS
+	uint8_t known = p->flags & (AK_STR_KNOWN | AK_STR_ASCII);
+#if defined(AK_NO_SLABS)
 	bool small = false;
 #else
 	bool small = n <= AK_PIECE_MAX;
 #endif
-	ak_str *o;
 	if (!small) {
-		o = ak_str_new(s, n);
-	} else {
-		size_t need = (sizeof(ak_str) + n + 1 + 7) & ~(size_t)7;
-		if (!p->slab || need > (size_t)(p->end - p->at)) {
-			size_t size = p->left && p->left + 8 < SLAB ? p->left + 8 : SLAB;
-			if (size < need + 8) size = need + 8;
-			p->slab = ak_realloc(NULL, size);  // not zeroed: each piece is written whole
-			*(uint32_t *)p->slab = 0;
-			p->at = p->slab + 8;
-			p->end = p->slab + size;
-		}
-		p->left = p->left > need ? p->left - need : 0;
-		o = (ak_str *)p->at;
-		(*(uint32_t *)p->slab)++;
-		o->h = (ak_obj){.rc = 1, .tag = AK_TAG_STR, .flags = AK_STR_SLAB, .aux = (uint16_t)((p->at - p->slab) >> 3)};
-		o->len = (uint32_t)n;
-		o->hash = 0;
-		copy_small(o->data, s, n);
-		o->data[n] = 0;
-		p->at += need;
-		ak_obj_count(1);
+		ak_str *o = ak_str_new(s, n);
+		o->h.flags |= known;
+		return o;
 	}
-	if (p->ascii) o->h.flags |= AK_STR_KNOWN | AK_STR_ASCII;
+	size_t need = (sizeof(ak_str) + n + 1 + 7) & ~(size_t)7;
+	if (!p->slab || need > (size_t)(p->end - p->at)) new_slab(p, need);
+	ak_str *o = (ak_str *)p->at;
+	o->h = (ak_obj){.rc = 1, .tag = AK_TAG_STR, .flags = p->flags, .aux = (uint16_t)((size_t)(p->at - p->slab) >> 3)};
+	o->len = (uint32_t)n;
+	o->hash = 0;
+	memcpy(o->data, s, n);
+	o->data[n] = 0;
+	p->at += need;
+	p->count++;
+	ak_obj_count(1);
 	return o;
 }
-
 
 ak_str *ak_str_empty(void) {
 	static void *e;
@@ -1445,16 +1456,18 @@ static size_t mem_count(const char *h, size_t hn, const char *needle, size_t nn)
 // The parts of a split, its array made at its size (the separators
 // counted first, as Go's Split does) and its pieces in slabs.
 ak_arr *ak_str_split_n(ak_str *s, const ak_str *sep, int64_t count) {
-	ak_pieces p = {.ascii = ak_str_ascii(s)};
+	ak_pieces p;
 	if (sep->len == 0) {
-		p.left = AK_PIECES_LEFT(s->len, s->len);
+		ak_pieces_start(&p, s, AK_PIECES_LEFT(s->len, s->len));
+		bool ascii = p.flags & AK_STR_ASCII;
 		// Split into characters.
-		ak_arr *a = ak_arr_new(AK_K_REF, NULL, p.ascii ? s->len : 4);
+		ak_arr *a = ak_arr_new(AK_K_REF, NULL, ascii ? s->len : 4);
 		a->h.flags = 1;
 		ak_val *v = ak_arr_vals(a);
-		if (p.ascii) {
+		if (ascii) {
 			for (uint32_t i = 0; i < s->len; i++) v[i].p = ak_piece(&p, s->data + i, 1);
 			a->len = s->len;
+			ak_pieces_end(&p);
 			return a;
 		}
 		uint32_t i = 0;
@@ -1464,6 +1477,7 @@ ak_arr *ak_str_split_n(ak_str *s, const ak_str *sep, int64_t count) {
 			ak_arr_push(&a, (ak_val){.p = ak_piece(&p, s->data + i, j - i)});
 			i = j;
 		}
+		ak_pieces_end(&p);
 		return a;
 	}
 	if (count == 0) {
@@ -1477,7 +1491,7 @@ ak_arr *ak_str_split_n(ak_str *s, const ak_str *sep, int64_t count) {
 	size_t parts = sep->len == 1 ? mem_count(s->data, s->len, sep->data, 1) + 1 : s->len / sep->len + 1;
 	if (count > 0 && (uint64_t)count < parts) parts = (size_t)count;
 	if (parts > UINT32_MAX) parts = UINT32_MAX;
-	p.left = AK_PIECES_LEFT(parts, s->len);
+	ak_pieces_start(&p, s, AK_PIECES_LEFT(parts, s->len));
 	uint32_t cap = sep->len == 1 || parts < 16 ? (uint32_t)parts : 16;
 	ak_arr *a = ak_arr_new(AK_K_REF, NULL, cap);
 	a->h.flags = 1;
@@ -1507,6 +1521,7 @@ ak_arr *ak_str_split_n(ak_str *s, const ak_str *sep, int64_t count) {
 		start += (size_t)at + sep->len;
 	}
 	v[k++].p = ak_piece(&p, s->data + start, s->len - start);
+	ak_pieces_end(&p);
 	a->len = k;
 	return a;
 }

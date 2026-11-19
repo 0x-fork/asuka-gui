@@ -529,6 +529,34 @@ fn sortedMaps(xs: [int]) -> string {
   return "{m.count()} {total} {m.first()!.0}"
 }
 
+// sortedOps is what else a sorted map does: the nearest keys, a walk of
+// it all and of ranges, and removals.
+fn sortedOps(xs: [int]) -> string {
+  let n = 200000
+  var m = collections.SortedMap<int, int>()
+  for i in 0..<n {
+    m.set(xs[i], xs[i] % 1000)
+  }
+  var total = 0
+  for i in 0..<n {
+    total += m.floor(xs[i] + 1)!.1 + m.ceiling(xs[i] - 1)!.1
+  }
+  for (_, v) in m {
+    total += v
+  }
+  for i in 0..<2000 {
+    for (_, v) in m.range(from: xs[i], to: xs[i] + 100000) {
+      total += v
+    }
+  }
+  for i in 0..<n {
+    if i % 2 == 0 {
+      total += m.remove(xs[i]) ?? 0
+    }
+  }
+  return "{m.count()} {total}"
+}
+
 fn seqs(n: int) -> string {
   let a = (0..<n).lazy().map(x => x * 3).filter(x => x % 2 == 0).map(x => x + 1).reduce(0, (s, x) => s + x)
   let b = (0..<n).lazy().toArray().map(x => x * 3).filter(x => x % 2 == 0).map(x => x + 1).reduce(0, (s, x) => s + x)
@@ -547,7 +575,7 @@ async fn main() throws {
   let uni = if name == "case" { "Ärger über die Straße, ΣΟΦΟΣ λόγος — Ёлка и ЁЖ; ".repeat(40000) } else { "" }
   let blob = if ["sha256", "sha512", "aesgcm", "chacha", "gzip", "sha1", "md5", "crc32"].contains(name) { data(10000000) } else { bytes() }
   let keys: [string] = if name == "mapstr" { (0..<2000000).lazy().toArray().map(i => "key{(i * 7919) % 500009}") } else { [] }
-  let xs: [int] = if ["sortint", "heap", "sortedmap"].contains(name) { ints(if name == "sortint" { 5000000 } else { 1000000 }) } else { [] }
+  let xs: [int] = if ["sortint", "heap", "sortedmap", "sortedops"].contains(name) { ints(if name == "sortint" { 5000000 } else { 1000000 }) } else { [] }
   let strs: [string] = if name == "sortstr" { ints(1000000).map(x => "w{x}") } else { [] }
   let scores: [Score] = if name == "sortby" { ints(1000000).map(x => Score(id: x, score: x % 100000)) } else { [] }
   let csvIn = if name == "csv" { csvText(500000) } else { "" }
@@ -603,6 +631,7 @@ async fn main() throws {
       "semver" => try semvers(200000)
       "heap" => heaps(xs)
       "sortedmap" => sortedMaps(xs)
+      "sortedops" => sortedOps(xs)
       "seq" => seqs(5000000)
       _ => "unknown"
     }
