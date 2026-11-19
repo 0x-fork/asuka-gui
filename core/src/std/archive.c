@@ -35,6 +35,7 @@
 #define _FILE_OFFSET_BITS 64
 #endif
 #include "std/compress.h"
+#include "std/flate.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -597,6 +598,22 @@ static bool zip_copy(arc *a, const entry *e, dest *d) {
 	ak_cz_src src;
 	if (!zip_data(a, e, &src)) return false;
 	ak_cz_inflate *z = e->method == 8 ? ak_cz_inflate_new(&src, AK_CZ_RAW, -1) : NULL;
+	if (z && d->obj && d->at == 0) {
+		// Sized: decoded where it goes, no window and no copy.
+		int64_t got = ak_cz_inflate_into(z, d->obj->data, (size_t)d->obj->len + AK_FL_OUT_SLACK);
+		ak_cz_inflate_free(z);
+		if (got < 0) {
+			if (ak_cz_failure_kind_now() == AK_CZ_TOO_LARGE) {
+				ak_cz_reset();
+				ak_cz_fail(AK_CZ_CORRUPT, e->name, "it's larger than the zip says");
+			}
+			return false;
+		}
+		d->at = (size_t)got;
+		if ((uint64_t)got != (uint64_t)e->size) return ak_cz_fail(AK_CZ_CORRUPT, e->name, "it's smaller than the zip says"), false;
+		if (ak_cz_crc32(0, d->obj->data, (size_t)got) != e->crc) return ak_cz_fail(AK_CZ_CORRUPT, e->name, "its checksum doesn't match"), false;
+		return true;
+	}
 	uint8_t *buf = ak_alloc(CHUNK);
 	uint64_t total = 0;
 	uint32_t crc = 0;
@@ -1017,7 +1034,9 @@ enum { SIZED_MAX = 1 << 26 };
 static ak_bytes *sized(dest *d, ak_buf *b, int64_t size) {
 	*d = (dest){.mem = b};
 	if (size < 0 || size > SIZED_MAX) return NULL;
-	d->obj = ak_bytes_new(NULL, (size_t)size);
+	// Room past the size for a decoder writing straight into it.
+	d->obj = ak_bytes_new(NULL, (size_t)size + AK_FL_OUT_SLACK);
+	d->obj->len = (uint32_t)size;
 	return d->obj;
 }
 

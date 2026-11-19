@@ -37,6 +37,8 @@ void ak_cz_fail(int kind, const char *path, const char *fmt, ...) AK_PRINTF(3, 4
 // (errno, GetLastError).
 void ak_cz_fail_os(const char *path);
 bool ak_cz_failed(void);
+// ak_cz_failure_kind_now: the kind of this thread's failure (0: none).
+int ak_cz_failure_kind_now(void);
 // The builtins <package>.failureKind() -> int, failureReason() -> string
 // and failurePath() -> string, in both packages' tables.
 ak_val ak_cz_failure_kind(ak_val *args, uint32_t n);
@@ -100,6 +102,11 @@ ak_cz_inflate *ak_cz_inflate_new(ak_cz_src *src, int format, int64_t limit);
 // once it failed.
 size_t ak_cz_inflate_read(ak_cz_inflate *z, uint8_t *p, size_t n);
 bool ak_cz_inflate_done(const ak_cz_inflate *z);
+// ak_cz_inflate_into decodes all of z (nothing read from it yet) into
+// dst, whose cap bytes are AK_FL_OUT_SLACK (flate.h) more than it may
+// make: its decoder writes there, no window between. How many bytes it
+// made; -1 when it failed (past cap - AK_FL_OUT_SLACK: too large).
+int64_t ak_cz_inflate_into(ak_cz_inflate *z, uint8_t *dst, size_t cap);
 uint64_t ak_cz_inflate_total(const ak_cz_inflate *z);
 void ak_cz_inflate_free(ak_cz_inflate *z);
 

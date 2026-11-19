@@ -52,6 +52,7 @@ void ak_cz_reset(void) {
 }
 
 bool ak_cz_failed(void) { return fail_kind != 0; }
+int ak_cz_failure_kind_now(void) { return fail_kind; }
 
 static void vfail(int kind, const char *path, const char *fmt, va_list ap) {
 	if (fail_kind) return;
@@ -452,6 +453,7 @@ struct ak_cz_inflate {
 	uint8_t *ob;        // the output: ob[ob_start..ob_pos) this stream's, ob[ob_read..ob_pos) not read yet
 	size_t ob_cap, ob_pos, ob_start, ob_read;
 	ak_bytes *whole;    // decoding whole: ob is its data
+	bool into;          // decoding into the caller's ob: it neither grows nor moves
 };
 
 static const char *where(const ak_cz_inflate *z) { return z->src->f ? z->src->f->path : ""; }
@@ -614,7 +616,7 @@ void ak_cz_inflate_free(ak_cz_inflate *z) {
 	ak_inflater_free(z->d);
 	ak_free(z->inbuf);
 	if (z->whole) ak_release(z->whole);
-	else ak_free(z->ob);
+	else if (!z->into) ak_free(z->ob);
 	ak_free(z);
 }
 
@@ -626,6 +628,11 @@ uint64_t ak_cz_inflate_total(const ak_cz_inflate *z) { return z->total; }
 // (up to the limit, and a little past it to see it's passed).
 static bool room(ak_cz_inflate *z) {
 	if (z->ob_cap - z->ob_pos >= AK_FL_OUT_SLACK) return true;
+	if (z->into) {
+		ak_cz_fail(AK_CZ_TOO_LARGE, where(z), "it decompresses to more than %zu bytes", z->ob_cap - AK_FL_OUT_SLACK);
+		z->state = Z_FAILED;
+		return false;
+	}
 	if (z->whole) {
 		uint64_t want = z->ob_cap, left = z->limit >= 0 ? (uint64_t)z->limit - z->total + 1 : UINT64_MAX;
 		if (want > left) want = left;
@@ -715,6 +722,17 @@ size_t ak_cz_inflate_read(ak_cz_inflate *z, uint8_t *p, size_t n) {
 		if (!step(z)) break;
 	}
 	return k;
+}
+
+int64_t ak_cz_inflate_into(ak_cz_inflate *z, uint8_t *dst, size_t cap) {
+	if (z->ob || cap < AK_FL_OUT_SLACK) return -1;
+	z->into = true;
+	z->ob = dst, z->ob_cap = cap;
+	while (z->state != Z_END && z->state != Z_FAILED) {
+		step(z);
+		z->ob_read = z->ob_pos;
+	}
+	return z->state == Z_END ? (int64_t)z->ob_pos : -1;
 }
 
 // inflate_whole decodes all of z's source into bytes (its size guessed

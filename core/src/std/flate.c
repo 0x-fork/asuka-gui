@@ -24,6 +24,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#elif !defined(__wasm__)
+#include <pthread.h>
+#endif
+
 #if defined(__GNUC__) || defined(__clang__)
 #define ctz64(x) ((unsigned)__builtin_ctzll(x))
 #else
@@ -166,10 +173,111 @@ static int32_t *table(uint32_t n) {
 	return t;
 }
 
+// ---- A spare compressor a thread ----
+//
+// A compressor's buffers are a megabyte (its window, its tables): an
+// archive of many small files would make and drop one a file, each
+// time the system's to map and unmap. The last one freed is kept for
+// the thread (a level's next one reuses it, its tables emptied), and
+// goes with the thread.
+
+#if !defined(__wasm__)
+static void spare_drop(void *v);
+#endif
+
+#if defined(__wasm__)
+static ak_deflater *the_spare;  // one thread
+#elif defined(_WIN32)
+static INIT_ONCE spare_once = INIT_ONCE_STATIC_INIT;
+static DWORD spare_fls = FLS_OUT_OF_INDEXES;
+static VOID WINAPI spare_fls_drop(PVOID v) {
+	if (v) spare_drop(v);
+}
+static BOOL CALLBACK spare_init(PINIT_ONCE o, PVOID a, PVOID *c) {
+	(void)o, (void)a, (void)c;
+	spare_fls = FlsAlloc(spare_fls_drop);
+	return TRUE;
+}
+#else
+static pthread_once_t spare_once = PTHREAD_ONCE_INIT;
+static pthread_key_t spare_key;
+static bool spare_ok;
+static void spare_init(void) { spare_ok = pthread_key_create(&spare_key, spare_drop) == 0; }
+#endif
+
+static ak_deflater *spare_take(void) {
+#if defined(__wasm__)
+	ak_deflater *d = the_spare;
+	the_spare = NULL;
+	return d;
+#elif defined(_WIN32)
+	InitOnceExecuteOnce(&spare_once, spare_init, NULL, NULL);
+	if (spare_fls == FLS_OUT_OF_INDEXES) return NULL;
+	ak_deflater *d = FlsGetValue(spare_fls);
+	if (d) FlsSetValue(spare_fls, NULL);
+	return d;
+#else
+	pthread_once(&spare_once, spare_init);
+	if (!spare_ok) return NULL;
+	ak_deflater *d = pthread_getspecific(spare_key);
+	if (d) pthread_setspecific(spare_key, NULL);
+	return d;
+#endif
+}
+
+// spare_keep keeps d as the thread's spare; false when there's one.
+static bool spare_keep(ak_deflater *d) {
+#if defined(__wasm__)
+	if (the_spare) return false;
+	the_spare = d;
+	return true;
+#elif defined(_WIN32)
+	InitOnceExecuteOnce(&spare_once, spare_init, NULL, NULL);
+	if (spare_fls == FLS_OUT_OF_INDEXES || FlsGetValue(spare_fls)) return false;
+	return FlsSetValue(spare_fls, d) != 0;
+#else
+	pthread_once(&spare_once, spare_init);
+	if (!spare_ok || pthread_getspecific(spare_key)) return false;
+	return pthread_setspecific(spare_key, d) == 0;
+#endif
+}
+
+static void release(ak_deflater *d);
+
+#if !defined(__wasm__)
+static void spare_drop(void *v) { release(v); }
+#endif
+
+// reset makes d (its buffers kept) a new stream's at its level.
+static void reset(ak_deflater *d, ak_fl_put put, void *user) {
+	d->put = put;
+	d->user = user;
+	d->ok = true;
+	d->pos = d->end = d->block_start = d->sym_end = 0;
+	d->prev_len = d->prev_dist = d->lit_run = 0;
+	d->avail = false;
+	d->nsyms = 0;
+	memset(d->lfreq, 0, sizeof d->lfreq);
+	memset(d->dfreq, 0, sizeof d->dfreq);
+	d->bits = 0, d->nbits = 0;
+	for (uint32_t i = 0; i < d->n1; i++) d->t1[i] = EMPTY;
+	for (uint32_t i = 0; i < d->n2; i++) d->t2[i] = EMPTY;
+	if (d->head)
+		for (uint32_t i = 0; i < (1u << LAZY_HBITS); i++) d->head[i] = EMPTY;
+	if (d->prev)
+		for (uint32_t i = 0; i < WSIZE; i++) d->prev[i] = EMPTY;
+}
+
 ak_deflater *ak_deflater_new(int level, ak_fl_put put, void *user) {
 	if (level < 0) level = 0;
 	if (level > 9) level = 9;
-	ak_deflater *d = ak_alloc(sizeof *d);
+	ak_deflater *d = spare_take();
+	if (d && d->level == level) {
+		reset(d, put, user);
+		return d;
+	}
+	if (d) release(d);
+	d = ak_alloc(sizeof *d);
 	d->level = level;
 	d->mode = level == 0 ? M_STORE : level <= 6 ? M_FAST : M_LAZY;
 	d->put = put;
@@ -208,6 +316,11 @@ ak_deflater *ak_deflater_new(int level, ak_fl_put put, void *user) {
 
 void ak_deflater_free(ak_deflater *d) {
 	if (!d) return;
+	if (spare_keep(d)) return;
+	release(d);
+}
+
+static void release(ak_deflater *d) {
 	ak_free(d->win);
 	ak_free(d->t1);
 	ak_free(d->t2);

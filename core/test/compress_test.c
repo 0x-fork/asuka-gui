@@ -161,6 +161,21 @@ TEST(deflate_levels_round_trip) {
 	}
 }
 
+// A compressor freed is kept for the thread and reset for its next
+// stream: the bytes it makes are a fresh one's, whatever came before.
+TEST(deflate_reused) {
+	size_t n = 300000;
+	uint8_t *p = input(4, n), *q = input(1, 70000);
+	for (int level = 1; level <= 9; level++) {
+		sink a = deflate_pieces(p, n, level, 4093);
+		sink junk = deflate_pieces(q, 70000, level, 7);
+		sink b = deflate_pieces(p, n, level, 4093);  // the same compressor, reused after junk
+		CHECK(a.n == b.n && memcmp(a.p, b.p, a.n) == 0);
+		free(a.p), free(b.p), free(junk.p);
+	}
+	free(p), free(q);
+}
+
 // Decoded in pieces, from a file-like source a byte at a time, a stream
 // gives what it does whole: the window's history survives every read.
 TEST(inflate_streams_in_pieces) {
