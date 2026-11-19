@@ -815,6 +815,22 @@ func (g *gen) intrinsic(in insn, h string) bool {
 		g.w("if (AK_UNLIKELY(%s == INT64_MIN)) { ak_op_overflow(); %s } %s", x, g.fail(in, h), g.put(a[0], v, bc.KInt))
 		return true
 	}
+	if (name == "arr.append" || name == "arr.reserve") && a[3] == 2 && a[0] == bc.None && g.f.Kinds[a[2]] == bc.KRef {
+		// A fused loop's array (lang/ir's seqfuse.go), which no state
+		// holds: the runtime's push and reserve, called directly (they
+		// throw nothing; out of memory ends the program).
+		arr, v := g.rp(a[2]), g.r(a[2]+1)
+		if name == "arr.reserve" {
+			g.w("{ ak_arr *x_ = %s; int64_t n_ = %s.i; if (n_ > 0) ak_arr_reserve(&x_, n_ > UINT32_MAX ? UINT32_MAX : (uint32_t)n_); %s = x_; }", arr, v, arr)
+			return true
+		}
+		retain := ""
+		if g.f.Kinds[a[2]+1] == bc.KRef {
+			retain = fmt.Sprintf("ak_retain(%s.p); ", v)
+		}
+		g.w("{ ak_arr *x_ = %s; %sak_arr_push(&x_, %s); %s = x_; }", arr, retain, v, arr)
+		return true
+	}
 	it, ok := intrinsics[name]
 	if !ok || a[3] != len(it.args) {
 		return false

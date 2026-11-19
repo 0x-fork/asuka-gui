@@ -37,6 +37,11 @@ type fb struct {
 	// (places.go), and what's done with its result there.
 	inout      *lvalue
 	inoutAfter func(r int)
+	// holdCaps: where the closure being made puts its captures' block
+	// rather than let it go at once: a fused loop's (seqfuse.go), which
+	// lets it go after the loop, so that the closure's calls in it can be
+	// inlined.
+	holdCaps *[]heldBlock
 	// loadKey: the function a load's thunk being made calls, whose key
 	// and arguments taskOf records (load.key) for reload (rfcs/0017).
 	loadKey *check.Function
@@ -798,6 +803,17 @@ func (b *fb) makeClosure(s closure) int {
 		b.move(blk+i, r)
 	}
 	dst := b.temp(bc.KRef)
+	if b.holdCaps != nil {
+		// Held for a loop (seqfuse.go): the closure's register none
+		// before it and let go of after the loop, so that once the
+		// optimizer has inlined its calls, nothing reads it and it isn't
+		// made.
+		b.emit(op("CLR"), dst)
+		b.emit(op("CLOS"), dst, c.idx, blk, len(caps))
+		*b.holdCaps = append(*b.holdCaps, heldBlock{base: blk, ks: ks, clos: dst})
+		b.holdCaps = nil // only this closure's
+		return dst
+	}
 	b.emit(op("CLOS"), dst, c.idx, blk, len(caps))
 	b.releaseRegs(blk, ks)
 	return dst

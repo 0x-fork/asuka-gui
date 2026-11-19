@@ -1852,6 +1852,7 @@ and nothing is computed until something reads it.
 | `Seq(first:next:)`, `Seq(state:next:)`, `Seq(repeating:count:)`, `Seq(from:by:)` | CALLB `seq.successors`, `seq.unfold` (the state's kind passed), `seq.repeat` (count -1: no end), `seq.from` |
 | a step, `s.map(f)`... | CALLB `seq.map(s, f, …)`: a new ak_seq |
 | `for x in s { … }` | CALLB `seq.iter(s)` into a local (a cursor, let go of as the loop's scope ends), then at the top `seq.next(it)` (a bool; false at the end, and it raises what a step raised), JF to the end, `seq.value(it)` for x; a type's `iter()` that gives a `Seq` likewise, the value held in a hidden var (check.ForInfo.SeqVar) and `iter()` called once |
+| a pipeline the lowering sees, read by a consumer: `(a..<b).lazy()` or `xs.lazy()`, then `map`, `filter`, `compactMap`, `take`, `skip`, `takeWhile`, `skipWhile`, `onEach`, then `reduce`, `sum`, `count`, `toArray`, `first`, `find`, `any` or `all` | a loop (lang/ir/seqfuse.go), no ak_seq: each element through every step, in order, before the next is taken; a take that has its count ends the loop before the source is read again; the closures made once before the loop (their captures held to its end) and called in it, which the optimizer inlines; the consumer's result in a register of its own until the end |
 
 Every method whose result holds a `Seq<X>` (Method.Extra "seqProto")
 gets, last, an empty `[X]`: the runtime reads the elements' kind and
@@ -1886,11 +1887,17 @@ and share its arity with overloads the checker picks by an argument's
 type (g.fill's color or gradient). The receivers are arrays, maps,
 strings, bytes, floats, colors, optionals, mount's app, a Loading, a
 Graphics, a Path and a Ref. A few the lowering does itself: `count()`
-of an array or a map is LEN,
+of an array or a map is LEN, `isEmpty()` of an array, a map, a set, a
+string or bytes LEN and a test of 0,
 `isNone()` ISNONE, a map's `get(k)` MGET, `enumerated()` a loop making
 `(index, element)` tuples (and `for (i, x) in xs.enumerated()` makes
-none: it's a loop over the indexes). Closures passed to them don't
-throw and don't await.
+none: it's a loop over the indexes), and an array's `map`, `filter`,
+`compactMap`, `reduce`, `count(where:)`, `any`, `all`, `find` and
+`index(where:)` loops over it (lang/ir/seqfuse.go), the closure made
+once and called in the loop (inlined by the optimizer), the result
+appended to with `arr.append` (push without recording a change: no
+state holds it; `arr.reserve` makes map's room once). Closures passed to
+them don't throw and don't await.
 
 ## Notes
 

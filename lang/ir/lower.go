@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"hash/fnv"
+	"os"
 	"strings"
 
 	bc "github.com/egoist/asuka/lang/bytecode"
@@ -15,6 +16,7 @@ import (
 // A Lowerer lowers a checked program.
 type Lowerer struct {
 	lastNode syntax.Node // the last node a function lowered (fb.at), for an error in one that has none
+	noFuse   bool        // seqfuse.go's loops are off
 	prog     *check.Program
 	info     *check.Info
 	fset     *syntax.FileSet
@@ -80,6 +82,9 @@ type Options struct {
 	// @platform is, which decides the branches it folds (fold.go).
 	// "": target.Default.
 	Platform string
+	// NoFuse: Seq pipelines and arrays' closure methods are the
+	// runtime's calls, not loops (seqfuse.go).
+	NoFuse bool
 	// Cover names the files whose statements count their runs, for
 	// asuka test --cover (cover.go); none: nothing is counted.
 	Cover []string
@@ -110,6 +115,10 @@ func Lower(prog *check.Program, opts *Options) (*Program, []check.Diagnostic) {
 	}
 	l.out = &Program{Mod: l.mod}
 	l.opts = opts
+	// ASUKA_OPT_SKIP=fuse: Seq pipelines and arrays' closure methods
+	// lowered as the runtime's calls, not as loops (seqfuse.go): what the
+	// tests compare the loops with.
+	l.noFuse = opts.NoFuse || strings.Contains(os.Getenv("ASUKA_OPT_SKIP"), "fuse")
 	if len(opts.Cover) > 0 {
 		l.cov = newCoverer(l, opts.Cover)
 	}

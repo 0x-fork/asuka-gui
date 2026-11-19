@@ -255,7 +255,11 @@ function seqs(n) {
     const y = x * 3;
     if (y % 2 === 0) a += y + 1;
   }
-  return `${a} ${a}`;
+  // The same through arrays, a step at a time, as Asuka's
+  // toArray().map().filter().map().reduce() is.
+  const xs = Array.from({ length: n }, (_, i) => i);
+  const b = xs.map((x) => x * 3).filter((x) => x % 2 === 0).map((x) => x + 1).reduce((s, x) => s + x, 0);
+  return `${a} ${b}`;
 }
 
 const name = process.argv[2] ?? "";
