@@ -30,8 +30,9 @@ import (
 var names = []string{
 	"interp", "concat", "split", "find", "case", "count", "num", "fmt",
 	"mapint", "mapstr", "set", "sortint", "sortstr", "sortby",
-	"regex", "files", "lines", "print", "csv", "toml",
-	"sha256", "sha512", "hmac", "aesgcm", "chacha", "argon2", "bcrypt", "gzip",
+	"regex", "files", "lines", "print", "stdout", "csv", "toml",
+	"url", "base64", "hex", "html", "zip", "tar",
+	"sha256", "sha512", "sha1", "md5", "crc32", "hmac", "aesgcm", "chacha", "argon2", "bcrypt", "gzip",
 	"bigint", "modpow", "time", "template", "semver", "heap", "sortedmap", "seq",
 }
 

@@ -274,7 +274,9 @@ if (name === "serve") {
 const dir = process.argv[3] ?? "/tmp";
 const text = ["split", "find", "case", "count", "regex", "files", "lines"].includes(name) ? corpus(2000000) : "";
 const uni = name === "case" ? "Ärger über die Straße, ΣΟΦΟΣ λόγος — Ёлка и ЁЖ; ".repeat(40000) : "";
-const blob = ["sha256", "sha512", "aesgcm", "chacha", "gzip"].includes(name) ? Buffer.from(corpus(10000000)) : null;
+const blob = ["sha256", "sha512", "aesgcm", "chacha", "gzip", "sha1", "md5", "crc32"].includes(name) ? Buffer.from(corpus(10000000)) : null;
+const marked = name === "html" ? corpus(2000000).replaceAll("kato", "<k&o>").replaceAll("chi", "c>i") : "";
+const small = ["base64", "hex"].includes(name) ? Buffer.from(corpus(2000000)) : null;
 const keys = name === "mapstr" ? Array.from({ length: 2000000 }, (_, i) => "key" + ((i * 7919) % 500009)) : [];
 const xs = ["sortint", "heap", "sortedmap"].includes(name) ? ints(name === "sortint" ? 5000000 : 1000000) : [];
 const strs = name === "sortstr" ? ints(1000000).map((x) => "w" + x) : [];
@@ -335,6 +337,64 @@ switch (name) {
     for (let i = 0; i < 1000000; i++) console.log("line " + i + " of the output");
     out = "1000000";
     break;
+  case "stdout": {
+    let block = [];
+    for (let i = 0; i < 1000000; i++) {
+      block.push("line " + i + " of the output\n");
+      if (block.length === 1024) {
+        await Bun.write(Bun.stdout, block.join(""));
+        block = [];
+      }
+    }
+    await Bun.write(Bun.stdout, block.join(""));
+    out = "1000000";
+    break;
+  }
+  case "url": {
+    let total = 0;
+    for (let i = 0; i < 200000; i++) {
+      const w = syllables[i % 10] + syllables[Math.floor(i / 10) % 10];
+      const u = new URL(`https://user${i % 7}@host${i % 50}.example.com:${8000 + (i % 1000)}/a/${w}/${i}?q=${w}+x${i}&page=${i % 10}#f${i}`);
+      total += u.hostname.length + u.pathname.length + (u.searchParams.get("q") ?? "").length + Number(u.port || 0);
+      total += utf8len(new URLSearchParams({ q: `${w} & ${i}/é` }).toString()) - 2;
+    }
+    out = String(total);
+    break;
+  }
+  case "base64": {
+    let total = 0;
+    for (let r = 0; r < 4; r++) {
+      const s = small.toString("base64");
+      total += s.length + Buffer.from(s, "base64").length;
+    }
+    out = String(total);
+    break;
+  }
+  case "hex": {
+    let total = 0;
+    for (let r = 0; r < 2; r++) {
+      const s = small.toString("hex");
+      total += s.length + Buffer.from(s, "hex").length;
+    }
+    out = String(total);
+    break;
+  }
+  case "html": out = "n/a"; break; // Bun has escapeHTML, but nothing that reads references back
+  case "zip": out = "n/a"; break;
+  case "tar": out = "n/a"; break;
+  case "sha1":
+  case "md5": {
+    let h;
+    for (let r = 0; r < 4; r++) h = createHash(name).update(blob).digest("hex");
+    out = h;
+    break;
+  }
+  case "crc32": {
+    let c = 0;
+    for (let r = 0; r < 4; r++) c = Bun.hash.crc32(blob, c);
+    out = String(c);
+    break;
+  }
   case "toml": out = String(JSON.stringify(Bun.TOML.parse(tomlIn)).length); break;
   case "sha256": {
     let h;
