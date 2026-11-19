@@ -72,6 +72,32 @@ five, in millions):
 | json | 4,224 | 4,198 | 2,758 | 1.52× |
 | sort | 1,594 | 1,607 | 1,383 | 1.16× |
 
+Then calls, loops and closures (2026-11-19, the machine shared, load
+50 to 300; each the fewest cycles of five interleaved runs, in millions,
+with the median of the instructions retired):
+
+| benchmark | before | now | Go | now / Go (cycles) | instructions: before, now, Go |
+|---|---:|---:|---:|---:|---:|
+| fib | 547 | 502 | 445 | 1.13× | 3,187 / 2,619 / 1,989 |
+| sieve | 1,580 | 1,367 | 645 | 2.12× | 3,523 / 2,938 / 1,510 |
+| nbody | 1,143 | 883 | 902 | 0.98× | 4,615 / 3,153 / 3,154 |
+| trees | 3,229 | 3,187 | 6,807 | 0.47× | 15,495 / 14,764 / 31,277 |
+| words | 815 | 815 | 894 | 0.91× | 3,963 / 3,932 / 3,909 |
+| json | 2,691 | 2,644 | 3,593 | 0.74× | 13,200 / 13,178 / 18,258 |
+| sort | 187 | 192 | 1,379 | 0.14× | 903 / 897 / 2,081 |
+
+What changed (lang/LOWERING.md, Release builds: C): a compiled call's
+check of the stack is one compare of the stack pointer, before the
+frame is made, the depth no longer counted and passed (fib: a register
+and an argument less a call); facts across the control flow, so a
+counted loop over an array's indexes checks none and its array (and an
+element it changes) is made unique as it's entered (nbody's inner loop:
+no index or array checks, one element check a turn); an element's
+pointer read as a pointer, not through the union C compilers alias with
+every store. fib's remaining 13%: its frame saves three callee-saved
+registers (the stack limit among them, which Go keeps in a register of
+its own) and each call tests the error it returns.
+
 "Before" is the C cgen wrote before release builds' C kept registers in
 C locals and called compiled functions directly (lang/LOWERING.md,
 Release builds: C). On an idle machine, before, in ms: fib 925, sieve
@@ -196,3 +222,39 @@ fill.)
 
 Windows wasn't measured: no Windows machine was reachable; the arm64
 build ran bench/compiled correctly under Wine.
+
+## Packed arrays and the pass on calls, loops and closures, merged (2026-11-19)
+
+The two branches measured alone and merged (the integration branch:
+main, mimalloc, packed arrays; then calls, loops and closures merged
+into it), the machine shared (load 50 to 300): cycles, the fewest of
+five interleaved runs, and instructions retired, the median, the whole
+process, in millions. "packed arrays" has no fused loops; "calls and
+loops" no packed arrays and the C library's malloc.
+
+| benchmark | packed arrays | calls and loops | merged | Go | merged / Go | instructions: packed, calls, merged, Go |
+|---|---:|---:|---:|---:|---:|---:|
+| fib | 458 | 434 | 443 | 386 | 1.15× | 3,181 / 2,611 / 2,612 / 1,982 |
+| sieve | 636 | 1,517 | 632 | 616 | 1.03× | 2,178 / 2,904 / 1,691 / 1,488 |
+| nbody | 971 | 740 | 685 | 749 | 0.91× | 4,602 / 3,141 / 3,143 / 3,134 |
+| trees | 2,577 | 2,961 | 2,688 | 6,909 | 0.39× | 14,147 / 14,670 / 13,365 / 30,446 |
+| words | 479 | 728 | 484 | 847 | 0.57× | 2,401 / 3,930 / 2,372 / 3,680 |
+| json | 2,300 | 2,386 | 2,336 | 3,118 | 0.75× | 11,660 / 13,137 / 11,679 / 18,044 |
+| sort | 142 | 138 | 145 | 1,352 | 0.11× | 847 / 878 / 853 / 2,098 |
+
+sieve keeps both: a [bool] a byte each, its loop's index and array
+checks gone (1.69 G instructions to Go's 1.49 G). nbody keeps its
+element's pointer (AK_REFS: read as a pointer, not through the union)
+and runs as Go's. What's still behind Go: fib's frame and the error
+each call returns (2.6 G instructions to 2.0 G), sieve's checked adds
+(3% in cycles).
+
+Merging needed two things beyond the conflicts. An array's push read
+its len and cap as one 8-byte word right after the last push stored
+len's 4 bytes, which a load can't be forwarded from: each push waited
+for the one before (a fused map over 100,000 ints: 284 M cycles, 96 M
+with cap read on its own; the calls branch's 144 M). And an int read
+from an array asked the array how it stores its elements (an [u8]'s
+are packed): a function with no sized integers in it doesn't any more
+(bytecode.FSized), so a reduce over [int] is the calls branch's loop
+again (35 M cycles to 42 M).

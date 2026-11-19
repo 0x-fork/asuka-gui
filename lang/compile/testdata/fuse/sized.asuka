@@ -1,0 +1,15 @@
+// The sized integers in pipelines: a range of them and a sum of them are
+// the runtime's (their arithmetic is at their type); the rest fused.
+
+fn main() {
+  let xs: [u8] = [200, 50, 10]
+  print(xs.lazy().map(x => x / 2).sum())
+  let a: u8 = 250
+  let b: u8 = 255
+  print((a..<b).lazy().map(x => x).toArray())
+  print(xs.lazy().filter(x => x > 20).count())
+  print(xs.map(x => x / 4).reduce(0, (s: int, x: u8) => s + int(x)))
+  let big: [u64] = [18446744073709551615, 1]
+  print(big.lazy().filter(x => x > 1).toArray())
+  print((0..<5).lazy().map(x => x * 2).sum())
+}

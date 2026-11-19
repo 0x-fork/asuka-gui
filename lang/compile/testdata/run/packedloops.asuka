@@ -1,0 +1,236 @@
+// The loops the optimizer makes over arrays whose elements are packed
+// ([bool] a byte each, i8 to u32 their own widths) and over arrays of
+// values (int, u64, float, structs): counted loops that check no index,
+// arrays and elements made unique once as a loop is entered, fused
+// pipelines and closure methods appending to their results, and an
+// element's struct read once while its fields are written. Each reads
+// and writes the elements as its array stores them: a sized integer
+// sign- or zero-extended and narrowed at its width, a copy made first
+// when the array is shared. A map's keys and values of a sized integer
+// are an array of values, not packed: compared, joined and read in the
+// same loops as the packed ones.
+
+struct Body {
+  x: float
+  v: float
+  n: int
+}
+
+fn sieve(n: int) -> [bool] {
+  var composite = Seq(repeating: false, count: n + 1).toArray()
+  var i = 2
+  while i * i <= n {
+    if !composite[i] {
+      var j = i * i
+      while j <= n {
+        composite[j] = true
+        j += i
+      }
+    }
+    i += 1
+  }
+  return composite
+}
+
+fn countFalse(xs: [bool]) -> int {
+  var c = 0
+  for i in 0..<xs.count() {
+    if !xs[i] {
+      c += 1
+    }
+  }
+  return c
+}
+
+fn flipAll(xs: [bool]) -> [bool] {
+  var ys = xs
+  for i in 0..<ys.count() {
+    ys[i] = !ys[i]
+  }
+  return ys
+}
+
+fn bump(xs: [u8]) -> [u8] {
+  var ys = xs
+  for i in 0..<ys.count() {
+    ys[i] = ys[i] &+ 7
+  }
+  return ys
+}
+
+fn negate(xs: [i32]) -> [i32] {
+  var ys = xs
+  for i in 0..<ys.count() {
+    ys[i] = -ys[i]
+  }
+  return ys
+}
+
+fn sum8(xs: [i8]) -> int {
+  var s = 0
+  for i in 0..<xs.count() {
+    s += int(xs[i])
+  }
+  return s
+}
+
+fn halve(xs: [u64]) -> [u64] {
+  var ys = xs
+  for i in 0..<ys.count() {
+    ys[i] = ys[i] / 2
+  }
+  return ys
+}
+
+fn total32(xs: [u32]) -> int {
+  var s = 0
+  for i in 0..<xs.count() {
+    s += int(xs[i])
+  }
+  return s
+}
+
+fn step(bs: [Body], dt: float) -> [Body] {
+  var ys = bs
+  for i in 0..<ys.count() {
+    ys[i].x += ys[i].v * dt
+    ys[i].v -= ys[i].x * dt
+    ys[i].n += 1
+  }
+  return ys
+}
+
+fn filled<T>(x: T, n: int) -> [T] {
+  var a: [T] = []
+  for _ in 0..<n {
+    a.push(x)
+  }
+  return a
+}
+
+test "a sieve's packed bools" {
+  let c = sieve(100)
+  print("{countFalse(c) - 2} {c[97]} {c[91]}")
+  let f = flipAll(c)
+  print("{countFalse(f)} {c[4]} {f[4]} {c == flipAll(f)}")
+}
+
+test "sized integers in counted loops" {
+  let a: [u8] = [250, 1, 255, 0]
+  let b = bump(a)
+  print("{a} {b}")
+  let c: [i32] = [2147483647, -5, 0]
+  print("{c} {negate(c)}")
+  let d: [i8] = [-128, 127, -1, 5]
+  print(sum8(d))
+  let e: [u64] = [18446744073709551615, 3]
+  print("{e} {halve(e)}")
+  let g: [u32] = [4294967295, 1]
+  print(total32(g))
+}
+
+test "elements of structs changed in place" {
+  let bs = [Body(x: 1.0, v: 0.5, n: 0), Body(x: -2.0, v: 1.0, n: 3)]
+  let after = step(step(bs, 0.5), 0.5)
+  print("{bs[0].x} {bs[1].n} {after[0].x} {after[0].v} {after[1].n}")
+}
+
+test "fused loops over packed arrays" {
+  let bits = [true, false, true, true]
+  print(bits.map(b => !b))
+  print(bits.filter(b => b).count())
+  print(bits.count(where: b => !b))
+  print(bits.lazy().map(b => if b { 1 } else { 0 }).sum())
+  let bytes: [u8] = [1, 200, 3, 255]
+  let doubled: [u8] = bytes.map(x => x / 2)
+  print(doubled)
+  print(bytes.map(x => x > 100))
+  print(bytes.filter(x => x > 2))
+  print(bytes.lazy().filter(x => x > 2).map(x => int(x) * 2).toArray())
+  print(bytes.find(where: x => x > 100))
+  print(bytes.index(where: x => x == 255))
+  print(bytes.any(where: x => x == 3))
+  print(bytes.reduce(0, (s: int, x: u8) => s + int(x)))
+  let ws: [i32] = [-1, 70000, -70000]
+  print(ws.map(x => x / 2))
+  print(ws.filter(x => x < 0))
+  let ls: [u64] = [18446744073709551615, 2]
+  print(ls.map(x => x / 3))
+  let small: [i8] = [-3, 4]
+  let wide: [i16] = small.map(x => i16(x) * 100)
+  print(wide)
+}
+
+test "arrays of a sized integer stored as values" {
+  let m: [u8: i32] = [7: -9, 250: 70000, 3: 0]
+  let keys = m.keys()
+  let lit: [u8] = [7, 250, 3]
+  print("{keys} {keys == lit} {lit == keys} {bump(keys)} {bump(keys) == bump(lit)}")
+  print(keys + lit)
+  print(lit + keys)
+  print(keys.map(x => x / 2) == lit.map(x => x / 2))
+  print(keys.filter(x => x > 5).count())
+  print(keys.lazy().map(x => int(x)).filter(x => x > 5).toArray())
+  let vals = m.values()
+  print("{negate(vals)} {vals + [i32(1)]} {vals.map(x => x > 0)}")
+  let made = filled(u8(7), 3)
+  print("{made == [u8(7), 7, 7]} {bump(made)}")
+  let flags = filled(true, 2)
+  print("{flags} {flipAll(flags)} {countFalse(flags)} {flags == [true, true]}")
+}
+
+test "a shared array is copied, not changed" {
+  let a: [u8] = [1, 2]
+  var b = a
+  for i in 0..<b.count() {
+    b[i] = b[i] * 3
+  }
+  let c = [false, false]
+  var d = c
+  for i in 0..<d.count() {
+    d[i] = i == 1
+  }
+  print("{a} {b} {c} {d}")
+}
+
+// Output:
+// 25 false true
+// 74 true false true
+// ok a sieve's packed bools
+// [250,1,255,0] [1,8,6,7]
+// [2147483647,-5,0] [-2147483647,5,0]
+// 3
+// [18446744073709551615,3] [9223372036854775807,1]
+// 4294967296
+// ok sized integers in counted loops
+// 1 3 1.1875 -0.71875 5
+// ok elements of structs changed in place
+// [false,true,false,false]
+// 3
+// 1
+// 3
+// [0,100,1,127]
+// [false,true,false,true]
+// [200,3,255]
+// [400,6,510]
+// 200
+// 3
+// true
+// 459
+// [0,35000,-35000]
+// [-1,-70000]
+// [6148914691236517205,0]
+// [-300,400]
+// ok fused loops over packed arrays
+// [7,250,3] true true [14,1,10] true
+// [7,250,3,7,250,3]
+// [7,250,3,7,250,3]
+// true
+// 2
+// [7,250]
+// [9,-70000,0] [-9,70000,0,1] [false,true,false]
+// true [14,14,14]
+// [true,true] [false,false] 0 true
+// ok arrays of a sized integer stored as values
+// [1,2] [3,6] [false,false] [false,true]
+// ok a shared array is copied, not changed

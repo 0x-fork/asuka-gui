@@ -37,6 +37,11 @@ type fb struct {
 	// (places.go), and what's done with its result there.
 	inout      *lvalue
 	inoutAfter func(r int)
+	// holdCaps: where the closure being made puts its captures' block
+	// rather than let it go at once: a fused loop's (seqfuse.go), which
+	// lets it go after the loop, so that the closure's calls in it can be
+	// inlined.
+	holdCaps *[]heldBlock
 	// loadKey: the function a load's thunk being made calls, whose key
 	// and arguments taskOf records (load.key) for reload (rfcs/0017).
 	loadKey *check.Function
@@ -380,7 +385,31 @@ func (b *fb) freeze(v int, k bc.Kind) int {
 }
 
 // typ is t with the function's type arguments.
-func (b *fb) typ(t check.Type) check.Type { return b.subst.Apply(t) }
+func (b *fb) typ(t check.Type) check.Type {
+	t = b.subst.Apply(t)
+	if b.f != nil && b.f.Flags&bc.FSized == 0 && mentionsSized(t) {
+		b.f.Flags |= bc.FSized
+	}
+	return t
+}
+
+// mentionsSized reports whether t is a sized integer type, or holds
+// them where an array may pack them: an array's (or a Seq's) elements,
+// through optionals and arrays (bc.FSized).
+func mentionsSized(t check.Type) bool {
+	for {
+		switch x := t.(type) {
+		case *check.Array:
+			t = x.Elem
+		case *check.Optional:
+			t = x.Elem
+		case *check.Seq:
+			t = x.Elem
+		default:
+			return check.IsSized(t)
+		}
+	}
+}
 
 func (b *fb) kind(t check.Type) bc.Kind { return b.l.kind(b.typ(t)) }
 
@@ -780,7 +809,7 @@ func (b *fb) makeClosure(s closure) int {
 		}
 		c.vars[capVars[i]] = reg
 	}
-	c.f.Flags = 0
+	c.f.Flags &= bc.FSized // what its parameters' types said
 	if s.throws {
 		c.f.Flags |= bc.FThrows
 	}
@@ -798,6 +827,17 @@ func (b *fb) makeClosure(s closure) int {
 		b.move(blk+i, r)
 	}
 	dst := b.temp(bc.KRef)
+	if b.holdCaps != nil {
+		// Held for a loop (seqfuse.go): the closure's register none
+		// before it and let go of after the loop, so that once the
+		// optimizer has inlined its calls, nothing reads it and it isn't
+		// made.
+		b.emit(op("CLR"), dst)
+		b.emit(op("CLOS"), dst, c.idx, blk, len(caps))
+		*b.holdCaps = append(*b.holdCaps, heldBlock{base: blk, ks: ks, clos: dst})
+		b.holdCaps = nil // only this closure's
+		return dst
+	}
 	b.emit(op("CLOS"), dst, c.idx, blk, len(caps))
 	b.releaseRegs(blk, ks)
 	return dst

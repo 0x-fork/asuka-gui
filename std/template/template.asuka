@@ -2106,7 +2106,6 @@ struct Renderer {
 
 let loopName = "loop"
 
-
 // loopField is a loop's field, by its index (from 0) and length.
 fn loopField(i: int, n: int, name: string) -> json.Value? = match name {
   "index" => .int(i + 1)

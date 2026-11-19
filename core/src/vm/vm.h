@@ -78,11 +78,29 @@ bool ak_closure_async(const ak_closure *c);
 ak_str *ak_vm_error_text(void *err);
 
 struct ak_co;
+// A synchronous function compiled to C returns its result with whether
+// it threw (the error pending): two machine registers on the ABIs'
+// calls (x0 and x1, rax and rdx), so a compiled caller tests a register
+// for the error rather than the thread's pending one.
+typedef struct {
+	ak_val v;
+	uintptr_t e;  // it threw (the error is pending)
+} ak_ret;
+
 // ak_module_attach gives a module's functions their bodies compiled to
 // C (lang/cgen): bodies[i] is function i's, a synchronous one's, and
-// resumes[i] one's that may suspend (ak_async_body, vm_int.h), or both
-// NULL to interpret it.
-void ak_module_attach(ak_module *m, ak_val (*const *bodies)(ak_val *args, ak_closure *clos), int (*const *resumes)(struct ak_co *co, ak_val *out), uint32_t n);
+// directs[i] the same one's as a compiled closure call calls it (the
+// closure, the thread's stack limit, the arguments; ak_direct_body,
+// vm_int.h), and resumes[i] one's that may suspend (ak_async_body), or
+// all NULL to interpret it.
+void ak_module_attach(ak_module *m, ak_val (*const *bodies)(ak_val *args, ak_closure *clos), ak_ret (*const *directs)(ak_closure *clos, uintptr_t lim, ak_val *args), void (*const *direct_bodies)(void), int (*const *resumes)(struct ak_co *co, ak_val *out), uint32_t n);
+
+// A compiled function's signature as a compiled call sees it: its
+// parameters' count and their C types (int64_t, double, void *: 2 bits
+// each, int and bool alike), with a bit that's never 0. A call whose
+// arguments make the same calls its direct body with them in registers.
+#define AK_CG_SIG_MAX 8
+static inline uint32_t ak_cg_sig_kind(uint8_t k) { return k == AK_K_FLOAT ? 1u : k == AK_K_REF ? 2u : 0u; }
 
 // ak_app_loader loads the app compiled into this build (lang/cgen's C
 // sets it as it starts); NULL when none is (a development build, which

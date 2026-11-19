@@ -60,6 +60,20 @@ test "unwrap none" {
   print(u!.name)
 }
 
+test "a branch's value made the optional its if or match is" {
+  let xs: [int] = [1, 200]
+  print(xs.compactMap(x => if x > 100 { x } else { none }))
+  print(xs.map(x => if x > 100 { x } else if x > 0 { none } else { 3 }))
+  let f = (x: int) => match x { 1 => none, _ => x * 2 }
+  print("{f(1)} {f(4)}")
+  let g = (x: int) => if x > 1 { if x > 5 { 6.5 } else { 1.5 } } else { none }
+  print("{g(0)} {g(3)} {g(9)}")
+  let h = (b: bool) => if b { true } else { none }
+  print("{h(true)} {h(false)}")
+  let bytes: [u8] = [1, 200, 3, 255]
+  print(bytes.compactMap(x => if x > 100 { x } else { none }))
+}
+
 // Output:
 // Ann
 // nobody
@@ -76,3 +90,10 @@ test "unwrap none" {
 // 6
 // ok optionals
 // FAIL unwrap none: unwrapped none (optionals.asuka:60)
+// [200]
+// [null,200]
+// none 8
+// none 1.5 6.5
+// true none
+// [200,255]
+// ok a branch's value made the optional its if or match is
