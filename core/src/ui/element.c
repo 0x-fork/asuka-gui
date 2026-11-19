@@ -96,9 +96,13 @@ void ak_view_make_view(ak_view *e) {
 	ak_ui.stats.native++;
 	ak_batch_create(e->r->batch, e->id, e->kind);
 	if (e->dir != AK_LAYOUT_DIRECTION_INHERIT) ak_batch_set_enum(e->r->batch, e->id, AK_PROP_LAYOUT_DIRECTION, e->dir);
-	// What it listens for, if it got handlers before it had a view.
-	for (ak_event_kind k = 1; k < AK_EVENT_COUNT; k++)
-		if (ak_view_listening(e, k)) ak_batch_listen(e->r->batch, e->id, k);
+	// What it listens for, if it got handlers before it had a view: its
+	// bits, in order.
+	for (int w = 0; w < 2; w++)
+		for (uint64_t bits = e->listens[w]; bits; bits &= bits - 1) {
+			ak_event_kind k = (ak_event_kind)(w * 64 + __builtin_ctzll(bits));
+			if (k >= 1 && k < AK_EVENT_COUNT) ak_batch_listen(e->r->batch, e->id, k);
+		}
 	ak_focus_view_made(e);
 }
 
