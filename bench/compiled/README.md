@@ -89,3 +89,100 @@ Go).
 they said more about the scheduler than the programs (a single-threaded
 run descheduled most of the time), so take them again on an idle
 machine before comparing.
+
+## The allocator: mimalloc (2026-11-19)
+
+The core's ak_alloc, ak_realloc and ak_free were the C library's
+malloc; on Linux arm64 half of json's time was in glibc's (perf:
+malloc_consolidate 10.6%, _int_malloc 9.2%, unlink_chunk 3.9%,
+_int_free_chunk 3.2%, calloc 2.4%, free 2.2%). They're mimalloc's now
+(core/src/base/alloc.c; DESIGN.md says how). Before and after are the
+same commit's code but for the allocator.
+
+Linux arm64 (the `asuka-linux-test-clang` image under OrbStack on the
+M5, glibc 2.41, clang; Go 1.27.1). Docker's VM has no performance
+counters, so CPU time (`perf stat -e task-clock`), the least of five
+interleaved runs, in ms, taken while the VM was quiet (load 3); Go's
+counts its collector's threads, so its wall time is beside it.
+
+| benchmark | glibc's malloc | mimalloc | Go (wall) | now / Go |
+|---|---:|---:|---:|---:|
+| fib | 161 | 159 | 143 (140) | 1.11× |
+| trees | 712 | 636 | 1,725 (1,190) | 0.37× |
+| words | 277 | 197 | 360 (280) | 0.55× |
+| json | 1,109 | 708 | 1,048 (1,030) | 0.68× |
+| sort | 69 | 69 | 531 (640) | 0.13× |
+
+Taken again later with the machine loaded (VM load 13, every program
+slower and noisier: fib's CPU time doubled) the ratios held: json 0.55×
+of glibc's time, words 0.53×, trees 0.83×; and statically linked with
+musl (`--target linux-arm64`, Zig), json 0.82× of musl's malloc's time,
+words 0.58×, trees 0.87×.
+
+Peak RSS (MB), which load doesn't change:
+
+| benchmark | glibc | mimalloc | musl | mimalloc, musl | Go |
+|---|---:|---:|---:|---:|---:|
+| fib | 2.0 | 2.7 | 1.0 | 1.3 | 2.8 |
+| trees | 26.1 | 18.8 | 33.0 | 17.4 | 47.2 |
+| words | 164.5 | 166.2 | 285.8 | 164.9 | 137.9 |
+| json | 143.8 | 127.5 | 188.0 | 126.1 | 185.4 |
+| sort | 78.3 | 98.9 | 77.4 | 97.5 | 152.6 |
+
+sort's peak is higher: its array of 5 million ints grows by doubling,
+and mimalloc copies a block that grows (Go's append does too, and
+jemalloc), where glibc's and musl's realloc remap the pages (mremap), so
+for a moment the old and the new buffer are both there. Handing big
+blocks to the C library's realloc instead cost CPU time on Linux (sort
+71 → 89 ms) and made macOS's peaks higher (Apple's large realloc
+copies too once mimalloc's reservations sit next to the block), so
+they're mimalloc's.
+
+macOS (the M5; cycles, the fewest of seven interleaved runs, in
+millions, at load 50 to 200):
+
+| benchmark | Apple's malloc | mimalloc | Go | now / Go |
+|---|---:|---:|---:|---:|
+| fib | 518 | 537 | 415 | 1.29× |
+| sieve | 1,376 | 1,399 | 639 | 2.19× |
+| nbody | 1,144 | 1,138 | 870 | 1.31× |
+| trees | 3,219 | 2,815 | 6,928 | 0.41× |
+| words | 767 | 582 | 895 | 0.65× |
+| json | 2,620 | 2,374 | 3,409 | 0.70× |
+| sort | 164 | 214 | 1,402 | 0.15× |
+
+Peak memory (MB): json 168 → 127, words 179 → 166, trees 17.5 → 18.1,
+sort 80 → 98 (as above).
+
+A spike's memory goes back: 3 million blocks of 16 to 216 bytes (390
+MB) made and freed, then the thread quiet. glibc's malloc keeps all 399
+MB, Apple's 152 MB, Android's scudo 52 MB; mimalloc keeps them until
+the thread trims (the main thread two seconds after a turn of work that
+grew its heap, an idle spawn worker likewise), then 27 MB on Linux and
+macOS, 30 MB on Android.
+
+Allocating and freeing blocks of 16 to 216 bytes (a window of 4,096
+live), ns a pair: Linux glibc 40 to 67, mimalloc 21 to 23; macOS 28
+to 38, 17 to 19; Android's scudo (the arm64 emulator, Android 17, 16
+KB pages: slow and noisy) 332 to 568, mimalloc 100 to 252. On the web
+(wasm under Node's WASI) mimalloc took 285 ns to dlmalloc's 377, but
+its linear memory grew to 48 MB to dlmalloc's 17, and a module's memory
+never shrinks: the web keeps dlmalloc.
+
+What it costs in size, hello world (`asuka new --bin`, `asuka build`),
+in bytes:
+
+| target | before | mimalloc | more |
+|---|---:|---:|---:|
+| macOS arm64 | 703,168 | 803,680 | 100,512 |
+| Linux arm64, glibc | 855,080 | 986,344 | 131,264 |
+| Linux arm64, musl (static) | 833,904 | 958,288 | 124,384 |
+| Linux amd64, musl (static) | 860,096 | 988,512 | 128,416 |
+| Windows amd64 | 831,488 | 956,928 | 125,440 |
+| Windows arm64 | 715,776 | 835,072 | 119,296 |
+
+(88 KB of it is code on macOS arm64; its 59 KB of process state is zero
+fill.)
+
+Windows wasn't measured: no Windows machine was reachable; the arm64
+build ran bench/compiled correctly under Wine.

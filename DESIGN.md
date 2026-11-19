@@ -112,9 +112,25 @@ each other's bodies directly with their arguments as C values and their
 error in a returned register, and elements and fields are read through
 borrowed pointers and changed in place without reference counting. The
 heap objects whose size never changes (structs, enums, boxes, closures,
-arrays' and maps' headers) come from a thread's cache of freed blocks
-before malloc (core/src/base/small.c), and a release counts no
+arrays' and maps' headers) are small blocks, and a release counts no
 allocations or live objects (tests and development builds do).
+
+The core allocates from mimalloc (core/third_party/mimalloc, compiled
+into core/src/base/alloc.c with ak_alloc so its fast paths inline):
+each thread allocates from pages of its own by size class, a block freed
+on another thread (a spawn's result, an I/O thread's buffer) goes back
+to its page's owner without a lock, and pages left empty go back to the
+system. It's only the core's, never the process's malloc, its names
+renamed to the core's (an app may link a mimalloc of its own). A spike's
+memory goes back as the thread goes quiet: the main thread trims two
+seconds after a turn of work that grew its heap, an idle spawn worker
+likewise. The C libraries' allocators were the most of what
+allocation-heavy programs spent on Linux (glibc's malloc and free,
+consolidating as they go; musl's slower still), and slower on Apple
+platforms, Windows and Android too. Under AddressSanitizer (the core's
+tests) and on the web it's the C library's: the sanitizer sees every
+block, and wasm's memory never shrinks, where dlmalloc keeps its
+high-water mark lowest.
 bench/compiled times plain computation against Go, Zig and Bun.
 
 Between lowering and encoding, lang/ir's optimizer rewrites each

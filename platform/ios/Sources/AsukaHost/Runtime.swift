@@ -484,7 +484,7 @@ final class AsukaTextField: UITextField {
             var out: UnsafeMutablePointer<UInt8>? = nil
             let n = b.withUnsafeBufferPointer { asuka_native_invoke(id, $0.baseAddress, $0.count, &out) }
             guard let out else { return nil }
-            defer { free(out) }
+            defer { asuka_free(out) }
             return Array(UnsafeBufferPointer(start: out, count: n))
         }
         // A Ref a package's method was passed: the view of its id.
