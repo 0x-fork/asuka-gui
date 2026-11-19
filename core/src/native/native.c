@@ -41,6 +41,7 @@ static const char *desc_skip(const char *d) {
 static ak_kind kind_of(const char *d) {
 	switch (*d) {
 	case 'i':
+	case 'n':
 	case 'e':
 		return AK_K_INT;
 	case 'f':

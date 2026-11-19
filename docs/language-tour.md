@@ -32,16 +32,20 @@ fn values() -> string {
   visits += 1
   let greeting = "Hello, {name}"   // {…} puts a value in a string
   let ratio: float = 2.5
+  let level: u8 = 200              // sized integers: i8 … i32, u8 … u64 (int is 64 bits)
+  let area = 2 ** 10               // a power: 1024
   let tags = ["new", "work"]       // an array: [string]
   let ages = ["ana": 31, "bo": 28] // a map: [string: int]
   let nickname: string? = none     // an optional: a string or none
   let shown = nickname ?? name     // none's fallback
-  return "{greeting} {visits} {ratio} {tags.count()} {ages["ana"] ?? 0} {shown}"
+  return "{greeting} {visits} {ratio} {level} {area} {tags.count()} {ages["ana"] ?? 0} {shown}"
 }
 ```
 
 `var` is for functions and handlers: what's at a file's top level
-doesn't change, unless it's `state`. Values are copied, never shared:
+doesn't change, unless it's `state`. Numbers of different types don't
+mix: `int(level) + visits` converts the `u8` first, and arithmetic past
+a type's range is an error, not a wrapped number. Values are copied, never shared:
 changing a copy of an array leaves the original as it was. Strings, arrays and maps have the methods you'd
 expect (`count()`, `contains`, `map`, `filter`, `sorted`, `split`...):
 [Values and types](language/types.md).

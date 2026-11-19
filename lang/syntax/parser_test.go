@@ -207,6 +207,16 @@ func TestParseExpr(t *testing.T) {
 		{"~a & -b", "(& (~ a) (- b))"},
 		{"a >> b > c", "(> (>> a b) c)"},
 		{"a > >b", "(> a BAD)"},
+		// **: right-associative, tighter than a prefix operator before it.
+		{"a ** b ** c", "(** a (** b c))"},
+		{"-a ** 2", "(- (** a 2))"},
+		{"(-a) ** 2", "(** (paren (- a)) 2)"},
+		{"a ** -b", "(** a (- b))"},
+		{"a * b ** c", "(* a (** b c))"},
+		{"a << b ** c", "(<< a (** b c))"},
+		{"!a ** b", "(! (** a b))"},
+		{"x.y ** 2", "(** (. x y) 2)"},
+		{"try f() ** 2", "(try (** (call f) 2))"},
 		// Compile-time constants.
 		{"@platform == .linux", "(== @platform .linux)"},
 		{"!(@platform == .web) && x", "(&& (! (paren (== @platform .web))) x)"},

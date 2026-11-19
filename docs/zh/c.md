@@ -6,7 +6,7 @@
 extern fn zlibVersion() -> CString
 extern fn crc32_of(data: bytes) -> UInt32
 
-fn checksum(text: string) -> int = crc32_of(text.bytes())
+fn checksum(text: string) -> u32 = crc32_of(text.bytes())
 ```
 
 这些 C 代码会在每个平台上编进应用（在 Web 上编进它的 WebAssembly 模块），也会编进 `asuka test` 的运行器。编译和链接哪些内容，由 `asuka.toml` 的 `[c]` 决定。
@@ -55,7 +55,7 @@ component Total {
   Column {
     TextField { bind text: text }
     Text("Sum: {stats_sum(text.bytes())}")
-    Text("Clamped: {stats_clamp(text.count(), 0, 3)}")
+    Text("Clamped: {stats_clamp(i32(clamping: text.count()), 0, 3)}")
   }
 }
 
@@ -105,7 +105,7 @@ extern fn db_changes(db: Db) -> Int32
 
 fn changes(path: string) -> int {
   if let db = db_open(path) {
-    return db_changes(db)
+    return int(db_changes(db))
   } // 最后一个引用消失时调用 db_close(db)
   return -1
 }
@@ -172,9 +172,9 @@ int32_t each_row(const char *sql, bool (*row)(void *ctx, const char *name, int64
 
 | 声明中写的 | C | Asuka 看到的 |
 |---|---|---|
-| `Int8`、`Int16`、`Int32`、`Int64` | `int8_t` … `int64_t` | `int` |
-| `UInt8`、`UInt16`、`UInt32`、`UInt64` | `uint8_t` … `uint64_t` | `int` |
-| `int` | `int64_t` | `int` |
+| `Int8`、`Int16`、`Int32`、`Int64` | `int8_t` … `int64_t` | `i8`、`i16`、`i32`、`int` |
+| `UInt8`、`UInt16`、`UInt32`、`UInt64` | `uint8_t` … `uint64_t` | `u8`、`u16`、`u32`、`u64` |
+| `i8` … `u64`、`int` | 与对应的 C 名称相同 | 它们自己 |
 | `Float32` | `float` | `float` |
 | `float` | `double` | `float` |
 | `bool` | `bool` | `bool` |
@@ -185,7 +185,7 @@ int32_t each_row(const char *sql, bool (*row)(void *ctx, const char *name, int64
 | `extern struct S` | 按值传递的结构体 | `S`，一个结构体 |
 | `fn(…) -> R`、`(fn(…) -> R)?`（仅限参数） | `R (*)(void *ctx, …), void *ctx` | 一个函数 |
 
-`int` 转换成更窄的类型时，规则和 C 的转换相同：超出范围会回绕（`300` 作为 `Int8` 是 `44`），超出 `int` 范围的 `UInt64` 回来时会变成负数。`Int32` 这类类型只能写在 extern 声明里；在其他地方它们都是 `int`（写 `let n: Int32` 会报错，并说明这一点）。`Pointer` 是 Asuka 中一个独立的类型：它是 C 给出的值，Asuka 可以持有、比较、再传回给 C，但从不读取其中的内容。
+C 的整数就是 Asuka 中宽度和符号都相同的整数，所以值在两个方向上都完整地传递：`UInt64` 回来时是一个完整的 `u64`，`Int32` 参数接收 `i32`。把 `int` 传给 `Int32` 参数时，要在传入的地方转换：`i32(n)`（放不下时报错）、`i32(truncating: n)` 或 `i32(clamping: n)`，这样放不下的值不会在不知不觉中被截断。`Int32` 这类名称只能写在 extern 声明里；在其他地方它们是 `i32` 等类型（写 `let n: Int32` 会报错，并说明这一点）。`Pointer` 是 Asuka 中一个独立的类型：它是 C 给出的值，Asuka 可以持有、比较、再传回给 C，但从不读取其中的内容。
 
 ## 字符串、字节与内存
 
@@ -201,7 +201,7 @@ extern 调用在发起它的线程上运行：在组件、事件处理函数或 
 ```asuka
 extern fn hash_file(path: CString) -> UInt64
 
-async fn hashed(path: string) -> int {
+async fn hashed(path: string) -> u64 {
   return await spawn { hash_file(path) }
 }
 ```

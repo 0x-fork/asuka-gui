@@ -19,6 +19,7 @@ func (g *gen) insn(f *bc.FuncDef, in insn, h string) error {
 	case g.moveOp(name, in):
 	case g.intOp(name, in, h):
 	case g.intConstOp(name, in, h):
+	case g.sizedOp(name, in, h):
 	case g.floatOp(name, in):
 	case g.valueOp(name, in):
 	case g.jumpOp(name, in):
@@ -151,6 +152,43 @@ func (g *gen) intConstOp(name string, in insn, h string) bool {
 	return true
 }
 
+// sizedOp writes the sized integers' operations (i8 … u64; t, their
+// last immediate, a type's code): checked as the int's are, on values
+// (vm/ops.h's ak_addn...).
+func (g *gen) sizedOp(name string, in insn, h string) bool {
+	a := in.args
+	switch name {
+	case "ADDN", "SUBN", "MULN":
+		fn := map[string]string{"ADDN": "ak_addn", "SUBN": "ak_subn", "MULN": "ak_muln"}[name]
+		g.w("if (AK_UNLIKELY(!%s(&%s, %s, %s, %d))) %s", fn, g.ri(a[0]), g.ri(a[1]), g.ri(a[2]), a[3], g.fail(in, h))
+	case "DIVN", "MODN":
+		g.w("if (AK_UNLIKELY(!ak_divn(&%s, %s, %s, %d, %v))) %s", g.ri(a[0]), g.ri(a[1]), g.ri(a[2]), a[3], name == "MODN", g.fail(in, h))
+	case "NEGN":
+		g.w("if (AK_UNLIKELY(!ak_negn(&%s, %s, %d))) %s", g.ri(a[0]), g.ri(a[1]), a[2], g.fail(in, h))
+	case "POWI":
+		g.w("if (AK_UNLIKELY(!ak_pown(&%s, %s, %s, 0x33))) %s", g.ri(a[0]), g.ri(a[1]), g.ri(a[2]), g.fail(in, h))
+	case "POWN":
+		g.w("if (AK_UNLIKELY(!ak_pown(&%s, %s, %s, %d))) %s", g.ri(a[0]), g.ri(a[1]), g.ri(a[2]), a[3], g.fail(in, h))
+	case "SHLN", "SHRN":
+		g.w("if (AK_UNLIKELY(!ak_shiftn(&%s, %s, %s, %d, %v))) %s", g.ri(a[0]), g.ri(a[1]), g.ri(a[2]), a[3], name == "SHRN", g.fail(in, h))
+	case "LTU", "LEU":
+		g.w("%s = (uint64_t)%s %s (uint64_t)%s;", g.ri(a[0]), g.ri(a[1]), map[string]string{"LTU": "<", "LEU": "<="}[name], g.ri(a[2]))
+	case "WRAP":
+		g.w("%s = ak_int_wrap(%s, %d);", g.ri(a[0]), g.ri(a[1]), a[2])
+	case "CONVN":
+		g.w("if (AK_UNLIKELY(!ak_convn(&%s, %s, %d))) %s", g.ri(a[0]), g.ri(a[1]), a[2], g.fail(in, h))
+	case "CLAMPN":
+		g.w("%s = ak_int_clamp(%s, %d, %d);", g.ri(a[0]), g.ri(a[1]), a[2]>>4, a[2]&15)
+	case "F2N":
+		g.w("%s = ak_op_f2n(%s, %d);", g.ri(a[0]), g.rf(a[1]), a[2])
+	case "U2F":
+		g.w("%s = (double)(uint64_t)%s;", g.rf(a[0]), g.ri(a[1]))
+	default:
+		return false
+	}
+	return true
+}
+
 func (g *gen) floatOp(name string, in insn) bool {
 	a := in.args
 	bin := map[string]string{"ADDF": "+", "SUBF": "-", "MULF": "*", "DIVF": "/"}
@@ -160,6 +198,8 @@ func (g *gen) floatOp(name string, in insn) bool {
 		g.w("%s = %s %s %s;", g.rf(a[0]), g.rf(a[1]), bin[name], g.rf(a[2]))
 	case "MODF":
 		g.w("%s = fmod(%s, %s);", g.rf(a[0]), g.rf(a[1]), g.rf(a[2]))
+	case "POWF":
+		g.w("%s = pow(%s, %s);", g.rf(a[0]), g.rf(a[1]), g.rf(a[2]))
 	case "NEGF":
 		g.w("%s = -%s;", g.rf(a[0]), g.rf(a[1]))
 	case "EQF", "NEF", "LTF", "LEF":

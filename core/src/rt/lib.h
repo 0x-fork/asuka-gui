@@ -25,6 +25,8 @@ extern const ak_lib_entry ak_lib[];
 extern const ak_lib_entry ak_lib_unicode[];
 // Streams' (stream.c).
 extern const ak_lib_entry ak_stream_lib[];
+// The sized integers' (int.c).
+extern const ak_lib_entry ak_int_lib[];
 // Lazy sequences' and ordering by a key's (seq.c), registered when a
 // build names them (link.c's AK_USES_SEQ).
 extern const ak_lib_entry ak_seq_lib[];

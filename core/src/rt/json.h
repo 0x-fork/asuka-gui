@@ -3,6 +3,8 @@
 // compiler writes it as a string constant):
 //
 //   i int    f float    b bool    s string    y bytes (base64)
+//   n<c>     a sized integer, c its type's code (rt.h's ak_int_type, a
+//            digit: n0 an i8 … n7 a u64): its range, a u64 unsigned
 //   ?T       an optional T (null)
 //   [T       an array of T
 //   {T       a map from string to T (a JSON object)

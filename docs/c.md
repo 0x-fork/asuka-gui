@@ -11,7 +11,7 @@ passed as the pointer Asuka already holds.
 extern fn zlibVersion() -> CString
 extern fn crc32_of(data: bytes) -> UInt32
 
-fn checksum(text: string) -> int = crc32_of(text.bytes())
+fn checksum(text: string) -> u32 = crc32_of(text.bytes())
 ```
 
 The C is compiled into the app on every platform (on the web, into its
@@ -66,7 +66,7 @@ component Total {
   Column {
     TextField { bind text: text }
     Text("Sum: {stats_sum(text.bytes())}")
-    Text("Clamped: {stats_clamp(text.count(), 0, 3)}")
+    Text("Clamped: {stats_clamp(i32(clamping: text.count()), 0, 3)}")
   }
 }
 
@@ -128,7 +128,7 @@ extern fn db_changes(db: Db) -> Int32
 
 fn changes(path: string) -> int {
   if let db = db_open(path) {
-    return db_changes(db)
+    return int(db_changes(db))
   } // db_close(db), as its last reference goes
   return -1
 }
@@ -212,9 +212,9 @@ lives for that call. For C to keep it, see [Threads](#threads).
 
 | In the declaration | C | Asuka sees |
 |---|---|---|
-| `Int8`, `Int16`, `Int32`, `Int64` | `int8_t` … `int64_t` | `int` |
-| `UInt8`, `UInt16`, `UInt32`, `UInt64` | `uint8_t` … `uint64_t` | `int` |
-| `int` | `int64_t` | `int` |
+| `Int8`, `Int16`, `Int32`, `Int64` | `int8_t` … `int64_t` | `i8`, `i16`, `i32`, `int` |
+| `UInt8`, `UInt16`, `UInt32`, `UInt64` | `uint8_t` … `uint64_t` | `u8`, `u16`, `u32`, `u64` |
+| `i8` … `u64`, `int` | the same as their C names' | themselves |
 | `Float32` | `float` | `float` |
 | `float` | `double` | `float` |
 | `bool` | `bool` | `bool` |
@@ -225,10 +225,14 @@ lives for that call. For C to keep it, see [Threads](#threads).
 | `extern struct S` | the struct, by value | `S`, a struct |
 | `fn(…) -> R`, `(fn(…) -> R)?` (parameters only) | `R (*)(void *ctx, …), void *ctx` | a function |
 
-An `int` converts to a narrower type as C converts it: it wraps (`300`
-as an `Int8` is `44`), and a `UInt64` above `int`'s range comes back
-negative. `Int32` and its kind are written only in extern declarations;
-elsewhere they're `int` (`let n: Int32` is an error that says so).
+C's integers are Asuka's of the same width and sign, so a value
+crosses whole both ways: a `UInt64` comes back as a `u64`, all of it,
+and an `Int32` takes an `i32`. An `int` goes to an `Int32` parameter
+converted where it's passed, `i32(n)` (an error when it doesn't fit),
+`i32(truncating: n)` or `i32(clamping: n)`, so a value that doesn't fit
+is never cut short unseen. `Int32` and its kind are written only in
+extern declarations; elsewhere they're `i32` and the others (`let n:
+Int32` is an error that says so).
 `Pointer` is an Asuka type of its own: a value C gave, which Asuka
 holds, compares and passes back, and never reads.
 
@@ -263,7 +267,7 @@ main thread's).
 ```asuka
 extern fn hash_file(path: CString) -> UInt64
 
-async fn hashed(path: string) -> int {
+async fn hashed(path: string) -> u64 {
   return await spawn { hash_file(path) }
 }
 ```

@@ -1,0 +1,393 @@
+// std/encoding's binary data: fixed-width numbers in both byte orders,
+// IEEE 754 bits, varints, Reader and Writer, Base32 and UTF-16, against
+// known answers (RFC 4648's, Go's encoding/binary's).
+
+import std/encoding
+
+fn show(what: string, f: fn() throws -> string) {
+  let v = try f() catch e {
+    print("{what}: {e.message}")
+    return
+  }
+  print("{what}: {v}")
+}
+
+test "fixed widths" {
+  let b = bytes([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0xff, 0xfe, 0x80, 0x00])
+  let ones = bytes([0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff])
+  let low = bytes([0x80, 0, 0, 0, 0, 0, 0, 0])
+  let orders: [encoding.Endian] = [.little, .big]
+  print("{try encoding.readU8(b, at: 8)} {try encoding.readI8(b, at: 8)} {try encoding.readI8(b, at: 10)} {try encoding.readU8(b, at: 0)}")
+  for e in orders {
+    print("{e}: {try encoding.readU16(b, at: 0, endian: e)} {try encoding.readI16(b, at: 8, endian: e)} {try encoding.readI16(b, at: 10, endian: e)}")
+    print("{e}: {try encoding.readU32(b, at: 0, endian: e)} {try encoding.readU32(b, at: 8, endian: e)} {try encoding.readI32(b, at: 8, endian: e)}")
+    print("{e}: {try encoding.readU64(b, at: 0, endian: e)} {try encoding.readU64(b, at: 4, endian: e)} {try encoding.readI64(b, at: 4, endian: e)}")
+    print("{e}: {try encoding.readU64(ones, at: 0, endian: e) == u64.max} {try encoding.readI64(ones, at: 0, endian: e)} {try encoding.readI64(low, at: 0, endian: e)}")
+    print("{e}: {encoding.writeU16(0x0102, endian: e).hex()} {encoding.writeI16(-2, endian: e).hex()} {encoding.writeU32(0xdeadbeef, endian: e).hex()} {encoding.writeI32(i32.min, endian: e).hex()}")
+    print("{e}: {encoding.writeU64(u64.max, endian: e).hex()} {encoding.writeU64(0x0102030405060708, endian: e).hex()} {encoding.writeI64(int.min, endian: e).hex()} {encoding.writeI64(-2, endian: e).hex()}")
+    print("{e}: {try encoding.readI16(encoding.writeI16(i16.min, endian: e), at: 0, endian: e)} {try encoding.readU32(encoding.writeU32(u32.max, endian: e), at: 0, endian: e)} {try encoding.readI64(encoding.writeI64(int.min, endian: e), at: 0, endian: e) == int.min}")
+  }
+  print("{encoding.writeU8(255).hex()} {encoding.writeI8(-128).hex()} {encoding.writeI8(-1).hex()} {encoding.writeU8(0).hex()}")
+  show("readU32 at 10", () => "{try encoding.readU32(b, at: 10, endian: .big)}")
+  show("readU32 at -1", () => "{try encoding.readU32(b, at: -1, endian: .big)}")
+  show("readU8 at 12", () => "{try encoding.readU8(b, at: 12)}")
+  show("readU8 at 11", () => "{try encoding.readU8(b, at: 11)}")
+  show("readI64 of none", () => "{try encoding.readI64(bytes(), at: 0, endian: .little)}")
+  show("readU16 at 11", () => "{try encoding.readU16(b, at: 11, endian: .little)}")
+  show("readU16 far", () => "{try encoding.readU16(b, at: int.max, endian: .little)}")
+}
+
+test "floats" {
+  let nan = encoding.float64FromBits(0x7ff8000000000000)
+  let inf = encoding.float64FromBits(0x7ff0000000000000)
+  for x in [1.5, -0.0, 1.0, -2.0, 0.1, 16777217.0, 3.4e39, -3.4e39, 1e-46, 1.5e-45, 3.4028235e38, inf, -inf, nan] {
+    print("{encoding.float32Bits(x):#010x}")
+  }
+  print("{encoding.float32FromBits(0x3fc00000)} {encoding.float32FromBits(0x3dcccccd)} {encoding.float64Bits(encoding.float32FromBits(0x80000000)):#x} {encoding.float32FromBits(1)}")
+  let back = encoding.float32FromBits(0x7fc00000)
+  print("{back != back} {encoding.float32FromBits(0x7f800000) == inf} {encoding.float32FromBits(0xff800000) == -inf}")
+  print("{encoding.float64Bits(1.0):#x} {encoding.float64Bits(-2.5):#x} {encoding.float64Bits(0.1):#x} {encoding.float64Bits(-0.0):#x} {encoding.float64Bits(inf):#x}")
+  print("{encoding.float64FromBits(0x3fb999999999999a)} {encoding.float64FromBits(0x4009_21fb_5444_2d18)} {encoding.float64FromBits(1)}")
+  let orders: [encoding.Endian] = [.little, .big]
+  for e in orders {
+    print("{e}: {encoding.writeF32(1.5, endian: e).hex()} {encoding.writeF32(0.1, endian: e).hex()} {encoding.writeF64(0.1, endian: e).hex()} {encoding.writeF64(-0.0, endian: e).hex()}")
+    print("{e}: {try encoding.readF32(encoding.writeF32(0.1, endian: e), at: 0, endian: e)} {try encoding.readF64(encoding.writeF64(0.1, endian: e), at: 0, endian: e)} {try encoding.readF32(bytes([0, 0, 0xc0, 0x3f, 0x3f, 0xc0, 0, 0]), at: if e == .little { 0 } else { 4 }, endian: e)}")
+  }
+  show("readF64 at 1", () => "{try encoding.readF64(bytes([0, 0, 0, 0, 0, 0, 0, 0]), at: 1, endian: .big)}")
+}
+
+test "varints" {
+  let us: [u64] = [0, 1, 2, 127, 128, 255, 256, 300, 16383, 16384, 1 << 32, 1 << 63, u64.max]
+  for v in us {
+    let b = encoding.writeUvarint(v)
+    let (back, n) = try encoding.readUvarint(b, at: 0)
+    print("{v}: {b.hex()} {back == v} {n}")
+  }
+  let vs = [0, -1, 1, -2, 2, 63, -64, 64, -65, 300, -300, int.max, int.min]
+  for v in vs {
+    let b = encoding.writeVarint(v)
+    let (back, n) = try encoding.readVarint(b, at: 0)
+    print("{v}: {b.hex()} {back == v} {n}")
+  }
+  let several = encoding.writeUvarint(300).concat(encoding.writeVarint(-3)).concat(encoding.writeUvarint(5))
+  let (a, n1) = try encoding.readUvarint(several, at: 0)
+  let (c, n2) = try encoding.readVarint(several, at: n1)
+  let (d, n3) = try encoding.readUvarint(several, at: n1 + n2)
+  print("{a} {c} {d} {n1 + n2 + n3} {several.count()}")
+  // A non-minimal one reads as Go's Uvarint reads it.
+  let (z, zn) = try encoding.readUvarint(bytes([0x80, 0x00]), at: 0)
+  print("{z} {zn}")
+  let nines = try encoding.hexDecode("ffffffffffffffffff")
+  for (what, data) in [
+    ("truncated", bytes([0x80])),
+    ("truncated 2", bytes([0xff, 0xff])),
+    ("empty", bytes()),
+    ("10th byte 2", nines.concat(bytes([0x02]))),
+    ("11 bytes", nines.concat(bytes([0x80, 0x01]))),
+    ("10th byte 1", nines.concat(bytes([0x01]))),
+  ] {
+    show(what, () => {
+      let (v, n) = try encoding.readUvarint(data, at: 0)
+      return "{v} {n}"
+    })
+  }
+  show("at -1", () => "{(try encoding.readVarint(bytes([1]), at: -1)).0}")
+  show("at 1", () => "{(try encoding.readVarint(bytes([1]), at: 1)).0}")
+  show("signed past 64 bits", () => "{(try encoding.readVarint(nines.concat(bytes([0x03])), at: 0)).0}")
+}
+
+test "reader and writer" {
+  let orders: [encoding.Endian] = [.big, .little]
+  for e in orders {
+    var w = encoding.Writer(endian: e)
+    w.u8(0xab)
+    w.i8(-1)
+    w.u16(0x0102)
+    w.i16(-2)
+    w.u32(0xdeadbeef)
+    w.i32(-3)
+    w.u64(u64.max)
+    w.i64(int.min)
+    w.f32(1.5)
+    w.f64(-0.25)
+    w.uvarint(300)
+    w.varint(-3)
+    w.bytes("ok".bytes())
+    w.bytes(bytes())
+    print("{e}: {w.count()} {w.data().count()} {w.data().hex()}")
+    var r = encoding.Reader(data: w.data(), endian: e)
+    print("{try r.u8()} {try r.i8()} {try r.u16()} {try r.i16()} {try r.u32()} {try r.i32()} {try r.u64()} {try r.i64()} {try r.f32()} {try r.f64()} {try r.uvarint()} {try r.varint()} {(try r.bytes(2)).string()}")
+    print("{r.offset} {r.remaining()} {r.atEnd()}")
+    do {
+      let v = try r.u32()
+      print("read {v}")
+    } catch err {
+      print("{err.message}; offset {r.offset}")
+    }
+  }
+  var r = encoding.Reader(data: bytes([1, 2, 3, 4, 5, 0x80]), endian: .big)
+  try r.skip(1)
+  print("{try r.u16()} {r.offset} {r.remaining()} {r.atEnd()}")
+  for what in ["u32", "bytes", "skip", "negative", "uvarint", "i64"] {
+    do {
+      match what {
+        "u32" => print(try r.u32())
+        "bytes" => print(try r.bytes(4))
+        "skip" => try r.skip(4)
+        "negative" => print(try r.bytes(-1))
+        "uvarint" => {
+          try r.skip(2)
+          print(try r.uvarint())
+        }
+        _ => print(try r.i64())
+      }
+    } catch err {
+      print("{err.message}; offset {r.offset}")
+    }
+  }
+  try r.skip(1)
+  print("{r.offset} {r.remaining()} {r.atEnd()}")
+  let mid = encoding.Reader(data: bytes([9, 8, 7]), offset: 1, endian: .little)
+  print("{mid.offset} {mid.remaining()} {mid.atEnd()}")
+  let empty = encoding.Writer(endian: .big)
+  print("{empty.count()} {empty.data().count()}")
+}
+
+test "base32" {
+  for s in ["", "f", "fo", "foo", "foob", "fooba", "foobar"] {
+    let b = s.bytes()
+    let std = encoding.base32Encode(b)
+    let hex = encoding.base32Encode(b, alphabet: .hex)
+    let bare = encoding.base32Encode(b, padded: false)
+    let hexBare = encoding.base32Encode(b, alphabet: .hex, padded: false)
+    print("{s}: {std}|{bare}|{hex}|{hexBare}")
+    let ok = (try encoding.base32Decode(std)).string() == s
+      && (try encoding.base32Decode(bare)).string() == s
+      && (try encoding.base32Decode(std.lower())).string() == s
+      && (try encoding.base32Decode(hex, alphabet: .hex)).string() == s
+      && (try encoding.base32Decode(hexBare.lower(), alphabet: .hex)).string() == s
+    print(ok)
+  }
+  print(encoding.base32Encode(bytes([0xff, 0xee, 0xdd, 0xcc, 0xbb, 0xaa])))
+  print((try encoding.base32Decode("77XN3TF3VI======")).hex())
+  print((try encoding.base32Decode("MZXW 6YTB\r\nOI======\n")).string())
+  // Trailing bits past the last byte aren't checked: MZ and MY are both f.
+  print((try encoding.base32Decode("MZ")).string())
+  for (text, alphabet) in [
+    ("MY=====", encoding.Base32.standard),
+    ("MY=======", .standard),
+    ("M", .standard),
+    ("MZXW6Y", .standard),
+    ("MZX", .standard),
+    ("MY======MY", .standard),
+    ("========", .standard),
+    ("MZXW6YTB========", .standard),
+    ("M1", .standard),
+    ("CW", .hex),
+    ("MZXW6YT!", .standard),
+  ] {
+    show(text, () => (try encoding.base32Decode(text, alphabet: alphabet)).hex())
+  }
+}
+
+test "utf16" {
+  let orders: [encoding.Endian] = [.big, .little]
+  for e in orders {
+    for s in ["A", "é", "€", "😀", "a€😀z", ""] {
+      let b = encoding.utf16Encode(s, endian: e)
+      print("{e} {s}: {b.hex()} {encoding.utf16Decode(b, endian: e) == s} {(try encoding.utf16DecodeStrict(b, endian: e)) == s}")
+    }
+    let withBOM = encoding.utf16Encode("hi😀", endian: e, bom: true)
+    print("{e} BOM: {withBOM.hex()} {encoding.utf16Decode(withBOM, endian: .big)} {encoding.utf16Decode(withBOM, endian: .little)} {encoding.utf16Decode(withBOM, endian: .little).count()}")
+  }
+  // FF FE says little, FE FF big, whatever endian says.
+  print(encoding.utf16Decode(bytes([0xff, 0xfe, 0x41, 0x00]), endian: .big))
+  print(encoding.utf16Decode(bytes([0xfe, 0xff, 0x00, 0x41]), endian: .little))
+  print(encoding.utf16Decode(bytes([0x00, 0x41, 0xfe, 0xff]), endian: .big).count())
+  print(encoding.utf16Decode(bytes([0xfe, 0xff]), endian: .big).count())
+  for (what, data) in [
+    ("lone high", bytes([0xd8, 0x3d, 0x00, 0x41])),
+    ("lone low", bytes([0x00, 0x41, 0xde, 0x00])),
+    ("high at the end", bytes([0x00, 0x41, 0xd8, 0x3d])),
+    ("two highs", bytes([0xd8, 0x3d, 0xd8, 0x3d, 0xde, 0x00])),
+    ("odd", bytes([0x00, 0x41, 0x00])),
+    ("one byte", bytes([0x41])),
+    ("high, then odd", bytes([0xd8, 0x3d, 0xde])),
+  ] {
+    let lossy = encoding.utf16Decode(data, endian: .big)
+    print("{what}: {lossy} {lossy.count()}")
+    show("{what} strictly", () => try encoding.utf16DecodeStrict(data, endian: .big))
+  }
+  show("little lone low strictly", () => try encoding.utf16DecodeStrict(bytes([0xff, 0xfe, 0x41, 0x00, 0x00, 0xdc]), endian: .big))
+}
+
+// Output:
+// 255 -1 -128 1
+// little: 513 -257 128
+// little: 67305985 8453887 8453887
+// little: 578437695752307201 36309168323757573 36309168323757573
+// little: true -1 128
+// little: 0201 feff efbeadde 00000080
+// little: ffffffffffffffff 0807060504030201 0000000000000080 feffffffffffffff
+// little: -32768 4294967295 true
+// big: 258 -2 -32768
+// big: 16909060 4294868992 -98304
+// big: 72623859790382856 361984555285905408 361984555285905408
+// big: true -1 -9223372036854775808
+// big: 0102 fffe deadbeef 80000000
+// big: ffffffffffffffff 0102030405060708 8000000000000000 fffffffffffffffe
+// big: -32768 4294967295 true
+// ff 80 ff 00
+// readU32 at 10: encoding: readU32 needs 4 bytes at 10, and the data has 12
+// readU32 at -1: encoding: readU32 at -1: an offset can't be negative
+// readU8 at 12: encoding: readU8 needs 1 byte at 12, and the data has 12
+// readU8 at 11: 0
+// readI64 of none: encoding: readI64 needs 8 bytes at 0, and the data has 0
+// readU16 at 11: encoding: readU16 needs 2 bytes at 11, and the data has 12
+// readU16 far: encoding: readU16 needs 2 bytes at 9223372036854775807, and the data has 12
+// ok fixed widths
+// 0x3fc00000
+// 0x80000000
+// 0x3f800000
+// 0xc0000000
+// 0x3dcccccd
+// 0x4b800000
+// 0x7f800000
+// 0xff800000
+// 0x00000000
+// 0x00000001
+// 0x7f7fffff
+// 0x7f800000
+// 0xff800000
+// 0x7fc00000
+// 1.5 0.10000000149011612 0x8000000000000000 1.401298464324817e-45
+// true true true
+// 0x3ff0000000000000 0xc004000000000000 0x3fb999999999999a 0x8000000000000000 0x7ff0000000000000
+// 0.1 3.141592653589793 5e-324
+// little: 0000c03f cdcccc3d 9a9999999999b93f 0000000000000080
+// little: 0.10000000149011612 0.1 1.5
+// big: 3fc00000 3dcccccd 3fb999999999999a 8000000000000000
+// big: 0.10000000149011612 0.1 1.5
+// readF64 at 1: encoding: readF64 needs 8 bytes at 1, and the data has 8
+// ok floats
+// 0: 00 true 1
+// 1: 01 true 1
+// 2: 02 true 1
+// 127: 7f true 1
+// 128: 8001 true 2
+// 255: ff01 true 2
+// 256: 8002 true 2
+// 300: ac02 true 2
+// 16383: ff7f true 2
+// 16384: 808001 true 3
+// 4294967296: 8080808010 true 5
+// 9223372036854775808: 80808080808080808001 true 10
+// 18446744073709551615: ffffffffffffffffff01 true 10
+// 0: 00 true 1
+// -1: 01 true 1
+// 1: 02 true 1
+// -2: 03 true 1
+// 2: 04 true 1
+// 63: 7e true 1
+// -64: 7f true 1
+// 64: 8001 true 2
+// -65: 8101 true 2
+// 300: d804 true 2
+// -300: d704 true 2
+// 9223372036854775807: feffffffffffffffff01 true 10
+// -9223372036854775808: ffffffffffffffffff01 true 10
+// 300 -3 5 4 4
+// 0 2
+// truncated: encoding: readUvarint at 0: the data (1 byte) ends inside the varint
+// truncated 2: encoding: readUvarint at 0: the data (2 bytes) ends inside the varint
+// empty: encoding: readUvarint needs 1 byte at 0, and the data has 0
+// 10th byte 2: encoding: readUvarint at 0: the varint is past 64 bits
+// 11 bytes: encoding: readUvarint at 0: the varint is past 64 bits
+// 10th byte 1: 18446744073709551615 10
+// at -1: encoding: readVarint at -1: an offset can't be negative
+// at 1: encoding: readVarint needs 1 byte at 1, and the data has 1
+// signed past 64 bits: encoding: readVarint at 0: the varint is past 64 bits
+// ok varints
+// big: 47 47 abff0102fffedeadbeeffffffffdffffffffffffffff80000000000000003fc00000bfd0000000000000ac02056f6b
+// 171 -1 258 -2 3735928559 -3 18446744073709551615 -9223372036854775808 1.5 -0.25 300 -3 ok
+// 47 0 true
+// encoding: Reader.u32 needs 4 bytes at 47, and the data has 47; offset 47
+// little: 47 47 abff0201feffefbeaddefdffffffffffffffffffffff00000000000000800000c03f000000000000d0bfac02056f6b
+// 171 -1 258 -2 3735928559 -3 18446744073709551615 -9223372036854775808 1.5 -0.25 300 -3 ok
+// 47 0 true
+// encoding: Reader.u32 needs 4 bytes at 47, and the data has 47; offset 47
+// 515 3 3 false
+// encoding: Reader.u32 needs 4 bytes at 3, and the data has 6; offset 3
+// encoding: Reader.bytes needs 4 bytes at 3, and the data has 6; offset 3
+// encoding: Reader.skip needs 4 bytes at 3, and the data has 6; offset 3
+// encoding: Reader.bytes of -1 bytes: a count can't be negative; offset 3
+// encoding: Reader.uvarint at 5: the data (6 bytes) ends inside the varint; offset 5
+// encoding: Reader.i64 needs 8 bytes at 5, and the data has 6; offset 5
+// 6 0 true
+// 1 2 false
+// 0 0
+// ok reader and writer
+// : |||
+// true
+// f: MY======|MY|CO======|CO
+// true
+// fo: MZXQ====|MZXQ|CPNG====|CPNG
+// true
+// foo: MZXW6===|MZXW6|CPNMU===|CPNMU
+// true
+// foob: MZXW6YQ=|MZXW6YQ|CPNMUOG=|CPNMUOG
+// true
+// fooba: MZXW6YTB|MZXW6YTB|CPNMUOJ1|CPNMUOJ1
+// true
+// foobar: MZXW6YTBOI======|MZXW6YTBOI|CPNMUOJ1E8======|CPNMUOJ1E8
+// true
+// 77XN3TF3VI======
+// ffeeddccbbaa
+// foobar
+// f
+// MY=====: base32: the padding at 2 doesn't fill the last group to 8 digits
+// MY=======: base32: the padding at 2 doesn't fill the last group to 8 digits
+// M: base32: the data ends in the middle of a byte
+// MZXW6Y: base32: the data ends in the middle of a byte
+// MZX: base32: the data ends in the middle of a byte
+// MY======MY: base32: data after the padding at 8
+// ========: base32: the padding at 0 doesn't fill the last group to 8 digits
+// MZXW6YTB========: base32: the padding at 8 doesn't fill the last group to 8 digits
+// M1: base32: '1' (at 1) isn't base32
+// CW: base32: 'W' (at 1) isn't base32 (the hex alphabet)
+// MZXW6YT!: base32: '!' (at 7) isn't base32
+// ok base32
+// big A: 0041 true true
+// big é: 00e9 true true
+// big €: 20ac true true
+// big 😀: d83dde00 true true
+// big a€😀z: 006120acd83dde00007a true true
+// big :  true true
+// big BOM: feff00680069d83dde00 hi😀 hi😀 3
+// little A: 4100 true true
+// little é: e900 true true
+// little €: ac20 true true
+// little 😀: 3dd800de true true
+// little a€😀z: 6100ac203dd800de7a00 true true
+// little :  true true
+// little BOM: fffe680069003dd800de hi😀 hi😀 3
+// A
+// A
+// 2
+// 0
+// lone high: �A 2
+// lone high strictly: encoding: utf16DecodeStrict: an unpaired surrogate (0xd83d) at byte 0
+// lone low: A� 2
+// lone low strictly: encoding: utf16DecodeStrict: an unpaired surrogate (0xde00) at byte 2
+// high at the end: A� 2
+// high at the end strictly: encoding: utf16DecodeStrict: an unpaired surrogate (0xd83d) at byte 2
+// two highs: �😀 2
+// two highs strictly: encoding: utf16DecodeStrict: an unpaired surrogate (0xd83d) at byte 0
+// odd: A� 2
+// odd strictly: encoding: utf16DecodeStrict: an odd number of bytes (3): the last, at 2, is half a code unit
+// one byte: � 1
+// one byte strictly: encoding: utf16DecodeStrict: an odd number of bytes (1): the last, at 0, is half a code unit
+// high, then odd: � 1
+// high, then odd strictly: encoding: utf16DecodeStrict: an unpaired surrogate (0xd83d) at byte 0
+// little lone low strictly: encoding: utf16DecodeStrict: an unpaired surrogate (0xdc00) at byte 4
+// ok utf16
