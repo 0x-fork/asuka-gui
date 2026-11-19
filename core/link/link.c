@@ -80,6 +80,15 @@ const ak_lib_entry *const ak_std_libs[] = {
 #if defined(AK_USES_EVERY) || defined(AK_USES_CRYPTO_PK)
 	ak_std_crypto_pk,
 #endif
+#if defined(AK_USES_EVERY) || defined(AK_USES_CRYPTO_KEYFILE)
+	ak_std_crypto_keyfile,
+#endif
+#if defined(AK_USES_EVERY) || defined(AK_USES_CRYPTO_KEYDECRYPT)
+	ak_std_crypto_keydecrypt,
+#endif
+#if defined(AK_USES_EVERY) || defined(AK_USES_CRYPTO_KEYENC)
+	ak_std_crypto_keyenc,
+#endif
 #if defined(AK_USES_EVERY) || defined(AK_USES_HTML)
 	ak_std_html,
 #endif

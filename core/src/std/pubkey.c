@@ -3,8 +3,9 @@
 // none of it).
 //
 // Keys are read from PEM (PUBLIC KEY, RSA PUBLIC KEY, CERTIFICATE: its
-// subject's key; PRIVATE KEY, RSA PRIVATE KEY, EC PRIVATE KEY) or DER of
-// the same, and from a JWK's parts (the Asuka side reads the JSON), and
+// subject's key) or DER of the same; private keys from DER (PKCS#8,
+// PKCS#1, SEC 1: what keyfile.c reads of a key file, decrypted); and from
+// a JWK's parts (the Asuka side reads the JSON), and
 // kept in one form each: a public key as X.509's SubjectPublicKeyInfo
 // (RFC 5280), a private key as PKCS#8 (RFC 5208), both DER, so the Asuka
 // side holds bytes it can write out again. The kinds: RSA (1024 to 4096
@@ -452,7 +453,7 @@ static int b64_value(uint8_t c) {
 
 // pem reads the first of text's blocks whose label is one of labels
 // (NULL-terminated): its DER into *der (ak_free it), and its label's
-// index; -1 (failure says why) when there's none, or it's encrypted.
+// index; -1 (failure says why) when there's none.
 static int pem(const uint8_t *p, size_t n, const char *const *labels, buf *der) {
 	const uint8_t *end = p + n;
 	for (;;) {
@@ -480,15 +481,10 @@ static int pem(const uint8_t *p, size_t n, const char *const *labels, buf *der) 
 			}
 		if (!stop) return fail("the PEM has no END line"), -1;
 		if (found < 0) {
-			if (ln == 21 && memcmp(label, "ENCRYPTED PRIVATE KEY", 21) == 0)
-				return fail("the private key is encrypted: decrypt it first (openssl pkcs8 -in key.pem -out plain.pem)"), -1;
-			if (ln == 19 && memcmp(label, "OPENSSH PRIVATE KEY", 19) == 0)
-				return fail("it's an OpenSSH key, which isn't read: write it as PKCS#8 (ssh-keygen -p -m PKCS8 -f key)"), -1;
 			p = stop + 9;
 			continue;
 		}
-		// Headers (Proc-Type: 4,ENCRYPTED): an encrypted key.
-		if (memchr(body, ':', (size_t)(stop - body))) return fail("the key is encrypted (its PEM has headers): decrypt it first"), -1;
+		if (memchr(body, ':', (size_t)(stop - body))) return fail("the PEM has headers, which a public key's doesn't"), -1;
 		uint32_t acc = 0;
 		int bits = 0;
 		bool padded = false;
@@ -562,34 +558,18 @@ static ak_val read_public(ak_val *args, uint32_t n) {
 	return out;
 }
 
-// readPrivate(data, pem): the key in data (PEM, or DER: PKCS#8, PKCS#1's
-// RSAPrivateKey, SEC 1's ECPrivateKey) as PKCS#8; none, with failure.
+// readPrivate(der): the key in der (PKCS#8, PKCS#1's RSAPrivateKey, SEC 1's
+// ECPrivateKey: what crypto_keyfile.readKeyFile read) as PKCS#8; none, with
+// failure.
 static ak_val read_private(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	const ak_bytes *in = BYTES(0);
 	key k = {0};
-	buf der = {0};
-	bool ok;
-	if (args[1].i) {
-		static const char *const labels[] = {"PRIVATE KEY", "RSA PRIVATE KEY", "EC PRIVATE KEY", NULL};
-		if (!is_pem(data(in), len(in))) return fail("it isn't PEM (-----BEGIN PRIVATE KEY-----)"), (ak_val){.p = NULL};
-		failure[0] = 0;
-		int which = pem(data(in), len(in), labels, &der);
-		if (which < 0) {
-			if (!failure[0]) fail("the PEM has no PRIVATE KEY, RSA PRIVATE KEY or EC PRIVATE KEY in it");
-			release_buf(&der);
-			return (ak_val){.p = NULL};
-		}
-		span s = {der.p, der.n};
-		ok = which == 0 ? pkcs8(s, &k) : which == 1 ? rsa_private(s, &k) : ec_private(s, 0, &k);
-	} else {
-		span s = {data(in), len(in)};
-		ok = pkcs8(s, &k) || (k = (key){0}, rsa_private(s, &k)) || (k = (key){0}, ec_private(s, 0, &k));
-		if (!ok) k = (key){0}, pkcs8(s, &k);
-	}
+	span s = {data(in), len(in)};
+	bool ok = pkcs8(s, &k) || (k = (key){0}, rsa_private(s, &k)) || (k = (key){0}, ec_private(s, 0, &k));
+	if (!ok) k = (key){0}, pkcs8(s, &k);
 	ak_val out = {.p = ok ? private_der(&k) : NULL};
 	ak_wipe(&k, sizeof k);
-	release_buf(&der);
 	return out;
 }
 

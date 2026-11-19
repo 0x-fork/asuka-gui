@@ -22,6 +22,9 @@ extern const ak_lib_entry ak_std_crypto[];
 extern const ak_lib_entry ak_std_crypto_aead[];      // aead.c
 extern const ak_lib_entry ak_std_crypto_password[];  // password.c
 extern const ak_lib_entry ak_std_crypto_pk[];        // pubkey.c
+extern const ak_lib_entry ak_std_crypto_keyfile[];   // keyfile.c
+extern const ak_lib_entry ak_std_crypto_keydecrypt[]; // keyfile.c
+extern const ak_lib_entry ak_std_crypto_keyenc[];    // keyfile.c
 extern const ak_lib_entry ak_std_html[];
 extern const ak_lib_entry ak_std_random[];
 extern const ak_lib_entry ak_std_fs[];

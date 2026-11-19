@@ -27,12 +27,16 @@ pub enum CryptoError: Error {
   /// An argument out of range: a nonce of the wrong size, a length past
   /// what can be made, parameters a hash doesn't take.
   invalidArgument(reason: string)
+  /// The password doesn't decrypt the private key (decryptPrivateKey's):
+  /// it's wrong, or "" for a key that's encrypted.
+  wrongPassword
 
   /// The error's text: "invalid key: an RSA key signs with rsaPKCS1v15 or rsaPSS".
   fn message() -> string = match self {
     .notAuthentic => "the sealed bytes aren't authentic: a wrong key, nonce or additional data, or they were changed"
     .invalidKey(r) => "invalid key: {r}"
     .invalidArgument(r) => "invalid argument: {r}"
+    .wrongPassword => "the password doesn't decrypt the private key"
   }
 }
 
@@ -496,6 +500,19 @@ pub struct PrivateKey {
   /// The key as PEM: -----BEGIN PRIVATE KEY----- (PKCS#8).
   fn pem() -> string = pemOf(der, "PRIVATE KEY")
 
+  /// The key as PEM, encrypted with password: -----BEGIN ENCRYPTED
+  /// PRIVATE KEY-----, PKCS#8's PBES2 as OpenSSL 3 writes it
+  /// (PBKDF2-HMAC-SHA256 of 600000 iterations, a random salt;
+  /// AES-256-CBC), what OpenSSL (openssl pkey) and decryptPrivateKey
+  /// read. The iterations take time on purpose (a guess at the password
+  /// takes as long): it runs on another thread.
+  ///
+  ///   try fs.writeText("key.pem", try await key.encryptedPEM(password: password))
+  async fn encryptedPEM(password: string) -> string {
+    let key = der
+    return await spawn { pemOf(encryptKey(key, password.bytes(), 600000), "ENCRYPTED PRIVATE KEY") }
+  }
+
   /// The key as a JWK, JSON, its private parts too.
   fn jwk() throws -> string = try jwkOf(der, true)
 }
@@ -541,14 +558,53 @@ pub fn publicKeys(jwks: string) throws -> [string: PublicKey] {
   throw CryptoError.invalidKey("it isn't a JWK Set: JSON with keys")
 }
 
-/// The private key in pem: a PRIVATE KEY (PKCS#8), an RSA PRIVATE KEY
-/// (PKCS#1) or an EC PRIVATE KEY (SEC 1, what openssl ecparam -genkey
-/// writes). An encrypted one throws invalidKey: decrypt it first.
-pub fn privateKey(pem: string) throws -> PrivateKey = try privateFrom(readPrivate(pem.bytes(), true))
+/// The private key in pem, the first of its blocks that's one (others,
+/// a certificate's, are skipped): a PRIVATE KEY (PKCS#8), an RSA PRIVATE
+/// KEY (PKCS#1), an EC PRIVATE KEY (SEC 1, what openssl ecparam -genkey
+/// writes), or an OPENSSH PRIVATE KEY (what ssh-keygen writes: Ed25519,
+/// ECDSA or RSA). An encrypted one throws invalidKey: decryptPrivateKey
+/// reads it.
+pub fn privateKey(pem: string) throws -> PrivateKey = try privateFrom(try keyFile(readKeyFile(pem.bytes(), true)))
 
 /// The private key in der: PKCS#8, PKCS#1's RSAPrivateKey or SEC 1's
 /// ECPrivateKey.
-pub fn privateKeyFromDER(der: bytes) throws -> PrivateKey = try privateFrom(readPrivate(der, false))
+pub fn privateKeyFromDER(der: bytes) throws -> PrivateKey = try privateFrom(try keyFile(readKeyFile(der, false)))
+
+/// The private key in pem, decrypted with password: an ENCRYPTED PRIVATE
+/// KEY (PKCS#8's PBES2 with PBKDF2 or scrypt and AES or Triple DES, what
+/// OpenSSL writes; PKCS#12's Triple DES, older OpenSSL's and Java's),
+/// OpenSSL's older RSA and EC PRIVATE KEY with Proc-Type: 4,ENCRYPTED, or
+/// OpenSSH's (bcrypt with AES or ChaCha20-Poly1305); one that isn't
+/// encrypted is read as privateKey reads it. A password that doesn't
+/// decrypt it throws wrongPassword; a key it doesn't read throws
+/// invalidKey, saying why (single DES, RC2 and RC4 are weak, and aren't
+/// read). Deriving the key from the password takes time on purpose: it
+/// runs on another thread.
+///
+///   let key = try await crypto.decryptPrivateKey(try fs.readText("id_ed25519"), password: password)
+pub async fn decryptPrivateKey(pem: string, password: string) throws -> PrivateKey {
+  return try await spawn { try privateFrom(try keyFile(decryptKeyFile(pem.bytes(), true, password.bytes()))) }
+}
+
+/// The private key in der, decrypted with password: PKCS#8's
+/// EncryptedPrivateKeyInfo (as decryptPrivateKey's), or one that isn't
+/// encrypted (as privateKeyFromDER's).
+pub async fn decryptPrivateKeyFromDER(der: bytes, password: string) throws -> PrivateKey {
+  return try await spawn { try privateFrom(try keyFile(decryptKeyFile(der, false, password.bytes()))) }
+}
+
+// keyFile is what a key file read to (keyfile.c), as PKCS#8; none, or
+// why it read none.
+fn keyFile(der: bytes?) throws -> bytes? {
+  if let d = der {
+    return readPrivate(d)
+  }
+  match keyFileStatus() {
+    -2 => throw CryptoError.wrongPassword
+    -3 => throw CryptoError.invalidKey("the key is encrypted: read it with crypto.decryptPrivateKey(pem, password:)")
+    _ => throw CryptoError.invalidKey(keyFileFailure())
+  }
+}
 
 /// The private key in jwk, a JWK as JSON with its private parts: RSA's
 /// d, p, q, dp, dq and qi; EC's and OKP's d.
@@ -718,7 +774,7 @@ fn jwkOf(der: bytes, private: bool) throws -> string {
 }
 
 native(crypto_pk) fn readPublic(data: bytes, pem: bool) -> bytes?
-native(crypto_pk) fn readPrivate(data: bytes, pem: bool) -> bytes?
+native(crypto_pk) fn readPrivate(der: bytes) -> bytes?
 native(crypto_pk) fn keyInfo(der: bytes, private: bool) -> [int]?
 native(crypto_pk) fn publicOf(der: bytes) -> bytes?
 native(crypto_pk) fn keyParts(der: bytes, private: bool) -> [bytes]?
@@ -728,3 +784,11 @@ native(crypto_pk) fn pemOf(der: bytes, label: string) -> string
 native(crypto_pk) fn verifySignature(der: bytes, scheme: int, hash: int, message: bytes, signature: bytes) -> int
 native(crypto_pk) fn signMessage(der: bytes, scheme: int, hash: int, message: bytes) -> bytes?
 native(crypto_pk) fn keyFailure() -> string
+
+// Key files (keyfile.c): read, decrypted, written encrypted; tables of
+// their own.
+native(crypto_keyfile) fn readKeyFile(data: bytes, pem: bool) -> bytes?
+native(crypto_keyfile) fn keyFileFailure() -> string
+native(crypto_keyfile) fn keyFileStatus() -> int
+native(crypto_keydecrypt) fn decryptKeyFile(data: bytes, pem: bool, password: bytes) -> bytes?
+native(crypto_keyenc) fn encryptKey(der: bytes, password: bytes, iterations: int) -> bytes

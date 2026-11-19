@@ -63,6 +63,7 @@ static void state(lsock *s, op *o) {
 	put_field(&o->out, in.cipher, strlen(in.cipher));
 	put_field(&o->out, in.protocol, strlen(in.protocol));
 	put_field(&o->out, in.server_name, strlen(in.server_name));
+	put_field(&o->out, in.resumed ? "1" : "0", 1);
 	for (uint32_t i = 0; i < n; i++) put_field(&o->out, certs[i], lens[i]);
 }
 

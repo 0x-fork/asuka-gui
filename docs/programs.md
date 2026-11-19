@@ -1169,25 +1169,41 @@ async fn main() throws {
   so a container image needs its `ca-certificates` package. On Android,
   the system's store.
 - `net.clientTLS(ca:, certificate:, key:, alpn:, minVersion:,
-  maxVersion:, insecureSkipVerify:)` makes a client's configuration,
-  which `connectTLS` and `startTLS` take as `tls:`. `ca` (PEM) is
-  trusted instead of the system's authorities: a private one's, a
-  self-signed server's. `certificate` and `key` are this side's, for a
-  server that asks for one (mutual TLS). `alpn` is the application
-  protocols offered (`["h2", "http/1.1"]`). `insecureSkipVerify` checks
-  nothing, so anyone can pretend to be the server: it's for tests.
+  maxVersion:, insecureSkipVerify:, sessionCache:)` makes
+  a client's configuration, which `connectTLS` and `startTLS` take as
+  `tls:`. `ca` (PEM) is trusted instead of the system's authorities: a
+  private one's, a self-signed server's. `certificate` and `key` are
+  this side's, for a server that asks for one (mutual TLS). `alpn` is
+  the application protocols offered (`["h2", "http/1.1"]`).
+  `insecureSkipVerify` checks nothing, so anyone can pretend to be the
+  server: it's for tests.
 - `net.serverTLS(certificate:, key:, others:, alpn:, clientCA:,
-  requireClientCertificate:)` makes a server's: `net.listen`,
-  `net.serve` and `http.serve` take it as `tls:`, and
-  `conn.startServerTLS(tls)` upgrades a connection in place. `others`
-  are more certificates (`KeyPair`s): a client is shown the one whose
-  names match the name it asks for (SNI). `clientCA` asks each client
-  for a certificate one of its authorities signed.
+  requireClientCertificate:, sessionTickets:)` makes a
+  server's: `net.listen`, `net.serve` and `http.serve` take it as
+  `tls:`, and `conn.startServerTLS(tls)` upgrades a connection in
+  place. `others` are more certificates (`KeyPair`s): a client is shown
+  the one whose names match the name it asks for (SNI). `clientCA` asks
+  each client for a certificate one of its authorities signed.
+- A `key` is PEM: PKCS#8, PKCS#1 or SEC 1. One that's encrypted, or
+  OpenSSH's, std/crypto reads, and its `pem()` is what TLS takes:
+  `key: (try await crypto.decryptPrivateKey(text, password: password)).pem()`.
+  (So a TLS app that reads neither carries neither's code.)
+- A client resumes its sessions, as browsers do: its configuration
+  keeps what each handshake agreed (TLS 1.3's tickets, TLS 1.2's
+  session) for the server's name and port, and the next connection
+  there makes a shorter handshake, the certificate not sent again (the
+  one checked before is still checked for its name and dates).
+  `sessionCache:` is how many servers' sessions it keeps (64; the
+  least recently used go first; `0` keeps none). A server gives its
+  clients tickets, sealed with keys it makes at random in memory, never
+  written anywhere, made new each day; `sessionTickets: false` gives
+  none. Nothing is sent early (TLS 1.3's 0-RTT): data sent before the
+  handshake ends can be replayed by anyone who saw it.
 - `conn.handshake()` says what the handshake agreed: a `TLSState`, its
-  `version`, `cipherSuite`, ALPN's `protocol`, `serverName`, and the
-  other side's `peerCertificates` (DER). A TLS server's connection does
-  its handshake as its first read or write waits on it; a client that
-  fails it makes that read or write throw.
+  `version`, `cipherSuite`, ALPN's `protocol`, `serverName`, whether it
+  `resumed` a session, and the other side's `peerCertificates` (DER). A
+  TLS server's connection does its handshake as its first read or write
+  waits on it; a client that fails it makes that read or write throw.
 - A certificate that isn't trusted is
   `NetError.untrustedCertificate(problem, reason)`, `problem` one of
   `expired`, `notYetValid`, `wrongHost`, `unknownIssuer`, `revoked`,
@@ -1347,6 +1363,33 @@ async fn verified(token: string, jwksURL: string) throws -> bool {
   P-521); `sign` and `verify` take RSA (PKCS#1 v1.5 and PSS), ECDSA and
   Ed25519 keys read from PEM (`publicKey`, `privateKey`), DER or a JWK,
   and give them back as `pem()` and `jwk()`.
+- `privateKey` reads OpenSSH's keys too (what `ssh-keygen` writes).
+  `decryptPrivateKey(pem, password:)` reads encrypted ones: OpenSSL's
+  `ENCRYPTED PRIVATE KEY` (PBES2 with PBKDF2 or scrypt, AES or Triple
+  DES; older OpenSSL's and Java's PKCS#12 Triple DES), its older
+  `Proc-Type: 4,ENCRYPTED` keys, and OpenSSH's (bcrypt with AES or
+  ChaCha20-Poly1305). A password that doesn't decrypt the key is
+  `CryptoError.wrongPassword`; single DES, RC2 and RC4 are weak and
+  aren't read. `key.encryptedPEM(password:)` writes a key encrypted, as
+  OpenSSL 3 does (PBKDF2-HMAC-SHA256 of 600,000 iterations,
+  AES-256-CBC). Both take time on purpose, so a guess at the password
+  does too, and run on another thread. An app that reads no encrypted
+  key carries none of their ciphers.
+
+```asuka check
+import std/crypto
+import std/fs
+import std/os
+
+async fn main() throws {
+  let text = try fs.readText("deploy_key")  // ssh-keygen -t ed25519 -f deploy_key
+  let key = try await crypto.decryptPrivateKey(text, password: os.env("KEY_PASSWORD") ?? "")
+  let signature = try crypto.sign(key, "release 1.4.0".bytes(), scheme: .ed25519)
+  print(signature.count())  // 64
+  // -----BEGIN ENCRYPTED PRIVATE KEY-----, for OpenSSL and the like
+  try fs.writeText("deploy_key.pem", await key.encryptedPEM(password: os.env("KEY_PASSWORD") ?? ""))
+}
+```
 - `md5` is for checksums a protocol asks for, not security; a CRC is
   std/compress's `crc32` and `crc32c`.
 

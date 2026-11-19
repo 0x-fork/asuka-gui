@@ -463,3 +463,70 @@ test "TLS configurations that can't be made" {
   }
   expect(NetError.tls(reason: "no TLS version in common with the other side").message() == "TLS failed: no TLS version in common with the other side")
 }
+
+// The test's server key encrypted (PKCS#8, PBES2) and its client key in
+// OpenSSH's form, encrypted: core/test/testdata/keys/gen.sh's, the
+// password "asuka".
+fn testServerKeyEncrypted() -> string = "-----BEGIN ENCRYPTED PRIVATE KEY-----\nMIH0MF8GCSqGSIb3DQEFDTBSMDEGCSqGSIb3DQEFDDAkBBBXJ6a58jHt1zfVRgUw\n1D8eAgIIADAMBggqhkiG9w0CCQUAMB0GCWCGSAFlAwQBKgQQF6z/SR0vZKqcgW0C\nj/aupgSBkObvjk0N3t52nTawADvPmnfFOatdYkC2QPLS0+Vcv4tp3gM0N3+Z11FY\nR0L5fxNFLT2ZKHyUL4NatyDoe1J9L0vjQMJLihr4OIZN55hJG1zxmo/RTO0iK0WJ\nU7MfP5y4a59BFvSvklrhaPfy/bu+qlOxmx2mSyItKOUc4hNBq0FMFrUP9P42Q5mT\nxY2Np7zx6A==\n-----END ENCRYPTED PRIVATE KEY-----\n"
+fn testClientKeyOpenSSH() -> string = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABCNFAc5/9\npBBPizP6F2aekhAAAAGAAAAAEAAABoAAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlz\ndHAyNTYAAABBBDc3JC7v1XJl2pnFx28OVNuDgED2VDpDF8k3XHJ61wlw5UzC3b1HxsWUwW\nKqvvEkbNGvlcmLyhOzIz8D6lEKG2oAAACgrAqgpsxo/ViRQoOV3SFJmYMQTJPCnZo0ZIss\ndlSme8A9pInk1FHSj8vvZfGfIUMNUY7q9iRQkI+Vl1iiVxFuNbKWFJlaBHIafhr6dhCTj5\neOemC5xcwtz2E/acpvpsdUxZf+BGerLCoUfg56SL+wlyw0fawVA34fUy3F1RW442xDLeTq\nTfYQ1ET6glnjn85+hC0Hv/ZG7boaB64E/SGL6w==\n-----END OPENSSH PRIVATE KEY-----\n"
+
+test "encrypted keys" {
+  // Given encrypted, or OpenSSH's, the error says how to give it: as
+  // std/crypto decrypts it (lang/compile/testdata/run/keysessions.asuka).
+  do {
+    let _ = try serverTLS(certificate: testServerCert(), key: testServerKeyEncrypted())
+    expect(false)
+  } catch NetError.invalid(reason) {
+    expect(reason == "the key is encrypted: give it decrypted, what crypto.decryptPrivateKey(key, password:) reads, as its pem()")
+  }
+  do {
+    let _ = try clientTLS(certificate: testClientCert(), key: testClientKeyOpenSSH())
+    expect(false)
+  } catch NetError.invalid(reason) {
+    expect(reason.hasPrefix("the key is OpenSSH's: give it as PKCS#8"))
+  }
+}
+
+test "sessions resumed" {
+  let server = try await serve(0, c => {
+    let state = try await c.handshake()
+    try await c.write("{state.resumed}\n")
+  }, tls: try serverTLS(certificate: testServerCert(), key: testServerKey()))
+  // (sessionCache: 7, a configuration of this test's own: the same
+  // inputs give the same one.)
+  let trust = try clientTLS(ca: testCaCert(), sessionCache: 7)
+  var seen: [string] = []
+  for name in ["localhost", "localhost", "localhost", "test.example", "localhost"] {
+    let c = try await connectTLS("localhost", server.port, tls: trust, serverName: name)
+    let state = try await c.handshake()
+    expect(state.peerCertificates.count() == 2)
+    seen.push("{state.resumed} {(try await c.readLine()) ?? "-"}")
+    c.close()
+  }
+  expect(seen == ["false false", "true true", "true true", "false false", "true true"])
+  // TLS 1.2's sessions too; none kept, none resumed.
+  let old = try clientTLS(ca: testCaCert(), maxVersion: .tls12, sessionCache: 7)
+  let keepsNone = try clientTLS(ca: testCaCert(), sessionCache: 0)
+  var more: [bool] = []
+  for tls in [old, old, keepsNone, keepsNone] {
+    let c = try await connectTLS("localhost", server.port, tls: tls)
+    more.push((try await c.handshake()).resumed)
+    let _ = try await c.readLine()
+    c.close()
+  }
+  expect(more == [false, true, false, false])
+  await server.close()
+  // A server that gives no tickets.
+  let plain = try await serve(0, c => {
+    try await c.write("hi\n")
+  }, tls: try serverTLS(certificate: testServerCert(), key: testServerKey(), sessionTickets: false))
+  var resumed: [bool] = []
+  for _ in 0..<2 {
+    let c = try await connectTLS("localhost", plain.port, tls: trust)
+    resumed.push((try await c.handshake()).resumed)
+    let _ = try await c.readLine()
+    c.close()
+  }
+  expect(resumed == [false, false])
+  await plain.close()
+}

@@ -824,9 +824,11 @@ async fn main() throws {
 ```
 
 - サーバーの証明書は、システムが信頼する認証局に照らして検証されます。macOS、iOS、Windows では、Safari や Edge と同じくシステム自身が検証します。ユーザーや管理者が信頼する・しないとした設定に従い、足りない中間証明書を取得し、失効も確かめます。Linux では、Go と同じようにシステムの CA バンドルを読みます。`SSL_CERT_FILE` があればそれを、なければ `/etc/ssl/certs/ca-certificates.crt`（Debian、Ubuntu）、`/etc/pki/tls/certs/ca-bundle.crt`（Fedora、RHEL）、`/etc/ssl/ca-bundle.pem`（openSUSE）、`/etc/ssl/cert.pem`（Alpine）などから最初に見つかったものを読み、続けて `SSL_CERT_DIR` のファイルを読みます。静的ビルドも同じ場所を読むので、コンテナーイメージには `ca-certificates` パッケージが必要です。Android では、システムの証明書ストアを使います。
-- `net.clientTLS(ca:, certificate:, key:, alpn:, minVersion:, maxVersion:, insecureSkipVerify:)` はクライアントの設定を作り、`connectTLS` と `startTLS` は `tls:` でそれを受け取ります。`ca`（PEM）は、システムの認証局の代わりに信頼されます。プライベートな認証局や、自己署名のサーバーの証明書に使います。`certificate` と `key` はこちら側の証明書と秘密鍵で、クライアント証明書を求めるサーバー（相互 TLS）向けです。`alpn` は提示するアプリケーションプロトコルです（`["h2", "http/1.1"]`）。`insecureSkipVerify` は何も検証しないので、だれでもサーバーになりすませます。テスト専用です。
-- `net.serverTLS(certificate:, key:, others:, alpn:, clientCA:, requireClientCertificate:)` はサーバーの設定を作ります。`net.listen`、`net.serve`、`http.serve` は `tls:` でそれを受け取り、`conn.startServerTLS(tls)` は既存の接続をその場で切り替えます。`others` は追加の証明書（`KeyPair`）で、クライアントが求めた名前（SNI）に名前が一致するものが提示されます。`clientCA` を渡すと、各クライアントに、その認証局のどれかが署名した証明書を求めます。
-- `conn.handshake()` はハンドシェイクで合意した内容を `TLSState` で返します。`version`、`cipherSuite`、ALPN の `protocol`、`serverName`、相手の証明書 `peerCertificates`（DER）です。TLS サーバーの接続は、最初の読み込みか書き込みが待つときにハンドシェイクを行います。クライアントがハンドシェイクに失敗すると、その読み込みか書き込みが例外を投げます。
+- `net.clientTLS(ca:, certificate:, key:, alpn:, minVersion:, maxVersion:, insecureSkipVerify:, sessionCache:)` はクライアントの設定を作り、`connectTLS` と `startTLS` は `tls:` でそれを受け取ります。`ca`（PEM）は、システムの認証局の代わりに信頼されます。プライベートな認証局や、自己署名のサーバーの証明書に使います。`certificate` と `key` はこちら側の証明書と秘密鍵で、クライアント証明書を求めるサーバー（相互 TLS）向けです。`alpn` は提示するアプリケーションプロトコルです（`["h2", "http/1.1"]`）。`insecureSkipVerify` は何も検証しないので、だれでもサーバーになりすませます。テスト専用です。
+- `net.serverTLS(certificate:, key:, others:, alpn:, clientCA:, requireClientCertificate:, sessionTickets:)` はサーバーの設定を作ります。`net.listen`、`net.serve`、`http.serve` は `tls:` でそれを受け取り、`conn.startServerTLS(tls)` は既存の接続をその場で切り替えます。`others` は追加の証明書（`KeyPair`）で、クライアントが求めた名前（SNI）に名前が一致するものが提示されます。`clientCA` を渡すと、各クライアントに、その認証局のどれかが署名した証明書を求めます。
+- `key` は PEM で、PKCS#8、PKCS#1、SEC 1 のどれかです。暗号化された鍵や OpenSSH の形式の鍵は std/crypto で読み、その `pem()` を TLS に渡します：`key: (try await crypto.decryptPrivateKey(text, password: password)).pem()`。（こうすることで、どちらも読まない TLS アプリにはそのコードが含まれません。）
+- クライアントはブラウザーと同じようにセッションを再開します。設定は、ハンドシェイクごとに合意した内容（TLS 1.3 のチケット、TLS 1.2 のセッション）をサーバーの名前とポートごとに覚えておき、次にそこへ接続するときはハンドシェイクが短くなり、証明書も送り直されません（以前に検証した証明書は、名前と有効期限をもう一度確かめます）。`sessionCache:` はいくつのサーバーのセッションを覚えておくかです（既定は 64。最も長く使われていないものから捨てられ、`0` なら何も覚えません）。サーバーはクライアントにチケットを渡します。チケットはメモリ上でランダムに作る鍵で封をし、その鍵はどこにも書き出さず、毎日新しくします。`sessionTickets: false` ならチケットを渡しません。データの先送り（TLS 1.3 の 0-RTT）はしません。ハンドシェイクが終わる前に送ったデータは、それを見た人ならだれでも再送できてしまうからです。
+- `conn.handshake()` はハンドシェイクで合意した内容を `TLSState` で返します。`version`、`cipherSuite`、ALPN の `protocol`、`serverName`、セッションを再開したかどうかの `resumed`、相手の証明書 `peerCertificates`（DER）です。TLS サーバーの接続は、最初の読み込みか書き込みが待つときにハンドシェイクを行います。クライアントがハンドシェイクに失敗すると、その読み込みか書き込みが例外を投げます。
 - 信頼できない証明書は `NetError.untrustedCertificate(problem, reason)` になります。`problem` は `expired`、`notYetValid`、`wrongHost`、`unknownIssuer`、`revoked`、`missing`、`invalid` のどれかで、`reason` は何が見つかったかを説明します（"example.com's certificate expired on 2025-03-01"）。それ以外の失敗は `NetError.tls(reason)` です。共通するバージョン、暗号スイート、ALPN プロトコルがない、相手からアラートが届いた、サーバーが TLS を話さない、といった場合です。
 
 TLS はどのプラットフォームでも同じ実装（Mbed TLS）で、一度も呼ばないアプリには含まれません。Web ページにはそのためのソケットがありません。Web ページでも、ほかのすべてのプラットフォームと同じく、`std/http` と `std/websocket` が各プラットフォーム自身のクライアントを通して HTTPS と `wss:` を扱います。
@@ -936,6 +938,22 @@ async fn verified(token: string, jwksURL: string) throws -> bool {
 - `hkdf` は秘密から、`pbkdf2` と `argon2id` はパスワードから鍵を導出します。`hmac`、`hmacSHA256`、`hmacSHA512` は共有鍵で署名します。
 - `hashPasswordBcrypt` と `verifyPassword` は bcrypt の `$2b$`、`$2a$`、`$2y$` も読めるので、ほかのシステムが作ったデータベースにも使えます。
 - `newPrivateKey()` は ECDSA P-256 の鍵を作ります（`kind: .ed25519`、P-384、P-521 も可）。`sign` と `verify` は PEM（`publicKey`、`privateKey`）、DER、JWK から読んだ RSA（PKCS#1 v1.5 と PSS）、ECDSA、Ed25519 の鍵を受け取り、`pem()` と `jwk()` で書き出せます。
+- `privateKey` は OpenSSH の鍵（`ssh-keygen` が書くもの）も読めます。暗号化された鍵は `decryptPrivateKey(pem, password:)` で読みます。OpenSSL の `ENCRYPTED PRIVATE KEY`（PBES2 で PBKDF2 か scrypt、AES かトリプル DES。古い OpenSSL や Java が使う PKCS#12 のトリプル DES も）、OpenSSL の古い `Proc-Type: 4,ENCRYPTED` の鍵、OpenSSH の暗号化された鍵（bcrypt と AES か ChaCha20-Poly1305）です。パスワードで鍵を復号できなければ `CryptoError.wrongPassword` になります。シングル DES、RC2、RC4 は弱いので読みません。`key.encryptedPEM(password:)` は OpenSSL 3 と同じ形式で鍵を暗号化して書き出します（PBKDF2-HMAC-SHA256 を 600,000 回、AES-256-CBC）。どちらも意図的に時間がかかり、パスワードを推測するのにも同じだけかかります。どちらも別のスレッドで動きます。暗号化された鍵を読まないアプリには、これらの暗号のコードは含まれません。
+
+```asuka check
+import std/crypto
+import std/fs
+import std/os
+
+async fn main() throws {
+  let text = try fs.readText("deploy_key")  // ssh-keygen -t ed25519 -f deploy_key
+  let key = try await crypto.decryptPrivateKey(text, password: os.env("KEY_PASSWORD") ?? "")
+  let signature = try crypto.sign(key, "release 1.4.0".bytes(), scheme: .ed25519)
+  print(signature.count())  // 64
+  // -----BEGIN ENCRYPTED PRIVATE KEY-----（OpenSSL などで読める）
+  try fs.writeText("deploy_key.pem", await key.encryptedPEM(password: os.env("KEY_PASSWORD") ?? ""))
+}
+```
 - `md5` はプロトコルが求めるチェックサム用で、セキュリティには使いません。CRC は std/compress の `crc32` と `crc32c` です。
 
 ## 実行
