@@ -2,11 +2,12 @@
 // every platform (the web through the core's WebAssembly).
 //
 // A BigInt is an Asuka struct with one field, bytes: empty for 0, else
-// a sign byte (0 or 1: negative) and the magnitude's bytes, least
-// significant first, the last one not 0. One number has one encoding, so
-// the struct's == and hashing are the number's. Each builtin reads its
-// operands into limbs, computes, and writes a new value: values are
-// immutable, as every Asuka value is.
+// a sign byte (0 or 1: negative), three zero bytes and the magnitude's
+// 64-bit words, little-endian, least significant first, the last one not
+// 0 (see "Numbers" below). One number has one encoding, so the struct's
+// == and hashing are the number's. Each builtin reads its operands' limbs
+// where they are and computes its result into the bytes that become a
+// new value: values are immutable, as every Asuka value is.
 //
 // The magnitude is in limbs of 64 bits where the compiler has a 128-bit
 // product (64-bit targets), else 32 (wasm32, armv7, i686, MSVC):
@@ -222,60 +223,76 @@ static limb sub_nat(limb *z, const limb *x, size_t xn, const limb *y, size_t yn)
 	return xn > yn ? sub_1(z + yn, x + yn, xn - yn, b) : b;
 }
 
+// mul_1 is z = x·m, n limbs (z may be x); the carry out. Eight limbs a
+// turn, the pointers walked, as Go's arm64 mulAddVWW: their eight
+// products, then the low halves and the high ones a limb on added in one
+// carry chain.
 static limb mul_1(limb *z, const limb *x, size_t n, limb m) {
-	size_t i = 0;
-#if CARRY_OPS
 	limb c = 0;
-	for (; i + 4 <= n; i += 4) {
-		limb x0 = x[i], x1 = x[i + 1], x2 = x[i + 2], x3 = x[i + 3];
+#if CARRY_OPS
+	for (size_t k = n / 8; k; k--, x += 8, z += 8) {
+		limb x0 = x[0], x1 = x[1], x2 = x[2], x3 = x[3], x4 = x[4], x5 = x[5], x6 = x[6], x7 = x[7];
 		limb h0 = mulhi(x0, m), h1 = mulhi(x1, m), h2 = mulhi(x2, m), h3 = mulhi(x3, m);
+		limb h4 = mulhi(x4, m), h5 = mulhi(x5, m), h6 = mulhi(x6, m), h7 = mulhi(x7, m);
 		ull ca;
-		z[i] = adc(x0 * m, c, 0, &ca);
-		z[i + 1] = adc(x1 * m, h0, ca, &ca);
-		z[i + 2] = adc(x2 * m, h1, ca, &ca);
-		z[i + 3] = adc(x3 * m, h2, ca, &ca);
-		c = h3 + (limb)ca;
+		z[0] = adc(x0 * m, c, 0, &ca);
+		z[1] = adc(x1 * m, h0, ca, &ca);
+		z[2] = adc(x2 * m, h1, ca, &ca);
+		z[3] = adc(x3 * m, h2, ca, &ca);
+		z[4] = adc(x4 * m, h3, ca, &ca);
+		z[5] = adc(x5 * m, h4, ca, &ca);
+		z[6] = adc(x6 * m, h5, ca, &ca);
+		z[7] = adc(x7 * m, h6, ca, &ca);
+		c = h7 + (limb)ca;
 	}
-	dlimb cc = c;
-#else
-	dlimb cc = 0;
+	n %= 8;
 #endif
-	for (; i < n; i++) {
-		cc += (dlimb)x[i] * m;
-		z[i] = (limb)cc;
-		cc >>= LB;
+	for (; n; n--) {
+		dlimb t = (dlimb)*x++ * m + c;
+		*z++ = (limb)t;
+		c = (limb)(t >> LB);
 	}
-	return (limb)cc;
+	return c;
 }
 
+// addmul_1 is z += x·m, n limbs; the carry out. Eight limbs a turn, two
+// carry chains (z plus the products' low halves, then the high halves a
+// limb on), as GMP's assembly is: about half the cycles of a 128-bit
+// accumulator's.
 static limb addmul_1(limb *z, const limb *x, size_t n, limb m) {
-	size_t i = 0;
-#if CARRY_OPS
 	limb c = 0;
-	for (; i + 4 <= n; i += 4) {
-		limb x0 = x[i], x1 = x[i + 1], x2 = x[i + 2], x3 = x[i + 3];
+#if CARRY_OPS
+	for (size_t k = n / 8; k; k--, x += 8, z += 8) {
+		limb x0 = x[0], x1 = x[1], x2 = x[2], x3 = x[3], x4 = x[4], x5 = x[5], x6 = x[6], x7 = x[7];
 		limb h0 = mulhi(x0, m), h1 = mulhi(x1, m), h2 = mulhi(x2, m), h3 = mulhi(x3, m);
+		limb h4 = mulhi(x4, m), h5 = mulhi(x5, m), h6 = mulhi(x6, m), h7 = mulhi(x7, m);
 		ull ca, cb;
-		limb r0 = adc(z[i], x0 * m, 0, &ca);
-		limb r1 = adc(z[i + 1], x1 * m, ca, &ca);
-		limb r2 = adc(z[i + 2], x2 * m, ca, &ca);
-		limb r3 = adc(z[i + 3], x3 * m, ca, &ca);
-		z[i] = adc(r0, c, 0, &cb);
-		z[i + 1] = adc(r1, h0, cb, &cb);
-		z[i + 2] = adc(r2, h1, cb, &cb);
-		z[i + 3] = adc(r3, h2, cb, &cb);
-		c = h3 + (limb)ca + (limb)cb;
+		limb r0 = adc(z[0], x0 * m, 0, &ca);
+		limb r1 = adc(z[1], x1 * m, ca, &ca);
+		limb r2 = adc(z[2], x2 * m, ca, &ca);
+		limb r3 = adc(z[3], x3 * m, ca, &ca);
+		limb r4 = adc(z[4], x4 * m, ca, &ca);
+		limb r5 = adc(z[5], x5 * m, ca, &ca);
+		limb r6 = adc(z[6], x6 * m, ca, &ca);
+		limb r7 = adc(z[7], x7 * m, ca, &ca);
+		z[0] = adc(r0, c, 0, &cb);
+		z[1] = adc(r1, h0, cb, &cb);
+		z[2] = adc(r2, h1, cb, &cb);
+		z[3] = adc(r3, h2, cb, &cb);
+		z[4] = adc(r4, h3, cb, &cb);
+		z[5] = adc(r5, h4, cb, &cb);
+		z[6] = adc(r6, h5, cb, &cb);
+		z[7] = adc(r7, h6, cb, &cb);
+		c = h7 + (limb)ca + (limb)cb;
 	}
-	dlimb cc = c;
-#else
-	dlimb cc = 0;
+	n %= 8;
 #endif
-	for (; i < n; i++) {
-		cc += (dlimb)x[i] * m + z[i];
-		z[i] = (limb)cc;
-		cc >>= LB;
+	for (; n; n--) {
+		dlimb t = (dlimb)*x++ * m + *z + c;
+		*z++ = (limb)t;
+		c = (limb)(t >> LB);
 	}
-	return (limb)cc;
+	return c;
 }
 
 static limb submul_1(limb *z, const limb *x, size_t n, limb m) {
@@ -487,11 +504,10 @@ static inline limb div_pre(limb *r, limb u1, limb u0, limb d, limb v) {
 }
 
 // divmod_1 is q = x / d (q may be x, or NULL); the remainder. The
-// dividend's bits go shifted as d is to its top bit.
-static limb divmod_1(limb *q, const limb *x, size_t n, limb d) {
-	if (!n) return 0;
-	unsigned s = (unsigned)clz(d);
-	limb dn = d << s, v = recip(dn), r = 0;
+// dividend's bits go shifted as d is to its top bit. divmod_1_pre takes
+// d shifted (dn, by s) and its reciprocal, for a divisor used again.
+static limb divmod_1_pre(limb *q, const limb *x, size_t n, limb dn, unsigned s, limb v) {
+	limb r = 0;
 	if (!s) {
 		for (size_t i = n; i-- > 0;) {
 			limb qi = div_pre(&r, r, x[i], dn, v);
@@ -506,6 +522,12 @@ static limb divmod_1(limb *q, const limb *x, size_t n, limb d) {
 		if (q) q[i] = qi;
 	}
 	return r >> s;
+}
+
+static limb divmod_1(limb *q, const limb *x, size_t n, limb d) {
+	if (!n) return 0;
+	unsigned s = (unsigned)clz(d);
+	return divmod_1_pre(q, x, n, d << s, s, recip(d << s));
 }
 
 // knuth is q = u / v and r = u % v by Knuth's algorithm D (TAOCP 4.3.1),
@@ -707,19 +729,51 @@ static void divmod_nat(limb *q, limb *r, const limb *u, size_t un, const limb *v
 }
 
 // ---- Numbers: a magnitude and a sign ----
+//
+// A BigInt's bytes: empty for 0; else a sign byte (1: negative), three
+// zero bytes, then the magnitude in 64-bit words, little-endian, least
+// significant first, the last not 0. The words start 16 bytes into the
+// bytes' object (its 12-byte header, then BIG_HDR), so on a
+// little-endian computer (each one Asuka runs on) they're the limbs
+// themselves, aligned: an operand is read where it is (load: no copy),
+// and a result is computed into the bytes that become its value (nnew,
+// store: none either). 32-bit limbs read a word as two.
+
+#define BIG_HDR 4
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+#define BIG_LE 1
+#endif
+_Static_assert(offsetof(ak_bytes, data) % 8 == 8 - BIG_HDR, "a BigInt's words are aligned");
 
 typedef struct {
-	limb *d;  // owned (NULL when n is 0 and nothing was allocated)
-	size_t n; // limbs, normalized
-	bool neg; // never for 0
+	limb *d;      // the limbs: in o, or (o NULL) an argument's, only read
+	size_t n;     // limbs, normalized
+	bool neg;     // never for 0
+	ak_bytes *o;  // the bytes d is in when they're this num's (store makes them the value)
+	size_t cap;   // limbs o has room for
 } num;
 
-static void nfree(num *x) {
-	ak_free(x->d);
-	*x = (num){0};
+// words is how many 64-bit words n limbs take.
+static size_t words(size_t n) { return (n * LBYTES + 7) / 8; }
+
+static limb *limbs_of(const ak_bytes *o) { return (limb *)(void *)(o->data + BIG_HDR); }
+
+// nalloc is a num with room for n limbs (at least one), in bytes that
+// can become its value: zeroed, or (raw) for a caller that writes its n
+// limbs.
+static num nalloc(size_t n, bool zero) {
+	size_t w = words(n ? n : 1), size = BIG_HDR + w * 8;
+	ak_bytes *o = zero ? ak_bytes_new(NULL, size) : ak_bytes_raw(size);
+	return (num){.d = limbs_of(o), .n = n, .o = o, .cap = w * 8 / LBYTES};
 }
 
-static num nnew(size_t n) { return (num){.d = lalloc(n), .n = n}; }
+static num nnew(size_t n) { return nalloc(n, true); }
+static num nnew_raw(size_t n) { return nalloc(n, false); }
+
+static void nfree(num *x) {
+	if (x->o) ak_release(x->o);
+	*x = (num){0};
+}
 
 static void nfix(num *x) {
 	x->n = norm(x->d, x->n);
@@ -727,7 +781,7 @@ static void nfix(num *x) {
 }
 
 static num ncopy(const num *x) {
-	num z = nnew(x->n);
+	num z = nnew_raw(x->n);
 	if (x->n) memcpy(z.d, x->d, x->n * sizeof(limb));
 	z.neg = x->neg;
 	return z;
@@ -749,6 +803,18 @@ static num ni64(int64_t v) {
 	return z;
 }
 
+// nview is the number in w, a borrowed num (nothing allocated): for an
+// int operand.
+static num nview(limb w[64 / LB], uint64_t v, bool neg) {
+	w[0] = (limb)v;
+#if LB == 32
+	w[1] = (limb)(v >> 32);
+#endif
+	num x = {.d = w, .n = 64 / LB, .neg = neg};
+	nfix(&x);
+	return x;
+}
+
 static bool too_big(size_t limbs) {
 	if (limbs > MAX_LIMBS) {
 		ak_throw_msg("bigint: too large: more than 2^30 bits");
@@ -757,39 +823,25 @@ static bool too_big(size_t limbs) {
 	return false;
 }
 
+// load is the number in a BigInt's bytes: on a little-endian computer,
+// its limbs where they are (borrowed: not to be changed or freed).
 static num load(const ak_bytes *b) {
-	num x = {0};
-	if (!b || b->len < 2) return x;
-	size_t nb = b->len - 1, n = (nb + LBYTES - 1) / LBYTES;
-	x.d = lalloc(n);
-#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-	memcpy(x.d, b->data + 1, nb);
+	if (!b || b->len <= BIG_HDR) return (num){0};
+	size_t nw = (b->len - BIG_HDR) / 8;
+#if BIG_LE
+	num x = {.d = limbs_of(b), .n = nw * 8 / LBYTES};
 #else
-	for (size_t i = 0; i < nb; i++) x.d[i / LBYTES] |= (limb)b->data[1 + i] << (8 * (i % LBYTES));
+	num x = nnew(nw * 8 / LBYTES);
+	for (size_t i = 0; i < nw * 8; i++) x.d[i / LBYTES] |= (limb)b->data[BIG_HDR + i] << (8 * (i % LBYTES));
 #endif
-	x.n = n;
 	x.neg = b->data[0] != 0;
 	nfix(&x);
 	return x;
 }
 
-// encode writes x as a BigInt's bytes.
-static ak_bytes *encode(const num *x) {
-	size_t n = norm(x->d, x->n);
-	if (!n) return ak_bytes_new(NULL, 0);
-	size_t nb = n * LBYTES;
-	while (!(uint8_t)(x->d[(nb - 1) / LBYTES] >> (8 * ((nb - 1) % LBYTES)))) nb--;
-	ak_bytes *b = ak_bytes_new(NULL, nb + 1);
-	b->data[0] = x->neg;
-#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-	memcpy(b->data + 1, x->d, nb);
-#else
-	for (size_t i = 0; i < nb; i++) b->data[1 + i] = (uint8_t)(x->d[i / LBYTES] >> (8 * (i % LBYTES)));
-#endif
-	return b;
-}
-
-// store is x as a BigInt's bytes, x freed; past MAX_BITS it throws.
+// store is x as a BigInt's bytes, x given up; past MAX_BITS it throws.
+// x's own bytes become the value when it has them (and they're not
+// twice what it needs), else its limbs are copied into new ones.
 static ak_val store(num *x) {
 	nfix(x);
 	if (bitlen(x->d, x->n) > MAX_BITS) {
@@ -797,9 +849,30 @@ static ak_val store(num *x) {
 		ak_throw_msg("bigint: too large: more than 2^30 bits");
 		return (ak_val){0};
 	}
-	ak_bytes *b = encode(x);
+	if (!x->n) {
+		nfree(x);
+		return (ak_val){.p = ak_bytes_new(NULL, 0)};
+	}
+	size_t n = x->n, nw = words(n), size = BIG_HDR + nw * 8;
+	bool neg = x->neg;
+	ak_bytes *o = x->o;
+#if BIG_LE
+	if (!o || x->d != limbs_of(o) || 2 * nw < words(x->cap)) {
+		o = ak_bytes_raw(size);
+		memcpy(limbs_of(o), x->d, n * sizeof(limb));
+		nfree(x);
+	}
+	if (n * LBYTES < nw * 8) limbs_of(o)[n] = 0;  // 32-bit limbs: the top word's high half
+#else
+	o = ak_bytes_raw(size);
+	for (size_t i = 0; i < nw * 8; i++) o->data[BIG_HDR + i] = i / LBYTES < n ? (uint8_t)(x->d[i / LBYTES] >> (8 * (i % LBYTES))) : 0;
 	nfree(x);
-	return (ak_val){.p = b};
+#endif
+	o->len = (uint32_t)size;
+	o->data[0] = neg;
+	o->data[1] = o->data[2] = o->data[3] = 0;
+	*x = (num){0};
+	return (ak_val){.p = o};
 }
 
 static int ncmp_mag(const num *x, const num *y) { return cmp_nat(x->d, x->n, y->d, y->n); }
@@ -815,7 +888,7 @@ static num nadd_mag(const num *x, const num *y) {
 		const num *t = x;
 		x = y, y = t;
 	}
-	num z = nnew(x->n + 1);
+	num z = nnew_raw(x->n + 1);
 	z.d[x->n] = add_nat(z.d, x->d, x->n, y->d, y->n);
 	z.n = x->n + 1;
 	nfix(&z);
@@ -831,7 +904,7 @@ static num nsub_mag(const num *x, const num *y) {
 		z.neg = true;
 		return z;
 	}
-	num z = nnew(x->n);
+	num z = nnew_raw(x->n);
 	sub_nat(z.d, x->d, x->n, y->d, y->n);
 	z.n = x->n;
 	nfix(&z);
@@ -854,7 +927,8 @@ static num nadd(const num *x, const num *y) {
 static num nneg(const num *x) {
 	num t = *x;
 	t.neg = t.n && !t.neg;
-	return t;  // a view: not to be freed
+	t.o = NULL;  // a view: not to be freed
+	return t;
 }
 
 static num nsub(const num *x, const num *y) {
@@ -865,7 +939,7 @@ static num nsub(const num *x, const num *y) {
 static num nmul(const num *x, const num *y) {
 	if (!x->n || !y->n) return (num){0};
 	if (too_big(x->n + y->n)) return (num){0};
-	num z = nnew(x->n + y->n);
+	num z = nnew_raw(x->n + y->n);
 	mul_nat(z.d, x->d, x->n, y->d, y->n);
 	z.n = x->n + y->n;
 	z.neg = x->neg != y->neg;
@@ -930,7 +1004,7 @@ static num nshl(const num *x, uint64_t s) {
 static num nshr_mag(const num *x, uint64_t s) {
 	if (s / LB >= x->n) return (num){0};
 	size_t ls = (size_t)(s / LB);
-	num z = nnew(x->n - ls);
+	num z = nnew_raw(x->n - ls);
 	shr_bits(z.d, x->d + ls, x->n - ls, (unsigned)(s % LB));
 	z.n = x->n - ls;
 	nfix(&z);
@@ -957,7 +1031,7 @@ static uint64_t gcd_u64(uint64_t a, uint64_t b) {
 
 // nmul_limb is |x|·w, negative when neg.
 static num nmul_limb(const num *x, limb w, bool neg) {
-	num z = nnew(x->n + 1);
+	num z = nnew_raw(x->n + 1);
 	z.d[x->n] = mul_1(z.d, x->d, x->n, w);
 	z.n = x->n + 1;
 	z.neg = neg;
@@ -1516,7 +1590,8 @@ static int log2_exact(int r) {
 // A radix's big base: the most digits a limb holds (k) and radix^k.
 typedef struct {
 	int radix, k;
-	limb bb;
+	limb bb, bn, bv;  // bb, shifted to its top bit (by bs), its reciprocal
+	unsigned bs;
 	// The table: pw[i] = bb^(CONV_LEAF·2^i), its digits CONV_LEAF·k·2^i;
 	// own's are this conversion's, the rest radix 10's shared table's.
 	const num *pw[48];
@@ -1540,6 +1615,9 @@ static void conv_open(conv *c, int radix) {
 	while (bb <= LMAX / (limb)radix) bb *= (limb)radix, k++;
 	c->bb = bb;
 	c->k = k;
+	c->bs = (unsigned)clz(bb);
+	c->bn = bb << c->bs;
+	c->bv = recip(c->bn);
 }
 
 static void conv_close(conv *c) {
@@ -1565,6 +1643,7 @@ static const num *conv_pow(conv *c, int i) {
 		ak_mutex_lock(&conv10_mu);
 		while (conv10_n <= i && (conv10_n == 0 || conv10[conv10_n - 1].n <= CONV_SHARED / 2)) {
 			conv10[conv10_n] = conv10_n ? nmul(&conv10[conv10_n - 1], &conv10[conv10_n - 1]) : conv_first(c->bb);
+			ak_make_immortal(conv10[conv10_n].o);  // the process's, never freed
 			conv10_n++;
 		}
 		for (int k = 0; k < conv10_n && k <= i; k++) c->pw[k] = &conv10[k];
@@ -1583,22 +1662,50 @@ static size_t conv_digits(const conv *c, int i) { return (size_t)CONV_LEAF * (si
 
 static const char digit_chars[] = "0123456789abcdefghijklmnopqrstuvwxyz";
 
+static const char digit_pairs[] =
+	"00010203040506070809101112131415161718192021222324252627282930313233343536373839"
+	"40414243444546474849505152535455565758596061626364656667686970717273747576777879"
+	"8081828384858687888990919293949596979899";
+
 // conv_leaf writes x's digits right to left, ending before end: width of
-// them (zeros before) when pad, else as many as it has; their number.
+// them (zeros before) when pad, else as many as it has; their number. x
+// is under the table's first power (CONV_LEAF limbs at most): a limb's
+// worth of digits at a time (bb, by its reciprocal), radix 10's two at a
+// time.
 static size_t conv_leaf(conv *c, const limb *x, size_t xn, char *end, size_t width, bool pad) {
-	limb *t = lalloc(xn);
+	limb buf[CONV_LEAF + 1], *t = xn <= CONV_LEAF + 1 ? buf : lalloc(xn);
 	memcpy(t, x, xn * sizeof(limb));
 	size_t n = norm(t, xn), w = 0;
 	while (n) {
-		limb rem = divmod_1(t, t, n, c->bb);
+		limb rem = divmod_1_pre(t, t, n, c->bn, c->bs, c->bv);
 		n = norm(t, n);
+		if (c->radix == 10) {
+			if (n || pad) {
+				// All k digits: the zeros a lower part's text has.
+				for (int i = 0; i + 2 <= c->k; i += 2) {
+					limb q = rem / 100;
+					end -= 2;
+					memcpy(end, digit_pairs + 2 * (rem - q * 100), 2);
+					rem = q;
+				}
+				if (c->k & 1) *--end = (char)('0' + rem);
+				w += (size_t)c->k;
+			} else {
+				for (; rem >= 10; rem /= 100, w += 2) {
+					end -= 2;
+					memcpy(end, digit_pairs + 2 * (rem % 100), 2);
+				}
+				if (rem) *--end = (char)('0' + rem), w++;
+			}
+			continue;
+		}
 		for (int i = 0; i < c->k && (n || rem || pad); i++) {
 			*--end = digit_chars[rem % (limb)c->radix];
 			rem /= (limb)c->radix;
 			w++;
 		}
 	}
-	ak_free(t);
+	if (t != buf) ak_free(t);
 	if (pad)
 		for (; w < width; w++) *--end = '0';
 	return w;
@@ -1794,9 +1901,7 @@ static ak_bytes *json_read(const char *s, size_t n) {
 	num x;
 	if (!parse(s, n, 10, &x)) return NULL;
 	if (ak_error_pending()) return NULL;
-	ak_bytes *b = encode(&x);
-	nfree(&x);
-	return b;
+	return store(&x).p;
 }
 
 const ak_bigint_json ak_bigint_json_impl = {json_is, json_write, json_read};
@@ -1960,177 +2065,71 @@ static ak_val to_bytes(ak_val *args, uint32_t n) {
 	return (ak_val){.p = b};
 }
 
-// ---- With an int: one pass over the bytes ----
+// ---- With an int ----
 //
-// x.times(n), x.plus(n), x.minus(n) and x.quo(n) read x's limbs from its
-// bytes as they go and write the result's into the new bytes: one
-// allocation and one pass, as Go's in-place math/big does, not a copy of
-// each operand into limbs and of the result back. Where limbs are 64
-// bits and the bytes little-endian; else through nums.
-
-#if LB == 64 && defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-#define BIG_FAST 1
-
-// limb_at is limb i of a magnitude's nb bytes.
-static inline limb limb_at(const uint8_t *p, size_t nb, size_t i) {
-	size_t off = i * LBYTES;
-	limb v = 0;
-	if (off + LBYTES <= nb) memcpy(&v, p + off, LBYTES);
-	else if (off < nb) memcpy(&v, p + off, nb - off);
-	return v;
-}
-
-// out_new is bytes with room for a sign and limbs limbs; out_done trims
-// the magnitude's top zero bytes (0: no bytes at all) and sets its sign.
-static ak_bytes *out_new(size_t limbs) { return ak_bytes_new(NULL, 1 + limbs * LBYTES); }
-
-static ak_val out_done(ak_bytes *o, bool neg) {
-	size_t nb = o->len - 1;
-	while (nb && !o->data[nb]) nb--;
-	o->len = nb ? (uint32_t)nb + 1 : 0;
-	if (nb) o->data[0] = neg;
-	if ((uint64_t)nb * 8 > MAX_BITS) {
-		uint64_t bits = (uint64_t)(nb - 1) * 8 + (64 - (uint64_t)__builtin_clzll(o->data[nb]));
-		if (bits > MAX_BITS) {
-			ak_release(o);
-			ak_throw_msg("bigint: too large: more than 2^30 bits");
-			return (ak_val){0};
-		}
-	}
-	return (ak_val){.p = o};
-}
-
-static inline void put_limb(ak_bytes *o, size_t i, limb v) { memcpy(o->data + 1 + i * LBYTES, &v, LBYTES); }
-#endif
+// x.times(n), x.plus(n), x.minus(n) and x.quo(n): x read where it is,
+// the result written into the bytes that become it, in one pass: as
+// Go's math/big does them in place, with one allocation.
 
 // mul_int_fn(a, n): a·n.
 static ak_val mul_int_fn(ak_val *args, uint32_t nargs) {
 	AK_UNUSED(nargs);
-	const ak_bytes *a = BYTES(0);
+	num x = load(BYTES(0));
 	int64_t n = args[1].i;
-#if BIG_FAST
-	size_t nb = a && a->len > 1 ? a->len - 1 : 0;
-	if (!nb || !n) return (ak_val){.p = ak_bytes_new(NULL, 0)};
-	const uint8_t *p = a->data + 1;
 	uint64_t m = n < 0 ? 0 - (uint64_t)n : (uint64_t)n;
-	size_t limbs = (nb + LBYTES - 1) / LBYTES;
-	ak_bytes *o = out_new(limbs + 1);
-	limb c = 0;
-	size_t i = 0, full = nb / LBYTES;
-	uint8_t *q = o->data + 1;
-#if CARRY_OPS
-	for (; i + 4 <= full; i += 4) {
-		limb x[4];
-		memcpy(x, p + i * LBYTES, sizeof x);
-		limb h0 = mulhi(x[0], m), h1 = mulhi(x[1], m), h2 = mulhi(x[2], m), h3 = mulhi(x[3], m);
-		ull ca;
-		limb r[4];
-		r[0] = adc(x[0] * m, c, 0, &ca);
-		r[1] = adc(x[1] * m, h0, ca, &ca);
-		r[2] = adc(x[2] * m, h1, ca, &ca);
-		r[3] = adc(x[3] * m, h2, ca, &ca);
-		c = h3 + (limb)ca;
-		memcpy(q + i * LBYTES, r, sizeof r);
+	if (!x.n || !m) return (ak_val){.p = ak_bytes_new(NULL, 0)};
+	num z;
+	if (m <= LMAX) {
+		z = nnew_raw(x.n + 1);
+		z.d[x.n] = mul_1(z.d, x.d, x.n, (limb)m);
+	} else {
+		limb w[64 / LB];
+		num y = nview(w, m, false);
+		z = nnew_raw(x.n + y.n);
+		mul_nat(z.d, x.d, x.n, y.d, y.n);
 	}
-#endif
-	for (; i < limbs; i++) {
-		dlimb t = (dlimb)limb_at(p, nb, i) * m + c;
-		put_limb(o, i, (limb)t);
-		c = (limb)(t >> LB);
-	}
-	put_limb(o, limbs, c);
-	return out_done(o, (a->data[0] != 0) != (n < 0));
-#else
-	num x = load(a), y = ni64(n);
-	num z = nmul(&x, &y);
+	z.neg = x.neg != (n < 0);
 	nfree(&x);
-	nfree(&y);
 	return store(&z);
-#endif
 }
 
 // add_int_fn(a, n, sub): a + n, or a - n.
 static ak_val add_int_fn(ak_val *args, uint32_t nargs) {
 	AK_UNUSED(nargs);
-	const ak_bytes *a = BYTES(0);
+	num x = load(BYTES(0));
 	int64_t n = args[1].i;
 	bool sub = args[2].i != 0;
 	// n's (or -n's) sign and magnitude.
 	uint64_t u = n < 0 ? 0 - (uint64_t)n : (uint64_t)n;
-	bool vneg = u && ((n < 0) != sub);
-#if BIG_FAST
-	size_t nb = a && a->len > 1 ? a->len - 1 : 0;
-	bool aneg = nb && a->data[0];
-	if (!u) return (ak_val){.p = ak_bytes_new(nb ? a->data : NULL, nb ? a->len : 0)};
-	const uint8_t *p = nb ? a->data + 1 : NULL;
-	size_t limbs = (nb + LBYTES - 1) / LBYTES;
-	if (!nb || aneg == vneg) {
-		// The magnitudes add.
-		ak_bytes *o = out_new(limbs + 1);
-		limb c = u;
-		for (size_t i = 0; i < limbs; i++) {
-			limb x = limb_at(p, nb, i), s = x + c;
-			c = s < c;
-			put_limb(o, i, s);
-		}
-		put_limb(o, limbs, c);
-		return out_done(o, nb ? aneg : vneg);
-	}
-	limb a0 = limb_at(p, nb, 0);
-	if (limbs == 1 && a0 < u) {
-		ak_bytes *o = out_new(1);
-		put_limb(o, 0, u - a0);
-		return out_done(o, vneg);
-	}
-	// |a| >= |n|: |a| - |n|, a's sign.
-	ak_bytes *o = out_new(limbs);
-	limb b = u;
-	for (size_t i = 0; i < limbs; i++) {
-		limb x = limb_at(p, nb, i);
-		put_limb(o, i, x - b);
-		b = x < b;
-	}
-	return out_done(o, aneg);
-#else
-	num x = load(a), y = nu64(u);
-	y.neg = vneg;
+	limb w[64 / LB];
+	num y = nview(w, u, u && (n < 0) != sub);
 	num z = nadd(&x, &y);
 	nfree(&x);
-	nfree(&y);
 	return store(&z);
-#endif
 }
 
 // quo_int_fn(a, n): a / n, toward zero.
 static ak_val quo_int_fn(ak_val *args, uint32_t nargs) {
 	AK_UNUSED(nargs);
-	const ak_bytes *a = BYTES(0);
 	int64_t n = args[1].i;
 	if (!n) {
 		ak_throw_msg("division by zero");
 		return (ak_val){0};
 	}
-#if BIG_FAST
-	size_t nb = a && a->len > 1 ? a->len - 1 : 0;
-	if (!nb) return (ak_val){.p = ak_bytes_new(NULL, 0)};
-	const uint8_t *p = a->data + 1;
+	num x = load(BYTES(0));
 	uint64_t m = n < 0 ? 0 - (uint64_t)n : (uint64_t)n;
-	size_t limbs = (nb + LBYTES - 1) / LBYTES;
-	ak_bytes *o = out_new(limbs);
-	unsigned sh = (unsigned)clz(m);
-	limb dn = m << sh, v = recip(dn), r = sh ? limb_at(p, nb, limbs - 1) >> (LB - sh) : 0;
-	for (size_t i = limbs; i-- > 0;) {
-		limb lo = limb_at(p, nb, i) << sh | (sh && i ? limb_at(p, nb, i - 1) >> (LB - sh) : 0);
-		put_limb(o, i, div_pre(&r, r, lo, dn, v));
+	num q;
+	if (m <= LMAX) {
+		q = nnew_raw(x.n);
+		divmod_1(q.d, x.d, x.n, (limb)m);
+		q.neg = x.neg != (n < 0);
+	} else {
+		limb w[64 / LB];
+		num y = nview(w, m, n < 0);
+		ndivmod(&x, &y, &q, NULL);
 	}
-	return out_done(o, (a->data[0] != 0) != (n < 0));
-#else
-	num x = load(a), y = ni64(n), q;
-	ndivmod(&x, &y, &q, NULL);
 	nfree(&x);
-	nfree(&y);
 	return store(&q);
-#endif
 }
 
 static ak_val add_fn(ak_val *args, uint32_t n) {
@@ -2276,21 +2275,26 @@ static ak_val pow_fn(ak_val *args, uint32_t n) {
 		too_big(MAX_LIMBS + 1);
 		return (ak_val){0};
 	}
-	num z = nu64(1);
-	num b = ncopy(&a);
-	for (uint64_t k = (uint64_t)e;;) {
-		if (k & 1) {
-			num t = nmul(&z, &b);
+	// Left to right over e's bits: a square each, and a product by a
+	// itself for a bit that's set, so a small base's products are by a
+	// limb (3^200000: squares and multiplies by 3), where right to left
+	// multiplies by its own growing powers.
+	num z = ncopy(&a);
+	z.neg = false;
+	num m = nneg(&a);
+	m.neg = false;
+	int top = 63;
+	while (!((uint64_t)e >> top & 1)) top--;
+	for (int i = top - 1; i >= 0 && !ak_error_pending(); i--) {
+		num t = nmul(&z, &z);
+		nfree(&z);
+		z = t;
+		if ((uint64_t)e >> i & 1) {
+			t = m.n == 1 ? nmul_limb(&z, m.d[0], false) : nmul(&z, &m);
 			nfree(&z);
 			z = t;
 		}
-		k >>= 1;
-		if (!k) break;
-		num t = nmul(&b, &b);
-		nfree(&b);
-		b = t;
 	}
-	nfree(&b);
 	z.neg = a.neg && (e & 1) && z.n;
 	nfree(&a);
 	if (ak_error_pending()) {

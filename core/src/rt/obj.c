@@ -61,6 +61,13 @@ void *ak_obj_new(ak_tag tag, size_t size) {
 	return o;
 }
 
+void *ak_obj_new_raw(ak_tag tag, size_t size) {
+	ak_obj_count(1);
+	ak_obj *o = small(tag, size) ? ak_alloc_small_raw(size) : ak_alloc_raw(size);
+	*o = (ak_obj){.rc = 1, .tag = (uint8_t)tag};
+	return o;
+}
+
 void ak_make_immortal(void *p) {
 	if (!p) return;
 	ak_obj *o = p;

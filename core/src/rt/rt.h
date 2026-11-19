@@ -208,7 +208,8 @@ static inline void ak_retain_val(ak_val v, ak_kind k) {
 // may change the object in place.
 static inline bool ak_unique(const void *p) { return ((const ak_obj *)p)->rc == 1; }
 
-void *ak_obj_new(ak_tag tag, size_t size);  // rc 1, zeroed past the header
+void *ak_obj_new(ak_tag tag, size_t size);      // rc 1, zeroed past the header
+void *ak_obj_new_raw(ak_tag tag, size_t size);  // rc 1, the rest the caller's to write
 void ak_make_immortal(void *p);
 
 // ---- Shapes: the layout of a struct, a tuple or an enum's cases ----
@@ -476,7 +477,8 @@ typedef struct ak_bytes {
 	uint8_t data[];
 } ak_bytes;
 
-ak_bytes *ak_bytes_new(const void *p, size_t n);  // p NULL: n bytes, uninitialized
+ak_bytes *ak_bytes_new(const void *p, size_t n);  // p NULL: n zero bytes
+ak_bytes *ak_bytes_raw(size_t n);                 // n bytes the caller writes whole
 
 // ---- Arrays ----
 

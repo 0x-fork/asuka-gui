@@ -42,14 +42,15 @@ import std/i18n
 /// operators; compare them with <, <=, > and >=.
 pub struct BigInt {
   // How the number is kept: empty for 0, else a sign byte (1 when
-  // negative) and the magnitude's bytes, least significant first, the
-  // last not 0. toBytes gives bytes to send or store.
+  // negative), three zero bytes, and the magnitude's 64-bit words,
+  // little-endian, least significant first, the last not 0
+  // (core/src/std/bigint.c). toBytes gives bytes to send or store.
   private data: bytes
 
   /// 0.
   let zero = BigInt(data: bytes())
   /// 1.
-  let one = BigInt(data: bytes([0, 1]))
+  let one = BigInt(data: bytes([0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]))
 
   /// The int n as a BigInt: BigInt.of(42).
   static fn of(n: int) -> BigInt = BigInt(data: bigFromInt(n))

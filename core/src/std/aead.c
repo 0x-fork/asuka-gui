@@ -98,7 +98,7 @@ static ak_val seal(ak_val *args, uint32_t n) {
 	const ak_bytes *key = BYTES(1), *nonce = BYTES(2), *pt = BYTES(3), *ad = BYTES(4);
 	if (c < XCHACHA || c > AES128 || len(key) != key_size(c) || len(nonce) != nonce_size(c)) return (ak_val){.p = NULL};
 	size_t m = len(pt);
-	ak_bytes *out = ak_bytes_new(NULL, m + 16);
+	ak_bytes *out = ak_bytes_raw(m + 16);  // written whole
 	uint8_t *tag = out->data + m;
 	switch (c) {
 	case XCHACHA:
@@ -122,7 +122,7 @@ static ak_val open_fn(ak_val *args, uint32_t n) {
 	size_t m = len(ct) - 16;
 	uint8_t tag[16];
 	memcpy(tag, data(ct) + m, 16);
-	ak_bytes *out = ak_bytes_new(NULL, m);
+	ak_bytes *out = ak_bytes_raw(m);  // written whole (or wiped and released)
 	bool ok;
 	switch (c) {
 	case XCHACHA:

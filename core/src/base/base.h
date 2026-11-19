@@ -84,6 +84,11 @@ void ak_free(void *p);
 #define AK_SMALL_MAX 256
 void *ak_alloc_small(size_t n);  // zeroed
 void ak_free_small(void *p, size_t n);
+// ak_alloc_raw and ak_alloc_small_raw are ak_alloc and ak_alloc_small
+// not zeroed: for a block its maker writes whole before anything reads
+// it (a large output's clearing is a pass over it of its own).
+void *ak_alloc_raw(size_t n);
+void *ak_alloc_small_raw(size_t n);
 // ak_alloc_grown reports whether the calling thread's allocator holds
 // much more than when it last trimmed; ak_alloc_trim gives back to the
 // system what it holds that's free. A thread that goes quiet after work

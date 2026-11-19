@@ -80,6 +80,18 @@ void ak_free_small(void *p, size_t n) {
 	free(p);
 }
 
+void *ak_alloc_raw(size_t n) {
+	COUNT(n);
+	void *p = malloc(n ? n : 1);
+	if (!p) ak_panic("out of memory (%zu bytes)", n);
+	return p;
+}
+
+void *ak_alloc_small_raw(size_t n) {
+	AK_ASSERT(n <= AK_SMALL_MAX);
+	return ak_alloc_raw(n);
+}
+
 bool ak_alloc_grown(void) { return false; }
 void ak_alloc_trim(void) {}
 
@@ -181,6 +193,21 @@ void *ak_alloc_small(size_t n) {
 void ak_free_small(void *p, size_t n) {
 	AK_UNUSED(n);
 	mi_free_small(p);
+}
+
+void *ak_alloc_raw(size_t n) {
+	COUNT(n);
+	void *p = mi_malloc(n);
+	if (AK_UNLIKELY(!p)) oom(n);
+	return p;
+}
+
+void *ak_alloc_small_raw(size_t n) {
+	AK_ASSERT(n <= AK_SMALL_MAX);
+	COUNT(n);
+	void *p = mi_malloc_small(n);
+	if (AK_UNLIKELY(!p)) oom(n);
+	return p;
 }
 
 // Giving memory back. A thread's pages whose blocks are all freed stay
