@@ -78,6 +78,11 @@ func (g *gen) moveOp(name string, in insn) bool {
 	case "KSTR":
 		g.w("%s", g.setref(a[0], fmt.Sprintf("M->strings[%d]", a[1])))
 	case "GGET":
+		if g.pl.borrow[g.k] {
+			// A stable global's (places.go): borrowed.
+			g.w("%s v%d = M->globals[%d].p;", g.setref(a[0], "NULL"), a[0], a[1])
+			break
+		}
 		if bc.Kind(a[2]) == bc.KRef {
 			g.w("%s", g.setref(a[0], fmt.Sprintf("ak_retain(M->globals[%d].p)", a[1])))
 		} else {
@@ -958,6 +963,15 @@ var intrinsics = map[string]intrinsic{
 	"math.clampf": {[]bc.Kind{bc.KFloat, bc.KFloat, bc.KFloat}, bc.KFloat, "fmin(fmax(%[1]s, %[2]s), %[3]s)"},
 	"math.mini":   {[]bc.Kind{bc.KInt, bc.KInt}, bc.KInt, "(%[1]s < %[2]s ? %[1]s : %[2]s)"},
 	"math.maxi":   {[]bc.Kind{bc.KInt, bc.KInt}, bc.KInt, "(%[1]s > %[2]s ? %[1]s : %[2]s)"},
+	// Strings' that throw nothing: their length a field, the others the
+	// runtime's own functions called directly, without an argument block
+	// or a test of the thread's pending error after.
+	"str.bytes_len":  {[]bc.Kind{bc.KRef}, bc.KInt, "(int64_t)((const ak_str *)%[1]s)->len"},
+	"str.equals":     {[]bc.Kind{bc.KRef, bc.KRef}, bc.KBool, "ak_str_eq(%[1]s, %[2]s)"},
+	"str.compare":    {[]bc.Kind{bc.KRef, bc.KRef}, bc.KInt, "(int64_t)ak_str_cmp(%[1]s, %[2]s)"},
+	"str.contains":   {[]bc.Kind{bc.KRef, bc.KRef}, bc.KBool, "ak_str_contains(%[1]s, %[2]s)"},
+	"str.has_prefix": {[]bc.Kind{bc.KRef, bc.KRef}, bc.KBool, "ak_str_has_prefix(%[1]s, %[2]s)"},
+	"str.has_suffix": {[]bc.Kind{bc.KRef, bc.KRef}, bc.KBool, "ak_str_has_suffix(%[1]s, %[2]s)"},
 }
 
 // intrinsic writes a CALLB of an intrinsic as its C, true when it is

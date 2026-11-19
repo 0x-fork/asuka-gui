@@ -59,3 +59,30 @@ fn main() { print("{add(1, 2)}") }
 		t.Errorf("an add of any ints not checked:\n%s", c)
 	}
 }
+// A file's let (a global only the module's init writes) is read borrowed,
+// not retained and released; a var, which a function may change, is
+// retained.
+func TestStableGlobalBorrowed(t *testing.T) {
+	src := `
+let names = ["ann", "bob", "cy"]
+var seen = ["x"]
+
+fn pick(i: int) -> int = names[i % 3].byteCount() + seen[0].byteCount()
+
+fn main() {
+  seen = ["yy"]
+  print("{pick(1)}")
+}
+`
+	c := cOf(t, src, "pick")
+	if !regexp.MustCompile(`v\d+ = M->globals\[\d+\]\.p;`).MatchString(c) {
+		t.Errorf("the let isn't borrowed:\n%s", c)
+	}
+	if !strings.Contains(c, "ak_retain(M->globals[") {
+		t.Errorf("the var isn't retained:\n%s", c)
+	}
+	// byteCount is the string's length, read in place.
+	if !strings.Contains(c, "->len") || strings.Contains(c, "M->builtins[") {
+		t.Errorf("byteCount not read in place:\n%s", c)
+	}
+}
