@@ -279,10 +279,11 @@ native(crypto_aead) fn openBytes(cipher: int, key: bytes, nonce: bytes, cipherte
 /// ($argon2id$v=19$m=65536,t=3,p=4$salt$hash) holding a 16-byte salt from
 /// the system's randomness, the parameters and the 32-byte hash, which
 /// verifyPassword reads. memory is in KiB (64 MiB unless the call says),
-/// iterations the passes over it, parallelism its lanes: RFC 9106's
-/// second recommendation, which takes a fraction of a second; OWASP's
-/// least is memory: 19456, iterations: 2, parallelism: 1. It runs on
-/// another thread, so the app doesn't wait. Parameters out of range throw
+/// iterations the passes over it, parallelism its lanes (hashed at once,
+/// a thread each, as far as the device has cores): RFC 9106's second
+/// recommendation, which takes a fraction of a second; OWASP's least is
+/// memory: 19456, iterations: 2, parallelism: 1. It runs on another
+/// thread, so the app doesn't wait. Parameters out of range throw
 /// invalidArgument, as does memory the device can't give.
 ///
 ///   let stored = try await crypto.hashPassword(password)
