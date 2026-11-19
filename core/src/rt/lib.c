@@ -844,6 +844,10 @@ static ak_val str_from_float_digits(ak_val *args, uint32_t n) {
 		int fw = ak_float_fixed(fb + k, fabs(x), (int)d);
 		if (fw >= 0 && fw < AK_FLOAT_FMT_MAX) RET_P(ak_str_new(fb, k + (size_t)fw));
 	}
+	// A NaN's sign is the machine's (x86 makes them negative, arm64 not,
+	// a constant the C compiler folded neither): no sign, the same text
+	// everywhere, as interpolation writes a NaN without one.
+	if (x != x) RET_P(ak_str_new("nan", 3));
 	int w = snprintf(buf, sizeof buf, "%.*f", (int)d, A(0).f);
 	if (w < 0) RET_P(ak_str_empty());
 	if ((size_t)w < sizeof buf) RET_P(ak_str_new(buf, (size_t)w));

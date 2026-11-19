@@ -388,6 +388,7 @@ static void huff_lengths(const uint32_t *freq, unsigned n, unsigned limit, uint8
 	}
 	for (unsigned s = 0; m < 2 && s < n; s++)
 		if (!freq[s]) key[m++] = 1u << 9 | s;
+	if (m < 2) return;  // n < 2: no code (every caller has more)
 	qsort(key, m, sizeof key[0], cmp_u32);
 	for (unsigned i = 0; i < m; i++) a[i] = key[i] >> 9;
 	// Moffat and Katajainen: a[] (ascending) becomes each one's length.
