@@ -131,7 +131,7 @@ struct ak_shape {
 // ---- Strings ----
 
 typedef struct ak_str {
-	ak_obj h;       // h.flags: AK_STR_* (what's known of its bytes)
+	ak_obj h;       // h.flags: AK_STR_* (what's known of its bytes); h.aux: its room (ak_str_room)
 	uint32_t len;
 	uint32_t hash;  // 0: not computed yet
 	char data[];    // len bytes, then a NUL
@@ -144,11 +144,68 @@ typedef struct ak_str {
 // from ak_str_new(NULL, n)) does so before anything reads them.
 #define AK_STR_KNOWN 1  // AK_STR_ASCII says whether it's ASCII
 #define AK_STR_ASCII 2  // every byte below 0x80: a character a byte
+#define AK_STR_SLAB 4   // a piece of a slab (ak_pieces): h.aux is where in it, in 8 bytes
+
+// ak_str_room is how many bytes a string has room for before its NUL:
+// its length, as it's made; once it's grown in place (ak_str_append),
+// 2^h.aux - 1, its buffer a power of two that doubles as it fills.
+static inline size_t ak_str_room(const ak_str *s) {
+	return !s->h.aux || (s->h.flags & AK_STR_SLAB) ? s->len : ((size_t)1 << s->h.aux) - 1;
+}
 
 ak_str *ak_str_new(const char *s, size_t n);  // s NULL: n bytes the caller fills
+
+// Pieces: the many small strings one operation cuts a string into
+// (split, lines, fields, chars) are made one after another in slabs of
+// 16 KB, each piece a string of its own (counted, released and freed one
+// by one as any), the slab freed with its last piece: one allocation
+// for hundreds of pieces, where each would take malloc's and free's
+// tens of nanoseconds, and the pieces side by side in memory as the
+// array that holds them walks them. A piece kept alone keeps its slab:
+// 16 KB at most, not the string it was cut from (Go's substrings keep
+// all of it). A piece over AK_PIECE_MAX is a string of its own.
+// Zero is an empty builder; ak_piece makes the next piece, of n bytes
+// from s.
+typedef struct ak_pieces {
+	char *slab, *at, *end;
+	bool ascii;  // the string cut is ASCII: its pieces are
+} ak_pieces;
+#define AK_PIECE_MAX 240
+ak_str *ak_piece(ak_pieces *p, const char *s, size_t n);
+// ak_find_byte is where c first is in [p, end), or NULL: a word at a
+// time, inline, which for the short runs between separators is what a
+// call to memchr costs several times over.
+static inline const char *ak_find_byte(const char *p, const char *end, char c) {
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+	const uint64_t ones = 0x0101010101010101ull, pat = ones * (uint8_t)c;
+	while (end - p >= 8) {
+		uint64_t w;
+		memcpy(&w, p, 8);
+		w ^= pat;
+		uint64_t z = (w - ones) & ~w & (ones << 7);  // its lowest set: the first byte that's c
+		if (z) return p + (__builtin_ctzll(z) >> 3);
+		p += 8;
+	}
+#endif
+	for (; p < end; p++)
+		if (*p == c) return p;
+	return NULL;
+}
+// ak_space is the white space fields and trim cut at: ASCII's.
+extern const bool ak_space_table[256];
+static inline bool ak_space(char c) { return ak_space_table[(uint8_t)c]; }
+// ak_piece_free frees a piece (its count released): its slab, when it
+// was the last.
+void ak_piece_free(ak_str *s);
 static inline ak_str *ak_str_c(const char *s) { return ak_str_new(s, strlen(s)); }
 ak_str *ak_str_empty(void);  // immortal
 ak_str *ak_str_concat(ak_str *a, ak_str *b);
+// ak_str_append makes *s *s + t: in place when *s is its holder's alone
+// and has room, else in a buffer of twice the room (grown in place when
+// *s is unique), so a string built by appending in a loop (s += x) is
+// copied O(log n) times, as Swift's unique-reference append and Go's
+// append grow theirs. Takes *s's reference; t borrowed (*s itself too).
+void ak_str_append(ak_str **s, const ak_str *t);
 ak_str *ak_str_from_int(int64_t v);
 ak_str *ak_str_from_float(double v);  // shortest round-trip form
 // ak_float_text writes v as ak_str_from_float does into buf (32 bytes
@@ -221,6 +278,14 @@ static inline size_t ak_strb_len(const ak_strb *b) { return b->b.data ? b->b.len
 // ak_strb_buf: what b holds, all of it in b->b (moved there from small),
 // for code that reads or takes the buffer itself; b goes on taking more.
 ak_buf *ak_strb_buf(ak_strb *b);
+// ak_strs_join is the n strings at v (none: empty) one after another:
+// their lengths summed first, the result made at its size, each copied
+// into it once.
+ak_str *ak_strs_join(const ak_val *v, uint32_t n);
+// ak_strb_fmt writes v, of kind k (int, float; a string: text), by an
+// interpolation's format ("{x:>8.2f}"'s spec, n bytes): as str.fmt_int,
+// str.fmt_float and str.fmt_text do (rt/lib.c).
+void ak_strb_fmt(ak_strb *b, ak_val v, ak_kind k, const char *spec, size_t n);
 ak_str *ak_strb_finish(ak_strb *b);  // frees the builder's buffer
 void ak_strb_free(ak_strb *b);       // drops what it holds
 

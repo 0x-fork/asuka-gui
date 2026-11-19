@@ -106,7 +106,7 @@ const ak_lib_entry ak_lib_unicode[] = {
 	{NULL, NULL},
 };
 
-static bool space(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f'; }
+static bool space(char c) { return ak_space(c); }
 
 // str.replace(s, old, new, count): the first count olds (all when count
 // < 0) replaced with new.
@@ -174,11 +174,12 @@ static ak_val str_fields(ak_val *args, uint32_t n) {
 	ak_str *s = STR(0);
 	ak_arr *a = ak_arr_new(AK_K_REF, NULL, 0);
 	a->h.flags = 1;
+	ak_pieces p = {.ascii = ak_str_ascii(s)};
 	for (uint32_t i = 0; i < s->len;) {
 		while (i < s->len && space(s->data[i])) i++;
 		uint32_t j = i;
 		while (j < s->len && !space(s->data[j])) j++;
-		if (j > i) ak_arr_push(&a, (ak_val){.p = ak_str_new(s->data + i, j - i)});
+		if (j > i) ak_arr_push(&a, (ak_val){.p = ak_piece(&p, s->data + i, j - i)});
 		i = j;
 	}
 	RET_P(a);
@@ -189,19 +190,25 @@ static ak_val str_fields(ak_val *args, uint32_t n) {
 static ak_val str_lines(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	ak_str *s = STR(0);
-	ak_arr *a = ak_arr_new(AK_K_REF, NULL, 0);
+	// Its lines counted first: the array made at its size.
+	uint32_t lines = 0;
+	for (const char *q = s->data, *end = s->data + s->len; (q = memchr(q, '\n', (size_t)(end - q))); q++) lines++;
+	if (s->len && s->data[s->len - 1] != '\n') lines++;
+	ak_arr *a = ak_arr_new(AK_K_REF, NULL, lines);
 	a->h.flags = 1;
+	ak_val *v = ak_arr_vals(a);
+	ak_pieces p = {.ascii = ak_str_ascii(s)};
 	uint32_t start = 0;
 	for (const char *nl; start < s->len && (nl = memchr(s->data + start, '\n', s->len - start));) {
 		uint32_t i = (uint32_t)(nl - s->data);
 		uint32_t end = i > start && s->data[i - 1] == '\r' ? i - 1 : i;
-		ak_arr_push(&a, (ak_val){.p = ak_str_new(s->data + start, end - start)});
+		v[a->len++].p = ak_piece(&p, s->data + start, end - start);
 		start = i + 1;
 	}
 	if (start < s->len) {
 		uint32_t end = s->len;
 		if (s->data[end - 1] == '\r') end--;
-		ak_arr_push(&a, (ak_val){.p = ak_str_new(s->data + start, end - start)});
+		v[a->len++].p = ak_piece(&p, s->data + start, end - start);
 	}
 	RET_P(a);
 }

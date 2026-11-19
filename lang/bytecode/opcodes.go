@@ -111,9 +111,9 @@ var Ops = []OpDef{
 	{"ISNONE", []Operand{Reg, Reg}, "a = b is none (a reference register)"},
 
 	// Strings.
-	{"CONCAT", []Operand{Reg, Reg, Reg}, "a = b + c"},
+	{"CONCAT", []Operand{Reg, Reg, Reg}, "a = b + c; a = a + c appends to a's string in place when it holds it alone"},
 	{"TOSTR", []Operand{Reg, Reg, KindOp}, "a = the string of b, of kind k (int, float, bool; a string: retained)"},
-	{"INTERP", []Operand{Reg, Reg, Imm, Const}, "a = the concatenation of n registers from b; Strings[k] holds their kinds, one byte each (a string's kind is REF)"},
+	{"INTERP", []Operand{Reg, Reg, Imm, Const}, "a = the concatenation of n registers from b; Strings[k] holds their kinds, one byte each (a string's kind is REF), or 0x80 | the kind, its format's length and its format (\"{x:>8.2f}\"); none at all: all strings"},
 	{"LTS", []Operand{Reg, Reg, Reg}, "a = b < c, strings in byte order"},
 
 	// Control.

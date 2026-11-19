@@ -193,6 +193,11 @@ func (g *gen) valueOp(name string, in insn) bool {
 	case "ISNONE":
 		g.w("%s = %s == NULL;", g.ri(a[0]), g.src(a[1]))
 	case "CONCAT":
+		if a[0] == a[1] {
+			// s += x: appended in place when the string is s's alone.
+			g.w("{ ak_str *s_ = %s; ak_str_append(&s_, %s); %s = s_; }", g.rp(a[0]), g.rp(a[2]), g.rp(a[0]))
+			break
+		}
 		g.w("%s", g.setref(a[0], fmt.Sprintf("ak_str_concat(%s, %s)", g.rp(a[1]), g.rp(a[2]))))
 	case "TOSTR":
 		g.w("%s", g.setref(a[0], fmt.Sprintf("ak_op_tostr(%s, %d)", g.r(a[1]), a[2])))

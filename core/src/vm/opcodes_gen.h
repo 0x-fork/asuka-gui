@@ -53,9 +53,9 @@ enum {
 	AK_OP_EQ = 44, // reg reg reg kind: a = b == c, compared as their kind (references deeply)
 	AK_OP_NE = 45, // reg reg reg kind: a = b != c
 	AK_OP_ISNONE = 46, // reg reg: a = b is none (a reference register)
-	AK_OP_CONCAT = 47, // reg reg reg: a = b + c
+	AK_OP_CONCAT = 47, // reg reg reg: a = b + c; a = a + c appends to a's string in place when it holds it alone
 	AK_OP_TOSTR = 48, // reg reg kind: a = the string of b, of kind k (int, float, bool; a string: retained)
-	AK_OP_INTERP = 49, // reg reg imm const: a = the concatenation of n registers from b; Strings[k] holds their kinds, one byte each (a string's kind is REF)
+	AK_OP_INTERP = 49, // reg reg imm const: a = the concatenation of n registers from b; Strings[k] holds their kinds, one byte each (a string's kind is REF), or 0x80 | the kind, its format's length and its format ("{x:>8.2f}"); none at all: all strings
 	AK_OP_LTS = 50, // reg reg reg: a = b < c, strings in byte order
 	AK_OP_JMP = 51, // off: jumps
 	AK_OP_JT = 52, // reg off: jumps when a is true

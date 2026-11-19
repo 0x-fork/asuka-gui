@@ -400,7 +400,11 @@ next:
 	OP(NE) R[a[0]].i = !ak_val_eq(R[a[1]], R[a[2]], (ak_kind)a[3]); NEXT();
 	OP(ISNONE) R[a[0]].i = R[a[1]].p == NULL; NEXT();
 
-	OP(CONCAT) setref(R, a[0], ak_str_concat(R[a[1]].p, R[a[2]].p)); NEXT();
+	OP(CONCAT)
+		// a = a + c (s += x) appends in place when a's string is its alone.
+		if (a[0] == a[1]) ak_str_append((ak_str **)&R[a[0]].p, R[a[2]].p);
+		else setref(R, a[0], ak_str_concat(R[a[1]].p, R[a[2]].p));
+		NEXT();
 	OP(TOSTR) setref(R, a[0], ak_op_tostr(R[a[1]], a[2])); NEXT();
 	OP(INTERP) setref(R, a[0], ak_op_interp(R, a[1], a[2], M->strings[off32(a + 3)])); NEXT();
 	OP(LTS) R[a[0]].i = ak_str_cmp(R[a[1]].p, R[a[2]].p) < 0; NEXT();

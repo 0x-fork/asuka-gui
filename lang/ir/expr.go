@@ -1140,10 +1140,102 @@ func (b *fb) binary(e *syntax.BinaryExpr, dst int) int {
 		}
 		return b.copyTo(b.callB("arr.range", bc.KRef, from, to), dst)
 	}
+	if parts := b.stringChain(e); len(parts) > 2 {
+		// a + b + c: one string made of them all, not one a +.
+		if len(parts) <= literalChunk {
+			// Each computed into its place in INTERP's block.
+			ks := make([]bc.Kind, len(parts))
+			for i := range ks {
+				ks[i] = bc.KRef
+			}
+			blk := b.regs(ks)
+			for i, p := range parts {
+				b.move(blk+i, b.value(p, blk+i))
+			}
+			r := b.out(dst, bc.KRef)
+			b.emit(op("INTERP"), r, blk, len(parts), b.l.str("")) // no kinds: all strings
+			b.releaseRegs(blk, ks)
+			return r
+		}
+		vals := make([]int, len(parts))
+		for i, p := range parts {
+			vals[i] = b.value(p, -1)
+		}
+		return b.joinStrings(vals, dst)
+	}
 	xt, yt := b.typeOf(e.X), b.typeOf(e.Y)
 	x := b.value(e.X, -1)
 	y := b.value(e.Y, -1)
 	return b.binop(e.Op, x, y, xt, yt, b.rawType(e), dst)
+}
+
+// stringChain is the operands of a chain of string +s (a + b + c, as
+// it's grouped: (a + b) + c, or with any parentheses), in order; nil
+// when x isn't a string +.
+func (b *fb) stringChain(x syntax.Expr) []syntax.Expr {
+	e, ok := x.(*syntax.BinaryExpr)
+	if !ok || e.Op != syntax.ADD || b.l.info.Operators[e] != nil || b.rawType(e) != check.String {
+		return nil
+	}
+	var parts []syntax.Expr
+	var walk func(x syntax.Expr)
+	walk = func(x syntax.Expr) {
+		for {
+			p, ok := x.(*syntax.ParenExpr)
+			if !ok {
+				break
+			}
+			x = p.X
+		}
+		if e, ok := x.(*syntax.BinaryExpr); ok && e.Op == syntax.ADD && b.l.info.Operators[e] == nil && b.rawType(e) == check.String {
+			walk(e.X)
+			walk(e.Y)
+			return
+		}
+		parts = append(parts, x)
+	}
+	walk(e)
+	return parts
+}
+
+// joinStrings is the strings in vals, one after another, in one string
+// (an INTERP of them: one allocation, literalChunk of them at a time).
+func (b *fb) joinStrings(vals []int, dst int) int {
+	acc := -1
+	for len(vals) > 0 {
+		n := min(len(vals), literalChunk)
+		ks := make([]bc.Kind, n)
+		for i := range ks {
+			ks[i] = bc.KRef
+		}
+		blk := b.regs(ks)
+		for i, v := range vals[:n] {
+			b.move(blk+i, v)
+		}
+		r := b.temp(bc.KRef)
+		b.emit(op("INTERP"), r, blk, n, b.l.str("")) // no kinds: all strings
+		b.releaseRegs(blk, ks)
+		vals = vals[n:]
+		if acc >= 0 {
+			t := b.temp(bc.KRef)
+			b.emit(op("CONCAT"), t, acc, r)
+			r = t
+		}
+		acc = r
+	}
+	return b.copyTo(acc, dst)
+}
+
+// mentions reports whether x reads the var v anywhere in it.
+func (b *fb) mentions(x syntax.Node, v *check.Var) bool {
+	found := false
+	syntax.Inspect(x, func(n syntax.Node) bool {
+		if id, ok := n.(*syntax.Ident); ok && b.l.info.Uses[id] == v {
+			found = true
+		}
+		return !found
+	})
+	return found
 }
 
 // intOps are the int operators' instructions.

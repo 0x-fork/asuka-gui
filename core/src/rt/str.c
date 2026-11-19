@@ -13,10 +13,157 @@ ak_str *ak_str_new(const char *s, size_t n) {
 	return o;
 }
 
+// ---- Pieces (rt.h) ----
+//
+// A slab: its count of live pieces, then pieces, 8-byte aligned, each
+// one's h.aux its offset from the slab's start in 8 bytes (a slab is
+// 16 KB: 11 bits). Under AddressSanitizer each piece is a string of its
+// own, so a use after its free is still caught.
+
+#if defined(__SANITIZE_ADDRESS__)
+#define NO_SLABS 1
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer) || __has_feature(memory_sanitizer)
+#define NO_SLABS 1
+#endif
+#endif
+
+#define SLAB (16 << 10)
+
+const bool ak_space_table[256] = {[' '] = true, ['\t'] = true, ['\n'] = true, ['\r'] = true, ['\v'] = true, ['\f'] = true};
+
+// copy_small copies n bytes (n <= AK_PIECE_MAX) without a call for the
+// few a word or two holds: two overlapping loads and stores, as
+// memcpy's own small cases do, reading and writing nothing outside.
+static inline void copy_small(char *d, const char *s, size_t n) {
+	if (n >= 8 && n <= 16) {
+		uint64_t a, b;
+		memcpy(&a, s, 8);
+		memcpy(&b, s + n - 8, 8);
+		memcpy(d, &a, 8);
+		memcpy(d + n - 8, &b, 8);
+	} else if (n >= 4 && n < 8) {
+		uint32_t a, b;
+		memcpy(&a, s, 4);
+		memcpy(&b, s + n - 4, 4);
+		memcpy(d, &a, 4);
+		memcpy(d + n - 4, &b, 4);
+	} else if (n < 4) {
+		for (size_t i = 0; i < n; i++) d[i] = s[i];
+	} else {
+		memcpy(d, s, n);
+	}
+}
+
+ak_str *ak_piece(ak_pieces *p, const char *s, size_t n) {
+	if (n == 0) return ak_str_empty();
+#if NO_SLABS
+	bool small = false;
+#else
+	bool small = n <= AK_PIECE_MAX;
+#endif
+	ak_str *o;
+	if (!small) {
+		o = ak_str_new(s, n);
+	} else {
+		size_t need = (sizeof(ak_str) + n + 1 + 7) & ~(size_t)7;
+		if (!p->slab || need > (size_t)(p->end - p->at)) {
+			p->slab = ak_realloc(NULL, SLAB);  // not zeroed: each piece is written whole
+			*(uint32_t *)p->slab = 0;
+			p->at = p->slab + 8;
+			p->end = p->slab + SLAB;
+		}
+		o = (ak_str *)p->at;
+		(*(uint32_t *)p->slab)++;
+		o->h = (ak_obj){.rc = 1, .tag = AK_TAG_STR, .flags = AK_STR_SLAB, .aux = (uint16_t)((p->at - p->slab) >> 3)};
+		o->len = (uint32_t)n;
+		o->hash = 0;
+		copy_small(o->data, s, n);
+		o->data[n] = 0;
+		p->at += need;
+		ak_obj_count(1);
+	}
+	if (p->ascii) o->h.flags |= AK_STR_KNOWN | AK_STR_ASCII;
+	return o;
+}
+
+void ak_piece_free(ak_str *s) {
+	char *slab = (char *)s - ((size_t)s->h.aux << 3);
+	if (--*(uint32_t *)slab == 0) ak_free(slab);
+}
+
 ak_str *ak_str_empty(void) {
 	static void *e;
 	ak_str *s = ak_constant_get(&e);
 	return s ? s : ak_constant_put(&e, ak_str_new("", 0));
+}
+
+// grown makes a string with room for n bytes (a power of two, less its
+// NUL: ak_str_room) holding s's len.
+static ak_str *grown(const ak_str *s, size_t n) {
+	if (n >= UINT32_MAX) ak_panic("out of memory (a string of %zu bytes)", n);
+	unsigned k = 4;
+	while (((size_t)1 << k) < n + 1) k++;
+	ak_str *o = ak_obj_new(AK_TAG_STR, sizeof(ak_str) + ((size_t)1 << k));
+	o->h.aux = (uint16_t)k;
+	o->h.flags = s->h.flags & (AK_STR_KNOWN | AK_STR_ASCII);
+	o->len = s->len;
+	memcpy(o->data, s->data, s->len);
+	return o;
+}
+
+void ak_str_append(ak_str **sp, const ak_str *t) {
+	ak_str *s = *sp;
+	uint32_t tn = t->len;
+	if (tn == 0) return;
+	size_t n = (size_t)s->len + tn;
+	if (!ak_unique(s) || (s->h.flags & AK_STR_SLAB)) {
+		// Shared (or a slab's piece): a copy, with room to grow.
+		ak_str *o = grown(s, n);
+		if (t == s) t = o;  // s + s: s's bytes, which o holds
+		ak_release(s);
+		*sp = s = o;
+	} else if (n > ak_str_room(s)) {
+		// Full: its buffer twice as big, past what's needed.
+		if (n >= UINT32_MAX) ak_panic("out of memory (a string of %zu bytes)", n);
+		unsigned k = s->h.aux > 4 ? s->h.aux : 4;
+		while (((size_t)1 << k) < n + 1) k++;
+		bool self = t == s;
+		s = ak_realloc(s, sizeof(ak_str) + ((size_t)1 << k));
+		s->h.aux = (uint16_t)k;
+		if (self) t = s;
+		*sp = s;
+	}
+	memcpy(s->data + s->len, t->data, tn);
+	s->len = (uint32_t)n;
+	s->data[n] = 0;
+	s->hash = 0;
+	if ((s->h.flags & AK_STR_KNOWN) && (t->h.flags & AK_STR_KNOWN) != 0) s->h.flags = (uint8_t)(AK_STR_KNOWN | (s->h.flags & t->h.flags & AK_STR_ASCII));
+	else s->h.flags = 0;
+}
+
+ak_str *ak_strs_join(const ak_val *v, uint32_t n) {
+	uint64_t total = 0;
+	uint8_t known = AK_STR_KNOWN | AK_STR_ASCII;
+	for (uint32_t i = 0; i < n; i++) {
+		const ak_str *s = v[i].p;
+		if (!s) continue;
+		total += s->len;
+		known &= s->h.flags;
+	}
+	if (total == 0) return ak_str_empty();
+	if (total >= UINT32_MAX) ak_panic("out of memory (a string of %llu bytes)", (unsigned long long)total);
+	ak_str *o = ak_str_new(NULL, (size_t)total);
+	char *w = o->data;
+	for (uint32_t i = 0; i < n; i++) {
+		const ak_str *s = v[i].p;
+		if (!s || !s->len) continue;
+		if (s->len <= 16) copy_small(w, s->data, s->len);
+		else memcpy(w, s->data, s->len);
+		w += s->len;
+	}
+	if (known & AK_STR_KNOWN) o->h.flags = known & (AK_STR_KNOWN | AK_STR_ASCII);
+	return o;
 }
 
 ak_str *ak_str_concat(ak_str *a, ak_str *b) {
@@ -863,7 +1010,7 @@ static bool find_fold(const ak_str *s, const ak_str *sub, int where) {
 bool ak_str_has_suffix_fold(const ak_str *s, const ak_str *p) { return find_fold(s, p, 2); }
 bool ak_str_contains_fold(const ak_str *s, const ak_str *sub) { return find_fold(s, sub, 0); }
 
-static bool is_space(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f'; }
+static bool is_space(char c) { return ak_space(c); }
 
 ak_str *ak_str_trim(ak_str *s) {
 	uint32_t a = 0, b = s->len;
@@ -903,38 +1050,76 @@ ak_str *ak_str_replace_n(ak_str *s, const ak_str *old, const ak_str *new_, int64
 
 ak_str *ak_str_replace(ak_str *s, const ak_str *old, const ak_str *new_) { return ak_str_replace_n(s, old, new_, -1); }
 
+// ak_mem_count is how many times needle (nn bytes, not none) is in h,
+// not overlapping, as ak_mem_find finds them one after another.
+static size_t mem_count(const char *h, size_t hn, const char *needle, size_t nn) {
+	size_t c = 0;
+	if (nn == 1) {
+		for (size_t i = 0; i < hn; i++) c += h[i] == *needle;  // vectorized
+		return c;
+	}
+	for (size_t at = 0;;) {
+		int64_t i = ak_mem_find(h + at, hn - at, needle, nn);
+		if (i < 0) return c;
+		c++;
+		at += (size_t)i + nn;
+	}
+}
+
+// The parts of a split, its array made at its size (the separators
+// counted first, as Go's Split does) and its pieces in slabs.
 ak_arr *ak_str_split_n(ak_str *s, const ak_str *sep, int64_t count) {
-	ak_arr *a = ak_arr_new(AK_K_REF, NULL, 4);
-	a->h.flags = 1;
+	ak_pieces p = {.ascii = ak_str_ascii(s)};
 	if (sep->len == 0) {
 		// Split into characters.
-		if (ak_str_ascii(s)) {
-			ak_arr_mut(&a);
-			for (uint32_t i = 0; i < s->len; i++) {
-				ak_str *c = ak_str_new(s->data + i, 1);
-				c->h.flags = AK_STR_KNOWN | AK_STR_ASCII;
-				ak_arr_push(&a, (ak_val){.p = c});
-			}
+		ak_arr *a = ak_arr_new(AK_K_REF, NULL, p.ascii ? s->len : 4);
+		a->h.flags = 1;
+		ak_val *v = ak_arr_vals(a);
+		if (p.ascii) {
+			for (uint32_t i = 0; i < s->len; i++) v[i].p = ak_piece(&p, s->data + i, 1);
+			a->len = s->len;
 			return a;
 		}
 		uint32_t i = 0;
 		while (i < s->len) {
 			uint32_t j = i + 1;
 			while (j < s->len && ((uint8_t)s->data[j] & 0xc0) == 0x80) j++;
-			ak_arr_push(&a, (ak_val){.p = ak_str_new(s->data + i, j - i)});
+			ak_arr_push(&a, (ak_val){.p = ak_piece(&p, s->data + i, j - i)});
 			i = j;
 		}
 		return a;
 	}
-	if (count == 0) return a;
+	if (count == 0) {
+		ak_arr *a = ak_arr_new(AK_K_REF, NULL, 0);
+		a->h.flags = 1;
+		return a;
+	}
+	size_t parts = mem_count(s->data, s->len, sep->data, sep->len) + 1;
+	if (count > 0 && (uint64_t)count < parts) parts = (size_t)count;
+	if (parts > UINT32_MAX) parts = UINT32_MAX;
+	ak_arr *a = ak_arr_new(AK_K_REF, NULL, (uint32_t)parts);
+	a->h.flags = 1;
+	ak_val *v = ak_arr_vals(a);
 	size_t start = 0;
-	while (count < 0 || a->len + 1 < count) {
+	uint32_t k = 0;
+	if (sep->len == 1) {
+		const char *end = s->data + s->len;
+		for (const char *q = s->data; k + 1 < parts;) {
+			const char *at = ak_find_byte(q, end, sep->data[0]);
+			if (!at) break;
+			v[k++].p = ak_piece(&p, q, (size_t)(at - q));
+			q = at + 1;
+			start = (size_t)(q - s->data);
+		}
+	}
+	while (k + 1 < parts) {
 		int64_t at = ak_mem_find(s->data + start, s->len - start, sep->data, sep->len);
 		if (at < 0) break;
-		ak_arr_push(&a, (ak_val){.p = ak_str_new(s->data + start, (size_t)at)});
+		v[k++].p = ak_piece(&p, s->data + start, (size_t)at);
 		start += (size_t)at + sep->len;
 	}
-	ak_arr_push(&a, (ak_val){.p = ak_str_new(s->data + start, s->len - start)});
+	v[k++].p = ak_piece(&p, s->data + start, s->len - start);
+	a->len = k;
 	return a;
 }
 

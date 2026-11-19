@@ -6,10 +6,16 @@
 int64_t ak_obj_live;
 
 // small reports whether an object of tag is a small block (ak_alloc_small):
-// one whose size is fixed as it's made, and known from it as it's freed
-// (obj_size).
+// one whose size is known from it as it's freed (obj_size). A string's
+// or bytes' is their length's (a string grown in place, its room's:
+// ak_str_room); one whose length shrinks after it's made (bytes decoded
+// into room for the most they could take) is freed as a smaller block
+// than it is, which the cache hands out for one of that size: room to
+// spare, never too little.
 static inline bool small(ak_tag tag, size_t size) {
 	switch (tag) {
+	case AK_TAG_STR:
+	case AK_TAG_BYTES:
 	case AK_TAG_ARR:
 	case AK_TAG_MAP:
 	case AK_TAG_STRUCT:
@@ -25,6 +31,8 @@ static inline bool small(ak_tag tag, size_t size) {
 // obj_size is what o was made with, for those of its tags small says.
 static inline size_t obj_size(const ak_obj *o) {
 	switch ((ak_tag)o->tag) {
+	case AK_TAG_STR: return sizeof(ak_str) + ak_str_room((const ak_str *)o) + 1;
+	case AK_TAG_BYTES: return sizeof(ak_bytes) + ((const ak_bytes *)o)->len;
 	case AK_TAG_ARR: return sizeof(ak_arr);
 	case AK_TAG_MAP: return sizeof(ak_map);
 	case AK_TAG_STRUCT: return sizeof(ak_struct) + sizeof(ak_val) * ((const ak_struct *)o)->shape->nfields;
@@ -40,6 +48,10 @@ static inline size_t obj_size(const ak_obj *o) {
 
 // obj_free frees o's own memory.
 static inline void obj_free(ak_obj *o) {
+	if (o->tag == AK_TAG_STR && (o->flags & AK_STR_SLAB)) {
+		ak_piece_free((ak_str *)o);
+		return;
+	}
 	size_t n = obj_size(o);
 	if (n <= AK_SMALL_MAX) ak_free_small(o, n);
 	else ak_free(o);
@@ -283,7 +295,7 @@ static inline bool is_leaf(const ak_obj *o) { return o->tag == AK_TAG_STR || o->
 // free_leaf destroys a string or bytes, which hold nothing.
 static inline void free_leaf(ak_obj *o) {
 	ak_obj_count(-1);
-	ak_free(o);
+	obj_free(o);
 }
 
 // ak_destroy frees o and releases what it holds, destroying each of
