@@ -4,6 +4,7 @@
 // core/test/testdata/css/gen_fixtures.go). testdata/css/known_failures.txt
 // lists the fixtures the layout doesn't match yet; go test ./core -run
 // TestC/Layout -update-known rewrites it.
+#define _POSIX_C_SOURCE 200809L  // strdup under -std=c17
 #include "t.h"
 #include "base/base.h"
 #include "layout/layout.h"
