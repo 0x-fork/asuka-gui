@@ -122,6 +122,10 @@ func FileSuffix(name string) (platforms []Platform, suffix string) {
 	if !ok {
 		return nil, ""
 	}
+	// A test file's platform comes before its _test (tray_linux_test.asuka).
+	if b, ok := strings.CutSuffix(base, "_test"); ok && strings.Trim(b, "_") != "" {
+		base = b
+	}
 	i := strings.LastIndexByte(base, '_')
 	if i <= 0 || strings.Trim(base[:i], "_") == "" {
 		return nil, ""
