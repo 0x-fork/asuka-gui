@@ -1,5 +1,5 @@
 // monocypher.h: Monocypher's API (third_party/monocypher), its exported
-// names the core's own (ak_mc_...), as miniz's are in compress.c: an
+// names the core's own (ak_mc_...): an
 // app's C or a library it links that has Monocypher (or another
 // crypto_ library) of its own doesn't clash with it. std/crypto's
 // ChaCha20-Poly1305 (aead.c) and Argon2 (password.c) call it.

@@ -42,18 +42,19 @@ static void put_be32(uint8_t *p, uint32_t v) {
 	p[3] = (uint8_t)v;
 }
 
-// md_pad runs block over p and the padding after it (a 1 bit, zeros,
-// the length in bits, big-endian): what SHA-1 and SHA-2 share.
-static void md_pad(const uint8_t *p, size_t n, void *state, void (*block)(void *state, const uint8_t *b)) {
-	size_t i = 0;
-	for (; i + 64 <= n; i += 64) block(state, p + i);
+// md_tail runs block over what's left of p past its whole 64-byte
+// blocks and the padding (a 1 bit, zeros, the length in bits, big- or
+// little-endian), the whole blocks run already.
+static void md_tail(const void *data, size_t n, void *state, void (*block)(void *state, const uint8_t *b), bool big) {
+	const uint8_t *p = data;
+	size_t i = n & ~(size_t)63;
 	uint8_t last[128] = {0};
 	size_t rest = n - i;
 	if (rest) memcpy(last, p + i, rest);
 	last[rest] = 0x80;
 	size_t len = rest + 1 + 8 <= 64 ? 64 : 128;
 	uint64_t bits = (uint64_t)n * 8;
-	for (int k = 0; k < 8; k++) last[len - 1 - k] = (uint8_t)(bits >> (8 * k));
+	for (int k = 0; k < 8; k++) last[big ? len - 1 - k : len - 8 + k] = (uint8_t)(bits >> (8 * k));
 	block(state, last);
 	if (len == 128) block(state, last + 64);
 }
@@ -242,26 +243,67 @@ void ak_sha512(const void *p, size_t n, uint8_t out[64]) {
 	ak_sha512_final(&c, out);
 }
 
-static void sha1_block(void *state, const uint8_t *b) {
-	uint32_t *h = state, w[80];
-	for (int i = 0; i < 16; i++) w[i] = be32(b + 4 * i);
-	for (int i = 16; i < 80; i++) w[i] = rotl(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
-	uint32_t a = h[0], bb = h[1], c = h[2], d = h[3], e = h[4];
-	for (int i = 0; i < 80; i++) {
-		uint32_t f, k;
-		if (i < 20) f = (bb & c) | (~bb & d), k = 0x5a827999;
-		else if (i < 40) f = bb ^ c ^ d, k = 0x6ed9eba1;
-		else if (i < 60) f = (bb & c) | (bb & d) | (c & d), k = 0x8f1bbcdc;
-		else f = bb ^ c ^ d, k = 0xca62c1d6;
-		uint32_t t = rotl(a, 5) + f + e + k + w[i];
-		e = d, d = c, c = rotl(bb, 30), bb = a, a = t;
+// SHA-1's compression function, its 80 rounds unrolled (as Steve
+// Reid's public domain sha1.c, the message's 16 words rolled through).
+static void sha1_blocks_sw(uint32_t h[5], const uint8_t *p, size_t blocks) {
+	for (; blocks--; p += 64) {
+		uint32_t w[16];
+		for (int i = 0; i < 16; i++) w[i] = be32(p + 4 * i);
+		uint32_t a = h[0], b = h[1], c = h[2], d = h[3], e = h[4];
+#define SHA1_W(i) (w[(i) & 15] = rotl(w[((i) + 13) & 15] ^ w[((i) + 8) & 15] ^ w[((i) + 2) & 15] ^ w[(i) & 15], 1))
+#define SHA1_R(f, k, a, b, c, d, e, x) e += rotl(a, 5) + (f) + (k) + (x), b = rotl(b, 30)
+#define SHA1_CH(b, c, d) ((d) ^ ((b) & ((c) ^ (d))))
+#define SHA1_PAR(b, c, d) ((b) ^ (c) ^ (d))
+#define SHA1_MAJ(b, c, d) (((b) & (c)) | ((d) & ((b) | (c))))
+#define SHA1_5(f, k, i, x) \
+	SHA1_R(f(b, c, d), k, a, b, c, d, e, x(i)); \
+	SHA1_R(f(a, b, c), k, e, a, b, c, d, x((i) + 1)); \
+	SHA1_R(f(e, a, b), k, d, e, a, b, c, x((i) + 2)); \
+	SHA1_R(f(d, e, a), k, c, d, e, a, b, x((i) + 3)); \
+	SHA1_R(f(c, d, e), k, b, c, d, e, a, x((i) + 4))
+#define SHA1_M(i) w[i]
+#define SHA1_X(i) ((i) < 16 ? w[(i) & 15] : SHA1_W(i))
+		SHA1_5(SHA1_CH, 0x5a827999, 0, SHA1_M);
+		SHA1_5(SHA1_CH, 0x5a827999, 5, SHA1_M);
+		SHA1_5(SHA1_CH, 0x5a827999, 10, SHA1_M);
+		SHA1_5(SHA1_CH, 0x5a827999, 15, SHA1_X);
+		SHA1_5(SHA1_PAR, 0x6ed9eba1, 20, SHA1_W);
+		SHA1_5(SHA1_PAR, 0x6ed9eba1, 25, SHA1_W);
+		SHA1_5(SHA1_PAR, 0x6ed9eba1, 30, SHA1_W);
+		SHA1_5(SHA1_PAR, 0x6ed9eba1, 35, SHA1_W);
+		SHA1_5(SHA1_MAJ, 0x8f1bbcdc, 40, SHA1_W);
+		SHA1_5(SHA1_MAJ, 0x8f1bbcdc, 45, SHA1_W);
+		SHA1_5(SHA1_MAJ, 0x8f1bbcdc, 50, SHA1_W);
+		SHA1_5(SHA1_MAJ, 0x8f1bbcdc, 55, SHA1_W);
+		SHA1_5(SHA1_PAR, 0xca62c1d6, 60, SHA1_W);
+		SHA1_5(SHA1_PAR, 0xca62c1d6, 65, SHA1_W);
+		SHA1_5(SHA1_PAR, 0xca62c1d6, 70, SHA1_W);
+		SHA1_5(SHA1_PAR, 0xca62c1d6, 75, SHA1_W);
+#undef SHA1_W
+#undef SHA1_R
+#undef SHA1_CH
+#undef SHA1_PAR
+#undef SHA1_MAJ
+#undef SHA1_5
+#undef SHA1_M
+#undef SHA1_X
+		h[0] += a, h[1] += b, h[2] += c, h[3] += d, h[4] += e;
 	}
-	h[0] += a, h[1] += bb, h[2] += c, h[3] += d, h[4] += e;
 }
+
+// sha1_blocks: by the CPU's SHA-1 instructions when it has them (the
+// ones SHA-256's come with).
+static void sha1_blocks(uint32_t h[5], const uint8_t *p, size_t n) {
+	if (ak_cpu_sha1()) ak_sha1_blocks_hw(h, p, n);
+	else sha1_blocks_sw(h, p, n);
+}
+
+static void sha1_block(void *state, const uint8_t *b) { sha1_blocks(state, b, 1); }
 
 void ak_sha1(const void *p, size_t n, uint8_t out[20]) {
 	uint32_t h[5] = {0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0};
-	md_pad(p, n, h, sha1_block);
+	sha1_blocks(h, p, n / 64);
+	md_tail(p, n, h, sha1_block, true);
 	for (int i = 0; i < 5; i++) put_be32(out + 4 * i, h[i]);
 }
 
@@ -325,47 +367,96 @@ void ak_sha384(const void *p, size_t n, uint8_t out[48]) {
 
 static uint32_t le32(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
 
-static void md5_block(void *state, const uint8_t *b) {
-	static const uint32_t K[64] = {
-		0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee, 0xf57c0faf, 0x4787c62a, 0xa8304613, 0xfd469501,
-		0x698098d8, 0x8b44f7af, 0xffff5bb1, 0x895cd7be, 0x6b901122, 0xfd987193, 0xa679438e, 0x49b40821,
-		0xf61e2562, 0xc040b340, 0x265e5a51, 0xe9b6c7aa, 0xd62f105d, 0x02441453, 0xd8a1e681, 0xe7d3fbc8,
-		0x21e1cde6, 0xc33707d6, 0xf4d50d87, 0x455a14ed, 0xa9e3e905, 0xfcefa3f8, 0x676f02d9, 0x8d2a4c8a,
-		0xfffa3942, 0x8771f681, 0x6d9d6122, 0xfde5380c, 0xa4beea44, 0x4bdecfa9, 0xf6bb4b60, 0xbebfbc70,
-		0x289b7ec6, 0xeaa127fa, 0xd4ef3085, 0x04881d05, 0xd9d4d039, 0xe6db99e5, 0x1fa27cf8, 0xc4ac5665,
-		0xf4292244, 0x432aff97, 0xab9423a7, 0xfc93a039, 0x655b59c3, 0x8f0ccc92, 0xffeff47d, 0x85845dd1,
-		0x6fa87e4f, 0xfe2ce6e0, 0xa3014314, 0x4e0811a1, 0xf7537e82, 0xbd3af235, 0x2ad7d2bb, 0xeb86d391,
-	};
-	static const uint8_t S[16] = {7, 12, 17, 22, 5, 9, 14, 20, 4, 11, 16, 23, 6, 10, 15, 21};
-	uint32_t *h = state, m[16];
-	for (int i = 0; i < 16; i++) m[i] = le32(b + 4 * i);
-	uint32_t a = h[0], bb = h[1], c = h[2], d = h[3];
-	for (int i = 0; i < 64; i++) {
-		uint32_t f;
-		int g;
-		if (i < 16) f = (bb & c) | (~bb & d), g = i;
-		else if (i < 32) f = (d & bb) | (~d & c), g = (5 * i + 1) & 15;
-		else if (i < 48) f = bb ^ c ^ d, g = (3 * i + 5) & 15;
-		else f = c ^ (bb | ~d), g = (7 * i) & 15;
-		uint32_t t = d;
-		d = c, c = bb;
-		bb = bb + rotl(a + f + K[i] + m[g], S[(i >> 4) * 4 + (i & 3)]);
-		a = t;
+// MD5's compression function, its 64 steps unrolled.
+static void md5_blocks(uint32_t h[4], const uint8_t *p, size_t blocks) {
+	for (; blocks--; p += 64) {
+		uint32_t m[16];
+		for (int i = 0; i < 16; i++) m[i] = le32(p + 4 * i);
+		uint32_t a = h[0], b = h[1], c = h[2], d = h[3];
+#define MD5_F(x, y, z) ((z) ^ ((x) & ((y) ^ (z))))
+#define MD5_G(x, y, z) ((y) ^ ((z) & ((x) ^ (y))))
+#define MD5_H(x, y, z) ((x) ^ (y) ^ (z))
+#define MD5_I(x, y, z) ((y) ^ ((x) | ~(z)))
+#define MD5_STEP(f, a, b, c, d, x, t, s) a += f(b, c, d) + (x) + (t), a = rotl(a, s) + (b)
+		MD5_STEP(MD5_F, a, b, c, d, m[0], 0xd76aa478, 7);
+		MD5_STEP(MD5_F, d, a, b, c, m[1], 0xe8c7b756, 12);
+		MD5_STEP(MD5_F, c, d, a, b, m[2], 0x242070db, 17);
+		MD5_STEP(MD5_F, b, c, d, a, m[3], 0xc1bdceee, 22);
+		MD5_STEP(MD5_F, a, b, c, d, m[4], 0xf57c0faf, 7);
+		MD5_STEP(MD5_F, d, a, b, c, m[5], 0x4787c62a, 12);
+		MD5_STEP(MD5_F, c, d, a, b, m[6], 0xa8304613, 17);
+		MD5_STEP(MD5_F, b, c, d, a, m[7], 0xfd469501, 22);
+		MD5_STEP(MD5_F, a, b, c, d, m[8], 0x698098d8, 7);
+		MD5_STEP(MD5_F, d, a, b, c, m[9], 0x8b44f7af, 12);
+		MD5_STEP(MD5_F, c, d, a, b, m[10], 0xffff5bb1, 17);
+		MD5_STEP(MD5_F, b, c, d, a, m[11], 0x895cd7be, 22);
+		MD5_STEP(MD5_F, a, b, c, d, m[12], 0x6b901122, 7);
+		MD5_STEP(MD5_F, d, a, b, c, m[13], 0xfd987193, 12);
+		MD5_STEP(MD5_F, c, d, a, b, m[14], 0xa679438e, 17);
+		MD5_STEP(MD5_F, b, c, d, a, m[15], 0x49b40821, 22);
+		MD5_STEP(MD5_G, a, b, c, d, m[1], 0xf61e2562, 5);
+		MD5_STEP(MD5_G, d, a, b, c, m[6], 0xc040b340, 9);
+		MD5_STEP(MD5_G, c, d, a, b, m[11], 0x265e5a51, 14);
+		MD5_STEP(MD5_G, b, c, d, a, m[0], 0xe9b6c7aa, 20);
+		MD5_STEP(MD5_G, a, b, c, d, m[5], 0xd62f105d, 5);
+		MD5_STEP(MD5_G, d, a, b, c, m[10], 0x02441453, 9);
+		MD5_STEP(MD5_G, c, d, a, b, m[15], 0xd8a1e681, 14);
+		MD5_STEP(MD5_G, b, c, d, a, m[4], 0xe7d3fbc8, 20);
+		MD5_STEP(MD5_G, a, b, c, d, m[9], 0x21e1cde6, 5);
+		MD5_STEP(MD5_G, d, a, b, c, m[14], 0xc33707d6, 9);
+		MD5_STEP(MD5_G, c, d, a, b, m[3], 0xf4d50d87, 14);
+		MD5_STEP(MD5_G, b, c, d, a, m[8], 0x455a14ed, 20);
+		MD5_STEP(MD5_G, a, b, c, d, m[13], 0xa9e3e905, 5);
+		MD5_STEP(MD5_G, d, a, b, c, m[2], 0xfcefa3f8, 9);
+		MD5_STEP(MD5_G, c, d, a, b, m[7], 0x676f02d9, 14);
+		MD5_STEP(MD5_G, b, c, d, a, m[12], 0x8d2a4c8a, 20);
+		MD5_STEP(MD5_H, a, b, c, d, m[5], 0xfffa3942, 4);
+		MD5_STEP(MD5_H, d, a, b, c, m[8], 0x8771f681, 11);
+		MD5_STEP(MD5_H, c, d, a, b, m[11], 0x6d9d6122, 16);
+		MD5_STEP(MD5_H, b, c, d, a, m[14], 0xfde5380c, 23);
+		MD5_STEP(MD5_H, a, b, c, d, m[1], 0xa4beea44, 4);
+		MD5_STEP(MD5_H, d, a, b, c, m[4], 0x4bdecfa9, 11);
+		MD5_STEP(MD5_H, c, d, a, b, m[7], 0xf6bb4b60, 16);
+		MD5_STEP(MD5_H, b, c, d, a, m[10], 0xbebfbc70, 23);
+		MD5_STEP(MD5_H, a, b, c, d, m[13], 0x289b7ec6, 4);
+		MD5_STEP(MD5_H, d, a, b, c, m[0], 0xeaa127fa, 11);
+		MD5_STEP(MD5_H, c, d, a, b, m[3], 0xd4ef3085, 16);
+		MD5_STEP(MD5_H, b, c, d, a, m[6], 0x04881d05, 23);
+		MD5_STEP(MD5_H, a, b, c, d, m[9], 0xd9d4d039, 4);
+		MD5_STEP(MD5_H, d, a, b, c, m[12], 0xe6db99e5, 11);
+		MD5_STEP(MD5_H, c, d, a, b, m[15], 0x1fa27cf8, 16);
+		MD5_STEP(MD5_H, b, c, d, a, m[2], 0xc4ac5665, 23);
+		MD5_STEP(MD5_I, a, b, c, d, m[0], 0xf4292244, 6);
+		MD5_STEP(MD5_I, d, a, b, c, m[7], 0x432aff97, 10);
+		MD5_STEP(MD5_I, c, d, a, b, m[14], 0xab9423a7, 15);
+		MD5_STEP(MD5_I, b, c, d, a, m[5], 0xfc93a039, 21);
+		MD5_STEP(MD5_I, a, b, c, d, m[12], 0x655b59c3, 6);
+		MD5_STEP(MD5_I, d, a, b, c, m[3], 0x8f0ccc92, 10);
+		MD5_STEP(MD5_I, c, d, a, b, m[10], 0xffeff47d, 15);
+		MD5_STEP(MD5_I, b, c, d, a, m[1], 0x85845dd1, 21);
+		MD5_STEP(MD5_I, a, b, c, d, m[8], 0x6fa87e4f, 6);
+		MD5_STEP(MD5_I, d, a, b, c, m[15], 0xfe2ce6e0, 10);
+		MD5_STEP(MD5_I, c, d, a, b, m[6], 0xa3014314, 15);
+		MD5_STEP(MD5_I, b, c, d, a, m[13], 0x4e0811a1, 21);
+		MD5_STEP(MD5_I, a, b, c, d, m[4], 0xf7537e82, 6);
+		MD5_STEP(MD5_I, d, a, b, c, m[11], 0xbd3af235, 10);
+		MD5_STEP(MD5_I, c, d, a, b, m[2], 0x2ad7d2bb, 15);
+		MD5_STEP(MD5_I, b, c, d, a, m[9], 0xeb86d391, 21);
+#undef MD5_F
+#undef MD5_G
+#undef MD5_H
+#undef MD5_I
+#undef MD5_STEP
+		h[0] += a, h[1] += b, h[2] += c, h[3] += d;
 	}
-	h[0] += a, h[1] += bb, h[2] += c, h[3] += d;
 }
+
+static void md5_block(void *state, const uint8_t *b) { md5_blocks(state, b, 1); }
 
 void ak_md5(const void *p, size_t n, uint8_t out[16]) {
 	uint32_t h[4] = {0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476};
-	uint8_t buf[64];
-	size_t bn = 0;
-	uint64_t total = 0;
-	md_update(buf, &bn, &total, h, md5_block, p, n);
-	uint64_t bits = total * 8;
-	uint8_t pad[72] = {0x80};
-	size_t k = bn < 56 ? 56 - bn : 120 - bn;
-	for (int i = 0; i < 8; i++) pad[k + (size_t)i] = (uint8_t)(bits >> (8 * i));
-	md_update(buf, &bn, &total, h, md5_block, pad, k + 8);
+	md5_blocks(h, p, n / 64);
+	md_tail(p, n, h, md5_block, false);
 	for (int i = 0; i < 4; i++)
 		for (int j = 0; j < 4; j++) out[4 * i + j] = (uint8_t)(h[i] >> (8 * j));
 }

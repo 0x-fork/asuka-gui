@@ -14,7 +14,9 @@
 //	fs.listNames(p) -> [string]?     names in a directory, sorted
 //	fs.statInfo(p) -> [int]?         [isDir, size, modified (ns), link, mode]
 //	fs.readFile(p) -> bytes?
+//	fs.readFileText(p) -> string?    what isn't UTF-8 U+FFFD
 //	fs.writeFile(p, data, append) -> bool
+//	fs.writeFileText(p, text, append) -> bool
 //	fs.copyFile(from, to) / moveFile(from, to) -> bool
 //	fs.makeDirs(p) / removeOne(p) / removeTree(p) -> bool
 //	fs.exists(p) -> bool
@@ -476,8 +478,77 @@ static ak_val exists_fn(ak_val *args, uint32_t n) {
 #endif
 }
 
-static ak_val read_fn(ak_val *args, uint32_t n) {
-	AK_UNUSED(n);
+// utf8_ok: how many bytes from p on are whole UTF-8 sequences (bytes'
+// string()'s rule: no overlong forms, surrogates or past U+10FFFF), 32
+// ASCII bytes at a time where they are.
+static size_t utf8_ok(const uint8_t *p, size_t n) {
+	size_t i = 0;
+	for (;;) {
+		while (i + 32 <= n) {
+			uint64_t a, b, c, d;
+			memcpy(&a, p + i, 8), memcpy(&b, p + i + 8, 8), memcpy(&c, p + i + 16, 8), memcpy(&d, p + i + 24, 8);
+			if ((a | b | c | d) & 0x8080808080808080ull) break;
+			i += 32;
+		}
+		if (i >= n) return n;
+		uint8_t c = p[i];
+		if (c < 0x80) {
+			i++;
+			continue;
+		}
+		size_t len;
+		uint32_t min;
+		if ((c & 0xe0) == 0xc0) len = 2, min = 0x80;
+		else if ((c & 0xf0) == 0xe0) len = 3, min = 0x800;
+		else if ((c & 0xf8) == 0xf0) len = 4, min = 0x10000;
+		else return i;
+		if (n - i < len) return i;
+		uint32_t cp = c & (0x7f >> len);
+		for (size_t k = 1; k < len; k++) {
+			if ((p[i + k] & 0xc0) != 0x80) return i;
+			cp = cp << 6 | (p[i + k] & 0x3f);
+		}
+		if (cp < min || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return i;
+		i += len;
+	}
+}
+
+// text_of: p's bytes as a string, each byte that isn't UTF-8 U+FFFD (as
+// bytes' string() does).
+static ak_str *text_of(const uint8_t *p, size_t len) {
+	size_t ok = utf8_ok(p, len);
+	if (ok == len) return ak_str_new((const char *)p, len);
+	ak_buf out = {0};
+	ak_buf_reserve(&out, len + 16);
+	for (size_t i = 0; i < len;) {
+		size_t k = utf8_ok(p + i, len - i);
+		ak_buf_put(&out, p + i, k);
+		i += k;
+		if (i < len) {
+			ak_buf_put(&out, "\xef\xbf\xbd", 3);
+			i++;
+		}
+	}
+	ak_str *s = ak_str_new((const char *)out.data, out.len);
+	ak_buf_free(&out);
+	return s;
+}
+
+#if !defined(_WIN32)
+// whole: what was read into o (bytes, or a string when text), as the
+// call's result; a string's bytes that aren't UTF-8 become U+FFFD.
+static ak_val whole(void *o, bool text) {
+	if (!text) return (ak_val){.p = o};
+	ak_str *s = o;
+	if (utf8_ok((const uint8_t *)s->data, s->len) == s->len) return (ak_val){.p = s};
+	ak_str *t = text_of((const uint8_t *)s->data, s->len);
+	ak_release(s);
+	return (ak_val){.p = t};
+}
+#endif
+
+// read_whole reads the file at args[0]: its bytes, or (text) its text.
+static ak_val read_whole(ak_val *args, bool text) {
 	ak_buf b = {0};
 #if defined(_WIN32)
 	wchar_t *w = wide(STR(0));
@@ -520,9 +591,10 @@ static ak_val read_fn(ak_val *args, uint32_t n) {
 		// A file of a known size: read into the bytes made at it, not
 		// through a buffer copied as it grows and then again.
 		size_t want = (size_t)st.st_size, got = 0;
-		ak_bytes *o = ak_bytes_new(NULL, want);
+		void *o = text ? (void *)ak_str_new(NULL, want) : (void *)ak_bytes_new(NULL, want);
+		uint8_t *data = text ? (uint8_t *)((ak_str *)o)->data : ((ak_bytes *)o)->data;
 		while (got < want) {
-			ssize_t r = read(fd, o->data + got, want - got);
+			ssize_t r = read(fd, data + got, want - got);
 			if (r < 0) {
 				if (errno == EINTR) continue;
 				failed_os();
@@ -534,9 +606,11 @@ static ak_val read_fn(ak_val *args, uint32_t n) {
 			got += (size_t)r;
 		}
 		if (got < want) {
-			o->len = (uint32_t)got;  // it shrank as it was read
+			// It shrank as it was read.
+			if (text) ((ak_str *)o)->len = (uint32_t)got, data[got] = 0;
+			else ((ak_bytes *)o)->len = (uint32_t)got;
 			close(fd);
-			return (ak_val){.p = o};
+			return whole(o, text);
 		}
 		// It may have grown: what's past its size is read as any file's.
 		uint8_t more;
@@ -544,7 +618,7 @@ static ak_val read_fn(ak_val *args, uint32_t n) {
 		while ((r = read(fd, &more, 1)) < 0 && errno == EINTR) {}
 		if (r == 0) {
 			close(fd);
-			return (ak_val){.p = o};
+			return whole(o, text);
 		}
 		if (r < 0) {
 			failed_os();
@@ -552,7 +626,7 @@ static ak_val read_fn(ak_val *args, uint32_t n) {
 			ak_release(o);
 			return (ak_val){.p = NULL};
 		}
-		ak_buf_put(&b, o->data, got);
+		ak_buf_put(&b, data, got);
 		ak_buf_put(&b, &more, 1);
 		ak_release(o);
 	}
@@ -576,17 +650,25 @@ static ak_val read_fn(ak_val *args, uint32_t n) {
 		failed(FAIL_OTHER, "the file is larger than 4 GB");
 		return (ak_val){.p = NULL};
 	}
-	ak_bytes *out = ak_bytes_new(b.data, b.len);
+	void *out = text ? (void *)text_of(b.data, b.len) : (void *)ak_bytes_new(b.data, b.len);
 	ak_buf_free(&b);
 	return (ak_val){.p = out};
 }
 
+static ak_val read_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	return read_whole(args, false);
+}
+
+// read_text_fn(p): the file's text, read into the string itself.
+static ak_val read_text_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	return read_whole(args, true);
+}
+
 // write_fn(p, data, append): the file made (or emptied, unless append)
 // with data.
-static ak_val write_fn(ak_val *args, uint32_t n) {
-	AK_UNUSED(n);
-	const ak_bytes *data = BYTES(1);
-	size_t len = data ? data->len : 0;
+static ak_val write_data(ak_val *args, const uint8_t *bytes, size_t len) {
 	bool append = args[2].i != 0;
 #if defined(_WIN32)
 	wchar_t *w = wide(STR(0));
@@ -601,7 +683,7 @@ static ak_val write_fn(ak_val *args, uint32_t n) {
 	while (off < len) {
 		DWORD put;
 		DWORD chunk = len - off > (1u << 30) ? (1u << 30) : (DWORD)(len - off);
-		if (!WriteFile(h, data->data + off, chunk, &put, NULL)) {
+		if (!WriteFile(h, bytes + off, chunk, &put, NULL)) {
 			failed_os();
 			CloseHandle(h);
 			return (ak_val){.i = 0};
@@ -619,7 +701,7 @@ static ak_val write_fn(ak_val *args, uint32_t n) {
 	}
 	size_t off = 0;
 	while (off < len) {
-		ssize_t put = write(fd, data->data + off, len - off);
+		ssize_t put = write(fd, bytes + off, len - off);
 		if (put < 0) {
 			if (errno == EINTR) continue;
 			failed_os();
@@ -634,6 +716,18 @@ static ak_val write_fn(ak_val *args, uint32_t n) {
 	}
 #endif
 	return (ak_val){.i = 1};
+}
+
+static ak_val write_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	const ak_bytes *data = BYTES(1);
+	return write_data(args, data ? data->data : NULL, data ? data->len : 0);
+}
+
+// write_text_fn(p, text, append): write_fn's, the string's bytes as they are.
+static ak_val write_text_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	return write_data(args, (const uint8_t *)STR(1)->data, STR(1)->len);
 }
 
 static ak_val copy_fn(ak_val *args, uint32_t n) {
@@ -1112,6 +1206,8 @@ bool ak_fs_remove_tree(const char *path) {
 //	fs.fileOpen(p, mode) -> int         0: failed (mode: read, write, append, readWrite)
 //	fs.fileLineReady(id) -> bool        readLine wouldn't touch the file
 //	fs.fileReadLine(id) -> string?      a line without its \n (\r\n); none at the end
+//	fs.fileReadLines(id) -> [string]?   the lines the buffer holds (reading if none); none at the end
+//	fs.fileFillLine(id) -> bool         read until the buffer holds a line (or the end)
 //	fs.fileReadReady(id) -> bool        read wouldn't
 //	fs.fileRead(id, n) -> bytes?        up to n bytes; empty at the end
 //	fs.fileReadAll(id) -> bytes?        the rest
@@ -1275,17 +1371,30 @@ static bool unread(afile *f) {
 	return raw_seek(f, -(int64_t)ahead, 1, &at);
 }
 
-// fill reads the next chunk into in; false when it failed.
-static bool fill(afile *f) {
+// fill_n reads up to n more bytes into the buffer, what's unread moved
+// to its start first (a line cut by the last read stays, the rest goes:
+// the buffer holds a line and a read, not the file).
+static bool fill_n(afile *f, size_t n) {
 	if (!flush_out(f)) return false;
-	if (f->roff && f->roff == f->in.len) f->in.len = f->roff = 0;
-	ak_buf_reserve(&f->in, FILE_CHUNK);
-	int64_t got = raw_read(f, f->in.data + f->in.len, FILE_CHUNK);
+	if (f->roff) {
+		memmove(f->in.data, f->in.data + f->roff, f->in.len - f->roff);
+		f->in.len -= f->roff;
+		f->roff = 0;
+	}
+	ak_buf_reserve(&f->in, n);
+	int64_t got = raw_read(f, f->in.data + f->in.len, n);
 	if (got < 0) return false;
 	if (got == 0) f->eof = true;
 	f->in.len += (size_t)got;
 	return true;
 }
+
+// fill reads the next chunk into in; false when it failed.
+static bool fill(afile *f) { return fill_n(f, FILE_CHUNK); }
+
+// What lines() reads a worker's trip: a cross to a worker and back costs
+// more than reading 64 KB from the system's cache.
+#define LINES_CHUNK (1 << 20)
 
 static const uint8_t *line_end(afile *f) {
 	if (f->roff == f->in.len) return NULL;  // nothing read: in.data may be NULL
@@ -1386,6 +1495,61 @@ static ak_val file_read_line_fn(ak_val *args, uint32_t n) {
 	ak_str *s = ak_str_new((const char *)f->in.data + start, len);
 	give(f, true);
 	return (ak_val){.p = s};
+}
+
+// file_read_lines_fn(id): the lines the buffer holds whole (reading it
+// full first if it holds none), and the last one at the end; none at
+// the end.
+static ak_val file_read_lines_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	afile *f = take(args[0].i);
+	if (!f) return (ak_val){.p = NULL};
+	const uint8_t *nl;
+	while (!(nl = line_end(f)) && !f->eof) {
+		if (!fill(f)) {
+			give(f, false);
+			return (ak_val){.p = NULL};
+		}
+	}
+	if (!nl && f->roff == f->in.len) {
+		give(f, true);
+		return (ak_val){.p = NULL};  // the end
+	}
+	ak_arr *out = ak_str_arr(0);
+	const uint8_t *data = f->in.data, *end = data + f->in.len;
+	size_t at = f->roff;
+	while (nl) {
+		size_t len = (size_t)(nl - data) - at;
+		if (len && data[at + len - 1] == '\r') len--;
+		ak_str_arr_push(&out, (const char *)data + at, len);
+		at = (size_t)(nl - data) + 1;
+		nl = at < f->in.len ? memchr(data + at, '\n', (size_t)(end - data) - at) : NULL;
+	}
+	if (f->eof && at < f->in.len) {
+		size_t len = f->in.len - at;  // the last line, without a \n
+		if (data[at + len - 1] == '\r') len--;
+		ak_str_arr_push(&out, (const char *)data + at, len);
+		at = f->in.len;
+	}
+	f->roff = at;
+	give(f, true);
+	return (ak_val){.p = out};
+}
+
+// file_fill_line_fn(id): reads until the buffer holds a line, or the
+// file ends; false when reading failed.
+static ak_val file_fill_line_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	afile *f = take(args[0].i);
+	if (!f) return (ak_val){.i = 0};
+	while (!line_end(f) && !f->eof) {
+		if (!fill_n(f, LINES_CHUNK)) {
+			give(f, false);
+			return (ak_val){.i = 0};
+		}
+	}
+	give(f, true);
+	return (ak_val){.i = 1};
 }
 
 static ak_val file_read_ready_fn(ak_val *args, uint32_t n) {
@@ -1812,6 +1976,8 @@ const ak_lib_entry ak_std_fs[] = {
 	{"fs.exists", exists_fn},
 	{"fs.readFile", read_fn},
 	{"fs.writeFile", write_fn},
+	{"fs.readFileText", read_text_fn},
+	{"fs.writeFileText", write_text_fn},
 	{"fs.copyFile", copy_fn},
 	{"fs.moveFile", rename_fn},
 	{"fs.makeDirs", mkdir_all_fn},
@@ -1820,6 +1986,8 @@ const ak_lib_entry ak_std_fs[] = {
 	{"fs.fileOpen", file_open_fn},
 	{"fs.fileLineReady", file_line_ready_fn},
 	{"fs.fileReadLine", file_read_line_fn},
+	{"fs.fileReadLines", file_read_lines_fn},
+	{"fs.fileFillLine", file_fill_line_fn},
 	{"fs.fileReadReady", file_read_ready_fn},
 	{"fs.fileRead", file_read_fn},
 	{"fs.fileReadAll", file_read_all_fn},

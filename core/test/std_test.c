@@ -178,6 +178,59 @@ TEST(base64_padding) {
 	}
 }
 
+// Base64 and hex round-trip bytes of every length to 300 (each
+// alphabet's, with spaces and line breaks among the digits); html's
+// escape is read back by unescape, and the references text has most
+// read at once.
+TEST(encodings_round_trip) {
+	uint32_t x = 5;
+	uint8_t data[300];
+	for (size_t n = 0; n <= sizeof data; n++) {
+		for (size_t i = 0; i < n; i++) data[i] = (uint8_t)((x = x * 1103515245 + 12345) >> 16);
+		ak_bytes *b = ak_bytes_new(data, n);
+		const char *encs[] = {"encoding.base64Encode", "encoding.base64URLEncode", "encoding.hexEncode"};
+		for (int e = 0; e < 3; e++) {
+			ak_retain(b);
+			ak_str *t = call(encs[e], (ak_val[]){{.p = b}}, 1, 1).p;
+			// Spaces and line breaks every 7 digits (Base64 skips them).
+			ak_str *u = t;
+			if (e < 2) {
+				ak_buf w = {0};
+				for (uint32_t i = 0; i < t->len; i++) {
+					ak_buf_u8(&w, (uint8_t)t->data[i]);
+					if (i % 7 == 6) ak_buf_put(&w, i % 2 ? "\n" : " ", 1);
+				}
+				u = ak_str_new((const char *)w.data, w.len);
+				ak_buf_free(&w);
+			}
+			ak_retain(t);
+			ak_bytes *back = call(e < 2 ? "encoding.base64Decode" : "encoding.hexDecode", (ak_val[]){{.p = t}}, 1, 1).p;
+			REQUIRE(back);
+			if (back->len != n || memcmp(back->data, data, n) != 0) T_FAIL("%s of %zu bytes", encs[e], n);
+			ak_release(back);
+			if (u != t) {
+				back = call("encoding.base64Decode", (ak_val[]){{.p = u}}, 1, 1).p;
+				REQUIRE(back);
+				if (back->len != n || memcmp(back->data, data, n) != 0) T_FAIL("%s of %zu bytes, spaced", encs[e], n);
+				ak_release(back);
+			}
+			ak_release(t);
+		}
+		ak_release(b);
+		// ASCII text with what html escapes in it, back from its escape.
+		char text[301];
+		for (size_t i = 0; i < n; i++) text[i] = "ab<>&\"'c d;#x1"[data[i] % 14];
+		text[n] = 0;
+		ak_str *esc = call("html.escape", (ak_val[]){S(text)}, 1, 1).p;
+		ak_str *un = call("html.unescape", (ak_val[]){{.p = esc}}, 1, 1).p;
+		CHECK_EQ_STR(un->data, text);
+		ak_release(un);
+	}
+	ak_str *u = call("html.unescape", (ak_val[]){S("&lt;a&gt; &amp;amp; &quot;&apos; &eacute;&#233;&#xE9; &bogus; &amp &#0; &")}, 1, 1).p;
+	CHECK_EQ_STR(u->data, "<a> &amp; \"' \xc3\xa9\xc3\xa9\xc3\xa9 &bogus; &amp \xef\xbf\xbd &");
+	ak_release(u);
+}
+
 // ---- std/encoding's binary data ----
 
 static ak_val B(const void *p, size_t n) { return (ak_val){.p = ak_bytes_new(p, n)}; }
@@ -620,6 +673,77 @@ TEST(regex_prefilter_changes_nothing) {
 	}
 }
 
+extern bool ak_regex_dfa_off;
+
+// The lazy DFA (finding where a match ends, then where it starts) finds
+// what the Pike VM does: random patterns, anchors and word boundaries
+// and lazy repeats among them, over random text (what isn't UTF-8 too),
+// test, search and substitute the same with it and without; and over
+// text long enough that its states are dropped and made again.
+TEST(regex_dfa_as_vm) {
+	static const char *const pieces[] = {"a", "b", "ab", ".", "\\w", "\\W", "\\d", "\\s", "\\b", "\\B", "^", "$", "\\A", "\\z",
+		"(", ")", "(?:", "|", "*", "+", "?", "*?", "+?", "??", "{2}", "{0,3}", "{1,2}?", "[a-c]", "[^b]", "[0-9]", "(?i)", "(?m)", "(?s)",
+		"é", "€", "[é-ü]", "\\x{FFFD}", "x", " ", "(a|ab)", "(a*)*", "(?i)é", "\\n"};
+	static const char *const bits[] = {"a", "b", "c", "x", " ", "\n", "1", "é", "É", "€", "\xff", "\x80", "\xc3", "\xe2\x82", "ab", "_"};
+	for (int it = 0; it < 8000; it++) {
+		char pat[96], text[400];
+		size_t pl = 0, tl = 0;
+		int np = 1 + (int)(next_rand() % 7);
+		for (int k = 0; k < np; k++) {
+			const char *q = pieces[next_rand() % AK_LEN(pieces)];
+			size_t ql = strlen(q);
+			if (pl + ql >= sizeof pat) break;
+			memcpy(pat + pl, q, ql);
+			pl += ql;
+		}
+		pat[pl] = 0;
+		int nt = (int)(next_rand() % (it % 10 == 0 ? 120 : 30));
+		for (int k = 0; k < nt; k++) {
+			const char *q = bits[next_rand() % AK_LEN(bits)];
+			size_t ql = strlen(q);
+			if (tl + ql >= sizeof text) break;
+			memcpy(text + tl, q, ql);
+			tl += ql;
+		}
+		text[tl] = 0;
+		ak_val prog = call("regex.program", (ak_val[]){S(pat)}, 1, 1);
+		if (!prog.p) {
+			ak_release(ak_error_take());
+			continue;
+		}
+		ak_val res[2][3];
+		for (int off = 0; off < 2; off++) {
+			ak_regex_dfa_off = off;
+			res[off][0] = call("regex.test", (ak_val[]){prog, {.p = ak_str_new(text, tl)}}, 2, 2);
+			res[off][1] = call("regex.search", (ak_val[]){prog, {.p = ak_str_new(text, tl)}, I(-1)}, 3, 2);
+			res[off][2] = call("regex.substitute", (ak_val[]){prog, {.p = ak_str_new(text, tl)}, S("<$0|$1>"), I(-1)}, 4, 6);
+		}
+		ak_regex_dfa_off = false;
+		if (res[0][0].i != res[1][0].i || !ak_val_eq(res[0][1], res[1][1], AK_K_REF) || !ak_val_eq(res[0][2], res[1][2], AK_K_REF))
+			T_FAIL("%s on %s: matched differently by the DFA", pat, text);
+		for (int off = 0; off < 2; off++) ak_release(res[off][1].p), ak_release(res[off][2].p);
+		ak_release(prog.p);
+	}
+	// A pattern whose DFA has a state for each of the last 14 letters'
+	// a-or-b, over 200 KB of them: its states fill the cache and are
+	// dropped again and again; the matches are the VM's still.
+	size_t n = 200000;
+	char *t = malloc(n + 1);
+	for (size_t i = 0; i < n; i++) t[i] = next_rand() & 1 ? 'a' : 'b';
+	t[n] = 0;
+	ak_val prog = call("regex.program", (ak_val[]){S("a[ab]{13}b")}, 1, 1);
+	ak_val r[2];
+	for (int off = 0; off < 2; off++) {
+		ak_regex_dfa_off = off;
+		r[off] = call("regex.search", (ak_val[]){prog, {.p = ak_str_new(t, n)}, I(-1)}, 3, 2);
+	}
+	ak_regex_dfa_off = false;
+	CHECK(ak_val_eq(r[0], r[1], AK_K_REF));
+	CHECK(((ak_arr *)r[0].p)->len > 1000);
+	ak_release(r[0].p), ak_release(r[1].p), ak_release(prog.p);
+	free(t);
+}
+
 static ak_val search(const char *pattern, const char *text) {
 	ak_val prog = call("regex.program", (ak_val[]){S(pattern)}, 1, 1);
 	if (!prog.p) return prog;
@@ -656,13 +780,15 @@ TEST(regex_offsets) {
 }
 
 TEST(regex_alloc_bounded) {
-	// Matching allocates per call, not per character: a longer text costs
-	// no more allocations.
+	// Matching allocates per program and per state, not per character: a
+	// program kept from a call before, over a longer text, allocates
+	// nothing.
 	ak_val prog = call("regex.program", (ak_val[]){S("(\\w+)@(\\w+)\\.com")}, 1, 1);
 	char text[20001];
 	memset(text, 'x', 20000);
 	text[20000] = 0;
 	ak_val t = S(text);
+	call("regex.test", (ak_val[]){prog, S("xx@yy")}, 2, 2);
 	uint64_t before = ak_alloc_count;
 	call("regex.test", (ak_val[]){prog, t}, 2, 0);
 	uint64_t one = ak_alloc_count - before;

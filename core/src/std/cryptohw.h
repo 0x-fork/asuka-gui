@@ -1,4 +1,4 @@
-// cryptohw.h: SHA-2 and AES-GCM by the CPU's instructions (cryptohw.c),
+// cryptohw.h: SHA-1, SHA-2 and AES-GCM by the CPU's instructions (cryptohw.c),
 // ChaCha20-Poly1305 by its vector unit (chacha.c), for crypto.c and
 // aead.c, which run their software when the CPU has none of them. Any
 // thread.
@@ -13,6 +13,7 @@ extern bool ak_cryptohw_off;
 
 bool ak_cpu_aes(void);     // AES and a carry-less multiply: ak_gcm_hw runs
 bool ak_cpu_sha256(void);  // ak_sha256_blocks_hw runs
+bool ak_cpu_sha1(void);    // ak_sha1_blocks_hw runs
 bool ak_cpu_sha512(void);  // ak_sha512_blocks_hw runs
 bool ak_cpu_avx2(void);    // x86-64's AVX2, the OS saving its registers
 bool ak_cpu_sha3(void);    // ARMv8.2's SHA-3 instructions (XAR)
@@ -24,6 +25,7 @@ extern bool ak_cryptohw_sse2;
 
 // The compression function over blocks 64-byte (128-byte) blocks.
 void ak_sha256_blocks_hw(uint32_t h[8], const uint8_t *p, size_t blocks);
+void ak_sha1_blocks_hw(uint32_t h[5], const uint8_t *p, size_t blocks);
 void ak_sha512_blocks_hw(uint64_t h[8], const uint8_t *p, size_t blocks);
 
 // ak_gcm_hw: AES-GCM (a 16- or 32-byte key, a 12-byte nonce) over in into

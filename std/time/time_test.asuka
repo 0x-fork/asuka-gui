@@ -198,3 +198,27 @@ test "durations from text" {
   expect(why[9] == why[8].replace("9223372036854775808ns", "2562048h"))
   expect(why[10] == "time: 1 h isn't a duration: its unit  h isn't one of h, m (or min), s, ms, us (or µs) and ns")
 }
+
+test "rfc3339 is format's RFC 3339 pattern, any fields" {
+  let plain = "yyyy-MM-dd'T'HH:mm:ssXXX"
+  let frac = "yyyy-MM-dd'T'HH:mm:ss.SSSSSSSSSXXX"
+  let times = [
+    date(2026, 3, 7, hour: 15, minute: 4, second: 5, zone: .utc),
+    date(2026, 3, 7, hour: 15, minute: 4, second: 5, nanosecond: 120, zone: .fixed(seconds: -16200)),
+    date(1970, 1, 1, zone: .fixed(seconds: 5025)),
+    unix(-1, zone: .fixed(seconds: 50400)),
+    unixNano(-1, zone: .utc),
+    // Years an instant can't reach (past 2262), made by hand.
+    Time(instant: 0, zone: .utc, offset: 0, year: 12026, month: 12, day: 31, hour: 23, minute: 0, second: 0, nanosecond: 999999999, weekday: .monday),
+    Time(instant: 0, zone: .utc, offset: 3600, year: -44, month: 3, day: 15, hour: 0, minute: 0, second: 0, nanosecond: 0, weekday: .monday),
+  ]
+  for t in times {
+    expect(t.rfc3339() == t.format(if t.nanosecond == 0 { plain } else { frac }))
+  }
+  expect(times[1].rfc3339() == "2026-03-07T15:04:05.000000120-04:30")
+  expect(times[2].rfc3339() == "1970-01-01T00:00:00+01:23")
+  expect(times[4].rfc3339() == "1969-12-31T23:59:59.999999999Z")
+  // Fields made by hand, out of their ranges, format as format() has them.
+  let odd = Time(instant: 0, zone: .utc, offset: 0, year: 2026, month: 13, day: 0, hour: -1, minute: 60, second: 99, nanosecond: -5, weekday: .monday)
+  expect(odd.rfc3339() == odd.format(frac))
+}

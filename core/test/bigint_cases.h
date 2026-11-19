@@ -593,10 +593,13 @@ TEST(against_python) {
 }
 
 // Random round trips: q·b + r = a with |r| < |b| and r's sign a's, at
-// sizes about every threshold, and text and bytes back.
+// sizes about every threshold, and text and bytes back; times, plus,
+// minus and quo of an int as of the int's BigInt.
 TEST(round_trips) {
 	uint64_t g = 99;
-	int sizes[] = {1, 31, 32, 33, 63, 64, 65, 100, 1279, 1281, 2559, 2561, 4095, 4097, 5000, 8191, 8193, 12000, 40000};
+	// 16500 and 30000 over 12000 and 40000 over 30000: quotients far
+	// shorter than their divisors (divmod_short's).
+	int sizes[] = {1, 31, 32, 33, 63, 64, 65, 100, 1279, 1281, 2559, 2561, 4095, 4097, 5000, 8191, 8193, 12000, 16500, 30000, 40000};
 	size_t ns = sizeof sizes / sizeof sizes[0];
 	for (size_t i = 0; i < ns; i++) {
 		for (size_t j = 0; j < ns; j++) {
@@ -617,6 +620,19 @@ TEST(round_trips) {
 		}
 		bt_big *a = bt_gen(&g, sizes[i]);
 		for (int r = 2; r <= 36; r += 5) CHECK(bt_cmp(bt_parse_r(bt_text_r(a, r), r), a) == 0);
+		static const int64_t ints[] = {0, 1, -1, 7, -7, 1000000007, INT64_MAX, INT64_MIN, -INT64_MAX, 1ll << 40};
+		for (size_t k = 0; k < sizeof ints / sizeof ints[0]; k++) {
+			int64_t v = ints[k];
+			bt_big *bv = bt_of(v);
+			CHECK(bt_cmp(bt_keep(bt_call("bigMulInt", V(a), I(v), Z).p), bt_op2("bigMul", a, bv)) == 0);
+			CHECK(bt_cmp(bt_keep(bt_call("bigAddInt", V(a), I(v), I(0)).p), bt_op2("bigAdd", a, bv)) == 0);
+			CHECK(bt_cmp(bt_keep(bt_call("bigAddInt", V(a), I(v), I(1)).p), bt_op2("bigSub", a, bv)) == 0);
+			if (v) CHECK(bt_cmp(bt_keep(bt_call("bigQuoInt", V(a), I(v), Z).p), bt_quo(a, bv)) == 0);
+			// Small numbers each way.
+			bt_big *s = bt_of(v / 3);
+			CHECK(bt_cmp(bt_keep(bt_call("bigAddInt", V(s), I(v), I(0)).p), bt_op2("bigAdd", s, bv)) == 0);
+			CHECK(bt_cmp(bt_keep(bt_call("bigAddInt", V(s), I(v), I(1)).p), bt_op2("bigSub", s, bv)) == 0);
+		}
 		CHECK(bt_cmp(bt_from_bytes(bt_to_bytes(a, 0, true), true), a) == 0);
 		bi_done();
 	}

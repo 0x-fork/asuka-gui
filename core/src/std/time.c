@@ -21,6 +21,7 @@
 //	time.zoneNames() -> [string]       the places' zones, and UTC
 //	time.tzVersion() -> string         the database's release: 2026f
 //	time.formatFields(pattern, …, zone, unix) -> string
+//	time.formatRFC3339(year, …, nanosecond, offset) -> string   rfc3339()'s
 //	time.parseRFC3339(s) -> [instant, offset, zone start, zone end]   throws
 //	time.parseDurationNanos(s) -> int  a Go duration's nanoseconds; throws
 #define _POSIX_C_SOURCE 200809L  // localtime_r under -std=c17
@@ -384,6 +385,46 @@ static ak_val format_fields(ak_val *args, uint32_t n) {
 	return (ak_val){.p = format(STR(0), &f)};
 }
 
+// format_rfc3339_fn(year, month, day, hour, minute, second, nanosecond,
+// offset): Time.rfc3339(), written straight: 2026-03-07T15:04:05Z,
+// .123456789 when the nanoseconds aren't 0, +01:00 when the offset isn't.
+// What the fast form doesn't fit (a year past 9999, a field made by
+// hand out of its range) goes through format() and its pattern.
+static ak_val format_rfc3339_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	int64_t y = args[0].i, mo = args[1].i, d = args[2].i, h = args[3].i, mi = args[4].i, sec = args[5].i, ns = args[6].i, off = args[7].i;
+	bool plain = y >= 0 && y <= 9999 && mo >= 0 && mo <= 99 && d >= 0 && d <= 99 && h >= 0 && h <= 99 && mi >= 0 && mi <= 99 &&
+	             sec >= 0 && sec <= 99 && ns >= 0 && ns <= 999999999 && off > -360000 && off < 360000;
+	if (!plain) {
+		fields f = {y, mo, d, h, mi, sec, ns, 0, off, NULL, 0};
+		ak_str *pat = ak_str_c(ns == 0 ? "yyyy-MM-dd'T'HH:mm:ssXXX" : "yyyy-MM-dd'T'HH:mm:ss.SSSSSSSSSXXX");
+		ak_str *s = format(pat, &f);
+		ak_release(pat);
+		return (ak_val){.p = s};
+	}
+	char b[40];
+	size_t k = 0;
+#define D2(v) (b[k++] = (char)('0' + (v) / 10), b[k++] = (char)('0' + (v) % 10))
+	D2(y / 100), D2(y % 100);
+	b[k++] = '-', D2(mo), b[k++] = '-', D2(d), b[k++] = 'T';
+	D2(h), b[k++] = ':', D2(mi), b[k++] = ':', D2(sec);
+	if (ns) {
+		b[k++] = '.';
+		for (int i = 8; i >= 0; i--, ns /= 10) b[k + (size_t)i] = (char)('0' + ns % 10);
+		k += 9;
+	}
+	if (off == 0) {
+		b[k++] = 'Z';
+	} else {
+		uint64_t mag = magnitude(off);
+		int64_t oh = (int64_t)(mag / 3600), om = (int64_t)(mag / 60 % 60);
+		b[k++] = off < 0 ? '-' : '+';
+		D2(oh), b[k++] = ':', D2(om);
+	}
+#undef D2
+	return (ak_val){.p = ak_str_new(b, k)};
+}
+
 // ---- RFC 3339 ----
 
 static bool digits(const char *s, size_t len, size_t *i, int n, int64_t *out) {
@@ -648,6 +689,7 @@ const ak_lib_entry ak_std_time[] = {
 	{"time.wallNanos", wall_nanos},
 	{"time.localOffset", local_offset_fn},
 	{"time.formatFields", format_fields},
+	{"time.formatRFC3339", format_rfc3339_fn},
 	{"time.parseRFC3339", parse_fn},
 	{"time.localWallOffset", local_wall_offset_fn},
 	{"time.zoneID", zone_id_fn},

@@ -82,6 +82,15 @@ bool ak_cryptohw_sse2;
 
 bool ak_cpu_aes(void) { return !ak_cryptohw_off && cpu_features() & CPU_AES; }
 bool ak_cpu_sha256(void) { return !ak_cryptohw_off && cpu_features() & CPU_SHA256; }
+// ARMv8's SHA-1 instructions come with its SHA-256 ones (FEAT_SHA1 and
+// FEAT_SHA256: HWCAP_SHA2's set implies HWCAP_SHA1's on every core made).
+bool ak_cpu_sha1(void) {
+#if defined(__aarch64__) || defined(_M_ARM64)
+	return ak_cpu_sha256();
+#else
+	return false;
+#endif
+}
 bool ak_cpu_sha512(void) { return !ak_cryptohw_off && cpu_features() & CPU_SHA512; }
 bool ak_cpu_avx2(void) { return !ak_cryptohw_off && cpu_features() & CPU_AVX2; }
 bool ak_cpu_sha3(void) { return !ak_cryptohw_off && !ak_cryptohw_sse2 && cpu_features() & CPU_SHA3; }
@@ -157,6 +166,64 @@ T_SHA2 void ak_sha256_blocks_hw(uint32_t h[8], const uint8_t *p, size_t blocks) 
 	}
 	vst1q_u32(h, s0);
 	vst1q_u32(h + 4, s1);
+}
+
+// ---- SHA-1 (ARMv8's SHA1C/P/M, SHA1H, SHA1SU0/1) ----
+
+// Four rounds an instruction: the message's next four words from the
+// sixteen before them (SU0 then SU1), e's next from a's (SHA1H), the
+// round's function by its group: choose, parity, majority, parity.
+T_SHA2 void ak_sha1_blocks_hw(uint32_t h[5], const uint8_t *p, size_t blocks) {
+	const uint32x4_t k0 = vdupq_n_u32(0x5a827999), k1 = vdupq_n_u32(0x6ed9eba1), k2 = vdupq_n_u32(0x8f1bbcdc), k3 = vdupq_n_u32(0xca62c1d6);
+	uint32x4_t abcd = vld1q_u32(h);
+	uint32_t e = h[4];
+	for (; blocks--; p += 64) {
+		uint32x4_t abcd0 = abcd;
+		uint32_t e0 = e;
+		uint32x4_t m0 = vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(p))), m1 = vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(p + 16)));
+		uint32x4_t m2 = vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(p + 32))), m3 = vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(p + 48)));
+		uint32_t e1;
+		e1 = vsha1h_u32(vgetq_lane_u32(abcd, 0)), abcd = vsha1cq_u32(abcd, e, vaddq_u32(m0, k0));
+		e = vsha1h_u32(vgetq_lane_u32(abcd, 0)), abcd = vsha1cq_u32(abcd, e1, vaddq_u32(m1, k0));
+		e1 = vsha1h_u32(vgetq_lane_u32(abcd, 0)), abcd = vsha1cq_u32(abcd, e, vaddq_u32(m2, k0));
+		e = vsha1h_u32(vgetq_lane_u32(abcd, 0)), abcd = vsha1cq_u32(abcd, e1, vaddq_u32(m3, k0));
+		m0 = vsha1su1q_u32(vsha1su0q_u32(m0, m1, m2), m3);
+		e1 = vsha1h_u32(vgetq_lane_u32(abcd, 0)), abcd = vsha1cq_u32(abcd, e, vaddq_u32(m0, k0));
+		m1 = vsha1su1q_u32(vsha1su0q_u32(m1, m2, m3), m0);
+		e = vsha1h_u32(vgetq_lane_u32(abcd, 0)), abcd = vsha1pq_u32(abcd, e1, vaddq_u32(m1, k1));
+		m2 = vsha1su1q_u32(vsha1su0q_u32(m2, m3, m0), m1);
+		e1 = vsha1h_u32(vgetq_lane_u32(abcd, 0)), abcd = vsha1pq_u32(abcd, e, vaddq_u32(m2, k1));
+		m3 = vsha1su1q_u32(vsha1su0q_u32(m3, m0, m1), m2);
+		e = vsha1h_u32(vgetq_lane_u32(abcd, 0)), abcd = vsha1pq_u32(abcd, e1, vaddq_u32(m3, k1));
+		m0 = vsha1su1q_u32(vsha1su0q_u32(m0, m1, m2), m3);
+		e1 = vsha1h_u32(vgetq_lane_u32(abcd, 0)), abcd = vsha1pq_u32(abcd, e, vaddq_u32(m0, k1));
+		m1 = vsha1su1q_u32(vsha1su0q_u32(m1, m2, m3), m0);
+		e = vsha1h_u32(vgetq_lane_u32(abcd, 0)), abcd = vsha1pq_u32(abcd, e1, vaddq_u32(m1, k1));
+		m2 = vsha1su1q_u32(vsha1su0q_u32(m2, m3, m0), m1);
+		e1 = vsha1h_u32(vgetq_lane_u32(abcd, 0)), abcd = vsha1mq_u32(abcd, e, vaddq_u32(m2, k2));
+		m3 = vsha1su1q_u32(vsha1su0q_u32(m3, m0, m1), m2);
+		e = vsha1h_u32(vgetq_lane_u32(abcd, 0)), abcd = vsha1mq_u32(abcd, e1, vaddq_u32(m3, k2));
+		m0 = vsha1su1q_u32(vsha1su0q_u32(m0, m1, m2), m3);
+		e1 = vsha1h_u32(vgetq_lane_u32(abcd, 0)), abcd = vsha1mq_u32(abcd, e, vaddq_u32(m0, k2));
+		m1 = vsha1su1q_u32(vsha1su0q_u32(m1, m2, m3), m0);
+		e = vsha1h_u32(vgetq_lane_u32(abcd, 0)), abcd = vsha1mq_u32(abcd, e1, vaddq_u32(m1, k2));
+		m2 = vsha1su1q_u32(vsha1su0q_u32(m2, m3, m0), m1);
+		e1 = vsha1h_u32(vgetq_lane_u32(abcd, 0)), abcd = vsha1mq_u32(abcd, e, vaddq_u32(m2, k2));
+		m3 = vsha1su1q_u32(vsha1su0q_u32(m3, m0, m1), m2);
+		e = vsha1h_u32(vgetq_lane_u32(abcd, 0)), abcd = vsha1pq_u32(abcd, e1, vaddq_u32(m3, k3));
+		m0 = vsha1su1q_u32(vsha1su0q_u32(m0, m1, m2), m3);
+		e1 = vsha1h_u32(vgetq_lane_u32(abcd, 0)), abcd = vsha1pq_u32(abcd, e, vaddq_u32(m0, k3));
+		m1 = vsha1su1q_u32(vsha1su0q_u32(m1, m2, m3), m0);
+		e = vsha1h_u32(vgetq_lane_u32(abcd, 0)), abcd = vsha1pq_u32(abcd, e1, vaddq_u32(m1, k3));
+		m2 = vsha1su1q_u32(vsha1su0q_u32(m2, m3, m0), m1);
+		e1 = vsha1h_u32(vgetq_lane_u32(abcd, 0)), abcd = vsha1pq_u32(abcd, e, vaddq_u32(m2, k3));
+		m3 = vsha1su1q_u32(vsha1su0q_u32(m3, m0, m1), m2);
+		e = vsha1h_u32(vgetq_lane_u32(abcd, 0)), abcd = vsha1pq_u32(abcd, e1, vaddq_u32(m3, k3));
+		abcd = vaddq_u32(abcd, abcd0);
+		e += e0;
+	}
+	vst1q_u32(h, abcd);
+	h[4] = e;
 }
 
 // ---- SHA-512 (ARMv8.2's SHA512 instructions) ----
@@ -330,6 +397,10 @@ T_AES static uint32_t sub_word_hw(uint32_t w) {
 static uint32_t sub_word(uint32_t w) { return sub_word_hw(w); }
 
 void ak_sha256_blocks_hw(uint32_t h[8], const uint8_t *p, size_t blocks) {
+	AK_UNUSED(h), AK_UNUSED(p), AK_UNUSED(blocks);
+}
+
+void ak_sha1_blocks_hw(uint32_t h[5], const uint8_t *p, size_t blocks) {
 	AK_UNUSED(h), AK_UNUSED(p), AK_UNUSED(blocks);
 }
 
@@ -515,6 +586,10 @@ bool ak_gcm_hw(bool encrypt, const uint8_t *key, size_t kn, const uint8_t nonce[
 }
 
 void ak_sha256_blocks_hw(uint32_t h[8], const uint8_t *p, size_t blocks) {
+	AK_UNUSED(h), AK_UNUSED(p), AK_UNUSED(blocks);
+}
+
+void ak_sha1_blocks_hw(uint32_t h[5], const uint8_t *p, size_t blocks) {
 	AK_UNUSED(h), AK_UNUSED(p), AK_UNUSED(blocks);
 }
 
