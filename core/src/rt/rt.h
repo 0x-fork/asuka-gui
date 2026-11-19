@@ -131,11 +131,19 @@ struct ak_shape {
 // ---- Strings ----
 
 typedef struct ak_str {
-	ak_obj h;
+	ak_obj h;       // h.flags: AK_STR_* (what's known of its bytes)
 	uint32_t len;
 	uint32_t hash;  // 0: not computed yet
 	char data[];    // len bytes, then a NUL
 } ak_str;
+
+// What a string's h.flags cache of its bytes, as its hash is cached:
+// worked out when first asked for (ak_str_ascii), and before it becomes
+// immortal (ak_str_hash), so worker threads only read them. Code that
+// changes a string's bytes after it's made (it's the caller's, fresh
+// from ak_str_new(NULL, n)) does so before anything reads them.
+#define AK_STR_KNOWN 1  // AK_STR_ASCII says whether it's ASCII
+#define AK_STR_ASCII 2  // every byte below 0x80: a character a byte
 
 ak_str *ak_str_new(const char *s, size_t n);  // s NULL: n bytes the caller fills
 static inline ak_str *ak_str_c(const char *s) { return ak_str_new(s, strlen(s)); }
@@ -143,13 +151,29 @@ ak_str *ak_str_empty(void);  // immortal
 ak_str *ak_str_concat(ak_str *a, ak_str *b);
 ak_str *ak_str_from_int(int64_t v);
 ak_str *ak_str_from_float(double v);  // shortest round-trip form
+// ak_float_text writes v as ak_str_from_float does into buf (32 bytes
+// room); its length. No allocation.
+int ak_float_text(char *buf, double v);
 ak_str *ak_str_from_bool(bool v);
 bool ak_str_eq(const ak_str *a, const ak_str *b);
 int ak_str_cmp(const ak_str *a, const ak_str *b);
 uint32_t ak_str_hash(ak_str *s);
+// ak_hash_bytes: n bytes' hash, wyhash's (final version 4): eight bytes
+// a multiply, well mixed in every bit. Pure: any thread.
+uint64_t ak_hash_bytes(const void *p, size_t n);
 ak_str *ak_str_slice(ak_str *s, int64_t from, int64_t to);  // byte offsets, clamped
 int64_t ak_str_count(const ak_str *s);   // characters (code points)
+bool ak_str_ascii(const ak_str *s);      // whether every byte is ASCII (cached)
+// ak_str_char_offset: the byte offset of character c (code point), 0 for
+// c <= 0, len past the last.
+int64_t ak_str_char_offset(const ak_str *s, int64_t c);
 int64_t ak_str_find(const ak_str *s, const ak_str *sub);  // byte offset or -1
+int64_t ak_str_find_last(const ak_str *s, const ak_str *sub);  // byte offset or -1
+// ak_mem_find: where needle (nn bytes) first is in h (hn bytes), or -1:
+// in time linear in hn (a rare byte's memchr, the two-way algorithm
+// when that finds too many false starts).
+int64_t ak_mem_find(const void *h, size_t hn, const void *needle, size_t nn);
+int64_t ak_mem_find_last(const void *h, size_t hn, const void *needle, size_t nn);
 bool ak_str_has_prefix(const ak_str *s, const ak_str *p);
 bool ak_str_has_suffix(const ak_str *s, const ak_str *p);
 bool ak_str_contains(const ak_str *s, const ak_str *sub);
@@ -164,20 +188,41 @@ bool ak_str_has_suffix_fold(const ak_str *s, const ak_str *p);
 bool ak_str_contains_fold(const ak_str *s, const ak_str *sub);
 ak_str *ak_str_trim(ak_str *s);
 ak_str *ak_str_replace(ak_str *s, const ak_str *old, const ak_str *new_);
+ak_str *ak_str_replace_n(ak_str *s, const ak_str *old, const ak_str *new_, int64_t count);  // the first count (all: < 0)
 struct ak_arr *ak_str_split(ak_str *s, const ak_str *sep);
+// ak_str_split_n: at most count parts (all: < 0), the last the rest; an
+// empty sep, the characters (count aside: lib.c's split cuts them).
+struct ak_arr *ak_str_split_n(ak_str *s, const ak_str *sep, int64_t count);
 bool ak_str_to_int(const ak_str *s, int64_t *out);
 bool ak_str_to_float(const ak_str *s, double *out);
 
-// A builder for interpolated strings: no intermediate strings.
+// A builder for interpolated strings: no intermediate strings. Zero is
+// an empty one; what it holds is in small until it outgrows it, then in
+// b, so a short string costs one allocation, the result's.
 typedef struct ak_strb {
 	ak_buf b;
+	uint32_t n;      // bytes in small, while b.data is NULL
+	char small[116];
 } ak_strb;
 void ak_strb_str(ak_strb *b, const ak_str *s);
 void ak_strb_cstr(ak_strb *b, const char *s, size_t n);
 void ak_strb_int(ak_strb *b, int64_t v);
 void ak_strb_float(ak_strb *b, double v);
 void ak_strb_bool(ak_strb *b, bool v);
+void ak_strb_char(ak_strb *b, char c);
+// ak_strb_room: room for n more bytes at the returned pointer, which
+// ak_strb_wrote(b, k) then says k of were written.
+char *ak_strb_room(ak_strb *b, size_t n);
+static inline void ak_strb_wrote(ak_strb *b, size_t k) {
+	if (b->b.data) b->b.len += k;
+	else b->n += (uint32_t)k;
+}
+static inline size_t ak_strb_len(const ak_strb *b) { return b->b.data ? b->b.len : b->n; }
+// ak_strb_buf: what b holds, all of it in b->b (moved there from small),
+// for code that reads or takes the buffer itself; b goes on taking more.
+ak_buf *ak_strb_buf(ak_strb *b);
 ak_str *ak_strb_finish(ak_strb *b);  // frees the builder's buffer
+void ak_strb_free(ak_strb *b);       // drops what it holds
 
 // ---- Bytes ----
 
@@ -229,7 +274,7 @@ typedef struct ak_map {
 	uint32_t nslots;     // index slots (a power of 2)
 	ak_val *keys, *vals;
 	uint8_t *dead;
-	uint32_t *slots;     // entry index + 1, 0 empty
+	uint64_t *slots;     // map.c's index: the key's hash << 32 | entry + 1 (0 empty)
 	const ak_shape *vshape;
 } ak_map;
 
@@ -237,6 +282,9 @@ ak_map *ak_map_new(ak_kind key, bool string_keys, ak_kind val, const ak_shape *v
 ak_map *ak_map_mut(ak_map **m);
 bool ak_map_get(const ak_map *m, ak_val key, ak_val *out);  // borrowed
 void ak_map_set(ak_map **m, ak_val key, ak_val v);          // takes both references
+// ak_map_put_new sets key's value unless it has one (then releasing key
+// and v, the map as it was): whether it was new. One probe.
+bool ak_map_put_new(ak_map **m, ak_val key, ak_val v);
 bool ak_map_delete(ak_map **m, ak_val key);
 ak_arr *ak_map_keys(const ak_map *m);
 ak_arr *ak_map_values(const ak_map *m);

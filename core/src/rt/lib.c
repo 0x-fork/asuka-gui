@@ -110,25 +110,7 @@ static bool space(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\
 
 // str.replace(s, old, new, count): the first count olds (all when count
 // < 0) replaced with new.
-static ak_val str_replace(ak_val *args, uint32_t n) {
-	int64_t count = n > 3 ? A(3).i : -1;
-	if (count < 0) RET_P(ak_str_replace(STR(0), STR(1), STR(2)));
-	ak_str *s = STR(0), *old = STR(1);
-	if (old->len == 0 || count == 0) RET_P(ak_retain(s));
-	ak_strb b = {0};
-	uint32_t i = 0;
-	while (i < s->len) {
-		if (count > 0 && i + old->len <= s->len && memcmp(s->data + i, old->data, old->len) == 0) {
-			ak_strb_str(&b, STR(2));
-			i += old->len;
-			count--;
-		} else {
-			ak_strb_cstr(&b, s->data + i, 1);
-			i++;
-		}
-	}
-	RET_P(ak_strb_finish(&b));
-}
+static ak_val str_replace(ak_val *args, uint32_t n) { RET_P(ak_str_replace_n(STR(0), STR(1), STR(2), n > 3 ? A(3).i : -1)); }
 
 // str.split(s, sep, count): at most count parts (all when count < 0), the
 // last holding the rest.
@@ -153,21 +135,7 @@ static ak_val str_split(ak_val *args, uint32_t n) {
 		}
 		RET_P(a);
 	}
-	ak_arr *a = ak_arr_new(AK_K_REF, NULL, 4);
-	a->h.flags = 1;
-	if (count == 0) RET_P(a);
-	uint32_t start = 0;
-	for (uint32_t i = 0; i + sep->len <= s->len && a->len + 1 < count;) {
-		if (memcmp(s->data + i, sep->data, sep->len) == 0) {
-			ak_arr_push(&a, (ak_val){.p = ak_str_new(s->data + start, i - start)});
-			i += sep->len;
-			start = i;
-		} else {
-			i++;
-		}
-	}
-	ak_arr_push(&a, (ak_val){.p = ak_str_new(s->data + start, s->len - start)});
-	RET_P(a);
+	RET_P(ak_str_split_n(s, sep, count));
 }
 
 static ak_val str_trim_prefix(ak_val *args, uint32_t n) {
@@ -224,8 +192,8 @@ static ak_val str_lines(ak_val *args, uint32_t n) {
 	ak_arr *a = ak_arr_new(AK_K_REF, NULL, 0);
 	a->h.flags = 1;
 	uint32_t start = 0;
-	for (uint32_t i = 0; i < s->len; i++) {
-		if (s->data[i] != '\n') continue;
+	for (const char *nl; start < s->len && (nl = memchr(s->data + start, '\n', s->len - start));) {
+		uint32_t i = (uint32_t)(nl - s->data);
 		uint32_t end = i > start && s->data[i - 1] == '\r' ? i - 1 : i;
 		ak_arr_push(&a, (ak_val){.p = ak_str_new(s->data + start, end - start)});
 		start = i + 1;
@@ -240,11 +208,9 @@ static ak_val str_lines(ak_val *args, uint32_t n) {
 
 static ak_val str_find_last(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
-	ak_str *s = STR(0), *sub = STR(1);
-	if (sub->len > s->len) RET_P(NULL);
-	for (uint32_t i = s->len - sub->len + 1; i-- > 0;)
-		if (memcmp(s->data + i, sub->data, sub->len) == 0) RET_P(ak_box_new(AK_K_INT, (ak_val){.i = i}));
-	RET_P(NULL);
+	int64_t i = ak_str_find_last(STR(0), STR(1));
+	if (i < 0) RET_P(NULL);
+	RET_P(ak_box_new(AK_K_INT, (ak_val){.i = i}));
 }
 
 // str.find_any(s, chars): the byte offset of the first character of s
@@ -252,6 +218,19 @@ static ak_val str_find_last(ak_val *args, uint32_t n) {
 static ak_val str_find_any(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	ak_str *s = STR(0), *cs = STR(1);
+	if (ak_str_ascii(cs)) {
+		// ASCII characters: a set of them, and a byte of s at a time. An
+		// ASCII byte always starts a character, which is it alone unless
+		// stray continuation bytes follow (what isn't UTF-8 groups so).
+		uint64_t set[2] = {0};
+		for (uint32_t k = 0; k < cs->len; k++) set[(uint8_t)cs->data[k] >> 6] |= 1ull << (cs->data[k] & 63);
+		for (uint32_t i = 0; i < s->len; i++) {
+			uint8_t c = (uint8_t)s->data[i];
+			if (c < 128 && set[c >> 6] >> (c & 63) & 1 && (i + 1 == s->len || ((uint8_t)s->data[i + 1] & 0xc0) != 0x80))
+				RET_P(ak_box_new(AK_K_INT, (ak_val){.i = i}));
+		}
+		RET_P(NULL);
+	}
 	for (uint32_t i = 0; i < s->len;) {
 		uint32_t j = i + 1;
 		while (j < s->len && ((uint8_t)s->data[j] & 0xc0) == 0x80) j++;
@@ -319,17 +298,7 @@ static ak_val str_find(ak_val *args, uint32_t n) {
 }
 
 // str.slice(s, from, to): character offsets, clamped.
-static int64_t char_to_byte(const ak_str *s, int64_t c) {
-	if (c <= 0) return 0;
-	int64_t k = 0;
-	for (uint32_t i = 0; i < s->len; i++) {
-		if (((uint8_t)s->data[i] & 0xc0) != 0x80) {
-			if (k == c) return i;
-			k++;
-		}
-	}
-	return s->len;
-}
+static int64_t char_to_byte(const ak_str *s, int64_t c) { return ak_str_char_offset(s, c); }
 
 static ak_val str_slice(ak_val *args, uint32_t n) {
 	ak_str *s = STR(0);
@@ -1118,7 +1087,8 @@ static ak_val arr_chunked(ak_val *args, uint32_t n) {
 // Sorting: a stable merge sort, by a "less" closure, a type's compare
 // method (a closure whose int is negative for less), or, without one, by
 // the elements' natural order (numbers, strings, an enum's cases in
-// their order).
+// their order). Ints by a radix sort: equal ints can't be told apart, so
+// how it moves them is nobody's business, and it's linear.
 
 typedef struct {
 	ak_closure *less;
@@ -1147,36 +1117,84 @@ static bool lt(sort_ctx *c, ak_val a, ak_val b) {
 	}
 }
 
-static void msort(sort_ctx *c, ak_val *v, ak_val *tmp, uint32_t n) {
-	if (n < 2) return;
-	if (n <= 12) {
-		for (uint32_t i = 1; i < n; i++) {
-			ak_val x = v[i];
-			uint32_t j = i;
-			while (j > 0 && lt(c, x, v[j - 1])) {
-				v[j] = v[j - 1];
-				j--;
-			}
-			v[j] = x;
-		}
-		return;
+static inline bool lt_float(sort_ctx *c, ak_val a, ak_val b) { return AK_UNUSED(c), a.f < b.f; }
+
+// A merge sort for each way of comparing, LT inlined: runs of 12 by
+// insertion, then each half's left part merged back from tmp. When SKIP,
+// halves already in order aren't merged at all (not for floats: with a
+// NaN, < isn't an order, and merging anyway keeps how they always fell).
+#define MERGE_SORT(NAME, LT, SKIP) \
+	static void NAME(sort_ctx *c, ak_val *v, ak_val *tmp, uint32_t n) { \
+		if (n < 2) return; \
+		if (n <= 12) { \
+			for (uint32_t i = 1; i < n && !c->failed; i++) { \
+				ak_val x = v[i]; \
+				uint32_t j = i; \
+				while (j > 0 && LT(c, x, v[j - 1])) { \
+					v[j] = v[j - 1]; \
+					j--; \
+				} \
+				v[j] = x; \
+			} \
+			return; \
+		} \
+		uint32_t h = n / 2; \
+		NAME(c, v, tmp, h); \
+		NAME(c, v + h, tmp, n - h); \
+		if (c->failed || ((SKIP) && !LT(c, v[h], v[h - 1]))) return; /* in order already */ \
+		memcpy(tmp, v, sizeof(ak_val) * h); \
+		uint32_t i = 0, j = h, k = 0; \
+		while (i < h && j < n) v[k++] = LT(c, v[j], tmp[i]) ? v[j++] : tmp[i++]; \
+		while (i < h) v[k++] = tmp[i++]; \
 	}
-	uint32_t h = n / 2;
-	msort(c, v, tmp, h);
-	msort(c, v + h, tmp, n - h);
-	uint32_t i = 0, j = h, k = 0;
-	while (i < h && j < n) tmp[k++] = lt(c, v[j], v[i]) ? v[j++] : v[i++];
-	while (i < h) tmp[k++] = v[i++];
-	while (j < n) tmp[k++] = v[j++];
-	memcpy(v, tmp, sizeof(ak_val) * n);
+
+MERGE_SORT(msort, lt, c->less || c->k != AK_K_FLOAT)
+MERGE_SORT(msort_float, lt_float, false)
+
+// radix_sort orders ints ascending (signed), a byte a pass from the
+// lowest, passes where every int has the same byte skipped.
+static void radix_sort(ak_val *v, ak_val *tmp, uint32_t n) {
+	uint32_t (*count)[256] = ak_alloc(sizeof(uint32_t) * 8 * 256);
+	for (uint32_t i = 0; i < n; i++) {
+		uint64_t x = (uint64_t)v[i].i ^ (1ull << 63);
+		for (int b = 0; b < 8; b++) count[b][(x >> (8 * b)) & 0xff]++;
+	}
+	ak_val *from = v, *to = tmp;
+	for (int b = 0; b < 8; b++) {
+		uint32_t *c = count[b];
+		if (c[((uint64_t)v[0].i ^ (1ull << 63)) >> (8 * b) & 0xff] == n) continue;  // one byte for all
+		uint32_t sum = 0;
+		for (int d = 0; d < 256; d++) {
+			uint32_t t = c[d];
+			c[d] = sum;
+			sum += t;
+		}
+		for (uint32_t i = 0; i < n; i++) {
+			uint64_t x = (uint64_t)from[i].i ^ (1ull << 63);
+			to[c[(x >> (8 * b)) & 0xff]++] = from[i];
+		}
+		ak_val *t = from;
+		from = to, to = t;
+	}
+	if (from != v) memcpy(v, from, sizeof(ak_val) * n);
+	ak_free(count);
+}
+
+// sort_vals sorts v as c says, tmp n slots of room.
+static void sort_vals(sort_ctx *c, ak_val *v, uint32_t n) {
+	if (n < 2) return;
+	ak_val *tmp = ak_alloc(sizeof(ak_val) * n);
+	if (c->less) msort(c, v, tmp, n);
+	else if (c->k == AK_K_INT && n > 64) radix_sort(v, tmp, n);
+	else if (c->k == AK_K_FLOAT) msort_float(c, v, tmp, n);
+	else msort(c, v, tmp, n);
+	ak_free(tmp);
 }
 
 static ak_val arr_sorted(ak_val *args, uint32_t n) {
 	ak_arr *a = ak_arr_copy(ARR(0));
 	sort_ctx c = {n > 1 ? CLOS(1) : NULL, n > 2 && A(2).i, ek(a), false};
-	ak_val *tmp = ak_alloc(sizeof(ak_val) * (a->len ? a->len : 1));
-	msort(&c, a->data, tmp, a->len);
-	ak_free(tmp);
+	sort_vals(&c, a->data, a->len);
 	if (c.failed) {
 		ak_release(a);
 		RET_VOID;
@@ -1187,9 +1205,7 @@ static ak_val arr_sorted(ak_val *args, uint32_t n) {
 static ak_val arr_sort(ak_val *args, uint32_t n) {
 	ak_arr *a = ak_arr_mut((ak_arr **)&args[0].p);
 	sort_ctx c = {n > 1 ? CLOS(1) : NULL, n > 2 && A(2).i, ek(a), false};
-	ak_val *tmp = ak_alloc(sizeof(ak_val) * (a->len ? a->len : 1));
-	msort(&c, a->data, tmp, a->len);
-	ak_free(tmp);
+	sort_vals(&c, a->data, a->len);
 	ak_change_range(0, a->len, false);
 	RET_VOID;
 }
@@ -1828,17 +1844,40 @@ static size_t utf8_seq(const uint8_t *p, size_t n) {
 	return len;
 }
 
+// valid_run: how many bytes from p on are whole UTF-8 sequences, eight
+// ASCII bytes at a time where they are.
+static size_t valid_run(const uint8_t *p, size_t n) {
+	size_t i = 0;
+	while (i < n) {
+		if (i + 8 <= n) {
+			uint64_t w;
+			memcpy(&w, p + i, 8);
+			if (!(w & 0x8080808080808080ull)) {
+				i += 8;
+				continue;
+			}
+		}
+		size_t k = utf8_seq(p + i, n - i);
+		if (!k) break;
+		i += k;
+	}
+	return i;
+}
+
 static ak_val bytes_str(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	const ak_bytes *b = BYTES(0);
 	size_t len = blen(b);
+	size_t ok = valid_run(len ? b->data : NULL, len);
+	if (ok == len) RET_P(len ? ak_str_new((const char *)b->data, len) : ak_str_empty());  // all of it UTF-8: as it is
+	// What isn't UTF-8 is U+FFFD, a byte each; the runs that are go whole.
 	ak_buf out = {0};
+	ak_buf_reserve(&out, len + 16);
 	for (size_t i = 0; i < len;) {
-		size_t k = utf8_seq(b->data + i, len - i);
-		if (k) {
-			ak_buf_put(&out, b->data + i, k);
-			i += k;
-		} else {
+		size_t k = valid_run(b->data + i, len - i);
+		ak_buf_put(&out, b->data + i, k);
+		i += k;
+		if (i < len) {
 			ak_buf_put(&out, "\xef\xbf\xbd", 3);  // U+FFFD
 			i++;
 		}

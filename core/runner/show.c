@@ -127,8 +127,8 @@ static void items_add(items *l, ak_strb *b) {
 		l->cap = l->cap ? l->cap * 2 : 8;
 		l->items = ak_realloc(l->items, sizeof(ak_buf) * l->cap);
 	}
-	l->items[l->len++] = b->b;
-	b->b = (ak_buf){0};
+	l->items[l->len++] = *ak_strb_buf(b);
+	*b = (ak_strb){0};
 }
 
 static void items_free(items *l) {
@@ -277,7 +277,7 @@ static entry *sorted(shower *s, const ak_map *m, const char *kd, uint32_t *n) {
 		for (uint32_t i = 0; i < k; i++) {
 			ak_strb kb = {0};
 			show(s, &kb, e[i].k, kd, 0);
-			e[i].ktext = kb.b;
+			e[i].ktext = *ak_strb_buf(&kb);
 		}
 		qsort(e, k, sizeof *e, cmp_entry_text);
 		for (uint32_t i = 0; i < k; i++) ak_buf_free(&e[i].ktext);
@@ -315,7 +315,7 @@ static void show(shower *s, ak_strb *b, ak_val v, const char *d, int indent) {
 		if (v.f != v.f) ak_strb_cstr(b, "nan", 3);
 		else if (isinf(v.f)) ak_strb_cstr(b, v.f > 0 ? "inf" : "-inf", v.f > 0 ? 3 : 4);
 		else {
-			size_t at = b->b.len;
+			size_t at = ak_strb_buf(b)->len;
 			ak_strb_float(b, v.f);
 			// A float says it's one: 1.0, not 1.
 			bool frac = false;
@@ -421,8 +421,8 @@ static void show(shower *s, ak_strb *b, ak_val v, const char *d, int indent) {
 		ak_strb open = {0};
 		if (*d == 'S') type_name(&open, sh->name);
 		ak_strb_cstr(&open, "(", 1);
-		ak_buf_put(&open.b, "", 1);
-		join(b, (const char *)open.b.data, &l, ")", indent);
+		ak_buf_put(ak_strb_buf(&open), "", 1);
+		join(b, (const char *)ak_strb_buf(&open)->data, &l, ")", indent);
 		ak_buf_free(&open.b);
 		items_free(&l);
 		break;
@@ -447,8 +447,8 @@ static void show(shower *s, ak_strb *b, ak_val v, const char *d, int indent) {
 		ak_strb_cstr(&open, ".", 1);
 		ak_strb_cstr(&open, c->name, strlen(c->name));
 		ak_strb_cstr(&open, "(", 1);
-		ak_buf_put(&open.b, "", 1);
-		join(b, (const char *)open.b.data, &l, ")", indent);
+		ak_buf_put(ak_strb_buf(&open), "", 1);
+		join(b, (const char *)ak_strb_buf(&open)->data, &l, ")", indent);
 		ak_buf_free(&open.b);
 		items_free(&l);
 		break;

@@ -976,14 +976,9 @@ typedef struct {
 	uint32_t i;
 } keyed;
 
-// keyed_less orders a and b by their keys, then by where they were:
-// stable either way.
-static bool keyed_less(order *o, bool desc, const keyed *a, const keyed *b) {
-	if (desc ? less(o, b->k, a->k) : less(o, a->k, b->k)) return true;
-	if (o->failed) return false;
-	if (desc ? less(o, a->k, b->k) : less(o, b->k, a->k)) return false;
-	return a->i < b->i;
-}
+// keyed_less orders a and b by their keys: what's equal stays where it
+// was, as the merge sort below keeps it (stable either way).
+static bool keyed_less(order *o, bool desc, const keyed *a, const keyed *b) { return desc ? less(o, b->k, a->k) : less(o, a->k, b->k); }
 
 static void keyed_sort(order *o, bool desc, keyed *v, keyed *tmp, uint32_t n) {
 	if (n < 2 || o->failed) return;

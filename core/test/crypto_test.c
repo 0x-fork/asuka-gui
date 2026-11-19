@@ -6,6 +6,7 @@
 // SHA-384 and SHA-512) are Go's crypto/hkdf's and crypto/pbkdf2's.
 #include "t.h"
 #include "std/std.h"
+#include "std/cryptohw.h"
 
 static void hex(const uint8_t *p, size_t n, char *out) {
 	for (size_t i = 0; i < n; i++) snprintf(out + 2 * i, 3, "%02x", p[i]);
@@ -91,6 +92,42 @@ static const struct { const char *seed, *pub, *msg, *sig; } rfc8032[] = {
 	 "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f",
 	 "dc2a4459e7369633a52b1bf277839a00201009a3efbf3ecb69bea2186c26b58909351fc9ac90b3ecfdfbc7c66431e0303dca179c138ac17ad9bef1177331a704"},
 };
+
+// The CPU's SHA-256 and SHA-512 (cryptohw.c), where it has them, hash
+// as the software does, whole and in pieces.
+TEST(sha2_hardware_as_software) {
+	static uint8_t data[3000];
+	uint64_t r = 0x9e3779b97f4a7c15ull;
+	for (size_t i = 0; i < sizeof data; i++) {
+		r ^= r << 13, r ^= r >> 7, r ^= r << 17;
+		data[i] = (uint8_t)r;
+	}
+	for (size_t n = 0; n < sizeof data; n += n < 300 ? 1 : 97) {
+		uint8_t a[64], b[64], c[64], d[64];
+		ak_sha256(data, n, a);
+		ak_sha512(data, n, c);
+		ak_cryptohw_off = true;
+		ak_sha256(data, n, b);
+		ak_sha512(data, n, d);
+		ak_cryptohw_off = false;
+		if (memcmp(a, b, 32)) T_FAIL("sha256 of %zu bytes", n);
+		if (memcmp(c, d, 64)) T_FAIL("sha512 of %zu bytes", n);
+		// In pieces: what's buffered, then whole blocks, then the rest.
+		ak_sha256_ctx s;
+		ak_sha256_init(&s);
+		size_t k = n / 3;
+		ak_sha256_update(&s, data, k);
+		ak_sha256_update(&s, data + k, n - k);
+		ak_sha256_final(&s, b);
+		if (memcmp(a, b, 32)) T_FAIL("sha256 of %zu bytes in pieces", n);
+		ak_sha512_ctx t;
+		ak_sha512_init(&t);
+		ak_sha512_update(&t, data, k);
+		ak_sha512_update(&t, data + k, n - k);
+		ak_sha512_final(&t, d);
+		if (memcmp(c, d, 64)) T_FAIL("sha512 of %zu bytes in pieces", n);
+	}
+}
 
 TEST(ed25519_rfc8032) {
 	for (size_t i = 0; i < AK_LEN(rfc8032); i++) {

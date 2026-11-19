@@ -161,9 +161,18 @@ static int64_t wrap(int64_t v, int64_t n) {
 	return r < 0 ? r + n : r;
 }
 
+// num writes v, zeros before it to width digits (a - before them).
 static void num(ak_buf *b, int64_t v, int width) {
 	if (v < 0) ak_buf_u8(b, '-');
-	ak_buf_printf(b, "%0*llu", width, (unsigned long long)magnitude(v));
+	char d[24];
+	int i = sizeof d;
+	uint64_t u = magnitude(v);
+	do {
+		d[--i] = (char)('0' + u % 10);
+		u /= 10;
+	} while (u);
+	for (int k = (int)sizeof d - i; k < width; k++) ak_buf_u8(b, '0');
+	ak_buf_put(b, d + i, sizeof d - (size_t)i);
 }
 
 // day_of_year is y-m-d's day in its year (month 1 to 12).
@@ -189,9 +198,12 @@ static void zone(ak_buf *b, int64_t off, bool colon, bool minutes, bool z) {
 	}
 	ak_buf_u8(b, off < 0 ? '-' : '+');
 	uint64_t mag = magnitude(off);
-	unsigned long long h = mag / 3600, m = mag / 60 % 60;
-	ak_buf_printf(b, "%02llu", h);
-	if (minutes || m) ak_buf_printf(b, colon ? ":%02llu" : "%02llu", m);
+	int64_t h = (int64_t)(mag / 3600), m = (int64_t)(mag / 60 % 60);
+	num(b, h, 2);
+	if (minutes || m) {
+		if (colon) ak_buf_u8(b, ':');
+		num(b, m, 2);
+	}
 }
 
 typedef struct {
@@ -274,9 +286,20 @@ static void field(ak_buf *b, char c, int count, const fields *f) {
 		num(b, f->second, count);
 		break;
 	case 'S': {
-		// Fractions of a second, truncated to count digits.
-		char d[10];
-		snprintf(d, sizeof d, "%09lld", (long long)f->nano);
+		// Fractions of a second, truncated to count digits: the first 9
+		// characters of printf's %09lld (a field made by hand may be
+		// negative, or have more digits).
+		char dg[24], d[32];
+		int k = sizeof dg;
+		uint64_t u = magnitude(f->nano);
+		do {
+			dg[--k] = (char)('0' + u % 10);
+			u /= 10;
+		} while (u);
+		int nd = (int)sizeof dg - k, at = 0;
+		if (f->nano < 0) d[at++] = '-';
+		for (int z = nd + at; z < 9; z++) d[at++] = '0';
+		memcpy(d + at, dg + k, (size_t)nd);
 		for (int i = 0; i < count; i++) ak_buf_u8(b, i < 9 ? (uint8_t)d[i] : '0');
 		break;
 	}

@@ -113,6 +113,13 @@ void ak_hash(int kind, const void *p, size_t n, uint8_t *out);
 void ak_hmac(int kind, const uint8_t *key, size_t kn, const uint8_t *m, size_t mn, uint8_t *out);
 void ak_hkdf_expand(int kind, const uint8_t *prk, size_t pn, const uint8_t *info, size_t in, uint8_t *out, size_t n);
 void ak_pbkdf2(int kind, const uint8_t *pw, size_t pn, const uint8_t *salt, size_t sn, uint64_t iterations, uint8_t *out, size_t n);
+// CRC-32 (IEEE's, gzip's) and CRC-32C (Castagnoli's), continuing crc
+// (0 to start), as zlib's crc32 (checksum.c). Any thread.
+uint32_t ak_crc32(uint32_t crc, const void *p, size_t n);
+uint32_t ak_crc32c(uint32_t crc, const void *p, size_t n);
+uint32_t ak_crc32_bytewise(uint32_t crc, const void *p, size_t n, bool castagnoli);
+extern bool ak_crc_hw_off;  // the tables alone (the tests check both)
+
 // ak_wipe zeroes a secret where the compiler can't leave it out.
 void ak_wipe(void *p, size_t n);
 

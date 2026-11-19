@@ -6,6 +6,7 @@
 // its ciphertext, what isn't doesn't open.
 #include "t.h"
 #include "std/std.h"
+#include "std/cryptohw.h"
 
 static ak_lib_fn fn(const char *name) {
 	for (const ak_lib_entry *const *t = ak_std_libs; *t; t++)
@@ -172,6 +173,40 @@ TEST(sizes) {
 	}
 	ak_bytes *all[] = {k32, k16, n12, n24, short_, e};
 	for (size_t i = 0; i < AK_LEN(all); i++) ak_release(all[i]);
+}
+
+// The CPU's AES and carry-less multiply (cryptohw.c), where it has
+// them, seal and open as BearSSL's software does, at every length about
+// the eight blocks the hardware does at once, with additional data of
+// every length too.
+TEST(gcm_hardware_as_software) {
+	if (!ak_cpu_aes()) return;
+	uint64_t r = 0x2545f4914f6cdd1dull;
+	for (int round = 0; round < 600; round++) {
+		int c = round % 2 ? AES128 : AES256;
+		size_t pn = round < 300 ? (size_t)round : (size_t)(r % 5000), an = (size_t)(round % 37);
+		ak_bytes *k = ak_bytes_new(NULL, c == AES128 ? 16 : 32), *n = ak_bytes_new(NULL, 12), *p = ak_bytes_new(NULL, pn), *a = ak_bytes_new(NULL, an);
+		ak_bytes *bs[] = {k, n, p, a};
+		for (size_t i = 0; i < AK_LEN(bs); i++)
+			for (uint32_t j = 0; j < bs[i]->len; j++) {
+				r ^= r << 13, r ^= r >> 7, r ^= r << 17;
+				bs[i]->data[j] = (uint8_t)r;
+			}
+		ak_bytes *hw = seal(c, k, n, p, a);
+		ak_cryptohw_off = true;
+		ak_bytes *sw = seal(c, k, n, p, a);
+		ak_bytes *back_sw = open_(c, k, n, hw, a);
+		ak_cryptohw_off = false;
+		ak_bytes *back_hw = open_(c, k, n, sw, a);
+		if (!same(hw, sw)) T_FAIL("round %d: %zu bytes sealed differently", round, pn);
+		CHECK(same(back_sw, p) && same(back_hw, p));
+		hw->data[r % hw->len] ^= 1;
+		ak_bytes *bad = open_(c, k, n, hw, a);
+		CHECK(!bad);
+		ak_bytes *all[] = {k, n, p, a, hw, sw, back_sw, back_hw};
+		for (size_t i = 0; i < AK_LEN(all); i++)
+			if (all[i]) ak_release(all[i]);
+	}
 }
 
 T_MAIN()
