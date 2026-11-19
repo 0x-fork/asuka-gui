@@ -100,26 +100,26 @@ pub struct BigInt {
   fn add(o: BigInt) -> BigInt = BigInt(data: bigAdd(data, o.data))
 
   /// The sum with an int: x + 1.
-  fn plus(n: int) -> BigInt = BigInt(data: bigAdd(data, bigFromInt(n)))
+  fn plus(n: int) -> BigInt = BigInt(data: bigAddInt(data, n, false))
 
   /// The difference.
   fn sub(o: BigInt) -> BigInt = BigInt(data: bigSub(data, o.data))
 
   /// The difference with an int, as - of a BigInt (n - 1).
-  fn minus(n: int) -> BigInt = BigInt(data: bigSub(data, bigFromInt(n)))
+  fn minus(n: int) -> BigInt = BigInt(data: bigAddInt(data, n, true))
 
   /// The product.
   fn mul(o: BigInt) -> BigInt = BigInt(data: bigMul(data, o.data))
 
   /// The product with an int, as * of a BigInt (n * 3).
-  fn times(n: int) -> BigInt = BigInt(data: bigMul(data, bigFromInt(n)))
+  fn times(n: int) -> BigInt = BigInt(data: bigMulInt(data, n))
 
   /// The quotient toward zero, as int's /: -7 / 2 is -3. floorDiv
   /// rounds toward negative infinity.
   fn div(o: BigInt) -> BigInt = BigInt(data: bigDiv(data, o.data, 0))
 
   /// The quotient by an int, as / of a BigInt (n / 2).
-  fn quo(n: int) -> BigInt = BigInt(data: bigDiv(data, bigFromInt(n), 0))
+  fn quo(n: int) -> BigInt = BigInt(data: bigQuoInt(data, n))
 
   /// The remainder of the quotient toward zero, with this number's sign,
   /// as int's %: -7 % 2 is -1. mod's has the divisor's.
@@ -268,6 +268,9 @@ native fn bigToBytes(a: bytes, size: int, signed: bool) -> bytes
 native fn bigAdd(a: bytes, b: bytes) -> bytes
 native fn bigSub(a: bytes, b: bytes) -> bytes
 native fn bigMul(a: bytes, b: bytes) -> bytes
+native fn bigMulInt(a: bytes, n: int) -> bytes
+native fn bigAddInt(a: bytes, n: int, sub: bool) -> bytes
+native fn bigQuoInt(a: bytes, n: int) -> bytes
 // which: 0 the quotient toward zero, 1 its remainder, 2 the quotient
 // toward negative infinity, 3 its remainder.
 native fn bigDiv(a: bytes, b: bytes, which: int) -> bytes
