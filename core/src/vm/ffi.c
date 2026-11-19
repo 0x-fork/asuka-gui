@@ -11,7 +11,10 @@
 static uint64_t main_tid;
 static AK_TLS uint32_t depth;  // extern calls in progress on this thread
 
-void ak_ffi_init(void) { main_tid = ak_thread_id(); }
+void ak_ffi_init(void) {
+	main_tid = ak_thread_id();
+	ak_mark_main_thread();
+}
 
 void ak_ffi_enter(void) { depth++; }
 void ak_ffi_leave(void) { depth--; }

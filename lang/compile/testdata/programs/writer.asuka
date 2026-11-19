@@ -1,0 +1,49 @@
+// stdin: Ann\n
+// exit: 3
+import std/os
+
+// A Writer's output: in order with print and os.writeTo, a prompt out
+// before stdin is read, out before work goes to another thread (whose
+// writes go at once), and what's held at os.exit written out.
+async fn main() {
+  let out = os.writer(.stdout)
+  for i in 0..<3 {
+    out.write("line {i}\n")
+  }
+  print("printed after the lines")
+  out.write("held, ")
+  out.writeBytes("then bytes\n".bytes())
+  os.writeTo(.stdout, "written at once\n")
+  out.write("name? ")
+  let name = os.readLine() ?? ""
+  out.write("hi {name}\n")
+  out.write("before the worker\n")
+  let n = await spawn {
+    let w = os.writer(.stdout)
+    w.write("from the worker\n")
+    return 1
+  }
+  out.write("after it: {n}\n")
+  let err = os.writer(.stderr, size: 8)
+  err.write("to stderr, ")
+  err.write("past its size\n")
+  out.write("a long line, longer than any buffer would need to be: {"x".repeat(100)}\n")
+  out.write("held at exit\n")
+  os.exit(3)
+}
+
+// Stdout:
+// line 0
+// line 1
+// line 2
+// printed after the lines
+// held, then bytes
+// written at once
+// name? hi Ann
+// before the worker
+// from the worker
+// after it: 1
+// a long line, longer than any buffer would need to be: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+// held at exit
+// Stderr:
+// to stderr, past its size

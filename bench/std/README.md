@@ -569,3 +569,42 @@ time (1.02× to 1.16× across passes, at 0.99× its instructions: its
 Asuka arithmetic, a struct and a call a step), lines and stdout
 (1.03×, each 1.01× and 1.04× its instructions: a Stream handing each
 line on, and the writes' system calls).
+
+## stdout through std/os's Writer (2026-11-20)
+
+stdout's Asuka program pushed each line into an array and wrote
+`block.joined("")` every 1,024 lines: a string on the heap a line, and
+the join's copy. It now writes through `os.writer(.stdout)`, std/os's
+buffered writer, the counterpart of the Go program's `bufio.Writer`
+(Go's and Bun's programs are as they were):
+
+```asuka
+let out = os.writer(.stdout)
+for i in 0..<n {
+  out.write("line {i} of the output\n")
+}
+out.flush()
+```
+
+A Writer appends to its stream's one buffer (64 KiB), the main
+thread's, written out when it fills, on flush and when the program
+ends. Compiled, `write` is inlined to rt.h's `ak_stdio_put` (an
+intrinsic: a length check and a memcpy, no builtin call), and the line
+is a stack string: lang/cgen's escape analysis treats the put as a read
+in place, and now lets a string be made again into the register that
+held last turn's when nothing else holds it and it isn't one of its
+parts (a loop's line, which nothing clears after its last read: print's
+loop too). Measured on a quiet M5 (load 4 to 8), the work of four
+repetitions less one over three, the median of five interleaved runs
+(`/usr/bin/time -l`), in millions:
+
+| benchmark | instructions before | now | Go | now / Go | cycles before | now | Go | now / Go |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| stdout | 855 | 566 | 825 | 0.69× | 137 | 94.9 | 126 | 0.76× |
+| print | 11,992 | 11,880 | 13,209 | 0.90× | 2,785 | 2,784 | 3,063 | 0.91× |
+
+print writes a line a system call, as Go's `fmt.Println` does, so its
+cycles are the kernel's; its line is now built in the frame too (0.9%
+fewer instructions). `go run ./bench/std/run -instr -langs asuka,go
+-only stdout,print -runs 7` gave the same: stdout 0.74× Go's cycles
+and 0.69× its instructions, print 0.92× and 0.90×.

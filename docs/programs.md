@@ -67,7 +67,8 @@ The program runs as follows:
   ```
 
 - `os.exit(code)` ends it at once with `code`: stdout and stderr are
-  flushed, but `defer`s and other tasks don't run.
+  flushed (what a [writer](#many-lines-a-writer) holds too), but
+  `defer`s and other tasks don't run.
 - Ctrl-C ends an async `main` as its cancellation, as its own end
   would: its `defer`s run, then every task's, and the exit code is 130
   (128 and the signal's number: a terminate, `kill`'s default, is 143;
@@ -77,7 +78,8 @@ The program runs as follows:
 - `print(a, b)` writes a line to stdout, its values separated by spaces;
   `eprint` writes one to stderr. Both take `separator:` and
   `terminator:` (`print("…", terminator: "")` ends without a line
-  ending).
+  ending). Each is written at once; many lines go faster through a
+  [writer](#many-lines-a-writer).
 
 ## The process: std/os
 
@@ -93,12 +95,49 @@ The program runs as follows:
 | `os.readAll()` | the rest of stdin, as `bytes` |
 | `os.lines()` | stdin's lines as they come (a `Stream<string>`), read on another thread: the program goes on meanwhile |
 | `os.writeTo(.stdout, text)`, `writeBytesTo` | text or bytes as they are, without a line ending, to `.stdout` or `.stderr` |
+| `os.writer(.stdout)` | a `Writer` (`write(text)`, `writeBytes(data)`, `flush()`): many writes gathered and written a block at a time ([below](#many-lines-a-writer)) |
 | `os.terminal(.stdout)` | whether a stream is a terminal (a person), not a pipe or a file: colors and prompts only for one |
 | `os.signals(kinds)` | the signals of kinds as they come (a `Stream<os.Signal>`: `.interrupt`, `.term`, `.hangup`), which then don't end the program |
 | `os.hostname()`, `os.pid()`, `os.ppid()` | the machine's name, the process's id and its parent's |
 | `os.user()` | who the process runs as: a `User` with `name`, `home`, `uid` and `gid` (`none` on Windows) |
 | `os.platform()`, `os.arch()` | the system and the CPU it runs on: a `Platform` (`.macOS`, `.windows`, `.linux`...) and an `os.Arch` (`.arm64`, `.amd64`...) |
 | `os.executable()` | the program's own file, an absolute path with its links resolved: what it ships beside itself is in `fs.dir(os.executable() ?? ".")` |
+
+### Many lines: a writer
+
+`print` and `os.writeTo` write at once, a system call each: right for a
+line now and then, slow for a million. `os.writer(.stdout)` gathers
+what's written in a buffer (64 KiB; `size:` sets it) and writes it out
+a block at a time, as Go's `bufio.Writer` and Rust's `BufWriter` do:
+
+```asuka check
+import std/os
+
+fn main() {
+  let out = os.writer(.stdout)
+  for i in 0..<100000 {
+    out.write("line {i}\n")
+  }
+}
+```
+
+What a writer holds goes out when its buffer fills, on `out.flush()`,
+before anything else written to its stream (`print`, `eprint`,
+`os.writeTo`, a log line: they keep their place among its lines),
+before the program reads stdin or starts a command, while it waits
+with nothing else to run (an `await`), and when it ends: `main` returns
+or throws, `os.exit`, a signal. A program that never calls `flush()`
+loses nothing. The buffer is the stream's: every writer of stdout
+shares one, and a `Writer` is a value whose copies write to it too, so
+nothing happens when one goes away. Call `flush()` when the output must
+be seen now: a progress line, or a program at the other end of a pipe
+waiting for it.
+
+Compiled, `out.write("line {i}\n")` allocates nothing: the line is
+built in the function's frame and copied into the buffer. In a test,
+`FakeOS.run` keeps a writer's output with the rest (`o.stdout()`). In
+`spawn`, a writer writes at once. In an app, where stdout goes to the
+system's log, what's written goes out after each event.
 
 ### Signals
 

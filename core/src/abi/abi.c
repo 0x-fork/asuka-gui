@@ -524,8 +524,12 @@ void asuka_list_unbind(uint32_t list, uint32_t cell) {
 }
 
 void asuka_run_posted(void) {
-	if (started) ak_ui_run_posted();
-	else ak_sched_run_posted();  // a program's (abi/program.c): no UI
+	if (started) {
+		ak_ui_run_posted();
+	} else {
+		ak_sched_run_posted();  // a program's (abi/program.c): no UI
+		ak_stdio_flush_all();   // the host's loop goes idle next
+	}
 }
 
 void asuka_setenv(const char *key, const char *value) {

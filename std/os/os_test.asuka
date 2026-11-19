@@ -32,3 +32,21 @@ test "a fake doesn't change the process" {
   let _ = fake(args: ["x"], env: [:])
   expect((pid(), hostname(), user().name) == before)
 }
+
+fn writes() {
+  let out = writer(.stdout, size: 16)
+  out.write("one ")
+  print("printed")
+  for i in 0..<3 {
+    out.write("line {i}, longer than the buffer\n")
+  }
+  out.writeBytes("held\n".bytes())
+  writeTo(.stderr, "to stderr\n")
+}
+
+test "a writer's output: in order with print, written out as main ends" {
+  let o = fake()
+  expect(await o.run(writes) == 0)
+  expect(o.stdout() == "one printed\nline 0, longer than the buffer\nline 1, longer than the buffer\nline 2, longer than the buffer\nheld\n")
+  expect(o.stderr() == "to stderr\n")
+}

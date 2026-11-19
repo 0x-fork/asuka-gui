@@ -558,11 +558,16 @@ the C is written, from the bytecode's kinds.
   place and keep nothing: LEN, EQ, NE, LTS, ISNONE, JNONE, JSOME, a
   map's lookup by it (MGET, MGETJ), an INTERP's part, and the builtins
   that only read (byteCount, count, equals, compare, contains,
-  hasPrefix, hasSuffix, find, isEmpty, toInt, toFloat, hash, print).
-  Anything else (a return, a store, a capture, a call, a throw, a mut
-  fn's receiver, which goes back to its caller) is an escape, and the string is made on the heap; so is one made again
-  while a register still holds the last one (a loop carrying it into its
-  next turn). The string is immortal, so a release does nothing, and
+  hasPrefix, hasSuffix, find, isEmpty, toInt, toFloat, hash, print, and
+  std/os's Writer.write, os.put: an intrinsic, rt.h's ak_stdio_put, a
+  copy into the stream's buffer). Anything else (a return, a store, a
+  capture, a call, a throw, a mut fn's receiver, which goes back to its
+  caller) is an escape, and the string is made on the heap; so is one
+  made again while a register other than the one it's made into still
+  holds the last one (a loop carrying it into its next turn), or while
+  that one is among its parts (`s = "{s}."`). A loop's line, its
+  register not cleared after its last read, is made in the frame each
+  turn: the write drops the last one. The string is immortal, so a release does nothing, and
   flagged (AK_STR_STACK): ak_retain panics on one in the tests' builds
   (AK_TEST; what this analysis missed would be a keep); a copy into
   another register is ak_retain_local's, and a copy for another thread

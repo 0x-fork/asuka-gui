@@ -1016,6 +1016,9 @@ var intrinsics = map[string]intrinsic{
 	"str.contains":   {[]bc.Kind{bc.KRef, bc.KRef}, bc.KBool, "ak_str_contains(%[1]s, %[2]s)"},
 	"str.has_prefix": {[]bc.Kind{bc.KRef, bc.KRef}, bc.KBool, "ak_str_has_prefix(%[1]s, %[2]s)"},
 	"str.has_suffix": {[]bc.Kind{bc.KRef, bc.KRef}, bc.KBool, "ak_str_has_suffix(%[1]s, %[2]s)"},
+	// std/os's Writer.write (os.put): into the stream's buffer, rt.h's
+	// inline copy (a string made for it, read in place: stackstr.go).
+	"os.put": {[]bc.Kind{bc.KInt, bc.KRef}, bc.KVoid, "(ak_stdio_put(%[1]s, ((const ak_str *)%[2]s)->data, ((const ak_str *)%[2]s)->len), 0)"},
 	// A Duration's units (rt/lib.c's dur.*): its nanoseconds as they are.
 	"dur.ns":      {[]bc.Kind{bc.KInt}, bc.KInt, "%[1]s"},
 	"dur.ms":      {[]bc.Kind{bc.KInt}, bc.KInt, "(%[1]s / 1000000)"},

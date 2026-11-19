@@ -652,4 +652,52 @@ TEST(hash_follows_equality) {
 	ak_release(b);
 }
 
+// ---- Buffered output (rt.h: std/os's Writer) ----
+
+static char out_got[256];
+static size_t out_len;
+static int out_writes;
+
+static void out_hook(int fd, const char *s, size_t n) {
+	AK_UNUSED(fd);
+	if (out_len + n < sizeof out_got) memcpy(out_got + out_len, s, n);
+	out_len += n;
+	out_got[out_len < sizeof out_got ? out_len : sizeof out_got - 1] = 0;
+	out_writes++;
+}
+
+// A stream's buffer: puts are copies (no allocation, nothing written)
+// until it fills; then it's written whole, a put larger than it goes
+// at once, and another thread's write goes through without touching it.
+TEST(stdio_buffer) {
+	void (*hook)(int, const char *, size_t) = ak_lib_write_hook;
+	ak_lib_write_hook = out_hook;
+	ak_mark_main_thread();
+	ak_stdio_flush_all();
+	out_len = 0, out_writes = 0;
+	ak_stdio_buffer(1, 8);
+	ak_stdio_buffer(1, 4);  // the largest asked for stays
+	REQUIRE(ak_outbufs[1].cap == 8);
+	uint64_t before = ak_alloc_count;
+	ak_stdio_put(1, "ab", 2);
+	ak_stdio_put(1, "cd", 2);
+	CHECK_EQ_INT(ak_alloc_count - before, 0);
+	CHECK_EQ_INT(out_writes, 0);
+	ak_stdio_put(1, "efghijklmnopqrstuvwxyz", 22);  // more than it holds
+	CHECK_EQ_INT(out_writes, 2);  // what it held, then the put itself
+	CHECK_EQ_STR(out_got, "abcdefghijklmnopqrstuvwxyz");
+	ak_stdio_put(1, "1", 1);
+	uint32_t mine = ak_thread_epoch;
+	ak_thread_epoch = 0;  // as another thread
+	ak_stdio_put(1, "2", 1);
+	ak_stdio_flush(1);  // not its buffer: nothing
+	ak_thread_epoch = mine;
+	CHECK_EQ_STR(out_got, "abcdefghijklmnopqrstuvwxyz2");
+	ak_stdio_put(2, "e", 1);  // stderr's: its own, unbuffered (a cap of 0)
+	CHECK_EQ_STR(out_got, "abcdefghijklmnopqrstuvwxyz2e");
+	ak_stdio_flush_all();
+	CHECK_EQ_STR(out_got, "abcdefghijklmnopqrstuvwxyz2e1");
+	ak_lib_write_hook = hook;
+}
+
 T_MAIN()

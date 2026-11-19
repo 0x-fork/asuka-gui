@@ -70,6 +70,7 @@ static void print_frames(const char *t) {
 }
 
 static void report(void *err) {
+	ak_stdio_flush_all();
 	fflush(stdout);
 	ak_str *msg = ak_vm_error_text(err);
 	fprintf(stderr, "error: %s\n", msg->data);
@@ -97,6 +98,7 @@ static void end(int code) {
 	P.owner = NULL;
 	for (int i = 0; i < 1000 && ak_sched_run(); i++) {
 	}
+	ak_stdio_flush_all();  // what os.writer's writers hold
 	fflush(stdout);
 	fflush(stderr);
 	ak_os_signals_ended();
@@ -250,6 +252,7 @@ int ak_program_loop(void) {
 		while (ak_sched_run()) {
 		}
 		if (P.ended) break;
+		ak_stdio_flush_all();  // idle: what's written so far goes out
 		ak_mutex_lock(&P.mu);
 		while (!P.woken) ak_cond_wait(&P.cond, &P.mu);
 		P.woken = false;

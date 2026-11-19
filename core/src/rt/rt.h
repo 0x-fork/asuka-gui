@@ -532,6 +532,47 @@ static inline ak_str *ak_strbuf_str(ak_strbuf *buf, size_t n) {
 	s->data[n] = 0;
 	return s;
 }
+// Buffered output: std/os's Writer (os.writer(.stdout)). Each stream,
+// stdout (1) and stderr (2), has one buffer, the main thread's, which
+// every writer of it shares: put appends to it, and it's written out
+// when it fills, on flush, before anything else is written to its
+// stream (print, os.writeTo, a log line), when the main thread's loop
+// goes idle, before work is handed to another thread or a command
+// starts, and as the program ends (rt/lib.c). On another thread a put
+// writes through, at once. ak_stdio_put's fast path, a copy, is inline
+// (compiled code calls it directly: lang/cgen's intrinsics).
+typedef struct ak_outbuf {
+	char *data;
+	size_t len, cap;
+} ak_outbuf;
+extern ak_outbuf ak_outbufs[3];  // [1] stdout's, [2] stderr's
+// ak_on_main reports whether this is the main thread (the one the VM was
+// last set up on: ak_mark_main_thread).
+extern uint32_t ak_main_epoch;
+extern AK_TLS uint32_t ak_thread_epoch;
+static inline bool ak_on_main(void) { return ak_thread_epoch == ak_main_epoch; }
+void ak_mark_main_thread(void);
+void ak_stdio_put_slow(int fd, const void *p, size_t n);
+static inline void ak_stdio_put(int64_t fd, const void *p, size_t n) {
+	int f = fd == 2 ? 2 : 1;
+	if (AK_LIKELY(ak_on_main())) {
+		ak_outbuf *b = &ak_outbufs[f];
+		if (AK_LIKELY(n <= b->cap - b->len)) {
+			memcpy(b->data + b->len, p, n);
+			b->len += n;
+			return;
+		}
+	}
+	ak_stdio_put_slow(f, p, n);
+}
+// ak_stdio_buffer makes stream fd's buffer hold at least size bytes
+// (the largest any writer asked for); ak_stdio_flush writes out what it
+// holds, ak_stdio_flush_all both streams'. The main thread's: elsewhere
+// they do nothing.
+void ak_stdio_buffer(int fd, int64_t size);
+void ak_stdio_flush(int fd);
+void ak_stdio_flush_all(void);
+
 // ak_strs_join_in is ak_strs_join in buf when it fits there; ak_str_concat_in
 // ak_str_concat's; ak_strb_finish_in ak_strb_finish's.
 ak_str *ak_strs_join_in(ak_strbuf *buf, const ak_val *v, uint32_t n);

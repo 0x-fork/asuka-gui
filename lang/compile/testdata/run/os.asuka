@@ -103,6 +103,25 @@ async fn sendLater(o: os.FakeOS) {
   o.signal(.interrupt)
 }
 
+fn buffered() {
+  let out = os.writer(.stdout)
+  out.write("a ")
+  out.write("b\n")
+  print("print writes what's held first")
+  let copy = out
+  copy.writeBytes("a copy's\n".bytes())
+  out.write("held as main ends\n")
+  let err = os.writer(.stderr, size: 4)
+  err.write("longer than its buffer\n")
+}
+
+test "a writer: in order with print, what it holds written as main ends" {
+  let o = os.fake()
+  expect(await o.run(buffered) == 0)
+  print(o.stdout())
+  print(o.stderr())
+}
+
 // Output:
 // 0
 // none
@@ -141,3 +160,11 @@ async fn sendLater(o: os.FakeOS) {
 // handled
 //
 // ok a stream that reads signals gets them
+// a b
+// print writes what's held first
+// a copy's
+// held as main ends
+//
+// longer than its buffer
+//
+// ok a writer: in order with print, what it holds written as main ends

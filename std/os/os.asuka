@@ -12,6 +12,9 @@
 //     }
 //   }
 //
+// Many small writes go through a Writer, which writes them out a block
+// at a time: os.writer(.stdout).
+//
 // Tests drive a fake process: os.fake(args:, env:, stdin:) gives main
 // its arguments, environment and input, keeps what it writes, and runs
 // it as the program would (its exit code).
@@ -97,7 +100,8 @@ native fn writeBytes(fd: int, data: bytes)
 /// Writes text to stdout or stderr as it is (no line ending), at once:
 /// nothing is buffered (as print and eprint aren't), so it's on the
 /// stream when the call returns, in order with them and with what a
-/// command this program runs writes there.
+/// command this program runs writes there. What a Writer of the stream
+/// holds (os.writer) is written first. Many small writes: a Writer.
 pub fn writeTo(stream: Stdio, text: string) {
   write(fd(stream), text)
 }
@@ -105,6 +109,67 @@ pub fn writeTo(stream: Stdio, text: string) {
 /// Writes bytes to stdout or stderr.
 pub fn writeBytesTo(stream: Stdio, data: bytes) {
   writeBytes(fd(stream), data)
+}
+
+native fn buffer(fd: int, size: int)
+native fn put(fd: int, text: string)
+native fn putBytes(fd: int, data: bytes)
+native fn flushOut(fd: int)
+
+/// A buffered writer of stdout or stderr, from os.writer: many small
+/// writes gathered into one buffer and written to the stream a block at a
+/// time, which costs far less than a system call each (Go's bufio.Writer,
+/// Rust's BufWriter):
+///
+///   let out = os.writer(.stdout)
+///   for i in 0..<100000 {
+///     out.write("line {i}\n")
+///   }
+///   out.flush()
+///
+/// What it holds goes out when its buffer fills, on flush(), before
+/// anything else is written to its stream (print, eprint, os.writeTo,
+/// a log line: so they stay in order), before the program reads stdin
+/// or starts a command, when the program waits (an await with nothing
+/// else to run), and when it ends (main returns or throws, os.exit, a
+/// signal), as FakeOS.run's end does in a test. It isn't written out
+/// when a writer goes away: the buffer is the stream's, which every
+/// writer of it shares (a Writer is a value: a copy is the same writer),
+/// so nothing is lost when one goes unflushed, and writers of one stream
+/// keep their order. flush() before something else must see the output
+/// (another process reading a pipe the program keeps writing). Off the
+/// main thread (in spawn) its writes go to the stream at once; in an
+/// app (stdout is the system's log there), what it holds goes out after
+/// each event.
+pub struct Writer {
+  private out: int
+
+  /// Writes text as it is (no line ending), after what's written. A
+  /// short string made for the write ("line {i}\n") is never allocated:
+  /// compiled, it's built in the function's frame and copied straight
+  /// into the buffer.
+  fn write(text: string) {
+    put(out, text)
+  }
+
+  /// Writes bytes as they are, after what's written.
+  fn writeBytes(data: bytes) {
+    putBytes(out, data)
+  }
+
+  /// Writes what the stream's buffer holds to the stream now.
+  fn flush() {
+    flushOut(out)
+  }
+}
+
+/// A buffered writer of stdout (stderr: .stderr), whose stream's buffer
+/// holds at least size bytes (64 KiB; the largest any of its writers
+/// asked for) before it's written out.
+pub fn writer(stream: Stdio = .stdout, size: int = 65536) -> Writer {
+  let f = if stream == .stderr { 2 } else { 1 }
+  buffer(f, size)
+  return Writer(out: f)
 }
 
 native fn isTerminal(fd: int) -> bool
@@ -286,7 +351,8 @@ native async fn runMain(main: async fn() throws) -> int
 /// A test's process, from os.fake: what the program wrote, and run, which
 /// runs its main as the process would.
 pub struct FakeOS {
-  /// What main printed as run ran it (print, os.writeTo(.stdout, …)).
+  /// What main printed as run ran it (print, os.writeTo(.stdout, …), a
+  /// Writer's, all of it written out as main ends).
   fn stdout() -> string = fakeOutput(1)
   /// What was written to stderr (eprint, os.writeTo(.stderr, …), an uncaught error's report).
   fn stderr() -> string = fakeOutput(2)

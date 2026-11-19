@@ -81,8 +81,8 @@ static void write_all(int fd, const void *a, size_t an, const void *b, size_t bn
 }
 #endif
 
-void ak_stdio_write(int fd, const void *a, size_t an, const void *b, size_t bn) {
-	fd = fd == 2 ? 2 : 1;
+// raw_write is ak_stdio_write without the buffer: to the stream itself.
+static void raw_write(int fd, const void *a, size_t an, const void *b, size_t bn) {
 #if !defined(_WIN32) && !defined(__wasm__)
 	write_all(fd, a, an, b, bn);
 #else
@@ -93,10 +93,103 @@ void ak_stdio_write(int fd, const void *a, size_t an, const void *b, size_t bn) 
 #endif
 }
 
+void ak_stdio_write(int fd, const void *a, size_t an, const void *b, size_t bn) {
+	fd = fd == 2 ? 2 : 1;
+	ak_stdio_flush(fd);
+	raw_write(fd, a, an, b, bn);
+}
+
+// ---- Buffered output (rt.h; std/os's Writer) ----
+//
+// A buffer a stream, not a writer, as Rust's Stdout and C's stdio keep
+// one: writers of a stream can't reorder what they write between
+// themselves, print and os.writeTo write what it holds before their own,
+// and nothing is left behind by a writer no one flushed (there's no
+// writer to lose, and the program's end writes it out). It's the main
+// thread's, where a program's main and an app's code run, so its fast
+// path takes no lock: on another thread (spawn's) a put writes through,
+// and the main thread writes its buffers out before it hands work over
+// (spawn, a worker's call) and when the thread's results come back
+// there's nothing of theirs held, so what one thread wrote before
+// another saw its effect comes first. Not flushed on a writer's drop
+// (Rust's BufWriter's): a Writer is a value, and the stream's buffer
+// outlives its copies; the program's end writes it out instead (Go's
+// bufio.Writer leaves that to the program, which a forgotten Flush
+// loses).
+
+static char no_room[1];
+ak_outbuf ak_outbufs[3] = {{no_room, 0, 0}, {no_room, 0, 0}, {no_room, 0, 0}};
+uint32_t ak_main_epoch = UINT32_MAX;  // no thread's, until one is marked
+AK_TLS uint32_t ak_thread_epoch;
+
+void ak_mark_main_thread(void) {
+	ak_main_epoch = ak_main_epoch == UINT32_MAX ? 1 : ak_main_epoch + 1;
+	ak_thread_epoch = ak_main_epoch;
+}
+
+// emit writes what a buffer held, or a put too large for it: to
+// FakeOS.run's capture while one runs (the write hook), else the stream.
+static void emit(int fd, const void *p, size_t n) {
+	if (!n) return;
+	if (ak_lib_write_hook) ak_lib_write_hook(fd, p, n);
+	else raw_write(fd, p, n, NULL, 0);
+}
+
+void ak_stdio_flush(int fd) {
+	if (!ak_on_main()) return;
+	ak_outbuf *b = &ak_outbufs[fd == 2 ? 2 : 1];
+	size_t n = b->len;
+	if (!n) return;
+	b->len = 0;
+	emit(fd == 2 ? 2 : 1, b->data, n);
+}
+
+void ak_stdio_flush_all(void) {
+	ak_stdio_flush(1);
+	ak_stdio_flush(2);
+}
+
+void ak_stdio_put_slow(int fd, const void *p, size_t n) {
+	if (!ak_on_main()) {
+		emit(fd, p, n);
+		return;
+	}
+	ak_outbuf *b = &ak_outbufs[fd];
+	ak_stdio_flush(fd);
+	if (n >= b->cap) {
+		emit(fd, p, n);  // more than it holds: at once, not through it
+		return;
+	}
+	memcpy(b->data, p, n);
+	b->len = n;
+}
+
+static void flush_at_exit(void) { ak_stdio_flush_all(); }
+
+void ak_stdio_buffer(int fd, int64_t size) {
+	if (!ak_on_main()) return;
+	if (size < 1) size = 1;
+	if (size > (int64_t)1 << 30) size = (int64_t)1 << 30;
+	ak_outbuf *b = &ak_outbufs[fd == 2 ? 2 : 1];
+	if ((size_t)size <= b->cap) return;
+	static bool registered;
+	if (!registered) {
+		// A desktop app's process may end by exit() (its host's quit):
+		// what its writers hold goes out then too.
+		registered = true;
+		atexit(flush_at_exit);
+	}
+	ak_stdio_flush(fd);
+	if (b->data != no_room) ak_free(b->data);
+	b->data = ak_alloc_raw((size_t)size);
+	b->cap = (size_t)size;
+}
+
 static ak_val lib_print(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	ak_str *s = STR(0);
 	if (ak_lib_print_hook) {
+		ak_stdio_flush(1);
 		ak_lib_print_hook(s->data, s->len);
 	} else {
 		ak_stdio_write(1, s->data, s->len, "\n", 1);
@@ -111,6 +204,7 @@ static ak_val lib_print_text(ak_val *args, uint32_t n) {
 	int fd = args[0].i == 2 ? 2 : 1;
 	ak_str *s = STR(1);
 	if (ak_lib_write_hook) {
+		ak_stdio_flush(fd);
 		ak_lib_write_hook(fd, s->data, s->len);
 	} else {
 		ak_stdio_write(fd, s->data, s->len, NULL, 0);

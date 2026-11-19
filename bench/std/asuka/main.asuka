@@ -320,17 +320,13 @@ fn printing(n: int) -> string {
   return "{n}"
 }
 
-// stdout's lines through a buffer: a block of them written at a time.
+// stdout's lines through a buffered writer (Go's bufio.Writer).
 fn buffered(n: int) -> string {
-  var block: [string] = []
+  let out = os.writer(.stdout)
   for i in 0..<n {
-    block.push("line {i} of the output\n")
-    if block.count() == 1024 {
-      os.writeTo(.stdout, block.joined(""))
-      block = []
-    }
+    out.write("line {i} of the output\n")
   }
-  os.writeTo(.stdout, block.joined(""))
+  out.flush()
   return "{n}"
 }
 

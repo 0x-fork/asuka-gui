@@ -92,6 +92,9 @@ static ak_val spawn_fn(ak_val *args, uint32_t nargs) {
 	ak_closure *c = args[0].p;
 	ak_kind k = nargs > 1 ? (ak_kind)args[1].i : AK_K_VOID;
 	ak_future *f = ak_future_new(k);
+	// What the main thread's writers hold goes out before the work's own
+	// writes can (rt.h's buffered output).
+	ak_stdio_flush_all();
 	if (ak_spawn_elsewhere && ak_spawn_elsewhere(c, k, f)) return (ak_val){.p = f};
 	job *j = ak_alloc(sizeof *j);
 	j->c = ak_closure_deep_copy(c);

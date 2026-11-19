@@ -48,9 +48,9 @@ async fn main() throws {
       main (main.asuka:8)
   ```
 
-- `os.exit(code)` 立即以 `code` 结束程序：stdout 和 stderr 会被刷新，但 `defer` 和其他 task 不会执行。
+- `os.exit(code)` 立即以 `code` 结束程序：stdout 和 stderr 会被刷新（writer 缓冲里的内容也一样），但 `defer` 和其他 task 不会执行。
 - Ctrl-C 会像 `main` 自己结束那样，以取消的方式结束异步的 `main`：先执行它的 `defer`，再执行其他所有 task 的，退出码是 130（128 加上信号的编号：终止信号，也就是 `kill` 默认发送的信号，是 143；挂断信号是 129）。再按一次 Ctrl-C 会立即结束程序；不是异步的 `main` 也是这样立即结束，因为不 await 的代码无法取消。用 `os.signals()` 可以把这些信号交给程序自己处理（见[信号](#信号)）。
-- `print(a, b)` 向 stdout 写一行，各个值之间用空格隔开；`eprint` 则写到 stderr。两者都接受 `separator:` 和 `terminator:`（`print("…", terminator: "")` 写完不换行）。
+- `print(a, b)` 向 stdout 写一行，各个值之间用空格隔开；`eprint` 则写到 stderr。两者都接受 `separator:` 和 `terminator:`（`print("…", terminator: "")` 写完不换行）。每次调用都立即写出；要写很多行，用 writer 更快（见下面的“大量输出：writer”）。
 
 ## 进程：std/os
 
@@ -66,12 +66,32 @@ async fn main() throws {
 | `os.readAll()` | stdin 剩下的全部内容，`bytes` |
 | `os.lines()` | 逐行读取 stdin（一个 `Stream<string>`），在另一个线程上读，程序可以同时做别的事 |
 | `os.writeTo(.stdout, text)`、`writeBytesTo` | 原样写出文本或字节，不加行尾，目标是 `.stdout` 或 `.stderr` |
+| `os.writer(.stdout)` | 一个 `Writer`（`write(text)`、`writeBytes(data)`、`flush()`）：把多次写入攒起来，一块一块地写出（见下文） |
 | `os.terminal(.stdout)` | 某个流是否是终端（有人在看），而不是管道或文件：只在终端上输出颜色和提示 |
 | `os.signals(kinds)` | 按到达顺序给出这些种类的信号（一个 `Stream<os.Signal>`：`.interrupt`、`.term`、`.hangup`），被读取的信号不再结束程序 |
 | `os.hostname()`、`os.pid()`、`os.ppid()` | 机器名、本进程的 id 和父进程的 id |
 | `os.user()` | 进程以哪个用户身份运行：一个 `User`，包含 `name`、`home`、`uid` 和 `gid`（Windows 上 `uid`、`gid` 为 `none`） |
 | `os.platform()`、`os.arch()` | 运行所在的系统和 CPU：一个 `Platform`（`.macOS`、`.windows`、`.linux`……）和一个 `os.Arch`（`.arm64`、`.amd64`……） |
 | `os.executable()` | 程序自己的可执行文件，绝对路径，链接已解析：和程序一起发布的文件就在 `fs.dir(os.executable() ?? ".")` 里 |
+
+### 大量输出：writer
+
+`print` 和 `os.writeTo` 都是立即写出，每次一个系统调用：偶尔写一行没问题，写一百万行就慢了。`os.writer(.stdout)` 把写入的内容先攒在缓冲区里（64 KiB，可以用 `size:` 设置），再一块一块地写出，和 Go 的 `bufio.Writer`、Rust 的 `BufWriter` 一样：
+
+```asuka check
+import std/os
+
+fn main() {
+  let out = os.writer(.stdout)
+  for i in 0..<100000 {
+    out.write("line {i}\n")
+  }
+}
+```
+
+writer 缓冲的内容会在这些时候写出：缓冲区满了；调用 `out.flush()`；有别的东西要写到同一个流之前（`print`、`eprint`、`os.writeTo`、一条日志，所以它们和 writer 写的行保持原来的先后顺序）；程序读取 stdin 或启动命令之前；程序在等待、没有别的事可做时（一个 `await`）；以及程序结束时：`main` 返回或抛出错误、`os.exit`、收到信号。所以就算从不调用 `flush()`，也不会丢失输出。缓冲区属于流本身：stdout 的所有 writer 共用同一个，`Writer` 是值，它的副本也写到这里，因此某个 writer 不再使用时什么也不会发生。需要让输出马上被看到时调用 `flush()`：比如一行进度，或者管道另一端有程序在等着读。
+
+编译后，`out.write("line {i}\n")` 不分配任何内存：这一行在函数的栈帧里拼好，直接复制进缓冲区。在测试里，`FakeOS.run` 会把 writer 的输出和其他输出一起保留下来（`o.stdout()`）。在 `spawn` 里，writer 会立即写出。在应用里，stdout 写到系统日志，写入的内容在每个事件处理完后写出。
 
 ### 信号
 

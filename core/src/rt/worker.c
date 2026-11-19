@@ -287,6 +287,7 @@ static ak_val call_fn(ak_val *args, uint32_t nargs) {
 		else ak_future_resolve(f, v);
 		return (ak_val){.p = f};
 	}
+	ak_stdio_flush_all();  // before the call's own writes (rt.h's buffered output)
 	wcall *wc = ak_alloc(sizeof *wc);
 	memset(wc, 0, sizeof *wc);
 	wc->c = ak_closure_deep_copy(c);

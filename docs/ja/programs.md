@@ -48,9 +48,9 @@ async fn main() throws {
       main (main.asuka:8)
   ```
 
-- `os.exit(code)` はその場で `code` を終了コードとして終了します。stdout と stderr はフラッシュされますが、`defer` やほかの task は実行されません。
+- `os.exit(code)` はその場で `code` を終了コードとして終了します。stdout と stderr はフラッシュされます（writer がためている分も）が、`defer` やほかの task は実行されません。
 - Ctrl-C は、非同期の `main` を、`main` 自身が終わるときと同じくキャンセルとして終わらせます。まずその `defer` が、続いてほかのすべての task のものが実行され、終了コードは 130 です（128 とシグナルの番号。`kill` が既定で送る終了シグナルは 143、ハングアップは 129）。もう一度 Ctrl-C を押すとその場で終了します。非同期でない `main` も同じくその場で終了します。await しないコードはキャンセルできないためです。`os.signals()` を使うと、シグナルをプログラム自身で扱えます（[シグナル](#シグナル)を参照）。
-- `print(a, b)` は値をスペースで区切って stdout に 1 行書き、`eprint` は stderr に書きます。どちらも `separator:` と `terminator:` を取ります（`print("…", terminator: "")` は改行せずに終わります）。
+- `print(a, b)` は値をスペースで区切って stdout に 1 行書き、`eprint` は stderr に書きます。どちらも `separator:` と `terminator:` を取ります（`print("…", terminator: "")` は改行せずに終わります）。どちらも呼ぶたびにすぐ書き出します。たくさんの行は writer を通すほうが速く書けます（下の「大量の出力：writer」を参照）。
 
 ## プロセス：std/os
 
@@ -66,12 +66,32 @@ async fn main() throws {
 | `os.readAll()` | stdin の残り全部（`bytes`） |
 | `os.lines()` | 届いた順の stdin の行（`Stream<string>`）。別のスレッドで読むので、そのあいだもプログラムは進む |
 | `os.writeTo(.stdout, text)`、`writeBytesTo` | テキストやバイト列を、行末を付けずにそのまま `.stdout` か `.stderr` に書く |
+| `os.writer(.stdout)` | `Writer`（`write(text)`、`writeBytes(data)`、`flush()`）。何度もの書き込みをまとめて、ブロック単位で書き出す（下を参照） |
 | `os.terminal(.stdout)` | ストリームがパイプやファイルではなく端末（人が見ている）かどうか。色やプロンプトは端末のときだけ出す |
 | `os.signals(kinds)` | 指定した種類のシグナルを届いた順に返す（`Stream<os.Signal>`：`.interrupt`、`.term`、`.hangup`）。読まれている種類ではプログラムは終了しない |
 | `os.hostname()`、`os.pid()`、`os.ppid()` | マシンの名前、プロセスの ID、親プロセスの ID |
 | `os.user()` | プロセスを実行しているユーザー。`name`、`home`、`uid`、`gid` を持つ `User`（Windows では `uid` と `gid` は `none`） |
 | `os.platform()`、`os.arch()` | 動いているシステムと CPU。`Platform`（`.macOS`、`.windows`、`.linux` など）と `os.Arch`（`.arm64`、`.amd64` など） |
 | `os.executable()` | プログラム自身の実行ファイル。リンクを解決した絶対パスです。一緒に配布したファイルは `fs.dir(os.executable() ?? ".")` にあります |
+
+### 大量の出力：writer
+
+`print` と `os.writeTo` はその場で書き出すので、1 回ごとにシステムコールが 1 回かかります。ときどき 1 行書くならそれで十分ですが、100 万行では遅くなります。`os.writer(.stdout)` は書いた内容をいったんバッファ（64 KiB。`size:` で変えられます）にためて、ブロック単位でまとめて書き出します。Go の `bufio.Writer` や Rust の `BufWriter` と同じです。
+
+```asuka check
+import std/os
+
+fn main() {
+  let out = os.writer(.stdout)
+  for i in 0..<100000 {
+    out.write("line {i}\n")
+  }
+}
+```
+
+writer がためた内容が書き出されるのは、バッファがいっぱいになったとき、`out.flush()` を呼んだとき、同じストリームにほかのものを書く前（`print`、`eprint`、`os.writeTo`、ログの 1 行。なので writer の行との順序は崩れません）、プログラムが stdin を読む前やコマンドを起動する前、ほかにすることがなく待っているとき（`await`）、そしてプログラムが終わるとき（`main` が戻るかエラーを投げる、`os.exit`、シグナル）です。`flush()` を一度も呼ばなくても、出力は失われません。バッファはストリームのもので、stdout の writer はすべて同じバッファを共有します。`Writer` は値で、そのコピーも同じバッファに書くので、writer が使われなくなっても何も起きません。出力をすぐに見せたいとき、たとえば進捗の行や、パイプの向こうで出力を待っているプログラムがあるときは、`flush()` を呼びます。
+
+コンパイルすると、`out.write("line {i}\n")` はメモリを確保しません。行は関数のフレームの中で組み立てられ、そのままバッファにコピーされます。テストでは、`FakeOS.run` が writer の出力もほかの出力と一緒に保持します（`o.stdout()`）。`spawn` の中では、writer はその場で書き出します。stdout がシステムのログに行くアプリでは、書いた内容はイベントを 1 つ処理するごとに書き出されます。
 
 ### シグナル
 

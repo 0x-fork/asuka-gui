@@ -20,6 +20,9 @@
 //	os.readLines() -> [string]?      the lines there are (blocking for one)
 //	os.readAll() -> bytes            the rest of stdin
 //	os.write(fd, text) / writeBytes(fd, data)   1 stdout, 2 stderr
+//	os.buffer(fd, size)              fd's buffer (os.writer) holds at least size bytes
+//	os.put(fd, text) / putBytes(fd, data)   into fd's buffer (rt.h: ak_stdio_put)
+//	os.flushOut(fd)                  fd's buffer written out
 //	os.isTerminal(fd) -> bool        0 stdin, 1 stdout, 2 stderr
 //	os.setFake(args, env, hasEnv, stdin)   a test's process (os.fake)
 //	os.fakeOutput(fd) -> string      what the test wrote to fd
@@ -217,6 +220,7 @@ void ak_os_reset(void) {
 	ak_term_reset();
 	ak_log_reset();
 	ak_os_signals_reset();
+	ak_stdio_flush_all();
 	ak_mutex_lock(&mu);
 	if (ak_lib_print_hook == print_hook) ak_lib_print_hook = NULL;
 	if (ak_lib_write_hook == write_hook) ak_lib_write_hook = NULL;
@@ -448,6 +452,7 @@ static ak_val exit_fn(ak_val *args, uint32_t n) {
 		fake.loose = true;
 	}
 	ak_mutex_unlock(&mu);
+	ak_stdio_flush_all();  // what os.writer's writers hold
 	if (test) {
 		// The task that called it ends here, its defers run on the way.
 		ak_throw_cancel();
@@ -531,6 +536,7 @@ static void stdin_reset(void) {}
 
 static ak_val read_line_fn(ak_val *args, uint32_t n) {
 	AK_UNUSED(args), AK_UNUSED(n);
+	ak_stdio_flush(1);  // a prompt a writer holds shows before the wait
 #if defined(AK_OS_NO_PROCESS)
 	return (ak_val){.p = NULL};
 #else
@@ -567,6 +573,7 @@ static ak_val read_lines_fn(ak_val *args, uint32_t n) {
 
 static ak_val read_all_fn(ak_val *args, uint32_t n) {
 	AK_UNUSED(args), AK_UNUSED(n);
+	ak_stdio_flush(1);
 #if defined(AK_OS_NO_PROCESS)
 	return (ak_val){.p = ak_bytes_new(NULL, 0)};
 #else
@@ -585,6 +592,7 @@ static ak_val read_all_fn(ak_val *args, uint32_t n) {
 // stream, without a lock a call.
 static void write_fd(int64_t fd, const void *p, size_t len) {
 	if (ak_lib_write_hook == write_hook) {
+		ak_stdio_flush(fd == 2 ? 2 : 1);  // what a writer of it holds first
 		write_hook(fd == 2 ? 2 : 1, p, len);
 		return;
 	}
@@ -603,6 +611,34 @@ static ak_val write_bytes_fn(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	const ak_bytes *b = args[1].p;
 	write_fd(args[0].i, b->data, b->len);
+	return (ak_val){0};
+}
+
+// os.writer's: the stream's buffer (rt.h's buffered output), which every
+// Writer of it shares. Compiled code puts a string with ak_stdio_put
+// directly (lang/cgen's intrinsics); these are the VM's.
+static ak_val buffer_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_stdio_buffer(args[0].i == 2 ? 2 : 1, args[1].i);
+	return (ak_val){0};
+}
+
+static ak_val put_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_stdio_put(args[0].i, STR(1)->data, STR(1)->len);
+	return (ak_val){0};
+}
+
+static ak_val put_bytes_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	const ak_bytes *b = args[1].p;
+	if (b->len) ak_stdio_put(args[0].i, b->data, b->len);
+	return (ak_val){0};
+}
+
+static ak_val flush_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_stdio_flush(args[0].i == 2 ? 2 : 1);
 	return (ak_val){0};
 }
 
@@ -633,6 +669,9 @@ static run_t *running;  // the main FakeOS.run runs, while it does
 // the error (written to stderr) for one main threw, else 0.
 // capture starts (on) or ends keeping what's written: print's, os's.
 static void capture(bool on) {
+	// What writers hold goes where it was written for: the stream's before
+	// a run, the run's before its end.
+	ak_stdio_flush_all();
 	ak_mutex_lock(&mu);
 	fake.capturing += on ? 1 : -1;
 	ak_lib_print_hook = fake.capturing > 0 ? print_hook : NULL;
@@ -641,6 +680,7 @@ static void capture(bool on) {
 }
 
 static void run_end(ak_future *out, void *err) {
+	ak_stdio_flush_all();  // as the program's end does: what main's writers hold
 	int64_t code = taken_exit();
 	if (code >= 0) {
 		// exit was called: its cancellation is how main ended.
@@ -983,6 +1023,10 @@ const ak_lib_entry ak_std_os[] = {
 	{"os.readAll", read_all_fn},
 	{"os.write", write_fn},
 	{"os.writeBytes", write_bytes_fn},
+	{"os.buffer", buffer_fn},
+	{"os.put", put_fn},
+	{"os.putBytes", put_bytes_fn},
+	{"os.flushOut", flush_fn},
 	{"os.isTerminal", is_terminal_fn},
 	{"os.setFake", fake_fn},
 	{"os.fakeOutput", fake_output_fn},

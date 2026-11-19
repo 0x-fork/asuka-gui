@@ -26,9 +26,10 @@ import (
 // of a function or a closure, a builtin that may keep its argument, a
 // throw, a mut fn's receiver, which goes back to its caller) is an
 // escape: the string is made on the heap. And the buffer is
-// written again only where no holder of its last value is left: a
-// string made in a loop whose value a register carries into the next
-// turn is made on the heap.
+// written again only where no holder of its last value is left but the
+// register it's made into (its write drops the last one), which isn't
+// one of its parts: a string made in a loop whose value another
+// register carries into the next turn is made on the heap.
 //
 // The string is immortal (rt.h's AK_RC_IMMORTAL: a release, at a CLR,
 // a return or an error's unwinding, does nothing) and flagged
@@ -49,6 +50,7 @@ var readsInPlace = map[string]bool{
 	"str.len": true, "str.bytes_len": true, "str.contains": true, "str.has_prefix": true, "str.has_suffix": true,
 	"str.find": true, "str.find_last": true, "str.is_empty": true, "str.to_int": true, "str.to_float": true,
 	"str.equals": true, "str.compare": true,
+	"os.put": true, // std/os's Writer.write: copied into the stream's buffer
 }
 
 // cfg is a function's instructions' successors (falling through,
@@ -170,8 +172,15 @@ func (g *gen) escapes(ins []insn, succ, handlerOf [][]int, p, nr int) (moves map
 		queued[k] = false
 		s := in[k]
 		if k == p {
-			// Made again while a holder of the last one is left.
-			return nil, false
+			// Made again: the buffer is written over, so no register but
+			// the one it's made into may hold the last one, and that one
+			// mustn't be what it's made from (a loop's line, its register
+			// not cleared after its last read: the write drops it, a
+			// release that does nothing).
+			if !g.remade(ins[p], s) {
+				return nil, false
+			}
+			continue
 		}
 		out, isMove, allowed := g.holderStep(ins[k], k, s)
 		if !allowed || mutSelf && out.has(0) {
@@ -191,6 +200,26 @@ func (g *gen) escapes(ins []insn, succ, handlerOf [][]int, p, nr int) (moves map
 		}
 	}
 	return moves, true
+}
+
+// remade reports whether instruction x (the string's maker) may build it
+// again in its buffer with s the registers that may hold the last one:
+// none but x's destination, which none of its operands reads.
+func (g *gen) remade(x insn, s regset) bool {
+	d := x.args[0]
+	rest := append(regset(nil), s...)
+	rest.del(d)
+	if !empty(rest) {
+		return false
+	}
+	switch bc.Ops[x.op].Name {
+	case "INTERP":
+		b, nb := blockOf(g.m, x)
+		return d < b || d >= b+nb
+	case "CONCAT":
+		return x.args[1] != d && x.args[2] != d
+	}
+	return false
 }
 
 func empty(s regset) bool {

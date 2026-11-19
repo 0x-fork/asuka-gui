@@ -1634,6 +1634,15 @@ packages' Swift is what URLSession is reached through). asuka.toml's
 `[bin.<name>] path = "dir"` names a project's programs; a desktop build
 puts them in the app (Contents/Helpers, bin/, beside the .exe), built
 with the app's data folder (`Module.Data`) so they share its data.
+print and std/os's writes go to the stream at once, a system call
+each; `os.writer` (a Writer: many writes, a block at a time) appends to
+the stream's one buffer (rt.h's ak_stdio_put, the main thread's, which
+compiled code inlines: a line made for it is a stack string copied
+straight in), written out when it fills, before any other write to its
+stream, before stdin is read, work goes to another thread or a command
+starts, when the main thread's loop goes idle, and at the program's end
+(main's, os.exit, FakeOS.run's); on another thread a write goes
+through at once.
 
 **std/log** is the core's C too (core/src/std/log.c): a level that's
 off costs an atomic load (the program's `setLevel`, else `ASUKA_LOG`'s,

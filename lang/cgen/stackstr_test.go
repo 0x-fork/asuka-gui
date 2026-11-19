@@ -56,6 +56,57 @@ fn main() { print("{concat(30)} {lookup(["ka-to": 1], 0)}") }
 	}
 }
 
+// A loop's line, made into the same register each turn (nothing clears
+// it after its last read: the next turn's write drops it), is made in
+// the frame too, printed or written into std/os's Writer (its write,
+// inlined, a copy into the stream's buffer: ak_stdio_put); one built
+// from the last (s = "{s}.") isn't.
+func TestStackStringsLoop(t *testing.T) {
+	src := `
+import std/os
+
+fn printing(n: int) {
+  for i in 0..<n {
+    print("line {i} of the output")
+  }
+}
+
+fn writing(n: int) {
+  let out = os.writer(.stdout)
+  for i in 0..<n {
+    out.write("line {i} of the output\n")
+  }
+  out.flush()
+}
+
+fn growing(n: int) -> int {
+  var s = "a"
+  for i in 0..<n {
+    s = "{s}{i % 2}"
+  }
+  return s.byteCount()
+}
+
+fn main() {
+  printing(2)
+  writing(2)
+  print(growing(3))
+}
+`
+	for _, fn := range []string{"printing", "writing"} {
+		if c := cOf(t, src, fn); stackSites(c) != 1 || !strings.Contains(c, "ak_op_interp_in(&S") {
+			t.Errorf("%s: the line not made in the frame:\n%s", fn, c)
+		}
+	}
+	// Its builtins called: os.writer's buffer and flush, not the write.
+	if c := cOf(t, src, "writing"); !strings.Contains(c, "ak_stdio_put(") || strings.Count(c, "M->builtins[") > 2 {
+		t.Errorf("writing: Writer.write not inlined into ak_stdio_put:\n%s", c)
+	}
+	if c := cOf(t, src, "growing"); stackSites(c) != 0 {
+		t.Errorf("growing: a string made from the last made in the frame:\n%s", c)
+	}
+}
+
 // A string that goes anywhere is made on the heap: returned, stored in
 // an array, a struct or a map, captured, carried by a register into the
 // next turn of the loop that makes it, passed to a function (one not

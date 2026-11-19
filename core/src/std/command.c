@@ -304,6 +304,7 @@ static int64_t spawn(proc *p, const ak_str *prog, const ak_arr *argv, const ak_s
 	si.hStdError = ends[2];
 	PROCESS_INFORMATION pi;
 	wchar_t *wcwd = cwd->len ? wide(cwd->data, cwd->len) : NULL;
+	ak_stdio_flush_all();  // what the program's writers hold, before the child's
 	BOOL ok = CreateProcessW(NULL, line.data, NULL, NULL, TRUE, CREATE_UNICODE_ENVIRONMENT, block.data, wcwd, &si, &pi);
 	DWORD e = GetLastError();
 	ak_free(wcwd);
@@ -416,6 +417,7 @@ static int64_t spawn(proc *p, const ak_str *prog, const ak_arr *argv, const ak_s
 	}
 	cloexec(report[0]);
 	cloexec(report[1]);
+	ak_stdio_flush_all();
 	fflush(stdout);
 	fflush(stderr);
 	pid_t pid = fork();

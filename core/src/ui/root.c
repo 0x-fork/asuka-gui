@@ -571,6 +571,7 @@ static void flush_after(void) {
 	ak_sched_run();
 	ak_batch_end();
 	ak_ui_flush();
+	ak_stdio_flush_all();  // os.writer's: the turn's output, as the loop goes idle
 	// The flush may have made work ready: a task of a view it disposed,
 	// resumed to unwind (its defers: a hot key unregistered, a tray icon
 	// removed). The host runs it soon, not at the next event.
