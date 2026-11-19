@@ -21,6 +21,12 @@
 //     if e.event == "price" { price = e.data }
 //   }
 //
+// A server whose certificate a private authority signed, or one that
+// asks for the client's (mutual TLS), is reached with tls:
+//
+//   let tls = http.TLS(ca: try fs.readText("ca.pem"))
+//   let r = try await http.get("https://api.internal/health", tls: tls)
+//
 // And it serves HTTP/1.1, the same C on every system that can listen (a
 // program, a desktop app, a phone's app; not the web), each request's
 // handler a task on the main thread:
@@ -72,6 +78,11 @@ native interface Transport {
   /// the longest wait for the head, and for each piece after it. A
   /// network failure throws; an answer of any status returns.
   async fn open(method: string, url: string, headers: [string: string], body: bytes, timeout: Duration) -> Body
+  /// The client whose connections are made as tls says (one tls has its
+  /// fields' defaults changed): the same settings, the same client, its
+  /// connections reused, kept apart from the others'. It throws for what
+  /// it can't read, and where the platform can't (a browser).
+  async fn secured(tls: TLS) -> Transport
 }
 
 /// A response's body, read as it comes. Let go (or closed), it stops the
@@ -92,32 +103,107 @@ native interface Body {
 // says why).
 let transport = try? Transport()
 
-/// Sends a request: method (GET, POST...), url, headers, body, and how
-/// long to wait for the answer.
-pub async fn request(method: string, url: string, headers: [string: string] = [:], body: bytes = bytes(), timeout: Duration = 60s) throws -> Response {
-  if let t = transport {
-    return try await t.send(method, url, headers, body, timeout)
+/// How a client's HTTPS connections (and std/websocket's wss: ones) are
+/// made: whom they trust, and the certificate they show. By default (no
+/// tls) the system's client decides, as for the platform's own apps.
+///
+/// ca (PEM certificates) is trusted instead of the authorities the
+/// system trusts: a private authority's, a self-signed server's, a test
+/// server's. With trustSystem, the system's authorities are trusted too,
+/// ca's added to them. The server's name is checked either way.
+/// certificate and key (PEM) are the client's own, for a server that
+/// asks for one (mutual TLS): the certificate, then the authorities'
+/// that signed it, up to (not with) the root; its key PKCS#8's PRIVATE
+/// KEY, RSA PRIVATE KEY or EC PRIVATE KEY, not encrypted.
+/// insecureSkipVerify checks no certificate at all: anyone can pretend
+/// to be the server and read what's sent, so it's for a test against a
+/// server of your own, never for a release.
+///
+///   let tls = http.TLS(ca: try fs.readText("ca.pem"), certificate: try fs.readText("client.pem"), key: try fs.readText("client.key"))
+///   let r = try await http.get("https://api.internal/orders", tls: tls)
+///
+/// A web page can't: its browser decides whom it trusts and which
+/// certificate it shows, so a request with tls throws there.
+pub struct TLS {
+  /// PEM certificates of the authorities (or servers) to trust.
+  ca: string = ""
+  /// Whether the authorities the system trusts still are, ca's added to
+  /// them; by default ca's alone are.
+  trustSystem: bool = false
+  /// The client's certificate chain, PEM, for mutual TLS.
+  certificate: string = ""
+  /// The certificate's private key, PEM, not encrypted.
+  key: string = ""
+  /// Checks no certificate: for local tests only.
+  insecureSkipVerify: bool = false
+}
+
+// tlsGiven is whether t changes anything: its defaults are the system's.
+fn tlsGiven(t: TLS) -> bool = !t.ca.isEmpty() || !t.certificate.isEmpty() || !t.key.isEmpty() || t.insecureSkipVerify
+
+/// What's wrong with tls's PEM, before the platform reads it: none when
+/// it looks right. std/websocket checks with it too.
+pub fn tlsProblem(tls: TLS) -> string? {
+  let cert = "-----BEGIN CERTIFICATE-----"
+  if !tls.ca.isEmpty() && !tls.ca.contains(cert) {
+    return "ca has no PEM certificate (\"{cert}\")"
   }
-  return try await Transport().send(method, url, headers, body, timeout)
+  if !tls.certificate.isEmpty() && !tls.certificate.contains(cert) {
+    return "certificate has no PEM certificate (\"{cert}\")"
+  }
+  if !tls.certificate.isEmpty() && tls.key.isEmpty() {
+    return "a client certificate needs its key (key:)"
+  }
+  if !tls.key.isEmpty() && tls.certificate.isEmpty() {
+    return "a key needs its certificate (certificate:)"
+  }
+  if tls.key.contains("ENCRYPTED") {
+    return "the key is encrypted: give it decrypted (PKCS#8, RSA or EC, PEM)"
+  }
+  if !tls.key.isEmpty() && !tls.key.contains("PRIVATE KEY-----") {
+    return "key has no PEM private key (PRIVATE KEY, RSA PRIVATE KEY or EC PRIVATE KEY)"
+  }
+  return none
+}
+
+// client is the transport for tls: the system's for none (or the
+// defaults), else the one secured as it says.
+async fn client(tls: TLS?) throws -> Transport {
+  if let c = tls {
+    if tlsGiven(c) {
+      if let p = tlsProblem(c) {
+        throw HTTPError.tls(reason: p)
+      }
+      return try await (transport ?? try Transport()).secured(c)
+    }
+  }
+  return transport ?? try Transport()
+}
+
+/// Sends a request: method (GET, POST...), url, headers, body, and how
+/// long to wait for the answer; tls, for a server the system doesn't
+/// trust or one that asks for a certificate (TLS).
+pub async fn request(method: string, url: string, headers: [string: string] = [:], body: bytes = bytes(), timeout: Duration = 60s, tls: TLS? = none) throws -> Response {
+  return try await (try await client(tls)).send(method, url, headers, body, timeout)
 }
 
 /// Sends a GET request to url, waiting up to 60 s for the answer: a
 /// network failure throws, an answer of any status returns (check ok()).
-pub async fn get(url: string, headers: [string: string] = [:]) throws -> Response {
-  return try await request("GET", url, headers: headers)
+pub async fn get(url: string, headers: [string: string] = [:], tls: TLS? = none) throws -> Response {
+  return try await request("GET", url, headers: headers, tls: tls)
 }
 
 /// Sends a POST request with body to url, waiting up to 60 s, as get
 /// does. Say what body is with a content-type header.
-pub async fn post(url: string, body: bytes, headers: [string: string] = [:]) throws -> Response {
-  return try await request("POST", url, headers: headers, body: body)
+pub async fn post(url: string, body: bytes, headers: [string: string] = [:], tls: TLS? = none) throws -> Response {
+  return try await request("POST", url, headers: headers, body: body, tls: tls)
 }
 
 /// Posts value as JSON.
-pub async fn postJSON<T>(url: string, value: T, headers: [string: string] = [:]) throws -> Response {
+pub async fn postJSON<T>(url: string, value: T, headers: [string: string] = [:], tls: TLS? = none) throws -> Response {
   var h = headers
   h["content-type"] = "application/json"
-  return try await request("POST", url, headers: h, body: codec.encode(value).bytes())
+  return try await request("POST", url, headers: h, body: codec.encode(value).bytes(), tls: tls)
 }
 
 /// Downloads url into the file at path as the answer comes, made (or
@@ -127,12 +213,13 @@ pub async fn postJSON<T>(url: string, value: T, headers: [string: string] = [:])
 /// a second. timeout is the longest wait for more bytes, not for the
 /// whole. It answers with the Response, its body empty; a status that
 /// isn't a success is the caller's to check (the file then holds what
-/// the server said). Cancelling the task stops it, leaving no file.
-pub async fn download(url: string, path: string, headers: [string: string] = [:], method: string = "GET", body: bytes = bytes(), timeout: Duration = 60s, progress: (fn(int, int))? = none) throws -> Response {
+/// the server said). Cancelling the task stops it, leaving no file. tls
+/// is request's.
+pub async fn download(url: string, path: string, headers: [string: string] = [:], method: string = "GET", body: bytes = bytes(), timeout: Duration = 60s, progress: (fn(int, int))? = none, tls: TLS? = none) throws -> Response {
   let report = (got: int, total: int) => {
     if let p = progress { p(got, total) }
   }
-  let t = transport ?? try Transport()
+  let t = try await client(tls)
   var r = try await t.download(method, url, headers, body, timeout, path, report)
   if !r.body.isEmpty() {
     // The web's client hands the body over: the app's files are the
@@ -197,10 +284,20 @@ pub struct Event {
   retry: Duration = 0s
 }
 
-/// What a request for events can say went wrong.
+/// What a request can say went wrong (besides the network's failures).
 pub enum HTTPError: Error {
-  /// The server answered with a status that isn't a success.
+  /// The server answered with a status that isn't a success (events').
   status(code: int)
+  /// A request's tls can't be used: what's wrong with it.
+  tls(reason: string)
+
+  /// The error's text.
+  fn message() -> string {
+    match self {
+      .status(code) => return "the server answered with status {code}"
+      .tls(reason) => return "tls: {reason}"
+    }
+  }
 }
 
 /// Sends a request and answers as soon as the response's head is in,
@@ -210,9 +307,9 @@ pub enum HTTPError: Error {
 /// throws; an answer of any status returns (check ok()). Cancelling the
 /// task, or leaving the body's loop, stops it. On iOS and macOS the head
 /// comes with the body's first bytes (URLSession gives it no sooner): a
-/// server that answers and then waits is waited for.
-pub async fn stream(url: string, method: string = "GET", headers: [string: string] = [:], body: bytes = bytes(), timeout: Duration = 60s) throws -> StreamedResponse {
-  let t = transport ?? try Transport()
+/// server that answers and then waits is waited for. tls is request's.
+pub async fn stream(url: string, method: string = "GET", headers: [string: string] = [:], body: bytes = bytes(), timeout: Duration = 60s, tls: TLS? = none) throws -> StreamedResponse {
+  let t = try await client(tls)
   let b = try await t.open(method, url, headers, body, timeout)
   let head = try b.head()
   let pieces = Stream<bytes>(send => {
@@ -236,8 +333,8 @@ pub async fn stream(url: string, method: string = "GET", headers: [string: strin
 /// retry (3 s if it said none), sending the last event's ID as
 /// Last-Event-ID, as a browser's EventSource does; without it, the
 /// stream ends with the body. timeout is the longest wait for the head,
-/// and then for each piece.
-pub fn events(url: string, method: string = "GET", headers: [string: string] = [:], body: bytes = bytes(), reconnect: bool = false, timeout: Duration = 60s) -> Stream<Event> = Stream(send => {
+/// and then for each piece; tls is request's.
+pub fn events(url: string, method: string = "GET", headers: [string: string] = [:], body: bytes = bytes(), reconnect: bool = false, timeout: Duration = 60s, tls: TLS? = none) -> Stream<Event> = Stream(send => {
   var h = headers
   if h["accept"] == none && h["Accept"] == none {
     h["accept"] = "text/event-stream"
@@ -246,7 +343,7 @@ pub fn events(url: string, method: string = "GET", headers: [string: string] = [
   var wait = 3s
   while true {
     do {
-      let r = try await stream(url, method: method, headers: h, body: body, timeout: timeout)
+      let r = try await stream(url, method: method, headers: h, body: body, timeout: timeout, tls: tls)
       if !r.ok() {
         throw HTTPError.status(code: r.status)
       }
@@ -259,6 +356,8 @@ pub fn events(url: string, method: string = "GET", headers: [string: string] = [
       }
     } catch HTTPError.status(code) {
       throw HTTPError.status(code: code)
+    } catch HTTPError.tls(reason) {
+      throw HTTPError.tls(reason: reason)
     } catch e {
       if !reconnect {
         throw e

@@ -2,7 +2,10 @@ package testserver
 
 import (
 	"bufio"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -83,5 +86,51 @@ func TestWebSocketEcho(t *testing.T) {
 	op, p := readServerFrame(t, r)
 	if op != opClose || binary.BigEndian.Uint16(p) != 4000 || string(p[2:]) != "bye" {
 		t.Fatalf("close: %d %v", op, p)
+	}
+}
+
+// The PKI's certificates as a Go client uses them: the server trusted
+// with CA alone, /mtls answering a client certificate (EC, RSA) and
+// refusing none; OtherCA trusting nothing.
+func TestPKI(t *testing.T) {
+	p, err := NewPKI()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := StartTLS(Handler(), p)
+	defer s.Close()
+	get := func(ca, cert, key string) (string, error) {
+		pool := x509.NewCertPool()
+		pool.AppendCertsFromPEM([]byte(ca))
+		cfg := &tls.Config{RootCAs: pool}
+		if cert != "" {
+			c, err := tls.X509KeyPair([]byte(cert), []byte(key))
+			if err != nil {
+				t.Fatal(err)
+			}
+			cfg.Certificates = []tls.Certificate{c}
+		}
+		c := &http.Client{Transport: &http.Transport{TLSClientConfig: cfg}}
+		r, err := c.Get(s.URL + "/mtls")
+		if err != nil {
+			return "", err
+		}
+		defer r.Body.Close()
+		b, _ := io.ReadAll(r.Body)
+		return fmt.Sprint(r.StatusCode, " ", strings.TrimSpace(string(b))), nil
+	}
+	for _, c := range []struct{ ca, cert, key, want string }{
+		{p.CA, "", "", "403 no client certificate"},
+		{p.CA, p.ClientCert, p.ClientKey, "200 client: Asuka Test Client"},
+		{p.CA, p.ClientCert, p.ClientKeySEC1, "200 client: Asuka Test Client"},
+		{p.CA, p.RSAClientCert, p.RSAClientKey, "200 client: Asuka Test RSA Client"},
+	} {
+		got, err := get(c.ca, c.cert, c.key)
+		if err != nil || got != c.want {
+			t.Errorf("got %q, %v; want %q", got, err, c.want)
+		}
+	}
+	if _, err := get(p.OtherCA, "", ""); err == nil {
+		t.Error("trusted with OtherCA")
 	}
 }

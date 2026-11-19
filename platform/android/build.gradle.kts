@@ -94,8 +94,9 @@ subprojects {
             sourceSets.getByName("androidTest").assets.srcDir(projectDir.resolve("../tests"))
             // Its unit tests (src/test, on this computer's JVM by
             // testDebugUnitTest): Android's classes stubs that answer
-            // defaults, the test server's URL (asukaTestServer, when the
-            // CLI's tests started it) a system property.
+            // defaults, the test server's URLs and its test authority's
+            // files (asukaTestServer, asukaTestServerTLS, asukaTestPKI,
+            // when the CLI's tests started it) system properties.
             testOptions.unitTests.isReturnDefaultValues = true
         }
         dependencies {
@@ -108,6 +109,8 @@ subprojects {
         }
         tasks.withType<Test>().configureEach {
             providers.gradleProperty("asukaTestServer").orNull?.let { systemProperty("asuka.testserver", it) }
+            providers.gradleProperty("asukaTestServerTLS").orNull?.let { systemProperty("asuka.testserver.tls", it) }
+            providers.gradleProperty("asukaTestPKI").orNull?.let { systemProperty("asuka.testserver.pki", it) }
         }
     }
     plugins.withId("org.jetbrains.kotlin.android") {

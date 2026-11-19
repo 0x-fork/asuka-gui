@@ -19,6 +19,13 @@
 // connection that drops without a close (1006); another network failure
 // throws its error. A browser's WebSocket sends no headers of the app's
 // (headers is ignored there) and says nothing of a failure but 1006.
+//
+// A server whose certificate a private authority signed, or one that
+// asks for the client's, takes std/http's TLS:
+//
+//   let ws = try await websocket.connect("wss://chat.internal/live", tls: http.TLS(ca: ca))
+
+import std/http
 
 /// A message: text, or binary data.
 pub enum Message {
@@ -88,6 +95,11 @@ native interface Client {
   /// answers once the server accepted it. timeout is the longest wait
   /// for that.
   async fn connect(url: string, headers: [string: string], protocols: [string], timeout: Duration) -> Socket
+  /// The client whose connections are made as these say (http.TLS's
+  /// fields, one changed from its default): the same settings, the same
+  /// client. It throws for what it can't read, and where the platform
+  /// can't (a browser).
+  async fn secured(ca: string, trustSystem: bool, certificate: string, key: string, insecureSkipVerify: bool) -> Client
 }
 
 /// A connection, as the platform holds it.
@@ -115,9 +127,19 @@ let client = try? Client()
 /// Connects to the WebSocket server at url (ws: or wss:), sending
 /// headers (not in a browser, which sends none of the app's) and asking
 /// for protocols, and answers once it accepted: a refused connection or
-/// a network failure throws. timeout is the longest wait for that.
-pub async fn connect(url: string, headers: [string: string] = [:], protocols: [string] = [], timeout: Duration = 30s) throws -> WebSocket {
-  let c = client ?? try Client()
+/// a network failure throws. timeout is the longest wait for that. tls
+/// (std/http's) is for a wss: server the system doesn't trust, or one
+/// that asks for a certificate, as for an HTTPS request.
+pub async fn connect(url: string, headers: [string: string] = [:], protocols: [string] = [], timeout: Duration = 30s, tls: http.TLS? = none) throws -> WebSocket {
+  var c = client ?? try Client()
+  if let t = tls {
+    if !t.ca.isEmpty() || !t.certificate.isEmpty() || !t.key.isEmpty() || t.insecureSkipVerify {
+      if let p = http.tlsProblem(t) {
+        throw http.HTTPError.tls(reason: p)
+      }
+      c = try await c.secured(t.ca, t.trustSystem, t.certificate, t.key, t.insecureSkipVerify)
+    }
+  }
   let s = try await c.connect(url, headers, protocols, timeout)
   let messages = Stream<Message>(send => {
     while true {

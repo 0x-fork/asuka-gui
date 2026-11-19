@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -147,7 +148,7 @@ try await Task.sleep(nanoseconds: 200_000_000)
 connecting.cancel()
 do { _ = try await connecting.value; print("connect cancel: connected") } catch { print("connect cancel: \((error as? URLError)?.code == .cancelled)") }
 `
-	got := runSwiftProbe(t, t.TempDir(), "websocket/swift/Websocket.asuka.swift", "websocket/swift/Websocket.swift", []string{"FrameKind", "Frame", "Client", "Socket"}, driver)
+	got := runSwiftProbe(t, t.TempDir(), "websocket/swift/Websocket.asuka.swift", []string{"websocket/swift/Websocket.swift", "websocket/swift/TLS.swift"}, []string{"FrameKind", "Frame", "Client", "Socket"}, driver)
 	t.Logf("\n%s", got)
 	for _, want := range []string{
 		"protocol: chat",
@@ -172,6 +173,53 @@ do { _ = try await connecting.value; print("connect cancel: connected") } catch 
 		"timeout: true soon true",
 		"connect cancel: true",
 	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("want %q in:\n%s", want, got)
+		}
+	}
+}
+
+// std/websocket's TLS settings in Swift (TLS.swift, std/http's) on this
+// Mac: testserver's echo over wss: with a test authority's certificate,
+// refused by the system's trust and by another authority's, connected
+// with the authority's (and with a client certificate shown).
+func TestWebSocketSwiftTLS(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("URLSession: macOS")
+	}
+	if _, err := exec.LookPath("swiftc"); err != nil {
+		t.Skip("no swiftc")
+	}
+	pki, err := testserver.NewPKI()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := testserver.StartTLS(testserver.Handler(), pki)
+	defer srv.Close()
+	q := func(s string) string { return strconv.Quote(s) }
+	driver := `import Foundation
+let url = "wss` + strings.TrimPrefix(srv.URL, "https") + `/ws"
+let ca = ` + q(pki.CA) + `
+let c = try makeClient()
+func echo(_ c: any Client) async -> String {
+    do {
+        let s = try await c.connect(url: url, headers: [:], protocols: [], timeout: 5)
+        try await s.sendText(text: "hello")
+        let f = try await s.receive()
+        try s.close()
+        return "echo \(f.text)"
+    } catch {
+        return "error \((error as NSError).code) \(error.localizedDescription)"
+    }
+}
+print("system: \(await echo(c))")
+print("other: \(await echo(try await c.secured(ca: ` + q(pki.OtherCA) + `, trustSystem: false, certificate: "", key: "", insecureSkipVerify: false)))")
+print("ca: \(await echo(try await c.secured(ca: ca, trustSystem: false, certificate: "", key: "", insecureSkipVerify: false)))")
+print("client: \(await echo(try await c.secured(ca: ca, trustSystem: false, certificate: ` + q(pki.ClientCert) + `, key: ` + q(pki.ClientKey) + `, insecureSkipVerify: false)))")
+print("insecure: \(await echo(try await c.secured(ca: "", trustSystem: false, certificate: "", key: "", insecureSkipVerify: true)))")
+`
+	got := runSwiftProbe(t, t.TempDir(), "websocket/swift/Websocket.asuka.swift", []string{"websocket/swift/Websocket.swift", "websocket/swift/TLS.swift"}, []string{"FrameKind", "Frame", "Client", "Socket"}, driver)
+	for _, want := range []string{"system: error -1202 ", "other: error -1202 127.0.0.1's certificate isn't trusted: ", "ca: echo hello", "client: echo hello", "insecure: echo hello"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("want %q in:\n%s", want, got)
 		}

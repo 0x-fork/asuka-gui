@@ -1,6 +1,7 @@
 // std/websocket on Android: OkHttp's WebSocket (HttpURLConnection has
 // none), its listener's callbacks into a channel that receive reads. One
-// OkHttpClient for the app's sockets: its threads and connection pool.
+// OkHttpClient for the app's sockets: its threads and connection pool; a
+// client secured with TLS settings (TLS.kt) is one built from it.
 package std.websocket
 
 import dev.asuka.AsukaReleasing
@@ -21,13 +22,27 @@ import java.net.SocketTimeoutException
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration
 
-class OkHttpWebSockets : Client {
+class OkHttpWebSockets(private val base: OkHttpClient = shared) : Client {
+    override suspend fun secured(ca: String, trustSystem: Boolean, certificate: String, key: String, insecureSkipVerify: Boolean): Client =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val p = TLSPolicy.of(ca, trustSystem, certificate, key, insecureSkipVerify)
+            synchronized(secured) {
+                secured.getOrPut(p) {
+                    // A client of the policy's, sharing the threads (its
+                    // connections apart: OkHttp's pool keys them by it).
+                    val b = shared.newBuilder().sslSocketFactory(p.socketFactory, p.trustManager)
+                    p.hostnameVerifier?.let { b.hostnameVerifier(it) }
+                    OkHttpWebSockets(b.build())
+                }
+            }
+        }
+
     override suspend fun connect(url: String, headers: Map<String, String>, protocols: List<String>, timeout: Duration): Socket {
         val client = if (timeout.isPositive()) {
             // newBuilder shares the client's threads and pool.
-            shared.newBuilder().connectTimeout(timeout.inWholeMilliseconds.coerceAtLeast(1L), TimeUnit.MILLISECONDS).build()
+            base.newBuilder().connectTimeout(timeout.inWholeMilliseconds.coerceAtLeast(1L), TimeUnit.MILLISECONDS).build()
         } else {
-            shared
+            base
         }
         val req = Request.Builder().url(url)
         for ((k, v) in headers) req.header(k, v)
@@ -52,6 +67,7 @@ class OkHttpWebSockets : Client {
         // A WebSocket waits for messages as long as it's open: no read
         // timeout (OkHttp's is for HTTP's answers).
         val shared: OkHttpClient by lazy { OkHttpClient.Builder().readTimeout(0, TimeUnit.MILLISECONDS).build() }
+        private val secured = HashMap<TLSPolicy, OkHttpWebSockets>()
     }
 }
 

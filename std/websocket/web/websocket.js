@@ -41,6 +41,14 @@ export function makeClient() {
         }
       });
     },
+
+    // A page's connections are its browser's: whom it trusts, and the
+    // certificate it shows, aren't the page's to say.
+    async secured() {
+      throw new globalThis.asuka.native.UnsupportedError(
+        "tls: a web page can't say whom to trust or which certificate to show: its browser decides (the system's authorities, and the certificates the user has); give tls only on the other platforms",
+      );
+    },
   };
 }
 
