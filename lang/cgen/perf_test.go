@@ -103,3 +103,30 @@ fn main() { print("{twice([1, 2, 3])}") }
 		t.Errorf("an inlined argument retained:\n%s", c)
 	}
 }
+
+// An assignment's value is let go of once the place holds it, so the
+// optimizer makes going down a tree (n = n.kids[i]) one read into n: the
+// child retained once, not copied from a temp that kept it too.
+func TestAssignedTempMoved(t *testing.T) {
+	c := cOf(t, `
+struct Node {
+  keys: [int] = []
+  kids: [Node] = []
+}
+
+fn depth(root: Node) -> int {
+  var n = root
+  var d = 0
+  while !n.kids.isEmpty() {
+    n = n.kids[0]
+    d += 1
+  }
+  return d
+}
+
+fn main() { print("{depth(Node(kids: [Node()]))}") }
+`, "depth")
+	if regexp.MustCompile(`ak_retain\(r\d+\.p\)\); void \*o_ = r\d+\.p;`).MatchString(c[strings.Index(c, "\nL"):]) {
+		t.Errorf("a register copied (retained) in the loop:\n%s", c)
+	}
+}
