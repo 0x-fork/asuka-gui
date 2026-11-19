@@ -70,8 +70,8 @@ Apple M5, darwin/arm64, 5 runs (median ± median absolute deviation, ms)
 | sha512 | 115 ± 0.54 | 117 ± 2.62 | 124 ± 0.50 | 334 ± 2.43 | 0.99× |
 | hmac | 57.5 ± 0.07 | 98.3 ± 0.24 | 113 ± 0.42 | 451 ± 0.72 | 0.59× |
 | aesgcm | 30.4 ± 0.77 | 31.6 ± 1.10 | 57.2 ± 8.58 | 1281 ± 4.99 | 0.96× |
-| chacha | 281 ± 2.33 | 164 ± 1.52 | n/a | 293 ± 3.38 | 1.72× |
-| argon2 | 126 ± 1.83 | 53.0 ± 0.95 | n/a | 125 ± 0.81 | 2.38× |
+| chacha | ≈108² | 164 ± 1.52 | n/a | 293 ± 3.38 | 0.66×² |
+| argon2 | ≈29² | 53.0 ± 0.95 | n/a | 125 ± 0.81 | 0.55×² |
 | bcrypt | 176 ± 0.48 | 183 ± 0.37 | 171 ± 0.62 | 176 ± 0.25 | 0.96× |
 | gzip | 3460 ± 4.95 | 673 ± 1.68 | 863 ± 5.68 | 3781 ± 7.39 | 5.15× |
 | bigint | 20.5 ± 0.09 | 7.40 ± 0.02 | 14.7 ± 0.06 | 20.5 ± 0.05 | 2.77× |
@@ -85,6 +85,15 @@ Apple M5, darwin/arm64, 5 runs (median ± median absolute deviation, ms)
 
 ¹ After the table's run: fs.read reads at the file's size now (aaae01aa);
 three runs.
+
+² After the table's run: ChaCha20-Poly1305 and Argon2 on the vector unit,
+Argon2's lanes on threads (core/src/std/chacha.c, argon2.c). The machine
+was loaded then (load average 60 to 210), so these are counted rather
+than timed: CPU cycles for the same work, five interleaved runs each,
+Asuka's over Go's (chacha 0.58 G cycles to Go's 0.88 G, 1.9 G
+instructions to 2.2 G; argon2 0.69 G cycles across its four threads to
+Go's 1.25 G, 1.34 G instructions to 3.1 G), times Go's idle median.
+Before, chacha took 1.53 G cycles and argon2 0.74 G on one thread.
 
 What's still slow is mostly what the compiled code does around the
 library, not the library: concat, split and fmt allocate a string a
