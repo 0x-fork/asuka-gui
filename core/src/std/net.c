@@ -566,6 +566,39 @@ static void cmd_free(cmd *c) {
 	ak_free(c);
 }
 
+// ---- Lingering closes ----
+//
+// A connection closed while what the other side sent is still unread
+// ends in a reset (on Linux at once, elsewhere as more comes), and a
+// reset makes the other side drop what it hasn't read yet: the last of
+// a reply, or the alert that says why a handshake failed (a TLS client
+// that refuses the server's certificate after the server's tickets came).
+// So a connection's close sends a FIN after what's written, then lingers
+// as web servers do: what comes is read and dropped until the other side
+// closes too, or LINGER_CLOSE_NS passes; then the socket is closed.
+
+#define LINGER_CLOSE_NS (2 * 1000000000LL)
+
+typedef struct {
+	ak_sock fd;
+	int64_t until;
+} lingering;
+
+// drain reads and drops what's there: true when the connection ended (the
+// other side's close, or an error), false when more may come.
+static bool drain(ak_sock fd) {
+	char scratch[4096];
+	for (int i = 0; i < 64; i++) {
+		int r = (int)recv(fd, scratch, (int)sizeof scratch, 0);
+		if (r > 0) continue;
+		if (r == 0) return true;
+		int e = ak_sock_err();
+		if (AK_SOCK_INTR(e)) continue;
+		return !AK_SOCK_AGAIN(e);
+	}
+	return false;
+}
+
 static struct {
 	// The queue the main thread and lookups fill (under mu), and what
 	// wakes the thread for it.
@@ -580,9 +613,21 @@ static struct {
 	ak_idmap byhandle;
 	opq waiting;  // connects, listens and UDP sockets: being looked up, or connecting
 	int64_t next_handle;
+	AK_VEC(lingering) lingering;  // closed connections, waiting for the other side's close
 } L = {.mu = AK_MUTEX_INIT};
 
 static void op_done(void *p);
+
+// linger_close closes a connection's socket: at once when the other side
+// has closed already, else once it does (or LINGER_CLOSE_NS on).
+static void linger_close(ak_sock fd) {
+	shutdown(fd, AK_SHUT_WR);
+	if (drain(fd)) {
+		ak_sock_close(fd);
+		return;
+	}
+	ak_vec_push(&L.lingering, ((lingering){.fd = fd, .until = ak_now_ns() + LINGER_CLOSE_NS}));
+}
 
 void ak_net_post_op(op *o) {
 	ak_post(op_done, o);
@@ -618,7 +663,8 @@ static void lsock_close(lsock *s) {
 	fail_all(&s->writes, AK_NE_CLOSED);
 	if (s->tls) ak_net_tls->close(s);
 	ak_idmap_del(&L.byhandle, s->handle);
-	ak_sock_close(s->fd);
+	if (s->kind == K_CONN) linger_close(s->fd);
+	else ak_sock_close(s->fd);
 	L.slots[s->slot] = NULL;
 	ak_vec_push(&L.free_slots, s->slot);
 	ak_buf_free(&s->in);
@@ -1346,9 +1392,19 @@ static void loop_main(void *p) {
 			ak_vec_push(&pfd, ((ak_pollfd){.fd = s->fd, .events = ev}));
 			ak_vec_push(&who, ((who_t){.s = s, .handle = s->handle}));
 		}
+		// Lingering closes last: what they wait for is nobody's, so it
+		// neither holds the scheduler nor counts as work.
+		uint32_t lingers = pfd.len;
+		int64_t linger_soonest = 0;
+		for (uint32_t i = 0; i < L.lingering.len; i++) {
+			ak_vec_push(&pfd, ((ak_pollfd){.fd = L.lingering.data[i].fd, .events = POLLIN}));
+			ak_vec_push(&who, ((who_t){0}));
+			if (!linger_soonest || L.lingering.data[i].until < linger_soonest) linger_soonest = L.lingering.data[i].until;
+		}
 		int timeout = -1;
-		if (soonest) {
-			int64_t ms = (soonest - now + 999999) / 1000000;
+		int64_t due = soonest && (!linger_soonest || soonest < linger_soonest) ? soonest : linger_soonest;
+		if (due) {
+			int64_t ms = (due - now + 999999) / 1000000;
 			timeout = ms < 0 ? 0 : ms > 3600000 ? 3600000 : (int)ms;
 		}
 		if (ready.len) timeout = 0;
@@ -1356,18 +1412,15 @@ static void loop_main(void *p) {
 		if (busy && !working && !soonest) {
 			// Idle: a moment for what's on its way, then the scheduler's
 			// let go until something comes.
-			r = ak_sock_poll(pfd.data, pfd.len, LINGER_MS);
-			if (r == 0) {
+			r = ak_sock_poll(pfd.data, pfd.len, LINGER_MS < timeout || timeout < 0 ? LINGER_MS : timeout);
+			if (r == 0 && (timeout < 0 || timeout > LINGER_MS)) {
 				busy = false;
 				ak_sched_unhold();
-				r = ak_sock_poll(pfd.data, pfd.len, -1);
+				int64_t left = linger_soonest ? (linger_soonest - ak_now_ns() + 999999) / 1000000 : -1;
+				r = ak_sock_poll(pfd.data, pfd.len, left < 0 && linger_soonest ? 0 : left > 3600000 ? 3600000 : (int)left);
 			}
 		} else {
 			r = ak_sock_poll(pfd.data, pfd.len, timeout);
-		}
-		if (!busy) {
-			busy = true;
-			ak_sched_hold();
 		}
 		now = ak_now_ns();
 		if (r < 0 && !AK_SOCK_INTR(ak_sock_err())) {
@@ -1375,12 +1428,30 @@ static void loop_main(void *p) {
 			// start over with what's there.
 			continue;
 		}
+		// The lingering: read, closed once the other side has, or past
+		// their time.
+		uint32_t kept = 0;
+		for (uint32_t i = 0; i < L.lingering.len; i++) {
+			lingering g = L.lingering.data[i];
+			bool done = now >= g.until;
+			if (!done && r > 0 && pfd.data[lingers + i].revents) done = drain(g.fd);
+			if (done) ak_sock_close(g.fd);
+			else L.lingering.data[kept++] = g;
+		}
+		L.lingering.len = kept;
+		bool woken = false;  // by something other than the lingering
+		for (uint32_t i = 0; r > 0 && i < lingers; i++)
+			if (pfd.data[i].revents) woken = true;
+		if (!busy && (woken || soonest)) {
+			busy = true;
+			ak_sched_hold();
+		}
 		if (r > 0) {
 			if (pfd.data[0].revents) {
 				ak_waker_drain(&L.wake);
 				commands(now);
 			}
-			for (uint32_t i = 1; i < pfd.len; i++) {
+			for (uint32_t i = 1; i < lingers; i++) {
 				short rv = pfd.data[i].revents;
 				if (!rv) continue;
 				who_t w = who.data[i];

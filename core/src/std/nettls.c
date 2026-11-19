@@ -181,13 +181,8 @@ static void close_tls(lsock *s) {
 	s->tls = NULL;
 	ak_free(s->tdetail);
 	s->tdetail = NULL;
-	// What came and wasn't read (a handshake's last message, after one
-	// that failed) would make the close a reset, which the other side
-	// can see before the alert that says why: it's read first.
-	shutdown(s->fd, AK_SHUT_WR);
-	char scratch[4096];
-	for (int i = 0; i < 64 && recv(s->fd, scratch, sizeof scratch, 0) > 0; i++) {
-	}
+	// net.c's lsock_close lingers on the socket after: what came and
+	// wasn't read doesn't turn the close into a reset that loses the alert.
 }
 
 static bool wants(lsock *s) { return s->reads.head && s->reads.head->kind != OP_TLS && !s->eof && !s->rerr && s->tphase == T_OPEN; }

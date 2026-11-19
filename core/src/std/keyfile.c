@@ -954,7 +954,7 @@ static int read_pem(kf *f, const uint8_t *p, size_t n, const uint8_t *pw, size_t
 	while (at < end && (*at == ' ' || *at == '\t' || *at == '\r' || *at == '\n')) at++;
 	if (!find(at, end, "-----BEGIN ")) return fail(f, AK_KEY_INVALID, "it isn't PEM (-----BEGIN PRIVATE KEY-----)");
 	for (;;) {
-		block b;
+		block b = {0};  // next_block fills it when it gives 1
 		int r = next_block(f, &at, end, &b);
 		if (r < 0) return r;
 		if (r == 0) break;
@@ -966,7 +966,7 @@ static int read_pem(kf *f, const uint8_t *p, size_t n, const uint8_t *pw, size_t
 		else if (label_is(&b, "ENCRYPTED PRIVATE KEY") || label_is(&b, "OPENSSH PRIVATE KEY")) plain = false;
 		else if (label_is(&b, "DSA PRIVATE KEY")) return fail(f, AK_KEY_INVALID, "DSA keys aren't read: RSA, ECDSA (P-256, P-384, P-521) or Ed25519");
 		else continue;
-		span proc, dek;
+		span proc = {0}, dek = {0};
 		const uint8_t *body;
 		bool enc = header(&b, "Proc-Type", &proc, &body);
 		bool has_dek = header(&b, "DEK-Info", &dek, NULL);
