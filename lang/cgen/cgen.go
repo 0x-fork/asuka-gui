@@ -515,6 +515,11 @@ func (g *gen) fn(i int) error {
 	}
 	for k, in := range ins {
 		g.k = k
+		if h := g.pl.hoists[k]; h != nil {
+			// Falling into a loop (flow.go): what it changes made unique
+			// once, here, not a turn.
+			g.hoistC(h)
+		}
 		if r, ok := resume[in.pc]; ok {
 			// Where the frame resumes; after a call the run loop went on
 			// with, the call's error (it threw) goes to its handler.
@@ -593,12 +598,12 @@ func (g *gen) fn(i int) error {
 		}
 		g.p(" }\n")
 		g.p("\tuint32_t at_ = 0; AK_UNUSED(at_);\n")
+		g.p("\tvoid *const *E_ = NULL; AK_UNUSED(E_);\n")
 		g.p("\tswitch (co->frames[fi_].pc) {\n")
 		if _, ok := resume[0]; !ok {
 			g.p("\tcase 0: break;\n")
 		}
 		pcs := make([]int, 0, len(resume))
-		g.p("\tvoid *const *E_ = NULL; AK_UNUSED(E_);\n")
 		for pc := range resume {
 			pcs = append(pcs, pc)
 		}
@@ -648,12 +653,12 @@ func (g *gen) fn(i int) error {
 		// Where an error left from (its line), for a program's trace: set
 		// on the error's path only.
 		g.p("\tuint32_t at_ = 0; AK_UNUSED(at_);\n")
+		g.p("\tvoid *const *E_ = NULL; AK_UNUSED(E_);\n")
 		g.p("\tak_val ret_ = {0}; uintptr_t e_ = 0;\n")
 	}
 	if untracks > 0 && !g.async {
 		// What its peeks untracked, ended as an error leaves (unwind).
 		g.p("\tvoid *U_[%d]; uint32_t un_ = 0;\n", untracks)
-		g.p("\tvoid *const *E_ = NULL; AK_UNUSED(E_);\n")
 	}
 	g.b.WriteString(code)
 	if g.unwinds {

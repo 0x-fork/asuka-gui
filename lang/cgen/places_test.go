@@ -60,7 +60,7 @@ fn sumX(ps: [P]) -> float {
 
 fn main() { print("{sumX([P(x: 1.0, n: 1, tag: "a")])}") }
 `, "sumX", opt)
-		if !strings.Contains(c, "= x_->data[i_].p; }") && !strings.Contains(c, "((ak_struct *)x_->data[i_].p)->f[0]") {
+		if !strings.Contains(c, "= *(void *const *)&x_->data[i_]; }") && !strings.Contains(c, "((ak_struct *)*(void *const *)&x_->data[i_])->f[0]") {
 			t.Errorf("the element isn't borrowed (optimized: %v):\n%s", opt, c)
 		}
 		if strings.Contains(c, "ak_retain((x_->data[i_]).p)") {
@@ -92,7 +92,8 @@ fn step(vs: [V]) -> [V] {
 
 fn main() { print("{step([V(x: 1.0, y: 2.0, z: 3.0)]).count()}") }
 `, "step")
-	for what, n := range map[string]int{"ak_op_range": 1, "ak_struct_mut": 1, "ak_arr_mut": 1} {
+	// The index isn't checked at all: the loop's test says it's in range.
+	for what, n := range map[string]int{"ak_op_range": 0, "ak_struct_mut": 1, "ak_arr_mut": 1} {
 		if got := strings.Count(c, what); got != n {
 			t.Errorf("%s %d times, not %d:\n%s", what, got, n, c)
 		}
@@ -175,5 +176,62 @@ fn main() { print("{fib(10)}") }
 	}
 	if strings.Contains(c, "ak_error_pending") || strings.Contains(c, "ak_cg_pending") {
 		t.Errorf("a direct call tests the pending error:\n%s", c)
+	}
+}
+
+// A counted loop over an array's indexes (0..<xs.count(), (i + 1)..<n
+// with n its length) checks no index: its test says each is in range
+// (flow.go). The array it changes is made unique as each loop is
+// entered, not a turn, and the element at the outer loop's index once
+// as the inner loop is entered.
+func TestCountedLoops(t *testing.T) {
+	c := cOf(t, `
+struct V {
+  x: float
+  y: float
+}
+
+fn step(vs: [V], steps: int) -> [V] {
+  var q = vs
+  let n = q.count()
+  for _ in 0..<steps {
+    for i in 0..<n {
+      for j in (i + 1)..<n {
+        q[i].x += q[j].y
+        q[j].y += 1.0
+      }
+    }
+  }
+  return q
+}
+
+fn main() { print("{step([V(x: 1.0, y: 2.0), V(x: 3.0, y: 4.0)], 3).count()}") }
+`, "step")
+	if strings.Contains(c, "ak_op_range") {
+		t.Errorf("an index is checked:\n%s", c)
+	}
+	if got := strings.Count(c, "ak_arr_mut"); got != 1 {
+		t.Errorf("the array made unique %d times, not once (before the inner loop):\n%s", got, c)
+	}
+	// The inner loop's body: from its first instruction's label to its
+	// jump back.
+	inner := c[strings.LastIndex(c, "ak_arr_mut"):]
+	inner = inner[strings.Index(inner, "\nL"):]
+	if got := strings.Count(inner[:strings.Index(inner, "goto L")], "ak_struct_mut"); got != 1 {
+		t.Errorf("elements made unique %d times a turn, not once (q[j]'s):\n%s", got, c)
+	}
+}
+
+// A closure call whose arguments' kinds are its function's parameters'
+// calls the function's direct body with them in registers, when it's a
+// compiled one (its sig).
+func TestTypedClosureCalls(t *testing.T) {
+	c := cOf(t, `
+fn apply(f: fn(int, float) -> bool, a: int, b: float) -> bool = f(a, b)
+
+fn main() { print("{apply((x, y) => x.float() < y, 1, 2.0)}") }
+`, "apply")
+	if !strings.Contains(c, "g_->sig == 0x80020004u") || !strings.Contains(c, "(ak_closure *, uintptr_t, int64_t, double))g_->body)(c_, lim_, ") {
+		t.Errorf("not a typed call:\n%s", c)
 	}
 }

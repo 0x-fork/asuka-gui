@@ -73,11 +73,15 @@ type plan struct {
 	// and writes them with nothing checked (and reads after the element
 	// is made unique, as the change in place's GETFs do).
 	changes map[int]bool
-	// What's known before an IDX, SETIDX, SETIF or IDXF on its straight path
-	// (facts): its array is unique (unique), its index is in its range
-	// (inRange), the element there is unique (uniqueElem); its checks
-	// are left out.
+	// What's known before an IDX, SETIDX, SETIF or IDXF (flow.go): its
+	// array is unique (unique), its index is in its range (inRange), the
+	// element there is unique (uniqueElem); its checks are left out.
 	unique, inRange, uniqueElem map[int]bool
+	// hoists: what's made unique as a loop is entered (flow.go), by the
+	// loop's first instruction.
+	hoists map[int]*hoist
+	// noOverflow: an ADDIS that can't overflow (flow.go): unchecked.
+	noOverflow map[int]bool
 }
 
 // srcPos are the operands of an instruction that a borrowed register
@@ -100,6 +104,10 @@ var pathOps = map[string]bool{
 	// The optimizer's (lang/ir).
 	"ADDIS": true, "SUBIS": true, "MULIS": true, "DIVIS": true, "MODIS": true, "DIVIK": true, "MODIK": true, "IDXF": true,
 }
+
+// callOps are the calls a borrowed read's way may have when what it's
+// borrowed from is a register of its own (analyze).
+var callOps = map[string]bool{"CALL": true, "CALLB": true, "CALLC": true, "CALLI": true}
 
 // quiet are the instructions that never throw, which a change in
 // place's path may have (besides its SETFs).
@@ -199,7 +207,7 @@ func has(rs []int, r int) bool {
 func analyze(m *bc.Module, f *bc.FuncDef, ins []insn, entries map[int]bool) *plan {
 	pl := &plan{borrow: map[int]bool{}, inplace: map[int]bool{}, active: map[int][]int{}, skip: map[int]bool{},
 		direct: map[int]bool{}, moveOut: map[int]bool{}, moveIn: map[int]bool{}, virt: map[int]bool{},
-		unique: map[int]bool{}, inRange: map[int]bool{}, uniqueElem: map[int]bool{}, changes: map[int]bool{}}
+		unique: map[int]bool{}, inRange: map[int]bool{}, uniqueElem: map[int]bool{}, changes: map[int]bool{}, noOverflow: map[int]bool{}}
 	n := len(ins)
 	at := make(map[int]int, n) // pc → index
 	for k, in := range ins {
@@ -398,7 +406,20 @@ func analyze(m *bc.Module, f *bc.FuncDef, ins []insn, entries map[int]bool) *pla
 			}
 		}
 	}
-	// Borrowed reads.
+	// Borrowed reads. A call on the way doesn't end one whose container
+	// is a register of its own (not itself a borrowed read's, which a call
+	// could change where it's borrowed from) that the call isn't given:
+	// the container holds a reference to its value, so no one else
+	// changes it in place (they'd copy it), nor frees it.
+	borrowable := make([]bool, len(f.Kinds))
+	for _, in := range ins {
+		switch bc.Ops[in.op].Name {
+		case "IDX", "GETF", "GETP", "IDXF":
+			if in.args[0] != bc.None {
+				borrowable[in.args[0]] = true
+			}
+		}
+	}
 	for k := 0; k < n; k++ {
 		if taken[k] {
 			continue
@@ -420,7 +441,7 @@ func analyze(m *bc.Module, f *bc.FuncDef, ins []insn, entries map[int]bool) *pla
 				end = j
 				break
 			}
-			if !pathOps[nj] || taken[j] {
+			if !(pathOps[nj] || callOps[nj] && !borrowable[c]) || taken[j] {
 				break
 			}
 			ws := writes(m, ins[j])
@@ -455,198 +476,8 @@ func analyze(m *bc.Module, f *bc.FuncDef, ins []insn, entries map[int]bool) *pla
 			pl.skip[end] = true
 		}
 	}
-	pl.facts(m, f, ins, next)
+	pl.flow(m, f, ins, next, entries)
 	return pl
-}
-
-// facts finds, along each straight path, what a check before has made
-// known (plan.unique, inRange, uniqueElem): an array that was made
-// unique stays so until a reference to it is made or it's passed on (a
-// unique array is held by its register alone, so a call that isn't
-// given it can't reach it, nor its unique elements); an index checked
-// stays in range while neither the array's register nor the index's is
-// written and the array isn't changed but by its elements; an element
-// made unique stays so until an element of the array is read into a
-// register (retained: it may be the same) or replaced.
-func (pl *plan) facts(m *bc.Module, fd *bc.FuncDef, ins []insn, next func(int) int) {
-	n := len(ins)
-	isNext := make([]bool, n)
-	for k := range ins {
-		if j := next(k); j >= 0 {
-			isNext[j] = true
-		}
-	}
-	type pair struct{ c, i int }
-	// What a register's value may be read as without being retained or
-	// passed on: its operand positions (srcPos, but MOVR's, which keeps
-	// it).
-	pure := func(in insn, r int) bool {
-		nm := bc.Ops[in.op].Name
-		if nm == "MOVR" {
-			return false
-		}
-		pos := srcPos[nm]
-		d := bc.Ops[in.op]
-		ops := 0
-		for o, kind := range d.Operands {
-			if kind == bc.Reg && in.args[o] == r {
-				ops++
-				ok := false
-				for _, p := range pos {
-					ok = ok || p == o
-				}
-				if !ok {
-					return false
-				}
-			}
-		}
-		return ops == len(filter(regs(m, in), r))
-	}
-	for start := range ins {
-		if isNext[start] {
-			continue
-		}
-		uniq := map[int]bool{}
-		rng := map[pair]bool{}
-		elem := map[pair]bool{}
-		forget := func(r int) {
-			delete(uniq, r)
-			for p := range rng {
-				if p.c == r || p.i == r {
-					delete(rng, p)
-				}
-			}
-			for p := range elem {
-				if p.c == r || p.i == r {
-					delete(elem, p)
-				}
-			}
-		}
-		forgetElems := func(c int) {
-			for p := range elem {
-				if p.c == c {
-					delete(elem, p)
-				}
-			}
-		}
-		var path []int
-		for k := start; k >= 0; k = next(k) {
-			path = append(path, k)
-		}
-		// An IDXF whose element a SETIF changes further on, neither the
-		// array's register nor the index's written between (nor the array
-		// borrowed there).
-		for p, k := range path {
-			in := ins[k]
-			if bc.Ops[in.op].Name != "IDXF" || pl.skip[k] || pl.borrow[k] || has(pl.active[k], in.args[1]) {
-				continue
-			}
-			c, i := in.args[1], in.args[2]
-			if in.args[0] == c || in.args[0] == i {
-				continue
-			}
-			for _, q := range path[p+1:] {
-				if pl.skip[q] {
-					continue
-				}
-				a := ins[q].args
-				if bc.Ops[ins[q].op].Name == "SETIF" && a[0] == c && a[1] == i {
-					pl.changes[k] = true
-					break
-				}
-				ws := writes(m, ins[q])
-				if (has(ws, c) && bc.Ops[ins[q].op].Name != "SETIF") || has(ws, i) {
-					break
-				}
-			}
-		}
-		for _, k := range path {
-			in := ins[k]
-			a := in.args
-			nm := bc.Ops[in.op].Name
-			if pl.skip[k] {
-				continue
-			}
-			// What it relies on.
-			switch nm {
-			case "IDX":
-				p := pair{a[1], a[2]}
-				pl.inRange[k] = rng[p]
-				if pl.inplace[k] || pl.moveOut[k] {
-					pl.unique[k] = uniq[a[1]]
-					pl.uniqueElem[k] = elem[p]
-				}
-			case "IDXF":
-				p := pair{a[1], a[2]}
-				pl.inRange[k] = rng[p]
-				if pl.changes[k] {
-					pl.unique[k] = uniq[a[1]]
-					pl.uniqueElem[k] = elem[p]
-				}
-			case "SETIDX":
-				p := pair{a[0], a[1]}
-				pl.inRange[k] = rng[p]
-				pl.unique[k] = uniq[a[0]]
-			case "SETIF":
-				p := pair{a[0], a[1]}
-				pl.inRange[k] = rng[p]
-				pl.unique[k] = uniq[a[0]]
-				pl.uniqueElem[k] = elem[p]
-			}
-			// What it does to what's known: first what it reads or
-			// passes on, then what it writes, then what it makes known.
-			rs := regs(m, in)
-			for _, r := range rs {
-				if r < len(fd.Kinds) && fd.Kinds[r] == bc.KRef && !pure(in, r) && !((nm == "SETIDX" || nm == "SETIF") && r == a[0]) && !(nm == "IDX" && (pl.inplace[k] || pl.moveOut[k]) && r == a[1]) && !(nm == "IDXF" && pl.changes[k] && r == a[1]) && !(nm == "SETF" && r == a[0]) {
-					forget(r)
-				}
-			}
-			for _, r := range writes(m, in) {
-				if (nm == "SETIDX" || nm == "SETF" || nm == "SETIF") && r == a[0] {
-					continue
-				}
-				forget(r)
-			}
-			switch nm {
-			case "IDX":
-				c, i, t := a[1], a[2], a[0]
-				if t != c && t != i {
-					rng[pair{c, i}] = true
-					switch {
-					case pl.inplace[k]:
-						uniq[c] = true
-						elem[pair{c, i}] = true
-					case pl.moveOut[k]:
-						uniq[c] = true
-						forgetElems(c)
-					case !pl.borrow[k]:
-						forgetElems(c) // retained into t: shared
-					}
-				}
-			case "IDXF":
-				// The element read where it is, not retained: it stays
-				// as unique as it was (made so, when the IDXF changes).
-				if t, c, i := a[0], a[1], a[2]; t != c && t != i {
-					rng[pair{c, i}] = true
-					if pl.changes[k] {
-						uniq[c] = true
-						elem[pair{c, i}] = true
-					}
-				}
-			case "SETIDX":
-				c, i := a[0], a[1]
-				uniq[c] = true
-				rng[pair{c, i}] = true
-				forgetElems(c)
-			case "SETIF":
-				// The array made unique, then its element in it.
-				c, i := a[0], a[1]
-				uniq[c] = true
-				rng[pair{c, i}] = true
-				elem[pair{c, i}] = true
-			}
-		}
-	}
 }
 
 func filter(rs []int, r int) []int {

@@ -453,7 +453,9 @@ the C is written, from the bytecode's kinds.
 - Places (lang/cgen/places.go). Along a straight path (each instruction
   the only way into the next): an element or a field read into a
   register that only reads it before it's cleared, with nothing on the
-  way that calls or changes what it's in, is a borrowed C pointer (no
+  way that changes what it's in (a call isn't given it; what it's read
+  from is a register of its own, which holds a reference to it, so no
+  call changes it in place or frees it), is a borrowed C pointer (no
   retain, no release; the register stays none, so an error on the way
   releases nothing); an element taken out, changed by SETFs and put back
   (Changing values in place) with nothing on the way that can throw is
@@ -466,6 +468,21 @@ the C is written, from the bytecode's kinds.
   field's read is, when only read), and SETIF makes the array and the
   element unique and checks the index only where nothing before on the
   path has, so `b.vx += ...; b.vy += ...` on one element checks once.
+  An element's pointer is read as a pointer, not through the ak_val
+  union (a C compiler takes a union's member for a char's, which every
+  store of a field may change).
+- Facts across the control flow (lang/cgen/flow.go): what a check made
+  known holds where every way in has it, and a loop's tests make indexes
+  known in range: an int known not negative (a constant, a length, a
+  checked sum, +1 of one less than an int), `i < n` from a jump's test
+  (JLTI's way, JLEI's other, JT and JF on an LTI's register), `n` an
+  array's length (LEN, which an element's change keeps), an index an
+  instruction took; so `for i in 0..<xs.count()`, `(i + 1)..<n` and
+  `c + 1 < n && xs[c + 1]` check no index, and `i + 1` of an index is an
+  unchecked add. A loop whose first path (what runs every turn) changes
+  an array's element in place has the array made unique as it's entered,
+  and the element at an index it doesn't change (in range there): one
+  check before the loop, not one a turn.
 - The optimizer's other instructions are C of their own: an immediate
   (ADDIS, DIVIS...) a literal, a division by a constant the C
   compiler's multiply, a fused comparison (JLTI, JGEIS...) one `if`.

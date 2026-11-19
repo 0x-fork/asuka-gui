@@ -139,6 +139,11 @@ func (g *gen) intConstOp(name string, in insn, h string) bool {
 	a := in.args
 	switch name {
 	case "ADDIS", "SUBIS", "MULIS":
+		if name == "ADDIS" && g.pl.noOverflow[g.k] {
+			// Known not to overflow (flow.go): a loop's index + 1.
+			g.w("%s = %s + %d;", g.ri(a[0]), g.ri(a[1]), imm(in, 2))
+			break
+		}
 		fn := map[string]string{"ADDIS": "ak_addi", "SUBIS": "ak_subi", "MULIS": "ak_muli"}[name]
 		g.w("if (AK_UNLIKELY(!%s(&%s, %s, %d))) %s", fn, g.ri(a[0]), g.ri(a[1]), imm(in, 2), g.fail(in, h))
 	case "DIVIS", "MODIS":
@@ -531,14 +536,32 @@ func (g *gen) check(in insn, i int, h string) string {
 	return fmt.Sprintf("int64_t i_ = %s; if (AK_UNLIKELY((uint64_t)i_ >= x_->len)) { ak_op_range(x_, i_); %s }", g.ri(i), g.fail(in, h))
 }
 
+// elemPtr is the reference at x_'s index i_, read as a pointer rather
+// than through the ak_val union: C compilers take a union's member for a
+// char's, which every store may change, so the element's pointer would
+// be read again after each store of a field (a double, an int) through
+// it; read as a pointer, it isn't.
+const elemPtr = "*(void *const *)&x_->data[i_]"
+
 // uniqueElem is C declaring s_, the struct at x_'s index i_, made unique
 // in the array (copied first if it's shared); not copied when it's known
 // to be unique (plan.uniqueElem).
 func (g *gen) uniqueElem() string {
 	if g.pl.uniqueElem[g.k] {
-		return "ak_struct *s_ = x_->data[i_].p;"
+		return "ak_struct *s_ = " + elemPtr + ";"
 	}
-	return "ak_struct *s_ = x_->data[i_].p; if (AK_UNLIKELY(!ak_unique(s_))) { ak_struct *t_ = s_; s_ = ak_struct_mut(&t_); x_->data[i_].p = s_; }"
+	return "ak_struct *s_ = " + elemPtr + "; if (AK_UNLIKELY(!ak_unique(s_))) { ak_struct *t_ = s_; s_ = ak_struct_mut(&t_); x_->data[i_].p = s_; }"
+}
+
+// hoistC is the C of a loop's hoist (flow.go): its arrays made unique,
+// then its elements (structs, at indexes known in range) in them.
+func (g *gen) hoistC(h *hoist) {
+	for _, c := range h.arrs {
+		g.w("{ ak_arr *x_ = %s; if (AK_UNLIKELY(!ak_unique(x_))) { ak_arr *t_ = x_; x_ = ak_arr_mut(&t_); %s = x_; } }", g.rp(c), g.rp(c))
+	}
+	for _, e := range h.elems {
+		g.w("{ ak_arr *x_ = %s; int64_t i_ = %s; %s }", g.rp(e.c), g.ri(e.i), "ak_struct *s_ = "+elemPtr+"; if (AK_UNLIKELY(!ak_unique(s_))) { ak_struct *t_ = s_; s_ = ak_struct_mut(&t_); x_->data[i_].p = s_; }")
+	}
 }
 
 // arrayOp writes the arrays' operations: an index checked inline, an
@@ -561,7 +584,7 @@ func (g *gen) arrayOp(name string, in insn, h string) bool {
 		check := g.check(in, a[2], h)
 		switch {
 		case g.pl.borrow[g.k]:
-			g.w("%s { const ak_arr *x_ = %s; %s v%d = x_->data[i_].p; }", g.setref(a[0], "NULL"), g.src(a[1]), check, a[0])
+			g.w("%s { const ak_arr *x_ = %s; %s v%d = %s; }", g.setref(a[0], "NULL"), g.src(a[1]), check, a[0], elemPtr)
 		case g.pl.inplace[g.k]:
 			// A change in place: the array unique, its element unique in
 			// it, borrowed while SETFs change it.
@@ -588,7 +611,7 @@ func (g *gen) arrayOp(name string, in insn, h string) bool {
 		// The optimizer's read of an array's struct element's field
 		// (IDX, GETF): the element borrowed, its field read as GETF reads
 		// one (a reference retained, or borrowed itself as v<r>).
-		field := fmt.Sprintf("((ak_struct *)x_->data[i_].p)->f[%d]", a[3])
+		field := fmt.Sprintf("((ak_struct *)%s)->f[%d]", elemPtr, a[3])
 		if g.pl.changes[g.k] {
 			// A SETIF changes the element further on: made unique here,
 			// then read.
