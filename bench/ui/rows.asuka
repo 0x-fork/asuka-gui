@@ -1,0 +1,244 @@
+// js-framework-benchmark's operations (krausest/js-framework-benchmark),
+// on the fake host: rows made, replaced, updated, selected, swapped,
+// removed, appended and cleared. Each runs in a frame's handler, as a
+// tap's would (its writes batched into one flush), and is settled
+// (laid out, its frames applied) inside what's measured.
+//
+//   asuka test --bench bench/ui
+
+let adjectives = ["pretty", "large", "big", "small", "tall", "short", "long", "handsome", "plain", "quaint", "clean", "elegant", "easy", "angry", "crazy", "helpful", "mushy", "odd", "unsightly", "adorable", "important", "inexpensive", "cheap", "expensive", "fancy"]
+let colours = ["red", "yellow", "blue", "green", "pink", "brown", "purple", "brown", "white", "black", "orange"]
+let nouns = ["table", "chair", "house", "bbq", "desk", "car", "pony", "cookie", "sandwich", "burger", "pizza", "mouse", "keyboard"]
+
+struct Item {
+  id: int
+  label: string
+}
+
+/// What the next frame does: a bench sets it, then draws a frame.
+enum Op { none, create1k, create10k, replace1k, update, select, swap, remove, insert, append1k, truncate10k, clear }
+
+store Data {
+  pub state rows: [Item] = []
+  pub state op = Op.none
+  state removed: [Item] = []
+  pub state selected = -1
+  state next = 1
+  state seed = 7
+
+  fn rand(n: int) -> int {
+    seed = (seed * 1103515245 + 12345) % 2147483648
+    return seed % n
+  }
+
+  pub fn build(n: int) -> [Item] {
+    var out: [Item] = []
+    for _ in 0..<n {
+      out.push(Item(id: next, label: "{adjectives[rand(adjectives.count())]} {colours[rand(colours.count())]} {nouns[rand(nouns.count())]}"))
+      next += 1
+    }
+    return out
+  }
+
+  pub fn create(n: int) { rows = build(n) }
+  pub fn append(n: int) {
+    for r in build(n) { rows.push(r) }
+  }
+  pub fn update() {
+    var i = 0
+    while i < rows.count() {
+      // " !!!" added, then taken off: each run does the same work.
+      let l = rows[i].label
+      rows[i].label = if l.hasSuffix(" !!!") { l.trimSuffix(" !!!") } else { l + " !!!" }
+      i += 10
+    }
+  }
+  pub fn swap() {
+    if rows.count() > 998 {
+      let a = rows[1]
+      rows[1] = rows[998]
+      rows[998] = a
+    }
+  }
+  pub fn remove(at: int) -> Item { return rows.removeAt(at) }
+  pub fn insert(row: Item, at: int) { rows.insert(row, at: at) }
+  pub fn truncate(n: int) {
+    while rows.count() > n { rows.pop() }
+  }
+  pub fn clear() { rows = [] }
+  pub fn select(id: int) { selected = id }
+
+  /// Runs op: what a frame's handler does.
+  pub fn run() {
+    match op {
+      .none => {}
+      .create1k => create(1000)
+      .create10k => create(10_000)
+      .replace1k => create(1000)
+      .update => update()
+      .select => select(rows[(selected + 1) % rows.count()].id)
+      .swap => swap()
+      .remove => removed.push(remove(at: 500))
+      .insert => insert(row: removed.pop() ?? Item(id: 0, label: ""), at: 500)
+      .append1k => append(1000)
+      .truncate10k => truncate(10_000)
+      .clear => clear()
+    }
+    op = .none
+  }
+}
+
+/// Draws a frame that runs op, and settles.
+fn step(app: TestApp, data: Data, op: Op) {
+  data.op = op
+  app.frame(16ms)
+}
+
+component Table(data: Data) {
+  let stop = onFrame(_ => data.run())
+  Scroll {
+    Column {
+      for row in data.rows key row.id {
+        Row {
+          gap: 8
+          padding: [4, 8]
+          background: if data.selected == row.id { Color.accent } else { Color.clear }
+          Text("{row.id}") { width: 60 }
+          Text(row.label) { grow: 1 }
+          Button("×") { on press { data.select(-1) } }
+        }
+      }
+    }
+  }
+}
+
+component Lazy(data: Data) {
+  let stop = onFrame(_ => data.run())
+  List {
+    for row in data.rows key row.id {
+      Row {
+        gap: 8
+        padding: [4, 8]
+        background: if data.selected == row.id { Color.accent } else { Color.clear }
+        Text("{row.id}") { width: 60 }
+        Text(row.label) { grow: 1 }
+      }
+    }
+  }
+}
+
+bench "create 1k rows, clear" {
+  let data = Data()
+  let app = mount(Table(data: data))
+  measure {
+    step(app, data, .create1k)
+    step(app, data, .clear)
+  }
+}
+
+bench "create 10k rows, clear" {
+  let data = Data()
+  let app = mount(Table(data: data))
+  measure {
+    step(app, data, .create10k)
+    step(app, data, .clear)
+  }
+}
+
+bench "replace 1k rows" {
+  let data = Data()
+  let app = mount(Table(data: data))
+  step(app, data, .create1k)
+  measure { step(app, data, .replace1k) }
+}
+
+bench "update every 10th of 1k rows" {
+  let data = Data()
+  let app = mount(Table(data: data))
+  step(app, data, .create1k)
+  measure { step(app, data, .update) }
+}
+
+bench "update every 10th of 10k rows" {
+  let data = Data()
+  let app = mount(Table(data: data))
+  step(app, data, .create10k)
+  measure { step(app, data, .update) }
+}
+
+bench "select a row of 1k" {
+  let data = Data()
+  let app = mount(Table(data: data))
+  step(app, data, .create1k)
+  measure { step(app, data, .select) }
+}
+
+bench "swap 2 of 1k rows" {
+  let data = Data()
+  let app = mount(Table(data: data))
+  step(app, data, .create1k)
+  measure { step(app, data, .swap) }
+}
+
+bench "remove a row of 1k, put it back" {
+  let data = Data()
+  let app = mount(Table(data: data))
+  step(app, data, .create1k)
+  measure {
+    step(app, data, .remove)
+    step(app, data, .insert)
+  }
+}
+
+bench "append 1k to 10k rows, remove them" {
+  let data = Data()
+  let app = mount(Table(data: data))
+  step(app, data, .create10k)
+  measure {
+    step(app, data, .append1k)
+    step(app, data, .truncate10k)
+  }
+}
+
+bench "a List of 10k rows: create, clear" {
+  let data = Data()
+  let app = mount(Lazy(data: data))
+  measure {
+    step(app, data, .create10k)
+    step(app, data, .clear)
+  }
+}
+
+bench "a List of 10k rows: update every 10th" {
+  let data = Data()
+  let app = mount(Lazy(data: data))
+  step(app, data, .create10k)
+  measure { step(app, data, .update) }
+}
+
+bench "a List of 10k rows: swap 2" {
+  let data = Data()
+  let app = mount(Lazy(data: data))
+  step(app, data, .create10k)
+  measure { step(app, data, .swap) }
+}
+
+test "the operations do what they say" {
+  let data = Data()
+  let app = mount(Table(data: data))
+  step(app, data, .create1k)
+  expect(data.rows.count() == 1000)
+  let second = data.rows[1].id
+  step(app, data, .swap)
+  expect(data.rows[998].id == second)
+  step(app, data, .update)
+  expect(data.rows[10].label.hasSuffix(" !!!"))
+  step(app, data, .remove)
+  expect(data.rows.count() == 999)
+  step(app, data, .insert)
+  expect(data.rows.count() == 1000)
+  step(app, data, .append1k)
+  expect(data.rows.count() == 2000)
+  step(app, data, .clear)
+  expect(data.rows.isEmpty())
+}

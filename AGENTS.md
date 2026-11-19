@@ -76,6 +76,10 @@ go run ./cmd/asuka fmt -w [paths]   # format .asuka files
 go run ./cmd/asuka check [dir]      # a package checked for every platform's files (tray_linux.asuka: Linux's); --platform ios: one's
 go run ./cmd/asuka doc std/time     # a package's documentation, as Markdown (lang/doc); --all -o dir: the website's reference pages, /docs/std and /docs/platform
 go test ./lang/doc                  # every std and platform package's pub declarations have their /// comment
+go run ./cmd/asuka test --bench bench/ui   # the UI runtime's benches on the fake host (js-framework-benchmark's operations, signals, layout): time, allocations, what reached the host
+bench/ui/instr.sh ./asuka [core]    # the same benches as instructions retired per iteration (a loaded machine doesn't move them); bench/ui/run.sh: timed runs, tabulated
+go test ./bench/tools -bench . -benchmem   # asuka check's Go side on the biggest packages; bench/tools/instr.sh N ./asuka-old ./asuka-new: whole commands, as instructions
+ASUKA_CPUPROFILE=cpu.out go run ./cmd/asuka check std/base  # the CLI's CPU profile (ASUKA_MEMPROFILE: its allocations), for go tool pprof
 go generate ./lang/bytecode ./lang/prelude  # the VM's opcodes header; the prelude and the UI's element constants
 go test ./lang/diag                 # every diagnostic code's wrong and right program, for every platform (the run time's on the fake host)
 go generate ./lang/diag             # the codes' pages: docs/errors/<code>.md, and docs/zh/errors, docs/ja/errors

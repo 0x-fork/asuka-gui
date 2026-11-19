@@ -1,0 +1,74 @@
+// Layout: a large screen (a grid of cards, each a few texts and a
+// button, about 5,000 views) mounted, and one text in it changed.
+
+store Board {
+  pub state titles: [string] = (0..<400).map(i => "Card {i}")
+  pub state note = "a note"
+}
+
+component Card(board: Board, i: int) {
+  Column {
+    padding: 8
+    gap: 4
+    border: 1
+    radius: 8
+    Text(board.titles[i]) { font: .headline }
+    Row {
+      gap: 4
+      Text("detail {i}") { grow: 1 }
+      Text("{i * 7 % 100}%")
+    }
+    Text(if i == 0 { board.note } else { "a line of text that wraps in a narrow card, card {i}" }) {
+      color: .secondaryLabel
+    }
+    Button("Open") {}
+  }
+}
+
+component Screen(board: Board) {
+  Scroll {
+    Column {
+      padding: 16
+      gap: 8
+      for r in 0..<100 key r {
+        Row {
+          gap: 8
+          for c in 0..<4 key c {
+            Column {
+              grow: 1
+              basis: 0
+              Card(board: board, i: r * 4 + c)
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+bench "a screen of 400 cards: mount" {
+  let board = Board()
+  measure {
+    keep(mount(Screen(board: board)))
+  }
+}
+
+bench "a screen of 400 cards: one text changed" {
+  let board = Board()
+  let app = mount(Screen(board: board))
+  var i = 0
+  measure {
+    board.note = if i % 2 == 0 { "a much longer note that now wraps onto a second line" } else { "a note" }
+    i += 1
+  }
+}
+
+bench "a screen of 400 cards: every title changed" {
+  let board = Board()
+  let app = mount(Screen(board: board))
+  var i = 0
+  measure {
+    i += 1
+    board.titles = (0..<400).map(k => "Card {k} v{i}")
+  }
+}
