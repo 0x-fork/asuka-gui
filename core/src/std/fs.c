@@ -1369,17 +1369,30 @@ static bool unread(afile *f) {
 	return raw_seek(f, -(int64_t)ahead, 1, &at);
 }
 
-// fill reads the next chunk into in; false when it failed.
-static bool fill(afile *f) {
+// fill_n reads up to n more bytes into the buffer, what's unread moved
+// to its start first (a line cut by the last read stays, the rest goes:
+// the buffer holds a line and a read, not the file).
+static bool fill_n(afile *f, size_t n) {
 	if (!flush_out(f)) return false;
-	if (f->roff && f->roff == f->in.len) f->in.len = f->roff = 0;
-	ak_buf_reserve(&f->in, FILE_CHUNK);
-	int64_t got = raw_read(f, f->in.data + f->in.len, FILE_CHUNK);
+	if (f->roff) {
+		memmove(f->in.data, f->in.data + f->roff, f->in.len - f->roff);
+		f->in.len -= f->roff;
+		f->roff = 0;
+	}
+	ak_buf_reserve(&f->in, n);
+	int64_t got = raw_read(f, f->in.data + f->in.len, n);
 	if (got < 0) return false;
 	if (got == 0) f->eof = true;
 	f->in.len += (size_t)got;
 	return true;
 }
+
+// fill reads the next chunk into in; false when it failed.
+static bool fill(afile *f) { return fill_n(f, FILE_CHUNK); }
+
+// What lines() reads a worker's trip: a cross to a worker and back costs
+// more than reading 64 KB from the system's cache.
+#define LINES_CHUNK (1 << 20)
 
 static const uint8_t *line_end(afile *f) {
 	if (f->roff == f->in.len) return NULL;  // nothing read: in.data may be NULL
@@ -1528,7 +1541,7 @@ static ak_val file_fill_line_fn(ak_val *args, uint32_t n) {
 	afile *f = take(args[0].i);
 	if (!f) return (ak_val){.i = 0};
 	while (!line_end(f) && !f->eof) {
-		if (!fill(f)) {
+		if (!fill_n(f, LINES_CHUNK)) {
 			give(f, false);
 			return (ak_val){.i = 0};
 		}
