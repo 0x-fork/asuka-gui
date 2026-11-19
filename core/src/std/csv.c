@@ -34,7 +34,13 @@ typedef struct {
 	ak_buf rec;
 	AK_VEC(uint32_t) ends;
 	AK_VEC(int64_t) lines;
-	AK_VEC(int64_t) cols;
+	// Where each field starts (from src), and its line: its column is the
+	// characters between, counted only for a failure's message.
+	AK_VEC(uint32_t) starts;
+	AK_VEC(uint32_t) line_starts;
+	// What ends a field that isn't quoted, for a one-byte separator: it,
+	// a line break, a quote.
+	bool stop[256];
 	int64_t rec_line;
 	bool open;  // the text ended in a quoted field
 	bool failed;
@@ -90,17 +96,21 @@ static bool space(const cr *r, const char *q, size_t *n) {
 	return cp == 0x85 || cp == 0xa0 || cp == 0x1680 || (cp >= 0x2000 && cp <= 0x200a) || cp == 0x2028 || cp == 0x2029 || cp == 0x202f || cp == 0x205f || cp == 0x3000;
 }
 
-static void end_field(cr *r, int64_t line, int64_t col) {
+static void end_field(cr *r, int64_t line, const char *ls, const char *st) {
 	ak_vec_push(&r->ends, (uint32_t)r->rec.len);
 	ak_vec_push(&r->lines, line);
-	ak_vec_push(&r->cols, col);
+	ak_vec_push(&r->starts, (uint32_t)(st - r->src));
+	ak_vec_push(&r->line_starts, (uint32_t)(ls - r->src));
 }
+
+// The column field i starts at.
+static int64_t col_of(const cr *r, uint32_t i) { return chars(r->src + r->line_starts.data[i], r->src + r->starts.data[i]) + 1; }
 
 // record reads the next record into r->rec; false at the end of the
 // text, or on a failure (r->failed).
 static bool record(cr *r) {
 	ak_buf_reset(&r->rec);
-	r->ends.len = r->lines.len = r->cols.len = 0;
+	r->ends.len = r->lines.len = r->starts.len = r->line_starts.len = 0;
 	// Empty lines and comments are skipped.
 	for (;;) {
 		if (r->p >= r->end) return false;
@@ -119,19 +129,41 @@ static bool record(cr *r) {
 			size_t n;
 			while (r->p < r->end && !eol(r, r->p) && space(r, r->p, &n)) r->p += n;
 		}
-		int64_t col = chars(ls, r->p) + 1;
+		const char *fstart = r->p, *fls = ls;
 		if (r->p >= r->end || *r->p != '"') {
 			// A field that isn't quoted: to the separator or the line's end.
 			const char *st = r->p;
-			while (!eol(r, r->p) && !at(r, r->p, r->sep, r->seplen)) {
-				if (*r->p == '"' && !r->lazy) {
-					cfail(r, r->line, chars(ls, r->p) + 1, "a bare \" in a field that isn't quoted (quote the field, and double the quote: \"a\"\"b\")");
-					return false;
+			if (r->seplen == 1) {
+				// Past bytes that can't end it, then what it is.
+				const char *q = r->p;
+				for (;;) {
+					while (q < r->end && !r->stop[(uint8_t)*q]) q++;
+					if (q < r->end && *q == '\r' && !eol(r, q)) {
+						q++;  // a lone CR is the field's
+						continue;
+					}
+					if (q < r->end && *q == '"') {
+						if (!r->lazy) {
+							cfail(r, r->line, chars(ls, q) + 1, "a bare \" in a field that isn't quoted (quote the field, and double the quote: \"a\"\"b\")");
+							return false;
+						}
+						q++;
+						continue;
+					}
+					break;
 				}
-				r->p++;
+				r->p = q;
+			} else {
+				while (!eol(r, r->p) && !at(r, r->p, r->sep, r->seplen)) {
+					if (*r->p == '"' && !r->lazy) {
+						cfail(r, r->line, chars(ls, r->p) + 1, "a bare \" in a field that isn't quoted (quote the field, and double the quote: \"a\"\"b\")");
+						return false;
+					}
+					r->p++;
+				}
 			}
 			ak_buf_put(&r->rec, st, (size_t)(r->p - st));
-			end_field(r, r->line, col);
+			end_field(r, r->line, fls, fstart);
 			if (at(r, r->p, r->sep, r->seplen)) {
 				r->p += r->seplen;
 				continue;
@@ -150,10 +182,10 @@ static bool record(cr *r) {
 			if (r->p >= r->end) {
 				r->open = true;
 				if (!r->lazy) {
-					cfail(r, fline, col, "a quoted field that doesn't end");
+					cfail(r, fline, chars(fls, fstart) + 1, "a quoted field that doesn't end");
 					return false;
 				}
-				end_field(r, fline, col);
+				end_field(r, fline, fls, fstart);
 				return true;
 			}
 			if (*r->p != '"') {
@@ -170,10 +202,10 @@ static bool record(cr *r) {
 				r->p++;
 			} else if (at(r, r->p, r->sep, r->seplen)) {
 				r->p += r->seplen;
-				end_field(r, fline, col);
+				end_field(r, fline, fls, fstart);
 				break;
 			} else if (eol(r, r->p)) {
-				end_field(r, fline, col);
+				end_field(r, fline, fls, fstart);
 				r->p = past_eol(r, r->p);
 				r->line++;
 				return true;
@@ -197,7 +229,8 @@ static void cr_free(cr *r) {
 	ak_buf_free(&r->rec);
 	ak_vec_free(&r->ends);
 	ak_vec_free(&r->lines);
-	ak_vec_free(&r->cols);
+	ak_vec_free(&r->starts);
+	ak_vec_free(&r->line_starts);
 }
 
 // one_char takes a separator's or a comment's character: false when s
@@ -232,6 +265,7 @@ static bool cr_init(cr *r, ak_val *args) {
 	r->trim = args[3].i != 0;
 	r->lazy = args[4].i != 0;
 	r->line = args[6].i;
+	if (r->seplen == 1) r->stop[(uint8_t)r->sep[0]] = r->stop['\n'] = r->stop['\r'] = r->stop['"'] = true;
 	return true;
 }
 
@@ -498,7 +532,7 @@ static ak_val read_fn(ak_val *args, uint32_t nargs) {
 				size_t n;
 				const char *s = field(&r, c, &n);
 				ak_val v;
-				if (!cell(s, n, ed, t, &v, why, sizeof why)) cfail(&r, r.lines.data[c], r.cols.data[c], "%s", why);
+				if (!cell(s, n, ed, t, &v, why, sizeof why)) cfail(&r, r.lines.data[c], col_of(&r, c), "%s", why);
 				else ak_arr_push(&row, v);
 			}
 			if (r.failed) {
@@ -517,7 +551,7 @@ static ak_val read_fn(ak_val *args, uint32_t nargs) {
 			}
 			size_t n;
 			const char *s = field(&r, (uint32_t)colof[i], &n);
-			if (!cell(s, n, fd, t, &o->f[i], why, sizeof why)) cfail(&r, r.lines.data[colof[i]], r.cols.data[colof[i]], "%s: %s", sh->names[i], why);
+			if (!cell(s, n, fd, t, &o->f[i], why, sizeof why)) cfail(&r, r.lines.data[colof[i]], col_of(&r, (uint32_t)colof[i]), "%s: %s", sh->names[i], why);
 		}
 		if (r.failed) {
 			ak_release(o);

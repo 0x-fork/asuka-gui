@@ -362,6 +362,50 @@ TEST(floats_printed_as_before) {
 	}
 }
 
+static ak_lib_fn lib(const char *name) {
+	for (const ak_lib_entry *e = ak_lib; e->name; e++)
+		if (strcmp(e->name, name) == 0) return e->fn;
+	abort();
+}
+
+// findAny's characters, as each character of s compared with each of
+// them.
+static int64_t naive_find_any(const char *s, size_t n, const char *cs, size_t cn) {
+	for (size_t i = 0; i < n;) {
+		size_t j = i + 1;
+		while (j < n && ((uint8_t)s[j] & 0xc0) == 0x80) j++;
+		for (size_t k = 0; k < cn;) {
+			size_t l = k + 1;
+			while (l < cn && ((uint8_t)cs[l] & 0xc0) == 0x80) l++;
+			if (l - k == j - i && memcmp(s + i, cs + k, j - i) == 0) return (int64_t)i;
+			k = l;
+		}
+		i = j;
+	}
+	return -1;
+}
+
+TEST(find_any_as_naive) {
+	static const char *pieces[] = {"a", "z", "V", "é", "\x80", "\xc3", "€", " "};
+	static const char *sets[] = {"zV", "é€", ("\x80" "a"), "", " \xc3", "q"};
+	char s[100];
+	for (int round = 0; round < 3000; round++) {
+		size_t n = 0, want = next() % 60;
+		while (n < want) {
+			const char *p = pieces[next() % 8];
+			memcpy(s + n, p, strlen(p));
+			n += strlen(p);
+		}
+		const char *cs = sets[round % 6];
+		ak_str *a = ak_str_new(s, n), *b = ak_str_c(cs);
+		ak_box *got = lib("str.find_any")((ak_val[]){{.p = a}, {.p = b}}, 2).p;
+		int64_t want_at = naive_find_any(s, n, cs, strlen(cs));
+		CHECK_EQ_INT(got ? got->v.i : -1, want_at);
+		if (got) ak_release(got);
+		ak_release(a), ak_release(b);
+	}
+}
+
 TEST(hash_bytes) {
 	// Equal bytes hash the same wherever they are; different ones (of
 	// every length) almost never do.

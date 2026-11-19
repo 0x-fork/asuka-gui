@@ -218,6 +218,19 @@ static ak_val str_find_last(ak_val *args, uint32_t n) {
 static ak_val str_find_any(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	ak_str *s = STR(0), *cs = STR(1);
+	if (ak_str_ascii(cs)) {
+		// ASCII characters: a set of them, and a byte of s at a time. An
+		// ASCII byte always starts a character, which is it alone unless
+		// stray continuation bytes follow (what isn't UTF-8 groups so).
+		uint64_t set[2] = {0};
+		for (uint32_t k = 0; k < cs->len; k++) set[(uint8_t)cs->data[k] >> 6] |= 1ull << (cs->data[k] & 63);
+		for (uint32_t i = 0; i < s->len; i++) {
+			uint8_t c = (uint8_t)s->data[i];
+			if (c < 128 && set[c >> 6] >> (c & 63) & 1 && (i + 1 == s->len || ((uint8_t)s->data[i + 1] & 0xc0) != 0x80))
+				RET_P(ak_box_new(AK_K_INT, (ak_val){.i = i}));
+		}
+		RET_P(NULL);
+	}
 	for (uint32_t i = 0; i < s->len;) {
 		uint32_t j = i + 1;
 		while (j < s->len && ((uint8_t)s->data[j] & 0xc0) == 0x80) j++;
