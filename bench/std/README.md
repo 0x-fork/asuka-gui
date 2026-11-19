@@ -455,3 +455,64 @@ too, words 4% fewer. sortedmap's peak memory went from 48 to 39 MB (Go:
 object, 24 bytes for a word, and the three splits' arrays live to the
 end of their statement). Hello world: 902,928 bytes before, 902,944
 now.
+
+## AES-GCM, BigInt's limbs in place, filter's appends (2026-11-20)
+
+A quiet machine (load 4 to 7): `go run ./bench/std/run -instr -langs
+asuka,go -runs 5`, the work alone: cycles, the median of five
+interleaved runs, in millions, and instructions' ratio to Go's;
+"before" is cf5a5709.
+
+| benchmark | cycles before | now | Go | now / Go | instructions / Go before | now |
+|---|---:|---:|---:|---:|---:|---:|
+| aesgcm | 135 | 113 | 118 | 0.96× | 1.35× | 0.99× |
+| bigint | 34.4 | 27.7 | 31.1 | 0.89× | 1.27× | 1.02× |
+| modpow | 94.2 | 91.8 | 155 | 0.59× | 0.85× | 0.78× |
+| seq | 59.4 | 59.3 | 58.2 | 1.02× | 1.19× | 1.13× |
+| concat | 132 | 133 | 128 | 1.03× | 1.01× | 1.01× |
+| time | 48.5 | 48.4 | 47.5 | 1.02× | 0.99× | 0.99× |
+| sha512 | 491 | 498 | 490 | 1.02× | 0.98× | 0.97× |
+
+- aesgcm (core/src/std/cryptohw.c): GHASH multiplies by H·x^-1, so a
+  256-bit product needs no shift, and reduces it by two carry-less
+  multiplies by 0xc2 << 56 (as Go's and Linux's ARMv8 GHASH), not
+  Gueron's shifts: about 20 vector instructions fewer an eight blocks'
+  reduction. A block's product is four word products by H and its
+  words swapped (precomputed: Karatsuba's three would fold the block's
+  words, two more instructions). The round keys sit at fixed indexes,
+  so the rounds unroll; the last key and the data go in one EOR3; the
+  counter is a vector added to; the powers of H are read in the loop
+  rather than spilled. 338 instructions a 128 bytes, from 367 (Go's
+  gcmAesEnc about 350). x86's path is the same steps in AES-NI and
+  PCLMULQDQ (checked against arm64's and the old code's under Rosetta).
+- bigint (core/src/std/bigint.c): a BigInt's bytes are a sign byte,
+  three zero bytes and the magnitude's 64-bit little-endian words, which
+  start 16 bytes into the object: the limbs themselves, aligned. An
+  operand is read where it is and a result computed into the bytes that
+  become it, allocated without clearing (ak_bytes_raw), so a times(i)
+  is one pass and one allocation, as Go's in-place math/big. mul_1 and
+  addmul_1 take eight limbs a turn (4.5 instructions a limb, Go's
+  mulAddVWW 4.4); pow goes left to right (3^200000: squares and
+  products by 3, half the instructions); radix 10's digits two at a
+  time, the big base's reciprocal computed once a conversion. The
+  factorial loop takes 6 M cycles to Go's 10 M; what's left in
+  instructions is the loop's own (the struct, the call, an allocation a
+  step where Go reuses its slice).
+- seq: a filter's and a compactMap's appends into the array their loop
+  made check only its room (arr.append_own). What's left: each eager
+  step is a loop of its own with an array of its own, as Go's are, but
+  every append stores its count and reads the array's buffer again
+  (the element's store may alias them, and the loop's overflow checks
+  exit before them, so clang can't keep them in registers), 3
+  instructions an element Go's indexed store doesn't have. Cycles vary
+  by 10% between passes here (the five arrays' 160 MB).
+- time and sha512: even with Go (a second pass: 1.03× and 1.01×), at
+  Go's instructions or fewer: time is its Asuka arithmetic, sha512 one
+  dependency chain through the CPU's SHA-512 instructions. concat, at
+  1.01× Go's instructions, took 1.03× and 1.09× its cycles in two
+  passes: a string made and freed a turn, where Go's collector frees in
+  batches; nothing in the instructions to take out.
+
+The VM's benchmarks (bench/vm -instr) retire the instructions they did
+(within 0.05%). Hello world (`asuka new --bin`, macOS arm64): 902,992
+bytes.

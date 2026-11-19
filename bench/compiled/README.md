@@ -299,3 +299,14 @@ Then split's pieces made and let go of in batches (bench/std/README.md,
 2026-11-20): words, which splits its 2,000,000 words, retires 2,291 M
 instructions to 2,405 M before (the fewest of three runs' cycles 479 M
 to 513 M); the others are as they were.
+
+## nbody against Go (2026-11-20)
+
+A quiet machine, `/usr/bin/time -l`, five interleaved runs: Asuka
+3,138 M instructions to Go's 3,130 M, the fewest cycles 668 M to 650 M
+(each of the five Asuka runs at least 668 M, each Go one at most 654
+M): 1.03×. Go's arm64 compiler fuses `x * y + z` into FMADD and FMSUB
+(14 of them in nbody's loop), which its spec allows and which rounds
+once where the two operations round twice; Asuka rounds each operation
+as the VM does, the same result everywhere, so its loop has the longer
+dependency chains (vx -= dx * mj: a multiply, then a subtract).
