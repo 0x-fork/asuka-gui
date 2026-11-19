@@ -68,11 +68,14 @@ ak_str *ak_piece(ak_pieces *p, const char *s, size_t n) {
 	} else {
 		size_t need = (sizeof(ak_str) + n + 1 + 7) & ~(size_t)7;
 		if (!p->slab || need > (size_t)(p->end - p->at)) {
-			p->slab = ak_realloc(NULL, SLAB);  // not zeroed: each piece is written whole
+			size_t size = p->left && p->left + 8 < SLAB ? p->left + 8 : SLAB;
+			if (size < need + 8) size = need + 8;
+			p->slab = ak_realloc(NULL, size);  // not zeroed: each piece is written whole
 			*(uint32_t *)p->slab = 0;
 			p->at = p->slab + 8;
-			p->end = p->slab + SLAB;
+			p->end = p->slab + size;
 		}
+		p->left = p->left > need ? p->left - need : 0;
 		o = (ak_str *)p->at;
 		(*(uint32_t *)p->slab)++;
 		o->h = (ak_obj){.rc = 1, .tag = AK_TAG_STR, .flags = AK_STR_SLAB, .aux = (uint16_t)((p->at - p->slab) >> 3)};
@@ -1347,6 +1350,7 @@ static size_t mem_count(const char *h, size_t hn, const char *needle, size_t nn)
 ak_arr *ak_str_split_n(ak_str *s, const ak_str *sep, int64_t count) {
 	ak_pieces p = {.ascii = ak_str_ascii(s)};
 	if (sep->len == 0) {
+		p.left = AK_PIECES_LEFT(s->len, s->len);
 		// Split into characters.
 		ak_arr *a = ak_arr_new(AK_K_REF, NULL, p.ascii ? s->len : 4);
 		a->h.flags = 1;
@@ -1370,10 +1374,15 @@ ak_arr *ak_str_split_n(ak_str *s, const ak_str *sep, int64_t count) {
 		a->h.flags = 1;
 		return a;
 	}
-	size_t parts = mem_count(s->data, s->len, sep->data, sep->len) + 1;
+	// A byte's separators are counted first (a vectorized pass) and the
+	// array made at its size; a longer separator's, found once each, fill
+	// an array that doubles as it fills.
+	size_t parts = sep->len == 1 ? mem_count(s->data, s->len, sep->data, 1) + 1 : s->len / sep->len + 1;
 	if (count > 0 && (uint64_t)count < parts) parts = (size_t)count;
 	if (parts > UINT32_MAX) parts = UINT32_MAX;
-	ak_arr *a = ak_arr_new(AK_K_REF, NULL, (uint32_t)parts);
+	p.left = AK_PIECES_LEFT(parts, s->len);
+	uint32_t cap = sep->len == 1 || parts < 16 ? (uint32_t)parts : 16;
+	ak_arr *a = ak_arr_new(AK_K_REF, NULL, cap);
 	a->h.flags = 1;
 	ak_val *v = ak_arr_vals(a);
 	size_t start = 0;
@@ -1391,6 +1400,12 @@ ak_arr *ak_str_split_n(ak_str *s, const ak_str *sep, int64_t count) {
 	while (k + 1 < parts) {
 		int64_t at = ak_mem_find(s->data + start, s->len - start, sep->data, sep->len);
 		if (at < 0) break;
+		if (AK_UNLIKELY(k + 1 >= cap)) {
+			a->len = k;
+			ak_arr_reserve(&a, cap);
+			cap = a->cap;
+			v = ak_arr_vals(a);
+		}
 		v[k++].p = ak_piece(&p, s->data + start, (size_t)at);
 		start += (size_t)at + sep->len;
 	}

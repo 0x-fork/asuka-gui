@@ -268,13 +268,18 @@ ak_str *ak_str_new(const char *s, size_t n);  // s NULL: n bytes the caller fill
 // tens of nanoseconds, and the pieces side by side in memory as the
 // array that holds them walks them. A piece kept alone keeps its slab:
 // 16 KB at most, not the string it was cut from (Go's substrings keep
-// all of it). A piece over AK_PIECE_MAX is a string of its own.
-// Zero is an empty builder; ak_piece makes the next piece, of n bytes
-// from s.
+// all of it); a slab is no bigger than what the pieces still to come
+// can need (left, a bound: what cutting "1.2.3" takes, not 16 KB). A
+// piece over AK_PIECE_MAX is a string of its own. Zero is an empty
+// builder (left unknown: slabs of 16 KB); ak_piece makes the next
+// piece, of n bytes from s. AK_PIECES_LEFT bounds what n pieces of
+// bytes bytes in all need.
 typedef struct ak_pieces {
 	char *slab, *at, *end;
-	bool ascii;  // the string cut is ASCII: its pieces are
+	size_t left;  // what the pieces to come need at most (0: unknown)
+	bool ascii;   // the string cut is ASCII: its pieces are
 } ak_pieces;
+#define AK_PIECES_LEFT(n, bytes) ((size_t)(n) * (sizeof(ak_str) + 8) + (size_t)(bytes))
 #define AK_PIECE_MAX 240
 ak_str *ak_piece(ak_pieces *p, const char *s, size_t n);
 // ak_find_byte is where c first is in [p, end), or NULL: a word at a
