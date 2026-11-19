@@ -1,0 +1,30 @@
+// The benchmarks of main.asuka as benches, smaller: `asuka test --bench`
+// times them compiled to C (--vm: on the VM).
+
+bench "fib 27" {
+  keep(fib(27))
+}
+
+bench "sieve 1M" {
+  keep(sieve(1000000))
+}
+
+bench "nbody 100k steps" {
+  keep(nbody(100000))
+}
+
+bench "binary trees 12" {
+  keep(trees(12))
+}
+
+bench "word count 50k" {
+  keep(words(50000))
+}
+
+bench "json 5k" {
+  keep(try jsonRound(5000))
+}
+
+bench "sort 200k ints" {
+  keep(sortInts(200000))
+}
