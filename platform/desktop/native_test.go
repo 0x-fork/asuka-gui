@@ -235,7 +235,8 @@ component Probe {
       // Decimals cross as coefficient and exponent, back without
       // trailing zeros: 19.99 + 0.01 + 1e3 is 1020.
       let total = try p.total([Decimal.parse("19.99")!, Decimal.parse("0.01")!, Decimal.of(1, exponent: 3)])
-      step = "total {total.string()} {total.coefficient} {total.exponent}"
+      let (coefficient, exponent) = total.parts()
+      step = "total {total.string()} {coefficient} {exponent}"
       await sleep(1ms)
       step = "shows {try p.shows(stepView)} {try p.shows(Ref())}"
       await sleep(1ms)

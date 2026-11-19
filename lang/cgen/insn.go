@@ -488,7 +488,12 @@ func (g *gen) closureOp(name string, in insn) bool {
 	case "VGET":
 		g.w("%s", g.load(a[0], fmt.Sprintf("((ak_box *)%s)->v", g.rp(a[1]))))
 	case "VSET":
-		g.w("ak_op_vset(%s, %s);", g.rp(a[0]), g.r(a[1]))
+		if k := g.f.Kinds[a[1]]; k == bc.KInt || k == bc.KFloat || k == bc.KBool {
+			// A scalar's box: stored, never retained (as ak_mset_k).
+			g.w("((ak_box *)%s)->v = %s;", g.rp(a[0]), g.r(a[1]))
+		} else {
+			g.w("ak_op_vset(%s, %s);", g.rp(a[0]), g.r(a[1]))
+		}
 	case "VTAKE":
 		// The box's reference moved out, none left in it, so a change of
 		// it in place copies nothing; VSET puts it back.
@@ -818,7 +823,17 @@ func (g *gen) mapOp(name string, in insn) bool {
 	case "MGET":
 		g.w("%s", g.setref(a[0], fmt.Sprintf("ak_op_mget(%s, %s)", g.rp(a[1]), g.r(a[2]))))
 	case "MSET":
-		g.w("{ ak_map *m_ = %s; ak_mset(&m_, %s, %s); %s = m_; }", g.rp(a[0]), g.r(a[1]), g.r(a[2]), g.rp(a[0]))
+		// Whether the key and the value may be references, as their
+		// registers' kinds say: a scalar's retain is left out, which
+		// GCC would otherwise see dereference the scalar (an int 1 as an
+		// address: -Warray-bounds).
+		mayRef := func(r int) int {
+			if k := g.f.Kinds[r]; k == bc.KInt || k == bc.KFloat || k == bc.KBool {
+				return 0
+			}
+			return 1
+		}
+		g.w("{ ak_map *m_ = %s; ak_mset_k(&m_, %s, %s, %d, %d); %s = m_; }", g.rp(a[0]), g.r(a[1]), g.r(a[2]), mayRef(a[1]), mayRef(a[2]), g.rp(a[0]))
 	case "MGETJ":
 		g.w("{ ak_val v_ = {0}; if (!ak_map_get(%s, %s, &v_)) goto %s; %s }", g.rp(a[1]), g.r(a[2]), g.label(a[3]), g.load(a[0], "v_"))
 	default:

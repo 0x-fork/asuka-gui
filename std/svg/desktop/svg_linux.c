@@ -157,7 +157,7 @@ static void paint(cairo_t *cr, const svg_drawing *d, float scale, float dx, floa
 		rgba c, to;
 		if (color(l->fill, cur, &c)) {
 			if (l->fade.kind) {
-				color(l->fade, cur, &to);
+				if (!color(l->fade, cur, &to)) to = c;  // a fade to no color: none
 				cairo_pattern_t *g = gk.pattern_create_linear(0, dy, 0, dy + l->fade_to * scale);
 				gk.pattern_add_color_stop_rgba(g, 0, c.r, c.g, c.b, c.a);
 				gk.pattern_add_color_stop_rgba(g, 1, to.r, to.g, to.b, to.a);

@@ -516,6 +516,16 @@ static inline void ak_mset(ak_map **mp, ak_val k, ak_val v) {
 	ak_map_set(mp, k, v);
 }
 
+// ak_mset_k is ak_mset for compiled code, which knows whether k and v
+// may be references (kref, vref: constants): a scalar's is never
+// retained.
+static inline void ak_mset_k(ak_map **mp, ak_val k, ak_val v, bool kref, bool vref) {
+	ak_kind kk = (ak_kind)((*mp)->h.aux & 0xf), vk = (ak_kind)((*mp)->h.aux >> 4);
+	if (kref) ak_retain_val(k, kk);
+	if (vref) ak_retain_val(v, vk);
+	ak_map_set(mp, k, v);
+}
+
 static inline void ak_op_mset(ak_val *R, uint16_t a, ak_val k, ak_val v) { ak_mset((ak_map **)&R[a].p, k, v); }
 
 // ak_op_task starts the closure as a task (or, a C closure, takes the
