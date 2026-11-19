@@ -8,10 +8,18 @@ import (
 	"github.com/egoist/asuka/lang/compile"
 )
 
-// cOf compiles src and returns the C of its function name's direct body.
+// cOf compiles src and returns the C of its function name's direct body,
+// from the code as lang/ir's optimizer leaves it.
 func cOf(t *testing.T, src, name string) string {
 	t.Helper()
-	res := compile.Files(map[string][]byte{"a.asuka": []byte(src)}, nil)
+	return cOfOpt(t, src, name, true)
+}
+
+// cOfOpt is cOf from the optimized code or the code as lowered: the
+// place analysis plans both.
+func cOfOpt(t *testing.T, src, name string, opt bool) string {
+	t.Helper()
+	res := compile.Files(map[string][]byte{"a.asuka": []byte(src)}, &compile.Options{NoOptimize: !opt})
 	if err := res.Err(); err != nil {
 		t.Fatal(err)
 	}
@@ -36,10 +44,12 @@ struct P {
 }
 `
 
-// An element's field read is through a pointer borrowed from the array:
-// the element isn't retained, nor released.
+// An element's field read is through a pointer borrowed from the array
+// (the optimizer's IDXF reads it there too): the element isn't retained,
+// nor released.
 func TestBorrowedRead(t *testing.T) {
-	c := cOf(t, points+`
+	for _, opt := range []bool{false, true} {
+		c := cOfOpt(t, points+`
 fn sumX(ps: [P]) -> float {
   var s = 0.0
   for i in 0..<ps.count() {
@@ -49,12 +59,46 @@ fn sumX(ps: [P]) -> float {
 }
 
 fn main() { print("{sumX([P(x: 1.0, n: 1, tag: "a")])}") }
-`, "sumX")
-	if !strings.Contains(c, "= x_->data[i_].p; }") {
-		t.Errorf("the element isn't borrowed:\n%s", c)
+`, "sumX", opt)
+		if !strings.Contains(c, "= x_->data[i_].p; }") && !strings.Contains(c, "((ak_struct *)x_->data[i_].p)->f[0]") {
+			t.Errorf("the element isn't borrowed (optimized: %v):\n%s", opt, c)
+		}
+		if strings.Contains(c, "ak_retain((x_->data[i_]).p)") {
+			t.Errorf("the element is retained (optimized: %v):\n%s", opt, c)
+		}
 	}
-	if strings.Contains(c, "ak_retain((x_->data[i_]).p)") {
-		t.Errorf("the element is retained:\n%s", c)
+}
+
+// The optimizer's changes of an element's fields (SETIF) make the array
+// and the element unique once, and check the index once, on a straight
+// path: what's known after the first is known at the others.
+func TestChangeFieldsInPlace(t *testing.T) {
+	c := cOf(t, `
+struct V {
+  x: float
+  y: float
+  z: float
+}
+
+fn step(vs: [V]) -> [V] {
+  var q = vs
+  for i in 0..<q.count() {
+    q[i].x += 1.0
+    q[i].y += 2.0
+    q[i].z += 3.0
+  }
+  return q
+}
+
+fn main() { print("{step([V(x: 1.0, y: 2.0, z: 3.0)]).count()}") }
+`, "step")
+	for what, n := range map[string]int{"ak_op_range": 1, "ak_struct_mut": 1, "ak_arr_mut": 1} {
+		if got := strings.Count(c, what); got != n {
+			t.Errorf("%s %d times, not %d:\n%s", what, got, n, c)
+		}
+	}
+	if strings.Contains(c, "x_->data[i_].p = NULL") {
+		t.Errorf("an element is taken out:\n%s", c)
 	}
 }
 

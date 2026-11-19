@@ -117,6 +117,23 @@ before malloc (core/src/base/small.c), and a release counts no
 allocations or live objects (tests and development builds do).
 bench/compiled times plain computation against Go, Zig and Bun.
 
+Between lowering and encoding, lang/ir's optimizer rewrites each
+function (lang/LOWERING.md's Optimization: constants folded, copies
+coalesced, comparisons fused into their jumps, an array's struct
+elements changed where they are, small functions and closures inlined)
+for both backends; `asuka dev` leaves an app's code as lowered, for
+quick reloads. The VM (core/src/vm/interp.c) dispatches threaded where
+the C compiler has computed gotos (a switch elsewhere, or with
+`-DAK_VM_SWITCH`): each instruction's code ends with the jump to the
+next one's, its width a constant; a call between bytecode functions
+pushes its frame inline (the rare cases, the stacks' growth and a mut
+fn's receiver, out of the way), and a return lets go of the frame's
+reference registers by a list of them the loader makes. The loader
+checks every instruction is one the VM has, and resolves builtins by
+name through a hash. An error an instruction throws (an overflow, an
+index) saves its frame's pc first, so its trace names its line, as the
+C's does.
+
 ### Platforms
 
 A compile is for one platform (lang/target: ios, android, macos,

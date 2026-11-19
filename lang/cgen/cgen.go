@@ -234,6 +234,7 @@ type gen struct {
 	array bool
 	pl    *plan // its places (places.go)
 	k     int   // the instruction being written, by index
+	tramp bool  // the instruction's code goes to its trampoline (inlined)
 }
 
 func (g *gen) p(format string, args ...any) { fmt.Fprintf(&g.b, format, args...) }
@@ -293,11 +294,16 @@ func (g *gen) label(pc int) string {
 	return fmt.Sprintf("L%d", pc)
 }
 
-// to is a jump to h (handlerAt's: a label, or "unwind").
+// to is a jump to h (handlerAt's: a label, or "unwind"; inlined's: an
+// inlined body's trampoline, noted as used).
 func (g *gen) to(h string) string {
 	if h == "unwind" {
 		g.unwinds = true
 		return "goto unwind_;"
+	}
+	if strings.HasPrefix(h, "I") {
+		g.tramp = true
+		return "goto " + h + ";"
 	}
 	var pc int
 	fmt.Sscanf(h, "L%d", &pc)
@@ -512,8 +518,13 @@ func (g *gen) fn(i int) error {
 		if g.pl.skip[k] {
 			continue
 		}
-		if err := g.insn(f, in, handlerAt(f, in.pc)); err != nil {
+		h, tramp := g.inlined(f, in.pc, handlerAt(f, in.pc))
+		g.tramp = false
+		if err := g.insn(f, in, h); err != nil {
 			return err
+		}
+		if g.tramp {
+			tramp()
 		}
 	}
 	// What falls off the end (code after a return the lowering left).
@@ -797,7 +808,7 @@ func borrowedParams(m *bc.Module, f *bc.FuncDef, ins []insn) []bool {
 		case "MOVR", "GETF", "GETP", "ECASE", "LEN", "ISNONE", "UNBOX", "ISSHAPE", "TOSTR", "TASK",
 			"VGET", "VTAKE", "CGET", "CPEEK", "MREAD", "AGET", "ACCC", "ACCF", "MEMO", "CELL", "CELLK", "CTAKE":
 			reads = []int{1}
-		case "IDX", "MGET", "MGETJ", "EQ", "NE", "CONCAT", "LTS":
+		case "IDX", "MGET", "MGETJ", "EQ", "NE", "CONCAT", "LTS", "IDXF":
 			reads = []int{1, 2}
 		case "JNONE", "JSOME", "EFFECT", "RENDER", "CLEANUP", "RET":
 			reads = []int{0}
@@ -809,6 +820,8 @@ func borrowedParams(m *bc.Module, f *bc.FuncDef, ins []insn) []bool {
 			reads = []int{1, 2}
 		case "SETF":
 			reads = []int{2}
+		case "SETIF":
+			reads = []int{3}
 		case "CPATH", "CLEN", "AGETP", "ACCP":
 			reads = []int{1}
 		}
@@ -856,6 +869,38 @@ func handlerAt(f *bc.FuncDef, pc int) string {
 		}
 	}
 	return "unwind"
+}
+
+// inlined is where an error in instruction pc goes first when pc is in a
+// function's body the optimizer inlined (bytecode.Inline): a trampoline
+// that tells ak_frame_hook of each inlined frame it leaves, innermost
+// first, with its line, then goes on to h with the line of the call
+// (what a call's frame would have said), as the VM's traceback does. The
+// trampoline is written by the returned func, after the instruction
+// (when its code goes there); h is returned as it is when pc isn't
+// inlined.
+func (g *gen) inlined(f *bc.FuncDef, pc int, h string) (string, func()) {
+	var ins []bc.Inline
+	for _, in := range f.Inlines {
+		if pc >= int(in.Start) && pc < int(in.End) {
+			ins = append(ins, in)
+		}
+	}
+	if len(ins) == 0 {
+		return h, func() {}
+	}
+	label := fmt.Sprintf("I%d", pc)
+	return label, func() {
+		g.out.WriteString(fmt.Sprintf("\tif (0) {\n%s:\n", label))
+		for i, in := range ins {
+			callee := &g.m.Funcs[in.Func]
+			if i > 0 {
+				g.w("\tat_ = %d;", ins[i-1].Line)
+			}
+			g.w("\tif (ak_frame_hook) ak_frame_hook(%s, %s, at_);", cbytes(callee.Name), cbytes(callee.File))
+		}
+		g.w("\tat_ = %d; %s\n\t}", ins[len(ins)-1].Line, g.to(h))
+	}
 }
 
 // resumes are the pcs a resumable function's frame may resume at: an

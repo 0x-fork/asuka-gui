@@ -1,0 +1,45 @@
+// Functions and closures inlined where they're called: the same
+// results, and an error thrown in one traced through its frame (its own
+// line, then its caller's at the call), as if it were called. The last
+// call throws out of a closure inlined in a function inlined in main.
+import std/os
+
+struct P {
+  name: string
+  n: int
+}
+
+fn bump(x: int) -> int {
+  let y = x * 2
+  return y + 1
+}
+
+fn label(p: P) -> string = "{p.name}:{p.n}"
+
+fn apply(f: fn(int) -> int, x: int) -> int = f(x)
+
+fn pick(xs: [int], i: int) -> int = xs[i]
+
+fn safely(i: int) -> string {
+  do {
+    return "{pick([1, 2, 3], i)}"
+  } catch e {
+    return e.message
+  }
+}
+
+fn main() {
+  print(bump(3))
+  print(label(P(name: "a", n: 1)))
+  var total = 0
+  for i in 0..<10 {
+    total += apply(x => x * i, 5)
+  }
+  print(total)
+  print(safely(1))
+  print(safely(7))
+  let k = 9223372036854775800
+  print(apply(x => x + k, 5))
+  if os.args().count() > 5 { print(bump(4611686018427387904)) }
+  print(apply(x => x + k, 10))
+}

@@ -30,6 +30,13 @@ import (
 //     its place) is moved out, and one put back and cleared is moved
 //     in: no retain and release of it.
 //
+// lang/ir's optimizer makes some of these single instructions: IDXF
+// (IDX, GETF) reads an element's field, and SETIF (the take-out, SETF,
+// the put back) changes one in place. They're planned as the forms they
+// replace are: IDXF's result borrowed as a field's is, SETIF's array and
+// element made unique and its index checked only where nothing on the
+// path before has (facts), its value moved in when it's cleared after.
+//
 // Each is decided per instruction before the C is written (plan), on
 // the bytecode's straight paths: from an instruction to the next while
 // the next has no other way in (a label another jump targets, a
@@ -38,7 +45,7 @@ import (
 // plan is what the place analysis decided for a function's
 // instructions, by index.
 type plan struct {
-	// borrow: the instruction (IDX, GETF, GETP) reads into its register
+	// borrow: the instruction (IDX, GETF, GETP, IDXF) reads into its register
 	// a borrowed pointer, v<r>, not the register.
 	borrow map[int]bool
 	// inplace: the IDX is a change in place's: the element made unique
@@ -55,12 +62,18 @@ type plan struct {
 	direct map[int]bool
 	// moveOut: the IDX or GETF moves the value out of its place (the
 	// next instruction, which puts none there, is skipped); moveIn: the
-	// SETIDX or SETF moves its register into the place (the next, its
-	// CLR, is skipped).
+	// SETIDX, SETF or SETIF moves its register into the place (the next,
+	// its CLR, is skipped).
 	moveOut, moveIn map[int]bool
 	// virt: the registers some instruction borrows (v<r> declared).
 	virt map[int]bool
-	// What's known before an IDX, SETIDX or SETF on its straight path
+	// changes: the IDXF reads a field of an element that a SETIF further
+	// on its straight path changes: it makes the array and the element
+	// unique, as a change in place's IDX does, so that what follows reads
+	// and writes them with nothing checked (and reads after the element
+	// is made unique, as the change in place's GETFs do).
+	changes map[int]bool
+	// What's known before an IDX, SETIDX, SETIF or IDXF on its straight path
 	// (facts): its array is unique (unique), its index is in its range
 	// (inRange), the element there is unique (uniqueElem); its checks
 	// are left out.
@@ -71,6 +84,7 @@ type plan struct {
 // may be: read, never kept without a retain of its own.
 var srcPos = map[string][]int{
 	"GETF": {1}, "GETP": {1}, "IDX": {1}, "LEN": {1}, "ECASE": {1}, "ISNONE": {1}, "UNBOX": {1}, "MOVR": {1},
+	"IDXF": {1},
 }
 
 // pathOps are the instructions a borrowed register's path may have:
@@ -83,6 +97,8 @@ var pathOps = map[string]bool{
 	"SHL": true, "SHR": true, "ADDF": true, "SUBF": true, "MULF": true, "DIVF": true, "MODF": true, "NEGF": true,
 	"EQF": true, "NEF": true, "LTF": true, "LEF": true, "I2F": true, "F2I": true, "NOT": true,
 	"GETF": true, "GETP": true, "IDX": true, "LEN": true, "ECASE": true, "ISNONE": true, "UNBOX": true, "JMP": true,
+	// The optimizer's (lang/ir).
+	"ADDIS": true, "SUBIS": true, "MULIS": true, "DIVIS": true, "MODIS": true, "DIVIK": true, "MODIK": true, "IDXF": true,
 }
 
 // quiet are the instructions that never throw, which a change in
@@ -94,6 +110,17 @@ var quiet = map[string]bool{
 	"ADDF": true, "SUBF": true, "MULF": true, "DIVF": true, "MODF": true, "NEGF": true,
 	"EQF": true, "NEF": true, "LTF": true, "LEF": true, "I2F": true, "F2I": true, "NOT": true,
 	"GETF": true, "JMP": true,
+	// The optimizer's divisions by a constant, never 0 or -1.
+	"DIVIS": true, "MODIS": true, "DIVIK": true, "MODIK": true,
+}
+
+// branches are the instructions that jump or go on: a straight path
+// ends at them.
+var branches = map[string]bool{
+	"JT": true, "JF": true, "JNONE": true, "JSOME": true, "MGETJ": true,
+	// The optimizer's comparisons fused with their jumps.
+	"JLTI": true, "JLEI": true, "JEQI": true, "JNEI": true,
+	"JLTIS": true, "JLEIS": true, "JGTIS": true, "JGEIS": true, "JEQIS": true, "JNEIS": true,
 }
 
 // writes are the registers in writes: its destination (operand 0, a
@@ -105,7 +132,8 @@ func writes(m *bc.Module, in insn) []int {
 	a := in.args
 	var out []int
 	switch d.Name {
-	case "JT", "JF", "JNONE", "JSOME", "RET", "VSET", "CSET", "EFFECT", "RENDER", "CLEANUP", "GSET":
+	case "JT", "JF", "JNONE", "JSOME", "RET", "VSET", "CSET", "EFFECT", "RENDER", "CLEANUP", "GSET",
+		"JLTI", "JLEI", "JEQI", "JNEI", "JLTIS", "JLEIS", "JGTIS", "JGEIS", "JEQIS", "JNEIS":
 	case "CPUT", "CPUTP":
 		out = append(out, a[1])
 	default:
@@ -171,7 +199,7 @@ func has(rs []int, r int) bool {
 func analyze(m *bc.Module, f *bc.FuncDef, ins []insn, entries map[int]bool) *plan {
 	pl := &plan{borrow: map[int]bool{}, inplace: map[int]bool{}, active: map[int][]int{}, skip: map[int]bool{},
 		direct: map[int]bool{}, moveOut: map[int]bool{}, moveIn: map[int]bool{}, virt: map[int]bool{},
-		unique: map[int]bool{}, inRange: map[int]bool{}, uniqueElem: map[int]bool{}}
+		unique: map[int]bool{}, inRange: map[int]bool{}, uniqueElem: map[int]bool{}, changes: map[int]bool{}}
 	n := len(ins)
 	at := make(map[int]int, n) // pc → index
 	for k, in := range ins {
@@ -207,12 +235,12 @@ func analyze(m *bc.Module, f *bc.FuncDef, ins []insn, entries map[int]bool) *pla
 	next := func(k int) int {
 		in := ins[k]
 		j := -1
-		switch bc.Ops[in.op].Name {
-		case "JMP":
+		switch nm := bc.Ops[in.op].Name; {
+		case nm == "JMP":
 			if t, ok := at[in.args[0]]; ok {
 				j = t
 			}
-		case "JT", "JF", "JNONE", "JSOME", "MGETJ", "RET", "RET0", "THROW", "RETHROW":
+		case branches[nm], nm == "RET", nm == "RET0", nm == "THROW", nm == "RETHROW":
 		default:
 			if k+1 < n {
 				j = k + 1
@@ -358,8 +386,11 @@ func analyze(m *bc.Module, f *bc.FuncDef, ins []insn, entries map[int]bool) *pla
 				pl.skip[k+1] = true
 				taken[k], taken[k+1] = true, true
 			}
-		case "SETIDX", "SETF":
+		case "SETIDX", "SETF", "SETIF":
 			v := a[2]
+			if name(k) == "SETIF" {
+				v = a[3]
+			}
 			if f.Kinds[v] == bc.KRef && v != a[0] && (name(k) == "SETF" || v != a[1]) && name(k+1) == "CLR" && b[0] == v {
 				pl.moveIn[k] = true
 				pl.skip[k+1] = true
@@ -373,12 +404,12 @@ func analyze(m *bc.Module, f *bc.FuncDef, ins []insn, entries map[int]bool) *pla
 			continue
 		}
 		nm := name(k)
-		if nm != "IDX" && nm != "GETF" && nm != "GETP" {
+		if nm != "IDX" && nm != "GETF" && nm != "GETP" && nm != "IDXF" {
 			continue
 		}
 		in := ins[k]
 		t, c := in.args[0], in.args[1]
-		if t == bc.None || f.Kinds[t] != bc.KRef || t == c || (nm == "IDX" && t == in.args[2]) {
+		if t == bc.None || f.Kinds[t] != bc.KRef || t == c || ((nm == "IDX" || nm == "IDXF") && t == in.args[2]) {
 			continue
 		}
 		var path []int
@@ -498,7 +529,38 @@ func (pl *plan) facts(m *bc.Module, fd *bc.FuncDef, ins []insn, next func(int) i
 				}
 			}
 		}
+		var path []int
 		for k := start; k >= 0; k = next(k) {
+			path = append(path, k)
+		}
+		// An IDXF whose element a SETIF changes further on, neither the
+		// array's register nor the index's written between (nor the array
+		// borrowed there).
+		for p, k := range path {
+			in := ins[k]
+			if bc.Ops[in.op].Name != "IDXF" || pl.skip[k] || pl.borrow[k] || has(pl.active[k], in.args[1]) {
+				continue
+			}
+			c, i := in.args[1], in.args[2]
+			if in.args[0] == c || in.args[0] == i {
+				continue
+			}
+			for _, q := range path[p+1:] {
+				if pl.skip[q] {
+					continue
+				}
+				a := ins[q].args
+				if bc.Ops[ins[q].op].Name == "SETIF" && a[0] == c && a[1] == i {
+					pl.changes[k] = true
+					break
+				}
+				ws := writes(m, ins[q])
+				if (has(ws, c) && bc.Ops[ins[q].op].Name != "SETIF") || has(ws, i) {
+					break
+				}
+			}
+		}
+		for _, k := range path {
 			in := ins[k]
 			a := in.args
 			nm := bc.Ops[in.op].Name
@@ -514,21 +576,33 @@ func (pl *plan) facts(m *bc.Module, fd *bc.FuncDef, ins []insn, next func(int) i
 					pl.unique[k] = uniq[a[1]]
 					pl.uniqueElem[k] = elem[p]
 				}
+			case "IDXF":
+				p := pair{a[1], a[2]}
+				pl.inRange[k] = rng[p]
+				if pl.changes[k] {
+					pl.unique[k] = uniq[a[1]]
+					pl.uniqueElem[k] = elem[p]
+				}
 			case "SETIDX":
 				p := pair{a[0], a[1]}
 				pl.inRange[k] = rng[p]
 				pl.unique[k] = uniq[a[0]]
+			case "SETIF":
+				p := pair{a[0], a[1]}
+				pl.inRange[k] = rng[p]
+				pl.unique[k] = uniq[a[0]]
+				pl.uniqueElem[k] = elem[p]
 			}
 			// What it does to what's known: first what it reads or
 			// passes on, then what it writes, then what it makes known.
 			rs := regs(m, in)
 			for _, r := range rs {
-				if r < len(fd.Kinds) && fd.Kinds[r] == bc.KRef && !pure(in, r) && !(nm == "SETIDX" && r == a[0]) && !(nm == "IDX" && (pl.inplace[k] || pl.moveOut[k]) && r == a[1]) && !(nm == "SETF" && r == a[0]) {
+				if r < len(fd.Kinds) && fd.Kinds[r] == bc.KRef && !pure(in, r) && !((nm == "SETIDX" || nm == "SETIF") && r == a[0]) && !(nm == "IDX" && (pl.inplace[k] || pl.moveOut[k]) && r == a[1]) && !(nm == "IDXF" && pl.changes[k] && r == a[1]) && !(nm == "SETF" && r == a[0]) {
 					forget(r)
 				}
 			}
 			for _, r := range writes(m, in) {
-				if (nm == "SETIDX" || nm == "SETF") && r == a[0] {
+				if (nm == "SETIDX" || nm == "SETF" || nm == "SETIF") && r == a[0] {
 					continue
 				}
 				forget(r)
@@ -549,11 +623,27 @@ func (pl *plan) facts(m *bc.Module, fd *bc.FuncDef, ins []insn, next func(int) i
 						forgetElems(c) // retained into t: shared
 					}
 				}
+			case "IDXF":
+				// The element read where it is, not retained: it stays
+				// as unique as it was (made so, when the IDXF changes).
+				if t, c, i := a[0], a[1], a[2]; t != c && t != i {
+					rng[pair{c, i}] = true
+					if pl.changes[k] {
+						uniq[c] = true
+						elem[pair{c, i}] = true
+					}
+				}
 			case "SETIDX":
 				c, i := a[0], a[1]
 				uniq[c] = true
 				rng[pair{c, i}] = true
 				forgetElems(c)
+			case "SETIF":
+				// The array made unique, then its element in it.
+				c, i := a[0], a[1]
+				uniq[c] = true
+				rng[pair{c, i}] = true
+				elem[pair{c, i}] = true
 			}
 		}
 	}

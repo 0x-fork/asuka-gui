@@ -249,24 +249,36 @@ static inline ak_arr *ak_op_newa(ak_kind k, const ak_shape *s, const ak_val *ite
 
 // ak_op_range throws an index out of arr's range (cold: the checks'
 // paths stay short).
+// The checks themselves are inline: one unsigned compare (a negative
+// index is a huge one).
 __attribute__((cold, noinline, unused)) static bool ak_op_range(const ak_arr *arr, int64_t i) {
 	ak_throw_msg("index %lld out of range (length %u)", (long long)i, arr->len);
 	return false;
 }
 
 static inline bool ak_op_idx(ak_val *R, uint16_t a, const ak_arr *arr, int64_t i) {
-	if (AK_UNLIKELY(!ak_arr_check(arr, i))) return ak_op_range(arr, i);
+	if (AK_UNLIKELY((uint64_t)i >= (uint64_t)arr->len)) return ak_op_range(arr, i);
 	ak_val v = arr->data[i];
 	if (ak_arr_kind(arr) == AK_K_REF) ak_op_setref(R, a, ak_retain(v.p));
 	else R[a] = v;
 	return true;
 }
 
+// SETIDX of an array this register holds alone changes it in place
+// here (ak_arr_set's work for a unique array: the old element let go
+// of); a shared one is copied first by ak_arr_set.
 static inline bool ak_op_setidx(ak_val *R, uint16_t a, int64_t i, ak_val v) {
 	ak_arr **ap = (ak_arr **)&R[a].p;
-	if (AK_UNLIKELY(!ak_arr_check(*ap, i))) return ak_op_range(*ap, i);
-	ak_retain_val(v, ak_arr_kind(*ap));
-	ak_arr_set(ap, i, v);
+	ak_arr *arr = *ap;
+	if (AK_UNLIKELY((uint64_t)i >= (uint64_t)arr->len)) return ak_op_range(arr, i);
+	ak_kind k = ak_arr_kind(arr);
+	ak_retain_val(v, k);
+	if (AK_LIKELY(ak_unique(arr))) {
+		ak_release_val(arr->data[i], k);
+		arr->data[i] = v;
+	} else {
+		ak_arr_set(ap, i, v);
+	}
 	return true;
 }
 
@@ -325,6 +337,46 @@ static inline ak_val ak_op_task(ak_closure *c) {
 	if (c->invoke == ak_vm_closure_invoke) return (ak_val){.p = ak_vm_task_start(c->fn, c, NULL, 0)};
 	return c->invoke(c, NULL, 0);
 }
+
+// ---- What the optimizer makes (lang/ir's passes) ----
+//
+// Each is what the instructions it replaces did: the same results, the
+// same errors with the same messages.
+
+// ADDIS, SUBIS and MULIS (an int and a constant) are ak_addi, ak_subi
+// and ak_muli with the constant as c: checked as ADDI, SUBI and MULI
+// are. ak_op_addk... are the interpreter's, on a frame's registers.
+static inline bool ak_op_addk(ak_val *R, uint16_t a, int64_t x, int64_t k) { return ak_addi(&R[a].i, x, k); }
+static inline bool ak_op_subk(ak_val *R, uint16_t a, int64_t x, int64_t k) { return ak_subi(&R[a].i, x, k); }
+static inline bool ak_op_mulk(ak_val *R, uint16_t a, int64_t x, int64_t k) { return ak_muli(&R[a].i, x, k); }
+
+// ak_op_idxf is IDXF: the field f of the struct at index i of arr (IDX,
+// then GETF, with no reference to the element taken).
+static inline bool ak_op_idxf(ak_val *R, uint16_t a, const ak_arr *arr, int64_t i, uint16_t f) {
+	if (AK_UNLIKELY((uint64_t)i >= (uint64_t)arr->len)) return ak_op_range(arr, i);
+	ak_op_getf(R, a, arr->data[i].p, f);
+	return true;
+}
+
+// ak_setif is SETIF on the array *ap: the field f of the struct at index
+// i set to v (retained as the field's kind says), the array and then the
+// struct copied first if they're shared (what IDX, SETIDX of none, SETF
+// and SETIDX back did, with no reference to the element taken).
+static inline bool ak_setif(ak_arr **ap, int64_t i, uint16_t f, ak_val v) {
+	if (AK_UNLIKELY((uint64_t)i >= (uint64_t)(*ap)->len)) return ak_op_range(*ap, i);
+	ak_arr *arr = ak_arr_mut(ap);
+	ak_struct *o = ak_struct_mut((ak_struct **)&arr->data[i].p);
+	if (o->shape->kinds[f] == AK_K_REF) {
+		void *old = o->f[f].p;
+		o->f[f].p = ak_retain(v.p);
+		ak_release(old);
+	} else {
+		o->f[f] = v;
+	}
+	return true;
+}
+
+static inline bool ak_op_setif(ak_val *R, uint16_t a, int64_t i, uint16_t f, ak_val v) { return ak_setif((ak_arr **)&R[a].p, i, f, v); }
 
 // ak_op_exit releases a frame's reference registers but keep (-1: none).
 static inline void ak_op_exit(ak_val *R, const uint8_t *kinds, uint16_t n, int keep) {

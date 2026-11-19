@@ -3,7 +3,7 @@
 #ifndef AK_VM_OPCODES_GEN_H
 #define AK_VM_OPCODES_GEN_H
 
-#define AK_BC_VERSION 6
+#define AK_BC_VERSION 7
 
 enum {
 	AK_OP_NOP = 0, // : does nothing
@@ -123,7 +123,26 @@ enum {
 	AK_OP_TASK = 114, // reg reg: a = a task running the async closure b (no arguments), owned by the current owner
 	AK_OP_AWAIT = 115, // reg reg: a = the result of task or future b, suspending until it has one; throws its error
 	AK_OP_YIELD = 116, // : suspends until the next turn of the main loop
-	AK_OP__COUNT = 117,
+	AK_OP_ADDIS = 117, // reg reg imm: a = b + a signed immediate; throws on overflow
+	AK_OP_SUBIS = 118, // reg reg imm: a = b - a signed immediate; throws on overflow
+	AK_OP_MULIS = 119, // reg reg imm: a = b * a signed immediate; throws on overflow
+	AK_OP_DIVIS = 120, // reg reg imm: a = b / a signed immediate, truncated (never 0 or -1)
+	AK_OP_MODIS = 121, // reg reg imm: a = b % a signed immediate (never 0)
+	AK_OP_JLTI = 122, // reg reg off: jumps when a < b (ints)
+	AK_OP_JLEI = 123, // reg reg off: jumps when a <= b
+	AK_OP_JEQI = 124, // reg reg off: jumps when a == b (ints, bools, payloadless enums)
+	AK_OP_JNEI = 125, // reg reg off: jumps when a != b
+	AK_OP_JLTIS = 126, // reg imm off: jumps when a < a signed immediate
+	AK_OP_JLEIS = 127, // reg imm off: jumps when a <= a signed immediate
+	AK_OP_JGTIS = 128, // reg imm off: jumps when a > a signed immediate
+	AK_OP_JGEIS = 129, // reg imm off: jumps when a >= a signed immediate
+	AK_OP_JEQIS = 130, // reg imm off: jumps when a == a signed immediate
+	AK_OP_JNEIS = 131, // reg imm off: jumps when a != a signed immediate
+	AK_OP_DIVIK = 132, // reg reg const: a = b / Ints[k], truncated (never 0 or -1)
+	AK_OP_MODIK = 133, // reg reg const: a = b % Ints[k] (never 0 or -1)
+	AK_OP_IDXF = 134, // reg reg reg imm: a = b[c].fields[i], b an array of structs; throws out of range (IDX, GETF)
+	AK_OP_SETIF = 135, // reg reg imm reg: a[b].fields[i] = c, a and its element copied first if shared; throws out of range (IDX, SETF, SETIDX)
+	AK_OP__COUNT = 136,
 };
 
 // Instruction widths in words.
@@ -135,8 +154,168 @@ static const uint8_t ak_op_width[] = {
 	2, 6, 3, 4, 3, 3, 3, 6, 5, 4, 4, 6, 3, 4, 4, 3,
 	7, 4, 4, 3, 6, 4, 4, 6, 4, 6, 7, 3, 3, 3, 3, 3,
 	6, 6, 6, 4, 3, 4, 4, 3, 3, 7, 6, 5, 1, 2, 2, 2,
-	2, 2, 3, 3, 1,
+	2, 2, 3, 3, 1, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5,
+	5, 5, 5, 5, 5, 5, 5, 5,
 };
+
+// Each opcode's width as a constant, for an instruction's own code
+// (the interpreter's threaded dispatch), and the opcodes in order, as
+// an X macro: X(name).
+#define AK_OPW_NOP 1
+#define AK_OPW_MOV 3
+#define AK_OPW_MOVR 3
+#define AK_OPW_CLR 2
+#define AK_OPW_KINT 4
+#define AK_OPW_KSMALL 3
+#define AK_OPW_KFLOAT 4
+#define AK_OPW_KSTR 4
+#define AK_OPW_KNONE 2
+#define AK_OPW_GGET 5
+#define AK_OPW_GSET 5
+#define AK_OPW_ADDI 4
+#define AK_OPW_SUBI 4
+#define AK_OPW_MULI 4
+#define AK_OPW_DIVI 4
+#define AK_OPW_MODI 4
+#define AK_OPW_NEGI 3
+#define AK_OPW_WADDI 4
+#define AK_OPW_WSUBI 4
+#define AK_OPW_WMULI 4
+#define AK_OPW_ADDIK 4
+#define AK_OPW_EQI 4
+#define AK_OPW_NEI 4
+#define AK_OPW_LTI 4
+#define AK_OPW_LEI 4
+#define AK_OPW_BAND 4
+#define AK_OPW_BOR 4
+#define AK_OPW_BXOR 4
+#define AK_OPW_BNOT 3
+#define AK_OPW_SHL 4
+#define AK_OPW_SHR 4
+#define AK_OPW_ADDF 4
+#define AK_OPW_SUBF 4
+#define AK_OPW_MULF 4
+#define AK_OPW_DIVF 4
+#define AK_OPW_MODF 4
+#define AK_OPW_NEGF 3
+#define AK_OPW_EQF 4
+#define AK_OPW_NEF 4
+#define AK_OPW_LTF 4
+#define AK_OPW_LEF 4
+#define AK_OPW_I2F 3
+#define AK_OPW_F2I 3
+#define AK_OPW_NOT 3
+#define AK_OPW_EQ 5
+#define AK_OPW_NE 5
+#define AK_OPW_ISNONE 3
+#define AK_OPW_CONCAT 4
+#define AK_OPW_TOSTR 4
+#define AK_OPW_INTERP 6
+#define AK_OPW_LTS 4
+#define AK_OPW_JMP 3
+#define AK_OPW_JT 4
+#define AK_OPW_JF 4
+#define AK_OPW_JNONE 4
+#define AK_OPW_JSOME 4
+#define AK_OPW_ISSHAPE 5
+#define AK_OPW_CALL 6
+#define AK_OPW_CALLC 5
+#define AK_OPW_CALLB 5
+#define AK_OPW_RET 2
+#define AK_OPW_RET0 1
+#define AK_OPW_THROW 2
+#define AK_OPW_CATCH 2
+#define AK_OPW_RETHROW 2
+#define AK_OPW_CLOS 6
+#define AK_OPW_CAP 3
+#define AK_OPW_VBOX 4
+#define AK_OPW_VGET 3
+#define AK_OPW_VSET 3
+#define AK_OPW_VTAKE 3
+#define AK_OPW_CALLI 6
+#define AK_OPW_NEWS 5
+#define AK_OPW_GETF 4
+#define AK_OPW_SETF 4
+#define AK_OPW_NEWE 6
+#define AK_OPW_ECASE 3
+#define AK_OPW_GETP 4
+#define AK_OPW_BOX 4
+#define AK_OPW_UNBOX 3
+#define AK_OPW_NEWA 7
+#define AK_OPW_IDX 4
+#define AK_OPW_SETIDX 4
+#define AK_OPW_LEN 3
+#define AK_OPW_NEWM 6
+#define AK_OPW_MGET 4
+#define AK_OPW_MSET 4
+#define AK_OPW_MGETJ 6
+#define AK_OPW_CELL 4
+#define AK_OPW_CELLK 6
+#define AK_OPW_FOLLOWK 7
+#define AK_OPW_CGET 3
+#define AK_OPW_CPEEK 3
+#define AK_OPW_CSET 3
+#define AK_OPW_CTAKE 3
+#define AK_OPW_CPUT 3
+#define AK_OPW_CPATH 6
+#define AK_OPW_CLEN 6
+#define AK_OPW_CPUTP 6
+#define AK_OPW_MEMO 4
+#define AK_OPW_MREAD 3
+#define AK_OPW_ACCV 4
+#define AK_OPW_ACCF 4
+#define AK_OPW_ACCC 3
+#define AK_OPW_AGET 3
+#define AK_OPW_ACCP 7
+#define AK_OPW_AGETP 6
+#define AK_OPW_CALLU 5
+#define AK_OPW_UNTRACK 1
+#define AK_OPW_RETRACK 2
+#define AK_OPW_EFFECT 2
+#define AK_OPW_RENDER 2
+#define AK_OPW_CLEANUP 2
+#define AK_OPW_BATCH 2
+#define AK_OPW_TASK 3
+#define AK_OPW_AWAIT 3
+#define AK_OPW_YIELD 1
+#define AK_OPW_ADDIS 4
+#define AK_OPW_SUBIS 4
+#define AK_OPW_MULIS 4
+#define AK_OPW_DIVIS 4
+#define AK_OPW_MODIS 4
+#define AK_OPW_JLTI 5
+#define AK_OPW_JLEI 5
+#define AK_OPW_JEQI 5
+#define AK_OPW_JNEI 5
+#define AK_OPW_JLTIS 5
+#define AK_OPW_JLEIS 5
+#define AK_OPW_JGTIS 5
+#define AK_OPW_JGEIS 5
+#define AK_OPW_JEQIS 5
+#define AK_OPW_JNEIS 5
+#define AK_OPW_DIVIK 5
+#define AK_OPW_MODIK 5
+#define AK_OPW_IDXF 5
+#define AK_OPW_SETIF 5
+
+#define AK_OP_LIST(X) \
+	X(NOP) X(MOV) X(MOVR) X(CLR) X(KINT) X(KSMALL) X(KFLOAT) X(KSTR) \
+	X(KNONE) X(GGET) X(GSET) X(ADDI) X(SUBI) X(MULI) X(DIVI) X(MODI) \
+	X(NEGI) X(WADDI) X(WSUBI) X(WMULI) X(ADDIK) X(EQI) X(NEI) X(LTI) \
+	X(LEI) X(BAND) X(BOR) X(BXOR) X(BNOT) X(SHL) X(SHR) X(ADDF) \
+	X(SUBF) X(MULF) X(DIVF) X(MODF) X(NEGF) X(EQF) X(NEF) X(LTF) \
+	X(LEF) X(I2F) X(F2I) X(NOT) X(EQ) X(NE) X(ISNONE) X(CONCAT) \
+	X(TOSTR) X(INTERP) X(LTS) X(JMP) X(JT) X(JF) X(JNONE) X(JSOME) \
+	X(ISSHAPE) X(CALL) X(CALLC) X(CALLB) X(RET) X(RET0) X(THROW) X(CATCH) \
+	X(RETHROW) X(CLOS) X(CAP) X(VBOX) X(VGET) X(VSET) X(VTAKE) X(CALLI) \
+	X(NEWS) X(GETF) X(SETF) X(NEWE) X(ECASE) X(GETP) X(BOX) X(UNBOX) \
+	X(NEWA) X(IDX) X(SETIDX) X(LEN) X(NEWM) X(MGET) X(MSET) X(MGETJ) \
+	X(CELL) X(CELLK) X(FOLLOWK) X(CGET) X(CPEEK) X(CSET) X(CTAKE) X(CPUT) \
+	X(CPATH) X(CLEN) X(CPUTP) X(MEMO) X(MREAD) X(ACCV) X(ACCF) X(ACCC) \
+	X(AGET) X(ACCP) X(AGETP) X(CALLU) X(UNTRACK) X(RETRACK) X(EFFECT) X(RENDER) \
+	X(CLEANUP) X(BATCH) X(TASK) X(AWAIT) X(YIELD) X(ADDIS) X(SUBIS) X(MULIS) \
+	X(DIVIS) X(MODIS) X(JLTI) X(JLEI) X(JEQI) X(JNEI) X(JLTIS) X(JLEIS) \
+	X(JGTIS) X(JGEIS) X(JEQIS) X(JNEIS) X(DIVIK) X(MODIK) X(IDXF) X(SETIF)
 
 static const char *const ak_op_names[] = {
 	"NOP", "MOV", "MOVR", "CLR", "KINT", "KSMALL", "KFLOAT", "KSTR",
@@ -153,7 +332,9 @@ static const char *const ak_op_names[] = {
 	"CELL", "CELLK", "FOLLOWK", "CGET", "CPEEK", "CSET", "CTAKE", "CPUT",
 	"CPATH", "CLEN", "CPUTP", "MEMO", "MREAD", "ACCV", "ACCF", "ACCC",
 	"AGET", "ACCP", "AGETP", "CALLU", "UNTRACK", "RETRACK", "EFFECT", "RENDER",
-	"CLEANUP", "BATCH", "TASK", "AWAIT", "YIELD",
+	"CLEANUP", "BATCH", "TASK", "AWAIT", "YIELD", "ADDIS", "SUBIS", "MULIS",
+	"DIVIS", "MODIS", "JLTI", "JLEI", "JEQI", "JNEI", "JLTIS", "JLEIS",
+	"JGTIS", "JGEIS", "JEQIS", "JNEIS", "DIVIK", "MODIK", "IDXF", "SETIF",
 };
 
 #endif

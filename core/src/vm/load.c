@@ -242,12 +242,25 @@ ak_module *ak_module_load(const uint8_t *p, size_t n, char *err, size_t errcap) 
 		f->nregs = (uint16_t)nk;
 		f->capkinds = rkinds(l, &nc);
 		f->ncap = (uint16_t)nc;
+		f->nrefs = 0;
+		for (uint32_t r = 0; r < nk; r++) f->nrefs += f->kinds[r] == AK_K_REF;
+		f->refs = ak_alloc(sizeof(uint16_t) * (f->nrefs ? f->nrefs : 1));
+		for (uint32_t r = 0, j = 0; r < nk; r++)
+			if (f->kinds[r] == AK_K_REF) f->refs[j++] = (uint16_t)r;
 		f->ret = ak_read_u8(&l->r);
 		f->flags = ak_read_u8(&l->r);
 		if (f->nparams > f->nregs) fail(l, "more parameters than registers");
 		f->ncode = count(l, 2);
 		f->code = ak_alloc(sizeof(uint16_t) * (f->ncode ? f->ncode : 1));
 		for (uint32_t c = 0; c < f->ncode; c++) f->code[c] = ak_read_u16(&l->r);
+		// Every instruction is one the interpreter has, whole: its
+		// dispatch indexes a table by the opcode, unchecked.
+		for (uint32_t pc = 0; pc < f->ncode && !l->failed;) {
+			uint16_t op = f->code[pc];
+			if (op >= AK_OP__COUNT) fail(l, "bad opcode");
+			else if (pc + ak_op_width[op] > f->ncode) fail(l, "truncated instruction");
+			else pc += ak_op_width[op];
+		}
 		f->nhandlers = count(l, 12);
 		f->handlers = ak_alloc(sizeof(ak_handler) * (f->nhandlers ? f->nhandlers : 1));
 		for (uint32_t h = 0; h < f->nhandlers; h++) {
@@ -260,6 +273,14 @@ ak_module *ak_module_load(const uint8_t *p, size_t n, char *err, size_t errcap) 
 		for (uint32_t h = 0; h < f->nlines; h++) {
 			f->lines[h].pc = ak_read_u32(&l->r);
 			f->lines[h].line = ak_read_u32(&l->r);
+		}
+		f->ninlines = count(l, 16);
+		f->inlines = ak_alloc(sizeof(ak_inline) * (f->ninlines ? f->ninlines : 1));
+		for (uint32_t h = 0; h < f->ninlines; h++) {
+			f->inlines[h].start = ak_read_u32(&l->r);
+			f->inlines[h].end = ak_read_u32(&l->r);
+			f->inlines[h].func = ak_read_u32(&l->r);
+			f->inlines[h].line = ak_read_u32(&l->r);
 		}
 	}
 
@@ -301,6 +322,9 @@ ak_module *ak_module_load(const uint8_t *p, size_t n, char *err, size_t errcap) 
 	for (uint32_t i = 0; i < m->nshapes && !l->failed; i++)
 		for (uint32_t k = 0; k < m->shapes[i].nmethods; k++)
 			if (m->shapes[i].methods[k].func >= m->nfuncs) fail(l, "bad method function");
+	for (uint32_t i = 0; i < m->nfuncs && !l->failed; i++)
+		for (uint32_t k = 0; k < m->funcs[i].ninlines; k++)
+			if (m->funcs[i].inlines[k].func >= m->nfuncs) fail(l, "bad inlined function");
 	if (l->failed) {
 		ak_module_release(m);
 		return NULL;
@@ -337,10 +361,12 @@ static void module_free(void *ctx) {
 		ak_release(f->name);
 		ak_release(f->file);
 		ak_free(f->kinds);
+		ak_free(f->refs);
 		ak_free(f->capkinds);
 		ak_free(f->code);
 		ak_free(f->handlers);
 		ak_free(f->lines);
+		ak_free(f->inlines);
 	}
 	ak_free(m->funcs);
 	for (uint32_t i = 0; i < m->nshapes; i++) {

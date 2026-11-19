@@ -1,0 +1,35 @@
+// Calls, closures and interfaces after their arguments' copies are
+// folded away; an error's trace through them.
+interface Shape { fn area() -> float }
+struct Square {
+  side: float
+  fn area() -> float = side * side
+}
+
+fn apply(f: fn(int) -> int, x: int) -> int = f(x)
+
+fn total(xs: [int]) -> int {
+  var s = 0
+  for x in xs { s += x }
+  return s
+}
+
+fn deep(n: int, xs: [int]) -> int {
+  if n == 0 { return xs[5] }
+  let ys = xs
+  return deep(n - 1, ys) + 1
+}
+
+fn main() throws {
+  var xs = [1, 2, 3]
+  let ys = xs
+  xs.push(4)
+  print("{total(xs)} {total(ys)} {ys}")
+  let k = 5
+  print(apply(x => x * k, 3))
+  let shapes: [Shape] = [Square(side: 2.0), Square(side: 3.0)]
+  var a = 0.0
+  for s in shapes { a += s.area() }
+  print(a)
+  print(deep(3, xs))
+}

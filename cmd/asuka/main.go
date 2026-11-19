@@ -33,6 +33,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/egoist/asuka/internal/appbuild"
 	"github.com/egoist/asuka/internal/ccache"
 	"github.com/egoist/asuka/internal/selfupdate"
 )
@@ -292,6 +293,8 @@ func cmdDev(args []string) error {
 	if o.bin != "" || (o.platform == "" && isProgramDir(dir)) {
 		return devProgram(dir, o.bin, progArgs, stop)
 	}
+	// An app reloads as it's saved: compiled as quickly as it can be.
+	appbuild.DevNoOptimize = true
 	if o.platform == "" {
 		if o.platform = thisComputer(); o.platform == "" {
 			return errors.New("pick a platform: asuka dev --platform ios|android|web <dir>")

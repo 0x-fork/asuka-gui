@@ -18,6 +18,7 @@ func (g *gen) insn(f *bc.FuncDef, in insn, h string) error {
 	switch {
 	case g.moveOp(name, in):
 	case g.intOp(name, in, h):
+	case g.intConstOp(name, in, h):
 	case g.floatOp(name, in):
 	case g.valueOp(name, in):
 	case g.jumpOp(name, in):
@@ -37,6 +38,15 @@ func (g *gen) insn(f *bc.FuncDef, in insn, h string) error {
 	}
 	return nil
 }
+
+// fail is C that goes to h from the source line of in: an error an
+// instruction threw (its check failed).
+func (g *gen) fail(in insn, h string) string {
+	return fmt.Sprintf("{ at_ = %d; %s }", lineAt(g.f, in.pc), g.to(h))
+}
+
+// imm is operand j of in as the signed immediate it is.
+func imm(in insn, j int) int16 { return int16(uint16(in.args[j])) }
 
 // thrown is C that goes to h when the last call threw (an error is
 // pending), from the source line of in.
@@ -94,13 +104,13 @@ func (g *gen) intOp(name string, in insn, h string) bool {
 	switch name {
 	case "ADDI", "SUBI", "MULI":
 		fn := map[string]string{"ADDI": "ak_addi", "SUBI": "ak_subi", "MULI": "ak_muli"}[name]
-		g.w("if (AK_UNLIKELY(!%s(&%s, %s, %s))) %s", fn, g.ri(a[0]), g.ri(a[1]), g.ri(a[2]), g.to(h))
+		g.w("if (AK_UNLIKELY(!%s(&%s, %s, %s))) %s", fn, g.ri(a[0]), g.ri(a[1]), g.ri(a[2]), g.fail(in, h))
 	case "WADDI", "WSUBI", "WMULI":
 		g.w("%s = (int64_t)((uint64_t)%s %s (uint64_t)%s);", g.ri(a[0]), g.ri(a[1]), bin[name], g.ri(a[2]))
 	case "DIVI", "MODI":
-		g.w("if (AK_UNLIKELY(!ak_divi(&%s, %s, %s, %v))) %s", g.ri(a[0]), g.ri(a[1]), g.ri(a[2]), name == "MODI", g.to(h))
+		g.w("if (AK_UNLIKELY(!ak_divi(&%s, %s, %s, %v))) %s", g.ri(a[0]), g.ri(a[1]), g.ri(a[2]), name == "MODI", g.fail(in, h))
 	case "NEGI":
-		g.w("if (AK_UNLIKELY(!ak_negi(&%s, %s))) %s", g.ri(a[0]), g.ri(a[1]), g.to(h))
+		g.w("if (AK_UNLIKELY(!ak_negi(&%s, %s))) %s", g.ri(a[0]), g.ri(a[1]), g.fail(in, h))
 	case "ADDIK":
 		g.w("%s = (int64_t)((uint64_t)%s + (uint64_t)(int64_t)%d);", g.ri(a[0]), g.ri(a[1]), int16(a[2]))
 	case "EQI", "NEI", "LTI", "LEI", "BAND", "BOR", "BXOR":
@@ -108,13 +118,33 @@ func (g *gen) intOp(name string, in insn, h string) bool {
 	case "BNOT":
 		g.w("%s = ~%s;", g.ri(a[0]), g.ri(a[1]))
 	case "SHL", "SHR":
-		g.w("if (AK_UNLIKELY(!ak_shift(&%s, %s, %s, %v))) %s", g.ri(a[0]), g.ri(a[1]), g.ri(a[2]), name == "SHR", g.to(h))
+		g.w("if (AK_UNLIKELY(!ak_shift(&%s, %s, %s, %v))) %s", g.ri(a[0]), g.ri(a[1]), g.ri(a[2]), name == "SHR", g.fail(in, h))
 	case "I2F":
 		g.w("%s = (double)%s;", g.rf(a[0]), g.ri(a[1]))
 	case "F2I":
 		g.w("%s = ak_op_f2i(%s);", g.ri(a[0]), g.rf(a[1]))
 	case "NOT":
 		g.w("%s = !%s;", g.ri(a[0]), g.ri(a[1]))
+	default:
+		return false
+	}
+	return true
+}
+
+// intConstOp writes what the optimizer makes of an int operation with a
+// constant operand (lang/ir's selectOps): ADDIS... checked as ADDI is,
+// with the constant a literal; DIVIS... a division by a literal that is
+// never 0 or -1, so unchecked (and a multiply, as C compilers make it).
+func (g *gen) intConstOp(name string, in insn, h string) bool {
+	a := in.args
+	switch name {
+	case "ADDIS", "SUBIS", "MULIS":
+		fn := map[string]string{"ADDIS": "ak_addi", "SUBIS": "ak_subi", "MULIS": "ak_muli"}[name]
+		g.w("if (AK_UNLIKELY(!%s(&%s, %s, %d))) %s", fn, g.ri(a[0]), g.ri(a[1]), imm(in, 2), g.fail(in, h))
+	case "DIVIS", "MODIS":
+		g.w("%s = %s %s (%d);", g.ri(a[0]), g.ri(a[1]), map[string]string{"DIVIS": "/", "MODIS": "%"}[name], imm(in, 2))
+	case "DIVIK", "MODIK":
+		g.w("%s = %s %s %s;", g.ri(a[0]), g.ri(a[1]), map[string]string{"DIVIK": "/", "MODIK": "%"}[name], ilit(g.m.Ints[a[2]]))
 	default:
 		return false
 	}
@@ -191,6 +221,13 @@ func (g *gen) jumpOp(name string, in insn) bool {
 		g.w("if (!%s) goto %s;", g.rp(a[0]), g.label(a[1]))
 	case "JSOME":
 		g.w("if (%s) goto %s;", g.rp(a[0]), g.label(a[1]))
+	case "JLTI", "JLEI", "JEQI", "JNEI":
+		// The optimizer's fused comparisons and branches.
+		c := map[string]string{"JLTI": "<", "JLEI": "<=", "JEQI": "==", "JNEI": "!="}[name]
+		g.w("if (%s %s %s) goto %s;", g.ri(a[0]), c, g.ri(a[1]), g.label(a[2]))
+	case "JLTIS", "JLEIS", "JGTIS", "JGEIS", "JEQIS", "JNEIS":
+		c := map[string]string{"JLTIS": "<", "JLEIS": "<=", "JGTIS": ">", "JGEIS": ">=", "JEQIS": "==", "JNEIS": "!="}[name]
+		g.w("if (%s %s %d) goto %s;", g.ri(a[0]), c, imm(in, 1), g.label(a[2]))
 	default:
 		return false
 	}
@@ -448,6 +485,26 @@ func (g *gen) uniqueArr(r int) string {
 	return fmt.Sprintf("if (AK_UNLIKELY(!ak_unique(x_))) { ak_arr *t_ = x_; x_ = ak_arr_mut(&t_); %s = x_; }", g.rp(r))
 }
 
+// check is C declaring i_, register i's value, and checking it's in the
+// range of the array x_ (going to h when it isn't, as IDX throws);
+// nothing checked when it's known to be (plan.inRange).
+func (g *gen) check(in insn, i int, h string) string {
+	if g.pl.inRange[g.k] {
+		return fmt.Sprintf("int64_t i_ = %s;", g.ri(i))
+	}
+	return fmt.Sprintf("int64_t i_ = %s; if (AK_UNLIKELY((uint64_t)i_ >= x_->len)) { ak_op_range(x_, i_); %s }", g.ri(i), g.fail(in, h))
+}
+
+// uniqueElem is C declaring s_, the struct at x_'s index i_, made unique
+// in the array (copied first if it's shared); not copied when it's known
+// to be unique (plan.uniqueElem).
+func (g *gen) uniqueElem() string {
+	if g.pl.uniqueElem[g.k] {
+		return "ak_struct *s_ = x_->data[i_].p;"
+	}
+	return "ak_struct *s_ = x_->data[i_].p; if (AK_UNLIKELY(!ak_unique(s_))) { ak_struct *t_ = s_; s_ = ak_struct_mut(&t_); x_->data[i_].p = s_; }"
+}
+
 // arrayOp writes the arrays' operations: an index checked inline, an
 // element of the register's kind, a write in place when the array is
 // unique (copied first when it's shared).
@@ -465,14 +522,7 @@ func (g *gen) arrayOp(name string, in insn, h string) bool {
 		}
 		g.w("{ ak_arr *a_ = ak_arr_new((ak_kind)%d, %s, %d);%s a_->len = %d; %s }", a[1], shape, a[4], g.fill("a_->data", a[3], kinds), a[4], g.setref(a[0], "a_"))
 	case "IDX":
-		check := fmt.Sprintf("int64_t i_ = %s; if (AK_UNLIKELY((uint64_t)i_ >= x_->len)) { ak_op_range(x_, i_); %s }", g.ri(a[2]), g.to(h))
-		if g.pl.inRange[g.k] {
-			check = fmt.Sprintf("int64_t i_ = %s;", g.ri(a[2]))
-		}
-		elem := "ak_struct *s_ = x_->data[i_].p; if (AK_UNLIKELY(!ak_unique(s_))) { ak_struct *t_ = s_; s_ = ak_struct_mut(&t_); x_->data[i_].p = s_; }"
-		if g.pl.uniqueElem[g.k] {
-			elem = "ak_struct *s_ = x_->data[i_].p;"
-		}
+		check := g.check(in, a[2], h)
 		switch {
 		case g.pl.borrow[g.k]:
 			g.w("%s { const ak_arr *x_ = %s; %s v%d = x_->data[i_].p; }", g.setref(a[0], "NULL"), g.src(a[1]), check, a[0])
@@ -480,7 +530,7 @@ func (g *gen) arrayOp(name string, in insn, h string) bool {
 			// A change in place: the array unique, its element unique in
 			// it, borrowed while SETFs change it.
 			g.w("%s { ak_arr *x_ = %s; %s %s %s v%d = s_; }",
-				g.setref(a[0], "NULL"), g.rp(a[1]), check, g.uniqueArr(a[1]), elem, a[0])
+				g.setref(a[0], "NULL"), g.rp(a[1]), check, g.uniqueArr(a[1]), g.uniqueElem(), a[0])
 		case g.pl.moveOut[g.k]:
 			// Taken out (the next instruction puts none there): moved.
 			g.w("{ ak_arr *x_ = %s; %s %s void *o_ = %s; %s = x_->data[i_].p; x_->data[i_].p = NULL; ak_release(o_); }",
@@ -497,11 +547,37 @@ func (g *gen) arrayOp(name string, in insn, h string) bool {
 		case g.isRef(a[2]):
 			set = fmt.Sprintf("void *o_ = x_->data[i_].p; x_->data[i_].p = ak_retain(%s); ak_release(o_);", g.rp(a[2]))
 		}
-		check := fmt.Sprintf("int64_t i_ = %s; if (AK_UNLIKELY((uint64_t)i_ >= x_->len)) { ak_op_range(x_, i_); %s }", g.ri(a[1]), g.to(h))
-		if g.pl.inRange[g.k] {
-			check = fmt.Sprintf("int64_t i_ = %s;", g.ri(a[1]))
+		g.w("{ ak_arr *x_ = %s; %s %s %s }", g.rp(a[0]), g.check(in, a[1], h), g.uniqueArr(a[0]), set)
+	case "IDXF":
+		// The optimizer's read of an array's struct element's field
+		// (IDX, GETF): the element borrowed, its field read as GETF reads
+		// one (a reference retained, or borrowed itself as v<r>).
+		field := fmt.Sprintf("((ak_struct *)x_->data[i_].p)->f[%d]", a[3])
+		if g.pl.changes[g.k] {
+			// A SETIF changes the element further on: made unique here,
+			// then read.
+			g.w("{ ak_arr *x_ = %s; %s %s %s %s }", g.rp(a[1]), g.check(in, a[2], h), g.uniqueArr(a[1]), g.uniqueElem(), g.loadSlot(a[0], fmt.Sprintf("s_->f[%d]", a[3])))
+			break
 		}
-		g.w("{ ak_arr *x_ = %s; %s %s %s }", g.rp(a[0]), check, g.uniqueArr(a[0]), set)
+		if g.pl.borrow[g.k] {
+			g.w("%s { const ak_arr *x_ = %s; %s v%d = %s.p; }", g.setref(a[0], "NULL"), g.src(a[1]), g.check(in, a[2], h), a[0], field)
+			break
+		}
+		g.w("{ const ak_arr *x_ = %s; %s %s }", g.src(a[1]), g.check(in, a[2], h), g.loadSlot(a[0], field))
+	case "SETIF":
+		// The optimizer's change of an array's struct element's field in
+		// place (IDX, SETIDX of none, SETF, SETIDX back): the array made
+		// unique, then the element in it, as a change in place's IDX
+		// makes them (each left out when it's known: plan.unique,
+		// uniqueElem), and the field set as SETF sets one.
+		set := g.storeSlot(fmt.Sprintf("s_->f[%d]", a[2]), a[3])
+		switch {
+		case g.pl.moveIn[g.k]:
+			set = fmt.Sprintf("void *o_ = s_->f[%d].p; s_->f[%d].p = %s; %s = NULL; ak_release(o_);", a[2], a[2], g.rp(a[3]), g.rp(a[3]))
+		case g.isRef(a[3]):
+			set = fmt.Sprintf("void *o_ = s_->f[%d].p; s_->f[%d].p = ak_retain(%s); ak_release(o_);", a[2], a[2], g.rp(a[3]))
+		}
+		g.w("{ ak_arr *x_ = %s; %s %s %s %s }", g.rp(a[0]), g.check(in, a[1], h), g.uniqueArr(a[0]), g.uniqueElem(), set)
 	case "LEN":
 		g.w("%s = ak_op_len(%s);", g.ri(a[0]), g.src(a[1]))
 	default:
@@ -677,7 +753,7 @@ func (g *gen) intrinsic(in insn, h string) bool {
 		// abs is checked, as -x is: the smallest int has no positive.
 		x := g.ri(a[2])
 		v := fmt.Sprintf("(ak_val){.i = %s < 0 ? -%s : %s}", x, x, x)
-		g.w("if (AK_UNLIKELY(%s == INT64_MIN)) { ak_op_overflow(); at_ = %d; %s } %s", x, lineAt(g.f, in.pc), g.to(h), g.put(a[0], v, bc.KInt))
+		g.w("if (AK_UNLIKELY(%s == INT64_MIN)) { ak_op_overflow(); %s } %s", x, g.fail(in, h), g.put(a[0], v, bc.KInt))
 		return true
 	}
 	it, ok := intrinsics[name]
