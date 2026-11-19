@@ -32,8 +32,10 @@
 #define _DEFAULT_SOURCE  // DT_DIR
 #endif
 #include "std/std.h"
+#include "rt/stream.h"
 #include "base/thread.h"
 
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -1206,7 +1208,8 @@ bool ak_fs_remove_tree(const char *path) {
 //	fs.fileOpen(p, mode) -> int         0: failed (mode: read, write, append, readWrite)
 //	fs.fileLineReady(id) -> bool        readLine wouldn't touch the file
 //	fs.fileReadLine(id) -> string?      a line without its \n (\r\n); none at the end
-//	fs.fileReadLines(id) -> [string]?   the lines the buffer holds (reading if none); none at the end
+//	fs.fileTakeLine(id) -> string?      the next line when it's read whole already; none: ask the two above
+//	fs.fileSendLines(id, send) -> int   the lines the buffer holds, sent (reading if none); -1 at the end
 //	fs.fileFillLine(id) -> bool         read until the buffer holds a line (or the end)
 //	fs.fileReadReady(id) -> bool        read wouldn't
 //	fs.fileRead(id, n) -> bytes?        up to n bytes; empty at the end
@@ -1233,33 +1236,36 @@ typedef struct afile {
 	bool eof;        // the file has no more after in
 	ak_buf out;      // written, not yet in the file
 	bool failed;     // the last call failed
-	bool closed;
-	int users;       // calls in flight (fmu)
-	struct afile *next;
+	atomic_bool closed;  // set as it's closed (and taken out of files)
+	atomic_int users;    // calls in flight: the last one out of a closed file frees it
+	struct afile *next;  // in files while it's open (fmu)
 } afile;
 
 static ak_mutex fmu = AK_MUTEX_INIT;
 static afile *files;
 static int64_t next_file = 1;
 
+static void give(afile *f, bool ok);
+
 // take finds the open file id and holds it (its lock taken); NULL, with
-// the failure, when there's none.
+// the failure, when there's none. A call takes two locks, the table's
+// and the file's: what holds a file is counted atomically, and close
+// takes it out of the table, so no call finds it after and the last one
+// out frees it.
 static afile *take(int64_t id) {
 	ak_mutex_lock(&fmu);
 	afile *f = files;
 	while (f && f->id != id) f = f->next;
-	if (f) f->users++;
+	if (f) atomic_fetch_add(&f->users, 1);
 	ak_mutex_unlock(&fmu);
 	if (!f) {
 		failed(FAIL_OTHER, "the file is closed");
 		return NULL;
 	}
 	ak_mutex_lock(&f->mu);
-	if (f->closed) {
-		ak_mutex_unlock(&f->mu);
-		ak_mutex_lock(&fmu);
-		f->users--;
-		ak_mutex_unlock(&fmu);
+	if (atomic_load(&f->closed)) {
+		// Closed after it was found: the close came first.
+		give(f, true);
 		failed(FAIL_OTHER, "the file is closed");
 		return NULL;
 	}
@@ -1267,27 +1273,30 @@ static afile *take(int64_t id) {
 	return f;
 }
 
-// give lets f go: freed once it's closed and nothing else holds it.
+// give lets f go: freed by the last call out once it's closed.
 static void give(afile *f, bool ok) {
 	if (!ok) f->failed = true;
-	bool closed = f->closed;
 	ak_mutex_unlock(&f->mu);
-	ak_mutex_lock(&fmu);
-	bool last = --f->users == 0 && closed;
-	if (last) {
-		for (afile **p = &files; *p; p = &(*p)->next) {
-			if (*p == f) {
-				*p = f->next;
-				break;
-			}
-		}
-	}
-	ak_mutex_unlock(&fmu);
-	if (last) {
+	if (atomic_fetch_sub(&f->users, 1) == 1 && atomic_load(&f->closed)) {
+		ak_mutex_destroy(&f->mu);
 		ak_buf_free(&f->in);
 		ak_buf_free(&f->out);
 		ak_free(f);
 	}
+}
+
+// unlist takes f out of the table as it's closed (f's lock held): no call
+// finds it after.
+static void unlist(afile *f) {
+	atomic_store(&f->closed, true);
+	ak_mutex_lock(&fmu);
+	for (afile **p = &files; *p; p = &(*p)->next) {
+		if (*p == f) {
+			*p = f->next;
+			break;
+		}
+	}
+	ak_mutex_unlock(&fmu);
 }
 
 static bool raw_write(afile *f, const uint8_t *p, size_t n) {
@@ -1497,43 +1506,80 @@ static ak_val file_read_line_fn(ak_val *args, uint32_t n) {
 	return (ak_val){.p = s};
 }
 
-// file_read_lines_fn(id): the lines the buffer holds whole (reading it
-// full first if it holds none), and the last one at the end; none at
-// the end.
-static ak_val file_read_lines_fn(ak_val *args, uint32_t n) {
+// line_taken is the line read from roff to end (a \n there, or the
+// file's end), without its \r\n's \r; roff past it.
+static ak_str *line_taken(afile *f, size_t end, size_t past) {
+	size_t start = f->roff, len = end - start;
+	if (len && f->in.data[start + len - 1] == '\r') len--;
+	f->roff = past;
+	return ak_str_new((const char *)f->in.data + start, len);
+}
+
+// file_take_line_fn(id) is readLine's call when a line is waiting whole
+// in what's read (most of them): the line, in one call (one lock, one
+// scan); none when there's none (or no file), and readLine asks
+// fileLineReady and fileReadLine, which say which.
+static ak_val file_take_line_fn(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	afile *f = take(args[0].i);
 	if (!f) return (ak_val){.p = NULL};
+	const uint8_t *nl = line_end(f);
+	ak_str *s = nl ? line_taken(f, (size_t)(nl - f->in.data), (size_t)(nl - f->in.data) + 1) : NULL;
+	give(f, true);
+	return (ak_val){.p = s};
+}
+
+// file_send_lines_fn(id, send): the lines the buffer holds whole
+// (reading it full first if it holds none), and the last one at the end,
+// each sent; how many, or -1 at the end (or when it failed: fileFailed).
+// lines's send is its stream's, so they're queued there directly, the
+// reader answered once (not an Asuka call a line); any other closure is
+// called a line.
+static ak_val file_send_lines_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	ak_closure *send = args[1].p;
+	afile *f = take(args[0].i);
+	if (!f) return (ak_val){.i = -1};
 	const uint8_t *nl;
 	while (!(nl = line_end(f)) && !f->eof) {
 		if (!fill(f)) {
 			give(f, false);
-			return (ak_val){.p = NULL};
+			return (ak_val){.i = -1};
 		}
 	}
 	if (!nl && f->roff == f->in.len) {
 		give(f, true);
-		return (ak_val){.p = NULL};  // the end
+		return (ak_val){.i = -1};  // the end
 	}
-	ak_arr *out = ak_str_arr(0);
-	const uint8_t *data = f->in.data, *end = data + f->in.len;
-	size_t at = f->roff;
-	while (nl) {
-		size_t len = (size_t)(nl - data) - at;
-		if (len && data[at + len - 1] == '\r') len--;
-		ak_str_arr_push(&out, (const char *)data + at, len);
-		at = (size_t)(nl - data) + 1;
-		nl = at < f->in.len ? memchr(data + at, '\n', (size_t)(end - data) - at) : NULL;
+	// The lines are cut first, the file let go of, then sent: a send
+	// that isn't a stream's is Asuka, which may call on the file.
+	ak_stream *to = ak_stream_sender(send);
+	ak_arr *batch = to ? NULL : ak_arr_new(AK_K_REF, NULL, 0);
+	int64_t count = 0;
+	const uint8_t *end = f->in.data + f->in.len;
+	for (; nl; count++) {
+		ak_val v = {.p = line_taken(f, (size_t)(nl - f->in.data), (size_t)(nl - f->in.data) + 1)};
+		if (to) ak_stream_put(to, v);
+		else ak_arr_push(&batch, v);
+		nl = f->roff < f->in.len ? memchr(f->in.data + f->roff, '\n', (size_t)(end - f->in.data) - f->roff) : NULL;
 	}
-	if (f->eof && at < f->in.len) {
-		size_t len = f->in.len - at;  // the last line, without a \n
-		if (data[at + len - 1] == '\r') len--;
-		ak_str_arr_push(&out, (const char *)data + at, len);
-		at = f->in.len;
+	if (f->eof && f->roff < f->in.len) {
+		ak_val v = {.p = line_taken(f, f->in.len, f->in.len)};  // the last line, without a \n
+		if (to) ak_stream_put(to, v);
+		else ak_arr_push(&batch, v);
+		count++;
 	}
-	f->roff = at;
 	give(f, true);
-	return (ak_val){.p = out};
+	if (to) {
+		ak_stream_wake(to);
+	} else {
+		for (uint32_t i = 0; i < batch->len && !ak_error_pending(); i++) {
+			ak_val v = ak_arr_vals(batch)[i];
+			ak_call(send, &v, 1);
+		}
+		ak_release(batch);
+	}
+	return (ak_val){.i = count};
 }
 
 // file_fill_line_fn(id): reads until the buffer holds a line, or the
@@ -1670,7 +1716,7 @@ static ak_val file_close_fn(ak_val *args, uint32_t n) {
 #else
 	if (close(f->fd) != 0 && ok) failed_os(), ok = false;
 #endif
-	f->closed = true;
+	unlist(f);
 	give(f, ok);
 	return (ak_val){.i = ok};
 }
@@ -1986,7 +2032,8 @@ const ak_lib_entry ak_std_fs[] = {
 	{"fs.fileOpen", file_open_fn},
 	{"fs.fileLineReady", file_line_ready_fn},
 	{"fs.fileReadLine", file_read_line_fn},
-	{"fs.fileReadLines", file_read_lines_fn},
+	{"fs.fileTakeLine", file_take_line_fn},
+	{"fs.fileSendLines", file_send_lines_fn},
 	{"fs.fileFillLine", file_fill_line_fn},
 	{"fs.fileReadReady", file_read_ready_fn},
 	{"fs.fileRead", file_read_fn},

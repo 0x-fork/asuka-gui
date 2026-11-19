@@ -208,17 +208,39 @@ test "rfc3339 is format's RFC 3339 pattern, any fields" {
     date(1970, 1, 1, zone: .fixed(seconds: 5025)),
     unix(-1, zone: .fixed(seconds: 50400)),
     unixNano(-1, zone: .utc),
-    // Years an instant can't reach (past 2262), made by hand.
-    Time(instant: 0, zone: .utc, offset: 0, year: 12026, month: 12, day: 31, hour: 23, minute: 0, second: 0, nanosecond: 999999999, weekday: .monday),
-    Time(instant: 0, zone: .utc, offset: 3600, year: -44, month: 3, day: 15, hour: 0, minute: 0, second: 0, nanosecond: 0, weekday: .monday),
+    // Wall clocks no zone reads (a year before 0, an offset of more than
+    // 99 hours), made by hand.
+    Time(instant: 0, zone: .utc, offset: -64_000_000_000),
+    Time(instant: 999_999_999, zone: .utc, offset: 400_000),
   ]
   for t in times {
-    expect(t.rfc3339() == t.format(if t.nanosecond == 0 { plain } else { frac }))
+    expect(t.rfc3339() == t.format(if t.nanosecond() == 0 { plain } else { frac }))
   }
   expect(times[1].rfc3339() == "2026-03-07T15:04:05.000000120-04:30")
   expect(times[2].rfc3339() == "1970-01-01T00:00:00+01:23")
   expect(times[4].rfc3339() == "1969-12-31T23:59:59.999999999Z")
-  // Fields made by hand, out of their ranges, format as format() has them.
-  let odd = Time(instant: 0, zone: .utc, offset: 0, year: 2026, month: 13, day: 0, hour: -1, minute: 60, second: 99, nanosecond: -5, weekday: .monday)
-  expect(odd.rfc3339() == odd.format(frac))
+  expect(times[5].rfc3339() == "-0059-12-03T06:13:20-17777777:46")
+  expect(times[6].rfc3339() == "1970-01-05T15:06:40.999999999+111:06")
+}
+
+test "the wall clock's fields, worked out as they're asked for" {
+  let t = date(2026, 3, 7, hour: 15, minute: 4, second: 5, nanosecond: 120, zone: .fixed(seconds: -16200))
+  expect(t.year() == 2026 && t.month() == 3 && t.day() == 7)
+  expect(t.hour() == 15 && t.minute() == 4 && t.second() == 5 && t.nanosecond() == 120)
+  expect(t.weekday() == .saturday)
+  expect(t.offset == -16200 && t.instant == 1772912045000000120)
+  // Before 1970, a nanosecond before.
+  let b = unixNano(-1, zone: .utc)
+  expect(b.year() == 1969 && b.month() == 12 && b.day() == 31 && b.weekday() == .wednesday)
+  expect(b.hour() == 23 && b.minute() == 59 && b.second() == 59 && b.nanosecond() == 999999999)
+  // The same instant on another clock: the next day, the next month.
+  let leap = date(2024, 2, 29, hour: 23, minute: 30, zone: .utc)
+  let east = leap.inZone(.fixed(seconds: 3600))
+  expect(east.month() == 3 && east.day() == 1 && east.hour() == 0 && east.minute() == 30 && east.weekday() == .friday)
+  expect(leap.daysInMonth() == 29 && leap.sameDay(east) && !east.sameDay(leap.add(-1h)))
+  // The ends of what an instant reaches.
+  expect(date(1678, 1, 1, zone: .utc).year() == 1678)
+  expect(date(2262, 4, 11, zone: .utc).format("yyyy-MM-dd EEE") == "2262-04-11 Fri")
+  // A Time is its instant, its zone and its offset: equal when they are.
+  expect(t == Time(instant: t.instant, zone: .fixed(seconds: -16200), offset: -16200))
 }

@@ -800,7 +800,11 @@ the indentation of its closing quotes' line from every line.
   in the module's init function (CELLK keyed `package.name#hash`: see
   Hot reload).
 - A top-level `let` that reads state is a memo global, made in init; one
-  that doesn't is a constant.
+  that doesn't is a constant. A constant whose value is a literal number,
+  duration, color or bool (`let nsPerSecond = 1_000_000_000`, a negated
+  number too) is read as that literal (KINT, KFLOAT, KSMALL), not from
+  its slot (GGET): the optimizer and the C compiler see the constant (a
+  division by it is a multiply).
 - `for c in s` over a string is the array loop over `str.codepoints(s)`
   (check.ForInfo.Chars); `s.chars()` is that array, `s.lazy()` a Seq of
   them; `s + c` CONCATs the char's text.

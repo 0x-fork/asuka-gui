@@ -41,6 +41,13 @@ extern bool (*ak_spawn_elsewhere)(ak_closure *c, ak_kind k, ak_future *f);
 // (the VM's module) held by the copy too. Main thread.
 ak_closure *ak_closure_deep_copy(ak_closure *c);
 
+// ak_stdio_write writes a then b (either may be empty) to stdout (fd 1)
+// or stderr (2) at once and unbuffered: one writev a call where there's
+// a descriptor (Go's os.Stdout's model), stdio flushed at once
+// elsewhere. print's, print.text's and os.writeTo's: what C's stdio
+// buffers isn't theirs, so C that writes stdout through stdio flushes it.
+void ak_stdio_write(int fd, const void *a, size_t an, const void *b, size_t bn);
+
 // Where print writes (tests capture it); NULL: stdout.
 extern void (*ak_lib_print_hook)(const char *s, size_t n);
 // Where print.text writes text as it is, to stdout (fd 1) or stderr (2):

@@ -238,7 +238,7 @@ func count(p prog, name, dir string, reps int) (string, int64, int64, float64, f
 	cmd.Env = append(os.Environ(), "STDBENCH_REPS="+strconv.Itoa(reps))
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	devnull, err := os.Open(os.DevNull)
+	devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 	if err != nil {
 		return "", 0, 0, 0, 0, err
 	}
@@ -278,7 +278,7 @@ func once(p prog, name, dir string) (string, float64, error) {
 	cmd := exec.Command(p.cmd[0], append(p.cmd[1:], name, dir)...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	devnull, err := os.Open(os.DevNull)
+	devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 	if err != nil {
 		return "", 0, err
 	}

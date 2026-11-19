@@ -90,7 +90,7 @@ test "an old zip: MS-DOS's time and code page 437" {
   // caf\x82 in code page 437.
   expect(e.name == "café.txt")
   let m = e.modified
-  expect(m.year == 2001 && m.month == 2 && m.day == 3 && m.hour == 4 && m.minute == 5 && m.second == 6)
+  expect(m.year() == 2001 && m.month() == 2 && m.day() == 3 && m.hour() == 4 && m.minute() == 5 && m.second() == 6)
   expect(m.zone == time.Zone.local)
   expect((try decode(fx("dos.zip")))[0].data.string() == "old\n")
 }
@@ -130,7 +130,7 @@ test "round trips: zip, tar, tar.gz" {
       expect(es[1].compressedSize < es[1].size / 10)
       expect(es[3].compressedSize == es[3].size)
       // A zip's time before 1980 is MS-DOS's first.
-      expect(es[7].modified.year == 1980)
+      expect(es[7].modified.year() == 1980)
     } else {
       expect(es[7].modified.unix() == -86400)
     }

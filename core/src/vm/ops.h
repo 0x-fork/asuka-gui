@@ -654,16 +654,48 @@ static inline bool ak_op_pushes(const ak_co *co, const ak_closure *c) {
 	return !g->native && !((g->flags & AK_F_ASYNC) && co->task == NULL);
 }
 
+// ak_op_apush pushes the frame of a call a compiled async function makes
+// (lang/cgen's acall): f with clos, nargs arguments from args, its
+// result to go in dst. Inline, as the interpreter's push_frame: a call
+// that doesn't wait costs this, the callee's body and a pop, so its
+// common case (room for the frame and its registers, not a mut fn) is
+// stores, not ak_vm_push's general path.
+static inline bool ak_op_apush(ak_co *co, const ak_func *f, ak_closure *clos, ak_val *args, uint32_t nargs, uint16_t dst, uint32_t callpc) {
+	if (AK_UNLIKELY(co->nframes >= AK_VM_MAX_FRAMES || nargs != f->nparams || co->nframes == co->fcap || (f->flags & AK_F_MUT) || co->top + f->nregs > co->cap))
+		return ak_vm_push(co, f, clos, args, nargs, dst, false, callpc);
+	uint32_t base = co->top;
+	ak_val *R = co->regs + base;
+	const uint8_t *k = f->kinds;
+	for (uint32_t i = 0; i < nargs; i++) {
+		R[i] = args[i];
+		ak_retain_val(R[i], (ak_kind)k[i]);
+	}
+	for (uint32_t i = nargs; i < f->nregs; i++) R[i] = (ak_val){0};
+	co->top = base + f->nregs;
+	if (clos) ak_retain(clos);
+	co->frames[co->nframes++] = (ak_frame){.fn = f, .clos = clos, .callpc = callpc, .base = base, .udepth = co->nuntracks, .dst = dst};
+	return true;
+}
+
+// ak_op_lim is the C stack's limit for a compiled async function's body
+// on co: the thread's, kept on the coroutine (which runs on the thread
+// that made it), so a call reads no thread-local.
+static inline uintptr_t ak_op_lim(ak_co *co) {
+	if (AK_UNLIKELY(!co->lim)) co->lim = ak_stack_limit();
+	return co->lim;
+}
+
 // ak_op_acall runs the frame a compiled async function just pushed: its
-// body, directly, when it's compiled too and the direct calls aren't
-// deep (popping its frame when it returned or threw); else it's left to
-// the run loop (AK_RUN_PUSHED), as is the rest of a call that suspended.
-static inline int ak_op_acall(ak_co *co, ak_val *v) {
+// body, directly, when it's compiled too, the direct calls aren't deep
+// and the C stack isn't low (lim: the caller's ak_op_lim), popping its
+// frame when it returned or threw; else it's left to the run loop
+// (AK_RUN_PUSHED), as is the rest of a call that suspended.
+static inline int ak_op_acall(ak_co *co, ak_val *v, uintptr_t lim) {
 	const ak_func *g = co->frames[co->nframes - 1].fn;
-	if (!g->resume || ak_vm_adepth >= AK_VM_ADEPTH_MAX) return AK_RUN_PUSHED;
-	ak_vm_adepth++;
+	if (!g->resume || co->adepth >= AK_VM_ADEPTH_MAX || ak_cg_stack_low(lim)) return AK_RUN_PUSHED;
+	co->adepth++;
 	int s = g->resume(co, v);
-	ak_vm_adepth--;
+	co->adepth--;
 	if (s == AK_RUN_RET || s == AK_RUN_THROW) ak_vm_pop_frame(co);
 	return s;
 }

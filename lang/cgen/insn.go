@@ -941,6 +941,12 @@ var intrinsics = map[string]intrinsic{
 	"math.clampf": {[]bc.Kind{bc.KFloat, bc.KFloat, bc.KFloat}, bc.KFloat, "fmin(fmax(%[1]s, %[2]s), %[3]s)"},
 	"math.mini":   {[]bc.Kind{bc.KInt, bc.KInt}, bc.KInt, "(%[1]s < %[2]s ? %[1]s : %[2]s)"},
 	"math.maxi":   {[]bc.Kind{bc.KInt, bc.KInt}, bc.KInt, "(%[1]s > %[2]s ? %[1]s : %[2]s)"},
+	// A Duration's units (rt/lib.c's dur.*): its nanoseconds as they are.
+	"dur.ns":      {[]bc.Kind{bc.KInt}, bc.KInt, "%[1]s"},
+	"dur.ms":      {[]bc.Kind{bc.KInt}, bc.KInt, "(%[1]s / 1000000)"},
+	"dur.seconds": {[]bc.Kind{bc.KInt}, bc.KFloat, "((double)%[1]s / 1e9)"},
+	"dur.minutes": {[]bc.Kind{bc.KInt}, bc.KFloat, "((double)%[1]s / 60e9)"},
+	"dur.hours":   {[]bc.Kind{bc.KInt}, bc.KFloat, "((double)%[1]s / 3600e9)"},
 }
 
 // intrinsic writes a CALLB of an intrinsic as its C, true when it is

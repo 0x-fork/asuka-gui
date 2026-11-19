@@ -580,17 +580,15 @@ static ak_val read_all_fn(ak_val *args, uint32_t n) {
 #endif
 }
 
+// write_fd writes as os.writeTo does: to FakeOS.run's buffers while one
+// runs (capture sets the hook as it counts them, under mu), else to the
+// stream, without a lock a call.
 static void write_fd(int64_t fd, const void *p, size_t len) {
-	ak_mutex_lock(&mu);
-	if (fake.capturing) {
-		ak_buf_put(fd == 2 ? &fake.err : &fake.out, p, len);
-		ak_mutex_unlock(&mu);
+	if (ak_lib_write_hook == write_hook) {
+		write_hook(fd == 2 ? 2 : 1, p, len);
 		return;
 	}
-	ak_mutex_unlock(&mu);
-	FILE *f = fd == 2 ? stderr : stdout;
-	fwrite(p, 1, len, f);
-	fflush(f);
+	ak_stdio_write(fd == 2 ? 2 : 1, p, len, NULL, 0);
 }
 
 void ak_os_write(int fd, const void *p, size_t len) { write_fd(fd, p, len); }

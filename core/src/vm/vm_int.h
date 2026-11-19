@@ -148,6 +148,9 @@ ak_module *ak_vm_running_module(void);
 void ak_vm_json_types(ak_json_types *out);
 void ak_vm_module_json_types(ak_module *m, ak_json_types *out);
 
+// How deep a coroutine's frames go: past it, a call is a stack overflow.
+#define AK_VM_MAX_FRAMES 10000
+
 // A call frame on a coroutine.
 typedef struct {
 	const ak_func *fn;
@@ -179,6 +182,12 @@ typedef struct ak_co {
 	void **untracks;
 	uint32_t nuntracks, ucap;
 	struct ak_task *task;  // NULL for the main coroutine
+	// What compiled async functions' calls read (ops.h): the C stack's
+	// limit on the thread it runs on (ak_stack_limit, kept: a
+	// thread-local's read is a call on Apple's systems), and how deep
+	// they call each other directly in C (ak_op_acall).
+	uintptr_t lim;
+	uint32_t adepth;
 } ak_co;
 
 // ak_vm_untrack_begin stops tracking reads (UNTRACK), saving the running
@@ -243,10 +252,10 @@ int ak_vm_await(ak_co *co, ak_future *f);
 // ak_vm_yield queues the coroutine's task to resume (YIELD), as it
 // suspends.
 void ak_vm_yield(ak_co *co);
-// How deep compiled async functions call each other directly, in C: past
-// a bound, a call goes through the run loop instead, so that async
-// recursion takes no C stack.
-extern AK_TLS uint32_t ak_vm_adepth;
+// How deep compiled async functions call each other directly, in C, on
+// a coroutine (ak_co.adepth): past a bound, or with the C stack low, a
+// call goes through the run loop instead, so that async recursion takes
+// no C stack.
 #define AK_VM_ADEPTH_MAX 64
 // ak_vm_task_start starts f as a task and returns its future (owned).
 ak_future *ak_vm_task_start(const ak_func *f, ak_closure *clos, ak_val *args, uint32_t nargs);

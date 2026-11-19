@@ -375,7 +375,7 @@ fn demo(now: time.Time) -> Account {
   var used = 0.0
   var t = week
   while t < now {
-    if t.hour >= 9 && t.hour <= 22 { used += 0.6 + random.float() * 0.5 }
+    if t.hour() >= 9 && t.hour() <= 22 { used += 0.6 + random.float() * 0.5 }
     ws[1].history.push(Sample(at: t, used: min(used, 15)))
     t = t + 1h
   }
@@ -447,7 +447,7 @@ test "the usage reply" {
     }
     """)
   expect(ws.map(w => w.title()) == ["Current 5 hours", "This week", "This week · Opus"])
-  expect(ws[1].used == 15 && ws[1].resets!.day == 5 && ws[2].resets == none && extra == false)
+  expect(ws[1].used == 15 && ws[1].resets!.day() == 5 && ws[2].resets == none && extra == false)
   // With it: its rows, named by kind and scope. A codename's window (here
   // a dollar budget, all used) isn't Fable's, which is unused.
   let (limits, _) = try parse("""

@@ -585,7 +585,7 @@ func (g *gen) fn(i int) error {
 		g.p("static int f%d(ak_co *co, ak_val *out) {\n", i)
 		g.p("\tconst uint32_t fi_ = co->nframes - 1;\n")
 		g.p("\tak_closure *C = co->frames[fi_].clos; AK_UNUSED(C);\n")
-		g.p("\tuintptr_t lim_ = ak_stack_limit(); AK_UNUSED(lim_);\n")
+		g.p("\tuintptr_t lim_ = ak_op_lim(co); AK_UNUSED(lim_);\n")
 		g.decls()
 		// Its frame is the coroutine's top: its registers move into the
 		// locals (the frame's left empty: nothing else releases them),
@@ -1059,8 +1059,8 @@ func (g *gen) acall(f *bc.FuncDef, in insn, h, fn, clos string) {
 	at := lineAt(f, in.pc)
 	next := in.pc + in.op.Width()
 	g.w("{ const ak_func *g_ = %s; ak_closure *cl_ = %s;", fn, clos)
-	g.w("  { %s if (!ak_vm_push(co, g_, cl_, B_, %d, %d, false, %d)) { at_ = %d; %s } }", g.block(a[2], a[3]), a[3], a[0], in.pc, at, g.to(h))
-	g.w("  ak_val v_ = {0}; int s_ = ak_op_acall(co, &v_);")
+	g.w("  { %s if (!ak_op_apush(co, g_, cl_, B_, %d, %d, %d)) { at_ = %d; %s } }", g.block(a[2], a[3]), a[3], a[0], in.pc, at, g.to(h))
+	g.w("  ak_val v_ = {0}; int s_ = ak_op_acall(co, &v_, lim_);")
 	g.w("  if (s_ == AK_RUN_THROW) { at_ = %d; %s }", at, g.to(h))
 	g.w("  if (s_ != AK_RUN_RET) { %s return s_; }", g.leave(next))
 	g.w("  %s }", g.putKind(a[0], "v_", "g_->ret"))

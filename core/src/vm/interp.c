@@ -7,7 +7,6 @@
 // spawn's workers.
 AK_TLS ak_co ak_vm_main;
 AK_TLS ak_co *ak_vm_cur;
-AK_TLS uint32_t ak_vm_adepth;
 
 static inline ak_co *cur_co(void) {
 	if (!ak_vm_cur) ak_vm_cur = &ak_vm_main;
@@ -27,7 +26,7 @@ void ak_vm_thread_end(void) {
 	ak_vm_cur = NULL;
 }
 
-#define MAX_FRAMES 10000
+#define MAX_FRAMES AK_VM_MAX_FRAMES
 
 // ---- Frames ----
 

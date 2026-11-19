@@ -1650,10 +1650,11 @@ func (b *fb) callEvent(m *check.Member, n syntax.Node, args func() []int) {
 	b.f.Place(skip)
 }
 
-// forAwait is for await x in s: await stream.next (whether a value came:
-// false at the end; it throws what the producer threw), take it with
-// stream.value; leaving the loop closes the stream, which cancels its
-// producer.
+// forAwait is for await x in s: stream.ready (a value is queued: most
+// turns, a producer sending ahead), else await stream.next (whether a
+// value came: false at the end; it throws what the producer threw), take
+// it with stream.value; leaving the loop closes the stream, which cancels
+// its producer.
 func (b *fb) forAwait(s *syntax.ForStmt, fi *check.ForInfo) {
 	b.openScope()
 	defer b.closeScope()
@@ -1665,9 +1666,13 @@ func (b *fb) forAwait(s *syntax.ForStmt, fi *check.ForInfo) {
 	// stream too, then goes on.
 	b.protect(func() {
 		b.f.Place(top)
+		got := b.f.NewLabel()
+		b.callBTo("stream.ready", more, st)
+		b.emitJump(op("JT"), more, got)
 		f := b.callB("stream.next", bc.KRef, st)
 		b.emit(op("AWAIT"), more, f)
 		b.emitJump(op("JF"), more, end)
+		b.f.Place(got)
 		b.openScope()
 		x := b.temp(b.kind(fi.Elem))
 		b.callBTo("stream.value", x, st)

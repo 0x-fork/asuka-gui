@@ -301,14 +301,15 @@ fn formatOf(path: string, format: Format?) throws -> Format {
 // zip's), between 1980 and 2107.
 fn infoOf(kind: int, mode: int, modified: time.Time) -> [int] {
   let t = modified.local()
+  let year = t.year()
   var dos = 0
-  if t.year < 1980 {
+  if year < 1980 {
     dos = (1 << 5 | 1) << 16
-  } else if t.year > 2107 {
+  } else if year > 2107 {
     dos = (127 << 25 | 12 << 21 | 31 << 16) | (23 << 11 | 59 << 5 | 29)
   } else {
-    let date = (t.year - 1980) << 9 | t.month << 5 | t.day
-    dos = date << 16 | (t.hour << 11 | t.minute << 5 | t.second / 2)
+    let date = (year - 1980) << 9 | t.month() << 5 | t.day()
+    dos = date << 16 | (t.hour() << 11 | t.minute() << 5 | t.second() / 2)
   }
   return [kind, mode, modified.unixNano(), dos]
 }

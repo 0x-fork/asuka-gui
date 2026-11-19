@@ -1,4 +1,5 @@
 #include "vm/vm_int.h"
+#include "rt/stream.h"
 
 // Tasks: an async function on a coroutine of its own. A task runs at
 // once, until it finishes or awaits something not done yet; a future's
@@ -269,4 +270,18 @@ static ak_val all_each(ak_val *args, uint32_t n) {
 	return (ak_val){.p = out};
 }
 
-void ak_vm_each_init(void) { ak_builtin_register("async.all_each", all_each); }
+// stream.ready(s): for await's question before it awaits stream.next: a
+// value is queued, so the loop takes it without a future. Never while
+// the running task is cancelled: the await then throws the cancellation,
+// as it would have.
+static ak_val stream_ready(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	const ak_co *co = ak_vm_cur;
+	if (co && co->task && co->task->cancelled) return (ak_val){.i = 0};
+	return (ak_val){.i = ak_stream_ready(args[0])};
+}
+
+void ak_vm_each_init(void) {
+	ak_builtin_register("async.all_each", all_each);
+	ak_builtin_register("stream.ready", stream_ready);
+}

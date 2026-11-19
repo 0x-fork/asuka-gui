@@ -6,6 +6,13 @@
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#if !defined(_WIN32) && !defined(__wasm__)
+#include <errno.h>
+#include <poll.h>
+#include <sys/uio.h>
+#include <unistd.h>
+#endif
 
 #define A(i) (args[i])
 #define STR(i) ((ak_str *)args[i].p)
@@ -22,15 +29,77 @@ void (*ak_lib_write_hook)(int fd, const char *s, size_t n);
 
 // ---- Output ----
 
+#if !defined(_WIN32) && !defined(__wasm__)
+// The stream's own descriptor, written at once, as Go's os.Stdout is:
+// unbuffered, a call a write, no FILE and no lock (stdio's fwrite, fputc
+// and fflush took its recursive lock three times a line). What's written
+// is whole: a short write is continued, an interrupted one retried, a
+// non-blocking stream waited on; an error (a closed pipe, a full disk)
+// drops the rest, as stdio's did.
+
+// retry reports whether a failed write is to be tried again.
+static bool retry(int fd) {
+	if (errno == EINTR) return true;
+	if (errno != EAGAIN && errno != EWOULDBLOCK) return false;
+	struct pollfd q = {.fd = fd, .events = POLLOUT};
+	return poll(&q, 1, -1) >= 0 || errno == EINTR;
+}
+
+// Two pieces that fit 4 KB (print's line and its newline) are copied and
+// written by one write: writev costs the kernel more than write does
+// (macOS: 4,400 instructions a call to 3,200), far more than the copy.
+static void write_all(int fd, const void *a, size_t an, const void *b, size_t bn) {
+	char joined[4096];
+	if (!an) {
+		a = b, an = bn, bn = 0;
+	} else if (bn && an + bn <= sizeof joined) {
+		memcpy(joined, a, an);
+		memcpy(joined + an, b, bn);
+		a = joined, an += bn, bn = 0;
+	}
+	if (!bn) {
+		for (const char *p = a; an;) {
+			ssize_t w = write(fd, p, an);
+			if (w < 0 && retry(fd)) continue;
+			if (w < 0) return;
+			p += w;
+			an -= (size_t)w;
+		}
+		return;
+	}
+	struct iovec v[2] = {{(void *)a, an}, {(void *)b, bn}};
+	for (int i = 0; i < 2;) {
+		ssize_t w = writev(fd, v + i, 2 - i);
+		if (w < 0 && retry(fd)) continue;
+		if (w < 0) return;
+		while (i < 2 && (size_t)w >= v[i].iov_len) w -= (ssize_t)v[i++].iov_len;
+		if (i < 2) {
+			v[i].iov_base = (char *)v[i].iov_base + w;
+			v[i].iov_len -= (size_t)w;
+		}
+	}
+}
+#endif
+
+void ak_stdio_write(int fd, const void *a, size_t an, const void *b, size_t bn) {
+	fd = fd == 2 ? 2 : 1;
+#if !defined(_WIN32) && !defined(__wasm__)
+	write_all(fd, a, an, b, bn);
+#else
+	FILE *f = fd == 2 ? stderr : stdout;
+	if (an) fwrite(a, 1, an, f);
+	if (bn) fwrite(b, 1, bn, f);
+	fflush(f);
+#endif
+}
+
 static ak_val lib_print(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	ak_str *s = STR(0);
 	if (ak_lib_print_hook) {
 		ak_lib_print_hook(s->data, s->len);
 	} else {
-		fwrite(s->data, 1, s->len, stdout);
-		fputc('\n', stdout);
-		fflush(stdout);
+		ak_stdio_write(1, s->data, s->len, "\n", 1);
 	}
 	RET_VOID;
 }
@@ -44,9 +113,7 @@ static ak_val lib_print_text(ak_val *args, uint32_t n) {
 	if (ak_lib_write_hook) {
 		ak_lib_write_hook(fd, s->data, s->len);
 	} else {
-		FILE *f = fd == 2 ? stderr : stdout;
-		fwrite(s->data, 1, s->len, f);
-		fflush(f);
+		ak_stdio_write(fd, s->data, s->len, NULL, 0);
 	}
 	RET_VOID;
 }

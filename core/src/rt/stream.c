@@ -9,7 +9,9 @@
 //	stream.new(produce: async fn(send: fn(T)) throws, kind: int) -> Stream
 //	stream.next(s) -> Task<bool>   whether a value came (false: the end);
 //	                               it throws what the producer threw
-//	stream.value(s) -> T           the value next said came
+//	stream.ready(s) -> bool        a value is queued: next would say so at
+//	                               once (for await asks first; vm/task.c)
+//	stream.value(s) -> T           the value next (or ready) said came
 //	stream.close(s)                cancels the producer
 //
 // The send function holds the stream through a link the stream clears
@@ -20,8 +22,6 @@
 #include "rt/stream.h"
 
 enum { IDLE, RUNNING, ENDED, FAILED, CLOSED };
-
-typedef struct ak_stream ak_stream;
 
 typedef struct {
 	ak_opaque h;
@@ -35,9 +35,10 @@ struct ak_stream {
 	ak_closure *produce;  // until it starts
 	ak_future *task;      // the producer's, while it runs
 	ak_future *waiting;   // a next that waits for a value
+	ak_future *ready;     // a next's answer while values are queued: settled, true
 	void *error;          // what the producer threw, until a next takes it
 	stream_link *link;
-	ak_val *q;            // the queue: a ring of values
+	ak_val *q;            // the queue: a ring of values (cap a power of two)
 	uint32_t head, len, cap;
 };
 
@@ -59,7 +60,7 @@ static void stop(ak_stream *s) {
 }
 
 static void clear_queue(ak_stream *s) {
-	for (uint32_t i = 0; i < s->len; i++) ak_release_val(s->q[(s->head + i) % s->cap], (ak_kind)s->kind);
+	for (uint32_t i = 0; i < s->len; i++) ak_release_val(s->q[(s->head + i) & (s->cap - 1)], (ak_kind)s->kind);
 	s->head = s->len = 0;
 }
 
@@ -76,6 +77,7 @@ static void stream_drop(ak_opaque *o) {
 	}
 	clear_queue(s);
 	ak_free(s->q);
+	if (s->ready) ak_release(s->ready);
 	if (s->produce) ak_release(s->produce);
 	if (s->error) ak_release(s->error);
 }
@@ -120,22 +122,44 @@ static void producer_done(void *ctx) {
 	wake(s);
 }
 
+// put queues v (owned).
+static void put(ak_stream *s, ak_val v) {
+	if (s->len == s->cap) {
+		uint32_t cap = s->cap ? s->cap * 2 : 8;
+		ak_val *q = ak_alloc(sizeof *q * cap);
+		for (uint32_t i = 0; i < s->len; i++) q[i] = s->q[(s->head + i) & (s->cap - 1)];
+		ak_free(s->q);
+		s->q = q, s->cap = cap, s->head = 0;
+	}
+	s->q[(s->head + s->len) & (s->cap - 1)] = v;
+	s->len++;
+}
+
 static ak_val send_invoke(ak_closure *c, ak_val *args, uint32_t n) {
 	stream_link *l = c->caps[0].p;
 	ak_stream *s = l->s;
 	if (!s || s->state != RUNNING || n < 1) return (ak_val){0};
-	if (s->len == s->cap) {
-		uint32_t cap = s->cap ? s->cap * 2 : 8;
-		ak_val *q = ak_alloc(sizeof *q * cap);
-		for (uint32_t i = 0; i < s->len; i++) q[i] = s->q[(s->head + i) % s->cap];
-		ak_free(s->q);
-		s->q = q, s->cap = cap, s->head = 0;
-	}
 	ak_retain_val(args[0], (ak_kind)s->kind);
-	s->q[(s->head + s->len) % s->cap] = args[0];
-	s->len++;
-	wake(s);
+	put(s, args[0]);
+	if (s->waiting) wake(s);
 	return (ak_val){0};
+}
+
+ak_stream *ak_stream_sender(ak_closure *send) {
+	if (!send || send->invoke != send_invoke) return NULL;
+	return ((stream_link *)send->caps[0].p)->s;
+}
+
+void ak_stream_put(ak_stream *s, ak_val v) {
+	if (s->state != RUNNING) {
+		ak_release_val(v, (ak_kind)s->kind);
+		return;
+	}
+	put(s, v);
+}
+
+void ak_stream_wake(ak_stream *s) {
+	if (s->waiting) wake(s);
 }
 
 static const uint8_t link_kinds[] = {AK_K_REF};
@@ -196,6 +220,16 @@ static ak_val stream_next(ak_val *args, uint32_t n) {
 		return (ak_val){0};
 	}
 	if (s->state == IDLE) start(s);
+	if (s->len > 0) {
+		// A value is queued (most nexts, a producer sending ahead): the
+		// answer is settled already, and a settled future never changes,
+		// so one is kept and handed to each, not one made a value.
+		if (!s->ready) {
+			s->ready = ak_future_new(AK_K_BOOL);
+			ak_future_resolve(s->ready, (ak_val){.i = 1});
+		}
+		return (ak_val){.p = ak_retain(s->ready)};
+	}
 	ak_future *f = ak_future_new(AK_K_BOOL);
 	s->waiting = ak_retain(f);
 	wake(s);
@@ -207,7 +241,7 @@ static ak_val stream_value(ak_val *args, uint32_t n) {
 	ak_stream *s = stream_arg(args[0], "stream.value");
 	if (s->len == 0) ak_panic("stream.value: nothing came");
 	ak_val v = s->q[s->head];
-	s->head = (s->head + 1) % s->cap;
+	s->head = (s->head + 1) & (s->cap - 1);
 	s->len--;
 	return v;  // the queue's reference, now the caller's
 }
@@ -226,6 +260,8 @@ ak_future *ak_stream_next(ak_val s) {
 	ak_val v = stream_next(&s, 1);
 	return v.p;
 }
+
+bool ak_stream_ready(ak_val s) { return stream_arg(s, "stream.ready")->len > 0; }
 
 ak_val ak_stream_value(ak_val s) { return stream_value(&s, 1); }
 

@@ -41,7 +41,7 @@ test "files" {
     print("{e.name} {e.isDir} {e.size}")
   }
   let info = try fs.stat(p)
-  print("{info.name} {info.size} {info.modified.year >= 2024}")
+  print("{info.name} {info.size} {info.modified.year() >= 2024}")
   // Off the main thread.
   let text = try await spawn { try fs.readText(p) }
   print(text)

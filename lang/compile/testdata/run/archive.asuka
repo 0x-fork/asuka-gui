@@ -35,7 +35,7 @@ test "round trips" {
 
 test "what Python made" {
   let e = (try archive.entries(hex(dosZip)))[0]
-  print("{e.name} {e.modified.year}-{e.modified.month}-{e.modified.day} {e.modified.hour}:{e.modified.minute}:{e.modified.second}")
+  print("{e.name} {e.modified.year()}-{e.modified.month()}-{e.modified.day()} {e.modified.hour()}:{e.modified.minute()}:{e.modified.second()}")
   print((try archive.entries(hex(slipZip))).map(x => x.name))
 }
 

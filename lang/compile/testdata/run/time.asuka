@@ -5,7 +5,7 @@ import std/time
 test "the test's clock" {
   let t = time.now()
   print(t.rfc3339())
-  print(t.weekday)
+  print(t.weekday())
   let start = time.monotonic()
   await sleep(90s)
   print(time.now().format("HH:mm:ss"))
@@ -15,7 +15,7 @@ test "the test's clock" {
 
 test "fields and arithmetic" {
   let t = time.date(2024, 2, 29, hour: 13, minute: 5, second: 9, zone: .utc)
-  print("{t.year} {t.month} {t.day} {t.hour} {t.minute} {t.second} {t.weekday}")
+  print("{t.year()} {t.month()} {t.day()} {t.hour()} {t.minute()} {t.second()} {t.weekday()}")
   print(t.unix())
   print(t.add(36h).format("yyyy-MM-dd HH:mm"))
   print(t.add(-1ns).format("HH:mm:ss.SSS"))
@@ -30,7 +30,7 @@ test "fields and arithmetic" {
   print(time.daysIn(2, year: 1900))
   let before = time.unix(-1, zone: .utc)
   print(before.rfc3339())
-  print(before.weekday)
+  print(before.weekday())
   print(time.unixMilli(1500, zone: .utc).format("ss.SSS"))
   print(t.isBefore(t.add(1s)))
   print(t.compare(t))

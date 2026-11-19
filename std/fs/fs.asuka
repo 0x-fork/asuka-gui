@@ -337,6 +337,10 @@ pub struct File {
   /// The next line, without its line ending (\n or \r\n), as UTF-8 text;
   /// none at the end. The last line needn't end in one.
   async fn readLine() throws -> string? {
+    // A line read whole already, in one call: most of them.
+    if let l = fileTakeLine(id) {
+      return l
+    }
     if fileLineReady(id) || @platform == .web {
       return try lineOf(id, path)
     }
@@ -358,11 +362,7 @@ pub struct File {
   /// The lines from where it's read to, as they're read: the file stays
   /// open after them (fs.lines(path) opens one and closes it).
   fn lines() -> Stream<string> = Stream(send => {
-    while let batch = try await linesOf(id, path) {
-      for line in batch {
-        send(line)
-      }
-    }
+    while try await sendLines(id, path, send) {}
   })
 
   /// Writes data after what's written (in append mode, at the end).
@@ -455,17 +455,14 @@ pub async fn open(path: string, mode: OpenMode = .read) throws -> File {
 pub fn lines(path: string) -> Stream<string> = Stream(send => {
   let f = try await open(path)
   defer { closeQuietly(f.id) }
-  while let batch = try await linesOf(f.id, f.path) {
-    for line in batch {
-      send(line)
-    }
-  }
+  while try await sendLines(f.id, f.path, send) {}
 })
 
-// linesOf: the lines a file's buffer holds, a batch, cut on this thread
-// (what spawn gives back is copied); the buffer read full again on a
-// worker first when it holds none. None at the end.
-async fn linesOf(id: int, path: string) throws -> [string]? {
+// sendLines sends the lines a file's buffer holds, a batch, cut on this
+// thread (what spawn gives back is copied) and queued in the stream at
+// once; the buffer read full again on a worker first when it holds none.
+// False at the end.
+async fn sendLines(id: int, path: string, send: fn(string)) throws -> bool {
   if !fileLineReady(id) && @platform != .web {
     try await spawn {
       if !fileFillLine(id) {
@@ -473,15 +470,13 @@ async fn linesOf(id: int, path: string) throws -> [string]? {
       }
     }
   }
-  return try batchOf(id, path)
-}
-
-fn batchOf(id: int, path: string) throws -> [string]? {
-  let b = fileReadLines(id)
-  if b == none && fileFailed(id) {
+  if fileSendLines(id, send) >= 0 {
+    return true
+  }
+  if fileFailed(id) {
     throw failure(path)
   }
-  return b
+  return false
 }
 
 fn openOf(path: string, mode: int) throws -> File {
@@ -551,7 +546,8 @@ fn closeQuietly(id: int) {
 native fn fileOpen(path: string, mode: int) -> int
 native fn fileLineReady(id: int) -> bool
 native fn fileReadLine(id: int) -> string?
-native fn fileReadLines(id: int) -> [string]?
+native fn fileTakeLine(id: int) -> string?
+native fn fileSendLines(id: int, send: fn(string)) -> int
 native fn fileFillLine(id: int) -> bool
 native fn fileReadReady(id: int) -> bool
 native fn fileRead(id: int, count: int) -> bytes?

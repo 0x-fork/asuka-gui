@@ -51,7 +51,7 @@ fn day(t: time.Time) -> string {
   let today = time.now()
   if t.sameDay(today) { return "Today" }
   if t.sameDay(today - 24h) { return "Yesterday" }
-  if t.year == today.year { return t.format("EEEE, MMMM d") }
+  if t.year() == today.year() { return t.format("EEEE, MMMM d") }
   return t.format("MMMM d, yyyy")
 }
 

@@ -551,9 +551,63 @@ func (b *fb) readGlobal(g *check.Global, dst int) int {
 		b.emit(op("MREAD"), r, m)
 		return r
 	}
+	if r, ok := b.literalGlobal(g, dst); ok {
+		return r
+	}
 	r := b.out(dst, k)
 	b.emit(op("GGET"), r, slot, int(k))
 	return r
+}
+
+// literalGlobal reads a let whose value is a literal number, duration,
+// color or bool (let nsPerSecond = 1_000_000_000) as the literal: a
+// constant the optimizer and the C compiler see (a division by it a
+// multiply), not a read of the global's slot.
+func (b *fb) literalGlobal(g *check.Global, dst int) (int, bool) {
+	if g.Kind != check.ConstGlobal || g.Value == nil {
+		return 0, false
+	}
+	if _, conv := b.l.info.Convs[g.Value]; conv {
+		return 0, false
+	}
+	switch x := g.Value.(type) {
+	case *syntax.BasicLit:
+		if x.Kind == syntax.INT || x.Kind == syntax.FLOAT || x.Kind == syntax.DURATION || x.Kind == syntax.COLOR {
+			return b.basicLit(x, dst), true
+		}
+	case *syntax.BoolLit:
+		r := b.out(dst, bc.KBool)
+		v := 0
+		if x.Value {
+			v = 1
+		}
+		b.emit(op("KSMALL"), r, v)
+		return r, true
+	case *syntax.UnaryExpr:
+		lit, ok := x.X.(*syntax.BasicLit)
+		if !ok || x.Op != syntax.SUB {
+			break
+		}
+		switch t := b.l.info.Types[g.Value]; {
+		case lit.Kind == syntax.INT && t == check.Int:
+			v, err := check.ParseInt(lit.Value)
+			if err != nil {
+				break
+			}
+			r := b.out(dst, bc.KInt)
+			b.loadInt(r, -v)
+			return r, true
+		case lit.Kind == syntax.FLOAT && t == check.Float:
+			v, err := check.ParseFloat(lit.Value)
+			if err != nil {
+				break
+			}
+			r := b.out(dst, bc.KFloat)
+			b.emit(op("KFLOAT"), r, b.l.floatConst(-v))
+			return r, true
+		}
+	}
+	return 0, false
 }
 
 // globalCell is a state global's cell (or a memo global's memo).

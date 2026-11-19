@@ -313,3 +313,35 @@ func TestScalarsAndLoopClosures(t *testing.T) {
 		t.Errorf("the closure is made or called (%d CLOS, %d CALLC)", n["CLOS"], n["CALLC"])
 	}
 }
+
+// A top-level let of a literal is read as the literal: no GGET, so a
+// division by it is by a constant (DIVIS, DIVIK); one of anything else
+// is read from its global.
+func TestLiteralLetsFolded(t *testing.T) {
+	src := `
+let perSecond = 1_000_000_000
+let half = 0.5
+let below = -3
+let on = true
+let tick = 250ms
+let names = ["a", "b"]
+
+fn f(ns: int) -> float {
+  let s = ns / perSecond
+  if on && s > below {
+    return float(s) * half + float(tick.milliseconds())
+  }
+  return float(names.count())
+}
+
+fn main() { print(f(3_000_000_000)) }
+`
+	fn := optimized(t, src, "f")
+	n := ops(fn)
+	if n["GGET"] != 1 {
+		t.Errorf("%d GGETs, not 1 (names'):\n%v", n["GGET"], fn.Code)
+	}
+	if n["DIVIS"]+n["DIVIK"] != 1 || n["DIVI"] != 0 {
+		t.Errorf("the division isn't by a constant:\n%v", fn.Code)
+	}
+}
