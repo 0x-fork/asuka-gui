@@ -8,6 +8,8 @@
 //	url.escape(s) / url.pathEscape(s) -> string
 //	url.unescapeText(s, plus) -> string?  %XX (and + for a space when
 //	                                      plus); none for a bad escape
+//	url.queryValue(raw, name) -> string?  name's first value in a query
+//	url.queryValues(raw, name) -> [string], url.queryPairs(raw) -> [string]
 #include "std/std.h"
 
 #define STR(i) ((ak_str *)args[i].p)
@@ -234,26 +236,40 @@ static ak_val resolve(ak_val *args, uint32_t n) {
 
 // ---- Escaping ----
 
+// What escaping leaves as it is: unreserved characters, and in a path
+// its sub-delimiters and '/' (1: both; 2: a path only).
+static const uint8_t keep[256] = {
+	['-'] = 1, ['_'] = 1, ['.'] = 1, ['~'] = 1,
+	['!'] = 2, ['$'] = 2, ['&'] = 2, ['\''] = 2, ['('] = 2, [')'] = 2, ['*'] = 2, ['+'] = 2, [','] = 2, [';'] = 2, ['='] = 2, [':'] = 2, ['@'] = 2, ['/'] = 2,
+	['0'] = 1, ['1'] = 1, ['2'] = 1, ['3'] = 1, ['4'] = 1, ['5'] = 1, ['6'] = 1, ['7'] = 1, ['8'] = 1, ['9'] = 1,
+	['A'] = 1, ['B'] = 1, ['C'] = 1, ['D'] = 1, ['E'] = 1, ['F'] = 1, ['G'] = 1, ['H'] = 1, ['I'] = 1, ['J'] = 1, ['K'] = 1, ['L'] = 1, ['M'] = 1,
+	['N'] = 1, ['O'] = 1, ['P'] = 1, ['Q'] = 1, ['R'] = 1, ['S'] = 1, ['T'] = 1, ['U'] = 1, ['V'] = 1, ['W'] = 1, ['X'] = 1, ['Y'] = 1, ['Z'] = 1,
+	['a'] = 1, ['b'] = 1, ['c'] = 1, ['d'] = 1, ['e'] = 1, ['f'] = 1, ['g'] = 1, ['h'] = 1, ['i'] = 1, ['j'] = 1, ['k'] = 1, ['l'] = 1, ['m'] = 1,
+	['n'] = 1, ['o'] = 1, ['p'] = 1, ['q'] = 1, ['r'] = 1, ['s'] = 1, ['t'] = 1, ['u'] = 1, ['v'] = 1, ['w'] = 1, ['x'] = 1, ['y'] = 1, ['z'] = 1,
+};
+
+// escape: s with what isn't kept as %XX (a space as + in a query),
+// sized first, then written.
 static ak_str *escape(const ak_str *s, bool query) {
 	static const char hex[] = "0123456789ABCDEF";
-	ak_buf b = {0};
+	const uint8_t *p = (const uint8_t *)s->data;
+	uint8_t mask = query ? 1 : 3;
+	size_t len = 0;
+	for (uint32_t i = 0; i < s->len; i++) len += (keep[p[i]] & mask) || (p[i] == ' ' && query) ? 1 : 3;
+	if (len == s->len) return ak_retain((ak_str *)s);
+	ak_str *r = ak_str_new(NULL, len);
+	char *o = r->data;
 	for (uint32_t i = 0; i < s->len; i++) {
-		char c = s->data[i];
-		if (c && (is_alpha(c) || is_digit(c) || strchr("-_.~", c))) {
-			ak_buf_u8(&b, (uint8_t)c);
+		uint8_t c = p[i];
+		if (keep[c] & mask) {
+			*o++ = (char)c;
 		} else if (c == ' ' && query) {
-			ak_buf_u8(&b, '+');
-		} else if (!query && c != 0 && strchr("!$&'()*+,;=:@/", c)) {
-			ak_buf_u8(&b, (uint8_t)c);  // a path's sub-delimiters and '/' stay
+			*o++ = '+';
 		} else {
-			uint8_t u = (uint8_t)c;
-			ak_buf_u8(&b, '%');
-			ak_buf_u8(&b, (uint8_t)hex[u >> 4]);
-			ak_buf_u8(&b, (uint8_t)hex[u & 15]);
+			o[0] = '%', o[1] = hex[c >> 4], o[2] = hex[c & 15];
+			o += 3;
 		}
 	}
-	ak_str *r = ak_str_new((const char *)b.data, b.len);
-	ak_buf_free(&b);
 	return r;
 }
 
@@ -294,7 +310,123 @@ static ak_val unescape_fn(ak_val *args, uint32_t n) {
 	return (ak_val){.p = r};
 }
 
+// ---- Queries ----
+
+// unesc writes s (n bytes) unescaped (%XX, + as a space) into o, which
+// has room for n; its length, or -1 for a bad escape.
+static int64_t unesc(const char *s, size_t n, char *o) {
+	size_t k = 0;
+	for (size_t i = 0; i < n; i++) {
+		char c = s[i];
+		if (c == '%') {
+			int hi = i + 2 < n ? hexval(s[i + 1]) : -1, lo = i + 2 < n ? hexval(s[i + 2]) : -1;
+			if (hi < 0 || lo < 0) return -1;
+			o[k++] = (char)(hi << 4 | lo);
+			i += 2;
+		} else {
+			o[k++] = c == '+' ? ' ' : c;
+		}
+	}
+	return (int64_t)k;
+}
+
+// next_pair: raw's next name=value pair from *at ('&' between them,
+// empty ones skipped; a pair with no '=' has an empty value).
+static bool next_pair(const char *raw, size_t n, size_t *at, span *k, span *v) {
+	while (*at < n) {
+		size_t j = *at;
+		const char *amp = memchr(raw + j, '&', n - j);
+		size_t end = amp ? (size_t)(amp - raw) : n;
+		*at = end + 1;
+		if (end == j) continue;
+		const char *eq = memchr(raw + j, '=', end - j);
+		*k = (span){raw + j, eq ? (size_t)(eq - raw) - j : end - j, true};
+		*v = eq ? (span){eq + 1, end - (size_t)(eq + 1 - raw), true} : (span){"", 0, true};
+		return true;
+	}
+	return false;
+}
+
+// unesc_str: s unescaped, a string; NULL for a bad escape.
+static ak_str *unesc_str(span s) {
+	ak_str *r = ak_str_new(NULL, s.n);
+	int64_t k = unesc(s.p, s.n, r->data);
+	if (k < 0) {
+		ak_release(r);
+		return NULL;
+	}
+	r->len = (uint32_t)k;
+	r->data[k] = 0;
+	return r;
+}
+
+// key_is: whether a pair's name, unescaped, is name (false when it has a
+// bad escape).
+static bool key_is(span k, const ak_str *name) {
+	if (!memchr(k.p, '%', k.n) && !memchr(k.p, '+', k.n)) return k.n == name->len && memcmp(k.p, name->data, k.n) == 0;
+	if (k.n < name->len) return false;
+	char small[256], *buf = k.n <= sizeof small ? small : ak_alloc(k.n);
+	int64_t len = unesc(k.p, k.n, buf);
+	bool eq = len == (int64_t)name->len && memcmp(buf, name->data, (size_t)len) == 0;
+	if (buf != small) ak_free(buf);
+	return eq;
+}
+
+// query_value_fn(raw, name): name's first value, unescaped; none when
+// it has none (a pair with a bad escape is left out, as parseQuery
+// leaves it).
+static ak_val query_value_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	const ak_str *raw = STR(0), *name = STR(1);
+	size_t at = 0;
+	span k, v;
+	while (next_pair(raw->data, raw->len, &at, &k, &v)) {
+		if (!key_is(k, name)) continue;
+		ak_str *r = unesc_str(v);
+		if (r) return (ak_val){.p = r};
+	}
+	return (ak_val){.p = NULL};
+}
+
+// query_values_fn(raw, name): every value of name's, in order.
+static ak_val query_values_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	const ak_str *raw = STR(0), *name = STR(1);
+	ak_arr *out = ak_str_arr(0);
+	size_t at = 0;
+	span k, v;
+	while (next_pair(raw->data, raw->len, &at, &k, &v)) {
+		if (!key_is(k, name)) continue;
+		ak_str *r = unesc_str(v);
+		if (r) ak_arr_push(&out, (ak_val){.p = r});
+	}
+	return (ak_val){.p = out};
+}
+
+// query_pairs_fn(raw): every pair's name and value, unescaped, one
+// after the other.
+static ak_val query_pairs_fn(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	const ak_str *raw = STR(0);
+	ak_arr *out = ak_str_arr(0);
+	size_t at = 0;
+	span k, v;
+	while (next_pair(raw->data, raw->len, &at, &k, &v)) {
+		ak_str *ks = unesc_str(k), *vs = ks ? unesc_str(v) : NULL;
+		if (!vs) {
+			if (ks) ak_release(ks);
+			continue;
+		}
+		ak_arr_push(&out, (ak_val){.p = ks});
+		ak_arr_push(&out, (ak_val){.p = vs});
+	}
+	return (ak_val){.p = out};
+}
+
 const ak_lib_entry ak_std_url[] = {
+	{"url.queryValue", query_value_fn},
+	{"url.queryValues", query_values_fn},
+	{"url.queryPairs", query_pairs_fn},
 	{"url.parts", parts},
 	{"url.resolveRef", resolve},
 	{"url.escape", escape_fn},
