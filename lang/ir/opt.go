@@ -65,6 +65,10 @@ type opInfo struct {
 	// alias: its result may be one of its operands (it reads them all
 	// before it writes), so a copy of its result may be folded into it.
 	alias bool
+	// unknown: an opcode the table doesn't describe (one added since):
+	// it reads, and may write, every register, and may throw, so no pass
+	// moves or deletes anything across it on its account.
+	unknown bool
 }
 
 const (
@@ -86,9 +90,11 @@ var opInfos = func() []opInfo {
 			}
 		}
 	}
+	described := make([]bool, len(t))
 	set := func(names string, f func(*opInfo)) {
 		for _, n := range splitNames(names) {
 			f(&t[op(n)])
+			described[op(n)] = true
 		}
 	}
 	d0 := func(o *opInfo) { o.def = 0 }
@@ -141,6 +147,12 @@ var opInfos = func() []opInfo {
 	set("MOV ADDI SUBI MULI DIVI MODI NEGI WADDI WSUBI WMULI ADDIK EQI NEI LTI LEI BAND BOR BXOR BNOT SHL SHR "+
 		"ADDF SUBF MULF DIVF MODF NEGF EQF NEF LTF LEF I2F F2I NOT ISNONE LTS EQ NE LEN ECASE "+
 		"ADDIS SUBIS MULIS DIVIS MODIS DIVIK MODIK GETF IDX IDXF CONCAT", func(o *opInfo) { o.alias = true })
+	set("NOP RET0 UNTRACK RETRACK BATCH YIELD CATCH", func(*opInfo) {})
+	for i := range t {
+		if !described[i] {
+			t[i].unknown, t[i].throws = true, true
+		}
+	}
 	return t
 }()
 
@@ -230,6 +242,12 @@ func (o *optimizer) blockRange(in *Instr) (start, n int) {
 // reads calls fn with each register in reads (its block's included).
 func (o *optimizer) reads(in *Instr, fn func(r int)) {
 	info := &opInfos[in.Op]
+	if info.unknown {
+		for r := 0; r < o.n; r++ {
+			fn(r)
+		}
+		return
+	}
 	for _, j := range info.uses {
 		if r := int(in.Args[j]); r != bc.None {
 			fn(r)
@@ -273,6 +291,12 @@ func kill(in *Instr) int {
 // changes in place, and a call's argument block.
 func (o *optimizer) writes(in *Instr, fn func(r int)) {
 	info := &opInfos[in.Op]
+	if info.unknown {
+		for r := 0; r < o.n; r++ {
+			fn(r)
+		}
+		return
+	}
 	if r := kill(in); r >= 0 {
 		fn(r)
 	}
