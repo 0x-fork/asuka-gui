@@ -221,16 +221,22 @@ static bool bare(const char *s, size_t n) {
 	return true;
 }
 
-static void put_text(ak_buf *b, const ak_str *s) {
-	if (bare(s->data, s->len)) ak_buf_put(b, s->data, s->len);
-	else put_json(b, s->data, s->len);
+static void put_textn(ak_buf *b, const char *s, size_t n) {
+	if (bare(s, n)) ak_buf_put(b, s, n);
+	else put_json(b, s, n);
 }
+
+static void put_text(ak_buf *b, const ak_str *s) { put_textn(b, s->data, s->len); }
 
 // chars is the number of code points in s[0:n].
 // put_value writes a field's value, its JSON (log.asuka's texts), as
 // text: a string as its text (quoted as put_text says), the rest (a
 // number, true, an array) as JSON writes it.
 static void put_value(ak_buf *b, const ak_str *v) {
+	if (v->len >= 2 && v->data[0] == '"' && !memchr(v->data, '\\', v->len)) {
+		put_textn(b, v->data + 1, v->len - 2);  // no escapes: its text as it is
+		return;
+	}
 	if (v->len && v->data[0] == '"') {
 		ak_val s = ak_json_decode(v->data, v->len, "s", NULL);
 		if (!ak_error_pending() && s.p) {

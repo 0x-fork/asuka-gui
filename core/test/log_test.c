@@ -27,7 +27,8 @@ static ak_lib_fn fn(const char *name) {
 	abort();
 }
 
-// fields is a [string: string] of the pairs in kv, NULL-ended.
+// fields is a [string: string] of the pairs in kv, NULL-ended: each
+// value its JSON, as log.asuka's texts gives them.
 static ak_map *fields(const char *const *kv) {
 	ak_map *m = ak_map_new(AK_K_REF, true, AK_K_REF, NULL);
 	for (; kv && kv[0]; kv += 2) ak_map_set(&m, (ak_val){.p = ak_str_c(kv[0])}, (ak_val){.p = ak_str_c(kv[1])});
@@ -91,8 +92,8 @@ static void end(void) {
 
 TEST(off_costs_nothing) {
 	begin(NULL);
-	ak_map *bound = fields((const char *[]){"request", "7", NULL});
-	ak_map *call = fields((const char *[]){"key", "a b", NULL});
+	ak_map *bound = fields((const char *[]){"request", "\"7\"", NULL});
+	ak_map *call = fields((const char *[]){"key", "\"a b\"", NULL});
 	ak_str *msg = ak_str_c("cache miss");
 	ak_val args[4] = {{.i = 0}, {.p = msg}, {.p = bound}, {.p = call}};
 	ak_lib_fn write = fn("log.write"), on = fn("log.isEnabled");
@@ -134,20 +135,20 @@ TEST(levels) {
 
 TEST(text) {
 	begin(NULL);
-	ak_map *bound = fields((const char *[]){"request", "7", "user", "ann", NULL});
-	ak_map *call = fields((const char *[]){"user", "bob", "path", "/a b", "empty", "", "q", "\"x\"", "ctl", "a\x01", NULL});
+	ak_map *bound = fields((const char *[]){"request", "\"7\"", "user", "\"ann\"", NULL});
+	ak_map *call = fields((const char *[]){"user", "\"bob\"", "path", "\"/a b\"", "empty", "\"\"", "q", "\"\\\"x\\\"\"", "ctl", "\"a\\u0001\"", "n", "8080", "ok", "true", "ids", "[1,2]", "o", "{\"a\":1}", NULL});
 	capture();
 	write_line(1, "started", NULL, NULL);
 	write_line(0, "hidden", NULL, NULL);
 	write_line(2, "slow", bound, call);
 	set_format(0, false);
-	ak_map *kv = fields((const char *[]){"k", "v", NULL});
+	ak_map *kv = fields((const char *[]){"k", "\"v\"", NULL});
 	write_line(3, "héllo", NULL, kv);
 	ak_release(kv);
 	char *s = written();
 	CHECK_EQ_STR(s,
 		"2026-01-01 00:00:00.000 INFO  started\n"
-		"2026-01-01 00:00:00.000 WARN  slow                                     request=7 user=bob path=\"/a b\" empty=\"\" q=\"\\\"x\\\"\" ctl=\"a\\u0001\"\n"
+		"2026-01-01 00:00:00.000 WARN  slow                                     request=7 user=bob path=\"/a b\" empty=\"\" q=\"\\\"x\\\"\" ctl=\"a\\u0001\" n=8080 ok=true ids=[1,2] o=\"{\\\"a\\\":1}\"\n"
 		"ERROR héllo                                    k=v\n");
 	free(s);
 	ak_release(bound);
@@ -158,15 +159,15 @@ TEST(text) {
 TEST(json) {
 	begin(NULL);
 	set_format(1, true);
-	ak_map *bound = fields((const char *[]){"request", "7", NULL});
-	ak_map *call = fields((const char *[]){"msg", "a\nb", "tab", "\t\\", NULL});
+	ak_map *bound = fields((const char *[]){"request", "\"7\"", NULL});
+	ak_map *call = fields((const char *[]){"msg", "\"a\\nb\"", "tab", "\"\\t\\\\\"", "n", "8080", NULL});
 	capture();
 	write_line(1, "saved \"a\"", bound, call);
 	set_format(1, false);
 	write_line(3, "failed", NULL, NULL);
 	char *s = written();
 	CHECK_EQ_STR(s,
-		"{\"time\":\"2026-01-01T00:00:00.000Z\",\"level\":\"INFO\",\"msg\":\"saved \\\"a\\\"\",\"request\":\"7\",\"msg\":\"a\\nb\",\"tab\":\"\\t\\\\\"}\n"
+		"{\"time\":\"2026-01-01T00:00:00.000Z\",\"level\":\"INFO\",\"msg\":\"saved \\\"a\\\"\",\"request\":\"7\",\"msg\":\"a\\nb\",\"tab\":\"\\t\\\\\",\"n\":8080}\n"
 		"{\"level\":\"ERROR\",\"msg\":\"failed\"}\n");
 	free(s);
 	ak_release(bound);
@@ -177,7 +178,7 @@ TEST(json) {
 TEST(colors) {
 	begin((const char *[]){"FORCE_COLOR", "1", NULL});
 	capture();
-	ak_map *kv = fields((const char *[]){"k", "v", NULL});
+	ak_map *kv = fields((const char *[]){"k", "\"v\"", NULL});
 	write_line(3, "failed", NULL, kv);
 	ak_release(kv);
 	char *s = written();
