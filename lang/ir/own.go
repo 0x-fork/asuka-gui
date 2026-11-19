@@ -14,20 +14,29 @@ import (
 // (fromJSON takes); and its compare, #cmp, which orders it. Where the type is known as the code is compiled, ==
 // and a value's text call its methods directly (ownEquals, describe).
 
-// ownHooks puts n's own methods in its shape's, and its compare, which
-// orders it (#cmp: what std/collections' B-tree orders its keys by,
-// core/src/rt/tree.c).
+// cmpHook puts n's compare, when it has one, in its shape's methods as
+// #cmp: what std/collections' B-tree orders its keys of n by
+// (core/src/rt/tree.c), a payloadless enum's (an int's) by the shape its
+// descriptor names.
+func (l *Lowerer) cmpHook(shape int, n *check.Named) {
+	f := check.CompareMethod(n)
+	if f == nil || shape < 0 {
+		return
+	}
+	sd := &l.mod.Shapes[shape]
+	if sd.Methods == nil {
+		sd.Methods = map[string]uint32{}
+	}
+	sd.Methods["#cmp"] = uint32(l.funcIndex(f, nil, n))
+}
+
+// ownHooks puts n's own methods in its shape's, and its compare
+// (cmpHook).
 func (l *Lowerer) ownHooks(shape int, n *check.Named) {
 	if shape < 0 {
 		return
 	}
-	if f := check.CompareMethod(n); f != nil {
-		sd := &l.mod.Shapes[shape]
-		if sd.Methods == nil {
-			sd.Methods = map[string]uint32{}
-		}
-		sd.Methods["#cmp"] = uint32(l.funcIndex(f, nil, n))
-	}
+	l.cmpHook(shape, n)
 	o := check.OwnOf(n)
 	if o == nil {
 		return

@@ -728,7 +728,7 @@ typedef enum ak_tree_mode {
 	AK_TM_U64,    // uint64's
 	AK_TM_FLOAT,  // double's
 	AK_TM_STR,    // strings', bytewise (ak_str_cmp)
-	AK_TM_CMP,    // the keys' type's own compare (their shape's AK_HOOK_CMP)
+	AK_TM_CMP,    // the keys' type's own compare (their shape's AK_HOOK_CMP; an enum's without one, its cases' order)
 } ak_tree_mode;
 
 #define AK_TNODE_LEAF 1  // h.flags: it has no children
@@ -747,6 +747,9 @@ typedef struct ak_tree {
 	uint8_t height;   // the levels below its root
 	int64_t count;
 	ak_val root;      // an ak_tnode, NULL when it's empty
+	// kshape: AK_TM_CMP's keys' shape when they're ints (an enum without
+	// payloads that has a compare); a struct's or an enum's is its own.
+	const ak_shape *kshape;
 } ak_tree;
 
 static inline uint32_t ak_tnode_len(const ak_tnode *n) { return n->h.aux; }
@@ -769,6 +772,7 @@ ak_tnode *ak_tnode_shell(const ak_tnode *n);
 typedef struct ak_tree_order {
 	uint8_t mode;
 	struct ak_closure *by;
+	const ak_shape *kshape;  // the tree's
 } ak_tree_order;
 
 // ak_tree_mut makes *t unique (a copy sharing its nodes, when it's

@@ -465,6 +465,7 @@ func (l *Lowerer) intEnumShape(x *check.Named) int {
 	for _, k := range x.Obj.Cases {
 		l.mod.Shapes[i].Cases = append(l.mod.Shapes[i].Cases, bc.Case{Name: k.Name})
 	}
+	l.cmpHook(i, x) // its compare, which orders a B-tree's keys of it
 	return i
 }
 

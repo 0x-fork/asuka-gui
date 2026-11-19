@@ -294,3 +294,35 @@ test "an order that raises an error leaves the map whole" {
   expect(gone == "?" && m.count() == 500)
   expect(m.remove(7) == "7" && m.count() == 499 && m.first()!.0 == 0 && m.last()!.0 == 499)
 }
+
+// Ordered by their own compare (high first), not their cases' order.
+enum Level {
+  low
+  mid
+  high
+
+  fn compare(other: Level) -> int = levelRank(other) - levelRank(self)
+}
+
+fn levelRank(l: Level) -> int = match l {
+  .low => 0
+  .mid => 1
+  .high => 2
+}
+
+// An enum without payloads kept as a reference (it's an Error): by its
+// cases' order.
+enum Fault: Error {
+  minor
+  major
+}
+
+test "enums for keys: their own compare, else their cases' order" {
+  var m = SortedMap<Level, string>()
+  for l in [Level.mid, Level.low, Level.high] { m.set(l, "{l}") }
+  expect(m.values() == ["high", "mid", "low"] && m.first()!.0 == .high && m.floor(.mid)!.1 == "mid")
+  var s = SortedSet<Fault>()
+  let _ = s.insert(.major)
+  let _ = s.insert(.minor)
+  expect(s.first() == .minor && s.last() == .major && s.count() == 2)
+}

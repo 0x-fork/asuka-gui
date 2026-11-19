@@ -2016,7 +2016,7 @@ back appended, not compared) by its entries.
 
 | Source | Lowered |
 |---|---|
-| `newTree<K, V>()`, `newSet<T>()` (std/collections' native fns) | CALLB `collections.newTree(K's descriptor, V's)`, `collections.newSet(T's)`: an empty tree whose keys are ordered by their descriptor (rt.h's ak_tree_mode: an int's, a u64's, a float's, a string's <, in C; a struct's or an enum's own compare, its shape's #cmp hook) |
+| `newTree<K, V>()`, `newSet<T>()` (std/collections' native fns) | CALLB `collections.newTree(K's descriptor, V's)`, `collections.newSet(T's)`: an empty tree whose keys are ordered by their descriptor (rt.h's ak_tree_mode: an int's, a u64's, a float's, a string's <, in C; a struct's or an enum's own compare, its shape's #cmp hook, an enum's without one by its cases; a payloadless enum's with one by the shape its descriptor names, found as the tree's made, kept with it) |
 | `t.get(key, by)`, `has`, `near`, `nearKey`, `end`, `endKey`, `count` | CALLB `tree.get`... (Methods' "tree"); by, a less-than or none, orders the keys when it's given; `near` and `end` get, last, a frozen empty `[(K, V)]` (Extra "entryProto", fb.emptyConst: made once in init.strings), whose elements' shape they make the entry by |
 | `t.put(key, value, by)`, `add`, `take`, `delete` | inout, as an array's push: the tree moved out of its place (a SortedMap's field), changed in place when it's unique, put back |
 | `t.entries(from, after, to, by, limit)`, `keys`, `values` | CALLB `tree.range(…, proto, what)`: an array like proto (Extra "proto") of the entries from the first key at or after from (after: past it) before to, limit at most; SortedMap's range and lazy are a Seq of runs of them, each from the last one's key on, twice as long as the one before up to 1024 |

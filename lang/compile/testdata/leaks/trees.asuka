@@ -25,6 +25,21 @@ struct Board {
   mut fn add(j: Job) { jobs.set(j.name, j) }
 }
 
+// Ordered by its compare, high first: an int's, whose shape orders it.
+enum Level {
+  low
+  mid
+  high
+
+  fn compare(other: Level) -> int = rank(other) - rank(self)
+}
+
+fn rank(l: Level) -> int = match l {
+  .low => 0
+  .mid => 1
+  .high => 2
+}
+
 state book = SortedMap<string, [string]>()
 
 test "maps of every kind, copied and walked" {
@@ -51,6 +66,9 @@ test "maps of every kind, copied and walked" {
     nested.set(i % 9, s)
   }
   print("{nested.count()} {nested.get(0)!.count()}")
+  var levels = SortedMap<Level, int>()
+  for l in [Level.mid, Level.low, Level.high] { levels.set(l, rank(l)) }
+  print(levels.values())
 }
 
 test "a field, a mut fn and state, left as they were" {
@@ -91,6 +109,7 @@ test "a split's pieces, kept and let go of" {
 // 100 1000 ["j2950","j2951","j2952","j2953"] job 955 100
 // 250 500 252 500
 // 9 23
+// [2,1,0]
 // ok maps of every kind, copied and walked
 // 99 5 100
 // 2 0

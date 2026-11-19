@@ -13,9 +13,10 @@
 //                                       a map (str: its values' shape's)
 //   'S' str count (str kind value)*     a struct: its shape's name, fields by name
 //   'E' str str count (kind value)*     an enum: its shape's and its case's names
-//   'T' mode kind kind count (value value?)*
-//                                       a B-tree (rt.h's ak_tree): its entries
-//                                       in order, values but a set's
+//   'T' mode kind kind str count (value value?)*
+//                                       a B-tree (rt.h's ak_tree): its keys'
+//                                       shape's name, when it has one ("": none),
+//                                       its entries in order, values but a set's
 // str := u32 length, bytes
 
 static void wstr(ak_buf *b, const char *s) { ak_buf_str(b, s ? s : "", s ? strlen(s) : 0); }
@@ -121,6 +122,7 @@ bool ak_keep_encode(ak_buf *b, ak_val v, ak_kind k) {
 		ak_buf_u8(b, t->mode);
 		ak_buf_u8(b, t->kk);
 		ak_buf_u8(b, t->vk);
+		wstr(b, t->kshape ? t->kshape->name : NULL);
 		ak_buf_u64(b, (uint64_t)t->count);
 		ak_titer it;
 		ak_titer_start(&it, t);
@@ -216,6 +218,7 @@ static bool skip(ak_reader *r) {
 		ak_read_u8(r);
 		ak_read_u8(r);
 		bool set = ak_read_u8(r) == AK_K_VOID;
+		ak_read_bytes(r, &n);
 		uint64_t c = ak_read_u64(r);
 		for (uint64_t i = 0; i < c && !r->err; i++)
 			if (!skip(r) || (!set && !skip(r))) return false;
@@ -332,9 +335,20 @@ bool ak_keep_decode(ak_reader *r, ak_kind k, ak_keep_shape_fn find, void *ctx, a
 		// doesn't keep: appended, not compared.
 		ak_tree_mode mode = (ak_tree_mode)ak_read_u8(r);
 		ak_kind kk = (ak_kind)ak_read_u8(r), vk = (ak_kind)ak_read_u8(r);
+		uint32_t named;
+		const uint8_t *nm = ak_read_bytes(r, &named);
+		const ak_shape *ks = NULL;  // the new program's
+		if (!r->err && named) {
+			char name[256];
+			if (named >= sizeof name || !find) return false;
+			memcpy(name, nm, named);
+			name[named] = 0;
+			if (!(ks = find(ctx, name))) return false;
+		}
 		uint64_t c = ak_read_u64(r);
 		if (r->err || c > r->len || mode > AK_TM_CMP || kk > AK_K_REF || vk > AK_K_REF) return false;
 		ak_tree *t = ak_tree_new(mode, kk, vk);
+		t->kshape = ks;
 		for (uint64_t i = 0; i < c; i++) {
 			ak_val key, val = {0};
 			if (!ak_keep_decode(r, kk, find, ctx, &key)) goto tree_fail;

@@ -918,6 +918,7 @@ static ak_obj *shell(ak_obj *o) {
 		ak_tree *c = ak_tree_new((ak_tree_mode)t->mode, (ak_kind)t->kk, (ak_kind)t->vk);
 		c->height = t->height;
 		c->count = t->count;
+		c->kshape = t->kshape;
 		return &c->h;
 	}
 	case AK_TAG_TNODE:

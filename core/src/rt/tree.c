@@ -153,6 +153,7 @@ ak_tree *ak_tree_mut(ak_tree **tp) {
 	ak_tree *c = ak_tree_new((ak_tree_mode)t->mode, (ak_kind)t->kk, (ak_kind)t->vk);
 	c->height = t->height;
 	c->count = t->count;
+	c->kshape = t->kshape;
 	c->root.p = ak_retain(t->root.p);
 	ak_release(t);
 	*tp = c;
@@ -167,9 +168,11 @@ static inline ak_tnode *root_of(const ak_tree *t) { return t->root.p; }
 static AK_NOINLINE bool lt_call(ak_tree_order o, ak_val a, ak_val b) {
 	ak_val args[2] = {a, b};
 	if (o.by) return ak_call(o.by, args, 2).i != 0;
-	const ak_shape *s = ((const ak_struct *)a.p)->shape;  // an enum's is where a struct's is
-	if (!ak_shape_has(s, AK_HOOK_CMP)) ak_panic("%s has no compare", s->name);
-	return ak_shape_call(s, AK_HOOK_CMP, args, 2).i < 0;
+	const ak_shape *s = o.kshape ? o.kshape : ((const ak_struct *)a.p)->shape;  // an enum's is where a struct's is
+	if (AK_LIKELY(ak_shape_has(s, AK_HOOK_CMP))) return ak_shape_call(s, AK_HOOK_CMP, args, 2).i < 0;
+	if (o.kshape || ((const ak_obj *)a.p)->tag != AK_TAG_ENUM) ak_panic("%s has no compare", s->name);
+	// An enum without payloads kept as a reference: its cases' order.
+	return ak_enum_case(a.p) < ak_enum_case(b.p);
 }
 
 static inline bool lt(ak_tree_order o, ak_val a, ak_val b) {
@@ -717,7 +720,7 @@ uint64_t ak_tree_hash(const ak_tree *t) {
 
 #define TREE(i) ((ak_tree *)args[i].p)
 
-static inline ak_tree_order order_of(const ak_tree *t, ak_val by) { return (ak_tree_order){.mode = t->mode, .by = by.p}; }
+static inline ak_tree_order order_of(const ak_tree *t, ak_val by) { return (ak_tree_order){.mode = t->mode, .by = by.p, .kshape = t->kshape}; }
 
 // raised reports an error a comparison raised (a by's, a compare's):
 // what a builtin returns then is none, which its caller doesn't keep.
