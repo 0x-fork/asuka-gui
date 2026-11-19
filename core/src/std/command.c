@@ -246,7 +246,7 @@ static int64_t spawn(proc *p, const ak_str *prog, const ak_arr *argv, const ak_s
 	quote(&line, wp);
 	ak_free(wp);
 	for (uint32_t i = 0; i < argv->len; i++) {
-		const ak_str *a = argv->data[i].p;
+		const ak_str *a = ak_arr_vals(argv)[i].p;
 		wchar_t *w = wide(a->data, a->len);
 		wput(&line, L" ", 1);
 		quote(&line, w);
@@ -266,7 +266,7 @@ static int64_t spawn(proc *p, const ak_str *prog, const ak_arr *argv, const ak_s
 		if (block) FreeEnvironmentStringsW(block);
 	}
 	for (uint32_t i = 0; env && i + 1 < env->len; i += 2) {
-		const ak_str *k = env->data[i].p, *v = env->data[i + 1].p;
+		const ak_str *k = ak_arr_vals(env)[i].p, *v = ak_arr_vals(env)[i + 1].p;
 		wchar_t *wk = wide(k->data, k->len);
 		size_t kl = wcslen(wk);
 		for (uint32_t j = 0; j < vars.len; j++) {
