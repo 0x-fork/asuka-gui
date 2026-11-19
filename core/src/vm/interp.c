@@ -344,6 +344,12 @@ next:
 		}
 		NEXT();
 	}
+	OP(GTAKE) {
+		ak_val *g = &M->globals[off32(a + 1)];
+		setref(R, a[0], g->p);
+		g->p = NULL;
+		NEXT();
+	}
 
 	OP(ADDI)
 		if (!ak_op_addi(R, a[0], a[1], a[2])) goto thrown;

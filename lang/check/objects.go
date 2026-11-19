@@ -539,6 +539,7 @@ const (
 	StateGlobal GlobalKind = iota // top-level state: a cell
 	MemoGlobal                    // a top-level let that reads state
 	ConstGlobal                   // a top-level let that doesn't, or a type's let
+	VarGlobal                     // a top-level var: a value that changes, not followed (the main thread's)
 )
 
 // A Global is a package-level state or let, or a struct's or an enum's

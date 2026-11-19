@@ -100,7 +100,7 @@ var opInfos = func() []opInfo {
 	d0 := func(o *opInfo) { o.def = 0 }
 	u := func(js ...int8) func(*opInfo) { return func(o *opInfo) { o.uses = append(o.uses, js...) } }
 	// Results computed from operands, then stored.
-	set("MOV MOVR CLR KINT KSMALL KFLOAT KSTR KNONE GGET CATCH CAP CTAKE", d0)
+	set("MOV MOVR CLR KINT KSMALL KFLOAT KSTR KNONE GGET GTAKE CATCH CAP CTAKE", d0)
 	set("ADDI SUBI MULI DIVI MODI WADDI WSUBI WMULI EQI NEI LTI LEI BAND BOR BXOR SHL SHR ADDF SUBF MULF DIVF MODF EQF NEF LTF LEF EQ NE CONCAT LTS IDX MGET", func(o *opInfo) { o.def = 0; o.uses = []int8{1, 2} })
 	set("NEGI BNOT NEGF I2F F2I NOT ISNONE TOSTR ADDIK ISSHAPE VBOX VGET VTAKE GETF ECASE GETP BOX UNBOX LEN CELL CELLK FOLLOWK CGET CPEEK MEMO MREAD ACCV ACCF ACCC AGET TASK AWAIT ADDIS SUBIS MULIS DIVIS MODIS DIVIK MODIK", func(o *opInfo) { o.def = 0; o.uses = []int8{1} })
 	set("MOV MOVR", u(1))

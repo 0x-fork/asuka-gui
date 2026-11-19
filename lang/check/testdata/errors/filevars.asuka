@@ -1,0 +1,38 @@
+var hits = 0
+var names: [string] = []
+let limit = 10
+
+fn bump() { hits += 1 }
+fn indirect() { bump() }
+fn pure(n: int) -> int = n * 2
+
+async fn work() {
+  let n = await spawn { hits + 1 } // ERROR "spawn can't use hits: it's a file's var"
+  let m = await spawn { // ERROR "spawn calls indirect, which uses hits, a file's var"
+    indirect()
+    return pure(2)
+  }
+  let k = await spawn { // ERROR "spawn calls bump, which uses hits"
+    bump()
+    return 1
+  }
+  let copy = hits
+  let ok = await spawn { copy + pure(limit) }
+  print(n, m, k, ok)
+}
+
+worker Counter {
+  pub fn count() -> int {
+    return hits // ERROR "worker Counter can't use hits: it's a file's var"
+  }
+  pub fn more() -> int { // ERROR "worker Counter calls bump, which uses hits"
+    bump()
+    return 1
+  }
+}
+
+fn writes() {
+  limit = 3 // ERROR "it's a let; a value that changes is a var"
+  hits = 2
+  names.push("a")
+}

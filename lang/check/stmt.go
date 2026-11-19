@@ -450,8 +450,8 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 				c.notPlace(x, diag.NotAssignable, x.Name+" isn't state", "can't %s %s", what, x.Name)
 			}
 		case *Global:
-			if o.Kind != StateGlobal {
-				c.notPlace(x, diag.NotAssignable, x.Name+" is a let", "can't %s %s: it's a let; a value that changes is state", what, x.Name)
+			if o.Kind != StateGlobal && o.Kind != VarGlobal {
+				c.notPlace(x, diag.NotAssignable, x.Name+" is a let", "can't %s %s: it's a let; a value that changes is a var, or state when views show it", what, x.Name)
 			}
 		case *selfMember:
 			c.selfWrite(x, what, x.Name)
@@ -482,8 +482,8 @@ func (c *Checker) checkLvalue(x syntax.Expr, what string) {
 				c.notPlace(x, diag.NotAssignable, exprName(x)+" isn't state", "can't %s %s: it isn't state", what, x.Name.Name)
 			}
 		case SelPkg:
-			if g, ok := sel.Obj.(*Global); !ok || g.Kind != StateGlobal {
-				c.notPlace(x, diag.NotAssignable, exprName(x)+" isn't state", "can't %s %s: only a package's state changes", what, exprName(x))
+			if g, ok := sel.Obj.(*Global); !ok || g.Kind != StateGlobal && g.Kind != VarGlobal {
+				c.notPlace(x, diag.NotAssignable, exprName(x)+" isn't state", "can't %s %s: only a package's vars and state change", what, exprName(x))
 			}
 		default:
 			c.notPlace(x, diag.NotAssignable, exprName(x)+" isn't a var", "can't %s %s", what, exprName(x))

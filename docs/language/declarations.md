@@ -2,7 +2,7 @@
 
 ```asuka
 let pi = 3.14159             // a constant
-var total = 0                // a variable (in functions and handlers)
+var total = 0                // a variable
 state count = 0              // state: a value the UI follows
 state shown = count          // count, until it's written: state that follows
 ```
@@ -12,6 +12,40 @@ Types are inferred; write one where it helps: `let ids: [int] = []`.
 `type` names a type, at the top of a file: `type Pair<A, B> = (A, B)`,
 `type Check = fn(string) -> bool`. It's another name for the same type
 (an alias): a `Pair<int, string>` is an `(int, string)`.
+
+## A file's values
+
+At the top of a file, `let` is a constant, `state` the app's state
+([Stores](stores.md)), and `var` a variable of the package's: any of its
+code may read and change it, and other packages too when it's `pub`
+(`util.hits += 1`). A var isn't state: what reads it gets its value as
+it is then, and a view that shows it doesn't change when it does (that's
+what `state` is for). It's for what views don't show: a cache, a
+counter, a program's settings.
+
+```asuka check
+var cache: [int: int] = [:]
+var lookups = 0
+
+fn fib(n: int) -> int {
+  lookups += 1
+  if n < 2 { return n }
+  if let v = cache[n] { return v }
+  let v = fib(n - 1) + fib(n - 2)
+  cache[n] = v
+  return v
+}
+```
+
+A file's values are made before anything else runs, a package's before
+those of the packages that import it, and each after the ones its
+initializer reads (one that reads itself, directly or not, is an error).
+A var is changed in place, as a local is: `cache[n] = v` copies
+nothing. It's the main thread's, as state is: `spawn`'s block and a
+[worker](async.md#workers) can't use one, nor call a function that does
+(the compiler says which); read it first and pass the value. When
+`asuka dev` reloads the app, a file's vars are made again from their
+initializers, as its lets are; state keeps its values.
 
 ## Structs
 

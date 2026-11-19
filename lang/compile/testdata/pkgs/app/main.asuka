@@ -9,4 +9,6 @@ test "packages" {
   print(util.shout("hi"))
   m.created += 1
   print(m.created)
+  util.shouts += 10
+  print(util.shouts)
 }

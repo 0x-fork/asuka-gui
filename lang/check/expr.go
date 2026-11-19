@@ -308,7 +308,11 @@ func (c *Checker) useGlobal(g *Global, at syntax.Node) Type {
 		c.curGlobal.deps = append(c.curGlobal.deps, g)
 	}
 	if c.ctx != nil {
-		if g.Kind == StateGlobal || g.Kind == MemoGlobal || g.Ctx != nil && g.Ctx.readsState {
+		if g.Kind == VarGlobal {
+			// Not followed: what reads it reads it as it is. The main
+			// thread's: spawn and workers can't reach it.
+			c.spawnVar(at, g.name)
+		} else if g.Kind == StateGlobal || g.Kind == MemoGlobal || g.Ctx != nil && g.Ctx.readsState {
 			c.ctx.readsState = true
 			c.spawnState(at, g.name)
 		} else if !IsInvalid(t) && !sendable(t) {
@@ -329,6 +333,21 @@ func (c *Checker) spawnState(at syntax.Node, name string) {
 	for cc := c.ctx; cc != nil; cc = cc.Parent {
 		if cc.Kind == CtxSpawn {
 			c.errorf(at, diag.SpawnCapturesState, "spawn can't use %s: it's state, and spawn runs on another thread (read it into a let first)", name)
+			return
+		}
+	}
+}
+
+// spawnVar reports a use inside spawn or a worker of a file's var: the
+// main thread's, which another thread can't read or change.
+func (c *Checker) spawnVar(at syntax.Node, name string) {
+	if w := c.workerOf(); w != nil {
+		c.errorf(at, diag.WorkerCapturesState, "worker %s can't use %s: it's a file's var, the main thread's, and the worker runs on a thread of its own (pass its value to a pub fn)", w.name, name)
+		return
+	}
+	for cc := c.ctx; cc != nil; cc = cc.Parent {
+		if cc.Kind == CtxSpawn {
+			c.errorf(at, diag.SpawnCapturesState, "spawn can't use %s: it's a file's var, the main thread's, and spawn runs on another thread (read it into a let first)", name)
 			return
 		}
 	}

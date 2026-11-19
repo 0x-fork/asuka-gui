@@ -1,0 +1,14 @@
+var hits = 0
+pub var cache: [string: int] = [:]
+let limit = 3
+
+struct Box<T> {
+  items: [T]
+  static fn of(xs: [T]) -> Box<T> = Box(items: xs)
+}
+
+fn f() {
+  print("a", 1, separator: ", ", terminator: "")
+  eprint()
+  let b = Box.of<int>([1])
+}

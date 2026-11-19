@@ -65,6 +65,7 @@ var Ops = []OpDef{
 	{"KNONE", []Operand{Reg}, "a = none (a reference register)"},
 	{"GGET", []Operand{Reg, Global, KindOp}, "a = globals[g] (retained when a reference)"},
 	{"GSET", []Operand{Global, Reg, KindOp}, "globals[g] = b (retained; the old one released)"},
+	{"GTAKE", []Operand{Reg, Global}, "a = globals[g]'s reference moved out, none left (a file's var changed in place); GSET puts it back"},
 
 	// Ints.
 	{"ADDI", []Operand{Reg, Reg, Reg}, "a = b + c; throws on overflow"},

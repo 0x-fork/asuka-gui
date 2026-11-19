@@ -1,0 +1,94 @@
+// A file's vars: values that change, read and written from any function
+// on the main thread, changed in place (not copied), initialized in
+// order of what their initializers read.
+var counter = 0
+var log: [string] = []
+var cache: [int: int] = [:]
+let start = counter + 5
+var derived = start * 2
+var current: P? = none
+
+struct P {
+  x: int
+  tags: [string] = []
+  mut fn bump() { x += 1 }
+}
+
+var point = P(x: 1)
+
+fn record(s: string) {
+  log.push(s)
+  counter += 1
+}
+
+fn fib(n: int) -> int {
+  if n < 2 { return n }
+  if let v = cache[n] { return v }
+  let v = fib(n - 1) + fib(n - 2)
+  cache[n] = v
+  return v
+}
+
+fn outOfRange() throws -> int {
+  log = ["kept"]
+  log[5] = "out of range"
+  return 1
+}
+
+test "read and written by functions" {
+  record("a")
+  record("b")
+  print(counter, log, start, derived)
+  let twice = () => {
+    record("c")
+    return counter * 2
+  }
+  print(twice(), log.count())
+}
+
+test "changed in place" {
+  point.x = 5
+  point.tags.push("t")
+  point.bump()
+  print(point)
+  log = []
+  for i in 0..<10000 { log.push("{i}") }
+  print(log.count(), log[9999])
+  print(fib(80), cache.count())
+  cache[1, default: 0] += 10
+  print(cache[1] ?? -1)
+  // What the test made, let go of (its leak check's).
+  log = []
+  cache = [:]
+}
+
+test "optionals and a throw in the middle of a change" {
+  current?.x = 3
+  print(current == none)
+  current = P(x: 1)
+  current?.x = 3
+  current?.bump()
+  print(current?.x ?? -1)
+  var tags = ["x"]
+  let r = try? outOfRange()
+  print(r == none, log)
+  tags.push("y")
+  print(tags)
+  current = none
+  log = []
+}
+
+// Output:
+// 2 ["a","b"] 5 10
+// 6 3
+// ok read and written by functions
+// {"x":6,"tags":["t"]}
+// 10000 9999
+// 23416728348467685 79
+// 10
+// ok changed in place
+// true
+// 4
+// true ["kept"]
+// ["x","y"]
+// ok optionals and a throw in the middle of a change

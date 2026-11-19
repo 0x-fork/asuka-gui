@@ -640,12 +640,13 @@ and constants.`,
 	InvalidDeclaration = def(Code{
 		Name:    "invalid-declaration",
 		Summary: "a declaration written in a form its place doesn't take",
-		Why: `A file's values don't change (what changes is ` + "`state`" + `), a type's
-constant is ` + "`let name = value`" + `, a component's ` + "`let`" + ` names one value, and a
-default can't read fields that aren't made yet.`,
-		Fix:   "Write it in the place's form: `state x = …` for a value that changes, `let name = value`.",
-		Wrong: "var visits = 0\n",
-		Right: "state visits = 0\n",
+		Why: `A type's constant is ` + "`let name = value`" + `, which doesn't change, and a
+generic type's is one for all its types, so its type can't name their
+parameters; a component's ` + "`let`" + ` names one value, and a default can't read
+fields that aren't made yet.`,
+		Fix:   "Write it in the place's form: `let name = value` for a type's constant, a `static fn` for one that needs the type's parameters.",
+		Wrong: "struct Money {\n  cents: int\n\n  var zero = 0\n}\n",
+		Right: "struct Money {\n  cents: int\n\n  let zero = 0\n}\n",
 	})
 
 	InvalidModifier = def(Code{
@@ -955,8 +956,8 @@ cycle of references, which is never freed.`,
 		Name:    "spawn-captures-state",
 		Summary: "`spawn` that reads or changes state, or what isn't a value",
 		Why: `` + "`spawn`" + ` runs its block on another thread, while the main thread goes on
-changing state; it takes values only, copied as it starts, and gives a
-value back.`,
+changing state and a file's vars; it takes values only, copied as it
+starts, and gives a value back.`,
 		Fix:   "Read the state into a `let` first, and pass that; assign what `spawn` returns.",
 		Wrong: "component Total {\n  state items: [int] = []\n  state sum = 0\n  task {\n    sum = await spawn { items.count() }\n  }\n  Text(\"{sum}\")\n}\n",
 		Right: "component Total {\n  state items: [int] = []\n  state sum = 0\n  task {\n    let xs = items\n    sum = await spawn { xs.count() }\n  }\n  Text(\"{sum}\")\n}\n",
@@ -965,9 +966,10 @@ value back.`,
 	WorkerCapturesState = def(Code{
 		Name:    "worker-captures-state",
 		Summary: "a worker that reads the main thread's state",
-		Why: `A worker runs on a thread of its own; state lives on the main thread
-and changes there. Its fns take what they need as values.`,
-		Fix:   "Read the state on the main thread and pass its value to a `pub fn`.",
+		Why: `A worker runs on a thread of its own; state and a file's vars live on
+the main thread and change there. Its fns take what they need as
+values.`,
+		Fix:   "Read the state (or the var) on the main thread and pass its value to a `pub fn`.",
 		Wrong: "state limit = 10\n\nworker Clamp {\n  pub fn cap(n: int) -> int = min(n, limit)\n}\n",
 		Right: "worker Clamp {\n  pub fn cap(n: int, limit: int) -> int = min(n, limit)\n}\n",
 	})

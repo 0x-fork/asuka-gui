@@ -6,20 +6,28 @@ An error the compiler reports: the program doesn't build until it's fixed.
 
 ## Why
 
-A file's values don't change (what changes is `state`), a type's constant is `let name = value`, a component's `let` names one value, and a default can't read fields that aren't made yet.
+A type's constant is `let name = value`, which doesn't change, and a generic type's is one for all its types, so its type can't name their parameters; a component's `let` names one value, and a default can't read fields that aren't made yet.
 
 ## How to fix
 
-Write it in the place's form: `state x = …` for a value that changes, `let name = value`.
+Write it in the place's form: `let name = value` for a type's constant, a `static fn` for one that needs the type's parameters.
 
 ## Wrong
 
 ```asuka
-var visits = 0
+struct Money {
+  cents: int
+
+  var zero = 0
+}
 ```
 
 ## Right
 
 ```asuka
-state visits = 0
+struct Money {
+  cents: int
+
+  let zero = 0
+}
 ```

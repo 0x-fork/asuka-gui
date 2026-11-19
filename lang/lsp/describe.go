@@ -522,8 +522,11 @@ func globalDecl(g *check.Global) string {
 		pub = "pub "
 	}
 	kw := "let"
-	if g.Kind == check.StateGlobal {
+	switch g.Kind {
+	case check.StateGlobal:
 		kw = "state"
+	case check.VarGlobal:
+		kw = "var"
 	}
 	name := g.Name()
 	if g.Owner != nil {

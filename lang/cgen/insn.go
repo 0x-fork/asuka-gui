@@ -83,6 +83,10 @@ func (g *gen) moveOp(name string, in insn) bool {
 		} else {
 			g.w("%s = M->globals[%d];", g.r(a[0]), a[1])
 		}
+	case "GTAKE":
+		// A file's var's reference moved out, none left in it, so a
+		// change of it in place copies nothing; GSET puts it back.
+		g.w("{ void *o_ = %s; %s = M->globals[%d].p; M->globals[%d].p = NULL; ak_release(o_); }", g.rp(a[0]), g.rp(a[0]), a[1], a[1])
 	case "GSET":
 		if bc.Kind(a[2]) == bc.KRef {
 			g.w("{ void *o_ = M->globals[%d].p; M->globals[%d].p = ak_retain(%s); ak_release(o_); }", a[0], a[0], g.rp(a[1]))

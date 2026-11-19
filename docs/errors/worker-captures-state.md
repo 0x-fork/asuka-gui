@@ -6,11 +6,11 @@ An error the compiler reports: the program doesn't build until it's fixed.
 
 ## Why
 
-A worker runs on a thread of its own; state lives on the main thread and changes there. Its fns take what they need as values.
+A worker runs on a thread of its own; state and a file's vars live on the main thread and change there. Its fns take what they need as values.
 
 ## How to fix
 
-Read the state on the main thread and pass its value to a `pub fn`.
+Read the state (or the var) on the main thread and pass its value to a `pub fn`.
 
 ## Wrong
 

@@ -636,7 +636,7 @@ func (l *Lowerer) global(g *check.Global) int {
 	}
 	i := len(l.mod.Globals)
 	k := bc.KRef
-	if g.Kind == check.ConstGlobal {
+	if g.Kind == check.ConstGlobal || g.Kind == check.VarGlobal {
 		k = l.kind(g.Type)
 	}
 	l.mod.Globals = append(l.mod.Globals, k)
@@ -672,7 +672,10 @@ func (l *Lowerer) initBody(b *fb) {
 			return v
 		}
 		mainOnly[g] = false // a cycle is the checker's error
-		v := g.Kind != check.ConstGlobal || !check.Sendable(g.Type)
+		// A file's var a spawn never reaches (the checker's), but one a
+		// let is made from is made in a worker as it is on the main
+		// thread, so the let is the same there.
+		v := g.Kind != check.ConstGlobal && g.Kind != check.VarGlobal || !check.Sendable(g.Type)
 		for _, d := range g.Deps() {
 			v = v || isMainOnly(d)
 		}
@@ -790,6 +793,10 @@ func (l *Lowerer) initGlobal(b *fb, g *check.Global) {
 		m := b.temp(bc.KRef)
 		b.emit(op("MEMO"), m, clos, int(l.kind(g.Type)))
 		b.emit(op("GSET"), slot, m, int(bc.KRef))
+	case check.VarGlobal:
+		// Not frozen: it's changed in place, as a local is.
+		k := l.kind(g.Type)
+		b.emit(op("GSET"), slot, b.valueReg(b.value(g.Value, -1), k), int(k))
 	default:
 		k := l.kind(g.Type)
 		v := b.valueReg(b.value(g.Value, -1), k)

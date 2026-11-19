@@ -614,10 +614,11 @@ func (c *Checker) collect(p *Package, d syntax.Decl) {
 			c.errorf(d.Pattern, diag.InvalidDeclaration, "a let at the top of a file names one value: let name = …")
 			return
 		}
+		kind := ConstGlobal
 		if d.Keyword == syntax.VAR {
-			c.errorf(d, diag.InvalidDeclaration, "a file's values don't change: a value that changes is state (state %s = …)", bp.Name.Name)
+			kind = VarGlobal
 		}
-		g := &Global{object: object{bp.Name.Name, bp.Name.Start}, Pkg: p, Kind: ConstGlobal, Decl: d, Value: d.Value, Pub: d.Pub.IsValid()}
+		g := &Global{object: object{bp.Name.Name, bp.Name.Start}, Pkg: p, Kind: kind, Decl: d, Value: d.Value, Pub: d.Pub.IsValid()}
 		p.Globals = append(p.Globals, g)
 		declare(bp.Name, g)
 	case *syntax.StyleDecl:

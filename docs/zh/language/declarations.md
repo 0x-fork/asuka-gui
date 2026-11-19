@@ -2,7 +2,7 @@
 
 ```asuka
 let pi = 3.14159             // 常量
-var total = 0                // 变量（在函数和处理函数中）
+var total = 0                // 变量
 state count = 0              // 状态：界面会跟随变化的值
 state shown = count          // 在被写入之前跟随 count：跟随的状态
 ```
@@ -10,6 +10,26 @@ state shown = count          // 在被写入之前跟随 count：跟随的状态
 类型会自动推断；在有助于阅读的地方可以写出来：`let ids: [int] = []`。
 
 `type` 在文件顶层给类型起一个名字：`type Pair<A, B> = (A, B)`、`type Check = fn(string) -> bool`。它只是同一个类型的别名：`Pair<int, string>` 就是 `(int, string)`。
+
+## 文件里的值
+
+在文件顶层，`let` 是常量，`state` 是应用的状态（见 [Stores](stores.md)），`var` 则是包里的变量：包里的任何代码都可以读取和修改它；如果是 `pub` 的，其他包也可以（`util.hits += 1`）。var 不是状态：读取它时拿到的是它当时的值，显示它的视图不会因为它改变而更新（那是 `state` 的用途）。它适合放视图不显示的东西：缓存、计数器、程序的设置。
+
+```asuka check
+var cache: [int: int] = [:]
+var lookups = 0
+
+fn fib(n: int) -> int {
+  lookups += 1
+  if n < 2 { return n }
+  if let v = cache[n] { return v }
+  let v = fib(n - 1) + fib(n - 2)
+  cache[n] = v
+  return v
+}
+```
+
+文件里的值在其他任何代码运行之前创建：一个包的值先于导入它的包的值，每个值都在它的初始化表达式读取的那些值之后创建（直接或间接读取自己是错误）。var 和局部变量一样原地修改：`cache[n] = v` 不会复制任何东西。它和状态一样属于主线程：`spawn` 的代码块和 [worker](async.md#worker) 都不能使用它，也不能调用使用它的函数（编译器会指出是哪个）；先把它读出来，再把值传进去。`asuka dev` 重新加载应用时，文件里的 var 会和 let 一样按初始化表达式重新创建；状态则保留原来的值。
 
 ## 结构体
 

@@ -1,3 +1,8 @@
+pub fn shout(s: string) -> string {
+  shouts += 1
+  return s.upper() + "!"
+}
 
-
-pub fn shout(s: string) -> string = s.upper() + "!"
+/// How many times shout was called: a file's var, which other packages
+/// read and change too.
+pub var shouts = 0

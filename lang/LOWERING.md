@@ -739,6 +739,16 @@ the indentation of its closing quotes' line from every line.
   Hot reload).
 - A top-level `let` that reads state is a memo global, made in init; one
   that doesn't is a constant.
+- A top-level `var` (check.VarGlobal) is a global of its kind, made in
+  init (not frozen) and read with GGET, written with GSET; changed in
+  place (`log.push(x)`, `cache[k] = v`, a mut fn) by GTAKE (the reference
+  moved out, none left), the change, GSET back, with a handler that puts
+  it back if the change throws, as a boxed var's VTAKE. A scalar, or a
+  change whose code may read the var, is GGET, change, GSET. It isn't
+  reactive (no cell), and the checker keeps spawn and workers from it
+  (check.touchesVars). On the web's spawn workers, a var a spawn could
+  never read is still made when it's a value, so the lets made from it
+  are the same there.
 - Constants of reference kind (string literals aside, which are already
   in the string table): a struct literal with constant fields, an array
   of constants, a struct's `let` (Font.title), are built once in init

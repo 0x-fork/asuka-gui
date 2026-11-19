@@ -246,9 +246,8 @@ struct S
 		},
 		{
 			name:  "var at the top level",
-			src:   "var n = 0\n",
-			errs:  []string{"1:1: a file has no variables: its mutable values are state (state x = …)"},
-			decls: 1,
+			src:   "var n = 0\npub var m: [int] = []\n",
+			decls: 2,
 		},
 		{
 			name:  "import after a declaration",

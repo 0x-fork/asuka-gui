@@ -936,10 +936,7 @@ func (p *parser) parseDecl() Decl {
 		d = p.parseStyleDecl(start)
 	case STATE:
 		d = p.parseState(start)
-	case LET:
-		d = p.parseLet(start)
-	case VAR:
-		p.error(p.pos, diag.InvalidDeclaration, "a file has no variables: its mutable values are state (state x = …)")
+	case LET, VAR:
 		d = p.parseLet(start)
 	case NATIVE:
 		native := p.pos

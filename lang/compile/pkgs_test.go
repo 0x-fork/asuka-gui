@@ -16,7 +16,7 @@ func TestPackages(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, err := runBoth(t, res.Module)
-	want := "#1 a\nHI!\n1\nok packages"
+	want := "#1 a\nHI!\n1\n11\nok packages"
 	if strings.TrimSpace(out) != want || err != nil {
 		t.Fatalf("got (%v):\n%s\nwant:\n%s", err, out, want)
 	}
