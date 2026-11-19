@@ -158,7 +158,7 @@ pub struct Time {
   }
 
   /// RFC 3339's form: 2026-03-07T15:04:05+01:00 (Z for UTC).
-  fn rfc3339() -> string = format(if nanosecond == 0 { "yyyy-MM-dd'T'HH:mm:ssXXX" } else { "yyyy-MM-dd'T'HH:mm:ss.SSSSSSSSSXXX" })
+  fn rfc3339() -> string = formatRFC3339(year, month, day, hour, minute, second, nanosecond, offset)
 }
 
 let nsPerSecond = 1_000_000_000
@@ -345,6 +345,7 @@ native fn zoneWallOffset(name: string, wall: int) -> int
 native fn localZoneName() -> string
 native fn zoneNames() -> [string]
 native fn formatFields(pattern: string, year: int, month: int, day: int, hour: int, minute: int, second: int, nanosecond: int, weekday: Weekday, offset: int, zone: string, unix: int) -> string
+native fn formatRFC3339(year: int, month: int, day: int, hour: int, minute: int, second: int, nanosecond: int, offset: int) -> string
 native fn parseRFC3339(s: string) throws -> [int]
 native fn parseDurationNanos(s: string) throws -> int
 native fn tzVersion() -> string
