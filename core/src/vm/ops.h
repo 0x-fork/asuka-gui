@@ -753,7 +753,7 @@ static inline bool ak_op_apush(ak_co *co, const ak_func *f, ak_closure *clos, ak
 // its C type, the compiler keeps the source's pointer in a register
 // and the loop retires two instructions fewer, but takes half again as
 // many cycles on Apple's M5 (bench/std's seq).
-static inline __attribute__((noinline, cold)) ak_arr *ak_op_append_slow(ak_arr *a, ak_val v) {
+__attribute__((noinline, cold, unused)) static ak_arr *ak_op_append_slow(ak_arr *a, ak_val v) {
 	ak_arr_push_slow(&a, v);
 	return a;
 }
