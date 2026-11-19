@@ -2,12 +2,13 @@
 
 How the compiler turns Asuka (docs/language/, RFC 0007's grammar) into
 bytecode (lang/bytecode) that the VM (core/src/vm) runs. Release builds
-compile that bytecode to C (lang/cgen): each function becomes a C
-function that calls the same instruction bodies the interpreter does
-(core/src/vm/ops.h); one that may suspend becomes a resumable one
-(below, Functions that suspend, in C). So the bytecode is the one
-contract, and both backends mean the same thing by it (core/vm_test.go
-runs every module both ways).
+compile that bytecode to C (lang/cgen): each function becomes C that
+does what the interpreter's bodies for its instructions do
+(core/src/vm/ops.h), on its registers as C locals (below, Release
+builds: C); one that may suspend becomes a resumable one (Functions
+that suspend, in C). So the bytecode is the one contract, and both
+backends mean the same thing by it (core/vm_test.go and lang/compile's
+programs run every module both ways).
 
 ## Pipeline
 
@@ -313,6 +314,50 @@ first, as a `return` runs a function's.
   AWAIT follows the CALLB. `await` of a call of an async function is
   that CALL; of a `Task<T>`, AWAIT. `await` of something that doesn't
   wait does nothing.
+
+## Release builds: C
+
+lang/cgen writes each function's bytecode as C a C compiler optimizes as
+it would a hand-written function's: what the interpreter decides as it
+runs (a register's kind, a field's, whether to release) is decided as
+the C is written, from the bytecode's kinds.
+
+- Registers. Each is a C local of its own (`ak_val r<n>`), which the C
+  compiler keeps in a machine register; a reference starts as none, and
+  the function's end releases its references, statically (a parameter
+  it only reads is borrowed: neither retained as it starts nor released
+  as it ends). What takes an argument block (a builtin, the VM, a
+  closure, CLOS's captures) gets a copy of the registers (`B_`), copied
+  back after a call, for what an inout callee changed; nothing takes a
+  register's address, so none is kept in memory. A function of more
+  than 384 registers (a big module's init) has them as an array, as the
+  VM's frame: C compilers take too long to allocate thousands of locals.
+- Calls. A synchronous function is two C functions: its body
+  (`fN_`), which takes its arguments as C values of their kinds (a mut
+  fn's receiver by its address), the depth of the calls it's in and the
+  thread's stack limit, and returns `ak_ret` (its result, and whether it
+  threw) in two machine registers; and its VM entry (`fN`, an
+  `ak_native_body`), which the interpreter, closures and builtins call.
+  A CALL of a compiled function calls its body: the depth past
+  AK_CG_DEPTH (the VM's frames' bound) or the C stack past its limit is
+  a stack overflow, the error a register's test. Other calls test the
+  thread's pending error (inline).
+- Instructions. Checked int arithmetic, comparisons, an index's range
+  and a value's uniqueness are tested inline (ops.h's value-based
+  bodies, the interpreter's too); a scalar element or field is read and
+  written as its C type. The pure math builtins (`math.sqrt`, `floor`,
+  `abs`...) are C expressions, not calls through the module's table.
+- Places (lang/cgen/places.go). Along a straight path (each instruction
+  the only way into the next): an element or a field read into a
+  register that only reads it before it's cleared, with nothing on the
+  way that calls or changes what it's in, is a borrowed C pointer (no
+  retain, no release; the register stays none, so an error on the way
+  releases nothing); an element taken out, changed by SETFs and put back
+  (Changing values in place) with nothing on the way that can throw is
+  changed where it is, the array and the element made unique there; a
+  take-out or a put-back is a move; and an array made unique, an index
+  checked or an element made unique stays known until something could
+  share, resize or replace it, so its checks aren't repeated.
 
 ## Functions that suspend, in C
 

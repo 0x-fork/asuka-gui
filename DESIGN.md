@@ -105,6 +105,18 @@ to the new types by field names), and keeps the native views that are
 still there. For release, `asuka build` compiles the app to C and links
 it with the core.
 
+Release code is C a C compiler optimizes as it would hand-written C
+(lang/LOWERING.md, Release builds: C): registers are C locals, kinds
+and releases are decided as the C is written, compiled functions call
+each other's bodies directly with their arguments as C values and their
+error in a returned register, and elements and fields are read through
+borrowed pointers and changed in place without reference counting. The
+heap objects whose size never changes (structs, enums, boxes, closures,
+arrays' and maps' headers) come from a thread's cache of freed blocks
+before malloc (core/src/base/small.c), and a release counts no
+allocations or live objects (tests and development builds do).
+bench/compiled times plain computation against Go, Zig and Bun.
+
 ### Platforms
 
 A compile is for one platform (lang/target: ios, android, macos,
@@ -1982,7 +1994,8 @@ asuka/
   template/          what `asuka new` copies
   examples/          apps in Asuka
   conformance/       what every host draws for the style props, measured
-  bench/             Asuka against SwiftUI and Compose
+  bench/             Asuka against SwiftUI and Compose; compiled/: plain
+                     computation compiled to C against Go, Zig and Bun
   e2e/               GUI tests on the simulator, the emulator, the
                      desktops and headless Chrome
 ```
