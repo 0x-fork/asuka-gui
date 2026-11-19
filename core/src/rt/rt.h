@@ -552,7 +552,17 @@ static inline void ak_arr_put(ak_arr *a, uint32_t i, ak_val v) {
 }
 // ak_arr_mut makes *a unique (copying it if it's shared) and returns it.
 ak_arr *ak_arr_mut(ak_arr **a);
-void ak_arr_push(ak_arr **a, ak_val v);              // takes v's reference
+void ak_arr_push_slow(ak_arr **a, ak_val v);
+// ak_arr_push appends v, taking its reference: inline when the array is
+// its holder's alone, has room, and holds values.
+static inline void ak_arr_push(ak_arr **ap, ak_val v) {
+	ak_arr *a = *ap;
+	if (AK_LIKELY(ak_unique(a) && a->len < a->cap && a->elem == AK_E_VAL)) {
+		((ak_val *)a->items)[a->len++] = v;
+		return;
+	}
+	ak_arr_push_slow(ap, v);
+}
 void ak_arr_reserve(ak_arr **a, uint32_t n);         // room for n more, made unique
 void ak_arr_insert(ak_arr **a, int64_t i, ak_val v); // takes v's reference
 ak_val ak_arr_remove_at(ak_arr **a, int64_t i);      // returns the reference
