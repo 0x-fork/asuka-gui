@@ -44,8 +44,10 @@ typedef struct {
 
 // A fill makes block cur from prev and ref: G(prev, ref), XORed into
 // what cur held (passes after the first) or written over it. Its
-// working copies are in tmp (two blocks), which its caller wipes once
-// it's done with them all.
+// working copies are in tmp (two blocks, 64-byte aligned: the vector
+// fills keep them as vectors, which a build that doesn't hold them all
+// in registers reads and writes with aligned instructions), which its
+// caller wipes once it's done with them all.
 typedef void fill_fn(blk *cur, const blk *prev, const blk *ref, bool xor_, blk tmp[2]);
 
 // ---- The portable C ----
@@ -321,7 +323,8 @@ static void segment(const job *a, uint32_t pass, uint32_t slice, uint32_t lane) 
 	const uint32_t seg = a->segment, lane_size = a->lane_size;
 	bool independent = a->algorithm == CRYPTO_ARGON2_I || (a->algorithm == CRYPTO_ARGON2_ID && pass == 0 && slice < 2);
 	uint32_t first = pass == 0 && slice == 0 ? 2 : 0, slice_offset = slice * seg;
-	blk input, addr, tmp[2];
+	blk input, addr;
+	_Alignas(64) blk tmp[2];
 	uint64_t ctr = 1;
 	blk *start = blocks + (size_t)lane * lane_size + slice_offset;
 	for (uint32_t b = first; b < seg; b++) {
