@@ -73,8 +73,9 @@
 // unknown filter is. Errors say where, as name:line:column.
 //
 // A template is parsed once into a Template and rendered as often as
-// asked: rendering reads the data as JSON (json.encode) and walks the
-// parsed template.
+// asked: rendering takes the data as a json.Value (what json.encode
+// writes of it, made directly) and walks the parsed template, its
+// filters and names found as it was parsed.
 
 import std/html
 import std/json
@@ -126,7 +127,10 @@ pub struct Template {
   /// printed), a filter given the wrong kind of value...
   ///
   ///   let page = try t.render(Page(title: "Home", items: items))
-  fn render<T>(data: T) throws -> string = try renderValue(try json.parse(try json.encode(data)))
+  fn render<T>(data: T) throws -> string {
+    let value: json.Value = data
+    return try renderValue(value)
+  }
 
   /// The template with data that's already a json.Value (an object).
   fn renderValue(data: json.Value) throws -> string {
@@ -149,7 +153,10 @@ pub struct Templates {
 
   /// The template of a name with data (Template.render's). It throws
   /// when there's no template of that name.
-  fn render<T>(name: string, data: T) throws -> string = try renderValue(name, try json.parse(try json.encode(data)))
+  fn render<T>(name: string, data: T) throws -> string {
+    let value: json.Value = data
+    return try renderValue(name, value)
+  }
 
   /// The template of a name with data that's a json.Value.
   fn renderValue(name: string, data: json.Value) throws -> string {
@@ -214,13 +221,12 @@ fn byName(name: string) -> Escape {
 enum Node {
   /// Text, as it is.
   text(string)
-  /// {{ expr }}.
-  out(Expr)
+  /// {{ expr }}, and where it is.
+  out(Expr, pos: int)
   /// {% if %}: the first branch whose condition holds, else otherwise.
   branch(conds: [(Expr, [Node])], otherwise: [Node])
-  /// {% for %}; loop: whether the body may read loop (loop.index...),
-  /// which is made only then.
-  each(key: string, value: string, items: Expr, body: [Node], otherwise: [Node], pos: int, loop: bool)
+  /// {% for %}.
+  each(key: string, value: string, items: Expr, body: [Node], otherwise: [Node], pos: int)
   /// {% set %}.
   assign(name: string, value: Expr)
   /// {% include %}, and the indentation of its line when it's alone
@@ -234,8 +240,8 @@ enum Node {
 
 /// An expression of a parsed template (render's).
 enum Expr {
-  /// A literal.
-  lit(json.Value)
+  /// A literal, as it evaluates.
+  lit(V)
   /// [a, b].
   list([Expr])
   /// A name.
@@ -250,8 +256,9 @@ enum Expr {
   negation(Expr)
   /// x op y: arithmetic, comparisons, in, and, or.
   op(string, Expr, Expr, pos: int)
-  /// x | f(args).
-  filter(Expr, string, [Expr], pos: int)
+  /// x | f(args): the filter's name, which built-in one that is, and
+  /// its arguments' values when they're all literals.
+  filter(Expr, string, Filter, [Expr], [V]?, pos: int)
   /// x is t(args), or is not.
   test(Expr, string, [Expr], bool, pos: int)
   /// a if cond else b.
@@ -319,8 +326,20 @@ struct Parser {
   piece: int
   blocks: [string: [Node]]
   closeAt: int = 0
+  // Each name's one string: the template's names are the same strings
+  // where they're the same name, so rendering compares them by their
+  // identity first.
+  names: [string: string] = [:]
 
   fn fail(pos: int, why: string) -> TemplateError = failure(name, src, pos, why)
+
+  mut fn intern(s: string) -> string {
+    if let x = names[s] {
+      return x
+    }
+    names[s] = s
+    return s
+  }
 
   fn byte(i: int) -> int = if i < b.count() { b[i] } else { -1 }
 
@@ -595,7 +614,7 @@ struct Parser {
         }
         let e = try expr()
         try done()
-        out.push(.out(e))
+        out.push(.out(e, pos: pos(e)))
         continue
       }
       if toks.isEmpty() || toks[0].kind != 0 {
@@ -671,7 +690,7 @@ struct Parser {
         let _ = ending()
       }
       try done()
-      return .each(key: key, value: value, items: items, body: body, otherwise: otherwise, pos: pos, loop: readsName(body, "loop"))
+      return .each(key: intern(key), value: intern(value), items: items, body: body, otherwise: otherwise, pos: pos)
     }
     if word == "set" {
       let n = try ident("the variable")
@@ -681,7 +700,7 @@ struct Parser {
       at += 1
       let e = try expr()
       try done()
-      return .assign(name: n, value: e)
+      return .assign(name: intern(n), value: e)
     }
     if word == "include" {
       let e = try expr()
@@ -761,7 +780,7 @@ struct Parser {
     if peekWord("if") {
       at += 1
       let cond = try orExpr()
-      var otherwise: Expr = .lit(.null)
+      var otherwise: Expr = .lit(.val(.null))
       if word2("else") {
         otherwise = try expr()
       }
@@ -877,7 +896,16 @@ struct Parser {
       if peek("(") {
         args = try arguments()
       }
-      e = .filter(e, n, args, pos: t.pos)
+      var known: [V]? = []
+      for a in args {
+        if let .lit(v) = a {
+          known?.push(v)
+        } else {
+          known = none
+          break
+        }
+      }
+      e = .filter(e, n, filterNamed(n), args, known, pos: t.pos)
     }
     return e
   }
@@ -905,7 +933,7 @@ struct Parser {
         if t.kind == 1 {
           // xs.0, as Jinja reads it.
           at += 1
-          e = .item(e, .lit(.int(t.text.toInt() ?? 0)), pos: t.pos)
+          e = .item(e, .lit(.val(.int(t.text.toInt() ?? 0))), pos: t.pos)
           continue
         }
         let n = try ident("a field")
@@ -927,28 +955,28 @@ struct Parser {
     let t = tok()
     at += 1
     if t.kind == 1 {
-      return .lit(.int(t.text.toInt() ?? throw fail(t.pos, "{t.text} is too large for an int")))
+      return .lit(.val(.int(t.text.toInt() ?? throw fail(t.pos, "{t.text} is too large for an int"))))
     }
     if t.kind == 2 {
-      return .lit(.float(t.text.toFloat() ?? 0))
+      return .lit(.val(.float(t.text.toFloat() ?? 0)))
     }
     if t.kind == 3 {
-      return .lit(.string(t.text))
+      return .lit(.val(.string(t.text)))
     }
     if t.kind == 0 {
       if t.text == "true" || t.text == "True" {
-        return .lit(.bool(true))
+        return .lit(.val(.bool(true)))
       }
       if t.text == "false" || t.text == "False" {
-        return .lit(.bool(false))
+        return .lit(.val(.bool(false)))
       }
       if t.text == "none" || t.text == "None" || t.text == "null" {
-        return .lit(.null)
+        return .lit(.val(.null))
       }
       if peek("(") {
         return .call(t.text, try arguments(), pos: t.pos)
       }
-      return .name(t.text, pos: t.pos)
+      return .name(intern(t.text), pos: t.pos)
     }
     if t.kind == 4 && t.text == "(" {
       let e = try expr()
@@ -1008,13 +1036,122 @@ fn dropFirstLineEnd(text: string) -> string {
 
 // ---------------------------------------------------------------------
 // Rendering
+//
+// A template renders as its parse left it: the nodes walked once each,
+// in order, their text pushed onto one list of the output's pieces,
+// joined at the end. What a template's names are bound to is a stack
+// of bindings (a name, its value): a loop or an include binds on top of
+// it and takes its own off as it ends, and {% set %} binds in the
+// innermost loop's or include's part of it (or the template's), so a
+// name is the topmost binding of it, else the data's member. A loop
+// binds its variables once and changes their values in place each
+// time round; its loop variable is its index and length, a map only
+// when it's read whole, so a loop costs nothing a time round but its
+// body. Filters are known by their names as the template is parsed.
 
 // A value as a template computes it: the data's, a name the data hasn't
-// (what it was called), or markup that's escaped already.
+// (what it was called), or markup that's escaped already. loop(slot,
+// length) is a loop's loop variable while it runs: its index (from 0)
+// is the renderer's loops[slot], changed in place each time round; its
+// fields are read straight from it, and it's made a map (loopMap) for
+// anything else.
 enum V {
   missing(string)
   val(json.Value)
   safe(string)
+  loop(int, int)
+}
+
+// The built-in filters, as a filter's name says which (filterNamed):
+// unknown for one that isn't.
+enum Filter {
+  unknown
+  fallback
+  upper
+  lower
+  capitalize
+  title
+  trim
+  indent
+  truncate
+  replace
+  striptags
+  safe
+  escape
+  urlencode
+  json
+  string
+  int
+  float
+  abs
+  round
+  fixed
+  length
+  first
+  last
+  reverse
+  keys
+  values
+  items
+  split
+  lines
+  join
+  map
+  selectattr
+  rejectattr
+  sort
+  unique
+  sum
+  min
+  max
+  batch
+}
+
+fn filterNamed(name: string) -> Filter = match name {
+  "default" => .fallback
+  "d" => .fallback
+  "upper" => .upper
+  "lower" => .lower
+  "capitalize" => .capitalize
+  "title" => .title
+  "trim" => .trim
+  "indent" => .indent
+  "truncate" => .truncate
+  "replace" => .replace
+  "striptags" => .striptags
+  "safe" => .safe
+  "escape" => .escape
+  "e" => .escape
+  "urlencode" => .urlencode
+  "json" => .json
+  "tojson" => .json
+  "string" => .string
+  "int" => .int
+  "float" => .float
+  "abs" => .abs
+  "round" => .round
+  "fixed" => .fixed
+  "length" => .length
+  "count" => .length
+  "first" => .first
+  "last" => .last
+  "reverse" => .reverse
+  "keys" => .keys
+  "values" => .values
+  "items" => .items
+  "split" => .split
+  "lines" => .lines
+  "join" => .join
+  "map" => .map
+  "selectattr" => .selectattr
+  "rejectattr" => .rejectattr
+  "sort" => .sort
+  "unique" => .unique
+  "sum" => .sum
+  "min" => .min
+  "max" => .max
+  "batch" => .batch
+  _ => .unknown
 }
 
 // A block being rendered: the bodies that define it, the most derived
@@ -1030,18 +1167,27 @@ struct Renderer {
   templates: [string: Template]
   filters: [string: fn(json.Value, [json.Value]) throws -> json.Value]
   out: [string] = []
-  scopes: [[string: V]] = []
+  // The data's members: the names nothing binds.
+  data: [string: json.Value] = [:]
+  // The bindings, a name and its value each, the innermost last.
+  names: [string] = []
+  vals: [V] = []
+  // Where the innermost loop's or include's bindings start ({% set %}'s),
+  // and where the loops' around it start.
+  scope: int = 0
+  scopes: [int] = []
+  // The loops running's indexes, the innermost last.
+  loops: [int] = []
   chain: [Template] = []
   blocks: [BlockAt] = []
   depth: int = 0
 
-  mut fn top(t: Template, data: json.Value) throws -> string {
-    let vars: [string: V] = match data {
-      .object(members) => members.mapValues(v => V.val(v))
-      .null => [:]
-      _ => throw failure(t.name, t.source, 0, "the data is {kind(.val(data))}, not a struct or a map")
+  mut fn top(t: Template, input: json.Value) throws -> string {
+    match input {
+      .object(members) => data = members
+      .null => {}
+      _ => throw failure(t.name, t.source, 0, "the data is {kind(.val(input))}, not a struct or a map")
     }
-    scopes = [vars]
     try render(t)
     return out.joined()
   }
@@ -1056,6 +1202,13 @@ struct Renderer {
     depth += 1
     defer {
       depth -= 1
+    }
+    if t.parent == none {
+      let saved = chain
+      chain = [t]
+      try nodes(t, t.nodes)
+      chain = saved
+      return
     }
     var c = [t]
     var names: Set<string> = [t.name]
@@ -1082,64 +1235,94 @@ struct Renderer {
     return textOf(v) ?? throw fail(t, pos(e), "a template's name is a string, not {kind(v)}")
   }
 
+  // bind binds name to v where {% set %} does: its binding in the
+  // innermost scope changed, or a new one.
+  mut fn bind(name: string, v: V) {
+    var i = names.count() - 1
+    while i >= scope {
+      if names[i] == name {
+        vals[i] = v
+        return
+      }
+      i -= 1
+    }
+    names.push(name)
+    vals.push(v)
+  }
+
+  // unbind takes the bindings from at on off.
+  mut fn unbind(at: int) {
+    while names.count() > at {
+      let _ = names.pop()
+      let _ = vals.pop()
+    }
+  }
+
+  // nodes renders ns. What's rendered most (text, {{ }}, if, for, set)
+  // is here; the rest in functions of their own, so that this one stays
+  // small (a compiled function's frame is all its registers').
   mut fn nodes(t: Template, ns: [Node]) throws {
     for n in ns {
       match n {
         .text(s) => out.push(s)
-        .out(e) => out.push(try shown(t, try eval(t, e), pos(e)))
-        .branch(conds, otherwise) => {
-          var done = false
-          for (c, body) in conds {
-            if truthy(try eval(t, c)) {
-              try nodes(t, body)
-              done = true
-              break
-            }
-          }
-          if !done {
-            try nodes(t, otherwise)
-          }
-        }
-        .each(key, value, items, body, otherwise, at, usesLoop) => try loop(t, key, value, try eval(t, items), body, otherwise, pos(items), usesLoop)
-        .assign(name, value) => {
-          let v = try eval(t, value)
-          scopes[scopes.count() - 1][name] = v
-        }
-        .include(e, at, indent) => {
-          let name = try nameOf(t, e)
-          let other = templates[name] ?? throw fail(t, at, "no template named {name} to include")
-          scopes.push([:])
-          if indent.isEmpty() {
-            try render(other)
-          } else {
-            // Alone on an indented line: each line it writes indented.
-            let saved = out
-            out = []
-            try render(other)
-            let text = out.joined()
-            out = saved
-            var lines: [string] = []
-            for l in text.split("\n") {
-              lines.push(if l.isEmpty() { l } else { indent + l })
-            }
-            out.push(lines.joined(separator: "\n"))
-          }
-          let _ = scopes.pop()
-        }
-        .block(name, body) => {
-          var bodies: [(Template, [Node])] = []
-          for c in chain {
-            if let b = c.blocks[name] {
-              bodies.push((c, b))
-            }
-          }
-          if bodies.isEmpty() {
-            bodies = [(t, body)]
-          }
-          try block(BlockAt(bodies: bodies, index: 0))
-        }
-        .extends(_) => {}
+        .out(e, at) => out.push(try shown(t, try eval(t, e), at))
+        .branch(conds, otherwise) => try branch(t, conds, otherwise)
+        .each(key, value, items, body, otherwise, at) => try loop(t, key, value, try eval(t, items), body, otherwise, pos(items))
+        .assign(name, value) => bind(name, try eval(t, value))
+        _ => try statement(t, n)
       }
+    }
+  }
+
+  mut fn branch(t: Template, conds: [(Expr, [Node])], otherwise: [Node]) throws {
+    for (c, body) in conds {
+      if truthy(try eval(t, c)) {
+        try nodes(t, body)
+        return
+      }
+    }
+    try nodes(t, otherwise)
+  }
+
+  // statement renders an include or a block.
+  mut fn statement(t: Template, n: Node) throws {
+    match n {
+      .include(e, at, indent) => {
+        let name = try nameOf(t, e)
+        let other = templates[name] ?? throw fail(t, at, "no template named {name} to include")
+        let saved = scope
+        scope = names.count()
+        if indent.isEmpty() {
+          try render(other)
+        } else {
+          // Alone on an indented line: each line it writes indented.
+          let before = out
+          out = []
+          try render(other)
+          let text = out.joined()
+          out = before
+          var lines: [string] = []
+          for l in text.split("\n") {
+            lines.push(if l.isEmpty() { l } else { indent + l })
+          }
+          out.push(lines.joined(separator: "\n"))
+        }
+        unbind(scope)
+        scope = saved
+      }
+      .block(name, body) => {
+        var bodies: [(Template, [Node])] = []
+        for c in chain {
+          if let b = c.blocks[name] {
+            bodies.push((c, b))
+          }
+        }
+        if bodies.isEmpty() {
+          bodies = [(t, body)]
+        }
+        try block(BlockAt(bodies: bodies, index: 0))
+      }
+      _ => {}
     }
   }
 
@@ -1150,107 +1333,207 @@ struct Renderer {
     let _ = blocks.pop()
   }
 
-  mut fn loop(t: Template, key: string, value: string, items: V, body: [Node], otherwise: [Node], at: int, usesLoop: bool) throws {
-    var pairs: [(V, V)] = []
+  // loop runs a for's body once an item. Its variables are bound once,
+  // in a scope of their own, which lasts to the loop's end: what {% set
+  // %} sets in it lasts across its times round.
+  mut fn loop(t: Template, key: string, value: string, items: V, body: [Node], otherwise: [Node], at: int) throws {
     match items {
       .val(.array(xs)) => {
-        for x in xs {
-          pairs.push((V.val(.null), V.val(x)))
+        if xs.isEmpty() {
+          try nodes(t, otherwise)
+          return
         }
+        let n = xs.count()
+        let base = enter(key, value, n)
+        var i = 0
+        while i < n {
+          loops[loops.count() - 1] = i
+          if key.isEmpty() {
+            vals[base + 1] = .val(xs[i])
+          } else {
+            // for a, b in pairs: each element an array of two.
+            match xs[i] {
+              .array(two) => {
+                vals[base + 1] = .val(two.get(0) ?? .null)
+                vals[base + 2] = .val(two.get(1) ?? .null)
+              }
+              _ => throw fail(t, at, "for {key}, {value} in an array: each element is a pair ([a, b]), not {kind(.val(xs[i]))}")
+            }
+          }
+          try nodes(t, body)
+          i += 1
+        }
+        leave(base)
       }
       .val(.object(members)) => {
+        if members.isEmpty() {
+          try nodes(t, otherwise)
+          return
+        }
+        let n = members.count()
+        let base = enter(key, value, n)
+        var i = 0
         for (k, v) in members {
-          pairs.push((V.val(.string(k)), V.val(v)))
+          loops[loops.count() - 1] = i
+          if key.isEmpty() {
+            vals[base + 1] = .val(.string(k))
+          } else {
+            vals[base + 1] = .val(.string(k))
+            vals[base + 2] = .val(v)
+          }
+          try nodes(t, body)
+          i += 1
         }
+        leave(base)
       }
-      .val(.string(s)) => {
-        for ch in s.chars() {
-          pairs.push((V.val(.null), V.val(.string("{ch}"))))
-        }
-      }
-      .safe(s) => {
-        for ch in s.chars() {
-          pairs.push((V.val(.null), V.val(.string("{ch}"))))
-        }
-      }
-      .val(.null) => {}
+      .val(.string(s)) => try chars(t, key, value, s, body, otherwise, at)
+      .safe(s) => try chars(t, key, value, s, body, otherwise, at)
+      .val(.null) => try nodes(t, otherwise)
       _ => throw fail(t, at, "a loop goes over an array or a map, not {kind(items)}")
     }
-    if pairs.isEmpty() {
+  }
+
+  // A loop over a string goes over its characters, each a string.
+  mut fn chars(t: Template, key: string, value: string, s: string, body: [Node], otherwise: [Node], at: int) throws {
+    let cs = s.chars()
+    if cs.isEmpty() {
       try nodes(t, otherwise)
       return
     }
-    let n = pairs.count()
-    let isMap = if let .val(.object(_)) = items { true } else { false }
-    // One scope for the loop: what {% set %} sets in it lasts to the
-    // loop's end, across its iterations.
-    scopes.push([:])
-    let top = scopes.count() - 1
-    for (i, (k, v)) in pairs.enumerated() {
-      var vars: [string: V] = [:]
-      if usesLoop {
-        vars["loop"] = .val(.object(["index": .int(i + 1), "index0": .int(i), "revindex": .int(n - i), "revindex0": .int(n - i - 1), "first": .bool(i == 0), "last": .bool(i == n - 1), "length": .int(n)]))
-      }
-      if key.isEmpty() {
-        vars[value] = if isMap { k } else { v }
-      } else if isMap {
-        vars[key] = k
-        vars[value] = v
-      } else {
-        // for a, b in pairs: each element an array of two.
-        match v {
-          .val(.array(two)) => {
-            vars[key] = .val(two.get(0) ?? .null)
-            vars[value] = .val(two.get(1) ?? .null)
-          }
-          _ => throw fail(t, at, "for {key}, {value} in an array: each element is a pair ([a, b]), not {kind(v)}")
-        }
-      }
-      for (name, x) in vars {
-        scopes[top][name] = x
-      }
-      try nodes(t, body)
+    if !key.isEmpty() {
+      throw fail(t, at, "for {key}, {value} in an array: each element is a pair ([a, b]), not a string")
     }
-    let _ = scopes.pop()
+    let n = cs.count()
+    let base = enter(key, value, n)
+    var i = 0
+    while i < n {
+      loops[loops.count() - 1] = i
+      vals[base + 1] = .val(.string("{cs[i]}"))
+      try nodes(t, body)
+      i += 1
+    }
+    leave(base)
+  }
+
+  // enter binds a loop's variables in a scope of their own: loop, then
+  // key (if it has one) and value; it's where they are.
+  mut fn enter(key: string, value: string, n: int) -> int {
+    let base = names.count()
+    names.push(loopName)
+    vals.push(.loop(loops.count(), n))
+    loops.push(0)
+    if !key.isEmpty() {
+      names.push(key)
+      vals.push(.val(.null))
+    }
+    names.push(value)
+    vals.push(.val(.null))
+    scopes.push(scope)
+    scope = base
+    return base
+  }
+
+  mut fn leave(base: int) {
+    let _ = loops.pop()
+    unbind(base)
+    scope = scopes.pop() ?? 0
   }
 
   // shown is what {{ }} writes of v: escaped, where the output is HTML
   // and v isn't markup.
-  fn shown(t: Template, v: V, at: int) throws -> string = match v {
+  fn shown(t: Template, v: V, at: int) throws -> string {
+    if t.escape == .none {
+      if let .val(.string(s)) = v {
+        return s
+      }
+    }
+    return try showing(t, v, at)
+  }
+
+  fn showing(t: Template, v: V, at: int) throws -> string = match v {
     .missing(what) => throw fail(t, at, "{what} is undefined (| default(…) gives it a value)")
     .safe(s) => s
     .val(j) => if t.escape == .html { html.escape(text(j)) } else { text(j) }
+    .loop(k, n) => try showing(t, .val(loopMap(loops[k], n)), at)
   }
 
-  fn lookup(name: string) -> V {
-    var i = scopes.count() - 1
+  // find is name's binding, or the data's member; .loop as a loop
+  // binds it.
+  fn find(name: string) -> V {
+    let ns = names
+    var i = ns.count() - 1
     while i >= 0 {
-      if let v = scopes[i][name] {
-        return v
+      if ns[i] == name {
+        return vals[i]
       }
       i -= 1
+    }
+    if let j = data[name] {
+      return .val(j)
     }
     return .missing(name)
   }
 
+  fn lookup(name: string) -> V = match find(name) {
+    .loop(k, n) => .val(loopMap(loops[k], n))
+    v => v
+  }
+
+  // eval is what e computes. The expressions a template has most (a
+  // literal, a name, a field, a filter) are here, the rest in compute.
   mut fn eval(t: Template, e: Expr) throws -> V {
     match e {
-      .lit(v) => return .val(v)
+      .lit(v) => return v
+      .name(n, _) => return lookup(n)
+      .attr(x, f, at) => return try attr(t, x, f, at)
+      .filter(x, name, f, args, known, at) => {
+        if let vs = known {
+          return try filter(t, name, f, try eval(t, x), vs, at, x)
+        }
+        return try piped(t, x, name, f, args, at)
+      }
+      _ => return try compute(t, e)
+    }
+  }
+
+  // attr is x.f.
+  mut fn attr(t: Template, x: Expr, f: string, at: int) throws -> V {
+    let v = if let .name(n, _) = x { find(n) } else { try eval(t, x) }
+    if let .val(.object(members)) = v {
+      if let m = members[f] {
+        return .val(m)
+      }
+    }
+    return try fieldOf(t, v, x, f, at)
+  }
+
+  // fieldOf is x.f of what isn't a map that has it.
+  fn fieldOf(t: Template, v: V, x: Expr, f: string, at: int) throws -> V {
+    return match v {
+      .val(.object(_)) => V.missing("{describe(x)}.{f}")
+      .loop(k, n) => if let m = loopField(loops[k], n, f) { V.val(m) } else { V.missing("{describe(x)}.{f}") }
+      .missing(what) => throw fail(t, pos(x), "{what} is undefined")
+      _ => throw fail(t, at, "{describe(x)} is {kind(v)}: it has no field {f}")
+    }
+  }
+
+  // piped is x | name(args): the arguments first, then x.
+  mut fn piped(t: Template, x: Expr, name: string, f: Filter, args: [Expr], at: int) throws -> V {
+    var vs: [V] = []
+    for a in args {
+      vs.push(try eval(t, a))
+    }
+    return try filter(t, name, f, try eval(t, x), vs, at, x)
+  }
+
+  mut fn compute(t: Template, e: Expr) throws -> V {
+    match e {
       .list(items) => {
         var xs: [json.Value] = []
         for x in items {
           xs.push(try plain(t, try eval(t, x), pos(x)))
         }
         return .val(.array(xs))
-      }
-      .name(n, _) => return lookup(n)
-      .attr(x, f, at) => {
-        let v = try eval(t, x)
-        return match v {
-          .val(.object(members)) => if let m = members[f] { V.val(m) } else { V.missing("{describe(x)}.{f}") }
-          .missing(what) => throw fail(t, pos(x), "{what} is undefined")
-          _ => throw fail(t, at, "{describe(x)} is {kind(v)}: it has no field {f}")
-        }
       }
       .item(x, k, at) => {
         let v = try eval(t, x)
@@ -1285,13 +1568,6 @@ struct Renderer {
         }
         return try binary(t, o, try eval(t, a), try eval(t, b), at, a, b)
       }
-      .filter(x, name, args, at) => {
-        var vs: [V] = []
-        for a in args {
-          vs.push(try eval(t, a))
-        }
-        return try filter(t, name, try eval(t, x), vs, at, x)
-      }
       .test(x, name, args, negate, at) => {
         var vs: [V] = []
         for a in args {
@@ -1308,6 +1584,7 @@ struct Renderer {
         }
         return try call(t, name, vs, at)
       }
+      _ => return try eval(t, e)
     }
   }
 
@@ -1356,12 +1633,14 @@ struct Renderer {
   // program's).
   fn plain(t: Template, v: V, at: int) throws -> json.Value = match v {
     .missing(what) => throw fail(t, at, "{what} is undefined")
+    .loop(k, n) => loopMap(loops[k], n)
     .safe(s) => json.Value.string(s)
     .val(j) => j
   }
 
   fn str(t: Template, v: V, at: int) throws -> string = match v {
     .missing(what) => throw fail(t, at, "{what} is undefined")
+    .loop(k, n) => text(loopMap(loops[k], n))
     .safe(s) => s
     .val(j) => text(j)
   }
@@ -1459,31 +1738,47 @@ struct Renderer {
 
   // ---- Filters ----
 
-  mut fn filter(t: Template, name: string, v: V, args: [V], at: int, x: Expr) throws -> V {
-    if let f = filters[name] {
-      var js: [json.Value] = []
-      for a in args {
-        js.push(try plain(t, a, at))
-      }
-      let input = try plain(t, v, pos(x))
-      let r = try f(input, js) catch e {
-        throw fail(t, at, "{name}: {e.message}")
-      }
-      return .val(r)
+  mut fn filter(t: Template, name: string, f: Filter, v: V, args: [V], at: int, x: Expr) throws -> V {
+    if !filters.isEmpty() && filters.has(name) {
+      return try own(t, name, v, args, at, x)
     }
-    if name == "default" || name == "d" {
-      let fallback = args.get(0) ?? V.val(.string(""))
-      let falsy = if let .val(.bool(true)) = args.get(1) { true } else { false }
-      return match v {
-        .missing(_) => fallback
-        .val(.null) => fallback
-        _ => if falsy && !truthy(v) { fallback } else { v }
-      }
+    if f == .fallback {
+      return fallback(v, args)
     }
-    if let .missing(what) = v {
-      throw fail(t, pos(x), "{what} is undefined (| default(…) gives it a value)")
+    if let .missing(_) = v {
+      throw undefined(t, v, x)
     }
-    return try builtin(t, name, v, args, at)
+    return try builtin(t, name, f, v, args, at)
+  }
+
+  // fallback is default(value, falsy) of v.
+  fn fallback(v: V, args: [V]) -> V {
+    let other = args.get(0) ?? V.val(.string(""))
+    let falsy = if let .val(.bool(true)) = args.get(1) { true } else { false }
+    return match v {
+      .missing(_) => other
+      .val(.null) => other
+      _ => if falsy && !truthy(v) { other } else { v }
+    }
+  }
+
+  fn undefined(t: Template, v: V, x: Expr) -> TemplateError {
+    let what = if let .missing(w) = v { w } else { "" }
+    return fail(t, pos(x), "{what} is undefined (| default(…) gives it a value)")
+  }
+
+  // own applies the program's filter of the name.
+  fn own(t: Template, name: string, v: V, args: [V], at: int, x: Expr) throws -> V {
+    let f = filters[name]!
+    var js: [json.Value] = []
+    for a in args {
+      js.push(try plain(t, a, at))
+    }
+    let input = try plain(t, v, pos(x))
+    let r = try f(input, js) catch e {
+      throw fail(t, at, "{name}: {e.message}")
+    }
+    return .val(r)
   }
 
   fn sArg(t: Template, args: [V], i: int, name: string, fallback: string) throws -> string {
@@ -1500,23 +1795,119 @@ struct Renderer {
     return fallback
   }
 
-  fn builtin(t: Template, name: string, v: V, args: [V], at: int) throws -> V {
-    let which = filterNames[name] ?? .unknown
-    // What takes text and gives text: markup stays markup.
-    if [Filter.upper, Filter.lower, Filter.capitalize, Filter.title, Filter.trim, Filter.indent, Filter.truncate, Filter.replace, Filter.striptags].contains(which) {
-      let s = try str(t, v, at)
-      var out = s
-      if which == .upper {
-        out = s.upper()
-      } else if which == .lower {
-        out = s.lower()
-      } else if which == .capitalize {
-        out = capitalize(s)
-      } else if which == .title {
-        out = s.split(" ").map(w => w.split("-").map(capitalize).joined(separator: "-")).joined(separator: " ")
-      } else if which == .trim {
-        out = s.trim()
-      } else if which == .indent {
+  // builtin applies a built-in filter: the ones a template uses most
+  // here, the rest in builtinMore.
+  fn builtin(t: Template, name: string, f: Filter, v: V, args: [V], at: int) throws -> V {
+    match f {
+      // What takes text and gives text: markup stays markup.
+      .upper => return textual(v, (try str(t, v, at)).upper())
+      .lower => return textual(v, (try str(t, v, at)).lower())
+      .capitalize | .title | .trim | .indent | .truncate | .replace => return textual(v, try textFilter(t, name, f, try str(t, v, at), args, at))
+      .fixed => return try fixed(t, name, v, args, at)
+      .join => return try join(t, name, v, args, at)
+      _ => return try builtinMore(t, name, f, v, args, at)
+    }
+  }
+
+  fn builtinMore(t: Template, name: string, f: Filter, v: V, args: [V], at: int) throws -> V {
+    match f {
+      .striptags => return .val(.string(stripTags(try str(t, v, at))))
+      .safe => return .safe(try str(t, v, at))
+      .escape => return if isSafe(v) { v } else { .safe(html.escape(try str(t, v, at))) }
+      .urlencode => return .val(.string(url.escape(try str(t, v, at))))
+      .json => {
+        let j = try plain(t, v, at)
+        var s = if let n = args.get(0) { try encodeIndented(j, try intOf(t, n, at, "json")) } else { json.encode(j) }
+        if t.escape == .html {
+          // Safe in a <script> and in an attribute in single quotes.
+          s = s.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026").replace("'", "\\u0027")
+          return .safe(s)
+        }
+        return .val(.string(s))
+      }
+      .string => return .val(.string(try str(t, v, at)))
+      .int => return .val(.int(match v {
+        .val(.int(n)) => n
+        .val(.float(f)) => int(f)
+        .val(.bool(b)) => if b { 1 } else { 0 }
+        _ => if let text = textOf(v) { text.trim().toInt() ?? (if let f = text.trim().toFloat() { int(f) } else { try iArg(t, args, 0, name, 0) }) } else { try iArg(t, args, 0, name, 0) }
+      }))
+      .float => return .val(.float(match v {
+        .val(.int(n)) => float(n)
+        .val(.float(f)) => f
+        _ => if let text = textOf(v) { text.trim().toFloat() ?? 0 } else { 0 }
+      }))
+      .abs => return match v {
+        .val(.int(n)) => V.val(.int(n.multipliedChecked(if n < 0 { -1 } else { 1 }) ?? throw fail(t, at, "integer overflow")))
+        .val(.float(f)) => V.val(.float(f.abs()))
+        _ => throw fail(t, at, "abs needs a number, not {kind(v)}")
+      }
+      .round => {
+        let x = number(v) ?? throw fail(t, at, "{name} needs a number, not {kind(v)}")
+        let digits = try iArg(t, args, 0, name, 0)
+        var scale = 1.0
+        for _ in 0..<min(max(digits, 0), 20) {
+          scale *= 10
+        }
+        let r = if x < 0 { -((-x * scale + 0.5).floor()) / scale } else { (x * scale + 0.5).floor() / scale }
+        return .val(.float(r))
+      }
+      .length => return .val(.int(match v {
+        .val(.string(s)) => s.count()
+        .safe(s) => s.count()
+        .val(.array(xs)) => xs.count()
+        .val(.object(m)) => m.count()
+        _ => throw fail(t, at, "length needs a string, an array or a map, not {kind(v)}")
+      }))
+      .first | .last => {
+        let first = f == .first
+        return match v {
+          .val(.array(xs)) => if let x = (if first { xs.first() } else { xs.last() }) { V.val(x) } else { V.missing("the {name} of an empty array") }
+          .val(.string(s)) => V.val(.string(if s.isEmpty() { "" } else if first { s.graphemes()[0] } else { s.graphemes().last() ?? "" }))
+          _ => throw fail(t, at, "{name} needs an array or a string, not {kind(v)}")
+        }
+      }
+      .reverse => return match v {
+        .val(.array(xs)) => V.val(.array(xs.reversed()))
+        .val(.string(s)) => V.val(.string(s.graphemes().reversed().joined()))
+        _ => throw fail(t, at, "reverse needs an array or a string, not {kind(v)}")
+      }
+      .keys | .values | .items => {
+        let m = match v {
+          .val(.object(m)) => m
+          _ => throw fail(t, at, "{name} needs a map, not {kind(v)}")
+        }
+        if f == .keys {
+          return .val(.array(m.keys().map(k => json.Value.string(k))))
+        }
+        if f == .values {
+          return .val(.array(m.values()))
+        }
+        return .val(.array(m.keys().map(k => json.Value.array([.string(k), m[k] ?? .null]))))
+      }
+      .split => {
+        let s = try str(t, v, at)
+        let parts = if let sep = args.get(0) { s.split(try str(t, sep, at)) } else { s.fields() }
+        return .val(.array(parts.map(p => json.Value.string(p))))
+      }
+      .lines => return .val(.array((try str(t, v, at)).lines().map(p => json.Value.string(p))))
+      .unknown | .fallback => throw fail(t, at, "unknown filter {name}")
+      _ => return try arrayFilter(t, name, f, v, args, at)
+    }
+  }
+
+  // textual is a text filter's result, out, of v: markup if v is.
+  fn textual(v: V, out: string) -> V = if isSafe(v) { .safe(out) } else { .val(.string(out)) }
+
+  // textFilter is what a filter that takes text and gives text makes of s.
+  fn textFilter(t: Template, name: string, f: Filter, s: string, args: [V], at: int) throws -> string {
+    match f {
+      .upper => return s.upper()
+      .lower => return s.lower()
+      .capitalize => return capitalize(s)
+      .title => return s.split(" ").map(w => w.split("-").map(capitalize).joined(separator: "-")).joined(separator: " ")
+      .trim => return s.trim()
+      .indent => {
         // indent(width = 4, first = false): the lines after the first
         // (and the first, if first), the blank ones left as they are.
         let pad = match args.get(0) {
@@ -1528,222 +1919,146 @@ struct Renderer {
         for (i, l) in s.split("\n").enumerated() {
           lines.push(if (i > 0 || first) && !l.trim().isEmpty() { pad + l } else { l })
         }
-        out = lines.joined(separator: "\n")
-      } else if which == .truncate {
+        return lines.joined(separator: "\n")
+      }
+      .truncate => {
         // truncate(length = 255, end = "…"): in grapheme clusters.
         let n = try iArg(t, args, 0, "truncate", 255)
         let end = try sArg(t, args, 1, "truncate", "…")
         let gs = s.graphemes()
         if gs.count() > n {
-          out = gs.prefix(max(n - end.graphemes().count(), 0)).joined().trimEnd() + end
+          return gs.prefix(max(n - end.graphemes().count(), 0)).joined().trimEnd() + end
         }
-      } else if which == .replace {
+        return s
+      }
+      .replace => {
         if args.count() < 2 {
           throw fail(t, at, "replace takes what to replace and with what: replace(\"a\", \"b\")")
         }
-        out = s.replace(try sArg(t, args, 0, name, ""), try sArg(t, args, 1, name, ""), count: try iArg(t, args, 2, name, -1))
-      } else if which == .striptags {
-        out = stripTags(s)
-        return .val(.string(out))
+        return s.replace(try sArg(t, args, 0, name, ""), try sArg(t, args, 1, name, ""), count: try iArg(t, args, 2, name, -1))
       }
-      return if isSafe(v) { .safe(out) } else { .val(.string(out)) }
+      _ => return s
     }
-    if which == .safe {
-      return .safe(try str(t, v, at))
-    }
-    if which == .escape || which == .e {
-      return if isSafe(v) { v } else { .safe(html.escape(try str(t, v, at))) }
-    }
-    if which == .urlencode {
-      return .val(.string(url.escape(try str(t, v, at))))
-    }
-    if which == .json || which == .tojson {
-      let j = try plain(t, v, at)
-      var s = if let n = args.get(0) { try encodeIndented(j, try intOf(t, n, at, "json")) } else { json.encode(j) }
-      if t.escape == .html {
-        // Safe in a <script> and in an attribute in single quotes.
-        s = s.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026").replace("'", "\\u0027")
-        return .safe(s)
-      }
-      return .val(.string(s))
-    }
-    if which == .string {
-      return .val(.string(try str(t, v, at)))
-    }
-    if which == .int {
-      return .val(.int(match v {
-        .val(.int(n)) => n
-        .val(.float(f)) => int(f)
-        .val(.bool(b)) => if b { 1 } else { 0 }
-        _ => if let text = textOf(v) { text.trim().toInt() ?? (if let f = text.trim().toFloat() { int(f) } else { try iArg(t, args, 0, name, 0) }) } else { try iArg(t, args, 0, name, 0) }
-      }))
-    }
-    if which == .float {
-      return .val(.float(match v {
-        .val(.int(n)) => float(n)
-        .val(.float(f)) => f
-        _ => if let text = textOf(v) { text.trim().toFloat() ?? 0 } else { 0 }
-      }))
-    }
-    if which == .abs {
-      return match v {
-        .val(.int(n)) => V.val(.int(n.multipliedChecked(if n < 0 { -1 } else { 1 }) ?? throw fail(t, at, "integer overflow")))
-        .val(.float(f)) => V.val(.float(f.abs()))
-        _ => throw fail(t, at, "abs needs a number, not {kind(v)}")
-      }
-    }
-    if which == .round || which == .fixed {
-      let x = number(v) ?? throw fail(t, at, "{name} needs a number, not {kind(v)}")
-      let digits = try iArg(t, args, 0, name, if which == .round { 0 } else { 2 })
-      if which == .fixed {
-        return .val(.string(x.fixed(max(digits, 0))))
-      }
-      var scale = 1.0
-      for _ in 0..<min(max(digits, 0), 20) {
-        scale *= 10
-      }
-      let r = if x < 0 { -((-x * scale + 0.5).floor()) / scale } else { (x * scale + 0.5).floor() / scale }
-      return .val(.float(r))
-    }
-    if which == .length || which == .count {
-      return .val(.int(match v {
-        .val(.string(s)) => s.count()
-        .safe(s) => s.count()
-        .val(.array(xs)) => xs.count()
-        .val(.object(m)) => m.count()
-        _ => throw fail(t, at, "length needs a string, an array or a map, not {kind(v)}")
-      }))
-    }
-    if which == .first || which == .last {
-      let first = which == .first
-      return match v {
-        .val(.array(xs)) => if let x = (if first { xs.first() } else { xs.last() }) { V.val(x) } else { V.missing("the {name} of an empty array") }
-        .val(.string(s)) => V.val(.string(if s.isEmpty() { "" } else if first { s.graphemes()[0] } else { s.graphemes().last() ?? "" }))
-        _ => throw fail(t, at, "{name} needs an array or a string, not {kind(v)}")
-      }
-    }
-    if which == .reverse {
-      return match v {
-        .val(.array(xs)) => V.val(.array(xs.reversed()))
-        .val(.string(s)) => V.val(.string(s.graphemes().reversed().joined()))
-        _ => throw fail(t, at, "reverse needs an array or a string, not {kind(v)}")
-      }
-    }
-    if which == .keys || which == .values || which == .items {
-      let m = match v {
-        .val(.object(m)) => m
-        _ => throw fail(t, at, "{name} needs a map, not {kind(v)}")
-      }
-      if which == .keys {
-        return .val(.array(m.keys().map(k => json.Value.string(k))))
-      }
-      if which == .values {
-        return .val(.array(m.values()))
-      }
-      return .val(.array(m.keys().map(k => json.Value.array([.string(k), m[k] ?? .null]))))
-    }
-    if which == .split {
-      let s = try str(t, v, at)
-      let parts = if let sep = args.get(0) { s.split(try str(t, sep, at)) } else { s.fields() }
-      return .val(.array(parts.map(p => json.Value.string(p))))
-    }
-    if which == .lines {
-      return .val(.array((try str(t, v, at)).lines().map(p => json.Value.string(p))))
-    }
-    // What takes an array.
-    if ![Filter.join, Filter.map, Filter.selectattr, Filter.rejectattr, Filter.sort, Filter.unique, Filter.sum, Filter.min, Filter.max, Filter.batch].contains(which) {
-      throw fail(t, at, "unknown filter {name}")
-    }
+  }
+
+  // fixed(digits): a number as text with that many digits after its
+  // point.
+  fn fixed(t: Template, name: string, v: V, args: [V], at: int) throws -> V {
+    let x = number(v) ?? throw fail(t, at, "{name} needs a number, not {kind(v)}")
+    return .val(.string(x.fixed(max(try iArg(t, args, 0, name, 2), 0))))
+  }
+
+  // join(separator, field): an array's items as text, joined.
+  fn join(t: Template, name: string, v: V, args: [V], at: int) throws -> V {
     let xs = match v {
       .val(.array(xs)) => xs
       _ => throw fail(t, at, "{name} needs an array, not {kind(v)}")
     }
-    if which == .join {
-      let sep = try sArg(t, args, 0, name, "")
-      var parts: [string] = []
-      var markup = isSafe(v)
-      for x in xs {
-        let item = if let a = args.get(1) { field(x, try str(t, a, at)) } else { V.val(x) }
-        parts.push(try str(t, item, at))
-      }
-      let joined = parts.joined(separator: sep)
-      if t.escape == .html && !markup {
-        return .val(.string(joined))
-      }
-      return .val(.string(joined))
+    let sep = try sArg(t, args, 0, name, "")
+    if args.count() > 1 {
+      return try joinFields(t, xs, sep, args[1], at)
     }
-    if which == .map {
-      let f = try sArg(t, args, 0, name, "")
-      var out: [json.Value] = []
-      for x in xs {
-        out.push(match field(x, f) {
-          .val(j) => j
-          _ => .null
+    var s = ""
+    var i = 0
+    while i < xs.count() {
+      if i > 0 {
+        s += sep
+      }
+      s += text(xs[i])
+      i += 1
+    }
+    return .val(.string(s))
+  }
+
+  // joinFields is join(separator, field): each item's field.
+  fn joinFields(t: Template, xs: [json.Value], sep: string, by: V, at: int) throws -> V {
+    var parts: [string] = []
+    for x in xs {
+      parts.push(try str(t, field(x, try str(t, by, at)), at))
+    }
+    return .val(.string(parts.joined(separator: sep)))
+  }
+
+  // arrayFilter: the filters that take an array.
+  fn arrayFilter(t: Template, name: string, f: Filter, v: V, args: [V], at: int) throws -> V {
+    let xs = match v {
+      .val(.array(xs)) => xs
+      _ => throw fail(t, at, "{name} needs an array, not {kind(v)}")
+    }
+    match f {
+      .map => {
+        let by = try sArg(t, args, 0, name, "")
+        var out: [json.Value] = []
+        for x in xs {
+          out.push(match field(x, by) {
+            .val(j) => j
+            _ => .null
+          })
+        }
+        return .val(.array(out))
+      }
+      .selectattr | .rejectattr => {
+        let by = try sArg(t, args, 0, name, "")
+        let keepTrue = f == .selectattr
+        return .val(.array(xs.filter(x => truthy(field(x, by)) == keepTrue)))
+      }
+      .sort => {
+        // sort(attribute = none, reverse = false)
+        let by: string? = if let a = args.get(0), !(if let .val(.null) = a { true } else { false }) { try str(t, a, at) } else { none }
+        let down = if let .val(.bool(true)) = args.get(1) { true } else { false }
+        let keyed = xs.map(x => (x, if let k = by { field(x, k) } else { V.val(x) }))
+        var bad = false
+        let sorted = keyed.sorted(by: (a, b) => {
+          let c = order(a.1, b.1) ?? 0
+          if order(a.1, b.1) == none {
+            bad = true
+          }
+          return if down { c > 0 } else { c < 0 }
         })
-      }
-      return .val(.array(out))
-    }
-    if which == .selectattr || which == .rejectattr {
-      let f = try sArg(t, args, 0, name, "")
-      let keepTrue = which == .selectattr
-      return .val(.array(xs.filter(x => truthy(field(x, f)) == keepTrue)))
-    }
-    if which == .sort {
-      // sort(attribute = none, reverse = false)
-      let f: string? = if let a = args.get(0), !(if let .val(.null) = a { true } else { false }) { try str(t, a, at) } else { none }
-      let down = if let .val(.bool(true)) = args.get(1) { true } else { false }
-      let keyed = xs.map(x => (x, if let k = f { field(x, k) } else { V.val(x) }))
-      var bad = false
-      let sorted = keyed.sorted(by: (a, b) => {
-        let c = order(a.1, b.1) ?? 0
-        if order(a.1, b.1) == none {
-          bad = true
+        if bad {
+          throw fail(t, at, "sort compares numbers or strings")
         }
-        return if down { c > 0 } else { c < 0 }
-      })
-      if bad {
-        throw fail(t, at, "sort compares numbers or strings")
+        return .val(.array(sorted.map(p => p.0)))
       }
-      return .val(.array(sorted.map(p => p.0)))
-    }
-    if which == .unique {
-      var out: [json.Value] = []
-      for x in xs {
-        if !out.any(y => same(V.val(x), V.val(y))) {
-          out.push(x)
+      .unique => {
+        var out: [json.Value] = []
+        for x in xs {
+          if !out.any(y => same(V.val(x), V.val(y))) {
+            out.push(x)
+          }
         }
+        return .val(.array(out))
       }
-      return .val(.array(out))
-    }
-    if which == .sum {
-      var total: V = .val(.int(0))
-      for x in xs {
-        total = try binary(t, "+", total, V.val(x), at, .lit(.null), .lit(.null))
+      .sum => {
+        var total: V = .val(.int(0))
+        for x in xs {
+          total = try binary(t, "+", total, V.val(x), at, .lit(.val(.null)), .lit(.val(.null)))
+        }
+        return total
       }
-      return total
-    }
-    if which == .min || which == .max {
-      var best: json.Value? = none
-      for x in xs {
-        if let b = best {
-          let c = order(V.val(x), V.val(b)) ?? throw fail(t, at, "{name} compares numbers or strings")
-          if which == .min && c < 0 || which == .max && c > 0 {
+      .min | .max => {
+        var best: json.Value? = none
+        for x in xs {
+          if let b = best {
+            let c = order(V.val(x), V.val(b)) ?? throw fail(t, at, "{name} compares numbers or strings")
+            if f == .min && c < 0 || f == .max && c > 0 {
+              best = x
+            }
+          } else {
             best = x
           }
-        } else {
-          best = x
         }
+        return if let b = best { V.val(b) } else { V.missing("the {name} of an empty array") }
       }
-      return if let b = best { V.val(b) } else { V.missing("the {name} of an empty array") }
-    }
-    if which == .batch {
-      let n = try iArg(t, args, 0, name, 1)
-      if n < 1 {
-        throw fail(t, at, "batch's size is at least 1")
+      .batch => {
+        let n = try iArg(t, args, 0, name, 1)
+        if n < 1 {
+          throw fail(t, at, "batch's size is at least 1")
+        }
+        return .val(.array(xs.chunked(n).map(c => json.Value.array(c))))
       }
-      return .val(.array(xs.chunked(n).map(c => json.Value.array(c))))
+      _ => throw fail(t, at, "unknown filter {name}")
     }
-    throw fail(t, at, "unknown filter {name}")
   }
 
   // ---- Tests ----
@@ -1779,109 +2094,36 @@ struct Renderer {
       "empty" => !truthy(v)
       "in" => {
         let r = args.get(0) ?? throw fail(t, at, "in takes what to look in: x is in([1, 2])")
-        truthy(try binary(t, "in", v, r, at, .lit(.null), .lit(.null)))
+        truthy(try binary(t, "in", v, r, at, .lit(.val(.null)), .lit(.val(.null))))
       }
       _ => throw fail(t, at, "unknown test {name}")
     }
   }
 }
 
-// The built-in filters, by name: builtin goes by them (a lookup, not a
-// comparison of the name with each).
-enum Filter {
-  unknown
-  abs
-  batch
-  capitalize
-  count
-  e
-  escape
-  first
-  fixed
-  float
-  indent
-  int
-  items
-  join
-  json
-  keys
-  last
-  length
-  lines
-  lower
-  map
-  max
-  min
-  rejectattr
-  replace
-  reverse
-  round
-  safe
-  selectattr
-  sort
-  split
-  string
-  striptags
-  sum
-  title
-  tojson
-  trim
-  truncate
-  unique
-  upper
-  urlencode
-  values
-}
-
-let filterNames: [string: Filter] = [
-  "abs": .abs,
-  "batch": .batch,
-  "capitalize": .capitalize,
-  "count": .count,
-  "e": .e,
-  "escape": .escape,
-  "first": .first,
-  "fixed": .fixed,
-  "float": .float,
-  "indent": .indent,
-  "int": .int,
-  "items": .items,
-  "join": .join,
-  "json": .json,
-  "keys": .keys,
-  "last": .last,
-  "length": .length,
-  "lines": .lines,
-  "lower": .lower,
-  "map": .map,
-  "max": .max,
-  "min": .min,
-  "rejectattr": .rejectattr,
-  "replace": .replace,
-  "reverse": .reverse,
-  "round": .round,
-  "safe": .safe,
-  "selectattr": .selectattr,
-  "sort": .sort,
-  "split": .split,
-  "string": .string,
-  "striptags": .striptags,
-  "sum": .sum,
-  "title": .title,
-  "tojson": .tojson,
-  "trim": .trim,
-  "truncate": .truncate,
-  "unique": .unique,
-  "upper": .upper,
-  "urlencode": .urlencode,
-  "values": .values,
-]
-
 // ---------------------------------------------------------------------
 // Values
 
+let loopName = "loop"
+
+// loopField is a loop's field, by its index (from 0) and length.
+fn loopField(i: int, n: int, name: string) -> json.Value? = match name {
+  "index" => .int(i + 1)
+  "index0" => .int(i)
+  "revindex" => .int(n - i)
+  "revindex0" => .int(n - i - 1)
+  "first" => .bool(i == 0)
+  "last" => .bool(i == n - 1)
+  "length" => .int(n)
+  _ => none
+}
+
+// loopMap is loop read whole: its fields as a map.
+fn loopMap(i: int, n: int) -> json.Value = .object(["index": .int(i + 1), "index0": .int(i), "revindex": .int(n - i), "revindex0": .int(n - i - 1), "first": .bool(i == 0), "last": .bool(i == n - 1), "length": .int(n)])
+
 fn truthy(v: V) -> bool = match v {
   .missing(_) => false
+  .loop(_, _) => true
   .safe(s) => !s.isEmpty()
   .val(j) => match j {
     .null => false
@@ -1948,6 +2190,7 @@ fn field(x: json.Value, name: string) -> V {
 
 fn kind(v: V) -> string = match v {
   .missing(_) => "undefined"
+  .loop(_, _) => "a map"
   .safe(_) => "a string"
   .val(j) => match j {
     .null => "none"
@@ -1998,43 +2241,6 @@ fn stripTags(s: string) -> string {
   return html.unescape(out.fields().joined(separator: " "))
 }
 
-// readsName reports whether nodes may read the variable name: they name
-// it, or include, extend or render a block (what those read isn't
-// known here).
-fn readsName(ns: [Node], name: string) -> bool {
-  for n in ns {
-    let reads = match n {
-      .text(_) => false
-      .out(e) => exprReads(e, name)
-      .branch(conds, otherwise) => conds.any(where: c => exprReads(c.0, name) || readsName(c.1, name)) || readsName(otherwise, name)
-      .each(_, _, items, body, otherwise, _, _) => exprReads(items, name) || readsName(body, name) || readsName(otherwise, name)
-      .assign(_, value) => exprReads(value, name)
-      .include(_, _, _) => true
-      .block(_, _) => true
-      .extends(_) => true
-    }
-    if reads {
-      return true
-    }
-  }
-  return false
-}
-
-fn exprReads(e: Expr, name: string) -> bool = match e {
-  .lit(_) => false
-  .list(xs) => xs.any(where: x => exprReads(x, name))
-  .name(n, _) => n == name
-  .attr(x, _, _) => exprReads(x, name)
-  .item(x, k, _) => exprReads(x, name) || exprReads(k, name)
-  .neg(x, _) => exprReads(x, name)
-  .negation(x) => exprReads(x, name)
-  .op(_, a, b, _) => exprReads(a, name) || exprReads(b, name)
-  .filter(x, _, args, _) => exprReads(x, name) || args.any(where: a => exprReads(a, name))
-  .test(x, _, args, _, _) => exprReads(x, name) || args.any(where: a => exprReads(a, name))
-  .cond(a, c, b) => exprReads(a, name) || exprReads(c, name) || exprReads(b, name)
-  .call(n, args, _) => n == "super" || args.any(where: a => exprReads(a, name))
-}
-
 fn encodeIndented(j: json.Value, n: int) throws -> string = json.encode(j, indent: max(n, 0))
 
 fn pos(e: Expr) -> int = match e {
@@ -2044,7 +2250,7 @@ fn pos(e: Expr) -> int = match e {
   .neg(_, p) => p
   .negation(x) => pos(x)
   .op(_, a, _, _) => pos(a)
-  .filter(x, _, _, _) => pos(x)
+  .filter(x, _, _, _, _, _) => pos(x)
   .test(x, _, _, _, _) => pos(x)
   .cond(a, _, _) => pos(a)
   .call(_, _, p) => p
@@ -2057,8 +2263,8 @@ fn describe(e: Expr) -> string = match e {
   .name(n, _) => n
   .attr(x, f, _) => "{describe(x)}.{f}"
   .item(x, k, _) => "{describe(x)}[{describe(k)}]"
-  .lit(j) => json.encode(j)
+  .lit(.val(j)) => json.encode(j)
   .call(n, _, _) => "{n}()"
-  .filter(x, f, _, _) => "{describe(x)} | {f}"
+  .filter(x, f, _, _, _, _) => "{describe(x)} | {f}"
   _ => "the value"
 }

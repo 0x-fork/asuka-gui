@@ -140,7 +140,7 @@ directory and /dev/null.
 | bigint | 20.5 ± 0.09 | 7.40 ± 0.02 | 14.7 ± 0.06 | 20.5 ± 0.05 | 2.77× |
 | modpow | 46.4 ± 0.09 | 35.7 ± 0.05 | 33.3 ± 0.23 | 46.2 ± 0.15 | 1.30× |
 | time | 138 ± 1.73 | 11.3 ± 0.10 | 66.9 ± 1.33 | 225 ± 1.75 | 12.22× |
-| template | 188 ± 1.99 | 32.9 ± 0.72 | n/a | 198 ± 0.50 | 5.71× |
+| template | 188 ± 1.99 | 32.9 ± 0.72 | n/a | 198 ± 0.50 | 5.71×³ |
 | semver | 269 ± 2.34 | 160 ± 3.82 | 241 ± 1.99 | 291 ± 3.00 | 1.68× |
 | heap | 371 ± 2.01 | 151 ± 0.62 | n/a | 373 ± 3.57 | 2.45× |
 | sortedmap | 1221 ± 20.7 | 301 ± 2.70 | n/a | 1219 ± 17.0 | 4.06× |
@@ -191,6 +191,8 @@ heap, sortedmap, template and semver are Asuka code (a closure call a
 step, structs copied). sha1, md5 and crc32 are even with Go: each is
 one dependency chain through the CPU's instructions, run with fewer
 instructions than Go's.
+
+³ After the table's run: faster than Go's (std/template, below).
 
 Strings, arrays and number formatting were then taken further (packed
 arrays, strings appended in place, joined at once and cut into slabs,
@@ -345,3 +347,26 @@ benchmarks the packed branch's (concat, split, fmt). seq is now faster
 than Go's (82 M cycles to 91 M): its fused map and filter append with
 cap read on its own (bench/compiled's README). The cycles that differ
 with the instructions the same (chacha, aesgcm, csv) are the load's.
+
+## std/template: its data made a json.Value directly, a leaner renderer (2026-11-19)
+
+std/template converts its data to a json.Value directly (json.c's
+ak_json_value, by the value's descriptor: no JSON written and parsed
+again, its strings shared), and renders by a stack of bindings that a
+loop binds once and changes in place (its loop variable an index until
+it's read whole), filters known as the template is parsed (and their
+literal arguments' values), and small functions on the hot paths
+(lang/LOWERING.md: a compiled function clears and releases all its
+registers each call); float.fixed formats with ak_float_fixed, not
+snprintf. Measured as above (load 30 to 50; seven interleaved runs,
+cycles the median, which varied by about 10% for both, instructions the
+median, within 0.5%; in millions, the setup, under 10 M, included):
+
+| benchmark | cycles before | now | Go | now / Go | instructions before | now | Go |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| template | 321 | 127 | 203 | 0.63× | 1,439 | 678 | 777 |
+
+Of what's left, about a sixth is making the data's json.Value and
+freeing it again (an object a struct, its map's index and arrays, a
+Value a member), which text/template, reading the struct by
+reflection, doesn't do.

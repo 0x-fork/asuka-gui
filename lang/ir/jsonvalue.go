@@ -9,7 +9,8 @@ import (
 // jsonValue is e (of type from) as std/json's Value (to), where one is
 // expected (check's toJSONValue): an int, a float, a bool or a string is
 // its case, made here; none .null; anything else what JSON writes of it,
-// read back as a Value (CALLB json.value, by their descriptors).
+// read back as a Value, made directly from the value by its descriptor
+// (CALLB json.value: core/src/rt/json.c's ak_json_value, no text).
 func (b *fb) jsonValue(e syntax.Expr, from check.Type, to *check.Named, dst int) int {
 	name := ""
 	switch {

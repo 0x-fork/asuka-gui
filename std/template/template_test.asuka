@@ -237,3 +237,37 @@ test "parse once, render many times" {
     expect(try t.renderValue(obj(["n": .int(n)])).count() == n)
   }
 }
+
+test "scopes: loops, set, include, shadowing" {
+  let d = obj(["xs": .array([.string("a"), .string("b")]), "m": obj(["k": .int(1), "j": .int(2)]), "pairs": .array([.array([.int(1), .string("one")]), .array([.int(2)])]), "item": .string("outer"), "loop": .string("data's loop")])
+  // Nested loops: loop is the innermost's, the outer's again after it.
+  expect(r(r"{% for x in xs %}{{ loop.index }}[{% for y in xs %}{{ loop.index }}{{ loop.length }}{% endfor %}]{{ loop.index0 }}{{ loop.revindex0 }}{% endfor %}", d) == "1[1222]012[1222]10")
+  // loop read whole is a map; set keeps what it was then.
+  expect(r(r"{% for x in xs %}{% if loop.first %}{% set first = loop %}{% endif %}{{ first.index }}{{ loop.last }}{% endfor %}", d) == "1false1true")
+  expect(r(r"{% for x in xs %}{{ loop | json }} {% endfor %}", d) == "\{\"index\":1,\"index0\":0,\"revindex\":2,\"revindex0\":1,\"first\":true,\"last\":false,\"length\":2} \{\"index\":2,\"index0\":1,\"revindex\":1,\"revindex0\":0,\"first\":false,\"last\":true,\"length\":2} ")
+  expect(r(r"{% for x in xs %}{{ loop.nope | default('-') }}{{ loop['index'] }}{{ loop is mapping }}{% endfor %}", d) == "-1true-2true")
+  // The data's names, shadowed in a loop and back after it.
+  expect(r(r"{{ item }} {{ loop }} {% for item in xs %}{{ item }}{% endfor %} {{ item }}", d) == "outer data's loop ab outer")
+  expect(r(r"{% for loop in xs %}{{ loop }}{% endfor %}", d) == "ab")
+  // set in a loop: to the loop's end, over its times round; the loop's
+  // own variable too, until the next time round.
+  expect(r(r"{% for x in xs %}{{ x }}{% set x = 'z' %}{{ x }}{% set n = (n or 0) + 1 %}{{ n }}{% endfor %}|{{ n | default('none') }}", d) == "az1bz2|none")
+  expect(r(r"{% set item = 'top' %}{{ item }}{% for x in xs %}{% set item = x %}{% endfor %} {{ item }}", d) == "top top")
+  // Pairs, maps with a key, strings.
+  expect(r(r"{% for a, b in pairs %}{{ a }}={{ b | default('?') }} {% endfor %}", d) == "1=one 2=? ")
+  expect(r(r"{% for k, v in m %}{{ k }}{{ v }}{{ loop.index }} {% endfor %}{% for k in m %}{{ k }}{% endfor %}", d) == "k11 j22 kj")
+  expect(r(r"{% for c in 'hé!' %}{{ loop.index }}{{ c }}{% endfor %}{% for c in '' %}x{% else %}empty{% endfor %}", d) == "1h2é3!empty")
+  expect(r(r"{% for a, b in xs %}{% endfor %}", d) == "ERROR template: 1:16: for a, b in an array: each element is a pair ([a, b]), not a string")
+  expect(r(r"{% for a, b in 'ab' %}{% endfor %}", d) == "ERROR template: 1:1: for a, b in an array: each element is a pair ([a, b]), not a string")
+  // Filters with arguments that aren't literals, and the same filter
+  // over and over.
+  expect(r(r"{% for x in xs %}{{ x | replace(x, loop.index ~ '') }}{{ 'ab' | replace('a', x) }} {% endfor %}", d) == "1ab 2bb ")
+}
+
+test "includes see where they're included" {
+  let ts = try parseAll([
+    "list.txt": r"{% for x in xs %}{% include 'row.txt' %};{% endfor %}{{ row | default('-') }}",
+    "row.txt": r"{{ loop.index }}{{ x }}{% set row = x %}{{ row }}{% for y in [1, 2] %}{{ loop.index }}{% endfor %}{{ loop.index }}",
+  ])
+  expect(try ts.renderValue("list.txt", obj(["xs": .array([.string("a"), .string("b")])])) == "1aa121;2bb122;-")
+}
