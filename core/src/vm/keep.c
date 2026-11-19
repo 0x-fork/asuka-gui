@@ -64,12 +64,12 @@ bool ak_keep_encode(ak_buf *b, ak_val v, ak_kind k) {
 	case AK_TAG_ARR: {
 		ak_arr *a = (ak_arr *)o;
 		ak_buf_u8(b, 'a');
-		ak_buf_u8(b, (uint8_t)ak_arr_kind(a));
+		ak_buf_u8(b, (uint8_t)AK_ARR_KIND(ak_arr_kind(a), a->elem));  // its storage too: a packed [u8] comes back packed
 		ak_buf_u8(b, (uint8_t)a->h.flags);
 		wstr(b, a->shape ? a->shape->name : NULL);
 		ak_buf_u32(b, a->len);
 		for (uint32_t i = 0; i < a->len; i++)
-			if (!ak_keep_encode(b, a->data[i], ak_arr_kind(a))) return false;
+			if (!ak_keep_encode(b, ak_arr_get(a, i), ak_arr_kind(a))) return false;
 		return true;
 	}
 	case AK_TAG_MAP: {
@@ -246,12 +246,12 @@ bool ak_keep_decode(ak_reader *r, ak_kind k, ak_keep_shape_fn find, void *ctx, a
 		return true;
 	}
 	case 'a': {
-		ak_kind ek = (ak_kind)ak_read_u8(r);
+		ak_kind ak = (ak_kind)ak_read_u8(r), ek = (ak_kind)(ak & 0xf);  // AK_ARR_KIND's
 		uint8_t flags = ak_read_u8(r);
 		const ak_shape *es = shape_named(r, find, ctx);
 		uint32_t n = ak_read_u32(r);
 		if (r->err || n > r->len) return false;
-		ak_arr *a = ak_arr_new(ek, es, n);
+		ak_arr *a = ak_arr_new(ak, es, n);
 		a->h.flags = flags;
 		bool ok = true;
 		for (uint32_t i = 0; i < n; i++) {
@@ -260,7 +260,7 @@ bool ak_keep_decode(ak_reader *r, ak_kind k, ak_keep_shape_fn find, void *ctx, a
 				ok = false;
 				break;
 			}
-			a->data[a->len++] = v;
+			ak_arr_put(a, a->len++, v);
 			if (ek == AK_K_REF && v.p) {
 				ak_obj *eo = v.p;
 				if (eo->tag == AK_TAG_STR) a->h.flags = 1;

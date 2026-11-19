@@ -1594,7 +1594,7 @@ static ak_val open_fn(ak_val *args, uint32_t n) {
 	x->port = (int)args[2].i;
 	int64_t l[6] = {65536, 16 << 20, 10000, 30000, 30000, 60000};
 	for (uint32_t i = 0; i < 6 && i < lim->len; i++)
-		if (lim->data[i].i > 0) l[i] = lim->data[i].i;
+		if (ak_arr_vals(lim)[i].i > 0) l[i] = ak_arr_vals(lim)[i].i;
 	x->max_header = (size_t)l[0];
 	x->max_body = (size_t)l[1];
 	x->max_conns = (size_t)l[2];
@@ -1724,7 +1724,7 @@ static bool head(req *q, int status, ak_arr *fields, bool stream, size_t len, ak
 	ak_buf_printf(b, "HTTP/1.1 %d %s\r\n", status, ak_http_reason(status));
 	bool date = false;
 	for (uint32_t i = 0; i + 1 < fields->len; i += 2) {
-		const ak_str *name = fields->data[i].p, *value = fields->data[i + 1].p;
+		const ak_str *name = ak_arr_vals(fields)[i].p, *value = ak_arr_vals(fields)[i + 1].p;
 		if (ieq(name->data, name->len, "content-length") || ieq(name->data, name->len, "transfer-encoding")) continue;
 		if (ieq(name->data, name->len, "connection")) {
 			conn_ctx cn = {0};

@@ -1,6 +1,8 @@
 package ir
 
 import (
+	"slices"
+
 	bc "github.com/egoist/asuka/lang/bytecode"
 	"github.com/egoist/asuka/lang/check"
 	"github.com/egoist/asuka/lang/diag"
@@ -63,6 +65,13 @@ func (b *fb) stmt(it syntax.Item) {
 			return
 		}
 		b.bindLet(s.Pattern, v, t)
+		if b.f.Kinds[v] == bc.KRef && slices.Contains(b.temps[mark:], v) {
+			// The value's temp let go of once the names hold it: kept to
+			// the statement's end, it would be a second reference until
+			// the register's next use, and the local's first change in
+			// place would copy it (a [bool] of 50 million, its 50 MB).
+			b.emit(op("CLR"), v)
+		}
 	case *syntax.AssignStmt:
 		b.assignStmt(s)
 	case *syntax.IfStmt:
@@ -1191,6 +1200,9 @@ func (b *fb) assignStmt(s *syntax.AssignStmt) {
 	}
 	switch s.Op {
 	case syntax.ASSIGN:
+		if b.appendStmt(s) {
+			return
+		}
 		mark := b.mark()
 		v := b.value(s.Value, -1)
 		b.dropTemps(mark, v)
@@ -1198,11 +1210,89 @@ func (b *fb) assignStmt(s *syntax.AssignStmt) {
 	case syntax.COALESCE_ASSIGN:
 		b.assign(s, b.prepare(s.Target), -1)
 	default:
+		if b.appendStmt(s) {
+			return
+		}
 		mark := b.mark()
 		v := b.value(s.Value, -1)
 		b.dropTemps(mark, v)
 		b.assign(s, b.prepare(s.Target), v)
 	}
+}
+
+// appendStmt lowers s += x and s = s + x + ..., s a local string var,
+// as appends to s's own register (CONCAT s, s, x): in place when the
+// string is s's alone (ak_str_append), so building a string in a loop
+// copies it O(log n) times, not once a turn. What's appended is all
+// computed first, so an error computing it leaves s as it was; the
+// parts mustn't read s (s + x + s's last s is s as it was).
+func (b *fb) appendStmt(s *syntax.AssignStmt) bool {
+	x := s.Target
+	for {
+		p, ok := x.(*syntax.ParenExpr)
+		if !ok {
+			break
+		}
+		x = p.X
+	}
+	id, ok := x.(*syntax.Ident)
+	if !ok {
+		return false
+	}
+	v, ok := b.l.info.Uses[id].(*check.Var)
+	if !ok || v.Boxed() || b.pathVars[v] != nil || check.Unopt(v.Type) != v.Type || b.typ(v.Type) != check.String {
+		return false
+	}
+	r, ok := b.vars[v]
+	if !ok {
+		return false
+	}
+	var parts []syntax.Expr
+	switch s.Op {
+	case syntax.ADD_ASSIGN:
+		if b.l.info.AssignOps[s] != nil || b.rawType(s.Value) != check.String {
+			return false
+		}
+		parts = []syntax.Expr{s.Value}
+		if ps := b.stringChain(s.Value); ps != nil {
+			parts = ps
+		}
+	case syntax.ASSIGN:
+		ps := b.stringChain(s.Value)
+		if len(ps) < 2 {
+			return false
+		}
+		first := ps[0]
+		for {
+			p, ok := first.(*syntax.ParenExpr)
+			if !ok {
+				break
+			}
+			first = p.X
+		}
+		if fid, ok := first.(*syntax.Ident); !ok || b.l.info.Uses[fid] != v {
+			return false
+		}
+		parts = ps[1:]
+	default:
+		return false
+	}
+	for _, p := range parts {
+		if b.mentions(p, v) {
+			return false
+		}
+	}
+	mark := b.mark()
+	vals := make([]int, len(parts))
+	for i, p := range parts {
+		vals[i] = b.value(p, -1)
+	}
+	if len(vals) > 1 {
+		vals = []int{b.joinStrings(vals, -1)}
+	}
+	b.emit(op("CONCAT"), r, r, vals[0])
+	b.dropTemps(mark)
+	return true
 }
 
 // optionalPath reports a ?. in the path of the place x.

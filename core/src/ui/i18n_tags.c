@@ -179,11 +179,11 @@ static int score(const tag_parts *p, const tag_parts *s) {
 
 int ak_i18n_match(const ak_arr *preferred, const ak_arr *supported) {
 	for (uint32_t i = 0; preferred && i < preferred->len; i++) {
-		ak_span pt = strip_ext(ak_span_str(preferred->data[i].p));
+		ak_span pt = strip_ext(ak_span_str(ak_arr_vals(preferred)[i].p));
 		tag_parts p = parts_of(pt);
 		int best = -1, best_score = 0;
 		for (uint32_t j = 0; supported && j < supported->len; j++) {
-			ak_span st = strip_ext(ak_span_str(supported->data[j].p));
+			ak_span st = strip_ext(ak_span_str(ak_arr_vals(supported)[j].p));
 			if (ak_span_eq(st, pt)) return (int)j;
 			tag_parts s = parts_of(st);
 			int sc = score(&p, &s);
@@ -202,13 +202,13 @@ ak_str *ak_i18n_resolve(const ak_str *override, const ak_arr *preferred, const a
 		want = ak_arr_new(AK_K_REF, NULL, 0);
 		want->h.flags = 1;
 		ak_arr_push(&want, (ak_val){.p = ak_retain((ak_str *)override)});
-		for (uint32_t i = 0; preferred && i < preferred->len; i++) ak_arr_push(&want, (ak_val){.p = ak_retain(preferred->data[i].p)});
+		for (uint32_t i = 0; preferred && i < preferred->len; i++) ak_arr_push(&want, (ak_val){.p = ak_retain(ak_arr_vals(preferred)[i].p)});
 		made = true;
 	}
 	int m = ak_i18n_match(want, supported);
 	if (made) ak_release(want);
-	if (m >= 0) return ak_retain(supported->data[m].p);
-	return supported && supported->len ? ak_retain(supported->data[0].p) : ak_str_c("en");
+	if (m >= 0) return ak_retain(ak_arr_vals(supported)[m].p);
+	return supported && supported->len ? ak_retain(ak_arr_vals(supported)[0].p) : ak_str_c("en");
 }
 
 ak_str *ak_i18n_region_locale(ak_span locale) {

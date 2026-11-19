@@ -634,7 +634,7 @@ static ak_val parts(ak_val *args, uint32_t n) {
 }
 
 static span part(const ak_arr *a, uint32_t i) {
-	const ak_bytes *b = a && i < a->len ? a->data[i].p : NULL;
+	const ak_bytes *b = a && i < a->len ? ak_arr_vals(a)[i].p : NULL;
 	return (span){data(b), len(b)};
 }
 

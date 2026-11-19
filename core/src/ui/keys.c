@@ -26,7 +26,7 @@ uint8_t ak_shortcut_mods(const ak_struct *s) {
 	uint8_t m = (uint8_t)((s->f[1].i ? 1 : 0) | (s->f[2].i ? 2 : 0) | (s->f[3].i ? 4 : 0) | (s->f[4].i ? 8 : 0));
 	const ak_arr *mods = s->shape && s->shape->nfields > 6 ? s->f[6].p : NULL;
 	for (uint32_t i = 0; mods && i < mods->len; i++)
-		if (mods->data[i].i >= 0 && mods->data[i].i < 4) m |= (uint8_t)(1 << mods->data[i].i);
+		if (ak_arr_vals(mods)[i].i >= 0 && ak_arr_vals(mods)[i].i < 4) m |= (uint8_t)(1 << ak_arr_vals(mods)[i].i);
 	return m;
 }
 
@@ -87,7 +87,7 @@ void ak_keys_set(ak_view *e, const ak_arr *a) {
 	ak_ix *ix = ak_ix_of(e);
 	uint32_t n = a ? a->len : 0;
 	kent *ks = n ? ak_alloc(n * sizeof(kent)) : NULL;
-	for (uint32_t i = 0; i < n; i++) kent_of(&ks[i], a->data[i].p, i);
+	for (uint32_t i = 0; i < n; i++) kent_of(&ks[i], ak_arr_vals(a)[i].p, i);
 	uint32_t m = sort_keys(ks, n);
 	ak_free(ix->key_order);
 	ix->key_order = m ? ak_alloc(m * sizeof(uint32_t)) : NULL;
@@ -153,7 +153,7 @@ static void reg_send(ak_view *target) {
 	uint32_t at = 0;
 	for (uint32_t i = 0; i < k->regs.len; i++) {
 		const ak_arr *a = k->regs.data[i]->keys;
-		for (uint32_t j = 0; a && j < a->len; j++) kent_of(&k->merged[at++], a->data[j].p, j);
+		for (uint32_t j = 0; a && j < a->len; j++) kent_of(&k->merged[at++], ak_arr_vals(a)[j].p, j);
 	}
 	k->n = sort_keys(k->merged, at);
 	if (!target->dead && target->real) send_keys(target, k->merged, k->n);
@@ -225,7 +225,7 @@ bool ak_keys_event(ak_view *e, int64_t index) {
 	if (!ix || !a || index < 0 || index >= ix->nkeys) return true;
 	uint32_t i = ix->key_order[index];
 	if (i >= a->len) return true;
-	const ak_struct *s = a->data[i].p;
+	const ak_struct *s = ak_arr_vals(a)[i].p;
 	ak_call_closure(s->f[5].p, e->owner, NULL, 0);
 	return true;
 }

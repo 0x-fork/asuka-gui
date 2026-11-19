@@ -68,7 +68,7 @@ TEST(decode_structs) {
 	REQUIRE(!ak_error_pending());
 	ak_arr *a = v.p;
 	REQUIRE(a->len == 2);
-	ak_struct *t0 = a->data[0].p, *t1 = a->data[1].p;
+	ak_struct *t0 = ak_arr_vals(a)[0].p, *t1 = ak_arr_vals(a)[1].p;
 	CHECK_EQ_STR(((ak_str *)t0->f[0].p)->data, "milk é");
 	CHECK_EQ_INT(t0->f[1].i, 1);
 	CHECK_EQ_INT(((ak_arr *)t0->f[2].p)->len, 2);
@@ -111,7 +111,7 @@ TEST(maps_enums_numbers) {
 	ak_release(v.p);
 	src = "[1.5, 2e3, -0.25]";
 	v = ak_json_decode(src, strlen(src), "[f", &types);
-	CHECK_EQ_F(((ak_arr *)v.p)->data[1].f, 2000);
+	CHECK_EQ_F(ak_arr_vals(((ak_arr *)v.p))[1].f, 2000);
 	ak_release(v.p);
 	src = "1.5";
 	v = ak_json_decode(src, strlen(src), "i", &types);
@@ -384,7 +384,7 @@ TEST(encode_printed_only) {
 	// [int: [(int,Todo?,string)]] and [Todo: eFilter;]
 	ak_map *m = ak_map_new(AK_K_INT, false, AK_K_REF, NULL);
 	ak_arr *a = ak_arr_new(AK_K_REF, &pair, 1);
-	a->data[a->len++].p = t;
+	ak_arr_vals(a)[a->len++].p = t;
 	ak_map_set(&m, (ak_val){.i = -2}, (ak_val){.p = a});
 	ak_map_set(&m, (ak_val){.i = 5}, (ak_val){.p = ak_arr_new(AK_K_REF, &pair, 0)});
 	s = ak_json_encode((ak_val){.p = m}, "mi[(", &types, 0);
@@ -428,12 +428,12 @@ TEST(json_value) {
 	CHECK_EQ_INT(ak_enum_case(e), 5);
 	ak_arr *a = e->f[0].p;
 	REQUIRE(a->len == 9);
-	CHECK_EQ_INT(ak_enum_case(a->data[0].p), 2);   // 1: an int
-	CHECK_EQ_INT(ak_enum_case(a->data[2].p), 3);   // 2.5: a float
-	CHECK_EQ_INT(ak_enum_case(a->data[3].p), 3);   // 1e3: a float
-	CHECK_EQ_INT(ak_enum_case(a->data[4].p), 3);   // past an int: a float
-	CHECK_EQ_INT(ak_enum_case(a->data[5].p), 2);   // int's least
-	CHECK(((ak_enum *)a->data[5].p)->f[0].i == INT64_MIN);
+	CHECK_EQ_INT(ak_enum_case(ak_arr_vals(a)[0].p), 2);   // 1: an int
+	CHECK_EQ_INT(ak_enum_case(ak_arr_vals(a)[2].p), 3);   // 2.5: a float
+	CHECK_EQ_INT(ak_enum_case(ak_arr_vals(a)[3].p), 3);   // 1e3: a float
+	CHECK_EQ_INT(ak_enum_case(ak_arr_vals(a)[4].p), 3);   // past an int: a float
+	CHECK_EQ_INT(ak_enum_case(ak_arr_vals(a)[5].p), 2);   // int's least
+	CHECK(((ak_enum *)ak_arr_vals(a)[5].p)->f[0].i == INT64_MIN);
 	s = ak_json_encode(v, "JValue;", &types, 0);
 	CHECK_EQ_STR(s->data, "[1,-2,2.5,1000,9223372036854776000,-9223372036854775808,true,null,\"s\\n\"]");
 	ak_release(s);

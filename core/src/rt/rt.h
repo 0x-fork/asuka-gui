@@ -236,7 +236,7 @@ struct ak_shape {
 // ---- Strings ----
 
 typedef struct ak_str {
-	ak_obj h;       // h.flags: AK_STR_* (what's known of its bytes)
+	ak_obj h;       // h.flags: AK_STR_* (what's known of its bytes); h.aux: its room (ak_str_room)
 	uint32_t len;
 	uint32_t hash;  // 0: not computed yet
 	char data[];    // len bytes, then a NUL
@@ -249,17 +249,90 @@ typedef struct ak_str {
 // from ak_str_new(NULL, n)) does so before anything reads them.
 #define AK_STR_KNOWN 1  // AK_STR_ASCII says whether it's ASCII
 #define AK_STR_ASCII 2  // every byte below 0x80: a character a byte
+#define AK_STR_SLAB 4   // a piece of a slab (ak_pieces): h.aux is where in it, in 8 bytes
+
+// ak_str_room is how many bytes a string has room for before its NUL:
+// its length, as it's made; once it's grown in place (ak_str_append),
+// 2^h.aux - 1, its buffer a power of two that doubles as it fills.
+static inline size_t ak_str_room(const ak_str *s) {
+	return !s->h.aux || (s->h.flags & AK_STR_SLAB) ? s->len : ((size_t)1 << s->h.aux) - 1;
+}
 
 ak_str *ak_str_new(const char *s, size_t n);  // s NULL: n bytes the caller fills
+
+// Pieces: the many small strings one operation cuts a string into
+// (split, lines, fields, chars) are made one after another in slabs of
+// 16 KB, each piece a string of its own (counted, released and freed one
+// by one as any), the slab freed with its last piece: one allocation
+// for hundreds of pieces, where each would take malloc's and free's
+// tens of nanoseconds, and the pieces side by side in memory as the
+// array that holds them walks them. A piece kept alone keeps its slab:
+// 16 KB at most, not the string it was cut from (Go's substrings keep
+// all of it); a slab is no bigger than what the pieces still to come
+// can need (left, a bound: what cutting "1.2.3" takes, not 16 KB). A
+// piece over AK_PIECE_MAX is a string of its own. Zero is an empty
+// builder (left unknown: slabs of 16 KB); ak_piece makes the next
+// piece, of n bytes from s. AK_PIECES_LEFT bounds what n pieces of
+// bytes bytes in all need.
+typedef struct ak_pieces {
+	char *slab, *at, *end;
+	size_t left;  // what the pieces to come need at most (0: unknown)
+	bool ascii;   // the string cut is ASCII: its pieces are
+} ak_pieces;
+#define AK_PIECES_LEFT(n, bytes) ((size_t)(n) * (sizeof(ak_str) + 8) + (size_t)(bytes))
+#define AK_PIECE_MAX 240
+ak_str *ak_piece(ak_pieces *p, const char *s, size_t n);
+// ak_find_byte is where c first is in [p, end), or NULL: a word at a
+// time, inline, which for the short runs between separators is what a
+// call to memchr costs several times over.
+static inline const char *ak_find_byte(const char *p, const char *end, char c) {
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+	const uint64_t ones = 0x0101010101010101ull, pat = ones * (uint8_t)c;
+	while (end - p >= 8) {
+		uint64_t w;
+		memcpy(&w, p, 8);
+		w ^= pat;
+		uint64_t z = (w - ones) & ~w & (ones << 7);  // its lowest set: the first byte that's c
+		if (z) return p + (__builtin_ctzll(z) >> 3);
+		p += 8;
+	}
+#endif
+	for (; p < end; p++)
+		if (*p == c) return p;
+	return NULL;
+}
+// ak_space is the white space fields and trim cut at: ASCII's.
+extern const bool ak_space_table[256];
+static inline bool ak_space(char c) { return ak_space_table[(uint8_t)c]; }
+// ak_piece_free frees a piece (its count released): its slab, when it
+// was the last.
+static inline void ak_piece_free(ak_str *s) {
+	char *slab = (char *)s - ((size_t)s->h.aux << 3);
+	if (--*(uint32_t *)slab == 0) ak_free(slab);
+}
 static inline ak_str *ak_str_c(const char *s) { return ak_str_new(s, strlen(s)); }
 ak_str *ak_str_empty(void);  // immortal
 ak_str *ak_str_concat(ak_str *a, ak_str *b);
+// ak_str_append makes *s *s + t: in place when *s is its holder's alone
+// and has room, else in a buffer of twice the room (grown in place when
+// *s is unique), so a string built by appending in a loop (s += x) is
+// copied O(log n) times, as Swift's unique-reference append and Go's
+// append grow theirs. Takes *s's reference; t borrowed (*s itself too).
+void ak_str_append(ak_str **s, const ak_str *t);
 ak_str *ak_str_from_int(int64_t v);
 ak_str *ak_str_from_uint(uint64_t v);
 ak_str *ak_str_from_float(double v);  // shortest round-trip form
 // ak_float_text writes v as ak_str_from_float does into buf (32 bytes
 // room); its length. No allocation.
 int ak_float_text(char *buf, double v);
+// ak_float_fixed and ak_float_exp write v as printf's "%.*f" and "%.*e"
+// do, digit for digit (rounded half to even, as printf rounds the exact
+// binary value), into buf (AK_FLOAT_FMT_MAX bytes room): its length.
+// Without snprintf for what's printed (a precision to 19, digits that
+// fit 64 bits): exact integer arithmetic.
+#define AK_FLOAT_FMT_MAX 400
+int ak_float_fixed(char *buf, double v, int prec);
+int ak_float_exp(char *buf, double v, int prec);
 ak_str *ak_str_from_bool(bool v);
 bool ak_str_eq(const ak_str *a, const ak_str *b);
 int ak_str_cmp(const ak_str *a, const ak_str *b);
@@ -328,6 +401,14 @@ static inline size_t ak_strb_len(const ak_strb *b) { return b->b.data ? b->b.len
 // ak_strb_buf: what b holds, all of it in b->b (moved there from small),
 // for code that reads or takes the buffer itself; b goes on taking more.
 ak_buf *ak_strb_buf(ak_strb *b);
+// ak_strs_join is the n strings at v (none: empty) one after another:
+// their lengths summed first, the result made at its size, each copied
+// into it once.
+ak_str *ak_strs_join(const ak_val *v, uint32_t n);
+// ak_strb_fmt writes v, of kind k (int, float; a string: text), by an
+// interpolation's format ("{x:>8.2f}"'s spec, n bytes): as str.fmt_int,
+// str.fmt_float and str.fmt_text do (rt/lib.c).
+void ak_strb_fmt(ak_strb *b, ak_val v, ak_kind k, const char *spec, size_t n);
 ak_str *ak_strb_finish(ak_strb *b);  // frees the builder's buffer
 void ak_strb_free(ak_strb *b);       // drops what it holds
 
@@ -343,31 +424,158 @@ ak_bytes *ak_bytes_new(const void *p, size_t n);  // p NULL: n bytes, uninitiali
 
 // ---- Arrays ----
 
+// How an array stores its elements. An int, a float or a reference is
+// a value of 8 bytes (ak_val, untagged: its type is the array's); a
+// bool is a byte, and a sized integer (i8 to u32) its own width,
+// packed as Go's []bool and []uint8 and Swift's [Bool] and [UInt8] are:
+// a [bool] of 50 million takes 50 MB, not 400. Packed elements are
+// scalars: a packed array holds no references. Code that reads or
+// writes elements of any array goes through ak_arr_get and ak_arr_put;
+// code that knows its array holds values takes them as ak_arr_vals.
+typedef enum ak_elem {
+	AK_E_VAL = 0,  // ak_val
+	AK_E_BOOL,     // bool, a byte
+	AK_E_I8,
+	AK_E_I16,
+	AK_E_I32,
+	AK_E_U8,
+	AK_E_U16,
+	AK_E_U32,
+} ak_elem;
+
+// ak_int_elem is how an array stores a sized integer of type t (its code,
+// ak_int_type): packed, but int's and u64's 64 bits, values.
+static inline ak_elem ak_int_elem(int t) {
+	static const uint8_t e[8] = {AK_E_I8, AK_E_I16, AK_E_I32, AK_E_VAL, AK_E_U8, AK_E_U16, AK_E_U32, AK_E_VAL};
+	return (ak_elem)e[t & 7];
+}
+// AK_ARR_KIND is an array's elements' kind with how they're stored, as
+// ak_arr_new takes it (NEWA's kind operand, the element kind map takes):
+// the kind in the low 4 bits, an ak_elem above (0: the kind's own
+// storage, a value's or a bool's byte).
+#define AK_ARR_KIND(k, e) ((ak_kind)((unsigned)(k) | (unsigned)(e) << 4))
+
+// ak_desc_arr_kind is k, an array's elements' kind read from their type
+// descriptor d (json.h's), with how they're stored: "n" and a sized
+// integer type's code, packed at its width.
+static inline ak_kind ak_desc_arr_kind(const char *d, ak_kind k) {
+	return d[0] == 'n' && d[1] >= '0' && d[1] <= '7' ? AK_ARR_KIND(k, ak_int_elem(d[1] - '0')) : k;
+}
+
+// ak_elem_shift is log2 of an element's bytes.
+static inline uint8_t ak_elem_shift(ak_elem e) {
+	static const uint8_t s[] = {3, 0, 0, 1, 2, 0, 1, 2};
+	return s[e];
+}
+
 typedef struct ak_arr {
 	ak_obj h;  // h.aux: the element kind; h.flags: 1 when elements are strings (for equality)
-	// Its buffer: front free slots, then cap slots from data (its len
-	// elements, then free ones). Changes at the start move data within
+	// Its buffer: front free slots, then cap slots from items (its len
+	// elements, then free ones). Changes at the start move items within
 	// it, so an array is a double-ended queue: pushing and popping at
 	// either end is O(1), amortized (arr.c).
 	uint32_t len, cap, front;
+	uint8_t elem;   // ak_elem: how its elements are stored
+	uint8_t shift;  // log2 of an element's bytes (ak_elem_shift)
 	const ak_shape *shape;  // the elements' shape when they're structs or enums
-	ak_val *data;
+	void *items;
 } ak_arr;
 
+// ak_arr_new makes an empty array of elements of kind elem: bools
+// packed, a byte each; others values, unless elem says how to store
+// them (AK_ARR_KIND: a sized integer's width; ak_arr_new_packed).
 ak_arr *ak_arr_new(ak_kind elem, const ak_shape *shape, uint32_t cap);
+ak_arr *ak_arr_new_packed(ak_kind kind, ak_elem elem, uint32_t cap);
 static inline ak_kind ak_arr_kind(const ak_arr *a) { return (ak_kind)a->h.aux; }
+static inline bool ak_arr_packed(const ak_arr *a) { return a->elem != AK_E_VAL; }
+// ak_arr_vals is the elements of an array of values (not packed).
+static inline ak_val *ak_arr_vals(const ak_arr *a) {
+#ifndef NDEBUG
+	if (AK_UNLIKELY(a->elem != AK_E_VAL)) ak_panic("ak_arr_vals of a packed array (elements of type %d)", a->elem);
+#endif
+	return (ak_val *)a->items;
+}
+// ak_arr_bools is the elements of a [bool], a byte each: C's bool, not
+// a character type, so that a write of one isn't taken to change
+// anything else (C's aliasing: a char may be any object's byte), and
+// compiled code keeps the array's length and buffer in registers
+// across a loop of writes.
+static inline bool *ak_arr_bools(const ak_arr *a) {
+#ifndef NDEBUG
+	if (AK_UNLIKELY(a->elem != AK_E_BOOL)) ak_panic("ak_arr_bools of an array of elements of type %d", a->elem);
+#endif
+	return (bool *)a->items;
+}
+// ak_elem_get reads an element of type e at p, as a value (a sized
+// integer sign- or zero-extended); ak_elem_put writes v there,
+// narrowed. Neither counts references.
+static inline ak_val ak_elem_get(const void *p, ak_elem e) {
+	switch (e) {
+	case AK_E_VAL: return *(const ak_val *)p;
+	case AK_E_BOOL: return (ak_val){.i = *(const bool *)p};
+	case AK_E_U8: return (ak_val){.i = *(const uint8_t *)p};
+	case AK_E_I8: return (ak_val){.i = *(const int8_t *)p};
+	case AK_E_I16: return (ak_val){.i = *(const int16_t *)p};
+	case AK_E_U16: return (ak_val){.i = *(const uint16_t *)p};
+	case AK_E_I32: return (ak_val){.i = *(const int32_t *)p};
+	case AK_E_U32: return (ak_val){.i = *(const uint32_t *)p};
+	}
+	return (ak_val){0};
+}
+static inline void ak_elem_put(void *p, ak_elem e, ak_val v) {
+	switch (e) {
+	case AK_E_VAL: *(ak_val *)p = v; break;
+	case AK_E_BOOL: *(bool *)p = v.i != 0; break;
+	case AK_E_I8:
+	case AK_E_U8: *(uint8_t *)p = (uint8_t)v.i; break;
+	case AK_E_I16:
+	case AK_E_U16: *(uint16_t *)p = (uint16_t)v.i; break;
+	case AK_E_I32:
+	case AK_E_U32: *(uint32_t *)p = (uint32_t)v.i; break;
+	}
+}
+// ak_arr_at is where element i is.
+static inline void *ak_arr_at(const ak_arr *a, uint32_t i) { return (char *)a->items + ((size_t)i << a->shift); }
+// ak_arr_get is element i (in range) as a value, borrowed; ak_arr_put
+// stores v as element i, neither releasing what was there nor
+// retaining v (ak_arr_set does both). A value's inline, a packed one's
+// a call (ak_arr_get_packed, ak_arr_put_packed).
+ak_val ak_arr_get_packed(const ak_arr *a, uint32_t i);
+void ak_arr_put_packed(ak_arr *a, uint32_t i, ak_val v);
+static inline ak_val ak_arr_get(const ak_arr *a, uint32_t i) {
+	if (AK_LIKELY(a->elem == AK_E_VAL)) return ((const ak_val *)a->items)[i];
+	return ak_arr_get_packed(a, i);
+}
+static inline void ak_arr_put(ak_arr *a, uint32_t i, ak_val v) {
+	if (AK_LIKELY(a->elem == AK_E_VAL)) ((ak_val *)a->items)[i] = v;
+	else ak_arr_put_packed(a, i, v);
+}
 // ak_arr_mut makes *a unique (copying it if it's shared) and returns it.
 ak_arr *ak_arr_mut(ak_arr **a);
-void ak_arr_push(ak_arr **a, ak_val v);              // takes v's reference
+void ak_arr_push_slow(ak_arr **a, ak_val v);
+// ak_arr_push appends v, taking its reference: inline when the array is
+// its holder's alone, has room, and holds values.
+static inline void ak_arr_push(ak_arr **ap, ak_val v) {
+	ak_arr *a = *ap;
+	if (AK_LIKELY(ak_unique(a) && a->len < a->cap && a->elem == AK_E_VAL)) {
+		((ak_val *)a->items)[a->len++] = v;
+		return;
+	}
+	ak_arr_push_slow(ap, v);
+}
 void ak_arr_reserve(ak_arr **a, uint32_t n);         // room for n more, made unique
 void ak_arr_insert(ak_arr **a, int64_t i, ak_val v); // takes v's reference
 ak_val ak_arr_remove_at(ak_arr **a, int64_t i);      // returns the reference
 void ak_arr_set(ak_arr **a, int64_t i, ak_val v);    // takes v's reference
-static inline ak_val *ak_arr_base(const ak_arr *a) { return a->data ? a->data - a->front : NULL; }  // what's allocated
+// ak_arr_base is what's allocated: the front free slots' start.
+static inline void *ak_arr_base(const ak_arr *a) { return a->items ? (char *)a->items - ((size_t)a->front << a->shift) : NULL; }
 bool ak_arr_check(const ak_arr *a, int64_t i);       // in range
 ak_arr *ak_arr_slice(ak_arr *a, int64_t from, int64_t to);
 ak_arr *ak_arr_concat(ak_arr *a, ak_arr *b);
 ak_arr *ak_arr_copy(const ak_arr *a);
+// ak_arr_like is an empty array of a's elements (their kind, storage
+// and shape) with room for cap.
+ak_arr *ak_arr_like(const ak_arr *a, uint32_t cap);
 
 // ---- Maps: insertion ordered, keys int or string ----
 

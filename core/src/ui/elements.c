@@ -31,7 +31,7 @@ static void set_text(ak_str **dst, ak_val v) {
 void ak_encode_strings(ak_buf *b, const ak_arr *a) {
 	ak_buf_u32(b, a ? a->len : 0);
 	for (uint32_t i = 0; a && i < a->len; i++) {
-		const ak_str *s = a->data[i].p;
+		const ak_str *s = ak_arr_vals(a)[i].p;
 		ak_buf_str(b, s ? s->data : "", s ? s->len : 0);
 	}
 }
@@ -187,7 +187,7 @@ static const ak_el_class cls_symbol = {.name = "Symbol", .kind = AK_KIND_SYMBOL,
 static void append_actions(ak_buf *b, const ak_arr *as, int depth) {
 	ak_buf_u32(b, as ? as->len : 0);
 	for (uint32_t i = 0; as && i < as->len; i++) {
-		const ak_enum *a = as->data[i].p;
+		const ak_enum *a = ak_arr_vals(as)[i].p;
 		uint16_t c = a ? ak_enum_case(a) : 0;
 		const ak_str *title = a ? a->f[0].p : NULL, *icon = NULL;
 		uint8_t role = 0, flags = 0;
@@ -218,7 +218,7 @@ static void append_actions(ak_buf *b, const ak_arr *as, int depth) {
 // find_action finds the item numbered *n, depth first.
 static const ak_enum *find_action(const ak_arr *as, int64_t *n, int depth) {
 	for (uint32_t i = 0; as && i < as->len; i++) {
-		const ak_enum *a = as->data[i].p;
+		const ak_enum *a = ak_arr_vals(as)[i].p;
 		if ((*n)-- == 0) return a;
 		uint16_t c = a ? ak_enum_case(a) : 0;
 		if ((c == 1 || c == 2) && depth < ACTION_DEPTH) {
@@ -236,7 +236,7 @@ const ak_enum *ak_find_action(const ak_arr *as, int64_t n) { return n < 0 ? NULL
 static uint32_t count_actions(const ak_arr *as, int depth) {
 	uint32_t n = 0;
 	for (uint32_t i = 0; as && i < as->len; i++) {
-		const ak_enum *a = as->data[i].p;
+		const ak_enum *a = ak_arr_vals(as)[i].p;
 		uint16_t c = a ? ak_enum_case(a) : 0;
 		n++;
 		if ((c == 1 || c == 2) && depth < ACTION_DEPTH) n += count_actions(c == 1 ? a->f[2].p : a->f[1].p, depth + 1);

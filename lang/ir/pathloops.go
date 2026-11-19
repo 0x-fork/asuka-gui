@@ -187,12 +187,11 @@ func (b *fb) pathMethod(e *syntax.CallExpr, dst int) (int, bool) {
 		if rt == nil {
 			return 0, false
 		}
-		k := b.l.kind(rt.Elem)
 		sh := b.l.shape(check.Unopt(rt.Elem))
 		if sh < 0 {
 			sh = bc.NoShape
 		}
-		b.emit(op("NEWA"), r, int(k), sh, i, 0)
+		b.emit(op("NEWA"), r, b.l.arrKind(rt.Elem), sh, i, 0)
 	}
 	top, end := b.f.NewLabel(), b.f.NewLabel()
 	more := b.temp(bc.KBool)
@@ -275,7 +274,7 @@ func (b *fb) sortedPath(e *syntax.CallExpr, call *check.Call, lam *syntax.Lambda
 	if sh < 0 {
 		sh = bc.NoShape
 	}
-	b.emit(op("NEWA"), all, int(k), sh, i, 0)
+	b.emit(op("NEWA"), all, b.l.arrKind(b.typ(elem)), sh, i, 0)
 	top, end := b.f.NewLabel(), b.f.NewLabel()
 	more := b.temp(bc.KBool)
 	b.f.Place(top)

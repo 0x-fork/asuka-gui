@@ -52,7 +52,7 @@ static bool same(const ak_map *m, const model *md) {
 	bool ok = true;
 	for (int i = 0; i < md->n && ok; i++) {
 		if (md->gone[i]) continue;
-		ok = ks->data[j].i == md->keys[i] && vs->data[j].i == md->vals[i];
+		ok = ak_arr_vals(ks)[j].i == md->keys[i] && ak_arr_vals(vs)[j].i == md->vals[i];
 		ak_val v;
 		ok = ok && ak_map_get(m, (ak_val){.i = md->keys[i]}, &v) && v.i == md->vals[i];
 		j++;
@@ -137,8 +137,8 @@ TEST(map_string_keys) {
 	ak_release(none);
 	// Insertion order, the deleted aside.
 	ak_arr *ks = ak_map_keys(m);
-	CHECK_EQ_STR(((ak_str *)ks->data[0].p)->data, "key0");
-	CHECK_EQ_STR(((ak_str *)ks->data[7].p)->data, "key8");
+	CHECK_EQ_STR(((ak_str *)ak_arr_vals(ks)[0].p)->data, "key0");
+	CHECK_EQ_STR(((ak_str *)ak_arr_vals(ks)[7].p)->data, "key8");
 	ak_release(ks);
 	ak_release(m);
 }

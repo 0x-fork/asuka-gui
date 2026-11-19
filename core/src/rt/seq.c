@@ -219,7 +219,7 @@ static bool adv(cur *c) {
 	case S_ARR: {
 		const ak_arr *a = s->a.p;
 		if (c->i >= a->len) return false;
-		ak_val v = a->data[c->i++];
+		ak_val v = ak_arr_get(a, c->i++);
 		ak_retain_val(v, k);
 		put(c, v);
 		return true;
@@ -428,18 +428,18 @@ static bool adv(cur *c) {
 		}
 		if (c->started) {
 			if (!adv(c->src)) return false;
-			ak_release_val(buf->data[c->i], ek);
-			buf->data[c->i] = take(c->src);
-			if (ek == AK_K_REF && buf->data[c->i].p && ((ak_obj *)buf->data[c->i].p)->tag == AK_TAG_STR) buf->h.flags = 1;
+			ak_val x = take(c->src);
+			ak_release_val(ak_arr_get(buf, (uint32_t)c->i), ek);
+			ak_arr_put(buf, (uint32_t)c->i, x);
+			if (ek == AK_K_REF && x.p && ((ak_obj *)x.p)->tag == AK_TAG_STR) buf->h.flags = 1;
 			c->i = (c->i + 1) % s->n;
 		}
 		c->started = true;
-		ak_arr *out = ak_arr_new(ek, buf->shape, (uint32_t)s->n);
-		out->h.flags = buf->h.flags;
+		ak_arr *out = ak_arr_like(buf, (uint32_t)s->n);
 		for (int64_t j = 0; j < s->n; j++) {
-			ak_val v = buf->data[(c->i + j) % s->n];
+			ak_val v = ak_arr_get(buf, (uint32_t)((c->i + j) % s->n));
 			ak_retain_val(v, ek);
-			out->data[out->len++] = v;
+			ak_arr_put(out, out->len++, v);
 		}
 		put(c, (ak_val){.p = out});
 		return true;
@@ -673,10 +673,15 @@ static ak_val seq_to_array(ak_val *args, uint32_t n) {
 	if (len > UINT32_MAX) len = -1;
 	if ((s->op == S_REPEAT || s->op == S_RANGE) && len >= 0) {
 		// Filled as it is: one value n times, or a range's ints.
-		ak_arr *out = ak_arr_new(ak_arr_kind(proto), proto->shape, (uint32_t)len);
-		out->h.flags = proto->h.flags;
+		ak_arr *out = ak_arr_like(proto, (uint32_t)len);
 		ak_kind k = (ak_kind)s->kind;
-		for (uint32_t i = 0; i < (uint32_t)len; i++) out->data[i] = s->op == S_REPEAT ? s->a : (ak_val){.i = s->n + (int64_t)i};
+		if (s->op == S_REPEAT && out->elem == AK_E_BOOL) {
+			if (len) memset(out->items, s->a.i != 0, (size_t)len);
+		} else if (s->op == S_REPEAT) {
+			for (uint32_t i = 0; i < (uint32_t)len; i++) ak_arr_put(out, i, s->a);
+		} else {
+			for (uint32_t i = 0; i < (uint32_t)len; i++) ak_arr_put(out, i, (ak_val){.i = s->n + (int64_t)i});
+		}
 		if (s->op == S_REPEAT && k == AK_K_REF) {
 			for (uint32_t i = 0; i < (uint32_t)len; i++) ak_retain(s->a.p);
 			if (s->a.p && ((ak_obj *)s->a.p)->tag == AK_TAG_STR) out->h.flags = 1;
@@ -1012,7 +1017,8 @@ static bool sort_by_key(ak_arr *a, ak_closure *key, bool desc, ak_closure *cmp, 
 	uint32_t made = 0;
 	bool ok = true;
 	for (; made < n; made++) {
-		v[made] = (keyed){ak_call(key, &a->data[made], 1), made};
+		ak_val x = ak_arr_get(a, made);
+		v[made] = (keyed){ak_call(key, &x, 1), made};
 		if (ak_error_pending()) {
 			ok = false;
 			break;
@@ -1025,8 +1031,8 @@ static bool sort_by_key(ak_arr *a, ak_closure *key, bool desc, ak_closure *cmp, 
 	}
 	if (ok) {
 		ak_val *data = ak_alloc(sizeof(ak_val) * (n ? n : 1));
-		for (uint32_t i = 0; i < n; i++) data[i] = a->data[v[i].i];
-		memcpy(a->data, data, sizeof(ak_val) * n);
+		for (uint32_t i = 0; i < n; i++) data[i] = ak_arr_get(a, (uint32_t)v[i].i);
+		for (uint32_t i = 0; i < n; i++) ak_arr_put(a, i, data[i]);
 		ak_free(data);
 	}
 	for (uint32_t i = 0; i < made; i++) ak_release_val(v[i].k, ku);
@@ -1104,7 +1110,7 @@ typedef struct {
 static bool arr_next(void *ctx, ak_val *x) {
 	arr_walk *w = ctx;
 	if (w->i >= w->a->len) return false;
-	*x = w->a->data[w->i++];
+	*x = ak_arr_get(w->a, w->i++);
 	return true;
 }
 

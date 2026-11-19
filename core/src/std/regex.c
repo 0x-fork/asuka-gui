@@ -1256,7 +1256,7 @@ static void each(prog *p, const ak_str *s, int64_t limit, void (*f)(void *ctx, c
 static void collect(void *ctx, const int32_t *caps, uint32_t ns) {
 	ak_arr **out = ctx;
 	ak_arr *one = ak_arr_new(AK_K_INT, NULL, ns);
-	for (uint32_t k = 0; k < ns; k++) one->data[k].i = caps[k];
+	for (uint32_t k = 0; k < ns; k++) ak_arr_vals(one)[k].i = caps[k];
 	one->len = ns;
 	ak_arr_push(out, (ak_val){.p = one});
 }

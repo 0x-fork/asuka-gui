@@ -216,7 +216,7 @@ static ak_val join_fn(ak_val *args, uint32_t n) {
 	ak_arr *parts = args[0].p;
 	ak_buf b = {0};
 	for (uint32_t k = 0; k < parts->len; k++) {
-		ak_str *s = parts->data[k].p;
+		ak_str *s = ak_arr_vals(parts)[k].p;
 		if (!s || s->len == 0) continue;
 		if (b.len) ak_buf_u8(&b, SEP);
 		ak_buf_put(&b, s->data, s->len);
@@ -449,7 +449,7 @@ done:;
 	}
 	closedir(d);
 #endif
-	if (out->len > 1) qsort(out->data, out->len, sizeof(ak_val), cmp_str);
+	if (out->len > 1) qsort(ak_arr_vals(out), out->len, sizeof(ak_val), cmp_str);
 	return (ak_val){.p = out};
 fail:
 	ak_release(out);
@@ -843,7 +843,7 @@ static bool remove_all(const ak_str *p, int depth) {
 		ak_arr *a = names.p;
 		if (!a) return false;
 		for (uint32_t k = 0; k < a->len; k++) {
-			ak_str *name = a->data[k].p;
+			ak_str *name = ak_arr_vals(a)[k].p;
 			ak_str *child = ak_str_new(NULL, p->len + 1 + name->len);
 			memcpy(child->data, p->data, p->len);
 			child->data[p->len] = SEP;
@@ -1056,11 +1056,11 @@ static ak_val walk_info_fn(ak_val *args, uint32_t n) {
 #endif
 #endif
 	ak_arr *a5 = ak_arr_new(AK_K_INT, NULL, 5);
-	a5->data[0].i = is_dir;
-	a5->data[1].i = is_dir ? 0 : size;
-	a5->data[2].i = mtime;
-	a5->data[3].i = link;
-	a5->data[4].i = mode;
+	ak_arr_vals(a5)[0].i = is_dir;
+	ak_arr_vals(a5)[1].i = is_dir ? 0 : size;
+	ak_arr_vals(a5)[2].i = mtime;
+	ak_arr_vals(a5)[3].i = link;
+	ak_arr_vals(a5)[4].i = mode;
 	a5->len = 5;
 	return (ak_val){.p = a5};
 }

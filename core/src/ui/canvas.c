@@ -79,9 +79,9 @@ static void g_stops(ak_graphics *g, const ak_arr *colors, const ak_arr *locs) {
 	ak_buf_u32(&g->b, n);
 	for (uint32_t i = 0; i < n; i++) {
 		double loc = 0;
-		if (locs && i < locs->len) loc = locs->data[i].f;
+		if (locs && i < locs->len) loc = ak_arr_vals(locs)[i].f;
 		else if (n > 1) loc = (double)i / (double)(n - 1);
-		g_color(g, colors->data[i].i);
+		g_color(g, ak_arr_vals(colors)[i].i);
 		g_f32(g, loc);
 	}
 }
@@ -96,7 +96,7 @@ static void g_stroke_style(ak_graphics *g, const ak_struct *s) {
 	const ak_arr *dash = s ? s->f[3].p : NULL;
 	ak_buf_u32(&g->b, dash ? dash->len : 0);
 	g_f32(g, s ? s->f[4].f : 0);
-	for (uint32_t i = 0; dash && i < dash->len; i++) g_f32(g, dash->data[i].f);
+	for (uint32_t i = 0; dash && i < dash->len; i++) g_f32(g, ak_arr_vals(dash)[i].f);
 }
 
 // RadialGradient: colors, locations, centerX, centerY, radius, focusX?,
@@ -505,7 +505,7 @@ static void send_dash(ak_view *e) {
 	ak_buf *b = ak_batch_set_bytes_begin(ak_view_batch(e), e->id, AK_PROP_SHAPE_DASH);
 	if (a && a->len) {
 		ak_buf_f32(b, ph ? (float)ph->f : 0);
-		for (uint32_t i = 0; i < a->len; i++) ak_buf_f32(b, (float)a->data[i].f);
+		for (uint32_t i = 0; i < a->len; i++) ak_buf_f32(b, (float)ak_arr_vals(a)[i].f);
 	}
 	ak_batch_set_bytes_end(ak_view_batch(e));
 }
@@ -617,7 +617,7 @@ static void shader_uniforms(ak_view *e, const ak_arr *us) {
 	b->len = 0;
 	for (uint32_t i = 0; i < s->lanes; i++) ak_buf_u32(b, 0);
 	for (uint32_t i = 0; us && i < us->len; i++) {
-		const ak_struct *u = us->data[i].p;
+		const ak_struct *u = ak_arr_vals(us)[i].p;
 		if (!u) continue;
 		ak_span name = ak_span_str(u->f[0].p);
 		const ak_arr *vals = u->f[1].p;
@@ -625,7 +625,7 @@ static void shader_uniforms(ak_view *e, const ak_arr *us) {
 			shader_uniform *su = &s->uniforms.data[k];
 			if (!ak_span_eq(su->name, name)) continue;
 			for (uint32_t j = 0; vals && j < vals->len && j < su->lanes; j++) {
-				float v = (float)vals->data[j].f;
+				float v = (float)ak_arr_vals(vals)[j].f;
 				uint32_t w;
 				switch (su->kind) {
 				case 1: w = (uint32_t)(int32_t)v; break;

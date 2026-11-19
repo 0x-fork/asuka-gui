@@ -284,9 +284,9 @@ TEST(tz_rfc9557) {
 	ak_val a = S("2026-03-07T15:04:05+01:00[Europe/Paris]");
 	ak_arr *r = fn("time.parseRFC3339")(&a, 1).p;
 	REQUIRE(r && r->len == 4);
-	CHECK_EQ_INT(r->data[1].i, 3600);
-	CHECK_EQ_INT(r->data[2].i, 26);
-	CHECK_EQ_INT(r->data[3].i, 38);
+	CHECK_EQ_INT(ak_arr_vals(r)[1].i, 3600);
+	CHECK_EQ_INT(ak_arr_vals(r)[2].i, 26);
+	CHECK_EQ_INT(ak_arr_vals(r)[3].i, 38);
 	ak_release(r);
 	ak_release(a.p);
 	const char *bad[] = {"2026-03-07T15:04:05Z[Europe/Paris]", "2026-03-07T15:04:05Z[]", "2026-03-07T15:04:05Z[!]", "2026-03-07T15:04:05Z[UTC][UTC]",

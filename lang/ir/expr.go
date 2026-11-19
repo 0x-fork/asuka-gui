@@ -1,6 +1,7 @@
 package ir
 
 import (
+	"slices"
 	"strings"
 
 	bc "github.com/egoist/asuka/lang/bytecode"
@@ -278,7 +279,7 @@ func (b *fb) expr(e syntax.Expr, dst int) int {
 		if sh < 0 {
 			sh = bc.NoShape
 		}
-		b.emit(op("NEWA"), r, int(k), sh, blk, len(vals))
+		b.emit(op("NEWA"), r, b.l.arrKind(at.Elem), sh, blk, len(vals))
 		b.releaseRegs(blk, ks)
 		b.release(mark)
 		b.appendEach(r, rest, "arr.push")
@@ -641,23 +642,25 @@ func (b *fb) stringLit(e *syntax.StringLit, dst int) int {
 	interp := func(parts []part, r int) {
 		var ks []bc.Kind
 		var vals []int
+		var kinds []byte
 		for _, p := range parts {
 			if p.x == nil {
 				ks = append(ks, bc.KRef)
 				vals = append(vals, b.kstr(p.text))
+				kinds = append(kinds, byte(bc.KRef))
 				continue
 			}
-			v, k := b.stringPart(p.x, p.spec)
+			v, k, kb := b.stringPart(p.x, p.spec)
 			ks = append(ks, k)
 			vals = append(vals, v)
+			kinds = append(kinds, kb...)
 		}
 		blk := b.regs(ks)
 		for i, v := range vals {
 			b.move(blk+i, v)
 		}
-		kinds := make([]byte, len(ks))
-		for i, k := range ks {
-			kinds[i] = byte(k)
+		if !slices.ContainsFunc(kinds, func(k byte) bool { return k != byte(bc.KRef) }) {
+			kinds = nil // all strings: joined at their size
 		}
 		b.emit(op("INTERP"), r, blk, len(ks), b.l.str(string(kinds)))
 		b.releaseRegs(blk, ks)
@@ -688,32 +691,52 @@ func (b *fb) stringLit(e *syntax.StringLit, dst int) int {
 	return b.copyTo(acc, dst)
 }
 
+// interpFmt flags an INTERP part written by its format (ak_op_interp's
+// AK_INTERP_FMT).
+const interpFmt = 0x80
+
 // stringPart is an interpolated value: a scalar INTERP prints itself, or
-// a string.
-func (b *fb) stringPart(x syntax.Expr, spec string) (int, bc.Kind) {
+// a string; with what INTERP's kinds say of it: its kind, or, written by
+// its format (spec), its kind flagged (a u64's, KU64Text: unsigned),
+// the format's length and the format.
+func (b *fb) stringPart(x syntax.Expr, spec string) (int, bc.Kind, []byte) {
 	t := b.typeOf(x)
 	v := b.value(x, -1)
 	if spec != "" {
 		// Formatted ({x:>8.2f}): a number by its digits, anything else by
-		// its text (core/src/rt/lib.c's str.fmt_*).
-		f := b.kstr(spec)
+		// its text (core/src/rt/lib.c's ak_strb_fmt), written by INTERP;
+		// a format too long for its length byte, by str.fmt_*.
+		if len(spec) > 255 {
+			f := b.kstr(spec)
+			switch {
+			case t == check.U64:
+				return b.callB("str.fmt_int", bc.KRef, v, f, b.konst(int64(check.IntCode(t)))), bc.KRef, []byte{byte(bc.KRef)}
+			case check.IsInteger(t):
+				return b.callB("str.fmt_int", bc.KRef, v, f), bc.KRef, []byte{byte(bc.KRef)}
+			case t == check.Float:
+				return b.callB("str.fmt_float", bc.KRef, v, f), bc.KRef, []byte{byte(bc.KRef)}
+			}
+			return b.callB("str.fmt_text", bc.KRef, b.describe(v, t), f), bc.KRef, []byte{byte(bc.KRef)}
+		}
+		formatted := func(k bc.Kind) []byte {
+			return append([]byte{byte(k) | interpFmt, byte(len(spec))}, spec...)
+		}
 		switch {
 		case t == check.U64:
-			return b.callB("str.fmt_int", bc.KRef, v, f, b.konst(int64(check.IntCode(t)))), bc.KRef
+			return v, bc.KInt, formatted(bc.KU64Text)
 		case check.IsInteger(t):
-			return b.callB("str.fmt_int", bc.KRef, v, f), bc.KRef
+			return v, bc.KInt, formatted(bc.KInt)
+		case t == check.Float:
+			return v, bc.KFloat, formatted(bc.KFloat)
 		}
-		switch t {
-		case check.Float:
-			return b.callB("str.fmt_float", bc.KRef, v, f), bc.KRef
-		}
-		return b.callB("str.fmt_text", bc.KRef, b.describe(v, t), f), bc.KRef
+		return b.describe(v, t), bc.KRef, formatted(bc.KRef)
 	}
 	switch t {
 	case check.Int, check.Float, check.Bool, check.I8, check.I16, check.I32, check.U8, check.U16, check.U32:
-		return v, b.l.kind(t)
+		k := b.l.kind(t)
+		return v, k, []byte{byte(k)}
 	}
-	return b.describe(v, t), bc.KRef
+	return b.describe(v, t), bc.KRef, []byte{byte(bc.KRef)}
 }
 
 // describe is the text of v, a t: what interpolation and print show.
@@ -1160,10 +1183,102 @@ func (b *fb) binary(e *syntax.BinaryExpr, dst int) int {
 		}
 		return b.copyTo(b.callB("arr.range", bc.KRef, from, to), dst)
 	}
+	if parts := b.stringChain(e); len(parts) > 2 {
+		// a + b + c: one string made of them all, not one a +.
+		if len(parts) <= literalChunk {
+			// Each computed into its place in INTERP's block.
+			ks := make([]bc.Kind, len(parts))
+			for i := range ks {
+				ks[i] = bc.KRef
+			}
+			blk := b.regs(ks)
+			for i, p := range parts {
+				b.move(blk+i, b.value(p, blk+i))
+			}
+			r := b.out(dst, bc.KRef)
+			b.emit(op("INTERP"), r, blk, len(parts), b.l.str("")) // no kinds: all strings
+			b.releaseRegs(blk, ks)
+			return r
+		}
+		vals := make([]int, len(parts))
+		for i, p := range parts {
+			vals[i] = b.value(p, -1)
+		}
+		return b.joinStrings(vals, dst)
+	}
 	xt, yt := b.typeOf(e.X), b.typeOf(e.Y)
 	x := b.value(e.X, -1)
 	y := b.value(e.Y, -1)
 	return b.binop(e.Op, x, y, xt, yt, b.rawType(e), dst)
+}
+
+// stringChain is the operands of a chain of string +s (a + b + c, as
+// it's grouped: (a + b) + c, or with any parentheses), in order; nil
+// when x isn't a string +.
+func (b *fb) stringChain(x syntax.Expr) []syntax.Expr {
+	e, ok := x.(*syntax.BinaryExpr)
+	if !ok || e.Op != syntax.ADD || b.l.info.Operators[e] != nil || b.rawType(e) != check.String {
+		return nil
+	}
+	var parts []syntax.Expr
+	var walk func(x syntax.Expr)
+	walk = func(x syntax.Expr) {
+		for {
+			p, ok := x.(*syntax.ParenExpr)
+			if !ok {
+				break
+			}
+			x = p.X
+		}
+		if e, ok := x.(*syntax.BinaryExpr); ok && e.Op == syntax.ADD && b.l.info.Operators[e] == nil && b.rawType(e) == check.String {
+			walk(e.X)
+			walk(e.Y)
+			return
+		}
+		parts = append(parts, x)
+	}
+	walk(e)
+	return parts
+}
+
+// joinStrings is the strings in vals, one after another, in one string
+// (an INTERP of them: one allocation, literalChunk of them at a time).
+func (b *fb) joinStrings(vals []int, dst int) int {
+	acc := -1
+	for len(vals) > 0 {
+		n := min(len(vals), literalChunk)
+		ks := make([]bc.Kind, n)
+		for i := range ks {
+			ks[i] = bc.KRef
+		}
+		blk := b.regs(ks)
+		for i, v := range vals[:n] {
+			b.move(blk+i, v)
+		}
+		r := b.temp(bc.KRef)
+		b.emit(op("INTERP"), r, blk, n, b.l.str("")) // no kinds: all strings
+		b.releaseRegs(blk, ks)
+		vals = vals[n:]
+		if acc >= 0 {
+			t := b.temp(bc.KRef)
+			b.emit(op("CONCAT"), t, acc, r)
+			r = t
+		}
+		acc = r
+	}
+	return b.copyTo(acc, dst)
+}
+
+// mentions reports whether x reads the var v anywhere in it.
+func (b *fb) mentions(x syntax.Node, v *check.Var) bool {
+	found := false
+	syntax.Inspect(x, func(n syntax.Node) bool {
+		if id, ok := n.(*syntax.Ident); ok && b.l.info.Uses[id] == v {
+			found = true
+		}
+		return !found
+	})
+	return found
 }
 
 // intOps are the int operators' instructions.

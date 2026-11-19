@@ -562,7 +562,7 @@ static ak_val b_migrate(ak_val *a, uint32_t n) {
 		snprintf(why, sizeof why, "%s", msg);
 	}
 	for (; ok && v < (int64_t)steps->len; v++) {
-		ak_str *step = steps->data[v].p;
+		ak_str *step = ak_arr_vals(steps)[v].p;
 		char sql[64];
 		if (!exec_sql(f, conn, "begin immediate", &tmp, &names, &count, msg, sizeof msg)) {
 			snprintf(why, sizeof why, "sqlite: migration %lld: %s", (long long)v + 1, msg);
@@ -773,7 +773,7 @@ static ak_val b_migrate(ak_val *a, uint32_t n) {
 	ak_buf in = {0};
 	ak_buf_u32(&in, steps->len);
 	for (uint32_t i = 0; i < steps->len; i++) {
-		ak_str *step = steps->data[i].p;
+		ak_str *step = ak_arr_vals(steps)[i].p;
 		ak_buf_str(&in, step->data, step->len);
 	}
 	send_now(WEB_MIGRATE, a[0].i, &in);
@@ -863,7 +863,7 @@ static ak_val b_args(ak_val *a, uint32_t n) {
 		ak_buf_u32(&b, arr->len);
 		for (uint32_t i = 0; ok && i < arr->len; i++) {
 			ak_buf_str(&b, "", 0);
-			ok = put_arg(&b, arr->data[i], ak_arr_kind(arr));
+			ok = put_arg(&b, ak_arr_get(arr, i), ak_arr_kind(arr));
 		}
 	} else if (o && o->tag == AK_TAG_STRUCT) {
 		ak_struct *s = v.p;
@@ -1069,7 +1069,7 @@ static bool convert(const cell *c, const char *d, const ak_json_types *t, ak_val
 	}
 	case '[':
 		if (c->type == 0) {
-			out->p = ak_arr_new(kind_of(d + 1), shape_of(d + 1, t), 0);
+			out->p = ak_arr_new(ak_desc_arr_kind(d + 1, kind_of(d + 1)), shape_of(d + 1, t), 0);
 			return true;
 		}
 		goto json;
@@ -1113,7 +1113,7 @@ static bool zero(const char *d, const ak_json_types *t, ak_val *out) {
 	switch (*d) {
 	case 's': out->p = ak_str_empty(); return true;
 	case 'y': out->p = ak_bytes_new(NULL, 0); return true;
-	case '[': out->p = ak_arr_new(kind_of(d + 1), shape_of(d + 1, t), 0); return true;
+	case '[': out->p = ak_arr_new(ak_desc_arr_kind(d + 1, kind_of(d + 1)), shape_of(d + 1, t), 0); return true;
 	case '{': out->p = ak_map_new(AK_K_REF, true, kind_of(d + 1), shape_of(d + 1, t)); return true;
 	case '<': out->p = ak_set_new(kind_of(d + 1), d[1] == 's'); return true;
 	case 'S':
@@ -1149,7 +1149,7 @@ static ak_val b_rows(ak_val *a, uint32_t n) {
 		return (ak_val){0};
 	}
 	ak_kind ek = kind_of(d);
-	ak_arr *out = ak_arr_new(ek, *d == 'S' || *d == 'E' ? shape_of(d, t) : NULL, nrows);
+	ak_arr *out = ak_arr_new(ak_desc_arr_kind(d, ek), *d == 'S' || *d == 'E' ? shape_of(d, t) : NULL, nrows);
 	if (*d == 's') out->h.flags = 1;
 	// Columns to fields, once.
 	int16_t fieldOf[2000];

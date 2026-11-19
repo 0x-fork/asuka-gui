@@ -156,9 +156,9 @@ every branch's types are the same on every platform.
 | payloadless enums | int | the case's index (a wire enum's value) |
 | `bool` | bool | 0 or 1 |
 | `float` | float | |
-| `string` | ref | ak_str |
+| `string` | ref | ak_str: its bytes after its header; appended to in place when its holder's alone (`s += x`: a buffer that doubles), a split's pieces made in shared slabs (core/src/rt/str.c) |
 | `bytes` | ref | ak_bytes |
-| `[T]` | ref | ak_arr, element kind T's, shape T's |
+| `[T]` | ref | ak_arr, element kind T's, shape T's; its elements 8-byte values, but a `[bool]`'s a byte each (ak_elem: packed, holding no references) |
 | `[K: V]` | ref | ak_map |
 | `Set<T>` | ref | ak_map of T's keys to void values, flagged AK_MAP_SET (core/src/rt/set.c) |
 | `Seq<T>` | ref | an ak_seq, the runtime's immutable description of a lazy sequence (core/src/rt/seq.c) |
@@ -724,7 +724,18 @@ or its value, an error as its message, anything else as its JSON
 (`json.encode` with its descriptor): a tuple's is `(` (its elements by
 its shape's field descriptors, `(1,"a")`) and a map's from other than
 strings `m` K V (each key as it's written, `{1:"a"}`), descriptors only
-print writes. `print(x)` prints the same text.
+print writes. `print(x)` prints the same text. A part with a format
+(`{x:>8.2f}`) is the value itself, its kind in INTERP's kinds flagged
+(0x80) and followed by the format's length and text: INTERP writes it
+by the format (rt/lib.c's ak_strb_fmt), no string of its own.
+
+`a + b + c`, a chain of three or more string `+`s however grouped, is
+one INTERP of its operands (computed into its block) with no kinds at
+all, which means every part is a string: the runtime sums their
+lengths and copies each once. `s += x` and `s = s + x + ...`, `s` a
+local string var the other parts don't read, append to `s`'s own
+register (CONCAT s, s, x), which changes the string in place when `s`
+holds it alone; the parts are all computed first.
 
 A multi-line string's text drops its first line when that's blank, and
 the indentation of its closing quotes' line from every line.

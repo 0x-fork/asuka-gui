@@ -421,7 +421,7 @@ static bool zero_field(parser *ps, const char *fd, ak_val *out) {
 		return n != NULL;
 	}
 	if (fd[0] == 's') out->p = ak_str_empty();
-	else if (fd[0] == '[') out->p = ak_arr_new(desc_kind(fd + 1), NULL, 0);
+	else if (fd[0] == '[') out->p = ak_arr_new(ak_desc_arr_kind(fd + 1, desc_kind(fd + 1)), NULL, 0);
 	else if (fd[0] == '{') out->p = ak_map_new(AK_K_REF, true, desc_kind(fd + 1), NULL);
 	else if (fd[0] == '<') out->p = ak_set_new(desc_kind(fd + 1), fd[1] == 's');
 	else return false;
@@ -765,7 +765,7 @@ static ak_val value_of(parser *ps, const char *d) {
 		}
 		const ak_shape *es = NULL;
 		if ((*ed == 'S' || *ed == 'E') && ps->t && ps->t->shape) es = ps->t->shape(ps->t->ctx, ed + 1, name_len(ed));
-		ak_arr *a = ak_arr_new(ek, es, 0);
+		ak_arr *a = ak_arr_new(ak_desc_arr_kind(ed, ek), es, 0);
 		if (*ed == 's') a->h.flags = 1;
 		if (null) return (ak_val){.p = a};
 		ws(ps);
@@ -1229,7 +1229,7 @@ static void enc_step(encoder *e) {
 		if (kind == 'a') {
 			ak_arr *a = o->o;
 			if (!a || o->i >= a->len) done = true;
-			else item = a->data[o->i++], id = o->d;
+			else item = ak_arr_get(a, o->i++), id = o->d;
 		} else {
 			ak_map *m = o->o;
 			while (m && o->i < m->len && m->dead[o->i]) o->i++;
@@ -1245,7 +1245,7 @@ static void enc_step(encoder *e) {
 	case '[': {
 		ak_arr *a = o->o;
 		if (!a || o->i >= a->len) done = true;
-		else item = a->data[o->i++], id = o->d + 1;
+		else item = ak_arr_get(a, o->i++), id = o->d + 1;
 		break;
 	}
 	case '<':

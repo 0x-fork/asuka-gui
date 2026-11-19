@@ -354,7 +354,7 @@ ak_arr *ak_fsrc_items(ak_fsrc *s) {
 
 ak_val ak_fsrc_key(ak_fsrc *s, ak_arr *items, int64_t i, ak_kind kk) {
 	if (s->by_field) {
-		ak_val v = items->data[i];
+		ak_val v = ak_arr_vals(items)[i];
 		for (uint16_t j = 0; j < s->nf; j++) {
 			ak_struct *st = v.p;
 			if (!st) break;
@@ -443,7 +443,7 @@ static bool item_keys(for_t *s, ak_arr *list) {
 	s->keys.len = 0;
 	ak_vec_reserve(&s->keys, n);
 	for (uint32_t i = 0; i < n; i++) {
-		ak_val k = s->over_path ? ak_fsrc_key(&s->src, list, i, s->key_kind) : key_of(s, list->data[i], i);
+		ak_val k = s->over_path ? ak_fsrc_key(&s->src, list, i, s->key_kind) : key_of(s, ak_arr_vals(list)[i], i);
 		if (ak_error_pending()) {
 			for (uint32_t j = 0; j < s->keys.len; j++) ak_release_val(s->keys.data[j], s->key_kind);
 			s->keys.len = 0;
@@ -484,7 +484,7 @@ static void reconcile(for_t *s, ak_arr *list) {
 	s->next.len = 0;
 	ak_vec_reserve(&s->next, n);
 	for (uint32_t i = 0; i < n; i++) {
-		ak_val it = list->data[i];
+		ak_val it = ak_arr_vals(list)[i];
 		ak_val k = s->keys.data[i];
 		uint32_t hash = (uint32_t)ak_val_hash(k, s->key_kind);
 		uint32_t o = find_old(s, k, hash);

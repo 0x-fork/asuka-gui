@@ -164,7 +164,7 @@ enum { PKCS1 = 1, PSS, ECDSA, ECDSA_DER, ED25519 };
 static int64_t info(ak_bytes *der, bool private) {
 	ak_arr *a = fn("crypto_pk.keyInfo")((ak_val[]){{.p = der}, {.i = private}}, 2).p;
 	if (!a) return -1;
-	int64_t v = a->data[0].i * 10000 + a->data[1].i;
+	int64_t v = ak_arr_vals(a)[0].i * 10000 + ak_arr_vals(a)[1].i;
 	ak_release(a);
 	return v;
 }
@@ -363,8 +363,8 @@ TEST(parts) {
 	ak_bytes *ec8 = hexval(EC_PKCS8_DER), *ed8 = hexval(ED_PKCS8_DER);
 	ak_arr *ecp = keep(fn("crypto_pk.keyParts")((ak_val[]){{.p = ec8}, {.i = 1}}, 2).p);
 	ak_arr *edp = keep(fn("crypto_pk.keyParts")((ak_val[]){{.p = ed8}, {.i = 1}}, 2).p);
-	((ak_bytes *)ecp->data[2].p)->data[31] ^= 1;
-	((ak_bytes *)edp->data[1].p)->data[0] ^= 1;
+	((ak_bytes *)ak_arr_vals(ecp)[2].p)->data[31] ^= 1;
+	((ak_bytes *)ak_arr_vals(edp)[1].p)->data[0] ^= 1;
 	CHECK(!fn("crypto_pk.keyFromParts")((ak_val[]){{.i = KIND_P256}, {.p = ecp}, {.i = 1}}, 3).p);
 	CHECK(!fn("crypto_pk.keyFromParts")((ak_val[]){{.i = KIND_ED25519}, {.p = edp}, {.i = 1}}, 3).p);
 	CHECK(!fn("crypto_pk.keyFromParts")((ak_val[]){{.i = KIND_P384}, {.p = ecp}, {.i = 0}}, 3).p);

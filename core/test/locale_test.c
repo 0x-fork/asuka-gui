@@ -198,8 +198,8 @@ TEST(languages_outlive_the_module) {
 	for (size_t i = 0; i < AK_LEN(tags); i++) ak_free(tags[i]);  // the module released
 	ak_arr *l = ak_ui_languages();
 	REQUIRE(l->len == 2);
-	CHECK_EQ_STR(((ak_str *)l->data[0].p)->data, "zh-Hans");
-	CHECK_EQ_STR(((ak_str *)l->data[1].p)->data, "ja");
+	CHECK_EQ_STR(((ak_str *)ak_arr_vals(l)[0].p)->data, "zh-Hans");
+	CHECK_EQ_STR(((ak_str *)ak_arr_vals(l)[1].p)->data, "ja");
 	ak_release(l);
 	unload();
 }

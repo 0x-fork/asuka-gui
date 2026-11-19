@@ -19,7 +19,7 @@ static void ints(const ak_arr *a, char *buf, size_t n) {
 	size_t w = 0;
 	buf[0] = 0;
 	for (uint32_t i = 0; i < a->len && w < n; i++)
-		w += (size_t)snprintf(buf + w, n - w, w ? " %lld" : "%lld", (long long)a->data[i].i);
+		w += (size_t)snprintf(buf + w, n - w, w ? " %lld" : "%lld", (long long)ak_arr_vals(a)[i].i);
 }
 
 TEST(deque_both_ends) {
@@ -85,7 +85,7 @@ TEST(deque_model) {
 		}
 	}
 	REQUIRE(a->len == n);
-	for (uint32_t i = 0; i < n; i++) CHECK_EQ_INT(a->data[i].i, model[i]);
+	for (uint32_t i = 0; i < n; i++) CHECK_EQ_INT(ak_arr_vals(a)[i].i, model[i]);
 	// A copy has no room at the front, and is the same array.
 	ak_arr *c = ak_arr_copy(a);
 	CHECK_EQ_INT(c->front, 0);
@@ -121,7 +121,7 @@ static ak_val fails_at_3(ak_closure *c, ak_val *args, uint32_t n) {
 
 static ak_arr *range(int64_t n) {
 	ak_arr *a = ak_arr_new(AK_K_INT, NULL, (uint32_t)n);
-	for (int64_t i = 0; i < n; i++) a->data[a->len++] = I(i);
+	for (int64_t i = 0; i < n; i++) ak_arr_vals(a)[a->len++] = I(i);
 	return a;
 }
 
@@ -222,7 +222,7 @@ TEST(seq_windows_chunks) {
 	ak_arr *ws = out.p;
 	REQUIRE(ws->len == 3);
 	char buf[64];
-	ints(ws->data[2].p, buf, sizeof buf);
+	ints(ak_arr_vals(ws)[2].p, buf, sizeof buf);
 	CHECK_EQ_STR(buf, "3 4 5");
 	ak_release(out.p);
 	ak_val a5[] = {from, {.i = 0}, {.p = aproto}};

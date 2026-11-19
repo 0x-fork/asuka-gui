@@ -304,7 +304,7 @@ static ak_val join(ak_val *args, uint32_t n) {
 	const ak_arr *a = args[0].p;
 	uint64_t total = 0;
 	for (uint32_t i = 0; a && i < a->len; i++) {
-		const ak_bytes *p = a->data[i].p;
+		const ak_bytes *p = ak_arr_vals(a)[i].p;
 		total += p ? p->len : 0;
 	}
 	if (total > UINT32_MAX) {
@@ -314,7 +314,7 @@ static ak_val join(ak_val *args, uint32_t n) {
 	ak_bytes *out = ak_bytes_new(NULL, (size_t)total);
 	size_t o = 0;
 	for (uint32_t i = 0; a && i < a->len; i++) {
-		const ak_bytes *p = a->data[i].p;
+		const ak_bytes *p = ak_arr_vals(a)[i].p;
 		if (p && p->len) memcpy(out->data + o, p->data, p->len);
 		o += p ? p->len : 0;
 	}
@@ -400,8 +400,8 @@ static ak_val varint_read(ak_val *args, uint32_t n) {
 	}
 	if (args[2].i) v = v & 1 ? ~(v >> 1) : v >> 1;
 	ak_arr *r = ak_arr_new(AK_K_INT, NULL, 2);
-	r->data[0].i = (int64_t)v;
-	r->data[1].i = i + 1;
+	ak_arr_vals(r)[0].i = (int64_t)v;
+	ak_arr_vals(r)[1].i = i + 1;
 	r->len = 2;
 	return (ak_val){.p = r};
 }

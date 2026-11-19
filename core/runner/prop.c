@@ -283,7 +283,7 @@ static ak_val gen(tape *t, const char *d, const ak_json_types *ty, int depth) {
 		const char *ed = d + 1;
 		const ak_shape *es = NULL;
 		if (*ed == 'S' || *ed == 'E') es = find_shape(t, ed, ty);
-		ak_arr *a = ak_arr_new(ak_desc_kind(ed), es, 0);
+		ak_arr *a = ak_arr_new(ak_desc_arr_kind(ed, ak_desc_kind(ed)), es, 0);
 		if (*ed == 's') a->h.flags = 1;
 		for (uint32_t n = 0; !t->failed && more(t, n, depth); n++) ak_arr_push(&a, gen(t, ed, ty, depth + 1));
 		return (ak_val){.p = a};

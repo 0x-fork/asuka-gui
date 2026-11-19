@@ -200,6 +200,18 @@ func (l *Lowerer) newFunc(name, file string, nparams int, ret bc.Kind) *fb {
 // ---------------------------------------------------------------------
 // Types
 
+// arrKind is an array of t's elements' kind with how they're stored, as
+// NEWA and arr.map take it (core/src/rt/rt.h's AK_ARR_KIND): a sized
+// integer below 64 bits packed at its width, its ak_elem in bits 4 to 7.
+func (l *Lowerer) arrKind(t check.Type) int {
+	k := int(l.kind(t))
+	if check.IsSized(t) {
+		// ak_int_elem: i8 i16 i32 (i64) u8 u16 u32 (u64), by IntCode.
+		k |= [8]int{2, 3, 4, 0, 5, 6, 7, 0}[check.IntCode(t)] << 4
+	}
+	return k
+}
+
 // kind is how values of t are stored.
 func (l *Lowerer) kind(t check.Type) bc.Kind {
 	switch x := t.(type) {

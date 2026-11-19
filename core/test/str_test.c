@@ -83,7 +83,7 @@ static ak_str *S(const char *s) { return ak_str_c(s); }
 static bool arr_is(ak_arr *a, const char *const *want, uint32_t n) {
 	if (a->len != n) return false;
 	for (uint32_t i = 0; i < n; i++) {
-		ak_str *s = a->data[i].p;
+		ak_str *s = ak_arr_vals(a)[i].p;
 		if (s->len != strlen(want[i]) || memcmp(s->data, want[i], s->len)) return false;
 	}
 	return true;
@@ -362,6 +362,88 @@ TEST(floats_printed_as_before) {
 		int n = ak_float_text(buf, v);
 		buf[n] = 0;
 		CHECK(strtod(buf, NULL) == v);
+	}
+}
+
+// fixed_exp_ok checks v's %.*f and %.*e, for each precision, against
+// snprintf's.
+static bool fixed_exp_ok(double v) {
+	char want[AK_FLOAT_FMT_MAX], got[AK_FLOAT_FMT_MAX];
+	for (int p = 0; p <= 20; p++) {
+		snprintf(want, sizeof want, "%.*f", p, v);
+		int n = ak_float_fixed(got, v, p);
+		if (n != (int)strlen(want) || strcmp(got, want) != 0) {
+			T_FAIL("%.17g %%.%df: %s, want %s", v, p, got, want);
+			return false;
+		}
+		snprintf(want, sizeof want, "%.*e", p, v);
+		n = ak_float_exp(got, v, p);
+		if (n != (int)strlen(want) || strcmp(got, want) != 0) {
+			T_FAIL("%.17g %%.%de: %s, want %s", v, p, got, want);
+			return false;
+		}
+	}
+	return true;
+}
+
+TEST(precision_printed_as_printf) {
+	static const double cases[] = {
+		0, 0.125, 0.375, 2.675, 1.005, 0.5, 1.5, 2.5, 9.5, 0.05, 0.15, 0.25, 0.35, 1e-5, 1e-20, 1e-300, 5e-324,
+		9.999999999999999e22, 1e23, 99.995, 999999.5, 9999999999999999.0, 1e19, 1.8446744073709552e19, 1e18,
+		123456789.987654321, 0.1, 0.2, 0.3, 1.0 / 3, 2.0 / 3, 9.95, 9.995, 0.0009765625, 4503599627370496.5,
+	};
+	for (size_t i = 0; i < AK_LEN(cases); i++) fixed_exp_ok(cases[i]);
+	int bad = 0;
+	for (int i = 0; i < 40000 && bad < 10; i++) {
+		double v = fabs(from_bits(next()));
+		if (v != v || v == INFINITY) continue;
+		bad += !fixed_exp_ok(v);
+		bad += !fixed_exp_ok((double)(next() % 1000000) * 1.25);
+		bad += !fixed_exp_ok((double)(next() % 100000) / 1000);
+		bad += !fixed_exp_ok((double)(next() % 1000000) / 7.0 + 0.1);
+		bad += !fixed_exp_ok(ldexp((double)(next() % 1000), (int)(next() % 140) - 70));
+	}
+}
+
+TEST(numbers_parsed_as_strtod) {
+	char buf[64];
+	int bad = 0;
+	for (int i = 0; i < 200000 && bad < 10; i++) {
+		double want;
+		switch (i % 5) {
+		case 0: want = (double)(next() % 1000000) / 7.0 + 0.1; break;
+		case 1: want = (double)(int64_t)(next() % 2000000000) / 1000; break;
+		case 2: want = fabs(from_bits(next())); break;
+		case 3: want = (double)(next() % 100000) * 1e-3; break;
+		default: want = ldexp((double)(next() % 1000000), (int)(next() % 100) - 50); break;
+		}
+		if (want != want || want == INFINITY) continue;
+		static const char *fmts[] = {"%.17g", "%.15g", "%.6f", "%.3e", "%g"};
+		snprintf(buf, sizeof buf, fmts[i % 5], i & 1 ? -want : want);
+		ak_str *s = ak_str_c(buf);
+		double got = 0;
+		CHECK(ak_str_to_float(s, &got));
+		double ref = strtod(buf, NULL);
+		if (memcmp(&got, &ref, 8) != 0) {
+			T_FAIL("toFloat(%s): %.17g, strtod %.17g", buf, got, ref);
+			bad++;
+		}
+		ak_release(s);
+	}
+	static const char *ints[] = {"0", "-0", "+7", "9223372036854775807", "-9223372036854775808", "123", "-42"};
+	for (size_t i = 0; i < AK_LEN(ints); i++) {
+		ak_str *s = ak_str_c(ints[i]);
+		int64_t v = 1;
+		CHECK(ak_str_to_int(s, &v));
+		CHECK(v == strtoll(ints[i], NULL, 10));
+		ak_release(s);
+	}
+	static const char *notints[] = {"", "-", "+", "9223372036854775808", "-9223372036854775809", "1x", " 1", "18446744073709551616", "99999999999999999999"};
+	for (size_t i = 0; i < AK_LEN(notints); i++) {
+		ak_str *s = ak_str_c(notints[i]);
+		int64_t v = 0;
+		CHECK(!ak_str_to_int(s, &v));
+		ak_release(s);
 	}
 }
 

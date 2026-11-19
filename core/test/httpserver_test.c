@@ -225,7 +225,7 @@ static ak_val dispatch(ak_closure *c, ak_val *args, uint32_t n) {
 	int64_t id = args[0].i;
 	atomic_fetch_add(&handled, 1);
 	ak_arr *parts = lib("http.srvRequest")(args, 1).p;
-	ak_str *method = parts->data[0].p, *path = parts->data[1].p, *remote = parts->data[3].p;
+	ak_str *method = ak_arr_vals(parts)[0].p, *path = ak_arr_vals(parts)[1].p, *remote = ak_arr_vals(parts)[3].p;
 	ak_bytes *body = lib("http.srvBody")(args, 1).p;
 	ak_future *f = ak_future_new(AK_K_VOID);
 	seen_remote.len = 0;

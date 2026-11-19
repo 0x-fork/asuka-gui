@@ -2027,7 +2027,7 @@ static ak_val expect(ak_val *a, uint32_t n, bool no, const char *name) {
 	if (o && o->tag == AK_TAG_ARR) {
 		const ak_arr *arr = (const ak_arr *)o;
 		for (uint32_t i = 0; ok && i < arr->len; i++)
-			ok = no ? ak_uitest_expect_no(app, span_of(arr->data[i]), &err) : ak_uitest_expect(app, span_of(arr->data[i]), &err);
+			ok = no ? ak_uitest_expect_no(app, span_of(ak_arr_get(arr, i)), &err) : ak_uitest_expect(app, span_of(ak_arr_get(arr, i)), &err);
 	} else {
 		ok = no ? ak_uitest_expect_no(app, span_of(a[1]), &err) : ak_uitest_expect(app, span_of(a[1]), &err);
 	}
@@ -2168,7 +2168,7 @@ static ak_val t_share(ak_val *a, uint32_t n) {
 	uint32_t count = xs ? xs->len : 0;
 	ak_item *items = ak_alloc((count ? count : 1) * sizeof *items);
 	ak_str **made = ak_alloc((count ? count : 1) * sizeof *made);
-	for (uint32_t i = 0; i < count; i++) ak_item_wire(xs->data[i].p, false, &items[i], &made[i]);
+	for (uint32_t i = 0; i < count; i++) ak_item_wire(ak_arr_vals(xs)[i].p, false, &items[i], &made[i]);
 	ak_buf b = {0};
 	ak_append_items(&b, items, count);
 	for (uint32_t i = 0; i < count; i++) ak_release(made[i]);
@@ -2642,7 +2642,7 @@ static ak_val t_second_instance(ak_val *a, uint32_t n) {
 	ak_buf b = {0};
 	ak_buf_u32(&b, args ? args->len : 0);
 	for (uint32_t i = 0; args && i < args->len; i++) {
-		ak_span s = span_of(args->data[i]);
+		ak_span s = span_of(ak_arr_get(args, i));
 		ak_buf_str(&b, s.p, s.len);
 	}
 	ak_span d = n > 2 ? span_of(a[2]) : sp("");

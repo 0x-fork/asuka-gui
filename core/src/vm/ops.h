@@ -245,11 +245,28 @@ static inline ak_str *ak_op_tostr(ak_val v, uint16_t k) {
 	}
 }
 
+// ak_op_interp is INTERP: n registers from b one after another, as
+// kinds says: a byte each, the register's kind, or AK_INTERP_FMT | its
+// kind, then its format's length and its format (a part written by
+// "{x:>8.2f}"'s spec: ak_strb_fmt), so a formatted part takes no
+// string of its own. Past kinds' end, parts are strings: no kinds at
+// all, all strings (a + b + c), joined at their size (ak_strs_join).
+#define AK_INTERP_FMT 0x80
 static inline ak_str *ak_op_interp(const ak_val *R, uint16_t b, uint16_t n, const ak_str *kinds) {
+	if (kinds->len == 0) return ak_strs_join(R + b, n);
 	ak_strb sb = {0};
+	const uint8_t *k = (const uint8_t *)kinds->data, *kend = k + kinds->len;
 	for (uint16_t i = 0; i < n; i++) {
 		ak_val v = R[b + i];
-		switch (i < kinds->len ? kinds->data[i] : AK_K_REF) {
+		uint8_t kd = k < kend ? *k++ : AK_K_REF;
+		if (kd & AK_INTERP_FMT) {
+			uint8_t len = k < kend ? *k++ : 0;
+			if (len > kend - k) len = (uint8_t)(kend - k);
+			ak_strb_fmt(&sb, v, (ak_kind)(kd & ~AK_INTERP_FMT), (const char *)k, len);
+			k += len;
+			continue;
+		}
+		switch (kd) {
 		case AK_K_INT: ak_strb_int(&sb, v.i); break;
 		case AK_K_FLOAT: ak_strb_float(&sb, v.f); break;
 		case AK_K_BOOL: ak_strb_bool(&sb, v.i != 0); break;
@@ -366,14 +383,30 @@ static inline void ak_op_getp(ak_val *R, uint16_t a, const ak_enum *e, uint16_t 
 }
 
 static inline ak_arr *ak_op_newa(ak_kind k, const ak_shape *s, const ak_val *items, uint16_t n) {
-	ak_arr *arr = ak_arr_new(k, s, n);
+	ak_arr *arr = ak_arr_new(k, s, n);  // k: AK_ARR_KIND's
 	for (uint16_t i = 0; i < n; i++) {
-		arr->data[i] = items[i];
-		ak_retain_val(arr->data[i], k);
+		ak_arr_put(arr, i, items[i]);
+		ak_retain_val(items[i], (ak_kind)(k & 0xf));
 	}
 	arr->len = n;
 	return arr;
 }
+
+// ak_op_concat is CONCAT: a = b + c; a = a + c (s += x) appends in
+// place when a's string is its alone (out of the interpreter's loop).
+__attribute__((noinline, unused)) static void ak_op_concat(ak_val *R, uint16_t a, uint16_t b, uint16_t c) {
+	if (a == b) {
+		ak_str_append((ak_str **)&R[a].p, R[c].p);
+		return;
+	}
+	ak_op_setref(R, a, ak_str_concat(R[b].p, R[c].p));
+}
+
+// AK_VALS and AK_BOOLS are an array's elements as compiled code reads
+// and writes them in place (lang/cgen): an array of values', a packed
+// [bool]'s bools (ak_arr_bools).
+#define AK_VALS(a) ((ak_val *)(a)->items)
+#define AK_BOOLS(a) ((bool *)(a)->items)
 
 // ak_op_range throws an index out of arr's range (cold: the checks'
 // paths stay short).
@@ -384,9 +417,25 @@ __attribute__((cold, noinline, unused)) static bool ak_op_range(const ak_arr *ar
 	return false;
 }
 
+// A packed array's element read and written out of the interpreter's
+// loop (its handlers small: the registers it keeps are every
+// instruction's).
+__attribute__((noinline, unused)) static void ak_op_idx_packed(ak_val *R, uint16_t a, const ak_arr *arr, int64_t i) {
+	R[a].i = arr->elem == AK_E_BOOL ? AK_BOOLS(arr)[i] : ak_arr_get_packed(arr, (uint32_t)i).i;
+}
+
+__attribute__((noinline, unused)) static void ak_op_setidx_packed(ak_arr *arr, int64_t i, ak_val v) {
+	if (arr->elem == AK_E_BOOL) AK_BOOLS(arr)[i] = v.i != 0;
+	else ak_arr_put_packed(arr, (uint32_t)i, v);
+}
+
 static inline bool ak_op_idx(ak_val *R, uint16_t a, const ak_arr *arr, int64_t i) {
 	if (AK_UNLIKELY((uint64_t)i >= (uint64_t)arr->len)) return ak_op_range(arr, i);
-	ak_val v = arr->data[i];
+	if (AK_UNLIKELY(arr->elem != AK_E_VAL)) {
+		ak_op_idx_packed(R, a, arr, i);
+		return true;
+	}
+	ak_val v = AK_VALS(arr)[i];
 	if (ak_arr_kind(arr) == AK_K_REF) ak_op_setref(R, a, ak_retain(v.p));
 	else R[a] = v;
 	return true;
@@ -402,8 +451,12 @@ static inline bool ak_op_setidx(ak_val *R, uint16_t a, int64_t i, ak_val v) {
 	ak_kind k = ak_arr_kind(arr);
 	ak_retain_val(v, k);
 	if (AK_LIKELY(ak_unique(arr))) {
-		ak_release_val(arr->data[i], k);
-		arr->data[i] = v;
+		if (AK_LIKELY(arr->elem == AK_E_VAL)) {
+			if (k == AK_K_REF) ak_release(AK_VALS(arr)[i].p);
+			AK_VALS(arr)[i] = v;
+		} else {
+			ak_op_setidx_packed(arr, i, v);
+		}
 	} else {
 		ak_arr_set(ap, i, v);
 	}
@@ -482,7 +535,7 @@ static inline bool ak_op_mulk(ak_val *R, uint16_t a, int64_t x, int64_t k) { ret
 // then GETF, with no reference to the element taken).
 static inline bool ak_op_idxf(ak_val *R, uint16_t a, const ak_arr *arr, int64_t i, uint16_t f) {
 	if (AK_UNLIKELY((uint64_t)i >= (uint64_t)arr->len)) return ak_op_range(arr, i);
-	ak_op_getf(R, a, arr->data[i].p, f);
+	ak_op_getf(R, a, AK_VALS(arr)[i].p, f);
 	return true;
 }
 
@@ -493,7 +546,7 @@ static inline bool ak_op_idxf(ak_val *R, uint16_t a, const ak_arr *arr, int64_t 
 static inline bool ak_setif(ak_arr **ap, int64_t i, uint16_t f, ak_val v) {
 	if (AK_UNLIKELY((uint64_t)i >= (uint64_t)(*ap)->len)) return ak_op_range(*ap, i);
 	ak_arr *arr = ak_arr_mut(ap);
-	ak_struct *o = ak_struct_mut((ak_struct **)&arr->data[i].p);
+	ak_struct *o = ak_struct_mut((ak_struct **)&AK_VALS(arr)[i].p);
 	if (o->shape->kinds[f] == AK_K_REF) {
 		void *old = o->f[f].p;
 		o->f[f].p = ak_retain(v.p);

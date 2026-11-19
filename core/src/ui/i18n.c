@@ -343,7 +343,7 @@ ak_arr *ak_i18n_catalog_languages(void) {
 				ak_span t = c->langs[j].tag;
 				if ((pass == 0) != ak_span_eq(t, c->source)) continue;
 				bool seen = false;
-				for (uint32_t k = 0; k < a->len && !seen; k++) seen = ak_span_eq(ak_span_str(a->data[k].p), t);
+				for (uint32_t k = 0; k < a->len && !seen; k++) seen = ak_span_eq(ak_span_str(ak_arr_vals(a)[k].p), t);
 				if (!seen) ak_arr_push(&a, (ak_val){.p = ak_str_span(t)});
 			}
 		}

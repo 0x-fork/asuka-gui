@@ -207,7 +207,7 @@ static ak_val log_files(ak_closure *c, ak_val *a, uint32_t n) {
 	char s[160] = "files:";
 	for (uint32_t i = 0; i < ps->len; i++) {
 		size_t k = strlen(s);
-		snprintf(s + k, sizeof s - k, "%s%s", i ? "," : "", ((ak_str *)ps->data[i].p)->data);
+		snprintf(s + k, sizeof s - k, "%s%s", i ? "," : "", ((ak_str *)ak_arr_vals(ps)[i].p)->data);
 	}
 	logs(s);
 	return noval();
@@ -218,7 +218,7 @@ static ak_val log_share(ak_closure *c, ak_val *a, uint32_t n) {
 	const ak_arr *items = a[0].p;
 	char s[160] = "share:";
 	for (uint32_t i = 0; i < items->len; i++) {
-		const ak_struct *it = items->data[i].p;
+		const ak_struct *it = ak_arr_vals(items)[i].p;
 		size_t k = strlen(s);
 		snprintf(s + k, sizeof s - k, "%s%lld %s%s", i ? "," : "", (long long)it->f[0].i, ((ak_str *)it->f[1].p)->data, ((ak_str *)it->f[2].p)->data);
 	}

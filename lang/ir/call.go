@@ -163,7 +163,7 @@ func (b *fb) zeroValue(t check.Type) int {
 		if sh < 0 {
 			sh = bc.NoShape
 		}
-		b.emit(op("NEWA"), r, int(b.l.kind(x.Elem)), sh, b.null(), 0)
+		b.emit(op("NEWA"), r, b.l.arrKind(x.Elem), sh, b.null(), 0)
 		return r
 	case *check.Map:
 		r := b.temp(bc.KRef)
@@ -431,7 +431,8 @@ func (b *fb) builtinMethod(e *syntax.CallExpr, call *check.Call, recv *int, dst 
 	if m.Variadic {
 		// The variadic parameter's arguments, as one array.
 		k := len(m.Params) - 1
-		ek := b.l.kind(b.typ(call.Params[k].Type))
+		et := b.typ(call.Params[k].Type)
+		ek := b.l.kind(et)
 		rest := vals[k:]
 		ks := repeatKind(ek, len(rest))
 		blk := b.regs(ks)
@@ -439,7 +440,7 @@ func (b *fb) builtinMethod(e *syntax.CallExpr, call *check.Call, recv *int, dst 
 			b.move(blk+i, v)
 		}
 		arr := b.temp(bc.KRef)
-		b.emit(op("NEWA"), arr, int(ek), bc.NoShape, blk, len(rest))
+		b.emit(op("NEWA"), arr, b.l.arrKind(et), bc.NoShape, blk, len(rest))
 		b.releaseRegs(blk, ks)
 		vals = append(vals[:k:k], arr)
 	}
@@ -494,7 +495,13 @@ func (b *fb) builtinMethod(e *syntax.CallExpr, call *check.Call, recv *int, dst 
 		vals = append(vals, b.konst(int64(check.IntCode(b.typ(call.RecvType)))))
 	case "kindU":
 		u := b.typ(call.Bound["U"])
-		vals = append(vals, b.konst(int64(b.l.kind(u))))
+		switch m.Builtin {
+		case "arr.map", "arr.flat_map", "arr.compact_map":
+			// The kind of [U]'s elements, how they're stored too.
+			vals = append(vals, b.konst(int64(b.l.arrKind(u))))
+		default:
+			vals = append(vals, b.konst(int64(b.l.kind(u))))
+		}
 	case "seqProto", "proto":
 		vals = b.seqExtra(m, res, vals)
 	case "false":

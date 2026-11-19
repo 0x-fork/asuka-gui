@@ -464,7 +464,7 @@ TEST(for_moves_one_row) {
 	check_text(root(a)->children.data[10], "item 11");
 	// Change one item: one SetProp, nothing made.
 	ak_arr *changed = copy(next);
-	ak_arr_set(&changed, 500, todo(((ak_struct *)changed->data[500].p)->f[0].i, "changed"));
+	ak_arr_set(&changed, 500, todo(((ak_struct *)ak_arr_vals(changed)[500].p)->f[0].i, "changed"));
 	ak_fake_reset(f);
 	write_p(items, ak_retain(changed));
 	ak_ui_flush();

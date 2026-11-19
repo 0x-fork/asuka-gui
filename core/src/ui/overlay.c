@@ -31,7 +31,7 @@ static void unhold(ak_view *v) {
 // large, 4 fit).
 static int64_t detents_bits(const ak_arr *a) {
 	int64_t b = 0;
-	for (uint32_t i = 0; a && i < a->len; i++) b |= INT64_C(1) << a->data[i].i;
+	for (uint32_t i = 0; a && i < a->len; i++) b |= INT64_C(1) << ak_arr_vals(a)[i].i;
 	return b;
 }
 
@@ -414,7 +414,7 @@ typedef struct {
 static void encode_flat(ak_buf *b, const ak_arr *as) {
 	ak_buf_u32(b, as ? as->len : 0);
 	for (uint32_t i = 0; as && i < as->len; i++) {
-		const ak_enum *a = as->data[i].p;
+		const ak_enum *a = ak_arr_vals(as)[i].p;
 		uint16_t c = a ? ak_enum_case(a) : 0;
 		const ak_str *title = a ? a->f[0].p : NULL, *icon = c <= 1 && a ? a->f[1].p : NULL;
 		uint8_t role = 0, flags = 0;
@@ -498,7 +498,7 @@ static void alert_event(ak_view *e, const ak_event *ev) {
 		ak_retain(e);
 		alert_close(e);
 		if (as && ev->i >= 0 && ev->i < as->len) {
-			const ak_enum *x = as->data[ev->i].p;
+			const ak_enum *x = ak_arr_vals(as)[ev->i].p;
 			// A disabled one: the host's alert was out of date.
 			if (x && ak_enum_case(x) == 0 && !x->f[3].i) ak_run_action(e, x);
 		}
@@ -511,7 +511,7 @@ static void alert_event(ak_view *e, const ak_event *ev) {
 		uint32_t i;
 		ak_span text;
 		if (!ak_decode_field_changed((const uint8_t *)ev->s.p, ev->s.len, &i, &text) || !a->fields || i >= a->fields->len || a->closed) break;
-		const ak_struct *f = a->fields->data[i].p;
+		const ak_struct *f = ak_arr_vals(a->fields)[i].p;
 		ak_closure *change = f ? f->f[5].p : NULL;
 		if (!change) break;
 		ak_str *t = ak_str_new(text.p, text.len);
@@ -591,7 +591,7 @@ void ak_ui_alert(ak_str *title, ak_str *message, ak_obj *actions, bool action_sh
 		a->fields = ak_retain(fields);
 		ak_alert_field *fs = ak_alloc(fields->len * sizeof *fs);
 		for (uint32_t i = 0; i < fields->len; i++) {
-			const ak_struct *f = fields->data[i].p;
+			const ak_struct *f = ak_arr_vals(fields)[i].p;
 			const ak_str *text = f->f[0].p, *ph = f->f[1].p, *ct = f->f[4].p;
 			fs[i] = (ak_alert_field){ph ? ak_strn(ph->data, ph->len) : ak_cstr(""), text ? ak_strn(text->data, text->len) : ak_cstr(""),
 			                         f->f[2].i ? AK_ALERT_FIELD_SECURE : 0, (uint8_t)f->f[3].i, ct ? ak_strn(ct->data, ct->len) : ak_cstr("")};

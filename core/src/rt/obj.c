@@ -6,10 +6,16 @@
 int64_t ak_obj_live;
 
 // small reports whether an object of tag is a small block (ak_alloc_small):
-// one whose size is fixed as it's made, and known from it as it's freed
-// (obj_size).
+// one whose size is known from it as it's freed (obj_size). A string's
+// or bytes' is their length's (a string grown in place, its room's:
+// ak_str_room); one whose length shrinks after it's made (bytes decoded
+// into room for the most they could take) is freed as a smaller block
+// than it is, which the cache hands out for one of that size: room to
+// spare, never too little.
 static inline bool small(ak_tag tag, size_t size) {
 	switch (tag) {
+	case AK_TAG_STR:
+	case AK_TAG_BYTES:
 	case AK_TAG_ARR:
 	case AK_TAG_MAP:
 	case AK_TAG_STRUCT:
@@ -25,6 +31,8 @@ static inline bool small(ak_tag tag, size_t size) {
 // obj_size is what o was made with, for those of its tags small says.
 static inline size_t obj_size(const ak_obj *o) {
 	switch ((ak_tag)o->tag) {
+	case AK_TAG_STR: return sizeof(ak_str) + ak_str_room((const ak_str *)o) + 1;
+	case AK_TAG_BYTES: return sizeof(ak_bytes) + ((const ak_bytes *)o)->len;
 	case AK_TAG_ARR: return sizeof(ak_arr);
 	case AK_TAG_MAP: return sizeof(ak_map);
 	case AK_TAG_STRUCT: return sizeof(ak_struct) + sizeof(ak_val) * ((const ak_struct *)o)->shape->nfields;
@@ -38,7 +46,7 @@ static inline size_t obj_size(const ak_obj *o) {
 	}
 }
 
-// obj_free frees o's own memory.
+// obj_free frees o's own memory (a string's: not a slab's piece).
 static inline void obj_free(ak_obj *o) {
 	size_t n = obj_size(o);
 	if (n <= AK_SMALL_MAX) ak_free_small(o, n);
@@ -113,7 +121,7 @@ static AK_ALWAYS_INLINE uint32_t frame_at(walk_frame *f, ak_obj *a) {
 		return f->end = a->aux == AK_K_REF;
 	case AK_TAG_ARR: {
 		ak_arr *r = (ak_arr *)a;
-		f->x = r->data;
+		f->x = r->elem == AK_E_VAL ? r->items : NULL;
 		return f->end = ak_arr_kind(r) == AK_K_REF ? r->len : 0;
 	}
 	case AK_TAG_MAP: {
@@ -151,7 +159,7 @@ static AK_ALWAYS_INLINE uint32_t frame_at(walk_frame *f, ak_obj *a) {
 static ak_val *values(ak_obj *o) {
 	switch ((ak_tag)o->tag) {
 	case AK_TAG_BOX: return &((ak_box *)o)->v;
-	case AK_TAG_ARR: return ((ak_arr *)o)->data;
+	case AK_TAG_ARR: return ((ak_arr *)o)->elem == AK_E_VAL ? ((ak_arr *)o)->items : NULL;
 	case AK_TAG_STRUCT: return ((ak_struct *)o)->f;
 	case AK_TAG_ENUM: return ((ak_enum *)o)->f;
 	default: return NULL;
@@ -228,6 +236,12 @@ static void walk_done(walk *w) {
 // released already.
 static void free_mem(ak_obj *o) {
 	switch ((ak_tag)o->tag) {
+	case AK_TAG_STR:
+		if (o->flags & AK_STR_SLAB) {
+			ak_piece_free((ak_str *)o);
+			return;
+		}
+		break;
 	case AK_TAG_ARR:
 		ak_free(ak_arr_base((ak_arr *)o));
 		break;
@@ -283,7 +297,8 @@ static inline bool is_leaf(const ak_obj *o) { return o->tag == AK_TAG_STR || o->
 // free_leaf destroys a string or bytes, which hold nothing.
 static inline void free_leaf(ak_obj *o) {
 	ak_obj_count(-1);
-	ak_free(o);
+	if (o->tag == AK_TAG_STR && (o->flags & AK_STR_SLAB)) ak_piece_free((ak_str *)o);
+	else obj_free(o);
 }
 
 // ak_destroy frees o and releases what it holds, destroying each of
@@ -468,13 +483,20 @@ static AK_ALWAYS_INLINE bool eq_enter(walk_frame *f, ak_obj *a, ak_obj *b) {
 		if (x->len != y->len) return false;
 		ak_kind k = ak_arr_kind(x);
 		if (k == AK_K_REF) {
-			f->x = x->data;
-			f->y = y->data;
+			f->x = ak_arr_vals(x);
+			f->y = ak_arr_vals(y);
 			f->end = x->len;
 			return true;
 		}
+		if (x->elem != y->elem) {
+			// Sized integers, packed in one and values in the other.
+			for (uint32_t i = 0; i < x->len; i++)
+				if (ak_arr_get(x, i).i != ak_arr_get(y, i).i) return false;
+			return true;
+		}
+		if (ak_arr_packed(x)) return x->len == 0 || memcmp(x->items, y->items, (size_t)x->len << x->shift) == 0;
 		for (uint32_t i = 0; i < x->len; i++)
-			if (!scalar_eq(x->data[i], y->data[i], k)) return false;
+			if (!scalar_eq(ak_arr_vals(x)[i], ak_arr_vals(y)[i], k)) return false;
 		return true;
 	}
 	case AK_TAG_MAP: {
@@ -663,11 +685,11 @@ static AK_ALWAYS_INLINE uint64_t hash_enter(walk_frame *f, uint64_t h, ak_obj *o
 		h = mix(mix(h, 13), a->len);
 		ak_kind k = ak_arr_kind(a);
 		if (k == AK_K_REF) {
-			f->x = a->data;
-				f->end = a->len;
+			f->x = ak_arr_vals(a);
+			f->end = a->len;
 			return h;
 		}
-		for (uint32_t i = 0; i < a->len; i++) h = mix(h, hash_scalar(a->data[i], k));
+		for (uint32_t i = 0; i < a->len; i++) h = mix(h, hash_scalar(ak_arr_get(a, i), k));
 		return h;
 	}
 	case AK_TAG_MAP: {
@@ -772,10 +794,9 @@ static ak_obj *shell(ak_obj *o) {
 	}
 	case AK_TAG_ARR: {
 		ak_arr *a = (ak_arr *)o;
-		ak_arr *c = ak_arr_new(ak_arr_kind(a), a->shape, a->len);
-		c->h.flags = a->h.flags;
+		ak_arr *c = ak_arr_like(a, a->len);
 		c->len = a->len;
-		if (ak_arr_kind(a) != AK_K_REF && a->len) memcpy(c->data, a->data, sizeof(ak_val) * a->len);
+		if (ak_arr_kind(a) != AK_K_REF && a->len) memcpy(c->items, a->items, (size_t)a->len << a->shift);
 		return &c->h;
 	}
 	case AK_TAG_MAP: {

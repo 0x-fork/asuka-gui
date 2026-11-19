@@ -142,7 +142,7 @@ static ak_ltrack_size track_size(const ak_enum *t) {
 static uint32_t count_sizes(const ak_arr *a) {
 	uint32_t n = 0;
 	for (uint32_t i = 0; a && i < a->len; i++) {
-		const ak_enum *t = a->data[i].p;
+		const ak_enum *t = ak_arr_vals(a)[i].p;
 		uint16_t c = t ? ak_enum_case(t) : 0;
 		if (c == 7) n += ((const ak_arr *)t->f[1].p)->len;
 		else if (c == 8 || c == 9) n += ((const ak_arr *)t->f[0].p)->len;
@@ -152,13 +152,13 @@ static uint32_t count_sizes(const ak_arr *a) {
 }
 
 static void fill_size_list(const ak_arr *a, ak_ltrack_size **out) {
-	for (uint32_t i = 0; a && i < a->len; i++) *(*out)++ = track_size(a->data[i].p);
+	for (uint32_t i = 0; a && i < a->len; i++) *(*out)++ = track_size(ak_arr_vals(a)[i].p);
 }
 
 static ak_lgrid_track *tracks(const ak_arr *a, ak_lgrid_track *dst, ak_ltrack_size **sizes, uint32_t *n) {
 	*n = 0;
 	for (uint32_t i = 0; a && i < a->len; i++) {
-		const ak_enum *t = a->data[i].p;
+		const ak_enum *t = ak_arr_vals(a)[i].p;
 		uint16_t c = t ? ak_enum_case(t) : 0;
 		ak_ltrack_size *start = *sizes;
 		if (c == 7 || c == 8 || c == 9) {
@@ -415,7 +415,7 @@ static void send(ak_view *e, uint16_t key, const ak_val *v, const ak_val *prev) 
 		const ak_arr *stops = g ? g->f[0].p : NULL;
 		ak_buf_u32(out, stops ? stops->len : 0);
 		for (uint32_t i = 0; stops && i < stops->len; i++) {
-			const ak_struct *st = stops->data[i].p;
+			const ak_struct *st = ak_arr_vals(stops)[i].p;
 			ak_buf_u64(out, (uint64_t)st->f[0].i);
 			ak_buf_f32(out, (float)st->f[1].f);
 		}

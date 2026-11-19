@@ -385,7 +385,7 @@ static void update(list_t *st, ak_arr *list) {
 			k = st->keys.data[i];  // taken
 			st->keys.data[i] = (ak_val){0};
 		} else {
-			k = key_of(st, list->data[i], i);
+			k = key_of(st, ak_arr_vals(list)[i], i);
 		}
 		if (ak_error_pending()) {
 			free_ids(st->next_ids, st->next_cap, st->key_kind);
@@ -438,8 +438,8 @@ static void update(list_t *st, ak_arr *list) {
 		if (c->header) continue;  // a section's ID keeps its key; the host rebinds the rest
 		lid *x = find_id(st->ids, st->ids_cap, c->row.key, c->row.hash, st->key_kind);
 		if (!x->hash) continue;
-		if (st->over_path) ak_row_move(&c->row, list->data[x->index], ik, x->index);
-		else ak_row_update(&c->row, list->data[x->index], ik, x->index);
+		if (st->over_path) ak_row_move(&c->row, ak_arr_vals(list)[x->index], ik, x->index);
+		else ak_row_update(&c->row, ak_arr_vals(list)[x->index], ik, x->index);
 	}
 }
 
@@ -608,7 +608,7 @@ static void reached(list_t *st, int64_t i) {
 // per first item.
 static void reached_start(list_t *st, int64_t i) {
 	if (!ak_view_handler(st->e, AK_EV_LIST_START_REACHED) || i > 2 || count(st) == 0) return;
-	ak_val k = st->over_path ? key_at(st, 0) : key_of(st, st->list->data[0], 0);
+	ak_val k = st->over_path ? key_at(st, 0) : key_of(st, ak_arr_vals(st->list)[0], 0);
 	if (ak_error_pending()) {
 		ak_ui_raise_pending(st->owner);
 		return;
@@ -658,7 +658,7 @@ extern const ak_el_class ak_class_lcell;
 static void encode_swipe(ak_buf *b, const ak_arr *as) {
 	ak_buf_u32(b, as ? as->len : 0);
 	for (uint32_t i = 0; as && i < as->len; i++) {
-		const ak_enum *a = as->data[i].p;
+		const ak_enum *a = ak_arr_vals(as)[i].p;
 		uint16_t c = a ? ak_enum_case(a) : 0;
 		const ak_str *title = a ? a->f[0].p : NULL, *icon = a && c <= 1 ? a->f[1].p : NULL;
 		ak_buf_u8(b, a && c == 0 ? (uint8_t)a->f[2].i : 0);
@@ -797,7 +797,7 @@ void ak_list_row_keys(ak_view *v) {
 
 static void run_swipe(lcell *c, const ak_arr *as, int64_t k) {
 	if (!as || k < 0 || k >= as->len) return;
-	const ak_enum *a = as->data[k].p;
+	const ak_enum *a = ak_arr_vals(as)[k].p;
 	if (!a || ak_enum_case(a) != 0 || !a->f[5].p) return;  // a swipe shows each action enabled
 	ak_closure *run = ak_retain(a->f[5].p);
 	ak_val r = ak_ui_call_under(c->row.owner, run, NULL, 0);
@@ -962,7 +962,7 @@ void ak_list_bind(ak_view *e, int64_t i, ak_id cell) {
 }
 
 static void list_bind(list_t *st, ak_view *e, int64_t i, ak_id cell, ak_arr *items) {
-	ak_val item = items->data[i];
+	ak_val item = ak_arr_vals(items)[i];
 	ak_kind ik = ak_arr_kind(items);
 	reached(st, i);
 	reached_start(st, i);

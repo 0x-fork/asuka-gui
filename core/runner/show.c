@@ -362,7 +362,7 @@ static void show(shower *s, ak_strb *b, ak_val v, const char *d, int indent) {
 		items l = {0};
 		for (uint32_t i = 0; a && i < a->len; i++) {
 			ak_strb ib = {0};
-			show(s, &ib, a->data[i], d + 1, indent + 2);
+			show(s, &ib, ak_arr_get(a, i), d + 1, indent + 2);
 			items_add(&l, &ib);
 		}
 		join(b, "[", &l, "]", indent);

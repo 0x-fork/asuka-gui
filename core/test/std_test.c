@@ -121,8 +121,8 @@ TEST(time_parse) {
 	ak_val r = call("time.parseRFC3339", (ak_val[]){S("1970-01-01T01:00:00.5+01:00")}, 1, 1);
 	ak_arr *a = r.p;
 	REQUIRE(a && a->len == 4);  // and where its zone annotation is: none
-	CHECK_EQ_INT(a->data[0].i, 500000000);
-	CHECK_EQ_INT(a->data[1].i, 3600);
+	CHECK_EQ_INT(ak_arr_vals(a)[0].i, 500000000);
+	CHECK_EQ_INT(ak_arr_vals(a)[1].i, 3600);
 	ak_release(a);
 	const char *bad[] = {"2023-02-29T00:00:00Z", "2026-01-01T24:00:00Z", "2026-01-01T00:00:60Z", "2026-01-01T00:00:00.Z", "2026-01-01T00:00:00", "2026-01-01T00:00:00+0100", "2026-01-01T00:00:00Zjunk", "", "0001-01-01T00:00:00Z", "2262-04-11T23:47:16.854775808Z"};
 	for (size_t i = 0; i < AK_LEN(bad); i++) {
@@ -300,8 +300,8 @@ TEST(encoding_varints) {
 		CHECK_EQ_INT(ak_alloc_count - before, 2);  // the array and its elements
 		ak_arr *a = r.p;
 		REQUIRE(a && a->len == 2);
-		CHECK_EQ_INT(a->data[0].i, cases[k].v);
-		CHECK_EQ_INT(a->data[1].i, b->len);
+		CHECK_EQ_INT(ak_arr_vals(a)[0].i, cases[k].v);
+		CHECK_EQ_INT(ak_arr_vals(a)[1].i, b->len);
 		ak_release(a);
 		ak_release(b);
 		ak_release(what.p);
@@ -553,9 +553,9 @@ TEST(regex_random) {
 		if (ak_error_pending()) ak_release(ak_error_take());
 		ak_arr *ms = r.p;
 		for (uint32_t m = 0; ms && m < ms->len; m++) {
-			ak_arr *caps = ms->data[m].p;
+			ak_arr *caps = ak_arr_vals(ms)[m].p;
 			for (uint32_t c = 0; c + 1 < caps->len; c += 2) {
-				int64_t lo = caps->data[c].i, hi = caps->data[c + 1].i;
+				int64_t lo = ak_arr_vals(caps)[c].i, hi = ak_arr_vals(caps)[c + 1].i;
 				if (lo == -1 && hi == -1) continue;
 				if (!(lo >= 0 && lo <= hi && (size_t)hi <= strlen(text))) T_FAIL("%s on %s: a capture at %lld..%lld", pat, text, (long long)lo, (long long)hi);
 			}
@@ -637,7 +637,7 @@ TEST(regex_offsets) {
 	r = search("\\bx", "x x");
 	a = r.p;
 	REQUIRE(a && a->len == 2);
-	CHECK_EQ_INT(((ak_arr *)a->data[1].p)->data[0].i, 2);
+	CHECK_EQ_INT(ak_arr_vals(((ak_arr *)ak_arr_vals(a)[1].p))[0].i, 2);
 	ak_release(a);
 	r = search("^a", "aaa");
 	a = r.p;
@@ -651,7 +651,7 @@ TEST(regex_offsets) {
 	r = search("(?i)[α-γ]+", "ΑΒΓδ");
 	a = r.p;
 	REQUIRE(a && a->len == 1);
-	CHECK_EQ_INT(((ak_arr *)a->data[0].p)->data[1].i, 6);
+	CHECK_EQ_INT(ak_arr_vals(((ak_arr *)ak_arr_vals(a)[0].p))[1].i, 6);
 	ak_release(a);
 }
 
@@ -702,14 +702,14 @@ TEST(url_parts) {
 	ak_val r = call("url.parts", (ak_val[]){S("http://u@[::1]:/p")}, 1, 1);
 	ak_arr *a = r.p;
 	REQUIRE(a && a->len == 7);
-	CHECK_EQ_STR(((ak_str *)a->data[2].p)->data, "::1");
-	CHECK_EQ_STR(((ak_str *)a->data[3].p)->data, "");
+	CHECK_EQ_STR(((ak_str *)ak_arr_vals(a)[2].p)->data, "::1");
+	CHECK_EQ_STR(((ak_str *)ak_arr_vals(a)[3].p)->data, "");
 	ak_release(a);
 	r = call("url.parts", (ak_val[]){S("http://a@b@c:1/")}, 1, 1);
 	a = r.p;
 	REQUIRE(a && a->len == 7);
-	CHECK_EQ_STR(((ak_str *)a->data[1].p)->data, "a@b");
-	CHECK_EQ_STR(((ak_str *)a->data[2].p)->data, "c");
+	CHECK_EQ_STR(((ak_str *)ak_arr_vals(a)[1].p)->data, "a@b");
+	CHECK_EQ_STR(((ak_str *)ak_arr_vals(a)[2].p)->data, "c");
 	ak_release(a);
 	ak_str *nul = ak_str_new("a\0b", 3);
 	r = call("url.escape", (ak_val[]){{.p = nul}}, 1, 1);
@@ -851,7 +851,7 @@ TEST(ranges) {
 	REQUIRE(!ak_error_pending());
 	ak_arr *a = r.p;
 	REQUIRE(a->len == 2);
-	CHECK(a->data[1].i == INT64_MAX - 1);
+	CHECK(ak_arr_vals(a)[1].i == INT64_MAX - 1);
 	ak_release(a);
 	r = call("arr.range", (ak_val[]){I(3), I(-3)}, 2, 0);
 	CHECK_EQ_INT(((ak_arr *)r.p)->len, 0);
@@ -862,7 +862,7 @@ TEST(ranges) {
 	REQUIRE(!ak_error_pending());
 	a = r.p;
 	REQUIRE(a->len == 2);
-	CHECK(a->data[1].i == INT64_MAX);
+	CHECK(ak_arr_vals(a)[1].i == INT64_MAX);
 	ak_release(a);
 	r = call("arr.range", (ak_val[]){I(3), I(2), I(1)}, 3, 0);
 	CHECK_EQ_INT(((ak_arr *)r.p)->len, 0);
@@ -903,10 +903,10 @@ TEST(int_extremes) {
 	CHECK_EQ_INT(call("math.absi", (ak_val[]){I(-5)}, 1, 0).i, 5);
 	CHECK(call("math.absi", (ak_val[]){I(-INT64_MAX)}, 1, 0).i == INT64_MAX);
 	ak_arr *xs = ak_arr_new(AK_K_INT, NULL, 3);
-	xs->data[0].i = INT64_MAX - 1, xs->data[1].i = -5, xs->data[2].i = 6;
+	ak_arr_vals(xs)[0].i = INT64_MAX - 1, ak_arr_vals(xs)[1].i = -5, ak_arr_vals(xs)[2].i = 6;
 	xs->len = 3;
 	CHECK(call("arr.sum", (ak_val[]){{.p = xs}}, 1, 0).i == INT64_MAX);
-	xs->data[1].i = 5;
+	ak_arr_vals(xs)[1].i = 5;
 	call("arr.sum", (ak_val[]){{.p = xs}}, 1, 0);
 	CHECK(overflowed());
 	ak_release(xs);
@@ -949,7 +949,7 @@ static ak_val half_of_even(ak_closure *c, ak_val *args, uint32_t n) {
 static ak_arr *strs(const char *const *xs, uint32_t n) {
 	ak_arr *a = ak_arr_new(AK_K_REF, NULL, n);
 	a->h.flags = 1;
-	for (uint32_t i = 0; i < n; i++) a->data[a->len++].p = ak_str_c(xs[i]);
+	for (uint32_t i = 0; i < n; i++) ak_arr_vals(a)[a->len++].p = ak_str_c(xs[i]);
 	return a;
 }
 
@@ -962,8 +962,8 @@ TEST(collections_refs) {
 	ak_map *g = call("arr.grouped", (ak_val[]){{.p = words}, {.p = key}, I(AK_K_REF)}, 3, 0).p;
 	REQUIRE(g && g->live == 2);
 	ak_arr *keys = ak_map_keys(g);
-	CHECK_STR((ak_val){.p = ak_retain(keys->data[0].p)}, "a");
-	CHECK_STR((ak_val){.p = ak_retain(keys->data[1].p)}, "b");
+	CHECK_STR((ak_val){.p = ak_retain(ak_arr_vals(keys)[0].p)}, "a");
+	CHECK_STR((ak_val){.p = ak_retain(ak_arr_vals(keys)[1].p)}, "b");
 	ak_val as;
 	ak_str *a = ak_str_c("a");
 	REQUIRE(ak_map_get(g, (ak_val){.p = a}, &as));
@@ -984,10 +984,10 @@ TEST(collections_refs) {
 	ak_release(key);
 	ak_closure *half = ak_closure_new(half_of_even, NULL, 0, NULL);
 	ak_arr *ns = ak_arr_new(AK_K_INT, NULL, 5);
-	for (int i = 0; i < 5; i++) ns->data[ns->len++].i = i;
+	for (int i = 0; i < 5; i++) ak_arr_vals(ns)[ns->len++].i = i;
 	ak_arr *h = call("arr.compact_map", (ak_val[]){{.p = ns}, {.p = half}, I(AK_K_INT)}, 3, 0).p;
 	REQUIRE(h && h->len == 3);
-	CHECK(h->data[0].i == 0 && h->data[1].i == 1 && h->data[2].i == 2);
+	CHECK(ak_arr_vals(h)[0].i == 0 && ak_arr_vals(h)[1].i == 1 && ak_arr_vals(h)[2].i == 2);
 	ak_release(h);
 	ak_arr *ch = call("arr.chunked", (ak_val[]){{.p = ns}, I(2)}, 2, 0).p;
 	CHECK_EQ_INT(ch->len, 3);
@@ -1180,15 +1180,15 @@ TEST(walk_links) {
 	REQUIRE(symlink("nowhere", broken) == 0);
 	ak_arr *a = call("fs.walkInfo", (ak_val[]){S(sub)}, 1, 1).p;
 	REQUIRE(a);
-	CHECK(a->data[0].i == 1 && a->data[3].i == 0);
+	CHECK(ak_arr_vals(a)[0].i == 1 && ak_arr_vals(a)[3].i == 0);
 	ak_release(a);
 	a = call("fs.walkInfo", (ak_val[]){S(link)}, 1, 1).p;
 	REQUIRE(a);
-	CHECK(a->data[0].i == 1 && a->data[3].i == 1);
+	CHECK(ak_arr_vals(a)[0].i == 1 && ak_arr_vals(a)[3].i == 1);
 	ak_release(a);
 	a = call("fs.walkInfo", (ak_val[]){S(broken)}, 1, 1).p;
 	REQUIRE(a);
-	CHECK(a->data[0].i == 0 && a->data[3].i == 1);
+	CHECK(ak_arr_vals(a)[0].i == 0 && ak_arr_vals(a)[3].i == 1);
 	ak_release(a);
 	CHECK(ak_fs_remove_tree(d));
 	ak_free(d);

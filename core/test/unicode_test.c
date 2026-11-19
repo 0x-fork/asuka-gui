@@ -251,10 +251,10 @@ TEST(graphemes_builtin) {
 	ak_val args[1] = {{.p = ak_str_c("e\xcc\x81🇯🇵👨‍👩‍👧a\r\n")}};
 	ak_arr *a = builtin("unicode.graphemes")(args, 1).p;
 	REQUIRE(a->len == 5);
-	CHECK_EQ_STR(((ak_str *)a->data[0].p)->data, "e\xcc\x81");
-	CHECK_EQ_STR(((ak_str *)a->data[1].p)->data, "🇯🇵");
-	CHECK_EQ_STR(((ak_str *)a->data[2].p)->data, "👨‍👩‍👧");
-	CHECK_EQ_STR(((ak_str *)a->data[4].p)->data, "\r\n");
+	CHECK_EQ_STR(((ak_str *)ak_arr_vals(a)[0].p)->data, "e\xcc\x81");
+	CHECK_EQ_STR(((ak_str *)ak_arr_vals(a)[1].p)->data, "🇯🇵");
+	CHECK_EQ_STR(((ak_str *)ak_arr_vals(a)[2].p)->data, "👨‍👩‍👧");
+	CHECK_EQ_STR(((ak_str *)ak_arr_vals(a)[4].p)->data, "\r\n");
 	ak_release(a);
 	ak_release(args[0].p);
 }

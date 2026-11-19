@@ -112,8 +112,8 @@ TEST(split_replace) {
 	ak_str *comma = S(",");
 	ak_arr *parts = ak_str_split(s, comma);
 	CHECK_EQ_INT(parts->len, 4);
-	CHECK_EQ_STR(((ak_str *)parts->data[3].p)->data, "c");
-	CHECK_EQ_STR(((ak_str *)parts->data[2].p)->data, "");
+	CHECK_EQ_STR(((ak_str *)ak_arr_vals(parts)[3].p)->data, "c");
+	CHECK_EQ_STR(((ak_str *)ak_arr_vals(parts)[2].p)->data, "");
 	ak_str *dash = S("-");
 	ak_str *r = ak_str_replace(s, comma, dash);
 	CHECK_EQ_STR(r->data, "a-b--c");
@@ -126,8 +126,8 @@ TEST(arr_cow) {
 	ak_arr *b = ak_retain(a);  // shared
 	ak_arr_set(&b, 0, (ak_val){.i = 100});
 	CHECK(a != b);
-	CHECK_EQ_INT(a->data[0].i, 0);
-	CHECK_EQ_INT(b->data[0].i, 100);
+	CHECK_EQ_INT(ak_arr_vals(a)[0].i, 0);
+	CHECK_EQ_INT(ak_arr_vals(b)[0].i, 100);
 	ak_arr *c = a;
 	ak_arr_push(&c, (ak_val){.i = 10});  // unique: in place
 	CHECK(c == a);
@@ -168,8 +168,8 @@ TEST(map) {
 	ak_map_set(&m, (ak_val){.p = ak_retain(k)}, (ak_val){.i = 1});
 	ak_arr *keys = ak_map_keys(m);
 	CHECK_EQ_INT(keys->len, 100);
-	CHECK_EQ_STR(((ak_str *)keys->data[0].p)->data, "k0");
-	CHECK_EQ_STR(((ak_str *)keys->data[99].p)->data, "k42");  // re-added: last
+	CHECK_EQ_STR(((ak_str *)ak_arr_vals(keys)[0].p)->data, "k0");
+	CHECK_EQ_STR(((ak_str *)ak_arr_vals(keys)[99].p)->data, "k42");  // re-added: last
 	ak_map *shared = ak_retain(m);
 	ak_map_set(&shared, (ak_val){.p = S("new")}, (ak_val){.i = 7});
 	CHECK(shared != m);

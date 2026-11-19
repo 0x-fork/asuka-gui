@@ -58,7 +58,7 @@ static void encode_rich(ak_buf *b, const ak_arr *spans, bool inlines) {
 	ak_rich_run *runs = n ? ak_alloc(n * sizeof(ak_rich_run)) : NULL;
 	uint32_t m = 0;
 	for (uint32_t i = 0; i < n; i++) {
-		const ak_struct *s = spans->data[i].p;
+		const ak_struct *s = ak_arr_vals(spans)[i].p;
 		if (!s) continue;
 		ak_rich_run r = {style_of(s), ak_span_str(s->f[SP_TEXT].p)};
 		ak_str *key = inline_key(s);
@@ -66,7 +66,7 @@ static void encode_rich(ak_buf *b, const ak_arr *spans, bool inlines) {
 			if (!inlines) continue;
 			bool seen = false;
 			for (uint32_t j = 0; j < i && !seen; j++) {
-				const ak_struct *t = spans->data[j].p;
+				const ak_struct *t = ak_arr_vals(spans)[j].p;
 				seen = t && t->f[SP_INLINE].p && ak_str_eq(inline_key(t), key);
 			}
 			if (seen) continue;
@@ -92,7 +92,7 @@ static ak_arr *decode_spans(ak_span b) {
 		bool nl = r->text.len == 1 && r->text.p[0] == '\n' && !first_para;
 		first_para = false;
 		if (nl && out->len) {
-			ak_struct *last = out->data[out->len - 1].p;
+			ak_struct *last = ak_arr_vals(out)[out->len - 1].p;
 			if (!last->f[SP_INLINE].p) {
 				ak_str *nl_str = ak_str_c("\n");
 				ak_str *t = ak_str_concat(last->f[SP_TEXT].p, nl_str);
@@ -128,7 +128,7 @@ static ak_arr *decode_spans(ak_span b) {
 static ak_str *plain_text(const ak_arr *spans) {
 	ak_strb b = {0};
 	for (uint32_t i = 0; spans && i < spans->len; i++) {
-		const ak_struct *s = spans->data[i].p;
+		const ak_struct *s = ak_arr_vals(spans)[i].p;
 		if (!s) continue;
 		if (s->f[SP_INLINE].p) ak_strb_cstr(&b, object_char, 3);
 		else ak_strb_str(&b, s->f[SP_TEXT].p);
@@ -243,7 +243,7 @@ static void sync(ak_rich *st, const ak_arr *spans) {
 	const ak_struct **ins = n ? ak_alloc(n * sizeof(ak_struct *)) : NULL;
 	uint32_t m = 0;
 	for (uint32_t i = 0; i < n; i++) {
-		const ak_struct *s = spans->data[i].p;
+		const ak_struct *s = ak_arr_vals(spans)[i].p;
 		if (!s || !s->f[SP_INLINE].p) continue;
 		bool seen = false;
 		for (uint32_t j = 0; j < m && !seen; j++) seen = ak_str_eq(ins[j]->f[0].p, inline_key(s));
