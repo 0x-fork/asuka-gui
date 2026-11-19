@@ -177,8 +177,18 @@ func regs(m *bc.Module, in insn) []int {
 			out = append(out, a[k])
 		}
 	}
-	b, n := 0, 0
-	switch d.Name {
+	b, n := blockOf(m, in)
+	for r := b; r < b+n; r++ {
+		out = append(out, r)
+	}
+	return out
+}
+
+// blockOf is in's block of registers (its first and how many): a call's
+// arguments, a struct's fields, a closure's captures...
+func blockOf(m *bc.Module, in insn) (b, n int) {
+	a := in.args
+	switch bc.Ops[in.op].Name {
 	case "CALL", "CALLB", "CALLC", "CALLU", "CALLI", "CLOS":
 		b, n = a[2], a[3]
 	case "NEWS":
@@ -196,10 +206,7 @@ func regs(m *bc.Module, in insn) []int {
 	case "CPATH", "CLEN", "CPUTP", "ACCP", "AGETP":
 		b, n = a[3], pathArgs(m.Strings[a[2]])
 	}
-	for r := b; r < b+n; r++ {
-		out = append(out, r)
-	}
-	return out
+	return b, n
 }
 
 func has(rs []int, r int) bool {

@@ -110,7 +110,11 @@ Release code is C a C compiler optimizes as it would hand-written C
 and releases are decided as the C is written, compiled functions call
 each other's bodies directly with their arguments as C values and their
 error in a returned register, and elements and fields are read through
-borrowed pointers and changed in place without reference counting. The
+borrowed pointers and changed in place without reference counting. A
+short string a function makes and keeps to itself (only read in place:
+measured, compared, searched, printed, joined into another) is built in
+its C frame, not allocated, as Go's escape analysis does; a fused
+loop's appends store through a cursor kept in locals. The
 heap objects whose size never changes (structs, enums, boxes, closures,
 arrays' and maps' headers) are small blocks, and a release counts no
 allocations or live objects (tests and development builds do).

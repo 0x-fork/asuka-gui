@@ -1,0 +1,132 @@
+// Strings a function makes and keeps to itself (lang/cgen's stack
+// strings): built in the C frame when short, on the heap when long or
+// when they go anywhere (returned, stored, captured, carried into the
+// next turn of a loop). The VM and the compiled C print the same.
+
+struct Box {
+  label: string
+}
+
+let parts = ["ka", "to", "ra", "chi", "suyuq"]
+
+fn joined(i: int) -> string {
+  // Returned: made on the heap.
+  let k = parts[i % 5] + "/" + parts[(i + 2) % 5] + "/{i}"
+  return k
+}
+
+fn lookup(m: [string: int], i: int) -> int {
+  let k = parts[i % 5] + "-" + parts[(i + 1) % 5]
+  return m[k] ?? -1
+}
+
+fn check(s: string) throws -> int {
+  if s.hasSuffix("suyuq") { throw Error("no {s}") }
+  return s.byteCount()
+}
+
+test "read in place" {
+  var total = 0
+  var hits = 0
+  for i in 0..<50 {
+    let k = parts[i % 5] + "-" + parts[(i / 5) % 5] + "/" + parts[(i / 25) % 5]
+    total += k.byteCount() + k.count()
+    if k == "ka-ka/ka" { hits += 1 }
+    if k.hasPrefix("to") && k.contains("-ra") { hits += 10 }
+    if k < "l" { hits += 100 }
+    if k.compare("ra") > 0 { hits += 1000 }
+    let at = k.find("/") ?? -1
+    total += at
+    let msg = "{k}! {i}"
+    total += msg.byteCount()
+    let two = parts[i % 5] + parts[(i + 1) % 5]
+    if two.hasSuffix("to") { hits += 10000 }
+    if i % 17 == 0 { print(k) }
+  }
+  print("{total} {hits}")
+}
+
+test "escaping" {
+  var kept: [string] = []
+  var boxes: [Box] = []
+  var m: [string: int] = [:]
+  var last = ""
+  var ends: [string] = []
+  for i in 0..<6 {
+    let a = parts[i % 5] + "+" + parts[(i + 1) % 5]
+    kept.push(a)
+    let b = parts[i % 5] + "*" + parts[(i + 3) % 5] + "*"
+    boxes.push(Box(label: b))
+    let c = parts[i % 5] + "=" + "{i}"
+    m[c] = i
+    if last != "" { ends.push(last) }
+    let d = parts[i % 5] + "~" + parts[(i + 4) % 5] + "~"
+    last = d
+  }
+  print(kept.joined(","))
+  print(boxes.map(x => x.label).joined(","))
+  print(m)
+  print(ends.joined(",") + " " + last)
+  print(joined(3) + " " + joined(4))
+  print(lookup(["ka-to": 1, "to-ra": 2], 0) + lookup(["ka-to": 1, "to-ra": 2], 1) + lookup([:], 2))
+}
+
+test "captured" {
+  var fs: [fn() -> int] = []
+  for i in 0..<3 {
+    let s = parts[i] + "-" + parts[i + 1] + "-"
+    fs.push(() => s.byteCount())
+  }
+  print(fs.map(f => f()))
+}
+
+test "long strings" {
+  let x = "x".repeat(40)
+  for n in [29, 30, 31, 40] {
+    // 63 bytes fit the frame's buffer: n + 1 + 32 around it.
+    let k = x.slice(0, n) + "-" + "y".repeat(32)
+    print("{n} {k.byteCount()} {k.hasSuffix("yy")} {k.count()}")
+  }
+  let empty = "" + "" + ""
+  print(empty.byteCount())
+}
+
+test "an error on the way" {
+  var total = 0
+  for i in 0..<5 {
+    let k = parts[i] + "." + parts[(i + 1) % 5] + "." + parts[(i + 2) % 5]
+    do {
+      total += try check(k)
+      total += try check(parts[i] + parts[i])
+    } catch e {
+      print("caught {e.message} after {k}")
+    }
+  }
+  print(total)
+}
+
+// Output:
+// ka-ka/ka
+// ra-chi/ka
+// suyuq-to/to
+// 1960 132021
+// ok read in place
+// ka+to,to+ra,ra+chi,chi+suyuq,suyuq+ka,ka+to
+// ka*chi*,to*suyuq*,ra*ka*,chi*to*,suyuq*ra*,ka*chi*
+// {"ka=0":0,"to=1":1,"ra=2":2,"chi=3":3,"suyuq=4":4,"ka=5":5}
+// ka~suyuq~,to~ka~,ra~to~,chi~ra~,suyuq~chi~ ka~suyuq~
+// chi/ka/3 suyuq/to/4
+// 2
+// ok escaping
+// [6,6,7]
+// ok captured
+// 29 62 true 62
+// 30 63 true 63
+// 31 64 true 64
+// 40 73 true 73
+// 0
+// ok long strings
+// caught no ra.chi.suyuq after ra.chi.suyuq
+// caught no suyuqsuyuq after suyuq.ka.to
+// 54
+// ok an error on the way

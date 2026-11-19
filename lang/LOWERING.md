@@ -546,6 +546,44 @@ the C is written, from the bytecode's kinds.
   elements are stored: a packed array is made unique as a copy just as
   packed (ak_arr_mut), and the elements made unique are structs, which
   are values.
+- Strings in the frame (lang/cgen/stackstr.go). A string an INTERP or
+  a CONCAT (not `s += x`) makes whose value goes nowhere but into what
+  reads it in place is built in a buffer in the function's C frame
+  (rt.h's ak_strbuf, 63 bytes and the NUL) when it fits, as Go's
+  concatstrings writes a result that doesn't escape into its caller's
+  tmpBuf: no allocation, nothing freed. The value is followed forward
+  over the control flow (handlers' edges too) as the registers that may
+  hold it: a MOV or MOVR adds its destination, any other write takes
+  the register out, and each instruction reading one must read it in
+  place and keep nothing: LEN, EQ, NE, LTS, ISNONE, JNONE, JSOME, a
+  map's lookup by it (MGET, MGETJ), an INTERP's part, and the builtins
+  that only read (byteCount, count, equals, compare, contains,
+  hasPrefix, hasSuffix, find, isEmpty, toInt, toFloat, hash, print).
+  Anything else (a return, a store, a capture, a call, a throw, a mut
+  fn's receiver, which goes back to its caller) is an escape, and the string is made on the heap; so is one made again
+  while a register still holds the last one (a loop carrying it into its
+  next turn). The string is immortal, so a release does nothing, and
+  flagged (AK_STR_STACK): ak_retain panics on one in the tests' builds
+  (AK_TEST; what this analysis missed would be a keep); a copy into
+  another register is ak_retain_local's, and a copy for another thread
+  copies it. Not in a function that may suspend (its registers move to
+  the heap), and eight a function at most.
+- Write cursors (lang/cgen/cursor.go). A fused loop's appends into the
+  array it made (arr.append_room, arr.append_own: an array's map,
+  filter, compactMap) store through a pointer kept in a C local (W<n>_,
+  with the room's end, E<n>_), opened as the loop is fallen into: each
+  append read the array's buffer and count and stored the count back,
+  which the C compiler can't keep in registers (the element's store may
+  alias them, and an overflow check can leave between). A filter's
+  append compares with the end, and on none left writes the count back,
+  grows the array (ak_op_append_slow) and opens the cursor again. The
+  count is written back on every way out of the loop: falling out of
+  its end, a jump out or an error (each through a stub, X<n>_, after
+  the function's code). A loop has one when it's entered only by
+  falling into its first instruction, has no handler in it and no
+  return, and every instruction in it naming the array's register is
+  one of the appends' moves (lang/ir's appendReg): nothing else reads,
+  copies or passes the array while its count is stale.
 - The optimizer's other instructions are C of their own: an immediate
   (ADDIS, DIVIS...) a literal, a division by a constant the C
   compiler's multiply, a fused comparison (JLTI, JGEIS...) one `if`.

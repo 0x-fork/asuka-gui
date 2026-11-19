@@ -310,3 +310,12 @@ M): 1.03×. Go's arm64 compiler fuses `x * y + z` into FMADD and FMSUB
 once where the two operations round twice; Asuka rounds each operation
 as the VM does, the same result everywhere, so its loop has the longer
 dependency chains (vx -= dx * mj: a multiply, then a subtract).
+
+## Strings in the frame, fused loops' write cursors (2026-11-20)
+
+lang/cgen's stack strings and fused loops' write cursors
+(bench/std/README.md, the same date) change none of these benchmarks'
+hot loops: five hyperfine runs beside 5d9e7dfd (load 6 to 17), each
+within its noise (fib 115 ± 12 ms to 105 ± 6, its instructions 2,002 M
+both; sieve 178 to 210, trees 561 to 617, words 116 to 118, json 533 to
+543, sort 46 to 44, nbody 190 to 189).

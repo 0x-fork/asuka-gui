@@ -245,6 +245,64 @@ TEST(builder_grows_from_small) {
 	ak_release(s);
 }
 
+// Stack strings (rt.h's ak_strbuf): what fits is made in the buffer,
+// immortal and flagged, allocating nothing; what doesn't on the heap; a
+// copy for another thread is a string of its own.
+TEST(stack_strings) {
+	ak_str *a = S("abc"), *b = S("defgh"), *want = S("abcdefgh"), *big = ak_str_new(NULL, 60);
+	memset(big->data, 'x', 60);
+	ak_val parts[3] = {{.p = a}, {.p = NULL}, {.p = b}};
+	ak_str_ascii(a);
+	ak_str_ascii(b);  // what's known of their bytes is the result's
+	ak_strbuf buf;
+	int64_t before = ak_alloc_count, live = ak_obj_live;
+	ak_str *s = ak_strs_join_in(&buf, parts, 3);
+	CHECK(s == &buf.s);
+	CHECK_EQ_STR(s->data, "abcdefgh");
+	CHECK(s->h.rc == AK_RC_IMMORTAL && ak_obj_on_stack(&s->h) && (s->h.flags & AK_STR_KNOWN) && (s->h.flags & AK_STR_ASCII));
+	ak_release(s);
+	ak_retain_local(s);
+	CHECK(ak_str_eq(s, want) && ak_str_hash(s) == ak_str_hash(want));
+	ak_str *c = ak_str_concat_in(&buf, b, a);
+	CHECK(c == &buf.s);
+	CHECK_EQ_STR(c->data, "defghabc");
+	ak_strb sb = {0};
+	ak_strb_cstr(&sb, "n=", 2);
+	ak_strb_int(&sb, -42);
+	ak_str *f = ak_strb_finish_in(&sb, &buf);
+	CHECK(f == &buf.s);
+	CHECK_EQ_STR(f->data, "n=-42");
+	CHECK_EQ_INT(ak_alloc_count - before, 0);
+	CHECK_EQ_INT(ak_obj_live - live, 0);
+	// A copy for another thread is a string of its own, on the heap.
+	ak_val t = ak_deep_copy((ak_val){.p = f}, AK_K_REF);
+	CHECK(t.p != f && ((ak_str *)t.p)->h.rc == 1 && !ak_obj_on_stack(t.p));
+	CHECK_EQ_STR(((ak_str *)t.p)->data, "n=-42");
+	ak_release(t.p);
+	// 63 bytes fit; 64 don't.
+	ak_val fit[2] = {{.p = big}, {.p = ak_str_new("0123456789ab", 3)}};
+	ak_str *s63 = ak_strs_join_in(&buf, fit, 2);
+	CHECK(s63 == &buf.s && s63->len == 63 && s63->data[63] == 0);
+	ak_release(fit[1].p);
+	fit[1].p = ak_str_new("0123", 4);
+	ak_str *s64 = ak_strs_join_in(&buf, fit, 2);
+	CHECK(s64 != &buf.s && s64->len == 64 && s64->h.rc == 1 && !ak_obj_on_stack(&s64->h));
+	ak_release(s64);
+	ak_str *h = ak_str_concat_in(&buf, big, fit[1].p);
+	CHECK(h != &buf.s && h->len == 64);
+	ak_release(h);
+	// One part empty: the other, as ak_str_concat gives it.
+	ak_str *e = ak_str_concat_in(&buf, ak_str_empty(), b);
+	CHECK(e == b);
+	ak_release(e);
+	CHECK(ak_strs_join_in(&buf, parts + 1, 1) == ak_str_empty());
+	ak_release(fit[1].p);
+	ak_release(big);
+	ak_release(a);
+	ak_release(b);
+	ak_release(want);
+}
+
 TEST(ints_printed) {
 	static const int64_t cases[] = {0, 1, -1, 9, 10, 99, 100, -100, 12345678901234, INT64_MAX, INT64_MIN, -9223372036854775807LL};
 	for (size_t i = 0; i < AK_LEN(cases); i++) {

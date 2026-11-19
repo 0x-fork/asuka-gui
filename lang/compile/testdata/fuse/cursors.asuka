@@ -1,0 +1,42 @@
+// Appends through a fused loop's write cursor (lang/cgen's cursor.go):
+// ints, floats and strings; a filter's array grown past its room many
+// times; loops in loops, each with its own array; an error out of the
+// middle of one (an overflow, a throwing closure), caught, and the
+// arrays' counts right after.
+
+fn parse(s: string) throws -> int = s.toInt() ?? throw Error("not a number: {s}")
+
+fn grid(n: int) -> [[int]] = (0..<n).lazy().toArray().map(i => (0..<n).lazy().toArray().map(j => i * n + j).filter(x => x % 3 != 0))
+
+fn main() throws {
+  let xs = (0..<1000).lazy().toArray()
+  let evens = xs.filter(x => x % 2 == 0)
+  let halves = evens.map(x => float(x) / 2.0)
+  let words = xs.map(x => "w{x}").filter(w => w.hasSuffix("7"))
+  let some = xs.compactMap(x => if x % 7 == 0 { "s{x}" } else { none })
+  print("{evens.count()} {halves.reduce(0.0, (s, x) => s + x)} {words.count()} {words.last() ?? ""} {some.count()} {some[3]}")
+  let g = grid(12)
+  print("{g.count()} {g.map(r => r.count()).reduce(0, (s, n) => s + n)} {g[11]}")
+  var kept: [[string]] = []
+  for k in 1..<4 {
+    kept.push(words.filter(w => w.count() > k + 1).map(w => w + "!"))
+  }
+  print(kept.map(ws => ws.count()))
+  do {
+    print(xs.map(x => x * 92233720368547758))
+  } catch e {
+    print("caught: {e.message}")
+  }
+  do {
+    print(try words.map(w => try parse(w)))
+  } catch e {
+    print("caught: {e.message}")
+  }
+  do {
+    print(try xs.map(x => "{x}").filter(s => try parse(s + "x") > 0))
+  } catch e {
+    print("caught: {e.message}")
+  }
+  let tail = xs.filter(x => x > 990).map(x => x - 990)
+  print(tail)
+}

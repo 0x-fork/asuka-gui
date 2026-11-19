@@ -168,6 +168,17 @@ typedef struct ak_obj {
 
 #define AK_RC_IMMORTAL 0xffffffffu
 
+// A string compiled code builds in its own C frame (lang/cgen's stack
+// strings: ak_strbuf) is immortal too, so that a release of it does
+// nothing, and flagged AK_STR_STACK (its h.flags): it never outlives the
+// function that made it, which the compiler proved keeps it nowhere. A
+// retain is a keep, so the tests' builds (AK_TEST: ASan's) panic on one
+// (ak_retain_local is the frame's own copy of it); not every build with
+// assertions, as the check in each inlined retain changes how the
+// interpreter's loop compiles. A copy for another thread copies it.
+#define AK_STR_STACK 8
+static inline bool ak_obj_on_stack(const ak_obj *o) { return o->tag == AK_TAG_STR && (o->flags & AK_STR_STACK); }
+
 void ak_destroy(ak_obj *o);
 
 // ak_obj_live counts the objects made and not yet destroyed (immortal
@@ -182,6 +193,20 @@ extern int64_t ak_obj_live;
 #endif
 
 static inline void *ak_retain(void *p) {
+	if (p) {
+		ak_obj *o = (ak_obj *)p;
+		if (o->rc != AK_RC_IMMORTAL) o->rc++;
+#ifdef AK_TEST
+		else if (AK_UNLIKELY(ak_obj_on_stack(o))) ak_panic("a string on a function's stack retained: it would outlive its frame");
+#endif
+	}
+	return p;
+}
+
+// ak_retain_local is ak_retain of what may be a stack string
+// (AK_STR_STACK), by compiled code copying it into another of the
+// frame's registers, which the compiler proved no longer-lived than it.
+static inline void *ak_retain_local(void *p) {
 	if (p) {
 		ak_obj *o = (ak_obj *)p;
 		if (o->rc != AK_RC_IMMORTAL) o->rc++;
@@ -269,6 +294,7 @@ typedef struct ak_str {
 #define AK_STR_KNOWN 1  // AK_STR_ASCII says whether it's ASCII
 #define AK_STR_ASCII 2  // every byte below 0x80: a character a byte
 #define AK_STR_SLAB 4   // a piece of a slab (ak_pieces): h.aux is where in it, in 8 bytes
+// AK_STR_STACK (8, above ak_retain): in a function's C frame (ak_strbuf)
 
 // ak_str_room is how many bytes a string has room for before its NUL:
 // its length, as it's made; once it's grown in place (ak_str_append),
@@ -462,11 +488,41 @@ ak_buf *ak_strb_buf(ak_strb *b);
 // their lengths summed first, the result made at its size, each copied
 // into it once.
 ak_str *ak_strs_join(const ak_val *v, uint32_t n);
+
+// Stack strings. A string compiled code makes (a + b + c, an
+// interpolation) whose value the compiler proved goes nowhere but into
+// what reads it in place (its length, a comparison, a search, another
+// string, a print: lang/cgen's stack strings) is built in a buffer in
+// the function's C frame when it fits, as Go's concatstrings writes a
+// result that doesn't escape into the caller's 32-byte tmpBuf: no
+// allocation, nothing freed. It's immortal (a release does nothing) and
+// flagged AK_STR_STACK; one that doesn't fit is made on the heap, as
+// any.
+#define AK_STRBUF_ROOM 63
+typedef union ak_strbuf {
+	ak_str s;
+	char b[sizeof(ak_str) + AK_STRBUF_ROOM + 1];
+} ak_strbuf;
+// ak_strbuf_str is buf as a string of n bytes (n <= AK_STRBUF_ROOM,
+// its NUL written), the caller's to fill.
+static inline ak_str *ak_strbuf_str(ak_strbuf *buf, size_t n) {
+	ak_str *s = &buf->s;
+	s->h = (ak_obj){.rc = AK_RC_IMMORTAL, .tag = AK_TAG_STR, .flags = AK_STR_STACK};
+	s->len = (uint32_t)n;
+	s->hash = 0;
+	s->data[n] = 0;
+	return s;
+}
+// ak_strs_join_in is ak_strs_join in buf when it fits there; ak_str_concat_in
+// ak_str_concat's; ak_strb_finish_in ak_strb_finish's.
+ak_str *ak_strs_join_in(ak_strbuf *buf, const ak_val *v, uint32_t n);
+ak_str *ak_str_concat_in(ak_strbuf *buf, ak_str *a, ak_str *b);
 // ak_strb_fmt writes v, of kind k (int, float; a string: text), by an
 // interpolation's format ("{x:>8.2f}"'s spec, n bytes): as str.fmt_int,
 // str.fmt_float and str.fmt_text do (rt/lib.c).
 void ak_strb_fmt(ak_strb *b, ak_val v, ak_kind k, const char *spec, size_t n);
 ak_str *ak_strb_finish(ak_strb *b);  // frees the builder's buffer
+ak_str *ak_strb_finish_in(ak_strb *b, ak_strbuf *buf);
 void ak_strb_free(ak_strb *b);       // drops what it holds
 
 // ---- Bytes ----

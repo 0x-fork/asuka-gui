@@ -869,7 +869,7 @@ uint64_t ak_val_hash(ak_val v, ak_kind k) {
 // (NULL until a walk fills them in), or o itself when it needn't be
 // copied: a constant, never freed.
 static ak_obj *shell(ak_obj *o) {
-	if (o->rc == AK_RC_IMMORTAL && o->tag != AK_TAG_ENUM) return o;
+	if (o->rc == AK_RC_IMMORTAL && o->tag != AK_TAG_ENUM && !ak_obj_on_stack(o)) return o;
 	switch ((ak_tag)o->tag) {
 	case AK_TAG_STR: {
 		ak_str *s = (ak_str *)o;

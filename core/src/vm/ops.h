@@ -251,9 +251,11 @@ static inline ak_str *ak_op_tostr(ak_val v, uint16_t k) {
 // "{x:>8.2f}"'s spec: ak_strb_fmt), so a formatted part takes no
 // string of its own. Past kinds' end, parts are strings: no kinds at
 // all, all strings (a + b + c), joined at their size (ak_strs_join).
+// ak_op_interp_in is INTERP into buf (compiled code's stack string,
+// rt.h's ak_strbuf) when the result fits there; buf NULL: on the heap.
 #define AK_INTERP_FMT 0x80
-static inline ak_str *ak_op_interp(const ak_val *R, uint16_t b, uint16_t n, const ak_str *kinds) {
-	if (kinds->len == 0) return ak_strs_join(R + b, n);
+static inline ak_str *ak_op_interp_in(ak_strbuf *buf, const ak_val *R, uint16_t b, uint16_t n, const ak_str *kinds) {
+	if (kinds->len == 0) return buf ? ak_strs_join_in(buf, R + b, n) : ak_strs_join(R + b, n);
 	ak_strb sb = {0};
 	const uint8_t *k = (const uint8_t *)kinds->data, *kend = k + kinds->len;
 	for (uint16_t i = 0; i < n; i++) {
@@ -275,8 +277,10 @@ static inline ak_str *ak_op_interp(const ak_val *R, uint16_t b, uint16_t n, cons
 			break;
 		}
 	}
-	return ak_strb_finish(&sb);
+	return buf ? ak_strb_finish_in(&sb, buf) : ak_strb_finish(&sb);
 }
+
+static inline ak_str *ak_op_interp(const ak_val *R, uint16_t b, uint16_t n, const ak_str *kinds) { return ak_op_interp_in(NULL, R, b, n, kinds); }
 
 void ak_vm_closure_drop(ak_closure *c);
 
@@ -789,6 +793,22 @@ __attribute__((noinline, cold, unused)) static ak_arr *ak_op_append_slow(ak_arr 
 #else
 #define AK_OP_ROOM_CHECK(a) ((void)(a))
 #define AK_OP_OWN_CHECK(a) ((void)(a))
+#endif
+// A fused loop's write cursor (lang/cgen's cursor.go): where its next
+// append's element goes (w) and where the array's room ends (e), in
+// locals the loop keeps, its count written back (AK_CUR_CLOSE) on the
+// ways out of the loop. The array is the loop's own, of values.
+#define AK_CUR_OPEN(a, w, e) do { \
+		ak_arr *c_ = (a); \
+		AK_OP_OWN_CHECK(c_); \
+		(w) = (void *)((ak_val *)c_->items + c_->len); \
+		(e) = (void *)((ak_val *)c_->items + c_->cap); \
+	} while (0)
+#define AK_CUR_CLOSE(a, w) (((ak_arr *)(a))->len = (uint32_t)((ak_val *)(void *)(w) - (ak_val *)((ak_arr *)(a))->items))
+#ifndef NDEBUG
+#define AK_CUR_ROOM(w, e) AK_ASSERT((void *)(w) < (void *)(e))
+#else
+#define AK_CUR_ROOM(w, e) ((void)0)
 #endif
 AK_OP_APPEND(i, int64_t, i)
 AK_OP_APPEND(f, double, f)
