@@ -1301,7 +1301,7 @@ func (b *fb) appendStmt(s *syntax.AssignStmt) bool {
 	mark := b.mark()
 	vals := make([]int, len(parts))
 	for i, p := range parts {
-		vals[i] = b.value(p, -1)
+		vals[i] = b.chainPart(p, -1)
 	}
 	if len(vals) > 1 {
 		vals = []int{b.joinStrings(vals, -1)}

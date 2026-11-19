@@ -1206,7 +1206,7 @@ func (b *fb) binary(e *syntax.BinaryExpr, dst int) int {
 			}
 			blk := b.regs(ks)
 			for i, p := range parts {
-				b.move(blk+i, b.value(p, blk+i))
+				b.move(blk+i, b.chainPart(p, blk+i))
 			}
 			r := b.out(dst, bc.KRef)
 			b.emit(op("INTERP"), r, blk, len(parts), b.l.str("")) // no kinds: all strings
@@ -1215,7 +1215,7 @@ func (b *fb) binary(e *syntax.BinaryExpr, dst int) int {
 		}
 		vals := make([]int, len(parts))
 		for i, p := range parts {
-			vals[i] = b.value(p, -1)
+			vals[i] = b.chainPart(p, -1)
 		}
 		return b.joinStrings(vals, dst)
 	}
@@ -1252,6 +1252,17 @@ func (b *fb) stringChain(x syntax.Expr) []syntax.Expr {
 	}
 	walk(e)
 	return parts
+}
+
+// chainPart is an operand of a string + chain as a string: a char's
+// text (its one code point), as binop's + makes it, anything else (a
+// string) as it is.
+func (b *fb) chainPart(x syntax.Expr, dst int) int {
+	if b.typeOf(x) == check.Char {
+		// Into an int temp of its own, not dst (a string's register).
+		return b.describe(b.value(x, -1), check.Char)
+	}
+	return b.value(x, dst)
 }
 
 // joinStrings is the strings in vals, one after another, in one string
