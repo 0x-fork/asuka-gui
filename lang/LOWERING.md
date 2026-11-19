@@ -26,6 +26,8 @@ lang/cgen     bytecode -> C (release)
               kinds. Encode writes the module: labels to offsets,
               handler tables, line tables (it lives in lang/ir because
               the IR's instructions are lang/bytecode's opcodes)
+lang/ir       the optimizer (opt*.go): passes over the lowered code,
+              below, Optimization
 lang/cgen     IR -> C (release)
 lang/compile  the driver: a package and its imports -> one module
 ```
@@ -34,6 +36,96 @@ A program is compiled whole: the app's packages, their dependencies and
 the prelude (lang/prelude: types.asuka, enums.asuka, elements.asuka, and
 the built-in functions and methods) into one module, for one platform
 (lang/target): each package's files for it, and `@platform` its case.
+
+## Optimization
+
+The lowering emits code that's easy to check, not cheap to run: a temp
+for each value, then a copy into its place; a constant loaded into a
+register for each use; a comparison into a bool, then a jump on it; an
+element taken out of its array and put back around a change of one of
+its fields. lang/ir's optimizer (`Program.Optimize`, opt*.go) rewrites
+that, before the module is encoded, so the VM and the C both run the
+result. It's on for `asuka run`, `asuka test` and `asuka build`; off
+for an app under `asuka dev` (it costs about as much as the rest of a
+compile, and a reload should be quick), for coverage (its counters are
+the statements'), with `compile.Options.NoOptimize`, and with
+`ASUKA_OPT=0` in the environment.
+
+What it keeps, whatever it changes: each result; each error, its
+message, and the line and frames its trace names; when a reference is
+let go of (never sooner than the lowering lets it go: a cursor borrows
+what it iterates, kept alive by a register the lowering keeps; nor
+later, if it can tell: a value kept longer would make a change in place
+copy what it changes). A reference register's write is deleted or moved
+only when the register is known to hold none there; MOV of a reference
+moves it (no copy), and is never treated as one.
+
+The passes, run in rounds until they change nothing (three at most),
+each over a function's control flow graph (blocks start at jump and
+handler targets; an instruction that may throw has an edge to its
+innermost handler, with the registers as they were before it):
+
+- Dead handlers: a handler whose range has nothing that throws goes,
+  and with it its code (unreachable code goes too).
+- Jumps: a jump to a jump goes where that one goes; one to the next
+  instruction goes; one to a return is the return; `JF c, L1; JMP L2;
+  L1:` is `JT c, L2`; and a loop's jump back to its test is the test,
+  inverted (one jump a turn).
+- Copies: a read of a register copied from another (MOV, MOVR), neither
+  written since, reads that one (a reference is read borrowed); a
+  call's one argument too, when the callee isn't a mut fn (a mut fn's
+  receiver goes back into its register).
+- Constants: a scalar's known value is propagated, what it computes is
+  folded (not an overflow, a division by zero, a shift by a negative
+  count: those stay, to throw as they run), a branch on it is decided.
+- Selection: an int operation with an operand that fits 16 bits takes
+  it as an immediate (ADDIS, SUBIS, MULIS, DIVIS and MODIS for a divisor
+  that's neither 0 nor -1, ADDIK for a wrapping one); a comparison whose
+  result only a jump reads is fused into the jump (JLTI, JEQIS...: ints
+  only, as a float's NaN makes `!(a < b)` not `b <= a`); `NOT c; JT c`
+  is `JF`.
+- Common subexpressions: a scalar computed again in a block from
+  registers not written since (a field read twice: `b.vx * b.vx`) is a
+  copy of the first.
+- Coalescing: `OP t, ...; MOV d, t` is `OP d, ...` when nothing reads t
+  after and nothing between reads or writes d (or throws to a handler
+  that reads it); a reference only when t held none and is let go of
+  right after, before d is written.
+- Elements: `xs[i].f` (IDX of a struct, its only reads GETFs) is IDXF,
+  which reads the field where it is; `xs[i].f = v` (IDX, SETIDX of none,
+  SETF, SETIDX back) is SETIF, which copies the array and then the
+  element only if they're shared, as the four did. The index is checked
+  by the first, where IDX checked it (what's between is pure).
+- Dead code: a pure instruction whose scalar result nothing reads goes;
+  a new value (NEWS, NEWA, CLOS...) into a reference register that held
+  none, likewise; CLR of a register known none; a reference's copy that
+  nothing reads before it's cleared (`MOVR d, s ... CLR d`, s not
+  written between).
+
+Then, once per program, inlining (opt_inline.go), callees first: a
+call of a small function (24 instructions, 24 registers at most; not
+async, not a mut fn, no handlers or peeks, not calling itself or its
+caller), and a CALLC of a closure a CLOS made in the same block (its
+captures' registers not written since), is replaced with the body, in
+registers of the caller's (one set per callee: its bodies never run at
+once): the arguments copied in as a frame takes them, each return a
+copy of the result and a jump past the body, the body's references
+cleared after it as its frame's are as it returns. A closure the call
+was on is then often never read, and isn't made. Not into a function
+that may suspend, nor in a handler's range when the callee has
+reference registers (an error caught there would keep them until the
+caller ends). The callee's line numbers stay on its instructions, and
+the caller's `Inlines` (bytecode.Inline: a range, the function, the
+call's line; nested ones listed first) say whose they are: the VM's
+traceback, `ak_vm_here` and lang/cgen's frame hooks name the inlined
+function's frame, then the caller's at the call's line, as if it had
+been called. (A program's recursion goes as deep as it did, but for the
+frames inlined.)
+
+Last, a constant's load in a loop that's its register's only write,
+which no path reads before, moves to the function's start, and the
+registers are renumbered into as few as the code still names (in order:
+a block of them stays one).
 
 ## @platform
 

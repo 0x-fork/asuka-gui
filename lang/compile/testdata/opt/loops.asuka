@@ -1,0 +1,58 @@
+// Loops whose tests and steps the optimizer fuses, rotates and gives
+// immediates: at the edges of 16 bits, with negative steps, both ways.
+fn count(from: int, to: int, by: int) -> int {
+  var n = 0
+  var i = from
+  if by > 0 {
+    while i < to {
+      n += 1
+      i += by
+    }
+  } else {
+    while i > to {
+      n += 1
+      i += by
+    }
+  }
+  return n
+}
+
+fn edges(x: int) -> string {
+  var s = ""
+  if x < 32767 { s += "a" }
+  if x <= 32767 { s += "b" }
+  if x > -32768 { s += "c" }
+  if x >= -32768 { s += "d" }
+  if x == 32768 { s += "e" }
+  if x != -32769 { s += "f" }
+  if 5 < x { s += "g" }
+  if 5 >= x { s += "h" }
+  if !(x == 3) { s += "i" }
+  return "{s} {x + 32767} {x - 32768} {x * -32768} {x / -7} {x % -7} {x / 32767} {x % 5} {x &- 32768} {x &+ 9}"
+}
+
+fn nested(n: int) -> int {
+  var total = 0
+  for i in 0..<n {
+    for j in i..<n {
+      if (i + j) % 3 == 0 { continue }
+      if j > 40 { break }
+      total += i * j
+    }
+  }
+  return total
+}
+
+fn main() throws {
+  print("{count(0, 100, 3)} {count(100, 0, -7)} {count(5, 5, 1)} {count(-40000, 40000, 32767)}")
+  for x in [-32769, -32768, -1, 0, 3, 5, 6, 32766, 32767, 32768, 1000000] {
+    print(edges(x))
+  }
+  print(nested(60))
+  var big = 9223372036854775800
+  do {
+    while true { big += 1 }
+  } catch e {
+    print("{e.message} at {big}")
+  }
+}

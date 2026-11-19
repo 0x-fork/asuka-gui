@@ -61,6 +61,11 @@ type Options struct {
 	// Cover counts the runs of the root package's statements (asuka
 	// test --cover): Result.IR.Cover says where its counters are.
 	Cover bool
+	// NoOptimize leaves the lowered code as it is: no optimizer passes
+	// (lang/ir's Optimize). A module that counts coverage is never
+	// optimized (its counters are its statements'), and ASUKA_OPT=0 in
+	// the environment turns them off too.
+	NoOptimize bool
 }
 
 // Result is a compilation's outcome.
@@ -437,6 +442,9 @@ func (l *loader) compile(root *unit) *Result {
 		return res
 	}
 	res.IR = p
+	if !l.opts.NoOptimize && !l.opts.Cover && os.Getenv("ASUKA_OPT") != "0" {
+		p.Optimize()
+	}
 	res.Module = p.Encode()
 	glue, err := cffi.Generate(prog)
 	if err != nil {

@@ -38,7 +38,17 @@ type Func struct {
 	Flags    uint8
 	Code     []Instr
 	Handlers []Handler // innermost first
-	labels   []int     // per label, the instruction it's at (-1: not placed yet)
+	// Inlines are the functions the optimizer inlined into it: [Start,
+	// End) is Func's body, called at Line (bytecode.Inline).
+	Inlines []Inline
+	labels  []int // per label, the instruction it's at (-1: not placed yet)
+}
+
+// An Inline is a function's body inlined in another's (opt_inline.go).
+type Inline struct {
+	Start, End Label
+	Func       int
+	Line       int32
 }
 
 // NewLabel makes a label, not placed yet.
@@ -84,6 +94,13 @@ type Program struct {
 	Funcs []*Func
 	// Cover is what the program counts, with Options.Cover (cover.go).
 	Cover *Cover
+	// ints and floats index Mod's pools by value, for the constants the
+	// optimizer adds (opt.go).
+	ints   map[int64]int
+	floats map[uint64]int
+	// mutNames: the names of the types' mut fns (CALLI of one may write
+	// its receiver's register back).
+	mutNames map[string]bool
 }
 
 func itoa(i int) string {
@@ -156,6 +173,11 @@ func (f *Func) encode() bytecode.FuncDef {
 	}
 	for _, h := range f.Handlers {
 		def.Handlers = append(def.Handlers, bytecode.Handler{Start: uint32(at(h.Start)), End: uint32(at(h.End)), Target: uint32(at(h.Target))})
+	}
+	for _, in := range f.Inlines {
+		if s, e := at(in.Start), at(in.End); s < e {
+			def.Inlines = append(def.Inlines, bytecode.Inline{Start: uint32(s), End: uint32(e), Func: uint32(in.Func), Line: uint32(in.Line)})
+		}
 	}
 	return def
 }
