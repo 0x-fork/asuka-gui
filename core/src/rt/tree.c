@@ -190,7 +190,7 @@ static inline bool lt(ak_tree_order o, ak_val a, ak_val b) {
 // less than k, and whether it's k (*found). Without a branch on the
 // comparisons for the keys' own order (a search goes either way as
 // often: a branch would be mispredicted half the time).
-static inline uint32_t lower(ak_tree_order o, const ak_val *keys, uint32_t n, ak_val k, bool *found) {
+static AK_ALWAYS_INLINE uint32_t lower(ak_tree_order o, const ak_val *keys, uint32_t n, ak_val k, bool *found) {
 	if (AK_UNLIKELY(n == 0)) {
 		*found = false;
 		return 0;
