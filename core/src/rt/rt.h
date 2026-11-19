@@ -385,7 +385,10 @@ void ak_change_key(ak_val key, ak_kind kk, bool len);
 void ak_throw(void *err);  // takes the reference
 void ak_throw_msg(const char *fmt, ...) AK_PRINTF(1, 2);
 void ak_throw_cancel(void);
-bool ak_error_pending(void);
+// The thread's pending error (NULL: none): read inline, as every call
+// that may throw is followed by the test.
+extern AK_TLS void *ak_pending_error;
+static inline bool ak_error_pending(void) { return ak_pending_error != NULL; }
 void *ak_error_take(void);  // the pending error, cleared; the caller owns it
 bool ak_is_cancel(const void *err);
 // ak_throw_hook, when set, sees each error as it's thrown (a program

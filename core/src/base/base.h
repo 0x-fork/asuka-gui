@@ -57,6 +57,12 @@ uintptr_t ak_stack_init(void);
 extern uintptr_t ak_stack_ask, ak_stack_reask;
 bool ak_stack_engine(uintptr_t sp);
 #endif
+// ak_stack_limit is the thread's limit: the C stack's pointer below it
+// is low.
+static inline uintptr_t ak_stack_limit(void) {
+	uintptr_t lim = ak_stack_lim;
+	return AK_LIKELY(lim) ? lim : ak_stack_init();
+}
 static inline bool ak_stack_low(void) {
 	uintptr_t lim = ak_stack_lim;
 	if (AK_UNLIKELY(!lim)) lim = ak_stack_init();

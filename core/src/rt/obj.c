@@ -932,7 +932,7 @@ void *ak_constant_put(void **slot, void *v) {
 
 // ---- Errors ----
 
-static AK_TLS void *pending_error;
+AK_TLS void *ak_pending_error;
 
 static const uint8_t error_kinds[] = {AK_K_REF};
 // Names carry their field's JSON descriptor after the NUL, as the
@@ -959,8 +959,8 @@ void (*ak_frame_hook)(const char *fn, const char *file, uint32_t line);
 
 void ak_throw(void *err) {
 	if (ak_throw_hook && err) ak_throw_hook(err);
-	if (pending_error) ak_release(pending_error);
-	pending_error = err;
+	if (ak_pending_error) ak_release(ak_pending_error);
+	ak_pending_error = err;
 }
 
 void ak_throw_msg(const char *fmt, ...) {
@@ -996,11 +996,9 @@ void ak_throw_cancel(void) {
 	ak_throw(c);
 }
 
-bool ak_error_pending(void) { return pending_error != NULL; }
-
 void *ak_error_take(void) {
-	void *e = pending_error;
-	pending_error = NULL;
+	void *e = ak_pending_error;
+	ak_pending_error = NULL;
 	return e;
 }
 
