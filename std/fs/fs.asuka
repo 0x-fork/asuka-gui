@@ -202,7 +202,12 @@ pub fn read(path: string) throws -> bytes {
 }
 
 /// The file at path's text (UTF-8; what isn't becomes U+FFFD).
-pub fn readText(path: string) throws -> string = (try read(path)).string()
+pub fn readText(path: string) throws -> string {
+  if let text = readFileText(path) {
+    return text
+  }
+  throw failure(path)
+}
 
 /// Makes the file at path (or empties it) with data.
 pub fn write(path: string, data: bytes) throws {
@@ -213,7 +218,9 @@ pub fn write(path: string, data: bytes) throws {
 
 /// Makes the file at path (or empties it) with text, as UTF-8.
 pub fn writeText(path: string, text: string) throws {
-  try write(path, data: text.bytes())
+  if !writeFileText(path, text, false) {
+    throw failure(path)
+  }
 }
 
 /// Adds data at the end of the file at path, making it if it isn't
@@ -227,7 +234,9 @@ pub fn append(path: string, data: bytes) throws {
 /// Adds text, as UTF-8, at the end of the file at path, making it if it
 /// isn't there.
 pub fn appendText(path: string, text: string) throws {
-  try append(path, data: text.bytes())
+  if !writeFileText(path, text, true) {
+    throw failure(path)
+  }
 }
 
 /// Copies the file at from to to (replacing what's there).
@@ -349,8 +358,10 @@ pub struct File {
   /// The lines from where it's read to, as they're read: the file stays
   /// open after them (fs.lines(path) opens one and closes it).
   fn lines() -> Stream<string> = Stream(send => {
-    while let line = try await readLine() {
-      send(line)
+    while let batch = try await linesOf(id, path) {
+      for line in batch {
+        send(line)
+      }
     }
   })
 
@@ -444,10 +455,34 @@ pub async fn open(path: string, mode: OpenMode = .read) throws -> File {
 pub fn lines(path: string) -> Stream<string> = Stream(send => {
   let f = try await open(path)
   defer { closeQuietly(f.id) }
-  while let line = try await f.readLine() {
-    send(line)
+  while let batch = try await linesOf(f.id, f.path) {
+    for line in batch {
+      send(line)
+    }
   }
 })
+
+// linesOf: the lines a file's buffer holds, a batch, cut on this thread
+// (what spawn gives back is copied); the buffer read full again on a
+// worker first when it holds none. None at the end.
+async fn linesOf(id: int, path: string) throws -> [string]? {
+  if !fileLineReady(id) && @platform != .web {
+    try await spawn {
+      if !fileFillLine(id) {
+        throw failure(path)
+      }
+    }
+  }
+  return try batchOf(id, path)
+}
+
+fn batchOf(id: int, path: string) throws -> [string]? {
+  let b = fileReadLines(id)
+  if b == none && fileFailed(id) {
+    throw failure(path)
+  }
+  return b
+}
 
 fn openOf(path: string, mode: int) throws -> File {
   let id = fileOpen(path, mode)
@@ -516,6 +551,8 @@ fn closeQuietly(id: int) {
 native fn fileOpen(path: string, mode: int) -> int
 native fn fileLineReady(id: int) -> bool
 native fn fileReadLine(id: int) -> string?
+native fn fileReadLines(id: int) -> [string]?
+native fn fileFillLine(id: int) -> bool
 native fn fileReadReady(id: int) -> bool
 native fn fileRead(id: int, count: int) -> bytes?
 native fn fileReadAll(id: int) -> bytes?
@@ -621,7 +658,9 @@ native fn statInfo(path: string) -> [int]?
 native fn walkInfo(path: string) -> [int]?
 native fn absolute(path: string) -> string?
 native fn readFile(path: string) -> bytes?
+native fn readFileText(path: string) -> string?
 native fn writeFile(path: string, data: bytes, append: bool) -> bool
+native fn writeFileText(path: string, text: string, append: bool) -> bool
 native fn copyFile(from: string, to: string) -> bool
 native fn moveFile(from: string, to: string) -> bool
 native fn makeDirs(path: string) -> bool
