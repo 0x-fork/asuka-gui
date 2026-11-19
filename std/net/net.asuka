@@ -24,7 +24,6 @@
 // ends, the socket closes. A web page has no sockets
 // (NetError.unsupported); its IP addresses and host:port helpers work.
 
-
 /// What can go wrong with a connection, a socket or a lookup.
 pub enum NetError: Error {
   /// Nothing accepts connections at the address: the other side refused.
