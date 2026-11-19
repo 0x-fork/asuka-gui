@@ -638,12 +638,54 @@ static bool done(cur *c) {
 	return !ak_error_pending();
 }
 
+// known_len is how many elements s has when that's known without
+// reading it (no closure called): -1 when it isn't.
+static int64_t known_len(const ak_seq *s) {
+	switch (s->op) {
+	case S_ARR: return ((const ak_arr *)s->a.p)->len;
+	case S_REPEAT: return s->n;
+	case S_RANGE:
+		if (s->incl ? s->n > s->m : s->n >= s->m) return 0;
+		// m - n (+ 1), in u64: past what an array holds is unknown.
+		return (uint64_t)s->m - (uint64_t)s->n >= UINT32_MAX ? -1 : s->m - s->n + s->incl;
+	case S_MAPF:
+	case S_ENUM:
+	case S_EACH: return known_len(s->src);
+	case S_TAKE: {
+		int64_t k = known_len(s->src);
+		return k < 0 ? -1 : k < s->n ? k : s->n;
+	}
+	case S_SKIP: {
+		int64_t k = known_len(s->src);
+		return k < 0 ? -1 : k > s->n ? k - s->n : 0;
+	}
+	default: return -1;
+	}
+}
+
 // seq.to_array(s, proto): proto, an empty [T], filled.
 static ak_val seq_to_array(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	const ak_seq *s = SEQ(0);
 	if (s->op == S_ARR) RET_P(ak_retain(s->a.p));  // the array itself: nothing to compute
-	ak_arr *out = ak_retain(args[1].p);
+	ak_arr *proto = ARR(1);
+	int64_t len = known_len(s);
+	if (len > UINT32_MAX) len = -1;
+	if ((s->op == S_REPEAT || s->op == S_RANGE) && len >= 0) {
+		// Filled as it is: one value n times, or a range's ints.
+		ak_arr *out = ak_arr_new(ak_arr_kind(proto), proto->shape, (uint32_t)len);
+		out->h.flags = proto->h.flags;
+		ak_kind k = (ak_kind)s->kind;
+		for (uint32_t i = 0; i < (uint32_t)len; i++) out->data[i] = s->op == S_REPEAT ? s->a : (ak_val){.i = s->n + (int64_t)i};
+		if (s->op == S_REPEAT && k == AK_K_REF) {
+			for (uint32_t i = 0; i < (uint32_t)len; i++) ak_retain(s->a.p);
+			if (s->a.p && ((ak_obj *)s->a.p)->tag == AK_TAG_STR) out->h.flags = 1;
+		}
+		out->len = (uint32_t)len;
+		RET_P(out);
+	}
+	ak_arr *out = ak_retain(proto);
+	if (len > 0) ak_arr_reserve(&out, (uint32_t)len);
 	cur *c = start(args);
 	while (adv(c)) push(&out, take(c));
 	if (!done(c)) {

@@ -11,6 +11,9 @@
 
 typedef struct { uint32_t start, end, target; } ak_handler;
 typedef struct { uint32_t pc, line; } ak_line;
+// A function's body inlined in another's: its code [start, end), in
+// func, called at line (bytecode.Inline).
+typedef struct { uint32_t start, end, func, line; } ak_inline;
 
 // A function's body compiled to C (lang/cgen): it takes its arguments
 // (borrowed; it retains what it keeps) and the running closure, and
@@ -39,6 +42,8 @@ struct ak_func {
 	uint16_t nparams;
 	uint16_t nregs;
 	uint8_t *kinds;     // per register
+	uint16_t *refs;     // the reference registers, ascending: what leaving releases
+	uint16_t nrefs;
 	uint8_t *capkinds;  // per capture
 	uint16_t ncap;
 	uint8_t ret;        // the result's kind
@@ -49,6 +54,8 @@ struct ak_func {
 	uint32_t nhandlers;
 	ak_line *lines;
 	uint32_t nlines;
+	ak_inline *inlines;
+	uint32_t ninlines;
 	uint32_t index;
 };
 

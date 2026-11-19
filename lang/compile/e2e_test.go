@@ -280,9 +280,16 @@ func TestNestedChangeInPlace(t *testing.T) {
 			ins = append(ins, in)
 			pc += op.Width()
 		}
+		// The optimizer may read the element from the register x was
+		// copied from (MOVR x, g: the same array, the same references).
+		copyOf := map[int]int{}
 		for i := 0; i+1 < len(ins); i++ {
 			a, b := ins[i], ins[i+1]
-			if a.name == "IDX" && b.name == "SETIDX" && b.args[0] == a.args[1] && b.args[1] == a.args[2] && b.args[2] != a.args[0] {
+			if a.name == "MOVR" {
+				copyOf[a.args[0]] = a.args[1]
+			}
+			same := b.args[0] == a.args[1] || copyOf[b.args[0]] == a.args[1]
+			if a.name == "IDX" && b.name == "SETIDX" && same && b.args[1] == a.args[2] && b.args[2] != a.args[0] {
 				return
 			}
 		}

@@ -105,6 +105,35 @@ to the new types by field names), and keeps the native views that are
 still there. For release, `asuka build` compiles the app to C and links
 it with the core.
 
+Release code is C a C compiler optimizes as it would hand-written C
+(lang/LOWERING.md, Release builds: C): registers are C locals, kinds
+and releases are decided as the C is written, compiled functions call
+each other's bodies directly with their arguments as C values and their
+error in a returned register, and elements and fields are read through
+borrowed pointers and changed in place without reference counting. The
+heap objects whose size never changes (structs, enums, boxes, closures,
+arrays' and maps' headers) come from a thread's cache of freed blocks
+before malloc (core/src/base/small.c), and a release counts no
+allocations or live objects (tests and development builds do).
+bench/compiled times plain computation against Go, Zig and Bun.
+
+Between lowering and encoding, lang/ir's optimizer rewrites each
+function (lang/LOWERING.md's Optimization: constants folded, copies
+coalesced, comparisons fused into their jumps, an array's struct
+elements changed where they are, small functions and closures inlined)
+for both backends; `asuka dev` leaves an app's code as lowered, for
+quick reloads. The VM (core/src/vm/interp.c) dispatches threaded where
+the C compiler has computed gotos (a switch elsewhere, or with
+`-DAK_VM_SWITCH`): each instruction's code ends with the jump to the
+next one's, its width a constant; a call between bytecode functions
+pushes its frame inline (the rare cases, the stacks' growth and a mut
+fn's receiver, out of the way), and a return lets go of the frame's
+reference registers by a list of them the loader makes. The loader
+checks every instruction is one the VM has, and resolves builtins by
+name through a hash. An error an instruction throws (an overflow, an
+index) saves its frame's pc first, so its trace names its line, as the
+C's does.
+
 ### Platforms
 
 A compile is for one platform (lang/target: ios, android, macos,
@@ -1982,7 +2011,8 @@ asuka/
   template/          what `asuka new` copies
   examples/          apps in Asuka
   conformance/       what every host draws for the style props, measured
-  bench/             Asuka against SwiftUI and Compose
+  bench/             Asuka against SwiftUI and Compose; compiled/: plain
+                     computation compiled to C against Go, Zig and Bun
   e2e/               GUI tests on the simulator, the emulator, the
                      desktops and headless Chrome
 ```

@@ -65,8 +65,14 @@ void ak_destroy(ak_obj *o);
 
 // ak_obj_live counts the objects made and not yet destroyed (immortal
 // ones aside: constants, never destroyed), so tests can tell that what code made is freed: a
-// runner's -leaks. Atomic: workers (spawn) make objects too.
+// runner's -leaks. Atomic: workers (spawn) make objects too. Counted in a
+// build with assertions (NDEBUG unset), as ak_alloc_count is.
 extern int64_t ak_obj_live;
+#ifndef NDEBUG
+#define ak_obj_count(d) __atomic_add_fetch(&ak_obj_live, (d), __ATOMIC_RELAXED)
+#else
+#define ak_obj_count(d) ((void)0)
+#endif
 
 static inline void *ak_retain(void *p) {
 	if (p) {
@@ -246,6 +252,7 @@ static inline ak_kind ak_arr_kind(const ak_arr *a) { return (ak_kind)a->h.aux; }
 // ak_arr_mut makes *a unique (copying it if it's shared) and returns it.
 ak_arr *ak_arr_mut(ak_arr **a);
 void ak_arr_push(ak_arr **a, ak_val v);              // takes v's reference
+void ak_arr_reserve(ak_arr **a, uint32_t n);         // room for n more, made unique
 void ak_arr_insert(ak_arr **a, int64_t i, ak_val v); // takes v's reference
 ak_val ak_arr_remove_at(ak_arr **a, int64_t i);      // returns the reference
 void ak_arr_set(ak_arr **a, int64_t i, ak_val v);    // takes v's reference
@@ -433,7 +440,14 @@ void ak_change_key(ak_val key, ak_kind kk, bool len);
 void ak_throw(void *err);  // takes the reference
 void ak_throw_msg(const char *fmt, ...) AK_PRINTF(1, 2);
 void ak_throw_cancel(void);
-bool ak_error_pending(void);
+// The thread's pending error (NULL: none): read inline, as every call
+// that may throw is followed by the test.
+extern AK_TLS void *ak_pending_error;
+static inline bool ak_error_pending(void) { return ak_pending_error != NULL; }
+// ak_error_slot is where this thread's pending error is: *slot is
+// ak_error_pending's, read without a call or a TLS lookup (the VM's
+// dispatch loop takes it once). It's valid as long as the thread is.
+void *const *ak_error_slot(void);
 void *ak_error_take(void);  // the pending error, cleared; the caller owns it
 bool ak_is_cancel(const void *err);
 // ak_throw_hook, when set, sees each error as it's thrown (a program
@@ -443,6 +457,11 @@ extern void (*ak_throw_hook)(void *err);
 // left by an error, from line: the frames a program's trace has that the
 // VM's stack doesn't. The error's path only.
 extern void (*ak_frame_hook)(const char *fn, const char *file, uint32_t line);
+// ak_retrace_hook, when set, hears that the error pending was thrown by
+// the instruction the VM's innermost frame now says (its pc saved after
+// the throw: an overflow's, an index's): a trace taken as it was thrown
+// is taken again.
+extern void (*ak_retrace_hook)(void);
 ak_str *ak_error_message(const void *err);  // borrowed
 
 extern const ak_shape ak_shape_error;  // the built-in Error(message: string)

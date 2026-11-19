@@ -2,12 +2,13 @@
 
 How the compiler turns Asuka (docs/language/, RFC 0007's grammar) into
 bytecode (lang/bytecode) that the VM (core/src/vm) runs. Release builds
-compile that bytecode to C (lang/cgen): each function becomes a C
-function that calls the same instruction bodies the interpreter does
-(core/src/vm/ops.h); one that may suspend becomes a resumable one
-(below, Functions that suspend, in C). So the bytecode is the one
-contract, and both backends mean the same thing by it (core/vm_test.go
-runs every module both ways).
+compile that bytecode to C (lang/cgen): each function becomes C that
+does what the interpreter's bodies for its instructions do
+(core/src/vm/ops.h), on its registers as C locals (below, Release
+builds: C); one that may suspend becomes a resumable one (Functions
+that suspend, in C). So the bytecode is the one contract, and both
+backends mean the same thing by it (core/vm_test.go and lang/compile's
+programs run every module both ways).
 
 ## Pipeline
 
@@ -26,6 +27,8 @@ lang/cgen     bytecode -> C (release)
               kinds. Encode writes the module: labels to offsets,
               handler tables, line tables (it lives in lang/ir because
               the IR's instructions are lang/bytecode's opcodes)
+lang/ir       the optimizer (opt*.go): passes over the lowered code,
+              below, Optimization
 lang/cgen     IR -> C (release)
 lang/compile  the driver: a package and its imports -> one module
 ```
@@ -34,6 +37,96 @@ A program is compiled whole: the app's packages, their dependencies and
 the prelude (lang/prelude: types.asuka, enums.asuka, elements.asuka, and
 the built-in functions and methods) into one module, for one platform
 (lang/target): each package's files for it, and `@platform` its case.
+
+## Optimization
+
+The lowering emits code that's easy to check, not cheap to run: a temp
+for each value, then a copy into its place; a constant loaded into a
+register for each use; a comparison into a bool, then a jump on it; an
+element taken out of its array and put back around a change of one of
+its fields. lang/ir's optimizer (`Program.Optimize`, opt*.go) rewrites
+that, before the module is encoded, so the VM and the C both run the
+result. It's on for `asuka run`, `asuka test` and `asuka build`; off
+for an app under `asuka dev` (it costs about as much as the rest of a
+compile, and a reload should be quick), for coverage (its counters are
+the statements'), with `compile.Options.NoOptimize`, and with
+`ASUKA_OPT=0` in the environment.
+
+What it keeps, whatever it changes: each result; each error, its
+message, and the line and frames its trace names; when a reference is
+let go of (never sooner than the lowering lets it go: a cursor borrows
+what it iterates, kept alive by a register the lowering keeps; nor
+later, if it can tell: a value kept longer would make a change in place
+copy what it changes). A reference register's write is deleted or moved
+only when the register is known to hold none there; MOV of a reference
+moves it (no copy), and is never treated as one.
+
+The passes, run in rounds until they change nothing (three at most),
+each over a function's control flow graph (blocks start at jump and
+handler targets; an instruction that may throw has an edge to its
+innermost handler, with the registers as they were before it):
+
+- Dead handlers: a handler whose range has nothing that throws goes,
+  and with it its code (unreachable code goes too).
+- Jumps: a jump to a jump goes where that one goes; one to the next
+  instruction goes; one to a return is the return; `JF c, L1; JMP L2;
+  L1:` is `JT c, L2`; and a loop's jump back to its test is the test,
+  inverted (one jump a turn).
+- Copies: a read of a register copied from another (MOV, MOVR), neither
+  written since, reads that one (a reference is read borrowed); a
+  call's one argument too, when the callee isn't a mut fn (a mut fn's
+  receiver goes back into its register).
+- Constants: a scalar's known value is propagated, what it computes is
+  folded (not an overflow, a division by zero, a shift by a negative
+  count: those stay, to throw as they run), a branch on it is decided.
+- Selection: an int operation with an operand that fits 16 bits takes
+  it as an immediate (ADDIS, SUBIS, MULIS, DIVIS and MODIS for a divisor
+  that's neither 0 nor -1, ADDIK for a wrapping one); a comparison whose
+  result only a jump reads is fused into the jump (JLTI, JEQIS...: ints
+  only, as a float's NaN makes `!(a < b)` not `b <= a`); `NOT c; JT c`
+  is `JF`.
+- Common subexpressions: a scalar computed again in a block from
+  registers not written since (a field read twice: `b.vx * b.vx`) is a
+  copy of the first.
+- Coalescing: `OP t, ...; MOV d, t` is `OP d, ...` when nothing reads t
+  after and nothing between reads or writes d (or throws to a handler
+  that reads it); a reference only when t held none and is let go of
+  right after, before d is written.
+- Elements: `xs[i].f` (IDX of a struct, its only reads GETFs) is IDXF,
+  which reads the field where it is; `xs[i].f = v` (IDX, SETIDX of none,
+  SETF, SETIDX back) is SETIF, which copies the array and then the
+  element only if they're shared, as the four did. The index is checked
+  by the first, where IDX checked it (what's between is pure).
+- Dead code: a pure instruction whose scalar result nothing reads goes;
+  a new value (NEWS, NEWA, CLOS...) into a reference register that held
+  none, likewise; CLR of a register known none; a reference's copy that
+  nothing reads before it's cleared (`MOVR d, s ... CLR d`, s not
+  written between).
+
+Then, once per program, inlining (opt_inline.go), callees first: a
+call of a small function (24 instructions, 24 registers at most; not
+async, not a mut fn, no handlers or peeks, not calling itself or its
+caller), and a CALLC of a closure a CLOS made in the same block (its
+captures' registers not written since), is replaced with the body, in
+registers of the caller's (one set per callee: its bodies never run at
+once): the arguments copied in as a frame takes them, each return a
+copy of the result and a jump past the body, the body's references
+cleared after it as its frame's are as it returns. A closure the call
+was on is then often never read, and isn't made. Not into a function
+that may suspend, nor in a handler's range when the callee has
+reference registers (an error caught there would keep them until the
+caller ends). The callee's line numbers stay on its instructions, and
+the caller's `Inlines` (bytecode.Inline: a range, the function, the
+call's line; nested ones listed first) say whose they are: the VM's
+traceback, `ak_vm_here` and lang/cgen's frame hooks name the inlined
+function's frame, then the caller's at the call's line, as if it had
+been called. (A program's recursion goes as deep as it did, but for the
+frames inlined.)
+
+Last, a constant's load in a loop that's its register's only write,
+which no path reads before, moves to the function's start, and the
+registers are renumbered into as few as the code still names (in order:
+a block of them stays one).
 
 ## @platform
 
@@ -313,6 +406,62 @@ first, as a `return` runs a function's.
   AWAIT follows the CALLB. `await` of a call of an async function is
   that CALL; of a `Task<T>`, AWAIT. `await` of something that doesn't
   wait does nothing.
+
+## Release builds: C
+
+lang/cgen writes each function's bytecode as C a C compiler optimizes as
+it would a hand-written function's: what the interpreter decides as it
+runs (a register's kind, a field's, whether to release) is decided as
+the C is written, from the bytecode's kinds.
+
+- Registers. Each is a C local of its own (`ak_val r<n>`), which the C
+  compiler keeps in a machine register; a reference starts as none, and
+  the function's end releases its references, statically (a parameter
+  it only reads is borrowed: neither retained as it starts nor released
+  as it ends). What takes an argument block (a builtin, the VM, a
+  closure, CLOS's captures) gets a copy of the registers (`B_`), copied
+  back after a call, for what an inout callee changed; nothing takes a
+  register's address, so none is kept in memory. A function of more
+  than 384 registers (a big module's init) has them as an array, as the
+  VM's frame: C compilers take too long to allocate thousands of locals.
+- Calls. A synchronous function is two C functions: its body
+  (`fN_`), which takes its arguments as C values of their kinds (a mut
+  fn's receiver by its address), the depth of the calls it's in and the
+  thread's stack limit, and returns `ak_ret` (its result, and whether it
+  threw) in two machine registers; and its VM entry (`fN`, an
+  `ak_native_body`), which the interpreter, closures and builtins call.
+  A CALL of a compiled function calls its body: the depth past
+  AK_CG_DEPTH (the VM's frames' bound) or the C stack past its limit is
+  a stack overflow, the error a register's test. Other calls test the
+  thread's pending error (inline).
+- Instructions. Checked int arithmetic, comparisons, an index's range
+  and a value's uniqueness are tested inline (ops.h's value-based
+  bodies, the interpreter's too); a scalar element or field is read and
+  written as its C type. The pure math builtins (`math.sqrt`, `floor`,
+  `abs`...) are C expressions, not calls through the module's table.
+- Places (lang/cgen/places.go). Along a straight path (each instruction
+  the only way into the next): an element or a field read into a
+  register that only reads it before it's cleared, with nothing on the
+  way that calls or changes what it's in, is a borrowed C pointer (no
+  retain, no release; the register stays none, so an error on the way
+  releases nothing); an element taken out, changed by SETFs and put back
+  (Changing values in place) with nothing on the way that can throw is
+  changed where it is, the array and the element made unique there; a
+  take-out or a put-back is a move; and an array made unique, an index
+  checked or an element made unique stays known until something could
+  share, resize or replace it, so its checks aren't repeated. The
+  optimizer's IDXF and SETIF are planned as the forms they replace:
+  IDXF reads through the element where it is (its result borrowed as a
+  field's read is, when only read), and SETIF makes the array and the
+  element unique and checks the index only where nothing before on the
+  path has, so `b.vx += ...; b.vy += ...` on one element checks once.
+- The optimizer's other instructions are C of their own: an immediate
+  (ADDIS, DIVIS...) a literal, a division by a constant the C
+  compiler's multiply, a fused comparison (JLTI, JGEIS...) one `if`.
+  An error in a body inlined into the function goes first through a
+  trampoline (`I<pc>`) that tells `ak_frame_hook` of the inlined
+  function's frame, then on with the call's line, so a trace reads as
+  the VM's does; every error's path sets the line it left from (`at_`).
 
 ## Functions that suspend, in C
 

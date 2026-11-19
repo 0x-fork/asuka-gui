@@ -277,12 +277,10 @@ func (c *Checker) initUniverse() {
 	for _, t := range []*Basic{Int, Float, Bool, String, Bytes, Void, Duration, Color, Length, View, Graphics, Path, Ref, Pointer, TestApp} {
 		c.universe.Insert(&TypeName{object: object{name: t.name}, Kind: BasicType, Type: t, resolved: true})
 	}
-	// Error: the interface every error has.
-	c.errT = &TypeName{object: object{name: "Error"}, Kind: InterfaceType, isErrorIface: true, resolved: true}
-	c.errT.Iface = &Iface{Fields: []*Field{{Name: "message", Type: String}}}
-	c.errT.Type = &Named{Obj: c.errT}
+	// Error: the interface every error has, one for every checker, as
+	// the basic types are (what Loading<T>'s failed case holds).
+	c.errT = errorT
 	c.universe.Insert(c.errT)
-	loadingT.Cases[2].Params[0] = c.errT.Type
 	c.universe.Insert(loadingT)
 	for _, b := range []struct {
 		name string

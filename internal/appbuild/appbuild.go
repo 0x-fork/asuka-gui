@@ -44,6 +44,12 @@ var Compile = compileDir
 // platform runs it ("": the user's, the language's).
 var DevLang, DevDirection string
 
+// DevNoOptimize is asuka dev's for an app: its modules compiled without
+// the optimizer (lang/ir's Optimize), which costs about as much as the
+// rest of a compile, for reloads as quick as they can be. asuka run, test
+// and build optimize.
+var DevNoOptimize bool
+
 // Warnings receives what's worth saying that doesn't stop a build (the
 // catalogs' missing translations), "file:line:col: warning: message".
 var Warnings io.Writer = os.Stderr
@@ -67,7 +73,7 @@ func (p *Project) CompileCover(platform target.Platform) (*bytecode.Module, *ir.
 func compileDirWith(dir string, platform target.Platform, cover bool) (*bytecode.Module, *ir.Cover, *Uses, []check.Diagnostic, error) {
 	// Imports resolve through the project's asuka.lock (compile.Dir's
 	// own), which Load made ready.
-	res, err := compile.Dir(dir, &compile.Options{Platform: platform, Lang: DevLang, Direction: DevDirection, Project: binRoot(dir), Cover: cover})
+	res, err := compile.Dir(dir, &compile.Options{Platform: platform, Lang: DevLang, Direction: DevDirection, Project: binRoot(dir), Cover: cover, NoOptimize: DevNoOptimize})
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}

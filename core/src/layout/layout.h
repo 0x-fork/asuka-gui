@@ -302,7 +302,15 @@ typedef struct ak_lpass {
 	// Private: scratch memory, chunks that never move while in use.
 	struct ak_lchunk *chunks_;
 	uint32_t nchunks_, cur_;
+	// The computation in progress and its mode (0: none), which the
+	// caches note of the answers they keep.
+	uint64_t comp_;
+	uint8_t mode_;
 } ak_lpass;
+
+// The nodes computed (not answered by their caches) by every layout in
+// the process: the work a bench counts (main thread only).
+extern uint64_t ak_lnode_computed;
 
 void ak_lpass_reset(ak_lpass *p);  // nchanged and measures to 0; keeps the scratch memory
 void ak_lpass_free(ak_lpass *p);
@@ -333,13 +341,21 @@ void ak_lnode_set_measure(ak_lnode *n, ak_lmeasure_fn fn, void *ctx);
 void ak_lnode_set_baseline(ak_lnode *n, ak_lbaseline_fn fn, void *ctx);
 
 // ak_lnode_mark_dirty drops the cached layouts of n and its ancestors:
-// call it when n's style, children or measured content changed.
+// call it when n's style changed (or anything else about it).
 void ak_lnode_mark_dirty(ak_lnode *n);
+// ak_lnode_mark_content_dirty says n's measured content or its children
+// changed, not its style. Its ancestors keep their layouts unless what n
+// answers them changes: the next layout first asks n again everything
+// its cache says it was asked, and goes up a level only where an answer
+// differs (a relayout boundary, as Flutter's), so a label that changes
+// in a long list re-lays out its row, not the list. The children
+// functions below and ak_lnode_set_measure call it.
+void ak_lnode_mark_content_dirty(ak_lnode *n);
 // ak_lnode_mark_subtree_dirty clears the caches of n, its ancestors and
 // everything below it: what the node's direction changes, which no
 // cached input says.
 void ak_lnode_mark_subtree_dirty(ak_lnode *n);
-// Whether n must be laid out again.
+// Whether n must be laid out again (it or a node below it changed).
 bool ak_lnode_dirty(const ak_lnode *n);
 
 ak_lnode *ak_lnode_parent(const ak_lnode *n);
@@ -357,6 +373,10 @@ void ak_lnode_append_child(ak_lnode *n, ak_lnode *c);
 void ak_lnode_insert_child(ak_lnode *n, ak_lnode *c, uint32_t index);
 // ak_lnode_remove_child removes c from n's children.
 void ak_lnode_remove_child(ak_lnode *n, ak_lnode *c);
+// ak_lnode_detach removes each of nodes[0..count) from its parent, each
+// parent's children compacted once: what removing many children one by
+// one (each a search and a move) costs n² for.
+void ak_lnode_detach(ak_lnode *const *nodes, uint32_t count);
 
 // ak_lnode_force_report makes the next layout report n's frame as
 // changed.

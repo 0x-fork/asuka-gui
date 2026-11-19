@@ -91,6 +91,23 @@ func Touch(p string) {
 	os.Chtimes(p, now, now)
 }
 
+// touchEvery is how stale an entry's time of use gets before a hit marks
+// it used again (as Go's build cache): eviction keeps what was used in
+// the days before, so an hour is exact enough, and a build that hits
+// hundreds of entries doesn't write each one's time.
+const touchEvery = time.Hour
+
+// TouchStale marks p used now (Touch) unless it was within touchEvery,
+// and reports whether it did: used is its modification time, as a stat
+// of it said.
+func TouchStale(p string, used time.Time) bool {
+	if time.Since(used) <= touchEvery {
+		return false
+	}
+	Touch(p)
+	return true
+}
+
 var tmpSeq atomic.Uint64
 
 // TmpName is a name of its own beside p, to write then rename into place:

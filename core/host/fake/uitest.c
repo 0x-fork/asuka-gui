@@ -1027,10 +1027,12 @@ static bool lists_fn(ak_uitest *a, ak_fake_view *v, void *ctx) {
 static bool sync_lists(ak_uitest *a) {
 	for (uint32_t i = 0; i < a->lists.len; i++) a->lists.data[i].seen = false;
 	bool changed = false;
-	ak_fake_view_vec ls = {0};
-	layers(a, &ls);
-	for (uint32_t i = 0; i < ls.len; i++) walk(a, ls.data[i], lists_fn, &changed);
-	ak_vec_free(&ls);
+	if (a->f->nlists > 0) {  // else nothing to walk for
+		ak_fake_view_vec ls = {0};
+		layers(a, &ls);
+		for (uint32_t i = 0; i < ls.len; i++) walk(a, ls.data[i], lists_fn, &changed);
+		ak_vec_free(&ls);
+	}
 	for (uint32_t i = 0; i < a->lists.len;) {
 		list_state *st = &a->lists.data[i];
 		if (st->seen || ak_fake_view_of(a->f, st->list)) {  // hidden: kept, as a collection view keeps its cells
@@ -1113,6 +1115,17 @@ static void settle(ak_uitest *a) {
 		}
 	}
 	ak_buf_printf(&a->fails, "the app never settles (it posts or rebinds forever)\n");
+}
+
+void ak_uitest_log_ops(bool on) {
+	if (!active || !active->f) return;
+	ak_fake *f = active->f;
+	if (!on) {
+		f->ops.len = 0;
+		ak_buf_reset(&f->arena);
+		active->ops_seen = 0;
+	}
+	f->unlogged = !on;
 }
 
 bool ak_uitest_pump(void) {

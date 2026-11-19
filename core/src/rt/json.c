@@ -390,10 +390,48 @@ static bool zero_field(parser *ps, const char *fd, ak_val *out) {
 	return true;
 }
 
+// field_named is the field of s named by the n bytes at k, -1 when it
+// has none: the one after the last (hint) first, as an object's keys
+// usually come in its fields' order, then each.
+static int field_named(const ak_shape *s, const char *k, size_t n, int hint) {
+	if (!s->names) return -1;
+	for (int j = 0; j < s->nfields; j++) {
+		int i = (hint + j) % s->nfields;
+		const char *name = s->names[i];
+		if (name && strncmp(name, k, n) == 0 && name[n] == 0) return i;
+	}
+	return -1;
+}
+
+// key_field reads an object's key, a string, and is the field of s it
+// names (-1: none): without making the string when it has no escapes.
+static int key_field(parser *ps, const ak_shape *s, int hint) {
+	if (ps->s < ps->end && *ps->s == '"') {
+		const char *k = ps->s + 1, *e = k;
+		while (e < ps->end && *e != '"' && *e != '\\') e++;
+		if (e < ps->end && *e == '"') {
+			ps->s = e + 1;
+			return field_named(s, k, (size_t)(e - k), hint);
+		}
+	}
+	ak_str *k = str(ps);
+	if (ps->failed) {
+		ak_release(k);
+		return -1;
+	}
+	int i = field_named(s, k->data, k->len, hint);
+	ak_release(k);
+	return i;
+}
+
 static ak_val object_struct(parser *ps, const ak_shape *s, const char *d) {
 	AK_UNUSED(d);
 	ak_struct *o = ak_struct_new(s);
-	bool *set = s->nfields ? ak_alloc(s->nfields) : NULL;
+	// Which fields the object set: on the stack for most structs.
+	bool few[64];
+	bool *set = s->nfields <= 64 ? few : ak_alloc(s->nfields);
+	memset(set, 0, s->nfields);
+	int next = 0;
 	ws(ps);
 	if (!lit(ps, "{")) {
 		fail(ps, "expected an object for %s", s->name);
@@ -403,21 +441,14 @@ static ak_val object_struct(parser *ps, const ak_shape *s, const char *d) {
 	if (lit(ps, "}")) goto check;
 	for (;;) {
 		ws(ps);
-		ak_str *k = str(ps);
-		if (ps->failed) {
-			ak_release(k);
-			goto done;
-		}
+		int idx = key_field(ps, s, next);
+		if (ps->failed) goto done;
 		ws(ps);
 		if (!lit(ps, ":")) {
-			ak_release(k);
 			fail(ps, "expected ':'%s", "");
 			goto done;
 		}
-		int idx = -1;
-		for (uint16_t i = 0; i < s->nfields; i++)
-			if (s->names && strcmp(s->names[i], k->data) == 0) idx = i;
-		ak_release(k);
+		if (idx >= 0) next = idx + 1 < s->nfields ? idx + 1 : 0;
 		if (idx < 0) {
 			if (!skip_value(ps)) goto done;  // a field it doesn't have
 		} else {
@@ -448,7 +479,7 @@ check:
 		}
 	}
 done:
-	ak_free(set);
+	if (set != few) ak_free(set);
 	if (ps->failed) {
 		ak_release(o);
 		return (ak_val){0};

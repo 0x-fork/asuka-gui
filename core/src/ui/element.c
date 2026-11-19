@@ -96,9 +96,13 @@ void ak_view_make_view(ak_view *e) {
 	ak_ui.stats.native++;
 	ak_batch_create(e->r->batch, e->id, e->kind);
 	if (e->dir != AK_LAYOUT_DIRECTION_INHERIT) ak_batch_set_enum(e->r->batch, e->id, AK_PROP_LAYOUT_DIRECTION, e->dir);
-	// What it listens for, if it got handlers before it had a view.
-	for (ak_event_kind k = 1; k < AK_EVENT_COUNT; k++)
-		if (ak_view_listening(e, k)) ak_batch_listen(e->r->batch, e->id, k);
+	// What it listens for, if it got handlers before it had a view: its
+	// bits, in order.
+	for (int w = 0; w < 2; w++)
+		for (uint64_t bits = e->listens[w]; bits; bits &= bits - 1) {
+			ak_event_kind k = (ak_event_kind)(w * 64 + __builtin_ctzll(bits));
+			if (k >= 1 && k < AK_EVENT_COUNT) ak_batch_listen(e->r->batch, e->id, k);
+		}
 	ak_focus_view_made(e);
 }
 
@@ -108,6 +112,10 @@ static void view_drop(ak_opaque *o) {
 	// go with it.
 	if (!e->dead) ak_view_destroy(e);
 	if (e->id && ak_view_of(e->id) == e) ak_view_drop_id(e->id);
+	// Its box first: its kids' boxes are orphaned, not each searched for
+	// and moved out of it (n² for a long list's).
+	if (e->box) ak_lnode_free(e->box);
+	e->box = NULL;
 	for (uint32_t i = 0; i < e->kids.len; i++) {
 		ak_view *k = e->kids.data[i];
 		if (k->parent == e) k->parent = NULL;
@@ -122,7 +130,6 @@ static void view_drop(ak_opaque *o) {
 	ak_vec_free(&e->handlers);
 	ak_release(e->text);
 	ak_release(e->text2);
-	if (e->box) ak_lnode_free(e->box);
 	ak_free(e->grid_mem);
 	if (e->owner) ak_owner_release(e->owner);
 	ak_ui.stats.views--;
@@ -139,8 +146,10 @@ void ak_view_finalize(ak_view *e) {
 
 // ---- Layout children ----
 
+// ak_view_remeasure: what e shows changed (its text, its image), not its
+// style: its ancestors are laid out again only if its size does.
 void ak_view_remeasure(ak_view *e) {
-	if (e->box) ak_lnode_mark_dirty(e->box);
+	if (e->box) ak_lnode_mark_content_dirty(e->box);
 }
 
 void ak_view_mark_kids(ak_view *e) {
@@ -225,6 +234,27 @@ void ak_view_attach_native(ak_view *e) {
 	ak_view_each_native(e, attach_one, &a);
 }
 
+uint32_t ak_view_native_start(ak_view *e) {
+	ak_view *p = ak_view_native_parent(e);
+	uint32_t n = 0;
+	if (p) native_index(p, e, &n);
+	return n;
+}
+
+uint32_t ak_view_native_count(const ak_view *e) {
+	if (e->real) return 1;
+	uint32_t n = 0;
+	for (uint32_t i = 0; i < e->kids.len; i++) n += ak_view_native_count(e->kids.data[i]);
+	return n;
+}
+
+void ak_view_attach_native_at(ak_view *e, uint32_t idx) {
+	ak_view *p = ak_view_native_parent(e);
+	if (!p) return;
+	attach_ctx a = {p, idx};
+	ak_view_each_native(e, attach_one, &a);
+}
+
 static void detach_one(ak_view *d, void *ctx) {
 	ak_view *p = ctx;
 	ak_batch_remove(p->r->batch, p->id, d->id);
@@ -295,6 +325,39 @@ void ak_view_remove(ak_view *e, ak_view *k, bool destroy) {
 	k->parent = NULL;
 	ak_view_mark_kids(e);
 	ak_release(k);
+}
+
+// Removing many of e's kids, as ak_view_remove does each, in one pass
+// over e's kids and over their boxes' parents' children (removing a long
+// list's rows one by one costs n²): ak_view_take_out each, then
+// ak_view_unlink_many them all. In between they're out of the tree (no
+// parent) but still in e's kids, which hold them.
+void ak_view_take_out(ak_view *k, bool destroy) {
+	if (destroy) {
+		ak_view *p = ak_view_native_parent(k);
+		if (p) ak_view_each_native(k, uncount, p);
+		ak_view_destroy(k);
+	} else {
+		ak_view_detach_native(k);
+	}
+	k->parent = NULL;  // the mark: the kids e keeps have e
+}
+
+void ak_view_unlink_many(ak_view *e, ak_view *const *ks, uint32_t n) {
+	if (n == 0) return;
+	ak_ui_root *r = e->r;
+	uint32_t j = 0;
+	for (uint32_t i = 0; i < e->kids.len; i++)
+		if (e->kids.data[i]->parent == e) e->kids.data[j++] = e->kids.data[i];
+	e->kids.len = j;
+	// Their boxes, out of their parent's at once (a fragment's, as
+	// collect finds them).
+	uint32_t base = r->boxbuf.len;
+	for (uint32_t i = 0; i < n; i++) collect(ks[i], r);
+	ak_lnode_detach(r->boxbuf.data + base, r->boxbuf.len - base);
+	r->boxbuf.len = base;
+	ak_view_mark_kids(e);
+	for (uint32_t i = 0; i < n; i++) ak_release(ks[i]);
 }
 
 // ak_view_destroy destroys the views of e's subtree.

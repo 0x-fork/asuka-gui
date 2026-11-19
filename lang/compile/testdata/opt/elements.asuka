@@ -1,0 +1,62 @@
+// An array's struct elements read and changed where they are (IDXF,
+// SETIF): copies stay copies, an index out of range throws as it did,
+// and a change interrupted by an error is the change so far.
+struct P {
+  x: int
+  y: float
+  name: string
+}
+
+fn sum(ps: [P]) -> float {
+  var s = 0.0
+  for i in 0..<ps.count() {
+    s += ps[i].x.float() + ps[i].y
+  }
+  return s
+}
+
+fn bump(ps: [P], i: int) throws -> [P] {
+  var qs = ps
+  qs[i].x += 10
+  qs[i].y *= 2.0
+  qs[i].name = qs[i].name + "!"
+  return qs
+}
+
+fn step(k: int) throws -> int {
+  if k > 2 { throw Error("too far") }
+  return k
+}
+
+fn partial(ps: [P]) -> [P] {
+  var qs = ps
+  do {
+    for i in 0..<qs.count() {
+      qs[i].x = try step(i) * 100
+    }
+  } catch e {
+    print("stopped: {e.message}")
+  }
+  return qs
+}
+
+fn main() throws {
+  let a = [P(x: 1, y: 0.5, name: "a"), P(x: 2, y: 1.5, name: "b")]
+  print(sum(a))
+  let b = try bump(a, 1)
+  print("{a[1].x} {a[1].y} {a[1].name} {b[1].x} {b[1].y} {b[1].name}")
+  var c = b
+  c[0].x = 7
+  print("{b[0].x} {c[0].x}")
+  let d = partial([P(x: 1, y: 0, name: ""), P(x: 1, y: 0, name: ""), P(x: 1, y: 0, name: ""), P(x: 1, y: 0, name: ""), P(x: 1, y: 0, name: "")])
+  print(d.map(p => p.x))
+  do {
+    let e = try bump(a, 5)
+    print(e.count())
+  } catch e {
+    print("caught {e.message}")
+  }
+  let f = try bump(a, 2)
+  print(f.count())
+}
+

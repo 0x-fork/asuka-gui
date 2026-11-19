@@ -122,13 +122,34 @@ typedef struct {
 	uint8_t mode, sizing;
 	bool coll[2];
 	ak_lsize known;
+	ak_lsize parent;  // not a key: what revalidating the entry runs it with
 	ak_lsize avail;
 	l_output out;
+	// The parent's cache's generation when the parent last got this
+	// answer: one from before the parent's cache was last cleared is no
+	// longer what any of its answers rest on.
+	uint32_t pgen;
+	// The order it was stored in since the cache was cleared: matches are
+	// loose (a known size matches a free one that came out that size; the
+	// percentage basis isn't compared), so what answers depends on what
+	// was stored first, which revalidating replays.
+	uint32_t seq;
 } l_cache_entry;
 
 typedef struct {
 	l_cache_entry final;
 	bool has_final;
+	// An answer given since the last clear is gone (a slot reused, a
+	// final the parent still depends on replaced): what the parent
+	// computed from it can't be checked again.
+	bool lossy;
+	// The final answered a size query: the parent's measurements depend
+	// on it.
+	bool final_shared;
+	// The parent's computation that asked for the final (ak_lpass's).
+	uint64_t final_by;
+	uint32_t gen;  // cleared this many times
+	uint32_t seq;  // the next entry's
 	l_cache_entry slots[L_MEASURE_SLOTS];
 	uint8_t n, next;
 } l_cache;
@@ -150,6 +171,12 @@ struct ak_lnode {
 	float x, y, w, h;
 
 	bool dirty;
+	// Relayout boundaries (ak_lnode_mark_content_dirty): stale, the node's
+	// content changed and its cached answers are to be recomputed before
+	// the next layout, its ancestors' kept unless those answers change;
+	// revalidate, a stale node is at or below it.
+	bool stale, revalidate;
+	bool detaching;  // ak_lnode_detach's mark
 	bool rtl;  // the resolved direction, the one cache was computed under
 	l_cache cache;
 	float reported[4];

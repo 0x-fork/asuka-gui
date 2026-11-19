@@ -322,6 +322,26 @@ time is measured, never checked: a bench fails only on what it checks
 test, to see that it still works. `--benchtime 100x` runs exactly 100
 iterations, once.
 
+A bench that mounts a view also says what reached the screen in each
+iteration, which a real device would have to do: the batches of changes
+sent to the platform, their operations and bytes, the views the
+platform measured, and the views laid out. Drive the app as a user
+does (`app.tap`) or from a frame (`app.frame`, with `onFrame` in the
+app), so that one iteration's changes are one batch, as a tap's are:
+
+```asuka
+bench "a new row" {
+  let app = mount(Inbox())
+  measure { app.tap("Add") }
+}
+```
+
+```
+bench a new row                 41.2µs/op ±3%         84 allocs/op     6.1 KB/op  (10 × 2,410)  host: 1 batches, 9 ops, 312 B, 2 measures; 6 nodes laid out
+```
+
+In a bench, `app.ops()` doesn't list what the timed part sent.
+
 To see what a change does, keep a run and compare:
 
 ```sh
