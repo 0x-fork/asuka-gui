@@ -354,24 +354,29 @@ ak_lframe ak_lnode_frame(const ak_lnode *n) { return (ak_lframe){n->x, n->y, n->
 // It can't tell when an answer was dropped from the cache (lossy) or n
 // wasn't laid out since: those count as changed.
 static bool revalidate(ak_lnode *n, ak_lpass *p) {
-	l_cache old = n->cache;
-	cache_clear(&n->cache);
-	n->dirty = true;
+	l_cache *c = &n->cache;
 	uint32_t pgen = n->parent->cache.gen;
-	if (old.lossy || !old.has_final || old.final.pgen != pgen) return false;
-	const l_cache_entry *es[L_MEASURE_SLOTS + 1];
+	bool ok = !c->lossy && c->has_final && c->final.pgen == pgen;
+	// The answers to ask again, copied out (the cache is cleared as
+	// they're asked): the parent's, by seq, at most nine.
+	l_cache_entry es[L_MEASURE_SLOTS + 1];
 	uint32_t ne = 0;
-	for (uint8_t k = 0; k < old.n; k++)
-		if (old.slots[k].pgen == pgen) es[ne++] = &old.slots[k];
-	es[ne++] = &old.final;
-	for (uint32_t i = 1; i < ne; i++)  // by seq: at most nine
-		for (uint32_t j = i; j > 0 && es[j - 1]->seq > es[j]->seq; j--) {
-			const l_cache_entry *t = es[j];
+	if (ok) {
+		for (uint8_t k = 0; k < c->n; k++)
+			if (c->slots[k].pgen == pgen) es[ne++] = c->slots[k];
+		es[ne++] = c->final;
+	}
+	cache_clear(c);
+	n->dirty = true;
+	if (!ok) return false;
+	for (uint32_t i = 1; i < ne; i++)
+		for (uint32_t j = i; j > 0 && es[j - 1].seq > es[j].seq; j--) {
+			l_cache_entry t = es[j];
 			es[j] = es[j - 1];
 			es[j - 1] = t;
 		}
 	for (uint32_t i = 0; i < ne; i++) {
-		const l_cache_entry *e = es[i];
+		const l_cache_entry *e = &es[i];
 		l_input in = {.mode = e->mode, .sizing = e->sizing, .collapse = {e->coll[0], e->coll[1]}, .known = e->known, .parent = e->parent, .avail = e->avail};
 		l_output out = l_compute(n, in, p);
 		if (!same_output(&out, &e->out)) return false;
