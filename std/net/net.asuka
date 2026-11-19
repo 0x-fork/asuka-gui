@@ -729,6 +729,10 @@ pub struct TLSState {
   /// The server's name: the one a client connected to, or the one it
   /// asked a server for (SNI; "" for none).
   serverName: string
+  /// Whether it resumed a session of an earlier handshake's (a shorter
+  /// handshake: the server sends no certificate; the one it sent then is
+  /// peerCertificates, its name and dates checked again).
+  resumed: bool
   /// The other side's certificates as it sent them (DER), its own first,
   /// then the authorities' that signed it; [] when it showed none (a
   /// client, mostly). crypto.publicKeyFromDER reads the first's key.
@@ -737,10 +741,10 @@ pub struct TLSState {
 
 fn stateOf(fields: [bytes]) -> TLSState {
   var certs: [bytes] = []
-  for i in 4..<fields.count() {
+  for i in 5..<fields.count() {
     certs.push(fields[i])
   }
-  return TLSState(version: if fields[0].string() == "13" { TLSVersion.tls13 } else { TLSVersion.tls12 }, cipherSuite: fields[1].string(), protocol: fields[2].string(), serverName: fields[3].string(), peerCertificates: certs)
+  return TLSState(version: if fields[0].string() == "13" { TLSVersion.tls13 } else { TLSVersion.tls12 }, cipherSuite: fields[1].string(), protocol: fields[2].string(), serverName: fields[3].string(), resumed: fields[4].string() == "1", peerCertificates: certs)
 }
 
 /// How a client's TLS connections are made: whom they trust, what they
@@ -762,7 +766,7 @@ pub struct KeyPair {
   /// with) the root: PEM's CERTIFICATE blocks.
   certificate: string
   /// Its private key: PEM's PRIVATE KEY (PKCS#8), RSA PRIVATE KEY or EC
-  /// PRIVATE KEY, not encrypted.
+  /// PRIVATE KEY, not encrypted (serverTLS's key).
   key: string
 }
 
@@ -774,37 +778,60 @@ pub struct KeyPair {
 /// Android's system store. ca (PEM certificates) is trusted instead: a
 /// private authority's, a self-signed server's. certificate and key
 /// (PEM) are the client's own, for a server that asks for one (mutual
-/// TLS). alpn is the application protocols offered, most wanted first
-/// ("h2", "http/1.1"). minVersion and maxVersion bound the versions.
-/// insecureSkipVerify checks no certificate at all: anyone can pretend
-/// to be the server, so it's for tests. It throws NetError.invalid for
-/// what can't be read.
+/// TLS); the key as serverTLS's. alpn is the application protocols
+/// offered, most wanted first ("h2", "http/1.1"). minVersion and
+/// maxVersion bound the versions. insecureSkipVerify checks no
+/// certificate at all: anyone can pretend to be the server, so it's for
+/// tests.
+///
+/// The configuration keeps its connections' sessions, to resume them
+/// (TLSState.resumed): a shorter handshake, the server's certificate
+/// not sent again. It keeps them for sessionCache servers (by name and
+/// port; the least recently used go first), each as long as its server
+/// says, up to a week (TLS 1.3) or a day (TLS 1.2) after the handshake
+/// that checked its certificate, and no longer than the certificate is
+/// valid. sessionCache: 0 resumes none. No data goes early (TLS 1.3's
+/// 0-RTT: anyone who sees it can send it again).
+///
+/// It throws NetError.invalid for what can't be read.
 ///
 ///   let tls = try net.clientTLS(ca: try fs.readText("ca.pem"))
 ///   let c = try await net.connectTLS("db.internal", 5433, tls: tls)
-pub fn clientTLS(ca: string = "", certificate: string = "", key: string = "", alpn: [string] = [], minVersion: TLSVersion = .tls12, maxVersion: TLSVersion = .tls13, insecureSkipVerify: bool = false) throws -> ClientTLS {
+pub fn clientTLS(ca: string = "", certificate: string = "", key: string = "", alpn: [string] = [], minVersion: TLSVersion = .tls12, maxVersion: TLSVersion = .tls13, insecureSkipVerify: bool = false, sessionCache: int = 64) throws -> ClientTLS {
   try checked()
   do {
-    return ClientTLS(handle: try clientConfig(ca, certificate, key, alpn, versionNumber(minVersion), versionNumber(maxVersion), insecureSkipVerify))
+    return ClientTLS(handle: try clientConfig(ca, certificate, key, alpn, versionNumber(minVersion), versionNumber(maxVersion), insecureSkipVerify, sessionCache))
   } catch e {
     throw typed(e)
   }
 }
 
 /// A TLS server's configuration: certificate (PEM: the server's, then
-/// the authorities' that signed it) and its key (PEM, not encrypted).
-/// others are more, for other names: a client's is shown the one whose
-/// names match the name it asks for (SNI), the first when none does.
-/// alpn is the application protocols the server speaks, most wanted
-/// first. clientCA (PEM) asks each client for a certificate an authority
-/// of it signed (mutual TLS): required unless requireClientCertificate
-/// is false, when one that's shown is checked. It throws
-/// NetError.invalid for what can't be read, or a key that isn't its
-/// certificate's.
+/// the authorities' that signed it) and its key (PEM: PKCS#8, PKCS#1 or
+/// SEC 1). An encrypted key is decrypted first, by std/crypto, its
+/// pem() given: (try await crypto.decryptPrivateKey(text, password:
+/// password)).pem(); so is an OpenSSH key, crypto.privateKey(text).pem()
+/// (a TLS app that reads neither carries neither's code). others are
+/// more, for other names: a client's is shown the one whose names match
+/// the name it asks for (SNI), the first when none does. alpn is the
+/// application protocols the server speaks, most wanted first. clientCA
+/// (PEM) asks each client for a certificate an authority of it signed
+/// (mutual TLS): required unless requireClientCertificate is false, when
+/// one that's shown is checked.
+///
+/// It gives its clients session tickets, to resume their sessions with:
+/// sealed with keys of its own, made at random in memory (never written
+/// anywhere) and made new each day, good for a day. A resumed session is
+/// the one its ticket's full handshake made (with its client's
+/// certificate, under mutual TLS), its keys new. sessionTickets: false
+/// gives none. No data comes early (TLS 1.3's 0-RTT: it can be replayed).
+///
+/// It throws NetError.invalid for what can't be read (an encrypted key,
+/// saying how to decrypt it), or a key that isn't its certificate's.
 ///
 ///   let tls = try net.serverTLS(certificate: try fs.readText("cert.pem"), key: try fs.readText("key.pem"))
 ///   let server = try await http.serve(8443, handler, tls: tls)
-pub fn serverTLS(certificate: string, key: string, others: [KeyPair] = [], alpn: [string] = [], clientCA: string = "", requireClientCertificate: bool = true, minVersion: TLSVersion = .tls12, maxVersion: TLSVersion = .tls13) throws -> ServerTLS {
+pub fn serverTLS(certificate: string, key: string, others: [KeyPair] = [], alpn: [string] = [], clientCA: string = "", requireClientCertificate: bool = true, minVersion: TLSVersion = .tls12, maxVersion: TLSVersion = .tls13, sessionTickets: bool = true) throws -> ServerTLS {
   try checked()
   var pairs = [certificate, key]
   for p in others {
@@ -812,7 +839,7 @@ pub fn serverTLS(certificate: string, key: string, others: [KeyPair] = [], alpn:
     pairs.push(p.key)
   }
   do {
-    return ServerTLS(handle: try serverConfig(pairs, alpn, clientCA, requireClientCertificate, versionNumber(minVersion), versionNumber(maxVersion)))
+    return ServerTLS(handle: try serverConfig(pairs, alpn, clientCA, requireClientCertificate, versionNumber(minVersion), versionNumber(maxVersion), sessionTickets))
   } catch e {
     throw typed(e)
   }
@@ -1106,7 +1133,7 @@ native async fn serveWait(server: int)
 // ---- What tls.c does: TLS, a table of its own (an app without TLS
 // doesn't link it, or Mbed TLS under it) ----
 
-native(tls) fn clientConfig(ca: string, certificate: string, key: string, alpn: [string], minVersion: int, maxVersion: int, insecure: bool) throws -> int
-native(tls) fn serverConfig(pairs: [string], alpn: [string], clientCA: string, requireClient: bool, minVersion: int, maxVersion: int) throws -> int
+native(tls) fn clientConfig(ca: string, certificate: string, key: string, alpn: [string], minVersion: int, maxVersion: int, insecure: bool, sessionCache: int) throws -> int
+native(tls) fn serverConfig(pairs: [string], alpn: [string], clientCA: string, requireClient: bool, minVersion: int, maxVersion: int, tickets: bool) throws -> int
 native(tls) async fn upgrade(h: int, config: int, serverName: string, server: bool, timeoutNs: int) throws -> [bytes]
 native(tls) async fn awaitHandshake(h: int, timeoutNs: int) throws -> [bytes]

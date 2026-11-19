@@ -11,6 +11,23 @@
 // checked against). The same inputs give the same configuration back,
 // so a program that makes one per connection doesn't grow.
 //
+// A client keeps the sessions its handshakes made, in its configuration,
+// to resume them (a shorter handshake: no certificate sent, none to
+// check, one round trip less in TLS 1.2): TLS 1.3's tickets (PSK, with
+// (EC)DHE still), each used once, and TLS 1.2's session (a ticket, RFC
+// 5077, or the server's session ID). They're kept by the server's name
+// and port, for as many servers as the configuration says (the least
+// recently used go first), each until its ticket's lifetime ends, its
+// certificate expires, or a time past the full handshake that checked
+// it (TLS 1.3's 7 days, RFC 8446's bound; TLS 1.2's a day, as a 1.2
+// session pins the version). A configuration's sessions were checked as
+// it checks (its authorities, the name), and a resumed one is checked
+// again for its name and its dates. A server issues tickets (Mbed TLS's
+// ticket module: AES-256-GCM, its keys random, in memory only, made new
+// each day, the day's before still read) unless told not to. No early
+// data (0-RTT): what's sent in it can be replayed by anyone who saw it,
+// and neither side here has a way to say a request is safe to repeat.
+//
 // A client checks the server's certificate once the handshake is done,
 // before a byte of the app's goes or comes: against the authorities the
 // configuration gives (Mbed TLS checks the chain, the name, the dates),
@@ -21,13 +38,14 @@
 // Mbed TLS's check. A failure says why: expired, the wrong host, an
 // unknown issuer...
 //
-//	tls.clientConfig(ca, certificate, key, alpn, minVersion, maxVersion, insecure) throws -> int
-//	tls.serverConfig(pairs, alpn, clientCA, requireClient, minVersion, maxVersion) throws -> int
+//	tls.clientConfig(ca, certificate, key, alpn, minVersion, maxVersion, insecure, sessionCache) throws -> int
+//	tls.serverConfig(pairs, alpn, clientCA, requireClient, minVersion, maxVersion, tickets) throws -> int
 //	                                         pairs: a certificate chain, its key, ... (PEM)
 //	tls.upgrade(h, config, serverName, server, timeoutNs) -> Task<[bytes]>
 //	tls.awaitHandshake(h, timeoutNs) -> Task<[bytes]>  what it agreed: version ("12", "13"),
 //	                                         cipher suite, ALPN protocol, server name,
-//	                                         then the other side's certificates (DER)
+//	                                         resumed ("1", "0"), then the other side's
+//	                                         certificates (DER)
 #if defined(__APPLE__)
 #define _DARWIN_C_SOURCE
 #elif !defined(_WIN32)
@@ -77,8 +95,13 @@ const ak_lib_entry ak_std_tls[] = {
 
 #else
 
+// Mbed TLS's own header for its handshake's state (whether a session
+// resumed: handshake_step's), which takes its private fields as fields.
+#include "std/mbedtls/names.h"
+#include "../../third_party/mbedtls/src/ssl_misc.h"
 #include "std/mbedtls/mbedtls.h"
 #include "mbedtls/oid.h"
+#include "mbedtls/ssl_ticket.h"
 #include "std/netint.h"
 
 static void throw_invalid(const char *why) { ak_throw_msg("std/net:invalid:%s", why); }
@@ -148,6 +171,33 @@ typedef struct {
 	mbedtls_pk_context key;
 } keypair;
 
+// How long a server's tickets are good for, and how often its ticket keys
+// are made new (Mbed TLS's ticket module keeps the one before too).
+#define TICKET_LIFETIME (24 * 3600)
+
+// A session a client keeps, to resume: until expires (clock_s's), and
+// the server's certificates as its full handshake had them (Mbed TLS's
+// copy of a session keeps the first alone), each a 4-byte length and its
+// DER.
+typedef struct {
+	mbedtls_ssl_session s;
+	int64_t expires;
+	uint8_t *chain;
+	size_t chain_len;
+} kept;
+
+// A server's sessions (cache_key's: its name and port): TLS 1.2's one,
+// used again and again, or TLS 1.3's tickets, each once, the newest
+// last; born is when the full handshake they come of checked the
+// server's certificate.
+typedef struct {
+	char *key;
+	int64_t born, used;
+	kept *tls12;
+	kept *tls13[2];
+	int n13;
+} cached;
+
 typedef struct tls_conf {
 	int64_t id;
 	uint8_t digest[32];  // of what made it
@@ -161,6 +211,14 @@ typedef struct tls_conf {
 	keypair *pairs;
 	uint32_t npairs;
 	char **alpn;  // NULL-terminated
+	// A client's sessions, of cache_size servers at most (0: none kept).
+	int64_t cache_size;
+	ak_mutex cache_mu;
+	AK_VEC(cached *) cache;
+	int64_t ticks;
+	// A server's tickets.
+	bool tickets;
+	mbedtls_ssl_ticket_context ticket;
 } tls_conf;
 
 static ak_mutex confs_mu = AK_MUTEX_INIT;
@@ -209,8 +267,11 @@ static bool pem_certs(const ak_str *s, mbedtls_x509_crt *c, const char *what, ch
 	return true;
 }
 
-// pem_pair reads a certificate chain and its key; which (others[i]'s:
-// "others[0]: "; "" for the first) says whose in why.
+// pem_pair reads a certificate chain and its key (PEM: PKCS#8, PKCS#1 or
+// SEC 1, Mbed TLS's reading); which (others[i]'s: "others[0]: "; "" for
+// the first) says whose in why. An encrypted key, or OpenSSH's, is read
+// by std/crypto (decryptPrivateKey, privateKey), whose key's pem() this
+// reads: its ciphers and key derivations aren't every TLS app's.
 static bool pem_pair(const ak_str *cert, const ak_str *key, keypair *p, const char *which, char *why, size_t cap) {
 	char what[48];
 	snprintf(what, sizeof what, "%sthe certificate", which);
@@ -219,9 +280,14 @@ static bool pem_pair(const ak_str *cert, const ak_str *key, keypair *p, const ch
 		snprintf(why, cap, "%.24sthe key isn't PEM (-----BEGIN PRIVATE KEY-----)", which);
 		return false;
 	}
+	if (strstr(key->data, "-----BEGIN OPENSSH PRIVATE KEY-----")) {
+		snprintf(why, cap, "%.24sthe key is OpenSSH's: give it as PKCS#8, what crypto.privateKey(key).pem() makes of it (crypto.decryptPrivateKey's for an encrypted one)", which);
+		return false;
+	}
 	int r = mbedtls_pk_parse_key(&p->key, (const unsigned char *)key->data, (size_t)key->len + 1, NULL, 0);
-	if (r == MBEDTLS_ERR_PK_PASSWORD_REQUIRED || r == MBEDTLS_ERR_PK_PASSWORD_MISMATCH) {
-		snprintf(why, cap, "%.24sthe key is encrypted: give it decrypted (PKCS#8, PKCS#1 or SEC 1)", which);
+	if (r != 0 && (r == MBEDTLS_ERR_PK_PASSWORD_REQUIRED || r == MBEDTLS_ERR_PK_PASSWORD_MISMATCH || strstr(key->data, "-----BEGIN ENCRYPTED PRIVATE KEY-----") ||
+			  strstr(key->data, "Proc-Type: 4,ENCRYPTED"))) {
+		snprintf(why, cap, "%.24sthe key is encrypted: give it decrypted, what crypto.decryptPrivateKey(key, password:) reads, as its pem()", which);
 		return false;
 	}
 	if (r != 0) {
@@ -250,7 +316,25 @@ static void digest_int(ak_sha256_ctx *h, int64_t v) {
 	digest_str(h, b, (size_t)n);
 }
 
+static void kept_free(kept *k) {
+	if (!k) return;
+	mbedtls_ssl_session_free(&k->s);
+	ak_free(k->chain);
+	ak_free(k);
+}
+
+static void cached_free(cached *e) {
+	kept_free(e->tls12);
+	for (int i = 0; i < e->n13; i++) kept_free(e->tls13[i]);
+	ak_free(e->key);
+	ak_free(e);
+}
+
 static void conf_free(tls_conf *c) {
+	for (uint32_t i = 0; i < c->cache.len; i++) cached_free(c->cache.data[i]);
+	ak_vec_free(&c->cache);
+	ak_mutex_destroy(&c->cache_mu);
+	if (c->tickets) mbedtls_ssl_ticket_free(&c->ticket);
 	mbedtls_ssl_config_free(&c->ssl);
 	mbedtls_x509_crt_free(&c->ca);
 	for (uint32_t i = 0; i < c->npairs; i++) {
@@ -298,6 +382,7 @@ static tls_conf *conf_new(bool server, const ak_arr *alpn, int64_t minv, int64_t
 	tls_conf *c = ak_alloc(sizeof *c);
 	memset(c, 0, sizeof *c);
 	c->server = server;
+	ak_mutex_init(&c->cache_mu);
 	mbedtls_ssl_config_init(&c->ssl);
 	mbedtls_x509_crt_init(&c->ca);
 	if (mbedtls_ssl_config_defaults(&c->ssl, server ? MBEDTLS_SSL_IS_SERVER : MBEDTLS_SSL_IS_CLIENT, MBEDTLS_SSL_TRANSPORT_STREAM, MBEDTLS_SSL_PRESET_DEFAULT) != 0) {
@@ -351,9 +436,14 @@ static ak_val client_fn(ak_val *args, uint32_t n) {
 	const ak_arr *alpn = args[3].p;
 	int64_t minv = args[4].i, maxv = args[5].i;
 	bool insecure = args[6].i != 0;
+	int64_t cache_size = args[7].i;
 	char why[300] = "";
 	if ((cert->len == 0) != (key->len == 0)) {
 		throw_invalid("a client's certificate goes with its key: both, or neither");
+		return (ak_val){0};
+	}
+	if (cache_size < 0) {
+		throw_invalid("sessionCache is 0 (none kept) or more");
 		return (ak_val){0};
 	}
 	uint8_t d[32];
@@ -364,6 +454,7 @@ static ak_val client_fn(ak_val *args, uint32_t n) {
 	digest_str(&h, cert->data, cert->len);
 	digest_str(&h, key->data, key->len);
 	digest_int(&h, insecure);
+	digest_int(&h, cache_size);
 	ak_sha256_final(&h, d);
 	int64_t id = known(d);
 	if (id) return (ak_val){.i = id};
@@ -373,6 +464,11 @@ static ak_val client_fn(ak_val *args, uint32_t n) {
 		return (ak_val){0};
 	}
 	c->insecure = insecure;
+	// Sessions resumed: tickets asked for (TLS 1.2's) and taken (1.3's),
+	// and TLS 1.3's PSK with (EC)DHE offered; never PSK alone.
+	c->cache_size = cache_size;
+	mbedtls_ssl_conf_session_tickets(&c->ssl, cache_size ? MBEDTLS_SSL_SESSION_TICKETS_ENABLED : MBEDTLS_SSL_SESSION_TICKETS_DISABLED);
+	mbedtls_ssl_conf_tls13_key_exchange_modes(&c->ssl, cache_size ? MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL_ALL : MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL);
 	// The client checks the certificate itself, once the handshake is
 	// done (tls_handshake): Mbed TLS checks none.
 	mbedtls_ssl_conf_authmode(&c->ssl, MBEDTLS_SSL_VERIFY_NONE);
@@ -408,6 +504,7 @@ static ak_val server_fn(ak_val *args, uint32_t n) {
 	const ak_str *client_ca = STR(2);
 	bool require = args[3].i != 0;
 	int64_t minv = args[4].i, maxv = args[5].i;
+	bool tickets = args[6].i != 0;
 	char why[300] = "";
 	if (pairs->len < 2 || pairs->len % 2) {
 		throw_invalid("a server needs a certificate and its key");
@@ -421,6 +518,7 @@ static ak_val server_fn(ak_val *args, uint32_t n) {
 	for (uint32_t i = 0; i < pairs->len; i++) digest_str(&h, ((ak_str *)pairs->data[i].p)->data, ((ak_str *)pairs->data[i].p)->len);
 	digest_str(&h, client_ca->data, client_ca->len);
 	digest_int(&h, require);
+	digest_int(&h, tickets);
 	ak_sha256_final(&h, d);
 	int64_t id = known(d);
 	if (id) return (ak_val){.i = id};
@@ -447,6 +545,23 @@ static ak_val server_fn(ak_val *args, uint32_t n) {
 		goto fail;
 	}
 	mbedtls_ssl_conf_sni(&c->ssl, sni, c);
+	// Tickets: TLS 1.2's (RFC 5077) and two of TLS 1.3's after each full
+	// handshake (one after a resumed one), so a client can open two
+	// connections resumed; TLS 1.3's PSK only with (EC)DHE.
+	if (tickets) {
+		mbedtls_ssl_ticket_init(&c->ticket);
+		c->tickets = true;
+		if (mbedtls_ssl_ticket_setup(&c->ticket, PSA_ALG_GCM, PSA_KEY_TYPE_AES, 256, TICKET_LIFETIME) != 0) {
+			snprintf(why, sizeof why, "the session tickets' key couldn't be made");
+			goto fail;
+		}
+		mbedtls_ssl_conf_session_tickets_cb(&c->ssl, mbedtls_ssl_ticket_write, mbedtls_ssl_ticket_parse, &c->ticket);
+		mbedtls_ssl_conf_new_session_tickets(&c->ssl, 2);
+		mbedtls_ssl_conf_tls13_key_exchange_modes(&c->ssl, MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL_ALL);
+	} else {
+		mbedtls_ssl_conf_new_session_tickets(&c->ssl, 0);
+		mbedtls_ssl_conf_tls13_key_exchange_modes(&c->ssl, MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL);
+	}
 	if (client_ca->len) {
 		if (!pem_certs(client_ca, &c->ca, "clientCA", why, sizeof why)) goto fail;
 		c->has_ca = true;
@@ -503,6 +618,14 @@ struct ak_tls {
 	ak_tls_info info;
 	AK_VEC(const uint8_t *) certs;
 	AK_VEC(size_t) lens;
+	// A client's sessions: its cache's key, and when the full handshake
+	// its session comes of checked the certificate (now's, for one that
+	// didn't resume).
+	char *cache_key;
+	int64_t born;
+	bool offered;    // a session was offered
+	uint8_t *chain;  // the offered session's certificates (kept's)
+	size_t chain_len;
 };
 
 #define ERR_SOCKET (-0x004C)  // a socket's failure (sock_err says which)
@@ -545,6 +668,176 @@ static int bio_recv(void *ctx, unsigned char *buf, size_t len) {
 		t->sock_err = e;
 		return ERR_SOCKET;
 	}
+}
+
+// ---- Sessions kept, to resume ----
+
+// How long a client keeps what a full handshake began: TLS 1.3's tickets
+// (RFC 8446, 4.6.1's bound), TLS 1.2's sessions (as one pins the version,
+// a full handshake a day sees a server's new one).
+#define TLS13_MAX (7 * 24 * 3600)
+#define TLS12_MAX (24 * 3600)
+
+int64_t ak_tls_clock_shift;
+
+static int64_t clock_s(void) { return ak_now_ns() / INT64_C(1000000000) + ak_tls_clock_shift; }
+
+// find_cached is the entry of key (c's cache_mu held), or NULL.
+static cached *find_cached(tls_conf *c, const char *key, uint32_t *at) {
+	for (uint32_t i = 0; i < c->cache.len; i++)
+		if (strcmp(c->cache.data[i]->key, key) == 0) {
+			if (at) *at = i;
+			return c->cache.data[i];
+		}
+	return NULL;
+}
+
+static void drop_cached(tls_conf *c, uint32_t i) {
+	cached_free(c->cache.data[i]);
+	c->cache.data[i] = c->cache.data[c->cache.len - 1];
+	c->cache.len--;
+}
+
+// usable reports whether k may be offered now: not past its time, its
+// certificate (that of the full handshake it comes of) not expired.
+static bool usable(const tls_conf *c, const kept *k, int64_t now) {
+	if (now >= k->expires) return false;
+	const mbedtls_x509_crt *leaf = k->s.peer_cert;
+	return c->insecure || (leaf && !mbedtls_x509_time_is_past(&leaf->valid_to));
+}
+
+// offer sets a session of t's server on t, if its configuration keeps
+// one that's usable: a TLS 1.3 ticket (the newest, taken) before TLS 1.2's
+// session.
+static void offer(ak_tls *t) {
+	tls_conf *c = t->conf;
+	int64_t now = clock_s();
+	ak_mutex_lock(&c->cache_mu);
+	uint32_t at;
+	cached *e = find_cached(c, t->cache_key, &at);
+	if (e) {
+		while (e->n13 && !usable(c, e->tls13[e->n13 - 1], now)) kept_free(e->tls13[--e->n13]);
+		if (e->tls12 && !usable(c, e->tls12, now)) kept_free(e->tls12), e->tls12 = NULL;
+		kept *k = e->n13 ? e->tls13[e->n13 - 1] : e->tls12;
+		if (k && mbedtls_ssl_set_session(&t->ssl, &k->s) == 0) {
+			t->born = e->born;
+			t->chain = ak_alloc(k->chain_len ? k->chain_len : 1);
+			if (k->chain_len) memcpy(t->chain, k->chain, k->chain_len);
+			t->chain_len = k->chain_len;
+			t->offered = true;
+			e->used = ++c->ticks;
+			if (k != e->tls12) kept_free(e->tls13[--e->n13]);
+		}
+		if (!e->n13 && !e->tls12) drop_cached(c, at);
+	}
+	ak_mutex_unlock(&c->cache_mu);
+}
+
+// forget drops t's server's sessions: a handshake that offered one
+// failed (a resumed one offers only its own version: a server that's
+// changed since is met with a full handshake next).
+static void forget(ak_tls *t) {
+	if (!t->offered) return;
+	tls_conf *c = t->conf;
+	ak_mutex_lock(&c->cache_mu);
+	uint32_t at;
+	if (find_cached(c, t->cache_key, &at)) drop_cached(c, at);
+	ak_mutex_unlock(&c->cache_mu);
+	t->offered = false;
+}
+
+// keep_session keeps t's session (the last ticket a TLS 1.3 server sent,
+// or TLS 1.2's), for its server, the least recently used server's
+// dropped when there are as many as the configuration keeps.
+static void keep_session(ak_tls *t) {
+	tls_conf *c = t->conf;
+	if (!t->cache_key) return;
+	kept *k = ak_alloc(sizeof *k);
+	mbedtls_ssl_session_init(&k->s);
+	if (mbedtls_ssl_get_session(&t->ssl, &k->s) != 0) {
+		kept_free(k);
+		return;
+	}
+	size_t n = 0;
+	for (uint32_t i = 0; i < t->certs.len; i++) n += 4 + t->lens.data[i];
+	k->chain = ak_alloc(n ? n : 1);
+	for (uint32_t i = 0; i < t->certs.len; i++) {
+		size_t l = t->lens.data[i];
+		uint8_t *p = k->chain + k->chain_len;
+		p[0] = (uint8_t)(l >> 24), p[1] = (uint8_t)(l >> 16), p[2] = (uint8_t)(l >> 8), p[3] = (uint8_t)l;
+		memcpy(p + 4, t->certs.data[i], l);
+		k->chain_len += 4 + l;
+	}
+	int64_t now = clock_s();
+	bool tls13 = k->s.tls_version == MBEDTLS_SSL_VERSION_TLS1_3;
+	if (tls13) {
+		int64_t life = k->s.ticket_lifetime;
+		k->expires = now + life < t->born + TLS13_MAX ? now + life : t->born + TLS13_MAX;
+	} else {
+		int64_t life = k->s.ticket_len && k->s.ticket_lifetime && k->s.ticket_lifetime < TLS12_MAX ? k->s.ticket_lifetime : TLS12_MAX;
+		k->expires = now + life < t->born + TLS12_MAX ? now + life : t->born + TLS12_MAX;
+	}
+	ak_mutex_lock(&c->cache_mu);
+	cached *e = find_cached(c, t->cache_key, NULL);
+	if (e && e->born != t->born) {
+		// A full handshake since: what came before it goes.
+		kept_free(e->tls12);
+		for (int i = 0; i < e->n13; i++) kept_free(e->tls13[i]);
+		e->tls12 = NULL, e->n13 = 0;
+	}
+	if (!e) {
+		if (c->cache.len >= (uint64_t)c->cache_size) {
+			uint32_t oldest = 0;
+			for (uint32_t i = 1; i < c->cache.len; i++)
+				if (c->cache.data[i]->used < c->cache.data[oldest]->used) oldest = i;
+			drop_cached(c, oldest);
+		}
+		e = ak_alloc(sizeof *e);
+		memset(e, 0, sizeof *e);
+		size_t n = strlen(t->cache_key);
+		e->key = ak_alloc(n + 1);
+		memcpy(e->key, t->cache_key, n + 1);
+		ak_vec_push(&c->cache, e);
+	}
+	e->born = t->born;
+	e->used = ++c->ticks;
+	if (tls13) {
+		if (e->n13 == (int)AK_LEN(e->tls13)) {
+			kept_free(e->tls13[0]);
+			memmove(e->tls13, e->tls13 + 1, sizeof e->tls13[0] * (AK_LEN(e->tls13) - 1));
+			e->n13--;
+		}
+		e->tls13[e->n13++] = k;
+	} else {
+		kept_free(e->tls12);
+		e->tls12 = k;
+	}
+	ak_mutex_unlock(&c->cache_mu);
+}
+
+int ak_tls_cached(int64_t config) {
+	tls_conf *c = find_conf(config);
+	if (!c) return -1;
+	ak_mutex_lock(&c->cache_mu);
+	int n = 0;
+	for (uint32_t i = 0; i < c->cache.len; i++) n += c->cache.data[i]->n13 + (c->cache.data[i]->tls12 != NULL);
+	ak_mutex_unlock(&c->cache_mu);
+	return n;
+}
+
+// cache_key is "name:port", the port the socket's peer's.
+static char *cache_key(const char *host, ak_sock fd) {
+	struct sockaddr_storage ss;
+	socklen_t sl = sizeof ss;
+	unsigned port = 0;
+	if (getpeername(fd, (struct sockaddr *)&ss, &sl) == 0) {
+		if (ss.ss_family == AF_INET) port = ntohs(((struct sockaddr_in *)&ss)->sin_port);
+		else if (ss.ss_family == AF_INET6) port = ntohs(((struct sockaddr_in6 *)&ss)->sin6_port);
+	}
+	size_t n = strlen(host) + 8;
+	char *k = ak_alloc(n);
+	snprintf(k, n, "%s:%u", host, port);
+	return k;
 }
 
 static bool is_ip(const char *host) {
@@ -596,6 +889,11 @@ static ak_tls *t_open(int64_t config, bool server, const char *name, ak_sock fd,
 			return NULL;
 		}
 		snprintf(t->info.server_name, sizeof t->info.server_name, "%s", h);
+		t->born = clock_s();
+		if (c->cache_size) {
+			t->cache_key = cache_key(h, fd);
+			offer(t);
+		}
 	}
 	return t;
 }
@@ -655,6 +953,7 @@ static const char *alert_text(int a) {
 }
 
 static void cert_fail(ak_tls *t, uint32_t flags, const char *whose);
+static int opened(ak_tls *t);
 
 // ssl_fail sets why Mbed TLS's r failed.
 static int ssl_fail(ak_tls *t, int r) {
@@ -831,6 +1130,17 @@ static void agreed(ak_tls *t) {
 	const char *p = mbedtls_ssl_get_alpn_protocol(&t->ssl);
 	snprintf(in->protocol, sizeof in->protocol, "%s", p ? p : "");
 	t->certs.len = t->lens.len = 0;
+	if (in->resumed && t->chain) {
+		// A resumed session's certificates: its full handshake's.
+		for (size_t at = 0; at + 4 <= t->chain_len;) {
+			const uint8_t *p = t->chain + at;
+			size_t l = (size_t)p[0] << 24 | (size_t)p[1] << 16 | (size_t)p[2] << 8 | p[3];
+			ak_vec_push(&t->certs, p + 4);
+			ak_vec_push(&t->lens, l);
+			at += 4 + l;
+		}
+		return;
+	}
 	for (const mbedtls_x509_crt *c = mbedtls_ssl_get_peer_cert(&t->ssl); c && c->raw.p; c = c->next) {
 		ak_vec_push(&t->certs, c->raw.p);
 		ak_vec_push(&t->lens, c->raw.len);
@@ -938,10 +1248,7 @@ static int verified(ak_tls *t) {
 	if (!done) return AK_TLS_WAIT;
 	t->box = NULL;
 	box_release(b);
-	if (ok) {
-		t->phase = PH_OPEN;
-		return AK_TLS_DONE;
-	}
+	if (ok) return opened(t);
 	// The dates and the name as Mbed TLS reads them say it more surely
 	// than the system's codes; the rest is the system's.
 	uint32_t flags = 0;
@@ -953,16 +1260,65 @@ static int verified(ak_tls *t) {
 	return AK_TLS_FAIL;
 }
 
+// opened ends t's handshake, the certificate checked: a client keeps its
+// TLS 1.2 session (TLS 1.3's tickets come after, as it reads).
+static int opened(ak_tls *t) {
+	t->phase = PH_OPEN;
+	if (!t->conf->server && t->info.version == 12) keep_session(t);
+	return AK_TLS_DONE;
+}
+
+// resuming reports whether ssl's handshake, so far, resumes a session:
+// TLS 1.3's PSK, TLS 1.2's ticket or session ID taken.
+static bool resuming(mbedtls_ssl_context *ssl) {
+	if (!ssl->handshake) return false;
+	if (ssl->tls_version == MBEDTLS_SSL_VERSION_TLS1_3) return mbedtls_ssl_tls13_key_exchange_mode_with_psk(ssl);
+	return ssl->handshake->resume != 0;
+}
+
+// handshake is mbedtls_ssl_handshake, step by step, to see before its
+// last whether it resumed (its state goes with it).
+static int handshake(ak_tls *t) {
+	mbedtls_ssl_context *ssl = &t->ssl;
+	while (ssl->state != MBEDTLS_SSL_HANDSHAKE_OVER) {
+		t->info.resumed = resuming(ssl);
+		int r = mbedtls_ssl_handshake_step(ssl);
+		if (r != 0) return r;
+	}
+	return 0;
+}
+
+// resumed_check checks a resumed session's certificate as this side's
+// configuration does what's left to check of it: its name, its dates
+// (its chain was checked as its full handshake was).
+static int resumed_check(ak_tls *t) {
+	const mbedtls_x509_crt *peer = mbedtls_ssl_get_peer_cert(&t->ssl);
+	char whose[300];
+	snprintf(whose, sizeof whose, "%s's certificate", t->host);
+	uint32_t flags = 0;
+	if (peer) mbedtls_x509_crt_verify((mbedtls_x509_crt *)peer, NULL, NULL, t->host, &flags, NULL, NULL);
+	int p = !peer ? 6 : mbedtls_x509_time_is_past(&peer->valid_to) ? 1 : mbedtls_x509_time_is_future(&peer->valid_from) ? 2 : flags & MBEDTLS_X509_BADCERT_CN_MISMATCH ? 3 : 0;
+	if (p) {
+		forget(t);
+		untrusted(t, p, whose, NULL);
+		return AK_TLS_FAIL;
+	}
+	return opened(t);
+}
+
 static int t_handshake(ak_tls *t) {
 	switch (t->phase) {
 	case PH_OPEN: return AK_TLS_DONE;
 	case PH_FAILED: return AK_TLS_FAIL;
 	case PH_VERIFY: return verified(t);
 	}
-	int r = mbedtls_ssl_handshake(&t->ssl);
+	int r = handshake(t);
 	if (r == MBEDTLS_ERR_SSL_WANT_READ) return AK_TLS_WANT_READ;
 	if (r == MBEDTLS_ERR_SSL_WANT_WRITE) return AK_TLS_WANT_WRITE;
-	if (r != 0) return ssl_fail(t, r);
+	if (r != 0) {
+		forget(t);
+		return ssl_fail(t, r);
+	}
 	agreed(t);
 	tls_conf *c = t->conf;
 	if (c->server) {
@@ -978,10 +1334,8 @@ static int t_handshake(ak_tls *t) {
 		t->phase = PH_OPEN;
 		return AK_TLS_DONE;
 	}
-	if (c->insecure) {
-		t->phase = PH_OPEN;
-		return AK_TLS_DONE;
-	}
+	if (c->insecure) return opened(t);
+	if (t->info.resumed) return resumed_check(t);
 	const mbedtls_x509_crt *peer = mbedtls_ssl_get_peer_cert(&t->ssl);
 	char whose[300];
 	snprintf(whose, sizeof whose, "%s's certificate", t->host);
@@ -1003,8 +1357,7 @@ static int t_handshake(ak_tls *t) {
 		cert_fail(t, flags, whose);
 		return AK_TLS_FAIL;
 	}
-	t->phase = PH_OPEN;
-	return AK_TLS_DONE;
+	return opened(t);
 }
 
 static int t_read(ak_tls *t, uint8_t *p, size_t n) {
@@ -1017,7 +1370,10 @@ static int t_read(ak_tls *t, uint8_t *p, size_t n) {
 		if (r == 0 || r == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY || r == MBEDTLS_ERR_SSL_CONN_EOF) return AK_TLS_EOF;
 		if (r == MBEDTLS_ERR_SSL_WANT_READ) return AK_TLS_WANT_READ;
 		if (r == MBEDTLS_ERR_SSL_WANT_WRITE) return AK_TLS_WANT_WRITE;
-		if (r == MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET || r == MBEDTLS_ERR_SSL_RECEIVED_EARLY_DATA) continue;
+		if (r == MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET) {
+			keep_session(t);
+			continue;
+		}
 		return ssl_fail(t, r);
 	}
 }
@@ -1054,6 +1410,8 @@ static void t_close(ak_tls *t) {
 	ak_vec_free(&t->certs);
 	ak_vec_free(&t->lens);
 	ak_free(t->host);
+	ak_free(t->cache_key);
+	ak_free(t->chain);
 	ak_free(t);
 }
 

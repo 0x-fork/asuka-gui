@@ -36,6 +36,7 @@ typedef struct {
 	char cipher[64];    // the cipher suite's IANA name: "TLS_AES_128_GCM_SHA256"
 	char protocol[64];  // ALPN's: "h2", "" for none
 	char server_name[256];  // the name the client asked for (SNI): the server's; "" none
+	bool resumed;           // a session resumed: no certificate was sent, none checked but its name and dates
 } ak_tls_info;
 
 #if !defined(__wasm__)
@@ -99,6 +100,12 @@ bool ak_tls_system_verify(const char *host, const uint8_t *const *der, const siz
 // paths, as Go reads them), Android's store. NULL when there are none,
 // why saying where it looked.
 struct mbedtls_x509_crt *ak_tls_system_roots(char *why, size_t cap);
+
+// For tests: seconds added to the clock a client's kept sessions expire
+// by, and how many sessions client configuration config keeps (-1: no
+// such configuration).
+extern int64_t ak_tls_clock_shift;
+int ak_tls_cached(int64_t config);
 #endif
 
 // ak_net_tls_start upgrades connection h (std/net's) to TLS on the net

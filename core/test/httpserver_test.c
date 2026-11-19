@@ -674,11 +674,11 @@ TEST(http_server_tls) {
 	ak_str *cert = pem("server.pem"), *key = pem("server.key");
 	ak_str_arr_push(&pairs, cert->data, cert->len);
 	ak_str_arr_push(&pairs, key->data, key->len);
-	ak_val sa[6] = {{.p = pairs}, {.p = ak_str_arr(0)}, {.p = ak_str_c("")}, {.i = 0}, {.i = 12}, {.i = 13}};
-	server_tls = lib("tls.serverConfig")(sa, 6).i;
+	ak_val sa[7] = {{.p = pairs}, {.p = ak_str_arr(0)}, {.p = ak_str_c("")}, {.i = 0}, {.i = 12}, {.i = 13}, {.i = 1}};
+	server_tls = lib("tls.serverConfig")(sa, 7).i;
 	REQUIRE(!ak_error_pending() && server_tls > 0);
-	ak_val ca[7] = {{.p = pem("ca.pem")}, {.p = ak_str_c("")}, {.p = ak_str_c("")}, {.p = ak_str_arr(0)}, {.i = 12}, {.i = 13}, {.i = 0}};
-	int64_t client_tls = lib("tls.clientConfig")(ca, 7).i;
+	ak_val ca[8] = {{.p = pem("ca.pem")}, {.p = ak_str_c("")}, {.p = ak_str_c("")}, {.p = ak_str_arr(0)}, {.i = 12}, {.i = 13}, {.i = 0}, {.i = 64}};
+	int64_t client_tls = lib("tls.clientConfig")(ca, 8).i;
 	REQUIRE(!ak_error_pending() && client_tls > 0);
 	int port;
 	int64_t h = server(NULL, 0, &port);

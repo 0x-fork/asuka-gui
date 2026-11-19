@@ -6,7 +6,10 @@
 // certificate (required, and not given), and the failures that say why:
 // the wrong host, an expired certificate, an unknown authority (the
 // test's own, and the system's trust store), no version in common, a
-// server that doesn't speak TLS. And configurations that can't be made.
+// server that doesn't speak TLS. And configurations that can't be made
+// (an encrypted key or OpenSSH's: std/crypto's to read); sessions
+// resumed (TLS 1.3's tickets, TLS 1.2's), counted: kept per configuration,
+// server name and port, bounded, expired, and not where tickets are off.
 #if defined(_WIN32)
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -17,6 +20,7 @@
 #include "rt/lib.h"
 #include "std/std.h"
 #include "std/net.h"
+#include "std/tls.h"
 #include "signal/signal.h"
 #include "base/thread.h"
 
@@ -70,12 +74,14 @@ static ak_arr *strs(const char *const *s, int n) {
 	return a;
 }
 
-// client makes a client's configuration (ca, certificate and key: files
-// of testdata/tls, or NULL); its error into err, 0.
-static int64_t client(const char *ca, const char *cert, const char *key, const char *alpn, int minv, int maxv, bool insecure, char *err) {
+// client_with makes a client's configuration (ca, certificate and key:
+// files of testdata/tls, or NULL; how many servers' sessions it keeps);
+// its error into err, 0.
+static int64_t client_with(const char *ca, const char *cert, const char *key, const char *alpn, int minv, int maxv, bool insecure, int cache, char *err) {
 	const char *protos[1] = {alpn};
-	ak_val a[7] = {{.p = ca ? file(ca) : ak_str_c("")}, {.p = cert ? file(cert) : ak_str_c("")}, {.p = key ? file(key) : ak_str_c("")}, {.p = strs(protos, alpn ? 1 : 0)}, {.i = minv}, {.i = maxv}, {.i = insecure}};
-	int64_t h = lib("tls.clientConfig")(a, 7).i;
+	ak_val a[8] = {{.p = ca ? file(ca) : ak_str_c("")}, {.p = cert ? file(cert) : ak_str_c("")}, {.p = key ? file(key) : ak_str_c("")},
+		{.p = strs(protos, alpn ? 1 : 0)}, {.i = minv}, {.i = maxv}, {.i = insecure}, {.i = cache}};
+	int64_t h = lib("tls.clientConfig")(a, 8).i;
 	for (int i = 0; i < 4; i++) ak_release(a[i].p);
 	if (err) err[0] = 0;
 	if (ak_error_pending()) {
@@ -87,9 +93,13 @@ static int64_t client(const char *ca, const char *cert, const char *key, const c
 	return h;
 }
 
-// server makes a server's configuration of pairs (certificate and key
-// files: n of each).
-static int64_t server(const char *const *pairs, int n, const char *alpn, const char *client_ca, bool require, int minv, int maxv, char *err) {
+static int64_t client(const char *ca, const char *cert, const char *key, const char *alpn, int minv, int maxv, bool insecure, char *err) {
+	return client_with(ca, cert, key, alpn, minv, maxv, insecure, 64, err);
+}
+
+// server_with makes a server's configuration of pairs (certificate and
+// key files: n of each), with tickets or none.
+static int64_t server_with(const char *const *pairs, int n, const char *alpn, const char *client_ca, bool require, int minv, int maxv, bool tickets, char *err) {
 	ak_arr *p = ak_str_arr((uint32_t)(2 * n));
 	for (int i = 0; i < 2 * n; i++) {
 		ak_str *s = file(pairs[i]);
@@ -97,8 +107,8 @@ static int64_t server(const char *const *pairs, int n, const char *alpn, const c
 		ak_release(s);
 	}
 	const char *protos[1] = {alpn};
-	ak_val a[6] = {{.p = p}, {.p = strs(protos, alpn ? 1 : 0)}, {.p = client_ca ? file(client_ca) : ak_str_c("")}, {.i = require}, {.i = minv}, {.i = maxv}};
-	int64_t h = lib("tls.serverConfig")(a, 6).i;
+	ak_val a[7] = {{.p = p}, {.p = strs(protos, alpn ? 1 : 0)}, {.p = client_ca ? file(client_ca) : ak_str_c("")}, {.i = require}, {.i = minv}, {.i = maxv}, {.i = tickets}};
+	int64_t h = lib("tls.serverConfig")(a, 7).i;
 	for (int i = 0; i < 3; i++) ak_release(a[i].p);
 	if (err) err[0] = 0;
 	if (ak_error_pending()) {
@@ -108,6 +118,10 @@ static int64_t server(const char *const *pairs, int n, const char *alpn, const c
 		return 0;
 	}
 	return h;
+}
+
+static int64_t server(const char *const *pairs, int n, const char *alpn, const char *client_ca, bool require, int minv, int maxv, char *err) {
+	return server_with(pairs, n, alpn, client_ca, require, minv, maxv, true, err);
 }
 
 static int64_t call_int(const char *name, ak_val *args, uint32_t n) {
@@ -257,11 +271,11 @@ TEST(tls_handshakes) {
 	CHECK(strncmp(field(cf, 1), "TLS_AES_", 8) == 0 || strcmp(field(cf, 1), "TLS_CHACHA20_POLY1305_SHA256") == 0);
 	CHECK_EQ_STR(field(cf, 2), "http/1.1");
 	CHECK_EQ_STR(field(cf, 3), "localhost");
-	CHECK_EQ_INT(nfields(cf), 6);  // the leaf and the intermediate
+	CHECK_EQ_INT(nfields(cf), 7);  // the leaf and the intermediate
 	CHECK_EQ_STR(field(sf, 0), "13");
 	CHECK_EQ_STR(field(sf, 2), "http/1.1");
 	CHECK_EQ_STR(field(sf, 3), "localhost");
-	CHECK_EQ_INT(nfields(sf), 4);  // no client certificate
+	CHECK_EQ_INT(nfields(sf), 5);  // no client certificate
 	ak_release(cf);
 	ak_release(sf);
 
@@ -491,7 +505,7 @@ TEST(tls_client_certificates) {
 	REQUIRE(cf && sf);
 	CHECK_EQ_STR(failure(cf), "");
 	CHECK_EQ_STR(failure(sf), "");
-	CHECK_EQ_INT(nfields(sf), 6);  // the client's leaf and intermediate
+	CHECK_EQ_INT(nfields(sf), 7);  // the client's leaf and intermediate
 	ak_release(cf);
 	ak_release(sf);
 	close_h(c);
@@ -544,6 +558,159 @@ TEST(tls_configurations) {
 	close_h(c);
 	close_h(s);
 	close_h(l);
+	drain();
+}
+
+TEST(tls_encrypted_keys) {
+	ak_signal_bind_thread();
+	char err[300];
+	// An encrypted key, or OpenSSH's, is std/crypto's to read: the error
+	// says how (testdata/keys: ../tls's keys, gen.sh's).
+	const char *const enc[] = {"server.pem", "../keys/tls-server-pbes2.pem"};
+	CHECK_EQ_INT(server(enc, 1, NULL, NULL, false, 12, 13, err), 0);
+	CHECK_EQ_STR(err, "std/net:invalid:the key is encrypted: give it decrypted, what crypto.decryptPrivateKey(key, password:) reads, as its pem()");
+	CHECK_EQ_INT(client("ca.pem", "client.pem", "../keys/tls-client-openssh.pem", NULL, 12, 13, false, err), 0);
+	CHECK_EQ_STR(err, "std/net:invalid:the key is OpenSSH's: give it as PKCS#8, what crypto.privateKey(key).pem() makes of it (crypto.decryptPrivateKey's for an encrypted one)");
+	const char *const trad[] = {"rsa.pem", "../keys/rsa-trad-aes256.pem"};
+	CHECK_EQ_INT(server(trad, 1, NULL, NULL, false, 12, 13, err), 0);
+	CHECK(strstr(err, "the key is encrypted") != NULL);
+	drain();
+}
+
+// resumes runs a handshake of client configuration cconf with l's server
+// for name, then the server writes a byte the client reads (a TLS 1.3
+// client takes its tickets as it reads): 1 when the client's resumed, 0
+// when it didn't, -1 when it failed; *sr whether the server's did.
+static int resumes(int64_t l, int64_t port, int64_t cconf, const char *name, bool *sr) {
+	int64_t c, s;
+	ak_future *cf, *sf;
+	hs(l, port, cconf, name, &c, &s, &cf, &sf);
+	if (!cf || !sf) return -1;
+	int r = -1;
+	if (cf->state == AK_FUT_DONE && sf->state == AK_FUT_DONE) {
+		r = strcmp(field(cf, 4), "1") == 0;
+		if (sr) *sr = strcmp(field(sf, 4), "1") == 0;
+		// What the server sent then is what it was sent now.
+		if (nfields(cf) != 7) T_FAIL("%s: %u fields", name, nfields(cf));
+		write_text(s, "x");
+		if (strcmp(read_text(c, 1, 1, ""), "x") != 0) T_FAIL("%s: no byte", name);
+	} else {
+		T_FAIL("%s: %s %s", name, failure(cf), failure(sf));
+	}
+	ak_release(cf);
+	ak_release(sf);
+	close_h(c);
+	close_h(s);
+	return r;
+}
+
+TEST(tls_resumption) {
+	ak_signal_bind_thread();
+	char err[300];
+	int64_t sconf = server(server_pair, 1, NULL, NULL, false, 12, 13, err);
+	// (Configurations of their own: the same inputs give other tests' back.)
+	int64_t cconf = client_with("ca.pem", NULL, NULL, NULL, 12, 13, false, 61, err);
+	REQUIRE(sconf > 0 && cconf > 0);
+	int64_t port, l = listen_on(sconf, &port);
+	bool sr = false;
+	// TLS 1.3: a full handshake, its server's two tickets kept; then one
+	// taken and resumed (the server's side too), and one more given.
+	CHECK_EQ_INT(resumes(l, port, cconf, "localhost", &sr), 0);
+	CHECK(!sr);
+	CHECK_EQ_INT(ak_tls_cached(cconf), 2);
+	CHECK_EQ_INT(resumes(l, port, cconf, "localhost", &sr), 1);
+	CHECK(sr);
+	CHECK_EQ_INT(ak_tls_cached(cconf), 2);
+	CHECK_EQ_INT(resumes(l, port, cconf, "localhost", NULL), 1);
+	// Another name isn't the session's server, though one certificate
+	// has both names.
+	CHECK_EQ_INT(resumes(l, port, cconf, "test.example", NULL), 0);
+	CHECK_EQ_INT(ak_tls_cached(cconf), 4);
+	// Nor is another configuration's: one that trusts another authority
+	// does a full handshake, and fails it.
+	int64_t other = client_with("other-ca.pem", NULL, NULL, NULL, 12, 13, false, 61, err);
+	REQUIRE(other > 0);
+	int64_t c, s;
+	ak_future *cf, *sf;
+	hs(l, port, other, "localhost", &c, &s, &cf, &sf);
+	REQUIRE(cf && sf);
+	CHECK(strncmp(failure(cf), "std/net:untrustedCertificate:unknownIssuer:", 43) == 0);
+	ak_release(cf);
+	ak_release(sf);
+	close_h(c);
+	close_h(s);
+	// Past a ticket's lifetime (the server's: a day) it isn't offered,
+	// and goes.
+	ak_tls_clock_shift = 24 * 3600 + 1;
+	CHECK_EQ_INT(resumes(l, port, cconf, "localhost", NULL), 0);
+	CHECK_EQ_INT(resumes(l, port, cconf, "localhost", NULL), 1);
+	ak_tls_clock_shift = 0;
+
+	// TLS 1.2: its session (a ticket) kept, and used again.
+	int64_t c12 = client_with("ca.pem", NULL, NULL, NULL, 12, 12, false, 61, err);
+	REQUIRE(c12 > 0);
+	CHECK_EQ_INT(resumes(l, port, c12, "localhost", NULL), 0);
+	CHECK_EQ_INT(ak_tls_cached(c12), 1);
+	CHECK_EQ_INT(resumes(l, port, c12, "localhost", &sr), 1);
+	CHECK(sr);
+	CHECK_EQ_INT(resumes(l, port, c12, "localhost", NULL), 1);
+	CHECK_EQ_INT(ak_tls_cached(c12), 1);
+
+	// A configuration that keeps none resumes none.
+	int64_t none = client_with("ca.pem", NULL, NULL, NULL, 12, 13, false, 0, err);
+	REQUIRE(none > 0);
+	CHECK_EQ_INT(resumes(l, port, none, "localhost", NULL), 0);
+	CHECK_EQ_INT(resumes(l, port, none, "localhost", NULL), 0);
+	CHECK_EQ_INT(ak_tls_cached(none), 0);
+
+	// Two servers kept at most: a third's handshake drops the least
+	// recently used's.
+	int64_t two = client_with("ca.pem", NULL, NULL, NULL, 12, 13, false, 2, err);
+	REQUIRE(two > 0);
+	CHECK_EQ_INT(resumes(l, port, two, "localhost", NULL), 0);
+	CHECK_EQ_INT(resumes(l, port, two, "test.example", NULL), 0);
+	CHECK_EQ_INT(resumes(l, port, two, "localhost", NULL), 1);
+	CHECK_EQ_INT(resumes(l, port, two, "127.0.0.1", NULL), 0);  // test.example's dropped
+	CHECK_EQ_INT(ak_tls_cached(two), 4);
+	CHECK_EQ_INT(resumes(l, port, two, "test.example", NULL), 0);
+	CHECK_EQ_INT(resumes(l, port, two, "127.0.0.1", NULL), 1);
+
+	// The server changes (TLS 1.2 alone now, on the same port): the
+	// ticket offered (TLS 1.3's alone) fails the handshake, and its
+	// server's sessions go, so the next is a full handshake.
+	int64_t c13 = client_with("ca.pem", NULL, NULL, NULL, 12, 13, false, 60, err);
+	REQUIRE(c13 > 0);
+	CHECK_EQ_INT(resumes(l, port, c13, "localhost", NULL), 0);
+	CHECK_EQ_INT(ak_tls_cached(c13), 2);
+	close_h(l);
+	drain();
+	int64_t s12 = server(server_pair, 1, NULL, NULL, false, 12, 12, err);
+	REQUIRE(s12 > 0);
+	ak_val la[3] = {str("127.0.0.1"), {.i = port}, {.i = s12}};
+	l = call_int("net.tcpListen", la, 3);
+	ak_release(la[0].p);
+	REQUIRE(l > 0);
+	hs(l, port, c13, "localhost", &c, &s, &cf, &sf);
+	REQUIRE(cf && sf);
+	CHECK(strncmp(failure(cf), "std/net:tls:", 12) == 0);
+	CHECK_EQ_INT(ak_tls_cached(c13), 0);
+	ak_release(cf);
+	ak_release(sf);
+	close_h(c);
+	close_h(s);
+	CHECK_EQ_INT(resumes(l, port, c13, "localhost", NULL), 0);
+	CHECK_EQ_INT(resumes(l, port, c13, "localhost", NULL), 1);
+	close_h(l);
+
+	// A server that gives no tickets: nothing to resume.
+	int64_t plain = server_with(server_pair, 1, NULL, NULL, false, 12, 13, false, err);
+	REQUIRE(plain > 0);
+	int64_t port2, l2 = listen_on(plain, &port2);
+	CHECK_EQ_INT(resumes(l2, port2, cconf, "localhost", NULL), 0);
+	CHECK_EQ_INT(resumes(l2, port2, cconf, "localhost", NULL), 0);
+	CHECK_EQ_INT(resumes(l2, port2, c12, "localhost", NULL), 0);
+	CHECK_EQ_INT(resumes(l2, port2, c12, "localhost", NULL), 0);
+	close_h(l2);
 	drain();
 }
 
