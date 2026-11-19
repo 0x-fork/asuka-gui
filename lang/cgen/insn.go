@@ -352,7 +352,7 @@ func (g *gen) callOp(f *bc.FuncDef, name string, in insn, h string) bool {
 		// Of one whose parameters' kinds are the arguments' (and not a mut
 		// fn's), its direct body itself, the arguments in registers
 		// (sigCall).
-		g.w("{ ak_closure *c_ = %s; if (!c_) ak_panic(\"calling none\"); const ak_func *g_ = c_->invoke == ak_vm_closure_invoke ? c_->fn : NULL; ak_ret v_; %s{ %s if (AK_LIKELY(g_ && g_->direct)) v_ = g_->direct(c_, lim_, B_); else { v_.v = c_->invoke(c_, B_, %d); v_.e = ak_cg_pending(&E_); } %s} if (AK_UNLIKELY(v_.e)) %s %s }",
+		g.w("{ ak_closure *c_ = %s; if (!c_) ak_panic(\"calling none\"); ak_ret v_; %s{ const ak_func *g_ = c_->invoke == ak_vm_closure_invoke ? c_->fn : NULL; %s if (AK_LIKELY(g_ && g_->direct)) v_ = g_->direct(c_, lim_, B_); else { v_.v = c_->invoke(c_, B_, %d); v_.e = ak_cg_pending(&E_); } %s} if (AK_UNLIKELY(v_.e)) %s %s }",
 			g.rp(a[1]), g.sigCall("c_", a[2], a[3]), g.block(a[2], a[3]), a[3], g.back(a[2], a[3]), g.fail(in, h), g.put(a[0], "v_.v", bc.KVoid))
 	case "CALLB":
 		if g.intrinsic(in, h) {
@@ -442,6 +442,12 @@ func (g *gen) sigCall(clos string, b, n int) string {
 		sig |= cls << (2 * p)
 		ts = append(ts, strings.TrimSpace(ctype(k)))
 		args = append(args, g.r(b+p)+"."+member(k))
+	}
+	if clos == "c_" {
+		// A closure's: its own copy of the signature (ak_closure.sig, 0
+		// unless it's a compiled function's), then the body from its
+		// function, so the test reads the closure only.
+		return fmt.Sprintf("if (AK_LIKELY(c_->sig == %#xu)) v_ = ((ak_ret (*)(%s))((const ak_func *)c_->fn)->body)(%s); else ", sig, strings.Join(ts, ", "), strings.Join(args, ", "))
 	}
 	return fmt.Sprintf("if (AK_LIKELY(g_ && g_->sig == %#xu)) v_ = ((ak_ret (*)(%s))g_->body)(%s); else ", sig, strings.Join(ts, ", "), strings.Join(args, ", "))
 }

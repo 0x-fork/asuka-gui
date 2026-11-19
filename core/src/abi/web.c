@@ -392,6 +392,7 @@ static ak_closure *decode_job(const uint8_t *p, size_t n, ak_kind *k, const char
 	}
 	const ak_func *fn = &m->funcs[fi];
 	ak_closure *c = ak_closure_new(ak_vm_closure_invoke, fn, fn->ncap, fn->capkinds);
+	c->sig = fn->sig;
 	ak_module_retain(fn->mod);
 	c->drop = ak_vm_closure_drop;
 	for (uint32_t i = 0; i < ncap; i++) {

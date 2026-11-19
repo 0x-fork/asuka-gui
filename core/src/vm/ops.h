@@ -282,6 +282,7 @@ void ak_vm_closure_drop(ak_closure *c);
 
 static inline ak_closure *ak_op_clos(const ak_func *g, const ak_val *caps) {
 	ak_closure *c = ak_closure_new(ak_vm_closure_invoke, g, g->ncap, g->capkinds);
+	c->sig = g->sig;
 	for (uint16_t i = 0; i < g->ncap; i++) {
 		c->caps[i] = caps[i];
 		ak_retain_val(c->caps[i], (ak_kind)g->capkinds[i]);

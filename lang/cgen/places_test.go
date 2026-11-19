@@ -317,14 +317,14 @@ fn main() {
 
 // A closure call whose arguments' kinds are its function's parameters'
 // calls the function's direct body with them in registers, when it's a
-// compiled one (its sig).
+// compiled one (its sig, copied into the closure as it's made).
 func TestTypedClosureCalls(t *testing.T) {
 	c := cOf(t, `
 fn apply(f: fn(int, float) -> bool, a: int, b: float) -> bool = f(a, b)
 
 fn main() { print("{apply((x, y) => x.float() < y, 1, 2.0)}") }
 `, "apply")
-	if !strings.Contains(c, "g_->sig == 0x80020004u") || !strings.Contains(c, "(ak_closure *, uintptr_t, int64_t, double))g_->body)(c_, lim_, ") {
+	if !strings.Contains(c, "c_->sig == 0x80020004u") || !strings.Contains(c, "(ak_closure *, uintptr_t, int64_t, double))((const ak_func *)c_->fn)->body)(c_, lim_, ") {
 		t.Errorf("not a typed call:\n%s", c)
 	}
 }

@@ -701,6 +701,12 @@ struct ak_closure {
 	const void *fn;               // the VM's function, or C code's data
 	const uint8_t *capkinds;
 	uint16_t ncap;
+	// sig: the VM's function's ak_func.sig when it's compiled to C, its
+	// direct body called with its arguments in registers (lang/cgen's
+	// closure calls test it, and take the body from fn); 0 otherwise.
+	// Copied as the closure is made (ak_vm_closure_sig), so a call tests
+	// one word of the closure's, not its invoke and then its function's.
+	uint32_t sig;
 	ak_val caps[];
 };
 

@@ -994,6 +994,7 @@ ak_val ak_vm_call(const ak_func *f, ak_val *args, uint32_t nargs) {
 
 ak_closure *ak_vm_closure(const ak_func *f) {
 	ak_closure *c = ak_closure_new(ak_vm_closure_invoke, f, 0, NULL);
+	c->sig = f->sig;
 	ak_module_retain(f->mod);
 	c->drop = ak_vm_closure_drop;
 	return c;
