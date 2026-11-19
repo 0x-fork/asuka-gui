@@ -240,6 +240,8 @@ test "the wall clock's fields, worked out as they're asked for" {
   expect(leap.daysInMonth() == 29 && leap.sameDay(east) && !east.sameDay(leap.add(-1h)))
   // The ends of what an instant reaches.
   expect(date(1678, 1, 1, zone: .utc).year() == 1678)
+  let first = unixNano(-9223372036854775807 - 1, zone: .utc)
+  expect(first.year() == 1677 && first.month() == 9 && first.day() == 21 && first.second() == 43 && first.nanosecond() == 145224192)
   expect(date(2262, 4, 11, zone: .utc).format("yyyy-MM-dd EEE") == "2262-04-11 Fri")
   // A Time is its instant, its zone and its offset: equal when they are.
   expect(t == Time(instant: t.instant, zone: .fixed(seconds: -16200), offset: -16200))

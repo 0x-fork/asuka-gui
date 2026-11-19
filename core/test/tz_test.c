@@ -206,12 +206,12 @@ TEST(tz_local_name) {
 
 TEST(tz_formats) {
 	int64_t july = 1783170300;  // 2026-07-04T13:05:00Z
-	// 2026-07-04 09:05, a Saturday: only the zone's fields matter here.
-#define FMT(pattern, off, zone, unix, want)                                                              \
-	do {                                                                                              \
-		ak_val a_[12] = {S(pattern), I(2026), I(7), I(4), I(9), I(5), I(0), I(0), I(6), I(off), S(zone), I(unix)}; \
-		check_str(fn("time.formatFields")(a_, 12), want, __LINE__);                                    \
-		ak_release(a_[0].p), ak_release(a_[10].p);                                                     \
+	// Only the zone's fields matter here.
+#define FMT(pattern, off, zone, unix, want)                                       \
+	do {                                                                       \
+		ak_val a_[4] = {S(pattern), I((unix) * 1000000000), I(off), S(zone)}; \
+		check_str(fn("time.formatFields")(a_, 4), want, __LINE__);             \
+		ak_release(a_[0].p), ak_release(a_[3].p);                              \
 	} while (0)
 	FMT("z zzzz O OOOO VV VVV", -4 * 3600, "America/New_York", july, "EDT GMT-04:00 GMT-4 GMT-04:00 America/New_York New York");
 	// An offset the zone doesn't have then: no abbreviation.
@@ -270,24 +270,26 @@ TEST(tz_rfc9557) {
 	                      "2026-03-07T15:04:05Z[Etc/UTC]", "2026-03-07T15:04:05-05:00[-05:00]", "2026-03-07T15:04:05Z[a=b][c=d]"};
 	for (size_t i = 0; i < AK_LEN(good); i++) {
 		ak_val a = S(good[i]);
-		ak_val r = fn("time.parseRFC3339")(&a, 1);
+		fn("time.parseRFC3339")(&a, 1);
 		ak_release(a.p);
 		if (ak_error_pending()) {
 			void *e = ak_error_take();
 			ak_str *m = ak_error_message(e);
 			T_FAIL("%s: %s", good[i], m ? m->data : "?");
 			ak_release(e);
-			continue;
 		}
-		ak_release(r.p);
 	}
+	// The instant; then the offset, twice it, 1 for a zone's name after
+	// it; then the name.
 	ak_val a = S("2026-03-07T15:04:05+01:00[Europe/Paris]");
-	ak_arr *r = fn("time.parseRFC3339")(&a, 1).p;
-	REQUIRE(r && r->len == 4);
-	CHECK_EQ_INT(ak_arr_vals(r)[1].i, 3600);
-	CHECK_EQ_INT(ak_arr_vals(r)[2].i, 26);
-	CHECK_EQ_INT(ak_arr_vals(r)[3].i, 38);
-	ak_release(r);
+	CHECK_EQ_INT(fn("time.parseRFC3339")(&a, 1).i, INT64_C(1772892245) * 1000000000);
+	CHECK_EQ_INT(fn("time.parsedOffset")(NULL, 0).i, 2 * 3600 + 1);
+	check_str(fn("time.parsedZone")(&a, 1), "Europe/Paris", __LINE__);
+	ak_release(a.p);
+	a = S("2026-03-07T15:04:05Z[u-ca=iso8601]");
+	fn("time.parseRFC3339")(&a, 1);
+	CHECK_EQ_INT(fn("time.parsedOffset")(NULL, 0).i, 0);
+	check_str(fn("time.parsedZone")(&a, 1), "", __LINE__);
 	ak_release(a.p);
 	const char *bad[] = {"2026-03-07T15:04:05Z[Europe/Paris]", "2026-03-07T15:04:05Z[]", "2026-03-07T15:04:05Z[!]", "2026-03-07T15:04:05Z[UTC][UTC]",
 	                     "2026-03-07T15:04:05Z[UTC]x", "2026-03-07T15:04:05Z[UTC", "2026-03-07T15:04:05Z]", "2026-03-07T15:04:05Z[!x=y]", "2026-03-07T15:04:05Z[+0000]"};

@@ -170,16 +170,31 @@ T_SHA2 void ak_sha256_blocks_hw(uint32_t h[8], const uint8_t *p, size_t blocks) 
 
 // ---- SHA-1 (ARMv8's SHA1C/P/M, SHA1H, SHA1SU0/1) ----
 
+// sha1h_v is SHA1H with its result in a vector's first lane: the
+// intrinsic's is a uint32_t, which the block's last e then went through
+// a general register to be added to e's start (fmov, add, fmov back),
+// on the chain into the next block's first round: 89 cycles a block on
+// the M5, 84 kept in the vector unit as Go's assembly keeps it (82).
+#if defined(__GNUC__) || defined(__clang__)
+T_SHA2 static inline uint32x4_t sha1h_v(uint32x4_t abcd) {
+	uint32x4_t r;
+	__asm__("sha1h %s0, %s1" : "=w"(r) : "w"(abcd));
+	return r;
+}
+#else
+T_SHA2 static inline uint32x4_t sha1h_v(uint32x4_t abcd) { return vdupq_n_u32(vsha1h_u32(vgetq_lane_u32(abcd, 0))); }
+#endif
+
 // Four rounds an instruction: the message's next four words from the
 // sixteen before them (SU0 then SU1), e's next from a's (SHA1H), the
 // round's function by its group: choose, parity, majority, parity.
 T_SHA2 void ak_sha1_blocks_hw(uint32_t h[5], const uint8_t *p, size_t blocks) {
 	const uint32x4_t k0 = vdupq_n_u32(0x5a827999), k1 = vdupq_n_u32(0x6ed9eba1), k2 = vdupq_n_u32(0x8f1bbcdc), k3 = vdupq_n_u32(0xca62c1d6);
 	uint32x4_t abcd = vld1q_u32(h);
-	uint32_t e = h[4];
+	uint32x4_t ev = vdupq_n_u32(h[4]);  // e, in its first lane
 	for (; blocks--; p += 64) {
-		uint32x4_t abcd0 = abcd;
-		uint32_t e0 = e;
+		uint32x4_t abcd0 = abcd, e0 = ev;
+		uint32_t e = vgetq_lane_u32(ev, 0);
 		uint32x4_t m0 = vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(p))), m1 = vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(p + 16)));
 		uint32x4_t m2 = vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(p + 32))), m3 = vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(p + 48)));
 		uint32_t e1;
@@ -218,12 +233,12 @@ T_SHA2 void ak_sha1_blocks_hw(uint32_t h[5], const uint8_t *p, size_t blocks) {
 		m2 = vsha1su1q_u32(vsha1su0q_u32(m2, m3, m0), m1);
 		e1 = vsha1h_u32(vgetq_lane_u32(abcd, 0)), abcd = vsha1pq_u32(abcd, e, vaddq_u32(m2, k3));
 		m3 = vsha1su1q_u32(vsha1su0q_u32(m3, m0, m1), m2);
-		e = vsha1h_u32(vgetq_lane_u32(abcd, 0)), abcd = vsha1pq_u32(abcd, e1, vaddq_u32(m3, k3));
+		ev = sha1h_v(abcd), abcd = vsha1pq_u32(abcd, e1, vaddq_u32(m3, k3));
 		abcd = vaddq_u32(abcd, abcd0);
-		e += e0;
+		ev = vaddq_u32(ev, e0);
 	}
 	vst1q_u32(h, abcd);
-	h[4] = e;
+	h[4] = vgetq_lane_u32(ev, 0);
 }
 
 // ---- SHA-512 (ARMv8.2's SHA512 instructions) ----

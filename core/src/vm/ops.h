@@ -745,6 +745,44 @@ static inline bool ak_op_apush(ak_co *co, const ak_func *f, ak_closure *clos, ak
 	return true;
 }
 
+// ak_op_append_* is a fused loop's push (lang/cgen's arr.append) of an
+// int (_i), a float (_f) or a reference (_p): the array comes back,
+// grown or copied, rather than through its address, so it stays in a
+// register across the loop (the slow path's address is taken in a
+// function of its own). The element is stored as an ak_val: stored as
+// its C type, the compiler keeps the source's pointer in a register
+// and the loop retires two instructions fewer, but takes half again as
+// many cycles on Apple's M5 (bench/std's seq).
+static inline __attribute__((noinline, cold)) ak_arr *ak_op_append_slow(ak_arr *a, ak_val v) {
+	ak_arr_push_slow(&a, v);
+	return a;
+}
+#define AK_OP_APPEND(name, T, member) \
+	static inline ak_arr *ak_op_append_##name(ak_arr *a, T v) { \
+		if (AK_LIKELY(ak_arr_room(a) && a->elem == AK_E_VAL && ak_unique(a))) { \
+			((ak_val *)a->items)[a->len++] = (ak_val){.member = v}; \
+			return a; \
+		} \
+		return ak_op_append_slow(a, (ak_val){.member = v}); \
+	} \
+	/* arr.append_room's: the array is the loop's own (made there, so \
+	   unique), holds values, and has the room (reserved for all it \
+	   appends), so a store and a count; a build with assertions (tests', \
+	   a player's) checks it. */ \
+	static inline void ak_op_append_room_##name(ak_arr *a, T v) { \
+		AK_OP_ROOM_CHECK(a); \
+		((ak_val *)a->items)[a->len++] = (ak_val){.member = v}; \
+	}
+#ifndef NDEBUG
+#define AK_OP_ROOM_CHECK(a) AK_ASSERT(ak_unique(a) && ak_arr_room(a) && (a)->elem == AK_E_VAL)
+#else
+#define AK_OP_ROOM_CHECK(a) ((void)(a))
+#endif
+AK_OP_APPEND(i, int64_t, i)
+AK_OP_APPEND(f, double, f)
+AK_OP_APPEND(p, void *, p)
+#undef AK_OP_APPEND
+
 // ak_op_lim is the C stack's limit for a compiled async function's body
 // on co: the thread's, kept on the coroutine (which runs on the thread
 // that made it), so a call reads no thread-local.

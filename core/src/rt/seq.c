@@ -681,6 +681,11 @@ static ak_val seq_to_array(ak_val *args, uint32_t n) {
 			if (len) memset(out->items, s->a.i != 0, (size_t)len);
 		} else if (s->op == S_REPEAT) {
 			for (uint32_t i = 0; i < (uint32_t)len; i++) ak_arr_put(out, i, s->a);
+		} else if (out->elem == AK_E_VAL) {
+			// An [int]'s: its values written as they are (the vectorizer's
+			// loop), not each through ak_arr_put's switch on the storage.
+			int64_t *v = (int64_t *)ak_arr_vals(out), from = s->n;
+			for (uint32_t i = 0; i < (uint32_t)len; i++) v[i] = from + (int64_t)i;
 		} else {
 			for (uint32_t i = 0; i < (uint32_t)len; i++) ak_arr_put(out, i, (ak_val){.i = s->n + (int64_t)i});
 		}

@@ -27,7 +27,8 @@
 //	time.formatFields(pattern, instant, offset, zone) -> string
 //	time.formatRFC3339(instant, offset) -> string   rfc3339()'s
 //	time.parseRFC3339(s) -> int        the instant; throws
-//	time.parsedOffset() -> int         the offset the last parse read
+//	time.parsedOffset() -> int         the offset the last parse read, times
+//	                                   2, plus 1 when a zone's name followed
 //	time.parsedZone(s) -> string       the zone in its brackets, or ""
 //	time.parseDurationNanos(s) -> int  a Go duration's nanoseconds; throws
 #define _POSIX_C_SOURCE 200809L  // localtime_r under -std=c17
@@ -41,15 +42,43 @@
 
 #define STR(i) ((ak_str *)args[i].p)
 
-// days_from_civil is the number of days from 1970-01-01 to y-m-d in the
-// proleptic Gregorian calendar (Howard Hinnant's algorithm).
-static int64_t days_from_civil(int64_t y, int64_t m, int64_t d) {
-	y -= m <= 2;
-	int64_t era = (y >= 0 ? y : y - 399) / 400;
-	int64_t yoe = y - era * 400;
-	int64_t doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
-	int64_t doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-	return era * 146097 + doe - 719468;
+// The calendar by Neri and Schneider's Euclidean affine functions
+// ("Euclidean affine functions and their application to calendar
+// algorithms", 2022; Go's time package's since 1.23): a date from a day
+// and back by multiplies and shifts of 32-bit numbers, no division, for
+// days within NS_SPAN of 1970 (about ±32,800 years: every instant, and
+// any wall clock but one made by hand with an offset of millennia,
+// which takes Howard Hinnant's 64-bit algorithms below). Days count
+// from an epoch NS_SHIFT 400-year eras before 0000-03-01, so every one
+// in range is positive.
+#define NS_SHIFT 82
+#define NS_EPOCH (719468 + 146097 * NS_SHIFT)  // 1970-01-01's day from it
+#define NS_SPAN 11000000
+
+// ns_civil is days' date, days within NS_SPAN of 1970.
+static void ns_civil(int64_t days, int64_t *y, int64_t *m, int64_t *d) {
+	uint32_t n = (uint32_t)(days + NS_EPOCH);
+	uint32_t n1 = 4 * n + 3;
+	uint32_t c = n1 / 146097, nc = n1 % 146097 / 4;  // the century, the day in it
+	uint32_t n2 = 4 * nc + 3;
+	uint64_t p2 = (uint64_t)2939745 * n2;
+	uint32_t z = (uint32_t)(p2 >> 32), ny = (uint32_t)p2 / 2939745 / 4;  // the year in the century, the day in it
+	uint32_t n3 = 2141 * ny + 197913;
+	uint32_t mo = n3 >> 16, da = (n3 & 65535) / 2141;  // from March
+	uint32_t j = ny >= 306;  // January or February: the next year's
+	*y = (int64_t)(100 * c + z + j) - 400 * NS_SHIFT;
+	*m = j ? mo - 12 : mo;
+	*d = da + 1;
+}
+
+// ns_days is y-m-d's day since 1970-01-01, y from -32,799 to 30,000 and
+// m 1 to 12 (parse's: 0000 to 9999).
+static int64_t ns_days(int64_t y, int64_t m, int64_t d) {
+	uint32_t j = m <= 2;
+	uint32_t yy = (uint32_t)(y + 400 * NS_SHIFT) - j, mm = j ? (uint32_t)m + 12 : (uint32_t)m;
+	uint32_t c = yy / 100;
+	uint32_t ys = 1461 * yy / 4 - c + c / 4, ms = (979 * mm - 2919) / 32;
+	return (int64_t)ys + ms + d - 1 - NS_EPOCH;
 }
 
 // ---- The clock and the zone ----
@@ -220,8 +249,10 @@ typedef struct {
 	int64_t unix;        // the instant, for its zone's abbreviation then
 } fields;
 
-// floor_div is a / b rounded down (b > 0).
+// floor_div is a / b rounded down (b > 0); floor_mod what's left, 0 to
+// b - 1.
 static int64_t floor_div(int64_t a, int64_t b) { return a / b - (a % b < 0); }
+static int64_t floor_mod(int64_t a, int64_t b) { return a % b + (a % b < 0 ? b : 0); }
 
 // wall_days is the wall clock's day at instant (nanoseconds) on a zone
 // offset seconds east (days since 1970-01-01), *secs its second in the
@@ -230,13 +261,17 @@ static int64_t floor_div(int64_t a, int64_t b) { return a / b - (a % b < 0); }
 static int64_t wall_days(int64_t instant, int64_t offset, int64_t *secs, int64_t *unix) {
 	*unix = floor_div(instant, 1000000000);
 	int64_t wall = (int64_t)((uint64_t)*unix + (uint64_t)offset);
-	int64_t days = floor_div(wall, 86400);
-	*secs = wall - days * 86400;
-	return days;
+	*secs = floor_mod(wall, 86400);
+	return floor_div(wall, 86400);
 }
 
-// civil is days' date (Howard Hinnant's civil_from_days).
+// civil is days' date (Neri and Schneider's within their span, else
+// Howard Hinnant's civil_from_days).
 static void civil(int64_t days, int64_t *y, int64_t *m, int64_t *d) {
+	if (days > -NS_SPAN && days < NS_SPAN) {
+		ns_civil(days, y, m, d);
+		return;
+	}
 	int64_t z = days + 719468;
 	int64_t era = floor_div(z, 146097);
 	int64_t doe = z - era * 146097;
@@ -257,20 +292,26 @@ static fields fields_at(int64_t instant, int64_t offset, const ak_str *zone_name
 	f.hour = secs / 3600;
 	f.minute = secs / 60 % 60;
 	f.second = secs % 60;
-	f.nano = instant - f.unix * 1000000000;
+	f.nano = floor_mod(instant, 1000000000);
 	f.weekday = wrap(days + 4, 7);
 	return f;
 }
 
 // wall_field_fn(instant, offset, k): Time's year() (k 0), month() (1),
-// day() (2) and weekday() (3, 0 Sunday).
+// day() (2), weekday() (3, 0 Sunday), hour() (4), minute() (5) and
+// second() (6).
 static ak_val wall_field_fn(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
-	int64_t secs, unix, y, m, d;
+	int64_t secs, unix, y, m, d, k = args[2].i;
 	int64_t days = wall_days(args[0].i, args[1].i, &secs, &unix);
-	if (args[2].i == 3) return (ak_val){.i = wrap(days + 4, 7)};
+	switch (k) {
+	case 3: return (ak_val){.i = wrap(days + 4, 7)};
+	case 4: return (ak_val){.i = secs / 3600};
+	case 5: return (ak_val){.i = secs / 60 % 60};
+	case 6: return (ak_val){.i = secs % 60};
+	}
 	civil(days, &y, &m, &d);
-	return (ak_val){.i = args[2].i == 0 ? y : args[2].i == 1 ? m : d};
+	return (ak_val){.i = k == 0 ? y : k == 1 ? m : d};
 }
 
 // gmt is the localized GMT format: GMT, GMT+1, GMT+5:30 (short) or
@@ -453,10 +494,13 @@ static ak_val format_fields(ak_val *args, uint32_t n) {
 // through format() and its pattern.
 static ak_val format_rfc3339_fn(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
-	fields f = fields_at(args[0].i, args[1].i, NULL);
-	int64_t y = f.year, mo = f.month, d = f.day, h = f.hour, mi = f.minute, sec = f.second, ns = f.nano, off = f.offset;
+	int64_t instant = args[0].i, off = args[1].i, secs, unix, y, mo, d;
+	civil(wall_days(instant, off, &secs, &unix), &y, &mo, &d);
+	uint32_t sd = (uint32_t)secs;  // 0 to 86399: unsigned divisions are shorter
+	int64_t h = sd / 3600, mi = sd / 60 % 60, sec = sd % 60, ns = floor_mod(instant, 1000000000);
 	bool plain = y >= 0 && y <= 9999 && off > -360000 && off < 360000;
 	if (!plain) {
+		fields f = fields_at(instant, off, NULL);
 		ak_str *pat = ak_str_c(ns == 0 ? "yyyy-MM-dd'T'HH:mm:ssXXX" : "yyyy-MM-dd'T'HH:mm:ss.SSSSSSSSSXXX");
 		ak_str *s = format(pat, &f);
 		ak_release(pat);
@@ -519,8 +563,9 @@ static inline bool d2(const char *s, int64_t *out) {
 }
 
 // parse_rfc3339 reads 2006-01-02T15:04:05.999999999Z07:00 (a t or a space
-// for the T, z for Z, the fraction optional), from 1678 to 2261.
-static bool parse_rfc3339(const char *s, size_t len, int64_t *instant, int64_t *offset) {
+// for the T, z for Z, the fraction optional), from 1678 to 2261, at the
+// start of s: *end is where it ends, s's end or an annotation's [.
+static bool parse_rfc3339(const char *s, size_t len, int64_t *instant, int64_t *offset, size_t *end) {
 	size_t i = 19;
 	int64_t y, y2, mo, d, h, mi, sec, nano = 0, off = 0;
 	// Its date and time are always 19 bytes, read in place.
@@ -550,9 +595,10 @@ static bool parse_rfc3339(const char *s, size_t len, int64_t *instant, int64_t *
 	} else {
 		return false;
 	}
-	if (i != len) return false;
+	if (i != len && s[i] != '[') return false;
+	*end = i;
 	if (mo < 1 || mo > 12 || d < 1 || d > month_days(y, mo) || h > 23 || mi > 59 || sec > 59) return false;
-	int64_t secs = days_from_civil(y, mo, d) * 86400 + h * 3600 + mi * 60 + sec - off;
+	int64_t secs = ns_days(y, mo, d) * 86400 + h * 3600 + mi * 60 + sec - off;
 	// An instant is an int of nanoseconds: 1677 to 2262.
 	if (__builtin_mul_overflow(secs, 1000000000, instant) || __builtin_add_overflow(*instant, nano, instant)) return false;
 	*offset = off;
@@ -572,8 +618,11 @@ static bool parse_offset(const char *s, size_t len, int64_t *off) {
 // What the last parse on this thread read besides the instant, for
 // parsedOffset and parsedZone, which std/time asks right after it (a
 // Time in three calls, not an array made and freed for it).
-static AK_TLS int64_t parsed_offset;
-static AK_TLS size_t parsed_zone_at, parsed_zone_end;
+// One thread-local, so one lookup of it (a call on Apple's systems).
+static AK_TLS struct {
+	int64_t offset;
+	size_t zone_at, zone_end;
+} parsed;
 
 // parse_fn reads RFC 3339's time and RFC 9557's annotations after it:
 // a time zone first ([Europe/Paris], [!Europe/Paris], [+01:00]), which
@@ -586,10 +635,9 @@ static ak_val parse_fn(ak_val *args, uint32_t n) {
 	const ak_str *str = STR(0);
 	const char *s = str->data;
 	size_t len = str->len;
-	const char *br = memchr(s, '[', len);
-	size_t base = br ? (size_t)(br - s) : len;
+	size_t base;
 	int64_t instant, offset, zs = 0, ze = 0;
-	if (!parse_rfc3339(s, base, &instant, &offset)) {
+	if (!parse_rfc3339(s, len, &instant, &offset, &base)) {
 		ak_throw_msg("time: %s isn't an RFC 3339 time from 1678 to 2261 (2006-01-02T15:04:05Z)", s);
 		return (ak_val){0};
 	}
@@ -636,14 +684,17 @@ static ak_val parse_fn(ak_val *args, uint32_t n) {
 		}
 		i = e + 1;
 	}
-	parsed_offset = offset;
-	parsed_zone_at = (size_t)zs, parsed_zone_end = (size_t)ze;
+	// Offsets are whole minutes: the low bit says whether a zone's name
+	// followed, so a time without one is two calls (parsedZone's only
+	// for one with it).
+	parsed.offset = offset * 2 + (ze > zs);
+	parsed.zone_at = (size_t)zs, parsed.zone_end = (size_t)ze;
 	return (ak_val){.i = instant};
 }
 
 static ak_val parsed_offset_fn(ak_val *args, uint32_t n) {
 	AK_UNUSED(args), AK_UNUSED(n);
-	return (ak_val){.i = parsed_offset};
+	return (ak_val){.i = parsed.offset};
 }
 
 // parsed_zone_fn(s): the zone's name in s, the string the last parse
@@ -651,8 +702,9 @@ static ak_val parsed_offset_fn(ak_val *args, uint32_t n) {
 static ak_val parsed_zone_fn(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	const ak_str *s = STR(0);
-	if (parsed_zone_end <= parsed_zone_at || parsed_zone_end > s->len) return (ak_val){.p = ak_str_empty()};
-	return (ak_val){.p = ak_str_new(s->data + parsed_zone_at, parsed_zone_end - parsed_zone_at)};
+	size_t at = parsed.zone_at, end = parsed.zone_end;
+	if (end <= at || end > s->len) return (ak_val){.p = ak_str_empty()};
+	return (ak_val){.p = ak_str_new(s->data + at, end - at)};
 }
 
 // ---- Durations ----

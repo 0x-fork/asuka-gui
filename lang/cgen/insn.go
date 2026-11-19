@@ -995,6 +995,9 @@ func (g *gen) intrinsic(in insn, h string) bool {
 		g.w("if (AK_UNLIKELY(%s == INT64_MIN)) { ak_op_overflow(); %s } %s", x, g.fail(in, h), g.put(a[0], v, bc.KInt))
 		return true
 	}
+	if g.appendOp(name, a) {
+		return true
+	}
 	if (name == "arr.append" || name == "arr.reserve") && a[3] == 2 && a[0] == bc.None && g.f.Kinds[a[2]] == bc.KRef {
 		// A fused loop's array (lang/ir's seqfuse.go), which no state
 		// holds: the runtime's push and reserve, called directly (they
@@ -1033,5 +1036,36 @@ func (g *gen) intrinsic(in insn, h string) bool {
 		return false
 	}
 	g.w("%s", g.put(a[0], v, it.ret))
+	return true
+}
+
+// appendOp writes a fused loop's append (lang/ir's seqfuse.go) of an
+// int or a float, or a reference, through ops.h's helpers: arr.append's
+// array back from ak_op_append, not through its address (which kept it
+// in memory, stored and loaded again a turn), and arr.append_room's
+// (an array's map's, into the room it reserved) a store and a count.
+// A bool, packed, is the generic path's.
+func (g *gen) appendOp(name string, a []int) bool {
+	if name != "arr.append" && name != "arr.append_room" || a[3] != 2 || a[0] != bc.None || g.f.Kinds[a[2]] != bc.KRef {
+		return false
+	}
+	k := g.f.Kinds[a[2]+1]
+	if k == bc.KBool {
+		return false
+	}
+	arr, v := g.rp(a[2]), g.r(a[2]+1)+"."+member(k)
+	retain := ""
+	if k == bc.KRef {
+		retain = fmt.Sprintf("ak_retain(%s); ", v)
+	}
+	suffix := map[bc.Kind]string{bc.KInt: "i", bc.KFloat: "f", bc.KRef: "p"}[k]
+	if suffix == "" {
+		return false
+	}
+	if name == "arr.append_room" {
+		g.w("{ %sak_op_append_room_%s(%s, %s); }", retain, suffix, arr, v)
+	} else {
+		g.w("{ %s%s = ak_op_append_%s(%s, %s); }", retain, arr, suffix, arr, v)
+	}
 	return true
 }

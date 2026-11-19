@@ -76,13 +76,16 @@ pub struct Time {
   /// The day of the month, 1 to 31.
   fn day() -> int = wallField(instant, offset, 2)
   /// The hour, 0 to 23.
-  fn hour() -> int = floorMod(wallSeconds(instant, offset), 86400) / 3600
+  fn hour() -> int = wallField(instant, offset, 4)
   /// The minute, 0 to 59.
-  fn minute() -> int = floorMod(wallSeconds(instant, offset), 3600) / 60
+  fn minute() -> int = wallField(instant, offset, 5)
   /// The second, 0 to 59.
-  fn second() -> int = floorMod(wallSeconds(instant, offset), 60)
+  fn second() -> int = wallField(instant, offset, 6)
   /// The nanoseconds past the second, 0 to 999,999,999.
-  fn nanosecond() -> int = floorMod(instant, nsPerSecond)
+  fn nanosecond() -> int {
+    let r = instant % nsPerSecond
+    return if r < 0 { r + nsPerSecond } else { r }
+  }
   /// The day of the week.
   fn weekday() -> Weekday = weekdays[wallField(instant, offset, 3)]
 
@@ -176,6 +179,10 @@ pub struct Time {
 
 let nsPerSecond = 1_000_000_000
 
+// UTC's zone, made once (a literal of a case without a payload is
+// looked up in its enum's table each time it's made).
+let utcZone: Zone = .utc
+
 let weekdays: [Weekday] = [.sunday, .monday, .tuesday, .wednesday, .thursday, .friday, .saturday]
 
 /// Now, on zone's clock.
@@ -239,13 +246,14 @@ pub fn tzdataVersion() -> string = tzVersion()
 /// the offset isn't the zone's then, or the database doesn't have it.
 pub fn parse(rfc3339: string) throws -> Time {
   let ns = try parseRFC3339(rfc3339)
-  let off = parsedOffset()
-  let name = parsedZone(rfc3339)
-  if !name.isEmpty() {
-    return at(ns, try zone(name))
+  // The offset, times 2, and 1 when a zone's name follows the time.
+  let r = parsedOffset()
+  if r % 2 != 0 {
+    return at(ns, try zone(parsedZone(rfc3339)))
   }
+  let off = r / 2
   // The offset is the zone's: it's read, not looked up again.
-  let zone: Zone = if off == 0 { .utc } else { .fixed(seconds: off) }
+  let zone: Zone = if off == 0 { utcZone } else { .fixed(seconds: off) }
   return Time(instant: ns, zone: zone, offset: off)
 }
 

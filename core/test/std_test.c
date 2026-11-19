@@ -77,54 +77,66 @@ TEST(local_offsets) {
 #endif
 }
 
-static ak_val fmt(const char *pattern, int64_t y, int64_t mo, int64_t d, int64_t h, int64_t mi, int64_t s, int64_t ns, int64_t wd, int64_t off) {
-	return call("time.formatFields", (ak_val[]){S(pattern), I(y), I(mo), I(d), I(h), I(mi), I(s), I(ns), I(wd), I(off)}, 10, 1);
+// fmt is Time.format() of the instant (ns) on a zone offset seconds east.
+static ak_val fmt(const char *pattern, int64_t instant, int64_t off) {
+	return call("time.formatFields", (ak_val[]){S(pattern), I(instant), I(off), S("")}, 4, 1 | 8);
 }
+
+#define SEC INT64_C(1000000000)
 
 TEST(time_format) {
-	CHECK_STR(fmt("yyyy-MM-dd'T'HH:mm:ssXXX", 2026, 3, 7, 15, 4, 5, 0, 6, -9000), "2026-03-07T15:04:05-02:30");
-	CHECK_STR(fmt("y yy yyyyy", 7, 1, 1, 0, 0, 0, 0, 0, 0), "7 07 00007");
-	CHECK_STR(fmt("h a K k", 2026, 1, 1, 0, 0, 0, 0, 4, 0), "12 AM 0 24");
-	CHECK_STR(fmt("h a", 2026, 1, 1, 12, 0, 0, 0, 4, 0), "12 PM");
-	CHECK_STR(fmt("D", 2024, 12, 31, 0, 0, 0, 0, 2, 0), "366");
-	CHECK_STR(fmt("x xx xxx X", 2026, 1, 1, 0, 0, 0, 0, 4, 0), "+00 +0000 +00:00 Z");
-	CHECK_STR(fmt("X", 2026, 1, 1, 0, 0, 0, 0, 4, 19800), "+0530");
-	CHECK_STR(fmt("SS", 2026, 1, 1, 0, 0, 0, 999999999, 4, 0), "99");
-	CHECK_STR(fmt("'unterminated", 2026, 1, 1, 0, 0, 0, 0, 4, 0), "unterminated");
-	CHECK_STR(fmt("", 2026, 1, 1, 0, 0, 0, 0, 4, 0), "");
-	CHECK_STR(fmt("é-ç", 2026, 1, 1, 0, 0, 0, 0, 4, 0), "é-ç");
+	CHECK_STR(fmt("yyyy-MM-dd'T'HH:mm:ssXXX EEE", 1772904845 * SEC, -9000), "2026-03-07T15:04:05-02:30 Sat");
+	// Year 7, by an offset of millennia (made by hand).
+	CHECK_STR(fmt("y yy yyyyy", 0, -61946294400), "7 07 00007");
+	CHECK_STR(fmt("h a K k", 1767225600 * SEC, 0), "12 AM 0 24");
+	CHECK_STR(fmt("h a", 1767268800 * SEC, 0), "12 PM");
+	CHECK_STR(fmt("D", 1735603200 * SEC, 0), "366");
+	CHECK_STR(fmt("x xx xxx X", 1767225600 * SEC, 0), "+00 +0000 +00:00 Z");
+	CHECK_STR(fmt("X", 1767225600 * SEC, 19800), "+0530");
+	CHECK_STR(fmt("SS", 1767225600 * SEC + 999999999, 0), "99");
+	CHECK_STR(fmt("'unterminated", 0, 0), "unterminated");
+	CHECK_STR(fmt("", 0, 0), "");
+	CHECK_STR(fmt("é-ç", 0, 0), "é-ç");
 }
 
-TEST(time_format_any_fields) {
-	// A Time made by hand has whatever fields it was given: they format
-	// (months and weekdays around the year and the week), never read
-	// outside the names or overflow.
-	CHECK_STR(fmt("MMMM MMM", 2026, 0, 1, 0, 0, 0, 0, 4, 0), "December Dec");
-	CHECK_STR(fmt("MMMM", 2026, -40, 1, 0, 0, 0, 0, 4, 0), "August");
-	CHECK_STR(fmt("MMMM", 2026, 13, 1, 0, 0, 0, 0, 4, 0), "January");
-	CHECK_STR(fmt("EEEE e", 2026, 1, 1, 0, 0, 0, 0, -1, 0), "Saturday 7");
-	CHECK_STR(fmt("EEE e", 2026, 1, 1, 0, 0, 0, 0, INT64_MAX, 0), "Sun 1");
-	CHECK_STR(fmt("y", INT64_MIN, 1, 1, 0, 0, 0, 0, 4, 0), "-9223372036854775808");
-	CHECK_STR(fmt("xxx", 2026, 1, 1, 0, 0, 0, 0, 4, INT64_MIN), "-2562047788015215:30");
-	CHECK_STR(fmt("D", INT64_MAX, 3, 1, 0, 0, 0, 0, 4, 0), "60");
-	CHECK_STR(fmt("D", INT64_MIN, 12, 31, 0, 0, 0, 0, 4, 0), "366");
-	CHECK_STR(fmt("D", 2026, 1, INT64_MAX, 0, 0, 0, 0, 4, 0), "9223372036854775807");
+TEST(time_format_any_instant) {
+	// The ends of an instant, and offsets made by hand of any size: the
+	// wall clock wraps rather than overflows, and its fields format.
+	CHECK_STR(fmt("yyyy-MM-dd HH:mm:ss.SSSSSSSSS EEE", INT64_MIN, 0), "1677-09-21 00:12:43.145224192 Tue");
+	CHECK_STR(fmt("yyyy-MM-dd HH:mm:ss.SSSSSSSSS EEE", INT64_MAX, 0), "2262-04-11 23:47:16.854775807 Fri");
+	CHECK_STR(fmt("y-M-d H:m:s E", 0, INT64_MIN), "-292277022657-1-27 8:29:52 Sun");
+	CHECK_STR(fmt("y-M-d H:m:s E", 0, INT64_MAX), "292277026596-12-4 15:30:7 Sun");
+	CHECK_STR(fmt("y-M-d H:m:s E", INT64_MAX, INT64_MAX), "-292277022365-5-8 8:17:7 Tue");
+	CHECK_STR(fmt("xxx", 0, INT64_MIN), "-2562047788015215:30");
+	// rfc3339() is format's pattern for them too.
+	CHECK_STR(call("time.formatRFC3339", (ak_val[]){I(0), I(INT64_MIN)}, 2, 0), "-292277022657-01-27T08:29:52-2562047788015215:30");
+	CHECK_STR(call("time.formatRFC3339", (ak_val[]){I(INT64_MIN), I(0)}, 2, 0), "1677-09-21T00:12:43.145224192Z");
+}
+
+TEST(time_fields) {
+	// Year (0), month (1), day (2), weekday (3: 0 Sunday) of an instant
+	// on a zone's clock: 2024-02-29T23:30Z is March 1 an hour east.
+	int64_t t = 1709249400 * SEC;
+	int64_t want[2][4] = {{2024, 2, 29, 4}, {2024, 3, 1, 5}};
+	for (int z = 0; z < 2; z++)
+		for (int k = 0; k < 4; k++) CHECK_EQ_INT(call("time.wallField", (ak_val[]){I(t), I(z * 3600), I(k)}, 3, 0).i, want[z][k]);
+	CHECK_EQ_INT(call("time.wallField", (ak_val[]){I(-1), I(0), I(0)}, 3, 0).i, 1969);
+	CHECK_EQ_INT(call("time.wallField", (ak_val[]){I(0), I(INT64_MIN), I(0)}, 3, 0).i, -292277022657);
 }
 
 TEST(time_parse) {
 	const char *good[] = {"2024-02-29T00:00:00Z", "1678-01-01T00:00:00Z", "2262-04-11T23:47:16.854775807Z"};
+	int64_t want[] = {1709164800 * SEC, -9214560000 * SEC, INT64_MAX};
 	for (size_t i = 0; i < AK_LEN(good); i++) {
 		ak_val r = call("time.parseRFC3339", (ak_val[]){S(good[i])}, 1, 1);
-		CHECK(!ak_error_pending() && r.p);
-		ak_release(r.p);
+		CHECK(!ak_error_pending());
+		CHECK_EQ_INT(r.i, want[i]);
 	}
 	ak_val r = call("time.parseRFC3339", (ak_val[]){S("1970-01-01T01:00:00.5+01:00")}, 1, 1);
-	ak_arr *a = r.p;
-	REQUIRE(a && a->len == 4);  // and where its zone annotation is: none
-	CHECK_EQ_INT(ak_arr_vals(a)[0].i, 500000000);
-	CHECK_EQ_INT(ak_arr_vals(a)[1].i, 3600);
-	ak_release(a);
-	const char *bad[] = {"2023-02-29T00:00:00Z", "2026-01-01T24:00:00Z", "2026-01-01T00:00:60Z", "2026-01-01T00:00:00.Z", "2026-01-01T00:00:00", "2026-01-01T00:00:00+0100", "2026-01-01T00:00:00Zjunk", "", "0001-01-01T00:00:00Z", "2262-04-11T23:47:16.854775808Z"};
+	CHECK_EQ_INT(r.i, 500000000);
+	// The offset, twice it, and no zone's name after the time (the low bit).
+	CHECK_EQ_INT(call("time.parsedOffset", NULL, 0, 0).i, 7200);
+	const char *bad[] = {"2023-02-29T00:00:00Z", "2026-01-01T24:00:00Z", "2026-01-01T00:00:60Z", "2026-01-01T00:00:00.Z", "2026-01-01T00:00:00", "2026-01-01T00:00:00+0100", "2026-01-01T00:00:00Zjunk", "", "0001-01-01T00:00:00Z", "2262-04-11T23:47:16.854775808Z", "2026-01-01T00:00:00", "2026-01-01t00:00:00z["};
 	for (size_t i = 0; i < AK_LEN(bad); i++) {
 		call("time.parseRFC3339", (ak_val[]){S(bad[i])}, 1, 1);
 		if (!ak_error_pending()) T_FAIL("%s parsed", bad[i]);

@@ -409,9 +409,17 @@ func (b *fb) arrayLoop(e *syntax.CallExpr, call *check.Call, recv *int, dst int)
 	b.emit(op("IDX"), x, arr, i)
 	switch m.Builtin {
 	case "arr.map":
-		y := b.temp(b.kind(res.(*check.Array).Elem))
+		ut := b.typ(res.(*check.Array).Elem)
+		y := b.temp(b.kind(ut))
 		b.callClosure(y, fn, x)
-		b.appendReg(r, y, "arr.append")
+		// Into the room reserved for the array's length (a turn appends
+		// one, and the loop's array is its own): a store, when its
+		// elements are values (not bools or sized integers, packed).
+		add := "arr.append"
+		if k := b.l.arrKind(ut); k>>4 == 0 && bc.Kind(k) != bc.KBool {
+			add = "arr.append_room"
+		}
+		b.appendReg(r, y, add)
 	case "arr.compact_map":
 		y := b.temp(bc.KRef)
 		b.callClosure(y, fn, x)

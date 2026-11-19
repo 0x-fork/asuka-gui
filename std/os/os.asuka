@@ -94,7 +94,10 @@ pub fn lines() -> Stream<string> = Stream(send => {
 native fn write(fd: int, text: string)
 native fn writeBytes(fd: int, data: bytes)
 
-/// Writes text to stdout or stderr as it is (no line ending).
+/// Writes text to stdout or stderr as it is (no line ending), at once:
+/// nothing is buffered (as print and eprint aren't), so it's on the
+/// stream when the call returns, in order with them and with what a
+/// command this program runs writes there.
 pub fn writeTo(stream: Stdio, text: string) {
   write(fd(stream), text)
 }

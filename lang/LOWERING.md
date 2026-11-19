@@ -576,11 +576,17 @@ interpreter's frames.
   the interpreter would push, a CALLI of a method not compiled to a
   plain C function push the callee's frame on the coroutine, as the
   interpreter does. A compiled callee runs at once, in C (ak_op_acall):
-  calls that don't wait cost a C call and a frame. Past
-  AK_VM_ADEPTH_MAX such calls deep, or for an interpreted callee, the
-  caller leaves its frame waiting on the callee's and the run loop runs
-  it, so async recursion takes no C stack. When the callee suspends,
-  each compiled caller leaves its frame too, to resume after the call.
+  calls that don't wait cost a C call and a frame, pushed inline
+  (ak_op_apush: room for it and its registers, not a mut fn, is a few
+  stores; else ak_vm_push), and read no thread-local: the C stack's
+  limit is the coroutine's (ak_op_lim: the thread's, kept as it's first
+  asked) and the depth of direct calls is counted on it (ak_co.adepth),
+  so a call that doesn't wait costs about 140 instructions, not 230. Past
+  AK_VM_ADEPTH_MAX such calls deep, with the C stack near its limit, or
+  for an interpreted callee, the caller leaves its frame waiting on the
+  callee's and the run loop runs it, so async recursion takes no C
+  stack. When the callee suspends, each compiled caller leaves its frame
+  too, to resume after the call.
 - The run loop (core/src/vm/run.c's ak_vm_run) runs a coroutine's top
   frame: a compiled one's body, else the interpreter, which hands back
   when the top frame is compiled. When a body returns, it pops the
@@ -1883,12 +1889,16 @@ argument, or one the hook rejects, is a compile error at it.
 
 `Stream(produce)` is CALLB `stream.new(produce, kind)` (kind: the
 values' ak_kind); `for await x in s { … }` is: s into a local; at the
-top, AWAIT CALLB `stream.next(s)` (a bool: whether a value came; it
-throws what the producer threw), JF to the end, CALLB `stream.value(s)`
-for x, the body, back to the top; at the end CALLB `stream.close(s)`,
-which cancels the producer (core/src/rt/stream.c). An error leaving the
-loop (the body's, the producer's) closes it too, in a handler around the
-loop that throws the error on.
+top, CALLB `stream.ready(s)` (a value is queued, and the task isn't
+cancelled: most turns, a producer sending ahead), JT past the wait;
+else AWAIT CALLB `stream.next(s)` (a bool: whether a value came; it
+throws what the producer threw), JF to the end; then CALLB
+`stream.value(s)` for x, the body, back to the top; at the end CALLB
+`stream.close(s)`, which cancels the producer (core/src/rt/stream.c). A
+next while values are queued answers with a settled future the stream
+keeps, not a new one. An error leaving the loop (the body's, the
+producer's) closes it too, in a handler around the loop that throws the
+error on.
 
 ## Workers
 
@@ -2057,10 +2067,16 @@ none: it's a loop over the indexes), and an array's `map`, `filter`,
 `index(where:)` loops over it (lang/ir/seqfuse.go), the closure made
 once and called in the loop (inlined by the optimizer), the result
 appended to with `arr.append` (push without recording a change: no
-state holds it; `arr.reserve` makes map's room once). The result is
+state holds it; `arr.reserve` makes map's room once, and a map whose
+elements are values, not packed, appends with `arr.append_room`: the
+room is there and the array is the loop's own, so compiled it's a
+store and a count, ops.h's ak_op_append_room_*). The result is
 made as the method's would be (its element type's storage: a map to
 `[u8]` packed); compiled, a bool is appended as its byte
-(ak_arr_push_bool), anything else as ak_arr_push puts it. Each push
+(ak_arr_push_bool), an int, a float or a reference by ops.h's
+ak_op_append_*, which returns the array rather than taking its
+address (the array stays in a register across the loop; a packed one
+goes the slow way, ak_arr_push_slow). Each push
 reads the array's cap on its own (ak_arr_room): read with len as one
 8-byte word right after the last push stored len's 4 bytes, the load
 can't be forwarded from that store and waits for it (3× a map's
