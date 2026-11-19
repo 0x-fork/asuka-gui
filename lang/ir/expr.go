@@ -41,6 +41,10 @@ func (b *fb) value(e syntax.Expr, dst int) int {
 	if n, ok := inner.(*check.Named); ok && n.Obj.Kind == check.InterfaceType {
 		b.l.implement(check.Unopt(from), n, e)
 	}
+	if n, ok := inner.(*check.Named); ok && check.IsJSONValue(n) && !check.IsJSONValue(check.Unopt(from)) {
+		r := b.jsonValue(e, from, n, -1)
+		return b.toOptional(r, inner, to, dst)
+	}
 	// What's converted when compiling: lengths and edges.
 	if inner == check.Length && from != check.Length {
 		r := b.temp(bc.KInt)

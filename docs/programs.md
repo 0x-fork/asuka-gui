@@ -505,7 +505,7 @@ async fn main() throws {
       os.exit(1)
     }
   }
-  run.info("copied", ["files": "{o.files.count()}"])
+  run.info("copied", ["files": o.files.count()])
 }
 ```
 
@@ -516,9 +516,12 @@ $ backup -v notes.md todo.md
 2026-11-19 10:04:05.125 INFO  copied                                   to=backup files=2
 ```
 
-- **Fields.** A line's fields are a `[string: string]`, and
-  `["port": "{port}"]` puts any value in one as its text. A value with
-  spaces, quotes or `=` is quoted (`path="my notes.md"`). `log.with(fields)`
+- **Fields.** A line's fields are a `[string: json.Value]`: any value
+  JSON can say goes in one as it is (`["port": port, "tls": true,
+  "peer": peer]`; a value converts to a `json.Value` where one is
+  expected), so a JSON line writes a number as a number. As text, a
+  string is its text and anything else its JSON; a value with spaces,
+  quotes or `=` is quoted (`path="my notes.md"`). `log.with(fields)`
   is a `Logger` whose lines all carry them, and its `with` adds more; a
   line's own field of the same name replaces the logger's.
 - **Levels.** Lines below the least level aren't written. It's info,
@@ -532,7 +535,7 @@ $ backup -v notes.md todo.md
   colored, as `std/term` decides for stderr (`NO_COLOR`, `FORCE_COLOR`,
   `term.setColors`). `log.setFormat(.json)` writes a JSON object a line,
   as Go's `log/slog` does:
-  `{"time":"2026-11-19T10:04:05.125+08:00","level":"INFO","msg":"copied","to":"backup","files":"2"}`;
+  `{"time":"2026-11-19T10:04:05.125+08:00","level":"INFO","msg":"copied","to":"backup","files":2}`;
   `time: false` leaves the time out, for a service whose logs journald
   or a container's runtime stamps already.
 - **Where they go.** A program's lines go to stderr, so stdout stays its

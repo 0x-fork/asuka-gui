@@ -39,6 +39,7 @@
 #include "abi/dev.h"
 #include "base/thread.h"
 #include "rt/sched.h"
+#include "rt/json.h"
 
 #include <stdatomic.h>
 #include <stdlib.h>
@@ -226,6 +227,23 @@ static void put_text(ak_buf *b, const ak_str *s) {
 }
 
 // chars is the number of code points in s[0:n].
+// put_value writes a field's value, its JSON (log.asuka's texts), as
+// text: a string as its text (quoted as put_text says), the rest (a
+// number, true, an array) as JSON writes it.
+static void put_value(ak_buf *b, const ak_str *v) {
+	if (v->len && v->data[0] == '"') {
+		ak_val s = ak_json_decode(v->data, v->len, "s", NULL);
+		if (!ak_error_pending() && s.p) {
+			put_text(b, s.p);
+			ak_release(s.p);
+			return;
+		}
+		if (ak_error_pending()) ak_release(ak_error_take());
+	}
+	if (bare(v->data, v->len)) ak_buf_put(b, v->data, v->len);
+	else put_text(b, v);
+}
+
 static size_t chars(const char *s, size_t n) {
 	size_t k = 0;
 	for (size_t i = 0; i < n; i++)
@@ -323,7 +341,7 @@ static void text(ak_buf *b, int level, const ak_str *msg, field_set fs, bool sta
 		put_text(b, k);
 		put(b, "=");
 		if (color) put(b, "\x1b[22m");
-		put_text(b, v);
+		put_value(b, v);
 	})
 }
 
@@ -340,7 +358,7 @@ static void json(ak_buf *b, int level, const ak_str *msg, field_set fs) {
 		put(b, ",");
 		put_json(b, k->data, k->len);
 		put(b, ":");
-		put_json(b, v->data, v->len);
+		ak_buf_put(b, v->data, v->len);  // the value's JSON, as it is
 	})
 	put(b, "}");
 }

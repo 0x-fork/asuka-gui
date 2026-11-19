@@ -1178,7 +1178,19 @@ static void enc_value(encoder *e, ak_val v, const char *d) {
 				ak_strb_cstr(b, "null", 4);
 			}
 		} else {
+			size_t at = ak_strb_buf(b)->len;
 			ak_strb_float(b, v.f);
+			if (e->t && e->t->points) {
+				// A whole one written as digits alone: its point, to read
+				// back as a float.
+				const ak_buf *w = ak_strb_buf(b);
+				bool whole = true;
+				for (size_t i = at; i < w->len; i++) {
+					char c = (char)w->data[i];
+					if (c == '.' || c == 'e' || c == 'E' || c == 'n' || c == 'N' || c == 'I') whole = false;
+				}
+				if (whole) ak_strb_cstr(b, ".0", 2);
+			}
 		}
 		return;
 	case 'b':

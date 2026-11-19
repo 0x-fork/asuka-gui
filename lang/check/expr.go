@@ -910,6 +910,18 @@ func (c *Checker) assigned(e syntax.Expr, got, want Type, what string) Type {
 	return want
 }
 
+// toJSONValue reports whether a value of got converts to std/json's
+// Value: none (null), and what JSON writes.
+func (c *Checker) toJSONValue(got Type) bool {
+	if got == NoneType {
+		return true
+	}
+	if IsJSONValue(Unopt(got)) {
+		return false // a Value? isn't one: unwrap it (?? .null)
+	}
+	return c.jsonable(got) == "" && missingJSON(got, false) == ""
+}
+
 func describe(what string) string {
 	if what == "" {
 		return "the value"
@@ -960,6 +972,12 @@ func (c *Checker) convert(e syntax.Expr, got, want Type) bool {
 		return true
 	}
 	if Identical(got, want) {
+		return true
+	}
+	if IsJSONValue(want) && c.toJSONValue(got) {
+		// Any value JSON can say is a json.Value where one is
+		// expected: what it's written as, read as any JSON.
+		c.info.Convs[e] = want
 		return true
 	}
 	if got == NoneType {

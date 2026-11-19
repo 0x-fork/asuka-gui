@@ -369,7 +369,7 @@ async fn main() throws {
       os.exit(1)
     }
   }
-  run.info("copied", ["files": "{o.files.count()}"])
+  run.info("copied", ["files": o.files.count()])
 }
 ```
 
@@ -380,9 +380,9 @@ $ backup -v notes.md todo.md
 2026-11-19 10:04:05.125 INFO  copied                                   to=backup files=2
 ```
 
-- **フィールド。** 1 行のフィールドは `[string: string]` で、`["port": "{port}"]` のように書けばどんな値もテキストとして入れられます。空白、引用符、`=` を含む値は引用符で囲まれます（`path="my notes.md"`）。`log.with(fields)` は、書くすべての行にそれらのフィールドが付く `Logger` を返し、その `with` でさらに追加できます。行自身のフィールドが logger のフィールドと同じ名前なら、行のほうが優先されます。
+- **フィールド。** 1 行のフィールドは `[string: json.Value]` で、JSON で表せる値ならそのまま入れられます（`["port": port, "tls": true, "peer": peer]`。`json.Value` が求められるところでは、値は自動でそれに変換されます）。そのため JSON の行では数値が数値として書かれます。テキストでは、文字列はそのテキスト、それ以外は JSON になり、空白、引用符、`=` を含む値は引用符で囲まれます（`path="my notes.md"`）。`log.with(fields)` は、書くすべての行にそれらのフィールドが付く `Logger` を返し、その `with` でさらに追加できます。行自身のフィールドが logger のフィールドと同じ名前なら、行のほうが優先されます。
 - **レベル。** 最低レベルより下の行は書かれません。最低レベルは info ですが、`ASUKA_LOG` で変えられます（`debug`、`info`、`warn`、`error`、`off`。Rust の `RUST_LOG` と同じ）。プログラムが `log.setLevel(.debug)` で指定することもでき、その場合はプログラムの指定が優先されます。上のプログラムが `-v` のときだけ設定しているのはそのためです。書かれない行のコストは判定 1 回だけですが、フィールドはほかの関数呼び出しの引数と同じく先に計算されます。作るのに手間がかかるフィールドは `if log.enabled(.debug) { … }` で囲みます。
-- **形式。** 端末では、時刻（ローカル時刻）が薄く、レベルが色付きで表示されます。色を付けるかどうかは `std/term` が stderr について判断したとおりです（`NO_COLOR`、`FORCE_COLOR`、`term.setColors`）。`log.setFormat(.json)` にすると、Go の `log/slog` と同じく 1 行に 1 つの JSON オブジェクトを書きます：`{"time":"2026-11-19T10:04:05.125+08:00","level":"INFO","msg":"copied","to":"backup","files":"2"}`。`time: false` にすると時刻を書きません。journald やコンテナのランタイムがすでにタイムスタンプを付けるサービス向けです。
+- **形式。** 端末では、時刻（ローカル時刻）が薄く、レベルが色付きで表示されます。色を付けるかどうかは `std/term` が stderr について判断したとおりです（`NO_COLOR`、`FORCE_COLOR`、`term.setColors`）。`log.setFormat(.json)` にすると、Go の `log/slog` と同じく 1 行に 1 つの JSON オブジェクトを書きます：`{"time":"2026-11-19T10:04:05.125+08:00","level":"INFO","msg":"copied","to":"backup","files":2}`。`time: false` にすると時刻を書きません。journald やコンテナのランタイムがすでにタイムスタンプを付けるサービス向けです。
 - **書き込み先。** プログラムの行は stderr に書かれるので、stdout はプログラムの出力のままです（`backup | tee list`）。アプリの行は、各プラットフォームの開発者がふだん見る場所に書かれます。iOS と macOS では統合ログ（Xcode のコンソール、コンソール App）、Android では logcat、Web ではブラウザのコンソール（レベルに応じて `console.debug` から `console.error`）、Windows ではデバッガの出力です。Linux では stderr に書かれ、デスクトップのアプリを端末から起動したときも stderr です。`asuka dev` は自分の端末にもそれらを表示します。
 
 テストでは、これらの行は `o.stderr()` で確認でき、時刻はテストの時計のもの（`2026-01-01 00:00:00.000` から）です。テストの中で `ASUKA_LOG` を設定できるのは `os.fake(env:)` だけです。

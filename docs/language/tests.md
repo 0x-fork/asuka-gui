@@ -12,7 +12,10 @@ test "archiving removes the row" {
 `expect(cond)` fails a test when cond is false, saying what failed and
 where (with a comparison's two sides). JSON comes from `std/json`:
 `let notes: [Note] = try json.decode(text)` reads what's expected of it
-(or `json.decode<[Note]>(text)`), `json.encode(notes)` writes it. A
+(or `json.decode<[Note]>(text)`), `json.encode(notes)` writes it. Where a `json.Value` (any JSON) is
+expected, a value JSON can say is one, as it's written: a map of values
+of mixed types is a `[string: json.Value]` (`["port": port, "tls":
+true]`), whose numbers stay numbers. A
 generic function may read or write its `T` as JSON; each call then
 needs a `T` JSON can say, which the compiler checks where it's called.
 

@@ -1598,6 +1598,12 @@ its descriptor after a NUL (`"title\x00s"`, `"tags\x00[s"`), and the same
 for enum cases' labelled payloads; a payloadless enum JSON reads or
 writes gets a shape of its name whose cases name its values.
 
+A value where std/json's Value is expected converts to one (check's
+toJSONValue): an int, a float, a bool or a string is NEWE of its case,
+none `.null`, and anything else CALLB `json.value(v, desc, vdesc)`,
+which writes it by its descriptor (whole floats with their point) and
+reads that as a Value (lang/ir/jsonvalue.go).
+
 A type's own JSON (check.Own: `fn toJSON() -> J`, `static fn
 fromJSON(json: J) throws -> T`) keeps its descriptor (`S<name>;`): its
 shape carries the functions (lang/ir/own.go's `#json` and `#fromjson`

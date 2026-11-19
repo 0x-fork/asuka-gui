@@ -19,6 +19,13 @@
 /// written twice: the last). json.encode writes a Value as it is, and it
 /// prints and goes in a string as its JSON: "{v}". A struct's field of
 /// type Value that the document leaves out is .null.
+///
+/// Any value JSON can say is a Value where one is expected, as it's
+/// written (an int .int, a struct an .object of its fields, none
+/// .null): values of mixed types in one map, for fields a log line or a
+/// document carries.
+///
+///   let fields: [string: json.Value] = ["port": port, "tls": true, "host": host]
 pub enum Value {
   null
   bool(bool)

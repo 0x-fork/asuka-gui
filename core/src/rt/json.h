@@ -52,6 +52,9 @@ typedef struct {
 	// and -Infinity, as JavaScript's and Python's do (asuka test's
 	// corpus); without it they're written null, and read as errors.
 	bool nonfinite;
+	// points writes a whole float with its point (2.0, not 2), so that
+	// reading it as a json.Value gives its .float case (json.value's).
+	bool points;
 } ak_json_types;
 
 // ak_json_decode parses text into a value of the descriptor's type. On
