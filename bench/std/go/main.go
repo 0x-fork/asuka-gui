@@ -21,6 +21,7 @@ import (
 	"io"
 	"math"
 	"math/big"
+	"net/http"
 	"os"
 	"regexp"
 	"slices"
@@ -489,10 +490,32 @@ func seqs(n int) string {
 	return fmt.Sprintf("%d %d", a, a)
 }
 
+// serve answers GET /hello with text and /json with JSON, as
+// ../asuka's serve does.
+func serve(port string) {
+	http.HandleFunc("/hello", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write([]byte("Hello, world!"))
+	})
+	http.HandleFunc("/json", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(struct {
+			Message string   `json:"message"`
+			ID      int      `json:"id"`
+			Tags    []string `json:"tags"`
+		}{"Hello, world!", 42, []string{"a", "b"}})
+	})
+	panic(http.ListenAndServe("127.0.0.1:"+port, nil))
+}
+
 func main() {
 	name := ""
 	if len(os.Args) > 1 {
 		name = os.Args[1]
+	}
+	if name == "serve" {
+		serve(os.Args[2])
+		return
 	}
 	dir := "/tmp"
 	if len(os.Args) > 2 {

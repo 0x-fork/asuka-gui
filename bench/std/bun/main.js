@@ -259,6 +259,18 @@ function seqs(n) {
 }
 
 const name = process.argv[2] ?? "";
+if (name === "serve") {
+  // GET /hello: text; /json: JSON, as ../asuka's serve.
+  Bun.serve({
+    port: Number(process.argv[3] ?? 8080),
+    hostname: "127.0.0.1",
+    fetch(req) {
+      if (new URL(req.url).pathname === "/json") return Response.json({ message: "Hello, world!", id: 42, tags: ["a", "b"] });
+      return new Response("Hello, world!", { headers: { "content-type": "text/plain; charset=utf-8" } });
+    },
+  });
+  await new Promise(() => {});
+}
 const dir = process.argv[3] ?? "/tmp";
 const text = ["split", "find", "case", "count", "regex", "files", "lines"].includes(name) ? corpus(2000000) : "";
 const uni = name === "case" ? "Ärger über die Straße, ΣΟΦΟΣ λόγος — Ёлка и ЁЖ; ".repeat(40000) : "";
