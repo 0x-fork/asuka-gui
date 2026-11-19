@@ -784,6 +784,8 @@ next:
 		NEXT();
 	OP(DIVIS) R[a[0]].i = R[a[1]].i / (int16_t)a[2]; NEXT();
 	OP(MODIS) R[a[0]].i = R[a[1]].i % (int16_t)a[2]; NEXT();
+	OP(DIVIK) R[a[0]].i = R[a[1]].i / M->ints[off32(a + 2)]; NEXT();
+	OP(MODIK) R[a[0]].i = R[a[1]].i % M->ints[off32(a + 2)]; NEXT();
 	OP(JLTI) if (R[a[0]].i < R[a[1]].i) ip += joff(a + 2); NEXT();
 	OP(JLEI) if (R[a[0]].i <= R[a[1]].i) ip += joff(a + 2); NEXT();
 	OP(JEQI) if (R[a[0]].i == R[a[1]].i) ip += joff(a + 2); NEXT();

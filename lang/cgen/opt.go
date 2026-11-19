@@ -23,6 +23,10 @@ func (g *gen) optInsn(f *bc.FuncDef, in insn, h string) bool {
 		w("R[%d].i = R[%d].i / %d;", a[0], a[1], k(2))
 	case "MODIS":
 		w("R[%d].i = R[%d].i %% %d;", a[0], a[1], k(2))
+	case "DIVIK":
+		w("R[%d].i = R[%d].i / %s;", a[0], a[1], ilit(g.m.Ints[a[2]]))
+	case "MODIK":
+		w("R[%d].i = R[%d].i %% %s;", a[0], a[1], ilit(g.m.Ints[a[2]]))
 	case "JLTI", "JLEI", "JEQI", "JNEI":
 		c := map[string]string{"JLTI": "<", "JLEI": "<=", "JEQI": "==", "JNEI": "!="}[name]
 		w("if (R[%d].i %s R[%d].i) goto L%d;", a[0], c, a[1], a[2])

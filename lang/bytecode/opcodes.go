@@ -219,6 +219,8 @@ var Ops = []OpDef{
 	{"JGEIS", []Operand{Reg, Imm, Off}, "jumps when a >= a signed immediate"},
 	{"JEQIS", []Operand{Reg, Imm, Off}, "jumps when a == a signed immediate"},
 	{"JNEIS", []Operand{Reg, Imm, Off}, "jumps when a != a signed immediate"},
+	{"DIVIK", []Operand{Reg, Reg, Const}, "a = b / Ints[k], truncated (never 0 or -1)"},
+	{"MODIK", []Operand{Reg, Reg, Const}, "a = b % Ints[k] (never 0 or -1)"},
 	{"IDXF", []Operand{Reg, Reg, Reg, Imm}, "a = b[c].fields[i], b an array of structs; throws out of range (IDX, GETF)"},
 	{"SETIF", []Operand{Reg, Reg, Imm, Reg}, "a[b].fields[i] = c, a and its element copied first if shared; throws out of range (IDX, SETF, SETIDX)"},
 }

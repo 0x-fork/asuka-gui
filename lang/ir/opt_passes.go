@@ -199,6 +199,16 @@ func (o *optimizer) hoistConstants() {
 			}
 		}
 	}
+	// A divisor's or a shift's constant stays by it: the C compiler
+	// divides by a constant it sees cheaply (a multiply), by a register
+	// it can't prove unchanged slowly.
+	literal := make([]bool, o.n)
+	for i := range code {
+		switch bc.Ops[code[i].Op].Name {
+		case "DIVI", "MODI", "SHL", "SHR":
+			literal[code[i].Args[2]] = true
+		}
+	}
 	live := o.liveness()
 	var hoist []Instr
 	for i := range code {
@@ -207,7 +217,7 @@ func (o *optimizer) hoistConstants() {
 			continue
 		}
 		r := int(in.Args[0])
-		if defs[r] != 1 || live[0].has(r) {
+		if defs[r] != 1 || live[0].has(r) || literal[r] {
 			continue
 		}
 		hoist = append(hoist, *in)
@@ -733,6 +743,13 @@ func (o *optimizer) eval(in *Instr, c map[int32]konst) (konst, bool) {
 			r := x.i * k
 			return konst{i: r}, x.i == 0 || r/x.i == k && !(k == -1 && x.i == math.MinInt64)
 		}
+	case "DIVIK", "MODIK":
+		x, ok := get(1)
+		k := o.p.Mod.Ints[a[2]]
+		if name == "DIVIK" {
+			return konst{i: x.i / k}, ok
+		}
+		return konst{i: x.i % k}, ok
 	case "DIVIS", "MODIS":
 		x, ok := get(1)
 		k := int64(int16(a[2]))
@@ -949,9 +966,16 @@ func (o *optimizer) selectOps() {
 				o.changed = true
 			}
 		case "DIVI", "MODI":
-			if k[1] != nil && fits16(k[1].i) && k[1].i != 0 && k[1].i != -1 {
-				in.Op = op(name[:3] + "IS")
-				in.Args[2] = imm(k[1].i)
+			if k[1] != nil && k[1].i != 0 && k[1].i != -1 {
+				if fits16(k[1].i) {
+					in.Op = op(name[:3] + "IS")
+					in.Args[2] = imm(k[1].i)
+				} else {
+					// The divisor a constant of the pool's: no load before
+					// it, and a literal in the C (a multiply, not a divide).
+					in.Op = op(name[:3] + "IK")
+					in.Args[2] = int32(o.intConst(k[1].i))
+				}
 				o.changed = true
 			}
 		case "WADDI", "WSUBI":
@@ -1278,7 +1302,7 @@ var cseOps = func() map[bc.Op]bool {
 	m := map[bc.Op]bool{}
 	for _, n := range splitNames("ADDI SUBI MULI DIVI MODI NEGI WADDI WSUBI WMULI ADDIK EQI NEI LTI LEI BAND BOR BXOR BNOT SHL SHR " +
 		"ADDF SUBF MULF DIVF MODF NEGF EQF NEF LTF LEF I2F F2I NOT ISNONE LTS EQ NE LEN ECASE ISSHAPE " +
-		"ADDIS SUBIS MULIS DIVIS MODIS GETF GETP IDX IDXF") {
+		"ADDIS SUBIS MULIS DIVIS MODIS DIVIK MODIK GETF GETP IDX IDXF") {
 		m[op(n)] = true
 	}
 	return m

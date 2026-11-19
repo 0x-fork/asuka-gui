@@ -138,9 +138,11 @@ enum {
 	AK_OP_JGEIS = 129, // reg imm off: jumps when a >= a signed immediate
 	AK_OP_JEQIS = 130, // reg imm off: jumps when a == a signed immediate
 	AK_OP_JNEIS = 131, // reg imm off: jumps when a != a signed immediate
-	AK_OP_IDXF = 132, // reg reg reg imm: a = b[c].fields[i], b an array of structs; throws out of range (IDX, GETF)
-	AK_OP_SETIF = 133, // reg reg imm reg: a[b].fields[i] = c, a and its element copied first if shared; throws out of range (IDX, SETF, SETIDX)
-	AK_OP__COUNT = 134,
+	AK_OP_DIVIK = 132, // reg reg const: a = b / Ints[k], truncated (never 0 or -1)
+	AK_OP_MODIK = 133, // reg reg const: a = b % Ints[k] (never 0 or -1)
+	AK_OP_IDXF = 134, // reg reg reg imm: a = b[c].fields[i], b an array of structs; throws out of range (IDX, GETF)
+	AK_OP_SETIF = 135, // reg reg imm reg: a[b].fields[i] = c, a and its element copied first if shared; throws out of range (IDX, SETF, SETIDX)
+	AK_OP__COUNT = 136,
 };
 
 // Instruction widths in words.
@@ -153,7 +155,7 @@ static const uint8_t ak_op_width[] = {
 	7, 4, 4, 3, 6, 4, 4, 6, 4, 6, 7, 3, 3, 3, 3, 3,
 	6, 6, 6, 4, 3, 4, 4, 3, 3, 7, 6, 5, 1, 2, 2, 2,
 	2, 2, 3, 3, 1, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5,
-	5, 5, 5, 5, 5, 5,
+	5, 5, 5, 5, 5, 5, 5, 5,
 };
 
 // Each opcode's width as a constant, for an instruction's own code
@@ -291,6 +293,8 @@ static const uint8_t ak_op_width[] = {
 #define AK_OPW_JGEIS 5
 #define AK_OPW_JEQIS 5
 #define AK_OPW_JNEIS 5
+#define AK_OPW_DIVIK 5
+#define AK_OPW_MODIK 5
 #define AK_OPW_IDXF 5
 #define AK_OPW_SETIF 5
 
@@ -311,7 +315,7 @@ static const uint8_t ak_op_width[] = {
 	X(AGET) X(ACCP) X(AGETP) X(CALLU) X(UNTRACK) X(RETRACK) X(EFFECT) X(RENDER) \
 	X(CLEANUP) X(BATCH) X(TASK) X(AWAIT) X(YIELD) X(ADDIS) X(SUBIS) X(MULIS) \
 	X(DIVIS) X(MODIS) X(JLTI) X(JLEI) X(JEQI) X(JNEI) X(JLTIS) X(JLEIS) \
-	X(JGTIS) X(JGEIS) X(JEQIS) X(JNEIS) X(IDXF) X(SETIF)
+	X(JGTIS) X(JGEIS) X(JEQIS) X(JNEIS) X(DIVIK) X(MODIK) X(IDXF) X(SETIF)
 
 static const char *const ak_op_names[] = {
 	"NOP", "MOV", "MOVR", "CLR", "KINT", "KSMALL", "KFLOAT", "KSTR",
@@ -330,7 +334,7 @@ static const char *const ak_op_names[] = {
 	"AGET", "ACCP", "AGETP", "CALLU", "UNTRACK", "RETRACK", "EFFECT", "RENDER",
 	"CLEANUP", "BATCH", "TASK", "AWAIT", "YIELD", "ADDIS", "SUBIS", "MULIS",
 	"DIVIS", "MODIS", "JLTI", "JLEI", "JEQI", "JNEI", "JLTIS", "JLEIS",
-	"JGTIS", "JGEIS", "JEQIS", "JNEIS", "IDXF", "SETIF",
+	"JGTIS", "JGEIS", "JEQIS", "JNEIS", "DIVIK", "MODIK", "IDXF", "SETIF",
 };
 
 #endif
