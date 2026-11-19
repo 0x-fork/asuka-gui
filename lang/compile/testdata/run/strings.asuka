@@ -36,6 +36,9 @@ test "methods" {
   print("héllo".count())
   print("héllo".byteCount())
   print(3.14159.fixed(2))
+  // As printf's %.*f: the exact binary value rounded half to even, a
+  // negative's sign kept when it rounds to 0.
+  print(0.125.fixed(2), 2.675.fixed(2), 2.5.fixed(0), 3.5.fixed(0), (-0.0).fixed(2), (-0.001).fixed(2), (-1.5).fixed(0), 1e20.fixed(1), 0.1.fixed(20), (1.0 / 3.0).fixed(19), 1e300.fixed(0).byteCount(), (0.0 / 0.0).fixed(2), (-1.0 / 0.0).fixed(1))
 }
 
 test "concatenation and comparison" {
@@ -97,6 +100,7 @@ test "trimming, splitting, finding" {
 // 5
 // 6
 // 3.14
+// 0.12 2.67 2 4 -0.00 -0.00 -2 100000000000000000000.0 0.10000000000000000555 0.3333333333333333148 301 nan -inf
 // ok methods
 // abc
 // ok concatenation and comparison

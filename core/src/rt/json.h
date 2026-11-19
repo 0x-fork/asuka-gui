@@ -53,7 +53,8 @@ typedef struct {
 	// corpus); without it they're written null, and read as errors.
 	bool nonfinite;
 	// points writes a whole float with its point (2.0, not 2), so that
-	// reading it as a json.Value gives its .float case (json.value's).
+	// reading it as a json.Value gives its .float case: the round trip
+	// ak_json_value's Values are (its tests compare them).
 	bool points;
 } ak_json_types;
 
@@ -73,5 +74,15 @@ ak_val ak_json_decode(const char *text, size_t len, const char *desc, const ak_j
 // text it writes nested deeper than AK_JSON_MAX_DEPTH (a recursive
 // type's long chain) is valid JSON that ak_json_decode won't read back.
 ak_str *ak_json_encode(ak_val v, const char *desc, const ak_json_types *t, int indent);
+// ak_json_value is v (of the descriptor's type, borrowed) as std/json's
+// Value (jdesc, J<name>;): what ak_json_encode writes of it read back by
+// ak_json_decode as a Value, each case as that round trip makes it (an
+// int .int, a whole float .float, a u64 past int's range and a BigInt
+// past it .float, NaN and the infinities .null, a type's own toJSON
+// what it gives), made directly: no text, its strings and the Values it
+// holds shared. Like the encoder it takes a value however deep. It
+// throws only for a BigInt past a double's range (as reading its digits
+// would), returning a zero value.
+ak_val ak_json_value(ak_val v, const char *desc, const char *jdesc, const ak_json_types *t);
 
 #endif

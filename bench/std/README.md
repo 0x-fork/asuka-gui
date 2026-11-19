@@ -77,7 +77,7 @@ Apple M5, darwin/arm64, 5 runs (median ± median absolute deviation, ms)
 | bigint | 20.5 ± 0.09 | 7.40 ± 0.02 | 14.7 ± 0.06 | 20.5 ± 0.05 | 2.77× |
 | modpow | 46.4 ± 0.09 | 35.7 ± 0.05 | 33.3 ± 0.23 | 46.2 ± 0.15 | 1.30× |
 | time | 138 ± 1.73 | 11.3 ± 0.10 | 66.9 ± 1.33 | 225 ± 1.75 | 12.22× |
-| template | 188 ± 1.99 | 32.9 ± 0.72 | n/a | 198 ± 0.50 | 5.71× |
+| template | ≈24³ | 32.9 ± 0.72 | n/a | 198 ± 0.50 | 0.73×³ |
 | semver | 269 ± 2.34 | 160 ± 3.82 | 241 ± 1.99 | 291 ± 3.00 | 1.68× |
 | heap | 371 ± 2.01 | 151 ± 0.62 | n/a | 373 ± 3.57 | 2.45× |
 | sortedmap | 1221 ± 20.7 | 301 ± 2.70 | n/a | 1219 ± 17.0 | 4.06× |
@@ -94,6 +94,17 @@ Asuka's over Go's (chacha 0.58 G cycles to Go's 0.88 G, 1.9 G
 instructions to 2.2 G; argon2 0.69 G cycles across its four threads to
 Go's 1.25 G, 1.34 G instructions to 3.1 G), times Go's idle median.
 Before, chacha took 1.53 G cycles and argon2 0.74 G on one thread.
+
+³ After the table's run: std/template converts its data to a
+json.Value directly (core/src/rt/json.c's ak_json_value: no JSON text
+written and parsed again), and renders by a binding stack, filters
+known as the template is parsed, and a loop's variable that's its index
+until it's read whole; float.fixed formats without snprintf
+(2026-11-19). Counted at load 12 to 30: CPU cycles 355 M → 123 M to
+Go's 168 M, instructions 1,820 M → 750 M to Go's 777 M (the median of
+seven interleaved runs each, the setup included, which is under 10 M;
+the runs varied by under 3% in cycles, 0.5% in instructions), times
+Go's idle median.
 
 Strings, arrays and number formatting were then taken further (packed
 arrays, strings appended in place, joined at once and cut into slabs,
@@ -125,7 +136,7 @@ What's still slow is mostly what the compiled code does around the
 library, not the library: split makes a string object a piece (in
 slabs now, a bump and a count each, where Go's substrings are two words
 in the array), and its arrays live to the end of the statement's
-registers' next use; seq, heap, sortedmap, template, time and semver
+registers' next use; seq, heap, sortedmap, time and semver
 are Asuka code (closure calls a step, structs copied); gzip at level 6
 is miniz's matcher, as slow as zlib's on this repetitive text (zlib
 took 4.5 s), where Go's compressor is far faster; regex patterns that
