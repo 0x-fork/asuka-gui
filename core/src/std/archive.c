@@ -1875,7 +1875,7 @@ static ak_val encode_fn(ak_val *args, uint32_t n) {
 		// A tar holds its files' data and a block or two of header each.
 		uint64_t size = 1024;
 		for (uint32_t i = 0; i < datas->len; i++) {
-			const ak_bytes *d = datas->data[i].p;
+			const ak_bytes *d = ak_arr_vals(datas)[i].p;
 			size += 1536 + (d ? (uint64_t)d->len + 511 : 0) / 512 * 512;
 		}
 		if (size < UINT32_MAX) ak_cz_sink_reserve(&s, (size_t)size);
