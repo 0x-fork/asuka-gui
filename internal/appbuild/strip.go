@@ -13,7 +13,8 @@ import (
 // call (test.mount, test.tap: the fake host's, which an app's core, a
 // release's or a player's, hasn't). What's left is what the module's
 // init, its app and its shapes' methods reach, in their order. m is
-// unchanged.
+// unchanged. A function inlined in one that's left stays too (its
+// frames in traces are named by it).
 func StripTests(m *bytecode.Module) *bytecode.Module {
 	if len(m.Tests) == 0 {
 		return m
@@ -50,6 +51,11 @@ func StripTests(m *bytecode.Module) *bytecode.Module {
 				reach(bytecode.Word32(code, at))
 			}
 		})
+		// The functions inlined in it: their names and files are its
+		// traces' frames.
+		for _, in := range m.Funcs[f].Inlines {
+			reach(in.Func)
+		}
 	}
 	funcs := make([]uint32, len(m.Funcs)) // old → new
 	out.Funcs = nil
@@ -57,7 +63,13 @@ func StripTests(m *bytecode.Module) *bytecode.Module {
 		if keep[i] {
 			funcs[i] = uint32(len(out.Funcs))
 			f.Code = slices.Clone(f.Code)
+			f.Inlines = slices.Clone(f.Inlines)
 			out.Funcs = append(out.Funcs, f)
+		}
+	}
+	for i := range out.Funcs {
+		for k := range out.Funcs[i].Inlines {
+			out.Funcs[i].Inlines[k].Func = funcs[out.Funcs[i].Inlines[k].Func]
 		}
 	}
 	// The builtins the functions left call, renumbered.
