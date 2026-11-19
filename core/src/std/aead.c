@@ -14,6 +14,7 @@
 #include "std/std.h"
 
 #include "std/bearssl/bearssl.h"
+#include "std/cryptohw.h"
 #include "std/monocypher.h"
 
 #define BYTES(i) ((ak_bytes *)args[i].p)
@@ -31,6 +32,17 @@ static size_t nonce_size(int64_t c) { return c == XCHACHA ? 24 : 12; }
 // then out is zeroed.
 static bool gcm(bool encrypt, const uint8_t *key, size_t kn, const uint8_t nonce[12], const uint8_t *ad, size_t an,
 	const uint8_t *in, uint8_t *out, size_t n, uint8_t tag[16]) {
+	uint8_t mine[16];
+	if (ak_gcm_hw(encrypt, key, kn, nonce, ad, an, in, out, n, encrypt ? tag : mine)) {
+		if (encrypt) return true;
+		// The tags compared in constant time: no early exit.
+		uint8_t diff = 0;
+		for (int i = 0; i < 16; i++) diff |= (uint8_t)(mine[i] ^ tag[i]);
+		ak_wipe(mine, sizeof mine);
+		if (diff == 0) return true;
+		ak_wipe(out, n);
+		return false;
+	}
 	br_aes_ct64_ctr_keys aes;
 	br_gcm_context g;
 	br_aes_ct64_ctr_init(&aes, key, kn);

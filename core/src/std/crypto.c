@@ -11,6 +11,7 @@
 #define _CRT_RAND_S  // rand_s
 #endif
 #include "std/std.h"
+#include "std/cryptohw.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -85,6 +86,16 @@ static void sha256_block(uint32_t h[8], const uint8_t *b) {
 	h[0] += a, h[1] += bb, h[2] += c, h[3] += d, h[4] += e, h[5] += f, h[6] += g, h[7] += hh;
 }
 
+// sha256_blocks: the compression function over n 64-byte blocks, by
+// the CPU's SHA-256 instructions when it has them.
+static void sha256_blocks(uint32_t h[8], const uint8_t *p, size_t n) {
+	if (ak_cpu_sha256()) {
+		ak_sha256_blocks_hw(h, p, n);
+		return;
+	}
+	for (; n--; p += 64) sha256_block(h, p);
+}
+
 void ak_sha256_init(ak_sha256_ctx *c) {
 	static const uint32_t iv[8] = {0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
 	memcpy(c->h, iv, sizeof iv);
@@ -100,10 +111,14 @@ void ak_sha256_update(ak_sha256_ctx *c, const void *data, size_t n) {
 		memcpy(c->buf + c->n, p, k);
 		c->n += k, p += k, n -= k;
 		if (c->n < 64) return;
-		sha256_block(c->h, c->buf);
+		sha256_blocks(c->h, c->buf, 1);
 		c->n = 0;
 	}
-	for (; n >= 64; p += 64, n -= 64) sha256_block(c->h, p);
+	if (n >= 64) {
+		sha256_blocks(c->h, p, n / 64);
+		p += n & ~(size_t)63;
+		n &= 63;
+	}
 	if (n) memcpy(c->buf, p, n);
 	c->n = n;
 }
@@ -170,6 +185,14 @@ static void sha512_block(uint64_t h[8], const uint8_t *b) {
 	h[0] += a, h[1] += bb, h[2] += c, h[3] += d, h[4] += e, h[5] += f, h[6] += g, h[7] += hh;
 }
 
+static void sha512_blocks(uint64_t h[8], const uint8_t *p, size_t n) {
+	if (ak_cpu_sha512()) {
+		ak_sha512_blocks_hw(h, p, n);
+		return;
+	}
+	for (; n--; p += 128) sha512_block(h, p);
+}
+
 void ak_sha512_init(ak_sha512_ctx *c) {
 	static const uint64_t iv[8] = {0x6a09e667f3bcc908, 0xbb67ae8584caa73b, 0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1,
 	                               0x510e527fade682d1, 0x9b05688c2b3e6c1f, 0x1f83d9abfb41bd6b, 0x5be0cd19137e2179};
@@ -186,10 +209,14 @@ void ak_sha512_update(ak_sha512_ctx *c, const void *data, size_t n) {
 		memcpy(c->buf + c->n, p, k);
 		c->n += k, p += k, n -= k;
 		if (c->n < 128) return;
-		sha512_block(c->h, c->buf);
+		sha512_blocks(c->h, c->buf, 1);
 		c->n = 0;
 	}
-	for (; n >= 128; p += 128, n -= 128) sha512_block(c->h, p);
+	if (n >= 128) {
+		sha512_blocks(c->h, p, n / 128);
+		p += n & ~(size_t)127;
+		n &= 127;
+	}
 	if (n) memcpy(c->buf, p, n);
 	c->n = n;
 }
@@ -447,8 +474,16 @@ void ak_hmac(int kind, const uint8_t *key, size_t kn, const uint8_t *m, size_t m
 }
 
 void ak_wipe(void *p, size_t n) {
+	if (!n) return;
+#if defined(__GNUC__) || defined(__clang__)
+	// memset at its speed, then a barrier that says the zeros are read,
+	// so the compiler keeps them (as explicit_bzero does).
+	memset(p, 0, n);
+	__asm__ __volatile__("" : : "r"(p) : "memory");
+#else
 	volatile uint8_t *b = p;
 	while (n--) *b++ = 0;
+#endif
 }
 
 // ---- HKDF (RFC 5869) and PBKDF2 (RFC 8018) ----
