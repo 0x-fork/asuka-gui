@@ -824,9 +824,11 @@ async fn main() throws {
 ```
 
 - 服务器的证书会按系统信任的证书颁发机构来检查。在 macOS、iOS 和 Windows 上由系统自己检查，和 Safari、Edge 一样：会遵循用户和管理员信任或不信任的设置，自动获取缺失的中间证书，并检查吊销状态。在 Linux 上，会像 Go 一样读取系统的 CA 证书包：优先用 `SSL_CERT_FILE`，否则依次查找 `/etc/ssl/certs/ca-certificates.crt`（Debian、Ubuntu）、`/etc/pki/tls/certs/ca-bundle.crt`（Fedora、RHEL）、`/etc/ssl/ca-bundle.pem`（openSUSE）、`/etc/ssl/cert.pem`（Alpine）等位置，然后再读 `SSL_CERT_DIR` 里的文件。静态构建读的也是这些位置，所以容器镜像里要装上 `ca-certificates` 包。在 Android 上，用的是系统的证书存储。
-- `net.clientTLS(ca:, certificate:, key:, alpn:, minVersion:, maxVersion:, insecureSkipVerify:)` 创建客户端配置，`connectTLS` 和 `startTLS` 通过 `tls:` 接收它。`ca`（PEM）会代替系统的证书颁发机构被信任，比如私有 CA，或者自签名的服务器。`certificate` 和 `key` 是本端自己的证书和私钥，用于要求客户端出示证书的服务器（双向 TLS）。`alpn` 是本端提供的应用层协议（`["h2", "http/1.1"]`）。`insecureSkipVerify` 什么都不检查，谁都能冒充服务器，所以只适合测试。
-- `net.serverTLS(certificate:, key:, others:, alpn:, clientCA:, requireClientCertificate:)` 创建服务器配置：`net.listen`、`net.serve` 和 `http.serve` 通过 `tls:` 接收它，`conn.startServerTLS(tls)` 则在原来的连接上升级。`others` 是更多的证书（`KeyPair`）：客户端请求的名字（SNI）和哪张证书的名字匹配，就出示哪张。`clientCA` 要求每个客户端出示由其中某个机构签发的证书。
-- `conn.handshake()` 返回握手协商出的结果，即一个 `TLSState`：`version`、`cipherSuite`、ALPN 选定的 `protocol`、`serverName`，以及对端的证书 `peerCertificates`（DER）。TLS 服务器上的连接会在第一次读或写需要等待时完成握手；客户端握手失败时，这次读或写会抛出错误。
+- `net.clientTLS(ca:, certificate:, key:, alpn:, minVersion:, maxVersion:, insecureSkipVerify:, sessionCache:)` 创建客户端配置，`connectTLS` 和 `startTLS` 通过 `tls:` 接收它。`ca`（PEM）会代替系统的证书颁发机构被信任，比如私有 CA，或者自签名的服务器。`certificate` 和 `key` 是本端自己的证书和私钥，用于要求客户端出示证书的服务器（双向 TLS）。`alpn` 是本端提供的应用层协议（`["h2", "http/1.1"]`）。`insecureSkipVerify` 什么都不检查，谁都能冒充服务器，所以只适合测试。
+- `net.serverTLS(certificate:, key:, others:, alpn:, clientCA:, requireClientCertificate:, sessionTickets:)` 创建服务器配置：`net.listen`、`net.serve` 和 `http.serve` 通过 `tls:` 接收它，`conn.startServerTLS(tls)` 则在原来的连接上升级。`others` 是更多的证书（`KeyPair`）：客户端请求的名字（SNI）和哪张证书的名字匹配，就出示哪张。`clientCA` 要求每个客户端出示由其中某个机构签发的证书。
+- `key` 是 PEM 格式：PKCS#8、PKCS#1 或 SEC 1。加密过的私钥或 OpenSSH 格式的私钥交给 std/crypto 来读，再把它的 `pem()` 交给 TLS：`key: (try await crypto.decryptPrivateKey(text, password: password)).pem()`。（这样，两者都不读的 TLS 应用就不会带上它们的代码。）
+- 客户端会像浏览器一样恢复会话：配置会按服务器的名字和端口记下每次握手协商出的结果（TLS 1.3 的 ticket、TLS 1.2 的会话），下次再连到那里，握手就更短，服务器也不用再发一遍证书（之前检查过的那张证书仍会再检查名字和有效期）。`sessionCache:` 是最多为多少个服务器保留会话（默认 64；最久没用的先被丢掉；`0` 表示一个都不保留）。服务器会给客户端发 ticket，用它在内存里随机生成的密钥加密；这些密钥从不写到任何地方，并且每天换新。`sessionTickets: false` 表示不发 ticket。不提前发送数据（TLS 1.3 的 0-RTT）：握手结束前发出的数据，任何看到它的人都能重放。
+- `conn.handshake()` 返回握手协商出的结果，即一个 `TLSState`：`version`、`cipherSuite`、ALPN 选定的 `protocol`、`serverName`、是否恢复了会话 `resumed`，以及对端的证书 `peerCertificates`（DER）。TLS 服务器上的连接会在第一次读或写需要等待时完成握手；客户端握手失败时，这次读或写会抛出错误。
 - 证书不受信任时抛出 `NetError.untrustedCertificate(problem, reason)`：`problem` 是 `expired`、`notYetValid`、`wrongHost`、`unknownIssuer`、`revoked`、`missing`、`invalid` 之一，`reason` 说明具体发现了什么（"example.com's certificate expired on 2025-03-01"）。其他失败都是 `NetError.tls(reason)`：双方没有共同支持的版本、密码套件或 ALPN 协议，对端发来了警报（alert），或者服务器根本不说 TLS。
 
 TLS 在所有平台上都是同一份实现（Mbed TLS），从不调用它的应用不会包含它。网页没有可供它使用的 socket：在网页上，`std/http` 和 `std/websocket` 照样能使用 HTTPS 和 `wss:`，其他平台也一样，都是通过各平台自己的客户端。
@@ -912,6 +914,22 @@ async fn verified(token: string, jwksURL: string) throws -> bool {
 - `hkdf` 从密钥材料派生密钥，`pbkdf2` 和 `argon2id` 从密码派生；`hmac`、`hmacSHA256` 和 `hmacSHA512` 用共享密钥签名。
 - `hashPasswordBcrypt` 和 `verifyPassword` 也能读 bcrypt 的 `$2b$`、`$2a$` 和 `$2y$`，适合由其他系统填好的数据库。
 - `newPrivateKey()` 生成 ECDSA P-256 密钥（`kind: .ed25519`、P-384、P-521 也可以）；`sign` 和 `verify` 接受从 PEM（`publicKey`、`privateKey`）、DER 或 JWK 读入的 RSA（PKCS#1 v1.5 和 PSS）、ECDSA 和 Ed25519 密钥，并能用 `pem()` 和 `jwk()` 再导出。
+- `privateKey` 也能读 OpenSSH 的私钥（`ssh-keygen` 生成的）。加密的私钥用 `decryptPrivateKey(pem, password:)` 读：OpenSSL 的 `ENCRYPTED PRIVATE KEY`（PBES2，配合 PBKDF2 或 scrypt，以及 AES 或 3DES；还有旧版 OpenSSL 和 Java 用的 PKCS#12 3DES）、OpenSSL 旧式的 `Proc-Type: 4,ENCRYPTED` 私钥，以及 OpenSSH 加密的私钥（bcrypt 配合 AES 或 ChaCha20-Poly1305）。密码解不开私钥时抛出 `CryptoError.wrongPassword`；单 DES、RC2 和 RC4 太弱，不予读取。`key.encryptedPEM(password:)` 按 OpenSSL 3 的方式写出加密的私钥（PBKDF2-HMAC-SHA256 迭代 600,000 次，AES-256-CBC）。这两者都有意放慢，这样猜密码也同样慢，它们都在另一个线程上运行。不读加密私钥的应用不会带上这些加密算法的代码。
+
+```asuka check
+import std/crypto
+import std/fs
+import std/os
+
+async fn main() throws {
+  let text = try fs.readText("deploy_key")  // ssh-keygen -t ed25519 -f deploy_key
+  let key = try await crypto.decryptPrivateKey(text, password: os.env("KEY_PASSWORD") ?? "")
+  let signature = try crypto.sign(key, "release 1.4.0".bytes(), scheme: .ed25519)
+  print(signature.count())  // 64
+  // -----BEGIN ENCRYPTED PRIVATE KEY-----，OpenSSL 等工具都能读
+  try fs.writeText("deploy_key.pem", await key.encryptedPEM(password: os.env("KEY_PASSWORD") ?? ""))
+}
+```
 - `md5` 只用于协议要求的校验和，不用于安全；CRC 在 std/compress 里：`crc32` 和 `crc32c`。
 
 ## 运行

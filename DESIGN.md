@@ -1427,8 +1427,10 @@ name's prefix (`TestLinkRegistersEveryTable`). What one package has
 that costs more than the rest is a table of its own, its `native fn`s
 `native(prefix) fn` (lang/LOWERING.md): std/crypto's AES-GCM and
 ChaCha20-Poly1305 (`crypto_aead`), Argon2 and bcrypt
-(`crypto_password`), RSA, ECDSA and keys (`crypto_pk`), so an app that
-only hashes links none of them.
+(`crypto_password`), RSA, ECDSA and keys (`crypto_pk`), private key
+files read, encrypted or OpenSSH's (`crypto_keyfile`, keyfile.c), and
+written encrypted (`crypto_keyenc`), so an app that only hashes links
+none of them.
 
 **A vendor's prebuilt libraries** are `[c.prebuilt]`'s: a static
 library per target (`ios-arm64`, `ios-simulator-x64`, `macos-arm64`,
@@ -1652,9 +1654,18 @@ default as the system does, Apple's SecTrust and Windows'
 CertGetCertificateChain (loaded as first needed, run on a thread of
 their own: they may fetch), or against the system's authorities read
 once (Linux's bundle as Go finds it, Android's store) with Mbed TLS.
-net.c and httpserver.c reach TLS through a pointer tls.c sets as a
-configuration is made, so an app that never calls std/net's TLS
-builtins (their own table, `tls`) links none of it.
+A configuration's key is Mbed TLS's to read (PKCS#8, PKCS#1, SEC 1);
+an encrypted one, or OpenSSH's, std/crypto's keyfile.c reads first (the
+app's call, so a TLS app that reads neither links none of it). A client
+configuration keeps its sessions to resume (TLS 1.3's tickets, each
+used once; TLS 1.2's session), by server name and port, bounded and
+expired in it, offered only under the configuration that checked them,
+and checked again for the name and the dates when resumed; a server
+configuration issues tickets (Mbed TLS's ticket module, its keys in
+memory, made new daily). No early data. net.c and httpserver.c reach
+TLS through a pointer tls.c sets as a configuration is made, so an app
+that never calls std/net's TLS builtins (their own table, `tls`) links
+none of it.
 
 **An app's metadata** is `asuka.toml` beside its Asuka code (TOML 1.0, read
 by `internal/toml`), all optional:
