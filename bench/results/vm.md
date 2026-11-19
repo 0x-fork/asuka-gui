@@ -58,3 +58,35 @@ bound by its modulo's latency either way.
 | trees | 14.51 (3.75) | 19.46 (5.11) | 12.18 (3.65) | 2.61 (0.67) |
 | closures | 0.50 (0.18) | 20.35 (4.19) | 7.82 (1.92) | 0.65 (0.25) |
 
+## With the compiled-C work (merged)
+
+The VM's and the optimizer's work merged with release builds' C
+(registers as C locals, direct calls, places; small objects from a
+thread's cache), measured again in one session (2026-11-19, load 3 to
+45): instructions in billions, cycles in parentheses, the median of 5
+(-c: of 9 for closures and sieve). "VM alone" and "C alone" are each
+branch by itself.
+
+| benchmark | VM alone | merged | -c: C alone | -c: VM alone | -c: merged |
+|---|---:|---:|---:|---:|---:|
+| fib | 1.76 (0.34) | 1.71 (0.32) | 0.20 (0.05) | 0.92 (0.15) | 0.19 (0.04) |
+| loop | 1.28 (0.41) | 1.28 (0.38) | 0.22 (0.23) | 0.34 (0.23) | 0.22 (0.23) |
+| sieve | 5.35 (1.25) | 3.85 (1.00) | 1.17 (0.55) | 3.21 (0.79) | 1.33 (0.54) |
+| nbody | 4.07 (0.86) | 4.12 (0.86) | 0.29 (0.07) | 3.56 (0.86) | 0.29 (0.07) |
+| trees | 14.44 (2.65) | 12.59 (2.41) | 3.63 (0.71) | 7.97 (1.50) | 3.40 (0.67) |
+| words | 4.82 (0.86) | 4.84 (0.87) | 3.87 (0.78) | 4.26 (0.84) | 3.87 (0.75) |
+| json | 14.33 (2.58) | 12.36 (2.14) | 11.95 (2.51) | 14.26 (2.88) | 11.95 (2.54) |
+| sort | 3.29 (1.41) | 3.31 (1.43) | 2.74 (1.41) | 2.87 (1.39) | 2.74 (1.43) |
+| closures | 0.49 (0.12) | 0.50 (0.12) | 3.08 (0.43) | 0.15 (0.11) | 0.15 (0.12) |
+| iface | 4.58 (0.69) | 4.50 (0.71) | 1.59 (0.24) | 2.20 (0.31) | 1.53 (0.22) |
+| strings | 13.17 (1.84) | 13.20 (1.83) | 11.36 (2.10) | 12.36 (1.95) | 11.35 (1.99) |
+
+On the VM, the same module retires 0.3 to 1.7% more instructions on the
+merged runner for nbody, words, sort, closures and strings, in the same
+cycles: with the VM branch's ops.h the runner retires what it did, and
+what differs there is code the interpreter doesn't run (the C's
+helpers), so it's how the compiler lays out the dispatch function. In
+C, sieve's inner loop is three instructions longer (the optimizer's
+rotated loop gets a second induction variable from clang) in the same
+cycles, and closures' loop is the same instructions as the VM branch's
+C, 15% more cycles: where its modulo chain lands.

@@ -57,6 +57,21 @@ is 640 and 611 ms).
 | json | 6,440 | 5,232 | 3,411 | 1.53× |
 | sort | 1,802 | 1,734 | 1,369 | 1.27× |
 
+With lang/ir's optimizer too (the VM's branch merged: its constants,
+fused comparisons and branches, IDXF and SETIF, inlining), measured
+again in one session (2026-11-19, load 3 to 45; cycles, the fewest of
+five, in millions):
+
+| benchmark | C alone | with the optimizer | Go | now / Go |
+|---|---:|---:|---:|---:|
+| fib | 478 | 413 | 371 | 1.11× |
+| sieve | 1,495 | 1,499 | 637 | 2.35× |
+| nbody | 768 | 780 | 648 | 1.20× |
+| trees | 2,582 | 2,376 | 5,637 | 0.42× |
+| words | 629 | 625 | 718 | 0.87× |
+| json | 4,224 | 4,198 | 2,758 | 1.52× |
+| sort | 1,594 | 1,607 | 1,383 | 1.16× |
+
 "Before" is the C cgen wrote before release builds' C kept registers in
 C locals and called compiled functions directly (lang/LOWERING.md,
 Release builds: C). On an idle machine, before, in ms: fib 925, sieve
