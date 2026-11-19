@@ -97,6 +97,21 @@ TEST(gzip_header_fields) {
 TEST(crc32_check) {
 	CHECK_EQ_INT(ak_cz_crc32(0, "123456789", 9), 0xcbf43926);
 	CHECK_EQ_INT(ak_cz_crc32(ak_cz_crc32(0, "1234", 4), "56789", 5), 0xcbf43926);
+	CHECK_EQ_INT(ak_crc32c(0, "123456789", 9), 0xe3069283);
+	// The CPU's instructions and the eight tables give the table's CRC a
+	// byte at a time, at every length and alignment, continued or not.
+	static uint8_t data[4200];
+	uint32_t r = 1;
+	for (size_t i = 0; i < sizeof data; i++) data[i] = (uint8_t)((r = r * 1103515245 + 12345) >> 16);
+	for (size_t n = 0; n < 8192; n += n < 200 ? 1 : 61) {
+		ak_crc_hw_off = n >= 4096;
+		for (size_t at = 0; at < 8; at++) {
+			uint32_t prev = (uint32_t)(n * 2654435761u);
+			CHECK_EQ_INT(ak_crc32(prev, data + at, n % 4096), ak_crc32_bytewise(prev, data + at, n % 4096, false));
+			CHECK_EQ_INT(ak_crc32c(prev, data + at, n % 4096), ak_crc32_bytewise(prev, data + at, n % 4096, true));
+		}
+	}
+	ak_crc_hw_off = false;
 }
 
 #if !defined(_WIN32)

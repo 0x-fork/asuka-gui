@@ -745,7 +745,7 @@ bool ak_cz_deflate_finish(ak_cz_deflate *z) {
 
 void ak_cz_deflate_free(ak_cz_deflate *z) { ak_free(z); }
 
-uint32_t ak_cz_crc32(uint32_t crc, const void *p, size_t n) { return (uint32_t)mz_crc32(crc, p, n); }
+uint32_t ak_cz_crc32(uint32_t crc, const void *p, size_t n) { return ak_crc32(crc, p, n); }
 
 // ---- The builtins ----
 

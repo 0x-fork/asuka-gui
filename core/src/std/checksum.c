@@ -2,8 +2,29 @@
 // (a table of their own, so an app that only checks a CRC links none of
 // DEFLATE): CRC-32 (IEEE 802.3's polynomial, reflected: zlib's, gzip's,
 // zip's, PNG's, Ethernet's) and CRC-32C (Castagnoli's: iSCSI's, ext4's,
-// SCTP's, Google Cloud Storage's), a byte at a time from a table.
+// SCTP's, Google Cloud Storage's); gzip's (compress.c) too.
+//
+// By the CPU's CRC instructions where it has them (ARMv8's both, x86's
+// SSE 4.2 CRC-32C), eight bytes an instruction; otherwise eight bytes a
+// step from eight tables ("slicing-by-8", Intel's), the seven past the
+// first worked out the first time they're needed, so they take no room
+// in the binary.
 #include "std/std.h"
+
+#if defined(__aarch64__) || defined(_M_ARM64)
+#define CRC_ARM 1
+#include <arm_acle.h>
+#if defined(__APPLE__)
+#elif defined(_WIN32)
+#include <windows.h>
+#elif defined(__linux__)
+#include <sys/auxv.h>
+#endif
+#elif (defined(__x86_64__) || defined(_M_X64)) && (defined(__GNUC__) || defined(__clang__))
+#define CRC_X86 1
+#include <cpuid.h>
+#include <immintrin.h>
+#endif
 
 #define BYTES(i) ((ak_bytes *)args[i].p)
 
@@ -77,24 +98,141 @@ static const uint32_t CASTAGNOLI[256] = {
 	0x79b737ba, 0x8bdcb4b9, 0x988c474d, 0x6ae7c44e, 0xbe2da0a5, 0x4c4623a6, 0x5f16d052, 0xad7d5351,
 };
 
-// crc runs the reflected CRC of t over data, continuing previous (a
-// CRC of what came before: 0 for none), as zlib's crc32 does.
-static ak_val crc(const uint32_t t[256], ak_val *args) {
-	const ak_bytes *b = BYTES(0);
-	uint32_t c = ~(uint32_t)args[1].i;
-	for (uint32_t i = 0; b && i < b->len; i++) c = t[(c ^ b->data[i]) & 0xff] ^ c >> 8;
-	return (ak_val){.i = (int64_t)(uint32_t)~c};
+bool ak_crc_hw_off;
+
+#if CRC_ARM || CRC_X86
+// Whether the CPU has CRC instructions: ARMv8's both polynomials,
+// x86's Castagnoli's alone.
+static bool cpu_crc(void) {
+	if (ak_crc_hw_off) return false;
+	static int known;  // 1 no, 2 yes; racing threads work out the same
+	int k = __atomic_load_n(&known, __ATOMIC_RELAXED);
+	if (k) return k == 2;
+	bool has = false;
+#if CRC_ARM
+#if defined(__APPLE__)
+	has = true;
+#elif defined(_WIN32)
+	has = IsProcessorFeaturePresent(PF_ARM_V8_CRC32_INSTRUCTIONS_AVAILABLE);
+#elif defined(__linux__)
+	has = (getauxval(AT_HWCAP) & (1ul << 7)) != 0;  // HWCAP_CRC32
+#endif
+#elif CRC_X86
+	unsigned a, b, c, d;
+	has = __get_cpuid(1, &a, &b, &c, &d) && (c & bit_SSE4_2);
+#endif
+	__atomic_store_n(&known, has ? 2 : 1, __ATOMIC_RELAXED);
+	return has;
+}
+#endif
+
+#if CRC_ARM
+__attribute__((target("+crc"))) static uint32_t crc_arm(uint32_t c, const uint8_t *p, size_t n, bool castagnoli) {
+	for (; n && ((uintptr_t)p & 7); n--, p++) c = castagnoli ? __crc32cb(c, *p) : __crc32b(c, *p);
+	for (; n >= 32; n -= 32, p += 32) {
+		uint64_t w[4];
+		memcpy(w, p, 32);
+		if (castagnoli) c = __crc32cd(__crc32cd(__crc32cd(__crc32cd(c, w[0]), w[1]), w[2]), w[3]);
+		else c = __crc32d(__crc32d(__crc32d(__crc32d(c, w[0]), w[1]), w[2]), w[3]);
+	}
+	for (; n >= 8; n -= 8, p += 8) {
+		uint64_t w;
+		memcpy(&w, p, 8);
+		c = castagnoli ? __crc32cd(c, w) : __crc32d(c, w);
+	}
+	for (; n; n--, p++) c = castagnoli ? __crc32cb(c, *p) : __crc32b(c, *p);
+	return c;
+}
+#elif CRC_X86
+__attribute__((target("sse4.2,crc32"))) static uint32_t crc_x86c(uint32_t c, const uint8_t *p, size_t n) {
+	uint64_t c64 = c;
+	for (; n >= 8; n -= 8, p += 8) {
+		uint64_t w;
+		memcpy(&w, p, 8);
+		c64 = _mm_crc32_u64(c64, w);
+	}
+	c = (uint32_t)c64;
+	for (; n; n--, p++) c = _mm_crc32_u8(c, *p);
+	return c;
+}
+#endif
+
+// The tables for eight bytes a step: slice[k][b] is the CRC of b and k
+// zero bytes after it. slice 0 is the table above.
+static uint32_t slices[2][7][256];
+static int sliced[2];  // 0 not made, 1 being made, 2 made
+
+static const uint32_t (*sliced_tables(int which, const uint32_t t[256]))[256] {
+	if (__atomic_load_n(&sliced[which], __ATOMIC_ACQUIRE) == 2) return slices[which];
+	int none = 0;
+	if (!__atomic_compare_exchange_n(&sliced[which], &none, 1, false, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED)) return NULL;
+	for (int b = 0; b < 256; b++) {
+		uint32_t c = t[b];
+		for (int k = 0; k < 7; k++) {
+			c = t[c & 0xff] ^ c >> 8;
+			slices[which][k][b] = c;
+		}
+	}
+	__atomic_store_n(&sliced[which], 2, __ATOMIC_RELEASE);
+	return slices[which];
 }
 
-// crc32(data, previous), crc32c(data, previous): the CRC, 0 to 2^32 - 1.
+// crc_run: the reflected CRC of p (n bytes) by t, continuing c (its
+// register: inverted).
+static uint32_t crc_run(uint32_t c, const uint8_t *p, size_t n, const uint32_t t[256], int which) {
+	const uint32_t(*s)[256] = n >= 64 ? sliced_tables(which, t) : NULL;
+	if (s) {
+		for (; n >= 8; n -= 8, p += 8) {
+			uint32_t lo = c ^ ((uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24);
+			uint32_t hi = (uint32_t)p[4] | (uint32_t)p[5] << 8 | (uint32_t)p[6] << 16 | (uint32_t)p[7] << 24;
+			c = s[6][lo & 0xff] ^ s[5][(lo >> 8) & 0xff] ^ s[4][(lo >> 16) & 0xff] ^ s[3][lo >> 24] ^
+			    s[2][hi & 0xff] ^ s[1][(hi >> 8) & 0xff] ^ s[0][(hi >> 16) & 0xff] ^ t[hi >> 24];
+		}
+	}
+	for (; n; n--, p++) c = t[(c ^ *p) & 0xff] ^ c >> 8;
+	return c;
+}
+
+uint32_t ak_crc32(uint32_t crc, const void *data, size_t n) {
+	uint32_t c = ~crc;
+#if CRC_ARM
+	if (cpu_crc()) return ~crc_arm(c, data, n, false);
+#endif
+	return ~crc_run(c, data, n, IEEE, 0);
+}
+
+uint32_t ak_crc32c(uint32_t crc, const void *data, size_t n) {
+	uint32_t c = ~crc;
+#if CRC_ARM
+	if (cpu_crc()) return ~crc_arm(c, data, n, true);
+#elif CRC_X86
+	if (cpu_crc()) return ~crc_x86c(c, data, n);
+#endif
+	return ~crc_run(c, data, n, CASTAGNOLI, 1);
+}
+
+// The table's CRC alone, a byte at a time (the tests check the rest by it).
+uint32_t ak_crc32_bytewise(uint32_t crc, const void *data, size_t n, bool castagnoli) {
+	const uint32_t *t = castagnoli ? CASTAGNOLI : IEEE;
+	const uint8_t *p = data;
+	uint32_t c = ~crc;
+	for (; n; n--, p++) c = t[(c ^ *p) & 0xff] ^ c >> 8;
+	return ~c;
+}
+
+// crc32(data, previous), crc32c(data, previous): the CRC, 0 to 2^32 - 1,
+// continuing previous (a CRC of what came before: 0 for none), as
+// zlib's crc32 does.
 static ak_val crc32_fn(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
-	return crc(IEEE, args);
+	const ak_bytes *b = BYTES(0);
+	return (ak_val){.i = (int64_t)ak_crc32((uint32_t)args[1].i, b ? b->data : NULL, b ? b->len : 0)};
 }
 
 static ak_val crc32c_fn(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
-	return crc(CASTAGNOLI, args);
+	const ak_bytes *b = BYTES(0);
+	return (ak_val){.i = (int64_t)ak_crc32c((uint32_t)args[1].i, b ? b->data : NULL, b ? b->len : 0)};
 }
 
 const ak_lib_entry ak_std_compress_checksum[] = {
