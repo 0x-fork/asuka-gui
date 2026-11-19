@@ -6,17 +6,47 @@
 
 // ---- Builtins ----
 
-typedef struct { const char *name; ak_builtin_fn fn; } builtin_entry;
-static AK_VEC(builtin_entry) builtins;
+// The builtins by name: a hash table (open addressing, at most half
+// full), so registering the core's hundreds as it starts and finding a
+// module's as it loads cost a lookup each, not a search of them all.
+typedef struct {
+	const char *name;  // NULL: empty
+	ak_builtin_fn fn;
+	uint32_t hash;
+} builtin_entry;
+static builtin_entry *builtins;
+static uint32_t builtins_cap, builtins_len;
+
+static uint32_t name_hash(const char *s) {
+	uint32_t h = 2166136261u;  // FNV-1a
+	for (; *s; s++) {
+		h ^= (uint8_t)*s;
+		h *= 16777619u;
+	}
+	return h;
+}
+
+static builtin_entry *builtin_slot(const char *name, uint32_t h) {
+	for (uint32_t i = h & (builtins_cap - 1);; i = (i + 1) & (builtins_cap - 1)) {
+		builtin_entry *e = &builtins[i];
+		if (!e->name || (e->hash == h && strcmp(e->name, name) == 0)) return e;
+	}
+}
 
 void ak_builtin_register(const char *name, ak_builtin_fn fn) {
-	for (uint32_t i = 0; i < builtins.len; i++) {
-		if (strcmp(builtins.data[i].name, name) == 0) {
-			builtins.data[i].fn = fn;
-			return;
-		}
+	if ((builtins_len + 1) * 2 > builtins_cap) {
+		builtin_entry *old = builtins;
+		uint32_t n = builtins_cap;
+		builtins_cap = n ? n * 2 : 1024;
+		builtins = ak_alloc(sizeof(builtin_entry) * builtins_cap);
+		for (uint32_t i = 0; i < n; i++)
+			if (old[i].name) *builtin_slot(old[i].name, old[i].hash) = old[i];
+		ak_free(old);
 	}
-	ak_vec_push(&builtins, ((builtin_entry){name, fn}));
+	uint32_t h = name_hash(name);
+	builtin_entry *e = builtin_slot(name, h);
+	if (!e->name) builtins_len++;
+	*e = (builtin_entry){name, fn, h};  // a name registered again: the new fn
 }
 
 // rt.freeze(value, kind): the value, made a constant (rt.h's ak_freeze)
@@ -32,9 +62,9 @@ static ak_val rt_freeze(ak_val *args, uint32_t n) {
 void ak_vm_freeze_init(void) { ak_builtin_register("rt.freeze", rt_freeze); }
 
 ak_builtin_fn ak_builtin_find(const char *name) {
-	for (uint32_t i = 0; i < builtins.len; i++)
-		if (strcmp(builtins.data[i].name, name) == 0) return builtins.data[i].fn;
-	return NULL;
+	if (!builtins_cap) return NULL;
+	builtin_entry *e = builtin_slot(name, name_hash(name));
+	return e->name ? e->fn : NULL;
 }
 
 // ---- Loading ----

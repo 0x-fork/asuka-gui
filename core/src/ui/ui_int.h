@@ -254,7 +254,18 @@ void ak_view_make_view(ak_view *e);  // gives it a native view
 void ak_view_finalize(ak_view *e);
 void ak_view_append(ak_view *e, ak_view *k);           // retains k
 void ak_view_remove(ak_view *e, ak_view *k, bool destroy);  // releases k
+// Many of e's kids removed in one pass: each taken out, then all unlinked
+// (released).
+void ak_view_take_out(ak_view *k, bool destroy);
+void ak_view_unlink_many(ak_view *e, ak_view *const *ks, uint32_t n);
 void ak_view_attach_native(ak_view *e);
+// Where e's first view is in its native parent (the views before it
+// there), and how many it has there: its own, or its kids'. Rows put in
+// one after another count from the first's place instead of walking
+// their native parent's views for each (ak_view_attach_native_at).
+uint32_t ak_view_native_start(ak_view *e);
+uint32_t ak_view_native_count(const ak_view *e);
+void ak_view_attach_native_at(ak_view *e, uint32_t idx);
 void ak_view_detach_native(ak_view *e);
 void ak_view_destroy(ak_view *e);
 void ak_view_mark_kids(ak_view *e);

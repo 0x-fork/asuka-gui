@@ -34,6 +34,15 @@ uint32_t ak_mkey_hash(const ak_mkey *k) {
 	h = mix(h, u);
 	h = mix(h, k->inset);
 	for (int i = 0; i < 4; i++) h = mix(h, k->c[i]);
+	// mix's multiply leaves each low bit of h to the same low bits of
+	// what it mixed: the table's index (its low bits) would ignore the
+	// high bits of the sizes (whole points have none low), and keys would
+	// cluster. Murmur3's finalizer spreads every bit over all of them.
+	h ^= h >> 16;
+	h *= 0x85ebca6bu;
+	h ^= h >> 13;
+	h *= 0xc2b2ae35u;
+	h ^= h >> 16;
 	return h ? h : 1;
 }
 

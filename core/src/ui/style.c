@@ -53,11 +53,6 @@ int64_t ak_style_int(const ak_view *e, uint16_t key, int64_t def) {
 	return v ? v->i : def;
 }
 
-static bool style_bool(const ak_view *e, uint16_t key) {
-	const ak_val *v = ak_style_get(e, key);
-	return v && v->i;
-}
-
 static ak_struct *style_struct(const ak_view *e, uint16_t key) {
 	const ak_val *v = ak_style_get(e, key);
 	return v ? v->p : NULL;
@@ -209,45 +204,66 @@ static grid_mem *grid_convert(const ak_struct *g) {
 	return m;
 }
 
+// The style keys layout reads (AK_KEY_DIRECTION … AK_KEY_CLIP), found in
+// one pass over a view's style: ak_style_layout reads some thirty, each a
+// search of the style otherwise.
+#define LKEYS (AK_KEY_CLIP + 1)
+_Static_assert(AK_KEY_DIRECTION > 0 && AK_KEY_GRID_ROW < LKEYS && AK_KEY_BORDER < LKEYS, "layout keys");
+
+static void layout_keys(const ak_view *e, const ak_val **k) {
+	memset(k, 0, sizeof(const ak_val *) * LKEYS);
+	for (uint32_t i = 0; i < e->style.len; i++) {
+		uint16_t key = e->style.data[i].key;
+		if (key < LKEYS && !k[key]) k[key] = &e->style.data[i].v;  // the first, as ak_style_get
+	}
+}
+
+static float lk_float(const ak_val **k, uint16_t key) { return k[key] ? (float)k[key]->f : 0; }
+static int64_t lk_int(const ak_val **k, uint16_t key) { return k[key] ? k[key]->i : 0; }
+static bool lk_bool(const ak_val **k, uint16_t key) { return k[key] && k[key]->i; }
+static ak_struct *lk_struct(const ak_val **k, uint16_t key) { return k[key] ? k[key]->p : NULL; }
+
 // ak_style_layout maps e's style to CSS, in e's direction.
 void ak_style_layout(ak_view *e, ak_lstyle *l) {
+	const ak_val *k[LKEYS];
+	layout_keys(e, k);
 	*l = ak_lstyle_default();
 	bool rtl = ak_view_rtl(e);
 	l->flex_direction = AK_LCOLUMN;
-	if (ak_style_int(e, AK_KEY_DIRECTION, 0) == 1) l->flex_direction = AK_LROW;
-	if (style_bool(e, AK_KEY_WRAP)) l->flex_wrap = AK_LWRAP;
-	l->justify_content = justify_of(ak_style_int(e, AK_KEY_JUSTIFY, 0));
-	l->align_items = align_of(ak_style_int(e, AK_KEY_ALIGN, 0));
-	l->align_self = align_of(ak_style_int(e, AK_KEY_ALIGN_SELF, 0));
-	float gap = ak_style_float(e, AK_KEY_GAP, 0);
+	if (lk_int(k, AK_KEY_DIRECTION) == 1) l->flex_direction = AK_LROW;
+	if (lk_bool(k, AK_KEY_WRAP)) l->flex_wrap = AK_LWRAP;
+	l->justify_content = justify_of(lk_int(k, AK_KEY_JUSTIFY));
+	l->align_items = align_of(lk_int(k, AK_KEY_ALIGN));
+	l->align_self = align_of(lk_int(k, AK_KEY_ALIGN_SELF));
+	float gap = lk_float(k, AK_KEY_GAP);
 	l->column_gap = l->row_gap = ak_lpt(gap);
 	float pad[4], mar[4];
-	edges(style_struct(e, AK_KEY_PADDING), rtl, pad);
+	edges(lk_struct(k, AK_KEY_PADDING), rtl, pad);
 	for (int i = 0; i < 4; i++) pad[i] += e->extra_pad[i];
 	l->padding = (ak_lrect){ak_lpt(pad[0]), ak_lpt(pad[1]), ak_lpt(pad[2]), ak_lpt(pad[3])};
-	edges(style_struct(e, AK_KEY_MARGIN), rtl, mar);
+	edges(lk_struct(k, AK_KEY_MARGIN), rtl, mar);
 	l->margin = (ak_lrect){ak_lpt(mar[0]), ak_lpt(mar[1]), ak_lpt(mar[2]), ak_lpt(mar[3])};
-	l->border = ak_lrect_all(ak_lpt(ak_style_float(e, AK_KEY_BORDER, 0)));
-	l->width = ak_length(ak_style_int(e, AK_KEY_WIDTH, 0));
-	l->height = ak_length(ak_style_int(e, AK_KEY_HEIGHT, 0));
-	l->min_width = ak_length(ak_style_int(e, AK_KEY_MIN_WIDTH, 0));
-	l->min_height = ak_length(ak_style_int(e, AK_KEY_MIN_HEIGHT, 0));
-	l->max_width = ak_length(ak_style_int(e, AK_KEY_MAX_WIDTH, 0));
-	l->max_height = ak_length(ak_style_int(e, AK_KEY_MAX_HEIGHT, 0));
-	l->aspect_ratio = ak_style_float(e, AK_KEY_ASPECT_RATIO, 0);
-	l->flex_grow = ak_style_float(e, AK_KEY_GROW, 0);
+	l->border = ak_lrect_all(ak_lpt(lk_float(k, AK_KEY_BORDER)));
+	l->width = ak_length(lk_int(k, AK_KEY_WIDTH));
+	l->height = ak_length(lk_int(k, AK_KEY_HEIGHT));
+	l->min_width = ak_length(lk_int(k, AK_KEY_MIN_WIDTH));
+	l->min_height = ak_length(lk_int(k, AK_KEY_MIN_HEIGHT));
+	l->max_width = ak_length(lk_int(k, AK_KEY_MAX_WIDTH));
+	l->max_height = ak_length(lk_int(k, AK_KEY_MAX_HEIGHT));
+	l->aspect_ratio = lk_float(k, AK_KEY_ASPECT_RATIO);
+	l->flex_grow = lk_float(k, AK_KEY_GROW);
 	// Shrink 0 is CSS's default (1); below 0, none.
-	float shrink = ak_style_float(e, AK_KEY_SHRINK, 0);
+	float shrink = lk_float(k, AK_KEY_SHRINK);
 	if (shrink < 0) l->flex_shrink = 0;
 	else if (shrink > 0) l->flex_shrink = shrink;
-	l->flex_basis = ak_length(ak_style_int(e, AK_KEY_BASIS, 0));
-	if (style_bool(e, AK_KEY_ABSOLUTE)) l->position = AK_LABSOLUTE;
-	l->inset = (ak_lrect){ak_length(ak_style_int(e, AK_KEY_TOP, 0)), ak_length(ak_style_int(e, AK_KEY_RIGHT, 0)),
-	                      ak_length(ak_style_int(e, AK_KEY_BOTTOM, 0)), ak_length(ak_style_int(e, AK_KEY_LEFT, 0))};
-	ak_llength start = ak_length(ak_style_int(e, AK_KEY_START, 0)), end = ak_length(ak_style_int(e, AK_KEY_END, 0));
+	l->flex_basis = ak_length(lk_int(k, AK_KEY_BASIS));
+	if (lk_bool(k, AK_KEY_ABSOLUTE)) l->position = AK_LABSOLUTE;
+	l->inset = (ak_lrect){ak_length(lk_int(k, AK_KEY_TOP)), ak_length(lk_int(k, AK_KEY_RIGHT)),
+	                      ak_length(lk_int(k, AK_KEY_BOTTOM)), ak_length(lk_int(k, AK_KEY_LEFT))};
+	ak_llength start = ak_length(lk_int(k, AK_KEY_START)), end = ak_length(lk_int(k, AK_KEY_END));
 	if (!ak_llength_is_auto(start)) *(rtl ? &l->inset.right : &l->inset.left) = start;
 	if (!ak_llength_is_auto(end)) *(rtl ? &l->inset.left : &l->inset.right) = end;
-	if (style_bool(e, AK_KEY_CLIP)) l->overflow_x = l->overflow_y = AK_LOVERFLOW_HIDDEN;
+	if (lk_bool(k, AK_KEY_CLIP)) l->overflow_x = l->overflow_y = AK_LOVERFLOW_HIDDEN;
 	if (e->grid_mem) {
 		const grid_mem *g = e->grid_mem;
 		l->display = AK_LDISPLAY_GRID;
@@ -261,8 +277,8 @@ void ak_style_layout(ak_view *e, ak_lstyle *l) {
 		l->ngrid_auto_rows = g->narows;
 		l->grid_auto_flow = g->flow;
 	}
-	l->grid_column = placement(ak_style_get(e, AK_KEY_GRID_COLUMN));
-	l->grid_row = placement(ak_style_get(e, AK_KEY_GRID_ROW));
+	l->grid_column = placement(k[AK_KEY_GRID_COLUMN]);
+	l->grid_row = placement(k[AK_KEY_GRID_ROW]);
 	l->direction = ak_view_ldir(e);
 	if (e->fill && ak_llength_is_auto(l->height) && l->flex_grow == 0) l->flex_grow = 1;
 	if (e->cls->adjust) e->cls->adjust(e, l);

@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/egoist/asuka/internal/cbuild"
 	"github.com/egoist/asuka/internal/pkgs"
@@ -24,6 +25,7 @@ import (
 	"github.com/egoist/asuka/lang/ir"
 	"github.com/egoist/asuka/lang/syntax"
 	"github.com/egoist/asuka/lang/target"
+	"github.com/egoist/asuka/sdk"
 	"github.com/egoist/asuka/std"
 )
 
@@ -61,6 +63,63 @@ type Options struct {
 	// Cover counts the runs of the root package's statements (asuka
 	// test --cover): Result.IR.Cover says where its counters are.
 	Cover bool
+
+	// disk keeps what the compilations of one DirPlatforms read: each
+	// platform's reads the same directories and files.
+	disk *diskCache
+}
+
+// diskCache is the directories listed and the files read, by path; the
+// platforms' compilations share it at once.
+type diskCache struct {
+	mu    sync.Mutex
+	dirs  map[string]dirListing
+	files map[string]fileRead
+}
+
+type dirListing struct {
+	entries []os.DirEntry
+	err     error
+}
+
+type fileRead struct {
+	src []byte
+	err error
+}
+
+func (c *diskCache) readDir(dir string) ([]os.DirEntry, error) {
+	if c == nil {
+		return os.ReadDir(dir)
+	}
+	c.mu.Lock()
+	r, ok := c.dirs[dir]
+	c.mu.Unlock()
+	if ok {
+		return r.entries, r.err
+	}
+	es, err := os.ReadDir(dir)
+	c.mu.Lock()
+	c.dirs[dir] = dirListing{es, err}
+	c.mu.Unlock()
+	return es, err
+}
+
+// readFile is a file's contents, shared: the parser doesn't write them.
+func (c *diskCache) readFile(path string) ([]byte, error) {
+	if c == nil {
+		return os.ReadFile(path)
+	}
+	c.mu.Lock()
+	r, ok := c.files[path]
+	c.mu.Unlock()
+	if ok {
+		return r.src, r.err
+	}
+	src, err := os.ReadFile(path)
+	c.mu.Lock()
+	c.files[path] = fileRead{src, err}
+	c.mu.Unlock()
+	return src, err
 }
 
 // Result is a compilation's outcome.
@@ -174,15 +233,23 @@ func Dir(dir string, opts *Options) (*Result, error) {
 }
 
 // carried is the import path of the standard library's or the platform
-// SDK's package in dir (std/term), "" when dir isn't one of theirs.
+// SDK's package in dir (std/term), "" when dir isn't one of theirs: a
+// directory with an asuka.toml in theirs (std.Packages', found without
+// listing them all).
 func carried(dir string) string {
-	ps, err := std.Packages()
-	if err != nil {
-		return ""
-	}
-	for p, d := range ps {
-		if same, err := filepath.Abs(d); err == nil && same == dir {
-			return p
+	for _, t := range []struct {
+		prefix string
+		dir    func() (string, error)
+	}{{std.Prefix, std.Dir}, {std.PlatformPrefix, sdk.Dir}} {
+		d, err := t.dir()
+		if err != nil {
+			return ""
+		}
+		if abs, err := filepath.Abs(d); err != nil || abs != filepath.Dir(dir) {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(dir, "asuka.toml")); err == nil {
+			return t.prefix + filepath.Base(dir)
 		}
 	}
 	return ""
@@ -208,7 +275,7 @@ func (l *loader) loadDir(path, id, dir string) (*unit, error) {
 			files[p] = src
 		}
 	}
-	entries, err := os.ReadDir(dir)
+	entries, err := l.opts.disk.readDir(dir)
 	if err != nil && len(files) == 0 {
 		return nil, err
 	}
@@ -220,7 +287,7 @@ func (l *loader) loadDir(path, id, dir string) (*unit, error) {
 		if _, ok := files[p]; ok {
 			continue
 		}
-		src, err := os.ReadFile(p)
+		src, err := l.opts.disk.readFile(p)
 		if err != nil {
 			return nil, err
 		}
@@ -401,7 +468,7 @@ func (l *loader) compile(root *unit) *Result {
 		}
 		u.pkg = c.CheckPackageIn(u.path, name, u.dir, u.files, imports)
 		u.pkg.Dir = u.dir
-		u.pkg.NativeClass = nativeClass(u)
+		u.pkg.NativeClass = nativeClass(u, l.opts.disk)
 		u.state = 2
 		return true
 	}
@@ -562,11 +629,11 @@ func appAccent(dir string) (uint64, uint8, error) {
 // nativeClass is what a package's platforms' code registers its native
 // interfaces under, as internal/nativegen names it: asuka.toml's name,
 // else its directory's.
-func nativeClass(u *unit) string {
+func nativeClass(u *unit, disk *diskCache) string {
 	if strings.HasPrefix(u.dir, "pkg:") {
 		return u.path
 	}
-	if b, err := os.ReadFile(filepath.Join(u.dir, "asuka.toml")); err == nil {
+	if b, err := disk.readFile(filepath.Join(u.dir, "asuka.toml")); err == nil {
 		var m struct {
 			Name string `json:"name"`
 		}

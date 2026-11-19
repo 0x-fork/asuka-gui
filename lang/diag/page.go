@@ -84,8 +84,8 @@ func Page(c *Code, lang string) string {
 		b.WriteString(w.compileError)
 	}
 	fmt.Fprintf(&b, "\n\n## %s\n\n%s\n\n## %s\n\n%s\n", w.why, prose(t.Why), w.fix, prose(t.Fix))
-	if c.Wrong != "" {
-		fmt.Fprintf(&b, "\n## %s\n\n%s\n\n## %s\n\n%s\n", w.wrong, example(c.Wrong), w.right, example(c.Right))
+	if wrong := c.WrongSource(); wrong != "" {
+		fmt.Fprintf(&b, "\n## %s\n\n%s\n\n## %s\n\n%s\n", w.wrong, example(wrong), w.right, example(c.Right))
 	}
 	return b.String()
 }

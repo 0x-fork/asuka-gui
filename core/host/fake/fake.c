@@ -564,6 +564,7 @@ static void apply_op(ak_fake *f, const ak_op *op) {
 		ak_fake_view *v = ak_alloc(sizeof *v);
 		v->id = op->id;
 		v->kind = op->kind;
+		if (v->kind == AK_KIND_LIST) f->nlists++;
 		slots_put(f, v);
 		return;
 	}
@@ -578,6 +579,9 @@ static void apply_op(ak_fake *f, const ak_op *op) {
 			fail(f, "Destroy: root %u went with its error overlay showing (DevErrorClear first)", v->id);
 			f->dev_error_on = 0;
 		}
+		if (v->kind == AK_KIND_LIST) f->nlists--;
+		if (v->presented) f->npresented--;
+		if (v->id == f->root_id) f->root_id = 0;
 		slots_delete(f, v->id);
 		free_view(v);
 		return;
@@ -653,6 +657,7 @@ static void apply_op(ak_fake *f, const ak_op *op) {
 				// Its root's size and insets: the root's, as a host's layer over it.
 				ak_fake_post_event(f, &(ak_event){.id = v->id, .kind = AK_EVENT_ENVIRONMENT, .env = f->env});
 			}
+			if (!v->presented) f->npresented++;
 			v->presented = true;
 			v->present_seq = ++f->present_seq;
 			break;
@@ -686,6 +691,7 @@ static void apply_op(ak_fake *f, const ak_op *op) {
 		for (uint32_t i = 0; i < f->slots_cap; i++)
 			if (f->slots[i]) f->slots[i]->root = false;
 		r->root = true;
+		f->root_id = r->id;
 		return;
 	}
 	}
@@ -807,17 +813,24 @@ bool ak_fake_go(ak_fake *f, ak_fake_view *win, int32_t n) {
 	return true;
 }
 
+ak_fake_work ak_fake_totals;
+
 void ak_fake_apply(ak_fake *f, const uint8_t *buf, size_t len) {
 	f->applies++;
+	ak_fake_totals.applies++;
+	ak_fake_totals.bytes += len;
 	ak_batch_reader br;
 	ak_batch_reader_init(&br, buf, len);
 	ak_op op;
 	while (ak_batch_next(&br, &op)) {
 		// The batch's bytes die with it.
-		ak_fake_record r = {op, f->arena.len};
-		ak_buf_put(&f->arena, op.value.s.p, op.value.s.len);
-		r.op.value.s.p = NULL;
-		ak_vec_push(&f->ops, r);
+		if (!f->unlogged) {
+			ak_fake_record r = {op, f->arena.len};
+			ak_buf_put(&f->arena, op.value.s.p, op.value.s.len);
+			r.op.value.s.p = NULL;
+			ak_vec_push(&f->ops, r);
+		}
+		ak_fake_totals.ops++;
 		apply_op(f, &op);
 	}
 	if (br.err != AK_OK) fail(f, "a bad batch: %s", ak_err_string(br.err));
@@ -918,6 +931,7 @@ static void rich_size(const ak_fake_view *v, float width, float avail_w, float *
 
 void ak_fake_measure(ak_fake *f, ak_id id, float width, float height, float avail_w, float avail_h, float *out_w, float *out_h) {
 	f->measures++;
+	ak_fake_totals.measures++;
 	*out_w = *out_h = 0;
 	ak_fake_view *v = view(f, id, "Measure");
 	if (!v) return;
@@ -1006,9 +1020,8 @@ void ak_fake_measure(ak_fake *f, ak_id id, float width, float height, float avai
 // Finding views.
 
 ak_fake_view *ak_fake_root(const ak_fake *f) {
-	for (uint32_t i = 0; i < f->slots_cap; i++)
-		if (f->slots[i] && f->slots[i]->root) return f->slots[i];
-	return NULL;
+	ak_fake_view *v = f->root_id ? ak_fake_view_of(f, f->root_id) : NULL;
+	return v && v->root ? v : NULL;
 }
 
 static ak_id root_id(const ak_fake *f) {
@@ -1077,6 +1090,7 @@ static int by_present(const void *a, const void *b) {
 // ak_fake_presented is what's presented, in the order it last was: what
 // came last is over the rest.
 void ak_fake_presented(const ak_fake *f, ak_fake_view_vec *out) {
+	if (f->npresented == 0) return;
 	uint32_t start = out->len;
 	collect(f, presented_pred, NULL, out);
 	if (out->len > start + 1) qsort(out->data + start, out->len - start, sizeof(ak_fake_view *), by_present);

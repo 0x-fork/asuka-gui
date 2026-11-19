@@ -32,7 +32,15 @@ type BenchResult struct {
 	MaxNsPerOp  float64 `json:"maxNsPerOp"`
 	AllocsPerOp float64 `json:"allocsPerOp"`
 	BytesPerOp  float64 `json:"bytesPerOp"`
-	Pos         string  `json:"pos,omitempty"`
+	// What crossed to the host per iteration, for a bench that drives an
+	// app (mount): batches applied, their ops and bytes, views measured;
+	// and the layout nodes the core computed.
+	AppliesPerOp   float64 `json:"appliesPerOp,omitempty"`
+	HostOpsPerOp   float64 `json:"hostOpsPerOp,omitempty"`
+	HostBytesPerOp float64 `json:"hostBytesPerOp,omitempty"`
+	MeasuresPerOp  float64 `json:"measuresPerOp,omitempty"`
+	LayoutsPerOp   float64 `json:"layoutsPerOp,omitempty"`
+	Pos            string  `json:"pos,omitempty"`
 	// Baseline is the same bench's in the run compared with (--compare),
 	// and Change how its time per iteration changed, in percent; Noise:
 	// the two runs' ranges overlap, so the change may be noise.
@@ -248,13 +256,17 @@ func (b *BenchResult) compare(base BenchResult) {
 
 // Line is b as asuka test prints it: its name (padded to width), its
 // time per iteration and how far its samples spread, its allocations and
-// bytes per iteration, its iterations; and against its baseline.
+// bytes per iteration, its iterations; what crossed to the host, for a
+// bench that drives an app; and against its baseline.
 func (b BenchResult) Line(width int) string {
 	spread := 0.0
 	if b.NsPerOp > 0 {
 		spread = max(b.MaxNsPerOp-b.NsPerOp, b.NsPerOp-b.MinNsPerOp) / b.NsPerOp * 100
 	}
 	s := fmt.Sprintf("bench %-*s %12s/op %-5s %8s allocs/op %10s/op  (%d × %s)", width, b.Name, Nanos(b.NsPerOp), fmt.Sprintf("±%.0f%%", spread), trimFloat(b.AllocsPerOp), Bytes(b.BytesPerOp), b.Samples, group(b.N))
+	if b.AppliesPerOp > 0 || b.MeasuresPerOp > 0 || b.LayoutsPerOp > 0 {
+		s += fmt.Sprintf("  host: %s batches, %s ops, %s, %s measures; %s nodes laid out", trimFloat(b.AppliesPerOp), trimFloat(b.HostOpsPerOp), Bytes(b.HostBytesPerOp), trimFloat(b.MeasuresPerOp), trimFloat(b.LayoutsPerOp))
+	}
 	if b.Baseline != nil && b.Change != nil {
 		verdict := fmt.Sprintf("%+.1f%%", *b.Change)
 		if b.Noise {

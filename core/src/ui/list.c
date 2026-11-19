@@ -66,6 +66,12 @@ typedef struct list_t {
 	int64_t next;      // the last ID made
 	AK_VEC(lcell *) cells;  // bound, in the order they were
 	AK_VEC(int64_t) order;  // the items' IDs, in order (scratch)
+	// What the last ListUpdate said: the IDs, and the sections' starts
+	// and IDs (sections: whether it had them). One that would say the
+	// same isn't sent (a change inside items, a filter that keeps them):
+	// a host diffing 10,000 IDs for nothing costs it as much as the core.
+	AK_VEC(int64_t) sent_ids, sent_secs;
+	bool sent, sent_sections;
 	int64_t end_at;    // the length the end was last reached at
 	ak_val start_key;  // the first item the start was last reached at
 	bool started;
@@ -330,8 +336,33 @@ static bool make_sections(list_t *st, uint32_t n) {
 	return true;
 }
 
-// update sends the new item IDs (the host diffs them) and updates the
-// rows that are bound.
+// same_as_sent reports whether the IDs in st->order and the sections are
+// what the last ListUpdate said; if not, they're kept as what's sent now.
+static bool same_as_sent(list_t *st, bool sections) {
+	uint32_t n = st->order.len, ns = sections ? st->sections.len * 2 : 0;
+	bool same = st->sent && st->sent_sections == sections && st->sent_ids.len == n && st->sent_secs.len == ns &&
+		(n == 0 || memcmp(st->sent_ids.data, st->order.data, n * sizeof(int64_t)) == 0);
+	for (uint32_t i = 0; same && i < ns / 2; i++)
+		same = st->sent_secs.data[2 * i] == st->sections.data[i].start && st->sent_secs.data[2 * i + 1] == st->sections.data[i].id;
+	if (same) return true;
+	st->sent = true;
+	st->sent_sections = sections;
+	st->sent_ids.len = 0;
+	ak_vec_reserve(&st->sent_ids, n);
+	if (n) memcpy(st->sent_ids.data, st->order.data, n * sizeof(int64_t));
+	st->sent_ids.len = n;
+	st->sent_secs.len = 0;
+	ak_vec_reserve(&st->sent_secs, ns);
+	for (uint32_t i = 0; i < ns / 2; i++) {
+		st->sent_secs.data[2 * i] = st->sections.data[i].start;
+		st->sent_secs.data[2 * i + 1] = st->sections.data[i].id;
+	}
+	st->sent_secs.len = ns;
+	return false;
+}
+
+// update sends the new item IDs (the host diffs them), unless they're
+// what it was sent last, and updates the rows that are bound.
 static void update(list_t *st, ak_arr *list) {
 	ak_view *e = st->e;
 	uint32_t n = list ? list->len : 0;
@@ -383,17 +414,19 @@ static void update(list_t *st, ak_arr *list) {
 		st->list = list;  // section(i) may read it
 	}
 	bool sections = make_sections(st, n);
-	ak_buf *b = ak_batch_command_begin(e->r->batch, e->id, AK_CMD_LIST_UPDATE);
-	ak_buf_u32(b, n);
-	for (uint32_t i = 0; i < n; i++) ak_buf_u64(b, (uint64_t)st->order.data[i]);
-	if (sections) {
-		ak_buf_u32(b, st->sections.len);
-		for (uint32_t i = 0; i < st->sections.len; i++) {
-			ak_buf_u32(b, st->sections.data[i].start);
-			ak_buf_u64(b, (uint64_t)st->sections.data[i].id);
+	if (!same_as_sent(st, sections)) {
+		ak_buf *b = ak_batch_command_begin(e->r->batch, e->id, AK_CMD_LIST_UPDATE);
+		ak_buf_u32(b, n);
+		for (uint32_t i = 0; i < n; i++) ak_buf_u64(b, (uint64_t)st->order.data[i]);
+		if (sections) {
+			ak_buf_u32(b, st->sections.len);
+			for (uint32_t i = 0; i < st->sections.len; i++) {
+				ak_buf_u32(b, st->sections.data[i].start);
+				ak_buf_u64(b, (uint64_t)st->sections.data[i].id);
+			}
 		}
+		ak_batch_command_end(e->r->batch);
 	}
-	ak_batch_command_end(e->r->batch);
 	free_ids(st->ids, st->ids_cap, st->key_kind);
 	lid *t = st->ids;
 	uint32_t c = st->ids_cap;
@@ -483,6 +516,9 @@ static void items_drop(void *ctx) {
 	while (st->cells.len) unbind_cell(st, st->cells.len - 1);
 	ak_vec_free(&st->cells);
 	ak_vec_free(&st->order);
+	ak_vec_free(&st->sent_ids);
+	ak_vec_free(&st->sent_secs);
+	st->sent = false;
 	free_ids(st->ids, st->ids_cap, st->key_kind);
 	ak_free(st->ids);
 	ak_free(st->next_ids);
