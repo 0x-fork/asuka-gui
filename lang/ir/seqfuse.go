@@ -136,12 +136,18 @@ func (b *fb) fuseSeq(e *syntax.CallExpr, call *check.Call, dst int) (int, bool) 
 	if !ok || len(steps) == 0 && !takesClosure {
 		return 0, false
 	}
+	if st, isSeq := b.rawType(call.Recv).(*check.Seq); m.Builtin == "seq.sum" && (!isSeq || b.typ(st.Elem) != check.Int && b.typ(st.Elem) != check.Float) {
+		return 0, false // a sized integer's sum, checked at its type: the runtime's
+	}
 	var held []heldBlock
 	// The source, the steps' arguments, then the consumer's: in the
 	// order the chain evaluates them.
 	var lo, hi, arr int
 	incl, isRange := false, false
 	if r, ok := unparen(src.Recv).(*syntax.BinaryExpr); ok && (r.Op == syntax.RANGE || r.Op == syntax.RANGELT) {
+		if b.typeOf(r.X) != check.Int || b.typeOf(r.Y) != check.Int {
+			return 0, false // a sized integer's range: the runtime's
+		}
 		isRange, incl = true, r.Op == syntax.RANGE
 		lo = b.temp(bc.KInt)
 		b.value(r.X, lo)
