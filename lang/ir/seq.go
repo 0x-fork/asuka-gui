@@ -66,6 +66,11 @@ func (b *fb) seqExtra(m *check.Method, res check.Type, vals []int) []int {
 // type's compare method as a closure, or none when the key is ordered
 // as it is (a number, a string, an enum's case).
 func (b *fb) keyCompare(call *check.Call) int {
+	if b.typ(call.Bound["U"]) == check.U64 {
+		cl := b.temp(bc.KRef)
+		b.emit(op("CLOS"), cl, b.l.u64Compare(), 0, 0)
+		return cl
+	}
 	if n, ok := b.typ(call.Bound["U"]).(*check.Named); ok {
 		if f := check.CompareMethod(n); f != nil {
 			cl := b.temp(bc.KRef)
@@ -130,4 +135,32 @@ func orderedElem(t check.Type) check.Type {
 		return x.Elem
 	}
 	return nil
+}
+
+// u64Compare is a function comparing two u64s as a type's compare method
+// does (negative, zero or positive), unsigned: what orders them where
+// the runtime orders by an ak_kind, which says int (a key's, a Seq's).
+func (l *Lowerer) u64Compare() int {
+	const key = "u64.compare"
+	if i, ok := l.funcs[key]; ok {
+		return i
+	}
+	b := l.newFunc(key, "", 2, bc.KInt)
+	l.funcs[key] = b.idx
+	b.f.Kinds = []bc.Kind{bc.KInt, bc.KInt}
+	lt, out := b.newReg(bc.KBool), b.newReg(bc.KInt)
+	notLess, notMore := b.f.NewLabel(), b.f.NewLabel()
+	b.emit(op("LTU"), lt, 0, 1)
+	b.emitJump(op("JF"), lt, notLess)
+	b.loadInt(out, -1)
+	b.emit(op("RET"), out)
+	b.f.Place(notLess)
+	b.emit(op("LTU"), lt, 1, 0)
+	b.emitJump(op("JF"), lt, notMore)
+	b.emit(op("KSMALL"), out, 1)
+	b.emit(op("RET"), out)
+	b.f.Place(notMore)
+	b.emit(op("KSMALL"), out, 0)
+	b.emit(op("RET"), out)
+	return b.idx
 }

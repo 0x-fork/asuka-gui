@@ -83,6 +83,7 @@ func TestScanTokens(t *testing.T) {
 		{"& | ^ ~ << &= |= ^= <<=", "& | ^ ~ << &= |= ^= <<="},
 		{"a >> b >>= c", "ident:a > > ident:b > >= ident:c"},
 		{"&+ &- &* &+= &-= &*= a&-b a & -b", "&+ &- &* &+= &-= &*= ident:a &- ident:b ident:a & - ident:b"},
+		{"** **= * *= a**b", "** **= * *= ident:a ** ident:b"},
 		{"a &\nb", "ident:a & ident:b"},
 		{"a..<b a..b", "ident:a ..< ident:b ident:a .. ident:b"},
 		{"import ./ui.{A, B}", "import . / ident:ui .{ ident:A , ident:B }"},

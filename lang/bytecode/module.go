@@ -10,7 +10,7 @@ import (
 // Magic starts every module; Version changes with the format.
 const (
 	Magic   = "AKBC"
-	Version = 7
+	Version = 8
 )
 
 // Kind is how a value is stored (core/src/rt/rt.h's ak_kind).
@@ -24,7 +24,14 @@ const (
 	KRef
 )
 
+// KU64Text is TOSTR's kind for a u64, which it writes unsigned: never a
+// register's kind (a u64 is a KInt).
+const KU64Text Kind = 5
+
 func (k Kind) String() string {
+	if k > KRef {
+		return "kind" + fmt.Sprint(int(k))
+	}
 	return [...]string{"void", "int", "float", "bool", "ref"}[k]
 }
 

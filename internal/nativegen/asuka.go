@@ -349,6 +349,8 @@ func (l *aloader) typ(t syntax.Type, param bool) (*Type, error) {
 		switch n {
 		case "int":
 			return &Type{Kind: Int, Go: "int"}, nil
+		case "i8", "i16", "i32", "u8", "u16", "u32", "u64":
+			return nil, l.errorf(t, "%s doesn't cross to the platforms: a native declaration's integers are ints", n)
 		case "float":
 			return &Type{Kind: Float64, Go: "float64"}, nil
 		case "bool":

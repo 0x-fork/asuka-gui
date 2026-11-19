@@ -297,6 +297,70 @@ static int shortest(double v, char *d, int *n) {
 	return k;
 }
 
+ak_str *ak_str_from_uint(uint64_t v) {
+	char buf[24];
+	int n = snprintf(buf, sizeof buf, "%llu", (unsigned long long)v);
+	return ak_str_new(buf, (size_t)n);
+}
+
+// ---- Integers' text ----
+
+const char *const ak_int_names[8] = {"i8", "i16", "i32", "int", "u8", "u16", "u32", "u64"};
+
+static int digit_of(char c) {
+	if (c >= '0' && c <= '9') return c - '0';
+	if (c >= 'a' && c <= 'z') return c - 'a' + 10;
+	if (c >= 'A' && c <= 'Z') return c - 'A' + 10;
+	return 99;
+}
+
+bool ak_int_parse(const char *text, size_t n, int radix, int t, int64_t *out) {
+	size_t i = 0;
+	bool neg = false;
+	if (i < n && (text[i] == '+' || text[i] == '-')) neg = text[i++] == '-';
+	if (i == n || radix < 2 || radix > 36) return false;
+	uint64_t v = 0;
+	for (; i < n; i++) {
+		int d = digit_of(text[i]);
+		if (d >= radix) return false;
+		if (__builtin_mul_overflow(v, (uint64_t)radix, &v) || __builtin_add_overflow(v, (uint64_t)d, &v)) return false;
+	}
+	if (t == AK_U64) {
+		if (neg && v) return false;
+		*out = (int64_t)v;
+		return true;
+	}
+	// Up to 2^63 (the smallest int's magnitude), then the type's range.
+	if (v > (uint64_t)INT64_MAX + (neg ? 1 : 0)) return false;
+	int64_t s = neg ? (int64_t)(0 - v) : (int64_t)v;
+	if (!ak_int_fits(s, AK_I64, t)) return false;
+	*out = s;
+	return true;
+}
+
+int ak_int_text(char *buf, int64_t v, int t, int radix) {
+	static const char digits[] = "0123456789abcdefghijklmnopqrstuvwxyz";
+	bool neg = t != AK_U64 && v < 0;
+	uint64_t u = neg ? 0 - (uint64_t)v : (uint64_t)v;
+	char tmp[66];
+	int i = (int)sizeof tmp;
+	do {
+		tmp[--i] = digits[u % (uint64_t)radix];
+		u /= (uint64_t)radix;
+	} while (u);
+	if (neg) tmp[--i] = '-';
+	int n = (int)sizeof tmp - i;
+	memcpy(buf, tmp + i, (size_t)n);
+	return n;
+}
+
+void ak_int_throw_fit(int64_t v, int from, int to) {
+	char buf[66];
+	int n = ak_int_text(buf, v, from, 10);
+	const char *name = ak_int_names[to & 7];
+	ak_throw_msg("integer overflow: %.*s doesn't fit in %s %s", n, buf, name[0] == 'i' ? "an" : "a", name);
+}
+
 // fmt_float writes the shortest form of v that reads back as v, as
 // JavaScript prints numbers (ECMAScript's Number::toString): the fewest
 // significant digits that round-trip, then plain digits for magnitudes
@@ -1051,6 +1115,12 @@ void ak_strb_int(ak_strb *b, int64_t v) {
 	char buf[24];
 	char *p = int_digits(v, buf + sizeof buf);
 	ak_strb_cstr(b, p, (size_t)(buf + sizeof buf - p));
+}
+
+void ak_strb_uint(ak_strb *b, uint64_t v) {
+	char buf[24];
+	int n = snprintf(buf, sizeof buf, "%llu", (unsigned long long)v);
+	ak_strb_cstr(b, buf, (size_t)n);
 }
 
 void ak_strb_float(ak_strb *b, double v) {

@@ -221,6 +221,8 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 			t := c.expr(args[0], numOnly(Unopt(want)))
 			if !IsNumeric(t) && !IsInvalid(t) {
 				c.errorf(args[0], diag.TypeMismatch, "abs takes a number, not %s", aType(t))
+			} else if IsInteger(t) && !IsSigned(t) {
+				c.errorf(args[0], diag.TypeMismatch, "abs takes a signed number: %s has no negatives", aType(t))
 			}
 			call.Result = t
 		} else {
@@ -231,21 +233,42 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		call.Args = args
 		if len(args) == 1 {
 			t := c.expr(args[0], nil)
-			if t != Int && t != Float && !IsInvalid(t) {
-				c.errorf(args[0], diag.TypeMismatch, "float(…) takes an int, not %s", aType(t))
+			if !IsNumeric(t) && !IsInvalid(t) {
+				c.errorf(args[0], diag.TypeMismatch, "float(…) takes a number, not %s", aType(t))
 			}
 		}
 		call.Result = Float
 	case BInt:
-		args := positional(1, "a float: int(x)")
+		c.intConversion(e, b, call, list)
+	case BBytesFrom:
+		args := positional(1, "an array of bytes: bytes([0x04, 0xa1]), bytes(xs) of a [u8]")
 		call.Args = args
+		call.Result = Bytes
 		if len(args) == 1 {
-			t := c.expr(args[0], nil)
-			if t != Int && t != Float && !IsInvalid(t) {
-				c.errorf(args[0], diag.TypeMismatch, "int(…) takes a float, not %s", aType(t))
+			// An array literal's elements say which: [b, 0xff] of a u8 b is
+			// a [u8]; [] and [0x04, 0xa1] are [int]s.
+			var w Type
+			if a, ok := unparen(args[0]).(*syntax.ArrayExpr); !ok || len(a.Elems) == 0 {
+				w = &Array{Int}
+			}
+			t := c.expr(args[0], w)
+			if a, ok := t.(*Array); !IsInvalid(t) && (!ok || a.Elem != Int && a.Elem != U8) {
+				c.errorf(args[0], diag.TypeMismatch, "bytes(…) takes an [int] or a [u8], not %s", aType(t))
 			}
 		}
-		call.Result = Int
+	case BIntParse:
+		// T.parse(text, radix: 10): the whole text as a T, or none.
+		t := c.universe.LookupType(b.name).Type
+		ps := []*Param{{Name: "text", Type: String}, {Name: "radix", Type: Int, Default: &syntax.BasicLit{Kind: syntax.INT, Value: "10"}}}
+		args := c.matchArgs(e, ps, typeString(t)+".parse")
+		if args[0] != nil {
+			c.assign(args[0], String, "the text "+typeString(t)+".parse reads")
+		}
+		if args[1] != nil {
+			c.assign(args[1], Int, "the radix")
+		}
+		call.Args, call.Params = args, ps
+		call.Result = MakeOptional(t)
 	case BJSONDecode:
 		ps := []*Param{{Name: "text", Type: String}}
 		args := c.matchArgs(e, ps, "json.decode")
@@ -428,6 +451,69 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 
 var zeroLit = &syntax.BasicLit{Kind: syntax.INT, Value: "0"}
 
+// intConversion checks a conversion to an integer type: int(x), u8(x),
+// and their forms with a label (Swift's initializers'):
+//
+//	u8(n)              n, an integer's or a float's value: an error
+//	                   ("integer overflow") when an integer's doesn't fit;
+//	                   a float toward zero, the nearest when it's past
+//	                   (0 for NaN), as int(x) is
+//	u8(exactly: n)     a u8?: none when it doesn't fit (a float: when it
+//	                   isn't a whole number in the range either)
+//	u8(truncating: n)  an integer's low bits, as two's complement has
+//	                   them (u8(truncating: -1) is 255)
+//	u8(clamping: n)    the nearest u8: 0 below, 255 above
+//
+// The call's Conv says which, its Result the type.
+func (c *Checker) intConversion(e *syntax.CallExpr, b *Builtin, call *Call, list []*syntax.Arg) {
+	target := Type(Int)
+	if tn := c.universe.LookupType(b.name); tn != nil && IsInteger(tn.Type) {
+		target = tn.Type
+	}
+	name := typeString(target)
+	call.Result = target
+	if len(list) != 1 {
+		c.errorf(e, diag.ArgumentCount, "%s takes one number: %s(x), %s(exactly: x), %s(truncating: x) or %s(clamping: x)", name, name, name, name, name)
+		for _, a := range list {
+			c.expr(a.Value, nil)
+		}
+		return
+	}
+	a := list[0]
+	if a.Label != nil {
+		switch a.Label.Name {
+		case "exactly", "truncating", "clamping":
+			call.Conv = a.Label.Name
+		default:
+			c.errorf(a.Label, diag.ArgumentLabel, "%s(…) takes exactly:, truncating: or clamping:, not %s:", name, a.Label.Name)
+		}
+	}
+	call.Args = []syntax.Expr{a.Value}
+	var w Type
+	if call.Conv == "" {
+		w = target // u8(200): a literal is one, and one past its range an error
+	}
+	t := c.expr(a.Value, w)
+	switch {
+	case IsInvalid(t):
+		return
+	case t == Float:
+		if call.Conv == "truncating" {
+			c.errorf(a.Label, diag.ArgumentLabel, "a float has no bits to truncate: %s(x) goes toward zero, and to the nearest %s past its range", name, name)
+		}
+	case IsInteger(t):
+		if lit, ok := unparen(a.Value).(*syntax.BasicLit); ok && lit.Kind == syntax.INT && call.Conv == "" && Identical(t, target) {
+			break // u8(200): the literal is one
+		}
+	default:
+		c.errorf(a.Value, diag.TypeMismatch, "%s(…) takes a number, not %s", name, aType(t))
+		return
+	}
+	if call.Conv == "exactly" {
+		call.Result = MakeOptional(target)
+	}
+}
+
 func (c *Checker) sameNumbers(e *syntax.CallExpr, args []syntax.Expr, want Type) Type {
 	var xt, yt Type
 	switch {
@@ -441,8 +527,16 @@ func (c *Checker) sameNumbers(e *syntax.CallExpr, args []syntax.Expr, want Type)
 	if IsInvalid(xt) || IsInvalid(yt) {
 		return Invalid
 	}
+	if IsNumeric(xt) && IsNumeric(yt) && !Identical(xt, yt) {
+		name := "this"
+		if id, ok := e.Fun.(*syntax.Ident); ok {
+			name = id.Name + "(…)"
+		}
+		c.mixedNumbersAt(e, name, xt, yt)
+		return Invalid
+	}
 	if !IsNumeric(xt) || !Identical(xt, yt) {
-		c.errorf(e, diag.BadOperand, "this takes two ints or two floats, not %s and %s", aType(xt), aType(yt))
+		c.errorf(e, diag.BadOperand, "this takes two numbers of one type, not %s and %s", aType(xt), aType(yt))
 		return Invalid
 	}
 	return xt
@@ -816,7 +910,7 @@ func jsonable1(t Type, seen map[*TypeName]bool, param func(*TypeParam) bool) str
 		}
 	case *Basic:
 		switch x {
-		case Int, Float, Bool, String, Bytes, Duration, Color, Invalid:
+		case Int, Float, Bool, String, Bytes, Duration, Color, Invalid, I8, I16, I32, U8, U16, U32, U64:
 			// Invalid: a type that isn't one, which is said where it's
 			// written.
 			return ""

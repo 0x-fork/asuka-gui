@@ -32,6 +32,12 @@ var operandKinds = map[string][]bc.Kind{
 	"ACCV": {bc.KRef}, "ACCF": {bc.KRef, bc.KRef}, "ACCC": {bc.KRef, bc.KRef}, "AGET": {0, bc.KRef}, "ACCP": {bc.KRef, bc.KRef}, "AGETP": {0, bc.KRef},
 	"EFFECT": {bc.KRef}, "RENDER": {bc.KRef}, "CLEANUP": {bc.KRef}, "TASK": {bc.KRef, bc.KRef},
 	"AWAIT": {0, bc.KRef}, "NOT": {bc.KBool, bc.KBool},
+	"POWI": {bc.KInt, bc.KInt, bc.KInt}, "POWF": {bc.KFloat, bc.KFloat, bc.KFloat},
+	"ADDN": {bc.KInt, bc.KInt, bc.KInt}, "SUBN": {bc.KInt, bc.KInt, bc.KInt}, "MULN": {bc.KInt, bc.KInt, bc.KInt},
+	"DIVN": {bc.KInt, bc.KInt, bc.KInt}, "MODN": {bc.KInt, bc.KInt, bc.KInt}, "NEGN": {bc.KInt, bc.KInt},
+	"POWN": {bc.KInt, bc.KInt, bc.KInt}, "SHLN": {bc.KInt, bc.KInt, bc.KInt}, "SHRN": {bc.KInt, bc.KInt, bc.KInt},
+	"LTU": {bc.KBool, bc.KInt, bc.KInt}, "LEU": {bc.KBool, bc.KInt, bc.KInt}, "WRAP": {bc.KInt, bc.KInt},
+	"CONVN": {bc.KInt, bc.KInt}, "CLAMPN": {bc.KInt, bc.KInt}, "F2N": {bc.KInt, bc.KFloat}, "U2F": {bc.KFloat, bc.KInt},
 }
 
 // discards are the opcodes whose result register may be none (bc.None):

@@ -211,6 +211,7 @@ const (
 	WADD  // &+: an int's sum, wrapping
 	WSUB  // &-: an int's difference, wrapping
 	WMUL  // &*: an int's product, wrapping
+	POW   // **: a power
 
 	ASSIGN          // =
 	ADD_ASSIGN      // +=
@@ -226,6 +227,7 @@ const (
 	WADD_ASSIGN     // &+=
 	WSUB_ASSIGN     // &-=
 	WMUL_ASSIGN     // &*=
+	POW_ASSIGN      // **=
 	COALESCE_ASSIGN // ??=
 
 	EQL // ==
@@ -352,6 +354,7 @@ var tokens = [...]string{
 	WADD:  "&+",
 	WSUB:  "&-",
 	WMUL:  "&*",
+	POW:   "**",
 
 	ASSIGN:          "=",
 	ADD_ASSIGN:      "+=",
@@ -367,6 +370,7 @@ var tokens = [...]string{
 	WADD_ASSIGN:     "&+=",
 	WSUB_ASSIGN:     "&-=",
 	WMUL_ASSIGN:     "&*=",
+	POW_ASSIGN:      "**=",
 	COALESCE_ASSIGN: "??=",
 
 	EQL: "==",
@@ -510,6 +514,8 @@ func (t Token) AssignOp() Token {
 		return WSUB
 	case WMUL_ASSIGN:
 		return WMUL
+	case POW_ASSIGN:
+		return POW
 	}
 	return ILLEGAL
 }
@@ -542,10 +548,13 @@ func Lookup(ident string) Token {
 }
 
 // Precedence is a binary operator's precedence, from 1 (loosest: ??) to
-// 8 (<< >>); 0 for a token that isn't a binary operator. The unary and
-// postfix operators bind tighter than any of them. As Swift's: the
-// shifts bind tighter than multiplication, & and &* as tightly as *, |,
-// ^, &+ and &- as tightly as +.
+// 10 (**); 0 for a token that isn't a binary operator. The prefix
+// operators bind tighter than any of them but **, and the postfix ones
+// tighter than **. As Swift's: the shifts bind tighter than
+// multiplication, & and &* as tightly as *, |, ^, &+ and &- as tightly
+// as +. ** binds tighter still, to its right (2 ** 3 ** 2 is 2 ** 9), and
+// tighter than a - before it, as in Python and in mathematics: -2 ** 2
+// is -(2 ** 2).
 func (t Token) Precedence() int {
 	switch t {
 	case COALESCE:
@@ -564,9 +573,19 @@ func (t Token) Precedence() int {
 		return 7
 	case SHL, SHR:
 		return 8
+	case POW:
+		return PrecPow
 	}
 	return 0
 }
+
+// PrecPow is **'s precedence; PrecUnary, between it and <<'s, is a
+// prefix operator's (-x, !x, ~x): -2 ** 2 is -(2 ** 2), and 2 ** -1 takes
+// a prefix operator on its right.
+const (
+	PrecUnary = 9
+	PrecPow   = 10
+)
 
 // An Error is a diagnostic: where, and what's wrong.
 type Error struct {

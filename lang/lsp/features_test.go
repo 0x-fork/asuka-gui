@@ -167,6 +167,41 @@ fn f(a: Vec, n: int) -> int {
 	}
 }
 
+// A sized integer's operators, methods and type show their docs and
+// signatures as int's do.
+func TestSizedIntHover(t *testing.T) {
+	root := t.TempDir()
+	c := newClient(t, root)
+	text := `fn f(level: u8, id: u64) -> u8? {
+  let p = level ** 2
+  let w = level &+ 1
+  let s = id.toString(radix: 16)
+  return level.addingChecked(w)
+}
+`
+	uri := c.openText(filepath.Join(root, "a.asuka"), text)
+	c.waitDiags(uri, noDiags)
+	for _, tc := range []struct{ at, want string }{
+		{"level |** 2", "A power"},
+		{"level &|+ 1", "wrapping"},
+		{"level.adding|Checked", "u8?"},
+		{"id.to|String", "radix"},
+		{"let |p = level", "u8"},
+	} {
+		if got := hoverAt(t, c, uri, text, tc.at); !strings.Contains(got, tc.want) {
+			t.Errorf("hover at %s: %q lacks %q", tc.at, got, tc.want)
+		}
+	}
+	version := 1
+	edited := "fn f(level: u8) -> u8 = level.\n"
+	got := labels(complete(t, c, uri, &version, edited, "fn f(level: u8) -> u8 = level.|"))
+	for _, w := range []string{"addingChecked", "toString", "padded", "float"} {
+		if !contains(got, w) {
+			t.Errorf("no %q in %v", w, got)
+		}
+	}
+}
+
 // An int's checked arithmetic completes on it.
 func TestCheckedCompletion(t *testing.T) {
 	root := t.TempDir()

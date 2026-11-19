@@ -62,13 +62,13 @@ extern fn fails() throws // ERROR "an extern fn doesn't throw"
 fn helper(r: Row) {}
 
 fn uses() -> int {
-  let n: Int32 = 1 // ERROR "Int32 is a C type: it's written in extern declarations, and Asuka sees it as an int"
+  let n: Int32 = 1 // ERROR "Int32 is a C type: it's written in extern declarations, and Asuka sees it as an i32"
   let d = Db() // ERROR "Db is an extern type: C makes one"
   if let db = db_open("x.db") {
     let p = Point(x: 1, y: 2.5)
     let ok = db == db
-    db_each(db, (s, i) => s.count() + i)
-    return db_exec(db, "select 1") + p.x
+    db_each(db, (s, i) => i32(s.count() + i))
+    return int(db_exec(db, "select 1") + p.x)
   }
   return 0
 }
