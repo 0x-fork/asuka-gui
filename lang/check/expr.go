@@ -1162,6 +1162,22 @@ func (c *Checker) member(e *syntax.MemberExpr, want Type) Type {
 	return c.valueMember(e, xt, name)
 }
 
+// genericStatic reports whether name is a generic type's constant or
+// static fn (its own or an extension's), which Box.name reaches without
+// the type's arguments: a constant is one for all of them, and a static
+// fn's call infers them.
+func (c *Checker) genericStatic(tn *TypeName, name string) bool {
+	if tn.Consts[name] != nil || tn.Statics[name] != nil {
+		return true
+	}
+	for _, kind := range []string{"const", "static"} {
+		if hit, _ := c.extLookup(tn.Type, name, kind, nil); hit.f != nil || hit.g != nil {
+			return true
+		}
+	}
+	return false
+}
+
 // staticMember is Type.name: a case or a constant.
 func (c *Checker) staticMember(e syntax.Expr, tn *TypeName, name string, want Type) Type {
 	c.resolveType(tn)
@@ -1170,7 +1186,7 @@ func (c *Checker) staticMember(e syntax.Expr, tn *TypeName, name string, want Ty
 		// Enum<T>.case: the type's arguments come from what's expected.
 		if n, ok := Unopt(want).(*Named); ok && n.Obj == tn {
 			t = n
-		} else {
+		} else if !c.genericStatic(tn, name) {
 			c.errorf(e, diag.CannotInferType, "%s is generic: write the type where it's expected (let x: %s<…> = .%s)", tn.name, tn.name, name)
 			return Invalid
 		}
@@ -1205,6 +1221,10 @@ func (c *Checker) staticMember(e syntax.Expr, tn *TypeName, name string, want Ty
 			c.info.Uses[m.Name] = f
 		}
 		c.funcSig(f)
+		if len(f.TypeParams) > 0 {
+			c.errorf(e, diag.CannotInferType, "%s.%s is generic: call it, or wrap the call in a closure where its types are known", tn.name, name)
+			return Invalid
+		}
 		c.noteCall(f, e)
 		return f.Sig.Type()
 	}

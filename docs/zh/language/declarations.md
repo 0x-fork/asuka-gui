@@ -84,6 +84,23 @@ let page = Page(items: [1, 2, 3])     // 一个 Page<int>
 let empty = Page<string>(items: [])   // 没有别的信息可推断时，直接写出来
 ```
 
+泛型结构体的 `static fn` 先接受结构体的类型参数，再接受它自己的：可以从参数推断（`Stack.of([1, 2])`），可以从期望的类型推断（`let s: Stack<string> = .empty()`），也可以写在函数名后面（`Stack.empty<int>()`，结构体的类型参数在前）。泛型结构体的 `let` 是所有类型共用的一个常量，所以它的类型不能提到类型参数：需要提到的常量（比如一个空的 `Stack<T>`）就写成 `static fn`。
+
+```asuka check
+struct Stack<T> {
+  items: [T] = []
+  let limit = 1000
+
+  static fn of(items: [T]) -> Stack<T> = Stack(items: items)
+  static fn empty() -> Stack<T> = Stack()
+}
+
+let numbers = Stack.of([1, 2, 3])       // 一个 Stack<int>
+let names: Stack<string> = .empty()     // 从期望的类型推断
+let flags = Stack.empty<bool>()         // 直接写出
+let most = Stack.limit
+```
+
 在 `match` 和 `if let` 里，结构体模式按字段名匹配结构体的字段：单写一个 `y` 会绑定字段 `y`，`y: py` 把它绑定为 `py`，`x: 0` 匹配一个值，没有写出的字段匹配任何值。模式可以嵌套：
 
 ```asuka

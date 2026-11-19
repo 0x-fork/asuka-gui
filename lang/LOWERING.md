@@ -354,7 +354,10 @@ first, as a `return` runs a function's.
 - A function is a FuncDef; its parameters are its first registers.
   Methods take `self` first. A `static fn` of a struct or an enum is a
   function of the package's (check.Function.Static its type), called as
-  any (`Money.of(…)`, `.of(…)` where the type is expected): no `self`. A closure captures a value as it is when
+  any (`Money.of(…)`, `.of(…)` where the type is expected): no `self`.
+  A generic type's (or a generic extension's) takes the type's
+  parameters before its own (check.Function.TypeParams), so it's
+  compiled per call's type arguments as a generic function is. A closure captures a value as it is when
   the closure is made; a `var` it captures that anything changes (the
   closure, or the code around it) is a box (VBOX, VGET, VSET), so they
   share one variable. A `spawn` copies a box's value instead (VGET as

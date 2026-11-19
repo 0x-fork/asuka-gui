@@ -84,6 +84,23 @@ let page = Page(items: [1, 2, 3])     // Page<int>
 let empty = Page<string>(items: [])   // ほかに手がかりがないときは書き出す
 ```
 
+ジェネリックな構造体の `static fn` は、構造体の型パラメーター、続いて自分の型パラメーターを取ります。引数から推論されるか（`Stack.of([1, 2])`）、求められている型から推論されるか（`let s: Stack<string> = .empty()`）、名前のあとに書きます（`Stack.empty<int>()`。構造体のものが先）。ジェネリックな構造体の `let` は、どの型で作っても共通の 1 つの定数なので、その型に型パラメーターは使えません。使う必要がある定数（空の `Stack<T>` など）は `static fn` にします。
+
+```asuka check
+struct Stack<T> {
+  items: [T] = []
+  let limit = 1000
+
+  static fn of(items: [T]) -> Stack<T> = Stack(items: items)
+  static fn empty() -> Stack<T> = Stack()
+}
+
+let numbers = Stack.of([1, 2, 3])       // Stack<int>
+let names: Stack<string> = .empty()     // 求められている型から
+let flags = Stack.empty<bool>()         // 書き出す
+let most = Stack.limit
+```
+
 `match` と `if let` では、構造体パターンで構造体のフィールドを名前でマッチさせられます。`y` とだけ書くとフィールド `y` を束縛し、`y: py` なら `py` という名前で束縛し、`x: 0` は値にマッチします。書かなかったフィールドは何にでもマッチします。パターンは入れ子にできます。
 
 ```asuka

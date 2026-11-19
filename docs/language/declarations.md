@@ -104,6 +104,28 @@ let page = Page(items: [1, 2, 3])     // a Page<int>
 let empty = Page<string>(items: [])   // written out, where nothing else says it
 ```
 
+A generic struct's `static fn` takes the struct's type parameters, then
+its own: they're inferred from its arguments (`Stack.of([1, 2])`), or
+from what's expected (`let s: Stack<string> = .empty()`), or written
+after its name (`Stack.empty<int>()`, the struct's first). Its `let` is
+one constant for every type it's made with, so its type can't name
+them: a constant that would (an empty `Stack<T>`) is a `static fn`.
+
+```asuka check
+struct Stack<T> {
+  items: [T] = []
+  let limit = 1000
+
+  static fn of(items: [T]) -> Stack<T> = Stack(items: items)
+  static fn empty() -> Stack<T> = Stack()
+}
+
+let numbers = Stack.of([1, 2, 3])       // a Stack<int>
+let names: Stack<string> = .empty()     // from what's expected
+let flags = Stack.empty<bool>()         // written out
+let most = Stack.limit
+```
+
 A struct pattern matches a struct's fields by their names, in `match`
 and `if let`: `y` alone binds the field `y`, `y: py` binds it as `py`,
 `x: 0` matches a value, and the fields it leaves out match anything.
