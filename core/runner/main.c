@@ -89,7 +89,8 @@ void ak_jstr(ak_strb *b, const char *s, size_t n) {
 }
 
 void ak_jline(ak_strb *b) {
-	fwrite(b->b.data, 1, b->b.len, stdout);
+	ak_buf *bb = ak_strb_buf(b);
+	fwrite(bb->data, 1, bb->len, stdout);
 	fputc('\n', stdout);
 	fflush(stdout);
 	ak_buf_free(&b->b);

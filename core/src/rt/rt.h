@@ -212,6 +212,9 @@ static inline void ak_strb_wrote(ak_strb *b, size_t k) {
 	else b->n += (uint32_t)k;
 }
 static inline size_t ak_strb_len(const ak_strb *b) { return b->b.data ? b->b.len : b->n; }
+// ak_strb_buf: what b holds, all of it in b->b (moved there from small),
+// for code that reads or takes the buffer itself; b goes on taking more.
+ak_buf *ak_strb_buf(ak_strb *b);
 ak_str *ak_strb_finish(ak_strb *b);  // frees the builder's buffer
 void ak_strb_free(ak_strb *b);       // drops what it holds
 

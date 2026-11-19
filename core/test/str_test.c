@@ -203,11 +203,13 @@ TEST(characters_counted_and_found) {
 // them, and read them right.
 TEST(constants_know_their_bytes) {
 	ak_str *a = S("constant"), *u = S("cönstant");
-	ak_make_immortal(a);
-	ak_make_immortal(u);
+	ak_frozen made = {0};
+	ak_freeze((ak_val){.p = a}, AK_K_REF, &made);
+	ak_freeze((ak_val){.p = u}, AK_K_REF, &made);
 	CHECK(a->h.flags & AK_STR_KNOWN && a->h.flags & AK_STR_ASCII);
 	CHECK(u->h.flags & AK_STR_KNOWN && !(u->h.flags & AK_STR_ASCII));
 	CHECK_EQ_INT(ak_str_count(u), 8);
+	ak_frozen_free(&made);
 }
 
 TEST(builder_grows_from_small) {

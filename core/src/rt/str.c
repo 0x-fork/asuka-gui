@@ -1023,6 +1023,17 @@ char *ak_strb_room(ak_strb *b, size_t n) {
 	return (char *)b->b.data + b->b.len;
 }
 
+ak_buf *ak_strb_buf(ak_strb *b) {
+	if (!b->b.data) {
+		// On the heap from now on, so what's added later is there too.
+		ak_buf_reserve(&b->b, b->n ? b->n : 1);
+		memcpy(b->b.data, b->small, b->n);
+		b->b.len = b->n;
+		b->n = 0;
+	}
+	return &b->b;
+}
+
 void ak_strb_cstr(ak_strb *b, const char *s, size_t n) {
 	if (!n) return;
 	memcpy(ak_strb_room(b, n), s, n);

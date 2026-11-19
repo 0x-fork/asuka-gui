@@ -556,9 +556,11 @@ static void report(prop *p, choices *c, uint64_t seed, int64_t index, uint32_t s
 	shown(p, &t, &in, true);
 	shown(p, &t, &sh, false);
 	ak_strb_cstr(&b, ",\"input\":", 9);
-	ak_jstr(&b, (const char *)in.b.data, in.b.len);
+	ak_buf *inb = ak_strb_buf(&in);
+	ak_jstr(&b, (const char *)inb->data, inb->len);
 	ak_strb_cstr(&b, ",\"shown\":", 9);
-	ak_jstr(&b, (const char *)sh.b.data, sh.b.len);
+	ak_buf *shb = ak_strb_buf(&sh);
+	ak_jstr(&b, (const char *)shb->data, shb->len);
 	ak_buf_free(&in.b);
 	ak_buf_free(&sh.b);
 	// Its run again, what it prints said: the failure's message is its.
@@ -700,7 +702,8 @@ static bool run_corpus(prop *p, const char *list) {
 						ak_show(&sh, args[i], p->descs[i], &p->types);
 					}
 					ak_strb_cstr(&b, ",\"shown\":", 9);
-					ak_jstr(&b, (const char *)sh.b.data, sh.b.len);
+					ak_buf *shb = ak_strb_buf(&sh);
+	ak_jstr(&b, (const char *)shb->data, shb->len);
 					ak_buf_free(&sh.b);
 					ak_strb_cstr(&b, "}", 1);
 					ak_jline(&b);
