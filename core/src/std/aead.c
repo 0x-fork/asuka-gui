@@ -53,7 +53,8 @@ static bool gcm(bool encrypt, const uint8_t *key, size_t kn, const uint8_t nonce
 
 // sealBytes(cipher, key, nonce, plaintext, additionalData): the ciphertext
 // and its tag; none for a key or a nonce of the wrong size (which the
-// Asuka side checks first).
+// Asuka side checks first). Past those checks, key and nonce aren't NULL:
+// their data is read whole (data() would show the compiler a 1-byte "").
 static ak_val seal(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	int64_t c = args[0].i;
@@ -64,17 +65,17 @@ static ak_val seal(ak_val *args, uint32_t n) {
 	uint8_t *tag = out->data + m;
 	switch (c) {
 	case XCHACHA:
-		crypto_aead_lock(out->data, tag, data(key), data(nonce), data(ad), len(ad), data(pt), m);
+		crypto_aead_lock(out->data, tag, key->data, nonce->data, data(ad), len(ad), data(pt), m);
 		break;
 	case CHACHA: {
 		crypto_aead_ctx x;
-		crypto_aead_init_ietf(&x, data(key), data(nonce));
+		crypto_aead_init_ietf(&x, key->data, nonce->data);
 		crypto_aead_write(&x, out->data, tag, data(ad), len(ad), data(pt), m);
 		crypto_wipe(&x, sizeof x);
 		break;
 	}
 	default:
-		gcm(true, data(key), len(key), data(nonce), data(ad), len(ad), data(pt), out->data, m, tag);
+		gcm(true, key->data, len(key), nonce->data, data(ad), len(ad), data(pt), out->data, m, tag);
 	}
 	return (ak_val){.p = out};
 }
@@ -94,17 +95,17 @@ static ak_val open_fn(ak_val *args, uint32_t n) {
 	bool ok;
 	switch (c) {
 	case XCHACHA:
-		ok = crypto_aead_unlock(out->data, tag, data(key), data(nonce), data(ad), len(ad), data(ct), m) == 0;
+		ok = crypto_aead_unlock(out->data, tag, key->data, nonce->data, data(ad), len(ad), data(ct), m) == 0;
 		break;
 	case CHACHA: {
 		crypto_aead_ctx x;
-		crypto_aead_init_ietf(&x, data(key), data(nonce));
+		crypto_aead_init_ietf(&x, key->data, nonce->data);
 		ok = crypto_aead_read(&x, out->data, tag, data(ad), len(ad), data(ct), m) == 0;
 		crypto_wipe(&x, sizeof x);
 		break;
 	}
 	default:
-		ok = gcm(false, data(key), len(key), data(nonce), data(ad), len(ad), data(ct), out->data, m, tag);
+		ok = gcm(false, key->data, len(key), nonce->data, data(ad), len(ad), data(ct), out->data, m, tag);
 	}
 	if (!ok) {
 		ak_release(out);

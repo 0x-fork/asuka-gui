@@ -204,7 +204,7 @@ void ak_arr_push(ak_arr **a, ak_val v);              // takes v's reference
 void ak_arr_insert(ak_arr **a, int64_t i, ak_val v); // takes v's reference
 ak_val ak_arr_remove_at(ak_arr **a, int64_t i);      // returns the reference
 void ak_arr_set(ak_arr **a, int64_t i, ak_val v);    // takes v's reference
-static inline ak_val *ak_arr_base(const ak_arr *a) { return a->data - a->front; }  // what's allocated
+static inline ak_val *ak_arr_base(const ak_arr *a) { return a->data ? a->data - a->front : NULL; }  // what's allocated
 bool ak_arr_check(const ak_arr *a, int64_t i);       // in range
 ak_arr *ak_arr_slice(ak_arr *a, int64_t from, int64_t to);
 ak_arr *ak_arr_concat(ak_arr *a, ak_arr *b);
