@@ -1874,7 +1874,9 @@ packages.
 | `never()` | CALLB `async.never` (a future nothing resolves; cancelling its task rejects it), AWAIT |
 | `all(a, b, …)`, `race(…)` | the calls as tasks (TASK), CALLB `async.all`/`async.race` over an array of them, AWAIT |
 | `spawn { … }` | CALLB `async.spawn(closure, kind)`, a Task |
-| `print(s)` | CALLB `print` |
+| `print(x)` | CALLB `print` of x's text (a line) |
+| `print(a, b, separator:, terminator:)`, `eprint(…)` | one INTERP of the values' texts and the separators: CALLB `print` (print's default terminator: a line), else CALLB `print.text(fd, text)` with the terminator (eprint's fd 2), which a test's FakeOS captures (lang/ir/print.go) |
+| `hashOf(x)` | CALLB `hash(x, kind)`: ak_val_hash, a map's keys' |
 ## Sets
 
 A set is the runtime's insertion-ordered map with void values, flagged
