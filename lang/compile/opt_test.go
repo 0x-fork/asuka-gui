@@ -236,3 +236,80 @@ test "t" { var l = L.a; l.flip(); expect(l == .b) }
 		t.Errorf("the receiver's write is gone:\n%v", f.Code)
 	}
 }
+
+// Seq pipelines and arrays' closure methods lowered as loops (lang/ir's
+// seqfuse.go) do what the runtime's calls do: each testdata/fuse/*.asuka
+// program, compiled with and without the loops (both optimized), writes
+// the same output and the same errors with the same traces, and exits
+// the same way, on the VM and compiled to C.
+func TestFusedLoopsKeepBehavior(t *testing.T) {
+	files, _ := filepath.Glob("testdata/fuse/*.asuka")
+	if len(files) == 0 {
+		t.Fatal("no programs")
+	}
+	runner := testRunner(t)
+	for _, path := range files {
+		path := path
+		t.Run(strings.TrimSuffix(filepath.Base(path), ".asuka"), func(t *testing.T) {
+			t.Parallel()
+			src, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			compile := func(nofuse bool) *Result {
+				res := Files(map[string][]byte{path: src}, &Options{NoFuse: nofuse})
+				if err := res.Err(); err != nil {
+					t.Fatalf("compile:\n%v", err)
+				}
+				if err := res.IR.Validate(); err != nil {
+					t.Fatalf("invalid IR (fused: %v): %v", !nofuse, err)
+				}
+				return res
+			}
+			fused, plain := compile(false), compile(true)
+			if same(fused.Module, plain.Module) {
+				t.Fatal("nothing was fused")
+			}
+			for _, backend := range []string{"VM", "C"} {
+				run := func(m *bc.Module) MainRun {
+					var r MainRun
+					var err error
+					if backend == "VM" {
+						r, err = RunMain(runner, m, MainOptions{})
+					} else {
+						r, err = RunMainC(m, true, MainOptions{})
+					}
+					if err != nil {
+						t.Fatalf("%s: %v\n%s%s", backend, err, r.Stdout, r.Stderr)
+					}
+					return r
+				}
+				got, want := run(fused.Module), run(plain.Module)
+				if got != want {
+					t.Errorf("%s: fused:\n%s\n%s(exit %d)\nnot fused:\n%s\n%s(exit %d)", backend, got.Stdout, got.Stderr, got.Code, want.Stdout, want.Stderr, want.Code)
+				}
+				if testing.Verbose() {
+					t.Logf("%s:\n%s%s(exit %d)", backend, got.Stdout, got.Stderr, got.Code)
+				}
+			}
+		})
+	}
+}
+
+// A small function's tuple of scalars, inlined and only read by its
+// fields, isn't made (scalar replacement); a closure made before a loop
+// and called in it is inlined there, and isn't made either.
+func TestScalarsAndLoopClosures(t *testing.T) {
+	src, err := os.ReadFile("testdata/opt/scalars.asuka")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := optimized(t, string(src), "total")
+	if n := ops(f); n["NEWS"] != 0 || n["CALL"] != 0 {
+		t.Errorf("find's tuple made or find called (%d NEWS, %d CALL)", n["NEWS"], n["CALL"])
+	}
+	f = optimized(t, string(src), "scaled")
+	if n := ops(f); n["CALLC"] != 0 || n["CLOS"] != 0 {
+		t.Errorf("the closure is made or called (%d CLOS, %d CALLC)", n["CLOS"], n["CALLC"])
+	}
+}

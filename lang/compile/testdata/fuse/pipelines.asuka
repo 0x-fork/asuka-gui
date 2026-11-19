@@ -1,0 +1,55 @@
+// Seq pipelines read by a consumer, lowered as loops: each element
+// through every step before the next, a take that has its count stops
+// before the source is read again, the consumers' results, and what the
+// closures did (counted), as the runtime's chains.
+
+struct P {
+  name: string
+  age: int
+}
+
+fn main() {
+  var mapped = 0
+  var tested = 0
+  let a = (1..1000000)
+    .lazy()
+    .map(x => { mapped += 1; return x * x })
+    .filter(x => { tested += 1; return x % 3 == 0 })
+    .take(3)
+    .toArray()
+  print("{a} {mapped} {tested}")
+  print((0..<10).lazy().map(x => x * 3).filter(x => x % 2 == 0).map(x => x + 1).reduce(0, (s, x) => s + x))
+  print((0..10).lazy().filter(x => x % 4 == 0).sum())
+  print((5..<5).lazy().map(x => x).count())
+  print((3..2).lazy().map(x => x).toArray())
+  print((9223372036854775805..9223372036854775807).lazy().map(x => x - 9223372036854775800).toArray())
+  var seen = 0
+  print((1..100).lazy().onEach(x => { seen += 1 }).find(where: x => x * x > 50))
+  print(seen)
+  print((0..<100).lazy().map(x => x * 2).any(where: x => x > 10))
+  print((0..<100).lazy().map(x => x).all(where: x => x < 5))
+  print((0..<4).lazy().map(x => x).all(where: x => x < 5))
+  var n = 0
+  let first = [1, 2, 3, 4, 5].lazy().map(x => { n += 1; return x }).skip(3).first()
+  print("{first} {n}")
+  print([10, 20, 30].lazy().filter(x => x > 100).first())
+  print([1, 2, 3, 4, 5, 1, 2].lazy().takeWhile(x => x < 4).toArray())
+  print([1, 2, 3, 4, 5, 1, 2].lazy().skipWhile(x => x < 4).toArray())
+  print(["1", "x", "3"].lazy().compactMap(s => s.toInt()).sum())
+  print(["a", "bb", "ccc"].lazy().map(s => s.upper()).filter(s => s.count() > 1).toArray())
+  let people = [P(name: "al", age: 30), P(name: "bo", age: 17), P(name: "cy", age: 45)]
+  print(people.lazy().filter(p => p.age >= 18).map(p => p.name).toArray())
+  print(people.lazy().compactMap(p => if p.age > 20 { p } else { none }).map(p => p.age).sum())
+  print(people.lazy().map(p => p.age).count(where: a => a > 20))
+  let k = 7
+  print([1.5, 2.5].lazy().map(x => x * 2.0).sum())
+  print((1..5).lazy().map(x => x * k).take(2).toArray())
+  print((1..5).lazy().take(0).map(x => x * k).toArray())
+  print((1..5).lazy().skip(-1).take(-3).toArray())
+  var order: [string] = []
+  let r = (1..3).lazy().onEach(x => order.push("a{x}")).map(x => x * 10).onEach(x => order.push("b{x}")).reduce("", (s, x) => s + "{x};")
+  print("{r} {order}")
+  var xs = [1, 2, 3]
+  let total = xs.lazy().map(x => x * 2).reduce(0, (s, x) => { xs.push(x); return s + x })
+  print("{total} {xs}")
+}

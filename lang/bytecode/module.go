@@ -98,6 +98,13 @@ const (
 	// (not retained) from the caller's argument register, and the frame
 	// moves it back there as it ends, returned or thrown (RFC 0011).
 	FMut
+	// FSized: its code has values of a sized integer type (i8 ... u64)
+	// or arrays of them, its own or a function's inlined in it: an array
+	// it reads an int from may be packed (an [u8]'s elements a byte
+	// each). Without it, every int element it reads or writes is an
+	// 8-byte value (lang/cgen asks no array how it stores them). The VM
+	// doesn't read it.
+	FSized
 )
 
 // FuncDef is a function: its code and what the VM needs to run it.

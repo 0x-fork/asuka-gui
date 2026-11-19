@@ -481,13 +481,39 @@ func sortedMaps(xs []int) string {
 }
 
 func seqs(n int) string {
+	// The lazy pipeline: Go has no lazy map and filter (iter.Seq's
+	// adapters are user code); this is the loop it would be.
 	a := 0
 	for x := 0; x < n; x++ {
 		if y := x * 3; y%2 == 0 {
 			a += y + 1
 		}
 	}
-	return fmt.Sprintf("%d %d", a, a)
+	// The same through arrays, a step at a time, as Asuka's
+	// toArray().map().filter().map().reduce() is.
+	xs := make([]int, n)
+	for i := range xs {
+		xs[i] = i
+	}
+	ys := make([]int, len(xs))
+	for i, x := range xs {
+		ys[i] = x * 3
+	}
+	var zs []int
+	for _, y := range ys {
+		if y%2 == 0 {
+			zs = append(zs, y)
+		}
+	}
+	ws := make([]int, len(zs))
+	for i, z := range zs {
+		ws[i] = z + 1
+	}
+	b := 0
+	for _, w := range ws {
+		b += w
+	}
+	return fmt.Sprintf("%d %d", a, b)
 }
 
 // serve answers GET /hello with text and /json with JSON, as
