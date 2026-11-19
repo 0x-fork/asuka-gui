@@ -472,8 +472,9 @@ static ak_val utf16_decode_with(ak_val *args, bool strict) {
 	if (!b || b->len == 0) return (ak_val){.p = ak_str_empty()};
 	bool big = args[1].i != 0;
 	size_t start = 0;
-	if (b->len >= 2 && ((b->data[0] == 0xfe && b->data[1] == 0xff) || (b->data[0] == 0xff && b->data[1] == 0xfe))) {
-		big = b->data[0] == 0xfe;
+	unsigned bom = b->len >= 2 ? (unsigned)b->data[0] << 8 | b->data[1] : 0;
+	if (bom == 0xfeff || bom == 0xfffe) {
+		big = bom == 0xfeff;
 		start = 2;
 	}
 	size_t out = 0;
