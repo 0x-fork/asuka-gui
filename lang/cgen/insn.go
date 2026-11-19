@@ -19,6 +19,7 @@ func (g *gen) insn(f *bc.FuncDef, in insn, h string) error {
 	case g.moveOp(name, in):
 	case g.intOp(name, in, h):
 	case g.intConstOp(name, in, h):
+	case g.sizedOp(name, in, h):
 	case g.floatOp(name, in):
 	case g.valueOp(name, in):
 	case g.jumpOp(name, in):
@@ -151,6 +152,43 @@ func (g *gen) intConstOp(name string, in insn, h string) bool {
 	return true
 }
 
+// sizedOp writes the sized integers' operations (i8 … u64; t, their
+// last immediate, a type's code): checked as the int's are, on values
+// (vm/ops.h's ak_addn...).
+func (g *gen) sizedOp(name string, in insn, h string) bool {
+	a := in.args
+	switch name {
+	case "ADDN", "SUBN", "MULN":
+		fn := map[string]string{"ADDN": "ak_addn", "SUBN": "ak_subn", "MULN": "ak_muln"}[name]
+		g.w("if (AK_UNLIKELY(!%s(&%s, %s, %s, %d))) %s", fn, g.ri(a[0]), g.ri(a[1]), g.ri(a[2]), a[3], g.fail(in, h))
+	case "DIVN", "MODN":
+		g.w("if (AK_UNLIKELY(!ak_divn(&%s, %s, %s, %d, %v))) %s", g.ri(a[0]), g.ri(a[1]), g.ri(a[2]), a[3], name == "MODN", g.fail(in, h))
+	case "NEGN":
+		g.w("if (AK_UNLIKELY(!ak_negn(&%s, %s, %d))) %s", g.ri(a[0]), g.ri(a[1]), a[2], g.fail(in, h))
+	case "POWI":
+		g.w("if (AK_UNLIKELY(!ak_pown(&%s, %s, %s, 0x33))) %s", g.ri(a[0]), g.ri(a[1]), g.ri(a[2]), g.fail(in, h))
+	case "POWN":
+		g.w("if (AK_UNLIKELY(!ak_pown(&%s, %s, %s, %d))) %s", g.ri(a[0]), g.ri(a[1]), g.ri(a[2]), a[3], g.fail(in, h))
+	case "SHLN", "SHRN":
+		g.w("if (AK_UNLIKELY(!ak_shiftn(&%s, %s, %s, %d, %v))) %s", g.ri(a[0]), g.ri(a[1]), g.ri(a[2]), a[3], name == "SHRN", g.fail(in, h))
+	case "LTU", "LEU":
+		g.w("%s = (uint64_t)%s %s (uint64_t)%s;", g.ri(a[0]), g.ri(a[1]), map[string]string{"LTU": "<", "LEU": "<="}[name], g.ri(a[2]))
+	case "WRAP":
+		g.w("%s = ak_int_wrap(%s, %d);", g.ri(a[0]), g.ri(a[1]), a[2])
+	case "CONVN":
+		g.w("if (AK_UNLIKELY(!ak_convn(&%s, %s, %d))) %s", g.ri(a[0]), g.ri(a[1]), a[2], g.fail(in, h))
+	case "CLAMPN":
+		g.w("%s = ak_int_clamp(%s, %d, %d);", g.ri(a[0]), g.ri(a[1]), a[2]>>4, a[2]&15)
+	case "F2N":
+		g.w("%s = ak_op_f2n(%s, %d);", g.ri(a[0]), g.rf(a[1]), a[2])
+	case "U2F":
+		g.w("%s = (double)(uint64_t)%s;", g.rf(a[0]), g.ri(a[1]))
+	default:
+		return false
+	}
+	return true
+}
+
 func (g *gen) floatOp(name string, in insn) bool {
 	a := in.args
 	bin := map[string]string{"ADDF": "+", "SUBF": "-", "MULF": "*", "DIVF": "/"}
@@ -160,6 +198,8 @@ func (g *gen) floatOp(name string, in insn) bool {
 		g.w("%s = %s %s %s;", g.rf(a[0]), g.rf(a[1]), bin[name], g.rf(a[2]))
 	case "MODF":
 		g.w("%s = fmod(%s, %s);", g.rf(a[0]), g.rf(a[1]), g.rf(a[2]))
+	case "POWF":
+		g.w("%s = pow(%s, %s);", g.rf(a[0]), g.rf(a[1]), g.rf(a[2]))
 	case "NEGF":
 		g.w("%s = -%s;", g.rf(a[0]), g.rf(a[1]))
 	case "EQF", "NEF", "LTF", "LEF":
@@ -521,19 +561,27 @@ func (g *gen) elemSlot(r int) string {
 }
 
 // loadElem is C reading element i_ of the array x_ into register r
-// (loadSlot's, for a packed element its byte).
+// (loadSlot's, for a packed element its byte). An int may be a sized
+// integer's packed at its width (an [u8]'s): its storage asked, the
+// values' read inline.
 func (g *gen) loadElem(r int) string {
-	if g.f.Kinds[r] == bc.KBool {
+	switch g.f.Kinds[r] {
+	case bc.KBool:
 		return fmt.Sprintf("%s = AK_BOOLS(x_)[i_];", g.ri(r))
+	case bc.KInt:
+		return fmt.Sprintf("if (AK_LIKELY(x_->elem == AK_E_VAL)) %s else %s = ak_arr_get_packed(x_, (uint32_t)i_).i;", g.loadSlot(r, g.elemSlot(r)), g.ri(r))
 	}
 	return g.loadSlot(r, g.elemSlot(r))
 }
 
 // storeElem is C putting register v in element i_ of the array x_
-// (storeSlot's, for a packed element its byte).
+// (storeSlot's, for a packed element its byte or width).
 func (g *gen) storeElem(v int) string {
-	if g.f.Kinds[v] == bc.KBool {
+	switch g.f.Kinds[v] {
+	case bc.KBool:
 		return fmt.Sprintf("AK_BOOLS(x_)[i_] = %s != 0;", g.ri(v))
+	case bc.KInt:
+		return fmt.Sprintf("if (AK_LIKELY(x_->elem == AK_E_VAL)) %s else ak_arr_put_packed(x_, (uint32_t)i_, %s);", g.storeSlot(g.elemSlot(v), v), g.r(v))
 	}
 	return g.storeSlot(g.elemSlot(v), v)
 }
@@ -551,10 +599,17 @@ func (g *gen) arrayOp(name string, in insn, h string) bool {
 		}
 		kinds := make([]bc.Kind, a[4])
 		for i := range kinds {
-			kinds[i] = bc.Kind(a[1])
+			kinds[i] = bc.Kind(a[1] & 0xf) // a[1]: AK_ARR_KIND's, the storage above
 		}
 		fill := g.fill("AK_VALS(a_)", a[3], kinds)
-		if bc.Kind(a[1]) == bc.KBool {
+		if a[1]>>4 != 0 {
+			// Packed at a sized integer's width.
+			var s strings.Builder
+			for i := range kinds {
+				fmt.Fprintf(&s, " ak_arr_put(a_, %d, %s);", i, g.r(a[3]+i))
+			}
+			fill = s.String()
+		} else if bc.Kind(a[1]) == bc.KBool {
 			var s strings.Builder
 			for i := range kinds {
 				fmt.Fprintf(&s, " AK_BOOLS(a_)[%d] = %s != 0;", i, g.ri(a[3]+i))

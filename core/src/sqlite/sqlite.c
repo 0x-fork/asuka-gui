@@ -926,6 +926,7 @@ static const ak_json_types *types(void) {
 static ak_kind kind_of(const char *d) {
 	switch (*d) {
 	case 'i':
+	case 'n':
 	case 'e':
 		return AK_K_INT;
 	case 'f':
@@ -979,6 +980,25 @@ static bool convert(const cell *c, const char *d, const ak_json_types *t, ak_val
 		}
 		}
 		break;
+	case 'n': {
+		// A sized integer type's (its code after the n): SQLite's 64-bit
+		// integer, a u64's bits as they were stored, in the type's range.
+		int it = d[1] - '0';
+		if (c->type == 0) return true;
+		if (c->type == 1 && (it == AK_U64 || ak_int_fits(c->i, AK_I64, it))) {
+			out->i = c->i;
+			return true;
+		}
+		if (c->type == 3) {
+			int64_t v;
+			if (ak_int_parse((const char *)c->p, c->n, 10, it, &v)) {
+				out->i = v;
+				return true;
+			}
+		}
+		snprintf(msg, msgn, "column %s isn't %s %s", col, ak_int_names[it & 7][0] == 'i' ? "an" : "a", ak_int_names[it & 7]);
+		return false;
+	}
 	case 'f':
 		switch (c->type) {
 		case 0: return true;
@@ -1049,7 +1069,7 @@ static bool convert(const cell *c, const char *d, const ak_json_types *t, ak_val
 	}
 	case '[':
 		if (c->type == 0) {
-			out->p = ak_arr_new(kind_of(d + 1), shape_of(d + 1, t), 0);
+			out->p = ak_arr_new(ak_desc_arr_kind(d + 1, kind_of(d + 1)), shape_of(d + 1, t), 0);
 			return true;
 		}
 		goto json;
@@ -1093,7 +1113,7 @@ static bool zero(const char *d, const ak_json_types *t, ak_val *out) {
 	switch (*d) {
 	case 's': out->p = ak_str_empty(); return true;
 	case 'y': out->p = ak_bytes_new(NULL, 0); return true;
-	case '[': out->p = ak_arr_new(kind_of(d + 1), shape_of(d + 1, t), 0); return true;
+	case '[': out->p = ak_arr_new(ak_desc_arr_kind(d + 1, kind_of(d + 1)), shape_of(d + 1, t), 0); return true;
 	case '{': out->p = ak_map_new(AK_K_REF, true, kind_of(d + 1), shape_of(d + 1, t)); return true;
 	case '<': out->p = ak_set_new(kind_of(d + 1), d[1] == 's'); return true;
 	case 'S':
@@ -1129,7 +1149,7 @@ static ak_val b_rows(ak_val *a, uint32_t n) {
 		return (ak_val){0};
 	}
 	ak_kind ek = kind_of(d);
-	ak_arr *out = ak_arr_new(ek, *d == 'S' || *d == 'E' ? shape_of(d, t) : NULL, nrows);
+	ak_arr *out = ak_arr_new(ak_desc_arr_kind(d, ek), *d == 'S' || *d == 'E' ? shape_of(d, t) : NULL, nrows);
 	if (*d == 's') out->h.flags = 1;
 	// Columns to fields, once.
 	int16_t fieldOf[2000];

@@ -41,6 +41,7 @@ static const char *desc_skip(const char *d) {
 static ak_kind kind_of(const char *d) {
 	switch (*d) {
 	case 'i':
+	case 'n':
 	case 'e':
 		return AK_K_INT;
 	case 'f':
@@ -252,7 +253,7 @@ static ak_val decode(ak_reader *r, const char *d, const ak_json_types *t) {
 		if (n > r->len - r->off) r->err = true;  // more items than bytes left
 		if (r->err) break;
 		ak_kind k = kind_of(d + 1);
-		ak_arr *a = ak_arr_new(k, NULL, n);
+		ak_arr *a = ak_arr_new(ak_desc_arr_kind(d + 1, k), NULL, n);
 		if (d[1] == 's') a->h.flags = 1;
 		for (uint32_t i = 0; i < n && !r->err && !ak_error_pending(); i++) ak_arr_put(a, a->len++, ak_native_decode(r, d + 1, t));
 		v.p = a;

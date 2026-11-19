@@ -104,6 +104,133 @@ static inline bool ak_op_negi(ak_val *R, uint16_t a, uint16_t b) { return ak_neg
 static inline bool ak_op_divi(ak_val *R, uint16_t a, uint16_t b, uint16_t c, bool mod) { return ak_divi(&R[a].i, R[b].i, R[c].i, mod); }
 static inline bool ak_op_shift(ak_val *R, uint16_t a, uint16_t b, uint16_t c, bool right) { return ak_shift(&R[a].i, R[b].i, R[c].i, right); }
 
+// ---- The sized integers (ADDN … U2F) on values: t is the type's code
+// (rt.h's ak_int_type; a u64's values its bits), *r written only when
+// it fits; false when it threw. ak_op_addn... are the same on a frame's
+// registers, the interpreter's. ----
+
+static inline bool ak_addn(int64_t *r, int64_t b, int64_t c, int t) {
+	int64_t v;
+	if (t == AK_U64) {
+		uint64_t u;
+		if (__builtin_expect(__builtin_add_overflow((uint64_t)b, (uint64_t)c, &u), 0)) return ak_op_overflow();
+		*r = (int64_t)u;
+		return true;
+	}
+	if (__builtin_expect(__builtin_add_overflow(b, c, &v) || ak_int_wrap(v, t) != v, 0)) return ak_op_overflow();
+	*r = v;
+	return true;
+}
+
+static inline bool ak_subn(int64_t *r, int64_t b, int64_t c, int t) {
+	int64_t v;
+	if (t == AK_U64) {
+		uint64_t u;
+		if (__builtin_expect(__builtin_sub_overflow((uint64_t)b, (uint64_t)c, &u), 0)) return ak_op_overflow();
+		*r = (int64_t)u;
+		return true;
+	}
+	if (__builtin_expect(__builtin_sub_overflow(b, c, &v) || ak_int_wrap(v, t) != v, 0)) return ak_op_overflow();
+	*r = v;
+	return true;
+}
+
+static inline bool ak_muln(int64_t *r, int64_t b, int64_t c, int t) {
+	int64_t v;
+	if (__builtin_expect(!ak_int_mul(b, c, t, &v), 0)) return ak_op_overflow();
+	*r = v;
+	return true;
+}
+
+// ak_divn is DIVN, or MODN when mod: unsigned division for an unsigned
+// type (a u64's past int's largest are negative int64s).
+static inline bool ak_divn(int64_t *r, int64_t x, int64_t y, int t, bool mod) {
+	if (__builtin_expect(y == 0, 0)) return ak_op_division();
+	if (!ak_int_signed(t)) {
+		uint64_t ux = (uint64_t)x, uy = (uint64_t)y;
+		*r = (int64_t)(mod ? ux % uy : ux / uy);
+	} else if (y == -1) {
+		if (mod) *r = 0;
+		else if (x == ak_int_min(t)) return ak_op_overflow();
+		else *r = -x;
+	} else {
+		*r = mod ? x % y : x / y;
+	}
+	return true;
+}
+
+static inline bool ak_negn(int64_t *r, int64_t b, int t) {
+	if (__builtin_expect(b == ak_int_min(t), 0)) return ak_op_overflow();
+	*r = -b;
+	return true;
+}
+
+// ak_op_count reads a shift's count or a power's exponent, c of type ct:
+// false (it threw) when it's negative; a u64's past int's largest is
+// past every width.
+static inline bool ak_op_count(int64_t c, int ct, uint64_t *n, const char *what) {
+	if (__builtin_expect(c < 0 && ct != AK_U64, 0)) {
+		ak_throw_msg("%s", what);
+		return false;
+	}
+	*n = (uint64_t)c;
+	return true;
+}
+
+// ak_pown is POWN, b of type t & 15, c of type t >> 4 (POWI's t is 0x33:
+// int ** int).
+static inline bool ak_pown(int64_t *r, int64_t b, int64_t c, int t) {
+	uint64_t e;
+	if (!ak_op_count(c, t >> 4, &e, "a negative exponent: an integer's negative power isn't an integer")) return false;
+	int64_t v;
+	if (__builtin_expect(!ak_int_pow(b, e, t & 15, &v), 0)) return ak_op_overflow();
+	*r = v;
+	return true;
+}
+
+// ak_shiftn is SHLN, or SHRN when right: a count of 64 or more shifts
+// every bit out; << drops the bits past the type's width, >> is
+// arithmetic for a signed type and logical for an unsigned one.
+static inline bool ak_shiftn(int64_t *r, int64_t x, int64_t c, int t, bool right) {
+	uint64_t n;
+	if (!ak_op_count(c, t >> 4, &n, "negative shift amount")) return false;
+	int vt = t & 15;
+	if (!right) *r = n >= 64 ? 0 : ak_int_wrap((int64_t)((uint64_t)x << n), vt);
+	else if (ak_int_signed(vt)) *r = n >= 64 ? (x < 0 ? -1 : 0) : x >> n;
+	else *r = n >= 64 ? 0 : (int64_t)((uint64_t)x >> n);
+	return true;
+}
+
+// ak_convn is CONVN: v, of type t >> 4, as type t & 15, which throws when
+// it doesn't fit.
+static inline bool ak_convn(int64_t *r, int64_t v, int t) {
+	if (__builtin_expect(!ak_int_fits(v, t >> 4, t & 15), 0)) {
+		ak_int_throw_fit(v, t >> 4, t & 15);
+		return false;
+	}
+	*r = v;
+	return true;
+}
+
+static inline bool ak_op_addn(ak_val *R, uint16_t a, uint16_t b, uint16_t c, int t) { return ak_addn(&R[a].i, R[b].i, R[c].i, t); }
+static inline bool ak_op_subn(ak_val *R, uint16_t a, uint16_t b, uint16_t c, int t) { return ak_subn(&R[a].i, R[b].i, R[c].i, t); }
+static inline bool ak_op_muln(ak_val *R, uint16_t a, uint16_t b, uint16_t c, int t) { return ak_muln(&R[a].i, R[b].i, R[c].i, t); }
+static inline bool ak_op_divn(ak_val *R, uint16_t a, uint16_t b, uint16_t c, int t, bool mod) { return ak_divn(&R[a].i, R[b].i, R[c].i, t, mod); }
+static inline bool ak_op_negn(ak_val *R, uint16_t a, uint16_t b, int t) { return ak_negn(&R[a].i, R[b].i, t); }
+static inline bool ak_op_pown(ak_val *R, uint16_t a, uint16_t b, uint16_t c, int t) { return ak_pown(&R[a].i, R[b].i, R[c].i, t); }
+static inline bool ak_op_shiftn(ak_val *R, uint16_t a, uint16_t b, uint16_t c, int t, bool right) { return ak_shiftn(&R[a].i, R[b].i, R[c].i, t, right); }
+static inline bool ak_op_convn(ak_val *R, uint16_t a, uint16_t b, int t) { return ak_convn(&R[a].i, R[b].i, t); }
+
+// ak_op_f2n is F2N: toward zero, the nearest value past type t's range,
+// 0 for NaN.
+static inline int64_t ak_op_f2n(double d, int t) {
+	if (d != d) return 0;
+	if (t == AK_U64) return d <= 0 ? 0 : d >= 18446744073709551616.0 ? -1 : (int64_t)(uint64_t)d;
+	int64_t v = d >= 9.2233720368547758e18 ? INT64_MAX : d <= -9.2233720368547758e18 ? INT64_MIN : (int64_t)d;
+	return ak_int_clamp(v, AK_I64, t);
+}
+
+
 static inline int64_t ak_op_f2i(double d) {
 	return d != d ? 0 : d >= 9.2233720368547758e18 ? INT64_MAX : d <= -9.2233720368547758e18 ? INT64_MIN : (int64_t)d;
 }
@@ -113,6 +240,7 @@ static inline ak_str *ak_op_tostr(ak_val v, uint16_t k) {
 	case AK_K_INT: return ak_str_from_int(v.i);
 	case AK_K_FLOAT: return ak_str_from_float(v.f);
 	case AK_K_BOOL: return ak_str_from_bool(v.i != 0);
+	case AK_K_U64TEXT: return ak_str_from_uint((uint64_t)v.i);
 	default: return ak_retain(v.p ? v.p : ak_str_empty());
 	}
 }
@@ -255,10 +383,10 @@ static inline void ak_op_getp(ak_val *R, uint16_t a, const ak_enum *e, uint16_t 
 }
 
 static inline ak_arr *ak_op_newa(ak_kind k, const ak_shape *s, const ak_val *items, uint16_t n) {
-	ak_arr *arr = ak_arr_new(k, s, n);
+	ak_arr *arr = ak_arr_new(k, s, n);  // k: AK_ARR_KIND's
 	for (uint16_t i = 0; i < n; i++) {
 		ak_arr_put(arr, i, items[i]);
-		ak_retain_val(items[i], k);
+		ak_retain_val(items[i], (ak_kind)(k & 0xf));
 	}
 	arr->len = n;
 	return arr;
@@ -282,10 +410,10 @@ __attribute__((cold, noinline, unused)) static bool ak_op_range(const ak_arr *ar
 static inline bool ak_op_idx(ak_val *R, uint16_t a, const ak_arr *arr, int64_t i) {
 	if (AK_UNLIKELY((uint64_t)i >= (uint64_t)arr->len)) return ak_op_range(arr, i);
 	if (AK_UNLIKELY(arr->elem != AK_E_VAL)) {
-		R[a] = ak_arr_get_packed(arr, (uint32_t)i);
+		R[a].i = arr->elem == AK_E_BOOL ? AK_BOOLS(arr)[i] : ak_arr_get_packed(arr, (uint32_t)i).i;
 		return true;
 	}
-	ak_val v = ((const ak_val *)arr->items)[i];
+	ak_val v = AK_VALS(arr)[i];
 	if (ak_arr_kind(arr) == AK_K_REF) ak_op_setref(R, a, ak_retain(v.p));
 	else R[a] = v;
 	return true;
@@ -301,8 +429,14 @@ static inline bool ak_op_setidx(ak_val *R, uint16_t a, int64_t i, ak_val v) {
 	ak_kind k = ak_arr_kind(arr);
 	ak_retain_val(v, k);
 	if (AK_LIKELY(ak_unique(arr))) {
-		if (k == AK_K_REF) ak_release(((ak_val *)arr->items)[i].p);
-		ak_arr_put(arr, (uint32_t)i, v);
+		if (AK_LIKELY(arr->elem == AK_E_VAL)) {
+			if (k == AK_K_REF) ak_release(AK_VALS(arr)[i].p);
+			AK_VALS(arr)[i] = v;
+		} else if (arr->elem == AK_E_BOOL) {
+			AK_BOOLS(arr)[i] = v.i != 0;
+		} else {
+			ak_arr_put_packed(arr, (uint32_t)i, v);
+		}
 	} else {
 		ak_arr_set(ap, i, v);
 	}
@@ -381,7 +515,7 @@ static inline bool ak_op_mulk(ak_val *R, uint16_t a, int64_t x, int64_t k) { ret
 // then GETF, with no reference to the element taken).
 static inline bool ak_op_idxf(ak_val *R, uint16_t a, const ak_arr *arr, int64_t i, uint16_t f) {
 	if (AK_UNLIKELY((uint64_t)i >= (uint64_t)arr->len)) return ak_op_range(arr, i);
-	ak_op_getf(R, a, ak_arr_vals(arr)[i].p, f);
+	ak_op_getf(R, a, AK_VALS(arr)[i].p, f);
 	return true;
 }
 
@@ -392,7 +526,7 @@ static inline bool ak_op_idxf(ak_val *R, uint16_t a, const ak_arr *arr, int64_t 
 static inline bool ak_setif(ak_arr **ap, int64_t i, uint16_t f, ak_val v) {
 	if (AK_UNLIKELY((uint64_t)i >= (uint64_t)(*ap)->len)) return ak_op_range(*ap, i);
 	ak_arr *arr = ak_arr_mut(ap);
-	ak_struct *o = ak_struct_mut((ak_struct **)&ak_arr_vals(arr)[i].p);
+	ak_struct *o = ak_struct_mut((ak_struct **)&AK_VALS(arr)[i].p);
 	if (o->shape->kinds[f] == AK_K_REF) {
 		void *old = o->f[f].p;
 		o->f[f].p = ak_retain(v.p);

@@ -616,6 +616,8 @@ const (
 	BNavigate    // navigate(href), navigate(X(…)): the Router's
 	BReplace     // replace(href): the Router's, replacing where it is
 	BPeek        // peek(e): e, read without following it (rfcs/0012)
+	BIntParse    // u8.parse(text, radix:): an integer type's from text (the Builtin's name is the type's)
+	BBytesFrom   // bytes(xs): an [int]'s (each modulo 256) or a [u8]'s bytes
 	BKeep        // keep(x): x, which the compiler can't leave uncomputed (testing.go)
 	BSnapshot    // expectSnapshot(x): x as its stored snapshot says (testing.go)
 	BInline      // expectInlineSnapshot(x, "…"): likewise, the snapshot in the call

@@ -381,12 +381,53 @@ next:
 	OP(SHR)
 		if (!ak_op_shift(R, a[0], a[1], a[2], true)) goto thrown;
 		NEXT();
+	OP(POWI)
+		if (!ak_op_pown(R, a[0], a[1], a[2], AK_I64 | AK_I64 << 4)) goto thrown;
+		NEXT();
+
+	OP(ADDN)
+		if (!ak_op_addn(R, a[0], a[1], a[2], a[3])) goto thrown;
+		NEXT();
+	OP(SUBN)
+		if (!ak_op_subn(R, a[0], a[1], a[2], a[3])) goto thrown;
+		NEXT();
+	OP(MULN)
+		if (!ak_op_muln(R, a[0], a[1], a[2], a[3])) goto thrown;
+		NEXT();
+	OP(DIVN)
+		if (!ak_op_divn(R, a[0], a[1], a[2], a[3], false)) goto thrown;
+		NEXT();
+	OP(MODN)
+		if (!ak_op_divn(R, a[0], a[1], a[2], a[3], true)) goto thrown;
+		NEXT();
+	OP(NEGN)
+		if (!ak_op_negn(R, a[0], a[1], a[2])) goto thrown;
+		NEXT();
+	OP(POWN)
+		if (!ak_op_pown(R, a[0], a[1], a[2], a[3])) goto thrown;
+		NEXT();
+	OP(SHLN)
+		if (!ak_op_shiftn(R, a[0], a[1], a[2], a[3], false)) goto thrown;
+		NEXT();
+	OP(SHRN)
+		if (!ak_op_shiftn(R, a[0], a[1], a[2], a[3], true)) goto thrown;
+		NEXT();
+	OP(LTU) R[a[0]].i = (uint64_t)R[a[1]].i < (uint64_t)R[a[2]].i; NEXT();
+	OP(LEU) R[a[0]].i = (uint64_t)R[a[1]].i <= (uint64_t)R[a[2]].i; NEXT();
+	OP(WRAP) R[a[0]].i = ak_int_wrap(R[a[1]].i, a[2]); NEXT();
+	OP(CONVN)
+		if (!ak_op_convn(R, a[0], a[1], a[2])) goto thrown;
+		NEXT();
+	OP(CLAMPN) R[a[0]].i = ak_int_clamp(R[a[1]].i, a[2] >> 4, a[2] & 15); NEXT();
+	OP(F2N) R[a[0]].i = ak_op_f2n(R[a[1]].f, a[2]); NEXT();
+	OP(U2F) R[a[0]].f = (double)(uint64_t)R[a[1]].i; NEXT();
 
 	OP(ADDF) R[a[0]].f = R[a[1]].f + R[a[2]].f; NEXT();
 	OP(SUBF) R[a[0]].f = R[a[1]].f - R[a[2]].f; NEXT();
 	OP(MULF) R[a[0]].f = R[a[1]].f * R[a[2]].f; NEXT();
 	OP(DIVF) R[a[0]].f = R[a[1]].f / R[a[2]].f; NEXT();
 	OP(MODF) R[a[0]].f = fmod(R[a[1]].f, R[a[2]].f); NEXT();
+	OP(POWF) R[a[0]].f = pow(R[a[1]].f, R[a[2]].f); NEXT();
 	OP(NEGF) R[a[0]].f = -R[a[1]].f; NEXT();
 	OP(EQF) R[a[0]].i = R[a[1]].f == R[a[2]].f; NEXT();
 	OP(NEF) R[a[0]].i = R[a[1]].f != R[a[2]].f; NEXT();

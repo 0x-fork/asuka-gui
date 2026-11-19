@@ -22,7 +22,9 @@ ak_val ak_arr_get_packed(const ak_arr *a, uint32_t i) { return ak_elem_get(ak_ar
 void ak_arr_put_packed(ak_arr *a, uint32_t i, ak_val v) { ak_elem_put(ak_arr_at(a, i), (ak_elem)a->elem, v); }
 
 ak_arr *ak_arr_new(ak_kind elem, const ak_shape *shape, uint32_t cap) {
-	return arr_make(elem, elem == AK_K_BOOL ? AK_E_BOOL : AK_E_VAL, shape, cap);
+	ak_kind k = (ak_kind)(elem & 0xf);
+	ak_elem e = (ak_elem)((unsigned)elem >> 4);
+	return arr_make(k, e ? e : k == AK_K_BOOL ? AK_E_BOOL : AK_E_VAL, shape, cap);
 }
 
 ak_arr *ak_arr_new_packed(ak_kind kind, ak_elem elem, uint32_t cap) { return arr_make(kind, elem, NULL, cap); }
@@ -183,7 +185,13 @@ ak_arr *ak_arr_concat(ak_arr *a, ak_arr *b) {
 	if (b->len > UINT32_MAX - a->len) ak_panic("out of memory (an array of %u + %u elements)", a->len, b->len);
 	ak_arr *c = ak_arr_like(a, a->len + b->len);
 	memcpy(c->items, a->items, bytes(a, a->len));
-	memcpy(ak_arr_at(c, a->len), b->items, bytes(b, b->len));
+	if (b->elem == a->elem) {
+		memcpy(ak_arr_at(c, a->len), b->items, bytes(b, b->len));
+	} else {
+		// Sized integers one made packed, the other as values (a map's
+		// keys, a set's elements): b's as a's are.
+		for (uint32_t i = 0; i < b->len; i++) ak_arr_put(c, a->len + i, ak_arr_get(b, i));
+	}
 	c->len = a->len + b->len;
 	retain_all(c);
 	return c;

@@ -1,8 +1,17 @@
-// Package std/encoding turns bytes into text and back: Base64
-// (RFC 4648) and hexadecimal.
+// Package std/encoding turns bytes into text and back, and numbers into
+// bytes and back: Base64, Base32 (RFC 4648) and hexadecimal; UTF-16;
+// fixed-width integers and floats in either byte order, and LEB128
+// varints, read at an offset or with a Reader, written with a Writer.
 //
 //   let token = encoding.base64URLEncode(crypto.randomBytes(32))
 //   let data = try encoding.base64Decode(text)
+//
+//   var w = encoding.Writer(endian: .big)
+//   w.u16(0xcafe)
+//   w.uvarint(300)
+//   var r = encoding.Reader(data: w.data(), endian: .big)
+//   let magic = try r.u16()      // 0xcafe
+//   let n = try r.uvarint()      // 300
 
 /// Base64 with the standard alphabet (+ and /), padded with =.
 pub native fn base64Encode(data: bytes) -> string
@@ -21,3 +30,355 @@ pub native fn hexEncode(data: bytes) -> string
 /// Reads hexadecimal in either case; an odd number of digits or
 /// anything else throws.
 pub native fn hexDecode(text: string) throws -> bytes
+
+/// A Base32 alphabet (RFC 4648): .standard is A–Z and 2–7, .hex the
+/// extended hex alphabet, 0–9 and A–V, which sorts as the bytes do.
+pub enum Base32 { standard, hex }
+
+/// Base32 in alphabet, upper case, padded with = to a multiple of 8
+/// unless padded is false.
+pub native fn base32Encode(data: bytes, alphabet: Base32 = .standard, padded: bool = true) -> string
+
+/// Reads Base32 in alphabet, in either case, padded or not; line breaks
+/// and spaces in it are skipped. Anything else throws, as does padding
+/// that doesn't fill the last group to 8 digits, or a last group of 1,
+/// 3 or 6 digits (it ends in the middle of a byte). The bits a last
+/// group has past its last byte aren't checked, as base64Decode doesn't.
+pub native fn base32Decode(text: string, alphabet: Base32 = .standard) throws -> bytes
+
+/// Which end of a number comes first in its bytes: .little the least
+/// significant byte (x86's, ARM's, most file formats'), .big the most
+/// (the network's).
+pub enum Endian { little, big }
+
+// The untyped builtins the typed functions below are written on (C, in
+// core/src/std/encoding.c). what names the caller in what they throw.
+native fn readUint(data: bytes, at: int, size: int, endian: Endian, what: string) throws -> u64
+native fn writeUint(value: u64, size: int, endian: Endian) -> bytes
+native fn take(data: bytes, at: int, count: int, what: string) throws -> bytes
+native fn need(data: bytes, at: int, count: int, what: string) throws
+native fn join(parts: [bytes]) -> bytes
+native fn varintRead(data: bytes, at: int, signed: bool, what: string) throws -> [u64]
+native fn varintWrite(value: u64, signed: bool) -> bytes
+
+fn getU8(data: bytes, at: int, what: string) throws -> u8 = u8(truncating: try readUint(data, at, 1, .little, what))
+fn getI8(data: bytes, at: int, what: string) throws -> i8 = i8(truncating: try readUint(data, at, 1, .little, what))
+fn getU16(data: bytes, at: int, endian: Endian, what: string) throws -> u16 = u16(truncating: try readUint(data, at, 2, endian, what))
+fn getI16(data: bytes, at: int, endian: Endian, what: string) throws -> i16 = i16(truncating: try readUint(data, at, 2, endian, what))
+fn getU32(data: bytes, at: int, endian: Endian, what: string) throws -> u32 = u32(truncating: try readUint(data, at, 4, endian, what))
+fn getI32(data: bytes, at: int, endian: Endian, what: string) throws -> i32 = i32(truncating: try readUint(data, at, 4, endian, what))
+fn getI64(data: bytes, at: int, endian: Endian, what: string) throws -> int = int(truncating: try readUint(data, at, 8, endian, what))
+fn getF32(data: bytes, at: int, endian: Endian, what: string) throws -> float = float32FromBits(try getU32(data, at, endian, what))
+fn getF64(data: bytes, at: int, endian: Endian, what: string) throws -> float = float64FromBits(try readUint(data, at, 8, endian, what))
+fn getUvarint(data: bytes, at: int, what: string) throws -> (u64, int) {
+  let r = try varintRead(data, at, false, what)
+  return (r[0], int(r[1]))
+}
+fn getVarint(data: bytes, at: int, what: string) throws -> (int, int) {
+  let r = try varintRead(data, at, true, what)
+  return (int(truncating: r[0]), int(r[1]))
+}
+
+/// The byte at at, as a u8. An offset past the data's end, or a
+/// negative one, throws, as it does for every read.
+pub fn readU8(data: bytes, at: int) throws -> u8 = try getU8(data, at, "readU8")
+
+/// The byte at at, as a signed i8 (two's complement: 0xff is -1).
+pub fn readI8(data: bytes, at: int) throws -> i8 = try getI8(data, at, "readI8")
+
+/// The 2 bytes at at, as a u16 in endian's order:
+/// readU16(bytes([1, 2]), at: 0, endian: .big) is 0x0102.
+pub fn readU16(data: bytes, at: int, endian: Endian) throws -> u16 = try getU16(data, at, endian, "readU16")
+
+/// The 2 bytes at at, as a signed i16 in endian's order.
+pub fn readI16(data: bytes, at: int, endian: Endian) throws -> i16 = try getI16(data, at, endian, "readI16")
+
+/// The 4 bytes at at, as a u32 in endian's order.
+pub fn readU32(data: bytes, at: int, endian: Endian) throws -> u32 = try getU32(data, at, endian, "readU32")
+
+/// The 4 bytes at at, as a signed i32 in endian's order.
+pub fn readI32(data: bytes, at: int, endian: Endian) throws -> i32 = try getI32(data, at, endian, "readI32")
+
+/// The 8 bytes at at, as a u64 in endian's order.
+pub fn readU64(data: bytes, at: int, endian: Endian) throws -> u64 = try readUint(data, at, 8, endian, "readU64")
+
+/// The 8 bytes at at, as a signed int (64 bits) in endian's order.
+pub fn readI64(data: bytes, at: int, endian: Endian) throws -> int = try getI64(data, at, endian, "readI64")
+
+/// The 4 bytes at at, as an IEEE 754 binary32 (a C float) in endian's
+/// order, widened to a float (exactly).
+pub fn readF32(data: bytes, at: int, endian: Endian) throws -> float = try getF32(data, at, endian, "readF32")
+
+/// The 8 bytes at at, as an IEEE 754 binary64 (a float) in endian's
+/// order.
+pub fn readF64(data: bytes, at: int, endian: Endian) throws -> float = try getF64(data, at, endian, "readF64")
+
+/// value's byte.
+pub fn writeU8(value: u8) -> bytes = writeUint(u64(value), 1, .little)
+
+/// value's byte, in two's complement: writeI8(-1) is 0xff.
+pub fn writeI8(value: i8) -> bytes = writeUint(u64(truncating: value), 1, .little)
+
+/// value's 2 bytes in endian's order:
+/// writeU16(0x0102, endian: .little) is bytes([2, 1]).
+pub fn writeU16(value: u16, endian: Endian) -> bytes = writeUint(u64(value), 2, endian)
+
+/// value's 2 bytes, in two's complement, in endian's order.
+pub fn writeI16(value: i16, endian: Endian) -> bytes = writeUint(u64(truncating: value), 2, endian)
+
+/// value's 4 bytes in endian's order.
+pub fn writeU32(value: u32, endian: Endian) -> bytes = writeUint(u64(value), 4, endian)
+
+/// value's 4 bytes, in two's complement, in endian's order.
+pub fn writeI32(value: i32, endian: Endian) -> bytes = writeUint(u64(truncating: value), 4, endian)
+
+/// value's 8 bytes in endian's order.
+pub fn writeU64(value: u64, endian: Endian) -> bytes = writeUint(value, 8, endian)
+
+/// value's 8 bytes, in two's complement, in endian's order.
+pub fn writeI64(value: int, endian: Endian) -> bytes = writeUint(u64(truncating: value), 8, endian)
+
+/// value as an IEEE 754 binary32 (a C float), its 4 bytes in endian's
+/// order: rounded to the nearest binary32 (ties to even), past its
+/// range an infinity.
+pub fn writeF32(value: float, endian: Endian) -> bytes = writeUint(u64(float32Bits(value)), 4, endian)
+
+/// value as an IEEE 754 binary64, its 8 bytes in endian's order.
+pub fn writeF64(value: float, endian: Endian) -> bytes = writeUint(float64Bits(value), 8, endian)
+
+/// value rounded to the nearest IEEE 754 binary32 (ties to even), as its
+/// bits: float32Bits(1.0) is 0x3f800000 (Go's math.Float32bits).
+pub native fn float32Bits(value: float) -> u32
+
+/// The IEEE 754 binary32 bits says, widened to a float (exactly).
+pub native fn float32FromBits(bits: u32) -> float
+
+/// value's IEEE 754 binary64 bits: float64Bits(1.0) is
+/// 0x3ff0000000000000.
+pub native fn float64Bits(value: float) -> u64
+
+/// The float bits says, as IEEE 754 binary64.
+pub native fn float64FromBits(bits: u64) -> float
+
+/// value as an unsigned LEB128 varint, as Go's encoding/binary and
+/// Protocol Buffers write them: 7 bits a byte, the least significant
+/// first, the top bit set on each but the last. 1 to 10 bytes: 300 is
+/// bytes([0xac, 0x02]).
+pub fn writeUvarint(value: u64) -> bytes = varintWrite(value, false)
+
+/// value as a signed varint: zigzag-encoded (0, -1, 1, -2 … as 0, 1, 2,
+/// 3 …, so a small negative is short), then as writeUvarint writes it.
+pub fn writeVarint(value: int) -> bytes = varintWrite(u64(truncating: value), true)
+
+/// The unsigned varint at at, and how many bytes it took. One the data
+/// ends inside of throws, as does one past 64 bits (more than 10 bytes,
+/// or a 10th byte over 1).
+pub fn readUvarint(data: bytes, at: int) throws -> (u64, int) = try getUvarint(data, at, "readUvarint")
+
+/// The signed (zigzag) varint at at, and how many bytes it took; it
+/// throws as readUvarint does.
+pub fn readVarint(data: bytes, at: int) throws -> (int, int) = try getVarint(data, at, "readVarint")
+
+/// A cursor over bytes: each read takes the next number and moves
+/// offset past it. A read that throws (the data ends first) leaves offset
+/// where it was.
+///
+///   var r = encoding.Reader(data: packet, endian: .big)
+///   let kind = try r.u8()
+///   let length = try r.u16()
+///   let body = try r.bytes(int(length))
+pub struct Reader {
+  /// The bytes it reads.
+  data: bytes
+  /// Where the next read starts, in bytes from data's start.
+  offset: int = 0
+  /// The order of the bytes of the numbers it reads (u8, i8 and the
+  /// varints have none).
+  endian: Endian
+
+  /// The next byte, as a u8.
+  mut fn u8() throws -> u8 {
+    let v = try getU8(data, offset, "Reader.u8")
+    offset += 1
+    return v
+  }
+
+  /// The next byte, as a signed i8.
+  mut fn i8() throws -> i8 {
+    let v = try getI8(data, offset, "Reader.i8")
+    offset += 1
+    return v
+  }
+
+  /// The next 2 bytes, as a u16.
+  mut fn u16() throws -> u16 {
+    let v = try getU16(data, offset, endian, "Reader.u16")
+    offset += 2
+    return v
+  }
+
+  /// The next 2 bytes, as a signed i16.
+  mut fn i16() throws -> i16 {
+    let v = try getI16(data, offset, endian, "Reader.i16")
+    offset += 2
+    return v
+  }
+
+  /// The next 4 bytes, as a u32.
+  mut fn u32() throws -> u32 {
+    let v = try getU32(data, offset, endian, "Reader.u32")
+    offset += 4
+    return v
+  }
+
+  /// The next 4 bytes, as a signed i32.
+  mut fn i32() throws -> i32 {
+    let v = try getI32(data, offset, endian, "Reader.i32")
+    offset += 4
+    return v
+  }
+
+  /// The next 8 bytes, as a u64.
+  mut fn u64() throws -> u64 {
+    let v = try readUint(data, offset, 8, endian, "Reader.u64")
+    offset += 8
+    return v
+  }
+
+  /// The next 8 bytes, as a signed int.
+  mut fn i64() throws -> int {
+    let v = try getI64(data, offset, endian, "Reader.i64")
+    offset += 8
+    return v
+  }
+
+  /// The next 4 bytes, as an IEEE 754 binary32, widened to a float.
+  mut fn f32() throws -> float {
+    let v = try getF32(data, offset, endian, "Reader.f32")
+    offset += 4
+    return v
+  }
+
+  /// The next 8 bytes, as an IEEE 754 binary64.
+  mut fn f64() throws -> float {
+    let v = try getF64(data, offset, endian, "Reader.f64")
+    offset += 8
+    return v
+  }
+
+  /// The next unsigned varint (readUvarint's).
+  mut fn uvarint() throws -> u64 {
+    let (v, n) = try getUvarint(data, offset, "Reader.uvarint")
+    offset += n
+    return v
+  }
+
+  /// The next signed (zigzag) varint (readVarint's).
+  mut fn varint() throws -> int {
+    let (v, n) = try getVarint(data, offset, "Reader.varint")
+    offset += n
+    return v
+  }
+
+  /// The next count bytes.
+  mut fn bytes(count: int) throws -> bytes {
+    let v = try take(data, offset, count, "Reader.bytes")
+    offset += count
+    return v
+  }
+
+  /// Moves past the next count bytes; past the data's end it throws.
+  mut fn skip(count: int) throws {
+    try need(data, offset, count, "Reader.skip")
+    offset += count
+  }
+
+  /// How many bytes are left after offset.
+  fn remaining() -> int = max(data.count() - offset, 0)
+
+  /// Whether there's nothing left to read.
+  fn atEnd() -> bool = offset >= data.count()
+}
+
+/// Bytes built up from numbers and bytes, each appended after the last;
+/// data() is what it wrote.
+///
+///   var w = encoding.Writer(endian: .little)
+///   w.u32(0x46464952)   // "RIFF"
+///   w.u32(36)
+///   w.bytes("WAVE".bytes())
+///   try fs.write(path, w.data())
+pub struct Writer {
+  /// The order of the bytes of the numbers it writes.
+  endian: Endian
+  /// What it wrote, a piece per write: the writer's own, for data() to
+  /// join. Appending a piece copies nothing written before, so a write
+  /// costs what it writes, and data() copies everything once.
+  parts: [bytes] = []
+  /// How many bytes it wrote.
+  size: int = 0
+
+  /// Appends value's byte.
+  mut fn u8(value: u8) { self.bytes(writeU8(value)) }
+
+  /// Appends value's byte, in two's complement.
+  mut fn i8(value: i8) { self.bytes(writeI8(value)) }
+
+  /// Appends value's 2 bytes.
+  mut fn u16(value: u16) { self.bytes(writeU16(value, endian)) }
+
+  /// Appends value's 2 bytes, in two's complement.
+  mut fn i16(value: i16) { self.bytes(writeI16(value, endian)) }
+
+  /// Appends value's 4 bytes.
+  mut fn u32(value: u32) { self.bytes(writeU32(value, endian)) }
+
+  /// Appends value's 4 bytes, in two's complement.
+  mut fn i32(value: i32) { self.bytes(writeI32(value, endian)) }
+
+  /// Appends value's 8 bytes.
+  mut fn u64(value: u64) { self.bytes(writeU64(value, endian)) }
+
+  /// Appends value's 8 bytes, in two's complement.
+  mut fn i64(value: int) { self.bytes(writeI64(value, endian)) }
+
+  /// Appends value as an IEEE 754 binary32 (writeF32's 4 bytes).
+  mut fn f32(value: float) { self.bytes(writeF32(value, endian)) }
+
+  /// Appends value as an IEEE 754 binary64 (8 bytes).
+  mut fn f64(value: float) { self.bytes(writeF64(value, endian)) }
+
+  /// Appends value as an unsigned varint (writeUvarint's).
+  mut fn uvarint(value: u64) { self.bytes(writeUvarint(value)) }
+
+  /// Appends value as a signed (zigzag) varint (writeVarint's).
+  mut fn varint(value: int) { self.bytes(writeVarint(value)) }
+
+  /// Appends data as it is. (Every write is one of these: the one place
+  /// parts and size change.)
+  mut fn bytes(data: bytes) {
+    if data.isEmpty() { return }
+    parts.push(data)
+    size += data.count()
+  }
+
+  /// How many bytes it wrote.
+  fn count() -> int = size
+
+  /// What it wrote, as one bytes.
+  fn data() -> bytes = join(parts)
+}
+
+/// text in UTF-16, in endian's order: 2 bytes a code point, or a
+/// surrogate pair's 4 past U+FFFF; with bom, the byte order mark
+/// (U+FEFF) first, which says the order to whoever reads it.
+pub native fn utf16Encode(text: string, endian: Endian, bom: bool = false) -> bytes
+
+/// UTF-16 as text. A byte order mark at the start says the order (and
+/// isn't in the text); without one, endian does. An unpaired surrogate,
+/// and an odd last byte, become U+FFFD, as the web's TextDecoder does.
+pub native fn utf16Decode(data: bytes, endian: Endian) -> string
+
+/// UTF-16 as text, as utf16Decode reads it, but an unpaired surrogate or
+/// an odd number of bytes throws, saying where.
+pub native fn utf16DecodeStrict(data: bytes, endian: Endian) throws -> string

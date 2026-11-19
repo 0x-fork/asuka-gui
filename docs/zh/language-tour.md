@@ -27,15 +27,17 @@ fn values() -> string {
   visits += 1
   let greeting = "Hello, {name}"   // {…} 把值放进字符串
   let ratio: float = 2.5
+  let level: u8 = 200              // 固定位宽的整数：i8 … i32、u8 … u64（int 是 64 位）
+  let area = 2 ** 10               // 乘方：1024
   let tags = ["new", "work"]       // 数组：[string]
   let ages = ["ana": 31, "bo": 28] // 映射：[string: int]
   let nickname: string? = none     // 可选值：一个字符串或 none
   let shown = nickname ?? name     // none 时的后备值
-  return "{greeting} {visits} {ratio} {tags.count()} {ages["ana"] ?? 0} {shown}"
+  return "{greeting} {visits} {ratio} {level} {area} {tags.count()} {ages["ana"] ?? 0} {shown}"
 }
 ```
 
-`var` 用在函数和处理函数里：文件顶层的值不会改变，除非它是 `state`。值总是被复制，从不共享：修改数组的副本不会影响原来的数组。字符串、数组和映射都有你预期的方法（`count()`、`contains`、`map`、`filter`、`sorted`、`split` ……），见[值与类型](language/types.md)。
+`var` 用在函数和处理函数里：文件顶层的值不会改变，除非它是 `state`。不同类型的数字不能混在一起运算：`int(level) + visits` 先把 `u8` 转换成 `int`；算术结果超出类型的范围是一个错误，而不会回绕成另一个数字。值总是被复制，从不共享：修改数组的副本不会影响原来的数组。字符串、数组和映射都有你预期的方法（`count()`、`contains`、`map`、`filter`、`sorted`、`split` ……），见[值与类型](language/types.md)。
 
 ## 函数
 

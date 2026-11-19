@@ -262,14 +262,15 @@ static ak_val str_byte_slice(ak_val *args, uint32_t n) {
 // str.pad(s, width, with, end): s with copies of with before it (after it
 // when end) up to width characters.
 // int.padded(width) is the int in decimal, zeros before it up to width
-// digits (a minus sign before them).
+// digits (a minus sign before them); a third argument is a sized
+// integer type's code (a u64's written unsigned).
 static ak_val int_padded(ak_val *args, uint32_t n) {
-	AK_UNUSED(n);
 	int64_t v = A(0).i, w = A(1).i;
 	if (w < 0) w = 0;
 	if (w > 64) w = 64;
 	char buf[96];
-	int len = v < 0 ? snprintf(buf, sizeof buf, "-%0*llu", (int)(w > 0 ? w : 1), (unsigned long long)(0 - (uint64_t)v))
+	int len = n > 2 && A(2).i == AK_U64 ? snprintf(buf, sizeof buf, "%0*llu", (int)(w > 0 ? w : 1), (unsigned long long)v)
+	        : v < 0 ? snprintf(buf, sizeof buf, "-%0*llu", (int)(w > 0 ? w : 1), (unsigned long long)(0 - (uint64_t)v))
 	                : snprintf(buf, sizeof buf, "%0*lld", (int)(w > 0 ? w : 1), (long long)v);
 	RET_P(ak_str_new(buf, (size_t)len));
 }
@@ -363,21 +364,14 @@ static ak_val str_to_int_radix(ak_val *args, uint32_t n) {
 }
 
 // int.to_string(v, radix): v's digits in radix, lowercase, with a - when
-// it's negative.
+// it's negative; a third argument is a sized integer type's code (a
+// u64's written unsigned).
 static ak_val int_to_string(ak_val *args, uint32_t n) {
-	AK_UNUSED(n);
 	int64_t radix = A(1).i;
 	if (!radix_ok(radix, "toString")) RET_VOID;
-	int64_t v = A(0).i;
-	uint64_t u = v < 0 ? 0 - (uint64_t)v : (uint64_t)v;
 	char buf[72];
-	int i = sizeof buf;
-	do {
-		buf[--i] = "0123456789abcdefghijklmnopqrstuvwxyz"[u % (uint64_t)radix];
-		u /= (uint64_t)radix;
-	} while (u);
-	if (v < 0) buf[--i] = '-';
-	RET_P(ak_str_new(buf + i, sizeof buf - (size_t)i));
+	int len = ak_int_text(buf, A(0).i, n > 2 ? (int)A(2).i : AK_I64, (int)radix);
+	RET_P(ak_str_new(buf, (size_t)len));
 }
 
 // str.reversed(s): its characters (code points) in the other order.
@@ -536,10 +530,10 @@ static void fmt_float(ak_strb *b, double x, const fspec *f) {
 	fspec_put(b, f, head, headn, g, gn, '>');
 }
 
-static void fmt_int(ak_strb *b, int64_t v, const fspec *fp) {
+static void fmt_int(ak_strb *b, int64_t v, bool unsig, const fspec *fp) {
 	fspec f = *fp;
 	if (f.type == 'f' || f.type == 'e' || f.type == '%') {
-		fmt_float(b, (double)v, &f);
+		fmt_float(b, unsig ? (double)(uint64_t)v : (double)v, &f);
 		return;
 	}
 	int radix = 10, every = 3;
@@ -550,7 +544,8 @@ static void fmt_int(ak_strb *b, int64_t v, const fspec *fp) {
 	case 'o': radix = 8, every = 4, prefix = "0o"; break;
 	case 'b': radix = 2, every = 4, prefix = "0b"; break;
 	}
-	uint64_t u = v < 0 ? 0 - (uint64_t)v : (uint64_t)v;
+	uint64_t u = unsig ? (uint64_t)v : v < 0 ? 0 - (uint64_t)v : (uint64_t)v;
+	if (unsig) v = 0;  // no sign: u holds it
 	char digits[72];
 	int i = sizeof digits;
 	do {
@@ -584,8 +579,9 @@ static void fmt_text(ak_strb *b, const char *s, size_t len, const fspec *f) {
 void ak_strb_fmt(ak_strb *b, ak_val v, ak_kind k, const char *spec, size_t n) {
 	fspec f;
 	fspec_parse(spec, n, &f);
-	switch (k) {
-	case AK_K_INT: fmt_int(b, v.i, &f); break;
+	switch ((int)k) {
+	case AK_K_INT: fmt_int(b, v.i, false, &f); break;
+	case AK_K_U64TEXT: fmt_int(b, v.i, true, &f); break;
 	case AK_K_FLOAT: fmt_float(b, v.f, &f); break;
 	default: {
 		const ak_str *s = v.p;
@@ -595,15 +591,19 @@ void ak_strb_fmt(ak_strb *b, ak_val v, ak_kind k, const char *spec, size_t n) {
 	}
 }
 
-// str.fmt_int(n, spec), str.fmt_float(x, spec) and str.fmt_text(s,
-// spec): a value by a format, as a string.
+// str.fmt_int(n, spec, code?), str.fmt_float(x, spec) and
+// str.fmt_text(s, spec): a value by a format, as a string; fmt_int's
+// third argument is a sized integer type's code (a u64's written
+// unsigned).
 static ak_val fmt_one(ak_val v, ak_kind k, const ak_str *spec) {
 	ak_strb b = {0};
 	ak_strb_fmt(&b, v, k, spec->data, spec->len);
 	RET_P(ak_strb_finish(&b));
 }
 
-static ak_val str_fmt_int(ak_val *args, uint32_t n) { AK_UNUSED(n); return fmt_one(A(0), AK_K_INT, STR(1)); }
+static ak_val str_fmt_int(ak_val *args, uint32_t n) {
+	return fmt_one(A(0), n > 2 && A(2).i == AK_U64 ? (ak_kind)AK_K_U64TEXT : AK_K_INT, STR(1));
+}
 static ak_val str_fmt_float(ak_val *args, uint32_t n) { AK_UNUSED(n); return fmt_one(A(0), AK_K_FLOAT, STR(1)); }
 static ak_val str_fmt_text(ak_val *args, uint32_t n) { AK_UNUSED(n); return fmt_one(A(0), AK_K_REF, STR(1)); }
 
@@ -912,17 +912,27 @@ static ak_val arr_contains(ak_val *args, uint32_t n) {
 }
 
 static ak_val arr_sum(ak_val *args, uint32_t n) {
-	AK_UNUSED(n);
 	ak_arr *a = ARR(0);
 	if (ek(a) == AK_K_FLOAT) {
 		double s = 0;
 		for (uint32_t i = 0; i < a->len; i++) s += ak_arr_vals(a)[i].f;
 		RET_F(s);
 	}
-	// Checked, as + is: a sum past int's range throws.
+	// Checked, as + is: a sum past int's range (a second argument: a
+	// sized integer type's code, its range) throws.
+	int t = n > 1 ? (int)A(1).i : AK_I64;
 	int64_t s = 0;
 	for (uint32_t i = 0; i < a->len; i++) {
-		if (__builtin_add_overflow(s, ak_arr_get(a, i).i, &s)) {
+		bool over;
+		int64_t x = ak_arr_get(a, i).i;
+		if (t == AK_U64) {
+			uint64_t u;
+			over = __builtin_add_overflow((uint64_t)s, (uint64_t)x, &u);
+			s = (int64_t)u;
+		} else {
+			over = __builtin_add_overflow(s, x, &s) || ak_int_wrap(s, t) != s;
+		}
+		if (over) {
 			ak_throw_msg("integer overflow");
 			RET_VOID;
 		}
@@ -1114,6 +1124,7 @@ typedef struct {
 	bool compare;  // less is a compare method: (a, b) -> int
 	ak_kind k;
 	bool failed;
+	bool unsig;  // ints ordered unsigned (u64s)
 } sort_ctx;
 
 static bool lt(sort_ctx *c, ak_val a, ak_val b) {
@@ -1132,7 +1143,7 @@ static bool lt(sort_ctx *c, ak_val a, ak_val b) {
 	case AK_K_REF:
 		if (a.p && ((ak_obj *)a.p)->tag == AK_TAG_ENUM) return ak_enum_case(a.p) < ak_enum_case(b.p);
 		return ak_str_cmp(a.p, b.p) < 0;
-	default: return a.i < b.i;
+	default: return c->unsig ? (uint64_t)a.i < (uint64_t)b.i : a.i < b.i;
 	}
 }
 
@@ -1170,18 +1181,19 @@ static inline bool lt_float(sort_ctx *c, ak_val a, ak_val b) { return AK_UNUSED(
 MERGE_SORT(msort, lt, c->less || c->k != AK_K_FLOAT)
 MERGE_SORT(msort_float, lt_float, false)
 
-// radix_sort orders ints ascending (signed), a byte a pass from the
-// lowest, passes where every int has the same byte skipped.
-static void radix_sort(ak_val *v, ak_val *tmp, uint32_t n) {
+// radix_sort orders ints ascending (signed, or unsigned: u64s), a byte a
+// pass from the lowest, passes where every int has the same byte skipped.
+static void radix_sort(ak_val *v, ak_val *tmp, uint32_t n, bool unsig) {
+	uint64_t flip = unsig ? 0 : 1ull << 63;
 	uint32_t (*count)[256] = ak_alloc(sizeof(uint32_t) * 8 * 256);
 	for (uint32_t i = 0; i < n; i++) {
-		uint64_t x = (uint64_t)v[i].i ^ (1ull << 63);
+		uint64_t x = (uint64_t)v[i].i ^ flip;
 		for (int b = 0; b < 8; b++) count[b][(x >> (8 * b)) & 0xff]++;
 	}
 	ak_val *from = v, *to = tmp;
 	for (int b = 0; b < 8; b++) {
 		uint32_t *c = count[b];
-		if (c[((uint64_t)v[0].i ^ (1ull << 63)) >> (8 * b) & 0xff] == n) continue;  // one byte for all
+		if (c[((uint64_t)v[0].i ^ flip) >> (8 * b) & 0xff] == n) continue;  // one byte for all
 		uint32_t sum = 0;
 		for (int d = 0; d < 256; d++) {
 			uint32_t t = c[d];
@@ -1189,7 +1201,7 @@ static void radix_sort(ak_val *v, ak_val *tmp, uint32_t n) {
 			sum += t;
 		}
 		for (uint32_t i = 0; i < n; i++) {
-			uint64_t x = (uint64_t)from[i].i ^ (1ull << 63);
+			uint64_t x = (uint64_t)from[i].i ^ flip;
 			to[c[(x >> (8 * b)) & 0xff]++] = from[i];
 		}
 		ak_val *t = from;
@@ -1264,7 +1276,7 @@ static void sort_vals(sort_ctx *c, ak_val *v, uint32_t n) {
 	}
 	ak_val *tmp = ak_alloc(sizeof(ak_val) * n);
 	if (c->less) msort(c, v, tmp, n);
-	else if (c->k == AK_K_INT && n > 64) radix_sort(v, tmp, n);
+	else if (c->k == AK_K_INT && n > 64) radix_sort(v, tmp, n, c->unsig);
 	else if (c->k == AK_K_FLOAT) msort_float(c, v, tmp, n);
 	else msort(c, v, tmp, n);
 	ak_free(tmp);
@@ -1288,7 +1300,7 @@ static void sort_arr(sort_ctx *c, ak_arr *a) {
 
 static ak_val arr_sorted(ak_val *args, uint32_t n) {
 	ak_arr *a = ak_arr_copy(ARR(0));
-	sort_ctx c = {n > 1 ? CLOS(1) : NULL, n > 2 && A(2).i, ek(a), false};
+	sort_ctx c = {n > 1 ? CLOS(1) : NULL, n > 2 && A(2).i, ek(a), false, n > 3 && A(3).i};
 	sort_arr(&c, a);
 	if (c.failed) {
 		ak_release(a);
@@ -1299,19 +1311,19 @@ static ak_val arr_sorted(ak_val *args, uint32_t n) {
 
 static ak_val arr_sort(ak_val *args, uint32_t n) {
 	ak_arr *a = ak_arr_mut((ak_arr **)&args[0].p);
-	sort_ctx c = {n > 1 ? CLOS(1) : NULL, n > 2 && A(2).i, ek(a), false};
+	sort_ctx c = {n > 1 ? CLOS(1) : NULL, n > 2 && A(2).i, ek(a), false, n > 3 && A(3).i};
 	sort_arr(&c, a);
 	ak_change_range(0, a->len, false);
 	RET_VOID;
 }
 
-// arr.min(a, less?, compare?) and arr.max: the least (greatest) element,
+// arr.min(a, less?, compare?, unsigned?) and arr.max: the least (greatest) element,
 // the first of equal ones; none when there's none. Ordered as sorted
 // orders.
 static ak_val extreme(ak_val *args, uint32_t n, bool greatest) {
 	ak_arr *a = ARR(0);
 	if (!a || !a->len) RET_P(NULL);
-	sort_ctx c = {n > 1 ? CLOS(1) : NULL, n > 2 && A(2).i, ek(a), false};
+	sort_ctx c = {n > 1 ? CLOS(1) : NULL, n > 2 && A(2).i, ek(a), false, n > 3 && A(3).i};
 	uint32_t best = 0;
 	for (uint32_t i = 1; i < a->len; i++) {
 		if (greatest ? lt(&c, ak_arr_get(a, best), ak_arr_get(a, i)) : lt(&c, ak_arr_get(a, i), ak_arr_get(a, best))) best = i;
@@ -1326,12 +1338,14 @@ static ak_val arr_max(ak_val *args, uint32_t n) { return extreme(args, n, true);
 // arr.range(from, to): [from, to). One longer than an array holds (its
 // length is a u32) throws.
 // arr.range(from, to) is from..<to; arr.range(from, to, 1) is from..to,
-// which takes to itself (Int.max too: to + 1 isn't computed).
+// which takes to itself (Int.max too: to + 1 isn't computed); a fourth
+// argument, 1: a u64's, ordered unsigned.
 static ak_val arr_range(ak_val *args, uint32_t n) {
 	int64_t from = A(0).i, to = A(1).i;
-	bool through = n > 2 && A(2).i;
-	uint64_t span = to > from ? (uint64_t)to - (uint64_t)from : 0;
-	if (through && to >= from) {
+	bool through = n > 2 && A(2).i, unsig = n > 3 && A(3).i;
+	bool after = unsig ? (uint64_t)to > (uint64_t)from : to > from;
+	uint64_t span = after ? (uint64_t)to - (uint64_t)from : 0;
+	if (through && (after || to == from)) {
 		if (span >= UINT32_MAX) {
 			ak_throw_msg("a range of %llu numbers, more than an array holds", (unsigned long long)span + 1);
 			return (ak_val){0};
@@ -1344,7 +1358,7 @@ static ak_val arr_range(ak_val *args, uint32_t n) {
 	}
 	uint32_t len = (uint32_t)span;
 	ak_arr *a = ak_arr_new(AK_K_INT, NULL, len);
-	for (uint32_t i = 0; i < len; i++) ak_arr_vals(a)[i].i = from + (int64_t)i;
+	for (uint32_t i = 0; i < len; i++) ak_arr_vals(a)[i].i = (int64_t)((uint64_t)from + i);
 	a->len = len;
 	RET_P(a);
 }
@@ -1531,25 +1545,37 @@ static ak_val m_absi(ak_val *args, uint32_t n) {
 }
 
 // int.addingChecked(o), subtractingChecked(o), multipliedChecked(o): the
-// result, or none when it overflows.
+// result, or none when it overflows; a third argument is a sized
+// integer type's code, whose range it's checked against.
 static ak_val int_add_checked(ak_val *args, uint32_t n) {
-	AK_UNUSED(n);
+	int t = n > 2 ? (int)A(2).i : AK_I64;
 	int64_t r;
-	if (__builtin_add_overflow(A(0).i, A(1).i, &r)) RET_P(NULL);
+	if (t == AK_U64) {
+		uint64_t u;
+		if (__builtin_add_overflow((uint64_t)A(0).i, (uint64_t)A(1).i, &u)) RET_P(NULL);
+		r = (int64_t)u;
+	} else if (__builtin_add_overflow(A(0).i, A(1).i, &r) || ak_int_wrap(r, t) != r) {
+		RET_P(NULL);
+	}
 	RET_P(ak_box_new(AK_K_INT, (ak_val){.i = r}));
 }
 
 static ak_val int_sub_checked(ak_val *args, uint32_t n) {
-	AK_UNUSED(n);
+	int t = n > 2 ? (int)A(2).i : AK_I64;
 	int64_t r;
-	if (__builtin_sub_overflow(A(0).i, A(1).i, &r)) RET_P(NULL);
+	if (t == AK_U64) {
+		uint64_t u;
+		if (__builtin_sub_overflow((uint64_t)A(0).i, (uint64_t)A(1).i, &u)) RET_P(NULL);
+		r = (int64_t)u;
+	} else if (__builtin_sub_overflow(A(0).i, A(1).i, &r) || ak_int_wrap(r, t) != r) {
+		RET_P(NULL);
+	}
 	RET_P(ak_box_new(AK_K_INT, (ak_val){.i = r}));
 }
 
 static ak_val int_mul_checked(ak_val *args, uint32_t n) {
-	AK_UNUSED(n);
 	int64_t r;
-	if (__builtin_mul_overflow(A(0).i, A(1).i, &r)) RET_P(NULL);
+	if (!ak_int_mul(A(0).i, A(1).i, n > 2 ? (int)A(2).i : AK_I64, &r)) RET_P(NULL);
 	RET_P(ak_box_new(AK_K_INT, (ak_val){.i = r}));
 }
 static ak_val m_mini(ak_val *args, uint32_t n) { AK_UNUSED(n); RET_I(A(0).i < A(1).i ? A(0).i : A(1).i); }
@@ -1868,8 +1894,21 @@ static ak_val bytes_from(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	ak_arr *a = ARR(0);
 	ak_bytes *r = ak_bytes_new(NULL, a->len);
-	for (uint32_t i = 0; i < a->len; i++) r->data[i] = (uint8_t)(ak_arr_get(a, i).i & 0xff);
+	if (a->elem == AK_E_U8) memcpy(r->data, a->items, a->len);
+	else
+		for (uint32_t i = 0; i < a->len; i++) r->data[i] = (uint8_t)(ak_arr_get(a, i).i & 0xff);
 	RET_P(r);
+}
+
+// bytes.to_array: the bytes as an array of u8s (ints 0 to 255).
+static ak_val bytes_to_array(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	const ak_bytes *b = BYTES(0);
+	uint32_t len = blen(b);
+	ak_arr *a = ak_arr_new_packed(AK_K_INT, AK_E_U8, len);  // packed: a byte each, as bytes
+	if (len) memcpy(a->items, b->data, len);
+	a->len = len;
+	RET_P(a);
 }
 
 static ak_val bytes_empty(ak_val *args, uint32_t n) {
@@ -2039,6 +2078,7 @@ const ak_lib_entry ak_lib[] = {
 	{"appearance.rgb", appearance_rgb},
 	{"bytes.empty", bytes_empty},
 	{"bytes.from", bytes_from},
+	{"bytes.to_array", bytes_to_array},
 	{"bytes.hex", bytes_hex},
 	{"bytes.len", bytes_len},
 	{"bytes.is_empty", bytes_is_empty},

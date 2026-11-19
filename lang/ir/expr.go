@@ -279,7 +279,7 @@ func (b *fb) expr(e syntax.Expr, dst int) int {
 		if sh < 0 {
 			sh = bc.NoShape
 		}
-		b.emit(op("NEWA"), r, int(k), sh, blk, len(vals))
+		b.emit(op("NEWA"), r, b.l.arrKind(at.Elem), sh, blk, len(vals))
 		b.releaseRegs(blk, ks)
 		b.release(mark)
 		b.appendEach(r, rest, "arr.push")
@@ -566,12 +566,13 @@ func (b *fb) basicLit(e *syntax.BasicLit, dst int) int {
 	t := b.l.info.Types[e]
 	switch e.Kind {
 	case syntax.INT:
-		v, _ := check.ParseInt(e.Value)
 		if t == check.Float {
+			u, _ := check.ParseUint(e.Value)
 			r := b.out(dst, bc.KFloat)
-			b.emit(op("KFLOAT"), r, b.l.floatConst(float64(v)))
+			b.emit(op("KFLOAT"), r, b.l.floatConst(float64(u)))
 			return r
 		}
+		v := check.LitBits(e.Value, false) // a u64 past int's largest: its bits
 		r := b.out(dst, bc.KInt)
 		b.loadInt(r, v)
 		return r
@@ -649,17 +650,10 @@ func (b *fb) stringLit(e *syntax.StringLit, dst int) int {
 				kinds = append(kinds, byte(bc.KRef))
 				continue
 			}
-			v, k, spec := b.stringPart(p.x, p.spec)
+			v, k, kb := b.stringPart(p.x, p.spec)
 			ks = append(ks, k)
 			vals = append(vals, v)
-			if spec != "" {
-				// Formatted where it's written (core/src/vm/ops.h's
-				// ak_op_interp): its kind flagged, then its format.
-				kinds = append(kinds, byte(k)|interpFmt, byte(len(spec)))
-				kinds = append(kinds, spec...)
-			} else {
-				kinds = append(kinds, byte(k))
-			}
+			kinds = append(kinds, kb...)
 		}
 		blk := b.regs(ks)
 		for i, v := range vals {
@@ -702,9 +696,10 @@ func (b *fb) stringLit(e *syntax.StringLit, dst int) int {
 const interpFmt = 0x80
 
 // stringPart is an interpolated value: a scalar INTERP prints itself, or
-// a string; with its format (spec, "" none) when INTERP writes it by
-// one.
-func (b *fb) stringPart(x syntax.Expr, spec string) (int, bc.Kind, string) {
+// a string; with what INTERP's kinds say of it: its kind, or, written by
+// its format (spec), its kind flagged (a u64's, KU64Text: unsigned),
+// the format's length and the format.
+func (b *fb) stringPart(x syntax.Expr, spec string) (int, bc.Kind, []byte) {
 	t := b.typeOf(x)
 	v := b.value(x, -1)
 	if spec != "" {
@@ -713,27 +708,35 @@ func (b *fb) stringPart(x syntax.Expr, spec string) (int, bc.Kind, string) {
 		// a format too long for its length byte, by str.fmt_*.
 		if len(spec) > 255 {
 			f := b.kstr(spec)
-			switch t {
-			case check.Int:
-				return b.callB("str.fmt_int", bc.KRef, v, f), bc.KRef, ""
-			case check.Float:
-				return b.callB("str.fmt_float", bc.KRef, v, f), bc.KRef, ""
+			switch {
+			case t == check.U64:
+				return b.callB("str.fmt_int", bc.KRef, v, f, b.konst(int64(check.IntCode(t)))), bc.KRef, []byte{byte(bc.KRef)}
+			case check.IsInteger(t):
+				return b.callB("str.fmt_int", bc.KRef, v, f), bc.KRef, []byte{byte(bc.KRef)}
+			case t == check.Float:
+				return b.callB("str.fmt_float", bc.KRef, v, f), bc.KRef, []byte{byte(bc.KRef)}
 			}
-			return b.callB("str.fmt_text", bc.KRef, b.describe(v, t), f), bc.KRef, ""
+			return b.callB("str.fmt_text", bc.KRef, b.describe(v, t), f), bc.KRef, []byte{byte(bc.KRef)}
 		}
-		switch t {
-		case check.Int:
-			return v, bc.KInt, spec
-		case check.Float:
-			return v, bc.KFloat, spec
+		formatted := func(k bc.Kind) []byte {
+			return append([]byte{byte(k) | interpFmt, byte(len(spec))}, spec...)
 		}
-		return b.describe(v, t), bc.KRef, spec
+		switch {
+		case t == check.U64:
+			return v, bc.KInt, formatted(bc.KU64Text)
+		case check.IsInteger(t):
+			return v, bc.KInt, formatted(bc.KInt)
+		case t == check.Float:
+			return v, bc.KFloat, formatted(bc.KFloat)
+		}
+		return b.describe(v, t), bc.KRef, formatted(bc.KRef)
 	}
 	switch t {
-	case check.Int, check.Float, check.Bool:
-		return v, b.l.kind(t), ""
+	case check.Int, check.Float, check.Bool, check.I8, check.I16, check.I32, check.U8, check.U16, check.U32:
+		k := b.l.kind(t)
+		return v, k, []byte{byte(k)}
 	}
-	return b.describe(v, t), bc.KRef, ""
+	return b.describe(v, t), bc.KRef, []byte{byte(bc.KRef)}
 }
 
 // describe is the text of v, a t: what interpolation and print show.
@@ -744,9 +747,13 @@ func (b *fb) describe(v int, t check.Type) int {
 	case check.Color:
 		// As it's written: #rrggbb, .accent.
 		return b.callB("color.hex", bc.KRef, v)
-	case check.Int, check.Float, check.Bool, check.Length:
+	case check.Int, check.Float, check.Bool, check.Length, check.I8, check.I16, check.I32, check.U8, check.U16, check.U32:
 		r := b.temp(bc.KRef)
 		b.emit(op("TOSTR"), r, v, int(b.l.kind(t)))
+		return r
+	case check.U64:
+		r := b.temp(bc.KRef)
+		b.emit(op("TOSTR"), r, v, int(bc.KU64Text))
 		return r
 	case check.Duration:
 		// In milliseconds: 300ms.
@@ -849,7 +856,7 @@ func (b *fb) selection(e syntax.Expr, x syntax.Expr, dst int) int {
 		return b.caseValue(b.typ(sel.Recv), sel.Case, dst)
 	case check.SelConst:
 		return b.readGlobal(sel.Global, dst)
-	case check.SelColor:
+	case check.SelColor, check.SelIntConst:
 		r := b.out(dst, bc.KInt)
 		b.loadInt(r, sel.Value)
 		return r
@@ -1018,6 +1025,10 @@ func (b *fb) unary(e *syntax.UnaryExpr, dst int) int {
 		x := b.value(e.X, -1)
 		r := b.out(dst, bc.KInt)
 		b.emit(op("BNOT"), r, x)
+		if t := b.rawType(e); check.IsSized(t) && !check.IsSigned(t) && t != check.U64 {
+			// ~ of a u8: its 8 bits flipped, not the int's 64.
+			b.emit(op("WRAP"), r, r, check.IntCode(t))
+		}
 		return r
 	case syntax.SUB:
 		if o := b.l.info.Negations[e]; o != nil {
@@ -1027,10 +1038,9 @@ func (b *fb) unary(e *syntax.UnaryExpr, dst int) int {
 			s := b.calleeSubst(o.Func, nil, rt)
 			return b.invoke(b.l.funcIndex(o.Func, nil, rt), []int{x}, b.l.kind(s.Apply(o.Func.Sig.Result)), dst, false)
 		}
-		if lit, ok := e.X.(*syntax.BasicLit); ok && lit.Kind == syntax.INT && b.rawType(e) == check.Int {
-			v, _ := check.ParseInt(lit.Value)
+		if lit, ok := e.X.(*syntax.BasicLit); ok && lit.Kind == syntax.INT && check.IsInteger(b.rawType(e)) {
 			r := b.out(dst, bc.KInt)
-			b.loadInt(r, -v)
+			b.loadInt(r, check.LitBits(lit.Value, true))
 			return r
 		}
 		x := b.value(e.X, -1)
@@ -1041,6 +1051,10 @@ func (b *fb) unary(e *syntax.UnaryExpr, dst int) int {
 			return r
 		}
 		r := b.out(dst, bc.KInt)
+		if check.IsSized(t) {
+			b.emit(op("NEGN"), r, x, check.IntCode(t))
+			return r
+		}
 		b.emit(op("NEGI"), r, x)
 		return r
 	case syntax.AWAIT:
@@ -1159,6 +1173,10 @@ func (b *fb) binary(e *syntax.BinaryExpr, dst int) int {
 	case syntax.RANGE, syntax.RANGELT:
 		from := b.value(e.X, -1)
 		to := b.value(e.Y, -1)
+		if a, ok := b.rawType(e).(*check.Array); ok && a.Elem == check.U64 {
+			// A u64's: ordered unsigned.
+			return b.copyTo(b.callB("arr.range", bc.KRef, from, to, b.konst(map[bool]int64{true: 1}[e.Op == syntax.RANGE]), b.konst(1)), dst)
+		}
 		if e.Op == syntax.RANGE {
 			// a..b takes b, Int.max too: no b + 1.
 			return b.copyTo(b.callB("arr.range", bc.KRef, from, to, b.konst(1)), dst)
@@ -1267,7 +1285,7 @@ func (b *fb) mentions(x syntax.Node, v *check.Var) bool {
 var intOps = map[syntax.Token]string{
 	syntax.ADD: "ADDI", syntax.SUB: "SUBI", syntax.MUL: "MULI", syntax.QUO: "DIVI", syntax.REM: "MODI",
 	syntax.AMP: "BAND", syntax.PIPE: "BOR", syntax.CARET: "BXOR", syntax.SHL: "SHL", syntax.SHR: "SHR",
-	syntax.WADD: "WADDI", syntax.WSUB: "WSUBI", syntax.WMUL: "WMULI",
+	syntax.WADD: "WADDI", syntax.WSUB: "WSUBI", syntax.WMUL: "WMULI", syntax.POW: "POWI",
 }
 
 // binop applies a binary operator to registers x and y.
@@ -1327,6 +1345,12 @@ func (b *fb) binop(o syntax.Token, x, y int, xt, yt, res check.Type, dst int) in
 		switch b.f.Kinds[x] {
 		case bc.KFloat:
 			b.emit(op(map[bool]string{true: "LTF", false: "LEF"}[o == syntax.LSS]), r, x, y)
+		case bc.KInt:
+			if xt == check.U64 {
+				b.emit(op(map[bool]string{true: "LTU", false: "LEU"}[o == syntax.LSS]), r, x, y)
+				break
+			}
+			b.emit(op(map[bool]string{true: "LTI", false: "LEI"}[o == syntax.LSS]), r, x, y)
 		case bc.KRef:
 			if o == syntax.LSS {
 				b.emit(op("LTS"), r, x, y)
@@ -1348,13 +1372,46 @@ func (b *fb) binop(o syntax.Token, x, y int, xt, yt, res check.Type, dst int) in
 	case k == bc.KRef:
 		return b.copyTo(b.callB("arr.concat", bc.KRef, x, y), dst)
 	case k == bc.KFloat:
+		if o == syntax.POW && b.f.Kinds[y] == bc.KInt {
+			// float ** n: n as a float.
+			f := b.temp(bc.KFloat)
+			b.emit(op(map[bool]string{true: "U2F", false: "I2F"}[yt == check.U64]), f, y)
+			y = f
+		}
 		r := b.out(dst, bc.KFloat)
-		b.emit(op(map[syntax.Token]string{syntax.ADD: "ADDF", syntax.SUB: "SUBF", syntax.MUL: "MULF", syntax.QUO: "DIVF", syntax.REM: "MODF"}[o]), r, x, y)
+		b.emit(op(map[syntax.Token]string{syntax.ADD: "ADDF", syntax.SUB: "SUBF", syntax.MUL: "MULF", syntax.QUO: "DIVF", syntax.REM: "MODF", syntax.POW: "POWF"}[o]), r, x, y)
 		return r
 	}
 	r := b.out(dst, bc.KInt)
+	if check.IsSized(res) || check.IsSized(yt) && (o == syntax.SHL || o == syntax.SHR || o == syntax.POW) {
+		b.sizedOp(o, r, x, y, res, yt)
+		return r
+	}
 	b.emit(op(intOps[o]), r, x, y)
 	return r
+}
+
+// sizedOp is a sized integer type's operator, its result of type t
+// (the operands' type; a shift's or a power's right one is ct): the N
+// instructions, which take the type's code; the bitwise ones are the
+// int's, the wrapping ones the int's wrapped to its width.
+func (b *fb) sizedOp(o syntax.Token, r, x, y int, t, ct check.Type) {
+	code := check.IntCode(t)
+	switch o {
+	case syntax.ADD, syntax.SUB, syntax.MUL, syntax.QUO, syntax.REM:
+		name := map[syntax.Token]string{syntax.ADD: "ADDN", syntax.SUB: "SUBN", syntax.MUL: "MULN", syntax.QUO: "DIVN", syntax.REM: "MODN"}[o]
+		b.emit(op(name), r, x, y, code)
+	case syntax.SHL, syntax.SHR, syntax.POW:
+		name := map[syntax.Token]string{syntax.SHL: "SHLN", syntax.SHR: "SHRN", syntax.POW: "POWN"}[o]
+		b.emit(op(name), r, x, y, code|check.IntCode(ct)<<4)
+	case syntax.WADD, syntax.WSUB, syntax.WMUL:
+		b.emit(op(intOps[o]), r, x, y)
+		if t != check.U64 {
+			b.emit(op("WRAP"), r, r, code)
+		}
+	default: // & | ^: of two canonical values, canonical
+		b.emit(op(intOps[o]), r, x, y)
+	}
 }
 
 // literalChunk is how many of a literal's elements (an array's, a

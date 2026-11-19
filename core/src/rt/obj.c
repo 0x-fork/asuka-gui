@@ -46,12 +46,8 @@ static inline size_t obj_size(const ak_obj *o) {
 	}
 }
 
-// obj_free frees o's own memory.
+// obj_free frees o's own memory (a string's: not a slab's piece).
 static inline void obj_free(ak_obj *o) {
-	if (o->tag == AK_TAG_STR && (o->flags & AK_STR_SLAB)) {
-		ak_piece_free((ak_str *)o);
-		return;
-	}
 	size_t n = obj_size(o);
 	if (n <= AK_SMALL_MAX) ak_free_small(o, n);
 	else ak_free(o);
@@ -240,6 +236,12 @@ static void walk_done(walk *w) {
 // released already.
 static void free_mem(ak_obj *o) {
 	switch ((ak_tag)o->tag) {
+	case AK_TAG_STR:
+		if (o->flags & AK_STR_SLAB) {
+			ak_piece_free((ak_str *)o);
+			return;
+		}
+		break;
 	case AK_TAG_ARR:
 		ak_free(ak_arr_base((ak_arr *)o));
 		break;
@@ -295,7 +297,8 @@ static inline bool is_leaf(const ak_obj *o) { return o->tag == AK_TAG_STR || o->
 // free_leaf destroys a string or bytes, which hold nothing.
 static inline void free_leaf(ak_obj *o) {
 	ak_obj_count(-1);
-	obj_free(o);
+	if (o->tag == AK_TAG_STR && (o->flags & AK_STR_SLAB)) ak_piece_free((ak_str *)o);
+	else obj_free(o);
 }
 
 // ak_destroy frees o and releases what it holds, destroying each of
@@ -485,7 +488,13 @@ static AK_ALWAYS_INLINE bool eq_enter(walk_frame *f, ak_obj *a, ak_obj *b) {
 			f->end = x->len;
 			return true;
 		}
-		if (ak_arr_packed(x)) return x->elem == y->elem && memcmp(x->items, y->items, (size_t)x->len << x->shift) == 0;
+		if (x->elem != y->elem) {
+			// Sized integers, packed in one and values in the other.
+			for (uint32_t i = 0; i < x->len; i++)
+				if (ak_arr_get(x, i).i != ak_arr_get(y, i).i) return false;
+			return true;
+		}
+		if (ak_arr_packed(x)) return memcmp(x->items, y->items, (size_t)x->len << x->shift) == 0;
 		for (uint32_t i = 0; i < x->len; i++)
 			if (!scalar_eq(ak_arr_vals(x)[i], ak_arr_vals(y)[i], k)) return false;
 		return true;

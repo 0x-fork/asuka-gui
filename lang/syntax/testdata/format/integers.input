@@ -1,0 +1,13 @@
+// Sized integers and powers, as the formatter writes them.
+fn area(side: u16, scale: u8) -> u32 {
+  let big: u64 = 18_446_744_073_709_551_615
+  let low: i8 = -128
+  var n = u32(side)**2*u32(scale)
+  n **= 2
+  let neg = -2**2 + (-2)**2 + 2** -1
+  let tower = 2**3**2
+  let grouped = (2**3)**2
+  let mask = ~u8(0) & 0x0f << 2**2
+  let shifted = big >> scale &+ u64(low &+ 1)
+  return n &* u32(truncating: big)
+}

@@ -1171,6 +1171,7 @@ bool ak_toml_tagged(const char *text, size_t n, ak_buf *out, char *err, size_t e
 static ak_kind kind_of(const char *d) {
 	switch (*d) {
 	case 'i':
+	case 'n':
 	case 'e':
 		return AK_K_INT;
 	case 'f':
@@ -1313,7 +1314,7 @@ static bool zero(dx *x, const char *d, ak_val *out) {
 	switch (*d) {
 	case 's': out->p = ak_str_empty(); return true;
 	case '[': {
-		ak_arr *a = ak_arr_new(kind_of(d + 1), d[1] == 'S' || d[1] == 'E' ? shape_named(x, d + 1) : NULL, 0);
+		ak_arr *a = ak_arr_new(ak_desc_arr_kind(d + 1, kind_of(d + 1)), d[1] == 'S' || d[1] == 'E' ? shape_named(x, d + 1) : NULL, 0);
 		if (d[1] == 's') a->h.flags = 1;
 		out->p = a;
 		return true;
@@ -1362,6 +1363,12 @@ static ak_val conv(dx *x, const tnode *n, const char *d) {
 		if (n->kind == T_INT) return (ak_val){.i = n->i};
 		dfail(x, n, "expected an integer, not %s", what(n));
 		return (ak_val){0};
+	case 'n':
+		// A sized integer type's (its code after the n): its range.
+		if (n->kind == T_INT && ak_int_fits(n->i, AK_I64, d[1] - '0')) return (ak_val){.i = n->i};
+		if (n->kind == T_INT) dfail(x, n, "an integer out of %s's range", ak_int_names[(d[1] - '0') & 7]);
+		else dfail(x, n, "expected an integer, not %s", what(n));
+		return (ak_val){0};
 	case 'f':
 		if (n->kind == T_FLOAT) return (ak_val){.f = n->f};
 		if (n->kind == T_INT) return (ak_val){.f = (double)n->i};
@@ -1385,7 +1392,7 @@ static ak_val conv(dx *x, const tnode *n, const char *d) {
 		ak_arr *a = NULL;
 		ak_map *set = NULL;
 		if (*d == '[') {
-			a = ak_arr_new(kind_of(ed), *ed == 'S' || *ed == 'E' ? shape_named(x, ed) : NULL, n->a.n);
+			a = ak_arr_new(ak_desc_arr_kind(ed, kind_of(ed)), *ed == 'S' || *ed == 'E' ? shape_named(x, ed) : NULL, n->a.n);
 			if (*ed == 's') a->h.flags = 1;
 		} else {
 			set = ak_set_new(kind_of(ed), *ed == 's');
@@ -1791,6 +1798,17 @@ static tnode *tree_of(ex *x, ak_val v, const char *d) {
 	}
 	switch (*d) {
 	case 'i': {
+		tnode *n = enode(x, T_INT);
+		n->i = v.i;
+		return n;
+	}
+	case 'n': {
+		// TOML's integers are 64-bit signed: a u64 past int's largest
+		// isn't one.
+		if (d[1] - '0' == AK_U64 && v.i < 0) {
+			efail(x, "a u64 past 9223372036854775807 isn't a TOML integer");
+			return NULL;
+		}
 		tnode *n = enode(x, T_INT);
 		n->i = v.i;
 		return n;

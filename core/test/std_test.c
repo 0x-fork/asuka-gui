@@ -178,6 +178,238 @@ TEST(base64_padding) {
 	}
 }
 
+// ---- std/encoding's binary data ----
+
+static ak_val B(const void *p, size_t n) { return (ak_val){.p = ak_bytes_new(p, n)}; }
+
+// thrown checks that what was just called threw want, and clears it.
+static void thrown(const char *want, int line) {
+	void *e = ak_error_take();
+	if (!e) {
+		fprintf(stderr, "std_test.c:%d: %s: didn't throw %s\n", line, t_current, want);
+		t_failed++;
+		return;
+	}
+	if (strcmp(ak_error_message(e)->data, want) != 0) {
+		fprintf(stderr, "std_test.c:%d: %s: threw %s, want %s\n", line, t_current, ak_error_message(e)->data, want);
+		t_failed++;
+	}
+	ak_release(e);
+}
+#define THROWN(want) thrown(want, __LINE__)
+
+static bool bytes_are(ak_val v, const void *want, size_t n) {
+	ak_bytes *b = v.p;
+	bool ok = b && b->len == n && (n == 0 || memcmp(b->data, want, n) == 0);
+	ak_release(b);
+	return ok;
+}
+
+// Fixed-width numbers: every size in both orders, the bounds at the
+// data's end and past int's range, and a read allocates nothing (a
+// write, only its bytes).
+TEST(encoding_fixed_widths) {
+	const uint8_t d[] = {1, 2, 3, 4, 5, 6, 7, 8, 0xff};
+	ak_val data = B(d, sizeof d), what = S("readU64");
+	for (int64_t size = 1; size <= 8; size++) {
+		uint64_t le = 0, be = 0;
+		for (int64_t i = 0; i < size; i++) le |= (uint64_t)d[1 + i] << (8 * i), be = be << 8 | d[1 + i];
+		uint64_t before = ak_alloc_count;
+		ak_val l = call("encoding.readUint", (ak_val[]){data, I(1), I(size), I(0), what}, 5, 0);
+		ak_val b = call("encoding.readUint", (ak_val[]){data, I(1), I(size), I(1), what}, 5, 0);
+		CHECK_EQ_INT(ak_alloc_count - before, 0);
+		CHECK(!ak_error_pending());
+		CHECK_EQ_INT((uint64_t)l.i, le);
+		CHECK_EQ_INT((uint64_t)b.i, be);
+		before = ak_alloc_count;
+		ak_val w = call("encoding.writeUint", (ak_val[]){I((int64_t)be), I(size), I(1)}, 3, 0);
+		CHECK_EQ_INT(ak_alloc_count - before, 1);
+		if (!bytes_are(w, d + 1, (size_t)size)) T_FAIL("writeUint of size %lld", (long long)size);
+	}
+	ak_val ff = call("encoding.readUint", (ak_val[]){data, I(8), I(1), I(0), what}, 5, 0);
+	CHECK_EQ_INT(ff.i, 0xff);
+	call("encoding.readUint", (ak_val[]){data, I(2), I(8), I(0), what}, 5, 0);
+	THROWN("encoding: readU64 needs 8 bytes at 2, and the data has 9");
+	call("encoding.readUint", (ak_val[]){data, I(INT64_MAX), I(8), I(0), what}, 5, 0);
+	THROWN("encoding: readU64 needs 8 bytes at 9223372036854775807, and the data has 9");
+	call("encoding.readUint", (ak_val[]){data, I(INT64_MIN), I(8), I(0), what}, 5, 0);
+	THROWN("encoding: readU64 at -9223372036854775808: an offset can't be negative");
+	call("encoding.readUint", (ak_val[]){{.p = NULL}, I(0), I(1), I(0), what}, 5, 0);
+	THROWN("encoding: readU64 needs 1 byte at 0, and the data has 0");
+	ak_val take = call("encoding.take", (ak_val[]){data, I(9), I(0), what}, 4, 0);
+	CHECK(!ak_error_pending() && bytes_are(take, NULL, 0));
+	call("encoding.take", (ak_val[]){data, I(9), I(INT64_MAX), what}, 4, 0);
+	THROWN("encoding: readU64 needs 9223372036854775807 bytes at 9, and the data has 9");
+	take = call("encoding.take", (ak_val[]){{.p = NULL}, I(0), I(0), what}, 4, 0);
+	CHECK(!ak_error_pending() && bytes_are(take, NULL, 0));
+	call("encoding.need", (ak_val[]){data, I(0), I(-1), what}, 4, 0);
+	THROWN("encoding: readU64 of -1 bytes: a count can't be negative");
+	ak_release(data.p);
+	ak_release(what.p);
+}
+
+TEST(encoding_join) {
+	ak_arr *parts = ak_arr_new(AK_K_REF, NULL, 0);
+	ak_arr_push(&parts, B("ab", 2));
+	ak_arr_push(&parts, B(NULL, 0));
+	ak_arr_push(&parts, B("cde", 3));
+	uint64_t before = ak_alloc_count;
+	ak_val j = call("encoding.join", (ak_val[]){{.p = parts}}, 1, 1);
+	CHECK_EQ_INT(ak_alloc_count - before, 1);
+	CHECK(bytes_are(j, "abcde", 5));
+	CHECK(bytes_are(call("encoding.join", (ak_val[]){{.p = NULL}}, 1, 0), NULL, 0));
+}
+
+// IEEE 754 bits, by C's own conversions' answers.
+TEST(encoding_float_bits) {
+	CHECK_EQ_INT(call("encoding.float32Bits", (ak_val[]){{.f = 1.0}}, 1, 0).i, 0x3f800000);
+	CHECK_EQ_INT(call("encoding.float32Bits", (ak_val[]){{.f = -0.0}}, 1, 0).i, 0x80000000);
+	CHECK_EQ_INT(call("encoding.float32Bits", (ak_val[]){{.f = 1e300}}, 1, 0).i, 0x7f800000);
+	CHECK_EQ_INT(call("encoding.float32Bits", (ak_val[]){{.f = 16777217.0}}, 1, 0).i, 0x4b800000);  // ties to even
+	CHECK_EQ_INT(call("encoding.float32Bits", (ak_val[]){{.f = 16777219.0}}, 1, 0).i, 0x4b800002);
+	CHECK_EQ_F(call("encoding.float32FromBits", (ak_val[]){I(0xc0490fdb)}, 1, 0).f, -3.14159274101257324);
+	CHECK_EQ_INT(call("encoding.float64Bits", (ak_val[]){{.f = -1.5}}, 1, 0).i, (int64_t)0xbff8000000000000);
+	double back = call("encoding.float64FromBits", (ak_val[]){I((int64_t)0xbff8000000000000)}, 1, 0).f;
+	CHECK(back == -1.5);
+	double nan = call("encoding.float32FromBits", (ak_val[]){I(0x7fc00001)}, 1, 0).f;
+	CHECK(nan != nan);
+}
+
+// Varints: Go's encoding/binary's test values, and what's truncated or
+// past 64 bits throwing; reading one allocates only its result.
+TEST(encoding_varints) {
+	static const struct {
+		int64_t v;
+		bool sign;
+		const char *hex;
+	} cases[] = {
+		{0, false, "00"}, {1, false, "01"}, {127, false, "7f"}, {128, false, "8001"}, {300, false, "ac02"},
+		{-1, false, "ffffffffffffffffff01"}, {INT64_MIN, false, "80808080808080808001"},
+		{0, true, "00"}, {-1, true, "01"}, {1, true, "02"}, {-64, true, "7f"}, {64, true, "8001"},
+		{INT64_MAX, true, "feffffffffffffffff01"}, {INT64_MIN, true, "ffffffffffffffffff01"},
+	};
+	for (size_t k = 0; k < AK_LEN(cases); k++) {
+		ak_val w = call("encoding.varintWrite", (ak_val[]){I(cases[k].v), I(cases[k].sign)}, 2, 0);
+		ak_bytes *b = w.p;
+		char h[32];
+		hex(b->data, b->len, h);
+		CHECK_EQ_STR(h, cases[k].hex);
+		ak_val what = S("readVarint");
+		uint64_t before = ak_alloc_count;
+		ak_val r = call("encoding.varintRead", (ak_val[]){w, I(0), I(cases[k].sign), what}, 4, 0);
+		CHECK_EQ_INT(ak_alloc_count - before, 2);  // the array and its elements
+		ak_arr *a = r.p;
+		REQUIRE(a && a->len == 2);
+		CHECK_EQ_INT(ak_arr_vals(a)[0].i, cases[k].v);
+		CHECK_EQ_INT(ak_arr_vals(a)[1].i, b->len);
+		ak_release(a);
+		ak_release(b);
+		ak_release(what.p);
+	}
+	static const struct {
+		const char *data;
+		size_t n;
+		const char *err;
+	} bad[] = {
+		{"\x80", 1, "encoding: readUvarint at 0: the data (1 byte) ends inside the varint"},
+		{"\xff\xff\xff\xff\xff\xff\xff\xff\xff\x02", 10, "encoding: readUvarint at 0: the varint is past 64 bits"},
+		{"\xff\xff\xff\xff\xff\xff\xff\xff\xff\x80\x01", 11, "encoding: readUvarint at 0: the varint is past 64 bits"},
+		{"", 0, "encoding: readUvarint needs 1 byte at 0, and the data has 0"},
+	};
+	for (size_t k = 0; k < AK_LEN(bad); k++) {
+		call("encoding.varintRead", (ak_val[]){B(bad[k].data, bad[k].n), I(0), I(0), S("readUvarint")}, 4, 9);
+		THROWN(bad[k].err);
+	}
+}
+
+// Base32 at the edges RFC 4648 leaves to the decoder: padding, case,
+// spaces, a partial last group.
+TEST(encoding_base32) {
+	CHECK_STR(call("encoding.base32Encode", (ak_val[]){B("foobar", 6), I(0), I(1)}, 3, 1), "MZXW6YTBOI======");
+	CHECK_STR(call("encoding.base32Encode", (ak_val[]){B("foobar", 6), I(1), I(0)}, 3, 1), "CPNMUOJ1E8");
+	CHECK_STR(call("encoding.base32Encode", (ak_val[]){{.p = NULL}, I(0), I(1)}, 3, 0), "");
+	const char *ok[][2] = {{"MZXW6YTBOI", "foobar"}, {"mzxw6ytboi======", "foobar"}, {"MY", "f"}, {"MZ", "f"}, {" M Y = = = = = = \n", "f"}, {"", ""}};
+	for (size_t i = 0; i < AK_LEN(ok); i++) {
+		ak_val r = call("encoding.base32Decode", (ak_val[]){S(ok[i][0]), I(0)}, 2, 1);
+		REQUIRE(!ak_error_pending());
+		if (!bytes_are(r, ok[i][1], strlen(ok[i][1]))) T_FAIL("%s", ok[i][0]);
+	}
+	const char *bad[] = {"M", "MZX", "MZXW6Y", "MY=", "MY=======", "MY======MY", "========", "MZXW6YTB========", "M1", "M=Y"};
+	for (size_t i = 0; i < AK_LEN(bad); i++) {
+		call("encoding.base32Decode", (ak_val[]){S(bad[i]), I(0)}, 2, 1);
+		if (!ak_error_pending()) T_FAIL("%s decoded", bad[i]);
+		ak_release(ak_error_take());
+	}
+	call("encoding.base32Decode", (ak_val[]){S("VW"), I(1)}, 2, 1);
+	THROWN("base32: 'W' (at 1) isn't base32 (the hex alphabet)");
+}
+
+// UTF-16: the order a BOM says, the lossy and strict decoders on what
+// isn't UTF-16, and invalid UTF-8 in the text encoded as U+FFFD.
+TEST(encoding_utf16) {
+	ak_val e = call("encoding.utf16Encode", (ak_val[]){S("a\xf0\x9f\x98\x80"), I(0), I(1)}, 3, 1);
+	CHECK(bytes_are(e, "\xff\xfe" "a\0" "\x3d\xd8\x00\xde", 8));
+	ak_val bad8 = {.p = ak_str_new("\xff", 1)};
+	CHECK(bytes_are(call("encoding.utf16Encode", (ak_val[]){bad8, I(1), I(0)}, 3, 1), "\xff\xfd", 2));
+	static const struct {
+		const char *data;
+		size_t n;
+		const char *lossy, *strict;
+	} cases[] = {
+		{"\xfe\xff\x00\x41", 4, "A", NULL},
+		{"\xff\xfe\x41\x00", 4, "A", NULL},
+		{"\x00\x41\xfe\xff", 4, "A\xef\xbb\xbf", NULL},
+		{"\xd8\x3d\xde\x00", 4, "\xf0\x9f\x98\x80", NULL},
+		{"\xd8\x3d", 2, "\xef\xbf\xbd", "encoding: utf16DecodeStrict: an unpaired surrogate (0xd83d) at byte 0"},
+		{"\xdc\x00\x00\x41", 4, "\xef\xbf\xbd" "A", "encoding: utf16DecodeStrict: an unpaired surrogate (0xdc00) at byte 0"},
+		{"\x00\x41\x00", 3, "A\xef\xbf\xbd", "encoding: utf16DecodeStrict: an odd number of bytes (3): the last, at 2, is half a code unit"},
+		{"\xd8\x3d\xde", 3, "\xef\xbf\xbd", "encoding: utf16DecodeStrict: an unpaired surrogate (0xd83d) at byte 0"},
+		{"\xfe\xff\xd8", 3, "\xef\xbf\xbd", "encoding: utf16DecodeStrict: an odd number of bytes (3): the last, at 2, is half a code unit"},
+		{"", 0, "", NULL},
+	};
+	for (size_t k = 0; k < AK_LEN(cases); k++) {
+		ak_val d = B(cases[k].data, cases[k].n);
+		uint64_t before = ak_alloc_count;
+		ak_val l = call("encoding.utf16Decode", (ak_val[]){d, I(1)}, 2, 0);
+		if (cases[k].n) CHECK_EQ_INT(ak_alloc_count - before, 1);
+		CHECK_STR(l, cases[k].lossy);
+		ak_val s = call("encoding.utf16DecodeStrict", (ak_val[]){d, I(1)}, 2, 1);
+		if (cases[k].strict) THROWN(cases[k].strict);
+		else CHECK_STR(s, cases[k].lossy);
+	}
+}
+
+// Random bytes into every decoder: they throw or decode, never reading
+// past their input (ASan), and the lossy UTF-16 one always decodes.
+TEST(encoding_random_input) {
+	uint64_t x = 0x9e3779b97f4a7c15;
+	uint8_t buf[24];
+	for (int round = 0; round < 4000; round++) {
+		size_t n = (size_t)(round % (int)sizeof buf);
+		for (size_t i = 0; i < n; i++) {
+			x ^= x << 13, x ^= x >> 7, x ^= x << 17;
+			buf[i] = round & 1 ? (uint8_t)"AZ27=09v \n"[x % 10] : (uint8_t)x;
+		}
+		ak_val d = B(buf, n);
+		ak_val t = {.p = ak_str_new((const char *)buf, n)};
+		ak_val what = S("x");
+		ak_val r = call("encoding.utf16Decode", (ak_val[]){d, I(round & 2)}, 2, 0);
+		CHECK(!ak_error_pending() && r.p);
+		ak_release(r.p);
+		ak_val calls[][4] = {{d, I(0)}, {t, I(0)}, {t, I(1)}, {d, I(round % 9), I(round & 1), what}};
+		const char *names[] = {"encoding.utf16DecodeStrict", "encoding.base32Decode", "encoding.base32Decode", "encoding.varintRead"};
+		uint32_t counts[] = {2, 2, 2, 4};
+		for (size_t c = 0; c < AK_LEN(names); c++) {
+			r = call(names[c], calls[c], counts[c], 0);
+			if (ak_error_pending()) ak_release(ak_error_take());
+			else ak_release(r.p);
+		}
+		ak_release(d.p);
+		ak_release(t.p);
+		ak_release(what.p);
+	}
+}
+
 TEST(regex_programs) {
 	ak_val prog = call("regex.program", (ak_val[]){S("(a+)b")}, 1, 1);
 	REQUIRE(prog.p);
