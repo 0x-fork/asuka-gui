@@ -677,7 +677,11 @@ static ak_val seq_to_array(ak_val *args, uint32_t n) {
 		// Filled as it is: one value n times, or a range's ints.
 		ak_arr *out = ak_arr_like(proto, (uint32_t)len);
 		ak_kind k = (ak_kind)s->kind;
-		if (s->op == S_REPEAT && out->elem == AK_E_BOOL) {
+		if (s->op == S_REPEAT && s->a.i == 0) {
+			// Zero bits (false, 0, +0.0, none): the storage ak_alloc gave is
+			// zeroed already, and a big array's fresh pages untouched, as
+			// Go's make([]bool, n) leaves them: no second pass over it.
+		} else if (s->op == S_REPEAT && out->elem == AK_E_BOOL) {
 			if (len) memset(out->items, s->a.i != 0, (size_t)len);
 		} else if (s->op == S_REPEAT) {
 			for (uint32_t i = 0; i < (uint32_t)len; i++) ak_arr_put(out, i, s->a);
