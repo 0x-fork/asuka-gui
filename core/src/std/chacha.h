@@ -15,8 +15,9 @@ void ak_chacha20_xor(const uint8_t key[32], const uint8_t nonce[12], uint32_t co
 void ak_hchacha20(uint8_t out[32], const uint8_t key[32], const uint8_t in[16]);
 
 // Where the compiler has 128-bit products (64-bit targets): Poly1305 and
-// the AEADs here; elsewhere aead.c has Monocypher's.
-#if defined(__SIZEOF_INT128__)
+// the AEADs here; elsewhere (wasm32, armv7, i686, MSVC) aead.c has
+// Monocypher's.
+#if defined(__SIZEOF_INT128__) && UINTPTR_MAX == UINT64_MAX
 #define AK_CHACHA_FAST 1
 
 typedef struct {

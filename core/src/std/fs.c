@@ -534,6 +534,7 @@ static ak_str *text_of(const uint8_t *p, size_t len) {
 	return s;
 }
 
+#if !defined(_WIN32)
 // whole: what was read into o (bytes, or a string when text), as the
 // call's result; a string's bytes that aren't UTF-8 become U+FFFD.
 static ak_val whole(void *o, bool text) {
@@ -544,6 +545,7 @@ static ak_val whole(void *o, bool text) {
 	ak_release(s);
 	return (ak_val){.p = t};
 }
+#endif
 
 // read_whole reads the file at args[0]: its bytes, or (text) its text.
 static ak_val read_whole(ak_val *args, bool text) {

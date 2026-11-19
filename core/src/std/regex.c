@@ -1675,16 +1675,20 @@ static void kept_drop(kept *e) {
 	memset(e, 0, sizeof *e);
 }
 
+#if defined(__wasm__)
+static kept_all *the_kept;  // one thread
+static kept_all *kept_get(void) { return the_kept ? the_kept : (the_kept = ak_alloc(sizeof(kept_all))); }
+#else
+// kept_free goes with a thread that ends.
 static void kept_free(void *v) {
 	kept_all *a = v;
 	if (!a) return;
 	for (int i = 0; i < KEPT; i++) kept_drop(&a->k[i]);
 	ak_free(a);
 }
+#endif
 
 #if defined(__wasm__)
-static kept_all *the_kept;  // one thread
-static kept_all *kept_get(void) { return the_kept ? the_kept : (the_kept = ak_alloc(sizeof(kept_all))); }
 #elif defined(_WIN32)
 static INIT_ONCE kept_once = INIT_ONCE_STATIC_INIT;
 static DWORD kept_fls = FLS_OUT_OF_INDEXES;

@@ -18,8 +18,6 @@
 
 static inline uint32_t ld32(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
 static inline void st32(uint8_t *p, uint32_t v) { p[0] = (uint8_t)v, p[1] = (uint8_t)(v >> 8), p[2] = (uint8_t)(v >> 16), p[3] = (uint8_t)(v >> 24); }
-static inline uint64_t ld64(const uint8_t *p) { return (uint64_t)ld32(p) | (uint64_t)ld32(p + 4) << 32; }
-static inline void st64(uint8_t *p, uint64_t v) { st32(p, (uint32_t)v), st32(p + 4, (uint32_t)(v >> 32)); }
 static inline uint32_t rotl32(uint32_t x, int n) { return x << n | x >> (32 - n); }
 
 #define QR(a, b, c, d) \
@@ -116,6 +114,9 @@ void ak_hchacha20(uint8_t out[32], const uint8_t key[32], const uint8_t in[16]) 
 #if AK_CHACHA_FAST
 
 typedef unsigned __int128 u128;
+
+static inline uint64_t ld64(const uint8_t *p) { return (uint64_t)ld32(p) | (uint64_t)ld32(p + 4) << 32; }
+static inline void st64(uint8_t *p, uint64_t v) { st32(p, (uint32_t)v), st32(p + 4, (uint32_t)(v >> 32)); }
 #define M44 ((uint64_t)0xfffffffffff)
 #define M42 ((uint64_t)0x3ffffffffff)
 
