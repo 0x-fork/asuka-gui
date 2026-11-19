@@ -55,8 +55,19 @@ type Code struct {
 	Summary, Why, Fix string
 	// Wrong breaks the rule; Right is it fixed. Each is a file
 	// (app.asuka), or several, each after a line "-- name --" (txtar's
-	// form): a catalog, a package beside the app.
+	// form): a catalog, a package beside the app. Read Wrong with
+	// WrongSource: a code whose wrong program is too big to keep made
+	// has it made when it's read (wrong).
 	Wrong, Right string
+	wrong        func() string
+}
+
+// WrongSource is c's program that breaks its rule.
+func (c *Code) WrongSource() string {
+	if c.wrong != nil {
+		return c.wrong()
+	}
+	return c.Wrong
 }
 
 // Text is a code's prose in one language.

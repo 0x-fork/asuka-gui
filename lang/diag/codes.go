@@ -3,6 +3,7 @@ package diag
 import (
 	"fmt"
 	"strings"
+	"sync"
 )
 
 // The compiler's codes, by what they're about. Each one's Wrong is
@@ -1315,8 +1316,9 @@ at run time can't be, and markup that doesn't parse has nothing to make.`,
 		Summary: "a function too large for the bytecode",
 		Why: `An instruction names at most 65,535 values, and a function holds at most
 65,534 at once. A literal or a function past that can't be encoded.`,
-		Fix:   "Split the function, or keep the data in a file (`embed.json`) instead of a literal.",
-		Wrong: locals(70000),
+		Fix: "Split the function, or keep the data in a file (`embed.json`) instead of a literal.",
+		// Made when it's read, not as the CLI starts: 70,000 lines.
+		wrong: sync.OnceValue(func() string { return locals(70000) }),
 		Right: locals(3),
 	})
 
