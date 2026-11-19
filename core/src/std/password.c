@@ -1,7 +1,8 @@
 // password.c: std/crypto's password hashing, the builtins
 // crypto_password.* (their own table: an app that stores no passwords
 // links none of it). Argon2 (RFC 9106: argon2id, and argon2i and argon2d
-// to verify) over Monocypher (third_party/monocypher), its hashes in the
+// to verify), its lanes on threads and its rounds on the vector unit
+// (argon2.c, Monocypher's results), its hashes in the
 // PHC string format ($argon2id$v=19$m=65536,t=3,p=4$salt$hash, the
 // Base64 without padding); bcrypt ($2b$, and $2a$ and $2y$ to verify)
 // over Solar Designer's crypt_blowfish (third_party/crypt_blowfish), for
@@ -13,7 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "std/monocypher.h"
+#include "std/argon2.h"
 #include "std/keyfile.h"
 
 // crypt_blowfish, compiled in here, its exported names the core's.
@@ -67,7 +68,7 @@ static bool argon2(uint32_t variant, const uint8_t *pw, size_t pn, const uint8_t
 	}
 	crypto_argon2_config cfg = {.algorithm = variant, .nb_blocks = memory, .nb_passes = iterations, .nb_lanes = lanes};
 	crypto_argon2_inputs in = {.pass = pw, .salt = salt, .pass_size = (uint32_t)pn, .salt_size = (uint32_t)sn};
-	crypto_argon2(out, (uint32_t)n, work, cfg, in, crypto_argon2_no_extras);
+	ak_argon2(out, (uint32_t)n, work, cfg, in, crypto_argon2_no_extras);
 	free(work);
 	return true;
 }

@@ -744,111 +744,6 @@ static void g_rounds(blk *b)
 
 const crypto_argon2_extras crypto_argon2_no_extras = { 0, 0, 0, 0 };
 
-// Asuka: one segment of a slice (a lane's part of it), on its own: the
-// lanes' segments of a slice can be filled in parallel (one thread a
-// lane, as RFC 9106 means), which AK_MC_ARGON2_LANES, when the includer
-// defines it, does; Monocypher itself fills them one after the other.
-typedef struct {
-	blk *blocks;
-	crypto_argon2_config config;
-	u32 pass, slice, pass_offset, slice_offset, segment_size, lane_size, nb_blocks;
-	int constant_time;
-} argon2_slice;
-
-static void argon2_segment(void *arg, u32 segment)
-{
-	const argon2_slice *s = (const argon2_slice*)arg;
-	blk *blocks = s->blocks;
-	crypto_argon2_config config = s->config;
-	u32 pass = s->pass, slice = s->slice, pass_offset = s->pass_offset;
-	u32 slice_offset = s->slice_offset, segment_size = s->segment_size;
-	u32 lane_size = s->lane_size, nb_blocks = s->nb_blocks;
-	int constant_time = s->constant_time;
-	blk tmp;
-	blk index_block;
-	u32 index_ctr = 1;
-	FOR_T (u32, block, pass_offset, segment_size) {
-		// Current and previous blocks
-		u32  lane_offset   = segment * lane_size;
-		blk *segment_start = blocks + lane_offset + slice_offset;
-		blk *current       = segment_start + block;
-		blk *previous      =
-			block == 0 && slice_offset == 0
-			? segment_start + lane_size - 1
-			: segment_start + block - 1;
-
-		u64 index_seed;
-		if (constant_time) {
-			if (block == pass_offset || (block % 128) == 0) {
-				// Fill or refresh deterministic indices block
-
-				// seed the beginning of the block...
-				ZERO(index_block.a, 128);
-				index_block.a[0] = pass;
-				index_block.a[1] = segment;
-				index_block.a[2] = slice;
-				index_block.a[3] = nb_blocks;
-				index_block.a[4] = config.nb_passes;
-				index_block.a[5] = config.algorithm;
-				index_block.a[6] = index_ctr;
-				index_ctr++;
-
-				// ... then shuffle it
-				copy_block(&tmp, &index_block);
-				g_rounds  (&index_block);
-				xor_block (&index_block, &tmp);
-				copy_block(&tmp, &index_block);
-				g_rounds  (&index_block);
-				xor_block (&index_block, &tmp);
-			}
-			index_seed = index_block.a[block % 128];
-		} else {
-			index_seed = previous->a[0];
-		}
-
-		// Establish the reference set.  *Approximately* comprises:
-		// - The last 3 slices (if they exist yet)
-		// - The already constructed blocks in the current segment
-		u32 next_slice   = ((slice + 1) % 4) * segment_size;
-		u32 window_start = pass == 0 ? 0     : next_slice;
-		u32 nb_segments  = pass == 0 ? slice : 3;
-		u64 lane         =
-			pass == 0 && slice == 0
-			? segment
-			: (index_seed >> 32) % config.nb_lanes;
-		u32 window_size  =
-			nb_segments * segment_size +
-			(lane  == segment ? block-1 :
-			 block == 0       ? (u32)-1 : 0);
-
-		// Find reference block
-		u64  j1        = index_seed & 0xffffffff; // block selector
-		u64  x         = (j1 * j1)         >> 32;
-		u64  y         = (window_size * x) >> 32;
-		u64  z         = (window_size - 1) - y;
-		u64  ref       = (window_start + z) % lane_size;
-		u32  index     = lane * lane_size + (u32)ref;
-		blk *reference = blocks + index;
-
-		// Shuffle the previous & reference block
-		// into the current block
-		copy_block(&tmp, previous);
-		xor_block (&tmp, reference);
-		if (pass == 0) { copy_block(current, &tmp); }
-		else           { xor_block (current, &tmp); }
-		g_rounds  (&tmp);
-		xor_block (current, &tmp);
-	}
-	volatile u64* p = tmp.a;
-	ZERO(p, 128);
-}
-
-#ifdef AK_MC_ARGON2_LANES
-// Runs fn(ctx, lane) for each of n lanes, in parallel where it can, and
-// returns when they're all done.
-extern void (*AK_MC_ARGON2_LANES)(void (*fn)(void *, u32), void *ctx, u32 n);
-#endif
-
 void crypto_argon2(u8 *hash, u32 hash_size, void *work_area,
                    crypto_argon2_config config,
                    crypto_argon2_inputs inputs,
@@ -903,6 +798,7 @@ void crypto_argon2(u8 *hash, u32 hash_size, void *work_area,
 	// Yet optimal performance (and therefore security) requires one
 	// thread per lane. The only reason Monocypher supports multiple
 	// lanes is compatibility.
+	blk tmp;
 	FOR_T(u32, pass, 0, config.nb_passes) {
 		FOR_T(u32, slice, 0, 4) {
 			// On the first slice of the first pass,
@@ -919,21 +815,88 @@ void crypto_argon2(u8 *hash, u32 hash_size, void *work_area,
 			// Each iteration of the following loop may be performed in
 			// a separate thread.  All segments must be fully completed
 			// before we start filling the next slice.
-			{
-				argon2_slice a = {blocks, config, pass, slice, pass_offset,
-				                  slice_offset, segment_size, lane_size,
-				                  nb_blocks, constant_time};
-#ifdef AK_MC_ARGON2_LANES
-				if (AK_MC_ARGON2_LANES) {
-					AK_MC_ARGON2_LANES(argon2_segment, &a, config.nb_lanes);
-				} else
-#endif
-				FOR_T(u32, segment, 0, config.nb_lanes) {
-					argon2_segment(&a, segment);
+			FOR_T(u32, segment, 0, config.nb_lanes) {
+				blk index_block;
+				u32 index_ctr = 1;
+				FOR_T (u32, block, pass_offset, segment_size) {
+					// Current and previous blocks
+					u32  lane_offset   = segment * lane_size;
+					blk *segment_start = blocks + lane_offset + slice_offset;
+					blk *current       = segment_start + block;
+					blk *previous      =
+						block == 0 && slice_offset == 0
+						? segment_start + lane_size - 1
+						: segment_start + block - 1;
+
+					u64 index_seed;
+					if (constant_time) {
+						if (block == pass_offset || (block % 128) == 0) {
+							// Fill or refresh deterministic indices block
+
+							// seed the beginning of the block...
+							ZERO(index_block.a, 128);
+							index_block.a[0] = pass;
+							index_block.a[1] = segment;
+							index_block.a[2] = slice;
+							index_block.a[3] = nb_blocks;
+							index_block.a[4] = config.nb_passes;
+							index_block.a[5] = config.algorithm;
+							index_block.a[6] = index_ctr;
+							index_ctr++;
+
+							// ... then shuffle it
+							copy_block(&tmp, &index_block);
+							g_rounds  (&index_block);
+							xor_block (&index_block, &tmp);
+							copy_block(&tmp, &index_block);
+							g_rounds  (&index_block);
+							xor_block (&index_block, &tmp);
+						}
+						index_seed = index_block.a[block % 128];
+					} else {
+						index_seed = previous->a[0];
+					}
+
+					// Establish the reference set.  *Approximately* comprises:
+					// - The last 3 slices (if they exist yet)
+					// - The already constructed blocks in the current segment
+					u32 next_slice   = ((slice + 1) % 4) * segment_size;
+					u32 window_start = pass == 0 ? 0     : next_slice;
+					u32 nb_segments  = pass == 0 ? slice : 3;
+					u64 lane         =
+						pass == 0 && slice == 0
+						? segment
+						: (index_seed >> 32) % config.nb_lanes;
+					u32 window_size  =
+						nb_segments * segment_size +
+						(lane  == segment ? block-1 :
+						 block == 0       ? (u32)-1 : 0);
+
+					// Find reference block
+					u64  j1        = index_seed & 0xffffffff; // block selector
+					u64  x         = (j1 * j1)         >> 32;
+					u64  y         = (window_size * x) >> 32;
+					u64  z         = (window_size - 1) - y;
+					u64  ref       = (window_start + z) % lane_size;
+					u32  index     = lane * lane_size + (u32)ref;
+					blk *reference = blocks + index;
+
+					// Shuffle the previous & reference block
+					// into the current block
+					copy_block(&tmp, previous);
+					xor_block (&tmp, reference);
+					if (pass == 0) { copy_block(current, &tmp); }
+					else           { xor_block (current, &tmp); }
+					g_rounds  (&tmp);
+					xor_block (current, &tmp);
 				}
 			}
 		}
 	}
+
+	// Wipe temporary block
+	volatile u64* p = tmp.a;
+	ZERO(p, 128);
 
 	// XOR last blocks of each lane
 	blk *last_block = blocks + lane_size - 1;
@@ -948,7 +911,7 @@ void crypto_argon2(u8 *hash, u32 hash_size, void *work_area,
 	store64_le_buf(final_block, last_block->a, 128);
 
 	// Wipe work area
-	volatile u64* p = (u64*)work_area;
+	p = (u64*)work_area;
 	ZERO(p, 128 * nb_blocks);
 
 	// Hash the very last block with H' into the output hash

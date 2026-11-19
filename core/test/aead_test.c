@@ -5,7 +5,6 @@
 // (testdata/wycheproof): what's valid opens to its message and seals to
 // its ciphertext, what isn't doesn't open.
 #include "t.h"
-#include "std/chacha.h"
 #include "std/std.h"
 #include "std/cryptohw.h"
 #include "std/monocypher.h"
@@ -148,41 +147,6 @@ TEST(wycheproof_aes_gcm) { wycheproof("aes_gcm_test.txt", AES256, AES128); }
 TEST(wycheproof_chacha20_poly1305) { wycheproof("chacha20_poly1305_test.txt", CHACHA, CHACHA); }
 TEST(wycheproof_xchacha20_poly1305) { wycheproof("xchacha20_poly1305_test.txt", XCHACHA, XCHACHA); }
 
-#if AK_CHACHA_FAST
-// chacha.c's ChaCha20-Poly1305 and XChaCha20-Poly1305 seal what
-// Monocypher's do, byte for byte, at every length to 1100 (across NEON's
-// 256-byte blocks), and open what they seal; a flipped bit fails.
-TEST(chacha_as_monocypher) {
-	uint8_t key[32], nonce[24], ad[40], pt[1100], a[1100], b[1100], ta[16], tb[16];
-	uint32_t x = 9;
-	for (size_t i = 0; i < sizeof pt; i++) pt[i] = (uint8_t)((x = x * 1103515245 + 12345) >> 16);
-	for (size_t n = 0; n <= sizeof pt; n += n < 300 ? 1 : 37) {
-		for (int i = 0; i < 32; i++) key[i] = (uint8_t)(n + (size_t)i * 7);
-		for (int i = 0; i < 24; i++) nonce[i] = (uint8_t)(n * 3 + (size_t)i);
-		for (int i = 0; i < 40; i++) ad[i] = (uint8_t)(i ^ n);
-		size_t an = n % 41;
-		for (int xc = 0; xc < 2; xc++) {
-			ak_chacha_seal(xc, key, nonce, ad, an, pt, a, n, ta);
-			if (xc) {
-				crypto_aead_lock(b, tb, key, nonce, ad, an, pt, n);
-			} else {
-				crypto_aead_ctx c;
-				crypto_aead_init_ietf(&c, key, nonce);
-				crypto_aead_write(&c, b, tb, ad, an, pt, n);
-			}
-			if (memcmp(a, b, n) || memcmp(ta, tb, 16)) T_FAIL("%s of %zu bytes differs", xc ? "xchacha" : "chacha", n);
-			uint8_t back[1100];
-			CHECK(ak_chacha_open(xc, key, nonce, ad, an, a, back, n, ta));
-			CHECK(memcmp(back, pt, n) == 0);
-			if (n) {
-				a[n / 2] ^= 4;
-				CHECK(!ak_chacha_open(xc, key, nonce, ad, an, a, back, n, ta));
-			}
-		}
-	}
-}
-#endif
-
 TEST(sizes) {
 	// A key or a nonce of the wrong size, or sealed bytes shorter than a
 	// tag: none, for every cipher.
@@ -244,6 +208,92 @@ TEST(gcm_hardware_as_software) {
 		for (size_t i = 0; i < AK_LEN(all); i++)
 			if (all[i]) ak_release(all[i]);
 	}
+}
+
+// The vector unit's ChaCha20-Poly1305 (chacha.c), where the CPU has it,
+// seals and opens as Monocypher does: at every length about its chunks
+// (four and eight blocks) and some far past them, with additional data
+// of every length, the data at every alignment; on x86-64 with AVX2 and
+// with SSE2 alone. A tag that doesn't match opens nothing and leaves
+// nothing decrypted behind.
+static uint64_t rng = 0x9e3779b97f4a7c15ull;
+
+static void fill(uint8_t *p, size_t n) {
+	for (size_t i = 0; i < n; i++) {
+		rng ^= rng << 13, rng ^= rng >> 7, rng ^= rng << 17;
+		p[i] = (uint8_t)rng;
+	}
+}
+
+static void chacha_case(bool x, size_t n, size_t an, size_t align) {
+	uint8_t key[32], nonce[24], tag[16], want_tag[16], bad_tag[16];
+	fill(key, 32), fill(nonce, 24);
+	uint8_t *buf = malloc(3 * (n + 16) + an + 64);
+	uint8_t *pt = buf + align, *ad = pt + n, *ct = ad + an + (align ^ 7), *want = ct + n + 16 + align / 2;
+	fill(pt, n), fill(ad, an);
+	size_t nn = x ? 24 : 12;
+	if (!ak_chacha_poly_hw(true, key, nonce, nn, ad, an, pt, ct, n, tag)) {
+		free(buf);
+		return;
+	}
+	crypto_aead_ctx c;
+	if (x) crypto_aead_init_x(&c, key, nonce);
+	else crypto_aead_init_ietf(&c, key, nonce);
+	crypto_aead_write(&c, want, want_tag, ad, an, pt, n);
+	if (memcmp(ct, want, n) != 0 || memcmp(tag, want_tag, 16) != 0) T_FAIL("x %d, %zu bytes, %zu of ad, at %zu: sealed otherwise", x, n, an, align);
+	// Opening: the plaintext and the same tag; another tag doesn't match.
+	uint8_t *back = malloc(n + 1);
+	CHECK(ak_chacha_poly_hw(false, key, nonce, nn, ad, an, ct, back, n, bad_tag));
+	if (memcmp(back, pt, n) != 0 || memcmp(bad_tag, want_tag, 16) != 0) T_FAIL("x %d, %zu bytes, %zu of ad: opened otherwise", x, n, an);
+	free(back);
+	free(buf);
+}
+
+TEST(chacha_vector_as_monocypher) {
+	uint8_t probe[16];
+	if (!ak_chacha_poly_hw(true, (const uint8_t[32]){0}, (const uint8_t[12]){0}, 12, NULL, 0, NULL, NULL, 0, probe)) return;
+	for (int sse2 = 0; sse2 < 2; sse2++) {
+		ak_cryptohw_sse2 = sse2;
+		for (size_t n = 0; n <= 1100; n++) chacha_case(n % 2, n, n % 37, n % 16);
+		for (int i = 0; i < 300; i++) {
+			size_t n = (size_t)(rng % 70000), an = (size_t)(rng >> 32) % 300;
+			chacha_case(i % 2, n, an, (size_t)i % 16);
+		}
+		chacha_case(false, 1 << 20, 0, 3);
+		chacha_case(true, (1 << 20) + 17, 5, 0);
+	}
+	ak_cryptohw_sse2 = false;
+}
+
+// ChaCha20 alone, as crypto_chacha20_djb: about the counter's carry out
+// of its low word (256 GiB into a message), which the vector unit's
+// chunks take block by block.
+TEST(chacha_counter_carry) {
+	uint8_t key[32], nonce[8], in[1100], got[1100], want[1100];
+	fill(key, 32), fill(nonce, 8), fill(in, sizeof in);
+	for (int sse2 = 0; sse2 < 2; sse2++) {
+		ak_cryptohw_sse2 = sse2;
+		uint64_t ctrs[] = {0, 1, 0xfffffff0u, 0xfffffff9u, 0xfffffffcu, 0xfffffffdu, 0xffffffffu, 0x1ffffffffull, UINT64_MAX - 2};
+		for (size_t i = 0; i < AK_LEN(ctrs); i++)
+			for (size_t n = 0; n <= sizeof in; n += 61) {
+				if (!ak_chacha20_hw(key, nonce, ctrs[i], in, got, n)) return;
+				crypto_chacha20_djb(want, in, n, key, nonce, ctrs[i]);
+				if (memcmp(got, want, n) != 0) T_FAIL("counter %llx, %zu bytes: other bytes", (unsigned long long)ctrs[i], n);
+			}
+	}
+	ak_cryptohw_sse2 = false;
+}
+
+// A changed tag opens to nothing (what was decrypted is wiped).
+TEST(chacha_bad_tag_wipes) {
+	ak_bytes *k = ak_bytes_new(NULL, 32), *n = ak_bytes_new(NULL, 12), *p = ak_bytes_new(NULL, 1000), *a = ak_bytes_new(NULL, 0);
+	fill(k->data, 32), fill(n->data, 12), fill(p->data, 1000);
+	ak_bytes *s = seal(CHACHA, k, n, p, a);
+	REQUIRE(s);
+	s->data[s->len - 1] ^= 1;
+	CHECK(!open_(CHACHA, k, n, s, a));
+	ak_bytes *all[] = {k, n, p, a, s};
+	for (size_t i = 0; i < AK_LEN(all); i++) ak_release(all[i]);
 }
 
 T_MAIN()
