@@ -24,6 +24,28 @@
 extern "C" {
 #endif
 
+// ---- TLS settings on a WinHTTP request (src/tls.c) ----
+//
+// asuka_win_tls_begin has a request (not yet sent) go as c->tls says: the
+// client's certificate shown, and the server's checked as the request is
+// about to be sent to it (WinHTTP's own check of it off), against the
+// settings' authorities (and the system's, with trust_system) with its
+// name, or not at all (insecure). A server that isn't trusted is sent
+// nothing: c->close(c->ctx) closes the request (what its cancel does), and
+// c->untrusted says why; and why the system's own check refused one, with
+// no settings (c->tls NULL). c must outlive the request's sends. false
+// with err set when the request takes none of it.
+typedef struct {
+	const asuka_tls *tls;
+	void (*close)(void *ctx);
+	void *ctx;
+	char *untrusted;  // why the server wasn't trusted, once it wasn't (malloc's)
+} asuka_win_tls;
+bool asuka_win_tls_begin(void *request, asuka_win_tls *c, asuka_error *err);
+// asuka_win_tls_failed is whether a request failed for its server not
+// being trusted, err then set to why (c->untrusted taken).
+bool asuka_win_tls_failed(asuka_win_tls *c, asuka_error *err);
+
 // asuka_wide is s as UTF-16, of malloc's (NULL: "").
 wchar_t *asuka_wide(const char *s);
 // asuka_narrow is w as UTF-8, of malloc's (NULL: ""); n characters, or

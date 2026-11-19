@@ -26,7 +26,8 @@ import (
 type PKI struct {
 	// CA signed the rest; OtherCA signed none of them.
 	CA, OtherCA string
-	// The server's, for localhost, 127.0.0.1 and ::1.
+	// The server's, for localhost, 127.0.0.1, ::1 and the hosts
+	// NewPKI was given.
 	ServerCert, ServerKey string
 	// A client's ("Asuka Test Client"), its key P-256's: PKCS#8, and
 	// the same key as SEC 1's EC PRIVATE KEY.
@@ -38,8 +39,9 @@ type PKI struct {
 	pool   *x509.CertPool
 }
 
-// NewPKI makes the certificates.
-func NewPKI() (*PKI, error) {
+// NewPKI makes the certificates, the server's for hosts (names or IP
+// addresses) too: the address a VM reaches this computer at.
+func NewPKI(hosts ...string) (*PKI, error) {
 	p := &PKI{pool: x509.NewCertPool()}
 	from, until := time.Now().Add(-time.Hour), time.Now().Add(24*time.Hour)
 	root, rootKey, err := authority("Asuka Test HTTP Root CA", nil, nil, from, until)
@@ -58,11 +60,19 @@ func NewPKI() (*PKI, error) {
 	p.CA, p.OtherCA = pemOf("CERTIFICATE", root.Raw), pemOf("CERTIFICATE", other.Raw)
 	chain := func(leaf *x509.Certificate) string { return pemOf("CERTIFICATE", leaf.Raw) + pemOf("CERTIFICATE", inter.Raw) }
 
+	names, ips := []string{"localhost"}, []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")}
+	for _, h := range hosts {
+		if ip := net.ParseIP(h); ip != nil {
+			ips = append(ips, ip)
+		} else {
+			names = append(names, h)
+		}
+	}
 	sk, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	server, err := sign(&x509.Certificate{
 		Subject:     pkix.Name{CommonName: "localhost"},
-		DNSNames:    []string{"localhost"},
-		IPAddresses: []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")},
+		DNSNames:    names,
+		IPAddresses: ips,
 		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	}, sk, inter, interKey, from, until)
 	if err != nil {

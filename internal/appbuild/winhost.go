@@ -51,7 +51,7 @@ type WindowsOptions struct {
 // WindowsLibs are the system libraries the Windows host links.
 var WindowsLibs = []string{
 	"-lgdiplus", "-lcomctl32", "-luxtheme", "-ldwmapi", "-lole32", "-loleaut32", "-luuid", "-lshell32", "-lshlwapi",
-	"-luser32", "-lgdi32", "-ladvapi32", "-lwinhttp", "-lws2_32", "-lmsimg32", "-lwindowscodecs", "-limm32", "-lversion",
+	"-luser32", "-lgdi32", "-ladvapi32", "-lwinhttp", "-lcrypt32", "-lncrypt", "-lws2_32", "-lmsimg32", "-lwindowscodecs", "-limm32", "-lversion",
 	"-lcomdlg32", "-lwinmm", "-lcredui", "-ld3d11", "-ldxgi", "-luiautomationcore", "-lpropsys", "-lbcrypt", "-ldbghelp",
 }
 

@@ -51,8 +51,13 @@ class TLSTest {
         assertTrue(why, why.contains("127.0.0.1's certificate isn't trusted"))
     }
 
+    // The system's trust and another authority's still refuse after the
+    // others let the server in: no session of theirs is resumed unchecked.
     @Test fun insecureChecksNothing() = runBlocking<kotlin.Unit> {
         assertEquals("403 no client certificate", get(secured(insecure = true)))
+        assertEquals("403 no client certificate", get(secured(ca = ca)))
+        refused(plain)
+        refused(secured(ca = TestServer.pem("other-ca.pem")))
     }
 
     @Test fun clientCertificates() = runBlocking<kotlin.Unit> {

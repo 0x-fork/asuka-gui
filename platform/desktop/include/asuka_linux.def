@@ -1311,6 +1311,18 @@ SYM(SOUP, void, soup_message_set_request_body_from_bytes, (SoupMessage *msg, con
 SYM(SOUP, GInputStream *, soup_session_send, (SoupSession *session, SoupMessage *msg, GCancellable *cancellable, GError **error))
 SYM(SOUP, GUri *, soup_message_get_uri, (SoupMessage *msg))
 
+// ---- Native packages: TLS settings on libsoup's messages (tls.c) ----
+SYM(SOUP, void, soup_session_set_tls_database, (SoupSession *session, GTlsDatabase *tls_database))
+SYM(SOUP, void, soup_message_set_tls_client_certificate, (SoupMessage *msg, GTlsCertificate *certificate))
+SYM(GIO, GTlsDatabase *, g_tls_file_database_new, (const gchar *anchors, GError **error))
+SYM(GIO, GTlsCertificateFlags, g_tls_database_verify_chain, (GTlsDatabase *self, GTlsCertificate *chain, const gchar *purpose, GSocketConnectable *identity, GTlsInteraction *interaction, GTlsDatabaseVerifyFlags flags, GCancellable *cancellable, GError **error))
+SYM(GIO, GTlsCertificate *, g_tls_certificate_new_from_pem, (const gchar *data, gssize length, GError **error))
+SYM(GIO, GSocketConnectable *, g_network_address_new, (const gchar *hostname, guint16 port))
+SYM(GLIB, gint, g_uri_get_port, (GUri *uri))
+SYM(GLIB, gint, g_file_open_tmp, (const gchar *tmpl, gchar **name_used, GError **error))
+SYM(GLIB, gboolean, g_file_set_contents, (const gchar *filename, const gchar *contents, gssize length, GError **error))
+SYM(GOBJECT, void, g_object_set_data_full, (GObject *object, const gchar *key, gpointer data, GDestroyNotify destroy))
+
 // ---- Native packages: libsoup's WebSockets (std/websocket) ----
 SYM(SOUP, void, soup_session_websocket_connect_async, (SoupSession *session, SoupMessage *msg, const char *origin, char **protocols, int io_priority, GCancellable *cancellable, GAsyncReadyCallback callback, gpointer user_data))
 SYM(SOUP, SoupWebsocketConnection *, soup_session_websocket_connect_finish, (SoupSession *session, GAsyncResult *result, GError **error))

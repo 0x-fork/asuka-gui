@@ -453,6 +453,9 @@ do {
 } catch {
     print("mismatch: \(error.localizedDescription)")
 }
+// After the rest let the server in: the system's trust and another
+// authority's still refuse it (no session of theirs resumed unchecked).
+print("again: \(await get(plain)) | \(await get(try await plain.secured(tls: TLS(ca: read("other-ca.pem")))))")
 `
 	got := runHTTPProbe(t, t.TempDir(), driver)
 	for _, want := range []string{
@@ -472,6 +475,8 @@ do {
 		"download refused: -1004",
 		"bad ca: tls: ca: a certificate can't be read",
 		"mismatch: tls: the key can't be used with the certificate (it isn't its key, or can't be read): ",
+		"again: error -1202 The certificate for this server is invalid.",
+		" | error -1202 127.0.0.1's certificate isn't trusted: ",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("want %q in:\n%s", want, got)

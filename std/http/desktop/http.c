@@ -1,6 +1,7 @@
-// std/http on Windows and Linux: the shared HTTP client (asuka_fetch,
-// asuka_fetch_stream: WinHTTP, libsoup 3), with the system's proxy
-// settings and certificates, on a thread of the request's.
+// std/http on Windows and Linux: the shared HTTP client
+// (asuka_fetch_stream: WinHTTP, libsoup 3), with the system's proxy
+// settings and certificates, or a secured transport's TLS settings
+// (asuka_tls), on a thread of the request's.
 #include "http.asuka.h"
 
 #include <limits.h>
@@ -26,13 +27,28 @@ typedef int sock_t;
 #define close_sock close
 #endif
 
+// A transport: the system's TLS (tls NULL), or a secured one's settings.
+typedef struct {
+	http_Transport base;
+	const asuka_tls *tls;
+} transport;
+
+static const asuka_tls *tls_of(http_Transport *self) { return ((transport *)self)->tls; }
+
 typedef struct {
 	const char *method, *url;
 	http_map_string headers;
 	asuka_bytes body;
 	int64_t timeout;  // nanoseconds
+	const asuka_tls *tls;
 	asuka_call *call;
 } request;
+
+static bool keep(void *ctx, const void *p, size_t n, asuka_error *err) {
+	(void)err;
+	asuka_writer_put(ctx, p, n);
+	return true;
+}
 
 static void run(void *p) {
 	request *q = p;
@@ -40,12 +56,16 @@ static void run(void *p) {
 	for (size_t i = 0; i < q->headers.len; i++) hs[i] = (asuka_header){q->headers.keys[i], q->headers.values[i]};
 	asuka_response r;
 	asuka_error e = {0};
+	asuka_writer w = {0};
 	int ms = q->timeout > 0 ? (int)((q->timeout + 999999) / 1000000) : 0;
-	if (asuka_fetch(q->method, q->url, hs, q->headers.len, q->body.data, q->body.len, ms, q->call, &r, &e)) {
-		http_Response out = {.status = r.status, .url = r.url, .body = r.body};
+	asuka_request rq = {.method = q->method, .url = q->url, .headers = hs, .nheaders = q->headers.len, .body = q->body.data, .len = q->body.len,
+	                    .timeout_ms = ms, .cancel = q->call, .tls = q->tls, .data = keep, .ctx = &w};
+	if (asuka_fetch_stream(&rq, &r, &e)) {
+		http_Response out = {.status = r.status, .url = r.url, .body = {w.data ? w.data : malloc(1), w.len}};
 		out.headers = (http_map_string){r.names, r.values, r.nheaders};
-		http_Transport_send_done(q->call, out);  // takes r's strings
+		http_Transport_send_done(q->call, out);  // takes r's strings and w's bytes
 	} else {
+		asuka_writer_free(&w);
 		asuka_call_fail(q->call, &e);
 	}
 	free(hs);
@@ -54,7 +74,7 @@ static void run(void *p) {
 
 static void send_(http_Transport *self, const char *method, const char *url, http_map_string headers, asuka_bytes body, int64_t timeout, asuka_call *call) {
 	request *q = malloc(sizeof *q);
-	*q = (request){method, url, headers, body, timeout, call};
+	*q = (request){method, url, headers, body, timeout, tls_of(self), call};
 	if (!asuka_desktop_spawn(run, q)) {
 		free(q);
 		asuka_error e = {0};
@@ -71,6 +91,7 @@ typedef struct {
 	asuka_bytes body;
 	int64_t timeout;  // nanoseconds
 	http_fn_int_int progress;
+	const asuka_tls *tls;
 	asuka_call *call;
 	// What the sink keeps.
 	FILE *f;
@@ -162,7 +183,7 @@ static void run_download(void *p) {
 	asuka_error e = {0};
 	int ms = q->timeout > 0 ? (int)((q->timeout + 999999) / 1000000) : 0;
 	asuka_request rq = {.method = q->method, .url = q->url, .headers = hs, .nheaders = q->headers.len, .body = q->body.data, .len = q->body.len,
-	                    .timeout_ms = ms, .cancel = q->call, .head = head, .data = data, .ctx = q};
+	                    .timeout_ms = ms, .cancel = q->call, .tls = q->tls, .head = head, .data = data, .ctx = q};
 	bool ok = asuka_fetch_stream(&rq, &r, &e);
 	if (ok && !q->f) q->f = open_file(q->part);  // an empty body: an empty file
 	if (q->f && fclose(q->f) != 0) ok = false;
@@ -188,9 +209,8 @@ static void run_download(void *p) {
 
 static void download_(http_Transport *self, const char *method, const char *url, http_map_string headers, asuka_bytes body, int64_t timeout, const char *path,
                       http_fn_int_int progress, asuka_call *call) {
-	(void)self;
 	download *q = calloc(1, sizeof *q);
-	*q = (download){.method = method, .url = url, .path = path, .headers = headers, .body = body, .timeout = timeout, .progress = progress, .call = call, .total = -1};
+	*q = (download){.method = method, .url = url, .path = path, .headers = headers, .body = body, .timeout = timeout, .progress = progress, .tls = tls_of(self), .call = call, .total = -1};
 	if (!asuka_desktop_spawn(run_download, q)) {
 		free(q);
 		asuka_error e = {0};
@@ -252,6 +272,7 @@ typedef struct {
 	size_t nheaders;
 	asuka_bytes body;
 	int timeout_ms;
+	const asuka_tls *tls;
 	asuka_call *open;     // until the head answers it (the worker's)
 	asuka_response head;  // written before open answers, read only after
 	mutex_t mu;
@@ -353,7 +374,7 @@ static bool body_data(void *ctx, const void *p, size_t n, asuka_error *err) {
 static void run_open(void *p) {
 	body *b = p;
 	asuka_request rq = {.method = b->method, .url = b->url, .headers = b->headers, .nheaders = b->nheaders, .body = b->body.data, .len = b->body.len,
-	                    .timeout_ms = b->timeout_ms, .abort = b->abort, .head = body_head, .data = body_data, .ctx = b};
+	                    .timeout_ms = b->timeout_ms, .abort = b->abort, .tls = b->tls, .head = body_head, .data = body_data, .ctx = b};
 	asuka_error e = {0};
 	bool ok = asuka_fetch_stream(&rq, NULL, &e);
 	if (!b->given) {
@@ -473,9 +494,9 @@ static const http_Body_vtable body_vt = {.release = body_release, .head = body_h
 
 static void open_(http_Transport *self, const char *method, const char *url, http_map_string headers, asuka_bytes data, int64_t timeout,
                   asuka_call *call) {
-	(void)self;
 	body *b = calloc(1, sizeof *b);
 	b->base.vt = &body_vt;
+	b->tls = tls_of(self);
 	b->refs = 2;
 	b->abort = asuka_abort_new();
 	b->method = asuka_strdup(method);
@@ -503,7 +524,43 @@ http_Body *http_make_Body(asuka_error *err) {
 	return NULL;
 }
 
-static const http_Transport_vtable vt = {.send = send_, .download = download_, .open = open_};
+// ---- Secured transports: TLS settings, read on a thread ----
+
+static const http_Transport_vtable vt;
+
+typedef struct {
+	const http_TLS *tls;
+	asuka_call *call;
+} securing;
+
+static void run_secured(void *p) {
+	securing *q = p;
+	const http_TLS *t = q->tls;
+	asuka_error e = {0};
+	asuka_tls *tls = asuka_tls_get(t->ca, t->trustSystem, t->certificate, t->key, t->insecureSkipVerify, &e);
+	if (tls) {
+		transport *x = malloc(sizeof *x);
+		*x = (transport){{&vt}, tls};
+		http_Transport_secured_done(q->call, &x->base);
+	} else {
+		asuka_call_fail(q->call, &e);
+	}
+	free(q);
+}
+
+static void secured_(http_Transport *self, const http_TLS *tls, asuka_call *call) {
+	(void)self;
+	securing *q = malloc(sizeof *q);
+	*q = (securing){tls, call};
+	if (!asuka_desktop_spawn(run_secured, q)) {
+		free(q);
+		asuka_error e = {0};
+		asuka_error_failed(&e, "http", 0, "no thread for the TLS settings");
+		asuka_call_fail(call, &e);
+	}
+}
+
+static const http_Transport_vtable vt = {.send = send_, .download = download_, .open = open_, .secured = secured_};
 
 // ---- LocalServer: one-shot pages on the loopback, for a redirect ----
 
@@ -712,7 +769,8 @@ http_LocalServer *http_make_LocalServer(asuka_error *err) {
 }
 
 http_Transport *http_make_Transport(asuka_error *err) {
-	http_Transport *t = malloc(sizeof *t);
-	t->vt = &vt;
-	return t;
+	(void)err;
+	transport *t = malloc(sizeof *t);
+	*t = (transport){{&vt}, NULL};
+	return &t->base;
 }

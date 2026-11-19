@@ -11,6 +11,7 @@ import (
 
 	"github.com/egoist/asuka/internal/appbuild"
 	"github.com/egoist/asuka/internal/cbuild"
+	"github.com/egoist/asuka/internal/testserver"
 )
 
 // A program that serves HTTP and calls itself with std/http's own
@@ -119,6 +120,132 @@ price|42|7
 405 GET, HEAD
 true
 closed
+`
+	if got != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// A program that serves HTTPS (net.serverTLS, http.serve's tls:) with a
+// test authority's certificates (testserver.NewPKI's, made for the run:
+// Apple's systems trust no server certificate valid for more than 825
+// days, so the TLS tests' committed ones, valid until 2100, won't do) and
+// calls itself with std/http's client and its TLS settings, built for
+// this computer: URLSession on macOS, libsoup on Linux, WinHTTP on
+// Windows. The test root trusted (alone, with the system's), not trusted
+// by the system nor by another root, nothing checked; a server that asks
+// for a client's certificate answering the one shown and refusing none;
+// a stream and a download secured; settings that can't be read; and the
+// system's trust still refusing once the others let the server in.
+func TestProgramHTTPSClient(t *testing.T) {
+	if _, err := cbuild.Find(); err != nil {
+		t.Skip(err)
+	}
+	dir := filepath.Join(t.TempDir(), "secure")
+	os.MkdirAll(dir, 0o755)
+	pki, err := testserver.NewPKI()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pki.WriteFiles(dir); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(dir, "server.pem"), []byte(pki.ServerCert), 0o644)
+	os.WriteFile(filepath.Join(dir, "server.key"), []byte(pki.ServerKey), 0o644)
+	os.WriteFile(filepath.Join(dir, "asuka.toml"), []byte("name = \"secure\"\nversion = \"0.1.0\"\n"), 0o644)
+	main := `import std/fs
+import std/http
+import std/net
+
+async fn get(url: string, tls: http.TLS?) -> string {
+  do {
+    let r = try await http.get(url, tls: tls)
+    return "{r.status} {r.text()}"
+  } catch e {
+    return if e.message.contains("certificate isn't trusted") { "untrusted" } else { "refused" }
+  }
+}
+
+async fn main() throws {
+  let ca = try fs.readText("ca.pem")
+  let cert = try fs.readText("server.pem")
+  let key = try fs.readText("server.key")
+  let mine = http.TLS(ca: ca, certificate: try fs.readText("client.pem"), key: try fs.readText("client.key"))
+  let api = http.Router()
+    .get("/hello", req => .text("hello"))
+    .get("/count", req => .stream(Stream<bytes>(send => {
+      for i in 1..3 {
+        send("line {i}\n".bytes())
+      }
+    }), type: "text/plain"))
+  let open = try await http.serve(0, api.handler(), tls: try net.serverTLS(certificate: cert, key: key))
+  let mutual = try await http.serve(0, api.handler(), tls: try net.serverTLS(certificate: cert, key: key, clientCA: ca))
+  do {
+    let _ = try await http.get("{open.url}/hello", tls: http.TLS(insecureSkipVerify: true))
+  } catch e {
+    print("no client: {e.message}")
+    await open.close()
+    await mutual.close()
+    return
+  }
+  print("system: {await get("{open.url}/hello", none)}")
+  print("ca: {await get("{open.url}/hello", http.TLS(ca: ca))}")
+  print("other: {await get("{open.url}/hello", http.TLS(ca: try fs.readText("other-ca.pem")))}")
+  print("both: {await get("{open.url}/hello", http.TLS(ca: ca, trustSystem: true))}")
+  print("insecure: {await get("{open.url}/hello", http.TLS(insecureSkipVerify: true))}")
+  print("mutual, none shown: {await get("{mutual.url}/hello", http.TLS(ca: ca))}")
+  print("mutual: {await get("{mutual.url}/hello", mine)}")
+  let s = try await http.stream("{mutual.url}/count", tls: mine)
+  var lines: [string] = []
+  for await l in s.lines() {
+    lines.push(l)
+  }
+  print("stream: {s.status} {lines}")
+  let d = try await http.download("{open.url}/hello", "hello.txt", tls: http.TLS(ca: ca))
+  print("download: {d.status} {try fs.readText("hello.txt")}")
+  do {
+    let _ = try await http.get("{open.url}/hello", tls: http.TLS(certificate: try fs.readText("client.pem")))
+  } catch http.HTTPError.tls(reason) {
+    print("bad: {reason}")
+  }
+  // After the rest let the server in, the system's trust and another
+  // authority's still refuse it: no session of theirs resumed unchecked.
+  print("again: {await get("{open.url}/hello", none)} {await get("{open.url}/hello", http.TLS(ca: try fs.readText("other-ca.pem")))}")
+  await open.close()
+  await mutual.close()
+}
+`
+	os.WriteFile(filepath.Join(dir, "main.asuka"), []byte(main), 0o644)
+	p, err := appbuild.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := buildOptions{out: filepath.Join(t.TempDir(), "dist")}
+	if err := cmdBuildProgram(p, &o); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	cmd := exec.Command(filepath.Join(o.out, programExeName("secure", cbuild.Host())))
+	cmd.Dir = dir
+	cmd.Stdout, cmd.Stderr = &out, &out
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+	got := strings.ReplaceAll(out.String(), "\r\n", "\n")
+	if strings.HasPrefix(got, "no client: ") && runtime.GOOS == "linux" {
+		t.Skip("no libsoup here: ", strings.TrimSpace(got))
+	}
+	want := `system: refused
+ca: 200 hello
+other: untrusted
+both: 200 hello
+insecure: 200 hello
+mutual, none shown: refused
+mutual: 200 hello
+stream: 200 ["line 1","line 2","line 3"]
+download: 200 hello
+bad: a client certificate needs its key (key:)
+again: refused untrusted
 `
 	if got != want {
 		t.Fatalf("got:\n%s\nwant:\n%s", got, want)

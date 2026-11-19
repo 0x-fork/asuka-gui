@@ -217,9 +217,10 @@ print("other: \(await echo(try await c.secured(ca: ` + q(pki.OtherCA) + `, trust
 print("ca: \(await echo(try await c.secured(ca: ca, trustSystem: false, certificate: "", key: "", insecureSkipVerify: false)))")
 print("client: \(await echo(try await c.secured(ca: ca, trustSystem: false, certificate: ` + q(pki.ClientCert) + `, key: ` + q(pki.ClientKey) + `, insecureSkipVerify: false)))")
 print("insecure: \(await echo(try await c.secured(ca: "", trustSystem: false, certificate: "", key: "", insecureSkipVerify: true)))")
+print("again: \(await echo(c))")
 `
 	got := runSwiftProbe(t, t.TempDir(), "websocket/swift/Websocket.asuka.swift", []string{"websocket/swift/Websocket.swift", "websocket/swift/TLS.swift"}, []string{"FrameKind", "Frame", "Client", "Socket"}, driver)
-	for _, want := range []string{"system: error -1202 ", "other: error -1202 127.0.0.1's certificate isn't trusted: ", "ca: echo hello", "client: echo hello", "insecure: echo hello"} {
+	for _, want := range []string{"system: error -1202 ", "other: error -1202 127.0.0.1's certificate isn't trusted: ", "ca: echo hello", "client: echo hello", "insecure: echo hello", "again: error -1202 "} {
 		if !strings.Contains(got, want) {
 			t.Errorf("want %q in:\n%s", want, got)
 		}

@@ -313,6 +313,20 @@ typedef struct _GSocketConnection GSocketConnection;
 typedef struct _GSocketConnectable GSocketConnectable;
 typedef struct _GIOStream GIOStream;
 typedef struct _GTlsCertificate GTlsCertificate;
+typedef struct _GTlsDatabase GTlsDatabase;
+typedef struct _GTlsInteraction GTlsInteraction;
+// GTlsCertificateFlags: why a certificate isn't trusted.
+typedef enum {
+	G_TLS_CERTIFICATE_UNKNOWN_CA = 1 << 0,
+	G_TLS_CERTIFICATE_BAD_IDENTITY = 1 << 1,
+	G_TLS_CERTIFICATE_NOT_ACTIVATED = 1 << 2,
+	G_TLS_CERTIFICATE_EXPIRED = 1 << 3,
+	G_TLS_CERTIFICATE_REVOKED = 1 << 4,
+	G_TLS_CERTIFICATE_INSECURE = 1 << 5,
+	G_TLS_CERTIFICATE_GENERIC_ERROR = 1 << 6,
+} GTlsCertificateFlags;
+typedef enum { G_TLS_DATABASE_VERIFY_NONE = 0 } GTlsDatabaseVerifyFlags;
+#define G_TLS_DATABASE_PURPOSE_AUTHENTICATE_SERVER "1.3.6.1.5.5.7.3.1"
 typedef struct _GResolver GResolver;
 typedef struct _GVolumeMonitor GVolumeMonitor;
 typedef struct _GMount GMount;
@@ -1094,6 +1108,16 @@ extern asuka_linux_t asuka_linux_fns;
 // it isn't an image GdkPixbuf reads (or there's no GdkPixbuf). Any
 // thread.
 bool asuka_linux_image_load(const char *path, int *width, int *height, uint8_t **pixels);
+
+// asuka_soup_tls has a session's message go as t says (src/tls.c; NULL:
+// the system's): the server's certificate checked against t's authorities
+// (the session's database; with trust_system, the system's then t's), or
+// not at all (insecure), the client's certificate shown when it's asked
+// for. A server that isn't trusted fails the message: asuka_soup_untrusted
+// then says why (NULL when that isn't why). Call it before the message is
+// sent.
+void asuka_soup_tls(SoupSession *s, SoupMessage *msg, const asuka_tls *t);
+const char *asuka_soup_untrusted(SoupMessage *msg);
 
 // asuka_linux_fail fails err with a GError's message, and frees it:
 // asuka_error_failed with the domain "gio" and its code (what for none).
