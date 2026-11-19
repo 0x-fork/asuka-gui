@@ -219,6 +219,9 @@ type Call struct {
 	// Conv: a conversion to an integer type's label (BInt: u8(exactly:
 	// x)): "exactly", "truncating", "clamping", or "" for u8(x).
 	Conv string
+	// Separator and Terminator are print's and eprint's (nil: " " and
+	// "\n"); Args are the values printed.
+	Separator, Terminator syntax.Expr
 }
 
 // SelKind is what x.name or .name is.

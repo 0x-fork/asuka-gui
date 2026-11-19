@@ -61,6 +61,41 @@ func SemanticColor(name string) (int64, bool) {
 
 func semanticColorNames() []string { return semanticColors[1:] }
 
+// printArgs checks print's and eprint's arguments: any number of values
+// a string can show, then maybe separator: and terminator: (strings), as
+// Swift's print.
+func (c *Checker) printArgs(b *Builtin, list []*syntax.Arg, call *Call) {
+	call.Result = Void
+	labeled := false
+	for _, a := range list {
+		if a.Label == nil {
+			if labeled {
+				c.errorf(a.Value, diag.ArgumentLabel, "%s's values come before separator: and terminator:", b.name)
+			}
+			c.interpolated(a.Value, c.expr(a.Value, nil))
+			call.Args = append(call.Args, a.Value)
+			continue
+		}
+		labeled = true
+		var slot *syntax.Expr
+		switch a.Label.Name {
+		case "separator":
+			slot = &call.Separator
+		case "terminator":
+			slot = &call.Terminator
+		default:
+			c.errorf(a.Label, diag.ArgumentLabel, "%s takes values, then separator: and terminator:, not %s:", b.name, a.Label.Name)
+			c.expr(a.Value, nil)
+			continue
+		}
+		if *slot != nil {
+			c.errorf(a.Label, diag.ArgumentLabel, "%s: is given twice", a.Label.Name)
+		}
+		*slot = a.Value
+		c.assign(a.Value, String, a.Label.Name)
+	}
+}
+
 // builtinCall checks a call of a function the compiler provides.
 func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 	call := &Call{Kind: CallBuiltin, Builtin: b}
@@ -95,13 +130,8 @@ func (c *Checker) builtinCall(e *syntax.CallExpr, b *Builtin, want Type) Type {
 		if len(args) == 1 {
 			call.Result = c.peek(e, args[0], want)
 		}
-	case BPrint:
-		args := positional(1, "one value: print(\"…\")")
-		for _, a := range args {
-			c.interpolated(a, c.expr(a, nil))
-		}
-		call.Args = args
-		call.Result = Void
+	case BPrint, BEprint:
+		c.printArgs(b, list, call)
 	case BExpect:
 		args := positional(-1, "a condition: expect(count == 2)")
 		if len(args) < 1 || len(args) > 2 {

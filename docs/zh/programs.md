@@ -50,7 +50,7 @@ async fn main() throws {
 
 - `os.exit(code)` 立即以 `code` 结束程序：stdout 和 stderr 会被刷新，但 `defer` 和其他 task 不会执行。
 - Ctrl-C 会像 `main` 自己结束那样，以取消的方式结束异步的 `main`：先执行它的 `defer`，再执行其他所有 task 的，退出码是 130（128 加上信号的编号：终止信号，也就是 `kill` 默认发送的信号，是 143；挂断信号是 129）。再按一次 Ctrl-C 会立即结束程序；不是异步的 `main` 也是这样立即结束，因为不 await 的代码无法取消。用 `os.signals()` 可以把这些信号交给程序自己处理（见[信号](#信号)）。
-- `print` 向 stdout 写一行；`os.eprint` 写到 stderr。
+- `print(a, b)` 向 stdout 写一行，各个值之间用空格隔开；`eprint` 则写到 stderr。两者都接受 `separator:` 和 `terminator:`（`print("…", terminator: "")` 写完不换行）。
 
 ## 进程：std/os
 
@@ -65,7 +65,6 @@ async fn main() throws {
 | `os.readLine()` | 读取 stdin 的一行（不含行尾），读到末尾时为 `none`；会等待这一行 |
 | `os.readAll()` | stdin 剩下的全部内容，`bytes` |
 | `os.lines()` | 逐行读取 stdin（一个 `Stream<string>`），在另一个线程上读，程序可以同时做别的事 |
-| `os.eprint(text)` | 向 stderr 写一行 |
 | `os.writeTo(.stdout, text)`、`writeBytesTo` | 原样写出文本或字节，不加行尾，目标是 `.stdout` 或 `.stderr` |
 | `os.terminal(.stdout)` | 某个流是否是终端（有人在看），而不是管道或文件：只在终端上输出颜色和提示 |
 | `os.signals(kinds)` | 按到达顺序给出这些种类的信号（一个 `Stream<os.Signal>`：`.interrupt`、`.term`、`.hangup`），被读取的信号不再结束程序 |
@@ -84,7 +83,7 @@ import std/os
 async fn main() throws {
   let jobs = ["a", "b", "c"]
   for await s in os.signals() {
-    os.eprint("{s}: finishing {jobs.count()} jobs first")
+    eprint("{s}: finishing {jobs.count()} jobs first")
     break
   }
 }
@@ -102,7 +101,7 @@ async fn main() throws {
   }
   print(total)
   if os.env("DEBUG") != none {
-    os.eprint("summed stdin")
+    eprint("summed stdin")
   }
 }
 ```
@@ -277,7 +276,7 @@ async fn main() throws {
   let name = await term.prompt("Project name:", default: "demo") ?? "demo"
   let target = try fs.abs(o.dir ?? name)
   if fs.exists(target) && !(await term.confirm("{target} exists. Overwrite?")) {
-    os.eprint("{term.red("error:", stream: .stderr)} nothing was made")
+    eprint("{term.red("error:", stream: .stderr)} nothing was made")
     os.exit(1)
   }
   try await spawn { try fs.mkdirAll(target) }
@@ -466,7 +465,7 @@ async fn main() throws {
     print("{entries.count()} entries")
     try await spawn { try archive.extract(a[1], to: a[2], limit: 8 << 30) }
   } else {
-    os.eprint("usage: pack DIR OUT.zip | unpack ARCHIVE DIR")
+    eprint("usage: pack DIR OUT.zip | unpack ARCHIVE DIR")
     os.exit(2)
   }
 }

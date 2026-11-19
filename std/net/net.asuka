@@ -24,7 +24,6 @@
 // ends, the socket closes. A web page has no sockets
 // (NetError.unsupported); its IP addresses and host:port helpers work.
 
-import std/os
 
 /// What can go wrong with a connection, a socket or a lookup.
 pub enum NetError: Error {
@@ -589,7 +588,7 @@ pub struct Listener {
   /// Serves each client's connection with handler, as net.serve does,
   /// accepting from now on: the listener is the server's.
   fn serve(handler: async fn(Conn) throws, onError: (fn(Conn, Error))? = none) throws -> Server {
-    let report = onError ?? ((c: Conn, e: Error) => os.eprint("net: {c.remoteAddress.string()}: {e.message}"))
+    let report = onError ?? ((c: Conn, e: Error) => eprint("net: {c.remoteAddress.string()}: {e.message}"))
     let s = serveStart(handle, dispatcher(handler, report))
     if s == 0 {
       throw NetError.closed

@@ -50,7 +50,7 @@ async fn main() throws {
 
 - `os.exit(code)` はその場で `code` を終了コードとして終了します。stdout と stderr はフラッシュされますが、`defer` やほかの task は実行されません。
 - Ctrl-C は、非同期の `main` を、`main` 自身が終わるときと同じくキャンセルとして終わらせます。まずその `defer` が、続いてほかのすべての task のものが実行され、終了コードは 130 です（128 とシグナルの番号。`kill` が既定で送る終了シグナルは 143、ハングアップは 129）。もう一度 Ctrl-C を押すとその場で終了します。非同期でない `main` も同じくその場で終了します。await しないコードはキャンセルできないためです。`os.signals()` を使うと、シグナルをプログラム自身で扱えます（[シグナル](#シグナル)を参照）。
-- `print` は stdout に 1 行書き、`os.eprint` は stderr に書きます。
+- `print(a, b)` は値をスペースで区切って stdout に 1 行書き、`eprint` は stderr に書きます。どちらも `separator:` と `terminator:` を取ります（`print("…", terminator: "")` は改行せずに終わります）。
 
 ## プロセス：std/os
 
@@ -65,7 +65,6 @@ async fn main() throws {
 | `os.readLine()` | stdin から行末を除いた 1 行。終わりに達すると `none`。行が来るまで待つ |
 | `os.readAll()` | stdin の残り全部（`bytes`） |
 | `os.lines()` | 届いた順の stdin の行（`Stream<string>`）。別のスレッドで読むので、そのあいだもプログラムは進む |
-| `os.eprint(text)` | stderr に 1 行書く |
 | `os.writeTo(.stdout, text)`、`writeBytesTo` | テキストやバイト列を、行末を付けずにそのまま `.stdout` か `.stderr` に書く |
 | `os.terminal(.stdout)` | ストリームがパイプやファイルではなく端末（人が見ている）かどうか。色やプロンプトは端末のときだけ出す |
 | `os.signals(kinds)` | 指定した種類のシグナルを届いた順に返す（`Stream<os.Signal>`：`.interrupt`、`.term`、`.hangup`）。読まれている種類ではプログラムは終了しない |
@@ -84,7 +83,7 @@ import std/os
 async fn main() throws {
   let jobs = ["a", "b", "c"]
   for await s in os.signals() {
-    os.eprint("{s}: finishing {jobs.count()} jobs first")
+    eprint("{s}: finishing {jobs.count()} jobs first")
     break
   }
 }
@@ -102,7 +101,7 @@ async fn main() throws {
   }
   print(total)
   if os.env("DEBUG") != none {
-    os.eprint("summed stdin")
+    eprint("summed stdin")
   }
 }
 ```
@@ -277,7 +276,7 @@ async fn main() throws {
   let name = await term.prompt("Project name:", default: "demo") ?? "demo"
   let target = try fs.abs(o.dir ?? name)
   if fs.exists(target) && !(await term.confirm("{target} exists. Overwrite?")) {
-    os.eprint("{term.red("error:", stream: .stderr)} nothing was made")
+    eprint("{term.red("error:", stream: .stderr)} nothing was made")
     os.exit(1)
   }
   try await spawn { try fs.mkdirAll(target) }
@@ -466,7 +465,7 @@ async fn main() throws {
     print("{entries.count()} entries")
     try await spawn { try archive.extract(a[1], to: a[2], limit: 8 << 30) }
   } else {
-    os.eprint("usage: pack DIR OUT.zip | unpack ARCHIVE DIR")
+    eprint("usage: pack DIR OUT.zip | unpack ARCHIVE DIR")
     os.exit(2)
   }
 }

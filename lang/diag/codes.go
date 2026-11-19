@@ -418,8 +418,9 @@ parameters are counted the same way.`,
 		Name:    "argument-label",
 		Summary: "a named argument the function has no parameter for",
 		Why: `Arguments come in order, then by name: a name is one of the
-parameters', given once, after the ones in order. A closure's and a
-built-in's arguments have no names.`,
+parameters', given once, after the ones in order. A closure's
+arguments have no names, nor have most built-ins' (print's
+` + "`separator:`" + ` and ` + "`terminator:`" + ` are named).`,
 		Fix:   "Use the parameter's name (the message suggests it), or pass the argument in order.",
 		Wrong: "fn area(width: int, height: int) -> int = width * height\n\nlet a = area(width: 2, hieght: 3)\n",
 		Right: "fn area(width: int, height: int) -> int = width * height\n\nlet a = area(width: 2, height: 3)\n",

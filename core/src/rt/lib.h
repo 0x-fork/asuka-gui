@@ -43,5 +43,9 @@ ak_closure *ak_closure_deep_copy(ak_closure *c);
 
 // Where print writes (tests capture it); NULL: stdout.
 extern void (*ak_lib_print_hook)(const char *s, size_t n);
+// Where print.text writes text as it is, to stdout (fd 1) or stderr (2):
+// eprint's, and print's with a terminator of its own (tests capture it);
+// NULL: the stream.
+extern void (*ak_lib_write_hook)(int fd, const char *s, size_t n);
 
 #endif

@@ -52,7 +52,7 @@ async fn main() throws {
       if o.json {
         print(json.encode(shown))
       } else if shown.isEmpty() {
-        os.eprint("no notes")
+        eprint("no notes")
       } else {
         for n in shown {
           print("{n.id}\t[{if n.done { "x" } else { " " }}] {n.text}")
@@ -62,7 +62,7 @@ async fn main() throws {
     .add(o) => {
       let text = o.words.joined(separator: " ").trim()
       if text.isEmpty() {
-        os.eprint("error: a note has words: notes add Buy milk")
+        eprint("error: a note has words: notes add Buy milk")
         os.exit(2)
       }
       try await db.exec("insert into notes (text) values (?)", [text])

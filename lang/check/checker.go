@@ -287,7 +287,7 @@ func (c *Checker) initUniverse() {
 		name string
 		id   BuiltinID
 	}{
-		{"print", BPrint}, {"expect", BExpect}, {"sleep", BSleep}, {"all", BAll}, {"race", BRace},
+		{"print", BPrint}, {"eprint", BEprint}, {"expect", BExpect}, {"sleep", BSleep}, {"all", BAll}, {"race", BRace},
 		{"mount", BMount}, {"idle", BIdle}, {"push", BPush}, {"pop", BPop}, {"present", BPresent},
 		{"dismiss", BDismiss}, {"min", BMin}, {"max", BMax}, {"abs", BAbs}, {"float", BFloat},
 		{"int", BInt}, {"panic", BPanic}, {"withTimeout", BWithTimeout}, {"Stream", BStream}, {"Set", BSet}, {"Seq", BSeq},

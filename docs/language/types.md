@@ -65,6 +65,13 @@ them: `std/term`'s `textWidth`, `padEnd` and `fit` count its columns
 (Chinese, Japanese and Korean characters and emoji take two),
 [Programs](../programs.md#an-aligned-table).
 
+`print(a, b, c)` writes its values as interpolation shows them,
+separated by spaces, on a line of the standard output (an app's log);
+`eprint` writes them to standard error. After the values, as Swift's
+`print`, `separator:` goes between them and `terminator:` after the
+last (a line ending unless it says otherwise): `print(x, y, separator:
+", ")`, `print("Saving…", terminator: "")`.
+
 A tuple's elements are read by their place, `pair.0` and `pair.1`, and
 a `var`'s change in place (`pair.0 += 1`); a place the tuple doesn't
 have (`pair.2` of a pair) is a compile error. A tuple is also taken

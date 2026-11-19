@@ -668,10 +668,8 @@ func (b *fb) builtinCall(e *syntax.CallExpr, call *check.Call, dst int) int {
 	switch bi.ID {
 	case check.BPeek:
 		return b.peek(call.Args[0], dst)
-	case check.BPrint:
-		v := b.value(call.Args[0], -1)
-		s := b.describe(v, b.typeOf(call.Args[0]))
-		b.callBTo("print", bc.None, s)
+	case check.BPrint, check.BEprint:
+		b.printCall(call, bi.ID == check.BEprint)
 		return -1
 	case check.BExpect:
 		return b.expect(e, call)

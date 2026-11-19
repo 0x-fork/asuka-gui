@@ -183,6 +183,12 @@ static void print_hook(const char *s, size_t n) {
 	ak_mutex_unlock(&mu);
 }
 
+static void write_hook(int fd, const char *s, size_t n) {
+	ak_mutex_lock(&mu);
+	ak_buf_put(fd == 2 ? &fake.err : &fake.out, s, n);
+	ak_mutex_unlock(&mu);
+}
+
 static void free_list(char **l, int n) {
 	for (int i = 0; i < n; i++) ak_free(l[i]);
 	ak_free(l);
@@ -213,6 +219,7 @@ void ak_os_reset(void) {
 	ak_os_signals_reset();
 	ak_mutex_lock(&mu);
 	if (ak_lib_print_hook == print_hook) ak_lib_print_hook = NULL;
+	if (ak_lib_write_hook == write_hook) ak_lib_write_hook = NULL;
 	fake_clear();
 	ak_mutex_unlock(&mu);
 }
@@ -631,6 +638,7 @@ static void capture(bool on) {
 	ak_mutex_lock(&mu);
 	fake.capturing += on ? 1 : -1;
 	ak_lib_print_hook = fake.capturing > 0 ? print_hook : NULL;
+	ak_lib_write_hook = fake.capturing > 0 ? write_hook : NULL;
 	ak_mutex_unlock(&mu);
 }
 

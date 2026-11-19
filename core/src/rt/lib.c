@@ -18,6 +18,7 @@
 #define RET_VOID return (ak_val){0}
 
 void (*ak_lib_print_hook)(const char *s, size_t n);
+void (*ak_lib_write_hook)(int fd, const char *s, size_t n);
 
 // ---- Output ----
 
@@ -30,6 +31,22 @@ static ak_val lib_print(ak_val *args, uint32_t n) {
 		fwrite(s->data, 1, s->len, stdout);
 		fputc('\n', stdout);
 		fflush(stdout);
+	}
+	RET_VOID;
+}
+
+// print.text(fd, text): text as it is, its terminator in it, on stdout
+// (1) or stderr (2).
+static ak_val lib_print_text(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	int fd = args[0].i == 2 ? 2 : 1;
+	ak_str *s = STR(1);
+	if (ak_lib_write_hook) {
+		ak_lib_write_hook(fd, s->data, s->len);
+	} else {
+		FILE *f = fd == 2 ? stderr : stdout;
+		fwrite(s->data, 1, s->len, f);
+		fflush(f);
 	}
 	RET_VOID;
 }
@@ -1922,6 +1939,7 @@ static ak_val bytes_str(ak_val *args, uint32_t n) {
 
 const ak_lib_entry ak_lib[] = {
 	{"print", lib_print},
+	{"print.text", lib_print_text},
 	{"panic", lib_panic},
 	{"error", lib_error},
 	{"error.message", lib_error_message},

@@ -74,7 +74,10 @@ The program runs as follows:
   a hangup 129). A second Ctrl-C ends it at once, as one ends a `main`
   that isn't async, since code that doesn't await can't be cancelled.
   `os.signals()` hands them to the program instead ([Signals](#signals)).
-- `print` writes a line to stdout; `os.eprint` to stderr.
+- `print(a, b)` writes a line to stdout, its values separated by spaces;
+  `eprint` writes one to stderr. Both take `separator:` and
+  `terminator:` (`print("…", terminator: "")` ends without a line
+  ending).
 
 ## The process: std/os
 
@@ -89,7 +92,6 @@ The program runs as follows:
 | `os.readLine()` | a line of stdin without its line ending, `none` at its end; it waits for the line |
 | `os.readAll()` | the rest of stdin, as `bytes` |
 | `os.lines()` | stdin's lines as they come (a `Stream<string>`), read on another thread: the program goes on meanwhile |
-| `os.eprint(text)` | a line on stderr |
 | `os.writeTo(.stdout, text)`, `writeBytesTo` | text or bytes as they are, without a line ending, to `.stdout` or `.stderr` |
 | `os.terminal(.stdout)` | whether a stream is a terminal (a person), not a pipe or a file: colors and prompts only for one |
 | `os.signals(kinds)` | the signals of kinds as they come (a `Stream<os.Signal>`: `.interrupt`, `.term`, `.hangup`), which then don't end the program |
@@ -112,7 +114,7 @@ import std/os
 async fn main() throws {
   let jobs = ["a", "b", "c"]
   for await s in os.signals() {
-    os.eprint("{s}: finishing {jobs.count()} jobs first")
+    eprint("{s}: finishing {jobs.count()} jobs first")
     break
   }
 }
@@ -133,7 +135,7 @@ async fn main() throws {
   }
   print(total)
   if os.env("DEBUG") != none {
-    os.eprint("summed stdin")
+    eprint("summed stdin")
   }
 }
 ```
@@ -358,7 +360,7 @@ async fn main() throws {
   let name = await term.prompt("Project name:", default: "demo") ?? "demo"
   let target = try fs.abs(o.dir ?? name)
   if fs.exists(target) && !(await term.confirm("{target} exists. Overwrite?")) {
-    os.eprint("{term.red("error:", stream: .stderr)} nothing was made")
+    eprint("{term.red("error:", stream: .stderr)} nothing was made")
     os.exit(1)
   }
   try await spawn { try fs.mkdirAll(target) }
@@ -655,7 +657,7 @@ async fn main() throws {
     print("{entries.count()} entries")
     try await spawn { try archive.extract(a[1], to: a[2], limit: 8 << 30) }
   } else {
-    os.eprint("usage: pack DIR OUT.zip | unpack ARCHIVE DIR")
+    eprint("usage: pack DIR OUT.zip | unpack ARCHIVE DIR")
     os.exit(2)
   }
 }

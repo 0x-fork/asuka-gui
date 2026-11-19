@@ -5,7 +5,6 @@
 
 import std/json as codec
 import std/net
-import std/os
 import std/url
 
 /// A request a server received, its body read whole before the handler
@@ -200,7 +199,7 @@ pub async fn serve(port: int, handler: async fn(Request) throws -> Reply, host: 
   if port < 0 || port > 65535 {
     throw ServerError.listen(host: host, port: port, reason: "a port is 0 to 65535")
   }
-  let report = onError ?? ((req: Request, e: Error) => os.eprint("http: {req.method} {req.path}: {e.message}"))
+  let report = onError ?? ((req: Request, e: Error) => eprint("http: {req.method} {req.path}: {e.message}"))
   let l = limits
   let h = srvOpen(dispatcher(handler, report), host, port, [l.headerSize, l.bodySize, l.connections, l.headerTimeout.milliseconds(), l.readTimeout.milliseconds(), l.idleTimeout.milliseconds()], if let t = tls { t.handle } else { 0 })
   if h == 0 {

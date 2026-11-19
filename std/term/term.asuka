@@ -14,7 +14,7 @@
 // colors), and as a value to name and reuse:
 //
 //   let warning = term.Style(color: .yellow, bold: true)
-//   os.eprint("{warning.paint("warning:", stream: .stderr)} disk almost full")
+//   eprint("{warning.paint("warning:", stream: .stderr)} disk almost full")
 //
 // The codes are written only when the stream shows them: it's a
 // terminal, NO_COLOR isn't set (no-color.org) and TERM isn't "dumb";

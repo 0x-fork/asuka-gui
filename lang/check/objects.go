@@ -621,6 +621,7 @@ const (
 	BKeep        // keep(x): x, which the compiler can't leave uncomputed (testing.go)
 	BSnapshot    // expectSnapshot(x): x as its stored snapshot says (testing.go)
 	BInline      // expectInlineSnapshot(x, "…"): likewise, the snapshot in the call
+	BEprint      // eprint(values…): print's, on stderr
 )
 
 // A Builtin is a function the compiler provides (the prelude's print,

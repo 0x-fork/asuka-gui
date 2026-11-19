@@ -1,33 +1,55 @@
-// platform/print with no platform code (the fake host): no printing, so its
-// calls throw an unsupported error; the region's paper; margins that
-// leave no room. (Imported as printing: print is the prelude's too.)
+// print and eprint: several values, as interpolation shows them, with a
+// separator and a terminator of their own.
+import std/os
 
-import platform/print as printing
+enum Light {
+  red
+  green
+}
 
-test "no printing here" {
-  do {
-    let r = try await printing.html("<p>Hi</p>", job: "Receipt")
-    print("{r}")
-  } catch e {
-    print(e.message)
-  }
-  do {
-    let path = try await printing.pdf("<p>Hi</p>", margins: printing.Margins(left: 400, right: 400))
-    print(path)
-  } catch e {
-    print(e.message)
-  }
-  print(printing.regionPage("en-US") == printing.Page.letter)
-  print(printing.regionPage("fr-CA") == printing.Page.letter)
-  print(printing.regionPage("de-DE") == printing.Page.a4)
-  print(printing.regionPage("en-u-rg-uszzzz") == printing.Page.a4)
+struct P {
+  x: int
+  y: int
+}
+
+test "several values" {
+  let missing: int? = none
+  print("a", 1, 2.5, true, Light.green, P(x: 1, y: 2), [1, 2], missing)
+  print()
+  print("x", "y", separator: ", ")
+  print("no line", terminator: "")
+  print(" then the rest")
+  print(1, 2, 3, separator: "-", terminator: "!\n")
+  let sep = " | "
+  print("a", "b", separator: sep)
+  print(5ms, Light.red)
+}
+
+fn main() {
+  eprint("oops", 42)
+  eprint("a", "b", separator: "+", terminator: ";")
+  print("out")
+}
+
+test "eprint goes to stderr" {
+  let o = os.fake()
+  let code = await o.run(main)
+  print(code)
+  print(o.stdout().trim())
+  print(o.stderr())
 }
 
 // Output:
-// unsupported: no printing here
-// print: the margins leave no room on the page
-// true
-// true
-// true
-// true
-// ok no printing here
+// a 1 2.5 true green {"x":1,"y":2} [1,2] none
+//
+// x, y
+// no line then the rest
+// 1-2-3!
+// a | b
+// 5ms red
+// ok several values
+// 0
+// out
+// oops 42
+// a+b;
+// ok eprint goes to stderr

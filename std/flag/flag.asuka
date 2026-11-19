@@ -103,10 +103,10 @@ pub fn parse<T>(args: [string]) -> T {
     print(text)
     os.exit(0)
   } catch FlagError.usage(problem, usage, program) {
-    os.eprint("error: {problem}\n\n{usage}\n\nFor more, try '{program} --help'.")
+    eprint("error: {problem}\n\n{usage}\n\nFor more, try '{program} --help'.")
     os.exit(2)
   } catch e {
-    os.eprint("error: {e.message}")
+    eprint("error: {e.message}")
     os.exit(2)
   }
 }

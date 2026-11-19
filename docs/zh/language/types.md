@@ -33,6 +33,8 @@ let table = row("asuka", 12500, 0.4) // asuka     12,500   40.0%
 
 宽度按字符（码位）计算，而不是按终端里显示的宽度。要按终端的列数算（中日韩文字和 emoji 占两列），用 `std/term` 的 `textWidth`、`padEnd` 和 `fit`，见[程序](../programs.md#对齐的表格)。
 
+`print(a, b, c)` 把各个值按插值显示的样子写成标准输出（应用的日志）上的一行，值之间用空格隔开；`eprint` 则写到标准错误。和 Swift 的 `print` 一样，值后面可以加 `separator:`（值之间写什么）和 `terminator:`（最后写什么，默认是换行）：`print(x, y, separator: ", ")`、`print("Saving…", terminator: "")`。
+
 元组的元素可以按位置读取：`pair.0`、`pair.1`；如果元组存在 `var` 里，也可以就地修改（`pair.0 += 1`）。写一个元组没有的位置（对一对值写 `pair.2`）是编译错误。也可以把元组拆开：`let (count, label) = pair`、`for (i, x) in xs.enumerated()`，或者在 `match` 里用元组模式（见[控制流](control-flow.md#控制流)）。
 
 map 的键和集合的元素必须满足 `Hashable`：整数、字符串、布尔值、字节串、时长、颜色，以及由它们组成的枚举、结构体、元组、可选值、数组、map 和集合（包含自身的结构体或枚举，只要其余部分满足，也满足；map 要求键和值都满足）。浮点数不满足，因为 NaN 不等于它自己；函数也不满足：
