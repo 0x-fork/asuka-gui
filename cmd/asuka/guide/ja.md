@@ -178,7 +178,7 @@ import std/time
 let today = time.now().format("EEE d MMM")
 ```
 
-`pub` を付けた宣言はほかのパッケージから見えます。標準ライブラリ（`std/…`）とプラットフォーム SDK（`platform/…`）は CLI に同梱されているので、import するだけで使えます。`tray_linux.asuka` という名前のファイルは Linux でだけパッケージに含まれ、`@platform == .linux` は定数なので、あるプラットフォーム向けのコードはほかのプラットフォームのビルドに入りません。[ファイル、パッケージ、インポート](https://asuka.egoist.dev/ja/docs/language/packages)、[標準ライブラリとプラットフォーム SDK](https://asuka.egoist.dev/ja/docs/stdlib)、[特定のプラットフォーム向けのコード](https://asuka.egoist.dev/ja/docs/language/control-flow#特定のプラットフォーム向けのコード)を参照してください。
+`pub` を付けた宣言はほかのパッケージから見えます。標準ライブラリ（`std/…`）とプラットフォーム SDK（`platform/…`）は CLI に同梱されているので、import するだけで使えます。`tray_linux.asuka` という名前のファイルは Linux でだけパッケージに含まれ、`@platform == .linux` は定数なので、あるプラットフォーム向けのコードはほかのプラットフォームのビルドに入りません。`@debug` は `asuka dev` では true で、開発専用のコードはリリースビルドに入りません。[ファイル、パッケージ、インポート](https://asuka.egoist.dev/ja/docs/language/packages)、[標準ライブラリとプラットフォーム SDK](https://asuka.egoist.dev/ja/docs/stdlib)、[特定のプラットフォーム向けのコード](https://asuka.egoist.dev/ja/docs/language/control-flow#特定のプラットフォーム向けのコード)、[開発ビルド向けのコード](https://asuka.egoist.dev/ja/docs/language/control-flow#開発ビルド向けのコード)を参照してください。
 
 #### テスト
 
@@ -1184,6 +1184,29 @@ component Toolbar {
 これは `if` とその `else if`、`match @platform`（`@platform` が `.unknown` になることはないので、`.unknown` を扱う必要はありません）、`@platform` の比較に対する `&&`、`||`、`!`、そしてビューの中の `if` に当てはまります。ビューの中の `if` では、もう一方の分岐のビューは作られることすらありません。ただし、どのプラットフォーム向けにビルドしても、すべての分岐がチェックされます。プラットフォームの API はどのプラットフォームでも同じ宣言なので、Linux 向けの分岐にある誤りは、iOS 向けにビルドするときもエラーになります。あるプラットフォーム専用の宣言は、専用のファイルに分けたほうがわかりやすいことがよくあります。[特定のプラットフォーム向けのファイル](https://asuka.egoist.dev/ja/docs/language/packages#特定のプラットフォーム向けのファイル)を参照してください。
 
 `environment().platform` は、ビューが動いているプラットフォームをシステムが伝えるものです（テストでは `mount(…, platform:)` が伝えます）。ビューのために追跡されます。プラットフォームごとにどのコードをビルドするかは `@platform` で決めます。
+
+#### 開発ビルド向けのコード
+
+`@debug` は、アプリが開発ビルドかどうかを表す `bool` です。`asuka dev`、`asuka run`、`asuka test` では true、`asuka build` と `asuka publish` が作るものでは false になります。これも定数で、`@platform` と同じように畳み込まれます。リリースビルドが通らない側、たとえばデバッグメニュー、ステージングサーバーのアドレス、開発中だけ必要なログは、リリースビルドに含まれません。
+
+```asuka
+let server = if @debug { "https://staging.example.com" } else { "https://example.com" }
+
+component About {
+  prop version: string
+
+  Column {
+    Text("Version {version}")
+    if @debug && @platform == .iOS {
+      Text("Development build, talking to {server}")
+    }
+  }
+}
+```
+
+`!@debug` も畳み込まれ、`@platform` の比較と `&&`、`||` で組み合わせた場合も同じです。どのビルドでも両方の分岐がチェックされるので、開発ビルドの側で作業しているあいだに、リリースビルドの側が知らないうちに壊れることはありません。
+
+テストは `asuka dev` と同じく開発ビルドです。`asuka test --release` を付けると、出荷するアプリと同じく `@debug` を false にしてテストを実行します。プログラムなら `asuka run --release` も同様です。ベンチマーク（`asuka test --bench`）はリリースビルドが実行するものを計測するので、`@debug` は false です。
 
 ### コンポーネント
 

@@ -172,7 +172,7 @@ func (b *fb) expr(e syntax.Expr, dst int) int {
 		}
 		return b.copyTo(b.readVar(b.ctx.Self, e), dst)
 	case *syntax.AtExpr:
-		return b.platformValue(e, dst)
+		return b.atValue(e, dst)
 	case *syntax.ImplicitMember:
 		return b.selection(e, nil, dst)
 	case *syntax.MemberExpr:

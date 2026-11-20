@@ -178,7 +178,7 @@ import std/time
 let today = time.now().format("EEE d MMM")
 ```
 
-`pub` 让声明对其他包可见。标准库（`std/…`）和平台 SDK（`platform/…`）都随命令行工具一起提供：直接 import 就能用。名为 `tray_linux.asuka` 的文件只在 Linux 上属于它所在的包，而 `@platform == .linux` 是一个常量，所以只给某个平台的代码不会出现在其他平台的构建里。见[文件、包与导入](https://asuka.egoist.dev/zh/docs/language/packages)、[标准库与平台 SDK](https://asuka.egoist.dev/zh/docs/stdlib)以及[特定平台的代码](https://asuka.egoist.dev/zh/docs/language/control-flow#特定平台的代码)。
+`pub` 让声明对其他包可见。标准库（`std/…`）和平台 SDK（`platform/…`）都随命令行工具一起提供：直接 import 就能用。名为 `tray_linux.asuka` 的文件只在 Linux 上属于它所在的包，而 `@platform == .linux` 是一个常量，所以只给某个平台的代码不会出现在其他平台的构建里；`@debug` 在 `asuka dev` 下为 true，只用于开发的代码不会进入发布构建。见[文件、包与导入](https://asuka.egoist.dev/zh/docs/language/packages)、[标准库与平台 SDK](https://asuka.egoist.dev/zh/docs/stdlib)、[特定平台的代码](https://asuka.egoist.dev/zh/docs/language/control-flow#特定平台的代码)以及[开发构建的代码](https://asuka.egoist.dev/zh/docs/language/control-flow#开发构建的代码)。
 
 #### 测试
 
@@ -1184,6 +1184,29 @@ component Toolbar {
 这适用于 `if` 及其 `else if`、`match @platform`（它不必覆盖 `.unknown`，因为 `@platform` 不会是这个值）、对 `@platform` 的比较做的 `&&`、`||` 和 `!`，以及视图中的 `if`：另一个分支的视图根本不会被创建。不过无论为哪个平台构建，每个分支都会被检查：平台的 API 在每个平台上都是同样的声明，所以 Linux 分支里的错误，在为 iOS 构建时同样会报出来。如果是某个平台专有的声明，单独放在一个文件里通常更清楚，见[特定平台的文件](https://asuka.egoist.dev/zh/docs/language/packages#特定平台的文件)。
 
 `environment().platform` 是视图运行所在的平台，由系统给出（测试里由 `mount(…, platform:)` 给出）。它是被追踪的，供视图使用。要决定为某个平台构建哪些代码，用 `@platform`。
+
+#### 开发构建的代码
+
+`@debug` 表示应用是不是开发构建，类型是 `bool`：在 `asuka dev`、`asuka run` 和 `asuka test` 下为 true，在 `asuka build` 和 `asuka publish` 产出的构建里为 false。它同样是常量，折叠方式和 `@platform` 一样：发布构建不会走的分支，比如调试菜单、测试服务器的地址、只在开发时需要的日志，都不会进入发布构建。
+
+```asuka
+let server = if @debug { "https://staging.example.com" } else { "https://example.com" }
+
+component About {
+  prop version: string
+
+  Column {
+    Text("Version {version}")
+    if @debug && @platform == .iOS {
+      Text("Development build, talking to {server}")
+    }
+  }
+}
+```
+
+`!@debug` 同样会被折叠，它和 `@platform` 的比较用 `&&`、`||` 组合起来也一样。每次构建都会检查两个分支，所以你在开发分支里工作时，发布分支不会在你看不到的地方悄悄坏掉。
+
+测试和 `asuka dev` 一样是开发构建：`asuka test --release` 会让 `@debug` 为 false 来运行测试，和应用发布时一致；对程序来说，`asuka run --release` 也是如此。基准测试（`asuka test --bench`）测的是发布构建运行的代码，`@debug` 为 false。
 
 ### 组件
 

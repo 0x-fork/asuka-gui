@@ -84,6 +84,7 @@ func cmdBuild(args []string) error {
 	if err := fs.parse(args); err != nil {
 		return err
 	}
+	appbuild.Debug = false // a release: @debug is false
 	dir := "."
 	if fs.Arg(0) != "" {
 		dir = fs.Arg(0)

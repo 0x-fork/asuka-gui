@@ -9,11 +9,13 @@ import (
 )
 
 // Folding: @platform is a constant, the platform the program is
-// compiled for (Options.Platform). A condition it decides is folded
-// (@platform == .linux, !, && and || of such, true and false), and only
-// the branch it takes is lowered: an if's, an else if's, a match's arm
-// of @platform, a view's if. The other branches were checked, but
-// nothing of them is in the module: no code, no strings, no builtins.
+// compiled for (Options.Platform), and @debug another, whether it's a
+// development build (Options.Debug). A condition they decide is folded
+// (@platform == .linux, @debug, !, && and || of such, true and false),
+// and only the branch it takes is lowered: an if's, an else if's, a
+// match's arm of @platform, a view's if. The other branches were
+// checked, but nothing of them is in the module: no code, no strings,
+// no builtins.
 
 // folded is what a condition comes to: known, its value; effects are
 // what's still evaluated first, for what it does (f() in f() && false).
@@ -67,6 +69,10 @@ func (l *Lowerer) fold(e syntax.Expr) folded {
 		return l.fold(x.X)
 	case *syntax.BoolLit:
 		return folded{known: true, val: x.Value}
+	case *syntax.AtExpr:
+		if check.IsDebugConst(x) {
+			return folded{known: true, val: l.opts.Debug}
+		}
 	case *syntax.UnaryExpr:
 		if x.Op == syntax.NOT {
 			if f := l.fold(x.X); f.known {
@@ -210,6 +216,15 @@ func (l *Lowerer) mayMatchCase(p syntax.Pattern, name string) bool {
 		return false
 	}
 	return true
+}
+
+// atValue is a compile-time constant as a value: @platform's case, or
+// @debug's bool.
+func (b *fb) atValue(e *syntax.AtExpr, dst int) int {
+	if check.IsDebugConst(e) {
+		return b.constBool(b.l.opts.Debug, dst)
+	}
+	return b.platformValue(e, dst)
 }
 
 // platformValue is @platform as a value: the case of Platform the

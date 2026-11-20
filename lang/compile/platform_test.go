@@ -311,6 +311,86 @@ test "t" {
 	}
 }
 
+// @debug is a development build's (Options.Debug), folded as @platform
+// is: a release has nothing of what only a development build does.
+func TestDebugFolds(t *testing.T) {
+	src := `
+let server = if @debug { "staging.example" } else { "example" }
+let verbose = @debug && "verbose".count() > 0
+let shown: bool = @debug
+
+fn mode() -> string {
+  if !@debug {
+    return "release mode"
+  } else if @platform == .linux {
+    return "linux debug"
+  } else {
+    return "{[3, 1, 2].sorted().count()}debug mode"
+  }
+}
+
+component Menu {
+  Column {
+    if @debug && @platform == .iOS {
+      Text("Debug menu")
+    }
+    Text("Settings")
+  }
+}
+
+app { Menu() }
+
+test "t" {
+  print(server)
+  print(verbose)
+  print(shown)
+  print(mode())
+}
+`
+	compile := func(debug bool) *bc.Module {
+		res := Files(map[string][]byte{"main.asuka": []byte(src)}, &Options{Debug: debug})
+		if err := res.Err(); err != nil {
+			t.Fatalf("debug %v: %v", debug, err)
+		}
+		if err := res.IR.Validate(); err != nil {
+			t.Fatalf("debug %v: invalid IR: %v", debug, err)
+		}
+		return res.Module
+	}
+	dev, release := compile(true), compile(false)
+	for _, s := range []string{"staging.example", "verbose", "debug mode", "Debug menu"} {
+		if !hasString(dev, s) {
+			t.Errorf("the development build hasn't %q", s)
+		}
+		if hasString(release, s) {
+			t.Errorf("the release has %q", s)
+		}
+	}
+	for _, s := range []string{"release mode", "linux debug"} {
+		if hasString(dev, s) {
+			t.Errorf("the development build has %q", s)
+		}
+	}
+	if !hasString(release, "release mode") {
+		t.Errorf("the release hasn't %q", "release mode")
+	}
+	for _, b := range []string{"str.count", "arr.sorted", "ui.show"} {
+		if slices.Contains(release.Builtins, b) {
+			t.Errorf("the release calls %s", b)
+		}
+	}
+	// What each prints, on the VM and compiled to C.
+	for m, want := range map[*bc.Module]string{dev: "staging.example\ntrue\ntrue\n3debug mode", release: "example\nfalse\nfalse\nrelease mode"} {
+		out, err := runBoth(t, m)
+		if err != nil {
+			t.Fatalf("%v\n%s", err, out)
+		}
+		if got := strings.TrimSpace(out); got != want+"\nok t" {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	}
+}
+
 // A package's platform files are chosen as Dir reads it, an import's
 // (std's and dependencies' too) likewise; DirPlatforms checks every
 // platform's, saying which a diagnostic is for when not every one's.

@@ -82,6 +82,10 @@ type Options struct {
 	// @platform is, which decides the branches it folds (fold.go).
 	// "": target.Default.
 	Platform string
+	// Debug is what @debug is: a development build's (asuka dev, run,
+	// test), not a release's. It decides the branches it folds, as
+	// @platform does.
+	Debug bool
 	// NoFuse: Seq pipelines and arrays' closure methods are the
 	// runtime's calls, not loops (seqfuse.go).
 	NoFuse bool

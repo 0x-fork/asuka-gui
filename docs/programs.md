@@ -1440,7 +1440,9 @@ async fn main() throws {
 ## Running
 
 `asuka run` runs a program's `main` at once, with no build to wait for: the arguments after `--` are its own, and it exits with the
-program's code.
+program's code. It's a development build, as `asuka dev`'s is
+([`@debug`](language/control-flow.md#code-for-development-builds) is
+true); `asuka run --release` runs it as `asuka build` makes it.
 
 ```sh
 asuka run -- --jobs 8 a.txt b.txt

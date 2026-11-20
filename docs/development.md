@@ -20,7 +20,9 @@ asuka dev --platform web [flags] [dir]       # your browser
 `--platform` is one of `ios`, `android`, `mac`, `windows`, `linux` and
 `web`; `asuka build` takes it likewise. Without it, the app runs (or
 builds) for the computer you're on. One platform per run: run two
-terminals for two.
+terminals for two. What it runs is a development build:
+[`@debug`](language/control-flow.md#code-for-development-builds) is
+true.
 
 `dir` is the app's directory, the current one by default: its `.asuka`
 files, one of which has the `app` block, and its `asuka.toml`. The

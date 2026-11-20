@@ -2490,27 +2490,30 @@ func implicitRoot(x syntax.Expr) bool {
 func IsConstNumber(e syntax.Expr) bool { return constNumber(e) }
 
 // atExpr checks a compile-time constant: @platform, the platform the
-// program is compiled for (a Platform). Its value isn't the checker's:
-// every branch is checked whatever it is, and lowering folds it.
+// program is compiled for (a Platform), and @debug, whether it's a
+// development build (a bool). Their values aren't the checker's: every
+// branch is checked whatever they are, and lowering folds them.
 func (c *Checker) atExpr(e *syntax.AtExpr) Type {
-	if e.Name != "platform" {
-		c.errorf(e, diag.UndefinedName, "no compile-time constant @%s: there's @platform, the platform the app is compiled for", e.Name)
-		return Invalid
+	switch e.Name {
+	case "platform":
+		pt := c.prelude.Scope.LookupLocal("Platform").(*TypeName)
+		c.resolveType(pt)
+		return pt.Type
+	case "debug":
+		return Bool
 	}
-	pt := c.prelude.Scope.LookupLocal("Platform").(*TypeName)
-	c.resolveType(pt)
-	return pt.Type
+	c.errorf(e, diag.UndefinedName, "no compile-time constant @%s: there's @platform, the platform the app is compiled for, and @debug, whether it's a development build", e.Name)
+	return Invalid
+}
+
+// IsDebugConst reports whether e is @debug (in parentheses or not).
+func IsDebugConst(e syntax.Expr) bool {
+	a, ok := unparen(e).(*syntax.AtExpr)
+	return ok && a.Name == "debug"
 }
 
 // IsPlatformConst reports whether e is @platform (in parentheses or not).
 func IsPlatformConst(e syntax.Expr) bool {
-	for {
-		p, ok := e.(*syntax.ParenExpr)
-		if !ok {
-			break
-		}
-		e = p.X
-	}
-	a, ok := e.(*syntax.AtExpr)
+	a, ok := unparen(e).(*syntax.AtExpr)
 	return ok && a.Name == "platform"
 }

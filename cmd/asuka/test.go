@@ -27,6 +27,7 @@ var jsonOut bool
 // host built for this computer).
 func cmdTest(args []string) error {
 	var pattern, platform, benchtime, compare, seed, fuzztime string
+	var release bool
 	tr := &testRun{}
 	jsonOut = false
 	fs := newFlagSet("test", "[dir]")
@@ -39,7 +40,8 @@ func cmdTest(args []string) error {
 	fs.String(&pattern, "run", 0, "", "run only the tests (and benches) whose names contain `text`")
 	platformFlag(fs, &platform, []string{platformIOS, platformAndroid, platformMac, platformWindows, platformLinux, platformWeb},
 		"the `platform` the tests are compiled for (its packages' files for it, @platform) and the fake host says it is: ios (the default), android, mac, windows, linux or web")
-	fs.Bool(&tr.bench, "bench", 0, "time the benches (bench \"name\" { … }) instead of running the tests: compiled to C, as a release build is; each's time, allocations and bytes per iteration")
+	fs.Bool(&release, "release", 0, "compile the tests as a release build is: @debug is false (it's true by default, as under asuka dev)")
+	fs.Bool(&tr.bench, "bench", 0, "time the benches (bench \"name\" { … }) instead of running the tests: compiled to C, as a release build is (@debug false); each's time, allocations and bytes per iteration")
 	fs.String(&benchtime, "benchtime", 0, "1s", "how long each bench's samples take together (`time`: 500ms, 2s), or how many iterations each runs (100x)")
 	fs.String(&compare, "compare", 0, "", "compare the benches with a run that asuka test --bench --json wrote to `file`")
 	fs.Bool(&tr.vm, "vm", 0, "time the benches on the VM, not compiled to C")
@@ -55,6 +57,9 @@ func cmdTest(args []string) error {
 		return err
 	}
 	tr.pattern, tr.platform = pattern, platform
+	// Tests run a development build, as asuka dev's; benches time what a
+	// release runs.
+	appbuild.Debug = !release && !tr.bench
 	tr.ci = inCI()
 	if tr.lcov != "" || tr.html != "" {
 		tr.cover = true
@@ -275,11 +280,14 @@ func cmdRun(args []string) error {
 		"with the arguments after --, and exits with its code. A file or a package that isn't a\n" +
 		"program runs on the fake host: its test blocks, if it has any, and its app, whose screen\n" +
 		"it prints."
+	var release bool
 	fs.String(&bin, "bin", 0, "", "the `program` to run: one of asuka.toml's [bin.<name>] (needed when there are several)")
 	fs.String(&pattern, "run", 0, "", "run only the tests whose names contain `text`")
+	fs.Bool(&release, "release", 0, "compile it as a release build is: @debug is false (it's true by default, as under asuka dev)")
 	if err := fs.parse(args); err != nil {
 		return err
 	}
+	appbuild.Debug = !release
 	path := fs.Arg(0)
 	if path == "" {
 		path = "."

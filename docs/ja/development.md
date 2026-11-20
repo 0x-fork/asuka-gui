@@ -12,7 +12,7 @@ asuka dev --platform android [flags] [dir]   # Android のエミュレーター�
 asuka dev --platform web [flags] [dir]       # ブラウザー
 ```
 
-`--platform` には `ios`、`android`、`mac`、`windows`、`linux`、`web` のいずれかを指定します。`asuka build` でも同じように使えます。省略すると、今使っているコンピューター向けにアプリを実行（またはビルド）します。一回の実行で扱えるプラットフォームは一つだけです。二つのプラットフォームで動かすなら、ターミナルを二つ開いてください。
+`--platform` には `ios`、`android`、`mac`、`windows`、`linux`、`web` のいずれかを指定します。`asuka build` でも同じように使えます。省略すると、今使っているコンピューター向けにアプリを実行（またはビルド）します。一回の実行で扱えるプラットフォームは一つだけです。二つのプラットフォームで動かすなら、ターミナルを二つ開いてください。実行されるのは開発ビルドで、[`@debug`](language/control-flow.md#開発ビルド向けのコード) は true です。
 
 `dir` はアプリのディレクトリで、デフォルトはカレントディレクトリです。ここにはアプリの `.asuka` ファイル（そのうち一つに `app` ブロックがあります）と `asuka.toml` を置きます。フラグは次のとおりです。
 

@@ -284,6 +284,7 @@ func cmdDev(args []string) error {
 	if err := setDevLocale(o.lang, o.dir); err != nil {
 		return err
 	}
+	appbuild.Debug = true
 	dir := "."
 	if fs.Arg(0) != "" {
 		dir = fs.Arg(0)

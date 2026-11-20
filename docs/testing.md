@@ -59,7 +59,9 @@ The app runs as on an iPhone (iOS, 390 × 844 points). `asuka test
 --platform android` (or `mac`, `windows`, `linux`, `web`) says it's
 another platform, for what the app does by platform: the tests are
 compiled for it too, with its packages' files for that platform and
-`@platform` its own.
+`@platform` its own. The tests are a development build, as `asuka dev`'s
+is: [`@debug`](language/control-flow.md#code-for-development-builds) is
+true, and `asuka test --release` makes it false, as in what you ship.
 
 What isn't the platform's is how text is measured: 8 points a
 character on 20-point lines, whatever the font. Frames come from
@@ -315,8 +317,8 @@ comes before `measure { … }` sets up and isn't timed; without it, the
 whole body is. `keep(x)` is `x`: give it what the work computes, or the
 compiler may leave out work whose result nothing reads.
 
-Benches run compiled to C, as a release build is, so they time what
-your app ships; `--vm` runs them on the VM that `asuka dev` uses. The
+Benches run compiled to C, as a release build is (`@debug` is false), so
+they time what your app ships; `--vm` runs them on the VM that `asuka dev` uses. The
 time is measured, never checked: a bench fails only on what it checks
 (`expect`) or an error, and a plain `asuka test` runs each once, as a
 test, to see that it still works. `--benchtime 100x` runs exactly 100

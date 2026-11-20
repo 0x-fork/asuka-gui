@@ -159,16 +159,19 @@ which no path reads before, moves to the function's start, and the
 registers are renumbered into as few as the code still names (in order:
 a block of them stays one).
 
-## @platform
+## @platform and @debug
 
 `@platform` (syntax.AtExpr) is checked as the prelude's `Platform`, the
 same on every platform, and lowered as the constant case of the
-compile's platform (ir.Options.Platform; KSMALL, an int enum). Lowering
-folds what it decides (lang/ir/fold.go) and lowers only what's taken:
+compile's platform (ir.Options.Platform; KSMALL, an int enum). `@debug`
+is checked as a `bool` and lowered as the compile's ir.Options.Debug
+(KSMALL 0 or 1): true for asuka dev, run and test (appbuild.Debug), false
+for build, publish and benches. Lowering folds what they decide
+(lang/ir/fold.go) and lowers only what's taken:
 
 | Source | Lowered |
 |---|---|
-| `@platform == .linux`, `!=`, `!`, and `&&`, `\|\|` of them, `true`, `false` | KSMALL 0 or 1; a side that doesn't decide the whole drops out (`true && x` is `x`); `f() && false` still runs `f()` |
+| `@platform == .linux`, `!=`, `@debug`, `!`, and `&&`, `\|\|` of them, `true`, `false` | KSMALL 0 or 1; a side that doesn't decide the whole drops out (`true && x` is `x`); `f() && false` still runs `f()` |
 | `if c { A } else if d { B } else { C }`, as a statement or a value | only the branch taken; a chain's clauses before its first `let` likewise |
 | `match @platform { … }` (statement, value, view) | the arms up to the first that matches without a guard, without those whose case can't; in a view, one arm with no names is built once, without `ui.switch` |
 | `if c { A } else { B }` among views | the taken branch's builder called once (CALLC), without `ui.show`: the other's views never exist |

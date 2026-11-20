@@ -203,10 +203,13 @@ let today = time.now().format("EEE d MMM")
 library (`std/…`) and the platform SDK (`platform/…`) come with the
 CLI: import a package and use it. A file named `tray_linux.asuka` is
 part of its package only on Linux, and `@platform == .linux` is a
-constant, so what's for one platform isn't in the others' builds.
+constant, so what's for one platform isn't in the others' builds;
+`@debug`, true under `asuka dev`, leaves what's for development out of a
+release.
 [Files, packages and imports](language/packages.md), [the standard
 library and the platform SDK](stdlib.md), [code for one
-platform](language/control-flow.md#code-for-one-platform)
+platform](language/control-flow.md#code-for-one-platform), [code for
+development builds](language/control-flow.md#code-for-development-builds)
 
 ## Tests
 

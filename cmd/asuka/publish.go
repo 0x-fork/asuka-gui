@@ -17,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/egoist/asuka/internal/appbuild"
 )
 
 // asuka publish: a release build, numbered after the store's last,
@@ -70,6 +72,7 @@ func cmdPublish(args []string) error {
 	if err := fs.parse(args); err != nil {
 		return err
 	}
+	appbuild.Debug = false // a release: @debug is false
 	dir := "."
 	if fs.Arg(0) != "" {
 		dir = fs.Arg(0)

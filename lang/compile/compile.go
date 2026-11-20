@@ -60,6 +60,9 @@ type Options struct {
 	// target.Default): what @platform is, and which of each package's
 	// files are part of it (tray_linux.asuka only on Linux).
 	Platform target.Platform
+	// Debug compiles a development build (asuka dev, run and test):
+	// what @debug is. Without it, @debug is false, as in a release.
+	Debug bool
 	// Cover counts the runs of the root package's statements (asuka
 	// test --cover): Result.IR.Cover says where its counters are.
 	Cover bool
@@ -547,7 +550,7 @@ func (l *loader) compile(root *unit) *Result {
 			}
 		}
 	}
-	p, diags := ir.Lower(prog, &ir.Options{Platform: string(l.opts.Platform.Or()), Version: projectVersion(vdir), Lang: l.opts.Lang, Direction: l.opts.Direction, Accent: accent, AccentFlags: accentFlags, Cover: cover, NoFuse: l.opts.NoFuse})
+	p, diags := ir.Lower(prog, &ir.Options{Platform: string(l.opts.Platform.Or()), Debug: l.opts.Debug, Version: projectVersion(vdir), Lang: l.opts.Lang, Direction: l.opts.Direction, Accent: accent, AccentFlags: accentFlags, Cover: cover, NoFuse: l.opts.NoFuse})
 	res.Diags = append(res.Diags, diags...)
 	if len(res.Diags) > 0 {
 		return res

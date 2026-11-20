@@ -977,7 +977,7 @@ async fn main() throws {
 
 ## 运行
 
-`asuka run` 直接运行程序的 `main`，不需要等待构建：`--` 之后的参数都交给程序，退出时带上程序的退出码。
+`asuka run` 直接运行程序的 `main`，不需要等待构建：`--` 之后的参数都交给程序，退出时带上程序的退出码。它和 `asuka dev` 一样是开发构建（[`@debug`](language/control-flow.md#开发构建的代码) 为 true）；`asuka run --release` 则按 `asuka build` 产出的样子运行。
 
 ```sh
 asuka run -- --jobs 8 a.txt b.txt

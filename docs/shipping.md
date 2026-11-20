@@ -3,7 +3,9 @@
 `asuka build` makes an app's release build for one platform, from the
 app's directory (or the one given), into its `dist`. It compiles the app
 ahead of time and builds it, optimized, for the platform, with the
-platform's own compiler: there's no interpreter in what you ship. `asuka publish`
+platform's own compiler: there's no interpreter in what you ship, and
+[`@debug`](language/control-flow.md#code-for-development-builds) is
+false, so what's for development only isn't in it. `asuka publish`
 uploads the iOS and Android builds to their stores: to TestFlight and
 App Review, or a Google Play track (see [Publishing](#publishing)); and
 the desktop builds' signed updates, which installed apps update to, to

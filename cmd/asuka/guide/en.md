@@ -217,10 +217,13 @@ let today = time.now().format("EEE d MMM")
 library (`std/…`) and the platform SDK (`platform/…`) come with the
 CLI: import a package and use it. A file named `tray_linux.asuka` is
 part of its package only on Linux, and `@platform == .linux` is a
-constant, so what's for one platform isn't in the others' builds.
+constant, so what's for one platform isn't in the others' builds;
+`@debug`, true under `asuka dev`, leaves what's for development out of a
+release.
 [Files, packages and imports](https://asuka.egoist.dev/docs/language/packages), [the standard
 library and the platform SDK](https://asuka.egoist.dev/docs/stdlib), [code for one
-platform](https://asuka.egoist.dev/docs/language/control-flow#code-for-one-platform)
+platform](https://asuka.egoist.dev/docs/language/control-flow#code-for-one-platform), [code for
+development builds](https://asuka.egoist.dev/docs/language/control-flow#code-for-development-builds)
 
 #### Tests
 
@@ -1714,6 +1717,39 @@ platform](https://asuka.egoist.dev/docs/language/packages#files-for-one-platform
 `environment().platform` is the platform a view runs on, as the system
 says it (and as a test's `mount(…, platform:)` does): it's tracked, for
 views. What to build for a platform is `@platform`'s.
+
+#### Code for development builds
+
+`@debug` is whether the app is a development build, a `bool`: true
+under `asuka dev`, `asuka run` and `asuka test`, false in what `asuka
+build` and `asuka publish` make. It's a constant too, folded as
+`@platform` is: what a release doesn't take, a debug menu, a staging
+server's address, logging you need only while you work, is no part of
+it.
+
+```asuka
+let server = if @debug { "https://staging.example.com" } else { "https://example.com" }
+
+component About {
+  prop version: string
+
+  Column {
+    Text("Version {version}")
+    if @debug && @platform == .iOS {
+      Text("Development build, talking to {server}")
+    }
+  }
+}
+```
+
+`!@debug` folds as well, and so do `&&` and `||` of it with `@platform`'s
+comparisons. Both branches are checked in every build, so the release
+branch can't break unseen while you develop in the other one.
+
+Tests are a development build, as `asuka dev`'s is: `asuka test
+--release` runs them with `@debug` false, as the app ships, and so does
+`asuka run --release` for a program. Benches (`asuka test --bench`)
+time what a release runs, with `@debug` false.
 
 ### Components
 

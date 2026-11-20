@@ -517,8 +517,8 @@
           "match": "\\b(true|false|none)\\b"
         },
         {
-          "name": "constant.language.platform.asuka",
-          "match": "@platform\\b"
+          "name": "constant.language.compile-time.asuka",
+          "match": "@(platform|debug)\\b"
         },
         {
           "name": "variable.language.self.asuka",

@@ -780,7 +780,7 @@ module.exports = grammar({
 
     boolean_literal: _ => choice('true', 'false'),
 
-    // @platform
+    // @platform, @debug
     compile_time_constant: $ => seq('@', alias(token.immediate(IDENT), $.identifier)),
 
     // .gray, .ready(v): an implicit member.

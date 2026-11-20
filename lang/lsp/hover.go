@@ -111,11 +111,14 @@ func (fc *fileCtx) exprHover(path []syntax.Node) (*Hover, error) {
 		case *syntax.Ident, *syntax.LambdaExpr, *syntax.BadExpr:
 			continue
 		case *syntax.AtExpr:
-			if e.Name != "platform" {
-				return nil, nil
-			}
 			rg := fc.rng(e.Span)
-			return &Hover{Contents: markdown("@platform: Platform", platformDoc(fc.st.platform)), Range: &rg}, nil
+			switch e.Name {
+			case "platform":
+				return &Hover{Contents: markdown("@platform: Platform", platformDoc(fc.st.platform)), Range: &rg}, nil
+			case "debug":
+				return &Hover{Contents: markdown("@debug: bool", debugDoc), Range: &rg}, nil
+			}
+			return nil, nil
 		}
 		t := fc.info.Types[e]
 		if t == nil || check.IsInvalid(t) || t == check.Void {
@@ -292,6 +295,10 @@ func typeNameOf(t check.Type) *check.TypeName {
 	}
 	return nil
 }
+
+// debugDoc is @debug's hover.
+const debugDoc = "Whether the app is a development build, a constant: true under `asuka dev`, `asuka run` and `asuka test`, false in what `asuka build` and `asuka publish` make. " +
+	"Every branch is checked; the one a build doesn't take isn't part of it."
 
 // platformDoc is @platform's hover: what it is, and the platform the
 // editor checks the file for (whose files it reads).

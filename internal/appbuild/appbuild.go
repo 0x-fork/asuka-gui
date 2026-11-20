@@ -52,6 +52,10 @@ var DevLang, DevDirection string
 // and build optimize.
 var DevNoOptimize bool
 
+// Debug compiles development builds: @debug is true. asuka dev, run and
+// test (but its benches) set it; asuka build and publish don't.
+var Debug bool
+
 // Warnings receives what's worth saying that doesn't stop a build (the
 // catalogs' missing translations), "file:line:col: warning: message".
 var Warnings io.Writer = os.Stderr
@@ -75,7 +79,7 @@ func (p *Project) CompileCover(platform target.Platform) (*bytecode.Module, *ir.
 func compileDirWith(dir string, platform target.Platform, cover, tests bool) (*bytecode.Module, *ir.Cover, *Uses, []check.Diagnostic, error) {
 	// Imports resolve through the project's asuka.lock (compile.Dir's
 	// own), which Load made ready.
-	res, err := compile.Dir(dir, &compile.Options{Platform: platform, Lang: DevLang, Direction: DevDirection, Project: binRoot(dir), Cover: cover, NoOptimize: DevNoOptimize, NoTests: !tests})
+	res, err := compile.Dir(dir, &compile.Options{Platform: platform, Lang: DevLang, Direction: DevDirection, Project: binRoot(dir), Cover: cover, NoOptimize: DevNoOptimize, Debug: Debug, NoTests: !tests})
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -258,11 +262,11 @@ type compiled struct {
 }
 
 // stamp is what the project's compile reads, as it is now: its files'
-// (and its dependencies') paths, sizes and times, and asuka dev's
-// language and direction.
+// (and its dependencies') paths, sizes and times, asuka dev's language
+// and direction, and whether it's a development build.
 func (p *Project) stamp() string {
 	h := sha256.New()
-	fmt.Fprintln(h, DevLang, DevDirection, p.File)
+	fmt.Fprintln(h, DevLang, DevDirection, Debug, p.File)
 	roots := []string{p.Dir}
 	if p.Root != "" {
 		roots = append(roots, p.Root)

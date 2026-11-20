@@ -12,7 +12,7 @@ asuka dev --platform android [flags] [dir]   # Android 模拟器或手机
 asuka dev --platform web [flags] [dir]       # 浏览器
 ```
 
-`--platform` 可以是 `ios`、`android`、`mac`、`windows`、`linux` 和 `web` 之一；`asuka build` 也接受同样的参数。不指定时，应用会为你当前使用的电脑运行（或构建）。每次只能运行一个平台：要同时跑两个平台，就开两个终端。
+`--platform` 可以是 `ios`、`android`、`mac`、`windows`、`linux` 和 `web` 之一；`asuka build` 也接受同样的参数。不指定时，应用会为你当前使用的电脑运行（或构建）。每次只能运行一个平台：要同时跑两个平台，就开两个终端。它运行的是开发构建：[`@debug`](language/control-flow.md#开发构建的代码) 为 true。
 
 `dir` 是应用所在的目录，默认是当前目录，里面有应用的 `.asuka` 文件（其中一个包含 `app` 块）和它的 `asuka.toml`。可用的参数有：
 

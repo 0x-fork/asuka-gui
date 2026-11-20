@@ -38,7 +38,23 @@ fn branches() {
   }
 }
 
-fn unknownConst() -> bool = @os == .linux // ERROR "no compile-time constant @os: there's @platform"
+fn unknownConst() -> bool = @os == .linux // ERROR "no compile-time constant @os: there's @platform, the platform the app is compiled for, and @debug"
+
+// @debug: whether it's a development build, a bool. Its branches are
+// checked too, whichever it is.
+let verbose: bool = @debug && !desktop
+
+fn debugBranches() {
+  if @debug {
+    showMenuu() // ERROR "unknown name showMenuu"
+  } else {
+    let n: int = @debug // ERROR "bool"
+  }
+}
+
+fn debugAssigned() {
+  @debug = false // ERROR "can't assign"
+}
 
 fn notACase() -> bool = @platform == .linuxx // ERROR "Platform has no case or constant linuxx"
 

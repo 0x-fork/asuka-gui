@@ -896,7 +896,8 @@ type SelfExpr struct {
 }
 
 // An AtExpr is a compile-time constant: @platform, the platform the
-// program is compiled for. Name is what follows the @ ("platform").
+// program is compiled for, or @debug, whether it's a development build.
+// Name is what follows the @ ("platform").
 type AtExpr struct {
 	Span
 	Name string

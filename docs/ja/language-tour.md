@@ -164,7 +164,7 @@ import std/time
 let today = time.now().format("EEE d MMM")
 ```
 
-`pub` を付けた宣言はほかのパッケージから見えます。標準ライブラリ（`std/…`）とプラットフォーム SDK（`platform/…`）は CLI に同梱されているので、import するだけで使えます。`tray_linux.asuka` という名前のファイルは Linux でだけパッケージに含まれ、`@platform == .linux` は定数なので、あるプラットフォーム向けのコードはほかのプラットフォームのビルドに入りません。[ファイル、パッケージ、インポート](language/packages.md)、[標準ライブラリとプラットフォーム SDK](stdlib.md)、[特定のプラットフォーム向けのコード](language/control-flow.md#特定のプラットフォーム向けのコード)を参照してください。
+`pub` を付けた宣言はほかのパッケージから見えます。標準ライブラリ（`std/…`）とプラットフォーム SDK（`platform/…`）は CLI に同梱されているので、import するだけで使えます。`tray_linux.asuka` という名前のファイルは Linux でだけパッケージに含まれ、`@platform == .linux` は定数なので、あるプラットフォーム向けのコードはほかのプラットフォームのビルドに入りません。`@debug` は `asuka dev` では true で、開発専用のコードはリリースビルドに入りません。[ファイル、パッケージ、インポート](language/packages.md)、[標準ライブラリとプラットフォーム SDK](stdlib.md)、[特定のプラットフォーム向けのコード](language/control-flow.md#特定のプラットフォーム向けのコード)、[開発ビルド向けのコード](language/control-flow.md#開発ビルド向けのコード)を参照してください。
 
 ## テスト
 

@@ -977,7 +977,7 @@ async fn main() throws {
 
 ## 実行
 
-`asuka run` はプログラムの `main` をすぐに実行するので、ビルドを待つ必要がありません。`--` の後ろの引数はプログラムに渡され、プログラムの終了コードでそのまま終了します。
+`asuka run` はプログラムの `main` をすぐに実行するので、ビルドを待つ必要がありません。`--` の後ろの引数はプログラムに渡され、プログラムの終了コードでそのまま終了します。`asuka dev` と同じく開発ビルドで（[`@debug`](language/control-flow.md#開発ビルド向けのコード) は true）、`asuka run --release` を付けると `asuka build` が作るものと同じように実行します。
 
 ```sh
 asuka run -- --jobs 8 a.txt b.txt

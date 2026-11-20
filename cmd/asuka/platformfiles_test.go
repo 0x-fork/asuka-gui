@@ -60,6 +60,22 @@ func TestCmdTestPlatformFiles(t *testing.T) {
 	}
 }
 
+// asuka test compiles a development build (@debug is true), as asuka dev
+// does; --release compiles it as asuka build does.
+func TestCmdTestDebug(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "dbg")
+	os.MkdirAll(dir, 0o755)
+	if err := os.WriteFile(filepath.Join(dir, "main.asuka"), []byte("test \"a development build\" {\n  expect(@debug)\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdTest([]string{dir}); err != nil {
+		t.Errorf("the default: %v", err)
+	}
+	if err := cmdTest([]string{"--release", dir}); err == nil || err.Error() != "1 of 1 test failed" && err.Error() != "1 of 1 tests failed" {
+		t.Errorf("--release: %v", err)
+	}
+}
+
 // Two players on different platforms connected to one asuka dev each get
 // their platform's module, at once and on a save.
 func TestDevPlatforms(t *testing.T) {

@@ -20,7 +20,7 @@ func TestPlatformFiles(t *testing.T) {
 		}
 		return p
 	}
-	main := write("main.asuka", "app { Text(label()) }\n\nfn shown() -> bool = @platform == .linux\n")
+	main := write("main.asuka", "app { Text(label()) }\n\nfn shown() -> bool = @platform == .linux\n\nfn dev() -> bool = @debug\n")
 	write("label_mobile.asuka", "fn label() -> string = \"phone\"\n")
 	write("label_desktop.asuka", "fn label() -> string = \"computer\"\n")
 	linux := write("tray_linux.asuka", "fn tray() -> string = label()\n")
@@ -79,9 +79,18 @@ func TestPlatformFiles(t *testing.T) {
 	if err := c.call("textDocument/hover", &p, &h); err != nil || h == nil || !strings.Contains(h.Contents.Value, "@platform: Platform") || !strings.Contains(h.Contents.Value, "iOS's files") {
 		t.Errorf("hover: %v %+v", err, h)
 	}
+	// @debug's.
+	p = tdp(uri, posAt(t, text, "@deb|ug\n"))
+	if err := c.call("textDocument/hover", &p, &h); err != nil || h == nil || !strings.Contains(h.Contents.Value, "@debug: bool") || !strings.Contains(h.Contents.Value, "development build") {
+		t.Errorf("@debug's hover: %v %+v", err, h)
+	}
 	version := 5
 	items := complete(t, c, uri, &version, text+"let x = @pl\n", text+"let x = @pl|")
 	if l := labels(items); len(l) != 1 || l[0] != "platform" {
 		t.Errorf("completion: %q", l)
+	}
+	items = complete(t, c, uri, &version, text+"let y = @de\n", text+"let y = @de|")
+	if l := labels(items); len(l) != 1 || l[0] != "debug" {
+		t.Errorf("@debug's completion: %q", l)
 	}
 }
