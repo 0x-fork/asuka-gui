@@ -178,7 +178,7 @@ void *ak_alloc(size_t n) {
 // and a growing buffer's never are by it: each is twice the last, so a
 // 40 MB array built by pushes held 64 MB of the buffers it outgrew. Its
 // whole pages are moved into the new block by the system (macOS's
-// mach_vm_remap, Linux's mremap), not copied, as macOS's malloc grows a
+// vm_remap, Linux's mremap), not copied, as macOS's malloc grows a
 // large block (vm_copy): no copy, and no page of the new block faulted
 // in for it; the old range is mapped anew, empty. Where the pages can't
 // be moved (the blocks don't sit alike in their pages), the bytes are
@@ -187,11 +187,19 @@ void *ak_alloc(size_t n) {
 // made next.
 #define AK_GROWN_RELEASE ((size_t)1 << 20)
 
+// The pages moved and mapped anew on the systems that can: macOS, Linux
+// and Android. Elsewhere (Windows) a grown block is copied and the old
+// one freed, as any: mimalloc's purge of freed pages there (MEM_RESET,
+// decommit) does take them out of the working set.
+#if defined(__APPLE__) || defined(__linux__) || defined(__ANDROID__)
+#define AK_MOVE_PAGES 1
+#include <sys/mman.h>
+#endif
 #if defined(__APPLE__)
-#include <mach/mach.h>
-#include <mach/mach_vm.h>
+#include <mach/mach.h>  // vm_remap (mach_vm.h's mach_vm_remap isn't iOS's)
 #endif
 
+#if AK_MOVE_PAGES
 // fresh_pages maps [a, b) (whole pages) anew, empty: they read as zeros
 // when next touched, and aren't resident till then.
 static void fresh_pages(uintptr_t a, uintptr_t b) {
@@ -209,10 +217,10 @@ static void fresh_pages(uintptr_t a, uintptr_t b) {
 // are replaced by, leaving [a, b) empty: whether it could.
 static bool move_pages(uintptr_t a, uintptr_t b, uintptr_t to) {
 #if defined(__APPLE__)
-	mach_vm_address_t t = to;
+	vm_address_t t = to;
 	vm_prot_t cur, max;
-	if (mach_vm_remap(mach_task_self(), &t, b - a, 0, VM_FLAGS_FIXED | VM_FLAGS_OVERWRITE, mach_task_self(), a, FALSE, &cur, &max,
-	                  VM_INHERIT_DEFAULT) != KERN_SUCCESS)
+	if (vm_remap(mach_task_self(), &t, b - a, 0, VM_FLAGS_FIXED | VM_FLAGS_OVERWRITE, mach_task_self(), a, FALSE, &cur, &max,
+	             VM_INHERIT_DEFAULT) != KERN_SUCCESS)
 		return false;
 	fresh_pages(a, b);  // shared with to's until then
 	return true;
@@ -220,17 +228,15 @@ static bool move_pages(uintptr_t a, uintptr_t b, uintptr_t to) {
 	if (mremap((void *)a, b - a, b - a, MREMAP_MAYMOVE | MREMAP_FIXED, (void *)to) == MAP_FAILED) return false;
 	fresh_pages(a, b);  // unmapped by the move
 	return true;
-#else
-	AK_UNUSED(a), AK_UNUSED(b), AK_UNUSED(to);
-	return false;
 #endif
 }
+#endif
 
 // grown_block is a new block of n bytes (n > p's) for p's bytes to move
 // to: placed in its pages as p is in its own (blocks this big start
 // anywhere in their first page), so that p's whole pages can move whole.
 static void *grown_block(const void *p, size_t n) {
-#if defined(__APPLE__) || defined(__linux__) || defined(__ANDROID__)
+#if AK_MOVE_PAGES
 	size_t ps = _mi_os_page_size();
 	return mi_malloc_aligned_at(n, ps, (ps - ((uintptr_t)p & (ps - 1))) & (ps - 1));
 #else
@@ -242,7 +248,7 @@ static void *grown_block(const void *p, size_t n) {
 // grown_into puts the n bytes at p into q (a block of its own, as long
 // or longer), p's pages moved or released.
 static void grown_into(void *q, void *p, size_t n) {
-#if defined(__APPLE__) || defined(__linux__) || defined(__ANDROID__)
+#if AK_MOVE_PAGES
 	size_t ps = _mi_os_page_size();
 	uintptr_t s = (uintptr_t)p, a = (s + ps - 1) & ~(uintptr_t)(ps - 1), b = (s + n) & ~(uintptr_t)(ps - 1);
 	if (b > a) {
