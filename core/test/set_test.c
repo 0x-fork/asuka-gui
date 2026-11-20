@@ -100,6 +100,26 @@ TEST(set_eq_copy_freeze) {
 	ak_frozen_free(&made);
 }
 
+// A frozen set's elements are frozen with what they hold (an array key's
+// strings, as a struct's or an enum's fields), and all of it is freed
+// with the module: nothing in them was left counted, and so never freed.
+TEST(set_freeze_deep_keys) {
+	int64_t live = __atomic_load_n(&ak_obj_live, __ATOMIC_RELAXED);
+	ak_map *s = ak_set_new(AK_K_REF, true);
+	ak_arr *k = ak_arr_new(AK_K_REF, NULL, 1);
+	ak_str *x = ak_str_c("a string held by a key");
+	ak_arr_push(&k, (ak_val){.p = x});
+	ak_set_insert(&s, (ak_val){.p = k});
+	ak_frozen made = {0};
+	ak_freeze((ak_val){.p = s}, AK_K_REF, &made);
+	CHECK_EQ_INT(k->h.rc, AK_RC_IMMORTAL);
+	CHECK_EQ_INT(x->h.rc, AK_RC_IMMORTAL);
+	CHECK_EQ_INT(made.len, 3);
+	CHECK(made.data[made.len - 1] == &s->h);
+	ak_frozen_free(&made);
+	CHECK_EQ_INT(__atomic_load_n(&ak_obj_live, __ATOMIC_RELAXED), live);
+}
+
 TEST(set_from_arr) {
 	ak_arr *xs = ak_arr_new(AK_K_INT, NULL, 4);
 	int64_t v[] = {5, 6, 5, 7};

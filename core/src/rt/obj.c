@@ -998,17 +998,16 @@ ak_val ak_deep_copy(ak_val v, ak_kind k) {
 
 // ---- Constants ----
 
-// freeze_one makes o (not immortal) immortal, and a map's keys.
+// freeze_one makes o (not immortal) immortal, and a map's keys with
+// what they hold (a struct's or an enum's fields: a walk goes through a
+// map's values, not its keys; nested as deep as keys are in keys, as
+// ak_deep_copy copies them).
 static void freeze_one(ak_obj *o, ak_frozen *made) {
 	if (o->tag == AK_TAG_MAP) {
 		ak_map *m = (ak_map *)o;
 		if ((m->h.aux & 0xf) == AK_K_REF)
-			for (uint32_t i = 0; i < m->len; i++) {
-				ak_obj *key = m->keys[i].p;
-				if (m->dead[i] || !key || key->rc == AK_RC_IMMORTAL) continue;
-				ak_make_immortal(key);
-				if (made) ak_vec_push(made, key);
-			}
+			for (uint32_t i = 0; i < m->len; i++)
+				if (!m->dead[i]) ak_freeze(m->keys[i], AK_K_REF, made);
 	}
 	ak_make_immortal(o);
 	if (made) ak_vec_push(made, o);
