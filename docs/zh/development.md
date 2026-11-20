@@ -136,7 +136,19 @@ npx @vscode/vsce package
 code --install-extension asuka-0.1.0.vsix
 ```
 
-任何带 LSP 客户端的编辑器也都能使用它：运行 `asuka lsp`，它通过标准输入和输出使用 LSP 3.17，处理 `.asuka` 文件，以 `asuka.toml` 所在的目录为根。`editors/vscode` 的 README 里有 Neovim 和 Helix 的设置。
+Zed 的扩展在 `editors/zed` 中：借助 Asuka 的 tree-sitter 语法（`editors/tree-sitter-asuka`）提供语法高亮、大纲、括号匹配、缩进和文本对象，在每个 `test`、`bench` 和 `app` 旁边显示运行按钮，并运行 `asuka lsp`。它使用 `PATH` 中的 `asuka`，或 Zed 设置里 `lsp.asuka.binary.path` 指定的那个；两者都没有时，会下载 Asuka 最新 release 的命令行工具。安装方法：在命令面板中执行 **zed: install dev extension**，选择 `editors/zed` 目录；Zed 会用 Rust 构建它，Rust 需通过 [rustup](https://rustup.rs) 安装。
+
+```json
+{
+  "lsp": {
+    "asuka": {
+      "binary": { "path": "/path/to/asuka", "arguments": ["lsp", "--verbose"] }
+    }
+  }
+}
+```
+
+任何带 LSP 客户端的编辑器也都能使用它：运行 `asuka lsp`，它通过标准输入和输出使用 LSP 3.17，处理 `.asuka` 文件，以 `asuka.toml` 所在的目录为根。`editors/vscode` 的 README 里有 Neovim 和 Helix 的设置，它们的语法高亮可以使用 `editors/tree-sitter-asuka` 这份 tree-sitter 语法。
 
 ## 快照与脚本
 

@@ -1,0 +1,18 @@
+id = "asuka"
+name = "Asuka"
+description = "The Asuka language: highlighting, outline, runnable tests, and diagnostics, completion, navigation and formatting from asuka lsp."
+version = "0.1.0"
+schema_version = 1
+authors = ["EGOIST"]
+repository = "https://github.com/egoist/asuka"
+
+[language_servers.asuka]
+name = "Asuka"
+languages = ["Asuka"]
+
+# The grammar is this repository's editors/tree-sitter-asuka, at a commit
+# that has it (Zed fetches it from GitHub).
+[grammars.asuka]
+repository = "https://github.com/egoist/asuka"
+rev = "main"
+path = "editors/tree-sitter-asuka"

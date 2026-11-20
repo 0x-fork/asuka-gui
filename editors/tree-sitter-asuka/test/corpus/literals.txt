@@ -1,0 +1,63 @@
+================================================================================
+Strings and literals
+================================================================================
+
+let a = "Hello, {name}!\n"
+let b = "{price:>10.2}"
+let c = """
+  say "hi" and ""ok""
+  {name}
+  """
+let d = r#"a "quoted" {not}"#
+let e = '\u{1F600}'
+let f = [1s, 300ms, 50%, 1fr, #ff0080, 0x1f, 1_000, 1.5e3, @platform]
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_declaration
+    (binding_pattern
+      (identifier))
+    (string_literal
+      (string_content)
+      (interpolation
+        (identifier))
+      (string_content)
+      (escape_sequence)))
+  (let_declaration
+    (binding_pattern
+      (identifier))
+    (string_literal
+      (interpolation
+        (identifier)
+        (format_specifier))))
+  (let_declaration
+    (binding_pattern
+      (identifier))
+    (string_literal
+      (string_content)
+      (interpolation
+        (identifier))
+      (string_content)))
+  (let_declaration
+    (binding_pattern
+      (identifier))
+    (raw_string_literal))
+  (let_declaration
+    (binding_pattern
+      (identifier))
+    (char_literal))
+  (let_declaration
+    (binding_pattern
+      (identifier))
+    (array_expression
+      (duration_literal)
+      (duration_literal)
+      (length_literal)
+      (length_literal)
+      (color_literal)
+      (integer_literal)
+      (integer_literal)
+      (float_literal)
+      (compile_time_constant
+        (identifier)))))

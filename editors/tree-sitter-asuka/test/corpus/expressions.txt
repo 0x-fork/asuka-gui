@@ -1,0 +1,377 @@
+================================================================================
+Elements, trailing blocks and handlers
+================================================================================
+
+component Counter {
+  state count = 0
+  Column {
+    gap: 12; padding: 24
+    Text("Count: {count}") { font: .title }
+    Button("Add") { on press { count += 1 } } on longPress { count = 0 }
+    View as card { }
+  }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (component_declaration
+    (identifier)
+    (block
+      (state_declaration
+        (identifier)
+        (integer_literal))
+      (call_expression
+        (identifier)
+        (block
+          (prop_set
+            (identifier)
+            (integer_literal))
+          (prop_set
+            (identifier)
+            (integer_literal))
+          (call_expression
+            (identifier)
+            (arguments
+              (argument
+                (string_literal
+                  (string_content)
+                  (interpolation
+                    (identifier)))))
+            (block
+              (prop_set
+                (identifier)
+                (implicit_member_expression
+                  (identifier)))))
+          (call_expression
+            (identifier)
+            (arguments
+              (argument
+                (string_literal
+                  (string_content))))
+            (block
+              (on_handler
+                (identifier)
+                (block
+                  (assignment
+                    (identifier)
+                    (integer_literal)))))
+            (on_handler
+              (identifier)
+              (block
+                (assignment
+                  (identifier)
+                  (integer_literal)))))
+          (call_expression
+            (identifier)
+            (identifier)
+            (block)))))))
+
+================================================================================
+A control clause's head takes no trailing block
+================================================================================
+
+fn f() {
+  if f(x) { a() }
+  for x in items() key x.id as rows { Row(x) }
+  while more() { }
+  match state() { _ => 0 }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (if_expression
+        (condition
+          (call_expression
+            (identifier)
+            (arguments
+              (argument
+                (identifier)))))
+        (block
+          (call_expression
+            (identifier)
+            (arguments))))
+      (for_statement
+        (binding_pattern
+          (identifier))
+        (call_expression
+          (identifier)
+          (arguments))
+        (member_expression
+          (identifier)
+          (identifier))
+        (identifier)
+        (block
+          (call_expression
+            (identifier)
+            (arguments
+              (argument
+                (identifier))))))
+      (while_statement
+        (condition
+          (call_expression
+            (identifier)
+            (arguments)))
+        (block))
+      (match_expression
+        (call_expression
+          (identifier)
+          (arguments))
+        (match_body
+          (match_arm
+            (wildcard_pattern)
+            (integer_literal)))))))
+
+================================================================================
+Type arguments and comparisons
+================================================================================
+
+fn f() {
+  let a = json.decode<[Item]>(s)
+  let b = Box<Box<int>>.empty()
+  let c = decode<Map<int, string>>(s)
+  let d = i < n && j > m
+  let e = a >> 2
+  e >>= 1
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (let_declaration
+        (binding_pattern
+          (identifier))
+        (call_expression
+          (generic_expression
+            (member_expression
+              (identifier)
+              (identifier))
+            (type_arguments
+              (array_type
+                (named_type
+                  (type_identifier)))))
+          (arguments
+            (argument
+              (identifier)))))
+      (let_declaration
+        (binding_pattern
+          (identifier))
+        (call_expression
+          (member_expression
+            (generic_expression
+              (identifier)
+              (type_arguments
+                (named_type
+                  (type_identifier)
+                  (type_arguments
+                    (named_type
+                      (type_identifier))))))
+            (identifier))
+          (arguments)))
+      (let_declaration
+        (binding_pattern
+          (identifier))
+        (call_expression
+          (generic_expression
+            (identifier)
+            (type_arguments
+              (named_type
+                (type_identifier)
+                (type_arguments
+                  (named_type
+                    (type_identifier))
+                  (named_type
+                    (type_identifier))))))
+          (arguments
+            (argument
+              (identifier)))))
+      (let_declaration
+        (binding_pattern
+          (identifier))
+        (binary_expression
+          (binary_expression
+            (identifier)
+            (identifier))
+          (binary_expression
+            (identifier)
+            (identifier))))
+      (let_declaration
+        (binding_pattern
+          (identifier))
+        (binary_expression
+          (identifier)
+          (integer_literal)))
+      (assignment
+        (identifier)
+        (integer_literal)))))
+
+================================================================================
+Lambdas and tuples
+================================================================================
+
+let f = (a, b) => a < b
+let g = async (x: int) => { await sleep(1s) }
+let t = (1, 2)
+let u = (x)
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_declaration
+    (binding_pattern
+      (identifier))
+    (lambda_expression
+      (lambda_parameters
+        (lambda_parameter
+          (identifier))
+        (lambda_parameter
+          (identifier)))
+      (binary_expression
+        (identifier)
+        (identifier))))
+  (let_declaration
+    (binding_pattern
+      (identifier))
+    (lambda_expression
+      (lambda_parameters
+        (lambda_parameter
+          (identifier)
+          (named_type
+            (type_identifier))))
+      (block
+        (unary_expression
+          (call_expression
+            (identifier)
+            (arguments
+              (argument
+                (duration_literal))))))))
+  (let_declaration
+    (binding_pattern
+      (identifier))
+    (tuple_expression
+      (integer_literal)
+      (integer_literal)))
+  (let_declaration
+    (binding_pattern
+      (identifier))
+    (parenthesized_expression
+      (identifier))))
+
+================================================================================
+Load, reload and calls of functions so named
+================================================================================
+
+fn f() {
+  let u = load api.user(id)
+  let v = load (api.user(id), api.posts(id))
+  reload api.notes
+  await reload()
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (let_declaration
+        (binding_pattern
+          (identifier))
+        (load_expression
+          (call_expression
+            (member_expression
+              (identifier)
+              (identifier))
+            (arguments
+              (argument
+                (identifier))))))
+      (let_declaration
+        (binding_pattern
+          (identifier))
+        (load_expression
+          (tuple_expression
+            (call_expression
+              (member_expression
+                (identifier)
+                (identifier))
+              (arguments
+                (argument
+                  (identifier))))
+            (call_expression
+              (member_expression
+                (identifier)
+                (identifier))
+              (arguments
+                (argument
+                  (identifier)))))))
+      (reload_expression
+        (member_expression
+          (identifier)
+          (identifier)))
+      (unary_expression
+        (call_expression
+          (identifier)
+          (arguments))))))
+
+================================================================================
+Soft keywords as names and as items
+================================================================================
+
+component A {
+  task { await f() }
+  effect(n) { }
+  let app = mount(B())
+  app.tap("Add")
+  style: card
+  style card
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (component_declaration
+    (identifier)
+    (block
+      (task_declaration
+        (block
+          (unary_expression
+            (call_expression
+              (identifier)
+              (arguments)))))
+      (effect_declaration
+        (dependencies
+          (identifier))
+        (block))
+      (let_declaration
+        (binding_pattern
+          (identifier))
+        (call_expression
+          (identifier)
+          (arguments
+            (argument
+              (call_expression
+                (identifier)
+                (arguments))))))
+      (call_expression
+        (member_expression
+          (identifier)
+          (identifier))
+        (arguments
+          (argument
+            (string_literal
+              (string_content)))))
+      (prop_set
+        (identifier)
+        (identifier))
+      (style_application
+        (identifier)))))

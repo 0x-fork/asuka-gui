@@ -1,0 +1,216 @@
+================================================================================
+Member chains continue on the next line
+================================================================================
+
+let names = users
+  .filter(u => u.active)
+  .map(u => u.name)
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_declaration
+    (binding_pattern
+      (identifier))
+    (call_expression
+      (member_expression
+        (call_expression
+          (member_expression
+            (identifier)
+            (identifier))
+          (arguments
+            (argument
+              (lambda_expression
+                (lambda_parameter)
+                (member_expression
+                  (identifier)
+                  (identifier))))))
+        (identifier))
+      (arguments
+        (argument
+          (lambda_expression
+            (lambda_parameter)
+            (member_expression
+              (identifier)
+              (identifier))))))))
+
+================================================================================
+A line that starts with a binary operator continues
+================================================================================
+
+fn f() {
+  let total = a
+    + b
+    ?? c
+  let neg = a
+  -b
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (let_declaration
+        (binding_pattern
+          (identifier))
+        (binary_expression
+          (binary_expression
+            (identifier)
+            (identifier))
+          (identifier)))
+      (let_declaration
+        (binding_pattern
+          (identifier))
+        (identifier))
+      (unary_expression
+        (identifier)))))
+
+================================================================================
+Match arms that start with a dot
+================================================================================
+
+fn label(f: Filter) -> string = match f {
+  .all => "Everything"
+  .from(sender) => "From {sender}"
+  _ => "?"
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))))
+    (named_type
+      (type_identifier))
+    (match_expression
+      (identifier)
+      (match_body
+        (match_arm
+          (implicit_case_pattern
+            (identifier))
+          (string_literal
+            (string_content)))
+        (match_arm
+          (implicit_case_pattern
+            (identifier)
+            (case_arguments
+              (binding_pattern
+                (identifier))))
+          (string_literal
+            (string_content)
+            (interpolation
+              (identifier))))
+        (match_arm
+          (wildcard_pattern)
+          (string_literal
+            (string_content)))))))
+
+================================================================================
+A dot name alone on a block's last line is its value
+================================================================================
+
+fn tint(c: bool) -> Color = if c { log()
+  .red } else { .blue }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (named_type
+          (type_identifier))))
+    (named_type
+      (type_identifier))
+    (if_expression
+      (condition
+        (identifier))
+      (block
+        (call_expression
+          (identifier)
+          (arguments))
+        (implicit_member_expression
+          (identifier)))
+      (block
+        (implicit_member_expression
+          (identifier))))))
+
+================================================================================
+Else and catch on the line after a brace
+================================================================================
+
+fn f() {
+  if a { b() }
+  else { c() }
+  do { try d() }
+  catch e { }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (if_expression
+        (condition
+          (identifier))
+        (block
+          (call_expression
+            (identifier)
+            (arguments)))
+        (block
+          (call_expression
+            (identifier)
+            (arguments))))
+      (do_statement
+        (block
+          (try_expression
+            (call_expression
+              (identifier)
+              (arguments))))
+        (catch_clause
+          (binding_pattern
+            (identifier))
+          (block))))))
+
+================================================================================
+A newline ends return and break
+================================================================================
+
+fn f() {
+  for x in xs {
+    break
+    g()
+  }
+  return
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (for_statement
+        (binding_pattern
+          (identifier))
+        (identifier)
+        (block
+          (break_expression)
+          (call_expression
+            (identifier)
+            (arguments))))
+      (return_expression))))

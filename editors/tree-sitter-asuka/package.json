@@ -1,0 +1,28 @@
+{
+  "name": "tree-sitter-asuka",
+  "version": "0.1.0",
+  "description": "The Asuka language's grammar for tree-sitter",
+  "license": "MIT",
+  "private": true,
+  "type": "commonjs",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/egoist/asuka",
+    "directory": "editors/tree-sitter-asuka"
+  },
+  "files": ["grammar.js", "tree-sitter.json", "src/**", "queries/*"],
+  "tree-sitter": [
+    {
+      "scope": "source.asuka",
+      "file-types": ["asuka"],
+      "highlights": "queries/highlights.scm"
+    }
+  ],
+  "devDependencies": {
+    "tree-sitter-cli": "0.25.10"
+  },
+  "scripts": {
+    "generate": "tree-sitter generate",
+    "test": "tree-sitter test"
+  }
+}

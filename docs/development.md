@@ -302,10 +302,31 @@ npx @vscode/vsce package
 code --install-extension asuka-0.1.0.vsix
 ```
 
+For Zed, the extension is in `editors/zed`: highlighting, the outline,
+brackets, indentation and text objects from Asuka's tree-sitter grammar
+(`editors/tree-sitter-asuka`), a run button on each `test`, `bench`
+and `app`, and `asuka lsp`. It runs the `asuka` on your `PATH`, or the
+one `lsp.asuka.binary.path` names in Zed's settings; without either, it
+downloads the CLI of Asuka's latest release. Install it with **zed:
+install dev extension** (in the command palette) and the `editors/zed`
+directory; Zed builds it with Rust, from [rustup](https://rustup.rs).
+
+```json
+{
+  "lsp": {
+    "asuka": {
+      "binary": { "path": "/path/to/asuka", "arguments": ["lsp", "--verbose"] }
+    }
+  }
+}
+```
+
 Any editor with an LSP client can use it too: run `asuka lsp`, which
 speaks LSP 3.17 over standard input and output, for `.asuka` files,
 with the directory of `asuka.toml` as the root. `editors/vscode`'s
-README has Neovim's and Helix's settings.
+README has Neovim's and Helix's settings, and
+`editors/tree-sitter-asuka` is a tree-sitter grammar for their
+highlighting.
 
 ## Snapshots and scripts
 

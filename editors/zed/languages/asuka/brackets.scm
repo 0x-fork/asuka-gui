@@ -1,0 +1,8 @@
+("(" @open ")" @close)
+("[" @open "]" @close)
+("{" @open "}" @close)
+(import_declaration ".{" @open "}" @close)
+(type_arguments "<" @open ">" @close)
+(type_parameters "<" @open ">" @close)
+(string_literal "\"" @open "\"" @close)
+(string_literal "\"\"\"" @open "\"\"\"" @close)

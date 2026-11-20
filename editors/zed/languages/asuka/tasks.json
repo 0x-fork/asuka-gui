@@ -1,0 +1,30 @@
+[
+  {
+    "label": "asuka test --run \"$ZED_CUSTOM_ASUKA_TEST_NAME\"",
+    "command": "asuka",
+    "args": ["test", "--run", "\"$ZED_CUSTOM_ASUKA_TEST_NAME\"", "\"$ZED_DIRNAME\""],
+    "tags": ["asuka-test"]
+  },
+  {
+    "label": "asuka test --bench --run \"$ZED_CUSTOM_ASUKA_BENCH_NAME\"",
+    "command": "asuka",
+    "args": ["test", "--bench", "--run", "\"$ZED_CUSTOM_ASUKA_BENCH_NAME\"", "\"$ZED_DIRNAME\""],
+    "tags": ["asuka-bench"]
+  },
+  {
+    "label": "asuka dev",
+    "command": "asuka",
+    "args": ["dev", "\"$ZED_DIRNAME\""],
+    "tags": ["asuka-app"]
+  },
+  {
+    "label": "asuka test (package)",
+    "command": "asuka",
+    "args": ["test", "\"$ZED_DIRNAME\""]
+  },
+  {
+    "label": "asuka check (package)",
+    "command": "asuka",
+    "args": ["check", "\"$ZED_DIRNAME\""]
+  }
+]

@@ -49,6 +49,10 @@ and **Asuka: Show Language Server Output**.
 
 ## Other editors
 
+Zed has its own extension, [editors/zed](../zed), and
+[editors/tree-sitter-asuka](../tree-sitter-asuka) is a tree-sitter
+grammar for the highlighting of editors that use one.
+
 Any editor with an LSP client can run `asuka lsp`: it speaks LSP 3.17
 over standard input and output. For example, Neovim:
 

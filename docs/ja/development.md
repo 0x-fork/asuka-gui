@@ -136,7 +136,19 @@ npx @vscode/vsce package
 code --install-extension asuka-0.1.0.vsix
 ```
 
-LSP クライアントを備えたエディターなら、どれでも使えます。`asuka lsp` を実行すると、標準入出力で LSP 3.17 を話し、`.asuka` ファイルを扱い、`asuka.toml` のあるディレクトリーをルートにします。Neovim と Helix の設定は `editors/vscode` の README にあります。
+Zed 用の拡張機能は `editors/zed` にあります。Asuka の tree-sitter 文法（`editors/tree-sitter-asuka`）によるハイライト、アウトライン、括弧の対応、インデント、テキストオブジェクトに加え、`test`、`bench`、`app` ごとの実行ボタンを備え、`asuka lsp` を実行します。使うのは `PATH` にある `asuka`、または Zed の設定の `lsp.asuka.binary.path` で指定したものです。どちらもなければ、Asuka の最新リリースの CLI をダウンロードします。インストールは、コマンドパレットの **zed: install dev extension** で `editors/zed` ディレクトリーを選びます。Zed は Rust でビルドするので、[rustup](https://rustup.rs) で Rust を入れておいてください。
+
+```json
+{
+  "lsp": {
+    "asuka": {
+      "binary": { "path": "/path/to/asuka", "arguments": ["lsp", "--verbose"] }
+    }
+  }
+}
+```
+
+LSP クライアントを備えたエディターなら、どれでも使えます。`asuka lsp` を実行すると、標準入出力で LSP 3.17 を話し、`.asuka` ファイルを扱い、`asuka.toml` のあるディレクトリーをルートにします。Neovim と Helix の設定は `editors/vscode` の README にあり、それらのハイライトには tree-sitter 文法 `editors/tree-sitter-asuka` を使えます。
 
 ## スナップショットとスクリプト
 
