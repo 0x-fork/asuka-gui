@@ -27,6 +27,7 @@
 // mimalloc's on churning blocks; and the module stays smaller.
 #if !defined(_WIN32) && !defined(__APPLE__)
 #define _DEFAULT_SOURCE  // mimalloc's madvise, syscall, realpath (before any header)
+#define _GNU_SOURCE      // mremap (ak_realloc's)
 #endif
 #include "base/base.h"
 
@@ -169,8 +170,108 @@ void *ak_alloc(size_t n) {
 	return p;
 }
 
+// A big block grown by ak_realloc (an array or a string that doubles as
+// it fills) moves to a new one, and leaves its pages to the system, not
+// to the allocator. Freed, they'd stay resident until reused (mimalloc
+// purges what's freed a few seconds later, and on macOS a purge, an
+// madvise, leaves them counted resident until the system needs them),
+// and a growing buffer's never are by it: each is twice the last, so a
+// 40 MB array built by pushes held 64 MB of the buffers it outgrew. Its
+// whole pages are moved into the new block by the system (macOS's
+// mach_vm_remap, Linux's mremap), not copied, as macOS's malloc grows a
+// large block (vm_copy): no copy, and no page of the new block faulted
+// in for it; the old range is mapped anew, empty. Where the pages can't
+// be moved (the blocks don't sit alike in their pages), the bytes are
+// copied and the old pages released. Only blocks of AK_GROWN_RELEASE or
+// more: a smaller one's pages go back to the allocator, for the blocks
+// made next.
+#define AK_GROWN_RELEASE ((size_t)1 << 20)
+
+#if defined(__APPLE__)
+#include <mach/mach.h>
+#include <mach/mach_vm.h>
+#endif
+
+// fresh_pages maps [a, b) (whole pages) anew, empty: they read as zeros
+// when next touched, and aren't resident till then.
+static void fresh_pages(uintptr_t a, uintptr_t b) {
+#if defined(__APPLE__)
+	// An madvise leaves them counted resident: mapped anew, they're not.
+	// Tagged as mimalloc tags its memory, for vmmap.
+	void *r = mmap((void *)a, b - a, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_PRIVATE | MAP_ANON, VM_MAKE_TAG(100), 0);
+#else
+	void *r = mmap((void *)a, b - a, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_PRIVATE | MAP_ANON, -1, 0);
+#endif
+	if (r == MAP_FAILED) ak_panic("out of memory (mapping %zu bytes)", (size_t)(b - a));
+}
+
+// move_pages moves [a, b) (whole pages) to to, which the pages there
+// are replaced by, leaving [a, b) empty: whether it could.
+static bool move_pages(uintptr_t a, uintptr_t b, uintptr_t to) {
+#if defined(__APPLE__)
+	mach_vm_address_t t = to;
+	vm_prot_t cur, max;
+	if (mach_vm_remap(mach_task_self(), &t, b - a, 0, VM_FLAGS_FIXED | VM_FLAGS_OVERWRITE, mach_task_self(), a, FALSE, &cur, &max,
+	                  VM_INHERIT_DEFAULT) != KERN_SUCCESS)
+		return false;
+	fresh_pages(a, b);  // shared with to's until then
+	return true;
+#elif defined(__linux__) || defined(__ANDROID__)
+	if (mremap((void *)a, b - a, b - a, MREMAP_MAYMOVE | MREMAP_FIXED, (void *)to) == MAP_FAILED) return false;
+	fresh_pages(a, b);  // unmapped by the move
+	return true;
+#else
+	AK_UNUSED(a), AK_UNUSED(b), AK_UNUSED(to);
+	return false;
+#endif
+}
+
+// grown_block is a new block of n bytes (n > p's) for p's bytes to move
+// to: placed in its pages as p is in its own (blocks this big start
+// anywhere in their first page), so that p's whole pages can move whole.
+static void *grown_block(const void *p, size_t n) {
+#if defined(__APPLE__) || defined(__linux__) || defined(__ANDROID__)
+	size_t ps = _mi_os_page_size();
+	return mi_malloc_aligned_at(n, ps, (ps - ((uintptr_t)p & (ps - 1))) & (ps - 1));
+#else
+	AK_UNUSED(p);
+	return mi_malloc(n);
+#endif
+}
+
+// grown_into puts the n bytes at p into q (a block of its own, as long
+// or longer), p's pages moved or released.
+static void grown_into(void *q, void *p, size_t n) {
+#if defined(__APPLE__) || defined(__linux__) || defined(__ANDROID__)
+	size_t ps = _mi_os_page_size();
+	uintptr_t s = (uintptr_t)p, a = (s + ps - 1) & ~(uintptr_t)(ps - 1), b = (s + n) & ~(uintptr_t)(ps - 1);
+	if (b > a) {
+		uintptr_t d = (uintptr_t)q + (a - s);
+		if ((d & (ps - 1)) == 0 && move_pages(a, b, d)) {
+			memcpy(q, p, a - s);                         // the head, before p's first whole page
+			memcpy((char *)q + (b - s), (void *)b, s + n - b);  // the tail, past its last
+			return;
+		}
+		memcpy(q, p, n);
+		fresh_pages(a, b);
+		return;
+	}
+#endif
+	memcpy(q, p, n);
+}
+
 void *ak_realloc(void *p, size_t n) {
 	COUNT(n);
+	if (p && n > AK_GROWN_RELEASE) {
+		size_t old = mi_usable_size(p);
+		if (old >= AK_GROWN_RELEASE && n > old) {
+			void *q = grown_block(p, n);
+			if (AK_UNLIKELY(!q)) oom(n);
+			grown_into(q, p, old);
+			mi_free(p);
+			return q;
+		}
+	}
 	void *q = mi_realloc(p, n ? n : 1);
 	if (AK_UNLIKELY(!q)) oom(n);
 	return q;

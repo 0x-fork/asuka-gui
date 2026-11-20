@@ -605,9 +605,14 @@ static ak_val seq_windows(ak_val *args, uint32_t n) { AK_UNUSED(n); return sized
 typedef struct {
 	ak_opaque h;
 	cur *c;
+	ak_seq *s;  // what it reads, held: its register may be let go of first
 } seq_iter;
 
-static void iter_drop(ak_opaque *o) { close_cur(((seq_iter *)o)->c); }
+static void iter_drop(ak_opaque *o) {
+	seq_iter *it = (seq_iter *)o;
+	close_cur(it->c);
+	ak_release(it->s);
+}
 
 // seq.iter(s): a cursor before the first element; seq.next(it) moves it
 // on (false at the end; it raises what a stage raised), seq.value(it) is
@@ -615,7 +620,8 @@ static void iter_drop(ak_opaque *o) { close_cur(((seq_iter *)o)->c); }
 static ak_val seq_iter_new(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	seq_iter *it = ak_opaque_new(AK_TAG_OPAQUE, sizeof(seq_iter), iter_drop);
-	it->c = open_cur(SEQ(0));
+	it->s = ak_retain(SEQ(0));
+	it->c = open_cur(it->s);
 	RET_P(it);
 }
 
@@ -987,7 +993,11 @@ static ak_val seq_max(ak_val *args, uint32_t n) { return extreme(args, n, true);
 // as sorted() orders them (cmp: the key type's compare method, or none).
 // args: the receiver, key, [descending,] cmp, kindU.
 
-typedef struct {
+#define OPT_CLOS(i) (args[i].p ? (ak_closure *)args[i].p : NULL)
+
+// Each element's key and where it was, 12 bytes (packed: an array of a
+// million is 12 MB, not 16): sorted, then the elements put in its order.
+typedef struct __attribute__((packed)) {
 	ak_val k;
 	uint32_t i;
 } keyed;
@@ -996,6 +1006,9 @@ typedef struct {
 // was, as the merge sort below keeps it (stable either way).
 static bool keyed_less(order *o, bool desc, const keyed *a, const keyed *b) { return desc ? less(o, b->k, a->k) : less(o, a->k, b->k); }
 
+// keyed_sort is a stable merge sort of v, tmp half its length of room:
+// runs of 12 by insertion, then each half's left part merged back from
+// tmp (halves already in order not merged at all).
 static void keyed_sort(order *o, bool desc, keyed *v, keyed *tmp, uint32_t n) {
 	if (n < 2 || o->failed) return;
 	if (n <= 12) {
@@ -1013,64 +1026,99 @@ static void keyed_sort(order *o, bool desc, keyed *v, keyed *tmp, uint32_t n) {
 	uint32_t h = n / 2;
 	keyed_sort(o, desc, v, tmp, h);
 	keyed_sort(o, desc, v + h, tmp, n - h);
+	if (o->failed || !keyed_less(o, desc, &v[h], &v[h - 1])) return;  // in order already
+	memcpy(tmp, v, sizeof(keyed) * h);
 	uint32_t i = 0, j = h, k = 0;
-	while (i < h && j < n) tmp[k++] = keyed_less(o, desc, &v[j], &v[i]) ? v[j++] : v[i++];
-	while (i < h) tmp[k++] = v[i++];
-	while (j < n) tmp[k++] = v[j++];
-	memcpy(v, tmp, sizeof(keyed) * n);
+	while (i < h && j < n) v[k++] = keyed_less(o, desc, &v[j], &tmp[i]) ? v[j++] : tmp[i++];
+	while (i < h) v[k++] = tmp[i++];
 }
 
-// sort_by_key sorts a's elements (a unique array) by key: false when key
-// or the comparison threw.
-static bool sort_by_key(ak_arr *a, ak_closure *key, bool desc, ak_closure *cmp, ak_kind ku) {
+// sorted_keys is a's elements' keys, sorted (n of them, a's length):
+// NULL when key or the comparison threw. The caller frees it, and
+// releases its keys (release_keys).
+static keyed *sorted_keys(const ak_arr *a, ak_closure *key, bool desc, ak_closure *cmp, ak_kind ku) {
 	uint32_t n = a->len;
-	keyed *v = ak_alloc(sizeof(keyed) * (n ? n : 1) * 2);
-	uint32_t made = 0;
-	bool ok = true;
-	for (; made < n; made++) {
+	// The keys, then the merge's room: half as many.
+	keyed *v = ak_alloc(sizeof(keyed) * ((size_t)n + n / 2 + 1));
+	for (uint32_t made = 0; made < n; made++) {
 		ak_val x = ak_arr_get(a, made);
 		v[made] = (keyed){ak_call(key, &x, 1), made};
 		if (ak_error_pending()) {
-			ok = false;
-			break;
+			for (uint32_t i = 0; i < made; i++) ak_release_val(v[i].k, ku);
+			ak_free(v);
+			return NULL;
 		}
 	}
 	order o = {cmp, cmp != NULL, ku, false};
-	if (ok) {
-		keyed_sort(&o, desc, v, v + n, n);
-		ok = !o.failed;
+	keyed_sort(&o, desc, v, v + n, n);
+	if (o.failed) {
+		for (uint32_t i = 0; i < n; i++) ak_release_val(v[i].k, ku);
+		ak_free(v);
+		return NULL;
 	}
-	if (ok) {
-		ak_val *data = ak_alloc(sizeof(ak_val) * (n ? n : 1));
-		for (uint32_t i = 0; i < n; i++) data[i] = ak_arr_get(a, (uint32_t)v[i].i);
-		for (uint32_t i = 0; i < n; i++) ak_arr_put(a, i, data[i]);
-		ak_free(data);
-	}
-	for (uint32_t i = 0; i < made; i++) ak_release_val(v[i].k, ku);
-	ak_free(v);
-	return ok;
+	return v;
 }
 
-#define OPT_CLOS(i) (args[i].p ? (ak_closure *)args[i].p : NULL)
+static void release_keys(keyed *v, uint32_t n, ak_kind ku) {
+	for (uint32_t i = 0; i < n; i++) ak_release_val(v[i].k, ku);
+	ak_free(v);
+}
 
 // seq.arr_sorted_key(a, key, descending, cmp, kindU) and seq.arr_sort_key
 // (inout).
 static ak_val arr_sorted_key(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
-	ak_arr *a = ak_arr_copy(ARR(0));
-	if (!sort_by_key(a, CLOS(1), A(2).i != 0, OPT_CLOS(3), (ak_kind)A(4).i)) {
-		ak_release(a);
-		RET_VOID;
-	}
-	RET_P(a);
+	const ak_arr *a = ARR(0);
+	ak_kind ku = (ak_kind)A(4).i;
+	keyed *v = sorted_keys(a, CLOS(1), A(2).i != 0, OPT_CLOS(3), ku);
+	if (!v) RET_VOID;
+	// The result made in its order from a's elements: not a copy of a,
+	// then put in order through a third array.
+	uint32_t len = a->len;
+	ak_arr *r = ak_arr_like(a, len);
+	ak_kind ek = ak_arr_kind(a);
+	// Retained in a's order, which is most often the order they're in
+	// memory (made one after another): in the sorted order, each retain
+	// would be a cache miss.
+	if (ek == AK_K_REF)
+		for (uint32_t i = 0; i < len; i++) ak_retain(ak_arr_vals(a)[i].p);
+	for (uint32_t i = 0; i < len; i++) ak_arr_put(r, i, ak_arr_get(a, v[i].i));
+	r->len = len;
+	release_keys(v, len, ku);
+	RET_P(r);
 }
 
 static ak_val arr_sort_key(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
-	// In place: sort_by_key moves the elements only once nothing threw,
-	// so a throw leaves the array as it was.
+	// In place: the elements are moved only once nothing threw, so a
+	// throw leaves the array as it was.
+	ak_kind ku = (ak_kind)A(4).i;
+	keyed *v = sorted_keys(ARR(0), CLOS(1), A(2).i != 0, OPT_CLOS(3), ku);
+	if (!v) RET_VOID;
 	ak_arr *a = ak_arr_mut((ak_arr **)&args[0].p);
-	if (!sort_by_key(a, CLOS(1), A(2).i != 0, OPT_CLOS(3), (ak_kind)A(4).i)) RET_VOID;
+	// Each cycle of the order moved round in place: element i's place
+	// takes element v[i].i's, each place marked done as it's filled.
+	uint32_t len = a->len;
+	for (uint32_t i = 0; i < len; i++) {
+		if (v[i].i == UINT32_MAX) continue;
+		if (v[i].i == i) {
+			v[i].i = UINT32_MAX;
+			continue;
+		}
+		ak_val x = ak_arr_get(a, i);
+		uint32_t j = i;
+		for (;;) {
+			uint32_t k = v[j].i;
+			v[j].i = UINT32_MAX;
+			if (k == i) {
+				ak_arr_put(a, j, x);
+				break;
+			}
+			ak_arr_put(a, j, ak_arr_get(a, k));
+			j = k;
+		}
+	}
+	release_keys(v, len, ku);
 	ak_change_range(0, a->len, false);
 	RET_VOID;
 }

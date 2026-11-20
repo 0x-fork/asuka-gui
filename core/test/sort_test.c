@@ -1,13 +1,16 @@
 // sort_test.c: sorted() and sort() (rt/lib.c) against the plain stable
-// merge sort they replace: ints by the radix sort, floats with NaN and
-// -0, strings, a less-than closure (stable: equal elements keep their
-// order).
+// merge sort they replace: ints by the radix sort (in place past its
+// buffer's size), floats with NaN and -0, strings, a less-than closure
+// (stable: equal elements keep their order); sorted(key:) and sort(key:)
+// (rt/seq.c), stable, ascending and descending.
 #include "t.h"
 #include "rt/rt.h"
 #include "rt/lib.h"
 
 static ak_lib_fn fn(const char *name) {
 	for (const ak_lib_entry *e = ak_lib; e->name; e++)
+		if (strcmp(e->name, name) == 0) return e->fn;
+	for (const ak_lib_entry *e = ak_seq_lib; e->name; e++)
 		if (strcmp(e->name, name) == 0) return e->fn;
 	abort();
 }
@@ -122,6 +125,101 @@ TEST(sorted_as_insertion) {
 		free(want);
 	}
 	ak_release(low);
+}
+
+static int cmp_i64(const void *a, const void *b) {
+	int64_t x = *(const int64_t *)a, y = *(const int64_t *)b;
+	return x < y ? -1 : x > y;
+}
+
+static int cmp_u64(const void *a, const void *b) {
+	uint64_t x = *(const uint64_t *)a, y = *(const uint64_t *)b;
+	return x < y ? -1 : x > y;
+}
+
+// Ints past the radix sort's buffer, sorted in place: split by their
+// highest bits that differ (all 64, or a few: a bucket as big as all of
+// them, split again), signed and unsigned, many equal.
+TEST(big_int_sorts) {
+	static const uint32_t sizes[] = {32769, 100000, 300001};
+	for (int round = 0; round < 18; round++) {
+		uint32_t n = sizes[round % 3];
+		int dist = round / 3;  // what the ints are
+		bool unsig = round % 2 == 1;
+		ak_arr *a = ak_arr_new(AK_K_INT, NULL, n);
+		int64_t *want = malloc(sizeof(int64_t) * n);
+		for (uint32_t i = 0; i < n; i++) {
+			uint64_t r = next();
+			int64_t v;
+			switch (dist) {
+			case 0: v = (int64_t)r; break;                                     // all 64 bits
+			case 1: v = (int64_t)(r % 2147483648u); break;                    // 31 bits, as the benchmarks'
+			case 2: v = (int64_t)(r % 7) - 3; break;                          // few, negative
+			case 3: v = r % 10 ? 1000000 + (int64_t)(r % 50000) : (int64_t)r; break; // most in one bucket
+			case 4: v = (int64_t)(r & 0xff00ff00ff00ff00ull); break;          // bytes that never differ
+			default: v = i % 2 ? (int64_t)i : -(int64_t)i * 4096; break;     // runs
+			}
+			ak_arr_vals(a)[i].i = v;
+			want[i] = v;
+		}
+		a->len = n;
+		qsort(want, n, sizeof(int64_t), unsig ? cmp_u64 : cmp_i64);
+		ak_val args[4] = {{.p = a}, {.p = NULL}, {.i = 0}, {.i = unsig}};
+		ak_arr *got = fn("arr.sorted")(args, 4).p;
+		for (uint32_t i = 0; i < n; i++)
+			if (ak_arr_vals(got)[i].i != want[i]) {
+				T_FAIL("round %d (%u ints, distribution %d%s): %u is %lld, not %lld", round, n, dist, unsig ? ", unsigned" : "", i,
+				       (long long)ak_arr_vals(got)[i].i, (long long)want[i]);
+				break;
+			}
+		ak_release(got);
+		ak_release(a);
+		free(want);
+	}
+}
+
+static ak_val key_low(ak_closure *c, ak_val *args, uint32_t n) {
+	AK_UNUSED(c), AK_UNUSED(n);
+	return (ak_val){.i = args[0].i % 97};
+}
+
+// By a key: equal keys keep their order, either way; sort(key:) moves
+// the elements round in place, as sorted(key:) puts them in a new array.
+TEST(key_sorts) {
+	ak_closure *key = ak_closure_new(key_low, NULL, 0, NULL);
+	static const uint32_t sizes[] = {0, 1, 2, 13, 100, 5000, 70001};
+	for (int round = 0; round < 14; round++) {
+		uint32_t n = sizes[round % 7];
+		bool desc = round >= 7;
+		ak_arr *a = ak_arr_new(AK_K_INT, NULL, n);
+		ak_val *want = malloc(sizeof(ak_val) * (n + 1));
+		for (uint32_t i = 0; i < n; i++) {
+			// Each int's low bits its key; its high bits where it was.
+			ak_val v = {.i = (int64_t)(next() % 97) + 97 * (int64_t)i};
+			ak_arr_vals(a)[i] = v;
+			want[i] = v;
+		}
+		a->len = n;
+		// The stable order: by key (ascending or descending), then by place.
+		for (uint32_t i = 1; i < n; i++) {
+			ak_val x = want[i];
+			uint32_t j = i;
+			while (j > 0 && (desc ? want[j - 1].i % 97 < x.i % 97 : want[j - 1].i % 97 > x.i % 97)) {
+				want[j] = want[j - 1];
+				j--;
+			}
+			want[j] = x;
+		}
+		ak_val args[5] = {{.p = a}, {.p = key}, {.i = desc}, {.p = NULL}, {.i = AK_K_INT}};
+		ak_arr *got = fn("seq.arr_sorted_key")(args, 5).p;
+		if (got->len != n || !same_bits(got, want)) T_FAIL("round %d (%u, %s): sorted(key:) differently", round, n, desc ? "descending" : "ascending");
+		fn("seq.arr_sort_key")(args, 5);  // in place
+		if (!same_bits(args[0].p, want)) T_FAIL("round %d (%u): sort(key:) differently", round, n);
+		ak_release(got);
+		ak_release(args[0].p);
+		free(want);
+	}
+	ak_release(key);
 }
 
 T_MAIN()

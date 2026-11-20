@@ -330,29 +330,30 @@ fn main() { print("{apply((x, y) => x.float() < y, 1, 2.0)}") }
 }
 
 // A return releases what may hold a reference there (live.go), not
-// every reference register: the base case's, nothing; the other, what
-// its way made.
+// every reference register: the base case's, less than the one in the
+// loop, what its way made and still holds (the loop's cursor over the
+// Seq: a value of data alone is let go of after its last read, a
+// runtime object at its block's end).
 func TestReturnReleases(t *testing.T) {
 	c := cOf(t, `
-struct Node {
-  name: string
-  children: [Node] = []
+fn find(xs: [int], k: int) -> string {
+  if k == 0 { return "none" }
+  for x in xs.lazy().map(y => y * 2) {
+    if x > k { return "big {x}" }
+  }
+  return "small"
 }
 
-fn build(depth: int) -> Node {
-  if depth == 0 { return Node(name: "leaf") }
-  return Node(name: "n{depth}", children: [build(depth - 1), build(depth - 1)])
-}
-
-fn main() { print(build(3).children.count()) }
-`, "build")
+fn main() { print(find([1, 2, 3], 3)) }
+`, "find")
 	var rets []string
 	for _, l := range strings.Split(c, "\n") {
 		if strings.Contains(l, "return (ak_ret){v_, 0}") {
 			rets = append(rets, l)
 		}
 	}
-	if len(rets) != 2 || strings.Contains(rets[0], "ak_release") || !strings.Contains(rets[1], "ak_release") {
+	all := strings.Count(c[strings.Index(c, "out_:"):], "ak_release(")
+	if len(rets) < 2 || strings.Count(rets[0], "ak_release") >= strings.Count(rets[1], "ak_release") || strings.Count(rets[1], "ak_release") >= all {
 		t.Errorf("returns:\n%s\nin:\n%s", strings.Join(rets, "\n"), c)
 	}
 }

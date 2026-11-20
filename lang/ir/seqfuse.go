@@ -412,6 +412,10 @@ func (b *fb) arrayLoop(e *syntax.CallExpr, call *check.Call, recv *int, dst int)
 	if m.Builtin == "arr.map" {
 		// As long as the array: its room made once.
 		b.appendReg(r, n, "arr.reserve")
+	} else if m.Builtin == "arr.filter" || m.Builtin == "arr.compact_map" {
+		// As long as the array when that's a big block (its room never
+		// written isn't resident): not grown, copied, as it fills.
+		b.appendReg(r, n, "arr.reserve_big")
 	}
 	b.loadInt(i, 0)
 	cond := b.temp(bc.KBool)

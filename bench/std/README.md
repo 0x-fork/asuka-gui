@@ -608,3 +608,111 @@ cycles are the kernel's; its line is now built in the frame too (0.9%
 fewer instructions). `go run ./bench/std/run -instr -langs asuka,go
 -only stdout,print -runs 7` gave the same: stdout 0.74× Go's cycles
 and 0.69× its instructions, print 0.92× and 0.90×.
+
+## Peak memory, below Go's (2026-11-20)
+
+The runner now prints a second table: each program's peak resident
+memory, the whole process (its inputs made, then the work: the same
+inputs in each language), the median of the runs. Measured on the M5
+(load 3 to 10), `go run ./bench/std/run -runs 3` beside a build of
+edac040a with the same program ("before"), in MB:
+
+| benchmark | asuka | go | bun | before | asuka/go |
+|---|---:|---:|---:|---:|---:|
+| interp | 165.4 | 199.6 | 423.3 | 244.2 | 0.83× |
+| concat | 4.1 | 11.9 | 33.1 | 4.2 | 0.34× |
+| split | 94.0 | 103.4 | 500.3 | 227.9 | 0.91× |
+| find | 49.1 | 71.3 | 215.7 | 54.6 | 0.69× |
+| case | 43.2 | 96.4 | 252.9 | 52.4 | 0.45× |
+| count | 16.4 | 73.9 | 370.3 | 33.8 | 0.22× |
+| num | 84.2 | 111.8 | 195.0 | 147.5 | 0.75× |
+| fmt | 4.1 | 19.1 | 44.9 | 4.2 | 0.21× |
+| mapint | 53.0 | 57.2 | 131.6 | 60.9 | 0.93× |
+| mapstr | 117.8 | 146.0 | 322.6 | 122.1 | 0.81× |
+| set | 53.0 | 58.0 | 107.9 | 61.0 | 0.91× |
+| sortint | 87.5 | 97.8 | 200.8 | 160.0 | 0.89× |
+| sortstr | 84.4 | 103.2 | 226.9 | 84.6 | 0.82× |
+| sortby | 79.4 | 93.3 | 133.8 | 108.7 | 0.85× |
+| regex | 53.0 | 67.0 | 209.2 | 80.0 | 0.79× |
+| files | 28.0 | 52.1 | 205.3 | 45.4 | 0.54× |
+| lines | 19.2 | 49.9 | 210.3 | 37.6 | 0.38× |
+| print | 4.1 | 18.3 | 66.4 | 4.2 | 0.22× |
+| stdout | 4.1 | 18.6 | 52.5 | 4.3 | 0.22× |
+| csv | 130.7 | 156.5 | n/a | 130.3 | 0.84× |
+| toml | 124.8 | 194.7 | 121.1 | 129.2 | 0.64× |
+| url | 4.1 | 19.3 | 51.2 | 4.2 | 0.21× |
+| base64 | 42.0 | 106.9 | 226.2 | 48.8 | 0.39× |
+| hex | 50.1 | 114.2 | 225.8 | 67.5 | 0.44× |
+| html | 46.2 | 94.4 | n/a | 52.0 | 0.49× |
+| zip | 50.2 | 73.6 | n/a | 59.9 | 0.68× |
+| tar | 50.4 | 75.5 | n/a | 52.2 | 0.67× |
+| sha256 | 114.5 | 183.1 | 773.8 | 148.7 | 0.63× |
+| sha512 | 114.5 | 169.1 | 791.6 | 148.7 | 0.68× |
+| sha1 | 114.5 | 185.3 | 773.9 | 148.7 | 0.62× |
+| md5 | 114.5 | 185.0 | 774.4 | 148.6 | 0.62× |
+| crc32 | 114.4 | 185.1 | 784.2 | 148.6 | 0.62× |
+| hmac | 4.1 | 19.2 | 48.2 | 4.3 | 0.22× |
+| aesgcm | 181.7 | 240.5 | 1153.8 | 211.6 | 0.76× |
+| chacha | 181.7 | 237.1 | n/a | 211.6 | 0.77× |
+| argon2 | 71.5 | 148.0 | n/a | 71.6 | 0.48× |
+| bcrypt | 4.2 | 12.1 | 18.0 | 4.3 | 0.35× |
+| gzip | 131.9 | 254.1 | 1086.3 | 171.7 | 0.52× |
+| bigint | 5.5 | 16.3 | 41.4 | 5.7 | 0.34× |
+| modpow | 4.2 | 12.3 | 29.3 | 4.3 | 0.34× |
+| time | 4.1 | 17.5 | 37.7 | 4.3 | 0.23× |
+| template | 4.5 | 18.1 | n/a | 4.7 | 0.25× |
+| semver | 26.9 | 61.1 | 67.6 | 27.1 | 0.44× |
+| heap | 22.1 | 61.5 | n/a | 36.8 | 0.36× |
+| sortedmap | 42.3 | 53.7 | n/a | 42.5 | 0.79× |
+| sortedops | 16.7 | 39.0 | n/a | 26.7 | 0.43× |
+| seq | 104.1 | 175.7 | 131.8 | 138.1 | 0.59× |
+
+What changed, by benchmark (each change the runtime's or the
+compiler's; the programs are Go's work, the corpus appended to with
+`+=` as Go's strings.Builder builds it):
+
+- split, num, interp: a temp's value is let go of after its last read,
+  before what's made next, and a local's whose type is data alone
+  (numbers, strings, bytes and the arrays, maps, structs of them) as
+  well (lang/ir's opt_release.go: lang/LOWERING.md, "Optimization").
+  `text.split(" ").count() + text.lines().count() +
+  text.fields().count()` held all three arrays to the statement's end;
+  num's `ints` was held while `floats` was made. A native object, a
+  closure or a task is still held to its block's end. A Seq's cursor
+  holds its Seq (it borrowed it from a register).
+- interp, num: `joined` sums the lengths and makes the result at its
+  size (Go's strings.Join), where it doubled a buffer and copied it.
+- split: a split's slab and its 16 bytes of room are 16 KB, a size
+  class (16 KB and 16 bytes took 20 KB blocks); fields' array is sized
+  from its first 64 KB's count, not grown from a guess.
+- every array or string that grows past 1 MB (split's corpus, regex's,
+  mapint's and set's tables, sortint's input, seq's): its pages are
+  moved into the new block by the system (mach_vm_remap, mremap), not
+  copied, and its old range is left empty (core/src/base/alloc.c).
+  Freed to mimalloc, the buffers a doubling array outgrew stayed
+  resident (on macOS a purge's madvise doesn't take pages out of the
+  resident size): a 40 MB array built by pushes held 104 MB.
+- regex, csv, toml, case and the rest that build a big string in a
+  buffer: the buffer becomes the string in place, not copied.
+- sortint: ints sorted in their own memory, not through a buffer as
+  big: those within 2^32 of each other as 32-bit keys, 11 bits a pass,
+  through the other half of their 8 bytes; others first split in place
+  by their highest bits (an American flag sort). 23% fewer cycles too.
+- sortby, sortstr: merges through half the elements' room; sorted(key:)
+  keys 12 bytes each (packed), the result made in their order from the
+  elements (retained in the source's order, which is memory's), not
+  copied and put in order through a third array.
+- seq: a filter's (and compactMap's) array reserves its input's length
+  when that's a big block (its room never written isn't resident),
+  not grown and copied as it fills.
+
+Speed (`-instr -runs 3`, the same "before" beside, then the ones whose
+cycles moved measured again with `/usr/bin/time -l`, interleaved, the
+work of five repetitions less one over four): cycles, sortint 82 M to
+63 M, interp 383 to 348, sortby 904 to 850, regex 488 to 466, seq 44.9
+to 40.4, semver 369 to 351; the rest within their noise (sortedmap 695
+to 819 in one pass, 790 to 731 again, its instructions 1,270 M to
+1,265 M). Instructions, of those measured beside (sortedmap, concat,
+mapint, set, time, semver, lines, hex, bigint, seq): none more than
+before but mapint and set (+0.7%: the remaps' system calls) and seq
+(+2.6%; its cycles 10% fewer); concat 1.7% and semver 2.5% fewer.

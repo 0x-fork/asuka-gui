@@ -110,6 +110,10 @@ void ak_arr_reserve(ak_arr **ap, uint32_t n) {
 	a->cap = a->len + n;
 }
 
+void ak_arr_reserve_big(ak_arr **ap, uint32_t n) {
+	if (((size_t)(*ap)->len + n) << (*ap)->shift >= AK_ARR_BIG) ak_arr_reserve(ap, n);
+}
+
 void ak_arr_push_slow(ak_arr **ap, ak_val v) {
 	ak_arr *a = ak_arr_mut(ap);
 	grow(a, 1);

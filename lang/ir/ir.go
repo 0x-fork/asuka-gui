@@ -42,7 +42,15 @@ type Func struct {
 	// End) is Func's body, called at Line (bytecode.Inline).
 	Inlines []Inline
 	labels  []int // per label, the instruction it's at (-1: not placed yet)
+	// tempSpans: where reference registers were temps, by the lowered
+	// code's instructions (the optimizer's first pass reads them, then
+	// drops them: they don't follow the code as it changes).
+	tempSpans []tempSpan
 }
+
+// A tempSpan is [start, end) of the lowered code, where reg was a
+// statement's temp (no name's register).
+type tempSpan struct{ reg, start, end int }
 
 // An Inline is a function's body inlined in another's (opt_inline.go).
 type Inline struct {

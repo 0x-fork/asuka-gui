@@ -319,3 +319,38 @@ hot loops: five hyperfine runs beside 5d9e7dfd (load 6 to 17), each
 within its noise (fib 115 ± 12 ms to 105 ± 6, its instructions 2,002 M
 both; sieve 178 to 210, trees 561 to 617, words 116 to 118, json 533 to
 543, sort 46 to 44, nbody 190 to 189).
+
+## Peak memory (2026-11-20)
+
+The runner now prints a second table: each program's peak resident
+memory, the median of the runs, each measured from a run of its own
+(hyperfine's `memory_usage_byte` is RUSAGE_CHILDREN's maximum, which
+only grows over the commands one hyperfine runs: each column after the
+first showed the biggest so far, so words and sort, below, looked even
+with Go's). `go run ./bench/compiled/run -runs 5` on the M5 (load 3 to
+10), "before" a build of edac040a beside, in MB:
+
+| benchmark | asuka | go | zig | bun | before | asuka/go |
+|---|---:|---:|---:|---:|---:|---:|
+| fib | 2.9 | 4.6 | 1.9 | 15.5 | 2.9 | 0.62× |
+| sieve | 52.9 | 55.4 | 51.8 | 68.0 | 52.9 | 0.96× |
+| nbody | 2.8 | 4.6 | 1.9 | 22.1 | 2.9 | 0.61× |
+| trees | 19.8 | 41.9 | 18.7 | 151.3 | 19.8 | 0.47× |
+| words | 99.0 | 143.3 | 21.7 | 248.1 | 172.3 | 0.69× |
+| json | 123.7 | 197.7 | 84.2 | 286.0 | 133.6 | 0.63× |
+| sort | 44.4 | 108.0 | 72.4 | 58.1 | 118.7 | 0.41× |
+
+words held 172 MB, Go's 143: its pieces' array grown by doubling and
+the buffers it outgrew, freed to mimalloc but resident still (on macOS
+a purge's madvise leaves pages counted resident), `joined`'s buffer
+doubled and then copied into the text, and the pieces held while the
+text was split. A buffer that grows past 1 MB now has its pages moved
+into the new block by the system and its old range left empty
+(core/src/base/alloc.c), `joined` makes the text at its size, and a
+local of data alone is let go of after its last read (lang/ir's
+opt_release.go): 99 MB. sort's ints are sorted in their own memory
+(rt/lib.c's radix_sort: 32-bit keys through the other half of their 8
+bytes), not through a buffer as big: 119 MB to 44. Times, five
+hyperfine runs beside (ms): words 101 to 91, sort 37 to 31, trees 466
+to 425; the rest within their noise (json 430 ± 7 to 441 ± 10, 488 ±
+34 to 436 ± 9 in a pass before).

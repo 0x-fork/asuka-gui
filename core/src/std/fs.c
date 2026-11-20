@@ -531,9 +531,7 @@ static ak_str *text_of(const uint8_t *p, size_t len) {
 			i++;
 		}
 	}
-	ak_str *s = ak_str_new((const char *)out.data, out.len);
-	ak_buf_free(&out);
-	return s;
+	return ak_str_of_buf(&out);
 }
 
 #if !defined(_WIN32)

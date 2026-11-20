@@ -42,7 +42,10 @@ static inline void copy_small(char *d, const char *s, size_t n) {
 // copies. Under AddressSanitizer each piece is a string of its own, so a
 // use after its free is still caught.
 
-#define SLAB (16 << 10)
+// A slab and its 16 bytes of room past its end are 16 KB, one of the
+// allocator's size classes: 16 KB and 16 bytes more would take a 20 KB
+// block, a fifth of it unused.
+#define SLAB ((16 << 10) - 16)
 
 const bool ak_space_table[256] = {[' '] = true, ['\t'] = true, ['\n'] = true, ['\r'] = true, ['\v'] = true, ['\f'] = true};
 
@@ -1720,10 +1723,38 @@ void ak_strb_bool(ak_strb *b, bool v) {
 	else ak_strb_cstr(b, "false", 5);
 }
 
+// A buffer's bytes as a string, the buffer taken: a big one's buffer
+// becomes the string, its bytes moved up past a header in place (its
+// room past them, never written, isn't resident), rather than copied
+// into a string as big, which at the copy's end holds them twice.
+#define AK_BUF_IN_PLACE ((size_t)512 << 10)
+
+ak_str *ak_str_of_buf(ak_buf *b) {
+	size_t n = b->len;
+	if (n < AK_BUF_IN_PLACE || n >= UINT32_MAX) {
+		ak_str *s = n ? ak_str_new((const char *)b->data, n) : ak_str_empty();
+		ak_buf_free(b);
+		return s;
+	}
+	char *d = ak_realloc(b->data, sizeof(ak_str) + n + 1);  // in place: it's no bigger than the buffer, or 17 bytes more
+	memmove(d + sizeof(ak_str), d, n);
+	ak_str *s = (ak_str *)(void *)d;
+	ak_obj_count(1);
+	s->h = (ak_obj){.rc = 1, .tag = AK_TAG_STR};
+	s->len = (uint32_t)n;
+	s->hash = 0;
+	s->data[n] = 0;
+	b->data = NULL;
+	b->len = b->cap = 0;
+	return s;
+}
+
 ak_str *ak_strb_finish(ak_strb *b) {
-	ak_str *s;
-	if (b->b.data) s = b->b.len ? ak_str_new((const char *)b->b.data, b->b.len) : ak_str_empty();
-	else s = b->n ? ak_str_new(b->small, b->n) : ak_str_empty();
+	if (b->b.data) {
+		b->n = 0;
+		return ak_str_of_buf(&b->b);
+	}
+	ak_str *s = b->n ? ak_str_new(b->small, b->n) : ak_str_empty();
 	ak_strb_free(b);
 	return s;
 }

@@ -1949,9 +1949,7 @@ static ak_val replace_fn(ak_val *args, uint32_t n) {
 		return (ak_val){0};
 	}
 	ak_buf_put(&r.out, r.s->data + r.pos, r.s->len - r.pos);
-	ak_str *s = ak_str_new((const char *)r.out.data, r.out.len);
-	ak_buf_free(&r.out);
-	return (ak_val){.p = s};
+	return (ak_val){.p = ak_str_of_buf(&r.out)};
 }
 
 static ak_val names_fn(ak_val *args, uint32_t n) {

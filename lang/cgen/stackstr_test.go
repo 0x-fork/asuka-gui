@@ -141,8 +141,9 @@ fn kept(n: int) -> int {
     m[c] = i
     let d = parts[i % 5] + "~" + parts[(i + 4) % 5] + "~"
     fs.push(() => d.byteCount())
-    if last.byteCount() > 3 { total += 1 }
+    // last, last turn's e, is read after this turn's is made.
     let e = parts[i % 5] + "^" + parts[(i + 2) % 5] + "^"
+    if last.byteCount() > 3 { total += 1 }
     last = e
     total += made(i).byteCount() + size(parts[i % 5] + "!" + parts[i % 2] + "!", 2)
   }

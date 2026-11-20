@@ -128,7 +128,12 @@ system. It's only the core's, never the process's malloc, its names
 renamed to the core's (an app may link a mimalloc of its own). A spike's
 memory goes back as the thread goes quiet: the main thread trims two
 seconds after a turn of work that grew its heap, an idle spawn worker
-likewise. The C libraries' allocators were the most of what
+likewise. A big buffer that grows (an array's or a string's, each twice
+the last) has its pages moved into the new block by the system
+(mach_vm_remap, mremap), not copied, and leaves its old range empty, as
+macOS's malloc grows a large block: freed to mimalloc, those pages
+would stay resident until reused, which the buffer outgrowing them
+never does. The C libraries' allocators were the most of what
 allocation-heavy programs spent on Linux (glibc's malloc and free,
 consolidating as they go; musl's slower still), and slower on Apple
 platforms, Windows and Android too. Under AddressSanitizer (the core's

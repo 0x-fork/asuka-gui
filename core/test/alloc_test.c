@@ -1,7 +1,8 @@
-// The allocator (base/alloc.c): blocks zeroed and kept as they grow,
-// small blocks zeroed again as they're reused, blocks freed on another
-// thread than made them (spawn's workers, the I/O threads), also after
-// that thread ended, and a spike's memory given back (ak_alloc_trim).
+// The allocator (base/alloc.c): blocks zeroed and kept as they grow (a
+// big one's pages moved), small blocks zeroed again as they're reused,
+// blocks freed on another thread than made them (spawn's workers, the
+// I/O threads), also after that thread ended, and a spike's memory
+// given back (ak_alloc_trim).
 // Under AddressSanitizer it's the C library's (the build's own check of
 // every block); TestCThreads runs it again under ThreadSanitizer with
 // mimalloc.
@@ -35,6 +36,39 @@ TEST(alloc_zeroed_and_grown) {
 		ak_free(p);
 	}
 	ak_free(NULL);
+}
+
+// A big block grown by doubling (an array's, a string's) moves its
+// pages to the new block, or is copied and its pages released: what it
+// held is kept at every size, whatever offset in its first page it
+// starts at, and memory made after reads as zeros.
+TEST(alloc_grown_big_kept) {
+	for (int start = 0; start < 3; start++) {
+		size_t n = ((size_t)1 << 20) + (size_t)start * 12345 + 8;
+		unsigned char *p = ak_alloc(n);
+		for (size_t j = 0; j < n; j++) p[j] = (unsigned char)(j * 13 + 5);
+		while (n < ((size_t)48 << 20)) {
+			size_t m = n * 2 + (size_t)start * 40;
+			p = ak_realloc(p, m);
+			bool kept = true;
+			for (size_t j = 0; j < n; j++) kept = kept && p[j] == (unsigned char)(j * 13 + 5);
+			REQUIRE(kept);
+			for (size_t j = n; j < m; j++) p[j] = (unsigned char)(j * 13 + 5);
+			n = m;
+		}
+		// What the grown-out-of blocks were is the allocator's again.
+		unsigned char *q[4];
+		for (int k = 0; k < 4; k++) {
+			q[k] = ak_alloc((size_t)(3 + k) << 20);
+			CHECK(zero(q[k], (size_t)(3 + k) << 20));
+			memset(q[k], 0xa5, (size_t)(3 + k) << 20);
+		}
+		bool kept = true;
+		for (size_t j = 0; j < n; j++) kept = kept && p[j] == (unsigned char)(j * 13 + 5);
+		CHECK(kept);
+		for (int k = 0; k < 4; k++) ak_free(q[k]);
+		ak_free(p);
+	}
 }
 
 TEST(alloc_small_reused_zeroed) {

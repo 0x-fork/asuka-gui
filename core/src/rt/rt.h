@@ -503,6 +503,9 @@ static inline size_t ak_strb_len(const ak_strb *b) { return b->b.data ? b->b.len
 // ak_strb_buf: what b holds, all of it in b->b (moved there from small),
 // for code that reads or takes the buffer itself; b goes on taking more.
 ak_buf *ak_strb_buf(ak_strb *b);
+// ak_str_of_buf is b's bytes as a string, b taken (left empty): a big
+// buffer becomes the string in place, not copied.
+ak_str *ak_str_of_buf(ak_buf *b);
 // ak_strs_join is the n strings at v (none: empty) one after another:
 // their lengths summed first, the result made at its size, each copied
 // into it once.
@@ -758,6 +761,12 @@ static inline void ak_arr_push_bool(ak_arr **ap, bool v) {
 	ak_arr_push_slow(ap, (ak_val){.i = v});
 }
 void ak_arr_reserve(ak_arr **a, uint32_t n);         // room for n more, made unique
+// ak_arr_reserve_big is ak_arr_reserve when the room is a big block
+// (AK_ARR_BIG bytes or more: what of it is never written isn't
+// resident), else nothing: a filter's room, the most it can keep, taken
+// once rather than grown, copied, as it fills.
+#define AK_ARR_BIG ((size_t)1 << 20)
+void ak_arr_reserve_big(ak_arr **a, uint32_t n);
 void ak_arr_insert(ak_arr **a, int64_t i, ak_val v); // takes v's reference
 ak_val ak_arr_remove_at(ak_arr **a, int64_t i);      // returns the reference
 void ak_arr_set(ak_arr **a, int64_t i, ak_val v);    // takes v's reference

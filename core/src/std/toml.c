@@ -2101,8 +2101,7 @@ static ak_val encode_fn(ak_val *args, uint32_t nargs) {
 	wkey *path = ak_alloc(sizeof(wkey) * (MAX_DEPTH + 2));
 	w_table(&b, root, path, 0);
 	ak_free(path);
-	ak_str *s = ak_str_new((const char *)b.data, b.len);
-	ak_buf_free(&b);
+	ak_str *s = ak_str_of_buf(&b);
 	afree(&x.ar);
 	return (ak_val){.p = s};
 }

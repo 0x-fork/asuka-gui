@@ -53,13 +53,31 @@ the statements'), with `compile.Options.NoOptimize`, and with
 `ASUKA_OPT=0` in the environment.
 
 What it keeps, whatever it changes: each result; each error, its
-message, and the line and frames its trace names; when a reference is
-let go of (never sooner than the lowering lets it go: a cursor borrows
-what it iterates, kept alive by a register the lowering keeps; nor
-later, if it can tell: a value kept longer would make a change in place
-copy what it changes). A reference register's write is deleted or moved
-only when the register is known to hold none there; MOV of a reference
-moves it (no copy), and is never treated as one.
+message, and the line and frames its trace names; when a named value
+that isn't data alone (a native object's, a closure, a task: what its
+drop does is the program's to see) is let go of; and it lets nothing go
+later than the lowering does, if it can tell (a value kept longer would
+make a change in place copy what it changes). A reference register's
+write is deleted or moved only when the register is known to hold none
+there; MOV of a reference moves it (no copy), and is never treated as
+one. What the runtime makes from a value and keeps (a Seq's cursor)
+holds a reference to it, never a pointer borrowed for as long as some
+register holds it.
+
+First, once (opt_release.go), on the code as lowered: a temp's value,
+or a local's whose type is data alone (numbers, strings, bytes, and the
+arrays, maps, sets, optionals, tuples, structs and enums of them), is
+let go of where it's dead, before something that may allocate (a call,
+a string or a value made) would find it still held: CLR right after its
+last read, or, read in a loop, as the way out of the loop starts. Go's
+collector frees what's unreachable likewise, and Swift ends a value's
+lifetime at its last use: `n += s.split(" ").count() + s.fields().count()`
+holds one array at a time, not both, and an array a loop read is freed
+before what comes after the loop is made. The lowering records where
+each register is a temp or such a local (Func.tempSpans); a register
+an element or a field was just read out of (IDX, GETF...) isn't
+cleared there, as the C may read that element through a pointer
+borrowed from it (lang/cgen's places).
 
 The passes, run in rounds until they change nothing (three at most),
 each over a function's control flow graph (blocks start at jump and
@@ -224,9 +242,10 @@ Each register has one kind for the whole function. The lowering
 allocates them as it goes: a temp lives until the end of the statement
 that made it, a local until the end of its block (a reference local is
 cleared there, so a value someone changes next is unique, and changed in
-place), and a run of consecutive registers of given kinds (a call's
-arguments, a struct's fields, a closure's captures) is reused only for
-the same kinds. An argument block's references are cleared after the
+place; the optimizer lets a temp's value, or a data local's, go after
+its last read: see "Optimization"), and a run of consecutive registers
+of given kinds (a call's arguments, a struct's fields, a closure's
+captures) is reused only for the same kinds. An argument block's references are cleared after the
 call for the same reason.
 
 An expression's value may be a local's own register, borrowed: whoever

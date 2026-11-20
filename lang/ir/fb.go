@@ -56,8 +56,12 @@ type fb struct {
 
 	// Registers: per kind, those free to reuse; temps die at the end of
 	// the statement that made them; locals at the end of their block.
-	free      map[bc.Kind][]int
-	temps     []int
+	free   map[bc.Kind][]int
+	temps  []int
+	tempAt map[int]int // a reference temp's register: where in the code it was made a temp
+	// localAt: a local's register whose value is data alone (plainData):
+	// where its name was declared, for the span closeScope records.
+	localAt   map[int]int
 	scopes    [][]int
 	blockFree map[string][]int // argument blocks, by their kinds
 	nullReg   int              // a reference register that's always none
@@ -181,16 +185,30 @@ func (b *fb) temp(k bc.Kind) int {
 		r = b.newReg(k)
 	}
 	b.temps = append(b.temps, r)
+	if k == bc.KRef {
+		if b.tempAt == nil {
+			b.tempAt = map[int]int{}
+		}
+		b.tempAt[r] = len(b.f.Code)
+	}
 	return r
 }
 
 func (b *fb) mark() int { return len(b.temps) }
 
-// release frees the temps made since mark.
+// release frees the temps made since mark: a reference temp's span of
+// the code (where it was a temp, nothing named) is recorded for the
+// optimizer, which lets its value go after its last read (opt_release.go).
 func (b *fb) release(mark int) {
 	for _, r := range b.temps[mark:] {
 		k := b.f.Kinds[r]
 		b.free[k] = append(b.free[k], r)
+		if k == bc.KRef {
+			if at, ok := b.tempAt[r]; ok && at < len(b.f.Code) {
+				b.f.tempSpans = append(b.f.tempSpans, tempSpan{reg: r, start: at, end: len(b.f.Code)})
+			}
+			delete(b.tempAt, r)
+		}
 	}
 	b.temps = b.temps[:mark]
 }
@@ -227,6 +245,14 @@ func (b *fb) openScope() { b.scopes = append(b.scopes, nil) }
 
 func (b *fb) closeScope() {
 	n := len(b.scopes)
+	for _, r := range b.scopes[n-1] {
+		if at, ok := b.localAt[r]; ok {
+			if at < len(b.f.Code) {
+				b.f.tempSpans = append(b.f.tempSpans, tempSpan{reg: r, start: at, end: len(b.f.Code)})
+			}
+			delete(b.localAt, r)
+		}
+	}
 	for _, r := range b.scopes[n-1] {
 		k := b.f.Kinds[r]
 		if k == bc.KRef {
@@ -445,11 +471,82 @@ func (b *fb) declare(v *check.Var, init int) int {
 		return r
 	}
 	r := b.local(k)
+	if k == bc.KRef && v.Kind == check.LocalVar && len(b.scopes) > 0 && plainData(b.typ(v.Type), nil) {
+		// Data alone: its value may be let go of once nothing reads it
+		// (opt_release.go), as no drop of a native object's is put off.
+		if b.localAt == nil {
+			b.localAt = map[int]int{}
+		}
+		b.localAt[r] = len(b.f.Code)
+	}
 	if init >= 0 {
 		b.move(r, init)
 	}
 	b.vars[v] = r
 	return r
+}
+
+// plainData reports whether t's values are data alone, made of numbers,
+// strings and bytes, in arrays, maps, sets, sorted maps, optionals,
+// tuples, structs and enums: letting go of one does nothing but free
+// memory. Not a closure, a task, a stream, a view, an interface's value
+// (any type's), a native interface's or an extern type's (their drops
+// close, stop, release what the platform holds), nor what holds one.
+func plainData(t check.Type, seen map[*check.TypeName]bool) bool {
+	switch t := t.(type) {
+	case *check.Basic:
+		switch t.Kind {
+		case check.KInt, check.KFloat, check.KBool, check.KString, check.KBytes, check.KDuration, check.KColor,
+			check.KLength, check.KChar, check.KI8, check.KI16, check.KI32, check.KU8, check.KU16, check.KU32, check.KU64:
+			return true
+		}
+		return false
+	case *check.Array:
+		return plainData(t.Elem, seen)
+	case *check.Set:
+		return plainData(t.Elem, seen)
+	case *check.Map:
+		return plainData(t.Key, seen) && plainData(t.Elem, seen)
+	case *check.Tree:
+		return plainData(t.Key, seen) && plainData(t.Elem, seen)
+	case *check.Optional:
+		return plainData(t.Elem, seen)
+	case *check.Tuple:
+		for _, e := range t.Elems {
+			if !plainData(e, seen) {
+				return false
+			}
+		}
+		return true
+	case *check.Named:
+		o := t.Obj
+		if o.Native || o.Extern || o.Release != nil || o.Kind != check.StructType && o.Kind != check.EnumType {
+			return false
+		}
+		if seen[o] {
+			return true // a recursive type: what it holds is checked where it's first met
+		}
+		if seen == nil {
+			seen = map[*check.TypeName]bool{}
+		}
+		seen[o] = true
+		defer delete(seen, o)
+		sub := t.Subst()
+		for _, f := range o.Fields {
+			if !plainData(sub.Apply(f.Type), seen) {
+				return false
+			}
+		}
+		for _, c := range o.Cases {
+			for _, p := range c.Params {
+				if !plainData(sub.Apply(p), seen) {
+					return false
+				}
+			}
+		}
+		return true
+	}
+	return false
 }
 
 // readVar is v's value: its register (borrowed), or a temp.

@@ -808,9 +808,7 @@ static ak_val write_fn(ak_val *args, uint32_t nargs) {
 		ak_throw_msg("csv: rows are written from structs or arrays ([string]), not %s", d);
 		return (ak_val){0};
 	}
-	ak_str *s = ak_str_new((const char *)w.b.data, w.b.len);
-	ak_buf_free(&w.b);
-	return (ak_val){.p = s};
+	return (ak_val){.p = ak_str_of_buf(&w.b)};
 }
 
 // csv.isStruct(desc): whether T is a struct, whose first row is a header.

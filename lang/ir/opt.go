@@ -632,6 +632,10 @@ func (o *optimizer) passes() {
 			fn()
 		}
 	}
+	if !strings.Contains(skip, "release") {
+		o.releaseTemps()
+	}
+	f.tempSpans = nil
 	for round := 0; round < 3; round++ {
 		o.changed = false
 		o.dropDeadHandlers()

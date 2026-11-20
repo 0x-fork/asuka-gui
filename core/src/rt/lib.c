@@ -353,6 +353,23 @@ static ak_val str_trim_end(ak_val *args, uint32_t n) {
 	RET_P(ak_str_slice(s, 0, b));
 }
 
+// fields_guess is how many fields s has: counted in its first 64 KB,
+// the rest as many again for as many bytes, and a little more.
+static uint32_t fields_guess(const ak_str *s) {
+	size_t n = s->len < (64 << 10) ? s->len : (64 << 10);
+	uint32_t k = 0;
+	bool in = false;
+	for (size_t i = 0; i < n; i++) {
+		bool sp = ak_space(s->data[i]);
+		k += !sp && !in;
+		in = !sp;
+	}
+	if (n == s->len) return k ? k : 1;
+	uint64_t est = (uint64_t)k * s->len / n;
+	est += est / 32 + 16;
+	return est > UINT32_MAX / 2 ? UINT32_MAX / 2 : (uint32_t)est;
+}
+
 // str.fields: the runs of text between white space.
 static ak_val str_fields(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
@@ -360,8 +377,11 @@ static ak_val str_fields(ak_val *args, uint32_t n) {
 	ak_pieces pc;
 	ak_pieces_start(&pc, s, AK_PIECES_LEFT((s->len + 1) / 2, s->len));
 	// Written into the array as they're found, its room doubled as it
-	// fills (from a guess: a word of 7 and a space).
-	uint32_t len = 0, cap = s->len / 8 + 4;
+	// fills, from how many there are in the first 64 KB (all of a
+	// shorter string's: its count), so that a text whose words are alike
+	// throughout is made at about its size, not grown (each growth a
+	// copy, the old buffer and the new both held as it's made).
+	uint32_t len = 0, cap = fields_guess(s);
 	ak_arr *a = ak_arr_new(AK_K_REF, NULL, cap);
 	a->h.flags = 1;
 	ak_val *v = ak_arr_vals(a);
@@ -819,15 +839,44 @@ static ak_val str_repeat(ak_val *args, uint32_t n) {
 	RET_P(ak_strb_finish(&b));
 }
 
+// str.join(parts, sep): the lengths summed first and the result made at
+// its size, each part copied into it once (Go's strings.Join): not a
+// buffer that doubles as it fills and is then copied, which at its peak
+// holds the result's bytes two to three times over.
 static ak_val str_join(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	ak_arr *a = ARR(0);
-	ak_strb b = {0};
-	for (uint32_t i = 0; i < a->len; i++) {
-		if (i) ak_strb_str(&b, STR(1));
-		if (ak_arr_vals(a)[i].p) ak_strb_str(&b, ak_arr_vals(a)[i].p);
+	const ak_str *sep = STR(1);
+	const ak_val *v = ak_arr_vals(a);
+	uint32_t len = a->len;
+	if (len == 0) RET_P(ak_str_empty());
+	uint64_t total = (uint64_t)sep->len * (len - 1);
+	uint8_t known = len == 1 || ak_str_ascii(sep) ? AK_STR_KNOWN | AK_STR_ASCII : AK_STR_KNOWN;
+	for (uint32_t i = 0; i < len; i++) {
+		const ak_str *s = v[i].p;
+		if (!s) continue;
+		total += s->len;
+		known &= s->h.flags;
 	}
-	RET_P(ak_strb_finish(&b));
+	if (total == 0) RET_P(ak_str_empty());
+	if (total >= UINT32_MAX) ak_panic("out of memory (a string of %llu bytes)", (unsigned long long)total);
+	ak_str *o = ak_str_new(NULL, (size_t)total);
+	char *w = o->data;
+	const char *sd = sep->data;
+	uint32_t sn = sep->len;
+	for (uint32_t i = 0; i < len; i++) {
+		if (i && sn) {
+			if (sn == 1) *w = *sd;
+			else memcpy(w, sd, sn);
+			w += sn;
+		}
+		const ak_str *s = v[i].p;
+		if (!s || !s->len) continue;
+		memcpy(w, s->data, s->len);
+		w += s->len;
+	}
+	if (known & AK_STR_KNOWN) o->h.flags |= known & (AK_STR_KNOWN | AK_STR_ASCII);
+	RET_P(o);
 }
 
 // str.chars: an array of one-character strings.
@@ -988,6 +1037,14 @@ static ak_val arr_append_own(ak_val *args, uint32_t n) { return arr_append(args,
 static ak_val arr_reserve(ak_val *args, uint32_t n) {
 	AK_UNUSED(n);
 	if (A(1).i > 0) ak_arr_reserve((ak_arr **)&args[0].p, A(1).i > UINT32_MAX ? UINT32_MAX : (uint32_t)A(1).i);
+	RET_VOID;
+}
+
+// arr.reserve_big(a, n): room for n more, when that's a big block
+// (ak_arr_reserve_big).
+static ak_val arr_reserve_big(ak_val *args, uint32_t n) {
+	AK_UNUSED(n);
+	if (A(1).i > 0) ak_arr_reserve_big((ak_arr **)&args[0].p, A(1).i > UINT32_MAX ? UINT32_MAX : (uint32_t)A(1).i);
 	RET_VOID;
 }
 
@@ -1511,11 +1568,11 @@ static inline bool lt_float(sort_ctx *c, ak_val a, ak_val b) { return AK_UNUSED(
 MERGE_SORT(msort, lt, c->less || c->k != AK_K_FLOAT)
 MERGE_SORT(msort_float, lt_float, false)
 
-// radix_sort orders ints ascending (signed, or unsigned: u64s), a byte a
-// pass from the lowest, passes where every int has the same byte skipped.
-static void radix_sort(ak_val *v, ak_val *tmp, uint32_t n, bool unsig) {
-	uint64_t flip = unsig ? 0 : 1ull << 63;
-	uint32_t (*count)[256] = ak_alloc(sizeof(uint32_t) * 8 * 256);
+// lsd_sort orders ints ascending (their bits flipped by flip: the sign
+// bit, for signed ones), a byte a pass from the lowest, passes where
+// every int has the same byte skipped; tmp has room for n, count for
+// 8 × 256 (zeroed).
+static void lsd_sort(ak_val *v, ak_val *tmp, uint32_t n, uint64_t flip, uint32_t (*count)[256]) {
 	for (uint32_t i = 0; i < n; i++) {
 		uint64_t x = (uint64_t)v[i].i ^ flip;
 		for (int b = 0; b < 8; b++) count[b][(x >> (8 * b)) & 0xff]++;
@@ -1538,7 +1595,160 @@ static void radix_sort(ak_val *v, ak_val *tmp, uint32_t n, bool unsig) {
 		from = to, to = t;
 	}
 	if (from != v) memcpy(v, from, sizeof(ak_val) * n);
+}
+
+// RADIX_LSD: what's sorted a byte a pass from the lowest, through a
+// buffer as long (256 KB); more is sorted in its own memory.
+#define RADIX_LSD (1u << 15)
+
+typedef struct {
+	ak_val *tmp;  // RADIX_LSD of room, made when first needed
+	uint32_t (*count)[256];
+	uint64_t flip;
+} radix_ctx;
+
+static inline uint64_t radix_key(const radix_ctx *r, ak_val x) { return (uint64_t)x.i ^ r->flip; }
+
+// radix_small sorts n <= RADIX_LSD ints: by insertion when they're few,
+// else lsd_sort through r's buffer.
+static void radix_small(radix_ctx *r, ak_val *v, uint32_t n) {
+	if (n <= 32) {
+		for (uint32_t i = 1; i < n; i++) {
+			ak_val x = v[i];
+			uint64_t kx = radix_key(r, x);
+			uint32_t j = i;
+			while (j > 0 && radix_key(r, v[j - 1]) > kx) {
+				v[j] = v[j - 1];
+				j--;
+			}
+			v[j] = x;
+		}
+		return;
+	}
+	if (!r->tmp) {
+		r->tmp = ak_alloc_raw(sizeof(ak_val) * RADIX_LSD);
+		r->count = ak_alloc_raw(sizeof(uint32_t) * 8 * 256);
+	}
+	memset(r->count, 0, sizeof(uint32_t) * 8 * 256);
+	lsd_sort(v, r->tmp, n, r->flip, r->count);
+}
+
+// sort32 sorts n ints whose keys are all within 2^32 of lo, in their
+// own memory: each one's key less lo, 32 bits, packed into the first
+// half of it, sorted 11 bits a pass from the lowest through the second
+// half (passes where every key has the same digits skipped), then put
+// back as ints, lo added. Half the bytes an LSD pass over the ints
+// moves, and nothing more allocated.
+// (The keys are read and written through a type that may alias the
+// ints whose bytes they're in.)
+typedef uint32_t __attribute__((may_alias)) radix_u32;
+
+static void sort32(radix_ctx *r, ak_val *v, uint32_t n, uint64_t lo, uint64_t span) {
+	radix_u32 *a = (radix_u32 *)(void *)v, *b = a + n;
+	// Packed in order: key i's 4 bytes are written over int i/2's, read
+	// already.
+	for (uint32_t i = 0; i < n; i++) a[i] = (uint32_t)(radix_key(r, v[i]) - lo);
+	int passes = 0;
+	while (passes < 3 && span >> (11 * passes)) passes++;
+	radix_u32 *from = a, *to = b;
+	uint32_t (*count)[2048] = ak_alloc(sizeof(uint32_t) * 3 * 2048);
+	for (uint32_t i = 0; i < n; i++) {
+		uint32_t x = a[i];
+		count[0][x & 2047]++;
+		count[1][x >> 11 & 2047]++;
+		count[2][x >> 22]++;
+	}
+	for (int p = 0; p < passes; p++) {
+		uint32_t *c = count[p];
+		int sh = 11 * p;
+		if (c[from[0] >> sh & 2047] == n) continue;  // one digit for all
+		uint32_t sum = 0;
+		for (int d = 0; d < 2048; d++) {
+			uint32_t t = c[d];
+			c[d] = sum;
+			sum += t;
+		}
+		for (uint32_t i = 0; i < n; i++) {
+			uint32_t x = from[i];
+			to[c[x >> sh & 2047]++] = x;
+		}
+		radix_u32 *t = from;
+		from = to, to = t;
+	}
 	ak_free(count);
+	// Back as ints: from the first half, from the last (int i's 8 bytes
+	// are past every key before i); from the second, from the first
+	// (they end before every key after i).
+	if (from == a)
+		for (uint32_t i = n; i-- > 0;) v[i].i = (int64_t)((lo + a[i]) ^ r->flip);
+	else
+		for (uint32_t i = 0; i < n; i++) v[i].i = (int64_t)((lo + b[i]) ^ r->flip);
+}
+
+// radix_part sorts v in place. Keys within 2^32 of each other: sort32.
+// Others: split in place by their highest 8 bits that differ (an
+// American flag sort: each int swapped into its bucket), then each
+// bucket the same way, or, small, through r's buffer.
+static void radix_part(radix_ctx *r, ak_val *v, uint32_t n) {
+	if (n <= RADIX_LSD) {
+		radix_small(r, v, n);
+		return;
+	}
+	uint64_t lo = UINT64_MAX, hi = 0;
+	for (uint32_t i = 0; i < n; i++) {
+		uint64_t k = radix_key(r, v[i]);
+		lo = k < lo ? k : lo;
+		hi = k > hi ? k : hi;
+	}
+	if (lo == hi) return;  // all equal
+	if (hi - lo <= UINT32_MAX) {
+		sort32(r, v, n, lo, hi - lo);
+		return;
+	}
+	int top = 63 - __builtin_clzll(lo ^ hi);
+	int shift = top >= 7 ? top - 7 : 0;
+	uint32_t count[256] = {0}, next[256], end[256];
+	for (uint32_t i = 0; i < n; i++) count[(radix_key(r, v[i]) >> shift) & 0xff]++;
+	uint32_t sum = 0;
+	for (int d = 0; d < 256; d++) {
+		next[d] = sum;
+		sum += count[d];
+		end[d] = sum;
+	}
+	for (int d = 0; d < 256; d++) {
+		while (next[d] < end[d]) {
+			ak_val x = v[next[d]];
+			uint32_t b = (uint32_t)((radix_key(r, x) >> shift) & 0xff);
+			while (b != (uint32_t)d) {
+				// x's place: swap it there, and go on with what was in it.
+				ak_val y = v[next[b]];
+				v[next[b]++] = x;
+				x = y;
+				b = (uint32_t)((radix_key(r, x) >> shift) & 0xff);
+			}
+			v[next[d]++] = x;
+		}
+	}
+	uint32_t at = 0;
+	for (int d = 0; d < 256; d++) {
+		if (count[d] > 1) radix_part(r, v + at, count[d]);
+		at += count[d];
+	}
+}
+
+// radix_sort orders ints ascending (signed, or unsigned: u64s) in their
+// own memory, as Go's and Rust's sorts of ints do (an LSD sort through a
+// buffer as big as the ints would double what sorting millions takes):
+// those within 2^32 of each other as 32-bit keys, sorted through the
+// other half of their 8 bytes (sort32); others split by their highest
+// bits until they are, or are few.
+static void radix_sort(ak_val *v, uint32_t n, bool unsig) {
+	radix_ctx r = {NULL, NULL, unsig ? 0 : 1ull << 63};
+	radix_part(&r, v, n);
+	if (r.tmp) {
+		ak_free(r.tmp);
+		ak_free(r.count);
+	}
 }
 
 // Strings, in their natural order, sorted by their first 8 bytes (a
@@ -1590,23 +1800,28 @@ static void msort_str(sort_ctx *c, str_key *v, str_key *tmp, uint32_t n) {
 }
 
 static void sort_strs(sort_ctx *c, ak_val *v, uint32_t n) {
-	str_key *keys = ak_alloc(sizeof(str_key) * n * 2);
+	// The keys, then the merges' room: a left half's.
+	str_key *keys = ak_alloc_raw(sizeof(str_key) * ((size_t)n + n / 2 + 1));
 	for (uint32_t i = 0; i < n; i++) keys[i] = (str_key){prefix_key(v[i].p), v[i].p};
 	msort_str(c, keys, keys + n, n);
 	for (uint32_t i = 0; i < n; i++) v[i].p = (void *)keys[i].s;
 	ak_free(keys);
 }
 
-// sort_vals sorts v as c says, tmp n slots of room.
+// sort_vals sorts v as c says.
 static void sort_vals(sort_ctx *c, ak_val *v, uint32_t n) {
 	if (n < 2) return;
 	if (!c->less && c->k == AK_K_REF && v[0].p && ((ak_obj *)v[0].p)->tag == AK_TAG_STR) {
 		sort_strs(c, v, n);
 		return;
 	}
-	ak_val *tmp = ak_alloc(sizeof(ak_val) * n);
+	if (!c->less && c->k == AK_K_INT && n > 64) {
+		radix_sort(v, n, c->unsig);
+		return;
+	}
+	// The merges' room: a left half's.
+	ak_val *tmp = ak_alloc_raw(sizeof(ak_val) * (n / 2 + 1));
 	if (c->less) msort(c, v, tmp, n);
-	else if (c->k == AK_K_INT && n > 64) radix_sort(v, tmp, n, c->unsig);
 	else if (c->k == AK_K_FLOAT) msort_float(c, v, tmp, n);
 	else msort(c, v, tmp, n);
 	ak_free(tmp);
@@ -2348,9 +2563,7 @@ static ak_val bytes_str(ak_val *args, uint32_t n) {
 			i++;
 		}
 	}
-	ak_str *s = ak_str_new((const char *)out.data, out.len);
-	ak_buf_free(&out);
-	RET_P(s);
+	RET_P(ak_str_of_buf(&out));
 }
 
 const ak_lib_entry ak_lib[] = {
@@ -2447,6 +2660,7 @@ const ak_lib_entry ak_lib[] = {
 	{"arr.append_room", arr_append_room},
 	{"arr.append_own", arr_append_own},
 	{"arr.reserve", arr_reserve},
+	{"arr.reserve_big", arr_reserve_big},
 	{"arr.insert", arr_insert},
 	{"arr.remove_at", arr_remove_at},
 	{"arr.remove_where", arr_remove_where},
