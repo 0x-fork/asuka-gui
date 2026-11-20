@@ -173,14 +173,14 @@ effect(roomId) {
 
 // what a function hands back to stop it
 effect {
-  let stop = update.onInstalled(r => notice = r.version)
+  let stop = update.onInstalled(r => { notice = r.version })
   cleanup { stop() }
 }
 
 // only when the branch did something
 effect {
   if following {
-    let id = sensors.listen(.accelerometer, 100ms, s => sample = s)
+    let id = sensors.listen(.accelerometer, 100ms, s => { sample = s })
     cleanup { sensors.unlisten(id) }
   }
 }
