@@ -10,7 +10,10 @@
 //
 // Each program times its work itself (after setting up its inputs) and
 // prints its result and the nanoseconds on stderr; the runner checks
-// that the results agree, so each language does the same work.
+// that the results agree, so each language does the same work. A
+// second table is each program's peak memory: the whole process's
+// maximum resident set size, its inputs included (the same inputs in
+// each language), the median of the runs.
 package main
 
 import (
@@ -25,6 +28,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -112,12 +116,14 @@ func main() {
 	}
 	fmt.Println(header)
 	fmt.Println(rule)
+	peaks := map[string]map[string][]float64{} // benchmark → label → each run's peak bytes
 	for _, name := range selected {
 		times := make([][]float64, len(progs))
 		results := make([]string, len(progs))
+		peaks[name] = map[string][]float64{}
 		for r := -1; r < *runs; r++ { // -1: the warm-up
 			for i, p := range progs {
-				out, ns, err := once(p, name, tmp)
+				out, ns, peak, err := once(p, name, tmp)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "%s %s: %v\n", p.label, name, err)
 					results[i] = "error"
@@ -126,6 +132,9 @@ func main() {
 				results[i] = out
 				if r >= 0 {
 					times[i] = append(times[i], ns/1e6)
+					if out != "n/a" && peak > 0 {
+						peaks[name][p.label] = append(peaks[name][p.label], peak)
+					}
 				}
 			}
 		}
@@ -150,6 +159,7 @@ func main() {
 		fmt.Println(row)
 		agree(name, progs, results)
 	}
+	printPeaks(progs, selected, peaks)
 }
 
 // counted prints each benchmark's millions of cycles and instructions
@@ -172,7 +182,9 @@ func counted(progs []prog, selected []string, dir string, runs, reps int) {
 	}
 	fmt.Println(header)
 	fmt.Println(rule)
+	peaks := map[string]map[string][]float64{}
 	for _, name := range selected {
+		peaks[name] = map[string][]float64{}
 		cys := map[string]float64{}
 		ins := map[string]float64{}
 		results := make([]string, len(progs))
@@ -181,8 +193,11 @@ func counted(progs []prog, selected []string, dir string, runs, reps int) {
 			var cs, is []float64
 			k := 0 // the repetitions: enough that the work outweighs the setup's noise
 			for r := 0; r < runs; r++ {
-				out, c1, i1, setup, work, err := count(p, name, dir, 1)
+				out, c1, i1, setup, work, peak, err := count(p, name, dir, 1)
 				if err == nil && out != "n/a" {
+					if peak > 0 {
+						peaks[name][p.label] = append(peaks[name][p.label], peak)
+					}
 					if k == 0 {
 						k = reps
 						if work > 0 && setup > 0 {
@@ -190,7 +205,7 @@ func counted(progs []prog, selected []string, dir string, runs, reps int) {
 						}
 					}
 					var ck, ik int64
-					_, ck, ik, _, _, err = count(p, name, dir, k)
+					_, ck, ik, _, _, _, err = count(p, name, dir, k)
 					cs = append(cs, float64(ck-c1)/float64(k-1)/1e6)
 					is = append(is, float64(ik-i1)/float64(k-1)/1e6)
 				}
@@ -222,12 +237,13 @@ func counted(progs []prog, selected []string, dir string, runs, reps int) {
 		fmt.Println(row)
 		agree(name, progs, results)
 	}
+	printPeaks(progs, selected, peaks)
 }
 
 // count runs p's name, its work reps times (STDBENCH_REPS), and returns
-// its result, the process's cycles and instructions retired, and how
-// long its setup and its work took (s).
-func count(p prog, name, dir string, reps int) (string, int64, int64, float64, float64, error) {
+// its result, the process's cycles and instructions retired, how long
+// its setup and its work took (s), and its peak resident memory (bytes).
+func count(p prog, name, dir string, reps int) (string, int64, int64, float64, float64, float64, error) {
 	words := append(append([]string{}, p.cmd...), name, dir)
 	var cmd *exec.Cmd
 	if runtime.GOOS == "darwin" {
@@ -240,18 +256,18 @@ func count(p prog, name, dir string, reps int) (string, int64, int64, float64, f
 	cmd.Stderr = &stderr
 	devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 	if err != nil {
-		return "", 0, 0, 0, 0, err
+		return "", 0, 0, 0, 0, 0, err
 	}
 	defer devnull.Close()
 	cmd.Stdout = devnull
 	t0 := time.Now()
 	if err := cmd.Run(); err != nil {
-		return "", 0, 0, 0, 0, fmt.Errorf("%v: %s", err, stderr.String())
+		return "", 0, 0, 0, 0, 0, fmt.Errorf("%v: %s", err, stderr.String())
 	}
 	wall := time.Since(t0).Seconds()
 	var out string
 	var cy, in int64
-	var work float64
+	var work, peak float64
 	for _, l := range strings.Split(stderr.String(), "\n") {
 		if a, ns, ok := strings.Cut(l, "\t"); ok {
 			out = a
@@ -261,6 +277,11 @@ func count(p prog, name, dir string, reps int) (string, int64, int64, float64, f
 		}
 		f := strings.Fields(strings.ReplaceAll(l, ",", " "))
 		switch {
+		case len(f) >= 5 && f[1] == "maximum" && f[2] == "resident":
+			// macOS's time -l: the program's own peak, in bytes.
+			if v, err := strconv.ParseFloat(f[0], 64); err == nil {
+				peak = v
+			}
 		case len(f) >= 3 && f[1] == "instructions" && f[2] == "retired":
 			in, _ = strconv.ParseInt(f[0], 10, 64)
 		case len(f) >= 3 && f[1] == "cycles" && f[2] == "elapsed":
@@ -271,29 +292,90 @@ func count(p prog, name, dir string, reps int) (string, int64, int64, float64, f
 			cy, _ = strconv.ParseInt(f[0], 10, 64)
 		}
 	}
-	return out, cy, in, max(wall-work, 0), work, nil
+	if peak == 0 {
+		// Linux's perf stat says nothing of memory: the rusage of perf,
+		// which counts the program it waited for.
+		peak = maxRSS(cmd.ProcessState)
+	}
+	return out, cy, in, max(wall-work, 0), work, peak, nil
 }
 
-func once(p prog, name, dir string) (string, float64, error) {
+// once runs p's name once: its result, its work's nanoseconds, and the
+// process's peak resident memory (bytes).
+func once(p prog, name, dir string) (string, float64, float64, error) {
 	cmd := exec.Command(p.cmd[0], append(p.cmd[1:], name, dir)...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 	if err != nil {
-		return "", 0, err
+		return "", 0, 0, err
 	}
 	defer devnull.Close()
 	cmd.Stdout = devnull
 	if err := cmd.Run(); err != nil {
-		return "", 0, fmt.Errorf("%v: %s", err, stderr.String())
+		return "", 0, 0, fmt.Errorf("%v: %s", err, stderr.String())
 	}
 	lines := strings.Split(strings.TrimSpace(stderr.String()), "\n")
 	out, ns, ok := strings.Cut(lines[len(lines)-1], "\t")
 	if !ok {
-		return "", 0, fmt.Errorf("no result: %q", stderr.String())
+		return "", 0, 0, fmt.Errorf("no result: %q", stderr.String())
 	}
 	n, err := strconv.ParseFloat(ns, 64)
-	return out, n, err
+	return out, n, maxRSS(cmd.ProcessState), err
+}
+
+// maxRSS is a finished process's peak resident memory, in bytes (the
+// rusage's ru_maxrss: bytes on macOS, kilobytes on Linux).
+func maxRSS(ps *os.ProcessState) float64 {
+	ru, ok := ps.SysUsage().(*syscall.Rusage)
+	if !ok || ru == nil {
+		return 0
+	}
+	if runtime.GOOS == "darwin" {
+		return float64(ru.Maxrss)
+	}
+	return float64(ru.Maxrss) * 1024
+}
+
+// printPeaks is the memory table: each program's peak resident memory a
+// run (the whole process: its inputs made, then the work; the median
+// over the runs), in MB.
+func printPeaks(progs []prog, selected []string, peaks map[string]map[string][]float64) {
+	fmt.Printf("\nPeak memory (maximum resident set size of the whole process, inputs included; median of the runs, MB)\n\n")
+	header, rule := "| benchmark |", "|---|"
+	for _, p := range progs {
+		header += " " + p.label + " |"
+		rule += "---:|"
+	}
+	pair := has(progs, "asuka") && has(progs, "go")
+	if pair {
+		header += " asuka/go |"
+		rule += "---:|"
+	}
+	fmt.Println(header)
+	fmt.Println(rule)
+	for _, name := range selected {
+		row := "| " + name + " |"
+		meds := map[string]float64{}
+		for _, p := range progs {
+			xs := peaks[name][p.label]
+			if len(xs) == 0 {
+				row += " n/a |"
+				continue
+			}
+			m, _ := medianMAD(xs)
+			meds[p.label] = m
+			row += fmt.Sprintf(" %.1f |", m/1e6)
+		}
+		if pair {
+			if a, g := meds["asuka"], meds["go"]; a > 0 && g > 0 {
+				row += fmt.Sprintf(" %.2f× |", a/g)
+			} else {
+				row += " |"
+			}
+		}
+		fmt.Println(row)
+	}
 }
 
 // agree warns when the languages' results differ: they didn't do the

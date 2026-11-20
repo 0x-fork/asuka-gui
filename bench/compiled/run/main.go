@@ -3,7 +3,9 @@
 // Bun, the same algorithms on the same inputs. It builds each, checks
 // that they print the same, times each benchmark with hyperfine (its
 // warm-up runs, then -runs runs) and prints a Markdown table of the
-// means with their standard deviations, and Asuka's time over Go's.
+// means with their standard deviations, and Asuka's time over Go's,
+// then one of each program's peak memory (the maximum resident set size
+// of a run of its own, the median of the runs) and Asuka's over Go's.
 //
 //	go run ./bench/compiled/run                    # every benchmark, every language there is
 //	go run ./bench/compiled/run -only fib,nbody -runs 10
@@ -20,7 +22,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
+	"syscall"
 )
 
 var names = []string{"fib", "sieve", "nbody", "trees", "words", "json", "sort"}
@@ -108,6 +112,7 @@ func main() {
 	}
 	fmt.Println(header)
 	fmt.Println(rule)
+	peaks := map[string]map[string]float64{} // benchmark → label → peak bytes (the runs' median)
 	for _, name := range selected {
 		// The same output from each, or the timing means nothing.
 		want := ""
@@ -143,14 +148,95 @@ func main() {
 		check(json.Unmarshal(data, &res))
 		row := "| " + name + " |"
 		means := map[string]float64{}
+		peaks[name] = map[string]float64{}
 		for i, r := range res.Results {
 			means[progs[i].label] = r.Mean
 			row += fmt.Sprintf(" %.0f ± %.0f |", r.Mean*1e3, r.Stddev*1e3)
+		}
+		// Each program's peak memory, from its own process's rusage
+		// (hyperfine's memory_usage_byte is RUSAGE_CHILDREN's maximum,
+		// which only grows across the commands it runs: each after the
+		// first would show the biggest so far).
+		for _, p := range progs {
+			var ms []float64
+			for r := 0; r < *runs; r++ {
+				if m := peakOf(p.cmd + " " + name); m > 0 {
+					ms = append(ms, m)
+				}
+			}
+			if len(ms) > 0 {
+				peaks[name][p.label] = median(ms)
+			}
 		}
 		if ratio {
 			row += fmt.Sprintf(" %.2f× |", means["asuka"]/means["go"])
 		}
 		fmt.Println(row)
+	}
+	printPeaks(progs, selected, peaks, ratio)
+}
+
+// peakOf runs cmd (a shell command, exec'd: the program is the shell's
+// process) and returns its peak resident memory in bytes (ru_maxrss:
+// bytes on macOS, kilobytes on Linux), 0 when it failed.
+func peakOf(cmd string) float64 {
+	c := exec.Command("sh", "-c", "exec "+cmd+" >/dev/null 2>&1")
+	if err := c.Run(); err != nil {
+		return 0
+	}
+	ru, ok := c.ProcessState.SysUsage().(*syscall.Rusage)
+	if !ok || ru == nil {
+		return 0
+	}
+	if runtime.GOOS == "darwin" {
+		return float64(ru.Maxrss)
+	}
+	return float64(ru.Maxrss) * 1024
+}
+
+// printPeaks is the memory table: each program's peak resident memory a
+// run (the median over the runs), in MB.
+func printPeaks(progs []prog, selected []string, peaks map[string]map[string]float64, ratio bool) {
+	fmt.Printf("\nPeak memory (maximum resident set size, median of the runs, MB)\n\n")
+	header, rule := "| benchmark |", "|---|"
+	for _, p := range progs {
+		header += " " + p.label + " |"
+		rule += "---:|"
+	}
+	if ratio {
+		header += " asuka/go |"
+		rule += "---:|"
+	}
+	fmt.Println(header)
+	fmt.Println(rule)
+	for _, name := range selected {
+		row := "| " + name + " |"
+		for _, p := range progs {
+			if b, ok := peaks[name][p.label]; ok {
+				row += fmt.Sprintf(" %.1f |", b/1e6)
+			} else {
+				row += " n/a |"
+			}
+		}
+		if ratio {
+			a, g := peaks[name]["asuka"], peaks[name]["go"]
+			if a > 0 && g > 0 {
+				row += fmt.Sprintf(" %.2f× |", a/g)
+			} else {
+				row += " |"
+			}
+		}
+		fmt.Println(row)
+	}
+}
+
+func median(xs []float64) float64 {
+	s := append([]float64(nil), xs...)
+	sort.Float64s(s)
+	if n := len(s); n%2 == 1 {
+		return s[n/2]
+	} else {
+		return (s[n/2-1] + s[n/2]) / 2
 	}
 }
 

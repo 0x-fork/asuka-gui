@@ -28,18 +28,20 @@ fn next(seed: int) -> int = (seed * 1103515245 + 12345) % 2147483648
 // corpus is n words of two syllables (a number after one in 13), a line
 // break after every 12th.
 fn corpus(n: int) -> string {
+  // Appended to one string, which grows in place as Go's strings.Builder
+  // does: not 2n strings in an array, joined.
   var seed = 42
-  var parts: [string] = []
+  var out = ""
   for i in 0..<n {
     seed = next(seed)
-    var w = syllables[seed % 10] + syllables[(seed / 10) % 10]
+    out += syllables[seed % 10]
+    out += syllables[(seed / 10) % 10]
     if seed % 13 == 0 {
-      w = w + "{seed % 1000}"
+      out += "{seed % 1000}"
     }
-    parts.push(w)
-    parts.push(if i % 12 == 11 { "\n" } else { " " })
+    out += if i % 12 == 11 { "\n" } else { " " }
   }
-  return parts.joined("")
+  return out
 }
 
 fn data(n: int) -> bytes = corpus(n).bytes()
