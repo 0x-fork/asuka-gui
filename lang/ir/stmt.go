@@ -35,6 +35,10 @@ func (b *fb) stmtsThen(items []syntax.Item, then func()) {
 			continue
 		}
 		b.stmt(it)
+		if b.l.leaves(it) {
+			// Nothing after it runs: it isn't lowered (fold.go).
+			return
+		}
 	}
 	if then != nil {
 		then()

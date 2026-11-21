@@ -146,6 +146,90 @@ func (l *Lowerer) foldCond(c syntax.Expr) folded {
 	return all
 }
 
+// leaves reports whether control never gets past it, as it's lowered:
+// a return, a break, a continue, a throw, what has no value (panic(…)),
+// and an if or a match whose every branch that may run leaves, an if
+// @debug's only the one it takes. What comes after it in its block is
+// never lowered: a release has nothing of what follows if !@debug
+// { return … }, its strings and builtins included, as it has nothing of
+// a branch it doesn't take.
+func (l *Lowerer) leaves(it syntax.Item) bool {
+	switch s := it.(type) {
+	case *syntax.ReturnStmt, *syntax.ThrowStmt, *syntax.BranchStmt:
+		return true
+	case *syntax.ExprStmt:
+		return l.info.Types[s.X] == check.Never
+	case *syntax.IfStmt:
+		if f := l.foldCond(s.Cond); f.known {
+			if f.val {
+				return l.blockLeaves(s.Then)
+			}
+			return l.elseLeaves(s.Else)
+		}
+		return s.Else != nil && l.blockLeaves(s.Then) && l.elseLeaves(s.Else)
+	case *syntax.MatchStmt:
+		arms := l.platformArms(s.Subject, s.Arms)
+		if len(arms) == 0 {
+			return false
+		}
+		mi := l.info.Matches[s]
+		if !(mi != nil && mi.Exhaustive) && !(check.IsPlatformConst(s.Subject) && arms[len(arms)-1].Guard == nil) {
+			return false
+		}
+		for _, a := range arms {
+			switch body := a.Body.(type) {
+			case *syntax.Block:
+				if !l.blockLeaves(body) {
+					return false
+				}
+			case syntax.Item:
+				if !l.leaves(body) {
+					return false
+				}
+			default:
+				return false
+			}
+		}
+		return true
+	case *syntax.DoStmt:
+		if !l.blockLeaves(s.Body) {
+			return false
+		}
+		for _, c := range s.Catches {
+			if !l.blockLeaves(c.Body) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// blockLeaves reports whether control never gets to a block's end: one
+// of its statements leaves.
+func (l *Lowerer) blockLeaves(bl *syntax.Block) bool {
+	if bl == nil {
+		return false
+	}
+	for _, it := range bl.Items {
+		if l.leaves(it) {
+			return true
+		}
+	}
+	return false
+}
+
+// elseLeaves is blockLeaves of an if's else: another if, or a block.
+func (l *Lowerer) elseLeaves(el syntax.Node) bool {
+	switch el := el.(type) {
+	case *syntax.IfStmt:
+		return l.leaves(el)
+	case *syntax.Block:
+		return l.blockLeaves(el)
+	}
+	return false
+}
+
 // effects evaluates what a folded condition still runs.
 func (b *fb) effects(f folded) { b.runEffects(f.effects) }
 

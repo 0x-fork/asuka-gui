@@ -175,6 +175,7 @@ for build, publish and benches. Lowering folds what they decide
 | `if c { A } else if d { B } else { C }`, as a statement or a value | only the branch taken; a chain's clauses before its first `let` likewise |
 | `match @platform { … }` (statement, value, view) | the arms up to the first that matches without a guard, without those whose case can't; in a view, one arm with no names is built once, without `ui.switch` |
 | `if c { A } else { B }` among views | the taken branch's builder called once (CALLC), without `ui.show`: the other's views never exist |
+| what follows, in its block, a statement that leaves (`return`, `break`, `continue`, `throw`, a `never` value; an `if` or `match` whose every branch that may run leaves, a folded one's taken branch only) | nothing (Lowerer.leaves): `if !@debug { return x }` and the rest of a release's block isn't in it |
 
 What's left out is never lowered: its functions, strings, constants and
 builtins aren't in the module. The checker doesn't fold: reachability,

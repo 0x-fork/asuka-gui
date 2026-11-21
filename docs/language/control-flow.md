@@ -232,7 +232,9 @@ component About {
 ```
 
 `!@debug` folds as well, and so do `&&` and `||` of it with `@platform`'s
-comparisons. Both branches are checked in every build, so the release
+comparisons. What follows a branch that's taken and returns is left out
+too: after `if !@debug { return cached }`, the rest of the block isn't
+in a release. That's so of `@platform`'s branches as well. Both branches are checked in every build, so the release
 branch can't break unseen while you develop in the other one.
 
 Tests are a development build, as `asuka dev`'s is: `asuka test

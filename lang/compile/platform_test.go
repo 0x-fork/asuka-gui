@@ -324,9 +324,28 @@ fn mode() -> string {
     return "release mode"
   } else if @platform == .linux {
     return "linux debug"
-  } else {
-    return "{[3, 1, 2].sorted().count()}debug mode"
   }
+  return "{[3, 1, 2].sorted().count()}debug mode"
+}
+
+// What comes after a branch that leaves is never lowered either.
+fn early() -> string {
+  if @platform != .linux {
+    return "not linux"
+  }
+  print("after".upper())
+  return "linux only"
+}
+
+fn arms(xs: [int]) -> int {
+  for x in xs {
+    match @platform {
+      .linux => continue
+      _ => return x
+    }
+    print("after the match".lower())
+  }
+  return 0
 }
 
 component Menu {
@@ -345,6 +364,8 @@ test "t" {
   print(verbose)
   print(shown)
   print(mode())
+  print(early())
+  print(arms([7]))
 }
 `
 	compile := func(debug bool) *bc.Module {
@@ -379,8 +400,21 @@ test "t" {
 			t.Errorf("the release calls %s", b)
 		}
 	}
+	// On iOS, what follows a branch @platform takes and leaves.
+	for _, m := range []*bc.Module{dev, release} {
+		for _, s := range []string{"after", "linux only", "after the match"} {
+			if hasString(m, s) {
+				t.Errorf("iOS has %q", s)
+			}
+		}
+		for _, b := range []string{"unicode.upper", "unicode.lower"} {
+			if slices.Contains(m.Builtins, b) {
+				t.Errorf("iOS calls %s", b)
+			}
+		}
+	}
 	// What each prints, on the VM and compiled to C.
-	for m, want := range map[*bc.Module]string{dev: "staging.example\ntrue\ntrue\n3debug mode", release: "example\nfalse\nfalse\nrelease mode"} {
+	for m, want := range map[*bc.Module]string{dev: "staging.example\ntrue\ntrue\n3debug mode\nnot linux\n7", release: "example\nfalse\nfalse\nrelease mode\nnot linux\n7"} {
 		out, err := runBoth(t, m)
 		if err != nil {
 			t.Fatalf("%v\n%s", err, out)
